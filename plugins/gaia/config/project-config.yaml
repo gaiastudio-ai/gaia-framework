@@ -46,3 +46,125 @@ creative_artifacts: docs/creative-artifacts
 #   M: 5
 #   L: 8
 #   XL: 13
+
+# =============================================================================
+# Review System v2 configuration surface (E68-S1 / FR-RSV2-5..22)
+# =============================================================================
+# Eleven new top-level sections consumed by the layered rubric loader (E68-S2)
+# and the review-system-v2 skill family. All sections below are commented out
+# by default — uncomment + edit to opt in. ADR-079 (rubric layering) and
+# ADR-044 (config split / merge precedence) govern resolution.
+
+# compliance — opt-in regulatory regime selection (FR-RSV2-5, FR-RSV2-7).
+# Each declared regime composes a layer onto the rubric stack
+# (base > regimes-in-order > domain > project) per ADR-079.
+# Canonical regime keys: gdpr, hipaa, pci-dss, sox, ccpa, soc2, iso-27001,
+# wcag-2.1-aa, wcag-2.1-aaa.
+# `domain` (optional) names a domain rubric file under rubrics/domains/.
+# `ui_present` (boolean, default false) toggles the conditional a11y gate.
+# compliance:
+#   regimes: [gdpr, hipaa]
+#   domain: healthcare
+#   ui_present: true
+
+# tools — provider/config selection per category (FR-RSV2-10).
+# Tool-selection precedence: project tools.{category}.provider > regime-
+# suggested > base default. Each category entry has `provider` (string) and
+# optional `config` (free-form map handed to the adapter).
+# tools:
+#   sast:
+#     provider: semgrep
+#   secrets:
+#     provider: gitleaks
+#   sca:
+#     provider: trivy
+
+# test_execution — pipeline-tier placement for the three test tiers
+# (FR-RSV2-11). Each tier accepts a `placement` value from the canonical set:
+# local | ci-pre-merge | ci-post-merge | deployment | post-deploy.
+# test_execution:
+#   tier_1:
+#     placement: local
+#   tier_2:
+#     placement: ci-pre-merge
+#   tier_3:
+#     placement: ci-post-merge
+
+# severity — five-internal-to-three-gate severity mapping (FR-RSV2-22).
+# The five internal severities (Critical, High, Medium, Low, Info) collapse
+# to three gate verdicts (BLOCKED, REQUEST_CHANGES, APPROVE). Defaults shown
+# below; Medium and Low are configurable per project.
+# severity:
+#   Critical: BLOCKED
+#   High: REQUEST_CHANGES
+#   Medium: REQUEST_CHANGES
+#   Low: APPROVE
+#   Info: APPROVE
+
+# gates — per-gate severity overrides (FR-RSV2-12). Each gate may override
+# any severity entry from the global `severity` block above.
+# gates:
+#   code:
+#     severity:
+#       Medium: APPROVE
+#   security:
+#     severity:
+#       High: BLOCKED
+
+# stacks — ordered list of stack-path rules for multi-service repos
+# (FR-RSV2-6). Review skills resolve the active stack by walking entries in
+# declaration order and matching against the changed-file list. Each entry
+# has `name`, `language`, and `paths` (list of glob patterns).
+# stacks:
+#   - name: auth
+#     language: typescript
+#     paths: ["services/auth/**"]
+#   - name: api
+#     language: python
+#     paths: ["services/api/**", "shared/api/**"]
+
+# cross_service_tests — contract and cross-service integration test config
+# for microservice architectures. Keyed by service pair or by test type.
+# cross_service_tests:
+#   contract_dir: tests/contract
+#   integration_dir: tests/integration
+#   pairs:
+#     - producer: auth
+#       consumer: api
+
+# environments — environment list with env-var-only credential references
+# (FR-RSV2-9, NFR-RSV2-7). Each environment has `name` (the map key),
+# optional `url`, and `credentials` as a map of CREDENTIAL_NAME ->
+# ENV_VAR_NAME. NEVER put literal credential values in this file — schema
+# validation rejects strings matching common-secret patterns (`sk-`, `ghp_`,
+# `AKIA`, `xox`, `glpat-`).
+# environments:
+#   staging:
+#     url: https://staging.example.com
+#     credentials:
+#       db_password: STAGING_DB_PASSWORD_VAR
+#   production:
+#     url: https://app.example.com
+#     credentials:
+#       db_password: PROD_DB_PASSWORD_VAR
+
+# ci_platform — CI provider selection and pipeline pointer.
+# Canonical providers: github-actions, gitlab-ci, circleci, jenkins,
+# azure-pipelines, bitbucket-pipelines.
+# ci_platform:
+#   provider: github-actions
+#   pipeline: .github/workflows/ci.yml
+
+# platforms — list of platform identifiers. Presence of `ios` or `android`
+# triggers mobile gates downstream (FR-RSV2-26, extended by E74-S1).
+# platforms: [web]
+# platforms: [web, ios, android]
+
+# device_targets — device/OS matrix for mobile platforms. Stub section in
+# E68-S1; full mobile semantics land in E74-S1.
+# device_targets:
+#   ios:
+#     - "iPhone 15"
+#     - "iPad Pro"
+#   android:
+#     - "Pixel 8"

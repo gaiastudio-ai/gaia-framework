@@ -1,0 +1,283 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gaiastudio.ai/schemas/project-config.schema.json",
+  "title": "GAIA project-config.yaml — full structural schema (E68-S1)",
+  "description": "JSON Schema (draft-07) for the canonical project-config.yaml surface. Covers the eleven new top-level sections introduced by E68-S1 (FR-RSV2-5..22) plus the existing surface declared in plugins/gaia/config/project-config.schema.yaml. Designed for offline validation via `npx ajv-cli validate -s project-config.schema.json -d project-config.json`. NFR-RSV2-4 / ADR-079 require schema-validation discipline; this file extends the same load-time-validation pattern used by analysis-results.schema.json. Credential values literally embedded in environments.*.credentials.* are rejected via a pattern-based deny-list per AC11 / FR-RSV2-9.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "project_root",
+    "project_path",
+    "memory_path",
+    "checkpoint_path",
+    "installed_path",
+    "framework_version",
+    "date"
+  ],
+  "definitions": {
+    "credentialEnvVarRef": {
+      "description": "An environment variable reference holding a credential. MUST be the NAME of an env var (e.g., DB_PASSWORD_VAR) and MUST NOT be a literal credential. Common-secret patterns (sk-, ghp_, AKIA, xox, glpat-) and credential-style key=value strings are rejected so a project-config.yaml accidentally committed with a literal secret fails validation per FR-RSV2-9 / AC11.",
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^sk-" },
+          { "pattern": "^ghp_" },
+          { "pattern": "^gho_" },
+          { "pattern": "^github_pat_" },
+          { "pattern": "^AKIA" },
+          { "pattern": "^xox[abposr]-" },
+          { "pattern": "^glpat-" },
+          { "pattern": "(password|secret|token|credential|PASSWORD|SECRET|TOKEN|CREDENTIAL)\\s*=\\s*\\S+" }
+        ]
+      }
+    },
+    "complianceRegime": {
+      "type": "string",
+      "enum": [
+        "gdpr",
+        "hipaa",
+        "pci-dss",
+        "sox",
+        "ccpa",
+        "soc2",
+        "iso-27001",
+        "wcag-2.1-aa",
+        "wcag-2.1-aaa"
+      ]
+    },
+    "testPlacement": {
+      "type": "string",
+      "enum": [
+        "local",
+        "ci-pre-merge",
+        "ci-post-merge",
+        "deployment",
+        "post-deploy"
+      ]
+    },
+    "severityVerdict": {
+      "type": "string",
+      "enum": ["BLOCKED", "REQUEST_CHANGES", "APPROVE"]
+    },
+    "severityMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "Critical": { "$ref": "#/definitions/severityVerdict" },
+        "High":     { "$ref": "#/definitions/severityVerdict" },
+        "Medium":   { "$ref": "#/definitions/severityVerdict" },
+        "Low":      { "$ref": "#/definitions/severityVerdict" },
+        "Info":     { "$ref": "#/definitions/severityVerdict" }
+      }
+    },
+    "ciProvider": {
+      "type": "string",
+      "enum": [
+        "github-actions",
+        "gitlab-ci",
+        "circleci",
+        "jenkins",
+        "azure-pipelines",
+        "bitbucket-pipelines"
+      ]
+    },
+    "platformId": {
+      "type": "string",
+      "enum": ["web", "ios", "android"]
+    }
+  },
+  "properties": {
+    "project_root":             { "type": "string", "minLength": 1 },
+    "project_path":             { "type": "string", "minLength": 1 },
+    "memory_path":              { "type": "string", "minLength": 1 },
+    "checkpoint_path":          { "type": "string", "minLength": 1 },
+    "installed_path":           { "type": "string", "minLength": 1 },
+    "framework_version":        { "type": "string", "minLength": 1 },
+    "date":                     { "type": "string", "minLength": 1 },
+    "user_name":                { "type": "string" },
+    "communication_language":   { "type": "string" },
+    "test_artifacts":           { "type": "string" },
+    "planning_artifacts":       { "type": "string" },
+    "implementation_artifacts": { "type": "string" },
+    "creative_artifacts":       { "type": "string" },
+    "val_integration":          { "type": "object" },
+    "ci_cd":                    { "type": "object" },
+    "testing":                  { "type": "object" },
+    "test_execution_bridge":    { "type": "object" },
+    "sprint":                   { "type": "object" },
+    "review_gate":              { "type": "object" },
+    "team_conventions":         { "type": "object" },
+    "agent_customizations":     { "type": "object" },
+    "dev_story": {
+      "type": "object",
+      "properties": {
+        "tdd_review": {
+          "type": "object",
+          "properties": {
+            "threshold": { "type": "string", "enum": ["off", "low", "medium", "high"] },
+            "phases":    { "type": "array", "items": { "type": "string" } },
+            "qa_auto_in_yolo": { "type": "boolean" },
+            "qa_timeout_seconds": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "sizing_map": {
+      "type": "object",
+      "properties": {
+        "S":  { "type": "integer", "minimum": 1 },
+        "M":  { "type": "integer", "minimum": 1 },
+        "L":  { "type": "integer", "minimum": 1 },
+        "XL": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "compliance": {
+      "description": "Opt-in regulatory regime selection (FR-RSV2-5, FR-RSV2-7).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "regimes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/complianceRegime" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "domain": { "type": "string", "minLength": 1 },
+        "ui_present": { "type": "boolean" }
+      }
+    },
+    "tools": {
+      "description": "Provider/config selection per category (FR-RSV2-10).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["provider"],
+        "properties": {
+          "provider": { "type": "string", "minLength": 1 },
+          "config":   { "type": "object" }
+        }
+      }
+    },
+    "test_execution": {
+      "description": "Pipeline-tier placement for the three test tiers (FR-RSV2-11).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tier_1": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "placement": { "$ref": "#/definitions/testPlacement" } }
+        },
+        "tier_2": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "placement": { "$ref": "#/definitions/testPlacement" } }
+        },
+        "tier_3": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "placement": { "$ref": "#/definitions/testPlacement" } }
+        }
+      }
+    },
+    "severity": {
+      "description": "Five-internal-to-three-gate severity mapping (FR-RSV2-22).",
+      "$ref": "#/definitions/severityMap"
+    },
+    "gates": {
+      "description": "Per-gate severity overrides (FR-RSV2-12). Each gate may override the global severity mapping.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "severity": { "$ref": "#/definitions/severityMap" }
+        }
+      }
+    },
+    "stacks": {
+      "description": "Ordered list of stack-path rules for multi-service repos (FR-RSV2-6).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "language", "paths"],
+        "properties": {
+          "name":     { "type": "string", "minLength": 1 },
+          "language": { "type": "string", "minLength": 1 },
+          "paths": {
+            "type": "array",
+            "items":    { "type": "string", "minLength": 1 },
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "cross_service_tests": {
+      "description": "Contract and cross-service integration test configuration.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "contract_dir":    { "type": "string" },
+        "integration_dir": { "type": "string" },
+        "pairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["producer", "consumer"],
+            "properties": {
+              "producer": { "type": "string", "minLength": 1 },
+              "consumer": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "environments": {
+      "description": "Environment list with env-var-only credential references (FR-RSV2-9, NFR-RSV2-7). Literal credential values are rejected by the credentialEnvVarRef constraint per AC11.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url":         { "type": "string" },
+          "credentials": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/definitions/credentialEnvVarRef" }
+          }
+        }
+      }
+    },
+    "ci_platform": {
+      "description": "CI provider selection and pipeline pointer.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider"],
+      "properties": {
+        "provider": { "$ref": "#/definitions/ciProvider" },
+        "pipeline": { "type": "string" }
+      }
+    },
+    "platforms": {
+      "description": "List of platform identifiers. Presence of ios or android triggers mobile gates downstream (FR-RSV2-26).",
+      "type": "array",
+      "items":     { "$ref": "#/definitions/platformId" },
+      "minItems":  1,
+      "uniqueItems": true
+    },
+    "device_targets": {
+      "description": "Device/OS matrix for mobile platforms. Stub section in E68-S1; full mobile semantics land in E74-S1.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
