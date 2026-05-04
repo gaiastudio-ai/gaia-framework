@@ -124,6 +124,14 @@ EOF
 
 # ---------- AC8: error-path triggers trap cleanup ----------
 
+@test "memory-writer.sh: release_lock EXIT trap chains _cleanup_tmps (regression)" {
+  # The lock-acquire EXIT trap MUST chain through _cleanup_tmps so that on a
+  # clean EXIT, atomic-write tmps are still cleaned. A bare `trap release_lock
+  # EXIT` would override the script-level `trap _cleanup_tmps EXIT INT TERM`
+  # and silently leak tmps under set -e or signal-during-printf paths.
+  grep -E "trap[[:space:]]+'release_lock;[[:space:]]*_cleanup_tmps'[[:space:]]+EXIT" "$SCRIPT"
+}
+
 @test "memory-writer.sh: write-failure error path cleans tmp via trap (AC8)" {
   # Make the sidecar directory read-only so the mv into the dest fails.
   # On macOS this requires the parent dir read-only AND the file path to not

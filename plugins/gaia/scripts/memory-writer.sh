@@ -283,7 +283,7 @@ release_lock() {
     rm -rf "$lock_path" 2>/dev/null || true
   fi
 }
-trap release_lock EXIT
+trap 'release_lock; _cleanup_tmps' EXIT
 
 lock_mode=""
 if command -v flock >/dev/null 2>&1; then
