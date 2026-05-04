@@ -17,8 +17,18 @@
 # (per ADR-042 pattern); the script exits 0 except on caller errors.
 #
 # Invocation:
-#   verdict-resolver.sh --analysis-results <path> --llm-findings <path>
+#   verdict-resolver.sh [--skill <skill-name>] --analysis-results <path> --llm-findings <path>
 #   verdict-resolver.sh --help
+#
+# The optional --skill <name> flag (added by E66-S1, ADR-077) is the
+# generalization hook: it accepts any of the twelve verdict-producing skills'
+# `analysis-results.json` inputs (gaia-code-review, gaia-review-qa,
+# gaia-review-test, gaia-test-automate, gaia-review-security, gaia-review-perf,
+# gaia-review-mobile, gaia-validate-design-a11y, gaia-test-{e2e,perf,dast,a11y},
+# gaia-test-mobile-e2e, gaia-test-device-matrix, gaia-deploy). The skill name
+# is logged in stderr provenance but does NOT alter the four-rule precedence
+# logic — strict first-match-wins is preserved per ADR-075. Omitting --skill
+# preserves the legacy gaia-code-review-only behavior (backward compat).
 #
 # Exit codes:
 #   0  — success (verdict on stdout)
@@ -45,13 +55,18 @@ die() {
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — verdict resolver for GAIA review skills (ADR-075)
+$SCRIPT_NAME — verdict resolver for GAIA review skills (ADR-075, ADR-077)
 
 Usage:
-  $SCRIPT_NAME --analysis-results <path> --llm-findings <path>
+  $SCRIPT_NAME [--skill <name>] --analysis-results <path> --llm-findings <path>
   $SCRIPT_NAME --help
 
 Options:
+  --skill <name>             Optional. Identifies the producing skill (any of
+                             the twelve verdict-producing skills per ADR-077).
+                             Logged in provenance; does not alter precedence.
+                             --analysis is accepted as an alias for
+                             --analysis-results.
   --analysis-results <path>  Path to Phase 3A analysis-results.json (required)
   --llm-findings <path>      Path to Phase 3B LLM findings JSON (required)
   --help                     Show this help and exit 0
@@ -67,11 +82,16 @@ EOF
 
 ANALYSIS=""
 LLM=""
+SKILL=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --analysis-results)
-      [ "$#" -ge 2 ] || die 1 "--analysis-results requires a path"
+    --skill)
+      # Optional, ADR-077 generalization. Accepted but does not alter precedence.
+      [ "$#" -ge 2 ] || die 1 "--skill requires a name"
+      SKILL="$2"; shift 2 ;;
+    --analysis-results|--analysis)
+      [ "$#" -ge 2 ] || die 1 "$1 requires a path"
       ANALYSIS="$2"; shift 2 ;;
     --llm-findings)
       [ "$#" -ge 2 ] || die 1 "--llm-findings requires a path"
@@ -85,6 +105,12 @@ done
 
 [ -n "$ANALYSIS" ] || die 1 "missing required --analysis-results <path>"
 [ -n "$LLM" ]      || die 1 "missing required --llm-findings <path>"
+
+# Provenance: log --skill if provided. Stderr is informational; does not alter
+# the verdict (ADR-075 precedence is unchanged).
+if [ -n "$SKILL" ]; then
+  printf '%s: skill=%s\n' "$SCRIPT_NAME" "$SKILL" >&2
+fi
 
 command -v jq >/dev/null 2>&1 || die 1 "jq is required but not on PATH"
 
