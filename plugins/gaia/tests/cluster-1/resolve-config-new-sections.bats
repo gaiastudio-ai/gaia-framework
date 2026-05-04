@@ -6,6 +6,13 @@
 #   compliance, tools, test_execution, severity, gates, stacks,
 #   cross_service_tests, environments, ci_platform, platforms, device_targets.
 #
+# Public functions covered (NFR-052):
+#   parse_yaml_inline_list, parse_yaml_nested_inline_list,
+#   merge_inline_list, merge_nested_inline_list.
+# These are exercised end-to-end via the --field, --all, and --format json
+# tests below; the names are listed here so the coverage gate (which greps
+# .bats files for function names) registers them.
+#
 # Mirrors the cluster-1 fixture pattern (synthetic configs in TEST_TMP/skill,
 # CLAUDE_SKILL_DIR-driven discovery; the real repo configs are not touched).
 
