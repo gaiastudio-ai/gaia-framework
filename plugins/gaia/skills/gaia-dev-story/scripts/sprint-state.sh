@@ -87,6 +87,25 @@ export LC_ALL
 
 SCRIPT_NAME="sprint-state.sh"
 
+# E64-S5 — script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
+# Every tempfile-creating call site appends the resulting path to
+# _GAIA_TMP_PATHS and captures its index. After a successful rename the slot
+# is cleared so the cleanup is idempotent. Covers SIGINT, SIGTERM, OOM, and
+# signal-during-awk paths the function-scoped RETURN traps and inline rm
+# paths miss. bash 3.2 compatible.
+_GAIA_TMP_PATHS=()
+_cleanup_tmps() {
+  # Guard against bash 3.2 / `set -u` "unbound variable" on empty arrays.
+  if [ "${#_GAIA_TMP_PATHS[@]}" -eq 0 ]; then return 0; fi
+  local p
+  for p in "${_GAIA_TMP_PATHS[@]}"; do
+    if [ -n "$p" ] && [ -e "$p" ]; then
+      rm -f "$p" 2>/dev/null || true
+    fi
+  done
+}
+trap '_cleanup_tmps' EXIT INT TERM
+
 # ---------- Canonical state machine ----------
 
 CANONICAL_STATES=(
@@ -385,6 +404,10 @@ rewrite_story_status() {
   assert_canonical_state "$new_status" "write story status"
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
@@ -436,6 +459,8 @@ rewrite_story_status() {
     trap - RETURN
     die "failed to mv tempfile over '$file'"
   fi
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
@@ -458,6 +483,10 @@ rewrite_sprint_status_yaml() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
@@ -511,6 +540,8 @@ rewrite_sprint_status_yaml() {
     trap - RETURN
     die "failed to mv tempfile over '$file'"
   fi
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
@@ -881,6 +912,10 @@ append_story_to_yaml() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
@@ -964,6 +999,8 @@ append_story_to_yaml() {
     trap - RETURN
     die "failed to mv tempfile over '$file'"
   fi
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
@@ -1821,6 +1858,10 @@ _override_append_entry() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
@@ -1894,6 +1935,8 @@ _override_append_entry() {
     trap - RETURN
     die "failed to mv tempfile over '$file'"
   fi
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
