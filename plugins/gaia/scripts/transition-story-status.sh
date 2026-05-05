@@ -242,6 +242,26 @@ STORY_STATUS_LOCK="${STORY_STATUS_LOCK:-${MEMORY_PATH}/.story-status.lock}"
 
 # Forward SPRINT_STATUS_YAML untouched if caller pre-set it.
 
+# ---------- Startup orphan-tmp sweep (E64-S6) ----------
+#
+# Garbage-collect *.tmp.?????? files older than 60 minutes from the
+# documented artifact directories. Catches orphans left by `kill -9`,
+# OOM, or power loss (which bypass E64-S5's EXIT/INT/TERM trap).
+#
+# Bounded to the documented allowlist:
+#   - "${PLANNING_ARTIFACTS}/epics"
+#   - "${IMPLEMENTATION_ARTIFACTS}"
+# Never /tmp, never $HOME, never ${PROJECT_PATH} root. The 60-minute
+# threshold provides ~6x headroom over the tightest known concurrent
+# run (/gaia-sprint-plan @ ~10 min on 50+ stories).
+#
+# Set GAIA_SKIP_ORPHAN_SWEEP=1 to disable (e.g. for forensic inspection).
+# Errors are swallowed (2>/dev/null); zero stdout (AC7 silent GC).
+if [ "${GAIA_SKIP_ORPHAN_SWEEP:-0}" != "1" ]; then
+  find "${PLANNING_ARTIFACTS}/epics" "${IMPLEMENTATION_ARTIFACTS}" \
+    -maxdepth 2 -name '*.tmp.??????' -mmin +60 -delete 2>/dev/null || true
+fi
+
 # ---------- Helpers ----------
 
 # Locate the story file and filter by frontmatter `template: 'story'`. Mirrors

@@ -2083,6 +2083,19 @@ main() {
   fi
   resolve_paths
 
+  # ---------- Startup orphan-tmp sweep (E64-S6) ----------
+  #
+  # Garbage-collect *.tmp.?????? files older than 60 minutes under
+  # ${IMPLEMENTATION_ARTIFACTS}. Catches orphans left by kill -9 / OOM /
+  # power loss (which bypass E64-S5's EXIT/INT/TERM trap). Bounded to the
+  # documented allowlist (sprint-status.yaml directory). Never /tmp, never
+  # $HOME, never ${PROJECT_PATH} root. Set GAIA_SKIP_ORPHAN_SWEEP=1 to
+  # disable. Errors swallowed; zero stdout (silent GC).
+  if [ "${GAIA_SKIP_ORPHAN_SWEEP:-0}" != "1" ]; then
+    find "${IMPLEMENTATION_ARTIFACTS}" \
+      -maxdepth 2 -name '*.tmp.??????' -mmin +60 -delete 2>/dev/null || true
+  fi
+
   case "$subcmd" in
     get)
       [ -n "$story_key" ] || die "get requires --story <key>"
