@@ -102,12 +102,42 @@ EOF
 
 @test "sprint-state.sh: every atomic-write mktemp registers in _GAIA_TMP_PATHS" {
   # Count atomic-write mktemp call sites (those using ${file}.tmp.XXXXXX pattern).
-  # Excludes the lint_err_file mktemp which is a transient stderr capture.
+  # E64-S7: the lint_err_file mktemp at sprint-state.sh:1782 is now also
+  # registered in _GAIA_TMP_PATHS — it was previously excepted as a
+  # "transient stderr capture", but interrupting lint-dependencies between
+  # mktemp and the inline rm -f leaks an orphan *.lint-err.?????? file.
   local mktemp_count register_count
   mktemp_count=$(grep -cE 'mktemp[[:space:]]+"\$\{?file\}?\.tmp\.XXXXXX"' "$SCRIPT" || true)
   register_count=$(grep -cE '_GAIA_TMP_PATHS\+=\(' "$SCRIPT" || true)
   [ "$mktemp_count" -ge 4 ]
   [ "$register_count" -ge "$mktemp_count" ]
+}
+
+# ---------- E64-S7: lint_err_file mktemp registers in _GAIA_TMP_PATHS ----------
+
+@test "sprint-state.sh: lint_err_file mktemp is registered in _GAIA_TMP_PATHS (E64-S7)" {
+  # The lint_err_file mktemp uses the .lint-err.XXXXXX suffix — distinct from
+  # the .tmp.XXXXXX atomic-write pattern. It must now be registered so
+  # _cleanup_tmps catches it on EXIT/INT/TERM.
+  local lint_err_mktemp_line lint_err_register_line
+  lint_err_mktemp_line=$(grep -nE 'mktemp[[:space:]]+"\$\{?SPRINT_STATUS_YAML\}?\.lint-err\.XXXXXX"' "$SCRIPT" | head -1 | cut -d: -f1)
+  [ -n "$lint_err_mktemp_line" ]
+  # The next _GAIA_TMP_PATHS+=("$lint_err_file") must appear within 10 lines
+  # of the mktemp call (registration is the immediate follow-up step,
+  # allowing for an inline comment block describing the rationale).
+  lint_err_register_line=$(grep -nE '_GAIA_TMP_PATHS\+=\("\$lint_err_file"\)' "$SCRIPT" | head -1 | cut -d: -f1)
+  [ -n "$lint_err_register_line" ]
+  [ "$lint_err_register_line" -gt "$lint_err_mktemp_line" ]
+  [ $((lint_err_register_line - lint_err_mktemp_line)) -le 10 ]
+}
+
+@test "sprint-state.sh: lint_err_file slot cleared after rm -f (E64-S7)" {
+  # Both rm -f "$lint_err_file" sites (success path + die path) must be
+  # followed by a _GAIA_TMP_PATHS[$_lint_err_idx]="" slot-clear so the trap
+  # does not double-rm a freed inode.
+  local clear_count
+  clear_count=$(grep -cE '_GAIA_TMP_PATHS\[\$_lint_err_idx\]=""' "$SCRIPT" || true)
+  [ "$clear_count" -ge 2 ]
 }
 
 @test "sprint-state.sh: every atomic-write mv clears its array slot" {

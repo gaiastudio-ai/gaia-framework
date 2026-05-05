@@ -1780,16 +1780,26 @@ cmd_lint_dependencies() {
   # stdout is being captured by a command substitution (AC-EC10).
   local inversions lint_err_file
   lint_err_file="$(mktemp "${SPRINT_STATUS_YAML}.lint-err.XXXXXX" 2>/dev/null || mktemp)"
+  # E64-S7: register lint_err_file for script-level EXIT/INT/TERM cleanup.
+  # Without this, interrupting lint-dependencies between mktemp and the
+  # inline rm -f leaks an orphan *.lint-err.?????? file. Mirrors the
+  # register-then-clear pattern E64-S5 wired into the four atomic-write
+  # mktemp call sites.
+  local _lint_err_idx
+  _GAIA_TMP_PATHS+=("$lint_err_file")
+  _lint_err_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   inversions="$(lint_detect_inversions 2>"$lint_err_file")" || {
     local lint_err
     lint_err="$(cat "$lint_err_file" 2>/dev/null)"
     rm -f "$lint_err_file"
+    _GAIA_TMP_PATHS[$_lint_err_idx]=""
     if [ -n "$lint_err" ]; then
       printf '%s\n' "$lint_err" >&2
     fi
     die "lint-dependencies analysis failed"
   }
   rm -f "$lint_err_file"
+  _GAIA_TMP_PATHS[$_lint_err_idx]=""
 
   # Output
   if [ "$format" = "json" ]; then
