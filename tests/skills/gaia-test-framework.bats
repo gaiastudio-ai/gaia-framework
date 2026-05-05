@@ -34,8 +34,8 @@ setup() {
   awk 'NR>1 && /^---$/{found=1; exit} END{exit !found}' "$SKILL_FILE"
 }
 
-@test "AC1: SKILL.md frontmatter contains name: gaia-test-framework" {
-  awk '/^---$/{n++; next} n==1{print}' "$SKILL_FILE" | grep -q "^name: gaia-test-framework"
+@test "AC1: SKILL.md frontmatter contains name: deprecated-gaia-test-framework (retired E69-S3)" {
+  awk '/^---$/{n++; next} n==1{print}' "$SKILL_FILE" | grep -q "^name: deprecated-gaia-test-framework"
 }
 
 @test "AC1: SKILL.md frontmatter contains description field" {
