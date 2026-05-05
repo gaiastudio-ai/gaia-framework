@@ -105,12 +105,23 @@ SECURITY=""
 PERF=""
 A11Y=""
 MOBILE=""
+SKIP_CODE_REASON=""
+SKIP_QA_REASON=""
+SKIP_TEST_REASON=""
+SKIP_SECURITY_REASON=""
+SKIP_PERF_REASON=""
 SKIP_A11Y_REASON=""
 SKIP_MOBILE_REASON=""
+SKIP_CODE_SET=0
+SKIP_QA_SET=0
+SKIP_TEST_SET=0
+SKIP_SECURITY_SET=0
+SKIP_PERF_SET=0
 A11Y_SET=0
 SKIP_A11Y_SET=0
 MOBILE_SET=0
 SKIP_MOBILE_SET=0
+ALLOW_ZERO_INCLUDED=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -121,19 +132,63 @@ while [ "$#" -gt 0 ]; do
     --perf)         [ "$#" -ge 2 ] || die 1 "--perf requires a verdict"; PERF="$2"; shift 2 ;;
     --a11y)         [ "$#" -ge 2 ] || die 1 "--a11y requires a verdict"; A11Y="$2"; A11Y_SET=1; shift 2 ;;
     --mobile)       [ "$#" -ge 2 ] || die 1 "--mobile requires a verdict"; MOBILE="$2"; MOBILE_SET=1; shift 2 ;;
+    --skip-code)     [ "$#" -ge 2 ] || die 1 "--skip-code requires a reason"; SKIP_CODE_REASON="$2"; SKIP_CODE_SET=1; shift 2 ;;
+    --skip-qa)       [ "$#" -ge 2 ] || die 1 "--skip-qa requires a reason"; SKIP_QA_REASON="$2"; SKIP_QA_SET=1; shift 2 ;;
+    --skip-test)     [ "$#" -ge 2 ] || die 1 "--skip-test requires a reason"; SKIP_TEST_REASON="$2"; SKIP_TEST_SET=1; shift 2 ;;
+    --skip-security) [ "$#" -ge 2 ] || die 1 "--skip-security requires a reason"; SKIP_SECURITY_REASON="$2"; SKIP_SECURITY_SET=1; shift 2 ;;
+    --skip-perf)     [ "$#" -ge 2 ] || die 1 "--skip-perf requires a reason"; SKIP_PERF_REASON="$2"; SKIP_PERF_SET=1; shift 2 ;;
     --skip-a11y)    [ "$#" -ge 2 ] || die 1 "--skip-a11y requires a reason"; SKIP_A11Y_REASON="$2"; SKIP_A11Y_SET=1; shift 2 ;;
     --skip-mobile)  [ "$#" -ge 2 ] || die 1 "--skip-mobile requires a reason"; SKIP_MOBILE_REASON="$2"; SKIP_MOBILE_SET=1; shift 2 ;;
+    --allow-zero-included) ALLOW_ZERO_INCLUDED=1; shift ;;
     -h|--help)      usage; exit 0 ;;
     *)              die 1 "unknown argument: $1" ;;
   esac
 done
 
-# Required gates.
-[ -n "$CODE" ]     || die 1 "missing required --code <verdict>"
-[ -n "$QA" ]       || die 1 "missing required --qa <verdict>"
-[ -n "$TEST" ]     || die 1 "missing required --test <verdict>"
-[ -n "$SECURITY" ] || die 1 "missing required --security <verdict>"
-[ -n "$PERF" ]     || die 1 "missing required --perf <verdict>"
+# E69-S4 / AC-EC3 — opt-in degenerate-case path. The five always-on gates are
+# REQUIRED by default; --allow-zero-included unlocks --skip-<always-on-gate>
+# usage and accepts the case where every gate is skipped (configuration-error
+# safety net per ADR-082). When --allow-zero-included is NOT set, callers
+# using --skip-code / --skip-qa / --skip-test / --skip-security / --skip-perf
+# are rejected so the always-on contract is preserved by default.
+if [ "$ALLOW_ZERO_INCLUDED" -eq 0 ]; then
+  for kv in "code:$SKIP_CODE_SET" "qa:$SKIP_QA_SET" "test:$SKIP_TEST_SET" "security:$SKIP_SECURITY_SET" "perf:$SKIP_PERF_SET"; do
+    name="${kv%%:*}"
+    set_flag="${kv##*:}"
+    if [ "$set_flag" -eq 1 ]; then
+      die 1 "--skip-$name requires --allow-zero-included (always-on gates are required by default)"
+    fi
+  done
+fi
+
+# Required-gate validation: a gate is satisfied if it has a verdict OR (under
+# --allow-zero-included) it is explicitly skipped with a reason. Otherwise the
+# caller must provide one or the other.
+require_gate() {
+  local name="$1" verdict="$2" skip_set="$3"
+  if [ -n "$verdict" ]; then return 0; fi
+  if [ "$ALLOW_ZERO_INCLUDED" -eq 1 ] && [ "$skip_set" -eq 1 ]; then return 0; fi
+  die 1 "missing required --$name <verdict>"
+}
+require_gate code     "$CODE"     "$SKIP_CODE_SET"
+require_gate qa       "$QA"       "$SKIP_QA_SET"
+require_gate test     "$TEST"     "$SKIP_TEST_SET"
+require_gate security "$SECURITY" "$SKIP_SECURITY_SET"
+require_gate perf     "$PERF"     "$SKIP_PERF_SET"
+
+# Mutually exclusive: --<gate> XOR --skip-<gate> for always-on gates when
+# --allow-zero-included is in play.
+if [ "$ALLOW_ZERO_INCLUDED" -eq 1 ]; then
+  for kv in "code:$CODE:$SKIP_CODE_SET" "qa:$QA:$SKIP_QA_SET" "test:$TEST:$SKIP_TEST_SET" "security:$SECURITY:$SKIP_SECURITY_SET" "perf:$PERF:$SKIP_PERF_SET"; do
+    n="${kv%%:*}"
+    rest="${kv#*:}"
+    v="${rest%%:*}"
+    s="${rest##*:}"
+    if [ -n "$v" ] && [ "$s" -eq 1 ]; then
+      die 1 "--$n and --skip-$n are mutually exclusive"
+    fi
+  done
+fi
 
 # Mutually exclusive: --a11y XOR --skip-a11y, --mobile XOR --skip-mobile.
 if [ "$A11Y_SET" -eq 1 ] && [ "$SKIP_A11Y_SET" -eq 1 ]; then
@@ -149,10 +204,13 @@ if [ "$MOBILE_SET" -eq 0 ] && [ "$SKIP_MOBILE_SET" -eq 0 ]; then
   die 1 "must provide either --mobile <verdict> or --skip-mobile <reason>"
 fi
 
-# Validate verdict values.
-for v in "$CODE" "$QA" "$TEST" "$SECURITY" "$PERF"; do
-  is_canonical_verdict "$v" || die 1 "invalid verdict '$v' (expected APPROVE|REQUEST_CHANGES|BLOCKED)"
-done
+# Validate verdict values for included always-on gates only (skipped gates
+# pass-through their reason and contribute neutrally per ADR-082).
+[ -n "$CODE" ]     && { is_canonical_verdict "$CODE"     || die 1 "invalid verdict '$CODE' for --code"; }
+[ -n "$QA" ]       && { is_canonical_verdict "$QA"       || die 1 "invalid verdict '$QA' for --qa"; }
+[ -n "$TEST" ]     && { is_canonical_verdict "$TEST"     || die 1 "invalid verdict '$TEST' for --test"; }
+[ -n "$SECURITY" ] && { is_canonical_verdict "$SECURITY" || die 1 "invalid verdict '$SECURITY' for --security"; }
+[ -n "$PERF" ]     && { is_canonical_verdict "$PERF"     || die 1 "invalid verdict '$PERF' for --perf"; }
 if [ "$A11Y_SET" -eq 1 ]; then
   is_canonical_verdict "$A11Y" || die 1 "invalid verdict '$A11Y' for --a11y"
 fi
@@ -160,11 +218,29 @@ if [ "$MOBILE_SET" -eq 1 ]; then
   is_canonical_verdict "$MOBILE" || die 1 "invalid verdict '$MOBILE' for --mobile"
 fi
 
-# Build canonical-order arrays of (name, verdict) for included gates.
-INCLUDED_NAMES=("code" "qa" "test" "security" "perf")
-INCLUDED_VERDICTS=("$CODE" "$QA" "$TEST" "$SECURITY" "$PERF")
+# Build canonical-order arrays of (name, verdict) for included gates. Always-on
+# gates may be skipped under --allow-zero-included; conditional gates use the
+# existing XOR contract.
+INCLUDED_NAMES=()
+INCLUDED_VERDICTS=()
 SKIPPED_NAMES=()
 SKIPPED_REASONS=()
+
+append_gate() {
+  # append_gate <name> <verdict> <skip_set> <skip_reason>
+  local name="$1" verdict="$2" skip_set="$3" reason="$4"
+  if [ "$skip_set" -eq 1 ]; then
+    SKIPPED_NAMES+=("$name"); SKIPPED_REASONS+=("$reason")
+  else
+    INCLUDED_NAMES+=("$name"); INCLUDED_VERDICTS+=("$verdict")
+  fi
+}
+
+append_gate code     "$CODE"     "$SKIP_CODE_SET"     "$SKIP_CODE_REASON"
+append_gate qa       "$QA"       "$SKIP_QA_SET"       "$SKIP_QA_REASON"
+append_gate test     "$TEST"     "$SKIP_TEST_SET"     "$SKIP_TEST_REASON"
+append_gate security "$SECURITY" "$SKIP_SECURITY_SET" "$SKIP_SECURITY_REASON"
+append_gate perf     "$PERF"     "$SKIP_PERF_SET"     "$SKIP_PERF_REASON"
 
 if [ "$A11Y_SET" -eq 1 ]; then
   INCLUDED_NAMES+=("a11y"); INCLUDED_VERDICTS+=("$A11Y")
@@ -189,7 +265,16 @@ any_verdict_match() {
   return 1
 }
 
-if any_verdict_match "BLOCKED" "${INCLUDED_VERDICTS[@]}"; then
+# AC-EC3 — degenerate-case safety net. Zero included gates is a configuration
+# error (ADR-082): we WARN once on stdout and emit composite APPROVE so the
+# orchestrator does not silently mark a story BLOCKED when nothing was
+# actually evaluated. The WARNING is always emitted FIRST so log scrapers
+# pick it up before the composite line.
+ZERO_INCLUDED=0
+if [ "${#INCLUDED_VERDICTS[@]}" -eq 0 ]; then
+  ZERO_INCLUDED=1
+  COMPOSITE="APPROVE"
+elif any_verdict_match "BLOCKED" "${INCLUDED_VERDICTS[@]}"; then
   COMPOSITE="BLOCKED"
 elif any_verdict_match "REQUEST_CHANGES" "${INCLUDED_VERDICTS[@]}"; then
   COMPOSITE="REQUEST_CHANGES"
@@ -204,7 +289,11 @@ join_csv() {
   local IFS=,
   printf '%s' "$*"
 }
-INCLUDED_CSV="$(join_csv "${INCLUDED_NAMES[@]}")"
+if [ "${#INCLUDED_NAMES[@]}" -eq 0 ]; then
+  INCLUDED_CSV=""
+else
+  INCLUDED_CSV="$(join_csv "${INCLUDED_NAMES[@]}")"
+fi
 if [ "${#SKIPPED_NAMES[@]}" -eq 0 ]; then
   SKIPPED_CSV=""
 else
@@ -212,6 +301,9 @@ else
 fi
 
 # Emit deterministic output. NO timestamps, NO randomness.
+if [ "$ZERO_INCLUDED" -eq 1 ]; then
+  printf 'WARNING: No review gates included -- check project configuration\n'
+fi
 printf 'composite=%s\n' "$COMPOSITE"
 printf 'review_gate=%s\n' "$REVIEW_GATE"
 printf 'included=%s\n' "$INCLUDED_CSV"

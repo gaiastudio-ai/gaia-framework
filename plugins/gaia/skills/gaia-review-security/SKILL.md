@@ -179,6 +179,44 @@ helper is available, **base patterns only** — no error, graceful degrade.
 
 Regime loading is purely additive: a regime cannot suppress a base pattern.
 
+### Step 3c — Dependency Audit Sub-Routine (E69-S4)
+
+After Step 3b's privacy/data-protection scanners, invoke the dependency-audit
+sub-routine — `/gaia-review-deps` is wired into `/gaia-review-security` Phase 3A
+per source-report §2.2 + §5.4 + §15 Phase 4 item 21 and FR-RSV2-23.
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/security/dep-audit-subroutine.sh \
+  --target <project-root>
+```
+
+The helper probes for dependency manifests (package.json, requirements.txt,
+pom.xml, pubspec.yaml, go.mod, Gemfile, Cargo.toml, etc.) under the project
+root and emits a single `analysis-results.json`-shaped check fragment under the
+`dependency_audit` category.
+
+- **Conditional skip (AC3):** when no dependency manifests are found, the
+  helper emits a `status:"skipped"` fragment with the verbatim
+  `skip_reason: "No dependency manifests found -- skipping dep audit"`. The
+  parent `/gaia-review-security` review continues; the skip does NOT affect
+  the parent verdict.
+- **Failure isolation (AC-EC1):** a sub-routine failure (e.g., `npm audit`
+  exits non-zero from a network error) is captured as a single
+  `severity:"warning"` finding (`Dependency audit unavailable -- {reason}`).
+  The helper ALWAYS exits 0 on detection paths so an infrastructure failure
+  in the sub-routine NEVER cascades as a parent BLOCKED verdict.
+- **Evidence merging (AC4):** the parent context merges the fragment into its
+  `checks[]` array under the `dependency_audit` category. Severity
+  classifications then flow through the parent's resolved rubric layer
+  (base + regime + domain + project per ADR-079) at the verdict-resolver
+  step — sub-routine findings inherit the parent's rubric thresholds.
+- **Standalone preserved (AC5):** invoking `/gaia-review-deps` directly
+  remains a fully standalone path — the standalone skill resolves its own
+  rubric and emits its own verdict (independent of this sub-routine wiring).
+
+The "Dependency Audit" subsection MUST appear in the Step 5 report whenever
+the sub-routine ran (skipped fragments included for transparency).
+
 ### Step 4 — Auth Review
 
 - Verify authentication pattern: how is identity established at request entry? Is the session or token validated on every protected route?
