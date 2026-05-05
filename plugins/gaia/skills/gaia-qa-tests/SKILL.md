@@ -253,7 +253,9 @@ Phase 3C runs after Phase 3B's semantic review and produces TC specifications fo
 - `tc_id` values within a single file MUST be unique (no duplicates).
 - When all ACs are covered, the file is an empty JSON array (`[]`) — Phase 3C does NOT emit superfluous TCs.
 
-**LLM-assisted generation.** Phase 3C is LLM-assisted within the fork (Vera persona). The fork reads the uncovered-AC list from Phase 3A `analysis-results.json` and the story file's AC text, then produces the TC entries. The deterministic part (schema, traceability, uniqueness) is enforced by the schema before the parent persists the file.
+**Deterministic boilerplate step (E67-S8).** Before LLM scenario authoring, the fork invokes `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-tc-generator.sh --story <path> --output .review/gaia-qa-tests/{story_key}/qa-test-cases-{story_key}.json` to produce deterministic TC scaffolds (one row per AC, schema-conformant, idempotent re-runs are no-ops). The generator is the boilerplate layer — it never invokes an LLM. Output rows have `type: "Unit"` and scaffold `given/when/then` text derived 1:1 from the AC body.
+
+**LLM-assisted scenario authoring.** After the deterministic boilerplate step, Phase 3C is LLM-assisted within the fork (Vera persona). The fork reads the uncovered-AC list from Phase 3A `analysis-results.json`, the boilerplate scaffolds emitted by `qa-tc-generator.sh`, and the story file's AC text, then refines the `given/when/then` text and may upgrade `type` to `Integration` or `E2E`. The deterministic part (schema, traceability, uniqueness, AC mapping) is enforced by `qa-tc-generator.sh` and the schema before the parent persists the file.
 
 **LLM-cannot-override invariant.** Phase 3C cannot suppress an uncovered-AC finding by silently dropping a TC entry — the schema requires every uncovered AC to have at least one TC.
 
