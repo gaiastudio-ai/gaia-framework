@@ -140,7 +140,17 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.review/gaia-test-review/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
 
-**Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Phase 3A runs three deterministic analyzers in sequence:
+**Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Phase 3A runs four deterministic analyzers in sequence — driven by the canonical helper `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/phase3a-test-review.sh` (E67-S1, FR-RSV2-1/2). The helper invokes `smell-detector.sh`, `flakiness-analyzer.sh`, `fixture-analyzer.sh`, and `tag-conformance-detector.sh --stack <stack>` and merges their `checks[]` fragments into a single canonical `analysis-results.json` document validating against `plugins/gaia/schemas/analysis-results.schema.json`. Cumulative wall-clock budget per NFR-RSV2-2: ≤90s P95 on a typical story (<500 LOC diff).
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/phase3a-test-review.sh \
+  --story-key "{story_key}" \
+  --stack "<canonical-stack>" \
+  --max-lines 500 \
+  --file-list <(printf '%s\n' "${file_list[@]}")
+```
+
+The four scanners cover the analyzers below (1–3 plus the new tag-conformance scanner that complements smell/flakiness/fixture coverage):
 
 1. **Test-smell detection (per-stack regex/AST).** Scope is bounded by default per EC-12: (a) standard test paths per stack — `**/*.{test,spec}.{ts,tsx}` for ts-dev, `test_*.py + *_test.py` for python-dev, etc.; (b) test-helper patterns in the File List — `*.factory.*`, `*Factory.{js,ts,py}`, `fixtures/`, `helpers/`, `conftest.py` (EC-11). FULL-project scan only on explicit `--full` flag. Smell categories per stack: hardcoded sleeps, conditional-in-test (excluding parameterized patterns — EC-7), magic numbers, long tests (per-stack threshold per EC-6: default 50 LOC body / 5s unit / 30s integration / 60s e2e), ignored assertions. Wall-clock cap: 30s for smell detection alone.
 
