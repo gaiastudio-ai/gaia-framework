@@ -52,18 +52,23 @@ mapfile -t TARGETS < "$INPUT"
 
 if ! command -v semgrep >/dev/null 2>&1; then
   echo "run.sh: semgrep not found on PATH" >&2
-  exit 1
+  # Exit 127 = unavailable (distinct from generic error 1) per E70-S2 AC10.
+  # The probe still classifies this via its own command -v check before invoking
+  # run.sh; this exit code surfaces unavailability when run.sh is invoked directly.
+  exit 127
 fi
 
 raw="$(semgrep "${semgrep_args[@]}" "${TARGETS[@]}" 2>&1)" || rc=$? || true
 rc="${rc:-0}"
 
-# Emit a minimal analysis-results-fragment shape: {tool, status, findings: [...]}.
+# Emit canonical analysis-results fragment shape per E70-S1 run-contract.md §2.1:
+# {"name": <adapter>, "status": <passed|errored>, "findings": [...]}.
+# Findings shape conforms to checks[].findings[] in analysis-results.schema.json.
 fragment="$(jq -nc \
-  --arg tool "semgrep" \
+  --arg name "semgrep" \
   --argjson rc "$rc" \
   --arg raw "$raw" \
-  '{tool: $tool, status: (if $rc == 0 then "passed" else "errored" end), raw: $raw, findings: []}')"
+  '{name: $name, status: (if $rc == 0 then "passed" else "errored" end), findings: [], raw: $raw}')"
 
 if [ -n "$OUTPUT" ]; then
   printf '%s\n' "$fragment" > "$OUTPUT"

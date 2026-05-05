@@ -35,7 +35,8 @@ done
 
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "run.sh: gitleaks not found on PATH" >&2
-  exit 1
+  # Exit 127 = unavailable per E70-S2 AC10 (distinct from generic error 1).
+  exit 127
 fi
 
 gitleaks_args=(detect --no-git --report-format json --report-path -)
@@ -46,11 +47,12 @@ fi
 raw="$(gitleaks "${gitleaks_args[@]}" 2>&1)" || rc=$? || true
 rc="${rc:-0}"
 
+# Canonical fragment shape per E70-S1 run-contract.md §2.1: {name, status, findings}.
 fragment="$(jq -nc \
-  --arg tool "gitleaks" \
+  --arg name "gitleaks" \
   --argjson rc "$rc" \
   --arg raw "$raw" \
-  '{tool: $tool, status: (if $rc == 0 then "passed" else "errored" end), raw: $raw, findings: []}')"
+  '{name: $name, status: (if $rc == 0 then "passed" else "errored" end), findings: [], raw: $raw}')"
 
 if [ -n "$OUTPUT" ]; then
   printf '%s\n' "$fragment" > "$OUTPUT"
