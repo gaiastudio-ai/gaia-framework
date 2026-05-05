@@ -92,6 +92,17 @@ This is the cascade-aware behavior preserved from the legacy edit-prd workflow �
   - **SIGNIFICANT:** New component/API/data model — recommend `/gaia-edit-arch` with adversarial review, then `/gaia-add-stories`.
 - Report cascade assessment to user with recommended next command(s).
 
+### Step 8 — Re-shard touched documents (E53-S244, ADR-070)
+
+Editing the PRD monolith MUST be followed by a re-shard so the per-section shards under `docs/planning-artifacts/prd/` stay aligned with the monolith. This step honours the monolith-vs-shard sync contract in ADR-070 (extended in E53-S243) — it is not optional unless the user passes `--monolith-only` for an explicit atomic same-PR edit (see below).
+
+- If `$ARGUMENTS` contains `--monolith-only`: skip this step entirely. The user takes responsibility for re-running `/gaia-shard-doc` (or merging shards back to the monolith) before commit. Record `reshard: skipped (--monolith-only)` in the cascade summary.
+- Otherwise, invoke `/gaia-shard-doc docs/planning-artifacts/prd.md` (or the canonical monolith path resolved at runtime). The skill writes to `docs/planning-artifacts/prd/` — `_preamble.md`, `01-*.md`, `02-*.md`, etc.
+- After the re-shard returns, run `${CLAUDE_PLUGIN_ROOT}/scripts/check-monolith-shard-sync.sh` against the project root. The check is advisory (always exits 0). If it emits any `WARNING` lines naming `prd.md`, surface those WARNINGs to the user — they indicate the re-shard did not converge and the user must investigate before commit.
+- Record `reshard: invoked (gaia-shard-doc)` in the cascade summary so the audit trail captures the invocation.
+
+This step runs in YOLO mode automatically — re-sharding is deterministic per ADR-042 and needs no user prompt. It is purely additive: skills that did not previously include this step continue to function for backwards compatibility (AC8 of E53-S244).
+
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-edit-prd/scripts/finalize.sh

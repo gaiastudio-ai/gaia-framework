@@ -352,6 +352,17 @@ Self-transitions are no-ops.
 
 **Token budget (NFR-055).** Log per-attempt Val token usage to Dev Agent Record; total loop overhead ≤ 3× single-pass Val budget.
 
+### Step 6b — Re-shard touched documents (E53-S244, ADR-070)
+
+Step 5 (`transition-story-status.sh`) writes to the epics-and-stories monolith as part of the four-surface atomic update. Once Step 6 validation finishes, MUST follow with a re-shard so the per-epic shards under `docs/planning-artifacts/epics/` stay aligned with the monolith. This step honours the monolith-vs-shard sync contract in ADR-070 (extended in E53-S243) — it is not optional unless the user passes `--monolith-only` for an explicit atomic same-PR edit. This step sits BEFORE Step 7 (Val sidecar persistence) so the sidecar payload reflects the post-shard state on disk; Step 7 still runs last per AC3 atomicity.
+
+- If `$ARGUMENTS` contains `--monolith-only`: skip this step entirely. The user takes responsibility for re-running `/gaia-shard-doc` (or merging shards back to the monolith) before commit. Record `reshard: skipped (--monolith-only)` in the workflow checkpoint.
+- Otherwise, invoke `/gaia-shard-doc docs/planning-artifacts/epics-and-stories.md` (or the canonical monolith path resolved at runtime). The skill writes to `docs/planning-artifacts/epics/` — `01-change-log.md` and per-epic `NN-eNN-...md` shards.
+- After the re-shard returns, run `${CLAUDE_PLUGIN_ROOT}/scripts/check-monolith-shard-sync.sh` against the project root. The check is advisory (always exits 0). If it emits any `WARNING` lines naming `epics-and-stories.md`, surface those WARNINGs to the user — they indicate the re-shard did not converge and the user must investigate before commit.
+- Record `reshard: invoked (gaia-shard-doc)` in the workflow checkpoint so the audit trail captures the invocation.
+
+This step runs in YOLO mode automatically — re-sharding is deterministic per ADR-042 and needs no user prompt. It is purely additive: skills that did not previously include this step continue to function for backwards compatibility (AC8 of E53-S244).
+
 ### Step 7 — Persist to Val Sidecar (E34-S2)
 
 Final action — delegates persistence to `val-sidecar-write.sh` (E34-S1, architecture §10.10). MUST run last (AC3 atomicity).
