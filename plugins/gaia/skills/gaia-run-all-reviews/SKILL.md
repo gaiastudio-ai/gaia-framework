@@ -179,7 +179,22 @@ After Substeps 2.3–2.4 finish, run the three deterministic helper scripts in f
 
 > Per ADR-082, the composite verdict is **GATING**, not informational. The deterministic shell aggregator at `scripts/review-common/composite-verdict-aggregator.sh` consumes per-gate verdicts (APPROVE | REQUEST_CHANGES | BLOCKED produced by ADR-077's verdict-resolver.sh path) and emits a composite verdict mapped to the Review Gate vocabulary (PASSED | FAILED). The aggregation path is 100% shell — no LLM (NFR-RSV2-12) — and is invariant under YOLO mode (ADR-067).
 
-After Step 3 emits the nudge block, the orchestrator MUST run the composite aggregator with the per-gate verdicts surfaced by the verdict-resolver runs:
+After Step 3 emits the nudge block, the orchestrator MUST run the composite aggregator with the per-gate verdicts surfaced by the verdict-resolver runs.
+
+**E69-S4 — Conditional-skip evaluation (FR-RSV2-44, ADR-082).** Before invoking the aggregator, the orchestrator runs the deterministic conditional-trigger evaluator to decide whether the conditional gates (a11y, mobile) are included or skipped. The evaluator reads `compliance.ui_present` and `platforms[]` from the resolved project-config and emits drop-in argv fragments that the orchestrator forwards verbatim into the aggregator call:
+
+```bash
+bash scripts/review-common/conditional-trigger-eval.sh
+# stdout (when ui_present=false and platforms excludes mobile):
+#   a11y=skipped
+#   a11y_reason=compliance.ui_present: false
+#   mobile=skipped
+#   mobile_reason=platforms[] excludes mobile
+#   --skip-a11y "compliance.ui_present: false"
+#   --skip-mobile "platforms[] excludes mobile"
+```
+
+The orchestrator then composes the aggregator invocation:
 
 ```bash
 bash scripts/review-common/composite-verdict-aggregator.sh \
@@ -188,6 +203,10 @@ bash scripts/review-common/composite-verdict-aggregator.sh \
   ( --a11y <verdict> | --skip-a11y "compliance.ui_present: false" ) \
   ( --mobile <verdict> | --skip-mobile "platforms[] empty" )
 ```
+
+**Skip-rule semantics (E69-S4 / AC6 / AC7 / AC8):** Skipped conditional gates appear in the aggregator's `skipped=` enumeration with their skip reason. They contribute neutrally to the precedence chain — only included gates' verdicts count toward `BLOCKED > REQUEST_CHANGES > APPROVE`. The composite report enumerates included gates (with verdict) and skipped gates (with reason) so reviewers can see at a glance which gates fired.
+
+**Degenerate-case safety net (E69-S4 / AC-EC3):** Should every gate end up skipped (a configuration-error scenario where all gates are conditional and no condition is met), the orchestrator passes `--allow-zero-included` along with `--skip-<gate>` flags for the always-on gates as well. The aggregator emits a `WARNING: No review gates included` line and `composite=APPROVE`. This is a configuration-error safety net — never a normal flow — and the WARNING is the explicit signal that project-config needs review.
 
 The aggregator emits `composite=<APPROVE|REQUEST_CHANGES|BLOCKED>` and `review_gate=<PASSED|FAILED>` plus the included / skipped enumeration. The composite verdict is then evaluated against the seven-day post-flip grace window via `scripts/review-common/grace-window.sh`:
 

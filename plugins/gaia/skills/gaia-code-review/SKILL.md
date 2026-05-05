@@ -163,6 +163,43 @@ Cache write (EC-5 same-story parallel-invocation safety):
 
 Phase 3A also emits a rendered `.md` companion alongside `analysis-results.json` — a human-readable summary of per-tool status and findings count for log inspection.
 
+### Phase 3A.5 — API Design Sub-Routine (E69-S4)
+
+After the canonical Phase 3A toolkit (linter, formatter, type-checker, build)
+has run, the orchestrator invokes the API-design sub-routine — `/gaia-review-api`
+is wired into `/gaia-review-code` Phase 3A per source-report §2.2 + §15 Phase 4
+item 21 and FR-RSV2-23.
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/code/api-design-subroutine.sh \
+  --target <project-root>
+```
+
+The helper probes for API endpoints (`routes/` or `controllers/` directories,
+`openapi.{yaml,yml,json}`, `swagger.{yaml,yml,json}`) under the project root
+and emits a single `analysis-results.json`-shaped check fragment under the
+`api_design_audit` category.
+
+- **Conditional skip (AC3):** when no API endpoints are detected, the helper
+  emits a `status:"skipped"` fragment with the verbatim
+  `skip_reason: "No API endpoints detected -- skipping API audit"`. The parent
+  `/gaia-review-code` review continues; the skip does NOT affect the parent
+  verdict.
+- **Failure isolation (AC-EC1):** a sub-routine failure is captured as a
+  single `severity:"warning"` finding (`API design audit unavailable --
+  {reason}`). The helper ALWAYS exits 0 on detection paths — infrastructure
+  failures NEVER cascade as a parent BLOCKED verdict.
+- **Evidence merging (AC4):** the parent merges the fragment into its
+  `checks[]` array under the `api_design_audit` category. Severity inheritance
+  follows ADR-079: the parent's resolved rubric (base + regime + domain +
+  project) governs final classification at verdict-resolver time.
+- **Standalone preserved (AC5):** invoking `/gaia-review-api` directly remains
+  a fully standalone path — the standalone skill resolves its own rubric and
+  emits its own verdict (independent of this sub-routine wiring).
+
+The "API Design Audit" subsection MUST appear in the Phase 6 report whenever
+the sub-routine ran (skipped fragments included for transparency).
+
 ### Phase 3B — LLM Semantic Review
 
 Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.json` as evidence and applies the severity rubric to produce category-organized Critical / Warning / Suggestion findings restricted to **correctness + readability** scope only.
