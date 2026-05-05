@@ -11,7 +11,7 @@
 #
 # Phase 3 solutioning skills and step counts (post E44-S5 wire-in):
 #   gaia-create-arch        13 steps  (was 12; +1 Val Auto-Fix Loop step at 10)
-#   gaia-edit-arch           8 steps  (was 7;  +1 Val Auto-Fix Loop step at 7)
+#   gaia-edit-arch           9 steps  (was 7;  +1 Val Auto-Fix Loop at 7; +1 Re-shard at 9 from E53-S244)
 #   gaia-review-api          6 steps  (was 5;  +1 Val Auto-Fix Loop step at 6)
 #   gaia-adversarial         4 steps
 #   gaia-create-epics       12 steps  (was 11; +1 Val Auto-Fix Loop step at 9)
@@ -47,7 +47,7 @@ PHASE3_SOL_SLUGS=(
   gaia-infra-design
   gaia-readiness-check
 )
-PHASE3_SOL_STEPS=(13 8 6 4 12 8 7 13)
+PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- AC1/AC2/AC4: canonical invocation line present per step ----------
 
@@ -219,12 +219,12 @@ PHASE3_SOL_STEPS=(13 8 6 4 12 8 7 13)
   [ "$numbers" = "1 2 3 4 5 6 7 8 9 10 11 12 13 " ]
 }
 
-@test "VCP-CPT-11 AC1/AC6: simulating gaia-edit-arch 8-step run writes 8 sequential checkpoints" {
+@test "VCP-CPT-11 AC1/AC6: simulating gaia-edit-arch 9-step run writes 9 sequential checkpoints" {
   local slug="gaia-edit-arch"
   local artifact="$TEST_TMP/architecture.md"
   printf '# arch\n' > "$artifact"
   local n
-  for n in $(seq 1 8); do
+  for n in $(seq 1 9); do
     if [ "$n" = "6" ] || [ "$n" = "7" ]; then
       "$SCRIPT" "$slug" "$n" project_name=acme edit_scope=section --paths "$artifact"
     else
@@ -236,7 +236,7 @@ PHASE3_SOL_STEPS=(13 8 6 4 12 8 7 13)
   [ -d "$dir" ]
   local count
   count=$(find "$dir" -name '*.json' -type f | wc -l | tr -d ' ')
-  [ "$count" = "8" ]
+  [ "$count" = "9" ]
 }
 
 @test "VCP-CPT-11 AC1/AC6: simulating gaia-review-api 6-step run writes 6 sequential checkpoints" {
