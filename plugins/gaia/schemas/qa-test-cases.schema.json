@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gaiastudio.ai/schemas/qa-test-cases.schema.json",
+  "title": "GAIA qa-test-cases.json — Phase 3C TC generation output (E67-S4)",
+  "description": "Per-story QA test-case specifications produced by /gaia-review-qa Phase 3C for uncovered ACs. Consumed downstream by /gaia-test-automate. Each entry traces back to a specific AC in the story file. Refs: AC1, AC2, FR-RSV2-2, TC-RSV2-QAREVIEW-1, ADR-077.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["tc_id", "ac_ref", "description", "given", "when", "then", "type"],
+    "properties": {
+      "tc_id": {
+        "description": "Stable TC identifier in the form TC-{story_key}-{N} (e.g., TC-E67-S4-1).",
+        "type": "string",
+        "pattern": "^TC-E[0-9]+-S[0-9]+-[0-9]+$"
+      },
+      "ac_ref": {
+        "description": "Reference to the AC this TC traces to (e.g., AC1).",
+        "type": "string",
+        "pattern": "^AC[0-9]+$"
+      },
+      "description": {
+        "description": "One-line summary of what the TC verifies.",
+        "type": "string",
+        "minLength": 1
+      },
+      "given": {
+        "description": "Given clause (preconditions).",
+        "type": "string",
+        "minLength": 1
+      },
+      "when": {
+        "description": "When clause (action/event).",
+        "type": "string",
+        "minLength": 1
+      },
+      "then": {
+        "description": "Then clause (expected outcome).",
+        "type": "string",
+        "minLength": 1
+      },
+      "type": {
+        "description": "Test tier classification.",
+        "type": "string",
+        "enum": ["Unit", "Integration", "E2E"]
+      },
+      "priority": {
+        "description": "Optional priority hint inherited from the AC priority.",
+        "type": "string",
+        "enum": ["P0", "P1", "P2", "P3"]
+      },
+      "tags": {
+        "description": "Optional free-form tags (e.g., ['regression', 'happy-path']).",
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "uniqueItems": true
+      }
+    }
+  }
+}

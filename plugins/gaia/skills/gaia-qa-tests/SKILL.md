@@ -186,6 +186,29 @@ Cache write (same-story parallel-invocation safety):
 
 Phase 3A also emits a rendered `.md` companion alongside `analysis-results.json` — a human-readable summary of per-AC coverage and discovered-tests count for log inspection.
 
+### Phase 3A.1 — Project-config-driven test execution (E67-S4)
+
+After the test-discovery / AC-coverage analyzer completes, the skill MAY run the configured test suites and capture execution evidence. This step sits between Phase 3A and Phase 3B because the resulting `execution-evidence.json` feeds the verdict-resolver alongside `analysis-results.json` (per source-report section 5.2 ordering).
+
+**Driver script.** Phase 3A.1 is fully scripted via:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-test-runner.sh \
+  --story-key {story_key} \
+  --workdir .review/gaia-qa-tests/{story_key} \
+  --config config/project-config.yaml
+```
+
+The runner emits `.review/gaia-qa-tests/{story_key}/execution-evidence.json` validating against `plugins/gaia/schemas/execution-evidence.schema.json`.
+
+**Tier resolution.** The runner reads `test_execution.tier_{1,2,3}.placement` from `project-config.yaml` (per FR-RSV2-11, ADR-077) and matches each tier's placement against `GAIA_EXECUTION_CONTEXT` (`local | ci_pre_merge | ci_post_merge | deployment | post_deploy`). Only tiers whose placement matches the active context run; the rest are skipped.
+
+**Per-tier execution.** Each active tier's `command` is invoked with `timeout_seconds` enforcement (POSIX-portable; `timeout` when present, `perl` alarm fallback for macOS bash 3.2). The runner captures `exit_code`, `duration_seconds`, `pass_count`, `fail_count`, and `timeout` per suite.
+
+**Test Execution Bridge integration (ADR-044, AC8).** When `test_execution_bridge.bridge_enabled: true`, the runner delegates execution to the configured `run_tests_path` (the bridge's `run-tests.sh` entry point) instead of invoking commands directly. The bridge's JSON response is normalized into the `suites[]` shape of `execution-evidence.json`, and `bridge_used: true` is recorded for the audit trail. When the bridge is disabled or the binary is absent, the runner falls back to direct execution.
+
+**Graceful skip (AC7).** When `test_execution` is absent from `project-config.yaml`, the runner emits an `execution-evidence.json` with `skipped: true` and an INFO diagnostic; the verdict resolver then proceeds with AC coverage analysis only.
+
 ### Phase 3B — LLM Semantic Review
 
 Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.json` as evidence and applies the QA severity rubric to produce category-organized Critical / Warning / Suggestion findings restricted to QA scope (missing AC coverage, weak assertion, brittle selector, untested error path, over-coverage, FR-traceability gaps, malformed AC text).
@@ -205,6 +228,33 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 
 **LLM-cannot-override (rule 2 of verdict-resolver).** A deterministic finding from Phase 3A — e.g., zero-AC story (EC-3) → `status: failed` → REQUEST_CHANGES — wins over any LLM APPROVE judgment. The rubric downgrades above apply to LLM tier classification (Suggestion vs Warning vs Critical) — NOT to the resolver's blocking decision when the deterministic tool emits `status: failed` with a blocking finding.
 
+### Phase 3C — TC generation for uncovered ACs (E67-S4)
+
+Phase 3C runs after Phase 3B's semantic review and produces TC specifications for ACs flagged uncovered by Phase 3A's coverage analyzer. The output feeds `/gaia-test-automate` as the queue of new test cases to author.
+
+**Output.** `.review/gaia-qa-tests/{story_key}/qa-test-cases-{story_key}.json` — a JSON array of TC entries validating against `plugins/gaia/schemas/qa-test-cases.schema.json`. Each entry contains:
+
+| Field         | Type     | Notes                                                                |
+|---------------|----------|----------------------------------------------------------------------|
+| `tc_id`       | string   | `TC-{story_key}-{N}` (regex `^TC-E[0-9]+-S[0-9]+-[0-9]+$`)           |
+| `ac_ref`      | string   | Identifier of the AC the TC traces to (e.g., `AC1`)                  |
+| `description` | string   | One-line summary                                                     |
+| `given`       | string   | Given clause                                                         |
+| `when`        | string   | When clause                                                          |
+| `then`        | string   | Then clause                                                          |
+| `type`        | enum     | `Unit` \| `Integration` \| `E2E`                                     |
+| `priority`    | enum?    | Optional priority hint (`P0`/`P1`/`P2`/`P3`) inherited from the AC   |
+| `tags`        | array?   | Optional free-form tags                                              |
+
+**Determinism + traceability rules (AC1, AC2).**
+- Every entry's `ac_ref` MUST reference a real AC identifier present in the story file. No orphan TC entries.
+- `tc_id` values within a single file MUST be unique (no duplicates).
+- When all ACs are covered, the file is an empty JSON array (`[]`) — Phase 3C does NOT emit superfluous TCs.
+
+**LLM-assisted generation.** Phase 3C is LLM-assisted within the fork (Vera persona). The fork reads the uncovered-AC list from Phase 3A `analysis-results.json` and the story file's AC text, then produces the TC entries. The deterministic part (schema, traceability, uniqueness) is enforced by the schema before the parent persists the file.
+
+**LLM-cannot-override invariant.** Phase 3C cannot suppress an uncovered-AC finding by silently dropping a TC entry — the schema requires every uncovered AC to have at least one TC.
+
 ### Phase 4 — Architecture Conformance + Design Fidelity
 
 The fork extends Phase 3B's findings with architecture and design checks; findings flow into the Phase 3B category buckets.
@@ -220,14 +270,19 @@ The verdict is computed by `verdict-resolver.sh`. The LLM never computes or over
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
   --analysis-results .review/gaia-qa-tests/{story_key}/analysis-results.json \
-  --llm-findings .review/gaia-qa-tests/{story_key}/llm-findings.json
+  --llm-findings .review/gaia-qa-tests/{story_key}/llm-findings.json \
+  [--execution-evidence .review/gaia-qa-tests/{story_key}/execution-evidence.json]
 ```
 
-The resolver applies strict first-match-wins precedence (FR-DEJ-6):
+The resolver applies strict first-match-wins precedence (FR-DEJ-6, extended by E67-S4 AC9):
 1. Any check `status: errored` → **BLOCKED**.
+1b. Any required-tier suite with `timeout: true` in `execution-evidence.json` → **BLOCKED**.
+2a. Any required-tier suite with non-zero `exit_code` (and not a timeout) in `execution-evidence.json` → **REQUEST_CHANGES**.
 2. Any check `status: failed` with blocking finding → **REQUEST_CHANGES**. *The LLM cannot override this — rule 2 wins over rule 4 (LLM APPROVE) every time.*
 3. Any LLM finding `severity: Critical` → **REQUEST_CHANGES**.
 4. Otherwise → **APPROVE**.
+
+When `--execution-evidence` is omitted, rules 1b and 2a are skipped and pre-S4 four-rule behavior is preserved (backward compat).
 
 Stdout is exactly one of `APPROVE | REQUEST_CHANGES | BLOCKED`. **Mapping to Review Gate canonical vocabulary is inline (no separate `verdict-normalizer.sh`):**
 
@@ -258,6 +313,10 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 **Malformed-payload handling.** On any of the above checks failing, the parent persists what it received with an explicit `[INCOMPLETE]` marker prepended to the report, and emits `verdict=BLOCKED` to `review-gate.sh`. Fork output untrustworthy → BLOCKED. The bats fixture covers this case explicitly (mirrors E65-S2 EC-9).
 
 **Parent write to FR-402 locked path.** The parent context writes the rendered report to `docs/implementation-artifacts/qa-tests-E<NN>-S<NNN>.md` per FR-402 naming convention. The path is **locked**: `qa-tests-{story_key}.md` — no slug, no date suffix.
+
+**Phase 3C TC artifact persistence.** When Phase 3C produced uncovered-AC TCs, the parent ALSO writes the rendered TC array to `.review/gaia-qa-tests/{story_key}/qa-test-cases-{story_key}.json` (validating against `plugins/gaia/schemas/qa-test-cases.schema.json`). Empty arrays are omitted. The TC file is consumed downstream by `/gaia-test-automate`.
+
+**Phase 3A.1 evidence artifact.** When Phase 3A.1 ran, `.review/gaia-qa-tests/{story_key}/execution-evidence.json` is already present (written by `qa-test-runner.sh`). The parent does not duplicate the write; the file is referenced by the verdict-resolver invocation in Phase 5.
 
 **Re-run handling.** Parent **overwrites** the existing review file on re-run (latest verdict wins). No append, no version-suffix. The `review-gate.sh` row update is the source of truth for verdict history if needed.
 
