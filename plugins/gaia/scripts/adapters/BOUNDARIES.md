@@ -75,8 +75,10 @@ Exit code semantics: `0` = ran successfully; non-zero = adapter execution failed
 Output JSON shape (validates against `plugins/gaia/schemas/probe-output.schema.json`):
 
 ```json
-{"state":"<state>","skip_reason":<string|null>,"error_detail":<string|null>}
+{"state":"<state>","skip_reason":<string|null>,"error_detail":<string|null>,"failure_kind":<enum|null>}
 ```
+
+E66-S6 added the `failure_kind` enum field. Domain: `tool_missing`, `version_mismatch`, `runtime_crash`, `timeout`, or `null`. See `_schema/run-contract.md` §5.1 for the state-to-failure_kind mapping. The field is additive — callers reading `state`/`skip_reason`/`error_detail` keep working unchanged.
 
 The probe is **deterministic** (NFR-RSV2-9) — identical inputs (same `--adapter-dir`, same `--file-list`, same env apart from PATH) produce byte-identical output every time.
 

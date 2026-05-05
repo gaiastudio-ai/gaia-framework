@@ -118,6 +118,8 @@ EOF
   echo "$output" | jq -e '.state == "not_applicable"' >/dev/null
   echo "$output" | jq -e '.skip_reason | length > 0' >/dev/null
   echo "$output" | jq -e '.error_detail == null' >/dev/null
+  # E66-S6 / AC2: failure_kind is null for non-failure states.
+  echo "$output" | jq -e '.failure_kind == null' >/dev/null
 }
 
 @test "probe: not_applicable when file-list is empty" {
@@ -128,6 +130,8 @@ EOF
   run "$SCRIPT" --adapter-dir "$ADAPTER_DIR" --file-list "$FILE_LIST"
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.state == "not_applicable"' >/dev/null
+  # E66-S6 / AC2: failure_kind is null for non-failure states.
+  echo "$output" | jq -e '.failure_kind == null' >/dev/null
 }
 
 # --- AC1 / TC-RSV2-PROBE-01: expected_and_missing ---
@@ -140,6 +144,8 @@ EOF
   run -1 --separate-stderr "$SCRIPT" --adapter-dir "$ADAPTER_DIR" --file-list "$FILE_LIST"
   echo "$output" | jq -e '.state == "expected_and_missing"' >/dev/null
   echo "$output" | jq -e '.skip_reason == null' >/dev/null
+  # E66-S6 / AC1: failure_kind = "tool_missing" when state == expected_and_missing.
+  echo "$output" | jq -e '.failure_kind == "tool_missing"' >/dev/null
   [[ "$stderr" == *"definitely-not-a-real-binary-xyz"* ]]
 }
 
@@ -156,6 +162,8 @@ EOF
   echo "$output" | jq -e '.state == "ran_and_errored"' >/dev/null
   echo "$output" | jq -e '.error_detail | length > 0' >/dev/null
   echo "$output" | jq -e '.error_detail | contains("segfault")' >/dev/null
+  # E66-S6 / AC1: failure_kind = "runtime_crash" for non-timeout non-zero exits.
+  echo "$output" | jq -e '.failure_kind == "runtime_crash"' >/dev/null
 }
 
 @test "probe: ran_and_errored on timeout when run.sh exceeds --timeout" {
@@ -171,6 +179,8 @@ EOF
   [ "$status" -eq 1 ]
   echo "$output" | jq -e '.state == "ran_and_errored"' >/dev/null
   echo "$output" | jq -e '.error_detail | ascii_downcase | contains("timeout")' >/dev/null
+  # E66-S6 / AC1: failure_kind = "timeout" when run.sh hits the timeout wrapper.
+  echo "$output" | jq -e '.failure_kind == "timeout"' >/dev/null
 }
 
 # --- happy-path / available ---
@@ -186,6 +196,8 @@ EOF
   echo "$output" | jq -e '.state == "available"' >/dev/null
   echo "$output" | jq -e '.skip_reason == null' >/dev/null
   echo "$output" | jq -e '.error_detail == null' >/dev/null
+  # E66-S6 / AC2: failure_kind is null for non-failure states.
+  echo "$output" | jq -e '.failure_kind == null' >/dev/null
 }
 
 # --- AC6 / NFR-RSV2-9: determinism ---
@@ -210,7 +222,7 @@ EOF
 
 # --- JSON schema shape (AC4) ---
 
-@test "probe: output JSON has exactly the four canonical keys" {
+@test "probe: output JSON has exactly the canonical keys (E66-S6 adds failure_kind)" {
   local fake_path; fake_path="$(fake_tool_dir eslint 0)"
   write_adapter_json "$ADAPTER_DIR/adapter.json"
   write_run_sh "$ADAPTER_DIR/run.sh" 0
@@ -218,8 +230,49 @@ EOF
 
   PATH="$fake_path:$PATH" run "$SCRIPT" --adapter-dir "$ADAPTER_DIR" --file-list "$FILE_LIST"
   [ "$status" -eq 0 ]
-  # Must contain exactly the keys: state, skip_reason, error_detail
-  echo "$output" | jq -e '(keys | sort) == (["error_detail","skip_reason","state"])' >/dev/null
+  # E66-S6: schema is now five keys -- state, skip_reason, error_detail, failure_kind.
+  # NB: failure_kind is the additive E66-S6 field (AC4: backward-compatible additive schema).
+  echo "$output" | jq -e '(keys | sort) == (["error_detail","failure_kind","skip_reason","state"])' >/dev/null
+}
+
+# --- E66-S6 / AC1 + AC3: failure_kind enum domain ---
+
+@test "probe (E66-S6): failure_kind value is one of the documented enum or null" {
+  # Sanity check covering each emitted failure_kind across cases. The valid
+  # domain is {tool_missing, version_mismatch, runtime_crash, timeout} or null.
+  local fake_path; fake_path="$(fake_tool_dir eslint 0)"
+
+  # Case A: not_applicable -> null
+  write_adapter_json "$ADAPTER_DIR/adapter.json"
+  write_run_sh "$ADAPTER_DIR/run.sh" 0
+  printf 'src/main.py\n' > "$FILE_LIST"
+  run "$SCRIPT" --adapter-dir "$ADAPTER_DIR" --file-list "$FILE_LIST"
+  echo "$output" | jq -e '.failure_kind == null' >/dev/null
+
+  # Case B: expected_and_missing -> "tool_missing"
+  # Use --separate-stderr because the probe writes a "tool not on PATH" diagnostic
+  # to stderr; without separation it would interleave with the JSON on stdout.
+  write_adapter_json "$ADAPTER_DIR/adapter.json" "definitely-not-a-real-binary-xyz"
+  printf 'src/app.ts\n' > "$FILE_LIST"
+  run -1 --separate-stderr "$SCRIPT" --adapter-dir "$ADAPTER_DIR" --file-list "$FILE_LIST"
+  echo "$output" | jq -e '.failure_kind == "tool_missing"' >/dev/null
+
+  # Case C: ran_and_errored (runtime_crash) -> "runtime_crash"
+  write_adapter_json "$ADAPTER_DIR/adapter.json"
+  write_run_sh "$ADAPTER_DIR/run.sh" 1 "boom"
+  printf 'src/app.ts\n' > "$FILE_LIST"
+  PATH="$fake_path:$PATH" run "$SCRIPT" --adapter-dir "$ADAPTER_DIR" --file-list "$FILE_LIST"
+  echo "$output" | jq -e '.failure_kind == "runtime_crash"' >/dev/null
+
+  # Case D: ran_and_errored (timeout) -> "timeout"
+  write_run_sh "$ADAPTER_DIR/run.sh" 0 "" 5
+  PATH="$fake_path:$PATH" run "$SCRIPT" --adapter-dir "$ADAPTER_DIR" --file-list "$FILE_LIST" --timeout 1
+  echo "$output" | jq -e '.failure_kind == "timeout"' >/dev/null
+
+  # Case E: available -> null
+  write_run_sh "$ADAPTER_DIR/run.sh" 0
+  PATH="$fake_path:$PATH" run "$SCRIPT" --adapter-dir "$ADAPTER_DIR" --file-list "$FILE_LIST"
+  echo "$output" | jq -e '.failure_kind == null' >/dev/null
 }
 
 # --- --timeout from adapter.json default ---

@@ -2,10 +2,10 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gaiastudio.ai/schemas/probe-output.schema.json",
   "title": "GAIA tool-availability-probe output",
-  "description": "Single-line JSON object emitted on stdout by plugins/gaia/scripts/tool-availability-probe.sh per ADR-078 / FR-RSV2-18. Exactly three keys; no additional properties. Consumed by adapter contract.bats and (downstream) verdict-resolver.sh after mapping state -> check.status.",
+  "description": "Single-line JSON object emitted on stdout by plugins/gaia/scripts/tool-availability-probe.sh per ADR-078 / FR-RSV2-18. Exactly four keys; no additional properties. Consumed by adapter contract.bats and (downstream) verdict-resolver.sh after mapping state -> check.status. E66-S6 added the additive failure_kind enum so callers can branch on the failure mode without parsing free-text error_detail.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["state", "skip_reason", "error_detail"],
+  "required": ["state", "skip_reason", "error_detail", "failure_kind"],
   "properties": {
     "state": {
       "type": "string",
@@ -19,6 +19,11 @@
     "error_detail": {
       "type": ["string", "null"],
       "description": "Required (non-null) when state == ran_and_errored — captures stderr or timeout reason. Null otherwise."
+    },
+    "failure_kind": {
+      "type": ["string", "null"],
+      "enum": ["tool_missing", "version_mismatch", "runtime_crash", "timeout", null],
+      "description": "E66-S6: structured failure classification for downstream branching. tool_missing = state expected_and_missing; runtime_crash = state ran_and_errored, non-zero exit; timeout = state ran_and_errored, timeout wrapper hit (rc 124/143); version_mismatch = reserved for a future version-check stage, not currently emitted; null = state available or not_applicable."
     }
   }
 }
