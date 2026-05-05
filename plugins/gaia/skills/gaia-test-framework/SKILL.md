@@ -1,8 +1,11 @@
 ---
-name: gaia-test-framework
-description: Initialize test framework with appropriate tooling based on detected project stack. Use when "setup test framework" or /gaia-test-framework.
+name: deprecated-gaia-test-framework
+description: DEPRECATED — This skill has been retired. Use /gaia-test-strategy --scaffold (canonical, see gaia-test-strategy/SKILL.md). This file remains only to expose the deprecated alias for one sprint per E69-S3 / FR-RSV2-24.
 context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
+deprecated_aliases: [gaia-test-framework]
+deprecated_since: sprint-37
+replaced_by: gaia-test-strategy
 ---
 
 ## Setup

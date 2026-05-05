@@ -1,8 +1,11 @@
 ---
-name: gaia-test-design
-description: Create risk-based test plans through collaborative discovery with the test-architect subagent (Sable). Use when "design test plan" or /gaia-test-design.
+name: deprecated-gaia-test-design
+description: DEPRECATED — This skill has been retired. Use /gaia-test-strategy --plan (canonical, see gaia-test-strategy/SKILL.md). This file remains only to expose the deprecated alias for one sprint per E69-S3 / FR-RSV2-24.
 context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
+deprecated_aliases: [gaia-test-design]
+deprecated_since: sprint-37
+replaced_by: gaia-test-strategy
 ---
 
 ## Setup
