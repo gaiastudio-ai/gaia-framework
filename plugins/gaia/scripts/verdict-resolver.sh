@@ -84,6 +84,13 @@ Options:
                              REQUEST_CHANGES — inserted between the LLM-Critical
                              rule and the default APPROVE branch. Omitting this
                              flag preserves the original four-rule behavior.
+  --execution-evidence <p>   Optional (E67-S4). Path to execution-evidence.json
+                             produced by review-common/qa-test-runner.sh. When
+                             present, required-tier timeouts yield BLOCKED and
+                             required-tier non-zero exits yield REQUEST_CHANGES,
+                             alongside the existing errored / failed-blocking
+                             gates. Omitting this flag preserves the pre-S4
+                             behavior.
   --help                     Show this help and exit 0
 
 Verdicts (stdout):
@@ -100,6 +107,7 @@ LLM=""
 SKILL=""
 ACTION_MODE=0
 COVERAGE_DELTA=""
+EXECUTION_EVIDENCE=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -126,6 +134,14 @@ while [ "$#" -gt 0 ]; do
       # when omitted (pre-S3 four-rule behavior preserved).
       [ "$#" -ge 2 ] || die 1 "--coverage-delta requires a path"
       COVERAGE_DELTA="$2"; shift 2 ;;
+    --execution-evidence)
+      # E67-S4 (optional). Path to execution-evidence.json produced by
+      # review-common/qa-test-runner.sh. When present, contributes to
+      # precedence per AC9: any required-tier timeout -> BLOCKED (rule 1
+      # equivalent); any required-tier failure -> REQUEST_CHANGES (rule 2
+      # equivalent). Backward-compatible when omitted (pre-S4 behavior).
+      [ "$#" -ge 2 ] || die 1 "--execution-evidence requires a path"
+      EXECUTION_EVIDENCE="$2"; shift 2 ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -217,9 +233,61 @@ else
   LLM_OK=0
 fi
 
+# --- Execution-evidence pre-check (E67-S4, AC9) ---
+# When --execution-evidence is provided, parse the document up front so the
+# timeout / required-failure precedence rules can be applied alongside the
+# existing errored / failed-blocking rules.
+EE_OK=0
+if [ -n "$EXECUTION_EVIDENCE" ]; then
+  if [ ! -r "$EXECUTION_EVIDENCE" ]; then
+    printf '%s: execution-evidence file not readable: %s\n' "$SCRIPT_NAME" "$EXECUTION_EVIDENCE" >&2
+    emit "BLOCKED"
+  fi
+  if ! jq -e . "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+    printf '%s: malformed execution-evidence JSON: %s\n' "$SCRIPT_NAME" "$EXECUTION_EVIDENCE" >&2
+    emit "BLOCKED"
+  fi
+  EE_OK=1
+fi
+
 # --- 1. errored check -> BLOCKED ---
 if jq -e '[.checks[]? | select(.status == "errored")] | length > 0' "$ANALYSIS" >/dev/null 2>&1; then
   emit "BLOCKED"
+fi
+
+# --- 1b. execution-evidence: required-tier timeout -> BLOCKED (E67-S4 AC6/AC9) ---
+if [ "$EE_OK" = "1" ]; then
+  if jq -e '
+    (.skipped // false) | not
+  ' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+    if jq -e '
+      [.suites[]?
+        | select((.required // true) == true)
+        | select((.timeout // false) == true)
+      ] | length > 0
+    ' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+      printf '%s: required test suite timed out -> BLOCKED\n' "$SCRIPT_NAME" >&2
+      emit "BLOCKED"
+    fi
+  fi
+fi
+
+# --- 2a. execution-evidence: required-tier failure -> REQUEST_CHANGES (E67-S4 AC5/AC9) ---
+if [ "$EE_OK" = "1" ]; then
+  if jq -e '
+    (.skipped // false) | not
+  ' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+    if jq -e '
+      [.suites[]?
+        | select((.required // true) == true)
+        | select((.timeout // false) == false)
+        | select((.exit_code // 0) != 0)
+      ] | length > 0
+    ' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+      printf '%s: required test suite failed (non-zero exit) -> REQUEST_CHANGES\n' "$SCRIPT_NAME" >&2
+      emit "REQUEST_CHANGES"
+    fi
+  fi
 fi
 
 # --- 2. tool-failed-blocking -> REQUEST_CHANGES ---
