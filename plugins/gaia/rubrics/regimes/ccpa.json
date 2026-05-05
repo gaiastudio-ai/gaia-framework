@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "skill": "security",
+  "name": "ccpa",
+  "applies_to_skills": ["review-code", "review-security"],
+  "description": "CCPA / CPRA rules for code paths handling California consumer personal information (PI). Layer 2 of the four-layer rubric composition per ADR-079.",
+  "metadata": {
+    "title": "CCPA regime rubric",
+    "story": "E68-S4",
+    "adr": "ADR-079",
+    "regime_id": "ccpa",
+    "references": ["CCPA-1798.100", "CCPA-1798.105", "CCPA-1798.120", "CCPA-1798.125", "CCPA-1798.135"]
+  },
+  "severity_rules": [
+    {
+      "id": "ccpa-pi-disclosure-001",
+      "category": "pi-disclosure",
+      "pattern": "Code collects California consumer PI (name, address, geolocation, biometric, browsing history) without a documented disclosure or notice-at-collection reference.",
+      "severity": "High",
+      "description": "CCPA 1798.100(b) requires notice-at-collection disclosing categories of PI collected and purpose.",
+      "remediation": "Document the categories collected and purpose; surface a notice link adjacent to every collection point.",
+      "references": ["CCPA-1798.100"]
+    },
+    {
+      "id": "ccpa-opt-out-001",
+      "category": "opt-out",
+      "pattern": "Code path that sells or shares PI with third parties has no `Do Not Sell or Share My Personal Information` toggle wired to the data flow.",
+      "severity": "Critical",
+      "description": "CCPA 1798.120 / 1798.135 require a clearly accessible opt-out for sale or sharing of PI.",
+      "remediation": "Implement an opt-out endpoint and surface a `Do Not Sell` link; gate every PI sale/share path on the opt-out state.",
+      "references": ["CCPA-1798.120", "CCPA-1798.135"]
+    },
+    {
+      "id": "ccpa-deletion-handler-001",
+      "category": "deletion-handler",
+      "pattern": "Project storing California consumer PI has no deletion-request handler that propagates deletion across data stores.",
+      "severity": "High",
+      "description": "CCPA 1798.105 grants consumers a right to deletion that must propagate to every system containing the PI.",
+      "remediation": "Implement a deletion handler that fans out to caches, replicas, search indexes, and warehouses; emit a confirmation log.",
+      "references": ["CCPA-1798.105"]
+    },
+    {
+      "id": "ccpa-privacy-policy-001",
+      "category": "privacy-policy",
+      "pattern": "Application UI or marketing site lacks a footer or header link to the privacy policy describing CCPA rights.",
+      "severity": "Medium",
+      "description": "CCPA 1798.130 requires that the privacy policy disclosing CCPA rights be accessible from every page that collects PI.",
+      "remediation": "Add a privacy-policy link to the global footer; ensure the policy enumerates CCPA rights and contact info.",
+      "references": ["CCPA-1798.130"]
+    },
+    {
+      "id": "ccpa-third-party-sharing-001",
+      "category": "third-party-sharing",
+      "pattern": "Outbound integration with a third-party processor receives PI without a documented service-provider contract reference.",
+      "severity": "High",
+      "description": "CCPA 1798.140 service-provider exemption requires a written contract restricting use of PI to the contracted purpose.",
+      "remediation": "Document the service-provider contract reference at the integration boundary; deny PI to vendors without a signed contract.",
+      "references": ["CCPA-1798.140"]
+    },
+    {
+      "id": "ccpa-financial-incentive-001",
+      "category": "financial-incentive",
+      "pattern": "Code offers a discount, loyalty perk, or premium feature in exchange for PI without a financial-incentive notice and opt-in flow.",
+      "severity": "Medium",
+      "description": "CCPA 1798.125(b) requires a financial-incentive notice and explicit opt-in when value is exchanged for PI.",
+      "remediation": "Surface a financial-incentive notice describing the value of PI; require explicit opt-in before granting the perk.",
+      "references": ["CCPA-1798.125"]
+    }
+  ]
+}

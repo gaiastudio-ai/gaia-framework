@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "skill": "security",
+  "name": "hipaa",
+  "applies_to_skills": ["review-code", "review-security"],
+  "description": "HIPAA-specific rules for code and security reviews handling Protected Health Information (PHI). Layer 2 of the four-layer rubric composition (base + regimes + domain + project) per ADR-079.",
+  "metadata": {
+    "title": "HIPAA regime rubric",
+    "story": "E68-S4",
+    "adr": "ADR-079",
+    "regime_id": "hipaa",
+    "references": ["HIPAA-164.308", "HIPAA-164.312", "HIPAA-164.314", "HIPAA-164.404", "HIPAA-164.502"]
+  },
+  "severity_rules": [
+    {
+      "id": "hipaa-phi-001",
+      "category": "phi-handling",
+      "pattern": "Logger or print statement emits PHI fields (medical record number, diagnosis, treatment, insurance id, DOB, full name with health context) in plaintext.",
+      "severity": "Critical",
+      "description": "Logging PHI in plaintext is a HIPAA breach (45 CFR 164.312) and triggers breach-notification obligations.",
+      "remediation": "Strip or hash PHI at the logger boundary; route audit logs through a HIPAA-compliant log store with access controls.",
+      "references": ["HIPAA-164.312", "CWE-532"]
+    },
+    {
+      "id": "hipaa-phi-002",
+      "category": "phi-handling",
+      "pattern": "URL path or query string contains PHI identifiers (medical-record id, patient id, diagnosis codes).",
+      "severity": "Critical",
+      "description": "PHI in URLs leaks into access logs, browser history, and referrers — a Privacy Rule violation under 45 CFR 164.502.",
+      "remediation": "Move PHI to the request body or use opaque correlation ids that do not reveal patient identity.",
+      "references": ["HIPAA-164.502"]
+    },
+    {
+      "id": "hipaa-phi-003",
+      "category": "phi-handling",
+      "pattern": "Error response body or stack trace echoes PHI fields back to the caller.",
+      "severity": "High",
+      "description": "PHI in error messages can be captured by client-side telemetry and constitutes an unauthorised disclosure.",
+      "remediation": "Replace PHI in error responses with opaque correlation ids; log full context server-side only.",
+      "references": ["HIPAA-164.502"]
+    },
+    {
+      "id": "hipaa-access-audit-001",
+      "category": "access-audit",
+      "pattern": "PHI read/write code path with no audit-log emission identifying actor, timestamp, and record id.",
+      "severity": "High",
+      "description": "45 CFR 164.312(b) requires audit controls — every PHI access must be recorded.",
+      "remediation": "Emit a tamper-evident audit-log entry with (actor_id, action, record_id, timestamp, reason_code) on every PHI touch.",
+      "references": ["HIPAA-164.312"]
+    },
+    {
+      "id": "hipaa-minimum-necessary-001",
+      "category": "minimum-necessary",
+      "pattern": "Query selects whole patient record (`SELECT * FROM patients`) or returns PHI fields not required by the consuming endpoint.",
+      "severity": "Medium",
+      "description": "The minimum-necessary standard (45 CFR 164.502(b)) limits PHI disclosure to what is required for the purpose.",
+      "remediation": "Project only the fields the caller needs; encode PHI minimisation into the persistence and API layers.",
+      "references": ["HIPAA-164.502"]
+    },
+    {
+      "id": "hipaa-encryption-001",
+      "category": "encryption",
+      "pattern": "PHI persisted in a database, blob store, or message bus column without column-level or transparent encryption-at-rest configured.",
+      "severity": "Critical",
+      "description": "Unencrypted PHI at rest fails the encryption safe harbour (45 CFR 164.312(a)(2)(iv)) and exposes the project to breach-notification.",
+      "remediation": "Enable AES-256 column or TDE encryption; document key custody and rotation procedure.",
+      "references": ["HIPAA-164.312"]
+    },
+    {
+      "id": "hipaa-encryption-002",
+      "category": "encryption",
+      "pattern": "PHI transmitted via HTTP, plain TCP, or FTP — no TLS 1.2+ enforcement on the transport.",
+      "severity": "Critical",
+      "description": "PHI in transit must be encrypted with FIPS 140-2 cryptography. Unencrypted transmission is a per-record breach.",
+      "remediation": "Enforce HTTPS/TLS 1.2+ on the transport; reject plaintext requests at the edge.",
+      "references": ["HIPAA-164.312"]
+    },
+    {
+      "id": "hipaa-baa-001",
+      "category": "baa",
+      "pattern": "Outbound call to a third-party processor (analytics, email, SMS, AI/LLM) sends PHI without a documented Business Associate Agreement reference.",
+      "severity": "High",
+      "description": "45 CFR 164.314(a) requires a signed BAA before sharing PHI with any business associate.",
+      "remediation": "Document the BAA reference (vendor name, contract id, expiry) at the integration boundary; deny PHI to vendors without a BAA.",
+      "references": ["HIPAA-164.314"]
+    },
+    {
+      "id": "hipaa-breach-notification-001",
+      "category": "breach-notification",
+      "pattern": "Project has no breach-detection event hook or notification handler that fires on suspected PHI disclosure.",
+      "severity": "High",
+      "description": "45 CFR 164.404 requires breach notification within 60 days. Without a detection hook the timer cannot be respected.",
+      "remediation": "Wire a breach-detection event into security monitoring; route to a documented notification runbook.",
+      "references": ["HIPAA-164.404"]
+    }
+  ]
+}

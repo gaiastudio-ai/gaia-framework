@@ -1,0 +1,106 @@
+{
+  "schema_version": "1.0",
+  "skill": "a11y",
+  "name": "wcag-2.1-aa",
+  "applies_to_skills": ["review-a11y", "review-code"],
+  "description": "WCAG 2.1 Level A and AA success-criterion rules. Layer 2 of the four-layer rubric composition per ADR-079.",
+  "metadata": {
+    "title": "WCAG 2.1 AA regime rubric",
+    "story": "E68-S4",
+    "adr": "ADR-079",
+    "regime_id": "wcag-2.1-aa",
+    "references": ["WCAG-2.1-1.1.1", "WCAG-2.1-1.4.3", "WCAG-2.1-2.1.1", "WCAG-2.1-2.4.7", "WCAG-2.1-3.3.1", "WCAG-2.1-4.1.3"]
+  },
+  "severity_rules": [
+    {
+      "id": "wcag-aa-perceivable-001",
+      "category": "perceivable",
+      "pattern": "Image (`<img>` or background image conveying meaning) lacks descriptive `alt` text or aria-label.",
+      "severity": "Critical",
+      "description": "WCAG 2.1 SC 1.1.1 (Level A) — non-text content must have a text alternative serving the equivalent purpose.",
+      "remediation": "Add a meaningful `alt` attribute (or `alt=\"\"` for decorative images); provide aria-label for icon-only controls.",
+      "references": ["WCAG-2.1-1.1.1"]
+    },
+    {
+      "id": "wcag-aa-perceivable-002",
+      "category": "perceivable",
+      "pattern": "Text foreground/background colour pair has contrast ratio below 4.5:1 for normal text or 3:1 for large text (24px+ or 18.66px+ bold).",
+      "severity": "High",
+      "description": "WCAG 2.1 SC 1.4.3 (AA) — visual presentation of text must have sufficient contrast.",
+      "remediation": "Increase contrast to >= 4.5:1 (>= 3:1 for large text); verify with an automated contrast checker.",
+      "references": ["WCAG-2.1-1.4.3"]
+    },
+    {
+      "id": "wcag-aa-perceivable-003",
+      "category": "perceivable",
+      "pattern": "Pre-recorded video or audio content lacks captions or a transcript.",
+      "severity": "High",
+      "description": "WCAG 2.1 SC 1.2.2 (A) requires captions for prerecorded audio in synchronised media.",
+      "remediation": "Provide captions track (WebVTT) for video and an HTML transcript for audio-only.",
+      "references": ["WCAG-2.1-1.2.2"]
+    },
+    {
+      "id": "wcag-aa-operable-001",
+      "category": "operable",
+      "pattern": "Interactive control bound to mouse-only events (`onmouseover`, `onmousedown`) without an equivalent keyboard handler.",
+      "severity": "Critical",
+      "description": "WCAG 2.1 SC 2.1.1 (A) — all functionality must be operable through a keyboard interface.",
+      "remediation": "Bind keyboard handlers (`onkeydown`/`onclick`); use semantic `<button>`/`<a>` elements for activations.",
+      "references": ["WCAG-2.1-2.1.1"]
+    },
+    {
+      "id": "wcag-aa-operable-002",
+      "category": "operable",
+      "pattern": "Page lacks a visible focus indicator (`outline: none` without a replacement) or has tab-order traps.",
+      "severity": "High",
+      "description": "WCAG 2.1 SC 2.4.7 (AA) — the keyboard focus indicator must be visible.",
+      "remediation": "Restore a high-contrast focus ring; ensure tab order matches visual reading order; avoid `tabindex > 0`.",
+      "references": ["WCAG-2.1-2.4.7"]
+    },
+    {
+      "id": "wcag-aa-operable-003",
+      "category": "operable",
+      "pattern": "Animation or content flashes more than three times per second within a one-second window.",
+      "severity": "Critical",
+      "description": "WCAG 2.1 SC 2.3.1 (A) prohibits content that flashes more than three times per second to prevent seizures.",
+      "remediation": "Reduce flash frequency below 3 Hz or limit the area to under the safe threshold; honour `prefers-reduced-motion`.",
+      "references": ["WCAG-2.1-2.3.1"]
+    },
+    {
+      "id": "wcag-aa-understandable-001",
+      "category": "understandable",
+      "pattern": "Form input that fails validation has no programmatically-associated error message (no `aria-describedby` or label-for-error link).",
+      "severity": "High",
+      "description": "WCAG 2.1 SC 3.3.1 (A) — input errors must be identified and described to the user in text.",
+      "remediation": "Associate error text with `aria-describedby`; surface the error in the accessible name on focus.",
+      "references": ["WCAG-2.1-3.3.1"]
+    },
+    {
+      "id": "wcag-aa-understandable-002",
+      "category": "understandable",
+      "pattern": "Page lacks a `lang` attribute on `<html>` or has inconsistent navigation order across pages.",
+      "severity": "Medium",
+      "description": "WCAG 2.1 SC 3.1.1 (A) and 3.2.3 (AA) — the page language must be programmatically determined and navigation must be consistent.",
+      "remediation": "Set `<html lang=\"...\">`; keep header/nav placement consistent across the site.",
+      "references": ["WCAG-2.1-3.1.1", "WCAG-2.1-3.2.3"]
+    },
+    {
+      "id": "wcag-aa-robust-001",
+      "category": "robust",
+      "pattern": "Custom interactive widget (toggle, tab, modal) has no role, name, or state exposed via ARIA or semantic HTML.",
+      "severity": "High",
+      "description": "WCAG 2.1 SC 4.1.2 (A) — name, role, and value of UI components must be programmatically determinable.",
+      "remediation": "Use a semantic element (`<button>`, `<dialog>`) or apply ARIA role/state with a matching keyboard model.",
+      "references": ["WCAG-2.1-4.1.2"]
+    },
+    {
+      "id": "wcag-aa-robust-002",
+      "category": "robust",
+      "pattern": "Status update (toast, inline confirmation, async result) is rendered without an `aria-live` region or `role=\"status\"`.",
+      "severity": "Medium",
+      "description": "WCAG 2.1 SC 4.1.3 (AA) — status messages must be programmatically determinable through ARIA live regions.",
+      "remediation": "Wrap status text in `role=\"status\"` (polite) or `role=\"alert\"` (assertive); avoid stealing focus.",
+      "references": ["WCAG-2.1-4.1.3"]
+    }
+  ]
+}

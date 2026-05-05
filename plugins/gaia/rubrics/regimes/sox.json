@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "skill": "security",
+  "name": "sox",
+  "applies_to_skills": ["review-code", "review-security"],
+  "description": "SOX 404 rules for code paths affecting financial reporting integrity — audit trail, segregation of duties, change management, data integrity, access control. Layer 2 of the four-layer rubric composition per ADR-079.",
+  "metadata": {
+    "title": "SOX regime rubric",
+    "story": "E68-S4",
+    "adr": "ADR-079",
+    "regime_id": "sox",
+    "references": ["SOX-302", "SOX-404", "SOX-409", "COSO-2013", "COBIT-2019"]
+  },
+  "severity_rules": [
+    {
+      "id": "sox-financial-audit-trail-001",
+      "category": "financial-audit-trail",
+      "pattern": "Database write or update on a financial-records table (revenue, ledger, journal, accruals, GL) without a corresponding audit-log row capturing actor, before-value, after-value, and timestamp.",
+      "severity": "Critical",
+      "description": "SOX 404 internal controls require a tamper-evident audit trail for every mutation of financial data.",
+      "remediation": "Emit an immutable audit-log row (or trigger-based shadow table) on every financial-records mutation.",
+      "references": ["SOX-404", "COSO-2013"]
+    },
+    {
+      "id": "sox-segregation-of-duties-001",
+      "category": "segregation-of-duties",
+      "pattern": "Same actor (user, service account, role) can both initiate and approve a financial transaction in the same code path or workflow.",
+      "severity": "High",
+      "description": "Segregation of duties is a core SOX control — initiation and approval must be performed by different actors.",
+      "remediation": "Split the workflow into initiate/approve steps with role checks that exclude the initiator from the approver pool.",
+      "references": ["SOX-404"]
+    },
+    {
+      "id": "sox-change-management-001",
+      "category": "change-management",
+      "pattern": "Production deployment of code touching financial-reporting modules without a referenced change ticket or PR approval from the financial-controls reviewer group.",
+      "severity": "High",
+      "description": "SOX requires documented change management with approval evidence for any change to financial systems.",
+      "remediation": "Require a change-ticket reference and reviewer approval at the merge gate for financial modules.",
+      "references": ["SOX-404", "COBIT-2019"]
+    },
+    {
+      "id": "sox-data-integrity-001",
+      "category": "data-integrity",
+      "pattern": "Financial calculation (sum, total, tax, FX conversion) without bounds validation, rounding policy declaration, or integrity checksum.",
+      "severity": "High",
+      "description": "Material misstatements in financial calculations breach SOX 302 (CEO/CFO certification of accuracy).",
+      "remediation": "Use a fixed-point/decimal type with declared rounding mode; validate inputs against bounds; emit a checksum on aggregated totals.",
+      "references": ["SOX-302"]
+    },
+    {
+      "id": "sox-access-control-001",
+      "category": "access-control",
+      "pattern": "Financial reporting endpoint or admin tool grants access to a broad role (e.g., `staff: *`) instead of a narrowly-scoped finance role.",
+      "severity": "High",
+      "description": "SOX requires least-privilege access on financial systems with documented role-to-function mapping.",
+      "remediation": "Define a finance-specific role; require approval and quarterly review on grants; remove generic broad-role access.",
+      "references": ["SOX-404"]
+    },
+    {
+      "id": "sox-disclosure-001",
+      "category": "data-integrity",
+      "pattern": "Financial event with materiality threshold reached (e.g., revenue recognition, write-off) without a disclosure-trigger hook or notification path.",
+      "severity": "Medium",
+      "description": "SOX 409 requires real-time disclosure of material financial events; the code path needs a hook into the disclosure workflow.",
+      "remediation": "Wire material-event detection into the disclosure workflow; document the materiality thresholds in code.",
+      "references": ["SOX-409"]
+    }
+  ]
+}
