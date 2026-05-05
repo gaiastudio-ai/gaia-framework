@@ -37,6 +37,7 @@
 #   gaia-review-security           -> zara
 #   gaia-review-perf               -> juno
 #   gaia-review-mobile             -> talia
+#   gaia-review-a11y               -> christy  (pre-merge a11y review)
 #   gaia-validate-design-a11y      -> christy
 #   gaia-test-e2e                  -> sable    (post-deploy)
 #   gaia-test-perf                 -> sable    (post-deploy)
@@ -139,6 +140,10 @@ case "$SKILL" in
     emit "juno" "_memory/juno-sidecar.md" ;;
   gaia-review-mobile)
     emit "talia" "_memory/talia-sidecar.md" ;;
+  gaia-review-a11y)
+    # Pre-merge a11y review is a UX-design concern (E69-S2 / ADR-077 wiring delta).
+    # Christy owns design-fidelity a11y review; Sable owns post-deploy a11y testing.
+    emit "christy" "_memory/christy-sidecar.md" ;;
   gaia-validate-design-a11y)
     emit "christy" "_memory/christy-sidecar.md" ;;
   gaia-test-e2e|gaia-test-perf|gaia-test-dast|gaia-test-a11y)
