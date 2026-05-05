@@ -24,9 +24,24 @@ PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
 
 CHECKPOINT="$PLUGIN_SCRIPTS_DIR/checkpoint.sh"
 LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
+VERIFY_PUSH="$PLUGIN_SCRIPTS_DIR/verify-push.sh"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
+
+# ---------- 0. Verify push (E55-S10) ----------
+# Assert the feature branch is published on origin BEFORE we write the
+# checkpoint or emit the lifecycle event. A silent push failure must not be
+# allowed to leave the local branch unpublished while finalize claims success.
+# Sprint-37 incident reference: E53-S244 / E69-S4.
+if [ -x "$VERIFY_PUSH" ]; then
+  if ! "$VERIFY_PUSH"; then
+    die "push verification failed — refusing to finalize $WORKFLOW_NAME (see verify-push.sh output above)"
+  fi
+  log "push verification passed for $WORKFLOW_NAME"
+else
+  log "verify-push.sh not found at $VERIFY_PUSH — skipping push verification (non-fatal)"
+fi
 
 # ---------- 1. Write checkpoint ----------
 if [ -x "$CHECKPOINT" ]; then
