@@ -206,7 +206,37 @@ PROJECT_PATH="${PROJECT_PATH:-.}"
 IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_PATH}/docs/implementation-artifacts}"
 PLANNING_ARTIFACTS="${PLANNING_ARTIFACTS:-${PROJECT_PATH}/docs/planning-artifacts}"
 MEMORY_PATH="${MEMORY_PATH:-${PROJECT_PATH}/_memory}"
-EPICS_AND_STORIES="${EPICS_AND_STORIES:-${PLANNING_ARTIFACTS}/epics-and-stories.md}"
+
+# E64-S4 — Resolve EPICS_AND_STORIES across the dual-layout invariant
+# (E53-S233 / ADR-070 / ADR-072). Mirrors validate-gate.sh::check_file_nonempty
+# resolution order:
+#   1. Flat path        ${PLANNING_ARTIFACTS}/epics-and-stories.md
+#   2. Sharded sibling  ${PLANNING_ARTIFACTS}/epics-and-stories/index.md
+#   3. Legacy alias     ${PLANNING_ARTIFACTS}/epics/index.md
+#                       (brownfield projects whose shard root pre-dates ADR-070)
+# If the caller pre-set EPICS_AND_STORIES, that override wins unconditionally.
+# When NO layout exists on disk, fall back to the flat default so the existing
+# "epics-and-stories.md not found" guard still fires with the same log line
+# (preserves the log-parser contract from the original error path).
+resolve_epics_and_stories_path() {
+  local flat="${PLANNING_ARTIFACTS}/epics-and-stories.md"
+  local sharded="${PLANNING_ARTIFACTS}/epics-and-stories/index.md"
+  local legacy="${PLANNING_ARTIFACTS}/epics/index.md"
+  if [ -f "$flat" ]; then
+    printf '%s\n' "$flat"
+    return 0
+  fi
+  if [ -f "$sharded" ]; then
+    printf '%s\n' "$sharded"
+    return 0
+  fi
+  if [ -f "$legacy" ]; then
+    printf '%s\n' "$legacy"
+    return 0
+  fi
+  printf '%s\n' "$flat"
+}
+EPICS_AND_STORIES="${EPICS_AND_STORIES:-$(resolve_epics_and_stories_path)}"
 STORY_INDEX_YAML="${STORY_INDEX_YAML:-${IMPLEMENTATION_ARTIFACTS}/story-index.yaml}"
 STORY_STATUS_LOCK="${STORY_STATUS_LOCK:-${MEMORY_PATH}/.story-status.lock}"
 
@@ -622,8 +652,14 @@ update_epics_and_stories() {
         exit 3
       }
     }
-  ' "$file" > "$tmp"
-  local rc=$?
+  ' "$file" > "$tmp" && local rc=0 || local rc=$?
+  # E64-S4: explicit `&&/||` capture defangs `set -e` so the soft-warn rc=3
+  # path (story-not-found, block_seen=0) inside the awk END action is
+  # reachable. Without this guard, awk's exit 3 cascades into the EXIT trap
+  # and triggers rollback (rc=8) — making transitions on stories absent from
+  # the epics index impossible, even though the helper documents that case
+  # as soft-warn. `local` returns 0 unconditionally, so the `||` arm only
+  # fires when awk itself failed.
   if [ $rc -ne 0 ]; then
     if [ $rc -eq 3 ]; then
       # Story not present in epics-and-stories.md — leave the file untouched.
