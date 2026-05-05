@@ -168,6 +168,27 @@ After Substeps 2.3–2.4 finish, run the three deterministic helper scripts in f
 
    The nudge block branches on the composite outcome (ALL PASSED → COMPLETE; N FAILED → BLOCKED with a "Blocking gates" list; N UNVERIFIED → PENDING with a "Pending gates" list).
 
+### Step 4: Composite Verdict GATING (ADR-082 — E66-S3)
+
+> Per ADR-082, the composite verdict is **GATING**, not informational. The deterministic shell aggregator at `scripts/review-common/composite-verdict-aggregator.sh` consumes per-gate verdicts (APPROVE | REQUEST_CHANGES | BLOCKED produced by ADR-077's verdict-resolver.sh path) and emits a composite verdict mapped to the Review Gate vocabulary (PASSED | FAILED). The aggregation path is 100% shell — no LLM (NFR-RSV2-12) — and is invariant under YOLO mode (ADR-067).
+
+After Step 3 emits the nudge block, the orchestrator MUST run the composite aggregator with the per-gate verdicts surfaced by the verdict-resolver runs:
+
+```bash
+bash scripts/review-common/composite-verdict-aggregator.sh \
+  --code <verdict> --qa <verdict> --test <verdict> \
+  --security <verdict> --perf <verdict> \
+  ( --a11y <verdict> | --skip-a11y "compliance.ui_present: false" ) \
+  ( --mobile <verdict> | --skip-mobile "platforms[] empty" )
+```
+
+The aggregator emits `composite=<APPROVE|REQUEST_CHANGES|BLOCKED>` and `review_gate=<PASSED|FAILED>` plus the included / skipped enumeration. The composite verdict is then evaluated against the seven-day post-flip grace window via `scripts/review-common/grace-window.sh`:
+
+- **WARNING mode (within 7 calendar days of the flip):** the composite verdict is surfaced with a resolution recommendation; transition to `done` is still possible (NFR-RSV2-6).
+- **BLOCK mode (after 7 calendar days):** if `composite ∈ {REQUEST_CHANGES, BLOCKED}`, the story cannot transition past `review`. The orchestrator HALTs the transition until either (a) the underlying gate is resolved and re-reviewed, or (b) the maintainer invokes `/gaia-correct-course` to move the story off `review` to a remediation track (E66-S3 AC8).
+
+YOLO mode does NOT bypass composite gating (AC10) — consistent with ADR-067's CRITICAL-still-halts rule. The aggregator output is byte-identical across runs for byte-identical inputs (AC9).
+
 #### Idempotency invariant (NFR-RAR-1, TC-RAR-17)
 
 Re-invocation with unchanged gate state MUST produce a byte-identical summary file and nudge block. Determinism comes from the scripts. The SKILL.md just calls them in fixed order — it never inserts timestamps, randomness, or LLM-generated commentary into the summary file or the nudge block.
