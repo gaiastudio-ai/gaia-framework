@@ -32,8 +32,8 @@ setup() {
   [ -f "$SKILL_DIR/SKILL.md" ]
 }
 
-@test "E28-S66: SKILL.md frontmatter has name: gaia-code-review" {
-  head -20 "$SKILL_DIR/SKILL.md" | grep -q '^name: gaia-code-review'
+@test "E28-S66: SKILL.md frontmatter has name: gaia-review-code (renamed from gaia-code-review per E69-S1)" {
+  head -20 "$SKILL_DIR/SKILL.md" | grep -q '^name: gaia-review-code$'
 }
 
 @test "E28-S66: SKILL.md frontmatter has context: fork" {

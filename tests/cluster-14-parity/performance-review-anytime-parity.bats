@@ -55,8 +55,8 @@ setup() {
   awk 'NR>1 && /^---$/{found=1; exit} END{exit !found}' "$SKILL_FILE"
 }
 
-@test "E28-S108: gaia-performance-review SKILL.md has name: gaia-performance-review" {
-  head -30 "$SKILL_FILE" | grep -q '^name: gaia-performance-review$'
+@test "E28-S108: gaia-performance-review SKILL.md has name: gaia-perf-deepdive (renamed per E69-S1)" {
+  head -30 "$SKILL_FILE" | grep -q '^name: gaia-perf-deepdive$'
 }
 
 @test "E28-S108: gaia-performance-review SKILL.md has a non-empty description" {

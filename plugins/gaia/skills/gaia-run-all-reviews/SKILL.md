@@ -1,9 +1,11 @@
 ---
-name: gaia-run-all-reviews
-description: Run all 6 review workflows sequentially via subagents. Use when "run all reviews".
+name: gaia-review-all
+description: Run all 6 review workflows sequentially via subagents. Use when "run all reviews" or /gaia-review-all (formerly /gaia-run-all-reviews).
 argument-hint: "[story-key] [--force]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+deprecated_aliases: [gaia-run-all-reviews]
+deprecated_since: sprint-37
 ---
 
 ## Mission

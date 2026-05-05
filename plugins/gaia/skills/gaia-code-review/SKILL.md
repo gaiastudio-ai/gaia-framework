@@ -1,9 +1,11 @@
 ---
-name: gaia-code-review
-description: Pre-merge code review. Use when "run code review" or /gaia-code-review.
+name: gaia-review-code
+description: Pre-merge code review. Use when "run code review" or /gaia-review-code (formerly /gaia-code-review).
 argument-hint: "[story-key]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+deprecated_aliases: [gaia-code-review]
+deprecated_since: sprint-37
 ---
 
 ## Setup
