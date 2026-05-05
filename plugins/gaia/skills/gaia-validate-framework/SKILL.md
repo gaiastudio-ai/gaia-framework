@@ -32,7 +32,7 @@ This skill is the native Claude Code conversion of the legacy validate-framework
 
 ## Pipeline Overview
 
-The skill runs nine steps in strict order, mirroring the legacy `validate-framework.xml`:
+The skill runs ten steps in strict order, mirroring the legacy `validate-framework.xml` plus the E53-S243 monolith-shard-sync addition (Tier 1):
 
 1. **File Inventory** — scan the plugin tree, count by type, compare against manifest.yaml
 2. **Workflow Integrity** — verify every `workflow.yaml` has its companion files
@@ -42,7 +42,8 @@ The skill runs nine steps in strict order, mirroring the legacy `validate-framew
 6. **Config Resolution** — verify `scripts/resolve-config.sh` emits parseable output under the native resolution path (ADR-044 two-file split; module `config.yaml` and `.resolved/` retired by ADR-044/ADR-048)
 7. **Skill Index Integrity** — verify every entry in `_skill-index.yaml` has a real file and valid line ranges
 8. **Knowledge Index Integrity** — verify every entry in knowledge `_index.csv` has a real fragment under 200 lines
-9. **Report** — emit PASS/FAIL overall + itemized findings grouped by severity
+9. **Monolith-Shard Sync** (Tier 1, E53-S243) — invoke `plugins/gaia/scripts/check-monolith-shard-sync.sh` and fold each emitted `WARNING` line into the findings list at WARNING severity. Documented exceptions (Change Log monolith-as-source-of-truth, `_preamble.md` partial mirror) are honored by the script and produce no false positives.
+10. **Report** — emit PASS/FAIL overall + itemized findings grouped by severity
 
 ## Step 1 — File Inventory
 
@@ -103,7 +104,14 @@ The skill runs nine steps in strict order, mirroring the legacy `validate-framew
   - Verify each fragment is under 200 lines (per `<200-line` context-budget rule in the framework spec).
 - Flag missing fragments as CRITICAL; oversize fragments as WARNING.
 
-## Step 9 — Report
+## Step 9 — Monolith-Shard Sync (E53-S243)
+
+- Invoke `plugins/gaia/scripts/check-monolith-shard-sync.sh --root "${PROJECT_ROOT}"` (where `PROJECT_ROOT` is resolved via `scripts/resolve-config.sh`).
+- The script always exits 0 (advisory) and prints zero or more lines on stdout. Lines beginning with `WARNING:` are folded into the findings list at WARNING severity, preserving the section name and diverging file paths in the `Finding` column. Lines beginning with `INFO:` are folded at INFO severity (e.g., monolith exists but shard directory missing).
+- The script enforces the ADR-070 "Monolith-vs-Shard Sync Contract" subsection. Documented exceptions (Change Log direction is monolith-as-source-of-truth; `_preamble.md` is a partial frontmatter-only mirror) are honored by the script and MUST NOT be re-implemented in this skill — keep the script as the single source of truth.
+- Suggested fix for each `WARNING:` finding: run `/gaia-shard-doc <monolith>` (when the monolith was edited) or `/gaia-merge-docs <shard-dir>` (when shards were edited) before commit, per the sync contract.
+
+## Step 10 — Report
 
 Generate the framework validation report at the configured output path.
 
