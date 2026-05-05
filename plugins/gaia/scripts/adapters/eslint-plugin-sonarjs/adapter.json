@@ -1,0 +1,10 @@
+{
+  "provider": "eslint",
+  "category": "linter",
+  "version-range": ">=8.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 180,
+  "file-extensions": [".ts", ".tsx", ".js", ".jsx"],
+  "plugin": "eslint-plugin-sonarjs",
+  "description": "ESLint with eslint-plugin-sonarjs — SonarJS code-smell rules for TypeScript/JavaScript."
+}
