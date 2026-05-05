@@ -82,10 +82,23 @@ Every adapter is invoked through `tool-availability-probe.sh` (E66-S2). The prob
 ### 5.1 Probe Output JSON Shape
 
 ```json
-{"state":"<state>","skip_reason":<string|null>,"error_detail":<string|null>}
+{"state":"<state>","skip_reason":<string|null>,"error_detail":<string|null>,"failure_kind":<enum|null>}
 ```
 
-Exactly three keys, no extras (`additionalProperties: false`). `skip_reason` is non-null when `state == not_applicable`; `error_detail` is non-null when `state == ran_and_errored`. Both null otherwise. This is enforced by `probe-output.schema.json`.
+Exactly four keys, no extras (`additionalProperties: false`). `skip_reason` is non-null when `state == not_applicable`; `error_detail` is non-null when `state == ran_and_errored`; both null otherwise. This is enforced by `probe-output.schema.json`.
+
+`failure_kind` (E66-S6) is the structured classification of the failure mode. Domain: `tool_missing`, `version_mismatch`, `runtime_crash`, `timeout`, or `null`.
+
+| state | rc / trigger | failure_kind |
+|---|---|---|
+| `available` | run.sh exit 0 | `null` |
+| `not_applicable` | no matching files | `null` |
+| `expected_and_missing` | provider not on PATH | `tool_missing` |
+| `ran_and_errored` | rc 124 / 143 (timeout wrapper) | `timeout` |
+| `ran_and_errored` | other non-zero rc | `runtime_crash` |
+| _(reserved)_ | future version-check stage | `version_mismatch` |
+
+The field is additive: callers reading `state`/`skip_reason`/`error_detail` keep working unchanged. New callers branch on `failure_kind` for structured decisions instead of regex-parsing `error_detail`.
 
 The probe is **deterministic** (NFR-RSV2-9): identical inputs (`--adapter-dir`, `--file-list`, env apart from PATH) produce byte-identical output every time.
 

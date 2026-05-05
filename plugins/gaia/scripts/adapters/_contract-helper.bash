@@ -11,7 +11,7 @@
 #   - not_applicable      : file-list contains only files outside the adapter's extensions
 #
 # It also asserts that adapter.json and run.sh are present, executable, and that the JSON
-# fragment shape conforms to the documented {state, skip_reason, error_detail} schema.
+# fragment shape conforms to the documented {state, skip_reason, error_detail, failure_kind} schema.
 
 # Resolve the probe and the adapter dir for the calling .bats file.
 # BATS_TEST_FILENAME -> .../scripts/adapters/{tool}/test/contract.bats
@@ -117,7 +117,8 @@ EOF
   echo "$output" | jq -e ". | (.state == \"$expected\")" >/dev/null
 }
 
-# assert_fragment_shape — assert the probe stdout JSON has the canonical 3 keys.
+# assert_fragment_shape — assert the probe stdout JSON has the canonical keys.
+# E66-S6: schema is now four keys -- failure_kind is additive.
 assert_fragment_shape() {
-  echo "$output" | jq -e '(keys | sort) == (["error_detail","skip_reason","state"])' >/dev/null
+  echo "$output" | jq -e '(keys | sort) == (["error_detail","failure_kind","skip_reason","state"])' >/dev/null
 }

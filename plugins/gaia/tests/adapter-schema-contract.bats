@@ -186,8 +186,9 @@ JSON
   grep -q 'probe-output.schema.json' "$RUN_CONTRACT"
 }
 
-@test "AC7: run-contract.md documents probe JSON output shape (3 keys)" {
-  for key in state skip_reason error_detail; do
+@test "AC7: run-contract.md documents probe JSON output shape (4 keys after E66-S6)" {
+  # E66-S6 added the additive failure_kind key.
+  for key in state skip_reason error_detail failure_kind; do
     grep -q "$key" "$RUN_CONTRACT" || { echo "missing probe key: $key" >&2; return 1; }
   done
 }

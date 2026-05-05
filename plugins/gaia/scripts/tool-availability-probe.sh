@@ -12,8 +12,25 @@
 #   - ran_and_errored     : adapter run.sh exits non-zero or times out
 #   - not_applicable      : no input files match the adapter's category extensions
 #
-# Output (stdout) is a single-line JSON object with exactly three keys:
-#   {"state":"<state>","skip_reason":<string|null>,"error_detail":<string|null>}
+# Output (stdout) is a single-line JSON object with exactly four keys:
+#   {"state":"<state>",
+#    "skip_reason":<string|null>,
+#    "error_detail":<string|null>,
+#    "failure_kind":<enum|null>}
+#
+# failure_kind enum (E66-S6, AC1):
+#   - "tool_missing"      — emitted when state == expected_and_missing
+#   - "version_mismatch"  — reserved for a future version-check stage; not
+#                           currently emitted by this probe
+#   - "runtime_crash"     — emitted when state == ran_and_errored and the
+#                           failure is a non-timeout non-zero exit
+#   - "timeout"           — emitted when state == ran_and_errored and the
+#                           failure is a timeout (rc 124 / 143)
+#   - null                — emitted when state == available or not_applicable
+#
+# The field is additive (AC4): callers reading state/skip_reason/error_detail
+# continue to work unchanged. New callers can branch on failure_kind to make
+# structured decisions without parsing free-text error_detail.
 #
 # Exit codes
 # ----------
@@ -141,17 +158,24 @@ EFFECTIVE_TIMEOUT="${TIMEOUT_OVERRIDE:-$DEFAULT_TIMEOUT}"
 
 [ -f "$FILE_LIST" ] || die 1 "file-list not found: $FILE_LIST"
 
-# emit <state> <skip_reason-or-empty> <error_detail-or-empty> <exit-code>
+# emit <state> <skip_reason-or-empty> <error_detail-or-empty> <failure_kind-or-empty> <exit-code>
+#
+# E66-S6: failure_kind is the fifth positional arg. Pass empty string ("") to
+# emit JSON null. Valid non-null values: tool_missing, version_mismatch,
+# runtime_crash, timeout. The field is required in every emit() call so each
+# state has an explicit failure_kind decision (AC1, AC2).
 emit() {
-  local state="$1" skip_reason="$2" error_detail="$3" rc="$4"
+  local state="$1" skip_reason="$2" error_detail="$3" failure_kind="$4" rc="$5"
   jq -nc \
     --arg state "$state" \
     --arg skip "$skip_reason" \
     --arg err "$error_detail" \
+    --arg fk "$failure_kind" \
     '{
       state: $state,
       skip_reason: (if $skip == "" then null else $skip end),
-      error_detail: (if $err == "" then null else $err end)
+      error_detail: (if $err == "" then null else $err end),
+      failure_kind: (if $fk == "" then null else $fk end)
     }'
   exit "$rc"
 }
@@ -173,7 +197,7 @@ NONEMPTY_LINES="$(awk 'NF > 0 { c++ } END { print c+0 }' "$FILE_LIST")"
 if [ "$EXT_COUNT" = "0" ]; then
   # Project-scope adapter: not-applicable when file-list has zero non-empty lines.
   if [ "$NONEMPTY_LINES" = "0" ]; then
-    emit "not_applicable" "no files in file list (project-scope adapter)" "" 0
+    emit "not_applicable" "no files in file list (project-scope adapter)" "" "" 0
   fi
 else
   # Extension-filtered adapter: count files matching declared extensions.
@@ -209,7 +233,7 @@ else
       *.py*) skip="no Python files in file list" ;;
       *.go*) skip="no Go files in file list" ;;
     esac
-    emit "not_applicable" "$skip" "" 0
+    emit "not_applicable" "$skip" "" "" 0
   fi
 fi
 
@@ -221,13 +245,13 @@ if [ "$RUNTIME_PROFILE" = "subprocess" ]; then
   if ! command -v "$PROVIDER" >/dev/null 2>&1; then
     printf '%s: tool not on PATH: %s (install hint: see adapter.json or your package manager)\n' \
       "$SCRIPT_NAME" "$PROVIDER" >&2
-    emit "expected_and_missing" "" "" 1
+    emit "expected_and_missing" "" "" "tool_missing" 1
   fi
 elif [ "$RUNTIME_PROFILE" = "container" ]; then
   if ! command -v docker >/dev/null 2>&1; then
     printf '%s: tool not on PATH: docker (required for container runtime-profile of %s)\n' \
       "$SCRIPT_NAME" "$PROVIDER" >&2
-    emit "expected_and_missing" "" "" 1
+    emit "expected_and_missing" "" "" "tool_missing" 1
   fi
 fi
 # network profile: no local binary required; skip availability check here.
@@ -276,17 +300,23 @@ fi
 if [ "$rc" -ne 0 ]; then
   # GNU timeout exits 124 on timeout; some platforms 128+15 (143). Map both.
   err_msg="$(tr -d '\r' < "$STDERR_TMP" | tr '\n' ' ' | sed 's/ *$//')"
+  # E66-S6 / AC1: classify the failure_kind based on the rc returned by the
+  # timeout wrapper or run.sh itself. timeout(1) / gtimeout(1) exits 124;
+  # signal-terminated children commonly surface as 128+15 = 143.
   if [ "$rc" = "124" ] || [ "$rc" = "143" ]; then
     err_msg="timeout: run.sh exceeded ${EFFECTIVE_TIMEOUT}s"
+    failure_kind="timeout"
+  else
+    failure_kind="runtime_crash"
   fi
   if [ -z "$err_msg" ]; then
     err_msg="run.sh exited with code $rc"
   fi
-  emit "ran_and_errored" "" "$err_msg" 1
+  emit "ran_and_errored" "" "$err_msg" "$failure_kind" 1
 fi
 
 # ---------------------------------------------------------------------------
 # Stage 4: success.
 # ---------------------------------------------------------------------------
 
-emit "available" "" "" 0
+emit "available" "" "" "" 0
