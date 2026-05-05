@@ -190,6 +190,47 @@ parse_yaml_nested_key() {
   ' "$file"
 }
 
+parse_yaml_inline_list() {
+  # parse_yaml_inline_list <file> <key> — print a top-level inline-list value
+  # (e.g., `key: [a, b, c]`) as a comma-separated string with no brackets.
+  # Prints empty if the key is absent or not an inline list. Used by E68-S1
+  # for sections like `platforms: [web, ios]` and `compliance.regimes: [...]`.
+  local file="$1" key="$2" line value
+  [ -f "$file" ] || return 0
+  line=$(grep -E "^${key}[[:space:]]*:[[:space:]]*\[" "$file" 2>/dev/null | head -n1 || true)
+  [ -z "$line" ] && return 0
+  # Extract content between [ and ]
+  value=${line#*[}
+  value=${value%%]*}
+  # trim whitespace around commas: turn ", " into "," for stable joining
+  value=$(printf '%s' "$value" | sed 's/[[:space:]]*,[[:space:]]*/,/g; s/^[[:space:]]*//; s/[[:space:]]*$//')
+  printf '%s' "$value"
+}
+
+parse_yaml_nested_inline_list() {
+  # parse_yaml_nested_inline_list <file> <parent> <child> — read an inline
+  # list value at parent.child level: parent: \n   child: [a, b, c]
+  local file="$1" parent="$2" child="$3"
+  [ -f "$file" ] || return 0
+  awk -v P="$parent" -v C="$child" '
+    BEGIN { in_parent=0 }
+    /^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:/ {
+      if (in_parent) { in_parent=0 }
+    }
+    $0 ~ "^"P"[[:space:]]*:[[:space:]]*$" { in_parent=1; next }
+    in_parent && $0 ~ "^[[:space:]]+"C"[[:space:]]*:[[:space:]]*\\[" {
+      line=$0
+      sub(/^[^\[]*\[/, "", line)
+      sub(/\].*$/, "", line)
+      gsub(/[[:space:]]*,[[:space:]]*/, ",", line)
+      sub(/^[[:space:]]+/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      print line
+      exit
+    }
+  ' "$file"
+}
+
 parse_yaml_doubly_nested_key() {
   # parse_yaml_doubly_nested_key <file> <grandparent> <parent> <child>
   # Prints the value of grandparent.parent.child where the YAML looks like:
@@ -656,6 +697,88 @@ case "$v_dev_story_tdd_review_threshold" in
   *) die "invalid value for dev_story.tdd_review.threshold: '$v_dev_story_tdd_review_threshold' (allowed: off|low|medium|high)" ;;
 esac
 
+# =============================================================================
+# E68-S1 — Eleven new top-level sections (FR-RSV2-5..22)
+# =============================================================================
+# compliance, tools, test_execution, severity, gates, stacks,
+# cross_service_tests, environments, ci_platform, platforms, device_targets.
+#
+# Resolution surfaces only the most-used scalar / list paths so downstream
+# consumers can call `--field <path>` for the keys they actually need. All
+# sections are absence-tolerant — when a section is not declared in either
+# layer, the resolver emits nothing (preserves byte-stability for legacy
+# callers per ADR-074 contract C1).
+#
+# The merge precedence mirrors the existing pattern (env > local > shared).
+# No GAIA_* env overrides are wired for these sections in E68-S1; downstream
+# stories may add per-section overrides as they need them.
+
+merge_inline_list() {
+  # merge_inline_list <key> — top-level inline-list, project > global precedence.
+  local key="$1" v=""
+  if [ "$SHARED_EXISTS" -eq 1 ]; then
+    v=$(parse_yaml_inline_list "$SHARED_PATH" "$key")
+  fi
+  if [ "$LOCAL_EXISTS" -eq 1 ]; then
+    local lv
+    lv=$(parse_yaml_inline_list "$LOCAL_PATH" "$key")
+    [ -n "$lv" ] && v="$lv"
+  fi
+  printf '%s' "$v"
+}
+
+merge_nested_inline_list() {
+  # merge_nested_inline_list <parent> <child>
+  local parent="$1" child="$2" v=""
+  if [ "$SHARED_EXISTS" -eq 1 ]; then
+    v=$(parse_yaml_nested_inline_list "$SHARED_PATH" "$parent" "$child")
+  fi
+  if [ "$LOCAL_EXISTS" -eq 1 ]; then
+    local lv
+    lv=$(parse_yaml_nested_inline_list "$LOCAL_PATH" "$parent" "$child")
+    [ -n "$lv" ] && v="$lv"
+  fi
+  printf '%s' "$v"
+}
+
+# compliance.* — regimes (list), domain (scalar), ui_present (bool).
+v_compliance_regimes=$(merge_nested_inline_list compliance regimes)
+v_compliance_domain=$(merge_nested_key compliance domain)
+v_compliance_ui_present=$(merge_nested_key compliance ui_present)
+
+# tools.{category}.provider — common categories surfaced; others reachable
+# via ad-hoc dotted-key lookup if needed by future callers.
+v_tools_sast_provider=$(merge_doubly_nested_key tools sast provider)
+v_tools_secrets_provider=$(merge_doubly_nested_key tools secrets provider)
+v_tools_sca_provider=$(merge_doubly_nested_key tools sca provider)
+
+# test_execution.tier_{1,2,3}.placement
+v_test_execution_tier_1_placement=$(merge_doubly_nested_key test_execution tier_1 placement)
+v_test_execution_tier_2_placement=$(merge_doubly_nested_key test_execution tier_2 placement)
+v_test_execution_tier_3_placement=$(merge_doubly_nested_key test_execution tier_3 placement)
+
+# severity.{Critical,High,Medium,Low,Info}
+v_severity_Critical=$(merge_nested_key severity Critical)
+v_severity_High=$(merge_nested_key severity High)
+v_severity_Medium=$(merge_nested_key severity Medium)
+v_severity_Low=$(merge_nested_key severity Low)
+v_severity_Info=$(merge_nested_key severity Info)
+
+# cross_service_tests scalars
+v_cross_service_tests_contract_dir=$(merge_nested_key cross_service_tests contract_dir)
+v_cross_service_tests_integration_dir=$(merge_nested_key cross_service_tests integration_dir)
+
+# ci_platform.{provider,pipeline}
+v_ci_platform_provider=$(merge_nested_key ci_platform provider)
+v_ci_platform_pipeline=$(merge_nested_key ci_platform pipeline)
+
+# platforms — top-level inline list.
+v_platforms=$(merge_inline_list platforms)
+
+# stacks / environments / gates / device_targets are structural sections; we
+# do not flatten them in v1. Downstream callers requiring full structural
+# access should consume the YAML directly or use --format json.
+
 # ---------- Apply environment overrides (env wins) ----------
 
 [ -n "${GAIA_PROJECT_ROOT:-}" ]    && v_project_root="$GAIA_PROJECT_ROOT"
@@ -772,8 +895,47 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_dev_story_tdd_review_qa_auto_in_yolo" ;;
     dev_story.tdd_review.qa_timeout_seconds)
       printf '%s\n' "$v_dev_story_tdd_review_qa_timeout_seconds" ;;
+    # E68-S1 — eleven new sections (FR-RSV2-5..22)
+    compliance.regimes)
+      printf '%s\n' "$v_compliance_regimes" ;;
+    compliance.domain)
+      printf '%s\n' "$v_compliance_domain" ;;
+    compliance.ui_present)
+      printf '%s\n' "$v_compliance_ui_present" ;;
+    tools.sast.provider)
+      printf '%s\n' "$v_tools_sast_provider" ;;
+    tools.secrets.provider)
+      printf '%s\n' "$v_tools_secrets_provider" ;;
+    tools.sca.provider)
+      printf '%s\n' "$v_tools_sca_provider" ;;
+    test_execution.tier_1.placement)
+      printf '%s\n' "$v_test_execution_tier_1_placement" ;;
+    test_execution.tier_2.placement)
+      printf '%s\n' "$v_test_execution_tier_2_placement" ;;
+    test_execution.tier_3.placement)
+      printf '%s\n' "$v_test_execution_tier_3_placement" ;;
+    severity.Critical)
+      printf '%s\n' "$v_severity_Critical" ;;
+    severity.High)
+      printf '%s\n' "$v_severity_High" ;;
+    severity.Medium)
+      printf '%s\n' "$v_severity_Medium" ;;
+    severity.Low)
+      printf '%s\n' "$v_severity_Low" ;;
+    severity.Info)
+      printf '%s\n' "$v_severity_Info" ;;
+    cross_service_tests.contract_dir)
+      printf '%s\n' "$v_cross_service_tests_contract_dir" ;;
+    cross_service_tests.integration_dir)
+      printf '%s\n' "$v_cross_service_tests_integration_dir" ;;
+    ci_platform.provider)
+      printf '%s\n' "$v_ci_platform_provider" ;;
+    ci_platform.pipeline)
+      printf '%s\n' "$v_ci_platform_pipeline" ;;
+    platforms)
+      printf '%s\n' "$v_platforms" ;;
     *)
-      die "unknown field for --field: '$FIELD' (supported: dev_story.tdd_review.threshold|phases|qa_auto_in_yolo|qa_timeout_seconds)" ;;
+      die "unknown field for --field: '$FIELD'" ;;
   esac
   exit 0
 fi
@@ -849,6 +1011,31 @@ emit_all_body() {
   emit_pair_shell dev_story.tdd_review.phases             "$v_dev_story_tdd_review_phases"
   emit_pair_shell dev_story.tdd_review.qa_auto_in_yolo    "$v_dev_story_tdd_review_qa_auto_in_yolo"
   emit_pair_shell dev_story.tdd_review.qa_timeout_seconds "$v_dev_story_tdd_review_qa_timeout_seconds"
+  # E68-S1 — eleven new sections (FR-RSV2-5..22). Each key is emitted only
+  # when the project actually set it; absent keys do not pollute the surface.
+  [ -n "$v_compliance_regimes" ]                && emit_pair_shell compliance.regimes               "$v_compliance_regimes"
+  [ -n "$v_compliance_domain" ]                 && emit_pair_shell compliance.domain                "$v_compliance_domain"
+  [ -n "$v_compliance_ui_present" ]             && emit_pair_shell compliance.ui_present            "$v_compliance_ui_present"
+  [ -n "$v_tools_sast_provider" ]               && emit_pair_shell tools.sast.provider              "$v_tools_sast_provider"
+  [ -n "$v_tools_secrets_provider" ]            && emit_pair_shell tools.secrets.provider           "$v_tools_secrets_provider"
+  [ -n "$v_tools_sca_provider" ]                && emit_pair_shell tools.sca.provider               "$v_tools_sca_provider"
+  [ -n "$v_test_execution_tier_1_placement" ]   && emit_pair_shell test_execution.tier_1.placement  "$v_test_execution_tier_1_placement"
+  [ -n "$v_test_execution_tier_2_placement" ]   && emit_pair_shell test_execution.tier_2.placement  "$v_test_execution_tier_2_placement"
+  [ -n "$v_test_execution_tier_3_placement" ]   && emit_pair_shell test_execution.tier_3.placement  "$v_test_execution_tier_3_placement"
+  [ -n "$v_severity_Critical" ]                 && emit_pair_shell severity.Critical                "$v_severity_Critical"
+  [ -n "$v_severity_High" ]                     && emit_pair_shell severity.High                    "$v_severity_High"
+  [ -n "$v_severity_Medium" ]                   && emit_pair_shell severity.Medium                  "$v_severity_Medium"
+  [ -n "$v_severity_Low" ]                      && emit_pair_shell severity.Low                     "$v_severity_Low"
+  [ -n "$v_severity_Info" ]                     && emit_pair_shell severity.Info                    "$v_severity_Info"
+  [ -n "$v_cross_service_tests_contract_dir" ]  && emit_pair_shell cross_service_tests.contract_dir "$v_cross_service_tests_contract_dir"
+  [ -n "$v_cross_service_tests_integration_dir" ] && emit_pair_shell cross_service_tests.integration_dir "$v_cross_service_tests_integration_dir"
+  [ -n "$v_ci_platform_provider" ]              && emit_pair_shell ci_platform.provider             "$v_ci_platform_provider"
+  [ -n "$v_ci_platform_pipeline" ]              && emit_pair_shell ci_platform.pipeline             "$v_ci_platform_pipeline"
+  [ -n "$v_platforms" ]                         && emit_pair_shell platforms                        "$v_platforms"
+  # Guarantee the function exits with status 0 — `set -e` aborts the caller
+  # when a command-substitution body returns non-zero (the chain above is
+  # `[ -n ... ] && emit ...`, which exits 1 when the variable is empty).
+  return 0
 }
 
 if [ "$EMIT_ALL" -eq 1 ]; then
@@ -902,37 +1089,105 @@ if [ "$FORMAT" = "shell" ]; then
   fi
 else
   if command -v jq >/dev/null 2>&1; then
+    # Build the base object (existing surface) and post-merge any of the
+    # eleven new E68-S1 sections that were actually set in the project layer.
+    # Using `+` object merge keeps the legacy keys byte-stable when no new
+    # section is present.
+    base_jq_args=(
+      --arg checkpoint_path          "$v_checkpoint_path"
+      --arg creative_artifacts       "$v_creative_artifacts"
+      --arg date                     "$v_date"
+      --arg framework_version        "$v_framework_version"
+      --arg implementation_artifacts "$v_implementation_artifacts"
+      --arg installed_path           "$v_installed_path"
+      --arg memory_path              "$v_memory_path"
+      --arg planning_artifacts       "$v_planning_artifacts"
+      --arg project_path             "$v_project_path"
+      --arg project_root             "$v_project_root"
+      --arg test_artifacts           "$v_test_artifacts"
+    )
+    base_jq_filter='{checkpoint_path: $checkpoint_path, creative_artifacts: $creative_artifacts, date: $date, framework_version: $framework_version, implementation_artifacts: $implementation_artifacts, installed_path: $installed_path, memory_path: $memory_path, planning_artifacts: $planning_artifacts, project_path: $project_path, project_root: $project_root, test_artifacts: $test_artifacts}'
     if [ -n "$v_val_integration_template_output_review" ]; then
-      jq -n \
-        --arg checkpoint_path          "$v_checkpoint_path" \
-        --arg creative_artifacts       "$v_creative_artifacts" \
-        --arg date                     "$v_date" \
-        --arg framework_version        "$v_framework_version" \
-        --arg implementation_artifacts "$v_implementation_artifacts" \
-        --arg installed_path           "$v_installed_path" \
-        --arg memory_path              "$v_memory_path" \
-        --arg planning_artifacts       "$v_planning_artifacts" \
-        --arg project_path             "$v_project_path" \
-        --arg project_root             "$v_project_root" \
-        --arg test_artifacts           "$v_test_artifacts" \
-        --arg val_template_output_review "$v_val_integration_template_output_review" \
-        '{checkpoint_path: $checkpoint_path, creative_artifacts: $creative_artifacts, date: $date, framework_version: $framework_version, implementation_artifacts: $implementation_artifacts, installed_path: $installed_path, memory_path: $memory_path, planning_artifacts: $planning_artifacts, project_path: $project_path, project_root: $project_root, test_artifacts: $test_artifacts, "val_integration.template_output_review": $val_template_output_review}'
-    else
-      jq -n \
-        --arg checkpoint_path          "$v_checkpoint_path" \
-        --arg creative_artifacts       "$v_creative_artifacts" \
-        --arg date                     "$v_date" \
-        --arg framework_version        "$v_framework_version" \
-        --arg implementation_artifacts "$v_implementation_artifacts" \
-        --arg installed_path           "$v_installed_path" \
-        --arg memory_path              "$v_memory_path" \
-        --arg planning_artifacts       "$v_planning_artifacts" \
-        --arg project_path             "$v_project_path" \
-        --arg project_root             "$v_project_root" \
-        --arg test_artifacts           "$v_test_artifacts" \
-        '{checkpoint_path: $checkpoint_path, creative_artifacts: $creative_artifacts, date: $date, framework_version: $framework_version, implementation_artifacts: $implementation_artifacts, installed_path: $installed_path, memory_path: $memory_path, planning_artifacts: $planning_artifacts, project_path: $project_path, project_root: $project_root, test_artifacts: $test_artifacts}'
+      base_jq_args+=( --arg val_template_output_review "$v_val_integration_template_output_review" )
+      base_jq_filter='{checkpoint_path: $checkpoint_path, creative_artifacts: $creative_artifacts, date: $date, framework_version: $framework_version, implementation_artifacts: $implementation_artifacts, installed_path: $installed_path, memory_path: $memory_path, planning_artifacts: $planning_artifacts, project_path: $project_path, project_root: $project_root, test_artifacts: $test_artifacts, "val_integration.template_output_review": $val_template_output_review}'
     fi
+
+    # Build a JSON object for the new E68-S1 sections that are populated.
+    # Each section appears under its top-level key only when at least one
+    # of its sub-keys was set. Builds a jq filter dynamically so we can
+    # use --argjson for arrays / booleans where needed.
+    new_sections_jq='{}'
+    new_sections_args=()
+    if [ -n "$v_compliance_regimes" ] || [ -n "$v_compliance_domain" ] \
+       || [ -n "$v_compliance_ui_present" ]; then
+      compliance_obj='{}'
+      if [ -n "$v_compliance_regimes" ]; then
+        # Convert comma-separated list to JSON array via jq.
+        regimes_json=$(printf '%s' "$v_compliance_regimes" | jq -R 'split(",") | map(select(length > 0))')
+        new_sections_args+=( --argjson compliance_regimes "$regimes_json" )
+        compliance_obj=$(printf '%s' "$compliance_obj" | jq '. + {regimes: $compliance_regimes}' --argjson compliance_regimes "$regimes_json")
+      fi
+      if [ -n "$v_compliance_domain" ]; then
+        compliance_obj=$(printf '%s' "$compliance_obj" | jq --arg v "$v_compliance_domain" '. + {domain: $v}')
+      fi
+      if [ -n "$v_compliance_ui_present" ]; then
+        compliance_obj=$(printf '%s' "$compliance_obj" | jq --arg v "$v_compliance_ui_present" '. + {ui_present: $v}')
+      fi
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$compliance_obj" '. + {compliance: $v}')
+    fi
+    if [ -n "$v_tools_sast_provider" ] || [ -n "$v_tools_secrets_provider" ] \
+       || [ -n "$v_tools_sca_provider" ]; then
+      tools_obj='{}'
+      [ -n "$v_tools_sast_provider" ] && tools_obj=$(printf '%s' "$tools_obj" | jq --arg v "$v_tools_sast_provider" '. + {sast: {provider: $v}}')
+      [ -n "$v_tools_secrets_provider" ] && tools_obj=$(printf '%s' "$tools_obj" | jq --arg v "$v_tools_secrets_provider" '. + {secrets: {provider: $v}}')
+      [ -n "$v_tools_sca_provider" ] && tools_obj=$(printf '%s' "$tools_obj" | jq --arg v "$v_tools_sca_provider" '. + {sca: {provider: $v}}')
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$tools_obj" '. + {tools: $v}')
+    fi
+    if [ -n "$v_test_execution_tier_1_placement" ] \
+       || [ -n "$v_test_execution_tier_2_placement" ] \
+       || [ -n "$v_test_execution_tier_3_placement" ]; then
+      te_obj='{}'
+      [ -n "$v_test_execution_tier_1_placement" ] && te_obj=$(printf '%s' "$te_obj" | jq --arg v "$v_test_execution_tier_1_placement" '. + {tier_1: {placement: $v}}')
+      [ -n "$v_test_execution_tier_2_placement" ] && te_obj=$(printf '%s' "$te_obj" | jq --arg v "$v_test_execution_tier_2_placement" '. + {tier_2: {placement: $v}}')
+      [ -n "$v_test_execution_tier_3_placement" ] && te_obj=$(printf '%s' "$te_obj" | jq --arg v "$v_test_execution_tier_3_placement" '. + {tier_3: {placement: $v}}')
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$te_obj" '. + {test_execution: $v}')
+    fi
+    if [ -n "$v_severity_Critical" ] || [ -n "$v_severity_High" ] \
+       || [ -n "$v_severity_Medium" ] || [ -n "$v_severity_Low" ] \
+       || [ -n "$v_severity_Info" ]; then
+      sev_obj='{}'
+      [ -n "$v_severity_Critical" ] && sev_obj=$(printf '%s' "$sev_obj" | jq --arg v "$v_severity_Critical" '. + {Critical: $v}')
+      [ -n "$v_severity_High" ]     && sev_obj=$(printf '%s' "$sev_obj" | jq --arg v "$v_severity_High"     '. + {High: $v}')
+      [ -n "$v_severity_Medium" ]   && sev_obj=$(printf '%s' "$sev_obj" | jq --arg v "$v_severity_Medium"   '. + {Medium: $v}')
+      [ -n "$v_severity_Low" ]      && sev_obj=$(printf '%s' "$sev_obj" | jq --arg v "$v_severity_Low"      '. + {Low: $v}')
+      [ -n "$v_severity_Info" ]     && sev_obj=$(printf '%s' "$sev_obj" | jq --arg v "$v_severity_Info"     '. + {Info: $v}')
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$sev_obj" '. + {severity: $v}')
+    fi
+    if [ -n "$v_cross_service_tests_contract_dir" ] \
+       || [ -n "$v_cross_service_tests_integration_dir" ]; then
+      cst_obj='{}'
+      [ -n "$v_cross_service_tests_contract_dir" ]    && cst_obj=$(printf '%s' "$cst_obj" | jq --arg v "$v_cross_service_tests_contract_dir"    '. + {contract_dir: $v}')
+      [ -n "$v_cross_service_tests_integration_dir" ] && cst_obj=$(printf '%s' "$cst_obj" | jq --arg v "$v_cross_service_tests_integration_dir" '. + {integration_dir: $v}')
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$cst_obj" '. + {cross_service_tests: $v}')
+    fi
+    if [ -n "$v_ci_platform_provider" ] || [ -n "$v_ci_platform_pipeline" ]; then
+      cip_obj='{}'
+      [ -n "$v_ci_platform_provider" ] && cip_obj=$(printf '%s' "$cip_obj" | jq --arg v "$v_ci_platform_provider" '. + {provider: $v}')
+      [ -n "$v_ci_platform_pipeline" ] && cip_obj=$(printf '%s' "$cip_obj" | jq --arg v "$v_ci_platform_pipeline" '. + {pipeline: $v}')
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$cip_obj" '. + {ci_platform: $v}')
+    fi
+    if [ -n "$v_platforms" ]; then
+      platforms_json=$(printf '%s' "$v_platforms" | jq -R 'split(",") | map(select(length > 0))')
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$platforms_json" '. + {platforms: $v}')
+    fi
+
+    # Emit base + new-sections merge.
+    jq -n "${base_jq_args[@]}" --argjson new_sections "$new_sections_jq" \
+      "$base_jq_filter + \$new_sections"
   else
+    # No-jq fallback retains the legacy surface only — new E68-S1 sections
+    # require jq for safe JSON construction. Callers without jq will see
+    # the legacy surface; this keeps the fallback path byte-stable.
     printf '{"checkpoint_path": "%s", "creative_artifacts": "%s", "date": "%s", "framework_version": "%s", "implementation_artifacts": "%s", "installed_path": "%s", "memory_path": "%s", "planning_artifacts": "%s", "project_path": "%s", "project_root": "%s", "test_artifacts": "%s"}\n' \
       "$(json_escape "$v_checkpoint_path")" \
       "$(json_escape "$v_creative_artifacts")" \

@@ -183,3 +183,78 @@ fields:
     required: false
     default: null
     description: "Story-size to points mapping (T-shirt → Fibonacci scale). Optional project-overridable block per ADR-074 contract C1 / ADR-044 §10.26.3. When set, project values override the framework defaults (S=2, M=5, L=8, XL=13); when absent, the resolver falls back to those defaults so absence is the documented new-project behavior. Resolved via `resolve-config.sh sizing_map`, which emits four canonical key=value lines (S=…, M=…, L=…, XL=…). Consumers: gaia-sprint-plan (today) and gaia-create-story Step 4 (E61-S2)."
+
+  # =============================================================================
+  # Review System v2 configuration surface — E68-S1 / FR-RSV2-5..22
+  # =============================================================================
+  # Eleven new top-level sections consumed by the layered rubric loader
+  # (E68-S2) and the review-system-v2 skill family. ADR-079 (rubric layering)
+  # and ADR-044 (config split) govern resolution. Each new key is declared as
+  # required: false with default: null so the resolver schema validator
+  # accepts (or rejects) presence without forcing every project to opt in.
+
+  compliance:
+    type: map
+    required: false
+    default: null
+    description: "Opt-in regulatory regime selection (FR-RSV2-5, FR-RSV2-7). Sub-keys: regimes (list of canonical regime ids: gdpr, hipaa, pci-dss, sox, ccpa, soc2, iso-27001, wcag-2.1-aa, wcag-2.1-aaa); domain (optional string naming a domain rubric file); ui_present (boolean, default false — triggers the conditional a11y gate). Each declared regime composes a layer onto the rubric stack (base > regimes-in-order > domain > project) per ADR-079."
+
+  tools:
+    type: map
+    required: false
+    default: null
+    description: "Provider/config selection per category (FR-RSV2-10). Category-keyed entries (e.g., tools.sast.provider: semgrep, tools.secrets.provider: gitleaks). Each entry has provider (string) and optional config (free-form map). Tool selection precedence: project tools.{category}.provider > regime-suggested > base default."
+
+  test_execution:
+    type: map
+    required: false
+    default: null
+    description: "Pipeline-tier placement for the three test tiers (FR-RSV2-11). Sub-keys: tier_1, tier_2, tier_3 — each with a placement value from the canonical set: local | ci-pre-merge | ci-post-merge | deployment | post-deploy."
+
+  severity:
+    type: map
+    required: false
+    default: null
+    description: "Five-internal-to-three-gate severity mapping (FR-RSV2-22). The five internal severities (Critical, High, Medium, Low, Info) collapse to three gate verdicts (BLOCKED, REQUEST_CHANGES, APPROVE). Defaults: Critical -> BLOCKED, High -> REQUEST_CHANGES, Medium -> REQUEST_CHANGES (configurable), Low -> APPROVE (configurable), Info -> APPROVE."
+
+  gates:
+    type: map
+    required: false
+    default: null
+    description: "Per-gate severity overrides (FR-RSV2-12). Gate-keyed entries (e.g., gates.code.severity, gates.security.severity) where each gate can override the global severity mapping declared in the severity block."
+
+  stacks:
+    type: map
+    required: false
+    default: null
+    description: "Ordered list of stack-path rules for multi-service repos (FR-RSV2-6). Each entry has name (string), language (string), and paths (list of glob patterns). Review skills resolve the active stack by walking entries in declaration order against the changed-file list. (The descriptor type is map for the resolver's purposes; the canonical YAML shape is a list — see project-config.schema.json for the structural schema.)"
+
+  cross_service_tests:
+    type: map
+    required: false
+    default: null
+    description: "Contract and cross-service integration test configuration for microservice architectures. Sub-keys: contract_dir, integration_dir, pairs (list of producer/consumer mappings)."
+
+  environments:
+    type: map
+    required: false
+    default: null
+    description: "Environment list with env-var-only credential references (FR-RSV2-9, NFR-RSV2-7). Each environment entry accepts name (the map key), optional url, and credentials as a map of CREDENTIAL_NAME -> ENV_VAR_NAME. Literal credential values are rejected by project-config.schema.json validation."
+
+  ci_platform:
+    type: map
+    required: false
+    default: null
+    description: "CI provider selection and pipeline pointer. Canonical providers: github-actions, gitlab-ci, circleci, jenkins, azure-pipelines, bitbucket-pipelines. Sub-keys: provider (string), pipeline (optional path to the pipeline definition file)."
+
+  platforms:
+    type: map
+    required: false
+    default: null
+    description: "List of platform identifiers (web, ios, android). Presence of ios or android triggers mobile gates downstream (FR-RSV2-26, extended by E74-S1). Descriptor type is map for the resolver's purposes; the canonical YAML shape is a list — see project-config.schema.json for the structural schema."
+
+  device_targets:
+    type: map
+    required: false
+    default: null
+    description: "Device/OS matrix for mobile platforms. Stub section in E68-S1; full mobile semantics land in E74-S1. Sub-keys: ios (list of device identifiers), android (list of device identifiers)."
