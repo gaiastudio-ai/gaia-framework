@@ -285,3 +285,89 @@ teardown() { common_teardown; }
   run grep -F 'GAIA_REVIEW_STUB:' "$SKILL_FILE"
   [ "$status" -ne 0 ]
 }
+
+# ======================================================================
+# E66-S4 — V2 (ADR-077) migration assertions
+# ======================================================================
+# These tests harden the V2 sibling-reference contract. They cover:
+#   AC1 (TC-RSV2-FOUND-SEC-01): unifying principle + seven-phase + determinism
+#   AC2 (TC-RSV2-PROBE-SEC-01): toolkit wired through tool-availability-probe.sh
+#   AC3 (TC-RSV2-FOUND-SEC-02): >=2 OWASP severity examples per tier
+#   AC4 (TC-RSV2-FOUND-SEC-03): fork-write fix — parent-context persistence
+#   AC5 (TC-RSV2-FOUND-SEC-04): cache key includes advisory_db_fingerprint
+#   AC6 (TC-RSV2-OVERLAY-SEC-01): agent-overlay.sh -> Zara wiring
+#   AC7 (TC-RSV2-FOUND-SEC-05): verdict-resolver.sh + schema_version 1.0
+#   AC8 (TC-RSV2-FOUND-SEC-06): parity bats hook present
+#   AC9 (TC-RSV2-FOUND-SEC-07): Migration Checklist for E67 sibling consumption
+
+REVIEW_COMMON_DIR="$BATS_TEST_DIRNAME/../scripts/review-common"
+PROBE_SCRIPT="$BATS_TEST_DIRNAME/../scripts/tool-availability-probe.sh"
+OVERLAY_SCRIPT="$REVIEW_COMMON_DIR/agent-overlay.sh"
+
+@test "RSV2 AC2/PROBE-SEC-01: SKILL.md references tool-availability-probe.sh for Phase 3A toolkit" {
+  grep -F 'tool-availability-probe.sh' "$SKILL_FILE" >/dev/null
+}
+
+@test "RSV2 AC2/PROBE-SEC-01: SKILL.md documents three-state probe taxonomy (available/expected_and_missing/ran_and_errored/not_applicable)" {
+  grep -iE '(expected.and.missing|expected_and_missing)' "$SKILL_FILE" >/dev/null
+  grep -iE '(ran.and.errored|ran_and_errored)' "$SKILL_FILE" >/dev/null
+  grep -iE '(not.applicable|not_applicable)' "$SKILL_FILE" >/dev/null
+}
+
+@test "RSV2 AC2: SKILL.md references review-common shared library wiring" {
+  grep -F 'review-common' "$SKILL_FILE" >/dev/null
+}
+
+@test "RSV2 AC2: SKILL.md references live-secret-classifier.sh credential prefix matcher" {
+  grep -F 'live-secret-classifier.sh' "$SKILL_FILE" >/dev/null
+}
+
+@test "RSV2 AC2: SKILL.md references threat-model-validator.sh" {
+  grep -F 'threat-model-validator.sh' "$SKILL_FILE" >/dev/null
+}
+
+@test "RSV2 AC5: cache key composition explicitly enumerates story_key, tool_name, tool_version, file_list_hash, advisory_db_fingerprint" {
+  grep -F 'advisory_db_fingerprint' "$SKILL_FILE" >/dev/null
+  grep -iE '(story_key|story.key)' "$SKILL_FILE" >/dev/null
+  grep -F 'tool_versions' "$SKILL_FILE" >/dev/null
+  grep -iE '(file.hashes|file_list_hash|file_hashes)' "$SKILL_FILE" >/dev/null
+}
+
+@test "RSV2 AC6/OVERLAY-SEC-01: SKILL.md references agent-overlay.sh for Zara persona resolution" {
+  grep -F 'agent-overlay.sh' "$SKILL_FILE" >/dev/null
+  grep -iE '(zara|gaia-review-security)' "$SKILL_FILE" >/dev/null
+}
+
+@test "RSV2 AC6/OVERLAY-SEC-01: agent-overlay.sh resolves gaia-review-security -> zara" {
+  [ -x "$OVERLAY_SCRIPT" ] || skip "agent-overlay.sh not executable"
+  run "$OVERLAY_SCRIPT" --skill gaia-review-security
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"agent_id":"zara"'* ]]
+  [[ "$output" == *'"sidecar_path":"_memory/zara-sidecar.md"'* ]]
+}
+
+@test "RSV2 AC7: SKILL.md prescribes analysis-results.schema.json schema_version 1.0 validation" {
+  grep -F 'analysis-results.schema.json' "$SKILL_FILE" >/dev/null
+  grep -iE 'schema_version.*1\.0|schema-version.*1\.0|"1\.0"' "$SKILL_FILE" >/dev/null
+}
+
+@test "RSV2 AC8: parity bats has gaia-security-review registered in REVIEW_SKILLS" {
+  grep -F 'skills/gaia-security-review/SKILL.md' "$PARITY_BATS" >/dev/null
+}
+
+@test "RSV2 AC9: SKILL.md or companion includes a Migration Checklist for E67 sibling consumption" {
+  grep -iE '(migration checklist|migration check.list)' "$SKILL_FILE" >/dev/null
+}
+
+@test "RSV2 AC4: fork allowlist remains exactly [Read, Grep, Glob, Bash] with parent-mediated write" {
+  local line
+  line="$(grep -E '^allowed-tools:' "$SKILL_FILE")"
+  [[ "$line" == *Read* ]]
+  [[ "$line" == *Grep* ]]
+  [[ "$line" == *Glob* ]]
+  [[ "$line" == *Bash* ]]
+  [[ "$line" != *Write* ]]
+  [[ "$line" != *Edit* ]]
+  # Parent-mediated write language present.
+  grep -iE '(parent.mediated|parent.context|parent write)' "$SKILL_FILE" >/dev/null
+}
