@@ -150,3 +150,18 @@ SHIM
   [ "$status" -eq 0 ]
   echo "$output" | grep -Ei "skipped \(non-git CWD\)" >/dev/null
 }
+
+# ---------------------------------------------------------------------------
+# CI / audit fixture path — detached HEAD (default GitHub PR check-out
+# state) and empty repos must skip exit 0, not halt. Regression for
+# audit-v2-migration + cluster-7-chain CI failures observed during
+# E55-S10 dev.
+# ---------------------------------------------------------------------------
+@test "verify-push: skip exit 0 when HEAD is detached (CI PR check-out)" {
+  _install_git_shim
+  # Detach HEAD to a sha — git reports rev-parse --abbrev-ref HEAD as "HEAD"
+  "$REAL_GIT" checkout -q --detach HEAD
+  run "$VERIFY_PUSH"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -Ei "detached HEAD|no branch to verify" >/dev/null
+}

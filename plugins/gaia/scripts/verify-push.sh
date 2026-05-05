@@ -63,9 +63,13 @@ if [ "${GAIA_PUSH_VERIFY:-}" = "skip" ]; then
 fi
 
 # ---------- 2. Resolve current branch ----------
+# Detached HEAD (CI PR checkouts, audit fixtures) and empty repos cannot have
+# a branch to verify — silently skip exit 0. Real push workflows always run
+# from a named feature branch.
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
 if [ -z "$BRANCH" ] || [ "$BRANCH" = "HEAD" ]; then
-  die "cannot determine current branch (detached HEAD or empty repo)"
+  log "skipped (detached HEAD or empty repo — no branch to verify)"
+  exit 0
 fi
 
 # ---------- 3. Protected-branch silent skip ----------
