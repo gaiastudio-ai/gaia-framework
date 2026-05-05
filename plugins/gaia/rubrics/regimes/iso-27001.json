@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "skill": "security",
+  "name": "iso-27001",
+  "applies_to_skills": ["review-code", "review-security"],
+  "description": "ISO/IEC 27001:2022 Annex A control rules covering asset management, risk assessment, access control, cryptography, operations security, communications security, and incident management. Layer 2 per ADR-079.",
+  "metadata": {
+    "title": "ISO 27001 regime rubric",
+    "story": "E68-S4",
+    "adr": "ADR-079",
+    "regime_id": "iso-27001",
+    "references": ["ISO-27001-A.5.9", "ISO-27001-A.5.32", "ISO-27001-A.8.3", "ISO-27001-A.8.24", "ISO-27001-A.8.15", "ISO-27001-A.8.21", "ISO-27001-A.5.26"]
+  },
+  "severity_rules": [
+    {
+      "id": "iso27k-asset-inventory-001",
+      "category": "asset-inventory",
+      "pattern": "New service or data store added to the project without a corresponding asset-inventory entry (owner, classification, criticality).",
+      "severity": "Medium",
+      "description": "Annex A.5.9 requires an inventory of information and other associated assets with documented ownership.",
+      "remediation": "Add the asset to the inventory with owner, classification (public/internal/confidential), and criticality tier.",
+      "references": ["ISO-27001-A.5.9"]
+    },
+    {
+      "id": "iso27k-risk-assessment-001",
+      "category": "risk-assessment",
+      "pattern": "High-risk feature (authentication, payment, PII processing, third-party integration) merged without a referenced risk-assessment artifact.",
+      "severity": "High",
+      "description": "Clause 6.1.2 requires a documented information-security risk assessment for material changes.",
+      "remediation": "Link the PR to the risk assessment doc; require security sign-off before merge for high-risk paths.",
+      "references": ["ISO-27001-6.1.2"]
+    },
+    {
+      "id": "iso27k-access-control-001",
+      "category": "access-control",
+      "pattern": "Code grants standing administrative access on production systems without a just-in-time elevation flow.",
+      "severity": "High",
+      "description": "Annex A.8.3 requires access-rights management consistent with the principle of least privilege.",
+      "remediation": "Replace standing admin grants with JIT elevation that records reason and expires automatically.",
+      "references": ["ISO-27001-A.8.3"]
+    },
+    {
+      "id": "iso27k-cryptography-001",
+      "category": "cryptography",
+      "pattern": "Code uses a deprecated or weak cipher (MD5, SHA1, DES, RC4, ECB-mode) for data protection or message authentication.",
+      "severity": "Critical",
+      "description": "Annex A.8.24 requires the use of cryptography aligned with industry-standard guidance.",
+      "remediation": "Replace with SHA-256+, AES-GCM, Ed25519/ECDSA-P256, and Argon2/bcrypt for password hashing.",
+      "references": ["ISO-27001-A.8.24"]
+    },
+    {
+      "id": "iso27k-operations-security-001",
+      "category": "operations-security",
+      "pattern": "Production component has no centralised logging or monitoring hook for security-relevant events.",
+      "severity": "High",
+      "description": "Annex A.8.15 requires event logging for security-relevant actions and continuous monitoring.",
+      "remediation": "Ship logs to a central SIEM with retention; alert on authentication, authorisation, and integrity events.",
+      "references": ["ISO-27001-A.8.15"]
+    },
+    {
+      "id": "iso27k-communications-security-001",
+      "category": "communications-security",
+      "pattern": "Network egress from production to an external network without an explicit allow-list rule and traffic inspection.",
+      "severity": "High",
+      "description": "Annex A.8.21 requires that information transferred via networks is protected via segregation and inspection.",
+      "remediation": "Place egress behind an allow-list proxy with TLS termination and traffic inspection.",
+      "references": ["ISO-27001-A.8.21"]
+    },
+    {
+      "id": "iso27k-incident-management-001",
+      "category": "incident-management",
+      "pattern": "Project lacks an incident-response runbook or has no on-call rotation wired to security alerting.",
+      "severity": "High",
+      "description": "Annex A.5.26 requires a documented incident-response process with assigned responsibilities.",
+      "remediation": "Author a runbook covering detection, containment, eradication, recovery; wire alerts to an on-call rotation.",
+      "references": ["ISO-27001-A.5.26"]
+    },
+    {
+      "id": "iso27k-asset-inventory-002",
+      "category": "asset-inventory",
+      "pattern": "Code references a third-party SaaS or API without recording it in the supplier register with security review status.",
+      "severity": "Medium",
+      "description": "Annex A.5.32 requires a supplier register documenting information-security obligations and review cadence.",
+      "remediation": "Add the supplier to the register with contract reference, security review date, and renewal cadence.",
+      "references": ["ISO-27001-A.5.32"]
+    }
+  ]
+}
