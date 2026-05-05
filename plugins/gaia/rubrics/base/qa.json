@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.0",
+  "skill": "qa",
+  "metadata": {
+    "title": "Base QA test review rubric",
+    "story": "E68-S3",
+    "adr": "ADR-079",
+    "description": "Default severity rules for /gaia-qa-tests covering assertion quality, test isolation, coverage, flakiness, and naming. Layer 1 of the four-layer rubric composition."
+  },
+  "severity_rules": [
+    {
+      "id": "qa-assertion-quality-001",
+      "category": "assertion-quality",
+      "pattern": "Test ends with a side-effect call but no assertion — exercises the code path without verifying the outcome.",
+      "severity": "High",
+      "description": "Tests without assertions only catch crashes; behavioural regressions slip through silently.",
+      "remediation": "Add explicit assertions on observable outcomes (return value, side-effect on a collaborator, persisted state)."
+    },
+    {
+      "id": "qa-assertion-quality-002",
+      "category": "assertion-quality",
+      "pattern": "Test asserts only on truthiness (`expect(result).toBeTruthy()`) or non-nullness without verifying the actual expected value.",
+      "severity": "Medium",
+      "description": "Truthiness-only assertions accept many incorrect outputs and erode the test's signal.",
+      "remediation": "Assert on the specific expected value, type, or shape — never just truthiness as the sole assertion."
+    },
+    {
+      "id": "qa-assertion-quality-003",
+      "category": "assertion-quality",
+      "pattern": "Single test contains more than one logically-distinct behavioural assertion (multiple act-and-assert cycles in one case).",
+      "severity": "Low",
+      "description": "Multi-assertion tests fail at the first failure and hide the second behaviour, slowing diagnosis.",
+      "remediation": "Split each behavioural assertion into its own test case with descriptive naming."
+    },
+    {
+      "id": "qa-test-isolation-001",
+      "category": "test-isolation",
+      "pattern": "Test depends on order — passes only if a prior test ran first, or mutates a shared singleton without resetting it.",
+      "severity": "High",
+      "description": "Order-dependent tests are flaky under parallel execution and obscure root cause when one fails in isolation.",
+      "remediation": "Move shared setup into `beforeEach` / `setUp` and reset all mutable state between cases."
+    },
+    {
+      "id": "qa-test-isolation-002",
+      "category": "test-isolation",
+      "pattern": "Test reads from or writes to a shared external resource (real database, real network, real filesystem outside the per-test temp dir) without isolation.",
+      "severity": "High",
+      "description": "Real-resource tests are non-hermetic — they fail in CI for environment reasons and pollute state across runs.",
+      "remediation": "Stub the external resource, route through a per-test container, or use a temp dir scoped to the test case.",
+      "references": ["xUnitPatterns-TestIsolation"]
+    },
+    {
+      "id": "qa-test-coverage-001",
+      "category": "test-coverage",
+      "pattern": "Acceptance criterion or new public function has no corresponding test — coverage of the changed surface is incomplete.",
+      "severity": "High",
+      "description": "Untested ACs and entry points let regressions reach production without warning.",
+      "remediation": "Add at least one happy-path and one failure-path test for every AC and every new public entry point.",
+      "references": ["FR-RSV2-15"]
+    },
+    {
+      "id": "qa-test-coverage-002",
+      "category": "test-coverage",
+      "pattern": "Critical branch or error path is untested — exception handlers, retry loops, and authorisation denials run only in production.",
+      "severity": "Medium",
+      "description": "Untested error paths reverse the protective intent of the handler — bugs in the recovery code are masked until the failure mode hits production.",
+      "remediation": "Add a test that triggers the failure mode and asserts on the handler's observable outcome (rethrow, fallback, structured error)."
+    },
+    {
+      "id": "qa-flaky-test-patterns-001",
+      "category": "flaky-test-patterns",
+      "pattern": "Test relies on a real `setTimeout` / `sleep` for synchronisation instead of awaiting a deterministic event or fake-clock advance.",
+      "severity": "High",
+      "description": "Sleep-based synchronisation creates wall-clock races; the test passes locally and flakes in CI under load.",
+      "remediation": "Wait on the actual event (promise resolution, observable emission, callback) or advance a fake clock."
+    },
+    {
+      "id": "qa-flaky-test-patterns-002",
+      "category": "flaky-test-patterns",
+      "pattern": "Test uses non-deterministic input (`Date.now()`, `Math.random()`, `os.urandom`) without seeding or freezing.",
+      "severity": "Medium",
+      "description": "Non-determinism in test inputs surfaces as intermittent failures and complicates root-cause analysis.",
+      "remediation": "Inject a seeded RNG or a frozen clock; assert against the seeded output."
+    },
+    {
+      "id": "qa-flaky-test-patterns-003",
+      "category": "flaky-test-patterns",
+      "pattern": "Test asserts on collection ordering when the producer makes no ordering guarantee (Set iteration, hashmap traversal, async result fan-in).",
+      "severity": "Medium",
+      "description": "Order-dependent assertions over unordered producers are flaky — the assertion passes by coincidence on some runs.",
+      "remediation": "Sort the actual and expected collections before comparison, or assert on set membership."
+    },
+    {
+      "id": "qa-test-naming-001",
+      "category": "test-naming",
+      "pattern": "Test name describes mechanism (`it('test 1', ...)`, `test_function_a`) rather than the behaviour under verification.",
+      "severity": "Low",
+      "description": "Mechanism-named tests force a reader to open the body to learn intent; behaviour-first names self-document.",
+      "remediation": "Rename to a sentence describing the behaviour (e.g., `returns 401 when the token is expired`)."
+    },
+    {
+      "id": "qa-test-naming-002",
+      "category": "test-naming",
+      "pattern": "Test name omits the precondition, action, or expected outcome — fails the Given-When-Then sniff test.",
+      "severity": "Low",
+      "description": "Names that omit a Given-When-Then triplet are harder to scan in a test report.",
+      "remediation": "Adopt a `<scenario>__<action>__<outcome>` or `should ... when ...` convention across the suite."
+    }
+  ]
+}

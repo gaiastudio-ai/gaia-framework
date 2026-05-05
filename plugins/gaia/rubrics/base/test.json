@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "skill": "test",
+  "metadata": {
+    "title": "Base test review rubric",
+    "story": "E68-S3",
+    "adr": "ADR-079",
+    "description": "Default severity rules for /gaia-test-review covering test structure, mock usage, fixture management, test data, and integration test isolation. Layer 1 of the four-layer rubric composition."
+  },
+  "severity_rules": [
+    {
+      "id": "test-test-structure-001",
+      "category": "test-structure",
+      "pattern": "Test body lacks a clear Arrange-Act-Assert (AAA) or Given-When-Then sectioning — setup, action, and verification are interleaved.",
+      "severity": "Low",
+      "description": "Interleaved test bodies obscure the intent and make failures harder to diagnose.",
+      "remediation": "Group setup, action, and assertions into clearly separated stanzas (blank-line or comment-delimited).",
+      "references": ["xUnitPatterns-AAA"]
+    },
+    {
+      "id": "test-test-structure-002",
+      "category": "test-structure",
+      "pattern": "Test file mixes unit and integration scope without separation — fast in-memory tests share a file with tests that hit a real database or network.",
+      "severity": "Medium",
+      "description": "Mixed-scope files force the slowest test to gate every developer's edit-compile loop.",
+      "remediation": "Split the file into `*.unit.spec` and `*.integration.spec` (or equivalent) so suites can run independently."
+    },
+    {
+      "id": "test-test-structure-003",
+      "category": "test-structure",
+      "pattern": "Single test exceeds 100 executable lines or covers more than one behaviour — long, multi-purpose test cases.",
+      "severity": "Medium",
+      "description": "Long test cases bury the single behaviour they should isolate and slow root-cause analysis on failure.",
+      "remediation": "Decompose into focused cases — one behaviour per test, shared setup in `beforeEach`."
+    },
+    {
+      "id": "test-mock-usage-001",
+      "category": "mock-usage",
+      "pattern": "Test mocks the system under test itself (mocking the very class or function being verified).",
+      "severity": "High",
+      "description": "Mocking the SUT verifies the mock, not the real behaviour — the test is vacuous.",
+      "remediation": "Mock collaborators only; let the SUT execute its real logic against the mocked boundaries.",
+      "references": ["xUnitPatterns-Mock"]
+    },
+    {
+      "id": "test-mock-usage-002",
+      "category": "mock-usage",
+      "pattern": "Mock is configured to return a value never asserted against — the mock setup is unused or only verifies that the mock was called.",
+      "severity": "Low",
+      "description": "Unused mock setup is dead code and obscures which interactions actually matter.",
+      "remediation": "Remove the unused setup or convert it into an assertion on the collaborator interaction."
+    },
+    {
+      "id": "test-mock-usage-003",
+      "category": "mock-usage",
+      "pattern": "Test asserts on internal mock interactions (`expect(mock).toHaveBeenCalledWith(...)`) instead of the SUT's observable outcomes.",
+      "severity": "Medium",
+      "description": "Over-specified mock interactions couple the test to the implementation and break under benign refactors.",
+      "remediation": "Prefer state-based assertions on the SUT's outputs and side effects; use interaction assertions sparingly."
+    },
+    {
+      "id": "test-fixture-management-001",
+      "category": "fixture-management",
+      "pattern": "Test creates a large fixture inline at the top of the file, duplicating the same shape across multiple tests.",
+      "severity": "Low",
+      "description": "Inline duplicated fixtures drift over time and increase the cost of changing the underlying type.",
+      "remediation": "Extract a builder or factory function that returns the fixture; allow each test to override the relevant fields."
+    },
+    {
+      "id": "test-fixture-management-002",
+      "category": "fixture-management",
+      "pattern": "Fixture data references a non-deterministic source (current time, random seed, environment variable) without freezing or seeding.",
+      "severity": "Medium",
+      "description": "Non-deterministic fixtures make assertions intermittent and obscure root cause on failure.",
+      "remediation": "Freeze the clock or seed the RNG inside the fixture builder; document the seed."
+    },
+    {
+      "id": "test-test-data-001",
+      "category": "test-data",
+      "pattern": "Test relies on production-like data (real customer record, real PII, real API key) instead of synthesised inputs.",
+      "severity": "High",
+      "description": "Production-like data in tests risks PII leakage, complicates onboarding, and couples test results to production state.",
+      "remediation": "Use a test-data factory that generates synthesised values — never copy production rows into the suite.",
+      "references": ["GDPR-Art-25"]
+    },
+    {
+      "id": "test-test-data-002",
+      "category": "test-data",
+      "pattern": "Test data is hard-coded as a magic literal whose meaning is opaque (`expect(result).toEqual(42)` with no rationale).",
+      "severity": "Low",
+      "description": "Magic-literal expected values do not explain why that value is correct, making future maintenance error-prone.",
+      "remediation": "Compute the expected value from named constants or document the rationale alongside the assertion."
+    },
+    {
+      "id": "test-integration-test-isolation-001",
+      "category": "integration-test-isolation",
+      "pattern": "Integration test shares a database, message broker, or cache with the rest of the suite without per-test reset or per-suite container.",
+      "severity": "High",
+      "description": "Shared external state across integration tests creates cross-test pollution and flaky-by-order failures.",
+      "remediation": "Provision a per-suite container (Testcontainers) or wrap each test in a transaction that rolls back on teardown.",
+      "references": ["Testcontainers-best-practice"]
+    },
+    {
+      "id": "test-integration-test-isolation-002",
+      "category": "integration-test-isolation",
+      "pattern": "Integration test depends on a hard-coded port, hostname, or environment variable instead of a discovery mechanism.",
+      "severity": "Medium",
+      "description": "Hard-coded coordinates break in CI when the resource lives at a different address and complicate parallel execution.",
+      "remediation": "Read the address from the test container or a discovery API; never hard-code in the test body."
+    }
+  ]
+}

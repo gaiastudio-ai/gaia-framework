@@ -1,0 +1,144 @@
+{
+  "schema_version": "1.0",
+  "skill": "code",
+  "metadata": {
+    "title": "Base code review rubric",
+    "story": "E68-S3",
+    "adr": "ADR-079",
+    "description": "Default severity rules for /gaia-code-review covering SOLID violations, complexity, naming, error handling, and code duplication. Layer 1 of the four-layer rubric composition (base + regimes + domain + project)."
+  },
+  "severity_rules": [
+    {
+      "id": "code-solid-001",
+      "category": "solid-violations",
+      "pattern": "Class or module bears more than one responsibility — handles unrelated concerns or has multiple reasons to change.",
+      "severity": "High",
+      "description": "Single Responsibility Principle violation. Splitting unrelated concerns improves cohesion and reduces blast radius of future changes.",
+      "remediation": "Extract each responsibility into its own class or module with a focused public surface.",
+      "references": ["SOLID-S"]
+    },
+    {
+      "id": "code-solid-002",
+      "category": "solid-violations",
+      "pattern": "Adding new behaviour requires modifying existing code paths instead of extending via polymorphism, strategy, or composition.",
+      "severity": "Medium",
+      "description": "Open-Closed Principle violation. Closed for modification, open for extension keeps existing behaviour stable while new variants land.",
+      "remediation": "Introduce an abstraction (interface, strategy, or hook) so new variants extend rather than mutate existing logic.",
+      "references": ["SOLID-O"]
+    },
+    {
+      "id": "code-solid-003",
+      "category": "solid-violations",
+      "pattern": "Subclass overrides a parent method with a contract that breaks substitutability — narrows return type, throws unexpected exceptions, or changes invariants.",
+      "severity": "High",
+      "description": "Liskov Substitution Principle violation. Callers that depend on the parent contract break unexpectedly when handed the subclass.",
+      "remediation": "Either preserve the parent contract or favour composition over inheritance for divergent behaviour.",
+      "references": ["SOLID-L"]
+    },
+    {
+      "id": "code-solid-004",
+      "category": "solid-violations",
+      "pattern": "Interface forces implementers to depend on methods they do not use — fat or god-interfaces with unrelated capabilities.",
+      "severity": "Medium",
+      "description": "Interface Segregation Principle violation. Smaller, role-specific interfaces reduce coupling and make mocks/stubs cheaper.",
+      "remediation": "Split the interface along usage seams; keep each interface focused on one collaborator role.",
+      "references": ["SOLID-I"]
+    },
+    {
+      "id": "code-solid-005",
+      "category": "solid-violations",
+      "pattern": "High-level module imports a concrete low-level module directly instead of depending on an abstraction injected at construction time.",
+      "severity": "Medium",
+      "description": "Dependency Inversion Principle violation. Hard-wiring concrete dependencies blocks substitution in tests and across environments.",
+      "remediation": "Inject the dependency through a constructor or factory; depend on the abstraction.",
+      "references": ["SOLID-D"]
+    },
+    {
+      "id": "code-complexity-001",
+      "category": "complexity",
+      "pattern": "Function or method has cyclomatic complexity > 10 (more than ten linearly independent paths).",
+      "severity": "High",
+      "description": "Cyclomatic complexity above 10 correlates with defect density and review fatigue. Decomposition restores reviewability.",
+      "remediation": "Extract guard clauses, replace nested conditionals with early returns, or split the function along its logical seams.",
+      "references": ["McCabe-1976"]
+    },
+    {
+      "id": "code-complexity-002",
+      "category": "complexity",
+      "pattern": "Function exceeds 50 executable lines or nests control flow more than three levels deep (cognitive complexity proxy).",
+      "severity": "Medium",
+      "description": "Cognitive complexity above the project threshold makes the code hard to hold in working memory during review.",
+      "remediation": "Decompose into named helpers, flatten conditionals, or replace deep nesting with early returns.",
+      "references": ["SonarSource-CognitiveComplexity"]
+    },
+    {
+      "id": "code-naming-001",
+      "category": "naming-conventions",
+      "pattern": "Identifier uses single letters, abbreviations, or domain-foreign words outside accepted conventions (loop counters and standard idioms exempted).",
+      "severity": "Low",
+      "description": "Names should reveal intent; opaque identifiers force readers to reverse-engineer purpose from usage.",
+      "remediation": "Rename to a domain-meaningful term that describes the value or its role.",
+      "references": ["Clean-Code-Ch2"]
+    },
+    {
+      "id": "code-naming-002",
+      "category": "naming-conventions",
+      "pattern": "Function name describes mechanism rather than intent (e.g., `processData`, `handleStuff`) or violates the project's verb-first convention.",
+      "severity": "Low",
+      "description": "Function names that document mechanism not intent obscure what the call accomplishes.",
+      "remediation": "Rename to an intent-revealing verb phrase (e.g., `calculateInvoiceTotal` instead of `processData`).",
+      "references": ["Clean-Code-Ch3"]
+    },
+    {
+      "id": "code-naming-003",
+      "category": "naming-conventions",
+      "pattern": "Class or constant violates the project's case convention (PascalCase for types, SCREAMING_SNAKE_CASE for module-level constants in most stacks).",
+      "severity": "Low",
+      "description": "Inconsistent casing fragments the codebase and complicates linting and grep-based navigation.",
+      "remediation": "Apply the project's casing convention; configure a linter rule so the convention is enforced going forward."
+    },
+    {
+      "id": "code-error-001",
+      "category": "error-handling",
+      "pattern": "`catch` block is empty or only logs without rethrowing, recovering, or surfacing a structured error to the caller.",
+      "severity": "High",
+      "description": "Swallowed exceptions hide failure modes and block upstream recovery. Silent failures are an availability risk.",
+      "remediation": "Either handle the error (compensating action), wrap and rethrow with context, or propagate as a typed error result.",
+      "references": ["CWE-755"]
+    },
+    {
+      "id": "code-error-002",
+      "category": "error-handling",
+      "pattern": "Function calls a fallible operation (network, filesystem, parser) without checking the result or wrapping in a try/catch — exceptions propagate unhandled.",
+      "severity": "High",
+      "description": "Unhandled fallible operations crash the process or leak partial state to the caller.",
+      "remediation": "Wrap the call site, define a recovery policy (retry, fail-fast, fallback), and surface a typed error to callers.",
+      "references": ["CWE-703"]
+    },
+    {
+      "id": "code-error-003",
+      "category": "error-handling",
+      "pattern": "Generic `catch (Exception)` / `catch (Throwable)` / bare `except` masks programmer errors alongside expected failures.",
+      "severity": "Medium",
+      "description": "Catching every exception treats logic bugs the same as expected failures and prevents the runtime from surfacing them.",
+      "remediation": "Catch only the specific exception types the call site can recover from; let the rest propagate."
+    },
+    {
+      "id": "code-duplication-001",
+      "category": "code-duplication",
+      "pattern": "Two or more functions share more than 10 contiguous lines of nearly-identical logic differing only in literals or variable names.",
+      "severity": "Medium",
+      "description": "Copy-paste duplication multiplies maintenance cost — fixes and new requirements have to be applied to every clone.",
+      "remediation": "Extract the shared logic into a helper, parameterising the differing literals.",
+      "references": ["DRY-Pragmatic-Programmer"]
+    },
+    {
+      "id": "code-duplication-002",
+      "category": "code-duplication",
+      "pattern": "Magic literals (status codes, URL fragments, retry counts, timeouts) repeated across multiple call sites without a named constant.",
+      "severity": "Low",
+      "description": "Duplicated literals diverge silently as the code evolves and obscure their intent at the call site.",
+      "remediation": "Hoist the literal to a named constant in a shared module; reference it from every call site."
+    }
+  ]
+}

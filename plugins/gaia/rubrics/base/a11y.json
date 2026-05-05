@@ -1,0 +1,137 @@
+{
+  "schema_version": "1.0",
+  "skill": "a11y",
+  "metadata": {
+    "title": "Base accessibility review rubric",
+    "story": "E68-S3",
+    "adr": "ADR-079",
+    "description": "Default severity rules for /gaia-review-a11y aligned with WCAG 2.1 Level A and AA. Layer 1 of the four-layer rubric composition; Level-A keyboard and contrast failures are Critical because they block conformance entirely.",
+    "references": ["WCAG-2.1"]
+  },
+  "severity_rules": [
+    {
+      "id": "a11y-semantic-html-001",
+      "category": "semantic-html",
+      "pattern": "Interactive control is built from `<div>` or `<span>` with click handlers instead of a native `<button>`, `<a>`, `<input>`, or `<select>`.",
+      "severity": "High",
+      "description": "Non-semantic interactive elements lack default keyboard support, focus styles, and correct accessibility-tree role — assistive tech cannot operate them.",
+      "remediation": "Use the appropriate native element (`<button>` for actions, `<a href>` for navigation); only fall back to ARIA when no native element fits.",
+      "references": ["WCAG-4.1.2", "WAI-ARIA-Authoring-Practices"]
+    },
+    {
+      "id": "a11y-semantic-html-002",
+      "category": "semantic-html",
+      "pattern": "Heading structure skips levels (h1 → h3) or the page lacks a single `<h1>` describing its purpose.",
+      "severity": "Medium",
+      "description": "Heading skips break the document outline that screen-reader users navigate by.",
+      "remediation": "Maintain a continuous heading hierarchy starting at `<h1>`; use CSS — not heading level — for visual size.",
+      "references": ["WCAG-1.3.1", "WCAG-2.4.6"]
+    },
+    {
+      "id": "a11y-semantic-html-003",
+      "category": "semantic-html",
+      "pattern": "Form input has no associated `<label>` (either wrapping or `for`/`id` linkage) and no `aria-label` / `aria-labelledby`.",
+      "severity": "High",
+      "description": "Unlabeled form controls leave screen-reader users without any prompt for what to enter.",
+      "remediation": "Associate every input with a visible `<label>`; reserve `aria-label` for genuinely label-less controls (e.g., icon-only buttons).",
+      "references": ["WCAG-3.3.2", "WCAG-1.3.1"]
+    },
+    {
+      "id": "a11y-aria-usage-001",
+      "category": "aria-usage",
+      "pattern": "Custom widget uses an ARIA `role` (e.g., `role=button`, `role=dialog`) without the matching keyboard-interaction contract (Enter/Space activation, Escape dismissal, focus trap).",
+      "severity": "High",
+      "description": "ARIA promises behaviour to assistive tech; if the underlying widget does not implement the matching keyboard contract, the role is a lie.",
+      "remediation": "Implement the full WAI-ARIA Authoring Practices keyboard contract for the role, or use the native element instead.",
+      "references": ["WAI-ARIA-Authoring-Practices"]
+    },
+    {
+      "id": "a11y-aria-usage-002",
+      "category": "aria-usage",
+      "pattern": "Native semantic element is overridden with a contradicting ARIA role (e.g., `<button role=link>`, `<a role=button>`).",
+      "severity": "Medium",
+      "description": "Conflicting roles confuse the accessibility tree and produce inconsistent assistive-tech announcements.",
+      "remediation": "Remove the redundant or conflicting role; pick the native element whose semantics match the intended behaviour."
+    },
+    {
+      "id": "a11y-aria-usage-003",
+      "category": "aria-usage",
+      "pattern": "Live-region announcement (`aria-live`, `role=status`, `role=alert`) is missing for an asynchronously-updated region the user cares about (form errors, toasts).",
+      "severity": "Medium",
+      "description": "Without a live region, screen-reader users miss state changes that visual users see.",
+      "remediation": "Wrap the dynamic region in `aria-live=polite` (or `assertive` for blocking errors) and update its text content when state changes."
+    },
+    {
+      "id": "a11y-keyboard-navigation-001",
+      "category": "keyboard-navigation",
+      "pattern": "Interactive control is reachable only via mouse — no `tabindex`, no native focusability, or `tabindex=-1` on a primary action.",
+      "severity": "Critical",
+      "description": "Keyboard-only users cannot operate the application — a WCAG 2.1.1 Level A failure that blocks conformance.",
+      "remediation": "Make every interactive control focusable with native semantics; reserve `tabindex=-1` for programmatic focus targets only.",
+      "references": ["WCAG-2.1.1"]
+    },
+    {
+      "id": "a11y-keyboard-navigation-002",
+      "category": "keyboard-navigation",
+      "pattern": "Focus moves into a modal, menu, or overlay but cannot escape with Escape and is not trapped — focus leaks to the underlying page.",
+      "severity": "Critical",
+      "description": "Broken focus management for modal dialogs is a WCAG 2.1.2 Level A failure (no keyboard trap, no exit).",
+      "remediation": "Trap focus within the modal while open; restore focus to the trigger on close; honour Escape as the dismiss key.",
+      "references": ["WCAG-2.1.2"]
+    },
+    {
+      "id": "a11y-keyboard-navigation-003",
+      "category": "keyboard-navigation",
+      "pattern": "Page lacks a visible focus indicator on interactive controls (CSS `outline: none` without an alternative focus style).",
+      "severity": "High",
+      "description": "Without a visible focus indicator, sighted keyboard users cannot tell which control will receive their next keystroke (WCAG 2.4.7 Level AA).",
+      "remediation": "Provide a visible focus style (outline, box-shadow, or background change) with adequate contrast against the surrounding UI.",
+      "references": ["WCAG-2.4.7"]
+    },
+    {
+      "id": "a11y-color-contrast-001",
+      "category": "color-contrast",
+      "pattern": "Body text has a contrast ratio below 4.5:1 against its background (Level AA threshold for text < 18pt or < 14pt bold).",
+      "severity": "Critical",
+      "description": "Insufficient contrast makes text unreadable for low-vision users — a WCAG 1.4.3 Level AA failure that blocks legal conformance in most jurisdictions.",
+      "remediation": "Adjust foreground or background until contrast ≥ 4.5:1; verify with a contrast checker against every theme variant.",
+      "references": ["WCAG-1.4.3"]
+    },
+    {
+      "id": "a11y-color-contrast-002",
+      "category": "color-contrast",
+      "pattern": "Interactive UI component (buttons, form borders, focus indicators) has a contrast ratio below 3:1 against its adjacent colours.",
+      "severity": "Critical",
+      "description": "Low-contrast UI components are invisible to many low-vision users — a WCAG 1.4.11 Level AA failure for non-text contrast.",
+      "remediation": "Raise the contrast of borders, icons, and focus indicators to ≥ 3:1 against their surroundings.",
+      "references": ["WCAG-1.4.11"]
+    },
+    {
+      "id": "a11y-color-contrast-003",
+      "category": "color-contrast",
+      "pattern": "Status, error, or success information is conveyed by colour alone (red/green text, coloured dot) without a complementary icon, text, or shape.",
+      "severity": "High",
+      "description": "Colour-only meaning is invisible to users with colour vision deficiency — a WCAG 1.4.1 Level A failure.",
+      "remediation": "Pair colour with a redundant cue (icon, label, shape) so the information is perceivable without colour.",
+      "references": ["WCAG-1.4.1"]
+    },
+    {
+      "id": "a11y-screen-reader-support-001",
+      "category": "screen-reader-support",
+      "pattern": "Image or icon that conveys meaning lacks an `alt` attribute (or has empty `alt=\"\"` despite being meaningful).",
+      "severity": "High",
+      "description": "Missing alt text leaves screen-reader users without the information sighted users see — WCAG 1.1.1 Level A.",
+      "remediation": "Provide a concise `alt` description for meaningful images; use `alt=\"\"` only for decorative images.",
+      "references": ["WCAG-1.1.1"]
+    },
+    {
+      "id": "a11y-screen-reader-support-002",
+      "category": "screen-reader-support",
+      "pattern": "Page provides no skip-link to the main content — keyboard and screen-reader users must traverse the navigation on every page load.",
+      "severity": "Medium",
+      "description": "Skip-links are a WCAG 2.4.1 Level A bypass mechanism that lets users jump past repeated navigation.",
+      "remediation": "Add a `<a href=\"#main\">Skip to main content</a>` link as the first focusable element on every page.",
+      "references": ["WCAG-2.4.1"]
+    }
+  ]
+}
