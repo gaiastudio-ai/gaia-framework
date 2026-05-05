@@ -1,16 +1,94 @@
 ---
 name: gaia-test-a11y
-description: Create accessibility test plan with WCAG 2.1 compliance checks, assistive technology compatibility, and keyboard navigation. Use when "accessibility testing" or /gaia-test-a11y (formerly /gaia-a11y-testing).
-argument-hint: "[story-key]"
+description: Post-deploy accessibility smoke variant — runs axe-core / pa11y / Lighthouse adapters against a deployed URL and produces a verdict. Sibling of /gaia-validate-design-a11y (planning) and /gaia-review-a11y (pre-merge gate); all three share rubrics/base/a11y.json. Use when "accessibility testing" or /gaia-test-a11y (formerly /gaia-a11y-testing).
+argument-hint: "[story-key | deployed-url]"
+command: /gaia-test-a11y
+phase: deployment
+verdict_producing: true
 context: main
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
 deprecated_aliases: [gaia-a11y-testing]
 deprecated_since: sprint-37
 ---
 
+## ADR-077 Mission (E69-S2 — post-deploy smoke variant)
+
+You are the **post-deploy a11y smoke** for the three-phase a11y skill family (FR-RSV2-25):
+
+- `/gaia-validate-design-a11y` — planning (agent: Christy)
+- `/gaia-review-a11y` — pre-merge gate, conditional on `compliance.ui_present: true` (agent: Christy)
+- `/gaia-test-a11y` — post-deploy smoke (this skill, agent: Sable)
+
+All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the layered rubric loader (E68-S2 / ADR-079). This skill is verdict-producing and follows the seven-phase structure mandated by ADR-077.
+
+### Phase 1 — Setup
+
+- Resolve the deployed URL or story key from `$ARGUMENTS`.
+- Load the layered rubric via `${CLAUDE_PLUGIN_ROOT}/scripts/rubric-loader.sh --skill a11y`. On non-zero exit (missing `rubrics/base/a11y.json`, schema validation failure), HALT with the loader's stderr — do NOT silently fall back to empty rules (AC-EC3).
+
+### Phase 2 — Discovery
+
+- Resolve the deployed environment URL (typically from `ci_cd.promotion_chain` or the user-supplied argument).
+- Identify pages/routes to smoke-test from the architecture or story context.
+
+### Phase 3A — Analysis (post-deploy adapter invocations)
+
+> **TODO: E73-S4** — adapter internals (axe-core / pa11y / Lighthouse) are E73-S4 scope. This story (E69-S2) wires the SKILL.md, rubric-sharing, and conditional-trigger surface; the call sites below remain `TODO: E73-S4` placeholders.
+
+- **TODO: E73-S4** axe-core adapter — invoke via headless browser, collect findings, normalize to the rubric category schema (semantic-html, aria-usage, keyboard-navigation, color-contrast, screen-reader-support).
+- **TODO: E73-S4** pa11y adapter — invoke against the deployed URL list, collect findings, normalize.
+- **TODO: E73-S4** Lighthouse adapter — invoke the Lighthouse a11y audit, collect findings, normalize.
+- For every finding, cite the specific WCAG 2.1 criterion with conformance level (A/AA/AAA) and the matching rubric rule ID from the loaded rubric.
+
+### Phase 3B — Cross-checks
+
+- Cross-check post-deploy findings against the pre-merge `/gaia-review-a11y` report (if available in the same sprint) — identify regressions introduced between merge and deploy.
+
+### Phase 4 — Findings
+
+- Aggregate findings into the canonical schema (severity is rubric-driven):
+
+  | # | Severity | Component / Page | Finding | WCAG Criterion | Remediation |
+
+### Phase 5 — Verdict
+
+- Resolve the composite verdict via the deterministic resolver:
+
+  ```bash
+  !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh --findings <findings.json>
+  ```
+
+- The resolver emits `APPROVE | REQUEST_CHANGES | BLOCKED`. The skill MUST NOT recompute the verdict by hand (ADR-077, ADR-042).
+
+### Phase 6 — Report
+
+- Write the report to `docs/test-artifacts/accessibility-report-{date}.md` (preserved verbatim from the legacy task path for downstream consumers — deploy checklist aggregation).
+
+### Phase 7 — Exit
+
+- Emit the verdict on stdout for the caller (`/gaia-deploy-checklist` post-deploy aggregator or direct user invocation).
+- Exit 0 on success regardless of verdict; exit non-zero only on infrastructure failure (rubric load failed, deployed URL unresolvable).
+
+## Agent Wiring
+
+Per ADR-077 wiring table, this skill resolves to **Sable (Test Architect)** via:
+
+```bash
+!${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-test-a11y
+# {"agent_id":"sable","sidecar_path":"_memory/sable-sidecar.md"}
+```
+
+Sable owns post-deploy testing across all phases (e2e, perf, dast, a11y).
+
+---
+
 ## Setup
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-a11y-testing/scripts/setup.sh
+
+## Mission (legacy test-plan workflow — preserved for backward compatibility)
+
+The legacy test-plan workflow (E28-S88) is preserved verbatim below so existing consumers continue to work. New invocations follow the seven-phase ADR-077 structure above; both paths converge on the same `rubrics/base/a11y.json` rubric and emit the same verdict via `verdict-resolver.sh`.
 
 ## Mission
 

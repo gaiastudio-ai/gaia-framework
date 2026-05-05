@@ -115,6 +115,16 @@ assert_json_field() {
   assert_json_field "$output" "sidecar_path" "_memory/soren-sidecar.md"
 }
 
+# E69-S2: gaia-review-a11y is the conditional pre-merge a11y gate.
+# Pre-merge a11y review is a UX-design concern -> Christy.
+# (Christy already owns gaia-validate-design-a11y; Sable owns post-deploy gaia-test-a11y.)
+@test "TC-RSV2-OVERLAY-16: gaia-review-a11y -> christy" {
+  run "$SCRIPT" --skill gaia-review-a11y
+  [ "$status" -eq 0 ]
+  assert_json_field "$output" "agent_id" "christy"
+  assert_json_field "$output" "sidecar_path" "_memory/christy-sidecar.md"
+}
+
 @test "TC-RSV2-OVERLAY-15: gaia-review-code without --stack -> stack-required diagnostic" {
   # gaia-review-code is stack-conditional. Without --stack, exit 1 with diagnostic.
   run --separate-stderr "$SCRIPT" --skill gaia-review-code
