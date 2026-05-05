@@ -49,6 +49,12 @@ BACKOFF="${GAIA_GIT_PUSH_BACKOFF:-5}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INVARIANTS_LIB="$SCRIPT_DIR/lib/dev-story-security-invariants.sh"
 
+# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
+# work tree, so /gaia-dev-story Steps 10-13 degrade gracefully instead of HALT.
+# shellcheck source=lib/non-git-cwd-guard.sh
+. "$SCRIPT_DIR/lib/non-git-cwd-guard.sh"
+non_git_cwd_skip "$SCRIPT_NAME" || exit 0
+
 # ---------- 1. Protected-branch refusal ----------
 _branch_check_inline() {
   local branch

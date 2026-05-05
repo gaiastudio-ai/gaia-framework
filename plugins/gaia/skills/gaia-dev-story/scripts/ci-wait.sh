@@ -23,6 +23,13 @@ SCRIPT_NAME="gaia-dev-story/ci-wait.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
+# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
+# work tree. CI polling is meaningless when there is no PR (there's no repo).
+# shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
+GUARD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$GUARD_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
+non_git_cwd_skip "$SCRIPT_NAME" || exit 0
+
 if [ $# -lt 1 ]; then
   die "usage: ci-wait.sh <pr_number> [--timeout <minutes>]"
 fi

@@ -35,6 +35,13 @@ export LC_ALL
 
 SCRIPT_NAME="gaia-dev-story/promotion-chain-guard.sh"
 
+# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
+# work tree, so /gaia-dev-story Steps 10-13 degrade gracefully instead of HALT.
+# shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
+non_git_cwd_skip "$SCRIPT_NAME" || exit 0
+
 emit_absent() {
   printf '%s: ABSENT: ci_cd.promotion_chain not configured. Run /gaia-ci-edit to add a promotion chain.\n' \
     "$SCRIPT_NAME" >&2
