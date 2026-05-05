@@ -1,8 +1,10 @@
 ---
-name: gaia-ci-setup
-description: Scaffold a CI pipeline with quality checks. Use when "setup CI pipeline" or /gaia-ci-setup.
+name: gaia-config-ci
+description: Scaffold a CI pipeline with quality checks. Use when "setup CI pipeline" or /gaia-config-ci (formerly /gaia-ci-setup).
 argument-hint: "[--preset solo|small-team|standard|enterprise|custom]"
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit]
+deprecated_aliases: [gaia-ci-setup]
+deprecated_since: sprint-37
 ---
 
 ## Setup

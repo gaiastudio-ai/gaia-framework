@@ -1,9 +1,11 @@
 ---
-name: gaia-performance-review
-description: Run anytime performance bottleneck analysis on a story — N+1 queries, memory/bundle impact, caching, and algorithmic complexity. Emits a machine-readable PASSED/FAILED verdict and updates the Review Gate. Use when "performance review" or /gaia-performance-review.
+name: gaia-perf-deepdive
+description: Run anytime performance bottleneck analysis on a story — N+1 queries, memory/bundle impact, caching, and algorithmic complexity. Emits a machine-readable PASSED/FAILED verdict and updates the Review Gate. Use when "performance review" or /gaia-perf-deepdive (formerly /gaia-performance-review).
 argument-hint: "[story-key]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+deprecated_aliases: [gaia-performance-review]
+deprecated_since: sprint-37
 ---
 
 ## Setup

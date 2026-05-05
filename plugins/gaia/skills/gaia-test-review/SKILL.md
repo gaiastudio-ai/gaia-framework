@@ -1,9 +1,11 @@
 ---
-name: gaia-test-review
-description: Review test quality and identify flakiness. Use when "review tests" or /gaia-test-review.
+name: gaia-review-test
+description: Review test quality and identify flakiness. Use when "review tests" or /gaia-review-test (formerly /gaia-test-review).
 argument-hint: "[story-key]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+deprecated_aliases: [gaia-test-review]
+deprecated_since: sprint-37
 ---
 
 ## Setup

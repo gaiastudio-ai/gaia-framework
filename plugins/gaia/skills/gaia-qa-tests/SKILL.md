@@ -1,9 +1,11 @@
 ---
-name: gaia-qa-tests
-description: Generate QA test cases and review test coverage. Use when "generate QA tests" or /gaia-qa-tests.
+name: gaia-review-qa
+description: Generate QA test cases and review test coverage. Use when "generate QA tests" or /gaia-review-qa (formerly /gaia-qa-tests).
 argument-hint: "[story-key]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+deprecated_aliases: [gaia-qa-tests]
+deprecated_since: sprint-37
 ---
 
 ## Setup

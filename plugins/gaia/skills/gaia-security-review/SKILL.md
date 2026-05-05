@@ -1,9 +1,12 @@
 ---
-name: gaia-security-review
-description: Pre-merge OWASP-focused security review. Use when "security review" or /gaia-security-review.
+name: deprecated-gaia-security-review
+description: DEPRECATED — This skill has been retired. Use /gaia-review-security (canonical, see gaia-review-security/SKILL.md). This file remains only to expose the deprecated alias for one sprint per E69-S1.
 argument-hint: "[story-key]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+deprecated_aliases: [gaia-security-review]
+deprecated_since: sprint-37
+replaced_by: gaia-review-security
 ---
 
 ## Setup
