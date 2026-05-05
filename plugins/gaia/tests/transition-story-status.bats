@@ -597,3 +597,240 @@ EOF
 # exercised by the existing transition-story-status tests via the marker
 # side-effect (the new --status-transition-marker contract); this comment
 # names it textually so the run-with-coverage gate sees an anchor.
+
+# ----------------------------------------------------------------------------
+# E64-S4 — EPICS_AND_STORIES path resolution for sharded layout
+# ----------------------------------------------------------------------------
+# Background: line 209 default `EPICS_AND_STORIES=${PLANNING_ARTIFACTS}/epics-and-stories.md`
+# resolves to the legacy flat path. Post-E53-S224 the canonical artifact is the
+# sharded directory `${PLANNING_ARTIFACTS}/epics-and-stories/index.md` (with
+# legacy alias `${PLANNING_ARTIFACTS}/epics/index.md` for brownfield projects).
+# Without an env override, every transition on a sharded project fails with
+# "epics-and-stories.md not found" and rolls back. The resolver mirrors
+# `validate-gate.sh::check_file_nonempty` (E53-S233): flat first, then sharded
+# `${path%.md}/index.md`, then legacy `epics/index.md` alias.
+#
+# AC1 / AC5 — flat layout works (regression guard)
+# AC2 — sharded layout works without env override
+# AC3 — both layouts present → flat precedence (no test for the alt-path body
+#       since `update_epics_and_stories` only reads the FIRST resolved file)
+# AC4 — these tests provide the bats coverage requested in the AC
+
+# Helper: build a minimal project tree with only the planning-artifacts shape
+# under test, plus a story file the transition can mutate. Sets a per-test
+# PROJECT_PATH and clears the EPICS_AND_STORIES env override so the resolver
+# default path is exercised.
+e64_s4_setup_project() {
+  local layout="$1"   # one of: flat | sharded | sharded-legacy | both | neither
+  local proj="$BATS_TEST_TMPDIR/e64-s4-${layout}-$$"
+  mkdir -p "$proj/docs/implementation-artifacts" \
+           "$proj/docs/planning-artifacts" \
+           "$proj/_memory"
+
+  case "$layout" in
+    flat)
+      cat >"$proj/docs/planning-artifacts/epics-and-stories.md" <<'EOF'
+# Epics and Stories
+
+## Epic E64
+
+### Story E64-AC1: Flat-layout fixture
+- **Status:** ready-for-dev
+
+### Story E64-AC5: Regression fixture
+- **Status:** ready-for-dev
+EOF
+      ;;
+    sharded)
+      mkdir -p "$proj/docs/planning-artifacts/epics-and-stories"
+      cat >"$proj/docs/planning-artifacts/epics-and-stories/index.md" <<'EOF'
+# Epics and Stories (sharded)
+
+### Story E64-AC2: Sharded-layout fixture
+- **Status:** ready-for-dev
+EOF
+      ;;
+    sharded-legacy)
+      mkdir -p "$proj/docs/planning-artifacts/epics"
+      cat >"$proj/docs/planning-artifacts/epics/index.md" <<'EOF'
+# Epics index (legacy alias)
+
+### Story E64-AC2L: Legacy-alias fixture
+- **Status:** ready-for-dev
+EOF
+      ;;
+    both)
+      cat >"$proj/docs/planning-artifacts/epics-and-stories.md" <<'EOF'
+# Epics and Stories (flat — should win)
+
+### Story E64-AC3: Both-layouts fixture
+- **Status:** ready-for-dev
+EOF
+      mkdir -p "$proj/docs/planning-artifacts/epics-and-stories"
+      cat >"$proj/docs/planning-artifacts/epics-and-stories/index.md" <<'EOF'
+# Sharded — should NOT be used when flat is present
+
+### Story E64-AC3: WRONG (shard variant)
+- **Status:** WRONG
+EOF
+      ;;
+    neither) : ;;
+  esac
+
+  printf '%s\n' "$proj"
+}
+
+# Helper: write a story fixture file at a known path under proj root. The
+# locator in transition-story-status.sh checks `${IMPLEMENTATION_ARTIFACTS}/${key}-*.md`
+# directly under implementation-artifacts/ (not in a subfolder), plus
+# `${IMPLEMENTATION_ARTIFACTS}/epic-*/stories/${key}-*.md` for the sharded
+# epic-folder layout. We use the flat form for simplicity here.
+e64_s4_write_story() {
+  local proj="$1" key="$2"
+  local sdir="$proj/docs/implementation-artifacts"
+  mkdir -p "$sdir"
+  cat >"$sdir/${key}-fixture.md" <<EOF
+---
+template: 'story'
+key: "${key}"
+title: "Fixture for ${key}"
+epic: "E64"
+status: ready-for-dev
+sprint_id: "fixture-sprint"
+priority: "P0"
+size: "XS"
+points: 1
+risk: "low"
+---
+
+# Story: Fixture for ${key}
+
+> **Status:** ready-for-dev
+EOF
+  printf '%s\n' "$sdir/${key}-fixture.md"
+}
+
+# Helper: AC1 / AC5 fixtures cross-check the story file under flat
+# implementation-artifacts/ (not subfoldered).
+e64_s4_storyfile() {
+  local proj="$1" key="$2"
+  printf '%s\n' "$proj/docs/implementation-artifacts/${key}-fixture.md"
+}
+
+# Helper: run the transition with a project root and minimal env (NO env
+# override on EPICS_AND_STORIES — that's the path under test).
+e64_s4_run_transition() {
+  local proj="$1" key="$2" target="${3:-in-progress}"
+  unset EPICS_AND_STORIES
+  PROJECT_PATH="$proj" \
+  IMPLEMENTATION_ARTIFACTS="$proj/docs/implementation-artifacts" \
+  PLANNING_ARTIFACTS="$proj/docs/planning-artifacts" \
+  MEMORY_PATH="$proj/_memory" \
+  SPRINT_STATUS_YAML="$proj/docs/implementation-artifacts/sprint-status.yaml" \
+  STORY_INDEX_YAML="$proj/docs/implementation-artifacts/story-index.yaml" \
+  STORY_STATUS_LOCK="$proj/_memory/.story-status.lock" \
+    "$TRANSITION" "$key" --to "$target"
+}
+
+@test "E64-S4 / AC1 — flat layout: transition resolves with no env override" {
+  proj="$(e64_s4_setup_project flat)"
+  e64_s4_write_story "$proj" "E64-AC1" >/dev/null
+
+  run e64_s4_run_transition "$proj" "E64-AC1" "in-progress"
+  [ "$status" -eq 0 ]
+  ! [[ "$output" =~ "not found" ]]
+
+  # Story frontmatter advanced.
+  grep -q '^status: in-progress' "$(e64_s4_storyfile "$proj" "E64-AC1")"
+  # Flat epics-and-stories.md updated.
+  grep -q '^- \*\*Status:\*\* in-progress' "$proj/docs/planning-artifacts/epics-and-stories.md"
+}
+
+@test "E64-S4 / AC2 — sharded layout: resolves to epics-and-stories/index.md" {
+  proj="$(e64_s4_setup_project sharded)"
+  e64_s4_write_story "$proj" "E64-AC2" >/dev/null
+
+  # Confirm flat file does NOT exist (precondition for the AC2 path).
+  ! [ -f "$proj/docs/planning-artifacts/epics-and-stories.md" ]
+
+  run e64_s4_run_transition "$proj" "E64-AC2" "in-progress"
+  [ "$status" -eq 0 ]
+  ! [[ "$output" =~ "epics-and-stories.md not found" ]]
+  ! [[ "$output" =~ "docs/planning-artifacts/docs/planning-artifacts" ]]
+
+  grep -q '^status: in-progress' "$(e64_s4_storyfile "$proj" "E64-AC2")"
+  grep -q '^- \*\*Status:\*\* in-progress' "$proj/docs/planning-artifacts/epics-and-stories/index.md"
+}
+
+@test "E64-S4 / AC2-legacy — sharded layout via legacy epics/index.md alias" {
+  proj="$(e64_s4_setup_project sharded-legacy)"
+  e64_s4_write_story "$proj" "E64-AC2L" >/dev/null
+
+  ! [ -f "$proj/docs/planning-artifacts/epics-and-stories.md" ]
+  ! [ -f "$proj/docs/planning-artifacts/epics-and-stories/index.md" ]
+  [ -f "$proj/docs/planning-artifacts/epics/index.md" ]
+
+  run e64_s4_run_transition "$proj" "E64-AC2L" "in-progress"
+  [ "$status" -eq 0 ]
+
+  grep -q '^- \*\*Status:\*\* in-progress' "$proj/docs/planning-artifacts/epics/index.md"
+}
+
+@test "E64-S4 / AC3 — both layouts present: flat takes precedence" {
+  proj="$(e64_s4_setup_project both)"
+  e64_s4_write_story "$proj" "E64-AC3" >/dev/null
+
+  run e64_s4_run_transition "$proj" "E64-AC3" "in-progress"
+  [ "$status" -eq 0 ]
+
+  # Flat file got the update (precedence: flat wins).
+  grep -q '^- \*\*Status:\*\* in-progress' "$proj/docs/planning-artifacts/epics-and-stories.md"
+  # Sharded variant left unchanged (the WRONG marker stays).
+  grep -q 'WRONG' "$proj/docs/planning-artifacts/epics-and-stories/index.md"
+}
+
+@test "E64-S4 / AC4 — neither layout present: helpful error preserved" {
+  proj="$(e64_s4_setup_project neither)"
+  e64_s4_write_story "$proj" "E64-NEG" >/dev/null
+
+  run e64_s4_run_transition "$proj" "E64-NEG" "in-progress"
+  # With neither layout present, the resolver default is a non-existent flat
+  # path. update_epics_and_stories() raises `exit 5` ("not found"), which the
+  # EXIT trap converts to the wrapper rollback exit code 8 (preserves the
+  # original guard semantics). The user-visible error message must still
+  # reference epics-and-stories and "not found" for log-parser compatibility.
+  [ "$status" -eq 8 ]
+  [[ "$output" =~ "epics-and-stories" ]]
+  [[ "$output" =~ "not found" ]]
+}
+
+@test "E64-S4 / AC5 — no regression: flat-layout behavior byte-stable" {
+  # Build two identical flat-layout fixtures and run the transition on each
+  # under different env-override modes (explicit override vs. default
+  # resolver). The post-transition flat file should be byte-identical.
+  proj_a="$(e64_s4_setup_project flat)"
+  e64_s4_write_story "$proj_a" "E64-AC5" >/dev/null
+  proj_b="$(e64_s4_setup_project flat)"
+  e64_s4_write_story "$proj_b" "E64-AC5" >/dev/null
+
+  # A: explicit env override (legacy invocation pattern).
+  EPICS_AND_STORIES="$proj_a/docs/planning-artifacts/epics-and-stories.md" \
+  PROJECT_PATH="$proj_a" \
+  IMPLEMENTATION_ARTIFACTS="$proj_a/docs/implementation-artifacts" \
+  PLANNING_ARTIFACTS="$proj_a/docs/planning-artifacts" \
+  MEMORY_PATH="$proj_a/_memory" \
+  SPRINT_STATUS_YAML="$proj_a/docs/implementation-artifacts/sprint-status.yaml" \
+  STORY_INDEX_YAML="$proj_a/docs/implementation-artifacts/story-index.yaml" \
+  STORY_STATUS_LOCK="$proj_a/_memory/.story-status.lock" \
+    "$TRANSITION" "E64-AC5" --to in-progress
+
+  # B: no override — relies on the new resolver.
+  run e64_s4_run_transition "$proj_b" "E64-AC5" "in-progress"
+  [ "$status" -eq 0 ]
+
+  # Byte-identical post-state on the flat file.
+  diff -u \
+    "$proj_a/docs/planning-artifacts/epics-and-stories.md" \
+    "$proj_b/docs/planning-artifacts/epics-and-stories.md"
+  [ "$?" -eq 0 ]
+}
