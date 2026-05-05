@@ -295,6 +295,92 @@ check_enum "priority" "P0 P1 P2"
 check_enum "size"     "S M L XL"
 check_enum "risk"     "high medium low"
 
+# ---------- Review Gate body-shape check (E54-S6) ----------
+#
+# Enforce the canonical 3-column Review Gate table shape (`Review | Status |
+# Report`). The E67-S2 incident shipped a 2-column drift that broke the
+# reviews skill; this check catches that drift at validation time. The body
+# scan runs only after frontmatter parsing has succeeded — malformed-
+# frontmatter files have already exited 2 by this point.
+#
+# Algorithm:
+#   1. awk-scan the body for `## Review Gate` (exact, case-sensitive header).
+#   2. After the heading, locate the next pipe-table header row (a line that
+#      starts with `|` and is NOT the separator `|---|---|...|`).
+#   3. Strip the leading/trailing pipes, split on `|`, trim each cell, lower-
+#      case, and compare to the literal triple `review|status|report`.
+#   4. On mismatch, emit `CRITICAL|review_gate|...`. Heading-missing and
+#      table-missing cases each have a distinct message.
+
+REVIEW_GATE_AWK='
+  BEGIN { state = 0 }
+  state == 0 && /^## Review Gate[[:space:]]*$/ { state = 1; next }
+  state == 1 {
+    # Skip blank lines and blockquote prose between heading and table.
+    if ($0 ~ /^[[:space:]]*$/) next
+    if ($0 ~ /^>/) next
+    # Bail out if a new section starts before any table appears.
+    if ($0 ~ /^##[[:space:]]/) { state = 3; exit }
+    # Pipe-table header row: starts with `|` and contains a non-separator cell.
+    if ($0 ~ /^\|/) {
+      # Reject the separator row as the header (all dashes between pipes).
+      tmp = $0
+      gsub(/[[:space:]|:-]/, "", tmp)
+      if (tmp == "") next
+      print
+      state = 2
+      exit
+    }
+  }
+  END {
+    if (state == 0) exit 10  # heading missing
+    if (state == 1) exit 11  # heading present, no table found before EOF
+    if (state == 3) exit 11  # heading present, next ## arrived first
+    # state == 2: header row was printed and exit 0
+  }
+'
+
+review_gate_status=0
+review_gate_header="$(awk "$REVIEW_GATE_AWK" "$file")" || review_gate_status=$?
+
+case "$review_gate_status" in
+  0)
+    # Header row captured — verify the column triple.
+    header_trim="$(printf '%s' "$review_gate_header" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    # Strip a single leading and trailing `|` if present.
+    header_inner="${header_trim#|}"
+    header_inner="${header_inner%|}"
+    # Lowercase + per-cell trim.
+    normalized="$(printf '%s' "$header_inner" | awk -F'|' '
+      {
+        out = ""
+        for (i = 1; i <= NF; i++) {
+          cell = $i
+          sub(/^[[:space:]]+/, "", cell)
+          sub(/[[:space:]]+$/, "", cell)
+          # Lowercase via tr-equivalent.
+          cell = tolower(cell)
+          if (i > 1) out = out "|"
+          out = out cell
+        }
+        print out
+      }
+    ')"
+    if [ "$normalized" != "review|status|report" ]; then
+      # Count the columns for the diagnostic.
+      col_count="$(printf '%s\n' "$normalized" | awk -F'|' '{print NF}')"
+      append_finding "CRITICAL" "review_gate" \
+        "expected 3 columns 'Review|Status|Report', got ${col_count} columns '${header_trim}' (Report column drift breaks the reviews skill)"
+    fi
+    ;;
+  10)
+    append_finding "CRITICAL" "review_gate" "missing Review Gate section (expected '## Review Gate' heading)"
+    ;;
+  11)
+    append_finding "CRITICAL" "review_gate" "missing Review Gate table (heading present but no pipe-table follows)"
+    ;;
+esac
+
 # ---------- Canonical filename check (folded from E63-S4 / Work Item 6.10) ----------
 #
 # Skip when key or title was already flagged missing — emitting a noisy
