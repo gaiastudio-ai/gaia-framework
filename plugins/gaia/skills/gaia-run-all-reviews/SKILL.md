@@ -59,6 +59,11 @@ A summary block with 5 SKIPPED + 1 ran reads (excerpt):
   4. Test Automation (gaia-test-automate) — gate "Test Automation", short-name `test-automate`
   5. Test Review (gaia-test-review) — gate "Test Review", short-name `test-review`
   6. Performance Review (gaia-review-perf) — gate "Performance Review", short-name `review-perf`
+- **Action-skill exclusion (E67-S2 / AC6 / source-report SS 5.8 / SS 11).** `/gaia-test-automate` is an **action skill, not a review skill**. The "Test Automation" judgment in slot #4 above is a review (read test files, judge automation adequacy) and MUST NOT invoke `/gaia-test-automate` itself — generation is action-taking and would mutate the codebase mid-review. `/gaia-test-automate` is **triggered on demand** by:
+  - explicit user invocation (`/gaia-test-automate {story_key}`),
+  - `/gaia-review-qa` gap findings (uncovered ACs in `qa-test-cases-{story_key}.json`),
+  - `/gaia-review-test` failure findings on missing automation coverage for a P0 AC.
+  When triggered, `/gaia-test-automate` runs in its own context with the two-phase persona wiring (Phase 1 Sable, Phase 2 stack-developer per `agent-overlay.sh`).
 - **Never short-circuit on failure.** If a reviewer returns FAILED, record the verdict and continue to the next reviewer. The entire purpose is to surface ALL issues in one pass.
 - After each reviewer completes, update the Review Gate table via `scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" --verdict {PASSED|FAILED}`.
 - If a reviewer crashes (unexpected non-zero exit / malformed verdict), record FAILED for that reviewer and continue (AC-EC7).
