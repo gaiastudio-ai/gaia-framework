@@ -43,6 +43,7 @@ The skill runs ten steps in strict order, mirroring the legacy `validate-framewo
 7. **Skill Index Integrity** — verify every entry in `_skill-index.yaml` has a real file and valid line ranges
 8. **Knowledge Index Integrity** — verify every entry in knowledge `_index.csv` has a real fragment under 200 lines
 9. **Monolith-Shard Sync** (Tier 1, E53-S243) — invoke `plugins/gaia/scripts/check-monolith-shard-sync.sh` and fold each emitted `WARNING` line into the findings list at WARNING severity. Documented exceptions (Change Log monolith-as-source-of-truth, `_preamble.md` partial mirror) are honored by the script and produce no false positives.
+9b. **Orphan-tmp Sweep Allowlist** (E64-S6) — static check rejecting any startup orphan-tmp `find ... -delete` whose target paths fall outside the allowlist (`${PLANNING_ARTIFACTS}/epics`, `${IMPLEMENTATION_ARTIFACTS}`, `${MEMORY_PATH}`). Out-of-bounds sweeps are CRITICAL findings.
 10. **Report** — emit PASS/FAIL overall + itemized findings grouped by severity
 
 ## Step 1 — File Inventory
@@ -110,6 +111,24 @@ The skill runs ten steps in strict order, mirroring the legacy `validate-framewo
 - The script always exits 0 (advisory) and prints zero or more lines on stdout. Lines beginning with `WARNING:` are folded into the findings list at WARNING severity, preserving the section name and diverging file paths in the `Finding` column. Lines beginning with `INFO:` are folded at INFO severity (e.g., monolith exists but shard directory missing).
 - The script enforces the ADR-070 "Monolith-vs-Shard Sync Contract" subsection. Documented exceptions (Change Log direction is monolith-as-source-of-truth; `_preamble.md` is a partial frontmatter-only mirror) are honored by the script and MUST NOT be re-implemented in this skill — keep the script as the single source of truth.
 - Suggested fix for each `WARNING:` finding: run `/gaia-shard-doc <monolith>` (when the monolith was edited) or `/gaia-merge-docs <shard-dir>` (when shards were edited) before commit, per the sync contract.
+
+## Step 9b — Orphan-tmp Sweep Allowlist (E64-S6)
+
+- Static check: scan every `*.sh` under `plugins/gaia/scripts/` and `plugins/gaia/skills/**/scripts/` for orphan-tmp sweep call sites — lines containing both `*.tmp.??????` and `-delete`. Each match is a startup-sweep `find` invocation introduced for E64-S6 (or a future caller adopting the same pattern).
+- Inline `!` bash reference idiom:
+
+```bash
+grep -rEn "\*\.tmp\.\?\?\?\?\?\?.*-delete|find[^|;]*-name[[:space:]]*['\"]?\\*\\.tmp\\.\\?\\?\\?\\?\\?\\?['\"]?[^|;]*-delete" \
+  plugins/gaia/scripts plugins/gaia/skills 2>/dev/null
+```
+
+- For each hit, extract the `find` argument paths and verify EVERY path expands to one of the allowlisted roots:
+  - `${PLANNING_ARTIFACTS}/epics`
+  - `${IMPLEMENTATION_ARTIFACTS}`
+  - `${MEMORY_PATH}`
+- Reject (CRITICAL) any sweep whose first `find` argument resolves to a path outside the allowlist — explicitly forbidden targets include `/tmp`, `$HOME`, `${PROJECT_PATH}` (root), `~`, `${HOME}`, `/var/tmp`. Hard fail the framework validation report with severity CRITICAL and a finding row that names the offending file and line number.
+- Suggested fix for each CRITICAL finding: re-scope the sweep to one of the three allowlisted roots, or remove the sweep entirely. The allowlist exists to bound blast radius — an orphan-tmp sweep MUST NOT walk arbitrary filesystem paths.
+- This static check enforces AC4 of E64-S6 ("a static check in `/gaia-validate-framework` rejects any sweep call that targets a path outside the allowlist") and is the single source of truth for the sweep allowlist policy. Future scripts adopting the sweep MUST land their call site under one of the three roots.
 
 ## Step 10 — Report
 
