@@ -93,3 +93,48 @@ Custom adapters live under `custom/adapters/{tool}/` (project root) and follow t
 - FR-RSV2-17, FR-RSV2-18, FR-RSV2-19, FR-RSV2-20 — adapter pattern PRD requirements.
 - NFR-RSV2-9 — probe correctness invariants.
 - NFR-RSV2-11 — `contract.bats` per built-in adapter.
+
+## Cascade-skill to Re-shard Contract (E53-S244, ADR-070)
+
+> This contract is unrelated to the adapter pattern above. It is documented
+> here because BOUNDARIES.md is the agreed home for cross-skill stability
+> contracts pending the BOUNDARIES home reorganization tracked by E75-S1.
+> When E75-S1 lands, this section migrates to its replacement.
+
+Editing a monolith document (`docs/planning-artifacts/prd.md`,
+`docs/planning-artifacts/architecture.md`,
+`docs/planning-artifacts/epics-and-stories.md`) MUST be followed by a
+re-shard so the per-section shards under the matching shard directory
+(`prd/`, `architecture/`, `epics/`) stay aligned with the monolith. The
+contract is enforced as a documented post-step in five cascade skills:
+
+| Cascade skill | Re-shard step | Monolith touched | Shard directory |
+|---|---|---|---|
+| `/gaia-add-feature` | Step 8c | classification-dependent (PRD, architecture, epics-and-stories) | matching shard dirs |
+| `/gaia-edit-prd` | Step 8 | `prd.md` | `docs/planning-artifacts/prd/` |
+| `/gaia-edit-arch` | Step 9 | `architecture.md` | `docs/planning-artifacts/architecture/` |
+| `/gaia-add-stories` | Step 10 | `epics-and-stories.md` | `docs/planning-artifacts/epics/` |
+| `/gaia-create-story` | Step 6b | `epics-and-stories.md` (via `transition-story-status.sh`) | `docs/planning-artifacts/epics/` |
+
+Each cascade skill invokes `/gaia-shard-doc <monolith>` after the monolith
+write completes, then runs `check-monolith-shard-sync.sh` to surface any
+residual drift. The check is advisory (always exits 0); WARNING lines
+are surfaced to the user but do not halt the skill.
+
+The `--monolith-only` flag on each cascade skill is the documented
+opt-out: the user takes responsibility for re-running `/gaia-shard-doc`
+(or merging shards back to the monolith) before commit. Use this flag
+only for atomic same-PR edits where the re-shard will land in the same
+commit.
+
+`/gaia-shard-doc` itself is unchanged by this contract — it is the
+deterministic re-shard implementation cascade skills invoke. Skills
+that did not previously declare the post-step continue to function for
+backwards compatibility (additive change).
+
+Refs:
+
+- ADR-070 — Auto-sharding policy; monolith-vs-shard sync contract.
+- E53-S243 — static check `monolith-shard-sync` and ADR-070 amendment.
+- E53-S244 — cascade-skill auto-invoke contract (this section).
+- `plugins/gaia/scripts/check-monolith-shard-sync.sh` — advisory drift detector.
