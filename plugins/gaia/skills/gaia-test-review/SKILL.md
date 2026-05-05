@@ -26,6 +26,7 @@ This skill pattern-matches against `gaia-code-review` (E65-S2) as the canonical 
 
 ## Critical Rules
 
+- Knowledge fragments are bundled in this skill's `knowledge/` directory (test-isolation, deterministic-testing, selector-resilience, visual-testing, test-healing) — load them JIT when referenced by a phase, never pre-load.
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-review-test [story-key]".
 - The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
 - The story MUST be in `review` status. If not, fail with "story must be in review status before test review".
