@@ -1,0 +1,35 @@
+#!/usr/bin/env bats
+# adapters/eslint-plugin-sonarjs/test/contract.bats — ADR-078 adapter parity (E66-S2, NFR-RSV2-11).
+
+load '../../_contract-helper.bash'
+bats_require_minimum_version 1.5.0
+
+setup() { contract_setup; }
+teardown() { contract_teardown; }
+
+@test "eslint-plugin-sonarjs contract: adapter.json + run.sh present and well-formed" {
+  assert_files_exist
+}
+
+@test "eslint-plugin-sonarjs contract: state=available when tool on PATH and matching files" {
+  local ext; ext="$(_contract_first_ext)"
+  assert_state "$(_contract_provider)" available "$ext" 0 "" 0
+  assert_fragment_shape
+}
+
+@test "eslint-plugin-sonarjs contract: state=expected_and_missing when tool absent from PATH" {
+  local ext; ext="$(_contract_first_ext)"
+  assert_state "$(_contract_provider)" expected_and_missing "$ext" 0 "" 0
+  assert_fragment_shape
+}
+
+@test "eslint-plugin-sonarjs contract: state=ran_and_errored when run.sh exits non-zero" {
+  local ext; ext="$(_contract_first_ext)"
+  assert_state "$(_contract_provider)" ran_and_errored "$ext" 1 "eslint config invalid" 0
+  assert_fragment_shape
+}
+
+@test "eslint-plugin-sonarjs contract: state=not_applicable when file-list has no TS/JS files" {
+  assert_state "$(_contract_provider)" not_applicable "" 0 "" 0
+  assert_fragment_shape
+}

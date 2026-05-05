@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gaiastudio.ai/schemas/probe-output.schema.json",
+  "title": "GAIA tool-availability-probe output",
+  "description": "Single-line JSON object emitted on stdout by plugins/gaia/scripts/tool-availability-probe.sh per ADR-078 / FR-RSV2-18. Exactly three keys; no additional properties. Consumed by adapter contract.bats and (downstream) verdict-resolver.sh after mapping state -> check.status.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["state", "skip_reason", "error_detail"],
+  "properties": {
+    "state": {
+      "type": "string",
+      "enum": ["available", "expected_and_missing", "ran_and_errored", "not_applicable"],
+      "description": "Probe verdict per FR-RSV2-18. available = tool installed + applicable + run.sh exit 0; expected_and_missing = tool declared but not on PATH (BLOCKED); ran_and_errored = adapter run.sh non-zero or timed out (BLOCKED); not_applicable = no matching files in file-list (silent skip)."
+    },
+    "skip_reason": {
+      "type": ["string", "null"],
+      "description": "Required (non-null) when state == not_applicable. Null otherwise."
+    },
+    "error_detail": {
+      "type": ["string", "null"],
+      "description": "Required (non-null) when state == ran_and_errored — captures stderr or timeout reason. Null otherwise."
+    }
+  }
+}

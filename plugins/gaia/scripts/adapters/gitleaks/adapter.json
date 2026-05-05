@@ -1,0 +1,10 @@
+{
+  "provider": "gitleaks",
+  "category": "secret-scan",
+  "version-range": ">=8.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 180,
+  "file-extensions": [],
+  "scope": "project",
+  "description": "Gitleaks secret-scanner — scans repo history & working tree for hardcoded credentials. Project-scoped: applies to every repo regardless of file extension."
+}

@@ -1,0 +1,9 @@
+{
+  "provider": "radon",
+  "category": "linter",
+  "version-range": ">=5.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 120,
+  "file-extensions": [".py"],
+  "description": "Radon — cyclomatic-complexity & maintainability metrics for Python source."
+}

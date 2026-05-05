@@ -1,0 +1,9 @@
+{
+  "provider": "semgrep",
+  "category": "sast",
+  "version-range": ">=1.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 300,
+  "file-extensions": [".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".java", ".rb", ".php"],
+  "description": "Semgrep static-analysis SAST scanner — multi-language pattern-based security & quality rules."
+}
