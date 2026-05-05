@@ -44,7 +44,7 @@ The skill runs five steps in strict order, mirroring the legacy `shard-doc.xml`:
 
 ## Step 2 — Parse Sections
 
-- Identify all sections at the split level (default `##`; overridable via `--level`). For the default H2 level, delegate boundary detection to `scripts/parse-h2-boundaries.sh <source_file>` — the helper emits one `<line_number>:<heading_text>` line per real H2 boundary and is code-block-aware per the Critical Rule above. For H1 / H3 overrides, apply the same toggle-on-` ``` ` state machine inline (or extend the helper) — never use a naive `grep -E '^### '` scan.
+- Identify all sections at the split level (default `##`; overridable via `--level`). For the default H2 level, delegate boundary detection to `scripts/parse-h2-boundaries.sh <source_file>` — the helper emits one `<line_number>:<heading_text>` line per real H2 boundary and is code-block-aware per the Critical Rule above. For the H3 level, delegate the entire shard-emit pipeline (boundary detection + per-section file write + `index.md` + `_preamble.md`) to `scripts/h3-shard.sh --input <source_file> --output-dir <out_dir>` — the helper produces the H3 shards, an `index.md` table of contents, and an optional `_preamble.md` in one call. For H1 overrides, apply the same toggle-on-` ``` ` state machine inline (or extend the helper) — never use a naive `grep -E '^# '` scan.
 - **Preamble:** any content before the first split-level heading becomes `_preamble.md`. If there is no content before the first heading, omit the preamble file.
 - Generate a filename for each section from its heading text:
   1. Lowercase
@@ -94,6 +94,7 @@ The skill runs five steps in strict order, mirroring the legacy `shard-doc.xml`:
 - ADR-042 — Scripts-over-LLM for Deterministic Operations (inline `!` bash for `mkdir`).
 - ADR-048 — Program-close deletion policy for legacy engine/workflows/tasks.
 - ADR-070 — Auto-sharding policy; code-block-aware H2 detection contract enforced by `scripts/parse-h2-boundaries.sh` (E53-S236).
+- E53-S245 — H3 shard pipeline lives at `scripts/h3-shard.sh`; flag CLI is `--input <file> --output-dir <dir>`. Emits per-section shards, `index.md`, and an optional `_preamble.md`. Idempotent across repeated runs (byte-identical output).
 - FR-323 — Native Skill Format Compliance.
 - NFR-053 — Functional parity with the legacy task.
 - Reference implementation: `plugins/gaia/skills/gaia-fix-story/SKILL.md`.
