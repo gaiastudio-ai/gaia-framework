@@ -37,6 +37,13 @@ fi
 # shellcheck disable=SC1090
 source "$INVARIANTS_LIB"
 
+# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
+# work tree. Runs BEFORE the security invariants so a non-git CWD never reaches
+# the protected-branch / staged-secrets / pr-target checks.
+# shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
+. "$SCRIPT_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
+non_git_cwd_skip "$SCRIPT_NAME" || exit 0
+
 if [ $# -lt 2 ]; then
   die "usage: merge.sh <pr_number> <story_key> [--strategy <merge|squash|rebase>] [--delete-branch]"
 fi

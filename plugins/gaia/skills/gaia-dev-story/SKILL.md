@@ -333,11 +333,14 @@ narrative that previously inferred CI configuration inline (per ADR-057, ADR-073
 AF-2026-04-28-6, FR-DSS-3).
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/promotion-chain-guard.sh`.
-  Exit 0 = `PRESENT:<branch>` on stdout (the resolved first promotion-chain branch);
-  exit 1 = `ABSENT` (stderr names the missing config and points to `/gaia-ci-edit`).
-  On `ABSENT`, Steps 10–13 (push, PR, CI, merge) MUST be skipped — the story can
-  still complete locally but the promotion gates do not fire. On `PRESENT`, capture
-  the branch as `$PR_BASE` for use by `pr-create.sh --base`.
+  Exit 0 with `PRESENT:<branch>` on stdout = resolved first promotion-chain branch;
+  exit 1 = `ABSENT` (stderr names the missing config and points to `/gaia-ci-edit`);
+  exit 0 with empty stdout AND a `skipped (non-git CWD)` line on stderr = non-git
+  workspace skip (E53-S234, ADR-070 / ADR-072 amendment — the project-root `docs/`
+  layout is outside any git work tree).
+  On `ABSENT` or non-git skip, Steps 10–13 (push, PR, CI, merge) MUST be skipped —
+  the story can still complete locally but the promotion gates do not fire. On
+  `PRESENT`, capture the branch as `$PR_BASE` for use by `pr-create.sh --base`.
 - For commit-message construction, run
   `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/commit-msg.sh {story_path}`
   and feed its stdout to `git commit -F -`. Do NOT compose Conventional Commit

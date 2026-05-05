@@ -13,6 +13,9 @@ setup() {
   GUARD="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-dev-story/scripts" && pwd)/promotion-chain-guard.sh"
   cd "$TEST_TMP"
   mkdir -p config
+  # E53-S234: the guard now skip-with-warnings on non-git CWD. To exercise the
+  # PRESENT/ABSENT contract, the test fixture must be inside a git work tree.
+  git init -q "$TEST_TMP" 2>/dev/null || true
 }
 
 teardown() { common_teardown; }

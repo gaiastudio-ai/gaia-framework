@@ -38,6 +38,13 @@ fi
 # shellcheck disable=SC1090
 source "$INVARIANTS_LIB"
 
+# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
+# work tree. Runs BEFORE security invariants so a non-git CWD never reaches
+# the protected-branch / staged-secrets checks.
+# shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
+. "$SCRIPT_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
+non_git_cwd_skip "$SCRIPT_NAME" || exit 0
+
 if [ $# -lt 2 ]; then
   die "usage: pr-create.sh <story_key> <title> [--base <branch>]"
 fi

@@ -26,6 +26,13 @@ SCRIPT_NAME="gaia-dev-story/git-branch.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
+# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
+# work tree. Replaces the prior `die "not a git repository"` so Steps 10-13
+# degrade gracefully when project-root has no .git.
+# shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
+GUARD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$GUARD_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
+
 if [ $# -lt 2 ]; then
   die "usage: git-branch.sh <story_key> <slug>"
 fi
@@ -37,10 +44,9 @@ BRANCH_NAME="feat/${STORY_KEY}-${SLUG}"
 WORK_DIR="${PROJECT_PATH:-.}"
 cd "$WORK_DIR" || die "cannot cd to $WORK_DIR"
 
-# Verify we are in a git repo
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  die "not a git repository: $WORK_DIR"
-fi
+# Non-git CWD detection (post-cd so we check the resolved working directory).
+# Replaces the prior `die` semantics; non-git CWD now exits 0 with a warning.
+non_git_cwd_skip "$SCRIPT_NAME" || exit 0
 
 # Check if the branch already exists (local)
 if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME" 2>/dev/null; then
