@@ -59,6 +59,19 @@ Phase 2 calls `verdict-resolver.sh --action-mode --analysis-results <path>` with
 - **REQUEST_CHANGES** ⇐ placeholders detected OR tests mock the system under test OR generated tests break the existing suite.
 - **BLOCKED** ⇐ `blocking_failure` ∈ `{plan_tamper, target_outside_allowlist, runner_unavailable, plan_drift, malformed_output}` OR plan missing OR execution did not succeed.
 
+### Coverage-delta gate (E67-S3, AC2 / AC3 / AC4 / AC6)
+
+In addition to the placeholder gate above, Phase 2 captures a coverage-delta as a verdict input. The flow is deterministic shell — no LLM judgment involved (ADR-042, FR-RSV2-2):
+
+1. **Capture baseline coverage** — BEFORE writing generated test files, run the project's coverage command (resolved from `project-config.yaml` under `test_execution.coverage_command`) and persist its report to `${TEST_AUTOMATE_DIR}/coverage-baseline.{lcov|json}`.
+2. **Capture current coverage** — AFTER writing generated tests AND after the Test Execution Bridge run completes green, re-run the same coverage command and persist its report to `${TEST_AUTOMATE_DIR}/coverage-current.{lcov|json}`.
+3. **Compute delta** — invoke `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/action/coverage-delta.sh --baseline <pre> --current <post>` and persist its JSON output to `${TEST_AUTOMATE_DIR}/coverage-delta.json`.
+4. **Pipe into the verdict resolver** — invoke `verdict-resolver.sh ... --coverage-delta ${TEST_AUTOMATE_DIR}/coverage-delta.json` (alongside `--action-mode` or the analysis/llm-findings pair, depending on the call site). The resolver inserts the coverage-delta rule between the LLM-Critical rule and the default APPROVE branch — `coverage_delta <= 0` yields `REQUEST_CHANGES` with a stderr diagnostic citing the regression amount or "zero coverage delta".
+
+Verdict precedence is unchanged for the four pre-S3 rules: `errored -> BLOCKED > tool-failed-blocking -> REQUEST_CHANGES > LLM-Critical -> REQUEST_CHANGES`. Coverage-delta fires ONLY when none of the higher-priority rules has fired (AC6).
+
+Skipped under `--scaffold` mode (scaffolds intentionally generate no real coverage). Skipped when `test_execution.coverage_command` is unset in `project-config.yaml` (graceful degrade — log to stderr and proceed without the coverage-delta input, preserving pre-S3 behavior).
+
 ## Setup
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-test-automate/scripts/setup.sh
