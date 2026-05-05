@@ -21,6 +21,10 @@
 #     - update_sprint_status_yaml      — rewrites the sprint-status.yaml entry
 #     - update_epics_and_stories       — rewrites/inserts the **Status:** line
 #     - update_story_index_yaml        — creates/updates story-index.yaml entry
+#     - resolve_epics_and_stories_path — E64-S4 dual-layout resolver for the
+#                                       EPICS_AND_STORIES default (flat → sharded
+#                                       → legacy alias); exercised end-to-end by
+#                                       the E64-S4 @test cases below
 #     - snapshot_for_rollback          — pre-flight per-file backup
 #     - restore_snapshot               — invoked by rollback() on partial failure
 #     - cleanup_snapshots              — removes per-file backups on success
