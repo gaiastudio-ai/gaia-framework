@@ -1,10 +1,63 @@
 ---
 name: gaia-test-automate
 description: Expand automated test coverage for a story. Use when "automate tests" or /gaia-test-automate.
-argument-hint: "[story-key]"
+argument-hint: "[story-key] [--scaffold]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 ---
+
+## Action Skill — Trigger Model (E67-S2)
+
+`/gaia-test-automate` is an **action skill**, not a review skill. Per source-report SS 5.8 / SS 11 it is **excluded from the default `/gaia-run-all-reviews` sequence** and is only triggered by:
+
+1. **Explicit user invocation** — `/gaia-test-automate {story_key}` from the developer.
+2. **`/gaia-review-qa` gap findings** — when the QA review surfaces uncovered ACs in `qa-test-cases-{story_key}.json`, the orchestrator MAY invoke `/gaia-test-automate` to fill the gap.
+3. **`/gaia-review-test` failure findings** — when the Test Review fails on missing automation coverage for a P0 AC, the orchestrator MAY invoke `/gaia-test-automate` to land the missing automation.
+
+`/gaia-run-all-reviews` MUST NOT include `/gaia-test-automate` in its default canonical sequence (Code Review, QA Tests, Security Review, Test Review, Performance Review). The five review skills are evidence-collecting; `/gaia-test-automate` is action-taking and would otherwise mutate the codebase mid-review.
+
+### Two-phase action-skill nature (AC5)
+
+The skill executes in two phases under distinct personas resolved via `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh`:
+
+| Phase | Persona resolution | Persona | Role |
+|-------|---------------------|---------|------|
+| Phase 1 — Planning | `agent-overlay.sh --skill gaia-test-automate` | Sable (test-architect) | Reads `qa-test-cases-{story_key}.json`, picks tests to write, emits the ADR-051 plan file with `analyzed_sources[]` + `proposed_tests[]`. |
+| Phase 2 — Implementation | `agent-overlay.sh --skill gaia-review-code --stack {stack}` | Stack-developer (Cleo / Hugo / Ravi / Lena / Freya / Talia / Christy per `load-stack-persona.sh`) | Executes the approved plan via `phase2-execute.sh`: writes test files, runs the Test Execution Bridge, records evidence. |
+
+Phase 1 lives inside the seven Review Phases (fork-isolated analysis, read-only). Phase 2 runs in main context with full Write / Edit / Bash via `phase2-execute.sh`.
+
+### `--scaffold` flag
+
+When invoked with `--scaffold`, Phase 2 produces SCAFFOLD-ONLY output (intentional placeholder skeletons for downstream developers to flesh out). Behavior differences vs. default mode:
+
+- Generated tests use `test.skip` / `skip "..."` placeholders.
+- The mandatory `placeholder-test-detector.sh` Phase 2 gate (Step 3b) is **skipped** — scaffolds are expected to contain placeholders.
+- The Review Gate Test Automation row stays **UNVERIFIED** — scaffolds NEVER flip the gate to PASSED.
+
+Default mode (no `--scaffold`) generates implementation-aware tests (real imports + real assertions referencing the story's File List), runs the placeholder detector as a mandatory post-generation gate, and flips the Review Gate to PASSED only when all generated tests are clean and execute green.
+
+### Placeholder gate (E67-S2, AC1 / AC2 / AC8)
+
+Phase 2 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/placeholder-test-detector.sh` after test generation in default mode. The detector flags:
+
+- `expect(true)` / `expect(false)` — vacuous boolean assertions.
+- `assert True` / `assert False` (Python).
+- `assert_true(...)` / `assert_false(...)`.
+- `test.todo(...)` / `test.skip(...)` / `it.skip(...)` / `xit(...)` / `xdescribe(...)` / `xcontext(...)` / `describe.skip(...)`.
+- Empty `it(...)` / `test(...)` blocks (single-line `() => {}` callback) and empty `@test "..." {}` bats blocks.
+
+Any hit fails Phase 2 with verdict `REQUEST_CHANGES` via `verdict-resolver.sh --action-mode` (the action-skill verdict path). The Review Gate Test Automation row MUST NOT update to PASSED in that case.
+
+The same `review-common/placeholder-test-detector.sh` instance is referenced by `/gaia-review-test` Phase 3A (per E67-S1) — there is no duplicate copy under either skill's `scripts/` directory.
+
+### Verdict resolver action-skill semantics (AC7)
+
+Phase 2 calls `verdict-resolver.sh --action-mode --analysis-results <path>` with a flat JSON document containing the action-skill outcome flags. Mapping:
+
+- **APPROVE** ⇐ plan present + execution success + no placeholders + no SUT-mocking + does not break existing suite.
+- **REQUEST_CHANGES** ⇐ placeholders detected OR tests mock the system under test OR generated tests break the existing suite.
+- **BLOCKED** ⇐ `blocking_failure` ∈ `{plan_tamper, target_outside_allowlist, runner_unavailable, plan_drift, malformed_output}` OR plan missing OR execution did not succeed.
 
 ## Setup
 
