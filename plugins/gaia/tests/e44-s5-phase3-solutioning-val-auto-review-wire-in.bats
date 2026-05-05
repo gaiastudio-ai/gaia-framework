@@ -308,10 +308,11 @@ teardown() { common_teardown; }
   [ "$count" = "13" ]
 }
 
-@test "step-count: gaia-edit-arch has 8 Step headings after wire-in" {
+@test "step-count: gaia-edit-arch has 9 Step headings after wire-in" {
+  # 9 steps: 8 from Val auto-review wire-in + 1 added by E53-S244 (Re-shard).
   local count
   count=$(grep -cE '^### Step [0-9]+ —' "$SKILLS_DIR/gaia-edit-arch/SKILL.md")
-  [ "$count" = "8" ]
+  [ "$count" = "9" ]
 }
 
 @test "step-count: gaia-review-api has 6 Step headings after wire-in" {

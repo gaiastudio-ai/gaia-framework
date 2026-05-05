@@ -180,6 +180,8 @@ Editing the architecture monolith MUST be followed by a re-shard so the per-sect
 
 This step runs in YOLO mode automatically — re-sharding is deterministic per ADR-042 and needs no user prompt. It is purely additive: skills that did not previously include this step continue to function for backwards compatibility (AC8 of E53-S244).
 
+> `!scripts/write-checkpoint.sh gaia-edit-arch 9 project_name="$PROJECT_NAME" edit_scope=reshard reshard_outcome="$RESHARD_OUTCOME"`
+
 ## Validation
 
 <!--
