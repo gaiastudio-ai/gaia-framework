@@ -125,6 +125,55 @@ EOF
   echo "$output" | grep -q "BLOCKED"
 }
 
+@test "AC7 contradiction pattern: regime-A populates → regime-B empties → regime-C re-populates differently" {
+  # E68-S2 AC7 / Test Scenario #10 — declaration-order contradiction fixture.
+  # Per gaia-config-validate/SKILL.md Step 4: a regime that empties an array a
+  # previous regime populated, AND a subsequent regime re-populates that array
+  # differently, is a WARNING-class contradiction.
+  #
+  # The merger is RFC-7396 (replace semantics on arrays). This test fixes the
+  # MERGE-CHAIN INPUT CONDITIONS the contradiction detector consumes — base +
+  # 3 regimes that exercise populate / empty / re-populate-differently — and
+  # asserts the merged output state matches the documented latest-wins
+  # outcome. The WARNING-emission step itself is LLM-driven (no shell script
+  # emits the WARNING line) and is exercised at /gaia-config-validate runtime.
+
+  # base: empty array
+  cat >"$TMP_DIR/rubrics/base/code.json" <<'EOF'
+{"schema_version":"1.0","skill":"code","severity_rules":[]}
+EOF
+  # regime-A populates with 2 rules
+  cat >"$TMP_DIR/rubrics/regimes/regime-a.json" <<'EOF'
+{"schema_version":"1.0","skill":"code","severity_rules":[
+  {"id":"a.r1","category":"cat-a","pattern":"pa1","severity":"High","description":"a-r1"},
+  {"id":"a.r2","category":"cat-a","pattern":"pa2","severity":"Medium","description":"a-r2"}
+]}
+EOF
+  # regime-B empties the array
+  cat >"$TMP_DIR/rubrics/regimes/regime-b.json" <<'EOF'
+{"schema_version":"1.0","skill":"code","severity_rules":[]}
+EOF
+  # regime-C re-populates with 1 different rule
+  cat >"$TMP_DIR/rubrics/regimes/regime-c.json" <<'EOF'
+{"schema_version":"1.0","skill":"code","severity_rules":[
+  {"id":"c.r1","category":"cat-c","pattern":"pc1","severity":"Critical","description":"c-r1"}
+]}
+EOF
+
+  run "$LOADER" --skill code --rubrics-root "$TMP_DIR/rubrics" \
+      --regimes "regime-a,regime-b,regime-c" --no-domain --no-project
+  [ "$status" -eq 0 ]
+
+  # Final array reflects regime-C only (latest-wins) — confirms input
+  # conditions for the contradiction detector are exercised end-to-end.
+  local rules_count
+  rules_count=$(printf '%s' "$output" | jq '.severity_rules | length')
+  [ "$rules_count" = "1" ]
+  local final_id
+  final_id=$(printf '%s' "$output" | jq -r '.severity_rules[0].id')
+  [ "$final_id" = "c.r1" ]
+}
+
 @test "missing regime file exits non-zero with actionable error" {
   valid_rubric "code" >"$TMP_DIR/rubrics/base/code.json"
   run "$LOADER" --skill code --rubrics-root "$TMP_DIR/rubrics" --regimes "nonexistent" --no-domain --no-project
