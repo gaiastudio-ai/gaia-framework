@@ -86,3 +86,5 @@ module,phase,name,code,command,required,agent-name,description,output-location
 "lifecycle","4-implementation","val-validate-plan","val-validate-plan","gaia-val-validate-plan","false","validator","Validate implementation plan before execution","docs/implementation-artifacts"
 "lifecycle","4-implementation","val-refresh-ground-truth","val-refresh-ground-truth","gaia-refresh-ground-truth","false","validator","Rescan filesystem and update verified ground truth","_memory/validator-sidecar"
 "lifecycle","4-implementation","val-save-session","val-save-session","gaia-val-save-session","false","validator","Persist validation decisions to memory sidecar","_memory/validator-sidecar"
+"lifecycle","4-implementation","validate-rubric","validate-rubric","gaia-validate-rubric","false","validator","Validate a single rubric file against rubric.schema.json (E68-S2)","plugins/gaia/rubrics"
+"lifecycle","4-implementation","config-validate","config-validate","gaia-config-validate","false","validator","Validate the merged rubric for the active project (layered loader output) (E68-S2)","plugins/gaia/rubrics"

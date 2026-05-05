@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gaiastudio.ai/schemas/rubric.schema.json",
+  "title": "GAIA Review System v2 — rubric file schema (E68-S2)",
+  "description": "JSON Schema (draft-07) for individual rubric files consumed by the layered rubric loader (rubric-loader.sh) and the deterministic merger (rubric-merger.sh). Each rubric is a single layer in the four-layer composition: base + regimes (in declaration order) + optional domain + optional project (per ADR-079, RFC 7396 JSON-merge-patch). NFR-RSV2-4 and NFR-RSV2-10 require schema-validation discipline and byte-identical merger output.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "skill",
+    "severity_rules"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Rubric schema version. SemVer-style major.minor (e.g., '1.0', '1.1'). Loader rejects rubrics whose major version does not match the loader's supported major (currently '1').",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "skill": {
+      "description": "Review skill this rubric applies to. One of the six base review skills (code, qa, test, security, perf, a11y) or a forward-compatible extension (e.g., 'mobile' for E74).",
+      "type": "string",
+      "minLength": 1
+    },
+    "severity_rules": {
+      "description": "Ordered list of rules. Each rule maps a category/pattern to a severity verdict. The list IS replaced (not concatenated) when a later layer overrides earlier ones — RFC 7396 array-replace semantics, deliberate so regimes can omit base entries.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/severityRule" }
+    },
+    "extends": {
+      "description": "Optional declarative reference to another rubric the loader should layer beneath this one. Informational only at this version — the loader resolves layering from project-config.yaml, not from this field.",
+      "type": "string"
+    },
+    "metadata": {
+      "description": "Free-form metadata (author, date, regime ID, references). Not consumed by the merger; preserved verbatim through layers.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "definitions": {
+    "severityRule": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "category",
+        "pattern",
+        "severity",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "description": "Stable rule identifier — unique within the rubric. Convention: '<skill>.<short-name>' (e.g., 'code.unbounded-loop').",
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "description": "Category bucket — used by the verdict-resolver to group findings (e.g., 'security', 'performance', 'accessibility', 'data-handling').",
+          "type": "string",
+          "minLength": 1
+        },
+        "pattern": {
+          "description": "Pattern or signature the deterministic evidence collector matches against (regex, AST query, or natural-language descriptor consumed by the LLM). Format is skill-specific.",
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "description": "Severity verdict. One of Critical|High|Medium|Low|Info — aligned with the verdict-resolver precedence (FR-RSV2-22 / NFR-RSV2-4).",
+          "type": "string",
+          "enum": ["Critical", "High", "Medium", "Low", "Info"]
+        },
+        "description": {
+          "description": "Human-readable rationale — what the rule detects and why it matters.",
+          "type": "string",
+          "minLength": 1
+        },
+        "examples": {
+          "description": "Optional list of concrete example snippets that would (or would not) trigger the rule.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "remediation": {
+          "description": "Optional suggested fix or mitigation guidance.",
+          "type": "string"
+        },
+        "references": {
+          "description": "Optional list of references (CWE IDs, OWASP IDs, ADR anchors, RFC numbers).",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}
