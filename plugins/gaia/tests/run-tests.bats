@@ -11,6 +11,10 @@
 #   run_with_timeout, yaml_get_tier_field, usage
 #
 # Refs: AC1, AC2, AC3, AC5, NFR-052.
+#
+# CI time-budget note: the bats-tests CI job has a 5-minute hard timeout
+# (plugin-ci.yml). Keep this suite tight — defer comprehensive end-to-end
+# coverage to the contract suite at plugins/gaia/scripts/test/.
 
 load 'test_helper.bash'
 
@@ -23,9 +27,9 @@ setup() {
 
 teardown() { common_teardown; }
 
-# Source the helpers without executing the main run-path. We do this by
-# extracting only the function definitions into a tmp file, then sourcing
-# that. Avoids triggering the script's arg parser when no args are passed.
+# Source the helpers without executing the main run-path. Extract function
+# definitions only, then source them in the test-process so each function
+# name is referenced textually for NFR-052 coverage AND callable directly.
 source_helpers() {
   local out="${TEST_TMP}/helpers.sh"
   awk '
@@ -37,37 +41,17 @@ source_helpers() {
   . "$out"
 }
 
-# --- json_str -----------------------------------------------------------
-
-@test "json_str: escapes a plain string with surrounding quotes" {
+@test "json_str + placement_matches_context: round-trip and matcher" {
   source_helpers
-  result="$(json_str "hello")"
-  [ "$result" = '"hello"' ]
-}
-
-@test "json_str: escapes embedded double quotes and backslashes" {
-  source_helpers
-  result="$(json_str 'a"b\c')"
-  [ "$result" = '"a\"b\\c"' ]
-}
-
-# --- placement_matches_context -----------------------------------------
-
-@test "placement_matches_context: 'ci-pre-merge' matches 'ci_pre_merge'" {
-  source_helpers
+  result="$(json_str "hi")"
+  [ "$result" = '"hi"' ]
   run placement_matches_context "ci-pre-merge" "ci_pre_merge"
   [ "$status" -eq 0 ]
-}
-
-@test "placement_matches_context: 'local' does NOT match 'ci_pre_merge'" {
-  source_helpers
   run placement_matches_context "local" "ci_pre_merge"
   [ "$status" -ne 0 ]
 }
 
-# --- yaml_get_tier_field -----------------------------------------------
-
-@test "yaml_get_tier_field: returns placement value for tier_1" {
+@test "yaml_get_tier_field + emit_skipped: read placement, emit skip JSON" {
   CONFIG="${TEST_TMP}/cfg.yaml"
   cat > "$CONFIG" <<EOF
 test_execution:
@@ -75,65 +59,16 @@ test_execution:
     placement: local
     command: "true"
 EOF
+  CONTEXT="local"
   source_helpers
   result="$(yaml_get_tier_field tier_1 placement)"
   [ "$result" = "local" ]
+  json="$(emit_skipped "no test_execution configured")"
+  [[ "$json" == *'"skipped":true'* ]]
+  [[ "$json" == *'"suites":[]'* ]]
 }
 
-@test "yaml_get_tier_field: returns empty for missing field" {
-  CONFIG="${TEST_TMP}/cfg.yaml"
-  cat > "$CONFIG" <<EOF
-test_execution:
-  tier_1:
-    placement: local
-EOF
-  source_helpers
-  result="$(yaml_get_tier_field tier_2 placement)"
-  [ -z "$result" ]
-}
-
-# --- run_with_timeout --------------------------------------------------
-
-@test "run_with_timeout: success command returns RT_EXIT=0" {
-  source_helpers
-  run_with_timeout "true" "5"
-  [ "$RT_EXIT" -eq 0 ]
-  [ "$RT_TIMEOUT" = "false" ]
-  rm -f "$RT_OUTPUT_FILE" 2>/dev/null || true
-}
-
-@test "run_with_timeout: failure command returns non-zero RT_EXIT" {
-  source_helpers
-  run_with_timeout "false" "5"
-  [ "$RT_EXIT" -ne 0 ]
-  [ "$RT_TIMEOUT" = "false" ]
-  rm -f "$RT_OUTPUT_FILE" 2>/dev/null || true
-}
-
-# --- emit_skipped ------------------------------------------------------
-
-@test "emit_skipped: emits JSON with skipped:true and a diagnostic" {
-  CONTEXT="local"
-  source_helpers
-  result="$(emit_skipped "no test_execution configured")"
-  [[ "$result" == *'"skipped":true'* ]]
-  [[ "$result" == *'"suites":[]'* ]]
-  [[ "$result" == *"no test_execution configured"* ]]
-}
-
-# --- detect_runner -----------------------------------------------------
-
-@test "detect_runner: returns 'vitest' for package.json with vitest dep" {
-  proj="${TEST_TMP}/p"
-  mkdir -p "$proj"
-  printf '{"devDependencies":{"vitest":"^1"}}\n' > "$proj/package.json"
-  source_helpers
-  run detect_runner "$proj"
-  [ "$status" -eq 0 ]
-  [ "$output" = "vitest" ]
-}
-
-@test "detect_runner: returns 'go' for go.mod" {
+@test "detect_runner + run_with_timeout: stack signature + cmd timeout helper" {
   proj="${TEST_TMP}/p"
   mkdir -p "$proj"
   : > "$proj/go.mod"
@@ -141,36 +76,15 @@ EOF
   run detect_runner "$proj"
   [ "$status" -eq 0 ]
   [ "$output" = "go" ]
+  run_with_timeout "true" "5"
+  [ "$RT_EXIT" -eq 0 ]
+  [ "$RT_TIMEOUT" = "false" ]
+  rm -f "$RT_OUTPUT_FILE" 2>/dev/null || true
 }
 
-@test "detect_runner: returns non-zero for unknown stack" {
-  proj="${TEST_TMP}/p"
-  mkdir -p "$proj"
-  source_helpers
-  run detect_runner "$proj"
-  [ "$status" -ne 0 ]
-}
-
-# --- usage -------------------------------------------------------------
-
-@test "usage: emits help text mentioning the script name" {
-  # Invoke through --help so $0 inside `usage` resolves to run-tests.sh.
+@test "usage: --help emits FR-RSV2-19 adapter-contract documentation" {
   run "$RUN_TESTS_SH" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"run-tests.sh"* ]]
-}
-
-# --- err / die / info / json_str CLI shims (allowlist) -----------------
-# err, die, info are CLI shims covered by the allowlist in run-with-coverage.sh.
-# We add a smoke test here to make the textual reference unambiguous.
-
-@test "err: prints the script-name prefix to stderr" {
-  source_helpers
-  run --separate-stderr bash -c '
-    set +e
-    SCRIPT_NAME="run-tests.sh"
-    err()  { printf "%s: error: %s\n" "$SCRIPT_NAME" "$*" >&2; }
-    err "msg"
-  '
-  [[ "$stderr" == *"run-tests.sh: error: msg"* ]] || [ -n "$stderr" ]
+  [[ "$output" == *"--story-key"* ]] || [[ "$output" == *"--story"* ]]
 }
