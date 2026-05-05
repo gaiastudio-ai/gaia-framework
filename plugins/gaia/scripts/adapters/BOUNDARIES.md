@@ -18,7 +18,19 @@ plugins/gaia/scripts/adapters/{tool}/
     └── contract.bats         # All-four-state parity test (NFR-RSV2-11)
 ```
 
-`adapter.json` required fields:
+The shared schema, prose contract, and parity-test template live under the meta-directory `_schema/`:
+
+```
+plugins/gaia/scripts/adapters/_schema/
+├── adapter.schema.json       # Machine-verifiable counterpart of the prose adapter.json table below (E70-S1)
+├── run-contract.md           # Prose run.sh contract (flag form, exit codes, timeout, probe states) (E70-S1)
+└── test/
+    └── contract.bats         # Reusable four-state parity-test template for new adapters (E70-S1)
+```
+
+New adapters validate their `adapter.json` against `_schema/adapter.schema.json` and copy `_schema/test/contract.bats` into `{tool}/test/contract.bats` — no per-adapter substitution required (the template reads `provider` and the first file-extension from `adapter.json` at runtime).
+
+`adapter.json` required fields (formalized in [`_schema/adapter.schema.json`](_schema/adapter.schema.json)):
 
 | Field | Type | Notes |
 |---|---|---|
@@ -30,14 +42,24 @@ plugins/gaia/scripts/adapters/{tool}/
 | `version-range` | string | semver range. Informational; not enforced at probe time. |
 | `description` | string | One-line human description. |
 
-`run.sh` MUST honour the canonical contract:
+`run.sh` MUST honour the canonical contract (formalized in [`_schema/run-contract.md`](_schema/run-contract.md)):
 
 ```
 run.sh --input <file-list> [--config <path>] [--output <path>]
        [--runtime-profile subprocess|container|network] [--timeout <seconds>]
 ```
 
-Exit code semantics: `0` = ran successfully; non-zero = adapter execution failed (the probe captures stderr into `error_detail` and emits `state: ran_and_errored`).
+`run.sh` flag reference:
+
+| Flag | Required | Description |
+|---|---|---|
+| `--input <file-list>` | yes | Newline-delimited file list. Empty file ⇒ no applicable inputs (drives `not_applicable`). |
+| `--config <path>` | no | Tool-specific config (e.g. `.eslintrc`, `semgrep.yml`). Defaults to project / built-in config. |
+| `--output <path>` | no | Where to write the analysis-results fragment. Defaults to stdout. |
+| `--runtime-profile subprocess\|container\|network` | no | Overrides `adapter.json :: runtime-profile`. Used by container/network probes. |
+| `--timeout <seconds>` | no | Wall-clock budget. Defaults to `adapter.json :: default-timeout-seconds`. SIGTERM then SIGKILL on overrun. |
+
+Exit code semantics: `0` = ran successfully; non-zero = adapter execution failed (the probe captures stderr into `error_detail` and emits `state: ran_and_errored`). Output cross-reference: stdout emits a fragment validating against [`analysis-results.schema.json`](../../schemas/analysis-results.schema.json) under `checks[].findings[]` — adapter authors do NOT redefine finding fields.
 
 ## Three-State Availability Probe
 
@@ -67,7 +89,7 @@ Every built-in adapter MUST ship a `test/contract.bats` that exercises **all fou
 - `assert_state <provider> <expected-state> <ext-or-EMPTY_FILE_LIST> <patched-rc> <patched-stderr> <patched-sleep> [extra-flags…]` — invokes the probe under controlled conditions and asserts the resulting state.
 - `assert_fragment_shape` — verifies the probe stdout JSON has the canonical 3 keys.
 
-Using the helper, a typical adapter `contract.bats` is ~50 lines and contains exactly five tests: file-layout sanity + the four states. New adapters MUST follow this pattern.
+Using the helper, a typical adapter `contract.bats` is ~50 lines and contains exactly five tests: file-layout sanity + the four states. New adapters MUST follow this pattern. The canonical reference implementation lives at [`_schema/test/contract.bats`](_schema/test/contract.bats) — copy it into `{tool}/test/contract.bats` and rename the descriptors from `adapter contract:` to `{tool} contract:`. No other edits are required.
 
 ## Built-in Adapters Shipped (Phase-5 Static Set)
 
