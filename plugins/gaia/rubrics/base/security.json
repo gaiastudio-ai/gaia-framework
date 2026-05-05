@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "skill": "security",
+  "metadata": {
+    "title": "Base security review rubric",
+    "story": "E68-S3",
+    "adr": "ADR-079",
+    "description": "Default severity rules for /gaia-security-review aligned with the OWASP Top 10. Layer 1 of the four-layer rubric composition; regimes (GDPR, HIPAA, PCI-DSS, SOC2) extend with additional categories on top of this base.",
+    "references": ["OWASP-Top-10-2021"]
+  },
+  "severity_rules": [
+    {
+      "id": "security-injection-001",
+      "category": "injection",
+      "pattern": "User-supplied data is concatenated into a SQL string instead of using parameterised queries or a query builder with bound parameters.",
+      "severity": "Critical",
+      "description": "SQL injection allows attackers to execute arbitrary SQL — credential theft, data exfiltration, and remote code execution are common outcomes.",
+      "remediation": "Use parameterised queries / prepared statements; never concatenate untrusted input into SQL.",
+      "references": ["OWASP-A03", "CWE-89"]
+    },
+    {
+      "id": "security-injection-002",
+      "category": "injection",
+      "pattern": "User-supplied data is passed to a shell command via `exec`, `system`, `child_process.exec`, or backticks without strict allow-list validation.",
+      "severity": "Critical",
+      "description": "Command injection gives the attacker arbitrary execution on the host. The blast radius is the entire process privilege.",
+      "remediation": "Use the array-form `execFile`/`spawn` with a fixed binary; validate inputs against a strict allow-list.",
+      "references": ["OWASP-A03", "CWE-78"]
+    },
+    {
+      "id": "security-injection-003",
+      "category": "injection",
+      "pattern": "User-supplied data is rendered into an HTML response without context-appropriate escaping (HTML-attribute, HTML-element, JS-context, URL-context).",
+      "severity": "High",
+      "description": "Cross-site scripting (XSS) lets attackers run JavaScript in another user's session, stealing credentials or pivoting to admin actions.",
+      "remediation": "Escape per output context; prefer a templating engine that escapes by default and use a strict CSP.",
+      "references": ["OWASP-A03", "CWE-79"]
+    },
+    {
+      "id": "security-authentication-001",
+      "category": "authentication",
+      "pattern": "Password is stored using a fast or unsalted hash (MD5, SHA-1, SHA-256 without per-user salt) instead of a memory-hard password hasher (bcrypt, scrypt, Argon2).",
+      "severity": "Critical",
+      "description": "Weak password hashes are crackable at industrial scale; a database leak becomes a credential-stuffing event within hours.",
+      "remediation": "Use bcrypt (cost ≥ 12), scrypt, or Argon2id with appropriate parameters; never roll your own.",
+      "references": ["OWASP-A07", "CWE-916"]
+    },
+    {
+      "id": "security-authentication-002",
+      "category": "authentication",
+      "pattern": "Session token, JWT, or API key is generated from `Math.random()`, predictable inputs, or a sub-128-bit entropy source.",
+      "severity": "Critical",
+      "description": "Predictable session identifiers let attackers forge or guess valid sessions, defeating authentication entirely.",
+      "remediation": "Generate from a CSPRNG (`crypto.randomBytes(32)`, `secrets.token_urlsafe(32)`); never from the non-cryptographic RNG.",
+      "references": ["OWASP-A07", "CWE-330"]
+    },
+    {
+      "id": "security-authentication-003",
+      "category": "authentication",
+      "pattern": "Authentication endpoint is not rate-limited and does not lock accounts after repeated failed attempts.",
+      "severity": "High",
+      "description": "Unrestricted login endpoints enable credential stuffing and brute-force attacks at scale.",
+      "remediation": "Add IP- and account-scoped rate limits; introduce progressive delays or temporary lockouts after failures.",
+      "references": ["OWASP-A07"]
+    },
+    {
+      "id": "security-sensitive-data-exposure-001",
+      "category": "sensitive-data-exposure",
+      "pattern": "Secret value (API key, private key, OAuth token, database password) is committed to the repository or hard-coded in the source.",
+      "severity": "Critical",
+      "description": "Committed secrets must be considered compromised the moment the commit lands; rotation alone is insufficient if the repo is public or shared with vendors.",
+      "remediation": "Move the secret to an environment variable or secret manager; rotate the leaked credential immediately.",
+      "references": ["OWASP-A02", "CWE-798"]
+    },
+    {
+      "id": "security-sensitive-data-exposure-002",
+      "category": "sensitive-data-exposure",
+      "pattern": "Sensitive data (PII, PHI, payment data, auth tokens) is logged at info or debug level — visible in centralised log aggregators.",
+      "severity": "High",
+      "description": "Logged sensitive data widens the trust boundary to every operator and downstream log processor.",
+      "remediation": "Redact at the log call site; emit identifiers and metadata, never the sensitive payload itself.",
+      "references": ["OWASP-A09", "CWE-532"]
+    },
+    {
+      "id": "security-sensitive-data-exposure-003",
+      "category": "sensitive-data-exposure",
+      "pattern": "Network call uses plain HTTP or accepts self-signed certificates without pinning — sensitive data crosses the network in clear-text or under a man-in-the-middle window.",
+      "severity": "High",
+      "description": "Clear-text or unverified TLS exposes sensitive payloads to passive sniffing and active MITM attackers.",
+      "remediation": "Require HTTPS/TLS 1.2+, validate certificates, and consider certificate pinning for high-value endpoints.",
+      "references": ["OWASP-A02", "CWE-319"]
+    },
+    {
+      "id": "security-access-control-001",
+      "category": "access-control",
+      "pattern": "Authorization is checked only on the UI but not on the server endpoint — back-end handler trusts the client request without verifying the caller's role and ownership.",
+      "severity": "High",
+      "description": "Client-side-only authorisation is bypassed by any direct API call. Insecure direct object references (IDOR) and privilege escalation follow.",
+      "remediation": "Re-check role and ownership on every privileged server endpoint; add automated tests for unauthorised access.",
+      "references": ["OWASP-A01", "CWE-639"]
+    },
+    {
+      "id": "security-access-control-002",
+      "category": "access-control",
+      "pattern": "Endpoint accepts a user-supplied object identifier and returns the object without verifying that the caller owns it (Insecure Direct Object Reference).",
+      "severity": "High",
+      "description": "IDOR lets attackers iterate IDs to enumerate or mutate other users' resources.",
+      "remediation": "Scope the lookup to the caller's tenant or owner ID; reject when the requested ID does not belong to the caller.",
+      "references": ["OWASP-A01"]
+    },
+    {
+      "id": "security-security-misconfiguration-001",
+      "category": "security-misconfiguration",
+      "pattern": "Service runs with default or example credentials in production, or admin endpoints are reachable without authentication.",
+      "severity": "Critical",
+      "description": "Default credentials are the first thing an attacker tries; admin endpoints exposed without auth are catastrophic.",
+      "remediation": "Force credential rotation at first boot; gate admin endpoints behind authenticated sessions and IP allow-lists.",
+      "references": ["OWASP-A05", "CWE-1188"]
+    },
+    {
+      "id": "security-security-misconfiguration-002",
+      "category": "security-misconfiguration",
+      "pattern": "Production response includes verbose error stack traces, framework banners, or detailed database errors visible to anonymous callers.",
+      "severity": "Medium",
+      "description": "Verbose error responses leak technology stack and internal structure that lower the cost of follow-on attacks.",
+      "remediation": "Return opaque error responses to clients; log the full stack server-side under a structured logger.",
+      "references": ["OWASP-A05", "CWE-209"]
+    },
+    {
+      "id": "security-security-misconfiguration-003",
+      "category": "security-misconfiguration",
+      "pattern": "CORS configuration is permissive (`Access-Control-Allow-Origin: *` combined with credentialed requests) or missing on a sensitive endpoint.",
+      "severity": "Medium",
+      "description": "Permissive CORS plus credentialed requests defeats the same-origin policy and exposes user data to attacker-controlled origins.",
+      "remediation": "Restrict allowed origins to a static allow-list; never combine `*` with `Access-Control-Allow-Credentials: true`.",
+      "references": ["OWASP-A05"]
+    }
+  ]
+}

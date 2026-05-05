@@ -1,0 +1,106 @@
+{
+  "schema_version": "1.0",
+  "skill": "perf",
+  "metadata": {
+    "title": "Base performance review rubric",
+    "story": "E68-S3",
+    "adr": "ADR-079",
+    "description": "Default severity rules for /gaia-performance-review covering N+1 queries, bundle size, caching, algorithmic complexity, and memory management. Layer 1 of the four-layer rubric composition."
+  },
+  "severity_rules": [
+    {
+      "id": "perf-n-plus-one-queries-001",
+      "category": "n-plus-one-queries",
+      "pattern": "Code iterates over a collection and issues one query per element (loop-driven query, lazy-load inside a `for`/`forEach`/list comprehension over an ORM relation).",
+      "severity": "High",
+      "description": "N+1 query patterns scale linearly with collection size and are the leading cause of latency regressions on real datasets.",
+      "remediation": "Batch the queries via eager loading (`include`/`joinedload`/`Prefetch`) or fetch the related rows in a single bulk query.",
+      "references": ["FR-RSV2-15", "ORM-N+1"]
+    },
+    {
+      "id": "perf-n-plus-one-queries-002",
+      "category": "n-plus-one-queries",
+      "pattern": "GraphQL resolver fetches related entities one-by-one without DataLoader-style batching across the request.",
+      "severity": "High",
+      "description": "Per-field resolver fetches multiply request fan-out and amplify database load under nested queries.",
+      "remediation": "Wrap the per-entity fetch in a request-scoped DataLoader so duplicate keys collapse into one batch.",
+      "references": ["DataLoader-pattern"]
+    },
+    {
+      "id": "perf-bundle-size-001",
+      "category": "bundle-size",
+      "pattern": "Front-end bundle imports a heavy dependency (moment.js, lodash, full icon library) for a single helper instead of using a tree-shakable subset or modern equivalent.",
+      "severity": "Medium",
+      "description": "Heavy dependencies inflate first-load JS budget and degrade Core Web Vitals on real-user traffic.",
+      "remediation": "Switch to a tree-shakable alternative (date-fns, lodash-es with named imports) or replace with a focused helper.",
+      "references": ["Web-Vitals-LCP"]
+    },
+    {
+      "id": "perf-bundle-size-002",
+      "category": "bundle-size",
+      "pattern": "Single-route component imports the entire feature graph synchronously instead of lazy-loading via dynamic `import()` or React.lazy / Vue defineAsyncComponent.",
+      "severity": "Medium",
+      "description": "Eager-loaded routes inflate the critical-path bundle and delay Time-to-Interactive on slow connections.",
+      "remediation": "Code-split per route; lazy-load secondary panels and modals so they pay their bytes only when used."
+    },
+    {
+      "id": "perf-caching-001",
+      "category": "caching",
+      "pattern": "Endpoint recomputes an idempotent, expensive result on every request (heavy aggregation, third-party fetch) without any caching layer.",
+      "severity": "High",
+      "description": "Recomputing idempotent expensive work on every request wastes capacity and degrades p99 latency.",
+      "remediation": "Cache at the appropriate tier (HTTP `Cache-Control`, Redis, in-process LRU); set TTL aligned with staleness tolerance."
+    },
+    {
+      "id": "perf-caching-002",
+      "category": "caching",
+      "pattern": "Cached value is invalidated on every write rather than on the writes that actually change the underlying data — cache thrash.",
+      "severity": "Medium",
+      "description": "Over-eager invalidation defeats the cache: hit-rate collapses to near zero and the cache becomes pure overhead.",
+      "remediation": "Invalidate only on writes that mutate the cached aggregate; consider write-through or read-through patterns."
+    },
+    {
+      "id": "perf-caching-003",
+      "category": "caching",
+      "pattern": "Static asset is served without long-lived `Cache-Control: max-age` and content-hashed filename — repeat visits re-download unchanged bytes.",
+      "severity": "Medium",
+      "description": "Missing far-future cache headers force the browser to revalidate static assets on every visit.",
+      "remediation": "Hash asset filenames and serve with `Cache-Control: public, max-age=31536000, immutable`."
+    },
+    {
+      "id": "perf-algorithmic-complexity-001",
+      "category": "algorithmic-complexity",
+      "pattern": "Nested loop pair operates on user-supplied collections without a complexity guard — O(n²) over inputs that can grow unboundedly in production.",
+      "severity": "High",
+      "description": "O(n²) over user-controlled inputs is a denial-of-service primitive: a 10x growth in input size becomes a 100x cost.",
+      "remediation": "Replace with a hash-set / hash-map lookup (O(n)), or chunk the input with a hard cap and pagination.",
+      "references": ["CWE-407"]
+    },
+    {
+      "id": "perf-algorithmic-complexity-002",
+      "category": "algorithmic-complexity",
+      "pattern": "User-supplied regular expression or expression with catastrophic-backtracking patterns is evaluated against attacker-controlled input.",
+      "severity": "High",
+      "description": "Catastrophic-backtracking regexes (ReDoS) lock a worker thread for seconds on small inputs.",
+      "remediation": "Validate or compile-check the pattern; use a linear-time regex engine (RE2) or set a hard execution timeout.",
+      "references": ["CWE-1333"]
+    },
+    {
+      "id": "perf-memory-management-001",
+      "category": "memory-management",
+      "pattern": "Long-lived data structure (cache, buffer, queue) accumulates entries without an eviction policy — unbounded growth.",
+      "severity": "High",
+      "description": "Unbounded in-memory growth leads to OOM crashes once the workload exceeds the test envelope.",
+      "remediation": "Add a size or TTL bound (LRU cache, ring buffer, queue with capacity) and surface eviction metrics.",
+      "references": ["CWE-401"]
+    },
+    {
+      "id": "perf-memory-management-002",
+      "category": "memory-management",
+      "pattern": "Code reads a large blob (file, HTTP response, database column) into memory in one shot when streaming would suffice.",
+      "severity": "Medium",
+      "description": "Whole-blob reads multiply RSS by request concurrency and are a leading cause of OOM under fan-out.",
+      "remediation": "Stream the source — Node `Readable`, Python iterator, or chunked HTTP — and process in fixed-size windows."
+    }
+  ]
+}
