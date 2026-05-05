@@ -249,10 +249,8 @@ run_bridge() {
   local run_tests_path="$1"
   if [ ! -x "$run_tests_path" ]; then
     info "bridge enabled but run_tests_path not executable: $run_tests_path — falling back to direct execution"
-    BRIDGE_USED=false
     return 1
   fi
-  BRIDGE_USED=true
   local start_ns end_ns out_file
   out_file="$(mktemp 2>/dev/null || mktemp -t qabridge)"
   start_ns="$(perl -MTime::HiRes -e 'printf "%.6f", Time::HiRes::time()' 2>/dev/null || date +%s)"
@@ -283,30 +281,14 @@ run_start_ns="$(perl -MTime::HiRes -e 'printf "%.6f", Time::HiRes::time()' 2>/de
 # Detect bridge.
 BRIDGE_ENABLED="$(yaml_get_bridge_field bridge_enabled || true)"
 BRIDGE_PATH="$(yaml_get_bridge_field run_tests_path || true)"
-BRIDGE_USED=false
 
 # Detect test_execution presence.
 TIER1_PLACEMENT="$(yaml_get_tier_field tier_1 placement || true)"
 TIER2_PLACEMENT="$(yaml_get_tier_field tier_2 placement || true)"
 TIER3_PLACEMENT="$(yaml_get_tier_field tier_3 placement || true)"
 
-# Helper to build a JSON-string-safe value.
-json_escape() {
-  # %s through python? No — keep it bash 3.2 + awk. Escape backslash, quote,
-  # newline, tab, CR.
-  awk 'BEGIN{ ORS="" }
-    {
-      gsub(/\\/, "\\\\")
-      gsub(/"/, "\\\"")
-      gsub(/\t/, "\\t")
-      gsub(/\r/, "\\r")
-      print
-      if (NR < n) print "\\n"
-    }
-  ' n="$(printf '%s' "$1" | wc -l | awk '{print $1+1}')" <<<"$1"
-}
-
-# Simpler escaper avoiding here-string portability concerns:
+# JSON string escaper — bash 3.2 + awk only. Escapes backslash, double-quote,
+# tab, CR, and joins multi-line input with literal "\n".
 json_str() {
   printf '%s' "$1" | awk '
     BEGIN { ORS=""; printf "\"" }
@@ -396,7 +378,6 @@ fi
 
 # Direct execution path — run each active tier with its own timeout.
 SUITES_JSON_PARTS=()
-overall_required_failure=false
 for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
   tier="${ACTIVE_TIERS[$i]}"
   cmd="$(yaml_get_tier_field "$tier" command || true)"
