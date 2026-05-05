@@ -3,28 +3,27 @@
   "skill": "security",
   "name": "gdpr",
   "applies_to_skills": ["review-code", "review-security"],
-  "regime": "gdpr",
   "description": "GDPR-specific rules for code, security, and PII handling. Layer 2 of the four-layer rubric composition (base + regimes + domain + project) per ADR-079.",
   "metadata": {
     "title": "GDPR regime rubric",
     "story": "E68-S4",
     "adr": "ADR-079",
     "regime_id": "gdpr",
-    "references": ["GDPR-Art-5", "GDPR-Art-15", "GDPR-Art-17", "GDPR-Art-25", "GDPR-Art-32", "GDPR-Art-44"]
-  },
-  "privacy": {
-    "patterns": [
-      {
-        "rule": "iban",
-        "regex": "[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}",
-        "description": "IBAN — international bank account number (BBAN length varies by country, 11-30 alphanumerics after the 4-char prefix)."
-      },
-      {
-        "rule": "eu-national-id-de",
-        "regex": "[0-9]{11}",
-        "description": "Germany Tax-ID (Steuer-ID) — 11 digits."
-      }
-    ]
+    "references": ["GDPR-Art-5", "GDPR-Art-15", "GDPR-Art-17", "GDPR-Art-25", "GDPR-Art-32", "GDPR-Art-44"],
+    "privacy": {
+      "patterns": [
+        {
+          "rule": "iban",
+          "regex": "[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}",
+          "description": "IBAN — international bank account number (BBAN length varies by country, 11-30 alphanumerics after the 4-char prefix)."
+        },
+        {
+          "rule": "eu-national-id-de",
+          "regex": "[0-9]{11}",
+          "description": "Germany Tax-ID (Steuer-ID) — 11 digits."
+        }
+      ]
+    }
   },
   "severity_rules": [
     {
