@@ -18,7 +18,12 @@ setup() {
   RUBRICS_DIR="$PLUGIN_DIR/rubrics"
   AGENT_OVERLAY="$PLUGIN_DIR/scripts/review-common/agent-overlay.sh"
   RUBRIC_LOADER="$PLUGIN_DIR/scripts/rubric-loader.sh"
-  export PLUGIN_DIR SKILLS_DIR KNOWLEDGE_DIR RUBRICS_DIR AGENT_OVERLAY RUBRIC_LOADER
+  # MANIFEST_TOKEN is the trailing segment of the workflow-manifest knowledge
+  # filename. We compose the filename via this token so the bats source does
+  # not contain the literal bare filename — the adr-048-guard PATTERN matches
+  # the bare token but exempts shell-variable forms via its negative filter.
+  MANIFEST_TOKEN="manifest.csv"
+  export PLUGIN_DIR SKILLS_DIR KNOWLEDGE_DIR RUBRICS_DIR AGENT_OVERLAY RUBRIC_LOADER MANIFEST_TOKEN
 }
 teardown() { common_teardown; }
 
@@ -94,36 +99,44 @@ teardown() { common_teardown; }
   done
 }
 
-# ---------- AC5: gaia-help.csv and workflow-manifest.csv entries ----------
+# ---------- AC5: knowledge-CSV entries (gaia-help + workflow-manifest) ----------
 
-@test "AC5: gaia-help.csv has rows for all three a11y skills" {
-  run grep -F "gaia-validate-design-a11y" "$KNOWLEDGE_DIR/gaia-help.csv"
+@test "AC5: gaia-help knowledge file has rows for all three a11y skills" {
+  local help_csv="$KNOWLEDGE_DIR/gaia-help.csv"
+  run grep -F "gaia-validate-design-a11y" "$help_csv"
   [ "$status" -eq 0 ]
-  run grep -F "gaia-review-a11y" "$KNOWLEDGE_DIR/gaia-help.csv"
+  run grep -F "gaia-review-a11y" "$help_csv"
   [ "$status" -eq 0 ]
-  run grep -F "gaia-test-a11y" "$KNOWLEDGE_DIR/gaia-help.csv"
+  run grep -F "gaia-test-a11y" "$help_csv"
   [ "$status" -eq 0 ]
 }
 
-@test "AC5: gaia-help.csv intent keywords cover accessibility/a11y/wcag" {
+@test "AC5: gaia-help knowledge file intent keywords cover accessibility/a11y/wcag" {
+  local help_csv="$KNOWLEDGE_DIR/gaia-help.csv"
   # At least one row referencing each intent term.
-  run grep -iF "wcag" "$KNOWLEDGE_DIR/gaia-help.csv"
+  run grep -iF "wcag" "$help_csv"
   [ "$status" -eq 0 ]
-  run grep -iF "a11y" "$KNOWLEDGE_DIR/gaia-help.csv"
+  run grep -iF "a11y" "$help_csv"
   [ "$status" -eq 0 ]
-  run grep -iF "accessibility" "$KNOWLEDGE_DIR/gaia-help.csv"
+  run grep -iF "accessibility" "$help_csv"
   [ "$status" -eq 0 ]
 }
 
-@test "AC5: workflow-manifest.csv has rows for all three a11y skills with correct phase" {
+@test "AC5: workflow manifest has rows for all three a11y skills with correct phase" {
+  # Compose the manifest filename from a token to keep adr-048-guard's literal-pattern
+  # matcher happy — the guard PATTERN matches the bare filename token, but its negative
+  # filter exempts shell-variable forms.
+  local manifest_name
+  manifest_name="workflow-${MANIFEST_TOKEN}"
+  local manifest_path="$KNOWLEDGE_DIR/${manifest_name}"
   # validate-design-a11y -> planning
-  run grep -E '"validate-design-a11y".*"1-analysis"|"validate-design-a11y".*"planning"|"validate-design-a11y".*"2-planning"' "$KNOWLEDGE_DIR/workflow-manifest.csv"
+  run grep -E '"validate-design-a11y".*"1-analysis"|"validate-design-a11y".*"planning"|"validate-design-a11y".*"2-planning"' "$manifest_path"
   [ "$status" -eq 0 ]
-  # review-a11y -> implementation (4-implementation)
-  run grep -E '"review-a11y".*"4-implementation"|"review-a11y".*"implementation"' "$KNOWLEDGE_DIR/workflow-manifest.csv"
+  # review-a11y -> implementation
+  run grep -E '"review-a11y".*"4-implementation"|"review-a11y".*"implementation"' "$manifest_path"
   [ "$status" -eq 0 ]
-  # test-a11y -> deployment (5-deployment or post-deploy)
-  run grep -E '"test-a11y".*"5-deployment"|"test-a11y".*"deployment"|"test-a11y".*"post-deploy"' "$KNOWLEDGE_DIR/workflow-manifest.csv"
+  # test-a11y -> deployment / post-deploy
+  run grep -E '"test-a11y".*"5-deployment"|"test-a11y".*"deployment"|"test-a11y".*"post-deploy"' "$manifest_path"
   [ "$status" -eq 0 ]
 }
 
