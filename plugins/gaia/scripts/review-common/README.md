@@ -122,6 +122,67 @@ First-match-wins. The LLM cannot override a deterministic tool failure — this 
 
 (Malformed `analysis-results.json` produces `BLOCKED` on stdout with the error on stderr — verdict is data, not exit code, per ADR-042.)
 
+### `composite-verdict-aggregator.sh` (E66-S3, ADR-082)
+
+Deterministic shell aggregator that consumes per-gate verdicts produced by the verdict-resolver runs (one per review skill) and emits a composite verdict mapped to the canonical Review Gate vocabulary. Pure shell — no LLM (NFR-RSV2-12). Invariant under YOLO mode (ADR-067).
+
+**Entry points:**
+```
+composite-verdict-aggregator.sh \
+  --code <verdict> --qa <verdict> --test <verdict> \
+  --security <verdict> --perf <verdict> \
+  ( --a11y <verdict> | --skip-a11y "<reason>" ) \
+  ( --mobile <verdict> | --skip-mobile "<reason>" )
+composite-verdict-aggregator.sh --help
+```
+
+**Output (stdout, multi-line):**
+
+```
+composite=<APPROVE|REQUEST_CHANGES|BLOCKED>
+review_gate=<PASSED|FAILED>
+included=<comma-separated gate short-names in canonical order>
+skipped=<comma-separated gate short-names | "" when none>
+gate=<name> verdict=<verdict>      (one line per included gate)
+<name> skipped — <reason>          (one line per skipped gate)
+```
+
+**Precedence (first-match-wins, ADR-082):** any included gate `BLOCKED` → `BLOCKED`; otherwise any included gate `REQUEST_CHANGES` → `REQUEST_CHANGES`; otherwise `APPROVE`. Mapping to the Review Gate vocabulary follows ADR-075: `APPROVE → PASSED`, `REQUEST_CHANGES → FAILED`, `BLOCKED → FAILED`.
+
+### `grace-window.sh` (E66-S3, ADR-082)
+
+Compares a GATING-flip activation timestamp to "now" and emits the gating mode: `WARNING` during the seven-day grace window, `BLOCK` after.
+
+**Entry points:**
+```
+grace-window.sh --flip-timestamp <epoch> [--now <epoch>]
+grace-window.sh --help
+```
+
+**Output:**
+
+```
+mode=<WARNING|BLOCK>
+days_elapsed=<int>
+days_remaining=<int>           (0 when mode=BLOCK)
+recommendation=<text>          (only when mode=WARNING)
+```
+
+The optional `--now` flag injects a synthetic clock for testing; default is `date -u +%s`. The seven-day boundary is exact (≥7×86400 seconds elapsed → BLOCK).
+
+### `gating-flip-guard.sh` (E66-S3, ADR-082)
+
+Two operations enveloping the GATING-flip deployment:
+
+```
+gating-flip-guard.sh --check-boundary --sprint-status <yaml>
+gating-flip-guard.sh --scan --impl-dir <dir>
+```
+
+`--check-boundary` refuses the flip if any story in the active `sprint-status.yaml` has `status: in-progress` (sprint-boundary semantics, AC4). `--scan` enumerates `status: review` stories whose Review Gate has any non-`PASSED` row (one-time pre-flip scan, AC5).
+
+**Exit codes:** 0 success; 1 caller error or mid-sprint refusal.
+
 ## Determinism (NFR-RSV2-1)
 
 Both scripts are pure deterministic shell — no LLM reasoning, no network, no jitter. They produce byte-identical output for byte-identical input. The verdict resolver's precedence logic is first-match-wins; `agent-overlay.sh` is a static `case/esac` over the wiring table.
@@ -146,13 +207,20 @@ Both scripts follow the GAIA shell-script standard:
 - `plugins/gaia/tests/verdict-resolver-parameterized.bats` — `--skill` parameterization across non-code-review skills + four precedence rules under the parameterized form
 - `plugins/gaia/tests/verdict-resolver.bats` — legacy backward-compat coverage (omitting `--skill`)
 - `plugins/gaia/tests/evidence-judgment-parity.bats` — drift-prevention parity suite (consumers added per E66-S2..S5, E67..E69)
+- `plugins/gaia/tests/composite-verdict-aggregator.bats` — E66-S3 aggregator tests (AC1, AC2, AC3, AC9, AC10)
+- `plugins/gaia/tests/grace-window.bats` — E66-S3 grace-window tests (AC6, AC7)
+- `plugins/gaia/tests/gating-flip-guard.bats` — E66-S3 deployment-guard tests (AC4, AC5)
 
 ## References
 
+- ADR-082: Composite Verdict GATING Migration (E66-S3 anchor)
 - ADR-077: Three-Tier Review Pipeline (extends ADR-075)
 - ADR-075: Review Skill Evidence/Judgment Split
 - ADR-074: Determinism (opus pin, temperature 0)
-- ADR-042: Scripts-over-LLM
+- ADR-067: YOLO CRITICAL still halts (composite gating not bypassed by YOLO)
+- ADR-054: Composite Review Gate Check (read semantics extended by E66-S3)
 - ADR-045: Fork-Context Isolation
+- ADR-042: Scripts-over-LLM
 - NFR-048: No-Write Fork
-- FR-RSV2-1, FR-RSV2-3, FR-RSV2-4, NFR-RSV2-1, NFR-RSV2-5
+- FR-RSV2-1, FR-RSV2-3, FR-RSV2-4, FR-RSV2-43, FR-RSV2-44
+- NFR-RSV2-1, NFR-RSV2-5, NFR-RSV2-6, NFR-RSV2-12
