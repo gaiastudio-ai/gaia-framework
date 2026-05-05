@@ -1,0 +1,18 @@
+{
+  "regime": "gdpr",
+  "description": "GDPR-specific PII patterns layered on top of the base privacy detector (E67-S5).",
+  "privacy": {
+    "patterns": [
+      {
+        "rule": "iban",
+        "regex": "[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}",
+        "description": "IBAN — international bank account number (BBAN length varies by country, 11-30 alphanumerics after the 4-char prefix)."
+      },
+      {
+        "rule": "eu-national-id-de",
+        "regex": "[0-9]{11}",
+        "description": "Germany Tax-ID (Steuer-ID) — 11 digits."
+      }
+    ]
+  }
+}
