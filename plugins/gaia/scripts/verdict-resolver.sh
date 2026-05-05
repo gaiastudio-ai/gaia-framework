@@ -10,6 +10,7 @@
 #   1. Any check.status == "errored"                       -> BLOCKED
 #   2. Any check.status == "failed" with blocking finding  -> REQUEST_CHANGES
 #   3. Any LLM finding severity == "Critical"              -> REQUEST_CHANGES
+#   3b. coverage_delta <= 0 (E67-S3, --coverage-delta only) -> REQUEST_CHANGES
 #   4. Otherwise                                           -> APPROVE
 #
 # Malformed analysis-results.json (invalid JSON, missing schema_version,
@@ -78,6 +79,11 @@ Options:
   --analysis-results <path>  Path to Phase 3A analysis-results.json (required)
   --llm-findings <path>      Path to Phase 3B LLM findings JSON (required;
                              ignored under --action-mode)
+  --coverage-delta <path>    Optional (E67-S3). Path to coverage-delta.sh JSON
+                             output. When present, a coverage_delta <= 0 yields
+                             REQUEST_CHANGES — inserted between the LLM-Critical
+                             rule and the default APPROVE branch. Omitting this
+                             flag preserves the original four-rule behavior.
   --help                     Show this help and exit 0
 
 Verdicts (stdout):
@@ -93,6 +99,7 @@ ANALYSIS=""
 LLM=""
 SKILL=""
 ACTION_MODE=0
+COVERAGE_DELTA=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -112,6 +119,13 @@ while [ "$#" -gt 0 ]; do
     --llm-findings)
       [ "$#" -ge 2 ] || die 1 "--llm-findings requires a path"
       LLM="$2"; shift 2 ;;
+    --coverage-delta)
+      # E67-S3 (optional). Path to coverage-delta.sh JSON output. When
+      # present, a coverage_delta <= 0 inserts REQUEST_CHANGES between the
+      # LLM-Critical rule and the default APPROVE branch. Backward-compatible
+      # when omitted (pre-S3 four-rule behavior preserved).
+      [ "$#" -ge 2 ] || die 1 "--coverage-delta requires a path"
+      COVERAGE_DELTA="$2"; shift 2 ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -229,6 +243,34 @@ if [ "$LLM_OK" = "1" ]; then
   if jq -e '
     (.findings // []) | map(select((.severity // "") | ascii_downcase == "critical")) | length > 0
   ' "$LLM" >/dev/null 2>&1; then
+    emit "REQUEST_CHANGES"
+  fi
+fi
+
+# --- 3b. coverage-delta gate (E67-S3) -> REQUEST_CHANGES on zero/negative ---
+# Inserted between LLM-Critical and the default APPROVE branch per AC6.
+# Skipped entirely when --coverage-delta is omitted (backward compat).
+if [ -n "$COVERAGE_DELTA" ]; then
+  if [ ! -r "$COVERAGE_DELTA" ]; then
+    printf '%s: coverage-delta file not readable: %s\n' "$SCRIPT_NAME" "$COVERAGE_DELTA" >&2
+    emit "BLOCKED"
+  fi
+  if ! jq -e . "$COVERAGE_DELTA" >/dev/null 2>&1; then
+    printf '%s: malformed coverage-delta JSON: %s\n' "$SCRIPT_NAME" "$COVERAGE_DELTA" >&2
+    emit "BLOCKED"
+  fi
+  cd_value="$(jq -r '.coverage_delta // empty' "$COVERAGE_DELTA" 2>/dev/null || echo "")"
+  if [ -z "$cd_value" ]; then
+    printf '%s: coverage-delta JSON missing coverage_delta field: %s\n' "$SCRIPT_NAME" "$COVERAGE_DELTA" >&2
+    emit "BLOCKED"
+  fi
+  # Numeric comparison via awk: <= 0 -> REQUEST_CHANGES.
+  if awk -v d="$cd_value" 'BEGIN{ exit !(d+0 <= 0) }'; then
+    if awk -v d="$cd_value" 'BEGIN{ exit !(d+0 == 0) }'; then
+      printf '%s: coverage_delta=0 (zero coverage delta) -> REQUEST_CHANGES\n' "$SCRIPT_NAME" >&2
+    else
+      printf '%s: coverage_delta=%s (coverage regression) -> REQUEST_CHANGES\n' "$SCRIPT_NAME" "$cd_value" >&2
+    fi
     emit "REQUEST_CHANGES"
   fi
 fi
