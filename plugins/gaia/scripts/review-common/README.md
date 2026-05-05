@@ -183,6 +183,31 @@ gating-flip-guard.sh --scan --impl-dir <dir>
 
 **Exit codes:** 0 success; 1 caller error or mid-sprint refusal.
 
+### `probe-state-to-check-status.sh` (E70-S6)
+
+Single-source-of-truth mapping from a `tool-availability-probe.sh` state to the corresponding `analysis-results.json` `check.status` enum. Pure shell, no `jq` dependency, no I/O beyond stdout (result) and stderr (diagnostics).
+
+**Entry points:**
+```
+probe-state-to-check-status.sh --probe-state <state>
+probe-state-to-check-status.sh --help
+```
+
+**Canonical mapping** (matches `plugins/gaia/scripts/adapters/BOUNDARIES.md` §Three-State Availability Probe and `plugins/gaia/scripts/adapters/_schema/run-contract.md` §5):
+
+| Probe state | check.status |
+|---|---|
+| `available` | `passed` |
+| `expected_and_missing` | `errored` |
+| `ran_and_errored` | `errored` |
+| `not_applicable` | `skipped` |
+
+`failed` is reserved for review-skill-level findings (a tool ran successfully and reported blocking findings); the probe never produces `failed` directly.
+
+**Exit codes:** 0 known state; 1 unknown state, missing flag, or caller error.
+
+**Single-source-of-truth invariant:** This helper is the only place the probe-state-to-check-status mapping is encoded. Review skills, adapters, and resolver consumers that convert probe output into a `checks[]` row MUST consume this helper rather than re-implement the four-way switch inline. Adding the mapping inline elsewhere is a drift risk and should be replaced by a call to this helper.
+
 ## Determinism (NFR-RSV2-1)
 
 Both scripts are pure deterministic shell — no LLM reasoning, no network, no jitter. They produce byte-identical output for byte-identical input. The verdict resolver's precedence logic is first-match-wins; `agent-overlay.sh` is a static `case/esac` over the wiring table.
@@ -210,6 +235,7 @@ Both scripts follow the GAIA shell-script standard:
 - `plugins/gaia/tests/composite-verdict-aggregator.bats` — E66-S3 aggregator tests (AC1, AC2, AC3, AC9, AC10)
 - `plugins/gaia/tests/grace-window.bats` — E66-S3 grace-window tests (AC6, AC7)
 - `plugins/gaia/tests/gating-flip-guard.bats` — E66-S3 deployment-guard tests (AC4, AC5)
+- `plugins/gaia/tests/probe-state-to-check-status.bats` — E70-S6 probe-state-to-check-status mapping tests (AC1, AC2, AC3)
 
 ## References
 
