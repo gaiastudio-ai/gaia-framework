@@ -116,9 +116,38 @@ assert_pr_target_from_chain() {
     return 1
   fi
 
-  local cfg="${PROJECT_CONFIG:-config/project-config.yaml}"
-  if [[ ! -f "$cfg" ]]; then
-    echo "security-invariant FAIL: project config not found at '$cfg'" >&2
+  # E55-S9 — discovery ladder mirrors promotion-chain-guard.sh's
+  # discover_config (and resolve-config.sh's E28-S191 / AC1):
+  #   1. $PROJECT_CONFIG                                     (explicit env override)
+  #   2. $CLAUDE_PROJECT_ROOT/config/project-config.yaml     (if file exists)
+  #   3. $PWD/config/project-config.yaml                     (if file exists)
+  #   4. Upward walk from $PWD looking for config/project-config.yaml,
+  #      capped at 8 levels and stopping at the filesystem root.
+  # Without this ladder, /gaia-dev-story Step 13 merges fail the security
+  # invariant when CWD is a sub-tree (e.g., gaia-public/) of a project whose
+  # config/ lives at an ancestor — the sprint-37 false-flag (E53-S244, E69-S4).
+  local cfg=""
+  if [[ -n "${PROJECT_CONFIG:-}" ]]; then
+    cfg="$PROJECT_CONFIG"
+  elif [[ -n "${CLAUDE_PROJECT_ROOT:-}" ]] \
+       && [[ -f "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml" ]]; then
+    cfg="${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
+  else
+    local dir
+    dir="$(pwd -P 2>/dev/null || pwd)"
+    local depth=0
+    while [[ -n "$dir" && "$depth" -lt 8 ]]; do
+      if [[ -f "${dir}/config/project-config.yaml" ]]; then
+        cfg="${dir}/config/project-config.yaml"
+        break
+      fi
+      [[ "$dir" == "/" ]] && break
+      dir="$(dirname "$dir")"
+      depth=$((depth + 1))
+    done
+  fi
+  if [[ -z "$cfg" || ! -f "$cfg" ]]; then
+    echo "security-invariant FAIL: project config not found (PROJECT_CONFIG, CLAUDE_PROJECT_ROOT, or upward walk)" >&2
     return 1
   fi
 
