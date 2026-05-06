@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "story_key": "E75-S2",
+  "skill": "gaia-review-mobile",
+  "model": "claude-opus-4-7",
+  "model_temperature": 0,
+  "tool_versions": {
+    "entitlements-scanner": "1.0.0",
+    "privacy-manifest-validator": "1.0.0",
+    "store-metadata-linter": "1.0.0",
+    "universal-links-checker": "1.0.0"
+  },
+  "file_hashes": {
+    "ios/Entitlements.plist": "ent123",
+    "ios/PrivacyInfo.xcprivacy": "priv123",
+    "store-metadata.json": "store123",
+    "ios/AppDelegate.swift": "ul123"
+  },
+  "checks": [
+    {
+      "name": "entitlements-scanner",
+      "scope": "project",
+      "status": "passed",
+      "findings": [],
+      "subject": "entitlements"
+    },
+    {
+      "name": "code-signing-verifier",
+      "scope": "project",
+      "status": "passed",
+      "findings": [],
+      "subject": "signing"
+    },
+    {
+      "name": "store-metadata-linter",
+      "scope": "project",
+      "status": "passed",
+      "findings": [],
+      "subject": "store metadata"
+    },
+    {
+      "name": "privacy-manifest-validator",
+      "scope": "project",
+      "status": "passed",
+      "findings": [],
+      "subject": "privacy manifest"
+    },
+    {
+      "name": "universal-links-checker",
+      "scope": "project",
+      "status": "passed",
+      "findings": [],
+      "subject": "universal links"
+    }
+  ]
+}

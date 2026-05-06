@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "story_key": "E75-S2",
+  "skill": "gaia-code-review",
+  "model": "claude-opus-4-7",
+  "model_temperature": 0,
+  "tool_versions": {
+    "eslint": "9.0.0",
+    "tsc": "5.4.0"
+  },
+  "file_hashes": {
+    "src/sample.ts": "abc123"
+  },
+  "checks": [
+    {
+      "name": "eslint",
+      "scope": "file",
+      "status": "passed",
+      "findings": []
+    },
+    {
+      "name": "tsc",
+      "scope": "project",
+      "status": "passed",
+      "findings": []
+    }
+  ]
+}

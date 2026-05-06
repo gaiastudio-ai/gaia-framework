@@ -1,0 +1,11 @@
+{
+  "findings": [
+    {
+      "id": "api-finding-1",
+      "severity": "Major",
+      "title": "non-RFC7807 error format",
+      "description": "POST /users emits flat error JSON instead of RFC 7807 Problem Details",
+      "endpoint": "POST /users"
+    }
+  ]
+}

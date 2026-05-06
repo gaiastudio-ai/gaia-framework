@@ -1,0 +1,10 @@
+{
+  "findings": [
+    {
+      "id": "test-e2e-finding-1",
+      "severity": "Minor",
+      "title": "test data setup",
+      "description": "e2e suite seeds data from a snapshot — consider using factories"
+    }
+  ]
+}
