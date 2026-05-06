@@ -56,6 +56,24 @@ usage: /gaia-test-automate {story_key} --add-scenario
 
 The `CS-NNN` namespace is deliberately separate from Vera's `TC-NNN` so `/gaia-review-qa` re-runs do not collide.
 
+**`custom/test-scenarios/index.yaml` schema (E72-S3 AC3, FR-RSV2-41).** Each entry under `scenarios:` carries the following canonical fields:
+
+| Field          | Type    | Notes                                                                 |
+|----------------|---------|-----------------------------------------------------------------------|
+| `id`           | string  | `CS-NNN`, zero-padded to three digits. Allocated atomically.          |
+| `story_key`    | string  | Owning story (e.g. `E72-S3`).                                          |
+| `description`  | string  | Short human-readable scenario description.                             |
+| `tier`         | enum    | `unit` \| `integration` \| `e2e`.                                      |
+| `priority`     | enum    | `P0` \| `P1` \| `P2` \| `P3`.                                          |
+| `file_path`    | string  | Path to automated test; empty until automated.                         |
+| `created_date` | string  | ISO-8601 calendar date (`YYYY-MM-DD`) at append time.                  |
+
+`/gaia-review-qa` (and the `gaia-qa-tests` skill more broadly) **MUST NOT mutate `custom/test-scenarios/index.yaml`** — the index is read-only outside the `--add-scenario` writer path. This non-mutation invariant guarantees that re-running the QA review after a developer authored custom scenarios never deletes, renumbers, or overwrites their entries (E72-S3 AC4). The qa-tests SKILL.md does not reference the index path; treat any future mutation as a regression.
+
+Atomic-write guarantee: writes go through `mktemp` + `mv` so a crash mid-append never leaves the file in a partially written state. Concurrent `--add-scenario` invocations on the same index follow last-writer-wins semantics; both writes succeed atomically.
+
+The `--status` sub-command sources the Custom scenarios block from `custom/test-scenarios/index.yaml` (filtered by `story_key`) and verifies each non-empty `file_path` against the on-disk tree — missing files render with a `(file not found)` suffix (E72-S3 AC5/AC6). Entries are not pruned automatically; the developer either updates `file_path` or removes the stale entry.
+
 ### `--scaffold` sub-command
 
 ```

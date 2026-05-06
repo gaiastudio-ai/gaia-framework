@@ -98,15 +98,29 @@ teardown() {
 }
 
 @test "E72-S2 AC2: --status renders Custom scenarios block when CS entries exist" {
-  # Append a CS-001 entry to the story
-  awk 'BEGIN{p=0} /^\| CS \| Tier \| Description \| File \|$/{print;p=1;next} /^\|----\|------\|-------------\|------\|$/ && p==1{print;print "| CS-001 | unit | edge case for retry | tests/unit/cs-001.test.ts |";p=2;next}{print}' "$STORY_FILE" > "$STORY_FILE.new"
-  mv "$STORY_FILE.new" "$STORY_FILE"
+  # Per E72-S3 AC5 the Custom scenarios block sources from
+  # custom/test-scenarios/index.yaml (filtered by story_key) — the
+  # legacy story-markdown source path is no longer used.
+  INDEX="$TMPDIR/custom/test-scenarios/index.yaml"
+  mkdir -p "$(dirname "$INDEX")"
+  REAL_TEST="$TMPDIR/cs-001.test.ts"
+  printf 'export const ok = true;\n' >"$REAL_TEST"
+  cat >"$INDEX" <<EOF
+scenarios:
+  - id: CS-001
+    story_key: E99-S99
+    description: "edge case for retry"
+    tier: unit
+    priority: P1
+    file_path: "$REAL_TEST"
+    created_date: "2026-05-05"
+EOF
 
-  run "$SCRIPTS_DIR/subcmd-status.sh" --story-file "$STORY_FILE"
+  run "$SCRIPTS_DIR/subcmd-status.sh" --story-file "$STORY_FILE" --index-file "$INDEX"
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'Custom scenarios'
   echo "$output" | grep -q 'CS-001'
-  echo "$output" | grep -q 'tests/unit/cs-001.test.ts'
+  echo "$output" | grep -q "$REAL_TEST"
 }
 
 # ---------- AC3 / AC4: --add-scenario ----------
@@ -157,8 +171,9 @@ EOF
     --expected "graceful reject"
   [ "$status" -eq 0 ]
 
-  # Verify index.yaml has the new CS entry
-  grep -q 'cs_id: CS-001' "$INDEX"
+  # Verify index.yaml has the new CS entry — canonical E72-S3 schema
+  # uses `id:` (not the legacy `cs_id:` key from E72-S2).
+  grep -qE '^[[:space:]]*-[[:space:]]+id:[[:space:]]*CS-001' "$INDEX"
   grep -q 'story_key: E99-S99' "$INDEX"
   grep -q 'description: "boundary input"' "$INDEX"
   grep -q 'tier: integration' "$INDEX"

@@ -7,8 +7,13 @@
 # exist in the story's Custom Scenarios table.
 #
 # Usage:
-#   subcmd-status.sh --story-file <path>
+#   subcmd-status.sh --story-file <path> [--index-file <path>]
 #   subcmd-status.sh --help
+#
+# When --index-file is supplied (or defaulted to <story-dir>/../../custom/
+# test-scenarios/index.yaml), the Custom scenarios block is sourced from the
+# canonical index.yaml — entries are filtered by the story's frontmatter key
+# and per-entry file_path is verified on disk per E72-S3 AC5/AC6.
 #
 # Output (stdout):
 #   Coverage map for E99-S99
@@ -50,10 +55,12 @@ EOF
 }
 
 STORY_FILE=""
+INDEX_FILE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --story-file) STORY_FILE="${2:-}"; shift 2 ;;
+    --index-file) INDEX_FILE="${2:-}"; shift 2 ;;
     -h|--help)    usage; exit 0 ;;
     *)            err "unknown argument: $1"; usage >&2; exit 2 ;;
   esac
@@ -146,29 +153,75 @@ printf '\nSummary: %d/%d generated (%d%%) | %d pending automation\n' \
   "$generated" "$total" "$pct" "$pending"
 
 # ---------------------------------------------------------------------------
-# Custom scenarios block (rendered only when CS-NNN entries exist).
+# Custom scenarios block — sourced from custom/test-scenarios/index.yaml
+# (E72-S3 AC5/AC6). Filter by the current story_key. For each entry, validate
+# file_path on disk: empty → "(not yet automated)"; missing → append a
+# "(file not found)" warning suffix.
+#
+# When --index-file is unset, default to <story-dir>/../../custom/
+# test-scenarios/index.yaml. If the resolved index file is absent, skip the
+# block silently — pre-E72-S3 behavior.
 # ---------------------------------------------------------------------------
-cs_rows="$(awk '
-  /^## Custom Scenarios/ { in_cs=1; next }
-  in_cs && /^## / { in_cs=0 }
-  in_cs && /^\|[[:space:]]*CS-[0-9]+/ {
-    n = split($0, c, "|")
-    if (n < 5) next
-    cs=c[2]; tier=c[3]; desc=c[4]; file=c[5]
-    gsub(/^[[:space:]]+|[[:space:]]+$/, "", cs)
-    gsub(/^[[:space:]]+|[[:space:]]+$/, "", tier)
-    gsub(/^[[:space:]]+|[[:space:]]+$/, "", desc)
-    gsub(/^[[:space:]]+|[[:space:]]+$/, "", file)
-    print cs "\t" tier "\t" desc "\t" file
-  }
-' "$STORY_FILE")"
+if [ -z "$INDEX_FILE" ]; then
+  story_dir="$(dirname "$STORY_FILE")"
+  INDEX_FILE="$story_dir/../../custom/test-scenarios/index.yaml"
+fi
+
+cs_rows=""
+if [ -r "$INDEX_FILE" ]; then
+  cs_rows="$(awk -v want_key="$story_key" '
+    function dequote(s) {
+      sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s)
+      if (s ~ /^".*"$/) { s = substr(s, 2, length(s)-2) }
+      return s
+    }
+    # Track entry boundaries by the leading "- " marker.
+    /^[[:space:]]*-[[:space:]]/ {
+      if (have_id && key == want_key) {
+        print id "\t" tier "\t" desc "\t" file
+      }
+      have_id=0; id=""; key=""; tier=""; desc=""; file=""
+    }
+    {
+      # Match `id: ...` or `cs_id: ...` — the latter is a legacy E72-S2 alias
+      # so backward-compat is preserved.
+      if (match($0, /^[[:space:]]*(-[[:space:]]+)?(cs_)?id:[[:space:]]*/)) {
+        v = substr($0, RSTART + RLENGTH); v = dequote(v)
+        if (v ~ /^CS-[0-9]+$/) { id = v; have_id = 1 }
+      }
+      if (match($0, /^[[:space:]]*(-[[:space:]]+)?story_key:[[:space:]]*/)) {
+        v = substr($0, RSTART + RLENGTH); key = dequote(v)
+      }
+      if (match($0, /^[[:space:]]+description:[[:space:]]*/)) {
+        v = substr($0, RSTART + RLENGTH); desc = dequote(v)
+      }
+      if (match($0, /^[[:space:]]+tier:[[:space:]]*/)) {
+        v = substr($0, RSTART + RLENGTH); tier = dequote(v)
+      }
+      if (match($0, /^[[:space:]]+file_path:[[:space:]]*/)) {
+        v = substr($0, RSTART + RLENGTH); file = dequote(v)
+      }
+    }
+    END {
+      if (have_id && key == want_key) {
+        print id "\t" tier "\t" desc "\t" file
+      }
+    }
+  ' "$INDEX_FILE")"
+fi
 
 if [ -n "$cs_rows" ]; then
   printf '\nCustom scenarios:\n'
   while IFS=$'\t' read -r cs tier desc file; do
     [ -n "$cs" ] || continue
-    [ -z "$file" ] && file="(not yet automated)"
-    printf '%-8s %-12s %-30s %s\n' "$cs" "$tier" "$desc" "$file"
+    if [ -z "$file" ]; then
+      display="(not yet automated)"
+    elif [ -e "$file" ]; then
+      display="$file"
+    else
+      display="$file (file not found)"
+    fi
+    printf '%-8s %-12s %-30s %s\n' "$cs" "$tier" "$desc" "$display"
   done <<<"$cs_rows"
 fi
 

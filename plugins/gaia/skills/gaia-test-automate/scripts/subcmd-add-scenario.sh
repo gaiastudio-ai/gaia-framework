@@ -106,6 +106,8 @@ fi
 
 # ---------------------------------------------------------------------------
 # Allocate next CS-NNN — scan index for the highest existing CS-N integer.
+# Reads both canonical `id:` (E72-S3) and legacy `cs_id:` (E72-S2) entries
+# so backward-compat is preserved across the schema rename.
 # ---------------------------------------------------------------------------
 max_n=0
 while IFS= read -r line; do
@@ -121,36 +123,50 @@ done < <(grep -oE 'CS-[0-9]+' "$INDEX_FILE" || true)
 next_n=$((max_n + 1))
 cs_id="$(printf 'CS-%03d' "$next_n")"
 
+# Capture today's date as ISO-8601 (YYYY-MM-DD) for created_date (E72-S3 AC3).
+created_date="$(date +%Y-%m-%d)"
+
 # ---------------------------------------------------------------------------
 # Append entry to index.yaml. The atomic-rename pattern guards against
 # concurrent invocations (last writer wins; no partial files).
+#
+# Canonical schema (E72-S3 AC3): id, story_key, description, tier,
+# priority, file_path, created_date. The legacy `cs_id` and `expected`
+# fields from E72-S2 are dropped — readers tolerate both during the
+# backward-compat window.
 # ---------------------------------------------------------------------------
 TMP_INDEX="$(mktemp -t e72s2-index.XXXXXX)"
 trap 'rm -f "$TMP_INDEX"' EXIT
 
-# If the index file is currently `scenarios: []` (empty seed), rewrite it
-# with the new entry. Otherwise append under the existing `scenarios:` key.
+# If the index file is currently `scenarios: []` (empty seed), rewrite the
+# `scenarios:` line to begin a non-empty list while preserving any preceding
+# header comments. Otherwise append under the existing `scenarios:` key.
 if grep -qE '^scenarios:[[:space:]]*\[\]' "$INDEX_FILE"; then
-  cat >"$TMP_INDEX" <<EOF
-scenarios:
-  - story_key: $story_key
-    cs_id: $cs_id
-    description: "$DESCRIPTION"
-    tier: $TIER
-    priority: $PRIORITY
-    expected: "$EXPECTED"
-    file_path: ""
-EOF
+  awk -v cs_id="$cs_id" -v story_key="$story_key" -v desc="$DESCRIPTION" \
+      -v tier="$TIER" -v prio="$PRIORITY" -v cdate="$created_date" '
+    /^scenarios:[[:space:]]*\[\]/ {
+      print "scenarios:"
+      printf "  - id: %s\n", cs_id
+      printf "    story_key: %s\n", story_key
+      printf "    description: \"%s\"\n", desc
+      printf "    tier: %s\n", tier
+      printf "    priority: %s\n", prio
+      printf "    file_path: \"\"\n"
+      printf "    created_date: \"%s\"\n", cdate
+      next
+    }
+    { print }
+  ' "$INDEX_FILE" >"$TMP_INDEX"
 else
   cp "$INDEX_FILE" "$TMP_INDEX"
   cat >>"$TMP_INDEX" <<EOF
-  - story_key: $story_key
-    cs_id: $cs_id
+  - id: $cs_id
+    story_key: $story_key
     description: "$DESCRIPTION"
     tier: $TIER
     priority: $PRIORITY
-    expected: "$EXPECTED"
     file_path: ""
+    created_date: "$created_date"
 EOF
 fi
 mv "$TMP_INDEX" "$INDEX_FILE"
