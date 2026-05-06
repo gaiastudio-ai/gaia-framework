@@ -1,0 +1,10 @@
+{
+  "provider": "lighthouse",
+  "category": "perf-tool",
+  "version-range": ">=11.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 120,
+  "file-extensions": [],
+  "scope": "project",
+  "description": "Google Lighthouse browser performance audit — invokes `lighthouse <url> --output=json --quiet` and emits a JSON audit fragment for SLO and baseline-regression checks (E73-S2)."
+}

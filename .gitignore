@@ -28,6 +28,9 @@ _memory/checkpoints/
 coverage/
 err
 
+# --- Perf baselines (E73-S2 /gaia-test-perf, environment-specific) ---------
+.gaia/perf-baselines/
+
 # --- Cluster 19 full-lifecycle per-run isolation dirs (E28-S133) ------------
 plugins/gaia/test/runs/
 
