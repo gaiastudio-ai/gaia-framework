@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "story_key": "E75-S2",
+  "skill": "gaia-review-a11y",
+  "model": "claude-opus-4-7",
+  "model_temperature": 0,
+  "tool_versions": {
+    "axe-core": "4.8.0",
+    "pa11y": "8.0.0"
+  },
+  "file_hashes": {
+    "src/components/Button.tsx": "a11y123"
+  },
+  "checks": [
+    {
+      "name": "axe-core",
+      "scope": "project",
+      "status": "passed",
+      "findings": []
+    },
+    {
+      "name": "pa11y",
+      "scope": "project",
+      "status": "passed",
+      "findings": []
+    }
+  ]
+}

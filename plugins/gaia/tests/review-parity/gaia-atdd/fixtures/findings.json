@@ -1,0 +1,10 @@
+{
+  "findings": [
+    {
+      "id": "atdd-finding-1",
+      "severity": "Minor",
+      "title": "scenario name clarity",
+      "description": "Given/When/Then scenario name could be more specific"
+    }
+  ]
+}

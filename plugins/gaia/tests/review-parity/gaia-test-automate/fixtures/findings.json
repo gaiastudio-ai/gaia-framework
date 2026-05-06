@@ -1,0 +1,10 @@
+{
+  "findings": [
+    {
+      "id": "test-automate-finding-1",
+      "severity": "Minor",
+      "title": "test naming",
+      "description": "generated test names could be more descriptive"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "findings": [
+    {
+      "id": "code-review-finding-1",
+      "severity": "Minor",
+      "title": "naming clarity",
+      "description": "variable could use a more descriptive name"
+    }
+  ]
+}

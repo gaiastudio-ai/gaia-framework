@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "story_key": "E75-S2",
+  "skill": "gaia-test-e2e",
+  "model": "claude-opus-4-7",
+  "model_temperature": 0,
+  "plan": "present",
+  "execution": "success",
+  "placeholders": false,
+  "mocks_sut": false,
+  "breaks_suite": false,
+  "blocking_failure": "",
+  "checks": [
+    {
+      "name": "e2e-execution",
+      "scope": "project",
+      "status": "passed",
+      "findings": []
+    }
+  ]
+}

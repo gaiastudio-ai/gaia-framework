@@ -1,0 +1,10 @@
+{
+  "findings": [
+    {
+      "id": "qa-tests-finding-1",
+      "severity": "Minor",
+      "title": "edge case coverage",
+      "description": "QA case set missing boundary tests for empty input"
+    }
+  ]
+}

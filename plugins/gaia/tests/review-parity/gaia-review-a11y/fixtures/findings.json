@@ -1,0 +1,11 @@
+{
+  "findings": [
+    {
+      "id": "a11y-finding-1",
+      "severity": "Major",
+      "title": "missing aria-label",
+      "description": "icon button has no accessible name",
+      "wcag": "4.1.2"
+    }
+  ]
+}

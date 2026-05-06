@@ -1,0 +1,11 @@
+{
+  "findings": [
+    {
+      "id": "deps-finding-1",
+      "severity": "Minor",
+      "title": "outdated dependency",
+      "description": "lodash 4.17.20 -> 4.17.21 (security patch)",
+      "package": "lodash"
+    }
+  ]
+}
