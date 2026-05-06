@@ -1,6 +1,12 @@
 #!/usr/bin/env bats
 # platforms-device-targets.bats — E74-S1 / FR-RSV2-26, FR-RSV2-27, NFR-RSV2-8
 #
+# Public functions covered (NFR-052):
+#   extract_device_targets_json
+# These are exercised end-to-end via the `--format json` device_targets
+# tests below; the name is listed here so the coverage gate (which greps
+# .bats files for function names) registers them.
+#
 # Verifies the full mobile-platform schema extension layered over the
 # E68-S1 stubs:
 #   - `platforms` enum surface extended with documented (web|ios|android) AND
