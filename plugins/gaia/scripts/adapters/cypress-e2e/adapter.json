@@ -1,0 +1,11 @@
+{
+  "provider": "npx",
+  "category": "e2e-runner",
+  "version-range": ">=13.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 600,
+  "file-extensions": [],
+  "scope": "project",
+  "plugin": "cypress",
+  "description": "Cypress end-to-end test runner — invokes `npx cypress run --reporter json` against the project's Cypress configuration."
+}
