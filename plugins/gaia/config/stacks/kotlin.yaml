@@ -1,0 +1,32 @@
+# kotlin.yaml — Kotlin mobile stack definition (E74-S2, ADR-081)
+#
+# Mobile platform: Android. Targets native Android development with Gradle
+# (Kotlin DSL or Groovy DSL). Adapter IDs reference Kotlin/Android-specific
+# tooling that lands fully in E74-S7 (static) and E74-S9 (dynamic).
+#
+# Source spec: docs/planning-artifacts/decisions/gaia-review-system-final-report.md
+# §4.1, §5.7, §7.2.1.
+
+name: kotlin
+language: Kotlin
+platform: [android]
+build_tool: gradle
+package_manager: gradle
+
+linters:
+  - Detekt
+  - ktlint
+
+formatters:
+  - ktlint
+
+test_frameworks:
+  - JUnit5
+  - Espresso
+
+adapters:
+  static:
+    - detekt
+    - ktlint
+  dynamic:
+    - espresso
