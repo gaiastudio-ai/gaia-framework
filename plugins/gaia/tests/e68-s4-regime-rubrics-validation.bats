@@ -67,13 +67,10 @@ teardown() { common_teardown; }
 @test "AC1: out-of-scope store regime files are NOT shipped (E74 scope)" {
   # apple-app-store.json was lifted out of this scope by E74-S4 (now shipped).
   # google-play-store.json was lifted out of this scope by E74-S5 (now shipped).
-  # coppa.json remains out of scope until its respective E74 story lands.
-  for r in coppa; do
-    [ ! -f "$RUBRICS_REGIMES/${r}.json" ] || {
-      echo "unexpected regime file present (E74 scope): $r.json" >&2
-      return 1
-    }
-  done
+  # coppa.json was lifted out of this scope by E74-S6 (now shipped).
+  # Future E74 store regime files (none currently outstanding) would be
+  # listed here until their respective stories land.
+  : "no remaining out-of-scope store regime files — all E74 store regimes shipped"
 }
 
 # ---------------------------------------------------------------------------
