@@ -284,6 +284,7 @@ _detect_ruby_stack() {
 # ---------------------------------------------------------------------------
 
 PLATFORMS_JSON='[]'
+DEVICE_TARGETS_JSON='{}'
 
 _push_platform() {
   local name="$1"
@@ -293,6 +294,29 @@ _push_platform() {
   if [ "$exists" = "null" ]; then
     PLATFORMS_JSON="$(jq --arg n "$name" '. + [{name: $n}]' <<<"$PLATFORMS_JSON")"
   fi
+}
+
+# E74-S11 — invoke the mobile-detection helper and union its findings into
+# the platform set + seed device_targets.
+_detect_mobile_signals() {
+  local self_dir mobile
+  self_dir="$(cd "$(dirname "$0")" && pwd)"
+  if [ ! -x "$self_dir/mobile-detection.sh" ]; then
+    return 0
+  fi
+  if ! mobile="$("$self_dir/mobile-detection.sh" --project-root "$PROJECT_ROOT" --format json 2>/dev/null)"; then
+    return 0
+  fi
+  # Union platforms.
+  local mobile_plats
+  mobile_plats="$(jq -r '.platforms[]?' <<<"$mobile")"
+  while IFS= read -r p; do
+    [ -z "$p" ] && continue
+    _push_platform "$p"
+  done <<< "$mobile_plats"
+  # Merge device_targets (overwrite if absent — these are detection defaults).
+  DEVICE_TARGETS_JSON="$(jq -c --argjson m "$(jq -c '.device_targets // {}' <<<"$mobile")" \
+    '. * $m' <<<"$DEVICE_TARGETS_JSON")"
 }
 
 _detect_platforms() {
@@ -427,6 +451,7 @@ _detect_go_stack
 _detect_rust_stack
 _detect_ruby_stack
 _detect_platforms
+_detect_mobile_signals
 _detect_ci_platform
 _detect_tool_providers
 
@@ -460,11 +485,12 @@ fi
 DETECTION_JSON="$(jq -nc \
   --argjson stacks "$STACKS_JSON" \
   --argjson platforms "$PLATFORMS_JSON" \
+  --argjson device_targets "$DEVICE_TARGETS_JSON" \
   --argjson ci_platform "$CI_PLATFORM_JSON" \
   --argjson tool_providers "$TOOL_PROVIDERS_JSON" \
   --argjson warnings "$WARNINGS_JSON" \
   --arg verdict "$VERDICT" \
-  '{stacks: $stacks, platforms: $platforms, ci_platform: $ci_platform, tool_providers: $tool_providers, warnings: $warnings, verdict: $verdict}')"
+  '{stacks: $stacks, platforms: $platforms, device_targets: $device_targets, ci_platform: $ci_platform, tool_providers: $tool_providers, warnings: $warnings, verdict: $verdict}')"
 
 # ---------------------------------------------------------------------------
 # Optional merge into existing project-config.yaml (RFC 7396)
@@ -509,6 +535,8 @@ if detection.get("ci_platform") is not None:
     fill_if_absent("ci_platform", detection["ci_platform"])
 if detection.get("tool_providers"):
     fill_if_absent("tool_providers", detection["tool_providers"])
+if detection.get("device_targets"):
+    fill_if_absent("device_targets", detection["device_targets"])
 
 # Apply RFC 7396 merge: scalar/list replace, dict recursive.
 def merge_patch(target, patch):

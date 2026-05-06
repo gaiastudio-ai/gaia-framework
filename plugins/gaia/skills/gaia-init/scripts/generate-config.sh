@@ -162,10 +162,43 @@ device_targets = data.get("device_targets") or {}
 if device_targets:
     lines.append("")
     lines.append("device_targets:")
-    for plat, devices in device_targets.items():
+    for plat, body in device_targets.items():
         lines.append(f"  {yaml_quote(plat)}:")
-        for d in devices or []:
-            lines.append(f"    - {yaml_quote(d)}")
+        # Two shapes accepted:
+        #   1. Canonical (E74-S11): dict with os_versions / form_factors /
+        #      screen_sizes per ADR-081 / project-config.schema.json.
+        #   2. Legacy (E71-S1): list of device-name strings.
+        if isinstance(body, dict):
+            ov = body.get("os_versions") or []
+            ff = body.get("form_factors") or []
+            ss = body.get("screen_sizes") or []
+            if ov:
+                lines.append("    os_versions:")
+                for v in ov:
+                    # os_versions are schema-required strings; force quoting so
+                    # values like "16.0" do not round-trip as YAML floats.
+                    s = str(v).replace('\\', '\\\\').replace('"', '\\"')
+                    lines.append(f'      - "{s}"')
+            if ff:
+                lines.append("    form_factors:")
+                for v in ff:
+                    lines.append(f"      - {yaml_quote(v)}")
+            if ss:
+                lines.append("    screen_sizes:")
+                for s in ss:
+                    if isinstance(s, dict):
+                        lines.append(
+                            f"      - {{ width: {int(s['width'])}, "
+                            f"height: {int(s['height'])}, "
+                            f"density: {s['density']} }}"
+                        )
+                    else:
+                        # Pass-through string (rare).
+                        lines.append(f"      - {yaml_quote(s)}")
+        else:
+            # Legacy list-of-strings shape.
+            for d in body or []:
+                lines.append(f"    - {yaml_quote(d)}")
 
 with open(out_path, "w") as f:
     f.write("\n".join(lines) + "\n")

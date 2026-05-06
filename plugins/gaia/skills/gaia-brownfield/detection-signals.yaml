@@ -11,8 +11,10 @@
 #   - tool_provider    — review-system tooling (sonarqube, eslint, ...).
 #
 # Mobile signals (Package.swift, Android build.gradle, react-native, Flutter
-# mobile, Xcode/Android Studio) are explicitly out of scope here per the story
-# Dev Notes — those land under E74-S11.
+# mobile, Xcode/Android Studio) are detected by `mobile-detection.sh` and
+# unioned into the `platforms[]` + `device_targets` outputs by detect-signals.sh
+# (E74-S11 / FR-RSV2-44). The mobile signal registry lives in that helper —
+# this file documents the non-mobile signals scanned by the same pass.
 
 stack:
   # File-pattern matchers. Each entry: name, manifest, optional lockfile, optional
@@ -157,3 +159,23 @@ tool_provider:
     files: ["vitest.config.js", "vitest.config.ts", "vitest.config.mjs"]
   - name: "pytest"
     files: ["pytest.ini"]
+
+# Mobile signals (E74-S11 / FR-RSV2-44).
+#
+# Detected by `plugins/gaia/scripts/mobile-detection.sh`. Listed here for
+# discoverability — the helper is the source of truth for matcher logic.
+mobile:
+  - platform: "ios"
+    files: ["Package.swift"]
+    file_globs: ["*.xcodeproj", "*.xcworkspace"]
+  - platform: "android"
+    files: ["build.gradle", "build.gradle.kts", "app/build.gradle", "app/build.gradle.kts"]
+    pattern_keywords: ["com.android.application", "com.android.library", "com.android.dynamic-feature"]
+  - platform: "ios+android"  # cross-platform — emits BOTH
+    framework: "flutter"
+    files: ["pubspec.yaml"]
+    pattern_keywords: ["flutter:", "sdk: flutter"]
+  - platform: "ios+android"  # cross-platform — emits BOTH
+    framework: "react-native"
+    files: ["package.json"]
+    json_dep: "react-native"

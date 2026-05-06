@@ -61,12 +61,20 @@ Ask the user the following question set, in order. Capture answers into a JSON a
 6. **Environments (iterative).** For each environment (none is OK): `name` (e.g., `staging`, `production`), `url`, `auth_type`, and the **NAME** of the env var holding the credential (e.g., `STAGING_TOKEN`). Never accept or echo a literal secret.
 7. **CI/CD platform.** Single-select from: `github-actions`, `gitlab-ci`, `circleci`, `jenkins`, `azure-pipelines`, `bitbucket-pipelines`, `none`.
 
-**Step 2a — Mobile-specific follow-ups (conditional).** Trigger only when project shape is one of `mobile only`, `mobile+backend`, `microservices+mobile`:
+**Step 2a — Mobile-specific follow-ups (conditional).** Trigger only when project shape is one of `mobile only`, `mobile+backend`, `microservices+mobile`. Per E74-S11 / ADR-081 the `device_targets[<platform>]` block is canonical and MUST contain `os_versions`, `form_factors`, and `screen_sizes` — collect each field explicitly:
 
-- iOS: ship to iOS y/n. If yes, ask minimum iOS version (e.g., `17.0`) and bundle ID (e.g., `com.example.app`). Add `ios` to `platforms[]`.
-- Android: ship to Android y/n. If yes, ask minimum SDK, target SDK, package name. Add `android` to `platforms[]`.
+- iOS: ship to iOS y/n. If yes, ask:
+  - `os_versions` — comma-separated list (e.g., `16.0,17.0`).
+  - `form_factors` — multi-select from `phone | tablet | foldable | watch | tv` (default `phone,tablet`).
+  - `screen_sizes` — comma-separated `WxH@D` triples (default `390x844@3.0,1024x1366@2.0`).
+  - Add `ios` to `platforms[]` and write the canonical block under `device_targets.ios`.
+- Android: ship to Android y/n. If yes, ask the same three fields with Android-appropriate defaults:
+  - `os_versions` (e.g., `13,14`).
+  - `form_factors` (default `phone,tablet`).
+  - `screen_sizes` (default `412x915@2.625,800x1280@2.0`).
+  - Add `android` to `platforms[]` and write the canonical block under `device_targets.android`.
 
-The mobile answers populate `device_targets` in the answer-bundle.
+The mobile answers populate the canonical `device_targets` block. When the user declines mobile entirely, omit `platforms` and `device_targets` from the answer-bundle (and from the generated config).
 
 ### Step 3 — Validate the answer-bundle
 
