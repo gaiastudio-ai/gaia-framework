@@ -1,0 +1,11 @@
+{
+  "provider": "mobsf",
+  "category": "sast",
+  "version-range": ">=3.0.0",
+  "runtime-profile": "network",
+  "default-timeout-seconds": 600,
+  "file-extensions": [".ipa", ".apk", ".aab", ".zip"],
+  "description": "MobSF — Mobile Security Framework SAST scanner (REST service) covering iOS and Android binaries.",
+  "platforms": ["ios", "android"],
+  "applies_to_skills": ["review-code", "review-mobile", "review-security"]
+}

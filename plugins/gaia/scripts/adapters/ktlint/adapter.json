@@ -1,0 +1,11 @@
+{
+  "provider": "ktlint",
+  "category": "linter",
+  "version-range": ">=1.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 180,
+  "file-extensions": [".kt", ".kts"],
+  "description": "ktlint — Kotlin style linter (Android source).",
+  "platforms": ["android"],
+  "applies_to_skills": ["review-code", "review-mobile"]
+}

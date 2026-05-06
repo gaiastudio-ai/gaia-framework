@@ -1,0 +1,11 @@
+{
+  "provider": "apkanalyzer",
+  "category": "mobile-static",
+  "version-range": ">=30.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 180,
+  "file-extensions": [".apk", ".aab"],
+  "description": "apkanalyzer — Android SDK CLI for APK / AAB size and DEX reference analysis.",
+  "platforms": ["android"],
+  "applies_to_skills": ["review-code", "review-mobile"]
+}

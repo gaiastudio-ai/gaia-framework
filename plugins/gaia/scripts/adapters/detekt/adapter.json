@@ -1,0 +1,11 @@
+{
+  "provider": "detekt",
+  "category": "linter",
+  "version-range": ">=1.23.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 300,
+  "file-extensions": [".kt", ".kts"],
+  "description": "Detekt — static analysis for Kotlin (Android source).",
+  "platforms": ["android"],
+  "applies_to_skills": ["review-code", "review-mobile"]
+}
