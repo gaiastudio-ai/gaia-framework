@@ -143,9 +143,23 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.review/gaia-test-review/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
 
-**Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Phase 3A runs four deterministic analyzers in sequence — driven by the canonical helper `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/phase3a-test-review.sh` (E67-S1, FR-RSV2-1/2). The helper invokes `smell-detector.sh`, `flakiness-analyzer.sh`, `fixture-analyzer.sh`, and `tag-conformance-detector.sh --stack <stack>` and merges their `checks[]` fragments into a single canonical `analysis-results.json` document validating against `plugins/gaia/schemas/analysis-results.schema.json`. Cumulative wall-clock budget per NFR-RSV2-2: ≤90s P95 on a typical story (<500 LOC diff).
+**Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Phase 3A runs four deterministic analyzers in sequence — driven by the canonical helper `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/phase3a-test-review.sh` (E67-S1, FR-RSV2-1/2). The helper invokes `smell-detector.sh`, `flakiness-analyzer.sh`, `fixture-analyzer.sh`, and `tag-conformance-detector.sh --stack <stack>` (and propagates `--strict` when `GAIA_TEST_TAGGING_STRICT=1` is set per E72-S4 / FR-RSV2-42) and merges their `checks[]` fragments into a single canonical `analysis-results.json` document validating against `plugins/gaia/schemas/analysis-results.schema.json`. Cumulative wall-clock budget per NFR-RSV2-2: ≤90s P95 on a typical story (<500 LOC diff).
 
 **Placeholder-test detection (E67-S2 / FR-RSV2-2 cross-reference).** The shared `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/placeholder-test-detector.sh` script is the **single instance** referenced by both `/gaia-test-automate` (Phase 2 post-generation gate) and `/gaia-review-test` (Phase 3A scanner). The detector flags `expect(true)` / `expect(false)` / `assert True` / `assert False` / `assert_true(...)` / `assert_false(...)` / `test.todo` / `test.skip` / `it.skip` / `xit` / `xdescribe` / `xcontext` / `describe.skip` and empty `it`/`test`/`@test` blocks, emitting structured findings of the form `low_quality_test_generated|<file>:<line>|<pattern>` on stdout. Findings surface as Phase 3A `category: placeholder, severity: critical` entries (untestable assertion equivalent) — they cannot be overridden by the LLM Phase 3B judgment. There is no duplicate copy of the script under `plugins/gaia/skills/gaia-test-review/scripts/` or `plugins/gaia/skills/gaia-test-automate/scripts/` — both skills source the same `review-common/placeholder-test-detector.sh` instance.
+
+**Tag-conformance detection (E72-S4 / FR-RSV2-42).** `tag-conformance-detector.sh` checks each test file for at least one tag declaration using the canonical mechanism for its stack. Standalone use is supported via `--files <glob>` and `--strict` flags (AC10). When `--stack` is omitted the detector auto-classifies each file by extension and routes it to the correct per-stack matcher — useful for monorepos where a single invocation covers multiple stacks (AC9). Per-stack detection patterns are summarized below:
+
+| Stack            | Detection pattern                                                |
+| ---------------- | ---------------------------------------------------------------- |
+| `ts-dev`         | `describe.each` / `it.each` / tagged `it()` / front-matter `tags:` |
+| `angular-dev`    | same as `ts-dev`                                                 |
+| `java-dev`       | `@Tag("…")` annotation on class or method                        |
+| `python-dev`     | `@pytest.mark.<name>` decorator                                  |
+| `go-dev`         | `//go:build <tag>` directive in first 10 lines of the file       |
+| `flutter-dev`    | `@Tags(['…'])` annotation                                        |
+| `mobile-dev`     | Maestro front-matter `tags:` (YAML) or `@Tag("…")` (Kotlin/Java) |
+
+**Severity mode.** Findings emit at `info` (Suggestion) by default — they surface in `analysis-results.json` but DO NOT escalate Phase 3A verdicts. Strict mode upgrades severity to `warning` (factored into the LLM Phase 3B judgment but still non-blocking). Strict-mode resolution precedence (highest first): CLI `--strict` flag → `GAIA_TEST_TAGGING_STRICT=1` env override → `test_tagging.strict: true` in `config/project-config.yaml` → default false. `phase3a-test-review.sh` propagates `GAIA_TEST_TAGGING_STRICT` to `tag-conformance-detector.sh` so a single env toggle flips the project-wide tagging regime.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/phase3a-test-review.sh \

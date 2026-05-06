@@ -116,9 +116,16 @@ assert_json_finding_rule() {
 
 # --- error / arg parsing ---
 
-@test "TC-RSV2-TESTREVIEW-4.11: missing --stack exits 1" {
-  run "$SCRIPT" "$TEST_TMP"
-  [ "$status" -eq 1 ]
+@test "TC-RSV2-TESTREVIEW-4.11: missing --stack auto-detects per file (E72-S4 AC9)" {
+  # E72-S4 AC9: when --stack is omitted, auto-detect stack per-file by
+  # extension. A bare invocation against a directory of mixed test files
+  # therefore succeeds (exit 0) — not the legacy E67-S1 exit 1 behavior.
+  local f="$TEST_TMP/foo.test.ts"
+  printf 'it("works", () => { expect(1).toBe(1); });\n' > "$f"
+  run "$SCRIPT" "$f"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "failed"
+  assert_json_finding_rule "$output" "missing-tag"
 }
 
 @test "TC-RSV2-TESTREVIEW-4.12: unknown stack exits 1" {
@@ -134,4 +141,82 @@ assert_json_finding_rule() {
 @test "TC-RSV2-TESTREVIEW-4.14: script uses set -euo pipefail and LC_ALL=C" {
   grep -Fq "set -euo pipefail" "$SCRIPT"
   grep -Fq "LC_ALL=C" "$SCRIPT"
+}
+
+# --- E72-S4 additions: strict mode, --files glob, multi-stack auto-detect ---
+
+assert_json_finding_severity() {
+  printf '%s\n' "$1" | grep -F "\"severity\":\"$2\"" >/dev/null
+}
+
+@test "TC-RSV2-TESTREVIEW-4.15: --strict flag emits warning severity (E72-S4 AC7)" {
+  local f="$TEST_TMP/strict.test.ts"
+  printf 'it("a", () => {});\n' > "$f"
+  run "$SCRIPT" --stack ts-dev --strict "$f"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "failed"
+  assert_json_finding_severity "$output" "warning"
+}
+
+@test "TC-RSV2-TESTREVIEW-4.16: non-strict emits info (Suggestion) severity (E72-S4 AC6)" {
+  local f="$TEST_TMP/lax.test.ts"
+  printf 'it("a", () => {});\n' > "$f"
+  run "$SCRIPT" --stack ts-dev "$f"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "failed"
+  # Default mode is non-strict — severity drops to info per AC6.
+  assert_json_finding_severity "$output" "info"
+}
+
+@test "TC-RSV2-TESTREVIEW-4.17: --files glob expands and scans matching files (E72-S4 AC10)" {
+  mkdir -p "$TEST_TMP/sub"
+  printf 'it("a", () => {});\n' > "$TEST_TMP/sub/a.test.ts"
+  printf 'it("b", () => {});\n' > "$TEST_TMP/sub/b.test.ts"
+  run "$SCRIPT" --stack ts-dev --strict --files "$TEST_TMP/sub/*.test.ts"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "failed"
+  # Both files should appear in findings.
+  printf '%s\n' "$output" | grep -F 'a.test.ts' >/dev/null
+  printf '%s\n' "$output" | grep -F 'b.test.ts' >/dev/null
+}
+
+@test "TC-RSV2-TESTREVIEW-4.18: multi-stack auto-detect routes per file extension (E72-S4 AC9)" {
+  # Mixed monorepo: a Vitest file (untagged → flagged) and a pytest file
+  # WITH a @pytest.mark decorator (NOT flagged). Verify the auto-detect
+  # path applies the right detector to each file.
+  mkdir -p "$TEST_TMP/js" "$TEST_TMP/py"
+  printf 'it("a", () => {});\n' > "$TEST_TMP/js/a.test.ts"
+  printf 'import pytest\n@pytest.mark.unit\ndef test_a(): assert True\n' > "$TEST_TMP/py/test_a.py"
+  run "$SCRIPT" --strict "$TEST_TMP/js/a.test.ts" "$TEST_TMP/py/test_a.py"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "failed"
+  printf '%s\n' "$output" | grep -F 'a.test.ts' >/dev/null
+  # The pytest file must NOT appear in findings.
+  if printf '%s\n' "$output" | grep -F 'test_a.py' >/dev/null; then
+    printf 'pytest file should not be flagged when @pytest.mark present\n' >&2
+    return 1
+  fi
+}
+
+@test "TC-RSV2-TESTREVIEW-4.19: GAIA_TEST_TAGGING_STRICT=1 env upgrades severity to warning (E72-S4 AC7)" {
+  local f="$TEST_TMP/envstrict.test.ts"
+  printf 'it("a", () => {});\n' > "$f"
+  GAIA_TEST_TAGGING_STRICT=1 run "$SCRIPT" --stack ts-dev "$f"
+  [ "$status" -eq 0 ]
+  assert_json_finding_severity "$output" "warning"
+}
+
+@test "TC-RSV2-TESTREVIEW-4.20: --files combined with --strict produces JSON-valid output (E72-S4 AC8, AC10)" {
+  mkdir -p "$TEST_TMP/m"
+  printf 'it("a", () => {});\n' > "$TEST_TMP/m/x.test.ts"
+  run "$SCRIPT" --stack ts-dev --strict --files "$TEST_TMP/m/*.test.ts"
+  [ "$status" -eq 0 ]
+  # Output must contain canonical Phase 3A check-fragment keys.
+  printf '%s\n' "$output" | grep -F '"name":"tag-conformance-detector"' >/dev/null
+  printf '%s\n' "$output" | grep -F '"findings":[' >/dev/null
+  printf '%s\n' "$output" | grep -F '"file":' >/dev/null
+  printf '%s\n' "$output" | grep -F '"line":' >/dev/null
+  printf '%s\n' "$output" | grep -F '"severity":' >/dev/null
+  printf '%s\n' "$output" | grep -F '"rule":' >/dev/null
+  printf '%s\n' "$output" | grep -F '"message":' >/dev/null
 }

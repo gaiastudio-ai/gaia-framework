@@ -123,7 +123,16 @@ run_with_args() {
 SMELL_OUT="$(run_with_args "$SMELL")"
 FLAKE_OUT="$(run_with_args "$FLAKE")"
 FIXTURE_OUT="$(run_with_args "$FIXTURE" --max-lines "$MAX_LINES")"
-TAG_OUT="$(run_with_args "$TAG" --stack "$STACK")"
+# Pass --strict through to tag-conformance-detector when project-config opts
+# in to strict tagging (E72-S4 AC7). The detector itself reads the same key
+# directly, but driving it from the orchestrator keeps the contract explicit
+# and CI logs auditable.
+case "${GAIA_TEST_TAGGING_STRICT:-}" in
+  1|true|TRUE|True|yes|YES|on|ON)
+    TAG_OUT="$(run_with_args "$TAG" --stack "$STACK" --strict)" ;;
+  *)
+    TAG_OUT="$(run_with_args "$TAG" --stack "$STACK")" ;;
+esac
 
 # ---------- emit merged analysis-results.json ----------
 
