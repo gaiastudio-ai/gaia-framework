@@ -46,7 +46,7 @@ module,phase,name,code,command,required,agent-name,description,output-location
 "creative","anytime","storytelling","storytelling","gaia-storytelling","false","storyteller","Craft compelling narratives","docs/creative-artifacts"
 "testing","anytime","teach-me-testing","teach-testing","gaia-teach-testing","false","test-architect","Teach testing progressively","n/a"
 "testing","anytime","test-strategy","test-strategy","gaia-test-strategy","false","test-architect","Unified test strategy and framework setup (collapsed test-design + test-framework, scaffold tests, setup tests)","docs/test-artifacts"
-"testing","anytime","config-ci","config-ci","gaia-config-ci","false","test-architect","Scaffold CI/CD quality pipeline","docs/test-artifacts"
+"testing","anytime","config-ci","config-ci","gaia-config-ci","false","test-architect","Scaffold CI/CD quality pipeline; pass --regenerate to refresh generated workflows with backup-before-overwrite UX (E71-S4)","docs/test-artifacts"
 "testing","anytime","atdd","atdd","gaia-atdd","false","test-architect","Generate failing acceptance tests","docs/test-artifacts"
 "testing","anytime","test-automation","test-automate","gaia-test-automate","false","test-architect","Expand automated test coverage","docs/test-artifacts"
 "testing","anytime","review-test","review-test","gaia-review-test","false","test-architect","Review test quality","docs/test-artifacts"
