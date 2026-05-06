@@ -775,6 +775,19 @@ v_ci_platform_pipeline=$(merge_nested_key ci_platform pipeline)
 # platforms — top-level inline list.
 v_platforms=$(merge_inline_list platforms)
 
+# E77-S1 / FR-403 / ADR-087 — project_kind top-level scalar. Open-vocabulary
+# string with project > global precedence. Soft-warn on unknown values (does
+# NOT block); silent when the field is omitted (backward compat).
+v_project_kind=$(merge_key project_kind)
+if [ -n "$v_project_kind" ]; then
+  case "$v_project_kind" in
+    claude-code-plugin|web-app|mobile-app|api|library) : ;;
+    *)
+      printf 'resolve-config.sh: warning: unknown project_kind "%s" — recognized values: claude-code-plugin, web-app, mobile-app, api, library (accepted as extensible per ADR-087)\n' "$v_project_kind" >&2
+      ;;
+  esac
+fi
+
 # E74-S1 / AC6 — soft-warn on unknown platform identifiers. The schema
 # enforces the strict enum (web|ios|android), but a project on a stale
 # schema-version that uses a newer identifier (e.g., `harmonyos`) MUST NOT
@@ -995,6 +1008,8 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_ci_platform_pipeline" ;;
     platforms)
       printf '%s\n' "$v_platforms" ;;
+    project_kind)
+      printf '%s\n' "$v_project_kind" ;;
     *)
       die "unknown field for --field: '$FIELD'" ;;
   esac
@@ -1093,6 +1108,7 @@ emit_all_body() {
   [ -n "$v_ci_platform_provider" ]              && emit_pair_shell ci_platform.provider             "$v_ci_platform_provider"
   [ -n "$v_ci_platform_pipeline" ]              && emit_pair_shell ci_platform.pipeline             "$v_ci_platform_pipeline"
   [ -n "$v_platforms" ]                         && emit_pair_shell platforms                        "$v_platforms"
+  [ -n "$v_project_kind" ]                      && emit_pair_shell project_kind                     "$v_project_kind"
   # Guarantee the function exits with status 0 — `set -e` aborts the caller
   # when a command-substitution body returns non-zero (the chain above is
   # `[ -n ... ] && emit ...`, which exits 1 when the variable is empty).
@@ -1240,6 +1256,11 @@ else
     if [ -n "$v_platforms" ]; then
       platforms_json=$(printf '%s' "$v_platforms" | jq -R 'split(",") | map(select(length > 0))')
       new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$platforms_json" '. + {platforms: $v}')
+    fi
+    # E77-S1 / FR-403 — project_kind top-level scalar. Emitted only when set,
+    # so absence preserves byte-stability for the legacy JSON surface.
+    if [ -n "$v_project_kind" ]; then
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --arg v "$v_project_kind" '. + {project_kind: $v}')
     fi
     # E74-S1 / FR-RSV2-27 — device_targets is structural; emit as nested
     # object when present. Read via python3 + PyYAML at the top of the
