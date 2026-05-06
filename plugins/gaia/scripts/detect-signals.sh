@@ -105,16 +105,16 @@ PROJECT_ROOT="$(cd "$PROJECT_ROOT" && pwd)"
 # Helpers
 # ---------------------------------------------------------------------------
 
-# pkg_has_dep <package.json> <name>
-pkg_has_dep() {
+# _pkg_has_dep <package.json> <name>
+_pkg_has_dep() {
   local f="$1" name="$2"
   [ -f "$f" ] || return 1
   grep -qE "\"${name}\"[[:space:]]*:" "$f"
 }
 
-# pkg_dep_version <package.json> <name> — emits the resolved version string,
+# _pkg_dep_version <package.json> <name> — emits the resolved version string,
 # stripping leading ^ ~ >= < etc. Empty if not found.
-pkg_dep_version() {
+_pkg_dep_version() {
   local f="$1" name="$2"
   [ -f "$f" ] || return 0
   # Capture the first quoted value following "name":
@@ -147,58 +147,58 @@ PY
 STACKS_JSON='[]'
 WARNINGS_JSON='[]'
 
-add_warning() {
+_add_warning() {
   local msg="$1"
   WARNINGS_JSON="$(jq --arg m "$msg" '. + [$m]' <<<"$WARNINGS_JSON")"
 }
 
-push_stack() {
-  # push_stack <json_object>
+_push_stack() {
+  # _push_stack <json_object>
   local obj="$1"
   STACKS_JSON="$(jq --argjson o "$obj" '. + [$o]' <<<"$STACKS_JSON")"
 }
 
 # Detect Node-family stack from package.json (emit at most one stack object).
-detect_node_family() {
+_detect_node_family() {
   local pj="$PROJECT_ROOT/package.json"
   [ -f "$pj" ] || return 0
 
   local name="node" version=""
-  if pkg_has_dep "$pj" "react"; then
+  if _pkg_has_dep "$pj" "react"; then
     name="react"
-    version="$(pkg_dep_version "$pj" "react" || true)"
-  elif pkg_has_dep "$pj" "vue"; then
+    version="$(_pkg_dep_version "$pj" "react" || true)"
+  elif _pkg_has_dep "$pj" "vue"; then
     name="vue"
-    version="$(pkg_dep_version "$pj" "vue" || true)"
-  elif pkg_has_dep "$pj" "@angular/core"; then
+    version="$(_pkg_dep_version "$pj" "vue" || true)"
+  elif _pkg_has_dep "$pj" "@angular/core"; then
     name="angular"
-    version="$(pkg_dep_version "$pj" "@angular/core" || true)"
-  elif pkg_has_dep "$pj" "svelte"; then
+    version="$(_pkg_dep_version "$pj" "@angular/core" || true)"
+  elif _pkg_has_dep "$pj" "svelte"; then
     name="svelte"
-    version="$(pkg_dep_version "$pj" "svelte" || true)"
+    version="$(_pkg_dep_version "$pj" "svelte" || true)"
   fi
 
   # Detect test runners — both manifest deps AND filesystem config files count.
   local runners=()
   local has_vitest=0 has_jest=0 has_mocha=0 has_karma=0
-  if pkg_has_dep "$pj" "vitest" \
+  if _pkg_has_dep "$pj" "vitest" \
     || [ -f "$PROJECT_ROOT/vitest.config.js" ] \
     || [ -f "$PROJECT_ROOT/vitest.config.ts" ] \
     || [ -f "$PROJECT_ROOT/vitest.config.mjs" ]; then
     has_vitest=1
   fi
-  if pkg_has_dep "$pj" "jest" \
+  if _pkg_has_dep "$pj" "jest" \
     || [ -f "$PROJECT_ROOT/jest.config.js" ] \
     || [ -f "$PROJECT_ROOT/jest.config.ts" ] \
     || [ -f "$PROJECT_ROOT/jest.config.cjs" ]; then
     has_jest=1
   fi
-  if pkg_has_dep "$pj" "mocha" \
+  if _pkg_has_dep "$pj" "mocha" \
     || [ -f "$PROJECT_ROOT/.mocharc.js" ] \
     || [ -f "$PROJECT_ROOT/.mocharc.json" ]; then
     has_mocha=1
   fi
-  if pkg_has_dep "$pj" "karma" \
+  if _pkg_has_dep "$pj" "karma" \
     || [ -f "$PROJECT_ROOT/karma.conf.js" ]; then
     has_karma=1
   fi
@@ -221,12 +221,12 @@ detect_node_family() {
     runners_json="$(printf '%s\n' "${runners[@]}" | jq -R . | jq -s .)"
     obj="$(jq -nc --arg n "$name" --arg v "$version" --argjson r "$runners_json" \
       '{name: $n} + (if $v == "" then {} else {version: $v} end) + {test_runner: $r}')"
-    add_warning "Conflicting test_runner candidates detected (${runners[*]}) — confirm primary runner via /gaia-config-test."
+    _add_warning "Conflicting test_runner candidates detected (${runners[*]}) — confirm primary runner via /gaia-config-test."
   fi
-  push_stack "$obj"
+  _push_stack "$obj"
 }
 
-detect_python_stack() {
+_detect_python_stack() {
   local found=0 framework="" tr=""
   if [ -f "$PROJECT_ROOT/pyproject.toml" ]; then
     found=1
@@ -248,34 +248,34 @@ detect_python_stack() {
   local obj
   obj="$(jq -nc --arg fw "$framework" --arg tr "$tr" \
     '{name: "python"} + (if $fw == "" then {} else {framework: $fw} end) + (if $tr == "" then {} else {test_runner: $tr} end)')"
-  push_stack "$obj"
+  _push_stack "$obj"
 }
 
-detect_java_stack() {
+_detect_java_stack() {
   if [ -f "$PROJECT_ROOT/pom.xml" ] || [ -f "$PROJECT_ROOT/build.gradle" ] || [ -f "$PROJECT_ROOT/build.gradle.kts" ]; then
-    push_stack '{"name":"java","test_runner":"junit"}'
+    _push_stack '{"name":"java","test_runner":"junit"}'
   fi
 }
 
-detect_go_stack() {
+_detect_go_stack() {
   if [ -f "$PROJECT_ROOT/go.mod" ]; then
-    push_stack '{"name":"go","test_runner":"go-test"}'
+    _push_stack '{"name":"go","test_runner":"go-test"}'
   fi
 }
 
-detect_rust_stack() {
+_detect_rust_stack() {
   if [ -f "$PROJECT_ROOT/Cargo.toml" ]; then
-    push_stack '{"name":"rust","test_runner":"cargo-test"}'
+    _push_stack '{"name":"rust","test_runner":"cargo-test"}'
   fi
 }
 
-detect_ruby_stack() {
+_detect_ruby_stack() {
   if [ -f "$PROJECT_ROOT/Gemfile" ]; then
     local obj='{"name":"ruby"}'
     if grep -qE 'rspec' "$PROJECT_ROOT/Gemfile" 2>/dev/null || [ -f "$PROJECT_ROOT/.rspec" ]; then
       obj='{"name":"ruby","test_runner":"rspec"}'
     fi
-    push_stack "$obj"
+    _push_stack "$obj"
   fi
 }
 
@@ -285,7 +285,7 @@ detect_ruby_stack() {
 
 PLATFORMS_JSON='[]'
 
-push_platform() {
+_push_platform() {
   local name="$1"
   # Avoid duplicates (idempotent on repeated detections).
   local exists
@@ -295,30 +295,30 @@ push_platform() {
   fi
 }
 
-detect_platforms() {
+_detect_platforms() {
   if [ -f "$PROJECT_ROOT/Dockerfile" ] \
     || [ -f "$PROJECT_ROOT/docker-compose.yml" ] \
     || [ -f "$PROJECT_ROOT/docker-compose.yaml" ]; then
-    push_platform "docker"
+    _push_platform "docker"
   fi
   # Kubernetes signals: Helm Chart.yaml, k8s/ or kubernetes/ dir, or kubectl/helm
   # references in a Makefile.
   if [ -f "$PROJECT_ROOT/Chart.yaml" ] \
     || [ -d "$PROJECT_ROOT/k8s" ] \
     || [ -d "$PROJECT_ROOT/kubernetes" ]; then
-    push_platform "kubernetes"
+    _push_platform "kubernetes"
   elif [ -f "$PROJECT_ROOT/Makefile" ] && grep -qE 'kubectl|helm' "$PROJECT_ROOT/Makefile" 2>/dev/null; then
-    push_platform "kubernetes"
+    _push_platform "kubernetes"
   fi
   # Terraform: any *.tf file at any depth.
   if find "$PROJECT_ROOT" -maxdepth 4 -name '*.tf' -type f 2>/dev/null | grep -q .; then
-    push_platform "terraform"
+    _push_platform "terraform"
   fi
   if [ -f "$PROJECT_ROOT/Pulumi.yaml" ] || [ -f "$PROJECT_ROOT/Pulumi.yml" ]; then
-    push_platform "pulumi"
+    _push_platform "pulumi"
   fi
   if [ -f "$PROJECT_ROOT/serverless.yml" ] || [ -f "$PROJECT_ROOT/serverless.yaml" ]; then
-    push_platform "serverless"
+    _push_platform "serverless"
   fi
 }
 
@@ -328,7 +328,7 @@ detect_platforms() {
 
 CI_PLATFORM_JSON='null'
 
-detect_ci_platform() {
+_detect_ci_platform() {
   if [ -d "$PROJECT_ROOT/.github/workflows" ] \
     && find "$PROJECT_ROOT/.github/workflows" -maxdepth 1 -name '*.yml' -o -name '*.yaml' 2>/dev/null | grep -q .; then
     CI_PLATFORM_JSON='{"provider":"github-actions","config_path":".github/workflows/"}'
@@ -367,7 +367,7 @@ detect_ci_platform() {
 
 TOOL_PROVIDERS_JSON='[]'
 
-push_tool_provider() {
+_push_tool_provider() {
   local name="$1"
   local exists
   exists="$(jq -r --arg n "$name" 'map(.name) | index($n)' <<<"$TOOL_PROVIDERS_JSON")"
@@ -376,43 +376,43 @@ push_tool_provider() {
   fi
 }
 
-detect_tool_providers() {
+_detect_tool_providers() {
   if [ -f "$PROJECT_ROOT/sonar-project.properties" ]; then
-    push_tool_provider "sonarqube"
+    _push_tool_provider "sonarqube"
   fi
   for f in eslint.config.js eslint.config.mjs eslint.config.cjs eslint.config.ts \
            .eslintrc .eslintrc.js .eslintrc.json .eslintrc.yml .eslintrc.yaml; do
     if [ -f "$PROJECT_ROOT/$f" ]; then
-      push_tool_provider "eslint"
+      _push_tool_provider "eslint"
       break
     fi
   done
   for f in .prettierrc .prettierrc.json .prettierrc.js .prettierrc.yml prettier.config.js; do
     if [ -f "$PROJECT_ROOT/$f" ]; then
-      push_tool_provider "prettier"
+      _push_tool_provider "prettier"
       break
     fi
   done
   for f in .stylelintrc .stylelintrc.json .stylelintrc.js; do
     if [ -f "$PROJECT_ROOT/$f" ]; then
-      push_tool_provider "stylelint"
+      _push_tool_provider "stylelint"
       break
     fi
   done
   for f in jest.config.js jest.config.ts jest.config.cjs; do
     if [ -f "$PROJECT_ROOT/$f" ]; then
-      push_tool_provider "jest"
+      _push_tool_provider "jest"
       break
     fi
   done
   for f in vitest.config.js vitest.config.ts vitest.config.mjs; do
     if [ -f "$PROJECT_ROOT/$f" ]; then
-      push_tool_provider "vitest"
+      _push_tool_provider "vitest"
       break
     fi
   done
   if [ -f "$PROJECT_ROOT/pytest.ini" ]; then
-    push_tool_provider "pytest"
+    _push_tool_provider "pytest"
   fi
 }
 
@@ -420,15 +420,15 @@ detect_tool_providers() {
 # Run all detectors
 # ---------------------------------------------------------------------------
 
-detect_node_family
-detect_python_stack
-detect_java_stack
-detect_go_stack
-detect_rust_stack
-detect_ruby_stack
-detect_platforms
-detect_ci_platform
-detect_tool_providers
+_detect_node_family
+_detect_python_stack
+_detect_java_stack
+_detect_go_stack
+_detect_rust_stack
+_detect_ruby_stack
+_detect_platforms
+_detect_ci_platform
+_detect_tool_providers
 
 # ---------------------------------------------------------------------------
 # Verdict + advisory for empty project
@@ -442,7 +442,7 @@ has_ci="0"
 
 total_signals=$((stack_count + plat_count + tp_count + has_ci))
 if [ "$total_signals" -eq 0 ]; then
-  add_warning "No signals detected — configure manually via /gaia-config-stack, /gaia-config-platform, /gaia-config-ci, /gaia-config-tools."
+  _add_warning "No signals detected — configure manually via /gaia-config-stack, /gaia-config-platform, /gaia-config-ci, /gaia-config-tools."
 fi
 
 # Verdict computation: WARNING if any advisory is present, else PASS.
