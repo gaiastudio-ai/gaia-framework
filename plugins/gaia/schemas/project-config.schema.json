@@ -83,8 +83,49 @@
       ]
     },
     "platformId": {
+      "description": "Platform identifier. Documented values are `web`, `ios`, `android` (E68-S1 baseline). The schema enforces this strict enum so typos and out-of-domain identifiers (e.g., `windows`, `linux`) are rejected at validation time. Per ADR-081 §4.2 the surface is EXTENSIBLE at the resolver layer — `resolve-config.sh` emits a stderr warning (rather than aborting) for unknown identifiers that match the kebab-case pattern, so a project on a stale schema-version that adds a future identifier (e.g., `harmonyos`) is not blocked. Schema changes are still REQUIRED to formally document a new platform, but downstream consumers degrade gracefully in the meantime.",
       "type": "string",
       "enum": ["web", "ios", "android"]
+    },
+    "formFactor": {
+      "description": "Device form-factor enum. Intentionally broader than the current iOS / Android scope to support future wearable / TV adapters without schema-version bumps.",
+      "type": "string",
+      "enum": ["phone", "tablet", "foldable", "watch", "tv"]
+    },
+    "screenSize": {
+      "description": "Logical screen-size descriptor. `width` and `height` are integer points; `density` is a float pixel-ratio (e.g., 2.0 Retina, 3.0 iPhone Plus, 2.625 typical Android xxhdpi).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height", "density"],
+      "properties": {
+        "width":   { "type": "integer", "minimum": 1 },
+        "height":  { "type": "integer", "minimum": 1 },
+        "density": { "type": "number",  "exclusiveMinimum": 0 }
+      }
+    },
+    "deviceTargetEntry": {
+      "description": "Per-platform device matrix entry. `os_versions` are free-form version strings (semver, marketing version, or major-only — no canonical form imposed). `screen_sizes` is the device-grid the mobile rubrics iterate over. `form_factors` is the enumerated list of device classes the project ships against.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os_versions", "screen_sizes", "form_factors"],
+      "properties": {
+        "os_versions": {
+          "type": "array",
+          "items":    { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "screen_sizes": {
+          "type": "array",
+          "items":    { "$ref": "#/definitions/screenSize" },
+          "minItems": 1
+        },
+        "form_factors": {
+          "type": "array",
+          "items":     { "$ref": "#/definitions/formFactor" },
+          "minItems":  1,
+          "uniqueItems": true
+        }
+      }
     }
   },
   "properties": {
@@ -272,12 +313,9 @@
       "uniqueItems": true
     },
     "device_targets": {
-      "description": "Device/OS matrix for mobile platforms. Stub section in E68-S1; full mobile semantics land in E74-S1.",
+      "description": "Device/OS matrix for mobile platforms (FR-RSV2-27). Keyed by platform identifier — keys SHOULD match entries in `platforms[]`; orphan keys (e.g., `device_targets.ios` when `platforms: [android]`) are flagged at the resolver layer, not the schema (open `additionalProperties` mirrors the extensibility principle on `platforms`). Each value is a `deviceTargetEntry` requiring `os_versions`, `screen_sizes`, and `form_factors` per ADR-081.",
       "type": "object",
-      "additionalProperties": {
-        "type": "array",
-        "items": { "type": "string", "minLength": 1 }
-      }
+      "additionalProperties": { "$ref": "#/definitions/deviceTargetEntry" }
     }
   }
 }

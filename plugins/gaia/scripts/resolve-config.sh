@@ -775,9 +775,70 @@ v_ci_platform_pipeline=$(merge_nested_key ci_platform pipeline)
 # platforms — top-level inline list.
 v_platforms=$(merge_inline_list platforms)
 
-# stacks / environments / gates / device_targets are structural sections; we
-# do not flatten them in v1. Downstream callers requiring full structural
-# access should consume the YAML directly or use --format json.
+# E74-S1 / AC6 — soft-warn on unknown platform identifiers. The schema
+# enforces the strict enum (web|ios|android), but a project on a stale
+# schema-version that uses a newer identifier (e.g., `harmonyos`) MUST NOT
+# be blocked by the resolver. Emit a single-line stderr warning per
+# unknown identifier and continue. Documented identifiers stay silent.
+if [ -n "$v_platforms" ]; then
+  IFS=',' read -r -a _gaia_pl_arr <<< "$v_platforms"
+  for _pl in "${_gaia_pl_arr[@]}"; do
+    [ -z "$_pl" ] && continue
+    case "$_pl" in
+      web|ios|android) : ;;
+      *) printf 'resolve-config.sh: warning: unknown platform identifier "%s" — accepted as extensible per ADR-081\n' "$_pl" >&2 ;;
+    esac
+  done
+  unset _gaia_pl_arr _pl
+fi
+
+# device_targets — full structural section (E74-S1 / FR-RSV2-27).
+# Bash regex parsing is the wrong tool for an arbitrarily-nested YAML object;
+# `device_targets.<platform>.{os_versions,screen_sizes,form_factors}` is
+# read structurally via python3 + PyYAML when available and emitted into the
+# `--format json` output as `$.device_targets`. The section is *structural*
+# (not flattened), so `--field device_targets` and `--all` deliberately do
+# NOT surface it — downstream callers consume the JSON form. When python3
+# or PyYAML are missing, the helper returns an empty string and the JSON
+# emitter omits the key — backward-compat with E68-S1's stub behavior is
+# preserved (no key in resolved JSON when nothing surfaceable).
+#
+# Precedence mirrors the rest of the resolver: project layer (LOCAL) wins
+# over the team-shared layer (SHARED) on the entire `device_targets` block.
+extract_device_targets_json() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  # Fast path: cheap grep before paying python-import cost. The grep matches
+  # a top-level `device_targets:` line — false positives (e.g., the same
+  # token inside a quoted string) are rare in practice and the python parser
+  # rejects them gracefully via the `doc.get('device_targets')` lookup.
+  grep -qE '^device_targets:' "$file" 2>/dev/null || return 0
+  command -v python3 >/dev/null 2>&1 || return 0
+  python3 -c "import yaml" 2>/dev/null || return 0
+  python3 - "$file" <<'PY' 2>/dev/null || true
+import sys, json, yaml
+try:
+    with open(sys.argv[1], 'r') as f:
+        doc = yaml.safe_load(f) or {}
+except Exception:
+    sys.exit(0)
+dt = doc.get('device_targets')
+if dt is None:
+    sys.exit(0)
+print(json.dumps(dt, default=str))
+PY
+}
+v_device_targets_json=""
+if [ "$LOCAL_EXISTS" -eq 1 ]; then
+  v_device_targets_json=$(extract_device_targets_json "$LOCAL_PATH")
+fi
+if [ -z "$v_device_targets_json" ] && [ "$SHARED_EXISTS" -eq 1 ]; then
+  v_device_targets_json=$(extract_device_targets_json "$SHARED_PATH")
+fi
+
+# stacks / environments / gates are structural sections; we do not flatten
+# them in v1. Downstream callers requiring full structural access should
+# consume the YAML directly or use --format json.
 
 # ---------- Apply environment overrides (env wins) ----------
 
@@ -1179,6 +1240,12 @@ else
     if [ -n "$v_platforms" ]; then
       platforms_json=$(printf '%s' "$v_platforms" | jq -R 'split(",") | map(select(length > 0))')
       new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$platforms_json" '. + {platforms: $v}')
+    fi
+    # E74-S1 / FR-RSV2-27 — device_targets is structural; emit as nested
+    # object when present. Read via python3 + PyYAML at the top of the
+    # resolver; we just reuse the captured JSON string here.
+    if [ -n "$v_device_targets_json" ]; then
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$v_device_targets_json" '. + {device_targets: $v}')
     fi
 
     # Emit base + new-sections merge.
