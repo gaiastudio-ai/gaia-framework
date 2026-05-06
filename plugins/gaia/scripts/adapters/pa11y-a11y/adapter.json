@@ -1,0 +1,10 @@
+{
+  "provider": "pa11y",
+  "category": "a11y-scanner",
+  "version-range": ">=6.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 120,
+  "file-extensions": [],
+  "scope": "project",
+  "description": "pa11y headless-Chromium accessibility scan — invokes `pa11y --reporter json --standard <wcag-std> <url>` and emits a normalized analysis-results fragment for the WCAG rubric judgment (E73-S4)."
+}
