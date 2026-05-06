@@ -1,0 +1,11 @@
+{
+  "provider": "bash",
+  "category": "deploy",
+  "version-range": ">=3.2",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 1800,
+  "file-extensions": [],
+  "scope": "project",
+  "plugin": "script-deploy",
+  "description": "Reference deploy adapter for /gaia-deploy Pattern A — invokes a user-declared deploy script resolved from `deployment.script_path` (or the SCRIPT_DEPLOY_PATH env-var override). Generic adapter; the user supplies the actual deploy logic."
+}
