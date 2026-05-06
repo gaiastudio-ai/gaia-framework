@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0",
+  "skill": "security",
+  "name": "coppa",
+  "applies_to_skills": ["review-code", "review-security"],
+  "description": "COPPA rules for code paths handling personal information collected from children under 13. Cross-platform (web + mobile) — COPPA is jurisdiction-scoped, not platform-scoped. Layer 2 of the four-layer rubric composition (base + regimes + domain + project) per ADR-079. Opt-in via `compliance.regimes: [coppa]`.",
+  "metadata": {
+    "title": "COPPA regime rubric",
+    "story": "E74-S6",
+    "adr": "ADR-079",
+    "regime_id": "coppa",
+    "last_updated": "2026-05-05",
+    "source_reference": "FTC COPPA Rule, 16 CFR Part 312 (effective 2013-07-01; amended 2025).",
+    "references": [
+      "16-CFR-312.2",
+      "16-CFR-312.3",
+      "16-CFR-312.4",
+      "16-CFR-312.5",
+      "16-CFR-312.6",
+      "16-CFR-312.10"
+    ]
+  },
+  "severity_rules": [
+    {
+      "id": "coppa-data-collection-001",
+      "category": "data-collection",
+      "pattern": "Code collects personal information from a user identified or inferred to be under 13 (name, email, phone, geolocation, photo, audio, persistent identifier) without a verifiable parental consent gate on the request path.",
+      "severity": "Critical",
+      "description": "16 CFR 312.5 prohibits collecting personal information from children under 13 without first obtaining verifiable parental consent. Collection includes any direct or passive request, prompt, or auto-population.",
+      "remediation": "Wrap the collection call in a parental-consent check that returns a verified-consent token before any PI is stored or transmitted; deny by default when the audience signal indicates under-13.",
+      "references": ["16-CFR-312.5", "16-CFR-312.3"]
+    },
+    {
+      "id": "coppa-data-collection-002",
+      "category": "data-collection",
+      "pattern": "Form, prompt, or API endpoint accepts personal information from a child-directed surface without enforcing data minimization (only collects what is reasonably necessary for the activity).",
+      "severity": "High",
+      "description": "16 CFR 312.7 prohibits conditioning a child's participation in an activity on the disclosure of more PI than is reasonably necessary. Over-collection on child-directed surfaces breaches the data-minimization principle.",
+      "remediation": "Strip non-essential fields from child-directed forms and APIs; document the activity-specific necessity for every PI field collected from under-13 users.",
+      "references": ["16-CFR-312.7"]
+    },
+    {
+      "id": "coppa-behavioral-advertising-001",
+      "category": "behavioral-advertising",
+      "pattern": "SDK initialization or ad-network call enables behavioral advertising identifiers (IDFA, GAID, advertising-id, fingerprint trackers) on a child-directed surface without a parental-consent gate.",
+      "severity": "Critical",
+      "description": "16 CFR 312.2 classifies persistent identifiers used for behavioral advertising as personal information when collected from children. Initializing IDFA/GAID/tracker SDKs on child-directed paths without consent breaches COPPA.",
+      "remediation": "Disable advertising-id collection on child-directed surfaces; pass a `child-directed-treatment` flag to ad SDKs (e.g., AdMob TFCD, IAB Audience Tag CHILD) and gate behavioral-ads on verified parental consent.",
+      "references": ["16-CFR-312.2", "16-CFR-312.5"]
+    },
+    {
+      "id": "coppa-behavioral-advertising-002",
+      "category": "behavioral-advertising",
+      "pattern": "Analytics or attribution SDK initialized on a child-directed surface without a `child-directed` or equivalent privacy mode flag (e.g., Firebase analytics without `setAnalyticsCollectionEnabled(false)`, Branch/AppsFlyer without child-mode).",
+      "severity": "High",
+      "description": "Analytics SDKs that build cross-app or cross-device profiles fall under COPPA's persistent-identifier definition when collected from children. Initializing them in default (adult) mode on child-directed surfaces is a violation.",
+      "remediation": "Configure analytics SDKs in their documented child-directed / GDPR-K mode on every child-directed entry point; assert the privacy flag at SDK init, not behind a feature flag.",
+      "references": ["16-CFR-312.2"]
+    },
+    {
+      "id": "coppa-persistent-identifier-001",
+      "category": "persistent-identifier",
+      "pattern": "Code stores a persistent identifier (cookie, device id, IMEI, MAC, customer number, processor serial, IP-based ID) from a child user for a purpose other than internal operations (security, fraud prevention, network communications).",
+      "severity": "High",
+      "description": "16 CFR 312.5(c)(7) permits collecting persistent identifiers from children only for internal-operations purposes without parental consent. Profiling, retargeting, or cross-context sharing of those identifiers requires verifiable parental consent.",
+      "remediation": "Document the internal-operations purpose at the storage call; deny any cross-context use of child persistent identifiers (no marketing exports, no third-party syncs) unless gated on consent.",
+      "references": ["16-CFR-312.5", "16-CFR-312.2"]
+    },
+    {
+      "id": "coppa-parental-consent-001",
+      "category": "parental-consent",
+      "pattern": "Project handling under-13 PI has no verifiable-parental-consent (VPC) handler — no signed-form upload, credit-card verification, government-id check, video-id, knowledge-based authentication, or other 16 CFR 312.5(b) compliant mechanism.",
+      "severity": "Critical",
+      "description": "16 CFR 312.5(b) requires that the operator make reasonable efforts to obtain verifiable parental consent before collecting, using, or disclosing PI from children. Email-plus is permitted only for internal-use disclosures.",
+      "remediation": "Implement a VPC mechanism from the 312.5(b)(2) enumerated list; gate every child-PI write on a verified-consent token tied to the child's record.",
+      "references": ["16-CFR-312.5"]
+    },
+    {
+      "id": "coppa-parental-consent-002",
+      "category": "parental-consent",
+      "pattern": "Onboarding flow on a child-directed surface skips the parent-notice screen — no direct notice describing the operator's information practices is surfaced to the parent before consent is requested.",
+      "severity": "High",
+      "description": "16 CFR 312.4(c) requires direct notice to parents covering the categories of PI collected, how it is used, and parental rights. Skipping the notice screen invalidates any subsequent consent.",
+      "remediation": "Insert a parent-notice step before the VPC step; render the categories collected, retention window, and the privacy-policy link inline rather than behind a hyperlink.",
+      "references": ["16-CFR-312.4"]
+    },
+    {
+      "id": "coppa-parental-access-001",
+      "category": "parental-access",
+      "pattern": "Project storing under-13 PI has no parental-access endpoint — parents cannot review, refuse further use of, or delete the PI collected from their child.",
+      "severity": "High",
+      "description": "16 CFR 312.6 requires that operators give parents the ability to review the PI collected from their child, refuse further collection, and direct deletion of the PI.",
+      "remediation": "Implement a parent-access handler (`/parent/data-export`, `/parent/data-delete`, `/parent/refuse-collection`) authenticated against the verified parent record; propagate deletion across all PI stores.",
+      "references": ["16-CFR-312.6"]
+    },
+    {
+      "id": "coppa-parental-access-002",
+      "category": "parental-access",
+      "pattern": "Parental-deletion handler does not fan out to caches, replicas, search indexes, analytics warehouses, or third-party processors — child PI lingers after the documented delete path completes.",
+      "severity": "High",
+      "description": "16 CFR 312.10 requires that PI be deleted from every store, including derived caches and downstream processors, when retention is no longer reasonably necessary or when the parent requests deletion.",
+      "remediation": "Implement a fan-out deletion job that emits a confirmation log per store touched; enumerate downstream processors in the privacy policy and propagate the deletion to each via documented APIs.",
+      "references": ["16-CFR-312.6", "16-CFR-312.10"]
+    },
+    {
+      "id": "coppa-data-retention-001",
+      "category": "data-retention",
+      "pattern": "Storage call for under-13 PI has no documented retention window or TTL declaration — the data is retained indefinitely after the activity that justified its collection ends.",
+      "severity": "High",
+      "description": "16 CFR 312.10 requires that operators retain children's PI only for as long as is reasonably necessary to fulfill the purpose for which it was collected, and delete it using reasonable measures thereafter.",
+      "remediation": "Annotate every child-PI storage call with a retention reference (policy id, TTL, scheduled-deletion job); enforce the window via an automated purge job rather than manual review.",
+      "references": ["16-CFR-312.10"]
+    },
+    {
+      "id": "coppa-data-retention-002",
+      "category": "data-retention",
+      "pattern": "Backup, archive, or analytics export of child-directed surfaces does not honor the retention window — child PI is retained in long-lived stores beyond the documented activity lifetime.",
+      "severity": "Medium",
+      "description": "Retention windows for child PI must propagate to backups, archives, and downstream analytics. Indefinite backups breach the storage-limitation principle of 16 CFR 312.10.",
+      "remediation": "Apply the retention window to backups and archives via lifecycle policies; pseudonymize or strip child PI before export to analytics warehouses.",
+      "references": ["16-CFR-312.10"]
+    },
+    {
+      "id": "coppa-confidentiality-001",
+      "category": "confidentiality",
+      "pattern": "Child PI is transmitted, stored, or logged in plaintext at any point in the data lifecycle (transit, at-rest, log shipping, error reporting).",
+      "severity": "Critical",
+      "description": "16 CFR 312.8 requires reasonable procedures to maintain the confidentiality, security, and integrity of children's PI. Plaintext PI in transit, storage, or logs breaches the security principle.",
+      "remediation": "Enforce TLS for transit, encryption-at-rest for storage, and PII masking at the logger boundary; surface PII redaction in error reports before they leave the process.",
+      "references": ["16-CFR-312.8"]
+    }
+  ]
+}
