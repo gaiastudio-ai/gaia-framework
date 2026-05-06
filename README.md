@@ -168,6 +168,109 @@ Then restart Claude Code. After restart, `/plugin` should report the new version
 
 **Private-repo users:** set `GITHUB_TOKEN` in your shell environment before launching Claude Code. The marketplace clone step requires read access to the repository. If `gh auth status` shows you are authenticated with read access, updates work automatically.
 
+## GAIA Review System v2 — Skills & Review Gate
+
+The GAIA Review System v2 (PRD §4.38, ADR-077..ADR-082) splits verdict-producing
+skills into two families and assembles them into a single composite Review Gate
+per story. The canonical scope-edges document is [BOUNDARIES.md](./BOUNDARIES.md);
+this section is the surface-level command-listing index.
+
+### Review Gate (up to seven gates per story — ADR-082)
+
+`/gaia-review-all` is the composite-verdict aggregator. It runs the pre-merge
+gates declared by the project's `project-config.yaml` and emits a single
+composite verdict (`APPROVE` / `REQUEST_CHANGES` / `BLOCKED`) per ADR-082.
+
+**Five always-on gates:**
+
+| # | Skill | Owner agent |
+|---|---|---|
+| 1 | `/gaia-review-code` | stack-specific reviewer (resolved by `agent-overlay.sh`) |
+| 2 | `/gaia-review-qa` | Vera |
+| 3 | `/gaia-review-security` | Zara |
+| 4 | `/gaia-review-test` | Sable |
+| 5 | `/gaia-review-perf` | Juno |
+
+**Two conditional gates (up to seven gates total):**
+
+| # | Skill | Trigger | Owner agent |
+|---|---|---|---|
+| 6 | `/gaia-review-a11y` | `compliance.ui_present: true` in `project-config.yaml` | Christy |
+| 7 | `/gaia-review-mobile` | any mobile platform declared in `platforms[]` | Talia |
+
+Skipped conditional gates contribute neutrally to the composite verdict per
+ADR-082 — the seven-row Review Gate table renders `PASSED (skipped)` with a
+`skip_reason` for any conditional gate that did not trigger. Earlier
+documentation that referenced "the six review skills" matches the always-on +
+single-conditional-mobile subset; the post-RSV2 count is **up to seven gates**
+(five always plus two conditional, per ADR-082).
+
+### Action skills (write-capable, not part of `/gaia-review-all`)
+
+Action skills mutate the source tree (write code, run tests, deploy). They
+are NEVER counted as review-skill rows in the Review Gate table.
+
+| Skill | Purpose | Owner agent |
+|---|---|---|
+| `/gaia-test-automate` | Test-automation expansion — scaffolds and extends automated coverage for a story (sub-commands `--status`, `--add-scenario`, `--scaffold` per FR-RSV2-40) | Sable |
+| `/gaia-test-run` | Manual any-environment test runner (FR-RSV2-39) | Sable |
+| `/gaia-test-e2e` | Deployment-phase end-to-end smoke (Playwright/Cypress) | Sable |
+| `/gaia-test-perf` | Deployment-phase performance smoke (k6/Lighthouse) | Sable |
+| `/gaia-test-dast` | Deployment-phase DAST (OWASP ZAP) | Sable |
+| `/gaia-test-a11y` | Deployment-phase a11y smoke (axe-core/pa11y) — shares rubrics with the planning-phase variant per FR-RSV2-25 | Sable |
+| `/gaia-test-mobile-e2e` | Mobile e2e (Detox/Maestro/Appium/XCUITest/Espresso) | Talia |
+| `/gaia-test-device-matrix` | Mobile device-matrix dispatcher (Firebase Test Lab/BrowserStack/Sauce Labs adapters) | Talia |
+| `/gaia-deploy` | Deployment orchestrator (Pattern A — claude-driven, sequencing pre-deploy verdict → deploy → post-deploy smoke gates) | Soren |
+
+`/gaia-test-automate` is an **action skill** — it writes test files and
+maintains automation coverage. It is not a review skill and never appears as a
+Review Gate row, regardless of how older internal docs may have classified it.
+
+### New configuration and discovery commands (FR-RSV2-23)
+
+| Command | Purpose |
+|---|---|
+| `/gaia-init` | Greenfield conversational setup — bootstraps `project-config.yaml` |
+| `/gaia-config-env` | Edit `environments:` block |
+| `/gaia-config-test` | Edit `test_execution:` block |
+| `/gaia-config-tool` | Edit `tools:` block |
+| `/gaia-config-compliance` | Edit `compliance.regimes` and `compliance.ui_present` |
+| `/gaia-config-stack` | Edit `stacks:` block |
+| `/gaia-config-rubric` | Edit `rubrics:` overrides |
+| `/gaia-config-platform` | Edit `platforms:` block (mobile platform declaration) |
+| `/gaia-config-device-target` | Edit `device_targets:` block |
+| `/gaia-config-validate` | Validate the merged-rubric result against `rubric.schema.json` |
+| `/gaia-config-show` | Render the resolved config (post-merge, post-availability-probe) |
+| `/gaia-config-ci` | Generate or regenerate the CI workflow from `project-config.yaml` (replaces `/gaia-ci-setup`) |
+| `/gaia-list-tools` | Enumerate built-in adapters by category |
+| `/gaia-tool-info {tool}` | Full adapter metadata |
+| `/gaia-validate-rubric {path}` | Validate a single rubric file against the schema |
+| `/gaia-validate-design-a11y` | Planning-phase a11y validation (design-time, runs at end of UX phase) |
+| `/gaia-test-strategy` | Test-plan design + framework scaffolding (collapses `/gaia-test-design` and `/gaia-test-framework` per FR-RSV2-24) |
+
+### Deprecated command aliases → replacements
+
+The following pre-RSV2 command names are deprecated. Each old name continues to
+register a redirect to its replacement for one minor version; new code and new
+documentation MUST use the canonical name on the right.
+
+| Deprecated alias | Replacement | Rationale |
+|---|---|---|
+| `/gaia-ci-setup` | `/gaia-config-ci` | Honour the `gaia-{verb}-{noun}` naming convention; renamed per FR-RSV2-23 |
+| `/gaia-test-design` | `/gaia-test-strategy` | Collapsed with `/gaia-test-framework` per FR-RSV2-24 |
+| `/gaia-test-framework` | `/gaia-test-strategy` | Collapsed with `/gaia-test-design` per FR-RSV2-24 |
+| `/gaia-code-review` | `/gaia-review-code` | Verb-noun rename per FR-RSV2-23 |
+| `/gaia-qa-tests` | `/gaia-review-qa` | Verb-noun rename per FR-RSV2-23 |
+| `/gaia-test-review` | `/gaia-review-test` | Verb-noun rename per FR-RSV2-23 |
+| `/gaia-security-review` | `/gaia-review-security` | Verb-noun rename per FR-RSV2-23 |
+| `/gaia-performance-review` | `/gaia-review-perf` | Verb-noun rename per FR-RSV2-23 |
+| `/gaia-a11y-testing` | `/gaia-test-a11y` | Verb-noun rename per FR-RSV2-23 |
+| `/gaia-performance-review` (anytime) | `/gaia-perf-deepdive` | Anytime variant disambiguated per FR-RSV2-23 |
+
+For the canonical scope-edges between review skills and action skills, gate
+phases, rubric layers, adapter origins, and verdict vocabularies, see
+[BOUNDARIES.md](./BOUNDARIES.md).
+
 ## Documentation
 
 For a discovery entry point into the GAIA artifact directories
