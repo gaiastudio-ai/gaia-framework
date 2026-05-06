@@ -1,0 +1,98 @@
+# claude-code-plugin.yaml — Claude Code plugin stack definition (E77-S2, FR-404, ADR-087)
+#
+# Stack file activated when project-config.yaml sets project_kind:
+# claude-code-plugin (introduced by E77-S1 / FR-403). Declares the canonical
+# plugin file types, project discovery rules (3+ co-occurring signals), naming
+# conventions, and frontmatter requirements consumed by the plugin
+# review/validation pipeline (FR-409 plugin-frontmatter-validator,
+# FR-410 plugin-manifest-validator, FR-420 brownfield detection).
+#
+# Field schema differs from the mobile stack catalog
+# (swift.yaml / kotlin.yaml / react-native.yaml / flutter.yaml from E74-S2):
+# mobile stacks declare name / language / platform / build_tool / linters /
+# adapters; the plugin stack declares file_extensions / discovery_rules /
+# casing / frontmatter_requirements. The two schemas share only the
+# config/stacks/ directory and the resolver entry point.
+#
+# Source spec:
+#   docs/planning-artifacts/prd/04-functional-requirements/
+#     41-4-40-claude-code-plugin-project-support-af-2026-05-06-2.md  (FR-404)
+#   docs/planning-artifacts/architecture/12-12-adr-detail-records.md (ADR-087)
+
+name: claude-code-plugin
+
+# --- file_extensions (AC1) -------------------------------------------------
+# Canonical file types for Claude Code plugin source. The validator uses
+# this list to decide which files to scope-check (markdown lint, yaml lint,
+# bats discovery, JSON schema validation, shellcheck).
+file_extensions:
+  - .md       # SKILL.md, command/agent files, ADRs, docs
+  - .bash     # plugin shell helpers
+  - .bats     # bats test suites under tests/
+  - .json     # adapter.json, manifest fragments, JSON-schema fixtures
+  - .yaml     # manifest.yaml, config/*.yaml, rubric YAML overlays
+
+# --- discovery_rules (AC2) -------------------------------------------------
+# Brownfield / scanner classification rules. A project is recognised as a
+# claude-code-plugin only when the listed signal globs co-occur — the
+# min_signals threshold (3) prevents false positives on stray manifest.yaml
+# or SKILL.md files that appear in unrelated repos. Signals are observed
+# via repository scan, not by file existence at any single path.
+discovery_rules:
+  signals:
+    - "manifest.yaml"             # plugin manifest at the plugin root
+    - "plugins/*/SKILL.md"        # at least one skill module
+    - "scripts/*.sh"              # shared helper scripts
+  min_signals: 3                  # FR-404: 3+ co-occurring signals required
+  rationale: >
+    Single-signal detection is rejected because manifest.yaml or SKILL.md
+    can appear in non-plugin repos (e.g. example projects, vendored copies)
+    and would otherwise trigger false-positive classification.
+
+# --- casing (AC3) ----------------------------------------------------------
+# Filesystem naming conventions enforced downstream by the
+# plugin-frontmatter-validator and plugin-manifest-validator adapters.
+casing:
+  # Slug-bearing component directories (skills, commands, agents) and their
+  # canonical file basenames must be kebab-case.
+  slugs: kebab-case
+  skills: kebab-case
+  commands: kebab-case
+  agents: kebab-case
+  # File extensions are always lowercase. SKILL.md is intentionally exempt
+  # because the canonical filename is uppercase-stem (`SKILL`) per the
+  # Claude Code plugin contract; the rule applies to the trailing extension.
+  file_extensions: lowercase
+  exempt_basenames:
+    - SKILL.md
+    - README.md
+    - CHANGELOG.md
+
+# --- frontmatter_requirements (AC4 + AC5) ----------------------------------
+# Mandatory frontmatter fields and the case-sensitive name == basename
+# rule that protects Linux CI (case-sensitive ext4) from drift introduced
+# on macOS HFS+ (case-insensitive by default).
+frontmatter_requirements:
+  required_fields:
+    - name           # FR-404: mandatory in plugin manifests
+    - description    # FR-404: mandatory
+    - version        # FR-404: mandatory
+  # AC4 — the `name` field of a SKILL.md / command / agent frontmatter must
+  # equal the directory basename of the component on disk.
+  name_equals_basename: true
+  # AC5 — comparison is byte-exact (LC_ALL=C). On Linux CI a directory named
+  # `My-Skill` with frontmatter `name: my-skill` MUST fail validation;
+  # macOS HFS+ would otherwise mask the mismatch.
+  case_sensitive: true
+  enforce_on:
+    - linux-ci
+  comparison_locale: "LC_ALL=C"
+
+# --- error policy (AC7) ----------------------------------------------------
+# The resolver MUST emit a clear error and refuse to fall back to a default
+# stack when this file is missing or fails to parse. Callers SHOULD log the
+# resolved file path on success so misconfigurations surface in CI logs.
+error_policy:
+  on_missing: fail-loud
+  on_parse_error: fail-loud
+  fallback: none
