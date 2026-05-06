@@ -1,85 +1,57 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-test-e2e Phase 4 verdict + Review Gate update (E73-S1, AC7, AC8).
+# finalize.sh — gaia-test-e2e skill lifecycle finalize (E73-S1).
 #
-# Reads the Phase 3A analysis-results.json and the Phase 3B llm-findings.json,
-# invokes review-common/verdict-resolver.sh to compute the verdict (APPROVE |
-# REQUEST_CHANGES | BLOCKED), and (when --story-key is provided AND --gate is
-# provided) updates the corresponding Review Gate row via review-gate.sh.
+# Standard lifecycle hook (parallel to gaia-deploy-checklist/finalize.sh):
+#   1. Write a checkpoint via checkpoint.sh
+#   2. Emit a lifecycle event via lifecycle-event.sh
 #
-# Verdict to gate-row mapping (per CLAUDE.md FR-RSV2-3):
-#   APPROVE          -> PASSED
-#   REQUEST_CHANGES  -> FAILED
-#   BLOCKED          -> FAILED
+# This is the audit-v2-migration-compatible lifecycle finalizer. The Phase 4
+# verdict resolver lives in this skill's verdict.sh — invoked from the SKILL.md
+# body after Phase 3B completes. Keeping verdict resolution out of finalize.sh
+# preserves the lifecycle harness contract (no required args).
 #
-# Contract:
-#   finalize.sh --analysis-results <path> --llm-findings <path>
-#               [--story-key <key>] [--gate <name>]
+# Exit codes:
+#   0 — finalize succeeded (checkpoint + event hooks are non-fatal)
+#   1 — unexpected error
 #
-# Stdout: emits the verdict on the last line (APPROVE | REQUEST_CHANGES |
-#         BLOCKED). Caller scripts can capture this for downstream chaining.
-# Exit codes: 0 — verdict resolved successfully (irrespective of value);
-#             1 — caller error or resolver failure.
+# POSIX discipline: bash 3.2 / macOS-compatible, set -euo pipefail, LC_ALL=C.
 
 set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
 SCRIPT_NAME="gaia-test-e2e/finalize.sh"
+WORKFLOW_NAME="test-e2e"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-RESOLVER="$PLUGIN_ROOT/scripts/review-common/verdict-resolver.sh"
-GATE="$PLUGIN_ROOT/scripts/review-gate.sh"
+PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
+
+CHECKPOINT="$PLUGIN_SCRIPTS_DIR/checkpoint.sh"
+LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
-die() { log "$*"; exit 1; }
 
-ANALYSIS=""
-LLM=""
-STORY_KEY=""
-GATE_NAME=""
-
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --analysis-results) ANALYSIS="$2"; shift 2 ;;
-    --llm-findings)     LLM="$2"; shift 2 ;;
-    --story-key)        STORY_KEY="$2"; shift 2 ;;
-    --gate)             GATE_NAME="$2"; shift 2 ;;
-    -h|--help)
-      cat <<EOF
-$SCRIPT_NAME — verdict resolution + Review Gate update for /gaia-test-e2e.
-Usage:
-  finalize.sh --analysis-results <path> --llm-findings <path>
-              [--story-key <key>] [--gate <name>]
-EOF
-      exit 0 ;;
-    *) die "unknown arg: $1" ;;
-  esac
-done
-
-[ -n "$ANALYSIS" ] || die "--analysis-results required"
-[ -n "$LLM" ]      || die "--llm-findings required"
-[ -r "$ANALYSIS" ] || die "analysis-results not readable: $ANALYSIS"
-[ -r "$LLM" ]      || die "llm-findings not readable: $LLM"
-[ -x "$RESOLVER" ] || die "verdict-resolver.sh not found at $RESOLVER"
-
-verdict="$("$RESOLVER" --skill gaia-test-e2e --analysis-results "$ANALYSIS" --llm-findings "$LLM")" \
-  || die "verdict-resolver.sh failed"
-
-# Optional Review Gate update.
-if [ -n "$STORY_KEY" ] && [ -n "$GATE_NAME" ] && [ -x "$GATE" ]; then
-  case "$verdict" in
-    APPROVE)         gate_status="PASSED" ;;
-    REQUEST_CHANGES) gate_status="FAILED" ;;
-    BLOCKED)         gate_status="FAILED" ;;
-    *)               gate_status="UNVERIFIED" ;;
-  esac
-  if "$GATE" update --story "$STORY_KEY" --gate "$GATE_NAME" --verdict "$gate_status" 2>>"$ANALYSIS.gate.log"; then
-    log "review-gate updated: story=$STORY_KEY gate=$GATE_NAME verdict=$gate_status"
+# ---------- 1. Write checkpoint ----------
+if [ -x "$CHECKPOINT" ]; then
+  if "$CHECKPOINT" write --workflow "$WORKFLOW_NAME" --step 5 >/dev/null 2>&1; then
+    log "checkpoint written for $WORKFLOW_NAME"
   else
-    log "WARN: review-gate update failed (see $ANALYSIS.gate.log)"
+    log "checkpoint.sh write failed for $WORKFLOW_NAME (non-fatal)"
   fi
+else
+  log "checkpoint.sh not found — skipping checkpoint write (non-fatal)"
 fi
 
-printf '%s\n' "$verdict"
+# ---------- 2. Emit lifecycle event ----------
+if [ -x "$LIFECYCLE_EVENT" ]; then
+  if "$LIFECYCLE_EVENT" --type workflow_complete --workflow "$WORKFLOW_NAME" >/dev/null 2>&1; then
+    log "lifecycle event emitted for $WORKFLOW_NAME"
+  else
+    log "lifecycle-event.sh emit failed for $WORKFLOW_NAME (non-fatal)"
+  fi
+else
+  log "lifecycle-event.sh not found — skipping event emission (non-fatal)"
+fi
+
+log "finalize complete for $WORKFLOW_NAME"
 exit 0

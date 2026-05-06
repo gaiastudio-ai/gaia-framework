@@ -89,11 +89,13 @@ The fork is read-only; the parent context writes `llm-findings.json` to the outp
 
 ### Phase 4 — Verdict + Review Gate
 
-Invoke `scripts/finalize.sh --analysis-results <path> --llm-findings <path> [--story-key <key>] [--gate <name>]`. The script:
+Invoke `scripts/verdict.sh --analysis-results <path> --llm-findings <path> [--story-key <key>] [--gate <name>]`. The script:
 
 1. Calls `review-common/verdict-resolver.sh --skill gaia-test-e2e` to compute the verdict (precedence per ADR-075: errored > tool-failed-blocking > LLM-Critical > APPROVE).
 2. When `--story-key` and `--gate` are provided, invokes `review-gate.sh update` to update the matching Review Gate row to PASSED (APPROVE) or FAILED (REQUEST_CHANGES, BLOCKED). Deployment-phase invocations without an associated story skip this step.
 3. Echoes the verdict on stdout for downstream chaining.
+
+After verdict resolution, the lifecycle hook `scripts/finalize.sh` writes a checkpoint and emits a `workflow_complete` lifecycle event (parallel to gaia-deploy-checklist's finalize pattern). The hook takes no required arguments and is invoked at the end of the skill body.
 
 ## Severity Rubric
 
