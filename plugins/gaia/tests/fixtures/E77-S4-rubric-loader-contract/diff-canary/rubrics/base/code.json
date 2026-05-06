@@ -1,0 +1,6 @@
+{
+  "schema_version": "1.0",
+  "skill": "code",
+  "metadata": {"title": "canary base"},
+  "severity_rules": []
+}

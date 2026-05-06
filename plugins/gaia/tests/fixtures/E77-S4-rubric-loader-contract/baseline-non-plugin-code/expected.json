@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "title": "fixture base code"
+  },
+  "schema_version": "1.0",
+  "severity_rules": [
+    {
+      "category": "x",
+      "description": "d",
+      "id": "rule-1",
+      "pattern": "p",
+      "remediation": "r",
+      "severity": "Low"
+    }
+  ],
+  "skill": "code"
+}

@@ -9,6 +9,35 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 
 ## [Unreleased]
 
+### Sub-rubric loader pipeline migration (E77-S4)
+
+- **E77-S4** (FR-406, ADR-088): `plugins/gaia/scripts/rubric-loader.sh` gains
+  a sub-rubric phase between the base layer and the regime layers. Sub-rubric
+  files live under `<rubrics_root>/sub-rubrics/*.json`, are filtered by an
+  optional `when:` predicate (equality, array intersection, AND across keys —
+  no OR / no negation / no nesting), and merged in deterministic order
+  (numeric prefix `^[0-9]+-` ASC before LC_ALL=C alpha for non-prefixed).
+  - New `--config <path>` flag injects a project-config YAML for predicate
+    evaluation; absent ⇒ empty context, so project_kind-gated sub-rubrics are
+    correctly EXCLUDED for projects that do not declare `project_kind` (the
+    typical brownfield case).
+  - New `--debug-order` flag emits one filename per line in sub-rubric merge
+    order (diagnostic only).
+  - The sub-rubrics directory is OPTIONAL — when absent or empty the loader
+    is a no-op for this phase, preserving byte-identical output for every
+    existing project shape (AC9.9).
+  - Mobile SKILL-side rubric path (`gaia-review-mobile/SKILL.md`, mobile-*
+    base rubrics) is UNTOUCHED per ADR-090; the post-Phase-2 cleanup story
+    will migrate mobile to the loader-side path.
+  - New byte-identical contract test
+    `plugins/gaia/tests/E77-S4-rubric-loader-contract.bats` (8 ACs, baseline
+    + diff-canary fixtures) gates the migration.
+  - New full regression suite
+    `plugins/gaia/tests/E77-S4-rubric-loader-regression.bats` (12 tests
+    covering every base skill + regime overlay + empty-sub-rubrics no-op +
+    no-config and unconditional-include semantics) ships with this story —
+    blocking downstream stories E77-S5/S6/S14/S15/S16 only after green.
+
 ### v1.132.x — Dev-story tooling quirks cleanup (E64-S1)
 
 - **E64-S1**: bundle four sprint-33 dev-story tooling quirks into a single
