@@ -1,0 +1,4 @@
+[
+  {"device_id":"d1","os_version":"14","form_factor":"phone","verdict":"PASSED","duration_ms":12000,"artifacts":[]},
+  {"device_id":"d2","os_version":"13","form_factor":"tablet","verdict":"ERROR","duration_ms":2000,"artifacts":[]}
+]
