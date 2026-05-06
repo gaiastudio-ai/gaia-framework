@@ -1,0 +1,48 @@
+# flutter.yaml — Flutter cross-platform stack definition (E74-S2, ADR-081)
+#
+# Mobile platforms: iOS + Android. Targets the Flutter SDK with Dart as the
+# implementation language. Demonstrates the "last extended" inheritance
+# pattern documented in ADR-081 — flutter.yaml `extends: dart`, inheriting
+# base linting / formatting rules from the Dart language stack and adding
+# Flutter-specific tooling on top.
+#
+# `extends: dart` is a forward reference: the Dart language stack
+# (`dart.yaml`) is shipped separately. resolve-config.sh recursive-stack
+# loading consumes the `extends` chain to compose the final resolved stack.
+# When the referenced parent stack is absent, downstream consumers fall back
+# to this file's locally-declared fields.
+#
+# Source spec: docs/planning-artifacts/decisions/gaia-review-system-final-report.md
+# §4.1, §5.7, §7.2.1.
+
+name: flutter
+language: Dart
+platform: [ios, android]
+build_tool: flutter
+package_manager: pub
+
+# extends — last-extended inheritance pattern (ADR-081). Inherits the base
+# Dart language stack and layers Flutter-specific lints / test frameworks /
+# adapters on top.
+extends: dart
+
+linters:
+  - dart_analyzer
+  - flutter_lints
+  - custom_lint
+
+formatters:
+  - dart format
+
+test_frameworks:
+  - flutter_test
+  - integration_test
+  - patrol
+
+adapters:
+  static:
+    - dart_analyzer
+    - flutter_lints
+  dynamic:
+    - flutter_integration_test
+    - patrol
