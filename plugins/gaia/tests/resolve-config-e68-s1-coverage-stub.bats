@@ -17,6 +17,7 @@
 #   parse_yaml_nested_inline_list
 #   merge_inline_list
 #   merge_nested_inline_list
+#   extract_device_targets_json    # E74-S1 — exercised via cluster-1/platforms-device-targets.bats
 
 load 'test_helper.bash'
 
