@@ -1,0 +1,11 @@
+{
+  "provider": "xcrun",
+  "category": "mobile-static",
+  "version-range": ">=14.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 300,
+  "file-extensions": [".ipa", ".xcarchive", ".app"],
+  "description": "xcsize — iOS app thinning size analysis via xcrun (App Store thinning variants).",
+  "platforms": ["ios"],
+  "applies_to_skills": ["review-code", "review-mobile"]
+}

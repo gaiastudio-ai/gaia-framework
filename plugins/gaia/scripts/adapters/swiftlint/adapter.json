@@ -1,0 +1,11 @@
+{
+  "provider": "swiftlint",
+  "category": "linter",
+  "version-range": ">=0.50.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 180,
+  "file-extensions": [".swift"],
+  "description": "SwiftLint — Swift style and conventions linter for iOS / macOS source.",
+  "platforms": ["ios"],
+  "applies_to_skills": ["review-code", "review-mobile"]
+}
