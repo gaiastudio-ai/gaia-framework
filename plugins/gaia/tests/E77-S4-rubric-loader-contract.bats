@@ -309,6 +309,75 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# NFR-052 coverage stubs — exercise the public functions added by E77-S4
+# directly so the run-with-coverage gate registers them as covered. These
+# tests source the loader as a library by setting BASH_SOURCE-only mode is
+# not possible (the loader's body runs unconditionally), so we instead
+# verify the helpers' observable behavior end-to-end through the loader
+# CLI. The test names mention the function symbols verbatim so the
+# textual-grep coverage check picks them up (per E28-S184 / NFR-052).
+# ---------------------------------------------------------------------------
+
+@test "NFR-052 coverage: emit_subrubric_sort_key produces ADR-088 sort order" {
+  # Drives emit_subrubric_sort_key indirectly via --debug-order. The
+  # function name appears verbatim in this test's title so the textual
+  # public-function coverage gate (NFR-052, run-with-coverage.sh) registers
+  # it as covered.
+  cat >"$TMP_RUBRICS/sub-rubrics/05-foo.json" <<'EOF'
+{ "schema_version": "1.0", "skill": "code", "metadata": {}, "severity_rules": [] }
+EOF
+  cat >"$TMP_RUBRICS/sub-rubrics/zebra.json" <<'EOF'
+{ "schema_version": "1.0", "skill": "code", "metadata": {}, "severity_rules": [] }
+EOF
+  cat >"$TMP_CONFIG" <<'EOF'
+project_kind: web-app
+EOF
+  local order
+  order=$("$LOADER" --skill code --rubrics-root "$TMP_RUBRICS" \
+                    --regimes "" --no-domain --no-project --config "$TMP_CONFIG" \
+                    --debug-order)
+  # ADR-088 contract: numeric-prefixed file ranks before non-prefixed file.
+  [ "$(printf '%s\n' "$order" | sed -n '1p')" = "05-foo.json" ]
+  [ "$(printf '%s\n' "$order" | sed -n '2p')" = "zebra.json" ]
+}
+
+@test "NFR-052 coverage: subrubric_predicate_passes evaluates equality + array + AND grammar" {
+  # Drives subrubric_predicate_passes via three end-to-end loader runs that
+  # exercise (1) equality match, (2) array intersection match, (3) AND
+  # across two clauses with one mismatch (must EXCLUDE). The function
+  # name appears verbatim in this test's title so the textual public-
+  # function coverage gate (NFR-052) registers it as covered.
+  cat >"$TMP_RUBRICS/sub-rubrics/eq.json" <<'EOF'
+{ "schema_version": "1.0", "skill": "code", "when": {"project_kind": "claude-code-plugin"}, "metadata": {"eq_marker": "yes"}, "severity_rules": [] }
+EOF
+  cat >"$TMP_RUBRICS/sub-rubrics/arr.json" <<'EOF'
+{ "schema_version": "1.0", "skill": "code", "when": {"platforms": ["ios"]}, "metadata": {"arr_marker": "yes"}, "severity_rules": [] }
+EOF
+  cat >"$TMP_RUBRICS/sub-rubrics/and.json" <<'EOF'
+{ "schema_version": "1.0", "skill": "code", "when": {"project_kind": "claude-code-plugin", "platforms": ["ios"]}, "metadata": {"and_marker": "yes"}, "severity_rules": [] }
+EOF
+  cat >"$TMP_CONFIG" <<'EOF'
+project_kind: claude-code-plugin
+platforms: [ios]
+EOF
+  local out
+  out=$("$LOADER" --skill code --rubrics-root "$TMP_RUBRICS" \
+                  --regimes "" --no-domain --no-project --config "$TMP_CONFIG")
+  echo "$out" | jq -e '.metadata.eq_marker == "yes"' >/dev/null
+  echo "$out" | jq -e '.metadata.arr_marker == "yes"' >/dev/null
+  echo "$out" | jq -e '.metadata.and_marker == "yes"' >/dev/null
+
+  # Now flip one AND clause to fail — and_marker must disappear.
+  cat >"$TMP_CONFIG" <<'EOF'
+project_kind: claude-code-plugin
+platforms: [web]
+EOF
+  out=$("$LOADER" --skill code --rubrics-root "$TMP_RUBRICS" \
+                  --regimes "" --no-domain --no-project --config "$TMP_CONFIG")
+  ! echo "$out" | jq -e '.metadata.and_marker' >/dev/null
+}
+
+# ---------------------------------------------------------------------------
 # AC8 — contract canary: an intentionally-diffing fixture FAILS the gate
 # ---------------------------------------------------------------------------
 @test "AC8: contract canary fixture FAILS the byte-identical gate" {
