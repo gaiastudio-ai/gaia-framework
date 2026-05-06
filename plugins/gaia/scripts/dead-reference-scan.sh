@@ -166,6 +166,11 @@ is_allowlisted() {
   # test body are the contractual assertion target — same precedent as
   # e70-s5-skill-registration.bats above.
   [[ "$path" == */plugins/gaia/tests/gaia-init.bats ]] && return 0
+  # E72-S1 — e72-s1-test-run.bats asserts that the gaia-test-run skill is
+  # registered in workflow-manifest.csv and gaia-help.csv. Same precedent as
+  # e70-s5-skill-registration.bats and gaia-init.bats — the literal filename
+  # mention is the contractual assertion target.
+  [[ "$path" == */plugins/gaia/test/scripts/e72-s1-test-run.bats ]] && return 0
   # E45-S1 — static-next-steps.bats is the parity guard for ADR-060 / FR-348.
   # VCP-NXT-11 asserts zero `lifecycle-sequence.yaml` references across the 10
   # target SKILL.md files; the literal token appears in assertions and prose
