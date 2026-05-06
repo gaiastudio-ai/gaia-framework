@@ -69,6 +69,7 @@ module,phase,name,code,command,required,agent-name,description,output-location
 "core","anytime","review-accessibility","review-a11y","gaia-review-a11y","false","ux-designer","Conditional pre-merge a11y gate (ui_present) — WCAG 2.1 review","n/a"
 "lifecycle","2-planning","validate-design-a11y","validate-design-a11y","gaia-validate-design-a11y","false","ux-designer","Planning-phase a11y design review — WCAG design contrast / semantic / keyboard / ARIA","docs/test-artifacts"
 "core","anytime","review-performance","review-perf","gaia-review-perf","false","orchestrator","Review code for performance issues","n/a"
+"lifecycle","4-implementation","review-mobile","review-mobile","gaia-review-mobile","false","mobile-dev","Pre-merge mobile review gate (manifest, entitlements, signing, store metadata, privacy manifest, universal-links) — Talia","docs/implementation-artifacts"
 "core","anytime","merge-docs","merge-docs","gaia-merge-docs","false","tech-writer","Merge multiple markdown files","n/a"
 "core","anytime","generate-changelog","changelog","gaia-changelog","false","orchestrator","Generate changelog from git history","n/a"
 "core","anytime","summarize-doc","summarize","gaia-summarize","false","orchestrator","Generate executive summary of a document","n/a"
