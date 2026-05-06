@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "title": "fixture base security"
+  },
+  "schema_version": "1.0",
+  "severity_rules": [
+    {
+      "category": "y",
+      "description": "d2",
+      "id": "sec-rule-1",
+      "pattern": "p2",
+      "remediation": "r2",
+      "severity": "Medium"
+    }
+  ],
+  "skill": "security"
+}
