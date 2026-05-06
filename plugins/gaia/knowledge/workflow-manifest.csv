@@ -30,6 +30,7 @@ name,displayName,description,module,phase,path,command,agent
 "document-project","Document Project","Document project for AI context","lifecycle","anytime","_gaia/lifecycle/workflows/anytime/document-project/workflow.yaml","gaia-document-project","analyst"
 "generate-project-context","Generate Project Context","Generate project context for AI","lifecycle","anytime","_gaia/lifecycle/workflows/anytime/generate-project-context/workflow.yaml","gaia-project-context","analyst"
 "brownfield-onboarding","Brownfield Onboarding","Onboard existing project to GAIA","lifecycle","anytime","_gaia/lifecycle/workflows/anytime/brownfield-onboarding/workflow.yaml","gaia-brownfield","orchestrator"
+"gaia-init","GAIA Init","Greenfield conversational setup — bootstrap project-config.yaml + starter CI","lifecycle","anytime","plugins/gaia/skills/gaia-init/SKILL.md","gaia-init","orchestrator"
 "quick-spec","Quick Spec","Create a quick tech spec","lifecycle","quick-flow","_gaia/lifecycle/workflows/quick-flow/quick-spec/workflow.yaml","gaia-quick-spec","dev-*"
 "quick-dev","Quick Dev","Implement a quick spec","lifecycle","quick-flow","_gaia/lifecycle/workflows/quick-flow/quick-dev/workflow.yaml","gaia-quick-dev","dev-*"
 "design-thinking","Design Thinking","Guide human-centered design process","creative","anytime","_gaia/creative/workflows/design-thinking/workflow.yaml","gaia-design-thinking","design-thinking-coach"
