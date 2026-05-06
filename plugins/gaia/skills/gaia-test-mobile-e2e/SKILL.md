@@ -24,6 +24,8 @@ triggers:
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
+This is the unifying principle of every GAIA review and action skill (FR-DEJ-1, ADR-077). For `/gaia-test-mobile-e2e` the configured device-farm adapter runs in Phase 3A and the upstream `dispatch-device-farm.sh` emits a structured `analysis-results.json` artifact (validating against `plugins/gaia/schemas/analysis-results.schema.json`). The LLM never computes the verdict — `plugins/gaia/scripts/review-common/verdict-resolver.sh` consumes the analysis output (plus any LLM findings from the optional Phase 3B fork) and emits APPROVE | REQUEST_CHANGES | BLOCKED. Adapter availability is gated by `plugins/gaia/scripts/tool-availability-probe.sh`, whose four-state classification maps `expected_and_missing` and `ran_and_errored` to BLOCKED — never to a false APPROVE.
+
 `/gaia-test-mobile-e2e` is the deployment-phase action skill that runs a mobile end-to-end test suite against a real-device cloud (Firebase Test Lab, BrowserStack, or Sauce Labs). The skill:
 
 1. Resolves the configured device-farm adapter from `device_farm.adapter` in `config/project-config.yaml`.

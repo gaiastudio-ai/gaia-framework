@@ -22,6 +22,10 @@ triggers:
 
 ## Mission
 
+**Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
+
+This is the unifying principle of every GAIA review and action skill (FR-DEJ-1, ADR-077). For `/gaia-test-device-matrix` the upstream `dispatch-device-farm.sh` emits a structured `analysis-results.json` artifact (validating against `plugins/gaia/schemas/analysis-results.schema.json`). The LLM never computes the verdict — `plugins/gaia/scripts/review-common/verdict-resolver.sh` consumes the analysis output, and adapter availability is gated by `plugins/gaia/scripts/tool-availability-probe.sh` (four-state classification; missing CLI maps to BLOCKED).
+
 `/gaia-test-device-matrix` is the deployment-phase action skill that expands a configured device matrix and dispatches each entry to the configured device-farm adapter. The skill:
 
 1. Reads `device_targets` from `config/project-config.yaml` — `os_versions`, `form_factors`, `screen_sizes`.
