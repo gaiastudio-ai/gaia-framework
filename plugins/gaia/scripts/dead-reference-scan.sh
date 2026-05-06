@@ -154,6 +154,12 @@ is_allowlisted() {
   # retired `_gaia/_config/` pattern as literals — they ARE the pattern the
   # test enforces zero-of, so the filename mentions are contractual.
   [[ "$path" == */plugins/gaia/tests/knowledge-paths-guard.bats ]] && return 0
+  # E70-S5 — skill-registration.bats asserts that the three new query skills
+  # appear in workflow-manifest.csv and gaia-help.csv (AC8). The CSVs are
+  # themselves allowlisted under plugins/gaia/knowledge/, so the filename
+  # mentions in the test body are the contractual assertion target — same
+  # precedent as knowledge-paths-guard.bats above.
+  [[ "$path" == */plugins/gaia/tests/e70-s5-skill-registration.bats ]] && return 0
   # E45-S1 — static-next-steps.bats is the parity guard for ADR-060 / FR-348.
   # VCP-NXT-11 asserts zero `lifecycle-sequence.yaml` references across the 10
   # target SKILL.md files; the literal token appears in assertions and prose
