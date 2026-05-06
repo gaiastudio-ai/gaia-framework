@@ -1,10 +1,76 @@
 ---
 name: gaia-test-automate
 description: Expand automated test coverage for a story. Use when "automate tests" or /gaia-test-automate.
-argument-hint: "[story-key] [--scaffold]"
+argument-hint: "[story-key] [--status|--add-scenario|--scaffold]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 ---
+
+## Sub-command Routing (E72-S2)
+
+`/gaia-test-automate` accepts three orthogonal sub-commands in addition to its default fill-gaps mode. Each shares the same `[story-key]` argument but diverges at the routing step BEFORE Phase 1. Sub-command dispatch is the FIRST step the skill body performs after the Setup hook.
+
+| Sub-command       | Helper script                                         | Side effects                                                                 |
+|-------------------|-------------------------------------------------------|------------------------------------------------------------------------------|
+| `--status`        | `scripts/subcmd-status.sh`                            | Read-only. Emits coverage map + summary line + Custom scenarios block.       |
+| `--add-scenario`  | `scripts/subcmd-add-scenario.sh`                      | Allocates next `CS-NNN`; writes story TC list + `custom/test-scenarios/index.yaml`. |
+| `--scaffold`      | `scripts/subcmd-scaffold.sh`                          | Generates placeholder skeletons. Review Gate is **NEVER** flipped to PASSED. |
+| _default (no flag)_ | Phase 1..7 (existing flow below)                    | Plan-then-execute test generation per ADR-051.                               |
+
+### `--status` sub-command
+
+```
+usage: /gaia-test-automate {story_key} --status
+```
+
+**Arguments**
+- `{story_key}` — required, e.g. `E28-S66`. Resolves the story file via the canonical `docs/implementation-artifacts/{story_key}-*.md` glob.
+
+**Output format (stdout)**
+```
+Coverage map for {story_key}
+AC1   TC-001   unit          tests/unit/foo.test.ts
+AC2   TC-002   integration   tests/int/bar.spec.ts
+AC3   —        —             (not yet automated)
+
+Summary: 2/3 generated (67%) | 1 pending automation
+
+Custom scenarios:
+CS-001  unit  edge case for retry  tests/unit/cs-001.test.ts
+```
+The "Custom scenarios" block is rendered only when the story's `## Custom Scenarios` markdown table contains `CS-NNN` rows.
+
+### `--add-scenario` sub-command
+
+```
+usage: /gaia-test-automate {story_key} --add-scenario
+```
+
+**Arguments**
+- `{story_key}` — required.
+- Interactive (or flag-driven for non-interactive callers): description, tier (`unit`|`integration`|`e2e`), priority (`P0`..`P3`), expected behavior.
+
+**Output format**
+- Stdout: the allocated `CS-NNN` ID, e.g. `CS-003`.
+- Side effects: row appended to the story's `## Custom Scenarios` table; entry appended to `custom/test-scenarios/index.yaml` under the `scenarios:` key.
+
+The `CS-NNN` namespace is deliberately separate from Vera's `TC-NNN` so `/gaia-review-qa` re-runs do not collide.
+
+### `--scaffold` sub-command
+
+```
+usage: /gaia-test-automate {story_key} --scaffold
+```
+
+**Arguments**
+- `{story_key}` — required.
+- `--stack` — optional; canonical stack key (`ts-dev`, `python-dev`, `java-dev`, `go-dev`, `flutter-dev`, `angular-dev`). Defaults to `ts-dev`.
+
+**Output format**
+- Stdout: a `scaffold: N skeleton(s) generated for {story_key} under {dir}` line followed by the hard-invariant marker `scaffold: review gate not updated (skeleton-only output is not coverage)`.
+- Side effects: one skeleton file per unmapped AC under the resolved out-dir. Each skeleton contains a stack-appropriate placeholder pattern (`test.skip`, `assert True`, `t.Skip(...)`, etc.) so the deterministic `placeholder-test-detector.sh` flags it as `low_quality_test_generated`.
+
+**Hard invariant.** `--scaffold` MUST NEVER write `PASSED` to the Test Automation Review Gate row. Skeleton-only output is not coverage. The skill body verifies this contract by checking for the explicit `review gate not updated` marker on stdout before returning.
 
 ## Action Skill — Trigger Model (E67-S2)
 
