@@ -1,0 +1,343 @@
+#!/usr/bin/env bash
+# check-monolith-shard-sync.sh — detect monolith-vs-shard drift.
+#
+# Story: E53-S243 — Document and enforce monolith-vs-shard sync contract.
+#
+# Compares per-section content hashes between each monolith document
+# (`prd.md`, `architecture.md`, `epics-and-stories.md`) and the union of
+# its shard files. Emits WARNING lines on stdout when drift is detected,
+# naming the section and the diverging file paths. ALWAYS exits 0
+# (advisory check per the AF-2026-05-04-1 Batch D triage decision).
+#
+# Documented exceptions (no false-positive WARNING):
+#   1. Change Log direction — the monolith Change Log is the source of
+#      truth. The `01-change-log.md` shard mirrors it. Drift between the
+#      two is expected when an entry has been written to the monolith
+#      but not yet mirrored.
+#   2. `_preamble.md` partial mirror — `_preamble.md` deliberately
+#      contains only the monolith frontmatter, not the body. The check
+#      MUST NOT compare it as a shard.
+#   3. Missing shard directory — when a monolith exists but its shard
+#      directory does not, emit an INFO line and continue (graceful
+#      skip). A shard-only directory without a monolith is also tolerated.
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Args.
+# ---------------------------------------------------------------------------
+
+ROOT="."
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --root)
+      shift
+      ROOT="${1:-.}"
+      shift
+      ;;
+    -h|--help)
+      cat <<USAGE
+Usage: check-monolith-shard-sync.sh [--root <project-root>]
+
+Compare each monolith document to its shard set and emit WARNING lines on
+drift. Always exits 0 (advisory).
+
+Monoliths checked:
+  docs/planning-artifacts/prd/prd.md           vs docs/planning-artifacts/prd/<NN>-*.md
+  docs/planning-artifacts/architecture/architecture.md vs docs/planning-artifacts/architecture/<NN>-*.md
+  docs/planning-artifacts/epics/epics-and-stories.md   vs docs/planning-artifacts/epics/<NN>-*.md
+
+Documented exceptions: Change Log monolith-as-source-of-truth and the
+\`_preamble.md\` partial-mirror are NOT flagged.
+USAGE
+      exit 0
+      ;;
+    *)
+      printf 'check-monolith-shard-sync: unknown arg: %s\n' "$1" >&2
+      exit 64
+      ;;
+  esac
+done
+
+# Resolve to absolute path so `cd` semantics inside helpers are stable.
+if [[ -d "$ROOT" ]]; then
+  ROOT="$(cd "$ROOT" && pwd)"
+fi
+
+# ---------------------------------------------------------------------------
+# sha256 helper — works on macOS (`shasum -a 256`) and GNU (`sha256sum`).
+# ---------------------------------------------------------------------------
+
+_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  else
+    shasum -a 256 | awk '{print $1}'
+  fi
+}
+
+# Normalize a content blob before hashing: strip leading/trailing blank
+# lines and collapse trailing whitespace per line. This makes the
+# comparison resilient to noise that does not change semantic content.
+_normalize() {
+  # Trim trailing whitespace on each line, drop leading/trailing blank
+  # lines. Implemented in awk for portability.
+  awk '
+    { sub(/[[:space:]]+$/, "") }
+    NF { found = 1 }
+    found {
+      buf[++n] = $0
+      if (NF) last = n
+    }
+    END {
+      for (i = 1; i <= last; i++) print buf[i]
+    }
+  '
+}
+
+# ---------------------------------------------------------------------------
+# Section extraction.
+# ---------------------------------------------------------------------------
+#
+# Extract H2 sections from a monolith file as `<title>\t<sha256>` lines.
+# H2 boundary = lines starting with `## `. The first section is everything
+# from the first `## ` line through (but not including) the next `## ` line.
+# Frontmatter / preamble before the first `## ` is skipped (it is mirrored
+# by `_preamble.md` per the partial-mirror exception).
+_extract_h2_sections() {
+  local file="$1"
+  awk '
+    /^## / {
+      if (capturing) {
+        # Emit prior section.
+        print "__SECTION_BEGIN__"
+        print title
+        for (i = 1; i <= n; i++) print buf[i]
+        print "__SECTION_END__"
+      }
+      title = substr($0, 4)
+      capturing = 1
+      n = 0
+      next
+    }
+    capturing {
+      buf[++n] = $0
+    }
+    END {
+      if (capturing) {
+        print "__SECTION_BEGIN__"
+        print title
+        for (i = 1; i <= n; i++) print buf[i]
+        print "__SECTION_END__"
+      }
+    }
+  ' "$file"
+}
+
+# Hash a shard file's content (ignoring leading H2 line so the hash matches
+# the monolith section body). Returns `<title>\t<sha256>` for the FIRST H2
+# in the shard, or empty if the shard has no H2.
+_shard_section_hash() {
+  local shard="$1"
+  awk -v shard="$shard" '
+    /^## / && !found {
+      title = substr($0, 4)
+      found = 1
+      next
+    }
+    found {
+      print
+    }
+  ' "$shard" | _normalize | _sha256
+}
+
+_shard_first_title() {
+  local shard="$1"
+  awk '
+    /^## / { sub(/^## /, ""); print; exit }
+  ' "$shard"
+}
+
+_section_body_hash() {
+  # Stdin = section body. Returns sha256 of normalized body.
+  _normalize | _sha256
+}
+
+# ---------------------------------------------------------------------------
+# Per-monolith comparison.
+# ---------------------------------------------------------------------------
+#
+# Args:
+#   $1 = monolith file path
+#   $2 = shard directory path
+#   $3 = label for messages (e.g. "prd", "architecture", "epics")
+_compare_monolith() {
+  local monolith="$1"
+  local shard_dir="$2"
+  local label="$3"
+
+  if [[ ! -f "$monolith" ]]; then
+    return 0
+  fi
+  if [[ ! -d "$shard_dir" ]]; then
+    printf 'INFO: %s — monolith %s exists but shard dir %s missing\n' \
+      "$label" "$monolith" "$shard_dir"
+    return 0
+  fi
+
+  # Build the shard title -> file map. We skip:
+  #   - `_preamble.md`   (partial-mirror exception)
+  #   - `index.md`       (auto-generated index)
+  #   - non-`NN-*.md` files (not numbered shards)
+  # Each shard's "title" is the first H2 in the file. If two shards share
+  # the same title (rare), the later one wins — drift detection is still
+  # informative.
+  local title_to_shard_titles=()
+  local title_to_shard_paths=()
+  local shard
+  while IFS= read -r shard; do
+    [[ -z "$shard" ]] && continue
+    local base
+    base="$(basename "$shard")"
+    if [[ "$base" == "_preamble.md" ]] || [[ "$base" == "index.md" ]]; then
+      continue
+    fi
+    # Skip filenames that are not `NN-...`.
+    if ! [[ "$base" =~ ^[0-9]+ ]]; then
+      continue
+    fi
+    local stitle
+    stitle="$(_shard_first_title "$shard")"
+    [[ -z "$stitle" ]] && continue
+    title_to_shard_titles+=("$stitle")
+    title_to_shard_paths+=("$shard")
+  done < <(find "$shard_dir" -mindepth 1 -maxdepth 1 -type f -name '*.md' | sort)
+
+  # Walk the monolith H2 sections.
+  local in_section=0 cur_title="" cur_body=""
+  local extract_output
+  extract_output="$(_extract_h2_sections "$monolith")"
+
+  # Process the extract output line-by-line (it uses sentinel markers).
+  local IFS_BAK="$IFS"
+  IFS=$'\n'
+  local lines=()
+  local line
+  while IFS= read -r line; do
+    lines+=("$line")
+  done <<< "$extract_output"
+  IFS="$IFS_BAK"
+
+  local i=0
+  while [[ $i -lt ${#lines[@]} ]]; do
+    local L="${lines[$i]}"
+    if [[ "$L" == "__SECTION_BEGIN__" ]]; then
+      i=$((i + 1))
+      cur_title="${lines[$i]}"
+      i=$((i + 1))
+      cur_body=""
+      while [[ $i -lt ${#lines[@]} ]] && [[ "${lines[$i]}" != "__SECTION_END__" ]]; do
+        if [[ -n "$cur_body" ]]; then
+          cur_body+=$'\n'
+        fi
+        cur_body+="${lines[$i]}"
+        i=$((i + 1))
+      done
+      i=$((i + 1))  # skip __SECTION_END__
+
+      # Documented exception: Change Log direction (monolith is source of
+      # truth). Skip drift checks for any section whose title contains
+      # "Change Log".
+      if [[ "$cur_title" == *"Change Log"* ]]; then
+        continue
+      fi
+
+      # Find the matching shard for this section title.
+      local matched_idx=-1
+      local k
+      for k in "${!title_to_shard_titles[@]}"; do
+        if [[ "${title_to_shard_titles[$k]}" == "$cur_title" ]]; then
+          matched_idx=$k
+          break
+        fi
+      done
+
+      if [[ $matched_idx -eq -1 ]]; then
+        # Section in monolith with no matching shard. Architecture has
+        # known multi-H2-per-shard aggregation, so this is INFO-level
+        # for architecture and a WARNING for the other docs.
+        if [[ "$label" == "architecture" ]]; then
+          # For architecture we expect aggregation — silent skip.
+          continue
+        fi
+        printf 'WARNING: %s — section "%s" present in %s but no matching shard\n' \
+          "$label" "$cur_title" "$monolith"
+        continue
+      fi
+
+      local shard_path="${title_to_shard_paths[$matched_idx]}"
+
+      # Hash monolith section body.
+      local mono_hash
+      mono_hash="$(printf '%s\n' "$cur_body" | _section_body_hash)"
+
+      # Hash shard body (post first H2).
+      local shard_hash
+      shard_hash="$(_shard_section_hash "$shard_path")"
+
+      if [[ "$mono_hash" != "$shard_hash" ]]; then
+        printf 'WARNING: %s — section "%s" diverges between %s and %s\n' \
+          "$label" "$cur_title" "$monolith" "$shard_path"
+      fi
+    else
+      i=$((i + 1))
+    fi
+  done
+
+  # Reverse pass: shards with no matching monolith section.
+  local k
+  for k in "${!title_to_shard_titles[@]}"; do
+    local stitle="${title_to_shard_titles[$k]}"
+    local spath="${title_to_shard_paths[$k]}"
+    # Skip Change Log shard (documented exception).
+    if [[ "$stitle" == *"Change Log"* ]]; then
+      continue
+    fi
+    # Look for a matching H2 in the monolith.
+    if ! grep -Fq "## $stitle" "$monolith"; then
+      printf 'WARNING: %s — section "%s" present in shard %s but absent from %s\n' \
+        "$label" "$stitle" "$spath" "$monolith"
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Main.
+# ---------------------------------------------------------------------------
+
+# PRD.
+_compare_monolith \
+  "$ROOT/docs/planning-artifacts/prd/prd.md" \
+  "$ROOT/docs/planning-artifacts/prd" \
+  "prd"
+
+# Architecture.
+_compare_monolith \
+  "$ROOT/docs/planning-artifacts/architecture/architecture.md" \
+  "$ROOT/docs/planning-artifacts/architecture" \
+  "architecture"
+
+# Epics.
+_compare_monolith \
+  "$ROOT/docs/planning-artifacts/epics/epics-and-stories.md" \
+  "$ROOT/docs/planning-artifacts/epics" \
+  "epics"
+
+# Special case: PRD monolith may live at docs/planning-artifacts/prd.md
+# (legacy layout) with no shard directory. Honor the missing-shard-dir
+# graceful skip path.
+if [[ -f "$ROOT/docs/planning-artifacts/prd.md" ]] && [[ ! -d "$ROOT/docs/planning-artifacts/prd" ]]; then
+  printf 'INFO: prd — monolith %s/docs/planning-artifacts/prd.md exists but no shard dir\n' "$ROOT"
+fi
+
+exit 0

@@ -1,9 +1,11 @@
 ---
-name: gaia-run-all-reviews
-description: Run all 6 review workflows sequentially via subagents. Use when "run all reviews".
+name: gaia-review-all
+description: Run all 6 review workflows sequentially via subagents. Use when "run all reviews" or /gaia-review-all (formerly /gaia-run-all-reviews).
 argument-hint: "[story-key] [--force]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+deprecated_aliases: [gaia-run-all-reviews]
+deprecated_since: sprint-37
 ---
 
 ## Mission
@@ -59,6 +61,11 @@ A summary block with 5 SKIPPED + 1 ran reads (excerpt):
   4. Test Automation (gaia-test-automate) — gate "Test Automation", short-name `test-automate`
   5. Test Review (gaia-test-review) — gate "Test Review", short-name `test-review`
   6. Performance Review (gaia-review-perf) — gate "Performance Review", short-name `review-perf`
+- **Action-skill exclusion (E67-S2 / AC6 / source-report SS 5.8 / SS 11).** `/gaia-test-automate` is an **action skill, not a review skill**. The "Test Automation" judgment in slot #4 above is a review (read test files, judge automation adequacy) and MUST NOT invoke `/gaia-test-automate` itself — generation is action-taking and would mutate the codebase mid-review. `/gaia-test-automate` is **triggered on demand** by:
+  - explicit user invocation (`/gaia-test-automate {story_key}`),
+  - `/gaia-review-qa` gap findings (uncovered ACs in `qa-test-cases-{story_key}.json`),
+  - `/gaia-review-test` failure findings on missing automation coverage for a P0 AC.
+  When triggered, `/gaia-test-automate` runs in its own context with the two-phase persona wiring (Phase 1 Sable, Phase 2 stack-developer per `agent-overlay.sh`).
 - **Never short-circuit on failure.** If a reviewer returns FAILED, record the verdict and continue to the next reviewer. The entire purpose is to surface ALL issues in one pass.
 - After each reviewer completes, update the Review Gate table via `scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" --verdict {PASSED|FAILED}`.
 - If a reviewer crashes (unexpected non-zero exit / malformed verdict), record FAILED for that reviewer and continue (AC-EC7).
@@ -167,6 +174,46 @@ After Substeps 2.3–2.4 finish, run the three deterministic helper scripts in f
    ```
 
    The nudge block branches on the composite outcome (ALL PASSED → COMPLETE; N FAILED → BLOCKED with a "Blocking gates" list; N UNVERIFIED → PENDING with a "Pending gates" list).
+
+### Step 4: Composite Verdict GATING (ADR-082 — E66-S3)
+
+> Per ADR-082, the composite verdict is **GATING**, not informational. The deterministic shell aggregator at `scripts/review-common/composite-verdict-aggregator.sh` consumes per-gate verdicts (APPROVE | REQUEST_CHANGES | BLOCKED produced by ADR-077's verdict-resolver.sh path) and emits a composite verdict mapped to the Review Gate vocabulary (PASSED | FAILED). The aggregation path is 100% shell — no LLM (NFR-RSV2-12) — and is invariant under YOLO mode (ADR-067).
+
+After Step 3 emits the nudge block, the orchestrator MUST run the composite aggregator with the per-gate verdicts surfaced by the verdict-resolver runs.
+
+**E69-S4 — Conditional-skip evaluation (FR-RSV2-44, ADR-082).** Before invoking the aggregator, the orchestrator runs the deterministic conditional-trigger evaluator to decide whether the conditional gates (a11y, mobile) are included or skipped. The evaluator reads `compliance.ui_present` and `platforms[]` from the resolved project-config and emits drop-in argv fragments that the orchestrator forwards verbatim into the aggregator call:
+
+```bash
+bash scripts/review-common/conditional-trigger-eval.sh
+# stdout (when ui_present=false and platforms excludes mobile):
+#   a11y=skipped
+#   a11y_reason=compliance.ui_present: false
+#   mobile=skipped
+#   mobile_reason=platforms[] excludes mobile
+#   --skip-a11y "compliance.ui_present: false"
+#   --skip-mobile "platforms[] excludes mobile"
+```
+
+The orchestrator then composes the aggregator invocation:
+
+```bash
+bash scripts/review-common/composite-verdict-aggregator.sh \
+  --code <verdict> --qa <verdict> --test <verdict> \
+  --security <verdict> --perf <verdict> \
+  ( --a11y <verdict> | --skip-a11y "compliance.ui_present: false" ) \
+  ( --mobile <verdict> | --skip-mobile "platforms[] empty" )
+```
+
+**Skip-rule semantics (E69-S4 / AC6 / AC7 / AC8):** Skipped conditional gates appear in the aggregator's `skipped=` enumeration with their skip reason. They contribute neutrally to the precedence chain — only included gates' verdicts count toward `BLOCKED > REQUEST_CHANGES > APPROVE`. The composite report enumerates included gates (with verdict) and skipped gates (with reason) so reviewers can see at a glance which gates fired.
+
+**Degenerate-case safety net (E69-S4 / AC-EC3):** Should every gate end up skipped (a configuration-error scenario where all gates are conditional and no condition is met), the orchestrator passes `--allow-zero-included` along with `--skip-<gate>` flags for the always-on gates as well. The aggregator emits a `WARNING: No review gates included` line and `composite=APPROVE`. This is a configuration-error safety net — never a normal flow — and the WARNING is the explicit signal that project-config needs review.
+
+The aggregator emits `composite=<APPROVE|REQUEST_CHANGES|BLOCKED>` and `review_gate=<PASSED|FAILED>` plus the included / skipped enumeration. The composite verdict is then evaluated against the seven-day post-flip grace window via `scripts/review-common/grace-window.sh`:
+
+- **WARNING mode (within 7 calendar days of the flip):** the composite verdict is surfaced with a resolution recommendation; transition to `done` is still possible (NFR-RSV2-6).
+- **BLOCK mode (after 7 calendar days):** if `composite ∈ {REQUEST_CHANGES, BLOCKED}`, the story cannot transition past `review`. The orchestrator HALTs the transition until either (a) the underlying gate is resolved and re-reviewed, or (b) the maintainer invokes `/gaia-correct-course` to move the story off `review` to a remediation track (E66-S3 AC8).
+
+YOLO mode does NOT bypass composite gating (AC10) — consistent with ADR-067's CRITICAL-still-halts rule. The aggregator output is byte-identical across runs for byte-identical inputs (AC9).
 
 #### Idempotency invariant (NFR-RAR-1, TC-RAR-17)
 

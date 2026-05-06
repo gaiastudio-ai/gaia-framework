@@ -1,10 +1,160 @@
 ---
 name: gaia-test-automate
 description: Expand automated test coverage for a story. Use when "automate tests" or /gaia-test-automate.
-argument-hint: "[story-key]"
+argument-hint: "[story-key] [--status|--add-scenario|--scaffold]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 ---
+
+## Sub-command Routing (E72-S2)
+
+`/gaia-test-automate` accepts three orthogonal sub-commands in addition to its default fill-gaps mode. Each shares the same `[story-key]` argument but diverges at the routing step BEFORE Phase 1. Sub-command dispatch is the FIRST step the skill body performs after the Setup hook.
+
+| Sub-command       | Helper script                                         | Side effects                                                                 |
+|-------------------|-------------------------------------------------------|------------------------------------------------------------------------------|
+| `--status`        | `scripts/subcmd-status.sh`                            | Read-only. Emits coverage map + summary line + Custom scenarios block.       |
+| `--add-scenario`  | `scripts/subcmd-add-scenario.sh`                      | Allocates next `CS-NNN`; writes story TC list + `custom/test-scenarios/index.yaml`. |
+| `--scaffold`      | `scripts/subcmd-scaffold.sh`                          | Generates placeholder skeletons. Review Gate is **NEVER** flipped to PASSED. |
+| _default (no flag)_ | Phase 1..7 (existing flow below)                    | Plan-then-execute test generation per ADR-051.                               |
+
+### `--status` sub-command
+
+```
+usage: /gaia-test-automate {story_key} --status
+```
+
+**Arguments**
+- `{story_key}` — required, e.g. `E28-S66`. Resolves the story file via the canonical `docs/implementation-artifacts/{story_key}-*.md` glob.
+
+**Output format (stdout)**
+```
+Coverage map for {story_key}
+AC1   TC-001   unit          tests/unit/foo.test.ts
+AC2   TC-002   integration   tests/int/bar.spec.ts
+AC3   —        —             (not yet automated)
+
+Summary: 2/3 generated (67%) | 1 pending automation
+
+Custom scenarios:
+CS-001  unit  edge case for retry  tests/unit/cs-001.test.ts
+```
+The "Custom scenarios" block is rendered only when the story's `## Custom Scenarios` markdown table contains `CS-NNN` rows.
+
+### `--add-scenario` sub-command
+
+```
+usage: /gaia-test-automate {story_key} --add-scenario
+```
+
+**Arguments**
+- `{story_key}` — required.
+- Interactive (or flag-driven for non-interactive callers): description, tier (`unit`|`integration`|`e2e`), priority (`P0`..`P3`), expected behavior.
+
+**Output format**
+- Stdout: the allocated `CS-NNN` ID, e.g. `CS-003`.
+- Side effects: row appended to the story's `## Custom Scenarios` table; entry appended to `custom/test-scenarios/index.yaml` under the `scenarios:` key.
+
+The `CS-NNN` namespace is deliberately separate from Vera's `TC-NNN` so `/gaia-review-qa` re-runs do not collide.
+
+**`custom/test-scenarios/index.yaml` schema (E72-S3 AC3, FR-RSV2-41).** Each entry under `scenarios:` carries the following canonical fields:
+
+| Field          | Type    | Notes                                                                 |
+|----------------|---------|-----------------------------------------------------------------------|
+| `id`           | string  | `CS-NNN`, zero-padded to three digits. Allocated atomically.          |
+| `story_key`    | string  | Owning story (e.g. `E72-S3`).                                          |
+| `description`  | string  | Short human-readable scenario description.                             |
+| `tier`         | enum    | `unit` \| `integration` \| `e2e`.                                      |
+| `priority`     | enum    | `P0` \| `P1` \| `P2` \| `P3`.                                          |
+| `file_path`    | string  | Path to automated test; empty until automated.                         |
+| `created_date` | string  | ISO-8601 calendar date (`YYYY-MM-DD`) at append time.                  |
+
+`/gaia-review-qa` (and the `gaia-qa-tests` skill more broadly) **MUST NOT mutate `custom/test-scenarios/index.yaml`** — the index is read-only outside the `--add-scenario` writer path. This non-mutation invariant guarantees that re-running the QA review after a developer authored custom scenarios never deletes, renumbers, or overwrites their entries (E72-S3 AC4). The qa-tests SKILL.md does not reference the index path; treat any future mutation as a regression.
+
+Atomic-write guarantee: writes go through `mktemp` + `mv` so a crash mid-append never leaves the file in a partially written state. Concurrent `--add-scenario` invocations on the same index follow last-writer-wins semantics; both writes succeed atomically.
+
+The `--status` sub-command sources the Custom scenarios block from `custom/test-scenarios/index.yaml` (filtered by `story_key`) and verifies each non-empty `file_path` against the on-disk tree — missing files render with a `(file not found)` suffix (E72-S3 AC5/AC6). Entries are not pruned automatically; the developer either updates `file_path` or removes the stale entry.
+
+### `--scaffold` sub-command
+
+```
+usage: /gaia-test-automate {story_key} --scaffold
+```
+
+**Arguments**
+- `{story_key}` — required.
+- `--stack` — optional; canonical stack key (`ts-dev`, `python-dev`, `java-dev`, `go-dev`, `flutter-dev`, `angular-dev`). Defaults to `ts-dev`.
+
+**Output format**
+- Stdout: a `scaffold: N skeleton(s) generated for {story_key} under {dir}` line followed by the hard-invariant marker `scaffold: review gate not updated (skeleton-only output is not coverage)`.
+- Side effects: one skeleton file per unmapped AC under the resolved out-dir. Each skeleton contains a stack-appropriate placeholder pattern (`test.skip`, `assert True`, `t.Skip(...)`, etc.) so the deterministic `placeholder-test-detector.sh` flags it as `low_quality_test_generated`.
+
+**Hard invariant.** `--scaffold` MUST NEVER write `PASSED` to the Test Automation Review Gate row. Skeleton-only output is not coverage. The skill body verifies this contract by checking for the explicit `review gate not updated` marker on stdout before returning.
+
+## Action Skill — Trigger Model (E67-S2)
+
+`/gaia-test-automate` is an **action skill**, not a review skill. Per source-report SS 5.8 / SS 11 it is **excluded from the default `/gaia-run-all-reviews` sequence** and is only triggered by:
+
+1. **Explicit user invocation** — `/gaia-test-automate {story_key}` from the developer.
+2. **`/gaia-review-qa` gap findings** — when the QA review surfaces uncovered ACs in `qa-test-cases-{story_key}.json`, the orchestrator MAY invoke `/gaia-test-automate` to fill the gap.
+3. **`/gaia-review-test` failure findings** — when the Test Review fails on missing automation coverage for a P0 AC, the orchestrator MAY invoke `/gaia-test-automate` to land the missing automation.
+
+`/gaia-run-all-reviews` MUST NOT include `/gaia-test-automate` in its default canonical sequence (Code Review, QA Tests, Security Review, Test Review, Performance Review). The five review skills are evidence-collecting; `/gaia-test-automate` is action-taking and would otherwise mutate the codebase mid-review.
+
+### Two-phase action-skill nature (AC5)
+
+The skill executes in two phases under distinct personas resolved via `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh`:
+
+| Phase | Persona resolution | Persona | Role |
+|-------|---------------------|---------|------|
+| Phase 1 — Planning | `agent-overlay.sh --skill gaia-test-automate` | Sable (test-architect) | Reads `qa-test-cases-{story_key}.json`, picks tests to write, emits the ADR-051 plan file with `analyzed_sources[]` + `proposed_tests[]`. |
+| Phase 2 — Implementation | `agent-overlay.sh --skill gaia-review-code --stack {stack}` | Stack-developer (Cleo / Hugo / Ravi / Lena / Freya / Talia / Christy per `load-stack-persona.sh`) | Executes the approved plan via `phase2-execute.sh`: writes test files, runs the Test Execution Bridge, records evidence. |
+
+Phase 1 lives inside the seven Review Phases (fork-isolated analysis, read-only). Phase 2 runs in main context with full Write / Edit / Bash via `phase2-execute.sh`.
+
+### `--scaffold` flag
+
+When invoked with `--scaffold`, Phase 2 produces SCAFFOLD-ONLY output (intentional placeholder skeletons for downstream developers to flesh out). Behavior differences vs. default mode:
+
+- Generated tests use `test.skip` / `skip "..."` placeholders.
+- The mandatory `placeholder-test-detector.sh` Phase 2 gate (Step 3b) is **skipped** — scaffolds are expected to contain placeholders.
+- The Review Gate Test Automation row stays **UNVERIFIED** — scaffolds NEVER flip the gate to PASSED.
+
+Default mode (no `--scaffold`) generates implementation-aware tests (real imports + real assertions referencing the story's File List), runs the placeholder detector as a mandatory post-generation gate, and flips the Review Gate to PASSED only when all generated tests are clean and execute green.
+
+### Placeholder gate (E67-S2, AC1 / AC2 / AC8)
+
+Phase 2 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/placeholder-test-detector.sh` after test generation in default mode. The detector flags:
+
+- `expect(true)` / `expect(false)` — vacuous boolean assertions.
+- `assert True` / `assert False` (Python).
+- `assert_true(...)` / `assert_false(...)`.
+- `test.todo(...)` / `test.skip(...)` / `it.skip(...)` / `xit(...)` / `xdescribe(...)` / `xcontext(...)` / `describe.skip(...)`.
+- Empty `it(...)` / `test(...)` blocks (single-line `() => {}` callback) and empty `@test "..." {}` bats blocks.
+
+Any hit fails Phase 2 with verdict `REQUEST_CHANGES` via `verdict-resolver.sh --action-mode` (the action-skill verdict path). The Review Gate Test Automation row MUST NOT update to PASSED in that case.
+
+The same `review-common/placeholder-test-detector.sh` instance is referenced by `/gaia-review-test` Phase 3A (per E67-S1) — there is no duplicate copy under either skill's `scripts/` directory.
+
+### Verdict resolver action-skill semantics (AC7)
+
+Phase 2 calls `verdict-resolver.sh --action-mode --analysis-results <path>` with a flat JSON document containing the action-skill outcome flags. Mapping:
+
+- **APPROVE** ⇐ plan present + execution success + no placeholders + no SUT-mocking + does not break existing suite.
+- **REQUEST_CHANGES** ⇐ placeholders detected OR tests mock the system under test OR generated tests break the existing suite.
+- **BLOCKED** ⇐ `blocking_failure` ∈ `{plan_tamper, target_outside_allowlist, runner_unavailable, plan_drift, malformed_output}` OR plan missing OR execution did not succeed.
+
+### Coverage-delta gate (E67-S3, AC2 / AC3 / AC4 / AC6)
+
+In addition to the placeholder gate above, Phase 2 captures a coverage-delta as a verdict input. The flow is deterministic shell — no LLM judgment involved (ADR-042, FR-RSV2-2):
+
+1. **Capture baseline coverage** — BEFORE writing generated test files, run the project's coverage command (resolved from `project-config.yaml` under `test_execution.coverage_command`) and persist its report to `${TEST_AUTOMATE_DIR}/coverage-baseline.{lcov|json}`.
+2. **Capture current coverage** — AFTER writing generated tests AND after the Test Execution Bridge run completes green, re-run the same coverage command and persist its report to `${TEST_AUTOMATE_DIR}/coverage-current.{lcov|json}`.
+3. **Compute delta** — invoke `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/action/coverage-delta.sh --baseline <pre> --current <post>` and persist its JSON output to `${TEST_AUTOMATE_DIR}/coverage-delta.json`.
+4. **Pipe into the verdict resolver** — invoke `verdict-resolver.sh ... --coverage-delta ${TEST_AUTOMATE_DIR}/coverage-delta.json` (alongside `--action-mode` or the analysis/llm-findings pair, depending on the call site). The resolver inserts the coverage-delta rule between the LLM-Critical rule and the default APPROVE branch — `coverage_delta <= 0` yields `REQUEST_CHANGES` with a stderr diagnostic citing the regression amount or "zero coverage delta".
+
+Verdict precedence is unchanged for the four pre-S3 rules: `errored -> BLOCKED > tool-failed-blocking -> REQUEST_CHANGES > LLM-Critical -> REQUEST_CHANGES`. Coverage-delta fires ONLY when none of the higher-priority rules has fired (AC6).
+
+Skipped under `--scaffold` mode (scaffolds intentionally generate no real coverage). Skipped when `test_execution.coverage_command` is unset in `project-config.yaml` (graceful degrade — log to stderr and proceed without the coverage-delta input, preserving pre-S3 behavior).
 
 ## Setup
 
@@ -24,6 +174,7 @@ This skill is the **ADR-051 hybrid** of the six review skills. The seven canonic
 
 ## Critical Rules
 
+- Knowledge fragments are bundled in this skill's `knowledge/` directory (fixture-architecture, deterministic-testing, api-testing-patterns, data-factories, selector-resilience, visual-testing, pytest-patterns, jest-vitest-patterns, junit5-patterns) — load them JIT when referenced by a phase, never pre-load.
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-test-automate [story-key]".
 - The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
 - The story MUST be in `review` status. If not, fail with "story must be in review status before test automation".

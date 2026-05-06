@@ -41,8 +41,39 @@ readonly EX_IOERR=74
 readonly EX_TEMPFAIL=75
 readonly DEFAULT_LOCK_TIMEOUT=10
 
+# E64-S5 — script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
+# Every tempfile-creating call site appends the resulting path to
+# _GAIA_TMP_PATHS and captures its index. After a successful rename or rm
+# the slot is cleared so cleanup is idempotent. Covers SIGINT, SIGTERM, OOM,
+# and signal-during-awk paths the inline rm paths miss. bash 3.2 compatible.
+_GAIA_TMP_PATHS=()
+_cleanup_tmps() {
+  # Guard against bash 3.2 / `set -u` "unbound variable" on empty arrays.
+  if [ "${#_GAIA_TMP_PATHS[@]}" -eq 0 ]; then return 0; fi
+  local p
+  for p in "${_GAIA_TMP_PATHS[@]}"; do
+    if [ -n "$p" ] && [ -e "$p" ]; then
+      rm -f "$p" 2>/dev/null || true
+    fi
+  done
+}
+trap '_cleanup_tmps' EXIT INT TERM
+
 MEMORY_PATH="${MEMORY_PATH:-_memory}"
 CONFIG="${MEMORY_PATH}/config.yaml"
+
+# ---------- Startup orphan-tmp sweep (E64-S6) ----------
+#
+# Garbage-collect *.tmp.?????? files older than 60 minutes under
+# ${MEMORY_PATH}. Catches orphans left by kill -9 / OOM / power loss
+# (which bypass E64-S5's EXIT/INT/TERM trap). Bounded to the documented
+# allowlist (memory tree). Never /tmp, never $HOME, never ${PROJECT_PATH}
+# root. Set GAIA_SKIP_ORPHAN_SWEEP=1 to disable. Errors swallowed;
+# zero stdout (silent GC).
+if [ "${GAIA_SKIP_ORPHAN_SWEEP:-0}" != "1" ]; then
+  find "${MEMORY_PATH}" \
+    -maxdepth 2 -name '*.tmp.??????' -mmin +60 -delete 2>/dev/null || true
+fi
 
 die() {
   local code="$1"; shift
@@ -265,7 +296,7 @@ release_lock() {
     rm -rf "$lock_path" 2>/dev/null || true
   fi
 }
-trap release_lock EXIT
+trap 'release_lock; _cleanup_tmps' EXIT
 
 lock_mode=""
 if command -v flock >/dev/null 2>&1; then
@@ -292,8 +323,14 @@ atomic_replace() {
   local dest="$1" payload="$2"
   local tmp
   tmp="$(mktemp "${dest}.tmp.XXXXXX")" || die "$EX_IOERR" "failed to create temp file near $dest"
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   printf '%s' "$payload" > "$tmp" || { rm -f "$tmp"; die "$EX_IOERR" "failed to write temp file $tmp"; }
   mv "$tmp" "$dest" || { rm -f "$tmp"; die "$EX_IOERR" "failed to move temp file into place: $dest"; }
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
 }
 
 write_decision() {
@@ -335,6 +372,10 @@ write_ground_truth() {
     local new_section_file rewritten
     new_section_file="$(mktemp "${target_file}.newsec.XXXXXX")" \
       || die "$EX_IOERR" "failed to create temp file near $target_file"
+    # E64-S5: register newsec tmp for script-level EXIT/INT/TERM cleanup.
+    local _newsec_idx
+    _GAIA_TMP_PATHS+=("$new_section_file")
+    _newsec_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
     printf '%s' "$new_section" > "$new_section_file" \
       || { rm -f "$new_section_file"; die "$EX_IOERR" "failed to stage new section body"; }
     rewritten="$(printf '%s\n' "$existing" | awk -v hdr="$section" -v new_body_file="$new_section_file" '
@@ -381,6 +422,8 @@ write_ground_truth() {
       }
     ')"
     rm -f "$new_section_file"
+    # E64-S5: rm succeeded — clear the slot.
+    _GAIA_TMP_PATHS[$_newsec_idx]=""
     # Ensure trailing newline for consistency.
     case "$rewritten" in
       *$'\n') : ;;

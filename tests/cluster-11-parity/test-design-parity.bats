@@ -35,8 +35,8 @@ setup() {
   [ -f "$SKILL_DIR/SKILL.md" ]
 }
 
-@test "E28-S82: SKILL.md frontmatter has name: gaia-test-design" {
-  head -20 "$SKILL_DIR/SKILL.md" | grep -q '^name: gaia-test-design'
+@test "E28-S82: SKILL.md frontmatter has name: deprecated-gaia-test-design (retired E69-S3)" {
+  head -20 "$SKILL_DIR/SKILL.md" | grep -q '^name: deprecated-gaia-test-design'
 }
 
 @test "E28-S82: SKILL.md frontmatter has description" {

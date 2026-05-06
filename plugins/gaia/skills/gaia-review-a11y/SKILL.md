@@ -1,9 +1,106 @@
 ---
 name: gaia-review-a11y
-description: Review code and UI for WCAG 2.1 accessibility compliance — semantic HTML, ARIA, keyboard navigation, color contrast, screen reader support. Produces a markdown findings report with per-finding WCAG criterion ID, conformance level (A/AA/AAA), severity, and remediation guidance. Use when "review accessibility" or /gaia-review-a11y.
+description: Pre-merge accessibility gate — reviews code and UI for WCAG 2.1 compliance (semantic HTML, ARIA, keyboard navigation, color contrast, screen reader support). Conditional gate that fires only when compliance.ui_present is true; skipped neutrally otherwise. Produces a verdict via verdict-resolver.sh per ADR-077 seven-phase structure. Use when "review accessibility" or /gaia-review-a11y.
 argument-hint: "[target — file, directory, or component name]"
-allowed-tools: [Read, Write, Edit, Bash, Grep]
+command: /gaia-review-a11y
+phase: implementation
+verdict_producing: true
+conditional: true
+trigger: compliance.ui_present
+context: fork
+allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
+
+## ADR-077 Mission (E69-S2)
+
+You are the **pre-merge a11y gate** for UI-bearing projects. The gate is conditional — `/gaia-review-all` includes this gate only when `compliance.ui_present: true` is resolved from the project's `project-config.yaml` (FR-RSV2-44). When `compliance.ui_present` is `false` or absent, the composite-verdict aggregator is invoked with `--skip-a11y "compliance.ui_present: false"` and this skill is not executed.
+
+This skill is the **implementation-phase** sibling of the three-phase a11y skill family (FR-RSV2-25):
+
+- `/gaia-validate-design-a11y` — planning (agent: Christy)
+- `/gaia-review-a11y` — pre-merge gate (this skill, conditional, agent: Christy)
+- `/gaia-test-a11y` — post-deploy smoke (agent: Sable)
+
+All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the layered rubric loader (E68-S2 / ADR-079). This skill is verdict-producing and follows the seven-phase structure mandated by ADR-077.
+
+### Phase 1 — Setup
+
+- Resolve `compliance.ui_present` via `resolve-config.sh`. If the value is not `true`, exit early with `SKIPPED — compliance.ui_present is not true` (the orchestrator at `/gaia-review-all` performs this check via `--skip-a11y`; this guard is defense-in-depth).
+- Load the layered rubric via `${CLAUDE_PLUGIN_ROOT}/scripts/rubric-loader.sh --skill a11y`. On non-zero exit (missing `rubrics/base/a11y.json`, schema validation failure), HALT with the loader's stderr — do NOT silently fall back to empty rules (AC-EC3).
+
+### Phase 2 — Discovery
+
+- Resolve the review target from `$ARGUMENTS` or default to the diff under review.
+- Read the target file(s) — if a directory is given, recursively read all source files under it.
+
+### Phase 3A — Analysis (pre-merge implementation-time WCAG checks)
+
+- **Semantic HTML (WCAG 1.3.1, 4.1.2):** verify interactive elements use the proper semantic HTML element (`<button>`, `<a>`, `<nav>`, `<main>`, `<article>`, etc.) rather than `<div>` + `onclick`. Verify form inputs are associated with labels.
+- **ARIA usage (WAI-ARIA Authoring Practices):** verify ARIA roles, states, and labels are present and consistent — `aria-label`, `aria-labelledby`, `aria-describedby`, `role`, `aria-expanded`, `aria-controls`, `aria-live`. Flag conflicting roles (e.g., `<button role=link>`).
+- **Keyboard handlers (WCAG 2.1.1, 2.1.2, 2.4.7):** verify every interactive component is reachable and operable via Tab/Shift+Tab/Enter/Space and arrow keys where applicable. Verify focus-visible styles, focus traps in modals, and Escape-to-dismiss.
+- **Color contrast in CSS / tokens (WCAG 1.4.3, 1.4.11):** body text ≥ 4.5:1, large text ≥ 3:1, UI components ≥ 3:1. Inspect token definitions and CSS variables.
+- **Screen reader support (WCAG 1.1.1, 2.4.1):** verify `alt` text on meaningful images, skip-links on pages with repeated nav blocks, `aria-live` regions for asynchronous updates.
+- For every finding, cite the specific WCAG 2.1 criterion with conformance level (A/AA/AAA) and the matching rubric rule ID from the loaded rubric.
+
+### Phase 3B — Cross-checks
+
+- Cross-reference the diff against the project's component library and shared a11y patterns (if any).
+- Verify changes do not regress existing a11y guarantees (no new `outline: none` without alternative focus style, no new color-only meaning, no new modals without focus traps).
+
+### Phase 4 — Findings
+
+- Aggregate findings into the canonical schema (severity is rubric-driven):
+
+  | Severity | Category | File | Finding | WCAG Criterion | Remediation |
+
+### Phase 5 — Verdict
+
+- Resolve the composite verdict via the deterministic resolver:
+
+  ```bash
+  !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh --findings <findings.json>
+  ```
+
+- The resolver emits `APPROVE | REQUEST_CHANGES | BLOCKED`. The skill MUST NOT recompute the verdict by hand (ADR-077, ADR-042).
+
+### Phase 6 — Report
+
+- Write the report to `docs/test-artifacts/accessibility-review-{date}.md` (preserved verbatim from the legacy task path for downstream consumers — traceability, deploy checklist, run-all-reviews aggregation). If a same-day file exists, append a numeric suffix (`-2`, `-3`).
+
+### Phase 7 — Exit
+
+- Emit the verdict on stdout for the caller (`/gaia-review-all` composite aggregator or direct user invocation).
+- Exit 0 on success regardless of verdict; exit non-zero only on infrastructure failure (rubric load failed, target unresolvable).
+
+## Agent Wiring
+
+Per the E69-S2 wiring-table delta (added to ADR-077 wiring table), this skill resolves to **Christy (UX Designer)** via:
+
+```bash
+!${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-review-a11y
+# {"agent_id":"christy","sidecar_path":"_memory/christy-sidecar.md"}
+```
+
+Pre-merge a11y review is a UX-design concern, consistent with `gaia-validate-design-a11y -> Christy`. Sable owns post-deploy a11y _testing_, not pre-merge a11y _review_.
+
+## Conditional-trigger contract
+
+- The orchestrator `/gaia-review-all` reads `compliance.ui_present` via `resolve-config.sh` and:
+  - includes this gate (calls the verdict-resolver path) when `compliance.ui_present: true`;
+  - invokes the composite aggregator with `--skip-a11y "compliance.ui_present: false"` (or `--skip-a11y "compliance section absent"` per AC-EC2) when the value is false / absent.
+- A skipped gate contributes neutrally to the composite verdict per ADR-082; it does NOT fail the composite (FR-RSV2-44).
+
+---
+
+## Legacy Task Body (preserved for backward compatibility)
+
+The original task body (pre-ADR-077) is preserved below verbatim so existing consumers and runbooks still work. New invocations follow the seven-phase structure above; both paths converge on the same `rubrics/base/a11y.json` rubric and emit the same verdict via `verdict-resolver.sh`.
+
+## Mission
+
+You are performing a **WCAG 2.1 accessibility review** on the target the user supplies (a file, directory, or named component). You evaluate the target across four categories — semantic HTML + ARIA, keyboard + focus, visual + screen reader — and produce a markdown findings report where every finding cites the specific WCAG 2.1 success criterion ID, its conformance level, a severity rating, and concrete remediation guidance.
+
+This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/review-accessibility.xml` task (47 lines). Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model. Deterministic report-header generation is delegated to the shared foundation script `template-header.sh` (E28-S16) rather than re-prosed per skill.
 
 ## Mission
 

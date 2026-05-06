@@ -1,0 +1,111 @@
+{
+  "schema_version": "1.0",
+  "skill": "security",
+  "name": "gdpr",
+  "applies_to_skills": ["review-code", "review-security"],
+  "description": "GDPR-specific rules for code, security, and PII handling. Layer 2 of the four-layer rubric composition (base + regimes + domain + project) per ADR-079.",
+  "metadata": {
+    "title": "GDPR regime rubric",
+    "story": "E68-S4",
+    "adr": "ADR-079",
+    "regime_id": "gdpr",
+    "references": ["GDPR-Art-5", "GDPR-Art-15", "GDPR-Art-17", "GDPR-Art-25", "GDPR-Art-32", "GDPR-Art-44"],
+    "privacy": {
+      "patterns": [
+        {
+          "rule": "iban",
+          "regex": "[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}",
+          "description": "IBAN — international bank account number (BBAN length varies by country, 11-30 alphanumerics after the 4-char prefix)."
+        },
+        {
+          "rule": "eu-national-id-de",
+          "regex": "[0-9]{11}",
+          "description": "Germany Tax-ID (Steuer-ID) — 11 digits."
+        }
+      ]
+    }
+  },
+  "severity_rules": [
+    {
+      "id": "gdpr-pii-001",
+      "category": "pii-handling",
+      "pattern": "Logger or print statement emits PII fields (email, phone, full name, national id, IP address, IBAN) in plaintext.",
+      "severity": "Critical",
+      "description": "Logging PII in plaintext breaches GDPR data-minimisation and storage-limitation principles and creates an exfiltration vector via log shipping.",
+      "remediation": "Mask PII at the logger boundary (hash, truncate, or tokenize) or remove the field from the log payload entirely.",
+      "references": ["GDPR-Art-5", "GDPR-Art-32", "CWE-532"]
+    },
+    {
+      "id": "gdpr-pii-002",
+      "category": "pii-handling",
+      "pattern": "URL path or query string contains PII (e.g., /users/<email>, ?ssn=...) — values land in access logs and HTTP referrers.",
+      "severity": "Critical",
+      "description": "PII in URLs leaks into proxy logs, browser history, and referrer headers, defeating storage-limitation guarantees.",
+      "remediation": "Move identifiers into the request body or use opaque tokens; never put PII in path or query parameters.",
+      "references": ["GDPR-Art-5", "GDPR-Art-32"]
+    },
+    {
+      "id": "gdpr-pii-003",
+      "category": "pii-handling",
+      "pattern": "Error response body or stack trace echoes PII back to the caller (e.g., `User <email> not found`).",
+      "severity": "High",
+      "description": "PII in error messages exposes data subjects to enumeration attacks and breaches the integrity-and-confidentiality principle.",
+      "remediation": "Use opaque correlation ids in error messages; log the full context server-side only.",
+      "references": ["GDPR-Art-5", "GDPR-Art-32"]
+    },
+    {
+      "id": "gdpr-retention-001",
+      "category": "data-retention",
+      "pattern": "PII storage call (database insert, cache set, queue publish) without a documented retention or TTL declaration nearby.",
+      "severity": "Medium",
+      "description": "Indefinite PII retention violates the storage-limitation principle. Every PII store must declare a retention window aligned with its lawful basis.",
+      "remediation": "Annotate the storage call with a retention policy reference or set an explicit TTL/scheduled deletion job.",
+      "references": ["GDPR-Art-5"]
+    },
+    {
+      "id": "gdpr-consent-001",
+      "category": "consent",
+      "pattern": "Tracking, analytics, or marketing call fires before a recorded consent check on the request session or user profile.",
+      "severity": "High",
+      "description": "Processing personal data without a recorded lawful basis (consent or legitimate interest) breaches GDPR Art. 6.",
+      "remediation": "Gate the call on a consent-state check; default to deny when consent is absent.",
+      "references": ["GDPR-Art-6", "GDPR-Art-7"]
+    },
+    {
+      "id": "gdpr-dsar-001",
+      "category": "dsar",
+      "pattern": "Project handling EU PII has no Data Subject Access Request handler or `/data-export` style endpoint.",
+      "severity": "High",
+      "description": "GDPR Art. 15 requires that data subjects can obtain a copy of their personal data on request.",
+      "remediation": "Implement a DSAR handler that aggregates PII across all systems for a given subject id.",
+      "references": ["GDPR-Art-15"]
+    },
+    {
+      "id": "gdpr-cross-border-transfer-001",
+      "category": "cross-border-transfer",
+      "pattern": "Outbound HTTP/queue/database call sends PII to a non-EU endpoint without an SCC, adequacy decision, or BCR reference.",
+      "severity": "High",
+      "description": "Transfers of personal data to third countries require Standard Contractual Clauses or an adequacy decision under Art. 44-49.",
+      "remediation": "Document the transfer mechanism (SCC/BCR/adequacy) at the call site or pseudonymise the payload before transfer.",
+      "references": ["GDPR-Art-44", "GDPR-Art-46"]
+    },
+    {
+      "id": "gdpr-right-to-erasure-001",
+      "category": "right-to-erasure",
+      "pattern": "Project with PII storage has no delete-by-subject API or background job that propagates erasure to caches, replicas, and search indexes.",
+      "severity": "High",
+      "description": "Art. 17 right-to-erasure requires that deletion propagates to every PII store, including derived caches and analytics warehouses.",
+      "remediation": "Implement a fan-out deletion job or event that erases the subject across all systems and emits a confirmation log.",
+      "references": ["GDPR-Art-17"]
+    },
+    {
+      "id": "gdpr-pseudonymisation-001",
+      "category": "pii-handling",
+      "pattern": "PII passed to analytics, ML training, or third-party processor without pseudonymisation/tokenisation.",
+      "severity": "Medium",
+      "description": "Art. 25 (data protection by design) recommends pseudonymisation for any non-essential PII processing path.",
+      "remediation": "Pseudonymise the field (HMAC, deterministic token) before forwarding or restrict the data set to non-identifying attributes.",
+      "references": ["GDPR-Art-25"]
+    }
+  ]
+}

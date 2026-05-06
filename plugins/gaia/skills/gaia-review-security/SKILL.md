@@ -122,6 +122,101 @@ When a finding matches a live-secret pattern:
 
 Generic hardcoded strings that do NOT match a live-secret pattern remain at their existing severity (high or medium per pattern strength). The escalation only applies to the live-secret pattern matches above.
 
+### Step 3b — Phase 3C Privacy / Data-Protection Scanners (E67-S5)
+
+Three deterministic scanners restore privacy and data-protection coverage that
+was lost in the V1->V2 migration. They run in sequence after Step 3 (secrets
+scan) and append their findings into the unified `analysis-results.json` that
+feeds the Step 5 verdict resolver. Each scanner is a pure evidence collector
+under ADR-075 — it produces structured findings, not verdicts, and its output
+follows the canonical `analysis-results.json` schema (E66-S1).
+
+```bash
+# Run from the project root, passing the target paths captured in Step 1.
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/security/pii-detector.sh <target>
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/security/data-handling-lint.sh <target>
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/security/retention-policy-check.sh <target>
+```
+
+Each script emits a single `checks[]` fragment to stdout. The Phase 3C
+aggregator (parent-context shell) merges the three fragments into the parent
+`analysis-results.json` `checks` array under categories `privacy-pii`,
+`privacy-data-handling`, and `privacy-retention`.
+
+#### `pii-detector.sh` (privacy-pii)
+
+Detects hardcoded PII patterns: `email`, `ssn`, `credit-card` (Luhn-plausible),
+`phone` (E.164 + NANP), `ip-address` (IPv4/IPv6). Severity is **Critical** for
+non-test source files, **Medium** for files matching test markers (`*.test.*`,
+`*.spec.*`, `*_test.*`, `__tests__/...`).
+
+#### `data-handling-lint.sh` (privacy-data-handling)
+
+Flags PII-named variables flowing into logging (`console.log`/`logger.*`),
+URL construction (query-string interpolation), error/exception messages, and
+analytics/telemetry SDK calls (`analytics.track`, `mixpanel.track`,
+`amplitude.logEvent`, ...). Severity is **High**.
+
+#### `retention-policy-check.sh` (privacy-retention)
+
+Flags PII-named ORM/schema fields without `@ttl`/`@expiry`/`expires_at`,
+session/token store configs missing `max-age`/`ttl`/`expires_in`, and
+explicit retention durations exceeding `--max-retention-days` (default `365`).
+Severity is **Medium**.
+
+#### Regime-aware loading (AC4)
+
+`pii-detector.sh` reads `compliance.regimes` from one of:
+
+1. The environment variable `GAIA_COMPLIANCE_REGIMES` (comma-separated keys).
+2. The optional helper `resolve-config.sh` (overridable via `GAIA_RESOLVE_CONFIG`).
+
+For each declared regime `<key>`, the scanner loads
+`<plugin_root>/rubrics/regimes/<key>.json` and extends the base PII pattern
+list with the entries under `privacy.patterns`. The shipped `gdpr.json`
+adds `iban` (and `eu-national-id-de`). When neither the env var nor the
+helper is available, **base patterns only** — no error, graceful degrade.
+
+Regime loading is purely additive: a regime cannot suppress a base pattern.
+
+### Step 3c — Dependency Audit Sub-Routine (E69-S4)
+
+After Step 3b's privacy/data-protection scanners, invoke the dependency-audit
+sub-routine — `/gaia-review-deps` is wired into `/gaia-review-security` Phase 3A
+per source-report §2.2 + §5.4 + §15 Phase 4 item 21 and FR-RSV2-23.
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/security/dep-audit-subroutine.sh \
+  --target <project-root>
+```
+
+The helper probes for dependency manifests (package.json, requirements.txt,
+pom.xml, pubspec.yaml, go.mod, Gemfile, Cargo.toml, etc.) under the project
+root and emits a single `analysis-results.json`-shaped check fragment under the
+`dependency_audit` category.
+
+- **Conditional skip (AC3):** when no dependency manifests are found, the
+  helper emits a `status:"skipped"` fragment with the verbatim
+  `skip_reason: "No dependency manifests found -- skipping dep audit"`. The
+  parent `/gaia-review-security` review continues; the skip does NOT affect
+  the parent verdict.
+- **Failure isolation (AC-EC1):** a sub-routine failure (e.g., `npm audit`
+  exits non-zero from a network error) is captured as a single
+  `severity:"warning"` finding (`Dependency audit unavailable -- {reason}`).
+  The helper ALWAYS exits 0 on detection paths so an infrastructure failure
+  in the sub-routine NEVER cascades as a parent BLOCKED verdict.
+- **Evidence merging (AC4):** the parent context merges the fragment into its
+  `checks[]` array under the `dependency_audit` category. Severity
+  classifications then flow through the parent's resolved rubric layer
+  (base + regime + domain + project per ADR-079) at the verdict-resolver
+  step — sub-routine findings inherit the parent's rubric thresholds.
+- **Standalone preserved (AC5):** invoking `/gaia-review-deps` directly
+  remains a fully standalone path — the standalone skill resolves its own
+  rubric and emits its own verdict (independent of this sub-routine wiring).
+
+The "Dependency Audit" subsection MUST appear in the Step 5 report whenever
+the sub-routine ran (skipped fragments included for transparency).
+
 ### Step 4 — Auth Review
 
 - Verify authentication pattern: how is identity established at request entry? Is the session or token validated on every protected route?

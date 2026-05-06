@@ -1,0 +1,181 @@
+# detection-signals.yaml — E71-S2
+#
+# Signal registry consumed by `plugins/gaia/scripts/detect-signals.sh`. Declares
+# the file-pattern matchers and config-section mappings used by the brownfield
+# Phase 1 auto-population pass.
+#
+# Categories:
+#   - stack            — language/framework + test_runner (FR-RSV2-35).
+#   - platform         — deployment target (docker, kubernetes, terraform, ...).
+#   - ci_platform      — single CI provider per repo (FR-RSV2-36).
+#   - tool_provider    — review-system tooling (sonarqube, eslint, ...).
+#
+# Mobile signals (Package.swift, Android build.gradle, react-native, Flutter
+# mobile, Xcode/Android Studio) are detected by `mobile-detection.sh` and
+# unioned into the `platforms[]` + `device_targets` outputs by detect-signals.sh
+# (E74-S11 / FR-RSV2-44). The mobile signal registry lives in that helper —
+# this file documents the non-mobile signals scanned by the same pass.
+
+stack:
+  # File-pattern matchers. Each entry: name, manifest, optional lockfile, optional
+  # framework-detection patterns inside the manifest, and a list of test_runner
+  # markers (manifest dep names + filesystem config files).
+  - name: "react"
+    manifest: "package.json"
+    lockfiles: ["package-lock.json", "yarn.lock", "pnpm-lock.yaml"]
+    framework_patterns: ["\"react\""]
+    test_runners:
+      - name: "vitest"
+        manifest_pattern: "\"vitest\""
+        config_files: ["vitest.config.js", "vitest.config.ts", "vitest.config.mjs"]
+      - name: "jest"
+        manifest_pattern: "\"jest\""
+        config_files: ["jest.config.js", "jest.config.ts", "jest.config.cjs"]
+  - name: "vue"
+    manifest: "package.json"
+    lockfiles: ["package-lock.json", "yarn.lock", "pnpm-lock.yaml"]
+    framework_patterns: ["\"vue\""]
+    test_runners:
+      - name: "vitest"
+        manifest_pattern: "\"vitest\""
+        config_files: ["vitest.config.js", "vitest.config.ts"]
+      - name: "jest"
+        manifest_pattern: "\"jest\""
+        config_files: ["jest.config.js", "jest.config.ts"]
+  - name: "angular"
+    manifest: "package.json"
+    lockfiles: ["package-lock.json", "yarn.lock"]
+    framework_patterns: ["\"@angular/core\""]
+    test_runners:
+      - name: "karma"
+        manifest_pattern: "\"karma\""
+        config_files: ["karma.conf.js"]
+      - name: "jest"
+        manifest_pattern: "\"jest\""
+        config_files: ["jest.config.js", "jest.config.ts"]
+  - name: "svelte"
+    manifest: "package.json"
+    lockfiles: ["package-lock.json", "yarn.lock", "pnpm-lock.yaml"]
+    framework_patterns: ["\"svelte\""]
+    test_runners:
+      - name: "vitest"
+        manifest_pattern: "\"vitest\""
+        config_files: ["vitest.config.js", "vitest.config.ts"]
+  - name: "node"
+    manifest: "package.json"
+    lockfiles: ["package-lock.json", "yarn.lock", "pnpm-lock.yaml"]
+    framework_patterns: []  # fallback when no React/Vue/Angular/Svelte
+    test_runners:
+      - name: "vitest"
+        manifest_pattern: "\"vitest\""
+        config_files: ["vitest.config.js", "vitest.config.ts"]
+      - name: "jest"
+        manifest_pattern: "\"jest\""
+        config_files: ["jest.config.js", "jest.config.ts"]
+      - name: "mocha"
+        manifest_pattern: "\"mocha\""
+        config_files: [".mocharc.js", ".mocharc.json"]
+  - name: "python"
+    manifest_alternatives: ["pyproject.toml", "requirements.txt", "Pipfile"]
+    lockfiles: ["poetry.lock", "Pipfile.lock"]
+    test_runners:
+      - name: "pytest"
+        manifest_pattern: "pytest"
+        config_files: ["pytest.ini", "tox.ini"]
+  - name: "java"
+    manifest_alternatives: ["build.gradle", "build.gradle.kts", "pom.xml"]
+    test_runners:
+      - name: "junit"
+        manifest_pattern: "junit"
+        config_files: []
+  - name: "go"
+    manifest: "go.mod"
+    test_runners:
+      - name: "go-test"
+        manifest_pattern: ""
+        config_files: []
+  - name: "rust"
+    manifest: "Cargo.toml"
+    test_runners:
+      - name: "cargo-test"
+        manifest_pattern: ""
+        config_files: []
+  - name: "ruby"
+    manifest: "Gemfile"
+    test_runners:
+      - name: "rspec"
+        manifest_pattern: "rspec"
+        config_files: [".rspec"]
+
+platform:
+  - name: "docker"
+    files: ["Dockerfile", "docker-compose.yml", "docker-compose.yaml"]
+  - name: "kubernetes"
+    files: ["Chart.yaml"]
+    file_patterns: ["Makefile"]
+    pattern_keywords: ["kubectl", "helm"]
+    glob_dirs: ["k8s", "kubernetes"]
+  - name: "terraform"
+    glob_extensions: [".tf"]
+    files: ["terraform.tfvars"]
+  - name: "pulumi"
+    files: ["Pulumi.yaml", "Pulumi.yml"]
+  - name: "serverless"
+    files: ["serverless.yml", "serverless.yaml"]
+
+ci_platform:
+  # First match wins (one CI provider per repo).
+  - provider: "github-actions"
+    config_path: ".github/workflows/"
+    test: "directory_with_yaml"
+  - provider: "gitlab-ci"
+    config_path: ".gitlab-ci.yml"
+    test: "file"
+  - provider: "circleci"
+    config_path: ".circleci/config.yml"
+    test: "file"
+  - provider: "jenkins"
+    config_path: "Jenkinsfile"
+    test: "file"
+  - provider: "azure-pipelines"
+    config_path: "azure-pipelines.yml"
+    test: "file"
+  - provider: "bitbucket-pipelines"
+    config_path: "bitbucket-pipelines.yml"
+    test: "file"
+
+tool_provider:
+  - name: "sonarqube"
+    files: ["sonar-project.properties"]
+  - name: "eslint"
+    files: ["eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts", ".eslintrc", ".eslintrc.js", ".eslintrc.json", ".eslintrc.yml", ".eslintrc.yaml"]
+  - name: "prettier"
+    files: [".prettierrc", ".prettierrc.json", ".prettierrc.js", ".prettierrc.yml", "prettier.config.js"]
+  - name: "stylelint"
+    files: [".stylelintrc", ".stylelintrc.json", ".stylelintrc.js"]
+  - name: "jest"
+    files: ["jest.config.js", "jest.config.ts", "jest.config.cjs"]
+  - name: "vitest"
+    files: ["vitest.config.js", "vitest.config.ts", "vitest.config.mjs"]
+  - name: "pytest"
+    files: ["pytest.ini"]
+
+# Mobile signals (E74-S11 / FR-RSV2-44).
+#
+# Detected by `plugins/gaia/scripts/mobile-detection.sh`. Listed here for
+# discoverability — the helper is the source of truth for matcher logic.
+mobile:
+  - platform: "ios"
+    files: ["Package.swift"]
+    file_globs: ["*.xcodeproj", "*.xcworkspace"]
+  - platform: "android"
+    files: ["build.gradle", "build.gradle.kts", "app/build.gradle", "app/build.gradle.kts"]
+    pattern_keywords: ["com.android.application", "com.android.library", "com.android.dynamic-feature"]
+  - platform: "ios+android"  # cross-platform — emits BOTH
+    framework: "flutter"
+    files: ["pubspec.yaml"]
+    pattern_keywords: ["flutter:", "sdk: flutter"]
+  - platform: "ios+android"  # cross-platform — emits BOTH
+    framework: "react-native"
+    files: ["package.json"]
+    json_dep: "react-native"

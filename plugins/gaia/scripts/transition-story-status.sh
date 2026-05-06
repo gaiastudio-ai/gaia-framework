@@ -72,6 +72,29 @@ STATE_MACHINE_LIB="$LIB_DIR/story-state-machine.sh"
 err() { printf '%s: error: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 
+# E64-S5 — script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
+#
+# Every tempfile-creating call site appends the resulting path to
+# _GAIA_TMP_PATHS and captures its index. After a successful rename over the
+# destination, the slot is cleared (set to empty) so the cleanup is
+# idempotent and never targets the renamed final file. The trap covers cases
+# the existing function-scoped RETURN traps and inline manual rm paths miss:
+# SIGINT (Ctrl-C), SIGTERM (parent kill), OOM, and signal-during-awk.
+#
+# bash 3.2 compatible: plain array literal + `+=` + indexed assignment.
+_GAIA_TMP_PATHS=()
+_cleanup_tmps() {
+  # Guard against bash 3.2 / `set -u` "unbound variable" on empty arrays.
+  if [ "${#_GAIA_TMP_PATHS[@]}" -eq 0 ]; then return 0; fi
+  local p
+  for p in "${_GAIA_TMP_PATHS[@]}"; do
+    if [ -n "$p" ] && [ -e "$p" ]; then
+      rm -f "$p" 2>/dev/null || true
+    fi
+  done
+}
+trap '_cleanup_tmps' EXIT INT TERM
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -183,11 +206,61 @@ PROJECT_PATH="${PROJECT_PATH:-.}"
 IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_PATH}/docs/implementation-artifacts}"
 PLANNING_ARTIFACTS="${PLANNING_ARTIFACTS:-${PROJECT_PATH}/docs/planning-artifacts}"
 MEMORY_PATH="${MEMORY_PATH:-${PROJECT_PATH}/_memory}"
-EPICS_AND_STORIES="${EPICS_AND_STORIES:-${PLANNING_ARTIFACTS}/epics-and-stories.md}"
+
+# E64-S4 — Resolve EPICS_AND_STORIES across the dual-layout invariant
+# (E53-S233 / ADR-070 / ADR-072). Mirrors validate-gate.sh::check_file_nonempty
+# resolution order:
+#   1. Flat path        ${PLANNING_ARTIFACTS}/epics-and-stories.md
+#   2. Sharded sibling  ${PLANNING_ARTIFACTS}/epics-and-stories/index.md
+#   3. Legacy alias     ${PLANNING_ARTIFACTS}/epics/index.md
+#                       (brownfield projects whose shard root pre-dates ADR-070)
+# If the caller pre-set EPICS_AND_STORIES, that override wins unconditionally.
+# When NO layout exists on disk, fall back to the flat default so the existing
+# "epics-and-stories.md not found" guard still fires with the same log line
+# (preserves the log-parser contract from the original error path).
+resolve_epics_and_stories_path() {
+  local flat="${PLANNING_ARTIFACTS}/epics-and-stories.md"
+  local sharded="${PLANNING_ARTIFACTS}/epics-and-stories/index.md"
+  local legacy="${PLANNING_ARTIFACTS}/epics/index.md"
+  if [ -f "$flat" ]; then
+    printf '%s\n' "$flat"
+    return 0
+  fi
+  if [ -f "$sharded" ]; then
+    printf '%s\n' "$sharded"
+    return 0
+  fi
+  if [ -f "$legacy" ]; then
+    printf '%s\n' "$legacy"
+    return 0
+  fi
+  printf '%s\n' "$flat"
+}
+EPICS_AND_STORIES="${EPICS_AND_STORIES:-$(resolve_epics_and_stories_path)}"
 STORY_INDEX_YAML="${STORY_INDEX_YAML:-${IMPLEMENTATION_ARTIFACTS}/story-index.yaml}"
 STORY_STATUS_LOCK="${STORY_STATUS_LOCK:-${MEMORY_PATH}/.story-status.lock}"
 
 # Forward SPRINT_STATUS_YAML untouched if caller pre-set it.
+
+# ---------- Startup orphan-tmp sweep (E64-S6) ----------
+#
+# Garbage-collect *.tmp.?????? files older than 60 minutes from the
+# documented artifact directories. Catches orphans left by `kill -9`,
+# OOM, or power loss (which bypass E64-S5's EXIT/INT/TERM trap).
+#
+# Bounded to the documented allowlist:
+#   - "${PLANNING_ARTIFACTS}/epics"
+#   - "${IMPLEMENTATION_ARTIFACTS}"
+# Never /tmp, never $HOME, never ${PROJECT_PATH} root. The 60-minute
+# threshold provides ~6x headroom over the tightest known concurrent
+# run (/gaia-sprint-plan @ ~10 min on 50+ stories).
+#
+# Set GAIA_SKIP_ORPHAN_SWEEP=1 to disable (e.g. for forensic inspection).
+# Errors are swallowed (2>/dev/null); zero stdout (AC7 silent GC).
+if [ "${GAIA_SKIP_ORPHAN_SWEEP:-0}" != "1" ]; then
+  find "${PLANNING_ARTIFACTS}/epics" "${IMPLEMENTATION_ARTIFACTS}" \
+    -maxdepth 2 -name '*.tmp.??????' -mmin +60 -delete 2>/dev/null || true
+fi
 
 # ---------- Helpers ----------
 
@@ -367,6 +440,10 @@ rewrite_frontmatter() {
   local file="$1" new_status="$2"
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
@@ -416,6 +493,8 @@ rewrite_frontmatter() {
     err "failed to mv tempfile over '$file'"
     exit 1
   fi
+  # E64-S5: mv succeeded — clear the slot so the EXIT trap won't rm the renamed file.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
@@ -452,6 +531,10 @@ update_sprint_status_yaml() {
   # would only matter for non-transition writers).
   local tmp
   tmp=$(mktemp "${yaml}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
@@ -502,6 +585,8 @@ update_sprint_status_yaml() {
     err "failed to mv tempfile over '$yaml'"
     exit 1
   fi
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
@@ -520,6 +605,10 @@ update_epics_and_stories() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
@@ -583,8 +672,14 @@ update_epics_and_stories() {
         exit 3
       }
     }
-  ' "$file" > "$tmp"
-  local rc=$?
+  ' "$file" > "$tmp" && local rc=0 || local rc=$?
+  # E64-S4: explicit `&&/||` capture defangs `set -e` so the soft-warn rc=3
+  # path (story-not-found, block_seen=0) inside the awk END action is
+  # reachable. Without this guard, awk's exit 3 cascades into the EXIT trap
+  # and triggers rollback (rc=8) — making transitions on stories absent from
+  # the epics index impossible, even though the helper documents that case
+  # as soft-warn. `local` returns 0 unconditionally, so the `||` arm only
+  # fires when awk itself failed.
   if [ $rc -ne 0 ]; then
     if [ $rc -eq 3 ]; then
       # Story not present in epics-and-stories.md — leave the file untouched.
@@ -605,6 +700,8 @@ update_epics_and_stories() {
     err "failed to mv tempfile over '$file'"
     exit 1
   fi
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
@@ -656,6 +753,10 @@ update_story_index_yaml() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
@@ -746,6 +847,8 @@ update_story_index_yaml() {
     err "failed to mv tempfile over '$file'"
     exit 1
   fi
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
@@ -826,13 +929,17 @@ rollback() {
 }
 
 # Custom failure handler: roll back, then exit 8.
+# E64-S5: chain through _cleanup_tmps so any orphan tmp registered during
+# rewrite_*/update_* helpers (between mktemp and a failed mv) is removed.
 TSS_ROLLBACK_PENDING=1
 trap '
   rc=$?
   if [ "${TSS_ROLLBACK_PENDING:-0}" = "1" ] && [ $rc -ne 0 ]; then
     rollback
+    _cleanup_tmps
     exit 8
   fi
+  _cleanup_tmps
 ' EXIT
 
 # Each step below MUST be wrapped so a failure triggers rollback. We rely on
@@ -847,7 +954,10 @@ update_story_index_yaml "$STORY_KEY" "$NEW_STATUS" \
 
 # All four files written successfully — commit.
 TSS_ROLLBACK_PENDING=0
-trap - EXIT
+# E64-S5: restore the plain _cleanup_tmps EXIT trap so any later failure
+# (e.g., during marker write) still cleans orphan tmps. Slots cleared above
+# make this a no-op on the happy path.
+trap '_cleanup_tmps' EXIT
 
 cleanup_snapshots "$SNAP_STORY" "$SNAP_YAML" "$SNAP_EPICS" "$SNAP_INDEX"
 

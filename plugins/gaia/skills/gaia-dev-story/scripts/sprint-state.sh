@@ -87,6 +87,25 @@ export LC_ALL
 
 SCRIPT_NAME="sprint-state.sh"
 
+# E64-S5 — script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
+# Every tempfile-creating call site appends the resulting path to
+# _GAIA_TMP_PATHS and captures its index. After a successful rename the slot
+# is cleared so the cleanup is idempotent. Covers SIGINT, SIGTERM, OOM, and
+# signal-during-awk paths the function-scoped RETURN traps and inline rm
+# paths miss. bash 3.2 compatible.
+_GAIA_TMP_PATHS=()
+_cleanup_tmps() {
+  # Guard against bash 3.2 / `set -u` "unbound variable" on empty arrays.
+  if [ "${#_GAIA_TMP_PATHS[@]}" -eq 0 ]; then return 0; fi
+  local p
+  for p in "${_GAIA_TMP_PATHS[@]}"; do
+    if [ -n "$p" ] && [ -e "$p" ]; then
+      rm -f "$p" 2>/dev/null || true
+    fi
+  done
+}
+trap '_cleanup_tmps' EXIT INT TERM
+
 # ---------- Canonical state machine ----------
 
 CANONICAL_STATES=(
@@ -385,6 +404,10 @@ rewrite_story_status() {
   assert_canonical_state "$new_status" "write story status"
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
@@ -436,6 +459,8 @@ rewrite_story_status() {
     trap - RETURN
     die "failed to mv tempfile over '$file'"
   fi
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
@@ -458,6 +483,10 @@ rewrite_sprint_status_yaml() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
@@ -511,6 +540,8 @@ rewrite_sprint_status_yaml() {
     trap - RETURN
     die "failed to mv tempfile over '$file'"
   fi
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
@@ -881,6 +912,10 @@ append_story_to_yaml() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
@@ -964,6 +999,8 @@ append_story_to_yaml() {
     trap - RETURN
     die "failed to mv tempfile over '$file'"
   fi
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
@@ -1743,16 +1780,26 @@ cmd_lint_dependencies() {
   # stdout is being captured by a command substitution (AC-EC10).
   local inversions lint_err_file
   lint_err_file="$(mktemp "${SPRINT_STATUS_YAML}.lint-err.XXXXXX" 2>/dev/null || mktemp)"
+  # E64-S7: register lint_err_file for script-level EXIT/INT/TERM cleanup.
+  # Without this, interrupting lint-dependencies between mktemp and the
+  # inline rm -f leaks an orphan *.lint-err.?????? file. Mirrors the
+  # register-then-clear pattern E64-S5 wired into the four atomic-write
+  # mktemp call sites.
+  local _lint_err_idx
+  _GAIA_TMP_PATHS+=("$lint_err_file")
+  _lint_err_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   inversions="$(lint_detect_inversions 2>"$lint_err_file")" || {
     local lint_err
     lint_err="$(cat "$lint_err_file" 2>/dev/null)"
     rm -f "$lint_err_file"
+    _GAIA_TMP_PATHS[$_lint_err_idx]=""
     if [ -n "$lint_err" ]; then
       printf '%s\n' "$lint_err" >&2
     fi
     die "lint-dependencies analysis failed"
   }
   rm -f "$lint_err_file"
+  _GAIA_TMP_PATHS[$_lint_err_idx]=""
 
   # Output
   if [ "$format" = "json" ]; then
@@ -1821,6 +1868,10 @@ _override_append_entry() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
@@ -1894,6 +1945,8 @@ _override_append_entry() {
     trap - RETURN
     die "failed to mv tempfile over '$file'"
   fi
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
@@ -2039,6 +2092,19 @@ main() {
     SPRINT_STATE_SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
   fi
   resolve_paths
+
+  # ---------- Startup orphan-tmp sweep (E64-S6) ----------
+  #
+  # Garbage-collect *.tmp.?????? files older than 60 minutes under
+  # ${IMPLEMENTATION_ARTIFACTS}. Catches orphans left by kill -9 / OOM /
+  # power loss (which bypass E64-S5's EXIT/INT/TERM trap). Bounded to the
+  # documented allowlist (sprint-status.yaml directory). Never /tmp, never
+  # $HOME, never ${PROJECT_PATH} root. Set GAIA_SKIP_ORPHAN_SWEEP=1 to
+  # disable. Errors swallowed; zero stdout (silent GC).
+  if [ "${GAIA_SKIP_ORPHAN_SWEEP:-0}" != "1" ]; then
+    find "${IMPLEMENTATION_ARTIFACTS}" \
+      -maxdepth 2 -name '*.tmp.??????' -mmin +60 -delete 2>/dev/null || true
+  fi
 
   case "$subcmd" in
     get)

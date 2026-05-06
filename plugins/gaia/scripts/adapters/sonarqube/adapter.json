@@ -1,0 +1,9 @@
+{
+  "provider": "sonar-scanner",
+  "category": "sast",
+  "version-range": ">=4.0.0",
+  "runtime-profile": "container",
+  "default-timeout-seconds": 600,
+  "file-extensions": [".java", ".kt", ".js", ".jsx", ".ts", ".tsx", ".py", ".go", ".rb", ".php", ".cs"],
+  "description": "SonarQube SAST scanner — alternative to Semgrep under runtime-profile: container. Activated by tools.sast.provider: sonarqube; runs sonar-scanner against the file list and emits canonical analysis-results fragments."
+}

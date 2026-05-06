@@ -44,8 +44,11 @@ Classify the change into one of these types:
 - **Blocker resolution** -- unblocking a story by resolving a dependency or impediment
 - **Resource change** -- reassigning stories due to team capacity changes
 - **Story injection** -- pulling a new story into the sprint from the backlog
+- **Composite-verdict escape hatch (ADR-082, E66-S3)** -- a story is blocked at `review` because the `/gaia-review-all` composite verdict is `REQUEST_CHANGES` or `BLOCKED` past the seven-day grace window, AND the underlying issue cannot be resolved within the sprint due to a legitimate edge case (third-party dependency block, infrastructure outage, scope-debate-in-flight). This path moves the story OFF `review` to a remediation track without bypassing the gating contract; an audit-trail entry is recorded per Step 5b.
 
 Ask if this is linked to a change request (CR ID).
+
+> **Composite-verdict escape hatch — when to choose it.** Per ADR-082 (E66-S3) the composite verdict is GATING after the 7-day grace window: a `REQUEST_CHANGES` or `BLOCKED` composite hard-blocks transition to `done`. The `/gaia-correct-course` escape hatch is the ONLY supported way to unblock a story without satisfying every gate — and only for the legitimate edge cases listed above. The escape hatch does NOT bypass the gating contract; it transitions the story off `review` (typically back to `in-progress` or to `backlog`) so the underlying gate can be re-resolved on its own track. Every escape-hatch invocation MUST record an audit-trail entry via Step 5b, naming the failing gate(s), the blocking edge case, and the remediation plan. Do not use this path to silence a legitimate review failure.
 
 ### Step 3 --- Impact Analysis
 

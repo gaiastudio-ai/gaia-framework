@@ -1,0 +1,50 @@
+# react-native.yaml — React Native cross-platform stack definition
+# (E74-S2, ADR-081)
+#
+# Mobile platforms: iOS + Android. Targets the React Native runtime, which
+# bridges JavaScript / TypeScript code into native iOS and Android shells.
+# The `bridge` field documents which JS-to-native bridge architecture the
+# project targets — JSI (the New Architecture, default) or the legacy Bridge
+# (sometimes still required for older RN versions or third-party libraries).
+#
+# Native sub-adapters: SwiftLint / SwiftFormat (for the iOS shell at
+# `ios/`) and Detekt / ktlint (for the Android shell at `android/`) are
+# referenced under `adapters.static` so that mixed-language review can fan
+# out per directory.
+#
+# Source spec: docs/planning-artifacts/decisions/gaia-review-system-final-report.md
+# §4.1, §5.7, §7.2.1.
+
+name: react-native
+language: TypeScript
+platform: [ios, android]
+build_tool: metro
+package_manager: npm
+
+# bridge — JS-to-native bridge architecture. JSI is the New Architecture
+# (RN 0.74+, default for new projects). Bridge is the legacy bridge (still
+# present in many older codebases). Projects on RN's interop layer will
+# include both during the migration window.
+bridge: JSI  # alternates: Bridge (legacy), JSI+Bridge (interop)
+
+linters:
+  - ESLint
+  - "@react-native/eslint-config"
+
+formatters:
+  - Prettier
+
+test_frameworks:
+  - Jest
+  - Detox
+
+adapters:
+  static:
+    - eslint
+    # native sub-adapters fan out to ios/ and android/ subtrees
+    - swiftlint
+    - swiftformat
+    - detekt
+    - ktlint
+  dynamic:
+    - detox

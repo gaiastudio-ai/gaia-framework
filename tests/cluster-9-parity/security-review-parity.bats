@@ -33,8 +33,8 @@ setup() {
   [ -f "$SKILL_DIR/SKILL.md" ]
 }
 
-@test "E28-S67: SKILL.md frontmatter has name: gaia-security-review" {
-  head -20 "$SKILL_DIR/SKILL.md" | grep -q '^name: gaia-security-review'
+@test "E28-S67: SKILL.md frontmatter has name: deprecated-gaia-security-review (retired per E69-S1; canonical is gaia-review-security)" {
+  head -20 "$SKILL_DIR/SKILL.md" | grep -q '^name: deprecated-gaia-security-review'
 }
 
 @test "E28-S67: SKILL.md frontmatter has context: fork" {

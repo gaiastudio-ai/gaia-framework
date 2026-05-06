@@ -1,9 +1,11 @@
 ---
-name: gaia-test-review
-description: Review test quality and identify flakiness. Use when "review tests" or /gaia-test-review.
+name: gaia-review-test
+description: Review test quality and identify flakiness. Use when "review tests" or /gaia-review-test (formerly /gaia-test-review).
 argument-hint: "[story-key]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+deprecated_aliases: [gaia-test-review]
+deprecated_since: sprint-37
 ---
 
 ## Setup
@@ -24,7 +26,8 @@ This skill pattern-matches against `gaia-code-review` (E65-S2) as the canonical 
 
 ## Critical Rules
 
-- A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-test-review [story-key]".
+- Knowledge fragments are bundled in this skill's `knowledge/` directory (test-isolation, deterministic-testing, selector-resilience, visual-testing, test-healing) — load them JIT when referenced by a phase, never pre-load.
+- A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-review-test [story-key]".
 - The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
 - The story MUST be in `review` status. If not, fail with "story must be in review status before test review".
 - This skill is READ-ONLY in the fork. Do NOT attempt to call Write or Edit — the allowlist enforces this. Persistence is routed through the parent context.
@@ -119,7 +122,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 ### Phase 1 — Setup
 
-- If no story key was provided as an argument, fail with: "usage: /gaia-test-review [story-key]"
+- If no story key was provided as an argument, fail with: "usage: /gaia-review-test [story-key]"
 - Resolve the story file path using the canonical glob: `docs/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
 - Read the resolved story file; parse YAML frontmatter to extract `status` and `figma:` block (if any).
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch (NFR-DEJ-4 preserved). Forward the persona payload + canonical stack name into the fork.
@@ -140,7 +143,33 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.review/gaia-test-review/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
 
-**Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Phase 3A runs three deterministic analyzers in sequence:
+**Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Phase 3A runs four deterministic analyzers in sequence — driven by the canonical helper `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/phase3a-test-review.sh` (E67-S1, FR-RSV2-1/2). The helper invokes `smell-detector.sh`, `flakiness-analyzer.sh`, `fixture-analyzer.sh`, and `tag-conformance-detector.sh --stack <stack>` (and propagates `--strict` when `GAIA_TEST_TAGGING_STRICT=1` is set per E72-S4 / FR-RSV2-42) and merges their `checks[]` fragments into a single canonical `analysis-results.json` document validating against `plugins/gaia/schemas/analysis-results.schema.json`. Cumulative wall-clock budget per NFR-RSV2-2: ≤90s P95 on a typical story (<500 LOC diff).
+
+**Placeholder-test detection (E67-S2 / FR-RSV2-2 cross-reference).** The shared `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/placeholder-test-detector.sh` script is the **single instance** referenced by both `/gaia-test-automate` (Phase 2 post-generation gate) and `/gaia-review-test` (Phase 3A scanner). The detector flags `expect(true)` / `expect(false)` / `assert True` / `assert False` / `assert_true(...)` / `assert_false(...)` / `test.todo` / `test.skip` / `it.skip` / `xit` / `xdescribe` / `xcontext` / `describe.skip` and empty `it`/`test`/`@test` blocks, emitting structured findings of the form `low_quality_test_generated|<file>:<line>|<pattern>` on stdout. Findings surface as Phase 3A `category: placeholder, severity: critical` entries (untestable assertion equivalent) — they cannot be overridden by the LLM Phase 3B judgment. There is no duplicate copy of the script under `plugins/gaia/skills/gaia-test-review/scripts/` or `plugins/gaia/skills/gaia-test-automate/scripts/` — both skills source the same `review-common/placeholder-test-detector.sh` instance.
+
+**Tag-conformance detection (E72-S4 / FR-RSV2-42).** `tag-conformance-detector.sh` checks each test file for at least one tag declaration using the canonical mechanism for its stack. Standalone use is supported via `--files <glob>` and `--strict` flags (AC10). When `--stack` is omitted the detector auto-classifies each file by extension and routes it to the correct per-stack matcher — useful for monorepos where a single invocation covers multiple stacks (AC9). Per-stack detection patterns are summarized below:
+
+| Stack            | Detection pattern                                                |
+| ---------------- | ---------------------------------------------------------------- |
+| `ts-dev`         | `describe.each` / `it.each` / tagged `it()` / front-matter `tags:` |
+| `angular-dev`    | same as `ts-dev`                                                 |
+| `java-dev`       | `@Tag("…")` annotation on class or method                        |
+| `python-dev`     | `@pytest.mark.<name>` decorator                                  |
+| `go-dev`         | `//go:build <tag>` directive in first 10 lines of the file       |
+| `flutter-dev`    | `@Tags(['…'])` annotation                                        |
+| `mobile-dev`     | Maestro front-matter `tags:` (YAML) or `@Tag("…")` (Kotlin/Java) |
+
+**Severity mode.** Findings emit at `info` (Suggestion) by default — they surface in `analysis-results.json` but DO NOT escalate Phase 3A verdicts. Strict mode upgrades severity to `warning` (factored into the LLM Phase 3B judgment but still non-blocking). Strict-mode resolution precedence (highest first): CLI `--strict` flag → `GAIA_TEST_TAGGING_STRICT=1` env override → `test_tagging.strict: true` in `config/project-config.yaml` → default false. `phase3a-test-review.sh` propagates `GAIA_TEST_TAGGING_STRICT` to `tag-conformance-detector.sh` so a single env toggle flips the project-wide tagging regime.
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/phase3a-test-review.sh \
+  --story-key "{story_key}" \
+  --stack "<canonical-stack>" \
+  --max-lines 500 \
+  --file-list <(printf '%s\n' "${file_list[@]}")
+```
+
+The four scanners cover the analyzers below (1–3 plus the new tag-conformance scanner that complements smell/flakiness/fixture coverage):
 
 1. **Test-smell detection (per-stack regex/AST).** Scope is bounded by default per EC-12: (a) standard test paths per stack — `**/*.{test,spec}.{ts,tsx}` for ts-dev, `test_*.py + *_test.py` for python-dev, etc.; (b) test-helper patterns in the File List — `*.factory.*`, `*Factory.{js,ts,py}`, `fixtures/`, `helpers/`, `conftest.py` (EC-11). FULL-project scan only on explicit `--full` flag. Smell categories per stack: hardcoded sleeps, conditional-in-test (excluding parameterized patterns — EC-7), magic numbers, long tests (per-stack threshold per EC-6: default 50 LOC body / 5s unit / 30s integration / 60s e2e), ignored assertions. Wall-clock cap: 30s for smell detection alone.
 

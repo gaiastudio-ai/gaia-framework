@@ -176,6 +176,38 @@ EOF
   [[ "$output" == *"not found"* ]]
 }
 
+# E55-S9 — discovery ladder: when CWD is a sub-tree of a project whose
+# config/ lives at an ancestor (the gaia-public/ shape), assert_pr_target_-
+# from_chain MUST walk upward to find the config rather than false-flagging.
+@test "assert_pr_target_from_chain: discovers config via upward walk (E55-S9)" {
+  mkdir -p "$TEST_TMP/anc/config" "$TEST_TMP/anc/sub"
+  cat > "$TEST_TMP/anc/config/project-config.yaml" <<'EOF'
+ci_cd:
+  promotion_chain:
+    - id: staging
+      branch: staging
+EOF
+  cd "$TEST_TMP/anc/sub"
+  unset PROJECT_CONFIG
+  run bash -c "source '$INVARIANTS_SH' && assert_pr_target_from_chain staging"
+  [ "$status" -eq 0 ]
+}
+
+@test "assert_pr_target_from_chain: CLAUDE_PROJECT_ROOT override resolves config (E55-S9)" {
+  mkdir -p "$TEST_TMP/proj/config" "$TEST_TMP/elsewhere"
+  cat > "$TEST_TMP/proj/config/project-config.yaml" <<'EOF'
+ci_cd:
+  promotion_chain:
+    - id: staging
+      branch: staging
+EOF
+  cd "$TEST_TMP/elsewhere"
+  unset PROJECT_CONFIG
+  CLAUDE_PROJECT_ROOT="$TEST_TMP/proj" \
+    run bash -c "source '$INVARIANTS_SH' && assert_pr_target_from_chain staging"
+  [ "$status" -eq 0 ]
+}
+
 # ---------------------------------------------------------------------------
 # Regression guards (TC-DSH-17 + Scenario 11)
 # ---------------------------------------------------------------------------

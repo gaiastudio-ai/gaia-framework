@@ -1,0 +1,10 @@
+{
+  "findings": [
+    {
+      "id": "test-perf-finding-1",
+      "severity": "Minor",
+      "title": "warmup duration",
+      "description": "performance suite warmup is short — consider extending to 30s"
+    }
+  ]
+}

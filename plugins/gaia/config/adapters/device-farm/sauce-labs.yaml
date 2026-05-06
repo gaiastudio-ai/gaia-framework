@@ -1,0 +1,12 @@
+# Sauce Labs device-farm adapter (E74-S9)
+# Sauce Labs Real Device Cloud. Poll-based result retrieval.
+name: sauce-labs
+type: device-farm
+runtime_profile: network
+auth_env_var: SAUCE_ACCESS_KEY
+api_base_url: https://api.us-west-1.saucelabs.com
+device_matrix_format: json
+result_polling_strategy: poll
+max_poll_attempts: 30
+poll_interval_seconds: 10
+description: "Sauce Labs Real Device Cloud — poll-based result retrieval"

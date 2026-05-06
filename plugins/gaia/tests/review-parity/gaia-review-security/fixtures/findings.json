@@ -1,0 +1,10 @@
+{
+  "findings": [
+    {
+      "id": "security-finding-1",
+      "severity": "Major",
+      "title": "missing input validation",
+      "description": "auth handler does not validate request body shape"
+    }
+  ]
+}

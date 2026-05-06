@@ -1,0 +1,31 @@
+# swift.yaml — Swift mobile stack definition (E74-S2, ADR-081)
+#
+# Mobile platform: iOS. Targets native iOS development with Swift Package
+# Manager and the Apple toolchain (xcodebuild). Adapter IDs reference Swift-
+# specific tooling that lands fully in E74-S7 (static) and E74-S9 (dynamic).
+#
+# Source spec: docs/planning-artifacts/decisions/gaia-review-system-final-report.md
+# §4.1, §5.7, §7.2.1.
+
+name: swift
+language: Swift
+platform: [ios]
+build_tool: xcodebuild
+package_manager: spm
+
+linters:
+  - SwiftLint
+
+formatters:
+  - SwiftFormat
+
+test_frameworks:
+  - XCTest
+  - swift-testing
+
+adapters:
+  static:
+    - swiftlint
+    - swiftformat
+  dynamic:
+    - xcuitest

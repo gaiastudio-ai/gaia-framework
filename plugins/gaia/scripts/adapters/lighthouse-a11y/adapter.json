@@ -1,0 +1,10 @@
+{
+  "provider": "lighthouse",
+  "category": "a11y-scanner",
+  "version-range": ">=11.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 120,
+  "file-extensions": [],
+  "scope": "project",
+  "description": "Google Lighthouse accessibility audit — invokes `lighthouse <url> --output=json --quiet --only-categories=accessibility` and emits a normalized analysis-results fragment for the WCAG rubric judgment (E73-S4)."
+}

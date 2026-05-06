@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gaiastudio.ai/schemas/execution-evidence.schema.json",
+  "title": "GAIA execution-evidence.json — qa-review test execution evidence (E67-S4)",
+  "description": "Test execution evidence captured by /gaia-review-qa via review-common/qa-test-runner.sh and consumed by verdict-resolver.sh through --execution-evidence. Records per-suite outcome, timing, and the resolved tier/context so a downstream verdict can apply the AC9 precedence rules. Refs: AC4, AC5, AC6, AC7, FR-RSV2-2, FR-RSV2-11, ADR-044, ADR-075, ADR-077.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["suites", "tier", "context", "wall_clock_seconds"],
+  "properties": {
+    "suites": {
+      "description": "Per-suite execution evidence array. Empty when skipped=true.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "command", "exit_code", "duration_seconds", "pass_count", "fail_count"],
+        "properties": {
+          "name": {
+            "description": "Suite identifier — usually the tier key (tier_1, tier_2, tier_3) or the bridge-supplied suite name.",
+            "type": "string",
+            "minLength": 1
+          },
+          "command": {
+            "description": "The command line that was executed.",
+            "type": "string"
+          },
+          "exit_code": {
+            "description": "Process exit status. 0 = pass; non-zero = fail; 124 = timeout (POSIX timeout convention).",
+            "type": "number"
+          },
+          "duration_seconds": {
+            "description": "Wall-clock time the suite ran (seconds, may be fractional).",
+            "type": "number",
+            "minimum": 0
+          },
+          "pass_count": {
+            "description": "Number of passing tests, when extractable from suite output. Zero when not extractable.",
+            "type": "number",
+            "minimum": 0
+          },
+          "fail_count": {
+            "description": "Number of failing tests, when extractable from suite output. Zero when not extractable.",
+            "type": "number",
+            "minimum": 0
+          },
+          "coverage_delta": {
+            "description": "Optional coverage delta produced by review-common/action/coverage-delta.sh.",
+            "type": "number"
+          },
+          "timeout": {
+            "description": "True when the suite was killed for exceeding timeout_seconds (AC6).",
+            "type": "boolean"
+          },
+          "required": {
+            "description": "True when the suite is required for the active tier — drives verdict-resolver precedence.",
+            "type": "boolean"
+          },
+          "skip_reason": {
+            "description": "Populated when the suite was skipped (e.g., placement does not match active context).",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tier": {
+      "description": "The single tier name when one tier ran, the literal 'multi' when more than one tier ran, or 'none' when execution was skipped.",
+      "type": "string",
+      "minLength": 1
+    },
+    "context": {
+      "description": "Resolved GAIA_EXECUTION_CONTEXT used to filter tier placements.",
+      "type": "string",
+      "enum": ["local", "ci_pre_merge", "ci_post_merge", "deployment", "post_deploy"]
+    },
+    "wall_clock_seconds": {
+      "description": "Total wall-clock time spent inside qa-test-runner.sh (seconds, fractional).",
+      "type": "number",
+      "minimum": 0
+    },
+    "skipped": {
+      "description": "True when test_execution was absent or no tier matched the active context (AC7).",
+      "type": "boolean"
+    },
+    "bridge_used": {
+      "description": "True when execution was delegated to the Test Execution Bridge (AC8).",
+      "type": "boolean"
+    },
+    "diagnostics": {
+      "description": "Free-form diagnostic strings emitted during execution (e.g., INFO 'test_execution not configured').",
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

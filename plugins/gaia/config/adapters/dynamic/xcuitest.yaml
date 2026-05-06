@@ -1,0 +1,9 @@
+# XCUITest dynamic test adapter (E74-S9)
+# Apple's native iOS UI test framework. xcresult bundle output.
+name: xcuitest
+type: dynamic
+platform: ios
+binary: xcodebuild test
+config_file_pattern: "*.xcodeproj"
+output_format: xcresult
+description: "XCUITest native iOS UI test runner via xcodebuild"

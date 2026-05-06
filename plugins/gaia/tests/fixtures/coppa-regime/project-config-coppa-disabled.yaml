@@ -1,0 +1,10 @@
+# project-config-coppa-disabled.yaml — fixture for E74-S6 coppa-regime tests.
+# Represents a project that has NOT opted in to COPPA enforcement. The
+# rubric-merger MUST NOT load coppa.json when this config is active.
+project:
+  name: "general-purpose-app"
+  description: "General audience app — no children's-data scope"
+  platforms: [ios, android]
+
+compliance:
+  regimes: []

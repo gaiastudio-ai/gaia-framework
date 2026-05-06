@@ -33,15 +33,15 @@ jobs:
   bats-tests:
     name: bats-tests
     runs-on: ubuntu-latest
-    # E28-S17 AC4 originally set this to 2 minutes, but the bats suite has
-    # grown past 1300 tests (E43-S5 Phase 3 testing wire-in added the final
-    # 52 invocations and ~12 new @tests). The raw bats run is ~100 s on CI
-    # and setup + coverage upload + cleanup push the job past the 2-minute
-    # wall regardless of how tight the new tests are. Bump to 5 minutes to
-    # match the cluster-* jobs; the 2-minute target remains a soft budget
-    # for the bats test runtime itself (enforced by the wrapper), just not
-    # the full job. Revisit if the suite exceeds ~4 minutes of raw bats.
-    timeout-minutes: 5
+    # E28-S17 AC4 originally set this to 2 minutes, then E43-S5 bumped to 5
+    # when the suite passed 1300 tests. Sprint-37 + sprint-38 grew the suite
+    # past 3300 tests (E66/E67/E68/E69/E70 added 100+ new fixtures each
+    # sprint). Raw bats is now consistently 4-5 minutes on CI; setup +
+    # coverage upload push the job past the 5-minute wall on every push,
+    # forcing rerun-or-admin-merge cycles. Bump to 8 minutes to absorb the
+    # growth. The 240s soft budget enforced by bats-budget-watch.sh remains
+    # the actionable signal for fixture authors. Revisit at ~6m raw bats.
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0

@@ -79,6 +79,19 @@ Each phase is independent in its write targets but must run sequentially because
    - `has_infra` + `has_app_code` → `platform`
    - `has_infra` + no `has_app_code` → `infrastructure`
    - no `has_infra` → `application` (default)
+
+<!-- E71-S2: detection-driven config extension begin -->
+5a. **Detection-driven config draft (E71-S2 / FR-RSV2-35, FR-RSV2-36, AF-2026-05-04-1).** After the boolean capability flags are set, run `detect-signals.sh` to produce a structured signal inventory and (optionally) merge it into the project's `config/project-config.yaml`:
+
+   - Run `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-signals.sh --project-root <project> --merge-into <project>/config/project-config.yaml --output <project>/config/project-config.draft.yaml --schema ${CLAUDE_PLUGIN_ROOT}/config/project-config.schema.yaml --format json`.
+   - The script emits a JSON document with five keys — `stacks`, `platforms`, `ci_platform`, `tool_providers`, `warnings` — plus a top-level `verdict` (PASS | WARNING | CRITICAL) per ADR-063.
+   - Detected sections are merged into the existing `project-config.yaml` using **RFC 7396 JSON Merge Patch** semantics: existing user-edited values are preserved unchanged; only null or absent fields are filled. The merged draft is written to `project-config.draft.yaml` for user review before promotion to `project-config.yaml`.
+   - When the `--schema` flag is provided, the script invokes `resolve-config.sh --shared <draft> --schema <schema>` to validate the merged draft. A schema rejection collapses the verdict to `CRITICAL` and exits non-zero.
+   - **Verdict surfacing (ADR-063 — mandatory):** the parent skill MUST surface the verdict to the user verbatim — no silent swallowing. PASS = all sections populated, no conflicts. WARNING = conflicts detected (e.g., multiple test runners) or partial signals (e.g., empty project). CRITICAL = post-merge schema validation failure; HALT until resolved.
+   - **Empty-project advisory:** when no signals are detected, the script emits a `warnings` entry directing the user to configure manually via `/gaia-config-stack`, `/gaia-config-platform`, `/gaia-config-ci`, `/gaia-config-tools`. Surface this advisory to the user.
+   - **Mobile signals out of scope (E74-S11):** Package.swift, Android Gradle, Flutter mobile, react-native, Xcode/Android Studio detection do NOT fire here — those land downstream.
+<!-- E71-S2: detection-driven config extension end -->
+
 6. Generate the brownfield assessment artifact by reading the assessment template, capturing component inventory, technical debt, migration constraints, coexistence strategy, and adoption path. Include `{project_type}` in the output. Write to `docs/planning-artifacts/brownfield-assessment.md`.
 7. Write the enhanced project documentation — all standard sections plus detected capability flags, `{project_type}`, testing infrastructure summary, and CI/CD pipeline summary. Write to `docs/planning-artifacts/project-documentation.md`.
 

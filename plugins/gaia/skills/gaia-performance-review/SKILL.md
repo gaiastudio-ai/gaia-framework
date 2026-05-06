@@ -1,9 +1,11 @@
 ---
-name: gaia-performance-review
-description: Run anytime performance bottleneck analysis on a story — N+1 queries, memory/bundle impact, caching, and algorithmic complexity. Emits a machine-readable PASSED/FAILED verdict and updates the Review Gate. Use when "performance review" or /gaia-performance-review.
+name: gaia-perf-deepdive
+description: Run anytime performance bottleneck analysis on a story — N+1 queries, memory/bundle impact, caching, and algorithmic complexity. Emits a machine-readable PASSED/FAILED verdict and updates the Review Gate. Use when "performance review" or /gaia-perf-deepdive (formerly /gaia-performance-review).
 argument-hint: "[story-key]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+deprecated_aliases: [gaia-performance-review]
+deprecated_since: sprint-37
 ---
 
 ## Setup
@@ -26,7 +28,7 @@ This skill pattern-matches against `gaia-code-review` (E65-S2) as the canonical 
 
 ## Critical Rules
 
-- A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-performance-review [story-key]".
+- A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-perf-deepdive [story-key]".
 - The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
 - The story MUST be in `review` status. If not, fail with "story must be in review status before performance review".
 - This skill is READ-ONLY in the fork. Do NOT attempt to call Write or Edit — the allowlist enforces this. Persistence is routed through the parent context.
@@ -122,7 +124,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 ### Phase 1 — Setup
 
-- If no story key was provided as an argument, fail with: "usage: /gaia-performance-review [story-key]"
+- If no story key was provided as an argument, fail with: "usage: /gaia-perf-deepdive [story-key]"
 - Resolve the story file path using the canonical glob: `docs/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
 - Read the resolved story file; parse YAML frontmatter to extract `status` and `figma:` block (if any).
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch (NFR-DEJ-4 preserved). Forward the persona payload + canonical stack name into the fork.

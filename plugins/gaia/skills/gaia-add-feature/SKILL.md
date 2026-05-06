@@ -279,6 +279,53 @@ regression class closed by ADR-063).
   - Verify new FR / NFR IDs, test cases, and stories are linked.
 - If classification is `patch`: skip this step.
 
+### Step 8c -- Re-shard touched documents (E53-S244, ADR-070)
+
+Cascade execution may have written to one or more monolith documents:
+`docs/planning-artifacts/prd.md`, `docs/planning-artifacts/architecture.md`,
+and/or `docs/planning-artifacts/epics-and-stories.md` (and, transitively
+via Step 8 sub-workflow, story files and traceability). Once the cascade
+finishes, MUST re-shard each touched monolith so the per-section shards
+stay aligned with the monolith. This step honours the monolith-vs-shard
+sync contract in ADR-070 (extended in E53-S243) — it is not optional
+unless the user passes `--monolith-only` for an explicit atomic same-PR
+edit (e.g., when the cascade and the re-shard will land in the same
+commit and the user prefers to invoke `/gaia-shard-doc` manually at
+PR-merge time).
+
+- If `$ARGUMENTS` contains `--monolith-only`: skip this step entirely.
+  Record `reshard: skipped (--monolith-only)` in the assessment-doc
+  Cascade Plan section. The user takes responsibility for re-running
+  `/gaia-shard-doc` (or merging shards back to the monolith) before
+  commit.
+- Otherwise, build the touched-monolith set from the prior cascade steps:
+  - if Step 4 (Edit PRD) ran -> include `docs/planning-artifacts/prd.md`
+  - if Step 5 (Edit Architecture) ran -> include
+    `docs/planning-artifacts/architecture.md`
+  - if Step 8 (Add Feature Stories) ran -> include
+    `docs/planning-artifacts/epics-and-stories.md`
+  - for `patch` classification: include only the directly-edited monolith
+    (no cascade ran)
+- For each monolith in the touched set, invoke `/gaia-shard-doc <path>`.
+  `/gaia-shard-doc` is unchanged in this story — only the cascade
+  invocation pattern changes (AC4 of E53-S244).
+- After all re-shards return, run
+  `${CLAUDE_PLUGIN_ROOT}/scripts/check-monolith-shard-sync.sh` against
+  the project root. The check is advisory (always exits 0). If it emits
+  any `WARNING` lines, surface those WARNINGs to the user and record
+  them in the assessment-doc Val Findings Summary section so the audit
+  trail captures the residual drift — they indicate one or more
+  re-shards did not converge and the user must investigate before
+  commit.
+- Record the per-monolith `reshard: invoked (gaia-shard-doc)` decisions
+  in the assessment-doc Cascade Plan section so the audit trail captures
+  the invocations.
+
+This step runs in YOLO mode automatically — re-sharding is deterministic
+per ADR-042 and needs no user prompt. It is purely additive: skills that
+did not previously include this step continue to function for backwards
+compatibility (AC8 of E53-S244).
+
 ### Step 9 -- Emit Assessment-Doc Artifact
 
 This step runs only after the cascade completes successfully and Val
@@ -358,6 +405,10 @@ finding first and re-invoke the skill.
 - FR-323 -- Add-feature orchestrator with classification vocabulary and
   cascade matrix.
 - FR-362 -- Restore the validation gate inside `/gaia-add-feature`.
+- ADR-070 -- Auto-sharding policy; monolith-vs-shard sync contract.
+- E53-S243 -- Static `monolith-shard-sync` check + ADR-070 amendment.
+- E53-S244 -- Cascade-skill auto-invoke for `/gaia-shard-doc`
+  (Step 8c above + `--monolith-only` opt-out).
 
 ## Finalize
 

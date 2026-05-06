@@ -60,6 +60,12 @@ author: "tester"
 ---
 
 # Story body
+
+## Review Gate
+
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | UNVERIFIED | — |
 EOF
   printf '%s\n' "$path"
 }
@@ -298,6 +304,74 @@ EOF
   run bash -c "grep -vE '^[[:space:]]*#' '$SCRIPT' | grep -E 'sprint-status\\.yaml|epics-and-stories\\.md|story-index\\.yaml'"
   # grep exits 1 when nothing matches, which is the expected (clean) state.
   [ "$status" -eq 1 ]
+}
+
+# ---------------------------------------------------------------------------
+# E54-S6 — Review Gate 3-column body-shape check (AC1, AC2, AC3)
+# ---------------------------------------------------------------------------
+
+@test "E54-S6 AC1: 2-column Review Gate (Review|Status) -> exit 1, CRITICAL|review_gate| naming Report" {
+  path="$(write_good_story)"
+  awk '
+    /^\| Review \| Status \| Report \|$/ {
+      print "| Review | Status |"
+      print "|--------|--------|"
+      print "| Code Review | UNVERIFIED |"
+      # Skip the next two original lines (separator + first row).
+      getline; getline
+      next
+    }
+    {print}
+  ' "$path" >"$path.tmp" && mv "$path.tmp" "$path"
+  run "$SCRIPT" --file "$path"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"CRITICAL|review_gate|"* ]]
+  [[ "$output" == *"Report"* ]]
+}
+
+@test "E54-S6 AC2: canonical 3-column Review Gate -> exit 0, no review_gate finding" {
+  path="$(write_good_story)"
+  run "$SCRIPT" --file "$path"
+  [ "$status" -eq 0 ]
+  [ "$output" = "" ]
+  [[ "$output" != *"review_gate"* ]]
+}
+
+@test "E54-S6 AC3c: missing Review Gate section -> exit 1, CRITICAL|review_gate|missing" {
+  path="$(write_good_story)"
+  # Strip the `## Review Gate` block (heading through end-of-file) so the
+  # body has no Review Gate at all. The good-story fixture has no further
+  # sections after Review Gate, so deleting from the heading onward is safe.
+  awk '
+    BEGIN { skip = 0 }
+    /^## Review Gate$/ { skip = 1; next }
+    skip == 0 { print }
+  ' "$path" >"$path.tmp" && mv "$path.tmp" "$path"
+  run "$SCRIPT" --file "$path"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"CRITICAL|review_gate|"* ]]
+  [[ "$output" == *"missing"* ]]
+}
+
+@test "E54-S6 AC3 ext: heading present but no table -> exit 1, CRITICAL|review_gate|" {
+  path="$(write_good_story)"
+  # Replace the Review Gate block with a heading that has no following table.
+  awk '
+    BEGIN { skip = 0 }
+    /^## Review Gate$/ {
+      print "## Review Gate"
+      print ""
+      print "## Estimate"
+      print ""
+      print "- Points: 1"
+      skip = 1
+      next
+    }
+    skip == 0 { print }
+  ' "$path" >"$path.tmp" && mv "$path.tmp" "$path"
+  run "$SCRIPT" --file "$path"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"CRITICAL|review_gate|"* ]]
 }
 
 # ---------------------------------------------------------------------------

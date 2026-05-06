@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0",
+  "skill": "mobile",
+  "type": "base",
+  "platform": "mobile",
+  "metadata": {
+    "title": "Base mobile review rubric",
+    "story": "E74-S3",
+    "adr": ["ADR-079", "ADR-081"],
+    "description": "Base rubric for mobile-platform review (iOS/Android). Layered atop the universal base rubrics (code/perf/security/a11y) by /gaia-review-mobile. Sub-rubrics (mobile-code, mobile-perf, mobile-security, mobile-a11y) carry skill-specific deltas; this base captures cross-cutting mobile concerns: UI/UX conventions, lifecycle, offline/connectivity, resource management."
+  },
+  "severity_rules": [
+    {
+      "id": "mobile-mobile-ui-ux-001",
+      "category": "mobile-ui-ux",
+      "pattern": "Custom UI controls deviate from platform conventions (e.g., iOS HIG navigation patterns, Material Design components on Android) without justification.",
+      "severity": "Medium",
+      "description": "Platform UI conventions reduce learnability. Custom controls that ignore HIG/Material guidelines force users to relearn navigation and increase support load.",
+      "remediation": "Use platform-native controls (UINavigationController, BottomNavigationView) where possible; document deliberate deviations in a UX design note.",
+      "references": ["Apple-HIG", "Material-Design-3"]
+    },
+    {
+      "id": "mobile-mobile-ui-ux-002",
+      "category": "mobile-ui-ux",
+      "pattern": "App ignores safe-area insets on iOS (notch, home indicator) or system bars on Android (status bar, navigation bar).",
+      "severity": "High",
+      "description": "Content rendered behind system chrome is unreadable or untappable on modern devices. Safe-area handling is mandatory for App Store / Play Store approval.",
+      "remediation": "Apply `safeAreaInsets` (UIKit) / `WindowInsetsCompat` (Android); avoid hardcoded top/bottom paddings.",
+      "references": ["Apple-HIG-Layout", "Android-WindowInsets"]
+    },
+    {
+      "id": "mobile-platform-conventions-001",
+      "category": "platform-conventions",
+      "pattern": "iOS app uses Android-style toast notifications or Android app uses iOS-style modal sheets without platform adaptation.",
+      "severity": "Low",
+      "description": "Cross-platform UI patterns that ignore the host platform's idioms feel foreign and damage user trust.",
+      "remediation": "Use UIAlertController / SnackBar appropriate to the platform; abstract notification UI behind a platform-aware component."
+    },
+    {
+      "id": "mobile-platform-conventions-002",
+      "category": "platform-conventions",
+      "pattern": "App uses non-standard back-navigation behaviour: iOS swipe-back disabled without alternative, or Android hardware-back ignored / mishandled.",
+      "severity": "High",
+      "description": "Breaking back-navigation contracts is one of the top complaints in app-store reviews. iOS users expect swipe-from-edge; Android users expect hardware back to navigate up.",
+      "remediation": "Re-enable interactivePopGestureRecognizer; on Android, implement onBackPressed / OnBackPressedDispatcher to consume back navigation correctly."
+    },
+    {
+      "id": "mobile-lifecycle-001",
+      "category": "lifecycle",
+      "pattern": "App fails to persist transient UI state (form input, scroll position, selection) across backgrounding or process death.",
+      "severity": "High",
+      "description": "Mobile OSes aggressively reclaim memory; an app may be killed while backgrounded and relaunched into a stale state. State restoration is part of the platform contract.",
+      "remediation": "Use NSUserActivity + state restoration on iOS; SavedStateHandle + onSaveInstanceState on Android. Persist work-in-progress to disk on willResignActive / onPause."
+    },
+    {
+      "id": "mobile-lifecycle-002",
+      "category": "lifecycle",
+      "pattern": "Long-running task (download, upload, computation) runs only on the foreground without a background-task contract.",
+      "severity": "Medium",
+      "description": "Foreground-only tasks are interrupted when the user backgrounds the app, leaving partial state. Background-task APIs exist precisely for this case.",
+      "remediation": "Use BGTaskScheduler / URLSession background config (iOS) or WorkManager / ForegroundService (Android) with the appropriate notification.",
+      "references": ["Apple-BGTaskScheduler", "Android-WorkManager"]
+    },
+    {
+      "id": "mobile-offline-connectivity-001",
+      "category": "offline-connectivity",
+      "pattern": "App assumes a network connection is available; fails or shows a generic error when offline instead of falling back to cached data.",
+      "severity": "High",
+      "description": "Mobile users frequently transition between online and offline (subway, elevator, airplane). Offline-unaware apps are unreliable in real-world use.",
+      "remediation": "Cache critical data locally; show last-known data with a 'stale' indicator; queue writes via WorkManager / NSURLSession background queue.",
+      "references": ["Offline-First-Design"]
+    },
+    {
+      "id": "mobile-offline-connectivity-002",
+      "category": "offline-connectivity",
+      "pattern": "Network requests do not retry on transient failures (timeouts, DNS resolution, captive portals) or use unbounded retry without backoff.",
+      "severity": "Medium",
+      "description": "Mobile networks are lossy. Naive retry or no retry both fail users — bounded exponential backoff is the standard pattern.",
+      "remediation": "Use exponential-backoff-with-jitter (e.g., 1s, 2s, 4s, max 30s); cap retries; surface a user-facing 'try again' affordance after the cap."
+    },
+    {
+      "id": "mobile-resource-management-001",
+      "category": "resource-management",
+      "pattern": "App holds GPS, camera, microphone, or Bluetooth sessions open while in the background or after the user navigates away from the consuming screen.",
+      "severity": "High",
+      "description": "Idle hardware sessions drain battery and trigger OS warnings to the user (orange/green dot, battery-usage screens). Both stores penalise apps with high background-resource usage.",
+      "remediation": "Release the resource in viewDidDisappear / onPause; re-acquire on viewWillAppear / onResume; use the platform's lifecycle-aware APIs."
+    },
+    {
+      "id": "mobile-resource-management-002",
+      "category": "resource-management",
+      "pattern": "App allocates large bitmaps, video buffers, or audio assets without bounding by available memory or releasing on memory-warning notifications.",
+      "severity": "High",
+      "description": "Mobile devices have hard memory ceilings (~150-300 MB for many iOS app classes). OOM kills are silent and look like crashes to users.",
+      "remediation": "Subscribe to memory-warning notifications; downsample bitmaps to display size; reuse buffers; profile with Instruments / Android Studio Profiler."
+    }
+  ]
+}

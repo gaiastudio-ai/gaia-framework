@@ -1,0 +1,10 @@
+{
+  "findings": [
+    {
+      "id": "perf-finding-1",
+      "severity": "Minor",
+      "title": "minor LCP regression",
+      "description": "largest contentful paint increased by 50ms"
+    }
+  ]
+}

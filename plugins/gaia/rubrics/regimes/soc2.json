@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "skill": "security",
+  "name": "soc2",
+  "applies_to_skills": ["review-code", "review-security"],
+  "description": "SOC 2 Trust Services Criteria rules — security, availability, processing integrity, confidentiality, privacy. Layer 2 of the four-layer rubric composition per ADR-079.",
+  "metadata": {
+    "title": "SOC 2 regime rubric",
+    "story": "E68-S4",
+    "adr": "ADR-079",
+    "regime_id": "soc2",
+    "references": ["SOC2-CC6.1", "SOC2-A1.2", "SOC2-PI1.1", "SOC2-C1.1", "SOC2-P3.1"]
+  },
+  "severity_rules": [
+    {
+      "id": "soc2-security-001",
+      "category": "security",
+      "pattern": "Authentication endpoint has no rate limiting, lockout policy, or anomaly-detection hook on failed-login events.",
+      "severity": "High",
+      "description": "TSC CC6.1 requires logical access controls including protection against brute-force authentication attacks.",
+      "remediation": "Add rate limiting and progressive lockout on failed authentication; route anomalies to security monitoring.",
+      "references": ["SOC2-CC6.1"]
+    },
+    {
+      "id": "soc2-security-002",
+      "category": "security",
+      "pattern": "Sensitive endpoint accepts authentication via a long-lived static token without rotation policy or revocation hook.",
+      "severity": "High",
+      "description": "TSC CC6.1 requires that authentication credentials are managed, rotated, and revocable.",
+      "remediation": "Use short-lived tokens with rotation; implement a revocation list checked on every request.",
+      "references": ["SOC2-CC6.1"]
+    },
+    {
+      "id": "soc2-availability-001",
+      "category": "availability",
+      "pattern": "Production-critical service has no uptime monitor, health-check endpoint, or alerting wired to an on-call rotation.",
+      "severity": "High",
+      "description": "TSC A1.2 requires availability monitoring with documented response procedures.",
+      "remediation": "Expose a `/healthz` endpoint; wire an external uptime monitor that pages the on-call rotation on failure.",
+      "references": ["SOC2-A1.2"]
+    },
+    {
+      "id": "soc2-availability-002",
+      "category": "availability",
+      "pattern": "Service stores critical data without a backup, replication, or documented recovery-time objective.",
+      "severity": "Medium",
+      "description": "TSC A1.2 requires a documented recovery plan with backup integrity verification.",
+      "remediation": "Configure scheduled backups, replicate to a secondary region, and document RTO/RPO targets.",
+      "references": ["SOC2-A1.2"]
+    },
+    {
+      "id": "soc2-processing-integrity-001",
+      "category": "processing-integrity",
+      "pattern": "API endpoint accepts user input without schema validation, type coercion, or boundary checks.",
+      "severity": "High",
+      "description": "TSC PI1.1 requires that processing inputs are validated for completeness, accuracy, and authorisation.",
+      "remediation": "Validate input against a schema (e.g., JSON Schema, Zod, Pydantic); reject malformed payloads with a structured error.",
+      "references": ["SOC2-PI1.1"]
+    },
+    {
+      "id": "soc2-processing-integrity-002",
+      "category": "processing-integrity",
+      "pattern": "Error path swallows or logs-and-discards an exception during a financial or stateful operation, leaving partial state.",
+      "severity": "High",
+      "description": "TSC PI1.1 requires error-handling that preserves processing integrity — partial-state failures must be detected and remediated.",
+      "remediation": "Wrap stateful ops in transactions or sagas; surface failures with a typed error and a compensating-action hook.",
+      "references": ["SOC2-PI1.1"]
+    },
+    {
+      "id": "soc2-confidentiality-001",
+      "category": "confidentiality",
+      "pattern": "Confidential data field (customer PII, internal credentials, financial records) persisted without classification or encryption-at-rest.",
+      "severity": "Critical",
+      "description": "TSC C1.1 requires that confidential data is identified, classified, and protected via encryption.",
+      "remediation": "Tag the field with a confidentiality classification; encrypt at rest with AES-256; document key custody.",
+      "references": ["SOC2-C1.1"]
+    },
+    {
+      "id": "soc2-privacy-001",
+      "category": "privacy",
+      "pattern": "Code collects personal data without a recorded consent flag or data-minimisation review.",
+      "severity": "High",
+      "description": "TSC P3.1 requires that personal data is collected with consent and limited to what is needed for the purpose.",
+      "remediation": "Record consent state at collection; review collected fields against the documented purpose.",
+      "references": ["SOC2-P3.1"]
+    }
+  ]
+}

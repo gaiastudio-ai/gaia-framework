@@ -1,0 +1,20 @@
+{
+  "provider": "zap-cli",
+  "category": "dast",
+  "version-range": ">=2.14.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 600,
+  "file-extensions": [],
+  "scope": "project",
+  "description": "OWASP ZAP dynamic application security scanner — invokes `zap-cli` against a deployed target URL and emits canonical finding objects normalized from ZAP alerts. Subprocess env is scrubbed to the env-allowlist below per T-RSV2-1 mitigation (E73-S3).",
+  "env-allowlist": [
+    "PATH",
+    "HOME",
+    "TARGET_URL",
+    "ZAP_API_KEY",
+    "ZAP_HOME",
+    "ZAP_PROXY_HOST",
+    "ZAP_PROXY_PORT",
+    "ZAP_PROFILE"
+  ]
+}

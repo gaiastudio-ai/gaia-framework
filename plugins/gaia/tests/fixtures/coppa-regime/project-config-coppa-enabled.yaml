@@ -1,0 +1,12 @@
+# project-config-coppa-enabled.yaml — fixture for E74-S6 coppa-regime tests.
+# Represents a children's-app project that has opted in to COPPA enforcement
+# via the `compliance.regimes` declaration. The rubric-merger should layer
+# `rubrics/regimes/coppa.json` on top of the base when this config is active.
+project:
+  name: "kids-learning-app"
+  description: "Children's educational app — under-13 audience"
+  platforms: [ios, android]
+
+compliance:
+  regimes:
+    - coppa

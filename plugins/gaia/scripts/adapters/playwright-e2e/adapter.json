@@ -1,0 +1,11 @@
+{
+  "provider": "npx",
+  "category": "e2e-runner",
+  "version-range": ">=1.40.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 600,
+  "file-extensions": [],
+  "scope": "project",
+  "plugin": "playwright",
+  "description": "Playwright end-to-end test runner — invokes `npx playwright test --reporter=json` against the project's Playwright configuration."
+}

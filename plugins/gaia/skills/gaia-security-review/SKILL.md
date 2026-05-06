@@ -1,9 +1,12 @@
 ---
-name: gaia-security-review
-description: Pre-merge OWASP-focused security review. Use when "security review" or /gaia-security-review.
+name: deprecated-gaia-security-review
+description: DEPRECATED — This skill has been retired. Use /gaia-review-security (canonical, see gaia-review-security/SKILL.md). This file remains only to expose the deprecated alias for one sprint per E69-S1.
 argument-hint: "[story-key]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+deprecated_aliases: [gaia-security-review]
+deprecated_since: sprint-37
+replaced_by: gaia-review-security
 ---
 
 ## Setup
@@ -16,7 +19,9 @@ allowed-tools: [Read, Grep, Glob, Bash]
 
 This is the unifying principle of every GAIA review skill (FR-DEJ-1, ADR-075). For `gaia-security-review` it means: deterministic tools (Semgrep ruleset, secret scanner, dependency CVE audit) run first and emit a structured `analysis-results.json` artifact. The LLM then performs an OWASP-aligned semantic review **on top of** that artifact — it cannot disregard a high-confidence Semgrep `p/security-audit` failure or a gitleaks hit on a production path, and it cannot relabel a tool failure as APPROVE. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language.
 
-This skill pattern-matches against `gaia-code-review` (E65-S2) as the canonical reference. Per-skill specialization here = (a) the security toolkit (Semgrep + secret scan + dep audit) and (b) the OWASP-aligned severity rubric examples. Structural plumbing — fork dispatch, cache key, parent-mediated write — is identical to E65-S2.
+This skill pattern-matches against `gaia-code-review` (E65-S2) as the canonical reference. Per-skill specialization here = (a) the security toolkit (Semgrep + secret scan + dep audit + `live-secret-classifier.sh` + `threat-model-validator.sh`) and (b) the OWASP-aligned severity rubric examples. Structural plumbing — fork dispatch, cache key, parent-mediated write — is identical to E65-S2.
+
+**V2 sibling-reference status (E66-S4 / ADR-077).** This SKILL.md is the **canonical V2 sibling reference** for the V2 review pipeline migrations under E67. Phase 3A wiring routes through `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/` shared primitives (`agent-overlay.sh`, `verdict-resolver.sh`) and the three-state `${CLAUDE_PLUGIN_ROOT}/scripts/tool-availability-probe.sh`. E67-S1..S5 stories cite this file as the canonical migration pattern — see the **Migration Checklist** section at the bottom of this document.
 
 **Fork context semantics (ADR-041, ADR-045, NFR-DEJ-4):** This skill runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). It CANNOT modify files — the tool allowlist enforces no-write isolation. Persistence of the rendered review report is parent-mediated (Option A per ADR-075): the fork returns the rendered report payload to the parent context, and the parent writes the file. `Write` and `Edit` are NEVER added to the fork allowlist.
 
@@ -130,7 +135,12 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 - If no story key was provided as an argument, fail with: "usage: /gaia-security-review [story-key]"
 - Resolve the story file path using the canonical glob: `docs/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
 - Read the resolved story file; parse YAML frontmatter to extract `status` and `figma:` block (if any).
-- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch (NFR-DEJ-4 preserved). Forward the persona payload + canonical stack name into the fork.
+- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`).
+- **Persona resolution via `agent-overlay.sh` (ADR-077, V2).** In the parent context, resolve the security reviewer persona via the shared overlay:
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-review-security
+  ```
+  Stdout is `{"agent_id":"zara","sidecar_path":"_memory/zara-sidecar.md"}`. The parent context lazy-loads the Zara persona + sidecar BEFORE fork dispatch (NFR-RSV2-5 / NFR-DEJ-4 preserved). The sidecar is forwarded into the fork as **read-only context** — the fork tool allowlist `[Read, Grep, Glob, Bash]` provides no write capability against the sidecar file.
 - **Threat-model context (ADR-064).** When `docs/planning-artifacts/threat-model.md` exists, the skill loads it and injects it into the Phase 3B fork context under a "Threat Model Context" section. When the file is absent, proceed silently — preserves exact pre-E48-S2 behavior.
 - **Tool prereq probe.** For each tool (Semgrep, gitleaks/trufflehog, the dep-audit binary listed in the toolkit row): probe via `command -v <tool>` first; fall back to local binaries. NEVER use `npx <tool> --version` — registry fetch breaks the NFR-DEJ-1 60s P95 budget. Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
 - **Per-tool wall-clock caps (EC-10):** Semgrep ≤30s, secret scanner ≤15s, dep audit ≤15s. Cumulative Phase 3A budget ≤60s P95 cold (NFR-DEJ-1). On individual tool timeout, that tool's `status: errored` (NOT `failed` — timeout is not a finding); resolver maps to BLOCKED for the run.
@@ -148,11 +158,44 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.review/gaia-security-review/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
 
-**Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Run Semgrep + secret scanner + dep-audit per row.
+**Toolkit invocation (V2 / ADR-077).** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Each tool invocation is wrapped in `${CLAUDE_PLUGIN_ROOT}/scripts/tool-availability-probe.sh` (E66-S2) which performs a deterministic three-state classification before dispatching the adapter:
 
-1. **Semgrep** — invoke with the registry packs `p/security-audit` + `p/secrets`. If `.semgrep/` exists in the repo root, also invoke the custom rules; if `.semgrep/` is missing or empty, silently skip the custom-rules step with `skip_reason: "no Semgrep custom rules at .semgrep/"` (EC-9). Semgrep wall-clock cap: 30s.
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/tool-availability-probe.sh \
+  --adapter-dir ${CLAUDE_PLUGIN_ROOT}/scripts/adapters/<tool> \
+  --file-list <file-list-path> \
+  --timeout <per-tool-cap>
+```
+
+The probe emits a single-line JSON object on stdout. Per ADR-078 the probe classifies into one of four states; this skill maps each state to a Phase 3A `status` field as follows:
+
+| Probe state              | Phase 3A `status` | Verdict mapping       |
+|--------------------------|-------------------|-----------------------|
+| `available`              | `passed`/`failed` | per resolver          |
+| `expected_and_missing`   | `errored`         | BLOCKED               |
+| `ran_and_errored`        | `errored`         | BLOCKED               |
+| `not_applicable`         | `skipped`         | silent skip + `skip_reason` |
+
+The probe is the **single source of truth** for tool availability — Phase 3A MUST NOT invoke an adapter without first consulting `tool-availability-probe.sh`. This eliminates both silent downgrades (missing tools passing as APPROVE) and false BLOCKEDs (inapplicable tools halting the pipeline).
+
+The Phase 3A toolkit, each routed through the probe and the `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/` adapter wiring:
+
+1. **Semgrep** — invoke with the registry packs `p/security-audit` + `p/secrets`. If `.semgrep/` exists in the repo root, also invoke the custom rules; if `.semgrep/` is missing or empty, the probe returns `not_applicable` and the custom-rules step is silently skipped with `skip_reason: "no Semgrep custom rules at .semgrep/"` (EC-9). Semgrep wall-clock cap: 30s. Crash on malformed source → `ran_and_errored` → BLOCKED.
 2. **Secret scanner** (gitleaks default; trufflehog acceptable per project policy) — invoke with explicit File List + working-tree scope. CLI flags MUST exclude `--history` mode (EC-2). For gitleaks: `--no-git` is REQUIRED to scope to the working tree only. Historical secrets are an out-of-scope concern for `/gaia-security-review` and belong to a separate periodic full-history scan. Secret scanner wall-clock cap: 15s.
-3. **Dep CVE audit** — invoke the binary listed in the toolkit table for the resolved stack. Capture full advisory output. Dep audit wall-clock cap: 15s.
+3. **Dep CVE audit** — invoke the binary listed in the toolkit table for the resolved stack. Capture full advisory output. Dep audit wall-clock cap: 15s. Stack mismatch → probe returns `not_applicable`; binary absent for the stack → probe returns `expected_and_missing` → BLOCKED.
+4. **`live-secret-classifier.sh` (V2 helper).** Credential-prefix pattern matcher that classifies high-confidence credential literals (AKIA…, ghp_…, xoxb-…, glpat-…, etc.) detected by gitleaks/Semgrep into known issuer families and emits a `revocation_runbook` field per finding. Invoked via:
+    ```bash
+    ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/live-secret-classifier.sh \
+      --findings <gitleaks-output.json>
+    ```
+   Wrapped by the probe so absent helper → `not_applicable` (no failure) and runtime crash → `ran_and_errored` → BLOCKED.
+5. **`threat-model-validator.sh` (V2 helper).** Cross-references each Phase 3A finding against `docs/planning-artifacts/threat-model.md`. When a finding matches a modeled threat, the validator emits a `threat_ref` field (e.g., `T3`) downstream consumed by Phase 3B for inline cross-reference rendering. Invoked via:
+    ```bash
+    ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/threat-model-validator.sh \
+      --findings <semgrep-output.json> --threat-model docs/planning-artifacts/threat-model.md
+    ```
+   Wrapped by the probe so absent threat-model.md → `not_applicable` (silent skip) — preserves the exact pre-E48-S2 behavior.
+6. **Path normalizer + finding deduplicator.** Runs after all tool adapters return; dedup key is `(file, line, finding-type)` tuple. Path normalization to repo-relative covered in detail in the Path normalization sub-section below.
 
 **Status taxonomy (FR-DEJ-4).** Each tool invocation produces exactly one of:
 - `status: passed` — tool ran to completion, no findings, exit code zero.
@@ -239,13 +282,15 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 ### Phase 5 — Verdict
 
-The verdict is computed by `verdict-resolver.sh`. The LLM never computes or overrides it.
+The verdict is computed by the parameterized `verdict-resolver.sh` from `review-common/` (E66-S1). The LLM never computes or overrides it. The resolver consumes the per-skill `analysis-results.json` regardless of which review skill produced it — the file is validated against `plugins/gaia/schemas/analysis-results.schema.json` `schema_version: "1.0"` before precedence rules apply.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh \
   --analysis-results .review/gaia-security-review/{story_key}/analysis-results.json \
   --llm-findings .review/gaia-security-review/{story_key}/llm-findings.json
 ```
+
+Legacy single-skill invocations of `${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh` (the symlinked entry-point preserved for back-compat with E65-S2 fixtures) emit identical stdout — the parameterized resolver is the canonical path under V2.
 
 The resolver applies strict first-match-wins precedence (FR-DEJ-6):
 1. Any check `status: errored` → **BLOCKED**.
@@ -312,6 +357,33 @@ Capture stdout for the `Review Gate: COMPLETE|PENDING|BLOCKED` summary (per ADR-
 - Persist findings to the per-skill checkpoint via `checkpoint.sh write` (already invoked in Phase 3A for the cache; final state recorded via the standard `finalize.sh` hook).
 - The Phase 3A artifact is cached for the next run by the `.cache/{cache_key}.json` write performed in Phase 3A.
 
+## Migration Checklist (E67 sibling consumption)
+
+> **For E67-S1..S5 migration authors.** This section documents the V2 migration surface so each E67 story can pattern-match without ambiguity (AC9 / TC-RSV2-FOUND-SEC-07).
+
+This file is the **canonical V2 sibling reference** (E66-S4 / ADR-077). When migrating a sibling review skill (`gaia-test-review`, `gaia-test-automate`, `gaia-review-qa`, `gaia-performance-review`, `gaia-review-security` Phase 3C privacy/data-protection restoration) to the V2 template, replicate each of the seven anchors below. Drift from this checklist is detected by `evidence-judgment-parity.bats` (E66-S5 / FR-RSV2-46).
+
+| # | Anchor                              | V2 source / contract                                                                                                            | This file's reference                                  |
+|---|-------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------|
+| 1 | Unifying principle (verbatim)       | "Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it." | Mission section, top of file                           |
+| 2 | Seven-phase structure (in order)    | Setup → Story Gate → Phase 3A → Phase 3B → Phase 4 (Architecture Conformance + Design Fidelity) → Phase 5 Verdict → Phase 6 Output + Gate Update → Phase 7 Finalize | "Phases" section                                       |
+| 3 | Persona via `agent-overlay.sh`      | `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill <skill-name>` resolves `(skill, stack)` to `(agent_id, sidecar_path)` per the ADR-077 wiring table | Phase 1 — Setup                                        |
+| 4 | Three-state probe                   | `${CLAUDE_PLUGIN_ROOT}/scripts/tool-availability-probe.sh` wraps every Phase 3A tool invocation; states: `available` / `expected_and_missing` / `ran_and_errored` / `not_applicable` | Phase 3A — Toolkit invocation                          |
+| 5 | Parameterized verdict resolver      | `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh` consumes per-skill `analysis-results.json` (schema_version 1.0) | Phase 5 — Verdict                                      |
+| 6 | Fork-write fix (Option A)           | Fork allowlist exactly `[Read, Grep, Glob, Bash]` (no Write/Edit). Parent context performs all persistence at the FR-402 locked path `<skill-prefix>-{story_key}.md` | Frontmatter + Phase 6 — Output + Gate Update          |
+| 7 | TTL-aware cache key composition     | sha256 over `(story_key, tool_name, tool_versions, file_list_hash, resolved_config_hash, advisory_db_fingerprint)` — advisory-DB fingerprint mandatory for dep-audit-bearing skills | Phase 3A — Cache plumbing                              |
+| 8 | Severity rubric examples per skill  | ≥2 examples per tier (Critical / Warning / Suggestion) covering the skill's domain categories (here: OWASP A01/A02/A03/A05/A07) | Severity Rubric section                                |
+| 9 | Parity bats hook                    | Skill SKILL.md path appended to `REVIEW_SKILLS` array in `tests/evidence-judgment-parity.bats`; all assertion helpers must pass | `tests/evidence-judgment-parity.bats` (E66-S5)         |
+
+**Pattern-matching guidance for E67 authors:**
+
+- E67-S1 (`/gaia-review-test`) — Phase 3A toolkit specialization is test-runner status (`go test`, `jest`, `vitest`, `pytest`); persona is Sable; no advisory-DB fingerprint (omit row 7 fingerprint, retain rest of cache key).
+- E67-S2/S3 (`/gaia-test-automate` skeleton + coverage-delta) — Same persona (Sable); Phase 3A focuses on coverage-delta computation; analysis-results.json carries `coverage_delta` field as evidence.
+- E67-S4 (`/gaia-review-qa`) — Phase 3A toolkit is acceptance-criteria coverage matrix; persona is Vera; severity examples are AC-coverage-gap-flavored.
+- E67-S5 (`/gaia-review-security` Phase 3C) — Privacy/data-protection restoration adds a Phase 3C stage on top of this file; reuses every anchor above unchanged.
+
+> Once an E67 story lands, its SKILL.md MUST satisfy all `evidence-judgment-parity.bats` assertions and the V2 anchors in this checklist. CI catches drift on subsequent edits.
+
 ## References
 
 - ADR-037 — Structured subagent return schema `{status, summary, artifacts, findings, next}`.
@@ -324,7 +396,11 @@ Capture stdout for the `Review Gate: COMPLETE|PENDING|BLOCKED` summary (per ADR-
 - ADR-067 — YOLO Mode Contract — Consistent Non-Interactive Behavior.
 - ADR-074 — Frontmatter Model Pin for Determinism.
 - ADR-075 — Review-Skill Evidence/Judgment Split.
+- ADR-077 — Review System V2: Three-Tier Pipeline + Shared `review-common/` Library.
+- ADR-078 — Three-State Tool Availability Probe.
+- ADR-082 — Composite Review Verdict GATING.
 - FR-DEJ-1..12, NFR-DEJ-1..4 — Evidence/Judgment functional and non-functional requirements (PRD §4.37).
+- FR-RSV2-1..4, FR-RSV2-44, NFR-RSV2-1, NFR-RSV2-5 — Review System V2 unifying principle, phase structure, verdict resolver parameterization, persona load, fork allowlist invariant.
 - FR-402 — Locked review-file naming convention (`security-review-{story_key}.md`).
 
 ## Finalize

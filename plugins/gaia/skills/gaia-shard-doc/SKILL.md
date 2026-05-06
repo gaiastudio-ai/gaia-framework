@@ -18,6 +18,7 @@ This skill is the native Claude Code conversion of the legacy shard-doc task at 
 - **Generate an index.md linking to all shards.** The index sits alongside the shard files inside the output directory and links to each shard with its heading text as the anchor.
 - **Ask user for confirmation before writing files.** Show the preview plan (file list + line counts per shard) and wait for user confirmation. In YOLO or non-interactive mode, auto-proceed after previewing.
 - **Handle the zero-headings edge case gracefully (AC-EC4).** If the source document contains zero headings at the split level (e.g., flat prose with no `##`), emit the message `no shard boundaries detected` and exit cleanly with zero shards written. Do NOT create empty shard files or an empty output directory.
+- **Heading detection MUST be code-block-aware (E53-S236, ADR-070).** When scanning for split-level headings, maintain a fenced-code-block state machine: any line whose first three characters are a backtick fence (` ``` `) toggles "inside code block" state, and `## ` (or `# ` / `### ` per `--level`) lines encountered while inside that state MUST be ignored. The deterministic implementation lives at `scripts/parse-h2-boundaries.sh` (default H2 level); never re-implement the toggle inline. A naive line-based scanner that omits this state machine produces false boundaries on any document containing fenced markdown examples (originally surfaced as E53-S222 finding #4 against `architecture.md`, where 14 of 32 candidate boundaries fell inside fenced code blocks).
 
 ## Inputs
 
@@ -43,7 +44,7 @@ The skill runs five steps in strict order, mirroring the legacy `shard-doc.xml`:
 
 ## Step 2 — Parse Sections
 
-- Identify all sections at the split level (default `##`; overridable via `--level`).
+- Identify all sections at the split level (default `##`; overridable via `--level`). For the default H2 level, delegate boundary detection to `scripts/parse-h2-boundaries.sh <source_file>` — the helper emits one `<line_number>:<heading_text>` line per real H2 boundary and is code-block-aware per the Critical Rule above. For the H3 level, delegate the entire shard-emit pipeline (boundary detection + per-section file write + `index.md` + `_preamble.md`) to `scripts/h3-shard.sh --input <source_file> --output-dir <out_dir>` — the helper produces the H3 shards, an `index.md` table of contents, and an optional `_preamble.md` in one call. For H1 overrides, apply the same toggle-on-` ``` ` state machine inline (or extend the helper) — never use a naive `grep -E '^# '` scan.
 - **Preamble:** any content before the first split-level heading becomes `_preamble.md`. If there is no content before the first heading, omit the preamble file.
 - Generate a filename for each section from its heading text:
   1. Lowercase
@@ -92,6 +93,9 @@ The skill runs five steps in strict order, mirroring the legacy `shard-doc.xml`:
 - ADR-041 — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
 - ADR-042 — Scripts-over-LLM for Deterministic Operations (inline `!` bash for `mkdir`).
 - ADR-048 — Program-close deletion policy for legacy engine/workflows/tasks.
+- ADR-070 — Auto-sharding policy; code-block-aware H2 detection contract enforced by `scripts/parse-h2-boundaries.sh` (E53-S236).
+- E53-S245 — H3 shard pipeline lives at `scripts/h3-shard.sh`; flag CLI is `--input <file> --output-dir <dir>`. Emits per-section shards, `index.md`, and an optional `_preamble.md`. Idempotent across repeated runs (byte-identical output).
 - FR-323 — Native Skill Format Compliance.
 - NFR-053 — Functional parity with the legacy task.
 - Reference implementation: `plugins/gaia/skills/gaia-fix-story/SKILL.md`.
+- Byte-identity baseline: `_memory/checkpoints/E53-S222-shard-architecture.py::find_h2_boundaries` (the working code-block-aware parser AC3 of E53-S236 mandates parity with).

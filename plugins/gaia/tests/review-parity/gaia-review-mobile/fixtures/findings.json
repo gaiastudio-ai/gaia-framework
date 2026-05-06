@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "id": "mobile-finding-1",
+      "severity": "Minor",
+      "title": "privacy manifest data category",
+      "description": "NSPrivacyAccessedAPITypes lists FileTimestamp without a documented reason",
+      "platform": "iOS",
+      "evidence_source": "privacy manifest"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+# project-config-coppa-web.yaml — fixture for E74-S6 coppa-regime tests.
+# Represents a WEB project (no `platforms` key) that has opted in to COPPA
+# enforcement. Verifies cross-platform applicability — COPPA is
+# jurisdiction-scoped, not platform-scoped, so the rubric should load even
+# when the project does not declare mobile platforms.
+project:
+  name: "kids-learning-web"
+  description: "Children's educational web app — under-13 audience"
+
+compliance:
+  regimes:
+    - coppa

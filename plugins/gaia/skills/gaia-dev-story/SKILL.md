@@ -82,7 +82,7 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 
 ### Step 2 -- Update Status
 
-- For FRESH mode: run `scripts/transition-story-status.sh {story_key} --to in-progress`.
+- For FRESH mode: run `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to in-progress`.
 - For REWORK/RESUME: skip -- story is already in-progress.
 
 <!-- E55-S5: step 2b atdd gate begin -->
@@ -333,11 +333,14 @@ narrative that previously inferred CI configuration inline (per ADR-057, ADR-073
 AF-2026-04-28-6, FR-DSS-3).
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/promotion-chain-guard.sh`.
-  Exit 0 = `PRESENT:<branch>` on stdout (the resolved first promotion-chain branch);
-  exit 1 = `ABSENT` (stderr names the missing config and points to `/gaia-ci-edit`).
-  On `ABSENT`, Steps 10–13 (push, PR, CI, merge) MUST be skipped — the story can
-  still complete locally but the promotion gates do not fire. On `PRESENT`, capture
-  the branch as `$PR_BASE` for use by `pr-create.sh --base`.
+  Exit 0 with `PRESENT:<branch>` on stdout = resolved first promotion-chain branch;
+  exit 1 = `ABSENT` (stderr names the missing config and points to `/gaia-ci-edit`);
+  exit 0 with empty stdout AND a `skipped (non-git CWD)` line on stderr = non-git
+  workspace skip (E53-S234, ADR-070 / ADR-072 amendment — the project-root `docs/`
+  layout is outside any git work tree).
+  On `ABSENT` or non-git skip, Steps 10–13 (push, PR, CI, merge) MUST be skipped —
+  the story can still complete locally but the promotion gates do not fire. On
+  `PRESENT`, capture the branch as `$PR_BASE` for use by `pr-create.sh --base`.
 - For commit-message construction, run
   `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/commit-msg.sh {story_path}`
   and feed its stdout to `git commit -F -`. Do NOT compose Conventional Commit
@@ -366,7 +369,7 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 - Run `scripts/git-branch.sh` to verify branch state.
 - Stage and commit with conventional commit format.
 - Run `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh` to push the current branch to `origin`. The shared helper (a) refuses to push from `main` / `staging` (delegating to `lib/dev-story-security-invariants.sh::assert_branch_not_protected` from E55-S6 when present), (b) retries ONCE on transient network errors (e.g., `Could not resolve host`, `Operation timed out`) with a 5-second backoff, and (c) fails LOUDLY on auth / permission errors with no retry. DO NOT inline `git push` here — the helper is the single source of truth.
-- Run `scripts/transition-story-status.sh {story_key} --to review` after all gates pass.
+- Run `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to review` after all gates pass.
 <!-- E55-S8: step 10 git-push wire end -->
 
 ### Step 11 -- Create PR
@@ -427,7 +430,7 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 ### Step 15 -- Update Review Gate
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh {story_file}` to seed (or replace) the Review Gate table with the canonical 6-row UNVERIFIED block. The helper is idempotent — re-running on a story file that already has the block yields a byte-identical result.
-- Update story status to `review` via `scripts/transition-story-status.sh {story_key} --to review`.
+- Update story status to `review` via `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to review`.
 <!-- E55-S8: step 15 init-review-gate wire end -->
 
 <!-- E55-S8: step 16 begin -->

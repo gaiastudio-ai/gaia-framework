@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "skill": "mobile-perf",
+  "extends": "perf",
+  "type": "sub",
+  "platform": "mobile",
+  "metadata": {
+    "title": "Mobile-platform performance review sub-rubric",
+    "story": "E74-S3",
+    "adr": ["ADR-079", "ADR-081"],
+    "description": "Mobile-specific performance criteria layered atop the universal base perf rubric. Covers cold/warm start, frame rate (60 fps target / jank budget), battery, binary-size budgets (APK <50 MB, IPA <100 MB), network efficiency, and asset optimisation."
+  },
+  "severity_rules": [
+    {
+      "id": "mobile-perf-startup-time-001",
+      "category": "startup-time",
+      "pattern": "Cold-start time exceeds 2.0 seconds on a mid-tier device (e.g., iPhone SE 2nd-gen, Pixel 4a); pre-main / Application.onCreate work blocks first frame.",
+      "severity": "High",
+      "description": "Both stores rank apps with slow cold start lower in search; users abandon apps that take >3 s to render their first useful frame.",
+      "remediation": "Defer non-critical initialisation off the launch path; use App Startup library (Android) or pre-main optimisation guides (iOS); measure with the platform tracing tools.",
+      "references": ["Apple-LaunchTime", "Android-App-Startup"]
+    },
+    {
+      "id": "mobile-perf-startup-time-002",
+      "category": "startup-time",
+      "pattern": "Warm-start latency exceeds 1.0 s; the app re-runs cold-start initialisation on every foregrounding instead of resuming from the prior state.",
+      "severity": "Medium",
+      "description": "Warm-start performance is a quality signal in App Store and Play Store rankings and in user reviews.",
+      "remediation": "Cache initialised singletons across foreground transitions; defer state-restore work to a background queue."
+    },
+    {
+      "id": "mobile-perf-frame-rate-001",
+      "category": "frame-rate",
+      "pattern": "Scrolling list / animation drops below 60 fps (16.67 ms per frame) or 120 fps on ProMotion devices; jank exceeds the per-frame budget on the main thread.",
+      "severity": "High",
+      "description": "Frame drops manifest as visible jitter that users describe as 'laggy'. The 60 fps budget is the platform contract.",
+      "remediation": "Profile with Core Animation Instrument / Android GPU Rendering tools; reuse cells; pre-rasterise complex backgrounds; offload computation off the main thread."
+    },
+    {
+      "id": "mobile-perf-frame-rate-002",
+      "category": "frame-rate",
+      "pattern": "Animations use synchronous CPU-bound work per frame (e.g., complex CALayer rasterisation, repeated bitmap allocation) without leveraging GPU compositing or pre-rendered assets.",
+      "severity": "Medium",
+      "description": "Per-frame CPU work scales with view complexity and breaks the 60 fps budget on lower-tier devices that the long tail of users still hold.",
+      "remediation": "Set shouldRasterize on stable layers; use Lottie / AVAnimation for complex motion; profile across the supported device matrix."
+    },
+    {
+      "id": "mobile-perf-battery-001",
+      "category": "battery",
+      "pattern": "App keeps GPS, Bluetooth scan, or audio session active during background or after the user navigates away; high background CPU usage flagged by the OS.",
+      "severity": "High",
+      "description": "Battery drain is the #1 reason cited in 1-star reviews on both stores. iOS surfaces high-drain apps in Settings → Battery; Android in Battery Manager.",
+      "remediation": "Release sensors on viewDidDisappear / onPause; subscribe to significant-location-change instead of continuous GPS; throttle BLE scans."
+    },
+    {
+      "id": "mobile-perf-battery-002",
+      "category": "battery",
+      "pattern": "App polls a server on a short fixed interval (<5 minutes) when the foreground need does not justify the polling rate.",
+      "severity": "Medium",
+      "description": "Polling on short intervals over cellular drains battery and burns user data; users notice and uninstall.",
+      "remediation": "Use push notifications for server-initiated updates; on Android, use WorkManager with constraints; on iOS, use Background App Refresh sparingly."
+    },
+    {
+      "id": "mobile-perf-binary-size-001",
+      "category": "binary-size",
+      "pattern": "Final APK exceeds 50 MB or final IPA (universal) exceeds 100 MB; assets, frameworks, or unused code dominate the binary.",
+      "severity": "High",
+      "description": "Above 50 MB APK / 100 MB IPA, install-conversion drops sharply, especially in emerging markets where data and storage are scarce. Above 150 MB on iOS, the user must be on Wi-Fi to install.",
+      "remediation": "Ship as Android App Bundle / iOS App Thinning; strip debug symbols; remove unused localisations; audit Frameworks/ for duplicate dependencies; compress images to WebP / HEIC."
+    },
+    {
+      "id": "mobile-perf-binary-size-002",
+      "category": "binary-size",
+      "pattern": "Bundled assets (images, fonts, video) ship at 3x / 4x resolution targeting all devices instead of being device-density-resolved at install/runtime.",
+      "severity": "Medium",
+      "description": "Shipping 3x assets to 1x devices wastes ~10x storage. Both platforms support density-resolved asset delivery — use it.",
+      "remediation": "Use Asset Catalogs with @1x/@2x/@3x slicing on iOS and `mipmap-*dpi` / split APKs on Android; convert to WebP where supported."
+    },
+    {
+      "id": "mobile-perf-network-efficiency-001",
+      "category": "network-efficiency",
+      "pattern": "App makes multiple uncoalesced HTTP calls in a single screen-render path (e.g., one per list item) when a batched endpoint exists or could be requested.",
+      "severity": "High",
+      "description": "Each request carries TCP+TLS overhead (~300 ms on cellular). Uncoalesced calls turn a 2 s render into a 10 s render.",
+      "remediation": "Coalesce N requests into one batched endpoint; use HTTP/2 multiplexing; cache responses with appropriate Cache-Control headers."
+    },
+    {
+      "id": "mobile-perf-network-efficiency-002",
+      "category": "network-efficiency",
+      "pattern": "Image / data downloads do not use HTTP caching (ETag, Cache-Control) and re-download identical assets on every screen visit.",
+      "severity": "Medium",
+      "description": "Re-downloading already-cached data wastes battery, data, and time. Cache headers exist precisely for this.",
+      "remediation": "Use URLSession's default cache or SDWebImage / Coil / Glide; respect Cache-Control / ETag from the server."
+    }
+  ]
+}

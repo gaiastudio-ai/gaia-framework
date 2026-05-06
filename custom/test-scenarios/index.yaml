@@ -1,0 +1,18 @@
+# custom/test-scenarios/index.yaml
+# Schema: CS-NNN custom scenario index (E72-S3, FR-RSV2-41)
+#
+# Per-entry fields (canonical contract per E72-S3 AC3):
+#   id           — CS-NNN, zero-padded to three digits (e.g. CS-001, CS-042).
+#                  Allocated by /gaia-test-automate --add-scenario.
+#                  Namespace is separate from Vera's TC-NNN (source-report §11.3).
+#   story_key    — owning story, e.g. E72-S3.
+#   description  — short human-readable scenario description.
+#   tier         — one of: unit | integration | e2e.
+#   priority     — one of: P0 | P1 | P2 | P3.
+#   file_path    — path to the automated test file. Empty string until
+#                  /gaia-test-automate fills the gap; verified by --status.
+#   created_date — ISO-8601 calendar date (YYYY-MM-DD).
+#
+# /gaia-review-qa MUST NOT mutate this file. /gaia-test-automate is the
+# only writer (via --add-scenario).
+scenarios: []
