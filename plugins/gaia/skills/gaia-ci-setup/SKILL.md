@@ -151,9 +151,9 @@ Multiple violations are emitted as an ordered list. Field names use dotted-path 
 
 > `!scripts/write-checkpoint.sh gaia-ci-setup 9 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=output-generated --paths docs/test-artifacts/ci-setup.md`
 
-### Step 10 -- `--regenerate` Flow (E71-S4)
+## `--regenerate` Mode (E71-S4)
 
-This step replaces Steps 1-9 entirely when the user invokes `/gaia-config-ci --regenerate`. The step is the deterministic refresh path for previously-generated workflow files. The five sub-flows below map 1:1 to AC1-AC10 (TS-01..TS-12).
+When the user invokes `/gaia-config-ci --regenerate`, this mode replaces Steps 1-9 entirely. It is the deterministic refresh path for previously-generated workflow files. The five sub-flows below map 1:1 to AC1-AC10 (TS-01..TS-12). The mode does not write a step-level checkpoint — it is a re-entry into the generator, not a new phase, and the existing Step 9 checkpoint covers the regenerated artifact.
 
 **Sub-flow A — Manual-edit detection (AC2, TS-02).**
 For each generated workflow file (`.github/workflows/gaia-*.yml`), run `${CLAUDE_PLUGIN_ROOT}/scripts/ci-regen-detect-edit.sh <file>`. The exit code drives the next sub-flow:
@@ -219,8 +219,6 @@ Answer `y` returns to the caller for an immediate `/gaia-config-ci --regenerate`
 **No prompt when no manual edit (AC5, TS-05).** If sub-flow A returns clean for every file in the regen set, no prompt is presented — files are regenerated in place silently.
 
 **`*.user-steps.yml` is never modified (AC7, TS-07).** Across every option of sub-flow B, sub-flow C, and the scaffold path in Step 9, the `assert-protected` guard ensures no `*.user-steps.yml` is overwritten, deleted, moved, or backed up.
-
-> `!scripts/write-checkpoint.sh gaia-ci-setup 10 stage=regenerate-complete`
 
 ## Validation
 
