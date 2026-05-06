@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gaiastudio.ai/schemas/adapter-output.schema.json",
+  "title": "GAIA Mobile Adapter Output — canonical normalized result",
+  "description": "Canonical JSON shape produced by normalize-adapter-output.sh from the per-framework output formats (JUnit XML, JSON, xcresult). Defined by E74-S9 / AC7. Consumers (review skills, CI dashboards) read this shape, never the framework-native output.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "adapter",
+    "framework",
+    "platform",
+    "exit_code",
+    "summary",
+    "duration_ms",
+    "test_results"
+  ],
+  "properties": {
+    "adapter": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Adapter name (e.g., detox, maestro, appium, xcuitest, espresso). Matches the manifest filename stem."
+    },
+    "framework": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Test framework label. Equivalent to adapter for dynamic adapters; useful for normalized cross-adapter reporting."
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["ios", "android", "cross-platform"],
+      "description": "Target mobile platform."
+    },
+    "exit_code": {
+      "type": "integer",
+      "description": "Exit code returned by the underlying test runner."
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "passed", "failed", "skipped"],
+      "properties": {
+        "total":   {"type": "integer", "minimum": 0},
+        "passed":  {"type": "integer", "minimum": 0},
+        "failed":  {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0}
+      }
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total wall-clock duration of the test run in milliseconds."
+    },
+    "test_results": {
+      "type": "array",
+      "description": "Per-test-case result list.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status", "duration_ms"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "status": {
+            "type": "string",
+            "enum": ["pass", "fail", "skip", "error"]
+          },
+          "duration_ms": {"type": "integer", "minimum": 0},
+          "error_message": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}

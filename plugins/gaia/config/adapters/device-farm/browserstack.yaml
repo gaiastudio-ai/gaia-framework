@@ -1,0 +1,11 @@
+# BrowserStack device-farm adapter (E74-S9)
+# BrowserStack App Automate. Webhook-based result notification.
+name: browserstack
+type: device-farm
+runtime_profile: network
+auth_env_var: BROWSERSTACK_ACCESS_KEY
+api_base_url: https://api-cloud.browserstack.com
+device_matrix_format: json
+result_polling_strategy: webhook
+webhook_timeout_seconds: 300
+description: "BrowserStack App Automate — webhook-based result notification"

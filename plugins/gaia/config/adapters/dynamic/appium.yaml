@@ -1,0 +1,9 @@
+# Appium dynamic test adapter (E74-S9)
+# Cross-platform mobile/web automation via WebDriver.
+name: appium
+type: dynamic
+platform: cross-platform
+binary: appium
+config_file_pattern: wdio.conf.js
+output_format: junit-xml
+description: "Appium WebDriver-based mobile automation (iOS + Android)"
