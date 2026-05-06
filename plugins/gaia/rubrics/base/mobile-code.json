@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "skill": "mobile-code",
+  "extends": "code",
+  "type": "sub",
+  "platform": "mobile",
+  "metadata": {
+    "title": "Mobile-platform code review sub-rubric",
+    "story": "E74-S3",
+    "adr": ["ADR-079", "ADR-081"],
+    "description": "Mobile-specific code-quality criteria layered atop the universal base code rubric. Covers memory management (retain cycles), lifecycle handling (backgrounding, state restoration), platform API usage patterns, and threading/concurrency (main-thread blocking)."
+  },
+  "severity_rules": [
+    {
+      "id": "mobile-code-memory-management-001",
+      "category": "memory-management",
+      "pattern": "Closure or block captures `self` strongly, creating a retain cycle (Swift/Objective-C); or Android Activity/Fragment captured in a long-lived listener / static reference.",
+      "severity": "High",
+      "description": "Retain cycles leak entire view-controller graphs and inflate memory until the OS terminates the app. The most common iOS leak source and a frequent Android one.",
+      "remediation": "Use `[weak self]` capture lists in Swift closures; use WeakReference wrappers or lifecycle-scoped observers on Android; verify with leak-detection instrumentation.",
+      "references": ["Apple-ARC", "LeakCanary"]
+    },
+    {
+      "id": "mobile-code-memory-management-002",
+      "category": "memory-management",
+      "pattern": "View controller / fragment subscribes to a global publisher (NotificationCenter, EventBus) without unsubscribing in deinit / onDestroyView.",
+      "severity": "High",
+      "description": "Orphaned subscriptions hold references after the view is gone, leaking memory and firing handlers against deallocated state — a frequent crash source.",
+      "remediation": "Use Combine sinks stored in a cancellables Set tied to the lifecycle; on Android use viewLifecycleOwner.lifecycleScope or DisposableHandle in onDestroyView."
+    },
+    {
+      "id": "mobile-code-lifecycle-handling-001",
+      "category": "lifecycle-handling",
+      "pattern": "View controller holds a reference to data loaded from a previous instance; missing cleanup in viewWillDisappear / onStop leaves stale state on subsequent appearances.",
+      "severity": "Medium",
+      "description": "Mobile lifecycle reuse (especially with iOS view-controller containment and Android ViewPager fragments) demands explicit cleanup; stale state surfaces as bugs that reproduce only on second-visit.",
+      "remediation": "Reset stateful properties in viewWillDisappear / onStop; prefer @State / SavedStateHandle for view state with built-in lifecycle coupling."
+    },
+    {
+      "id": "mobile-code-lifecycle-handling-002",
+      "category": "lifecycle-handling",
+      "pattern": "Fragment / view-controller assumes its view hierarchy exists during async-callback completion (e.g., calls findViewById after onDestroyView, accesses @IBOutlet after viewDidDisappear).",
+      "severity": "High",
+      "description": "Async callbacks routinely arrive after the view is gone; ignoring lifecycle leads to NullPointerException / fatalError crashes that look intermittent in production.",
+      "remediation": "Guard the callback with view-bound checks (Android: `_binding != null`; iOS: weak self + isViewLoaded); cancel pending work in lifecycle-end methods."
+    },
+    {
+      "id": "mobile-code-platform-api-usage-001",
+      "category": "platform-api-usage",
+      "pattern": "Code calls deprecated platform APIs (e.g., UIAlertView on iOS, AsyncTask on Android) that the platform vendor has marked for removal.",
+      "severity": "Medium",
+      "description": "Deprecated APIs ship until they don't. Continuing to call them blocks the next minimum-OS bump and earns store-review warnings.",
+      "remediation": "Migrate to the supported equivalent (UIAlertController, kotlinx.coroutines / WorkManager); review SDK-deprecation notes per release."
+    },
+    {
+      "id": "mobile-code-platform-api-usage-002",
+      "category": "platform-api-usage",
+      "pattern": "App accesses sensitive APIs (location, camera, contacts, photos) without first checking and requesting authorisation; or assumes a permission grant persists forever.",
+      "severity": "High",
+      "description": "Both platforms revoke permissions when the user changes a setting or after long inactivity. Code that assumes always-granted crashes or silently fails.",
+      "remediation": "Always check authorisation status on every entry; handle .denied / PERMISSION_DENIED with a graceful fallback and a deep-link to Settings.",
+      "references": ["Apple-Privacy", "Android-Runtime-Permissions"]
+    },
+    {
+      "id": "mobile-code-threading-concurrency-001",
+      "category": "threading-concurrency",
+      "pattern": "UI updates dispatched from a background thread (network completion, file I/O) without hopping back to the main queue / main thread.",
+      "severity": "Critical",
+      "description": "UIKit and Android UI toolkits are explicitly main-thread-only; cross-thread mutation crashes the app or corrupts the view hierarchy silently.",
+      "remediation": "Wrap UI mutations in DispatchQueue.main.async / runOnUiThread / withContext(Dispatchers.Main); enable Main-Thread Checker in Xcode and StrictMode on Android."
+    },
+    {
+      "id": "mobile-code-threading-concurrency-002",
+      "category": "threading-concurrency",
+      "pattern": "Synchronous I/O (file read, network call, database query) runs on the main thread, blocking the run loop and triggering UI jank or ANR dialogs.",
+      "severity": "High",
+      "description": "Main-thread blocking >100ms causes visible jank; >5s on Android triggers an Application-Not-Responding dialog and a likely uninstall.",
+      "remediation": "Use async I/O (URLSession async/await, Room suspend functions); profile with Instruments Time Profiler / Android Profiler.",
+      "references": ["Android-ANR"]
+    }
+  ]
+}

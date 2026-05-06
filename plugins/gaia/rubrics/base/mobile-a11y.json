@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "skill": "mobile-a11y",
+  "extends": "a11y",
+  "type": "sub",
+  "platform": "mobile",
+  "metadata": {
+    "title": "Mobile-platform accessibility review sub-rubric",
+    "story": "E74-S3",
+    "adr": ["ADR-079", "ADR-081"],
+    "description": "Mobile-specific accessibility criteria layered atop the universal base a11y rubric. Covers VoiceOver/TalkBack labelling, Dynamic Type / scalable text, touch-target sizing (>= 44pt iOS / >= 48dp Android), reduced motion, haptic-feedback alternatives, high-contrast mode, and switch-control compatibility."
+  },
+  "severity_rules": [
+    {
+      "id": "mobile-a11y-voiceover-talkback-001",
+      "category": "voiceover-talkback",
+      "pattern": "Custom interactive control (button, switch, segmented control) lacks accessibilityLabel (iOS) / contentDescription (Android); icon-only controls are announced as 'button, button' with no semantic intent.",
+      "severity": "Critical",
+      "description": "VoiceOver and TalkBack users navigate by spoken labels; unlabelled controls are unusable. WCAG 2.1 SC 4.1.2 (Name, Role, Value) is part of MFi accessibility certification.",
+      "remediation": "Set accessibilityLabel / contentDescription on every interactive element; describe the action, not the icon ('Play episode' not 'Play button').",
+      "references": ["WCAG-2.1-4.1.2", "Apple-Accessibility", "Android-Accessibility"]
+    },
+    {
+      "id": "mobile-a11y-voiceover-talkback-002",
+      "category": "voiceover-talkback",
+      "pattern": "Decorative imagery is exposed to assistive tech; or grouped controls (composite cell, toolbar) are not exposed as a single navigable element.",
+      "severity": "Medium",
+      "description": "Decorative content adds noise to assistive-tech users; ungrouped composites force them to swipe through every sub-element to reach the action.",
+      "remediation": "Set isAccessibilityElement = false on decorative images; mark composites with shouldGroupAccessibilityChildren / mergeDescendants and a unified accessibilityLabel."
+    },
+    {
+      "id": "mobile-a11y-dynamic-type-001",
+      "category": "dynamic-type",
+      "pattern": "App uses fixed point sizes (UIFont.systemFont(ofSize: 14), `12sp`) instead of preferredFont(forTextStyle:) / scaledFont; text does not respond to user's Dynamic Type / Font-Size system setting.",
+      "severity": "High",
+      "description": "Roughly 25% of mobile users use a non-default text-size setting; ignoring it forces low-vision users into a smaller-than-needed text size that they cannot read.",
+      "remediation": "Use preferredFont(forTextStyle:) / UIFontMetrics.scaledFont (iOS) or `sp` units with auto-sizing on Android; test with the largest accessibility text size enabled."
+    },
+    {
+      "id": "mobile-a11y-dynamic-type-002",
+      "category": "dynamic-type",
+      "pattern": "Layout breaks (text truncates, controls overlap) when Dynamic Type is set above the default; layout uses fixed-height containers instead of intrinsic content sizing.",
+      "severity": "Medium",
+      "description": "Truncated labels are unusable when the user cannot read them. Fixed-height layouts that ignore content height fail accessibility testing.",
+      "remediation": "Use Auto Layout with content-hugging / compression-resistance priorities; allow vertical growth; test with the AX1..AX5 sizes enabled."
+    },
+    {
+      "id": "mobile-a11y-touch-targets-001",
+      "category": "touch-targets",
+      "pattern": "Interactive control measures less than 44pt x 44pt on iOS or 48dp x 48dp on Android; users with motor impairments or large fingers cannot reliably hit it.",
+      "severity": "High",
+      "description": "Apple HIG and Android Material Design both mandate a minimum tap area of 44pt / 48dp respectively. WCAG 2.5.5 (Target Size, AAA) reinforces the threshold for accessibility.",
+      "remediation": "Set the visual control to its design size and expand the hit-test area via hitInsets / increased ImageButton padding to reach 44pt / 48dp.",
+      "references": ["WCAG-2.5.5", "Apple-HIG-TouchTargets", "Material-Touch-Targets"]
+    },
+    {
+      "id": "mobile-a11y-touch-targets-002",
+      "category": "touch-targets",
+      "pattern": "Touch targets are spaced too closely — less than 8pt / 8dp between adjacent interactive controls — causing accidental taps for users with reduced dexterity.",
+      "severity": "Medium",
+      "description": "Spacing failures cause accidental selections that are especially harmful in destructive actions (delete, send, pay).",
+      "remediation": "Maintain 8pt / 8dp minimum spacing between interactive controls; group related actions in segmented controls instead of dense grids."
+    },
+    {
+      "id": "mobile-a11y-reduced-motion-001",
+      "category": "reduced-motion",
+      "pattern": "App ships parallax / heavy motion animations without honoring UIAccessibility.isReduceMotionEnabled (iOS) / Settings.Global.TRANSITION_ANIMATION_SCALE (Android); users with vestibular disorders see motion they cannot disable.",
+      "severity": "High",
+      "description": "Vestibular-disorder users get motion sickness from parallax; ignoring the system setting is a documented WCAG 2.1 SC 2.3.3 failure.",
+      "remediation": "Honour the system setting; replace motion transitions with fade or instant transitions when reduce-motion is on.",
+      "references": ["WCAG-2.3.3"]
+    },
+    {
+      "id": "mobile-a11y-haptic-feedback-001",
+      "category": "haptic-feedback",
+      "pattern": "App uses haptic feedback (Taptic Engine, HapticFeedbackConstants) as the sole signal for state change (success, error, selection); deaf-blind or hearing-impaired users on devices without haptics get no feedback.",
+      "severity": "Medium",
+      "description": "Haptics are an enhancement, not a substitute. Sole-channel feedback fails users on devices without haptic hardware or with haptics disabled.",
+      "remediation": "Pair haptics with a visual cue (animation, colour change) and an accessibility announcement (UIAccessibility.post(notification: .announcement, …))."
+    },
+    {
+      "id": "mobile-a11y-high-contrast-001",
+      "category": "high-contrast",
+      "pattern": "Colour pairs fail WCAG 4.5:1 contrast in the user's selected colour scheme (Increase Contrast / High Contrast mode); pure-grey separators or low-contrast hint text disappear under high-contrast.",
+      "severity": "High",
+      "description": "Both platforms expose a high-contrast preference; not honouring it breaks low-vision use of the app even when standard contrast is fine.",
+      "remediation": "Subscribe to UIAccessibility.darkerSystemColorsStatusDidChangeNotification / AccessibilityManager.isHighTextContrastEnabled and swap palettes; verify with platform contrast checkers."
+    }
+  ]
+}
