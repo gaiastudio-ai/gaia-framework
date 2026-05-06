@@ -1,7 +1,7 @@
 ---
 name: gaia-validate-rubric
-description: Validate a single rubric file (one layer of the four-layer rubric pipeline) against the rubric.schema.json JSON Schema. Reports PASS or FAIL with actionable schema violations. Use when "validate rubric" or /gaia-validate-rubric.
-argument-hint: "<path-to-rubric.json>"
+description: Validate a single rubric file (JSON or YAML — one layer of the four-layer rubric pipeline) against the rubric.schema.json JSON Schema. YAML is parsed to JSON before schema validation; both formats produce identical PASS/FAIL semantics. Reports PASS or FAIL with actionable schema violations. Use when "validate rubric" or /gaia-validate-rubric.
+argument-hint: "<path-to-rubric.json|.yaml|.yml>"
 allowed-tools: [Read, Bash]
 ---
 
@@ -44,5 +44,6 @@ Layers covered by this skill: `rubrics/base/<skill>.json`, `rubrics/regimes/<reg
 ## Notes
 
 - The `validate-rubric.sh` script prefers `ajv-cli` when available; falls back to a structural `jq`-based validator otherwise. Both produce the same PASS/FAIL semantics.
+- YAML input (`.yaml` / `.yml`) is converted to JSON before validation via `yq` (preferred) or `python3` + PyYAML (fallback). If neither is available, the script exits with a clear "YAML rubric input requires either 'yq' or 'python3 + PyYAML' on PATH" message.
 - Override the schema path via the `GAIA_RUBRIC_SCHEMA` environment variable (used by tests).
 - This skill validates ONE layer. To validate the merged output of a project's full layer stack, use `/gaia-config-validate`.
