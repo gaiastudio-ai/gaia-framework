@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "skill": "mobile-security",
+  "extends": "security",
+  "type": "sub",
+  "platform": "mobile",
+  "metadata": {
+    "title": "Mobile-platform security review sub-rubric",
+    "story": "E74-S3",
+    "adr": ["ADR-079", "ADR-081"],
+    "description": "Mobile-specific security criteria layered atop the universal base security rubric. Covers certificate pinning, secure storage (Keychain/Keystore), root/jailbreak detection, code obfuscation, local data encryption, IPC security (deep links, intents), and WebView hardening."
+  },
+  "severity_rules": [
+    {
+      "id": "mobile-security-certificate-pinning-001",
+      "category": "certificate-pinning",
+      "pattern": "App talks to its own backend over TLS without pinning the server's public-key/cert; any compromised CA in the device trust store can MITM the connection.",
+      "severity": "High",
+      "description": "Certificate pinning blocks MITM via compromised or malicious intermediate CAs and is a baseline expectation for apps handling credentials, financial data, or PII.",
+      "remediation": "Pin SPKI hashes for at least the leaf and one backup intermediate; rotate via app updates; use App Transport Security pinning (iOS) or Network Security Config (Android).",
+      "references": ["OWASP-MASVS-NETWORK-4", "RFC-7469"]
+    },
+    {
+      "id": "mobile-security-certificate-pinning-002",
+      "category": "certificate-pinning",
+      "pattern": "Certificate pinning is implemented but bypasses include `setHostnameVerifier(ALLOW_ALL)`, `NSAllowsArbitraryLoads`, or a debug-only TrustManager left in the release build.",
+      "severity": "Critical",
+      "description": "A bypass left in production code defeats the entire pinning posture; common cause of OWASP MASVS failures.",
+      "remediation": "Strip debug-only network code from release builds via build flavours; CI-check for ATS exceptions and AllowAllHostnameVerifier in shipped binaries."
+    },
+    {
+      "id": "mobile-security-secure-storage-001",
+      "category": "secure-storage",
+      "pattern": "Sensitive data (auth tokens, refresh tokens, user PII) stored in UserDefaults / SharedPreferences / NSDocumentsDirectory in plaintext.",
+      "severity": "Critical",
+      "description": "UserDefaults and SharedPreferences are unencrypted by default and are extracted trivially on jailbroken / rooted devices and from un-encrypted device backups.",
+      "remediation": "Use Keychain Services (iOS) with kSecAttrAccessibleWhenUnlockedThisDeviceOnly, or Android Keystore + EncryptedSharedPreferences for tokens.",
+      "references": ["OWASP-MASVS-STORAGE-1", "OWASP-MASVS-STORAGE-2"]
+    },
+    {
+      "id": "mobile-security-secure-storage-002",
+      "category": "secure-storage",
+      "pattern": "Cryptographic keys are hard-coded in source, embedded in the binary as strings, or derived from device-stable identifiers (IMEI, UDID).",
+      "severity": "Critical",
+      "description": "Hard-coded keys are recovered with a 5-minute strings(1) sweep and immediately published. Device-stable identifiers do not provide secret entropy.",
+      "remediation": "Generate keys in Secure Enclave / Android Keystore; never persist private keys to user-readable storage; rotate via server-issued tokens."
+    },
+    {
+      "id": "mobile-security-root-detection-001",
+      "category": "root-detection",
+      "pattern": "App handling regulated data (banking, health, enterprise) ships without any root/jailbreak detection or with detection logic that any commodity bypass tool defeats.",
+      "severity": "High",
+      "description": "Root/jailbreak gives attackers full control over the app sandbox and runtime, enabling token theft, traffic inspection, and tampering. Root-detection is part of the MASVS-RESILIENCE controls.",
+      "remediation": "Combine multiple signals (su binary, Magisk markers, mount-mode checks); fail closed on detection for high-stakes flows; harden the detection code itself against patching.",
+      "references": ["OWASP-MASVS-RESILIENCE-1"]
+    },
+    {
+      "id": "mobile-security-code-obfuscation-001",
+      "category": "code-obfuscation",
+      "pattern": "Release Android build ships without R8 / ProGuard obfuscation; iOS release build ships with debug symbols and unstripped Swift symbol metadata.",
+      "severity": "Medium",
+      "description": "Symbol-rich binaries make reverse engineering trivial — class names, methods, and even proprietary algorithms are recovered with a hex editor.",
+      "remediation": "Enable R8 with aggressive obfuscation rules on Android release variants; strip Swift reflection metadata and dSYM from the shipped IPA; upload symbols separately to the crash service."
+    },
+    {
+      "id": "mobile-security-local-encryption-001",
+      "category": "local-encryption",
+      "pattern": "App stores user-content data (notes, photos, conversation history) on disk without encryption-at-rest; relies solely on file-system protection that is bypassed on jailbroken devices and stale backups.",
+      "severity": "High",
+      "description": "Plaintext local data is extracted from un-encrypted device backups and from compromised devices. Encryption-at-rest is required by HIPAA / PCI-DSS / GDPR for regulated data.",
+      "remediation": "Use FileProtectionType.complete (iOS) or EncryptedFile (Android Jetpack Security) with keys held in the platform keystore."
+    },
+    {
+      "id": "mobile-security-ipc-security-001",
+      "category": "ipc-security",
+      "pattern": "Deep-link / universal-link handler trusts URL parameters without validation; or Android Intent receiver lacks `exported=false` / `android:permission` and accepts data from any caller.",
+      "severity": "Critical",
+      "description": "Unvalidated deep-link handlers are a top mobile attack surface — a malicious app or webpage triggers protected actions in the victim app (intent redirection, account takeover).",
+      "remediation": "Validate every URL parameter against an allow-list; require android:exported=false for internal IntentFilters; verify Universal-Link associations server-side.",
+      "references": ["OWASP-MASVS-PLATFORM-3"]
+    },
+    {
+      "id": "mobile-security-ipc-security-002",
+      "category": "ipc-security",
+      "pattern": "WebView embedded in the app enables JavaScript and addJavascriptInterface (Android) / WKUserContentController without restricting bridge surface; loads remote URLs from un-trusted origins.",
+      "severity": "High",
+      "description": "Bridged JavaScript that exposes native methods is a remote-code-execution surface; loading attacker-controlled HTML in a privileged WebView is a known mobile vulnerability class.",
+      "remediation": "Disable JavaScript unless required; never expose addJavascriptInterface to remote content; restrict allowed origins; use WKWebView's process-isolated content world."
+    }
+  ]
+}
