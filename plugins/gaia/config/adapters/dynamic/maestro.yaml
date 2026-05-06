@@ -1,0 +1,9 @@
+# Maestro dynamic test adapter (E74-S9)
+# Declarative cross-platform mobile UI test framework.
+name: maestro
+type: dynamic
+platform: cross-platform
+binary: maestro
+config_file_pattern: .maestro/
+output_format: json
+description: "Maestro declarative mobile UI test runner (iOS + Android)"

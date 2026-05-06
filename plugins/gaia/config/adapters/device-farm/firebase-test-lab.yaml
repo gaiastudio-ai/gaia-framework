@@ -1,0 +1,12 @@
+# Firebase Test Lab device-farm adapter (E74-S9)
+# Google Cloud-hosted Android/iOS device matrix. Poll-based result retrieval.
+name: firebase-test-lab
+type: device-farm
+runtime_profile: network
+auth_env_var: FIREBASE_TEST_LAB_TOKEN
+api_base_url: https://testing.googleapis.com
+device_matrix_format: gcloud-yaml
+result_polling_strategy: poll
+max_poll_attempts: 30
+poll_interval_seconds: 10
+description: "Google Firebase Test Lab — gcloud-driven device matrix"
