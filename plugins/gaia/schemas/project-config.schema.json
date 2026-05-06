@@ -312,6 +312,11 @@
       "minItems":  1,
       "uniqueItems": true
     },
+    "project_kind": {
+      "description": "Project shape identifier (FR-403, ADR-087). Foundational axis for the review / test / CI / deploy pipeline to branch behavior by project type. Documented values: claude-code-plugin, web-app, mobile-app, api, library — but the schema deliberately omits an enum constraint so the field is open-vocabulary. resolve-config.sh emits a stderr WARNING for unrecognized values (advisory, non-blocking) per ADR-087's unknown-value advisory pattern. Optional — backward compatibility is preserved when the field is omitted (no warning, no functional regression).",
+      "type": "string",
+      "minLength": 1
+    },
     "device_targets": {
       "description": "Device/OS matrix for mobile platforms (FR-RSV2-27). Keyed by platform identifier — keys SHOULD match entries in `platforms[]`; orphan keys (e.g., `device_targets.ios` when `platforms: [android]`) are flagged at the resolver layer, not the schema (open `additionalProperties` mirrors the extensibility principle on `platforms`). Each value is a `deviceTargetEntry` requiring `os_versions`, `screen_sizes`, and `form_factors` per ADR-081.",
       "type": "object",
