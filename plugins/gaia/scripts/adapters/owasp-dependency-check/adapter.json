@@ -1,0 +1,10 @@
+{
+  "provider": "owasp-dependency-check",
+  "category": "dep-audit",
+  "version-range": ">=9.0.0",
+  "runtime-profile": "container",
+  "default-timeout-seconds": 600,
+  "file-extensions": [],
+  "scope": "project",
+  "description": "OWASP Dependency-Check dep-audit scanner — alternative to per-stack auditors (npm audit, pip-audit, bundler-audit, etc.) under runtime-profile: container. Activated by tools.dep-audit.provider: owasp-dependency-check; runs the owasp/dependency-check container against the project root and emits canonical analysis-results fragments with CVE-keyed findings."
+}
