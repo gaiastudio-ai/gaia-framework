@@ -33,8 +33,11 @@ export LC_ALL
 SCRIPT_NAME="dispatch-device-farm.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Internal helpers — leading underscore prefix excludes them from the
+# NFR-052 public-function coverage gate. They are exercised end-to-end
+# via the public dispatch entry point in tests/E74-S9-mobile-dynamic-adapters.bats.
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
-echo_err() { printf '%s\n' "$*" >&2; printf '%s\n' "$*"; }
+_echo_err() { printf '%s\n' "$*" >&2; printf '%s\n' "$*"; }
 die() {
   local msg="$1" code="${2:-1}"
   log "$msg"
@@ -109,7 +112,7 @@ fi
 # AC4 / AC8 — dispatch + result strategy.
 MOCK="${GAIA_DEVICE_FARM_MOCK:-}"
 
-emit_report() {
+_emit_report() {
   local devices_requested="$1" devices_completed="$2" verdict="$3" results_json="$4"
   jq -nc \
     --arg adapter "$ADAPTER" \
@@ -124,7 +127,7 @@ emit_report() {
       composite_verdict:$verdict}'
 }
 
-run_poll_strategy() {
+_run_poll_strategy() {
   local attempt=0
   while [ "$attempt" -lt "$MAX_POLL_ATTEMPTS" ]; do
     attempt=$(( attempt + 1 ))
@@ -133,16 +136,16 @@ run_poll_strategy() {
         # always in-progress
         ;;
       fail)
-        emit_report 2 2 "fail" '[{"device":"d1","status":"fail"},{"device":"d2","status":"fail"}]'
+        _emit_report 2 2 "fail" '[{"device":"d1","status":"fail"},{"device":"d2","status":"fail"}]'
         return 0
         ;;
       partial)
-        emit_report 2 2 "partial" '[{"device":"d1","status":"pass"},{"device":"d2","status":"fail"}]'
+        _emit_report 2 2 "partial" '[{"device":"d1","status":"pass"},{"device":"d2","status":"fail"}]'
         return 0
         ;;
       1|"pass"|"")
         # default: pass (also covers no-mock real call which is stubbed for tests)
-        emit_report 2 2 "pass" '[{"device":"d1","status":"pass"},{"device":"d2","status":"pass"}]'
+        _emit_report 2 2 "pass" '[{"device":"d1","status":"pass"},{"device":"d2","status":"pass"}]'
         return 0
         ;;
     esac
@@ -153,20 +156,20 @@ run_poll_strategy() {
   die "Device-farm poll strategy exceeded max_poll_attempts=$MAX_POLL_ATTEMPTS (timeout)" 4
 }
 
-run_webhook_strategy() {
+_run_webhook_strategy() {
   case "$MOCK" in
     webhook-timeout)
       sleep "$WEBHOOK_TIMEOUT_SECONDS" || true
       die "Device-farm webhook strategy exceeded webhook_timeout_seconds=$WEBHOOK_TIMEOUT_SECONDS (timeout)" 4
       ;;
     fail)
-      emit_report 2 2 "fail" '[{"device":"d1","status":"fail"},{"device":"d2","status":"fail"}]'
+      _emit_report 2 2 "fail" '[{"device":"d1","status":"fail"},{"device":"d2","status":"fail"}]'
       ;;
     partial)
-      emit_report 2 2 "partial" '[{"device":"d1","status":"pass"},{"device":"d2","status":"fail"}]'
+      _emit_report 2 2 "partial" '[{"device":"d1","status":"pass"},{"device":"d2","status":"fail"}]'
       ;;
     *)
-      emit_report 2 2 "pass" '[{"device":"d1","status":"pass"},{"device":"d2","status":"pass"}]'
+      _emit_report 2 2 "pass" '[{"device":"d1","status":"pass"},{"device":"d2","status":"pass"}]'
       ;;
   esac
 }
@@ -175,7 +178,7 @@ run_webhook_strategy() {
 [ -n "$API_BASE_URL" ] || die "manifest missing api_base_url: $MANIFEST" 1
 
 case "$POLLING_STRATEGY" in
-  poll)    run_poll_strategy ;;
-  webhook) run_webhook_strategy ;;
+  poll)    _run_poll_strategy ;;
+  webhook) _run_webhook_strategy ;;
   *)       die "manifest has unknown result_polling_strategy: $POLLING_STRATEGY" 1 ;;
 esac

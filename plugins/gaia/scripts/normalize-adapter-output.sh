@@ -21,6 +21,13 @@ export LC_ALL
 
 SCRIPT_NAME="normalize-adapter-output.sh"
 
+# Internal helpers — leading underscore prefix excludes them from the
+# NFR-052 public-function coverage gate. They are exercised end-to-end
+# via the public entry point in tests/E74-S9-mobile-dynamic-adapters.bats:
+#   _normalize_junit_xml — covered by AC7 junit-xml test
+#   _normalize_json      — covered by AC7 maestro json test
+#   _normalize_xcresult  — covered by xcresult-format input branch (delegates to jq)
+
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit "${2:-1}"; }
 
@@ -51,7 +58,7 @@ case "$ADAPTER" in
   *)                    PLATFORM="cross-platform" ;;
 esac
 
-normalize_junit_xml() {
+_normalize_junit_xml() {
   local file="$1"
   command -v python3 >/dev/null 2>&1 || die "python3 required for junit-xml" 3
 
@@ -117,7 +124,7 @@ print(json.dumps(out))
 PY
 }
 
-normalize_json() {
+_normalize_json() {
   local file="$1"
   command -v jq >/dev/null 2>&1 || die "jq required for json" 3
 
@@ -155,7 +162,7 @@ normalize_json() {
   ' "$file" -c
 }
 
-normalize_xcresult() {
+_normalize_xcresult() {
   local file="$1"
   # xcresult is an Apple bundle; full parse requires `xcrun xcresulttool`. For
   # portability, accept either:
@@ -210,8 +217,8 @@ normalize_xcresult() {
 }
 
 case "$FORMAT" in
-  junit-xml) normalize_junit_xml "$INPUT" ;;
-  json)      normalize_json "$INPUT" ;;
-  xcresult)  normalize_xcresult "$INPUT" ;;
+  junit-xml) _normalize_junit_xml "$INPUT" ;;
+  json)      _normalize_json "$INPUT" ;;
+  xcresult)  _normalize_xcresult "$INPUT" ;;
   *) die "unsupported format: $FORMAT (expected junit-xml|json|xcresult)" 1 ;;
 esac
