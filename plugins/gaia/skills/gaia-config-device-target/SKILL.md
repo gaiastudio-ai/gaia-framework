@@ -29,7 +29,7 @@ Editing is comment-preserving per ADR-044.
 
 ### Step 1 — Locate project-config.yaml
 
-Resolve via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh project_config_path` (fallback `config/project-config.yaml`). HALT if missing.
+Resolve the path as `${CLAUDE_PROJECT_ROOT:-$PWD}/config/project-config.yaml` (project-root-relative). HALT if missing.
 
 ### Step 2 — Dispatch Subcommand
 
