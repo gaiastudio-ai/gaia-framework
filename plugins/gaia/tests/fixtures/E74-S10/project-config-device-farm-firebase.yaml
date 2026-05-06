@@ -1,0 +1,10 @@
+# Test fixture: project config with Firebase Test Lab device-farm adapter
+# configured. Used by E74-S10-test-mobile-e2e.bats.
+test_execution_bridge:
+  bridge_enabled: true
+device_farm:
+  adapter: firebase-test-lab
+device_targets:
+  os_versions: ["13", "14"]
+  form_factors: ["phone"]
+  screen_sizes: ["default"]
