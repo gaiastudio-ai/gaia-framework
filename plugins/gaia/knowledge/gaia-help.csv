@@ -98,3 +98,4 @@ module,phase,name,code,command,required,agent-name,description,output-location
 "lifecycle","4-implementation","config-show","config-show","gaia-config-show","false","orchestrator","Display project-config.yaml read-only — entire file or single section (E71-S3)","config/project-config.yaml"
 "lifecycle","4-implementation","list-tools","list-tools","gaia-list-tools","false","orchestrator","Enumerate every tool adapter grouped by category with three-state availability (E70-S5)","plugins/gaia/scripts/adapters"
 "lifecycle","4-implementation","tool-info","tool-info","gaia-tool-info","false","orchestrator","Render full adapter.json metadata + availability for one named tool adapter (E70-S5)","plugins/gaia/scripts/adapters"
+"testing","anytime","test-run","test-run","gaia-test-run","false","test-architect","Manual any-environment test runner — honours test_execution.{tier}.placement; supports --tag/--story/--file targeting (E72-S1)","n/a"
