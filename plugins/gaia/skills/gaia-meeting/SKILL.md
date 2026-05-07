@@ -6,25 +6,30 @@ context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 ---
 
-# gaia-meeting (E76 — S1 scaffolding)
+# gaia-meeting (E76 — S1 scaffolding + S2 research / cite-or-flag / raise-hand)
 
 Peer-to-peer multi-agent discussion orchestrator. GAIA agents and stakeholder
 personas take sequential turns through a seven-phase lifecycle. The skill is
 deliberately heavier-weight than `/gaia-party`: it requires a charter, drives a
 mode-aware closing artifact bias, and enforces a state-free write boundary.
 
-This SKILL.md is the **S1 foundation** — the lifecycle skeleton, charter gate,
-default mode, live-stream header format, round-robin substrate, and write
-boundary. The downstream stories layer onto this scaffold:
+S1 shipped the **lifecycle foundation** — the seven-phase skeleton, charter
+gate, default mode, live-stream header format, round-robin substrate, and
+write boundary.
 
-- **E76-S2:** RESEARCH phase, cite-or-flag (FR-MTG-5), raise-hand, research-interrupt.
+S2 layers onto S1 the **research phase** (sidecar load + source-of-truth reads
++ web search + cited prelude — ADR-084), the **cite-or-flag invariant** during
+DISCUSS (FR-MTG-5), and **raise-hand arbitration** with a one-per-cycle
+defer queue (FR-MTG-7 / FR-MTG-9). The downstream stories continue to layer:
+
 - **E76-S3:** CLOSE phase decision record + action items + memory write-through, full FR-MTG-27 saved-meeting frontmatter.
 - **E76-S4:** Scratchpad pin / extraction.
 - **E76-S5:** Eight non-`decide` modes.
 - **E76-S6:** Guardrails (max-turns, per-agent cap, loop detection) + cost-reporting refinements.
 
-S1 leaves deterministic insertion-point hooks in the turn loop and lifecycle
-dispatcher so S2..S6 do not need to reshape this skeleton.
+S1 left deterministic insertion-point hooks in the turn loop and lifecycle
+dispatcher so S2..S6 do not need to reshape this skeleton — S2 plugs into the
+RESEARCH and DISCUSS hooks rather than reimplementing the lifecycle.
 
 ## Critical Rules
 
@@ -53,8 +58,19 @@ dispatcher so S2..S6 do not need to reshape this skeleton.
   advanced **per emitted turn**, not per round-robin slot — this is the
   determinism contract that lets E76-S2's raise-hand and research-interrupt
   insertions remain deterministic against the same cadence.
-- **Cite-or-flag is NOT enforced in S1.** That gate (FR-MTG-5) lands in E76-S2.
-  S1 builds the substrate against which S2 will enforce.
+- **Cite-or-flag is enforced (E76-S2).** Every DISCUSS turn line that asserts a
+  factual claim (about a file path, code behavior, prior decision, external
+  system, or memory entry) MUST carry either a citation marker (project file
+  path, URL, or `_memory/...` reference) or the literal `[inference]` token.
+  The facilitator's pre-persistence check halts round-robin advancement on
+  unflagged-inference lines BEFORE they land in the persisted transcript
+  (FR-MTG-5 / FR-MTG-28 hard guardrail).
+- **Research-phase fork is read-only (E76-S2, NFR-048).** The single source-of-
+  truth allowlist lives in `scripts/research-phase-dispatch.sh --print-allowlist`:
+  `[Read, Grep, Glob, Bash, WebSearch, WebFetch]` (web on) or `[Read, Grep,
+  Glob, Bash]` when `--no-web` is set. NEVER add `Write`, `Edit`, or
+  `NotebookEdit` to the research fork — fork no-write isolation is a hard
+  invariant (NFR-048, T-MTG-3 mitigation).
 - **Frontmatter persistence is shared with E76-S3.** S1 captures the charter
   into in-memory state and writes lifecycle markers to the live transcript;
   the full meeting-notes file format with required sections (FR-MTG-27) lands
@@ -196,11 +212,76 @@ this skill, ever.
    persistence (full frontmatter persistence ships with E76-S3 / FR-MTG-27).
 3. Emit the `## Phase: CHARTER` marker.
 
-### Phase 3 — RESEARCH (skipped placeholder in S1)
+### Phase 3 — RESEARCH (E76-S2, ADR-084)
 
-Emit the `## Phase: RESEARCH (skipped — research-phase semantics land in
-E76-S2 / ADR-084)` marker. Do not gather research preludes; do not invoke
-cite-or-flag (FR-MTG-5 is an E76-S2 gate).
+The RESEARCH phase implements the four-step contract from ADR-084:
+
+1. **Per-agent sidecar load (FR-MTG-4 step 1).** For each invited agent, load
+   the canonical sidecar at `_memory/<agent>-sidecar/` via the existing tier-
+   aware load contract (§4.10). The intake-shorthand path
+   `_memory/agent-decisions/<agent>/` is NOT canonical — ADR-086 reconciled
+   on `<agent>-sidecar/`. Resolve via
+   `scripts/research-phase-dispatch.sh --sidecar-path <agent>`. Reads MUST be
+   read-only — sidecar files MUST NOT be mutated during RESEARCH.
+2. **Source-of-truth reads (FR-MTG-4 step 2, NFR-048).** Inside a fork whose
+   tool allowlist matches the research-phase allowlist (see below), each
+   invited agent reads the project files relevant to the charter — typically
+   architecture shards under `docs/planning-artifacts/architecture/`, ADRs in
+   `12-12-adr-detail-records.md`, SKILL.md files under
+   `gaia-public/plugins/gaia/skills/`, and other planning artifacts. Every
+   path the agent reads MUST appear under `Sources consulted:` in the prelude.
+3. **Web search (FR-MTG-4 step 3, FR-MTG-6, T-MTG-1).** When `--no-web` is NOT
+   set, the research fork MAY invoke `WebSearch` and `WebFetch`. Each web
+   result's URL, title, and snippet MUST be recorded under
+   `Sources consulted:`. When `--no-web` IS set, web tools are excluded from
+   the allowlist and the SAVE-time frontmatter records `web_search: disabled`.
+4. **Cited prelude (FR-MTG-4 step 4).** Each invited agent posts a prelude in
+   the fixed format emitted by `scripts/lib/prelude-format.sh`:
+
+   ```
+   [Prelude] {Name} ({Role}) — {tokens} tokens
+   Sources consulted:
+     <source 1>
+     <source 2>
+     ...
+   What I know:
+     - <bullet 1>
+     - <bullet 2>
+     ...
+   ```
+
+   The S1 live-stream per-turn header (NFR-MTG-1) MUST be emitted for every
+   prelude turn. The DISCUSS phase MUST NOT start until every invited agent's
+   prelude has landed in the shared message log — the prelude is the gate.
+
+**Research-phase fork tool allowlist (single source-of-truth, NFR-048).** The
+canonical allowlist is exposed by
+`scripts/research-phase-dispatch.sh --print-allowlist [--no-web]`:
+
+| Mode             | Allowlist                                        |
+|------------------|--------------------------------------------------|
+| Web enabled      | `Read, Grep, Glob, Bash, WebSearch, WebFetch`    |
+| `--no-web`       | `Read, Grep, Glob, Bash`                         |
+
+The allowlist NEVER contains `Write`, `Edit`, or `NotebookEdit`. Audit / threat-
+model review MUST verify the contract from this single script (T-MTG-3).
+
+**`--skip-research` audit invariant (FR-MTG-6, ADR-084).** When
+`--skip-research` is set, prelude turns are omitted, the four-step contract
+is skipped, and SAVE writes `research_phase: skipped` into the meeting
+frontmatter. The cite-or-flag invariant (see DISCUSS) STILL applies during
+DISCUSS — agents MUST mark unsourced factual claims `[inference]` even when
+the research phase is skipped. The skip-research path MUST be detectable by
+a future static check from the saved frontmatter alone.
+
+**Frontmatter audit fields.** At SAVE time the meeting frontmatter records
+the research-phase audit fields via
+`scripts/research-phase-dispatch.sh --emit-frontmatter [--no-web] [--skip-research]`:
+
+```
+research_phase: enabled|skipped
+web_search:    enabled|disabled
+```
 
 ### Phase 4 — DISCUSS
 
@@ -211,6 +292,31 @@ cite-or-flag (FR-MTG-5 is an E76-S2 gate).
 4. Resolve user-interjection labels via `scripts/resolve-user-name.sh`.
 5. Increment the cadence counter per emitted turn; every 10 emit a cost check.
 6. Emit the `## Phase: DISCUSS` marker at the start.
+7. **Cite-or-flag check (FR-MTG-5, E76-S2).** Before each draft turn lands in
+   the persisted transcript, the facilitator runs
+   `scripts/cite-or-flag-check.sh --gate-draft-turn <draft-file>`. If any
+   line classifies as `unflagged-inference` (factual claim with neither a
+   citation marker nor `[inference]`), the script exits non-zero with `HALT`,
+   names the offending lines, and the facilitator HALTs round-robin
+   advancement until the agent re-emits the turn with a marker. The offending
+   turn MUST NEVER land in the persisted transcript (FR-MTG-28 hard guardrail).
+8. **Raise-hand arbitration (FR-MTG-7 / FR-MTG-9, E76-S2).** When an agent's
+   turn ends with `[raise-hand → respond to {Name}]` (em-dash or ASCII `->`),
+   the facilitator processes the flag via `scripts/raise-hand-arbiter.sh`:
+   - `--detect <body>` extracts the named target.
+   - `--record-raise-hand --cycle N --requesting A --target C` records the
+     request and returns either `honored` (one raise-hand per cycle, per
+     FR-MTG-7) or `deferred-to-next-cycle` (subsequent requests in the same
+     cycle).
+   - `--plan-insertion --invitees <csv> --requesting A --target C --cycle N`
+     emits the speaker sequence: `C` first (inserted), then the round-robin
+     resumes from the slot AFTER `A` in normal invite order. The round-robin
+     order MUST NOT be permanently shifted by the insertion.
+   - `--pending-deferred --cycle N+1` emits the deferred raise-hands carried
+     into the next cycle; they MUST be honored as the FIRST action of that
+     cycle. No raise-hand request MUST be silently dropped.
+   - `--log-line --cycle N --requesting A --target C --status <s>` produces
+     the arbitration record line that lands in the persisted transcript.
 
 ### Phase 5 — CLOSE
 
@@ -239,13 +345,17 @@ LLM-side parsing inline — this is single-source-of-truth per ADR-057, ADR-073)
 
 | Script | Purpose | AC / FR |
 |--------|---------|---------|
-| `charter-gate.sh` | Charter requirement guardrail | AC1, AC2, FR-MTG-2 |
-| `resolve-mode.sh` | Active-mode resolver + single-mode invariant | AC4, FR-MTG-17, FR-MTG-16 |
-| `turn-order.sh` | Round-robin turn-order generator | AC5, FR-MTG-7 |
-| `turn-header.sh` | Per-turn header renderer | AC6, FR-MTG-10, NFR-MTG-1 |
-| `resolve-user-name.sh` | User-interjection name resolver (override -> git) | AC7, FR-MTG-10 |
-| `lifecycle-marker.sh` | Seven-phase lifecycle marker emitter | AC3, FR-MTG-1 |
-| `write-boundary.sh` | State-free write-boundary asserter | AC8, FR-MTG-31 |
+| `charter-gate.sh` | Charter requirement guardrail | S1 AC1, AC2, FR-MTG-2 |
+| `resolve-mode.sh` | Active-mode resolver + single-mode invariant | S1 AC4, FR-MTG-17, FR-MTG-16 |
+| `turn-order.sh` | Round-robin turn-order generator | S1 AC5, FR-MTG-7 |
+| `turn-header.sh` | Per-turn header renderer | S1 AC6, FR-MTG-10, NFR-MTG-1 |
+| `resolve-user-name.sh` | User-interjection name resolver (override -> git) | S1 AC7, FR-MTG-10 |
+| `lifecycle-marker.sh` | Seven-phase lifecycle marker emitter | S1 AC3, FR-MTG-1 |
+| `write-boundary.sh` | State-free write-boundary asserter | S1 AC8, FR-MTG-31 |
+| `research-phase-dispatch.sh` | Research-phase fork allowlist + flags + sidecar path + frontmatter audit | S2 AC1, AC3, AC5, AC11, FR-MTG-4, FR-MTG-6, ADR-084, ADR-086 |
+| `lib/prelude-format.sh` | Fixed prelude format renderer | S2 AC4, FR-MTG-4 step 4 |
+| `cite-or-flag-check.sh` | Per-line classification + draft-turn gate + transcript verifier | S2 AC6, AC7, AC10, FR-MTG-5, FR-MTG-28, NFR-MTG-2 |
+| `raise-hand-arbiter.sh` | Raise-hand detection + insertion planning + one-per-cycle ledger | S2 AC8, AC9, FR-MTG-7, FR-MTG-9 |
 
 ## Skill Outputs
 
@@ -256,14 +366,42 @@ LLM-side parsing inline — this is single-source-of-truth per ADR-057, ADR-073)
   minimum viable file (markers + headers); E76-S3 extends to the full
   FR-MTG-27 frontmatter and required sections.
 
-## What's Out of Scope for S1
+## Threat-Model Mitigations (E76-S2)
 
-These land in E76-S2..S6 — do **not** retrofit them into S1's substrate:
+The research / cite-or-flag / raise-hand surface inherits three threats from
+`docs/planning-artifacts/threat-model.md` §3.15. Mitigations live in the S2
+helpers:
 
-- Research phase, research preludes, cite-or-flag (FR-MTG-5) — E76-S2.
-- Raise-hand insertion, research-interrupt insertion — E76-S2.
+- **T-MTG-1 — web-search exfiltration.** `--no-web` removes `WebSearch` /
+  `WebFetch` from the research-phase fork allowlist and records
+  `web_search: disabled` in the meeting frontmatter at SAVE. Recommend
+  opt-out via `--no-web` for sensitive charters that involve secrets,
+  internal credentials, or unpublished plans. Auditors can verify the
+  disabled state from the saved frontmatter alone.
+- **T-MTG-2 — prompt-injection from external pages.** The cite-or-flag
+  invariant (FR-MTG-5) is the primary mitigation: anything an agent learned
+  from an external page MUST cite that page's URL, and any factual claim
+  with no citation MUST carry `[inference]`. The facilitator's pre-
+  persistence HALT (AC7) blocks unflagged-inference turns from landing in
+  the transcript. The sequential-turn invariant (ADR-045) prevents an
+  injected page from racing across multiple agents in parallel.
+- **T-MTG-3 — over-broad agent file reads.** The research-phase fork
+  allowlist excludes write-capable tools (`Write` / `Edit` / `NotebookEdit`)
+  per NFR-048 — even an over-eager read cannot mutate any artifact. The
+  pre-save secret-pattern scrubber (`TC-MTG-SCRUB-1`) is out of scope for
+  this story and lands separately; the charter is the agent's read-scope
+  responsibility note.
+
+## What's Out of Scope for S2
+
+These land in E76-S3..S6 — do **not** retrofit them into the S1+S2 substrate:
+
 - Decision record + action items + memory write-through — E76-S3.
 - Full FR-MTG-27 saved-meeting frontmatter and required sections — E76-S3.
+- Pre-save secret-pattern scrubber (`TC-MTG-SCRUB-1`, T-MTG-3 mitigation) —
+  separate work.
+- The `/gaia-validate-meeting` static-check skill that consumes AC10's
+  verifiability — reserved namespace, not implemented.
 - Scratchpad pin / extraction — E76-S4.
 - The eight non-`decide` modes — E76-S5.
 - Guardrails (max-turns, per-agent cap, loop detection) — E76-S6.
@@ -271,8 +409,11 @@ These land in E76-S2..S6 — do **not** retrofit them into S1's substrate:
 
 ## References
 
-- PRD §4.39 — `/gaia-meeting` peer-to-peer multi-agent discussion skill (FR-MTG-1, FR-MTG-2, FR-MTG-7, FR-MTG-8, FR-MTG-10, FR-MTG-16, FR-MTG-17, FR-MTG-31, NFR-MTG-1).
+- PRD §4.39 — `/gaia-meeting` peer-to-peer multi-agent discussion skill (FR-MTG-1, FR-MTG-2, FR-MTG-4, FR-MTG-5, FR-MTG-6, FR-MTG-7, FR-MTG-8, FR-MTG-9, FR-MTG-10, FR-MTG-16, FR-MTG-17, FR-MTG-28, FR-MTG-31, NFR-MTG-1, NFR-MTG-2).
 - ADR-083 — Peer-to-peer multi-agent discussion topology.
-- Test plan §11.56 — TC-MTG-CHARTER-1..3, TC-MTG-TURN-1, TC-MTG-STREAM-1, TC-MTG-STREAM-3.
+- ADR-084 — Research-phase contract (sidecar load → SoT reads → web search → cited prelude).
+- ADR-086 — Sidecar path reconciliation: `_memory/<agent>-sidecar/` is canonical.
+- Test plan §11.56 — TC-MTG-CHARTER-1..3, TC-MTG-TURN-1..3, TC-MTG-STREAM-1, TC-MTG-STREAM-3, TC-MTG-RESEARCH-1..6, TC-MTG-GUARD-1.
+- Threat model §3.15 — T-MTG-1 (web-search exfiltration), T-MTG-2 (prompt-injection from external pages), T-MTG-3 (over-broad agent file reads).
 - FR-329 — Slash commands resolve via SKILL.md, not via the retired `commands/` directory.
-- FR-MTG-3 — Reuses agent + stakeholder discovery from `/gaia-party` (full wiring in E76-S2).
+- FR-MTG-3 — Reuses agent + stakeholder discovery from `/gaia-party` (full discovery wiring deferred beyond E76-S2; S2 still requires the explicit `--invitees` CSV).
