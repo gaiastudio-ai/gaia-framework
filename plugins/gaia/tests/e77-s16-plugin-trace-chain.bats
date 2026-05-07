@@ -19,6 +19,12 @@ PLUGIN_TRACE="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/plugin-trace-chain.sh
 
 # ---------------------------------------------------------------------------
 # Fixture helper — build a minimal plugin project.
+#
+# Note: the fixture creates a `tests/foo.bats` file containing references to
+# `setup.sh` and `run.sh`. We construct those bats fixture lines via printf
+# rather than a heredoc so that the bats pre-pass over THIS file does not
+# parse the literal `@test` token in a heredoc and try to register it as
+# a duplicate test (caused CI "unknown test name" errors otherwise).
 # ---------------------------------------------------------------------------
 _build_plugin_fixture() {
   local proj="$1"
@@ -28,28 +34,16 @@ _build_plugin_fixture() {
            "$proj/tests"
   echo '{"name":"demo","version":"0.1.0"}' > "$proj/.claude-plugin/plugin.json"
   printf 'name: demo\nversion: 0.1.0\nskills:\n  - foo\n' > "$proj/manifest.yaml"
-  cat > "$proj/plugins/foo/SKILL.md" <<'EOF'
----
-name: foo
-description: foo skill
----
-
-## Setup
-
-!scripts/setup.sh
-
-## Steps
-
-!scripts/run.sh
-EOF
+  printf -- '---\nname: foo\ndescription: foo skill\n---\n\n## Setup\n\n!scripts/setup.sh\n\n## Steps\n\n!scripts/run.sh\n' \
+    > "$proj/plugins/foo/SKILL.md"
   echo '#!/bin/sh' > "$proj/plugins/foo/scripts/setup.sh"
   echo '#!/bin/sh' > "$proj/plugins/foo/scripts/run.sh"
-  cat > "$proj/tests/foo.bats" <<'EOF'
-@test "calls setup.sh" {
-  run bash plugins/foo/scripts/setup.sh
-  [ "$status" -eq 0 ]
-}
-EOF
+  # Build the fixture bats file via printf — the literal `@test` token is
+  # constructed at runtime via $REF below so bats does not parse it from
+  # this file's heredoc. (See e0c5d6f-style fixture pattern from E77-S14.)
+  local REF='@test'
+  printf '%s "fixture-setup-call" {\n  run bash plugins/foo/scripts/setup.sh\n  [ "$status" -eq 0 ]\n}\n' "$REF" \
+    > "$proj/tests/foo.bats"
 }
 
 # ---------------------------------------------------------------------------
@@ -70,13 +64,13 @@ EOF
 @test "AC5: chain entry records covered=true when every script has bats coverage" {
   local proj="$TEST_TMP/plugin"
   _build_plugin_fixture "$proj"
-  # Ensure run.sh is referenced by a bats file too.
-  cat > "$proj/tests/run.bats" <<'EOF'
-@test "calls run.sh" {
-  run bash plugins/foo/scripts/run.sh
-  [ "$status" -eq 0 ]
-}
-EOF
+  # Ensure run.sh is referenced by a bats fixture file too. We build the
+  # fixture via printf with a $REF prefix so the bats pre-pass over THIS
+  # file does not parse the literal @test token. (See _build_plugin_fixture
+  # for the same pattern + rationale.)
+  local REF='@test'
+  printf '%s "fixture-run-call" {\n  run bash plugins/foo/scripts/run.sh\n  [ "$status" -eq 0 ]\n}\n' "$REF" \
+    > "$proj/tests/run.bats"
   run "$PLUGIN_TRACE" --project-root "$proj"
   [ "$status" -eq 0 ]
   # Every script should appear under a covered=true context for at least one
