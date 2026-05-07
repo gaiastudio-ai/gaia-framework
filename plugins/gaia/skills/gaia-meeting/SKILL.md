@@ -41,15 +41,14 @@ RESEARCH and DISCUSS hooks rather than reimplementing the lifecycle.
   reorder turns mid-round. The fork allowlist for read-only agent operations
   (full arrival in E76-S2) remains `[Read, Grep, Glob, Bash]` per NFR-048; S1
   introduces no new tool grants.
-- **State-free write boundary (FR-MTG-31, AC8).** The skill writes ONLY to:
-  - `docs/creative-artifacts/`
-  - `_memory/action-items/`
-  - `_memory/{agent}-sidecar/decisions/`
+- **State-free write boundary (FR-MTG-31, AC10 / AC8).** The skill writes ONLY to:
+  - `docs/creative-artifacts/meeting-*.md`
+  - `docs/planning-artifacts/action-items.yaml` (canonical, ADR-086 / ADR-052)
+  - `_memory/{agent}-sidecar/decisions/*.md`
   Every artifact write MUST be routed through `scripts/write-boundary.sh`.
   Disallowed: sprint-status.yaml, story files, PRD, architecture, test plan,
-  threat model, traceability. **S1's SAVE phase only writes to
-  `docs/creative-artifacts/`** — the action-items and sidecar-decisions write
-  paths fully arrive in E76-S3.
+  threat model, traceability. The legacy E76-S1 root `_memory/action-items/`
+  is **retired** by ADR-086.
 - **Single-mode-only invariant (FR-MTG-16).** Mode stacking is rejected at
   resolve time by `scripts/resolve-mode.sh`. Only one `--mode` flag is allowed.
 - **Live-stream header on every emitted turn (FR-MTG-10, NFR-MTG-1).** Format:
@@ -176,15 +175,21 @@ explicit. If neither source resolves a name, the resolver exits non-zero and
 the orchestrator surfaces a guidance message ("set `meeting.user_name` in
 `settings.json` or run `git config --global user.name '<name>'`").
 
-## State-Free Write Boundary (FR-MTG-31, AC8)
+## State-Free Write Boundary (FR-MTG-31, AC10 — E76-S3 reconciled)
 
 Every artifact write in this skill MUST be gated by
 `scripts/write-boundary.sh`. The asserter accepts a relative path and exits 0
-only if the path is under one of the allowed roots:
+only if the path is one of:
 
-- `docs/creative-artifacts/`
-- `_memory/action-items/`
-- `_memory/{any-prefix}-sidecar/decisions/`
+- `docs/creative-artifacts/meeting-*.md`
+- `docs/planning-artifacts/action-items.yaml` (canonical registry per
+  ADR-086 / ADR-052 addendum E36-S4)
+- `_memory/{any-prefix}-sidecar/decisions/*.md`
+
+The legacy E76-S1 path `_memory/action-items/` is **retired** by ADR-086 —
+the canonical action-items registry is now the single-file YAML at
+`docs/planning-artifacts/action-items.yaml`. New writes MUST target the
+canonical location.
 
 Any other path is REJECTED with exit code 2. This is the invariant that keeps
 `/gaia-meeting` truly state-free — sprint status, story files, PRD,
@@ -318,25 +323,97 @@ web_search:    enabled|disabled
    - `--log-line --cycle N --requesting A --target C --status <s>` produces
      the arbitration record line that lands in the persisted transcript.
 
-### Phase 5 — CLOSE
+### Phase 5 — CLOSE (E76-S3)
 
-In S1: emit the `## Phase: CLOSE` marker. The full decision-record + action-items
-emission ships in E76-S3 (which writes through `scripts/write-boundary.sh` to
-`_memory/action-items/` and `_memory/{agent}-sidecar/decisions/`).
+Emit the `## Phase: CLOSE` marker. CLOSE drafts every post-meeting artifact
+**in memory only** — no disk writes happen in this phase. The drafts produced
+here feed into Phase 6 REVIEW for user disposition before any SAVE write.
 
-### Phase 6 — REVIEW
+The CLOSE draft set:
 
-Emit the `## Phase: REVIEW` marker. A brief user-facing pass to confirm
-decisions, action items, and open questions. Full review semantics in E76-S3.
+1. **Action-items batch** — one entry per trackable item surfaced during DISCUSS,
+   typed against the eleven canonical action-item types (FR-MTG-20).
+2. **Per-agent memory entries** — one draft per participating agent, capturing
+   what that agent should carry forward (decided items, constraints, open items
+   tracked, sources relied on).
+3. **Meeting notes draft** — full notes body assembled from the live transcript
+   plus the agreed action-item IDs and memory write-through agent list.
 
-### Phase 7 — SAVE
+### Phase 6 — REVIEW (E76-S3, FR-MTG-12)
 
-1. Compute the saved-transcript path:
-   `docs/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md`.
-2. Gate the write through `scripts/write-boundary.sh`. If the gate exits
-   non-zero, STOP — surface the script's stderr.
-3. Persist the live transcript (markers + per-turn headers + interjections).
-4. Emit the `## Phase: SAVE` marker as the final line of the transcript.
+Emit the `## Phase: REVIEW` marker. REVIEW is the user's last interception
+point — once SAVE starts, writes are atomic per-file. There is **no undo
+semantic in v1**; the gate is the contract.
+
+For each drafted artifact, present the draft to the user and capture an
+explicit disposition via `scripts/review-gate.sh`:
+
+- **`accept`** — the SAVE write proceeds for that artifact.
+- **`edit`**   — the user supplies a revised payload; SAVE proceeds against
+  the revised draft.
+- **`drop`**   — the SAVE write is suppressed for that artifact. Zero bytes
+  are written. **Drop on action-items leaves
+  `docs/planning-artifacts/action-items.yaml` byte-identical to its
+  pre-meeting state.** Drop on a per-agent memory entry writes zero files
+  under that agent's `_memory/{agent}-sidecar/decisions/`.
+
+Per-agent memory entries are reviewed **per-agent**: a meeting with N
+participating agents may produce K accepted entries with K ≤ N (FR-MTG-25 /
+AC6).
+
+### Phase 7 — SAVE (E76-S3, FR-MTG-21 / FR-MTG-24 / FR-MTG-25 / FR-MTG-27)
+
+SAVE performs the three writes that REVIEW accepted, gated through
+`scripts/write-boundary.sh` for the AC10 / FR-MTG-31 state-free invariant:
+
+1. **Action-items registry** (if accepted at REVIEW). Run
+   `scripts/action-items-writer.sh --registry docs/planning-artifacts/action-items.yaml --drafts <accepted-drafts.yaml> --source-meeting <slug> --date <YYYY-MM-DD>`.
+   The writer:
+   - Sets `schema_version: 2` on the registry header (idempotent).
+   - Allocates daily-N IDs of the form `AI-{YYYY-MM-DD}-{N}` (N restarts at 1 each
+     day, scanned from existing entries).
+   - Resolves `target_command` from `type` via the eleven-entry lookup table
+     at `scripts/lib/type-target-resolver.sh` — rejecting any unknown type.
+   - Appends fully-rendered v2 entries (`id`, `created`, `source_meeting`, `type`,
+     `priority`, `status`, `target_command`, `assignee`, `context_for_target`,
+     `acceptance`) at the tail of the registry — leaving v1 entries
+     byte-identical (no migration; ADR-086 D2).
+   - Atomic write via `mktemp` + `mv`.
+2. **Per-agent memory entries** (one per accepted draft). Run
+   `scripts/memory-writethrough.sh --root . --drafts <accepted-mem-drafts/> --source-meeting <slug> --date <YYYY-MM-DD> --slug <slug>`.
+   The writer emits one file per agent at
+   `_memory/{agent}-sidecar/decisions/{YYYY-MM-DD}-{slug}.md` with frontmatter
+   (`agent`, `date`, `source_meeting`, `type: decision`, `tags`) and the four
+   mandatory H2 sections in fixed order:
+   - `## What I decided / agreed to in this meeting`
+   - `## Constraints I committed to`
+   - `## Open items I'm tracking` (lists action-item IDs where the agent is
+     `assignee` or that materially affect the agent's future work)
+   - `## Sources I relied on`
+3. **Meeting notes** (if accepted at REVIEW). Run
+   `scripts/meeting-notes-writer.sh --root . --payload <payload.yaml> --date <YYYY-MM-DD> --slug <slug>`.
+   The writer emits `docs/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md`
+   with frontmatter (per-attendee + total token-cost breakdown,
+   `scratchpad_extractions: []` until E76-S4 lands, `action_items:` IDs from
+   step 1) and the required body sections (charter, summary, research preludes,
+   transcript, decisions, risks identified from `[challenge]` turns, open
+   questions, scratchpad final state, action items, memory write-through list).
+
+After all three writes complete, emit the `## Phase: SAVE` marker as the final
+line of the live transcript.
+
+**Anti-amnesia (FR-MTG-26 / AC8).** The per-agent memory entries surface
+automatically on the next session-load of that agent's sidecar via the §4.10
+sidecar load contract (in `gaia-memory-management`) — matched on `tags` or
+`source_meeting`. The agent's next workflow that touches a topic carried
+forward MUST receive the entry without explicit user prompting. This is the
+anti-amnesia property the intake mandates.
+
+**State-free write boundary (AC10).** Every disk write in Phase 7 MUST go
+through `scripts/write-boundary.sh`. The asserter rejects any path outside
+`docs/creative-artifacts/meeting-*.md`,
+`docs/planning-artifacts/action-items.yaml`, and
+`_memory/{agent}-sidecar/decisions/*.md`.
 
 ## Helper Scripts
 
@@ -356,6 +433,11 @@ LLM-side parsing inline — this is single-source-of-truth per ADR-057, ADR-073)
 | `lib/prelude-format.sh` | Fixed prelude format renderer | S2 AC4, FR-MTG-4 step 4 |
 | `cite-or-flag-check.sh` | Per-line classification + draft-turn gate + transcript verifier | S2 AC6, AC7, AC10, FR-MTG-5, FR-MTG-28, NFR-MTG-2 |
 | `raise-hand-arbiter.sh` | Raise-hand detection + insertion planning + one-per-cycle ledger | S2 AC8, AC9, FR-MTG-7, FR-MTG-9 |
+| `review-gate.sh` | REVIEW-phase disposition router (accept/edit/drop) | S3 AC1, FR-MTG-12 |
+| `lib/type-target-resolver.sh` | Eleven-type action-item type → target_command resolver | S3 AC3, FR-MTG-20, ADR-086 |
+| `action-items-writer.sh` | v2 action-items registry writer (idempotent header bump, daily-N IDs, atomic write) | S3 AC2, AC5, FR-MTG-21, ADR-086 |
+| `memory-writethrough.sh` | Per-agent sidecar decision write-through (frontmatter + four mandatory H2 sections) | S3 AC6, AC7, FR-MTG-24, FR-MTG-25 |
+| `meeting-notes-writer.sh` | Saved meeting-notes writer (FR-MTG-27 frontmatter + body sections) | S3 AC9, FR-MTG-27 |
 
 ## Skill Outputs
 
