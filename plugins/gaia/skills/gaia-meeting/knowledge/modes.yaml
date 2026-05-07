@@ -1,0 +1,70 @@
+# gaia-meeting mode registry — E76-S5 (FR-MTG-17)
+#
+# One entry per supported `--mode` value. The `decide` default ships from
+# E76-S1; the eight other entries are the E76-S5 additions per PRD §4.39.5.
+#
+# Schema:
+#   - name: <canonical-mode-name>
+#     aliases: [<alias>, ...]            # optional; only `design` has the `ux` alias in v1
+#     default_invitees: [<id>, ...]      # canonical agent ID or stakeholder name
+#     closing_artifact_bias: <bias-name>
+#     notes_template_ref: <relative-path-from-this-knowledge-dir>
+#
+# The registry is read-only knowledge under the skill's plugin tree. Project-
+# level `config/project-config.yaml` does NOT override modes — every install
+# gets the same defaults.
+
+modes:
+  - name: decide
+    aliases: []
+    default_invitees: []
+    closing_artifact_bias: decision-record
+    notes_template_ref: notes-template-decision-record.md
+
+  - name: explore
+    aliases: []
+    default_invitees: []
+    closing_artifact_bias: opportunity-map
+    notes_template_ref: notes-template-opportunity-map.md
+
+  - name: align
+    aliases: []
+    default_invitees: [Derek, Nate]
+    closing_artifact_bias: alignment-summary
+    notes_template_ref: notes-template-alignment-summary.md
+
+  - name: red-team
+    aliases: []
+    default_invitees: [Zara, Sable, Nova]
+    closing_artifact_bias: risk-register
+    notes_template_ref: notes-template-risk-register.md
+
+  - name: ac
+    aliases: []
+    default_invitees: [Vera, Sable]
+    closing_artifact_bias: machine-readable-ac-list
+    notes_template_ref: notes-template-machine-readable-ac-list.md
+
+  - name: brainstorm
+    aliases: []
+    default_invitees: [Rex, Orion, Lyra, Elara, Vermeer]
+    closing_artifact_bias: brainstorming-document
+    notes_template_ref: notes-template-brainstorming-document.md
+
+  - name: design
+    aliases: [ux]
+    default_invitees: [Christy, Suki, Layla, Talia, Tariq, Lena, Cleo, Freya]
+    closing_artifact_bias: ux-design-notes
+    notes_template_ref: notes-template-ux-design-notes.md
+
+  - name: architecture
+    aliases: []
+    default_invitees: [Theo, Soren, Milo, Juno, Omar, Priya]
+    closing_artifact_bias: architecture-decisions
+    notes_template_ref: notes-template-architecture-decisions.md
+
+  - name: sprint
+    aliases: []
+    default_invitees: [Nate, Derek, Rafael]
+    closing_artifact_bias: sprint-adjustments
+    notes_template_ref: notes-template-sprint-adjustments.md

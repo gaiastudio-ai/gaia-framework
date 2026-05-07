@@ -24,7 +24,7 @@ defer queue (FR-MTG-7 / FR-MTG-9). The downstream stories continue to layer:
 
 - **E76-S3:** CLOSE phase decision record + action items + memory write-through, full FR-MTG-27 saved-meeting frontmatter.
 - **E76-S4:** Scratchpad pin / extraction (LANDED — see "Scratchpad pin + extraction" section below).
-- **E76-S5:** Eight non-`decide` modes.
+- **E76-S5:** Eight non-`decide` modes (LANDED — see "Mode Registry" section below).
 - **E76-S6:** Guardrails (max-turns, per-agent cap, loop detection) + cost-reporting refinements.
 
 S1 left deterministic insertion-point hooks in the turn loop and lifecycle
@@ -108,19 +108,67 @@ When `--mode` is absent, `scripts/resolve-mode.sh` returns `decide`. The
 `decide` mode contract:
 
 - **Default invitees.** `decide` does NOT inject mode-default invitees. The
-  invitee list is the user-specified set only. (Other modes — landing in
-  E76-S5 — may inject mode-default invitees per their PRD §4.39 row.)
-- **Closing-artifact bias.** "decision record + action items". The full close
-  artifact emission lands in E76-S3; S1's contract is to **document** the bias
-  and to **default** to `decide` when `--mode` is absent.
+  invitee list is the user-specified set only.
+- **Closing-artifact bias.** `decision-record`. The full close-artifact
+  emission lands in E76-S3; S1 documents the bias and defaults to `decide`
+  when `--mode` is absent.
 
-The known-mode allowlist (full set documented for parity with PRD §4.39; only
-`decide` is functionally wired in S1):
+## Mode Registry (E76-S5, FR-MTG-17, FR-MTG-18, FR-MTG-16)
 
-```
-decide brainstorm research-deepdive incident review
-estimate retro design-critique architecture
-```
+The canonical set of supported `--mode` values is sourced from the registry
+at `knowledge/modes.yaml`. Each mode entry carries `name`, optional
+`aliases`, `default_invitees`, `closing_artifact_bias`, and a
+`notes_template_ref` pointing at a notes-drafting prompt template under
+`knowledge/notes-template-<bias-name>.md`.
+
+| Mode           | Aliases | Default invitees                                     | Closing-artifact bias       |
+|----------------|---------|------------------------------------------------------|-----------------------------|
+| `decide`       | —       | (none — user-specified only)                          | `decision-record`           |
+| `explore`      | —       | (none — user-specified only)                          | `opportunity-map`           |
+| `align`        | —       | Derek, Nate                                           | `alignment-summary`         |
+| `red-team`     | —       | Zara, Sable, Nova                                     | `risk-register`             |
+| `ac`           | —       | Vera, Sable                                           | `machine-readable-ac-list`  |
+| `brainstorm`   | —       | Rex, Orion, Lyra, Elara, Vermeer                      | `brainstorming-document`    |
+| `design`       | `ux`    | Christy, Suki, Layla, Talia, Tariq, Lena, Cleo, Freya | `ux-design-notes`           |
+| `architecture` | —       | Theo, Soren, Milo, Juno, Omar, Priya                  | `architecture-decisions`    |
+| `sprint`       | —       | Nate, Derek, Rafael                                   | `sprint-adjustments`        |
+
+**Single-mode-only invariant (FR-MTG-16).** `scripts/resolve-mode.sh` rejects
+two or more `--mode` flags before INVITE — exit code 2 with a stderr message
+that lists both supplied values and references FR-MTG-16. No transcript /
+action-item / per-agent memory entry is written when this fires.
+
+**Alias canonicalisation (FR-MTG-17, AC6).** `--mode=ux` resolves to the
+canonical `design` entry; the saved-notes frontmatter records `mode: design`.
+`design`/`ux` is the only alias pair in v1.
+
+**Default-invitee resolution (INVITE phase).**
+`scripts/resolve-invitees.sh --mode <m> --invitees "<csv>" --installed <path>`
+reads the registry and an "installed" identifier list (one ID per line) and
+emits the resolved set, the missing list (when any), the bias, the canonical
+mode name, the `invitees_override` flag, and the resolved-default subset.
+Identifiers in `default_invitees` are matched against the installed list;
+missing entries are omitted from the resolved set and surfaced in the
+`missing_invitees` audit field.
+
+**Graceful degradation (FR-MTG-18, AC11-AC13).** When one or more default
+invitees are missing the resolver emits a single-line WARNING to stderr with
+the stable prefix `[gaia-meeting] WARNING: missing default invitee(s) for
+mode <mode>: <list> (resolved subset: <list>)`. The exit code stays 0 — the
+INVITE phase proceeds with the resolved subset. The frontmatter writer
+records `missing_invitees: [<list>]` (empty list when all resolved).
+
+**`--invitees` override path (FR-MTG-17, AC14).** When `--invitees` is
+supplied with `--invitees-override`, the user CSV is authoritative — default
+invitees are NOT auto-added, no missing-invitee WARNING fires, and the saved
+frontmatter records `invitees_override: true`.
+
+**Closing-artifact bias plumbing (FR-MTG-17, AC15).**
+`scripts/select-notes-template.sh --bias <bias>` emits the absolute path to
+the matching template under the skill's `knowledge/` subtree. The mapping is
+one-to-one — every bias has its own template — and selection at CLOSE never
+affects what agents say during DISCUSS; it only shapes the facilitator's
+notes-drafting prompt.
 
 Unknown modes are rejected with a non-zero exit code at resolve time.
 
@@ -200,12 +248,16 @@ this skill, ever.
 
 ### Phase 1 — INVITE
 
-1. Resolve invitees:
-   - If `--invitees "P1,P2,..."` is supplied, use that CSV in order.
-   - Otherwise, defer to the agent + stakeholder discovery routine (shared
-     with `/gaia-party` per FR-MTG-3 — full discovery wiring lands in E76-S2;
-     S1 requires the explicit `--invitees` CSV).
-2. Emit the `## Phase: INVITE` marker via `scripts/lifecycle-marker.sh`.
+1. Resolve the active mode via `scripts/resolve-mode.sh [--mode <m>]`
+   (canonicalises aliases — `ux` → `design`).
+2. Resolve invitees via
+   `scripts/resolve-invitees.sh --mode <canonical> --invitees "<csv>" --installed <path> [--invitees-override]`:
+   - When `--invitees-override` is set, the user CSV is authoritative and no
+     mode-default lookup runs.
+   - Otherwise the resolver merges the user CSV with the mode's
+     `default_invitees`, gracefully degrading missing identifiers (FR-MTG-18)
+     and surfacing a single-line WARNING per missing entry.
+3. Emit the `## Phase: INVITE` marker via `scripts/lifecycle-marker.sh`.
 
 ### Phase 2 — CHARTER
 
@@ -537,7 +589,10 @@ LLM-side parsing inline — this is single-source-of-truth per ADR-057, ADR-073)
 | Script | Purpose | AC / FR |
 |--------|---------|---------|
 | `charter-gate.sh` | Charter requirement guardrail | S1 AC1, AC2, FR-MTG-2 |
-| `resolve-mode.sh` | Active-mode resolver + single-mode invariant | S1 AC4, FR-MTG-17, FR-MTG-16 |
+| `resolve-mode.sh` | Active-mode resolver + single-mode invariant + alias canonicalisation | S1 AC4, S5 AC6 / AC9 / AC10, FR-MTG-17, FR-MTG-16 |
+| `resolve-invitees.sh` | INVITE-phase invitee resolver — mode-default lookup + graceful degradation + override path | S5 AC1-AC8, AC11-AC14, FR-MTG-17, FR-MTG-18 |
+| `select-notes-template.sh` | Closing-artifact bias → notes-template selector (one-to-one mapping) | S5 AC15, FR-MTG-17 |
+| `lib/load-mode-registry.sh` | Shared YAML registry loader (canonical + alias lookup, scalar / list field readers) | S5 (substrate) |
 | `turn-order.sh` | Round-robin turn-order generator | S1 AC5, FR-MTG-7 |
 | `turn-header.sh` | Per-turn header renderer | S1 AC6, FR-MTG-10, NFR-MTG-1 |
 | `resolve-user-name.sh` | User-interjection name resolver (override -> git) | S1 AC7, FR-MTG-10 |
