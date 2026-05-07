@@ -1,0 +1,87 @@
+{
+  "schema_version": "1.0",
+  "skill": "perf",
+  "when": {
+    "project_kind": "claude-code-plugin"
+  },
+  "metadata": {
+    "title": "Tier 2 plugin-nfr sub-rubric",
+    "story": "E77-S15",
+    "fr": "FR-422",
+    "nfr": ["NFR-PLUGIN-1", "NFR-PLUGIN-2", "NFR-PLUGIN-3", "NFR-PLUGIN-4"],
+    "adr": ["ADR-088"],
+    "tc_refs": ["TC-PLUGIN-RUBRIC-8"],
+    "description": "Plugin-specific NFR rules calibrated for Claude Code plugin projects. Activates only when project-config.yaml declares project_kind: claude-code-plugin. Layer 2 (sub-rubric) of the four-layer rubric composition (base + sub + regime + project) per ADR-079 + ADR-088. Skill is `perf` because NFR-PLUGIN-1 (install latency) is the primary review-pipeline carrier; the loader's RFC 7396 array-replace semantics (intentional per ADR-079) require sibling sub-rubrics under different skill buckets to coexist without overwriting each other's severity_rules. Loads NFR-PLUGIN-1 (Plugin Install Latency, Warning when > 8s), NFR-PLUGIN-2 (SKILL.md Token Budget, Warning > 1500 / Critical >= 2000), NFR-PLUGIN-3 (Claude Code Version Compatibility, High when min version missing or untested), and NFR-PLUGIN-4 (allowed-tools claims-vs-usage drift, Critical on any drift) as enforceable rubric rules per FR-422. NFR-PLUGIN-2 and NFR-PLUGIN-4 are also surfaced by sibling sub-rubrics (plugin-code per E77-S5 / FR-407 — skill=code, and plugin-security per E77-S6 / FR-408 — skill=security); the plugin-nfr sub-rubric is the canonical NFR-pipeline carrier — sibling sub-rubrics enforce them at the code-review and security-review layers.",
+    "install_latency": {
+      "threshold_seconds": 8,
+      "reference_machine": "8-core, 16GB RAM, broadband",
+      "severity": "Medium",
+      "severity_class": "Warning",
+      "description": "NFR-PLUGIN-1 — A cold install of a Claude Code plugin via `/plugin marketplace install` MUST complete within 8 seconds wall-clock on the reference machine. Includes manifest fetch, file write, and frontmatter index. Excludes user confirmation prompts. Rule fires Warning (Medium) when measured P95 cold install exceeds 8s."
+    },
+    "skill_md_token_budget": {
+      "warning_threshold_tokens": 1500,
+      "critical_threshold_tokens": 2000,
+      "tokenizer": "approx-4-chars-per-token",
+      "description": "NFR-PLUGIN-2 — Each SKILL.md (auto-loaded surface) MUST be <= 1500 tokens. Body content over the budget MUST live in JIT-loaded helper skills. Warning (Medium) fires when measured tokens exceed 1500; Critical fires at 2000 or more. The plugin-code sub-rubric (E77-S5) carries the same two-tier enforcement at the code-review layer."
+    },
+    "version_compatibility": {
+      "manifest_field": "min_claude_code_version",
+      "ci_required_versions": "two most-recent stable Claude Code versions",
+      "severity": "High",
+      "description": "NFR-PLUGIN-3 — Each plugin MUST declare a Claude Code minimum version in manifest.yaml AND MUST pass its CI test suite on the two most-recent stable Claude Code versions. Missing min-version declaration OR untested second version both fire High severity per the calibrated table in story E77-S15."
+    },
+    "allowed_tools_drift": {
+      "helper_script": "scripts/allowed-tools-drift-check.sh",
+      "severity": "Critical",
+      "description": "NFR-PLUGIN-4 — A skill's allowed-tools declaration in frontmatter MUST match the tools the skill actually invokes. Any drift (a tool used at runtime but not declared) MUST surface as a CRITICAL finding. The plugin-security sub-rubric (E77-S6) is the primary carrier at the security-review layer; plugin-nfr loads the rule for completeness in the NFR-pipeline view."
+    }
+  },
+  "severity_rules": [
+    {
+      "id": "plugin-nfr-install-latency",
+      "category": "performance",
+      "pattern": "Cold install of the plugin via `/plugin marketplace install` exceeds 8 seconds wall-clock on the reference machine (8-core, 16GB RAM, broadband). Measured by the install-latency check in the plugin CI template (E77-S16). Excludes user confirmation prompts; includes manifest fetch, file write, and frontmatter index.",
+      "severity": "Medium",
+      "description": "Per NFR-PLUGIN-1, a cold install over 8s is a Warning-class signal — slow installs erode adoption and indicate manifest bloat or large-file checked-in artifacts. Rule fires when measured P95 cold install exceeds the 8-second budget on the reference machine.",
+      "remediation": "Profile the install path with the marketplace-publish adapter (FR-423) instrumentation. Common culprits: oversized SKILL.md files (cross-check against NFR-PLUGIN-2), bundled binaries committed to the plugin tree, or unnecessary fixture trees. Trim the install surface and re-measure.",
+      "references": ["NFR-PLUGIN-1", "FR-422", "ADR-088"]
+    },
+    {
+      "id": "plugin-nfr-skill-md-token-budget-warning",
+      "category": "skill-md-token-budget",
+      "pattern": "Any SKILL.md file in the plugin tree measures more than 1500 tokens (soft ceiling). Approximate tokenizer: 4 chars per token. Sibling enforcement: plugin-code-skill-md-token-budget-warning (E77-S5) at the code-review layer.",
+      "severity": "Medium",
+      "description": "Per NFR-PLUGIN-2, a SKILL.md exceeding 1500 tokens trips a WARNING signal. The skill is approaching the 2000-token hard ceiling; trim verbose narrative, extract reasoning into the skill's playbook, or split into focused sub-skills before further additions.",
+      "remediation": "Move long-form rationale into the playbook, prune redundant bullet lists, or split the skill along its TDD / planning / lifecycle seams. Re-measure with the same 4-chars-per-token approximation.",
+      "references": ["NFR-PLUGIN-2", "FR-422", "ADR-088"]
+    },
+    {
+      "id": "plugin-nfr-skill-md-token-budget-critical",
+      "category": "skill-md-token-budget",
+      "pattern": "Any SKILL.md file in the plugin tree measures 2000 tokens or more (hard ceiling). Approximate tokenizer: 4 chars per token. Sibling enforcement: plugin-code-skill-md-token-budget-critical (E77-S5) at the code-review layer.",
+      "severity": "Critical",
+      "description": "Per NFR-PLUGIN-2, a SKILL.md at or above 2000 tokens MUST NOT merge. The skill exceeds the per-skill token budget that keeps Claude Code's planning context tractable. Split or trim the skill before re-running review.",
+      "remediation": "Split the skill into smaller, focused skills (one workflow per skill) or extract long narrative into the playbook. Re-measure and confirm the total drops below 2000 tokens.",
+      "references": ["NFR-PLUGIN-2", "FR-422", "ADR-088"]
+    },
+    {
+      "id": "plugin-nfr-version-compatibility",
+      "category": "compatibility",
+      "pattern": "manifest.yaml is missing a `min_claude_code_version` declaration OR the CI test suite is not configured to run against the two most-recent stable Claude Code versions. Detected by the plugin-frontmatter-validator adapter (FR-409) for the missing-declaration case and by the plugin CI template (FR-418) for the missing-version-matrix case.",
+      "severity": "High",
+      "description": "Per NFR-PLUGIN-3, every plugin MUST declare a Claude Code minimum version in manifest.yaml AND MUST pass its CI test suite on the two most-recent stable Claude Code versions. Missing declaration or untested second version is a High-severity finding — downstream consumers cannot pin compatibility and silent breakage on Claude Code upgrades is masked.",
+      "remediation": "Add `min_claude_code_version: <semver>` to manifest.yaml. Update the plugin CI template to invoke the adapter suite under both the current and the previous stable Claude Code versions (matrix).",
+      "references": ["NFR-PLUGIN-3", "FR-422", "FR-409", "FR-418", "ADR-088"]
+    },
+    {
+      "id": "plugin-nfr-allowed-tools-drift",
+      "category": "tool-usage-drift",
+      "pattern": "A SKILL.md file in the plugin tree invokes a tool (Bash, Read, Write, Edit, Grep, Glob, Agent, WebFetch, WebSearch, Task) that is not declared in its frontmatter `allowed-tools:` list. Detected by scripts/allowed-tools-drift-check.sh which parses the SKILL.md frontmatter, scans the skill body and any referenced scripts, and reports each undeclared tool invocation. Sibling enforcement: plugin-security-allowed-tools-drift (E77-S6) at the security-review layer.",
+      "severity": "Critical",
+      "description": "Per NFR-PLUGIN-4 / SR-33, plugin skills that invoke tools not declared in `allowed-tools:` create a privilege-escalation surface (T-37). The Claude Code harness only enforces allowed-tools at the skill boundary — a skill that quietly grows new tool usage past its declared surface can elevate the plugin's effective capabilities without review. Drift MUST emit CRITICAL — no downgrade, no allowlist.",
+      "remediation": "Either remove the undeclared tool invocation from the skill (and its referenced scripts) or update the SKILL.md frontmatter `allowed-tools:` list to include the tool, then have a security reviewer confirm the new capability is intentional.",
+      "references": ["NFR-PLUGIN-4", "T-37", "SR-33", "FR-422", "ADR-088"]
+    }
+  ]
+}
