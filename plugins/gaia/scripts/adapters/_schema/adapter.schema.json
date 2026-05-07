@@ -35,7 +35,8 @@
         "a11y-scanner",
         "mobile-static",
         "mobile-dynamic",
-        "device-farm"
+        "device-farm",
+        "deploy"
       ],
       "description": "Tool category. Drives tool-selection precedence (tools.{category}.provider) per ADR-078."
     },
