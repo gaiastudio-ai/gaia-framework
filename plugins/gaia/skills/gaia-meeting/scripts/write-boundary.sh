@@ -39,10 +39,27 @@ if [[ -z "$path" ]]; then
   exit 3
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Helper — emit canonical WRITE-BOUNDARY-VIOLATION halt event (E76-S6, AC8 + AC9).
+emit_halt() {
+  local detail="$1"
+  if [[ -x "$SCRIPT_DIR/halt-event.sh" ]]; then
+    "$SCRIPT_DIR/halt-event.sh" \
+      --condition WRITE-BOUNDARY-VIOLATION \
+      --fr FR-MTG-31 \
+      --detail "$detail" || true
+  else
+    # Fallback if halt-event.sh is unavailable — still emit the canonical line.
+    printf 'HALT condition=WRITE-BOUNDARY-VIOLATION agent=— fr=FR-MTG-31 detail=%s\n' "$detail"
+  fi
+}
+
 # Reject path traversal attempts
 case "$path" in
   /*|*..*)
     echo "write-boundary.sh: REJECTED — absolute or ..-bearing path: $path" >&2
+    emit_halt "absolute or ..-bearing path: $path"
     exit 2
     ;;
 esac
@@ -64,4 +81,5 @@ fi
 
 echo "write-boundary.sh: REJECTED — '$path' is outside the state-free write boundary (FR-MTG-31)." >&2
 echo "write-boundary.sh: allowed targets: docs/creative-artifacts/meeting-*.md, docs/planning-artifacts/action-items.yaml, _memory/{agent}-sidecar/decisions/*.md" >&2
+emit_halt "$path is outside the state-free write boundary"
 exit 2
