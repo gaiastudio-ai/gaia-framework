@@ -37,7 +37,7 @@ The `priority_flag` field is set only by humans (via frontmatter edit in triage,
 
 - Read `docs/planning-artifacts/epics-and-stories.md`.
 - Parse all stories with their priorities, sizes, and dependencies.
-- Scan `docs/implementation-artifacts/` for individual story files matching `{story_key}-*.md`. For each file found, read its frontmatter `status` field.
+- Scan `docs/implementation-artifacts/epic-*/stories/` recursively for individual story files matching `{story_key}-*.md`. The canonical traversal idiom is `find "${IMPLEMENTATION_ARTIFACTS}" -path '*/stories/*.md' -type f -print0` — bash globs do NOT recurse, so a non-recursive `for f in docs/implementation-artifacts/*.md` loop only sees the legacy flat layer and silently misses every nested story (E79-S4). Run a parallel non-recursive scan over the legacy flat layout for read-only fallback during the migration window; for each flat-path match, emit a stderr `WARNING: legacy-flat path — {flat_path} (migrate via E79-S6)` so operators see the migration debt. **Precedence rule (E79-S4):** if a story file exists at BOTH the canonical nested path AND the legacy flat path for the same `{key}`, the nested file wins and the flat sibling is logged as `WARNING: legacy-flat shadow ignored — {flat_path}` (deterministic — no glob-ordering dependence). For each surviving file, read its frontmatter `status` field.
 - Classify stories into selectable and non-selectable:
   - **SELECTABLE:** stories with individual files AND `status: ready-for-dev`
   - **NOT SELECTABLE (no file):** "Story {key} has no individual file -- run `/gaia-create-story {key}` first."

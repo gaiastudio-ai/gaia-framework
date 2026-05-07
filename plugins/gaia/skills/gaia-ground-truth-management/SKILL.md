@@ -103,7 +103,7 @@ Complete scan of the framework and project to rebuild or reconcile the entire gr
 | Project config files | `{project-path}/*.{json,yaml,yml,toml,xml,env.example}` | Config keys, settings, dependencies |
 | Package manifests | `{project-path}/**/package.json`, `pubspec.yaml`, `pom.xml`, etc. | Dependencies, versions, scripts |
 | Planning artifacts | `docs/planning-artifacts/*.md` | Artifact count, names, dates |
-| Implementation artifacts | `docs/implementation-artifacts/*.md` | Artifact count, story keys, types |
+| Implementation artifacts | `docs/implementation-artifacts/epic-*/stories/**/*.md` (canonical, E79) + `docs/implementation-artifacts/*.md` (legacy flat fallback) | Artifact count, story keys, types |
 | Test artifacts | `docs/test-artifacts/*.md` | Artifact count, coverage areas |
 
 ### Exclusions

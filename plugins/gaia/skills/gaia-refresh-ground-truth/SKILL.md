@@ -97,7 +97,7 @@ Use Glob to discover project structure and Read to extract metadata from key fil
 2. **Project Config Files**: Glob `{project-path}/*.{json,yaml,yml,toml,xml}` (root-level). Extract config keys, settings. Report: "Scanning project config files... found N config files."
 3. **Package Manifests**: Glob for `package.json`, `pubspec.yaml`, `pom.xml`, `build.gradle`, `requirements.txt`, `Cargo.toml`, `go.mod`. Extract dependencies, versions. Report: "Scanning package manifests... found N manifests."
 4. **Planning Artifacts**: Glob `docs/planning-artifacts/*.md`. Extract artifact names, types. Report: "Scanning planning artifacts... found N artifacts."
-5. **Implementation Artifacts**: Glob `docs/implementation-artifacts/*.md`. Extract artifact names, story keys. Report: "Scanning implementation artifacts... found N artifacts."
+5. **Implementation Artifacts**: Glob `docs/implementation-artifacts/epic-*/stories/**/*.md` (canonical nested layout per E79) AND `docs/implementation-artifacts/*.md` (legacy flat fallback until E79-S6 backfill completes). Extract artifact names, story keys. Report: "Scanning implementation artifacts... found N artifacts."
 6. **Test Artifacts**: Glob `docs/test-artifacts/*.md`. Extract artifact names, coverage areas. Report: "Scanning test artifacts... found N artifacts."
 
 **For agent = theo**: Filesystem structure scan + architecture.md ADR extraction.
