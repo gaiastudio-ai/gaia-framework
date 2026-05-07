@@ -10,7 +10,7 @@ deprecated_since: sprint-37
 
 ## Mission
 
-You are running all 6 review workflows sequentially inline for a story. The story is resolved by `{story_key}` via the canonical glob `{story_key}-*.md` in `docs/implementation-artifacts/`. You orchestrate each review in deterministic order, update the Review Gate table after each, and report a summary of all verdicts.
+You are running all 6 review workflows sequentially inline for a story. The story is resolved by `{story_key}` by searching for `{story_key}-*.md` under `docs/implementation-artifacts/` — both the legacy flat layout (`docs/implementation-artifacts/{story_key}-*.md`) and the canonical nested layout (`docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`) per ADR-070. You orchestrate each review in deterministic order, update the Review Gate table after each, and report a summary of all verdicts.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/run-all-reviews` workflow (brief Cluster 9, story E28-S72, ADR-042, ADR-045). Under E58 it became a **thin orchestrator** (FR-RAR-6): every mechanical step lives in a deterministic bash script, and the LLM only does per-reviewer judgment work.
 
@@ -51,7 +51,7 @@ A summary block with 5 SKIPPED + 1 ran reads (excerpt):
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-run-all-reviews [story-key] [--force]".
-- The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve. If zero matches, fail with "story file not found for key {story_key}".
+- The story file MUST exist under `docs/implementation-artifacts/`. Resolve by searching both the legacy flat layout (`docs/implementation-artifacts/{story_key}-*.md`) and the canonical nested layout (`docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`) per ADR-070; prefer the first lexicographic match. If zero matches across both layouts, fail with "story file not found for key {story_key}".
 - The story MUST be in `review` status. If not, fail with "story must be in review status before running reviews".
 - The `--force` flag is the ONLY supported flag. Any other flag (e.g., `--frce`) MUST be rejected with a usage error and a non-zero exit (AC-EC2).
 - Reviews MUST run in this exact canonical order — never reordered, never parallel:
@@ -80,7 +80,7 @@ A summary block with 5 SKIPPED + 1 ran reads (excerpt):
 ### Step 1: Validate Input
 
 1. Parse the story key from the first positional argument and the optional `--force` flag (Substep 2.1 prep). Reject any other flag with a usage error and exit non-zero (AC-EC2).
-2. Resolve the story file via glob: `docs/implementation-artifacts/{story_key}-*.md`. If zero matches, HALT with "story not found" before invoking any helper script (AC-EC12).
+2. Resolve the story file by searching both layouts in order: first the legacy flat path `docs/implementation-artifacts/{story_key}-*.md`, then the canonical nested path `docs/implementation-artifacts/epic-*/stories/{story_key}-*.md` (per ADR-070). Prefer the first lexicographic match. If zero matches across both layouts, HALT with "story not found" before invoking any helper script (AC-EC12).
 3. Read the story file frontmatter and verify `status: review`.
 4. Read the current Review Gate table to confirm the section exists.
 
