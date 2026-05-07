@@ -83,6 +83,13 @@ Invoke `scripts/smoke-orchestrate.sh --suites-file <path> --target-url <url> --o
 
 `--skip-smoke` short-circuits this phase, emits a `WARNING`, and writes `_skip-smoke.json` to evidence (AC14).
 
+**Empty `smoke_suites` / manual-checklist mode (E78-S5, FR-427):** When the resolved deployment configuration provides no smoke suites — either `deployment.smoke_suites: []` or `distribution.channels[].smoke_test.mode: manual-checklist` — the smoke phase MUST NOT yield BLOCKED. `smoke-orchestrate.sh` detects two equivalent paths:
+
+- An empty `--suites-file` (zero non-blank, non-comment lines), or
+- An explicit `--mode manual-checklist` flag.
+
+In either case the script writes `evidence/smoke/manual-checklist.json` with verdict `APPROVE` plus metadata (`mode`, `checklist_source`, `tester_acknowledgement`, `created_at` ISO-8601) and exits 0. Pass `--checklist-source <path>` to record the manual checklist document path; defaults to `"none"`. Use this path for plugins published to a marketplace where automated smoke suites are not applicable but a human signs off on a manual checklist.
+
 The default smoke runner invokes the matching action skill via the Skill tool. Test seam: `GAIA_DEPLOY_SMOKE_RUNNER` overrides the runner with a script that takes `<suite> <target-url> <output-dir>` and prints the verdict.
 
 ### Phase 5 — Final verdict
