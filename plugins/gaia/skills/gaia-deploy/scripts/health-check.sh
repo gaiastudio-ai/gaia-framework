@@ -1,13 +1,21 @@
 #!/usr/bin/env bash
 # health-check.sh — /gaia-deploy Pattern A post-deploy health-check (E73-S5, AC4).
 #
-# Polls a target URL until HTTP 2xx or timeout. Writes
-# `health-check.json` to the output directory.
+# Default behavior (mode=poll): polls a target URL until HTTP 2xx or timeout.
+# Skip behavior  (mode=skip):  bypasses the poll loop entirely and records an
+#                              audit-trail evidence entry. Required for projects
+#                              without a reachable health-check endpoint
+#                              (e.g., marketplace-published plugins) per FR-425.
+#
+# Modes (E78-S3, FR-425):
+#   poll (default) — existing behavior; --url is required.
+#   skip           — emit `{status: "skipped", mode: "skip", reason: "configured skip"}`
+#                    to evidence and exit 0. --url is NOT required.
 #
 # Test seam: GAIA_DEPLOY_HEALTH_FAKE_RC overrides the curl call entirely:
 #   0 → first poll succeeds; 1 → never succeeds (timeout path).
 #
-# Refs: ADR-080, AC4.
+# Refs: ADR-080, AC4 (E73-S5), FR-425 (E78-S3).
 
 set -euo pipefail
 LC_ALL=C
@@ -19,29 +27,60 @@ log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 URL=""
 TIMEOUT="60"
 OUTPUT_DIR=""
+MODE="poll"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --url) URL="$2"; shift 2 ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+    --mode) MODE="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-$SCRIPT_NAME — health-check poll (E73-S5, AC4).
-Usage: $SCRIPT_NAME --url <url> --timeout <secs> --output-dir <dir>
+$SCRIPT_NAME — health-check (E73-S5 AC4, E78-S3 FR-425).
+Usage: $SCRIPT_NAME [--mode <poll|skip>] [--url <url>] [--timeout <secs>] --output-dir <dir>
+
+Modes:
+  poll (default) — poll <url> until HTTP 2xx or timeout
+  skip           — bypass the poll loop and record an audit-trail evidence entry
 EOF
       exit 0 ;;
     *) log "unknown arg: $1"; exit 2 ;;
   esac
 done
 
-if [ -z "$URL" ] || [ -z "$OUTPUT_DIR" ]; then
-  log "usage: --url <url> [--timeout <secs>] --output-dir <dir>"
+# --- Mode validation (E78-S3, FR-425, AC4) -------------------------------
+case "$MODE" in
+  poll|skip) ;;
+  *)
+    log "invalid health_check.mode: '$MODE' — valid options: poll, skip"
+    log "  remediation: set health_check.mode in project-config.yaml to 'poll' (default) or 'skip'"
+    exit 2
+    ;;
+esac
+
+if [ -z "$OUTPUT_DIR" ]; then
+  log "usage: [--mode <poll|skip>] [--url <url>] [--timeout <secs>] --output-dir <dir>"
   exit 2
 fi
 
 mkdir -p "$OUTPUT_DIR"
 RESULT_FILE="$OUTPUT_DIR/health-check.json"
+
+# --- Skip-mode short-circuit (E78-S3, FR-425, AC2 / AC3) -----------------
+if [ "$MODE" = "skip" ]; then
+  jq -n \
+    '{status: "skipped", mode: "skip", reason: "configured skip"}' \
+    > "$RESULT_FILE"
+  log "health-check: SKIPPED (mode=skip, reason=configured skip)"
+  exit 0
+fi
+
+# --- Poll mode requires --url (preserves prior contract) -----------------
+if [ -z "$URL" ]; then
+  log "usage: --url <url> [--timeout <secs>] --output-dir <dir> (required when --mode poll)"
+  exit 2
+fi
 
 start_epoch="$(date +%s)"
 attempt=0

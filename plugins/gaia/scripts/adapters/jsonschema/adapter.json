@@ -1,0 +1,11 @@
+{
+  "name": "jsonschema",
+  "provider": "check-jsonschema",
+  "category": "linter",
+  "version-range": ">=0.28.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 60,
+  "file-extensions": [".json"],
+  "scope": "file",
+  "description": "JSON Schema validator adapter (FR-415). Wraps `check-jsonschema` to validate JSON instance documents against a schema supplied via --config. Five-file layout (adapter.json + probe.sh + run.sh + normalize.sh + test/contract.bats) per FR-415 extension of the ADR-078 three-file base."
+}

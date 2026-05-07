@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "skill": "security",
+  "when": {
+    "project_kind": "claude-code-plugin"
+  },
+  "metadata": {
+    "title": "Tier 1 plugin-security sub-rubric",
+    "story": "E77-S6",
+    "fr": "FR-408",
+    "nfr": "NFR-PLUGIN-4",
+    "adr": ["ADR-088", "ADR-089"],
+    "threat_refs": ["T-37", "SR-33"],
+    "description": "Security-review rules calibrated for Claude Code plugin projects. Activates only when project-config.yaml declares project_kind: claude-code-plugin. Layer 2 (sub-rubric) of the four-layer rubric composition (base + sub + regime + project) per ADR-079 + ADR-088. Owns the allowed-tools claims-vs-usage drift check (NFR-PLUGIN-4 / T-37 / SR-33) and the requires_adapter: shellcheck placeholder that defers shell-script linting to Tier 2 (E77-S11).",
+    "requires_adapter": "shellcheck",
+    "requires_adapter_advisory": "Shell scripts detected — shellcheck validation deferred to Tier 2",
+    "requires_adapter_probe": {
+      "tool": "shellcheck",
+      "probe_script": "scripts/tool-availability-probe.sh",
+      "probe_mode": "tri-state",
+      "adr": "ADR-089",
+      "description": "The advisory helper (scripts/plugin-shellcheck-advisory.sh) consults tool-availability-probe.sh in tri-state mode to classify the shellcheck adapter as omitted, null, or declared. omitted/null with .sh files present -> emit advisory; declared -> delegate to the shellcheck adapter (E77-S11). Never use a hardcoded path."
+    },
+    "allowed_tools_drift": {
+      "helper_script": "scripts/allowed-tools-drift-check.sh",
+      "severity": "Critical",
+      "description": "Static check that compares each SKILL.md frontmatter `allowed-tools:` declaration against the actual tool invocations referenced in the skill body and any scripts the skill calls. Drift (a tool used but not declared) MUST emit a CRITICAL finding per NFR-PLUGIN-4 / T-37 / SR-33 — privilege-escalation risk in plugin skills must not be downgraded.",
+      "tracked_tools": ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "Agent", "WebFetch", "WebSearch", "Task"]
+    }
+  },
+  "severity_rules": [
+    {
+      "id": "plugin-security-allowed-tools-drift",
+      "category": "tool-usage-drift",
+      "pattern": "A SKILL.md file in the plugin tree invokes a tool (Bash, Read, Write, Edit, Grep, Glob, Agent, WebFetch, WebSearch, Task) that is not declared in its frontmatter `allowed-tools:` list. Detected by scripts/allowed-tools-drift-check.sh which parses the SKILL.md frontmatter, scans the skill body and any referenced scripts, and reports each undeclared tool invocation.",
+      "severity": "Critical",
+      "description": "Plugin skills that invoke tools not declared in `allowed-tools:` create a privilege-escalation surface (T-37). The Claude Code harness only enforces allowed-tools at the skill boundary — a skill that quietly grows new tool usage past its declared surface can elevate the plugin's effective capabilities without review. Per NFR-PLUGIN-4 / SR-33, drift MUST emit CRITICAL — no downgrade, no allowlist.",
+      "remediation": "Either remove the undeclared tool invocation from the skill (and its referenced scripts) or update the SKILL.md frontmatter `allowed-tools:` list to include the tool, then have a security reviewer confirm the new capability is intentional.",
+      "references": ["NFR-PLUGIN-4", "T-37", "SR-33", "FR-408", "ADR-088"]
+    },
+    {
+      "id": "plugin-security-shellcheck-deferred-advisory",
+      "category": "shell-script-linting",
+      "pattern": "The plugin tree contains one or more `.sh` files AND the shellcheck adapter is absent from project-config.yaml `tool_adapters:` (tri-state probe returns `omitted` or `null`). The advisory helper (scripts/plugin-shellcheck-advisory.sh) emits the canonical advisory text \"Shell scripts detected — shellcheck validation deferred to Tier 2\" and exits 0 — the rubric does NOT fail.",
+      "severity": "Info",
+      "description": "Tier 1 plugin installs ship without the shellcheck adapter. Rather than silently skip shell-script validation (which would hide real defects) or hard-fail the rubric (which would block adoption), this rule emits a visible advisory pointing to Tier 2 (E77-S11) as the upgrade path. The advisory text is a stable contract string referenced by TC-PLUGIN-RUBRIC-3 — do not paraphrase it.",
+      "remediation": "To enable shellcheck validation, install the shellcheck adapter (E77-S11) and declare it under `tool_adapters:` in project-config.yaml. The advisory will stop firing and the rubric will delegate shell-script linting to the adapter automatically.",
+      "references": ["FR-408", "TC-PLUGIN-RUBRIC-3", "ADR-089"]
+    }
+  ]
+}

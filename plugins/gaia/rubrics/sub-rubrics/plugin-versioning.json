@@ -1,0 +1,134 @@
+{
+  "schema_version": "1.0",
+  "skill": "code",
+  "when": {
+    "project_kind": "claude-code-plugin"
+  },
+  "metadata": {
+    "title": "Tier 3 plugin-versioning sub-rubric + adapter category enum hygiene",
+    "story": "E78-S6",
+    "fr": ["FR-428", "FR-429"],
+    "adr": ["ADR-079", "ADR-082", "ADR-087", "ADR-088"],
+    "description": "Semver bump-rule rubric and adapter.schema.json category-enum hygiene rules for /gaia-review-code. Activates only when project-config.yaml declares project_kind: claude-code-plugin (the first project_kind-conditional contract-versioning rubric per ADR-087). Layer 2 (sub-rubric) of the four-layer rubric composition (base + sub + regime + project) per ADR-079 + ADR-088. The composite pre-deploy gate (ADR-082) maps any non-APPROVE composite verdict — which includes the upstream UNVERIFIED → BLOCKED collapse — to deploy BLOCKED. NOTE on skill collision coordination: this sub-rubric and `plugin-code.json` both target skill=`code`. Per RFC 7396 array-replace semantics in rubric-merger.sh, the lexicographically-last sub-rubric's `severity_rules` array replaces all earlier ones. To avoid losing the plugin-code rules under skill=code, this rubric (which sorts after `plugin-code` in LC_ALL=C alpha order) prepends the three plugin-code rules verbatim before the seven plugin-versioning rules. The three carried-over rules are kept byte-identical to plugin-code.json — when plugin-code.json changes, this file MUST be updated to match (a tech-debt finding has been filed for an automated coordination check).",
+    "bump_rule_mapping": {
+      "skill_description_changed": "minor",
+      "skill_removed": "major",
+      "command_or_agent_removed_or_renamed": "major",
+      "manifest_schema_changed": "major",
+      "frontmatter_required_field_added": "major",
+      "bug_fix": "patch"
+    },
+    "adapter_category_canonical_enum": {
+      "value_count": 14,
+      "values": [
+        "linter",
+        "formatter",
+        "type-checker",
+        "sast",
+        "secret-scan",
+        "dep-audit",
+        "dast",
+        "e2e-runner",
+        "perf-tool",
+        "a11y-scanner",
+        "mobile-static",
+        "mobile-dynamic",
+        "device-farm",
+        "deploy"
+      ],
+      "source": "gaia-public/plugins/gaia/scripts/adapters/_schema/adapter.schema.json#/properties/category/enum"
+    }
+  },
+  "severity_rules": [
+    {
+      "id": "plugin-code-coverage-default-threshold",
+      "category": "coverage",
+      "pattern": "Plugin file with executable code reports line coverage below 80% (after applying any plugin-code.coverage_allowlist overrides from project-config.yaml).",
+      "severity": "High",
+      "description": "Plugin projects default to 80% line coverage. Files below the threshold without an explicit allowlist override block merge per FR-407. Use the plugin-code.coverage_allowlist key to grant per-path exemptions with a recorded rationale.",
+      "remediation": "Either raise coverage on the offending paths to 80%, or — if the path is intentionally exempt — add an entry to plugin-code.coverage_allowlist with a threshold_percent and rationale.",
+      "references": ["FR-407", "ADR-088"]
+    },
+    {
+      "id": "plugin-code-skill-md-token-budget-warning",
+      "category": "skill-md-token-budget",
+      "pattern": "Any SKILL.md file in the plugin tree measures more than 1500 tokens (soft ceiling). Approximate tokenizer: 4 chars per token.",
+      "severity": "Medium",
+      "description": "Per NFR-PLUGIN-2, a SKILL.md exceeding 1500 tokens trips a WARNING signal. The skill is approaching the 2000-token hard ceiling; trim verbose narrative, extract reasoning into the skill's playbook, or split into focused sub-skills before further additions.",
+      "remediation": "Move long-form rationale into the playbook, prune redundant bullet lists, or split the skill along its TDD / planning / lifecycle seams. Re-measure with the same 4-chars-per-token approximation.",
+      "references": ["NFR-PLUGIN-2", "FR-407"]
+    },
+    {
+      "id": "plugin-code-skill-md-token-budget-critical",
+      "category": "skill-md-token-budget",
+      "pattern": "Any SKILL.md file in the plugin tree measures 2000 tokens or more (hard ceiling). Approximate tokenizer: 4 chars per token.",
+      "severity": "Critical",
+      "description": "Per NFR-PLUGIN-2, a SKILL.md at or above 2000 tokens MUST NOT merge. The skill exceeds the per-skill token budget that keeps Claude Code's planning context tractable. Split or trim the skill before re-running review.",
+      "remediation": "Split the skill into smaller, focused skills (one workflow per skill) or extract long narrative into the playbook. Re-measure and confirm the total drops below 2000 tokens.",
+      "references": ["NFR-PLUGIN-2", "FR-407"]
+    },
+    {
+      "id": "plugin-versioning-skill-description-changed-minor",
+      "category": "plugin-versioning",
+      "pattern": "A SKILL.md `description:` frontmatter value is modified in the diff without a corresponding minor (or higher) version bump in the plugin manifest.",
+      "severity": "High",
+      "description": "Per FR-428, changing a SKILL.md description is a contract-visible change consumed by the orchestrator's skill-discovery layer. Without a minor bump, downstream plugin consumers cannot pin against the new behaviour.",
+      "remediation": "Either revert the description change OR bump the plugin manifest minor version (e.g., 1.4.x -> 1.5.0) in the same PR.",
+      "references": ["FR-428", "ADR-087", "ADR-079"]
+    },
+    {
+      "id": "plugin-versioning-skill-removed-major",
+      "category": "plugin-versioning",
+      "pattern": "A SKILL.md file is removed from the diff without a corresponding major version bump in the plugin manifest.",
+      "severity": "Critical",
+      "description": "Per FR-428, removing a skill is a breaking contract change. Plugin consumers depending on the removed skill will fail at runtime. A major bump is mandatory.",
+      "remediation": "Either keep the skill (mark deprecated for one cycle) OR bump the plugin manifest major version (e.g., 1.x -> 2.0) in the same PR.",
+      "references": ["FR-428", "ADR-087"]
+    },
+    {
+      "id": "plugin-versioning-command-or-agent-removed-or-renamed-major",
+      "category": "plugin-versioning",
+      "pattern": "A command file under `commands/` or an agent file under `agents/` is removed or renamed in the diff without a corresponding major version bump in the plugin manifest.",
+      "severity": "Critical",
+      "description": "Per FR-428, removing or renaming a command/agent breaks every consumer that invokes it by name. A major bump is mandatory; renames are equivalent to remove + add for compatibility purposes.",
+      "remediation": "Either keep the original command/agent name as a deprecation alias for one cycle OR bump the plugin manifest major version in the same PR.",
+      "references": ["FR-428", "ADR-087"]
+    },
+    {
+      "id": "plugin-versioning-manifest-schema-changed-major",
+      "category": "plugin-versioning",
+      "pattern": "The plugin manifest schema (`manifest.yaml` shape, required fields, or value vocabulary) is changed in the diff without a corresponding major version bump.",
+      "severity": "Critical",
+      "description": "Per FR-428, manifest schema changes invalidate consumer parsing logic. A major bump is mandatory.",
+      "remediation": "Either keep the existing manifest shape (additive, optional fields only) OR bump the plugin manifest major version in the same PR.",
+      "references": ["FR-428", "ADR-087"]
+    },
+    {
+      "id": "plugin-versioning-frontmatter-required-field-added-major",
+      "category": "plugin-versioning",
+      "pattern": "A required field is added to a frontmatter contract (e.g., `story-template.md`, `plugin-frontmatter-validator` ruleset) in the diff without a corresponding major version bump.",
+      "severity": "Critical",
+      "description": "Per FR-428, adding a required frontmatter field breaks every existing artifact that does not yet carry it. A major bump is mandatory; additive optional fields are not flagged.",
+      "remediation": "Either make the new field optional (with a sensible default) OR bump the plugin manifest major version in the same PR.",
+      "references": ["FR-428", "ADR-087"]
+    },
+    {
+      "id": "plugin-versioning-bug-fix-patch",
+      "category": "plugin-versioning",
+      "pattern": "The diff contains only bug fixes (no contract changes — no SKILL.md description edits, no removed skills/commands/agents, no manifest schema changes, no frontmatter required-field additions). The rubric infers a patch bump is sufficient.",
+      "severity": "Info",
+      "description": "Per FR-428, a bug-fix-only PR does not require a major or minor bump. The patch level is sufficient. This rule is advisory — emitted as Info to document the inferred bump level for transparency.",
+      "remediation": "Apply a patch bump (e.g., 1.4.1 -> 1.4.2) in the plugin manifest. No higher bump is required.",
+      "references": ["FR-428", "ADR-087"]
+    },
+    {
+      "id": "plugin-versioning-adapter-category-unknown-warning",
+      "category": "adapter-schema-hygiene",
+      "pattern": "An `adapter.json` file declares a `category` value that is not in the 14-value canonical enum defined at `adapters/_schema/adapter.schema.json` (`linter`, `formatter`, `type-checker`, `sast`, `secret-scan`, `dep-audit`, `dast`, `e2e-runner`, `perf-tool`, `a11y-scanner`, `mobile-static`, `mobile-dynamic`, `device-farm`, `deploy`).",
+      "severity": "Medium",
+      "description": "Per FR-429 and threat model T-39 / SR-35, an unvetted category value sneaking into the registry undermines tool-selection precedence (ADR-078) and represents a supply-chain risk surface. The hygiene check fires as a WARNING; the adapter author either picks an in-enum value or proposes an enum extension via a separate PR.",
+      "remediation": "Pick a category from the 14-value canonical enum, OR open a follow-up PR that extends `adapter.schema.json#/properties/category/enum` with rationale (and update this rubric's `metadata.adapter_category_canonical_enum.values` to match).",
+      "references": ["FR-429", "ADR-078", "ADR-087"]
+    }
+  ]
+}

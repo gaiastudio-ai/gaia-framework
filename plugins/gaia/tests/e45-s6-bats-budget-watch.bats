@@ -82,10 +82,15 @@ _source_budget_watch_lib() {
   [ "$status" -ne 0 ]
 }
 
-@test "bats_budget_watch_check rejects missing --threshold-seconds" {
+@test "bats_budget_watch_check accepts no --threshold-seconds (FR-419 defaults)" {
+  # E77-S16 / FR-419 amends the original "missing --threshold-seconds is an
+  # error" contract: when no threshold flag is passed, the wrapper now
+  # applies the canonical FR-419 defaults (soft=270, hard=480) and runs the
+  # inner command in advisory dual-threshold mode. This preserves single-
+  # threshold callers (they still pass --threshold-seconds explicitly) while
+  # making the no-flag path useful for ad-hoc local invocations.
   run "$BUDGET_WATCH" -- /bin/sh -c 'exit 0'
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"threshold-seconds"* ]]
+  [ "$status" -eq 0 ]
 }
 
 @test "bats_budget_watch_check rejects missing -- separator" {

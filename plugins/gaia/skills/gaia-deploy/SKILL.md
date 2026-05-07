@@ -70,13 +70,25 @@ Invoke `scripts/deploy-dispatch.sh --env <env> --version <ver> --output-dir evid
 
 ### Phase 3 — Health-check
 
-Invoke `scripts/health-check.sh --url <url> --timeout <secs> --output-dir evidence/deploy/`. The script polls the target URL with exponential backoff (2s initial, capped at 10s) until HTTP 2xx or timeout. Writes `evidence/deploy/health-check.json` with `status`, `attempts`, `duration_seconds`. Timeout → BLOCKED with remediation guidance (AC4).
+Invoke `scripts/health-check.sh --mode <poll|skip> --url <url> --timeout <secs> --output-dir evidence/deploy/`. Behavior is driven by `health_check.mode` in project-config.yaml (default `poll` — backward-compatible per FR-425, E78-S3):
+
+- `mode: poll` (default) — polls the target URL with exponential backoff (2s initial, capped at 10s) until HTTP 2xx or timeout. Writes `evidence/deploy/health-check.json` with `status`, `attempts`, `duration_seconds`. Timeout → BLOCKED with remediation guidance (AC4).
+- `mode: skip` — bypasses the poll loop entirely. Writes `evidence/deploy/health-check.json` with `{status: "skipped", mode: "skip", reason: "configured skip"}` so the audit trail records that the skip was intentional. Use this for projects without a reachable health-check endpoint (e.g., marketplace-published plugins).
+
+Any other value rejected at config-load time with an actionable error listing the valid options. Schema enforcement (FR-425, AC5) lives in `project-config.schema.json` under `definitions.healthCheck`.
 
 ### Phase 4 — Post-deploy smoke
 
 Invoke `scripts/smoke-orchestrate.sh --suites-file <path> --target-url <url> --output-dir evidence/smoke/`. Suites declared in `deployment.smoke_suites[]` are invoked in **declared order** against the deployed environment URL (AC5, AC7). Each suite returns a verdict (APPROVE | REQUEST_CHANGES | BLOCKED) recorded in `evidence/smoke/<suite>.json`.
 
 `--skip-smoke` short-circuits this phase, emits a `WARNING`, and writes `_skip-smoke.json` to evidence (AC14).
+
+**Empty `smoke_suites` / manual-checklist mode (E78-S5, FR-427):** When the resolved deployment configuration provides no smoke suites — either `deployment.smoke_suites: []` or `distribution.channels[].smoke_test.mode: manual-checklist` — the smoke phase MUST NOT yield BLOCKED. `smoke-orchestrate.sh` detects two equivalent paths:
+
+- An empty `--suites-file` (zero non-blank, non-comment lines), or
+- An explicit `--mode manual-checklist` flag.
+
+In either case the script writes `evidence/smoke/manual-checklist.json` with verdict `APPROVE` plus metadata (`mode`, `checklist_source`, `tester_acknowledgement`, `created_at` ISO-8601) and exits 0. Pass `--checklist-source <path>` to record the manual checklist document path; defaults to `"none"`. Use this path for plugins published to a marketplace where automated smoke suites are not applicable but a human signs off on a manual checklist.
 
 The default smoke runner invokes the matching action skill via the Skill tool. Test seam: `GAIA_DEPLOY_SMOKE_RUNNER` overrides the runner with a script that takes `<suite> <target-url> <output-dir>` and prints the verdict.
 

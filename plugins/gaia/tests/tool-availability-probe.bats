@@ -305,3 +305,176 @@ EOF
   [ "$status" -eq 1 ]
   echo "$output" | jq -e '.state == "ran_and_errored"' >/dev/null
 }
+
+# --- E77-S3 / FR-405 / ADR-089: tri-state tool-availability semantics ---
+#
+# The new tri-state mode is opted-in via --tool <name> --config <project-config.yaml>.
+# Without --tool, the legacy single-adapter probe behaviour is unchanged (AC6).
+#
+# Three states classified from the project-config.yaml `tool_adapters:` block:
+#   - omitted  : no key for <name>            -> exit 0, no JSON, no advisory output (AC1)
+#   - null     : key present, value is `null` -> JSON {probe_state:"null", severity:"WARNING", ...} (AC2)
+#   - declared : key present, value is a map  -> probe; on missing binary emit
+#                JSON {probe_state:"declared", severity:"WARNING", ...} (AC3)
+#                On binary present: {probe_state:"declared", severity:null, available:true} (AC4)
+
+# write_project_config <path> <project_kind> <body>
+write_project_config() {
+  local path="$1"
+  local kind="$2"
+  local body="$3"
+  cat > "$path" <<EOF
+project_kind: $kind
+$body
+EOF
+}
+
+# --- AC1 / TC-PLUGIN-PROBE-1: omitted ---
+
+@test "probe (E77-S3, AC1): omitted tool emits no output and exits 0" {
+  local cfg="$TEST_TMP/project-config.yaml"
+  write_project_config "$cfg" "claude-code-plugin" "tool_adapters:
+  eslint: null"
+
+  run "$SCRIPT" --tool shellcheck --config "$cfg"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# --- AC2 / TC-PLUGIN-PROBE-2: null ---
+
+@test "probe (E77-S3, AC2): null + binary absent -> WARNING advisory" {
+  local cfg="$TEST_TMP/project-config.yaml"
+  write_project_config "$cfg" "claude-code-plugin" "tool_adapters:
+  not-a-real-binary-xyz: null"
+
+  run "$SCRIPT" --tool not-a-real-binary-xyz --config "$cfg"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.probe_state == "null"' >/dev/null
+  echo "$output" | jq -e '.severity == "WARNING"' >/dev/null
+  echo "$output" | jq -e '.available == false' >/dev/null
+  echo "$output" | jq -e '.message | ascii_downcase | contains("advisory")' >/dev/null
+}
+
+@test "probe (E77-S3, AC2): null + binary present -> available" {
+  local fake_path; fake_path="$(fake_tool_dir myfake 0)"
+  local cfg="$TEST_TMP/project-config.yaml"
+  write_project_config "$cfg" "claude-code-plugin" "tool_adapters:
+  myfake: null"
+
+  PATH="$fake_path:$PATH" run "$SCRIPT" --tool myfake --config "$cfg"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.probe_state == "null"' >/dev/null
+  echo "$output" | jq -e '.available == true' >/dev/null
+  echo "$output" | jq -e '.severity == null' >/dev/null
+}
+
+# --- AC3 / TC-PLUGIN-PROBE-3: declared, binary absent -> WARNING (not CRITICAL) ---
+
+@test "probe (E77-S3, AC3): declared + binary absent -> WARNING (not CRITICAL)" {
+  local cfg="$TEST_TMP/project-config.yaml"
+  write_project_config "$cfg" "claude-code-plugin" "tool_adapters:
+  not-a-real-binary-xyz:
+    path: /opt/missing/not-a-real-binary-xyz"
+
+  run "$SCRIPT" --tool not-a-real-binary-xyz --config "$cfg"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.probe_state == "declared"' >/dev/null
+  echo "$output" | jq -e '.severity == "WARNING"' >/dev/null
+  echo "$output" | jq -e '.severity != "CRITICAL"' >/dev/null
+  echo "$output" | jq -e '.available == false' >/dev/null
+}
+
+# --- AC4: declared + binary present -> available, no warning ---
+
+@test "probe (E77-S3, AC4): declared + binary present -> available, severity null" {
+  local fake_path; fake_path="$(fake_tool_dir myfake 0)"
+  local cfg="$TEST_TMP/project-config.yaml"
+  write_project_config "$cfg" "claude-code-plugin" "tool_adapters:
+  myfake:
+    path: /opt/myfake"
+
+  PATH="$fake_path:$PATH" run "$SCRIPT" --tool myfake --config "$cfg"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.probe_state == "declared"' >/dev/null
+  echo "$output" | jq -e '.available == true' >/dev/null
+  echo "$output" | jq -e '.severity == null' >/dev/null
+}
+
+# --- AC5: tri-state semantics generalize across project_kind ---
+
+@test "probe (E77-S3, AC5): tri-state generalizes -- web-app + null + absent -> WARNING" {
+  local cfg="$TEST_TMP/project-config.yaml"
+  write_project_config "$cfg" "web-app" "tool_adapters:
+  not-a-real-binary-xyz: null"
+
+  run "$SCRIPT" --tool not-a-real-binary-xyz --config "$cfg"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.probe_state == "null"' >/dev/null
+  echo "$output" | jq -e '.severity == "WARNING"' >/dev/null
+}
+
+@test "probe (E77-S3, AC5): tri-state generalizes -- backend-service + declared + absent -> WARNING" {
+  local cfg="$TEST_TMP/project-config.yaml"
+  write_project_config "$cfg" "backend-service" "tool_adapters:
+  not-a-real-binary-xyz:
+    path: /opt/missing"
+
+  run "$SCRIPT" --tool not-a-real-binary-xyz --config "$cfg"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.probe_state == "declared"' >/dev/null
+  echo "$output" | jq -e '.severity == "WARNING"' >/dev/null
+}
+
+@test "probe (E77-S3, AC5): tri-state generalizes -- mobile-app + omitted -> no output" {
+  local cfg="$TEST_TMP/project-config.yaml"
+  write_project_config "$cfg" "mobile-app" "tool_adapters:
+  eslint: null"
+
+  run "$SCRIPT" --tool shellcheck --config "$cfg"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# --- AC6: backward compatibility — adapter-dir mode unchanged ---
+
+@test "probe (E77-S3, AC6): legacy adapter-dir mode JSON shape unchanged (no probe_state, no severity)" {
+  local fake_path; fake_path="$(fake_tool_dir eslint 0)"
+  write_adapter_json "$ADAPTER_DIR/adapter.json"
+  write_run_sh "$ADAPTER_DIR/run.sh" 0
+  printf 'src/app.ts\n' > "$FILE_LIST"
+
+  PATH="$fake_path:$PATH" run "$SCRIPT" --adapter-dir "$ADAPTER_DIR" --file-list "$FILE_LIST"
+  [ "$status" -eq 0 ]
+  # Legacy four-key shape preserved exactly. No new keys leak into adapter-dir mode.
+  echo "$output" | jq -e '(keys | sort) == (["error_detail","failure_kind","skip_reason","state"])' >/dev/null
+  echo "$output" | jq -e 'has("probe_state") | not' >/dev/null
+  echo "$output" | jq -e 'has("severity") | not' >/dev/null
+}
+
+# --- mutual exclusivity ---
+
+@test "probe (E77-S3): --tool requires --config" {
+  run -1 --separate-stderr "$SCRIPT" --tool shellcheck
+  [[ "$stderr" == *"--config"* ]]
+}
+
+@test "probe (E77-S3): --tool and --adapter-dir are mutually exclusive" {
+  local cfg="$TEST_TMP/project-config.yaml"
+  write_project_config "$cfg" "claude-code-plugin" "tool_adapters: {}"
+  run -1 --separate-stderr "$SCRIPT" \
+    --tool shellcheck --config "$cfg" \
+    --adapter-dir "$ADAPTER_DIR" --file-list "$FILE_LIST"
+  [[ "$stderr" == *"mutually exclusive"* || "$stderr" == *"--adapter-dir"* ]]
+}
+
+@test "probe (E77-S3): --config without tool_adapters block treats every tool as omitted" {
+  local cfg="$TEST_TMP/project-config.yaml"
+  cat > "$cfg" <<'EOF'
+project_kind: claude-code-plugin
+EOF
+
+  run "$SCRIPT" --tool shellcheck --config "$cfg"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

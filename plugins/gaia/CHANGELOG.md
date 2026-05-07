@@ -3,38 +3,6 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.135.0] — 2026-05-06
-
-### Added
-
-- **Sprint-37** (174 pts, 34 stories): GAIA Review System v2 foundation + critical-gaps + configuration system + naming reorg
-  - E66 Foundation: review-common shared library, agent-overlay.sh, verdict-resolver.sh parameterization, tool-availability-probe.sh three-state probe, /gaia-review-all composite verdict GATING (ADR-082), gaia-security-review V2 reference migration, evidence-judgment-parity bats across 12 verdict-producing skills
-  - E67 Critical Gaps: /gaia-review-test Phase 3A scripts (smell-detector, flakiness-analyzer, fixture-analyzer, tag-conformance-detector), /gaia-test-automate skeleton-fix + placeholder-test-detector + coverage-delta verdict input, /gaia-review-qa Phase 3C TC generation + project-config-driven test execution, /gaia-review-security privacy/data-protection scanners (PII detector, data-handling lint, retention-policy check)
-  - E68 Configuration System: project-config schema extension (11 new top-level sections), layered rubric loader + rubric-merger.sh + rubric.schema.json, six base rubrics + nine regime rubrics (GDPR/HIPAA/PCI-DSS/SOX/CCPA/SOC2/ISO-27001/WCAG-AA/WCAG-AAA)
-  - E69 Naming & Reorg: 8 review commands renamed to gaia-{verb}-{noun} canonical form with one-sprint deprecation aliases, /gaia-review-a11y three-phase reorganization, /gaia-test-strategy collapse, utility reviews wired as sub-routines, /gaia-perf-deepdive anytime variant rename
-- **Sprint-38** (271 pts, 48 stories): Tool Adapter Framework + Configuration UX + Action Skills + Deployment-Phase + Mobile Platform + Polish
-  - E70 Tool Adapter Framework: adapter pattern formalization (adapter.schema.json + run-contract), 5-tool migration (Semgrep/gitleaks/radon/gocyclo/eslint-plugin-sonarjs) + backward-compat aliases, SonarQube adapter (container profile), OWASP Dependency-Check adapter, /gaia-list-tools + /gaia-tool-info + /gaia-validate-rubric query skills, probe-state-to-check-status helper
-  - E71 Configuration UX: /gaia-init greenfield conversational setup, /gaia-brownfield detection-driven config extension, /gaia-config-* editor family (env/test/tool/compliance/stack/rubric/show/validate), /gaia-config-ci --regenerate backup-and-prompt UX
-  - E72 Action Skills: /gaia-test-run manual any-environment runner, /gaia-test-automate sub-commands (--status/--add-scenario/--scaffold), CS-NNN custom-scenario tracking, per-stack tag conventions + tag-conformance-detector
-  - E73 Deployment-Phase Skills: /gaia-test-e2e (Playwright + Cypress), /gaia-test-perf (k6 + Lighthouse), /gaia-test-dast (OWASP ZAP), /gaia-test-a11y (axe-core + pa11y + Lighthouse), /gaia-deploy Pattern A skill
-  - E74 Mobile Platform Support (11 stories): project-config schema extension (platforms + device_targets), four mobile stacks (swift/kotlin/react-native/flutter), base mobile.json + sub-rubrics, apple-app-store + google-play-store + COPPA regime rubrics, seven mobile static adapters, /gaia-review-mobile skill, mobile dynamic adapters + device-farm dispatch (detox/maestro/appium/xcuitest/espresso + Firebase/BrowserStack/Sauce Labs), /gaia-test-mobile-e2e + /gaia-test-device-matrix, /gaia-config-platform + /gaia-config-device-target editors
-  - E75 Polish: BOUNDARIES.md top-level scope-edges document, parity bats per skill, persona-overlay agent-wiring documentation, framework README updates
-
-### Fixed
-
-- (E55-S9) /gaia-dev-story promotion-chain ABSENT false-flag — config-discovery ladder mirrors resolve-config.sh
-- (E55-S10) post-step push-verification added to /gaia-dev-story finalize
-- (E54-S6) story-template enforces 3-column Review Gate at validation
-- (E64-S3..S7) dev-story tooling cleanup — transition-story-status path fixes, sharded-layout resolver, EXIT/INT/TERM trap, orphan-tmp sweep, lint-err tempfile registration
-- (E53-S234) document non-git docs/ workspace + degrade git ops gracefully
-- (E53-S235..S247) docs reorganization continued — H3 sub-sharding, code-block-aware H2 detection, classify cluster-19 legacy files, type-table polish, ADR-069/FR-399 reconcile, monolith-vs-shard sync contract, cascade-skill auto-reshard, broken markdown link cleanup
-- (CI) bump bats-tests timeout 5m → 8m to absorb sprint-37/sprint-38 suite growth (3300+ tests)
-
-### Maintenance
-
-- 60 distinct stories shipped across two sprints; 65 individual feature commits + 5 hotfix PRs (#419, #427, #433, #455, #477)
-- Tech-debt resolved: 18 items closed across both sprints (sprint-37: 12, sprint-38: 6); debt ratio reduced from 18% (sprint-36 end) to 13% (sprint-38 end)
-
 ## [1.134.1] — 2026-05-04
 
 ### Fixed

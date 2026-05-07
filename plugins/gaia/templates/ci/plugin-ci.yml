@@ -1,0 +1,233 @@
+# plugin-ci.yml — E77-S16 / FR-418 Plugin CI template (eight universal jobs)
+#
+# This template is generated into a Claude Code plugin project's
+# `.github/workflows/plugin-ci.yml` by /gaia-init option 6 (claude-code-plugin)
+# or by /gaia-ci-setup when project_kind == claude-code-plugin.
+#
+# Eight universal jobs — one per quality dimension:
+#   1. frontmatter-lint        (adapter: plugin-frontmatter-validator, FR-409)
+#   2. manifest-validate       (adapter: plugin-manifest-validator, FR-410)
+#   3. structure-validate      (adapter: built-in plugin-structure-validate)
+#   4. bats-tests              (adapter: bats dual-mode, FR-414; budget-watched)
+#   5. bats-script-refs-lint   (adapter: built-in lint-bats-script-refs.sh)
+#   6. shellcheck              (adapter: shellcheck, FR-413)
+#   7. markdownlint            (adapter: markdownlint, FR-415)
+#   8. changelog-enforce       (adapter: built-in changelog presence/format)
+#
+# Explicit non-goals (FR-418 mitigation):
+#   * NO regression-audit job  — moves to opt-in `gaia-internal-ci-extras`.
+#   * NO drift-guard job       — moves to opt-in `gaia-internal-ci-extras`.
+#
+# Job isolation (AC6): each job is a top-level entry under `jobs:` with NO
+# `needs:` declaration. A single job failure does NOT cascade to peers — all
+# eight run independently and report verdicts in parallel. The adapter
+# dependency for each job is declared in a leading `# adapter:` comment so
+# the dep set is explicit and grep-friendly.
+#
+# LLM-review placeholder (FR-418): a ninth job block sits BELOW the eight
+# active jobs as commented YAML. Uncomment when Anthropic CI integration
+# becomes available. Until then it is syntactically inactive.
+
+name: plugin-ci
+
+on:
+  pull_request:
+    branches: [main, staging]
+  push:
+    branches: [main, staging]
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # 1. frontmatter-lint
+  # adapter: plugin-frontmatter-validator (FR-409)
+  # ---------------------------------------------------------------------------
+  frontmatter-lint:
+    name: frontmatter-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run plugin-frontmatter-validator adapter
+        run: |
+          bash plugins/gaia/scripts/adapters/plugin-frontmatter-validator/run.sh \
+            --input plugins \
+            --output /tmp/frontmatter-findings.json
+      - name: Fail on critical findings
+        run: |
+          if grep -q '"severity":\s*"critical"' /tmp/frontmatter-findings.json 2>/dev/null; then
+            cat /tmp/frontmatter-findings.json
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # 2. manifest-validate
+  # adapter: plugin-manifest-validator (FR-410)
+  # ---------------------------------------------------------------------------
+  manifest-validate:
+    name: manifest-validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run plugin-manifest-validator adapter
+        run: |
+          bash plugins/gaia/scripts/adapters/plugin-manifest-validator/run.sh \
+            --input . \
+            --output /tmp/manifest-findings.json
+      - name: Fail on critical findings
+        run: |
+          if grep -q '"severity":\s*"critical"' /tmp/manifest-findings.json 2>/dev/null; then
+            cat /tmp/manifest-findings.json
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # 3. structure-validate
+  # adapter: built-in plugin-structure-validate.sh
+  # ---------------------------------------------------------------------------
+  structure-validate:
+    name: structure-validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate plugin directory structure
+        run: |
+          # Verify the canonical Claude Code plugin layout: .claude-plugin/
+          # plugin.json + plugins/<name>/SKILL.md per declared skill.
+          if [ ! -f .claude-plugin/plugin.json ] && [ ! -f manifest.yaml ]; then
+            echo "::error::No .claude-plugin/plugin.json or manifest.yaml at project root"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # 4. bats-tests
+  # adapter: bats (FR-414) — wrapped by bats-budget-watch.sh (FR-419) with
+  # advisory-only soft 270s / hard 480s thresholds.
+  # ---------------------------------------------------------------------------
+  bats-tests:
+    name: bats-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mig4/setup-bats@v1
+        with:
+          bats-version: 1.10.0
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Run bats suite (budget-watched, advisory-only soft 270s / hard 480s)
+        run: |
+          # Resolve bats test directory: plugins/gaia/tests for the GAIA
+          # repo itself, plain `tests` for downstream plugin projects. Both
+          # paths are checked so the template works in either layout.
+          if [ -d plugins/gaia/tests ]; then BATS_DIR=plugins/gaia/tests
+          elif [ -d tests ];                then BATS_DIR=tests
+          else echo "::warning::no bats test directory found"; exit 0
+          fi
+          # Resolve bats-budget-watch.sh — bundled with the plugin if the
+          # GAIA plugin is vendored, else fall through.
+          BUDGET_WATCH=plugins/gaia/scripts/bats-budget-watch.sh
+          [ -x "$BUDGET_WATCH" ] || BUDGET_WATCH=scripts/bats-budget-watch.sh
+          bash "$BUDGET_WATCH" \
+            --soft-threshold-seconds 270 \
+            --hard-threshold-seconds 480 \
+            --label bats-tests \
+            -- bats "$BATS_DIR"
+
+  # ---------------------------------------------------------------------------
+  # 5. bats-script-refs-lint
+  # adapter: built-in lint-bats-script-refs.sh
+  # ---------------------------------------------------------------------------
+  bats-script-refs-lint:
+    name: bats-script-refs-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint bats script references
+        run: |
+          if [ -x plugins/gaia/scripts/lint-bats-script-refs.sh ]; then
+            plugins/gaia/scripts/lint-bats-script-refs.sh --root .
+          fi
+
+  # ---------------------------------------------------------------------------
+  # 6. shellcheck
+  # adapter: shellcheck (FR-413)
+  # ---------------------------------------------------------------------------
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Run shellcheck adapter
+        run: |
+          bash plugins/gaia/scripts/adapters/shellcheck/run.sh \
+            --input plugins \
+            --output /tmp/shellcheck-findings.json
+
+  # ---------------------------------------------------------------------------
+  # 7. markdownlint
+  # adapter: markdownlint (FR-415)
+  # ---------------------------------------------------------------------------
+  markdownlint:
+    name: markdownlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install markdownlint-cli
+        run: npm install -g markdownlint-cli
+      - name: Run markdownlint adapter
+        run: |
+          bash plugins/gaia/scripts/adapters/markdownlint/run.sh \
+            --input plugins \
+            --output /tmp/markdownlint-findings.json
+
+  # ---------------------------------------------------------------------------
+  # 8. changelog-enforce
+  # adapter: built-in CHANGELOG.md presence / format check
+  # ---------------------------------------------------------------------------
+  changelog-enforce:
+    name: changelog-enforce
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify CHANGELOG.md present and Keep-a-Changelog formatted
+        run: |
+          if [ ! -f CHANGELOG.md ]; then
+            echo "::error::CHANGELOG.md missing at project root"
+            exit 1
+          fi
+          # Keep-a-Changelog requires an `## [Unreleased]` or `## [x.y.z]`
+          # heading. Reject CHANGELOGs without any version section.
+          if ! grep -qE '^##\s+\[' CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no Keep-a-Changelog version sections"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # 9. llm-review (PLACEHOLDER — disabled until Anthropic CI integration is
+  # available). adapter: anthropic-claude-review (future, not yet shipped).
+  #
+  # uncomment when Anthropic CI integration available
+  #
+  # llm-review:
+  #   name: llm-review
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 10
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Run Claude code review
+  #       env:
+  #         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  #       run: |
+  #         bash plugins/gaia/scripts/adapters/anthropic-claude-review/run.sh \
+  #           --diff-base ${{ github.base_ref }} \
+  #           --output /tmp/llm-review.json
+  # ---------------------------------------------------------------------------

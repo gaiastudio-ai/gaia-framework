@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "skill": "qa",
+  "when": {
+    "project_kind": "claude-code-plugin"
+  },
+  "metadata": {
+    "title": "Tier 2 plugin-qa sub-rubric",
+    "story": "E77-S15",
+    "fr": "FR-417",
+    "adr": ["ADR-088"],
+    "tc_refs": ["TC-PLUGIN-RUBRIC-7"],
+    "description": "QA-review rules calibrated for Claude Code plugin projects. Activates only when project-config.yaml declares project_kind: claude-code-plugin. Layer 2 (sub-rubric) of the four-layer rubric composition (base + sub + regime + project) per ADR-079 + ADR-088. Owns the plugin-specific lint hand-offs (markdown, yaml, JSON-schema) and the CHANGELOG.md enforcement rule that requires every component contract change to ship with a corresponding CHANGELOG entry. Lint hand-offs delegate enforcement to the markdownlint, yamllint, and jsonschema adapters (E77-S13) when declared in project-config.yaml `tool_adapters:`; absent adapters degrade to advisory findings via the tri-state tool-availability probe (ADR-089).",
+    "lint_handoffs": {
+      "markdown": {
+        "adapter": "markdownlint",
+        "scope": "plugin docs and SKILL.md surface",
+        "advisory_when_absent": true,
+        "description": "Markdown lint hand-off — runs the markdownlint adapter (E77-S13) over plugin docs and SKILL.md files. When the adapter is absent from tool_adapters, the rule degrades to an advisory pointing at the upgrade path."
+      },
+      "yaml": {
+        "adapter": "yamllint",
+        "scope": "manifest.yaml, frontmatter, project-config.yaml",
+        "advisory_when_absent": true,
+        "description": "YAML lint hand-off — runs the yamllint adapter (E77-S13) over manifest.yaml, project-config.yaml, and any frontmatter blocks reachable from the plugin tree."
+      },
+      "jsonschema": {
+        "adapter": "jsonschema",
+        "scope": "rubric files, adapter.json, manifest.json",
+        "advisory_when_absent": true,
+        "description": "JSON-Schema validation hand-off — runs the jsonschema adapter (E77-S13) against rubric files, adapter.json descriptors, and manifest.json files. Catches schema violations missed by ad-hoc parsers."
+      }
+    },
+    "changelog_enforcement": {
+      "scope": "every component contract change",
+      "severity": "Medium",
+      "description": "Per FR-417 — every change to a plugin component contract (skill SKILL.md frontmatter, adapter.json, manifest.yaml, schema files) MUST ship with a corresponding entry in CHANGELOG.md. The check is detected by inspecting the staged diff: when a tracked contract file changes and CHANGELOG.md is unchanged in the same commit/PR, the rule fires WARNING-class (Medium)."
+    }
+  },
+  "severity_rules": [
+    {
+      "id": "plugin-qa-markdown-lint-handoff",
+      "category": "lint-handoff",
+      "pattern": "Plugin tree contains markdown files (SKILL.md, README.md, docs under plugins/<name>/) and the markdownlint adapter is declared in project-config.yaml `tool_adapters:`. The plugin-qa rubric delegates lint enforcement to the adapter via the tri-state probe (ADR-089). When the adapter is absent (omitted or null), the rule degrades to an Info-class advisory pointing at the markdownlint adapter (E77-S13) as the upgrade path.",
+      "severity": "Medium",
+      "description": "Markdown lint hand-off — plugin docs and SKILL.md files MUST pass markdownlint when the adapter is available. Failure to lint clean is a WARNING-class finding (Medium severity) per FR-417. Authors should run the adapter locally before merge.",
+      "remediation": "Install the markdownlint adapter (E77-S13) and declare it under `tool_adapters:` in project-config.yaml. Run the adapter over the plugin tree and fix any reported violations.",
+      "references": ["FR-417", "ADR-088", "ADR-089"]
+    },
+    {
+      "id": "plugin-qa-yaml-lint-handoff",
+      "category": "lint-handoff",
+      "pattern": "Plugin tree contains YAML files (manifest.yaml, project-config.yaml, frontmatter blocks in SKILL.md / story files) and the yamllint adapter is declared in project-config.yaml `tool_adapters:`. The plugin-qa rubric delegates lint enforcement to the adapter via the tri-state probe (ADR-089).",
+      "severity": "Medium",
+      "description": "YAML lint hand-off — plugin manifest, project-config, and frontmatter blocks MUST pass yamllint when the adapter is available. Failure to lint clean is a WARNING-class finding (Medium severity) per FR-417.",
+      "remediation": "Install the yamllint adapter (E77-S13) and declare it under `tool_adapters:` in project-config.yaml. Fix any reported indentation, key-duplicate, or trailing-whitespace violations.",
+      "references": ["FR-417", "ADR-088", "ADR-089"]
+    },
+    {
+      "id": "plugin-qa-jsonschema-validation-handoff",
+      "category": "lint-handoff",
+      "pattern": "Plugin tree contains JSON files governed by a JSON Schema (rubric files under rubrics/, adapter.json descriptors under scripts/adapters/, manifest.json) and the jsonschema adapter is declared in project-config.yaml `tool_adapters:`. The plugin-qa rubric delegates schema validation to the adapter via the tri-state probe (ADR-089).",
+      "severity": "Medium",
+      "description": "JSON-Schema validation hand-off — every JSON file with a governing schema MUST pass schema validation when the adapter is available. Failure is a WARNING-class finding (Medium severity) per FR-417. Schema-validation discipline catches structural violations that ad-hoc parsers miss.",
+      "remediation": "Install the jsonschema adapter (E77-S13) and declare it under `tool_adapters:` in project-config.yaml. Fix any reported schema violations against the matching `$schema` URL.",
+      "references": ["FR-417", "ADR-088", "ADR-089"]
+    },
+    {
+      "id": "plugin-qa-changelog-entry-required",
+      "category": "changelog-enforcement",
+      "pattern": "A plugin component contract file changed in the staged diff (SKILL.md frontmatter, adapter.json, manifest.yaml, schemas/*.json) AND CHANGELOG.md is unchanged in the same commit / PR. The rule inspects the diff for tracked contract paths and confirms a corresponding CHANGELOG.md entry exists.",
+      "severity": "Medium",
+      "description": "Per FR-417, every component contract change MUST ship with a CHANGELOG entry under the appropriate Keep-a-Changelog section. Missing CHANGELOG entries break downstream consumers and erase the audit trail. WARNING-class finding (Medium severity).",
+      "remediation": "Add a CHANGELOG.md entry describing the contract change. Use the Keep-a-Changelog format (Added / Changed / Fixed / Deprecated / Removed / Security) and reference the story key.",
+      "references": ["FR-417", "ADR-088"]
+    }
+  ]
+}

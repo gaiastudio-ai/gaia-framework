@@ -126,6 +126,77 @@
           "uniqueItems": true
         }
       }
+    },
+    "healthCheck": {
+      "description": "Post-deploy health-check phase configuration (FR-425, E78-S3). Drives the `/gaia-deploy` Phase 3 behavior. Optional — backward compatibility is preserved when the key is omitted (resolver defaults to mode=poll, which matches pre-FR-425 behavior). The `skip` mode is intended for projects that have no reachable health-check endpoint (e.g., marketplace-published plugins) — when set, the deploy skill bypasses the poll loop and writes an audit-trail evidence entry recording the configured skip.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "description": "Health-check execution mode. `poll` (default) runs the existing exponential-backoff poll loop against `environments.<env>.url`. `skip` bypasses the poll loop entirely and records `{mode: skip, reason: \"configured skip\"}` to the evidence directory. Any value other than these two MUST be rejected at config-load time.",
+          "type": "string",
+          "enum": ["poll", "skip"],
+          "default": "poll"
+        }
+      }
+    },
+    "distributionChannel": {
+      "description": "A single distribution channel entry (FR-424, E78-S2). Declarative configuration for marketplace publishing — `type` is intentionally generic (e.g., `marketplace` rather than `github` or `npm`) so future channel types (`registry`, `cdn`, etc.) can be added to the enum without breaking existing configs. `version_file` is a flat filesystem path (NOT a JSON Pointer); the resolved deploy_adapter is responsible for reading the file and extracting `version_key` from it. `additionalProperties: false` prevents typo'd field names from silently passing validation.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "description": "Generic channel type. Intentionally NOT vendor-specific — the value is `marketplace`, not `github` or `npm`. Future types may be added to the enum without breaking existing configs.",
+          "type": "string",
+          "enum": ["marketplace"]
+        },
+        "provider": {
+          "description": "Concrete release backend identifier (e.g., `github-releases`). Free-form string; the resolved deploy_adapter interprets it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "deploy_adapter": {
+          "description": "Adapter name resolved by /gaia-deploy under plugins/gaia/scripts/adapters/<deploy_adapter>/. Documented value: `marketplace-publish` (E78-S1).",
+          "type": "string",
+          "minLength": 1
+        },
+        "repository": {
+          "description": "Target repository in `owner/repo` format. Pattern matches GitHub repository naming rules (alphanumeric, dot, hyphen, underscore, exactly one slash).",
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$"
+        },
+        "version_file": {
+          "description": "Flat filesystem path to the file holding the authoritative version (e.g., `package.json`, `manifest.yaml`). MUST NOT be a JSON Pointer — the leading `#` form (e.g., `#/version`) is rejected so the schema stays decoupled from any particular file format. The resolved deploy_adapter reads the file and extracts `version_key` from it.",
+          "type": "string",
+          "minLength": 1,
+          "not": {
+            "pattern": "^#"
+          }
+        },
+        "version_key": {
+          "description": "Key within `version_file` that holds the version value (e.g., `version`).",
+          "type": "string",
+          "minLength": 1
+        },
+        "release_notes_source": {
+          "description": "Relative file path to release notes. Conventional default: `CHANGELOG.md`.",
+          "type": "string",
+          "minLength": 1,
+          "default": "CHANGELOG.md"
+        },
+        "smoke_test": {
+          "description": "Post-deploy smoke verification mode for this channel. `manual-checklist` signals that smoke is a manual approval step rather than automated — coordinates with E78-S5 (empty `smoke_suites` handling).",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["manual-checklist"]
+            }
+          }
+        }
+      }
     }
   },
   "properties": {
@@ -312,10 +383,28 @@
       "minItems":  1,
       "uniqueItems": true
     },
+    "project_kind": {
+      "description": "Project shape identifier (FR-403, ADR-087). Foundational axis for the review / test / CI / deploy pipeline to branch behavior by project type. Documented values: claude-code-plugin, web-app, mobile-app, api, library — but the schema deliberately omits an enum constraint so the field is open-vocabulary. resolve-config.sh emits a stderr WARNING for unrecognized values (advisory, non-blocking) per ADR-087's unknown-value advisory pattern. Optional — backward compatibility is preserved when the field is omitted (no warning, no functional regression).",
+      "type": "string",
+      "minLength": 1
+    },
     "device_targets": {
       "description": "Device/OS matrix for mobile platforms (FR-RSV2-27). Keyed by platform identifier — keys SHOULD match entries in `platforms[]`; orphan keys (e.g., `device_targets.ios` when `platforms: [android]`) are flagged at the resolver layer, not the schema (open `additionalProperties` mirrors the extensibility principle on `platforms`). Each value is a `deviceTargetEntry` requiring `os_versions`, `screen_sizes`, and `form_factors` per ADR-081.",
       "type": "object",
       "additionalProperties": { "$ref": "#/definitions/deviceTargetEntry" }
-    }
+    },
+    "distribution": {
+      "description": "Plugin / artifact distribution configuration (FR-424, E78-S2). Optional — backward compatibility is preserved when the key is omitted (no functional regression). The `channels[]` array carries one or more channel entries; each entry is validated against `distributionChannel`. ADR-087 (project_kind axis) is the anchor ADR. The downstream `/gaia-deploy` adapter dispatch (E78-S4) resolves `deploy_adapter` per channel.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/distributionChannel" },
+          "minItems": 1
+        }
+      }
+    },
+    "health_check": { "$ref": "#/definitions/healthCheck" }
   }
 }

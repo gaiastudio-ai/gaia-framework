@@ -68,35 +68,56 @@ die() {
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — three-state availability probe for GAIA adapters (ADR-078).
+$SCRIPT_NAME — tool-availability probe for GAIA adapters (ADR-078, ADR-089).
 
-Usage:
+Two operating modes:
+
+(1) Adapter-dir mode (legacy / per-adapter probe, ADR-078):
   $SCRIPT_NAME --adapter-dir <path> --file-list <path>
                [--timeout <seconds>] [--config <path>]
                [--runtime-profile subprocess|container|network]
+
+(2) Tri-state mode (E77-S3 / FR-405 / ADR-089):
+  $SCRIPT_NAME --tool <name> --config <project-config.yaml>
+
   $SCRIPT_NAME --help
 
-Required:
+Required (mode 1):
   --adapter-dir <path>      Adapter directory containing adapter.json + run.sh.
   --file-list <path>        File list to feed the adapter (one path per line).
 
-Optional:
+Required (mode 2):
+  --tool <name>             Tool key as it appears under tool_adapters: in
+                            project-config.yaml.
+  --config <path>           Path to project-config.yaml (mode 2) or adapter
+                            config file (mode 1).
+
+Optional (mode 1):
   --timeout <seconds>       Override adapter.json default-timeout-seconds.
-  --config <path>           Adapter config file (forwarded to run.sh).
   --runtime-profile <prof>  subprocess | container | network. Defaults to
                             adapter.json runtime-profile.
   --help                    Show this help and exit 0.
 
-States (stdout JSON):
-  available           Tool installed, files match, run.sh exits 0.
-  expected_and_missing Tool declared in adapter.json but not on PATH.
-  ran_and_errored     run.sh exits non-zero or times out (error_detail set).
-  not_applicable      File list has no files matching adapter file-extensions
-                      (or, for project-scope adapters, file list is empty).
+Mode-1 states (stdout JSON):
+  available             Tool installed, files match, run.sh exits 0.
+  expected_and_missing  Tool declared in adapter.json but not on PATH.
+  ran_and_errored       run.sh exits non-zero or times out.
+  not_applicable        File list has no files matching adapter file-extensions.
 
-Exit codes:
+Mode-2 tri-state classification (per ADR-089):
+  omitted   No tool_adapters.<name> entry. Skip — exit 0, no output.
+  null      Entry present, value null. Probe; on missing binary emit
+            advisory WARNING. Recoverable; never CRITICAL.
+  declared  Entry present, value is a map. Probe; on missing binary emit
+            WARNING (downgrade from CRITICAL per ADR-089 calibration).
+
+Exit codes (mode 1):
   0  available | not_applicable
   1  expected_and_missing | ran_and_errored | caller error
+
+Exit codes (mode 2):
+  0  All tri-state outcomes (omitted / null / declared / available / missing).
+  1  Caller error (missing flag, malformed YAML, etc.).
 EOF
 }
 
@@ -105,6 +126,7 @@ FILE_LIST=""
 TIMEOUT_OVERRIDE=""
 CONFIG=""
 RUNTIME_PROFILE_OVERRIDE=""
+TOOL_NAME=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -123,12 +145,145 @@ while [ "$#" -gt 0 ]; do
     --runtime-profile)
       [ "$#" -ge 2 ] || die 1 "--runtime-profile requires a value"
       RUNTIME_PROFILE_OVERRIDE="$2"; shift 2 ;;
+    --tool)
+      [ "$#" -ge 2 ] || die 1 "--tool requires a name"
+      TOOL_NAME="$2"; shift 2 ;;
     -h|--help)
       usage; exit 0 ;;
     *)
       die 1 "unknown argument: $1" ;;
   esac
 done
+
+# ---------------------------------------------------------------------------
+# Mode dispatch (E77-S3 / FR-405 / ADR-089).
+# --tool selects tri-state mode; --adapter-dir selects legacy single-adapter
+# mode. They are mutually exclusive — passing both is a caller error.
+# ---------------------------------------------------------------------------
+
+if [ -n "$TOOL_NAME" ] && [ -n "$ADAPTER_DIR" ]; then
+  die 1 "--tool and --adapter-dir are mutually exclusive"
+fi
+
+if [ -n "$TOOL_NAME" ]; then
+  # Tri-state mode (ADR-089).
+  [ -n "$CONFIG" ] || die 1 "--tool requires --config <project-config.yaml>"
+  [ -f "$CONFIG" ] || die 1 "config not found: $CONFIG"
+
+  # classify_tool_adapter_entry <yaml-path> <tool-name>
+  # Stdout: one of "omitted", "null", "declared".
+  # Pure-bash deterministic parser for the narrow shape we care about:
+  #
+  #   tool_adapters:
+  #     <name>: null     # null state
+  #     <name>:          # null state (bare key, empty value)
+  #     <name>:          # declared state when followed by an indented map
+  #       path: ...
+  #
+  # The parser is intentionally minimal — yq is not assumed on PATH (NFR-RSV2-9
+  # determinism: no extra runtime deps). Comments and blank lines are skipped.
+  # Bracketed inline maps `<name>: { path: ... }` are treated as declared.
+  # Classifier. Recognised value forms for the tool key:
+  #   "<name>: null" | "<name>: ~" | "<name>:"           -> null   (unless a
+  #                                                                  deeper-
+  #                                                                  indented
+  #                                                                  child
+  #                                                                  follows;
+  #                                                                  then declared)
+  #   "<name>: { ... }"                                  -> declared
+  #   "<name>: <scalar>" (path, version-spec, etc.)      -> declared
+  #
+  # YAML trailing-comment handling: we strip "# ..." from the value side.
+  # Block-scope handling: the first column-0 key after `tool_adapters:` ends
+  # the block. Sibling keys at the same two-space indent end the current
+  # entry's child-scan window.
+  classify_tool_adapter_entry() {
+    local yaml="$1" tool="$2"
+    awk -v tool="$tool" '
+      function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+      function strip_comment(s) { sub(/[[:space:]]*#.*$/, "", s); return s }
+      BEGIN { in_block = 0; verdict = "omitted" }
+      # Skip pure-comment and blank lines.
+      /^[[:space:]]*#/ { next }
+      /^[[:space:]]*$/ { next }
+      # Enter the tool_adapters: block.
+      /^tool_adapters[[:space:]]*:/ { in_block = 1; next }
+      # New top-level key ends the block.
+      in_block && /^[^[:space:]]/ { in_block = 0 }
+      in_block {
+        re = "^[[:space:]]+" tool "[[:space:]]*:[[:space:]]*(.*)$"
+        if (match($0, re)) {
+          val = $0
+          sub("^[[:space:]]+" tool "[[:space:]]*:[[:space:]]*", "", val)
+          val = trim(strip_comment(val))
+          if (val == "" || val == "null" || val == "~") {
+            verdict = "null"
+          } else {
+            # { ... } inline map OR any scalar (path, version, etc.) -> declared.
+            verdict = "declared"
+          }
+          # Promote null -> declared if a deeper-indented child follows before
+          # the next sibling or end-of-block.
+          while ((getline next_line) > 0) {
+            if (next_line ~ /^[[:space:]]*#/) continue
+            if (next_line ~ /^[[:space:]]*$/) continue
+            if (next_line ~ /^[^[:space:]]/) break              # column-0 -> end of block
+            if (next_line ~ /^[[:space:]]{2}[^[:space:]]/) break # sibling at 2-space indent
+            if (next_line ~ /^[[:space:]]{3,}/) { verdict = "declared" }
+          }
+          exit
+        }
+      }
+      END { print verdict }
+    ' "$yaml"
+  }
+
+  STATE="$(classify_tool_adapter_entry "$CONFIG" "$TOOL_NAME")"
+
+  case "$STATE" in
+    omitted)
+      # AC1: no probe call, no advisory output.
+      exit 0
+      ;;
+    null|declared)
+      # Probe binary on PATH.
+      if command -v "$TOOL_NAME" >/dev/null 2>&1; then
+        AVAILABLE=true
+        SEVERITY=""
+        if [ "$STATE" = "null" ]; then
+          MSG="tool $TOOL_NAME present (null-tolerated; advisory)"
+        else
+          MSG="tool $TOOL_NAME present"
+        fi
+      else
+        AVAILABLE=false
+        SEVERITY="WARNING"
+        if [ "$STATE" = "null" ]; then
+          MSG="advisory: declared-unknown tool $TOOL_NAME not on PATH (null-tolerated; install to enable)"
+        else
+          MSG="declared tool $TOOL_NAME not on PATH (recoverable; install to enable)"
+        fi
+      fi
+      jq -nc \
+        --arg ps "$STATE" \
+        --argjson avail "$AVAILABLE" \
+        --arg sev "$SEVERITY" \
+        --arg msg "$MSG" \
+        --arg tool "$TOOL_NAME" \
+        '{
+          tool: $tool,
+          probe_state: $ps,
+          available: $avail,
+          severity: (if $sev == "" then null else $sev end),
+          message: $msg
+        }'
+      exit 0
+      ;;
+    *)
+      die 1 "internal: classify_tool_adapter_entry returned unknown state: $STATE"
+      ;;
+  esac
+fi
 
 [ -n "$ADAPTER_DIR" ] || die 1 "missing required --adapter-dir <path>"
 [ -n "$FILE_LIST" ]   || die 1 "missing required --file-list <path>"

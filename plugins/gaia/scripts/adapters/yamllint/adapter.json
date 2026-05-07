@@ -1,0 +1,11 @@
+{
+  "name": "yamllint",
+  "provider": "yamllint",
+  "category": "linter",
+  "version-range": ">=1.32.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 60,
+  "file-extensions": [".yaml", ".yml"],
+  "scope": "file",
+  "description": "YAML linter adapter (FR-415). Wraps `yamllint` to validate YAML syntax, indentation, and style conventions. Five-file layout (adapter.json + probe.sh + run.sh + normalize.sh + test/contract.bats) per FR-415 extension of the ADR-078 three-file base. The adapter.json was authored fresh as part of E77-S13 since it was missing from the gap analysis."
+}
