@@ -44,7 +44,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 - None. The skill discovers its inputs at runtime:
   - `docs/implementation-artifacts/sprint-status.yaml` — current `sprint_id`.
-  - `docs/implementation-artifacts/*.md` — story files (frontmatter + Findings sections only).
+  - Story files — recursive walk under `docs/implementation-artifacts/epic-*/stories/**/*.md` (canonical nested layout per E79) PLUS the legacy flat layer `docs/implementation-artifacts/*.md` (read-only fallback until E79-S6 backfill completes). Frontmatter + Findings sections only.
   - `docs/implementation-artifacts/tech-debt-dashboard.md` — previous dashboard (if present).
 
 ## Steps

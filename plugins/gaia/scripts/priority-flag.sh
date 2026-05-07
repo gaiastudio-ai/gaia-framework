@@ -48,17 +48,42 @@ pflag_read() {
 
 # ---------------------------------------------------------------------------
 # pflag_scan_backlog — scan impl dir for backlog stories with next-sprint flag
+#
+# E79-S4: walks the canonical nested layout
+#   docs/implementation-artifacts/epic-*/stories/**/*.md
+# recursively, AND keeps a parallel non-recursive pass over the legacy flat
+# layout so flat-path stories remain surfaced during the migration window
+# (until E79-S6 backfill completes). Frontmatter parse failures are tolerated
+# (best-effort, no exit-non-zero) so non-story .md files (e.g. README.md
+# accidentally placed under stories/) are skipped silently.
 # ---------------------------------------------------------------------------
 pflag_scan_backlog() {
   local dir="$1"
   local f status_val flag_val key_val
+  # Canonical nested layout — recursive walk under any epic-*/stories/ subtree.
+  # `find … -path '*/stories/*.md'` is the canonical idiom (E79-S4); bash globs
+  # do NOT recurse, so the previous `for f in "$dir"/*.md` only saw the legacy
+  # flat layer.
+  while IFS= read -r -d '' f; do
+    [ -f "$f" ] || continue
+    status_val="$(_pflag_fm_field "status" "$f" 2>/dev/null || true)"
+    [ "$status_val" = "backlog" ] || continue
+    flag_val="$(pflag_read "$f" 2>/dev/null || true)"
+    [ "$flag_val" = "next-sprint" ] || continue
+    key_val="$(_pflag_fm_field "key" "$f" 2>/dev/null || true)"
+    [ -n "$key_val" ] || continue
+    printf '%s\n' "$key_val"
+  done < <(find "$dir" -path '*/stories/*.md' -type f -print0 2>/dev/null)
+  # Legacy flat layout — read-only fallback until E79-S6 migration completes.
+  # Same flag-filter semantics; only the traversal scope differs.
   for f in "$dir"/*.md; do
     [ -f "$f" ] || continue
-    status_val="$(_pflag_fm_field "status" "$f")"
+    status_val="$(_pflag_fm_field "status" "$f" 2>/dev/null || true)"
     [ "$status_val" = "backlog" ] || continue
-    flag_val="$(pflag_read "$f")"
+    flag_val="$(pflag_read "$f" 2>/dev/null || true)"
     [ "$flag_val" = "next-sprint" ] || continue
-    key_val="$(_pflag_fm_field "key" "$f")"
+    key_val="$(_pflag_fm_field "key" "$f" 2>/dev/null || true)"
+    [ -n "$key_val" ] || continue
     printf '%s\n' "$key_val"
   done
 }

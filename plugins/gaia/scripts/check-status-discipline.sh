@@ -11,8 +11,9 @@
 #
 # Surfaces guarded
 # ----------------
-#   1. Story frontmatter `status:` line in
-#      `docs/implementation-artifacts/E*-S*-*.md`
+#   1. Story frontmatter `status:` line in either layout (E79-S4):
+#      - canonical: `docs/implementation-artifacts/epic-*/stories/E*-S*-*.md`
+#      - legacy flat: `docs/implementation-artifacts/E*-S*-*.md`
 #   2. `docs/implementation-artifacts/sprint-status.yaml` per-story `status:` keys
 #   3. `docs/planning-artifacts/epics-and-stories.md` per-story `**Status:** ...`
 #      indicators
@@ -161,6 +162,9 @@ MARKER_KEY=$(marker_story_key || true)
 classify_path() {
   local p="$1"
   case "$p" in
+    # Canonical nested layout (E79-S4) — epic-*/stories/{key}-*.md
+    docs/implementation-artifacts/epic-*/stories/E*-S*-*.md) printf 'story_frontmatter' ;;
+    # Legacy flat layout — read-only fallback until E79-S6 migration completes.
     docs/implementation-artifacts/E*-S*-*.md) printf 'story_frontmatter' ;;
     docs/implementation-artifacts/sprint-status.yaml) printf 'sprint_status' ;;
     docs/planning-artifacts/epics-and-stories.md) printf 'epics_md' ;;
@@ -228,8 +232,8 @@ detect_violations() {
       content = substr($0, 2)
       # Skip the +++ header line (path designator)
       if (content ~ /^\+\+/) next
-      # Surface 1: story frontmatter status:
-      if (cur_file ~ /docs\/implementation-artifacts\/E[0-9]+-S[0-9]+-.+\.md$/ && content ~ /^status:[[:space:]]*/) {
+      # Surface 1: story frontmatter status: (canonical nested OR legacy flat path; E79-S4)
+      if (cur_file ~ /docs\/implementation-artifacts\/(epic-[^\/]+\/stories\/)?E[0-9]+-S[0-9]+-.+\.md$/ && content ~ /^status:[[:space:]]*/) {
         emit(cur_file, cur_lineno, content)
       }
       # Surface 2: sprint-status.yaml per-story status:
