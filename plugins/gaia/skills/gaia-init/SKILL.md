@@ -50,12 +50,19 @@ Ask the user the following question set, in order. Capture answers into a JSON a
 
 1. **Project name.** Required. Used in the generated header and `--name` flag.
 2. **Project shape.** Single-select:
-   - `single backend`
-   - `microservices`
-   - `mobile only`
-   - `mobile+backend`
-   - `microservices+mobile`
-3. **Stacks (iterative).** For each service in the project, capture: `name`, `language` (e.g., `node`, `python`, `java`, `swift`, `kotlin`, `react-native`, `flutter`, `objective-c`), `paths` (one or more globs / directory paths). Loop until the user is done — minimum one stack.
+   - `single backend` (option 1)
+   - `microservices` (option 2)
+   - `mobile only` (option 3)
+   - `mobile+backend` (option 4)
+   - `microservices+mobile` (option 5)
+   - `claude-code-plugin` (option 6) — Claude Code plugin (FR-411). Seeds
+     `project_kind: claude-code-plugin` in `project-config.yaml`, references the
+     `claude-code-plugin` stack file (E77-S2 / FR-404), and seeds plugin-specific
+     `tool_adapters:` defaults (`shellcheck`, `bats`, `markdownlint`, `yamllint`).
+     Skip the iterative `stacks` and `platforms` follow-ups for this option —
+     the plugin stack is single-shape. A 7th option for multi-plugin
+     distribution is deliberately out of scope for E77 and is NOT offered.
+3. **Stacks (iterative).** For each service in the project, capture: `name`, `language` (e.g., `node`, `python`, `java`, `swift`, `kotlin`, `react-native`, `flutter`, `objective-c`), `paths` (one or more globs / directory paths). Loop until the user is done — minimum one stack. **Skip this step entirely when project shape is `claude-code-plugin`** — the plugin stack file is referenced verbatim and there are no per-service stacks to enumerate.
 4. **Compliance regimes.** Multi-select from: `gdpr`, `hipaa`, `pci-dss`, `sox`, `ccpa`, `soc2`, `iso-27001`, `wcag-2.1-aa`, `wcag-2.1-aaa`. Optional.
 5. **`ui_present`.** Boolean. Drives downstream a11y rubric layer selection.
 6. **Environments (iterative).** For each environment (none is OK): `name` (e.g., `staging`, `production`), `url`, `auth_type`, and the **NAME** of the env var holding the credential (e.g., `STAGING_TOKEN`). Never accept or echo a literal secret.
