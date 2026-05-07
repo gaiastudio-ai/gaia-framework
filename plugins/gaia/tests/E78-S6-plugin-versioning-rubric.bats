@@ -212,6 +212,24 @@ EOF
     || { echo "AC6 FAIL: expected plugin-versioning-* rules INCLUDED for plugin project" >&2; return 1; }
 }
 
+@test "AC6: plugin-code rules ALSO included alongside plugin-versioning under skill=code (skill-collision coordination)" {
+  cat >"$TMP_CONFIG" <<'EOF'
+project_kind: claude-code-plugin
+EOF
+  local out
+  out=$("$LOADER" --skill code --no-domain --no-project --regimes "" --config "$TMP_CONFIG")
+  # The plugin-code rules MUST survive in the merged output even though
+  # plugin-versioning loads after plugin-code (LC_ALL=C alpha sort) and uses
+  # array-replace semantics. The coordination is achieved by carrying the
+  # plugin-code rules verbatim in plugin-versioning's severity_rules array.
+  echo "$out" | jq -e '.severity_rules[]? | select(.id == "plugin-code-skill-md-token-budget-warning")' >/dev/null \
+    || { echo "AC6 FAIL: plugin-code-skill-md-token-budget-warning lost in merged output" >&2; return 1; }
+  echo "$out" | jq -e '.severity_rules[]? | select(.id == "plugin-code-skill-md-token-budget-critical")' >/dev/null \
+    || { echo "AC6 FAIL: plugin-code-skill-md-token-budget-critical lost in merged output" >&2; return 1; }
+  echo "$out" | jq -e '.severity_rules[]? | select(.id == "plugin-code-coverage-default-threshold")' >/dev/null \
+    || { echo "AC6 FAIL: plugin-code-coverage-default-threshold lost in merged output" >&2; return 1; }
+}
+
 @test "AC6: plugin-versioning rules EXCLUDED for project_kind=web-app" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: web-app

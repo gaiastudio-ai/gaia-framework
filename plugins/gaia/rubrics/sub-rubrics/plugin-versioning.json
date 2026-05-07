@@ -9,7 +9,7 @@
     "story": "E78-S6",
     "fr": ["FR-428", "FR-429"],
     "adr": ["ADR-079", "ADR-082", "ADR-087", "ADR-088"],
-    "description": "Semver bump-rule rubric and adapter.schema.json category-enum hygiene rules for /gaia-review-code. Activates only when project-config.yaml declares project_kind: claude-code-plugin (the first project_kind-conditional contract-versioning rubric per ADR-087). Layer 2 (sub-rubric) of the four-layer rubric composition (base + sub + regime + project) per ADR-079 + ADR-088. The composite pre-deploy gate (ADR-082) maps any non-APPROVE composite verdict — which includes the upstream UNVERIFIED → BLOCKED collapse — to deploy BLOCKED.",
+    "description": "Semver bump-rule rubric and adapter.schema.json category-enum hygiene rules for /gaia-review-code. Activates only when project-config.yaml declares project_kind: claude-code-plugin (the first project_kind-conditional contract-versioning rubric per ADR-087). Layer 2 (sub-rubric) of the four-layer rubric composition (base + sub + regime + project) per ADR-079 + ADR-088. The composite pre-deploy gate (ADR-082) maps any non-APPROVE composite verdict — which includes the upstream UNVERIFIED → BLOCKED collapse — to deploy BLOCKED. NOTE on skill collision coordination: this sub-rubric and `plugin-code.json` both target skill=`code`. Per RFC 7396 array-replace semantics in rubric-merger.sh, the lexicographically-last sub-rubric's `severity_rules` array replaces all earlier ones. To avoid losing the plugin-code rules under skill=code, this rubric (which sorts after `plugin-code` in LC_ALL=C alpha order) prepends the three plugin-code rules verbatim before the seven plugin-versioning rules. The three carried-over rules are kept byte-identical to plugin-code.json — when plugin-code.json changes, this file MUST be updated to match (a tech-debt finding has been filed for an automated coordination check).",
     "bump_rule_mapping": {
       "skill_description_changed": "minor",
       "skill_removed": "major",
@@ -40,6 +40,33 @@
     }
   },
   "severity_rules": [
+    {
+      "id": "plugin-code-coverage-default-threshold",
+      "category": "coverage",
+      "pattern": "Plugin file with executable code reports line coverage below 80% (after applying any plugin-code.coverage_allowlist overrides from project-config.yaml).",
+      "severity": "High",
+      "description": "Plugin projects default to 80% line coverage. Files below the threshold without an explicit allowlist override block merge per FR-407. Use the plugin-code.coverage_allowlist key to grant per-path exemptions with a recorded rationale.",
+      "remediation": "Either raise coverage on the offending paths to 80%, or — if the path is intentionally exempt — add an entry to plugin-code.coverage_allowlist with a threshold_percent and rationale.",
+      "references": ["FR-407", "ADR-088"]
+    },
+    {
+      "id": "plugin-code-skill-md-token-budget-warning",
+      "category": "skill-md-token-budget",
+      "pattern": "Any SKILL.md file in the plugin tree measures more than 1500 tokens (soft ceiling). Approximate tokenizer: 4 chars per token.",
+      "severity": "Medium",
+      "description": "Per NFR-PLUGIN-2, a SKILL.md exceeding 1500 tokens trips a WARNING signal. The skill is approaching the 2000-token hard ceiling; trim verbose narrative, extract reasoning into the skill's playbook, or split into focused sub-skills before further additions.",
+      "remediation": "Move long-form rationale into the playbook, prune redundant bullet lists, or split the skill along its TDD / planning / lifecycle seams. Re-measure with the same 4-chars-per-token approximation.",
+      "references": ["NFR-PLUGIN-2", "FR-407"]
+    },
+    {
+      "id": "plugin-code-skill-md-token-budget-critical",
+      "category": "skill-md-token-budget",
+      "pattern": "Any SKILL.md file in the plugin tree measures 2000 tokens or more (hard ceiling). Approximate tokenizer: 4 chars per token.",
+      "severity": "Critical",
+      "description": "Per NFR-PLUGIN-2, a SKILL.md at or above 2000 tokens MUST NOT merge. The skill exceeds the per-skill token budget that keeps Claude Code's planning context tractable. Split or trim the skill before re-running review.",
+      "remediation": "Split the skill into smaller, focused skills (one workflow per skill) or extract long narrative into the playbook. Re-measure and confirm the total drops below 2000 tokens.",
+      "references": ["NFR-PLUGIN-2", "FR-407"]
+    },
     {
       "id": "plugin-versioning-skill-description-changed-minor",
       "category": "plugin-versioning",
