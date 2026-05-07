@@ -455,6 +455,26 @@ _detect_mobile_signals
 _detect_ci_platform
 _detect_tool_providers
 
+# E77-S16 / FR-420 — plugin signal detection. Defers to plugin-detection.sh
+# (3+ co-occurring signals classifies the project as claude-code-plugin).
+PROJECT_KIND_JSON='null'
+_detect_plugin_project() {
+  local self_dir plugin
+  self_dir="$(cd "$(dirname "$0")" && pwd)"
+  if [ ! -x "$self_dir/plugin-detection.sh" ]; then
+    return 0
+  fi
+  if ! plugin="$("$self_dir/plugin-detection.sh" --project-root "$PROJECT_ROOT" --format json 2>/dev/null)"; then
+    return 0
+  fi
+  local is_plugin
+  is_plugin="$(jq -r '.is_plugin // false' <<<"$plugin")"
+  if [ "$is_plugin" = "true" ]; then
+    PROJECT_KIND_JSON='"claude-code-plugin"'
+  fi
+}
+_detect_plugin_project
+
 # ---------------------------------------------------------------------------
 # Verdict + advisory for empty project
 # ---------------------------------------------------------------------------
@@ -488,9 +508,10 @@ DETECTION_JSON="$(jq -nc \
   --argjson device_targets "$DEVICE_TARGETS_JSON" \
   --argjson ci_platform "$CI_PLATFORM_JSON" \
   --argjson tool_providers "$TOOL_PROVIDERS_JSON" \
+  --argjson project_kind "$PROJECT_KIND_JSON" \
   --argjson warnings "$WARNINGS_JSON" \
   --arg verdict "$VERDICT" \
-  '{stacks: $stacks, platforms: $platforms, device_targets: $device_targets, ci_platform: $ci_platform, tool_providers: $tool_providers, warnings: $warnings, verdict: $verdict}')"
+  '{stacks: $stacks, platforms: $platforms, device_targets: $device_targets, ci_platform: $ci_platform, tool_providers: $tool_providers, project_kind: $project_kind, warnings: $warnings, verdict: $verdict}')"
 
 # ---------------------------------------------------------------------------
 # Optional merge into existing project-config.yaml (RFC 7396)

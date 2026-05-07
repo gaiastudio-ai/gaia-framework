@@ -79,6 +79,17 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Prioritize gaps by risk level (High-risk FR/NFRs without coverage are blocking).
 - Calculate implementation rate: count implemented tests vs total planned tests. Record as: Total planned: N, Implemented: M (percentage%).
 
+<!-- E77-S16: plugin-aware chain begin (FR-421) -->
+- **Plugin-aware chain (FR-421, AC5).** When `project_kind == claude-code-plugin` (resolved from `config/project-config.yaml` or `detect-signals.sh` output), additionally run `${CLAUDE_PLUGIN_ROOT}/scripts/plugin-trace-chain.sh --project-root <PROJECT_ROOT> --require-plugin` and append a "Plugin Chain" section to the traceability matrix. The chain entries map `manifest.yaml` / `.claude-plugin/plugin.json` -> `plugins/*/SKILL.md` -> bang-line `!scripts/*.sh` references -> `tests/*.bats` files. Surface each `gaps[]` entry as a matrix row:
+  - `gap_kind: missing_skill_md`   -> "Manifest lists skill but SKILL.md is absent" (BLOCKING).
+  - `gap_kind: missing_script`     -> "SKILL.md references a script that does not exist on disk" (BLOCKING).
+  - `gap_kind: no_bats_coverage`   -> "Script exists but has no bats coverage" (WARNING).
+  - `gap_kind: orphan_skill_md`    -> "SKILL.md present on disk but absent from manifest skills[]" (advisory).
+
+  When `project_kind` is anything other than `claude-code-plugin` (or unset), SKIP this section entirely — non-plugin traceability behaviour is unchanged (AC5 invariant). The `--require-plugin` flag also makes `plugin-trace-chain.sh` short-circuit on projects that fail the FR-420 3-signal threshold, so even an erroneous invocation on a non-plugin project produces an empty chain.
+<!-- E77-S16: plugin-aware chain end -->
+
+
 > `!scripts/write-checkpoint.sh gaia-trace 4 trace_matrix_path="docs/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" stage=gap-analysis-complete`
 
 ### Step 5 -- Generate Matrix
