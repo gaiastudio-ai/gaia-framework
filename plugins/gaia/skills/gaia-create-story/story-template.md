@@ -8,15 +8,15 @@ epic: "{epic_key}"
 status: backlog
 priority: "{P0/P1/P2}"
 size: "{S/M/L/XL}"
-points: "{story_points}"
+points: {story_points}
 risk: "{high/medium/low}"
 sprint_id: null
 priority_flag: null
-origin: null
-origin_ref: null
-depends_on: []
-blocks: []
-traces_to: []
+origin: {origin}
+origin_ref: {origin_ref}
+depends_on: {depends_on}
+blocks: {blocks}
+traces_to: {traces_to}
 date: "{creation_date}"
 author: "{agent_name}"
 # Optional: Figma design metadata — enables dev agents to extract design tokens and component specs via MCP.

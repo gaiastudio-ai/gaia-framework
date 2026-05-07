@@ -51,20 +51,15 @@ while IFS= read -r line; do
   esac
 done <<<"$config_output"
 
-# ---------- 2. Validate gate (story file must exist) ----------
-if [ -x "$VALIDATE_GATE" ]; then
-  if ! "$VALIDATE_GATE" story_file_exists 2>&1; then
-    # Fallback to manual check
-    log "validate-gate.sh story_file_exists check returned non-zero — running manual check"
-  fi
-else
-  log "validate-gate.sh not found at $VALIDATE_GATE — used manual check (non-fatal)"
-fi
-
-# Manual story file existence check as a safety net
-# The ATDD skill body performs its own detailed validation, so this is
-# a lightweight pre-check only. Story file not found is a soft warning
-# here — the skill body will provide the detailed error message.
+# ---------- 2. Story-file existence (E80-S1: Option B) ----------
+# The ATDD skill body performs its own detailed validation, so this is a
+# lightweight pre-check only. Earlier revisions called
+# `validate-gate.sh story_file_exists` here, but that gate type is not
+# implemented in validate-gate.sh — it always exited non-zero and emitted
+# a false-positive WARNING line on every /gaia-atdd invocation. Per
+# E80-S1 AC7 we drop the validate-gate.sh call entirely and rely on the
+# downstream skill-body validation for the authoritative message.
+:
 
 # ---------- 3. Load checkpoint state ----------
 if [ -x "$CHECKPOINT" ]; then
