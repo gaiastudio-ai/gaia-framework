@@ -93,15 +93,16 @@ EOF
   local fixture="$BATS_TEST_TMPDIR/fixture-broken"
   mkdir -p "$fixture/plugins/gaia/tests" "$fixture/plugins/gaia/scripts"
   # Bats file references a script that does NOT exist on disk.
-  # NOTE: @test lines in heredoc fixtures are indented to keep the bats parser
-  # (which scans /^@test/ at column 0) from miscounting heredoc bodies as real
-  # tests. The lint scripts under test do not require @test at column 0.
-  cat >"$fixture/plugins/gaia/tests/broken-ref.bats" <<'EOF'
-#!/usr/bin/env bats
- @test "broken reference" {
-  run plugins/gaia/scripts/does-not-exist.sh
-}
-EOF
+  # NOTE: the literal token "@test" is constructed via printf so the bats
+  # preprocessor (which scans for /^[[:blank:]]*@test/ even inside heredocs)
+  # does not miscount these heredoc fixture bodies as real tests.
+  local AT_TEST
+  AT_TEST=$(printf '%s' '@'; printf '%s' 'test')
+  printf '%s\n' '#!/usr/bin/env bats' \
+    "${AT_TEST} \"broken reference\" {" \
+    '  run plugins/gaia/scripts/does-not-exist.sh' \
+    '}' \
+    > "$fixture/plugins/gaia/tests/broken-ref.bats"
   run "$REFS_LINT" --root "$fixture"
   [ "$status" -ne 0 ] \
     || { echo "AC3 FAIL: expected non-zero exit on broken ref, got status=$status, output=$output" >&2; return 1; }
@@ -115,12 +116,13 @@ EOF
   local fixture="$BATS_TEST_TMPDIR/fixture-good"
   mkdir -p "$fixture/plugins/gaia/tests" "$fixture/plugins/gaia/scripts"
   : > "$fixture/plugins/gaia/scripts/exists.sh"
-  cat >"$fixture/plugins/gaia/tests/good-ref.bats" <<'EOF'
-#!/usr/bin/env bats
- @test "good reference" {
-  run plugins/gaia/scripts/exists.sh
-}
-EOF
+  local AT_TEST
+  AT_TEST=$(printf '%s' '@'; printf '%s' 'test')
+  printf '%s\n' '#!/usr/bin/env bats' \
+    "${AT_TEST} \"good reference\" {" \
+    '  run plugins/gaia/scripts/exists.sh' \
+    '}' \
+    > "$fixture/plugins/gaia/tests/good-ref.bats"
   run "$REFS_LINT" --root "$fixture"
   [ "$status" -eq 0 ] \
     || { echo "AC3 FAIL: expected exit 0 on resolved ref, got status=$status, output=$output" >&2; return 1; }
@@ -142,13 +144,14 @@ EOF
 
 @test "AC4: skip-permanent annotation excludes a skip from the 90-day age check" {
   local fixture="$BATS_TEST_TMPDIR/skip-permanent.bats"
-  cat >"$fixture" <<'EOF'
-#!/usr/bin/env bats
- @test "annotated skip" {
-  # skip-permanent: legacy API compat
-  skip "legacy"
-}
-EOF
+  local AT_TEST
+  AT_TEST=$(printf '%s' '@'; printf '%s' 'test')
+  printf '%s\n' '#!/usr/bin/env bats' \
+    "${AT_TEST} \"annotated skip\" {" \
+    '  # skip-permanent: legacy API compat' \
+    '  skip "legacy"' \
+    '}' \
+    > "$fixture"
   # Even with --max-age-days=0 (everything would be stale), an annotated skip
   # MUST NOT produce a finding.
   run "$SKIP_CHECK" --bats-file "$fixture" --max-age-days 0
@@ -163,12 +166,13 @@ EOF
 # ---------------------------------------------------------------------------
 @test "AC5: bare skip older than threshold emits STALE-SKIP finding" {
   local fixture="$BATS_TEST_TMPDIR/bare-skip.bats"
-  cat >"$fixture" <<'EOF'
-#!/usr/bin/env bats
- @test "bare skip" {
-  skip "no annotation here"
-}
-EOF
+  local AT_TEST
+  AT_TEST=$(printf '%s' '@'; printf '%s' 'test')
+  printf '%s\n' '#!/usr/bin/env bats' \
+    "${AT_TEST} \"bare skip\" {" \
+    '  skip "no annotation here"' \
+    '}' \
+    > "$fixture"
   # Force every line to be considered stale by setting --max-age-days=0
   # (no grace period). Bare skip MUST be flagged.
   run "$SKIP_CHECK" --bats-file "$fixture" --max-age-days 0 --assume-age-days 365
@@ -180,12 +184,13 @@ EOF
 
 @test "AC5: bare skip younger than threshold does NOT emit a finding" {
   local fixture="$BATS_TEST_TMPDIR/fresh-skip.bats"
-  cat >"$fixture" <<'EOF'
-#!/usr/bin/env bats
- @test "fresh bare skip" {
-  skip "recent"
-}
-EOF
+  local AT_TEST
+  AT_TEST=$(printf '%s' '@'; printf '%s' 'test')
+  printf '%s\n' '#!/usr/bin/env bats' \
+    "${AT_TEST} \"fresh bare skip\" {" \
+    '  skip "recent"' \
+    '}' \
+    > "$fixture"
   run "$SKIP_CHECK" --bats-file "$fixture" --max-age-days 90 --assume-age-days 30
   [ "$status" -eq 0 ] \
     || { echo "AC5 FAIL: expected exit 0 on fresh bare skip, got status=$status, output=$output" >&2; return 1; }
@@ -244,13 +249,14 @@ EOF
   # Reference compute_age_days and scan_bats_file by name (covered via AC4 / AC5
   # functional path through skip-permanent-check.sh).
   local fixture="$BATS_TEST_TMPDIR/compute_age_days-scan_bats_file-fixture.bats"
-  cat >"$fixture" <<'EOF'
-#!/usr/bin/env bats
- @test "stub" {
-  # skip-permanent: NFR-052 stub
-  skip "compute_age_days + scan_bats_file fixture"
-}
-EOF
+  local AT_TEST
+  AT_TEST=$(printf '%s' '@'; printf '%s' 'test')
+  printf '%s\n' '#!/usr/bin/env bats' \
+    "${AT_TEST} \"stub\" {" \
+    '  # skip-permanent: NFR-052 stub' \
+    '  skip "compute_age_days + scan_bats_file fixture"' \
+    '}' \
+    > "$fixture"
   run "$SKIP_CHECK" --bats-file "$fixture" --max-age-days 0 --assume-age-days 365
   [ "$status" -eq 0 ] \
     || { echo "NFR-052 FAIL: expected exit 0 (annotated skip excluded), got status=$status" >&2; return 1; }
