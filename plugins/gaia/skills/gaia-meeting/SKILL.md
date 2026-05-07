@@ -6,7 +6,7 @@ context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 ---
 
-# gaia-meeting (E76 — S1 scaffolding + S2 research / cite-or-flag / raise-hand)
+# gaia-meeting (E76 — S1 scaffolding + S2 research / cite-or-flag / raise-hand + S3 close + S4 scratchpad)
 
 Peer-to-peer multi-agent discussion orchestrator. GAIA agents and stakeholder
 personas take sequential turns through a seven-phase lifecycle. The skill is
@@ -23,7 +23,7 @@ DISCUSS (FR-MTG-5), and **raise-hand arbitration** with a one-per-cycle
 defer queue (FR-MTG-7 / FR-MTG-9). The downstream stories continue to layer:
 
 - **E76-S3:** CLOSE phase decision record + action items + memory write-through, full FR-MTG-27 saved-meeting frontmatter.
-- **E76-S4:** Scratchpad pin / extraction.
+- **E76-S4:** Scratchpad pin / extraction (LANDED — see "Scratchpad pin + extraction" section below).
 - **E76-S5:** Eight non-`decide` modes.
 - **E76-S6:** Guardrails (max-turns, per-agent cap, loop detection) + cost-reporting refinements.
 
@@ -394,8 +394,8 @@ SAVE performs the three writes that REVIEW accepted, gated through
    `scripts/meeting-notes-writer.sh --root . --payload <payload.yaml> --date <YYYY-MM-DD> --slug <slug>`.
    The writer emits `docs/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md`
    with frontmatter (per-attendee + total token-cost breakdown,
-   `scratchpad_extractions: []` until E76-S4 lands, `action_items:` IDs from
-   step 1) and the required body sections (charter, summary, research preludes,
+   `scratchpad_extractions:` populated from the payload list — empty `[]` when
+   no extractions occurred — and `action_items:` IDs from step 1) and the required body sections (charter, summary, research preludes,
    transcript, decisions, risks identified from `[challenge]` turns, open
    questions, scratchpad final state, action items, memory write-through list).
 
@@ -414,6 +414,120 @@ through `scripts/write-boundary.sh`. The asserter rejects any path outside
 `docs/creative-artifacts/meeting-*.md`,
 `docs/planning-artifacts/action-items.yaml`, and
 `_memory/{agent}-sidecar/decisions/*.md`.
+
+## Scratchpad pin + extraction (E76-S4, ADR-085, FR-MTG-11..15)
+
+The scratchpad is a shared append-only buffer that any agent or the user MAY
+pin to during DISCUSS. Every pin receives a monotonic `SP-N` ID (N starts at
+1, increments by 1). Re-pinning an existing `SP-N` is **latest-wins** at the
+rendered scratchpad block; the prior content is retained in transcript history
+for audit (FR-MTG-11). Every agent's per-turn context payload includes the
+rendered scratchpad block so any agent MAY reference any `SP-N`.
+
+### Pin and render — `scratchpad-allocate.sh`
+
+The scratchpad data model is file-backed (one record per line, pipe-delimited):
+
+```
+SP-N|content|content_type|pinning_agent|intent|history_count
+```
+
+- `pin --state <file> [--target SP-N] --content <s> --intent <s> --agent <s>`
+  appends a new SP-N (or replaces an existing one — `history_count` bumps).
+- `list --state <file> --field {id|content|content_type|pinning_agent|intent|history_count}`
+  emits the records in pin order.
+- `render --state <file>` emits the latest-wins block (one line per SP-N) for
+  agent-context injection.
+
+### CLOSE-phase disposition (FR-MTG-12, AC4 / AC13)
+
+At CLOSE, the orchestrator walks scratchpad items in ascending `SP-N` order
+and prompts the user with the canonical three-option choice from
+`scratchpad-disposition.sh --prompt`:
+
+| Disposition | Effect at SAVE |
+|-------------|----------------|
+| **Extract** | Writes a permanent file under `docs/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/`; the path is added to the meeting notes' `scratchpad_extractions:` list. |
+| **Keep in notes only** | Item appears in the notes "Scratchpad final state" section; NO extracted file; absent from `scratchpad_extractions:`. |
+| **Drop** | Item is omitted from "Scratchpad final state"; NO extracted file; absent from `scratchpad_extractions:`. |
+
+`scratchpad-disposition.sh --check <value>` validates a single disposition
+input (case-insensitive). Any value other than the three canonical options
+exits 2 — the orchestrator MUST re-prompt.
+
+### Deterministic extraction path (FR-MTG-13, ADR-085, AC5 / AC6 / AC7 / AC11 / AC12)
+
+The path is computed entirely from `(meeting-date, meeting-slug, SP-N,
+content-type, content, intent)` — the skill MUST NOT prompt the user for a
+path:
+
+```
+docs/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/SP-{N}-{auto-slug}.{ext}
+```
+
+- `{YYYY-MM}` = first seven chars of the meeting date.
+- `{slug}` = the meeting notes' canonical slug (FR-MTG-27 — owned upstream;
+  this skill consumes it).
+- `{auto-slug}` = lowercased + alphanumeric-with-`-` + truncated-to-40-chars
+  projection. Source: the content's first textual line; fall back to the
+  pinning agent's intent statement; final fallback `untitled`.
+- `{ext}` = content-type-driven (`json` / `ts` / `py` / `sh` / `md` / `go` /
+  `swift` / `kt` / `rs` / `java`); ambiguous content defaults to `md`.
+
+`scratchpad-resolve-path.sh` is the single source of truth for the path
+formula. `scratchpad-detect-type.sh` is the single source of truth for
+content-type detection. Both are deterministic CLIs.
+
+`{YYYY-MM}` and `{slug}` directories are created **lazily** on first
+extraction — there are no `.gitkeep` placeholders. A future repo-wide sweep
+that runs `find docs/creative-artifacts/meeting-scratchpad -type d -empty
+-delete` MUST not break the skill; subsequent extractions transparently
+re-create the directories (ADR-069 empty-bucket policy).
+
+### Extracted-file frontmatter (FR-MTG-14, AC8)
+
+`scratchpad-extractor.sh` writes the extracted file with this frontmatter
+contract:
+
+```yaml
+---
+source_meeting: meeting-{YYYY-MM-DD}-{slug}.md
+source_scratchpad_id: SP-{N}
+source_action_items: [<AI-IDs related to this SP-N or empty list>]
+extracted_by: gaia-meeting
+extracted_at: <ISO-8601 UTC>
+content_type: <detected-type>
+---
+```
+
+`source_action_items` is a YAML inline-list (`[]` when no related action items
+exist, never omitted). `extracted_at` uses `date -u +%Y-%m-%dT%H:%M:%SZ` for
+machine-portable UTC seconds precision.
+
+### Replace-at-same-path semantics (FR-MTG-15, AC10 / AC11)
+
+A future invocation that pins the same `SP-{N}` at the same source meeting
+(same `{YYYY-MM}` AND same `{slug}`) **replaces** the file at the identical
+path — atomic via `mktemp` + `mv`. `extracted_at` advances; no duplicate or
+appended file is produced. Two distinct meetings (different `{slug}`) NEVER
+collide because the path includes the slug.
+
+### Meeting-notes integration (FR-MTG-14, AC9 / AC13)
+
+`meeting-notes-writer.sh` reads the payload's `scratchpad_extractions:` list
+(project-relative paths in ascending SP-N order) and emits it verbatim into
+the notes frontmatter; emits `scratchpad_extractions: []` when the list is
+empty. The "Scratchpad final state" body section reflects whatever the
+orchestrator pre-rendered (Extract + Keep entries; Drop items already
+filtered out).
+
+### State-free invariant (FR-MTG-31, AC14)
+
+Every extraction write is gated through `scripts/write-boundary.sh`. The
+allowlist is unchanged from S1/S3 — `docs/creative-artifacts/*` already
+covers the `meeting-scratchpad/` subtree. The scratchpad codepath MUST NOT
+mutate `_memory/`, sprint state, story files, PRD, architecture, test plan,
+threat model, or traceability.
 
 ## Helper Scripts
 
@@ -438,6 +552,11 @@ LLM-side parsing inline — this is single-source-of-truth per ADR-057, ADR-073)
 | `action-items-writer.sh` | v2 action-items registry writer (idempotent header bump, daily-N IDs, atomic write) | S3 AC2, AC5, FR-MTG-21, ADR-086 |
 | `memory-writethrough.sh` | Per-agent sidecar decision write-through (frontmatter + four mandatory H2 sections) | S3 AC6, AC7, FR-MTG-24, FR-MTG-25 |
 | `meeting-notes-writer.sh` | Saved meeting-notes writer (FR-MTG-27 frontmatter + body sections) | S3 AC9, FR-MTG-27 |
+| `scratchpad-allocate.sh` | In-memory scratchpad data model: monotonic SP-N + latest-wins replace + render | S4 AC1-AC3, FR-MTG-11 |
+| `scratchpad-disposition.sh` | CLOSE-time disposition validator (Extract / Keep / Drop only) | S4 AC4, AC13, FR-MTG-12 |
+| `scratchpad-detect-type.sh` | Content-type detection (json / ts / py / sh / md / go / swift / kt / rs / java) | S4 AC7, FR-MTG-13 |
+| `scratchpad-resolve-path.sh` | Deterministic extraction-path resolver (auto-slug + extension) | S4 AC5, AC6, AC11, AC12, FR-MTG-13, ADR-085 |
+| `scratchpad-extractor.sh` | Atomic extracted-file writer (frontmatter linkage + replace-at-same-path) | S4 AC8, AC10, AC14, FR-MTG-14, FR-MTG-15 |
 
 ## Skill Outputs
 
@@ -484,7 +603,7 @@ These land in E76-S3..S6 — do **not** retrofit them into the S1+S2 substrate:
   separate work.
 - The `/gaia-validate-meeting` static-check skill that consumes AC10's
   verifiability — reserved namespace, not implemented.
-- Scratchpad pin / extraction — E76-S4.
+- ~~Scratchpad pin / extraction — E76-S4.~~ (LANDED — see "Scratchpad pin + extraction".)
 - The eight non-`decide` modes — E76-S5.
 - Guardrails (max-turns, per-agent cap, loop detection) — E76-S6.
 - Cost-reporting refinements beyond the per-turn header — E76-S6.
