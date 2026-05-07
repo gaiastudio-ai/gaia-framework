@@ -70,7 +70,12 @@ Invoke `scripts/deploy-dispatch.sh --env <env> --version <ver> --output-dir evid
 
 ### Phase 3 — Health-check
 
-Invoke `scripts/health-check.sh --url <url> --timeout <secs> --output-dir evidence/deploy/`. The script polls the target URL with exponential backoff (2s initial, capped at 10s) until HTTP 2xx or timeout. Writes `evidence/deploy/health-check.json` with `status`, `attempts`, `duration_seconds`. Timeout → BLOCKED with remediation guidance (AC4).
+Invoke `scripts/health-check.sh --mode <poll|skip> --url <url> --timeout <secs> --output-dir evidence/deploy/`. Behavior is driven by `health_check.mode` in project-config.yaml (default `poll` — backward-compatible per FR-425, E78-S3):
+
+- `mode: poll` (default) — polls the target URL with exponential backoff (2s initial, capped at 10s) until HTTP 2xx or timeout. Writes `evidence/deploy/health-check.json` with `status`, `attempts`, `duration_seconds`. Timeout → BLOCKED with remediation guidance (AC4).
+- `mode: skip` — bypasses the poll loop entirely. Writes `evidence/deploy/health-check.json` with `{status: "skipped", mode: "skip", reason: "configured skip"}` so the audit trail records that the skip was intentional. Use this for projects without a reachable health-check endpoint (e.g., marketplace-published plugins).
+
+Any other value rejected at config-load time with an actionable error listing the valid options. Schema enforcement (FR-425, AC5) lives in `project-config.schema.json` under `definitions.healthCheck`.
 
 ### Phase 4 — Post-deploy smoke
 
