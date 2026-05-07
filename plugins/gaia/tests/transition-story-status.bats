@@ -439,8 +439,9 @@ EOF
   [ "$(index_field "$key" priority)" = "P1" ]
   [ "$(index_field "$key" risk)" = "low" ]
   [ "$(index_field "$key" author)" = "fixture-author" ]
-  # `file` defaults to the resolved absolute story path.
-  [ "$(index_field "$key" file)" = "$fixture" ]
+  # E79-S3 — `file` defaults to the basename relative to the per-epic
+  # `stories/` directory (no longer the resolved absolute path).
+  [ "$(index_field "$key" file)" = "$(basename "$fixture")" ]
   [ "$(index_field "$key" status)" = "validating" ]
 }
 
