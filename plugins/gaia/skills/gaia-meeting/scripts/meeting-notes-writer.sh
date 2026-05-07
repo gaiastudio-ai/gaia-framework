@@ -138,6 +138,12 @@ MODE="$(_scalar "$PAYLOAD" mode)"
 TOTAL_TOKENS="$(_scalar "$PAYLOAD" total_tokens)"
 SUMMARY="$(_scalar "$PAYLOAD" summary)"
 SCRATCHPAD_FINAL="$(_scalar "$PAYLOAD" scratchpad_final)"
+# Block-scalar fallback: if the scalar form yielded `|` (i.e. the value is a
+# YAML block scalar `key: |`), re-extract via the block-scalar reader so the
+# rendered "Scratchpad final state" body is the full multi-line block.
+if [[ "$SCRATCHPAD_FINAL" == "|" ]]; then
+  SCRATCHPAD_FINAL="$(_block_scalar "$PAYLOAD" scratchpad_final)"
+fi
 
 TRANSCRIPT="$(_block_scalar "$PAYLOAD" transcript)"
 PRELUDES="$(_block_scalar "$PAYLOAD" preludes)"
@@ -149,6 +155,7 @@ RISKS_LIST="$(_list "$PAYLOAD" risks)"
 OPEN_Q_LIST="$(_list "$PAYLOAD" open_questions)"
 ACTION_IDS_LIST="$(_list "$PAYLOAD" action_items)"
 MEM_WT_LIST="$(_list "$PAYLOAD" memory_writethrough)"
+SCRATCHPAD_EXTRACTIONS_LIST="$(_list "$PAYLOAD" scratchpad_extractions)"
 
 # Compose action_items inline-list for frontmatter
 action_items_inline="["
@@ -182,7 +189,18 @@ tmp="$(mktemp)"
     echo "$ATTENDEES" | sed -E 's/^[[:space:]]+/  /'
   fi
   echo "total_tokens: ${TOTAL_TOKENS}"
-  echo "scratchpad_extractions: []"
+  # E76-S4 — emit scratchpad_extractions list (empty when none).
+  # The payload's `scratchpad_extractions:` carries project-relative file paths
+  # in ascending SP-N order; we reproduce that ordering verbatim.
+  if [[ -n "$SCRATCHPAD_EXTRACTIONS_LIST" ]]; then
+    echo "scratchpad_extractions:"
+    while IFS= read -r p; do
+      [[ -z "$p" ]] && continue
+      echo "  - \"${p}\""
+    done <<< "$SCRATCHPAD_EXTRACTIONS_LIST"
+  else
+    echo "scratchpad_extractions: []"
+  fi
   echo "action_items: ${action_items_inline}"
   echo "---"
   echo ""
