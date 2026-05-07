@@ -247,19 +247,49 @@ FRONTMATTER_YAML=$(!scripts/generate-frontmatter.sh \
   --project-config config/project-config.yaml \
   [--origin <s>] [--origin-ref <s>])
 
+# 3b. Resolve the canonical per-epic directory slug (E79-S2 / E79-S1).
+#     Delegated to resolve-epic-slug.sh — single source of truth for the
+#     `epic-{slug}/` segment. HALT on resolver non-zero exit per the
+#     ADR-074 deterministic-script-lift principle (no silent fallback to a
+#     hardcoded slug).
+EPIC_SLUG=$(!scripts/lib/resolve-epic-slug.sh \
+  --epic-key "<epic_key>" \
+  --epics-file "$(!scripts/resolve-config.sh planning_artifacts)/epics-and-stories.md")
+
+# 3c. Legacy-flat refusal guard (E79-S2 / AC3). If a legacy flat-path file
+#     `${IMPLEMENTATION_ARTIFACTS}/<story_key>-*.md` already exists for the
+#     same key, REFUSE to write the canonical nested sibling — emit a single
+#     stderr WARNING line that names BOTH the existing flat path and the
+#     would-be nested path, and HALT non-zero (exit 1). The refusal is a
+#     workflow-level halt, not a finding the SM-fix loop can repair. Run
+#     /gaia-dev-story E79-S6 migration first to unify flat/nested layouts.
+if compgen -G "${IMPLEMENTATION_ARTIFACTS}/${STORY_KEY}-*.md" >/dev/null; then
+  flat_path=$(compgen -G "${IMPLEMENTATION_ARTIFACTS}/${STORY_KEY}-*.md" | head -1)
+  nested_path="${IMPLEMENTATION_ARTIFACTS}/epic-${EPIC_SLUG}/stories/${STORY_KEY}-${SLUG}.md"
+  printf '[gaia-create-story] REFUSED: legacy flat file %s exists; will NOT write nested sibling %s. Run /gaia-dev-story E79-S6 migration first.\n' \
+    "$flat_path" "$nested_path" >&2
+  exit 1
+fi
+
 # 4. Scaffold the deterministic skeleton — delegated to scaffold-story.sh (E63-S9).
 #    Forces status: backlog per ADR-074 C3; emits seven content section names
-#    on stdout in declaration order.
-mkdir -p "${IMPLEMENTATION_ARTIFACTS}"
+#    on stdout in declaration order. Output lands at the canonical per-epic
+#    nested path (E79-S2 / AC1) — never at the legacy flat path. The mkdir -p
+#    of the per-epic stories/ directory is idempotent under POSIX semantics
+#    so concurrent /gaia-create-story invocations under the same epic do not
+#    race on directory creation (E79-S2 / AC2, AC5 / TC-CSP-2).
+mkdir -p "${IMPLEMENTATION_ARTIFACTS}/epic-${EPIC_SLUG}/stories"
 SECTIONS=$(!scripts/scaffold-story.sh \
   --template ${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/story-template.md \
-  --output "${IMPLEMENTATION_ARTIFACTS}/<story_key>-${SLUG}.md" \
+  --output "${IMPLEMENTATION_ARTIFACTS}/epic-${EPIC_SLUG}/stories/<story_key>-${SLUG}.md" \
   --frontmatter "${FRONTMATTER_YAML}")
 
 # 5. Post-write validation — delegated to validate-canonical-filename.sh (E63-S4 / S5)
 #    and validate-frontmatter.sh (E63-S5). Both HALT on non-zero with stderr passthrough.
-!scripts/validate-canonical-filename.sh --file "${IMPLEMENTATION_ARTIFACTS}/<story_key>-${SLUG}.md"
-!scripts/validate-frontmatter.sh         --file "${IMPLEMENTATION_ARTIFACTS}/<story_key>-${SLUG}.md"
+#    The validators inspect basename only, so the canonical nested path is accepted
+#    unchanged (E79-S2 / AC7).
+!scripts/validate-canonical-filename.sh --file "${IMPLEMENTATION_ARTIFACTS}/epic-${EPIC_SLUG}/stories/<story_key>-${SLUG}.md"
+!scripts/validate-frontmatter.sh         --file "${IMPLEMENTATION_ARTIFACTS}/epic-${EPIC_SLUG}/stories/<story_key>-${SLUG}.md"
 ```
 
 After the scaffold returns the seven content section names (`User Story`, `Acceptance Criteria`, `Tasks / Subtasks`, `Dev Notes`, `Technical Notes`, `Dependencies`, `Test Scenarios`), fill each `{CONTENT_PLACEHOLDER}` with judgment-bearing content via Edit calls. ACs use Given/When/Then format (validated post-fill by `validate-ac-format.sh`, E63-S6).
@@ -271,7 +301,7 @@ The sizing_map override contract (ADR-074 C1) is enforced by `generate-frontmatt
 `points` are derived from `size` via the resolved `sizing_map` (project-over-global per ADR-044 §10.26.3 and ADR-074 contract C1; E61-S1 added the `sizing_map:` block to the project-config.yaml schema). The resolver is `!scripts/resolve-config.sh sizing_map` — same key consumed by `gaia-sprint-plan/SKILL.md` Step 2 for parity. HALT on resolver non-zero exit or malformed sizing_map (no silent fallback to a hardcoded constant).
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh "${IMPLEMENTATION_ARTIFACTS}/${STORY_KEY}-${SLUG}.md"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh "${IMPLEMENTATION_ARTIFACTS}/epic-${EPIC_SLUG}/stories/${STORY_KEY}-${SLUG}.md"`
 
 ### Step 5 -- Register in Sprint Status
 
