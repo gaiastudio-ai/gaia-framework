@@ -660,8 +660,66 @@ These land in E76-S3..S6 — do **not** retrofit them into the S1+S2 substrate:
   verifiability — reserved namespace, not implemented.
 - ~~Scratchpad pin / extraction — E76-S4.~~ (LANDED — see "Scratchpad pin + extraction".)
 - The eight non-`decide` modes — E76-S5.
-- Guardrails (max-turns, per-agent cap, loop detection) — E76-S6.
-- Cost-reporting refinements beyond the per-turn header — E76-S6.
+- ~~Guardrails (max-turns, per-agent cap, loop detection) — E76-S6.~~ (LANDED — see "Guardrails + cost-reporting refinements".)
+- ~~Cost-reporting refinements beyond the per-turn header — E76-S6.~~ (LANDED — see "Guardrails + cost-reporting refinements".)
+
+## Guardrails + cost-reporting refinements (E76-S6)
+
+E76-S6 closes out the operational envelope of `/gaia-meeting` by adding four
+hard halts, two caps, a loop detector, and a deterministic cost-check cadence.
+All guardrail checks run BEFORE the offending turn is appended to the
+persisted transcript — a halted meeting MUST NOT contaminate the saved
+artifact (FR-MTG-28).
+
+### Four hard halts (FR-MTG-28)
+
+Each halt emits a single canonical line via `scripts/halt-event.sh`:
+
+```
+HALT condition=<NAME> agent=<ID|—> fr=<FR-MTG-ID> detail=<text>
+```
+
+This is the **terminal** live-stream event — no subsequent turn header, no
+cost-check, no farewell. The lifecycle exits cleanly after emission.
+
+| Condition | Trigger | Helper |
+|-----------|---------|--------|
+| `CHARTER-MISSING` (FR-MTG-28, AC1) | `/gaia-meeting` invoked without a resolvable charter — halts at the charter-resolution gate before INVITE. | `scripts/charter-gate.sh` |
+| `RESEARCH-MISSING` (FR-MTG-28, AC2) | RESEARCH→DISCUSS transition attempted without one structured prelude per invitee — bypassed only by `--skip-research`. | `scripts/research-gate.sh` |
+| `CITE-OR-FLAG` (FR-MTG-28, FR-MTG-5, AC3) | A draft DISCUSS turn contains a factual claim with no citation marker and no `[inference]` token — checked BEFORE persistence. | `scripts/cite-or-flag-check.sh --gate-draft-turn` |
+| `WRITE-BOUNDARY-VIOLATION` (FR-MTG-31, AC8) | A misdirected write target outside the three-prefix allow-list — refused at the central write helper. | `scripts/write-boundary.sh` |
+
+### Caps and loop detection
+
+| Cap | Default | Override | Helper |
+|-----|---------|----------|--------|
+| Max turns (AC4, FR-MTG-29) | 40 | `--max-turns N` | `scripts/max-turns-cap.sh --check --emitted-turns N` |
+| Per-agent token cap (AC5, FR-MTG-29) | 25 000 tokens cumulative across research + discussion + raise-hand + research-interrupts | `--per-agent-cap N` | `scripts/per-agent-cap.sh --accumulate --agent <id> --tokens <N>` |
+
+Per-agent cap muting is **one-way** — once an agent crosses the cap, a single
+`MUTED agent=<id> tokens=<N> cap=<CAP> fr=FR-MTG-29` event is emitted, the
+agent is skipped by both round-robin and raise-hand arbitration, and there is
+NO unmute path within the same meeting (rationale: the cap exists to bound
+spend; allowing unmute defeats the bound).
+
+**Loop detection (AC6, FR-MTG-30)** — `scripts/loop-detector.sh` inspects the
+last three consecutive turns. It fires when EXACTLY two distinct agents
+occupy the window AND none of the three turns produced a progress signal
+(new citation / new decision / new scratchpad pin). Three-way alternation
+(A→B→C) and same-agent triples (A→A→A) do NOT trigger. On fire, the
+facilitator injects a forced `FACILITATOR / LOOP-BREAK` turn.
+
+### 10-turn cost-check cadence determinism (AC7, NFR-MTG-1, TC-MTG-STREAM-2)
+
+`scripts/cost-cadence.sh` owns a single global emitted-turn counter. The
+counter `--tick`s on **every** persisted turn header — round-robin, prelude,
+raise-hand, research-interrupt, user-interjection, facilitator. The
+cost-check fires whenever `counter % 10 == 0`, not when a round-robin slot
+fires. This is the determinism contract that lets raise-hand insertions
+(E76-S2) remain deterministic against the same cadence: a 30-turn meeting
+fires cost checks at emitted-turn indices 10, 20, 30 regardless of how many
+of those turns are insertions. The TC-MTG-STREAM-2 fixture asserts identical
+fire-indices across a K=0 and a K=4 raise-hand run.
 
 ## References
 
