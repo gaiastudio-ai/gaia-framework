@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "skill": "test",
+  "when": {
+    "project_kind": "claude-code-plugin"
+  },
+  "metadata": {
+    "title": "Tier 2 plugin-test sub-rubric",
+    "story": "E77-S14",
+    "fr": "FR-416",
+    "adr": ["ADR-088"],
+    "tc_refs": ["TC-PLUGIN-RUBRIC-5", "TC-PLUGIN-RUBRIC-6"],
+    "description": "Test-review rules calibrated for Claude Code plugin projects. Activates only when project-config.yaml declares project_kind: claude-code-plugin. Layer 2 (sub-rubric) of the four-layer rubric composition (base + sub + regime + project) per ADR-079 + ADR-088. Owns the bats coverage rule (script-to-bats pairing — every command that invokes a script has a bats file for that script), the bats-script-refs-lint reference-integrity rule, and the 90-day skip-directive rule with the `# skip-permanent: <reason>` sanctioned exception mechanism.",
+    "bats_coverage": {
+      "semantics": "script-to-bats-pairing",
+      "rationale": "Plugin scripts are short shell utilities where line-coverage metrics add noise, but missing test files are a real gap. Every command that invokes a script SHOULD have a bats file for that script.",
+      "helper_script": "scripts/lint-bats-script-refs.sh",
+      "description": "Coverage is reframed as script-to-bats pairing (not line coverage). The reviewer enumerates the scripts referenced by SKILL.md command blocks and verifies that each referenced script has at least one .bats file under plugins/gaia/tests/ that exercises it."
+    },
+    "bats_script_refs_lint": {
+      "helper_script": "scripts/lint-bats-script-refs.sh",
+      "severity": "Medium",
+      "description": "Reference-integrity check: parses `setup` and `run` directives in `.bats` files and verifies that each referenced script path resolves to an existing file. Broken references emit a WARNING-class (Medium) finding per FR-416. The helper script (lint-bats-script-refs.sh) was originally introduced under E28-S221 for cross-tree dangling-reference detection; this sub-rubric exposes it as a plugin-test rule."
+    },
+    "skip_directive_90_day": {
+      "helper_script": "scripts/skip-permanent-check.sh",
+      "max_age_days": 90,
+      "severity": "Medium",
+      "annotation_format": "# skip-permanent: <reason>",
+      "annotation_format_description": "Inline comment placed on the same line as `skip` or on the line immediately preceding the `skip` call within a `@test` block. The `<reason>` text is free-form but MUST be non-empty.",
+      "description": "Bare `skip` directives without a `# skip-permanent: <reason>` annotation are flagged as WARNING-class (Medium) findings when older than 90 days. Annotated skips are excluded from the age check and treated as sanctioned permanent exceptions. The 90-day threshold is inherited from the framework-wide skip-directive rule; this sub-rubric adds the exception mechanism, not the threshold."
+    }
+  },
+  "severity_rules": [
+    {
+      "id": "plugin-test-bats-coverage-pairing",
+      "category": "test-coverage",
+      "pattern": "Plugin script invoked by a SKILL.md command block has no corresponding bats file under plugins/gaia/tests/. Coverage is measured as script-to-bats pairing (every script that is invoked has a bats file for that script) — NOT as line coverage. Plugin scripts are short shell utilities where line-coverage metrics add noise, but missing test files are a real gap.",
+      "severity": "Medium",
+      "description": "Plugin scripts referenced in SKILL.md command blocks MUST have at least one .bats test file under plugins/gaia/tests/ that exercises the script. WARNING-class finding (Medium severity) when a referenced script lacks a bats file. Coverage is intentionally reframed away from line coverage toward script-to-bats pairing per FR-416 / TC-PLUGIN-RUBRIC-5.",
+      "remediation": "Author a `.bats` file under `plugins/gaia/tests/` that exercises the un-tested script. The bats file should call the script via `run <path>` and assert on its exit code and output.",
+      "references": ["FR-416", "ADR-088", "TC-PLUGIN-RUBRIC-5"]
+    },
+    {
+      "id": "plugin-test-bats-script-refs-lint",
+      "category": "test-reference-integrity",
+      "pattern": "A `.bats` file contains a `setup` or `run` directive that references a script path (matching `plugins/gaia/scripts/<name>.sh` or `plugins/gaia/skills/<skill>/scripts/<name>.sh`) which does not resolve to an existing file on disk. Detected by scripts/lint-bats-script-refs.sh which parses non-comment lines, extracts every script reference, and reports each unresolved reference as a STALE: marker.",
+      "severity": "Medium",
+      "description": "Broken script references in bats files create dangling test fixtures that silently rot when the underlying script is deleted or renamed. The bats-script-refs-lint rule is a reference-integrity check: every `setup` and `run` directive that names a script path MUST resolve to a real file. Broken references emit a WARNING-class (Medium severity) finding per FR-416 / TC-PLUGIN-RUBRIC-5.",
+      "remediation": "Either restore the missing script (if it was deleted by mistake) or update the bats file to reference the new script path. If the bats test is no longer relevant, delete the test alongside the script it was paired with.",
+      "references": ["FR-416", "TC-PLUGIN-RUBRIC-5"]
+    },
+    {
+      "id": "plugin-test-skip-directive-90-day",
+      "category": "test-skip-hygiene",
+      "pattern": "A `.bats` file contains a bare `skip` directive (without a `# skip-permanent: <reason>` annotation on the same line or the immediately preceding line) and the skip is older than 90 days. The `# skip-permanent: <reason>` annotation, when present, sanctions the skip as a permanent exception and excludes it from the 90-day age check.",
+      "severity": "Medium",
+      "description": "Bare `skip` directives older than 90 days are stale — the original reason for the skip has likely been forgotten and the skipped test silently rots. The `# skip-permanent: <reason>` annotation is the sanctioned exception mechanism: an annotated skip with a non-empty `<reason>` is treated as a permanent intentional skip and excluded from the age check. Bare skips older than the 90-day threshold emit a WARNING-class (Medium severity) finding per FR-416 / TC-PLUGIN-RUBRIC-6.",
+      "remediation": "Either remove the `skip` directive (and re-enable the test, fixing whatever made it skip in the first place) or — if the skip is permanent and intentional — convert it to a sanctioned skip by adding a `# skip-permanent: <reason>` comment on the same line as the `skip` call or the line immediately above it. The reason text is free-form but MUST be non-empty.",
+      "references": ["FR-416", "TC-PLUGIN-RUBRIC-6"]
+    }
+  ]
+}
