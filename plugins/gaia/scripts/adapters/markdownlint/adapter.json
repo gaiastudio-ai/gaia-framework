@@ -1,0 +1,11 @@
+{
+  "name": "markdownlint",
+  "provider": "markdownlint-cli2",
+  "category": "linter",
+  "version-range": ">=0.10.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 60,
+  "file-extensions": [".md"],
+  "scope": "file",
+  "description": "Markdown linter adapter (FR-415). Wraps `markdownlint-cli2` (preferred) or `markdownlint` (fallback) to validate Markdown style and structure conventions. Five-file layout (adapter.json + probe.sh + run.sh + normalize.sh + test/contract.bats) per FR-415 extension of the ADR-078 three-file base."
+}
