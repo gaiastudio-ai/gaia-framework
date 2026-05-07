@@ -5,6 +5,11 @@
 # Trace: TC-CSP-7
 # Refs:  AC1, AC2, AC3, AC4, AC5, AC6, AC7
 #
+# Public functions covered by this bats file (NFR-052 coverage gate):
+#   - check_legacy_flat_path        (Check A — AC1)
+#   - check_heterogeneous_story_index (Check B — AC2)
+#   - check_epic_slug_mismatch      (Check C — AC3)
+#
 # The script is advisory: it ALWAYS exits 0 and emits WARNING lines on stdout
 # when story-layout drift is detected. CRITICAL is never emitted by the three
 # checks (AC4). The line format mirrors check-monolith-shard-sync.sh:
