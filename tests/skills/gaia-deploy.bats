@@ -193,6 +193,96 @@ EOF
   echo "$output" | grep -qi "WARNING"
 }
 
+# ---------- Empty smoke_suites / manual-checklist mode (E78-S5, FR-427) ----------
+# AC1 — Empty suites file produces APPROVE evidence with required metadata fields.
+# AC2 — Empty suites path MUST NOT yield BLOCKED.
+# AC3 — Non-empty suites preserves existing path (backward compatibility).
+# AC4 — evidence/smoke/ directory is created if absent.
+# AC5 — manual-checklist.json contains valid JSON with required schema.
+
+@test "smoke orchestrate: empty suites-file writes manual-checklist.json with APPROVE (AC1, AC2)" {
+  : > "$WORK_TMP/suites.txt"
+  run "$SKILL_SCRIPTS/smoke-orchestrate.sh" \
+    --suites-file "$WORK_TMP/suites.txt" \
+    --target-url "http://t" \
+    --output-dir "$WORK_TMP/evidence/smoke"
+  [ "$status" -eq 0 ]
+  [ -f "$WORK_TMP/evidence/smoke/manual-checklist.json" ]
+  jq -e '.verdict == "APPROVE"' "$WORK_TMP/evidence/smoke/manual-checklist.json"
+  ! echo "$output" | grep -qi "BLOCKED"
+}
+
+@test "smoke orchestrate: --mode manual-checklist writes APPROVE evidence without runner (AC1, AC2)" {
+  run "$SKILL_SCRIPTS/smoke-orchestrate.sh" \
+    --mode manual-checklist \
+    --output-dir "$WORK_TMP/evidence/smoke"
+  [ "$status" -eq 0 ]
+  [ -f "$WORK_TMP/evidence/smoke/manual-checklist.json" ]
+  jq -e '.verdict == "APPROVE"' "$WORK_TMP/evidence/smoke/manual-checklist.json"
+  jq -e '.mode == "manual-checklist"' "$WORK_TMP/evidence/smoke/manual-checklist.json"
+}
+
+@test "smoke orchestrate: non-empty suites preserves existing path (AC3)" {
+  cat > "$WORK_TMP/suites.txt" <<EOF
+mock-pass
+EOF
+  cat > "$WORK_TMP/mock-pass-runner.sh" <<'EOF'
+#!/usr/bin/env bash
+echo APPROVE
+exit 0
+EOF
+  chmod +x "$WORK_TMP/mock-pass-runner.sh"
+  GAIA_DEPLOY_SMOKE_RUNNER="$WORK_TMP/mock-pass-runner.sh" \
+    run "$SKILL_SCRIPTS/smoke-orchestrate.sh" \
+      --suites-file "$WORK_TMP/suites.txt" \
+      --target-url "http://t" \
+      --output-dir "$WORK_TMP/evidence/smoke"
+  [ "$status" -eq 0 ]
+  [ -f "$WORK_TMP/evidence/smoke/mock-pass.json" ]
+  # Must NOT write manual-checklist.json when the suite list is non-empty.
+  [ ! -f "$WORK_TMP/evidence/smoke/manual-checklist.json" ]
+}
+
+@test "smoke orchestrate: empty suites creates evidence/smoke/ if absent (AC4)" {
+  rm -rf "$WORK_TMP/evidence/smoke"
+  : > "$WORK_TMP/suites.txt"
+  run "$SKILL_SCRIPTS/smoke-orchestrate.sh" \
+    --suites-file "$WORK_TMP/suites.txt" \
+    --target-url "http://t" \
+    --output-dir "$WORK_TMP/evidence/smoke"
+  [ "$status" -eq 0 ]
+  [ -d "$WORK_TMP/evidence/smoke" ]
+  [ -f "$WORK_TMP/evidence/smoke/manual-checklist.json" ]
+}
+
+@test "smoke orchestrate: manual-checklist.json schema has required fields (AC5)" {
+  : > "$WORK_TMP/suites.txt"
+  run "$SKILL_SCRIPTS/smoke-orchestrate.sh" \
+    --suites-file "$WORK_TMP/suites.txt" \
+    --target-url "http://t" \
+    --checklist-source "docs/manual-checklist.md" \
+    --output-dir "$WORK_TMP/evidence/smoke"
+  [ "$status" -eq 0 ]
+  jq -e '.verdict == "APPROVE"' "$WORK_TMP/evidence/smoke/manual-checklist.json"
+  jq -e '.mode == "manual-checklist"' "$WORK_TMP/evidence/smoke/manual-checklist.json"
+  jq -e '.checklist_source == "docs/manual-checklist.md"' "$WORK_TMP/evidence/smoke/manual-checklist.json"
+  jq -e '.tester_acknowledgement | type == "string"' "$WORK_TMP/evidence/smoke/manual-checklist.json"
+  jq -e '.tester_acknowledgement | length > 0' "$WORK_TMP/evidence/smoke/manual-checklist.json"
+  # ISO 8601 timestamp pattern: YYYY-MM-DDTHH:MM:SSZ
+  jq -e '.created_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")' \
+    "$WORK_TMP/evidence/smoke/manual-checklist.json"
+}
+
+@test "smoke orchestrate: empty suites with no --checklist-source defaults to 'none' (AC5)" {
+  : > "$WORK_TMP/suites.txt"
+  run "$SKILL_SCRIPTS/smoke-orchestrate.sh" \
+    --suites-file "$WORK_TMP/suites.txt" \
+    --target-url "http://t" \
+    --output-dir "$WORK_TMP/evidence/smoke"
+  [ "$status" -eq 0 ]
+  jq -e '.checklist_source == "none"' "$WORK_TMP/evidence/smoke/manual-checklist.json"
+}
+
 # ---------- Final verdict aggregation (AC6) ----------
 
 @test "verdict aggregate: all APPROVE → final PASSED" {
