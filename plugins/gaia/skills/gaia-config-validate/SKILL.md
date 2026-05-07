@@ -35,7 +35,7 @@ This skill is the native Claude Code entry point for the `/gaia-config-validate`
 ### Step 2 — Resolve project-config.yaml Path
 
 - If a positional argument is provided, use it as the path to the file under test.
-- Otherwise resolve the path as `${CLAUDE_PROJECT_ROOT:-$PWD}/config/project-config.yaml` (project-root-relative).
+- Otherwise resolve via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh project_config_path` (or fall back to `config/project-config.yaml` relative to the project root).
 - HALT if the file does not exist; tell the user where it was searched and suggest `/gaia-init` to scaffold one.
 
 ### Step 3 — Run Project-Config Schema Validation

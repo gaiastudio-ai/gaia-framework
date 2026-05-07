@@ -25,7 +25,7 @@ Optionally accepts a single positional argument naming the top-level section to 
 
 ### Step 1 — Locate project-config.yaml
 
-- Resolve the path as `${CLAUDE_PROJECT_ROOT:-$PWD}/config/project-config.yaml` (project-root-relative).
+- Resolve via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh project_config_path` (fallback `config/project-config.yaml`).
 - HALT if missing — point the user at `/gaia-init`.
 
 ### Step 2 — Render the File or Section

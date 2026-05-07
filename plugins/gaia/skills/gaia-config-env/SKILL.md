@@ -27,7 +27,7 @@ This skill targets ONLY the `environments` section. Other sections (`compliance`
 
 ### Step 1 — Locate project-config.yaml
 
-- Resolve the path as `${CLAUDE_PROJECT_ROOT:-$PWD}/config/project-config.yaml` (project-root-relative).
+- Resolve the path via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh project_config_path` (or fall back to `config/project-config.yaml` relative to the project root).
 - HALT if the file is missing — point the user at `/gaia-init`.
 
 ### Step 2 — Extract the environments Section

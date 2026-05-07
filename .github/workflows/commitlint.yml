@@ -16,3 +16,12 @@ jobs:
           # Validate PR title (squash-merge normalizes individual commits)
           # The action validates the PR title as the commit message
           failOnWarnings: false
+          # Limit linting to the most-recent commit. Without this, merge
+          # commits (resolution merges pulling main into staging) cause
+          # the action to walk into the merged-in branch's history and
+          # re-lint commits already on main — including historical
+          # "release: ..." subjects that predate the current commitlint
+          # config. commitDepth: 1 confines the lint to the PR's HEAD
+          # commit, which is what conventional-commits PR-title
+          # enforcement actually wants.
+          commitDepth: 1
