@@ -122,6 +122,12 @@ _list() {
   ' "$file"
 }
 
+_key_present() {
+  # Returns 0 if the YAML payload contains a top-level key (`key:` at column 1).
+  local file="$1" key="$2"
+  grep -qE "^${key}:" "$file"
+}
+
 _attendees_block() {
   # Extract attendees mapping list — each block has `- name: x` then indented fields.
   local file="$1"
@@ -135,6 +141,11 @@ _attendees_block() {
 
 CHARTER="$(_scalar "$PAYLOAD" charter)"
 MODE="$(_scalar "$PAYLOAD" mode)"
+# E76-S5 — closing-artifact bias + invitee-resolution audit fields. Optional
+# in the payload (legacy E76-S3 callers omit them); when absent, the writer
+# emits no row for that key so back-compat is preserved.
+CLOSING_BIAS="$(_scalar "$PAYLOAD" closing_artifact_bias)"
+INVITEES_OVERRIDE="$(_scalar "$PAYLOAD" invitees_override)"
 TOTAL_TOKENS="$(_scalar "$PAYLOAD" total_tokens)"
 SUMMARY="$(_scalar "$PAYLOAD" summary)"
 SCRATCHPAD_FINAL="$(_scalar "$PAYLOAD" scratchpad_final)"
@@ -156,6 +167,10 @@ OPEN_Q_LIST="$(_list "$PAYLOAD" open_questions)"
 ACTION_IDS_LIST="$(_list "$PAYLOAD" action_items)"
 MEM_WT_LIST="$(_list "$PAYLOAD" memory_writethrough)"
 SCRATCHPAD_EXTRACTIONS_LIST="$(_list "$PAYLOAD" scratchpad_extractions)"
+# E76-S5 — invitee-resolution audit lists (FR-MTG-18 / AC16). Each list may
+# legitimately be empty; we detect presence of the key via _key_present.
+DEFAULT_RESOLVED_LIST="$(_list "$PAYLOAD" default_invitees_resolved)"
+MISSING_INVITEES_LIST="$(_list "$PAYLOAD" missing_invitees)"
 
 # Compose action_items inline-list for frontmatter
 action_items_inline="["
@@ -183,6 +198,39 @@ tmp="$(mktemp)"
   echo "slug: ${SLUG}"
   echo "charter: \"${CHARTER}\""
   echo "mode: ${MODE}"
+
+  # E76-S5 — closing-artifact bias + invitee-resolution audit fields. Each is
+  # emitted only when present in the payload to preserve backward compat with
+  # legacy E76-S3 callers (T7 / AC16 / FR-MTG-17 / FR-MTG-18).
+  if _key_present "$PAYLOAD" closing_artifact_bias; then
+    echo "closing_artifact_bias: ${CLOSING_BIAS}"
+  fi
+  if _key_present "$PAYLOAD" default_invitees_resolved; then
+    if [[ -n "$DEFAULT_RESOLVED_LIST" ]]; then
+      echo "default_invitees_resolved:"
+      while IFS= read -r n; do
+        [[ -z "$n" ]] && continue
+        echo "  - ${n}"
+      done <<< "$DEFAULT_RESOLVED_LIST"
+    else
+      echo "default_invitees_resolved: []"
+    fi
+  fi
+  if _key_present "$PAYLOAD" missing_invitees; then
+    if [[ -n "$MISSING_INVITEES_LIST" ]]; then
+      echo "missing_invitees:"
+      while IFS= read -r n; do
+        [[ -z "$n" ]] && continue
+        echo "  - ${n}"
+      done <<< "$MISSING_INVITEES_LIST"
+    else
+      echo "missing_invitees: []"
+    fi
+  fi
+  if _key_present "$PAYLOAD" invitees_override; then
+    echo "invitees_override: ${INVITEES_OVERRIDE}"
+  fi
+
   echo "cost_breakdown:"
   if [[ -n "$ATTENDEES" ]]; then
     # Re-emit the attendees mapping list with stable indentation.

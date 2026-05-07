@@ -1,42 +1,50 @@
 #!/usr/bin/env bash
-# resolve-mode.sh — gaia-meeting active-mode resolver (E76-S1, FR-MTG-17, FR-MTG-16)
+# resolve-mode.sh — gaia-meeting active-mode resolver (E76-S1, E76-S5)
+#
+# FR-MTG-17 / FR-MTG-16
 #
 # Resolves the active mode from CLI args. When --mode is absent, returns
 # "decide" (default per FR-MTG-17). Rejects mode stacking (multiple --mode
 # flags) per the FR-MTG-16 single-mode-only invariant. Rejects unknown modes.
 #
-# Known modes (S1 documents the full set; only "decide" is functionally wired
-# in S1 — the other eight ship in E76-S5):
-#   decide brainstorm research-deepdive incident review
-#   estimate retro design-critique architecture
+# E76-S5 — mode set is now sourced from the registry at
+# `knowledge/modes.yaml` (FR-MTG-17), and aliases (currently only `ux` →
+# `design`) are canonicalised here so downstream consumers see only the
+# canonical mode name.
 #
 # Usage:
 #   resolve-mode.sh                   # -> "decide"
 #   resolve-mode.sh --mode brainstorm # -> "brainstorm"
+#   resolve-mode.sh --mode ux         # -> "design" (alias resolution)
 #
 # Exit codes:
-#   0 = active mode echoed on stdout
+#   0 = active mode echoed on stdout (canonical)
 #   2 = mode stacking detected (FR-MTG-16 violation)
 #   3 = unknown mode
 #   4 = malformed args
 
 set -euo pipefail
 
-KNOWN_MODES=(decide brainstorm research-deepdive incident review estimate retro design-critique architecture)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/load-mode-registry.sh
+. "$SCRIPT_DIR/lib/load-mode-registry.sh"
 
 MODE=""
 MODE_COUNT=0
+SUPPLIED_MODES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode)
       MODE_COUNT=$((MODE_COUNT + 1))
       MODE="${2-}"
+      SUPPLIED_MODES+=("$MODE")
       shift 2
       ;;
     --mode=*)
       MODE_COUNT=$((MODE_COUNT + 1))
       MODE="${1#--mode=}"
+      SUPPLIED_MODES+=("$MODE")
       shift
       ;;
     *)
@@ -47,7 +55,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$MODE_COUNT" -gt 1 ]]; then
-  echo "resolve-mode.sh: single-mode-only invariant violated — only one --mode flag is allowed (FR-MTG-16)." >&2
+  # AC9 — error message MUST list both supplied values and reference FR-MTG-16.
+  echo "resolve-mode.sh: single-mode-only invariant violated (FR-MTG-16) — only one --mode flag is allowed in v1; supplied: ${SUPPLIED_MODES[*]}" >&2
   exit 2
 fi
 
@@ -55,19 +64,13 @@ if [[ -z "$MODE" ]]; then
   MODE="decide"
 fi
 
-# Validate against the known set
-known=0
-for m in "${KNOWN_MODES[@]}"; do
-  if [[ "$m" == "$MODE" ]]; then
-    known=1
-    break
-  fi
-done
-
-if [[ "$known" -ne 1 ]]; then
-  echo "resolve-mode.sh: unknown mode '$MODE'. Known modes: ${KNOWN_MODES[*]}" >&2
+# Canonicalise via the registry (handles aliases such as ux -> design).
+canonical="$(mode_registry_canonical "$MODE" || true)"
+if [[ -z "$canonical" ]]; then
+  KNOWN="$(mode_registry_known_modes | tr '\n' ' ')"
+  echo "resolve-mode.sh: unknown mode '$MODE'. Known modes: ${KNOWN}" >&2
   exit 3
 fi
 
-echo "$MODE"
+echo "$canonical"
 exit 0
