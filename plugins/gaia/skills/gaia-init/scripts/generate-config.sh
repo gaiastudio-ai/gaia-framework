@@ -103,8 +103,29 @@ lines.append(f"installed_path: {abs_target}")
 lines.append("framework_version: 0.0.0")
 lines.append(f"date: {today}")
 
+project_shape = (data.get("project_shape") or "").strip()
+is_plugin_shape = project_shape == "claude-code-plugin"
+
+# E77-S9 / FR-411 — Claude Code plugin shape (option 6).
+# Seeds project_kind, references the canonical claude-code-plugin stack file
+# (authored by E77-S2 / FR-404), and seeds plugin-specific tool_adapters
+# defaults. Skips the per-service iterative stacks loop because the plugin
+# stack is single-shape. Out of scope: multi-plugin marketplace (NOT seeded).
+if is_plugin_shape:
+    lines.append("")
+    lines.append('project_kind: "claude-code-plugin"')
+
 stacks = data.get("stacks") or []
-if stacks:
+if is_plugin_shape:
+    # Plugin shape: emit a single stack entry that names the plugin stack
+    # file (resolver picks up config/stacks/claude-code-plugin.yaml).
+    lines.append("")
+    lines.append("stacks:")
+    lines.append('  - name: "claude-code-plugin"')
+    # No language / paths fields — the plugin stack file is the source of
+    # truth for file_extensions / discovery_rules / casing /
+    # frontmatter_requirements (see E77-S2 / FR-404).
+elif stacks:
     lines.append("")
     lines.append("stacks:")
     for s in stacks:
@@ -113,6 +134,20 @@ if stacks:
         lines.append("    paths:")
         for p in s.get("paths", []) or []:
             lines.append(f"      - {yaml_quote(p)}")
+
+# E77-S9 / FR-411 — plugin-specific tool_adapters defaults.
+# shellcheck: shell-script linting under plugins/gaia/scripts/.
+# bats: bats-core test suites under plugins/gaia/tests/.
+# markdownlint: SKILL.md / ADR / docs lint.
+# yamllint: manifest.yaml / config/*.yaml / rubric overlays.
+# Adapter implementations are introduced by E77-S11 / E77-S12 / E77-S13.
+if is_plugin_shape:
+    lines.append("")
+    lines.append("tool_adapters:")
+    lines.append("  - shellcheck")
+    lines.append("  - bats")
+    lines.append("  - markdownlint")
+    lines.append("  - yamllint")
 
 compliance = data.get("compliance") or {}
 if compliance:
