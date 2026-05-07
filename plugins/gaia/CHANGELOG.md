@@ -3,6 +3,104 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.135.0] — 2026-05-07
+
+### Added
+
+- (E78-S5) handle empty smoke_suites with manual-checklist evidence (FR-427) (#517)
+- (E78-S4) wire /gaia-deploy deployment.adapter dispatch (FR-426) (#516)
+- (E78-S3) add health_check.mode skip to /gaia-deploy (FR-425) (#515)
+- (E78-S2) wire Tier 3 — `distribution.channels[]` schema (FR-424) (#514)
+- (E78-S1) add marketplace-publish adapter (FR-423) (#513)
+- (E77-S16) plugin CI template + dual budget-watch + plugin trace (#512)
+- (E77-S15) wire Tier 2 — plugin-qa + plugin-nfr sub-rubrics (FR-417, FR-422) (#511)
+- (E77-S13) wire Tier 2 — jsonschema, markdownlint, yamllint adapte (#509)
+- (E77-S12) wire Tier 2 — bats adapter dual-mode (FR-414) (#508)
+- (E77-S11) wire Tier 2 — shellcheck adapter (FR-413) (#507)
+- (E77-S9) wire Tier 1 — `/gaia-init` option 6: Claude Code plugin (#506)
+- (E77-S8) add plugin-manifest-validator adapter (FR-410) (#505)
+- (E77-S5) wire Tier 1 — `plugin-code` sub-rubric (FR-407) (#502)
+- (E77-S4) sub-rubric loader pipeline migration (#501)
+- (E77-S3) wire Tri-state tool-availability probe (#500)
+- (E77-S2) add claude-code-plugin stack file (FR-404) (#499)
+- (E77-S1) add project_kind field to project-config schema and resolver (#498)
+- (E75-S4) wire Framework README updates — `/gaia-test-automate` ac (#494)
+- (E75-S2) per-skill parity bats for review and action skills (#493)
+- (E74-S11) wire `/gaia-config-platform` + `/gaia-config-device-targe (#491)
+- (E74-S10) /gaia-test-mobile-e2e + /gaia-test-device-matrix action skills
+- (E74-S7) seven mobile static-analysis adapters + platform-gated resolver (#487)
+- (E74-S6) coppa.json regime rubric for COPPA compliance (#486)
+- (E74-S4) wire `apple-app-store.json` regime rubric — HIG conforma (#484)
+- (E74-S3) wire Base `mobile.json` rubric + sub-rubrics extending cod (#483)
+- (E74-S2) ship four mobile stacks under config/stacks/ (#482)
+- (E74-S1) extend project-config schema with platforms enum and full device_targets
+- (E73-S5) /gaia-deploy Pattern A skill + script-deploy reference adapter (#480)
+- (E73-S4) /gaia-test-a11y post-deploy skill with axe-core, pa11y, lighthouse adapters (#479)
+- (E73-S3) /gaia-test-dast action skill + OWASP ZAP adapter (#478)
+- (E73-S2) wire /gaia-test-perf action skill with k6 + Lighthouse adapters (#476)
+- (E72-S4) wire Per-stack tag conventions + `tag-conformance-detector (#474)
+- (E72-S3) wire `CS-NNN` custom-scenario tracking + `custom/test-scen (#473)
+- (E72-S2) wire /gaia-test-automate sub-commands — --status, --add- (#472)
+- (E71-S4) /gaia-config-ci --regenerate backup-and-prompt UX + user-steps include (#470)
+- (E71-S3) /gaia-config-* editor family — section-scoped, comment-preserving (#469)
+- (E70-S4) wire OWASP Dependency-Check adapter as alternative dep-audit (container profile) (#465)
+- (E70-S3) wire SonarQube adapter as alternative SAST under `runtime- (#464)
+- (E53-S245) extract h3-shard.sh into gaia-shard-doc/scripts/ (#461)
+- (E70-S6) extract probe-state-to-check-status.sh shared helper (#460)
+- (E69-S7) wire Audit/repair `cluster-11-parity/knowledge-bundling-pa (#459)
+- (E69-S6) sweep SKILL.md usage strings across E69 renames for AC6 (#458)
+- (E68-S5) reconcile rubric cohort top-level shape (#457)
+- (E67-S8) add deterministic review-common/qa-tc-generator.sh (#456)
+- (E67-S7) wire Reconcile `test_execution.{context}.{tier}` schema ac (#454)
+- (E66-S6) add failure_kind enum to tool-availability-probe output (#452)
+- (E64-S7) register sprint-state.sh lint-err tempfile in _GAIA_TMP_PATHS (#451)
+- (E54-S6) wire Story-template enforces 3-column Review Gate at valid (#450)
+- (E70-S1) wire Adapter pattern formalization — `adapter.json` sche (#448)
+- (E69-S5) wire /gaia-perf-deepdive anytime variant rename (#446)
+- (E69-S4) wire utility reviews as sub-routines and update review-all skip-rule (#445)
+- (E69-S3) collapse gaia-test-design + gaia-test-framework into gaia-test-strategy (#444)
+- (E69-S2) A11y three-phase reorganization sharing rubrics/base/a11y.json (#443)
+- (E69-S1) rename 8 review commands to gaia-{verb}-{noun}, add deprecation aliases (#442)
+- (E68-S4) ship nine regime rubrics under rubrics/regimes/
+- (E68-S3) ship six base rubrics under rubrics/base/ (#440)
+- (E67-S5) restore /gaia-review-security Phase 3C privacy/data-protection scanners (#439)
+- (E67-S4) qa-review test execution + Phase 3C TC generation (#437)
+- (E67-S3) coverage-delta as verdict input for /gaia-test-automate (#436)
+- (E67-S2) placeholder-test-detector gate + action-skill nature for /gaia-test-automate (#435)
+- (E67-S1) phase-3a scanners for gaia-review-test (#434)
+- (E66-S4) wire /gaia-security-review reference migration to the v2 t (#432)
+- (E53-S244) auto-invoke /gaia-shard-doc from cascade skills (#431)
+- (E66-S5) extend evidence-judgment-parity.bats to all twelve verdict-producing skills (#430)
+- (E66-S3) /gaia-review-all composite verdict GATING migration (#429)
+- (E66-S2) three-state availability probe + Phase-5 adapter contracts (#428)
+- (E68-S2) layered rubric loader + merger + schema + validation skills
+- (E64-S6) wire Startup orphan-tmp sweep for atomic-write scripts (#425)
+- (E53-S243) wire Document and enforce monolith-vs-shard sync contrac (#423)
+- (E53-S236) gaia-shard-doc code-block-aware H2 detection (#422)
+- (E53-S234) document non-git docs/ workspace + degrade git ops gracefully (#421)
+- (E68-S1) extend project-config.yaml schema with eleven new top-level sections (#420)
+- (E64-S5) wire Script-level EXIT/INT/TERM trap for atomic-write tmp cleanup (#418)
+- (E66-S1) add review-common shared library with agent-overlay and parameterized verdict-resolver
+
+### Changed
+
+- merge origin/main into staging — resolve sprint-39 / PR #519 conflicts
+- (E74-S1) register extract_device_targets_json in NFR-052 coverage stub
+- (E74-S1) register extract_device_targets_json for NFR-052 coverage gate
+- (E73-S2) add TS-08..TS-15 narrative-tagged bats coverage (#477)
+- (E68-S2) add AC7 contradiction-pattern bats fixture (#427)
+
+### Fixed
+
+- (skills) correct project-config.yaml path resolution in /gaia-config-* editors (#497)
+- (E74-S10) satisfy action-skill-contract drift guard
+- (E67-S4) drop unused json_escape helper and BRIDGE_USED setters (#438)
+- (E53-S244) add missing checkpoint invocation for gaia-edit-arch Step 9 (#433)
+- (E64-S4) name resolve_epics_and_stories_path in coverage anchor
+- (E64-S4) resolve EPICS_AND_STORIES path for sharded layout
+- (E64-S5) chain release_lock EXIT trap through _cleanup_tmps in memory-writer.sh (#419)
+- (E64-S3) use plugin-global path for transition-story-status.sh in SKILL.md (#417)
+
 ## [1.134.1] — 2026-05-04
 
 ### Fixed
