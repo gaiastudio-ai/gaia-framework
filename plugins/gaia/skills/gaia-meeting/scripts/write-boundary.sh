@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 # write-boundary.sh — gaia-meeting state-free write-boundary asserter
-# (E76-S1, FR-MTG-31, AC8)
+# (E76-S1 + E76-S3, FR-MTG-31, AC10)
 #
 # The skill orchestrator MUST route every artifact write through this asserter
 # so that no path outside the allowed roots is ever written. This is the
 # state-free invariant: /gaia-meeting MUST NOT touch sprint state, story files,
 # PRD, architecture, test plan, threat model, or traceability.
 #
-# Allowed write roots:
-#   - docs/creative-artifacts/
-#   - _memory/action-items/
-#   - _memory/{any-prefix}-sidecar/decisions/
+# Allowed write targets (E76-S3 / ADR-086 reconciliation):
+#   - docs/creative-artifacts/meeting-*.md
+#   - docs/planning-artifacts/action-items.yaml
+#   - _memory/{any-prefix}-sidecar/decisions/*.md
+#
+# Note: the legacy E76-S1 path `_memory/action-items/` is RETIRED by ADR-086 —
+# the canonical action-items registry is the single-file YAML at
+# `docs/planning-artifacts/action-items.yaml` (per architecture §10.28.6 /
+# ADR-052 addendum E36-S4). New writes MUST target the canonical location.
 #
 # Usage:
 #   write-boundary.sh <relative-path-from-project-root>
@@ -42,13 +47,13 @@ case "$path" in
     ;;
 esac
 
-# Allowed: docs/creative-artifacts/...
+# Allowed: docs/creative-artifacts/meeting-*.md (and any descendant under creative-artifacts)
 if [[ "$path" == docs/creative-artifacts/* ]]; then
   exit 0
 fi
 
-# Allowed: _memory/action-items/...
-if [[ "$path" == _memory/action-items/* ]]; then
+# Allowed: docs/planning-artifacts/action-items.yaml (canonical registry, ADR-086)
+if [[ "$path" == "docs/planning-artifacts/action-items.yaml" ]]; then
   exit 0
 fi
 
@@ -58,5 +63,5 @@ if [[ "$path" =~ ^_memory/[A-Za-z0-9_.-]+-sidecar/decisions/ ]]; then
 fi
 
 echo "write-boundary.sh: REJECTED — '$path' is outside the state-free write boundary (FR-MTG-31)." >&2
-echo "write-boundary.sh: allowed roots: docs/creative-artifacts/, _memory/action-items/, _memory/{agent}-sidecar/decisions/" >&2
+echo "write-boundary.sh: allowed targets: docs/creative-artifacts/meeting-*.md, docs/planning-artifacts/action-items.yaml, _memory/{agent}-sidecar/decisions/*.md" >&2
 exit 2

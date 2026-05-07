@@ -1,8 +1,10 @@
 #!/usr/bin/env bats
-# write-boundary.bats — gaia-meeting state-free write boundary (E76-S1)
+# write-boundary.bats — gaia-meeting state-free write boundary (E76-S1 + E76-S3)
 #
-# AC8 / FR-MTG-31: writes confined to docs/creative-artifacts/, _memory/action-items/,
-#                  _memory/{agent}-sidecar/decisions/
+# AC10 (E76-S3) / FR-MTG-31 / ADR-086: writes confined to
+#   docs/creative-artifacts/meeting-*.md
+#   docs/planning-artifacts/action-items.yaml
+#   _memory/{agent}-sidecar/decisions/*.md
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -18,20 +20,28 @@ _helper_required() {
   [ -x "$HELPER" ]
 }
 
-@test "AC8: docs/creative-artifacts/ is allowed" {
+@test "AC10: docs/creative-artifacts/meeting-*.md is allowed" {
   _helper_required
   run "$HELPER" "docs/creative-artifacts/meeting-2026-05-07-foo.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC8: _memory/action-items/ is allowed" {
-  run "$HELPER" "_memory/action-items/2026-05-07-foo.md"
+@test "AC10: docs/planning-artifacts/action-items.yaml is allowed (E76-S3 ADR-086)" {
+  _helper_required
+  run "$HELPER" "docs/planning-artifacts/action-items.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AC8: _memory/{agent}-sidecar/decisions/ is allowed" {
+@test "AC10: _memory/{agent}-sidecar/decisions/ is allowed" {
   run "$HELPER" "_memory/architect-sidecar/decisions/AD-1.md"
   [ "$status" -eq 0 ]
+}
+
+@test "AC10: _memory/action-items/ is REJECTED (path retired by ADR-086)" {
+  _helper_required
+  run "$HELPER" "_memory/action-items/2026-05-07-foo.md"
+  [ "$status" -ne 0 ]
+  [ "$status" -ne 127 ]
 }
 
 @test "AC8: docs/planning-artifacts/sprint-status.yaml is REJECTED" {
