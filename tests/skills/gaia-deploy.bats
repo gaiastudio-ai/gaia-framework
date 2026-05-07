@@ -98,6 +98,60 @@ EOF
   jq -e '.status == "timeout"' "$WORK_TMP/evidence/deploy/health-check.json"
 }
 
+# ---------- Health-check mode (E78-S3, FR-425) ----------
+# AC1 — Default poll preserved (no --mode flag → poll behavior unchanged).
+# AC2 — Skip mode recognized (--mode skip bypasses poll).
+# AC3 — Evidence record on skip (health-check.json captures the configured-skip reason).
+# AC4 — Invalid mode rejected (any value other than poll | skip halts with diagnostic).
+
+@test "health-check mode: omitted flag preserves default poll behavior (AC1)" {
+  GAIA_DEPLOY_HEALTH_FAKE_RC=0 run \
+    "$SKILL_SCRIPTS/health-check.sh" --url "http://example.invalid/health" --timeout 2 --output-dir "$WORK_TMP/evidence/deploy"
+  [ "$status" -eq 0 ]
+  jq -e '.status == "passed"' "$WORK_TMP/evidence/deploy/health-check.json"
+}
+
+@test "health-check mode: explicit poll runs poll loop (AC1)" {
+  GAIA_DEPLOY_HEALTH_FAKE_RC=0 run \
+    "$SKILL_SCRIPTS/health-check.sh" --mode poll --url "http://example.invalid/health" --timeout 2 --output-dir "$WORK_TMP/evidence/deploy"
+  [ "$status" -eq 0 ]
+  jq -e '.status == "passed"' "$WORK_TMP/evidence/deploy/health-check.json"
+}
+
+@test "health-check mode: skip bypasses poll and writes evidence (AC2, AC3)" {
+  # No URL is required when skipping; the skill MUST not invoke curl.
+  # Setting GAIA_DEPLOY_HEALTH_FAKE_RC=1 would fail a poll run — proves we did not poll.
+  GAIA_DEPLOY_HEALTH_FAKE_RC=1 run \
+    "$SKILL_SCRIPTS/health-check.sh" --mode skip --output-dir "$WORK_TMP/evidence/deploy"
+  [ "$status" -eq 0 ]
+  [ -f "$WORK_TMP/evidence/deploy/health-check.json" ]
+  jq -e '.status == "skipped"' "$WORK_TMP/evidence/deploy/health-check.json"
+  jq -e '.mode == "skip"' "$WORK_TMP/evidence/deploy/health-check.json"
+  jq -e '.reason == "configured skip"' "$WORK_TMP/evidence/deploy/health-check.json"
+}
+
+@test "health-check mode: invalid value rejected with actionable error (AC4)" {
+  run "$SKILL_SCRIPTS/health-check.sh" --mode banana --url "http://example.invalid/health" --output-dir "$WORK_TMP/evidence/deploy"
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qi "invalid"
+  echo "$output" | grep -q "banana"
+  echo "$output" | grep -q "poll"
+  echo "$output" | grep -q "skip"
+}
+
+# AC5 — Schema validation: project-config.schema.json declares health_check.mode
+# as enum {poll, skip}. Validated via the jsonschema adapter.
+@test "health-check mode: schema declares health_check.mode enum [poll, skip] (AC5)" {
+  SCHEMA="$PLUGIN_ROOT/schemas/project-config.schema.json"
+  [ -f "$SCHEMA" ]
+  # The health_check definition must exist and declare exactly the two enum values.
+  jq -e '.definitions.healthCheck.properties.mode.enum == ["poll", "skip"]' "$SCHEMA"
+  # Default value MUST be "poll" for backward compatibility.
+  jq -e '.definitions.healthCheck.properties.mode.default == "poll"' "$SCHEMA"
+  # Top-level health_check property must reference the definition.
+  jq -e '.properties.health_check."$ref" == "#/definitions/healthCheck"' "$SCHEMA"
+}
+
 # ---------- Smoke orchestration (AC5, AC14) ----------
 
 @test "smoke orchestrate: all suites APPROVE → returns 0" {
