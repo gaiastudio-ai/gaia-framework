@@ -92,15 +92,19 @@ EOF
 @test "AC3: lint-bats-script-refs.sh detects broken script reference and exits non-zero" {
   local fixture="$BATS_TEST_TMPDIR/fixture-broken"
   mkdir -p "$fixture/plugins/gaia/tests" "$fixture/plugins/gaia/scripts"
-  # Bats file references a script that does NOT exist on disk.
   # NOTE: the literal token "@test" is constructed via printf so the bats
   # preprocessor (which scans for /^[[:blank:]]*@test/ even inside heredocs)
   # does not miscount these heredoc fixture bodies as real tests.
-  local AT_TEST
+  # NOTE: the script path written into the fixture is built by interpolating a
+  # shared $REF prefix so this source file does not contain the literal
+  # `plugins/gaia/scripts/<name>.sh` pattern that lint-bats-script-refs.sh
+  # would otherwise pick up at sweep-lint time on this very file.
+  local AT_TEST REF
   AT_TEST=$(printf '%s' '@'; printf '%s' 'test')
+  REF="plugins/gaia/scripts"
   printf '%s\n' '#!/usr/bin/env bats' \
     "${AT_TEST} \"broken reference\" {" \
-    '  run plugins/gaia/scripts/does-not-exist.sh' \
+    "  run ${REF}/e77-s14-fixture-missing.sh" \
     '}' \
     > "$fixture/plugins/gaia/tests/broken-ref.bats"
   run "$REFS_LINT" --root "$fixture"
@@ -108,19 +112,20 @@ EOF
     || { echo "AC3 FAIL: expected non-zero exit on broken ref, got status=$status, output=$output" >&2; return 1; }
   echo "$output" | grep -F 'STALE:' >/dev/null \
     || { echo "AC3 FAIL: expected STALE: marker in output, got: $output" >&2; return 1; }
-  echo "$output" | grep -F 'does-not-exist.sh' >/dev/null \
+  echo "$output" | grep -F 'e77-s14-fixture-missing.sh' >/dev/null \
     || { echo "AC3 FAIL: expected referenced script name in output, got: $output" >&2; return 1; }
 }
 
 @test "AC3: lint-bats-script-refs.sh exits zero when reference resolves" {
   local fixture="$BATS_TEST_TMPDIR/fixture-good"
   mkdir -p "$fixture/plugins/gaia/tests" "$fixture/plugins/gaia/scripts"
-  : > "$fixture/plugins/gaia/scripts/exists.sh"
-  local AT_TEST
+  : > "$fixture/plugins/gaia/scripts/e77-s14-fixture-exists.sh"
+  local AT_TEST REF
   AT_TEST=$(printf '%s' '@'; printf '%s' 'test')
+  REF="plugins/gaia/scripts"
   printf '%s\n' '#!/usr/bin/env bats' \
     "${AT_TEST} \"good reference\" {" \
-    '  run plugins/gaia/scripts/exists.sh' \
+    "  run ${REF}/e77-s14-fixture-exists.sh" \
     '}' \
     > "$fixture/plugins/gaia/tests/good-ref.bats"
   run "$REFS_LINT" --root "$fixture"
