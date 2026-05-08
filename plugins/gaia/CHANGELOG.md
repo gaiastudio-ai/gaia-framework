@@ -3,6 +3,86 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.136.0] — 2026-05-07
+
+### Added
+
+**Sprint-39** (117 pts, 22 stories, 100% completion + 100% velocity + 100% first-pass review rate). Two epics shipped end-to-end: E77 Plugin Project Shape (16 stories, 88 pts) + E78 Plugin Distribution (6 stories, 29 pts).
+
+- **E77 Plugin Project Shape** — GAIA can now be authored as a Claude Code plugin.
+  - (E77-S1) add `project_kind` field to project-config schema and resolver (FR-403, ADR-087) (#498)
+  - (E77-S2) add claude-code-plugin stack file (FR-404) (#499)
+  - (E77-S3) tri-state tool-availability probe (FR-405, ADR-089) (#500)
+  - (E77-S4) sub-rubric loader pipeline migration with byte-identical contract test (FR-406, ADR-088) — high-risk XL (#501)
+  - (E77-S5) Tier 1 `plugin-code` sub-rubric (FR-407) (#502)
+  - (E77-S6) Tier 1 `plugin-security` sub-rubric (FR-408) (#503)
+  - (E77-S7) Tier 1 `plugin-frontmatter-validator` adapter (FR-409) (#504)
+  - (E77-S8) Tier 1 `plugin-manifest-validator` adapter (FR-410) (#505)
+  - (E77-S9) `/gaia-init` option 6 — Claude Code plugin (FR-411) (#506)
+  - (E77-S10) ADR-090 mobile dual-path coexistence amendment (FR-412) — docs-only
+  - (E77-S11) Tier 2 shellcheck adapter (FR-413) (#507)
+  - (E77-S12) Tier 2 bats adapter dual-mode with day-1 spike fallback (FR-414) — high-risk (#508)
+  - (E77-S13) Tier 2 jsonschema, markdownlint, yamllint adapters (FR-415) (#509)
+  - (E77-S14) Tier 2 `plugin-test` sub-rubric (FR-416) (#510)
+  - (E77-S15) Tier 2 `plugin-qa` + `plugin-nfr` sub-rubrics (FR-417, FR-422) (#511)
+  - (E77-S16) plugin CI template + bats-budget-watch + brownfield detection + plugin-aware `/gaia-trace` (FR-418, FR-419, FR-420, FR-421) — high-risk XL (#512)
+- **E78 Plugin Distribution** — marketplace publication chain end-to-end.
+  - (E78-S1) `marketplace-publish` adapter (FR-423) (#513)
+  - (E78-S2) `distribution.channels[]` schema (FR-424) (#514)
+  - (E78-S3) `/gaia-deploy` `health_check.mode: skip` (FR-425) (#515)
+  - (E78-S4) `/gaia-deploy` `deployment.adapter` dispatch (FR-426) (#516)
+  - (E78-S5) `/gaia-deploy` empty `smoke_suites` handling with manual-checklist evidence (FR-427) (#517)
+  - (E78-S6) `plugin-versioning` semver rubric + `adapter.schema.json` enum hygiene (FR-428, FR-429) (#518)
+
+### Fixed
+
+- (skills) correct project-config.yaml path resolution in /gaia-config-* editors (#497)
+
+### Changed
+
+- (ci) commitlint: ignore historical `release:` and `Merge ...` subjects so resolution-merge PRs aren't blocked by commits already on main (#520)
+- (ci) commitlint: limit linting to PR HEAD via `commitDepth: 1` (#520)
+- merge origin/main into staging — resolve sprint-39 / PR #519 conflicts (#520)
+
+### Maintenance
+
+- 22 distinct stories shipped across one sprint; 21 squash-merge feature commits (#498–#518) + #497 path-fix + #520 fixup PR.
+- Three high-risk stories landed without spike fallback (E77-S4, E77-S12, E77-S16). MITIGATION 4 prerequisite gate on E77-S16 (E77-S11/S12/S13 contract.bats green before ship) worked as designed.
+- Sprint-envelope discipline restored at 117 pts after sprint-36→37→38 expansion (73 → 174 → 271 pts).
+- 33 findings triaged into 17 backlog stories (15 new TDs, 2 dedup'd into existing TD-112/TD-115). 7 retro action items captured (AI-51..AI-57).
+
+## [1.135.0] — 2026-05-06
+
+### Added
+
+- **Sprint-37** (174 pts, 34 stories): GAIA Review System v2 foundation + critical-gaps + configuration system + naming reorg
+  - E66 Foundation: review-common shared library, agent-overlay.sh, verdict-resolver.sh parameterization, tool-availability-probe.sh three-state probe, /gaia-review-all composite verdict GATING (ADR-082), gaia-security-review V2 reference migration, evidence-judgment-parity bats across 12 verdict-producing skills
+  - E67 Critical Gaps: /gaia-review-test Phase 3A scripts (smell-detector, flakiness-analyzer, fixture-analyzer, tag-conformance-detector), /gaia-test-automate skeleton-fix + placeholder-test-detector + coverage-delta verdict input, /gaia-review-qa Phase 3C TC generation + project-config-driven test execution, /gaia-review-security privacy/data-protection scanners (PII detector, data-handling lint, retention-policy check)
+  - E68 Configuration System: project-config schema extension (11 new top-level sections), layered rubric loader + rubric-merger.sh + rubric.schema.json, six base rubrics + nine regime rubrics (GDPR/HIPAA/PCI-DSS/SOX/CCPA/SOC2/ISO-27001/WCAG-AA/WCAG-AAA)
+  - E69 Naming & Reorg: 8 review commands renamed to gaia-{verb}-{noun} canonical form with one-sprint deprecation aliases, /gaia-review-a11y three-phase reorganization, /gaia-test-strategy collapse, utility reviews wired as sub-routines, /gaia-perf-deepdive anytime variant rename
+- **Sprint-38** (271 pts, 48 stories): Tool Adapter Framework + Configuration UX + Action Skills + Deployment-Phase + Mobile Platform + Polish
+  - E70 Tool Adapter Framework: adapter pattern formalization (adapter.schema.json + run-contract), 5-tool migration (Semgrep/gitleaks/radon/gocyclo/eslint-plugin-sonarjs) + backward-compat aliases, SonarQube adapter (container profile), OWASP Dependency-Check adapter, /gaia-list-tools + /gaia-tool-info + /gaia-validate-rubric query skills, probe-state-to-check-status helper
+  - E71 Configuration UX: /gaia-init greenfield conversational setup, /gaia-brownfield detection-driven config extension, /gaia-config-* editor family (env/test/tool/compliance/stack/rubric/show/validate), /gaia-config-ci --regenerate backup-and-prompt UX
+  - E72 Action Skills: /gaia-test-run manual any-environment runner, /gaia-test-automate sub-commands (--status/--add-scenario/--scaffold), CS-NNN custom-scenario tracking, per-stack tag conventions + tag-conformance-detector
+  - E73 Deployment-Phase Skills: /gaia-test-e2e (Playwright + Cypress), /gaia-test-perf (k6 + Lighthouse), /gaia-test-dast (OWASP ZAP), /gaia-test-a11y (axe-core + pa11y + Lighthouse), /gaia-deploy Pattern A skill
+  - E74 Mobile Platform Support (11 stories): project-config schema extension (platforms + device_targets), four mobile stacks (swift/kotlin/react-native/flutter), base mobile.json + sub-rubrics, apple-app-store + google-play-store + COPPA regime rubrics, seven mobile static adapters, /gaia-review-mobile skill, mobile dynamic adapters + device-farm dispatch (detox/maestro/appium/xcuitest/espresso + Firebase/BrowserStack/Sauce Labs), /gaia-test-mobile-e2e + /gaia-test-device-matrix, /gaia-config-platform + /gaia-config-device-target editors
+  - E75 Polish: BOUNDARIES.md top-level scope-edges document, parity bats per skill, persona-overlay agent-wiring documentation, framework README updates
+
+### Fixed
+
+- (E55-S9) /gaia-dev-story promotion-chain ABSENT false-flag — config-discovery ladder mirrors resolve-config.sh
+- (E55-S10) post-step push-verification added to /gaia-dev-story finalize
+- (E54-S6) story-template enforces 3-column Review Gate at validation
+- (E64-S3..S7) dev-story tooling cleanup — transition-story-status path fixes, sharded-layout resolver, EXIT/INT/TERM trap, orphan-tmp sweep, lint-err tempfile registration
+- (E53-S234) document non-git docs/ workspace + degrade git ops gracefully
+- (E53-S235..S247) docs reorganization continued — H3 sub-sharding, code-block-aware H2 detection, classify cluster-19 legacy files, type-table polish, ADR-069/FR-399 reconcile, monolith-vs-shard sync contract, cascade-skill auto-reshard, broken markdown link cleanup
+- (CI) bump bats-tests timeout 5m → 8m to absorb sprint-37/sprint-38 suite growth (3300+ tests)
+
+### Maintenance
+
+- 60 distinct stories shipped across two sprints; 65 individual feature commits + 5 hotfix PRs (#419, #427, #433, #455, #477)
+- Tech-debt resolved: 18 items closed across both sprints (sprint-37: 12, sprint-38: 6); debt ratio reduced from 18% (sprint-36 end) to 13% (sprint-38 end)
+
 ## [1.134.1] — 2026-05-04
 
 ### Fixed
