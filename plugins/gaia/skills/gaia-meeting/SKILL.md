@@ -345,6 +345,7 @@ session state to `_memory/meeting-sessions/{YYYY-MM-DD}-{slug}.yaml`. Schema
 | `cumulative_cost` | integer | Running token total |
 | `last_checkpoint_at` | ISO-8601 | UTC timestamp of the most recent yield |
 | `last_checkpoint_phase` | enum | The phase the next `--resume` enters at |
+| `last_yield_emitted_at` | ISO-8601 | UTC timestamp written by `scripts/yield-gate.sh` immediately before the turn-terminal sentinel — read by `--resume` for consistency regardless of whether the LLM honoured the STOP (E76-S9, AC2) |
 
 CLI shape:
 
@@ -401,6 +402,38 @@ The cadence-counter persistence introduced by E76-S7 lives ENTIRELY in
 
 ## Procedure
 
+### Script-enforced turn-terminal yield contract (E76-S9, ADR-083 amended, FR-MTG-32 / FR-MTG-33)
+
+The five yield boundaries below (post-CHARTER, post-RESEARCH, every-N
+DISCUSS, pre-CLOSE, pre-SAVE) are each implemented as a literal exec of
+`scripts/yield-gate.sh --phase <phase> --session-id <id>`. The helper emits
+the canonical 3-line block (phase marker, prompt, sentinel) and returns. The
+final line of stdout is the sentinel:
+
+```
+<<YIELD-STOP phase=<phase> session=<session-id>>>
+```
+
+> The YIELD-STOP sentinel ENDS the current LLM turn. The skill MUST NOT emit
+> any further output after the sentinel until it is re-entered via
+> `/gaia-meeting --resume <session-id>` (with optional `--continue` /
+> `--interject "..."` / `--wrap-up`). This is a script-enforced boundary,
+> not an LLM discipline.
+
+E76-S7 documented these boundaries; enforcement was prose-side and
+empirically failed on 2026-05-08 — the lifecycle ran end-to-end in a single
+LLM turn with zero prompt blocks emitted. E76-S9 moves enforcement to the
+script side: `yield-gate.sh` writes `last_checkpoint_phase` and
+`last_yield_emitted_at` via `session-state.sh update` BEFORE printing the
+sentinel, so `--resume` reads a consistent state regardless of whether the
+LLM honours the STOP. ADR-083 is amended (AF-2026-05-08-4) to ratify the
+script-enforced boundary contract as normative.
+
+`scripts/checkpoint-cadence.sh` is byte-identical to its E76-S7 baseline
+(E76-S9 / AC6) — `yield-gate.sh` consumes its output via stdin/argv and the
+cadence-counter round-trip established by E76-S7 / AC4 continues to hold.
+This story does not introduce a parallel cadence counter.
+
 ### Phase 1 — INVITE
 
 1. Resolve the active mode via `scripts/resolve-mode.sh [--mode <m>]`
@@ -423,16 +456,16 @@ The cadence-counter persistence introduced by E76-S7 lives ENTIRELY in
 2. On success, the charter is recorded in `MEETING_STATE_FILE` for later
    persistence (full frontmatter persistence ships with E76-S3 / FR-MTG-27).
 3. Emit the `## Phase: CHARTER` marker.
-4. **Post-CHARTER checkpoint yield (E76-S7, AC2).** Persist session state via
-   `scripts/session-state.sh create` (or `update` on resume), then emit the
-   canonical prompt block:
-   ```
-   [c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
-   ```
-   The yield message MUST surface a one-line note that the charter is now
-   written to the session file and `--no-web` should be set for sensitive
-   contexts (T-MTG-4 mitigation c). The lifecycle exits cleanly on `[p]ause`
-   or `[a]bort`; `--resume <session-id>` re-enters at this point.
+4. **Post-CHARTER checkpoint yield (E76-S7, E76-S9 — script-enforced).**
+   Persist the initial session state via `scripts/session-state.sh create`
+   (or `update` on resume), surface the one-line `--no-web` note for
+   sensitive contexts (T-MTG-4 mitigation c), then exec
+   `scripts/yield-gate.sh --phase post-charter --session-id <id>`. The
+   helper writes `last_checkpoint_phase` and `last_yield_emitted_at` via
+   `session-state.sh update`, then emits the canonical 3-line block ending
+   with the `<<YIELD-STOP phase=post-charter session=<id>>>` sentinel.
+   Per the §Procedure turn-terminal contract above, the sentinel ENDS the
+   current LLM turn — the lifecycle resumes via `/gaia-meeting --resume <id>`.
 
 ### Phase 3 — RESEARCH (E76-S2, ADR-084)
 
@@ -507,13 +540,13 @@ research_phase: enabled|skipped
 web_search:    enabled|disabled
 ```
 
-**Post-RESEARCH checkpoint yield (E76-S7, AC2).** After every invitee's
-prelude has landed AND BEFORE DISCUSS begins, persist session state via
-`scripts/session-state.sh update` and emit the canonical prompt block:
-
-```
-[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
-```
+**Post-RESEARCH checkpoint yield (E76-S7, E76-S9 — script-enforced).**
+After every invitee's prelude has landed AND BEFORE DISCUSS begins, persist
+session state via `scripts/session-state.sh update`, then exec
+`scripts/yield-gate.sh --phase post-research --session-id <id>`. The helper
+emits the canonical 3-line block ending with
+`<<YIELD-STOP phase=post-research session=<id>>>`. Per the §Procedure
+turn-terminal contract, the sentinel ENDS the current LLM turn.
 
 `--resume <session-id> --continue` re-enters DISCUSS with `cadence_counter`,
 `raise_hand_ledger`, `scratchpad_state`, and `cumulative_cost` preserved
@@ -538,19 +571,19 @@ Only invited agents post preludes and DISCUSS turns. The user does not appear as
    names the offending lines, and the facilitator HALTs round-robin
    advancement until the agent re-emits the turn with a marker. The offending
    turn MUST NEVER land in the persisted transcript (FR-MTG-28 hard guardrail).
-8. **Every-N DISCUSS-turn checkpoint yield (E76-S7, AC2 / AC9).** After every
-   `meeting.checkpoint_every_n_turns` emitted DISCUSS turns (default 4,
-   loaded by `scripts/checkpoint-cadence.sh`), persist session state via
-   `scripts/session-state.sh update --field cadence_counter` and emit the
-   canonical prompt block:
-   ```
-   [c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
-   ```
-   The cadence value is loaded once per session-load (default 4, clamp
-   `[1, 10]`, single-line WARNING on out-of-range values per AC9). The
-   10-turn cost-check cadence (NFR-MTG-1) is independent of this checkpoint
-   cadence — both fire on emitted-turn count and remain mutually deterministic
-   (TC-MTG-CHKPT-6).
+8. **Every-N DISCUSS-turn checkpoint yield (E76-S7, E76-S9 — script-enforced).**
+   After every `meeting.checkpoint_every_n_turns` emitted DISCUSS turns
+   (default 4, loaded by `scripts/checkpoint-cadence.sh`), persist
+   `cadence_counter` via `scripts/session-state.sh update --field cadence_counter`,
+   then exec `scripts/yield-gate.sh --phase discuss-cadence --session-id <id>`.
+   The helper emits the canonical 3-line block ending with
+   `<<YIELD-STOP phase=discuss-cadence session=<id>>>`.
+   Per the §Procedure turn-terminal contract, the sentinel ENDS the current
+   LLM turn. The cadence value is loaded once per session-load (default 4,
+   clamp `[1, 10]`, single-line WARNING on out-of-range values per AC9).
+   The 10-turn cost-check cadence (NFR-MTG-1) is independent of this
+   checkpoint cadence — both fire on emitted-turn count and remain mutually
+   deterministic (TC-MTG-CHKPT-6).
 9. **Raise-hand arbitration (FR-MTG-7 / FR-MTG-9, E76-S2).** When an agent's
    turn ends with `[raise-hand → respond to {Name}]` (em-dash or ASCII `->`),
    the facilitator processes the flag via `scripts/raise-hand-arbiter.sh`:
@@ -571,20 +604,20 @@ Only invited agents post preludes and DISCUSS turns. The user does not appear as
 
 ### Phase 5 — CLOSE (E76-S3)
 
-**Pre-CLOSE checkpoint yield (E76-S7, AC2 / AC8 / TC-MTG-CHKPT-8).** BEFORE
-CLOSE drafts any artifact, run `scripts/secret-scrubber.sh` over the
-in-memory state (charter + scratchpad pins) AND THEN persist session state
-via `scripts/session-state.sh update`. The scrubber is the SINGLE source of
-truth for the T-MTG-3 secret-pattern regex set — no duplicated implementation.
-The scrubbed payload is what lands in the persisted YAML across the
-checkpoint boundary; the in-memory charter is also replaced with the
-scrubbed copy so subsequent CLOSE/SAVE artifacts use the redacted form.
+**Pre-CLOSE checkpoint yield (E76-S7, E76-S9 — script-enforced; AC8 /
+TC-MTG-CHKPT-8).** BEFORE CLOSE drafts any artifact, run
+`scripts/secret-scrubber.sh` over the in-memory state (charter + scratchpad
+pins) AND THEN persist session state via `scripts/session-state.sh update`.
+The scrubber is the SINGLE source of truth for the T-MTG-3 secret-pattern
+regex set — no duplicated implementation. The scrubbed payload is what
+lands in the persisted YAML across the checkpoint boundary; the in-memory
+charter is also replaced with the scrubbed copy so subsequent CLOSE/SAVE
+artifacts use the redacted form.
 
-After scrubbing, emit the canonical prompt block:
-
-```
-[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
-```
+After scrubbing, exec `scripts/yield-gate.sh --phase pre-close --session-id
+<id>`. The helper emits the canonical 3-line block ending with
+`<<YIELD-STOP phase=pre-close session=<id>>>`. Per the §Procedure
+turn-terminal contract, the sentinel ENDS the current LLM turn.
 
 `--resume <session-id> --wrap-up` re-enters at this point even from a paused
 DISCUSS — the orchestrator preserves research preludes and accumulated
@@ -628,13 +661,13 @@ AC6).
 
 ### Phase 7 — SAVE (E76-S3, FR-MTG-21 / FR-MTG-24 / FR-MTG-25 / FR-MTG-27)
 
-**Pre-SAVE checkpoint yield (E76-S7, AC2).** BEFORE the three writes happen,
-persist session state via `scripts/session-state.sh update --field phase
---value SAVE` and emit the canonical prompt block:
-
-```
-[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
-```
+**Pre-SAVE checkpoint yield (E76-S7, E76-S9 — script-enforced).** BEFORE
+the three writes happen, persist session state via
+`scripts/session-state.sh update --field phase --value SAVE`, then exec
+`scripts/yield-gate.sh --phase pre-save --session-id <id>`. The helper
+emits the canonical 3-line block ending with
+`<<YIELD-STOP phase=pre-save session=<id>>>`. Per the §Procedure
+turn-terminal contract, the sentinel ENDS the current LLM turn.
 
 `[c]ontinue` proceeds to the SAVE writes; `[p]ause` exits cleanly so the
 user can resume later via `--resume <session-id>`. There is **no undo

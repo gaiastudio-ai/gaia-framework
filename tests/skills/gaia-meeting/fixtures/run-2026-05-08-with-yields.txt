@@ -1,0 +1,55 @@
+## Phase: INVITE
+[Invitee] Theo (Architect)
+[Invitee] Derek (Product Manager)
+
+## Phase: CHARTER
+Charter accepted.
+
+## Yield: post-charter
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+<<YIELD-STOP phase=post-charter session=2026-05-08-fix>>
+
+## Phase: RESEARCH
+[Prelude] Theo (Architect) — 412 tokens
+[Prelude] Derek (Product Manager) — 388 tokens
+
+## Yield: post-research
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+<<YIELD-STOP phase=post-research session=2026-05-08-fix>>
+
+## Phase: DISCUSS
+[Turn 1] Theo (Architect) — 220 tokens
+[Turn 2] Derek (Product Manager) — 198 tokens
+[Turn 3] Theo (Architect) — 245 tokens
+[Turn 4] Derek (Product Manager) — 210 tokens
+
+## Yield: discuss-cadence
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+<<YIELD-STOP phase=discuss-cadence session=2026-05-08-fix>>
+
+[Turn 5] Theo (Architect) — 230 tokens
+[Turn 6] Derek (Product Manager) — 195 tokens
+[Turn 7] Theo (Architect) — 240 tokens
+[Turn 8] Derek (Product Manager) — 188 tokens
+
+## Yield: discuss-cadence
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+<<YIELD-STOP phase=discuss-cadence session=2026-05-08-fix>>
+
+## Yield: pre-close
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+<<YIELD-STOP phase=pre-close session=2026-05-08-fix>>
+
+## Phase: CLOSE
+Drafts assembled in memory.
+
+## Phase: REVIEW
+- action-items: accept
+- meeting-notes: accept
+
+## Yield: pre-save
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+<<YIELD-STOP phase=pre-save session=2026-05-08-fix>>
+
+## Phase: SAVE
+docs/creative-artifacts/meeting-2026-05-08-fix.md written.
