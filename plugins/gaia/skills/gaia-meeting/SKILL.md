@@ -223,7 +223,7 @@ explicit. If neither source resolves a name, the resolver exits non-zero and
 the orchestrator surfaces a guidance message ("set `meeting.user_name` in
 `settings.json` or run `git config --global user.name '<name>'`").
 
-## State-Free Write Boundary (FR-MTG-31, AC10 — E76-S3 reconciled)
+## State-Free Write Boundary (FR-MTG-31, AC10 — E76-S3 reconciled, E76-S7 amended)
 
 Every artifact write in this skill MUST be gated by
 `scripts/write-boundary.sh`. The asserter accepts a relative path and exits 0
@@ -233,16 +233,132 @@ only if the path is one of:
 - `docs/planning-artifacts/action-items.yaml` (canonical registry per
   ADR-086 / ADR-052 addendum E36-S4)
 - `_memory/{any-prefix}-sidecar/decisions/*.md`
+- `_memory/meeting-sessions/*.yaml` (E76-S7 — interactive checkpoint mode session-state files, FR-MTG-31 amended)
 
 The legacy E76-S1 path `_memory/action-items/` is **retired** by ADR-086 —
 the canonical action-items registry is now the single-file YAML at
 `docs/planning-artifacts/action-items.yaml`. New writes MUST target the
 canonical location.
 
+The `_memory/meeting-sessions/*.yaml` prefix was added by E76-S7 (T-MTG-4
+mitigation (e)) so the session-state helper can persist FR-MTG-33 fields
+across user-driven yields without violating the state-free invariant. Reaping
+of stale session files is handled by the SAME 30-day reaper that walks
+`_memory/checkpoints/` (`scripts/lib/checkpoint-reaper.sh`) — single source
+of truth for retention policy.
+
 Any other path is REJECTED with exit code 2. This is the invariant that keeps
 `/gaia-meeting` truly state-free — sprint status, story files, PRD,
 architecture, test plan, threat model, and traceability are NEVER touched by
 this skill, ever.
+
+## Interactive Checkpoint Mode (E76-S7, ADR-083 amended, FR-MTG-10 / FR-MTG-32 / FR-MTG-33)
+
+The Claude Code skill runtime is one-input/one-output per LLM turn. FR-MTG-10's
+"live screen output + user interjections" promise cannot be fulfilled inside a
+single LLM turn — it requires re-entry across top-level user turns. ADR-083
+was amended (AF-2026-05-08-1) to make checkpoint-yield re-entry the canonical
+interactivity surface, with **identical user-visible behaviour** under
+Substrate A (Claude Agent Teams) and Substrate B (sequential-fork fallback).
+
+### Canonical user-prompt block
+
+Every checkpoint yield emits this exact prompt block (the verbatim five-option
+menu — single source of truth, do not paraphrase):
+
+```
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+```
+
+| Option | Effect |
+|--------|--------|
+| `[c]ontinue` | Persist session state, advance to the next phase or turn group. |
+| `[p]ause` | Persist session state, exit cleanly. The user resumes later via `/gaia-meeting --resume <session-id>`. |
+| `[i]nterject "..."` | Inject a user turn at the resume point (FR-MTG-10) with the user's name resolved by `scripts/resolve-user-name.sh`. The injection consumes one emitted-turn slot and ticks the cost-cadence counter. |
+| `[w]rap-up` | Skip remaining DISCUSS turns and jump directly to CLOSE. Research and discussion state are preserved. |
+| `[a]bort` | Persist session state and exit without writing CLOSE/SAVE artifacts. |
+
+### Five mandatory yield boundaries (AC2)
+
+Every `/gaia-meeting` invocation yields at exactly these points:
+
+1. **Post-CHARTER yield** — after `charter-gate.sh` accepts the charter and BEFORE INVITE proceeds. The yield message MUST surface a one-line note that the charter has been written to the session file and `--no-web` should be set for sensitive contexts (T-MTG-4 mitigation c).
+2. **Post-RESEARCH yield** — after every invitee's prelude has landed in the shared message log and BEFORE DISCUSS starts.
+3. **Every-N DISCUSS-turn yield** — after every `meeting.checkpoint_every_n_turns` emitted DISCUSS turns. The cadence is loaded by `scripts/checkpoint-cadence.sh` (default 4, clamp `[1, 10]`, single-line WARNING on out-of-range values per AC9).
+4. **Pre-CLOSE yield** — BEFORE the CLOSE phase emits its draft set. The pre-CLOSE yield invokes `scripts/secret-scrubber.sh` against the in-memory state (charter + scratchpad pins) BEFORE `session-state.sh update` persists across the boundary (AC8 / TC-MTG-CHKPT-8).
+5. **Pre-SAVE yield** — BEFORE the SAVE phase performs the three writes accepted at REVIEW.
+
+### Session-state helper (FR-MTG-33)
+
+`scripts/session-state.sh` is the single source of truth for persisting
+session state to `_memory/meeting-sessions/{YYYY-MM-DD}-{slug}.yaml`. Schema
+(every field round-trips losslessly per AC1 / TC-MTG-CHKPT-1):
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `session_id` | string | `{date}-{slug}` |
+| `phase` | enum | One of `INVITE`, `CHARTER`, `RESEARCH`, `DISCUSS`, `CLOSE`, `REVIEW`, `SAVE` |
+| `round` | integer | DISCUSS round counter |
+| `turn_counter` | integer | Total emitted turns (including insertions) |
+| `cadence_counter` | integer | Modulo-10 cost-check ticker — round-trips through `session-state.sh` so the 10-turn cadence stays deterministic across yields (AC4) |
+| `raise_hand_ledger` | string | One-per-cycle FR-MTG-7 record |
+| `scratchpad_state` | string | Latest-wins SP-N → content digest map |
+| `cumulative_cost` | integer | Running token total |
+| `last_checkpoint_at` | ISO-8601 | UTC timestamp of the most recent yield |
+| `last_checkpoint_phase` | enum | The phase the next `--resume` enters at |
+
+CLI shape:
+
+```
+session-state.sh create --file <path> --session-id <id>
+session-state.sh read   --file <path> --field <name>
+session-state.sh update --file <path> --field <name> --value <value>
+```
+
+Writes are atomic via `mktemp` + `mv`. Every persist call MUST first pass
+through `scripts/write-boundary.sh` for the FR-MTG-31 amended invariant.
+
+### Resume flags (FR-MTG-32)
+
+Parsed by `scripts/parse-resume-flags.sh` (single source of truth — no inline
+flag handling in SKILL.md):
+
+- `--resume <session-id>` — REQUIRED for the next three flags. Re-enters at
+  `last_checkpoint_phase` with all FR-MTG-33 fields preserved.
+- `--continue` — proceed without user input from the resume point.
+- `--interject "<text>"` — inject a user turn at the resume point, labelled
+  with the FR-MTG-10-resolved user name (`scripts/resolve-user-name.sh`).
+- `--wrap-up` — jump directly to CLOSE preserving research and DISCUSS state.
+
+The four flags are mutually exclusive — at most one of `{--continue,
+--interject, --wrap-up}` may accompany `--resume`. The parser exits non-zero
+on stacking. A bare `--resume <id>` (no action flag) resolves to
+`action=resume_default` — the orchestrator re-issues the canonical prompt
+block from `last_checkpoint_phase`.
+
+### Substrate invariance (AC6 / TC-MTG-CHKPT-7, ADR-083 amendment)
+
+The user-visible behaviour of the prompt block, yield boundaries, resumed
+phase, and cumulative-cost rounding MUST be identical under both substrates.
+Substrate selection is invisible at this layer — the checkpoint contract
+binds the LLM-driven `/gaia-meeting` orchestration to a substrate-agnostic
+re-entry surface.
+
+### Helper-script byte-identity baseline (AC4 / T4.1)
+
+The pre-story SHA-256 baseline of the five protected helpers is recorded at
+`_memory/checkpoints/E76-S7-baseline.sha256`. CI verifies the baseline on
+every PR — modifying any of the protected helpers MUST be a deliberate,
+separate story with an updated baseline:
+
+- `scripts/turn-header.sh`
+- `scripts/cite-or-flag-check.sh`
+- `scripts/raise-hand-arbiter.sh`
+- `scripts/cost-cadence.sh`
+- `scripts/substrate-probe.sh` (recorded as `<absent>` until it lands)
+
+The cadence-counter persistence introduced by E76-S7 lives ENTIRELY in
+`session-state.sh` — `cost-cadence.sh` was NOT modified.
 
 ## Procedure
 
@@ -268,6 +384,16 @@ this skill, ever.
 2. On success, the charter is recorded in `MEETING_STATE_FILE` for later
    persistence (full frontmatter persistence ships with E76-S3 / FR-MTG-27).
 3. Emit the `## Phase: CHARTER` marker.
+4. **Post-CHARTER checkpoint yield (E76-S7, AC2).** Persist session state via
+   `scripts/session-state.sh create` (or `update` on resume), then emit the
+   canonical prompt block:
+   ```
+   [c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+   ```
+   The yield message MUST surface a one-line note that the charter is now
+   written to the session file and `--no-web` should be set for sensitive
+   contexts (T-MTG-4 mitigation c). The lifecycle exits cleanly on `[p]ause`
+   or `[a]bort`; `--resume <session-id>` re-enters at this point.
 
 ### Phase 3 — RESEARCH (E76-S2, ADR-084)
 
@@ -340,6 +466,18 @@ research_phase: enabled|skipped
 web_search:    enabled|disabled
 ```
 
+**Post-RESEARCH checkpoint yield (E76-S7, AC2).** After every invitee's
+prelude has landed AND BEFORE DISCUSS begins, persist session state via
+`scripts/session-state.sh update` and emit the canonical prompt block:
+
+```
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+```
+
+`--resume <session-id> --continue` re-enters DISCUSS with `cadence_counter`,
+`raise_hand_ledger`, `scratchpad_state`, and `cumulative_cost` preserved
+verbatim from the paused state (TC-MTG-CHKPT-3).
+
 ### Phase 4 — DISCUSS
 
 1. Run `scripts/resolve-mode.sh [--mode <mode>]` to resolve the active mode.
@@ -357,7 +495,20 @@ web_search:    enabled|disabled
    names the offending lines, and the facilitator HALTs round-robin
    advancement until the agent re-emits the turn with a marker. The offending
    turn MUST NEVER land in the persisted transcript (FR-MTG-28 hard guardrail).
-8. **Raise-hand arbitration (FR-MTG-7 / FR-MTG-9, E76-S2).** When an agent's
+8. **Every-N DISCUSS-turn checkpoint yield (E76-S7, AC2 / AC9).** After every
+   `meeting.checkpoint_every_n_turns` emitted DISCUSS turns (default 4,
+   loaded by `scripts/checkpoint-cadence.sh`), persist session state via
+   `scripts/session-state.sh update --field cadence_counter` and emit the
+   canonical prompt block:
+   ```
+   [c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+   ```
+   The cadence value is loaded once per session-load (default 4, clamp
+   `[1, 10]`, single-line WARNING on out-of-range values per AC9). The
+   10-turn cost-check cadence (NFR-MTG-1) is independent of this checkpoint
+   cadence — both fire on emitted-turn count and remain mutually deterministic
+   (TC-MTG-CHKPT-6).
+9. **Raise-hand arbitration (FR-MTG-7 / FR-MTG-9, E76-S2).** When an agent's
    turn ends with `[raise-hand → respond to {Name}]` (em-dash or ASCII `->`),
    the facilitator processes the flag via `scripts/raise-hand-arbiter.sh`:
    - `--detect <body>` extracts the named target.
@@ -376,6 +527,25 @@ web_search:    enabled|disabled
      the arbitration record line that lands in the persisted transcript.
 
 ### Phase 5 — CLOSE (E76-S3)
+
+**Pre-CLOSE checkpoint yield (E76-S7, AC2 / AC8 / TC-MTG-CHKPT-8).** BEFORE
+CLOSE drafts any artifact, run `scripts/secret-scrubber.sh` over the
+in-memory state (charter + scratchpad pins) AND THEN persist session state
+via `scripts/session-state.sh update`. The scrubber is the SINGLE source of
+truth for the T-MTG-3 secret-pattern regex set — no duplicated implementation.
+The scrubbed payload is what lands in the persisted YAML across the
+checkpoint boundary; the in-memory charter is also replaced with the
+scrubbed copy so subsequent CLOSE/SAVE artifacts use the redacted form.
+
+After scrubbing, emit the canonical prompt block:
+
+```
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+```
+
+`--resume <session-id> --wrap-up` re-enters at this point even from a paused
+DISCUSS — the orchestrator preserves research preludes and accumulated
+DISCUSS turns and proceeds directly to CLOSE drafting (TC-MTG-CHKPT-5).
 
 Emit the `## Phase: CLOSE` marker. CLOSE drafts every post-meeting artifact
 **in memory only** — no disk writes happen in this phase. The drafts produced
@@ -414,6 +584,19 @@ participating agents may produce K accepted entries with K ≤ N (FR-MTG-25 /
 AC6).
 
 ### Phase 7 — SAVE (E76-S3, FR-MTG-21 / FR-MTG-24 / FR-MTG-25 / FR-MTG-27)
+
+**Pre-SAVE checkpoint yield (E76-S7, AC2).** BEFORE the three writes happen,
+persist session state via `scripts/session-state.sh update --field phase
+--value SAVE` and emit the canonical prompt block:
+
+```
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+```
+
+`[c]ontinue` proceeds to the SAVE writes; `[p]ause` exits cleanly so the
+user can resume later via `--resume <session-id>`. There is **no undo
+semantic in v1** — once `[c]ontinue` is selected, the SAVE writes are atomic
+per-file and the gate is the contract.
 
 SAVE performs the three writes that REVIEW accepted, gated through
 `scripts/write-boundary.sh` for the AC10 / FR-MTG-31 state-free invariant:

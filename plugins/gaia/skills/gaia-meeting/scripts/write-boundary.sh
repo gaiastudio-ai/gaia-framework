@@ -7,10 +7,11 @@
 # state-free invariant: /gaia-meeting MUST NOT touch sprint state, story files,
 # PRD, architecture, test plan, threat model, or traceability.
 #
-# Allowed write targets (E76-S3 / ADR-086 reconciliation):
+# Allowed write targets (E76-S3 / ADR-086 reconciliation, E76-S7 / FR-MTG-31 amendment):
 #   - docs/creative-artifacts/meeting-*.md
 #   - docs/planning-artifacts/action-items.yaml
 #   - _memory/{any-prefix}-sidecar/decisions/*.md
+#   - _memory/meeting-sessions/*.yaml      (E76-S7, FR-MTG-31 amended)
 #
 # Note: the legacy E76-S1 path `_memory/action-items/` is RETIRED by ADR-086 —
 # the canonical action-items registry is the single-file YAML at
@@ -79,7 +80,12 @@ if [[ "$path" =~ ^_memory/[A-Za-z0-9_.-]+-sidecar/decisions/ ]]; then
   exit 0
 fi
 
+# Allowed: _memory/meeting-sessions/...yaml (E76-S7, FR-MTG-31 amended)
+if [[ "$path" =~ ^_memory/meeting-sessions/.*\.yaml$ ]]; then
+  exit 0
+fi
+
 echo "write-boundary.sh: REJECTED — '$path' is outside the state-free write boundary (FR-MTG-31)." >&2
-echo "write-boundary.sh: allowed targets: docs/creative-artifacts/meeting-*.md, docs/planning-artifacts/action-items.yaml, _memory/{agent}-sidecar/decisions/*.md" >&2
+echo "write-boundary.sh: allowed targets: docs/creative-artifacts/meeting-*.md, docs/planning-artifacts/action-items.yaml, _memory/{agent}-sidecar/decisions/*.md, _memory/meeting-sessions/*.yaml" >&2
 emit_halt "$path is outside the state-free write boundary"
 exit 2
