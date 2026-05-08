@@ -471,6 +471,10 @@ This story does not introduce a parallel cadence counter.
 
 Only invited agents post preludes and DISCUSS turns. The user does not appear as a turn author in either phase.
 
+**Dispatch contract (E76-S10, ADR-045, ADR-063).** Each invited agent's prelude (RESEARCH) AND each DISCUSS turn MUST be produced by spawning a subagent via the `Agent` tool with `context: fork` per ADR-045 and the per-phase tool allowlist below. Inline LLM role-play under the agent's persona is FORBIDDEN. The facilitator does not author agent turns; the facilitator orchestrates dispatch.
+
+The canonical wrapper is `scripts/dispatch-agent-turn.sh --agent <id> --phase research --charter-ref <path> --session-id <id>`; every dispatched turn carries `dispatched_via: subagent` in its per-turn header (NFR-MTG-1 schema extension). See `scripts/dispatch-provenance-check.sh` for the static post-save audit.
+
 The RESEARCH phase implements the four-step contract from ADR-084:
 
 1. **Per-agent sidecar load (FR-MTG-4 step 1).** For each invited agent, load
@@ -555,6 +559,10 @@ verbatim from the paused state (TC-MTG-CHKPT-3).
 ### Phase 4 — DISCUSS
 
 Only invited agents post preludes and DISCUSS turns. The user does not appear as a turn author in either phase.
+
+**Dispatch contract (E76-S10, ADR-045, ADR-063).** Each invited agent's prelude (RESEARCH) AND each DISCUSS turn MUST be produced by spawning a subagent via the `Agent` tool with `context: fork` per ADR-045 and the per-phase tool allowlist below. Inline LLM role-play under the agent's persona is FORBIDDEN. The facilitator does not author agent turns; the facilitator orchestrates dispatch.
+
+The canonical wrapper is `scripts/dispatch-agent-turn.sh --agent <id> --phase discuss --charter-ref <path> --session-id <id>`; every dispatched turn carries `dispatched_via: subagent` in its per-turn header. The DISCUSS allowlist is the read-only minimum `Read, Grep, Glob, Bash` per ADR-063, exposed via `scripts/dispatch-agent-turn.sh --print-discuss-allowlist`. User interjections via `[i]nterject` carry `dispatched_via: interject`; the CHARTER turn carries `dispatched_via: charter`.
 
 1. Run `scripts/resolve-mode.sh [--mode <mode>]` to resolve the active mode.
 2. Drive the turn loop via `scripts/turn-order.sh --invitees "<csv>" --turns <N>`.
@@ -983,6 +991,8 @@ fire-indices across a K=0 and a K=4 raise-hand run.
 ## References
 
 - PRD §4.39 — `/gaia-meeting` peer-to-peer multi-agent discussion skill (FR-MTG-1, FR-MTG-2, FR-MTG-4, FR-MTG-5, FR-MTG-6, FR-MTG-7, FR-MTG-8, FR-MTG-9, FR-MTG-10, FR-MTG-16, FR-MTG-17, FR-MTG-28, FR-MTG-31, NFR-MTG-1, NFR-MTG-2).
+- ADR-045 — Subagent fork-context isolation (the dispatch primitive used by E76-S10's RESEARCH and DISCUSS turns).
+- ADR-063 — Dispatch contract / verdict surfacing (per-phase tool allowlists, ADR-037 return schema, finding severity routing).
 - ADR-083 — Peer-to-peer multi-agent discussion topology.
 - ADR-084 — Research-phase contract (sidecar load → SoT reads → web search → cited prelude).
 - ADR-086 — Sidecar path reconciliation: `_memory/<agent>-sidecar/` is canonical.

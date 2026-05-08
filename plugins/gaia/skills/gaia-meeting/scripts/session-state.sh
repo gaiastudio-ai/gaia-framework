@@ -63,6 +63,7 @@ FIELDS=(
   last_checkpoint_at
   last_checkpoint_phase
   last_yield_emitted_at
+  agent_dispatch_findings
 )
 
 is_valid_field() {
@@ -102,6 +103,7 @@ cumulative_cost: 0
 last_checkpoint_at: $(yaml_emit_value last_checkpoint_at "")
 last_checkpoint_phase: $(yaml_emit_value last_checkpoint_phase "")
 last_yield_emitted_at: $(yaml_emit_value last_yield_emitted_at "")
+agent_dispatch_findings: $(yaml_emit_value agent_dispatch_findings "")
 EOF
 }
 
