@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.137.0] — 2026-05-08
+
+### Added
+
+- (E76-S6) wire guardrails and cost-reporting refinements (#535)
+- (E76-S5) add eight non-decide modes with default invitees + bias plumbing (#534)
+- (E76-S4) scratchpad pin + auto-organized extraction (#533)
+- (E76-S3) close-review + action-items v2 + memory write-through + dual-schema routing (#532)
+- (E76-S2) wire Research phase + cite-or-flag + raise-hand — sideca (#531)
+- (E79-S6) migration script — backfill legacy flat stories + flat story-index.yaml (#530)
+- (E79-S4) make all story-file readers recursive (#528)
+- (E79-S3) transition-story-status.sh — write per-epic story-index.yaml (#527)
+- (E79-S2) wire `/gaia-create-story` — write to canonical nested pa (#525)
+- (E76-S1) scaffold /gaia-meeting seven-phase peer-to-peer skill
+- (E79-S1) lift epic-slug resolver into a shared script (FR-396, NFR-059) (#523)
+
+### Fixed
+
+- (tests) bump version-pinned literals after v1.136.0 release (#538)
+- (E80-S1) scaffold-story frontmatter token gap and gaia-atdd recurring quirks (#536)
+- (gaia-run-all-reviews) resolve canonical-nested story paths (#526)
+
 ## [1.136.0] — 2026-05-07
 
 ### Added
