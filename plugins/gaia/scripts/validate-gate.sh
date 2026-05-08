@@ -26,7 +26,7 @@
 # Supported gate types:
 #   file_exists            — checks every --file <path> argument
 #   test_plan_exists       — ${TEST_ARTIFACTS}/test-plan.md
-#   traceability_exists    — ${TEST_ARTIFACTS}/traceability-matrix.md
+#   traceability_exists    — ${TEST_ARTIFACTS}/traceability-matrix.md (or strategy/traceability-matrix.md per ADR-072, or traceability-matrix/index.md sharded layout per ADR-070)
 #   ci_setup_exists        — ${TEST_ARTIFACTS}/ci-setup.md
 #   atdd_exists            — ${TEST_ARTIFACTS}/atdd-<story>.md (requires --story)
 #   readiness_report_exists — ${PLANNING_ARTIFACTS}/readiness-report.md (or readiness-report/index.md sharded layout per ADR-070 / ADR-072)
@@ -101,7 +101,7 @@ Flags:
 Supported gate types:
   file_exists             Check every --file <path> argument
   test_plan_exists        ${TEST_ARTIFACTS}/test-plan.md
-  traceability_exists     ${TEST_ARTIFACTS}/traceability-matrix.md
+  traceability_exists     ${TEST_ARTIFACTS}/traceability-matrix.md OR ${TEST_ARTIFACTS}/strategy/traceability-matrix.md OR ${TEST_ARTIFACTS}/traceability-matrix/index.md
   ci_setup_exists         ${TEST_ARTIFACTS}/ci-setup.md
   atdd_exists             ${TEST_ARTIFACTS}/atdd-<story>.md  (requires --story)
   readiness_report_exists ${PLANNING_ARTIFACTS}/readiness-report.md OR ${PLANNING_ARTIFACTS}/readiness-report/index.md
@@ -145,7 +145,7 @@ gate_path() {
 }
 
 list_gates() {
-  local g pattern rc alt
+  local g pattern rc alt strategy_alt
   for g in $SUPPORTED_GATES; do
     if [ "$g" = "file_exists" ]; then
       printf '%s\t%s\n' "$g" "(uses --file <path> args)"
@@ -160,6 +160,18 @@ list_gates() {
       # `{dir}/{name}.md` ALSO accepts `{dir}/{name}/index.md`. Render both
       # paths in --list output. The atdd_exists pattern uses a `{story}`
       # template (not a fixed path) — keep it single-layout.
+      #
+      # E53-S248: traceability_exists also accepts the post-E53 / ADR-072
+      # `strategy/traceability-matrix.md` placement; render the third path
+      # so the documented contract matches the implementation.
+      case "$g" in
+        traceability_exists)
+          alt="${pattern%.md}/index.md"
+          strategy_alt="${pattern%/*}/strategy/${pattern##*/}"
+          printf '%s\t%s OR %s OR %s\n' "$g" "$pattern" "$strategy_alt" "$alt"
+          continue
+          ;;
+      esac
       case "$pattern" in
         *'{story}'*)
           printf '%s\t%s\n' "$g" "$pattern"
@@ -240,6 +252,25 @@ check_file_nonempty() {
     */epics-and-stories.md)
       dir="${filepath%/*}"
       alt="$dir/epics/index.md"
+      if [ -f "$alt" ]; then
+        if [ ! -s "$alt" ]; then
+          abs=$(abs_path "$alt")
+          warn "$gate failed — file is empty (0 bytes): $abs"
+          return 1
+        fi
+        return 0
+      fi
+      ;;
+    */traceability-matrix.md)
+      # E53-S248: post-E53 / ADR-072 placement under strategy/. The
+      # canonical artifact ships at `${TEST_ARTIFACTS}/strategy/traceability-matrix.md`
+      # since the E53 docs reorganization. Accept it here as a third
+      # resolution arm so downstream consumers (readiness-check,
+      # dev-story planning gate) stop reporting false-negative BLOCKED on
+      # the live layout. Sibling pattern to the epics-and-stories alias
+      # above — same shape, gate-specific.
+      dir="${filepath%/*}"
+      alt="$dir/strategy/traceability-matrix.md"
       if [ -f "$alt" ]; then
         if [ ! -s "$alt" ]; then
           abs=$(abs_path "$alt")
