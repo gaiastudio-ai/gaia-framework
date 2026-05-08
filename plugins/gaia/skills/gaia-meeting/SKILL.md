@@ -75,6 +75,45 @@ RESEARCH and DISCUSS hooks rather than reimplementing the lifecycle.
   the full meeting-notes file format with required sections (FR-MTG-27) lands
   in E76-S3. S1 produces a minimum viable transcript that S3 will extend.
 
+### No fabricated user turns (E76-S8, FR-MTG-10, NFR-MTG-1, ADR-083)
+
+The skill MUST NOT emit a turn attributed to the user under ANY persona,
+label, or phase, regardless of mode, regardless of whether `me` / `user` / a
+token resolving to the user's name appears in `--invitees`. The user is not
+an agent; the user does not appear as a `Speaker:` in any prelude or DISCUSS
+turn. The 2026-05-08 regression — where two turns labelled `${USER_NAME}
+(user)` (one RESEARCH prelude, one DISCUSS round-1 turn) were emitted that
+the user never authored — surfaced this as a hard correctness defect; this
+rule converts the prose contract from L94 / L96 / L277 / L485-487 (`The user
+does not appear in the round-robin order` / `Resolve user-interjection
+labels via scripts/resolve-user-name.sh` / `User interjections allowed at
+turn boundaries` / `--charter` + `[i]nterject` / `--interject` authoring
+channels) into a testable invariant.
+
+The user has exactly two authoring channels — and only these:
+
+- `--charter "<inline>"` on the initial invocation (FR-MTG-2). The charter
+  text is the user's voice for INVITE / CHARTER and is recorded in the
+  meeting-notes frontmatter `charter:` field, NOT as a `Speaker:` turn.
+- `[i]nterject "..."` (interactive prompt block) and `--interject` (on
+  `--resume`) at any yield boundary (FR-MTG-32, ADR-083). An interject turn
+  carries `origin: interject` (and per E76-S10, `dispatched_via: interject`)
+  in its per-turn header — that origin marker is the ONLY exemption to the
+  no-fabricated-user-turn invariant.
+
+Static enforcement: `tests/no-fabricated-user-turns.bats` scans a saved
+transcript for any turn whose `Speaker:` field matches the resolved user
+name (per `scripts/resolve-user-name.sh`) AND whose `origin:` (or
+`dispatched_via:` per E76-S10) is not `interject`, and FAILS on detection.
+
+Invitee-token enforcement: `scripts/resolve-invitees.sh` rejects literal
+`me` / `user` tokens (case-insensitive) and any token equal to the resolved
+user name (case-sensitive). Each offending token produces a single-line
+WARNING (`[gaia-meeting] WARNING: invitee token "<token>" resolves to the
+user — the user is not an agent and is not auto-included; user authoring
+uses --charter / [i]nterject only`) and is dropped from the resolved CSV
+without halting the meeting.
+
 ## Architectural Anchors
 
 - **ADR-083** — peer-to-peer multi-agent discussion topology: peer-to-peer on
@@ -397,6 +436,8 @@ The cadence-counter persistence introduced by E76-S7 lives ENTIRELY in
 
 ### Phase 3 — RESEARCH (E76-S2, ADR-084)
 
+Only invited agents post preludes and DISCUSS turns. The user does not appear as a turn author in either phase.
+
 The RESEARCH phase implements the four-step contract from ADR-084:
 
 1. **Per-agent sidecar load (FR-MTG-4 step 1).** For each invited agent, load
@@ -479,6 +520,8 @@ prelude has landed AND BEFORE DISCUSS begins, persist session state via
 verbatim from the paused state (TC-MTG-CHKPT-3).
 
 ### Phase 4 — DISCUSS
+
+Only invited agents post preludes and DISCUSS turns. The user does not appear as a turn author in either phase.
 
 1. Run `scripts/resolve-mode.sh [--mode <mode>]` to resolve the active mode.
 2. Drive the turn loop via `scripts/turn-order.sh --invitees "<csv>" --turns <N>`.

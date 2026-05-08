@@ -45,6 +45,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/load-mode-registry.sh
 . "$SCRIPT_DIR/lib/load-mode-registry.sh"
 
+# Locale invariance — see "Determinism + locale" note in the gaia-meeting
+# framework convention. BSD vs GNU character-class differences are pinned out.
+export LC_ALL=C
+
 MODE=""
 INVITEES_CSV=""
 INSTALLED=""
@@ -87,6 +91,45 @@ if [[ -n "$INVITEES_CSV" ]]; then
     user_invitees+=("$trimmed")
   done
 fi
+
+# E76-S8 / AC4 / TC-MTG-NOFAB-3 — drop invitee tokens that resolve to the
+# user. The user is not an agent and is not auto-included; user authoring
+# uses --charter / [i]nterject only. Three checks (per FR-MTG-10):
+#   - literal "me"   (case-insensitive)
+#   - literal "user" (case-insensitive)
+#   - equality (case-sensitive) with the resolved user name from
+#     scripts/resolve-user-name.sh — best-effort: if the resolver is missing
+#     or fails, the user-name check is silently skipped (the literal-token
+#     checks still fire). Skipping the resolver step is intentional: a CI
+#     runner without git config + settings.json must not block invitee
+#     resolution.
+USER_RESOLVED_NAME=""
+USER_NAME_RESOLVER="$SCRIPT_DIR/resolve-user-name.sh"
+if [[ -x "$USER_NAME_RESOLVER" ]]; then
+  USER_RESOLVED_NAME="$("$USER_NAME_RESOLVER" 2>/dev/null || true)"
+fi
+
+filtered_user_invitees=()
+if (( ${#user_invitees[@]} > 0 )); then
+  for u in "${user_invitees[@]}"; do
+    # Case-insensitive comparison via lowercased copy (LC_ALL=C is pinned at
+    # script entry, so [a-z]/[A-Z] match ASCII only — no UTF-8 surprises).
+    u_lower="$(printf '%s' "$u" | tr '[:upper:]' '[:lower:]')"
+    is_user_token=0
+    if [[ "$u_lower" == "me" || "$u_lower" == "user" ]]; then
+      is_user_token=1
+    elif [[ -n "$USER_RESOLVED_NAME" && "$u" == "$USER_RESOLVED_NAME" ]]; then
+      is_user_token=1
+    fi
+    if (( is_user_token == 1 )); then
+      # Single-line WARNING — exact wording per FR-MTG-10 / AC4.
+      echo "[gaia-meeting] WARNING: invitee token \"${u}\" resolves to the user — the user is not an agent and is not auto-included; user authoring uses --charter / [i]nterject only" >&2
+      continue
+    fi
+    filtered_user_invitees+=("$u")
+  done
+fi
+user_invitees=("${filtered_user_invitees[@]}")
 
 resolved=()
 missing=()
