@@ -7,7 +7,7 @@
 # staging→main release PR merges. This test verifies the preconditions:
 #
 #   1. The story file has been populated (no {CONTENT_PLACEHOLDER} markers).
-#   2. version-bump.js minor dry-run produces v1.135.0 (current is 1.134.1).
+#   2. version-bump.js minor dry-run produces v1.137.0 (current is 1.136.0).
 #   3. The release.yml workflow exists and is wired to push: main.
 #   4. The non-git-cwd-guard library exists in the plugin tree (the bundle).
 #
@@ -74,11 +74,11 @@ setup() {
 # Plugin-tree checks (always run; everything is inside gaia-public/).
 # ---------------------------------------------------------------------------
 
-@test "version-bump.js minor dry-run reports 1.135.0" {
+@test "version-bump.js minor dry-run reports 1.137.0" {
   cd "$REPO_ROOT"
   run node scripts/version-bump.js minor --dry-run
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q '1.134.1 -> 1.135.0'
+  echo "$output" | grep -q '1.136.0 -> 1.137.0'
 }
 
 @test "release.yml workflow exists and triggers on push to main" {
@@ -94,10 +94,10 @@ setup() {
   [ -f "$GUARD" ]
 }
 
-@test "plugin.json current version is 1.134.1" {
+@test "plugin.json current version is 1.136.0" {
   PLUGIN="${REPO_ROOT}/plugins/gaia/.claude-plugin/plugin.json"
   [ -f "$PLUGIN" ]
-  grep -q '"version": "1.134.1"' "$PLUGIN"
+  grep -q '"version": "1.136.0"' "$PLUGIN"
 }
 
 # ---------------------------------------------------------------------------
