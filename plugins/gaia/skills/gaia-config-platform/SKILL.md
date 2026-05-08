@@ -27,6 +27,38 @@ Resolve via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh project_config_path
 
 ### Step 2 — Dispatch Subcommand
 
+#### Step 2a — Print current state first (every invocation)
+
+The first user-visible line of output for every invocation MUST surface the **current state** of `platforms[]` resolved from `config/project-config.yaml` (per AF-2026-05-08-2 / TC-RSV2-EDITOR-5). Read the array using the same `yq` path the helper uses for `list`, and render it as:
+
+```
+current platforms[]: [<comma-separated-or-empty>]
+```
+
+This applies uniformly to `add`, `remove`, `list`, and the no-subcommand case below — there is no invocation that skips the preamble.
+
+#### Step 2b — Handle the no-subcommand case
+
+When the skill is invoked with **no subcommand** (just `/gaia-config-platform`), after printing the current-state preamble, print a usage block that includes:
+
+- The canonical subcommand list: `add`, `remove`, `list`.
+- The documented baseline menu: `web | ios | android` (per ADR-081 §4.2).
+- The kebab-case extensibility note: any identifier matching `^[a-z][a-z0-9-]*$` is also accepted.
+
+Then exit 0 (usage display is success, not error).
+
+#### Step 2c — Handle the no-arg `add` case
+
+When the user runs `add` with **no `<platform-id>` argument**, after the current-state preamble:
+
+- Enumerate the documented baseline menu: `web | ios | android` (per ADR-081 §4.2).
+- Print the kebab-case extensibility note: any identifier matching `^[a-z][a-z0-9-]*$` is also accepted.
+- Re-prompt the user for an identifier — DO NOT exit non-zero. The empty argument is a discoverability hint, not a validation failure.
+
+Once an identifier is supplied, fall through to Step 2d.
+
+#### Step 2d — Dispatch to the helper
+
 Invoke the deterministic helper:
 
 ```
