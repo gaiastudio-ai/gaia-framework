@@ -32,7 +32,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - All generated tests MUST use **Given/When/Then** format for behavior specification.
 - Tests are in the **red phase of TDD** — they describe expected behavior and must fail because the implementation does not exist yet. Do NOT write implementation code.
 - Output MUST be written to `docs/test-artifacts/atdd-{story_key}.md`. If the file already exists from a prior run, overwrite it idempotently — no duplicate content or stale remnants should remain.
-- If the generated ATDD output exceeds 10KB (e.g., a story with 20+ ACs), log a warning: "ATDD output exceeds 10KB ({size}KB) — review for completeness." Output must remain complete with no truncation regardless of size.
+- If the generated ATDD output exceeds 10KB (e.g., a story with 20+ ACs), the size advisory fires from `finalize.sh`. The level is risk-aware (E80-S1 AC9): for `risk: high` stories the advisory logs at `[INFO]` (high-risk stories legitimately produce more content); for `medium` / `low` / unset risk it logs at `[WARNING]`. Output must remain complete with no truncation regardless of size.
 - Only high-risk stories typically require ATDD. If the story risk level is not "high", proceed anyway but note in the output header that ATDD was invoked explicitly.
 
 ## Steps
@@ -101,7 +101,7 @@ When invoked without a story-key, run batch discovery:
   - Summary: total ACs, total tests, confirmation all tests are in failing/red state
 - Write the artifact to `docs/test-artifacts/atdd-{story_key}.md` using an **atomic write**: write to a temp path (e.g., `atdd-{story_key}.md.tmp`) first, then `mv` the temp path over the final path on success. This guarantees a Ctrl-C mid-write never leaves a corrupted file (AC-EC9 — interrupt safety).
 - **Idempotency policy** — if the artifact path already exists from a prior run, overwrite it with a logged warning: "Overwriting existing ATDD artifact at {path}". The policy is `overwrite with warning` (AC-EC10, AC-EC11). In batch mode the per-story result summary distinguishes **generated** from **overwritten** so the user can audit the run.
-- After writing, check file size. If output exceeds 10KB, display warning: "ATDD output exceeds 10KB — review for completeness"
+- After writing, the size advisory is emitted by `finalize.sh` (E80-S1) — risk-aware: `[INFO]` for `risk: high`, `[WARNING]` for medium / low / unset. The skill body itself does not need to repeat the check.
 
 > `!scripts/write-checkpoint.sh gaia-atdd 4 story_key="$STORY_KEY" test_file_path="docs/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" batch_mode="$BATCH_MODE" stage=artifact-written --paths "docs/test-artifacts/atdd-$STORY_KEY.md"`
 

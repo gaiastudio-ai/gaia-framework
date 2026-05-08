@@ -197,8 +197,89 @@ actual_basename="$(basename "$file")"
 
 # ---------- Compare ----------
 
-if [ "$expected_basename" = "$actual_basename" ]; then
-  exit 0
+if [ "$expected_basename" != "$actual_basename" ]; then
+  die_drift "filename drift -- expected '${expected_basename}', got '${actual_basename}'"
 fi
 
-die_drift "filename drift -- expected '${expected_basename}', got '${actual_basename}'"
+# ---------- E79-S4 — canonical-layout shadow / flat-fallback rules ----------
+#
+# Beyond the basename match, enforce the canonical-per-epic layout contract:
+#
+#   - nested + flat sibling for same {key}     -> REJECT (shadow ambiguity)
+#   - nested only                              -> ACCEPT silently
+#   - flat only (pre-migration legacy state)   -> ACCEPT with stderr WARNING
+#
+# Project root resolution: walk up from $file until we find a directory
+# whose path ends in "/docs/implementation-artifacts" — the parent of that
+# dir is the project root. If we cannot locate the docs subtree, skip the
+# shadow check (non-canonical layout context, e.g. unit-test fixtures
+# without a docs/ tree).
+
+resolve_impl_dir() {
+  local p
+  p="$(cd "$(dirname "$1")" && pwd)"
+  while [ "$p" != "/" ] && [ -n "$p" ]; do
+    case "$p" in
+      */docs/implementation-artifacts) printf '%s' "$p"; return 0 ;;
+      */docs/implementation-artifacts/*) p="${p%/*}" ;;
+      *) p="${p%/*}" ;;
+    esac
+  done
+  return 1
+}
+
+impl_dir=""
+if impl_dir="$(resolve_impl_dir "$file")"; then
+  # Locate any flat-path sibling for the same key at the docs root.
+  flat_sibling=""
+  while IFS= read -r -d '' candidate; do
+    [ -f "$candidate" ] || continue
+    flat_sibling="$candidate"
+    break
+  done < <(find "$impl_dir" -maxdepth 1 -type f -name "${key}-*.md" -print0 2>/dev/null)
+
+  # Determine whether the file under validation is itself the flat sibling
+  # (basename-equal AND parent-dir-equal to impl_dir) — bash test by realpath.
+  file_real="$(cd "$(dirname "$file")" && pwd)/$(basename "$file")"
+  flat_self=0
+  if [ -n "$flat_sibling" ]; then
+    sibling_real="$(cd "$(dirname "$flat_sibling")" && pwd)/$(basename "$flat_sibling")"
+    if [ "$sibling_real" = "$file_real" ]; then
+      flat_self=1
+    fi
+  fi
+
+  # Locate any nested-path sibling for the same key under epic-*/stories/.
+  nested_sibling=""
+  while IFS= read -r -d '' candidate; do
+    [ -f "$candidate" ] || continue
+    case "$(basename "$candidate")" in
+      "${key}-"*.md)
+        nested_sibling="$candidate"
+        break
+        ;;
+    esac
+  done < <(find "$impl_dir" -path '*/stories/*.md' -type f -print0 2>/dev/null)
+
+  if [ -n "$flat_sibling" ] && [ -n "$nested_sibling" ] && [ "$flat_self" -eq 0 ]; then
+    # Shadow state: validating the nested file with a flat sibling for the
+    # same key still on disk. Refuse — operator must migrate or delete the
+    # flat sibling before the E79-S6 backfill runs.
+    log "legacy-flat sibling detected for ${key}: ${flat_sibling} — refusing to validate while shadow exists"
+    exit 2
+  fi
+
+  if [ "$flat_self" -eq 1 ] && [ -z "$nested_sibling" ]; then
+    # Flat-only legacy state — accept with WARNING.
+    log "legacy-flat path accepted (read-only fallback) — migrate via E79-S6"
+    exit 0
+  fi
+
+  if [ "$flat_self" -eq 1 ] && [ -n "$nested_sibling" ]; then
+    # User is validating the FLAT side of a shadow pair — same refusal.
+    log "legacy-flat sibling detected for ${key}: ${flat_sibling} — refusing to validate while shadow exists"
+    exit 2
+  fi
+fi
+
+exit 0

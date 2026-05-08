@@ -92,7 +92,7 @@ PR_BODY="## ${STORY_KEY}
 
 ### Acceptance Criteria
 
-See story file: docs/implementation-artifacts/${STORY_KEY}-*.md
+See story file: docs/implementation-artifacts/epic-*/stories/${STORY_KEY}-*.md (canonical, E79) — legacy-flat fallback: docs/implementation-artifacts/${STORY_KEY}-*.md
 
 Story: ${STORY_KEY}"
 

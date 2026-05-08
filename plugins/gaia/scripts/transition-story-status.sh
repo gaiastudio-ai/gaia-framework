@@ -39,7 +39,9 @@
 #   MEMORY_PATH               — defaults to ${PROJECT_PATH}/_memory
 #   SPRINT_STATUS_YAML        — overrides default yaml path (forwarded to sprint-state.sh)
 #   EPICS_AND_STORIES         — overrides default planning artifact path
-#   STORY_INDEX_YAML          — overrides default index path
+#   STORY_INDEX_YAML          — overrides per-epic index path resolution
+#                               (default: ${IMPLEMENTATION_ARTIFACTS}/epic-{epic_key}-{slug}/stories/story-index.yaml,
+#                                derived via lib/resolve-epic-slug.sh — E79-S3)
 #   STORY_STATUS_LOCK         — overrides default lock path
 #
 # story-index.yaml metadata enrichment (E63-S10 / Work Item 6.9):
@@ -65,9 +67,17 @@ SCRIPT_NAME="transition-story-status.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
 STATE_MACHINE_LIB="$LIB_DIR/story-state-machine.sh"
+RESOLVE_EPIC_SLUG_LIB="$LIB_DIR/resolve-epic-slug.sh"
 
 # shellcheck source=lib/story-state-machine.sh
 . "$STATE_MACHINE_LIB"
+
+# E79-S3 — sourced for resolve_epic_slug() used to derive the per-epic
+# story-index.yaml location. The library is sourceable with zero side
+# effects; the canonical-layout subsection of ADR-070 documents the
+# slug-derivation algorithm that single-sources from this helper.
+# shellcheck source=lib/resolve-epic-slug.sh
+. "$RESOLVE_EPIC_SLUG_LIB"
 
 err() { printf '%s: error: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -237,7 +247,12 @@ resolve_epics_and_stories_path() {
   printf '%s\n' "$flat"
 }
 EPICS_AND_STORIES="${EPICS_AND_STORIES:-$(resolve_epics_and_stories_path)}"
-STORY_INDEX_YAML="${STORY_INDEX_YAML:-${IMPLEMENTATION_ARTIFACTS}/story-index.yaml}"
+# E79-S3 — STORY_INDEX_YAML is now resolved per-epic via resolve_epic_slug(),
+# AFTER the story file is located (we need the `epic:` frontmatter field).
+# The legacy flat path (`${IMPLEMENTATION_ARTIFACTS}/story-index.yaml`) is
+# READ-ONLY-FALLBACK only — the writer never targets it. See
+# resolve_story_index_path() and legacy_flat_index_lookup() below.
+LEGACY_FLAT_STORY_INDEX="${IMPLEMENTATION_ARTIFACTS}/story-index.yaml"
 STORY_STATUS_LOCK="${STORY_STATUS_LOCK:-${MEMORY_PATH}/.story-status.lock}"
 
 # Forward SPRINT_STATUS_YAML untouched if caller pre-set it.
@@ -398,6 +413,104 @@ read_frontmatter_field() {
   printf '%s' "$value"
 }
 
+# E79-S3 — Resolve the canonical per-epic story-index.yaml path.
+#
+# Inputs:
+#   $1  story file path (used as the basename source for relative file:)
+#   $2  epic_key from the story frontmatter (e.g., "E79")
+#
+# Output (stdout): the absolute path to the per-epic
+#   `${IMPLEMENTATION_ARTIFACTS}/epic-{epic_key}-{slug}/stories/story-index.yaml`
+#
+# Honors the env override: if STORY_INDEX_YAML is pre-set by the caller,
+# that wins unconditionally — preserves existing test fixtures and
+# brownfield projects that explicitly opt out of per-epic resolution.
+#
+# On resolver failure (epic key not in epics-and-stories.md), prints a
+# tagged stderr error and exits 1 — there is no implicit fallback to the
+# flat path. Per AC4, the script MUST NEVER WRITE to the flat index.
+resolve_story_index_path() {
+  local story_file="$1" epic_key="$2"
+
+  if [ -n "${STORY_INDEX_YAML:-}" ]; then
+    printf '%s' "$STORY_INDEX_YAML"
+    return 0
+  fi
+
+  if [ -z "$epic_key" ]; then
+    err "story file '$story_file' is missing 'epic:' in frontmatter — cannot resolve per-epic story-index.yaml"
+    exit 4
+  fi
+
+  if [ ! -f "$EPICS_AND_STORIES" ]; then
+    err "epics-and-stories.md not found at '$EPICS_AND_STORIES' — cannot resolve per-epic story-index.yaml"
+    exit 5
+  fi
+
+  local epic_slug
+  if ! epic_slug="$(resolve_epic_slug "$epic_key" "$EPICS_AND_STORIES")"; then
+    err "resolve_epic_slug failed for epic_key=$epic_key (epics_file=$EPICS_AND_STORIES)"
+    exit 1
+  fi
+
+  printf '%s' "${IMPLEMENTATION_ARTIFACTS}/${epic_slug}/stories/story-index.yaml"
+}
+
+# E79-S3 — Compute the canonical `file:` pointer for a story entry.
+#
+# Per AC2, the pointer is RELATIVE to the per-epic stories/ directory:
+# the bare basename of the story file (e.g., "E79-S3-foo.md"). This holds
+# whether the story file lives at the canonical nested path or — during
+# mid-migration — still at the flat path. Only the basename is recorded
+# so the pointer stays stable across either layout.
+compute_story_index_file_pointer() {
+  local story_file="$1"
+  basename "$story_file"
+}
+
+# E79-S3 — Read-only legacy-flat fallback lookup.
+#
+# Reads the legacy flat `docs/implementation-artifacts/story-index.yaml`
+# (if present) and prints the matching entry block when <story_key> is
+# found. NEVER writes. Emits a single-line stderr WARNING tagged
+# `legacy-flat-fallback` whenever the fallback fires, so operators can
+# track residual flat-index reads ahead of E79-S6 migration.
+#
+# Stdout: the matching entry block (header + child lines), or empty.
+# Return: 0 on hit, 1 on miss (no warning), 2 on flat file absent.
+#
+# Steady state (post E79-S6): the flat file is deleted; this helper
+# returns 2 silently (NO error / NO warning) per AC5.
+legacy_flat_index_lookup() {
+  local key="$1"
+  local flat="${LEGACY_FLAT_STORY_INDEX:-${IMPLEMENTATION_ARTIFACTS}/story-index.yaml}"
+
+  if [ ! -f "$flat" ]; then
+    return 2
+  fi
+
+  local block
+  block=$(awk -v target="$key" '
+    BEGIN { in_entry = 0; in_stories = 0 }
+    /^stories:[[:space:]]*$/ { in_stories = 1; next }
+    in_stories && /^[A-Za-z]/ { in_stories = 0; in_entry = 0 }
+    in_stories && /^  [A-Za-z][A-Za-z0-9_-]*:[[:space:]]*$/ {
+      k = $0; sub(/^  /, "", k); sub(/:[[:space:]]*$/, "", k)
+      in_entry = (k == target) ? 1 : 0
+      if (in_entry) { print; next }
+    }
+    in_entry { print }
+  ' "$flat")
+
+  if [ -z "$block" ]; then
+    return 1
+  fi
+
+  log "WARNING: legacy-flat-fallback fired for key=$key (read-only; migrate via E79-S6)"
+  printf '%s\n' "$block"
+  return 0
+}
+
 # Snapshot a file to "<file>.bak.<pid>" for rollback. Idempotent — re-snapshot
 # overwrites prior snapshot. Returns the snapshot path on stdout. If the file
 # does not yet exist, records a marker file recording the absence so rollback
@@ -405,6 +518,10 @@ read_frontmatter_field() {
 snapshot_for_rollback() {
   local file="$1"
   local snap="${file}.bak.tss.$$"
+  # E79-S3 — Ensure the parent dir exists. The snapshot marker file
+  # (`${snap}.absent`) is created in the same dir as the target, which
+  # for per-epic story-index.yaml may not yet exist on first transition.
+  mkdir -p "$(dirname "$file")"
   if [ -e "$file" ]; then
     cp -p "$file" "$snap"
   else
@@ -874,9 +991,17 @@ META_EPIC="$(resolve_meta "$META_EPIC" epic)"
 META_PRIORITY="$(resolve_meta "$META_PRIORITY" priority)"
 META_RISK="$(resolve_meta "$META_RISK" risk)"
 META_AUTHOR="$(resolve_meta "$META_AUTHOR" author)"
+# E79-S3 — `file:` pointer is RELATIVE to the per-epic `stories/` directory
+# (bare basename), not the absolute or project-root-relative path. Caller
+# may still override with --file for forensic / migration tooling.
 if [ "$META_FILE" = "$TSS_UNSET" ]; then
-  META_FILE="$STORY_FILE"
+  META_FILE="$(compute_story_index_file_pointer "$STORY_FILE")"
 fi
+
+# E79-S3 — Resolve the per-epic story-index.yaml path. Uses the
+# `epic:` frontmatter field (or the --epic flag override). The env
+# override STORY_INDEX_YAML wins unconditionally for tests / brownfield.
+STORY_INDEX_YAML="$(resolve_story_index_path "$STORY_FILE" "$META_EPIC")"
 
 # Acquire the cross-file lock.
 mkdir -p "$(dirname "$STORY_STATUS_LOCK")"

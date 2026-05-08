@@ -258,6 +258,17 @@ extract_value() {
   printf '%s' "$v"
 }
 
+# E80-S1: extract a YAML value verbatim — no quote stripping. Used for
+# fields whose template tokens have no surrounding quotes (origin,
+# origin_ref, depends_on, blocks, traces_to). Preserves the upstream YAML
+# shape: bare `null`, quoted `"…"`, or flow array `["a","b"]`.
+extract_value_raw() {
+  local k="$1"
+  printf '%s\n' "$frontmatter_kv" | awk -F= -v key="$k" '
+    $1 == key { sub(/^[^=]*=/, "", $0); print $0; exit }
+  '
+}
+
 key_v="$(extract_value key)"
 title_v="$(extract_value title)"
 epic_v="$(extract_value epic)"
@@ -267,6 +278,17 @@ points_v="$(extract_value points)"
 risk_v="$(extract_value risk)"
 date_v="$(extract_value date)"
 author_v="$(extract_value author)"
+# E80-S1: also extract the five fields the template now exposes as tokens.
+# Use the RAW extractor so the upstream YAML shape is preserved verbatim —
+# bare `null`, quoted `"…"`, or flow array `["a","b"]`. The corresponding
+# template tokens have NO surrounding quotes (e.g., `origin: {origin}`), so
+# the substituted output is valid YAML in every shape generate-frontmatter.sh
+# emits.
+origin_v="$(extract_value_raw origin)"
+origin_ref_v="$(extract_value_raw origin_ref)"
+depends_on_v="$(extract_value_raw depends_on)"
+blocks_v="$(extract_value_raw blocks)"
+traces_to_v="$(extract_value_raw traces_to)"
 
 # ---------- Read template ----------
 
@@ -318,7 +340,12 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
   -v points_v="$points_v" \
   -v risk_v="$risk_v" \
   -v date_v="$date_v" \
-  -v author_v="$author_v" '
+  -v author_v="$author_v" \
+  -v origin_v="$origin_v" \
+  -v origin_ref_v="$origin_ref_v" \
+  -v depends_on_v="$depends_on_v" \
+  -v blocks_v="$blocks_v" \
+  -v traces_to_v="$traces_to_v" '
   function token_sub(s,    out) {
     out = s
     gsub(/\{story_key\}/,         key_v,      out)
@@ -333,6 +360,13 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
     # Estimate body uses spaced forms.
     gsub(/\{story points\}/,      points_v,   out)
     gsub(/\{assigned agent\}/,    author_v,   out)
+    # E80-S1: substitute the five frontmatter tokens that previously
+    # remained as template defaults (origin: null, depends_on: [], ...).
+    gsub(/\{origin\}/,            origin_v,     out)
+    gsub(/\{origin_ref\}/,        origin_ref_v, out)
+    gsub(/\{depends_on\}/,        depends_on_v, out)
+    gsub(/\{blocks\}/,            blocks_v,     out)
+    gsub(/\{traces_to\}/,         traces_to_v,  out)
     return out
   }
   function is_content_heading(line,    s) {

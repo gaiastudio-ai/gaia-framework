@@ -54,13 +54,23 @@ log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
 # ---------- 0. Resolve artifact paths ----------
-# ATDD_ARTIFACT wins when set (test fixtures + explicit invocation).
-# The checklist only runs when it is EXPLICITLY set.
+# E80-S1 (AC8): the artifact path is deterministically derivable from
+# STORY_KEY — `docs/test-artifacts/atdd-${STORY_KEY}.md`. Earlier revisions
+# silently skipped the SV-01 traceability checklist whenever ATDD_ARTIFACT
+# was unset, even though the path is reconstructable. We now derive it
+# whenever STORY_KEY is set; ATDD_ARTIFACT remains the explicit override
+# for test fixtures and bespoke invocations.
 ARTIFACT=""
 ARTIFACT_REQUESTED=0
 if [ -n "${ATDD_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$ATDD_ARTIFACT"
+elif [ -n "${STORY_KEY:-}" ]; then
+  # Derive from the story key relative to the project root. PROJECT_ROOT
+  # falls back to GAIA_PROJECT_ROOT, then to PWD when neither is set.
+  derive_root="${PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}"
+  ARTIFACT="$derive_root/docs/test-artifacts/atdd-${STORY_KEY}.md"
+  ARTIFACT_REQUESTED=1
 fi
 
 # ---------- 1. Run the 5-item checklist ----------
@@ -148,8 +158,55 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no atdd artifact requested (ATDD_ARTIFACT unset) — skipping checklist run"
+  log "no atdd artifact requested (ATDD_ARTIFACT unset and STORY_KEY unset) — skipping checklist run"
   CHECKLIST_STATUS=0
+fi
+
+# ---------- 1b. Size advisory (E80-S1 AC9 — option c: risk-aware) ----------
+#
+# The 10KB advisory is downgraded from WARNING to INFO when the story's
+# `risk` frontmatter field is `high`. Rationale: high-risk stories
+# legitimately produce more ATDD content (more ACs, more edge cases). A
+# WARNING on every high-risk artifact is signal-blind — it tripped on 4 of
+# 5 sprint-40 high-risk artifacts (E79-S2 11.4KB, E79-S6 11.8KB, E76-S2
+# 16.5KB, E76-S3 10.6KB). For medium / low / unset risk a WARNING still
+# fires; for high risk the same observation is logged at INFO level so the
+# audit trail is preserved without polluting the WARNING channel.
+if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
+  size_bytes="$(wc -c <"$ARTIFACT" | tr -d ' ')"
+  if [ "$size_bytes" -gt 10240 ]; then
+    size_kb=$(( size_bytes / 1024 ))
+    # Resolve the story risk by parsing the story file frontmatter when
+    # available. If the story file or risk field is absent, default to
+    # `medium` so the conservative (WARNING) path fires.
+    story_risk="medium"
+    if [ -n "${STORY_KEY:-}" ]; then
+      project_root_for_risk="${PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}"
+      story_glob="$project_root_for_risk/docs/implementation-artifacts/${STORY_KEY}-"*.md
+      # shellcheck disable=SC2086
+      for sf in $story_glob; do
+        if [ -f "$sf" ]; then
+          # Extract `risk:` value from the frontmatter — strip whitespace
+          # and any surrounding quotes. Tolerate either quoted or bare
+          # YAML scalar form. Matches only the first occurrence and stops
+          # at the closing `---` delimiter.
+          parsed_risk="$(sed -n '/^---$/,/^---$/p' "$sf" \
+            | grep -E '^[[:space:]]*risk[[:space:]]*:' \
+            | head -1 \
+            | sed -E 's/^[[:space:]]*risk[[:space:]]*:[[:space:]]*//; s/^"//; s/"$//; s/[[:space:]]+$//')"
+          if [ -n "$parsed_risk" ]; then story_risk="$parsed_risk"; fi
+          break
+        fi
+      done
+    fi
+    if [ "$story_risk" = "high" ]; then
+      printf '[INFO] ATDD output exceeds 10KB (%dKB) for high-risk story — review for completeness (advisory).\n' \
+        "$size_kb" >&2
+    else
+      printf '[WARNING] ATDD output exceeds 10KB (%dKB) — review for completeness.\n' \
+        "$size_kb" >&2
+    fi
+  fi
 fi
 
 # ---------- 2. Write checkpoint (observability — never suppressed) ----------

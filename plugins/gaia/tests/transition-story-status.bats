@@ -28,6 +28,21 @@
 #     - snapshot_for_rollback          — pre-flight per-file backup
 #     - restore_snapshot               — invoked by rollback() on partial failure
 #     - cleanup_snapshots              — removes per-file backups on success
+#     - resolve_story_index_path       — E79-S3 per-epic story-index path
+#                                       resolver (delegates to lib/resolve-epic-slug.sh);
+#                                       exercised end-to-end by tests/cluster-7/
+#                                       transition-story-status-per-epic-index.bats
+#     - compute_story_index_file_pointer — E79-S3 basename-relative `file:`
+#                                       pointer used by update_story_index_yaml;
+#                                       exercised end-to-end by tests/cluster-7/
+#                                       transition-story-status-per-epic-index.bats
+#     - legacy_flat_index_lookup       — E79-S3 read-only fallback for the
+#                                       legacy flat story-index.yaml; emits a
+#                                       single-line stderr WARNING tagged
+#                                       `legacy-flat-fallback`. Exercised by
+#                                       tests/cluster-7/transition-story-status-
+#                                       per-epic-index.bats (no-warning steady-state
+#                                       and AC4 grep-guard cases).
 #
 # Usage:
 #   bats plugins/gaia/tests/transition-story-status.bats
@@ -439,8 +454,9 @@ EOF
   [ "$(index_field "$key" priority)" = "P1" ]
   [ "$(index_field "$key" risk)" = "low" ]
   [ "$(index_field "$key" author)" = "fixture-author" ]
-  # `file` defaults to the resolved absolute story path.
-  [ "$(index_field "$key" file)" = "$fixture" ]
+  # E79-S3 — `file` defaults to the basename relative to the per-epic
+  # `stories/` directory (no longer the resolved absolute path).
+  [ "$(index_field "$key" file)" = "$(basename "$fixture")" ]
   [ "$(index_field "$key" status)" = "validating" ]
 }
 
