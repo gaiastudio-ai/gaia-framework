@@ -333,6 +333,131 @@ _compare_monolith \
   "$ROOT/docs/planning-artifacts/epics" \
   "epics"
 
+# ---------------------------------------------------------------------------
+# E59-S6 — per-story status drift between monolith and per-epic shard.
+#
+# Walks every `### Story <KEY>:` block in the epics monolith, resolves the
+# matching `*-e<EID>-*.md` shard via the canonical glob, parses the
+# `- **Status:** <state>` line in each, and emits a WARNING when the values
+# differ. Stays advisory (always exit 0) and additive: the existing 12
+# prd/architecture WARNINGs are preserved unchanged. Per-story status
+# WARNINGs fire only when the shard exists AND contains the matching
+# `### Story <KEY>:` block — missing shards are NOT divergence.
+#
+# Refs: AF-2026-05-08-6, ADR-070, ADR-074 contract C3, TC-TSS-SHARD-6.
+# ---------------------------------------------------------------------------
+
+_check_per_story_status_drift() {
+  # Resolve the monolith across the dual layout (E64-S4): the canonical
+  # path is `docs/planning-artifacts/epics/epics-and-stories.md`, but
+  # legacy projects keep it flat at `docs/planning-artifacts/epics-and-stories.md`.
+  # Mirror the resolver order in transition-story-status.sh to stay in sync.
+  local monolith=""
+  if [[ -f "$ROOT/docs/planning-artifacts/epics-and-stories.md" ]]; then
+    monolith="$ROOT/docs/planning-artifacts/epics-and-stories.md"
+  elif [[ -f "$ROOT/docs/planning-artifacts/epics-and-stories/index.md" ]]; then
+    monolith="$ROOT/docs/planning-artifacts/epics-and-stories/index.md"
+  elif [[ -f "$ROOT/docs/planning-artifacts/epics/epics-and-stories.md" ]]; then
+    monolith="$ROOT/docs/planning-artifacts/epics/epics-and-stories.md"
+  elif [[ -f "$ROOT/docs/planning-artifacts/epics/index.md" ]]; then
+    monolith="$ROOT/docs/planning-artifacts/epics/index.md"
+  else
+    return 0
+  fi
+  local shard_dir="$ROOT/docs/planning-artifacts/epics"
+  if [[ ! -d "$shard_dir" ]]; then
+    return 0
+  fi
+
+  # Extract every `### Story <KEY>: <title>` line plus its first per-story
+  # `- **Status:** <state>` line within the same block. Block boundary is
+  # the next `### Story` heading or a top-level `## ` heading.
+  awk '
+    BEGIN { in_block = 0; key = ""; status = "" }
+    /^### Story / {
+      if (in_block && key != "" && status != "") {
+        printf "%s\t%s\n", key, status
+      }
+      key = $0
+      sub(/^### Story /, "", key)
+      sub(/:.*$/, "", key)
+      status = ""
+      in_block = 1
+      next
+    }
+    /^## / && !/^### / {
+      if (in_block && key != "" && status != "") {
+        printf "%s\t%s\n", key, status
+      }
+      in_block = 0
+      key = ""
+      status = ""
+      next
+    }
+    in_block && /^- \*\*Status:\*\*/ {
+      if (status == "") {
+        status = $0
+        sub(/^- \*\*Status:\*\*[[:space:]]*/, "", status)
+        sub(/[[:space:]]+$/, "", status)
+      }
+      next
+    }
+    END {
+      if (in_block && key != "" && status != "") {
+        printf "%s\t%s\n", key, status
+      }
+    }
+  ' "$monolith" | while IFS=$'\t' read -r mkey mstatus; do
+    [[ -z "$mkey" ]] && continue
+    # Extract numeric EID from key (e.g., E76-S7 -> 76).
+    local eid
+    if [[ "$mkey" =~ ^E([0-9]+)-S[0-9]+$ ]]; then
+      eid="${BASH_REMATCH[1]}"
+    else
+      continue
+    fi
+    # Glob `*-e<EID>-*.md` (case-insensitive on the e<EID> token).
+    shopt -s nullglob nocaseglob
+    local matches=( "$shard_dir"/*-e${eid}-*.md )
+    shopt -u nocaseglob nullglob
+    if [[ "${#matches[@]}" -ne 1 ]]; then
+      # Zero-match: missing shard is not divergence (per AC4 wording).
+      # Multi-match: structural break — out of scope for this advisory walk
+      # (transition-story-status.sh fails loud on multi-match writes).
+      continue
+    fi
+    local shard="${matches[0]}"
+    # Read the per-story Status line under `### Story <KEY>:` block in the
+    # shard. If the shard does NOT contain the block, NOT divergence.
+    local sstatus
+    sstatus="$(awk -v target="$mkey" '
+      BEGIN { in_block = 0 }
+      /^### Story / {
+        in_block = (index($0, "Story " target ":") > 0)
+        next
+      }
+      in_block && /^## / && !/^### / { in_block = 0; next }
+      in_block && /^- \*\*Status:\*\*/ {
+        v = $0
+        sub(/^- \*\*Status:\*\*[[:space:]]*/, "", v)
+        sub(/[[:space:]]+$/, "", v)
+        print v
+        exit
+      }
+    ' "$shard")"
+    if [[ -z "$sstatus" ]]; then
+      # Shard does not contain the per-story block — graceful skip.
+      continue
+    fi
+    if [[ "$mstatus" != "$sstatus" ]]; then
+      printf 'WARNING: epics-shard — story %s status diverges between monolith and %s (monolith=%s, shard=%s)\n' \
+        "$mkey" "$shard" "$mstatus" "$sstatus"
+    fi
+  done
+}
+
+_check_per_story_status_drift
+
 # Special case: PRD monolith may live at docs/planning-artifacts/prd.md
 # (legacy layout) with no shard directory. Honor the missing-shard-dir
 # graceful skip path.

@@ -303,3 +303,137 @@ EOF
   run "$CHECK_SCRIPT"
   [ "$status" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# E59-S6 / TC-TSS-SHARD-6 — per-story status drift between monolith and shard
+# ---------------------------------------------------------------------------
+#
+# Story: E59-S6 — extend check-monolith-shard-sync.sh to walk every story key
+# in the monolith, resolve the matching per-epic shard via the `e<EID>` token
+# glob, parse the per-story `- **Status:** <state>` line in each, and emit a
+# WARNING when the values differ.
+# Refs: AF-2026-05-08-6, ADR-070, ADR-074 contract C3.
+
+# Helper: write a per-epic shard with one story entry at a known status.
+_write_per_epic_shard() {
+  local nn="$1" eid="$2" key="$3" status="$4"
+  local file="$TEST_TMP/docs/planning-artifacts/epics/${nn}-e${eid}-fixture.md"
+  cat > "$file" <<EOF
+## Epic E${eid}: Fixture
+
+### Story ${key}: Fixture story
+
+- **Epic:** E${eid}
+- **Status:** ${status}
+
+EOF
+}
+
+# Helper: write the epics monolith with one story entry at a known status.
+_write_epics_monolith_story() {
+  local key="$1" status="$2"
+  cat > "$TEST_TMP/docs/planning-artifacts/epics/epics-and-stories.md" <<EOF
+# Epics and Stories
+
+## Change Log
+
+| Date | Change |
+|------|--------|
+| 2026-05-04 | Initial |
+
+## Epic E99: Fixture
+
+### Story ${key}: Fixture story
+
+- **Epic:** E99
+- **Status:** ${status}
+EOF
+  # Empty shard for the Epic E99 H2 so the H2-section sync path is silent.
+  cat > "$TEST_TMP/docs/planning-artifacts/epics/02-e99-fixture-h2.md" <<EOF
+## Epic E99: Fixture
+
+### Story ${key}: Fixture story
+
+- **Epic:** E99
+- **Status:** ${status}
+EOF
+  # Mirror the change-log shard.
+  cat > "$TEST_TMP/docs/planning-artifacts/epics/01-change-log.md" <<'EOF'
+## Change Log
+
+| Date | Change |
+|------|--------|
+| 2026-05-04 | Initial |
+EOF
+}
+
+# TC-TSS-SHARD-6 (a) — divergent monolith vs shard pair triggers WARNING.
+@test "TC-TSS-SHARD-6a: divergent per-story status emits epics-shard WARNING" {
+  _write_synced_prd
+  _write_synced_arch
+  _write_epics_monolith_story "E99-S1" "done"
+  # Single `*-e99-*.md` shard with the per-story-status divergence so the
+  # new walk's `*-e<EID>-*.md` glob has exactly one match. (Multi-match
+  # silently skips by design — correct contract but defeats this AC.)
+  rm -f "$TEST_TMP/docs/planning-artifacts/epics/02-e99-fixture-h2.md"
+  cat > "$TEST_TMP/docs/planning-artifacts/epics/02-e99-fixture.md" <<EOF
+## Epic E99: Fixture
+
+### Story E99-S1: Fixture story
+
+- **Epic:** E99
+- **Status:** backlog
+EOF
+
+  run "$CHECK_SCRIPT" --root "$TEST_TMP"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING"* ]]
+  [[ "$output" == *"epics-shard"* ]]
+  [[ "$output" == *"E99-S1"* ]]
+  [[ "$output" == *"monolith=done"* ]]
+  [[ "$output" == *"shard=backlog"* ]]
+}
+
+# TC-TSS-SHARD-6 (b) — absent shard does NOT emit a WARNING.
+@test "TC-TSS-SHARD-6b: absent per-epic shard emits NO epics-shard WARNING" {
+  _write_synced_prd
+  _write_synced_arch
+  _write_epics_monolith_story "E99-S1" "done"
+  # Remove the per-epic shard for the story (only the H2 mirror remains).
+  rm -f "$TEST_TMP/docs/planning-artifacts/epics/03-e99-fixture.md"
+
+  run "$CHECK_SCRIPT" --root "$TEST_TMP"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"WARNING: epics-shard"* ]]
+}
+
+# TC-TSS-SHARD-6 (c) — regression guard: existing 12 prd/architecture WARNINGs are preserved
+# byte-untouched when the per-story status walk runs. We use synced fixtures so this AC reads
+# as: zero new false-positive WARNINGs from the new walk.
+@test "TC-TSS-SHARD-6c: synced fixture stays clean — new walk introduces no false positives" {
+  _write_synced_prd
+  _write_synced_arch
+  _write_synced_epics
+  # Add a per-epic shard for E1 with the SAME status as the monolith says
+  # (synced). The new walk MUST stay silent for the synced case.
+  cat > "$TEST_TMP/docs/planning-artifacts/epics/04-e1-foo-stories.md" <<'EOF'
+## Epic E1: Foo (per-epic shard)
+
+### Story E1-S1: Synced story
+
+- **Epic:** E1
+- **Status:** ready-for-dev
+EOF
+  cat >> "$TEST_TMP/docs/planning-artifacts/epics/epics-and-stories.md" <<'EOF'
+
+### Story E1-S1: Synced story
+
+- **Epic:** E1
+- **Status:** ready-for-dev
+EOF
+
+  run "$CHECK_SCRIPT" --root "$TEST_TMP"
+  [ "$status" -eq 0 ]
+  # New walk MUST NOT emit a per-story status WARNING for the synced pair.
+  [[ "$output" != *"WARNING: epics-shard — story E1-S1"* ]]
+}

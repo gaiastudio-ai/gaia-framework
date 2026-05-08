@@ -28,4 +28,4 @@ All other framework behavior is documented in the corresponding `plugins/gaia/sk
 - When implementing a GAIA story, follow the `/gaia-dev-story` workflow steps exactly; do not skip Steps 13–16 (push, PR, CI, merge) when `ci_cd.promotion_chain` is set.
 - `gaia-public/plugins/gaia/commands/` is retired under FR-329 — do not repopulate it. Slash commands resolve via SKILL.md.
 - Story file is the source of truth for sprint state; never write to `sprint-status.yaml` directly except via `/gaia-sprint-status`.
-- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, or story-index.yaml are FORBIDDEN.
+- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `docs/planning-artifacts/epics/` are FORBIDDEN.

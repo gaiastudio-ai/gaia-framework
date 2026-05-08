@@ -854,3 +854,263 @@ e64_s4_run_transition() {
     "$proj_b/docs/planning-artifacts/epics-and-stories.md"
   [ "$?" -eq 0 ]
 }
+
+# ============================================================================
+# E59-S6 — TC-TSS-SHARD-1..5 — `update_per_epic_shard()` writer
+# ============================================================================
+#
+# Story: E59-S6 — `transition-story-status.sh` mirrors per-story status into
+# the matching per-epic shard atomically alongside the existing four writers.
+# Refs: AF-2026-05-08-6, ADR-070, ADR-074 contract C3.
+
+# Helper: build a project tree with a per-epic shard fixture for the given
+# epic numeric ID and seed a single story entry inside it.
+e59_s6_setup_project() {
+  local proj="$BATS_TEST_TMPDIR/e59-s6-$1-$$"
+  shift
+  mkdir -p "$proj/docs/implementation-artifacts" \
+           "$proj/docs/planning-artifacts" \
+           "$proj/docs/planning-artifacts/epics" \
+           "$proj/_memory"
+  printf '%s' "$proj"
+}
+
+# Helper: write a shard file for epic <eid> at the given shard ordinal NN.
+e59_s6_write_shard() {
+  local proj="$1" nn="$2" eid="$3" key="$4" status="$5"
+  local shard="$proj/docs/planning-artifacts/epics/${nn}-e${eid}-fixture.md"
+  cat >"$shard" <<EOF
+## Epic E${eid}: Fixture epic
+
+### Story ${key}: Fixture story title
+
+- **Epic:** E${eid}
+- **Status:** ${status}
+- **Sprint:** null
+
+EOF
+  printf '%s' "$shard"
+}
+
+# Helper: write a story file at the flat implementation-artifacts/ path so
+# the locator finds it without per-epic-dir resolution complications.
+e59_s6_write_story() {
+  local proj="$1" eid="$2" key="$3" status="$4"
+  local sdir="$proj/docs/implementation-artifacts"
+  mkdir -p "$sdir"
+  local file="$sdir/${key}-fixture.md"
+  cat >"$file" <<EOF
+---
+template: 'story'
+key: "${key}"
+title: "Fixture for ${key}"
+epic: "E${eid}"
+status: ${status}
+sprint_id: "fixture-sprint"
+priority: "P0"
+size: "XS"
+points: 1
+risk: "low"
+---
+
+# Story: Fixture for ${key}
+
+> **Status:** ${status}
+EOF
+  printf '%s' "$file"
+}
+
+# Helper: write a flat epics-and-stories.md monolith. The H2 heading uses the
+# canonical `## E<EID> — Title` form expected by lib/resolve-epic-slug.sh.
+e59_s6_write_monolith() {
+  local proj="$1" key="$2" status="$3" eid="${4:-99}"
+  cat >"$proj/docs/planning-artifacts/epics-and-stories.md" <<EOF
+# Epics and Stories
+
+## E${eid} — Fixture monolith epic
+
+### Story ${key}: Fixture for ${key}
+
+- **Epic:** E${eid}
+- **Status:** ${status}
+EOF
+}
+
+# Read the per-story Status line from a shard file.
+e59_s6_shard_status() {
+  local shard="$1" key="$2"
+  awk -v target="$key" '
+    /^### Story / {
+      in_block = (index($0, "Story " target ":") > 0)
+      next
+    }
+    in_block && /^- \*\*Status:\*\*/ {
+      v = $0
+      sub(/^- \*\*Status:\*\*[[:space:]]*/, "", v)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+      print v
+      exit
+    }
+  ' "$shard"
+}
+
+# TC-TSS-SHARD-1 — One-shard match + status rewrite (AC1)
+@test "TC-TSS-SHARD-1: one-shard match rewrites per-story Status line in shard" {
+  local proj; proj="$(e59_s6_setup_project shard1)"
+  local key="E99-S1"
+  local shard; shard="$(e59_s6_write_shard "$proj" 01 99 "$key" backlog)"
+  local file; file="$(e59_s6_write_story "$proj" 99 "$key" backlog)"
+  e59_s6_write_monolith "$proj" "$key" backlog
+
+  unset EPICS_AND_STORIES SPRINT_STATUS_YAML
+  export STORY_INDEX_YAML="$proj/docs/implementation-artifacts/story-index.yaml"
+  PROJECT_PATH="$proj" \
+  IMPLEMENTATION_ARTIFACTS="$proj/docs/implementation-artifacts" \
+  PLANNING_ARTIFACTS="$proj/docs/planning-artifacts" \
+  MEMORY_PATH="$proj/_memory" \
+  STORY_STATUS_LOCK="$proj/_memory/.story-status.lock" \
+    "$TRANSITION" "$key" --to ready-for-dev
+
+  # Shard updated in place.
+  [ "$(e59_s6_shard_status "$shard" "$key")" = "ready-for-dev" ]
+  # Story file frontmatter advanced.
+  grep -q '^status: ready-for-dev' "$file"
+  # Monolith updated.
+  grep -q '^- \*\*Status:\*\* ready-for-dev' "$proj/docs/planning-artifacts/epics-and-stories.md"
+}
+
+# TC-TSS-SHARD-2 — Zero-shard match → INFO + exit 0 (AC1)
+@test "TC-TSS-SHARD-2: zero-shard match emits INFO + exits 0; monolith-only write" {
+  local proj; proj="$(e59_s6_setup_project shard2)"
+  local key="E99-S2"
+  # NO shard for epic 99 in this project.
+  local file; file="$(e59_s6_write_story "$proj" 99 "$key" backlog)"
+  e59_s6_write_monolith "$proj" "$key" backlog
+
+  unset EPICS_AND_STORIES SPRINT_STATUS_YAML
+  export STORY_INDEX_YAML="$proj/docs/implementation-artifacts/story-index.yaml"
+  run env \
+    PROJECT_PATH="$proj" \
+    IMPLEMENTATION_ARTIFACTS="$proj/docs/implementation-artifacts" \
+    PLANNING_ARTIFACTS="$proj/docs/planning-artifacts" \
+    MEMORY_PATH="$proj/_memory" \
+    STORY_STATUS_LOCK="$proj/_memory/.story-status.lock" \
+    "$TRANSITION" "$key" --to ready-for-dev
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no per-epic shard entry"* ]] || [[ "$stderr" == *"no per-epic shard entry"* ]]
+  # Story file frontmatter still advances.
+  grep -q '^status: ready-for-dev' "$file"
+}
+
+# TC-TSS-SHARD-3 — Multi-shard match → canonical error + rollback (AC1, AC2)
+@test "TC-TSS-SHARD-3: multi-shard match triggers canonical error + rollback" {
+  local proj; proj="$(e59_s6_setup_project shard3)"
+  local key="E99-S3"
+  e59_s6_write_shard "$proj" 01 99 "$key" backlog >/dev/null
+  e59_s6_write_shard "$proj" 02 99 "$key" backlog >/dev/null
+  local file; file="$(e59_s6_write_story "$proj" 99 "$key" backlog)"
+  e59_s6_write_monolith "$proj" "$key" backlog
+
+  unset EPICS_AND_STORIES SPRINT_STATUS_YAML
+  export STORY_INDEX_YAML="$proj/docs/implementation-artifacts/story-index.yaml"
+  run env \
+    PROJECT_PATH="$proj" \
+    IMPLEMENTATION_ARTIFACTS="$proj/docs/implementation-artifacts" \
+    PLANNING_ARTIFACTS="$proj/docs/planning-artifacts" \
+    MEMORY_PATH="$proj/_memory" \
+    STORY_STATUS_LOCK="$proj/_memory/.story-status.lock" \
+    "$TRANSITION" "$key" --to ready-for-dev
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"multiple shards match"* ]] || [[ "$stderr" == *"multiple shards match"* ]]
+  # Rollback: story file frontmatter remains backlog.
+  grep -q '^status: backlog' "$file"
+  # Monolith remains backlog.
+  grep -q '^- \*\*Status:\*\* backlog' "$proj/docs/planning-artifacts/epics-and-stories.md"
+}
+
+# TC-TSS-SHARD-4 — Flock + rollback symmetry across five snapshots (AC2)
+@test "TC-TSS-SHARD-4: rollback restores all five touched files including shard" {
+  local proj; proj="$(e59_s6_setup_project shard4)"
+  local key="E99-S4"
+  local shard; shard="$(e59_s6_write_shard "$proj" 01 99 "$key" backlog)"
+  local file; file="$(e59_s6_write_story "$proj" 99 "$key" backlog)"
+  e59_s6_write_monolith "$proj" "$key" backlog
+
+  # Inject a mid-write failure: chmod the shard's parent dir read-only AFTER
+  # the story-file + monolith have been written. Use a wrapper hook.
+  # Simpler: chmod parent of shard read-only — `mv` over the shard fails.
+  local shard_dir; shard_dir="$(dirname "$shard")"
+  # Snapshot all five files' content.
+  local sha_before
+  sha_before=$(shasum "$file" "$proj/docs/planning-artifacts/epics-and-stories.md" "$shard" | shasum)
+
+  chmod a-w "$shard_dir"
+
+  unset EPICS_AND_STORIES SPRINT_STATUS_YAML
+  export STORY_INDEX_YAML="$proj/docs/implementation-artifacts/story-index.yaml"
+  run env \
+    PROJECT_PATH="$proj" \
+    IMPLEMENTATION_ARTIFACTS="$proj/docs/implementation-artifacts" \
+    PLANNING_ARTIFACTS="$proj/docs/planning-artifacts" \
+    MEMORY_PATH="$proj/_memory" \
+    STORY_STATUS_LOCK="$proj/_memory/.story-status.lock" \
+    "$TRANSITION" "$key" --to ready-for-dev
+
+  chmod u+wx "$shard_dir"
+  [ "$status" -ne 0 ]
+  # Rollback: all three on-disk content shas match pre-transition.
+  local sha_after
+  sha_after=$(shasum "$file" "$proj/docs/planning-artifacts/epics-and-stories.md" "$shard" | shasum)
+  [ "$sha_before" = "$sha_after" ]
+}
+
+# TC-TSS-SHARD-5 — Self-transition idempotency across all five files (AC3)
+@test "TC-TSS-SHARD-5: self-transition is byte-stable across all five files (incl. shard)" {
+  local proj; proj="$(e59_s6_setup_project shard5)"
+  local key="E99-S5"
+  local shard; shard="$(e59_s6_write_shard "$proj" 01 99 "$key" done)"
+  local file; file="$(e59_s6_write_story "$proj" 99 "$key" done)"
+  e59_s6_write_monolith "$proj" "$key" done
+
+  local sha_before
+  sha_before=$(shasum "$file" "$proj/docs/planning-artifacts/epics-and-stories.md" "$shard" | shasum)
+
+  unset EPICS_AND_STORIES SPRINT_STATUS_YAML
+  export STORY_INDEX_YAML="$proj/docs/implementation-artifacts/story-index.yaml"
+  run env \
+    PROJECT_PATH="$proj" \
+    IMPLEMENTATION_ARTIFACTS="$proj/docs/implementation-artifacts" \
+    PLANNING_ARTIFACTS="$proj/docs/planning-artifacts" \
+    MEMORY_PATH="$proj/_memory" \
+    STORY_STATUS_LOCK="$proj/_memory/.story-status.lock" \
+    "$TRANSITION" "$key" --to done
+  [ "$status" -eq 0 ]
+
+  local sha_after
+  sha_after=$(shasum "$file" "$proj/docs/planning-artifacts/epics-and-stories.md" "$shard" | shasum)
+  [ "$sha_before" = "$sha_after" ]
+}
+
+# TC-TSS-SHARD-RECONCILE — `--reconcile-only` flag forces replay across all five writers (AC6)
+@test "TC-TSS-SHARD-RECONCILE: --reconcile-only forces shard rewrite at current frontmatter status" {
+  local proj; proj="$(e59_s6_setup_project recon)"
+  local key="E99-S99"
+  # Drift fixture: story-file = done, monolith = done, shard = backlog (drifted).
+  local shard; shard="$(e59_s6_write_shard "$proj" 01 99 "$key" backlog)"
+  local file; file="$(e59_s6_write_story "$proj" 99 "$key" done)"
+  e59_s6_write_monolith "$proj" "$key" done
+
+  # Self-transition without --reconcile-only is a no-op (TC-CSE-11).
+  # With --reconcile-only the shard must be rewritten to match the story file.
+  unset EPICS_AND_STORIES SPRINT_STATUS_YAML
+  export STORY_INDEX_YAML="$proj/docs/implementation-artifacts/story-index.yaml"
+  run env \
+    PROJECT_PATH="$proj" \
+    IMPLEMENTATION_ARTIFACTS="$proj/docs/implementation-artifacts" \
+    PLANNING_ARTIFACTS="$proj/docs/planning-artifacts" \
+    MEMORY_PATH="$proj/_memory" \
+    STORY_STATUS_LOCK="$proj/_memory/.story-status.lock" \
+    "$TRANSITION" "$key" --reconcile-only
+  [ "$status" -eq 0 ]
+  [ "$(e59_s6_shard_status "$shard" "$key")" = "done" ]
+}
