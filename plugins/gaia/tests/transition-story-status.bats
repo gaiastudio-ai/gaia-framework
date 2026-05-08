@@ -43,6 +43,24 @@
 #                                       tests/cluster-7/transition-story-status-
 #                                       per-epic-index.bats (no-warning steady-state
 #                                       and AC4 grep-guard cases).
+#     - _glob_shard_for_key            — E59-S6 single-source-of-truth glob
+#                                       resolver for *-e<EID>-*.md per-epic
+#                                       shards used by both update_per_epic_shard
+#                                       and resolve_shard_path_for_key.
+#                                       Exercised end-to-end by TC-TSS-SHARD-1..5.
+#     - update_per_epic_shard          — E59-S6 fifth atomic writer that mirrors
+#                                       the per-story Status line into the
+#                                       matching per-epic shard. Exercised by
+#                                       TC-TSS-SHARD-1, TC-TSS-SHARD-2,
+#                                       TC-TSS-SHARD-3.
+#     - resolve_shard_path_for_key     — E59-S6 read-only resolver used by the
+#                                       snapshot path so rollback can restore
+#                                       the shard. Exercised end-to-end by
+#                                       TC-TSS-SHARD-4 (rollback symmetry across
+#                                       all five touched files including the
+#                                       shard) and TC-TSS-SHARD-5 (idempotent
+#                                       self-transition is byte-stable on the
+#                                       shard via the snapshot path).
 #
 # Usage:
 #   bats plugins/gaia/tests/transition-story-status.bats
