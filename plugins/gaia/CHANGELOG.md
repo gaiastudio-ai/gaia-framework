@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.139.0] — 2026-05-09
+
+### Added
+
+- (E59-S6) mirror per-story status into per-epic shard atomically
+- (E76-S10) close subagent dispatch contract for /gaia-meeting (#549)
+- (E76-S9) script-side yield-gate enforcement with YIELD-STOP sentinel (#548)
+- (E76-S8) wire No-fabricated-user-turns invariant (#547)
+- (E71-S6) wire /gaia-init Step 2.2 project-shape enum relabel + plug (#546)
+
+### Changed
+
+- (E59-S6) name new public functions in coverage anchors
+
+### Fixed
+
+- (E53-S248) teach validate-gate.sh traceability_exists to accept strategy/ placement (#550)
+
 ## [1.138.0] — 2026-05-08
 
 ### Added
