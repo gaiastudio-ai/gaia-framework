@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# statusline-update-check.sh — GAIA Claude Code statusline background update
+# fetcher.
+#
+# Story: E82-S2.
+#
+# Role
+# ----
+# OFF the hot path. The Claude Code statusline `refreshInterval` mechanism
+# (1h default, configured by install-statusline.sh) drives invocation. The
+# runtime statusline.sh NEVER falls through to a synchronous fetch — that
+# would breach NFR-STATUSLINE-1.
+#
+# Cache contract (ADR-091)
+# ------------------------
+#   ~/.claude/gaia-statusline/cache/latest-release.json
+#   {
+#     "checked_at_iso": "2026-05-09T12:34:56Z",
+#     "latest_tag":     "1.2.3",            # leading 'v' stripped
+#     "current_tag":    "1.0.0",            # leading 'v' stripped
+#     "update_available": false             # boolean
+#   }
+#
+# Failure-mode philosophy (TC-STATUSLINE-10 / FR-441 / FR-442)
+# ------------------------------------------------------------
+# Every failure is silent: exit 0, cache untouched, NOTHING on stderr. The
+# user perception of "no update indicator" must be indistinguishable from
+# "actively up to date" and "fetch failed."
+#
+# Atomic write (NFR-STATUSLINE-3)
+# -------------------------------
+# Sibling-tempfile + `mv -f` on the same filesystem as the cache target.
+# Crossing filesystems via the system temp dir would break rename atomicity.
+#
+# POSIX discipline: bash 3.2 compatible (macOS default).
+
+set -u
+LC_ALL=C
+export LC_ALL
+
+# Convert any unexpected non-zero exit into a silent exit 0 so the contract
+# "every failure path returns 0 with cache untouched" holds even if a future
+# refactor adds a new failure mode we did not anticipate.
+trap 'exit 0' ERR
+
+# Sweep any orphaned sibling tempfile if we are killed mid-write (SIGINT,
+# SIGTERM). Using a sentinel variable so the trap is a no-op until SIBLING
+# is set further down.
+SIBLING=""
+_cleanup() {
+  if [ -n "${SIBLING:-}" ] && [ -e "$SIBLING" ]; then
+    rm -f "$SIBLING" 2>/dev/null || true
+  fi
+}
+trap _cleanup EXIT INT TERM
+
+# ---- Constants -------------------------------------------------------------
+TTL_SECONDS=86400          # 24h fetch TTL — see AC5.
+HTTP_TIMEOUT=5             # curl --max-time, gh wrapper enforces its own.
+
+CACHE_DIR="${HOME}/.claude/gaia-statusline/cache"
+CACHE_FILE="${CACHE_DIR}/latest-release.json"
+
+# Resolve PROJECT_PATH (test override, else CWD).
+PROJECT_PATH="${PROJECT_PATH:-$PWD}"
+PLUGIN_JSON="$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
+
+# ---- Read current version from plugin.json --------------------------------
+# AC4: plugin.json missing or unparseable -> exit 0 silently, cache untouched.
+if [ ! -r "$PLUGIN_JSON" ]; then
+  exit 0
+fi
+CURRENT_TAG="$(jq -r '.version // ""' "$PLUGIN_JSON" 2>/dev/null || printf '')"
+if [ -z "$CURRENT_TAG" ]; then
+  exit 0
+fi
+# Strip leading 'v' if present (canonical form is bare semver).
+CURRENT_TAG="${CURRENT_TAG#v}"
+
+# ---- TTL guard (AC5) ------------------------------------------------------
+# If the cache is fresher than 24h, exit 0 without touching it.
+_now_epoch() { date -u +%s; }
+
+_iso_to_epoch() {
+  # Portable ISO-8601 -> epoch. macOS BSD date and GNU date take different
+  # flags; try both. Returns "" on failure (caller treats as "stale").
+  ts="$1"
+  # macOS / BSD: -j -f
+  if e="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$ts" +%s 2>/dev/null)"; then
+    printf '%s' "$e"; return 0
+  fi
+  # GNU: -d
+  if e="$(date -u -d "$ts" +%s 2>/dev/null)"; then
+    printf '%s' "$e"; return 0
+  fi
+  printf ''
+}
+
+if [ -r "$CACHE_FILE" ]; then
+  prev_iso="$(jq -r '.checked_at_iso // ""' "$CACHE_FILE" 2>/dev/null || printf '')"
+  if [ -n "$prev_iso" ]; then
+    prev_epoch="$(_iso_to_epoch "$prev_iso")"
+    if [ -n "$prev_epoch" ]; then
+      now_epoch="$(_now_epoch)"
+      delta=$(( now_epoch - prev_epoch ))
+      if [ "$delta" -lt "$TTL_SECONDS" ] && [ "$delta" -ge 0 ]; then
+        exit 0
+      fi
+    fi
+  fi
+fi
+
+# ---- Fetch latest tag from GitHub Releases --------------------------------
+# Prefer `gh api` (already a GAIA prereq). Fall back to unauthenticated curl.
+# Both are wrapped to swallow failures.
+LATEST_RAW=""
+if command -v gh >/dev/null 2>&1; then
+  LATEST_RAW="$(gh api repos/gaiastudio-ai/gaia-public/releases/latest 2>/dev/null || printf '')"
+fi
+if [ -z "$LATEST_RAW" ] && command -v curl >/dev/null 2>&1; then
+  LATEST_RAW="$(curl -sSL --max-time "$HTTP_TIMEOUT" \
+    https://api.github.com/repos/gaiastudio-ai/gaia-public/releases/latest 2>/dev/null || printf '')"
+fi
+
+# AC1, AC2: empty response -> exit 0 silently, cache untouched.
+if [ -z "$LATEST_RAW" ]; then
+  exit 0
+fi
+
+# AC3: parse JSON -> on failure, exit 0 silently.
+LATEST_TAG="$(printf '%s' "$LATEST_RAW" | jq -r '.tag_name // ""' 2>/dev/null || printf '')"
+if [ -z "$LATEST_TAG" ]; then
+  exit 0
+fi
+LATEST_TAG="${LATEST_TAG#v}"
+
+# ---- Tag comparison (AC6, AC7) -------------------------------------------
+# Shell-only semver comparison via `sort -V`. When tags are equal, no update.
+# When LATEST > CURRENT, update_available=true.
+UPDATE_AVAILABLE="false"
+if [ "$LATEST_TAG" != "$CURRENT_TAG" ]; then
+  larger="$(printf '%s\n%s\n' "$CURRENT_TAG" "$LATEST_TAG" | sort -V | tail -1 2>/dev/null || printf '')"
+  if [ "$larger" = "$LATEST_TAG" ] && [ -n "$larger" ]; then
+    UPDATE_AVAILABLE="true"
+  fi
+fi
+
+# ---- Atomic write (AC8, AC10 / NFR-STATUSLINE-3) -------------------------
+# Sibling tempfile in the cache dir + mv -f. Cross-filesystem renames are
+# not atomic, so we keep the temp file beside its target.
+mkdir -p "$CACHE_DIR" 2>/dev/null || exit 0
+
+CHECKED_AT_ISO="$(date -u +%FT%TZ)"
+
+SIBLING="$(mktemp "${CACHE_FILE}.XXXXXX" 2>/dev/null || printf '')"
+if [ -z "$SIBLING" ]; then
+  exit 0
+fi
+
+# Build the canonical schema. `--argjson` for booleans (so jq emits a real
+# JSON boolean, not a string).
+if jq -n \
+  --arg ts "$CHECKED_AT_ISO" \
+  --arg lt "$LATEST_TAG" \
+  --arg ct "$CURRENT_TAG" \
+  --argjson ua "$UPDATE_AVAILABLE" \
+  '{checked_at_iso:$ts, latest_tag:$lt, current_tag:$ct, update_available:$ua}' \
+  > "$SIBLING" 2>/dev/null; then
+  # mv -f within the same directory == atomic rename on the same filesystem.
+  mv -f "$SIBLING" "$CACHE_FILE" 2>/dev/null || rm -f "$SIBLING" 2>/dev/null
+else
+  rm -f "$SIBLING" 2>/dev/null
+fi
+
+exit 0
