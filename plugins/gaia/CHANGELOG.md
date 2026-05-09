@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.140.0] — 2026-05-09
+
+### Added
+
+- (E82-S3) /gaia-statusline-enable and /gaia-statusline-disable toggle skills (#556)
+- (E82-S2) background update-check fetcher + 7d stale-fence (#555)
+
 ## [1.139.0] — 2026-05-09
 
 ### Added
