@@ -35,8 +35,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_RUNTIME="$SCRIPT_DIR/statusline.sh"
 SRC_GLYPHS="$SCRIPT_DIR/lib/statusline-glyphs.sh"
 SRC_COLORS="$SCRIPT_DIR/lib/statusline-colors.sh"
+SRC_FETCHER="$SCRIPT_DIR/statusline-update-check.sh"
 
-for f in "$SRC_RUNTIME" "$SRC_GLYPHS" "$SRC_COLORS"; do
+for f in "$SRC_RUNTIME" "$SRC_GLYPHS" "$SRC_COLORS" "$SRC_FETCHER"; do
   if [ ! -r "$f" ]; then
     printf 'install-statusline.sh: missing source file: %s\n' "$f" >&2
     exit 1
@@ -50,6 +51,7 @@ DEST_CACHE="$DEST_BASE/cache"
 DEST_RUNTIME="$DEST_BASE/statusline.sh"
 DEST_GLYPHS="$DEST_LIB/statusline-glyphs.sh"
 DEST_COLORS="$DEST_LIB/statusline-colors.sh"
+DEST_FETCHER="$DEST_BASE/statusline-update-check.sh"
 
 mkdir -p "$DEST_BASE" "$DEST_LIB" "$DEST_CACHE"
 
@@ -66,6 +68,7 @@ _copy_if_different() {
 _copy_if_different "$SRC_RUNTIME" "$DEST_RUNTIME"
 _copy_if_different "$SRC_GLYPHS"  "$DEST_GLYPHS"
 _copy_if_different "$SRC_COLORS"  "$DEST_COLORS"
+_copy_if_different "$SRC_FETCHER" "$DEST_FETCHER"
 
 # ---- settings.json atomic merge -------------------------------------------
 SETTINGS="$HOME/.claude/settings.json"

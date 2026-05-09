@@ -17,6 +17,7 @@ setup() {
   RUNTIME="$PLUGIN_ROOT/scripts/statusline.sh"
   GLYPHS="$PLUGIN_ROOT/scripts/lib/statusline-glyphs.sh"
   COLORS="$PLUGIN_ROOT/scripts/lib/statusline-colors.sh"
+  FETCHER="$PLUGIN_ROOT/scripts/statusline-update-check.sh"
 }
 
 teardown() { common_teardown; }
@@ -37,5 +38,13 @@ teardown() { common_teardown; }
 @test "static-check: color helper has zero curl/wget/nc/gh-api matches" {
   [ -f "$COLORS" ]
   run grep -E 'curl|wget|nc[[:space:]]|gh api' "$COLORS"
+  [ "$status" -eq 1 ]
+}
+
+# E82-S2 / NFR-STATUSLINE-3: fetcher MUST NOT use /tmp/ — all temp writes
+# are siblings of the target so `mv -f` is atomic on the same filesystem.
+@test "static-check: fetcher source contains zero /tmp/ paths (NFR-STATUSLINE-3)" {
+  [ -f "$FETCHER" ]
+  run grep -E '/tmp/' "$FETCHER"
   [ "$status" -eq 1 ]
 }
