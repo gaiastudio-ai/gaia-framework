@@ -85,10 +85,39 @@ else
 fi
 
 # ---- Cache (silent on miss) — owned by E82-S2, read here ------------------
+# Cache schema (ADR-091, written by statusline-update-check.sh):
+#   { checked_at_iso, latest_tag, current_tag, update_available }
+#
+# 7-day stale-fence (E82-S2 / TC-STATUSLINE-7 / AT-4): when the cache has
+# not been refreshed in > 7 days, every update signal (glyph + bold + ASCII
+# prefix) is suppressed regardless of `update_available`. The fence belongs
+# to the reader because the writer's TTL (24h) is for fetch frequency; the
+# reader's fence (7d) is the trust window. Two timeouts, two concerns.
 CACHE_FILE="$HOME/.claude/gaia-statusline/cache/latest-release.json"
 LATEST_VERSION=""
+UPDATE_AVAILABLE_RAW=""
+CACHE_FRESH=0
 if [ -r "$CACHE_FILE" ]; then
-  LATEST_VERSION="$(jq -r '.version // ""' "$CACHE_FILE" 2>/dev/null)"
+  CACHE_JSON="$(cat "$CACHE_FILE" 2>/dev/null || printf '')"
+  if [ -n "$CACHE_JSON" ]; then
+    LATEST_VERSION="$(printf '%s' "$CACHE_JSON" | jq -r '.latest_tag // ""' 2>/dev/null)"
+    UPDATE_AVAILABLE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.update_available // false' 2>/dev/null)"
+    CACHE_TS="$(printf '%s' "$CACHE_JSON" | jq -r '.checked_at_iso // ""' 2>/dev/null)"
+    if [ -n "$CACHE_TS" ]; then
+      # Portable ISO-8601 -> epoch (try BSD then GNU date).
+      CACHE_EPOCH="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$CACHE_TS" +%s 2>/dev/null \
+        || date -u -d "$CACHE_TS" +%s 2>/dev/null \
+        || printf '')"
+      if [ -n "$CACHE_EPOCH" ]; then
+        NOW_EPOCH="$(date -u +%s)"
+        AGE=$(( NOW_EPOCH - CACHE_EPOCH ))
+        # 604800 sec = 7 days. Negative ages (clock skew) treated as fresh.
+        if [ "$AGE" -lt 604800 ]; then
+          CACHE_FRESH=1
+        fi
+      fi
+    fi
+  fi
 fi
 
 # ---- Rich-theme sprint status read (D11, TC-6) -----------------------------
@@ -130,8 +159,11 @@ BRAND_TEXT="${GLYPH_BRAND} GAIA ${GAIA_VERSION}"
 BRAND_CHUNK="${OSC8_OPEN}${COLOR_BRAND}${COLOR_BOLD}${BRAND_TEXT}${COLOR_RESET}${OSC8_CLOSE}"
 
 # Update indicator (D10: glyph + bold + colour + ASCII prefix in ASCII theme).
+# Suppressed when (a) cache absent or unparseable, (b) `update_available` is
+# not the literal "true", or (c) the 7-day stale-fence has tripped — see
+# E82-S2 / TC-STATUSLINE-7 / AT-4 above.
 UPDATE_CHUNK=""
-if [ -n "$LATEST_VERSION" ] && [ "$LATEST_VERSION" != "$GAIA_VERSION" ]; then
+if [ "$CACHE_FRESH" -eq 1 ] && [ "$UPDATE_AVAILABLE_RAW" = "true" ] && [ -n "$LATEST_VERSION" ]; then
   if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
     UPDATE_CHUNK="[update] ${GLYPH_UPDATE:-^}"
   else
