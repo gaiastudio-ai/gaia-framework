@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.138.0] — 2026-05-08
+
+### Added
+
+- (E76-S7) interactive checkpoint mode for /gaia-meeting (#541)
+
+### Changed
+
+- retire stale E53-S246-release-cut-readiness.bats (#543)
+
 ## [1.137.0] — 2026-05-08
 
 ### Added
