@@ -54,7 +54,7 @@ DEST_COLORS="$DEST_LIB/statusline-colors.sh"
 mkdir -p "$DEST_BASE" "$DEST_LIB" "$DEST_CACHE"
 
 # Idempotent copy: only write if content differs.
-copy_if_different() {
+_copy_if_different() {
   src="$1"; dst="$2"
   if [ -e "$dst" ] && cmp -s "$src" "$dst"; then
     return 0
@@ -63,9 +63,9 @@ copy_if_different() {
   chmod +x "$dst"
 }
 
-copy_if_different "$SRC_RUNTIME" "$DEST_RUNTIME"
-copy_if_different "$SRC_GLYPHS"  "$DEST_GLYPHS"
-copy_if_different "$SRC_COLORS"  "$DEST_COLORS"
+_copy_if_different "$SRC_RUNTIME" "$DEST_RUNTIME"
+_copy_if_different "$SRC_GLYPHS"  "$DEST_GLYPHS"
+_copy_if_different "$SRC_COLORS"  "$DEST_COLORS"
 
 # ---- settings.json atomic merge -------------------------------------------
 SETTINGS="$HOME/.claude/settings.json"
