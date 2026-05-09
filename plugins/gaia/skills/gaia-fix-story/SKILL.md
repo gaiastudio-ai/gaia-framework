@@ -23,7 +23,7 @@ This skill is the native Claude Code conversion of the legacy fix-story workflow
 - NEVER drop required YAML frontmatter fields during a fix pass. Preserve all 15 required fields: key, title, epic, status, priority, size, points, risk, sprint_id, depends_on, blocks, traces_to, date, author, priority_flag (plus optional: origin, origin_ref, figma).
 - Do NOT loop infinitely. If re-validation still reports findings after applying fixes, exit non-zero with a summary and leave status at `validating`.
 - Sprint-Status Write Safety: re-read `sprint-status.yaml` immediately before writing the new `ready-for-dev` state.
-- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, or story-index.yaml are FORBIDDEN.
+- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `docs/planning-artifacts/epics/` are FORBIDDEN.
 
 ## Steps
 

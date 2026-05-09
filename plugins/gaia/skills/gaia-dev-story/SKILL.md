@@ -34,7 +34,7 @@ This skill is the native Claude Code conversion of the legacy dev-story workflow
 - When reading or running application source code, use the project path as the base directory.
 - All mechanical operations (git, checkpoint, sprint-state, sha256, PR, CI, merge) are handled by scripts -- do NOT inline shell commands in the conversation.
 - The PostToolUse hook fires `checkpoint.sh` automatically after every Edit/Write -- you do not need to manually checkpoint file mutations.
-- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, or story-index.yaml are FORBIDDEN.
+- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `docs/planning-artifacts/epics/` are FORBIDDEN.
 
 ## Steps
 
