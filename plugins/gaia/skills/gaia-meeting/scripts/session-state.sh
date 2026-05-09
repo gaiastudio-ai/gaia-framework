@@ -46,6 +46,11 @@ fi
 
 # FR-MTG-33 schema — canonical order. Keep this list in sync with PRD §4.39.11
 # and SKILL.md "Session-state schema (FR-MTG-33)".
+#
+# `last_yield_emitted_at` was added by E76-S9 (AC2) so `yield-gate.sh` can
+# stamp the most-recent yield emission for `--resume` consistency. The new
+# field is opaque to existing consumers and does NOT change the call signature
+# of the create / read / update API — see E76-S9 Tech Notes.
 FIELDS=(
   session_id
   phase
@@ -57,6 +62,8 @@ FIELDS=(
   cumulative_cost
   last_checkpoint_at
   last_checkpoint_phase
+  last_yield_emitted_at
+  agent_dispatch_findings
 )
 
 is_valid_field() {
@@ -95,6 +102,8 @@ scratchpad_state: $(yaml_emit_value scratchpad_state "")
 cumulative_cost: 0
 last_checkpoint_at: $(yaml_emit_value last_checkpoint_at "")
 last_checkpoint_phase: $(yaml_emit_value last_checkpoint_phase "")
+last_yield_emitted_at: $(yaml_emit_value last_yield_emitted_at "")
+agent_dispatch_findings: $(yaml_emit_value agent_dispatch_findings "")
 EOF
 }
 

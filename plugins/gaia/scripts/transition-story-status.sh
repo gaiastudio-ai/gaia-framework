@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # transition-story-status.sh — E54-S3 unified atomic story-status transitions.
 #
-# Atomically updates ALL FOUR locations a story status lives in, under flock,
+# Atomically updates ALL FIVE locations a story status lives in, under flock,
 # with rollback on partial failure:
 #
 #   1. Story file frontmatter (`status:` field) + body `**Status:**` line
 #   2. sprint-status.yaml entry (delegated to sprint-state.sh)
 #   3. epics-and-stories.md per-story `- **Status:** <state>` line
-#   4. story-index.yaml entry (created if absent)
+#   4. per-epic shard `- **Status:** <state>` line under `### Story <KEY>:`
+#      (when a matching `*-e<EID>-*.md` shard exists in
+#      ${PLANNING_ARTIFACTS}/epics/; missing shards are NOT a divergence —
+#      see E59-S6 / AF-2026-05-08-6 / ADR-074 contract C3)
+#   5. story-index.yaml entry (created if absent)
 #
 # This script eliminates a long-standing class of bug where the four files drift
 # out of sync because they were written by different scripts with no shared lock.
@@ -112,11 +116,13 @@ Usage:
                                          [--title <s>]    [--epic <s>]
                                          [--priority <s>] [--risk <s>]
                                          [--author <s>]   [--file <path>]
+  transition-story-status.sh <story_key> --reconcile-only [other flags...]
   transition-story-status.sh --help
 
 Atomically updates the story-file frontmatter, sprint-status.yaml,
-epics-and-stories.md, and story-index.yaml under flock, rolling back on any
-partial failure.
+epics-and-stories.md, the matching per-epic shard under
+docs/planning-artifacts/epics/, and story-index.yaml under flock, rolling
+back on any partial failure.
 
 States: backlog | validating | ready-for-dev | in-progress | blocked | review | done
 
@@ -127,6 +133,15 @@ Optional metadata flags (E63-S10 / Work Item 6.9):
     frontmatter field (`title`, `epic`, `priority`, `risk`, `author`). The
     `--file` flag defaults to the resolved story file path when omitted.
     Precedence: explicit flag > frontmatter > "" (empty quoted string).
+
+Reconcile flag (E59-S6 / AF-2026-05-08-6):
+  --reconcile-only
+    Replay every writer at the current frontmatter status without
+    triggering the TC-CSE-11 self-transition no-op. Use to bring a drifted
+    per-epic shard back into alignment with the story-file source of
+    truth. Skips state-machine validation (no edge to validate). The flag
+    is mutually-compatible with --from; --to is optional in this mode and
+    defaults to the current frontmatter status.
 
 Exit codes:
   0 success / no-op    1 generic / usage    2 story file missing
@@ -146,6 +161,12 @@ esac
 STORY_KEY="$1"; shift || true
 NEW_STATUS=""
 EXPECTED_FROM=""
+# E59-S6 — `--reconcile-only` forces a self-transition that replays every
+# writer at the current frontmatter status, used to bring a drifted shard
+# back into alignment with the story-file source of truth without violating
+# the TC-CSE-11 idempotent-self-transition contract (which short-circuits
+# normal --to <same> calls). Only effect: skip the no-op short-circuit.
+RECONCILE_ONLY=0
 
 # E63-S10 metadata enrichment flags. Each is "unset" by sentinel until proven
 # otherwise so we can distinguish "explicit empty string" from "not provided".
@@ -186,6 +207,9 @@ while [ $# -gt 0 ]; do
     --file)
       [ $# -ge 2 ] || { err "--file requires a value"; exit 1; }
       META_FILE="$2"; shift 2 ;;
+    --reconcile-only)
+      RECONCILE_ONLY=1
+      shift ;;
     -h|--help) usage; exit 0 ;;
     *)
       err "unknown argument: $1"
@@ -194,13 +218,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ -z "$NEW_STATUS" ]; then
+if [ -z "$NEW_STATUS" ] && [ "$RECONCILE_ONLY" != "1" ]; then
   err "missing required --to <new_status>"
   usage >&2
   exit 1
 fi
 
-if ! is_canonical_story_state "$NEW_STATUS"; then
+if [ -n "$NEW_STATUS" ] && ! is_canonical_story_state "$NEW_STATUS"; then
   err "invalid target state: '$NEW_STATUS' (allowed: $(canonical_story_states_hint))"
   exit 1
 fi
@@ -822,6 +846,172 @@ update_epics_and_stories() {
   trap - RETURN
 }
 
+# E59-S6 — Glob the matching per-epic shard for a story key.
+#
+# Stdout: nothing on miss, 'OK\t<path>' on a unique match, 'MULTI\t<path1>;<path2>;...'
+# on a multi-match. The single-source-of-truth helper for both the writer
+# (update_per_epic_shard) and the read-only snapshot resolver
+# (resolve_shard_path_for_key). Keeps the resolver math in one place so the
+# bash3.2 BASH_REMATCH + glob idiom is not duplicated.
+_glob_shard_for_key() {
+  local key="$1"
+  local eid
+  if [[ "$key" =~ ^E([0-9]+)-S[0-9]+$ ]]; then
+    eid="${BASH_REMATCH[1]}"
+  else
+    return 0
+  fi
+  local shard_dir="${PLANNING_ARTIFACTS}/epics"
+  if [ ! -d "$shard_dir" ]; then
+    return 0
+  fi
+  shopt -s nullglob nocaseglob
+  # shellcheck disable=SC2206
+  local matches=( "$shard_dir"/*-e${eid}-*.md )
+  shopt -u nocaseglob nullglob
+  if [ "${#matches[@]}" -eq 0 ]; then
+    return 0
+  fi
+  if [ "${#matches[@]}" -eq 1 ]; then
+    printf 'OK\t%s\n' "${matches[0]}"
+    return 0
+  fi
+  local joined
+  joined="$(printf '%s;' "${matches[@]}")"
+  joined="${joined%;}"
+  printf 'MULTI\t%s\n' "$joined"
+}
+
+# E59-S6 — Mirror the per-story `- **Status:** <state>` line into the
+# matching per-epic shard at `${PLANNING_ARTIFACTS}/epics/*-e<EID>-*.md`.
+#
+# Resolver:
+#   1. Extract <EID> from STORY_KEY (regex `^E([0-9]+)-S[0-9]+$` → group 1).
+#   2. Glob `${PLANNING_ARTIFACTS}/epics/*-e<EID>-*.md` (case-insensitive on
+#      the `e<EID>` token).
+#   3. Count matches:
+#        0 → INFO line, exit 0 (monolith-only write succeeded — the shard is
+#                                an optional artifact generated lazily by
+#                                `/gaia-shard-doc`).
+#        1 → proceed to the awk-based per-story status rewrite.
+#        ≥ 2 → canonical error + rollback (a multi-match means two shards
+#              both claim the same epic, which is a structural break in the
+#              per-epic-shard contract per ADR-070; failing loud is the
+#              right behaviour — see Dev Notes in E59-S6.md).
+#
+# Inside the matching shard:
+#   - If the shard does NOT contain a `### Story <STORY_KEY>:` block, emit
+#     the same INFO line and exit 0 (graceful skip). Missing stories in a
+#     shard are not divergence — they may pre-date the shard generation.
+#   - Otherwise, rewrite the `- **Status:** <old>` line under the
+#     `### Story <STORY_KEY>:` block to `- **Status:** <NEW_STATUS>`,
+#     preserving every other byte. The block boundary is the next
+#     `### Story` header or top-level `## ` heading.
+#
+# Refs: AF-2026-05-08-6, ADR-070, ADR-074 contract C3, TC-TSS-SHARD-1..5.
+update_per_epic_shard() {
+  local key="$1" new_status="$2"
+  local glob_out kind shard
+  glob_out="$(_glob_shard_for_key "$key")"
+  if [ -z "$glob_out" ]; then
+    log "no per-epic shard entry found for ${key} — monolith-only write"
+    return 0
+  fi
+  kind="${glob_out%%$'\t'*}"
+  shard="${glob_out#*$'\t'}"
+  if [ "$kind" = "MULTI" ]; then
+    err "multiple shards match e<EID> for ${key} — refusing to write ambiguously: ${shard//;/ }"
+    exit 1
+  fi
+  # Confirm the shard contains the `### Story <KEY>:` block.
+  if ! grep -qE "^### Story ${key}:" "$shard"; then
+    log "no per-epic shard entry found for ${key} — monolith-only write"
+    return 0
+  fi
+
+  # Rewrite the per-story Status line.
+  local tmp
+  tmp=$(mktemp "${shard}.tmp.XXXXXX")
+  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
+  # shellcheck disable=SC2064
+  trap "rm -f '$tmp'" RETURN
+
+  awk -v target="$key" -v new_status="$new_status" '
+    BEGIN { in_block = 0; saw_status = 0 }
+    {
+      raw = $0
+      line = $0
+      sub(/\r$/, "", line)
+    }
+    line ~ /^### Story / {
+      # Closing previous block: if we were inside the target block and never
+      # saw a Status line, do nothing (the AC says rewrite when present;
+      # missing Status lines fall under the no-block-found graceful path
+      # already filtered by grep -qE above).
+      if (index(line, "Story " target ":") > 0) {
+        in_block = 1
+        saw_status = 0
+      } else {
+        in_block = 0
+      }
+      print raw
+      next
+    }
+    in_block && line ~ /^## / && line !~ /^### / {
+      in_block = 0
+      print raw
+      next
+    }
+    in_block && line ~ /^- \*\*Status:\*\*/ {
+      crlf = ""
+      if (raw ~ /\r$/) crlf = "\r"
+      printf "- **Status:** %s%s\n", new_status, crlf
+      saw_status = 1
+      next
+    }
+    { print raw }
+  ' "$shard" > "$tmp" || {
+    rm -f "$tmp"
+    trap - RETURN
+    err "awk rewrite of '$shard' failed"
+    exit 1
+  }
+
+  if ! mv -f "$tmp" "$shard"; then
+    rm -f "$tmp"
+    trap - RETURN
+    err "failed to mv tempfile over '$shard'"
+    exit 1
+  fi
+  # E64-S5: mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
+  trap - RETURN
+}
+
+# E59-S6 — Resolve the matching per-epic shard path for a given story key.
+# Read-only delegate to _glob_shard_for_key — used by the snapshot path so
+# rollback can restore the shard if the writer touched it.
+#
+# Stdout: the absolute shard path on a unique match that also contains the
+# `### Story <KEY>:` block; empty on zero-match, multi-match, or no-block
+# (the writer handles those cases — the snapshot path only has work when
+# there is exactly one shard with the relevant story block to back up).
+resolve_shard_path_for_key() {
+  local key="$1"
+  local glob_out kind shard
+  glob_out="$(_glob_shard_for_key "$key")"
+  [ -z "$glob_out" ] && return 0
+  kind="${glob_out%%$'\t'*}"
+  shard="${glob_out#*$'\t'}"
+  [ "$kind" = "OK" ] || return 0
+  if grep -qE "^### Story ${key}:" "$shard"; then
+    printf '%s' "$shard"
+  fi
+}
+
 # Update or insert the story's metadata-rich entry in story-index.yaml.
 #
 # E63-S10 / Work Item 6.9 — the entry block is the canonical 8-line form, in
@@ -1015,20 +1205,34 @@ fi
 
 CURRENT_STATUS="$(read_frontmatter_status "$STORY_FILE")"
 
+# E59-S6 — `--reconcile-only` mode: replay every writer at the current
+# frontmatter status without short-circuiting on the self-transition no-op.
+# The flag's only effect is to skip the no-op exit below; the writer chain
+# runs unchanged so a drifted shard can be brought back into alignment with
+# the story-file source of truth. State-machine validation is skipped (a
+# self-transition is not a state-machine edge).
+if [ "$RECONCILE_ONLY" = "1" ]; then
+  if [ -z "$NEW_STATUS" ]; then
+    NEW_STATUS="$CURRENT_STATUS"
+  fi
+  log "reconcile-only mode — replaying current status to all writers"
+fi
+
 # --from check.
 if [ -n "$EXPECTED_FROM" ] && [ "$CURRENT_STATUS" != "$EXPECTED_FROM" ]; then
   err "expected current status '$EXPECTED_FROM' but found '$CURRENT_STATUS'"
   exit 1
 fi
 
-# Idempotent self-transition.
-if [ "$CURRENT_STATUS" = "$NEW_STATUS" ]; then
+# Idempotent self-transition. `--reconcile-only` deliberately bypasses this
+# short-circuit so the shard writer fires.
+if [ "$CURRENT_STATUS" = "$NEW_STATUS" ] && [ "$RECONCILE_ONLY" != "1" ]; then
   log "no-op (story already at $NEW_STATUS)"
   exit 0
 fi
 
-# State-machine validation.
-if ! validate_story_transition "$CURRENT_STATUS" "$NEW_STATUS"; then
+# State-machine validation. Reconcile-only is a no-edge replay.
+if [ "$RECONCILE_ONLY" != "1" ] && ! validate_story_transition "$CURRENT_STATUS" "$NEW_STATUS"; then
   exit 7
 fi
 
@@ -1037,6 +1241,15 @@ SNAP_STORY="$(snapshot_for_rollback "$STORY_FILE")"
 SNAP_YAML=""
 SNAP_EPICS="$(snapshot_for_rollback "$EPICS_AND_STORIES")"
 SNAP_INDEX="$(snapshot_for_rollback "$STORY_INDEX_YAML")"
+
+# E59-S6 — Resolve and snapshot the per-epic shard if a unique match exists.
+# Rollback restores the shard symmetrically with the four existing snapshots.
+SHARD_PATH=""
+SNAP_SHARD=""
+SHARD_PATH="$(resolve_shard_path_for_key "$STORY_KEY")"
+if [ -n "$SHARD_PATH" ] && [ -e "$SHARD_PATH" ]; then
+  SNAP_SHARD="$(snapshot_for_rollback "$SHARD_PATH")"
+fi
 
 YAML_PATH_FOR_SNAP="${SPRINT_STATUS_YAML:-${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml}"
 if [ -e "$YAML_PATH_FOR_SNAP" ]; then
@@ -1050,6 +1263,9 @@ rollback() {
     restore_snapshot "$YAML_PATH_FOR_SNAP" "$SNAP_YAML" 2>/dev/null || true
   fi
   restore_snapshot "$EPICS_AND_STORIES" "$SNAP_EPICS" 2>/dev/null || true
+  if [ -n "$SHARD_PATH" ] && [ -n "$SNAP_SHARD" ]; then
+    restore_snapshot "$SHARD_PATH" "$SNAP_SHARD" 2>/dev/null || true
+  fi
   restore_snapshot "$STORY_INDEX_YAML" "$SNAP_INDEX" 2>/dev/null || true
 }
 
@@ -1074,17 +1290,21 @@ trap '
 rewrite_frontmatter "$STORY_FILE" "$NEW_STATUS"
 update_sprint_status_yaml "$STORY_KEY" "$NEW_STATUS"
 update_epics_and_stories "$STORY_KEY" "$NEW_STATUS"
+# E59-S6 — Fifth writer: per-epic shard. Sits between the monolith writer
+# (update_epics_and_stories) and the story-index.yaml writer
+# (update_story_index_yaml) per AC1 ordering.
+update_per_epic_shard "$STORY_KEY" "$NEW_STATUS"
 update_story_index_yaml "$STORY_KEY" "$NEW_STATUS" \
   "$META_TITLE" "$META_EPIC" "$META_PRIORITY" "$META_RISK" "$META_AUTHOR" "$META_FILE"
 
-# All four files written successfully — commit.
+# All five files written successfully — commit.
 TSS_ROLLBACK_PENDING=0
 # E64-S5: restore the plain _cleanup_tmps EXIT trap so any later failure
 # (e.g., during marker write) still cleans orphan tmps. Slots cleared above
 # make this a no-op on the happy path.
 trap '_cleanup_tmps' EXIT
 
-cleanup_snapshots "$SNAP_STORY" "$SNAP_YAML" "$SNAP_EPICS" "$SNAP_INDEX"
+cleanup_snapshots "$SNAP_STORY" "$SNAP_YAML" "$SNAP_EPICS" "$SNAP_SHARD" "$SNAP_INDEX"
 
 # Write status-transition marker (E59-S5 / ADR-074 contract C3).
 # The marker lets the pre-commit `check-status-discipline.sh` distinguish

@@ -49,26 +49,68 @@ Exit code 1 → surface the message and HALT. Exit code 0 → proceed.
 Ask the user the following question set, in order. Capture answers into a JSON answer-bundle (no scratchpad files — keep the bundle in conversation memory until Step 4).
 
 1. **Project name.** Required. Used in the generated header and `--name` flag.
-2. **Project shape.** Single-select:
-   - `single backend` (option 1)
+2. **Project shape.** Single-select. The eight canonical options below are the
+   visible Step 2.2 menu — the order is canonical (do not reorder for
+   taxonomic preference). Display labels for `web-app` and `fullstack`
+   surface the platform mental model on the menu itself; the schema-level
+   project_kind axis is intentionally NOT amended in this step (see boundary
+   note below):
+
+   - `single-backend` (option 1)
    - `microservices` (option 2)
-   - `mobile only` (option 3)
-   - `mobile+backend` (option 4)
-   - `microservices+mobile` (option 5)
-   - `claude-code-plugin` (option 6) — Claude Code plugin (FR-411). Seeds
+   - `web-app` "Web app (frontend + backend)" (option 3)
+   - `mobile-only` (option 4)
+   - `mobile+backend` (option 5)
+   - `fullstack` "Web + mobile + backend" (option 6)
+   - `microservices+mobile` (option 7)
+   - `claude-code-plugin (aliases: claude-plugin, plugin)` (option 8) —
+     Claude Code plugin (FR-411). Seeds
      `project_kind: claude-code-plugin` in `project-config.yaml`, references the
      `claude-code-plugin` stack file (E77-S2 / FR-404), and seeds plugin-specific
      `tool_adapters:` defaults (`shellcheck`, `bats`, `markdownlint`, `yamllint`).
      Skip the iterative `stacks` and `platforms` follow-ups for this option —
-     the plugin stack is single-shape. A 7th option for multi-plugin
+     the plugin stack is single-shape. A 9th option for multi-plugin
      distribution is deliberately out of scope for E77 and is NOT offered.
+
+   **Alias normalization (case-insensitive).** The discovery loop normalizes
+   the user's typed answer BEFORE the answer-bundle is passed to
+   `generate-config.sh`. Lowercase the typed answer and match against the
+   alias set `{claude-plugin, plugin, claude-code-plugin}`; on any match,
+   write the canonical literal `claude-code-plugin` into the answer-bundle.
+   The match is case-insensitive — `claude-plugin`, `Plugin`, and
+   `CLAUDE-PLUGIN` all normalize to `claude-code-plugin`. Pseudocode:
+
+   ```
+   typed_lower = lower(typed_answer)
+   if typed_lower in {"claude-plugin", "plugin", "claude-code-plugin"}:
+       bundle.project_shape = "claude-code-plugin"
+   ```
+
+   `generate-config.sh` is byte-identical to the pre-change version — its
+   `is_plugin_shape == "claude-code-plugin"` gate compares the canonical
+   literal exactly as before. The normalization arm is SKILL.md-side; no
+   helper-script signature changes.
+
+   **Schema boundary (deferred to AI-2026-05-08-3).** The visible labels
+   `web-app`, `fullstack`, and `mobile-only` are SKILL.md display labels for
+   discoverability only — the schema-level decision (whether to graduate
+   them to canonical `project_kind` enum values vs. reuse-with-flags
+   against the existing canonical set) is explicitly out of scope here and
+   is the subject of the schema follow-up tracked as `AI-2026-05-08-3` in
+   `docs/planning-artifacts/action-items.yaml`. No change to
+   `config/project-config.schema.json` is made in this step. The downstream
+   stack-loop and platform-loop semantics for `web-app` and `fullstack`
+   (whether `fullstack` auto-prompts the mobile follow-ups in Step 2a;
+   whether `web-app` defaults `platforms: [web]`) are likewise deferred to
+   the schema follow-up — Step 2a's mobile-trigger predicate below is
+   unchanged in this step.
 3. **Stacks (iterative).** For each service in the project, capture: `name`, `language` (e.g., `node`, `python`, `java`, `swift`, `kotlin`, `react-native`, `flutter`, `objective-c`), `paths` (one or more globs / directory paths). Loop until the user is done — minimum one stack. **Skip this step entirely when project shape is `claude-code-plugin`** — the plugin stack file is referenced verbatim and there are no per-service stacks to enumerate.
 4. **Compliance regimes.** Multi-select from: `gdpr`, `hipaa`, `pci-dss`, `sox`, `ccpa`, `soc2`, `iso-27001`, `wcag-2.1-aa`, `wcag-2.1-aaa`. Optional.
 5. **`ui_present`.** Boolean. Drives downstream a11y rubric layer selection.
 6. **Environments (iterative).** For each environment (none is OK): `name` (e.g., `staging`, `production`), `url`, `auth_type`, and the **NAME** of the env var holding the credential (e.g., `STAGING_TOKEN`). Never accept or echo a literal secret.
 7. **CI/CD platform.** Single-select from: `github-actions`, `gitlab-ci`, `circleci`, `jenkins`, `azure-pipelines`, `bitbucket-pipelines`, `none`.
 
-**Step 2a — Mobile-specific follow-ups (conditional).** Trigger only when project shape is one of `mobile only`, `mobile+backend`, `microservices+mobile`. Per E74-S11 / ADR-081 the `device_targets[<platform>]` block is canonical and MUST contain `os_versions`, `form_factors`, and `screen_sizes` — collect each field explicitly:
+**Step 2a — Mobile-specific follow-ups (conditional).** Trigger only when project shape is one of `mobile-only`, `mobile+backend`, `microservices+mobile`. The trigger predicate is unchanged by E71-S6 — `web-app` and `fullstack` do NOT auto-trigger Step 2a in this story; that decision is deferred to `AI-2026-05-08-3`. Per E74-S11 / ADR-081 the `device_targets[<platform>]` block is canonical and MUST contain `os_versions`, `form_factors`, and `screen_sizes` — collect each field explicitly:
 
 - iOS: ship to iOS y/n. If yes, ask:
   - `os_versions` — comma-separated list (e.g., `16.0,17.0`).

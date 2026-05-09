@@ -276,3 +276,87 @@ JSON
 @test "SKILL.md: documents next-steps rendering (file list, credential reminder, pointer)" {
   grep -F 'Next Steps' "$SKILL_DIR/SKILL.md" || grep -F 'next-steps' "$SKILL_DIR/SKILL.md"
 }
+
+# --- E71-S6: Step 2.2 project-shape enum relabel + plugin alias acceptance ---
+# Story: E71-S6 — AC1-AC6 (AF-2026-05-08-3, TC-RSV2-INIT-4, TC-RSV2-INIT-5)
+
+@test "E71-S6 AC1: Step 2.2 enum lists single-backend" {
+  grep -F 'single-backend' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC1: Step 2.2 enum lists microservices" {
+  grep -F 'microservices' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC1: Step 2.2 enum lists web-app" {
+  grep -F 'web-app' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC1: Step 2.2 enum lists mobile-only" {
+  grep -F 'mobile-only' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC1: Step 2.2 enum lists mobile+backend" {
+  grep -F 'mobile+backend' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC1: Step 2.2 enum lists fullstack" {
+  grep -F 'fullstack' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC1: Step 2.2 enum lists microservices+mobile" {
+  grep -F 'microservices+mobile' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC1: Step 2.2 enum lists claude-code-plugin" {
+  grep -F 'claude-code-plugin' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC2: web-app option carries label 'Web app (frontend + backend)'" {
+  grep -F 'Web app (frontend + backend)' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC2: fullstack option carries label 'Web + mobile + backend'" {
+  grep -F 'Web + mobile + backend' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC3: claude-code-plugin option surfaces aliases (claude-plugin, plugin)" {
+  grep -F 'aliases: claude-plugin, plugin' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC3: SKILL.md documents case-insensitive alias-normalization arm" {
+  grep -iF 'case-insensitive' "$SKILL_DIR/SKILL.md" \
+    && grep -iF 'normaliz' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC4: generate-config.sh is_plugin_shape gate is byte-identical (canonical literal preserved)" {
+  grep -F 'is_plugin_shape = project_shape == "claude-code-plugin"' "$SKILL_SCRIPTS/generate-config.sh"
+}
+
+@test "E71-S6 AC5: SKILL.md defers schema-level decision to AI-2026-05-08-3" {
+  grep -F 'AI-2026-05-08-3' "$SKILL_DIR/SKILL.md"
+}
+
+@test "E71-S6 AC5: project-config.schema.json project_kind has no enum constraint" {
+  SCHEMA="$(cd "$BATS_TEST_DIRNAME/../schemas" && pwd)/project-config.schema.json"
+  # The story preserves the schema's open-vocabulary stance: project_kind block must
+  # NOT contain an "enum" constraint. We extract the project_kind object and assert
+  # no "enum" key exists within it. Use python for reliable JSON parsing.
+  run python3 -c "
+import json, sys
+with open('$SCHEMA') as f:
+    schema = json.load(f)
+pk = schema.get('properties', {}).get('project_kind', {})
+if 'enum' in pk:
+    sys.exit(1)
+sys.exit(0)
+"
+  [ "$status" -eq 0 ]
+}
+
+@test "E71-S6 AC6: Step 2a mobile follow-ups still gated on canonical mobile triplet" {
+  # Trigger predicate must reference all three canonical mobile shapes.
+  grep -F 'mobile-only' "$SKILL_DIR/SKILL.md" \
+    && grep -F 'mobile+backend' "$SKILL_DIR/SKILL.md" \
+    && grep -F 'microservices+mobile' "$SKILL_DIR/SKILL.md"
+}

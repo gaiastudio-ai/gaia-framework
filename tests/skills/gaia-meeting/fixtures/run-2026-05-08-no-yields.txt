@@ -1,0 +1,39 @@
+## Phase: INVITE
+[Invitee] Theo (Architect)
+[Invitee] Derek (Product Manager)
+
+## Phase: CHARTER
+Charter accepted.
+
+## Phase: RESEARCH
+[Prelude] Theo (Architect) — 412 tokens
+Sources consulted:
+  docs/planning-artifacts/architecture/12-12-adr-detail-records.md
+What I know:
+  - The lifecycle has seven phases.
+
+[Prelude] Derek (Product Manager) — 388 tokens
+Sources consulted:
+  docs/planning-artifacts/prd.md
+What I know:
+  - The PRD references FR-MTG-32 / FR-MTG-33.
+
+## Phase: DISCUSS
+[Turn 1] Theo (Architect) — 220 tokens
+[Turn 2] Derek (Product Manager) — 198 tokens
+[Turn 3] Theo (Architect) — 245 tokens
+[Turn 4] Derek (Product Manager) — 210 tokens
+[Turn 5] Theo (Architect) — 230 tokens
+[Turn 6] Derek (Product Manager) — 195 tokens
+[Turn 7] Theo (Architect) — 240 tokens
+[Turn 8] Derek (Product Manager) — 188 tokens
+
+## Phase: CLOSE
+Drafts assembled in memory.
+
+## Phase: REVIEW
+- action-items: accept
+- meeting-notes: accept
+
+## Phase: SAVE
+docs/creative-artifacts/meeting-2026-05-08-control.md written.
