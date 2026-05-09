@@ -1,6 +1,7 @@
 ---
 name: gaia-statusline
 description: Reference documentation for the GAIA Claude Code statusline runtime — themes, glyph palette, color tokens, width ladder, OSC-8 allowlist, environment variables, and source-of-truth bindings. Documentation-only skill; the runtime ships under `gaia-public/plugins/gaia/scripts/`. Authored by E82-S4; describes the runtime authored by E82-S1.
+allowed-tools: [Read]
 ---
 
 ## Overview
