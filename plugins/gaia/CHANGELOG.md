@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.141.0] — 2026-05-10
+
+### Added
+
+- (E81-S4) surface Val-PASSED stranded-ready stories in /gaia-sprint-status (#577)
+- (E81-S3) sprint auto-close detection (#576)
+- (E28-S226) plugin-namespaced subagent dispatch in skill prose (#574)
+- (E76-S18) substrate-replace stdout-sentinel yield with AskUserQuestion (#569)
+- (E76-S16) verify FR-MTG-32/33 AskUserQuestion amendment in PRD shard (#567)
+- (E76-S15) bats stdout-sentinel anti-pattern check + SKILL.md auto-mode clause (#566)
+- (E83-S6) add re-validation audit-trail bats day-1 self-test (#565)
+- (E83-S5) remove priority_flag next-sprint auto-setter from gaia-add-feature (#564)
+- (E83-S4) wire ADR-063 in-place amendment + traceability matrix rege (#563)
+- (E83-S3) bats anti-pattern check on assessment-doc emissions (#562)
+- (E83-S2) harden SKILL.md prose to forbid auto-judge and inline-Val patterns (#561)
+- (E83-S1) sentinel checkpoint primitive + AskUserQuestion precondition
+
+### Changed
+
+- (E76-S19) verify FR-MTG-10 user-as-attendee + T-MTG-5 row (#568)
+
+### Fixed
+
+- (E55-S12) closeout-skill scanner hardening (recursive-glob + set -u guard) (#573)
+- (E83-S1) reword Step 2 anti-pattern warning to satisfy TC-VFC-7 static check
+
 ## [1.140.0] — 2026-05-09
 
 ### Added
