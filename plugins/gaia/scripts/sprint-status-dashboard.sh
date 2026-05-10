@@ -320,6 +320,34 @@ fi
 printf -- '-%.0s' {1..72}; printf '\n'
 printf '  Total: %d stories | %s points\n' "$story_count" "${total_points:-0}"
 
+# ---------- Stranded ready stories section (E81-S4, AC1, AC2) ----------
+#
+# Advisory section — surfaces stories with `status: ready-for-dev` AND
+# `sprint_id: null` AND most-recent decision-log verdict PASSED. Operator
+# may inject via /gaia-correct-course or wait for /gaia-sprint-plan. Empty
+# stdout from the scanner triggers full suppression (AC2 — no header, no
+# placeholder).
+#
+# READ-ONLY: never mutates story files or sprint-status.yaml. The scanner
+# performs scan-and-print only (per AC3 + feedback_priority_flag_never_auto_set.md).
+STRANDED_SCANNER="$SCRIPT_DIR/lib/scan-stranded-ready.sh"
+if [[ -x "$STRANDED_SCANNER" ]]; then
+  stranded_tsv=$(PROJECT_PATH="$PROJECT_PATH" \
+    IMPLEMENTATION_ARTIFACTS="$IMPLEMENTATION_ARTIFACTS" \
+    "$STRANDED_SCANNER" 2>/dev/null || true)
+  if [[ -n "$stranded_tsv" ]]; then
+    printf -- '-%.0s' {1..72}; printf '\n'
+    printf '  ## Stranded ready stories\n'
+    idx=0
+    while IFS=$'\t' read -r sr_key sr_title _sr_path; do
+      [[ -n "$sr_key" ]] || continue
+      idx=$((idx + 1))
+      printf '  %d. %s — %s\n' "$idx" "$sr_key" "$sr_title"
+    done <<<"$stranded_tsv"
+    printf '  These stories are Val-PASSED but unassigned. Inject via /gaia-correct-course, or let /gaia-sprint-plan pick them up.\n'
+  fi
+fi
+
 # Risk-surfacing block (E38-S1, FR-SPQG-5).
 # When the current sprint contains at least one HIGH-risk story, list every
 # mitigation catalog entry verbatim so reviewers see the full set of
