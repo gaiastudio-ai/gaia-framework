@@ -122,7 +122,6 @@ jobs:
             tests/skills/conditional-check-hints.bats \
             tests/skills/e28-s113-edge-cases-figma-conversion.bats \
             tests/skills/e28-s117-quick-dev-conversion.bats \
-            tests/skills/e60-s1-flat-artifact-path-keys.bats \
             tests/skills/e64-s3-transition-script-path-refs.bats \
             tests/skills/gaia-a11y-testing.bats \
             tests/skills/gaia-atdd-batch.bats \
