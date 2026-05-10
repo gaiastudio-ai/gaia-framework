@@ -147,6 +147,20 @@ jobs:
         # Step MUST FAIL the build on non-zero exit (TC-MTG-AUQS-3).
         run: |
           bats plugins/gaia/skills/gaia-meeting/tests/gaia-meeting-stdout-sentinel-forbid.bats
+      - name: Run /gaia-meeting user-as-attendee bats suite
+        # E76-S21 / AF-2026-05-10-2 / AI-2026-05-09-9 — verifies the
+        # user-as-first-class-attendee carve-out in
+        # `scripts/resolve-invitees.sh`: when `--invitees` contains a
+        # user-token (`me` / `user` / case-insensitive resolved-user-name),
+        # the token is preserved in the resolved CSV (not dropped) and the
+        # `session-state.sh user_attendance` flag is set. The previous
+        # silent-drop / WARNING design is replaced by the explicit attendee
+        # path under FR-MTG-10 amended. Mirrors the E76-S15 / E76-S20 CI
+        # wiring pattern. Tests: TC-MTG-USER-1/2/3/4/6 + TC-MTG-NOFAB-3a
+        # (PRIMARY E76-S21).
+        # Step MUST FAIL the build on non-zero exit.
+        run: |
+          bats plugins/gaia/skills/gaia-meeting/tests/user-as-attendee.bats
 
   bats-script-refs-lint:
     # E28-S221 — sweep linter that catches bats files referencing scripts
