@@ -94,19 +94,20 @@ RESEARCH and DISCUSS hooks rather than reimplementing the lifecycle.
 ### No fabricated user turns (E76-S8, FR-MTG-10, NFR-MTG-1, ADR-083)
 
 The skill MUST NOT emit a turn attributed to the user under ANY persona,
-label, or phase, regardless of mode, regardless of whether `me` / `user` / a
-token resolving to the user's name appears in `--invitees`. The user is not
-an agent; the user does not appear as a `Speaker:` in any prelude or DISCUSS
-turn. The 2026-05-08 regression — where two turns labelled `${USER_NAME}
-(user)` (one RESEARCH prelude, one DISCUSS round-1 turn) were emitted that
-the user never authored — surfaced this as a hard correctness defect; this
-rule converts the prose contract from L94 / L96 / L277 / L485-487 (`The user
-does not appear in the round-robin order` / `Resolve user-interjection
-labels via scripts/resolve-user-name.sh` / `User interjections allowed at
-turn boundaries` / `--charter` + `[i]nterject` / `--interject` authoring
-channels) into a testable invariant.
+label, or phase, regardless of mode, **EXCEPT when the user is explicitly invited as an attendee per the user-as-attendee carve-out (AF-2026-05-10-2), with origin=attendee per the FR-MTG-33 schema extension**
+(carve-out detail below). The user is not an agent; the user does not
+appear as a `Speaker:` in any prelude or DISCUSS turn auto-emitted between
+yield boundaries. The 2026-05-08 regression — where two turns labelled
+`${USER_NAME} (user)` (one RESEARCH prelude, one DISCUSS round-1 turn)
+were emitted that the user never authored — surfaced this as a hard
+correctness defect; this rule converts the prose contract from L94 / L96
+/ L277 / L485-487 (`The user does not appear in the round-robin order` /
+`Resolve user-interjection labels via scripts/resolve-user-name.sh` /
+`User interjections allowed at turn boundaries` / `--charter` +
+`[i]nterject` / `--interject` authoring channels) into a testable
+invariant.
 
-The user has exactly two authoring channels — and only these:
+The user has exactly three authoring channels — and only these:
 
 - `--charter "<inline>"` on the initial invocation (FR-MTG-2). The charter
   text is the user's voice for INVITE / CHARTER and is recorded in the
@@ -114,8 +115,34 @@ The user has exactly two authoring channels — and only these:
 - `[i]nterject "..."` (interactive prompt block) and `--interject` (on
   `--resume`) at any yield boundary (FR-MTG-32, ADR-083). An interject turn
   carries `origin: interject` (and per E76-S10, `dispatched_via: interject`)
-  in its per-turn header — that origin marker is the ONLY exemption to the
-  no-fabricated-user-turn invariant.
+  in its per-turn header.
+- `me` / `user` / `<resolved-user-name>` in `--invitees`
+  (**AF-2026-05-10-2 carve-out**) — the user is added as a non-LLM attendee
+  with a turn slot at every yield boundary, and the user's response is
+  captured via the `AskUserQuestion` 5-option primitive installed by E76-S18
+  (composition; no new substrate needed). An attendee turn carries
+  `origin: attendee` per the FR-MTG-33 session-state schema extension.
+
+The `interject` and `attendee` origin markers are the ONLY exemptions to
+the no-fabricated-user-turn invariant; both originate from substrate-driven
+user input (interactive prompt block or `AskUserQuestion` response), never
+from auto-emission between yields.
+
+**User-as-attendee carve-out (AF-2026-05-10-2).** When the user is
+explicitly invited via `me` / `user` / `<resolved-user-name>` in
+`--invitees`, the user is added as a non-LLM attendee with a turn slot at
+every yield boundary (via the `AskUserQuestion` response primitive per
+E76-S18 / FR-MTG-32 amendment). The user is **never** auto-emitted as a
+DISCUSS turn between yields — the no-fabricated-user-turns invariant
+(E76-S8) holds for unsolicited / fabricated user turns; the carve-out
+authorizes only user turns that originate from a substrate-driven
+response (origin=attendee or origin=interject; persisted as
+`origin: attendee` / `origin: interject` in the per-turn header per the
+FR-MTG-33 schema extension). The carve-out distinguishes (a) unsolicited
+/ fabricated user turns — still forbidden — from (b) the invited-attendee
+path where each turn originates from an `AskUserQuestion` response, never
+from auto-emission. See ADR-083 amendment AF-2026-05-10-2 and
+AI-2026-05-09-9 for the audit trail.
 
 Static enforcement: `tests/no-fabricated-user-turns.bats` scans a saved
 transcript for any turn whose `Speaker:` field matches the resolved user
@@ -525,7 +552,7 @@ This story does not introduce a parallel cadence counter.
 
 ### Phase 3 — RESEARCH (E76-S2, ADR-084)
 
-Only invited agents post preludes and DISCUSS turns. The user does not appear as a turn author in either phase.
+Only invited agents post preludes and DISCUSS turns. The user does not appear as a turn author in either phase. (See §No fabricated user turns for the user-as-attendee carve-out at yield boundaries — when the user is explicitly invited via `me` / `user` / `<resolved-user-name>`, the user takes a non-LLM attendee turn slot at each yield, captured via `AskUserQuestion`; never auto-emitted between yields.)
 
 **Dispatch contract (E76-S10, ADR-045, ADR-063).** Each invited agent's prelude (RESEARCH) AND each DISCUSS turn MUST be produced by spawning a subagent via the `Agent` tool with `context: fork` per ADR-045 and the per-phase tool allowlist below. Inline LLM role-play under the agent's persona is FORBIDDEN. The facilitator does not author agent turns; the facilitator orchestrates dispatch.
 
@@ -622,7 +649,7 @@ verbatim from the paused state (TC-MTG-CHKPT-3).
 
 ### Phase 4 — DISCUSS
 
-Only invited agents post preludes and DISCUSS turns. The user does not appear as a turn author in either phase.
+Only invited agents post preludes and DISCUSS turns. The user does not appear as a turn author in either phase. (See §No fabricated user turns for the user-as-attendee carve-out at yield boundaries — when the user is explicitly invited via `me` / `user` / `<resolved-user-name>`, the user takes a non-LLM attendee turn slot at each yield, captured via `AskUserQuestion`; never auto-emitted between yields.)
 
 **Dispatch contract (E76-S10, ADR-045, ADR-063).** Each invited agent's prelude (RESEARCH) AND each DISCUSS turn MUST be produced by spawning a subagent via the `Agent` tool with `context: fork` per ADR-045 and the per-phase tool allowlist below. Inline LLM role-play under the agent's persona is FORBIDDEN. The facilitator does not author agent turns; the facilitator orchestrates dispatch.
 
@@ -1093,7 +1120,9 @@ fire-indices across a K=0 and a K=4 raise-hand run.
 - ADR-063 — Dispatch contract / verdict surfacing (per-phase tool allowlists, ADR-037 return schema, finding severity routing).
 - ADR-083 — Peer-to-peer multi-agent discussion topology.
 - ADR-083 amendment AF-2026-05-10-1 — Yield boundaries use the substrate `AskUserQuestion` primitive, NOT script-side stdout sentinels (E76-S15 / E76-S17 / E76-S18).
+- FR-MTG-10 amendment AF-2026-05-10-2 (PRD-level; ADR-083 unchanged per AI-2026-05-09-9 scope hint) — User-as-first-class-attendee carve-out: when `me` / `user` / `<resolved-user-name>` appears in `--invitees`, the user is added as a non-LLM attendee with a turn slot at every yield boundary (composes with the AF-2026-05-10-1 `AskUserQuestion` primitive). Preserves E76-S8 no-fabricated-user-turns invariant via Option-A supersedure of AC1's `regardless-of-invitees` qualifier (E76-S19 / E76-S20 / E76-S21).
 - AI-2026-05-09-8 — Audit finding: stdout-sentinel mechanism empirically defeated by harness Auto Mode on 2026-05-09; substrate-correct primitive is `AskUserQuestion`.
+- AI-2026-05-09-9 — Audit finding: SKILL.md L80-116 / L81 / L94-103 / L474 / L563 categorically excluded the user-as-attendee path; absolute-prohibition language without an explicit carve-out led downstream readers to extrapolate the wrong behavior. Resolved by E76-S20 carve-out subsection + EXCEPT clause + 3-channel enumeration + Phase 3/4 back-references.
 - Memory rule `feedback_askuserquestion_under_automode.md` — `AskUserQuestion` is substrate-enforced and halts the LLM turn under Auto Mode (verified 2026-05-09).
 - ADR-084 — Research-phase contract (sidecar load → SoT reads → web search → cited prelude).
 - ADR-086 — Sidecar path reconciliation: `_memory/<agent>-sidecar/` is canonical.
