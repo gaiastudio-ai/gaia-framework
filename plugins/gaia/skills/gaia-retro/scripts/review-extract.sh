@@ -70,6 +70,9 @@ emit_block() {
   printf '%s\n' "$header"
 }
 
+# AC-EC5 (E55-S12) — defensive seed before nullglob expansion so set -u
+# survives empty matches without "artifacts[@]: unbound variable".
+declare -a artifacts=()
 shopt -s nullglob
 artifacts=("$IMPL_DIR"/code-review-*.md \
            "$IMPL_DIR"/security-review-*.md \
@@ -78,7 +81,12 @@ artifacts=("$IMPL_DIR"/code-review-*.md \
 shopt -u nullglob
 
 declare -a matched=()
-for art in "${artifacts[@]}"; do
+# AC-EC5 (E55-S12) — guard the array expansion with `${arr[@]+"${arr[@]}"}`
+# idiom so an empty `artifacts` array does not trip `set -u`. The defensive
+# `declare -a artifacts=()` above gives a clean baseline; this expansion
+# guard handles the case where Bash 3.2 (macOS default) still treats an
+# empty indexed array as unbound under `set -u` even after declaration.
+for art in ${artifacts[@]+"${artifacts[@]}"}; do
   [ -f "$art" ] || continue
   s="$(frontmatter_sprint "$art")"
   if [ "$s" = "$SPRINT_ID" ]; then
