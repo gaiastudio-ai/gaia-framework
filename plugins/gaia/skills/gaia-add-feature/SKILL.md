@@ -63,6 +63,23 @@ and delegation model are preserved verbatim from the legacy workflow.
   stderr `Val gate sentinel missing.*re-invoke from a parent orchestrator
   thread`. This is the primitive that catches the "skipped Step 2 entirely"
   bypass class.
+- **There is NO patch-mode exception to the Val gate** (E83-S2,
+  precedent: AI-2026-05-09-12). Patch classification still requires a
+  dispatched Val subagent and the same ADR-063 verdict-surfacing contract
+  as enhancement and feature classifications. Self-license patterns of
+  the form "auto-judge under patch classification", "inline-judge because
+  the diff is small", or "skip Val for trivial typo fix" are forbidden.
+  The classification is decided in Step 1; the Val gate runs
+  unconditionally in Step 2 before any cascade or direct edit.
+- **No inline Val — Val MUST be dispatched as a `context: fork` subagent
+  via the Agent tool** (E83-S2, precedent: AI-2026-05-09-12). The LLM
+  MUST NOT pass off its own inline review as a Val outcome, MUST NOT
+  compose a synthetic ADR-037 return JSON in the parent thread, and
+  MUST NOT set `status: PASS` without a real Agent-tool dispatch. If
+  the Agent tool is not available in the current context (e.g., running
+  under a fork that did not allowlist `Agent`), HALT immediately with
+  the parent-thread re-invoke message in Step 2 -- do NOT self-judge
+  the Val gate from the parent thread.
 
 ## Subagent Dispatch Contract
 
@@ -104,6 +121,7 @@ This skill conforms to the framework-wide YOLO Mode Contract (ADR-067).
 | Severity / filter selection | Auto-accept defaults. |
 | Optional confirmation ("Proceed with cascade?") | Auto-confirm. |
 | Subagent verdict display (Val review gate) | Auto-display, but a CRITICAL verdict still HALTS per ADR-063. |
+| Val gate dispatch under absent Agent tool | HALT -- never auto-judge, never inline-Val. Surface `Re-invoke /gaia-add-feature from a parent orchestrator thread` error (E83-S2, precedent: AI-2026-05-09-12). |
 | Open-question indicators (urgency, driver, CR linkage) | HALT -- never auto-skip; require human input. |
 | Memory save prompt at end | HALT -- require human input (Phase 4 per ADR-061). |
 
@@ -183,6 +201,29 @@ regression class closed by ADR-063) and is hardened under E83-S1 with two
 fail-closed primitives at the Step 2 boundary: (1) an `AskUserQuestion`
 substrate-enforced halt at gate entry, (2) a sentinel checkpoint JSON
 written on Val PASS that `finalize.sh` validates before cascade completion.
+
+> **Parent thread invocation required (E83-S2, precedent:
+> AI-2026-05-09-12, enforcement: ADR-063 amendment / AF-2026-05-09-5).**
+>
+> Val MUST be dispatched as a `context: fork` subagent via the Agent tool.
+> There is NO patch-mode exception -- patch, enhancement, and feature
+> classifications all run the Val gate unconditionally.
+>
+> If the Agent tool is not exposed in the current invocation context
+> (e.g., the skill itself was spawned under `context: fork` without
+> `Agent` in the allowlist, or a downstream fork stripped the Agent tool
+> from the inherited toolset), the skill MUST HALT immediately with the
+> error: `Val gate cannot dispatch (Agent tool not exposed). Re-invoke /gaia-add-feature from a parent orchestrator thread.`
+>
+> The HALT message above is the canonical error string -- the parent
+> orchestrator must re-invoke /gaia-add-feature from a parent orchestrator thread to recover; never inline-judge the Val gate.
+>
+> Do NOT self-judge the Val gate inline, do NOT compose a synthetic
+> ADR-037 return in the parent thread, do NOT pass off inline review as
+> a Val outcome. The 2026-05-09 audit (AF-2026-05-09-3 / AF-2026-05-09-4)
+> found that LLM under Auto Mode self-licensed exactly this bypass --
+> the ADR-063 amendment closes it as a hard contract: Val verdicts
+> originate ONLY from a real Agent-tool dispatch.
 
 #### Step 2a -- AskUserQuestion precondition (substrate halt)
 
@@ -476,6 +517,12 @@ finding first and re-invoke the skill.
 - E53-S243 -- Static `monolith-shard-sync` check + ADR-070 amendment.
 - E53-S244 -- Cascade-skill auto-invoke for `/gaia-shard-doc`
   (Step 8c above + `--monolith-only` opt-out).
+- AF-2026-05-09-5 / ADR-063 amendment -- "Val verdicts originate ONLY
+  from a real Agent-tool dispatch" hard contract; closes the inline-Val
+  + auto-judge-in-patch-mode bypass class.
+- AI-2026-05-09-12 -- Action item flagging the
+  `/gaia-add-feature` Val-gate fail-open under `context: fork` (precedent
+  for the E83-S2 prose-hardening clauses above).
 
 ## Finalize
 
