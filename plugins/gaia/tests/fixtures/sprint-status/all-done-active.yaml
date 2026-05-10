@@ -1,0 +1,36 @@
+sprint_id: "sprint-N"
+duration: "1 week"
+velocity_capacity: 20
+team_size: 1
+total_points: 15
+capacity_utilization: "75%"
+started: "2026-05-01"
+end_date: "2026-05-14"
+status: "active"
+overrides: []
+priority_flag_cleared: []
+stories:
+  - key: "E99-S1"
+    title: "First fixture story"
+    status: "done"
+    points: 5
+    risk_level: "low"
+    assignee: null
+    blocked_by: null
+    updated: "2026-05-10"
+  - key: "E99-S2"
+    title: "Second fixture story"
+    status: "done"
+    points: 5
+    risk_level: "low"
+    assignee: null
+    blocked_by: null
+    updated: "2026-05-10"
+  - key: "E99-S3"
+    title: "Third fixture story"
+    status: "done"
+    points: 5
+    risk_level: "low"
+    assignee: null
+    blocked_by: null
+    updated: "2026-05-10"
