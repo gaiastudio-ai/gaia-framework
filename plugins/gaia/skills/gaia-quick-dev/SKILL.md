@@ -1,6 +1,6 @@
 ---
 name: gaia-quick-dev
-description: Implement a quick spec with auto-detected stack developer. Use when "dev this quick spec" or /gaia-quick-dev. Runs a five-step flow (Load Spec -> Resolve WIP -> Delegate to stack-dev subagent -> Verify -> Complete) against docs/implementation-artifacts/quick-spec-{spec-name}.md. Native Claude Code conversion of the legacy quick-dev workflow (E28-S117, Cluster 16).
+description: Implement a quick spec with auto-detected stack developer. Use when "dev this quick spec" or /gaia-quick-dev. Runs a five-step flow (Load Spec -> Resolve WIP -> Delegate to gaia:stack-dev subagent -> Verify -> Complete) against docs/implementation-artifacts/quick-spec-{spec-name}.md. Native Claude Code conversion of the legacy quick-dev workflow (E28-S117, Cluster 16).
 argument-hint: "[spec-name]"
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
@@ -29,7 +29,7 @@ This skill is the native Claude Code conversion of the legacy quick-dev workflow
 
 ## Critical Rules
 
-- **Five steps, strict order, no skipping.** Load Spec -> Resolve WIP Checkpoint -> Delegate to stack-dev subagent -> Verify -> Complete. The legacy engine executed these sequentially; the native skill must too.
+- **Five steps, strict order, no skipping.** Load Spec -> Resolve WIP Checkpoint -> Delegate to gaia:stack-dev subagent -> Verify -> Complete. The legacy engine executed these sequentially; the native skill must too.
 - **Deterministic operations live in `scripts/` (ADR-042).** Spec loading, sha256 validation on checkpoints, stack auto-detection, and checkpoint archival are handled by the four scripts under `scripts/`. Do NOT inline these operations in prose.
 - **Dev agent delegation stays at exactly 1 level of subagent nesting (ADR-023 / AC-EC6).** `gaia-quick-dev` spawns one stack-dev subagent via `context: fork`. The stack-dev subagent loads shared skills JIT in-context — it does NOT spawn further nested subagents. The legacy ADR-037 shim pattern is NOT needed here because the native `context: fork` primitive replaces it.
 - **Auto-detect first, user-select fallback — same UX as the legacy engine (AC-EC2).** If `auto-detect-stack.sh` emits a stack on stdout (exit 0), use it. If ambiguous (exit 1), ask the user to pick one of the seven supported stacks. Never silently default.
@@ -76,7 +76,7 @@ Interpret the exit code + stdout table:
 
 The 3-option UX wording matches the legacy engine rule-10 text. Concurrent invocations (AC-EC7) hit this same branch because the second invocation sees the first invocation's WIP checkpoint and follows the Proceed / Start fresh / Review path.
 
-### Step 3 — Delegate to Stack-Dev Subagent (Implement)
+### Step 3 — Delegate to gaia:stack-dev Subagent (Implement)
 
 Run the auto-detector to resolve the stack:
 

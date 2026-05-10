@@ -125,3 +125,32 @@ alongside this schema under E28-S19). The linter enforces:
 
 See E28-S7 for the parallel SKILL.md frontmatter linter; the agent linter
 mirrors its structure and error format.
+
+## Runtime audit (E28-S226 — 2026-05-10)
+
+Empirical comparison against the published Claude Code plugin loader schema
+(reference: `~/.claude/plugins/marketplaces/claude-plugins-official/plugins/*/agents/*.md`,
+e.g., `code-modernization/agents/architecture-critic.md`,
+`feature-dev/agents/code-explorer.md`) yields the following PASS / IGNORED-AT-LOAD
+table for each GAIA agent frontmatter field:
+
+| Field | Status | Evidence | Reconciliation |
+|-------|--------|----------|----------------|
+| `name` | PASS | Identical key shape across GAIA and reference plugins. | None — keep as-is. |
+| `description` | PASS | Identical. | None. |
+| `model` | PASS | Reference plugins (e.g., `code-explorer`) use `model: sonnet` / `model: opus`. GAIA pins specific model ids — accepted by the loader. | None. |
+| `context` | IGNORED-AT-LOAD | No `context:` key appears in any reference plugin's agent frontmatter. The Claude Code subagent runtime determines the execution context from the dispatch site (`Task` tool with `subagent_type`); the subagent file itself does not declare it. | Field is GAIA-internal documentation only. Retain in source until an explicit cleanup story removes it; the `gaia:<persona>` dispatch convention (this story) makes the loader-side `context` decision the source of truth. |
+| `allowed-tools` | IGNORED-AT-LOAD | Reference plugins use `tools: Read, Grep, ...` (comma-separated string). GAIA writes `allowed-tools: [Read, Grep]` (YAML list). Loader silently drops the unknown key, leaving the subagent with default tool permissions. | DEFERRED — rename `allowed-tools: [...]` to `tools: a, b, c` across all 28 agent files. Tracked as a Finding on E28-S226 for follow-up because the rename requires per-agent functional smoke verification (AC7 scope), which is outside the prose-rewrite scope of this story. The deferral leaves agents running with default permissions today; that is the existing behavior, not a regression introduced by this story. |
+| `abstract` | PASS | YAML bool; the loader simply ignores unknown bools without error. GAIA uses it to skip `_base-dev` from the dispatch registry. | None. |
+| `aliases` | PASS / GAIA-internal | YAML list; ignored by the Claude Code loader. GAIA tooling consumes it for orchestrator routing. | None — keep as GAIA-internal, document the duality here. |
+| `tags` | PASS / GAIA-internal | YAML list; ignored by the Claude Code loader. GAIA tooling consumes it for marketplace / search categorization. | None — keep as GAIA-internal. |
+| `color` (NOT used by GAIA) | PASS | Reference plugins use `color: yellow` for orchestrator routing menus. | Optional; GAIA may adopt it later for orchestrator visuals. |
+
+### Migration plan (deferred)
+
+The `allowed-tools` → `tools` rename is the only material reconciliation. Because
+the rename touches every agent file and requires per-agent functional smoke
+verification to confirm the loader honors the new keys without surprising the
+subagent persona, it is recorded as a follow-up story on the E28 backlog rather
+than landed under E28-S226. The deferred-rename Finding is recorded on the
+E28-S226 story file.
