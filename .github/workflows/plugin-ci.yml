@@ -133,6 +133,20 @@ jobs:
         # Step MUST FAIL the build on non-zero exit.
         run: |
           bats plugins/gaia/skills/gaia-add-feature/tests/no-priority-flag-auto-set.bats
+      - name: Run /gaia-meeting stdout-sentinel-forbid bats suite
+        # E76-S15 — anti-pattern check that scans the /gaia-meeting SKILL.md
+        # yield-boundary procedure sections for forbidden stdout-sentinel
+        # patterns (`<<YIELD-STOP`, `<<TURN-END`). The script-side sentinel
+        # mechanism was empirically defeated by harness Auto Mode on
+        # 2026-05-09 (AI-2026-05-09-8 / memory rule
+        # `feedback_askuserquestion_under_automode.md`); the substrate-
+        # correct primitive is `AskUserQuestion` (lands in E76-S18, ADR-083
+        # amendment AF-2026-05-10-1). The bats file uses synthetic fixtures
+        # under tests/fixtures/ and the live SKILL.md as a forward-looking
+        # guard.
+        # Step MUST FAIL the build on non-zero exit (TC-MTG-AUQS-3).
+        run: |
+          bats plugins/gaia/skills/gaia-meeting/tests/gaia-meeting-stdout-sentinel-forbid.bats
 
   bats-script-refs-lint:
     # E28-S221 — sweep linter that catches bats files referencing scripts
