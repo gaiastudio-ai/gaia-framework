@@ -192,9 +192,11 @@ data captured in Step 1. The substrate halts the turn pending user input
 under Auto Mode -- this is the empirically-verified primitive
 (`feedback_askuserquestion_under_automode.md`, 2026-05-09) that closes
 the "auto-mode self-judgment" bypass class. The user's explicit
-acknowledgement is what unblocks the Val dispatch below. Do NOT substitute
-stdout sentinels, Stop hooks, or pause-and-wait scripts -- those are
-bypassed under Auto Mode (the gaia-meeting precedent fixed in E76-S9).
+acknowledgement is what unblocks the Val dispatch below. Substitute
+primitives — output-stream signaling, hook-based interception, or
+polling loops in user-space — are bypassed under Auto Mode and must
+not replace the substrate-enforced halt (the gaia-meeting precedent
+fixed in E76-S9).
 
 The AskUserQuestion call is the SOLE interactive boundary primitive at
 Step 2 entry (TC-VFC-7). It is required under both interactive and Auto
