@@ -63,7 +63,13 @@ CACHE_FILE="${CACHE_DIR}/latest-release.json"
 
 # Resolve PROJECT_PATH (test override, else CWD).
 PROJECT_PATH="${PROJECT_PATH:-$PWD}"
-PLUGIN_JSON="$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
+# Prefer the actively-loaded plugin (CLAUDE_PLUGIN_ROOT injected by Claude
+# Code); fall back to the in-tree repo for dev/test runs where it is unset.
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -r "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; then
+  PLUGIN_JSON="${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"
+else
+  PLUGIN_JSON="$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
+fi
 
 # ---- Read current version from plugin.json --------------------------------
 # AC4: plugin.json missing or unparseable -> exit 0 silently, cache untouched.

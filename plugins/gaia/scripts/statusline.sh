@@ -16,7 +16,8 @@
 #   FORBIDDEN: any network primitive (structurally enforced by TC-9)
 #
 # File reads:
-#   - $PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json   (D5: version)
+#   - ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json                     (D5: version, active plugin)
+#     Falls back to $PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json (in-tree dev)
 #   - $HOME/.claude/gaia-statusline/cache/latest-release.json             (silent on miss)
 #   - $PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml      (rich theme only, D11)
 #
@@ -62,7 +63,14 @@ fi
 : "${COLOR_RESET:=}"
 
 # ---- Read GAIA version from plugin.json (D5) -------------------------------
-PLUGIN_JSON="$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
+# Prefer the actively-loaded plugin (Claude Code injects CLAUDE_PLUGIN_ROOT
+# pointing at e.g. ~/.claude/plugins/cache/.../gaia/<version>/). Fall back to
+# the in-tree repo for dev/test runs where CLAUDE_PLUGIN_ROOT is unset.
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -r "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; then
+  PLUGIN_JSON="${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"
+else
+  PLUGIN_JSON="$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
+fi
 GAIA_VERSION=""
 if [ -r "$PLUGIN_JSON" ]; then
   GAIA_VERSION="$(jq -r '.version // ""' "$PLUGIN_JSON" 2>/dev/null)"
