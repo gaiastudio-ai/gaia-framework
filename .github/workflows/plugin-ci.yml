@@ -99,17 +99,70 @@ jobs:
           bats-version: 1.10.0
       - name: Install jq and python3
         run: sudo apt-get update && sudo apt-get install -y jq python3
-      - name: Run /gaia-dev-story skill bats suite
+      - name: Run tests/skills/*.bats coverage suite
+        # E55-S11 — broadens the existing E55-S5 wiring to cover every
+        # tests/skills/*.bats file on staging that passes today. Five legacy
+        # fixtures (e28-s114, e28-s116, e59-s1, gaia-config-skills-exist,
+        # gaia-performance-review-hints) carry pre-existing assertion drift
+        # and are tracked as Findings on E55-S11 — they are NOT listed below
+        # and will be wired in by their fixture-repair follow-ups.
+        #
+        # The companion regression sentinel
+        # `tests/skills/E55-S11-plugin-ci-bats-coverage.bats` enumerates the
+        # required-vs-exempt classification and FAILS this job if a file is
+        # added to tests/skills/ without being classified, or if an entry is
+        # silently un-wired from this list. Keep the bats invocation below
+        # and the REQUIRED_FILES array in the sentinel byte-equal — drift
+        # between them is the regression vector this story closes.
         run: |
           bats \
+            tests/skills/E55-S11-plugin-ci-bats-coverage.bats \
+            tests/skills/E69-S1-rename-map.bats \
+            tests/skills/E69-S3-test-strategy-collapse.bats \
+            tests/skills/conditional-check-hints.bats \
+            tests/skills/e28-s113-edge-cases-figma-conversion.bats \
+            tests/skills/e28-s117-quick-dev-conversion.bats \
+            tests/skills/e64-s3-transition-script-path-refs.bats \
+            tests/skills/gaia-a11y-testing.bats \
+            tests/skills/gaia-atdd-batch.bats \
+            tests/skills/gaia-atdd.bats \
+            tests/skills/gaia-ci-edit-hints.bats \
+            tests/skills/gaia-config-ci-regenerate.bats \
+            tests/skills/gaia-config-section-scope.bats \
+            tests/skills/gaia-config-validate-schema.bats \
+            tests/skills/gaia-config-yaml-editor.bats \
+            tests/skills/gaia-deploy-adapter-dispatch.bats \
+            tests/skills/gaia-deploy-checklist.bats \
+            tests/skills/gaia-deploy-failures.bats \
+            tests/skills/gaia-deploy.bats \
+            tests/skills/gaia-dev-story-figma-degrade.bats \
             tests/skills/gaia-dev-story-planning-gate.bats \
-            tests/skills/gaia-dev-story-three-option-prompt.bats \
-            tests/skills/gaia-dev-story-yolo-plan-loop.bats \
             tests/skills/gaia-dev-story-step2b-atdd.bats \
             tests/skills/gaia-dev-story-step7b-val.bats \
-            tests/skills/gaia-dev-story-figma-degrade.bats \
-            tests/skills/validate-plan-structure.bats \
-            tests/skills/conditional-check-hints.bats
+            tests/skills/gaia-dev-story-three-option-prompt.bats \
+            tests/skills/gaia-dev-story-yolo-plan-loop.bats \
+            tests/skills/gaia-edit-test-plan.bats \
+            tests/skills/gaia-editorial-prose.bats \
+            tests/skills/gaia-editorial-structure.bats \
+            tests/skills/gaia-fill-test-gaps.bats \
+            tests/skills/gaia-memory-hygiene-hints.bats \
+            tests/skills/gaia-mobile-testing.bats \
+            tests/skills/gaia-nfr.bats \
+            tests/skills/gaia-perf-testing-hints.bats \
+            tests/skills/gaia-perf-testing.bats \
+            tests/skills/gaia-post-deploy.bats \
+            tests/skills/gaia-refresh-ground-truth-hints.bats \
+            tests/skills/gaia-release-plan.bats \
+            tests/skills/gaia-review-deps-hints.bats \
+            tests/skills/gaia-review-mobile.bats \
+            tests/skills/gaia-rollback-plan.bats \
+            tests/skills/gaia-shell-idioms.bats \
+            tests/skills/gaia-teach-testing-hints.bats \
+            tests/skills/gaia-teach-testing.bats \
+            tests/skills/gaia-test-framework.bats \
+            tests/skills/gaia-triage-findings-reproduction-policy.bats \
+            tests/skills/lint-skill-frontmatter.bats \
+            tests/skills/validate-plan-structure.bats
       - name: Run /gaia-add-feature assessment-doc-bypass-check bats suite
         # E83-S3 — anti-pattern check that scans every /gaia-add-feature
         # assessment-doc emission for three Val-gate bypass smoking-gun
