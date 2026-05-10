@@ -1,15 +1,32 @@
 #!/usr/bin/env bats
-# yield-gate.bats — gaia-meeting yield-gate helper (E76-S9, AC1, AC2, TC-MTG-YGATE-1, TC-MTG-YGATE-2)
+# yield-gate.bats — gaia-meeting yield-gate helper post-AF-2026-05-10-1
 #
-# AC1: yield-gate.sh emits (in order):
-#   1. phase marker:  ## Yield: <phase>
-#   2. canonical prompt: [c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
-#   3. sentinel: <<YIELD-STOP phase=<phase> session=<session-id>>>
-# Exits 0 on success.
+# History:
+#   E76-S9 / AF-2026-05-08-4 — yield-gate.sh emitted a canonical 3-line stdout
+#     block (phase marker + prompt + turn-terminal stdout sentinel). This file
+#     used to assert that emission contract (TC-MTG-YGATE-1, TC-MTG-YGATE-2).
+#   E76-S18 / AF-2026-05-10-1 — the stdout-sentinel emission was empirically
+#     defeated by harness Auto Mode on 2026-05-09 (memory rule
+#     `feedback_askuserquestion_under_automode.md`). The substrate-correct
+#     primitive is `AskUserQuestion` which halts the LLM turn at the harness
+#     layer. yield-gate.sh now produces ZERO stdout output and only writes
+#     the session-state side effects (`last_checkpoint_phase` and
+#     `last_yield_emitted_at`). The substrate `AskUserQuestion` tool call is
+#     emitted by the LLM in the enclosing /gaia-meeting orchestration AFTER
+#     yield-gate.sh returns (see SKILL.md §Procedure §Substrate-enforced
+#     turn-terminal yield contract).
 #
-# AC2: BEFORE the sentinel prints, two session-state.sh update calls fire:
-#   - --field last_checkpoint_phase --value <phase>
-#   - --field last_yield_emitted_at --value <iso8601>
+# This test file holds the post-AF-2026-05-10-1 contract for yield-gate.sh:
+#   - exits 0 on every valid phase
+#   - writes ZERO bytes to stdout
+#   - writes BOTH session-state fields (`last_checkpoint_phase`,
+#     `last_yield_emitted_at`)
+#   - rejects unknown phases / missing flags with non-zero exit
+#
+# The cross-cuts:
+#   - tests/skills/gaia-meeting/yield-gate-auq.bats — E76-S18 AC7/AC8 contract
+#   - tests/skills/gaia-meeting/gaia-meeting-stdout-sentinel-forbid.bats —
+#     E76-S15 anti-pattern check on SKILL.md
 #
 # Phase enum: post-charter, post-research, discuss-cadence, pre-close, pre-save.
 
@@ -20,7 +37,7 @@ setup() {
   HELPER="$REPO_ROOT/plugins/gaia/skills/gaia-meeting/scripts/yield-gate.sh"
   SESSION_HELPER="$REPO_ROOT/plugins/gaia/skills/gaia-meeting/scripts/session-state.sh"
   TMP="$(mktemp -d)"
-  SESSION_FILE="$TMP/2026-05-08-test.yaml"
+  SESSION_FILE="$TMP/2026-05-10-test.yaml"
 }
 
 teardown() {
@@ -31,79 +48,82 @@ teardown() {
   [ -x "$HELPER" ]
 }
 
-@test "AC1: post-charter phase emits 3-line block in canonical order" {
+# --- post-AF-2026-05-10-1 emission contract: ZERO stdout, side-effects-only
+
+@test "post-charter phase: zero stdout, exit 0, side-effects written" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-test-001" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase post-charter --session-id sess-test-001
   [ "$status" -eq 0 ]
-  # Exactly 3 lines.
-  line_count="$(printf '%s\n' "$output" | wc -l | tr -d ' ')"
-  [ "$line_count" = "3" ]
-  # Line 1: phase marker.
-  [ "$(printf '%s\n' "$output" | sed -n '1p')" = "## Yield: post-charter" ]
-  # Line 2: canonical prompt — exact wording.
-  [ "$(printf '%s\n' "$output" | sed -n '2p')" = '[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort' ]
-  # Line 3: sentinel — exact format.
-  [ "$(printf '%s\n' "$output" | sed -n '3p')" = "<<YIELD-STOP phase=post-charter session=sess-test-001>>" ]
+  [ -z "$output" ]
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  [ "$phase_val" = "post-charter" ]
 }
 
-@test "AC1: post-research phase emits canonical 3-line block" {
+@test "post-research phase: zero stdout, exit 0, side-effects written" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-test-002" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase post-research --session-id sess-test-002
   [ "$status" -eq 0 ]
-  [ "$(printf '%s\n' "$output" | sed -n '1p')" = "## Yield: post-research" ]
-  [ "$(printf '%s\n' "$output" | sed -n '3p')" = "<<YIELD-STOP phase=post-research session=sess-test-002>>" ]
+  [ -z "$output" ]
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  [ "$phase_val" = "post-research" ]
 }
 
-@test "AC1: discuss-cadence phase emits canonical 3-line block" {
+@test "discuss-cadence phase: zero stdout, exit 0, side-effects written" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-test-003" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase discuss-cadence --session-id sess-test-003
   [ "$status" -eq 0 ]
-  [ "$(printf '%s\n' "$output" | sed -n '1p')" = "## Yield: discuss-cadence" ]
-  [ "$(printf '%s\n' "$output" | sed -n '3p')" = "<<YIELD-STOP phase=discuss-cadence session=sess-test-003>>" ]
+  [ -z "$output" ]
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  [ "$phase_val" = "discuss-cadence" ]
 }
 
-@test "AC1: pre-close phase emits canonical 3-line block" {
+@test "pre-close phase: zero stdout, exit 0, side-effects written" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-test-004" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase pre-close --session-id sess-test-004
   [ "$status" -eq 0 ]
-  [ "$(printf '%s\n' "$output" | sed -n '1p')" = "## Yield: pre-close" ]
-  [ "$(printf '%s\n' "$output" | sed -n '3p')" = "<<YIELD-STOP phase=pre-close session=sess-test-004>>" ]
+  [ -z "$output" ]
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  [ "$phase_val" = "pre-close" ]
 }
 
-@test "AC1: pre-save phase emits canonical 3-line block" {
+@test "pre-save phase: zero stdout, exit 0, side-effects written" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-test-005" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase pre-save --session-id sess-test-005
   [ "$status" -eq 0 ]
-  [ "$(printf '%s\n' "$output" | sed -n '1p')" = "## Yield: pre-save" ]
-  [ "$(printf '%s\n' "$output" | sed -n '3p')" = "<<YIELD-STOP phase=pre-save session=sess-test-005>>" ]
+  [ -z "$output" ]
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  [ "$phase_val" = "pre-save" ]
 }
 
-@test "AC1: invalid phase rejects with non-zero exit and usage line" {
+# --- argument-validation contract (unchanged from E76-S9)
+
+@test "invalid phase rejects with non-zero exit and usage line" {
   run "$HELPER" --phase bogus-phase --session-id sess-x
   [ "$status" -ne 0 ]
   [[ "$output$stderr" == *"phase"* ]] || [[ "${stderr:-}" == *"phase"* ]] || true
 }
 
-@test "AC1: missing --session-id rejects with non-zero exit" {
+@test "missing --session-id rejects with non-zero exit" {
   run "$HELPER" --phase post-charter
   [ "$status" -ne 0 ]
 }
 
-@test "AC1: missing --phase rejects with non-zero exit" {
+@test "missing --phase rejects with non-zero exit" {
   run "$HELPER" --session-id sess-x
   [ "$status" -ne 0 ]
 }
 
-@test "AC1: empty --session-id rejects with non-zero exit" {
+@test "empty --session-id rejects with non-zero exit" {
   run "$HELPER" --phase post-charter --session-id ""
   [ "$status" -ne 0 ]
 }
 
-@test "AC2: session-state writes (last_checkpoint_phase + last_yield_emitted_at) precede sentinel" {
+# --- side-effect ordering contract (preserved from AF-2026-05-08-4)
+
+@test "AC2: session-state writes (last_checkpoint_phase + last_yield_emitted_at) fire on every invocation" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-test-006" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase pre-save --session-id sess-test-006
   [ "$status" -eq 0 ]
-  # After running yield-gate, the session file MUST have the two fields written.
   phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
   [ "$phase_val" = "pre-save" ]
   iso_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_emitted_at)"
@@ -111,56 +131,16 @@ teardown() {
   [[ "$iso_val" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
 }
 
-@test "AC2: sentinel is the FINAL line of stdout (no trailing output)" {
+@test "AF-2026-05-10-1: --side-effect-only flag is accepted (no-op vs default)" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-test-007" >/dev/null
-  run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase post-charter --session-id sess-test-007
+  run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase post-charter --session-id sess-test-007 --side-effect-only
   [ "$status" -eq 0 ]
-  last_line="$(printf '%s\n' "$output" | tail -1)"
-  [[ "$last_line" == "<<YIELD-STOP phase=post-charter session=sess-test-007>>" ]]
+  [ -z "$output" ]
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  [ "$phase_val" = "post-charter" ]
 }
 
-@test "AC2: temporal ordering — session-state writes precede sentinel emission" {
-  # Stub session-state.sh in PATH to a logger that records both write events
-  # and stdout sentinel emission in a single shared log. We then assert that
-  # both update lines appear in the log BEFORE the sentinel marker.
-  STUB_DIR="$TMP/stubs"
-  mkdir -p "$STUB_DIR"
-  LOG="$TMP/order.log"
-  : > "$LOG"
-  # Stub session-state.sh: log update calls then no-op exit 0.
-  cat > "$STUB_DIR/session-state.sh" <<EOF
-#!/usr/bin/env bash
-# Stub for ordering test.
-sub="\$1"; shift
-if [[ "\$sub" == "update" ]]; then
-  field=""
-  while [[ \$# -gt 0 ]]; do
-    case "\$1" in
-      --field) field="\$2"; shift 2 ;;
-      *) shift ;;
-    esac
-  done
-  printf 'update %s\n' "\$field" >> "$LOG"
-fi
-exit 0
-EOF
-  chmod +x "$STUB_DIR/session-state.sh"
-  # Capture stdout into the log AFTER the session-state lines would be appended.
-  # The helper script MUST call session-state.sh BEFORE printing the sentinel,
-  # so when we capture both into the same log via tee, ordering reflects exec
-  # order.
-  # We feed session-state stub via env override on PATH-like resolution.
-  run env GAIA_MEETING_SESSION_STATE_BIN="$STUB_DIR/session-state.sh" \
-      GAIA_MEETING_SESSION_FILE="$SESSION_FILE" \
-      bash -c "'$HELPER' --phase post-research --session-id sess-test-008 | tee -a '$LOG'"
-  [ "$status" -eq 0 ]
-  # Verify ordering: both update lines appear before the sentinel line.
-  phase_line_no="$(grep -n 'update last_checkpoint_phase' "$LOG" | head -1 | cut -d: -f1)"
-  iso_line_no="$(grep -n 'update last_yield_emitted_at' "$LOG" | head -1 | cut -d: -f1)"
-  sentinel_line_no="$(grep -n 'YIELD-STOP' "$LOG" | head -1 | cut -d: -f1)"
-  [ -n "$phase_line_no" ]
-  [ -n "$iso_line_no" ]
-  [ -n "$sentinel_line_no" ]
-  [ "$phase_line_no" -lt "$sentinel_line_no" ]
-  [ "$iso_line_no" -lt "$sentinel_line_no" ]
+@test "AF-2026-05-10-1: yield-gate.sh source contains ZERO YIELD-STOP literal strings" {
+  count="$(grep -c 'YIELD-STOP' "$HELPER" || true)"
+  [ "$count" -eq 0 ]
 }
