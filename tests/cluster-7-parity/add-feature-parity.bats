@@ -164,12 +164,17 @@ setup() {
   [ ! -f "$SKILL_DIR/instructions.xml" ]
 }
 
-# ---------- ADR-042 no-new-scripts: only setup/finalize allowed ----------
+# ---------- ADR-042 no-new-scripts: only setup/finalize/write-val-sentinel allowed ----------
+# E83-S1 amendment: write-val-sentinel.sh is the script-side fail-closed
+# primitive for the Val gate. AC4 of E83-S1 requires that the sentinel write
+# go through a deterministic helper rather than hand-rolled JSON inline in
+# finalize.sh, so this carve-out is part of the story's explicit scope.
 
-@test "E48-S1: gaia-add-feature scripts/ contains only setup.sh and finalize.sh" {
+@test "E48-S1: gaia-add-feature scripts/ contains only allowlisted scripts" {
   cd "$SKILL_DIR/scripts"
   count="$(ls -1 | wc -l | tr -d ' ')"
-  [ "$count" = "2" ]
+  [ "$count" = "3" ]
   [ -f "setup.sh" ]
   [ -f "finalize.sh" ]
+  [ -f "write-val-sentinel.sh" ]
 }
