@@ -129,7 +129,7 @@ Wait for the user's response before proceeding. Branch handlers:
   in-session ADR-sidecar buffer. Proceed to Step 4.
 - **`[r]eject`** — HALT Step 4. Offer two sub-options:
   1. **Re-invoke Theo with rejection notes** — gather a short rejection
-     rationale from the user, re-invoke the architect subagent with that
+     rationale from the user, re-invoke the gaia:architect subagent with that
      rationale appended, and re-render the pause when Theo returns. The
      pause repeats until the user picks `[a]ccept` or `[m]odify`, or
      escalates to abort.
