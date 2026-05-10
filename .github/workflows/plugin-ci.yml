@@ -110,6 +110,18 @@ jobs:
             tests/skills/gaia-dev-story-figma-degrade.bats \
             tests/skills/validate-plan-structure.bats \
             tests/skills/conditional-check-hints.bats
+      - name: Run /gaia-add-feature assessment-doc-bypass-check bats suite
+        # E83-S3 — anti-pattern check that scans every /gaia-add-feature
+        # assessment-doc emission for three Val-gate bypass smoking-gun
+        # strings (with backtick-tolerant regex). The bats file uses
+        # synthetic fixtures under tests/fixtures/ and skips the
+        # live-corpus tests (TC-VFC-10 / 6b) when GAIA_PROJECT_ROOT_DOCS
+        # is unset — CI only checks out gaia-public/ and the live
+        # assessment-AF-*.md corpus sits at project-root, OUTSIDE this
+        # checkout (per CLAUDE.md "Non-git project-root workspace").
+        # Step MUST FAIL the build on non-zero exit (TC-VFC-12).
+        run: |
+          bats plugins/gaia/skills/gaia-add-feature/tests/assessment-doc-bypass-check.bats
 
   bats-script-refs-lint:
     # E28-S221 — sweep linter that catches bats files referencing scripts
