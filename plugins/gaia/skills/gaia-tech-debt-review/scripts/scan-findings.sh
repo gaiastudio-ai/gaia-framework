@@ -147,6 +147,8 @@ while IFS= read -r -d '' story_file; do
       "$story_key" "$status" "$sprint_id" "$type" "$severity" "$finding" "$action"
   done <<<"$findings_section"
 
-done < <(find "$ARTIFACTS_DIR" -maxdepth 1 -type f -name '*.md' -print0)
+# E55-S12 — recursive walk picks up the per-epic nested layout introduced by E79
+# (`epic-*/stories/{key}-{slug}.md`). Convergence with the E79-S4 reader idiom.
+done < <(find "$ARTIFACTS_DIR" -type f -name '*.md' -print0)
 
 exit 0
