@@ -369,9 +369,19 @@ Mode invocations.
     `feature_description`, `prd_diff`, `arch_diff`, and `cr_id`.
   - Capture new story keys and epic assignments.
   - Store: `new_stories`.
-  - Priority flag integration: if the urgency is `critical` or the driver
-    is otherwise high-urgency (regulatory, business-critical), set
-    `priority_flag: "next-sprint"` in each created story's frontmatter.
+  - Per user rule `feedback_priority_flag_never_auto_set.md`, stories
+    created by this skill MUST have `priority_flag: null` regardless of
+    urgency. Triage and `/gaia-sprint-plan` decide priority sequencing.
+
+    > **Memory rule (verbatim — survives context compaction):**
+    >
+    > Stories produced by /gaia-add-feature MUST have priority_flag: null
+    > by default. Do NOT auto-set priority_flag:
+    > 'next-sprint' during triage or cascade, even when:
+    > - The driver is high-urgency.
+    > - All stories are P1.
+    > - The brief classifies the work as technical-debt / regression
+    >   remediation.
 - If classification is `patch`: skip this step.
 
 ### Step 8b -- Update Traceability (enhancement and feature)

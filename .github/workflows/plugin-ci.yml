@@ -122,6 +122,17 @@ jobs:
         # Step MUST FAIL the build on non-zero exit (TC-VFC-12).
         run: |
           bats plugins/gaia/skills/gaia-add-feature/tests/assessment-doc-bypass-check.bats
+      - name: Run /gaia-add-feature no-priority-flag-auto-set bats suite
+        # E83-S5 — regression-guard check that asserts the SKILL.md and
+        # supporting scripts contain no conditional that auto-sets
+        # `priority_flag: "next-sprint"` on stories created via cascade.
+        # Guards user memory rule
+        # `feedback_priority_flag_never_auto_set.md`: triage classifies
+        # priority, /gaia-sprint-plan sequences. Auto-flagging at cascade
+        # time pre-empts sprint-plan's authority.
+        # Step MUST FAIL the build on non-zero exit.
+        run: |
+          bats plugins/gaia/skills/gaia-add-feature/tests/no-priority-flag-auto-set.bats
 
   bats-script-refs-lint:
     # E28-S221 — sweep linter that catches bats files referencing scripts
