@@ -46,6 +46,40 @@ and delegation model are preserved verbatim from the legacy workflow.
   cascade.
 - A CRITICAL verdict from Val HALTS the skill before cascade execution.
   This applies in all execution modes (normal and YOLO) per ADR-067.
+- **AskUserQuestion call MUST precede Val dispatch under Auto Mode**
+  (E83-S1). Step 2 entry MUST emit an `AskUserQuestion` tool call before
+  the Agent-tool dispatch to Val. AskUserQuestion is substrate-enforced
+  under Auto Mode (per the empirical evidence captured in user memory rule
+  `feedback_askuserquestion_under_automode.md`, 2026-05-09); this is the
+  primitive that catches the "auto-mode self-judgment" bypass class. Do
+  NOT substitute stdout sentinels, Stop hooks, or pause-and-wait scripts
+  -- they are bypassed under Auto Mode (the gaia-meeting precedent).
+- **Sentinel checkpoint MUST exist before Step 3** (E83-S1). Step 2 MUST
+  write `_memory/checkpoints/add-feature-{feature_id}-val-dispatched.json`
+  via the dedicated `scripts/write-val-sentinel.sh` writer (which delegates
+  to atomic tempfile + `mv` and constructs JSON via `jq -n`, never via
+  heredoc). `finalize.sh` validates the sentinel before allowing cascade
+  completion -- a missing or malformed sentinel HALTs the workflow with
+  stderr `Val gate sentinel missing.*re-invoke from a parent orchestrator
+  thread`. This is the primitive that catches the "skipped Step 2 entirely"
+  bypass class.
+- **There is NO patch-mode exception to the Val gate** (E83-S2,
+  precedent: AI-2026-05-09-12). Patch classification still requires a
+  dispatched Val subagent and the same ADR-063 verdict-surfacing contract
+  as enhancement and feature classifications. Self-license patterns of
+  the form "auto-judge under patch classification", "inline-judge because
+  the diff is small", or "skip Val for trivial typo fix" are forbidden.
+  The classification is decided in Step 1; the Val gate runs
+  unconditionally in Step 2 before any cascade or direct edit.
+- **No inline Val — Val MUST be dispatched as a `context: fork` subagent
+  via the Agent tool** (E83-S2, precedent: AI-2026-05-09-12). The LLM
+  MUST NOT pass off its own inline review as a Val outcome, MUST NOT
+  compose a synthetic ADR-037 return JSON in the parent thread, and
+  MUST NOT set `status: PASS` without a real Agent-tool dispatch. If
+  the Agent tool is not available in the current context (e.g., running
+  under a fork that did not allowlist `Agent`), HALT immediately with
+  the parent-thread re-invoke message in Step 2 -- do NOT self-judge
+  the Val gate from the parent thread.
 
 ## Subagent Dispatch Contract
 
@@ -87,6 +121,7 @@ This skill conforms to the framework-wide YOLO Mode Contract (ADR-067).
 | Severity / filter selection | Auto-accept defaults. |
 | Optional confirmation ("Proceed with cascade?") | Auto-confirm. |
 | Subagent verdict display (Val review gate) | Auto-display, but a CRITICAL verdict still HALTS per ADR-063. |
+| Val gate dispatch under absent Agent tool | HALT -- never auto-judge, never inline-Val. Surface `Re-invoke /gaia-add-feature from a parent orchestrator thread` error (E83-S2, precedent: AI-2026-05-09-12). |
 | Open-question indicators (urgency, driver, CR linkage) | HALT -- never auto-skip; require human input. |
 | Memory save prompt at end | HALT -- require human input (Phase 4 per ADR-061). |
 
@@ -162,7 +197,53 @@ means the artifact IS updated via the appropriate sub-workflow.
 
 This step is the canonical Val review gate. It restores the validation
 gate that previously ran silently inside the cascade subagents (the
-regression class closed by ADR-063).
+regression class closed by ADR-063) and is hardened under E83-S1 with two
+fail-closed primitives at the Step 2 boundary: (1) an `AskUserQuestion`
+substrate-enforced halt at gate entry, (2) a sentinel checkpoint JSON
+written on Val PASS that `finalize.sh` validates before cascade completion.
+
+> **Parent thread invocation required (E83-S2, precedent:
+> AI-2026-05-09-12, enforcement: ADR-063 amendment / AF-2026-05-09-5).**
+>
+> Val MUST be dispatched as a `context: fork` subagent via the Agent tool.
+> There is NO patch-mode exception -- patch, enhancement, and feature
+> classifications all run the Val gate unconditionally.
+>
+> If the Agent tool is not exposed in the current invocation context
+> (e.g., the skill itself was spawned under `context: fork` without
+> `Agent` in the allowlist, or a downstream fork stripped the Agent tool
+> from the inherited toolset), the skill MUST HALT immediately with the
+> error: `Val gate cannot dispatch (Agent tool not exposed). Re-invoke /gaia-add-feature from a parent orchestrator thread.`
+>
+> The HALT message above is the canonical error string -- the parent
+> orchestrator must re-invoke /gaia-add-feature from a parent orchestrator thread to recover; never inline-judge the Val gate.
+>
+> Do NOT self-judge the Val gate inline, do NOT compose a synthetic
+> ADR-037 return in the parent thread, do NOT pass off inline review as
+> a Val outcome. The 2026-05-09 audit (AF-2026-05-09-3 / AF-2026-05-09-4)
+> found that LLM under Auto Mode self-licensed exactly this bypass --
+> the ADR-063 amendment closes it as a hard contract: Val verdicts
+> originate ONLY from a real Agent-tool dispatch.
+
+#### Step 2a -- AskUserQuestion precondition (substrate halt)
+
+Before the Agent-tool dispatch to Val, the LLM MUST emit an
+`AskUserQuestion` tool call presenting the cascade plan and the intake
+data captured in Step 1. The substrate halts the turn pending user input
+under Auto Mode -- this is the empirically-verified primitive
+(`feedback_askuserquestion_under_automode.md`, 2026-05-09) that closes
+the "auto-mode self-judgment" bypass class. The user's explicit
+acknowledgement is what unblocks the Val dispatch below. Substitute
+primitives — output-stream signaling, hook-based interception, or
+polling loops in user-space — are bypassed under Auto Mode and must
+not replace the substrate-enforced halt (the gaia-meeting precedent
+fixed in E76-S9).
+
+The AskUserQuestion call is the SOLE interactive boundary primitive at
+Step 2 entry (TC-VFC-7). It is required under both interactive and Auto
+Mode invocations.
+
+#### Step 2b -- Val dispatch + sentinel write
 
 - Spawn a Val subagent via the Agent tool with `context: fork`,
   `model: claude-opus-4-7`, `effort: high`, and the read-only tool
@@ -191,9 +272,31 @@ regression class closed by ADR-063).
   4. Display WARNING findings inline; record them for the assessment-doc.
   5. Log INFO findings to the checkpoint and assessment-doc.
 - In YOLO mode the verdict is auto-displayed (no `[c]/[y]/[e]` pause) but
-  a CRITICAL verdict still HALTS per ADR-067.
-- Only when no CRITICAL findings remain does the skill proceed to the
-  cascade steps below.
+  a CRITICAL verdict still HALTS per ADR-067. The Step 2a AskUserQuestion
+  call is NOT bypassed in YOLO mode -- it is the substrate-enforced halt
+  that protects against silent gate skips.
+- After Val returns a non-CRITICAL verdict (PASS or WARNING), MUST write
+  the sentinel via `scripts/write-val-sentinel.sh`:
+
+  ```
+  printf '%s' "$VAL_RETURN_JSON" \
+    | "${CLAUDE_PLUGIN_ROOT}/skills/gaia-add-feature/scripts/write-val-sentinel.sh" \
+        --feature-id "$FEATURE_ID"
+  ```
+
+  The writer constructs the sentinel JSON via `jq -n` (NOT via heredoc /
+  `cat <<EOF`), validates the required keys (status enum, summary,
+  findings array, agent=val), and writes atomically (sibling tempfile +
+  `mv`). The sentinel path is
+  `_memory/checkpoints/add-feature-${FEATURE_ID}-val-dispatched.json`.
+
+  `finalize.sh` validates the sentinel before allowing cascade completion;
+  a missing or malformed sentinel HALTs the skill with stderr matching
+  `Val gate sentinel missing.*re-invoke from a parent orchestrator thread`
+  (FR-362, ADR-063 amendment, TC-VFC-2 / TC-VFC-3).
+
+- Only when no CRITICAL findings remain AND the sentinel write succeeded
+  does the skill proceed to the cascade steps below.
 
 ### Step 3 -- Execute Cascade (patch)
 
@@ -266,9 +369,19 @@ regression class closed by ADR-063).
     `feature_description`, `prd_diff`, `arch_diff`, and `cr_id`.
   - Capture new story keys and epic assignments.
   - Store: `new_stories`.
-  - Priority flag integration: if the urgency is `critical` or the driver
-    is otherwise high-urgency (regulatory, business-critical), set
-    `priority_flag: "next-sprint"` in each created story's frontmatter.
+  - Per user rule `feedback_priority_flag_never_auto_set.md`, stories
+    created by this skill MUST have `priority_flag: null` regardless of
+    urgency. Triage and `/gaia-sprint-plan` decide priority sequencing.
+
+    > **Memory rule (verbatim — survives context compaction):**
+    >
+    > Stories produced by /gaia-add-feature MUST have priority_flag: null
+    > by default. Do NOT auto-set priority_flag:
+    > 'next-sprint' during triage or cascade, even when:
+    > - The driver is high-urgency.
+    > - All stories are P1.
+    > - The brief classifies the work as technical-debt / regression
+    >   remediation.
 - If classification is `patch`: skip this step.
 
 ### Step 8b -- Update Traceability (enhancement and feature)
@@ -360,6 +473,11 @@ finding first and re-invoke the skill.
   what Val said about it, what artifacts ended up touched, and which
   follow-up stories were created. It is written ONLY after the cascade
   completes successfully.
+- Before the Finalize block runs, MUST export `FEATURE_ID` so the
+  `finalize.sh` E83-S1 sentinel guard can locate the Val-dispatch
+  sentinel: `export FEATURE_ID="${feature_id}"`. The guard treats an
+  unexported `FEATURE_ID` as a legacy fixture path (skipped) -- production
+  cascades MUST always export it.
 
 ### Step 10 -- Summary
 
@@ -409,6 +527,12 @@ finding first and re-invoke the skill.
 - E53-S243 -- Static `monolith-shard-sync` check + ADR-070 amendment.
 - E53-S244 -- Cascade-skill auto-invoke for `/gaia-shard-doc`
   (Step 8c above + `--monolith-only` opt-out).
+- AF-2026-05-09-5 / ADR-063 amendment -- "Val verdicts originate ONLY
+  from a real Agent-tool dispatch" hard contract; closes the inline-Val
+  + auto-judge-in-patch-mode bypass class.
+- AI-2026-05-09-12 -- Action item flagging the
+  `/gaia-add-feature` Val-gate fail-open under `context: fork` (precedent
+  for the E83-S2 prose-hardening clauses above).
 
 ## Finalize
 

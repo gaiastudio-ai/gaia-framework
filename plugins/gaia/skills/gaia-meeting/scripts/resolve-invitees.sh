@@ -19,7 +19,17 @@
 #     --mode <canonical-mode> \
 #     --invitees "<csv>" \
 #     --installed <path-to-line-list> \
-#     [--invitees-override]
+#     [--invitees-override] \
+#     [--session-file <path-to-session-state.yaml>]
+#
+# When `--session-file` is supplied (E76-S21 / AF-2026-05-10-2 user-as-first-
+# class-attendee path), the resolver detects user-tokens (`me` / `user` /
+# resolved-user-name; case-insensitive) in the user CSV, PRESERVES them in the
+# resolved CSV, emits NO WARNING for user-tokens, and updates the session-
+# state file via `session-state.sh update --field user_attendance --value
+# true|false` exactly once. When `--session-file` is OMITTED, the legacy
+# behavior is preserved bit-for-bit (drops user-tokens with the FR-MTG-10 /
+# AC4 WARNING) so non-meeting callers and pre-S21 fixtures continue to work.
 #
 # Stdout (one key=value per line, in fixed order):
 #   resolved=<csv>
@@ -53,6 +63,7 @@ MODE=""
 INVITEES_CSV=""
 INSTALLED=""
 OVERRIDE="false"
+SESSION_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -60,6 +71,7 @@ while [[ $# -gt 0 ]]; do
     --invitees)          INVITEES_CSV="$2"; shift 2 ;;
     --installed)         INSTALLED="$2"; shift 2 ;;
     --invitees-override) OVERRIDE="true"; shift ;;
+    --session-file)      SESSION_FILE="$2"; shift 2 ;;
     *) echo "resolve-invitees.sh: unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -92,23 +104,50 @@ if [[ -n "$INVITEES_CSV" ]]; then
   done
 fi
 
-# E76-S8 / AC4 / TC-MTG-NOFAB-3 — drop invitee tokens that resolve to the
-# user. The user is not an agent and is not auto-included; user authoring
-# uses --charter / [i]nterject only. Three checks (per FR-MTG-10):
-#   - literal "me"   (case-insensitive)
-#   - literal "user" (case-insensitive)
-#   - equality (case-sensitive) with the resolved user name from
-#     scripts/resolve-user-name.sh — best-effort: if the resolver is missing
-#     or fails, the user-name check is silently skipped (the literal-token
-#     checks still fire). Skipping the resolver step is intentional: a CI
-#     runner without git config + settings.json must not block invitee
-#     resolution.
+# User-token detection (FR-MTG-10, originally landed by E76-S8 as a drop-with-
+# WARNING gate; reworked under AF-2026-05-10-2 / E76-S21 / AI-2026-05-09-9 to
+# the user-as-first-class-attendee carve-out).
+#
+# Three case-insensitive checks resolve a CSV token to "the user":
+#   - literal "me"
+#   - literal "user"
+#   - equality with the resolved user name from scripts/resolve-user-name.sh
+#     (case-insensitive, expanded by S21 — was case-sensitive under S8).
+#     Best-effort: if the resolver is missing or fails, the user-name check
+#     is silently skipped (the literal-token checks still fire). Skipping
+#     the resolver step is intentional: a CI runner without git config +
+#     settings.json must not block invitee resolution.
+#
+# Behavior under the two modes:
+#   1. `--session-file <path>` PRESENT (canonical /gaia-meeting flow per
+#      E76-S21 carve-out): user-tokens are PRESERVED in the resolved CSV;
+#      no WARNING is emitted; session-state `user_attendance` is updated
+#      exactly once (`true` if any user-token was detected, `false`
+#      otherwise). The user is treated as a non-LLM attendee with a turn
+#      slot at every yield boundary (composes with E76-S18 AskUserQuestion
+#      mechanism). Existing TC-MTG-NOFAB-3a (PRIMARY E76-S21) covers this.
+#   2. `--session-file` ABSENT (legacy callers + non-meeting fixtures):
+#      user-tokens are DROPPED with the FR-MTG-10 / AC4 WARNING preserved
+#      bit-for-bit. Existing TC-MTG-NOFAB-3 (now split as 3b, PRIMARY
+#      E76-S8) covers this — the no-fabricated-user-turns invariant fires
+#      when the user is NOT explicitly invited.
+#
+# `set -e` requires the user_token_seen counter to be set even when no
+# tokens were processed, so we initialize before the loop.
 USER_RESOLVED_NAME=""
 USER_NAME_RESOLVER="$SCRIPT_DIR/resolve-user-name.sh"
 if [[ -x "$USER_NAME_RESOLVER" ]]; then
   USER_RESOLVED_NAME="$("$USER_NAME_RESOLVER" 2>/dev/null || true)"
 fi
 
+# Lowercase the resolved user-name once for cheap case-insensitive comparison
+# inside the loop. Empty string when the resolver could not produce a name.
+USER_RESOLVED_NAME_LOWER=""
+if [[ -n "$USER_RESOLVED_NAME" ]]; then
+  USER_RESOLVED_NAME_LOWER="$(printf '%s' "$USER_RESOLVED_NAME" | tr '[:upper:]' '[:lower:]')"
+fi
+
+user_token_seen=0
 filtered_user_invitees=()
 if (( ${#user_invitees[@]} > 0 )); then
   for u in "${user_invitees[@]}"; do
@@ -118,11 +157,21 @@ if (( ${#user_invitees[@]} > 0 )); then
     is_user_token=0
     if [[ "$u_lower" == "me" || "$u_lower" == "user" ]]; then
       is_user_token=1
-    elif [[ -n "$USER_RESOLVED_NAME" && "$u" == "$USER_RESOLVED_NAME" ]]; then
+    elif [[ -n "$USER_RESOLVED_NAME_LOWER" && "$u_lower" == "$USER_RESOLVED_NAME_LOWER" ]]; then
       is_user_token=1
     fi
     if (( is_user_token == 1 )); then
-      # Single-line WARNING — exact wording per FR-MTG-10 / AC4.
+      user_token_seen=1
+      if [[ -n "$SESSION_FILE" ]]; then
+        # E76-S21 carve-out path: PRESERVE the token (no WARNING). The
+        # session-state update fires once after the loop so we don't write
+        # the file repeatedly when multiple user-tokens appear.
+        filtered_user_invitees+=("$u")
+        continue
+      fi
+      # Legacy E76-S8 path (no --session-file): drop with WARNING. Single-
+      # line WARNING — exact wording preserved character-identical with the
+      # original FR-MTG-10 / AC4 implementation.
       echo "[gaia-meeting] WARNING: invitee token \"${u}\" resolves to the user — the user is not an agent and is not auto-included; user authoring uses --charter / [i]nterject only" >&2
       continue
     fi
@@ -130,6 +179,23 @@ if (( ${#user_invitees[@]} > 0 )); then
   done
 fi
 user_invitees=("${filtered_user_invitees[@]}")
+
+# E76-S21 / FR-MTG-33 schema extension — set session-state user_attendance
+# exactly once. Only fires when the caller passed `--session-file` (canonical
+# /gaia-meeting flow); legacy callers without a session file see no schema
+# coupling, preserving backward compatibility.
+if [[ -n "$SESSION_FILE" ]]; then
+  SESSION_STATE_HELPER="$SCRIPT_DIR/session-state.sh"
+  if [[ -x "$SESSION_STATE_HELPER" && -f "$SESSION_FILE" ]]; then
+    if (( user_token_seen == 1 )); then
+      "$SESSION_STATE_HELPER" update --file "$SESSION_FILE" \
+        --field user_attendance --value "true"
+    else
+      "$SESSION_STATE_HELPER" update --file "$SESSION_FILE" \
+        --field user_attendance --value "false"
+    fi
+  fi
+fi
 
 resolved=()
 missing=()

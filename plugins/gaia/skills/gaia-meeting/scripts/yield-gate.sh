@@ -1,28 +1,47 @@
 #!/usr/bin/env bash
-# yield-gate.sh — emit the canonical yield block + turn-terminal sentinel
-# at any of the five `/gaia-meeting` yield boundaries (E76-S9, AC1, AC2,
-# FR-MTG-32, FR-MTG-33, ADR-083 amendment).
+# yield-gate.sh — write the canonical yield-boundary session-state side
+# effects at any of the five `/gaia-meeting` yield boundaries (E76-S9 + AF-2026-05-08-4
+# session-state contract; AF-2026-05-10-1 substrate-replacement amendment;
+# E76-S18 / FR-MTG-32 / FR-MTG-33; ADR-083 third in-place amendment).
 #
-# This helper moves yield-boundary enforcement from prose-side LLM discipline
-# (E76-S7) to script-side. The `<<YIELD-STOP ...>>` sentinel on stdout is
-# treated as turn-terminal by the SKILL.md Procedure section — the LLM MUST
-# NOT emit any further output after the sentinel until re-entered via
-# `/gaia-meeting --resume <session-id>`.
+# History
+# -------
+# - AF-2026-05-08-4 (E76-S9) installed the canonical 3-line stdout block
+#   (phase marker + prompt + a turn-terminal stdout sentinel) as the
+#   script-side turn-terminal mechanism. The intent was to move
+#   yield-boundary enforcement from prose-side LLM discipline to script-side.
+# - AF-2026-05-10-1 (E76-S18) — empirical verification on 2026-05-09 showed
+#   the stdout sentinel was defeated by harness Auto Mode; the harness does
+#   not stop on stdout content. The ADR-083 contract was amended: yield
+#   boundaries now use the substrate `AskUserQuestion` primitive, which halts
+#   the LLM turn at the substrate level regardless of Auto Mode. This script
+#   no longer emits the 3-line stdout block. It RETAINS the session-state
+#   side-effect writes — those remain the source of truth for `--resume`
+#   re-entry consistency. The orchestrator (SKILL.md §Procedure prose) emits
+#   the AskUserQuestion call AFTER this helper writes its side effects.
+#
+# Memory rule precedent: `_memory/feedback_askuserquestion_under_automode.md`.
 #
 # Usage:
-#   yield-gate.sh --phase <p> --session-id <id>
+#   yield-gate.sh --phase <p> --session-id <id> [--side-effect-only]
+#
+# The `--side-effect-only` flag is accepted for forward-compatibility and
+# is the DEFAULT behaviour under AF-2026-05-10-1 — the flag is a no-op vs.
+# the default invocation. It exists so SKILL.md procedure prose can
+# explicitly document the side-effect-only intent at every yield boundary.
 #
 # Phase enum:
 #   post-charter, post-research, discuss-cadence, pre-close, pre-save
 #
-# Output (stdout, in this exact order):
-#   1. ## Yield: <phase>
-#   2. [c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
-#   3. <<YIELD-STOP phase=<phase> session=<session-id>>>
-#
-# Side effects (run BEFORE the sentinel is printed — AC2):
+# Side effects (the only effects this helper produces):
 #   session-state.sh update --field last_checkpoint_phase --value <phase>
 #   session-state.sh update --field last_yield_emitted_at --value <iso8601-utc>
+#
+# Output:
+#   none — the helper writes ZERO bytes to stdout. AF-2026-05-10-1 removed
+#   the stdout-sentinel emission. The substrate-correct user-facing prompt
+#   mechanism is the LLM-emitted `AskUserQuestion` tool call rendered AFTER
+#   this helper completes.
 #
 # Exit codes:
 #   0 = success
@@ -36,6 +55,11 @@ export LC_ALL=C
 
 PHASE=""
 SESSION_ID=""
+# `--side-effect-only` is accepted but currently a no-op vs. the default —
+# AF-2026-05-10-1 made side-effect-only the only behaviour. Captured here
+# explicitly so callers passing the flag receive a clean exit and so the
+# parser does not reject a recognised flag.
+SIDE_EFFECT_ONLY=0
 
 # Single-source-of-truth phase enum. Order matches the SKILL.md Procedure
 # section (post-charter -> post-research -> discuss-cadence -> pre-close ->
@@ -51,17 +75,18 @@ VALID_PHASES=(
 usage() {
   cat >&2 <<'EOF'
 yield-gate.sh: usage:
-  yield-gate.sh --phase <post-charter|post-research|discuss-cadence|pre-close|pre-save> --session-id <id>
+  yield-gate.sh --phase <post-charter|post-research|discuss-cadence|pre-close|pre-save> --session-id <id> [--side-effect-only]
 EOF
 }
 
 # Argument parsing.
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --phase)         PHASE="${2-}"; shift 2 ;;
-    --phase=*)       PHASE="${1#--phase=}"; shift ;;
-    --session-id)    SESSION_ID="${2-}"; shift 2 ;;
-    --session-id=*)  SESSION_ID="${1#--session-id=}"; shift ;;
+    --phase)              PHASE="${2-}"; shift 2 ;;
+    --phase=*)            PHASE="${1#--phase=}"; shift ;;
+    --session-id)         SESSION_ID="${2-}"; shift 2 ;;
+    --session-id=*)       SESSION_ID="${1#--session-id=}"; shift ;;
+    --side-effect-only)   SIDE_EFFECT_ONLY=1; shift ;;
     *)
       echo "yield-gate.sh: unknown argument: $1" >&2
       usage
@@ -69,6 +94,11 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# `SIDE_EFFECT_ONLY` is intentionally not consulted below — under
+# AF-2026-05-10-1 the helper has no other behaviour to gate. Reading it once
+# silences shellcheck's "unused variable" warning without changing behaviour.
+: "$SIDE_EFFECT_ONLY"
 
 if [[ -z "$PHASE" ]]; then
   echo "yield-gate.sh: --phase is required" >&2
@@ -111,9 +141,13 @@ SESSION_FILE="${GAIA_MEETING_SESSION_FILE:-_memory/meeting-sessions/${SESSION_ID
 # ISO-8601 UTC timestamp — BSD- and GNU-portable.
 ISO8601_NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# Side effects FIRST — write the two session-state fields BEFORE printing the
-# turn-terminal sentinel. Per AC2, this ordering means `--resume` reads a
-# consistent state regardless of whether the LLM honours the STOP.
+# Side-effect-only writes. Per AF-2026-05-08-4 the two fields are written
+# BEFORE any user-facing prompt mechanism so `--resume` reads a consistent
+# state regardless of how the user responds. AF-2026-05-10-1 removed the
+# subsequent stdout-sentinel emit — the side-effect ordering invariant is
+# preserved by the orchestrator's procedure: this helper runs to completion
+# THEN the LLM emits the substrate `AskUserQuestion` tool call. The
+# session-state writes are still the FIRST thing on the wire.
 #
 # When the session file does not yet exist (e.g., the helper is being
 # exercised standalone in a test stub), session-state.sh exits non-zero on
@@ -132,20 +166,11 @@ ISO8601_NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   --value "$ISO8601_NOW" \
   >/dev/null 2>&1 || true
 
-# Emit the canonical 3-line yield block. Order is load-bearing — the bats
-# tests in tests/skills/gaia-meeting/yield-gate.bats assert each line by
-# position.
-
-# 1. Phase marker.
-printf '## Yield: %s\n' "$PHASE"
-
-# 2. Canonical prompt block — verbatim from SKILL.md "Canonical user-prompt
-#    block". Single source of truth, do not paraphrase.
-printf '[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort\n'
-
-# 3. Turn-terminal sentinel — its own line, no trailing text. The SKILL.md
-#    Procedure section treats this as the literal end-of-turn marker. Any
-#    deviation breaks the regex parsers in the bats tests.
-printf '<<YIELD-STOP phase=%s session=%s>>\n' "$PHASE" "$SESSION_ID"
+# AF-2026-05-10-1: NO stdout output. The substrate `AskUserQuestion` tool
+# call is the user-facing prompt mechanism — it is emitted by the LLM in the
+# enclosing `/gaia-meeting` orchestration AFTER this helper returns. See
+# SKILL.md §Procedure for the canonical sequence at each of the 5 yield
+# boundaries (post-CHARTER, post-RESEARCH, discuss-cadence, pre-CLOSE,
+# pre-SAVE).
 
 exit 0

@@ -51,6 +51,15 @@ fi
 # stamp the most-recent yield emission for `--resume` consistency. The new
 # field is opaque to existing consumers and does NOT change the call signature
 # of the create / read / update API — see E76-S9 Tech Notes.
+#
+# `user_attendance` was added by E76-S21 (AF-2026-05-10-2 / AI-2026-05-09-9)
+# to record whether the user was explicitly invited as a first-class attendee
+# (`true` when `--invitees` contains `me` / `user` / resolved-user-name token,
+# `false` otherwise). Set ONCE at meeting start by `resolve-invitees.sh`; read
+# at every yield boundary by the AskUserQuestion-emit path (composes with
+# E76-S18) to determine whether to offer a user turn slot. Forward-additive —
+# legacy session files without the field default to empty string ("" reads as
+# unset) without breaking existing consumers.
 FIELDS=(
   session_id
   phase
@@ -64,6 +73,7 @@ FIELDS=(
   last_checkpoint_phase
   last_yield_emitted_at
   agent_dispatch_findings
+  user_attendance
 )
 
 is_valid_field() {
@@ -80,6 +90,19 @@ yaml_emit_value() {
   case "$field" in
     round|turn_counter|cadence_counter|cumulative_cost)
       printf '%s' "$v"
+      ;;
+    user_attendance)
+      # Boolean field — emit bare `true` / `false` (YAML literal). Empty value
+      # round-trips as the empty string for forward compatibility with
+      # session files created before E76-S21 added the field.
+      if [[ "$v" == "true" || "$v" == "false" ]]; then
+        printf '%s' "$v"
+      elif [[ -z "$v" ]]; then
+        printf '""'
+      else
+        echo "session-state.sh: user_attendance must be 'true' or 'false', got: $v" >&2
+        exit 2
+      fi
       ;;
     *)
       # Escape any embedded double quotes.
@@ -104,6 +127,7 @@ last_checkpoint_at: $(yaml_emit_value last_checkpoint_at "")
 last_checkpoint_phase: $(yaml_emit_value last_checkpoint_phase "")
 last_yield_emitted_at: $(yaml_emit_value last_yield_emitted_at "")
 agent_dispatch_findings: $(yaml_emit_value agent_dispatch_findings "")
+user_attendance: $(yaml_emit_value user_attendance "")
 EOF
 }
 

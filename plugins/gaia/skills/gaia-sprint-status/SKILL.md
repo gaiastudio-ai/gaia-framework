@@ -56,6 +56,53 @@ Surface the reconcile output verbatim to the user — do NOT swallow errors or f
 
 Feature-flag escape hatch: a future rollout toggle may gate this call. If `GAIA_DISABLE_RECONCILE=1` is set in the environment, skip Step 2 entirely so a frontmatter-parse regression can be isolated without reverting the wiring.
 
+### Sprint auto-close detection (E81-S3)
+
+The dashboard renders an advisory banner immediately above the story table when **every** story under the active sprint has `status: done` AND the top-level `status:` field still reads `active` AND `total_count > 0` (vacuous "all done" guard). Detection is centralized in `sprint-state.sh detect-auto-close` (single-line JSON contract on stdout, empty when the condition is not met, always exits 0) so other consumers (`/gaia-retro`, `/gaia-sprint-plan`) can reuse the same probe.
+
+**Subcommand contract:**
+
+```bash
+PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh" detect-auto-close
+# stdout when triggered (single line):
+# {"sprint_id":"sprint-N","done":3,"total":3,"status":"active","end_date":"2026-05-14"}
+# stdout when not triggered: empty
+# exit code: 0 (always — advisory, never blocking)
+```
+
+**Advisory-only — never mutates `sprint-status.yaml`.** The detect path is strictly read-only. The boundary write (flipping `status: closed` and seeding the next sprint) remains a manual operator action — `sprint-state.sh` rejects self-transitions and cannot seed new sprints per `_memory/feedback_sprint_boundary_yaml_write.md`. Auto-flipping would create false confidence that the next sprint had also been scaffolded. The right ergonomic improvement is **signal, not action**.
+
+When the banner fires, the dashboard prints the sprint id, done / total counts, end_date, and the literal `yq -i '.status = "closed"' docs/implementation-artifacts/sprint-status.yaml` remediation hint so operators can copy-paste the boundary write without re-deriving the exact yq syntax.
+
+### Stranded ready stories (E81-S4)
+
+The dashboard appends a `Stranded ready stories` section below the active-sprint table when one or more story files match ALL of the following criteria:
+
+- `status: ready-for-dev` in story-file frontmatter, AND
+- `sprint_id: null` in story-file frontmatter, AND
+- the MOST-RECENT entry for the story key in `_memory/validator-sidecar/decision-log.md` resolves to `PASSED`.
+
+The verdict lookup is a union over three heading patterns (per E81-S4 AC4):
+
+- `### [DATE] Story Validation: <key>` (written by `/gaia-validate-story`)
+- `### [DATE] Story Validation (re-run): <key>` (re-runs of the same)
+- `### [DATE] /gaia-<command>: <key>` (e.g., `/gaia-create-story` via `val-sidecar-write.sh`)
+
+Verdict body recognition: JSON-style `verdict":"PASSED"` (canonical, written by `val-sidecar-write.sh`), prose `verdict: PASSED`, or the legacy `**Status:** recorded` convention. FAILED or UNVERIFIED entries dominate within a block; stories whose most-recent entry is FAILED or UNVERIFIED are excluded from the section.
+
+**Recency rule.** The decision log appends newest entries AT THE TOP, so the first matching heading in document order is the most-recent. A story whose log has an older PASSED followed by a newer FAILED is EXCLUDED — recency wins.
+
+**Read-only invariant (AC3, AC6).** The detection path is strictly read-only: no story file, no `sprint-status.yaml` entry, and no `priority_flag` is mutated. Per `feedback_priority_flag_never_auto_set.md`, the framework never auto-injects stranded stories into the active sprint and never sets `priority_flag: "next-sprint"`. The dashboard signal alone is the ergonomic improvement — the operator decides.
+
+**Suppression (AC2).** If no story matches the criteria, the entire section (header + hint line) is suppressed — no empty-list placeholder is rendered.
+
+**Operator's decision path.**
+
+- To inject a stranded story into the active sprint immediately, run `/gaia-correct-course` (operator-driven sprint scope change).
+- To let the next sprint pick it up, take no action — `/gaia-sprint-plan` will see the story in the backlog candidates and decide sequencing.
+
+The hint line printed below the stranded list spells out both paths verbatim so the operator can copy the slash command.
+
 ### Step 3 — Suggest Next Actions
 
 Based on the dashboard output, suggest relevant next actions:

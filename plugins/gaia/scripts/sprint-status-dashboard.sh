@@ -182,6 +182,57 @@ if [[ -n "$epic_focus" ]]; then
 fi
 printf -- '-%.0s' {1..72}; printf '\n'
 
+# ---------- Sprint auto-close banner (E81-S3, AC2) ----------
+#
+# Advisory banner — fires when every story under the active sprint has
+# status=done. Detection is delegated to `sprint-state.sh detect-auto-close`
+# so the rule is centralized (per E81-S3 Dev Notes — reusable beyond this
+# dashboard). When detection returns empty stdout, the banner is suppressed.
+#
+# READ-ONLY: this block never mutates sprint-status.yaml. The boundary write
+# (flipping status:closed and seeding the next sprint) remains a manual
+# operator action per feedback_sprint_boundary_yaml_write.md — the banner
+# only signals intent, never acts.
+auto_close_json=""
+SPRINT_STATE_SCRIPT="$SCRIPT_DIR/sprint-state.sh"
+if [[ -x "$SPRINT_STATE_SCRIPT" ]]; then
+  # Inherit the same SPRINT_STATUS_YAML / PROJECT_PATH the dashboard
+  # already resolved so the subcommand reads the identical file. Errors are
+  # swallowed (advisory only) — never block the dashboard.
+  auto_close_json=$(SPRINT_STATUS_YAML="$YAML_PATH" \
+    PROJECT_PATH="$PROJECT_PATH" \
+    "$SPRINT_STATE_SCRIPT" detect-auto-close 2>/dev/null || true)
+fi
+if [[ -n "$auto_close_json" ]]; then
+  # Parse the four canonical fields. We avoid a jq dependency — bats
+  # environments don't always have it — and the JSON shape is fixed
+  # (single-line, four keys). Use bash regex to pull each value.
+  ac_sprint_id=""
+  ac_done=""
+  ac_total=""
+  ac_end_date=""
+  if [[ "$auto_close_json" =~ \"sprint_id\":\"([^\"]*)\" ]]; then
+    ac_sprint_id="${BASH_REMATCH[1]}"
+  fi
+  if [[ "$auto_close_json" =~ \"done\":([0-9]+) ]]; then
+    ac_done="${BASH_REMATCH[1]}"
+  fi
+  if [[ "$auto_close_json" =~ \"total\":([0-9]+) ]]; then
+    ac_total="${BASH_REMATCH[1]}"
+  fi
+  if [[ "$auto_close_json" =~ \"end_date\":\"([^\"]*)\" ]]; then
+    ac_end_date="${BASH_REMATCH[1]}"
+  fi
+  printf '  [SPRINT AUTO-CLOSE] %s — %s/%s stories done (end_date: %s)\n' \
+    "${ac_sprint_id:-?}" "${ac_done:-?}" "${ac_total:-?}" "${ac_end_date:-(unset)}"
+  printf '    Every story under this sprint is done, but sprint-status.yaml\n'
+  printf '    still reads status: active. Boundary write is overdue.\n'
+  printf '    Remediation (manual operator action — never auto-flipped):\n'
+  printf '      yq -i %s.status = \"closed\"%s docs/implementation-artifacts/sprint-status.yaml\n' "'" "'"
+  printf '    Then seed the next sprint per feedback_sprint_boundary_yaml_write.md.\n'
+  printf -- '-%.0s' {1..72}; printf '\n'
+fi
+
 # ---------- Parse stories ----------
 # Extract story blocks from the YAML. Each story starts with "  - key:" under stories:.
 # Pure-bash approach: read lines after "stories:" and parse key/value pairs per block.
@@ -268,6 +319,34 @@ fi
 # ---------- Footer ----------
 printf -- '-%.0s' {1..72}; printf '\n'
 printf '  Total: %d stories | %s points\n' "$story_count" "${total_points:-0}"
+
+# ---------- Stranded ready stories section (E81-S4, AC1, AC2) ----------
+#
+# Advisory section — surfaces stories with `status: ready-for-dev` AND
+# `sprint_id: null` AND most-recent decision-log verdict PASSED. Operator
+# may inject via /gaia-correct-course or wait for /gaia-sprint-plan. Empty
+# stdout from the scanner triggers full suppression (AC2 — no header, no
+# placeholder).
+#
+# READ-ONLY: never mutates story files or sprint-status.yaml. The scanner
+# performs scan-and-print only (per AC3 + feedback_priority_flag_never_auto_set.md).
+STRANDED_SCANNER="$SCRIPT_DIR/lib/scan-stranded-ready.sh"
+if [[ -x "$STRANDED_SCANNER" ]]; then
+  stranded_tsv=$(PROJECT_PATH="$PROJECT_PATH" \
+    IMPLEMENTATION_ARTIFACTS="$IMPLEMENTATION_ARTIFACTS" \
+    "$STRANDED_SCANNER" 2>/dev/null || true)
+  if [[ -n "$stranded_tsv" ]]; then
+    printf -- '-%.0s' {1..72}; printf '\n'
+    printf '  ## Stranded ready stories\n'
+    idx=0
+    while IFS=$'\t' read -r sr_key sr_title _sr_path; do
+      [[ -n "$sr_key" ]] || continue
+      idx=$((idx + 1))
+      printf '  %d. %s — %s\n' "$idx" "$sr_key" "$sr_title"
+    done <<<"$stranded_tsv"
+    printf '  These stories are Val-PASSED but unassigned. Inject via /gaia-correct-course, or let /gaia-sprint-plan pick them up.\n'
+  fi
+fi
 
 # Risk-surfacing block (E38-S1, FR-SPQG-5).
 # When the current sprint contains at least one HIGH-risk story, list every

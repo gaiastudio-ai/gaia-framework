@@ -74,23 +74,40 @@ RESEARCH and DISCUSS hooks rather than reimplementing the lifecycle.
   into in-memory state and writes lifecycle markers to the live transcript;
   the full meeting-notes file format with required sections (FR-MTG-27) lands
   in E76-S3. S1 produces a minimum viable transcript that S3 will extend.
+- **Yield boundaries MUST use the substrate `AskUserQuestion` primitive, NOT
+  stdout sentinels (E76-S15, AF-2026-05-10-1, AI-2026-05-09-8).** Forbidden
+  sentinel strings inside §Procedure yield-boundary subsections:
+  `<<YIELD-STOP`, `<<TURN-END`, and any future variant of a turn-terminal
+  marker emitted via stdout. The script-side stdout-sentinel mechanism was
+  empirically defeated by harness Auto Mode on 2026-05-09 — the harness does
+  not stop on stdout content (memory rule
+  `feedback_askuserquestion_under_automode.md`). The substrate
+  `AskUserQuestion` call halts the LLM turn at the substrate level
+  regardless of Auto Mode and is therefore the only correct primitive for
+  the five yield boundaries (post-CHARTER, post-RESEARCH, every-N DISCUSS,
+  pre-CLOSE, pre-SAVE). Static enforcement:
+  `tests/gaia-meeting-stdout-sentinel-forbid.bats` invokes
+  `scripts/stdout-sentinel-scan.sh` against this SKILL.md and FAILS the build
+  on any forbidden-pattern hit inside §Procedure scope. See ADR-083
+  amendment AF-2026-05-10-1.
 
 ### No fabricated user turns (E76-S8, FR-MTG-10, NFR-MTG-1, ADR-083)
 
 The skill MUST NOT emit a turn attributed to the user under ANY persona,
-label, or phase, regardless of mode, regardless of whether `me` / `user` / a
-token resolving to the user's name appears in `--invitees`. The user is not
-an agent; the user does not appear as a `Speaker:` in any prelude or DISCUSS
-turn. The 2026-05-08 regression — where two turns labelled `${USER_NAME}
-(user)` (one RESEARCH prelude, one DISCUSS round-1 turn) were emitted that
-the user never authored — surfaced this as a hard correctness defect; this
-rule converts the prose contract from L94 / L96 / L277 / L485-487 (`The user
-does not appear in the round-robin order` / `Resolve user-interjection
-labels via scripts/resolve-user-name.sh` / `User interjections allowed at
-turn boundaries` / `--charter` + `[i]nterject` / `--interject` authoring
-channels) into a testable invariant.
+label, or phase, regardless of mode, **EXCEPT when the user is explicitly invited as an attendee per the user-as-attendee carve-out (AF-2026-05-10-2), with origin=attendee per the FR-MTG-33 schema extension**
+(carve-out detail below). The user is not an agent; the user does not
+appear as a `Speaker:` in any prelude or DISCUSS turn auto-emitted between
+yield boundaries. The 2026-05-08 regression — where two turns labelled
+`${USER_NAME} (user)` (one RESEARCH prelude, one DISCUSS round-1 turn)
+were emitted that the user never authored — surfaced this as a hard
+correctness defect; this rule converts the prose contract from L94 / L96
+/ L277 / L485-487 (`The user does not appear in the round-robin order` /
+`Resolve user-interjection labels via scripts/resolve-user-name.sh` /
+`User interjections allowed at turn boundaries` / `--charter` +
+`[i]nterject` / `--interject` authoring channels) into a testable
+invariant.
 
-The user has exactly two authoring channels — and only these:
+The user has exactly three authoring channels — and only these:
 
 - `--charter "<inline>"` on the initial invocation (FR-MTG-2). The charter
   text is the user's voice for INVITE / CHARTER and is recorded in the
@@ -98,8 +115,34 @@ The user has exactly two authoring channels — and only these:
 - `[i]nterject "..."` (interactive prompt block) and `--interject` (on
   `--resume`) at any yield boundary (FR-MTG-32, ADR-083). An interject turn
   carries `origin: interject` (and per E76-S10, `dispatched_via: interject`)
-  in its per-turn header — that origin marker is the ONLY exemption to the
-  no-fabricated-user-turn invariant.
+  in its per-turn header.
+- `me` / `user` / `<resolved-user-name>` in `--invitees`
+  (**AF-2026-05-10-2 carve-out**) — the user is added as a non-LLM attendee
+  with a turn slot at every yield boundary, and the user's response is
+  captured via the `AskUserQuestion` 5-option primitive installed by E76-S18
+  (composition; no new substrate needed). An attendee turn carries
+  `origin: attendee` per the FR-MTG-33 session-state schema extension.
+
+The `interject` and `attendee` origin markers are the ONLY exemptions to
+the no-fabricated-user-turn invariant; both originate from substrate-driven
+user input (interactive prompt block or `AskUserQuestion` response), never
+from auto-emission between yields.
+
+**User-as-attendee carve-out (AF-2026-05-10-2).** When the user is
+explicitly invited via `me` / `user` / `<resolved-user-name>` in
+`--invitees`, the user is added as a non-LLM attendee with a turn slot at
+every yield boundary (via the `AskUserQuestion` response primitive per
+E76-S18 / FR-MTG-32 amendment). The user is **never** auto-emitted as a
+DISCUSS turn between yields — the no-fabricated-user-turns invariant
+(E76-S8) holds for unsolicited / fabricated user turns; the carve-out
+authorizes only user turns that originate from a substrate-driven
+response (origin=attendee or origin=interject; persisted as
+`origin: attendee` / `origin: interject` in the per-turn header per the
+FR-MTG-33 schema extension). The carve-out distinguishes (a) unsolicited
+/ fabricated user turns — still forbidden — from (b) the invited-attendee
+path where each turn originates from an `AskUserQuestion` response, never
+from auto-emission. See ADR-083 amendment AF-2026-05-10-2 and
+AI-2026-05-09-9 for the audit trail.
 
 Static enforcement: `tests/no-fabricated-user-turns.bats` scans a saved
 transcript for any turn whose `Speaker:` field matches the resolved user
@@ -302,18 +345,32 @@ Substrate A (Claude Agent Teams) and Substrate B (sequential-fork fallback).
 
 ### Canonical user-prompt block
 
-Every checkpoint yield emits this exact prompt block (the verbatim five-option
-menu — single source of truth, do not paraphrase):
+Every checkpoint yield emits a substrate `AskUserQuestion` tool call with
+the canonical five-option composition: 4 explicit options
+(`[c]ontinue`, `[p]ause`, `[w]rap-up`, `[a]bort`) plus the substrate's
+auto-Other slot which accepts `[i]nterject` free-text. The auto-Other free-text
+binding is the substrate-natural mapping for [i]nterject — it is the only
+one of the five options that carries a payload (per FR-MTG-33
+`--interject "<text>"` semantics).
+
+The legacy single-line text rendition is preserved here verbatim as a
+documentation marker (single source of truth for the option labels — do not
+paraphrase):
 
 ```
 [c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
 ```
 
+Under AF-2026-05-10-1 the prompt is rendered by the substrate
+`AskUserQuestion` primitive — NOT by the script-side stdout-sentinel
+mechanism (which was empirically defeated by harness Auto Mode on 2026-05-09;
+see §Procedure §Substrate-enforced turn-terminal yield contract).
+
 | Option | Effect |
 |--------|--------|
 | `[c]ontinue` | Persist session state, advance to the next phase or turn group. |
 | `[p]ause` | Persist session state, exit cleanly. The user resumes later via `/gaia-meeting --resume <session-id>`. |
-| `[i]nterject "..."` | Inject a user turn at the resume point (FR-MTG-10) with the user's name resolved by `scripts/resolve-user-name.sh`. The injection consumes one emitted-turn slot and ticks the cost-cadence counter. |
+| `[i]nterject "..."` | Inject a user turn at the resume point (FR-MTG-10) with the user's name resolved by `scripts/resolve-user-name.sh`. The injection consumes one emitted-turn slot and ticks the cost-cadence counter. The substrate captures the free-text via the auto-Other slot of `AskUserQuestion`. |
 | `[w]rap-up` | Skip remaining DISCUSS turns and jump directly to CLOSE. Research and discussion state are preserved. |
 | `[a]bort` | Persist session state and exit without writing CLOSE/SAVE artifacts. |
 
@@ -402,32 +459,49 @@ The cadence-counter persistence introduced by E76-S7 lives ENTIRELY in
 
 ## Procedure
 
-### Script-enforced turn-terminal yield contract (E76-S9, ADR-083 amended, FR-MTG-32 / FR-MTG-33)
+### Substrate-enforced turn-terminal yield contract (E76-S18 / AF-2026-05-10-1, ADR-083 third amendment, FR-MTG-32 / FR-MTG-33)
 
 The five yield boundaries below (post-CHARTER, post-RESEARCH, every-N
-DISCUSS, pre-CLOSE, pre-SAVE) are each implemented as a literal exec of
-`scripts/yield-gate.sh --phase <phase> --session-id <id>`. The helper emits
-the canonical 3-line block (phase marker, prompt, sentinel) and returns. The
-final line of stdout is the sentinel:
+DISCUSS, pre-CLOSE, pre-SAVE) are each implemented as a two-step procedure:
 
-```
-<<YIELD-STOP phase=<phase> session=<session-id>>>
-```
+1. **Side-effect step (script).** Exec
+   `scripts/yield-gate.sh --phase <phase> --session-id <id> --side-effect-only`.
+   The helper writes `last_checkpoint_phase` and `last_yield_emitted_at`
+   via `session-state.sh update` and produces ZERO stdout output. The
+   side-effect-only behaviour is the default under AF-2026-05-10-1; the
+   explicit flag is retained so the procedure prose at every boundary
+   documents the intent.
+2. **Substrate-halt step (LLM).** Emit a substrate `AskUserQuestion` tool
+   call as the FINAL action of the current LLM turn. The substrate halts
+   the turn at the harness layer regardless of Auto Mode — the next user
+   turn carries the response payload. The question header MUST name the
+   yield boundary (e.g., `Yield: post-CHARTER`); the canonical 4 explicit
+   options + auto-Other [i]nterject composition is documented under
+   §Interactive Checkpoint Mode → §Canonical user-prompt block.
 
-> The YIELD-STOP sentinel ENDS the current LLM turn. The skill MUST NOT emit
-> any further output after the sentinel until it is re-entered via
-> `/gaia-meeting --resume <session-id>` (with optional `--continue` /
-> `--interject "..."` / `--wrap-up`). This is a script-enforced boundary,
-> not an LLM discipline.
+> The substrate `AskUserQuestion` tool call ENDS the current LLM turn at
+> the harness layer. The skill MUST NOT emit any further output after the
+> AskUserQuestion call until it is re-entered via `/gaia-meeting --resume
+> <session-id>` (with optional `--continue` / `--interject "..."` /
+> `--wrap-up`) OR via the substrate's response-driven re-entry on the next
+> top-level user turn. This is a substrate-enforced boundary, not an LLM
+> discipline.
 
-E76-S7 documented these boundaries; enforcement was prose-side and
-empirically failed on 2026-05-08 — the lifecycle ran end-to-end in a single
-LLM turn with zero prompt blocks emitted. E76-S9 moves enforcement to the
-script side: `yield-gate.sh` writes `last_checkpoint_phase` and
-`last_yield_emitted_at` via `session-state.sh update` BEFORE printing the
-sentinel, so `--resume` reads a consistent state regardless of whether the
-LLM honours the STOP. ADR-083 is amended (AF-2026-05-08-4) to ratify the
-script-enforced boundary contract as normative.
+**History.** E76-S7 documented these boundaries with prose-side enforcement
+which empirically failed on 2026-05-08 (lifecycle ran end-to-end in a single
+LLM turn with zero prompt blocks emitted). E76-S9 moved enforcement to a
+script-side turn-terminal stdout sentinel which empirically failed on
+2026-05-09 — the harness Auto Mode does not stop on stdout content (memory
+rule `feedback_askuserquestion_under_automode.md`, audit finding
+AI-2026-05-09-8). E76-S18 / AF-2026-05-10-1 moved enforcement to the
+substrate `AskUserQuestion` primitive which halts the LLM turn at the harness
+layer regardless of Auto Mode. The `last_checkpoint_phase` and
+`last_yield_emitted_at` session-state writes from yield-gate.sh are preserved
+verbatim — the side-effect-ordering invariant from AF-2026-05-08-4 still
+holds: the script's side-effect writes complete BEFORE the LLM emits the
+AskUserQuestion call, so `--resume` reads a consistent state regardless of
+how the user responds. ADR-083 is amended (AF-2026-05-10-1) to ratify the
+substrate-enforced boundary contract as normative.
 
 `scripts/checkpoint-cadence.sh` is byte-identical to its E76-S7 baseline
 (E76-S9 / AC6) — `yield-gate.sh` consumes its output via stdin/argv and the
@@ -456,20 +530,29 @@ This story does not introduce a parallel cadence counter.
 2. On success, the charter is recorded in `MEETING_STATE_FILE` for later
    persistence (full frontmatter persistence ships with E76-S3 / FR-MTG-27).
 3. Emit the `## Phase: CHARTER` marker.
-4. **Post-CHARTER checkpoint yield (E76-S7, E76-S9 — script-enforced).**
+4. **Post-CHARTER checkpoint yield (E76-S7, E76-S9, E76-S18 — substrate-enforced under AF-2026-05-10-1).**
    Persist the initial session state via `scripts/session-state.sh create`
    (or `update` on resume), surface the one-line `--no-web` note for
    sensitive contexts (T-MTG-4 mitigation c), then exec
-   `scripts/yield-gate.sh --phase post-charter --session-id <id>`. The
-   helper writes `last_checkpoint_phase` and `last_yield_emitted_at` via
-   `session-state.sh update`, then emits the canonical 3-line block ending
-   with the `<<YIELD-STOP phase=post-charter session=<id>>>` sentinel.
-   Per the §Procedure turn-terminal contract above, the sentinel ENDS the
-   current LLM turn — the lifecycle resumes via `/gaia-meeting --resume <id>`.
+   `scripts/yield-gate.sh --phase post-charter --session-id <id> --side-effect-only`.
+   The helper writes `last_checkpoint_phase` and `last_yield_emitted_at` via
+   `session-state.sh update` and produces no stdout output.
+   AFTER the helper returns, emit a substrate `AskUserQuestion` tool call
+   as the final action of the current LLM turn:
+
+   - **header:** `Yield: post-CHARTER`
+   - **question:** `post-CHARTER yield — review charter and decide how to proceed`
+   - **options:** `[c]ontinue`, `[p]ause`, `[w]rap-up`, `[a]bort` (4 explicit options; the substrate appends an auto-Other slot that accepts `[i]nterject` free-text)
+   - **multiSelect:** `false`
+
+   Per the §Procedure substrate-enforced turn-terminal contract above, the
+   AskUserQuestion call ENDS the current LLM turn at the harness layer —
+   the lifecycle resumes via `/gaia-meeting --resume <id>` or via the
+   substrate's response-driven re-entry on the next top-level user turn.
 
 ### Phase 3 — RESEARCH (E76-S2, ADR-084)
 
-Only invited agents post preludes and DISCUSS turns. The user does not appear as a turn author in either phase.
+Only invited agents post preludes and DISCUSS turns. The user does not appear as a turn author in either phase. (See §No fabricated user turns for the user-as-attendee carve-out at yield boundaries — when the user is explicitly invited via `me` / `user` / `<resolved-user-name>`, the user takes a non-LLM attendee turn slot at each yield, captured via `AskUserQuestion`; never auto-emitted between yields.)
 
 **Dispatch contract (E76-S10, ADR-045, ADR-063).** Each invited agent's prelude (RESEARCH) AND each DISCUSS turn MUST be produced by spawning a subagent via the `Agent` tool with `context: fork` per ADR-045 and the per-phase tool allowlist below. Inline LLM role-play under the agent's persona is FORBIDDEN. The facilitator does not author agent turns; the facilitator orchestrates dispatch.
 
@@ -544,13 +627,21 @@ research_phase: enabled|skipped
 web_search:    enabled|disabled
 ```
 
-**Post-RESEARCH checkpoint yield (E76-S7, E76-S9 — script-enforced).**
+**Post-RESEARCH checkpoint yield (E76-S7, E76-S9, E76-S18 — substrate-enforced under AF-2026-05-10-1).**
 After every invitee's prelude has landed AND BEFORE DISCUSS begins, persist
 session state via `scripts/session-state.sh update`, then exec
-`scripts/yield-gate.sh --phase post-research --session-id <id>`. The helper
-emits the canonical 3-line block ending with
-`<<YIELD-STOP phase=post-research session=<id>>>`. Per the §Procedure
-turn-terminal contract, the sentinel ENDS the current LLM turn.
+`scripts/yield-gate.sh --phase post-research --session-id <id> --side-effect-only`.
+The helper writes `last_checkpoint_phase` and `last_yield_emitted_at` and
+produces no stdout output. AFTER the helper returns, emit a substrate
+`AskUserQuestion` tool call as the final action of the current LLM turn:
+
+- **header:** `Yield: post-RESEARCH`
+- **question:** `post-RESEARCH yield — review preludes and decide how to proceed`
+- **options:** `[c]ontinue`, `[p]ause`, `[w]rap-up`, `[a]bort` (4 explicit options; auto-Other slot accepts `[i]nterject` free-text)
+- **multiSelect:** `false`
+
+Per the §Procedure substrate-enforced turn-terminal contract, the
+AskUserQuestion call ENDS the current LLM turn at the harness layer.
 
 `--resume <session-id> --continue` re-enters DISCUSS with `cadence_counter`,
 `raise_hand_ledger`, `scratchpad_state`, and `cumulative_cost` preserved
@@ -558,7 +649,7 @@ verbatim from the paused state (TC-MTG-CHKPT-3).
 
 ### Phase 4 — DISCUSS
 
-Only invited agents post preludes and DISCUSS turns. The user does not appear as a turn author in either phase.
+Only invited agents post preludes and DISCUSS turns. The user does not appear as a turn author in either phase. (See §No fabricated user turns for the user-as-attendee carve-out at yield boundaries — when the user is explicitly invited via `me` / `user` / `<resolved-user-name>`, the user takes a non-LLM attendee turn slot at each yield, captured via `AskUserQuestion`; never auto-emitted between yields.)
 
 **Dispatch contract (E76-S10, ADR-045, ADR-063).** Each invited agent's prelude (RESEARCH) AND each DISCUSS turn MUST be produced by spawning a subagent via the `Agent` tool with `context: fork` per ADR-045 and the per-phase tool allowlist below. Inline LLM role-play under the agent's persona is FORBIDDEN. The facilitator does not author agent turns; the facilitator orchestrates dispatch.
 
@@ -579,19 +670,29 @@ The canonical wrapper is `scripts/dispatch-agent-turn.sh --agent <id> --phase di
    names the offending lines, and the facilitator HALTs round-robin
    advancement until the agent re-emits the turn with a marker. The offending
    turn MUST NEVER land in the persisted transcript (FR-MTG-28 hard guardrail).
-8. **Every-N DISCUSS-turn checkpoint yield (E76-S7, E76-S9 — script-enforced).**
+8. **Every-N DISCUSS-turn checkpoint yield (E76-S7, E76-S9, E76-S18 — substrate-enforced under AF-2026-05-10-1).**
    After every `meeting.checkpoint_every_n_turns` emitted DISCUSS turns
    (default 4, loaded by `scripts/checkpoint-cadence.sh`), persist
    `cadence_counter` via `scripts/session-state.sh update --field cadence_counter`,
-   then exec `scripts/yield-gate.sh --phase discuss-cadence --session-id <id>`.
-   The helper emits the canonical 3-line block ending with
-   `<<YIELD-STOP phase=discuss-cadence session=<id>>>`.
-   Per the §Procedure turn-terminal contract, the sentinel ENDS the current
-   LLM turn. The cadence value is loaded once per session-load (default 4,
-   clamp `[1, 10]`, single-line WARNING on out-of-range values per AC9).
-   The 10-turn cost-check cadence (NFR-MTG-1) is independent of this
-   checkpoint cadence — both fire on emitted-turn count and remain mutually
-   deterministic (TC-MTG-CHKPT-6).
+   then exec `scripts/yield-gate.sh --phase discuss-cadence --session-id <id> --side-effect-only`.
+   The helper writes `last_checkpoint_phase` and `last_yield_emitted_at`
+   and produces no stdout output. AFTER the helper returns, emit a substrate
+   `AskUserQuestion` tool call as the final action of the current LLM turn:
+
+   - **header:** `Yield: discuss-cadence`
+   - **question:** `discuss-cadence yield — N DISCUSS turns since last yield; review and decide how to proceed`
+   - **options:** `[c]ontinue`, `[p]ause`, `[w]rap-up`, `[a]bort` (4 explicit options; auto-Other slot accepts `[i]nterject` free-text)
+   - **multiSelect:** `false`
+
+   Per the §Procedure substrate-enforced turn-terminal contract, the
+   AskUserQuestion call ENDS the current LLM turn at the harness layer.
+   The cadence counter MUST advance per emitted DISCUSS turn (not per
+   round-robin slot) and persists across the yield via `session-state.sh`.
+   The cadence value is loaded once per session-load (default 4, clamp
+   `[1, 10]`, single-line WARNING on out-of-range values per AC9). The
+   10-turn cost-check cadence (NFR-MTG-1) is independent of this checkpoint
+   cadence — both fire on emitted-turn count and remain mutually deterministic
+   (TC-MTG-CHKPT-6).
 9. **Raise-hand arbitration (FR-MTG-7 / FR-MTG-9, E76-S2).** When an agent's
    turn ends with `[raise-hand → respond to {Name}]` (em-dash or ASCII `->`),
    the facilitator processes the flag via `scripts/raise-hand-arbiter.sh`:
@@ -612,20 +713,31 @@ The canonical wrapper is `scripts/dispatch-agent-turn.sh --agent <id> --phase di
 
 ### Phase 5 — CLOSE (E76-S3)
 
-**Pre-CLOSE checkpoint yield (E76-S7, E76-S9 — script-enforced; AC8 /
-TC-MTG-CHKPT-8).** BEFORE CLOSE drafts any artifact, run
-`scripts/secret-scrubber.sh` over the in-memory state (charter + scratchpad
-pins) AND THEN persist session state via `scripts/session-state.sh update`.
-The scrubber is the SINGLE source of truth for the T-MTG-3 secret-pattern
-regex set — no duplicated implementation. The scrubbed payload is what
-lands in the persisted YAML across the checkpoint boundary; the in-memory
-charter is also replaced with the scrubbed copy so subsequent CLOSE/SAVE
-artifacts use the redacted form.
+**Pre-CLOSE checkpoint yield (E76-S7, E76-S9, E76-S18 — substrate-enforced
+under AF-2026-05-10-1; AC8 / TC-MTG-CHKPT-8).** BEFORE CLOSE drafts any
+artifact, run `scripts/secret-scrubber.sh` over the in-memory state
+(charter + scratchpad pins) AND THEN persist session state via
+`scripts/session-state.sh update`. The scrubber is the SINGLE source of
+truth for the T-MTG-3 secret-pattern regex set — no duplicated
+implementation. The scrubbed payload is what lands in the persisted YAML
+across the checkpoint boundary; the in-memory charter is also replaced
+with the scrubbed copy so subsequent CLOSE/SAVE artifacts use the redacted
+form.
 
-After scrubbing, exec `scripts/yield-gate.sh --phase pre-close --session-id
-<id>`. The helper emits the canonical 3-line block ending with
-`<<YIELD-STOP phase=pre-close session=<id>>>`. Per the §Procedure
-turn-terminal contract, the sentinel ENDS the current LLM turn.
+After scrubbing, exec
+`scripts/yield-gate.sh --phase pre-close --session-id <id> --side-effect-only`.
+The helper writes `last_checkpoint_phase` and `last_yield_emitted_at` and
+produces no stdout output. AFTER the helper returns, emit a substrate
+`AskUserQuestion` tool call as the final action of the current LLM turn:
+
+- **header:** `Yield: pre-CLOSE`
+- **question:** `pre-CLOSE yield — about to draft close-time triage and artifacts; review and decide how to proceed`
+- **options:** `[c]ontinue`, `[p]ause`, `[w]rap-up`, `[a]bort` (4 explicit options; auto-Other slot accepts `[i]nterject` free-text)
+- **multiSelect:** `false`
+
+Per the §Procedure substrate-enforced turn-terminal contract, the
+AskUserQuestion call ENDS the current LLM turn. No CLOSE artifact prose
+emits in the same LLM turn as the AskUserQuestion call.
 
 `--resume <session-id> --wrap-up` re-enters at this point even from a paused
 DISCUSS — the orchestrator preserves research preludes and accumulated
@@ -669,13 +781,26 @@ AC6).
 
 ### Phase 7 — SAVE (E76-S3, FR-MTG-21 / FR-MTG-24 / FR-MTG-25 / FR-MTG-27)
 
-**Pre-SAVE checkpoint yield (E76-S7, E76-S9 — script-enforced).** BEFORE
-the three writes happen, persist session state via
-`scripts/session-state.sh update --field phase --value SAVE`, then exec
-`scripts/yield-gate.sh --phase pre-save --session-id <id>`. The helper
-emits the canonical 3-line block ending with
-`<<YIELD-STOP phase=pre-save session=<id>>>`. Per the §Procedure
-turn-terminal contract, the sentinel ENDS the current LLM turn.
+**Pre-SAVE checkpoint yield (E76-S7, E76-S9, E76-S18 — substrate-enforced
+under AF-2026-05-10-1).** BEFORE the three writes happen, persist session
+state via `scripts/session-state.sh update --field phase --value SAVE`,
+then exec
+`scripts/yield-gate.sh --phase pre-save --session-id <id> --side-effect-only`.
+The helper writes `last_checkpoint_phase` and `last_yield_emitted_at` and
+produces no stdout output. AFTER the helper returns, emit a substrate
+`AskUserQuestion` tool call as the final action of the current LLM turn:
+
+- **header:** `Yield: pre-SAVE`
+- **question:** `pre-SAVE yield — about to write artifacts to disk; review and decide how to proceed`
+- **options:** `[c]ontinue`, `[p]ause`, `[w]rap-up`, `[a]bort` (4 explicit options; auto-Other slot accepts `[i]nterject` free-text)
+- **multiSelect:** `false`
+
+Per the §Procedure substrate-enforced turn-terminal contract, the
+AskUserQuestion call ENDS the current LLM turn at the harness layer. No
+artifact write to `docs/creative-artifacts/`, `_memory/{agent}-sidecar/decisions/`,
+the action-items registry, or `_memory/meeting-sessions/` MUST happen in
+the same LLM turn as the AskUserQuestion call — the SAVE writes resume on
+the next user turn after the user response is captured.
 
 `[c]ontinue` proceeds to the SAVE writes; `[p]ause` exits cleanly so the
 user can resume later via `--resume <session-id>`. There is **no undo
@@ -994,6 +1119,11 @@ fire-indices across a K=0 and a K=4 raise-hand run.
 - ADR-045 — Subagent fork-context isolation (the dispatch primitive used by E76-S10's RESEARCH and DISCUSS turns).
 - ADR-063 — Dispatch contract / verdict surfacing (per-phase tool allowlists, ADR-037 return schema, finding severity routing).
 - ADR-083 — Peer-to-peer multi-agent discussion topology.
+- ADR-083 amendment AF-2026-05-10-1 — Yield boundaries use the substrate `AskUserQuestion` primitive, NOT script-side stdout sentinels (E76-S15 / E76-S17 / E76-S18).
+- FR-MTG-10 amendment AF-2026-05-10-2 (PRD-level; ADR-083 unchanged per AI-2026-05-09-9 scope hint) — User-as-first-class-attendee carve-out: when `me` / `user` / `<resolved-user-name>` appears in `--invitees`, the user is added as a non-LLM attendee with a turn slot at every yield boundary (composes with the AF-2026-05-10-1 `AskUserQuestion` primitive). Preserves E76-S8 no-fabricated-user-turns invariant via Option-A supersedure of AC1's `regardless-of-invitees` qualifier (E76-S19 / E76-S20 / E76-S21).
+- AI-2026-05-09-8 — Audit finding: stdout-sentinel mechanism empirically defeated by harness Auto Mode on 2026-05-09; substrate-correct primitive is `AskUserQuestion`.
+- AI-2026-05-09-9 — Audit finding: SKILL.md L80-116 / L81 / L94-103 / L474 / L563 categorically excluded the user-as-attendee path; absolute-prohibition language without an explicit carve-out led downstream readers to extrapolate the wrong behavior. Resolved by E76-S20 carve-out subsection + EXCEPT clause + 3-channel enumeration + Phase 3/4 back-references.
+- Memory rule `feedback_askuserquestion_under_automode.md` — `AskUserQuestion` is substrate-enforced and halts the LLM turn under Auto Mode (verified 2026-05-09).
 - ADR-084 — Research-phase contract (sidecar load → SoT reads → web search → cited prelude).
 - ADR-086 — Sidecar path reconciliation: `_memory/<agent>-sidecar/` is canonical.
 - Test plan §11.56 — TC-MTG-CHARTER-1..3, TC-MTG-TURN-1..3, TC-MTG-STREAM-1, TC-MTG-STREAM-3, TC-MTG-RESEARCH-1..6, TC-MTG-GUARD-1.

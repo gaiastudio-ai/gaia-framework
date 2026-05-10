@@ -1,0 +1,20 @@
+sprint_id: "sprint-X"
+duration: "1 week"
+velocity_capacity: 20
+team_size: 1
+total_points: 5
+capacity_utilization: "25%"
+started: "2026-05-01"
+end_date: "2026-05-14"
+status: "active"
+overrides: []
+priority_flag_cleared: []
+stories:
+  - key: "E91-S1"
+    title: "Decoy in-sprint story"
+    status: "in-progress"
+    points: 5
+    risk_level: "low"
+    assignee: null
+    blocked_by: null
+    updated: "2026-05-10"

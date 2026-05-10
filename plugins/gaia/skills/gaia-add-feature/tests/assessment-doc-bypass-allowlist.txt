@@ -1,0 +1,41 @@
+# assessment-doc-bypass-allowlist.txt — E83-S3
+#
+# Historical assessment-AF-*.md files that pre-date the AC #6 paraphrase
+# convention and contain Val-gate bypass smoking-gun strings inside
+# audit-trail prose. Files listed here are SKIPPED by
+# `assessment-doc-bypass-check.sh` so the historical audit-trail context is
+# preserved without paraphrasing.
+#
+# Format:
+#   - One basename per line (no path, no glob).
+#   - Lines beginning with '#' are comments.
+#   - Blank lines are ignored.
+#
+# Convention: every entry MUST be followed by a `# REASON:` comment explaining
+# why paraphrasing would erase load-bearing audit-trail context. New entries
+# require explicit reviewer approval. The allowlist is INTENDED to shrink over
+# time as historical AFs are paraphrased or sunset.
+#
+# Audit-trail (E83-S3): the live corpus at project-root
+# `docs/planning-artifacts/assessment-AF-*.md` contains 10 (pattern, file, line)
+# tuples spread across 5 historical files. AF-2026-05-09-3 (1 hit) and
+# AF-2026-05-09-4 (2 hits) are the canonical bypass evidence the check is
+# DESIGNED to catch — they are NOT allowlisted and MUST trip the check. The
+# other 3 files below pre-date the convention; their bypass-pattern mentions
+# are audit-trail prose that paraphrasing would erase.
+
+assessment-AF-2026-05-08-3.md
+# REASON: AF-3 root-cause meeting minutes — the bypass pattern is quoted
+# verbatim inside a transcript-style audit-trail entry (Step 2 inline-Val
+# rationalization). Paraphrasing the transcript would distort the historical
+# record.
+
+assessment-AF-2026-05-08-4.md
+# REASON: AF-4 first canonical inline-Val pattern emission — the bypass
+# strings are the load-bearing evidence the assessment doc itself records.
+# Paraphrasing this AF would erase the original failure-mode evidence.
+
+assessment-AF-2026-05-09-2.md
+# REASON: cross-references AF-2026-05-08-4 verbatim and contains a literal
+# `auto-judged in patch mode` quotation inside a back-reference to AF-3.
+# Paraphrasing would break the cross-reference chain.
