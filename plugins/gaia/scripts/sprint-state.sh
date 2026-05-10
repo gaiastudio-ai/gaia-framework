@@ -147,6 +147,7 @@ Usage:
   sprint-state.sh reconcile                  [--sprint-id <id>] [--dry-run]
   sprint-state.sh lint-dependencies          [--sprint-id <id>] [--format json|text]
   sprint-state.sh record-escalation-override --item-ids <ids> --user <name> --reason <text>
+  sprint-state.sh detect-auto-close
   sprint-state.sh --help
 
 Subcommands:
@@ -181,6 +182,15 @@ Subcommands:
                     story in the sprint order. Per ADR-055 §10.29.2.
                     Exit 0 = clean, 2 = inversions detected (advisory),
                     1 = error.
+  detect-auto-close Read-only advisory probe (E81-S3). Emits a single-line
+                    JSON payload on stdout when the active sprint has every
+                    story at status=done with total_count>0 and top-level
+                    status=active. Empty stdout when the auto-close
+                    condition is not met. ALWAYS exits 0. NEVER mutates
+                    sprint-status.yaml — the boundary write
+                    (status=closed + next-sprint seed) remains a manual
+                    operator action per
+                    feedback_sprint_boundary_yaml_write.md.
 
 Canonical states (CLAUDE.md):
   backlog | validating | ready-for-dev | in-progress | blocked | review | done
@@ -2011,6 +2021,117 @@ cmd_record_escalation_override() {
   fi
 }
 
+# ---------- Subcommand: detect-auto-close (E81-S3) ----------
+#
+# Advisory detection — emits a single line of JSON on stdout when the active
+# sprint has reached the auto-close-eligible condition:
+#
+#   top-level `status: active`
+#   AND every story has `status: done`
+#   AND total story count > 0   (vacuous "all done" guard)
+#
+# When the condition is met, stdout is exactly one line:
+#
+#   {"sprint_id":"<id>","done":<N>,"total":<N>,"status":"active","end_date":"<iso>"}
+#
+# Otherwise stdout is empty. Exit code is always 0 (advisory only, never
+# blocking). end_date is rendered as "(unset)" if the field is missing.
+#
+# READ-ONLY: This subcommand NEVER opens sprint-status.yaml for write. The
+# boundary write (flipping `status: closed` and seeding the next sprint)
+# remains an operator-driven manual action per
+# feedback_sprint_boundary_yaml_write.md — auto-flipping would create false
+# confidence that the next sprint was scaffolded too.
+#
+# Refs: AC1, AC3, TC-SAC-1, TC-SAC-2, feedback_sprint_boundary_yaml_write.md
+cmd_detect_auto_close() {
+  # Honor pre-exported SPRINT_STATUS_YAML; otherwise fall back to the same
+  # canonical/fallback lookup used by sprint-status-dashboard.sh lines 54-64.
+  local yaml_path="${SPRINT_STATUS_YAML:-}"
+  if [ -z "$yaml_path" ]; then
+    local canonical="${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml"
+    local fallback="${PROJECT_PATH}/sprint-status.yaml"
+    if [ -f "$canonical" ]; then
+      yaml_path="$canonical"
+    elif [ -f "$fallback" ]; then
+      yaml_path="$fallback"
+    else
+      # Missing yaml: emit nothing, exit 0 (advisory).
+      return 0
+    fi
+  fi
+  [ -f "$yaml_path" ] || return 0
+
+  # Helper: extract top-level YAML scalar (same convention as dashboard).
+  # `|| true` swallows the grep-no-match-exit-1 + pipefail combination so a
+  # missing top-level `status:` (or `end_date:`) reads as empty string rather
+  # than tripping `set -e` and exiting non-zero from the whole script.
+  local sprint_id end_date status
+  sprint_id=$(grep '^sprint_id:' "$yaml_path" 2>/dev/null | head -1 | sed 's/^sprint_id:[[:space:]]*//' | tr -d '"' || true)
+  end_date=$(grep '^end_date:' "$yaml_path" 2>/dev/null | head -1 | sed 's/^end_date:[[:space:]]*//' | tr -d '"' || true)
+  status=$(grep '^status:' "$yaml_path" 2>/dev/null | head -1 | sed 's/^status:[[:space:]]*//' | tr -d '"' || true)
+
+  # Fast-fail: not active → suppress output.
+  [ "$status" = "active" ] || return 0
+
+  # Walk stories[] using the same bash-regex parser pattern the dashboard
+  # uses (lines 230-261). No yq / awk dependency. Counts story keys + their
+  # status field; classifies done vs. non-done.
+  local in_stories=false
+  local total_count=0 done_count=0
+  local s_key="" s_status=""
+
+  # Inline story flush — accumulates one story's counters.
+  # Named with _dac_ prefix so it never collides with the dashboard's
+  # global flush_story() (different signature, same logical purpose).
+  _dac_flush() {
+    if [ -n "$s_key" ]; then
+      total_count=$((total_count + 1))
+      [ "$s_status" = "done" ] && done_count=$((done_count + 1))
+    fi
+    s_key=""; s_status=""
+  }
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^stories: ]]; then
+      in_stories=true
+      continue
+    fi
+    if [ "$in_stories" = true ]; then
+      # A new top-level key (not indented) ends the stories block.
+      if [[ "$line" =~ ^[a-z_] ]]; then
+        in_stories=false
+        _dac_flush
+        continue
+      fi
+      if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*key:[[:space:]]* ]]; then
+        _dac_flush
+        s_key=$(printf '%s' "$line" | sed 's/.*key:[[:space:]]*//' | tr -d '"')
+        continue
+      fi
+      if [[ "$line" =~ ^[[:space:]]+status:[[:space:]]* ]]; then
+        s_status=$(printf '%s' "$line" | sed 's/.*status:[[:space:]]*//' | tr -d '"')
+      fi
+    fi
+  done < "$yaml_path"
+  # Flush final story
+  if [ "$in_stories" = true ]; then
+    _dac_flush
+  fi
+
+  # Vacuous "all done" guard — empty sprint MUST NOT trigger detection.
+  [ "$total_count" -gt 0 ] || return 0
+  # All stories must be done.
+  [ "$done_count" -eq "$total_count" ] || return 0
+
+  # Render end_date field — preserve "(unset)" when missing.
+  local end_field="${end_date:-(unset)}"
+  # Emit single-line JSON payload.
+  printf '{"sprint_id":"%s","done":%d,"total":%d,"status":"active","end_date":"%s"}\n' \
+    "$sprint_id" "$done_count" "$total_count" "$end_field"
+  return 0
+}
+
 # ---------- Argument parsing ----------
 
 main() {
@@ -2026,7 +2147,7 @@ main() {
       usage
       exit 0
       ;;
-    transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override)
+    transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close)
       ;;
     *)
       printf '%s: error: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -2131,6 +2252,8 @@ main() {
       cmd_lint_dependencies "$lint_format" "${reconcile_sprint_id:-}" ;;
     record-escalation-override)
       cmd_record_escalation_override "$override_item_ids" "$override_user" "$override_reason" ;;
+    detect-auto-close)
+      cmd_detect_auto_close ;;
   esac
 }
 

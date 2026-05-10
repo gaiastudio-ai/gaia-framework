@@ -56,6 +56,24 @@ Surface the reconcile output verbatim to the user — do NOT swallow errors or f
 
 Feature-flag escape hatch: a future rollout toggle may gate this call. If `GAIA_DISABLE_RECONCILE=1` is set in the environment, skip Step 2 entirely so a frontmatter-parse regression can be isolated without reverting the wiring.
 
+### Sprint auto-close detection (E81-S3)
+
+The dashboard renders an advisory banner immediately above the story table when **every** story under the active sprint has `status: done` AND the top-level `status:` field still reads `active` AND `total_count > 0` (vacuous "all done" guard). Detection is centralized in `sprint-state.sh detect-auto-close` (single-line JSON contract on stdout, empty when the condition is not met, always exits 0) so other consumers (`/gaia-retro`, `/gaia-sprint-plan`) can reuse the same probe.
+
+**Subcommand contract:**
+
+```bash
+PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh" detect-auto-close
+# stdout when triggered (single line):
+# {"sprint_id":"sprint-N","done":3,"total":3,"status":"active","end_date":"2026-05-14"}
+# stdout when not triggered: empty
+# exit code: 0 (always — advisory, never blocking)
+```
+
+**Advisory-only — never mutates `sprint-status.yaml`.** The detect path is strictly read-only. The boundary write (flipping `status: closed` and seeding the next sprint) remains a manual operator action — `sprint-state.sh` rejects self-transitions and cannot seed new sprints per `_memory/feedback_sprint_boundary_yaml_write.md`. Auto-flipping would create false confidence that the next sprint had also been scaffolded. The right ergonomic improvement is **signal, not action**.
+
+When the banner fires, the dashboard prints the sprint id, done / total counts, end_date, and the literal `yq -i '.status = "closed"' docs/implementation-artifacts/sprint-status.yaml` remediation hint so operators can copy-paste the boundary write without re-deriving the exact yq syntax.
+
 ### Step 3 — Suggest Next Actions
 
 Based on the dashboard output, suggest relevant next actions:
