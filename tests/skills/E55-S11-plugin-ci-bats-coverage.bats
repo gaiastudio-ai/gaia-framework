@@ -41,6 +41,7 @@ setup() {
 # representations literal makes drift trivially detectable.
 
 REQUIRED_FILES=(
+  "tests/skills/E28-S227-td74-gaia-config-csv-cleanup.bats"
   "tests/skills/E55-S11-plugin-ci-bats-coverage.bats"
   "tests/skills/E69-S1-rename-map.bats"
   "tests/skills/E69-S3-test-strategy-collapse.bats"
