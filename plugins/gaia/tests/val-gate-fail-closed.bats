@@ -251,3 +251,60 @@ EOF
   [[ "$rules" == *"sentinel"* ]] || [[ "$rules" == *"Sentinel"* ]]
   [[ "$rules" == *"AskUserQuestion"* ]]
 }
+
+# ---------------------------------------------------------------------------
+# TC-VFC-8 — static check: forbidden-pattern clause for "patch-mode exception"
+# ---------------------------------------------------------------------------
+# E83-S2: SKILL.md prose hardening — forbid auto-judge patterns.
+# These tests assert the load-bearing strings that close the AF-2026-05-09-3
+# and AF-2026-05-09-4 self-license bypass class. The wording is intentional —
+# E83-S3's bats anti-pattern check will fail the build if the strings drift.
+
+@test "TC-VFC-8: SKILL.md Step 2 prose forbids the patch-mode exception" {
+  [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
+  # Step 2 region must contain the explicit forbidden-pattern clause.
+  step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
+  printf '%s\n' "$step2" | grep -Eq '[Tt]here is NO patch-mode exception'
+}
+
+@test "TC-VFC-8: SKILL.md does not license auto-judging in patch mode" {
+  [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
+  # Negative guard — the AF-2026-05-09-3 bypass phrase must NOT appear as license.
+  run grep -F "auto-judged in patch mode" "$ADD_FEATURE_SKILL"
+  [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# TC-VFC-9 — static check: Agent-tool dispatch requirement + parent-thread halt
+# ---------------------------------------------------------------------------
+
+@test "TC-VFC-9: SKILL.md Step 2 prose mandates Agent-tool dispatch with context: fork" {
+  [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
+  step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
+  printf '%s\n' "$step2" | grep -Eq 'Val MUST be dispatched as a .context: fork. subagent via the Agent tool'
+}
+
+@test "TC-VFC-9: SKILL.md Step 2 contains parent-thread re-invoke HALT instruction" {
+  [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
+  step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
+  printf '%s\n' "$step2" | grep -Eq 're-invoke .* from a parent orchestrator thread'
+}
+
+@test "TC-VFC-9: SKILL.md Step 2 prose does not license inline-Val verdicts" {
+  [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
+  step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
+  # Negative guard — no sentence licensing inline review as a Val verdict.
+  ! printf '%s\n' "$step2" | grep -Eqi 'inline.*Val.*verdict'
+}
+
+# ---------------------------------------------------------------------------
+# Critical Rules — cite AI-2026-05-09-12 precedent (E83-S2 AC4)
+# ---------------------------------------------------------------------------
+
+@test "TC-VFC-8/9: SKILL.md Critical Rules cites AI-2026-05-09-12 precedent" {
+  [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
+  rules="$(awk '/^## Critical Rules/{flag=1} /^## Subagent Dispatch Contract/{flag=0} flag' "$ADD_FEATURE_SKILL")"
+  [[ "$rules" == *"AI-2026-05-09-12"* ]]
+  [[ "$rules" == *"no patch-mode exception"* ]] || [[ "$rules" == *"NO patch-mode exception"* ]]
+  [[ "$rules" == *"no inline Val"* ]] || [[ "$rules" == *"inline Val"* ]]
+}
