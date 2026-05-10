@@ -8,9 +8,9 @@
 # Refs: AC2, AC3, AC4, TC-SAC-1, TC-SAC-2, feedback_sprint_boundary_yaml_write.md
 
 setup() {
-  REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   DASHBOARD="$REPO_ROOT/plugins/gaia/scripts/sprint-status-dashboard.sh"
-  FIXTURE_DIR="$REPO_ROOT/tests/fixtures/sprint-status"
+  FIXTURE_DIR="$BATS_TEST_DIRNAME/fixtures/sprint-status"
 
   TEST_TMP="$BATS_TEST_TMPDIR/ssdacb-$$"
   mkdir -p "$TEST_TMP/docs/implementation-artifacts"

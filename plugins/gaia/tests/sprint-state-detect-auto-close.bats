@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 # sprint-state-detect-auto-close.bats — E81-S3
 #
+# NFR-052 public-function coverage anchor: cmd_detect_auto_close
+#
 # Tests `sprint-state.sh detect-auto-close` against three canonical fixtures
 # under tests/fixtures/sprint-status/:
 #   - all-done-active.yaml      → JSON payload emitted on stdout
@@ -13,9 +15,9 @@
 # Refs: AC1, AC3, TC-SAC-1, TC-SAC-2, feedback_sprint_boundary_yaml_write.md
 
 setup() {
-  REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPT="$REPO_ROOT/plugins/gaia/scripts/sprint-state.sh"
-  FIXTURE_DIR="$REPO_ROOT/tests/fixtures/sprint-status"
+  FIXTURE_DIR="$BATS_TEST_DIRNAME/fixtures/sprint-status"
 
   TEST_TMP="$BATS_TEST_TMPDIR/sdac-$$"
   mkdir -p "$TEST_TMP/docs/implementation-artifacts"
