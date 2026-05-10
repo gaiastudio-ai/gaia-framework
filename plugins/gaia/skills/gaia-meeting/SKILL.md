@@ -74,6 +74,22 @@ RESEARCH and DISCUSS hooks rather than reimplementing the lifecycle.
   into in-memory state and writes lifecycle markers to the live transcript;
   the full meeting-notes file format with required sections (FR-MTG-27) lands
   in E76-S3. S1 produces a minimum viable transcript that S3 will extend.
+- **Yield boundaries MUST use the substrate `AskUserQuestion` primitive, NOT
+  stdout sentinels (E76-S15, AF-2026-05-10-1, AI-2026-05-09-8).** Forbidden
+  sentinel strings inside §Procedure yield-boundary subsections:
+  `<<YIELD-STOP`, `<<TURN-END`, and any future variant of a turn-terminal
+  marker emitted via stdout. The script-side stdout-sentinel mechanism was
+  empirically defeated by harness Auto Mode on 2026-05-09 — the harness does
+  not stop on stdout content (memory rule
+  `feedback_askuserquestion_under_automode.md`). The substrate
+  `AskUserQuestion` call halts the LLM turn at the substrate level
+  regardless of Auto Mode and is therefore the only correct primitive for
+  the five yield boundaries (post-CHARTER, post-RESEARCH, every-N DISCUSS,
+  pre-CLOSE, pre-SAVE). Static enforcement:
+  `tests/gaia-meeting-stdout-sentinel-forbid.bats` invokes
+  `scripts/stdout-sentinel-scan.sh` against this SKILL.md and FAILS the build
+  on any forbidden-pattern hit inside §Procedure scope. See ADR-083
+  amendment AF-2026-05-10-1.
 
 ### No fabricated user turns (E76-S8, FR-MTG-10, NFR-MTG-1, ADR-083)
 
@@ -994,6 +1010,9 @@ fire-indices across a K=0 and a K=4 raise-hand run.
 - ADR-045 — Subagent fork-context isolation (the dispatch primitive used by E76-S10's RESEARCH and DISCUSS turns).
 - ADR-063 — Dispatch contract / verdict surfacing (per-phase tool allowlists, ADR-037 return schema, finding severity routing).
 - ADR-083 — Peer-to-peer multi-agent discussion topology.
+- ADR-083 amendment AF-2026-05-10-1 — Yield boundaries use the substrate `AskUserQuestion` primitive, NOT script-side stdout sentinels (E76-S15 / E76-S17 / E76-S18).
+- AI-2026-05-09-8 — Audit finding: stdout-sentinel mechanism empirically defeated by harness Auto Mode on 2026-05-09; substrate-correct primitive is `AskUserQuestion`.
+- Memory rule `feedback_askuserquestion_under_automode.md` — `AskUserQuestion` is substrate-enforced and halts the LLM turn under Auto Mode (verified 2026-05-09).
 - ADR-084 — Research-phase contract (sidecar load → SoT reads → web search → cited prelude).
 - ADR-086 — Sidecar path reconciliation: `_memory/<agent>-sidecar/` is canonical.
 - Test plan §11.56 — TC-MTG-CHARTER-1..3, TC-MTG-TURN-1..3, TC-MTG-STREAM-1, TC-MTG-STREAM-3, TC-MTG-RESEARCH-1..6, TC-MTG-GUARD-1.
