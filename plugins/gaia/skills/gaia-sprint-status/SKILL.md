@@ -74,6 +74,35 @@ PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-stat
 
 When the banner fires, the dashboard prints the sprint id, done / total counts, end_date, and the literal `yq -i '.status = "closed"' docs/implementation-artifacts/sprint-status.yaml` remediation hint so operators can copy-paste the boundary write without re-deriving the exact yq syntax.
 
+### Stranded ready stories (E81-S4)
+
+The dashboard appends a `Stranded ready stories` section below the active-sprint table when one or more story files match ALL of the following criteria:
+
+- `status: ready-for-dev` in story-file frontmatter, AND
+- `sprint_id: null` in story-file frontmatter, AND
+- the MOST-RECENT entry for the story key in `_memory/validator-sidecar/decision-log.md` resolves to `PASSED`.
+
+The verdict lookup is a union over three heading patterns (per E81-S4 AC4):
+
+- `### [DATE] Story Validation: <key>` (written by `/gaia-validate-story`)
+- `### [DATE] Story Validation (re-run): <key>` (re-runs of the same)
+- `### [DATE] /gaia-<command>: <key>` (e.g., `/gaia-create-story` via `val-sidecar-write.sh`)
+
+Verdict body recognition: JSON-style `verdict":"PASSED"` (canonical, written by `val-sidecar-write.sh`), prose `verdict: PASSED`, or the legacy `**Status:** recorded` convention. FAILED or UNVERIFIED entries dominate within a block; stories whose most-recent entry is FAILED or UNVERIFIED are excluded from the section.
+
+**Recency rule.** The decision log appends newest entries AT THE TOP, so the first matching heading in document order is the most-recent. A story whose log has an older PASSED followed by a newer FAILED is EXCLUDED — recency wins.
+
+**Read-only invariant (AC3, AC6).** The detection path is strictly read-only: no story file, no `sprint-status.yaml` entry, and no `priority_flag` is mutated. Per `feedback_priority_flag_never_auto_set.md`, the framework never auto-injects stranded stories into the active sprint and never sets `priority_flag: "next-sprint"`. The dashboard signal alone is the ergonomic improvement — the operator decides.
+
+**Suppression (AC2).** If no story matches the criteria, the entire section (header + hint line) is suppressed — no empty-list placeholder is rendered.
+
+**Operator's decision path.**
+
+- To inject a stranded story into the active sprint immediately, run `/gaia-correct-course` (operator-driven sprint scope change).
+- To let the next sprint pick it up, take no action — `/gaia-sprint-plan` will see the story in the backlog candidates and decide sequencing.
+
+The hint line printed below the stranded list spells out both paths verbatim so the operator can copy the slash command.
+
 ### Step 3 — Suggest Next Actions
 
 Based on the dashboard output, suggest relevant next actions:
