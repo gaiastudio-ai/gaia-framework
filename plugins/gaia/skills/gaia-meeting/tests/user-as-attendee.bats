@@ -101,8 +101,18 @@ run_resolver() {
 # ----- TC-MTG-USER-3 — resolved-user-name token (case-insensitive) ------------
 
 @test "TC-MTG-USER-3: --invitees containing case-insensitive resolved-user-name preserves token and sets user_attendance=true" {
-  [ -n "$USER_NAME" ]
+  # CI runners without git config user.name + without a discoverable
+  # settings.json cannot resolve a name — skip cleanly so this row never
+  # blocks the build (TC-MTG-USER-1/2 already cover the literal-token paths
+  # and do not depend on a resolved name). Mirrors the
+  # `no-fabricated-user-turns.bats` skip-when-no-name pattern.
+  if [ -z "$USER_NAME" ]; then
+    skip "resolve-user-name.sh did not resolve a name on this runner"
+  fi
   # Lowercase the resolved user name to verify case-insensitive matching.
+  # The resolver trims surrounding whitespace from each CSV token but does
+  # not split on internal whitespace, so a multi-word resolved name (e.g.,
+  # "Julien Louage") round-trips as a single token.
   lower_name="$(printf '%s' "$USER_NAME" | tr '[:upper:]' '[:lower:]')"
   run_resolver "${lower_name},christy"
   [ "$status" -eq 0 ]
