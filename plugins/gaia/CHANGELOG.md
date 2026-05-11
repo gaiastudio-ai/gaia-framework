@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.142.0] — 2026-05-11
+
+### Added
+
+- (E84-S5) add silent-Val-bypass audit script + bats coverage (#585)
+- (E84-S4) add lossy-mode warning helper + ADR-083 yield-gate amendment (#584)
+- (E84-S3) strip context:fork + dual-mode runtime + framework gate (#583)
+- (E84-S2) classify all 146 SKILL.md files with orchestration_class (#582)
+- (E84-S1) document orchestration_class schema in skills README (#581)
+
+### Fixed
+
+- (statusline) read version from CLAUDE_PLUGIN_ROOT not in-tree repo
+
 ## [1.141.0] — 2026-05-10
 
 ### Added
