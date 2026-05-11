@@ -3,6 +3,7 @@ name: gaia-review-security
 description: Perform an OWASP-focused security review on provided code or document — OWASP Top 10 scan, hardcoded secrets / API keys / credentials detection, authentication and authorization pattern review. Produces a markdown findings report with severity levels and remediation recommendations. Use when "review security" or /gaia-review-security.
 argument-hint: "[target — file, directory, or document]"
 allowed-tools: [Read, Write, Edit, Bash, Grep]
+orchestration_class: reviewer
 ---
 
 ## Mission

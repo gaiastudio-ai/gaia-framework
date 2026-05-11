@@ -4,6 +4,7 @@ description: Expand automated test coverage for a story. Use when "automate test
 argument-hint: "[story-key] [--status|--add-scenario|--scaffold]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+orchestration_class: light-procedural
 ---
 
 ## Sub-command Routing (E72-S2)

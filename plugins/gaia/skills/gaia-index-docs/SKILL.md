@@ -3,6 +3,7 @@ name: gaia-index-docs
 description: Generate or update an index.md file that references every document in a target folder. Use when "index these docs" or /gaia-index-docs. Scans .md/.xml/.yaml/.csv files in a target folder, reads titles, sorts logically, and emits a Markdown index with a linked table of contents. Native Claude Code conversion of the legacy index-docs task (E28-S111, Cluster 14).
 argument-hint: "[target-folder]"
 allowed-tools: [Read, Write, Grep]
+orchestration_class: light-procedural
 ---
 
 ## Mission

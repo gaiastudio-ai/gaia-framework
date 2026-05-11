@@ -3,6 +3,7 @@ name: gaia-edit-ux
 description: Edit an existing UX design document with cascade-aware downstream artifact detection, delegating UX-authoring reasoning to the ux-designer subagent (Christy) — Cluster 5 planning skill. Use when the user wants to modify sections of an existing UX design while preserving consistency with architecture, epics, stories, and test plans.
 context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

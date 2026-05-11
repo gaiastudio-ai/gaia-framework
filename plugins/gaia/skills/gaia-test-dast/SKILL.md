@@ -13,6 +13,7 @@ triggers:
   - test dast
   - dynamic security test
   - post-deploy dast
+orchestration_class: light-procedural
 ---
 
 ## Setup

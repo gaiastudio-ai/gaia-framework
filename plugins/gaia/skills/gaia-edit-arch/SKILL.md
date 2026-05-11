@@ -3,6 +3,7 @@ name: gaia-edit-arch
 description: Edit an existing architecture document with cascade-aware downstream artifact detection, delegating architecture-authoring reasoning to the architect subagent (Theo) — Cluster 6 architecture skill. Use when the user wants to modify sections of an existing architecture while preserving consistency with epics, stories, test plans, and infrastructure design.
 context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

@@ -4,6 +4,7 @@ description: Multi-agent creative sprint pipeline — empathize → solve → in
 argument-hint: "[creative challenge]"
 context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
+orchestration_class: conversational
 ---
 
 ## Memory

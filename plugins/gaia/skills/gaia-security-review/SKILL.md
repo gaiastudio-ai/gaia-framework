@@ -7,6 +7,7 @@ allowed-tools: [Read, Grep, Glob, Bash]
 deprecated_aliases: [gaia-security-review]
 deprecated_since: sprint-37
 replaced_by: gaia-review-security
+orchestration_class: reviewer
 ---
 
 ## Setup

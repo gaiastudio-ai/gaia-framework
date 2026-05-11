@@ -4,6 +4,7 @@ description: Research a technology or tech stack with objective trade-off analys
 argument-hint: "[technology or tech stack to research]"
 context: fork
 allowed-tools: [Read, Write, Glob, Grep, Bash, WebSearch, WebFetch]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

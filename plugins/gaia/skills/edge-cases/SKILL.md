@@ -3,6 +3,7 @@ name: edge-cases
 description: Structured edge case analysis for M+ stories. JIT-loaded by /gaia-create-story Step 4b to enumerate boundary, error, timing, concurrency, integration, security, data, and environment scenarios for a single story's acceptance criteria. Returns a structured edge_case_results list. Non-blocking — failure degrades gracefully.
 version: '1.0'
 allowed-tools: [Read]
+orchestration_class: light-procedural
 ---
 
 # Edge Cases Skill

@@ -3,6 +3,7 @@ name: gaia-fix-story
 description: Apply Val validation findings to a story file and re-run validation to iterate from validating back to ready-for-dev. Native Claude Code conversion of the legacy fix-story workflow (Cluster 7, E28-S55).
 argument-hint: "[story-key]"
 allowed-tools: [Read, Write, Edit, Bash, Grep]
+orchestration_class: light-procedural
 ---
 
 ## Setup

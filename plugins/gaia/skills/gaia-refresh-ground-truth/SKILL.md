@@ -3,6 +3,7 @@ name: gaia-refresh-ground-truth
 description: Rescan the filesystem and update ground-truth.md in the validator sidecar -- discovers project structure, file inventory, and key metadata, then writes a diff report of what changed. Use when "refresh ground truth" or /gaia-refresh-ground-truth.
 argument-hint: "[--agent val|theo|derek|nate|all] [--incremental]"
 allowed-tools: [Read, Grep, Glob, Bash]
+orchestration_class: light-procedural
 ---
 
 ## Setup

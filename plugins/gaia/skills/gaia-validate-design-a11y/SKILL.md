@@ -7,6 +7,7 @@ phase: planning
 verdict_producing: true
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+orchestration_class: reviewer
 ---
 
 ## Mission

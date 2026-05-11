@@ -38,6 +38,7 @@ quality_gates:
       error_message: "Competitive Landscape section is required"
     - condition: "section_present:Success Metrics"
       error_message: "Success Metrics section is required"
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

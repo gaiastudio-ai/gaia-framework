@@ -11,6 +11,7 @@ triggers:
   - "review mobile"
   - "mobile review"
   - "/gaia-review-mobile"
+orchestration_class: reviewer
 ---
 
 ## Setup

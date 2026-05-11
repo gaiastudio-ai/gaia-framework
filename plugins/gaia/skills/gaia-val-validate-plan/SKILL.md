@@ -4,6 +4,7 @@ description: Validate an implementation plan before execution -- catches incorre
 argument-hint: "[plan-artifact-path]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+orchestration_class: reviewer
 ---
 
 ## Setup

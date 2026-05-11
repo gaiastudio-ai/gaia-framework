@@ -11,6 +11,7 @@ triggers:
   - deploy this version
   - run gaia-deploy
   - deployment pipeline
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

@@ -5,6 +5,7 @@ version: '1.3'
 applicable_agents: [validator]
 sections: [type-detection, prd-rules, infra-prd-rules, platform-prd-rules, arch-rules, ux-rules, test-plan-rules, epics-rules, gap-analysis-rules, brainstorm-rules, market-research-rules, domain-research-rules, technical-research-rules, two-pass-logic]
 allowed-tools: [Read, Write, Edit, Grep]
+orchestration_class: light-procedural
 ---
 
 <!-- Converted under ADR-041 (Native Execution Model). Source: _gaia/lifecycle/skills/document-rulesets.md. -->

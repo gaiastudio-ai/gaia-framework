@@ -4,6 +4,7 @@ description: "Document an existing project for AI context — scans source files
 allowed-tools: [Read, Write, Bash, Grep, Glob]
 model: inherit
 version: "1.0.0"
+orchestration_class: light-procedural
 ---
 
 ## Setup

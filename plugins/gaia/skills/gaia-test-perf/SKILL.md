@@ -13,6 +13,7 @@ triggers:
   - test perf
   - performance test
   - post-deploy perf
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

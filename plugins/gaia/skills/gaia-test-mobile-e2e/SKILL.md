@@ -14,6 +14,7 @@ triggers:
   - test mobile e2e
   - mobile end-to-end
   - /gaia-test-mobile-e2e
+orchestration_class: light-procedural
 ---
 
 ## Setup

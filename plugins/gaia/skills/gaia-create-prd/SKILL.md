@@ -10,6 +10,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # Falls back to FULL_LOAD when an upstream artifact lacks parseable headings.
 discover_inputs: INDEX_GUIDED
 discover_inputs_target: "docs/creative-artifacts/product-brief.md, docs/creative-artifacts/market-research.md, docs/creative-artifacts/domain-research.md, docs/creative-artifacts/tech-research.md"
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

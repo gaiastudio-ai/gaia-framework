@@ -9,6 +9,7 @@ triggers:
   - rollback procedure
   - rollback criteria
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit]
+orchestration_class: light-procedural
 ---
 
 ## Setup

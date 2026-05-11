@@ -3,6 +3,7 @@ name: gaia-editorial-structure
 description: Structural editing review — proposes specific cuts, merges, splits, and reorders to improve document organization without touching prose quality. Evaluates information architecture, section ordering, section balance, depth, and navigation. Produces a markdown report comparing current vs. proposed structure with prioritized recommendations. Use when "review structure" or /gaia-editorial-structure.
 argument-hint: "[target — document path]"
 allowed-tools: [Read, Grep]
+orchestration_class: reviewer
 ---
 
 ## Mission

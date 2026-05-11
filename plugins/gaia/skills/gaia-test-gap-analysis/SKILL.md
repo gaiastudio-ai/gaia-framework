@@ -4,6 +4,7 @@ description: Scan test suite against requirements to identify coverage gaps. Use
 argument-hint: "[--mode coverage|verification]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+orchestration_class: light-procedural
 ---
 
 ## Setup

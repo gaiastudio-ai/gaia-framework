@@ -4,6 +4,7 @@ description: Conduct market research on competition and customers — Cluster 4 
 argument-hint: "[market or industry focus]"
 context: fork
 allowed-tools: [Read, Write, Glob, Grep, Bash, WebSearch, WebFetch]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

@@ -4,6 +4,7 @@ description: Guide a human-centered design session through the five-phase Stanfo
 argument-hint: "[design challenge]"
 context: fork
 allowed-tools: [Read, Write, Glob, Agent]
+orchestration_class: conversational
 ---
 
 ## Memory

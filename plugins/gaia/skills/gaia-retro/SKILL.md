@@ -4,6 +4,7 @@ description: "Facilitate a post-sprint retrospective capturing went-well, didn't
 argument-hint: "[sprint-id?]"
 allowed-tools: [Read, Write, Bash]
 version: "1.0.0"
+orchestration_class: conversational
 ---
 
 ## Setup

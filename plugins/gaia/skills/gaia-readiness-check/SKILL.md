@@ -12,6 +12,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # lacks parseable headings.
 discover_inputs: INDEX_GUIDED
 discover_inputs_target: "docs/planning-artifacts/prd.md, docs/planning-artifacts/architecture.md, docs/test-artifacts/test-plan.md, docs/planning-artifacts/epics-and-stories.md"
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

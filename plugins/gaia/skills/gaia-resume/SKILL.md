@@ -2,6 +2,7 @@
 name: gaia-resume
 description: "Resume from the last checkpoint after context loss or a session break. Lists active checkpoints from _memory/checkpoints/, reads the selected one via checkpoint.sh read, validates it via checkpoint.sh validate, and surfaces a Proceed / Start fresh / Review prompt if validation detects drift or missing files. Use when 'resume' or /gaia-resume."
 allowed-tools: [Bash, Read, Glob]
+orchestration_class: light-procedural
 ---
 
 ## Mission

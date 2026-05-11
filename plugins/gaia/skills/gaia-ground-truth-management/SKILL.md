@@ -5,6 +5,7 @@ version: '1.0'
 applicable_agents: [validator]
 sections: [entry-structure, incremental-refresh, full-refresh, dual-refresh, conflict-resolution, archival, token-budget, brownfield-extraction]
 allowed-tools: [Read, Write, Edit, Grep]
+orchestration_class: light-procedural
 ---
 
 <!-- Converted under ADR-041 (Native Execution Model). Source: _gaia/lifecycle/skills/ground-truth-management.md. -->

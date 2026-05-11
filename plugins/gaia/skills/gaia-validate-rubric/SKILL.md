@@ -3,6 +3,7 @@ name: gaia-validate-rubric
 description: Validate a single rubric file (JSON or YAML — one layer of the four-layer rubric pipeline) against the rubric.schema.json JSON Schema. YAML is parsed to JSON before schema validation; both formats produce identical PASS/FAIL semantics. Reports PASS or FAIL with actionable schema violations. Use when "validate rubric" or /gaia-validate-rubric.
 argument-hint: "<path-to-rubric.json|.yaml|.yml>"
 allowed-tools: [Read, Bash]
+orchestration_class: reviewer
 ---
 
 ## Setup

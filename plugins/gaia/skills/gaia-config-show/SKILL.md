@@ -3,6 +3,7 @@ name: gaia-config-show
 description: Display project-config.yaml read-only — the entire file, or a single named section. Use when "show config" or /gaia-config-show.
 argument-hint: "[<section-name>]"
 allowed-tools: [Read, Bash]
+orchestration_class: light-procedural
 ---
 
 ## Setup

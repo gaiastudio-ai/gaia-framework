@@ -3,6 +3,7 @@ name: gaia-config-device-target
 description: Edit the device_targets section of project-config.yaml — set, show, or clear per-platform device matrices (os_versions, form_factors, screen_sizes). Section-scoped editor that preserves YAML comments and formatting per ADR-044 — use when "edit device targets config" or /gaia-config-device-target.
 argument-hint: "<set|show|clear> <platform> [--os-versions ...] [--form-factors ...] [--screen-sizes WxH@D,...]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
+orchestration_class: light-procedural
 ---
 
 ## Mission

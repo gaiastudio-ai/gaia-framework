@@ -4,6 +4,7 @@ description: Create performance test plan with load testing scenarios, CI gates,
 argument-hint: "[story-key]"
 context: main
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup
