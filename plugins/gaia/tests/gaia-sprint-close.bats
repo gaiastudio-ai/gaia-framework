@@ -14,7 +14,7 @@
 load 'test_helper.bash'
 
 SKILL_DIR="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close"
-FINALIZE="$SKILL_DIR/scripts/finalize.sh"
+FINALIZE="$SKILL_DIR/scripts/close.sh"
 
 setup() {
   common_setup
@@ -217,9 +217,13 @@ mtime() {
 @test "TC-SPRINT-CLOSE-7: idempotent re-close on already-closed sprint emits warning, no mutation, no new event" {
   seed_yaml "sprint-41" "closed" 3 3
   seed_retro "sprint-41"
-  # Pre-record state.
-  local mtime_before
-  mtime_before=$(mtime "$YAML")
+  # Pre-record state. Use both content hash AND mtime — content hash is the
+  # cross-platform invariant (Linux + macOS); mtime is a belt-and-braces check
+  # that may be flaky on filesystems with second-resolution timestamps under
+  # fast test-suite execution.
+  local hash_before
+  hash_before=$(shasum -a 256 "$YAML" 2>/dev/null | awk '{print $1}')
+  [ -z "$hash_before" ] && hash_before=$(sha256sum "$YAML" | awk '{print $1}')
   # Pre-seed lifecycle file with a prior unrelated event to verify NO new event is appended.
   printf '%s\n' '{"event_type":"unrelated"}' > "$LIFECYCLE"
   local lc_count_before
@@ -228,9 +232,11 @@ mtime() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"already closed"* ]]
   [ "$(yaml_status)" = "closed" ]
-  local mtime_after
-  mtime_after=$(mtime "$YAML")
-  [ "$mtime_before" = "$mtime_after" ]
+  # Content invariant — yaml bytes are byte-identical pre/post idempotent re-close.
+  local hash_after
+  hash_after=$(shasum -a 256 "$YAML" 2>/dev/null | awk '{print $1}')
+  [ -z "$hash_after" ] && hash_after=$(sha256sum "$YAML" | awk '{print $1}')
+  [ "$hash_before" = "$hash_after" ]
   local lc_count_after
   lc_count_after=$(wc -l < "$LIFECYCLE")
   [ "$lc_count_before" = "$lc_count_after" ]

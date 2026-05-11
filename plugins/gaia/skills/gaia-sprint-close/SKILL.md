@@ -12,14 +12,14 @@ orchestration_class: light-procedural
 
 ## Mission
 
-Mark the active sprint as closed and emit the close lifecycle artifacts. The skill performs four ordered actions inside `finalize.sh`:
+Mark the active sprint as closed and emit the close lifecycle artifacts. The skill performs four ordered actions inside `scripts/close.sh` (the action script). A separate `scripts/finalize.sh` is the generic plugin lifecycle hook that writes the checkpoint and emits the `workflow_complete` event:
 
 1. **Pre-conditions** — refuse unless a retro doc exists for the sprint, all stories are `done` (or the operator explicitly opts into `--force-with-rollover`), and the sprint is not already closed.
 2. **Yaml write** — `yq -i '.status = "closed" | .closed_at = "<ISO>"'` on `sprint-status.yaml`.
 3. **Archive** — copy the closed yaml to `docs/implementation-artifacts/sprint-archive/{sprint_id}-closed-{YYYY-MM-DD}.yaml`.
 4. **Lifecycle event** — append a `sprint_closed` event to `_memory/lifecycle-events.jsonl` via the shared `lifecycle-event.sh` helper.
 
-This skill is the GAIA-native replacement for manual sprint-boundary writes (per ADR-095, AF-2026-05-11-7). The historical restriction on direct `yq -i` against `sprint-status.yaml` (per `feedback_sprint_boundary_yaml_write.md`) is lifted **only** inside this skill's `finalize.sh` — that helper IS the sanctioned boundary-write path going forward.
+This skill is the GAIA-native replacement for manual sprint-boundary writes (per ADR-095, AF-2026-05-11-7). The historical restriction on direct `yq -i` against `sprint-status.yaml` (per `feedback_sprint_boundary_yaml_write.md`) is lifted **only** inside this skill's `close.sh` — that helper IS the sanctioned boundary-write path going forward.
 
 ## Critical Rules
 
@@ -80,6 +80,14 @@ This skill is the GAIA-native replacement for manual sprint-boundary writes (per
 - New archive at `docs/implementation-artifacts/sprint-archive/{sprint_id}-closed-{YYYY-MM-DD}.yaml`.
 - Appended `sprint_closed` event in `_memory/lifecycle-events.jsonl`.
 - Single-line confirmation on stdout.
+
+## Action
+
+!${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/close.sh
+
+## Finalize
+
+!${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/finalize.sh
 
 ## Refs
 
