@@ -2,7 +2,6 @@
 name: gaia-slide-deck
 description: Create a presentation slide deck with a narrative arc — hook, build, payoff — plus visual-design specs and speaker notes. Use when the user asks to "create a slide deck", draft a talk, or design a presentation. Delegates slide-by-slide authoring to Vermeer (presentation-designer).
 argument-hint: "[presentation topic]"
-context: fork
 allowed-tools: [Read, Write, Glob, Agent]
 orchestration_class: light-procedural
 ---

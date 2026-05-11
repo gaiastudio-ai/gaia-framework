@@ -2,7 +2,6 @@
 name: gaia-test-automate
 description: Expand automated test coverage for a story. Use when "automate tests" or /gaia-test-automate.
 argument-hint: "[story-key] [--status|--add-scenario|--scaffold]"
-context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 orchestration_class: light-procedural
 ---

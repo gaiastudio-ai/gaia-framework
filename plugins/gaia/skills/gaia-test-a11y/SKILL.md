@@ -2,7 +2,6 @@
 name: gaia-test-a11y
 description: Execute post-deploy accessibility smoke tests via axe-core, pa11y, or Lighthouse adapters under the ADR-078 contract. Phase 3A toolkit + Phase 3B LLM judgment + verdict resolver. Shares the WCAG-aligned a11y rubric (rubrics/base/a11y.json) with the planning-phase /gaia-validate-design-a11y and pre-merge /gaia-review-a11y skills (E69-S2). Use when "run a11y tests" or /gaia-test-a11y.
 argument-hint: "[story-key] [--adapter <name>] [--target-url <url>] [--wcag-level <A|AA|AAA>]"
-context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 type: action
 verdict: true

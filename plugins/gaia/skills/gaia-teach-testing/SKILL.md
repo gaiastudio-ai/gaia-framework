@@ -1,7 +1,6 @@
 ---
 name: gaia-teach-testing
 description: Teach testing progressively through structured sessions based on user skill level. Use when "teach me testing" or /gaia-teach-testing.
-context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
 orchestration_class: light-procedural
 ---

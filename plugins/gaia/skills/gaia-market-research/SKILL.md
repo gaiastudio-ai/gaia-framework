@@ -2,7 +2,6 @@
 name: gaia-market-research
 description: Conduct market research on competition and customers — Cluster 4 analysis skill. Use when the user wants to analyze competitors, define customer segments, and size a market (TAM/SAM/SOM) before or during product discovery.
 argument-hint: "[market or industry focus]"
-context: fork
 allowed-tools: [Read, Write, Glob, Grep, Bash, WebSearch, WebFetch]
 orchestration_class: heavy-procedural
 ---
