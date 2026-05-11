@@ -3,6 +3,7 @@ name: gaia-release
 description: Document and execute the GAIA framework release procedure — version bump, commit, tag, push, and GitHub Release. Wraps `scripts/version-bump.js` and the `main`-only release branch policy. Use when "cut a release", "release the framework", "bump the version", or /gaia-release.
 argument-hint: "[patch|minor|major|none|X.Y.Z] [--prerelease rc | --strip-prerelease] [--modules mod1,mod2] [--dry-run]"
 allowed-tools: [Read, Bash, Grep]
+orchestration_class: light-procedural
 ---
 
 ## Mission

@@ -2,7 +2,6 @@
 name: gaia-product-brief
 description: Create a product brief through collaborative discovery — Cluster 4 analysis skill. Use when the user wants to craft a product brief (vision, users, problem, solution, scope, risks, competitive landscape, success metrics) after an initial brainstorm or research phase.
 argument-hint: "[product name or focus]"
-context: fork
 allowed-tools: [Read, Write, Glob, Grep, Bash]
 # Discover-Inputs Protocol (ADR-062 / FR-346 / E45-S4)
 # Strategy: INDEX_GUIDED — load brainstorm/research artifact indexes (TOC,
@@ -38,6 +37,7 @@ quality_gates:
       error_message: "Competitive Landscape section is required"
     - condition: "section_present:Success Metrics"
       error_message: "Success Metrics section is required"
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

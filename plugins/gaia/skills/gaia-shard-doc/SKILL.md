@@ -3,6 +3,7 @@ name: gaia-shard-doc
 description: Split a large Markdown document into smaller files based on level-2 (H2) sections. Use when "shard this document" or /gaia-shard-doc. Preserves every byte of content, generates a linking index.md, and asks for user confirmation before writing files. Default split level is H2 — user can override to H1 or H3. Native Claude Code conversion of the legacy shard-doc task (E28-S111, Cluster 14).
 argument-hint: "[source-file] [--level=H1|H2|H3]"
 allowed-tools: [Read, Write, Bash]
+orchestration_class: light-procedural
 ---
 
 ## Mission

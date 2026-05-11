@@ -3,6 +3,7 @@ name: gaia-config-stack
 description: Edit the stacks section of project-config.yaml — section-scoped editor that preserves YAML comments and formatting per ADR-044. Use when "edit stacks config" or /gaia-config-stack.
 argument-hint: "[--add|--remove|--edit|--reorder] [stack-name]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
+orchestration_class: light-procedural
 ---
 
 ## Setup

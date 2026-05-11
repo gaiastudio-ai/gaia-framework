@@ -3,6 +3,7 @@ name: gaia-adversarial
 description: Perform a cynical, skeptical adversarial review to surface flaws, gaps, and weaknesses in any document, design, or code. Attitude-driven — orthogonal to the method-driven edge-case-hunter (gaia-edge-cases). Produces a ranked findings report with severity and confidence levels; does NOT suggest fixes. Use when "adversarial review" or /gaia-adversarial.
 argument-hint: "[target — document, design, or code]"
 allowed-tools: [Read, Write, Edit, Bash, Grep]
+orchestration_class: reviewer
 ---
 
 ## Mission

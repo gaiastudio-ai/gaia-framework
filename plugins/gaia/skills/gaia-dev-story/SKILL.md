@@ -2,7 +2,6 @@
 name: gaia-dev-story
 description: Implement a user story end-to-end -- validate, dev, test, PR. Use when "dev this story" or /gaia-dev-story.
 argument-hint: [story-key]
-context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
 hooks:
   PostToolUse:
@@ -10,6 +9,7 @@ hooks:
       hooks:
         - type: command
           command: ${CLAUDE_SKILL_DIR}/scripts/checkpoint.sh write gaia-dev-story
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

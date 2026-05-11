@@ -1,7 +1,6 @@
 ---
 name: gaia-readiness-check
 description: Validate implementation readiness by checking all planning and testing artifacts for completeness, consistency, and cross-artifact contradictions — Cluster 6 architecture skill. Enforces two mandatory quality gates (traceability-matrix.md and ci-setup.md must exist) per ADR-042, then delegates readiness assessment to the architect and devops subagents.
-context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # Discover-Inputs Protocol (ADR-062 / FR-346 / E45-S4)
 # Strategy: INDEX_GUIDED — readiness-check cross-references many large
@@ -12,6 +11,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # lacks parseable headings.
 discover_inputs: INDEX_GUIDED
 discover_inputs_target: "docs/planning-artifacts/prd.md, docs/planning-artifacts/architecture.md, docs/test-artifacts/test-plan.md, docs/planning-artifacts/epics-and-stories.md"
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

@@ -3,6 +3,7 @@ name: gaia-help
 description: Context-sensitive help. Analyzes the user's query and current project state (which docs/ artifacts exist) to suggest the most relevant GAIA slash command. Primary intent-to-command map is ${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv; every suggestion is cross-checked against ${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv so the skill never invents command names. Use when "help" or /gaia-help.
 argument-hint: "[optional — free-text description of what you want to do]"
 allowed-tools: [Read, Grep, Glob]
+orchestration_class: light-procedural
 ---
 
 ## Mission

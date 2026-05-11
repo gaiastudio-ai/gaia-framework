@@ -38,9 +38,11 @@ teardown() { common_teardown; }
   [[ "$output" == *"story-key"* ]]
 }
 
-@test "AC1: SKILL.md frontmatter contains context: fork" {
+@test "AC1: SKILL.md frontmatter declares orchestration_class (post-ADR-093)" {
+  # ADR-093 / E84-S3: `context: fork` stripped from non-reviewer plugin
+  # SKILL.md. gaia-dev-story is heavy-procedural.
   run awk '/^---/{n++; next} n==1' "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"context: fork"* ]]
+  [[ "$output" == *"orchestration_class: heavy-procedural"* ]]
 }
 
 @test "AC1: SKILL.md frontmatter contains allowed-tools with Read Write Edit Grep Glob Bash" {

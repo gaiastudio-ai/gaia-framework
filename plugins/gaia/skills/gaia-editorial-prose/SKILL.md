@@ -3,6 +3,7 @@ name: gaia-editorial-prose
 description: Clinical copy-editing review — flags ambiguity, inconsistency, redundancy, jargon, passive voice, sentence complexity, and tone shifts in a document. Produces a markdown findings report with per-finding severity (critical / major / minor / style), specific line reference, and a suggested fix. Use when "review prose" or /gaia-editorial-prose.
 argument-hint: "[target — document path]"
 allowed-tools: [Read, Grep]
+orchestration_class: reviewer
 ---
 
 ## Mission

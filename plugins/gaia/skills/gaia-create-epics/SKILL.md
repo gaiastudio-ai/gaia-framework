@@ -1,7 +1,6 @@
 ---
 name: gaia-create-epics
 description: Break requirements into epics and user stories through collaborative discovery with the architect (Theo) and pm (Derek) subagents — Cluster 6 architecture skill. Use when the user wants to decompose a PRD and architecture into implementation-ready epics and stories with dependency topology, risk levels from the test plan, and priority ordering.
-context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # Discover-Inputs Protocol (ADR-062 / FR-346 / E45-S4)
 # Strategy: INDEX_GUIDED — three large upstream artifacts (PRD,
@@ -11,6 +10,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # headings.
 discover_inputs: INDEX_GUIDED
 discover_inputs_target: "docs/planning-artifacts/prd.md, docs/planning-artifacts/architecture.md, docs/test-artifacts/test-plan.md"
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

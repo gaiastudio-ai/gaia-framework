@@ -9,6 +9,7 @@ triggers:
   - release strategy
   - staged rollout
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit]
+orchestration_class: light-procedural
 ---
 
 ## Setup

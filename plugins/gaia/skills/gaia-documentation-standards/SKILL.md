@@ -2,6 +2,7 @@
 name: gaia-documentation-standards
 description: README structure, ADR (Architecture Decision Record) format, inline code comments (JSDoc / Python docstrings), and API documentation conventions. Shared dev and editorial skill JIT-loaded by dev-story, stack dev agents, and documentation workflows.
 allowed-tools: [Read, Grep]
+orchestration_class: light-procedural
 ---
 
 ## About

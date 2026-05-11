@@ -5,6 +5,7 @@ version: '1.0'
 applicable_agents: [all]
 sections: [cross-reference-loading, budget-monitoring]
 allowed-tools: [Read, Grep]
+orchestration_class: light-procedural
 ---
 
 <!-- Converted under ADR-041 (Native Execution Model). Source: _gaia/lifecycle/skills/memory-management-cross-agent.md. -->

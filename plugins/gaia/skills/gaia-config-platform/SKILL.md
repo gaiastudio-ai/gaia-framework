@@ -3,6 +3,7 @@ name: gaia-config-platform
 description: Edit the platforms section of project-config.yaml — add, remove, or list platform identifiers. Section-scoped editor that preserves YAML comments and formatting per ADR-044. Unknown identifiers warn (not error) per ADR-081 §4.2 — use when "edit platforms config" or /gaia-config-platform.
 argument-hint: "<add|remove|list> [platform-id]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
+orchestration_class: light-procedural
 ---
 
 ## Mission

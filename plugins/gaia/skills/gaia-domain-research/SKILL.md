@@ -2,8 +2,8 @@
 name: gaia-domain-research
 description: Conduct domain and industry research — Cluster 4 analysis skill. Use when the user wants to map a domain landscape (key players, regulations, trends, terminology) and assess domain-specific risks before product definition or technical research.
 argument-hint: "[domain or industry focus]"
-context: fork
 allowed-tools: [Read, Write, Glob, Grep, Bash, WebSearch, WebFetch]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

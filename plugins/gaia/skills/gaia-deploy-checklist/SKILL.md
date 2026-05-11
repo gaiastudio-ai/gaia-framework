@@ -8,6 +8,7 @@ triggers:
   - deploy checklist
   - pre-deployment check
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit]
+orchestration_class: light-procedural
 ---
 
 ## Setup

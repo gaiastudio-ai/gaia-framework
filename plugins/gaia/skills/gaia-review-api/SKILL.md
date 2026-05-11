@@ -3,6 +3,7 @@ name: gaia-review-api
 description: Review REST API design against standards and best practices — resource naming conventions, HTTP methods, status codes, RFC 7807 error format, versioning strategy. Produces a markdown findings report organised by category with severity levels. Use when "review API design" or /gaia-review-api.
 argument-hint: "[target — API spec, OpenAPI doc, or route code]"
 allowed-tools: [Read, Write, Edit, Bash, Grep]
+orchestration_class: reviewer
 ---
 
 ## Mission

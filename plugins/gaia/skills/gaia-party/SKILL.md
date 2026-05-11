@@ -2,8 +2,8 @@
 name: gaia-party
 description: Multi-agent group discussion with dynamic participant selection. Use when "party mode".
 argument-hint: "[discussion topic]"
-context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+orchestration_class: conversational
 ---
 
 # gaia-party

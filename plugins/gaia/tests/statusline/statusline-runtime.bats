@@ -48,6 +48,51 @@ teardown() { common_teardown; }
 }
 
 # ---------------------------------------------------------------------------
+# CLAUDE_PLUGIN_ROOT takes precedence over PROJECT_PATH for version read.
+# Catches the v1.140.0/v1.141.0 drift class from AF-2026-05-10 — when the
+# in-tree repo plugin.json lags the actively-loaded marketplace plugin, the
+# statusline must show the *active* version.
+# ---------------------------------------------------------------------------
+
+@test "CLAUDE_PLUGIN_ROOT overrides PROJECT_PATH for version" {
+  [ -f "$RUNTIME" ]
+  # Build a second fake plugin tree representing the marketplace-installed
+  # active plugin with a DIFFERENT version than the in-tree PROJECT_PATH tree.
+  ACTIVE_PLUGIN_ROOT="$TEST_TMP/active-plugin"
+  mkdir -p "$ACTIVE_PLUGIN_ROOT/.claude-plugin"
+  cat > "$ACTIVE_PLUGIN_ROOT/.claude-plugin/plugin.json" <<'PJ'
+{ "name": "gaia", "version": "1.141.0-active" }
+PJ
+  cd "$TEST_TMP"
+  run bash -c "CLAUDE_PLUGIN_ROOT='$ACTIVE_PLUGIN_ROOT' printf '%s' '$STDIN_JSON' | env CLAUDE_PLUGIN_ROOT='$ACTIVE_PLUGIN_ROOT' '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  # Must show the active-plugin version, NOT the in-tree 9.9.9-test version.
+  echo "$output" | grep -q "1.141.0-active"
+  ! echo "$output" | grep -q "9.9.9-test"
+}
+
+@test "CLAUDE_PLUGIN_ROOT unset → falls back to PROJECT_PATH" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  # Explicitly unset CLAUDE_PLUGIN_ROOT to prove the fallback path.
+  run bash -c "unset CLAUDE_PLUGIN_ROOT; printf '%s' '$STDIN_JSON' | '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "9.9.9-test"
+}
+
+@test "CLAUDE_PLUGIN_ROOT set but plugin.json missing → falls back to PROJECT_PATH" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  # Point CLAUDE_PLUGIN_ROOT at a directory without a .claude-plugin subdir.
+  EMPTY_ROOT="$TEST_TMP/empty-plugin"
+  mkdir -p "$EMPTY_ROOT"
+  run bash -c "CLAUDE_PLUGIN_ROOT='$EMPTY_ROOT' printf '%s' '$STDIN_JSON' | env CLAUDE_PLUGIN_ROOT='$EMPTY_ROOT' '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  # Should fall back to PROJECT_PATH and show the in-tree version.
+  echo "$output" | grep -q "9.9.9-test"
+}
+
+# ---------------------------------------------------------------------------
 # TC-STATUSLINE-5 / AT-3 — ASCII flag → zero non-ASCII bytes
 # ---------------------------------------------------------------------------
 

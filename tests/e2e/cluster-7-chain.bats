@@ -269,9 +269,11 @@ run_finalize() {
 }
 
 @test "AC1b: dev-story SKILL.md has correct frontmatter" {
+  # ADR-093 / E84-S3: `context: fork` stripped from non-reviewer plugin
+  # SKILL.md. gaia-dev-story is heavy-procedural.
   local skill_file="$SKILLS_DIR/gaia-dev-story/SKILL.md"
   grep -q "^name: gaia-dev-story" "$skill_file"
-  grep -q "^context: fork" "$skill_file"
+  grep -q "^orchestration_class: heavy-procedural" "$skill_file"
   grep -q "PostToolUse" "$skill_file"
   grep -q "checkpoint.sh" "$skill_file"
 }

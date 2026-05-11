@@ -2,6 +2,7 @@
 name: gaia-shell-idioms
 description: Reusable shell and awk idioms for GAIA scripts and bats tests. Captures recurring anti-patterns (like the awk range-bug) and the canonical state-machine fixes. Reference-only skill — loaded by authors writing new scripts or tests.
 allowed-tools: [Read, Grep]
+orchestration_class: light-procedural
 ---
 
 ## About

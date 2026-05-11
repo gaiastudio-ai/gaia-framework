@@ -2,7 +2,6 @@
 name: gaia-test-e2e
 description: Execute end-to-end tests via Playwright or Cypress adapters under the ADR-078 contract. Phase 3A toolkit + Phase 3B LLM judgment + verdict resolver. Use when "run e2e tests" or /gaia-test-e2e.
 argument-hint: "[story-key] [--adapter <name>] [--target-url <url>]"
-context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 type: action
 verdict: true
@@ -11,6 +10,7 @@ triggers:
   - run e2e tests
   - test e2e
   - end-to-end tests
+orchestration_class: light-procedural
 ---
 
 ## Setup

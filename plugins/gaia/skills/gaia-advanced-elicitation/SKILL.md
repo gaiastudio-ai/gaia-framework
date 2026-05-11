@@ -2,8 +2,8 @@
 name: gaia-advanced-elicitation
 description: Deep requirements elicitation using structured questioning techniques — Cluster 4 analysis skill. Use when the user wants to explore requirements gaps, validate assumptions, and discover unstated needs using methods like 5 Whys, Socratic Method, User Story Mapping, MoSCoW, Kano Model, Jobs-to-be-Done, Assumption Mapping, and Stakeholder Mapping.
 argument-hint: "[product or feature area to explore]"
-context: fork
 allowed-tools: [Read, Write, Glob, Grep, Bash]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

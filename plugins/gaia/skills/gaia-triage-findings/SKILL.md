@@ -4,6 +4,7 @@ description: "Scan in-progress and completed story files for development finding
 argument-hint: "[story-key?] [--override-done-story --user <u> --date <d> --finding <fid> --reason <r>]"
 allowed-tools: [Read, Write, Bash]
 version: "1.2.0"
+orchestration_class: light-procedural
 ---
 
 ## Setup

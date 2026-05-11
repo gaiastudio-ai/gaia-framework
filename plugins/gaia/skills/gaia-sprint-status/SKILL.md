@@ -3,6 +3,7 @@ name: gaia-sprint-status
 description: "Display the current sprint status dashboard. Delegates rendering to the sprint-status-dashboard.sh formatter script, which reads sprint-status.yaml and produces a deterministic plain-text dashboard. GAIA-native replacement for the legacy sprint-status XML engine workflow."
 allowed-tools: [Bash, Read]
 version: "1.0.0"
+orchestration_class: light-procedural
 ---
 
 ## Setup

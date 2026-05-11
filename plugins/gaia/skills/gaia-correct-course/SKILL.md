@@ -4,6 +4,7 @@ description: "Manage mid-sprint scope changes by updating story files (source of
 argument-hint: "[story-key] [change-type]"
 allowed-tools: [Read, Edit, Bash]
 version: "1.0.0"
+orchestration_class: light-procedural
 ---
 
 ## Setup

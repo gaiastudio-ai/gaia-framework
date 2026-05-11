@@ -1,8 +1,8 @@
 ---
 name: gaia-add-feature
 description: Triage and route a fix, enhancement, or feature through only the affected artifacts. Classifies as patch/enhancement/feature and cascades accordingly -- updating PRD, architecture, epics, test plan, threat model, and traceability as needed (FR-323, FR-362). Surfaces Val verdicts (PASS/WARNING/CRITICAL) per ADR-063 and emits an assessment-doc audit trail.
-context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

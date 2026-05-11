@@ -3,6 +3,7 @@ name: gaia-validate-framework
 description: Scan the GAIA framework tree for consistency, broken references, and missing components. Use when "validate framework" or /gaia-validate-framework. Walks the plugin tree, compares against ${CLAUDE_PLUGIN_ROOT}/knowledge/manifest.yaml, checks workflow integrity, agent integrity, command integrity, manifest integrity, config resolution (via resolve-config.sh), skill index integrity, and knowledge index integrity, then emits a severity-grouped findings report. Native Claude Code conversion of the legacy validate-framework task (E28-S111, Cluster 14).
 argument-hint: "[--report-path]"
 allowed-tools: [Read, Bash, Grep]
+orchestration_class: reviewer
 ---
 
 ## Mission
@@ -44,6 +45,8 @@ The skill runs ten steps in strict order, mirroring the legacy `validate-framewo
 8. **Knowledge Index Integrity** — verify every entry in knowledge `_index.csv` has a real fragment under 200 lines
 9. **Monolith-Shard Sync** (Tier 1, E53-S243) — invoke `plugins/gaia/scripts/check-monolith-shard-sync.sh` and fold each emitted `WARNING` line into the findings list at WARNING severity. Documented exceptions (Change Log monolith-as-source-of-truth, `_preamble.md` partial mirror) are honored by the script and produce no false positives.
 9b. **Orphan-tmp Sweep Allowlist** (E64-S6) — static check rejecting any startup orphan-tmp `find ... -delete` whose target paths fall outside the allowlist (`${PLANNING_ARTIFACTS}/epics`, `${IMPLEMENTATION_ARTIFACTS}`, `${MEMORY_PATH}`). Out-of-bounds sweeps are CRITICAL findings.
+9c. **Orchestration-Class Coverage** (E84-S2, ADR-093) — invoke `plugins/gaia/scripts/check-orchestration-class.sh`. The script verifies every SKILL.md under `plugins/gaia/skills/*/SKILL.md` declares an `orchestration_class:` frontmatter field set to one of `{reviewer, light-procedural, heavy-procedural, conversational}`. Any missing field, unknown value, or duplicate declaration is a CRITICAL finding. Source of truth for the enum: `plugins/gaia/skills/README.md` §"Orchestration Class".
+9d. **Fork-Strip Invariant** (E84-S3, ADR-093) — invoke `plugins/gaia/scripts/check-fork-stripped.sh`. The script verifies that no non-reviewer plugin SKILL.md (orchestration_class ∈ `{light-procedural, heavy-procedural, conversational}`) declares `context: fork` in its frontmatter. Reviewers MAY retain `context: fork` per NFR-060 (clean-room invariant). Violations are CRITICAL findings. Agent persona files under `plugins/gaia/agents/*.md` are intentionally out of scope for this check (ADR-093 amends ADR-041 only for the skill-invocation layer); their fork retention is guarded by bats regression tests instead.
 10. **Report** — emit PASS/FAIL overall + itemized findings grouped by severity
 
 ## Step 1 — File Inventory

@@ -5,6 +5,7 @@ argument-hint: "[project-path]"
 context: main
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
 model: inherit
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

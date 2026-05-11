@@ -2,6 +2,7 @@
 name: gaia-git-workflow
 description: Trunk-based development, Conventional Commits, PR template and review checklist, merge strategies, and conflict resolution. Shared dev skill JIT-loaded by dev-story and stack dev agents.
 allowed-tools: [Read, Grep, Bash]
+orchestration_class: light-procedural
 ---
 
 ## About

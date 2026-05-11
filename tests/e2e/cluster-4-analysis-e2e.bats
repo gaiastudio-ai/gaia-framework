@@ -108,11 +108,13 @@ run_finalize() {
 }
 
 @test "AC1: all 6 skills have SKILL.md with Cluster 4 frontmatter" {
+  # ADR-093 / E84-S3: `context: fork` stripped from non-reviewer plugin
+  # SKILL.md; replaced by `orchestration_class:` declaration per FR-444.
   for skill in "${SKILLS[@]}"; do
     local skill_md="$SKILLS_DIR/$skill/SKILL.md"
     [ -f "$skill_md" ]
     grep -q "^name: $skill" "$skill_md"
-    grep -q "^context: fork" "$skill_md"
+    grep -qE "^orchestration_class: (reviewer|light-procedural|heavy-procedural|conversational)$" "$skill_md"
   done
 }
 

@@ -3,6 +3,7 @@ name: gaia-check-dod
 description: Check the Definition of Done checklist for a story file. Parses the DoD section and reports per-item checked/unchecked state. Mostly scripted -- delegates to review-gate.sh for gate-state reads and directly parses the DoD markdown section.
 argument-hint: "[story-key]"
 allowed-tools: [Read, Bash]
+orchestration_class: light-procedural
 ---
 
 ## Setup

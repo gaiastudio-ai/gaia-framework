@@ -3,6 +3,7 @@ name: gaia-check-review-gate
 description: Check the composite Review Gate status for a story file. Invokes review-gate.sh to read each review row and reports per-row status using the canonical vocabulary PASSED / FAILED / UNVERIFIED.
 argument-hint: "[story-key]"
 allowed-tools: [Read, Bash]
+orchestration_class: light-procedural
 ---
 
 ## Setup

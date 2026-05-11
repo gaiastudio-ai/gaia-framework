@@ -5,6 +5,7 @@ version: '1.0'
 license: enterprise
 feature_flag: figma-premium
 allowed-tools: [Read]
+orchestration_class: light-procedural
 ---
 
 # Figma Integration — OSS Stub

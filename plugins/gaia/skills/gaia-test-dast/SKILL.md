@@ -2,7 +2,6 @@
 name: gaia-test-dast
 description: Execute post-deploy dynamic application security tests via the OWASP ZAP DAST adapter under the ADR-078 contract. Phase 3A toolkit + Phase 3B LLM judgment + verdict resolver. Subprocess env is scrubbed to a per-adapter env-allowlist per T-RSV2-1 mitigation. Use when "run dast tests" or /gaia-test-dast.
 argument-hint: "[story-key] [--adapter <name>] [--target-url <url>] [--profile baseline|full|api]"
-context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 type: action
 verdict: true
@@ -13,6 +12,7 @@ triggers:
   - test dast
   - dynamic security test
   - post-deploy dast
+orchestration_class: light-procedural
 ---
 
 ## Setup

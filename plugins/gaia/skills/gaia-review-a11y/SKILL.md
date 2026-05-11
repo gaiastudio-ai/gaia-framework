@@ -9,6 +9,7 @@ conditional: true
 trigger: compliance.ui_present
 context: fork
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
+orchestration_class: reviewer
 ---
 
 ## ADR-077 Mission (E69-S2)

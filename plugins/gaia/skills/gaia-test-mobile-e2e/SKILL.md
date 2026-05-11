@@ -2,7 +2,6 @@
 name: gaia-test-mobile-e2e
 description: Execute mobile end-to-end tests via the configured device-farm adapter (Firebase Test Lab, BrowserStack, Sauce Labs). Resolves the adapter from project-config.yaml, dispatches the suite, and returns per-device verdicts plus a composite verdict. Use when "run mobile e2e" or /gaia-test-mobile-e2e.
 argument-hint: "[--suite <path>] [--device <id>] [--config <path>]"
-context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 type: action
 verdict: true
@@ -14,6 +13,7 @@ triggers:
   - test mobile e2e
   - mobile end-to-end
   - /gaia-test-mobile-e2e
+orchestration_class: light-procedural
 ---
 
 ## Setup

@@ -3,6 +3,7 @@ name: gaia-bridge-toggle
 description: Toggle the Test Execution Bridge on or off by flipping test_execution_bridge.bridge_enabled in config/project-config.yaml (per ADR-044), preserving comments and YAML formatting. Idempotent — no write when already in target state. Under the native plugin, the flip takes effect immediately — no config rebuild step is required. Use via /gaia-bridge-enable or /gaia-bridge-disable. Native Claude Code conversion of the legacy bridge-toggle workflow (E28-S111, Cluster 14).
 argument-hint: "enable|disable"
 allowed-tools: [Read, Edit, Bash]
+orchestration_class: light-procedural
 ---
 
 ## Mission

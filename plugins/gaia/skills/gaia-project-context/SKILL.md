@@ -4,6 +4,7 @@ description: "Generate an AI-optimised project context document by aggregating p
 allowed-tools: [Read, Write, Bash, Grep, Glob]
 model: inherit
 version: "1.0.0"
+orchestration_class: light-procedural
 ---
 
 ## Setup

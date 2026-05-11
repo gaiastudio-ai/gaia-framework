@@ -2,7 +2,6 @@
 name: gaia-test-device-matrix
 description: Expand a configured device-target matrix (os_versions × form_factors × screen_sizes) and dispatch each entry to the configured device-farm adapter. Returns per-device verdicts plus a composite verdict. Use when "run device matrix" or /gaia-test-device-matrix.
 argument-hint: "[--platform <ios|android|all>] [--filter <regex>] [--config <path>]"
-context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 type: action
 verdict: true
@@ -14,6 +13,7 @@ triggers:
   - test device matrix
   - device matrix
   - /gaia-test-device-matrix
+orchestration_class: light-procedural
 ---
 
 ## Setup

@@ -2,8 +2,8 @@
 name: gaia-problem-solving
 description: Context-aware problem-solving skill with auto artifact gathering (30K context budget, six sub-budgets) and tiered resolution routing. Use when the user asks to "solve a problem", "run problem-solving", or wants to diagnose an issue and route it to the right fix path. Delegates analysis to Nova (problem-solver) under an explicit plan-approve-execute planning gate.
 argument-hint: "[problem statement]"
-context: fork
 allowed-tools: [Read, Write, Grep, Glob, Bash, Agent]
+orchestration_class: conversational
 ---
 
 ## Memory

@@ -5,6 +5,7 @@ argument-hint: "[--preset solo|small-team|standard|enterprise|custom] [--regener
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit]
 deprecated_aliases: [gaia-ci-setup]
 deprecated_since: sprint-37
+orchestration_class: light-procedural
 ---
 
 ## Setup

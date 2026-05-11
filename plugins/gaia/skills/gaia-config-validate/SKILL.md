@@ -3,6 +3,7 @@ name: gaia-config-validate
 description: Validate project-config.yaml against project-config.schema.json (E68-S1) and report schema violations with JSONPath locations. Pass --rubric to instead validate the merged rubric output for the active project (E68-S2 layered loader). Use when "validate config" or /gaia-config-validate.
 argument-hint: "[<config-file>] [--rubric] [--skill <name>]"
 allowed-tools: [Read, Bash]
+orchestration_class: light-procedural
 ---
 
 ## Setup

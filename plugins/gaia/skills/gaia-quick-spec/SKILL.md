@@ -3,6 +3,7 @@ name: gaia-quick-spec
 description: Create a quick implementation spec for small changes. Use when "create a quick spec" or /gaia-quick-spec. Runs a lightweight five-step flow (Scope → Quick Analysis → Escape Hatch Check → Generate Quick Spec → Generate Output) and writes the spec to docs/implementation-artifacts/quick-spec-{spec_name}.md. Native Claude Code conversion of the legacy quick-spec workflow (E28-S116, Cluster 16).
 argument-hint: "[spec-name]"
 allowed-tools: [Read, Write, Edit, Bash]
+orchestration_class: heavy-procedural
 ---
 
 <!--

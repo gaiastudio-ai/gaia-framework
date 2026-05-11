@@ -4,6 +4,7 @@ description: Persist Val session decisions and findings to validator-sidecar mem
 argument-hint: "(invoked with session findings in context)"
 context: fork
 allowed-tools: [Read, Write, Edit, Bash, Glob]
+orchestration_class: reviewer
 ---
 
 ## Setup

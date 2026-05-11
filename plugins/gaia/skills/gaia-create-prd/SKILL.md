@@ -2,7 +2,6 @@
 name: gaia-create-prd
 description: Create a Product Requirements Document through collaborative discovery with the pm subagent (Derek) — Cluster 5 planning skill. Use when the user wants to produce a validated PRD from an existing product brief, covering goals, functional/non-functional requirements, user journeys, data requirements, integrations, and success criteria.
 argument-hint: "[product-brief-path]"
-context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # Discover-Inputs Protocol (ADR-062 / FR-346 / E45-S4)
 # Strategy: INDEX_GUIDED — load product brief + research artifact indexes
@@ -10,6 +9,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # Falls back to FULL_LOAD when an upstream artifact lacks parseable headings.
 discover_inputs: INDEX_GUIDED
 discover_inputs_target: "docs/creative-artifacts/product-brief.md, docs/creative-artifacts/market-research.md, docs/creative-artifacts/domain-research.md, docs/creative-artifacts/tech-research.md"
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

@@ -1,7 +1,6 @@
 ---
 name: gaia-edit-test-plan
 description: Edit an existing test plan by adding new test cases while preserving all existing content. Use when "edit the test plan" or /gaia-edit-test-plan.
-context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
 # Discover-Inputs Protocol (ADR-062 / FR-346 / E45-S4)
 # Strategy: SELECTIVE_LOAD — load only the named diff sections from PRD
@@ -9,6 +8,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
 # the new test cases). Never full-load prd.md or architecture.md here.
 discover_inputs: SELECTIVE_LOAD
 discover_inputs_target: "docs/planning-artifacts/prd.md, docs/planning-artifacts/architecture.md"
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

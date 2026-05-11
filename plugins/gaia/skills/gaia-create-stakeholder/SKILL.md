@@ -3,6 +3,7 @@ name: gaia-create-stakeholder
 description: Scaffold a new stakeholder file for Party Mode with YAML frontmatter (name, role, expertise, personality, optional perspective/tags) plus a Background section. Use when "create a stakeholder" or /gaia-create-stakeholder. Writes to custom/stakeholders/, enforces the 50-file cap and 100-line per-file limit, and rejects duplicate names case-insensitively. Native Claude Code conversion of the legacy create-stakeholder workflow (E28-S111, Cluster 14).
 argument-hint: "[name]"
 allowed-tools: [Read, Write, Bash]
+orchestration_class: light-procedural
 ---
 
 ## Mission
