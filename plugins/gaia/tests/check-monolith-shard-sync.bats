@@ -437,3 +437,148 @@ EOF
   # New walk MUST NOT emit a per-story status WARNING for the synced pair.
   [[ "$output" != *"WARNING: epics-shard — story E1-S1"* ]]
 }
+
+# ===========================================================================
+# E53-S249 — Sub-shard awareness (marker shard + sibling directory).
+#
+# NFR-052 public-function coverage anchor: _is_marker_shard_pair, _strip_sub_sharded_suffix
+#
+# Tests that the marker-shard + sibling-directory pattern is recognised:
+# - Forward pass: monolith H2 matches the normalized (suffix-stripped)
+#   shard title, no "no matching shard" WARNING.
+# - Reverse pass: shard's "<title> — Sub-Sharded" stub matches the
+#   monolith H2 after suffix-strip, no "absent from monolith" WARNING.
+# - Body-hash comparison is skipped for marker pairs (stub vs. body
+#   divergence is the expected state, not drift).
+# - Single-half states (marker shard without dir, dir without marker
+#   shard) keep the WARNING — corruption signals.
+# ===========================================================================
+
+# Seed a PRD-§4-shaped marker-shard + sibling-directory fixture.
+# Creates:
+#   prd/prd.md with `## 4. Functional Requirements` section
+#   prd/04-functional-requirements.md (marker shard, stub body)
+#   prd/04-functional-requirements/_preamble.md + 04-01-fr-001.md (children)
+_seed_sub_shard_fixture() {
+  local prd_dir="$TEST_TMP/docs/planning-artifacts/prd"
+  mkdir -p "$prd_dir/04-functional-requirements"
+  cat > "$prd_dir/prd.md" <<'PRD'
+---
+title: PRD
+---
+
+# PRD
+
+## 1. Vision
+
+Vision body.
+
+## 4. Functional Requirements
+
+Body of section 4.
+
+### FR-1
+
+Detail.
+
+## 5. Other
+
+Other content.
+PRD
+  cat > "$prd_dir/01-vision.md" <<'SH'
+## 1. Vision
+
+Vision body.
+SH
+  cat > "$prd_dir/04-functional-requirements.md" <<'SH'
+## 4. Functional Requirements — Sub-Sharded
+
+Stub: the body of this section has been split into sibling children. See
+`./04-functional-requirements/` for the per-FR child files.
+SH
+  cat > "$prd_dir/04-functional-requirements/_preamble.md" <<'SH'
+---
+parent: 04-functional-requirements.md
+---
+SH
+  cat > "$prd_dir/04-functional-requirements/04-01-fr-001.md" <<'SH'
+### FR-1
+
+Detail.
+SH
+  cat > "$prd_dir/05-other.md" <<'SH'
+## 5. Other
+
+Other content.
+SH
+}
+
+@test "TC-MSS-SUBSHARD-1: PRD-§4 marker-pair fixture emits 0 WARNINGs related to §4" {
+  _seed_sub_shard_fixture
+  run "$CHECK_SCRIPT" --root "$TEST_TMP"
+  [ "$status" -eq 0 ]
+  # Neither forward-pass nor reverse-pass WARNING for "4. Functional Requirements".
+  ! echo "$output" | grep -q 'section "4. Functional Requirements" present in'
+  ! echo "$output" | grep -q 'section "4. Functional Requirements — Sub-Sharded"'
+  ! echo "$output" | grep -q 'section "4. Functional Requirements" diverges'
+}
+
+@test "TC-MSS-SUBSHARD-2: marker-shard without sibling dir KEEPS the WARNING (corruption signal)" {
+  local prd_dir="$TEST_TMP/docs/planning-artifacts/prd"
+  mkdir -p "$prd_dir"
+  cat > "$prd_dir/prd.md" <<'PRD'
+# PRD
+
+## 4. Functional Requirements
+
+Body.
+PRD
+  # Marker shard with `— Sub-Sharded` suffix but NO sibling directory.
+  cat > "$prd_dir/04-functional-requirements.md" <<'SH'
+## 4. Functional Requirements — Sub-Sharded
+
+Stub.
+SH
+  run "$CHECK_SCRIPT" --root "$TEST_TMP"
+  [ "$status" -eq 0 ]
+  # The `— Sub-Sharded` suffix in the shard title doesn't match the
+  # monolith H2 — reverse-pass WARNING fires because the pair is incomplete.
+  echo "$output" | grep -q "WARNING: prd"
+}
+
+@test "TC-MSS-SUBSHARD-3: _strip_sub_sharded_suffix strips em-dash + literal token" {
+  # Extract just the function definition and exec it in a sub-bash that
+  # doesn't run the script's main logic. The script's main pass exits
+  # under `set -e`, so we can't `source` it directly.
+  local fn_src
+  fn_src=$(awk '/^_strip_sub_sharded_suffix\(\)/,/^}/' "$CHECK_SCRIPT")
+  result=$(bash -c "${fn_src}
+_strip_sub_sharded_suffix \"4. Functional Requirements — Sub-Sharded\"")
+  [ "$result" = "4. Functional Requirements" ]
+  # Idempotent — stripping a non-suffixed title is a no-op.
+  result2=$(bash -c "${fn_src}
+_strip_sub_sharded_suffix \"4. Functional Requirements\"")
+  [ "$result2" = "4. Functional Requirements" ]
+}
+
+@test "TC-MSS-SUBSHARD-5: flat-layout (no sibling dirs) regression-guard — output unchanged" {
+  # Pure flat shard layout — no marker pairs anywhere.
+  local prd_dir="$TEST_TMP/docs/planning-artifacts/prd"
+  mkdir -p "$prd_dir"
+  cat > "$prd_dir/prd.md" <<'PRD'
+# PRD
+
+## 1. Vision
+
+Vision body.
+PRD
+  cat > "$prd_dir/01-vision.md" <<'SH'
+## 1. Vision
+
+Vision body.
+SH
+  run "$CHECK_SCRIPT" --root "$TEST_TMP"
+  [ "$status" -eq 0 ]
+  # Synced flat layout — no WARNINGs at all.
+  ! echo "$output" | grep -q "WARNING: prd"
+}

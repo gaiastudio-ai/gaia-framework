@@ -20,6 +20,21 @@
 #   3. Missing shard directory — when a monolith exists but its shard
 #      directory does not, emit an INFO line and continue (graceful
 #      skip). A shard-only directory without a monolith is also tolerated.
+#   4. Marker-shard + sibling-directory (sub-sharded) pair (E53-S249) —
+#      a second-tier sharding model where a single H2 grows into its own
+#      sibling directory of per-H3 child files. The parent shard
+#      `<NN>-<slug>.md` retains a stub heading `## <N>. <title> — Sub-
+#      Sharded` plus a pointer paragraph; the sibling directory
+#      `<NN>-<slug>/` holds the actual per-H3 content. Recognised by
+#      _is_marker_shard_pair() (both the marker shard AND the sibling
+#      directory present, with ≥1 child *.md). When the pair is detected,
+#      the `— Sub-Sharded` suffix is stripped before title matching, and
+#      the body-hash divergence check is skipped (the marker shard is a
+#      stub by design — body divergence is the expected state, not drift).
+#      Single-half states (marker shard without dir, or dir without
+#      marker shard) keep the WARNING — they may signal corruption.
+#      Per-H3 child drift detection within the sibling directory is
+#      TC-MSS-SUBSHARD-4-DEFERRED (out of scope for E53-S249).
 
 set -euo pipefail
 
@@ -164,6 +179,47 @@ _section_body_hash() {
 }
 
 # ---------------------------------------------------------------------------
+# Sub-shard awareness helpers (E53-S249 / AF-2026-05-10-5).
+# ---------------------------------------------------------------------------
+#
+# Marker-shard + sibling-directory pattern (introduced by E53-S235):
+# a single H2 section that has grown unwieldy is split into a sibling
+# directory of per-H3 child files. The parent shard `<NN>-<slug>.md`
+# retains a stub heading `## <N>. <title> — Sub-Sharded` plus a one-line
+# pointer paragraph. The sibling directory `<NN>-<slug>/` holds the
+# actual content split per H3.
+#
+# This is recognised as a second-tier sharding model: both forward-pass
+# WARNINGs (monolith H2 not in shards) and reverse-pass WARNINGs
+# (shard H2 not in monolith) are suppressed when the marker-pair AND
+# the title-after-stripping match. Single-half states (marker shard
+# without dir, or dir without marker shard) keep the WARNING — they
+# may signal corruption.
+#
+# The `— Sub-Sharded` token is U+2014 EM DASH + space; ASCII hyphen
+# would silently fail (live fixtures use the em-dash).
+
+# Strip the `— Sub-Sharded` suffix from a title. Idempotent.
+_strip_sub_sharded_suffix() {
+  local title="$1"
+  printf '%s' "${title% — Sub-Sharded}"
+}
+
+# Returns 0 if both the marker shard (<shard_dir>/<NN-slug>.md) AND its
+# sibling directory (<shard_dir>/<NN-slug>/) exist and the directory
+# has at least one child *.md file. Otherwise returns 1.
+_is_marker_shard_pair() {
+  local shard_path="$1"  # e.g., prd/04-functional-requirements.md
+  [[ -f "$shard_path" ]] || return 1
+  local shard_base="${shard_path%.md}"  # strip .md -> prd/04-functional-requirements
+  [[ -d "$shard_base" ]] || return 1
+  # Confirm at least one *.md child.
+  local first_child
+  first_child=$(find "$shard_base" -mindepth 1 -maxdepth 1 -type f -name '*.md' -print -quit 2>/dev/null)
+  [[ -n "$first_child" ]]
+}
+
+# ---------------------------------------------------------------------------
 # Per-monolith comparison.
 # ---------------------------------------------------------------------------
 #
@@ -194,6 +250,7 @@ _compare_monolith() {
   # informative.
   local title_to_shard_titles=()
   local title_to_shard_paths=()
+  local title_to_marker_pair=()  # E53-S249: parallel array — "1" if shard is marker-pair, "0" otherwise
   local shard
   while IFS= read -r shard; do
     [[ -z "$shard" ]] && continue
@@ -209,8 +266,18 @@ _compare_monolith() {
     local stitle
     stitle="$(_shard_first_title "$shard")"
     [[ -z "$stitle" ]] && continue
+    # E53-S249: normalize "<title> — Sub-Sharded" -> "<title>" when the
+    # marker-shard + sibling-directory pair is present. The normalized
+    # title is what we store in the map so both forward-pass and reverse-
+    # pass title matching resolve correctly against the monolith H2.
+    local is_pair="0"
+    if _is_marker_shard_pair "$shard"; then
+      is_pair="1"
+      stitle="$(_strip_sub_sharded_suffix "$stitle")"
+    fi
     title_to_shard_titles+=("$stitle")
     title_to_shard_paths+=("$shard")
+    title_to_marker_pair+=("$is_pair")
   done < <(find "$shard_dir" -mindepth 1 -maxdepth 1 -type f -name '*.md' | sort)
 
   # Walk the monolith H2 sections.
@@ -276,6 +343,18 @@ _compare_monolith() {
       fi
 
       local shard_path="${title_to_shard_paths[$matched_idx]}"
+
+      # E53-S249: marker-shard + sibling-directory pair — the marker shard
+      # is a stub (`## <title> — Sub-Sharded` + pointer paragraph) by
+      # design. The actual content lives in the sibling directory's child
+      # files. Body divergence between the monolith H2 and the marker
+      # shard is the EXPECTED state, not drift. Skip the body-hash
+      # comparison for marker pairs. (Per-H3 child drift detection within
+      # the sibling directory is TC-MSS-SUBSHARD-4-DEFERRED — out of
+      # scope for this story.)
+      if [[ "${title_to_marker_pair[$matched_idx]}" == "1" ]]; then
+        continue
+      fi
 
       # Hash monolith section body.
       local mono_hash
