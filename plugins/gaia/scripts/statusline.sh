@@ -104,12 +104,14 @@ fi
 CACHE_FILE="$HOME/.claude/gaia-statusline/cache/latest-release.json"
 LATEST_VERSION=""
 UPDATE_AVAILABLE_RAW=""
+INSTALLED_VERSION_STALE_RAW="false"
 CACHE_FRESH=0
 if [ -r "$CACHE_FILE" ]; then
   CACHE_JSON="$(cat "$CACHE_FILE" 2>/dev/null || printf '')"
   if [ -n "$CACHE_JSON" ]; then
     LATEST_VERSION="$(printf '%s' "$CACHE_JSON" | jq -r '.latest_tag // ""' 2>/dev/null)"
     UPDATE_AVAILABLE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.update_available // false' 2>/dev/null)"
+    INSTALLED_VERSION_STALE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.installed_version_stale // false' 2>/dev/null)"
     CACHE_TS="$(printf '%s' "$CACHE_JSON" | jq -r '.checked_at_iso // ""' 2>/dev/null)"
     if [ -n "$CACHE_TS" ]; then
       # Portable ISO-8601 -> epoch (try BSD then GNU date).
@@ -179,6 +181,26 @@ if [ "$CACHE_FRESH" -eq 1 ] && [ "$UPDATE_AVAILABLE_RAW" = "true" ] && [ -n "$LA
   fi
 fi
 
+# ---- Staleness WARN segment (E82-S6 / ADR-094 Component 4) ----------------
+# Renders ONCE per UTC day. Gated by per-day marker file. Suppressed when
+# `installed_version_stale` is not literally "true" or when the per-day
+# marker already exists. Touching the marker is the only new write on the
+# hot path — bounded to one open(O_CREAT) per first-render-per-day.
+STALE_CHUNK=""
+if [ "$INSTALLED_VERSION_STALE_RAW" = "true" ]; then
+  STALE_DAY_KEY="$(date -u +%Y-%m-%d)"
+  STALE_MARKER="$HOME/.claude/gaia-statusline/cache/staleness-warning-shown.${STALE_DAY_KEY}"
+  if [ ! -e "$STALE_MARKER" ]; then
+    # Touch the marker first so concurrent renders don't double-emit.
+    : > "$STALE_MARKER" 2>/dev/null || true
+    if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
+      STALE_CHUNK="[stale: rerun install-statusline]"
+    else
+      STALE_CHUNK="${COLOR_UPDATE:-}[stale: rerun install-statusline]${COLOR_RESET}"
+    fi
+  fi
+fi
+
 MODEL_CHUNK="${COLOR_MUTED}${MODEL_NAME}${COLOR_RESET}"
 PROJECT_CHUNK="${PROJECT_NAME}"
 BRANCH_CHUNK=""
@@ -225,6 +247,7 @@ fi
 # Assemble.
 OUT="$BRAND_CHUNK"
 [ -n "$UPDATE_CHUNK" ] && OUT="$OUT $UPDATE_CHUNK"
+[ -n "$STALE_CHUNK" ] && OUT="$OUT $STALE_CHUNK"
 if [ "$KEEP_MODEL" -eq 1 ] && [ -n "$MODEL_CHUNK" ]; then
   OUT="$OUT$SEP$MODEL_CHUNK"
 fi

@@ -115,5 +115,6 @@ CLAUDE.md is **NOT** a source of truth for the rendered version — `plugin.json
 
 - **Install / uninstall:** `gaia-public/plugins/gaia/scripts/install-statusline.sh` (E82-S1).
 - **Toggle on/off:** `/gaia-statusline-enable` and `/gaia-statusline-disable` (E82-S3) — thin wrappers over `gaia-statusline-toggle.sh`.
-- **Background update fetcher:** `gaia-public/plugins/gaia/scripts/statusline-update-check.sh` (E82-S2).
+- **Background update fetcher:** `gaia-public/plugins/gaia/scripts/statusline-update-check.sh` (E82-S2). Writes the canonical `~/.claude/gaia-statusline/cache/latest-release.json` schema `{checked_at_iso, latest_tag, current_tag, update_available, installed_version_stale}` (ADR-091 + ADR-094 amendment).
+- **Staleness detection (E82-S6 / ADR-094):** the fetcher computes `installed_version_stale` by comparing `~/.claude/gaia-statusline/.installed-version` (written atomically by `install-statusline.sh` as the last action of a successful install) against `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. The renderer surfaces a one-shot daily WARN segment `[stale: rerun install-statusline]` when stale, gated by a per-UTC-day marker at `~/.claude/gaia-statusline/cache/staleness-warning-shown.<YYYY-MM-DD>`. Zero new hot-path I/O — the boolean is read from the existing cache JSON.
 - **Helpers (JIT):** `helpers/themes.md`, `helpers/glyph-palette.md`, `helpers/color-tokens.md`.

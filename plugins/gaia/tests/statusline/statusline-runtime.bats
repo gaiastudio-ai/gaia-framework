@@ -318,3 +318,51 @@ assert_no_orphans() {
   run grep -E '(KEEP_PROJECT.*-n.*PROJECT_CHUNK|-n.*PROJECT_CHUNK.*KEEP_PROJECT|-n[[:space:]]*"\$\{?PROJECT_CHUNK\}?")' "$RUNTIME"
   [ "$status" -eq 0 ]
 }
+
+# ===========================================================================
+# E82-S6 — Staleness WARN segment (ADR-094 Component 4).
+# ===========================================================================
+
+@test "E82-S6 / WARN: ASCII theme renders [stale: rerun install-statusline] when installed_version_stale=true" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  # Seed cache with installed_version_stale=true.
+  mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
+  cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
+{"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.141.0","update_available":false,"installed_version_stale":true}
+JSON
+  # No prior per-day marker.
+  run bash -c "HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "stale: rerun install-statusline"
+}
+
+@test "E82-S6 / WARN: per-day suppression — second render same UTC day omits the warn segment" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
+  cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
+{"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.141.0","update_available":false,"installed_version_stale":true}
+JSON
+  # First render — should emit the warn.
+  run bash -c "HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "stale: rerun install-statusline"
+  # Second render same day — should NOT emit (per-day marker is now present).
+  run bash -c "HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  ! echo "$output" | grep -q "stale: rerun install-statusline"
+}
+
+@test "E82-S6 / WARN: backward-compat — cache without installed_version_stale field does not emit warn" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
+  # Old-schema cache without the new field.
+  cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
+{"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.141.0","update_available":false}
+JSON
+  run bash -c "HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  ! echo "$output" | grep -q "stale:"
+}

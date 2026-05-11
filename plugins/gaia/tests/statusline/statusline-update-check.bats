@@ -299,3 +299,86 @@ _with_stubs() {
   lt="$(jq -r '.latest_tag' "$CACHE")"
   [ "$lt" = "2.0.0" ]
 }
+
+# ===========================================================================
+# E82-S6 — installed_version_stale staleness detection (ADR-094).
+#
+# Tests a-g per Theo's compliance enumeration. All exercise the fetcher's
+# new computation path (marker vs CLAUDE_PLUGIN_ROOT/plugin.json) and the
+# additive cache field.
+# ===========================================================================
+
+# Helper: prepare a CLAUDE_PLUGIN_ROOT fixture with a given version.
+_make_plugin_root() {
+  local version="$1" dir="$TEST_TMP/active-plugin"
+  mkdir -p "$dir/.claude-plugin"
+  cat > "$dir/.claude-plugin/plugin.json" <<PJ
+{ "name": "gaia", "version": "$version" }
+PJ
+  printf '%s' "$dir"
+}
+
+@test "E82-S6 / TC-a: fresh install marker matches active plugin version -> stale=false" {
+  local proot
+  proot="$(_make_plugin_root 1.142.0)"
+  printf '1.142.0\n' > "$HOME/.claude/gaia-statusline/.installed-version"
+  _make_stub gh ok-equal
+  _make_stub curl ok-equal
+  _with_stubs
+  run env PATH="$STUBS_PATH" HOME="$HOME" PROJECT_PATH="$PROJECT_PATH" CLAUDE_PLUGIN_ROOT="$proot" "$FETCHER"
+  [ "$status" -eq 0 ]
+  [ -f "$CACHE" ]
+  run jq -r '.installed_version_stale' "$CACHE"
+  [ "$output" = "false" ]
+}
+
+@test "E82-S6 / TC-c: marker != active version -> stale=true" {
+  local proot
+  proot="$(_make_plugin_root 1.142.0)"
+  printf '1.141.0\n' > "$HOME/.claude/gaia-statusline/.installed-version"
+  _make_stub gh ok-equal
+  _make_stub curl ok-equal
+  _with_stubs
+  run env PATH="$STUBS_PATH" HOME="$HOME" PROJECT_PATH="$PROJECT_PATH" CLAUDE_PLUGIN_ROOT="$proot" "$FETCHER"
+  [ "$status" -eq 0 ]
+  run jq -r '.installed_version_stale' "$CACHE"
+  [ "$output" = "true" ]
+}
+
+@test "E82-S6 / TC-d: marker absent (first install bootstrap) -> stale=false" {
+  local proot
+  proot="$(_make_plugin_root 1.142.0)"
+  rm -f "$HOME/.claude/gaia-statusline/.installed-version"
+  _make_stub gh ok-equal
+  _make_stub curl ok-equal
+  _with_stubs
+  run env PATH="$STUBS_PATH" HOME="$HOME" PROJECT_PATH="$PROJECT_PATH" CLAUDE_PLUGIN_ROOT="$proot" "$FETCHER"
+  [ "$status" -eq 0 ]
+  run jq -r '.installed_version_stale' "$CACHE"
+  [ "$output" = "false" ]
+}
+
+@test "E82-S6 / TC-e: CLAUDE_PLUGIN_ROOT unset (dev/test mode) -> stale=false" {
+  printf '1.141.0\n' > "$HOME/.claude/gaia-statusline/.installed-version"
+  _make_stub gh ok-equal
+  _make_stub curl ok-equal
+  _with_stubs
+  run env -u CLAUDE_PLUGIN_ROOT PATH="$STUBS_PATH" HOME="$HOME" PROJECT_PATH="$PROJECT_PATH" "$FETCHER"
+  [ "$status" -eq 0 ]
+  run jq -r '.installed_version_stale' "$CACHE"
+  [ "$output" = "false" ]
+}
+
+@test "E82-S6 / TC-g: cache field is always populated (writers contract)" {
+  local proot
+  proot="$(_make_plugin_root 1.142.0)"
+  _make_stub gh ok-equal
+  _make_stub curl ok-equal
+  _with_stubs
+  rm -f "$CACHE"
+  run env PATH="$STUBS_PATH" HOME="$HOME" PROJECT_PATH="$PROJECT_PATH" CLAUDE_PLUGIN_ROOT="$proot" "$FETCHER"
+  [ "$status" -eq 0 ]
+  # Field MUST exist (per ADR-091 amendment writers contract).
+  run bash -c "jq -e 'has(\"installed_version_stale\")' '$CACHE'"
+  [ "$status" -eq 0 ]
+}
