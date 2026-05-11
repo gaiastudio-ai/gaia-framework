@@ -33,9 +33,11 @@ teardown() { common_teardown; }
   [[ "$output" == *"description:"* ]]
 }
 
-@test "AC1: frontmatter contains context: fork" {
+@test "AC1: frontmatter declares orchestration_class (post-ADR-093)" {
+  # ADR-093 / E84-S3: `context: fork` stripped from non-reviewer plugin
+  # SKILL.md. gaia-create-ux is heavy-procedural.
   run head -20 "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"context: fork"* ]]
+  [[ "$output" == *"orchestration_class: heavy-procedural"* ]]
 }
 
 @test "AC1: frontmatter contains allowed-tools" {

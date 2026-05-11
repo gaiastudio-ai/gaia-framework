@@ -91,11 +91,13 @@ frontmatter_value() {
 # AC1 / AC5 — SKILL.md frontmatter contract (INFO-2 assertions)
 # ===========================================================================
 
-@test "AC1: SKILL.md declares context: fork" {
+@test "AC1: SKILL.md declares orchestration_class (post-ADR-093)" {
+  # ADR-093 / E84-S3: `context: fork` stripped from non-reviewer plugin
+  # SKILL.md. gaia-test-automate is light-procedural.
   [ -f "$SKILL_MD" ]
-  local ctx
-  ctx="$(frontmatter_value "$SKILL_MD" "context")"
-  [ "$ctx" = "fork" ]
+  local cls
+  cls="$(frontmatter_value "$SKILL_MD" "orchestration_class")"
+  [ "$cls" = "light-procedural" ]
 }
 
 @test "AC1: SKILL.md allowed-tools contains Read, Grep, Glob, Bash" {
