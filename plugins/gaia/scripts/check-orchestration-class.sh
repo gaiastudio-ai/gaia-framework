@@ -66,7 +66,7 @@ fi
 }
 
 # ---- Canonical class enum ----
-is_canonical_class() {
+_is_canonical_class() {
   case "$1" in
     reviewer|light-procedural|heavy-procedural|conversational) return 0 ;;
     *) return 1 ;;
@@ -104,7 +104,7 @@ for d in "$skills_dir"/*/; do
   fi
 
   value="$(printf '%s\n' "$fm" | awk -F: '/^orchestration_class:/{sub(/^[[:space:]]+/, "", $2); sub(/[[:space:]]+$/, "", $2); print $2; exit}')"
-  if ! is_canonical_class "$value"; then
+  if ! _is_canonical_class "$value"; then
     printf 'CRITICAL: %s: orchestration_class invalid: %s\n' "$file" "$value"
     findings=$((findings + 1))
     continue
