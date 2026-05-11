@@ -1,9 +1,15 @@
 #!/usr/bin/env bats
 # sprint-state-rollover.bats — TC-SPRINT-ROLLOVER-1..6 (E81-S6).
 #
+# NFR-052 public-function coverage anchor: cmd_rollover
+#
 # End-to-end coverage for the `sprint-state.sh rollover` subcommand: happy-
 # path multi-key migration, sprint_id:null acceptance, sprint_id mismatch
 # refusal, partial-failure per-story flock rollback, and idempotency.
+# All test cases exercise cmd_rollover via the CLI dispatcher
+# (`sprint-state.sh rollover ...`); this anchor comment satisfies the
+# NFR-052 coverage gate which greps for the public function name across
+# tests/*.bats.
 #
 # Refs: AC2, FR-451, ADR-095 atomicity.
 
