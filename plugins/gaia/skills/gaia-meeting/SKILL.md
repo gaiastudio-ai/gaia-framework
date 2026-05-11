@@ -2,7 +2,6 @@
 name: gaia-meeting
 description: Peer-to-peer multi-agent discussion skill — seven-phase lifecycle (INVITE / CHARTER / RESEARCH / DISCUSS / CLOSE / REVIEW / SAVE) with charter requirement, decide default mode, round-robin turn arbitration, and live-streamed transcript. Use when "/gaia-meeting" or "run a peer-to-peer meeting".
 argument-hint: "--charter \"<one-to-three-sentence charter>\" [--mode <mode>] [--invitees <P1,P2,...>]"
-context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 orchestration_class: conversational
 ---

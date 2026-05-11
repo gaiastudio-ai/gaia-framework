@@ -98,9 +98,11 @@ teardown() { common_teardown; }
   echo "$frontmatter" | grep -q '^name: gaia-readiness-check'
 }
 
-@test "SKILL.md frontmatter contains 'context' field set to fork" {
+@test "SKILL.md frontmatter declares orchestration_class (post-ADR-093)" {
+  # ADR-093 / E84-S3: `context: fork` stripped from non-reviewer plugin
+  # SKILL.md. gaia-readiness-check is heavy-procedural.
   frontmatter=$(awk 'BEGIN{in_fm=0;seen=0}/^---[[:space:]]*$/{if(seen==0){in_fm=1;seen=1;next}else if(in_fm==1){exit}}in_fm==1{print}' "$SKILL_FILE")
-  echo "$frontmatter" | grep -q '^context: fork'
+  echo "$frontmatter" | grep -q '^orchestration_class: heavy-procedural'
 }
 
 @test "SKILL.md frontmatter contains 'allowed-tools' list" {

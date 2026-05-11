@@ -1,7 +1,6 @@
 ---
 name: gaia-create-ux
 description: Create UX design specifications through collaborative discovery with the ux-designer subagent (Christy) — Cluster 5 planning skill. Use when the user wants to produce a validated UX design document from an existing PRD, covering personas, information architecture, wireframes, interaction patterns, accessibility, and Figma integration.
-context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 orchestration_class: heavy-procedural
 ---

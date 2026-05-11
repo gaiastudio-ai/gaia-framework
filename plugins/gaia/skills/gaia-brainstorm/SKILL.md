@@ -2,7 +2,6 @@
 name: gaia-brainstorm
 description: Brainstorm a new project idea with structured techniques — Cluster 4 analysis skill. Use when the user wants to explore a business idea, target users, pain points, and opportunity areas before writing a PRD.
 argument-hint: "[project idea or topic]"
-context: fork
 allowed-tools: [Read, Write, Glob, Grep, Bash]
 orchestration_class: conversational
 ---

@@ -2,7 +2,6 @@
 name: gaia-test-perf
 description: Execute post-deploy performance tests via k6 and Lighthouse adapters under the ADR-078 contract. Phase 3A toolkit + Phase 3B LLM judgment + verdict resolver, plus SLO and baseline-regression checks. Use when "run perf tests" or /gaia-test-perf.
 argument-hint: "[story-key] [--adapter <name>] [--target-url <url>] [--scenario <name>]"
-context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 type: action
 verdict: true

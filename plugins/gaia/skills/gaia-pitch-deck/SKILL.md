@@ -2,7 +2,6 @@
 name: gaia-pitch-deck
 description: Create an investor or partner pitch deck using the standard Problem → Solution → Market → Business Model → Traction → Team → Ask structure with speaker notes and data-visualization specs. Use when the user asks to "create a pitch deck", build an investor deck, or draft a partnership pitch. Delegates slide authoring to Vermeer (presentation-designer).
 argument-hint: "[funding stage or pitch purpose]"
-context: fork
 allowed-tools: [Read, Write, Glob, Agent]
 orchestration_class: light-procedural
 ---

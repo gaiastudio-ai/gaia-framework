@@ -2,7 +2,6 @@
 name: gaia-design-thinking
 description: Guide a human-centered design session through the five-phase Stanford d.school pipeline — Empathize, Define, Ideate, Prototype, Test. Use when "run design thinking" or /gaia-design-thinking. Delegates facilitation to Lyra (design-thinking-coach) and produces a creative artifact at docs/creative-artifacts/design-thinking-{date}.md.
 argument-hint: "[design challenge]"
-context: fork
 allowed-tools: [Read, Write, Glob, Agent]
 orchestration_class: conversational
 ---

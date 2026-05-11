@@ -1,7 +1,6 @@
 ---
 name: gaia-test-strategy
 description: Unified test-strategy skill — owns both test-plan design (formerly /gaia-test-design) and test-framework scaffolding (formerly /gaia-test-framework). Use when "design test strategy", "scaffold tests", "setup test framework", "test plan", or /gaia-test-strategy. Mode-selected via --plan, --scaffold, or interactive no-arg prompt.
-context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 phase: setup
 deprecated_aliases: [gaia-test-design, gaia-test-framework]

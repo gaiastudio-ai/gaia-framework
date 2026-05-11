@@ -2,7 +2,6 @@
 name: gaia-innovation
 description: Identify business-model innovation and strategic disruption opportunities through a five-phase pipeline — Market Context, Jobs-to-be-Done, Blue Ocean / ERRC, Business Model, and Strategic Roadmap. Use when "run innovation strategy" or /gaia-innovation. Delegates facilitation to Orion (innovation-strategist) and produces a creative artifact at docs/creative-artifacts/innovation-strategy-{date}.md.
 argument-hint: "[innovation domain or product]"
-context: fork
 allowed-tools: [Read, Write, Glob, Agent]
 orchestration_class: heavy-procedural
 ---

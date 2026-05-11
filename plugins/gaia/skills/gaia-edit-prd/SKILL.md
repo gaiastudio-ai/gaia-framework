@@ -1,7 +1,6 @@
 ---
 name: gaia-edit-prd
 description: Edit an existing Product Requirements Document with cascade-aware downstream artifact detection, delegating PRD-authoring reasoning to the pm subagent (Derek) — Cluster 5 planning skill. Use when the user wants to modify sections of an existing PRD while preserving consistency with architecture, epics, stories, and test plans.
-context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 orchestration_class: heavy-procedural
 ---
