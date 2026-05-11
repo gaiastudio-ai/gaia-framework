@@ -225,6 +225,58 @@ if [ -n "$SPRINT_ID" ]; then
   SPRINT_CHUNK="${COLOR_MUTED}${SPRINT_ID}${COLOR_RESET}"
 fi
 
+# ---- Context-window progress bar (E82-S9 / FR-450) -------------------------
+# Renders a 10-char band from stdin's `.context_window.used_percentage`
+# (0-100). Two distinct null-vs-zero paths per AC6/AC7:
+#   - `.context_window.current_usage` is null    -> empty chunk (pre-API or
+#     post-/compact). Smart-hiding (FR-447) suppresses the separator.
+#   - `current_usage` non-null AND `used_percentage` = 0 -> visible
+#     10-glyph all-empty bar ("we know it's empty").
+# Color bands: <50 OK, 50..<80 WARN, >=80 DIRTY.
+# Filled / empty glyphs use `#` / `-` in ASCII theme (AC5), `█` / `░` UTF-8.
+CONTEXTBAR_CHUNK=""
+_CTX_CURRENT="$(printf '%s' "$INPUT" | jq -r '.context_window.current_usage // "null"' 2>/dev/null || printf 'null')"
+if [ "$_CTX_CURRENT" != "null" ]; then
+  _CTX_PCT="$(printf '%s' "$INPUT" | jq -r '.context_window.used_percentage // 0' 2>/dev/null || printf '0')"
+  # Clamp to [0, 100] and integer-cast via shell arithmetic.
+  case "$_CTX_PCT" in
+    ''|*[!0-9]*) _CTX_PCT=0 ;;
+  esac
+  if [ "$_CTX_PCT" -gt 100 ]; then _CTX_PCT=100; fi
+  if [ "$_CTX_PCT" -lt 0 ]; then _CTX_PCT=0; fi
+  _CTX_FILLED=$(( _CTX_PCT / 10 ))
+  _CTX_EMPTY=$(( 10 - _CTX_FILLED ))
+  if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
+    _CTX_FILLED_GLYPH="#"
+    _CTX_EMPTY_GLYPH="-"
+  else
+    _CTX_FILLED_GLYPH="${GLYPH_BAR_FILLED:-█}"
+    _CTX_EMPTY_GLYPH="${GLYPH_BAR_EMPTY:-░}"
+  fi
+  # Color band per AC2/AC3/AC4.
+  if [ "$_CTX_PCT" -lt 50 ]; then
+    _CTX_COLOR="${COLOR_OK:-}"
+  elif [ "$_CTX_PCT" -lt 80 ]; then
+    _CTX_COLOR="${COLOR_WARN:-}"
+  else
+    _CTX_COLOR="${COLOR_DIRTY:-}"
+  fi
+  # Build filled run + empty run. Use string repetition via printf %*s.
+  _FILLED_STR=""
+  i=0
+  while [ "$i" -lt "$_CTX_FILLED" ]; do
+    _FILLED_STR="${_FILLED_STR}${_CTX_FILLED_GLYPH}"
+    i=$((i + 1))
+  done
+  _EMPTY_STR=""
+  i=0
+  while [ "$i" -lt "$_CTX_EMPTY" ]; do
+    _EMPTY_STR="${_EMPTY_STR}${_CTX_EMPTY_GLYPH}"
+    i=$((i + 1))
+  done
+  CONTEXTBAR_CHUNK="${_CTX_COLOR}${_FILLED_STR}${COLOR_RESET}${_EMPTY_STR}"
+fi
+
 SEP=" | "
 
 # ---- Width-ladder right-to-left segment drop (FR-433, TC-4) ----------------
@@ -244,17 +296,18 @@ SEP=" | "
 #   < 32     : brand only
 
 if [ "$COLS" -lt 32 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=0; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0
+  KEEP_BRAND=1; KEEP_MODEL=0; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=0
 elif [ "$COLS" -lt 40 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=0
 elif [ "$COLS" -lt 50 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=0; KEEP_SPRINT=0
+  # E82-S9 / AC10: at <50 cols, the bar survives but the branch is dropped.
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1
 elif [ "$COLS" -lt 60 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1
 elif [ "$COLS" -lt 80 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1
 else
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=1
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=1; KEEP_CONTEXTBAR=1
 fi
 
 # Assemble.
@@ -269,6 +322,9 @@ if [ "$KEEP_PROJECT" -eq 1 ] && [ -n "$PROJECT_CHUNK" ]; then
 fi
 if [ "$KEEP_BRANCH" -eq 1 ] && [ -n "$BRANCH_CHUNK" ]; then
   OUT="$OUT$SEP$BRANCH_CHUNK"
+fi
+if [ "$KEEP_CONTEXTBAR" -eq 1 ] && [ -n "$CONTEXTBAR_CHUNK" ]; then
+  OUT="$OUT$SEP$CONTEXTBAR_CHUNK"
 fi
 if [ "$KEEP_SPRINT" -eq 1 ] && [ -n "$SPRINT_CHUNK" ]; then
   OUT="$OUT$SEP$SPRINT_CHUNK"
