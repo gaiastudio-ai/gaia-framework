@@ -366,3 +366,61 @@ JSON
   [ "$status" -eq 0 ]
   ! echo "$output" | grep -q "stale:"
 }
+
+# ===========================================================================
+# E82-S8 — Dirty glyph appended to BRANCH chunk when git_dirty=true.
+# ===========================================================================
+
+@test "E82-S8 / AC3: ASCII theme appends '*' to BRANCH when git_dirty=true" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
+  cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
+{"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.142.0","update_available":false,"installed_version_stale":false,"git_dirty":true}
+JSON
+  run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  # BRANCH chunk should be "@ feature/x*" with ASCII glyph + dirty marker.
+  echo "$output" | grep -q "feature/x\*"
+}
+
+@test "E82-S8 / AC3: git_dirty=false leaves BRANCH chunk clean" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
+  cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
+{"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.142.0","update_available":false,"installed_version_stale":false,"git_dirty":false}
+JSON
+  run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  # Branch should be "feature/x" with NO trailing asterisk (other asterisks
+  # may appear elsewhere, e.g., GLYPH_SPARK).
+  echo "$output" | grep -q "feature/x"
+  ! echo "$output" | grep -q "feature/x\*"
+}
+
+@test "E82-S8 / AC4: detached HEAD (BRANCH empty) -> no dirty marker leaks" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
+  cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
+{"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.142.0","update_available":false,"installed_version_stale":false,"git_dirty":true}
+JSON
+  # Empty branch override means BRANCH is empty -> smart-hiding suppresses chunk.
+  run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE='' printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE='' '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  # No branch glyph anywhere — and no stray dirty marker leaking elsewhere.
+  ! echo "$output" | grep -q "@ "
+}
+
+@test "E82-S8 / backward-compat: cache without git_dirty field -> no marker" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
+  cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
+{"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.142.0","update_available":false}
+JSON
+  run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  ! echo "$output" | grep -q "feature/x\*"
+}

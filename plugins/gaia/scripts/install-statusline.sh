@@ -36,8 +36,9 @@ SRC_RUNTIME="$SCRIPT_DIR/statusline.sh"
 SRC_GLYPHS="$SCRIPT_DIR/lib/statusline-glyphs.sh"
 SRC_COLORS="$SCRIPT_DIR/lib/statusline-colors.sh"
 SRC_FETCHER="$SCRIPT_DIR/statusline-update-check.sh"
+SRC_DIRTY_FETCHER="$SCRIPT_DIR/statusline-git-dirty-check.sh"
 
-for f in "$SRC_RUNTIME" "$SRC_GLYPHS" "$SRC_COLORS" "$SRC_FETCHER"; do
+for f in "$SRC_RUNTIME" "$SRC_GLYPHS" "$SRC_COLORS" "$SRC_FETCHER" "$SRC_DIRTY_FETCHER"; do
   if [ ! -r "$f" ]; then
     printf 'install-statusline.sh: missing source file: %s\n' "$f" >&2
     exit 1
@@ -52,6 +53,7 @@ DEST_RUNTIME="$DEST_BASE/statusline.sh"
 DEST_GLYPHS="$DEST_LIB/statusline-glyphs.sh"
 DEST_COLORS="$DEST_LIB/statusline-colors.sh"
 DEST_FETCHER="$DEST_BASE/statusline-update-check.sh"
+DEST_DIRTY_FETCHER="$DEST_BASE/statusline-git-dirty-check.sh"
 
 mkdir -p "$DEST_BASE" "$DEST_LIB" "$DEST_CACHE"
 
@@ -69,6 +71,7 @@ _copy_if_different "$SRC_RUNTIME" "$DEST_RUNTIME"
 _copy_if_different "$SRC_GLYPHS"  "$DEST_GLYPHS"
 _copy_if_different "$SRC_COLORS"  "$DEST_COLORS"
 _copy_if_different "$SRC_FETCHER" "$DEST_FETCHER"
+_copy_if_different "$SRC_DIRTY_FETCHER" "$DEST_DIRTY_FETCHER"
 
 # ---- settings.json atomic merge -------------------------------------------
 SETTINGS="$HOME/.claude/settings.json"
@@ -93,6 +96,21 @@ fi
 # top-level statusLine key, leaving sibling keys (theme, model, hooks)
 # byte-identical (TC-STATUSLINE-12).
 MERGED="$(printf '%s\n%s\n' "$EXISTING" "$STATUSLINE_FRAGMENT" | jq -s '.[0] + .[1]')"
+
+# E82-S8: register PreToolUse hook to invoke the git-dirty fetcher. The hook
+# is appended to hooks.PreToolUse[] only when an entry referencing this
+# specific command is not already present (idempotent). The match pattern
+# is the dirty-fetcher path so re-running the install does not duplicate.
+MERGED="$(printf '%s' "$MERGED" | jq \
+  --arg cmd "$DEST_DIRTY_FETCHER" \
+  '
+    .hooks //= {} |
+    .hooks.PreToolUse //= [] |
+    if any(.hooks.PreToolUse[]?; .hooks[]?.command == $cmd)
+    then .
+    else .hooks.PreToolUse += [{matcher: "*", hooks: [{type: "command", command: $cmd}]}]
+    end
+  ')"
 
 # Atomic write via SIBLING tempfile + mv — same filesystem so rename is
 # atomic (NFR-STATUSLINE-3). NEVER /tmp/.

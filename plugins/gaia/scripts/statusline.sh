@@ -105,6 +105,7 @@ CACHE_FILE="$HOME/.claude/gaia-statusline/cache/latest-release.json"
 LATEST_VERSION=""
 UPDATE_AVAILABLE_RAW=""
 INSTALLED_VERSION_STALE_RAW="false"
+GIT_DIRTY_RAW="false"
 CACHE_FRESH=0
 if [ -r "$CACHE_FILE" ]; then
   CACHE_JSON="$(cat "$CACHE_FILE" 2>/dev/null || printf '')"
@@ -112,6 +113,7 @@ if [ -r "$CACHE_FILE" ]; then
     LATEST_VERSION="$(printf '%s' "$CACHE_JSON" | jq -r '.latest_tag // ""' 2>/dev/null)"
     UPDATE_AVAILABLE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.update_available // false' 2>/dev/null)"
     INSTALLED_VERSION_STALE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.installed_version_stale // false' 2>/dev/null)"
+    GIT_DIRTY_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.git_dirty // false' 2>/dev/null)"
     CACHE_TS="$(printf '%s' "$CACHE_JSON" | jq -r '.checked_at_iso // ""' 2>/dev/null)"
     if [ -n "$CACHE_TS" ]; then
       # Portable ISO-8601 -> epoch (try BSD then GNU date).
@@ -205,7 +207,18 @@ MODEL_CHUNK="${COLOR_MUTED}${MODEL_NAME}${COLOR_RESET}"
 PROJECT_CHUNK="${PROJECT_NAME}"
 BRANCH_CHUNK=""
 if [ -n "$BRANCH" ]; then
-  BRANCH_CHUNK="${GLYPH_BRANCH} ${BRANCH}"
+  # E82-S8 / AC3: append dirty glyph when git_dirty=true. AC4: BRANCH-empty
+  # already suppresses the entire chunk via smart-hiding (FR-447), so no
+  # marker leaks to a detached-HEAD render.
+  DIRTY_SUFFIX=""
+  if [ "$GIT_DIRTY_RAW" = "true" ]; then
+    if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
+      DIRTY_SUFFIX="*"
+    else
+      DIRTY_SUFFIX="${GLYPH_DIRTY:-*}"
+    fi
+  fi
+  BRANCH_CHUNK="${GLYPH_BRANCH} ${BRANCH}${DIRTY_SUFFIX}"
 fi
 SPRINT_CHUNK=""
 if [ -n "$SPRINT_ID" ]; then
