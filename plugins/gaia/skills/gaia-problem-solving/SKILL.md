@@ -6,6 +6,13 @@ allowed-tools: [Read, Write, Grep, Glob, Bash, Agent]
 orchestration_class: conversational
 ---
 
+## Orchestration Mode
+
+```bash
+SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class conversational --mode "$SESSION_MODE"
+```
+
 ## Memory
 
 !${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh problem-solver decision-log

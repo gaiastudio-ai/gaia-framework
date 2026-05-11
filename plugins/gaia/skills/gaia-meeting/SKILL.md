@@ -6,6 +6,13 @@ allowed-tools: [Read, Grep, Glob, Bash]
 orchestration_class: conversational
 ---
 
+## Orchestration Mode
+
+```bash
+SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class conversational --mode "$SESSION_MODE"
+```
+
 # gaia-meeting (E76 — S1 scaffolding + S2 research / cite-or-flag / raise-hand + S3 close + S4 scratchpad)
 
 Peer-to-peer multi-agent discussion orchestrator. GAIA agents and stakeholder
