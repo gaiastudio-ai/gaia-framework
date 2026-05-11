@@ -12,6 +12,13 @@ discover_inputs_target: "docs/creative-artifacts/product-brief.md, docs/creative
 orchestration_class: heavy-procedural
 ---
 
+## Orchestration Mode
+
+```bash
+SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE"
+```
+
 ## Setup
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/scripts/setup.sh

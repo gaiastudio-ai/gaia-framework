@@ -12,6 +12,13 @@ deprecated_since: sprint-37
 orchestration_class: heavy-procedural
 ---
 
+## Orchestration Mode
+
+```bash
+SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE"
+```
+
 ## ADR-077 Mission (E69-S2 — post-deploy smoke variant)
 
 You are the **post-deploy a11y smoke** for the three-phase a11y skill family (FR-RSV2-25):

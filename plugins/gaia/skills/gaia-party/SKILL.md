@@ -6,6 +6,13 @@ allowed-tools: [Read, Grep, Glob, Bash]
 orchestration_class: conversational
 ---
 
+## Orchestration Mode
+
+```bash
+SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class conversational --mode "$SESSION_MODE"
+```
+
 # gaia-party
 
 Multi-participant group discussion orchestrator. Gaia acts as moderator while a

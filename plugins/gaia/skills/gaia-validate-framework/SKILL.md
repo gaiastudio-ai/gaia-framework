@@ -47,6 +47,7 @@ The skill runs ten steps in strict order, mirroring the legacy `validate-framewo
 9b. **Orphan-tmp Sweep Allowlist** (E64-S6) — static check rejecting any startup orphan-tmp `find ... -delete` whose target paths fall outside the allowlist (`${PLANNING_ARTIFACTS}/epics`, `${IMPLEMENTATION_ARTIFACTS}`, `${MEMORY_PATH}`). Out-of-bounds sweeps are CRITICAL findings.
 9c. **Orchestration-Class Coverage** (E84-S2, ADR-093) — invoke `plugins/gaia/scripts/check-orchestration-class.sh`. The script verifies every SKILL.md under `plugins/gaia/skills/*/SKILL.md` declares an `orchestration_class:` frontmatter field set to one of `{reviewer, light-procedural, heavy-procedural, conversational}`. Any missing field, unknown value, or duplicate declaration is a CRITICAL finding. Source of truth for the enum: `plugins/gaia/skills/README.md` §"Orchestration Class".
 9d. **Fork-Strip Invariant** (E84-S3, ADR-093) — invoke `plugins/gaia/scripts/check-fork-stripped.sh`. The script verifies that no non-reviewer plugin SKILL.md (orchestration_class ∈ `{light-procedural, heavy-procedural, conversational}`) declares `context: fork` in its frontmatter. Reviewers MAY retain `context: fork` per NFR-060 (clean-room invariant). Violations are CRITICAL findings. Agent persona files under `plugins/gaia/agents/*.md` are intentionally out of scope for this check (ADR-093 amends ADR-041 only for the skill-invocation layer); their fork retention is guarded by bats regression tests instead.
+9e. **Orchestration-Warning Invocation Presence** (E84-S6, ADR-093 / FR-446) — invoke `plugins/gaia/scripts/check-orchestration-warning-wired.sh`. The script verifies that every SKILL.md with `orchestration_class ∈ {heavy-procedural, conversational}` invokes BOTH `detect-orchestration-mode.sh` AND `orchestration-warning.sh` in its procedural body. Missing invocations are CRITICAL findings. Out-of-scope classes (`light-procedural`, `reviewer`) are silently ignored — `reviewer` in particular is a clean-room one-shot fork per NFR-060, where Mode A is the design and the warning is not applicable. This check closes the E84-S4 integration gap where the helper scripts were shipped but never wired into any SKILL.md.
 10. **Report** — emit PASS/FAIL overall + itemized findings grouped by severity
 
 ## Step 1 — File Inventory
@@ -132,6 +133,21 @@ grep -rEn "\*\.tmp\.\?\?\?\?\?\?.*-delete|find[^|;]*-name[[:space:]]*['\"]?\\*\\
 - Reject (CRITICAL) any sweep whose first `find` argument resolves to a path outside the allowlist — explicitly forbidden targets include `/tmp`, `$HOME`, `${PROJECT_PATH}` (root), `~`, `${HOME}`, `/var/tmp`. Hard fail the framework validation report with severity CRITICAL and a finding row that names the offending file and line number.
 - Suggested fix for each CRITICAL finding: re-scope the sweep to one of the three allowlisted roots, or remove the sweep entirely. The allowlist exists to bound blast radius — an orphan-tmp sweep MUST NOT walk arbitrary filesystem paths.
 - This static check enforces AC4 of E64-S6 ("a static check in `/gaia-validate-framework` rejects any sweep call that targets a path outside the allowlist") and is the single source of truth for the sweep allowlist policy. Future scripts adopting the sweep MUST land their call site under one of the three roots.
+
+## Step 9e — Orchestration-Warning Invocation Presence (E84-S6)
+
+- Invoke `plugins/gaia/scripts/check-orchestration-warning-wired.sh`. The script verifies that every SKILL.md under `plugins/gaia/skills/*/SKILL.md` whose frontmatter declares `orchestration_class ∈ {heavy-procedural, conversational}` invokes BOTH `detect-orchestration-mode.sh` AND `orchestration-warning.sh` in its procedural body.
+- Each missing invocation is a CRITICAL finding of the shape `<file>: orchestration_class=<cls> missing invocation: <script>.sh`. Fold each CRITICAL line into the findings list at CRITICAL severity, preserving the file path and missing-script name in the `Finding` column.
+- Out-of-scope classes (`light-procedural`, `reviewer`) are silently skipped by the script. Reviewers in particular are clean-room one-shot forks per NFR-060 where Mode A is the design and the warning is not applicable; light-procedural skills are cheap (≤2 subagent dispatches, no continuity benefit) and the warning would be alarmist noise.
+- Suggested fix for each CRITICAL finding: insert the canonical invocation pattern immediately after the SKILL.md frontmatter and before the first procedural section:
+
+  ```bash
+  SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class <orchestration_class> --mode "$SESSION_MODE"
+  ```
+
+  The `<orchestration_class>` literal must equal the SKILL.md's own `orchestration_class:` frontmatter value verbatim.
+- This static check closes the E84-S4 integration gap where `orchestration-warning.sh` and `detect-orchestration-mode.sh` were shipped but no SKILL.md invoked either script — making the warning unreachable in production despite AC8 of E84-S4 being marked passing.
 
 ## Step 10 — Report
 
