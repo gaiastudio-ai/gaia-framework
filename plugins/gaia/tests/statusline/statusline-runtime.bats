@@ -208,3 +208,113 @@ print(f"p95={p95:.1f}ms max={mx:.1f}ms", file=sys.stderr)
 sys.exit(0 if (p95 < 100.0 and mx < 300.0) else 1)
 PY
 }
+
+# ===========================================================================
+# E82-S5 — Statusline smart-hiding (FR-447).
+#
+# Suppresses empty-string segments AND their leading separator. Composes
+# orthogonally with the FR-433 width ladder.
+# ===========================================================================
+
+# Helper: assert no orphan-separator artifacts in $1.
+# An orphan is `" |  | "` (double-separator from an empty middle chunk) or
+# a trailing ` | ` at the end of the line.
+assert_no_orphans() {
+  local out="$1"
+  [[ "$out" != *" |  | "* ]] || {
+    echo "orphan double-separator in: $out" >&2
+    return 1
+  }
+  [[ "$out" != *' | ' ]] || {
+    echo "orphan trailing-separator in: $out" >&2
+    return 1
+  }
+}
+
+@test "E82-S5 / AC1: non-empty MODEL + PROJECT chunks render with separators (status quo)" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  run bash -c "printf '%s' '$STDIN_JSON' | '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  # Default render contains GAIA brand AND at least one separator.
+  echo "$output" | grep -q "GAIA"
+  echo "$output" | grep -q " | "
+}
+
+@test "E82-S5 / AC2: empty PROJECT chunk produces no orphan separator" {
+  [ -f "$RUNTIME" ]
+  # Force PROJECT chunk to render empty by pointing at a project tree with no
+  # recognizable markers. We override PROJECT_PATH to a fresh empty tmp dir
+  # that has only the plugin.json (no docs/, no .git, no package.json).
+  EMPTY_PROJ="$TEST_TMP/empty-proj"
+  mkdir -p "$EMPTY_PROJ/gaia-public/plugins/gaia/.claude-plugin"
+  cp gaia-public/plugins/gaia/.claude-plugin/plugin.json "$EMPTY_PROJ/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
+  STDIN_EMPTY='{"model":{"id":"claude-opus-4-7","display_name":"Opus 4.7"},"workspace":{"current_dir":"'"$EMPTY_PROJ"'"}}'
+  run bash -c "PROJECT_PATH='$EMPTY_PROJ' printf '%s' '$STDIN_EMPTY' | env PROJECT_PATH='$EMPTY_PROJ' '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  assert_no_orphans "$output"
+}
+
+@test "E82-S5 / AC3: narrow COLS + minimal segments — no orphans" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  run bash -c "COLUMNS=40 printf '%s' '$STDIN_JSON' | env COLUMNS=40 '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  assert_no_orphans "$output"
+}
+
+@test "E82-S5 / AC3: wide COLS + minimal segments — no orphans" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  run bash -c "COLUMNS=200 printf '%s' '$STDIN_JSON' | env COLUMNS=200 '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  assert_no_orphans "$output"
+}
+
+@test "E82-S5 / AC4: cache-absent update-indicator does not emit orphan separator" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  # Ensure no cache file exists (we never created one in setup).
+  run bash -c "printf '%s' '$STDIN_JSON' | '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  assert_no_orphans "$output"
+}
+
+@test "E82-S5 / AC5: chunk containing '|' renders as-is (smart-hiding checks emptiness, not content)" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  STDIN_PIPE='{"model":{"id":"a","display_name":"A | B"},"workspace":{"current_dir":"'"$TEST_TMP"'"}}'
+  run bash -c "printf '%s' '$STDIN_PIPE' | '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "A | B"
+}
+
+@test "E82-S5 / smoke: very narrow COLS (only BRAND survives) has zero separators" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  run bash -c "COLUMNS=20 printf '%s' '$STDIN_JSON' | env COLUMNS=20 '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  # At COLS<32 only BRAND survives the width ladder → no separator anywhere.
+  [[ "$output" != *' | '* ]]
+}
+
+# Structural assertions for the defensive guards (FR-447 generalization).
+# These ensure MODEL and PROJECT chunk assembly uses the composite
+# `(KEEP_X eq 1) AND (chunk non-empty)` pattern that BRANCH and SPRINT
+# already use on lines 234 and 237. The behavioural tests above pass
+# regardless because current MODEL_NAME / PROJECT_NAME defaults backstop
+# emptiness; the structural test guards against future regressions.
+
+@test "E82-S5 / structural: MODEL chunk assembly includes non-empty guard" {
+  [ -f "$RUNTIME" ]
+  # Extract the MODEL assembly stanza — must include an `-n "$MODEL_CHUNK"` check.
+  # Looks for either `[ -n "$MODEL_CHUNK" ]` or `[ -n "${MODEL_CHUNK}" ]`.
+  run grep -E '(KEEP_MODEL.*-n.*MODEL_CHUNK|-n.*MODEL_CHUNK.*KEEP_MODEL|-n[[:space:]]*"\$\{?MODEL_CHUNK\}?")' "$RUNTIME"
+  [ "$status" -eq 0 ]
+}
+
+@test "E82-S5 / structural: PROJECT chunk assembly includes non-empty guard" {
+  [ -f "$RUNTIME" ]
+  run grep -E '(KEEP_PROJECT.*-n.*PROJECT_CHUNK|-n.*PROJECT_CHUNK.*KEEP_PROJECT|-n[[:space:]]*"\$\{?PROJECT_CHUNK\}?")' "$RUNTIME"
+  [ "$status" -eq 0 ]
+}
