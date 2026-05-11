@@ -225,6 +225,56 @@ if [ -n "$SPRINT_ID" ]; then
   SPRINT_CHUNK="${COLOR_MUTED}${SPRINT_ID}${COLOR_RESET}"
 fi
 
+# ---- Rate-limits chunk (E82-S10 / FR-451) ---------------------------------
+# Rich-theme-only. Reads `.rate_limits.five_hour.used_percentage` and
+# `.rate_limits.seven_day.used_percentage` from stdin. Renders as
+# `RL: <5h>%/<7d>%` colored by the MAX of the two (band: <50 OK, 50..<80
+# WARN, >=80 DIRTY). Defensive: when only one window is present, render
+# only that window. When both absent or theme != rich, chunk is empty.
+RLIMIT_CHUNK=""
+if [ "${GAIA_STATUSLINE_THEME:-}" = "rich" ]; then
+  _RL_5H="$(printf '%s' "$INPUT" | jq -r '.rate_limits.five_hour.used_percentage // "null"' 2>/dev/null || printf 'null')"
+  _RL_7D="$(printf '%s' "$INPUT" | jq -r '.rate_limits.seven_day.used_percentage // "null"' 2>/dev/null || printf 'null')"
+  _RL_HAS_5H=0
+  _RL_HAS_7D=0
+  [ "$_RL_5H" != "null" ] && _RL_HAS_5H=1
+  [ "$_RL_7D" != "null" ] && _RL_HAS_7D=1
+  if [ "$_RL_HAS_5H" -eq 1 ] || [ "$_RL_HAS_7D" -eq 1 ]; then
+    # Clamp + integer-cast each present value.
+    if [ "$_RL_HAS_5H" -eq 1 ]; then
+      case "$_RL_5H" in ''|*[!0-9]*) _RL_5H=0 ;; esac
+      [ "$_RL_5H" -gt 100 ] && _RL_5H=100
+      [ "$_RL_5H" -lt 0 ] && _RL_5H=0
+    fi
+    if [ "$_RL_HAS_7D" -eq 1 ]; then
+      case "$_RL_7D" in ''|*[!0-9]*) _RL_7D=0 ;; esac
+      [ "$_RL_7D" -gt 100 ] && _RL_7D=100
+      [ "$_RL_7D" -lt 0 ] && _RL_7D=0
+    fi
+    # Compute the dominant percentage for color band.
+    _RL_MAX=0
+    if [ "$_RL_HAS_5H" -eq 1 ] && [ "$_RL_5H" -gt "$_RL_MAX" ]; then _RL_MAX="$_RL_5H"; fi
+    if [ "$_RL_HAS_7D" -eq 1 ] && [ "$_RL_7D" -gt "$_RL_MAX" ]; then _RL_MAX="$_RL_7D"; fi
+    # Color band.
+    if [ "$_RL_MAX" -lt 50 ]; then
+      _RL_COLOR="${COLOR_OK:-}"
+    elif [ "$_RL_MAX" -lt 80 ]; then
+      _RL_COLOR="${COLOR_WARN:-}"
+    else
+      _RL_COLOR="${COLOR_DIRTY:-}"
+    fi
+    # Build the body. Single-window vs both-windows.
+    if [ "$_RL_HAS_5H" -eq 1 ] && [ "$_RL_HAS_7D" -eq 1 ]; then
+      _RL_BODY="RL: ${_RL_5H}%/${_RL_7D}%"
+    elif [ "$_RL_HAS_5H" -eq 1 ]; then
+      _RL_BODY="RL: ${_RL_5H}%"
+    else
+      _RL_BODY="RL: ${_RL_7D}%"
+    fi
+    RLIMIT_CHUNK="${_RL_COLOR}${_RL_BODY}${COLOR_RESET}"
+  fi
+fi
+
 # ---- Context-window progress bar (E82-S9 / FR-450) -------------------------
 # Renders a 10-char band from stdin's `.context_window.used_percentage`
 # (0-100). Two distinct null-vs-zero paths per AC6/AC7:
@@ -296,18 +346,22 @@ SEP=" | "
 #   < 32     : brand only
 
 if [ "$COLS" -lt 32 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=0; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=0
+  KEEP_BRAND=1; KEEP_MODEL=0; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=0; KEEP_RLIMIT=0
 elif [ "$COLS" -lt 40 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=0
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=0; KEEP_RLIMIT=0
 elif [ "$COLS" -lt 50 ]; then
   # E82-S9 / AC10: at <50 cols, the bar survives but the branch is dropped.
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1
+  # E82-S10 / AC8: rate-limits drops FIRST (least essential).
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
 elif [ "$COLS" -lt 60 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
 elif [ "$COLS" -lt 80 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
+elif [ "$COLS" -lt 100 ]; then
+  # E82-S10: rate-limits requires more width — first to drop in the wide tier.
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=1; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
 else
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=1; KEEP_CONTEXTBAR=1
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=1; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=1
 fi
 
 # Assemble.
@@ -325,6 +379,9 @@ if [ "$KEEP_BRANCH" -eq 1 ] && [ -n "$BRANCH_CHUNK" ]; then
 fi
 if [ "$KEEP_CONTEXTBAR" -eq 1 ] && [ -n "$CONTEXTBAR_CHUNK" ]; then
   OUT="$OUT$SEP$CONTEXTBAR_CHUNK"
+fi
+if [ "$KEEP_RLIMIT" -eq 1 ] && [ -n "$RLIMIT_CHUNK" ]; then
+  OUT="$OUT$SEP$RLIMIT_CHUNK"
 fi
 if [ "$KEEP_SPRINT" -eq 1 ] && [ -n "$SPRINT_CHUNK" ]; then
   OUT="$OUT$SEP$SPRINT_CHUNK"
