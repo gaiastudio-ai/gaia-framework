@@ -2,6 +2,7 @@
 name: gaia-statusline-enable
 description: Enable the GAIA Claude Code statusline by adding the canonical statusLine block to ~/.claude/settings.json. Thin wrapper that delegates to gaia-statusline-toggle.sh in --enable mode. Idempotent — no write when already enabled. Pre-flight refuses if the runtime ~/.claude/gaia-statusline/statusline.sh is not installed and points at install-statusline.sh.
 allowed-tools: [Bash]
+orchestration_class: light-procedural
 ---
 
 ## Mission

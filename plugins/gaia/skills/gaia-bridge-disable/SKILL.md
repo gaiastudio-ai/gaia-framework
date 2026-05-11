@@ -2,6 +2,7 @@
 name: gaia-bridge-disable
 description: Disable the Test Execution Bridge by delegating to gaia-bridge-toggle with mode=disable. Thin wrapper that preserves the user-visible /gaia-bridge-disable slash command (AC11, FR-323). Edits test_execution_bridge.bridge_enabled = false in config/project-config.yaml (per ADR-044). Flag takes effect immediately under the native plugin. Idempotent — no write when already disabled. Skips post-flip checks (AC7).
 allowed-tools: [Read, Edit, Bash]
+orchestration_class: light-procedural
 ---
 
 ## Mission

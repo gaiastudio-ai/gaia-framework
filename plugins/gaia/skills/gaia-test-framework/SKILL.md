@@ -6,6 +6,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
 deprecated_aliases: [gaia-test-framework]
 deprecated_since: sprint-37
 replaced_by: gaia-test-strategy
+orchestration_class: light-procedural
 ---
 
 ## Setup

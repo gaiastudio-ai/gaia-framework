@@ -3,6 +3,7 @@ name: gaia-ci-edit
 description: Edit the ci_cd.promotion_chain in global.yaml — add, remove, edit, or reorder environments. Use when "edit CI config" or /gaia-ci-edit.
 argument-hint: "[--add|--remove|--edit|--order] [env-id]"
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit]
+orchestration_class: light-procedural
 ---
 
 ## Setup

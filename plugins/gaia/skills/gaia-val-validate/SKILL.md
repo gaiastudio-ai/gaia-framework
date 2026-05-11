@@ -4,6 +4,7 @@ description: Validate an artifact against the codebase and ground truth -- scans
 argument-hint: "[artifact-path]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+orchestration_class: reviewer
 ---
 
 ## Setup

@@ -5,6 +5,7 @@ argument-hint: "[--dry-run]"
 context: main
 allowed-tools: [Read, Write, Edit, Bash, Grep]
 model: inherit
+orchestration_class: light-procedural
 ---
 
 ## Setup

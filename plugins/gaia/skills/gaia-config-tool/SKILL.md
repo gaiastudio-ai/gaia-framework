@@ -3,6 +3,7 @@ name: gaia-config-tool
 description: Edit the tool_adapters section of project-config.yaml — section-scoped editor that preserves YAML comments and formatting per ADR-044. Use when "edit tool_adapters config" or /gaia-config-tool.
 argument-hint: "[--category <sast|secrets|sca|...>] [--provider <name>]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
+orchestration_class: light-procedural
 ---
 
 ## Setup

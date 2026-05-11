@@ -3,6 +3,7 @@ name: gaia-infra-design
 description: Design infrastructure topology and IaC structure through collaborative discovery with the devops subagent (Soren) — Cluster 6 architecture skill. Use when the user wants to produce an infrastructure design document covering deployment topology, environment design, IaC structure, and observability plan.
 context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

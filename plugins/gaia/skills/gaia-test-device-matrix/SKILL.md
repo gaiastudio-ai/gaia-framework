@@ -14,6 +14,7 @@ triggers:
   - test device matrix
   - device matrix
   - /gaia-test-device-matrix
+orchestration_class: light-procedural
 ---
 
 ## Setup

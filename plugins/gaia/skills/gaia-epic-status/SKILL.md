@@ -4,6 +4,7 @@ description: "Display an epic completion dashboard showing per-epic completion p
 argument-hint: "[epic-key?]"
 allowed-tools: [Read, Bash]
 version: "1.0.0"
+orchestration_class: light-procedural
 ---
 
 ## Setup

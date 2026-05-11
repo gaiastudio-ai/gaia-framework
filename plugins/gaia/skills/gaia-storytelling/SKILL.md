@@ -4,6 +4,7 @@ description: Craft a compelling narrative using story frameworks and emotional d
 argument-hint: "[story topic or core message]"
 context: fork
 allowed-tools: [Read, Write, Glob, Agent]
+orchestration_class: heavy-procedural
 ---
 
 ## Memory

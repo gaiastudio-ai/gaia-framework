@@ -9,6 +9,7 @@ context: main
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
 deprecated_aliases: [gaia-a11y-testing]
 deprecated_since: sprint-37
+orchestration_class: heavy-procedural
 ---
 
 ## ADR-077 Mission (E69-S2 — post-deploy smoke variant)

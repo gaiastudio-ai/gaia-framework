@@ -3,6 +3,7 @@ name: gaia-review-deps
 description: Audit project dependencies for known CVEs, outdated versions, and license conflicts. Scans package.json, requirements.txt, pom.xml, pubspec.yaml, go.mod, Gemfile, Cargo.toml and produces a risk-ranked findings report with CVE IDs, outdated packages, and license concerns. Use when "audit dependencies" or /gaia-review-deps.
 argument-hint: "[target — project root or specific manifest file]"
 allowed-tools: [Read, Write, Edit, Bash, Grep]
+orchestration_class: reviewer
 ---
 
 ## Mission

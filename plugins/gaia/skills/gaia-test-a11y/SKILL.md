@@ -13,6 +13,7 @@ triggers:
   - test a11y
   - accessibility test
   - post-deploy a11y
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

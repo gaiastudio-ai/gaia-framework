@@ -2,6 +2,7 @@
 name: gaia-statusline-disable
 description: Disable the GAIA Claude Code statusline by removing the statusLine block from ~/.claude/settings.json. Thin wrapper that delegates to gaia-statusline-toggle.sh in --disable mode. Idempotent — no write when already disabled. Does NOT remove the runtime files under ~/.claude/gaia-statusline/ (only the settings.json toggle).
 allowed-tools: [Bash]
+orchestration_class: light-procedural
 ---
 
 ## Mission

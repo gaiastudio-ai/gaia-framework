@@ -3,6 +3,7 @@ name: gaia-config-compliance
 description: Edit the compliance section of project-config.yaml — section-scoped editor that preserves YAML comments and formatting per ADR-044. Use when "edit compliance config" or /gaia-config-compliance.
 argument-hint: "[--add-regime <regime>] [--remove-regime <regime>] [--domain <name>] [--ui-present true|false]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
+orchestration_class: light-procedural
 ---
 
 ## Setup

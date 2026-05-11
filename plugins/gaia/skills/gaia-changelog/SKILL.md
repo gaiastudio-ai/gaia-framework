@@ -3,6 +3,7 @@ name: gaia-changelog
 description: Generate a changelog entry from git history and sprint-status files. Groups commits by Keep a Changelog category (Added, Changed, Fixed, Deprecated, Removed, Security) and cross-references story keys from docs/implementation-artifacts/. Writes or appends to CHANGELOG.md. Use when "generate changelog" or /gaia-changelog.
 argument-hint: "[version — optional, defaults to unreleased range since last tag]"
 allowed-tools: [Read, Write, Edit, Bash, Grep]
+orchestration_class: light-procedural
 ---
 
 ## Mission

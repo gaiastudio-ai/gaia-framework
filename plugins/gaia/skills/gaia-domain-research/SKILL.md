@@ -4,6 +4,7 @@ description: Conduct domain and industry research — Cluster 4 analysis skill. 
 argument-hint: "[domain or industry focus]"
 context: fork
 allowed-tools: [Read, Write, Glob, Grep, Bash, WebSearch, WebFetch]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

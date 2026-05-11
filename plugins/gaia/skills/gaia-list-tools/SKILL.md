@@ -3,6 +3,7 @@ name: gaia-list-tools
 description: Enumerate every tool adapter discoverable under built-in (`plugins/gaia/scripts/adapters/`) and project-local (`custom/adapters/`) roots, grouped by category, with name, version, provider binary, runtime profile, three-state availability, and a `[custom]` / `[shadowed]` precedence badge. Read-only — no side effects. Use when "list tools", "what adapters are available", or /gaia-list-tools.
 argument-hint: "(no arguments)"
 allowed-tools: [Bash]
+orchestration_class: light-procedural
 ---
 
 ## Setup

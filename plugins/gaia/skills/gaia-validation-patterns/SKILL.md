@@ -5,6 +5,7 @@ version: '1.0'
 applicable_agents: [validator]
 sections: [claim-extraction, filesystem-verification, cross-reference, severity-classification, findings-formatting]
 allowed-tools: [Read, Grep]
+orchestration_class: light-procedural
 ---
 
 <!-- Converted under ADR-041 (Native Execution Model). Source: _gaia/lifecycle/skills/validation-patterns.md. -->

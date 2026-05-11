@@ -4,6 +4,7 @@ description: Assess non-functional requirements covering performance, scalabilit
 argument-hint: "[story-key]"
 context: main
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

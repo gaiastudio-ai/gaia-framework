@@ -4,6 +4,7 @@ description: Context-aware problem-solving skill with auto artifact gathering (3
 argument-hint: "[problem statement]"
 context: fork
 allowed-tools: [Read, Write, Grep, Glob, Bash, Agent]
+orchestration_class: conversational
 ---
 
 ## Memory

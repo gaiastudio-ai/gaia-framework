@@ -2,6 +2,7 @@
 name: gaia-tech-debt-review
 description: Aggregate, classify, score, and prioritize technical debt across the active sprint. Produces a rolling tech-debt-dashboard.md with stable TD-{N} IDs, aging buckets, STALE TARGET / UNASSIGNED detection, and trend comparison vs the prior dashboard. Use when "review tech debt" or /gaia-tech-debt-review.
 allowed-tools: [Read, Write, Edit, Bash, Grep]
+orchestration_class: light-procedural
 ---
 
 ## Setup

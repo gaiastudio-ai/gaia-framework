@@ -3,6 +3,7 @@ name: gaia-tool-info
 description: Render full `adapter.json` metadata for one named tool adapter plus its current three-state availability probe result. Resolves the adapter name with custom-over-built-in precedence (project-local `custom/adapters/` wins over `plugins/gaia/scripts/adapters/`). Unknown adapter names exit non-zero with an actionable list of available adapters. Use when "tool info", "adapter info", or /gaia-tool-info.
 argument-hint: "<adapter-name>"
 allowed-tools: [Bash]
+orchestration_class: light-procedural
 ---
 
 ## Setup

@@ -4,6 +4,7 @@ description: Multi-agent group discussion with dynamic participant selection. Us
 argument-hint: "[discussion topic]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
+orchestration_class: conversational
 ---
 
 # gaia-party

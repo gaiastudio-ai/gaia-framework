@@ -4,6 +4,7 @@ description: Identify business-model innovation and strategic disruption opportu
 argument-hint: "[innovation domain or product]"
 context: fork
 allowed-tools: [Read, Write, Glob, Agent]
+orchestration_class: heavy-procedural
 ---
 
 ## Memory

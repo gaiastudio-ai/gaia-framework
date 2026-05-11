@@ -3,6 +3,7 @@ name: gaia-add-stories
 description: Add new stories to existing epics or create new epics with stories. Enforces story protection (in-progress/review/done stories are read-only), auto-increments IDs, and validates via inline Val integration. Use when "add stories".
 context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
+orchestration_class: light-procedural
 ---
 
 ## Setup

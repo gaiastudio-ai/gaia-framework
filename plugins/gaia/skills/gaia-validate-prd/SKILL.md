@@ -3,6 +3,7 @@ name: gaia-validate-prd
 description: "DEPRECATED — Thin redirect to gaia-val-validate. Preserved for backward compatibility per ADR-045 / FR-330. Use /gaia-val-validate directly for PRD validation."
 context: fork
 allowed-tools: [Read, Glob, Bash, Agent]
+orchestration_class: reviewer
 ---
 
 ## Setup

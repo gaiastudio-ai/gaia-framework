@@ -11,6 +11,7 @@ triggers:
   - run e2e tests
   - test e2e
   - end-to-end tests
+orchestration_class: light-procedural
 ---
 
 ## Setup

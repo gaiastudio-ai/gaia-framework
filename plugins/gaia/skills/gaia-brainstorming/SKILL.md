@@ -4,6 +4,7 @@ description: Facilitated brainstorming session using diverse creative techniques
 argument-hint: "[brainstorming topic]"
 context: fork
 allowed-tools: [Read, Write, Glob]
+orchestration_class: conversational
 ---
 
 # gaia-brainstorming

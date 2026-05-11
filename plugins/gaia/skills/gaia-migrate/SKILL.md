@@ -3,6 +3,7 @@ name: gaia-migrate
 description: Automate the upgrade from GAIA v1 (workflow.xml engine) to v2 (Claude Code native plugin) — backup, migrate templates/memory/config, validate. Use after the v2 plugins have been installed via /plugin marketplace add.
 when_to_use: When a user has an existing GAIA v1 installation (presence of _gaia/, _memory/, custom/) and wants to migrate to the v2 plugin layout. Run with `dry-run` first to see the planned operations. After `/gaia-migrate apply` completes, manually run `/gaia:gaia-help` (namespaced form) to smoke-test the post-migration install — filesystem-only validation cannot exercise skill invocation, so a live `/gaia:gaia-help` run is the only way to confirm slash-command routing, plugin discovery, and skill loading are wired up end-to-end. The `gaia:` prefix ensures the plugin's `gaia-help` skill is invoked, not any legacy `.claude/commands/gaia-help.md` stub that might still be present on older installs.
 allowed-tools: [Read, Bash]
+orchestration_class: light-procedural
 ---
 
 ## Mission

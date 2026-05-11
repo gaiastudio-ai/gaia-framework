@@ -2,6 +2,7 @@
 name: gaia-testing-patterns
 description: Red-Green-Refactor TDD cycle, Arrange-Act-Assert unit tests, integration test isolation, and test doubles (stub, mock, spy, fake). Shared dev skill JIT-loaded by dev-story and stack dev agents.
 allowed-tools: [Read, Grep]
+orchestration_class: light-procedural
 ---
 
 ## About

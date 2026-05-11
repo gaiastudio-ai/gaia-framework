@@ -3,6 +3,7 @@ name: gaia-edge-cases
 description: Walk every branching path and boundary condition in the target to find unhandled edge cases. Method-driven, not attitude-driven — orthogonal to the cynical adversarial review (gaia-adversarial). Reports ONLY unhandled cases with concrete examples. Use when "find edge cases" or /gaia-edge-cases.
 argument-hint: "[target — document, code, API spec, or user flow]"
 allowed-tools: [Read, Write, Edit, Bash, Grep]
+orchestration_class: light-procedural
 ---
 
 ## Mission

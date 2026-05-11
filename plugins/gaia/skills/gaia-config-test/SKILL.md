@@ -3,6 +3,7 @@ name: gaia-config-test
 description: Edit the test_execution section of project-config.yaml — section-scoped editor that preserves YAML comments and formatting per ADR-044. Use when "edit test_execution config" or /gaia-config-test.
 argument-hint: "[--tier <1|2|3>] [--placement <local|ci-pre-merge|ci-post-merge|deployment|post-deploy>]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
+orchestration_class: light-procedural
 ---
 
 ## Setup

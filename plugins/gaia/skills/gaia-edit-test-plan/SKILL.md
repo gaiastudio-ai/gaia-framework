@@ -9,6 +9,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
 # the new test cases). Never full-load prd.md or architecture.md here.
 discover_inputs: SELECTIVE_LOAD
 discover_inputs_target: "docs/planning-artifacts/prd.md, docs/planning-artifacts/architecture.md"
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

@@ -5,6 +5,7 @@ version: '1.1'
 applicable_agents: [all]
 sections: [decision-formatting, session-load, session-save, context-summarization, stale-detection, deduplication, budget-monitoring]
 allowed-tools: [Read, Write, Edit, Grep]
+orchestration_class: light-procedural
 ---
 
 <!-- Converted under ADR-041 (Native Execution Model). Source: _gaia/lifecycle/skills/memory-management.md. -->

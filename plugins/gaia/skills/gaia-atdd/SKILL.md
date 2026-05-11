@@ -3,6 +3,7 @@ name: gaia-atdd
 description: Generate failing acceptance tests using TDD methodology from a story's acceptance criteria. Converts each AC into a Given/When/Then test skeleton following the red phase of TDD. Supports single-story invocation and argumentless batch mode that discovers high-risk stories from epics-and-stories.md.
 argument-hint: "[story-key]   (omit for batch mode)"
 allowed-tools: [Read, Write, Edit, Bash]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

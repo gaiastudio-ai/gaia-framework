@@ -6,6 +6,7 @@ context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 deprecated_aliases: [gaia-test-review]
 deprecated_since: sprint-37
+orchestration_class: reviewer
 ---
 
 ## Setup

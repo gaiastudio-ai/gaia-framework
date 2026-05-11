@@ -3,6 +3,7 @@ name: gaia-action-items
 description: Process and resolve open action items before sprint planning. Use when "resolve action items" or /gaia-action-items. Loads action-items.yaml, auto-escalates aged items, routes each item by type (clarification → assignee agent, implementation → SM, process → user, automation → SM), records reasoning on every resolution, and optionally creates stories. Preserves the classification-confirmation gate before any /gaia-create-story handoff. Native Claude Code conversion of the legacy action-items workflow (E28-S111, Cluster 14).
 argument-hint: "[action-id | status]"
 allowed-tools: [Read, Write, Edit]
+orchestration_class: light-procedural
 ---
 
 ## Mission

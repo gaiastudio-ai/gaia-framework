@@ -4,6 +4,7 @@ description: Brainstorm a new project idea with structured techniques — Cluste
 argument-hint: "[project idea or topic]"
 context: fork
 allowed-tools: [Read, Write, Glob, Grep, Bash]
+orchestration_class: conversational
 ---
 
 ## Setup

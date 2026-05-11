@@ -4,6 +4,7 @@ description: Full story validation with factual verification via Val subagent. I
 argument-hint: "[story-key]"
 context: fork
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write]
+orchestration_class: reviewer
 ---
 
 ## Setup

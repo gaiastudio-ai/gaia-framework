@@ -3,6 +3,7 @@ name: gaia-config-rubric
 description: Edit the rubrics section of project-config.yaml — section-scoped editor that preserves YAML comments and formatting per ADR-044. Use when "edit rubrics config" or /gaia-config-rubric.
 argument-hint: "[--set <key>=<value>] [--remove <key>]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
+orchestration_class: light-procedural
 ---
 
 ## Setup

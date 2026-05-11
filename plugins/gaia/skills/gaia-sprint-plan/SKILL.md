@@ -3,6 +3,7 @@ name: gaia-sprint-plan
 description: "Plan a sprint by selecting stories from the backlog, applying sizing and priority rules via the sm subagent (Nate), and committing the sprint atomically to sprint-status.yaml via sprint-state.sh. GAIA-native replacement for the legacy _gaia/lifecycle/workflows/sprint-planning/ XML engine workflow."
 argument-hint: "[sprint-scope]"
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Skill]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

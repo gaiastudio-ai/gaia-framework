@@ -4,6 +4,7 @@ description: Manual any-environment test runner that honours `test_execution.{ti
 argument-hint: "[--tier 1|2|3] [--tag NAME] [--story KEY] [--file PATH] [--json]"
 context: fork
 allowed-tools: [Read, Bash, Grep, Glob]
+orchestration_class: light-procedural
 ---
 
 ## Action Skill — Trigger Model (E72-S1)

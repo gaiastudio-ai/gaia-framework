@@ -4,6 +4,7 @@ description: Deep requirements elicitation using structured questioning techniqu
 argument-hint: "[product or feature area to explore]"
 context: fork
 allowed-tools: [Read, Write, Glob, Grep, Bash]
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

@@ -3,6 +3,7 @@ name: gaia-merge-docs
 description: Merge multiple markdown files into a single document — the inverse of shard-doc. Use when "merge documents" or /gaia-merge-docs. Reassembles sharded files in correct order, preserves section numbering and cross-references, maintains consistent heading hierarchy, and emits a single merged Markdown artifact. Native Claude Code conversion of the legacy merge-docs task (E28-S111, Cluster 14).
 argument-hint: "[source-dir-or-file-list] [output-path]"
 allowed-tools: [Read, Write]
+orchestration_class: light-procedural
 ---
 
 ## Mission

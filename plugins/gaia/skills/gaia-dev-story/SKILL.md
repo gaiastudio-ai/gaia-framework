@@ -10,6 +10,7 @@ hooks:
       hooks:
         - type: command
           command: ${CLAUDE_SKILL_DIR}/scripts/checkpoint.sh write gaia-dev-story
+orchestration_class: heavy-procedural
 ---
 
 ## Setup

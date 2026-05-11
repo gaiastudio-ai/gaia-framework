@@ -4,6 +4,7 @@ description: Create a presentation slide deck with a narrative arc — hook, bui
 argument-hint: "[presentation topic]"
 context: fork
 allowed-tools: [Read, Write, Glob, Agent]
+orchestration_class: light-procedural
 ---
 
 ## Memory

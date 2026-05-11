@@ -4,6 +4,7 @@ description: Create an investor or partner pitch deck using the standard Problem
 argument-hint: "[funding stage or pitch purpose]"
 context: fork
 allowed-tools: [Read, Write, Glob, Agent]
+orchestration_class: light-procedural
 ---
 
 ## Memory
