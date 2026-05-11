@@ -225,10 +225,10 @@ fi
 # Assemble.
 OUT="$BRAND_CHUNK"
 [ -n "$UPDATE_CHUNK" ] && OUT="$OUT $UPDATE_CHUNK"
-if [ "$KEEP_MODEL" -eq 1 ]; then
+if [ "$KEEP_MODEL" -eq 1 ] && [ -n "$MODEL_CHUNK" ]; then
   OUT="$OUT$SEP$MODEL_CHUNK"
 fi
-if [ "$KEEP_PROJECT" -eq 1 ]; then
+if [ "$KEEP_PROJECT" -eq 1 ] && [ -n "$PROJECT_CHUNK" ]; then
   OUT="$OUT$SEP$PROJECT_CHUNK"
 fi
 if [ "$KEEP_BRANCH" -eq 1 ] && [ -n "$BRANCH_CHUNK" ]; then
