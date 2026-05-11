@@ -106,6 +106,23 @@ else
   mv -f "$SIBLING" "$SETTINGS"
 fi
 
+# ---- .installed-version marker (E82-S6 / ADR-094 Component 1) -------------
+# Atomic sibling-tempfile + mv. Written as the LAST action so a successful
+# install is the only thing that produces the marker. Source of truth for
+# the plugin version: the in-tree .claude-plugin/plugin.json (the script's
+# own plugin tree — three levels up from plugins/gaia/scripts/).
+PLUGIN_JSON_SRC="$SCRIPT_DIR/../../.claude-plugin/plugin.json"
+INSTALLED_VERSION=""
+if [ -r "$PLUGIN_JSON_SRC" ]; then
+  INSTALLED_VERSION="$(jq -r '.version // ""' "$PLUGIN_JSON_SRC" 2>/dev/null || printf '')"
+fi
+if [ -n "$INSTALLED_VERSION" ]; then
+  MARKER="$DEST_BASE/.installed-version"
+  MARKER_TMP="$(mktemp "${MARKER}.XXXXXX")"
+  printf '%s\n' "$INSTALLED_VERSION" > "$MARKER_TMP"
+  mv -f "$MARKER_TMP" "$MARKER"
+fi
+
 printf 'install-statusline.sh: installed runtime at %s\n' "$DEST_RUNTIME"
 printf 'install-statusline.sh: settings.json updated at %s\n' "$SETTINGS"
 exit 0
