@@ -204,3 +204,96 @@ teardown() { common_teardown; }
   run cat "$SKILL_DIR/scripts/setup.sh"
   [[ "$output" == *"sprint-state.sh"* ]]
 }
+
+# ---------- TC-SPRINT-PLAN-GUARD-1..4: Prior-close guard (E81-S6 AC1) ----------
+# Tests for the sprint-plan prior-close guard added by AF-2026-05-11-7.
+# The guard checks the previous sprint's yaml for `status: closed` before
+# allowing sprint-plan to proceed. §11.65.3.
+
+# Fixture helper for sprint-plan guard tests.
+_seed_prior_sprint_yaml() {
+  local sprint_id="$1" status="$2"
+  local dir="$TEST_TMP/docs/implementation-artifacts"
+  mkdir -p "$dir"
+  {
+    echo "sprint_id: \"$sprint_id\""
+    if [ -n "$status" ]; then
+      echo "status: $status"
+    fi
+    echo "total_points: 15"
+    echo "stories:"
+    echo "  - key: \"E81-S1\""
+    echo "    status: done"
+    echo "    points: 5"
+    echo "    risk: medium"
+  } > "$dir/sprint-status-${sprint_id}.yaml"
+}
+
+# The guard is documented in SKILL.md as a shell-idiom block (not a callable
+# script). The tests below verify (a) SKILL.md prose contains the guard
+# documentation and (b) the documented idiom behaves correctly when exercised
+# directly against fixtures.
+
+# Helper: run the documented guard idiom against the given sprint yaml.
+# Mimics what the SKILL.md prose tells the LLM to do at Step 0.
+_run_guard_idiom() {
+  local yaml_path="$1" flag="${2:-}"
+  bash -c "
+    SS_YAML='$yaml_path'
+    if [ -r \"\$SS_YAML\" ]; then
+      prior_status=\"\$(grep '^status:' \"\$SS_YAML\" | head -1 | sed 's/^status:[[:space:]]*//' | tr -d '\"' || true)\"
+      if [ \"\$prior_status\" != \"closed\" ]; then
+        prior_id=\"\$(grep '^sprint_id:' \"\$SS_YAML\" | head -1 | sed 's/^sprint_id:[[:space:]]*//' | tr -d '\"')\"
+        if [ \"$flag\" != \"--allow-stale-prior\" ]; then
+          printf 'error: previous sprint %s not closed; run /gaia-sprint-close first\n' \"\$prior_id\" >&2
+          exit 1
+        fi
+        printf 'warning: proceeding despite prior sprint %s not closed (--allow-stale-prior)\n' \"\$prior_id\" >&2
+      fi
+    fi
+    printf 'ok\n'
+  "
+}
+
+@test "TC-SPRINT-PLAN-GUARD-1: prior sprint active -> guard refuses with canonical error" {
+  _seed_prior_sprint_yaml "sprint-40" "active"
+  local prior_yaml="$TEST_TMP/docs/implementation-artifacts/sprint-status-sprint-40.yaml"
+  run _run_guard_idiom "$prior_yaml" ""
+  [ "$status" -ne 0 ]
+  # `$output` under default `run` captures combined stdout+stderr (bats doc).
+  [[ "$output" == *"error: previous sprint sprint-40 not closed"* ]]
+}
+
+@test "TC-SPRINT-PLAN-GUARD-2: prior sprint closed -> guard passes silently" {
+  _seed_prior_sprint_yaml "sprint-40" "closed"
+  local prior_yaml="$TEST_TMP/docs/implementation-artifacts/sprint-status-sprint-40.yaml"
+  run _run_guard_idiom "$prior_yaml" ""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ok"* ]]
+}
+
+@test "TC-SPRINT-PLAN-GUARD-3: no prior sprint yaml (first sprint) -> guard skipped silently" {
+  # Deliberately do NOT create any prior sprint yaml.
+  local prior_yaml="$TEST_TMP/docs/implementation-artifacts/sprint-status-sprint-40.yaml"
+  [ ! -f "$prior_yaml" ]
+  run _run_guard_idiom "$prior_yaml" ""
+  [ "$status" -eq 0 ]
+}
+
+@test "TC-SPRINT-PLAN-GUARD-4: --allow-stale-prior bypasses guard with warning" {
+  _seed_prior_sprint_yaml "sprint-40" "active"
+  local prior_yaml="$TEST_TMP/docs/implementation-artifacts/sprint-status-sprint-40.yaml"
+  run _run_guard_idiom "$prior_yaml" "--allow-stale-prior"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"warning: proceeding despite prior sprint sprint-40 not closed"* ]]
+}
+
+@test "TC-SPRINT-PLAN-GUARD-5: SKILL.md documents the Step 0 prior-close guard" {
+  # Verify the prose anchor is present so the LLM-driven dispatch finds it.
+  run grep -q "Step 0 -- Prior-close guard" "$SKILL_DIR/SKILL.md"
+  [ "$status" -eq 0 ]
+  run grep -q "allow-stale-prior" "$SKILL_DIR/SKILL.md"
+  [ "$status" -eq 0 ]
+  run grep -q "previous sprint .* not closed; run /gaia-sprint-close first" "$SKILL_DIR/SKILL.md"
+  [ "$status" -eq 0 ]
+}
