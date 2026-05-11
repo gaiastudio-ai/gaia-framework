@@ -34,6 +34,8 @@ GLYPH_UPDATE="↑"
 GLYPH_CHEVRON="▸"
 GLYPH_DOT="·"
 GLYPH_DIRTY="*"  # E82-S8: appended to BRANCH chunk when working tree is dirty
+GLYPH_BAR_FILLED="█"  # E82-S9: context-bar filled block
+GLYPH_BAR_EMPTY="░"   # E82-S9: context-bar empty block
 
 # ASCII fallback table (gated on GAIA_STATUSLINE_ASCII=1, AT-3).
 # Each fallback is a printable 7-bit ASCII string of <= 2 chars.
@@ -46,6 +48,8 @@ if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
   GLYPH_CHEVRON=">"
   GLYPH_DOT="-"
   GLYPH_DIRTY="*"
+  GLYPH_BAR_FILLED="#"
+  GLYPH_BAR_EMPTY="-"
 elif [ "${GAIA_STATUSLINE_NERDFONT:-0}" = "1" ]; then
   # Nerdfont upgrade map — codepoints in the Nerd Font private-use range.
   # Users opt-in explicitly via GAIA_STATUSLINE_NERDFONT=1.
@@ -58,4 +62,4 @@ elif [ "${GAIA_STATUSLINE_NERDFONT:-0}" = "1" ]; then
   GLYPH_DOT=$''     # nf-md-circle_small
 fi
 
-export GLYPH_BRAND GLYPH_BRANCH GLYPH_SPARK GLYPH_CLOCK GLYPH_UPDATE GLYPH_CHEVRON GLYPH_DOT GLYPH_DIRTY
+export GLYPH_BRAND GLYPH_BRANCH GLYPH_SPARK GLYPH_CLOCK GLYPH_UPDATE GLYPH_CHEVRON GLYPH_DOT GLYPH_DIRTY GLYPH_BAR_FILLED GLYPH_BAR_EMPTY
