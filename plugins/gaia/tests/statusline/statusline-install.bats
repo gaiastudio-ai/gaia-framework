@@ -69,16 +69,23 @@ JSON
   # Capture the values of the unrelated keys.
   before_theme="$(jq -c '.theme' "$HOME/.claude/settings.json")"
   before_model="$(jq -c '.model' "$HOME/.claude/settings.json")"
-  before_hooks="$(jq -c '.hooks' "$HOME/.claude/settings.json")"
+  # `.hooks.PostToolUse` is unrelated to E82-S8's install scope and MUST
+  # round-trip byte-identically. `.hooks.PreToolUse` is intentionally
+  # modified by E82-S8 (the git-dirty fetcher hook registration) so we
+  # don't compare it as part of the "unrelated keys" invariant.
+  before_post_hook="$(jq -c '.hooks.PostToolUse' "$HOME/.claude/settings.json")"
   bash "$INSTALL"
   after_theme="$(jq -c '.theme' "$HOME/.claude/settings.json")"
   after_model="$(jq -c '.model' "$HOME/.claude/settings.json")"
-  after_hooks="$(jq -c '.hooks' "$HOME/.claude/settings.json")"
+  after_post_hook="$(jq -c '.hooks.PostToolUse' "$HOME/.claude/settings.json")"
   [ "$before_theme" = "$after_theme" ]
   [ "$before_model" = "$after_model" ]
-  [ "$before_hooks" = "$after_hooks" ]
+  [ "$before_post_hook" = "$after_post_hook" ]
   # And statusLine was added.
   jq -e '.statusLine.command' "$HOME/.claude/settings.json"
+  # And E82-S8's git-dirty PreToolUse hook was registered.
+  run jq -r '.hooks.PreToolUse | length' "$HOME/.claude/settings.json"
+  [ "$output" -ge 1 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -108,4 +115,35 @@ JSON
   # The install script must not use /tmp/ for the atomic-rename target.
   # mktemp in a sibling directory of the target is the documented idiom.
   ! grep -E 'mktemp[[:space:]]+(/tmp|--tmpdir=/tmp)' "$INSTALL"
+}
+
+# ===========================================================================
+# E82-S8 — install registers PreToolUse hook idempotently
+# ===========================================================================
+
+@test "E82-S8: install registers git-dirty PreToolUse hook (fresh install)" {
+  [ -f "$INSTALL" ]
+  bash "$INSTALL"
+  # Hook for the dirty-fetcher must be present.
+  run jq -r --arg cmd "$HOME/.claude/gaia-statusline/statusline-git-dirty-check.sh" \
+    'any(.hooks.PreToolUse[]?; .hooks[]?.command == $cmd)' "$HOME/.claude/settings.json"
+  [ "$output" = "true" ]
+}
+
+@test "E82-S8: re-running install does NOT duplicate PreToolUse hook entry" {
+  [ -f "$INSTALL" ]
+  bash "$INSTALL"
+  bash "$INSTALL"
+  bash "$INSTALL"
+  # Count of hooks referencing the dirty-fetcher command — must be exactly 1.
+  run jq -r --arg cmd "$HOME/.claude/gaia-statusline/statusline-git-dirty-check.sh" \
+    '[.hooks.PreToolUse[]? | .hooks[]? | select(.command == $cmd)] | length' \
+    "$HOME/.claude/settings.json"
+  [ "$output" = "1" ]
+}
+
+@test "E82-S8: install copies the dirty-fetcher script to DEST_BASE" {
+  [ -f "$INSTALL" ]
+  bash "$INSTALL"
+  [ -x "$HOME/.claude/gaia-statusline/statusline-git-dirty-check.sh" ]
 }

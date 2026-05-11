@@ -179,15 +179,25 @@ if [ -z "$SIBLING" ]; then
   exit 0
 fi
 
+# Read-modify-write (ADR-091 amendment, E82-S8): the cache file is shared
+# with statusline-git-dirty-check.sh. A naive `jq -n` overwrite would
+# clobber its owned `git_dirty` field on every 1h refresh. Read existing
+# cache, merge only our owned fields, atomic-write.
+if [ -r "$CACHE_FILE" ]; then
+  EXISTING_CACHE="$(jq '.' "$CACHE_FILE" 2>/dev/null || printf '{}')"
+else
+  EXISTING_CACHE="{}"
+fi
+
 # Build the canonical schema. `--argjson` for booleans (so jq emits a real
 # JSON boolean, not a string).
-if jq -n \
+if printf '%s' "$EXISTING_CACHE" | jq \
   --arg ts "$CHECKED_AT_ISO" \
   --arg lt "$LATEST_TAG" \
   --arg ct "$CURRENT_TAG" \
   --argjson ua "$UPDATE_AVAILABLE" \
   --argjson ivs "$INSTALLED_VERSION_STALE" \
-  '{checked_at_iso:$ts, latest_tag:$lt, current_tag:$ct, update_available:$ua, installed_version_stale:$ivs}' \
+  '. + {checked_at_iso:$ts, latest_tag:$lt, current_tag:$ct, update_available:$ua, installed_version_stale:$ivs}' \
   > "$SIBLING" 2>/dev/null; then
   # mv -f within the same directory == atomic rename on the same filesystem.
   mv -f "$SIBLING" "$CACHE_FILE" 2>/dev/null || rm -f "$SIBLING" 2>/dev/null
