@@ -62,19 +62,43 @@ fi
 : "${COLOR_BOLD:=}"
 : "${COLOR_RESET:=}"
 
-# ---- Read GAIA version from plugin.json (D5) -------------------------------
-# Prefer the actively-loaded plugin (Claude Code injects CLAUDE_PLUGIN_ROOT
-# pointing at e.g. ~/.claude/plugins/cache/.../gaia/<version>/). Fall back to
-# the in-tree repo for dev/test runs where CLAUDE_PLUGIN_ROOT is unset.
-if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -r "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; then
-  PLUGIN_JSON="${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"
-else
+# ---- Read GAIA version from plugin.json -----------------------------------
+# Three-tier resolution:
+#   Tier 1 (production): scan ~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/
+#     for the highest semver directory and read its plugin.json. This is the
+#     canonical install location — Claude Code itself loads the latest cached
+#     version on /reload-plugins, so the statusline matching it is correct.
+#   Tier 2 (dev/test): in-tree repo plugin.json under PROJECT_PATH.
+#   Tier 3 (last-resort): the literal "dev" — surfaces a vdev release link
+#     and signals a misconfigured environment.
+#
+# CLAUDE_PLUGIN_ROOT is intentionally NOT consulted here. It is a per-skill
+# envvar Claude Code sets only inside Skill() dispatches; the statusLine
+# command runs outside that context, so the env var is always empty and a
+# plugin.json lookup keyed on it always misses (the original "GAIA dev" bug).
+PLUGIN_CACHE_DIR="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia"
+PLUGIN_JSON=""
+GAIA_VERSION=""
+
+# Tier 1: cache scan for the highest semver subdirectory.
+if [ -d "$PLUGIN_CACHE_DIR" ]; then
+  GAIA_VERSION_CACHED="$(ls "$PLUGIN_CACHE_DIR" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)"
+  if [ -n "$GAIA_VERSION_CACHED" ] && [ -r "$PLUGIN_CACHE_DIR/$GAIA_VERSION_CACHED/.claude-plugin/plugin.json" ]; then
+    PLUGIN_JSON="$PLUGIN_CACHE_DIR/$GAIA_VERSION_CACHED/.claude-plugin/plugin.json"
+  fi
+fi
+
+# Tier 2: in-tree repo for dev/test runs.
+if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json" ]; then
   PLUGIN_JSON="$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
 fi
-GAIA_VERSION=""
-if [ -r "$PLUGIN_JSON" ]; then
+
+# Read the version from whichever tier resolved.
+if [ -n "$PLUGIN_JSON" ] && [ -r "$PLUGIN_JSON" ]; then
   GAIA_VERSION="$(jq -r '.version // ""' "$PLUGIN_JSON" 2>/dev/null)"
 fi
+
+# Tier 3: last-resort literal.
 [ -n "$GAIA_VERSION" ] || GAIA_VERSION="dev"
 
 # ---- Read model from stdin -------------------------------------------------
@@ -84,12 +108,29 @@ MODEL_NAME="$(printf '%s' "$INPUT" | jq -r '.model.display_name // .model.id // 
 # ---- Project name ----------------------------------------------------------
 PROJECT_NAME="$(basename "$PROJECT_PATH" 2>/dev/null || printf 'project')"
 
-# ---- Branch — env override for testability, else git symbolic-ref ----------
+# ---- Branch — env override, else cache active_branch, else local probe ----
+# The active_branch field is written by statusline-git-dirty-check.sh on every
+# PreToolUse — it reflects the repo of the file/dir the agent just touched,
+# NOT the terminal's pinned workspace.current_dir. Cache wins so the branch
+# tracks the agent's work across cd's inside Bash tool calls.
 BRANCH=""
 if [ -n "${GAIA_STATUSLINE_BRANCH_OVERRIDE:-}" ]; then
   BRANCH="$GAIA_STATUSLINE_BRANCH_OVERRIDE"
 else
-  BRANCH="$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD 2>/dev/null || printf '')"
+  # Cache read happens further down (line ~134) but we need active_branch
+  # before the assembly block. Do a tiny early read here; the main cache
+  # block re-reads from the same file shortly so no extra round-trip risk.
+  _CACHE_EARLY="$HOME/.claude/gaia-statusline/cache/latest-release.json"
+  if [ -r "$_CACHE_EARLY" ]; then
+    BRANCH="$(jq -r '.active_branch // ""' "$_CACHE_EARLY" 2>/dev/null || printf '')"
+    # jq prints the literal "null" when the field is JSON null — normalise.
+    [ "$BRANCH" = "null" ] && BRANCH=""
+  fi
+  # Fall back to the legacy git -C $PROJECT_PATH probe so first-run sessions
+  # (no cache yet) still show a branch when cwd IS a git work tree.
+  if [ -z "$BRANCH" ]; then
+    BRANCH="$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD 2>/dev/null || printf '')"
+  fi
 fi
 
 # ---- Cache (silent on miss) — owned by E82-S2, read here ------------------
@@ -212,20 +253,21 @@ fi
 
 MODEL_CHUNK="${COLOR_MUTED}${MODEL_NAME}${COLOR_RESET}"
 PROJECT_CHUNK="${PROJECT_NAME}"
+# Branch and dirty marker are separate chunks so they can be placed in
+# distinct boxes on line 2 (per the sprint-43 layout request). The dirty
+# marker is still gated on BRANCH being non-empty — a detached HEAD with
+# no branch context renders nothing for both chunks.
 BRANCH_CHUNK=""
+DIRTY_CHUNK=""
 if [ -n "$BRANCH" ]; then
-  # E82-S8 / AC3: append dirty glyph when git_dirty=true. AC4: BRANCH-empty
-  # already suppresses the entire chunk via smart-hiding (FR-447), so no
-  # marker leaks to a detached-HEAD render.
-  DIRTY_SUFFIX=""
+  BRANCH_CHUNK="${GLYPH_BRANCH} ${BRANCH}"
   if [ "$GIT_DIRTY_RAW" = "true" ]; then
     if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
-      DIRTY_SUFFIX="*"
+      DIRTY_CHUNK="${COLOR_DIRTY:-}*${COLOR_RESET}"
     else
-      DIRTY_SUFFIX="${GLYPH_DIRTY:-*}"
+      DIRTY_CHUNK="${COLOR_DIRTY:-}${GLYPH_DIRTY:-*}${COLOR_RESET}"
     fi
   fi
-  BRANCH_CHUNK="${GLYPH_BRANCH} ${BRANCH}${DIRTY_SUFFIX}"
 fi
 SPRINT_CHUNK=""
 if [ -n "$SPRINT_ID" ]; then
@@ -282,20 +324,26 @@ if [ "${GAIA_STATUSLINE_THEME:-}" = "rich" ]; then
   fi
 fi
 
-# ---- Context-window progress bar (E82-S9 / FR-450) -------------------------
-# Renders a 10-char band from stdin's `.context_window.used_percentage`
-# (0-100). Two distinct null-vs-zero paths per AC6/AC7:
-#   - `.context_window.current_usage` is null    -> empty chunk (pre-API or
-#     post-/compact). Smart-hiding (FR-447) suppresses the separator.
-#   - `current_usage` non-null AND `used_percentage` = 0 -> visible
-#     10-glyph all-empty bar ("we know it's empty").
-# Color bands: <50 OK, 50..<80 WARN, >=80 DIRTY.
-# Filled / empty glyphs use `#` / `-` in ASCII theme (AC5), `█` / `░` UTF-8.
+# ---- Context-window progress bar (E82-S9 / FR-450, redesigned) -------------
+# Renders a 10-char gradient bar from stdin's `.context_window.used_percentage`
+# (0-100), inline percentage, and grey size hint (200K / 1M).
+#
+# Original E82-S9 used a single solid color band per AC2/AC3/AC4. This
+# redesign (sprint-43 issue-3 follow-up) replaces it with per-cell gradient
+# fill (green -> yellow -> red across the 10 cells) and appends:
+#
+#   <gradient-bar> <pct%-colored-by-dominant-band> <[size]-grey>
+#
+# Two distinct null-vs-zero paths preserved:
+#   - `.context_window.current_usage` is null    -> empty chunk (smart-hide)
+#   - `current_usage` non-null AND `used_percentage` = 0 -> all-empty bar +
+#     "0%" + size hint ("we know it's empty")
+#
+# Filled / empty glyphs: `#`/`-` in ASCII theme, `█`/`░` UTF-8.
 CONTEXTBAR_CHUNK=""
 _CTX_CURRENT="$(printf '%s' "$INPUT" | jq -r '.context_window.current_usage // "null"' 2>/dev/null || printf 'null')"
 if [ "$_CTX_CURRENT" != "null" ]; then
   _CTX_PCT="$(printf '%s' "$INPUT" | jq -r '.context_window.used_percentage // 0' 2>/dev/null || printf '0')"
-  # Clamp to [0, 100] and integer-cast via shell arithmetic.
   case "$_CTX_PCT" in
     ''|*[!0-9]*) _CTX_PCT=0 ;;
   esac
@@ -310,19 +358,21 @@ if [ "$_CTX_CURRENT" != "null" ]; then
     _CTX_FILLED_GLYPH="${GLYPH_BAR_FILLED:-█}"
     _CTX_EMPTY_GLYPH="${GLYPH_BAR_EMPTY:-░}"
   fi
-  # Color band per AC2/AC3/AC4.
-  if [ "$_CTX_PCT" -lt 50 ]; then
-    _CTX_COLOR="${COLOR_OK:-}"
-  elif [ "$_CTX_PCT" -lt 80 ]; then
-    _CTX_COLOR="${COLOR_WARN:-}"
-  else
-    _CTX_COLOR="${COLOR_DIRTY:-}"
-  fi
-  # Build filled run + empty run. Use string repetition via printf %*s.
+  # Per-cell gradient fill: cell index 0..9 maps to OK (green) for cells
+  # 0-4, WARN (yellow) for cells 5-7, DIRTY (red) for cells 8-9. The
+  # transitions match the band thresholds (<50 / 50..<80 / >=80) at the
+  # per-cell boundary so a 70% bar renders 5 green + 2 yellow filled.
   _FILLED_STR=""
   i=0
   while [ "$i" -lt "$_CTX_FILLED" ]; do
-    _FILLED_STR="${_FILLED_STR}${_CTX_FILLED_GLYPH}"
+    if [ "$i" -lt 5 ]; then
+      _CELL_COLOR="${COLOR_OK:-}"
+    elif [ "$i" -lt 8 ]; then
+      _CELL_COLOR="${COLOR_WARN:-}"
+    else
+      _CELL_COLOR="${COLOR_DIRTY:-}"
+    fi
+    _FILLED_STR="${_FILLED_STR}${_CELL_COLOR}${_CTX_FILLED_GLYPH}${COLOR_RESET}"
     i=$((i + 1))
   done
   _EMPTY_STR=""
@@ -331,7 +381,35 @@ if [ "$_CTX_CURRENT" != "null" ]; then
     _EMPTY_STR="${_EMPTY_STR}${_CTX_EMPTY_GLYPH}"
     i=$((i + 1))
   done
-  CONTEXTBAR_CHUNK="${_CTX_COLOR}${_FILLED_STR}${COLOR_RESET}${_EMPTY_STR}"
+  # Inline percentage colored by the dominant band.
+  if [ "$_CTX_PCT" -lt 50 ]; then
+    _PCT_COLOR="${COLOR_OK:-}"
+  elif [ "$_CTX_PCT" -lt 80 ]; then
+    _PCT_COLOR="${COLOR_WARN:-}"
+  else
+    _PCT_COLOR="${COLOR_DIRTY:-}"
+  fi
+  _PCT_TEXT="${_PCT_COLOR}${_CTX_PCT}%${COLOR_RESET}"
+  # Size hint: prefer .context_window.context_size (e.g. "1M", "200K") if
+  # provided. If absent, infer from current_usage and used_percentage:
+  #   total_tokens ≈ current_usage * 100 / used_percentage   (when pct > 0)
+  # then round to the nearest stock window (200K / 1M).
+  _SIZE_HINT="$(printf '%s' "$INPUT" | jq -r '.context_window.context_size // ""' 2>/dev/null)"
+  if [ -z "$_SIZE_HINT" ] && [ "$_CTX_PCT" -gt 0 ]; then
+    _TOTAL=$(( _CTX_CURRENT * 100 / _CTX_PCT ))
+    # Anchor to known Claude context windows: 1M (1,000,000) vs 200K (200,000).
+    if [ "$_TOTAL" -gt 500000 ]; then
+      _SIZE_HINT="1M"
+    else
+      _SIZE_HINT="200K"
+    fi
+  fi
+  if [ -n "$_SIZE_HINT" ]; then
+    _SIZE_TEXT=" ${COLOR_MUTED}[${_SIZE_HINT}]${COLOR_RESET}"
+  else
+    _SIZE_TEXT=""
+  fi
+  CONTEXTBAR_CHUNK="${_FILLED_STR}${_EMPTY_STR} ${_PCT_TEXT}${_SIZE_TEXT}"
 fi
 
 SEP=" | "
@@ -371,28 +449,63 @@ else
   KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=1; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=1
 fi
 
-# Assemble.
-OUT="$BRAND_CHUNK"
-[ -n "$UPDATE_CHUNK" ] && OUT="$OUT $UPDATE_CHUNK"
-[ -n "$STALE_CHUNK" ] && OUT="$OUT $STALE_CHUNK"
-if [ "$KEEP_MODEL" -eq 1 ] && [ -n "$MODEL_CHUNK" ]; then
-  OUT="$OUT$SEP$MODEL_CHUNK"
-fi
-if [ "$KEEP_PROJECT" -eq 1 ] && [ -n "$PROJECT_CHUNK" ]; then
-  OUT="$OUT$SEP$PROJECT_CHUNK"
-fi
-if [ "$KEEP_BRANCH" -eq 1 ] && [ -n "$BRANCH_CHUNK" ]; then
-  OUT="$OUT$SEP$BRANCH_CHUNK"
-fi
+# Assemble two-line layout (sprint-43 issue-3):
+#
+#   Line 1: brand [update] [stale] | context-bar pct% [size] | model |
+#           rate-limits | sprint
+#   Line 2: branch | dirty | project
+#
+# Smart-hiding (FR-447) still applies: empty chunks are suppressed and the
+# separator before them is dropped. Line 2 is also suppressed entirely when
+# branch+dirty+project are all empty so a non-git terminal session renders
+# only line 1.
+#
+# Width-ladder semantics preserved: KEEP_BRANCH / KEEP_PROJECT control
+# whether line 2 chunks survive at narrow widths.
+
+LINE1="$BRAND_CHUNK"
+[ -n "$UPDATE_CHUNK" ] && LINE1="$LINE1 $UPDATE_CHUNK"
+[ -n "$STALE_CHUNK" ] && LINE1="$LINE1 $STALE_CHUNK"
 if [ "$KEEP_CONTEXTBAR" -eq 1 ] && [ -n "$CONTEXTBAR_CHUNK" ]; then
-  OUT="$OUT$SEP$CONTEXTBAR_CHUNK"
+  LINE1="$LINE1$SEP$CONTEXTBAR_CHUNK"
+fi
+if [ "$KEEP_MODEL" -eq 1 ] && [ -n "$MODEL_CHUNK" ]; then
+  LINE1="$LINE1$SEP$MODEL_CHUNK"
 fi
 if [ "$KEEP_RLIMIT" -eq 1 ] && [ -n "$RLIMIT_CHUNK" ]; then
-  OUT="$OUT$SEP$RLIMIT_CHUNK"
+  LINE1="$LINE1$SEP$RLIMIT_CHUNK"
 fi
 if [ "$KEEP_SPRINT" -eq 1 ] && [ -n "$SPRINT_CHUNK" ]; then
-  OUT="$OUT$SEP$SPRINT_CHUNK"
+  LINE1="$LINE1$SEP$SPRINT_CHUNK"
 fi
 
-printf '%s\n' "$OUT"
+# Line 2: branch | dirty | project — only emitted when at least one chunk
+# is present, to avoid a bare blank second line on terminals not in a repo.
+LINE2=""
+LINE2_HAS_CHUNK=0
+if [ "$KEEP_BRANCH" -eq 1 ] && [ -n "$BRANCH_CHUNK" ]; then
+  LINE2="$BRANCH_CHUNK"
+  LINE2_HAS_CHUNK=1
+fi
+if [ "$KEEP_BRANCH" -eq 1 ] && [ -n "$DIRTY_CHUNK" ]; then
+  if [ "$LINE2_HAS_CHUNK" -eq 1 ]; then
+    LINE2="$LINE2$SEP$DIRTY_CHUNK"
+  else
+    LINE2="$DIRTY_CHUNK"
+    LINE2_HAS_CHUNK=1
+  fi
+fi
+if [ "$KEEP_PROJECT" -eq 1 ] && [ -n "$PROJECT_CHUNK" ]; then
+  if [ "$LINE2_HAS_CHUNK" -eq 1 ]; then
+    LINE2="$LINE2$SEP$PROJECT_CHUNK"
+  else
+    LINE2="$PROJECT_CHUNK"
+    LINE2_HAS_CHUNK=1
+  fi
+fi
+
+printf '%s\n' "$LINE1"
+if [ "$LINE2_HAS_CHUNK" -eq 1 ]; then
+  printf '%s\n' "$LINE2"
+fi
 exit 0
