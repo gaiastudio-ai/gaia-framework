@@ -12,14 +12,14 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are fixing a story file that has open validation findings. The story is resolved by `{story_key}` via the canonical glob `{story_key}-*.md` in `docs/implementation-artifacts/`. After applying fixes, you re-invoke validation to confirm the story is clean and transition it to `ready-for-dev`.
+You are fixing a story file that has open validation findings. The story is resolved by `{story_key}` via the shared `resolve-story-file.sh` helper (E79-S7 / FR-476), which honors the E79-S4 nested-over-flat precedence rule across `docs/implementation-artifacts/epic-*/stories/{story_key}-*.md` (canonical) and `docs/implementation-artifacts/{story_key}-*.md` (legacy-flat fallback). After applying fixes, you re-invoke validation to confirm the story is clean and transition it to `ready-for-dev`.
 
 This skill is the native Claude Code conversion of the legacy fix-story workflow (brief Cluster 7, story E28-S55). It reads Val findings, rewrites affected sections, and re-validates via the `gaia-val-validate` skill.
 
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-fix-story [story-key]".
-- The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
+- The story file MUST be resolvable by `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` (E79-S7 / FR-476). The helper searches the canonical nested path first (`docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`), then the legacy-flat path (`docs/implementation-artifacts/{story_key}-*.md`) with a stderr WARNING. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}".
 - The story MUST be in `validating` status. Any other status is a hard gate -- exit with guidance: "story not in validating state -- use /gaia-validate-story first".
 - NEVER drop required YAML frontmatter fields during a fix pass. Preserve all 15 required fields: key, title, epic, status, priority, size, points, risk, sprint_id, depends_on, blocks, traces_to, date, author, priority_flag (plus optional: origin, origin_ref, figma).
 - Do NOT loop infinitely. If re-validation still reports findings after applying fixes, exit non-zero with a summary and leave status at `validating`.
@@ -31,9 +31,9 @@ This skill is the native Claude Code conversion of the legacy fix-story workflow
 ### Step 1 -- Resolve Story File
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-fix-story [story-key]"
-- Resolve the story file path using the canonical glob: `docs/implementation-artifacts/{story_key}-*.md`
-- If zero matches: fail with "story file not found for key {story_key} -- searched docs/implementation-artifacts/{story_key}-*.md"
-- If multiple matches: fail with "multiple story files matched key {story_key} -- resolve ambiguity"
+- Resolve the story file path via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` (E79-S7 / FR-476). The helper honors the E79-S4 nested-over-flat precedence rule and emits stderr WARNINGs for legacy-flat fallback or shadowed flat siblings.
+- If the helper exits 1 (zero matches): fail with "story file not found for key {story_key}". The helper's stderr lists the searched paths.
+- If the helper exits 2 (multiple matches — ambiguity): fail with "multiple story files matched key {story_key} -- resolve ambiguity". The helper's stderr lists each match.
 - Read the resolved story file.
 
 ### Step 2 -- Gate Check: Status Must Be Validating
@@ -66,9 +66,9 @@ Preserve all existing valid content -- only modify sections flagged by findings.
 
 ### Step 5 -- Re-Validate
 
-- Invoke the `gaia-val-validate` skill (NOT the legacy workflow) against the updated story file to confirm clean state:
+- Invoke the `gaia-val-validate` skill (NOT the legacy workflow) against the updated story file to confirm clean state. The story file path was resolved in Step 1 via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh` (E79-S7 / FR-476) and may live at either the canonical nested path (`docs/implementation-artifacts/epic-*/stories/{story_key}-{slug}.md`) or the legacy-flat fallback (`docs/implementation-artifacts/{story_key}-{slug}.md`) — pass the resolved path:
   ```
-  /gaia-val-validate docs/implementation-artifacts/{story_key}-{slug}.md
+  /gaia-val-validate <resolved_story_path>
   ```
 - Parse the re-validation result:
   - If zero CRITICAL/WARNING findings: validation is clean -- proceed to Step 6.
