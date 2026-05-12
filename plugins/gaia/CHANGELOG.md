@@ -3,6 +3,29 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.143.0] — 2026-05-12
+
+### Added
+
+- (E84-S6) wire orchestration-warning into 42 heavy-procedural and conversational skills (#599)
+- (E53-S250) gaia-shard-doc sub-shard directory preservation (option A) (#597)
+- (E53-S249) check-monolith-shard-sync.sh sub-shard directory awareness (#596)
+- (E82-S10) statusline rate-limits chunk (FR-451, rich-theme-only) (#595)
+- (E81-S6) sprint-state.sh rollover + sprint-plan prior-close guard (#594)
+- (E82-S9) context-window progress bar (FR-450, FR-430 segment implementation) (#593)
+- (E82-S8) statusline git-dirty marker via PreToolUse hook (#592)
+- (E82-S6) statusline runtime staleness detection (marker + cache field) (#591)
+- (E82-S5) statusline smart-hiding — suppress empty MODEL/PROJECT chunks (#589)
+- (E81-S5) /gaia-sprint-close skill — close + archive + lifecycle event (#588)
+
+### Changed
+
+- (E53-S251) bats fixture for af-2026-05-10-5 drift-report closure (#598)
+
+### Fixed
+
+- (E82-S7) toggle.sh --enable emits canonical {type, command, refreshInterval} (#590)
+
 ## [1.142.0] — 2026-05-11
 
 ### Added
