@@ -55,7 +55,11 @@ _cleanup() {
 trap _cleanup EXIT INT TERM
 
 # ---- Constants -------------------------------------------------------------
-TTL_SECONDS=86400          # 24h fetch TTL — see AC5.
+TTL_SECONDS=1800           # 30min fetch TTL — sprint-43 update from 24h.
+                           # ~48 unauth GitHub API calls/day per machine —
+                           # safely under the 60/hr public rate limit even
+                           # when combined with other gh CLI usage. New
+                           # releases now surface within 30min instead of 24h.
 HTTP_TIMEOUT=5             # curl --max-time, gh wrapper enforces its own.
 
 CACHE_DIR="${HOME}/.claude/gaia-statusline/cache"
