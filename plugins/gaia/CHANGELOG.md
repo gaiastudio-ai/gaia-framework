@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.145.0] — 2026-05-12
+
+### Added
+
+- (E79-S7) shared resolve-story-file.sh helper + retrofit validate-story, fix-story, sprint-plan
+
+### Changed
+
+- (E79-S7) NFR-052 coverage stub for resolve_story_file
+
+### Fixed
+
+- (statusline) suppress closed sprint_id in rich theme
+- (E79-S7) preserve TC-CSP-10 docs-contract phrases in sprint-plan SKILL.md retrofit
+
 ## [1.144.0] — 2026-05-12
 
 ### Added
