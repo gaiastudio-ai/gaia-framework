@@ -1,0 +1,18 @@
+# Partial-phase fixture for E85-S2 AC5 / TS2.
+config_phase: partial
+schema_version: "2.0.0"
+project_name: "test-project"
+project_kind: "web-app"
+project_root: "/tmp/test-project"
+project_path: "/tmp/test-project/src"
+memory_path: "/tmp/test-project/_memory"
+checkpoint_path: "/tmp/test-project/_memory/checkpoints"
+installed_path: "/tmp/test-project/.gaia"
+framework_version: "1.146.1"
+date: "2026-05-12"
+stacks:
+  - name: "backend"
+    language: "typescript"
+    paths: ["src/api"]
+platforms:
+  - web

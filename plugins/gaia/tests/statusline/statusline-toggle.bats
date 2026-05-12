@@ -57,7 +57,8 @@ write_settings() {
   # statusLine block exists and points at the canonical runtime path.
   expected_cmd="$HOME/.claude/gaia-statusline/statusline.sh"
   [ "$(jq -r '.statusLine.command' "$HOME/.claude/settings.json")" = "$expected_cmd" ]
-  [ "$(jq -r '.statusLine.refreshInterval' "$HOME/.claude/settings.json")" = "3600000" ]
+  # sprint-43 update: refreshInterval lowered from 3600000 (1h) to 10000 (10s).
+  [ "$(jq -r '.statusLine.refreshInterval' "$HOME/.claude/settings.json")" = "10000" ]
   # Unrelated keys preserved.
   [ "$(jq -r '.theme' "$HOME/.claude/settings.json")" = "dark" ]
   [ "$(jq -r '.model' "$HOME/.claude/settings.json")" = "opus" ]
