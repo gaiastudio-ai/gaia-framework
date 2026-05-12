@@ -133,18 +133,18 @@ _render() {
   echo "$output" | grep -q "42%"
 }
 
-@test "context-bar: size hint rendered (explicit context_size)" {
+@test "context-bar: size hint shows [1M] when context_window_size > 500000" {
+  # sprint-43 schema update: Claude Code sends context_window_size as int.
   _seed_cache "null" "false"
-  stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"context_window":{"used_percentage":50,"current_usage":500000,"context_size":"1M"}}'
+  stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"context_window":{"used_percentage":50,"context_window_size":1000000,"current_usage":{"input_tokens":1,"output_tokens":2}}}'
   run _render "$stdin"
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "\[1M\]"
 }
 
-@test "context-bar: size hint inferred from usage+pct when context_size absent" {
-  # 100000 tokens at 50% -> 200K total
+@test "context-bar: size hint shows [200K] when context_window_size <= 500000" {
   _seed_cache "null" "false"
-  stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"context_window":{"used_percentage":50,"current_usage":100000}}'
+  stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"context_window":{"used_percentage":50,"context_window_size":200000,"current_usage":{"input_tokens":1,"output_tokens":2}}}'
   run _render "$stdin"
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "\[200K\]"
@@ -173,11 +173,13 @@ _render() {
   ! echo "$output" | head -1 | grep -q "#"
 }
 
-@test "context-bar: null current_usage suppresses entire chunk" {
+@test "context-bar: null used_percentage suppresses entire chunk" {
+  # sprint-43 schema update: gate is now used_percentage (scalar 0..100) not
+  # current_usage (which Claude Code sends as an object — would crash bash
+  # arithmetic).
   _seed_cache "null" "false"
-  stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"context_window":{"used_percentage":50,"current_usage":null}}'
+  stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"context_window":{"used_percentage":null}}'
   run _render "$stdin"
   [ "$status" -eq 0 ]
-  # No "%" symbol should appear on line 1.
   ! echo "$output" | head -1 | grep -q "%"
 }

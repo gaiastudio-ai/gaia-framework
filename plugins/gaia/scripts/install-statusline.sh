@@ -78,9 +78,12 @@ SETTINGS="$HOME/.claude/settings.json"
 mkdir -p "$(dirname "$SETTINGS")"
 
 # Build the new statusLine fragment.
+# refreshInterval: 10000ms (10s) — sprint-43 update from 3600000ms (1h). The
+# 1h cadence made context_window / rate_limits / git_dirty chunks reflect
+# stale data between renders. 10s is ~5ms CPU per render — negligible.
 STATUSLINE_FRAGMENT="$(jq -n \
   --arg cmd "$DEST_RUNTIME" \
-  --argjson refresh 3600000 \
+  --argjson refresh 10000 \
   '{statusLine: {type: "command", command: $cmd, refreshInterval: $refresh}}')"
 
 # Read existing settings (or {} if absent / unparseable).

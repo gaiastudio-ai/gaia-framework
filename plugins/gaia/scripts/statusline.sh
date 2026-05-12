@@ -377,9 +377,13 @@ fi
 #
 # Filled / empty glyphs: `#`/`-` in ASCII theme, `█`/`░` UTF-8.
 CONTEXTBAR_CHUNK=""
-_CTX_CURRENT="$(printf '%s' "$INPUT" | jq -r '.context_window.current_usage // "null"' 2>/dev/null || printf 'null')"
-if [ "$_CTX_CURRENT" != "null" ]; then
-  _CTX_PCT="$(printf '%s' "$INPUT" | jq -r '.context_window.used_percentage // 0' 2>/dev/null || printf '0')"
+# Claude Code (>= 2.1.x) sends `context_window.current_usage` as an OBJECT
+# (input_tokens, output_tokens, cache_*_tokens) — NOT a scalar token count.
+# Gating on .used_percentage (a scalar 0..100) instead avoids treating that
+# object as an integer in shell arithmetic, which would crash the chunk
+# silently. Schema discovered via stdin trace 2026-05-12.
+_CTX_PCT="$(printf '%s' "$INPUT" | jq -r '.context_window.used_percentage // "null"' 2>/dev/null || printf 'null')"
+if [ "$_CTX_PCT" != "null" ]; then
   case "$_CTX_PCT" in
     ''|*[!0-9]*) _CTX_PCT=0 ;;
   esac
@@ -426,19 +430,18 @@ if [ "$_CTX_CURRENT" != "null" ]; then
     _PCT_COLOR="${COLOR_DIRTY:-}"
   fi
   _PCT_TEXT="${_PCT_COLOR}${_CTX_PCT}%${COLOR_RESET}"
-  # Size hint: prefer .context_window.context_size (e.g. "1M", "200K") if
-  # provided. If absent, infer from current_usage and used_percentage:
-  #   total_tokens ≈ current_usage * 100 / used_percentage   (when pct > 0)
-  # then round to the nearest stock window (200K / 1M).
-  _SIZE_HINT="$(printf '%s' "$INPUT" | jq -r '.context_window.context_size // ""' 2>/dev/null)"
-  if [ -z "$_SIZE_HINT" ] && [ "$_CTX_PCT" -gt 0 ]; then
-    _TOTAL=$(( _CTX_CURRENT * 100 / _CTX_PCT ))
-    # Anchor to known Claude context windows: 1M (1,000,000) vs 200K (200,000).
-    if [ "$_TOTAL" -gt 500000 ]; then
-      _SIZE_HINT="1M"
-    else
-      _SIZE_HINT="200K"
-    fi
+  # Size hint: Claude Code sends `context_window.context_window_size` as an
+  # integer (e.g. 1000000 for 1M, 200000 for 200K). Round to the stock label.
+  _CTX_SIZE="$(printf '%s' "$INPUT" | jq -r '.context_window.context_window_size // 0' 2>/dev/null || printf '0')"
+  case "$_CTX_SIZE" in
+    ''|*[!0-9]*) _CTX_SIZE=0 ;;
+  esac
+  if [ "$_CTX_SIZE" -gt 500000 ]; then
+    _SIZE_HINT="1M"
+  elif [ "$_CTX_SIZE" -gt 0 ]; then
+    _SIZE_HINT="200K"
+  else
+    _SIZE_HINT=""
   fi
   if [ -n "$_SIZE_HINT" ]; then
     _SIZE_TEXT=" ${COLOR_MUTED}[${_SIZE_HINT}]${COLOR_RESET}"
@@ -478,10 +481,9 @@ elif [ "$COLS" -lt 60 ]; then
   KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
 elif [ "$COLS" -lt 80 ]; then
   KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
-elif [ "$COLS" -lt 100 ]; then
-  # E82-S10: rate-limits requires more width — first to drop in the wide tier.
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=1; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
 else
+  # sprint-43 update: rate-limits kept from 80 cols up (was 100). Most users
+  # run terminals 80-120 wide; the 100-col gate dropped RL on common widths.
   KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=1; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=1
 fi
 
