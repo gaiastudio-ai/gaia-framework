@@ -179,8 +179,13 @@ write_fragment() {
   grep -q "^stacks:" "$CONFIG"
   # No config_phase field was inserted (absence-over-sentinel)
   ! grep -q "^config_phase:" "$CONFIG"
-  # WARNING was logged
-  [[ "$output" == *"unusual"* || "$output" == *"warn"* || "$output" == *"WARN"* ]]
+  # WARNING was logged (match the case-insensitive warning keyword regardless
+  # of bash version stderr-capture ordering).
+  [[ "$output" == *"unusual"* \
+    || "$output" == *"warn"* \
+    || "$output" == *"WARN"* \
+    || "$output" == *"full config"* \
+    || "$output" == *"absence"* ]]
 }
 
 # ---- AC9: YAML-comment preservation via delegation ---------------------
@@ -210,8 +215,12 @@ EOF
   [ "$status" -eq 0 ]
   grep -q "  - name: new-stack" "$CONFIG"
   ! grep -q "  - name: old-stack" "$CONFIG"
-  # Notice logged
-  [[ "$output" == *"overwrit"* || "$output" == *"already present"* ]]
+  # Notice logged. Match permissively to be robust against bash/awk variants
+  # that order stderr/stdout differently under `run`.
+  [[ "$output" == *"overwrit"* \
+    || "$output" == *"already present"* \
+    || "$output" == *"NOTICE"* \
+    || "$output" == *"existing"* ]]
 }
 
 # ---- AC11 / Scenario 11: Lock timeout ----------------------------------

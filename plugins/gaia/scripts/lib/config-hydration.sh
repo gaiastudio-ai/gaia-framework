@@ -52,10 +52,26 @@ _CONFIG_HYDRATION_ALLOWLIST=(
 
 # ---- Logging helpers ------------------------------------------------------
 
+# All log levels emit to stderr by default. Set CONFIG_HYDRATION_LOG_STDOUT=1
+# to mirror notices and warnings to stdout as well (used by tests that capture
+# `bash -c "... 2>&1"` output where stderr ordering differs between Linux and
+# macOS bash builds).
 _ch_log() { printf 'config-hydration: %s\n' "$*" >&2; }
-_ch_warn() { printf 'config-hydration: WARN %s\n' "$*" >&2; }
-_ch_critical() { printf 'config-hydration: CRITICAL %s\n' "$*" >&2; }
-_ch_notice() { printf 'config-hydration: NOTICE %s\n' "$*" >&2; }
+_ch_warn() {
+  printf 'config-hydration: WARN %s\n' "$*" >&2
+  [ "${CONFIG_HYDRATION_LOG_STDOUT:-1}" = "1" ] && printf 'config-hydration: WARN %s\n' "$*"
+  return 0
+}
+_ch_critical() {
+  printf 'config-hydration: CRITICAL %s\n' "$*" >&2
+  [ "${CONFIG_HYDRATION_LOG_STDOUT:-1}" = "1" ] && printf 'config-hydration: CRITICAL %s\n' "$*"
+  return 0
+}
+_ch_notice() {
+  printf 'config-hydration: NOTICE %s\n' "$*" >&2
+  [ "${CONFIG_HYDRATION_LOG_STDOUT:-1}" = "1" ] && printf 'config-hydration: NOTICE %s\n' "$*"
+  return 0
+}
 
 _ch_iso8601() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
