@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gaiastudio.ai/schemas/project-config.schema.json",
-  "title": "GAIA project-config.yaml — full structural schema (E68-S1)",
-  "description": "JSON Schema (draft-07) for the canonical project-config.yaml surface. Covers the eleven new top-level sections introduced by E68-S1 (FR-RSV2-5..22) plus the existing surface declared in plugins/gaia/config/project-config.schema.yaml. Designed for offline validation via `npx ajv-cli validate -s project-config.schema.json -d project-config.json`. NFR-RSV2-4 / ADR-079 require schema-validation discipline; this file extends the same load-time-validation pattern used by analysis-results.schema.json. Credential values literally embedded in environments.*.credentials.* are rejected via a pattern-based deny-list per AC11 / FR-RSV2-9.",
+  "title": "GAIA project-config.yaml — full structural schema v2.0.0 (E85-S2)",
+  "description": "JSON Schema (draft-07) for the canonical project-config.yaml surface. v2.0.0 introduces the `config_phase` state machine (minimal -> partial -> full) and `schema_version` field per ADR-096/ADR-097. Conditional section requirements via `allOf`+`if/then` blocks: `minimal` requires only project_name + project_kind; `partial` adds stacks + platforms; `full` adds environments + ci_cd. The absence of `config_phase` (legacy configs) is treated as `full` by gate-side code per NFR-062 (backward compatibility) — the schema enforces this by NOT placing `config_phase` in `required` and by guarding every `if` with `required:[config_phase]` so absence skips all conditional blocks. Covers the eleven new top-level sections from E68-S1 (FR-RSV2-5..22) plus the existing surface. Designed for offline validation via `npx ajv-cli validate -s project-config.schema.json -d project-config.json`. NFR-RSV2-4 / ADR-079 require schema-validation discipline; this file extends the same load-time-validation pattern used by analysis-results.schema.json. Credential values literally embedded in environments.*.credentials.* are rejected via a pattern-based deny-list per AC11 / FR-RSV2-9.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -200,6 +200,22 @@
     }
   },
   "properties": {
+    "config_phase": {
+      "description": "Config-phase state machine value per ADR-096. Enum: minimal | partial | full. `default: \"full\"` is a documentation hint — gate-side code treats absence as `full` per ADR-097 (absence-over-sentinel) and NFR-062 (backward compatibility). The conditional `required` blocks in `allOf` are guarded by `required:[config_phase]` so legacy configs without this field skip all phase-conditional requirements.",
+      "type": "string",
+      "enum": ["minimal", "partial", "full"],
+      "default": "full"
+    },
+    "schema_version": {
+      "description": "Schema version string per ADR-096 D4 (semver format, e.g., \"2.0.0\"). Optional for backward compatibility but SHOULD be present in all new configs. Top-level `string` property — distinct from JSON Schema's `$schema` / `$id` metadata fields.",
+      "type": "string",
+      "minLength": 1
+    },
+    "project_name": {
+      "description": "Human-readable project name (referenced by conditional `required` blocks). Optional for legacy configs; required at all config_phase values per the conditional blocks.",
+      "type": "string",
+      "minLength": 1
+    },
     "project_root":             { "type": "string", "minLength": 1 },
     "project_path":             { "type": "string", "minLength": 1 },
     "memory_path":              { "type": "string", "minLength": 1 },
@@ -406,5 +422,37 @@
       }
     },
     "health_check": { "$ref": "#/definitions/healthCheck" }
-  }
+  },
+  "allOf": [
+    {
+      "description": "config_phase=minimal — Phase 0 bootstrap. Only project_name + project_kind are required (in addition to the unconditional infrastructure fields).",
+      "if": {
+        "properties": { "config_phase": { "const": "minimal" } },
+        "required": ["config_phase"]
+      },
+      "then": {
+        "required": ["project_name", "project_kind"]
+      }
+    },
+    {
+      "description": "config_phase=partial — architecture-phase hydration complete. Adds stacks + platforms to the required set.",
+      "if": {
+        "properties": { "config_phase": { "const": "partial" } },
+        "required": ["config_phase"]
+      },
+      "then": {
+        "required": ["project_name", "project_kind", "stacks", "platforms"]
+      }
+    },
+    {
+      "description": "config_phase=full — infrastructure-phase hydration complete. Adds environments + ci_cd to the required set. Legacy configs without config_phase are NOT routed through this branch (the `required:[config_phase]` guard ensures absence skips); gate-side code treats absence-means-full per NFR-062.",
+      "if": {
+        "properties": { "config_phase": { "const": "full" } },
+        "required": ["config_phase"]
+      },
+      "then": {
+        "required": ["project_name", "project_kind", "stacks", "platforms", "environments", "ci_cd"]
+      }
+    }
+  ]
 }

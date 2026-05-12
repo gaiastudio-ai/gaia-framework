@@ -134,17 +134,17 @@ _strip_sgr() {
 
 # ---------- AC8: width-ladder drops rate-limits first ---------------------
 
-@test "E82-S10 / AC8: narrow COLS drops rate-limits chunk" {
+@test "E82-S10 / AC8 (sprint-43): narrow COLS (<80) drops rate-limits chunk" {
+  # sprint-43 update: rate-limits threshold lowered from 100 to 80 cols.
   stdin="$(_stdin_rl 23 41)"
-  # 80 cols keeps everything else but drops rate-limits per ladder.
-  run bash -c "COLUMNS=80 GAIA_STATUSLINE_THEME=rich printf '%s' '$stdin' | env COLUMNS=80 GAIA_STATUSLINE_THEME=rich '$RUNTIME'"
+  run bash -c "COLUMNS=79 GAIA_STATUSLINE_THEME=rich printf '%s' '$stdin' | env COLUMNS=79 GAIA_STATUSLINE_THEME=rich '$RUNTIME'"
   [ "$status" -eq 0 ]
   ! echo "$output" | grep -q "RL:"
 }
 
-@test "E82-S10 / AC8: wide COLS (>=100) keeps rate-limits chunk" {
+@test "E82-S10 / AC8 (sprint-43): COLS >= 80 keeps rate-limits chunk (was 100)" {
   stdin="$(_stdin_rl 23 41)"
-  run bash -c "COLUMNS=120 GAIA_STATUSLINE_THEME=rich printf '%s' '$stdin' | env COLUMNS=120 GAIA_STATUSLINE_THEME=rich '$RUNTIME'"
+  run bash -c "COLUMNS=80 GAIA_STATUSLINE_THEME=rich printf '%s' '$stdin' | env COLUMNS=80 GAIA_STATUSLINE_THEME=rich '$RUNTIME'"
   [ "$status" -eq 0 ]
   stripped="$(_strip_sgr "$output")"
   echo "$stripped" | grep -q "RL: 23%/41%"

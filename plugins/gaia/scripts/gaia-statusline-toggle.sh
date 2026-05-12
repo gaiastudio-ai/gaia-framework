@@ -6,7 +6,7 @@
 # Modes:
 #   --enable   Add the canonical statusLine block to ~/.claude/settings.json
 #              pointing at ~/.claude/gaia-statusline/statusline.sh with
-#              refreshInterval = 3600000 (1h).
+#              refreshInterval = 10000 (10s — sprint-43 update from 1h).
 #   --disable  Remove the statusLine block from ~/.claude/settings.json.
 #
 # Contract (AC1..AC8):
@@ -34,7 +34,7 @@ export LC_ALL
 
 SETTINGS="$HOME/.claude/settings.json"
 RUNTIME="$HOME/.claude/gaia-statusline/statusline.sh"
-REFRESH_MS=3600000
+REFRESH_MS=10000
 
 usage() {
   cat <<USAGE >&2

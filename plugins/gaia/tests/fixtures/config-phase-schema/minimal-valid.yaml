@@ -1,0 +1,14 @@
+# Minimal-phase fixture for E85-S2 AC4 / TS1.
+# Only project_name + project_kind + config_phase + schema_version + the 7
+# infrastructure fields; NO stacks/platforms/environments/ci_cd/compliance/test_execution.
+config_phase: minimal
+schema_version: "2.0.0"
+project_name: "test-project"
+project_kind: "web-app"
+project_root: "/tmp/test-project"
+project_path: "/tmp/test-project/src"
+memory_path: "/tmp/test-project/_memory"
+checkpoint_path: "/tmp/test-project/_memory/checkpoints"
+installed_path: "/tmp/test-project/.gaia"
+framework_version: "1.146.1"
+date: "2026-05-12"

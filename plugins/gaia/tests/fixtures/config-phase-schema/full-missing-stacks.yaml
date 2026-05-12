@@ -1,0 +1,23 @@
+# Negative fixture for E85-S2 AC6 / TS6 — full-phase config missing stacks.
+# MUST fail validation with an error identifying stacks as required.
+config_phase: full
+schema_version: "2.0.0"
+project_name: "broken-project"
+project_kind: "web-app"
+project_root: "/tmp/broken"
+project_path: "/tmp/broken/src"
+memory_path: "/tmp/broken/_memory"
+checkpoint_path: "/tmp/broken/_memory/checkpoints"
+installed_path: "/tmp/broken/.gaia"
+framework_version: "1.146.1"
+date: "2026-05-12"
+# stacks: intentionally absent
+platforms:
+  - web
+environments:
+  dev:
+    url: "https://dev.example.com"
+ci_cd:
+  promotion_chain:
+    - name: "main"
+      branch: "main"
