@@ -62,19 +62,43 @@ fi
 : "${COLOR_BOLD:=}"
 : "${COLOR_RESET:=}"
 
-# ---- Read GAIA version from plugin.json (D5) -------------------------------
-# Prefer the actively-loaded plugin (Claude Code injects CLAUDE_PLUGIN_ROOT
-# pointing at e.g. ~/.claude/plugins/cache/.../gaia/<version>/). Fall back to
-# the in-tree repo for dev/test runs where CLAUDE_PLUGIN_ROOT is unset.
-if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -r "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; then
-  PLUGIN_JSON="${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"
-else
+# ---- Read GAIA version from plugin.json -----------------------------------
+# Three-tier resolution:
+#   Tier 1 (production): scan ~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/
+#     for the highest semver directory and read its plugin.json. This is the
+#     canonical install location — Claude Code itself loads the latest cached
+#     version on /reload-plugins, so the statusline matching it is correct.
+#   Tier 2 (dev/test): in-tree repo plugin.json under PROJECT_PATH.
+#   Tier 3 (last-resort): the literal "dev" — surfaces a vdev release link
+#     and signals a misconfigured environment.
+#
+# CLAUDE_PLUGIN_ROOT is intentionally NOT consulted here. It is a per-skill
+# envvar Claude Code sets only inside Skill() dispatches; the statusLine
+# command runs outside that context, so the env var is always empty and a
+# plugin.json lookup keyed on it always misses (the original "GAIA dev" bug).
+PLUGIN_CACHE_DIR="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia"
+PLUGIN_JSON=""
+GAIA_VERSION=""
+
+# Tier 1: cache scan for the highest semver subdirectory.
+if [ -d "$PLUGIN_CACHE_DIR" ]; then
+  GAIA_VERSION_CACHED="$(ls "$PLUGIN_CACHE_DIR" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)"
+  if [ -n "$GAIA_VERSION_CACHED" ] && [ -r "$PLUGIN_CACHE_DIR/$GAIA_VERSION_CACHED/.claude-plugin/plugin.json" ]; then
+    PLUGIN_JSON="$PLUGIN_CACHE_DIR/$GAIA_VERSION_CACHED/.claude-plugin/plugin.json"
+  fi
+fi
+
+# Tier 2: in-tree repo for dev/test runs.
+if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json" ]; then
   PLUGIN_JSON="$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
 fi
-GAIA_VERSION=""
-if [ -r "$PLUGIN_JSON" ]; then
+
+# Read the version from whichever tier resolved.
+if [ -n "$PLUGIN_JSON" ] && [ -r "$PLUGIN_JSON" ]; then
   GAIA_VERSION="$(jq -r '.version // ""' "$PLUGIN_JSON" 2>/dev/null)"
 fi
+
+# Tier 3: last-resort literal.
 [ -n "$GAIA_VERSION" ] || GAIA_VERSION="dev"
 
 # ---- Read model from stdin -------------------------------------------------
