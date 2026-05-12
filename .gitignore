@@ -45,3 +45,6 @@ plugins/gaia/test/runs/
 .env
 .env.local
 *.log
+
+# --- Config hydration runtime lock (E85-S1 / ADR-098) ----------------------
+config/.config-hydration.lock
