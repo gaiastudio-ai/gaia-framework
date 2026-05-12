@@ -24,6 +24,12 @@ sprint_id: sprint-99
 status: active
 SS
   export PROJECT_PATH="$TEST_TMP"
+  # Override HOME so the tier-1 plugin-cache scan defaults to empty unless a
+  # fixture creates one. Without this, the runtime would resolve the
+  # developer's real ~/.claude/plugins/cache/.../gaia/<latest>/ and shadow
+  # the in-tree 9.9.9-test fixture used by these tests.
+  export HOME="$TEST_TMP/home"
+  mkdir -p "$HOME"
   # Default stdin JSON (Claude Code statusLine contract).
   STDIN_JSON='{"model":{"id":"claude-opus-4-7","display_name":"Opus 4.7"},"workspace":{"current_dir":"'"$TEST_TMP"'"}}'
   export STDIN_JSON
@@ -48,48 +54,33 @@ teardown() { common_teardown; }
 }
 
 # ---------------------------------------------------------------------------
-# CLAUDE_PLUGIN_ROOT takes precedence over PROJECT_PATH for version read.
-# Catches the v1.140.0/v1.141.0 drift class from AF-2026-05-10 — when the
-# in-tree repo plugin.json lags the actively-loaded marketplace plugin, the
-# statusline must show the *active* version.
+# Version-resolution chain (replaces the legacy CLAUDE_PLUGIN_ROOT-keyed
+# lookup that produced the "GAIA dev" production bug). The full tier-by-tier
+# matrix lives in statusline-version-resolution.bats; this file keeps a
+# single drift-class assertion: the runtime MUST prefer the plugin cache's
+# highest semver over the in-tree repo's plugin.json (the AF-2026-05-10
+# v1.140.0/v1.141.0 drift class — when the in-tree repo lags the actively-
+# loaded marketplace plugin, the statusline shows the active version).
 # ---------------------------------------------------------------------------
 
-@test "CLAUDE_PLUGIN_ROOT overrides PROJECT_PATH for version" {
+@test "version: plugin cache (tier 1) overrides in-tree repo (tier 2) when both exist" {
   [ -f "$RUNTIME" ]
-  # Build a second fake plugin tree representing the marketplace-installed
-  # active plugin with a DIFFERENT version than the in-tree PROJECT_PATH tree.
-  ACTIVE_PLUGIN_ROOT="$TEST_TMP/active-plugin"
-  mkdir -p "$ACTIVE_PLUGIN_ROOT/.claude-plugin"
-  cat > "$ACTIVE_PLUGIN_ROOT/.claude-plugin/plugin.json" <<'PJ'
+  # Setup put a tier-2 in-tree repo at 9.9.9-test. Add a tier-1 cache entry
+  # with a different version under the test-overridden $HOME. The cache MUST
+  # win. CLAUDE_PLUGIN_ROOT is left unset — the runtime no longer consults
+  # it (Claude Code does not set it for the statusLine command, which was
+  # the original "GAIA dev" production bug).
+  CACHE_DIR="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/1.141.0-active/.claude-plugin"
+  mkdir -p "$CACHE_DIR"
+  cat > "$CACHE_DIR/plugin.json" <<'PJ'
 { "name": "gaia", "version": "1.141.0-active" }
 PJ
   cd "$TEST_TMP"
-  run bash -c "CLAUDE_PLUGIN_ROOT='$ACTIVE_PLUGIN_ROOT' printf '%s' '$STDIN_JSON' | env CLAUDE_PLUGIN_ROOT='$ACTIVE_PLUGIN_ROOT' '$RUNTIME'"
+  run bash -c "printf '%s' '$STDIN_JSON' | '$RUNTIME'"
   [ "$status" -eq 0 ]
-  # Must show the active-plugin version, NOT the in-tree 9.9.9-test version.
+  # Must show the tier-1 cache version, NOT the tier-2 in-tree 9.9.9-test.
   echo "$output" | grep -q "1.141.0-active"
   ! echo "$output" | grep -q "9.9.9-test"
-}
-
-@test "CLAUDE_PLUGIN_ROOT unset → falls back to PROJECT_PATH" {
-  [ -f "$RUNTIME" ]
-  cd "$TEST_TMP"
-  # Explicitly unset CLAUDE_PLUGIN_ROOT to prove the fallback path.
-  run bash -c "unset CLAUDE_PLUGIN_ROOT; printf '%s' '$STDIN_JSON' | '$RUNTIME'"
-  [ "$status" -eq 0 ]
-  echo "$output" | grep -q "9.9.9-test"
-}
-
-@test "CLAUDE_PLUGIN_ROOT set but plugin.json missing → falls back to PROJECT_PATH" {
-  [ -f "$RUNTIME" ]
-  cd "$TEST_TMP"
-  # Point CLAUDE_PLUGIN_ROOT at a directory without a .claude-plugin subdir.
-  EMPTY_ROOT="$TEST_TMP/empty-plugin"
-  mkdir -p "$EMPTY_ROOT"
-  run bash -c "CLAUDE_PLUGIN_ROOT='$EMPTY_ROOT' printf '%s' '$STDIN_JSON' | env CLAUDE_PLUGIN_ROOT='$EMPTY_ROOT' '$RUNTIME'"
-  [ "$status" -eq 0 ]
-  # Should fall back to PROJECT_PATH and show the in-tree version.
-  echo "$output" | grep -q "9.9.9-test"
 }
 
 # ---------------------------------------------------------------------------
