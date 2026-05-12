@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.147.0] — 2026-05-12
+
+### Added
+
+- (E85-S2) wire `project-config.schema.json` v2.0.0 — `config_phase
+- (E85-S1) shared config-hydration.sh helper (#620)
+
+### Changed
+
+- (E79-S7) add canonical resolve-story-file.bats covering TC-VSG-1..5 (#619)
+
+### Fixed
+
+- (statusline) match Claude Code's actual context_window schema + lower refreshInterval to 10s + lower rate-limits width threshold to 80
+
 ## [1.146.1] — 2026-05-12
 
 ### Fixed
