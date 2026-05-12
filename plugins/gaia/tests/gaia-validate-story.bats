@@ -75,9 +75,15 @@ EOF
   [[ "$output" == *"Bash"* ]]
 }
 
-@test "SKILL.md frontmatter: context fork preserved (AC4, AC-EC2, NFR-046)" {
+@test "POST-E87-S3: SKILL.md frontmatter migrated off context: fork (ADR-104)" {
+  # Originally pinned `context: fork preserved` (AC4, AC-EC2, NFR-046) under
+  # the fork-based dispatch model. E87-S3 (Val Bridge Migration, ADR-104)
+  # retargets /gaia-validate-story to main-turn Agent dispatch — the
+  # frontmatter no longer declares `context: fork`. The test now pins the
+  # post-migration invariant: frontmatter is absent of `context: fork`.
   run awk '/^---$/{n++; next} n==1' "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"context: fork"* ]]
+  [ -n "$output" ]
+  ! grep -Eq '^context:[[:space:]]*fork' <<< "$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -87,11 +93,15 @@ EOF
 # These are prose-anchor tests -- common pattern across gaia-create-story.bats.
 # ---------------------------------------------------------------------------
 
-@test "VLR-01: Step 3 documents Val subagent dispatch with context: fork" {
-  # Component 1 note: Step 2 dispatches Val. Step 3 opens on Component 2.
-  # The context: fork reference must be present in the SKILL.md body.
-  run grep -qE "context:[[:space:]]*fork" "$SKILL_DIR/SKILL.md"
-  [ "$status" -eq 0 ]
+@test "POST-E87-S3: SKILL.md documents main-turn Agent-tool dispatch + envelope assert (ADR-104)" {
+  # Originally VLR-01 asserted the body prose contained `context: fork`
+  # under the fork-based dispatch model. E87-S3 retargets the body to
+  # main-turn Agent-tool dispatch with the envelope-assert step. The test
+  # now pins the post-migration invariants: (a) the ADR-104 reference is
+  # present, and (b) the `assert_agent_envelope` call is referenced as the
+  # post-dispatch HALT gate.
+  grep -q 'ADR-104' "$SKILL_DIR/SKILL.md"
+  grep -q 'assert_agent_envelope' "$SKILL_DIR/SKILL.md"
 }
 
 @test "VLR-01: SKILL.md documents Val read-only allowlist [Read, Grep, Glob, Bash]" {

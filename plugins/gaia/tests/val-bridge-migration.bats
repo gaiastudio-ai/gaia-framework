@@ -87,3 +87,88 @@ teardown() {
   # Any of three markers is sufficient: persona_sig field, envelope-sentinel prose, or canonical sentinel path slug.
   grep -Eq 'persona_sig|envelope sentinel|val-envelope-' "$VALIDATOR_MD"
 }
+
+# ============================================================================
+# E87-S3 coverage:
+#   TC-VBR-9          — /gaia-validate-story SKILL.md references assert_agent_envelope
+#   TC-VBR-9-runtime  — validate-story dispatch path HALTs against forged sentinel
+#   TC-VBR-9b         — /gaia-validate-story frontmatter does not declare context: fork
+#   TC-VBR-9c         — /gaia-validate-story SKILL.md contains no self-judgment
+#                       fallthrough prose ("inline Val", "auto-judged", "main-turn
+#                       inline validation")
+#   TC-VBR-10         — /gaia-fix-story SKILL.md references assert_agent_envelope
+#   TC-VBR-10-runtime — fix-story dispatch path HALTs against forged sentinel
+#   TC-VBR-10b        — /gaia-fix-story SKILL.md contains no self-judgment fallthrough prose
+#   TC-VBR-10c        — Both migrated SKILL.md files contain ADR-104 reference
+# ============================================================================
+
+VALIDATE_STORY_MD="$PLUGIN_ROOT/skills/gaia-validate-story/SKILL.md"
+FIX_STORY_MD="$PLUGIN_ROOT/skills/gaia-fix-story/SKILL.md"
+
+# ---------------- TC-VBR-9: validate-story envelope-assert grep ----------------
+@test "TC-VBR-9: /gaia-validate-story SKILL.md references assert_agent_envelope" {
+  [ -f "$VALIDATE_STORY_MD" ] || skip "validate-story SKILL.md not present"
+  count=$(grep -c "assert_agent_envelope" "$VALIDATE_STORY_MD" || true)
+  [ "$count" -ge 1 ]
+}
+
+# ---------------- TC-VBR-9-runtime: validate-story forgery HALT ----------------
+@test "TC-VBR-9-runtime: validate-story dispatch path HALTs on forged sentinel — NFR-064" {
+  [ -f "$HELPER" ] || skip "E87-S1 helper not present"
+  [ -f "$FORGED_FIXTURE" ] || skip "E87-S1 forged fixture not present"
+  source "$HELPER"
+  run assert_agent_envelope "$FORGED_FIXTURE"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"$HALT_PREFIX"* ]]
+}
+
+# ---------------- TC-VBR-9b: validate-story frontmatter migrated ----------------
+@test "TC-VBR-9b: /gaia-validate-story SKILL.md frontmatter does not declare context: fork" {
+  [ -f "$VALIDATE_STORY_MD" ] || skip "validate-story SKILL.md not present"
+  run awk '/^---$/{c++; next} c==1{print}' "$VALIDATE_STORY_MD"
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  ! grep -Eq '^context:[[:space:]]*fork' <<< "$output"
+}
+
+# ---------------- TC-VBR-9c: validate-story no fallthrough prose ----------------
+@test "TC-VBR-9c: /gaia-validate-story SKILL.md contains no inline-Val / auto-judged fallthrough prose" {
+  [ -f "$VALIDATE_STORY_MD" ] || skip "validate-story SKILL.md not present"
+  # Scan for the documented bypass class. A "removed" callout in a Changelog
+  # entry could legitimately mention these phrases; we exempt explicit
+  # Changelog lines (lines that contain "Changelog" or "(removed)").
+  hits=$(grep -E 'inline Val|auto-judged|main-turn inline validation' "$VALIDATE_STORY_MD" 2>/dev/null | grep -v -E 'Changelog|\(removed\)|removed the|no longer|MUST NOT|do NOT fall' || true)
+  [ -z "$hits" ]
+}
+
+# ---------------- TC-VBR-10: fix-story envelope-assert grep ----------------
+@test "TC-VBR-10: /gaia-fix-story SKILL.md references assert_agent_envelope" {
+  [ -f "$FIX_STORY_MD" ] || skip "fix-story SKILL.md not present"
+  count=$(grep -c "assert_agent_envelope" "$FIX_STORY_MD" || true)
+  [ "$count" -ge 1 ]
+}
+
+# ---------------- TC-VBR-10-runtime: fix-story forgery HALT ----------------
+@test "TC-VBR-10-runtime: fix-story dispatch path HALTs on forged sentinel — closes feedback_fix_story_inline_revalidation_bypass.md" {
+  [ -f "$HELPER" ] || skip "E87-S1 helper not present"
+  [ -f "$FORGED_FIXTURE" ] || skip "E87-S1 forged fixture not present"
+  source "$HELPER"
+  run assert_agent_envelope "$FORGED_FIXTURE"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"$HALT_PREFIX"* ]]
+}
+
+# ---------------- TC-VBR-10b: fix-story no fallthrough prose ----------------
+@test "TC-VBR-10b: /gaia-fix-story SKILL.md contains no inline-Val / main-turn-inline-validation fallthrough prose" {
+  [ -f "$FIX_STORY_MD" ] || skip "fix-story SKILL.md not present"
+  hits=$(grep -E 'inline Val|auto-judged|main-turn inline validation' "$FIX_STORY_MD" 2>/dev/null | grep -v -E 'Changelog|\(removed\)|removed the|no longer|MUST NOT|do NOT fall' || true)
+  [ -z "$hits" ]
+}
+
+# ---------------- TC-VBR-10c: both migrated SKILL.md files reference ADR-104 ----------------
+@test "TC-VBR-10c: both validate-story and fix-story SKILL.md contain ADR-104 reference" {
+  [ -f "$VALIDATE_STORY_MD" ] || skip "validate-story SKILL.md not present"
+  [ -f "$FIX_STORY_MD" ] || skip "fix-story SKILL.md not present"
+  grep -q 'ADR-104' "$VALIDATE_STORY_MD"
+  grep -q 'ADR-104' "$FIX_STORY_MD"
+}
