@@ -139,6 +139,13 @@ if [ "${GAIA_STATUSLINE_THEME:-}" = "rich" ]; then
   if [ -r "$SPRINT_FILE" ]; then
     # Tiny grep — direct read (NOT routed through dashboard script per D11).
     SPRINT_ID="$(grep -E '^sprint_id:' "$SPRINT_FILE" 2>/dev/null | head -1 | sed 's/^sprint_id:[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//' || printf '')"
+    # Suppress closed sprints — once /gaia-sprint-close stamps `status: closed`
+    # the sprint_id refers to historical state until /gaia-sprint-plan rolls
+    # the next sprint forward. Showing a closed sprint id is misleading.
+    SPRINT_STATUS="$(grep -E '^status:' "$SPRINT_FILE" 2>/dev/null | head -1 | sed 's/^status:[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//' || printf '')"
+    if [ "$SPRINT_STATUS" = "closed" ]; then
+      SPRINT_ID=""
+    fi
   fi
 fi
 
