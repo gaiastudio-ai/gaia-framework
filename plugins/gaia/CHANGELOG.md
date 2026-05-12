@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.146.0] — 2026-05-12
+
+### Added
+
+- (statusline) track active branch via PreToolUse + two-line layout + gradient context-bar
+
+### Fixed
+
+- (statusline) resolve GAIA version from plugin cache, drop unset CLAUDE_PLUGIN_ROOT path
+
 ## [1.145.0] — 2026-05-12
 
 ### Added
