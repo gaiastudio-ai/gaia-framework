@@ -326,14 +326,31 @@ CCEOF
 }
 
 @test "val-integration cycle: fork-context Val skills declare context: fork" {
-  # validate-plan, val-validate, and val-save require fork context (ADR-045)
-  # refresh-ground-truth runs in the main context (no fork required)
-  for skill in gaia-val-validate-plan gaia-val-validate gaia-val-save; do
+  # validate-plan and val-save still require fork context (ADR-045).
+  # E87-S2 / ADR-104 migrated gaia-val-validate to main-turn Agent dispatch —
+  # it no longer declares `context: fork`; the dispatch shape now lives in
+  # the Main-Turn Dispatch Contract section of its SKILL.md (covered by the
+  # sibling test below).
+  # refresh-ground-truth runs in the main context (no fork required).
+  for skill in gaia-val-validate-plan gaia-val-save; do
     local skill_md="$SKILL_BASE/$skill/SKILL.md"
     [ -f "$skill_md" ]
     run head -10 "$skill_md"
     [[ "$output" == *"context: fork"* ]]
   done
+}
+
+@test "val-integration cycle: gaia-val-validate migrated off context: fork (E87-S2 / ADR-104)" {
+  # Post-E87-S2 invariant: /gaia-val-validate SKILL.md does NOT declare
+  # `context: fork` in its frontmatter — it is dispatched via the main-turn
+  # Agent tool per ADR-093 / ADR-104. The Main-Turn Dispatch Contract
+  # section of the SKILL.md body documents the new shape.
+  local skill_md="$SKILL_BASE/gaia-val-validate/SKILL.md"
+  [ -f "$skill_md" ]
+  run awk '/^---$/{c++; if (c==1) {in_fm=1; next} else if (c==2) {exit}} in_fm' "$skill_md"
+  [ -n "$output" ]
+  ! grep -Eq '^context:[[:space:]]*fork' <<< "$output"
+  grep -q 'Main-Turn Dispatch Contract' "$skill_md"
 }
 
 @test "val-integration cycle: memory-loader.sh supports all tier for validator" {
