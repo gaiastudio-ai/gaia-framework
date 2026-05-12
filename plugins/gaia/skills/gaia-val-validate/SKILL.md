@@ -32,7 +32,7 @@ After the Agent call returns, the consumer skill MUST source `plugins/gaia/scrip
 
 **Envelope sentinel path convention.** The Val persona writes its sentinel to `_memory/checkpoints/val-envelope-<artifact-hash>.json` where `<artifact-hash>` is `sha256(artifact_path)` truncated to 16 hex characters (deterministic, locatable by consumers without state). The sentinel JSON shape and persona-signature contract live in `validator.md` §Sentinel-Write Contract.
 
-**Forgery resistance (NFR-064).** `assert_agent_envelope` rejects sentinels that omit the `persona_sig` field — a non-Val agent attempting to forge a sentinel cannot pass the assertion without access to Val's persona-signature derivation (sha256 of `validator.md`). See TC-VBR-12 in `plugins/gaia/tests/val-bridge-migration.bats`.
+**Forgery resistance (NFR-064 — field-presence tier).** E87-S1's `assert_agent_envelope` rejects sentinels that omit the `persona_sig` field. This is the *field-presence* tier of forgery resistance: a non-Val agent that emits a sentinel without `persona_sig` fails the assertion. Semantic verification (recomputing the sha256 of `validator.md` and matching against the sentinel's `persona_sig` digest) is roadmapped as a future hardening — until that lands, an attacker who knows the format could craft a sentinel with an arbitrary `persona_sig` value and pass the presence check. The defense-in-depth chain (E83 dispatch checkpoint + E87 envelope presence + planned semantic verification) is the layered control. See TC-VBR-12 in `plugins/gaia/tests/val-bridge-migration.bats`.
 
 > **Val dispatch contract (ADR-074 contract C2 — Val opus pin).** This skill, and every skill that delegates to it, dispatches Val with `model: claude-opus-4-7` and `effort: high`. Validation rigor is the framework-wide contract; the harness MUST NOT downgrade Val to a cheaper default model. **Non-opus mismatch guard (AC3):** if a test fixture or downstream override forces a non-opus model into the dispatch context, the skill MUST emit the canonical WARNING `Val dispatch on non-opus model — forcing opus per ADR-074 contract C2` and force `model: claude-opus-4-7` before invoking Val. Silent degradation is forbidden.
 >
@@ -313,7 +313,8 @@ E44-S3..S6 wire this snippet into 18 upstream skills. Embed it as a numbered sub
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
 
 1. iteration = 1.
-2. Invoke /gaia-val-validate with artifact_path={ARTIFACT_PATH}, artifact_type={ARTIFACT_TYPE}, model: claude-opus-4-7, effort: high (ADR-074 contract C2 — Val opus pin).
+2. Invoke /gaia-val-validate via the main-turn Agent tool (per ADR-093 / ADR-104) with artifact_path={ARTIFACT_PATH}, artifact_type={ARTIFACT_TYPE}, model: claude-opus-4-7, effort: high (ADR-074 contract C2 — Val opus pin).
+2.5. ENVELOPE ASSERT (E87-S2 / ADR-104). After the Agent call returns and before consuming the findings, source plugins/gaia/scripts/lib/assert-agent-envelope.sh and invoke assert_agent_envelope <sentinel_path> where sentinel_path = _memory/checkpoints/val-envelope-<sha256({ARTIFACT_PATH}) first 16 hex>.json. On non-zero exit, HALT with the canonical error string "HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at <path>". DO NOT fall through to self-judged validation (closes the regression class in `feedback_add_feature_val_gate_fails_open.md` and `feedback_fix_story_inline_revalidation_bypass.md`).
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
