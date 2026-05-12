@@ -2,6 +2,7 @@
 name: validator
 model: claude-opus-4-7
 description: Val — Artifact Validator. Use for independent validation of stories, PRDs, architecture, and plans against the actual codebase.
+context: main
 allowed-tools: [Read, Grep, Glob, Bash, Write]
 ---
 
