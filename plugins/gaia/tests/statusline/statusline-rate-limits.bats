@@ -112,14 +112,24 @@ _strip_sgr() {
   echo "$stripped" | grep -q "RL: 41%"
 }
 
-# ---------- AC7: default theme suppresses chunk ---------------------------
+# ---------- AC7: minimal theme suppresses chunk (sprint-43 update) -------
 
-@test "E82-S10 / AC7: default theme does NOT emit RL chunk even with fields present" {
+@test "E82-S10 / AC7: minimal theme does NOT emit RL chunk even with fields present" {
+  # sprint-43 update: rich is now the runtime default; minimal is opt-OUT.
+  # The original AC7 contract ("default theme suppresses RL") is now
+  # served by the minimal-theme branch.
   stdin="$(_stdin_rl 23 41)"
-  # Explicitly unset GAIA_STATUSLINE_THEME so any inherited env doesn't leak.
-  run bash -c "COLUMNS=200 printf '%s' '$stdin' | env -u GAIA_STATUSLINE_THEME COLUMNS=200 '$RUNTIME'"
+  run bash -c "COLUMNS=200 GAIA_STATUSLINE_THEME=minimal printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_THEME=minimal '$RUNTIME'"
   [ "$status" -eq 0 ]
   ! echo "$output" | grep -q "RL:"
+}
+
+@test "E82-S10 / AC7 (sprint-43): default theme NOW emits RL chunk (rich is default)" {
+  # Companion to the AC7 update — proves the new default behaviour.
+  stdin="$(_stdin_rl 23 41)"
+  run bash -c "COLUMNS=200 printf '%s' '$stdin' | env -u GAIA_STATUSLINE_THEME COLUMNS=200 '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "RL:"
 }
 
 # ---------- AC8: width-ladder drops rate-limits first ---------------------

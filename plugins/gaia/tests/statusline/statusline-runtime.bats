@@ -131,12 +131,24 @@ PJ
   echo "$output" | grep -q "sprint-99"
 }
 
-@test "TC-6: default theme does NOT read sprint-status.yaml" {
+@test "TC-6: minimal theme does NOT read sprint-status.yaml (sprint-43 update)" {
+  # sprint-43 update: rich is the runtime default; minimal is opt-OUT.
+  # The original TC-6 contract ("default theme suppresses sprint") is now
+  # served by the minimal-theme branch.
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  run bash -c "GAIA_STATUSLINE_THEME=minimal printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_THEME=minimal '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  ! echo "$output" | grep -q "sprint-99"
+}
+
+@test "TC-6 (sprint-43): default theme NOW reads sprint-status.yaml (rich is default)" {
+  # Companion to the TC-6 update — proves the new default behaviour.
   [ -f "$RUNTIME" ]
   cd "$TEST_TMP"
   run bash -c "printf '%s' '$STDIN_JSON' | '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q "sprint-99"
+  echo "$output" | grep -q "sprint-99"
 }
 
 # ---------------------------------------------------------------------------
