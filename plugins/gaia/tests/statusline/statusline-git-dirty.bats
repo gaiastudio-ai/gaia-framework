@@ -62,15 +62,23 @@ teardown() { common_teardown; }
   [ "$output" = "true" ]
 }
 
-# ---------- AC6: non-git CWD -> silent no-op -------------------------------
+# ---------- AC6: non-git probe dir clears branch+dirty (sprint-43 update) --
 
-@test "AC6: non-git CWD is silent no-op, cache untouched" {
+@test "AC6: non-git probe dir clears active_branch + git_dirty in cache" {
+  # sprint-43 update: the original AC6 contract was "no write on non-git
+  # CWD". That left stale active_branch in the cache after the agent left
+  # a repo, which broke the sprint-43 issue-2 fix. The new contract is
+  # "non-git probe dir writes git_dirty=false + active_branch=null" so the
+  # statusline correctly reflects "no active repo right now".
   mkdir -p "$TEST_TMP/not-a-repo"
   rm -f "$CACHE"
   run env HOME="$HOME" PROJECT_PATH="$TEST_TMP/not-a-repo" "$FETCHER"
   [ "$status" -eq 0 ]
-  # Cache should remain absent (no write on non-git CWD).
-  [ ! -f "$CACHE" ]
+  [ -f "$CACHE" ]
+  run jq -r '.git_dirty' "$CACHE"
+  [ "$output" = "false" ]
+  run jq -r '.active_branch' "$CACHE"
+  [ "$output" = "null" ]
 }
 
 # ---------- ADR-091 RMW contract: other fields preserved -------------------

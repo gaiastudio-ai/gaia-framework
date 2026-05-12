@@ -362,7 +362,9 @@ JSON
 # E82-S8 — Dirty glyph appended to BRANCH chunk when git_dirty=true.
 # ===========================================================================
 
-@test "E82-S8 / AC3: ASCII theme appends '*' to BRANCH when git_dirty=true" {
+@test "E82-S8 / AC3: ASCII theme emits dirty '*' chunk on line 2 when git_dirty=true" {
+  # sprint-43 update: the dirty marker is now a separate chunk on line 2,
+  # not a suffix concatenated to the branch token. Layout: branch | * | project.
   [ -f "$RUNTIME" ]
   cd "$TEST_TMP"
   mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
@@ -371,8 +373,15 @@ JSON
 JSON
   run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
   [ "$status" -eq 0 ]
-  # BRANCH chunk should be "@ feature/x*" with ASCII glyph + dirty marker.
-  echo "$output" | grep -q "feature/x\*"
+  # Line 2 should contain branch, a standalone dirty "*" chunk, and project.
+  line2="$(echo "$output" | tail -1)"
+  echo "$line2" | grep -q "feature/x"
+  # Two " | " separators on line 2 = branch | dirty | project.
+  sep_count=$(echo "$line2" | grep -o " | " | wc -l | tr -d ' ')
+  [ "$sep_count" -ge 2 ]
+  # Strip ANSI escape sequences before matching the literal "* " chunk.
+  stripped="$(echo "$line2" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
+  echo "$stripped" | grep -qE '\| \* \|'
 }
 
 @test "E82-S8 / AC3: git_dirty=false leaves BRANCH chunk clean" {
