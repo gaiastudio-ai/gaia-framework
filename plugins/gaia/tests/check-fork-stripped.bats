@@ -135,12 +135,16 @@ EOF
 
 # ---- regression guard: agent persona files left alone ----
 
-@test "REGRESSION: validator agent retains context: fork" {
-  # E84-S3 explicitly does NOT touch agent persona files. Verify
-  # validator.md still declares context: fork in its frontmatter.
+@test "POST-E87-S2: validator agent declares context: main (was: context: fork)" {
+  # Originally authored by E84-S3 to pin the pre-migration `context: fork`
+  # state on validator.md while skill-side fork stripping was in flight.
+  # E87-S2 (Val Bridge Migration, ADR-104) shifts the Val DISPATCH primitive
+  # from `context: fork` to main-turn Agent-tool dispatch. After E87-S2
+  # lands, validator.md MUST declare `context: main` — not fork. The test
+  # now pins the post-migration invariant.
   AGENT="$BATS_TEST_DIRNAME/../agents/validator.md"
   [ -f "$AGENT" ]
-  run awk '/^---$/{c++; if (c==1) {in_fm=1; next} else if (c==2) {exit}} in_fm && /^context:[[:space:]]*fork[[:space:]]*$/{print "yes"; exit}' "$AGENT"
+  run awk '/^---$/{c++; if (c==1) {in_fm=1; next} else if (c==2) {exit}} in_fm && /^context:[[:space:]]*main[[:space:]]*$/{print "yes"; exit}' "$AGENT"
   [[ "$output" == "yes" ]]
 }
 
