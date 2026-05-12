@@ -100,7 +100,7 @@ _canonical_fragment() {
   jq -nc \
     --arg cmd "$RUNTIME" \
     --argjson refresh "$REFRESH_MS" \
-    '{command: $cmd, refreshInterval: $refresh}'
+    '{type: "command", command: $cmd, refreshInterval: $refresh}'
 }
 
 case "$MODE" in
@@ -131,7 +131,7 @@ case "$MODE" in
     merged="$(printf '%s' "$existing" | jq -S \
       --arg cmd "$RUNTIME" \
       --argjson refresh "$REFRESH_MS" \
-      '. + {statusLine: {command: $cmd, refreshInterval: $refresh}}')"
+      '. + {statusLine: {type: "command", command: $cmd, refreshInterval: $refresh}}')"
 
     if _atomic_write "$SETTINGS" "$merged"; then
       printf 'gaia-statusline-enable: enabled (%s)\n' "$SETTINGS"

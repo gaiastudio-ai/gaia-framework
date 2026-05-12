@@ -6,6 +6,13 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Skill]
 orchestration_class: heavy-procedural
 ---
 
+## Orchestration Mode
+
+```bash
+SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE"
+```
+
 ## Setup
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-plan/scripts/setup.sh
@@ -33,6 +40,33 @@ The `priority_flag` field is set only by humans (via frontmatter edit in triage,
 - Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `docs/planning-artifacts/epics/` are FORBIDDEN.
 
 ## Steps
+
+### Step 0 -- Prior-close guard (E81-S6 / FR-451)
+
+Before sprint scoping begins, verify the previous sprint has been closed via `/gaia-sprint-close` (E81-S5). This prevents planning a new sprint while the prior sprint's `sprint-status.yaml` still shows `status: active` — which would orphan in-flight work and bypass the close ceremony.
+
+- Resolve the previous sprint's yaml: search `docs/implementation-artifacts/sprint-archive/` for the most recent `*-closed-*.yaml`, OR check the current `docs/implementation-artifacts/sprint-status.yaml` for `status: active` (= prior sprint not yet closed).
+- If `status: active` (or `status:` field absent on a non-fresh tree), refuse with `error: previous sprint {id} not closed; run /gaia-sprint-close first` and exit non-zero.
+- If user passes `--allow-stale-prior`, skip the guard with a warning: `warning: proceeding despite prior sprint {id} not closed (--allow-stale-prior)`.
+- If `status: closed`, proceed to Step 1.
+- **Backward-compat:** if no previous sprint yaml exists (first sprint ever — fresh project), skip the guard silently.
+
+Reference shell idiom (the SKILL.md should invoke this check via a small helper or inline grep; both are acceptable):
+
+```bash
+SS_YAML="docs/implementation-artifacts/sprint-status.yaml"
+if [ -r "$SS_YAML" ]; then
+  prior_status="$(grep '^status:' "$SS_YAML" | head -1 | sed 's/^status:[[:space:]]*//' | tr -d '"' || true)"
+  if [ "$prior_status" != "closed" ]; then
+    prior_id="$(grep '^sprint_id:' "$SS_YAML" | head -1 | sed 's/^sprint_id:[[:space:]]*//' | tr -d '"')"
+    if [ "${1:-}" != "--allow-stale-prior" ]; then
+      printf 'error: previous sprint %s not closed; run /gaia-sprint-close first\n' "$prior_id" >&2
+      exit 1
+    fi
+    printf 'warning: proceeding despite prior sprint %s not closed (--allow-stale-prior)\n' "$prior_id" >&2
+  fi
+fi
+```
 
 ### Step 1 -- Load Epics, Stories, and Previous Retro
 

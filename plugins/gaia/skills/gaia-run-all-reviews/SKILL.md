@@ -8,6 +8,13 @@ deprecated_since: sprint-37
 orchestration_class: heavy-procedural
 ---
 
+## Orchestration Mode
+
+```bash
+SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE"
+```
+
 ## Mission
 
 You are running all 6 review workflows sequentially inline for a story. The story is resolved by `{story_key}` by searching for `{story_key}-*.md` under `docs/implementation-artifacts/` — both the legacy flat layout (`docs/implementation-artifacts/{story_key}-*.md`) and the canonical nested layout (`docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`) per ADR-070. You orchestrate each review in deterministic order, update the Review Gate table after each, and report a summary of all verdicts.

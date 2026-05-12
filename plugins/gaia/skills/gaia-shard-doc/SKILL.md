@@ -72,13 +72,44 @@ The skill runs five steps in strict order, mirroring the legacy `shard-doc.xml`:
 ## Step 4 — Write Shards
 
 - Create the output directory — same path as the source file with the extension stripped (e.g., `docs/planning-artifacts/prd.md` → `docs/planning-artifacts/prd/`). Use `!` inline bash for `mkdir -p` per ADR-042.
-- Write each shard file: the section heading becomes the first line of the shard, and every line from that heading through the line before the next split-level heading goes into the shard.
-- Write `index.md` with a table of contents linking every shard with its heading text, sorted by the numeric prefix.
+- **Before writing each shard, invoke the sub-shard preservation guard** (E53-S250 / FR-453). For every shard slug about to be emitted, run:
+
+  ```bash
+  bash ${CLAUDE_PLUGIN_ROOT}/skills/gaia-shard-doc/scripts/check-sub-shard-conflict.sh \
+      "<slug>" "<out_dir>" --summary-file "<summary_file>"
+  ```
+
+  The helper returns exit 0 (safe — proceed with the shard write) or exit 2 (preserve — skip this shard's body emit; the existing marker shard at `<out_dir>/<slug>.md` is preserved byte-identical). On exit 2 the helper has already emitted the preserve signal on three channels (stdout, stderr WARNING, summary file). The caller MUST NOT write to `<out_dir>/<slug>.md` for that slug — doing so would clobber the user-authored marker stub.
+
+- Write each shard file: the section heading becomes the first line of the shard, and every line from that heading through the line before the next split-level heading goes into the shard. SKIP this write when the guard returned exit 2 for the slug.
+- Write `index.md` with a table of contents linking every shard with its heading text, sorted by the numeric prefix. Preserved slugs ARE listed in the index (the marker stub at `<slug>.md` is still a navigable entry point).
 
 ## Step 5 — Report
 
 - Report: number of shards created, total lines distributed (verify it equals the source line count — parity check), whether `_preamble.md` was emitted.
+- **Preserved sub-shards aggregation (E53-S250 AC11):** if the Step-4 guard fired for any slug, read the summary file and emit a `Preserved sub-shards: <count>` line listing each preserved slug. When ≥1 section was preserved, the overall skill exit code is **2** (advisory, distinct from exit 0 clean run and non-zero hard error). Bats coverage in `tests/check-sub-shard-conflict.bats` asserts all three signal channels and the exit-code-2 contract.
 - Suggest running `/gaia-index-docs` on the parent directory to update the folder-level index, if one exists.
+
+## Sub-shard directories
+
+The marker-shard + sibling-directory pattern (introduced by E53-S235, sprint-37) is a second-tier sharding model: a single H2 section that has grown unwieldy is split into a sibling directory of per-H3 child files. The parent shard `<NN>-<slug>.md` retains a stub heading `## <N>. <title> — Sub-Sharded` plus a pointer paragraph into the directory.
+
+**`/gaia-shard-doc` recognises this pattern and refuses to destroy it.** When the Step-4 guard (`check-sub-shard-conflict.sh`) detects an existing sibling directory `<out_dir>/<slug>/` containing ≥1 content shard matching `<NN>-*.md`, it:
+
+1. Skips emitting that section's body (preserves the existing marker stub byte-identical).
+2. Emits the preserve signal on three channels — stdout, stderr `WARNING:`, and the Step-5 summary file aggregation.
+3. Exits with code 2 (advisory) when ≥1 section was preserved.
+
+**Detection gate (E53-S250 / AC12):** the guard counts CONTENT shards only — files matching the canonical pattern `<NN>-*.md` (two-digit numeric prefix). Meta files (`index.md`, `_preamble.md`, dotfiles) are ignored. A meta-only directory means the user manually deleted all content shards intending to re-shard — the guard is a no-op in that case and `/gaia-shard-doc` re-shards normally.
+
+**No programmatic destruction path (E53-S250 / AC10):** there is NO `--force-destroy` flag. Refusal is absolute. If a sub-shard directory must be flattened back into a single shard, use the documented manual two-step workflow:
+
+```bash
+/gaia-merge-docs <sibling_dir> > <slug>.md && rm -rf <sibling_dir>
+# Then re-run /gaia-shard-doc on the parent monolith.
+```
+
+This makes the destructive step explicit and user-authored, not buried in the shard-doc pipeline. See E53-S235 (sub-shard introduction) and TC-MSS-SUBSHARD-6..9 + TC-MSS-SUBSHARD-NEW (verification) for the contract details.
 
 ## Edge Cases
 

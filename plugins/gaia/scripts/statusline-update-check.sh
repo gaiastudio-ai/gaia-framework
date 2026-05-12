@@ -158,19 +158,46 @@ mkdir -p "$CACHE_DIR" 2>/dev/null || exit 0
 
 CHECKED_AT_ISO="$(date -u +%FT%TZ)"
 
+# ---- installed_version_stale computation (E82-S6 / ADR-094 Component 3) --
+# Rule: stale=true IFF marker file exists AND its trimmed content !=
+# `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` `.version`.
+# Missing marker => false. Missing CLAUDE_PLUGIN_ROOT => false.
+INSTALLED_VERSION_STALE="false"
+MARKER_FILE="$HOME/.claude/gaia-statusline/.installed-version"
+if [ -r "$MARKER_FILE" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] \
+   && [ -r "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; then
+  MARKER_VERSION="$(head -1 "$MARKER_FILE" 2>/dev/null | tr -d '[:space:]')"
+  ACTIVE_VERSION="$(jq -r '.version // ""' "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" 2>/dev/null | tr -d '[:space:]')"
+  if [ -n "$MARKER_VERSION" ] && [ -n "$ACTIVE_VERSION" ] \
+     && [ "$MARKER_VERSION" != "$ACTIVE_VERSION" ]; then
+    INSTALLED_VERSION_STALE="true"
+  fi
+fi
+
 SIBLING="$(mktemp "${CACHE_FILE}.XXXXXX" 2>/dev/null || printf '')"
 if [ -z "$SIBLING" ]; then
   exit 0
 fi
 
+# Read-modify-write (ADR-091 amendment, E82-S8): the cache file is shared
+# with statusline-git-dirty-check.sh. A naive `jq -n` overwrite would
+# clobber its owned `git_dirty` field on every 1h refresh. Read existing
+# cache, merge only our owned fields, atomic-write.
+if [ -r "$CACHE_FILE" ]; then
+  EXISTING_CACHE="$(jq '.' "$CACHE_FILE" 2>/dev/null || printf '{}')"
+else
+  EXISTING_CACHE="{}"
+fi
+
 # Build the canonical schema. `--argjson` for booleans (so jq emits a real
 # JSON boolean, not a string).
-if jq -n \
+if printf '%s' "$EXISTING_CACHE" | jq \
   --arg ts "$CHECKED_AT_ISO" \
   --arg lt "$LATEST_TAG" \
   --arg ct "$CURRENT_TAG" \
   --argjson ua "$UPDATE_AVAILABLE" \
-  '{checked_at_iso:$ts, latest_tag:$lt, current_tag:$ct, update_available:$ua}' \
+  --argjson ivs "$INSTALLED_VERSION_STALE" \
+  '. + {checked_at_iso:$ts, latest_tag:$lt, current_tag:$ct, update_available:$ua, installed_version_stale:$ivs}' \
   > "$SIBLING" 2>/dev/null; then
   # mv -f within the same directory == atomic rename on the same filesystem.
   mv -f "$SIBLING" "$CACHE_FILE" 2>/dev/null || rm -f "$SIBLING" 2>/dev/null

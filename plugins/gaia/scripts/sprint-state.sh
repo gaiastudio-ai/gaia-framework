@@ -2132,6 +2132,160 @@ cmd_detect_auto_close() {
   return 0
 }
 
+# ---------- Subcommand: rollover (E81-S6 / FR-451) ----------
+#
+# Migrate one or more stories from sprint-N to sprint-M. Per-story atomic
+# (story-file flock); whole-batch best-effort with partial-failure semantics
+# (some keys committed + some rolled back, non-zero exit + summary).
+#
+# Per-key flow:
+#   1. Locate story file via scan of docs/implementation-artifacts/**/stories/*.md
+#   2. Read frontmatter `sprint_id` field
+#   3. Verify it matches --from value OR is `null`. Otherwise refuse this key.
+#   4. Rewrite `sprint_id:` line to the --to value.
+#   5. Call cmd_inject to register the story in the target sprint yaml.
+#   6. On any step failure within steps 4-5, roll back the story-file
+#      `sprint_id` to its original value before releasing the lock.
+#
+# Refs: AC2, FR-451.
+cmd_rollover() {
+  local from_sprint="$1" to_sprint="$2" keys_raw="$3"
+  [ -n "$from_sprint" ] || die "rollover requires --from <sprint-id>"
+  [ -n "$to_sprint" ] || die "rollover requires --to <sprint-id>"
+  [ -n "$keys_raw" ] || die "rollover requires --keys <key1,key2,...>"
+
+  # Split comma-separated keys.
+  local OLDIFS="$IFS"
+  IFS=','
+  set -f
+  # shellcheck disable=SC2206
+  local keys=( $keys_raw )
+  set +f
+  IFS="$OLDIFS"
+
+  local succeeded=() failed=()
+  local key
+  for key in "${keys[@]}"; do
+    key="${key# }"; key="${key% }"  # trim
+    [ -n "$key" ] || continue
+    if _rollover_one "$key" "$from_sprint" "$to_sprint"; then
+      succeeded+=("$key")
+    else
+      failed+=("$key")
+    fi
+  done
+
+  printf 'sprint-state.sh rollover: from=%s to=%s\n' "$from_sprint" "$to_sprint" >&2
+  printf 'sprint-state.sh rollover: succeeded: %s\n' "${succeeded[*]:-(none)}" >&2
+  printf 'sprint-state.sh rollover: failed:    %s\n' "${failed[*]:-(none)}" >&2
+
+  if [ "${#failed[@]}" -gt 0 ]; then
+    return 1
+  fi
+  return 0
+}
+
+# Internal: process one story key. Returns 0 on success, non-zero on refusal
+# or write failure (caller logs failure and continues to next key).
+_rollover_one() {
+  local key="$1" from_sprint="$2" to_sprint="$3"
+
+  # Locate the story file. Pattern: docs/implementation-artifacts/**/stories/<key>-*.md
+  local story_file
+  story_file=$(find "${IMPLEMENTATION_ARTIFACTS}" -type f -name "${key}-*.md" 2>/dev/null | head -1)
+  if [ -z "$story_file" ] || [ ! -f "$story_file" ]; then
+    printf 'sprint-state.sh rollover: story file not found for %s\n' "$key" >&2
+    return 1
+  fi
+
+  # Read current sprint_id from frontmatter.
+  local current_sid
+  current_sid=$(grep '^sprint_id:' "$story_file" | head -1 | sed 's/^sprint_id:[[:space:]]*//' | tr -d '"')
+  # Empty after stripping quotes -> empty literal. `null` -> the YAML null.
+  local accept=0
+  if [ "$current_sid" = "$from_sprint" ]; then
+    accept=1
+  elif [ "$current_sid" = "null" ] || [ -z "$current_sid" ]; then
+    accept=1
+  fi
+  if [ "$accept" -eq 0 ]; then
+    printf 'sprint-state.sh rollover: %s sprint_id=%s does not match --from %s and is not null; refusing\n' \
+      "$key" "$current_sid" "$from_sprint" >&2
+    return 1
+  fi
+
+  # Per-story flock. Reuse the same .lock suffix pattern as transition.
+  local lock_file="${story_file}.rollover.lock"
+  local flock_bin
+  flock_bin=$(command -v flock || true)
+
+  _rollover_with_lock() {
+    # Rewrite sprint_id in-place. Two cases:
+    #   1. sprint_id: "<from>"  -> sprint_id: "<to>"
+    #   2. sprint_id: null      -> sprint_id: "<to>"
+    # Use a sibling tempfile + mv for atomicity.
+    local tmp
+    tmp=$(mktemp "${story_file}.XXXXXX") || return 1
+    # Match either quoted "from" or null literal.
+    awk -v from="$from_sprint" -v to="$to_sprint" '
+      /^sprint_id:/ {
+        # Normalize all matching forms to: sprint_id: "<to>"
+        if ($0 ~ ("^sprint_id:[[:space:]]*\"" from "\"") || $0 ~ /^sprint_id:[[:space:]]*null[[:space:]]*$/) {
+          print "sprint_id: \"" to "\""
+          next
+        }
+      }
+      { print }
+    ' "$story_file" > "$tmp" || { rm -f "$tmp"; return 1; }
+
+    # Sanity: confirm the rewrite happened (we should see the to value now).
+    if ! grep -q "^sprint_id:[[:space:]]*\"$to_sprint\"" "$tmp"; then
+      rm -f "$tmp"
+      return 1
+    fi
+
+    # Snapshot the original for rollback.
+    local backup
+    backup=$(mktemp "${story_file}.rollback-XXXXXX") || { rm -f "$tmp"; return 1; }
+    cp "$story_file" "$backup"
+
+    # Commit the rewrite.
+    if ! mv -f "$tmp" "$story_file"; then
+      rm -f "$tmp" "$backup"
+      return 1
+    fi
+
+    # Now inject the story into the target sprint yaml.
+    if ! cmd_inject "$key" "" >/dev/null 2>&1; then
+      # Rollback the story file.
+      mv -f "$backup" "$story_file" 2>/dev/null || true
+      rm -f "$backup"
+      return 1
+    fi
+
+    rm -f "$backup"
+    return 0
+  }
+
+  local rc=0
+  if [ -n "$flock_bin" ]; then
+    (
+      exec 9>"$lock_file"
+      if ! "$flock_bin" -x -w 5 9; then
+        die "flock timeout acquiring $lock_file"
+      fi
+      _rollover_with_lock
+    )
+    rc=$?
+  else
+    _rollover_with_lock
+    rc=$?
+  fi
+
+  rm -f "$lock_file"
+  return $rc
+}
+
 # ---------- Argument parsing ----------
 
 main() {
@@ -2147,7 +2301,7 @@ main() {
       usage
       exit 0
       ;;
-    transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close)
+    transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover)
       ;;
     *)
       printf '%s: error: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -2160,6 +2314,7 @@ main() {
   local reconcile_sprint_id="" reconcile_dry_run=0
   local lint_format="json" lint_sprint_id=""
   local override_item_ids="" override_user="" override_reason=""
+  local rollover_from="" rollover_keys=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --story)
@@ -2199,6 +2354,16 @@ main() {
         override_reason="$2"; shift 2 ;;
       --reason=*)
         override_reason="${1#--reason=}"; shift ;;
+      --from)
+        [ $# -ge 2 ] || die "--from requires a value"
+        rollover_from="$2"; shift 2 ;;
+      --from=*)
+        rollover_from="${1#--from=}"; shift ;;
+      --keys)
+        [ $# -ge 2 ] || die "--keys requires a value"
+        rollover_keys="$2"; shift 2 ;;
+      --keys=*)
+        rollover_keys="${1#--keys=}"; shift ;;
       --help|-h)
         usage
         exit 0 ;;
@@ -2254,6 +2419,8 @@ main() {
       cmd_record_escalation_override "$override_item_ids" "$override_user" "$override_reason" ;;
     detect-auto-close)
       cmd_detect_auto_close ;;
+    rollover)
+      cmd_rollover "$rollover_from" "$to_state" "$rollover_keys" ;;
   esac
 }
 

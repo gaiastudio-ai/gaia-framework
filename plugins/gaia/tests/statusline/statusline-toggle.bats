@@ -231,3 +231,41 @@ write_settings() {
   grep -q 'gaia-statusline-toggle.sh' "$PLUGIN_ROOT/skills/gaia-statusline-disable/SKILL.md"
   grep -q -- '--disable' "$PLUGIN_ROOT/skills/gaia-statusline-disable/SKILL.md"
 }
+
+# ===========================================================================
+# E82-S7 — --enable must write the canonical {type, command, refreshInterval}
+# fragment so Claude Code's /doctor schema validation passes.
+# ===========================================================================
+
+@test "E82-S7 / AC1: --enable against absent settings.json writes statusLine.type='command'" {
+  [ ! -f "$HOME/.claude/settings.json" ]
+  run bash "$TOGGLE" --enable
+  [ "$status" -eq 0 ]
+  [ -f "$HOME/.claude/settings.json" ]
+  run jq -r '.statusLine.type' "$HOME/.claude/settings.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "command" ]
+}
+
+@test "E82-S7 / AC1: --enable writes all three canonical keys" {
+  run bash "$TOGGLE" --enable
+  [ "$status" -eq 0 ]
+  # Exactly three keys: type, command, refreshInterval.
+  run bash -c "jq -r '.statusLine | keys | sort | join(\",\")' '$HOME/.claude/settings.json'"
+  [ "$output" = "command,refreshInterval,type" ]
+}
+
+@test "E82-S7 / AC2: --enable is idempotent when canonical fragment already present" {
+  # First enable writes the file.
+  bash "$TOGGLE" --enable >/dev/null
+  local mtime_before
+  mtime_before=$(stat -f '%m' "$HOME/.claude/settings.json" 2>/dev/null || stat -c '%Y' "$HOME/.claude/settings.json")
+  sleep 1
+  # Second enable should no-op.
+  run bash "$TOGGLE" --enable
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no-op"* ]]
+  local mtime_after
+  mtime_after=$(stat -f '%m' "$HOME/.claude/settings.json" 2>/dev/null || stat -c '%Y' "$HOME/.claude/settings.json")
+  [ "$mtime_before" = "$mtime_after" ]
+}

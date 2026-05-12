@@ -14,6 +14,13 @@ discover_inputs_target: "docs/planning-artifacts/prd.md, docs/planning-artifacts
 orchestration_class: heavy-procedural
 ---
 
+## Orchestration Mode
+
+```bash
+SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE"
+```
+
 ## Setup
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh

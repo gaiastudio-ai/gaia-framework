@@ -6,6 +6,13 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 orchestration_class: heavy-procedural
 ---
 
+## Orchestration Mode
+
+```bash
+SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE"
+```
+
 <!--
   Source: _gaia/lifecycle/workflows/quick-flow/quick-dev/ (workflow.yaml + instructions.xml)
   ADR-041 — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks

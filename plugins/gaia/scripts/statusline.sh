@@ -104,12 +104,16 @@ fi
 CACHE_FILE="$HOME/.claude/gaia-statusline/cache/latest-release.json"
 LATEST_VERSION=""
 UPDATE_AVAILABLE_RAW=""
+INSTALLED_VERSION_STALE_RAW="false"
+GIT_DIRTY_RAW="false"
 CACHE_FRESH=0
 if [ -r "$CACHE_FILE" ]; then
   CACHE_JSON="$(cat "$CACHE_FILE" 2>/dev/null || printf '')"
   if [ -n "$CACHE_JSON" ]; then
     LATEST_VERSION="$(printf '%s' "$CACHE_JSON" | jq -r '.latest_tag // ""' 2>/dev/null)"
     UPDATE_AVAILABLE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.update_available // false' 2>/dev/null)"
+    INSTALLED_VERSION_STALE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.installed_version_stale // false' 2>/dev/null)"
+    GIT_DIRTY_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.git_dirty // false' 2>/dev/null)"
     CACHE_TS="$(printf '%s' "$CACHE_JSON" | jq -r '.checked_at_iso // ""' 2>/dev/null)"
     if [ -n "$CACHE_TS" ]; then
       # Portable ISO-8601 -> epoch (try BSD then GNU date).
@@ -179,15 +183,148 @@ if [ "$CACHE_FRESH" -eq 1 ] && [ "$UPDATE_AVAILABLE_RAW" = "true" ] && [ -n "$LA
   fi
 fi
 
+# ---- Staleness WARN segment (E82-S6 / ADR-094 Component 4) ----------------
+# Renders ONCE per UTC day. Gated by per-day marker file. Suppressed when
+# `installed_version_stale` is not literally "true" or when the per-day
+# marker already exists. Touching the marker is the only new write on the
+# hot path — bounded to one open(O_CREAT) per first-render-per-day.
+STALE_CHUNK=""
+if [ "$INSTALLED_VERSION_STALE_RAW" = "true" ]; then
+  STALE_DAY_KEY="$(date -u +%Y-%m-%d)"
+  STALE_MARKER="$HOME/.claude/gaia-statusline/cache/staleness-warning-shown.${STALE_DAY_KEY}"
+  if [ ! -e "$STALE_MARKER" ]; then
+    # Touch the marker first so concurrent renders don't double-emit.
+    : > "$STALE_MARKER" 2>/dev/null || true
+    if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
+      STALE_CHUNK="[stale: rerun install-statusline]"
+    else
+      STALE_CHUNK="${COLOR_UPDATE:-}[stale: rerun install-statusline]${COLOR_RESET}"
+    fi
+  fi
+fi
+
 MODEL_CHUNK="${COLOR_MUTED}${MODEL_NAME}${COLOR_RESET}"
 PROJECT_CHUNK="${PROJECT_NAME}"
 BRANCH_CHUNK=""
 if [ -n "$BRANCH" ]; then
-  BRANCH_CHUNK="${GLYPH_BRANCH} ${BRANCH}"
+  # E82-S8 / AC3: append dirty glyph when git_dirty=true. AC4: BRANCH-empty
+  # already suppresses the entire chunk via smart-hiding (FR-447), so no
+  # marker leaks to a detached-HEAD render.
+  DIRTY_SUFFIX=""
+  if [ "$GIT_DIRTY_RAW" = "true" ]; then
+    if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
+      DIRTY_SUFFIX="*"
+    else
+      DIRTY_SUFFIX="${GLYPH_DIRTY:-*}"
+    fi
+  fi
+  BRANCH_CHUNK="${GLYPH_BRANCH} ${BRANCH}${DIRTY_SUFFIX}"
 fi
 SPRINT_CHUNK=""
 if [ -n "$SPRINT_ID" ]; then
   SPRINT_CHUNK="${COLOR_MUTED}${SPRINT_ID}${COLOR_RESET}"
+fi
+
+# ---- Rate-limits chunk (E82-S10 / FR-451) ---------------------------------
+# Rich-theme-only. Reads `.rate_limits.five_hour.used_percentage` and
+# `.rate_limits.seven_day.used_percentage` from stdin. Renders as
+# `RL: <5h>%/<7d>%` colored by the MAX of the two (band: <50 OK, 50..<80
+# WARN, >=80 DIRTY). Defensive: when only one window is present, render
+# only that window. When both absent or theme != rich, chunk is empty.
+RLIMIT_CHUNK=""
+if [ "${GAIA_STATUSLINE_THEME:-}" = "rich" ]; then
+  _RL_5H="$(printf '%s' "$INPUT" | jq -r '.rate_limits.five_hour.used_percentage // "null"' 2>/dev/null || printf 'null')"
+  _RL_7D="$(printf '%s' "$INPUT" | jq -r '.rate_limits.seven_day.used_percentage // "null"' 2>/dev/null || printf 'null')"
+  _RL_HAS_5H=0
+  _RL_HAS_7D=0
+  [ "$_RL_5H" != "null" ] && _RL_HAS_5H=1
+  [ "$_RL_7D" != "null" ] && _RL_HAS_7D=1
+  if [ "$_RL_HAS_5H" -eq 1 ] || [ "$_RL_HAS_7D" -eq 1 ]; then
+    # Clamp + integer-cast each present value.
+    if [ "$_RL_HAS_5H" -eq 1 ]; then
+      case "$_RL_5H" in ''|*[!0-9]*) _RL_5H=0 ;; esac
+      [ "$_RL_5H" -gt 100 ] && _RL_5H=100
+      [ "$_RL_5H" -lt 0 ] && _RL_5H=0
+    fi
+    if [ "$_RL_HAS_7D" -eq 1 ]; then
+      case "$_RL_7D" in ''|*[!0-9]*) _RL_7D=0 ;; esac
+      [ "$_RL_7D" -gt 100 ] && _RL_7D=100
+      [ "$_RL_7D" -lt 0 ] && _RL_7D=0
+    fi
+    # Compute the dominant percentage for color band.
+    _RL_MAX=0
+    if [ "$_RL_HAS_5H" -eq 1 ] && [ "$_RL_5H" -gt "$_RL_MAX" ]; then _RL_MAX="$_RL_5H"; fi
+    if [ "$_RL_HAS_7D" -eq 1 ] && [ "$_RL_7D" -gt "$_RL_MAX" ]; then _RL_MAX="$_RL_7D"; fi
+    # Color band.
+    if [ "$_RL_MAX" -lt 50 ]; then
+      _RL_COLOR="${COLOR_OK:-}"
+    elif [ "$_RL_MAX" -lt 80 ]; then
+      _RL_COLOR="${COLOR_WARN:-}"
+    else
+      _RL_COLOR="${COLOR_DIRTY:-}"
+    fi
+    # Build the body. Single-window vs both-windows.
+    if [ "$_RL_HAS_5H" -eq 1 ] && [ "$_RL_HAS_7D" -eq 1 ]; then
+      _RL_BODY="RL: ${_RL_5H}%/${_RL_7D}%"
+    elif [ "$_RL_HAS_5H" -eq 1 ]; then
+      _RL_BODY="RL: ${_RL_5H}%"
+    else
+      _RL_BODY="RL: ${_RL_7D}%"
+    fi
+    RLIMIT_CHUNK="${_RL_COLOR}${_RL_BODY}${COLOR_RESET}"
+  fi
+fi
+
+# ---- Context-window progress bar (E82-S9 / FR-450) -------------------------
+# Renders a 10-char band from stdin's `.context_window.used_percentage`
+# (0-100). Two distinct null-vs-zero paths per AC6/AC7:
+#   - `.context_window.current_usage` is null    -> empty chunk (pre-API or
+#     post-/compact). Smart-hiding (FR-447) suppresses the separator.
+#   - `current_usage` non-null AND `used_percentage` = 0 -> visible
+#     10-glyph all-empty bar ("we know it's empty").
+# Color bands: <50 OK, 50..<80 WARN, >=80 DIRTY.
+# Filled / empty glyphs use `#` / `-` in ASCII theme (AC5), `█` / `░` UTF-8.
+CONTEXTBAR_CHUNK=""
+_CTX_CURRENT="$(printf '%s' "$INPUT" | jq -r '.context_window.current_usage // "null"' 2>/dev/null || printf 'null')"
+if [ "$_CTX_CURRENT" != "null" ]; then
+  _CTX_PCT="$(printf '%s' "$INPUT" | jq -r '.context_window.used_percentage // 0' 2>/dev/null || printf '0')"
+  # Clamp to [0, 100] and integer-cast via shell arithmetic.
+  case "$_CTX_PCT" in
+    ''|*[!0-9]*) _CTX_PCT=0 ;;
+  esac
+  if [ "$_CTX_PCT" -gt 100 ]; then _CTX_PCT=100; fi
+  if [ "$_CTX_PCT" -lt 0 ]; then _CTX_PCT=0; fi
+  _CTX_FILLED=$(( _CTX_PCT / 10 ))
+  _CTX_EMPTY=$(( 10 - _CTX_FILLED ))
+  if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
+    _CTX_FILLED_GLYPH="#"
+    _CTX_EMPTY_GLYPH="-"
+  else
+    _CTX_FILLED_GLYPH="${GLYPH_BAR_FILLED:-█}"
+    _CTX_EMPTY_GLYPH="${GLYPH_BAR_EMPTY:-░}"
+  fi
+  # Color band per AC2/AC3/AC4.
+  if [ "$_CTX_PCT" -lt 50 ]; then
+    _CTX_COLOR="${COLOR_OK:-}"
+  elif [ "$_CTX_PCT" -lt 80 ]; then
+    _CTX_COLOR="${COLOR_WARN:-}"
+  else
+    _CTX_COLOR="${COLOR_DIRTY:-}"
+  fi
+  # Build filled run + empty run. Use string repetition via printf %*s.
+  _FILLED_STR=""
+  i=0
+  while [ "$i" -lt "$_CTX_FILLED" ]; do
+    _FILLED_STR="${_FILLED_STR}${_CTX_FILLED_GLYPH}"
+    i=$((i + 1))
+  done
+  _EMPTY_STR=""
+  i=0
+  while [ "$i" -lt "$_CTX_EMPTY" ]; do
+    _EMPTY_STR="${_EMPTY_STR}${_CTX_EMPTY_GLYPH}"
+    i=$((i + 1))
+  done
+  CONTEXTBAR_CHUNK="${_CTX_COLOR}${_FILLED_STR}${COLOR_RESET}${_EMPTY_STR}"
 fi
 
 SEP=" | "
@@ -209,30 +346,42 @@ SEP=" | "
 #   < 32     : brand only
 
 if [ "$COLS" -lt 32 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=0; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0
+  KEEP_BRAND=1; KEEP_MODEL=0; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=0; KEEP_RLIMIT=0
 elif [ "$COLS" -lt 40 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=0; KEEP_RLIMIT=0
 elif [ "$COLS" -lt 50 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=0; KEEP_SPRINT=0
+  # E82-S9 / AC10: at <50 cols, the bar survives but the branch is dropped.
+  # E82-S10 / AC8: rate-limits drops FIRST (least essential).
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
 elif [ "$COLS" -lt 60 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
 elif [ "$COLS" -lt 80 ]; then
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
+elif [ "$COLS" -lt 100 ]; then
+  # E82-S10: rate-limits requires more width — first to drop in the wide tier.
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=1; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
 else
-  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=1
+  KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=1; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=1
 fi
 
 # Assemble.
 OUT="$BRAND_CHUNK"
 [ -n "$UPDATE_CHUNK" ] && OUT="$OUT $UPDATE_CHUNK"
-if [ "$KEEP_MODEL" -eq 1 ]; then
+[ -n "$STALE_CHUNK" ] && OUT="$OUT $STALE_CHUNK"
+if [ "$KEEP_MODEL" -eq 1 ] && [ -n "$MODEL_CHUNK" ]; then
   OUT="$OUT$SEP$MODEL_CHUNK"
 fi
-if [ "$KEEP_PROJECT" -eq 1 ]; then
+if [ "$KEEP_PROJECT" -eq 1 ] && [ -n "$PROJECT_CHUNK" ]; then
   OUT="$OUT$SEP$PROJECT_CHUNK"
 fi
 if [ "$KEEP_BRANCH" -eq 1 ] && [ -n "$BRANCH_CHUNK" ]; then
   OUT="$OUT$SEP$BRANCH_CHUNK"
+fi
+if [ "$KEEP_CONTEXTBAR" -eq 1 ] && [ -n "$CONTEXTBAR_CHUNK" ]; then
+  OUT="$OUT$SEP$CONTEXTBAR_CHUNK"
+fi
+if [ "$KEEP_RLIMIT" -eq 1 ] && [ -n "$RLIMIT_CHUNK" ]; then
+  OUT="$OUT$SEP$RLIMIT_CHUNK"
 fi
 if [ "$KEEP_SPRINT" -eq 1 ] && [ -n "$SPRINT_CHUNK" ]; then
   OUT="$OUT$SEP$SPRINT_CHUNK"
