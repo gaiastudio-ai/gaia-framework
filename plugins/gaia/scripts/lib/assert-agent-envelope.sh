@@ -65,7 +65,8 @@ fi
 _ASSERT_AGENT_ENVELOPE_SH_SOURCED=1
 
 # Refuse direct execution — sourcing is the only supported entry point.
-if [ "${BASH_SOURCE[0]:-$0}" = "${0:-}" ] && [ -z "${BASH_SOURCE+x}" ]; then
+# Canonical bash idiom: when sourced, ${BASH_SOURCE[0]} != ${0}.
+if [ "${BASH_SOURCE[0]:-}" = "${0:-}" ]; then
   printf 'assert-agent-envelope.sh: must be sourced, not executed\n' >&2
   exit 1
 fi
