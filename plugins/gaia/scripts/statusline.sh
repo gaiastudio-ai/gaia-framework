@@ -286,11 +286,14 @@ BRAND_TEXT="${GLYPH_BRAND} GAIA ${GAIA_VERSION}"
 BRAND_CHUNK="${OSC8_OPEN}${COLOR_BRAND}${COLOR_BOLD}${BRAND_TEXT}${COLOR_RESET}${OSC8_CLOSE}"
 
 # Update indicator (D10: glyph + bold + colour + ASCII prefix in ASCII theme).
-# Suppressed when (a) cache absent or unparseable, (b) `update_available` is
-# not the literal "true", or (c) the 7-day stale-fence has tripped — see
-# E82-S2 / TC-STATUSLINE-7 / AT-4 above.
+# Suppressed when (a) cache absent or unparseable, (b) cached latest_tag is
+# missing, (c) cached latest_tag equals the live installed GAIA_VERSION
+# (sprint-43: recompute on every render so the indicator clears immediately
+# after the user runs /plugin marketplace update, without waiting for the
+# fetcher's 24h TTL to expire), or (d) the 7-day stale-fence has tripped
+# — see E82-S2 / TC-STATUSLINE-7 / AT-4 above.
 UPDATE_CHUNK=""
-if [ "$CACHE_FRESH" -eq 1 ] && [ "$UPDATE_AVAILABLE_RAW" = "true" ] && [ -n "$LATEST_VERSION" ]; then
+if [ "$CACHE_FRESH" -eq 1 ] && [ -n "$LATEST_VERSION" ] && [ "$LATEST_VERSION" != "$GAIA_VERSION" ]; then
   if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
     UPDATE_CHUNK="[update] ${GLYPH_UPDATE:-^}"
   else
