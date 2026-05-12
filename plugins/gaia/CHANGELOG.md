@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.146.1] — 2026-05-12
+
+### Fixed
+
+- (statusline) rich theme is the runtime default + walk-up sprint-status.yaml resolution
+
 ## [1.146.0] — 2026-05-12
 
 ### Added
