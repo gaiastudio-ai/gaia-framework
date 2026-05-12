@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.147.1] — 2026-05-12
+
+### Fixed
+
+- (statusline) recompute update_available on every render against live version
+- (statusline) trigger update-check fetcher from renderer + fix plugin.json path resolution
+
 ## [1.147.0] — 2026-05-12
 
 ### Added
