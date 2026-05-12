@@ -1,0 +1,18 @@
+# Legacy fixture for E85-S2 AC7 / TS4 — pre-ADR-096 config without config_phase.
+# MUST validate because no `if` block matches when config_phase is absent
+# (each `if` block requires config_phase via `required: [config_phase]`).
+project_name: "legacy-project"
+project_kind: "web-app"
+project_root: "/tmp/legacy"
+project_path: "/tmp/legacy/src"
+memory_path: "/tmp/legacy/_memory"
+checkpoint_path: "/tmp/legacy/_memory/checkpoints"
+installed_path: "/tmp/legacy/.gaia"
+framework_version: "1.146.1"
+date: "2026-05-12"
+stacks:
+  - name: "main"
+    language: "typescript"
+    paths: ["src"]
+platforms:
+  - web

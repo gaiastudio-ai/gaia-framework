@@ -1,0 +1,13 @@
+# Minimal fixture for E85-S2 AC4 / TS5 — confirms deferrable sections
+# (stacks, platforms, environments, ci_cd) are optional at config_phase=minimal.
+config_phase: minimal
+schema_version: "2.0.0"
+project_name: "tiny-project"
+project_kind: "library"
+project_root: "/tmp/tiny"
+project_path: "/tmp/tiny/src"
+memory_path: "/tmp/tiny/_memory"
+checkpoint_path: "/tmp/tiny/_memory/checkpoints"
+installed_path: "/tmp/tiny/.gaia"
+framework_version: "1.146.1"
+date: "2026-05-12"
