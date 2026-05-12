@@ -191,8 +191,9 @@ if [ -x "$_FETCHER" ]; then
   if [ -z "$CACHE_TS" ]; then
     _NEED_FETCH=1
   elif [ -n "${CACHE_EPOCH:-}" ]; then
-    # 86400 sec = 24h — matches the writer's TTL_SECONDS.
-    if [ "$AGE" -ge 86400 ]; then
+    # 1800 sec = 30min — matches the writer's TTL_SECONDS (sprint-43
+    # update from 24h so new GitHub releases surface within 30min).
+    if [ "$AGE" -ge 1800 ]; then
       _NEED_FETCH=1
     fi
   fi

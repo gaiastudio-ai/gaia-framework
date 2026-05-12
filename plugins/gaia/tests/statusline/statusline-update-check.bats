@@ -190,11 +190,12 @@ _with_stubs() {
 # ---------------------------------------------------------------------------
 
 @test "AC5: TTL guard fresh cache -> checked_at_iso unchanged" {
+  # sprint-43 update: TTL was 24h, now 30min. The seed must be fresher than
+  # 30min for this test to still exercise the guard. Use 5 minutes ago.
   _make_stub gh ok-newer
   _make_stub curl ok-newer
   _with_stubs
-  # Build a fresh cache (1 hour ago).
-  ts_recent="$(date -u -v-1H +%FT%TZ 2>/dev/null || date -u -d '1 hour ago' +%FT%TZ)"
+  ts_recent="$(date -u -v-5M +%FT%TZ 2>/dev/null || date -u -d '5 minutes ago' +%FT%TZ)"
   printf '%s' '{"checked_at_iso":"'"$ts_recent"'","latest_tag":"1.0.0","current_tag":"1.0.0","update_available":false}' > "$CACHE"
   run env PATH="$STUBS_PATH" HOME="$HOME" PROJECT_PATH="$PROJECT_PATH" "$FETCHER"
   [ "$status" -eq 0 ]
@@ -202,7 +203,7 @@ _with_stubs() {
   [ "$after_ts" = "$ts_recent" ]
 }
 
-@test "AC5: TTL guard stale cache (> 24h) -> writes new checked_at_iso" {
+@test "AC5: TTL guard stale cache (> 30min) -> writes new checked_at_iso" {
   _make_stub gh ok-newer
   _make_stub curl ok-newer
   _with_stubs
