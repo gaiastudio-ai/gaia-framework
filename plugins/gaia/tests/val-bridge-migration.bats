@@ -172,3 +172,107 @@ FIX_STORY_MD="$PLUGIN_ROOT/skills/gaia-fix-story/SKILL.md"
   grep -q 'ADR-104' "$VALIDATE_STORY_MD"
   grep -q 'ADR-104' "$FIX_STORY_MD"
 }
+
+# ============================================================================
+# E87-S4 coverage:
+#   TC-VBR-7   — /gaia-dev-story Step 4 region references assert_agent_envelope
+#   TC-VBR-7b  — /gaia-dev-story Step 4 region has no `context: fork` Val-dispatch refs
+#   TC-VBR-8   — /gaia-dev-story Step 7b region references assert_agent_envelope
+#   TC-VBR-8b  — /gaia-dev-story Step 7b region has no `context: fork` Val-dispatch refs
+#   TC-VBR-8c  — /gaia-dev-story SKILL.md total `assert_agent_envelope` grep count >= 2
+#   TC-VBR-8d  — /gaia-dev-story Steps 10-16 retain canonical push/PR/CI/merge tokens
+#                (regression-class — behavior unchanged in promotion-chain block)
+#   TC-VBR-8e  — /gaia-dev-story Steps 10-16 leak guard (no envelope-assert leaked in)
+# ============================================================================
+
+DEV_STORY_MD="$PLUGIN_ROOT/skills/gaia-dev-story/SKILL.md"
+
+# Helper — extract the region between two `### Step ` headings from dev-story SKILL.md
+_extract_region() {
+  local start="$1" end="$2" file="$3"
+  awk -v s="$start" -v e="$end" '
+    $0 ~ "^### Step " s {in_=1; print; next}
+    $0 ~ "^### Step " e {in_=0; exit}
+    in_ {print}
+  ' "$file"
+}
+
+# ---------------- TC-VBR-7: Step 4 envelope-assert ----------------
+@test "TC-VBR-7: /gaia-dev-story Step 4 region references assert_agent_envelope" {
+  [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
+  region=$(_extract_region "4" "5" "$DEV_STORY_MD")
+  [ -n "$region" ]
+  echo "$region" | grep -q 'assert_agent_envelope'
+}
+
+# ---------------- TC-VBR-7b: Step 4 no context: fork Val-dispatch refs ----------------
+@test "TC-VBR-7b: /gaia-dev-story Step 4 region has no context: fork Val-dispatch refs" {
+  [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
+  region=$(_extract_region "4" "5" "$DEV_STORY_MD")
+  [ -n "$region" ]
+  # Permit prose that NAMES "context: fork" in a "removed/migrated-away" callout
+  # (the Changelog or historical-context note). Filter such lines before the
+  # anti-pattern grep — same pattern used by E87-S3 TC-VBR-9c.
+  hits=$(echo "$region" | grep -E 'context:[[:space:]]*fork' 2>/dev/null | grep -v -E 'Changelog|\(removed\)|removed the|no longer|MUST NOT|do NOT|migrated|prior to E87' || true)
+  [ -z "$hits" ]
+}
+
+# ---------------- TC-VBR-8: Step 7b envelope-assert ----------------
+@test "TC-VBR-8: /gaia-dev-story Step 7b region references assert_agent_envelope" {
+  [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
+  region=$(_extract_region "7b" "8" "$DEV_STORY_MD")
+  [ -n "$region" ]
+  echo "$region" | grep -q 'assert_agent_envelope'
+}
+
+# ---------------- TC-VBR-8b: Step 7b no context: fork Val-dispatch refs ----------------
+@test "TC-VBR-8b: /gaia-dev-story Step 7b region has no context: fork Val-dispatch refs" {
+  [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
+  region=$(_extract_region "7b" "8" "$DEV_STORY_MD")
+  [ -n "$region" ]
+  hits=$(echo "$region" | grep -E 'context:[[:space:]]*fork' 2>/dev/null | grep -v -E 'Changelog|\(removed\)|removed the|no longer|MUST NOT|do NOT|migrated|prior to E87' || true)
+  [ -z "$hits" ]
+}
+
+# ---------------- TC-VBR-8c: total grep count >= 2 ----------------
+@test "TC-VBR-8c: /gaia-dev-story SKILL.md total assert_agent_envelope count >= 2" {
+  [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
+  count=$(grep -c "assert_agent_envelope" "$DEV_STORY_MD" || true)
+  [ "$count" -ge 2 ]
+}
+
+# Helper — extract the Steps 10-16 region from dev-story SKILL.md.
+# Terminates at the first `^## ` heading after Step 10 — that's either
+# `## Changelog` (post-E87-S4) or `## Finalize`. Captures the push/PR/CI/merge/
+# review-gate region cleanly without bleeding into the Changelog.
+_extract_steps_10_to_16() {
+  awk '
+    /^### Step 1[0-6]/ {in_=1; print; next}
+    in_ && /^## [^#]/ {exit}
+    in_ {print}
+  ' "$1"
+}
+
+# ---------------- TC-VBR-8d: Steps 10-16 canonical tokens preserved (regression) ----------------
+@test "TC-VBR-8d: /gaia-dev-story Steps 10-16 retain canonical push/PR/CI/merge tokens" {
+  [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
+  region=$(_extract_steps_10_to_16 "$DEV_STORY_MD")
+  [ -n "$region" ]
+  # The canonical promotion-chain tokens that MUST remain in Steps 10-16.
+  echo "$region" | grep -q 'git-push.sh'
+  echo "$region" | grep -q 'pr-create.sh'
+  echo "$region" | grep -q 'ci-wait.sh'
+  echo "$region" | grep -q 'merge.sh'
+  echo "$region" | grep -q 'verify-pr-merged.sh'
+  echo "$region" | grep -q 'init-review-gate.sh'
+}
+
+# ---------------- TC-VBR-8e: Steps 10-16 leak guard ----------------
+@test "TC-VBR-8e: /gaia-dev-story Steps 10-16 contain no assert_agent_envelope leak" {
+  [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
+  region=$(_extract_steps_10_to_16 "$DEV_STORY_MD")
+  [ -n "$region" ]
+  # Steps 10-16 are push/PR/CI/merge/review-gate — they MUST NOT reference
+  # the envelope-assert (which is a Val-dispatch concern living in Steps 4 + 7b only).
+  ! echo "$region" | grep -q 'assert_agent_envelope'
+}
