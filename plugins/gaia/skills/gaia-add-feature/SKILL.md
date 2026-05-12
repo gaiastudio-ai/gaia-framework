@@ -78,23 +78,59 @@ and delegation model are preserved verbatim from the legacy workflow.
   the diff is small", or "skip Val for trivial typo fix" are forbidden.
   The classification is decided in Step 1; the Val gate runs
   unconditionally in Step 2 before any cascade or direct edit.
-- **No inline Val — Val MUST be dispatched as a `context: fork` subagent
-  via the Agent tool** (E83-S2, precedent: AI-2026-05-09-12). The LLM
-  MUST NOT pass off its own inline review as a Val outcome, MUST NOT
-  compose a synthetic ADR-037 return JSON in the parent thread, and
-  MUST NOT set `status: PASS` without a real Agent-tool dispatch. If
-  the Agent tool is not available in the current context (e.g., running
-  under a fork that did not allowlist `Agent`), HALT immediately with
-  the parent-thread re-invoke message in Step 2 -- do NOT self-judge
-  the Val gate from the parent thread.
+- **No inline Val — Val MUST be dispatched via the main-turn Agent tool**
+  (per ADR-093 / ADR-104; migrated from the prior `context: fork` model by
+  E87-S5). After dispatch, the skill MUST source
+  `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke
+  `assert_agent_envelope {sentinel_path}` against the envelope sentinel
+  the Val persona writes (E87-S2 contract); on non-zero exit HALT with the
+  canonical error string. The LLM MUST NOT pass off its own inline review
+  as a Val outcome, MUST NOT compose a synthetic ADR-037 return JSON in
+  the parent thread, and MUST NOT set `status: PASS` without a real
+  Agent-tool dispatch + envelope-assert success. If the Agent tool is not
+  available in the current context (e.g., running under a fork that did
+  not allowlist `Agent`), HALT immediately with the parent-thread
+  re-invoke message in Step 2 -- do NOT self-judge the Val gate from the
+  parent thread. The E83 four-layer fail-closed enforcement
+  (E83 dispatch checkpoint + AskUserQuestion precondition + prose
+  hardening + bats anti-pattern check) remains intact; E87 adds the
+  envelope-assert as a NEW layer on top of E83, not as a replacement.
 
 ## Subagent Dispatch Contract
 
 This skill follows the framework-wide Subagent Dispatch Contract (ADR-063).
-Every Val invocation is dispatched via `context: fork` per ADR-045 with a
-read-only tool allowlist `[Read, Grep, Glob, Bash]`, pinned to
-`model: claude-opus-4-7` and `effort: high` per ADR-074 contract C2 (Val
-opus pin — validation rigor is the contract). After Val returns:
+Every Val invocation is dispatched via the **main-turn Agent tool** (per
+ADR-093 / ADR-104; migrated from the prior `context: fork` per ADR-045
+model by E87-S5) with a read-only tool allowlist
+`[Read, Grep, Glob, Bash, Write]` (Val needs `Write` to emit the envelope
+sentinel from inside its own execution context per the E87-S2 Sentinel-Write
+Contract). Dispatch is pinned to `model: claude-opus-4-7` and `effort: high`
+per ADR-074 contract C2 (Val opus pin — validation rigor is the contract).
+
+**Envelope-assert step (E87-S5 / ADR-104).** After the Agent call returns
+and BEFORE consuming the Val verdict, the skill MUST source
+`${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke
+`assert_agent_envelope {sentinel_path}` where
+`{sentinel_path} = _memory/checkpoints/val-envelope-{sha256(artifact_path) first 16 hex}.json`.
+On non-zero exit, HALT with the canonical error string
+`HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}` —
+DO NOT fall through to a self-judged verdict. Closes the regression class
+documented in `feedback_add_feature_val_gate_fails_open.md`
+(AI-2026-05-09-12).
+
+**E83 + E87 sentinel coexistence (AC4).** Two layered sentinels coexist
+post-migration — they answer different questions:
+- E83 dispatch checkpoint
+  (`_memory/checkpoints/add-feature-{feature_id}-val-dispatched.json`) —
+  validated by `finalize.sh`, proves dispatch HAPPENED.
+- E87 envelope sentinel
+  (`_memory/checkpoints/val-envelope-{artifact-hash}.json`) — validated by
+  `assert_agent_envelope`, proves the dispatcher was AUTHENTIC (Val persona).
+Both MUST pass for the cascade to proceed. The two sentinel paths are
+distinct slugs (`add-feature-...val-dispatched.json` vs `val-envelope-...json`)
+and do NOT collide.
+
+After Val returns:
 
 1. **Parse the subagent return** using the ADR-037 structured schema:
    `{ status, summary, artifacts, findings, next }`. The `status` field is
@@ -212,15 +248,16 @@ written on Val PASS that `finalize.sh` validates before cascade completion.
 > **Parent thread invocation required (E83-S2, precedent:
 > AI-2026-05-09-12, enforcement: ADR-063 amendment / AF-2026-05-09-5).**
 >
-> Val MUST be dispatched as a `context: fork` subagent via the Agent tool.
-> There is NO patch-mode exception -- patch, enhancement, and feature
-> classifications all run the Val gate unconditionally.
+> Val MUST be dispatched via the **main-turn Agent tool** (per ADR-093 /
+> ADR-104; migrated from the prior `context: fork` per ADR-045 model by
+> E87-S5). There is NO patch-mode exception -- patch, enhancement, and
+> feature classifications all run the Val gate unconditionally.
 >
 > If the Agent tool is not exposed in the current invocation context
-> (e.g., the skill itself was spawned under `context: fork` without
-> `Agent` in the allowlist, or a downstream fork stripped the Agent tool
-> from the inherited toolset), the skill MUST HALT immediately with the
-> error: `Val gate cannot dispatch (Agent tool not exposed). Re-invoke /gaia-add-feature from a parent orchestrator thread.`
+> (e.g., the skill itself was spawned under a stripped-down fork without
+> `Agent` in the allowlist, or a downstream context stripped the Agent
+> tool from the inherited toolset), the skill MUST HALT immediately with
+> the error: `Val gate cannot dispatch (Agent tool not exposed). Re-invoke /gaia-add-feature from a parent orchestrator thread.`
 >
 > The HALT message above is the canonical error string -- the parent
 > orchestrator must re-invoke /gaia-add-feature from a parent orchestrator thread to recover; never inline-judge the Val gate.
@@ -252,12 +289,29 @@ Mode invocations.
 
 #### Step 2b -- Val dispatch + sentinel write
 
-- Spawn a Val subagent via the Agent tool with `context: fork`,
+- Spawn a Val subagent via the **main-turn Agent tool** (per ADR-093 /
+  ADR-104; migrated from the prior `context: fork` model by E87-S5),
   `model: claude-opus-4-7`, `effort: high`, and the read-only tool
-  allowlist `[Read, Grep, Glob, Bash]` per ADR-045 and ADR-074 contract C2
-  (Val opus pin). Pass the intake data captured in Step 1 (feature_id,
-  description, classification, urgency, driver, CR linkage, expected
-  cascade).
+  allowlist `[Read, Grep, Glob, Bash, Write]` (Val needs `Write` post-E87-S2
+  to emit the envelope sentinel from inside its own execution context) per
+  ADR-074 contract C2 (Val opus pin). Pass the intake data captured in
+  Step 1 (feature_id, description, classification, urgency, driver, CR
+  linkage, expected cascade).
+- **Envelope-assert step (E87-S5 / ADR-104).** After the Agent call
+  returns and BEFORE consuming the Val verdict, source
+  `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke
+  `assert_agent_envelope {sentinel_path}` where
+  `{sentinel_path} = _memory/checkpoints/val-envelope-{sha256(feature_id) first 16 hex}.json`.
+  On non-zero exit, HALT with the canonical error string `HALT: Val agent
+  envelope assertion failed — sentinel absent, malformed, or forged at
+  {path}` — DO NOT fall through to a self-judged verdict. The cascade
+  MUST NOT proceed without a validated assessment. This closes the
+  fail-open regression class documented in
+  `feedback_add_feature_val_gate_fails_open.md` (AI-2026-05-09-12) at the
+  authenticity layer; the existing E83 dispatch-checkpoint precondition
+  (validated by `finalize.sh`) continues to guard the dispatch-happened
+  layer. See the Subagent Dispatch Contract section above for the
+  E83 + E87 coexistence rationale and distinct sentinel paths.
 - **Non-opus mismatch guard (ADR-074 contract C2, AC3).** If a test
   fixture or downstream override forces a non-opus model into the dispatch
   context, this skill MUST emit the canonical WARNING `Val dispatch on
@@ -540,6 +594,10 @@ finding first and re-invoke the skill.
 - AI-2026-05-09-12 -- Action item flagging the
   `/gaia-add-feature` Val-gate fail-open under `context: fork` (precedent
   for the E83-S2 prose-hardening clauses above).
+
+## Changelog
+
+- **2026-05-13 — E87-S5 — Val Bridge Migration, FINAL self-referential migration (ADR-104).** Migrated `/gaia-add-feature` Step 2 Val gate from `context: fork` (per ADR-045) to **main-turn Agent-tool dispatch** (per ADR-093 / ADR-104). Added the post-dispatch envelope-assert step (`source assert-agent-envelope.sh` + `assert_agent_envelope` + HALT on non-zero) at Step 2b. The E83 four-layer fail-closed enforcement (sentinel checkpoint, AskUserQuestion precondition, prose hardening, bats anti-pattern check) is preserved intact — E87 adds the envelope-assert as a NEW layer ON TOP of E83, not as a replacement. Two layered sentinels coexist at distinct paths: E83 dispatch checkpoint `_memory/checkpoints/add-feature-{feature_id}-val-dispatched.json` (validated by `finalize.sh`, proves dispatch HAPPENED) and E87 envelope sentinel `_memory/checkpoints/val-envelope-{artifact-hash}.json` (validated by `assert_agent_envelope`, proves dispatcher was AUTHENTIC Val persona). Closes `feedback_add_feature_val_gate_fails_open.md` (AI-2026-05-09-12) at the authenticity layer. Coverage by TC-VBR-11..11g in `plugins/gaia/tests/val-bridge-migration.bats`; E83 TC-VFC-* suite continues to pass.
 
 ## Finalize
 

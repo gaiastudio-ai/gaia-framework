@@ -276,3 +276,86 @@ _extract_steps_10_to_16() {
   # the envelope-assert (which is a Val-dispatch concern living in Steps 4 + 7b only).
   ! echo "$region" | grep -q 'assert_agent_envelope'
 }
+
+# ============================================================================
+# E87-S5 coverage:
+#   TC-VBR-11   — /gaia-add-feature Step 2 region references assert_agent_envelope
+#   TC-VBR-11b  — /gaia-add-feature Step 2 region contains `main-turn Agent tool` token
+#   TC-VBR-11c  — /gaia-add-feature Step 2 region has no `context: fork` Val-dispatch refs
+#                 (region-scoped to avoid false positives on historical Changelog refs)
+#   TC-VBR-11d  — /gaia-add-feature SKILL.md total `assert_agent_envelope` grep count >= 1
+#   TC-VBR-11e  — /gaia-add-feature SKILL.md contains ADR-104 reference
+#   TC-VBR-11f  — /gaia-add-feature/scripts/finalize.sh contains no envelope-sentinel-write
+#                 (AC3 leak guard — Val persona owns the envelope-write, finalize.sh validates
+#                 the separate E83 dispatch checkpoint only)
+#   TC-VBR-11g  — /gaia-add-feature SKILL.md references BOTH E83 dispatch checkpoint
+#                 (`add-feature-{feature_id}-val-dispatched.json`) AND E87 envelope sentinel
+#                 (`val-envelope-`) — AC4 coexistence
+# ============================================================================
+
+ADD_FEATURE_MD="$PLUGIN_ROOT/skills/gaia-add-feature/SKILL.md"
+ADD_FEATURE_FINALIZE="$PLUGIN_ROOT/skills/gaia-add-feature/scripts/finalize.sh"
+
+# Helper — extract /gaia-add-feature Step 2 region (between `### Step 2` and `### Step 3`).
+_extract_add_feature_step_2() {
+  awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$1"
+}
+
+# ---------------- TC-VBR-11: Step 2 envelope-assert ----------------
+@test "TC-VBR-11: /gaia-add-feature Step 2 region references assert_agent_envelope" {
+  [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
+  region=$(_extract_add_feature_step_2 "$ADD_FEATURE_MD")
+  [ -n "$region" ]
+  echo "$region" | grep -q 'assert_agent_envelope'
+}
+
+# ---------------- TC-VBR-11b: Step 2 main-turn dispatch token ----------------
+@test "TC-VBR-11b: /gaia-add-feature Step 2 region contains main-turn Agent tool token" {
+  [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
+  region=$(_extract_add_feature_step_2 "$ADD_FEATURE_MD")
+  [ -n "$region" ]
+  echo "$region" | grep -q 'main-turn Agent tool'
+}
+
+# ---------------- TC-VBR-11c: Step 2 no context: fork Val-dispatch refs (region-scoped) ----------------
+@test "TC-VBR-11c: /gaia-add-feature Step 2 region has no context: fork Val-dispatch refs" {
+  [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
+  region=$(_extract_add_feature_step_2 "$ADD_FEATURE_MD")
+  [ -n "$region" ]
+  # Filter-allowed "migrated from / removed" Changelog-style callouts (same pattern
+  # used by E87-S3 TC-VBR-9c and E87-S4 TC-VBR-7b).
+  hits=$(echo "$region" | grep -E 'context:[[:space:]]*fork' 2>/dev/null | grep -v -E 'Changelog|\(removed\)|removed the|no longer|MUST NOT|do NOT|migrated|prior to E87|prior model|historically' || true)
+  [ -z "$hits" ]
+}
+
+# ---------------- TC-VBR-11d: total grep count >= 1 ----------------
+@test "TC-VBR-11d: /gaia-add-feature SKILL.md total assert_agent_envelope count >= 1" {
+  [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
+  count=$(grep -c "assert_agent_envelope" "$ADD_FEATURE_MD" || true)
+  [ "$count" -ge 1 ]
+}
+
+# ---------------- TC-VBR-11e: ADR-104 in Changelog ----------------
+@test "TC-VBR-11e: /gaia-add-feature SKILL.md contains ADR-104 reference" {
+  [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
+  grep -q 'ADR-104' "$ADD_FEATURE_MD"
+}
+
+# ---------------- TC-VBR-11f: finalize.sh sentinel leak guard (AC3) ----------------
+@test "TC-VBR-11f: /gaia-add-feature/scripts/finalize.sh contains no envelope-sentinel write" {
+  [ -f "$ADD_FEATURE_FINALIZE" ] || skip "add-feature finalize.sh not present"
+  # The E87 envelope sentinel is written by the Val persona (per E87-S2 contract);
+  # finalize.sh validates only the SEPARATE E83 dispatch checkpoint
+  # (`add-feature-{feature_id}-val-dispatched.json`). The envelope sentinel
+  # filename slug (`val-envelope-`) MUST NOT appear anywhere in finalize.sh.
+  ! grep -q 'val-envelope-' "$ADD_FEATURE_FINALIZE"
+}
+
+# ---------------- TC-VBR-11g: E83 + E87 sentinel coexistence (AC4) ----------------
+@test "TC-VBR-11g: /gaia-add-feature SKILL.md references BOTH E83 dispatch checkpoint AND E87 envelope sentinel" {
+  [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
+  # E83 dispatch checkpoint reference (existing).
+  grep -q 'add-feature-.*val-dispatched' "$ADD_FEATURE_MD"
+  # E87 envelope sentinel reference (added by E87-S5 Green phase).
+  grep -q 'val-envelope-' "$ADD_FEATURE_MD"
+}
