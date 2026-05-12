@@ -173,6 +173,37 @@ if [ -r "$CACHE_FILE" ]; then
   fi
 fi
 
+# ---- Update fetcher background refresh (sprint-43: hot-path TTL gate) -----
+# Original E82-S2 assumed `refreshInterval` triggered the fetcher itself —
+# it doesn't. `refreshInterval` only re-runs statusline.sh (this renderer).
+# Result: statusline-update-check.sh was never invoked, so the
+# latest_tag / update_available fields were never populated, so the [update]
+# indicator never fired.
+#
+# Fix: from this renderer, if the cache is missing the update-check fields
+# OR is older than the writer's TTL (24h), fork the fetcher in the
+# background so the next render picks up fresh data without ever blocking
+# the current render. The fetcher itself has a 5s HTTP timeout and is
+# silent-on-failure.
+_FETCHER="$HOME/.claude/gaia-statusline/statusline-update-check.sh"
+if [ -x "$_FETCHER" ]; then
+  _NEED_FETCH=0
+  if [ -z "$CACHE_TS" ]; then
+    _NEED_FETCH=1
+  elif [ -n "${CACHE_EPOCH:-}" ]; then
+    # 86400 sec = 24h — matches the writer's TTL_SECONDS.
+    if [ "$AGE" -ge 86400 ]; then
+      _NEED_FETCH=1
+    fi
+  fi
+  if [ "$_NEED_FETCH" = "1" ]; then
+    # Background fork with stdio detached so the render never waits on the
+    # network probe. setsid would be ideal but is not portable; nohup-style
+    # detachment via `</dev/null >/dev/null 2>&1 &` is bash-3.2 safe.
+    ( "$_FETCHER" </dev/null >/dev/null 2>&1 & ) >/dev/null 2>&1
+  fi
+fi
+
 # ---- Theme resolution (sprint-43: rich is the default) --------------------
 # Historically rich was opt-in via `GAIA_STATUSLINE_THEME=rich`. Most users
 # never set the env var (the statusLine command in settings.json is just
@@ -255,11 +286,14 @@ BRAND_TEXT="${GLYPH_BRAND} GAIA ${GAIA_VERSION}"
 BRAND_CHUNK="${OSC8_OPEN}${COLOR_BRAND}${COLOR_BOLD}${BRAND_TEXT}${COLOR_RESET}${OSC8_CLOSE}"
 
 # Update indicator (D10: glyph + bold + colour + ASCII prefix in ASCII theme).
-# Suppressed when (a) cache absent or unparseable, (b) `update_available` is
-# not the literal "true", or (c) the 7-day stale-fence has tripped — see
-# E82-S2 / TC-STATUSLINE-7 / AT-4 above.
+# Suppressed when (a) cache absent or unparseable, (b) cached latest_tag is
+# missing, (c) cached latest_tag equals the live installed GAIA_VERSION
+# (sprint-43: recompute on every render so the indicator clears immediately
+# after the user runs /plugin marketplace update, without waiting for the
+# fetcher's 24h TTL to expire), or (d) the 7-day stale-fence has tripped
+# — see E82-S2 / TC-STATUSLINE-7 / AT-4 above.
 UPDATE_CHUNK=""
-if [ "$CACHE_FRESH" -eq 1 ] && [ "$UPDATE_AVAILABLE_RAW" = "true" ] && [ -n "$LATEST_VERSION" ]; then
+if [ "$CACHE_FRESH" -eq 1 ] && [ -n "$LATEST_VERSION" ] && [ "$LATEST_VERSION" != "$GAIA_VERSION" ]; then
   if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
     UPDATE_CHUNK="[update] ${GLYPH_UPDATE:-^}"
   else

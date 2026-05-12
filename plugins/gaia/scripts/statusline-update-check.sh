@@ -61,14 +61,33 @@ HTTP_TIMEOUT=5             # curl --max-time, gh wrapper enforces its own.
 CACHE_DIR="${HOME}/.claude/gaia-statusline/cache"
 CACHE_FILE="${CACHE_DIR}/latest-release.json"
 
-# Resolve PROJECT_PATH (test override, else CWD).
+# Resolve plugin.json via the same three-tier scheme statusline.sh uses
+# (sprint-43 update). CLAUDE_PLUGIN_ROOT is intentionally NOT consulted —
+# it's a per-skill envvar Claude Code never sets when this fetcher is run
+# from a hook or refresh cycle. The original CLAUDE_PLUGIN_ROOT-keyed
+# fallback to $PROJECT_PATH/gaia-public/... double-stacked when cwd was
+# already inside gaia-public/ (e.g. agent operating in that subdir).
 PROJECT_PATH="${PROJECT_PATH:-$PWD}"
-# Prefer the actively-loaded plugin (CLAUDE_PLUGIN_ROOT injected by Claude
-# Code); fall back to the in-tree repo for dev/test runs where it is unset.
-if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -r "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; then
-  PLUGIN_JSON="${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"
-else
+PLUGIN_CACHE_DIR="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia"
+PLUGIN_JSON=""
+
+# Tier 1: scan plugin cache for highest semver subdirectory.
+if [ -d "$PLUGIN_CACHE_DIR" ]; then
+  _CACHED="$(ls "$PLUGIN_CACHE_DIR" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)"
+  if [ -n "$_CACHED" ] && [ -r "$PLUGIN_CACHE_DIR/$_CACHED/.claude-plugin/plugin.json" ]; then
+    PLUGIN_JSON="$PLUGIN_CACHE_DIR/$_CACHED/.claude-plugin/plugin.json"
+  fi
+fi
+
+# Tier 2: in-tree repo at PROJECT_PATH/gaia-public/... AND at
+# PROJECT_PATH/plugins/... — the second form catches cwd that's already
+# inside the gaia-public subtree (the doubled-gaia-public bug from the
+# original code).
+if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json" ]; then
   PLUGIN_JSON="$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
+fi
+if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/plugins/gaia/.claude-plugin/plugin.json" ]; then
+  PLUGIN_JSON="$PROJECT_PATH/plugins/gaia/.claude-plugin/plugin.json"
 fi
 
 # ---- Read current version from plugin.json --------------------------------
