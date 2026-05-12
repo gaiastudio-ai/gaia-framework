@@ -173,11 +173,47 @@ if [ -r "$CACHE_FILE" ]; then
   fi
 fi
 
+# ---- Theme resolution (sprint-43: rich is the default) --------------------
+# Historically rich was opt-in via `GAIA_STATUSLINE_THEME=rich`. Most users
+# never set the env var (the statusLine command in settings.json is just
+# a path with no env), so context-bar / rate-limits / sprint chunks were
+# silently gated off. Flipping the default to "rich" surfaces them by
+# default; users who want the minimal pre-43 layout set
+# `GAIA_STATUSLINE_THEME=minimal` (any non-empty value other than "rich"
+# also suppresses the rich-only chunks).
+_GAIA_THEME="${GAIA_STATUSLINE_THEME:-rich}"
+if [ "$_GAIA_THEME" = "rich" ]; then
+  GAIA_RICH=1
+else
+  GAIA_RICH=0
+fi
+
 # ---- Rich-theme sprint status read (D11, TC-6) -----------------------------
+# Walks UP from PROJECT_PATH looking for docs/implementation-artifacts/
+# sprint-status.yaml. This handles the common layout where the terminal cwd
+# is inside a subproject (e.g., $PROJECT_ROOT/gaia-public/) but the sprint
+# artifacts live at the project root. Capped at 5 levels to bound stat-call
+# cost.
 SPRINT_ID=""
-if [ "${GAIA_STATUSLINE_THEME:-}" = "rich" ]; then
-  SPRINT_FILE="$PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml"
-  if [ -r "$SPRINT_FILE" ]; then
+if [ "$GAIA_RICH" = "1" ]; then
+  SPRINT_FILE=""
+  _SEARCH_DIR="$PROJECT_PATH"
+  _DEPTH=0
+  while [ "$_DEPTH" -lt 5 ]; do
+    _CANDIDATE="$_SEARCH_DIR/docs/implementation-artifacts/sprint-status.yaml"
+    if [ -r "$_CANDIDATE" ]; then
+      SPRINT_FILE="$_CANDIDATE"
+      break
+    fi
+    # Move up one level. Stop if we've reached the filesystem root.
+    _PARENT="$(dirname "$_SEARCH_DIR" 2>/dev/null || printf '/')"
+    if [ "$_PARENT" = "$_SEARCH_DIR" ]; then
+      break
+    fi
+    _SEARCH_DIR="$_PARENT"
+    _DEPTH=$((_DEPTH + 1))
+  done
+  if [ -n "$SPRINT_FILE" ] && [ -r "$SPRINT_FILE" ]; then
     # Tiny grep — direct read (NOT routed through dashboard script per D11).
     SPRINT_ID="$(grep -E '^sprint_id:' "$SPRINT_FILE" 2>/dev/null | head -1 | sed 's/^sprint_id:[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//' || printf '')"
     # Suppress closed sprints — once /gaia-sprint-close stamps `status: closed`
@@ -281,7 +317,7 @@ fi
 # WARN, >=80 DIRTY). Defensive: when only one window is present, render
 # only that window. When both absent or theme != rich, chunk is empty.
 RLIMIT_CHUNK=""
-if [ "${GAIA_STATUSLINE_THEME:-}" = "rich" ]; then
+if [ "$GAIA_RICH" = "1" ]; then
   _RL_5H="$(printf '%s' "$INPUT" | jq -r '.rate_limits.five_hour.used_percentage // "null"' 2>/dev/null || printf 'null')"
   _RL_7D="$(printf '%s' "$INPUT" | jq -r '.rate_limits.seven_day.used_percentage // "null"' 2>/dev/null || printf 'null')"
   _RL_HAS_5H=0
