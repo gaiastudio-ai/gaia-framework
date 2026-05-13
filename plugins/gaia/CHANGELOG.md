@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.149.0] — 2026-05-13
+
+### Added
+
+- (E85-S9) dispatch gaia-migrate.sh exit-11 to gaia-reconcile-v2.sh (#648)
+- (E85-S7) retire greenfield-guard.sh + sweep call sites (#646)
+- (E85-S6) wire /gaia-infra-design hydration trigger for environments + ci_cd (#645)
+- (E85-S5) wire /gaia-create-arch hydration trigger for stacks + platforms (#644)
+
+### Changed
+
+- (E85-S10) cascade v2-to-v2 reconciliation path into SKILL + manifests (#650)
+
+### Fixed
+
+- (AI-2026-05-13-11) tighten /gaia-add-feature Val-dispatch contract (#649)
+
 ## [1.148.0] — 2026-05-13
 
 ### Added
