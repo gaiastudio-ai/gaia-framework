@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.151.0] — 2026-05-13
+
+### Added
+
+- (E87-S7) sentinel-write writer shift to orchestrator (ADR-105) (#664)
+
 ## [1.150.0] — 2026-05-13
 
 ### Added
