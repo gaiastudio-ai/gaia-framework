@@ -301,3 +301,22 @@ EOF
   [ "$status" -eq 0 ]
   [ "$output" = "SKIP" ]
 }
+
+# E55-S13 D3 (TC-DSF-3): tdd-review-gate.sh MUST source resolve-story-file.sh
+# (E79-S7 shared helper) instead of using a private IMPL_DIR/${STORY_KEY}-*.md
+# glob. Reduces drift between dev-story scripts that all need the same
+# canonical resolution semantics.
+@test "TC-DSF-3: tdd-review-gate.sh sources the shared resolve-story-file.sh helper" {
+  # Accept either a direct `source ...resolve-story-file.sh` or an
+  # assignment-then-source pattern (the script uses the latter form).
+  run grep -E 'resolve-story-file\.sh' "$GATE"
+  [ "$status" -eq 0 ]
+  run grep -E '^[[:space:]]*(source|\.)[[:space:]]+("?\$RESOLVE_STORY_FILE"?|.*resolve-story-file\.sh)' "$GATE"
+  [ "$status" -eq 0 ]
+}
+
+# TC-DSF-3b: the legacy private nullglob for story matches MUST be gone.
+@test "TC-DSF-3b: tdd-review-gate.sh no longer uses the private STORY_MATCHES nullglob" {
+  run grep -E 'STORY_MATCHES=\(.*"\$\{STORY_KEY\}-"' "$GATE"
+  [ "$status" -ne 0 ]
+}
