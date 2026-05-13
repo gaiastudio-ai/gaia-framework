@@ -366,6 +366,34 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 > checkpoint-counting invariants enforced by
 > `tests/vcp-cpt-09-phase3-solutioning.bats`.
 
+#### Hydrate project-config.yaml (E85-S5 / FR-457)
+
+> **Run order — strict.** Runs ONLY AFTER the architecture document
+> write in Step 13 has succeeded and the sidecar append above has
+> completed. Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-hydration.sh`,
+> then build two `mktemp` YAML fragment files from `confirmed_tech_stack`
+> (Step 3.5 canonical variable) — one with `stacks:` payload, one with
+> `platforms:` payload — and call `config_hydrate_section stacks <file>`
+> followed by `config_hydrate_section platforms <file>` (per ADR-098,
+> the helper's second arg is a file path, not a literal string). `rm -f`
+> both fragment files after the calls return.
+
+> **Idempotency contract (ADR-098).** When `config_phase` is already
+> `partial` or `full` in `config/project-config.yaml`, both calls are
+> safe no-ops — the helper short-circuits the write and the file is
+> byte-unchanged. When `config_phase` is `minimal`, the helper writes
+> the section and advances `config_phase` to `partial` monotonically.
+> The helper NEVER writes `config_phase: full` — that transition is
+> reserved for `validate-project-config.sh` (E85-S4 / ADR-096).
+
+> **Non-blocking error policy.** Capture `$?` from each call. The helper
+> already logs `config-hydration: WARN/CRITICAL ...` to stderr for any
+> failure (rc=0 ok, rc=1 generic, rc=2 allowlist, rc=3 lock timeout); a
+> non-zero rc does NOT HALT the workflow — `architecture.md` has already
+> been written and is the primary artifact. Same policy as the sidecar
+> write above. The hydration trigger is purely a SKILL.md finalize-step
+> addition; no architect subagent or template changes (AC5 / FR-457).
+
 ## Validation
 
 <!--
