@@ -75,11 +75,18 @@ resolve_framework_version() {
   here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
   # Preferred: resolve-config.sh on PATH or co-located in scripts/.
+  # Recursion guard (E86-S2): when called from inside resolve-config.sh
+  # itself (drift-detection hook), $GAIA_FW_VER_IN_RESOLVER is set to "1"
+  # by the caller. Skip the preferred resolver entirely in that case —
+  # otherwise resolve-config.sh would recursively invoke itself when the
+  # drift hook calls resolve_framework_version.
   local resolver=""
-  if command -v resolve-config.sh >/dev/null 2>&1; then
-    resolver="$(command -v resolve-config.sh)"
-  elif [ -x "$here/../resolve-config.sh" ]; then
-    resolver="$here/../resolve-config.sh"
+  if [ "${GAIA_FW_VER_IN_RESOLVER:-0}" != "1" ]; then
+    if command -v resolve-config.sh >/dev/null 2>&1; then
+      resolver="$(command -v resolve-config.sh)"
+    elif [ -x "$here/../resolve-config.sh" ]; then
+      resolver="$here/../resolve-config.sh"
+    fi
   fi
 
   if [ -n "$resolver" ]; then
