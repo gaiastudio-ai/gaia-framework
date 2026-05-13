@@ -126,6 +126,43 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > `!scripts/write-checkpoint.sh gaia-infra-design 7 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=val-auto-review --paths docs/planning-artifacts/infrastructure-design.md`
 
+#### Hydrate project-config.yaml (E85-S6 / FR-458)
+
+> **Run order — strict.** Runs ONLY AFTER Step 7 (Val Auto-Fix Loop) has completed
+> and `docs/planning-artifacts/infrastructure-design.md` is the validated final
+> artifact. Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-hydration.sh`, then
+> build two `mktemp` YAML fragment files from the devops-subagent output — one
+> with `environments:` payload (environment matrix from Step 2) and one with
+> `ci_cd:` payload (promotion chain + workflows from Step 4 / Step 3) — and call
+> `config_hydrate_section environments <file>` followed by
+> `config_hydrate_section ci_cd <file>` (per ADR-098, the helper's second arg is
+> a file path, not a literal string). `rm -f` both fragment files after the
+> calls return.
+
+> **Idempotency contract (ADR-098).** When `config_phase` is already `partial`,
+> both calls are state-machine no-ops — the helper does NOT advance
+> `config_phase` (audit comments and section content may be rewritten by the
+> editor replace path, but the phase enum remains `partial`). **AC3 invariant:** `partial` does NOT auto-advance to
+> `full` even when all four allowlisted sections (`stacks`, `platforms`,
+> `environments`, `ci_cd`) are now populated. The `partial → full` transition
+> requires explicit user intent via `/gaia-init --full` or all sections
+> manually present before init; hydration triggers never write
+> `config_phase: full` (reserved for `validate-project-config.sh` /
+> E85-S4 / ADR-096). When `config_phase` is `minimal`, the helper writes the
+> section and advances `config_phase` to `partial` monotonically. When
+> `config_phase` is already `full`, both calls are no-ops.
+
+> **Non-blocking error policy.** Capture `$?` from each call. The helper already
+> logs `config-hydration: WARN/CRITICAL ...` to stderr for any failure (rc=0 ok,
+> rc=1 generic, rc=2 allowlist, rc=3 lock timeout); a non-zero rc does NOT HALT
+> the workflow — `infrastructure-design.md` has already been written and is the
+> primary artifact. The flock helper coordinates with the sibling
+> `/gaia-create-arch` trigger (E85-S5 / FR-457) which hydrates `stacks` and
+> `platforms`; concurrent runs are serialized by the shared
+> `config/.config-hydration.lock` (TC-CPH-29). The hydration trigger is purely
+> a SKILL.md finalize-step addition; no devops subagent or infrastructure
+> design document format changes (AC5 / FR-458).
+
 ## Validation
 
 <!--
