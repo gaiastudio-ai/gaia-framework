@@ -235,3 +235,31 @@ EOF
   run grep -E '^LC_ALL=C|^export LC_ALL' "$SCRIPT"
   [ "$status" -eq 0 ]
 }
+
+# E55-S13 D5 (TC-DSF-5): /gaia-create-story SKILL.md Step 4 prose MUST
+# include a "Canonical basename preview" sub-step that displays the
+# slugify.sh output BEFORE the scaffold step writes the file. Without
+# this preview, authors discover slug-mismatches only after
+# validate-canonical-filename.sh rejects the write — by which point the
+# file is on disk under a wrong name and must be renamed.
+#
+# This is a documentation-layer fix per Val F5 option (c); the
+# validate-canonical-filename.sh strictness contract is preserved
+# verbatim (options a and b were rejected in the story's AC5 narrative).
+@test "TC-DSF-5: gaia-create-story SKILL.md Step 4 contains 'Canonical basename preview' sub-step" {
+  local skill="$SKILLS_DIR/gaia-create-story/SKILL.md"
+  [ -f "$skill" ]
+  run grep -E -i 'canonical basename preview' "$skill"
+  [ "$status" -eq 0 ]
+}
+
+# TC-DSF-5b: the preview MUST appear before the scaffold-story.sh invocation.
+@test "TC-DSF-5b: 'Canonical basename preview' is positioned before scaffold-story.sh in Step 4" {
+  local skill="$SKILLS_DIR/gaia-create-story/SKILL.md"
+  local preview_line scaffold_line
+  preview_line=$(grep -n -i 'canonical basename preview' "$skill" | head -1 | cut -d: -f1)
+  scaffold_line=$(grep -n 'scaffold-story.sh' "$skill" | head -1 | cut -d: -f1)
+  [ -n "$preview_line" ]
+  [ -n "$scaffold_line" ]
+  [ "$preview_line" -lt "$scaffold_line" ]
+}

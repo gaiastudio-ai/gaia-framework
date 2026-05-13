@@ -144,7 +144,51 @@ fi
 # ---------- Compute sentinel path ----------
 ARTIFACT_PATH=$(printf '%s' "$ENVELOPE" | jq -r '.artifact_path')
 HASH=$(printf '%s' "$ARTIFACT_PATH" | shasum -a 256 | cut -c1-16)
-CHECKPOINT_DIR="${CHECKPOINT_PATH:-_memory/checkpoints}"
+
+# E55-S13 D4 — when CHECKPOINT_PATH env-var is unset, resolve the canonical
+# checkpoint dir via resolve-config.sh instead of falling back to a CWD-
+# relative `_memory/checkpoints` literal. This keeps sentinels at the
+# project-root path regardless of the orchestrator's CWD, so
+# assert_agent_envelope (which itself runs from project root) can find
+# them. The CHECKPOINT_PATH env-var override path remains the highest
+# precedence — test fixtures and explicit-override callers are unaffected.
+if [ -n "${CHECKPOINT_PATH:-}" ]; then
+  CHECKPOINT_DIR="$CHECKPOINT_PATH"
+else
+  _own_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  _resolver="$_own_dir/../resolve-config.sh"
+  if [ -x "$_resolver" ]; then
+    # Read project_root + checkpoint_path off a single resolver invocation.
+    _resolver_out=""
+    _resolver_out=$("$_resolver" 2>/dev/null) || _resolver_out=""
+    _project_root=""
+    _checkpoint_path=""
+    while IFS= read -r _line; do
+      case "$_line" in
+        project_root=*)
+          _project_root="${_line#project_root=}"
+          _project_root="${_project_root#\'}"; _project_root="${_project_root%\'}"
+          ;;
+        checkpoint_path=*)
+          _checkpoint_path="${_line#checkpoint_path=}"
+          _checkpoint_path="${_checkpoint_path#\'}"; _checkpoint_path="${_checkpoint_path%\'}"
+          ;;
+      esac
+    done <<< "$_resolver_out"
+    if [ -n "$_checkpoint_path" ]; then
+      case "$_checkpoint_path" in
+        /*) CHECKPOINT_DIR="$_checkpoint_path" ;;
+        *)  CHECKPOINT_DIR="${_project_root:-.}/$_checkpoint_path" ;;
+      esac
+    else
+      CHECKPOINT_DIR="_memory/checkpoints"
+    fi
+    unset _own_dir _resolver _resolver_out _project_root _checkpoint_path _line
+  else
+    CHECKPOINT_DIR="_memory/checkpoints"
+  fi
+fi
+
 SENTINEL_PATH="${CHECKPOINT_DIR}/val-envelope-${HASH}.json"
 
 # ---------- Atomic write (tempfile + mv) ----------

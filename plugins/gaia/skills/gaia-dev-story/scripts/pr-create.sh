@@ -8,7 +8,11 @@
 # body inclusion, and error reporting with preserved local commits.
 #
 # Usage:
-#   pr-create.sh <story_key> <title> [--base <branch>]
+#   pr-create.sh <story_key> <title> [--base <branch>] [--body-file <path> | -F <path>]
+#
+# When --body-file (or -F) is passed, the file content is used verbatim as the
+# PR body — the default `## ${STORY_KEY}` body is bypassed. SKILL.md Step 11
+# instructs callers to feed `pr-body.sh` output through this flag (E55-S13 D2).
 #
 # Environment:
 #   PROJECT_PATH — required. The git working directory.
@@ -46,7 +50,7 @@ source "$INVARIANTS_LIB"
 non_git_cwd_skip "$SCRIPT_NAME" || exit 0
 
 if [ $# -lt 2 ]; then
-  die "usage: pr-create.sh <story_key> <title> [--base <branch>]"
+  die "usage: pr-create.sh <story_key> <title> [--base <branch>] [--body-file <path> | -F <path>]"
 fi
 
 STORY_KEY="$1"
@@ -54,12 +58,18 @@ PR_TITLE="$2"
 shift 2
 
 BASE_BRANCH="staging"
+BODY_FILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --base) BASE_BRANCH="$2"; shift 2 ;;
+    --body-file|-F) BODY_FILE="$2"; shift 2 ;;
     *) die "unknown option: $1" ;;
   esac
 done
+
+if [ -n "$BODY_FILE" ] && [ ! -r "$BODY_FILE" ]; then
+  die "--body-file path is not readable: $BODY_FILE"
+fi
 
 WORK_DIR="${PROJECT_PATH:-.}"
 cd "$WORK_DIR" || die "cannot cd to $WORK_DIR"
@@ -87,14 +97,19 @@ fi
 assert_branch_not_protected || die "aborting: protected-branch invariant failed"
 assert_no_secrets_staged || die "aborting: staged-secrets invariant failed"
 
-# Build PR body
-PR_BODY="## ${STORY_KEY}
+# Build PR body. When --body-file was passed, read its content verbatim;
+# otherwise fall back to the default body that points at the story file.
+if [ -n "$BODY_FILE" ]; then
+  PR_BODY="$(cat "$BODY_FILE")"
+else
+  PR_BODY="## ${STORY_KEY}
 
 ### Acceptance Criteria
 
 See story file: docs/implementation-artifacts/epic-*/stories/${STORY_KEY}-*.md (canonical, E79) — legacy-flat fallback: docs/implementation-artifacts/${STORY_KEY}-*.md
 
 Story: ${STORY_KEY}"
+fi
 
 # Create PR
 pr_output=$(gh pr create --base "$BASE_BRANCH" --title "${STORY_KEY}: ${PR_TITLE}" --body "$PR_BODY" 2>&1) || {

@@ -713,7 +713,17 @@ update_sprint_status_yaml() {
     rm -f "$tmp"
     trap - RETURN
     if [ $rc -eq 2 ]; then
-      log "story '$key' not present in sprint-status.yaml — skipping yaml update"
+      # E55-S13 D6 — suppress the skip log when the story is legitimately in
+      # the backlog (sprint_id: null in story frontmatter). Real drift (sprint_id
+      # SET but no entry in sprint-status.yaml) still warns as before.
+      local _sprint_id=""
+      if [ -n "${STORY_FILE:-}" ] && [ -f "${STORY_FILE:-}" ]; then
+        _sprint_id="$(read_frontmatter_field "$STORY_FILE" sprint_id)"
+      fi
+      case "$_sprint_id" in
+        ""|null|"~") : ;;
+        *) log "story '$key' not present in sprint-status.yaml — skipping yaml update" ;;
+      esac
       return 0
     fi
     err "awk rewrite of '$yaml' failed (rc=$rc)"
@@ -913,8 +923,20 @@ update_per_epic_shard() {
   local key="$1" new_status="$2"
   local glob_out kind shard
   glob_out="$(_glob_shard_for_key "$key")"
+  # E55-S13 D6 — suppress the "no per-epic shard entry" log when the story
+  # is legitimately in the backlog (sprint_id: null). For non-backlog stories
+  # the absence of a shard is real drift and still warns.
+  local _sprint_id=""
+  if [ -n "${STORY_FILE:-}" ] && [ -f "${STORY_FILE:-}" ]; then
+    _sprint_id="$(read_frontmatter_field "$STORY_FILE" sprint_id)"
+  fi
+  _is_backlog=0
+  case "$_sprint_id" in
+    ""|null|"~") _is_backlog=1 ;;
+  esac
+
   if [ -z "$glob_out" ]; then
-    log "no per-epic shard entry found for ${key} — monolith-only write"
+    [ "$_is_backlog" -eq 1 ] || log "no per-epic shard entry found for ${key} — monolith-only write"
     return 0
   fi
   kind="${glob_out%%$'\t'*}"
@@ -925,7 +947,7 @@ update_per_epic_shard() {
   fi
   # Confirm the shard contains the `### Story <KEY>:` block.
   if ! grep -qE "^### Story ${key}:" "$shard"; then
-    log "no per-epic shard entry found for ${key} — monolith-only write"
+    [ "$_is_backlog" -eq 1 ] || log "no per-epic shard entry found for ${key} — monolith-only write"
     return 0
   fi
 

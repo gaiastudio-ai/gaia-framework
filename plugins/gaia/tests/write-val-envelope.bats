@@ -124,3 +124,59 @@ teardown() { common_teardown; }
   run head -40 "$HELPER"
   [[ "$output" == *"ADR-105"* ]]
 }
+
+# E55-S13 D4 (TC-DSF-4): when CHECKPOINT_PATH env-var is unset, the helper
+# MUST resolve the checkpoint dir via resolve-config.sh `checkpoint_path`,
+# combined with `project_root`, instead of falling back to the CWD-relative
+# `_memory/checkpoints` literal. Without this, sentinels land in whatever
+# directory the orchestrator happened to be running from when Val was
+# dispatched, and `assert_agent_envelope` (which itself runs from project
+# root) cannot find them.
+@test "TC-DSF-4: CHECKPOINT_PATH unset -> resolves via resolve-config.sh, sentinel lands at project-root path" {
+  # Arrange: per-test "project root" with a config/project-config.yaml.
+  local proj="$TEST_TMP/proj"
+  mkdir -p "$proj/config" "$proj/_memory/checkpoints"
+  cat > "$proj/config/project-config.yaml" <<YAML
+schema_version: "2.0.0"
+config_phase: full
+project_name: test
+project_root: $proj
+project_path: gaia-public
+memory_path: _memory
+checkpoint_path: _memory/checkpoints
+installed_path: ~/.claude/plugins/cache/gaia
+framework_version: "1.151.0"
+date: "2026-05-13"
+YAML
+
+  local artifact="/tmp/d4-fixture-artifact"
+  local envelope='{"agent":"val","persona_sig":"val-dev-d4test","timestamp":"2026-05-13T18:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}'
+
+  # Act: invoke from a deep CWD with CHECKPOINT_PATH UNSET. The helper MUST
+  # resolve the project-root checkpoint dir via the config (not "$PWD/_memory/checkpoints").
+  local deep_cwd="$TEST_TMP/somewhere/else"
+  mkdir -p "$deep_cwd"
+  ( cd "$deep_cwd" && unset CHECKPOINT_PATH && \
+    GAIA_SHARED_CONFIG="$proj/config/project-config.yaml" "$HELPER" --envelope "$envelope" ) > "$TEST_TMP/d4-out.txt" 2>&1
+  [ "$?" -eq 0 ] || { cat "$TEST_TMP/d4-out.txt"; false; }
+
+  # Assert: sentinel landed at the project-root path, not under deep_cwd.
+  local expected_hash
+  expected_hash=$(printf '%s' "$artifact" | shasum -a 256 | cut -c1-16)
+  [ -f "$proj/_memory/checkpoints/val-envelope-${expected_hash}.json" ]
+  [ ! -f "$deep_cwd/_memory/checkpoints/val-envelope-${expected_hash}.json" ]
+}
+
+# TC-DSF-4b: explicit CHECKPOINT_PATH override MUST still win over the
+# config-resolver fallback (preserves test-fixture override semantics).
+@test "TC-DSF-4b: CHECKPOINT_PATH env-var override still wins over config resolver" {
+  local override_dir="$TEST_TMP/override-checkpoints"
+  mkdir -p "$override_dir"
+  local artifact="/tmp/d4b-fixture-artifact"
+  local envelope='{"agent":"val","persona_sig":"val-dev-d4btest","timestamp":"2026-05-13T18:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}'
+  CHECKPOINT_PATH="$override_dir" run "$HELPER" --envelope "$envelope"
+  [ "$status" -eq 0 ]
+  local expected_hash
+  expected_hash=$(printf '%s' "$artifact" | shasum -a 256 | cut -c1-16)
+  [ -f "$override_dir/val-envelope-${expected_hash}.json" ]
+}

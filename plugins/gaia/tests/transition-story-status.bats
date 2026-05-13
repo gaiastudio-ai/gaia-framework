@@ -1132,3 +1132,107 @@ e59_s6_shard_status() {
   [ "$status" -eq 0 ]
   [ "$(e59_s6_shard_status "$shard" "$key")" = "done" ]
 }
+
+# E55-S13 D6 (TC-DSF-6): backlog stories (sprint_id: null + no per-epic shard)
+# generate two stderr "skip" messages on every status transition. These are
+# legitimate backlog-state events, not error conditions, so they MUST be
+# suppressed when BOTH conditions hold. Warnings MUST still fire when only
+# one holds (e.g., sprint_id set but yaml entry missing == real drift).
+@test "TC-DSF-6: backlog story (sprint_id null + no shard) suppresses both skip warnings" {
+  # Per-test fixture: backlog story, no sprint-status.yaml entry, no shard.
+  local proj="$TEST_TMP/d6-proj"
+  mkdir -p "$proj/docs/implementation-artifacts" "$proj/docs/planning-artifacts" "$proj/_memory"
+  local key="DSF-E1-S6"
+  local story="$proj/docs/implementation-artifacts/${key}-d6-fixture.md"
+  cat > "$story" <<EOF2
+---
+template: 'story'
+key: "${key}"
+title: "D6 backlog fixture"
+epic: "DSF-E1"
+status: backlog
+sprint_id: null
+priority: "P3"
+size: "S"
+points: 1
+risk: "low"
+---
+
+# Story: D6 backlog fixture
+EOF2
+  cat > "$proj/docs/planning-artifacts/epics-and-stories.md" <<'EOF2'
+# Epics and Stories
+
+## Epic DSF-E1: D6 fixture epic
+
+### Story DSF-E1-S6: D6 backlog fixture
+
+- **Status:** backlog
+EOF2
+
+  run env \
+    PROJECT_PATH="$proj" \
+    IMPLEMENTATION_ARTIFACTS="$proj/docs/implementation-artifacts" \
+    PLANNING_ARTIFACTS="$proj/docs/planning-artifacts" \
+    MEMORY_PATH="$proj/_memory" \
+    STORY_STATUS_LOCK="$proj/_memory/.d6.lock" \
+    "$TRANSITION" "$key" --to ready-for-dev
+  [ "$status" -eq 0 ]
+
+  # Both legacy backlog-only skip messages MUST be absent when sprint_id IS null
+  # AND no shard exists.
+  echo "STDERR_OUT: $output"
+  [[ "$output" != *"story '${key}' not present in sprint-status.yaml — skipping yaml update"* ]]
+  [[ "$output" != *"no per-epic shard entry found for ${key} — monolith-only write"* ]]
+}
+
+# TC-DSF-6b: when sprint_id IS set but the yaml entry is missing (real drift),
+# the warning MUST still fire — not silently swallowed.
+@test "TC-DSF-6b: drift case (sprint_id set, yaml entry missing) still warns" {
+  local proj="$TEST_TMP/d6b-proj"
+  mkdir -p "$proj/docs/implementation-artifacts" "$proj/docs/planning-artifacts" "$proj/_memory"
+  local key="DSF-E1-S7"
+  local story="$proj/docs/implementation-artifacts/${key}-d6b-fixture.md"
+  cat > "$story" <<EOF2
+---
+template: 'story'
+key: "${key}"
+title: "D6b drift fixture"
+epic: "DSF-E1"
+status: backlog
+sprint_id: "missing-sprint"
+priority: "P3"
+size: "S"
+points: 1
+risk: "low"
+---
+
+# Story: D6b drift fixture
+EOF2
+  # Sprint yaml exists but does NOT contain the story entry — legitimate drift.
+  cat > "$proj/docs/implementation-artifacts/sprint-status.yaml" <<EOF2
+sprint_id: "missing-sprint"
+stories: []
+EOF2
+  cat > "$proj/docs/planning-artifacts/epics-and-stories.md" <<'EOF2'
+# Epics and Stories
+
+## Epic DSF-E1: D6b fixture epic
+
+### Story DSF-E1-S7: D6b drift fixture
+
+- **Status:** backlog
+EOF2
+
+  run env \
+    PROJECT_PATH="$proj" \
+    IMPLEMENTATION_ARTIFACTS="$proj/docs/implementation-artifacts" \
+    PLANNING_ARTIFACTS="$proj/docs/planning-artifacts" \
+    MEMORY_PATH="$proj/_memory" \
+    STORY_STATUS_LOCK="$proj/_memory/.d6b.lock" \
+    "$TRANSITION" "$key" --to ready-for-dev
+  [ "$status" -eq 0 ]
+
+  # The yaml-skip warning MUST fire (real drift, not backlog-state).
+  [[ "$output" == *"not present in sprint-status.yaml"* ]]
+}
