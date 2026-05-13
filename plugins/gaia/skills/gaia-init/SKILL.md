@@ -29,7 +29,6 @@ This skill is a Claude Code native skill — the questionnaire runs as natural c
 
 ## Critical Rules
 
-- Run `greenfield-guard.sh` BEFORE any questionnaire output. If it exits non-zero, surface its stderr message verbatim and STOP — do not proceed to discovery.
 - Treat credential answers as **env-var NAMES only**. Never accept, log, or write a literal credential value. The schema (`project-config.schema.json`) rejects literal-secret patterns at validation time per FR-RSV2-9 / AC11.
 - Validate platform/stack consistency via `validate-platform-stack.sh` BEFORE writing the config file. A `platforms: [ios]` declaration with no iOS-capable stack must be rejected with a clear correction prompt — NEVER silently accepted.
 - `generate-config.sh` performs an atomic write (temp + rename) and refuses to overwrite an existing config. Do not attempt to fall back to overwrite — that would breach AC4.
@@ -42,15 +41,15 @@ This skill is a Claude Code native skill — the questionnaire runs as natural c
 
 ## Steps
 
-### Step 1 — Greenfield guard
+### Step 1 — Reserved (see E85-S3 / ADR-096)
 
-Run:
-
-```
-${CLAUDE_PLUGIN_ROOT}/skills/gaia-init/scripts/greenfield-guard.sh --path "$PROJECT_PATH"
-```
-
-Exit code 1 → surface the message and HALT. Exit code 0 → proceed.
+> **Retirement notice (E85-S7 / FR-460 / ADR-099).** The legacy
+> `greenfield-guard.sh` binary file-existence check has been retired.
+> E85-S3 will land the replacement inline `config_phase` lookup here —
+> a state-machine check (ADR-096) that distinguishes "no config" (run
+> Phase 0), "minimal config" (offer hydration), and "full config"
+> (refuse or offer brownfield). Between this story landing and E85-S3
+> landing, Step 1 is a no-op; downstream steps execute unchanged.
 
 ### Step 2 — Discovery questionnaire
 
