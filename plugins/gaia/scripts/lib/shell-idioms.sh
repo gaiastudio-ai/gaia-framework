@@ -73,18 +73,50 @@ safe_grep_log() {
   local log_output
   log_output="$(git log "$@" 2>/dev/null)" || true
 
-  # Pipe the captured variable into grep. Because the producer is now `printf`
-  # on a fully-realised string (not a long-lived git process), there is no
-  # SIGPIPE risk and pipefail is harmless. grep returns 0 on match, 1 on
-  # no-match — propagate that as our own exit code.
+  # Pipe the captured variable into grep. Even though the producer is now
+  # `printf` on a fully-realised string (not a long-lived git process),
+  # SIGPIPE CAN still fire under `set -o pipefail`: when the caller passes
+  # `-q` to grep, grep exits immediately on first match; if the captured
+  # string is large (e.g., the multi-thousand-commit history of a long-lived
+  # `staging` branch), `printf` is still streaming bytes into the pipe and
+  # receives SIGPIPE on next write. Under pipefail the pipeline's exit
+  # status becomes 141 (printf's signal exit code), even though grep's
+  # actual exit was 0 (match).
+  #
+  # The pre-E57-S10 implementation used `|| rc=$?` which captured pipeline
+  # status — propagating the false 141 as a false-negative no-match. This
+  # surfaced across at least 7 stories (E78-S3, E78-S4, E76-S16/19/20,
+  # E83-S2/S6) and most recently broke /gaia-dev-story Step 14 (E87-S1
+  # Finding #3, 2026-05-12).
+  #
+  # E57-S10 fix: capture grep's exit code via `${PIPESTATUS[1]}` directly,
+  # NOT via `|| rc=$?` on the pipeline. PIPESTATUS surfaces each pipeline
+  # stage's actual exit code regardless of pipefail. Combined with `|| true`
+  # so that `set -e` doesn't abort the function on grep's expected exit-1
+  # (clean no-match), this gives us the helper's documented 0/1 contract
+  # under all pipefail/SIGPIPE combinations. The helper's documented
+  # contract (matching lines emitted on stdout) is preserved — grep's
+  # stdout is unredirected; only its exit code is re-routed via PIPESTATUS.
+  #
   # ${arr[@]+"${arr[@]}"} guards against the bash-3.2 + set -u "unbound
   # variable" trap on empty-array expansion. macOS still ships bash 3.2.
   #
-  # We capture grep's exit code into `rc` rather than letting the pipeline's
-  # status reach the caller directly. Otherwise, when the caller is running
-  # under `set -e`, grep's expected exit-1 (clean no-match) would abort them.
-  # This function's own contract — return 0 / 1 / 2 — is unaffected.
-  local rc=0
-  printf '%s\n' "$log_output" | grep ${grep_flags[@]+"${grep_flags[@]}"} -- "$pattern" || rc=$?
-  return "$rc"
+  # Two subtleties:
+  #   1. PIPESTATUS is only valid IMMEDIATELY after the pipeline — any
+  #      intervening command (including `|| true`) resets it. So we capture
+  #      it into a local array on the very next line, then process.
+  #   2. To survive `set -e` on grep's expected exit-1 (clean no-match), we
+  #      temporarily disable errexit around the pipeline with `set +e` then
+  #      restore it. This is more reliable than `|| true` (which would still
+  #      reset PIPESTATUS) and works regardless of whether the caller had
+  #      errexit set or not.
+  local _pipestatus
+  set +e
+  printf '%s\n' "$log_output" | grep ${grep_flags[@]+"${grep_flags[@]}"} -- "$pattern"
+  _pipestatus=("${PIPESTATUS[@]}")
+  set -e
+  # _pipestatus[1] is grep's exit code: 0 = match, 1 = no match. printf
+  # may have been SIGPIPE'd (_pipestatus[0] == 141) when grep -q matched
+  # and closed the pipe early — that is harmless and intentionally ignored.
+  return "${_pipestatus[1]}"
 }

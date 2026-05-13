@@ -64,12 +64,13 @@ For each finding, apply the appropriate fix:
 
 Preserve all existing valid content -- only modify sections flagged by findings.
 
-### Step 5 -- Re-Validate
+### Step 5 -- Re-Validate (Main-Turn Dispatch per ADR-104)
 
-- Invoke the `gaia-val-validate` skill (NOT the legacy workflow) against the updated story file to confirm clean state. The story file path was resolved in Step 1 via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh` (E79-S7 / FR-476) and may live at either the canonical nested path (`docs/implementation-artifacts/epic-*/stories/{story_key}-{slug}.md`) or the legacy-flat fallback (`docs/implementation-artifacts/{story_key}-{slug}.md`) — pass the resolved path:
+- Invoke the `gaia-val-validate` skill (NOT the legacy workflow) against the updated story file via the **main-turn Agent tool** (per ADR-093 / ADR-104). The story file path was resolved in Step 1 via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh` (E79-S7 / FR-476) and may live at either the canonical nested path (`docs/implementation-artifacts/epic-*/stories/{story_key}-{slug}.md`) or the legacy-flat fallback (`docs/implementation-artifacts/{story_key}-{slug}.md`) — pass the resolved path:
   ```
-  /gaia-val-validate <resolved_story_path>
+  /gaia-val-validate {resolved_story_path}
   ```
+- **Envelope assertion (E87-S3 / ADR-104).** After `/gaia-val-validate` returns and BEFORE consuming its verdict, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` where `{sentinel_path} = _memory/checkpoints/val-envelope-{sha256(resolved_story_path) first 16 hex}.json`. On non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}`. DO NOT fall through to a self-judged validation verdict. This directly closes the bypass class documented in memory rule `feedback_fix_story_inline_revalidation_bypass.md` (AI-2026-05-09-12 sibling defect).
 - Parse the re-validation result:
   - If zero CRITICAL/WARNING findings: validation is clean -- proceed to Step 6.
   - If CRITICAL/WARNING findings remain: do NOT loop. Exit non-zero with a summary listing each remaining finding. Leave status at `validating`.
@@ -88,6 +89,10 @@ Preserve all existing valid content -- only modify sections flagged by findings.
 - If status transitioned to `ready-for-dev`: report success with list of sections modified.
 - If findings remain after fixes: report failure with list of unresolved findings.
 - Exit with code 0 for success, non-zero for remaining findings.
+
+## Changelog
+
+- **2026-05-12 — E87-S3 — Val Bridge Migration (ADR-104).** Retargeted Step 5 re-validation to the main-turn Agent-tool dispatch model and added the envelope-assert step (`assert_agent_envelope`) immediately after the `/gaia-val-validate` invocation with HALT on assertion failure. Directly closes the inline-Val self-judgment bypass class documented in `feedback_fix_story_inline_revalidation_bypass.md` (AI-2026-05-09-12 sibling defect).
 
 ## Finalize
 

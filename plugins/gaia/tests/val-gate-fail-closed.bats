@@ -278,10 +278,17 @@ EOF
 # TC-VFC-9 — static check: Agent-tool dispatch requirement + parent-thread halt
 # ---------------------------------------------------------------------------
 
-@test "TC-VFC-9: SKILL.md Step 2 prose mandates Agent-tool dispatch with context: fork" {
+@test "POST-E87-S5: SKILL.md Step 2 prose mandates Agent-tool dispatch with main-turn dispatch (ADR-104)" {
+  # Originally pinned `Val MUST be dispatched as a context: fork subagent`
+  # (E83-S2 / AI-2026-05-09-12). E87-S5 (Val Bridge Migration, ADR-104)
+  # migrates the dispatch model to main-turn Agent-tool dispatch. The two
+  # sibling TC-VFC-9 @test blocks below (parent-thread HALT, no-inline-Val
+  # license) preserve the dispatch-FAILURE semantics verbatim — only this
+  # @test block flips the dispatch-MODEL vocabulary from `context: fork`
+  # literal to `main-turn Agent tool` semantic equivalent.
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
-  printf '%s\n' "$step2" | grep -Eq 'Val MUST be dispatched as a .context: fork. subagent via the Agent tool'
+  printf '%s\n' "$step2" | grep -Eq 'Val MUST be dispatched via the .*main-turn Agent tool'
 }
 
 @test "TC-VFC-9: SKILL.md Step 2 contains parent-thread re-invoke HALT instruction" {

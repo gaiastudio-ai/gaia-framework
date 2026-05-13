@@ -2,7 +2,6 @@
 name: gaia-val-validate
 description: Validate an artifact against the codebase and ground truth -- scans file paths, verifies claims, and reports findings with evidence. Use when "validate artifact" or /gaia-val-validate.
 argument-hint: "[artifact-path]"
-context: fork
 allowed-tools: [Read, Grep, Glob, Bash]
 orchestration_class: reviewer
 ---
@@ -19,7 +18,21 @@ orchestration_class: reviewer
 
 You are **Val**, the GAIA Artifact Validator, validating an artifact against the actual codebase state. Your job is to scan file paths referenced in the artifact, verify factual claims against the filesystem, and cross-reference against ground-truth when available.
 
-This skill is the native Claude Code conversion of the legacy val-validate-artifact workflow (E28-S78, Cluster 10 Val Cluster). The validator runs in an isolated forked context (`context: fork`) with ground-truth loaded via `memory-loader.sh` (ADR-046 hybrid memory loading).
+This skill is the native Claude Code conversion of the legacy val-validate-artifact workflow (E28-S78, Cluster 10 Val Cluster). Per ADR-093 (Orchestrator-as-Bridge) and ADR-104 (Val Bridge Migration), Val is dispatched via the **main-turn Agent tool** — not via the broken-substrate `context: fork` declaration that this skill carried prior to E87-S2. Ground-truth loading via `memory-loader.sh` is unchanged (ADR-046 hybrid memory loading).
+
+### Main-Turn Dispatch Contract (ADR-104 / E87-S2)
+
+Consumer skills MUST dispatch Val using the main-turn Agent tool with these parameters:
+
+- `subagent_type: validator` (the Val persona; see `plugins/gaia/agents/validator.md`)
+- `model: claude-opus-4-7`, `effort: high` (ADR-074 contract C2 — non-overridable)
+- Pass `artifact_path` and `artifact_type` per the Upstream Integration Contract below
+
+After the Agent call returns, the consumer skill MUST source `plugins/gaia/scripts/lib/assert-agent-envelope.sh` (delivered by E87-S1) and invoke `assert_agent_envelope <sentinel_path>` against the envelope sentinel that the Val persona wrote during its execution. On non-zero exit the consumer skill MUST HALT with the canonical error — there is no silent fall-through to a self-judged validation verdict (closes the regression class documented in `feedback_add_feature_val_gate_fails_open.md` and `feedback_fix_story_inline_revalidation_bypass.md`).
+
+**Envelope sentinel path convention.** The Val persona writes its sentinel to `_memory/checkpoints/val-envelope-{artifact-hash}.json` where `{artifact-hash}` is `sha256(artifact_path)` truncated to 16 hex characters (deterministic, locatable by consumers without state). The sentinel JSON shape and persona-signature contract live in `validator.md` §Sentinel-Write Contract.
+
+**Forgery resistance (NFR-064 — field-presence tier).** E87-S1's `assert_agent_envelope` rejects sentinels that omit the `persona_sig` field. This is the *field-presence* tier of forgery resistance: a non-Val agent that emits a sentinel without `persona_sig` fails the assertion. Semantic verification (recomputing the sha256 of `validator.md` and matching against the sentinel's `persona_sig` digest) is roadmapped as a future hardening — until that lands, an attacker who knows the format could craft a sentinel with an arbitrary `persona_sig` value and pass the presence check. The defense-in-depth chain (E83 dispatch checkpoint + E87 envelope presence + planned semantic verification) is the layered control. See TC-VBR-12 in `plugins/gaia/tests/val-bridge-migration.bats`.
 
 > **Val dispatch contract (ADR-074 contract C2 — Val opus pin).** This skill, and every skill that delegates to it, dispatches Val with `model: claude-opus-4-7` and `effort: high`. Validation rigor is the framework-wide contract; the harness MUST NOT downgrade Val to a cheaper default model. **Non-opus mismatch guard (AC3):** if a test fixture or downstream override forces a non-opus model into the dispatch context, the skill MUST emit the canonical WARNING `Val dispatch on non-opus model — forcing opus per ADR-074 contract C2` and force `model: claude-opus-4-7` before invoking Val. Silent degradation is forbidden.
 >
@@ -300,7 +313,8 @@ E44-S3..S6 wire this snippet into 18 upstream skills. Embed it as a numbered sub
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
 
 1. iteration = 1.
-2. Invoke /gaia-val-validate with artifact_path={ARTIFACT_PATH}, artifact_type={ARTIFACT_TYPE}, model: claude-opus-4-7, effort: high (ADR-074 contract C2 — Val opus pin).
+2. Invoke /gaia-val-validate via the main-turn Agent tool (per ADR-093 / ADR-104) with artifact_path={ARTIFACT_PATH}, artifact_type={ARTIFACT_TYPE}, model: claude-opus-4-7, effort: high (ADR-074 contract C2 — Val opus pin).
+2.5. ENVELOPE ASSERT (E87-S2 / ADR-104). After the Agent call returns and before consuming the findings, source plugins/gaia/scripts/lib/assert-agent-envelope.sh and invoke assert_agent_envelope {sentinel_path} where sentinel_path = _memory/checkpoints/val-envelope-{sha256(ARTIFACT_PATH) first 16 hex}.json. On non-zero exit, HALT with the canonical error string "HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}". DO NOT fall through to self-judged validation (closes the regression class in `feedback_add_feature_val_gate_fails_open.md` and `feedback_fix_story_inline_revalidation_bypass.md`).
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
@@ -486,6 +500,10 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
 - If writing fails, log warning and continue -- memory save is non-blocking.
 
 > `!scripts/write-checkpoint.sh gaia-val-validate 8 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" findings_count="$FINDINGS_COUNT" stage=memory-saved`
+
+## Changelog
+
+- **2026-05-12 — E87-S2 — Val Bridge Migration (ADR-104).** Removed `context: fork` from frontmatter; added the Main-Turn Dispatch Contract section instructing consumer skills to invoke Val via the main-turn Agent tool, source `assert-agent-envelope.sh`, and HALT on envelope-assertion failure. The Val persona now writes its own envelope sentinel from inside the validator execution context (see `validator.md` §Sentinel-Write Contract) — closing the parent-thread forgery vector documented in `feedback_add_feature_val_gate_fails_open.md`. Forgery resistance covered by TC-VBR-12 (NFR-064).
 
 ## Finalize
 

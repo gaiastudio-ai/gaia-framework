@@ -24,6 +24,17 @@ export default {
   ignores: [
     (commit) => /^release: /.test(commit),
     (commit) => /^Merge (branch|pull request|remote-tracking) /.test(commit),
+    // Squash-merge commits from PRs whose subject was authored as a bare
+    // story-key prefix (e.g. "E87-S1: shared assert-agent-envelope.sh ..."
+    // or "E57-S10: fix safe_grep_log SIGPIPE ..."). The /gaia-dev-story
+    // commit-msg.sh helper emits `feat(EXX-SY): ...` for the feature
+    // commit, but GitHub's squash-merge UI sometimes truncates or rewrites
+    // the subject to the PR title, dropping the Conventional Commits type
+    // prefix when the PR title itself was set without one. The story-key
+    // prefix is unambiguous and traces back to GAIA's story-id contract;
+    // exempting it from commitlint avoids blocking staging→main release
+    // PRs on historical subjects that pre-date this allowlist.
+    (commit) => /^E\d+-S\d+:\s/.test(commit),
   ],
   rules: {
     "type-enum": [
