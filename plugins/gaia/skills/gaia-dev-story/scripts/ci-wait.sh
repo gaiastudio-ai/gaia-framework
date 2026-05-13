@@ -68,8 +68,13 @@ while true; do
     exit 1
   fi
 
-  # Poll checks
-  checks_output=$(gh pr checks "$PR_NUMBER" --json name,status,conclusion 2>&1) || {
+  # Poll checks. The `gh pr checks` JSON schema (gh 2.20+) only exposes:
+  #   bucket, completedAt, description, event, link, name, startedAt, state, workflow.
+  # Earlier code requested `--json status,conclusion`, which gh rejects with
+  # "Unknown JSON field: status" — see E55-S13 D1 / AF-2026-05-13-4.
+  # `bucket` is the one-word summary (pass / fail / pending / skipping); `state`
+  # is the granular status (SUCCESS / IN_PROGRESS / QUEUED / FAILURE / ...).
+  checks_output=$(gh pr checks "$PR_NUMBER" --json name,state,bucket 2>&1) || {
     CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
     if [ "$CONSECUTIVE_FAILURES" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
       die "CI polling failed ${MAX_CONSECUTIVE_FAILURES} consecutive times. Last error: $checks_output"
@@ -82,9 +87,9 @@ while true; do
 
   CONSECUTIVE_FAILURES=0
 
-  # Check if all checks have concluded
-  pending=$(echo "$checks_output" | grep -c '"status":"IN_PROGRESS"\|"status":"QUEUED"\|"status":"PENDING"' 2>/dev/null || echo "0")
-  failed=$(echo "$checks_output" | grep -c '"conclusion":"FAILURE"\|"conclusion":"CANCELLED"\|"conclusion":"TIMED_OUT"' 2>/dev/null || echo "0")
+  # Check if all checks have concluded — bucket-based detection.
+  pending=$(echo "$checks_output" | grep -c '"bucket":"pending"' 2>/dev/null || echo "0")
+  failed=$(echo "$checks_output" | grep -c '"bucket":"fail"' 2>/dev/null || echo "0")
 
   if [ "$failed" -gt 0 ]; then
     log "CI check(s) failed. Fix the issue, push again, and resume with /gaia-resume."

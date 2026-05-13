@@ -91,21 +91,28 @@ RESOLVE_CONFIG="$SHARED_SCRIPTS/resolve-config.sh"
 YOLO_MODE="$SHARED_SCRIPTS/yolo-mode.sh"
 
 # ---------------------------------------------------------------------------
-# Locate the story file.
+# Locate the story file via the shared resolve-story-file.sh helper
+# (E79-S7 / FR-476). Replaces the legacy private nullglob to keep all
+# dev-story scripts on a single canonical resolution path. — E55-S13 D3.
 # ---------------------------------------------------------------------------
 
 PROJECT_ROOT="${PROJECT_PATH:-$(pwd)}"
-IMPL_DIR="$PROJECT_ROOT/docs/implementation-artifacts"
-
-shopt -s nullglob
-STORY_MATCHES=( "$IMPL_DIR/${STORY_KEY}-"*.md "$IMPL_DIR"/epic-*/stories/"${STORY_KEY}-"*.md )
-shopt -u nullglob
-
-if [ "${#STORY_MATCHES[@]}" -eq 0 ]; then
-  die "story file not found: $IMPL_DIR/${STORY_KEY}-*.md (also checked epic-*/stories/)"
+RESOLVE_STORY_FILE="$SHARED_SCRIPTS/resolve-story-file.sh"
+if [ ! -x "$RESOLVE_STORY_FILE" ]; then
+  die "shared helper missing or not executable: $RESOLVE_STORY_FILE"
 fi
+# shellcheck disable=SC1090
+source "$RESOLVE_STORY_FILE"
 
-STORY_FILE="${STORY_MATCHES[0]}"
+# The resolver writes informational WARNING lines to stderr (e.g.,
+# "legacy-flat path — ...") on success. The TDD-review gate is a one-line
+# decision-emitter; surfacing the resolver's stderr here would pollute
+# every gate invocation with migration-nag output. The legacy-flat warning
+# is already surfaced by every other resolver caller (story-parse,
+# dod-check, finalize, etc.), so dropping it here loses no information.
+STORY_FILE=$(IMPLEMENTATION_ARTIFACTS="$PROJECT_ROOT/docs/implementation-artifacts" \
+             resolve_story_file "$STORY_KEY" 2>/dev/null) \
+  || die "story file not found for key $STORY_KEY (resolve-story-file.sh non-zero)"
 
 # ---------------------------------------------------------------------------
 # Resolve story risk — prefer story-parse.sh (E57-S5); awk fallback if absent.

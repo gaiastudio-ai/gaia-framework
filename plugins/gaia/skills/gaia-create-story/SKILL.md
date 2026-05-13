@@ -246,6 +246,16 @@ IMPLEMENTATION_ARTIFACTS=$(!scripts/resolve-config.sh implementation_artifacts)
 # 2. Slug — delegated to slugify.sh (E63-S1).
 SLUG=$(!scripts/slugify.sh --title "<story-title>")
 
+# 2a. Canonical basename preview (E55-S13 D5 / AF-2026-05-13-4).
+#     Display the filename that scaffold-story.sh will write BEFORE the
+#     write happens. validate-canonical-filename.sh (E63-S4) strictly
+#     enforces this exact basename — surfacing it here lets the author
+#     confirm the slug matches their intent before the file lands on disk.
+#     The basename rule is `${STORY_KEY}-${SLUG}.md`; the strictness
+#     contract itself is preserved verbatim (no auto-correct, no
+#     monotonic-prefix acceptance).
+echo "[gaia-create-story] Canonical basename preview: ${STORY_KEY}-${SLUG}.md"
+
 # 3. Frontmatter YAML — delegated to generate-frontmatter.sh (E63-S3),
 #    which derives points from size via the resolved sizing_map (ADR-074 C1)
 #    and HALTs on resolver failure (no silent fallback).
