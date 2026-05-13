@@ -32,6 +32,7 @@ module,phase,name,code,command,required,agent-name,description,output-location
 "lifecycle","anytime","generate-project-context","project-context","gaia-project-context","false","analyst","Generate project context for AI","docs/planning-artifacts"
 "lifecycle","anytime","brownfield-onboarding","brownfield","gaia-brownfield","false","orchestrator","Onboard existing project to GAIA","docs/planning-artifacts"
 "lifecycle","anytime","gaia-init","init","gaia-init","false","orchestrator","Bootstrap a new project — defaults to 5-field quick setup; use --full for the 7-question discovery flow","config/project-config.yaml"
+"lifecycle","anytime","gaia-migrate","migrate","gaia-migrate","false","orchestrator","Migrate v1->v2 OR reconcile config schema (v2 to v2). Intents: reconcile config, update config schema, schema reconciliation, v2 to v2. Dispatches to gaia-reconcile-v2.sh on v2 detection (ADR-100 / ADR-101).","config/project-config.yaml"
 "lifecycle","quick-flow","quick-spec","quick-spec","gaia-quick-spec","false","dev-*","Create a quick tech spec","docs/implementation-artifacts"
 "lifecycle","quick-flow","quick-dev","quick-dev","gaia-quick-dev","false","dev-*","Implement a quick spec","docs/implementation-artifacts"
 "core","anytime","editorial-review-prose","editorial-prose","gaia-editorial-prose","false","tech-writer","Clinical copy-editing review","n/a"
