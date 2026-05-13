@@ -157,6 +157,25 @@ Suggested next command(s):
 2. …
 ```
 
+> **E86-S5 / AC8 / SR-56 — verbose-mode visibility for the drift-check
+> bypass.** When `/gaia-help` is invoked with `--verbose` (`$ARGUMENTS`
+> contains the `--verbose` flag) AND the environment variable
+> `GAIA_SKIP_VERSION_CHECK=1` is set, append the following passive note
+> verbatim to the rendered output (after the suggestion list, before
+> the Step 6 prompt):
+>
+> ```
+> Note: version drift check is disabled (GAIA_SKIP_VERSION_CHECK=1).
+> ```
+>
+> The note informs the user that the drift detection hook in
+> `resolve-config.sh` is short-circuited (see E86-S5). It does NOT
+> recommend any action; suppressing the check is an intentional opt-out
+> for batch/test contexts. Do NOT emit the note when `--verbose` is
+> absent (the env var alone is not a trigger) or when
+> `GAIA_SKIP_VERSION_CHECK` is unset / `0` / any value other than the
+> literal string `1`.
+
 ### Step 6 — Offer To Activate
 
 Conclude with: `Run one of these now? Reply with the command name, or say "no" to exit.` — preserve the legacy "offer to activate the selected workflow" behavior.
