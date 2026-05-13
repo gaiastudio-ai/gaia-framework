@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.148.0] — 2026-05-13
+
+### Added
+
+- (E87-S6) wire Bats anti-pattern check + SKILL.md changelog + AI-202 (#638)
+- (E87-S5) wire Migrate `/gaia-add-feature` Step 2 Val gate (LAST — (#637)
+- (E87-S4) wire Migrate `/gaia-dev-story` Steps 4 + 7b (#636)
+- (E87-S3) wire Migrate `/gaia-validate-story` Component 4 + `/gaia-f (#635)
+
 ## [1.147.2] — 2026-05-12
 
 ### Fixed
