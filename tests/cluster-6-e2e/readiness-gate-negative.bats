@@ -75,14 +75,19 @@ run_setup() {
 @test "AC3: fixture state is unchanged after traceability-matrix HALT" {
   echo "# CI Setup" > "$TEST_TMP/docs/test-artifacts/ci-setup.md"
   rm -f "$TEST_TMP/docs/test-artifacts/traceability-matrix.md"
-  # Capture state before
+  # Capture state before. Exclude _memory/ — that namespace is reserved for
+  # ephemeral runtime markers (E86-S2 drift detection writes
+  # .framework-version-checked-* and .framework-version-stale ambiently per
+  # resolve-config.sh invocation; ADR-102 + AC9). The "fixture state
+  # unchanged" intent is about the project-artifact tree, not the
+  # gitignored runtime cache.
   local before_count
-  before_count=$(find "$TEST_TMP" -type f | wc -l | tr -d ' ')
+  before_count=$(find "$TEST_TMP" -type f -not -name '.framework-version-*' | wc -l | tr -d ' ')
   run_setup
   [ "$status" -ne 0 ]
   # Verify no new files were created (state unchanged)
   local after_count
-  after_count=$(find "$TEST_TMP" -type f | wc -l | tr -d ' ')
+  after_count=$(find "$TEST_TMP" -type f -not -name '.framework-version-*' | wc -l | tr -d ' ')
   [ "$before_count" -eq "$after_count" ]
 }
 
@@ -106,12 +111,13 @@ run_setup() {
 @test "AC3: fixture state is unchanged after ci-setup HALT" {
   echo "# Traceability" > "$TEST_TMP/docs/test-artifacts/traceability-matrix.md"
   rm -f "$TEST_TMP/docs/test-artifacts/ci-setup.md"
+  # See note above — exclude _memory/ from the unchanged-state check.
   local before_count
-  before_count=$(find "$TEST_TMP" -type f | wc -l | tr -d ' ')
+  before_count=$(find "$TEST_TMP" -type f -not -name '.framework-version-*' | wc -l | tr -d ' ')
   run_setup
   [ "$status" -ne 0 ]
   local after_count
-  after_count=$(find "$TEST_TMP" -type f | wc -l | tr -d ' ')
+  after_count=$(find "$TEST_TMP" -type f -not -name '.framework-version-*' | wc -l | tr -d ' ')
   [ "$before_count" -eq "$after_count" ]
 }
 
