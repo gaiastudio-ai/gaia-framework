@@ -6,7 +6,8 @@
 #   AC1, AC8 — SKILL.md frontmatter + registry rows
 #   AC2      — generate-config.sh emits a YAML that matches expected shape
 #   AC3      — mobile follow-ups populate platforms[]
-#   AC4      — greenfield-guard.sh
+#   AC4      — RETIRED (greenfield-guard.sh removed by E85-S7 / FR-460 / ADR-099;
+#                       replaced by inline config_phase lookup in E85-S3)
 #   AC5      — validate-platform-stack.sh
 #   AC6      — generate-ci-scaffold.sh
 #   AC7      — next-steps rendering instructions live in SKILL.md (presence-tested)
@@ -47,28 +48,10 @@ teardown() { common_teardown; }
   grep -F 'gaia-init' "$KNOWLEDGE_DIR/workflow-manifest.csv"
 }
 
-# --- AC4: greenfield-guard.sh ---------------------------------------------
+# --- AC4 retirement guard (E85-S7 / FR-460 / ADR-099) ---------------------
 
-@test "greenfield-guard.sh: passes when no project-config.yaml exists" {
-  mkdir -p "$TEST_TMP/clean"
-  run "$SKILL_SCRIPTS/greenfield-guard.sh" --path "$TEST_TMP/clean"
-  [ "$status" -eq 0 ]
-}
-
-@test "greenfield-guard.sh: refuses when config/project-config.yaml exists" {
-  mkdir -p "$TEST_TMP/dirty/config"
-  printf 'project_root: x\n' > "$TEST_TMP/dirty/config/project-config.yaml"
-  run "$SKILL_SCRIPTS/greenfield-guard.sh" --path "$TEST_TMP/dirty"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"already exists"* ]] || [[ "$output" == *"gaia-config"* ]] || [[ "$output" == *"gaia-brownfield"* ]]
-}
-
-@test "greenfield-guard.sh: error message points to /gaia-config or /gaia-brownfield" {
-  mkdir -p "$TEST_TMP/dirty/config"
-  printf 'project_root: x\n' > "$TEST_TMP/dirty/config/project-config.yaml"
-  run "$SKILL_SCRIPTS/greenfield-guard.sh" --path "$TEST_TMP/dirty"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"gaia-brownfield"* ]] || [[ "$output" == *"gaia-config"* ]]
+@test "greenfield-guard.sh has been retired (file does not exist)" {
+  [ ! -f "$SKILL_SCRIPTS/greenfield-guard.sh" ]
 }
 
 # --- AC5: validate-platform-stack.sh --------------------------------------
