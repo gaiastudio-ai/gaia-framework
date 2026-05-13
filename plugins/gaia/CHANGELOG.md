@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.147.2] — 2026-05-12
+
+### Fixed
+
+- (statusline) lower update-check TTL from 24h to 30min
+
 ## [1.147.1] — 2026-05-12
 
 ### Fixed
