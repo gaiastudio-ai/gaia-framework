@@ -1,0 +1,53 @@
+# GAIA v2 — team-shared config (cloud-synced)
+# Migrated from v1 by /gaia-migrate (E28-S131)
+ci_cd:
+  promotion_chain:
+    - id: staging
+      name: Staging
+      branch: staging
+      ci_provider: github_actions
+      merge_strategy: merge
+      ci_checks:
+        - lint
+        - unit
+        - test
+    - id: main
+      name: main
+      branch: main
+      ci_provider: github_actions
+      merge_strategy: squash
+val_integration:
+  template_output_review: true
+
+# CI/CD promotion chain — written by /gaia-ci-setup (E20-S3)
+# Test Execution Bridge — enables real test runner integration
+sizing_map:
+  S: 2
+  M: 5
+  L: 8
+  XL: 13
+
+# Problem-solving workflow — context gathering configuration
+problem_solving:
+  context_budget: 30000  # Max tokens for auto-gathered context (Step 0)
+
+# Required resolver fields — hand-patched from v1 backup per E28-S200 Finding F2.
+# Original /gaia-migrate split (pre-E28-S191) dropped these. E28-S191's
+# _derive_required_fields helper now writes them on new migrations; this file
+# predates that fix. See docs/implementation-artifacts/E28-S200-resolver-emit-surface-and-harness-fixture-mode.md.
+project_root: "."
+project_path: "gaia-public"
+memory_path: "./_memory"
+checkpoint_path: "./_memory/checkpoints"
+installed_path: "./_gaia"
+framework_version: "1.127.2-rc.1"
+date: "2026-04-19"
+planning_artifacts: "./docs/planning-artifacts"
+implementation_artifacts: "./docs/implementation-artifacts"
+test_artifacts: "./docs/test-artifacts"
+creative_artifacts: "./docs/creative-artifacts"
+
+# Framework paths
+
+platforms:
+  - claude-plugin
