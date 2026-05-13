@@ -92,6 +92,7 @@ Preserve all existing valid content -- only modify sections flagged by findings.
 
 ## Changelog
 
+- **2026-05-13 — E87-S7 — Sentinel-Write Writer Shift (ADR-105 amends ADR-104).** Following the AI-2026-05-13-13 incident, the Val sentinel write has been relocated from the Val sub-agent context to the orchestrator's main turn. Val now RETURNS the sentinel content as a `sentinel_envelope` field inside the ADR-037 envelope; this skill (Step 5 re-validation) parses the field and writes the sentinel via the new helper `plugins/gaia/scripts/lib/write-val-envelope.sh` BEFORE invoking `assert_agent_envelope`. Forgery resistance preserved via `persona_sig` (NFR-064 unchanged). Closes the substrate content-integrity false-fire that affected the re-validation gate.
 - **2026-05-12 — E87-S3 — Val Bridge Migration (ADR-104).** Retargeted Step 5 re-validation to the main-turn Agent-tool dispatch model and added the envelope-assert step (`assert_agent_envelope`) immediately after the `/gaia-val-validate` invocation with HALT on assertion failure. Directly closes the inline-Val self-judgment bypass class documented in `feedback_fix_story_inline_revalidation_bypass.md` (AI-2026-05-09-12 sibling defect).
 
 ## Finalize
