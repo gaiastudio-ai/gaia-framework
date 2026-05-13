@@ -359,3 +359,48 @@ _extract_add_feature_step_2() {
   # E87 envelope sentinel reference (added by E87-S5 Green phase).
   grep -q 'val-envelope-' "$ADD_FEATURE_MD"
 }
+
+# ============================================================================
+# E87-S7 — Sentinel-Write Writer Shift (ADR-105 amends ADR-104)
+# ============================================================================
+# Following the AI-2026-05-13-13 incident, the Val sentinel write was relocated
+# from the Val sub-agent context to the orchestrator's main turn. Val now
+# RETURNS the sentinel content as a `sentinel_envelope` field inside the
+# ADR-037 envelope; the caller writes the sentinel via the new helper at
+# plugins/gaia/scripts/lib/write-val-envelope.sh. These three tests cover the
+# writer-shift contract.
+
+WRITE_ENVELOPE_HELPER="$SCRIPTS_DIR/lib/write-val-envelope.sh"
+VALIDATOR_MD="$SCRIPTS_DIR/../agents/validator.md"
+
+# ---------------- TC-VBR-13: write-val-envelope.sh helper exists ----------------
+@test "TC-VBR-13: write-val-envelope.sh helper exists at canonical path (E87-S7)" {
+  [ -f "$WRITE_ENVELOPE_HELPER" ]
+  [ -x "$WRITE_ENVELOPE_HELPER" ]
+  # Header references ADR-105 (the anchor for the writer-shift).
+  run head -40 "$WRITE_ENVELOPE_HELPER"
+  [[ "$output" == *"ADR-105"* ]]
+}
+
+# ---------------- TC-VBR-14: validator.md §Sentinel-Write Contract specifies sentinel_envelope return-channel ----------------
+@test "TC-VBR-14: validator.md Sentinel-Write Contract references sentinel_envelope return-channel (E87-S7)" {
+  [ -f "$VALIDATOR_MD" ]
+  # The new contract specifies that Val embeds the sentinel content in the
+  # ADR-037 envelope as a `sentinel_envelope` field.
+  grep -q 'sentinel_envelope' "$VALIDATOR_MD"
+  # The new contract explicitly states Val MUST NOT write the sentinel file.
+  grep -q 'MUST NOT write' "$VALIDATOR_MD"
+  # ADR-105 is the anchor.
+  grep -q 'ADR-105' "$VALIDATOR_MD"
+}
+
+# ---------------- TC-VBR-15: validator.md Write allowlist removal (E87-S7 / AC7) ----------------
+@test "TC-VBR-15: validator.md frontmatter allowed-tools omits 'Write' (E87-S7)" {
+  [ -f "$VALIDATOR_MD" ]
+  # Extract the frontmatter allowed-tools line. Val is now read-only on the
+  # filesystem under the new contract — Write is removed.
+  run grep -E '^allowed-tools:' "$VALIDATOR_MD"
+  [ "$status" -eq 0 ]
+  # 'Write' must NOT appear in the allowed-tools list.
+  [[ "$output" != *"Write"* ]]
+}

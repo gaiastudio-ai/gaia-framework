@@ -1,19 +1,33 @@
 #!/usr/bin/env bash
-# assert-agent-envelope.sh — Val agent envelope assertion (E87-S1, ADR-104).
+# assert-agent-envelope.sh — Val agent envelope assertion (E87-S1, ADR-104; updated by E87-S7, ADR-105).
 #
 # Story: E87-S1 — Shared assert-agent-envelope.sh helper + ADR-104 anchor + memory scaffold.
 # Anchor: ADR-104 — Val Bridge Migration: Main-Turn Agent Dispatch Across Val-Consuming Skills.
-# Trace: FR-477, NFR-064 (forgery resistance), NFR-065 (sequencing safety).
+#         ADR-105 — Sentinel-Write Writer Shift (amends ADR-104, E87-S7, 2026-05-13).
+# Trace: FR-477, FR-482, FR-483, FR-484, NFR-064 (forgery resistance), NFR-065 (sequencing safety), NFR-066.
 #
 # Background:
 #   Claude Code 2.1.138 silently broke plugin `context: fork` dispatch
 #   (issue #49559). E87 migrates all Val DISPATCH call sites to main-turn
 #   Agent-tool dispatch per ADR-093 / ADR-104. This helper is the shared
 #   primitive every migrated Val consumer (E87-S2..S5) sources to verify
-#   that a Val-dispatch sentinel was written by the authentic Val persona
-#   — closing the forgery vector documented in memory rule
+#   that a Val-dispatch sentinel passes forgery-resistance checks — closing
+#   the regression class documented in memory rule
 #   `feedback_add_feature_val_gate_fails_open.md` and the inline-Val
 #   bypass class in `feedback_fix_story_inline_revalidation_bypass.md`.
+#
+# Writer-shift (ADR-105 / E87-S7, 2026-05-13):
+#   The sentinel was originally written by the Val sub-agent itself
+#   (E87-S2 contract). ADR-105 shifts the writer to the orchestrator's
+#   main turn (via `lib/write-val-envelope.sh`) because the Claude Code
+#   substrate's content-integrity guard false-fires on sub-agent writes
+#   to `_memory/checkpoints/val-envelope-*.json` (incident
+#   AI-2026-05-13-13). The assertion logic below is UNCHANGED — the four
+#   checks (file exists, valid JSON, agent=val, persona_sig present)
+#   apply identically regardless of who wrote the sentinel. Forgery
+#   resistance is preserved because `persona_sig` is computed by Val
+#   from validator.md's on-disk sha256, which the orchestrator cannot
+#   fabricate without reading validator.md at the same revision.
 #
 # Contract:
 #   This file is intended to be SOURCED, not executed. Sourcing makes the
