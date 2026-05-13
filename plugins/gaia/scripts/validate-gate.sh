@@ -69,7 +69,11 @@ PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
 
 # ---------- Constants ----------
 # Supported gate list — keep in sync with gate_path() case block below.
-SUPPORTED_GATES="file_exists test_plan_exists traceability_exists ci_setup_exists atdd_exists readiness_report_exists epics_and_stories_exists prd_exists"
+SUPPORTED_GATES="file_exists test_plan_exists traceability_exists ci_setup_exists atdd_exists readiness_report_exists epics_and_stories_exists prd_exists config_phase_gate"
+
+# Supported artifact types for config_phase_gate (E85-S4 — keep in sync with
+# required_phase_for_artifact() / remediation_for_artifact() case blocks below).
+SUPPORTED_ARTIFACT_TYPES="prd architecture infra-design test-plan epics"
 
 # ---------- Helpers ----------
 
@@ -86,17 +90,19 @@ die_usage() {
 print_usage() {
   cat <<'USAGE'
 Usage:
-  validate-gate.sh <gate_type> [--story <key>] [--file <path>...]
-  validate-gate.sh --multi <gate_type>,<gate_type>,...
+  validate-gate.sh <gate_type> [--story <key>] [--file <path>...] [--artifact-type <type>]
+  validate-gate.sh --multi <gate_type>,<gate_type>,... [--artifact-type <type>]
   validate-gate.sh --list
   validate-gate.sh --help
 
 Flags:
-  --story <key>   Story key (required by atdd_exists), e.g. E1-S1
-  --file <path>   File path for file_exists (repeatable)
-  --multi <list>  Comma-separated list of gate types to evaluate in order
-  --list          Print every supported gate type and its path pattern
-  --help          Print this usage message and exit 0
+  --story <key>          Story key (required by atdd_exists), e.g. E1-S1
+  --file <path>          File path for file_exists (repeatable)
+  --artifact-type <type> Artifact type for config_phase_gate (E85-S4):
+                         prd | architecture | infra-design | test-plan | epics
+  --multi <list>         Comma-separated list of gate types to evaluate in order
+  --list                 Print every supported gate type and its path pattern
+  --help                 Print this usage message and exit 0
 
 Supported gate types:
   file_exists             Check every --file <path> argument
@@ -107,6 +113,7 @@ Supported gate types:
   readiness_report_exists ${PLANNING_ARTIFACTS}/readiness-report.md OR ${PLANNING_ARTIFACTS}/readiness-report/index.md
   epics_and_stories_exists ${PLANNING_ARTIFACTS}/epics-and-stories.md OR ${PLANNING_ARTIFACTS}/epics-and-stories/index.md
   prd_exists              ${PLANNING_ARTIFACTS}/prd.md OR ${PLANNING_ARTIFACTS}/prd/index.md
+  config_phase_gate       ${PROJECT_ROOT}/config/project-config.yaml — config_phase >= required-for-artifact (requires --artifact-type)
 
 Exit codes:
   0  gate(s) passed, or --list / --help completed
@@ -133,6 +140,7 @@ gate_path() {
   local gate="$1"
   case "$gate" in
     file_exists)             return 3 ;;
+    config_phase_gate)       return 3 ;;
     test_plan_exists)        printf '%s/test-plan.md' "$TEST_ARTIFACTS" ;;
     traceability_exists)     printf '%s/traceability-matrix.md' "$TEST_ARTIFACTS" ;;
     ci_setup_exists)         printf '%s/ci-setup.md' "$TEST_ARTIFACTS" ;;
@@ -149,6 +157,10 @@ list_gates() {
   for g in $SUPPORTED_GATES; do
     if [ "$g" = "file_exists" ]; then
       printf '%s\t%s\n' "$g" "(uses --file <path> args)"
+      continue
+    fi
+    if [ "$g" = "config_phase_gate" ]; then
+      printf '%s\t%s\n' "$g" "\${PROJECT_ROOT}/config/project-config.yaml (requires --artifact-type: $SUPPORTED_ARTIFACT_TYPES)"
       continue
     fi
     set +e
@@ -287,6 +299,206 @@ check_file_nonempty() {
   return 1
 }
 
+# ---------- config_phase_gate helpers (E85-S4) ----------
+#
+# Phase ordinal: minimal=0, partial=1, full=2. Bash 3.2 portable case block —
+# no `declare -A`. Returns the integer on stdout or exit 1 for invalid input
+# (caller treats this as a separate failure mode per ADR-101 §6).
+phase_ordinal() {
+  case "$1" in
+    minimal) printf '0' ;;
+    partial) printf '1' ;;
+    full)    printf '2' ;;
+    *)       return 1 ;;
+  esac
+}
+
+# Required phase for an artifact type. Hardcoded per the story Technical Notes
+# table. Exit 1 = unknown artifact type (caller surfaces a distinct error).
+required_phase_for_artifact() {
+  case "$1" in
+    prd|epics)                    printf 'minimal' ;;
+    architecture|infra-design|test-plan) printf 'partial' ;;
+    *) return 1 ;;
+  esac
+}
+
+# Sections that an artifact type requires (used in the failure message and the
+# SR-44 content cross-reference). Space-separated on stdout for predictable
+# tokenisation.
+required_sections_for_artifact() {
+  case "$1" in
+    prd|epics)        printf 'project_name project_kind' ;;
+    architecture)     printf 'stacks platforms' ;;
+    infra-design)     printf 'environments ci_cd' ;;
+    test-plan)        printf 'stacks platforms' ;;
+    *) return 1 ;;
+  esac
+}
+
+# Remediation command suggestion for an artifact type.
+remediation_for_artifact() {
+  case "$1" in
+    prd|epics)     printf '/gaia-init' ;;
+    architecture)  printf '/gaia-create-arch' ;;
+    infra-design)  printf '/gaia-infra-design' ;;
+    test-plan)     printf '/gaia-create-arch' ;;
+    *) return 1 ;;
+  esac
+}
+
+# Sections that must be present for a given phase (SR-44 content cross-reference).
+# partial -> stacks + platforms; full -> stacks + platforms + environments + ci_cd.
+# minimal has no SR-44 content requirements beyond the base project_name /
+# project_kind (those are validated by the schema layer in E85-S2, not here).
+sections_for_phase() {
+  case "$1" in
+    minimal) printf '' ;;
+    partial) printf 'stacks platforms' ;;
+    full)    printf 'stacks platforms environments ci_cd' ;;
+    *) return 1 ;;
+  esac
+}
+
+# Read config_phase from ${PROJECT_ROOT}/config/project-config.yaml.
+# Absence-means-full per NFR-062 / ADR-097: missing file OR missing field =>
+# "full". yq is a soft dependency — if absent, treat as "full".
+# Emits the raw value on stdout (caller validates the enum).
+read_config_phase() {
+  local cfg="${PROJECT_ROOT}/config/project-config.yaml"
+  if [ ! -f "$cfg" ]; then
+    printf 'full'
+    return 0
+  fi
+  if ! command -v yq >/dev/null 2>&1; then
+    printf 'full'
+    return 0
+  fi
+  local val
+  val=$(yq -r '.config_phase // "full"' "$cfg" 2>/dev/null || printf 'full')
+  # yq may emit "null" if the key is explicitly null; coerce to "full".
+  if [ -z "$val" ] || [ "$val" = "null" ]; then
+    val="full"
+  fi
+  printf '%s' "$val"
+}
+
+# Check whether a top-level section in project-config.yaml is "present and
+# non-empty". Returns 0 = present, 1 = missing/empty/yq-unavailable.
+# Used by SR-44 content cross-reference (AC7).
+config_section_present() {
+  local section="$1"
+  local cfg="${PROJECT_ROOT}/config/project-config.yaml"
+  if [ ! -f "$cfg" ]; then
+    return 1
+  fi
+  if ! command -v yq >/dev/null 2>&1; then
+    # Without yq we cannot verify content; the gate degrades to phase-ordinal-only.
+    return 0
+  fi
+  local kind length
+  # `type` reports !!map / !!seq / !!str / !!null / "object"|"array"|"string"|"null"
+  # (Go-yq normalises to YAML tag form; Python yq normalises to JSON-ish).
+  kind=$(yq -r ".${section} | type" "$cfg" 2>/dev/null || printf '')
+  case "$kind" in
+    *null*|"") return 1 ;;
+  esac
+  # For map/object: at least one key required. For seq/array: at least one element.
+  case "$kind" in
+    *map*|*object*)
+      length=$(yq -r ".${section} | length" "$cfg" 2>/dev/null || printf '0')
+      [ "${length:-0}" -gt 0 ] 2>/dev/null
+      return $?
+      ;;
+    *seq*|*array*)
+      length=$(yq -r ".${section} | length" "$cfg" 2>/dev/null || printf '0')
+      [ "${length:-0}" -gt 0 ] 2>/dev/null
+      return $?
+      ;;
+    *string*|*str*)
+      length=$(yq -r ".${section}" "$cfg" 2>/dev/null || printf '')
+      [ -n "$length" ]
+      return $?
+      ;;
+    *)
+      # Anything else (scalar, number, bool): treat as present if non-null.
+      return 0
+      ;;
+  esac
+}
+
+# Evaluate config_phase_gate. Returns 0 on pass, 1 on fail.
+# Uses ARTIFACT_TYPE from outer scope (set by --artifact-type arg parsing).
+evaluate_config_phase_gate() {
+  local artifact="${ARTIFACT_TYPE:-}"
+  if [ -z "$artifact" ]; then
+    warn "config_phase_gate requires --artifact-type <type>"
+    warn "supported: $SUPPORTED_ARTIFACT_TYPES"
+    return 1
+  fi
+
+  # AC8 — unknown artifact type rejection.
+  local required
+  set +e
+  required=$(required_phase_for_artifact "$artifact")
+  local rc=$?
+  set -e
+  if [ $rc -ne 0 ]; then
+    warn "Unknown artifact type '$artifact' -- supported: prd, architecture, infra-design, test-plan, epics"
+    return 1
+  fi
+
+  # AC4 — read current phase (absence-means-full).
+  local current
+  current=$(read_config_phase)
+
+  # AC6 — invalid enum rejection (defense-in-depth, ADR-101 §6).
+  local cur_ord req_ord
+  set +e
+  cur_ord=$(phase_ordinal "$current")
+  rc=$?
+  set -e
+  if [ $rc -ne 0 ]; then
+    warn "Invalid config_phase value '$current' -- expected one of: minimal, partial, full"
+    return 1
+  fi
+  req_ord=$(phase_ordinal "$required")
+
+  # AC3 — phase ordinal comparison.
+  if [ "$cur_ord" -lt "$req_ord" ]; then
+    local sections command
+    sections=$(required_sections_for_artifact "$artifact")
+    command=$(remediation_for_artifact "$artifact")
+    warn "config_phase_gate failed -- config_phase is '$current' but '$artifact' requires '$required'. Missing sections: $sections. Run $command to hydrate."
+    return 1
+  fi
+
+  # AC7 — SR-44 phase-vs-content cross-reference. Only verify the sections
+  # claimed by the CURRENT phase (not the artifact's required phase) — if the
+  # config claims partial, partial-level sections must exist; if it claims full,
+  # full-level sections must exist. minimal has no SR-44 content claims.
+  #
+  # Skip SR-44 entirely when the config file is absent: NFR-062 / ADR-097
+  # "absence-means-full" is a graceful-degradation default, not a content
+  # claim — there is nothing to cross-reference, so the gate passes.
+  local cfg="${PROJECT_ROOT}/config/project-config.yaml"
+  if [ ! -f "$cfg" ]; then
+    return 0
+  fi
+  local claimed_sections section
+  claimed_sections=$(sections_for_phase "$current")
+  if [ -n "$claimed_sections" ]; then
+    for section in $claimed_sections; do
+      if ! config_section_present "$section"; then
+        warn "config_phase_gate failed -- config_phase is '$current' but section '$section' is missing -- phase/content mismatch (CRITICAL)"
+        return 1
+      fi
+    done
+  fi
+
+  return 0
+}
+
 # Evaluate a single gate. Returns 0 on pass, 1 on fail.
 # Args: gate_type
 # Uses FILE_ARGS array and STORY_KEY from outer scope.
@@ -306,6 +518,10 @@ evaluate_gate() {
         check_file_nonempty "$gate" "$f" || return 1
       done
       return 0
+      ;;
+    config_phase_gate)
+      evaluate_config_phase_gate
+      return $?
       ;;
     atdd_exists)
       if [ -z "${STORY_KEY:-}" ]; then
@@ -349,6 +565,7 @@ evaluate_gate() {
 GATE_TYPE=""
 STORY_KEY=""
 MULTI_LIST=""
+ARTIFACT_TYPE=""
 DO_LIST=0
 DO_HELP=0
 FILE_ARGS=()
@@ -371,6 +588,11 @@ while [ $# -gt 0 ]; do
     --file)
       [ $# -ge 2 ] || die_usage "--file requires a value"
       FILE_ARGS+=("$2")
+      shift 2
+      ;;
+    --artifact-type)
+      [ $# -ge 2 ] || die_usage "--artifact-type requires a value"
+      ARTIFACT_TYPE="$2"
       shift 2
       ;;
     --multi)
