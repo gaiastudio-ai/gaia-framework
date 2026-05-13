@@ -96,8 +96,16 @@ write_fragment() {
   [[ "$output" == *"not in allowlist"* || "$output" == *"allowlist"* ]]
 }
 
-@test "AC4: allowlist accepts stacks, platforms, environments, ci_cd, compliance, project_name, project_shape" {
-  for section in stacks platforms environments ci_cd compliance project_name project_shape; do
+@test "AC4: allowlist accepts the curated configuration set (E85-S11 / AF-2026-05-13-2)" {
+  # Original E85-S1 allowlist had 7 entries (stacks, platforms, environments,
+  # ci_cd, compliance, project_name, project_shape). E85-S11 (AF-2026-05-13-2)
+  # expanded the allowlist to the curated 24-entry configuration set and
+  # moved `project_shape` to _CONFIG_HYDRATION_MANAGED_ELSEWHERE as a
+  # back-compat shim (it was in allowlist but absent from schema v2.0.0 —
+  # Val F4 dead-code drift). Spot-check the original 6 + a representative
+  # subset of the new entries.
+  for section in stacks platforms environments ci_cd compliance project_name \
+                 testing sprint review_gate dev_story tools severity gates; do
     write_minimal_config
     write_fragment "${TMP}/frag.yaml" "${section}: value"
     run bash -c "source '$LIB' && config_hydrate_section ${section} '${TMP}/frag.yaml'"

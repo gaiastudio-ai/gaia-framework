@@ -38,16 +38,95 @@ _CONFIG_HYDRATION_LOADED=1
 
 # ---- Constants -------------------------------------------------------------
 
-# Hardcoded section allowlist (SR-47, Dev Notes). NOT read from SKILL.md
-# frontmatter in this story — that is future work per T-INIT-6 mitigation (a).
+# Curated section allowlist + managed-elsewhere classification (E85-S11 / AF-2026-05-13-2).
+#
+# Background:
+#   Original E85-S1 allowlist contained 7 entries; reconciler at gaia-reconcile-v2.sh:307-316
+#   downgraded "not in allowlist" rc=2 to WARN+continue+exit-0, silently skipping 33 of 40
+#   schema sections on v2-to-v2 reconciliation. Reproduced 2026-05-13 on plugin 1.150.0;
+#   AF-2026-05-13-2 is the cascade. Pattern is "skill claims success while critical step
+#   was silently skipped" — sibling defect to AI-2026-05-09-12.
+#
+# Contract (ADR-098 + ADR-101 §6 + ADR-096):
+#   - Every schema property MUST be in exactly one of:
+#       (i)  _CONFIG_HYDRATION_ALLOWLIST       — auto-hydratable; reconciler invokes
+#                                                config_hydrate_section to add an empty stub.
+#       (ii) _CONFIG_HYDRATION_MANAGED_ELSEWHERE — known to be written by /gaia-init,
+#                                                  schema discovery, or another helper; the
+#                                                  reconciler MUST skip them WITHOUT raising
+#                                                  the AC5 hard-error (exit 5).
+#       (iii) `x-no-auto-hydration: true` in the schema property — optional escape hatch
+#                                                                  for future schema additions.
+#   - Forward + reverse invariants are pinned by bats tests in
+#     tests/config-hydration-allowlist-invariant.bats (TC-RV2-45, TC-RV2-46).
+#   - `project_shape` (legacy E85-S1 entry) was in the allowlist but NOT in schema v2.0.0
+#     (Val F4 dead-code drift on 2026-05-13). Removed in this story.
 _CONFIG_HYDRATION_ALLOWLIST=(
+  # Configuration sections (auto-hydratable as empty stubs).
   project_name
-  project_shape
-  stacks
-  platforms
-  environments
   ci_cd
+  testing
+  test_execution_bridge
+  test_execution
+  sprint
+  review_gate
+  team_conventions
+  agent_customizations
+  dev_story
   compliance
+  tools
+  severity
+  gates
+  stacks
+  cross_service_tests
+  environments
+  ci_platform
+  platforms
+  sizing_map
+  device_targets
+  distribution
+  health_check
+  val_integration
+)
+
+# Sections that are intentionally NOT auto-hydrated. The reconciler MUST recognize these
+# and skip them without triggering the AC5 hard-error path. Forward + reverse invariants:
+# every schema property is in EXACTLY ONE of allowlist, managed-elsewhere, or x-no-auto-hydration.
+#
+#   - Computed path/identity (7):        written by resolve-config.sh at runtime.
+#   - State-machine (2):                 written by config-hydration.sh advance-phase
+#                                        and schema discovery.
+#   - User-identity (3):                 written by /gaia-init Phase 0 / --full.
+#   - Artifact-bucket paths (4):         written by resolve-config.sh and /gaia-init.
+#                                        Val F2 on 2026-05-13 surfaced these as a
+#                                        reverse-invariant gap.
+_CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
+  # Computed path/identity (7).
+  project_root
+  project_path
+  memory_path
+  checkpoint_path
+  installed_path
+  framework_version
+  date
+  # State-machine (2).
+  config_phase
+  schema_version
+  # User-identity (3).
+  user_name
+  communication_language
+  project_kind
+  # Artifact-bucket paths (4).
+  planning_artifacts
+  implementation_artifacts
+  test_artifacts
+  creative_artifacts
+  # Legacy / back-compat (1): retained in managed-elsewhere so reconciler
+  # tests that still declare `project_shape` in the schema fixture don't
+  # trip the AC5 hard-error path. Removed from allowlist (Val F4) but
+  # classified here for forward-compat with any caller that still
+  # references it.
+  project_shape
 )
 
 # ---- Logging helpers ------------------------------------------------------
@@ -410,9 +489,104 @@ _config_hydrate_section_locked() {
   return 0
 }
 
-# Direct-invocation forbidden — this is a sourced library only (AC1).
+# ---- advance-phase sub-command (E85-S11 / AF-2026-05-13-2 sub-fix c) -----
+#
+# Adds a small CLI dispatch for the partial→full transition that the reconciler
+# (gaia-reconcile-v2.sh) invokes after a successful section-hydration pass.
+# Preserves ADR-101 §6: the reconciler dispatches to this helper; the helper
+# is the sole writer of `config_phase`. ADR-096 monotonicity is enforced —
+# backward transitions return rc=3.
+#
+# Usage (direct invocation, AF-2026-05-13-2):
+#   bash config-hydration.sh advance-phase --to <minimal|partial|full> [--config <path>]
+#
+# Exit codes:
+#   0 — success (advancement applied or already at target; idempotent)
+#   2 — config file missing
+#   3 — backward transition refused (full→partial, full→minimal, partial→minimal)
+#       or unknown target value
+#   4 — usage error / missing required flag
+#
+# Default --config: config/project-config.yaml (relative to CWD).
+_ch_advance_phase() {
+  local target_phase="" config_path="config/project-config.yaml"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --to) target_phase="${2:-}"; shift 2 ;;
+      --config) config_path="${2:-}"; shift 2 ;;
+      *) printf 'config-hydration.sh advance-phase: unknown arg: %s\n' "$1" >&2; return 4 ;;
+    esac
+  done
+
+  case "$target_phase" in
+    minimal|partial|full) ;;
+    "") printf 'config-hydration.sh advance-phase: --to <phase> is required\n' >&2; return 4 ;;
+    *) printf 'config-hydration.sh advance-phase: invalid target phase: %s\n' "$target_phase" >&2; return 3 ;;
+  esac
+
+  if [ ! -f "$config_path" ]; then
+    printf 'config-hydration.sh advance-phase: config file not found: %s\n' "$config_path" >&2
+    return 2
+  fi
+
+  # Read current phase (absence-means-full per ADR-097).
+  local current_phase
+  current_phase="$(grep -E '^config_phase:[[:space:]]*' "$config_path" 2>/dev/null | awk '{print $2}' | tr -d '"' | head -1)"
+  [ -z "$current_phase" ] && current_phase="full"
+
+  # Ordinal phase: minimal=0, partial=1, full=2. Backward transitions refused.
+  local current_ord target_ord
+  case "$current_phase" in
+    minimal) current_ord=0 ;;
+    partial) current_ord=1 ;;
+    full)    current_ord=2 ;;
+    *) printf 'config-hydration.sh advance-phase: unknown current config_phase value: %s\n' "$current_phase" >&2; return 3 ;;
+  esac
+  case "$target_phase" in
+    minimal) target_ord=0 ;;
+    partial) target_ord=1 ;;
+    full)    target_ord=2 ;;
+  esac
+
+  if [ "$target_ord" -lt "$current_ord" ]; then
+    printf 'config-hydration.sh advance-phase: error: backward config_phase transition (%s→%s) forbidden per ADR-096 monotonicity\n' \
+      "$current_phase" "$target_phase" >&2
+    return 3
+  fi
+
+  # Idempotent — already at target.
+  if [ "$target_ord" -eq "$current_ord" ]; then
+    return 0
+  fi
+
+  _ch_write_phase "$config_path" "$target_phase"
+  return 0
+}
+
+# ---- Dual-mode dispatch (E85-S11 / Val F1) -------------------------------
+#
+# The original E85-S1 guard at this position exited 1 on direct invocation,
+# preserving the "sourced library only" contract. AF-2026-05-13-2 sub-fix (c)
+# adds a small CLI surface (`advance-phase`) that needs direct invocation.
+#
+# Dual-mode dispatch:
+#   - Sourced (BASH_SOURCE[0] != $0): no-op return; library is available.
+#   - Direct invocation with NO args: refuse with usage message (preserves the
+#     original library-only invariant for accidental `bash config-hydration.sh`).
+#   - Direct invocation with args:    route to sub-command handler.
 if [ "${BASH_SOURCE[0]:-}" = "${0:-}" ]; then
-  printf 'config-hydration.sh: this file is a sourced library, not an executable.\n' >&2
-  printf 'usage: source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-hydration.sh"\n' >&2
-  exit 1
+  if [ $# -eq 0 ]; then
+    printf 'config-hydration.sh: this file is a sourced library; direct invocation requires a sub-command.\n' >&2
+    printf 'usage (sourced): source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-hydration.sh"\n' >&2
+    printf 'usage (direct):  bash config-hydration.sh advance-phase --to <minimal|partial|full> [--config <path>]\n' >&2
+    exit 1
+  fi
+  case "$1" in
+    advance-phase) shift; _ch_advance_phase "$@"; exit $? ;;
+    *)
+      printf 'config-hydration.sh: unknown sub-command: %s\n' "$1" >&2
+      printf 'available sub-commands: advance-phase\n' >&2
+      exit 4
+      ;;
+  esac
 fi
