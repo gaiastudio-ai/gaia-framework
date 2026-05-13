@@ -1,7 +1,7 @@
 ---
 name: gaia-migrate
-description: Automate the upgrade from GAIA v1 (workflow.xml engine) to v2 (Claude Code native plugin) — backup, migrate templates/memory/config, validate. Use after the v2 plugins have been installed via /plugin marketplace add.
-when_to_use: When a user has an existing GAIA v1 installation (presence of _gaia/, _memory/, custom/) and wants to migrate to the v2 plugin layout. Run with `dry-run` first to see the planned operations. After `/gaia-migrate apply` completes, manually run `/gaia:gaia-help` (namespaced form) to smoke-test the post-migration install — filesystem-only validation cannot exercise skill invocation, so a live `/gaia:gaia-help` run is the only way to confirm slash-command routing, plugin discovery, and skill loading are wired up end-to-end. The `gaia:` prefix ensures the plugin's `gaia-help` skill is invoked, not any legacy `.claude/commands/gaia-help.md` stub that might still be present on older installs.
+description: Automate the upgrade from GAIA v1 (workflow.xml engine) to v2 (Claude Code native plugin) — backup, migrate templates/memory/config, validate — and v2-to-v2 config reconciliation when an existing v2 project needs schema alignment after a framework update. Use after the v2 plugins have been installed via /plugin marketplace add.
+when_to_use: When a user has an existing GAIA v1 installation (presence of _gaia/, _memory/, custom/) and wants to migrate to the v2 plugin layout, OR when an existing v2 project needs schema reconciliation after a framework update — detected automatically and dispatched to gaia-reconcile-v2.sh per ADR-100 / ADR-101. Run with `dry-run` first to see the planned operations. After `/gaia-migrate apply` completes, manually run `/gaia:gaia-help` (namespaced form) to smoke-test the post-migration install — filesystem-only validation cannot exercise skill invocation, so a live `/gaia:gaia-help` run is the only way to confirm slash-command routing, plugin discovery, and skill loading are wired up end-to-end. The `gaia:` prefix ensures the plugin's `gaia-help` skill is invoked, not any legacy `.claude/commands/gaia-help.md` stub that might still be present on older installs.
 allowed-tools: [Read, Bash]
 orchestration_class: light-procedural
 ---
@@ -17,6 +17,55 @@ Automate the v1 → v2 migration documented in `gaia-public/docs/migration-guide
 - The user has read `gaia-public/docs/migration-guide-v2.md` (or wants the automated path).
 
 If the user has NOT installed the v2 plugins yet, point them to §1 Prerequisites of the migration guide first — `/gaia-migrate` cannot install plugins.
+
+## Step 0 — v2-to-v2 branch (reconciliation path)
+
+> **E85-S10 / FR-469 — documentation cascade for the v2-to-v2 reconciliation
+> path delivered by E85-S8 (`gaia-reconcile-v2.sh`) and E85-S9 (`gaia-migrate.sh`
+> exit-11 dispatch).** This branch runs automatically — the user invokes
+> `/gaia-migrate` the same way for both v1→v2 migration and v2-to-v2
+> reconciliation; the dispatch script decides which path to take based on
+> the project state.
+
+**Detection condition (ADR-100 §exit-11):** `gaia-migrate.sh` returns exit
+code 11 when the project root contains `config/project-config.yaml` AND no
+v1 markers (`_gaia/` absent, `custom/` absent) AND at least one v2-era state
+directory is present (`_memory/` OR `docs/planning-artifacts/`). The
+detection is performed by `_detect_v1` in `gaia-migrate.sh` and fires BEFORE
+the existing return-10 "nothing to migrate" idempotent-success branch and
+BEFORE the v1+v2 mixed-state HALT.
+
+**Dispatch mechanism (ADR-101 §2):** on exit-code 11, `gaia-migrate.sh`
+explicitly `export`s `MODE`, `PROJECT_ROOT`, `DRY_RUN`, and `ASSUME_YES`,
+then `exec`s `$SCRIPT_DIR/gaia-reconcile-v2.sh` — process replacement, not
+subprocess. The reconciler owns the process from this point; there is no
+return path back into `gaia-migrate.sh` (FR-461).
+
+**Reconciler behaviour (ADR-101):** `gaia-reconcile-v2.sh` performs
+forward-only, non-destructive reconciliation of `config/project-config.yaml`
+against the installed schema:
+
+1. **Schema discovery** — primary path `${CLAUDE_PLUGIN_ROOT}/schemas/project-config.schema.json`; fallback walks up from `$PROJECT_ROOT` for in-tree checkouts.
+2. **Schema version comparison** — equal versions exit 0 with "nothing to reconcile"; downgrade (config newer than schema) exits 4; upgrade proceeds.
+3. **Section diff** — classifies each top-level section as `missing` (in schema, not in config), `extra` (in config, not in schema), or `retired` (marked `deprecated: true` in schema).
+4. **Missing-section hydration** — calls `config_hydrate_section` from the shared `config-hydration.sh` helper (E85-S1 / ADR-098), acquiring the shared flock at `config/.config-hydration.lock` so concurrent runs with `/gaia-create-arch` (E85-S5) and `/gaia-infra-design` (E85-S6) cannot corrupt the file.
+5. **Retired-section warn-and-keep (ADR-101 §3)** — never deletes a retired section; emits a stderr WARNING and injects a `# RETIRED in schema vX -- kept for audit per ADR-101 warn-keep` comment above the section.
+6. **`config_phase` read-only (AC6 of E85-S8)** — the reconciler never writes `config_phase`. Helper-driven advancement from hydration triggers is observed and logged as INFO, but the reconciler itself does not promote the state-machine enum.
+7. **Idempotency** — second run on an already-reconciled config is byte-identical to the first (the helper short-circuits when sections are present and the phase is at target).
+8. **Defense-in-depth** — pre-write SHA-256 hash audit (SR-49), secret regex scan with backup restore on detection (SR-50), post-write `yq` stability check with backup restore on corruption (SR-52), flock acquire/release audit logging with PID + ISO-8601 timestamps (SR-53). Exit codes 0 (success / nothing-to-do / dry-run), 1 (general / schema not found), 2 (config missing / secret detected), 3 (schema unreadable / unknown config_phase), 4 (schema downgrade / lock timeout).
+
+**User-visible output:**
+
+- **`dry-run` mode (`$MODE=dry-run` or `$DRY_RUN=true`):** structured YAML
+  on stdout with keys `schema_current`, `schema_target`, `sections_missing`,
+  `sections_retired`, `sections_extra`, `actions_planned`. Zero disk writes.
+  Always exits 0 unless the config is unparseable.
+- **`apply` mode (default):** audit-trail comments injected above hydrated
+  sections (`# hydrated by reconcile-v2 at <ISO-8601>`) and above retired
+  sections (`# RETIRED ...`). Pre/post SHA-256 hashes logged. Lock
+  acquire/release events logged.
+
+**Cross-references:** ADR-100 (return-code semantics), ADR-101 (reconciliation contract), ADR-098 (config-hydration helper + flock), ADR-096 (config_phase state machine), FR-461 (dispatch), FR-469 (this doc cascade).
 
 ## Steps
 
