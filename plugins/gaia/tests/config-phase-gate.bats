@@ -324,3 +324,129 @@ write_config() {
   [[ "$output" == *"stacks"* ]]
   [[ "$output" == *"platforms"* ]]
 }
+
+# ---------- NFR-052 coverage anchors for internal helpers ----------
+#
+# The coverage gate (plugins/gaia/tests/run-with-coverage.sh) greps each
+# public function name as a substring across .bats files (line 167-176).
+# The CLI tests above exercise these helpers transitively through the
+# `config_phase_gate` dispatch arm; this section runs the helpers DIRECTLY
+# so the coverage gate sees their names AND they double as fast unit
+# regressions on the helper contracts.
+#
+# Helpers exercised here (by name): phase_ordinal, required_phase_for_artifact,
+# required_sections_for_artifact, remediation_for_artifact, sections_for_phase,
+# read_config_phase, config_section_present, evaluate_config_phase_gate.
+#
+# Implementation note: validate-gate.sh dispatches main inline (no
+# `BASH_SOURCE[0] = $0` guard), so we cannot `source` it cleanly. Instead we
+# extract each helper's body via `sed` and `eval` it into a subshell. The
+# extracted bodies are pure functions with no side effects.
+
+extract_helper() {
+  # extract_helper <function-name> — emit the function definition from the
+  # script source as a here-string suitable for `eval` in a subshell.
+  local name="$1"
+  awk -v n="$name" '
+    $0 ~ "^"n"\\(\\) \\{" {capture=1}
+    capture {print}
+    capture && /^\}$/ {capture=0}
+  ' "$SCRIPTS_DIR/validate-gate.sh"
+}
+
+@test "config-phase-gate: helper phase_ordinal maps minimal/partial/full to 0/1/2" {
+  body=$(extract_helper phase_ordinal)
+  run bash -c "$body; phase_ordinal minimal; printf ':'; phase_ordinal partial; printf ':'; phase_ordinal full"
+  [ "$status" -eq 0 ]
+  [ "$output" = "0:1:2" ]
+}
+
+@test "config-phase-gate: helper phase_ordinal rejects unknown phase values" {
+  body=$(extract_helper phase_ordinal)
+  run bash -c "$body; phase_ordinal bogus"
+  [ "$status" -ne 0 ]
+}
+
+@test "config-phase-gate: helper required_phase_for_artifact maps every artifact" {
+  body=$(extract_helper required_phase_for_artifact)
+  run bash -c "$body
+    for a in prd architecture infra-design test-plan epics; do
+      printf '%s=%s\n' \"\$a\" \"\$(required_phase_for_artifact \"\$a\")\"
+    done"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"prd=minimal"* ]]
+  [[ "$output" == *"architecture=partial"* ]]
+  [[ "$output" == *"infra-design=partial"* ]]
+  [[ "$output" == *"test-plan=partial"* ]]
+  [[ "$output" == *"epics=minimal"* ]]
+}
+
+@test "config-phase-gate: helper required_sections_for_artifact returns expected tokens" {
+  body=$(extract_helper required_sections_for_artifact)
+  run bash -c "$body; required_sections_for_artifact architecture"
+  [ "$status" -eq 0 ]
+  [ "$output" = "stacks platforms" ]
+}
+
+@test "config-phase-gate: helper remediation_for_artifact maps every artifact" {
+  body=$(extract_helper remediation_for_artifact)
+  run bash -c "$body
+    printf '%s\n' \"\$(remediation_for_artifact prd)\" \"\$(remediation_for_artifact architecture)\" \"\$(remediation_for_artifact infra-design)\" \"\$(remediation_for_artifact test-plan)\" \"\$(remediation_for_artifact epics)\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"/gaia-init"* ]]
+  [[ "$output" == *"/gaia-create-arch"* ]]
+  [[ "$output" == *"/gaia-infra-design"* ]]
+}
+
+@test "config-phase-gate: helper sections_for_phase enumerates content claims" {
+  body=$(extract_helper sections_for_phase)
+  run bash -c "$body
+    printf 'minimal=[%s]\n' \"\$(sections_for_phase minimal)\"
+    printf 'partial=[%s]\n' \"\$(sections_for_phase partial)\"
+    printf 'full=[%s]\n'    \"\$(sections_for_phase full)\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"minimal=[]"* ]]
+  [[ "$output" == *"partial=[stacks platforms]"* ]]
+  [[ "$output" == *"full=[stacks platforms environments ci_cd]"* ]]
+}
+
+@test "config-phase-gate: helper read_config_phase returns full when file absent" {
+  local empty_root="$TEST_TMP/no-config-$$"
+  mkdir -p "$empty_root"
+  body=$(extract_helper read_config_phase)
+  run bash -c "PROJECT_ROOT='$empty_root'; $body; read_config_phase"
+  [ "$status" -eq 0 ]
+  [ "$output" = "full" ]
+}
+
+@test "config-phase-gate: helper read_config_phase reads explicit phase value" {
+  write_config "partial" "stacks:" "  - name: api" "platforms:" "  - web"
+  body=$(extract_helper read_config_phase)
+  run bash -c "PROJECT_ROOT='$TEST_TMP'; $body; read_config_phase"
+  [ "$status" -eq 0 ]
+  [ "$output" = "partial" ]
+}
+
+@test "config-phase-gate: helper config_section_present detects present and missing sections" {
+  write_config "partial" "stacks:" "  - name: api" "platforms:" "  - web"
+  body=$(extract_helper config_section_present)
+  # Present
+  run bash -c "PROJECT_ROOT='$TEST_TMP'; $body; config_section_present stacks"
+  [ "$status" -eq 0 ]
+  # Missing
+  run bash -c "PROJECT_ROOT='$TEST_TMP'; $body; config_section_present environments"
+  [ "$status" -eq 1 ]
+}
+
+@test "config-phase-gate: dispatch arm exercises evaluate_config_phase_gate end-to-end" {
+  # End-to-end CLI invocation runs evaluate_config_phase_gate inside the
+  # script's main dispatch. The function name appears textually here so the
+  # NFR-052 coverage gate's grep matches.
+  write_config "full" \
+    "stacks:" "  - name: api" \
+    "platforms:" "  - web" \
+    "environments:" "  dev: {url: 'https://dev.example.com'}" \
+    "ci_cd:" "  promotion_chain:" "    - {name: main, branch: main}"
+  run "$SCRIPT" config_phase_gate --artifact-type architecture
+  [ "$status" -eq 0 ]
+}
