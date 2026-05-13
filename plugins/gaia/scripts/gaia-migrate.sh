@@ -21,9 +21,15 @@
 #   5 — safety gate failed (v2 marker missing/malformed at delete time) [E28-S188]
 #   6 — manifest mismatch between live source and backup [E28-S188]
 #   7 — user declined confirmation OR non-TTY without --yes/--force [E28-S188]
+#   11 — v2 with config + state dirs, needs reconciliation -> exec gaia-reconcile-v2.sh [E85-S9 / ADR-100]
 #   64 — usage error
 
 set -euo pipefail
+
+# Resolve this script's own directory so sibling scripts (e.g. the
+# E85-S8 gaia-reconcile-v2.sh dispatch target) can be invoked by path
+# even when gaia-migrate.sh is run from an arbitrary cwd.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 MODE=""
 PROJECT_ROOT=""
@@ -192,19 +198,43 @@ _detect_v1() {
   echo "  config/project-config.yaml (v2)     : $([ "$has_v2" -eq 1 ] && echo present || echo MISSING)"
 
   # E28-S188 check ordering (W1, W6): the v2-only idempotent success path
-  # MUST be evaluated BEFORE the partial-install HALT. Order is:
-  #   (1) v2 marker present + no v1 dirs   → exit 0, idempotent success (AC7)
-  #   (2) v2 marker present + v1 dirs      → HALT, mixed state
-  #   (3) no v1 + no v2                     → HALT, nothing to migrate
-  #   (4) partial v1                        → HALT, repair install
-  #   (5) full v1                           → proceed
+  # MUST be evaluated BEFORE the partial-install HALT. E85-S9 (ADR-100 /
+  # ADR-101) extends this with sub-state distinction within the v2-only
+  # branch. Order is:
+  #   (1)  v2 marker present + no v1 dirs + state dirs present → return 11
+  #        (reconciliation needed; caller exec's gaia-reconcile-v2.sh)
+  #   (1b) v2 marker present + no v1 dirs + no state dirs       → return 10
+  #        (idempotent success — AC7)
+  #   (2)  v2 marker present + v1 dirs                          → HALT (1)
+  #   (3)  no v1 + no v2                                        → HALT (1)
+  #   (4)  partial v1                                           → HALT (1)
+  #   (5)  full v1                                              → return 0
   #
   # The function returns:
   #   0   → proceed with migration (full v1 detected)
   #   10  → idempotent success (v2-only, caller exits 0 with "already on v2")
+  #   11  → v2 with state dirs, needs reconciliation; caller exec's reconciler
   #   1   → HALT (all other error paths)
 
-  # (1) Already on v2 — idempotent success (AC7 / W1 / W6)
+  # Detect v2-era state directories (E85-S9 / ADR-100). The presence of
+  # `_memory/` OR `docs/planning-artifacts/` at the project root is the
+  # canonical "has framework-era artifacts" heuristic.
+  local has_state_dirs=0
+  if [[ -d "$PROJECT_ROOT/_memory" ]] || [[ -d "$PROJECT_ROOT/docs/planning-artifacts" ]]; then
+    has_state_dirs=1
+  fi
+
+  # (1) v2 + no v1 dirs + state dirs present → return 11 (reconcile path)
+  # The existing v1-marker absence check is `has_engine=0 && has_custom=0`
+  # (legacy framework + custom dirs). `_memory/` alone is v2-era state
+  # post-E85, not a v1 marker — so it is excluded from the v1-marker test.
+  if [[ "$has_v2" -eq 1 && "$has_engine" -eq 0 && "$has_custom" -eq 0 && "$has_state_dirs" -eq 1 ]]; then
+    echo
+    echo "v2 install with framework-era state directories detected — reconciliation path."
+    return 11
+  fi
+
+  # (1b) Already on v2 — idempotent success (AC7 / W1 / W6)
   if [[ "$has_v2" -eq 1 && "$has_engine" -eq 0 && "$has_memory" -eq 0 && "$has_custom" -eq 0 ]]; then
     echo
     echo "Nothing to migrate — already on v2."
@@ -991,16 +1021,29 @@ echo "gaia-migrate — v1 → v2 migration ($MODE mode)"
 echo "project-root: $PROJECT_ROOT"
 echo "==============================================================="
 
-# Detect (HALT-able). Return code 10 signals the idempotent "already on v2"
-# success path (AC7) — exit 0 with no further work. Any other non-zero return
-# is a HALT.
+# Detect (HALT-able). Return-code semantics per ADR-100:
+#   0  → proceed with v1 → v2 migration (full v1 detected)
+#   10 → idempotent success (v2-only, no state dirs) — exit 0 with log (AC7)
+#   11 → v2 with state dirs — exec dispatch to gaia-reconcile-v2.sh (E85-S9)
+#   *  → any other non-zero return is a HALT
 set +e
 _detect_v1
 detect_rc=$?
 set -e
-if [[ "$detect_rc" -eq 10 ]]; then
-  exit 0
-fi
+case "$detect_rc" in
+  10)
+    echo "No v1 markers and no config state dirs -- nothing to migrate."
+    exit 0
+    ;;
+  11)
+    echo "v2 install detected -- dispatching to gaia-reconcile-v2.sh"
+    # `exec` per ADR-101 §2 — the reconciler owns the process after dispatch.
+    # MODE, PROJECT_ROOT, DRY_RUN, ASSUME_YES are already in scope from
+    # arg parsing and are forwarded via the environment.
+    export MODE PROJECT_ROOT DRY_RUN ASSUME_YES
+    exec "$SCRIPT_DIR/gaia-reconcile-v2.sh"
+    ;;
+esac
 if [[ "$detect_rc" -ne 0 ]]; then
   exit 1
 fi
