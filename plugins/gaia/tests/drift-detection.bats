@@ -41,7 +41,11 @@ YAML
 
 # Run resolve-config.sh against the fixture, capturing stdout + stderr.
 run_resolver() {
+  # Unset CI + GAIA_SKIP_VERSION_CHECK so these tests exercise the warning-emit
+  # path regardless of where they run (CI suppression + full-skip are tested
+  # explicitly in drift-detection-ci-suppression.bats).
   run --separate-stderr bash -c "
+    unset CI GAIA_SKIP_VERSION_CHECK
     CLAUDE_PROJECT_ROOT='$FIXTURE_DIR' \
     GAIA_MEMORY_PATH='$FIXTURE_DIR/_memory' \
     '$SCRIPT' --shared '$FIXTURE_DIR/config/project-config.yaml'

@@ -120,7 +120,9 @@ run_resolver_no_ci() {
 
 @test "AC5 / GAIA_SKIP_VERSION_CHECK=0: value 0 is treated as unset — check runs normally" {
   write_drifted_config
-  run_resolver_env "GAIA_SKIP_VERSION_CHECK=0"
+  # Explicitly unset CI so the AC5 warning-emit path is exercised regardless of
+  # host env (GitHub Actions inherits CI=true into the test process).
+  run_resolver_env "GAIA_SKIP_VERSION_CHECK=0" "CI="
   [ "$status" -eq 0 ]
   # Marker IS written (check did run).
   [ -f "$FIXTURE_DIR/_memory/.framework-version-stale" ]
