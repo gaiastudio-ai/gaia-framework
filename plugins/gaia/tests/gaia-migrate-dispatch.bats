@@ -116,3 +116,38 @@ make_v1_layout() {
 @test "AC5: header exit-code table documents exit code 11" {
   grep -E '^#[[:space:]]+11[[:space:]]*[—-]' "$SCRIPTS_DIR/gaia-migrate.sh"
 }
+
+# E85-S12 (AF-2026-05-13-3): `custom/` is a v2-era surface (FR-RSV2-10 +
+# BOUNDARIES.md), not a v1 marker. The three gates below must no longer
+# require `has_custom=0`.
+
+# TC-RV2-53 — reconcile path (return 11) with custom/adapters/ + _memory/ + v2 config
+@test "TC-RV2-53: v2 config + custom/adapters/ + _memory/ -> exit-11 dispatch" {
+  write_v2_config
+  mkdir -p "$FIXTURE_ROOT/_memory" "$FIXTURE_ROOT/custom/adapters/foo"
+  run --separate-stderr "$MIGRATE" dry-run --project-root "$FIXTURE_ROOT"
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_TMP/reconciler-called.txt" ]
+  grep -q "reconciler-stub-called" "$TEST_TMP/reconciler-called.txt"
+  [[ "$output" != *"Migration already complete"* ]]
+}
+
+# TC-RV2-54 — idempotent success (return 10) with custom/adapters/ + v2 config only
+@test "TC-RV2-54: v2 config + custom/adapters/ only -> exit-10 idempotent success" {
+  write_v2_config
+  mkdir -p "$FIXTURE_ROOT/custom/adapters/foo"
+  run --separate-stderr "$MIGRATE" dry-run --project-root "$FIXTURE_ROOT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nothing to migrate"* ]] || [[ "$output" == *"already on v2"* ]]
+  [ ! -f "$TEST_TMP/reconciler-called.txt" ]
+  [[ "$output" != *"Migration already complete"* ]]
+}
+
+# TC-RV2-55 — partial-install HALT (return 1) with ONLY custom/ (Val F10 narrow-gate guard)
+@test "TC-RV2-55: ONLY custom/adapters/ (no v1, no v2, no _memory) -> exit-1 partial-install HALT" {
+  mkdir -p "$FIXTURE_ROOT/custom/adapters/foo"
+  run --separate-stderr "$MIGRATE" dry-run --project-root "$FIXTURE_ROOT"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"partial"* ]] || [[ "$output" == *"partial"* ]] || [[ "$stderr" == *"No v1 installation"* ]] || [[ "$output" == *"No v1 installation"* ]]
+  [ ! -f "$TEST_TMP/reconciler-called.txt" ]
+}
