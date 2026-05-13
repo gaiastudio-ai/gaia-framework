@@ -1000,8 +1000,27 @@ _drift_detect() {
       # `$output` capture of `bats run` for tests that pre-existed E86-S2.
       rm -f "$_tmp_path" 2>/dev/null || true
     fi
+  else
+    # E86-S3 / FR-474 / AC1 — self-healing clear. When versions match
+    # and a stale marker exists from a previous drifted run, remove it
+    # so the user no longer sees the drift warning after fixing the
+    # config (via /gaia-migrate, manual edit, or /gaia-init --full).
+    # The `[ -f ]` guard is intent-revealing + observability-friendly
+    # (the `rm` syscall fires only when there is real work to do).
+    # AC2 idempotency is automatic via `rm -f`. AC5 (SR-57) tolerates
+    # write failure: emit a DEBUG-level message to stderr on actual
+    # failure (rare — requires e.g. chmod 000 on the marker file or a
+    # read-only filesystem) and continue. The brace-group + outer
+    # `2>/dev/null` captures any shell-level stderr (consistent with
+    # the E86-S2 redirection-fix pattern); the `||` branch emits a
+    # single explicit DEBUG line only on real failure.
+    if [ -f "$_stale_path" ]; then
+      if ! { rm -f "$_stale_path"; } 2>/dev/null; then
+        printf '[gaia:debug] marker clear failed (permission denied or read-only filesystem)\n' >&2
+      fi
+    fi
   fi
-  # AC9: touch sentinel at end (whether drift or not). Tolerate failure.
+  # AC9: touch sentinel at end (whether drift, clear, or no-op). Tolerate failure.
   touch "$_sentinel_path" 2>/dev/null || true
 }
 _drift_detect
