@@ -48,3 +48,8 @@ plugins/gaia/test/runs/
 
 # --- Config hydration runtime lock (E85-S1 / ADR-098) ----------------------
 config/.config-hydration.lock
+
+# --- E86-S2 ambient drift markers (NOT synced, runtime-only) --------------
+_memory/.framework-version-stale
+_memory/.framework-version-stale.tmp.*
+_memory/.framework-version-checked-*

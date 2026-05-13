@@ -96,49 +96,14 @@ sq_escape() {
 }
 
 # --- resolve framework_version ----------------------------------------------
-resolve_framework_version() {
-  local version=""
-
-  # Preferred: resolve-config.sh on PATH (or co-located next to this script).
-  local here
-  here="$(cd "$(dirname "$0")" && pwd)"
-
-  local resolver=""
-  if command -v resolve-config.sh >/dev/null 2>&1; then
-    resolver="$(command -v resolve-config.sh)"
-  elif [ -x "$here/resolve-config.sh" ]; then
-    resolver="$here/resolve-config.sh"
-  fi
-
-  if [ -n "$resolver" ]; then
-    # Use default KEY='VALUE' output and grep the line.
-    local line
-    if line="$("$resolver" 2>/dev/null | grep -E "^framework_version=" || true)"; then
-      # Strip KEY= and the surrounding single quotes.
-      version="${line#framework_version=}"
-      version="${version#\'}"
-      version="${version%\'}"
-    fi
-  fi
-
-  # Fallback: read plugin.json directly.
-  if [ -z "$version" ]; then
-    local plugin_json="$here/../.claude-plugin/plugin.json"
-    if [ -f "$plugin_json" ]; then
-      # Grep-based extraction (no jq dependency).
-      version="$(grep -E '"version"[[:space:]]*:' "$plugin_json" \
-                 | head -n 1 \
-                 | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
-    fi
-  fi
-
-  if [ -z "$version" ]; then
-    err "framework_version could not be resolved (resolve-config.sh unavailable and plugin.json missing)"
-    return 2
-  fi
-
-  printf "%s" "$version"
-}
+# Extracted to a sourceable library at lib/framework-version.sh per E86-S1 /
+# FR-472 so that both this script and the E86-S2 drift-detection hook in
+# resolve-config.sh can source a single canonical implementation. The library
+# preserves the two-tier resolution (resolve-config.sh preferred, plugin.json
+# fallback) and the no-trailing-newline stdout contract required by ADR-102.
+_TH_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+. "$_TH_HERE/lib/framework-version.sh"
 
 # --- ISO 8601 UTC date -------------------------------------------------------
 iso_date() {
