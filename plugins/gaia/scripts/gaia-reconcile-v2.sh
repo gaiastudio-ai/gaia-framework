@@ -58,6 +58,26 @@ _grv2_audit() { printf '# reconcile-v2 %s\n' "$*"; }
 
 _grv2_iso8601() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
+# AF-2026-05-13-2 sub-fix (c) — dispatch partial→full advancement to the helper.
+# Preserves ADR-101 §6: reconciler is the CALLER, helper is the WRITER.
+# Idempotent and silent when phase is not `partial`. Used by BOTH the
+# no-diff path (eq branch) and the post-hydration path (lt branch).
+_grv2_dispatch_phase_advance() {
+  local config_file="$1" context_label="$2"
+  local helper="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/config-hydration.sh"
+  [ -f "$helper" ] || return 0  # silent — helper-not-found is handled earlier in main flow
+
+  local phase_now
+  phase_now="$(yq '.config_phase // "full"' "$config_file" 2>/dev/null | tr -d '"')"
+  [ "$phase_now" = "partial" ] || return 0  # nothing to do
+
+  if bash "$helper" advance-phase --to full --config "$config_file" 2>/dev/null; then
+    _grv2_log "dispatched config_phase advancement: partial -> full (via config-hydration.sh advance-phase, ${context_label})"
+  else
+    _grv2_warn "advance-phase --to full returned non-zero; config_phase left at $phase_now"
+  fi
+}
+
 _grv2_sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | awk '{print $1}'
@@ -217,6 +237,10 @@ _grv2_main() {
       ;;
     eq)
       _grv2_log "Config already at schema v$schema_ver -- nothing to reconcile."
+      # AF-2026-05-13-2 sub-fix (c): even when there's no schema diff, the
+      # config_phase state machine may still need advancement (partial→full)
+      # after all sections are present.
+      _grv2_dispatch_phase_advance "$CONFIG_FILE" "no-diff path"
       exit 0
       ;;
     lt)
@@ -309,7 +333,34 @@ DRY
     else
       local rc=$?
       case "$rc" in
-        2) _grv2_warn "section '$s' is in schema but not hydratable (helper allowlist) -- skipping" ;;
+        2)
+          # AF-2026-05-13-2 sub-fix (b) — BREAKING CHANGE.
+          # Was: WARN+skip+exit-0 (silently skipped 33/40 sections on 2026-05-13 repro).
+          # Now: hard-error+rollback+exit-5, UNLESS the section is in the
+          #      _CONFIG_HYDRATION_MANAGED_ELSEWHERE list (AC6 fail-closed scope).
+          local in_managed=0
+          for me in "${_CONFIG_HYDRATION_MANAGED_ELSEWHERE[@]:-}"; do
+            if [ "$me" = "$s" ]; then in_managed=1; break; fi
+          done
+          if [ "$in_managed" -eq 1 ]; then
+            _grv2_log "section '$s' is managed elsewhere (config-hydration.sh) -- skipping cleanly"
+            rm -f "$frag"
+            continue
+          fi
+          _grv2_err "section '$s' is declared in schema but not in hydration allowlist or managed-elsewhere set -- aborting (AF-2026-05-13-2 AC5)"
+          rm -f "$frag"
+          _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"
+          # Rollback with explicit error check (Val F4 — never silently leave the
+          # config in a half-written state).
+          if [ ! -f "$backup_path" ]; then
+            _grv2_err "rollback failed: backup file missing at $backup_path -- config may be inconsistent"
+          elif ! cp "$backup_path" "$CONFIG_FILE"; then
+            _grv2_err "rollback failed: cp from $backup_path returned non-zero -- config may be inconsistent"
+          else
+            _grv2_audit "config rolled back from $backup_path (AC5)"
+          fi
+          exit 5
+          ;;
         3) _grv2_err "flock timeout while hydrating '$s'"; rm -f "$frag"; _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"; exit 4 ;;
         *) _grv2_warn "config_hydrate_section returned rc=$rc for section '$s' -- continuing per non-blocking policy" ;;
       esac
@@ -325,6 +376,9 @@ DRY
   done
 
   _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"
+
+  # AF-2026-05-13-2 sub-fix (c) — post-hydration partial→full dispatch.
+  _grv2_dispatch_phase_advance "$CONFIG_FILE" "post-hydration"
 
   # AC6 — compare config_phase before vs after to surface helper-driven
   # advancement in the audit trail. The reconciler never writes config_phase
