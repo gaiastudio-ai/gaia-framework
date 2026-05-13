@@ -50,15 +50,15 @@ SCRIPT_NAME="gaia-reconcile-v2.sh"
 
 # ---- Logging helpers (audit trail goes to stdout so tests can grep) -------
 
-log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*"; }
-warn() { printf '%s: WARN %s\n' "$SCRIPT_NAME" "$*"; }
-err() { printf '%s: ERROR %s\n' "$SCRIPT_NAME" "$*" >&2; }
-info() { printf '%s: INFO %s\n' "$SCRIPT_NAME" "$*"; }
-audit() { printf '# reconcile-v2 %s\n' "$*"; }
+_grv2_log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*"; }
+_grv2_warn() { printf '%s: WARN %s\n' "$SCRIPT_NAME" "$*"; }
+_grv2_err() { printf '%s: ERROR %s\n' "$SCRIPT_NAME" "$*" >&2; }
+_grv2_info() { printf '%s: INFO %s\n' "$SCRIPT_NAME" "$*"; }
+_grv2_audit() { printf '# reconcile-v2 %s\n' "$*"; }
 
-iso8601() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+_grv2_iso8601() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
-sha256_file() {
+_grv2_sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | awk '{print $1}'
   elif command -v shasum >/dev/null 2>&1; then
@@ -78,14 +78,14 @@ ASSUME_YES="${ASSUME_YES:-false}"
 case "$MODE" in
   dry-run) DRY_RUN="true" ;;
   apply)   : ;;
-  *)       err "unknown MODE='$MODE' (expected 'apply' or 'dry-run')"; exit 1 ;;
+  *)       _grv2_err "unknown MODE='$MODE' (expected 'apply' or 'dry-run')"; exit 1 ;;
 esac
 
 CONFIG_FILE="$PROJECT_ROOT/config/project-config.yaml"
 
 # ---- Schema discovery (AC1 / ADR-101 §1) -----------------------------------
 
-discover_schema() {
+_grv2_discover_schema() {
   if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] \
     && [ -f "${CLAUDE_PLUGIN_ROOT}/schemas/project-config.schema.json" ]; then
     printf '%s\n' "${CLAUDE_PLUGIN_ROOT}/schemas/project-config.schema.json"
@@ -103,21 +103,21 @@ discover_schema() {
   return 1
 }
 
-extract_schema_version() {
+_grv2_extract_schema_version() {
   local schema_path="$1"
   yq -p=json '.title // ""' "$schema_path" 2>/dev/null \
     | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' \
     | head -1
 }
 
-extract_config_version() {
+_grv2_extract_config_version() {
   local config_path="$1"
   yq '.schema_version // ""' "$config_path" 2>/dev/null \
     | tr -d '"' \
     | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
 
-semver_compare() {
+_grv2_semver_compare() {
   local a="${1:-0.0.0}" b="${2:-0.0.0}"
   [ -z "$a" ] && a="0.0.0"
   [ -z "$b" ] && b="0.0.0"
@@ -129,32 +129,32 @@ semver_compare() {
 
 # ---- Section diff engine (AC3) --------------------------------------------
 
-list_config_sections() {
+_grv2_list_config_sections() {
   yq 'keys | .[]' "$1" 2>/dev/null | tr -d '"'
 }
 
-list_schema_sections() {
+_grv2_list_schema_sections() {
   yq -p=json '.properties | keys | .[]' "$1" 2>/dev/null | tr -d '"'
 }
 
-list_retired_sections() {
+_grv2_list_retired_sections() {
   yq -p=json '.properties | to_entries | map(select(.value.deprecated == true)) | .[].key' "$1" 2>/dev/null | tr -d '"'
 }
 
-in_list() {
+_grv2_in_list() {
   local needle="$1" list="$2"
   printf '%s\n' "$list" | grep -Fxq "$needle"
 }
 
 # ---- Secret regex (AC11 / SR-50) ------------------------------------------
 
-contains_secret() {
+_grv2_contains_secret() {
   grep -Eiq '(password|secret|token|api[_-]?key|private[_-]?key)[[:space:]]*[:=][[:space:]]*[^[:space:]]+' "$1"
 }
 
 # ---- Retired-section comment injection (ADR-101 §3) -----------------------
 
-inject_retired_comment() {
+_grv2_inject_retired_comment() {
   local file="$1" section="$2" schema_ver="$3"
   local marker="# RETIRED in schema v${schema_ver} -- kept for audit per ADR-101 warn-keep"
   local tmp
@@ -177,73 +177,73 @@ inject_retired_comment() {
 
 # ---- Main -----------------------------------------------------------------
 
-main() {
+_grv2_main() {
   if [ ! -f "$CONFIG_FILE" ]; then
-    err "config not found at $CONFIG_FILE"
+    _grv2_err "config not found at $CONFIG_FILE"
     exit 2
   fi
 
-  if contains_secret "$CONFIG_FILE"; then
-    err "Potential secret detected in $CONFIG_FILE -- reconciliation aborted"
+  if _grv2_contains_secret "$CONFIG_FILE"; then
+    _grv2_err "Potential secret detected in $CONFIG_FILE -- reconciliation aborted"
     exit 2
   fi
 
   local schema_path
-  if ! schema_path="$(discover_schema)"; then
-    err "Schema not found. Expected at \${CLAUDE_PLUGIN_ROOT}/schemas/project-config.schema.json or in-tree at gaia-public/plugins/gaia/schemas/project-config.schema.json. Is the GAIA plugin installed?"
+  if ! schema_path="$(_grv2_discover_schema)"; then
+    _grv2_err "Schema not found. Expected at \${CLAUDE_PLUGIN_ROOT}/schemas/project-config.schema.json or in-tree at gaia-public/plugins/gaia/schemas/project-config.schema.json. Is the GAIA plugin installed?"
     exit 1
   fi
   if [ ! -r "$schema_path" ]; then
-    err "Schema at $schema_path is unreadable"
+    _grv2_err "Schema at $schema_path is unreadable"
     exit 3
   fi
-  log "schema: $schema_path"
+  _grv2_log "schema: $schema_path"
 
   local config_ver schema_ver
-  config_ver="$(extract_config_version "$CONFIG_FILE")"
-  schema_ver="$(extract_schema_version "$schema_path")"
+  config_ver="$(_grv2_extract_config_version "$CONFIG_FILE")"
+  schema_ver="$(_grv2_extract_schema_version "$schema_path")"
   if [ -z "$schema_ver" ]; then
-    err "Schema version could not be extracted from $schema_path (expected vX.Y.Z in title)"
+    _grv2_err "Schema version could not be extracted from $schema_path (expected vX.Y.Z in title)"
     exit 3
   fi
-  log "config schema_version=${config_ver:-<absent>} schema title version=$schema_ver"
+  _grv2_log "config schema_version=${config_ver:-<absent>} schema title version=$schema_ver"
 
   local cmp
-  cmp="$(semver_compare "$config_ver" "$schema_ver")"
+  cmp="$(_grv2_semver_compare "$config_ver" "$schema_ver")"
   case "$cmp" in
     gt)
-      err "Schema downgrade detected (config v$config_ver > installed v$schema_ver) -- refusing to reconcile"
+      _grv2_err "Schema downgrade detected (config v$config_ver > installed v$schema_ver) -- refusing to reconcile"
       exit 4
       ;;
     eq)
-      log "Config already at schema v$schema_ver -- nothing to reconcile."
+      _grv2_log "Config already at schema v$schema_ver -- nothing to reconcile."
       exit 0
       ;;
     lt)
-      log "Schema upgrade: ${config_ver:-<absent>} -> $schema_ver"
+      _grv2_log "Schema upgrade: ${config_ver:-<absent>} -> $schema_ver"
       ;;
   esac
 
   local config_sections schema_sections retired_sections
-  config_sections="$(list_config_sections "$CONFIG_FILE")"
-  schema_sections="$(list_schema_sections "$schema_path")"
-  retired_sections="$(list_retired_sections "$schema_path")"
+  config_sections="$(_grv2_list_config_sections "$CONFIG_FILE")"
+  schema_sections="$(_grv2_list_schema_sections "$schema_path")"
+  retired_sections="$(_grv2_list_retired_sections "$schema_path")"
 
   local missing_sections="" extra_sections="" retired_present=""
   local s
   for s in $schema_sections; do
-    if [ -n "$s" ] && ! in_list "$s" "$config_sections" \
-      && ! in_list "$s" "$retired_sections"; then
+    if [ -n "$s" ] && ! _grv2_in_list "$s" "$config_sections" \
+      && ! _grv2_in_list "$s" "$retired_sections"; then
       missing_sections="${missing_sections}${s}"$'\n'
     fi
   done
   for s in $config_sections; do
-    if [ -n "$s" ] && ! in_list "$s" "$schema_sections"; then
+    if [ -n "$s" ] && ! _grv2_in_list "$s" "$schema_sections"; then
       extra_sections="${extra_sections}${s}"$'\n'
     fi
   done
   for s in $retired_sections; do
-    if [ -n "$s" ] && in_list "$s" "$config_sections"; then
+    if [ -n "$s" ] && _grv2_in_list "$s" "$config_sections"; then
       retired_present="${retired_present}${s}"$'\n'
     fi
   done
@@ -266,21 +266,21 @@ DRY
   fi
 
   local sha_pre backup_path phase_before
-  sha_pre="$(sha256_file "$CONFIG_FILE")"
+  sha_pre="$(_grv2_sha256_file "$CONFIG_FILE")"
   # AC6 — capture config_phase BEFORE any helper-driven advancement so the
   # post-write comparison below detects real advancement.
   phase_before="$(yq '.config_phase // "full"' "$CONFIG_FILE" | tr -d '"')"
-  audit "pre-write hash: $sha_pre at $(iso8601)"
+  _grv2_audit "pre-write hash: $sha_pre at $(_grv2_iso8601)"
   backup_path="${CONFIG_FILE}.reconcile-v2.bak"
   cp "$CONFIG_FILE" "$backup_path"
-  audit "pre-write backup created at $backup_path"
+  _grv2_audit "pre-write backup created at $backup_path"
 
-  audit "flock acquired at $(iso8601) pid=$$"
+  _grv2_audit "flock acquired at $(_grv2_iso8601) pid=$$"
 
   local helper="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/config-hydration.sh"
   if [ ! -f "$helper" ]; then
-    err "config-hydration.sh not found at $helper -- cannot reconcile"
-    audit "flock released at $(iso8601) pid=$$"
+    _grv2_err "config-hydration.sh not found at $helper -- cannot reconcile"
+    _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"
     exit 1
   fi
   # shellcheck disable=SC1090
@@ -293,25 +293,25 @@ DRY
     frag="$(mktemp)"
     {
       printf '%s:\n' "$s"
-      printf '  # reconciled by gaia-reconcile-v2 at %s\n' "$(iso8601)"
+      printf '  # reconciled by gaia-reconcile-v2 at %s\n' "$(_grv2_iso8601)"
     } > "$frag"
 
-    if contains_secret "$frag"; then
-      err "Potential secret detected in section '$s' -- reconciliation aborted"
+    if _grv2_contains_secret "$frag"; then
+      _grv2_err "Potential secret detected in section '$s' -- reconciliation aborted"
       rm -f "$frag"
-      audit "flock released at $(iso8601) pid=$$"
+      _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"
       cp "$backup_path" "$CONFIG_FILE"
       exit 2
     fi
 
     if config_hydrate_section "$s" "$frag"; then
-      log "hydrated missing section: $s"
+      _grv2_log "hydrated missing section: $s"
     else
       local rc=$?
       case "$rc" in
-        2) warn "section '$s' is in schema but not hydratable (helper allowlist) -- skipping" ;;
-        3) err "flock timeout while hydrating '$s'"; rm -f "$frag"; audit "flock released at $(iso8601) pid=$$"; exit 4 ;;
-        *) warn "config_hydrate_section returned rc=$rc for section '$s' -- continuing per non-blocking policy" ;;
+        2) _grv2_warn "section '$s' is in schema but not hydratable (helper allowlist) -- skipping" ;;
+        3) _grv2_err "flock timeout while hydrating '$s'"; rm -f "$frag"; _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"; exit 4 ;;
+        *) _grv2_warn "config_hydrate_section returned rc=$rc for section '$s' -- continuing per non-blocking policy" ;;
       esac
     fi
     rm -f "$frag"
@@ -319,12 +319,12 @@ DRY
 
   for s in $retired_present; do
     [ -z "$s" ] && continue
-    warn "Section '$s' is deprecated in schema v$schema_ver -- retained per ADR-101 warn-and-keep policy"
-    inject_retired_comment "$CONFIG_FILE" "$s" "$schema_ver"
-    warn "SR-54 phase-downgrade defense: retained section '$s' protects config_phase='$phase_before' from regression"
+    _grv2_warn "Section '$s' is deprecated in schema v$schema_ver -- retained per ADR-101 _grv2_warn-and-keep policy"
+    _grv2_inject_retired_comment "$CONFIG_FILE" "$s" "$schema_ver"
+    _grv2_warn "SR-54 phase-downgrade defense: retained section '$s' protects config_phase='$phase_before' from regression"
   done
 
-  audit "flock released at $(iso8601) pid=$$"
+  _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"
 
   # AC6 — compare config_phase before vs after to surface helper-driven
   # advancement in the audit trail. The reconciler never writes config_phase
@@ -333,21 +333,21 @@ DRY
   local phase_after
   phase_after="$(yq '.config_phase // "full"' "$CONFIG_FILE" | tr -d '"')"
   if [ "$phase_before" != "$phase_after" ]; then
-    info "config_phase advanced by helper: $phase_before -> $phase_after (via hydration trigger)"
+    _grv2_info "config_phase advanced by helper: $phase_before -> $phase_after (via hydration trigger)"
   fi
 
   local sha_post
-  sha_post="$(sha256_file "$CONFIG_FILE")"
-  audit "post-write hash: $sha_post at $(iso8601)"
+  sha_post="$(_grv2_sha256_file "$CONFIG_FILE")"
+  _grv2_audit "post-write hash: $sha_post at $(_grv2_iso8601)"
 
   if ! yq '.' "$CONFIG_FILE" >/dev/null 2>&1; then
-    err "post-write YAML validation failed -- restoring from backup"
+    _grv2_err "post-write YAML validation failed -- restoring from backup"
     cp "$backup_path" "$CONFIG_FILE"
     exit 1
   fi
 
-  log "reconciliation complete (sha256: $sha_pre -> $sha_post)"
+  _grv2_log "reconciliation complete (sha256: $sha_pre -> $sha_post)"
   exit 0
 }
 
-main "$@"
+_grv2_main "$@"
