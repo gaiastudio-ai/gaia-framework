@@ -191,3 +191,65 @@ run_resolver() {
   grep -qE '_tmp_path=.*\.tmp\.\$\$' "$SCRIPT"
   grep -qE 'mv[[:space:]]+"\$_tmp_path"[[:space:]]+"\$_stale_path"' "$SCRIPT"
 }
+
+# ===== E86-S3: Self-healing marker clear =================================
+
+# ---- AC1 / TC-FVD-12: clear on match -----------------------------------
+
+@test "E86-S3 AC1 / TC-FVD-12: marker present + versions match → marker cleared" {
+  write_config "$PLUGIN_VERSION"
+  # Pre-create the stale marker as if a previous drifted run had emitted it.
+  printf 'stale_since=2026-05-01T00:00:00Z installed=0.0.0 config=0.0.0\n' \
+    > "$FIXTURE_DIR/_memory/.framework-version-stale"
+  [ -f "$FIXTURE_DIR/_memory/.framework-version-stale" ]
+  run_resolver
+  [ "$status" -eq 0 ]
+  # Marker MUST be cleared on version match.
+  [ ! -f "$FIXTURE_DIR/_memory/.framework-version-stale" ]
+  # No drift warning should be emitted (versions match).
+  ! [[ "$stderr" == *"framework drift"* ]]
+}
+
+# ---- AC2 / TC-FVD-13: idempotent clear (no marker present) -------------
+
+@test "E86-S3 AC2 / TC-FVD-13: no marker + versions match → no error, no marker created" {
+  write_config "$PLUGIN_VERSION"
+  # No marker exists at the start (fresh fixture).
+  [ ! -f "$FIXTURE_DIR/_memory/.framework-version-stale" ]
+  run_resolver
+  [ "$status" -eq 0 ]
+  # Still no marker after the call (idempotent).
+  [ ! -f "$FIXTURE_DIR/_memory/.framework-version-stale" ]
+  ! [[ "$stderr" == *"framework drift"* ]]
+}
+
+# ---- AC3 / TC-FVD-14: sentinel prevents re-clear in same session -------
+
+@test "E86-S3 AC3 / TC-FVD-14: sentinel fast-path prevents second clear" {
+  write_config "$PLUGIN_VERSION"
+  # First invocation: clear-on-match runs and sentinel is touched.
+  printf 'stale_since=2026-05-01T00:00:00Z installed=0.0.0 config=0.0.0\n' \
+    > "$FIXTURE_DIR/_memory/.framework-version-stale"
+  run_resolver
+  [ ! -f "$FIXTURE_DIR/_memory/.framework-version-stale" ]
+  [ -f "$FIXTURE_DIR/_memory/.framework-version-checked-$PLUGIN_VERSION" ]
+  # Re-create the marker between runs (simulates an external write — e.g.,
+  # a malicious or stale process). The second invocation should hit the
+  # sentinel fast-path and NOT clear the marker (the hook short-circuits
+  # entirely; the user has to delete the sentinel to force re-evaluation).
+  printf 'stale_since=2026-05-01T00:00:00Z installed=0.0.0 config=0.0.0\n' \
+    > "$FIXTURE_DIR/_memory/.framework-version-stale"
+  run_resolver
+  [ "$status" -eq 0 ]
+  # Marker survives the second call — sentinel fast-path was taken.
+  [ -f "$FIXTURE_DIR/_memory/.framework-version-stale" ]
+}
+
+# ---- AC4: no coupling to gaia-reconcile-v2.sh in the clear path --------
+
+@test "E86-S3 AC4: drift hook has zero references to gaia-reconcile-v2.sh" {
+  # The self-healing clear is observation-based (post-condition: version
+  # match), NOT coupled to the E85-S8 reconciler. Verify by grep — the
+  # entire resolve-config.sh script must not reference gaia-reconcile-v2.
+  ! grep -qE 'gaia-reconcile-v2' "$SCRIPT"
+}
