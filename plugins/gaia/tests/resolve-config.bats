@@ -188,7 +188,52 @@ YAML
 }
 
 @test "resolve-config.sh: no CLAUDE_SKILL_DIR and no --config → exit 2" {
+  # GAIA_NO_PROJECT_WALKUP=1 disables the AI-2026-05-13-12 walk-up so this
+  # test deterministically exercises the legacy "no config" failure path
+  # even when bats runs from a directory below a real project tree.
+  run env -u CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP=1 "$SCRIPT"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"CLAUDE_SKILL_DIR"* ]]
+}
+
+@test "resolve-config.sh AI-2026-05-13-12: walk-up finds project-config.yaml in parent dir" {
+  # Build a fake project root with config and a deep nested CWD.
+  local proj="$TEST_TMP/proj"
+  mkdir -p "$proj/config"
+  cat > "$proj/config/project-config.yaml" <<'YAML'
+project_root: /tmp/walkup-fx
+project_path: /tmp/walkup-fx/app
+memory_path: /tmp/walkup-fx/_memory
+checkpoint_path: /tmp/walkup-fx/_memory/checkpoints
+installed_path: /tmp/walkup-fx/_gaia
+framework_version: 1.149.0
+date: 1970-01-01
+YAML
+  mkdir -p "$proj/nested/deeply/down/here"
+
+  # Run resolve-config.sh from the deep nested CWD with NO CLAUDE_SKILL_DIR
+  # set. Walk-up should locate $proj/config/project-config.yaml.
+  cd "$proj/nested/deeply/down/here"
   run env -u CLAUDE_SKILL_DIR "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"project_root='/tmp/walkup-fx'"* ]]
+  [[ "$output" == *"framework_version='1.149.0'"* ]]
+}
+
+@test "resolve-config.sh AI-2026-05-13-12: GAIA_NO_PROJECT_WALKUP disables walk-up" {
+  local proj="$TEST_TMP/proj2"
+  mkdir -p "$proj/config" "$proj/nested"
+  cat > "$proj/config/project-config.yaml" <<'YAML'
+project_root: /tmp/walkup-disabled
+project_path: /tmp/walkup-disabled/app
+memory_path: /tmp/walkup-disabled/_memory
+checkpoint_path: /tmp/walkup-disabled/_memory/checkpoints
+installed_path: /tmp/walkup-disabled/_gaia
+framework_version: 1.149.0
+date: 1970-01-01
+YAML
+  cd "$proj/nested"
+  run env -u CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP=1 "$SCRIPT"
   [ "$status" -eq 2 ]
   [[ "$output" == *"CLAUDE_SKILL_DIR"* ]]
 }

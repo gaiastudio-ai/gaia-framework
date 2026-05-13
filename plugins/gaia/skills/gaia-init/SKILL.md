@@ -41,15 +41,82 @@ This skill is a Claude Code native skill — the questionnaire runs as natural c
 
 ## Steps
 
-### Step 1 — Reserved (see E85-S3 / ADR-096)
+### Step 1 — Re-init guard (inline config_phase lookup)
 
-> **Retirement notice (E85-S7 / FR-460 / ADR-099).** The legacy
-> `greenfield-guard.sh` binary file-existence check has been retired.
-> E85-S3 will land the replacement inline `config_phase` lookup here —
-> a state-machine check (ADR-096) that distinguishes "no config" (run
-> Phase 0), "minimal config" (offer hydration), and "full config"
-> (refuse or offer brownfield). Between this story landing and E85-S3
-> landing, Step 1 is a no-op; downstream steps execute unchanged.
+> **E85-S3 / FR-453 / FR-460 / ADR-096 / ADR-099 — replaces the retired
+> `greenfield-guard.sh` (E85-S7) with a 2-line inline state-machine
+> check.** This step distinguishes three states: (1) no config → run
+> Phase 0 bootstrap or full discovery; (2) config already exists with
+> ANY `config_phase` value (minimal / partial / full) → refuse re-init
+> with the canonical error; (3) config exists but `config_phase` is
+> absent (legacy) → treat as `full` per ADR-097 absence-as-full.
+
+**Step 1a — Detect the `--full` flag.** Parse `$ARGUMENTS` for the
+`--full` token. Setting the flag bypasses the binary opener (Step 1b)
+and routes directly to the full 7-question discovery flow. The flag
+does NOT override the re-init guard below (AC11) — `--full` on an
+existing config exits non-zero with the same canonical refusal.
+
+**Step 1b — Re-init guard.** Run:
+
+```bash
+phase=$(yq '.config_phase // "full"' config/project-config.yaml 2>/dev/null || echo "none")
+```
+
+- When `yq` succeeds (config exists), `phase` will be `minimal`,
+  `partial`, or `full` (or `"full"` if `config_phase` is absent per
+  ADR-097 absence-as-full).
+- When `yq` fails (no config file), `phase` will be `"none"`, meaning
+  greenfield — proceed to Step 1b binary opener.
+
+If `phase` is NOT `"none"` (config exists), surface the canonical
+stderr error and STOP:
+
+```
+error: config already exists; use /gaia-config-* to edit or --full to reinitialize
+```
+
+The error text mentions `--full` for historical-AC continuity, but per
+AC11 `--full` on an existing config still triggers this same refusal
+— `--full` does not override the re-init guard. (Future polish: tighten
+this error text to remove the misleading `--full` reference; captured
+as a Finding.)
+
+### Step 1b — Binary opener (Phase 0 vs full discovery)
+
+> **E85-S3 / FR-454 — the binary opener.** Presented ONLY when the
+> re-init guard above passed (greenfield project) AND the `--full`
+> flag was NOT set. When `--full` was set in Step 1a, skip this step
+> entirely and proceed directly to Step 2's full 7-question flow.
+
+Ask the user this single question:
+
+```
+Quick setup (5 fields) or full setup (7 questions)?
+[q] Quick setup (recommended for new projects)
+[f] Full setup (all config sections now)
+```
+
+Routing:
+
+- **`[q]` or empty answer** → Phase 0 minimal flow. The answer-bundle
+  collects only `project_name` and `primary_platform` (with the
+  existing Step 2.2 alias normalization arm applied — AC9). Default
+  `project_kind = application` (AC7); `version = 0.1.0`; `framework_version`
+  resolved from the plugin manifest by `generate-config.sh` (AC8); set
+  `config_phase = minimal` and `schema_version = "2.0.0"`. Skip Step
+  2.2-Step 2.7 (the full discovery questionnaire) and proceed to Step
+  3 (validate) with `phase=minimal`.
+- **`[f]`** → existing 7-question flow. Proceed to Step 2 unchanged
+  with `phase=full`.
+
+**Non-interactive / YOLO default:** when no TTY is available (CI,
+batch invocation, `ASSUME_YES=true`), default to `[q]` (Phase 0) —
+consistent with the E85 minimal-by-default direction. The `--full`
+flag remains the explicit opt-in for full discovery in batch.
+
+When invoking `generate-config.sh` at Step 4, pass `--phase minimal`
+or `--phase full` to match the resolved `phase` value.
 
 ### Step 2 — Discovery questionnaire
 
