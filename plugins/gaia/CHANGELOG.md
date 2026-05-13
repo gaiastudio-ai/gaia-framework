@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.150.0] — 2026-05-13
+
+### Added
+
+- (E86-S6) doc cascade + stale-flag registry static check (#662)
+- (E86-S5) ci suppression + GAIA_SKIP_VERSION_CHECK guard + bats suite (#661)
+- (E86-S4) /gaia-help state-detection branch (Step 3a) — 4-state enum (#660)
+- (E86-S3) self-healing clear of framework-version-stale marker (#659)
+- (E86-S1) extract framework-version.sh from template-header.sh (#657)
+
 ## [1.149.0] — 2026-05-13
 
 ### Added
