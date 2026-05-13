@@ -33,6 +33,8 @@ SCRIPT_NAME="gaia-init/generate-config.sh"
 
 target=""
 name=""
+phase="full"   # E85-S3: default phase = full (backward compat). --phase minimal
+               #         emits the Phase 0 5-field bootstrap surface.
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -42,6 +44,13 @@ while [ $# -gt 0 ]; do
     --name)
       [ $# -ge 2 ] || { printf '%s: --name requires a value\n' "$SCRIPT_NAME" >&2; exit 2; }
       name="$2"; shift 2 ;;
+    --phase)
+      [ $# -ge 2 ] || { printf '%s: --phase requires a value\n' "$SCRIPT_NAME" >&2; exit 2; }
+      case "$2" in
+        minimal|full) phase="$2" ;;
+        *) printf "%s: --phase must be 'minimal' or 'full' (got: %s)\n" "$SCRIPT_NAME" "$2" >&2; exit 2 ;;
+      esac
+      shift 2 ;;
     --help|-h) sed -n '1,30p' "$0"; exit 0 ;;
     *) printf '%s: unexpected argument: %s\n' "$SCRIPT_NAME" "$1" >&2; exit 2 ;;
   esac
@@ -49,6 +58,16 @@ done
 
 [ -n "$target" ] || { printf '%s: --path is required\n' "$SCRIPT_NAME" >&2; exit 2; }
 [ -n "$name" ]   || { printf '%s: --name is required\n' "$SCRIPT_NAME" >&2; exit 2; }
+
+# E85-S3 / AC8 — resolve framework_version from the plugin manifest, not
+# hardcoded. The script lives at plugins/gaia/skills/gaia-init/scripts/, so
+# the manifest is three dirs up at .claude-plugin/plugin.json.
+SCRIPT_DIR_ABS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_MANIFEST="$SCRIPT_DIR_ABS/../../../.claude-plugin/plugin.json"
+framework_version="unknown"
+if [ -f "$PLUGIN_MANIFEST" ] && command -v python3 >/dev/null 2>&1; then
+  framework_version="$(python3 -c "import json; print(json.load(open('$PLUGIN_MANIFEST'))['version'])" 2>/dev/null || echo "unknown")"
+fi
 
 mkdir -p -- "$target/config"
 
@@ -76,10 +95,10 @@ yaml_path="$cfg_path.tmp"
 
 emit_yaml() {
   if command -v python3 >/dev/null 2>&1; then
-    python3 - "$abs_target" "$name" "$in_json" "$yaml_path" <<'PYEOF'
+    python3 - "$abs_target" "$name" "$in_json" "$yaml_path" "$phase" "$framework_version" <<'PYEOF'
 import json, sys, os, datetime
 
-abs_target, name, in_json, out_path = sys.argv[1:5]
+abs_target, name, in_json, out_path, phase, framework_version = sys.argv[1:7]
 with open(in_json) as f:
     data = json.load(f) if os.path.getsize(in_json) > 0 else {}
 
@@ -100,140 +119,170 @@ lines.append(f"project_path: {abs_target}")
 lines.append(f"memory_path: {abs_target}/_memory")
 lines.append(f"checkpoint_path: {abs_target}/_memory/checkpoints")
 lines.append(f"installed_path: {abs_target}")
-lines.append("framework_version: 0.0.0")
+lines.append(f"framework_version: {yaml_quote(framework_version)}")
 lines.append(f"date: {today}")
 
-project_shape = (data.get("project_shape") or "").strip()
-is_plugin_shape = project_shape == "claude-code-plugin"
+# E85-S3 / ADR-096 — schema_version + config_phase meta keys are written on
+# every config (both Phase 0 minimal and the full discovery flow). The
+# `--phase` argument selects which conditional sections are emitted below.
+lines.append('schema_version: "2.0.0"')
+lines.append(f"config_phase: {phase}")
 
-# E77-S9 / FR-411 — Claude Code plugin shape (option 6).
-# Seeds project_kind, references the canonical claude-code-plugin stack file
-# (authored by E77-S2 / FR-404), and seeds plugin-specific tool_adapters
-# defaults. Skips the per-service iterative stacks loop because the plugin
-# stack is single-shape. Out of scope: multi-plugin marketplace (NOT seeded).
-if is_plugin_shape:
-    lines.append("")
-    lines.append('project_kind: "claude-code-plugin"')
+# E85-S3 / FR-453 — Phase 0 user-facing keys. Always written; in the full
+# flow these are still useful (project_name + project_kind + version +
+# primary_platform exist regardless of phase).
+project_name_val = data.get("project_name") or name
+_pkind = data.get("project_kind") or "application"
+# When the full flow detects project_shape == "claude-code-plugin", force
+# project_kind up front so the emission below and the plugin-shape legacy
+# block (lines ~158-160) don't produce duplicate `project_kind:` entries.
+if phase == "full" and (data.get("project_shape") or "").strip() == "claude-code-plugin":
+    _pkind = "claude-code-plugin"
+project_kind_val = _pkind
+version_val = data.get("version") or "0.1.0"
+primary_platform_val = data.get("primary_platform") or ""
+lines.append("")
+lines.append(f"project_name: {yaml_quote(project_name_val)}")
+lines.append(f"project_kind: {yaml_quote(project_kind_val)}")
+lines.append(f"version: {yaml_quote(version_val)}")
+if primary_platform_val:
+    lines.append(f"primary_platform: {yaml_quote(primary_platform_val)}")
 
-stacks = data.get("stacks") or []
-if is_plugin_shape:
-    # Plugin shape: emit a single stack entry that names the plugin stack
-    # file (resolver picks up config/stacks/claude-code-plugin.yaml).
-    lines.append("")
-    lines.append("stacks:")
-    lines.append('  - name: "claude-code-plugin"')
-    # No language / paths fields — the plugin stack file is the source of
-    # truth for file_extensions / discovery_rules / casing /
-    # frontmatter_requirements (see E77-S2 / FR-404).
-elif stacks:
-    lines.append("")
-    lines.append("stacks:")
-    for s in stacks:
-        lines.append(f"  - name: {yaml_quote(s.get('name', ''))}")
-        lines.append(f"    language: {yaml_quote(s.get('language', ''))}")
-        lines.append("    paths:")
-        for p in s.get("paths", []) or []:
-            lines.append(f"      - {yaml_quote(p)}")
+# E85-S3 / FR-453 — Phase 0 minimal short-circuits here. The conditional
+# sections below (project_shape gate, stacks, compliance, environments,
+# ci_platform, platforms, device_targets) are emitted ONLY in the full path
+# per the schema v2.0.0 allOf-conditional contract (E85-S2 / ADR-096).
+if phase == "full":
+    project_shape = (data.get("project_shape") or "").strip()
+    is_plugin_shape = project_shape == "claude-code-plugin"
 
-# E77-S9 / FR-411 — plugin-specific tool_adapters defaults.
-# shellcheck: shell-script linting under plugins/gaia/scripts/.
-# bats: bats-core test suites under plugins/gaia/tests/.
-# markdownlint: SKILL.md / ADR / docs lint.
-# yamllint: manifest.yaml / config/*.yaml / rubric overlays.
-# Adapter implementations are introduced by E77-S11 / E77-S12 / E77-S13.
-if is_plugin_shape:
-    lines.append("")
-    lines.append("tool_adapters:")
-    lines.append("  - shellcheck")
-    lines.append("  - bats")
-    lines.append("  - markdownlint")
-    lines.append("  - yamllint")
+    # E77-S9 / FR-411 — Claude Code plugin shape (option 6).
+    # Seeds the canonical claude-code-plugin stack file (authored by E77-S2 /
+    # FR-404) and plugin-specific tool_adapters defaults. Skips the per-service
+    # iterative stacks loop because the plugin stack is single-shape. Out of
+    # scope: multi-plugin marketplace (NOT seeded). `project_kind` is already
+    # set above (E85-S3 forces it to "claude-code-plugin" when project_shape
+    # matches), so no duplicate emission here.
 
-compliance = data.get("compliance") or {}
-if compliance:
-    lines.append("")
-    lines.append("compliance:")
-    regimes = compliance.get("regimes") or []
-    if regimes:
-        lines.append("  regimes:")
-        for r in regimes:
-            lines.append(f"    - {yaml_quote(r)}")
-    if "ui_present" in compliance:
-        lines.append(f"  ui_present: {'true' if compliance['ui_present'] else 'false'}")
-    if compliance.get("domain"):
-        lines.append(f"  domain: {yaml_quote(compliance['domain'])}")
+    stacks = data.get("stacks") or []
+    if is_plugin_shape:
+        # Plugin shape: emit a single stack entry that names the plugin stack
+        # file (resolver picks up config/stacks/claude-code-plugin.yaml).
+        lines.append("")
+        lines.append("stacks:")
+        lines.append('  - name: "claude-code-plugin"')
+        # No language / paths fields — the plugin stack file is the source of
+        # truth for file_extensions / discovery_rules / casing /
+        # frontmatter_requirements (see E77-S2 / FR-404).
+    elif stacks:
+        lines.append("")
+        lines.append("stacks:")
+        for s in stacks:
+            lines.append(f"  - name: {yaml_quote(s.get('name', ''))}")
+            lines.append(f"    language: {yaml_quote(s.get('language', ''))}")
+            lines.append("    paths:")
+            for p in s.get("paths", []) or []:
+                lines.append(f"      - {yaml_quote(p)}")
 
-envs = data.get("environments") or {}
-if envs:
-    lines.append("")
-    lines.append("environments:")
-    for env_name, env_body in envs.items():
-        lines.append(f"  {yaml_quote(env_name)}:")
-        if "url" in env_body:
-            lines.append(f"    url: {yaml_quote(env_body['url'])}")
-        creds = env_body.get("credentials") or {}
-        if creds:
-            lines.append("    credentials:")
-            for k, v in creds.items():
-                # v MUST be the env-var NAME, never a literal credential.
-                lines.append(f"      {yaml_quote(k)}: {yaml_quote(v)}")
+    # E77-S9 / FR-411 — plugin-specific tool_adapters defaults.
+    # shellcheck: shell-script linting under plugins/gaia/scripts/.
+    # bats: bats-core test suites under plugins/gaia/tests/.
+    # markdownlint: SKILL.md / ADR / docs lint.
+    # yamllint: manifest.yaml / config/*.yaml / rubric overlays.
+    # Adapter implementations are introduced by E77-S11 / E77-S12 / E77-S13.
+    if is_plugin_shape:
+        lines.append("")
+        lines.append("tool_adapters:")
+        lines.append("  - shellcheck")
+        lines.append("  - bats")
+        lines.append("  - markdownlint")
+        lines.append("  - yamllint")
 
-ci = data.get("ci_platform") or {}
-if ci.get("provider"):
-    lines.append("")
-    lines.append("ci_platform:")
-    lines.append(f"  provider: {yaml_quote(ci['provider'])}")
-    if ci.get("pipeline"):
-        lines.append(f"  pipeline: {yaml_quote(ci['pipeline'])}")
+    compliance = data.get("compliance") or {}
+    if compliance:
+        lines.append("")
+        lines.append("compliance:")
+        regimes = compliance.get("regimes") or []
+        if regimes:
+            lines.append("  regimes:")
+            for r in regimes:
+                lines.append(f"    - {yaml_quote(r)}")
+        if "ui_present" in compliance:
+            lines.append(f"  ui_present: {'true' if compliance['ui_present'] else 'false'}")
+        if compliance.get("domain"):
+            lines.append(f"  domain: {yaml_quote(compliance['domain'])}")
 
-platforms = data.get("platforms") or []
-if platforms:
-    lines.append("")
-    lines.append("platforms:")
-    for p in platforms:
-        lines.append(f"  - {yaml_quote(p)}")
+    envs = data.get("environments") or {}
+    if envs:
+        lines.append("")
+        lines.append("environments:")
+        for env_name, env_body in envs.items():
+            lines.append(f"  {yaml_quote(env_name)}:")
+            if "url" in env_body:
+                lines.append(f"    url: {yaml_quote(env_body['url'])}")
+            creds = env_body.get("credentials") or {}
+            if creds:
+                lines.append("    credentials:")
+                for k, v in creds.items():
+                    # v MUST be the env-var NAME, never a literal credential.
+                    lines.append(f"      {yaml_quote(k)}: {yaml_quote(v)}")
 
-device_targets = data.get("device_targets") or {}
-if device_targets:
-    lines.append("")
-    lines.append("device_targets:")
-    for plat, body in device_targets.items():
-        lines.append(f"  {yaml_quote(plat)}:")
-        # Two shapes accepted:
-        #   1. Canonical (E74-S11): dict with os_versions / form_factors /
-        #      screen_sizes per ADR-081 / project-config.schema.json.
-        #   2. Legacy (E71-S1): list of device-name strings.
-        if isinstance(body, dict):
-            ov = body.get("os_versions") or []
-            ff = body.get("form_factors") or []
-            ss = body.get("screen_sizes") or []
-            if ov:
-                lines.append("    os_versions:")
-                for v in ov:
-                    # os_versions are schema-required strings; force quoting so
-                    # values like "16.0" do not round-trip as YAML floats.
-                    s = str(v).replace('\\', '\\\\').replace('"', '\\"')
-                    lines.append(f'      - "{s}"')
-            if ff:
-                lines.append("    form_factors:")
-                for v in ff:
-                    lines.append(f"      - {yaml_quote(v)}")
-            if ss:
-                lines.append("    screen_sizes:")
-                for s in ss:
-                    if isinstance(s, dict):
-                        lines.append(
-                            f"      - {{ width: {int(s['width'])}, "
-                            f"height: {int(s['height'])}, "
-                            f"density: {s['density']} }}"
-                        )
-                    else:
-                        # Pass-through string (rare).
-                        lines.append(f"      - {yaml_quote(s)}")
-        else:
-            # Legacy list-of-strings shape.
-            for d in body or []:
-                lines.append(f"    - {yaml_quote(d)}")
+    ci = data.get("ci_platform") or {}
+    if ci.get("provider"):
+        lines.append("")
+        lines.append("ci_platform:")
+        lines.append(f"  provider: {yaml_quote(ci['provider'])}")
+        if ci.get("pipeline"):
+            lines.append(f"  pipeline: {yaml_quote(ci['pipeline'])}")
+
+    platforms = data.get("platforms") or []
+    if platforms:
+        lines.append("")
+        lines.append("platforms:")
+        for p in platforms:
+            lines.append(f"  - {yaml_quote(p)}")
+
+    device_targets = data.get("device_targets") or {}
+    if device_targets:
+        lines.append("")
+        lines.append("device_targets:")
+        for plat, body in device_targets.items():
+            lines.append(f"  {yaml_quote(plat)}:")
+            # Two shapes accepted:
+            #   1. Canonical (E74-S11): dict with os_versions / form_factors /
+            #      screen_sizes per ADR-081 / project-config.schema.json.
+            #   2. Legacy (E71-S1): list of device-name strings.
+            if isinstance(body, dict):
+                ov = body.get("os_versions") or []
+                ff = body.get("form_factors") or []
+                ss = body.get("screen_sizes") or []
+                if ov:
+                    lines.append("    os_versions:")
+                    for v in ov:
+                        # os_versions are schema-required strings; force quoting so
+                        # values like "16.0" do not round-trip as YAML floats.
+                        s = str(v).replace('\\', '\\\\').replace('"', '\\"')
+                        lines.append(f'      - "{s}"')
+                if ff:
+                    lines.append("    form_factors:")
+                    for v in ff:
+                        lines.append(f"      - {yaml_quote(v)}")
+                if ss:
+                    lines.append("    screen_sizes:")
+                    for s in ss:
+                        if isinstance(s, dict):
+                            lines.append(
+                                f"      - {{ width: {int(s['width'])}, "
+                                f"height: {int(s['height'])}, "
+                                f"density: {s['density']} }}"
+                            )
+                        else:
+                            # Pass-through string (rare).
+                            lines.append(f"      - {yaml_quote(s)}")
+            else:
+                # Legacy list-of-strings shape.
+                for d in body or []:
+                    lines.append(f"    - {yaml_quote(d)}")
 
 with open(out_path, "w") as f:
     f.write("\n".join(lines) + "\n")
