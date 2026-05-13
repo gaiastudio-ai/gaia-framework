@@ -8,19 +8,21 @@ export LC_ALL
 #   - team-shared:  config/project-config.yaml
 #   - machine-local: config/global.yaml
 #
-# Shared path discovery precedence (E28-S191 / AC1):
+# Shared path discovery precedence (E28-S191 / AC1, extended by AI-2026-05-13-12):
 #   1. --shared <path>           explicit flag wins
 #   2. --config <path>           legacy alias from E28-S9 single-file mode
 #   3. $GAIA_SHARED_CONFIG       env override
 #   4. $CLAUDE_PROJECT_ROOT/config/project-config.yaml  (if file exists)
 #   5. $PWD/config/project-config.yaml                  (if file exists)
+#   5b. parent-of-$PWD/config/project-config.yaml       (walk-up; stops at / or $HOME)
 #   6. $CLAUDE_SKILL_DIR/config/project-config.yaml     (legacy, bats fixtures)
 #
-# Local overlay discovery precedence (E28-S191 / AC2):
+# Local overlay discovery precedence (E28-S191 / AC2, extended by AI-2026-05-13-12):
 #   1. --local <path>            explicit flag
 #   2. $GAIA_LOCAL_CONFIG        env override
 #   3. $CLAUDE_PROJECT_ROOT/config/global.yaml          (if file exists)
 #   4. $PWD/config/global.yaml                          (if file exists)
+#   4b. parent-of-$PWD/config/global.yaml               (walk-up; stops at / or $HOME)
 #   5. $CLAUDE_SKILL_DIR/config/global.yaml             (legacy, bats fixtures)
 #
 # Applies GAIA_* environment overrides on top, validates required fields,
@@ -483,6 +485,28 @@ fi
 if [ -z "$SHARED_PATH" ] && [ -f "${PWD}/config/project-config.yaml" ]; then
   SHARED_PATH="${PWD}/config/project-config.yaml"
 fi
+# L4b (AI-2026-05-13-12): walk-up discovery when CWD is a sub-directory of
+# project root. The Claude Code skill harness invokes `!setup.sh` from a CWD
+# that may drift below project root (e.g., the dev runs a command from a
+# nested workspace folder). Walk parent directories from $PWD until we hit a
+# config/project-config.yaml or the filesystem root. Stops at $HOME and / to
+# avoid traversing system paths.
+#
+# Skipped when CLAUDE_SKILL_DIR or GAIA_NO_PROJECT_WALKUP is set so unit
+# tests and legacy bats-fixture flows can deterministically exercise the
+# CLAUDE_SKILL_DIR fallback path without leaking the real project config
+# from a bats-runner CWD that happens to live inside a real project tree.
+if [ -z "$SHARED_PATH" ] && [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ]; then
+  _gaia_walk_dir="$PWD"
+  while [ "$_gaia_walk_dir" != "/" ] && [ "$_gaia_walk_dir" != "${HOME:-/nonexistent}" ]; do
+    _gaia_walk_dir="$(dirname "$_gaia_walk_dir")"
+    if [ -f "${_gaia_walk_dir}/config/project-config.yaml" ]; then
+      SHARED_PATH="${_gaia_walk_dir}/config/project-config.yaml"
+      break
+    fi
+  done
+  unset _gaia_walk_dir
+fi
 if [ -z "$SHARED_PATH" ] && [ -n "${CLAUDE_SKILL_DIR:-}" ]; then
   SHARED_PATH="${CLAUDE_SKILL_DIR}/config/project-config.yaml"
 fi
@@ -502,6 +526,21 @@ if [ -z "$LOCAL_PATH" ] \
 fi
 if [ -z "$LOCAL_PATH" ] && [ -f "${PWD}/config/global.yaml" ]; then
   LOCAL_PATH="${PWD}/config/global.yaml"
+fi
+# Walk-up discovery for global.yaml mirrors the shared-path walk above
+# (AI-2026-05-13-12). Soft-fails if no global.yaml is found — overlay is
+# optional per E28-S142 / AC4. Skipped when CLAUDE_SKILL_DIR or
+# GAIA_NO_PROJECT_WALKUP is set for the same test-isolation reason.
+if [ -z "$LOCAL_PATH" ] && [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ]; then
+  _gaia_walk_dir="$PWD"
+  while [ "$_gaia_walk_dir" != "/" ] && [ "$_gaia_walk_dir" != "${HOME:-/nonexistent}" ]; do
+    _gaia_walk_dir="$(dirname "$_gaia_walk_dir")"
+    if [ -f "${_gaia_walk_dir}/config/global.yaml" ]; then
+      LOCAL_PATH="${_gaia_walk_dir}/config/global.yaml"
+      break
+    fi
+  done
+  unset _gaia_walk_dir
 fi
 if [ -z "$LOCAL_PATH" ] \
    && [ -n "${CLAUDE_SKILL_DIR:-}" ] \
