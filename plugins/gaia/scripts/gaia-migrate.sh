@@ -225,17 +225,24 @@ _detect_v1() {
   fi
 
   # (1) v2 + no v1 dirs + state dirs present → return 11 (reconcile path)
-  # The existing v1-marker absence check is `has_engine=0 && has_custom=0`
-  # (legacy framework + custom dirs). `_memory/` alone is v2-era state
-  # post-E85, not a v1 marker — so it is excluded from the v1-marker test.
-  if [[ "$has_v2" -eq 1 && "$has_engine" -eq 0 && "$has_custom" -eq 0 && "$has_state_dirs" -eq 1 ]]; then
+  # The v1-marker absence test is `has_engine=0` alone. `_memory/` is v2-era
+  # state post-E85 (excluded from v1-marker test via has_state_dirs above).
+  # `custom/` is a canonical v2 surface per FR-RSV2-10 (custom-over-built-in
+  # precedence) and `scripts/adapters/BOUNDARIES.md` line 110 — its presence
+  # does NOT indicate v1. The previous `has_custom=0` condition produced a
+  # false-positive HALT on v2 projects with active custom adapters
+  # (AF-2026-05-13-3, sibling to AF-2026-05-13-2 / E85-S11 / AI-2026-05-09-12).
+  # If a future call site needs to disambiguate v1-legacy `custom/` from v2
+  # `custom/`, check `[ -d "$PROJECT_ROOT/custom/agents" ]` — that subdir
+  # was a v1-only layout.
+  if [[ "$has_v2" -eq 1 && "$has_engine" -eq 0 && "$has_state_dirs" -eq 1 ]]; then
     echo
     echo "v2 install with framework-era state directories detected — reconciliation path."
     return 11
   fi
 
   # (1b) Already on v2 — idempotent success (AC7 / W1 / W6)
-  if [[ "$has_v2" -eq 1 && "$has_engine" -eq 0 && "$has_memory" -eq 0 && "$has_custom" -eq 0 ]]; then
+  if [[ "$has_v2" -eq 1 && "$has_engine" -eq 0 && "$has_memory" -eq 0 ]]; then
     echo
     echo "Nothing to migrate — already on v2."
     return 10
@@ -249,7 +256,7 @@ _detect_v1() {
   fi
 
   # (3) No v1 detected AND no v2 marker
-  if [[ "$has_engine" -eq 0 && "$has_memory" -eq 0 && "$has_custom" -eq 0 && "$has_config" -eq 0 ]]; then
+  if [[ "$has_engine" -eq 0 && "$has_memory" -eq 0 && "$has_config" -eq 0 ]]; then
     echo
     echo "HALT: No v1 installation detected — nothing to migrate."
     return 1
