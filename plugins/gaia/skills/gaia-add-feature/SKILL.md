@@ -520,6 +520,31 @@ adhere to the hygiene rules at dispatch time.
 
 ### Step 8 -- Add Feature Stories (enhancement and feature)
 
+**Step 8 pre-flight — deterministic parent-epic inference (E89-S3, FR-AFE-3, AI-2026-05-13-21):**
+
+Before story-creation logic runs, invoke the advisory parent-epic inference helper to surface a deterministic parent epic when affected_skills can be unambiguously mapped to one open epic:
+
+```bash
+parent_epic_match=$(bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-add-feature/scripts/lib/infer-parent-epic.sh" \
+  --affected-skills "$AFFECTED_SKILLS")
+```
+
+The helper emits exactly one of three modes on stdout (exit 0 always):
+
+- `deterministic <epic_key>` — exactly one open epic in `epics-and-stories.md` matched the affected_skills list. Parent epic is set to `<epic_key>` automatically; the LLM does NOT re-judge.
+- `ambiguous: <epic_key_1>,<epic_key_2>,...` — two or more open epics matched. The LLM judges among the listed candidates (or files a new epic if none fit).
+- `no-match` — zero open epics matched. The LLM falls through to its standard fallback heuristic (typically: file a new epic).
+
+Record the result in the assessment-doc Cascade Plan as `parent_epic_match: <mode> [— <details>]`. Examples:
+
+- `parent_epic_match: deterministic — E89`
+- `parent_epic_match: ambiguous — E63,E89`
+- `parent_epic_match: no-match`
+
+**"Open epic" definition** (consumed by the helper): an epic detail block in `epics-and-stories.md` is OPEN unless its body contains (case-insensitive) `**Status: closed**`, `**Status: retired**`, or `**Status: sunset**`.
+
+**Empty `affected_skills`** is handled cleanly: the helper emits `no-match` and exits 0. Cascades with no skill-touching scope proceed normally.
+
 **Two modes (E89-S2, FR-AFE-2):**
 
 - **`inline-dispatch`** (legacy default for YOLO): `/gaia-add-stories` is dispatched as a Skill-to-Skill delegate; story files are materialized in-cascade. Behavior preserved verbatim from pre-E89-S2 cascades.
@@ -748,6 +773,7 @@ finding first and re-invoke the skill.
 
 ## Changelog
 
+- **2026-05-14 — E89-S3 — Deterministic parent-epic inference (FR-AFE-3, AI-2026-05-13-21).** Added `scripts/lib/infer-parent-epic.sh` — advisory helper that maps comma-separated affected_skills to open epics in `docs/planning-artifacts/epics-and-stories.md`. Emits one of three modes on stdout (exit 0 always): `deterministic <epic_key>` / `ambiguous: <key1>,<key2>,...` / `no-match`. Step 8 prose updated with a pre-flight subsection that invokes the helper before story-creation logic; the result is recorded in the assessment-doc Cascade Plan as `parent_epic_match: <mode> [— <details>]`. Open-epic definition: a detail block is OPEN unless `**Status: closed**`, `**Status: retired**`, or `**Status: sunset**` appears within it. Empty `affected_skills` cleanly emits `no-match`. Closes the friction-point 3 drift surfaced by the AF-2026-05-13-1 smoke test (LLMs reading a long epics-and-stories.md inconsistently picked between parent-epic candidates).
 - **2026-05-14 — E89-S2 — Step 8 deferred-seed-brief mode + `step_8_mode` Cascade Plan field (FR-AFE-2, AI-2026-05-13-20).** Step 8 prose rewritten to document TWO modes: `inline-dispatch` (legacy default for YOLO, materializes story files in-cascade) and `deferred-seed-brief` (new default for non-YOLO, reserves story keys + emits `### Story seed brief for <story_key>` subsections in the assessment-doc; user dispatches `/gaia-create-story <key>` as a follow-up). Default selection is YOLO-keyed: YOLO active → inline-dispatch (legacy preserved); YOLO inactive → deferred-seed-brief (new default). `setup.sh` gained a `--step-8-mode <inline-dispatch|deferred-seed-brief>` CLI override (and inline form) with canonical rejection stderr `gaia-add-feature: invalid --step-8-mode value (expected inline-dispatch or deferred-seed-brief, got: <value>)`. The Before/After default flip is documented explicitly per Val F9 (AF-2026-05-14-7 cascade) — reviewers see the policy change, not just a new field. Rationale: post-ADR-093 main-turn orchestration model makes inline sub-skill dispatch heavier than under the legacy fork-context model; AF-2026-05-13-1 smoke-test surfaced this as friction-point 2.
 - **2026-05-14 — E89-S1 — Steps 6/8b HALT-or-bootstrap on missing canonical test artifacts (FR-AFE-1, AI-2026-05-13-1 friction-point 1).** `setup.sh` gained two new optional CLI flags (`--classification <patch|enhancement|feature>`, `--feature-id <AF-{date}-{N}>`) parsed BEFORE resolve-config so the classification is available when gates fire. Under classification `enhancement` / `feature`, `setup.sh` invokes `validate-gate.sh test_plan_exists` and `validate-gate.sh traceability_exists` (extending the existing `prd_exists` / `epics_and_stories_exists` consumer pattern at L62/L65). On either gate failure, `setup.sh` `die`'s with canonical stderr `HALT: test-plan.md is missing — run /gaia-test-design first, then re-invoke /gaia-add-feature {feature_id}` (or the `/gaia-trace` mirror). Patch classifications skip both gates. SKILL.md Steps 6 + 8b prose rewritten to document the prereq contract; Step 1c re-invocation added so the classification captured in Step 1 flows back to `setup.sh`. Closes the friction-point 1 drift surfaced by the AF-2026-05-13-1 smoke test (Step 6 silently skipped its Test Plan edit because the artifact did not yet exist on disk).
 - **2026-05-14 — E88-S2 — Intake-time dispatch-verb enforcement (FR-DPD-2, ADR-107, AI-2026-05-13-4).** Added Step 8a between Step 8 (Add Feature Stories) and Step 8b (Update Traceability). The step invokes `scripts/lib/intake-dispatch-verb-check.sh --story-file <path>` for every story produced by Step 8. The helper sources `scripts/lib/dispatch-verb-match.sh` (E88-S1) and HALTs with the canonical message when a dispatch-verb AC lacks a companion integration-test AC and has no `<!-- gaia:contract-only: <reason> -->` override. Closes the drift class documented in AI-2026-05-13-4 (dispatch-verb ACs landing without integration coverage). Story-template.md and validate-frontmatter.sh gain a new 16th required `delivered:` boolean field (default `true`) — the bookkeeping primitive E88-S6 will consume for retroactive E76-S10 back-fill.
