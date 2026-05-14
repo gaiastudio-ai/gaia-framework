@@ -25,6 +25,14 @@
 #   - tests/dispatch-verb-match.bats          — unit tests; reference all entries.
 #   - tests/deferral-phrase-match.bats        — unit tests; reference all entries.
 #   - tests/taxonomy-ssot-audit.bats          — this audit (itself).
+#   - tests/intake-dispatch-verb-check.bats   — E88-S2 intake helper unit tests;
+#                                               positive/negative fixtures reference
+#                                               all dispatch verbs to exercise the
+#                                               matcher via the shared library.
+#   - scripts/lib/intake-dispatch-verb-check.sh — E88-S2 intake helper; sources
+#                                                 the matcher library + has
+#                                                 dispatch-verb references in
+#                                                 header documentation prose.
 #   - knowledge/adrs/ADR-107*.md              — ADR-107 prose if/when stored here.
 
 load 'test_helper.bash'
@@ -53,6 +61,8 @@ _allowed_paths_regex() {
 ^tests/dispatch-verb-match\.bats$
 ^tests/deferral-phrase-match\.bats$
 ^tests/taxonomy-ssot-audit\.bats$
+^tests/intake-dispatch-verb-check\.bats$
+^scripts/lib/intake-dispatch-verb-check\.sh$
 ^knowledge/adrs/ADR-107.*\.md$
 EOF
 }

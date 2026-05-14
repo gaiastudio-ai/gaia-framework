@@ -235,6 +235,23 @@ The script is idempotent (dedup by `(story_key, scenario)` pair), best-effort (m
 
 YOLO compatibility (AC6): non-interactive.
 
+### Step 3e -- Intake-time dispatch-verb enforcement (E88-S2, FR-DPD-2)
+
+After ACs are drafted (Steps 3 / 3b / 3c) and BEFORE Step 4 generates the story file on disk, enforce the drift-prevention contract from E88-S2: every AC mentioning a dispatch verb (per the E88-S1 closed-list taxonomy SSOT at `knowledge/taxonomy/dispatch-verbs.txt`) MUST be paired with a companion integration-test AC OR explicitly annotated with `<!-- gaia:contract-only: <reason> -->`.
+
+The deterministic enforcement runs in `scripts/lib/intake-dispatch-verb-check.sh` — the LLM never inlines the taxonomy or re-implements the matcher (ADR-107 SSOT contract).
+
+```bash
+!scripts/lib/intake-dispatch-verb-check.sh --story-file "${TMP_STORY_DRAFT}"
+```
+
+The helper:
+- Sources `scripts/lib/dispatch-verb-match.sh` (E88-S1 matcher library).
+- Walks each AC; on a dispatch-verb match with no integration-test AC and no contract-only override, exits 1 with the canonical stderr `HALT: dispatch-verb AC #<n> ("<excerpt>") lacks a companion integration-test AC. Add an integration-test AC, OR annotate this AC with <!-- gaia:contract-only: <reason> --> if the dispatch is contract-only.`
+- For each `<!-- gaia:contract-only: <reason> -->` override observed, appends a `**Contract-only ACs:**` subsection to the story Dev Notes capturing the reason.
+
+YOLO compatibility (AC6): non-interactive. A HALT here aborts the YOLO branch — there is no auto-fix; the author must add an integration-test AC or annotate the override.
+
 ### Step 4 -- Generate Story File
 
 The deterministic operations of Step 4 — slug, frontmatter YAML, scaffold render, and post-write validation — are delegated to the E63 script tier. The agent's only Step 4 responsibility is (a) feeding inputs to the scripts in dependency order, (b) filling `{CONTENT_PLACEHOLDER}` lines with judgment-bearing content, and (c) honoring the `origin` / `origin_ref` provenance contract.
@@ -425,6 +442,10 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/val-sidecar-write.sh \
 ```
 
 If Step 6 was skipped, use `verdict: "skipped"` and empty findings. Helper enforces NFR-VSP-2 allowlist and FR-VSP-2 idempotency (`status=skipped_duplicate` is success). Best-effort: log warnings on rejection but never fail the skill.
+
+## Changelog
+
+- **2026-05-14 — E88-S2 — Intake-time dispatch-verb enforcement (FR-DPD-2, ADR-107, AI-2026-05-13-4).** Added Step 3e between Step 3d (Append Edge Cases to Test Plan) and Step 4 (Generate Story File). The step invokes `scripts/lib/intake-dispatch-verb-check.sh --story-file <draft>` which sources the E88-S1 matcher library and HALTs with the canonical message when a dispatch-verb AC lacks a companion integration-test AC and has no `<!-- gaia:contract-only: <reason> -->` override. Story-template.md and validate-frontmatter.sh gain a new 16th required `delivered:` boolean field (default `true`). The new field is the bookkeeping primitive E88-S6 will consume for retroactive stub-only landings (E76-S10 back-fill precedent).
 
 ## Finalize
 

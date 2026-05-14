@@ -354,6 +354,7 @@ points: $points
 risk: "$risk"
 sprint_id: null
 priority_flag: null
+delivered: true
 origin: $origin_yaml
 origin_ref: $origin_ref_yaml
 depends_on: $depends_on_yaml

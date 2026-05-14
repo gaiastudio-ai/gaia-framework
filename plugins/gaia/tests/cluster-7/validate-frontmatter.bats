@@ -57,6 +57,7 @@ blocks: []
 traces_to: ["ADR-001"]
 date: "2026-04-29"
 author: "tester"
+delivered: true
 ---
 
 # Story body
@@ -384,4 +385,38 @@ EOF
   [ "$status" -eq 0 ]
   run grep -E 'E63-S4' "$SCRIPT"
   [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# TC-DPD-10 (E88-S2) — `delivered:` round-trip
+# ---------------------------------------------------------------------------
+
+@test "TC-DPD-10a: delivered: true is accepted (round-trip happy path)" {
+  path="$(write_good_story)"
+  run "$SCRIPT" --file "$path"
+  [ "$status" -eq 0 ]
+}
+
+@test "TC-DPD-10b: delivered: false is accepted" {
+  path="$(write_good_story)"
+  sed -i.bak 's/^delivered: true$/delivered: false/' "$path" && rm -f "$path.bak"
+  run "$SCRIPT" --file "$path"
+  [ "$status" -eq 0 ]
+}
+
+@test "TC-DPD-10c: delivered: <non-boolean> -> CRITICAL with 'must be true or false'" {
+  path="$(write_good_story)"
+  sed -i.bak 's/^delivered: true$/delivered: yes/' "$path" && rm -f "$path.bak"
+  run "$SCRIPT" --file "$path"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"CRITICAL|delivered|"*"must be true or false"* ]]
+  [[ "$output" == *"yes"* ]]
+}
+
+@test "TC-DPD-10d: delivered: missing -> CRITICAL with 'missing required field'" {
+  path="$(write_good_story)"
+  sed -i.bak '/^delivered: true$/d' "$path" && rm -f "$path.bak"
+  run "$SCRIPT" --file "$path"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"CRITICAL|delivered|missing required field"* ]]
 }
