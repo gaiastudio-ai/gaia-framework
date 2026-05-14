@@ -45,6 +45,32 @@ Scan story files in `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/` for 
 
 Collect all findings from ALL story files regardless of status -- scan every `.md` file that has a non-empty Findings table. This ensures triage catches findings from stories in any status.
 
+### Step 1b --- Scan Completion Notes for Deferral Drift (E88-S4, FR-DPD-4)
+
+Refs: ADR-107 (closed-list taxonomies SSOT), AI-2026-05-13-6.
+
+In addition to the Findings-table scan above, walk the `### Completion Notes List` subsection of each story file looking for deferral phrases (per E88-S1 taxonomy SSOT) that lack a paired Finding row. Use the canonical helper — do NOT inline the taxonomy:
+
+```bash
+for story_file in $story_files; do
+  bash $PLUGIN/scripts/lib/completion-notes-deferral-scan.sh --story-file "$story_file" \
+    | while IFS=$'\t' read -r phrase_kv paired_kv fid_kv; do
+        # Parse `phrase=<>\tpaired=<>\tfinding_id=<>`
+        phrase="${phrase_kv#phrase=}"
+        paired="${paired_kv#paired=}"
+        finding_id="${fid_kv#finding_id=}"
+        if [ "$paired" = "false" ]; then
+          emit_triage_candidate \
+            --source "completion-notes-deferral-scan" \
+            --story-key "$(basename "$story_file" | sed 's/-.*//')" \
+            --phrase "$phrase"
+        fi
+      done
+done
+```
+
+The triage output schema gains a `source` column with values `findings-table` (the Step 1 default) or `completion-notes-deferral-scan` (Step 1b). Existing consumers parsing by row/column ignore extra columns — the change is purely additive.
+
 ### Step 2 --- Present Findings
 
 Group findings by severity (critical first, then high, medium, low).
@@ -261,6 +287,10 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/val-sidecar-write.sh \
 The helper enforces the two-file allowlist (NFR-VSP-2) and idempotency by composite `(command_name, input_id, decision_hash)` key (FR-VSP-2) — re-runs with identical payload yield `status=skipped_duplicate` and must be treated as success.
 
 Failure posture: if the helper rejects or errors, log a warning and continue — memory persistence is best-effort and MUST NOT fail the skill.
+
+## Changelog
+
+- **2026-05-14 — E88-S4 — Completion Notes deferral-drift scanner (FR-DPD-4, ADR-107, AI-2026-05-13-6).** Added Step 1b that walks each story's `### Completion Notes List` via `lib/completion-notes-deferral-scan.sh` (which wraps `lib/deferral-phrase-match.sh` per E88-S1) and emits unmatched-deferral records as triage candidates. Triage output schema gains a new `source` column with values `findings-table` (the Step 1 default) or `completion-notes-deferral-scan` (Step 1b). Purely additive — existing consumers parsing by row/column ignore extra columns. Closes the drift class from AI-2026-05-13-6 at the triage end (the Val end is covered by gaia-validation-patterns' new pattern).
 
 ## Finalize
 

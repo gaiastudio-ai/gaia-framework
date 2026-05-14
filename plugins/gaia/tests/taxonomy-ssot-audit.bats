@@ -33,6 +33,15 @@
 #                                                 the matcher library + has
 #                                                 dispatch-verb references in
 #                                                 header documentation prose.
+#   - tests/completion-notes-deferral-scan.bats — E88-S4 helper unit tests;
+#                                                  fixtures and assertions
+#                                                  reference deferral phrases
+#                                                  by design.
+#   - scripts/lib/completion-notes-deferral-scan.sh — E88-S4 Completion-Notes
+#                                                      scanner; sources the
+#                                                      matcher library.
+#   - tests/fixtures/completion-notes-deferral/   — E88-S4 fixtures; contain
+#                                                    deferral phrases by design.
 #   - knowledge/adrs/ADR-107*.md              — ADR-107 prose if/when stored here.
 
 load 'test_helper.bash'
@@ -63,6 +72,9 @@ _allowed_paths_regex() {
 ^tests/taxonomy-ssot-audit\.bats$
 ^tests/intake-dispatch-verb-check\.bats$
 ^scripts/lib/intake-dispatch-verb-check\.sh$
+^tests/completion-notes-deferral-scan\.bats$
+^scripts/lib/completion-notes-deferral-scan\.sh$
+^tests/fixtures/completion-notes-deferral/.*$
 ^knowledge/adrs/ADR-107.*\.md$
 EOF
 }
