@@ -222,7 +222,7 @@ field_present() {
 # The canonical 15 fields per story-template.md. Fields in NULLABLE may be
 # the bare value `null`; everything else must be non-empty and not `null`.
 
-REQUIRED_FIELDS="key title epic status priority size points risk sprint_id priority_flag depends_on blocks traces_to date author"
+REQUIRED_FIELDS="key title epic status priority size points risk sprint_id priority_flag depends_on blocks traces_to date author delivered"
 NULLABLE_FIELDS=" sprint_id priority_flag origin origin_ref "
 
 is_nullable() {
@@ -294,6 +294,32 @@ check_enum "status"   "backlog ready-for-dev in-progress review validating done 
 check_enum "priority" "P0 P1 P2"
 check_enum "size"     "S M L XL"
 check_enum "risk"     "high medium low"
+
+# ---------- Boolean check (E88-S2 — `delivered:`) ----------
+#
+# The `delivered:` field (16th required field, added by E88-S2 / FR-DPD-2)
+# must be a bare `true` or `false`. Anything else fires a CRITICAL with the
+# canonical stderr message "must be true or false (got: <value>)" per AC4.
+
+check_boolean() {
+  local field="$1" value
+  if ! field_present "$field"; then
+    return 0
+  fi
+  value="$(extract_field "$field")"
+  value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  if [ -z "$value" ] || [ "$value" = "null" ]; then
+    return 0
+  fi
+  case "$value" in
+    true|false) return 0 ;;
+    *)
+      append_finding "CRITICAL" "$field" "must be true or false (got: $value)"
+      ;;
+  esac
+}
+
+check_boolean "delivered"
 
 # ---------- Review Gate body-shape check (E54-S6) ----------
 #
