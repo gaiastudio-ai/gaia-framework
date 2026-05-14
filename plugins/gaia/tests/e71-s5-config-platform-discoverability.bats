@@ -60,8 +60,12 @@ teardown() { common_teardown; }
 # AC4 — helper script byte-identical pre vs post ----------------------
 
 @test "AC4 helper script sha256 matches the recorded pre-edit hash" {
+  # The pinned hash documents the helper's contract surface. E71-S9 AC1
+  # intentionally amended the helper (no-arg `add` is now discoverability
+  # exit 0 instead of validation exit 1) per SKILL.md Step 2c. Update the
+  # pin to track the amended contract.
   [ -f "$HELPER" ]
-  expected="1425bb9ac1db44bad1523d4eb4561fa664618687a5e44938cbbbad8b43ba03fd"
+  expected="3124ebf7c66241e6b475f02c8bb431bb634d28e27d396b489440429d03e292bc"
   actual="$(shasum -a 256 "$HELPER" | awk '{print $1}')"
   [ "$actual" = "$expected" ]
 }

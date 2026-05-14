@@ -35,7 +35,7 @@ Editing is comment-preserving per ADR-044: pre-existing comments and formatting 
 ### Step 2 — Extract the compliance Section
 
 - Run `${CLAUDE_PLUGIN_ROOT}/scripts/config-yaml-editor.sh extract <path> compliance`.
-- Exit 2 (missing / absent section): offer scaffold-or-abort. Default scaffold:
+- Exit 2 (missing / absent section): offer scaffold-or-skip-or-abort. Per E71-S9 AC4, an absent `compliance:` section validates with the semantic default `regimes: [], ui_present: false` — so scaffold-skip (decline the scaffold; keep the section absent) is now a first-class option that preserves the empty-default semantics without writing an empty stub block. Default scaffold (when the user opts in):
   ```yaml
   compliance:
     regimes: []
