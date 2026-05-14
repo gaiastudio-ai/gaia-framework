@@ -170,6 +170,22 @@ case "$CMD" in
     NEW_FILE="$4"
     [ -f "$NEW_FILE" ] || die "new section file not found: $NEW_FILE"
 
+    # AC5 (E71-S7) — schema-aware fail-safe: reject section names that are not
+    # declared as top-level properties in project-config.schema.json. This
+    # closes the wrong-section-name defect class that let /gaia-config-tool
+    # ship writes against the nonexistent `tool_adapters` section and
+    # /gaia-config-rubric against the nonexistent `rubrics` section. Closed
+    # set is the keys of `.properties` in the schema.
+    SCHEMA_PATH="$(dirname "$0")/../schemas/project-config.schema.json"
+    if [ -f "$SCHEMA_PATH" ] && command -v jq >/dev/null 2>&1; then
+      if ! jq -r '.properties | keys[]' "$SCHEMA_PATH" 2>/dev/null \
+          | grep -Fxq "$SECTION"; then
+        err "unknown section: '$SECTION' is not a declared property in $SCHEMA_PATH"
+        err "consult the schema's .properties keys for the closed set of accepted names"
+        exit 1
+      fi
+    fi
+
     if find_range "$SECTION" >/dev/null 2>&1; then
       err "section already exists: $SECTION"
       exit 1
