@@ -78,6 +78,9 @@ _allowed_paths_regex() {
 ^knowledge/taxonomy/forbidden-sentinels\.txt$
 ^scripts/lib/forbidden-sentinel-scan\.sh$
 ^tests/forbidden-sentinel-scan\.bats$
+^scripts/lib/canonicalize-dispatch-verb\.sh$
+^scripts/lib/atdd-anti-stub-emit\.sh$
+^tests/atdd-anti-stub-emit\.bats$
 ^knowledge/adrs/ADR-107.*\.md$
 EOF
 }
