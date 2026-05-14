@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.152.0] — 2026-05-14
+
+### Added
+
+- promote E85-S12 + E55-S13 to release
+
 ## [1.151.0] — 2026-05-13
 
 ### Added
