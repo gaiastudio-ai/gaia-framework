@@ -47,6 +47,8 @@ Editing is comment-preserving per ADR-044: pre-existing comments and formatting 
 
 ### Step 3 — Present Category Editor
 
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+
 - Render the current category-to-provider mapping as a table.
 - Prompt for category and new provider/config.
 - Cross-reference `list-adapters.sh` to surface available providers.

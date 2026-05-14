@@ -34,6 +34,8 @@ Resolve via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh project_config_path
 
 ### Step 2 — Dispatch Subcommand
 
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+
 Invoke the deterministic helper:
 
 ```
@@ -65,4 +67,4 @@ Examples: `390x844@3.0` (iPhone 15 portrait), `1024x1366@2.0` (iPad Pro 12.9"), 
 ## Notes
 
 - Per ADR-081 the schema enforces `os_versions`, `form_factors`, `screen_sizes` as required fields under `deviceTargetEntry` — partial blocks are rejected at validation time.
-- The eleven top-level sections of `project-config.yaml` (E68-S1): `project`, `stacks`, `platforms`, `regimes`, `ci_cd`, `environments`, `test_execution`, `tool_adapters`, `rubrics`, `compliance`, `deployment`. This skill ONLY edits `device_targets` (a sibling top-level key per ADR-081 / project-config.schema.json).
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `device_targets` (a sibling top-level key per ADR-081).

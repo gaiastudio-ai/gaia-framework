@@ -34,6 +34,8 @@ Per Val F-6 (E71-S7): the retirement rationale is "schema v2.0.0 has no `rubrics
 
 ## Steps
 
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+
 ### Step 1 — Display Deprecation Banner
 
 Display the deprecation notice so the user sees the redirect in the transcript:

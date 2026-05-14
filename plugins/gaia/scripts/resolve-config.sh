@@ -392,7 +392,7 @@ while [ $# -gt 0 ]; do
       # for the resolved sizing_map block (project > global precedence per
       # ADR-074 contract C1 / ADR-044 §10.26.3).
       POSITIONAL_QUERY="sizing_map"; shift ;;
-    planning_artifacts|implementation_artifacts|test_artifacts|creative_artifacts)
+    planning_artifacts|implementation_artifacts|test_artifacts|creative_artifacts|project_config_path)
       # E60-S2 — positional flat-key query for the four artifact-path
       # keys added by E60-S1. Emits ONLY the resolved scalar to stdout
       # with exit 0 (per Work Item 2 AC2 / story Test Scenarios #1–#5).
@@ -400,6 +400,13 @@ while [ $# -gt 0 ]; do
       # ADR-044 §10.26.3 (project > global). Mirrors the sizing_map
       # positional-query pattern but returns a single value (flat key,
       # not a block).
+      #
+      # E71-S8 (AC1) extends the positional-key set with `project_config_path`
+      # — a synthetic key (no schema backing) that resolves to
+      # `<project_root>/config/project-config.yaml`. Pattern mirrors the
+      # `memory_path` / `checkpoint_path` synthetic-key convention emitted
+      # under --all. The synthetic-key value backs the documented happy-path
+      # command in every /gaia-config-* SKILL.md Step 1.
       POSITIONAL_QUERY="$1"; shift ;;
     *)
       die "unknown argument: $1" ;;
@@ -1154,6 +1161,9 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_platforms" ;;
     project_kind)
       printf '%s\n' "$v_project_kind" ;;
+    # E71-S8 (AC1) — synthetic key mirroring positional dispatch (see above).
+    project_config_path)
+      printf '%s\n' "${v_project_root}/config/project-config.yaml" ;;
     *)
       die "unknown field for --field: '$FIELD'" ;;
   esac
@@ -1184,6 +1194,10 @@ if [ -n "$POSITIONAL_QUERY" ]; then
     implementation_artifacts) printf '%s\n' "$v_implementation_artifacts" ;;
     test_artifacts)           printf '%s\n' "$v_test_artifacts" ;;
     creative_artifacts)       printf '%s\n' "$v_creative_artifacts" ;;
+    # E71-S8 (AC1) — synthetic key, no schema backing. Resolves to
+    # `<project_root>/config/project-config.yaml`. Backs the documented
+    # happy-path command in every /gaia-config-* SKILL.md Step 1.
+    project_config_path)      printf '%s\n' "${v_project_root}/config/project-config.yaml" ;;
     *)
       die "unknown positional query: '$POSITIONAL_QUERY'" ;;
   esac
@@ -1210,6 +1224,10 @@ emit_all_body() {
   emit_pair_shell installed_path           "$v_installed_path"
   emit_pair_shell memory_path              "$v_memory_path"
   emit_pair_shell planning_artifacts       "$v_planning_artifacts"
+  # E71-S8 (AC1) — synthetic key, no schema backing. Resolves to
+  # `<project_root>/config/project-config.yaml`. Backs the documented
+  # happy-path command in every /gaia-config-* SKILL.md Step 1.
+  emit_pair_shell project_config_path      "${v_project_root}/config/project-config.yaml"
   emit_pair_shell project_path             "$v_project_path"
   emit_pair_shell project_root             "$v_project_root"
   # --all always emits sizing_map.{S,M,L,XL} so downstream batch consumers
@@ -1289,6 +1307,10 @@ if [ "$FORMAT" = "shell" ]; then
   emit_pair_shell installed_path           "$v_installed_path"
   emit_pair_shell memory_path              "$v_memory_path"
   emit_pair_shell planning_artifacts       "$v_planning_artifacts"
+  # E71-S8 (AC1) — synthetic key, no schema backing. Resolves to
+  # `<project_root>/config/project-config.yaml`. Backs the documented
+  # happy-path command in every /gaia-config-* SKILL.md Step 1.
+  emit_pair_shell project_config_path      "${v_project_root}/config/project-config.yaml"
   emit_pair_shell project_path             "$v_project_path"
   emit_pair_shell project_root             "$v_project_root"
   # E61-S1 — sizing_map.{S,M,L,XL} emitted only when at least one sub-key

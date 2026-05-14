@@ -260,3 +260,42 @@ teardown() { common_teardown; }
   done
   [ "$violations" -eq 0 ]
 }
+
+# ───────────────────────── E71-S8 (Val F-8) — D2 + D3 regression net ─────────────────────────
+#
+# E71-S8 extends this invariant test (per AC4 / TC-CFGD-4) so that the same
+# bats file guards BOTH the E71-S7 wrong-section-name defect class AND the
+# E71-S8 doc-drift defect class. Two new assertions:
+#   (a) D2 — no /gaia-config-* SKILL.md contains the stale 11-section
+#       enumeration (5 nonexistent names: project, regimes, tool_adapters,
+#       rubrics, deployment) as part of a top-level-sections list.
+#   (b) D3 — the canonical CRUD-menu LLM-driven disclaimer is present in
+#       every /gaia-config-* SKILL.md (uniformity check).
+
+# TC-CFGD-4(a) — D2 regression net
+@test "E71-S8 (TC-CFGD-4a): no /gaia-config-* SKILL.md contains the stale 11-section enumeration" {
+  local f violations=()
+  for f in "$SKILLS"/gaia-config-*/SKILL.md; do
+    if grep -qE '`project`,? `stacks`,? `platforms`,? `regimes`' "$f"; then
+      violations+=("$f")
+    fi
+  done
+  [ "${#violations[@]}" -eq 0 ] || {
+    printf 'STALE 11-SECTION ENUMERATION REINTRODUCED: %s\n' "${violations[@]}" >&2
+    return 1
+  }
+}
+
+# TC-CFGD-4(b) — D3 regression net
+@test "E71-S8 (TC-CFGD-4b): canonical CRUD-menu disclaimer present in every /gaia-config-* SKILL.md" {
+  local f missing=()
+  for f in "$SKILLS"/gaia-config-*/SKILL.md; do
+    if ! grep -qF 'LLM-driven interaction pattern under Claude Code main-turn orchestration' "$f"; then
+      missing+=("$f")
+    fi
+  done
+  [ "${#missing[@]}" -eq 0 ] || {
+    printf 'DISCLAIMER MISSING: %s\n' "${missing[@]}" >&2
+    return 1
+  }
+}

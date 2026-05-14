@@ -12,7 +12,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are editing the `test_execution` top-level section of `project-config.yaml`. The skill is one of eight `/gaia-config-*` editors shipped by E71-S3, each scoped to a single section of the eleven-section project-config surface (E68-S1). The `test_execution` section maps the three test tiers (tier_1, tier_2, tier_3) to canonical pipeline placements per FR-RSV2-11.
+You are editing the `test_execution` top-level section of `project-config.yaml`. The skill is one of the `/gaia-config-*` editors shipped by E71-S3, each scoped to a single declared section of `schemas/project-config.schema.json`. The `test_execution` section maps the three test tiers (tier_1, tier_2, tier_3) to canonical pipeline placements per FR-RSV2-11.
 
 Editing is comment-preserving per ADR-044: pre-existing comments and formatting OUTSIDE the edited section are preserved byte-for-byte; the edited section's content follows the existing indentation style detected from the file.
 
@@ -47,6 +47,8 @@ Editing is comment-preserving per ADR-044: pre-existing comments and formatting 
 
 ### Step 3 — Present Tier Editor
 
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+
 - Render the current tier-to-placement mapping as a table.
 - Prompt for tier and new placement, validating against the canonical placement set.
 
@@ -65,4 +67,4 @@ Editing is comment-preserving per ADR-044: pre-existing comments and formatting 
 
 ## Notes
 
-- The eleven top-level sections of `project-config.yaml` (E68-S1): `project`, `stacks`, `platforms`, `regimes`, `ci_cd`, `environments`, `test_execution`, `tool_adapters`, `rubrics`, `compliance`, `deployment`. This skill ONLY edits `test_execution`.
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `test_execution`.
