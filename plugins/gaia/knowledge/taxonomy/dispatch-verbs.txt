@@ -1,0 +1,20 @@
+# dispatch-verbs.txt — Closed-list dispatch-verb taxonomy (v1, frozen)
+# Refs: ADR-107, AF-2026-05-14-6
+#
+# Status: v1-frozen. Amendments MUST follow the ADR-107 amendment process
+# (PRD record + ADR cross-reference + bumped version + downstream review).
+#
+# Consuming skills (4, as of v1):
+#   - gaia-dev-story (orchestration class checks)
+#   - gaia-add-feature (cascade dispatch detection)
+#   - gaia-val-validate (drift-prevention scan of plan and diff text)
+#   - gaia-fix-story (orchestration-class re-classification)
+#
+# Lines starting with `#` are comments. Blank lines are ignored.
+# Each non-comment line is one canonical dispatch verb (base form), matched
+# with `grep -wF` (fixed-string, word-boundary) by dispatch-verb-match.sh.
+spawns
+dispatches
+invokes
+wires
+calls
