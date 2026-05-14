@@ -38,10 +38,15 @@ jobs:
     # past 3300 tests (E66/E67/E68/E69/E70 added 100+ new fixtures each
     # sprint). Raw bats is now consistently 4-5 minutes on CI; setup +
     # coverage upload push the job past the 5-minute wall on every push,
-    # forcing rerun-or-admin-merge cycles. Bump to 8 minutes to absorb the
-    # growth. The 240s soft budget enforced by bats-budget-watch.sh remains
-    # the actionable signal for fixture authors. Revisit at ~6m raw bats.
-    timeout-minutes: 8
+    # forcing rerun-or-admin-merge cycles. Bumped to 8 minutes by an earlier
+    # sprint. **Sprint-45 (E88-S6, 2026-05-14):** the suite is now
+    # consistently hitting the 8m hard cap (E88-S5 needed 3 reruns; E88-S6
+    # bats-tests failed at 8m0s + 8m10s on consecutive attempts). Bump to
+    # 12 minutes to absorb the E88 drift-prevention cascade additions
+    # (~30 new bats files across 6 stories). The 240s soft budget enforced
+    # by bats-budget-watch.sh remains the actionable signal for fixture
+    # authors. Revisit at ~9m raw bats.
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
