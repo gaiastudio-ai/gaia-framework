@@ -75,6 +75,9 @@ _allowed_paths_regex() {
 ^tests/completion-notes-deferral-scan\.bats$
 ^scripts/lib/completion-notes-deferral-scan\.sh$
 ^tests/fixtures/completion-notes-deferral/.*$
+^knowledge/taxonomy/forbidden-sentinels\.txt$
+^scripts/lib/forbidden-sentinel-scan\.sh$
+^tests/forbidden-sentinel-scan\.bats$
 ^knowledge/adrs/ADR-107.*\.md$
 EOF
 }

@@ -8,12 +8,13 @@
 # Production callsites (per ADR-106 rule #4):
 #   - plugins/gaia/scripts/lib/dispatch-verb-match.sh
 #   - plugins/gaia/scripts/lib/deferral-phrase-match.sh
-#   - plugins/gaia/tests/taxonomy-ssot-audit.bats (SSOT audit; iterates both names)
+#   - plugins/gaia/scripts/lib/forbidden-sentinel-scan.sh  (E88-S3)
+#   - plugins/gaia/tests/taxonomy-ssot-audit.bats (SSOT audit; iterates names)
 #
 # Usage
-#   load-taxonomy.sh --taxonomy <deferral|dispatch> [--as-grep-file]
+#   load-taxonomy.sh --taxonomy <deferral|dispatch|forbidden-sentinels> [--as-grep-file]
 #
-#   --taxonomy NAME    Required. One of: deferral, dispatch.
+#   --taxonomy NAME    Required. One of: deferral, dispatch, forbidden-sentinels.
 #   --as-grep-file     Optional. Emit a tempfile path on stdout containing
 #                      the taxonomy entries one-per-line (comments + blanks
 #                      stripped, trailing whitespace trimmed), suitable for
@@ -68,8 +69,11 @@ case "$TAXONOMY" in
   dispatch)
     FILE="$TAXONOMY_DIR/dispatch-verbs.txt"
     ;;
+  forbidden-sentinels)
+    FILE="$TAXONOMY_DIR/forbidden-sentinels.txt"
+    ;;
   *)
-    die "unknown taxonomy \"$TAXONOMY\"; valid names: deferral, dispatch"
+    die "unknown taxonomy \"$TAXONOMY\"; valid names: deferral, dispatch, forbidden-sentinels"
     ;;
 esac
 
