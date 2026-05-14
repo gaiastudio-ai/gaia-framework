@@ -81,6 +81,9 @@ _allowed_paths_regex() {
 ^scripts/lib/canonicalize-dispatch-verb\.sh$
 ^scripts/lib/atdd-anti-stub-emit\.sh$
 ^tests/atdd-anti-stub-emit\.bats$
+^scripts/lib/trace-dispatch-verb-enforcement\.sh$
+^tests/dpd-traceability-class\.bats$
+^tests/meeting-dispatch-integration\.bats$
 ^knowledge/adrs/ADR-107.*\.md$
 EOF
 }
