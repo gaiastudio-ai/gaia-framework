@@ -381,14 +381,45 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 
 ### Step 11 -- Create PR
 
+<!-- E88-S3: step 11a forbidden-sentinel scan begin -->
+
+**Step 11a — Forbidden-sentinel scan (E88-S3, FR-DPD-3, ADR-107, AI-2026-05-13-5).**
+
+BEFORE invoking `pr-body.sh` / `pr-create.sh`, scan the production-path slice of the diff (feature branch vs the promotion-chain base) for any forbidden sentinel listed in the E88-S1 taxonomy SSOT at `knowledge/taxonomy/forbidden-sentinels.txt`. The scan is implemented in `scripts/lib/forbidden-sentinel-scan.sh` — the LLM does NOT inline the taxonomy or re-implement the matcher.
+
+```bash
+# $PROMOTION_BASE is captured in Step 10 via promotion-chain-guard.sh.
+# Optional --allow-stub <reason> is forwarded from the dev-story args.
+ALLOW_STUB_REASON="$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/forbidden-sentinel-scan.sh \
+  --base-ref "$PROMOTION_BASE" \
+  ${ALLOW_STUB:+--allow-stub "$ALLOW_STUB"})" || exit 1
+```
+
+**Behaviour:**
+- exits 0 if no forbidden sentinels in the production-path diff slice (or `--allow-stub` accepted).
+- exits 1 with canonical stderr `HALT: forbidden sentinel <S> in <path>:<line> — add a Finding row or pass --allow-stub=<reason> to /gaia-dev-story` on a production-path match.
+- exits 1 with `--allow-stub reason must cite a story ID (Ex-Sx) or AI ID (AI-YYYY-MM-DD-N) — got: <reason>` on a malformed `--allow-stub` value.
+
+**Production-path filter (AC6):** the scan EXEMPTS `gaia-public/plugins/gaia/tests/**`, any `**/tests/fixtures/**` subtree, `_memory/**`, `docs/**`, `.github/**`, and any `*.bats` file (defense-in-depth).
+
+**`--allow-stub` reason regex (AC4):** `^(E[0-9]+-S[0-9]+|AI-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]+):` — must end with a colon so the reason is at minimum `<id>: <prose>`. Bare prose is rejected.
+
+**HALT delivery:** inline `printf` to stderr + `exit 1`. Per AF-2026-05-14-6 Val F1, `halt-event.sh` is gaia-meeting-scoped (not a shared library); a future relocation to `scripts/lib/` is a separate cross-cutting refactor and explicitly out of scope here.
+
+**Reason forwarding (AC5):** on `--allow-stub` accept, the helper echoes the reason on stdout. The Step 11 caller MUST capture it and forward it to `pr-body.sh` via `--allow-stub-reason "$ALLOW_STUB_REASON"` so the override appears as a fifth section in the PR body.
+
+<!-- E88-S3: step 11a forbidden-sentinel scan end -->
+
 <!-- E57-S8: step11 script-wiring begin -->
 The PR body is sourced from `pr-body.sh` — the LLM no longer composes the body
 inline (per ADR-057, ADR-073, AF-2026-04-28-6, FR-DSS-5, FR-DSS-6).
 
-- Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/pr-body.sh {story_path}`
-  and capture stdout as `$PR_BODY`. The script emits exactly four canonical
-  Markdown sections in order: Acceptance Criteria, Definition of Done, Diff Stat,
-  Story-link.
+- Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/pr-body.sh {story_path}
+  [--allow-stub-reason "$ALLOW_STUB_REASON"]` and capture stdout as `$PR_BODY`.
+  The script emits the four canonical Markdown sections (Acceptance Criteria,
+  Definition of Done, Diff Stat, Story-link); when `--allow-stub-reason` is
+  supplied (forwarded from Step 11a per E88-S3), pr-body.sh emits a fifth
+  section `## Allow-stub override` containing the reason.
 - Then invoke `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/pr-create.sh
   {story_key} {title} --body-file <(printf '%s\n' "$PR_BODY")` (or pipe `$PR_BODY`
   via the helper's body-file convention) so that `pr-create.sh` consumes the
@@ -462,6 +493,7 @@ YOLO-gated invocation of the six reviews that populate the Review Gate. Non-YOLO
 
 ## Changelog
 
+- **2026-05-14 — E88-S3 — Step 11a forbidden-sentinel scan (FR-DPD-3, ADR-107, AI-2026-05-13-5).** Added Step 11a between Step 10 (Commit and Push) and the existing Step 11 (Create PR) body. The new step invokes `scripts/lib/forbidden-sentinel-scan.sh --base-ref "$PROMOTION_BASE" [--allow-stub <reason>]` which sources the E88-S1 taxonomy SSOT (`knowledge/taxonomy/forbidden-sentinels.txt`, third v1 taxonomy added by this story) and scans the production-path slice of the feature-branch-vs-base diff for forbidden sentinels (STUB, MOCK, FIXME, XXX). Production-path filter EXEMPTS `tests/`, `**/tests/fixtures/`, `_memory/`, `docs/`, `.github/`, and any `*.bats` file (defense-in-depth). The `--allow-stub <reason>` override is gated on a story-ID or AI-ID prefix regex (`^(E[0-9]+-S[0-9]+|AI-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]+):`); bare prose is rejected. Accepted reasons are forwarded to `pr-body.sh --allow-stub-reason` and emitted as a fifth `## Allow-stub override` section in the PR body. **Step 14 → Step 11 correction** per Derek/PM decision A on AF-2026-05-14-6 Val F1 — the original AI targeted Step 14 (post-merge cleanup), but the scan needs to fire BEFORE the PR is opened. HALT delivery is inline `printf + exit 1` (NOT halt-event.sh) per Val F1 — halt-event.sh is gaia-meeting-scoped, not a shared library; a future relocation is a separate refactor.
 - **2026-05-13 — E87-S7 — Sentinel-Write Writer Shift (ADR-105 amends ADR-104).** Following the AI-2026-05-13-13 incident, the Val sentinel write has been relocated from the Val sub-agent context to the orchestrator's main turn at three callsites in this skill: Step 4 `validate` user-branch, Step 4 YOLO auto-validation loop, and Step 7b Val-in-TDD post-Refactor pass. Val now RETURNS the sentinel content as a `sentinel_envelope` field inside the ADR-037 envelope; this skill parses the field and writes the sentinel via the new helper `plugins/gaia/scripts/lib/write-val-envelope.sh` BEFORE invoking `assert_agent_envelope`. Forgery resistance preserved (NFR-064 unchanged) via `persona_sig` binding to validator.md's on-disk sha256. Closes the substrate content-integrity false-fire that affected all three Val dispatch sites under E87-S4.
 - **2026-05-12 — E87-S4 — Val Bridge Migration (ADR-104).** Retargeted three Val dispatch sites to the main-turn Agent-tool dispatch model: Step 4 `validate` user-branch (planning gate), Step 4 YOLO auto-validation loop, and Step 7b Val-in-TDD post-Refactor pass. Each dispatch site now sources `assert-agent-envelope.sh` (E87-S1) and invokes `assert_agent_envelope` immediately after the Agent call with HALT on assertion failure. Steps 10-16 (push/PR/CI/merge/review-gate) are intentionally untouched — they don't dispatch Val. Forgery resistance covered by TC-VBR-7 / TC-VBR-7b / TC-VBR-8 / TC-VBR-8b in `plugins/gaia/tests/val-bridge-migration.bats`; promotion-chain regression covered by TC-VBR-8d.
 

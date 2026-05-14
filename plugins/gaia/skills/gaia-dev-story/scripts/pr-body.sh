@@ -39,10 +39,34 @@ die_parse() { log "$*"; exit 2; }
 # --- Arg validation -------------------------------------------------------
 
 if [ $# -lt 1 ]; then
-  die_usage "usage: pr-body.sh <story_path>"
+  die_usage "usage: pr-body.sh <story_path> [--allow-stub-reason <reason>]"
 fi
 
 STORY_PATH_INPUT="$1"
+shift
+
+# --- Optional --allow-stub-reason flag (E88-S3, FR-DPD-3) -----------------
+# When present, emit a fifth canonical section `## Allow-stub override`
+# alongside the four existing sections. Forwarded by /gaia-dev-story Step
+# 11 from the Step 11a forbidden-sentinel-scan.sh accepted reason. Empty
+# value disables the section.
+ALLOW_STUB_REASON=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --allow-stub-reason)
+      [ $# -ge 2 ] || die_usage "--allow-stub-reason requires a value"
+      ALLOW_STUB_REASON="$2"
+      shift 2
+      ;;
+    --allow-stub-reason=*)
+      ALLOW_STUB_REASON="${1#*=}"
+      shift
+      ;;
+    *)
+      die_usage "unknown flag: $1"
+      ;;
+  esac
+done
 
 case "$STORY_PATH_INPUT" in
   *..*) die_usage "path traversal rejected: $STORY_PATH_INPUT" ;;
@@ -185,6 +209,14 @@ else
   printf '(no staged or unstaged changes)\n'
 fi
 printf '```\n\n'
+
+# --- Allow-stub override section (E88-S3) ---------------------------------
+# Fifth canonical section, emitted only when --allow-stub-reason was passed.
+# Per AC5 / FR-DPD-3 the reason is rendered verbatim under the heading.
+if [ -n "$ALLOW_STUB_REASON" ]; then
+  printf '## Allow-stub override\n\n'
+  printf '%s\n\n' "$ALLOW_STUB_REASON"
+fi
 
 printf 'Story: [%s](%s)\n' "$STORY_KEY_VAL" "$RELATIVE_LINK"
 
