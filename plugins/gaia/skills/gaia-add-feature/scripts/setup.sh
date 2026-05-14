@@ -47,6 +47,7 @@ die() { log "$*"; exit 1; }
 # available when the test-plan / traceability gates fire (AC1..AC4).
 CLASSIFICATION="enhancement"
 FEATURE_ID=""
+STEP_8_MODE=""  # empty = auto-derive from YOLO state (E89-S2 AC2 default)
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --classification)
@@ -73,6 +74,23 @@ while [[ $# -gt 0 ]]; do
       ;;
     --feature-id=*)
       FEATURE_ID="${1#*=}"
+      shift
+      ;;
+    --step-8-mode)
+      [[ $# -ge 2 ]] || die "missing value for --step-8-mode"
+      STEP_8_MODE="$2"
+      case "$STEP_8_MODE" in
+        inline-dispatch|deferred-seed-brief) ;;
+        *) die "gaia-add-feature: invalid --step-8-mode value (expected inline-dispatch or deferred-seed-brief, got: $STEP_8_MODE)" ;;
+      esac
+      shift 2
+      ;;
+    --step-8-mode=*)
+      STEP_8_MODE="${1#*=}"
+      case "$STEP_8_MODE" in
+        inline-dispatch|deferred-seed-brief) ;;
+        *) die "gaia-add-feature: invalid --step-8-mode value (expected inline-dispatch or deferred-seed-brief, got: $STEP_8_MODE)" ;;
+      esac
       shift
       ;;
     *)
