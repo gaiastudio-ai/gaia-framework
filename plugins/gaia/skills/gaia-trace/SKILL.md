@@ -114,6 +114,22 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 > `!scripts/write-checkpoint.sh gaia-trace 6 trace_matrix_path="docs/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" gate_status="$GATE_STATUS" stage=gate-verified`
 
+### Step 6b — Dispatch-verb integration-coverage enforcement (E88-S6, FR-DPD-6)
+
+For every story walked, run `scripts/lib/trace-dispatch-verb-enforcement.sh --story-file <story> --matrix-file <traceability-matrix>`. The helper sources `dispatch-verb-match.sh` (E88-S1), walks ACs, and enforces that every dispatch-verb AC in a `risk: medium|high` story has >=1 `test_class: integration` row in the matrix referencing it. HALTs with the canonical message on a coverage gap.
+
+```bash
+!scripts/lib/trace-dispatch-verb-enforcement.sh \
+  --story-file "$STORY_FILE" \
+  --matrix-file "$TRACE_MATRIX_PATH"
+```
+
+**Scope note (E88-S6 scope-split):** the original E88-S6 AC1 mandated a matrix-wide `test_class` column migration touching all 2185 rows. That migration is deferred to a follow-up. This enforcement step is the in-scope behaviour — it fires on `risk: medium|high` + dispatch-verb-bearing ACs only. Stories without `test_class: integration` rows in the matrix HALT until either (a) a matching row is added, OR (b) the story risk is downgraded to `low`.
+
+## Changelog
+
+- **2026-05-14 — E88-S6 — Dispatch-verb integration-coverage enforcement (FR-DPD-6, ADR-107, AI-2026-05-13-8, AI-2026-05-13-10).** Added Step 6b that invokes `scripts/lib/trace-dispatch-verb-enforcement.sh` for every story walked. The helper sources `lib/dispatch-verb-match.sh` (E88-S1) and HALTs with the canonical stderr message `HALT: dispatch-verb AC <story_key>:<ac_id> (risk: <risk>) requires >=1 integration row in traceability-matrix.md — add a TC-* row with test_class: integration, OR downgrade risk to low.` when a `risk: medium|high` story's dispatch-verb AC lacks an integration row. Closes AI-2026-05-13-8 (no test-class typing) at the `/gaia-trace` enforcement layer. **Scope-split note:** the original E88-S6 AC1 (matrix-wide `test_class` column migration on all 2185 rows) is filed as a Finding for a follow-up dedicated migration story — the enforcement step here works against the matrix in its current schema by checking `test_class: integration` substring presence on rows that already declare the field.
+
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-trace/scripts/finalize.sh
