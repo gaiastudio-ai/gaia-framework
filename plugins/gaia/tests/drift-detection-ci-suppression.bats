@@ -1,4 +1,12 @@
 #!/usr/bin/env bats
+# bats file_tags=hardware-dependent
+#
+# E91-S1 (FR-SRF-1, AF-2026-05-14-9): tests in this file exercise CI
+# environment variables (CI=true / non-TTY detection) and may run flaky
+# under different shell environments. Default-skip in CI via
+# BATS_FILTER_TAGS='!hardware-dependent'. Run locally with:
+#   bats --filter-tags hardware-dependent drift-detection-ci-suppression.bats
+#
 # drift-detection-ci-suppression.bats — CI suppression contract + full-skip
 # guard + SR-56 verbose-note visibility (E86-S5).
 #

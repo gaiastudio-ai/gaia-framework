@@ -72,6 +72,16 @@ jobs:
         # See ADR-062 / E45-S6-adr-memo-bats-scaling.md for the rationale and
         # plugins/gaia/docs/CI-NOTES.md for contributor guidance on adding
         # fixtures without breaking the budget.
+        #
+        # E91-S1 (FR-SRF-1, AF-2026-05-14-9): default-skip @hardware-dependent
+        # tests in CI via BATS_FILTER_TAGS='!hardware-dependent'. Tests
+        # tagged @hardware-dependent exercise host-specific timing primitives
+        # (mtime resolution, sleep precision, host-clock semantics) and were
+        # the primary contributor to bats CI budget overrun in sprint-43.
+        # Developers MUST run them locally before merge with:
+        #   bats --filter-tags hardware-dependent <test-file>
+        env:
+          BATS_FILTER_TAGS: '!hardware-dependent'
         run: |
           bash plugins/gaia/scripts/bats-budget-watch.sh \
             --threshold-seconds 240 \
