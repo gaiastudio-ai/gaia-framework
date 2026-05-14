@@ -96,6 +96,7 @@ When invoked without a story-key, run batch discovery:
   - Extract the AC identifier and description
   - Transform the AC into a Given/When/Then test skeleton
   - Name the test descriptively to reflect the AC being validated
+  - **Anti-stub Then-clause (E88-S5, FR-DPD-5, ADR-107).** After the functional Given/When/Then is drafted, invoke `scripts/lib/atdd-anti-stub-emit.sh --ac-text "<ac body>"` and APPEND its output (if any) to the scenario. The helper sources `lib/dispatch-verb-match.sh` (E88-S1) and `lib/canonicalize-dispatch-verb.sh` (this story) to emit one additive Then-clause per unique dispatch primitive matched in the AC body. Non-dispatch ACs receive no clause (byte-for-byte unchanged from pre-E88-S5 behaviour). The clause shape is literal: `Then: $*_STUB env vars are unset AND a real <primitive> was logged`, with `<primitive>` ∈ {`Agent-tool spawn`, `Agent-tool dispatch`, `primitive invocation`, `wiring`, `primitive call`} per the canonicalization map.
 - Build a traceability table mapping each AC to its corresponding test
 
 > `!scripts/write-checkpoint.sh gaia-atdd 3 story_key="$STORY_KEY" test_file_path="docs/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=mapping-generated`
@@ -167,6 +168,10 @@ After Step 5, prompt the user: **"Run generated tests now to confirm red phase? 
 - [LLM-checkable] LLM-02 — Each AC mapped to exactly one test
 - [LLM-checkable] LLM-03 — Tests fail initially (red phase)
 - [LLM-checkable] LLM-04 — Tests are atomic and independent
+
+## Changelog
+
+- **2026-05-14 — E88-S5 — Anti-stub Then-clause for dispatch-verb ACs (FR-DPD-5, ADR-107, AI-2026-05-13-7).** Added a sub-step to Step 3 (Generate AC-to-Test Mapping) that invokes `scripts/lib/atdd-anti-stub-emit.sh --ac-text "<ac body>"` after the functional Given/When/Then is drafted. The helper sources `lib/dispatch-verb-match.sh` (E88-S1) and `lib/canonicalize-dispatch-verb.sh` (this story) to emit one additive Then-clause per unique dispatch primitive matched in the AC body — clause shape: `Then: $*_STUB env vars are unset AND a real <primitive> was logged` with `<primitive>` from the canonicalization map (`Agent-tool spawn`, `Agent-tool dispatch`, `primitive invocation`, `wiring`, `primitive call`). Multi-verb ACs get dedup'd clauses (one per unique primitive). Non-dispatch ACs receive NO clause (byte-for-byte unchanged from pre-E88-S5). Closes the drift class from AI-2026-05-13-7 (E76-S10 retro headline: ATDD scenarios passing while dispatch was stub-only) at the ATDD layer; E88-S3 closes the same gap at the PR-creation layer (forbidden-sentinel scan).
 
 ## Finalize
 
