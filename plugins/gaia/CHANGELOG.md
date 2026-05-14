@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.152.0] — 2026-05-14
+
+### Added
+
+- promote E85-S12 + E55-S13 to release
+
 ## [1.151.0] — 2026-05-13
 
 ### Added
@@ -582,5 +588,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **ADR-056 amendment (2026-04-23):** `release.yml` pivoted from direct-bot-push to a PR-based model. Branch protection on `main` requires PR + status checks, which the original direct-push design could not satisfy. The workflow now has two modes — `prepare` (opens a `release/vX.Y.Z` PR on qualifying commits to main) and `publish` (cuts tag + GitHub Release when the release PR merges). Manual work per release: one click to merge the release PR.
+- **2026-05-13 — squash-merge interaction with `release.yml`:** observed that staging→main PRs merged via `--squash` collapse the underlying `feat(...)` commits into a single squash commit whose subject ("staging → main: ...") fails `classify-commits.js`'s Conventional Commit regex. Result: `bump_size=none` and no release PR opens. Workaround until `merge.sh` is changed to use `--merge` for staging→main: cut a recovery PR with a `feat:` subject + a path change under `plugins/gaia/**` to re-trigger the `prepare` job. Follow-up story to wire `merge.sh` for `--merge` on staging→main.
+- **2026-05-14 — empty-commit publish-trigger interaction with path-filtered `release.yml`:** during the v1.152.0 republish recovery, observed that empty commits (used to satisfy `detect-mode`'s publish-regex via subject-only signaling) do NOT trigger `release.yml` because the workflow's `paths: ['plugins/gaia/**', '.github/workflows/release.yml']` filter rejects path-empty pushes. Fix: any commit intended to fire `release.yml` MUST touch at least one path matching the filter. This 1-line CHANGELOG note IS that path-touching change for the v1.152.0 republish.
 
 Initial changelog seeded by E40-S1. Prior history available via `git log --oneline -- plugins/gaia/`.
