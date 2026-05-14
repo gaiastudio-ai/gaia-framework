@@ -58,6 +58,68 @@ _grv2_audit() { printf '# reconcile-v2 %s\n' "$*"; }
 
 _grv2_iso8601() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
+# E85-S13 (D8 / AF-2026-05-14-3) — Write framework_version at end of apply.
+#
+# Before this story, `framework_version` was in the
+# _CONFIG_HYDRATION_MANAGED_ELSEWHERE list with a stale comment claiming
+# resolve-config.sh writes it at runtime (Val F-2: resolve-config.sh only
+# READS the value at lines ~988-1007 for drift detection). The reconciler
+# would skip the section cleanly and leave the config's framework_version
+# unchanged after a successful apply — so the E86 ambient drift detector
+# kept firing post-reconcile.
+#
+# This helper closes the loop: source the plugin's version from
+# the plugin manifest (same path the drift detector uses for comparison)
+# and write it to the config via config-yaml-editor.sh replace (comment-
+# preserving per ADR-044). Honors ADR-101 §6 reconciler-as-caller — never
+# inline yq with in-place flags.
+#
+# Idempotent: when current value already matches the plugin version, this
+# is a no-op (skips the write entirely, preserving second-run byte-identical
+# sha256 per ADR-101).
+#
+# Invoked from BOTH the no-diff path (eq branch — versions already equal at
+# schema level but framework_version may still drift) and the post-hydration
+# path (lt branch — after schema upgrade).
+_grv2_write_framework_version() {
+  local cfg="$1"
+  local plugin_json="${CLAUDE_PLUGIN_ROOT:-}/.claude-plugin/plugin.json"
+  [ -f "$plugin_json" ] || {
+    _grv2_warn "plugin.json not found at $plugin_json — skipping framework_version write"
+    return 0
+  }
+  local plugin_ver
+  plugin_ver="$(jq -r '.version // empty' "$plugin_json" 2>/dev/null)"
+  [ -n "$plugin_ver" ] || {
+    _grv2_warn "plugin.json .version is empty — skipping framework_version write"
+    return 0
+  }
+
+  # Read current value; skip the write when already in sync (preserves
+  # byte-stability for the second-run idempotency guarantee).
+  local current
+  current="$(yq '.framework_version // ""' "$cfg" 2>/dev/null | tr -d '"')"
+  if [ "$current" = "$plugin_ver" ]; then
+    return 0
+  fi
+
+  local editor="${CLAUDE_PLUGIN_ROOT:-}/scripts/config-yaml-editor.sh"
+  [ -x "$editor" ] || {
+    _grv2_warn "config-yaml-editor.sh not executable at $editor — skipping framework_version write"
+    return 0
+  }
+
+  local tmp
+  tmp="$(mktemp)"
+  printf 'framework_version: "%s"\n' "$plugin_ver" > "$tmp"
+  if "$editor" replace "$cfg" framework_version "$tmp" >/dev/null 2>&1; then
+    _grv2_log "framework_version updated: $current -> $plugin_ver (via config-yaml-editor.sh replace)"
+  else
+    _grv2_warn "config-yaml-editor.sh replace returned non-zero for framework_version; value left at $current"
+  fi
+  rm -f "$tmp"
+}
+
 # AF-2026-05-13-2 sub-fix (c) — dispatch partial→full advancement to the helper.
 # Preserves ADR-101 §6: reconciler is the CALLER, helper is the WRITER.
 # Idempotent and silent when phase is not `partial`. Used by BOTH the
@@ -241,6 +303,11 @@ _grv2_main() {
       # config_phase state machine may still need advancement (partial→full)
       # after all sections are present.
       _grv2_dispatch_phase_advance "$CONFIG_FILE" "no-diff path"
+      # E85-S13 (D8) — even on the no-diff path, framework_version may
+      # still drift from plugin.json (e.g., the user upgraded the plugin
+      # but the config_phase / schema is unchanged). Write the version
+      # here so the E86 drift detector self-heals post-reconcile.
+      _grv2_write_framework_version "$CONFIG_FILE"
       exit 0
       ;;
     lt)
@@ -389,6 +456,9 @@ DRY
   if [ "$phase_before" != "$phase_after" ]; then
     _grv2_info "config_phase advanced by helper: $phase_before -> $phase_after (via hydration trigger)"
   fi
+
+  # E85-S13 (D8) — post-hydration framework_version write (see helper above).
+  _grv2_write_framework_version "$CONFIG_FILE"
 
   local sha_post
   sha_post="$(_grv2_sha256_file "$CONFIG_FILE")"
