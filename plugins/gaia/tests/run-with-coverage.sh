@@ -94,8 +94,20 @@ mv "$PUB_JSON.tmp" "$PUB_JSON"
 # ---------------------------------------------------------------------------
 # Step 2 — run the bats suite.
 # ---------------------------------------------------------------------------
+# E91-S1 (FR-SRF-1, AF-2026-05-14-9): default-skip @hardware-dependent
+# tests via BATS_FILTER_TAGS env var. CI sets BATS_FILTER_TAGS to
+# '!hardware-dependent' to exclude tests tagged @hardware-dependent
+# (mtime resolution / sleep precision / host-clock semantics).
+# Developers run them locally with:
+#   BATS_FILTER_TAGS=hardware-dependent bash run-with-coverage.sh
+# OR directly:
+#   bats --filter-tags hardware-dependent <test-file>
 bold "[2/4] Running bats suite"
-if ! bats "$TESTS_DIR/"; then
+BATS_ARGS=()
+if [ -n "${BATS_FILTER_TAGS:-}" ]; then
+  BATS_ARGS+=(--filter-tags "$BATS_FILTER_TAGS")
+fi
+if ! bats "${BATS_ARGS[@]+"${BATS_ARGS[@]}"}" "$TESTS_DIR/"; then
   red "bats suite failed"
   exit 1
 fi

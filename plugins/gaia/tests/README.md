@@ -100,3 +100,50 @@ The `bats-tests` job in `.github/workflows/plugin-ci.yml` runs
 `plugins/gaia/tests/run-with-coverage.sh`, enforces the 2-minute budget via
 a job-level `timeout-minutes: 2`, uploads the `coverage/` directory as an
 artifact, and fails the PR if the NFR-052 gate is not green.
+
+## `@hardware-dependent` tag convention (E91-S1, FR-SRF-1, AF-2026-05-14-9)
+
+Tests that exercise host-specific timing primitives (mtime resolution,
+sleep precision, host-clock semantics) MUST be tagged
+`@hardware-dependent`. They are **excluded from CI by default** via
+`BATS_FILTER_TAGS='!hardware-dependent'` to keep the CI bats budget under
+the hard cap (sprint-43 retrospective AI-2026-05-13-14 found that
+hardware-dependent test flake was the primary contributor to budget
+overrun).
+
+**Tag a test file** (file-level — applies to every `@test` in the file):
+
+```bats
+#!/usr/bin/env bats
+# bats file_tags=hardware-dependent
+```
+
+**Tag a single test** (test-level):
+
+```bats
+# bats test_tags=hardware-dependent
+@test "my flaky test" { ... }
+```
+
+**Run locally before merge** with:
+
+```bash
+# Run only hardware-dependent tests
+bats --filter-tags hardware-dependent gaia-public/plugins/gaia/tests/
+
+# Run a specific tagged file
+bats --filter-tags hardware-dependent gaia-public/plugins/gaia/tests/drift-detection-ci-suppression.bats
+
+# Run via the coverage wrapper with tag opt-in
+BATS_FILTER_TAGS=hardware-dependent bash gaia-public/plugins/gaia/tests/run-with-coverage.sh
+```
+
+Developers MUST run the hardware-dependent subset locally before merging
+any PR that touches code paths the tagged tests cover. The default-skip
+preserves coverage (tests still exist + can be run) while keeping CI lean.
+
+### Current `@hardware-dependent` tag inventory
+
+- `drift-detection-ci-suppression.bats` — exercises CI environment variable detection (CI=true, non-TTY) which can vary across shell environments.
+
+(This inventory is updated as new tests are tagged.)
