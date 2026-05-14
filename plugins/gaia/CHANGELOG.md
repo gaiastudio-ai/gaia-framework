@@ -582,5 +582,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **ADR-056 amendment (2026-04-23):** `release.yml` pivoted from direct-bot-push to a PR-based model. Branch protection on `main` requires PR + status checks, which the original direct-push design could not satisfy. The workflow now has two modes — `prepare` (opens a `release/vX.Y.Z` PR on qualifying commits to main) and `publish` (cuts tag + GitHub Release when the release PR merges). Manual work per release: one click to merge the release PR.
+- **2026-05-13 — squash-merge interaction with `release.yml`:** observed that staging→main PRs merged via `--squash` collapse the underlying `feat(...)` commits into a single squash commit whose subject ("staging → main: ...") fails `classify-commits.js`'s Conventional Commit regex. Result: `bump_size=none` and no release PR opens. Workaround until `merge.sh` is changed to use `--merge` for staging→main: cut a recovery PR with a `feat:` subject + a path change under `plugins/gaia/**` to re-trigger the `prepare` job. Follow-up story to wire `merge.sh` for `--merge` on staging→main.
 
 Initial changelog seeded by E40-S1. Prior history available via `git log --oneline -- plugins/gaia/`.
