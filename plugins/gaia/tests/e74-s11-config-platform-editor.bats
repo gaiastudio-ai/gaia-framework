@@ -88,9 +88,16 @@ teardown() { common_teardown; }
   [[ "$output" == *"harmonyos"* ]]
 }
 
-@test "add empty id rejected with exit 1" {
-  run "$EDITOR" --config "$CFG" add ""
-  [ "$status" -eq 1 ]
+@test "add empty id is discoverability prompt (E71-S9 AC1): exit 0 with baseline menu" {
+  # E71-S9 AC1 amended the contract: no-arg `add` is a discoverability prompt
+  # (SKILL.md Step 2c: "Re-prompt the user for an identifier — DO NOT exit
+  # non-zero. The empty argument is a discoverability hint, not a validation
+  # failure"). Was exit 1 prior to E71-S9; now exit 0 with menu on stderr.
+  run --separate-stderr "$EDITOR" --config "$CFG" add ""
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"web"* ]]
+  [[ "$stderr" == *"ios"* ]]
+  [[ "$stderr" == *"android"* ]]
 }
 
 @test "add invalid characters rejected with exit 1" {

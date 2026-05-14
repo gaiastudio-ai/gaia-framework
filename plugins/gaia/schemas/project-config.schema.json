@@ -264,14 +264,13 @@
       "additionalProperties": false
     },
     "compliance": {
-      "description": "Opt-in regulatory regime selection (FR-RSV2-5, FR-RSV2-7).",
+      "description": "Opt-in regulatory regime selection (FR-RSV2-5, FR-RSV2-7). The compliance section itself is optional at the top-level; an absent section is treated semantically as `regimes: [], ui_present: false` (E71-S9 AC4). An explicit empty `regimes: []` is also accepted.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "regimes": {
           "type": "array",
           "items": { "$ref": "#/definitions/complianceRegime" },
-          "minItems": 1,
           "uniqueItems": true
         },
         "domain": { "type": "string", "minLength": 1 },
