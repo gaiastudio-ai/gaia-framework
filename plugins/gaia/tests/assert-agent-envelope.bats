@@ -99,3 +99,114 @@ teardown() {
 @test "post-Green: helper file exists at expected path" {
   [ -f "$HELPER" ]
 }
+
+# ============================================================================
+# E90-S1 — TC-MVB-1..6: --expected-agent flag generalization (ADR-104).
+# ============================================================================
+
+# ---------------- TC-MVB-1: no flag continues to assert agent=val ----------------
+@test "TC-MVB-1: invocation without flag continues to assert agent=val (backward-compat)" {
+  source "$HELPER"
+  local sentinel="$TEST_TMP/val-sentinel.json"
+  printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-test"}' > "$sentinel"
+  run assert_agent_envelope "$sentinel"
+  [ "$status" -eq 0 ]
+}
+
+# ---------------- TC-MVB-2a: --expected-agent pm rejects val sentinel ----------------
+@test "TC-MVB-2a: --expected-agent pm rejects a val sentinel (HALT)" {
+  source "$HELPER"
+  local sentinel="$TEST_TMP/val-sentinel.json"
+  printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-test"}' > "$sentinel"
+  run assert_agent_envelope "$sentinel" --expected-agent pm
+  [ "$status" -ne 0 ]
+  # Canonical substring (agent token varies; downstream consumers grep the constant tail).
+  [[ "$output" == *"agent envelope assertion failed — sentinel absent, malformed, or forged at"* ]]
+  # Leading token capitalized: 'Pm'.
+  [[ "$output" == *"HALT: Pm "* ]]
+}
+
+# ---------------- TC-MVB-2b: --expected-agent pm accepts pm sentinel ----------------
+@test "TC-MVB-2b: --expected-agent pm accepts a pm sentinel (return 0)" {
+  source "$HELPER"
+  local sentinel="$TEST_TMP/pm-sentinel.json"
+  printf '%s\n' '{"agent": "pm", "persona_sig": "pm-test"}' > "$sentinel"
+  run assert_agent_envelope "$sentinel" --expected-agent pm
+  [ "$status" -eq 0 ]
+}
+
+# ---------------- TC-MVB-3: persona_sig presence check agent-agnostic ----------------
+@test "TC-MVB-3: empty persona_sig HALTs regardless of agent id" {
+  source "$HELPER"
+  local sentinel="$TEST_TMP/pm-no-persona.json"
+  printf '%s\n' '{"agent": "pm", "persona_sig": ""}' > "$sentinel"
+  run assert_agent_envelope "$sentinel" --expected-agent pm
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"agent envelope assertion failed"* ]]
+}
+
+# ---------------- TC-MVB-4: unknown flag HALTs ----------------
+@test "TC-MVB-4: unknown flag HALTs" {
+  source "$HELPER"
+  local sentinel="$TEST_TMP/val-sentinel.json"
+  printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-test"}' > "$sentinel"
+  run assert_agent_envelope "$sentinel" --frobnicate quux
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"agent envelope assertion failed"* ]]
+}
+
+# ---------------- TC-MVB-5: --expected-agent=val inline form ----------------
+@test "TC-MVB-5: --expected-agent=val inline form is supported" {
+  source "$HELPER"
+  local sentinel="$TEST_TMP/val-sentinel.json"
+  printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-test"}' > "$sentinel"
+  run assert_agent_envelope "$sentinel" --expected-agent=val
+  [ "$status" -eq 0 ]
+}
+
+# ---------------- TC-MVB-6: HALT substring constancy across failure modes ----------------
+@test "TC-MVB-6: canonical HALT substring preserved across all 4 failure modes" {
+  source "$HELPER"
+  local missing="$TEST_TMP/does-not-exist.json"
+  run assert_agent_envelope "$missing" --expected-agent pm
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"agent envelope assertion failed — sentinel absent, malformed, or forged at"* ]]
+
+  local malformed="$TEST_TMP/malformed.json"
+  printf '%s' '{ this is not json' > "$malformed"
+  run assert_agent_envelope "$malformed" --expected-agent pm
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"agent envelope assertion failed — sentinel absent, malformed, or forged at"* ]]
+
+  local wrong_agent="$TEST_TMP/wrong-agent.json"
+  printf '%s\n' '{"agent": "val", "persona_sig": "x"}' > "$wrong_agent"
+  run assert_agent_envelope "$wrong_agent" --expected-agent pm
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"agent envelope assertion failed — sentinel absent, malformed, or forged at"* ]]
+
+  local no_persona="$TEST_TMP/no-persona.json"
+  printf '%s\n' '{"agent": "pm", "persona_sig": ""}' > "$no_persona"
+  run assert_agent_envelope "$no_persona" --expected-agent pm
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"agent envelope assertion failed — sentinel absent, malformed, or forged at"* ]]
+}
+
+# ---------------- TC-MVB-7: header references --expected-agent ----------------
+@test "TC-MVB-7: helper header documents --expected-agent flag" {
+  [ "$(grep -c 'expected-agent' "$HELPER")" -ge 3 ]
+}
+
+# ---------------- TC-MVB-8: validator.md + ADR-104 shard cross-refs ----------------
+@test "TC-MVB-8: validator.md and ADR-104 shard reference expected-agent generalization" {
+  # validator.md cross-reference required.
+  local validator_md="$BATS_TEST_DIRNAME/../agents/validator.md"
+  [ -f "$validator_md" ]
+  grep -q 'expected-agent' "$validator_md"
+  # ADR-104 shard cross-reference. Project-root path:
+  # docs/planning-artifacts/architecture/02-2-architecture-decisions.md
+  # (the legacy monolith is not present per memory feedback_check_monolith_and_shards.md).
+  local adr_shard="$BATS_TEST_DIRNAME/../../../../docs/planning-artifacts/architecture/02-2-architecture-decisions.md"
+  if [ -f "$adr_shard" ]; then
+    grep -q 'expected-agent' "$adr_shard"
+  fi
+}
