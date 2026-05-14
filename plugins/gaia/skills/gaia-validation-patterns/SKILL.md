@@ -246,3 +246,36 @@ If a severity group has zero findings, include the heading with "None." undernea
 - Evidence must state both what was expected and what was actually found
 - Resolution must be actionable — never "fix this" without specifics
 <!-- END SECTION -->
+
+<!-- SECTION: completion-notes-deferral-scan -->
+## Pattern: completion-notes-deferral-scan (E88-S4, FR-DPD-4)
+
+Refs: ADR-107 (closed-list taxonomies SSOT), AI-2026-05-13-6.
+
+**Trigger.** Val validates a story whose `status` frontmatter is `done` or `review`.
+
+**Scan.** Source the deferral-phrase matcher via the canonical helper — do NOT inline the taxonomy:
+
+```bash
+bash $PLUGIN/scripts/lib/completion-notes-deferral-scan.sh --story-file "$STORY_FILE"
+```
+
+The helper internally sources `lib/deferral-phrase-match.sh` (E88-S1) and walks the story's `### Completion Notes List` subsection. Each matched phrase is paired against the `## Findings` table.
+
+**Pair-check.** A Completion-Notes deferral phrase is considered "paired" when EITHER:
+1. A `## Findings` table row contains the phrase as a substring in any column (typically the `Finding` column), OR
+2. The Completion-Notes line that surfaced the phrase carries an explicit `Finding ID: <X>` token (case-sensitive prefix).
+
+The helper emits one record per matched phrase: `phrase=<phrase>\tpaired=<true|false>\tfinding_id=<id-or-empty>`.
+
+**Emit.** For each helper record where `paired=false`, emit an ADR-037 finding with:
+- `severity: CRITICAL`
+- `scope: completion-notes-deferral-scan`
+- `detail`: name the unmatched phrase, quote the Completion-Notes line that surfaced it, and suggest either adding a Finding row OR annotating with an inline `Finding ID:` reference.
+
+**Rationale.** Deferral by itself is acceptable — landing stubs with explicit follow-up is a known pattern. The defect class is **unmatched** deferral language: Completion Notes mentioning deferral without a corresponding Finding row, which leaves the deferral invisible to `/gaia-triage-findings` and downstream retros.
+<!-- END SECTION -->
+
+## Changelog
+
+- **2026-05-14 — E88-S4 — Val `completion-notes-deferral-scan` pattern (FR-DPD-4, ADR-107, AI-2026-05-13-6).** Added the `completion-notes-deferral-scan` pattern documenting the trigger (story status `done` or `review`), the scan (source `lib/completion-notes-deferral-scan.sh` which wraps `lib/deferral-phrase-match.sh` per E88-S1), the pair-check heuristic (Findings-table substring match OR explicit `Finding ID:` token), and the emit contract (CRITICAL ADR-037 finding on unmatched phrases). Closes the drift class from AI-2026-05-13-6 (Completion Notes mentioning deferral phrases without corresponding Finding rows).
