@@ -31,6 +31,8 @@ Optionally accepts a single positional argument naming the top-level section to 
 
 ### Step 2 — Render the File or Section
 
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+
 - If a positional section name is provided: invoke `${CLAUDE_PLUGIN_ROOT}/scripts/config-yaml-editor.sh extract <path> <section-name>` and pipe the output to the terminal. Exit 2 (section not found) surfaces verbatim.
 - Otherwise: cat the entire file to the terminal verbatim.
 - If the terminal supports syntax highlighting and a YAML highlighter is available (e.g., `bat --language=yaml`, `pygmentize -l yaml`), render with highlighting; otherwise plain.
@@ -40,4 +42,4 @@ Optionally accepts a single positional argument naming the top-level section to 
 
 - This skill is intentionally minimal — it is the inverse of the seven editor skills. Use it before/after edits to confirm the file state.
 - `/gaia-config-show environments`, `/gaia-config-show stacks`, etc. are equivalent to `config-yaml-editor.sh extract <path> <section>`.
-- The eleven top-level sections of `project-config.yaml` (E68-S1): `project`, `stacks`, `platforms`, `regimes`, `ci_cd`, `environments`, `test_execution`, `tool_adapters`, `rubrics`, `compliance`, `deployment`.
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0).

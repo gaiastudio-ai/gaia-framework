@@ -28,6 +28,8 @@ Resolve via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh project_config_path
 
 ### Step 2 — Dispatch Subcommand
 
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+
 #### Step 2a — Print current state first (every invocation)
 
 The first user-visible line of output for every invocation MUST surface the **current state** of `platforms[]` resolved from `config/project-config.yaml` (per AF-2026-05-08-2 / TC-RSV2-EDITOR-5). Read the array using the same `yq` path the helper uses for `list`, and render it as:
@@ -78,4 +80,4 @@ After `add`, suggest running `/gaia-config-validate` to confirm the modified fil
 ## Notes
 
 - Documented platform identifiers (E68-S1 baseline): `web`, `ios`, `android`. ADR-081 §4.2 leaves the surface extensible.
-- The eleven top-level sections of `project-config.yaml` (E68-S1): `project`, `stacks`, `platforms`, `regimes`, `ci_cd`, `environments`, `test_execution`, `tool_adapters`, `rubrics`, `compliance`, `deployment`. This skill ONLY edits `platforms`.
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `platforms`.
