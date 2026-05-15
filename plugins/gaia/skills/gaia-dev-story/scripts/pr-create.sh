@@ -111,8 +111,20 @@ See story file: docs/implementation-artifacts/epic-*/stories/${STORY_KEY}-*.md (
 Story: ${STORY_KEY}"
 fi
 
+# E57-S13 / TD-148: when the caller already supplies a conventional-commits
+# header like `feat(E88-S1): foo` (which is what `/gaia-dev-story` Step 10's
+# `commit-msg.sh` emits), skip the `${STORY_KEY}: ` prepend. Without this
+# guard the resulting PR title is `E88-S1: feat(E88-S1): foo` — not
+# conventional-commits compliant and rejected by commitlint. Regex is
+# anchored at the start; bare titles fall through to the legacy prepend.
+if printf '%s' "$PR_TITLE" | grep -Eq '^[a-z]+\([A-Z]+[0-9]+-S[0-9]+\):'; then
+  FINAL_TITLE="$PR_TITLE"
+else
+  FINAL_TITLE="${STORY_KEY}: ${PR_TITLE}"
+fi
+
 # Create PR
-pr_output=$(gh pr create --base "$BASE_BRANCH" --title "${STORY_KEY}: ${PR_TITLE}" --body "$PR_BODY" 2>&1) || {
+pr_output=$(gh pr create --base "$BASE_BRANCH" --title "$FINAL_TITLE" --body "$PR_BODY" 2>&1) || {
   log "PR creation failed:"
   printf '%s\n' "$pr_output" >&2
   log "Local commits are preserved. Re-run after resolving the issue."
