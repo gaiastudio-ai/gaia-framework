@@ -277,6 +277,48 @@ For a discovery entry point into the GAIA artifact directories
 (`planning-artifacts/`, `implementation-artifacts/`, `test-artifacts/`) and
 the role of each, see [docs/INDEX.md](./docs/INDEX.md).
 
+## Plugin cache refresh after merge
+
+The Claude Code substrate caches plugin SKILL.md frontmatter and scripts
+under `~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/<version>/`
+at session start. After merging a SKILL.md, `scripts/*.sh`, `agents/*.md`,
+or `hooks/*.json` change on `staging` or `main`, the running session
+still executes the pre-merge cached copy. Re-invoking the changed skill
+in the same session runs the OLD code until the cache is refreshed.
+
+This is a dogfooding-loop-specific friction. Marketplace consumers who
+install AFTER the merge get the new behavior on first invocation —
+they never see the gap.
+
+**To refresh the cache after a merge:**
+
+```bash
+# Replace <version> with the value currently under the cache path:
+rm -rf ~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/<version>
+
+# Re-invoke any GAIA slash command — Claude Code repopulates the cache
+# from the published plugin source on next use.
+```
+
+**File types that REQUIRE the refresh** (cached at session start):
+
+- `plugins/gaia/skills/*/SKILL.md` — skill frontmatter, hooks, allowed-tools.
+- `plugins/gaia/skills/*/scripts/*.sh` — deterministic helper scripts.
+- `plugins/gaia/agents/*.md` — agent personas.
+- `plugins/gaia/hooks/*.json` — substrate-level hooks.
+
+**File types that DO NOT need the refresh** (loaded fresh per invocation):
+
+- `plugins/gaia/tests/*.bats` — re-loaded each `bats` invocation.
+- `docs/**/*.md` — not part of the plugin cache.
+- `CLAUDE.md` — loaded fresh at session start.
+
+**Workflow advisory.** `/gaia-dev-story` Step 14b emits a single advisory
+line to stderr after every merge that touches the file types above. The
+advisory is non-blocking — it just reminds the operator to run the
+refresh command before re-invoking the changed skill in the same
+session.
+
 ## License
 
 AGPL-3.0 — see [LICENSE](./LICENSE).
