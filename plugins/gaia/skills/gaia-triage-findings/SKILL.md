@@ -304,6 +304,8 @@ If any stories were marked as NEXT SPRINT (P0):
 
 Final step. Delegates Val-decision persistence to the shared Val sidecar writer helper (`val-sidecar-write.sh`, E34-S1, architecture §10.10). Placing this last satisfies AC3 atomicity — any upstream failure (spawn-guard rejection, `/gaia-create-story` subagent failure, findings-table write error) short-circuits before the helper runs, so no partial sidecar entry can appear.
 
+**Fail-closed enforcement (E92-S2 / FR-OEXP-2).** This skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`. The finalize script asserts that `_memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker; if not, it exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize`. This mirrors the `gaia-add-feature/scripts/finalize.sh:51-82` E83-S1 fail-closed pattern — operators who skip Step 7 under heavy substrate load now see a hard halt at finalize instead of a silent skip.
+
 Derive a deterministic `triage_session_id` of the form `triage-YYYY-MM-DD-<seq>`. The `<seq>` counter is a zero-padded monotonic index per day, computed by scanning existing triage markers in the current session's source stories:
 
 ```bash
@@ -336,10 +338,16 @@ Failure posture: if the helper rejects or errors, log a warning and continue —
 
 ## Changelog
 
+- **2026-05-15 — E92-S2 — Fail-closed Val-sidecar sentinel in finalize.sh (FR-OEXP-2).** Step 7 prose updated to note that the skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`; the script asserts `_memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker, and exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize` when the assertion fails. Mirrors `gaia-add-feature/scripts/finalize.sh:51-82` E83-S1 fail-closed pattern. Sibling fix mirrored in `/gaia-retro` per AC2. Backward-compat preserved: legacy fixtures without the env var get the prior unconditional behavior.
+
 - **2026-05-15 — E92-S1 — Main-turn direct-write fallback (FR-OEXP-1).** Added the "Main-turn direct-write fallback" subsection inside Step 4 documenting the sanctioned escape hatch when `/gaia-create-story` spawn fails due to the broken `context:fork` substrate issue (Claude Code #49559 + saved-memory rule `feedback_plugin_context_fork_broken.md`). The subsection specifies three inline validation-equivalent checks (canonical-filename regex `^E[0-9]+-S[0-9]+-[a-z0-9-]+\.md$`, frontmatter required-fields enumeration, dedup grep against `epics-and-stories.md`) that stand in for the unrunnable `spawn-guard.sh verify/cleanup`, and mandates two audit-trail frontmatter fields (`spawn_fallback: "direct-write"` + `spawn_fallback_reason: "<trigger>"`) so post-hoc inspection can trace which stories bypassed the spawn-guard. The fallback subsection is also mirrored in `gaia-correct-course/SKILL.md` per AC5. Spawn is still the default — fallback is gated on explicit trigger conditions, not preemptive use.
 
 - **2026-05-14 — E88-S4 — Completion Notes deferral-drift scanner (FR-DPD-4, ADR-107, AI-2026-05-13-6).** Added Step 1b that walks each story's `### Completion Notes List` via `lib/completion-notes-deferral-scan.sh` (which wraps `lib/deferral-phrase-match.sh` per E88-S1) and emits unmatched-deferral records as triage candidates. Triage output schema gains a new `source` column with values `findings-table` (the Step 1 default) or `completion-notes-deferral-scan` (Step 1b). Purely additive — existing consumers parsing by row/column ignore extra columns. Closes the drift class from AI-2026-05-13-6 at the triage end (the Val end is covered by gaia-validation-patterns' new pattern).
 
 ## Finalize
+
+```bash
+GAIA_FINALIZE_SENTINEL_REQUIRED=1
+```
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-triage-findings/scripts/finalize.sh

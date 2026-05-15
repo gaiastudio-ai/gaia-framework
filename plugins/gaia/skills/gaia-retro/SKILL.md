@@ -354,6 +354,8 @@ Report the output path to the facilitator.
 
 Final step. After the retro artifact is written, persist the retro's decisions and rolling context to the validator sidecar so Val can cross-reference retro outcomes in subsequent validations. Per architecture §10.28.2 "Relationship to Shared Val Sidecar Writer", this delegation is made concrete by invoking the shared Val sidecar writer helper (`val-sidecar-write.sh`, E34-S1, architecture §10.10). The helper's two-file allowlist (NFR-VSP-2) and composite-key idempotency (NFR-VSP-3) apply uniformly. Placing the helper invocation as the FINAL step satisfies AC3 atomicity — any upstream failure short-circuits before the helper runs, so no partial sidecar entry can appear.
 
+**Fail-closed enforcement (E92-S2 / FR-OEXP-2).** This skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`. The finalize script asserts that `_memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker; if not, it exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize`. Mirrors the sibling guard in `/gaia-triage-findings/scripts/finalize.sh` and the `gaia-add-feature/scripts/finalize.sh:51-82` E83-S1 fail-closed pattern.
+
 Targets (enforced by the helper allowlist — no other paths are writable):
 
 - `${CLAUDE_PROJECT_ROOT}/_memory/validator-sidecar/decision-log.md` — append one ADR-016-formatted entry per retro (sprint-ID tagged).
@@ -386,5 +388,9 @@ Failure posture:
 > **Note (E34-S2).** This Step 7 invocation was retargeted from `retro-sidecar-write.sh` to `val-sidecar-write.sh` to realize the architecture §10.28.2 delegation. Other retro writes (action-items, skill_overrides proposals) continue to use `retro-sidecar-write.sh` — only the two validator-sidecar targets route through the shared Val helper here.
 
 ## Finalize
+
+```bash
+GAIA_FINALIZE_SENTINEL_REQUIRED=1
+```
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-retro/scripts/finalize.sh
