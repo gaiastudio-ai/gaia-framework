@@ -258,7 +258,7 @@ compute_dedup_key() {
   # 2x serial openssl startups.
   if [ "$_VS_JQ_AVAILABLE" = "1" ] && [ "$_VS_HASH_BACKEND" = "openssl" ]; then
     printf '%s' "$payload" \
-      | jq -cS '{artifact_path: (.artifact_path // ""), findings: ((.findings // []) | sort_by((.id // tostring))), verdict: (.verdict // "")}' \
+      | jq -cS '{artifact_path: (.artifact_path // ""), findings: ((.findings // []) | sort_by(if type == "object" then (.id // tostring) else tostring end)), verdict: (.verdict // "")}' \
       | openssl dgst -sha256 -r 2>/dev/null \
       | awk -v cmd="$cmd" -v iid="$iid" '{printf "%s\n%s\n%s", cmd, iid, $1}' \
       | openssl dgst -sha256 -r 2>/dev/null \
