@@ -34,6 +34,26 @@ STUB
   chmod +x "$STUB_BIN/gh"
   export PATH="$STUB_BIN:$PATH"
 
+  # pr-create.sh requires (a) an in-tree git workspace (otherwise it
+  # early-returns via non-git CWD guard, skipping the title-prepend logic
+  # under test) AND (b) a non-protected current branch (otherwise the
+  # assert_branch_not_protected security invariant aborts the script).
+  # Build a per-test git repo on a feature branch.
+  WORK_REPO="$TEST_TMP/repo"
+  mkdir -p "$WORK_REPO"
+  (
+    cd "$WORK_REPO" || exit 1
+    git init -q -b main
+    git -c user.email=t@e -c user.name=t commit -q --allow-empty -m "init"
+    git checkout -q -b feat/E88-S1-test
+  )
+  # PROJECT_PATH is the cwd pr-create.sh `cd`s into. Also `cd` the bats
+  # process into WORK_REPO so pr-create.sh's non_git_cwd_skip guard (which
+  # checks the CURRENT cwd before honoring PROJECT_PATH) sees an in-tree
+  # workspace and proceeds to the title-prepend logic under test.
+  export PROJECT_PATH="$WORK_REPO"
+  cd "$WORK_REPO"
+
   # Story file detection in pr-create.sh isn't critical; the script does not
   # currently read a story file. The body-file path supplied below is read.
   BODY_FILE="$TEST_TMP/body.md"
