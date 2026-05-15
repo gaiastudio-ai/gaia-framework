@@ -563,7 +563,7 @@ Only invited agents post preludes and DISCUSS turns. The user does not appear as
 
 **Dispatch contract (E76-S10, ADR-045, ADR-063; E90-S2 migrates to main-turn Agent dispatch per ADR-093 / ADR-104).** Each invited agent's prelude (RESEARCH) AND each DISCUSS turn MUST be produced by spawning a subagent via the **main-turn Agent tool** (per ADR-093) with the per-phase tool allowlist below. After the subagent returns its envelope, `dispatch-agent-turn.sh` wires the post-dispatch envelope assertion per ADR-104 (FR-MVB-2): the script parses `.agent` from the envelope, writes the sentinel via `lib/write-val-envelope.sh`, and invokes `assert_agent_envelope --expected-agent <agent>` from `lib/assert-agent-envelope.sh` (generalized by E90-S1). On assertion failure, `halt-event.sh` fires. Inline LLM role-play under the agent's persona is FORBIDDEN. The facilitator does not author agent turns; the facilitator orchestrates dispatch.
 
-The canonical wrapper is `scripts/dispatch-agent-turn.sh --agent <id> --phase research --charter-ref <path> --session-id <id>`; every dispatched turn carries `dispatched_via: subagent` in its per-turn header (NFR-MTG-1 schema extension). See `scripts/dispatch-provenance-check.sh` for the static post-save audit.
+The canonical wrapper is `scripts/dispatch-agent-turn.sh --agent <id> --phase research --charter-ref <path> --session-id <id>`; every dispatched turn carries `dispatched_via: subagent` in its per-turn header (NFR-MTG-1 schema extension). See `scripts/dispatch-provenance-check.sh` — the **pre-save provenance gate**, wired into Phase 7 SAVE per ADR-106 — the SAVE will HALT if any prelude/DISCUSS turn lacks `dispatched_via: subagent`.
 
 The RESEARCH phase implements the four-step contract from ADR-084:
 
@@ -813,6 +813,23 @@ the next user turn after the user response is captured.
 user can resume later via `--resume <session-id>`. There is **no undo
 semantic in v1** — once `[c]ontinue` is selected, the SAVE writes are atomic
 per-file and the gate is the contract.
+
+**Pre-save provenance gate (E76-S22 / ADR-106).** AFTER the user responds
+`[c]ontinue` to the pre-SAVE AskUserQuestion and BEFORE the three writes
+below, the SAVE flow pipes the in-memory transcript through
+`scripts/dispatch-provenance-check.sh --stdin`. The audit asserts every
+prelude/DISCUSS turn carries `dispatched_via: subagent` (or `interject`); a
+non-zero exit invokes `scripts/halt-event.sh` with the canonical error
+format:
+
+```
+HALT: dispatch-provenance-check failed — N turn(s) lack 'dispatched_via: subagent' marker. Re-run /gaia-meeting with the canonical Agent-tool dispatch primitive for the affected turns.
+```
+
+`halt-event.sh` emits the line to stderr and exits the skill non-zero. ALL
+three writes below are aborted — no partial save. This is the first
+concrete application of ADR-106 (Static-Audit Script Wiring Discipline);
+the audit fires on every live save, not just under bats.
 
 SAVE performs the three writes that REVIEW accepted, gated through
 `scripts/write-boundary.sh` for the AC10 / FR-MTG-31 state-free invariant:
