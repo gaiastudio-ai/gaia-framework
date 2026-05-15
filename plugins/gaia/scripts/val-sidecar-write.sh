@@ -213,10 +213,13 @@ canonicalize_payload() {
   if [ "$_VS_JQ_AVAILABLE" = "1" ]; then
     # jq -cS: compact, sorted keys. Project onto the contract triple and
     # sort findings by id; fall back to tostring for findings missing id.
+    # E63-S14 type-guard: handle the array-of-strings shape that triage
+    # sometimes passes — `.id` on a string element throws `Cannot index
+    # string with string "id"`. Same fix as the fast-path at L261.
     printf '%s' "$raw" | jq -cS '
       {
         artifact_path: (.artifact_path // ""),
-        findings: ((.findings // []) | sort_by((.id // tostring))),
+        findings: ((.findings // []) | sort_by(if type == "object" then (.id // tostring) else tostring end)),
         verdict: (.verdict // "")
       }
     '

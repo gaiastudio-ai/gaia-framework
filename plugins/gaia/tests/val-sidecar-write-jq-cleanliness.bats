@@ -62,3 +62,17 @@ teardown() { common_teardown; }
   [[ "$stderr" != *"jq: error"* ]]
   [[ "$stderr" != *"Cannot index string"* ]]
 }
+
+@test "TC-VSJ-4: fallback path (canonicalize_payload via _VS_HASH_BACKEND=shasum) cleans string-shape findings" {
+  # When openssl is unavailable, compute_dedup_key routes through
+  # canonicalize_payload (L213-L224) which has its own jq sort_by filter.
+  # Same fix applied; this test exercises the formerly-uncovered path.
+  PAYLOAD='{"artifact_path":"docs/x.md","verdict":"PASSED","findings":["F1","F2"]}'
+  _VS_HASH_BACKEND=shasum run --separate-stderr "$WRITER" \
+    --command-name "/gaia-test" \
+    --input-id "E99-S99-tc4" \
+    --decision-payload "$PAYLOAD"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" != *"jq: error"* ]]
+  [[ "$stderr" != *"Cannot index string"* ]]
+}
