@@ -161,11 +161,19 @@ Subcommands:
                     sprint-status.yaml. Requires the story file's
                     frontmatter sprint_id to match the yaml sprint_id
                     (drift guard). Idempotent — re-running on an already-
-                    injected key is a no-op. Bumps total_points and
-                    recomputes capacity_utilization. Emits one
-                    story_injected lifecycle event. Used by
-                    /gaia-correct-course story-injection (E38-S10,
-                    AF-2026-05-01-4, ADR-055 §10.29).
+                    injected key is a no-op.
+                    total_points: accumulated from the injected story's
+                    frontmatter `points:` field — no --points CLI flag
+                    is needed or accepted. Recomputes capacity_utilization
+                    and emits one story_injected lifecycle event.
+                    Boundary-write seed rule (per saved-memory
+                    feedback_sprint_inject_seed_total_points): when
+                    boundary-writing a fresh sprint, seed
+                    total_points=0 — inject accumulates onto the
+                    existing total; a non-zero seed produces double-
+                    counted totals.
+                    Used by /gaia-correct-course story-injection
+                    (E38-S10, AF-2026-05-01-4, ADR-055 §10.29).
   get               Print the story's current status (from the story file)
                     to stdout and exit 0.
   validate          Compare story file status to sprint-status.yaml. Exit 0
@@ -2367,6 +2375,12 @@ main() {
       --help|-h)
         usage
         exit 0 ;;
+      --points|--points=*)
+        # E57-S15: --points is a common-but-wrong attempt. Emit a
+        # helpful redirect instead of the bare "unknown flag" rejection.
+        # total_points is accumulated from the injected story's
+        # frontmatter `points:` field — no CLI flag needed.
+        die "--points is not a valid flag for inject. total_points is accumulated from the injected story's frontmatter points: field. See --help for the inject contract." ;;
       *)
         die "unknown flag: $1" ;;
     esac
