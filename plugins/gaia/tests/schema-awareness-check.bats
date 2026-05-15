@@ -91,10 +91,10 @@ teardown() {
 
 # ---------------- TC-SRF-10: Retroactive — E86-S6-style 'dependencies column' drift ----------------
 @test "TC-SRF-10: retroactive — E86-S6 'dependencies column' drift is caught by schema-lookup" {
-  # The actual workflow-manifest.csv columns per Val F6 on AF-2026-05-14-9
-  # are name,displayName,description,module,phase,path,command,agent.
+  # Reproduces the column shape from Val F6 on AF-2026-05-14-9
+  # (canonical columns: name,displayName,description,module,phase,path,command,agent).
   # E86-S6 AC2 cited 'dependencies column' — non-existent.
-  local manifest="$TEST_TMP/workflow-manifest-shape.csv"
+  local manifest="$TEST_TMP/sample-canonical-shape.csv"
   cat > "$manifest" <<'EOF'
 name,displayName,description,module,phase,path,command,agent
 EOF
