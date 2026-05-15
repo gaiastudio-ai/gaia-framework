@@ -61,6 +61,7 @@ REQUIRED_FILES=(
   "tests/skills/gaia-deploy-checklist.bats"
   "tests/skills/gaia-deploy-failures.bats"
   "tests/skills/gaia-deploy.bats"
+  "tests/skills/gaia-dev-story-e41-s3-yolo-val-on-tdd-phases.bats"
   "tests/skills/gaia-dev-story-figma-degrade.bats"
   "tests/skills/gaia-dev-story-planning-gate.bats"
   "tests/skills/gaia-dev-story-step2b-atdd.bats"
