@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 # dispatch-provenance-check.sh — gaia-meeting transcript provenance scanner (E76-S10, AC4).
 #
+# ## Production callsites
+#
+# - `gaia-public/plugins/gaia/skills/gaia-meeting/SKILL.md` Phase 7 SAVE
+#   (L789-870 region) — wired pre-disk via E76-S22 / ADR-106. The SAVE
+#   pipes the in-memory transcript into this script via `--stdin` immediately
+#   after the AskUserQuestion pre-SAVE yield and BEFORE the three
+#   write-boundary.sh writes. On non-zero exit, Phase 7 invokes
+#   `halt-event.sh` with the canonical error format and aborts all writes.
+#
+# Per ADR-106 rule #4 (Static-Audit Script Wiring Discipline): this header
+# section is the single source of truth keeping reviewers from re-discovering
+# the wiring. Update it when callsites change.
+#
 # Scans a saved transcript file and asserts every per-turn header carries the
 # canonical `dispatched_via:` value for its phase:
 #
@@ -21,6 +34,8 @@
 #
 # Usage:
 #   dispatch-provenance-check.sh <transcript-file>
+#   dispatch-provenance-check.sh --stdin < transcript-content        # E76-S22
+#   cat transcript.md | dispatch-provenance-check.sh                 # auto-stdin
 #
 # Exit codes:
 #   0 = all turns carry canonical provenance
@@ -30,11 +45,34 @@
 set -euo pipefail
 export LC_ALL=C
 
+# E76-S22 / ADR-106: stdin mode for Phase 7 SAVE pre-disk wiring.
+# Modes:
+#   1. positional-arg <transcript-file>   (legacy, bats backward-compat)
+#   2. explicit --stdin                    (pipeline-friendly)
+#   3. no arg + stdin not a TTY            (auto-detect)
 TRANSCRIPT="${1-}"
+TRANSCRIPT_TMP=""
 
-if [[ -z "$TRANSCRIPT" ]]; then
-  echo "dispatch-provenance-check.sh: usage: dispatch-provenance-check.sh <transcript-file>" >&2
-  exit 2
+cleanup_tmp() {
+  if [[ -n "$TRANSCRIPT_TMP" && -f "$TRANSCRIPT_TMP" ]]; then
+    rm -f "$TRANSCRIPT_TMP"
+  fi
+}
+trap cleanup_tmp EXIT
+
+if [[ "$TRANSCRIPT" == "--stdin" ]]; then
+  TRANSCRIPT_TMP="$(mktemp)"
+  cat > "$TRANSCRIPT_TMP"
+  TRANSCRIPT="$TRANSCRIPT_TMP"
+elif [[ -z "$TRANSCRIPT" ]]; then
+  if [[ ! -t 0 ]]; then
+    TRANSCRIPT_TMP="$(mktemp)"
+    cat > "$TRANSCRIPT_TMP"
+    TRANSCRIPT="$TRANSCRIPT_TMP"
+  else
+    echo "dispatch-provenance-check.sh: usage: dispatch-provenance-check.sh <transcript-file> | --stdin" >&2
+    exit 2
+  fi
 fi
 if [[ ! -f "$TRANSCRIPT" ]]; then
   echo "dispatch-provenance-check.sh: transcript file not found: $TRANSCRIPT" >&2
