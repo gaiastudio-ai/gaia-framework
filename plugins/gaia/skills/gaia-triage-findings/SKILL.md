@@ -3,8 +3,9 @@ name: gaia-triage-findings
 description: "Scan in-progress and completed story files for development findings and triage each into a new backlog story, an existing story, or dismiss. Produces new story files with complete frontmatter (15 required fields, status: backlog, sprint_id: null). Source story findings tables stay intact for idempotent re-triage. Done-story guard (FR-FITP-1) blocks ADD TO EXISTING mutations against status: done targets with an explicit override path recorded for retrospective review. GAIA-native replacement for the legacy triage-findings XML engine workflow."
 argument-hint: "[story-key?] [--override-done-story --user <u> --date <d> --finding <fid> --reason <r>]"
 allowed-tools: [Read, Write, Bash]
-version: "1.2.0"
+version: "1.3.0"
 orchestration_class: light-procedural
+yolo_steps: [3]
 ---
 
 ## Setup
@@ -83,6 +84,23 @@ For each finding, show:
 - Suggested action
 
 ### Step 3 --- Triage Each Finding
+
+> [!yolo]
+> Step 3 honors the declarative `yolo_steps: [3]` frontmatter declaration per ADR-057 §10.30.2 (wire-up table §10.30.6 row E41-S5). Under YOLO, the recommended disposition (DEFER / ADD TO EXISTING / NEW STORY / NOW) is auto-applied per finding without the per-finding `confirm or override` prompt. Subagent inheritance: `GAIA_YOLO_MODE=1` propagates to delegated `/gaia-create-story` spawns per §10.30.5. Hard gates remain enforced in BOTH modes: Step 3a (Reproduction Required, E28-S223), Step 3b (Done-Story Guard, FR-FITP-1), and Step 3c (action-items persistence, FR-FITP-3) are NEVER bypassed — `yolo_steps` covers only Step 3 itself, never 3a/3b/3c. Data-sufficiency interactive fallback per ECI-505: if a finding lacks fields required by its recommendation (missing epic key, unresolvable target story, missing sprint ID for NOW), the auto-apply pauses for that finding only and surfaces the per-finding interactive fallback — no silent default. Ctrl-C recovery per ECI-508: the existing `[TRIAGED]` / `[DISMISSED]` markers + `(finding_id, sprint_id)` dedup key on `action-items.yaml` guarantee re-run idempotency.
+
+Detect YOLO via the canonical helper (do NOT re-implement detection inline per §10.30.8 anti-patterns):
+
+```bash
+if ${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo; then
+  # auto-apply branch: iterate findings; for each, auto-apply the recommendation
+  # below without surfacing the per-finding confirm/override prompt
+  YOLO_MODE=true
+else
+  # interactive branch: retain the existing per-finding confirm/override flow
+  # with byte-identical wording (AC3 regression guard per TC-YOLO-14)
+  YOLO_MODE=false
+fi
+```
 
 For each finding, generate a triage recommendation based on:
 

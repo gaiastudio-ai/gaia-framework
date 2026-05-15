@@ -87,6 +87,7 @@ REQUIRED_FILES=(
   "tests/skills/gaia-teach-testing-hints.bats"
   "tests/skills/gaia-teach-testing.bats"
   "tests/skills/gaia-test-framework.bats"
+  "tests/skills/gaia-triage-findings-e41-s5-yolo-auto-apply.bats"
   "tests/skills/gaia-triage-findings-reproduction-policy.bats"
   "tests/skills/lint-skill-frontmatter.bats"
   "tests/skills/validate-plan-structure.bats"
