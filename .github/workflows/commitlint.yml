@@ -16,12 +16,12 @@ jobs:
           # Validate PR title (squash-merge normalizes individual commits)
           # The action validates the PR title as the commit message
           failOnWarnings: false
-          # Limit linting to the most-recent commit. Without this, merge
-          # commits (resolution merges pulling main into staging) cause
-          # the action to walk into the merged-in branch's history and
-          # re-lint commits already on main — including historical
-          # "release: ..." subjects that predate the current commitlint
-          # config. commitDepth: 1 confines the lint to the PR's HEAD
-          # commit, which is what conventional-commits PR-title
-          # enforcement actually wants.
-          commitDepth: 1
+          # E57-S13 / TD-152: commitDepth: 0 scans only the PR HEAD
+          # commit. The prior `commitDepth: 1` value caused wagoid to
+          # walk merge commits and re-lint the previous staging→main
+          # merge subject — flaking PRs whose own HEAD was perfectly
+          # conventional-commits compliant. commitDepth: 0 confines the
+          # lint to exactly the commit being merged. Documented fallback:
+          # swap to `amannn/action-semantic-pull-request@v5` which
+          # validates the PR title directly.
+          commitDepth: 0
