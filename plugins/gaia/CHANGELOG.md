@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.154.0] — 2026-05-15
+
+### Added
+
+- (E92-S5) opt-in --auto-file flag for /gaia-retro action items (#709)
+- (E57-S14) check-deps.sh walks up to find implementation-artifacts root (#704)
+- (E57-S13) pr-create title-prefix guard + commitlint depth fix (#703)
+- (E92-S3) swap PostToolUse hook to ${CLAUDE_PLUGIN_ROOT} (#702)
+
+### Changed
+
+- (E92-S4) plugin-cache refresh playbook + Step 14b advisory (#705)
+
+### Fixed
+
+- (staging) pr-create title-prefix bats tests build per-test git work tree (#710)
+- (E57-S15) helpful redirect for sprint-state inject --points (#708)
+- (E63-S14) extend type-guard to canonicalize_payload jq fallback path (#707)
+- (E63-S14) type-guard val-sidecar-write jq sort key (#706)
+
 ## [1.153.0] — 2026-05-15
 
 ### Added
