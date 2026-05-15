@@ -20,7 +20,7 @@ hooks:
     - matcher: "Edit|Write"
       hooks:
         - type: command
-          command: ${CLAUDE_SKILL_DIR}/scripts/checkpoint.sh write gaia-dev-story
+          command: ${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/checkpoint.sh write gaia-dev-story
 ```
 
 1. Claude Code detects that a tool call matching `Edit|Write` just completed within this skill's fork context.

@@ -65,6 +65,9 @@ teardown() { common_teardown; }
 @test "AC1: SKILL.md PostToolUse hook command invokes checkpoint.sh write gaia-dev-story" {
   run awk '/^---/{n++; next} n==1' "$SKILL_DIR/SKILL.md"
   [[ "$output" == *'checkpoint.sh write gaia-dev-story'* ]]
+  # E92-S3: hook command MUST use ${CLAUDE_PLUGIN_ROOT} (substrate-supplied), not ${CLAUDE_SKILL_DIR} (silently empty).
+  [[ "$output" == *'${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/checkpoint.sh write gaia-dev-story'* ]]
+  [[ "$output" != *'${CLAUDE_SKILL_DIR}'* ]]
 }
 
 # ---------- AC2: playbook.md reasoning only ----------

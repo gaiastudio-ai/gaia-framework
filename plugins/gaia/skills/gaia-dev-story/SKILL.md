@@ -8,7 +8,7 @@ hooks:
     - matcher: "Edit|Write"
       hooks:
         - type: command
-          command: ${CLAUDE_SKILL_DIR}/scripts/checkpoint.sh write gaia-dev-story
+          command: ${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/checkpoint.sh write gaia-dev-story
 orchestration_class: heavy-procedural
 ---
 
