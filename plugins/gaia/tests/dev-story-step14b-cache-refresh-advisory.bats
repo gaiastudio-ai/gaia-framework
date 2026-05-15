@@ -42,8 +42,8 @@ EOF
 @test "TC-DCR-3: diff touches both SKILL.md and tests/*.bats -> advisory fires once" {
   cat > diff.txt <<EOF
 plugins/gaia/skills/gaia-add-feature/SKILL.md
-plugins/gaia/tests/foo.bats
-plugins/gaia/skills/gaia-add-feature/scripts/foo.sh
+plugins/gaia/tests/example.bats
+plugins/gaia/skills/gaia-add-feature/scripts/finalize.sh
 EOF
   run --separate-stderr "$ADVISORY" --diff-files diff.txt
   [ "$status" -eq 0 ]
@@ -51,9 +51,9 @@ EOF
   advisory_lines=$(printf '%s\n' "$stderr" | grep -c 'step14b_advisory:' || true)
   [ "$advisory_lines" = "1" ]
   [[ "$stderr" == *"plugins/gaia/skills/gaia-add-feature/SKILL.md"* ]]
-  [[ "$stderr" == *"plugins/gaia/skills/gaia-add-feature/scripts/foo.sh"* ]]
+  [[ "$stderr" == *"plugins/gaia/skills/gaia-add-feature/scripts/finalize.sh"* ]]
   # tests/*.bats must NOT appear in the touched-files list.
-  [[ "$stderr" != *"plugins/gaia/tests/foo.bats"* ]]
+  [[ "$stderr" != *"plugins/gaia/tests/example.bats"* ]]
 }
 
 @test "TC-DCR-4: empty diff file -> no advisory, exit 0" {
