@@ -43,13 +43,14 @@ while IFS= read -r line; do
   esac
 done <<<"$config_output"
 
-# ---------- 2. Validate gate (sidecar directory accessible) ----------
-if [ -x "$VALIDATE_GATE" ]; then
-  if ! "$VALIDATE_GATE" dir_writable 2>&1; then
-    log "validate-gate.sh warning: sidecar directory may not be writable (non-fatal)"
-  fi
-else
-  log "validate-gate.sh not found at $VALIDATE_GATE — skipping gate validation (non-fatal)"
+# ---------- 2. Validate sidecar directory accessible ----------
+# Inline writability check. Previously delegated to validate-gate.sh dir_writable,
+# but that gate type is not in validate-gate.sh's registry (which scopes to
+# artifact-existence gates only), so the call silently fell through and the
+# writability precondition was skipped on every refresh.
+SIDECAR_DIR="${memory_path:-./_memory}/validator-sidecar"
+if [ -d "$SIDECAR_DIR" ] && [ ! -w "$SIDECAR_DIR" ]; then
+  log "warning: sidecar directory may not be writable: $SIDECAR_DIR (non-fatal)"
 fi
 
 # ---------- 3. Load checkpoint state ----------
