@@ -46,6 +46,8 @@ Editing is comment-preserving per ADR-044: pre-existing comments and formatting 
 
 ### Step 3 — Present CRUD Menu
 
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+
 - Render the current stacks list as a numbered table (position, name, language, paths).
 - Operation menu: `[a]` add, `[r]` remove, `[e]` edit, `[o]` reorder, `[v]` view, `[x]` exit.
 
@@ -72,4 +74,4 @@ Editing is comment-preserving per ADR-044: pre-existing comments and formatting 
 ## Notes
 
 - Stack declaration order is the resolution order. Surface this in any reorder confirmation so the user is aware before applying.
-- The eleven top-level sections of `project-config.yaml` (E68-S1): `project`, `stacks`, `platforms`, `regimes`, `ci_cd`, `environments`, `test_execution`, `tool_adapters`, `rubrics`, `compliance`, `deployment`. This skill ONLY edits `stacks`.
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `stacks`.

@@ -235,8 +235,19 @@ if [ -n "$EXPECTED_FROM" ] && ! is_canonical_story_state "$EXPECTED_FROM"; then
 fi
 
 # ---------- Path resolution ----------
+#
+# Two-stage env-var precedence (E91-S3 / FR-SRF-3 / AI-2026-05-13-17):
+#   Stage 1: CLAUDE_PROJECT_ROOT — supplied by Claude Code when invoked from the
+#            non-git project-root workspace (per CLAUDE.md §"Non-git project-root
+#            workspace (supported mode)").
+#   Stage 2: PROJECT_PATH — legacy in-tree gaia-public invocation override.
+#   Stage 3: '.' fallback — preserves the legacy CWD-relative behavior.
+#
+# Sibling fix: AI-2026-05-13-12 applied the same walk-up at the
+# config-resolution layer (resolve-config.sh). E91-S3 mirrors it at the
+# story-state layer.
 
-PROJECT_PATH="${PROJECT_PATH:-.}"
+PROJECT_PATH="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
 IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_PATH}/docs/implementation-artifacts}"
 PLANNING_ARTIFACTS="${PLANNING_ARTIFACTS:-${PROJECT_PATH}/docs/planning-artifacts}"
 MEMORY_PATH="${MEMORY_PATH:-${PROJECT_PATH}/_memory}"

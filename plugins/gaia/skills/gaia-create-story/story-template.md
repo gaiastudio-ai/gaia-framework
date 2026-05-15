@@ -12,6 +12,8 @@ points: {story_points}
 risk: "{high/medium/low}"
 sprint_id: null
 priority_flag: null
+# delivered: set to false if production wiring is deferred (E88-S2, FR-DPD-2) — see Dev Notes "Deferred wiring" subsection.
+delivered: true
 origin: {origin}
 origin_ref: {origin_ref}
 depends_on: {depends_on}

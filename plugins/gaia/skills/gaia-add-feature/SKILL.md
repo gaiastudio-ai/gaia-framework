@@ -248,6 +248,25 @@ means the artifact IS updated via the appropriate sub-workflow.
   - Expected cascade: {list of artifacts that will be updated per the
     cascade matrix}
 
+### Step 1c -- Re-validate prereqs under captured classification (E89-S1, FR-AFE-1)
+
+The initial `setup.sh` invocation ran under the default `enhancement` classification. Now that Step 1 has captured the actual classification, re-invoke `setup.sh` so the test-plan / traceability gates fire AGAINST that classification:
+
+```bash
+!${CLAUDE_PLUGIN_ROOT}/skills/gaia-add-feature/scripts/setup.sh \
+  --classification "$CLASSIFICATION" \
+  --feature-id "$FEATURE_ID"
+```
+
+**Behaviour by classification (per E89-S1 AC3..AC5):**
+
+- `patch`: the test-plan / traceability gates are SKIPPED. The re-invocation is harmless.
+- `enhancement` / `feature`: the test-plan and traceability presence gates fire. If either artifact is missing, `setup.sh` HALTs with one of:
+  - `HALT: test-plan.md is missing — run /gaia-test-design first, then re-invoke /gaia-add-feature {feature_id}`
+  - `HALT: traceability-matrix.md is missing — run /gaia-trace first, then re-invoke /gaia-add-feature {feature_id}`
+
+These HALTs are TERMINAL — the cascade does NOT proceed to Step 2. The user must bootstrap the missing artifact via the named skill, then re-invoke `/gaia-add-feature` with the feature_id. The path forms `validate-gate.sh` resolves (flat / strategy / sharded per ADR-070, ADR-072) are owned by `validate-gate.sh`; this skill does not duplicate that lookup.
+
 ### Step 2 -- Val Review Gate (mandatory verdict surfacing)
 
 This step is the canonical Val review gate. It restores the validation
@@ -461,10 +480,16 @@ adhere to the hygiene rules at dispatch time.
 ### Step 6 -- Edit Test Plan (enhancement and feature)
 
 - If classification is `enhancement` or `feature`:
-  - Check if `docs/test-artifacts/test-plan.md` exists. If not, recommend
-    running `/gaia-test-design`.
-  - If the test plan exists: delegate to the edit-test-plan sub-workflow
-    via subagent.
+  - **Prereq (E89-S1, FR-AFE-1):** the test-plan presence gate fires in
+    `setup.sh` via `validate-gate.sh test_plan_exists` when
+    `--classification=enhancement|feature` is passed. Arriving at Step 6
+    implies the test plan exists at the path `validate-gate.sh test_plan_exists`
+    resolves (flat `docs/test-artifacts/test-plan.md` OR strategy/ form OR
+    sharded form, per ADR-070, ADR-072). If the gate failed, this skill
+    has already HALTed with the canonical message `HALT: test-plan.md is
+    missing — run /gaia-test-design first, then re-invoke /gaia-add-feature
+    {feature_id}` — see Step 1c re-invocation below.
+  - Delegate to the edit-test-plan sub-workflow via subagent.
   - **Orchestrator trigger inheritance (FR-353 / E46-S5).** When
     delegating to `/gaia-edit-test-plan`, pass the three inheritance
     contract fields as named invocation parameters:
@@ -495,8 +520,57 @@ adhere to the hygiene rules at dispatch time.
 
 ### Step 8 -- Add Feature Stories (enhancement and feature)
 
+**Step 8 pre-flight — deterministic parent-epic inference (E89-S3, FR-AFE-3, AI-2026-05-13-21):**
+
+Before story-creation logic runs, invoke the advisory parent-epic inference helper to surface a deterministic parent epic when affected_skills can be unambiguously mapped to one open epic:
+
+```bash
+parent_epic_match=$(bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-add-feature/scripts/lib/infer-parent-epic.sh" \
+  --affected-skills "$AFFECTED_SKILLS")
+```
+
+The helper emits exactly one of three modes on stdout (exit 0 always):
+
+- `deterministic <epic_key>` — exactly one open epic in `epics-and-stories.md` matched the affected_skills list. Parent epic is set to `<epic_key>` automatically; the LLM does NOT re-judge.
+- `ambiguous: <epic_key_1>,<epic_key_2>,...` — two or more open epics matched. The LLM judges among the listed candidates (or files a new epic if none fit).
+- `no-match` — zero open epics matched. The LLM falls through to its standard fallback heuristic (typically: file a new epic).
+
+Record the result in the assessment-doc Cascade Plan as `parent_epic_match: <mode> [— <details>]`. Examples:
+
+- `parent_epic_match: deterministic — E89`
+- `parent_epic_match: ambiguous — E63,E89`
+- `parent_epic_match: no-match`
+
+**"Open epic" definition** (consumed by the helper): an epic detail block in `epics-and-stories.md` is OPEN unless its body contains (case-insensitive) `**Status: closed**`, `**Status: retired**`, or `**Status: sunset**`.
+
+**Empty `affected_skills`** is handled cleanly: the helper emits `no-match` and exits 0. Cascades with no skill-touching scope proceed normally.
+
+**Two modes (E89-S2, FR-AFE-2):**
+
+- **`inline-dispatch`** (legacy default for YOLO): `/gaia-add-stories` is dispatched as a Skill-to-Skill delegate; story files are materialized in-cascade. Behavior preserved verbatim from pre-E89-S2 cascades.
+- **`deferred-seed-brief`** (new default for non-YOLO): story keys are reserved (allocate next-free `Sxxx` numbers per epic via `next-story-id.sh`); a `### Story seed brief for <story_key>` subsection is appended to the assessment-doc with proposed AC text (1-5 draft ACs), expected epic (key + name), and dependency notes (hard deps, soft deps, blocks). User dispatches `/gaia-create-story <key>` as a follow-up.
+
+**Default selection (AC2):**
+
+Run `bash $PLUGIN/scripts/yolo-mode.sh is_yolo` to detect YOLO state:
+
+- exit 0 (YOLO active) → default mode is `inline-dispatch` (legacy preserved; YOLO's "no interrupting" contract requires materializing story files in-cascade).
+- exit non-zero (YOLO inactive) → default mode is `deferred-seed-brief` (explicit checkpoint between cascade plan and story materialization).
+
+**`--step-8-mode=<mode>` CLI override (AC5):**
+
+If the orchestrator passed `--step-8-mode <inline-dispatch|deferred-seed-brief>` (or the inline form `--step-8-mode=<mode>`), the override takes precedence over the YOLO-derived default. `setup.sh` validates the value and rejects unknown values with `gaia-add-feature: invalid --step-8-mode value (expected inline-dispatch or deferred-seed-brief, got: <value>)`.
+
+**Before/After default selection (AC6 — Val F9 documentation requirement):**
+
+- **BEFORE (pre-E89-S2):** all cascades used inline-dispatch by default regardless of YOLO state. `/gaia-add-stories` was always pulled into the main turn.
+- **AFTER (post-E89-S2):** YOLO → `inline-dispatch` (legacy preserved); non-YOLO → `deferred-seed-brief` (new default).
+- **Rationale:** the post-ADR-093 main-turn orchestration model makes inline sub-skill dispatch heavier than under the legacy fork-context model — the main turn now carries both the cascade reasoning AND the story-creation skill's context. The deferred-seed-brief alternative keeps the cascade focused on planning artifacts and defers story-file materialization to a separate user-initiated `/gaia-create-story` invocation. AF-2026-05-13-1 smoke-test surfaced this as friction-point 2.
+
+**Mode dispatch (the actual Step 8 body):**
+
 - If classification is `enhancement` or `feature`:
-  - Delegate to the add-stories sub-workflow via subagent, passing
+  - **If `step_8_mode == inline-dispatch`:** delegate to the add-stories sub-workflow via subagent, passing
     `feature_description`, `prd_diff`, `arch_diff`, and `cr_id`.
   - Capture new story keys and epic assignments.
   - Store: `new_stories`.
@@ -513,11 +587,38 @@ adhere to the hygiene rules at dispatch time.
     > - All stories are P1.
     > - The brief classifies the work as technical-debt / regression
     >   remediation.
+
+  - **If `step_8_mode == deferred-seed-brief` (E89-S2):** reserve story keys via `next-story-id.sh --epic <epic_key>` for each proposed story; for each reserved key, append a `### Story seed brief for <story_key>` subsection to the assessment-doc containing (a) proposed title, (b) 1-5 draft ACs at planning fidelity (full polish happens in `/gaia-create-story`), (c) expected epic (key + name), (d) dependency notes (hard deps, soft deps, blocks). Do NOT call `/gaia-add-stories` — story-file materialization is deferred to a separate user-initiated `/gaia-create-story <key>` invocation. Record `new_stories` as the list of RESERVED keys (not materialized files). The memory rule above (no auto-set of the priority flag) still applies — the user MUST NOT promote a seed-brief story to the elevated-priority value until `/gaia-create-story` materializes it.
+
 - If classification is `patch`: skip this step.
+
+### Step 8a -- Intake-time dispatch-verb enforcement (E88-S2, FR-DPD-2)
+
+For every story produced by Step 8 (classification `enhancement` or `feature`), invoke the deterministic intake check BEFORE 8b updates traceability:
+
+```bash
+for story_path in "${new_story_paths[@]}"; do
+  !scripts/lib/intake-dispatch-verb-check.sh --story-file "$story_path"
+done
+```
+
+The helper sources `scripts/lib/dispatch-verb-match.sh` (E88-S1) and HALTs with the canonical message `HALT: dispatch-verb AC #<n> ("<excerpt>") lacks a companion integration-test AC. Add an integration-test AC, OR annotate this AC with <!-- gaia:contract-only: <reason> --> if the dispatch is contract-only.` when a story has a dispatch-verb AC without integration coverage and without a contract-only override.
+
+This step MUST run AFTER stories are written by Step 8 (the helper needs the file on disk) and BEFORE Step 8b (traceability would otherwise record stories that fail the drift-prevention contract). The LLM never inlines the taxonomy or re-implements the matcher — ADR-107 SSOT contract.
+
+If classification is `patch`: skip this step.
 
 ### Step 8b -- Update Traceability (enhancement and feature)
 
 - If classification is `enhancement` or `feature`:
+  - **Prereq (E89-S1, FR-AFE-1):** the traceability-matrix presence gate
+    fires in `setup.sh` via `validate-gate.sh traceability_exists` when
+    `--classification=enhancement|feature` is passed. Arriving at Step 8b
+    implies the matrix exists at the path `validate-gate.sh traceability_exists`
+    resolves (flat / strategy / sharded per ADR-070, ADR-072). If the gate
+    failed, this skill has already HALTed with the canonical message
+    `HALT: traceability-matrix.md is missing — run /gaia-trace first, then
+    re-invoke /gaia-add-feature {feature_id}` — see Step 1c re-invocation.
   - Delegate to the traceability sub-workflow via subagent to regenerate
     the traceability matrix.
   - Verify new FR / NFR IDs, test cases, and stories are linked.
@@ -672,6 +773,10 @@ finding first and re-invoke the skill.
 
 ## Changelog
 
+- **2026-05-14 — E89-S3 — Deterministic parent-epic inference (FR-AFE-3, AI-2026-05-13-21).** Added `scripts/lib/infer-parent-epic.sh` — advisory helper that maps comma-separated affected_skills to open epics in `docs/planning-artifacts/epics-and-stories.md`. Emits one of three modes on stdout (exit 0 always): `deterministic <epic_key>` / `ambiguous: <key1>,<key2>,...` / `no-match`. Step 8 prose updated with a pre-flight subsection that invokes the helper before story-creation logic; the result is recorded in the assessment-doc Cascade Plan as `parent_epic_match: <mode> [— <details>]`. Open-epic definition: a detail block is OPEN unless `**Status: closed**`, `**Status: retired**`, or `**Status: sunset**` appears within it. Empty `affected_skills` cleanly emits `no-match`. Closes the friction-point 3 drift surfaced by the AF-2026-05-13-1 smoke test (LLMs reading a long epics-and-stories.md inconsistently picked between parent-epic candidates).
+- **2026-05-14 — E89-S2 — Step 8 deferred-seed-brief mode + `step_8_mode` Cascade Plan field (FR-AFE-2, AI-2026-05-13-20).** Step 8 prose rewritten to document TWO modes: `inline-dispatch` (legacy default for YOLO, materializes story files in-cascade) and `deferred-seed-brief` (new default for non-YOLO, reserves story keys + emits `### Story seed brief for <story_key>` subsections in the assessment-doc; user dispatches `/gaia-create-story <key>` as a follow-up). Default selection is YOLO-keyed: YOLO active → inline-dispatch (legacy preserved); YOLO inactive → deferred-seed-brief (new default). `setup.sh` gained a `--step-8-mode <inline-dispatch|deferred-seed-brief>` CLI override (and inline form) with canonical rejection stderr `gaia-add-feature: invalid --step-8-mode value (expected inline-dispatch or deferred-seed-brief, got: <value>)`. The Before/After default flip is documented explicitly per Val F9 (AF-2026-05-14-7 cascade) — reviewers see the policy change, not just a new field. Rationale: post-ADR-093 main-turn orchestration model makes inline sub-skill dispatch heavier than under the legacy fork-context model; AF-2026-05-13-1 smoke-test surfaced this as friction-point 2.
+- **2026-05-14 — E89-S1 — Steps 6/8b HALT-or-bootstrap on missing canonical test artifacts (FR-AFE-1, AI-2026-05-13-1 friction-point 1).** `setup.sh` gained two new optional CLI flags (`--classification <patch|enhancement|feature>`, `--feature-id <AF-{date}-{N}>`) parsed BEFORE resolve-config so the classification is available when gates fire. Under classification `enhancement` / `feature`, `setup.sh` invokes `validate-gate.sh test_plan_exists` and `validate-gate.sh traceability_exists` (extending the existing `prd_exists` / `epics_and_stories_exists` consumer pattern at L62/L65). On either gate failure, `setup.sh` `die`'s with canonical stderr `HALT: test-plan.md is missing — run /gaia-test-design first, then re-invoke /gaia-add-feature {feature_id}` (or the `/gaia-trace` mirror). Patch classifications skip both gates. SKILL.md Steps 6 + 8b prose rewritten to document the prereq contract; Step 1c re-invocation added so the classification captured in Step 1 flows back to `setup.sh`. Closes the friction-point 1 drift surfaced by the AF-2026-05-13-1 smoke test (Step 6 silently skipped its Test Plan edit because the artifact did not yet exist on disk).
+- **2026-05-14 — E88-S2 — Intake-time dispatch-verb enforcement (FR-DPD-2, ADR-107, AI-2026-05-13-4).** Added Step 8a between Step 8 (Add Feature Stories) and Step 8b (Update Traceability). The step invokes `scripts/lib/intake-dispatch-verb-check.sh --story-file <path>` for every story produced by Step 8. The helper sources `scripts/lib/dispatch-verb-match.sh` (E88-S1) and HALTs with the canonical message when a dispatch-verb AC lacks a companion integration-test AC and has no `<!-- gaia:contract-only: <reason> -->` override. Closes the drift class documented in AI-2026-05-13-4 (dispatch-verb ACs landing without integration coverage). Story-template.md and validate-frontmatter.sh gain a new 16th required `delivered:` boolean field (default `true`) — the bookkeeping primitive E88-S6 will consume for retroactive E76-S10 back-fill.
 - **2026-05-13 — E87-S7 — Sentinel-Write Writer Shift (ADR-105 amends ADR-104).** Following the AI-2026-05-13-13 incident, the Val sentinel write has been relocated from the Val sub-agent context to the orchestrator's main turn. Val now RETURNS the sentinel content as a `sentinel_envelope` field inside the ADR-037 envelope; the orchestrator parses the field and writes the sentinel via the new helper `plugins/gaia/scripts/lib/write-val-envelope.sh`. This closes the Claude Code substrate content-integrity false-fire that blocked the cascade end-to-end after E87-S5 / E87-S6 landed. Forgery resistance preserved via `persona_sig` binding to validator.md's on-disk sha256 (NFR-064 unchanged). The Step 2b dispatch contract now reads: (1) spawn Val via Agent tool; (2) parse `sentinel_envelope` from Val's return; (3) write sentinel via `write-val-envelope.sh --envelope "$sentinel_envelope"` (captures the path on stdout); (4) source `assert-agent-envelope.sh`; (5) `assert_agent_envelope` against the captured path; (6) HALT on non-zero; (7) consume verdict. The E83 four-layer fail-closed enforcement (E83 dispatch checkpoint, AskUserQuestion precondition, dispatch prompt hygiene, bats anti-pattern check) is preserved intact. Coverage: TC-WVE-1..10 in `plugins/gaia/tests/write-val-envelope.bats` (helper-level); existing TC-VBR-11..11g in `plugins/gaia/tests/val-bridge-migration.bats` continues to pass (assertion logic unchanged); validator.md §Sentinel-Write Contract rewritten to specify the return-channel.
 - **2026-05-13 — AI-2026-05-13-11 — Dispatch prompt hygiene + hash-basis reconcile.** Fixed three operator-error vectors surfaced by the 2026-05-13 AF-2026-05-13-1 cascade attempt (substrate content-integrity HALT). (a) Reconciled the envelope sentinel hash basis: Step 2b body had drifted to `sha256(feature_id)` while the Subagent Dispatch Contract section (L114) and validator persona §Sentinel-Write Contract both say `sha256(artifact_path)`. Step 2b now matches; the convention is documented as "pass `feature_id` as the literal `artifact_path`" so caller and persona hash the same string. Validator persona amended with the same convention. (b) Added an explicit "Dispatch prompt hygiene" block to Step 2b enumerating three forbidden patterns: caller-side sentinel JSON shape override (causes Val to write a malformed sentinel that fails `assert_agent_envelope`), prior-findings pre-loading on re-dispatch (substrate content-integrity guard flags as forgery), and `artifact_path` invention (breaks hash agreement). Anchored to memory rule `feedback_val_redispatch_no_preload.md` (also 2026-05-13). (c) Mirrored the hygiene rule into Critical Rules so it survives Step 2b skim. No script changes — `write-val-sentinel.sh` and `finalize.sh` are unchanged; the bug surface is entirely in the SKILL.md prose contract with Val.
 - **2026-05-13 — E87-S5 — Val Bridge Migration, FINAL self-referential migration (ADR-104).** Migrated `/gaia-add-feature` Step 2 Val gate from `context: fork` (per ADR-045) to **main-turn Agent-tool dispatch** (per ADR-093 / ADR-104). Added the post-dispatch envelope-assert step (`source assert-agent-envelope.sh` + `assert_agent_envelope` + HALT on non-zero) at Step 2b. The E83 four-layer fail-closed enforcement (sentinel checkpoint, AskUserQuestion precondition, prose hardening, bats anti-pattern check) is preserved intact — E87 adds the envelope-assert as a NEW layer ON TOP of E83, not as a replacement. Two layered sentinels coexist at distinct paths: E83 dispatch checkpoint `_memory/checkpoints/add-feature-{feature_id}-val-dispatched.json` (validated by `finalize.sh`, proves dispatch HAPPENED) and E87 envelope sentinel `_memory/checkpoints/val-envelope-{artifact-hash}.json` (validated by `assert_agent_envelope`, proves dispatcher was AUTHENTIC Val persona). Closes `feedback_add_feature_val_gate_fails_open.md` (AI-2026-05-09-12) at the authenticity layer. Coverage by TC-VBR-11..11g in `plugins/gaia/tests/val-bridge-migration.bats`; E83 TC-VFC-* suite continues to pass.

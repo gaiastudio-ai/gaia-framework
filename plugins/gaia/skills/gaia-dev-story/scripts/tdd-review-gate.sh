@@ -96,7 +96,15 @@ YOLO_MODE="$SHARED_SCRIPTS/yolo-mode.sh"
 # dev-story scripts on a single canonical resolution path. — E55-S13 D3.
 # ---------------------------------------------------------------------------
 
-PROJECT_ROOT="${PROJECT_PATH:-$(pwd)}"
+# Path resolution — two-stage env-var precedence
+# (E91-S3 / FR-SRF-3 / AI-2026-05-13-17):
+#   Stage 1: CLAUDE_PROJECT_ROOT — non-git project-root workspace mode
+#            (per CLAUDE.md §"Non-git project-root workspace (supported mode)").
+#   Stage 2: PROJECT_PATH — legacy in-tree gaia-public invocation override.
+#   Stage 3: $(pwd) fallback.
+# Sibling: AI-2026-05-13-12 walked up at the config-resolution layer
+# (resolve-config.sh); E91-S3 mirrors it at the story-state layer.
+PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-$(pwd)}}"
 RESOLVE_STORY_FILE="$SHARED_SCRIPTS/resolve-story-file.sh"
 if [ ! -x "$RESOLVE_STORY_FILE" ]; then
   die "shared helper missing or not executable: $RESOLVE_STORY_FILE"

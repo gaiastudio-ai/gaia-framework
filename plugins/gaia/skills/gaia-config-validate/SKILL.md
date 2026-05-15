@@ -12,7 +12,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are validating GAIA configuration. By default this skill validates a `project-config.yaml` file against `project-config.schema.json` (E68-S1) — the canonical structural schema covering the eleven top-level sections introduced by the Review System v2 surface (compliance, tools, test_execution, severity, gates, stacks, cross_service_tests, environments, ci_platform, platforms, device_targets) plus the existing required keys (`project_root`, `project_path`, `memory_path`, `checkpoint_path`, `installed_path`, `framework_version`, `date`).
+You are validating GAIA configuration. By default this skill validates a `project-config.yaml` file against `project-config.schema.json` (E68-S1) — the canonical structural schema covering the Review System v2 top-level sections (compliance, tools, test_execution, severity, gates, stacks, cross_service_tests, environments, ci_platform, platforms, device_targets, and others — see `schemas/project-config.schema.json` `.properties` for the full 40-property surface in schema v2.0.0) plus the existing required keys (`project_root`, `project_path`, `memory_path`, `checkpoint_path`, `installed_path`, `framework_version`, `date`).
 
 When invoked with `--rubric`, the skill instead validates the merged rubric output for the active project (legacy E68-S2 behavior — base + regimes-in-declaration-order + optional domain + optional project per ADR-079). The rubric mode preserves the layered-loader contract surfaced before E71-S3 so existing callers do not break.
 
@@ -40,6 +40,8 @@ This skill is the native Claude Code entry point for the `/gaia-config-validate`
 - HALT if the file does not exist; tell the user where it was searched and suggest `/gaia-init` to scaffold one.
 
 ### Step 3 — Run Project-Config Schema Validation
+
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
 
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/validate-project-config.sh <path>`.
 - The script converts YAML to JSON (via `yq` or `python3 + PyYAML`) and validates against `plugins/gaia/schemas/project-config.schema.json` using `ajv-cli` when available, with a jq-based fallback that enforces the `required` keys and the credential deny-list.

@@ -104,7 +104,16 @@ case "$CMD" in
     _read_platforms
     ;;
   add)
-    [ -n "$ARG" ] || { err "add requires a platform id"; exit 1; }
+    # E71-S9 AC1 (D7): no-arg `add` is a discoverability prompt, not a failure.
+    # SKILL.md Step 2c contract: "Re-prompt the user for an identifier — DO NOT
+    # exit non-zero. The empty argument is a discoverability hint, not a
+    # validation failure." Emit the documented baseline menu + the kebab-case
+    # extensibility regex to stderr and exit 0.
+    if [ -z "$ARG" ]; then
+      err "add <platform-id> — baseline: web | ios | android (per ADR-081 §4.2)"
+      err "kebab-case extensibility: any identifier matching ^[a-z][a-z0-9-]*\$ is also accepted"
+      exit 0
+    fi
     if ! printf '%s' "$ARG" | grep -Eq "$VALID_ID_RE"; then
       err "invalid platform id: '$ARG' (expected $VALID_ID_RE)"
       exit 1

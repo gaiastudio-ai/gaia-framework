@@ -38,6 +38,67 @@ CHECKPOINT="$PLUGIN_SCRIPTS_DIR/checkpoint.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
+# ---------- 0. CLI surface (E89-S1, FR-AFE-1) ----------
+# Optional flags consumed by SKILL.md Step 1c re-invocation:
+#   --classification <patch|enhancement|feature>   default: enhancement
+#   --feature-id <AF-{date}-{N}>                    default: empty string
+# Unknown flags die non-zero. The flag-parsing loop sits BEFORE the
+# validate-gate.sh invocations so CLASSIFICATION and FEATURE_ID are
+# available when the test-plan / traceability gates fire (AC1..AC4).
+CLASSIFICATION="enhancement"
+FEATURE_ID=""
+STEP_8_MODE=""  # empty = auto-derive from YOLO state (E89-S2 AC2 default)
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --classification)
+      [[ $# -ge 2 ]] || die "missing value for --classification"
+      CLASSIFICATION="$2"
+      case "$CLASSIFICATION" in
+        patch|enhancement|feature) ;;
+        *) die "invalid classification: $CLASSIFICATION (must be patch|enhancement|feature)" ;;
+      esac
+      shift 2
+      ;;
+    --classification=*)
+      CLASSIFICATION="${1#*=}"
+      case "$CLASSIFICATION" in
+        patch|enhancement|feature) ;;
+        *) die "invalid classification: $CLASSIFICATION (must be patch|enhancement|feature)" ;;
+      esac
+      shift
+      ;;
+    --feature-id)
+      [[ $# -ge 2 ]] || die "missing value for --feature-id"
+      FEATURE_ID="$2"
+      shift 2
+      ;;
+    --feature-id=*)
+      FEATURE_ID="${1#*=}"
+      shift
+      ;;
+    --step-8-mode)
+      [[ $# -ge 2 ]] || die "missing value for --step-8-mode"
+      STEP_8_MODE="$2"
+      case "$STEP_8_MODE" in
+        inline-dispatch|deferred-seed-brief) ;;
+        *) die "gaia-add-feature: invalid --step-8-mode value (expected inline-dispatch or deferred-seed-brief, got: $STEP_8_MODE)" ;;
+      esac
+      shift 2
+      ;;
+    --step-8-mode=*)
+      STEP_8_MODE="${1#*=}"
+      case "$STEP_8_MODE" in
+        inline-dispatch|deferred-seed-brief) ;;
+        *) die "gaia-add-feature: invalid --step-8-mode value (expected inline-dispatch or deferred-seed-brief, got: $STEP_8_MODE)" ;;
+      esac
+      shift
+      ;;
+    *)
+      die "unknown flag: $1"
+      ;;
+  esac
+done
+
 # ---------- 1. Resolve config ----------
 [ -x "$RESOLVE_CONFIG" ] || die "resolve-config.sh not found or not executable at $RESOLVE_CONFIG"
 if ! config_output=$("$RESOLVE_CONFIG" 2>&1); then
@@ -58,12 +119,25 @@ PLANNING="${PLANNING_ARTIFACTS:-docs/planning-artifacts}"
 PRD_PATH="$PLANNING/prd.md"
 EPICS_PATH="$PLANNING/epics-and-stories.md"
 
+TEST_ARTIFACTS_DIR="${TEST_ARTIFACTS:-docs/test-artifacts}"
+
 if [ -x "$VALIDATE_GATE" ]; then
   if ! "$VALIDATE_GATE" prd_exists 2>&1; then
     die "HALT: prd.md not found at $PRD_PATH — run /gaia-create-prd first"
   fi
   if ! "$VALIDATE_GATE" epics_and_stories_exists 2>&1; then
     die "HALT: epics-and-stories.md not found at $EPICS_PATH — run /gaia-create-epics first"
+  fi
+  # E89-S1 (FR-AFE-1): test-plan + traceability gates fire ONLY under
+  # enhancement / feature classifications. Patch classifications skip
+  # these gates (matches the existing cascade-matrix behaviour).
+  if [ "$CLASSIFICATION" = "enhancement" ] || [ "$CLASSIFICATION" = "feature" ]; then
+    if ! "$VALIDATE_GATE" test_plan_exists 2>&1; then
+      die "HALT: test-plan.md is missing — run /gaia-test-design first, then re-invoke /gaia-add-feature $FEATURE_ID"
+    fi
+    if ! "$VALIDATE_GATE" traceability_exists 2>&1; then
+      die "HALT: traceability-matrix.md is missing — run /gaia-trace first, then re-invoke /gaia-add-feature $FEATURE_ID"
+    fi
   fi
 else
   # Fallback: manual checks when validate-gate.sh is not available
@@ -72,6 +146,15 @@ else
   fi
   if [ ! -s "$EPICS_PATH" ]; then
     die "HALT: epics-and-stories.md not found or empty at $EPICS_PATH — run /gaia-create-epics first"
+  fi
+  # E89-S1 fallback mirror: same classification-conditional behaviour.
+  if [ "$CLASSIFICATION" = "enhancement" ] || [ "$CLASSIFICATION" = "feature" ]; then
+    if [ ! -s "$TEST_ARTIFACTS_DIR/test-plan.md" ] && [ ! -s "$TEST_ARTIFACTS_DIR/strategy/test-plan.md" ]; then
+      die "HALT: test-plan.md is missing — run /gaia-test-design first, then re-invoke /gaia-add-feature $FEATURE_ID"
+    fi
+    if [ ! -s "$TEST_ARTIFACTS_DIR/traceability-matrix.md" ] && [ ! -s "$TEST_ARTIFACTS_DIR/strategy/traceability-matrix.md" ]; then
+      die "HALT: traceability-matrix.md is missing — run /gaia-trace first, then re-invoke /gaia-add-feature $FEATURE_ID"
+    fi
   fi
   log "validate-gate.sh not found at $VALIDATE_GATE — used manual checks (non-fatal)"
 fi

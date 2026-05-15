@@ -22,6 +22,7 @@ const path = require("node:path");
 const BUMP_TYPES = ["patch", "minor", "major"];
 
 const PLUGIN_JSON_REL = path.join("plugins", "gaia", ".claude-plugin", "plugin.json");
+const PLUGIN_VERSION_REL = path.join("plugins", "gaia", ".plugin-version");
 
 // ── Semver helpers (inline, no deps — ADR-005) ─────────────────────────────
 
@@ -142,6 +143,7 @@ function main() {
     console.log(`Dry run: ${currentVersion} -> ${newVersion}`);
     console.log(`\nWould update:`);
     console.log(`  plugin.json: ${currentVersion} -> ${newVersion}`);
+    console.log(`  .plugin-version: ${currentVersion} -> ${newVersion}`);
     console.log(`\nNo files written.`);
     process.exit(0);
   }
@@ -150,9 +152,16 @@ function main() {
   data.version = newVersion;
   fs.writeFileSync(pluginJsonPath, JSON.stringify(data, null, 2) + "\n", "utf8");
 
+  // E89-S4: write .plugin-version alongside plugin.json so the Val
+  // persona_sig is emitted as `val-<semver>-<digest>` (released-tag form)
+  // rather than `val-dev-<digest>` (in-tree default).
+  const pluginVersionPath = path.join(process.cwd(), PLUGIN_VERSION_REL);
+  fs.writeFileSync(pluginVersionPath, newVersion, "utf8");
+
   console.log(`Version bumped: ${currentVersion} -> ${newVersion}`);
   console.log(`\nUpdated files:`);
   console.log(`  ${PLUGIN_JSON_REL}`);
+  console.log(`  ${PLUGIN_VERSION_REL}`);
 }
 
 main();

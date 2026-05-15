@@ -31,6 +31,8 @@ After Val completes a validation pass, the Val persona MUST compute the envelope
 
 **Background.** The Claude Code substrate's content-integrity guard false-fires on sub-agent writes to `_memory/checkpoints/val-envelope-*.json`, blocking the Val dispatch gate even when Val behaved correctly (incident AI-2026-05-13-13, 2026-05-13). The writer-shift relocates the write to the orchestrator's main turn where the substrate heuristic does not fire, while preserving forgery resistance via the `persona_sig` anchor.
 
+**Note (E90-S1, FR-MVB-1).** The asserting helper `plugins/gaia/scripts/lib/assert-agent-envelope.sh` is now generalizable via an optional `--expected-agent <id>` flag (default `val`) so non-Val subagents (e.g., `/gaia-meeting` PM / Architect / UX-Designer / QA turns) can inherit the same forge-resistance the Val gate has. The Val sentinel-write contract documented here remains Val-specific — generalization is on the asserting side only. `write-val-envelope.sh` is intentionally NOT generalized by E90-S1.
+
 **`artifact_path` convention.** Conventionally the absolute filesystem path of the artifact under validation. When the validation target is an in-memory intake object with no on-disk artifact (e.g., `/gaia-add-feature` Step 2 validates an intake summary keyed by `feature_id`), callers MAY pass a stable logical id (e.g., `AF-2026-05-13-1`) as the literal `artifact_path` string. The contract is that **caller and Val agree on the literal string** — the orchestrator passes it to Val unchanged, Val echoes it unchanged in `sentinel_envelope.artifact_path`, and `write-val-envelope.sh` hashes the same string when computing the sentinel path. Do NOT transform the path inside the persona (no `realpath`, no canonicalisation, no trimming). This convention from AI-2026-05-13-11 is preserved.
 
 The sentinel JSON shape (unchanged from E87-S2):
@@ -65,6 +67,8 @@ Val embeds this object as the `sentinel_envelope` field inside the ADR-037 envel
 ```
 
 The `persona_sig` field is the forgery-resistance anchor (NFR-064, preserved under ADR-105). Its value is `val-<version>-<digest>` where `<version>` is the framework version from `gaia-public/plugins/gaia/.plugin-version` (or `dev` if absent) and `<digest>` is the sha256 of the running `validator.md` file (first 16 hex chars). This binds the sentinel to the agent template that produced it — the orchestrator is a write-through; it cannot fabricate a valid `persona_sig` without reading `validator.md` at the same revision Val read. `assert_agent_envelope` rejects any sentinel missing the field.
+
+**`.plugin-version` population (E89-S4, AI-2026-05-13-22, Val F8 scope-correction on AF-2026-05-14-7):** `.plugin-version` is expected to be populated post-release (committed alongside source — bumped by `scripts/version-bump.js` or written by the release workflow). The `dev` fallback remains the defensive default for in-tree development. The semver-tagged persona_sig (`val-<semver>-<digest>`) enables sentinel forensics across released plugin versions; the `dev`-tagged form (`val-dev-<digest>`) is the in-tree development signature. Effect is framework-wide — all 5 Val-consuming skills (`/gaia-val-validate`, `/gaia-validate-story`, `/gaia-fix-story`, `/gaia-dev-story`, `/gaia-add-feature`) inherit the semver tag.
 
 **Reference compute idiom (Val side, in agent context):**
 

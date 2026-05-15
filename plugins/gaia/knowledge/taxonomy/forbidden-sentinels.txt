@@ -1,0 +1,28 @@
+# forbidden-sentinels.txt — Closed-list forbidden-sentinel taxonomy (v1, frozen)
+# Refs: ADR-107, AF-2026-05-14-6, AI-2026-05-13-5
+# Story: E88-S3
+#
+# Status: v1-frozen. Amendments MUST follow the ADR-107 amendment process.
+#
+# Consuming skills (1, as of v1):
+#   - /gaia-dev-story Step 11a (forbidden-sentinel-scan.sh; production paths only)
+#
+# Lines starting with `#` are comments (load-taxonomy.sh strips them).
+# Blank lines are ignored. Each non-comment line is one canonical forbidden
+# sentinel matched with `grep -wFf` semantics (fixed-string, line-by-line)
+# on the production-path diff slice.
+#
+# Production paths only: `tests/`, `tests/fixtures/`, `_memory/`, `docs/`,
+# `.github/`, and any `*.bats` file are EXEMPT (see Step 11a filter).
+#
+# v1 entries: the four bare-token entries are what the matcher catches. The
+# AC1 spec also listed three pattern-shaped entries (`# TODO: production
+# wiring`, `if [ -n "$*_STUB" ]`, `if [ -z "$*_REAL" ]`) which are
+# unmatchable under `grep -wFf` (lines beginning with `#` are stripped by
+# the loader; shell glob `*` is not interpreted by `grep -F`). Those
+# pattern-shaped sentinels are documented as Findings on E88-S3 for a
+# future enhancement (separate scanner or regex-based variant).
+STUB
+MOCK
+FIXME
+XXX

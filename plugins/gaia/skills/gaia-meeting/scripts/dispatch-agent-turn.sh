@@ -205,6 +205,59 @@ if ! printf '%s' "$RAW_RETURN" | grep -qE '"status"[[:space:]]*:'; then
   exit 2
 fi
 
+# ---------- E90-S2: post-dispatch envelope assertion (FR-MVB-2, ADR-104) ----------
+# Verify the returned envelope carries an authentic agent persona signature.
+# Closes the "no post-dispatch envelope authentication" defect class
+# documented in Val W3 on AF-2026-05-14-8. Reuses write-val-envelope.sh
+# (E87-S2 contract is agent-agnostic — persona_sig is the anchor) and
+# assert-agent-envelope.sh (generalized by E90-S1 with --expected-agent).
+#
+# The assertion is GATED by GAIA_DISPATCH_ENVELOPE_ASSERT_OPT_IN to
+# preserve backward-compat during the rollout: existing call sites that
+# don't yet supply a `persona_sig` envelope continue to work. Production
+# call sites set the env var; the assertion fires only then.
+if [[ -n "${GAIA_DISPATCH_ENVELOPE_ASSERT_OPT_IN:-}" ]]; then
+  envelope_agent="$(printf '%s' "$RAW_RETURN" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("agent",""))' 2>/dev/null || true)"
+  if [[ -z "$envelope_agent" ]]; then
+    printf 'HALT: subagent envelope missing required field '\''agent'\''\n' >&2
+    if [[ -x "${PLUGIN_DIR_HALT:-${SCRIPTS_DIR:-$(dirname "$0")}/halt-event.sh}" ]]; then
+      bash "${SCRIPTS_DIR:-$(dirname "$0")}/halt-event.sh" "envelope-missing-agent-field" 2>/dev/null || true
+    fi
+    exit 2
+  fi
+
+  # Sentinel path derived from artifact_path (per-turn header value).
+  artifact_path_for_sentinel="${ARTIFACT_PATH:-${TURN_ID:-${SESSION_ID:-default}}}"
+  sentinel_hash="$(printf '%s' "$artifact_path_for_sentinel" | shasum -a 256 | cut -c1-16)"
+  CHECKPOINT_DIR_FOR_ENV="${CHECKPOINT_PATH:-_memory/checkpoints}"
+  sentinel_path="${CHECKPOINT_DIR_FOR_ENV}/val-envelope-${sentinel_hash}.json"
+  mkdir -p "$(dirname "$sentinel_path")" 2>/dev/null || true
+
+  # Orchestrator-side write (ADR-105). write-val-envelope.sh writes a
+  # sentinel from the inline envelope JSON.
+  WRITER="$(cd "$(dirname "$0")/../../../scripts/lib" 2>/dev/null && pwd)/write-val-envelope.sh"
+  if [[ -x "$WRITER" ]]; then
+    # Pass the envelope JSON via --envelope-stdin and the path via
+    # --sentinel-path. The helper interprets the input and writes the
+    # sentinel JSON file expected by assert-agent-envelope.sh.
+    printf '%s' "$RAW_RETURN" | bash "$WRITER" --envelope-stdin --sentinel-path "$sentinel_path" 2>/dev/null || true
+  fi
+
+  # Source the generalized asserter (E90-S1).
+  ASSERTER="$(cd "$(dirname "$0")/../../../scripts/lib" 2>/dev/null && pwd)/assert-agent-envelope.sh"
+  if [[ -f "$ASSERTER" ]]; then
+    # shellcheck source=/dev/null
+    . "$ASSERTER"
+    if ! assert_agent_envelope "$sentinel_path" --expected-agent "$envelope_agent"; then
+      if [[ -x "${SCRIPTS_DIR:-$(dirname "$0")}/halt-event.sh" ]]; then
+        bash "${SCRIPTS_DIR:-$(dirname "$0")}/halt-event.sh" "envelope-assertion-failed" 2>/dev/null || true
+      fi
+      exit 1
+    fi
+  fi
+fi
+# ---------- end E90-S2 envelope assertion ----------
+
 # Extract body and findings via a single python pass. We feed RAW_RETURN to
 # python3 on stdin and pass the parser script via -c to avoid the pipe-vs-heredoc
 # stdin collision.

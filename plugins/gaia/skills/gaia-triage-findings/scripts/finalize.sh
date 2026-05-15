@@ -24,6 +24,34 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
+# ---------- 0. Val-sidecar sentinel precondition (E92-S2 / FR-OEXP-2) ----------
+#
+# When GAIA_FINALIZE_SENTINEL_REQUIRED is set (the SKILL.md Step 7 contract
+# exports it), assert a Val sidecar entry was written AFTER the run-started
+# checkpoint marker. Mirrors gaia-add-feature/finalize.sh:51-82 (E83-S1
+# fail-closed pattern). Operators see a canonical, grep-able error string if
+# Step 7 was skipped.
+#
+# Legacy fixtures that do NOT export the env var get the prior unconditional
+# behavior (Test D backward-compat).
+if [ -n "${GAIA_FINALIZE_SENTINEL_REQUIRED:-}" ]; then
+  PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
+  SIDECAR_LOG="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
+  CHECKPOINT_MARKER="${CHECKPOINT_PATH:-$PROJECT_ROOT/_memory/checkpoints}/triage-findings.json"
+
+  if [ ! -f "$SIDECAR_LOG" ]; then
+    die "Val sidecar write missing — Step 7 must be invoked before finalize (no decision-log at $SIDECAR_LOG)"
+  fi
+  if [ ! -f "$CHECKPOINT_MARKER" ]; then
+    die "Val sidecar write missing — Step 7 must be invoked before finalize (no run checkpoint at $CHECKPOINT_MARKER)"
+  fi
+  # Out-of-window check: sidecar mtime MUST be newer than the run checkpoint.
+  if [ "$SIDECAR_LOG" -ot "$CHECKPOINT_MARKER" ]; then
+    die "Val sidecar write missing — Step 7 must be invoked before finalize (decision-log older than run checkpoint)"
+  fi
+  log "Val sidecar sentinel: PRESENT (decision-log newer than run checkpoint)"
+fi
+
 # ---------- 1. Write checkpoint ----------
 if [ -x "$CHECKPOINT" ]; then
   if ! "$CHECKPOINT" write --workflow "$WORKFLOW_NAME" --step 6 >/dev/null 2>&1; then

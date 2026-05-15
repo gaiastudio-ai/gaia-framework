@@ -93,7 +93,14 @@ _CONFIG_HYDRATION_ALLOWLIST=(
 # and skip them without triggering the AC5 hard-error path. Forward + reverse invariants:
 # every schema property is in EXACTLY ONE of allowlist, managed-elsewhere, or x-no-auto-hydration.
 #
-#   - Computed path/identity (7):        written by resolve-config.sh at runtime.
+#   - Computed path/identity (5):        written by resolve-config.sh at runtime.
+#   - framework_version (1):             written by gaia-reconcile-v2.sh apply at
+#                                        end of successful reconciliation
+#                                        (E85-S13 / D8 / AF-2026-05-14-3). Per Val F-2
+#                                        on 2026-05-14, resolve-config.sh ONLY READS
+#                                        this value at lines ~988-1007 for drift
+#                                        detection; it does not write.
+#   - date (1):                          written by resolve-config.sh at runtime.
 #   - State-machine (2):                 written by config-hydration.sh advance-phase
 #                                        and schema discovery.
 #   - User-identity (3):                 written by /gaia-init Phase 0 / --full.
@@ -101,13 +108,15 @@ _CONFIG_HYDRATION_ALLOWLIST=(
 #                                        Val F2 on 2026-05-13 surfaced these as a
 #                                        reverse-invariant gap.
 _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
-  # Computed path/identity (7).
+  # Computed path/identity (5).
   project_root
   project_path
   memory_path
   checkpoint_path
   installed_path
+  # framework_version (1) — written by gaia-reconcile-v2.sh apply (E85-S13).
   framework_version
+  # date (1) — written by resolve-config.sh at runtime.
   date
   # State-machine (2).
   config_phase

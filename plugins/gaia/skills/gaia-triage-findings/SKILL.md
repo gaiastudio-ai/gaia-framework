@@ -45,6 +45,32 @@ Scan story files in `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/` for 
 
 Collect all findings from ALL story files regardless of status -- scan every `.md` file that has a non-empty Findings table. This ensures triage catches findings from stories in any status.
 
+### Step 1b --- Scan Completion Notes for Deferral Drift (E88-S4, FR-DPD-4)
+
+Refs: ADR-107 (closed-list taxonomies SSOT), AI-2026-05-13-6.
+
+In addition to the Findings-table scan above, walk the `### Completion Notes List` subsection of each story file looking for deferral phrases (per E88-S1 taxonomy SSOT) that lack a paired Finding row. Use the canonical helper — do NOT inline the taxonomy:
+
+```bash
+for story_file in $story_files; do
+  bash $PLUGIN/scripts/lib/completion-notes-deferral-scan.sh --story-file "$story_file" \
+    | while IFS=$'\t' read -r phrase_kv paired_kv fid_kv; do
+        # Parse `phrase=<>\tpaired=<>\tfinding_id=<>`
+        phrase="${phrase_kv#phrase=}"
+        paired="${paired_kv#paired=}"
+        finding_id="${fid_kv#finding_id=}"
+        if [ "$paired" = "false" ]; then
+          emit_triage_candidate \
+            --source "completion-notes-deferral-scan" \
+            --story-key "$(basename "$story_file" | sed 's/-.*//')" \
+            --phrase "$phrase"
+        fi
+      done
+done
+```
+
+The triage output schema gains a `source` column with values `findings-table` (the Step 1 default) or `completion-notes-deferral-scan` (Step 1b). Existing consumers parsing by row/column ignore extra columns — the change is purely additive.
+
 ### Step 2 --- Present Findings
 
 Group findings by severity (critical first, then high, medium, low).
@@ -204,6 +230,52 @@ If verification fails (schema drift in `origin`/`origin_ref`), halt with actiona
 ```
 No partial story stubs may persist on disk after a failed spawn.
 
+#### Main-turn direct-write fallback (E92-S1 / FR-OEXP-1)
+
+The spawn pathway above (steps 5-9) is the **default**, and **spawn is still the default** — DO NOT route around it preemptively. Use the fallback ONLY when one of two trigger conditions holds:
+
+1. The spawn dispatch returns a malformed result (no story file created on disk, frontmatter incomplete, post-spawn `spawn-guard.sh verify` exits non-zero), OR
+2. The operator confirms the broken-fork condition explicitly (e.g., the `Agent` tool reports as missing from the forked-skill allowlist).
+
+The canonical trigger references are saved-memory rule `feedback_plugin_context_fork_broken.md` and Claude Code substrate issue #49559 (open on 2.1.138). Without one of these triggers, the fallback MUST NOT fire.
+
+When the fallback IS triggered, the operator authors the story file in the main turn via the `Write` tool directly. Because `spawn-guard.sh verify` and `spawn-guard.sh cleanup` cannot run on a directly-written file (the spawn-completion contract they expect never happens), the operator MUST run the following three **inline validation-equivalent checks** before the file is considered created:
+
+**Inline check 1 — canonical-filename validation.** The story file basename MUST match the canonical regex:
+
+```
+^E[0-9]+-S[0-9]+-[a-z0-9-]+\.md$
+```
+
+(epic-story key prefix, lowercase-hyphen slug, `.md` extension — the same shape `validate-canonical-filename.sh` enforces by computing `{key}-{slugify(title)}.md`). Run the on-disk validator as a cross-check when feasible:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/validate-canonical-filename.sh" --file "${story_file}"
+```
+
+**Inline check 2 — frontmatter required-fields check.** Every directly-written story MUST have all of these frontmatter fields present and non-empty (except where listed as nullable):
+
+- Non-nullable: `template`, `version`, `used_by`, `key`, `title`, `epic`, `status`, `priority`, `size`, `points`, `risk`, `origin`, `origin_ref`, `date`, `author`
+- Nullable: `sprint_id`, `priority_flag`
+- Array (may be empty): `depends_on`, `blocks`, `traces_to`
+
+**Inline check 3 — dedup check.** The new story `key` MUST NOT already appear in `docs/planning-artifacts/epics-and-stories.md`:
+
+```bash
+grep -qE "(### Story ${new_story_key}:|^\\| ${new_story_key} \\|)" docs/planning-artifacts/epics-and-stories.md && echo "DUPLICATE — aborting fallback"
+```
+
+Per saved-memory rule `feedback_triage_check_existing_stories.md`, three duplicate stories were created and retired in sprint-40 triage when this check was skipped.
+
+**Audit-trail fields (AC3).** Stories authored via the fallback MUST carry these two frontmatter fields so post-hoc inspection can trace which stories bypassed `spawn-guard.sh`:
+
+```yaml
+spawn_fallback: "direct-write"
+spawn_fallback_reason: "substrate-issue-49559"   # or "agent-tool-missing-from-fork", etc.
+```
+
+The `spawn_fallback_reason` value MUST name the specific trigger condition (substrate issue number, missing-tool name, malformed-spawn observation). This field stays on the story permanently — it is not removed once substrate issue #49559 is upstream-fixed.
+
 ### Step 5 --- Mark Findings as Triaged
 
 In each source story's Findings table, append triage markers to processed findings:
@@ -231,6 +303,8 @@ If any stories were marked as NEXT SPRINT (P0):
 ### Step 7 — Persist to Val Sidecar (E34-S2)
 
 Final step. Delegates Val-decision persistence to the shared Val sidecar writer helper (`val-sidecar-write.sh`, E34-S1, architecture §10.10). Placing this last satisfies AC3 atomicity — any upstream failure (spawn-guard rejection, `/gaia-create-story` subagent failure, findings-table write error) short-circuits before the helper runs, so no partial sidecar entry can appear.
+
+**Fail-closed enforcement (E92-S2 / FR-OEXP-2).** This skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`. The finalize script asserts that `_memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker; if not, it exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize`. This mirrors the `gaia-add-feature/scripts/finalize.sh:51-82` E83-S1 fail-closed pattern — operators who skip Step 7 under heavy substrate load now see a hard halt at finalize instead of a silent skip.
 
 Derive a deterministic `triage_session_id` of the form `triage-YYYY-MM-DD-<seq>`. The `<seq>` counter is a zero-padded monotonic index per day, computed by scanning existing triage markers in the current session's source stories:
 
@@ -262,6 +336,18 @@ The helper enforces the two-file allowlist (NFR-VSP-2) and idempotency by compos
 
 Failure posture: if the helper rejects or errors, log a warning and continue — memory persistence is best-effort and MUST NOT fail the skill.
 
+## Changelog
+
+- **2026-05-15 — E92-S2 — Fail-closed Val-sidecar sentinel in finalize.sh (FR-OEXP-2).** Step 7 prose updated to note that the skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`; the script asserts `_memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker, and exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize` when the assertion fails. Mirrors `gaia-add-feature/scripts/finalize.sh:51-82` E83-S1 fail-closed pattern. Sibling fix mirrored in `/gaia-retro` per AC2. Backward-compat preserved: legacy fixtures without the env var get the prior unconditional behavior.
+
+- **2026-05-15 — E92-S1 — Main-turn direct-write fallback (FR-OEXP-1).** Added the "Main-turn direct-write fallback" subsection inside Step 4 documenting the sanctioned escape hatch when `/gaia-create-story` spawn fails due to the broken `context:fork` substrate issue (Claude Code #49559 + saved-memory rule `feedback_plugin_context_fork_broken.md`). The subsection specifies three inline validation-equivalent checks (canonical-filename regex `^E[0-9]+-S[0-9]+-[a-z0-9-]+\.md$`, frontmatter required-fields enumeration, dedup grep against `epics-and-stories.md`) that stand in for the unrunnable `spawn-guard.sh verify/cleanup`, and mandates two audit-trail frontmatter fields (`spawn_fallback: "direct-write"` + `spawn_fallback_reason: "<trigger>"`) so post-hoc inspection can trace which stories bypassed the spawn-guard. The fallback subsection is also mirrored in `gaia-correct-course/SKILL.md` per AC5. Spawn is still the default — fallback is gated on explicit trigger conditions, not preemptive use.
+
+- **2026-05-14 — E88-S4 — Completion Notes deferral-drift scanner (FR-DPD-4, ADR-107, AI-2026-05-13-6).** Added Step 1b that walks each story's `### Completion Notes List` via `lib/completion-notes-deferral-scan.sh` (which wraps `lib/deferral-phrase-match.sh` per E88-S1) and emits unmatched-deferral records as triage candidates. Triage output schema gains a new `source` column with values `findings-table` (the Step 1 default) or `completion-notes-deferral-scan` (Step 1b). Purely additive — existing consumers parsing by row/column ignore extra columns. Closes the drift class from AI-2026-05-13-6 at the triage end (the Val end is covered by gaia-validation-patterns' new pattern).
+
 ## Finalize
+
+```bash
+GAIA_FINALIZE_SENTINEL_REQUIRED=1
+```
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-triage-findings/scripts/finalize.sh

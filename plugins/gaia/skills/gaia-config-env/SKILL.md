@@ -12,9 +12,9 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are editing the `environments` top-level section of `project-config.yaml`. The skill is one of eight `/gaia-config-*` editors shipped by E71-S3, each scoped to a single section of the eleven-section project-config surface (E68-S1). Editing is comment-preserving per ADR-044: pre-existing comments and formatting OUTSIDE the edited section are preserved byte-for-byte; the edited section's content follows the existing indentation style detected from the file.
+You are editing the `environments` top-level section of `project-config.yaml`. The skill is one of the `/gaia-config-*` editors shipped by E71-S3, each scoped to a single declared section of `schemas/project-config.schema.json`. Editing is comment-preserving per ADR-044: pre-existing comments and formatting OUTSIDE the edited section are preserved byte-for-byte; the edited section's content follows the existing indentation style detected from the file.
 
-This skill targets ONLY the `environments` section. Other sections (`compliance`, `stacks`, `tool_adapters`, `test_execution`, `rubrics`, `compliance`, `platforms`, etc.) are invisible to the edit session.
+This skill targets ONLY the `environments` section. All other top-level sections declared in the schema are invisible to the edit session.
 
 ## Critical Rules
 
@@ -47,6 +47,8 @@ This skill targets ONLY the `environments` section. Other sections (`compliance`
 
 ### Step 3 — Present CRUD Menu
 
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+
 - Display the current `environments` section as a structured table (env name, url, credentials count).
 - Present operation menu: `[a]` add env, `[r]` remove env, `[e]` edit env, `[v]` view, `[x]` exit without writing.
 
@@ -73,5 +75,5 @@ This skill targets ONLY the `environments` section. Other sections (`compliance`
 
 ## Notes
 
-- The eleven top-level sections of `project-config.yaml` (E68-S1) are: `project`, `stacks`, `platforms`, `regimes`, `ci_cd`, `environments`, `test_execution`, `tool_adapters`, `rubrics`, `compliance`, `deployment`. This skill ONLY edits `environments`.
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `environments`.
 - Mobile-specific editors (`/gaia-config-platform`, `/gaia-config-device-target`) are E74-S11 scope and intentionally NOT shipped by E71-S3.

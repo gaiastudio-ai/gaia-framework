@@ -4,13 +4,13 @@
 # Validates that each /gaia-config-* skill is wired to the correct top-level
 # section of project-config.yaml (per AC2 mapping).
 #
-# Mapping per AC2:
+# Mapping per AC2 (as amended by E71-S7 wrong-section-name cluster fix):
 #   /gaia-config-env         -> environments
 #   /gaia-config-test        -> test_execution
-#   /gaia-config-tool        -> tool_adapters
+#   /gaia-config-tool        -> tools          (was tool_adapters; retargeted in E71-S7)
 #   /gaia-config-compliance  -> compliance
 #   /gaia-config-stack       -> stacks
-#   /gaia-config-rubric      -> rubrics
+#   /gaia-config-rubric      -> deprecated     (retired in E71-S7; thin redirect stub)
 #   /gaia-config-show        -> read-only entire file (with optional section arg)
 
 setup() {
@@ -40,8 +40,10 @@ assert_section_wired() {
   assert_section_wired gaia-config-test test_execution
 }
 
-@test "AC2 — gaia-config-tool is wired to tool_adapters section" {
-  assert_section_wired gaia-config-tool tool_adapters
+@test "AC2 — gaia-config-tool is wired to tools section (E71-S7 retarget)" {
+  # E71-S7: retargeted from the nonexistent `tool_adapters` to the canonical
+  # `tools` top-level schema property.
+  assert_section_wired gaia-config-tool tools
 }
 
 @test "AC2 — gaia-config-compliance is wired to compliance section" {
@@ -52,8 +54,15 @@ assert_section_wired() {
   assert_section_wired gaia-config-stack stacks
 }
 
-@test "AC2 — gaia-config-rubric is wired to rubrics section" {
-  assert_section_wired gaia-config-rubric rubrics
+@test "AC2 — gaia-config-rubric is a deprecation-redirect stub (E71-S7 retirement)" {
+  # E71-S7: /gaia-config-rubric retired because schema v2.0.0 has no `rubrics`
+  # top-level property. The skill is now a thin redirect to /gaia-config-severity
+  # and /gaia-config-gates per the FR-RSV2-24 deprecation-with-redirect pattern.
+  local f="$SKILLS_DIR/gaia-config-rubric/SKILL.md"
+  [ -f "$f" ]
+  grep -qE 'DEPRECATED|deprecated|retired|redirect' "$f"
+  grep -qE 'gaia-config-severity' "$f"
+  grep -qE 'gaia-config-gates' "$f"
 }
 
 @test "AC6 — gaia-config-show advertises read-only display + optional section arg" {
@@ -64,7 +73,9 @@ assert_section_wired() {
 }
 
 @test "AC7 — every editor skill mentions diff preview / confirmation gate" {
-  for skill in env test tool compliance stack rubric; do
+  # E71-S7: `rubric` removed from the editor list (now a deprecation stub, no
+  # diff/confirm semantics — it routes users to the canonical replacements).
+  for skill in env test tool compliance stack; do
     local f="$SKILLS_DIR/gaia-config-$skill/SKILL.md"
     grep -qiE 'diff' "$f" || {
       echo "skill gaia-config-$skill missing diff/confirmation gate language" >&2
@@ -78,7 +89,8 @@ assert_section_wired() {
 }
 
 @test "AC9 — each editor skill mentions missing-section scaffold-or-abort" {
-  for skill in env test tool compliance stack rubric; do
+  # E71-S7: `rubric` removed from the editor list (now a deprecation stub).
+  for skill in env test tool compliance stack; do
     local f="$SKILLS_DIR/gaia-config-$skill/SKILL.md"
     grep -qiE 'scaffold|missing section|absent' "$f" || {
       echo "skill gaia-config-$skill missing AC9 missing-section handling" >&2

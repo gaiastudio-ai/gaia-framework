@@ -1,8 +1,11 @@
 ---
 name: gaia-config-rubric
-description: Edit the rubrics section of project-config.yaml — section-scoped editor that preserves YAML comments and formatting per ADR-044. Use when "edit rubrics config" or /gaia-config-rubric.
+description: "DEPRECATED — This skill has been retired. Use /gaia-config-severity (FR-RSV2-22 5-into-3 severity map) and /gaia-config-gates (FR-RSV2-12 per-gate severity overrides) instead. Preserved as a thin one-sprint deprecation redirect per E69-S1 / FR-RSV2-24."
 argument-hint: "[--set <key>=<value>] [--remove <key>]"
-allowed-tools: [Read, Grep, Bash, Write, Edit]
+allowed-tools: [Read, Grep, Bash, Skill]
+deprecated_aliases: [gaia-config-rubric]
+deprecated_since: sprint-44
+replaced_by: [gaia-config-severity, gaia-config-gates]
 orchestration_class: light-procedural
 ---
 
@@ -10,57 +13,46 @@ orchestration_class: light-procedural
 
 !${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo >/dev/null 2>&1 || true
 
+## Deprecation Notice (E71-S7 / FR-RSV2-24 pattern)
+
+> **This skill is retired.** Schema v2.0.0 of `project-config.yaml` has no `rubrics` top-level property — the section this skill targeted never existed in the v2 schema. The original drafter's intent (per ADR-079) was to configure the layered rubric loader, but that configuration surface was decomposed into TWO canonical sections during the FR-RSV2 cycle:
+>
+> - **`severity`** (FR-RSV2-22) — global 5-into-3 severity map. Edit via `/gaia-config-severity`.
+> - **`gates`** (FR-RSV2-12) — per-gate severity overrides. Edit via `/gaia-config-gates`.
+>
+> No `rubrics` section exists in `schemas/project-config.schema.json`, so this skill cannot perform a valid write. It is preserved for one sprint as a thin redirect per the E69-S1 / FR-RSV2-24 deprecation-with-redirect pattern. After that, it will be removed.
+
 ## Mission
 
-You are editing the `rubrics` top-level section of `project-config.yaml`. The skill is one of eight `/gaia-config-*` editors shipped by E71-S3. The `rubrics` section configures the layered rubric loader (E68-S2) — typically the path overrides for project-level rubric files and any per-skill overrides per ADR-079.
+This skill is a thin deprecation redirect. It exists only to surface the retirement notice and point callers at the canonical replacements:
 
-This skill ONLY edits the `rubrics` section in `project-config.yaml`. It does NOT manage individual rubric files under `plugins/gaia/rubrics/` — that is the scope of `/gaia-validate-rubric` (E68-S2). To validate the merged rubric output, invoke `/gaia-config-validate --rubric` (legacy E68-S2 mode).
+- For the global severity-to-verdict map → `/gaia-config-severity`
+- For per-gate severity overrides → `/gaia-config-gates`
+- For per-rubric-file validation (an orthogonal concern owned by E68-S2) → `/gaia-validate-rubric`
 
-Editing is comment-preserving per ADR-044: pre-existing comments and formatting OUTSIDE the edited section are preserved byte-for-byte; the edited section's content follows the existing indentation style detected from the file.
-
-## Critical Rules
-
-- Only the `rubrics` section may be modified. All other sections, all comments, and all formatting outside the edited section MUST be preserved byte-for-byte.
-- The comment-preserving YAML editor lives in `plugins/gaia/scripts/config-yaml-editor.sh` per ADR-042 / ADR-044. Do NOT round-trip the file through a generic YAML serializer.
-- This skill MUST NOT touch individual rubric files under `plugins/gaia/rubrics/`. That is `/gaia-validate-rubric` scope (E68-S2).
-- Edits MUST go through the diff-preview confirmation gate — never write without an explicit user confirm response.
-- If the `rubrics` section is missing (absent from the file), the skill MUST inform the user and offer to scaffold a default section, OR abort.
+Per Val F-6 (E71-S7): the retirement rationale is "schema v2.0.0 has no `rubrics` top-level property" — not a validator-overlap argument. Validators are not editors; there is no overlap to dedup.
 
 ## Steps
 
-### Step 1 — Locate project-config.yaml
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
 
-- Resolve via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh project_config_path` (fallback `config/project-config.yaml`).
-- HALT if missing.
+### Step 1 — Display Deprecation Banner
 
-### Step 2 — Extract the rubrics Section
+Display the deprecation notice so the user sees the redirect in the transcript:
 
-- Run `${CLAUDE_PLUGIN_ROOT}/scripts/config-yaml-editor.sh extract <path> rubrics`.
-- Exit 2 (missing / absent section): offer scaffold-or-abort. Default scaffold:
-  ```yaml
-  rubrics:
-    project_root: rubrics/project
-  ```
+> `/gaia-config-rubric` is retired. Schema v2.0.0 has no `rubrics` top-level property. Use `/gaia-config-severity` (global 5-into-3 severity map) and `/gaia-config-gates` (per-gate overrides) instead.
 
-### Step 3 — Present Edit Menu
+### Step 2 — Suggest the Canonical Replacement
 
-- Render the current rubrics block as a key/value table.
-- Operation menu: set key, remove key, view, exit.
+Ask the user which surface they intended to edit:
 
-### Step 4 — Diff Preview + Confirmation Gate
+- The global severity-to-verdict map → run `/gaia-config-severity`.
+- Per-gate severity overrides → run `/gaia-config-gates`.
+- Per-rubric-file validation (file under `plugins/gaia/rubrics/`) → run `/gaia-validate-rubric`.
 
-- Generate a unified diff via `diff -u` (same format as `git diff --no-index`).
-- Prompt: "Apply this edit? [y/n]". HALT without writing on `n` — file remains byte-identical to its pre-edit state.
-
-### Step 5 — Write Back
-
-- On `y`: write the new section to a temp file and invoke `config-yaml-editor.sh replace <path> rubrics <temp-file>`.
-
-### Step 6 — Optional Validation Pass
-
-- Suggest running `/gaia-config-validate` to confirm the modified file still passes schema validation, AND `/gaia-config-validate --rubric` to confirm the merged rubric output remains valid.
+Do NOT attempt to modify a `rubrics` block in `project-config.yaml` — the section does not exist in the schema, and `config-yaml-editor.sh insert` will reject it per the E71-S7 AC5 schema-aware fail-safe.
 
 ## Notes
 
-- For per-rubric-file editing, use `/gaia-validate-rubric` (E68-S2). This skill manages only the `rubrics:` configuration block in `project-config.yaml`.
-- The eleven top-level sections of `project-config.yaml` (E68-S1): `project`, `stacks`, `platforms`, `regimes`, `ci_cd`, `environments`, `test_execution`, `tool_adapters`, `rubrics`, `compliance`, `deployment`. This skill ONLY edits `rubrics`.
+- The retirement is one sprint long per FR-RSV2-24's deprecation-with-redirect pattern. After that window, the skill is removed.
+- Consult `schemas/project-config.schema.json` `.properties` for the closed set of declared top-level sections the `/gaia-config-*` family operates on.

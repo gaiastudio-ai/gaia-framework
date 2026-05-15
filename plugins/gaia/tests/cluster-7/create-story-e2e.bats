@@ -286,6 +286,7 @@ points: 5
 risk: "medium"
 sprint_id: null
 priority_flag: null
+delivered: true
 origin: null
 origin_ref: null
 depends_on: []
