@@ -10,7 +10,7 @@ hooks:
         - type: command
           command: ${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/checkpoint.sh write gaia-dev-story
 orchestration_class: heavy-procedural
-yolo_steps: [15]
+yolo_steps: [5, 6, 7, 15]
 ---
 
 ## Orchestration Mode
@@ -187,6 +187,9 @@ Backward-compatibility note (NFR-DSH-3): a resumed in-progress story with no Ste
 
 ### Step 5 -- TDD Red Phase (Write Failing Tests)
 
+> [!yolo]
+> Step 5 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration (E41-S3, ADR-057 §10.30.2 / §10.30.6 wire-up row E41-S3). Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass owns the 3-iteration auto-fix loop and the cap-exhaustion gate per FR-YOLO-2(e) and ADR-073. The Step 5 body itself stays pause-free per E55-S4 / TC-DSH-12 — the pause-free TDD invariant is non-negotiable. Step 5a (risk-gated TDD review hook) is the separate gate point that fires after Step 5 completes; it is OUTSIDE this YOLO branch's scope per ADR-067.
+
 - Follow the playbook's test strategy reasoning.
 - For each subtask: write failing test(s) that define expected behavior.
 - Run the test suite -- verify all new tests FAIL.
@@ -212,6 +215,9 @@ The hook fires exactly once per Step 5. If the gate returns `SKIP`, no subagent 
 <!-- E57-S4: step5 tdd-review-gate end -->
 
 ### Step 6 -- TDD Green Phase (Implement to Pass)
+
+> [!yolo]
+> Step 6 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration (E41-S3). Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass applies the INFO-only break per ECI-501 (Green-phase INFO-only findings auto-proceed to Refactor without dev-agent intervention) and counts timed-out Val attempts against the 3-iteration cap per ECI-502. The Step 6 body itself stays pause-free per E55-S4 / TC-DSH-12 — the pause-free TDD invariant is non-negotiable. Step 6a (risk-gated TDD review hook) is OUTSIDE this YOLO branch's scope per ADR-067.
 
 - Follow the playbook's design approach reasoning.
 - For each subtask: implement minimum code to make failing tests pass.
@@ -254,6 +260,9 @@ After Step 6 Green completes with all tests passing, run a single advisory pass 
 <!-- E55-S7: step 6b end -->
 
 ### Step 7 -- TDD Refactor Phase
+
+> [!yolo]
+> Step 7 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration (E41-S3). Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass surfaces refactor-introduced test regressions per ECI-509 (previously-green tests now failing tagged in Val's input context). The 3-iteration auto-fix loop owned by Step 7b enforces the FR-YOLO-2(e) attempt-cap gate: 3 attempts max, cap exhaustion stops with finding list, no silent pass. The Step 7 body itself stays pause-free per E55-S4 / TC-DSH-12 — the pause-free TDD invariant is non-negotiable. Step 7a (risk-gated TDD review hook) is OUTSIDE this YOLO branch's scope per ADR-067.
 
 - Improve code quality while keeping all tests green.
 - Extract shared utilities, decompose large functions, improve naming, remove duplication.
