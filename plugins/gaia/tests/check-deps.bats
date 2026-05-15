@@ -160,3 +160,70 @@ EOF
   [ "$status" -eq 0 ]
   [ -z "$stderr" ]
 }
+
+# ---------------------------------------------------------------------------
+# E57-S14 — cross-epic lookup (ADR-070 nested layout)
+# ---------------------------------------------------------------------------
+
+# Helper — write a nested-layout story file under epic-{epic}/stories/.
+_write_nested_story() {
+  local key="$1" status="$2" deps="$3" epic="$4"
+  local dir="docs/implementation-artifacts/epic-${epic}/stories"
+  mkdir -p "$dir"
+  cat > "$dir/${key}-test.md" <<EOF
+---
+template: 'story'
+key: "$key"
+title: "Test"
+status: $status
+depends_on: $deps
+---
+
+# Story: Test
+EOF
+}
+
+@test "TC-CDX-1: cross-epic dep (story in epic-E90, depends_on points at done story in epic-E87)" {
+  unset IMPLEMENTATION_ARTIFACTS_DIR
+  _write_nested_story "E87-S7" "done" '[]' "E87"
+  _write_nested_story "E90-S99" "in-progress" '["E87-S7"]' "E90"
+  run --separate-stderr "$CHECK_DEPS" "$TEST_TMP/docs/implementation-artifacts/epic-E90/stories/E90-S99-test.md"
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+}
+
+@test "TC-CDX-2: same-epic dep (depends_on points at sibling in epic-E88) — regression" {
+  unset IMPLEMENTATION_ARTIFACTS_DIR
+  _write_nested_story "E88-S1" "done" '[]' "E88"
+  _write_nested_story "E88-S2" "in-progress" '["E88-S1"]' "E88"
+  run --separate-stderr "$CHECK_DEPS" "$TEST_TMP/docs/implementation-artifacts/epic-E88/stories/E88-S2-test.md"
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+}
+
+@test "TC-CDX-3: truly-missing dep — exit 2 with stderr naming the missing key" {
+  unset IMPLEMENTATION_ARTIFACTS_DIR
+  _write_nested_story "E90-S99" "in-progress" '["E99-S99"]' "E90"
+  run --separate-stderr "$CHECK_DEPS" "$TEST_TMP/docs/implementation-artifacts/epic-E90/stories/E90-S99-test.md"
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"E99-S99"* ]]
+}
+
+@test "TC-CDX-4: IMPLEMENTATION_ARTIFACTS_DIR env-var explicitly set — search constrained" {
+  _write_nested_story "E87-S7" "done" '[]' "E87"
+  _write_nested_story "E90-S99" "in-progress" '["E87-S7"]' "E90"
+  # Point env-var at E90's stories/ only — dep in E87 must NOT be found.
+  IMPLEMENTATION_ARTIFACTS_DIR="$TEST_TMP/docs/implementation-artifacts/epic-E90/stories" \
+    run --separate-stderr "$CHECK_DEPS" "$TEST_TMP/docs/implementation-artifacts/epic-E90/stories/E90-S99-test.md"
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"E87-S7"* ]]
+}
+
+@test "TC-CDX-5: legacy flat-layout fixture (one-level deep) — exit 0 for matching dep" {
+  unset IMPLEMENTATION_ARTIFACTS_DIR
+  _write_story "E1-S1" "done" '[]'
+  _write_story "E1-S2" "in-progress" '["E1-S1"]'
+  run --separate-stderr "$CHECK_DEPS" "$TEST_TMP/docs/implementation-artifacts/E1-S2-test.md"
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+}

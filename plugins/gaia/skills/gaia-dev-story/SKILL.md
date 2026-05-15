@@ -8,7 +8,7 @@ hooks:
     - matcher: "Edit|Write"
       hooks:
         - type: command
-          command: ${CLAUDE_SKILL_DIR}/scripts/checkpoint.sh write gaia-dev-story
+          command: ${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/checkpoint.sh write gaia-dev-story
 orchestration_class: heavy-procedural
 ---
 
@@ -463,6 +463,19 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 - **Historical failure modes that motivated this gate:**
   - **E17-S1 (sprint-17):** Dev-story subagent completed implementation but never pushed commits. Orchestrator accepted `status=done` at face value. Sprint closed with unmerged code.
   - **E28-S213 (sprint-25):** Dev-story subagent completed all reviews but skipped push/PR/merge steps. Same outcome -- orchestrator trusted the status and sprint closed without the code landing.
+
+<!-- E92-S4: step 14b cache-refresh advisory begin -->
+### Step 14b -- Post-merge cache-refresh advisory (non-blocking)
+
+After Step 14's post-completion gate confirms the merge commit landed, surface a single advisory line if the PR diff touched any cacheable plugin file (SKILL.md, scripts/*.sh, agents/*.md, hooks/*.json). The advisory mirrors Step 6b's non-blocking contract — it MUST NOT halt the workflow under any condition (per E92-S4 / AI-RETRO-S46-4).
+
+- Build the touched-files list from the merged feature branch: `git diff --name-only "$PROMOTION_BASE..HEAD"` (or the squash-commit's name-only listing on the target branch).
+- Pipe the list through `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/cache-refresh-advisory.sh --diff-files <path>` (or via stdin). The helper applies the deterministic filter and emits AT MOST one `step14b_advisory: plugin-cache refresh recommended — touched files: <list>` line to stderr.
+- Exit code is ALWAYS 0 — the advisory never blocks Step 15. The reminder points the operator at the README's "Plugin cache refresh after merge" section.
+- Why this matters: the Claude Code substrate caches plugin SKILL.md / scripts at `~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/<version>/` at session start. Without a refresh, the same-session re-invocation of a changed skill runs the PRE-merge code (dogfooding-loop-specific friction). See E92-S4 + the README's playbook section.
+
+Emit a single-line gate log to stderr: `step14b_gate: advisories={count}` where `count` is 0 or 1.
+<!-- E92-S4: step 14b cache-refresh advisory end -->
 
 <!-- E55-S8: step 15 init-review-gate wire begin -->
 ### Step 15 -- Update Review Gate

@@ -54,8 +54,37 @@ if [ ! -x "$STORY_PARSE" ] && [ ! -f "$STORY_PARSE" ]; then
   die_usage "story-parse.sh not found at $STORY_PARSE"
 fi
 
-# Implementation-artifacts directory — overridable for tests.
-IMPL_DIR="${IMPLEMENTATION_ARTIFACTS_DIR:-$(dirname "$STORY_PATH_INPUT")}"
+# Implementation-artifacts directory.
+#
+# E57-S14 / AI-RETRO-S45-3 / AC1-AC3: when no explicit env-var is set, walk
+# UP from the input story path to find the parent `docs/implementation-artifacts/`
+# directory and use that as the search root. This lets `check-deps.sh` see
+# stories across other epics (nested layout: `epic-*/stories/`) — not just the
+# one epic the input story happens to live in.
+#
+# Backward-compat: when `IMPLEMENTATION_ARTIFACTS_DIR` is set explicitly,
+# use it verbatim — no walk-up, no recursion. Preserves test fixtures and
+# any caller that intentionally constrains the search.
+if [ -n "${IMPLEMENTATION_ARTIFACTS_DIR:-}" ]; then
+  IMPL_DIR="$IMPLEMENTATION_ARTIFACTS_DIR"
+else
+  # Walk up from the input story's directory looking for `implementation-artifacts`.
+  walk="$(cd "$(dirname "$STORY_PATH_INPUT")" && pwd)"
+  IMPL_DIR=""
+  while [ "$walk" != "/" ]; do
+    if [ "$(basename "$walk")" = "implementation-artifacts" ]; then
+      IMPL_DIR="$walk"
+      break
+    fi
+    walk="$(dirname "$walk")"
+  done
+  # Fallback to the legacy `dirname $STORY_PATH_INPUT` shape if the walk-up
+  # finds no `implementation-artifacts` ancestor — covers brownfield projects
+  # and ad-hoc test fixtures.
+  if [ -z "$IMPL_DIR" ]; then
+    IMPL_DIR="$(dirname "$STORY_PATH_INPUT")"
+  fi
+fi
 
 # --- Parse the input story to extract DEPENDS_ON --------------------------
 
