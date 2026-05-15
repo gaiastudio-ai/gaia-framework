@@ -127,6 +127,23 @@ If verification fails (schema drift), halt with actionable guidance referencing 
 ```
 No partial story stubs may persist on disk after a failed spawn.
 
+#### Main-turn direct-write fallback (E92-S1 / FR-OEXP-1)
+
+The spawn pathway above is the **default**, and **spawn is still the default** — DO NOT route around it preemptively. Use the fallback ONLY when one of two trigger conditions holds:
+
+1. The spawn dispatch returns a malformed result (no story file created on disk, frontmatter incomplete, post-spawn `spawn-guard.sh verify` exits non-zero), OR
+2. The operator confirms the broken-fork condition explicitly (e.g., the `Agent` tool reports as missing from the forked-skill allowlist).
+
+The canonical trigger references are saved-memory rule `feedback_plugin_context_fork_broken.md` and Claude Code substrate issue #49559 (open on 2.1.138).
+
+When the fallback IS triggered, the operator authors the story file in the main turn via the `Write` tool directly and runs three inline validation-equivalent checks before the file is considered created:
+
+1. **Canonical-filename validation** — basename matches `^E[0-9]+-S[0-9]+-[a-z0-9-]+\.md$` (cross-check via `validate-canonical-filename.sh --file`).
+2. **Frontmatter required-fields check** — all of: `template`, `version`, `used_by`, `key`, `title`, `epic`, `status`, `priority`, `size`, `points`, `risk`, `origin`, `origin_ref`, `date`, `author` (plus nullable `sprint_id`/`priority_flag` and array `depends_on`/`blocks`/`traces_to`).
+3. **Dedup check** — `key` does NOT already appear in `docs/planning-artifacts/epics-and-stories.md`.
+
+The resulting story file MUST carry `spawn_fallback: "direct-write"` and `spawn_fallback_reason: "<trigger>"` frontmatter fields to preserve the audit trail. See `gaia-triage-findings/SKILL.md` Step 4 "Main-turn direct-write fallback" for the full contract — the prose there is authoritative.
+
 For stories that **changed status** but remain in the sprint:
 ```bash
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh" transition --story {story_key} --to {new_status}
