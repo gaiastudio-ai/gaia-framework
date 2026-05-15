@@ -4,6 +4,7 @@ description: Create a detailed story file from epics-and-stories.md with full fr
 argument-hint: [story-key]
 allowed-tools: [Read, Write, Edit, Bash]
 orchestration_class: heavy-procedural
+yolo_steps: [3]
 ---
 
 ## Orchestration Mode
@@ -65,15 +66,30 @@ Native Claude Code conversion of the legacy create-story workflow (Cluster 7, E2
 
 ### Step 3 -- Elaborate Story
 
-#### YOLO branch (E54-S1, FR-340)
+> [!yolo]
+> Step 3 honors the declarative `yolo_steps: [3]` frontmatter convention per ADR-057 §10.30.2. Under YOLO, the routing prompt is auto-answered `[a]` (Auto-delegate to PM + Architect, plus UX Designer when the four-rule UX detection matches) and the post-subagent `[c]`/`[e]`/`[a]` confirmation is auto-continued. Hard gates remain enforced: Step 1's non-backlog status HALT (FR-YOLO-2(b)) and Step 6's 3-attempt Val cap (FR-340) are unconditional in BOTH modes. A `severity: CRITICAL` finding in the consolidated subagent response HALTs YOLO with the surfaced finding (ECI-506).
 
-Read `YOLO_MODE` from the setup script's stdout (the `gaia-create-story/setup.sh: yolo_mode={true|false}` line).
+#### YOLO branch (E41-S2 wire-up, E54-S1, FR-YOLO-3, FR-340)
+
+Consult the canonical YOLO mode helper rather than re-implementing detection inline (§10.30.4 / §10.30.8 anti-patterns):
+
+```bash
+if ${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo; then
+  YOLO_MODE=true
+else
+  YOLO_MODE=false
+fi
+```
+
+The helper applies the §10.30.1 / §10.30.4 precedence (memory-save exempt, explicit opt-out, `GAIA_YOLO_FLAG=1`, inherited `GAIA_YOLO_MODE=1`, default interactive). Do NOT consume the `gaia-create-story/setup.sh: yolo_mode={true|false}` log line as the activation signal — that line is documentary only; the helper is the single source of truth.
 
 When `YOLO_MODE=true`:
 
 - **Skip the routing prompt entirely.** Do NOT display the `[u]/[a]` menu; do NOT wait for user input. Auto-select the `[a]` Auto-delegate path and proceed directly to subagent spawn.
+- **Propagate inheritance to subagents.** Export `GAIA_YOLO_MODE=1` on the PM (Derek), Architect (Theo), and (when matched) UX Designer (Christy) subagent invocations per §10.30.5. Do NOT set `GAIA_CONTEXT=memory-save` here — that exemption is reserved for the E9-S8 memory-save step at workflow completion.
 - **Auto-continue any post-subagent or template-output review prompts.** YOLO mode replaces every `[c]/[e]/[a]` or `[c]/[e]/[v]` interactive review prompt with an automatic continue — there must be zero user prompts between Step 4 (file write) and Step 6 (Val dispatch) (AC6).
-- **YOLO MUST NOT bypass the Step 1 existing-story-status HALT gate (AC3) nor the Step 6 3-attempt cap or terminal FAILED verdict (AC2, FR-340).** The HALT gate in Step 1 fires before the YOLO branch ever evaluates; the cap and verdict in Step 6 are unconditional.
+- **CRITICAL-finding HALT (AC4 / ECI-506).** After the consolidated PM + Architect (+ UX Designer) response returns, inspect the merged findings for any entry with `severity: CRITICAL`. On any match, HALT and surface the finding to the user instead of auto-continuing. WARNING and INFO findings continue to auto-merge into the elaboration. This is the YOLO-branch hard gate — the contract preserves CRITICAL findings as user-blocking signals even when YOLO is active.
+- **YOLO MUST NOT bypass the Step 1 existing-story-status HALT gate (AC3) nor the Step 6 3-attempt cap or terminal FAILED verdict (AC2, FR-340).** The HALT gate in Step 1 fires before the YOLO branch ever evaluates; the cap and verdict in Step 6 are unconditional. The §10.30.6 wire-up table row 1 (`E41-S2 | /gaia-create-story | Step 3 Elaborate Story | yolo_steps:[3] | Auto-select [a]; auto-continue after PM+Architect return`) is the authoritative wire-up contract.
 
 When `YOLO_MODE=false` (interactive default), proceed to the prompt below.
 
