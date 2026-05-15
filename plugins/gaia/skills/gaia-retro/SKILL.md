@@ -1,7 +1,7 @@
 ---
 name: gaia-retro
 description: "Facilitate a post-sprint retrospective capturing went-well, didn't-go-well, and action-items sections. Writes a retro artifact to docs/implementation-artifacts/. GAIA-native replacement for the legacy retrospective XML engine workflow."
-argument-hint: "[sprint-id?]"
+argument-hint: "[sprint-id?] [--auto-file?]"
 allowed-tools: [Read, Write, Bash]
 version: "1.0.0"
 orchestration_class: conversational
@@ -153,6 +153,20 @@ Failure posture:
 - `flock` on the YAML file serializes auto-increment across concurrent writers (AC-EC9).
 
 The prose retrospective artifact written in Step 6 references each item by `AI-{n}` ID rather than duplicating text — `action-items.yaml` is the source of truth.
+
+#### Step 5b --- Optional auto-file pass (E92-S5, opt-in via `--auto-file`)
+
+After Step 5 persists all action items, check the skill arguments for the literal token `--auto-file`. Default is OFF — when the flag is absent (the sprint-45/46/47 default), this step is a no-op and the skill proceeds to Step 5c verbatim.
+
+When `--auto-file` IS present:
+
+1. For each action item appended in Step 5 with an eligible `type` value (per the design note at `docs/planning-artifacts/retro-auto-file-design.md`: `feature`, `new-story`, `bug`, `enhancement`, `automation`), synthesise an `/gaia-add-feature --text "<text>"` invocation (for everything except `new-story`) or `/gaia-create-story` (for `new-story` with the operator-confirmed bucket).
+2. **AC-EC7 invariant:** every invocation goes through the destination skill's classification confirmation gate (`AskUserQuestion` bucket prompt). Auto-file means "auto-spawn the gate", NOT "auto-bypass it". The operator confirms each bucket as if they had run the filing skill manually.
+3. Items with ineligible `type` (`tech-debt`, `process`, `clarification`, `planning`, `investigation`, `escalation`) are skipped — they do not produce stories. The rubric is the design note's eligibility table.
+4. Items written via the v1 dual-schema path (i.e., entries with `classification` rather than `type`) are NEVER auto-filed — v1 entries are read-only by `/gaia-action-items` per ADR-086 dual-schema routing, and the same read-only invariant applies here.
+5. On any per-item failure (filing skill non-zero exit, bucket-prompt cancellation, substrate gap on subagent dispatch), log the failure to the retro prose artifact's `## Auto-file outcomes` section. The retro itself proceeds — the failure is informational, not blocking.
+
+**Substrate-driven limitation (per saved memory `feedback_askuserquestion_forked_skill_gap` + `feedback_plugin_context_fork_broken`):** the cross-skill subagent dispatch path for `/gaia-add-feature` and `/gaia-create-story` is currently lossy for interactive prompts. Until the upstream substrate gap closes (Claude Code issue #49559), the auto-file branch logs an `auto_file: substrate-deferred — no spawn` line for each eligible item and writes the synthesised `--text` payload to `action-items.yaml`'s `auto_file_queued` field so a follow-up `/gaia-action-items --auto-file` invocation can drain the queue at next-sprint planning. This is a documented bridge mechanism, not silent failure.
 
 ### Step 5c --- Agent Memory Updates (FR-RIM-3, ADR-016, ADR-052)
 
@@ -386,6 +400,17 @@ Failure posture:
 - Helper rejection or error → log a warning and continue. Memory persistence is best-effort and MUST NOT fail the skill (FR-RIM-8 non-blocking).
 
 > **Note (E34-S2).** This Step 7 invocation was retargeted from `retro-sidecar-write.sh` to `val-sidecar-write.sh` to realize the architecture §10.28.2 delegation. Other retro writes (action-items, skill_overrides proposals) continue to use `retro-sidecar-write.sh` — only the two validator-sidecar targets route through the shared Val helper here.
+
+## Changelog
+
+- **2026-05-15 — E92-S5 — Opt-in `--auto-file` flag for retro action items (AI-84 / AI-RETRO-S46-3).** Added Step 5b (between Step 5 and Step 5c) describing the opt-in `--auto-file` flag that walks action items at retro close and auto-spawns `/gaia-add-feature` (for `feature`/`bug`/`enhancement`/`automation` types) or `/gaia-create-story` (for `new-story`). The AC-EC7 classification confirmation gate is preserved — auto-file means "auto-spawn the gate prompt", not "auto-bypass it". Default is OFF (preserves sprint-45/46/47 muscle memory). Eligibility rubric in `docs/planning-artifacts/retro-auto-file-design.md`. Substrate-gap-deferred subagent dispatch path is documented in the same design note; full cross-skill spawn lands once the upstream Claude Code substrate fix closes (#49559).
+
+## Refs
+
+- `docs/planning-artifacts/retro-auto-file-design.md` — E92-S5 design note (eligibility rubric + AC-EC7 interaction + Option-B rationale)
+- Saved memory: `feedback_askuserquestion_forked_skill_gap` — substrate constraint on subagent interactive prompts
+- Saved memory: `feedback_no_inline_meeting_stories` — `/gaia-meeting` precedent for routing action items via `/gaia-add-feature`
+- ADR-086 §11 — action-items.yaml dual-schema routing
 
 ## Finalize
 
