@@ -276,6 +276,25 @@ The helper emits one record per matched phrase: `phrase=<phrase>\tpaired=<true|f
 **Rationale.** Deferral by itself is acceptable — landing stubs with explicit follow-up is a known pattern. The defect class is **unmatched** deferral language: Completion Notes mentioning deferral without a corresponding Finding row, which leaves the deferral invisible to `/gaia-triage-findings` and downstream retros.
 <!-- END SECTION -->
 
+## Pattern: schema-awareness-check (E91-S2, FR-SRF-2)
+
+Refs: AI-2026-05-13-16, AF-2026-05-14-9.
+
+**Trigger.** Val validates a story or plan whose ACs reference a CSV column ("X column" / "column 'X'") OR a frontmatter field ("X:" adjacent to a SKILL.md / manifest reference).
+
+**Lookup.** Resolve the referenced artifact path via the AC's text (paths are typically backtick-quoted). Then invoke:
+
+```bash
+bash $PLUGIN/scripts/lib/schema-lookup.sh --target "$target_path" --name "$candidate_name"
+```
+
+The helper exits 0 if `$candidate_name` exists in the resolved schema (`.csv` → header columns; `.md` → frontmatter keys), exit 1 with stderr listing valid names if not, exit 2 on usage / missing-target errors.
+
+**Emit.** When `schema-lookup.sh` exits 1, emit an ADR-037 finding with `severity: CRITICAL`, `scope: schema-awareness-check`, and `detail` quoting (a) the AC line that introduced the false reference, (b) the asserted-but-absent name, and (c) the valid names from the helper's stderr.
+
+**Rationale.** AC drifts of this class (E86-S6 cited `when_to_use:` frontmatter that doesn't exist in Claude Code skill schema, and "dependencies column" in workflow-manifest.csv whose actual columns are `name,displayName,description,module,phase,path,command,agent`) slipped through plan validation and were caught only during implementation. This check raises the gate to plan time.
+
 ## Changelog
 
+- **2026-05-14 — E91-S2 — Schema-awareness check pattern (FR-SRF-2, AI-2026-05-13-16).** Added the `schema-awareness-check` pattern documenting trigger (AC references CSV column or frontmatter field), lookup (via the new `scripts/lib/schema-lookup.sh` helper), and emit contract (CRITICAL ADR-037 finding on schema miss with valid-names list). Closes the drift class from AI-2026-05-13-16 (E86-S6 retroactive incident) at the plan-validation layer.
 - **2026-05-14 — E88-S4 — Val `completion-notes-deferral-scan` pattern (FR-DPD-4, ADR-107, AI-2026-05-13-6).** Added the `completion-notes-deferral-scan` pattern documenting the trigger (story status `done` or `review`), the scan (source `lib/completion-notes-deferral-scan.sh` which wraps `lib/deferral-phrase-match.sh` per E88-S1), the pair-check heuristic (Findings-table substring match OR explicit `Finding ID:` token), and the emit contract (CRITICAL ADR-037 finding on unmatched phrases). Closes the drift class from AI-2026-05-13-6 (Completion Notes mentioning deferral phrases without corresponding Finding rows).
