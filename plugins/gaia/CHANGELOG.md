@@ -3,6 +3,34 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.153.0] — 2026-05-15
+
+### Added
+
+- (e92-s2) enforce step 7 val-sidecar write via finalize sentinel (#699)
+- (e92-s1) main-turn direct-write fallback for create-story spawn (#698)
+- (e76-s22) wire dispatch-provenance-check into phase 7 save (#696)
+- (e91-s3) two-stage path resolution in story-state scripts (#695)
+- (E91-S1) default-skip @hardware-dependent tests in plugin-ci (#693)
+- (E89-S4) populate .plugin-version + semver-tag persona_sig framework-wide (#692)
+- (E89-S3) deterministic parent-epic inference helper + step 8 pre-flight (#691)
+- (E89-S2) step 8 deferred-seed-brief mode + step_8_mode field (#690)
+- (E89-S1) setup.sh test-plan + traceability prereq gates + CLI (#688)
+- (E88-S5) anti-stub Then-clause for dispatch-verb ACs in /gaia-atdd (#686)
+- (E88-S4) completion-notes-deferral-scan helper + Val pattern + triage extension (#684)
+- (E90-S1) generalize assert-agent-envelope.sh with --expected-agent flag (#682)
+- (E88-S1) taxonomy SSOT foundation + loader + matchers + bats audit (#681)
+- (E85-S13) reconciler writes framework_version after successful apply (D8) (#680)
+- (E71-S9) /gaia-config-* dogfooding bugs + enhancements bundle (D7 + E1-E4) (#679)
+- (E71-S8) framework-wide /gaia-config-* SKILL.md drift sweep (D1+D2+D3) (#678)
+- (E71-S7) /gaia-config-* wrong-section-name cluster fix (#677)
+- (E55-S13) dev-story workflow friction bundle (6 defects from E85-S1 (#670)
+- (E85-S12) wire `_detect_v1` custom/ v1-marker false positive — re (#669)
+
+### Fixed
+
+- (refresh-ground-truth) inline sidecar writability check (replace dir_writable gate)
+
 ## [1.152.0] — 2026-05-14
 
 ### Added
