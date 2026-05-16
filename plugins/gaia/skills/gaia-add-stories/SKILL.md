@@ -50,7 +50,7 @@ This skill is the native Claude Code conversion of the legacy add-stories workfl
 - Otherwise ask: What new stories need to be added? Describe the feature or requirements.
 - Ask: Do these belong to an existing epic, or is a new epic needed?
 - Ask: Is this linked to a change request? If so, provide the CR ID.
-- Read relevant sections of `docs/planning-artifacts/prd.md` for context -- focus on NEW requirements if prd_diff is available.
+- Read relevant sections of the PRD for context — resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `docs/planning-artifacts/prd.md` (flat layout); if missing, read `docs/planning-artifacts/prd/prd.md` (sharded layout). Focus on NEW requirements if prd_diff is available.
 - Read relevant sections of `docs/planning-artifacts/architecture.md` for technical context -- focus on changes if arch_diff is available.
 
 ### Step 3 -- Epic Decision

@@ -41,7 +41,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 ### Step 1 -- Load NFRs
 
 - Load knowledge fragment: `knowledge/risk-governance.md` for risk-based assessment methodology
-- Read NFRs from PRD at `docs/planning-artifacts/prd.md` if available.
+- Read NFRs from PRD if available — resolve via the sharded-fallback rule (ADR-069 / FR-396..402): try `docs/planning-artifacts/prd.md` (flat layout); fall back to `docs/planning-artifacts/prd/prd.md` (sharded; NFRs typically live under `prd/05-non-functional-requirements.md`).
 - Read NFRs from architecture document at `docs/planning-artifacts/architecture.md` if available.
 - If neither document exists, proceed with generic NFR assessment based on common patterns.
 - Extract: response time targets, throughput requirements, availability SLAs, security requirements, data protection obligations.

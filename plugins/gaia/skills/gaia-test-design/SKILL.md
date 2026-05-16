@@ -29,7 +29,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Define quality gates for the CI pipeline.
 - The test plan template MUST exist at `${CLAUDE_PLUGIN_ROOT}/skills/gaia-test-design/test-plan-template.md` and be non-empty. If the template file is empty (0 bytes) or missing, halt with: "Test plan template not found or empty -- cannot produce test plan without template."
 - If architecture.md is missing at `docs/planning-artifacts/architecture.md`: proceed with reduced risk context, log a WARNING ("Architecture document not found -- producing test plan with generic risk ratings"), and use generic risk ratings instead of architecture-informed ones.
-- If prd.md is missing at `docs/planning-artifacts/prd.md`: proceed with reduced context, log a WARNING ("PRD not found -- test plan scope may be incomplete").
+- Resolve the PRD via the sharded-fallback rule (ADR-069 / FR-396..402): try `docs/planning-artifacts/prd.md` (flat layout); fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, proceed with reduced context and log a WARNING ("PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md -- test plan scope may be incomplete").
 - Test planning is delegated to the test-architect subagent (Sable) via native Claude Code subagent invocation -- do NOT inline Sable's persona into this skill body. If the test-architect subagent is not available or not registered, halt with: "test-architect subagent not available -- ensure E28-S21 agents are installed."
 - Template resolution: load `test-plan-template.md` from this skill directory. If `custom/templates/test-plan-template.md` exists and is non-empty, use the custom template instead -- the custom template takes full precedence over the bundled default (ADR-020 / FR-101).
 - Output ALL artifacts to `docs/test-artifacts/`.
@@ -40,7 +40,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 ### Step 1 -- Load Project Context
 
 - Read `docs/planning-artifacts/architecture.md` if available -- extract system components, their interactions, and high-risk areas.
-- Read `docs/planning-artifacts/prd.md` if available -- extract requirements (functional and non-functional).
+- Read the PRD if available — resolve via the sharded-fallback rule (Critical Rules above): try `docs/planning-artifacts/prd.md` (flat layout); fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). Extract requirements (functional and non-functional).
 - Read `docs/planning-artifacts/project-context.md` if available -- extract project-level context.
 - If architecture.md is missing: log WARNING and proceed with generic risk context. Do not halt.
 - If prd.md is missing: log WARNING and proceed with reduced scope context. Do not halt.
