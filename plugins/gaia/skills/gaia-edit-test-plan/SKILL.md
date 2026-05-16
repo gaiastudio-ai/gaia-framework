@@ -30,7 +30,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ## Critical Rules
 
-- A test plan MUST already exist at `docs/test-artifacts/test-plan.md` before starting. If the file is missing, halt with: "test-plan.md not found at docs/test-artifacts/test-plan.md — run /gaia-test-design first."
+- A test plan MUST already exist before starting. Resolve via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `docs/test-artifacts/test-plan.md` (flat layout); fall back to `docs/test-artifacts/strategy/test-plan.md` (strategy/ placement). If NEITHER exists, halt with: "test-plan.md not found at docs/test-artifacts/test-plan.md or docs/test-artifacts/strategy/test-plan.md — run /gaia-test-design first."
 - Preserve all existing test plan content — test strategy, environments, entry/exit criteria, existing test cases.
 - New test cases must follow the same format as existing ones.
 - Test case IDs must auto-increment from the highest existing ID.
