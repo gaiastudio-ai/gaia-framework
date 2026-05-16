@@ -115,7 +115,7 @@ Attempt to read each reference artifact (record which exist and which are missin
 - `docs/planning-artifacts/architecture.md` — for architectural decision validation
 - `docs/planning-artifacts/prd.md` — for product decision validation (per ADR-069 / FR-396..402, fall back to `docs/planning-artifacts/prd/prd.md` if the flat path is absent)
 - `docs/planning-artifacts/infrastructure-design.md` — for infrastructure validation
-- `docs/test-artifacts/test-plan.md` — for test strategy validation
+- `docs/test-artifacts/test-plan.md` — for test strategy validation (per ADR-072 / AF-2026-05-08-5, fall back to `docs/test-artifacts/strategy/test-plan.md` if the flat path is absent)
 - `docs/implementation-artifacts/sprint-status.yaml` — for sprint references and current sprint ID
 - `docs/planning-artifacts/epics-and-stories.md` — for story / epic key validation
 

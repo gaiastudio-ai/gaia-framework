@@ -44,7 +44,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ### Step 2 -- Scan Test Plan (Coverage Mode)
 
-- Read `docs/test-artifacts/test-plan.md`.
+- Resolve the test-plan via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `docs/test-artifacts/test-plan.md` (flat); fall back to `docs/test-artifacts/strategy/test-plan.md` (strategy/ placement). Read the resolved file.
 - Extract all test case IDs and their linked story keys from the test plan.
 - Build a map of `test_case_id -> [story_keys]` for cross-referencing.
 - If `test-plan.md` is missing, log warning: "test-plan.md not found -- partial coverage analysis only" and continue with empty test case map (AC-EC1).

@@ -79,7 +79,7 @@ This skill is the native Claude Code conversion of the legacy add-stories workfl
   - Priority: P0/P1/P2
   - Assign to correct epic (existing or newly created)
   - Auto-increment story ID within the epic
-- If `docs/test-artifacts/test-plan.md` exists: apply risk levels (high/medium/low) based on architectural complexity and test coverage.
+- Resolve the test-plan via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `docs/test-artifacts/test-plan.md` (flat layout); fall back to `docs/test-artifacts/strategy/test-plan.md` (strategy/ placement). If the resolved file exists: apply risk levels (high/medium/low) based on architectural complexity and test coverage.
 - Declare depends_on and blocks against ALL existing stories.
 - ENFORCE PROTECTION: dependency links FROM new stories TO locked/protected stories are allowed (read-only reference). But locked/protected stories themselves are NEVER modified.
 - Verify no circular dependencies introduced.
