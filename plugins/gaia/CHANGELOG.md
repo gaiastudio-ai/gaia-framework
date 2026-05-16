@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.155.0] — 2026-05-16
+
+### Added
+
+- (E41-S5) wire /gaia-triage-findings YOLO auto-apply (GR-TF-1) — closes E41 epic (#716)
+- (E41-S3) wire /gaia-dev-story YOLO Val on TDD phases (GR-DS-1) (#715)
+- (E41-S4) wire /gaia-dev-story YOLO auto-run-reviews after merge (GR-DS-2) (#714)
+- (E41-S2) wire /gaia-create-story YOLO wire-up (GR-CS-6) (#713)
+
+### Fixed
+
+- (AI-2026-05-16-9) extend test_plan_exists strategy/ alias
+
 ## [1.154.0] — 2026-05-15
 
 ### Added
