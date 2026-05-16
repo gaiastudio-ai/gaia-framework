@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.155.3] — 2026-05-16
+
+### Fixed
+
+- (AF-2026-05-17-1) /gaia-test-gap-analysis schema-drift documentation
+
 ## [1.155.2] — 2026-05-16
 
 ### Fixed
