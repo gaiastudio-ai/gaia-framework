@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.155.1] — 2026-05-16
+
+### Fixed
+
+- (AF-2026-05-16-3) sister-skills sharded-PRD fallback
+- (AF-2026-05-16-2) /gaia-trace sharded-PRD fallback
+
 ## [1.155.0] — 2026-05-16
 
 ### Added
