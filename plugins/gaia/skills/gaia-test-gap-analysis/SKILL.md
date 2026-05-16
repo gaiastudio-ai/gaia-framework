@@ -150,7 +150,7 @@ The skill reads `docs/test-artifacts/test-plan.md` and story frontmatter as plai
 
 ### test-plan.md test-case table schema
 
-The test-plan.md test case map built in Step 2 expects the following column layout:
+The test-plan.md test case map built in Step 2 prefers the following CANONICAL column layout:
 
 `| # | Test Case ID | Story Key | AC | Scenario | Type | Severity |`
 
@@ -160,7 +160,33 @@ The test-plan.md test case map built in Step 2 expects the following column layo
 - **Scenario** -- test scenario description.
 - **Type** / **Severity** -- optional metadata columns; tolerated if absent.
 
-If the table uses non-standard column names (e.g., `Test ID` instead of `Test Case ID`), the skill logs a warning `test-plan.md schema mismatch: expected '{column}', found '{actual}' -- attempting tolerant match` and proceeds with case-insensitive substring matching. If matching cannot recover the columns, the impacted rows are treated as unmapped and surfaced in the AC Linkage section.
+#### Section-scoped heterogeneous tables (AF-2026-05-17-1)
+
+On real projects the test-plan is frequently structured as section-scoped tables with no single universal schema. As of 2026-05-17, a representative GAIA-Framework test-plan contains **64 distinct table-header shapes across 435 tables**, with the top three covering ~63% (276/435) of all tables:
+
+| Rank | Header shape | Count |
+|---|---|---|
+| 1 | `\| ID \| Scenario \| Type \| Severity \| Story \|` | 111 |
+| 2 | `\| ID \| Scenario \| Expected \| Type \| Validates \| Status \|` | 84 |
+| 3 | `\| ID \| Scenario \| Expected \| Type \|` | 81 |
+
+None of these match the canonical schema above. They omit "Story Key" and "AC" columns; story-key references and FR/NFR linkages live in section headings, `Validates`, `Story`, or scenario-prose.
+
+#### Three coverage signals (decreasing accuracy)
+
+1. **STRONG** -- canonical-schema table is present (`| TC-ID | Story-Key | AC | ... |`). The documented per-AC matching in Step 4 works. This is the only signal that proves per-AC test coverage.
+2. **MEDIUM** -- section-scoped tables present with TC-ID + requirement linkage (e.g. `| TC-VSP-1 | Scenario | Expected | Type | FR-VSP-1 | Status |`). The skill can build a TC → FR/NFR map by detecting per-section column position; story-key + AC linkage is not available, so coverage degrades to "requirement is referenced by at least one TC".
+3. **WEAK / DEGRADED-MODE** -- neither canonical nor section-scoped tables are detected. Last-resort coverage signal is a document-wide regex sweep for FR-NNN/NFR-NNN identifier mentions. This counts "requirement is mentioned somewhere" but does NOT prove a test case exists. Reports MUST display a `[DEGRADED-MODE: regex-sweep coverage signal]` banner in the Executive Summary.
+
+#### DEGRADED-MODE banner contract
+
+When the skill falls back to the WEAK signal, the Executive Summary section MUST begin with a line: `> ⚠ DEGRADED-MODE: test-plan.md uses heterogeneous section-scoped tables; canonical Story-Key/AC schema not detected. Coverage figures below reflect document-wide FR/NFR regex sweep, NOT per-AC test linkage.` This banner replaces the silent tolerant-match warning that previously made the degraded state invisible to the user.
+
+#### Out of scope for this AF
+
+Redesign of the matching logic to detect per-section column positions (MEDIUM signal computation, schema-detection state machine, multi-shape parser) is deferred to a follow-on AF or epic. AF-2026-05-17-1 is documentation-only -- it updates the schema description in this section, adds the three-signal taxonomy, and mandates the DEGRADED-MODE banner. Adding new matching code is explicitly NOT in scope.
+
+If the table uses non-standard column names (e.g., `Test ID` instead of `Test Case ID`), the skill logs a warning `test-plan.md schema mismatch: expected '{column}', found '{actual}' -- attempting tolerant match` and proceeds with case-insensitive substring matching. If matching cannot recover the columns, the impacted rows are treated as unmapped and surfaced in the AC Linkage section, AND the DEGRADED-MODE banner is emitted in the Executive Summary per the contract above.
 
 ### Story-key and AC-id formats
 
