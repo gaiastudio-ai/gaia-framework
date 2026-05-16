@@ -10,6 +10,7 @@ hooks:
         - type: command
           command: ${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/checkpoint.sh write gaia-dev-story
 orchestration_class: heavy-procedural
+yolo_steps: [5, 6, 7, 15]
 ---
 
 ## Orchestration Mode
@@ -186,6 +187,9 @@ Backward-compatibility note (NFR-DSH-3): a resumed in-progress story with no Ste
 
 ### Step 5 -- TDD Red Phase (Write Failing Tests)
 
+> [!yolo]
+> Step 5 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration (E41-S3, ADR-057 §10.30.2 / §10.30.6 wire-up row E41-S3). Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass owns the 3-iteration auto-fix loop and the cap-exhaustion gate per FR-YOLO-2(e) and ADR-073. The Step 5 body itself stays pause-free per E55-S4 / TC-DSH-12 — the pause-free TDD invariant is non-negotiable. Step 5a (risk-gated TDD review hook) is the separate gate point that fires after Step 5 completes; it is OUTSIDE this YOLO branch's scope per ADR-067.
+
 - Follow the playbook's test strategy reasoning.
 - For each subtask: write failing test(s) that define expected behavior.
 - Run the test suite -- verify all new tests FAIL.
@@ -211,6 +215,9 @@ The hook fires exactly once per Step 5. If the gate returns `SKIP`, no subagent 
 <!-- E57-S4: step5 tdd-review-gate end -->
 
 ### Step 6 -- TDD Green Phase (Implement to Pass)
+
+> [!yolo]
+> Step 6 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration (E41-S3). Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass applies the INFO-only break per ECI-501 (Green-phase INFO-only findings auto-proceed to Refactor without dev-agent intervention) and counts timed-out Val attempts against the 3-iteration cap per ECI-502. The Step 6 body itself stays pause-free per E55-S4 / TC-DSH-12 — the pause-free TDD invariant is non-negotiable. Step 6a (risk-gated TDD review hook) is OUTSIDE this YOLO branch's scope per ADR-067.
 
 - Follow the playbook's design approach reasoning.
 - For each subtask: implement minimum code to make failing tests pass.
@@ -253,6 +260,9 @@ After Step 6 Green completes with all tests passing, run a single advisory pass 
 <!-- E55-S7: step 6b end -->
 
 ### Step 7 -- TDD Refactor Phase
+
+> [!yolo]
+> Step 7 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration (E41-S3). Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass surfaces refactor-introduced test regressions per ECI-509 (previously-green tests now failing tagged in Val's input context). The 3-iteration auto-fix loop owned by Step 7b enforces the FR-YOLO-2(e) attempt-cap gate: 3 attempts max, cap exhaustion stops with finding list, no silent pass. The Step 7 body itself stays pause-free per E55-S4 / TC-DSH-12 — the pause-free TDD invariant is non-negotiable. Step 7a (risk-gated TDD review hook) is OUTSIDE this YOLO branch's scope per ADR-067.
 
 - Improve code quality while keeping all tests green.
 - Extract shared utilities, decompose large functions, improve naming, remove duplication.
@@ -487,6 +497,9 @@ Emit a single-line gate log to stderr: `step14b_gate: advisories={count}` where 
 <!-- E55-S8: step 16 begin -->
 ### Step 16 -- Auto-Reviews (YOLO-only)
 
+> [!yolo]
+> Step 16 honors the declarative `yolo_steps: [15]` frontmatter declaration per ADR-057 §10.30.2 (the dispatch is logically the post-Step-15 hook called out in §10.30.6 wire-up table row E41-S4; the framework split the dispatch into Step 16 under E55-S8). Under YOLO, the six review skills run sequentially via the aggregator and ALL FAILED verdicts surface in the user-visible `## Review Summary` block — YOLO never silences a FAILED review (ECI-503). The Step 14 Post-Completion Gate remains a hard gate (FR-YOLO-2(b)) — `yolo_steps` does NOT include `14`.
+
 YOLO-gated invocation of the six reviews that populate the Review Gate. Non-YOLO runs MUST NOT auto-fire reviews — the user manually invokes each review from the Review Gate UNVERIFIED rows. Forbidden by ADR-073: silently auto-firing reviews in non-YOLO would erase user oversight.
 
 - Run `${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo` to detect YOLO mode (single source of truth — never re-implement detection inline per ADR-057 / ADR-073).
@@ -500,6 +513,10 @@ YOLO-gated invocation of the six reviews that populate the Review Gate. Non-YOLO
   - Invoke `gaia-run-all-reviews` via Skill-to-Skill delegation. The aggregator runs all six reviews (Code Review, QA Tests, Security Review, Test Automation, Test Review, Performance Review) sequentially in subagents.
   - Each review writes its verdict (PASSED / FAILED) into the matching Review Gate row via `review-gate.sh`. After the aggregator completes, the Review Gate table is fully populated — no row remains UNVERIFIED.
   - Emit `step16_gate: yolo=true verdict=invoked` on entry and `step16_gate: yolo=true verdict=complete` on aggregator return.
+
+- **FAILED-verdict surfacing (E41-S4 / ECI-503).** After the aggregator returns, emit a `## Review Summary` block to the user. The block MUST list every review verdict on its own line (`- {review_name}: {PASSED|FAILED} — {report_path}`); the literal `FAILED` token is uppercase so downstream scanners can grep it. Then surface the composite verdict from `${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh review-gate-check` (per ADR-054): exit 0 → `**Composite Review Gate:** COMPLETE`; exit 1 → `**Composite Review Gate:** BLOCKED — {N} FAILED review(s) must be addressed before merge.`; exit 2 → `**Composite Review Gate:** PENDING — {N} UNVERIFIED row(s) remain.` YOLO MUST NOT collapse a BLOCKED verdict into a PASS.
+
+- **Dispatch-failure error path (E41-S4 / AC4).** If the aggregator fails to dispatch entirely (skill not installed, subagent errors before returning verdicts, or dispatch times out), emit the canonical YOLO dispatch failed error: `**YOLO dispatch failed:** auto-run-reviews dispatch did not return verdicts ({reason}). Review Gate rows remain UNVERIFIED. Run \`/gaia-run-all-reviews {story_key}\` manually.` YOLO MUST NOT silent-pass a dispatch failure as if reviews completed successfully — the user must be in the loop for the manual fallback.
 
 - **Sequencing invariant (AC4):** Step 14 (post-completion gate, E20-S19) MUST run BEFORE Step 16. Step 16 NEVER precedes Step 14. The skill ordering above enforces this — Step 14's begin marker precedes Step 16's begin marker.
 <!-- E55-S8: step 16 end -->

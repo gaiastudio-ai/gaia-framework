@@ -151,6 +151,7 @@ jobs:
             tests/skills/gaia-deploy-checklist.bats \
             tests/skills/gaia-deploy-failures.bats \
             tests/skills/gaia-deploy.bats \
+            tests/skills/gaia-dev-story-e41-s3-yolo-val-on-tdd-phases.bats \
             tests/skills/gaia-dev-story-figma-degrade.bats \
             tests/skills/gaia-dev-story-planning-gate.bats \
             tests/skills/gaia-dev-story-step2b-atdd.bats \
@@ -176,6 +177,7 @@ jobs:
             tests/skills/gaia-teach-testing-hints.bats \
             tests/skills/gaia-teach-testing.bats \
             tests/skills/gaia-test-framework.bats \
+            tests/skills/gaia-triage-findings-e41-s5-yolo-auto-apply.bats \
             tests/skills/gaia-triage-findings-reproduction-policy.bats \
             tests/skills/lint-skill-frontmatter.bats \
             tests/skills/validate-plan-structure.bats

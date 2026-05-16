@@ -25,7 +25,7 @@
 #
 # Supported gate types:
 #   file_exists            — checks every --file <path> argument
-#   test_plan_exists       — ${TEST_ARTIFACTS}/test-plan.md
+#   test_plan_exists       — ${TEST_ARTIFACTS}/test-plan.md (or strategy/test-plan.md per ADR-072, or test-plan/index.md sharded layout per ADR-070)
 #   traceability_exists    — ${TEST_ARTIFACTS}/traceability-matrix.md (or strategy/traceability-matrix.md per ADR-072, or traceability-matrix/index.md sharded layout per ADR-070)
 #   ci_setup_exists        — ${TEST_ARTIFACTS}/ci-setup.md
 #   atdd_exists            — ${TEST_ARTIFACTS}/atdd-<story>.md (requires --story)
@@ -106,7 +106,7 @@ Flags:
 
 Supported gate types:
   file_exists             Check every --file <path> argument
-  test_plan_exists        ${TEST_ARTIFACTS}/test-plan.md
+  test_plan_exists        ${TEST_ARTIFACTS}/test-plan.md OR ${TEST_ARTIFACTS}/strategy/test-plan.md OR ${TEST_ARTIFACTS}/test-plan/index.md
   traceability_exists     ${TEST_ARTIFACTS}/traceability-matrix.md OR ${TEST_ARTIFACTS}/strategy/traceability-matrix.md OR ${TEST_ARTIFACTS}/traceability-matrix/index.md
   ci_setup_exists         ${TEST_ARTIFACTS}/ci-setup.md
   atdd_exists             ${TEST_ARTIFACTS}/atdd-<story>.md  (requires --story)
@@ -176,8 +176,13 @@ list_gates() {
       # E53-S248: traceability_exists also accepts the post-E53 / ADR-072
       # `strategy/traceability-matrix.md` placement; render the third path
       # so the documented contract matches the implementation.
+      #
+      # AI-2026-05-16-9: test_plan_exists also accepts the post-E53 / ADR-072
+      # `strategy/test-plan.md` placement, mirroring the traceability_exists
+      # treatment from E53-S248. The canonical test-plan in projects with
+      # an E53-style docs reorganization lives under strategy/.
       case "$g" in
-        traceability_exists)
+        test_plan_exists|traceability_exists)
           alt="${pattern%.md}/index.md"
           strategy_alt="${pattern%/*}/strategy/${pattern##*/}"
           printf '%s\t%s OR %s OR %s\n' "$g" "$pattern" "$strategy_alt" "$alt"
@@ -283,6 +288,24 @@ check_file_nonempty() {
       # above — same shape, gate-specific.
       dir="${filepath%/*}"
       alt="$dir/strategy/traceability-matrix.md"
+      if [ -f "$alt" ]; then
+        if [ ! -s "$alt" ]; then
+          abs=$(abs_path "$alt")
+          warn "$gate failed — file is empty (0 bytes): $abs"
+          return 1
+        fi
+        return 0
+      fi
+      ;;
+    */test-plan.md)
+      # AI-2026-05-16-9: post-E53 / ADR-072 placement under strategy/. The
+      # canonical test plan ships at `${TEST_ARTIFACTS}/strategy/test-plan.md`
+      # since the E53 docs reorganization, mirroring traceability-matrix.md
+      # above. Without this resolution arm, /gaia-add-feature setup.sh HALTs
+      # every enhancement/feature classification with "test-plan.md is missing"
+      # even when the strategy/ canonical exists.
+      dir="${filepath%/*}"
+      alt="$dir/strategy/test-plan.md"
       if [ -f "$alt" ]; then
         if [ ! -s "$alt" ]; then
           abs=$(abs_path "$alt")

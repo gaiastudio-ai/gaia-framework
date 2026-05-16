@@ -130,17 +130,71 @@ teardown() { common_teardown; }
 # AC8 no-regression spot-checks — other gates byte-identical post-fix
 # ---------------------------------------------------------------------------
 
-@test "TC-DRO-21: test_plan_exists unaffected — strategy/test-plan.md does NOT pass" {
-  # The strategy alias arm is gate-specific to traceability_exists.
-  # An equivalent strategy/ placement for test_plan MUST NOT silently pass.
+@test "TC-DRO-21: ci_setup_exists unaffected by AI-2026-05-16-9 — strategy/ci-setup.md does NOT pass" {
+  # AI-2026-05-16-9 extended the strategy/ alias to test_plan_exists, mirroring
+  # E53-S248's treatment of traceability_exists. ci_setup_exists is NOT in
+  # scope — keep this regression guard so future drift is caught.
+  mkdir -p "$TEST_ARTIFACTS/strategy"
+  printf 'ci\n' > "$TEST_ARTIFACTS/strategy/ci-setup.md"
+  run "$SCRIPT" ci_setup_exists
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"validate-gate: ci_setup_exists failed"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# AI-2026-05-16-9 — test_plan_exists strategy/ alias (mirrors TC-DRO-21 above)
+# ---------------------------------------------------------------------------
+
+@test "AI-2026-05-16-9: test_plan_exists flat-only layout resolves PASS (regression-guard)" {
+  printf 'plan\n' > "$TEST_ARTIFACTS/test-plan.md"
+  run "$SCRIPT" test_plan_exists
+  [ "$status" -eq 0 ]
+}
+
+@test "AI-2026-05-16-9: test_plan_exists sharded-index-only layout resolves PASS (regression-guard)" {
+  mkdir -p "$TEST_ARTIFACTS/test-plan"
+  printf 'plan\n' > "$TEST_ARTIFACTS/test-plan/index.md"
+  run "$SCRIPT" test_plan_exists
+  [ "$status" -eq 0 ]
+}
+
+@test "AI-2026-05-16-9: test_plan_exists strategy/ placement resolves PASS (new behavior)" {
   mkdir -p "$TEST_ARTIFACTS/strategy"
   printf 'plan\n' > "$TEST_ARTIFACTS/strategy/test-plan.md"
   run "$SCRIPT" test_plan_exists
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"validate-gate: test_plan_exists failed"* ]]
+  [ "$status" -eq 0 ]
 }
 
-@test "TC-DRO-21: ci_setup_exists unaffected — strategy/ci-setup.md does NOT pass" {
+@test "AI-2026-05-16-9: test_plan_exists no-layout fails with FLAT-path error" {
+  run "$SCRIPT" test_plan_exists
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"validate-gate: test_plan_exists failed"* ]]
+  [[ "$output" == *"expected:"* ]]
+  [[ "$output" == *"test-plan.md"* ]]
+  [[ "$output" != *"strategy/test-plan.md"* ]]
+}
+
+@test "AI-2026-05-16-9: test_plan_exists strategy/ empty file fails naming strategy path" {
+  mkdir -p "$TEST_ARTIFACTS/strategy"
+  : > "$TEST_ARTIFACTS/strategy/test-plan.md"
+  run "$SCRIPT" test_plan_exists
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"file is empty (0 bytes)"* ]]
+  [[ "$output" == *"/strategy/test-plan.md"* ]]
+}
+
+@test "AI-2026-05-16-9: --list output mentions strategy/ placement for test_plan_exists" {
+  run "$SCRIPT" --list
+  [ "$status" -eq 0 ]
+  plan_row=$(printf '%s\n' "$output" | awk '$1 == "test_plan_exists" { print; exit }')
+  [ -n "$plan_row" ]
+  [[ "$plan_row" == *"strategy/test-plan.md"* ]]
+}
+
+@test "AI-2026-05-16-9: ci_setup_exists unaffected — strategy/ci-setup.md does NOT pass" {
+  # AI-2026-05-16-9 extended the strategy/ alias to test_plan_exists, mirroring
+  # E53-S248's treatment of traceability_exists. ci_setup_exists is NOT in
+  # scope — keep this regression guard so future drift is caught.
   mkdir -p "$TEST_ARTIFACTS/strategy"
   printf 'ci\n' > "$TEST_ARTIFACTS/strategy/ci-setup.md"
   run "$SCRIPT" ci_setup_exists
