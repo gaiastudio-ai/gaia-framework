@@ -28,7 +28,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - The output path is `docs/test-artifacts/traceability-matrix.md` -- this matches the legacy workflow output path exactly.
 - The legacy `val_validate_output: true` flag is preserved -- the output traceability matrix should be validated when Val integration is active.
 - If validate-gate.sh not found at `${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh` (missing validate-gate script), halt with a clear error identifying the missing script path and exit with non-zero status. Do not attempt to run the gate check without the script.
-- If prd.md is missing at `docs/planning-artifacts/prd.md`: HALT -- "PRD not found at docs/planning-artifacts/prd.md. Run /gaia-create-prd first. The traceability matrix requires PRD requirements as its primary dimension."
+- Resolve the PRD via the sharded-fallback rule: first try `docs/planning-artifacts/prd.md` (flat layout); if it does not exist, fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout per ADR-069 / FR-396..402). If NEITHER path exists: HALT -- "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md. Run /gaia-create-prd first. The traceability matrix requires PRD requirements as its primary dimension."
 - If the FR/NFR set is empty (no requirements found in prd.md): exit gracefully with a warning message "No FR/NFR requirements found in prd.md -- generating empty matrix file." Generate an empty matrix file with headers only (no crash, no partial output).
 - If test-plan.md has malformed table syntax or broken table headers: log a parse warning "Malformed table syntax detected in test-plan.md -- skipping unparseable rows", skip unparseable rows, and generate the matrix from valid rows only.
 
@@ -36,8 +36,8 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ### Step 1 -- Load Requirements
 
-- Read `docs/planning-artifacts/prd.md` -- extract ALL functional requirements (FR-001 through FR-N) and non-functional requirements (NFR-001 through NFR-N) as the primary requirement inventory. These are the matrix rows.
-- GATE: If prd.md does not exist or cannot be loaded: HALT -- "PRD not found at docs/planning-artifacts/prd.md. Run /gaia-create-prd first. The traceability matrix requires PRD requirements as its primary dimension."
+- Resolve the PRD path via the sharded-fallback rule (see Critical Rules above): prefer `docs/planning-artifacts/prd.md` (flat layout); if missing, use `docs/planning-artifacts/prd/prd.md` (sharded layout per ADR-069 / FR-396..402). Read the resolved file (and, for the sharded layout, also walk shard sections under `docs/planning-artifacts/prd/04-functional-requirements/` and `docs/planning-artifacts/prd/05-non-functional-requirements.md`) -- extract ALL functional requirements (FR-001 through FR-N) and non-functional requirements (NFR-001 through NFR-N) as the primary requirement inventory. These are the matrix rows.
+- GATE: If neither flat `docs/planning-artifacts/prd.md` nor sharded `docs/planning-artifacts/prd/prd.md` exists or can be loaded: HALT -- "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md. Run /gaia-create-prd first. The traceability matrix requires PRD requirements as its primary dimension."
 - Read `docs/planning-artifacts/epics-and-stories.md` -- for each story, identify which FR/NFR it implements. Build a mapping: FR/NFR -> Story(s) -> Story ACs.
 - Read `docs/test-artifacts/test-plan.md` if it exists -- extract planned test IDs and their categories (Unit, Integration, E2E, Manual, Performance, Security, Accessibility).
 
