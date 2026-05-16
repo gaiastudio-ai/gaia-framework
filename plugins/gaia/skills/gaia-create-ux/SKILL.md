@@ -28,7 +28,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ## Critical Rules
 
-- A PRD MUST exist at `docs/planning-artifacts/prd.md` before starting. If missing, fail fast with "PRD not found at docs/planning-artifacts/prd.md — run /gaia-create-prd first."
+- A PRD MUST exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `docs/planning-artifacts/prd.md` (flat layout); if missing, fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - Every design decision must trace to a user need from the PRD.
 - UX design authoring is delegated to the `ux-designer` subagent (Christy) via native Claude Code subagent invocation — do NOT inline Christy's persona into this skill body. If the ux-designer subagent (E28-S21) is not available, fail with "ux-designer subagent not available — install E28-S21" error.
 - If `docs/planning-artifacts/ux-design.md` already exists, warn the user: "An existing UX design was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
@@ -38,8 +38,8 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 1 — Load PRD
 
-- Read the PRD at `docs/planning-artifacts/prd.md`.
-- If the file does not exist, fail fast: "PRD not found at docs/planning-artifacts/prd.md — run /gaia-create-prd first."
+- Resolve the PRD path via the sharded-fallback rule (Critical Rules above). Read the resolved PRD (flat `docs/planning-artifacts/prd.md` OR sharded `docs/planning-artifacts/prd/prd.md`).
+- If neither path resolves, fail fast: "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - Extract: user personas, user journeys, and functional requirements.
 - If `docs/planning-artifacts/ux-design.md` already exists: warn "An existing UX design was found at docs/planning-artifacts/ux-design.md. Continuing will overwrite it. Confirm with user before proceeding."
 

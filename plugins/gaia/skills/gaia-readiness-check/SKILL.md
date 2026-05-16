@@ -60,7 +60,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 > headings, fall back to FULL_LOAD for that file only and log the fallback
 > in the checkpoint.
 
-- Heading-scan `docs/planning-artifacts/prd.md` for the requirements section index (functional and non-functional).
+- Heading-scan the PRD for the requirements section index (functional and non-functional) — resolve via the sharded-fallback rule (ADR-069 / FR-396..402): try `docs/planning-artifacts/prd.md` (flat layout); fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout, with shard subsections under `prd/04-functional-requirements/` and `prd/05-non-functional-requirements.md`).
 - Heading-scan `docs/planning-artifacts/ux-design.md` if available for the UI-requirements section index.
 - Heading-scan `docs/planning-artifacts/architecture.md` for architecture-decision and component section anchors.
 - Heading-scan `docs/planning-artifacts/epics-and-stories.md` for the story-coverage section index.

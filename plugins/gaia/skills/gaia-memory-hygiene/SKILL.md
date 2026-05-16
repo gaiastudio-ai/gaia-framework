@@ -113,7 +113,7 @@ For each sidecar in the master list, process one at a time (**JIT — release pr
 Attempt to read each reference artifact (record which exist and which are missing):
 
 - `docs/planning-artifacts/architecture.md` — for architectural decision validation
-- `docs/planning-artifacts/prd.md` — for product decision validation
+- `docs/planning-artifacts/prd.md` — for product decision validation (per ADR-069 / FR-396..402, fall back to `docs/planning-artifacts/prd/prd.md` if the flat path is absent)
 - `docs/planning-artifacts/infrastructure-design.md` — for infrastructure validation
 - `docs/test-artifacts/test-plan.md` — for test strategy validation
 - `docs/implementation-artifacts/sprint-status.yaml` — for sprint references and current sprint ID
