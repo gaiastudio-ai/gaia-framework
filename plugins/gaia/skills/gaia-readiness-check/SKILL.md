@@ -10,7 +10,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # during cross-reference checks. Falls back to FULL_LOAD when an artifact
 # lacks parseable headings.
 discover_inputs: INDEX_GUIDED
-discover_inputs_target: "docs/planning-artifacts/prd.md, docs/planning-artifacts/architecture.md, docs/test-artifacts/test-plan.md, docs/planning-artifacts/epics-and-stories.md"
+discover_inputs_target: "docs/planning-artifacts/prd.md (or docs/planning-artifacts/prd/prd.md), docs/planning-artifacts/architecture.md, docs/test-artifacts/test-plan.md (or docs/test-artifacts/strategy/test-plan.md), docs/planning-artifacts/epics-and-stories.md"
 orchestration_class: heavy-procedural
 ---
 
@@ -39,7 +39,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 ## Critical Rules
 
 - Both quality gates are **mandatory** per ADR-042 — there is no "single gate" fallback, no env-var bypass, and no flag to make either gate optional. Partial-pass is a bug.
-- `traceability-matrix.md` MUST exist at `docs/test-artifacts/traceability-matrix.md`. If missing, HALT with: "Gate failed: traceability-matrix.md not found. Run /gaia-trace to generate the traceability matrix."
+- `traceability-matrix.md` MUST exist. Resolve via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `docs/test-artifacts/traceability-matrix.md` (flat); fall back to `docs/test-artifacts/strategy/traceability-matrix.md` (strategy/ placement); the gate `validate-gate.sh traceability_exists` also accepts the sharded `traceability-matrix/index.md` form per ADR-070. If missing from ALL placements, HALT with: "Gate failed: traceability-matrix.md not found at docs/test-artifacts/traceability-matrix.md, docs/test-artifacts/strategy/traceability-matrix.md, or docs/test-artifacts/traceability-matrix/index.md. Run /gaia-trace to generate the traceability matrix."
 - `ci-setup.md` MUST exist at `docs/test-artifacts/ci-setup.md`. If missing, HALT with: "Gate failed: ci-setup.md not found. Run /gaia-ci-setup to configure the CI pipeline."
 - Check ALL artifacts — do not stop at first failure (except for the mandatory gates which halt immediately).
 - If the traceability matrix declares its own gate as BLOCKED or FAIL, the readiness report MUST NOT declare traceability_complete: true.
@@ -64,9 +64,9 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Heading-scan `docs/planning-artifacts/ux-design.md` if available for the UI-requirements section index.
 - Heading-scan `docs/planning-artifacts/architecture.md` for architecture-decision and component section anchors.
 - Heading-scan `docs/planning-artifacts/epics-and-stories.md` for the story-coverage section index.
-- Heading-scan `docs/test-artifacts/traceability-matrix.md` for the requirement-coverage summary section.
+- Heading-scan the traceability matrix for the requirement-coverage summary section — resolve via the strategy-fallback rule (Critical Rules above): try `docs/test-artifacts/traceability-matrix.md` (flat); fall back to `docs/test-artifacts/strategy/traceability-matrix.md` (strategy/ placement).
 - Heading-scan `docs/test-artifacts/ci-setup.md` for the pipeline quality-gates summary section.
-- Heading-scan `docs/test-artifacts/test-plan.md` if exists for the risk-assessment section.
+- Heading-scan the test plan if it exists for the risk-assessment section — resolve via the strategy-fallback rule (Critical Rules above): try `docs/test-artifacts/test-plan.md` (flat); fall back to `docs/test-artifacts/strategy/test-plan.md` (strategy/ placement).
 - Heading-scan `docs/planning-artifacts/threat-model.md` if exists for security-requirement section anchors.
 - Heading-scan `docs/planning-artifacts/infrastructure-design.md` if exists for deployment-topology section anchors.
 - Note any missing artifacts immediately. Section bodies are loaded on demand by Steps 2-9 via `sed -n` between heading anchors.

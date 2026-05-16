@@ -151,7 +151,7 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
 - Ensure total size fits within velocity estimate using `sizing_map` point values.
 - **Dependency blocking:** for each candidate, check its `depends_on` list. If any dependency is NOT `done`, the story CANNOT be included. Display: "BLOCKED: Story {key} depends on {dep_key} (status: {dep_status})."
 - **Priority surfacing:** after selection, check for P0 stories that are `ready-for-dev` but NOT selected. If any found, warn: "WARNING: P0 stories ready but not selected:" and ask user to confirm the exclusion.
-- If `docs/test-artifacts/test-plan.md` exists: apply risk levels -- buffer 20% for high-risk stories.
+- Resolve the test-plan via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `docs/test-artifacts/test-plan.md` (flat); fall back to `docs/test-artifacts/strategy/test-plan.md` (strategy/ placement). If the resolved file exists: apply risk levels -- buffer 20% for high-risk stories.
 - **ATDD check (high-risk only):** for each high-risk story, check if `docs/test-artifacts/atdd-{story_key}.md` exists. If missing: "HIGH-RISK story {key} has no ATDD file -- run `/gaia-atdd {key}` before development."
 - Present the candidate sprint to the user and capture confirmation.
 

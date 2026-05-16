@@ -9,7 +9,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # later steps. Falls back to FULL_LOAD when an artifact lacks parseable
 # headings.
 discover_inputs: INDEX_GUIDED
-discover_inputs_target: "docs/planning-artifacts/prd.md, docs/planning-artifacts/architecture.md, docs/test-artifacts/test-plan.md"
+discover_inputs_target: "docs/planning-artifacts/prd.md (or docs/planning-artifacts/prd/prd.md), docs/planning-artifacts/architecture.md, docs/test-artifacts/test-plan.md (or docs/test-artifacts/strategy/test-plan.md)"
 orchestration_class: heavy-procedural
 ---
 
@@ -40,7 +40,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - A PRD MUST exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `docs/planning-artifacts/prd.md` (flat layout); if missing, fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - An architecture document MUST exist at `docs/planning-artifacts/architecture.md` before starting. If missing, fail fast with "Architecture not found at docs/planning-artifacts/architecture.md — run /gaia-create-arch first."
 - The architecture document MUST contain a "## Review Findings Incorporated" section. If missing, fail fast with "Architecture review findings not found — run /gaia-create-arch first to complete adversarial review and architecture refinement."
-- A test plan MUST exist at `docs/test-artifacts/test-plan.md` before starting. This is an **enforced** quality gate (ADR-042), not advisory. The gate is checked by `scripts/setup.sh` via `validate-gate.sh test_plan_exists`. If missing, HALT with "test-plan.md not found — run /gaia-test-design first." The file must be non-empty — a zero-byte file is treated as missing.
+- A test plan MUST exist before starting. The gate `validate-gate.sh test_plan_exists` (ADR-072 / AF-2026-05-08-5) accepts three placements: flat `docs/test-artifacts/test-plan.md`, strategy/ `docs/test-artifacts/strategy/test-plan.md`, or sharded `docs/test-artifacts/test-plan/index.md`. This is an **enforced** quality gate (ADR-042), not advisory. The gate is checked by `scripts/setup.sh` via `validate-gate.sh test_plan_exists`. If missing from ALL three placements, HALT with "test-plan.md not found at docs/test-artifacts/test-plan.md, docs/test-artifacts/strategy/test-plan.md, or docs/test-artifacts/test-plan/index.md — run /gaia-test-design first." The file must be non-empty — a zero-byte file is treated as missing.
 - Epic definition and technical decomposition are delegated to the `architect` subagent (Theo) via native Claude Code subagent invocation — do NOT inline Theo's persona into this skill body. If the architect subagent (E28-S21) is not available, fail with "architect subagent not available — install E28-S21" error.
 - Story authoring and business prioritization are delegated to the `pm` subagent (Derek) via native Claude Code subagent invocation — do NOT inline Derek's persona into this skill body. If the pm subagent (E28-S21) is not available, fail with "pm subagent not available — install E28-S21" error.
 - If either the `architect` or `pm` subagent is not registered, surface a clear subagent-missing error rather than silently falling back to inline persona content.
@@ -63,7 +63,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - GATE: verify the resolved PRD (flat `docs/planning-artifacts/prd.md` OR sharded `docs/planning-artifacts/prd/prd.md`) exists. If neither, HALT — run /gaia-create-prd first.
 - Heading-scan `docs/planning-artifacts/architecture.md` to build a section index of technical components.
 - GATE: verify architecture.md contains a "## Review Findings Incorporated" section. If missing, HALT — run /gaia-create-arch first to complete adversarial review and architecture refinement.
-- Heading-scan `docs/test-artifacts/test-plan.md` for the risk-assessment section index (high-risk areas: revenue-critical, security-sensitive, complex logic). This file was already validated by `scripts/setup.sh` via the enforced quality gate. Section bodies are loaded on demand.
+- Heading-scan the test plan for the risk-assessment section index (high-risk areas: revenue-critical, security-sensitive, complex logic) — resolve the test-plan path via the strategy-fallback rule (Critical Rules above): try `docs/test-artifacts/test-plan.md`, fall back to `docs/test-artifacts/strategy/test-plan.md`. This file was already validated by `scripts/setup.sh` via the enforced quality gate. Section bodies are loaded on demand.
 - Heading-scan `docs/planning-artifacts/ux-design.md` if available for UI-flow / component-hierarchy / interaction-pattern / accessibility section anchors. Set `has_ux_design` flag.
 
 > `!scripts/write-checkpoint.sh gaia-create-epics 1 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" architecture_version="$ARCHITECTURE_VERSION"`
