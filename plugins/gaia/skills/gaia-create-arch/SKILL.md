@@ -35,7 +35,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ## Critical Rules
 
-- A PRD MUST exist at `docs/planning-artifacts/prd.md` before starting. If missing, fail fast with "PRD not found at docs/planning-artifacts/prd.md — run /gaia-create-prd first."
+- A PRD MUST exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `docs/planning-artifacts/prd.md` (flat layout); if missing, fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - The PRD MUST contain a "## Review Findings Incorporated" section. If missing, fail fast with "PRD review findings not found — run /gaia-create-prd to complete adversarial review and PRD refinement."
 - Every significant technical decision must be recorded as an ADR inline in the Decision Log table of the architecture document.
 - Architecture authoring is delegated to the `architect` subagent (Theo) via native Claude Code subagent invocation — do NOT inline Theo's persona into this skill body. If the architect subagent (E28-S21) is not available, fail with "architect subagent not available — install E28-S21" error.
@@ -56,7 +56,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 > heading anchors). If the PRD has no parseable headings, fall back to
 > FULL_LOAD and log the fallback in the checkpoint.
 
-- Heading-scan `docs/planning-artifacts/prd.md` to build a section index of requirements (functional and non-functional). Do NOT read the full body up front.
+- Resolve the PRD path via the sharded-fallback rule (Critical Rules above). Heading-scan the resolved PRD to build a section index of requirements (functional and non-functional); for the sharded layout, also heading-scan shard subsections under `prd/04-functional-requirements/` and `prd/05-non-functional-requirements.md`. Do NOT read the full bodies up front.
 - GATE: verify prd.md contains a "## Review Findings Incorporated" section. If missing, HALT — run /gaia-create-prd first to complete adversarial review and PRD refinement.
 - Heading-scan `docs/planning-artifacts/ux-design.md` if available — record section anchors for UI requirements.
 - Check for brownfield artifacts: `docs/planning-artifacts/brownfield-assessment.md` and `docs/planning-artifacts/project-documentation.md`. If either exists, heading-scan them — these contain existing codebase analysis that must inform architecture decisions even if the PRD is not in brownfield mode.

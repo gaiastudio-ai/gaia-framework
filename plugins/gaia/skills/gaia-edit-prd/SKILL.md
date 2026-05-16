@@ -28,7 +28,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ## Critical Rules
 
-- A PRD MUST already exist at `docs/planning-artifacts/prd.md` before starting. If missing, fail fast with "No PRD found at docs/planning-artifacts/prd.md — run /gaia-create-prd first."
+- A PRD MUST already exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `docs/planning-artifacts/prd.md` (flat layout); if missing, fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "No PRD found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - Preserve existing content not being changed — edits are surgical, not wholesale rewrites.
 - Add a version note documenting what changed and why after every edit session.
 - Update "Review Findings Incorporated" section after adversarial review (if triggered).
@@ -45,8 +45,8 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 1 — Load PRD
 
-- Read the current PRD at `docs/planning-artifacts/prd.md`.
-- If the file does not exist, fail fast: "No PRD found at docs/planning-artifacts/prd.md — run /gaia-create-prd first."
+- Resolve the PRD path via the sharded-fallback rule (Critical Rules above). Read the resolved PRD (flat `docs/planning-artifacts/prd.md` OR sharded `docs/planning-artifacts/prd/prd.md`).
+- If neither path resolves, fail fast: "No PRD found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - Display the current structure summary to the user: list all section headers, requirement count (FR-### and NFR-### IDs), and last version note date.
 
 ### Step 2 — Identify Changes

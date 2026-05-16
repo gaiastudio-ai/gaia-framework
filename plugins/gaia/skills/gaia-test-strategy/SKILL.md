@@ -96,7 +96,7 @@ Route the selected choice:
 Read upstream context (gracefully degrade on missing files):
 
 - `docs/planning-artifacts/architecture.md` — extract system components, interactions, high-risk areas. If missing: log WARNING, use generic risk ratings.
-- `docs/planning-artifacts/prd.md` — extract requirements (functional and non-functional). If missing: log WARNING, reduced scope.
+- PRD — extract requirements (functional and non-functional). Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): try `docs/planning-artifacts/prd.md` (flat layout); fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists: log WARNING, reduced scope.
 - `docs/planning-artifacts/project-context.md` — extract project-level context.
 
 Detect subsequent-invocation: if `docs/test-artifacts/strategy/test-strategy.md` already exists, read it and prepare the incremental-update flow — ask the user what to add (new test type, new perf scenarios, new contract suite) and only generate the incremental pieces.

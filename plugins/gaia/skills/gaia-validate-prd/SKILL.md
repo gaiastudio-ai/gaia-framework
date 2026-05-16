@@ -30,8 +30,8 @@ This skill acts as a backward-compatible redirect: it accepts the same invocatio
 
 ### Step 1 — Resolve PRD Artifact Path
 
-- Locate the PRD at `docs/planning-artifacts/prd.md`.
-- If the file does not exist, fail fast: "No PRD found at docs/planning-artifacts/prd.md — run /gaia-create-prd first."
+- Resolve the PRD path via the sharded-fallback rule (ADR-069 / FR-396..402): first try `docs/planning-artifacts/prd.md` (flat layout); if missing, use `docs/planning-artifacts/prd/prd.md` (sharded layout).
+- If neither path exists, fail fast: "No PRD found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - Pass the resolved PRD path through to the redirect target.
 
 ### Step 2 — Redirect to gaia-val-validate

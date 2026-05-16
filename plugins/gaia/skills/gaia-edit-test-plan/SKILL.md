@@ -123,8 +123,7 @@ inheritance case this sub-step is skipped entirely.
 
 #### Step 2c — Load Named Diff Sections
 
-- Load ONLY the named diff sections of `docs/planning-artifacts/prd.md`
-  corresponding to the supplied FR/NFR IDs (do NOT read the full PRD).
+- Resolve the PRD path via the sharded-fallback rule (ADR-069 / FR-396..402): first try `docs/planning-artifacts/prd.md` (flat layout); if missing, use `docs/planning-artifacts/prd/prd.md` (sharded layout). Load ONLY the named diff sections of the resolved PRD corresponding to the supplied FR/NFR IDs (do NOT read the full PRD); under the sharded layout, the relevant FR shard subsections live under `prd/04-functional-requirements/` and NFRs under `prd/05-non-functional-requirements.md`.
 - Load ONLY the named diff sections of
   `docs/planning-artifacts/architecture.md` that correspond to the
   affected components (do NOT read the full architecture document).

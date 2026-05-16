@@ -37,7 +37,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ## Critical Rules
 
-- A PRD MUST exist at `docs/planning-artifacts/prd.md` before starting. If missing, fail fast with "PRD not found at docs/planning-artifacts/prd.md — run /gaia-create-prd first."
+- A PRD MUST exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `docs/planning-artifacts/prd.md` (flat layout); if missing, fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - An architecture document MUST exist at `docs/planning-artifacts/architecture.md` before starting. If missing, fail fast with "Architecture not found at docs/planning-artifacts/architecture.md — run /gaia-create-arch first."
 - The architecture document MUST contain a "## Review Findings Incorporated" section. If missing, fail fast with "Architecture review findings not found — run /gaia-create-arch first to complete adversarial review and architecture refinement."
 - A test plan MUST exist at `docs/test-artifacts/test-plan.md` before starting. This is an **enforced** quality gate (ADR-042), not advisory. The gate is checked by `scripts/setup.sh` via `validate-gate.sh test_plan_exists`. If missing, HALT with "test-plan.md not found — run /gaia-test-design first." The file must be non-empty — a zero-byte file is treated as missing.
@@ -59,8 +59,8 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 > (`sed -n` between heading anchors). If any artifact lacks parseable
 > headings, fall back to FULL_LOAD for that file only.
 
-- Heading-scan `docs/planning-artifacts/prd.md` to build a section index of functional requirements.
-- GATE: verify prd.md exists. If missing, HALT — run /gaia-create-prd first.
+- Resolve the PRD path via the sharded-fallback rule (Critical Rules above). Heading-scan the resolved PRD to build a section index of functional requirements; for the sharded layout, also heading-scan `prd/04-functional-requirements/`.
+- GATE: verify the resolved PRD (flat `docs/planning-artifacts/prd.md` OR sharded `docs/planning-artifacts/prd/prd.md`) exists. If neither, HALT — run /gaia-create-prd first.
 - Heading-scan `docs/planning-artifacts/architecture.md` to build a section index of technical components.
 - GATE: verify architecture.md contains a "## Review Findings Incorporated" section. If missing, HALT — run /gaia-create-arch first to complete adversarial review and architecture refinement.
 - Heading-scan `docs/test-artifacts/test-plan.md` for the risk-assessment section index (high-risk areas: revenue-critical, security-sensitive, complex logic). This file was already validated by `scripts/setup.sh` via the enforced quality gate. Section bodies are loaded on demand.
