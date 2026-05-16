@@ -18,7 +18,18 @@
 
 load 'test_helper.bash'
 
-setup() { common_setup; SCRIPT="$SCRIPTS_DIR/resolve-config.sh"; }
+setup() {
+  common_setup
+  SCRIPT="$SCRIPTS_DIR/resolve-config.sh"
+  # AF-2026-05-17-2: cd into TEST_TMP so the script's L5 $PWD-discovery step
+  # finds no config/project-config.yaml at $PWD and falls through to the
+  # CLAUDE_SKILL_DIR fixture path. Without this cd, running bats from a
+  # parent of gaia-public/ (or any dir with config/project-config.yaml at
+  # PWD) silently substitutes the real project config and breaks the
+  # fixture-based assertions. Tests that explicitly cd elsewhere (precedence
+  # ladder tests #21/#22/#23) override this default.
+  cd "$TEST_TMP"
+}
 teardown() { common_teardown; }
 
 mk_skill_dir() {
