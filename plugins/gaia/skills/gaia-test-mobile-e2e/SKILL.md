@@ -38,7 +38,8 @@ This skill is a sibling of `/gaia-test-device-matrix` — that skill expands a c
 
 ## Critical Rules
 
-- A device-farm adapter MUST be configured in `project-config.yaml`. Missing adapter yields `verdict: ERROR` with guidance pointing at `/gaia-config-device-target`.
+- A device-farm adapter MUST be configured in `project-config.yaml` at `device_farm.adapter` — one of `firebase-test-lab | browserstack | sauce-labs`. Missing adapter yields `verdict: ERROR`. **No `/gaia-config-*` skill currently edits `device_farm.adapter`** (AF-2026-05-17-10); users must edit the YAML directly. `/gaia-config-device-target` is unrelated — it scopes to the `device_targets` section (os_versions × form_factors × screen_sizes matrices), not adapter selection.
+- A defense-in-depth `platforms[]`-mobile gate fires at the top of `scripts/dispatch.sh` (AF-2026-05-17-10): if neither `ios` nor `android` appears in `platforms[]`, the skill exits SKIPPED with reason `no_mobile_platform` (mirrors AF-2026-05-17-9 family-invariant gating for the mobile family).
 - `runtime-profile: network` declaration MUST be honoured — the adapter is allowed to make external API calls, and the bridge toggle gates the dispatch.
 - `auth_env_var` validation is delegated to `dispatch-device-farm.sh` (E74-S9). This skill does not handle credentials directly.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).

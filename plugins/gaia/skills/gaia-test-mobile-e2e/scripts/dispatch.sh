@@ -72,6 +72,26 @@ yaml_get_nested() {
 ADAPTER="$(yaml_get_nested "$CONFIG" "device_farm" "adapter")"
 BRIDGE_ENABLED="$(yaml_get_nested "$CONFIG" "test_execution_bridge" "bridge_enabled")"
 
+# AF-2026-05-17-10: platforms-mobile gate. Defense-in-depth check — skip
+# neutrally when no mobile platform is declared in platforms[]. Mirrors
+# AF-2026-05-17-9 (compliance.ui_present guard on a11y family) for the
+# mobile family. Reads the platforms[] block from the YAML directly via
+# awk (parallel to yaml_get_nested but for the top-level list shape).
+PLATFORMS_LIST=$(awk '
+  /^platforms:[[:space:]]*$/ { flag=1; next }
+  flag && /^[a-z][a-z_]*:/ { flag=0 }
+  flag && /^[[:space:]]+-[[:space:]]+/ {
+    sub(/^[[:space:]]+-[[:space:]]+/, "")
+    gsub(/[[:space:]]+$/, "")
+    gsub(/^"|"$/, "")
+    print
+  }
+' "$CONFIG" | tr '\n' ',')
+if ! printf '%s' "$PLATFORMS_LIST" | grep -qE '(^|,)(ios|android)(,|$)'; then
+  printf '%s\n' '{"skill":"gaia-test-mobile-e2e","verdict":"SKIPPED","reason":"no_mobile_platform","diagnostic":"platforms[] does not contain ios or android. Mobile e2e tests are not applicable to this project. Declare a mobile platform via /gaia-config-platform add ios|android if mobile testing is required."}'
+  exit 0
+fi
+
 # AC5 — bridge_enabled=false short-circuits with SKIPPED.
 if [ "$BRIDGE_ENABLED" = "false" ]; then
   printf '%s\n' '{"skill":"gaia-test-mobile-e2e","verdict":"SKIPPED","reason":"bridge_disabled","diagnostic":"Test Execution Bridge is disabled. Run /gaia-bridge-enable to allow dispatch."}'
@@ -80,7 +100,11 @@ fi
 
 # AC6 — missing adapter fails gracefully with verdict=ERROR.
 if [ -z "$ADAPTER" ]; then
-  printf '%s\n' '{"skill":"gaia-test-mobile-e2e","verdict":"ERROR","reason":"no_device_farm_adapter","diagnostic":"No device-farm adapter configured — add one via /gaia-config-device-target"}'
+  # AF-2026-05-17-10: honest diagnostic. /gaia-config-device-target only edits
+  # the device_targets section (per ADR-044) — NOT device_farm.adapter. No
+  # /gaia-config-* skill currently edits this key, so the user must edit
+  # config/project-config.yaml directly.
+  printf '%s\n' '{"skill":"gaia-test-mobile-e2e","verdict":"ERROR","reason":"no_device_farm_adapter","diagnostic":"No device-farm adapter configured. Set device_farm.adapter in config/project-config.yaml to one of: firebase-test-lab | browserstack | sauce-labs. No section-scoped editor skill currently exists for this key (AF-2026-05-17-10) — edit the YAML directly. The Test Execution Bridge must also be enabled (/gaia-bridge-enable)."}'
   exit 2
 fi
 
