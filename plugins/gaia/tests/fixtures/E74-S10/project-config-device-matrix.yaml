@@ -1,4 +1,9 @@
 # Test fixture: project config used by gaia-test-device-matrix dispatch tests.
+# AF-2026-05-17-10: platforms: declared so the new mobile-platforms gate passes.
+platforms:
+  - ios
+  - android
+
 test_execution_bridge:
   bridge_enabled: true
 device_farm:

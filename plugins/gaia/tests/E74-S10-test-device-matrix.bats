@@ -150,3 +150,26 @@ YAML
   echo "$output" | grep -Eq '"verdict"'
   echo "$output" | grep -Eq '"duration_ms"'
 }
+
+# AF-2026-05-17-10 — platforms-mobile defense-in-depth gate (mirror of
+# AF-2026-05-17-9 for the mobile family).
+
+@test "AF-2026-05-17-10: dispatch SKIPS with no_mobile_platform on non-mobile project" {
+  run bash "$DISPATCH" --config "$FIXTURES/project-config-no-mobile-platforms.yaml"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -Fq '"verdict":"SKIPPED"'
+  echo "$output" | grep -Fq '"reason":"no_mobile_platform"'
+}
+
+@test "AF-2026-05-17-10: honest device_farm.adapter diagnostic names canonical adapters" {
+  run bash "$DISPATCH" --config "$FIXTURES/project-config-no-device-farm.yaml"
+  echo "$output" | grep -Fq '"verdict":"ERROR"'
+  echo "$output" | grep -Fq '"reason":"no_device_farm_adapter"'
+  echo "$output" | grep -Fq 'firebase-test-lab'
+  echo "$output" | grep -Fq 'AF-2026-05-17-10'
+}
+
+@test "AF-2026-05-17-10: dispatch.sh contains the platforms-mobile gate logic" {
+  run grep -E 'no_mobile_platform|AF-2026-05-17-10' "$DISPATCH"
+  [ "$status" -eq 0 ]
+}
