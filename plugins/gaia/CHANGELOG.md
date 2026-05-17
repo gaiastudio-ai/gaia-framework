@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.155.5] — 2026-05-17
+
+### Fixed
+
+- (AF-2026-05-17-4) /gaia-test-run runner-invocation mapping
+- (AF-2026-05-17-3) /gaia-test-run vocab + detection bundle
+
 ## [1.155.4] — 2026-05-16
 
 ### Fixed
