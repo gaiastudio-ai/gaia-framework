@@ -37,6 +37,8 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 ### Phase 1 — Setup
 
+<!-- Guard added by AF-2026-05-17-9 -->
+- Resolve `compliance.ui_present` via `resolve-config.sh`. If the value is not `true`, exit early with `SKIPPED — compliance.ui_present is not true` (the orchestrator at `/gaia-review-all` performs this check via `--skip-a11y`; this guard is defense-in-depth). Mirrors `/gaia-review-a11y` L29 for three-phase a11y family gating consistency (FR-RSV2-44, E69-S2).
 - Resolve the design target from `$ARGUMENTS` or prompt the user inline.
 - Load the layered rubric:
 
