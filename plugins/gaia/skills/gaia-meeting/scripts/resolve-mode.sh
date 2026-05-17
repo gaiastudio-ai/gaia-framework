@@ -60,6 +60,15 @@ if [[ "$MODE_COUNT" -gt 1 ]]; then
   exit 2
 fi
 
+# Reject `--mode=` and `--mode ""` explicitly — silent fallback to `decide`
+# masked user-intent bugs where `--mode "${SOMETHING}"` expanded an unset
+# variable into an empty string (see manual-test finding F9, gaia-meeting
+# QA, 2026-05-18). Distinct from the "no --mode flag at all" path below.
+if [[ "$MODE_COUNT" -eq 1 && -z "$MODE" ]]; then
+  echo "resolve-mode.sh: --mode requires a non-empty value (omit --mode entirely to use the 'decide' default)" >&2
+  exit 4
+fi
+
 if [[ -z "$MODE" ]]; then
   MODE="decide"
 fi
