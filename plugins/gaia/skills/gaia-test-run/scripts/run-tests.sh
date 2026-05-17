@@ -145,7 +145,12 @@ fi
 
 # ---- Local execution ----------------------------------------------------
 if [ -z "$PROVIDER" ]; then
-  # Fall back: detect by file presence in CWD.
+  # Fall back: detect by file presence at top of CWD, then by shallow
+  # recursive scan (maxdepth 4) for projects whose test files live under
+  # nested directories like plugins/<x>/tests/ or src/<x>/__tests__/
+  # (AF-2026-05-17-3). The 4-level bound is wide enough to catch the
+  # GAIA plugin layout (plugins/gaia/tests/*.bats = 3 levels) and typical
+  # monorepo conventions, but tight enough to avoid scanning huge trees.
   if [ -f vitest.config.ts ] || [ -f vitest.config.js ]; then
     PROVIDER="vitest"
   elif [ -f pyproject.toml ] || [ -f pytest.ini ]; then
@@ -154,8 +159,16 @@ if [ -z "$PROVIDER" ]; then
     PROVIDER="bats"
   elif [ -f go.mod ]; then
     PROVIDER="go"
+  elif [ -n "$(find . -maxdepth 4 -type f -name '*.bats' 2>/dev/null | head -1)" ] && command -v bats >/dev/null 2>&1; then
+    PROVIDER="bats"
+  elif [ -n "$(find . -maxdepth 4 -type f \( -name 'vitest.config.ts' -o -name 'vitest.config.js' \) 2>/dev/null | head -1)" ] && command -v vitest >/dev/null 2>&1; then
+    PROVIDER="vitest"
+  elif [ -n "$(find . -maxdepth 4 -type f \( -name pyproject.toml -o -name pytest.ini \) 2>/dev/null | head -1)" ] && command -v pytest >/dev/null 2>&1; then
+    PROVIDER="pytest"
+  elif [ -n "$(find . -maxdepth 4 -type f -name go.mod 2>/dev/null | head -1)" ] && command -v go >/dev/null 2>&1; then
+    PROVIDER="go"
   else
-    log "no test runner configured and no detection match in CWD"
+    log "no test runner configured and no detection match in CWD (or up to maxdepth 4)"
     emit_verdict "FAILED" 0 0 0 0 0 "flake_suspected=false" ""
     exit 3
   fi
