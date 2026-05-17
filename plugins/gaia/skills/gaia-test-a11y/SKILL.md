@@ -97,6 +97,9 @@ CLI override: `--wcag-level <A|AA|AAA>` beats the project-config value at the pe
 
 ### Phase 1 — Resolve adapter (config)
 
+<!-- Guard added by AF-2026-05-17-9 -->
+- Resolve `compliance.ui_present` via `resolve-config.sh`. If the value is not `true`, exit early with `SKIPPED — compliance.ui_present is not true` (the orchestrator at `/gaia-review-all` performs this check via `--skip-a11y`; this guard is defense-in-depth). Mirrors `/gaia-review-a11y` L29 for three-phase a11y family gating consistency (FR-RSV2-44, E69-S2).
+
 Invoke `scripts/select-adapter.sh [--adapter <name>] [--config <project-config-yaml>]`. The script emits the absolute adapter directory path on stdout. Abort the run with an actionable diagnostic if the resolved adapter directory is missing.
 
 ### Phase 2 — Availability probe + Phase 3A toolkit (evidence collection)

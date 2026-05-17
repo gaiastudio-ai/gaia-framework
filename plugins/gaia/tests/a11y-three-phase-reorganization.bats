@@ -209,3 +209,38 @@ teardown() { common_teardown; }
   # stderr (combined into output by bats run) must reference the missing file or skill.
   printf '%s\n' "$output" | grep -iE "a11y|not found|missing" >/dev/null
 }
+
+# AF-2026-05-17-9 — three-phase a11y family gating consistency.
+# /gaia-review-a11y has had the defense-in-depth `compliance.ui_present`
+# guard since E69-S2. AF-17-9 adds the same guard to the planning-phase
+# (gaia-validate-design-a11y) and post-deploy (gaia-test-a11y) members so
+# all three phases behave consistently when invoked directly on a non-UI
+# project (FR-RSV2-44).
+
+@test "AF-2026-05-17-9: all three a11y skills reference compliance.ui_present" {
+  for skill in gaia-validate-design-a11y gaia-review-a11y gaia-test-a11y; do
+    run grep -E 'compliance\.ui_present' "$SKILLS_DIR/$skill/SKILL.md"
+    [ "$status" -eq 0 ] || { echo "FAIL: $skill SKILL.md missing compliance.ui_present"; return 1; }
+  done
+}
+
+@test "AF-2026-05-17-9: all three a11y skills contain the SKIPPED-on-false guard wording" {
+  for skill in gaia-validate-design-a11y gaia-review-a11y gaia-test-a11y; do
+    run grep -F 'SKIPPED — compliance.ui_present is not true' "$SKILLS_DIR/$skill/SKILL.md"
+    [ "$status" -eq 0 ] || { echo "FAIL: $skill SKILL.md missing SKIPPED guard wording"; return 1; }
+  done
+}
+
+@test "AF-2026-05-17-9: /gaia-review-a11y retains the original guard (regression guard)" {
+  # The L29 guard is the canonical reference for the family. Use a robust
+  # substring grep rather than line-exact equality (per Val INFO-1 advisory).
+  run grep -nE 'compliance\.ui_present.*resolve-config\.sh' "$SKILLS_DIR/gaia-review-a11y/SKILL.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "AF-2026-05-17-9: lineage tag present in both newly patched files" {
+  for skill in gaia-validate-design-a11y gaia-test-a11y; do
+    run grep -F 'AF-2026-05-17-9' "$SKILLS_DIR/$skill/SKILL.md"
+    [ "$status" -eq 0 ] || { echo "FAIL: $skill SKILL.md missing AF-2026-05-17-9 lineage tag"; return 1; }
+  done
+}
