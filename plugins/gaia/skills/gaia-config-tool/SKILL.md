@@ -21,7 +21,7 @@ Editing is comment-preserving per ADR-044: pre-existing comments and formatting 
 - Only the `tools` section may be modified. All other sections, all comments, and all formatting outside the edited section MUST be preserved byte-for-byte.
 - The comment-preserving YAML editor lives in `plugins/gaia/scripts/config-yaml-editor.sh` per ADR-042 / ADR-044. Do NOT round-trip the file through a generic YAML serializer.
 - `provider` values MUST resolve to a built-in or registered adapter — verify against `${CLAUDE_PLUGIN_ROOT}/scripts/list-adapters.sh` output where possible.
-- **Orphan-rejection (E71-S9 AC5 / config-skill author convention).** If the user supplies a `<category>` that is not in the canonical adapter-category set emitted by `${CLAUDE_PLUGIN_ROOT}/scripts/list-adapters.sh` (currently `a11y-scanner | dast | dep-audit | deploy | e2e-runner | formatter | linter | mobile-static | perf-tool | sast | secret-scan`), reject with exit 1 and the canonical error message: `category '<category>' is not a known adapter category — see /gaia-list-tools for available categories`. This mirrors the orphan-rejection pattern established by `/gaia-config-device-target` and propagated by E71-S9 AC5 across the config-skill family.
+- **Orphan-rejection (E71-S9 AC5 / config-skill author convention).** If the user supplies a `<category>` that is not in the canonical adapter-category set, reject with exit 1 and the canonical error message: `category '<category>' is not a known adapter category — see /gaia-list-tools for available categories`. The canonical set is the union of (a) categories emitted by `${CLAUDE_PLUGIN_ROOT}/scripts/list-adapters.sh` (currently `a11y-scanner | dast | dep-audit | deploy | e2e-runner | formatter | linter | mobile-static | perf-tool | sast | secret-scan`) and (b) the prose-only category `test_runner` — consumed by `/gaia-test-run` (line 47 of its SKILL.md and line 87 of run-tests.sh) to look up `tools.test_runner.provider` for unit-test runner selection (vitest, pytest, bats, go). `test_runner` has no `scripts/adapters/` entry by design — runner invocation is direct, not adapter-mediated — but the category must be acceptable to `/gaia-config-tool` so users can configure it. This convention is set by AF-2026-05-17-3; it preserves the orphan-rejection guard for unknown categories while admitting the test-runner vocabulary that `/gaia-test-run` already depends on. Mirrors the orphan-rejection pattern established by `/gaia-config-device-target` and propagated by E71-S9 AC5 across the config-skill family.
 - Edits MUST go through the diff-preview confirmation gate — never write without an explicit user confirm response.
 - If the `tools` section is missing (absent from the file), the skill MUST inform the user and offer to scaffold a default section, OR abort.
 
@@ -41,6 +41,8 @@ Editing is comment-preserving per ADR-044: pre-existing comments and formatting 
     # Available adapter categories (from list-adapters.sh):
     #   a11y-scanner | dast | dep-audit | deploy | e2e-runner |
     #   formatter | linter | mobile-static | perf-tool | sast | secret-scan
+    # Plus the prose-only category (no adapter; direct invocation):
+    #   test_runner    -- consumed by /gaia-test-run (AF-2026-05-17-3)
     # Add a category as `<category>: { provider: <provider-name> }`. Run
     # /gaia-list-tools to see the available providers per category.
   ```
