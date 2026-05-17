@@ -5,11 +5,13 @@
 # docs/test-artifacts/traceability-matrix.md describe the strategy-fallback
 # rule (flat -> strategy/ placement per ADR-072 / AF-2026-05-08-5).
 #
-# Covers 9 SKILL.md files (test-plan readers + traceability-matrix readers):
-#   - gaia-trace (primary patch)
+# Covers 9 SKILL.md files (test-plan readers + traceability-matrix readers +
+# gap-analysis-report readers, the last added by AF-2026-05-17-8):
+#   - gaia-trace (primary patch — AF-2026-05-16-4)
 #   - gaia-add-stories, gaia-create-epics, gaia-edit-test-plan,
 #     gaia-memory-hygiene, gaia-readiness-check, gaia-sprint-plan,
-#     gaia-test-gap-analysis (sibling test-plan readers)
+#     gaia-test-gap-analysis (sibling test-plan readers — AF-2026-05-16-4)
+#   - gaia-fill-test-gaps (gap-analysis-report reader — AF-2026-05-17-8)
 #
 # Positive assertion: each SKILL.md that mentions test-plan.md or
 # traceability-matrix.md ALSO mentions the strategy/ placement on the same
@@ -38,6 +40,7 @@ setup() {
     gaia-readiness-check
     gaia-sprint-plan
     gaia-test-gap-analysis
+    gaia-fill-test-gaps
   )
   export LC_ALL=C
 }
@@ -49,10 +52,12 @@ setup() {
   done
 }
 
-@test "every in-scope SKILL.md mentions strategy/test-plan.md or strategy/traceability-matrix.md" {
+@test "every in-scope SKILL.md mentions strategy/{test-plan,traceability-matrix,test-gap-analysis} placement" {
+  # Regex widened in AF-2026-05-17-8 to admit `test-gap-analysis-*` for the
+  # gaia-fill-test-gaps glob; pre-existing skills are unaffected.
   for skill in "${SKILLS[@]}"; do
     f="$SKILLS_DIR/$skill/SKILL.md"
-    if ! grep -qE 'strategy/(test-plan|traceability-matrix)\.md' "$f"; then
+    if ! grep -qE 'strategy/(test-plan|traceability-matrix|test-gap-analysis)' "$f"; then
       echo "FAIL: $skill SKILL.md does not mention strategy/ placement"
       return 1
     fi
