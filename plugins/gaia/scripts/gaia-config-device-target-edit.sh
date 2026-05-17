@@ -111,8 +111,12 @@ payload = json.loads(sys.argv[1])
 out = sys.argv[2]
 with open(out, "w") as fh:
     if not payload:
-        # Section header alone (effectively clears the section).
-        fh.write("device_targets: {}\n")
+        # Section header alone (effectively clears the section). AF-2026-05-17-7:
+        # write bare 'device_targets:' (block-style empty section) instead of
+        # inline-flow 'device_targets: {}' so the file round-trips to the
+        # reconciler-hydrated baseline shape and trailing comments stay
+        # anchored as child-position comments of the empty mapping.
+        fh.write("device_targets:\n")
     else:
         fh.write("device_targets:\n")
         for plat, body in payload.items():
