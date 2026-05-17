@@ -19,7 +19,9 @@ This skill is the native Claude Code conversion of the legacy bridge-toggle work
 ## Critical Rules
 
 - **Modify `config/project-config.yaml` in place, preserving ALL comments, key ordering, and formatting.** Never regenerate the full file. A successful toggle emits a single-line change.
-- **Use regex-based in-place edit targeting ONLY the `bridge_enabled:` line — never regenerate the full file.** Pattern: `/^(\s+bridge_enabled:\s*)(true|false)/m`. Replace capture group 2 with the target value.
+- **Use regex-based in-place edit targeting ONLY the `bridge_enabled:` line — never regenerate the full file.** Two cases (AF-2026-05-17-6):
+  - **Key present** — pattern `/^(\s+bridge_enabled:\s*)(true|false)/m`. Replace capture group 2 with the target value. This is the steady-state path.
+  - **Key absent (section present, key missing)** — the section header exists at `^test_execution_bridge:\s*$` but no `bridge_enabled:` line follows. INSERT a new line `  bridge_enabled: <target>` immediately after the `test_execution_bridge:` header. Preserve the existing `# reconciled by ...` trailing comment block. This is the AC-EC3 path documented in Step 1 ("treat as `false` when key missing") — the regex-only flip-path has no expression for it.
 - **Idempotent: if the flag is already in the target state, do NOT write the file.** A byte-level diff must show zero changes. Report `Bridge already {enabled|disabled}` and exit with status ok.
 - **Fail fast when the test_execution_bridge block is missing (AC-EC2).** Emit `test_execution_bridge block missing — run /gaia-ci-setup first` and exit non-zero. Do NOT create a new block silently.
 - **The flag flip takes effect immediately.** Under the native plugin there is no pre-compiled config cache to refresh (ADR-044/ADR-048 retired the `.resolved/` chain). Downstream workflows read `config/project-config.yaml` directly via `scripts/resolve-config.sh` on their next invocation.
@@ -54,9 +56,9 @@ The skill runs five steps in strict order, mirroring the legacy `bridge-toggle/i
 ## Step 3 — Write Updated State
 
 - Use a regex-based in-place edit (`Edit` tool) against `config/project-config.yaml` to update ONLY the `bridge_enabled:` line within the `test_execution_bridge:` section.
-- Regex pattern: `/^(\s+bridge_enabled:\s*)(true|false)/m` — replace capture group 2 with the target value.
-- This preserves inline comments on the same line and all surrounding YAML content.
-- If the `test_execution_bridge` section is missing: emit the error from Step 1 (`test_execution_bridge section not found in config/project-config.yaml — cannot toggle. Add the section first (see ADR-028 §10.20.7).`) and exit non-zero.
+- **Key-present path** — pattern `/^(\s+bridge_enabled:\s*)(true|false)/m` — replace capture group 2 with the target value. Preserves inline comments on the same line and all surrounding YAML content.
+- **Key-absent path (AF-2026-05-17-6, AC-EC3)** — when `bridge_enabled` is not present under `test_execution_bridge:` (e.g. the section was hydrated by `gaia-reconcile-v2` with only a `# reconciled by ...` comment), INSERT the new line `  bridge_enabled: <target>` immediately after the `^test_execution_bridge:\s*$` header. Insertion regex: replace `^test_execution_bridge:\s*$` with `test_execution_bridge:\n  bridge_enabled: <target>`. The existing trailing comment lines under the section are preserved unchanged.
+- If the `test_execution_bridge` section is missing entirely: emit the error from Step 1 (`test_execution_bridge section not found in config/project-config.yaml — cannot toggle. Add the section first (see ADR-028 §10.20.7).`) and exit non-zero — do NOT create the section silently (AC-EC2).
 - Write the updated content back to `config/project-config.yaml`.
 
 ## Step 4 — Post-Flip Checks (Enable Only)
