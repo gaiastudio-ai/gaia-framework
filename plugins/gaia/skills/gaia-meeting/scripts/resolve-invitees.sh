@@ -161,14 +161,21 @@ if (( ${#user_invitees[@]} > 0 )); then
       is_user_token=1
     fi
     if (( is_user_token == 1 )); then
-      user_token_seen=1
       if [[ -n "$SESSION_FILE" ]]; then
-        # E76-S21 carve-out path: PRESERVE the token (no WARNING). The
-        # session-state update fires once after the loop so we don't write
-        # the file repeatedly when multiple user-tokens appear.
-        filtered_user_invitees+=("$u")
+        # E76-S21 carve-out path: PRESERVE the FIRST user-token verbatim,
+        # then collapse any subsequent user-tokens into the same single
+        # attendee slot. The user is one human regardless of how many
+        # aliases (`me`, `user`, `<resolved-name>`) appear in --invitees —
+        # emitting multiple slots would produce duplicate AskUserQuestion
+        # yields at each turn boundary. The first token wins so the
+        # caller's intended label round-trips into downstream artifacts.
+        if (( user_token_seen == 0 )); then
+          filtered_user_invitees+=("$u")
+        fi
+        user_token_seen=1
         continue
       fi
+      user_token_seen=1
       # Legacy E76-S8 path (no --session-file): drop with WARNING. Single-
       # line WARNING — exact wording preserved character-identical with the
       # original FR-MTG-10 / AC4 implementation.

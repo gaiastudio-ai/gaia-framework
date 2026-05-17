@@ -84,12 +84,42 @@ is_valid_field() {
   return 1
 }
 
+# Phase enum — applies to `phase` and `last_checkpoint_phase`. Empty value
+# is permitted for `last_checkpoint_phase` (initial state) but not for
+# `phase` once set; create_default seeds phase=INVITE so update-to-empty
+# would be a regression.
+PHASE_ENUM_RE='^(INVITE|CHARTER|RESEARCH|DISCUSS|CLOSE|REVIEW|SAVE)$'
+
 # Quote the value for YAML — strings get double-quotes, integers stay bare.
+# Per-field value validation enforces the FR-MTG-33 schema types so a
+# corrupted update can't survive `--resume` (see manual-test finding F8,
+# gaia-meeting QA, 2026-05-18).
 yaml_emit_value() {
   local field="$1"; local v="$2"
   case "$field" in
     round|turn_counter|cadence_counter|cumulative_cost)
+      if ! [[ "$v" =~ ^[0-9]+$ ]]; then
+        echo "session-state.sh: ${field} must be a non-negative integer, got: $v" >&2
+        exit 2
+      fi
       printf '%s' "$v"
+      ;;
+    phase)
+      if ! [[ "$v" =~ $PHASE_ENUM_RE ]]; then
+        echo "session-state.sh: phase must be one of INVITE|CHARTER|RESEARCH|DISCUSS|CLOSE|REVIEW|SAVE, got: $v" >&2
+        exit 2
+      fi
+      printf '"%s"' "$v"
+      ;;
+    last_checkpoint_phase)
+      # Empty string is valid (initial state before first yield); otherwise
+      # the value must be one of the seven canonical phases.
+      if [[ -n "$v" ]] && ! [[ "$v" =~ $PHASE_ENUM_RE ]]; then
+        echo "session-state.sh: last_checkpoint_phase must be empty or one of INVITE|CHARTER|RESEARCH|DISCUSS|CLOSE|REVIEW|SAVE, got: $v" >&2
+        exit 2
+      fi
+      local escaped="${v//\"/\\\"}"
+      printf '"%s"' "$escaped"
       ;;
     user_attendance)
       # Boolean field — emit bare `true` / `false` (YAML literal). Empty value
