@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.155.6] — 2026-05-17
+
+### Fixed
+
+- (AF-2026-05-17-6) bridge-toggle absent-key + resolver allowlist
+
 ## [1.155.5] — 2026-05-17
 
 ### Fixed
