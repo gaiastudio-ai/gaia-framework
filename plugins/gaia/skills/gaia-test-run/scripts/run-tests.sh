@@ -89,17 +89,95 @@ PROVIDER="${PROVIDER//\"/}"
 PROVIDER="${PROVIDER## }"
 PROVIDER="${PROVIDER%% }"
 
-# ---- Compose targeting args (forwarded verbatim — generic v1) -----------
+# ---- Compose targeting args (per-PROVIDER mapping — AF-2026-05-17-4) ----
+# Targeting flags get composed AFTER PROVIDER is resolved (see compose_target_args
+# below) so the --tag / --story / --file forwarding can use the correct
+# runner-native syntax. The TARGET_ARGS array is populated by compose_target_args()
+# just before runner invocation, NOT here.
 TARGET_ARGS=()
-if [ -n "$TAG" ]; then
-  TARGET_ARGS+=("--tag" "$TAG")
-fi
-if [ -n "$STORY" ]; then
-  TARGET_ARGS+=("--story" "$STORY")
-fi
-if [ -n "$FILE" ]; then
-  TARGET_ARGS+=("$FILE")
-fi
+
+# Build TARGET_ARGS for the resolved PROVIDER. Must be called AFTER detection.
+# Per gaia-test-run/SKILL.md Step 3:
+#   --tag NAME → runner-specific tag flag (vitest -t, pytest -m, bats --filter, go -run)
+#   --story KEY → filename-glob expansion (*${KEY}*) — matched paths appended
+#   --file PATH → pass file directly
+# Empty-args default invocation: bats requires a positional test path (otherwise
+# prints help), go requires ./... . Vitest / pytest auto-discover at PWD.
+compose_target_args() {
+  TARGET_ARGS=()
+
+  if [ -n "$TAG" ]; then
+    case "$PROVIDER" in
+      bats)    TARGET_ARGS+=("--filter" "$TAG") ;;
+      vitest)  TARGET_ARGS+=("-t" "$TAG") ;;
+      pytest)  TARGET_ARGS+=("-m" "$TAG") ;;
+      go)      TARGET_ARGS+=("-run" "$TAG") ;;
+      *)       TARGET_ARGS+=("--tag" "$TAG") ;;
+    esac
+  fi
+
+  if [ -n "$STORY" ]; then
+    # Expand --story KEY → filename matches via maxdepth-4 find. Mirror the
+    # AF-2026-05-17-3 detection convention so callers get consistent search
+    # depth regardless of CWD.
+    local matches
+    matches=$(find . -maxdepth 4 -type f -name "*${STORY}*" 2>/dev/null \
+              | grep -E '\.(bats|test\.(js|ts|tsx)|test\.py|_test\.go)$' \
+              | head -20)
+    if [ -z "$matches" ]; then
+      log "no test files matched story key '${STORY}' (searched maxdepth 4)"
+      emit_verdict "FAILED" 0 0 0 0 0 "flake_suspected=false" ""
+      exit 3
+    fi
+    while IFS= read -r m; do
+      [ -n "$m" ] && TARGET_ARGS+=("$m")
+    done <<<"$matches"
+  fi
+
+  if [ -n "$FILE" ]; then
+    TARGET_ARGS+=("$FILE")
+  fi
+
+  # Empty-positional-path default: bats needs an explicit test path even
+  # when --filter or --filter-tags is set. Detect whether TARGET_ARGS contains
+  # any non-flag positional arg; if not, append a default for bats / go.
+  local has_positional=0
+  local i=0
+  while [ $i -lt "${#TARGET_ARGS[@]}" ]; do
+    case "${TARGET_ARGS[$i]}" in
+      -*) i=$((i+1));;
+      *)  has_positional=1; break;;
+    esac
+    # Skip the value-arg paired with a flag (--filter VALUE, -t VALUE, etc.)
+    if [ "$i" -lt "${#TARGET_ARGS[@]}" ] && [ $((i-1)) -ge 0 ]; then
+      case "${TARGET_ARGS[$((i-1))]}" in
+        --filter|--filter-tags|-t|-m|-run) i=$((i+1));;
+      esac
+    fi
+  done
+
+  if [ "$has_positional" -eq 0 ]; then
+    case "$PROVIDER" in
+      bats)
+        # Default to the highest-density bats directory under maxdepth 4
+        # (mirrors the AF-2026-05-17-3 recursive detection logic).
+        local bats_dir
+        bats_dir=$(find . -maxdepth 4 -type f -name '*.bats' 2>/dev/null \
+                   | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -1 \
+                   | sed 's/^ *[0-9]* *//')
+        if [ -n "$bats_dir" ]; then
+          TARGET_ARGS+=("$bats_dir")
+        fi
+        ;;
+      go)
+        TARGET_ARGS+=("./...")
+        ;;
+      vitest|pytest)
+        : # Auto-discover at PWD — leave TARGET_ARGS as-is
+        ;;
+    esac
+  fi
+}
 
 emit_verdict() {
   local status="$1" duration_ms="$2" test_count="$3" pass_count="$4" \
@@ -173,6 +251,9 @@ if [ -z "$PROVIDER" ]; then
     exit 3
   fi
 fi
+
+# Compose targeting args now that PROVIDER is resolved (AF-2026-05-17-4).
+compose_target_args
 
 START_NS="$(date +%s%N 2>/dev/null || echo 0)"
 if [ "${#TARGET_ARGS[@]}" -gt 0 ]; then
