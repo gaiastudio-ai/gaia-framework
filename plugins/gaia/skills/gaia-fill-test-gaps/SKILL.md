@@ -22,7 +22,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ## Critical Rules
 
-- A gap analysis report MUST exist at `docs/test-artifacts/test-gap-analysis-*.md`. If none found, fail fast with "No gap analysis report found -- run `/gaia-test-gap-analysis` first" (AC-EC3).
+- A gap analysis report MUST exist. Resolve via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): first try `docs/test-artifacts/test-gap-analysis-*.md` (flat layout); if zero matches, fall back to `docs/test-artifacts/strategy/test-gap-analysis-*.md` (E53 reorganization placement). If NEITHER glob resolves, fail fast with "No gap analysis report found at docs/test-artifacts/test-gap-analysis-*.md or docs/test-artifacts/strategy/test-gap-analysis-*.md -- run `/gaia-test-gap-analysis` first" (AC-EC3).
 - If gap report frontmatter contains malformed YAML, fail with a descriptive parse error message (AC-EC2).
 - Action proposal rules MUST be applied from `scripts/lib/gap-triage-rules.js` -- the single source of truth for the ADR-039 section 10.22.8.2 rule table.
 - Logs-and-continues error handling: a single sub-workflow failure MUST NOT halt the parent skill (FR-314).
@@ -39,12 +39,12 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ### Step 1 -- Load Gap Report
 
-- Glob `docs/test-artifacts/test-gap-analysis-*.md` to find all gap analysis reports.
+- Glob the gap-analysis report path via the strategy-fallback rule (Critical Rules above): first try `docs/test-artifacts/test-gap-analysis-*.md` (flat layout); if zero matches, fall back to `docs/test-artifacts/strategy/test-gap-analysis-*.md` (E53 reorganization placement, ADR-072). Take the UNION of both globs so a project mid-migration with reports in both locations is handled deterministically.
 - Sort glob results deterministically (lexicographic on filename).
 - For each matched file, parse the YAML frontmatter and extract the `date` field.
 - If a file has missing or malformed frontmatter, HALT with error: "Parse error in {filepath} -- malformed or missing frontmatter. Fix the file or regenerate with /gaia-test-gap-analysis" (AC-EC2).
 - Select the file with the most recent `date` value.
-- If zero files match the glob, HALT with: "No gap analysis report found -- run `/gaia-test-gap-analysis` first" (AC-EC3).
+- If zero files match EITHER glob, HALT with: "No gap analysis report found at docs/test-artifacts/test-gap-analysis-*.md or docs/test-artifacts/strategy/test-gap-analysis-*.md -- run `/gaia-test-gap-analysis` first" (AC-EC3).
 - Parse the selected report's markdown body to extract gap table rows (story_key, gap_type, severity, description).
 
 ### Step 2 -- Severity Filter
@@ -94,7 +94,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 - Render the triage map as a markdown table: `story_key | gap_count | gap_types | proposed_action | sub_workflow | status | skip_reason`.
 - Add header with: report source file, date, severity filter, total gaps, filtered gaps.
-- Save to `docs/test-artifacts/fill-test-gaps-triage-{date}.md`.
+- Save to `docs/test-artifacts/fill-test-gaps-triage-{date}.md` (writer-asymmetry per AF-2026-05-17-8: this skill READS gap reports via flat-then-strategy/ fallback but WRITES the triage artifact to the flat path only — mirrors the AF-2026-05-16-3/4 writer policy that path-layout decisions belong to a project-config setting, not per-skill writer fallbacks).
 
 ### Step 6 -- Execute Approved Actions
 
@@ -115,7 +115,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 - Import `writeReport` from `scripts/lib/gap-remediation-report-writer.js`.
 - Call `writeReport` with tracking map, source gap report path, output directory, and execution date.
-- Output: `docs/test-artifacts/gap-remediation-report-{date}.md` with frontmatter (source_gap_report, execution_date, total_actions, succeeded, failed, skipped) and per-action detail table per architecture section 10.22.8.3.
+- Output: `docs/test-artifacts/gap-remediation-report-{date}.md` (writer-asymmetry per AF-2026-05-17-8: WRITES the remediation artifact to the flat path only, even when the source gap report was read from `strategy/` — mirrors the AF-2026-05-16-3/4 writer policy) with frontmatter (source_gap_report, execution_date, total_actions, succeeded, failed, skipped) and per-action detail table per architecture section 10.22.8.3.
 - If `writeReport` throws, HALT with error -- the report must always be written for retry-only-failed semantics.
 
 ## Finalize
