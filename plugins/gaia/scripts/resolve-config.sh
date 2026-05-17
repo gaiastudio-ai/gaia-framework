@@ -792,6 +792,13 @@ v_compliance_regimes=$(merge_nested_inline_list compliance regimes)
 v_compliance_domain=$(merge_nested_key compliance domain)
 v_compliance_ui_present=$(merge_nested_key compliance ui_present)
 
+# test_execution_bridge.bridge_enabled — toggle read by /gaia-bridge-enable
+# and /gaia-bridge-disable per gaia-bridge-toggle SKILL.md Step 1. The key
+# may be absent when test_execution_bridge: was hydrated by reconcile-v2
+# with only a comment block; consumers should treat empty output as `false`
+# per the SKILL.md AC-EC3 contract (AF-2026-05-17-6).
+v_test_execution_bridge_bridge_enabled=$(merge_nested_key test_execution_bridge bridge_enabled)
+
 # tools.{category}.provider — common categories surfaced; others reachable
 # via ad-hoc dotted-key lookup if needed by future callers.
 v_tools_sast_provider=$(merge_doubly_nested_key tools sast provider)
@@ -1139,6 +1146,10 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_test_execution_tier_2_placement" ;;
     test_execution.tier_3.placement)
       printf '%s\n' "$v_test_execution_tier_3_placement" ;;
+    # AF-2026-05-17-6 — bridge toggle key (consumers treat empty as `false`
+    # per gaia-bridge-toggle SKILL.md AC-EC3).
+    test_execution_bridge.bridge_enabled)
+      printf '%s\n' "$v_test_execution_bridge_bridge_enabled" ;;
     severity.Critical)
       printf '%s\n' "$v_severity_Critical" ;;
     severity.High)
