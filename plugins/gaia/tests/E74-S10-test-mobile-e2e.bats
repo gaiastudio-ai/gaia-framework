@@ -112,3 +112,42 @@ teardown() {
 @test "AC1: setup.sh exists and is executable" {
   [ -x "$SETUP" ]
 }
+
+# AF-2026-05-17-10 — platforms-mobile defense-in-depth gate.
+# Skip neutrally when platforms[] contains no mobile target (ios|android).
+# Mirrors AF-2026-05-17-9 (compliance.ui_present guard on a11y family).
+
+@test "AF-2026-05-17-10: dispatch SKIPS with no_mobile_platform on non-mobile project" {
+  run bash "$DISPATCH" --config "$FIXTURES/project-config-no-mobile-platforms.yaml"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -Fq '"verdict":"SKIPPED"'
+  echo "$output" | grep -Fq '"reason":"no_mobile_platform"'
+}
+
+@test "AF-2026-05-17-10: dispatch proceeds past the gate when platforms[] contains ios" {
+  # Existing firebase fixture now declares ios+android (per AF-17-10 fixture
+  # update). Must NOT skip with no_mobile_platform.
+  run bash "$DISPATCH" --config "$FIXTURES/project-config-device-farm-firebase.yaml"
+  [ "$status" -ne 1 ]
+  # If it skipped, reason should NOT be no_mobile_platform
+  if echo "$output" | grep -Fq '"verdict":"SKIPPED"'; then
+    ! echo "$output" | grep -Fq '"reason":"no_mobile_platform"'
+  fi
+}
+
+@test "AF-2026-05-17-10: honest device_farm.adapter diagnostic names canonical adapters" {
+  # The no-device-farm fixture declares platforms but no adapter; should ERROR
+  # with the new honest diagnostic naming firebase/browserstack/sauce.
+  run bash "$DISPATCH" --config "$FIXTURES/project-config-no-device-farm.yaml"
+  echo "$output" | grep -Fq '"verdict":"ERROR"'
+  echo "$output" | grep -Fq '"reason":"no_device_farm_adapter"'
+  echo "$output" | grep -Fq 'firebase-test-lab'
+  echo "$output" | grep -Fq 'browserstack'
+  echo "$output" | grep -Fq 'sauce-labs'
+  echo "$output" | grep -Fq 'AF-2026-05-17-10'
+}
+
+@test "AF-2026-05-17-10: dispatch.sh contains the platforms-mobile gate logic" {
+  run grep -E 'no_mobile_platform|AF-2026-05-17-10' "$DISPATCH"
+  [ "$status" -eq 0 ]
+}

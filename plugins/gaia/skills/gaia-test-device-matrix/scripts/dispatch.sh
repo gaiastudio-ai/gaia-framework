@@ -57,13 +57,31 @@ yaml_get_nested() {
 ADAPTER="$(yaml_get_nested "$CONFIG" "device_farm" "adapter")"
 BRIDGE_ENABLED="$(yaml_get_nested "$CONFIG" "test_execution_bridge" "bridge_enabled")"
 
+# AF-2026-05-17-10: platforms-mobile gate. Defense-in-depth — skip
+# neutrally when no mobile platform is declared. Mirrors AF-2026-05-17-9.
+PLATFORMS_LIST=$(awk '
+  /^platforms:[[:space:]]*$/ { flag=1; next }
+  flag && /^[a-z][a-z_]*:/ { flag=0 }
+  flag && /^[[:space:]]+-[[:space:]]+/ {
+    sub(/^[[:space:]]+-[[:space:]]+/, "")
+    gsub(/[[:space:]]+$/, "")
+    gsub(/^"|"$/, "")
+    print
+  }
+' "$CONFIG" | tr '\n' ',')
+if ! printf '%s' "$PLATFORMS_LIST" | grep -qE '(^|,)(ios|android)(,|$)'; then
+  printf '%s\n' '{"skill":"gaia-test-device-matrix","verdict":"SKIPPED","reason":"no_mobile_platform","diagnostic":"platforms[] does not contain ios or android. Device-matrix expansion is not applicable to this project. Declare a mobile platform via /gaia-config-platform add ios|android if mobile testing is required."}'
+  exit 0
+fi
+
 if [ "$BRIDGE_ENABLED" = "false" ]; then
   printf '%s\n' '{"skill":"gaia-test-device-matrix","verdict":"SKIPPED","reason":"bridge_disabled","diagnostic":"Test Execution Bridge is disabled. Run /gaia-bridge-enable to allow dispatch."}'
   exit 0
 fi
 
 if [ -z "$ADAPTER" ]; then
-  printf '%s\n' '{"skill":"gaia-test-device-matrix","verdict":"ERROR","reason":"no_device_farm_adapter","diagnostic":"No device-farm adapter configured — add one via /gaia-config-device-target"}'
+  # AF-2026-05-17-10: honest diagnostic — see mobile-e2e dispatch.sh for rationale.
+  printf '%s\n' '{"skill":"gaia-test-device-matrix","verdict":"ERROR","reason":"no_device_farm_adapter","diagnostic":"No device-farm adapter configured. Set device_farm.adapter in config/project-config.yaml to one of: firebase-test-lab | browserstack | sauce-labs. No section-scoped editor skill currently exists for this key (AF-2026-05-17-10) — edit the YAML directly. The Test Execution Bridge must also be enabled (/gaia-bridge-enable)."}'
   exit 2
 fi
 
