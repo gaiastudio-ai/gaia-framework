@@ -82,9 +82,14 @@ seed_example() {
   grep -q "install-test-environment-manifest.sh" "${SKILL_MD}"
 }
 
-@test "AC3 / AC5: bridge-toggle SKILL.md AC-EC5 YOLO-absent branch auto-copies (not auto-skip to c)" {
-  # The new prose must contain the YOLO auto-copy log line
-  grep -q "auto-copied test-environment.yaml from template (YOLO mode)" "${SKILL_MD}"
+@test "AC3 / AC5: bridge-toggle SKILL.md AC-EC5 YOLO-absent branch does NOT auto-skip-to-[c]" {
+  # The YOLO-absent branch must NOT degrade to "auto-skip option [c]".
+  # E17-S31 originally introduced "auto-copied test-environment.yaml from template (YOLO mode)";
+  # E17-S34 superseded that with the inline-generator log line
+  # "auto-generated config/test-environment.yaml for detected stack: <stack>".
+  # Either log line satisfies S31's intent (YOLO produces a usable manifest, not a fail-fast skip).
+  grep -qE "(auto-copied test-environment.yaml from template|auto-generated config/test-environment.yaml for detected stack)" "${SKILL_MD}"
+
   # And must NOT still say "auto-select option [c] Skip" in the YOLO-absent block
   # (defense-in-depth against a partial revert)
   ! grep -q "auto-select option \`\[c\]\` Skip" "${SKILL_MD}"
