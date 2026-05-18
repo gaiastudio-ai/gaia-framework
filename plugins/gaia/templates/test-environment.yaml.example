@@ -1,0 +1,97 @@
+# test-environment.yaml — Test Execution Bridge Manifest
+# Declares test tiers, runner commands, environment requirements,
+# and tier-to-gate mappings for the GAIA Test Execution Bridge (ADR-028).
+#
+# Place this file at {project-path}/test-environment.yaml.
+# When absent, the bridge falls back to auto-discovery (FR-196).
+#
+# Schema version: 2  (bumped from 1 for promotion_chain_env_id support — E20-S10)
+# Reference: architecture.md Section 10.20.5, 10.24.3
+
+# ─── Required Fields ───────────────────────────────────────────────
+
+# Schema version (required, integer). Allows forward-compatible evolution.
+# v1: base schema (E17-S7)
+# v2: adds optional per-runner `promotion_chain_env_id` field (E20-S10)
+version: 2
+
+# Runner definitions (required, list). Each entry declares a named test runner
+# with its CLI command and associated tier.
+runners:
+  # Tier 1 — Unit tests: no environment required, safe to run locally
+  - name: unit                        # Unique runner name (required, string)
+    command: "npm test"               # CLI command to execute (required, string)
+    tier: 1                           # Test tier: 1 (unit), 2 (integration), 3 (e2e) (required, integer)
+    test_pattern: "test/unit/**/*.test.js"   # Glob to find test files (optional)
+    timeout_seconds: 120              # Max execution time in seconds (optional, default: 300)
+    # Optional cross-reference to `ci_cd.promotion_chain[].id` in global.yaml.
+    # When set, the Test Execution Bridge enriches its context with the linked
+    # environment's CI provider, branch, and ci_checks. Omit or set to null to
+    # use tier-local config only (pre-E20 behavior). Silently ignored when
+    # global.yaml has no `ci_cd` block (NFR-045 backward compat).
+    # promotion_chain_env_id: "dev"
+
+  # Tier 2 — Integration tests: service containers required
+  - name: integration
+    command: "npm run test:integration"
+    tier: 2
+    test_pattern: "test/integration/**/*.test.js"
+    timeout_seconds: 300
+    # promotion_chain_env_id: "staging"   # opt-in link to staging chain entry
+
+  # Tier 3 — E2E / System tests: deployed application required
+  - name: e2e
+    command: "npm run test:e2e"
+    tier: 3
+    test_pattern: "test/e2e/**/*.test.js"
+    timeout_seconds: 600
+    # promotion_chain_env_id: "prod"      # opt-in link to prod chain entry
+
+# ─── Optional Fields ──────────────────────────────────────────────
+
+# Primary runner (optional, string). Must match a runner name above.
+# Used as default when no tier is specified.
+primary_runner: unit
+
+# Tier-to-gate mapping (optional, map). Maps tier numbers to review gates
+# that require execution evidence from that tier.
+tiers:
+  1:
+    gates: [qa-tests, test-automate, test-review]
+  2:
+    gates: [review-perf]
+  3:
+    gates: []
+
+  # Per-stack tier hints (optional, map). E25-S6 / FR-312 / ADR-038 §10.20.11.
+  # Each key is OPTIONAL and consumed by the matching StackAdapter's
+  # `resolveTierMapping()`. Absent block → every adapter falls back to its
+  # built-in defaults with no behavioural drift. Unknown keys under
+  # `stack_hints` are rejected by the validator with a loud error naming the
+  # accepted keys (AC6). Partial blocks are valid: unset tiers fall back to
+  # the adapter default. A hint block targeting an inactive stack
+  # (e.g. `go_build_tags` in a project with no `go.mod`) is silently ignored.
+  #
+  # Uncomment and adapt the keys that apply to your stack(s).
+  #
+  # stack_hints:
+  #   pytest_markers: ["slow", "integration"]
+  #   gradle_tasks:
+  #     unit: test
+  #     integration: integrationTest
+  #     e2e: e2eTest
+  #   go_build_tags: ["integration", "e2e"]
+  #   flutter_suites:
+  #     unit: test/
+  #     integration: integration_test/
+  #     e2e: integration_test/e2e/
+
+# Environment requirements (optional, list of strings).
+# Describes system-level prerequisites for running tests.
+env_requirements:
+  - "node >= 20"
+  - "docker >= 24 (for tier 2+)"
+
+# CI workflow configuration (optional, string).
+# GitHub Actions workflow filename to trigger in CI mode.
+ci_workflow: "ci.yml"
