@@ -162,7 +162,7 @@ fi
 # behave as before.
 sentinel="${checkpoint_path}/orchestration-warning-pending.${session_id}"
 
-warning_body() {
+_warning_body() {
   cat <<'WARN'
 
 ────────────────────────────────────────────────────────────────────────────
@@ -188,14 +188,14 @@ WARN
 
 # Write sentinel file first; if the write fails, fall through to stdout
 # only — better noisy than silent.
-warning_body > "$sentinel" 2>/dev/null || true
+_warning_body > "$sentinel" 2>/dev/null || true
 
 # Above-fold marker. Single line, machine-parsable; SKILL.md preludes match
 # the `SURFACE-WARNING: ` prefix and `cat` the path that follows.
 printf 'SURFACE-WARNING: %s\n' "$sentinel"
 
 # Backward-compatible full warning to stdout.
-warning_body
+_warning_body
 
 # Drop the marker so subsequent invocations stay silent for this session.
 : > "$marker" 2>/dev/null || true
