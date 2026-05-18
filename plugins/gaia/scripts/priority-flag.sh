@@ -57,35 +57,60 @@ pflag_read() {
 # (best-effort, no exit-non-zero) so non-story .md files (e.g. README.md
 # accidentally placed under stories/) are skipped silently.
 # ---------------------------------------------------------------------------
-pflag_scan_backlog() {
-  local dir="$1"
+# ---------------------------------------------------------------------------
+# _pflag_scan_by_flag — shared internal helper for status+flag scans (E40-S3)
+# ---------------------------------------------------------------------------
+# Walks both canonical-nested (epic-*/stories/) and legacy-flat layouts,
+# emitting story keys for files where:
+#   - frontmatter status matches $status_filter (empty = any status); AND
+#   - priority_flag matches $flag_value.
+#
+# Used by both pflag_scan_backlog (E38-S4 next-sprint pre-fill) and
+# pflag_scan_active_hotfix (E40-S3 hotfix active-sprint inject). Single
+# source of truth for the dual-layout scan idiom; callers are 1-line
+# delegating wrappers.
+# ---------------------------------------------------------------------------
+_pflag_scan_by_flag() {
+  local dir="$1" status_filter="$2" flag_value="$3"
   local f status_val flag_val key_val
   # Canonical nested layout — recursive walk under any epic-*/stories/ subtree.
-  # `find … -path '*/stories/*.md'` is the canonical idiom (E79-S4); bash globs
-  # do NOT recurse, so the previous `for f in "$dir"/*.md` only saw the legacy
-  # flat layer.
   while IFS= read -r -d '' f; do
     [ -f "$f" ] || continue
-    status_val="$(_pflag_fm_field "status" "$f" 2>/dev/null || true)"
-    [ "$status_val" = "backlog" ] || continue
+    if [ -n "$status_filter" ]; then
+      status_val="$(_pflag_fm_field "status" "$f" 2>/dev/null || true)"
+      [ "$status_val" = "$status_filter" ] || continue
+    fi
     flag_val="$(pflag_read "$f" 2>/dev/null || true)"
-    [ "$flag_val" = "next-sprint" ] || continue
+    [ "$flag_val" = "$flag_value" ] || continue
     key_val="$(_pflag_fm_field "key" "$f" 2>/dev/null || true)"
     [ -n "$key_val" ] || continue
     printf '%s\n' "$key_val"
   done < <(find "$dir" -path '*/stories/*.md' -type f -print0 2>/dev/null)
   # Legacy flat layout — read-only fallback until E79-S6 migration completes.
-  # Same flag-filter semantics; only the traversal scope differs.
   for f in "$dir"/*.md; do
     [ -f "$f" ] || continue
-    status_val="$(_pflag_fm_field "status" "$f" 2>/dev/null || true)"
-    [ "$status_val" = "backlog" ] || continue
+    if [ -n "$status_filter" ]; then
+      status_val="$(_pflag_fm_field "status" "$f" 2>/dev/null || true)"
+      [ "$status_val" = "$status_filter" ] || continue
+    fi
     flag_val="$(pflag_read "$f" 2>/dev/null || true)"
-    [ "$flag_val" = "next-sprint" ] || continue
+    [ "$flag_val" = "$flag_value" ] || continue
     key_val="$(_pflag_fm_field "key" "$f" 2>/dev/null || true)"
     [ -n "$key_val" ] || continue
     printf '%s\n' "$key_val"
   done
+}
+
+# Public delegates — externally-visible behavior preserved bit-identical (AC5).
+pflag_scan_backlog() {
+  _pflag_scan_by_flag "$1" "backlog" "next-sprint"
+}
+
+# E40-S3 — Scan for hotfix stories regardless of current status, for active-
+# sprint injection via sprint-state.sh inject (per ADR-109 §D3). Empty
+# status_filter means "any status" (backlog | in-progress | ready-for-dev).
+pflag_scan_active_hotfix() {
+  _pflag_scan_by_flag "$1" "" "hotfix"
 }
 
 # ---------------------------------------------------------------------------
