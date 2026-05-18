@@ -80,16 +80,38 @@ jobs:
           BEFORE="$(./plugins/gaia/scripts/lib/resolve-release-anchor.sh)"
           AFTER="${{ github.sha }}"
 
-          COMMITS=$(git log --format="%s" "$BEFORE".."$AFTER" -- plugins/gaia/ 2>/dev/null || echo "")
+          # E40-S4: pass full commit messages (subject + body) to the
+          # classifier, not just subjects. GitHub's squash-merge collapses
+          # N commits into a single commit whose body preserves the
+          # original subjects as bullet lines — the classifier's body-scan
+          # fallback (E40-S4 / AC1) needs the body to find those bullets.
+          # Per-commit messages are separated by the literal delimiter
+          # `---COMMIT---` on its own line so the classifier can split them
+          # back apart at the CLI boundary.
+          COMMITS=$(git log --format='%B%n---COMMIT---' "$BEFORE".."$AFTER" -- plugins/gaia/ 2>/dev/null || echo "")
           if [ -z "$COMMITS" ]; then
             echo "has_commits=false" >> "$GITHUB_OUTPUT"
             echo "No qualifying commits under plugins/gaia/ — skipping."
             exit 0
           fi
 
-          # Filter out prior release commits (defensive — they shouldn't match paths anyway)
-          FILTERED=$(echo "$COMMITS" | grep -vE '^chore\(release\):' || true)
-          if [ -z "$FILTERED" ]; then
+          # Filter out prior release commits (defensive — they shouldn't match paths anyway).
+          # Matching is anchored to the start of a commit block (after the
+          # delimiter) — use awk to split on `---COMMIT---` and keep blocks
+          # whose first non-empty line does NOT begin with `chore(release):`.
+          FILTERED=$(echo "$COMMITS" | awk '
+            BEGIN { RS="---COMMIT---\n"; ORS="---COMMIT---\n" }
+            {
+              # Trim leading blank lines, then grab first line
+              n = split($0, lines, "\n")
+              first = ""
+              for (i = 1; i <= n; i++) {
+                if (lines[i] !~ /^[[:space:]]*$/) { first = lines[i]; break }
+              }
+              if (first !~ /^chore\(release\):/) print
+            }
+          ')
+          if [ -z "$FILTERED" ] || [ "$FILTERED" = "---COMMIT---" ]; then
             echo "has_commits=false" >> "$GITHUB_OUTPUT"
             echo "Only release commits in range — skipping."
             exit 0
