@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.157.0] — 2026-05-18
+
+### Added
+
+- (E17-S32..S36) AF-2026-05-18-4 bridge-enable inline manifest + config/ relocation (#769)
+
 ## [1.156.0] — 2026-05-18
 
 ### Added
