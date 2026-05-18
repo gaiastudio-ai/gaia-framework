@@ -8,6 +8,8 @@
 # Schema version: 2  (bumped from 1 for promotion_chain_env_id support — E20-S10)
 # Reference: architecture.md Section 10.20.5, 10.24.3
 
+# GAIA-MANIFEST-TEMPLATE: edit this file before enabling the bridge -- bridge will fail Layer 0 readiness check until this line is removed
+
 # ─── Required Fields ───────────────────────────────────────────────
 
 # Schema version (required, integer). Allows forward-compatible evolution.
