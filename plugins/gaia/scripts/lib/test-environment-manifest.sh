@@ -1,26 +1,19 @@
 #!/usr/bin/env bash
-# test-environment-manifest.sh — E17-S33 (ADR-110)
+# test-environment-manifest.sh — E17-S33 + E17-S35 (ADR-110, FR-496, FR-497, FR-499)
 #
-# Shared library helper: extracts /gaia-brownfield Phase 5 manifest-generation
-# logic into a callable shell helper. Detects project stack via detect-signals.sh
-# (gaia-public/plugins/gaia/scripts/) and emits a stack-specific
-# test-environment.yaml on stdout or writes it to config/test-environment.yaml
-# at the target project root.
+# Shared library helper: detect project stack and emit a stack-specific
+# config/test-environment.yaml on stdout, or write it to the canonical path
+# with --write (copy-if-absent semantics).
 #
-# This helper is the SINGLE canonical generator for test-environment.yaml going
-# forward. /gaia-brownfield Phase 5 delegates here; /gaia-bridge-enable Step 4
-# (via E17-S34) also delegates here for the inline auto-generate path.
+# Single canonical generator for test-environment.yaml — both /gaia-brownfield
+# Phase 5 and /gaia-bridge-enable Step 4 invoke this helper.
 #
-# Semantics:
-#   - --target alone:           emit yaml on stdout (no write)
-#   - --target --write:         write to <target>/config/test-environment.yaml
-#                               (copy-if-absent: preserve user-edited file)
-#   - Detected stack:           emit stack-specific runners[] (no GAIA-MANIFEST-TEMPLATE sentinel)
-#   - No-stack project:         emit generic single-runner tier-1 placeholder
-#                               (E17-S35 will add sentinel emission to this branch)
+# Sentinel emission (E17-S35):
+#   - Stack DETECTED  → no sentinel (manifest is presumed-customized for the stack).
+#   - Stack NOT MATCHED → GAIA-MANIFEST-TEMPLATE sentinel IS included so Layer 0
+#     readiness will fail until the user customizes the placeholder runners.
 #
-# Output is BYTE-STABLE: re-running on the same project produces identical
-# output. Runners are emitted in canonical order (sorted by tier, then name).
+# Output is BYTE-STABLE: no timestamps, no random IDs.
 #
 # Usage:
 #   test-environment-manifest.sh --target <project-root> [--write]
@@ -28,16 +21,17 @@
 #
 # Exit codes:
 #   0  success
-#   1  filesystem / detect-signals failure
+#   1  detect-signals / filesystem failure
 #   2  usage error
 #
-# Traces: E17-S33, FR-496, FR-497, ADR-110.
+# Traces: E17-S33, E17-S35, FR-496, FR-497, FR-499, ADR-110.
 
 set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
 SCRIPT_NAME="test-environment-manifest.sh"
+SENTINEL_LINE='# GAIA-MANIFEST-TEMPLATE: edit this file before enabling the bridge -- bridge will fail Layer 0 readiness check until this line is removed'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -84,48 +78,42 @@ if [ "${write_mode}" -eq 1 ] && [ -f "${manifest_path}" ]; then
   exit 0
 fi
 
-# Run detect-signals to identify stack
-if [ ! -x "${DETECT_SIGNALS}" ]; then
-  printf '%s: ERROR: detect-signals.sh not found at %s\n' "$SCRIPT_NAME" "${DETECT_SIGNALS}" >&2
-  exit 1
-fi
+# Detect stack
+detect_stack() {
+  if [ ! -x "${DETECT_SIGNALS}" ]; then
+    echo ""
+    return 0
+  fi
+  local detection stacks
+  detection=$("${DETECT_SIGNALS}" --project-root "${target}" --format json 2>/dev/null || echo '{}')
+  stacks=$(echo "${detection}" | jq -r '.stacks[]?.name // empty' 2>/dev/null | sort -u || echo "")
 
-detection=$("${DETECT_SIGNALS}" --project-root "${target}" --format json 2>/dev/null || echo '{"stacks":[],"warnings":["detect-signals failed"]}')
-stacks=$(echo "${detection}" | jq -r '.stacks[]?.name // empty' 2>/dev/null | sort -u || echo "")
-
-# Emit stack-specific runners. Order matters for byte-stability: sort by tier then name.
-generate_runners() {
-  local stack=""
   while IFS= read -r s; do
     case "$s" in
-      react|vue|angular|svelte|node|typescript)
-        stack="node"
-        break ;;
-      python)
-        stack="python"
-        break ;;
-      go)
-        stack="go"
-        break ;;
-      java|kotlin)
-        stack="java"
-        break ;;
-      flutter|dart)
-        stack="flutter"
-        break ;;
-      rust)
-        stack="rust"
-        break ;;
+      react|vue|angular|svelte|node|typescript) echo "node"; return 0 ;;
+      python) echo "python"; return 0 ;;
+      go) echo "go"; return 0 ;;
+      java|kotlin) echo "java"; return 0 ;;
+      flutter|dart) echo "flutter"; return 0 ;;
+      rust) echo "rust"; return 0 ;;
     esac
   done <<< "${stacks}"
 
   # Bash/bats detection: presence of *.bats files when no package.json
-  if [ -z "$stack" ] && [ ! -f "${target}/package.json" ]; then
+  if [ ! -f "${target}/package.json" ]; then
     if find "${target}" -maxdepth 3 -name "*.bats" -print -quit 2>/dev/null | grep -q .; then
-      stack="bash"
+      echo "bash"
+      return 0
     fi
   fi
 
+  echo ""
+  return 0
+}
+
+# Emit stack-specific runners YAML body
+runners_for_stack() {
+  local stack="$1"
   case "$stack" in
     node)
       cat <<'EOF'
@@ -213,7 +201,7 @@ runners:
 EOF
       ;;
     *)
-      # No-stack fallback (FR-497 generic placeholder)
+      # No-stack fallback (FR-497 generic placeholder). Sentinel is added by the caller.
       cat <<'EOF'
 runners:
   - name: unit
@@ -224,23 +212,34 @@ runners:
 EOF
       ;;
   esac
-
-  printf '%s\n' "$stack"
 }
 
 # Build the full manifest
-runners_out=$(generate_runners)
-stack=$(printf '%s' "$runners_out" | tail -n 1)
-runners_body=$(printf '%s' "$runners_out" | sed '$d')
+stack=$(detect_stack)
+runners_body=$(runners_for_stack "${stack}")
 
-# Compose the full manifest. Byte-stable: no timestamps, no random IDs.
-manifest=$(cat <<EOF
-# test-environment.yaml — Test Execution Bridge Manifest
+# Header — stack-detected manifests get a friendly comment; no-stack manifests
+# get the canonical GAIA-MANIFEST-TEMPLATE sentinel so Layer 0 readiness fails
+# until the user customizes (E17-S35 / FR-499).
+if [ -n "${stack}" ]; then
+  header="# test-environment.yaml — Test Execution Bridge Manifest
 # Auto-generated by /gaia-bridge-enable (E17-S33 helper).
 # Edit this file to fine-tune for your project.
 #
-# detected-stack: ${stack:-generic}
+# detected-stack: ${stack}
+# Reference: architecture.md Section 10.20.5"
+else
+  header="# test-environment.yaml — Test Execution Bridge Manifest
+# Auto-generated by /gaia-bridge-enable (E17-S33 helper).
+# No stack detected — generic placeholder runners. CUSTOMIZE for your project.
+#
+# detected-stack: generic
 # Reference: architecture.md Section 10.20.5
+
+${SENTINEL_LINE}"
+fi
+
+manifest="${header}
 
 version: 2
 
@@ -254,9 +253,7 @@ tiers:
   2:
     gates: [review-perf]
   3:
-    gates: []
-EOF
-)
+    gates: []"
 
 if [ "${write_mode}" -eq 1 ]; then
   mkdir -p "$(dirname "${manifest_path}")"
