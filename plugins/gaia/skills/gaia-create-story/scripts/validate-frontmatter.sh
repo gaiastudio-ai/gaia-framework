@@ -294,6 +294,11 @@ check_enum "status"   "backlog ready-for-dev in-progress review validating done 
 check_enum "priority" "P0 P1 P2"
 check_enum "size"     "S M L XL"
 check_enum "risk"     "high medium low"
+# E40-S3 — priority_flag enum extended from {null | next-sprint} to {null | next-sprint | hotfix}
+# per ADR-109 §D3 + §D4. Hotfix value is human-set only (per memory rule
+# feedback_priority_flag_never_auto_set). The `null` case is handled at L282
+# (skips enum check on empty/null values).
+check_enum "priority_flag" "next-sprint hotfix"
 
 # ---------- Boolean check (E88-S2 — `delivered:`) ----------
 #

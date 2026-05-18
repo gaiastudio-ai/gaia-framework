@@ -43,7 +43,7 @@ Native Claude Code conversion of the legacy create-story workflow (Cluster 7, E2
 - After writing the story file, call `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to backlog` to register the story atomically with `status=backlog` across the four canonical surfaces (story-file frontmatter, `sprint-status.yaml`, `epics-and-stories.md`, `story-index.yaml`).
 - The `sprint-status.yaml` MUST be re-read immediately before writing (Sprint-Status Write Safety rule).
 - If a story file already exists for this key with status other than `backlog`, HALT with guidance to use /gaia-fix-story.
-- The priority_flag field accepts only `null` (default) or `"next-sprint"` as valid values.
+- The priority_flag field accepts only `null` (default), `"next-sprint"`, or `"hotfix"` as valid values. The `"hotfix"` value (E40-S3, ADR-109 §D3) is human-set only — `/gaia-add-feature` and triage MUST NOT auto-set it. When set, `/gaia-sprint-plan` auto-injects the story into the ACTIVE sprint via `sprint-state.sh inject` (bypassing sprint-plan selection ceremony). Hotfix stories MUST still pass the FULL `/gaia-run-all-reviews` including the NFR-073 wire-verification gate — a hotfix is faster to PLAN, NOT faster to TEST (ADR-109 §D4).
 - Step 6 (Validation) implements the ADR-050 Val + SM Fix-Loop dispatch pattern. SM fix is INLINE via this skill's own `Edit`/`Write` tools; nested subagent spawning for the fix is forbidden (NFR-046 single-spawn-level).
 - Step 6 3-attempt cap is hard. YOLO MUST NOT bypass the cap or the terminal FAILED verdict (FR-340).
 - Step 6 terminal verdicts are recorded via `review-gate.sh` against the ledger-keyed `story-validation` gate (`--plan-id <id>`); does NOT touch the six canonical Review Gate table rows.
