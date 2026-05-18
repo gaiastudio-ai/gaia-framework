@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.155.12] — 2026-05-18
+
+### Fixed
+
+- (AF-2026-05-18-2) make warning_body private (NFR-052 coverage gate)
+- (AF-2026-05-18-2) cross-platform stat in bats test
+- (AF-2026-05-18-2) surface orchestration warning above Claude Code fold
+
+## [1.155.11] — 2026-05-18
+
+### Fixed
+
+- (AF-2026-05-18-1) gaia-meeting manual-test findings (6 patches)
+
 ## [1.155.10] — 2026-05-17
 
 ### Fixed
