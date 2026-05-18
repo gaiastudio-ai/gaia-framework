@@ -139,8 +139,31 @@ if [ -e "$marker" ]; then
   exit 0
 fi
 
-# ---- Emit the warning ----
-cat <<'WARN'
+# AF-2026-05-18-2 — surface-above-fold contract.
+#
+# Claude Code's CLI auto-collapses Bash tool-call output beyond a few lines,
+# so a multi-line warning emitted to stdout can be invisible to users who
+# don't expand the tool call. To surface the warning above the collapse
+# fold, this helper now:
+#
+#   1. Writes the full warning text to a sentinel file at
+#      ${checkpoint_path}/orchestration-warning-pending.${session_id}.
+#   2. Prints a single-line `SURFACE-WARNING: <sentinel-path>` banner as
+#      the FIRST stdout line — short enough to stay above any auto-collapse
+#      threshold, and a machine-recognizable marker the SKILL.md prelude
+#      pattern can match.
+#   3. Continues to print the full warning text to stdout for backward
+#      compatibility with existing callers, fixtures, and bats tests that
+#      grep for the warning body.
+#
+# Callers that want to surface the warning to the user (the GAIA SKILL.md
+# prelude pattern does this) `cat` the sentinel file and emit its contents
+# as user-visible conversation text. Callers that don't care continue to
+# behave as before.
+sentinel="${checkpoint_path}/orchestration-warning-pending.${session_id}"
+
+_warning_body() {
+  cat <<'WARN'
 
 ────────────────────────────────────────────────────────────────────────────
 GAIA orchestration: running in subagent mode (Mode A)
@@ -161,6 +184,18 @@ This warning is shown once per session.
 ────────────────────────────────────────────────────────────────────────────
 
 WARN
+}
+
+# Write sentinel file first; if the write fails, fall through to stdout
+# only — better noisy than silent.
+_warning_body > "$sentinel" 2>/dev/null || true
+
+# Above-fold marker. Single line, machine-parsable; SKILL.md preludes match
+# the `SURFACE-WARNING: ` prefix and `cat` the path that follows.
+printf 'SURFACE-WARNING: %s\n' "$sentinel"
+
+# Backward-compatible full warning to stdout.
+_warning_body
 
 # Drop the marker so subsequent invocations stay silent for this session.
 : > "$marker" 2>/dev/null || true
