@@ -203,20 +203,28 @@ Output to `docs/planning-artifacts/brownfield-scan-test-execution.md`. If the su
 
 ## Phase 5 — Auto-Generate test-environment.yaml from Detected Infrastructure
 
-This phase aggregates the four brownfield test-infrastructure detectors (E19-S12 test-runner, E19-S13 ci-test, E19-S14 docker-test, E19-S15 browser-matrix) into a single `config/test-environment.yaml` file compatible with the E17-S7 schema.
+This phase delegates manifest generation to the shared library helper at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/test-environment-manifest.sh` (E17-S33). The helper is the SINGLE canonical generator for `config/test-environment.yaml` — both `/gaia-brownfield` Phase 5 (this section) and `/gaia-bridge-enable` Step 4 (E17-S34) invoke it.
 
-1. Invoke the four detectors at the project path and collect results into a single detections object. Each detector runs best-effort: wrap each call in try/catch; record `null` on failure so one crash cannot block the cohort.
-2. Call `hasDetectedInfrastructure(detections)`. If it returns `false`, log `No test infrastructure detected — skipping test-environment.yaml generation (AC6 gate is also skipped)` and proceed. This keeps **greenfield-ish projects with zero test infrastructure** (AC-EC3) from being blocked by a gate they cannot satisfy — the conditional `test_environment_yaml_required_when_infra_detected` gate is NOT triggered in that case.
-3. Otherwise, call `generateTestEnvironmentYaml(detections)` to build the document with the six story-required metadata fields: `test_runner`, `ci_provider`, `docker_test_config`, `browser_matrix`, `generated_by: brownfield`, `generated_date` — alongside the E17-S7 schema-required `version` and `runners` fields.
-4. Resolve the target path as `config/test-environment.yaml`. Check whether the file already exists.
-5. **Conflict resolution:**
-   - File does not exist → call `writeTestEnvironmentYaml(targetPath, doc, "merge")` (merge mode is a no-op for fresh writes). Log `Created test-environment.yaml from detected infrastructure.`
-   - File exists AND execution mode is `yolo` → always use the safe default: merge. Detected values fill only null or missing fields; every non-null user-supplied field is preserved byte-for-byte. Log `Merged detected values into existing test-environment.yaml (YOLO safe default).`
-   - File exists AND execution mode is not `yolo` → prompt the user `test-environment.yaml already exists — [m]erge detected values (safe, default) / [s]kip (leave file unchanged) / [o]verwrite (REPLACE entire file — destructive)`. Wait for the user to choose one of the three options.
-6. **If the write fails (AC-EC4)** — e.g., test-infrastructure detected but the emitter cannot write to disk — halt with the actionable remediation `Re-run step 2.8 or run /gaia-brownfield again` preserving legacy gate semantics.
-7. After writing, validate the file against the E17-S7 schema via `validateTestEnvironment(readFileSync(targetPath, 'utf8'))`. Log any schema warnings as WARN-level messages listing the specific failing field; continue — the file is written but the user is notified. Never halt the overall workflow on schema warnings.
-8. **Normal-mode review pause (E48-S4):** in normal mode, present a summary of the generated `config/test-environment.yaml` and pause for user review before continuing to Phase 6 (NFR Assessment). The summary surfaces the file path and the four detected-infrastructure fields the user is most likely to correct: `test_runner`, `ci_provider`, `docker_test_config` (docker), and `browser_matrix`. Wait for the user to acknowledge before continuing to Phase 6. In yolo mode, skip the pause entirely and auto-continue to Phase 6 — this preserves the existing YOLO behavior where merging detected values into an existing file uses the safe default (merge) without further prompting. When `hasDetectedInfrastructure(detections)` returned `false` in step 2, no test-environment.yaml was generated — both the file write and the review pause are skipped (existing behavior).
-9. Record the detection results and chosen conflict-resolution action in the brownfield onboarding report for traceability.
+1. Invoke the shared helper with `--target <project-path> --write` to detect stack signals and emit the manifest:
+
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/scripts/lib/test-environment-manifest.sh \
+     --target "${PROJECT_PATH}" \
+     --write
+   ```
+
+   The helper uses `detect-signals.sh` under the hood (same detection-signals.yaml registry brownfield consumes elsewhere). It writes to `config/test-environment.yaml` with copy-if-absent semantics — if the file already exists, the helper preserves it byte-identical and exits 0.
+
+2. **Conflict resolution** is handled by the helper:
+   - File does not exist → helper writes the stack-specific manifest. Log `Created test-environment.yaml from detected infrastructure.`
+   - File exists → helper preserves it byte-identical. Log `test-environment.yaml already exists — preserved byte-identical (copy-if-absent).`
+   - Detection finds no stack → helper writes a generic single-tier-1 placeholder (FR-497) so Layer 0 readiness has something valid to read. Log `No stack detected — generic placeholder written; user should customize.`
+
+3. **If the helper exits non-zero**, log the stderr message as a WARN-level entry and proceed. The conditional `test_environment_yaml_required_when_infra_detected` gate (per legacy E19-S12..S15 semantics) is NOT triggered when the helper succeeds OR when no stack is detected.
+
+4. **Normal-mode review pause (E48-S4):** in normal mode, present a summary of the generated `config/test-environment.yaml` (file path + detected stack name + runner names) and pause for user review before continuing to Phase 6. In yolo mode, skip the pause entirely and auto-continue. When the helper reported "preserved byte-identical" (existing file), the review pause is also skipped — the user is presumed to have already engaged with their existing manifest.
+
+5. Record the helper exit code, detected stack, and chosen file disposition in the brownfield onboarding report for traceability.
 
 ## Phase 6 — NFR Assessment & Performance Test Plan
 
