@@ -68,11 +68,11 @@ The skill runs five steps in strict order, mirroring the legacy `bridge-toggle/i
 - **enable mode, state changed:** stat `docs/test-artifacts/test-environment.yaml` (resolved relative to `{project-root}`):
   - **present + valid:** collect detected runners (name + tier) for inclusion in Step 5's summary. Proceed.
   - **present + invalid:** collect schema errors as warnings. Per AC5, do NOT roll back the flag flip — the user can repair the manifest and re-run `/gaia-bridge-enable` if desired. Proceed.
-  - **absent (non-YOLO):** render the 3-option prompt — none of the options auto-invoke any sub-workflow. Ask the user to select:
+  - **absent (non-YOLO):** render the 3-option prompt — option `[b]` is now actionable via the deterministic `install-test-environment-manifest.sh` helper (E17-S31) which copies `docs/test-artifacts/test-environment.yaml.example` → `docs/test-artifacts/test-environment.yaml` with copy-if-absent semantics. Ask the user to select:
     - `[a]` Run `/gaia-brownfield` to auto-generate test-environment.yaml (next-step suggestion — NOT auto-invoked)
-    - `[b]` Copy `docs/test-artifacts/test-environment.yaml.example` to `docs/test-artifacts/test-environment.yaml` and customize
+    - `[b]` Copy `docs/test-artifacts/test-environment.yaml.example` to `docs/test-artifacts/test-environment.yaml` and customize. The orchestrator invokes `${CLAUDE_PLUGIN_ROOT}/scripts/install-test-environment-manifest.sh --target <project-root>` to perform the copy. On exit 1 (the `.example` source is missing — e.g., E17-S30 install hasn't run on this project yet), preserve the current fail-fast behavior and surface the helper's stderr; the user can run `/gaia-init` to materialize the `.example` first.
     - `[c]` Skip — bridge is enabled but will fail-fast at Layer 1 with a clear error message until the manifest is created
-  - **absent (YOLO):** auto-select option `[c]` Skip and log `Bridge is enabled but docs/test-artifacts/test-environment.yaml is missing — Layer 1 will fail-fast until the manifest is created.`
+  - **absent (YOLO):** auto-invoke `${CLAUDE_PLUGIN_ROOT}/scripts/install-test-environment-manifest.sh --target <project-root>` (replaces the prior auto-skip-to-`[c]` behavior). On success, log `auto-copied test-environment.yaml from template (YOLO mode)`. On exit 1 (the `.example` source is missing on this project), preserve the prior auto-skip behavior: log `Bridge is enabled but docs/test-artifacts/test-environment.yaml is missing — Layer 1 will fail-fast until the manifest is created.` and proceed without halting. This keeps the "no interrupting" YOLO contract intact even when E17-S30's install hasn't run on the project.
 - Pass `post_flip_result` to Step 5.
 
 (Removed AC-EC9 "serialization against concurrent /gaia-build-configs" — under the native plugin there is no concurrent build-configs process to race against; ADR-044/ADR-048 retired the pre-compilation step.)
