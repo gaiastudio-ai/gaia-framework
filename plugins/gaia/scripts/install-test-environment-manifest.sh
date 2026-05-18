@@ -34,8 +34,8 @@ export LC_ALL
 
 SCRIPT_NAME="install-test-environment-manifest.sh"
 
-EXAMPLE_REL="docs/test-artifacts/test-environment.yaml.example"
-MANIFEST_REL="docs/test-artifacts/test-environment.yaml"
+EXAMPLE_REL="config/test-environment.yaml.example"
+MANIFEST_REL="config/test-environment.yaml"
 
 target=""
 

@@ -18,7 +18,7 @@ setup() {
   HELPER="${PLUGIN_ROOT}/gaia/scripts/install-test-environment-example.sh"
   TEMPLATE="${PLUGIN_ROOT}/gaia/templates/test-environment.yaml.example"
   TARGET_DIR="$(mktemp -d -t e17s30-bats-XXXXXX)"
-  TARGET_FILE="${TARGET_DIR}/docs/test-artifacts/test-environment.yaml.example"
+  TARGET_FILE="${TARGET_DIR}/config/test-environment.yaml.example"
 }
 
 teardown() {
