@@ -164,3 +164,38 @@ plugins/gaia/scripts/lint-bats-script-refs.sh --root . \
 - `plugins/gaia/tests/lint-bats-script-refs.bats` — the bats suite.
 - `gaia-public/.github/workflows/plugin-ci.yml` — the
   `bats-script-refs-lint` job.
+
+## Release pipeline — promote-PR merge strategy
+
+The release workflow (`release.yml`) auto-opens a `release/vX.Y.Z` PR
+when it detects a commit on `main` whose subject matches a Conventional
+Commit type that classifies as `minor` or `major` (`feat:` or `fix:`).
+Anything else — including `chore:`, `docs:`, and any non-conventional
+subject — yields `bump_size=none` and **no release PR is opened**.
+
+### Pitfall: squash-merging a `promote:` PR collapses the type
+
+When a `staging → main` promote PR is squash-merged with title
+`promote: staging → main (...) (#NNN)`, GitHub generates a single
+commit whose subject is `promote: ...` and whose body is a bullet list
+of the squashed `feat:` / `fix:` commits. The classifier reads only
+the subject, sees `promote:` (not a recognized type), and skips. The
+12 properly-typed `feat:` lines in the body are ignored.
+
+### Two ways to avoid the trap
+
+1. **Merge promote PRs with a default merge-commit, not squash.**
+   `gh pr merge <pr> --merge` preserves the individual `feat:` /
+   `fix:` commits — each contributes to the classifier range.
+
+2. **If a squash already happened, push a follow-up `feat:` commit.**
+   Either a no-op CHANGELOG note or a small doc touch with a
+   `feat(scope): ...` subject will land on `main` via the standard
+   promote flow and re-trigger the release workflow on next push.
+
+### Related artifacts
+
+- `.github/workflows/release.yml` — the workflow.
+- `plugins/gaia/scripts/lib/resolve-release-anchor.sh` — BEFORE anchor
+  resolution (most-recent `v*` tag).
+- `plugins/gaia/scripts/classify-commits.js` — subject-line classifier.
