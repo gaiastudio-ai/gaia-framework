@@ -43,7 +43,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$CHARTER_PROVIDED" -eq 0 ]] || [[ -z "$CHARTER" ]]; then
+# Reject whitespace-only charters (FR-MTG-2 spirit — a "one-to-three-sentence
+# charter" must contain non-blank content; the empty-string check above only
+# catches "" but not "   ").
+CHARTER_TRIMMED="${CHARTER#"${CHARTER%%[![:space:]]*}"}"
+CHARTER_TRIMMED="${CHARTER_TRIMMED%"${CHARTER_TRIMMED##*[![:space:]]}"}"
+
+if [[ "$CHARTER_PROVIDED" -eq 0 ]] || [[ -z "$CHARTER_TRIMMED" ]]; then
   cat <<'EOF' >&2
 charter-gate.sh: BLOCKED — meeting charter is required before INVITE.
 

@@ -88,12 +88,22 @@ classify_line() {
   # side of flagging rather than silently letting a claim through (FR-MTG-5).
   # A "factual claim" = a declarative sentence that asserts a definite fact:
   #   - contains a function/identifier-call shape: foo() or Foo.bar(...)
-  #   - mentions an absolute fact verb in present indicative
-  #     ("returns", "is set", "MUST", "is the", "always", "never", etc.)
+  #   - mentions a present/past indicative copula or assertion verb
+  #     ("is", "are", "was", "were", "has", "have", "had", "will", "MUST",
+  #     "returns", "resolves", "depends", "produces", "emits", "decided",
+  #     "landed", "shipped", "retired", "always", "never", etc.)
+  #   - mentions a constraint/dependency verb ("depends on", "is mandatory")
+  #
+  # The verb list is intentionally broad (FR-MTG-5 "err on flagging" — the
+  # escape hatch is the literal [inference] token, not a permissive
+  # detector). See manual-test finding F5 (gaia-meeting QA, 2026-05-18) for
+  # the prior narrow-detector failure modes — `"X resolves to Y"`,
+  # `"X depends on Y"`, `"X is N turns"`, `"we decided to retire Y"` all
+  # bypassed the previous list.
   if printf '%s' "$trimmed" \
       | grep -Eq '\b[A-Za-z_][A-Za-z0-9_]*\(\)' \
       || printf '%s' "$trimmed" \
-      | grep -Eqi '\b(returns|is set|MUST|MUST NOT|always|never|is the|cannot|is mandatory|requires)\b'; then
+      | grep -Eqi '\b(is|are|was|were|has|have|had|will|would|MUST|MUST NOT|cannot|can|always|never|is the|is set|is mandatory|requires|returns|resolves|depends|produces|emits|enables|disables|decided|landed|shipped|retired|exists|lives|sits|points|references|covers|implements|enforces|asserts)\b'; then
     echo "unflagged-inference"
     return 0
   fi

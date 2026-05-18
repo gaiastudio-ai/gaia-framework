@@ -75,9 +75,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Lowercase a var name and convert underscores to hyphens for CLI flag
+# display. Bash 3.2 compatible — ${var,,} does not exist in 3.2 (macOS
+# default) and previously produced "bad substitution" in these error paths.
+flag_for_var() {
+  printf '%s' "$1" | tr '[:upper:]_' '[:lower:]-'
+}
+
 for var in ROUND TURN SPEAKER ROLE TURN_COST RUNNING_TOTAL; do
   if [[ -z "${!var}" ]]; then
-    echo "turn-header.sh: --${var,,} is required" >&2
+    echo "turn-header.sh: --$(flag_for_var "$var") is required" >&2
     exit 3
   fi
 done
@@ -86,7 +93,7 @@ done
 for numeric in ROUND TURN TURN_COST RUNNING_TOTAL; do
   val="${!numeric}"
   if ! [[ "$val" =~ ^[0-9]+$ ]]; then
-    echo "turn-header.sh: --${numeric,,} must be a non-negative integer (got: '$val')" >&2
+    echo "turn-header.sh: --$(flag_for_var "$numeric") must be a non-negative integer (got: '$val')" >&2
     exit 3
   fi
 done
