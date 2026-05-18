@@ -171,3 +171,62 @@ teardown() { common_teardown; }
   run "$SCRIPT" --bogus
   [ "$status" -eq 2 ]
 }
+
+# ---- AF-2026-05-18-2: surface-above-fold contract ----
+
+@test "AF-2026-05-18-2: SURFACE-WARNING banner is the first stdout line" {
+  run "$SCRIPT" --skill-class heavy-procedural --mode subagent \
+    --session-id sess-surface-1 --checkpoint-path "$CHECKPOINT_DIR"
+  [ "$status" -eq 0 ]
+  first_line=$(printf '%s' "$output" | sed -n '1p')
+  [[ "$first_line" == "SURFACE-WARNING: $CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-1" ]]
+}
+
+@test "AF-2026-05-18-2: sentinel file is written with the full warning body" {
+  run "$SCRIPT" --skill-class conversational --mode subagent \
+    --session-id sess-surface-2 --checkpoint-path "$CHECKPOINT_DIR"
+  [ "$status" -eq 0 ]
+  sentinel="$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-2"
+  [ -f "$sentinel" ]
+  body=$(cat "$sentinel")
+  [[ "$body" == *"running in subagent mode"* ]]
+  [[ "$body" == *"Mode A"* ]]
+  [[ "$body" == *"ADR-093"* ]]
+  [[ "$body" == *"shown once per session"* ]]
+}
+
+@test "AF-2026-05-18-2: full warning still emitted to stdout (backward compat)" {
+  run "$SCRIPT" --skill-class heavy-procedural --mode subagent \
+    --session-id sess-surface-3 --checkpoint-path "$CHECKPOINT_DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"running in subagent mode"* ]]
+  [[ "$output" == *"For the full-fidelity experience"* ]]
+  [[ "$output" == *"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"* ]]
+}
+
+@test "AF-2026-05-18-2: suppressed paths do NOT write sentinel" {
+  # Mode B → no sentinel
+  run "$SCRIPT" --skill-class conversational --mode team \
+    --session-id sess-surface-4 --checkpoint-path "$CHECKPOINT_DIR"
+  [ "$status" -eq 0 ]
+  [ ! -e "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-4" ]
+
+  # Reviewer class → no sentinel
+  run "$SCRIPT" --skill-class reviewer --mode subagent \
+    --session-id sess-surface-5 --checkpoint-path "$CHECKPOINT_DIR"
+  [ "$status" -eq 0 ]
+  [ ! -e "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-5" ]
+
+  # One-shot suppression → first call writes sentinel, second does NOT overwrite
+  run "$SCRIPT" --skill-class heavy-procedural --mode subagent \
+    --session-id sess-surface-6 --checkpoint-path "$CHECKPOINT_DIR"
+  [ -f "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-6" ]
+  first_mtime=$(stat -f '%m' "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-6" 2>/dev/null || stat -c '%Y' "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-6")
+  sleep 1
+  run "$SCRIPT" --skill-class heavy-procedural --mode subagent \
+    --session-id sess-surface-6 --checkpoint-path "$CHECKPOINT_DIR"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  second_mtime=$(stat -f '%m' "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-6" 2>/dev/null || stat -c '%Y' "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-6")
+  [ "$first_mtime" -eq "$second_mtime" ]
+}
