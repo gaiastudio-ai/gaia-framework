@@ -36,7 +36,9 @@ _load_pflag_helpers() {
   awk '
     /^_pflag_fm_field\(\) \{/,/^\}/ { print; next }
     /^pflag_read\(\) \{/,/^\}/ { print; next }
+    /^_pflag_scan_by_flag\(\) \{/,/^\}/ { print; next }
     /^pflag_scan_backlog\(\) \{/,/^\}/ { print; next }
+    /^pflag_scan_active_hotfix\(\) \{/,/^\}/ { print; next }
     /^pflag_clear\(\) \{/,/^\}/ { print; next }
     /^pflag_record_cleared\(\) \{/,/^\}/ { print; next }
   ' "$PRIORITY_FLAG_SH" >> "$tmp"

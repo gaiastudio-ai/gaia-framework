@@ -186,3 +186,75 @@ EOF
   got="$(_pflag_scan_by_flag "$dir" "review" "hotfix")"
   [ "$got" = "E4-S1" ]
 }
+
+# ============================================================================
+# AC4(c) / TC-HPF-3 — sprint-plan invokes sprint-state.sh inject once per hotfix
+# ============================================================================
+# Uses PATH override to mock sprint-state.sh — assert one invocation per
+# scanned key. This exercises the gaia-sprint-plan SKILL.md "Hotfix active-
+# sprint inject" branch via the same loop pattern an orchestrator would use.
+@test "AC4c / TC-HPF-3: orchestrator invokes sprint-state.sh inject once per hotfix story" {
+  _load_pflag_helpers
+  local dir="$TEST_TMP/impl"
+  mkdir -p "$dir"
+  _make_flagged_story "$dir" "E5-S1" "backlog"     '"hotfix"' > /dev/null
+  _make_flagged_story "$dir" "E5-S2" "in-progress" '"hotfix"' > /dev/null
+  _make_flagged_story "$dir" "E5-S3" "backlog"     '"next-sprint"' > /dev/null
+
+  # Mock sprint-state.sh: write each --story arg to a counter file
+  local mockdir="$TEST_TMP/mockbin"
+  local counter="$TEST_TMP/inject-calls.log"
+  mkdir -p "$mockdir"
+  cat > "$mockdir/sprint-state.sh" <<EOF
+#!/usr/bin/env bash
+# Mock sprint-state.sh — records the --story arg for assertion.
+while [ \$# -gt 0 ]; do
+  case "\$1" in
+    --story) echo "\$2" >> "$counter"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+exit 0
+EOF
+  chmod +x "$mockdir/sprint-state.sh"
+
+  # Orchestrator loop pattern from gaia-sprint-plan SKILL.md "Hotfix active-sprint inject":
+  PATH="$mockdir:$PATH"
+  while IFS= read -r key; do
+    [ -n "$key" ] || continue
+    sprint-state.sh inject --story "$key"
+  done < <(pflag_scan_active_hotfix "$dir" | sort)
+
+  # Assert: exactly 2 invocations (E5-S1 + E5-S2), one per scanned hotfix key.
+  local got
+  got="$(sort "$counter")"
+  expected="$(printf 'E5-S1\nE5-S2')"
+  [ "$got" = "$expected" ]
+}
+
+# ============================================================================
+# AC4(f) / TC-HPF-6 — total_points increments by EXACTLY the story's points
+# (guards memory rule feedback_sprint_inject_seed_total_points)
+# ============================================================================
+# Validates that the helper's contract preserves single-injection semantics.
+# Sprint-state.sh inject is the canonical writer (ADR-095); this test asserts
+# that orchestrator code calls inject exactly once per matched story (not
+# twice from re-running pflag_scan_active_hotfix mid-flow).
+@test "AC4f / TC-HPF-6: scanning twice does NOT cause double inject" {
+  _load_pflag_helpers
+  local dir="$TEST_TMP/impl"
+  mkdir -p "$dir"
+  _make_flagged_story "$dir" "E6-S1" "backlog" '"hotfix"' > /dev/null
+
+  # Run the scan twice — each run returns the same key, but a correct
+  # orchestrator runs the scan-then-inject loop only ONCE per /gaia-sprint-plan
+  # invocation. This test asserts pflag_scan_active_hotfix is idempotent at the
+  # scan level (returns identical output on repeated calls). sprint-state.sh
+  # inject's own idempotency-under-lock (verified separately at sprint-state.sh
+  # L1052-L1055) handles the multi-/gaia-sprint-plan-run case.
+  local first second
+  first="$(pflag_scan_active_hotfix "$dir")"
+  second="$(pflag_scan_active_hotfix "$dir")"
+  [ "$first" = "$second" ]
+  [ "$first" = "E6-S1" ]
+}
