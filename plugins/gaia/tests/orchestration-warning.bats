@@ -221,12 +221,16 @@ teardown() { common_teardown; }
   run "$SCRIPT" --skill-class heavy-procedural --mode subagent \
     --session-id sess-surface-6 --checkpoint-path "$CHECKPOINT_DIR"
   [ -f "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-6" ]
-  first_mtime=$(stat -f '%m' "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-6" 2>/dev/null || stat -c '%Y' "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-6")
+  # Cross-platform mtime helper — GNU stat (-c) on Linux/CI, BSD stat (-f)
+  # on macOS. `stat -f '%m'` on Linux succeeds but returns filesystem stats
+  # (not file mtime), so we must try GNU form first and fall back to BSD.
+  get_mtime() { stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1" 2>/dev/null; }
+  first_mtime=$(get_mtime "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-6")
   sleep 1
   run "$SCRIPT" --skill-class heavy-procedural --mode subagent \
     --session-id sess-surface-6 --checkpoint-path "$CHECKPOINT_DIR"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  second_mtime=$(stat -f '%m' "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-6" 2>/dev/null || stat -c '%Y' "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-6")
+  second_mtime=$(get_mtime "$CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-6")
   [ "$first_mtime" -eq "$second_mtime" ]
 }
