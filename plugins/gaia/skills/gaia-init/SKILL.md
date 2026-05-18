@@ -244,6 +244,22 @@ ${CLAUDE_PLUGIN_ROOT}/skills/gaia-init/scripts/generate-ci-scaffold.sh \
 
 This writes the per-provider workflow file plus the `*.user-steps.yml` companion (preserved on regeneration). For provider `none`, skip this step.
 
+### Step 5b — Install test-environment.yaml.example template (E17-S30)
+
+Materialize the Test Execution Bridge manifest example into the user project so `/gaia-bridge-enable` Step 4 option [b] has a real source path to copy from. The helper preserves a user-customized file byte-identical on re-run.
+
+```
+${CLAUDE_PLUGIN_ROOT}/scripts/install-test-environment-example.sh \
+  --target "$PROJECT_PATH"
+```
+
+Exit codes:
+- `0` — success (copied on fresh install, or target preserved on re-run)
+- `1` — plugin source template missing (plugin corruption; reinstall via marketplace)
+- `2` — usage error
+
+This step is the V2 plugin port of the legacy V1 install path (`Gaia-framework/gaia-install.sh` `cmd_init` / `cmd_update`) retired by ADR-049. Traces: E17-S30, FR-201, ADR-028.
+
 ### Step 6 — Render Next Steps
 
 Render the following to the user, replacing the placeholder with the concrete file list:
@@ -253,6 +269,7 @@ Render the following to the user, replacing the placeholder with the concrete fi
   - config/project-config.yaml
   - <CI workflow path>
   - <CI user-steps companion path>
+  - docs/test-artifacts/test-environment.yaml.example
 
 Reminders:
   - Set the credential env vars referenced in `environments.*.credentials.*`
