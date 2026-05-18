@@ -71,16 +71,14 @@ jobs:
       - name: Classify commits and compute bump
         id: bump
         run: |
-          BEFORE="${{ github.event.before }}"
+          # Anchor on most-recent v* tag (deterministic across squash-merge,
+          # rebase-merge, force-push, and first-release scenarios).
+          # First-release fallback: root commit when no v* tag exists yet.
+          # Helper extracted for bats unit testability — see E40-S2.
+          # CWD is gaia-public/ (per actions/checkout@v4 default), so the
+          # invocation path is relative to gaia-public/, NOT the repo root.
+          BEFORE="$(./plugins/gaia/scripts/lib/resolve-release-anchor.sh)"
           AFTER="${{ github.sha }}"
-
-          if echo "$BEFORE" | grep -qE '^0+$'; then
-            BEFORE="$(git rev-parse HEAD~1 2>/dev/null || echo "")"
-            if [ -z "$BEFORE" ]; then
-              echo "has_commits=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
 
           COMMITS=$(git log --format="%s" "$BEFORE".."$AFTER" -- plugins/gaia/ 2>/dev/null || echo "")
           if [ -z "$COMMITS" ]; then

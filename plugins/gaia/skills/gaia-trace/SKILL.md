@@ -56,14 +56,16 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 - Build the **Functional Requirements** matrix section:
   - Rows: FR-001 through FR-N (from PRD)
-  - Columns: FR ID | Description | Story(s) | Unit | Integration | E2E | Manual | Coverage %
+  - Columns: FR ID | Description | surface_type | Story(s) | Unit | Integration | E2E | Manual | Coverage %
   - For each FR, map to its implementing story(s) via the FR->Story mapping from Step 1, then map stories to their planned/implemented tests.
+  - **`surface_type` column (E95-S1, NFR-073):** taxonomy values are `none | command | warning | output | config | ui` (frozen at NFR-073 authoring). The value is read from each linked story's frontmatter `surface_type:` field. When a story has no `surface_type` field, write `none` (forward-only adoption per NFR-073 §Backfill — existing stories are tolerated). FR rows with `surface_type != none` AND zero integration coverage trigger a BLOCKED finding at Step 6c (E95-S1 wire-verification gate).
 
 - Build the **Non-Functional Requirements** matrix section:
   - Rows: NFR-001 through NFR-N (from PRD)
-  - Columns: NFR ID | Description | Category | Target | Test(s) | Status
+  - Columns: NFR ID | Description | surface_type | Category | Target | Test(s) | Status
   - Categories: Performance, Security, Accessibility, Scalability, Reliability, etc.
   - Map each NFR to its non-functional test(s) -- these may not have story intermediaries.
+  - **`surface_type` column** mirrors the FR table semantics (see above) — same NFR-073 taxonomy, same wire-verification gate at Step 6c.
 
 - Build the **Story -> Test** detail section as a supplementary view:
   - For each story with ACs, list the specific test IDs covering each AC.
@@ -126,6 +128,20 @@ For every story walked, run `scripts/lib/trace-dispatch-verb-enforcement.sh --st
 ```
 
 **Scope note (E88-S6 scope-split):** the original E88-S6 AC1 mandated a matrix-wide `test_class` column migration touching all 2185 rows. That migration is deferred to a follow-up. This enforcement step is the in-scope behaviour — it fires on `risk: medium|high` + dispatch-verb-bearing ACs only. Stories without `test_class: integration` rows in the matrix HALT until either (a) a matching row is added, OR (b) the story risk is downgraded to `low`.
+
+### Step 6c — Wire-verification enforcement (E95-S1, NFR-073)
+
+For every story walked, run `scripts/lib/wire-verification-emit.sh --story-file <story> --matrix-file <traceability-matrix>`. The helper walks the matrix for FR/NFR rows where `surface_type != none` AND zero linked rows have integration coverage. On a gap: emits a single HALT line listing ALL violating FR/NFR ids, invokes `review-gate.sh update --story <key> --gate "Test Review" --verdict FAILED` (pathway-i per ADR-054 dominance — zero `review-gate.sh` source changes), and exits 1.
+
+```bash
+!scripts/lib/wire-verification-emit.sh \
+  --story-file "$STORY_FILE" \
+  --matrix-file "$TRACE_MATRIX_PATH"
+```
+
+**Pathway-i rationale (ADR-054 invariance preserved):** `/gaia-trace` writes a FAILED verdict into the canonical Test Review row of the story's Review Gate table. ADR-054's existing dominance rule (any FAILED → composite BLOCKED) automatically refuses the `review → done` transition. No new severity vocabulary added to `review-gate.sh`; UNVERIFIED/PASSED/FAILED stays at three values. ADR-077's seven-phase review pipeline (APPROVE/REQUEST_CHANGES/BLOCKED at a different layer) is also unchanged.
+
+**Forward-only adoption (NFR-073 §Backfill):** Stories without a `surface_type:` frontmatter field are treated as `surface_type: none` and produce no findings. The backfill of existing FRs/NFRs is deferred to a separate story per Sable's R2 recommendation in /gaia-meeting 2026-05-15. Re-runs against a clean matrix exit 0 without re-invoking `review-gate.sh update` (the gate does NOT auto-flip FAILED → PASSED — the operator must re-run `/gaia-run-all-reviews` to restore Test Review to PASSED).
 
 ## Changelog
 
