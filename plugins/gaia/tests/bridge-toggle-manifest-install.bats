@@ -22,9 +22,9 @@ setup() {
   HELPER="${PLUGIN_ROOT}/gaia/scripts/install-test-environment-manifest.sh"
   SKILL_MD="${PLUGIN_ROOT}/gaia/skills/gaia-bridge-toggle/SKILL.md"
   TARGET_DIR="$(mktemp -d -t e17s31-bats-XXXXXX)"
-  mkdir -p "${TARGET_DIR}/docs/test-artifacts"
-  EXAMPLE_FILE="${TARGET_DIR}/docs/test-artifacts/test-environment.yaml.example"
-  MANIFEST_FILE="${TARGET_DIR}/docs/test-artifacts/test-environment.yaml"
+  mkdir -p "${TARGET_DIR}/config"
+  EXAMPLE_FILE="${TARGET_DIR}/config/test-environment.yaml.example"
+  MANIFEST_FILE="${TARGET_DIR}/config/test-environment.yaml"
 }
 
 teardown() {

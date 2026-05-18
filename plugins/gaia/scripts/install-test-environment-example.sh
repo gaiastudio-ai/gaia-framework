@@ -34,7 +34,7 @@ SCRIPT_NAME="install-test-environment-example.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TEMPLATE_PATH="${PLUGIN_ROOT}/templates/test-environment.yaml.example"
-TARGET_REL="docs/test-artifacts/test-environment.yaml.example"
+TARGET_REL="config/test-environment.yaml.example"
 
 target=""
 

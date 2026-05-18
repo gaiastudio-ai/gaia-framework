@@ -203,19 +203,19 @@ Output to `docs/planning-artifacts/brownfield-scan-test-execution.md`. If the su
 
 ## Phase 5 — Auto-Generate test-environment.yaml from Detected Infrastructure
 
-This phase aggregates the four brownfield test-infrastructure detectors (E19-S12 test-runner, E19-S13 ci-test, E19-S14 docker-test, E19-S15 browser-matrix) into a single `docs/test-artifacts/test-environment.yaml` file compatible with the E17-S7 schema.
+This phase aggregates the four brownfield test-infrastructure detectors (E19-S12 test-runner, E19-S13 ci-test, E19-S14 docker-test, E19-S15 browser-matrix) into a single `config/test-environment.yaml` file compatible with the E17-S7 schema.
 
 1. Invoke the four detectors at the project path and collect results into a single detections object. Each detector runs best-effort: wrap each call in try/catch; record `null` on failure so one crash cannot block the cohort.
 2. Call `hasDetectedInfrastructure(detections)`. If it returns `false`, log `No test infrastructure detected — skipping test-environment.yaml generation (AC6 gate is also skipped)` and proceed. This keeps **greenfield-ish projects with zero test infrastructure** (AC-EC3) from being blocked by a gate they cannot satisfy — the conditional `test_environment_yaml_required_when_infra_detected` gate is NOT triggered in that case.
 3. Otherwise, call `generateTestEnvironmentYaml(detections)` to build the document with the six story-required metadata fields: `test_runner`, `ci_provider`, `docker_test_config`, `browser_matrix`, `generated_by: brownfield`, `generated_date` — alongside the E17-S7 schema-required `version` and `runners` fields.
-4. Resolve the target path as `docs/test-artifacts/test-environment.yaml`. Check whether the file already exists.
+4. Resolve the target path as `config/test-environment.yaml`. Check whether the file already exists.
 5. **Conflict resolution:**
    - File does not exist → call `writeTestEnvironmentYaml(targetPath, doc, "merge")` (merge mode is a no-op for fresh writes). Log `Created test-environment.yaml from detected infrastructure.`
    - File exists AND execution mode is `yolo` → always use the safe default: merge. Detected values fill only null or missing fields; every non-null user-supplied field is preserved byte-for-byte. Log `Merged detected values into existing test-environment.yaml (YOLO safe default).`
    - File exists AND execution mode is not `yolo` → prompt the user `test-environment.yaml already exists — [m]erge detected values (safe, default) / [s]kip (leave file unchanged) / [o]verwrite (REPLACE entire file — destructive)`. Wait for the user to choose one of the three options.
 6. **If the write fails (AC-EC4)** — e.g., test-infrastructure detected but the emitter cannot write to disk — halt with the actionable remediation `Re-run step 2.8 or run /gaia-brownfield again` preserving legacy gate semantics.
 7. After writing, validate the file against the E17-S7 schema via `validateTestEnvironment(readFileSync(targetPath, 'utf8'))`. Log any schema warnings as WARN-level messages listing the specific failing field; continue — the file is written but the user is notified. Never halt the overall workflow on schema warnings.
-8. **Normal-mode review pause (E48-S4):** in normal mode, present a summary of the generated `docs/test-artifacts/test-environment.yaml` and pause for user review before continuing to Phase 6 (NFR Assessment). The summary surfaces the file path and the four detected-infrastructure fields the user is most likely to correct: `test_runner`, `ci_provider`, `docker_test_config` (docker), and `browser_matrix`. Wait for the user to acknowledge before continuing to Phase 6. In yolo mode, skip the pause entirely and auto-continue to Phase 6 — this preserves the existing YOLO behavior where merging detected values into an existing file uses the safe default (merge) without further prompting. When `hasDetectedInfrastructure(detections)` returned `false` in step 2, no test-environment.yaml was generated — both the file write and the review pause are skipped (existing behavior).
+8. **Normal-mode review pause (E48-S4):** in normal mode, present a summary of the generated `config/test-environment.yaml` and pause for user review before continuing to Phase 6 (NFR Assessment). The summary surfaces the file path and the four detected-infrastructure fields the user is most likely to correct: `test_runner`, `ci_provider`, `docker_test_config` (docker), and `browser_matrix`. Wait for the user to acknowledge before continuing to Phase 6. In yolo mode, skip the pause entirely and auto-continue to Phase 6 — this preserves the existing YOLO behavior where merging detected values into an existing file uses the safe default (merge) without further prompting. When `hasDetectedInfrastructure(detections)` returned `false` in step 2, no test-environment.yaml was generated — both the file write and the review pause are skipped (existing behavior).
 9. Record the detection results and chosen conflict-resolution action in the brownfield onboarding report for traceability.
 
 ## Phase 6 — NFR Assessment & Performance Test Plan
@@ -398,7 +398,7 @@ The full artifact set emitted by this skill (preserved from the legacy `output.a
 - `docs/planning-artifacts/brownfield-scan-config-contradiction.md` (Phase 3)
 - `docs/planning-artifacts/brownfield-scan-dead-code.md` (Phase 3)
 - `docs/planning-artifacts/brownfield-scan-test-execution.md` (Phase 4)
-- `docs/test-artifacts/test-environment.yaml` (Phase 5, conditional)
+- `config/test-environment.yaml` (Phase 5, conditional)
 - `docs/test-artifacts/nfr-assessment.md` (Phase 6 — gated)
 - `docs/test-artifacts/performance-test-plan-{date}.md` (Phase 6 — gated)
 - `docs/planning-artifacts/consolidated-gaps.md` (Phase 7)
@@ -416,7 +416,7 @@ Three gates enforced via `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh` after
 
 1. **`nfr_assessment_exists`** — checks `docs/test-artifacts/nfr-assessment.md` exists. On fail: `HALT: NFR assessment not found at {test_artifacts}/nfr-assessment.md.`
 2. **`performance_test_plan_exists`** — checks a `docs/test-artifacts/performance-test-plan-*.md` file exists. On fail: `HALT: Performance test plan not found at {test_artifacts}/. Run /gaia-perf-testing.`
-3. **`test_environment_yaml_required_when_infra_detected`** (conditional) — if any of the four test-infrastructure detectors (E19-S12 / S13 / S14 / S15) fired during Phase 5, then `docs/test-artifacts/test-environment.yaml` MUST exist. On fail: `HALT: Brownfield detected test infrastructure but test-environment.yaml was not generated. Re-run step 2.8 or run /gaia-brownfield again.` When zero test infrastructure was detected (AC-EC3), this gate is NOT triggered — the conditional gate stays silent for greenfield-ish projects.
+3. **`test_environment_yaml_required_when_infra_detected`** (conditional) — if any of the four test-infrastructure detectors (E19-S12 / S13 / S14 / S15) fired during Phase 5, then `config/test-environment.yaml` MUST exist. On fail: `HALT: Brownfield detected test infrastructure but test-environment.yaml was not generated. Re-run step 2.8 or run /gaia-brownfield again.` When zero test infrastructure was detected (AC-EC3), this gate is NOT triggered — the conditional gate stays silent for greenfield-ish projects.
 
 `validate-gate.sh` serves the role of the spec-level `file-gate.sh` in the deployed script set (see Reconciliation Note).
 
