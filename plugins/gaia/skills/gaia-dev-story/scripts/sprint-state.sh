@@ -2294,6 +2294,285 @@ _rollover_one() {
   return $rc
 }
 
+# ============================================================
+# E93-S1 — Sprint goals + sprint-level state machine
+# ============================================================
+
+# Resolve the path of the active sprint yaml. Caller has already called
+# resolve_paths(). We honor SPRINT_STATUS_YAML if pre-set; else default to
+# ${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml. Read-only — does not write.
+_resolve_active_yaml() {
+  if [ -n "${SPRINT_STATUS_YAML:-}" ]; then
+    printf '%s' "$SPRINT_STATUS_YAML"
+  else
+    printf '%s/sprint-status.yaml' "${IMPLEMENTATION_ARTIFACTS}"
+  fi
+}
+
+# cmd_get_goals — read goals[] from sprint-status.yaml and emit verbatim.
+# Backward-compat: missing goals: key → empty stdout, exit 0.
+cmd_get_goals() {
+  local sprint_id="$1"
+  local yaml
+  yaml="$(_resolve_active_yaml)"
+  [ -r "$yaml" ] || die "get-goals: yaml not readable: $yaml"
+  # Parse the top-level goals: list. Line-based extraction (no yaml lib).
+  awk '
+    /^goals:[[:space:]]*$/ { in_goals=1; next }
+    in_goals && /^[[:space:]]*-[[:space:]]/ {
+      # Strip leading "  - ", optional surrounding quotes
+      sub(/^[[:space:]]*-[[:space:]]*/, "", $0)
+      sub(/^"/, "", $0); sub(/"$/, "", $0)
+      sub(/^'\''/, "", $0); sub(/'\''$/, "", $0)
+      print
+      next
+    }
+    in_goals && /^[^[:space:]]/ { in_goals=0 }
+  ' "$yaml"
+}
+
+# cmd_set_goals — REPLACE the goals: list with pipe-delimited goals.
+# 280-char limit per FR-485 AC6.
+cmd_set_goals() {
+  local sprint_id="$1" goals_str="$2"
+  local yaml
+  yaml="$(_resolve_active_yaml)"
+  [ -r "$yaml" ] || die "set-goals: yaml not readable: $yaml"
+  [ -n "$goals_str" ] || die "set-goals: --goals must be non-empty (pipe-delimited)"
+  # Validate each goal: 1..280 chars
+  local IFS='|'
+  local g
+  for g in $goals_str; do
+    local len="${#g}"
+    if [ "$len" -lt 1 ] || [ "$len" -gt 280 ]; then
+      die "set-goals: goal length $len exceeds 280-char limit (FR-485 AC6): $g"
+    fi
+  done
+  IFS=$' \t\n'
+  # Build the new goals: block
+  local new_block
+  new_block="goals:"$'\n'
+  IFS='|'
+  for g in $goals_str; do
+    # Escape internal double quotes by switching to single-quoted literal
+    new_block+="  - \"${g//\"/\\\"}\""$'\n'
+  done
+  IFS=$' \t\n'
+  # Replace or insert goals: block. Use python for surgical line-based edit
+  # (preserves comments + non-goals fields byte-for-byte).
+  python3 - "$yaml" "$new_block" <<'PY'
+import sys, re
+yaml_path = sys.argv[1]
+new_block = sys.argv[2]
+text = open(yaml_path).read()
+# Find existing goals: block (lines starting with `goals:` followed by
+# `  - ...` items, until next top-level key)
+lines = text.splitlines(keepends=True)
+out = []
+i = 0
+replaced = False
+while i < len(lines):
+    line = lines[i]
+    if not replaced and re.match(r'^goals:\s*$', line):
+        # Skip the existing block: the goals: line + every following `  - ...` line
+        i += 1
+        while i < len(lines) and re.match(r'^\s*-\s', lines[i]):
+            i += 1
+        # Insert new block
+        out.append(new_block)
+        replaced = True
+        continue
+    out.append(line)
+    i += 1
+if not replaced:
+    # No existing goals: key. Insert before the first top-level non-comment
+    # key (preserving frontmatter ordering). Conservative: insert before
+    # stories: if present, else append.
+    new_out = []
+    inserted = False
+    for line in out:
+        if not inserted and re.match(r'^stories:\s*$', line):
+            new_out.append(new_block)
+            inserted = True
+        new_out.append(line)
+    if not inserted:
+        new_out.append(new_block)
+    out = new_out
+with open(yaml_path, 'w') as f:
+    f.write(''.join(out))
+PY
+}
+
+# cmd_update_goals — alias for set-goals (REPLACES, does not append).
+# Story AC2 makes this explicit so callers don't assume append semantics.
+cmd_update_goals() {
+  cmd_set_goals "$@"
+}
+
+# Helper: read top-level `status:` from the active-sprint yaml.
+_yaml_sprint_status() {
+  local yaml="$1"
+  awk '/^status:[[:space:]]*/ { sub(/^status:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$yaml"
+}
+
+# Helper: check whether ALL stories in the yaml have status: done.
+_yaml_all_stories_done() {
+  local yaml="$1"
+  # List all story statuses under stories:; non-done ones short-circuit.
+  awk '
+    /^stories:[[:space:]]*$/ { in_stories=1; next }
+    in_stories && /^[[:space:]]+status:[[:space:]]*/ {
+      sub(/^[[:space:]]+status:[[:space:]]*/, "")
+      gsub(/"/, ""); gsub(/[[:space:]]+$/, "")
+      print
+    }
+    in_stories && /^[^[:space:]]/ { in_stories=0 }
+  ' "$yaml"
+}
+
+# cmd_transition_sprint — sprint-level state-machine transitions per
+# ADR-108 D1. Edges:
+#   active → review        (gated on all-stories-done)
+#   review → closed
+#   review → correction
+#   correction → active
+# Any other edge refuses.
+cmd_transition_sprint() {
+  local sprint_id="$1" target="$2"
+  local yaml
+  yaml="$(_resolve_active_yaml)"
+  [ -r "$yaml" ] || die "transition --sprint: yaml not readable: $yaml"
+  local current
+  current="$(_yaml_sprint_status "$yaml")"
+  [ -n "$current" ] || die "transition --sprint: cannot read current status from $yaml"
+
+  # Validate edge per ADR-108 D1
+  local legal=0
+  case "${current}→${target}" in
+    "active→review"|"review→closed"|"review→correction"|"correction→active")
+      legal=1 ;;
+  esac
+  if [ "$legal" -ne 1 ]; then
+    printf '%s: illegal sprint-level transition: %s→%s\n' "$SCRIPT_NAME" "$current" "$target" >&2
+    return 1
+  fi
+
+  # Gate: active → review requires ALL stories done
+  if [ "$current" = "active" ] && [ "$target" = "review" ]; then
+    local non_done_keys=""
+    local non_done_count=0
+    # Read story keys + statuses
+    while IFS='|' read -r k s; do
+      [ -n "$k" ] || continue
+      if [ "$s" != "done" ]; then
+        non_done_keys+="${non_done_keys:+, }${k}"
+        non_done_count=$((non_done_count + 1))
+      fi
+    done < <(awk '
+      /^stories:[[:space:]]*$/ { in_stories=1; next }
+      in_stories && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
+        sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "")
+        gsub(/"/, "")
+        cur_key=$0
+        next
+      }
+      in_stories && /^[[:space:]]+status:[[:space:]]*/ {
+        sub(/^[[:space:]]+status:[[:space:]]*/, "")
+        gsub(/"/, "")
+        printf "%s|%s\n", cur_key, $0
+        next
+      }
+      in_stories && /^[^[:space:]]/ { in_stories=0 }
+    ' "$yaml")
+    if [ "$non_done_count" -gt 0 ]; then
+      printf '%s: refuse active→review: %d sprint stories are non-done (%s)\n' \
+        "$SCRIPT_NAME" "$non_done_count" "$non_done_keys" >&2
+      return 1
+    fi
+  fi
+
+  # Write new status — line-based sed, preserving comments and other fields
+  local tmp
+  tmp="$(mktemp "${yaml}.tmp.XXXXXX")"
+  awk -v new="$target" '
+    !done_replace && /^status:[[:space:]]*/ {
+      print "status: " new
+      done_replace=1
+      next
+    }
+    { print }
+  ' "$yaml" > "$tmp"
+  mv "$tmp" "$yaml"
+
+  emit_lifecycle_event "sprint_transitioned" \
+    "{\"sprint_id\":\"$sprint_id\",\"from\":\"$current\",\"to\":\"$target\"}" || true
+}
+
+# cmd_set_review_justification — write review_justification: block from
+# a yaml payload file. Schema validation per FR-487 / AI-5 spec.
+cmd_set_review_justification() {
+  local sprint_id="$1" file="$2"
+  local yaml
+  yaml="$(_resolve_active_yaml)"
+  [ -r "$yaml" ] || die "set-review-justification: yaml not readable: $yaml"
+  [ -r "$file" ] || die "set-review-justification: payload file not readable: $file"
+
+  # Schema validation via python (single deterministic pass).
+  python3 - "$file" <<'PY'
+import sys, re
+path = sys.argv[1]
+text = open(path).read()
+required = {
+    'primary_criterion': r'^primary_criterion:\s*(C1|C2|C3)\s*$',
+    'qualifying_story_points': r'^qualifying_story_points:\s*\d+\s*$',
+    'total_story_points': r'^total_story_points:\s*\d+\s*$',
+    'qualifying_ratio': r'^qualifying_ratio:\s*0\.[8-9]\d*|^qualifying_ratio:\s*1(\.0+)?\s*$',
+    'explanation': r'^explanation:\s*',
+}
+for k, pat in required.items():
+    if not re.search(pat, text, re.MULTILINE):
+        sys.stderr.write(f'set-review-justification: schema violation — missing or invalid {k}\n')
+        sys.exit(1)
+# Explanation length 200-1000 chars (heuristic: block-scalar body)
+m = re.search(r'explanation:\s*\|?\s*\n((?:\s+.+\n)+)', text)
+if m:
+    body = ''.join(l.lstrip() for l in m.group(1).splitlines() if l.strip())
+    if len(body) < 200 or len(body) > 1000:
+        sys.stderr.write(f'set-review-justification: schema violation — explanation length {len(body)} not in [200, 1000]\n')
+        sys.exit(1)
+sys.exit(0)
+PY
+  [ $? -eq 0 ] || return 1
+
+  # Append the review_justification block to the yaml (line-based)
+  python3 - "$yaml" "$file" <<'PY'
+import sys, re
+yaml_path, payload_path = sys.argv[1], sys.argv[2]
+payload = open(payload_path).read().rstrip() + '\n'
+text = open(yaml_path).read()
+# Strip any existing review_justification: block
+lines = text.splitlines(keepends=True)
+out = []
+i = 0
+while i < len(lines):
+    if re.match(r'^review_justification:', lines[i]):
+        i += 1
+        while i < len(lines) and re.match(r'^\s', lines[i]):
+            i += 1
+        continue
+    out.append(lines[i])
+    i += 1
+# Append new block, ensure trailing newline
+if out and not out[-1].endswith('\n'):
+    out.append('\n')
+out.append('review_justification:\n')
+for line in payload.splitlines(keepends=True):
+    out.append('  ' + line if line.strip() else line)
+with open(yaml_path, 'w') as f:
+    f.write(''.join(out))
+PY
+}
+
 # ---------- Argument parsing ----------
 
 main() {
@@ -2309,7 +2588,7 @@ main() {
       usage
       exit 0
       ;;
-    transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover)
+    transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification)
       ;;
     *)
       printf '%s: error: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -2323,6 +2602,9 @@ main() {
   local lint_format="json" lint_sprint_id=""
   local override_item_ids="" override_user="" override_reason=""
   local rollover_from="" rollover_keys=""
+  # E93-S1: sprint-level subcommands (get-goals / set-goals / update-goals /
+  # set-review-justification + transition --sprint).
+  local goals_arg="" justification_file=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --story)
@@ -2372,6 +2654,27 @@ main() {
         rollover_keys="$2"; shift 2 ;;
       --keys=*)
         rollover_keys="${1#--keys=}"; shift ;;
+      --sprint)
+        # E93-S1: --sprint alias for --sprint-id on sprint-level
+        # subcommands (get-goals / set-goals / update-goals /
+        # set-review-justification / transition --sprint).
+        [ $# -ge 2 ] || die "--sprint requires a value"
+        reconcile_sprint_id="$2"; shift 2 ;;
+      --sprint=*)
+        reconcile_sprint_id="${1#--sprint=}"; shift ;;
+      --goals)
+        # E93-S1: pipe-delimited goal list for set-goals / update-goals.
+        [ $# -ge 2 ] || die "--goals requires a value"
+        goals_arg="$2"; shift 2 ;;
+      --goals=*)
+        goals_arg="${1#--goals=}"; shift ;;
+      --file)
+        # E93-S1: review-justification yaml payload path for
+        # set-review-justification.
+        [ $# -ge 2 ] || die "--file requires a value"
+        justification_file="$2"; shift 2 ;;
+      --file=*)
+        justification_file="${1#--file=}"; shift ;;
       --help|-h)
         usage
         exit 0 ;;
@@ -2414,9 +2717,31 @@ main() {
       [ -n "$story_key" ] || die "validate requires --story <key>"
       cmd_validate "$story_key" ;;
     transition)
-      [ -n "$story_key" ] || die "transition requires --story <key>"
-      [ -n "$to_state" ] || die "transition requires --to <state>"
-      cmd_transition "$story_key" "$to_state" ;;
+      # E93-S1: transition supports both story-level (--story) and
+      # sprint-level (--sprint) edges. Sprint-level edges are the
+      # ADR-108 D1 vocabulary: active↔correction, active→review,
+      # review→closed, review→correction.
+      if [ -n "$reconcile_sprint_id" ] && [ -z "$story_key" ]; then
+        [ -n "$to_state" ] || die "transition --sprint requires --to <state>"
+        cmd_transition_sprint "$reconcile_sprint_id" "$to_state"
+      else
+        [ -n "$story_key" ] || die "transition requires --story <key> or --sprint <id>"
+        [ -n "$to_state" ] || die "transition requires --to <state>"
+        cmd_transition "$story_key" "$to_state"
+      fi ;;
+    get-goals)
+      [ -n "$reconcile_sprint_id" ] || die "get-goals requires --sprint <id>"
+      cmd_get_goals "$reconcile_sprint_id" ;;
+    set-goals)
+      [ -n "$reconcile_sprint_id" ] || die "set-goals requires --sprint <id>"
+      cmd_set_goals "$reconcile_sprint_id" "$goals_arg" ;;
+    update-goals)
+      [ -n "$reconcile_sprint_id" ] || die "update-goals requires --sprint <id>"
+      cmd_update_goals "$reconcile_sprint_id" "$goals_arg" ;;
+    set-review-justification)
+      [ -n "$reconcile_sprint_id" ] || die "set-review-justification requires --sprint <id>"
+      [ -n "$justification_file" ] || die "set-review-justification requires --file <path>"
+      cmd_set_review_justification "$reconcile_sprint_id" "$justification_file" ;;
     inject)
       [ -n "$story_key" ] || die "inject requires --story <key>"
       cmd_inject "$story_key" "${reconcile_sprint_id:-}" ;;
