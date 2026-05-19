@@ -32,8 +32,71 @@
 
 set -euo pipefail
 
-MEMORY_PATH="${MEMORY_PATH:-_memory}"
+# E96-S4 / ADR-111: prefer .gaia/memory/ over legacy _memory/. Resolution order:
+#   1. ${MEMORY_PATH} env override (highest priority, unchanged contract).
+#   2. ${PROJECT_PATH}/.gaia/memory/ when the dir exists.
+#   3. ${PROJECT_PATH}/_memory/ legacy fallback during the 1-sprint deprecation
+#      window (removed in E96-S5).
+_gaia_resolve_memory_path() {
+  if [ -n "${MEMORY_PATH:-}" ]; then
+    printf '%s' "$MEMORY_PATH"
+    return 0
+  fi
+  local root="${PROJECT_PATH:-.}"
+  if [ -d "$root/.gaia/memory" ]; then
+    printf '%s' "$root/.gaia/memory"
+  else
+    printf '%s' "$root/_memory"
+  fi
+}
+MEMORY_PATH="$(_gaia_resolve_memory_path)"
 CONFIG="${MEMORY_PATH}/config.yaml"
+
+# E96-S4 / AC6: session-load 4-case migration-manifest sentinel check.
+# Emits a single-line WARN to stderr in cases (A) and (D); HALT in case (B).
+# Sets _GAIA_SESSION_LOAD_READ_ONLY=1 to signal downstream writers to refuse
+# in cases (A) and (D). Case (C) (clean match) is silent.
+_gaia_session_load_sentinel_check() {
+  local manifest="${MEMORY_PATH}/.migration-manifest"
+  if [ ! -f "$manifest" ]; then
+    # Case (A): manifest absent. If the legacy path is in use, this is normal.
+    # If we're already on .gaia/memory/, this signals an incomplete migration.
+    case "$MEMORY_PATH" in
+      *"/.gaia/memory"|".gaia/memory")
+        printf 'session-load: .migration-manifest missing — operating read-only until migration completes\n' >&2
+        _GAIA_SESSION_LOAD_READ_ONLY=1
+        export _GAIA_SESSION_LOAD_READ_ONLY
+        ;;
+    esac
+    return 0
+  fi
+  # Manifest present. Verify known schema fields.
+  # Case (D): unknown fields → WARN + read-only.
+  if awk -F'"' '
+    BEGIN { unknown = 0 }
+    /"phase":/ {
+      # Allowed phases 1-4
+      match($0, /"phase":[[:space:]]*[0-9]+/)
+      val = substr($0, RSTART+8, RLENGTH-8)
+      gsub(/[[:space:]]/, "", val)
+      if (val+0 > 4 || val+0 < 1) unknown = 1
+    }
+    /"schema_version":/ { unknown = 1 }
+    END { exit(unknown ? 0 : 1) }
+  ' "$manifest" 2>/dev/null; then
+    printf 'session-load: unknown manifest record fields — operating read-only for forward-compat safety\n' >&2
+    _GAIA_SESSION_LOAD_READ_ONLY=1
+    export _GAIA_SESSION_LOAD_READ_ONLY
+    return 0
+  fi
+  # Case (B) per-file sha256 mismatch is checked at write-time per file by
+  # consumers; the loader itself does not spot-check every recorded file
+  # (would blow NFR-048's 50ms budget). The downstream writers (write-checkpoint.sh,
+  # action-items-write.sh, retro-sidecar-write.sh) verify per their own contracts.
+  # Case (C): silent success.
+  return 0
+}
+_gaia_session_load_sentinel_check || true
 
 usage() {
   cat <<'EOF'
