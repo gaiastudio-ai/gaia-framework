@@ -69,13 +69,17 @@ done
 
 # Validate sprint_id format (T-37 path-traversal mitigation — mirror the
 # pattern from /gaia-dev-story Step 7b which validates ^E[0-9]+-S[0-9]+$).
-# Sprint IDs in GAIA are `sprint-{N}` per the existing sprint-status.yaml
-# fixtures.
+# Sprint IDs in GAIA are `sprint-{slug}` where {slug} contains alphanumerics,
+# hyphens, and underscores — production IDs are typically numeric
+# (`sprint-46`, `sprint-47`) but test fixtures using descriptive IDs
+# (`sprint-test-1`, `sprint-fixture-a`) are also accepted (E93 manual-test
+# ISSUE-5). Path-traversal chars like `/`, `..`, spaces, and shell
+# metacharacters are STILL rejected to preserve the T-37 mitigation.
 case "$sprint_id" in
-  sprint-*[!0-9]*) die "invalid sprint_id format: '$sprint_id' (expected 'sprint-{N}')" ;;
-  sprint-)         die "invalid sprint_id format: '$sprint_id' (expected 'sprint-{N}')" ;;
-  sprint-*)        ;;
-  *)               die "invalid sprint_id format: '$sprint_id' (expected 'sprint-{N}')" ;;
+  sprint-)                 die "invalid sprint_id format: '$sprint_id' (expected 'sprint-<slug>')" ;;
+  sprint-*[!a-zA-Z0-9_-]*) die "invalid sprint_id format: '$sprint_id' (expected 'sprint-<slug>'; allowed chars: alphanumerics, '_', '-')" ;;
+  sprint-*)                ;;
+  *)                       die "invalid sprint_id format: '$sprint_id' (expected 'sprint-<slug>')" ;;
 esac
 
 # ---------- Tooling check ----------

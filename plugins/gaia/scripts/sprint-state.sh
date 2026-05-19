@@ -141,9 +141,14 @@ usage() {
   cat <<'USAGE'
 Usage:
   sprint-state.sh transition                 --story <key> --to <state>
+  sprint-state.sh transition                 --sprint <id> --to <state>     (E93-S1)
   sprint-state.sh inject                     --story <key> [--sprint-id <id>]
   sprint-state.sh get                        --story <key>
   sprint-state.sh validate                   --story <key>
+  sprint-state.sh get-goals                  --sprint <id>                  (E93-S1)
+  sprint-state.sh set-goals                  --sprint <id> --goals "<g1|g2|..>"  (E93-S1)
+  sprint-state.sh update-goals               --sprint <id> --goals "<g1|g2|..>"  (E93-S1)
+  sprint-state.sh set-review-justification   --sprint <id> --file <path>    (E93-S1)
   sprint-state.sh reconcile                  [--sprint-id <id>] [--dry-run]
   sprint-state.sh lint-dependencies          [--sprint-id <id>] [--format json|text]
   sprint-state.sh record-escalation-override --item-ids <ids> --user <name> --reason <text>
@@ -199,6 +204,33 @@ Subcommands:
                     (status=closed + next-sprint seed) remains a manual
                     operator action per
                     feedback_sprint_boundary_yaml_write.md.
+
+  transition --sprint  E93-S1 sprint-level state-machine transitions per
+                    ADR-108 §D1. Edges: active→review (gated on all-stories-
+                    done), review→closed, review→correction, correction→active.
+                    Refuses any other edge with `illegal sprint-level
+                    transition: <from>→<to>`. Uses the ADR-095 boundary
+                    writer (atomic mktemp + mv) so YAML comments and
+                    formatting are preserved.
+
+  get-goals         E93-S1. Print the sprint's `goals[]` list (one per line)
+                    to stdout. Empty output + exit 0 when no goals set.
+
+  set-goals         E93-S1. REPLACE the sprint's `goals[]` list with the
+                    pipe-delimited string passed via --goals "<g1|g2|...>".
+                    Each goal is capped at 280 chars (FR-485 AC6). Lossless
+                    round-trip with get-goals.
+
+  update-goals      E93-S1. Alias for set-goals (REPLACES; does not append).
+
+  set-review-justification
+                    E93-S1. Write the `review_justification:` block from a
+                    YAML payload file (--file <path>) into sprint-status.yaml
+                    per FR-487 / AI-5 spec. Required payload fields:
+                    primary_criterion ∈ {C1, C2, C3}, qualifying_story_points
+                    (int), total_story_points (int), qualifying_ratio ≥ 0.80,
+                    explanation (200-1000 chars block scalar). Existing
+                    block is replaced atomically.
 
 Canonical states (CLAUDE.md):
   backlog | validating | ready-for-dev | in-progress | blocked | review | done
@@ -2412,7 +2444,16 @@ cmd_update_goals() {
 # Helper: read top-level `status:` from the active-sprint yaml.
 _yaml_sprint_status() {
   local yaml="$1"
-  awk '/^status:[[:space:]]*/ { sub(/^status:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$yaml"
+  # Strip leading `status:` prefix, trailing whitespace, AND surrounding
+  # double/single quotes (per E93 manual-test ISSUE-2 — quoted YAML values
+  # like `status: "active"` previously returned the literal `"active"` and
+  # silently failed sprint-level transition case-match at line ~2451).
+  awk '/^status:[[:space:]]*/ {
+    sub(/^status:[[:space:]]*/, "");
+    sub(/[[:space:]]+$/, "");
+    gsub(/^["'\'']|["'\'']$/, "");
+    print; exit
+  }' "$yaml"
 }
 
 # Helper: check whether ALL stories in the yaml have status: done.
@@ -2551,16 +2592,17 @@ required = {
     'qualifying_ratio': r'^qualifying_ratio:\s*0\.[8-9]\d*|^qualifying_ratio:\s*1(\.0+)?\s*$',
     'explanation': r'^explanation:\s*',
 }
+SCHEMA_DOC = 'docs/planning-artifacts/sprint-review-unverifiable-criteria.md'
 for k, pat in required.items():
     if not re.search(pat, text, re.MULTILINE):
-        sys.stderr.write(f'set-review-justification: schema violation — missing or invalid {k}\n')
+        sys.stderr.write(f'set-review-justification: schema violation — missing or invalid {k} (see {SCHEMA_DOC} for the canonical schema)\n')
         sys.exit(1)
 # Explanation length 200-1000 chars (heuristic: block-scalar body)
 m = re.search(r'explanation:\s*\|?\s*\n((?:\s+.+\n)+)', text)
 if m:
     body = ''.join(l.lstrip() for l in m.group(1).splitlines() if l.strip())
     if len(body) < 200 or len(body) > 1000:
-        sys.stderr.write(f'set-review-justification: schema violation — explanation length {len(body)} not in [200, 1000]\n')
+        sys.stderr.write(f'set-review-justification: schema violation — explanation length {len(body)} not in [200, 1000] (see {SCHEMA_DOC})\n')
         sys.exit(1)
 sys.exit(0)
 PY
