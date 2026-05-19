@@ -222,7 +222,7 @@ field_present() {
 # The canonical 15 fields per story-template.md. Fields in NULLABLE may be
 # the bare value `null`; everything else must be non-empty and not `null`.
 
-REQUIRED_FIELDS="key title epic status priority size points risk sprint_id priority_flag depends_on blocks traces_to date author delivered"
+REQUIRED_FIELDS="key title epic status priority size points risk sprint_id priority_flag depends_on blocks traces_to date author delivered deferred_implementation"
 NULLABLE_FIELDS=" sprint_id priority_flag origin origin_ref "
 
 is_nullable() {
@@ -325,6 +325,14 @@ check_boolean() {
 }
 
 check_boolean "delivered"
+
+# ---------- Boolean check (E93-S1 — `deferred_implementation:`) ----------
+#
+# The `deferred_implementation:` field (17th required field, added by
+# E93-S1 / ADR-108) must be a bare `true` or `false`. Consumed by
+# /gaia-sprint-review's C3 criterion (E93-S3+) when computing
+# sprint-completion deferral signals.
+check_boolean "deferred_implementation"
 
 # ---------- Review Gate body-shape check (E54-S6) ----------
 #
