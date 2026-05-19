@@ -228,7 +228,16 @@ if [ -n "$CUSTOM_FILE" ]; then
 fi
 
 # ---------- Resolve CHECKPOINT_ROOT ----------
-CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-_memory/checkpoints}"
+# E96-S4 / ADR-111: prefer .gaia/memory/checkpoints/ over the legacy
+# _memory/checkpoints/ location. Legacy fallback retained during the 1-sprint
+# transition window (removed in E96-S5). Env CHECKPOINT_ROOT override wins.
+if [ -z "${CHECKPOINT_ROOT:-}" ]; then
+  if [ -d ".gaia/memory" ]; then
+    CHECKPOINT_ROOT=".gaia/memory/checkpoints"
+  else
+    CHECKPOINT_ROOT="_memory/checkpoints"
+  fi
+fi
 SKILL_DIR="$CHECKPOINT_ROOT/$SKILL_NAME"
 
 mkdir -p "$SKILL_DIR" 2>/dev/null \

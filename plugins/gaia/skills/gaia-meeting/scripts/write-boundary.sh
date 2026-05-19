@@ -84,8 +84,12 @@ if [[ "$path" == ".gaia/state/action-items.yaml" ]]; then
   exit 0
 fi
 
-# Allowed: _memory/<prefix>-sidecar/decisions/...
+# Allowed: _memory/<prefix>-sidecar/decisions/... (legacy) OR
+# .gaia/memory/<prefix>-sidecar/decisions/... (new, E96-S4 / ADR-111).
 if [[ "$path" =~ ^_memory/[A-Za-z0-9_.-]+-sidecar/decisions/ ]]; then
+  exit 0
+fi
+if [[ "$path" =~ ^\.gaia/memory/[A-Za-z0-9_.-]+-sidecar/decisions/ ]]; then
   exit 0
 fi
 
@@ -98,8 +102,12 @@ if [[ "$path" == .gaia/custom/skills/* ]]; then
   exit 0
 fi
 
-# Allowed: _memory/meeting-sessions/...yaml (E76-S7, FR-MTG-31 amended)
+# Allowed: _memory/meeting-sessions/...yaml (legacy, E76-S7) OR
+# .gaia/memory/meeting-sessions/...yaml (new, E96-S4 / ADR-111).
 if [[ "$path" =~ ^_memory/meeting-sessions/.*\.yaml$ ]]; then
+  exit 0
+fi
+if [[ "$path" =~ ^\.gaia/memory/meeting-sessions/.*\.yaml$ ]]; then
   exit 0
 fi
 
