@@ -61,13 +61,42 @@ function classifyCommitType(message) {
   const match = subjectLine.match(
     /^(feat|fix|chore|docs|refactor|test|build|ci|perf|style)(\(.+?\))?(!)?:\s/
   );
-  if (!match) return null;
+  if (match) {
+    const type = match[1];
+    const breaking = match[3] === "!";
+    if (breaking) return "major";
+    return TYPE_MAP[type] || null;
+  }
 
-  const type = match[1];
-  const breaking = match[3] === "!";
-
-  if (breaking) return "major";
-  return TYPE_MAP[type] || null;
+  // E40-S4: subject regex did not match a Conventional Commit type. GitHub's
+  // squash-merge collapses N commits into a single commit whose body
+  // preserves the original subjects as bullet lines (e.g. "* feat(scope): ...").
+  // Fall back to scanning the message body for those bullet-prefixed CC
+  // type markers. The body-scan recognizes only the BUMP-class types
+  // (feat → minor, fix → patch) plus the breaking-change marker (`!` suffix
+  // → major). Non-bump types (chore, docs, refactor, test, build, ci, perf,
+  // style) in body bullets do NOT escalate the bump — they're informational
+  // for a non-CC-subject commit. This is intentional per E40-S4 AC2: a
+  // squashed `promote:` PR whose body contains only chore/docs bullets MUST
+  // NOT trigger a release. For subject-typed commits, the existing TYPE_MAP
+  // (lines 18-29) is honored as-is — this body-scan branch only fires when
+  // the subject did NOT match the CC regex above.
+  // BREAKING CHANGE detection above runs BEFORE this fallback, so a
+  // `BREAKING CHANGE:` line in the body already returned "major" earlier.
+  const bodyLines = message.split("\n").slice(1);
+  const bodyRegex = /^\s*\*?\s*(feat|fix)(\(.+?\))?(!)?:\s/;
+  const precedence = { major: 3, minor: 2, patch: 1 };
+  let highest = null;
+  for (const line of bodyLines) {
+    const m = line.match(bodyRegex);
+    if (!m) continue;
+    const bump = m[3] === "!" ? "major" : TYPE_MAP[m[1]];
+    if (!bump) continue;
+    if (!highest || precedence[bump] > precedence[highest]) {
+      highest = bump;
+    }
+  }
+  return highest;
 }
 
 /**
@@ -153,11 +182,30 @@ function generateChangelog(commits, version) {
 if (require.main === module) {
   const input = process.argv[2];
   if (!input) {
-    console.error("Usage: node scripts/classify-commits.js <newline-separated-commits>");
+    console.error("Usage: node scripts/classify-commits.js <commits-encoded>");
     process.exit(1);
   }
 
-  const commits = input.split("\\n").filter(Boolean);
+  // E40-S4: input encoding contract.
+  // The workflow (release.yml) feeds commits as a single string where each
+  // commit message (subject + body) is followed by the literal delimiter
+  // `---COMMIT---` on its own line, and all newlines are escape-encoded as
+  // literal `\n` text by the shell. So the input string looks like:
+  //   "feat(x): one\nbody line\n---COMMIT---\nfix(y): two\n---COMMIT---\n"
+  // Split on `\n---COMMIT---\n` first to get per-commit blocks, then convert
+  // each block's `\n` escapes back to real newlines so classifyCommitType
+  // can read the body. Backward-compat: if the input has no `---COMMIT---`
+  // delimiter (legacy %s-only format from a stale workflow), fall back to
+  // the old subject-per-line split.
+  let commits;
+  if (input.includes("---COMMIT---")) {
+    commits = input
+      .split("\\n---COMMIT---\\n")
+      .map((block) => block.replace(/\\n/g, "\n").trim())
+      .filter(Boolean);
+  } else {
+    commits = input.split("\\n").filter(Boolean);
+  }
   const bump = computeBumpFromCommits(commits);
 
   if (!bump) {
