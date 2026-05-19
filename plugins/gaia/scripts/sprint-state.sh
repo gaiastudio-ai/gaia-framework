@@ -2491,9 +2491,18 @@ cmd_transition_sprint() {
     fi
   fi
 
-  # Write new status — line-based sed, preserving comments and other fields
+  # Write new status — atomic rewrite via mktemp → awk → mv, matching the
+  # E64-S5 pattern (register in _GAIA_TMP_PATHS for trap-based cleanup,
+  # fallback to mktemp -t when sibling template is rejected on stricter
+  # GNU mktemp implementations).
   local tmp
-  tmp="$(mktemp "${yaml}.tmp.XXXXXX")"
+  tmp=$(mktemp "${yaml}.tmp.XXXXXX" 2>/dev/null || mktemp -t sprint-state-yaml.XXXXXX)
+  _GAIA_TMP_PATHS+=("$tmp")
+  local _tmp_idx
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
+  # shellcheck disable=SC2064
+  trap "rm -f '$tmp'" RETURN
+
   awk -v new="$target" '
     !done_replace && /^status:[[:space:]]*/ {
       print "status: " new
@@ -2503,6 +2512,7 @@ cmd_transition_sprint() {
     { print }
   ' "$yaml" > "$tmp"
   mv "$tmp" "$yaml"
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
 
   emit_lifecycle_event "sprint_transitioned" \
     "{\"sprint_id\":\"$sprint_id\",\"from\":\"$current\",\"to\":\"$target\"}" || true
