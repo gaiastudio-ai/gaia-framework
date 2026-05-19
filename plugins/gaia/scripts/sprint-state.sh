@@ -2514,8 +2514,20 @@ cmd_transition_sprint() {
   mv "$tmp" "$yaml"
   _GAIA_TMP_PATHS[$_tmp_idx]=""
 
-  emit_lifecycle_event "sprint_transitioned" \
-    "{\"sprint_id\":\"$sprint_id\",\"from\":\"$current\",\"to\":\"$target\"}" || true
+  # Emit a sprint-level lifecycle event directly via lifecycle-event.sh.
+  # emit_lifecycle_event() helper above is story-scoped (expects 3 args:
+  # story_key, from, to) — sprint-level transitions need a different
+  # payload shape so we call the helper script directly.
+  local lifecycle_sh="${SPRINT_STATE_SCRIPT_DIR}/lifecycle-event.sh"
+  if [ -x "$lifecycle_sh" ]; then
+    local data
+    data=$(printf '{"sprint_id":"%s","from":"%s","to":"%s"}' "$sprint_id" "$current" "$target")
+    "$lifecycle_sh" \
+      --type sprint_transitioned \
+      --workflow sprint-state \
+      --story "$sprint_id" \
+      --data "$data" >/dev/null 2>&1 || true
+  fi
 }
 
 # cmd_set_review_justification — write review_justification: block from
