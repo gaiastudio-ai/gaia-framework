@@ -1,6 +1,9 @@
 #!/usr/bin/env bats
 # sprint-state-goals-and-state-machine.bats — E93-S1
 #
+# Public functions covered: cmd_get_goals, cmd_set_goals, cmd_update_goals,
+# cmd_transition_sprint, cmd_set_review_justification (NFR-052 coverage gate).
+#
 # Covers:
 #   TC-SGR-1  goals field round-trip happy path
 #   TC-SGR-2  update-goals replaces (not appends)
