@@ -313,8 +313,7 @@
       }
     },
     "sprint_review": {
-      "description": "Per-stack execution-review configuration consumed by /gaia-sprint-review Track B (E93-S2 / E93-S4). The playwright_headed key is constrained to `true` at schema level (NFR-069 / T-SGR-2 — foreground-mode enforcement is unbypassable). Unknown stack identifiers in the *_commands maps emit a WARNING from /gaia-config-validate but do NOT fail schema validation (ADR-081 §4.2 forward-compatibility precedent). Marked x-no-auto-hydration: human-managed via /gaia-config-sprint-review only; never written by the auto-hydration reconciler.",
-      "x-no-auto-hydration": true,
+      "description": "Per-stack execution-review configuration consumed by /gaia-sprint-review Track B (E93-S2 / E93-S4). The playwright_headed key is constrained to `true` at schema level (NFR-069 / T-SGR-2 — foreground-mode enforcement is unbypassable). Unknown stack identifiers in the *_commands maps emit a WARNING from /gaia-config-validate but do NOT fail schema validation (ADR-081 §4.2 forward-compatibility precedent). Section is classified in _CONFIG_HYDRATION_MANAGED_ELSEWHERE (config-hydration.sh) — human-managed via /gaia-config-sprint-review only; never written by the auto-hydration reconciler.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
