@@ -2,6 +2,18 @@
 
 GAIA Framework — Generative Agile Intelligence Architecture. Public Claude Code marketplace distributing the `gaia` plugin: 25 specialized agents, 62 workflows, and 8 shared skills.
 
+## `.gaia/` Consolidation (ADR-111, Sprint-49)
+
+Consumer-project runtime state lives entirely under `.gaia/` — five canonical subdirectories resolved through `scripts/lib/gaia-paths.sh`:
+
+- `.gaia/config/` — project-config + machine-local overlay (was `config/`)
+- `.gaia/artifacts/` — planning / implementation / test / creative / research artifacts (was `docs/*-artifacts/`)
+- `.gaia/state/` — mutable runtime state including `sprint-status.yaml`, `action-items.yaml`, `.review-gate-ledger`
+- `.gaia/memory/` — agent sidecars, checkpoints, lifecycle events (was `_memory/`)
+- `.gaia/custom/` — user-extension seam (was top-level `custom/`)
+
+A single `.gitignore` entry (`.gaia/`) covers the entire GAIA runtime tree. The 4-phase migration ships as `plugins/gaia/scripts/migrate/migrate-phase-{1..4}.sh`, guarded by per-file hash-manifest sentinels (`.gaia/memory/.migration-manifest`) and tarball+sha256 rollback. See ADR-111 in the architecture doc and `docs/planning-artifacts/assessment-AF-2026-05-19-1.md` for the full design.
+
 ## Pre-Release Notice (v1.127.x)
 
 GAIA v2 (plugin-based) is currently in **early-adopter preview**. The v1 → v2 migration path (`/gaia-migrate apply`) is functional on a reference fixture but is still stabilizing on real v1 projects.
