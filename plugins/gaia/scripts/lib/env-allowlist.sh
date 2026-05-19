@@ -16,7 +16,7 @@
 # POSIX discipline: bash with [[ ]] only. macOS /bin/bash 3.2 compatible.
 # No declare -A, no ${var,,}, no [[ =~ ]] backreferences, no &>>.
 
-# The canonical 7-variable allowlist for foreground stakeholder demos.
+# The canonical 7-variable explicit allowlist for foreground stakeholder demos.
 # PATH:   tool resolution
 # HOME:   ~/.npmrc, ~/.gradle/, etc.
 # USER:   process ownership / login name
@@ -24,6 +24,18 @@
 # TERM:   colored terminal output (headed demos are visual)
 # LANG:   locale
 # LC_ALL: locale override
+#
+# NOTE on bash-auto-set vars (E93 manual-test ISSUE-4):
+#   When the child subprocess runs `bash` or `sh`, that shell auto-sets a
+#   small set of internal vars regardless of `env -i`:
+#     PWD   — current working directory (set by the shell on startup)
+#     SHLVL — shell nesting depth
+#     _     — last executed command path
+#   These are NOT secrets and NOT in this allowlist — they are set by the
+#   spawned shell itself after env-stripping. The empirical subprocess env
+#   therefore contains 7 explicit + 3 bash-auto = 10 vars. The 7-var
+#   security guarantee is preserved: parent-shell secrets like
+#   AWS_SECRET_ACCESS_KEY, GITHUB_TOKEN, OPENAI_API_KEY are still stripped.
 GAIA_ENV_ALLOWLIST_DEFAULT="PATH HOME USER TMPDIR TERM LANG LC_ALL"
 
 # build_env_args [allowlist_string]
