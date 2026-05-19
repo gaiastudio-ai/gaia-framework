@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.159.0] — 2026-05-19
+
+### Added
+
+- (E93-S2) wire /gaia-config-sprint-review + sprint_review project-config schema
+- (E93-S1) wire sprint-level state machine + goals field on sprint-state.sh
+
+### Changed
+
+- sync main v1.158.0 release-bump into staging
+- (AI-2026-05-16-1) add base sprint-review rubric for /gaia-sprint-review Track A
+
+### Fixed
+
+- (AI-2026-05-19-1) check-deps.sh skips *-review-summary.md siblings
+- (AI-2026-05-19-1) check-deps.sh skips *-review-summary.md siblings
+- (E93-S2) classify sprint_review as managed-elsewhere; drop output-text grep
+- (E93-S2) allowlist + CRUD-disclaimer + ajv-tolerant regex
+- (E93-S1) NFR-052 coverage — list 5 new public functions in bats header
+- (E93-S1) emit_lifecycle_event call shape — sprint-level uses direct lifecycle-event.sh
+- (E93-S1) sprint-state.sh mktemp + bats fixture compat
+
 ## [1.158.0] — 2026-05-18
 
 ### Added
