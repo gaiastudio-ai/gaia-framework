@@ -388,7 +388,13 @@ sections_for_phase() {
 # "full". yq is a soft dependency — if absent, treat as "full".
 # Emits the raw value on stdout (caller validates the enum).
 read_config_phase() {
-  local cfg="${PROJECT_ROOT}/config/project-config.yaml"
+  # E96-S1 / ADR-111: prefer `.gaia/config/` over legacy `config/` location.
+  local cfg
+  if [ -f "${PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
+    cfg="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
+  else
+    cfg="${PROJECT_ROOT}/config/project-config.yaml"
+  fi
   if [ ! -f "$cfg" ]; then
     printf 'full'
     return 0
@@ -411,7 +417,13 @@ read_config_phase() {
 # Used by SR-44 content cross-reference (AC7).
 config_section_present() {
   local section="$1"
-  local cfg="${PROJECT_ROOT}/config/project-config.yaml"
+  # E96-S1 / ADR-111: prefer `.gaia/config/` over legacy `config/` location.
+  local cfg
+  if [ -f "${PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
+    cfg="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
+  else
+    cfg="${PROJECT_ROOT}/config/project-config.yaml"
+  fi
   if [ ! -f "$cfg" ]; then
     return 1
   fi
@@ -504,7 +516,13 @@ evaluate_config_phase_gate() {
   # Skip SR-44 entirely when the config file is absent: NFR-062 / ADR-097
   # "absence-means-full" is a graceful-degradation default, not a content
   # claim — there is nothing to cross-reference, so the gate passes.
-  local cfg="${PROJECT_ROOT}/config/project-config.yaml"
+  # E96-S1 / ADR-111: prefer `.gaia/config/` over legacy `config/` location.
+  local cfg
+  if [ -f "${PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
+    cfg="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
+  else
+    cfg="${PROJECT_ROOT}/config/project-config.yaml"
+  fi
   if [ ! -f "$cfg" ]; then
     return 0
   fi

@@ -484,13 +484,34 @@ fi
 if [ -z "$SHARED_PATH" ] && [ -n "${GAIA_SHARED_CONFIG:-}" ]; then
   SHARED_PATH="$GAIA_SHARED_CONFIG"
 fi
-if [ -z "$SHARED_PATH" ] \
-   && [ -n "${CLAUDE_PROJECT_ROOT:-}" ] \
-   && [ -f "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml" ]; then
-  SHARED_PATH="${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
+# E96-S1 (ADR-111): prefer `.gaia/config/project-config.yaml` over legacy
+# `config/project-config.yaml`. When the legacy path is the only one present,
+# we still resolve to it (transition window) but emit a one-time deprecation
+# WARNING on stderr suggesting the migration command.
+_gaia_legacy_warn() {
+  if [ -z "${_GAIA_LEGACY_CONFIG_WARNED:-}" ]; then
+    printf 'resolve-config: DEPRECATION WARNING: %s\n' \
+      "legacy config/project-config.yaml in use — run plugins/gaia/scripts/migrate/migrate-phase-1.sh to relocate to .gaia/config/ (ADR-111)" >&2
+    _GAIA_LEGACY_CONFIG_WARNED=1
+    export _GAIA_LEGACY_CONFIG_WARNED
+  fi
+}
+
+if [ -z "$SHARED_PATH" ] && [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
+  if [ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
+    SHARED_PATH="${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"
+  elif [ -f "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml" ]; then
+    SHARED_PATH="${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
+    _gaia_legacy_warn
+  fi
 fi
-if [ -z "$SHARED_PATH" ] && [ -f "${PWD}/config/project-config.yaml" ]; then
-  SHARED_PATH="${PWD}/config/project-config.yaml"
+if [ -z "$SHARED_PATH" ]; then
+  if [ -f "${PWD}/.gaia/config/project-config.yaml" ]; then
+    SHARED_PATH="${PWD}/.gaia/config/project-config.yaml"
+  elif [ -f "${PWD}/config/project-config.yaml" ]; then
+    SHARED_PATH="${PWD}/config/project-config.yaml"
+    _gaia_legacy_warn
+  fi
 fi
 # L4b (AI-2026-05-13-12): walk-up discovery when CWD is a sub-directory of
 # project root. The Claude Code skill harness invokes `!setup.sh` from a CWD
@@ -507,8 +528,12 @@ if [ -z "$SHARED_PATH" ] && [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PR
   _gaia_walk_dir="$PWD"
   while [ "$_gaia_walk_dir" != "/" ] && [ "$_gaia_walk_dir" != "${HOME:-/nonexistent}" ]; do
     _gaia_walk_dir="$(dirname "$_gaia_walk_dir")"
-    if [ -f "${_gaia_walk_dir}/config/project-config.yaml" ]; then
+    if [ -f "${_gaia_walk_dir}/.gaia/config/project-config.yaml" ]; then
+      SHARED_PATH="${_gaia_walk_dir}/.gaia/config/project-config.yaml"
+      break
+    elif [ -f "${_gaia_walk_dir}/config/project-config.yaml" ]; then
       SHARED_PATH="${_gaia_walk_dir}/config/project-config.yaml"
+      _gaia_legacy_warn
       break
     fi
   done
