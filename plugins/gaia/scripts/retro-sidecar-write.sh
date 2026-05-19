@@ -85,7 +85,9 @@ allowlist_match() {
   case "$real_target" in
     "$real_root"/_memory/*-sidecar/*.md)                 return 0 ;;
     "$real_root"/docs/implementation-artifacts/retrospective-*.md) return 0 ;;
+    "$real_root"/.gaia/artifacts/implementation-artifacts/retrospective-*.md) return 0 ;;
     "$real_root"/docs/planning-artifacts/action-items.yaml)        return 0 ;;
+    "$real_root"/.gaia/state/action-items.yaml)                    return 0 ;;
     "$real_root"/custom/skills/*.md)                     return 0 ;;
     "$real_root"/custom/skills/*.customize.yaml)         return 0 ;;
     "$real_root"/.customize.yaml)                        return 0 ;;

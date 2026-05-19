@@ -311,10 +311,17 @@ validate_transition() {
 resolve_paths() {
   PROJECT_PATH="${PROJECT_PATH:-.}"
   IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_PATH}/docs/implementation-artifacts}"
+  # E96-S2 / ADR-111: prefer `.gaia/state/sprint-status.yaml` (mutable-runtime-
+  # state tier) over the legacy `docs/implementation-artifacts/sprint-status.yaml`
+  # (artifacts-tier). Legacy fallback retained during the 1-sprint transition
+  # window (removed in E96-S5).
   if [ -z "${SPRINT_STATUS_YAML:-}" ]; then
+    local gaia_state="${PROJECT_PATH}/.gaia/state/sprint-status.yaml"
     local canonical="${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml"
     local fallback="${PROJECT_PATH}/sprint-status.yaml"
-    if [ -e "$canonical" ] || [ ! -e "$fallback" ]; then
+    if [ -e "$gaia_state" ]; then
+      SPRINT_STATUS_YAML="$gaia_state"
+    elif [ -e "$canonical" ] || [ ! -e "$fallback" ]; then
       SPRINT_STATUS_YAML="$canonical"
     else
       SPRINT_STATUS_YAML="$fallback"
