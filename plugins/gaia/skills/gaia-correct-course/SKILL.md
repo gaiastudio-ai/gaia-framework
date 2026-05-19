@@ -188,6 +188,25 @@ CR ID: {cr_id or N/A}
 
 Log the correction reason, CR ID (if applicable), and all changes made.
 
+### Step 6a --- Review→Correction Edge (E93-S5, FR-487, FR-492, ADR-108)
+
+When invoked from `/gaia-sprint-review` on a FAILED composite verdict — detected either via the `--from-review` flag OR by reading the current sprint's `status:` field in `sprint-status.yaml` and finding `status: review` — this step bridges the sprint from `review` back to `active` via the new `review → correction → active` edge sequence per ADR-108 §D1.
+
+This step is gated: when the sprint is NOT in `review` status AND no `--from-review` flag is set, SKIP this step entirely (preserves the AC6 backward-compat invariant — the existing mid-sprint correction flow at Step 5 / Step 6 runs unchanged).
+
+When the gate fires:
+
+1. **Read failed findings** from `docs/planning-artifacts/action-items.yaml`, filtered to entries originating from the current sprint-review run (matching the sprint_id).
+2. **Draft `story_injection` proposals** — for each finding, generate a story title + AC drafts derived from the finding context. Output the drafts inline to the user.
+3. **Present drafts via `AskUserQuestion`** at main-turn (per NFR-067) with `[approve / edit / skip]` options per draft.
+4. **On approve** for a draft:
+   - Invoke `/gaia-create-story` for the new story (via Skill-to-Skill delegation).
+   - Inject the new story into the active sprint via `sprint-state.sh inject --sprint <id> --story <key>` (per E93-S1 boundary writer; never direct `yq -i` per NFR-071 / ADR-095).
+5. **Transition the sprint** via the explicit edge sequence — `sprint-state.sh transition --sprint <id> --to correction` first, then `--to active` after all approved injections complete. Both transitions route through the boundary writer.
+6. **Mid-sprint `goals[]` updates** (optional within this step): if any finding indicates the sprint goals themselves need adjustment, invoke `sprint-state.sh update-goals --sprint <id> --goals <json>` per E93-S1.
+
+Traceability: FR-487, FR-492, AC2 of E93-S5, ADR-108 §D1.
+
 ### Step 7 --- Suggest Next Actions
 
 Based on the changes applied:
@@ -195,6 +214,7 @@ Based on the changes applied:
 - If stories were injected: suggest `/gaia-dev-story {story_key}` for newly injected stories.
 - If stories were removed: note that removed stories return to backlog for future sprint planning.
 - If a CR was referenced: suggest checking the change request status.
+- If this was a `review → correction → active` transition (Step 6a): suggest re-running `/gaia-sprint-review` once the injected stories land to re-verify the composite verdict.
 
 ## Finalize
 
