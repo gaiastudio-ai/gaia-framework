@@ -312,6 +312,62 @@
         }
       }
     },
+    "sprint_review": {
+      "description": "Per-stack execution-review configuration consumed by /gaia-sprint-review Track B (E93-S2 / E93-S4). The playwright_headed key is constrained to `true` at schema level (NFR-069 / T-SGR-2 — foreground-mode enforcement is unbypassable). Unknown stack identifiers in the *_commands maps emit a WARNING from /gaia-config-validate but do NOT fail schema validation (ADR-081 §4.2 forward-compatibility precedent). Section is classified in _CONFIG_HYDRATION_MANAGED_ELSEWHERE (config-hydration.sh) — human-managed via /gaia-config-sprint-review only; never written by the auto-hydration reconciler.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backend_commands": {
+          "description": "Map: backend stack identifier (e.g., backend-python, backend-node, backend-go) → command-string. Unknown identifiers WARN.",
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        },
+        "frontend_command": {
+          "description": "Single command-string for the frontend Playwright execution-review run.",
+          "type": "string",
+          "minLength": 1
+        },
+        "mobile_commands": {
+          "description": "Map: mobile stack identifier (e.g., mobile-react-native, mobile-flutter) → command-string. Unknown identifiers WARN.",
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        },
+        "desktop_commands": {
+          "description": "Map: desktop stack identifier (electron | tauri | native) → command-string. Unknown identifiers WARN.",
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        },
+        "plugin_commands": {
+          "description": "Map: plugin stack identifier (claude-code | vscode) → command-string. Unknown identifiers WARN.",
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        },
+        "playwright_headed": {
+          "description": "Foreground-mode enforcement (NFR-069 / T-SGR-2). MUST be true. The schema-level `const: true` ensures /gaia-config-validate REJECTS — not just warns — on `playwright_headed: false`, closing the silent-bypass attack vector.",
+          "type": "boolean",
+          "const": true,
+          "default": true
+        },
+        "timeout_per_stack": {
+          "description": "Per-stack wall-clock timeout (seconds). Default 300 (5 min). Minimum 30, maximum 3600.",
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 3600,
+          "default": 300
+        },
+        "human_confirm": {
+          "description": "Whether human confirmation is required after each stack's execution-review run. `required` halts for user input; `optional` auto-continues with a logged WARNING (only set this in CI bridge fixtures).",
+          "type": "string",
+          "enum": ["required", "optional"],
+          "default": "required"
+        },
+        "screen_recording_fallback": {
+          "description": "Whether the Track B runner falls back to screen-recording capture when Playwright cannot drive the stack (e.g., native-desktop). Default true.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
     "severity": {
       "description": "Five-internal-to-three-gate severity mapping (FR-RSV2-22).",
       "$ref": "#/definitions/severityMap"

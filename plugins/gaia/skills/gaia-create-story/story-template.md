@@ -14,6 +14,8 @@ sprint_id: null
 priority_flag: null
 # delivered: set to false if production wiring is deferred (E88-S2, FR-DPD-2) — see Dev Notes "Deferred wiring" subsection.
 delivered: true
+# deferred_implementation: set to true if the story's implementation is deferred to a later sprint (E93-S1, ADR-108) — consumed by /gaia-sprint-review's C3 criterion (E93-S3+).
+deferred_implementation: false
 origin: {origin}
 origin_ref: {origin_ref}
 depends_on: {depends_on}

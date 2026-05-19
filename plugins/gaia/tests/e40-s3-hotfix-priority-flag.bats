@@ -61,6 +61,7 @@ risk: "low"
 sprint_id: null
 priority_flag: ${flag}
 delivered: true
+deferred_implementation: false
 depends_on: []
 blocks: []
 traces_to: []

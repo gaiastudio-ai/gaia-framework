@@ -58,6 +58,7 @@ traces_to: ["ADR-001"]
 date: "2026-04-29"
 author: "tester"
 delivered: true
+deferred_implementation: false
 ---
 
 # Story body

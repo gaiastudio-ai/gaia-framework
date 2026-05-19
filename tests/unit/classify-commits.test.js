@@ -82,6 +82,77 @@ describe("classify-commits", () => {
     });
   });
 
+  describe("body-scan fallback for non-CC subjects (E40-S4)", () => {
+    // AC1 + AC6(a): squash-merge promote: subject with mixed feat/fix bullets
+    // returns minor (max of feat=minor and fix=patch per TYPE_MAP precedence)
+    it("should body-scan a squash-merge promote: commit and return minor (mixed feat/fix bullets)", () => {
+      const { classifyCommitType } = loadClassify();
+      const message = [
+        "promote: staging → main (post-sprint-48 + E17-S30..S36 + E95-S1 + E40-S2..S3 batch) (#774)",
+        "",
+        "* feat(E17-S30): wire test-environment.yaml.example installation",
+        "* feat(E40-S2): wire Anchor release.yml commit-classification range",
+        "* fix(E55-S11): registry dual-write",
+      ].join("\n");
+      assert.equal(classifyCommitType(message), "minor");
+    });
+
+    // AC2 + AC6(b): squash-merge with only non-bump bullets returns null
+    it("should body-scan a squash-merge with only chore/docs bullets and return null", () => {
+      const { classifyCommitType } = loadClassify();
+      const message = [
+        "Merge pull request #999 from foo/bar",
+        "",
+        "* chore(deps): bump foo",
+        "* docs: update README",
+        "* test: add coverage",
+      ].join("\n");
+      assert.equal(classifyCommitType(message), null);
+    });
+
+    // AC3 + AC6(c): subject-typed commit ignores body content (regression guard)
+    it("should NOT body-scan when subject regex matches; subject wins", () => {
+      const { classifyCommitType } = loadClassify();
+      const message = [
+        "feat(E40-S4): wire body scan",
+        "",
+        "* fix: this fix bullet is irrelevant — subject already wins",
+      ].join("\n");
+      assert.equal(classifyCommitType(message), "minor");
+    });
+
+    // AC4 + AC6(d): BREAKING CHANGE still fires regardless of body bullets
+    it("should return major when BREAKING CHANGE appears in body, even with non-CC subject", () => {
+      const { classifyCommitType } = loadClassify();
+      const message = [
+        "promote: staging → main (#999)",
+        "",
+        "* feat(api): redesign endpoint",
+        "",
+        "BREAKING CHANGE: endpoint shape changed",
+      ].join("\n");
+      assert.equal(classifyCommitType(message), "major");
+    });
+
+    // AC6(e) + TYPE_MAP precedence: feat dominates fix in mixed body
+    it("should return minor when body has both feat and fix bullets (feat dominates)", () => {
+      const { classifyCommitType } = loadClassify();
+      const message = [
+        "promote: staging → main",
+        "",
+        "* fix(a): patch one",
+        "* fix(b): patch two",
+        "* fix(c): patch three",
+        "* feat(x): minor one",
+        "* feat(y): minor two",
+        "* feat(z): minor three",
+        "* chore(deps): bump dep",
+        "* chore(lint): cleanup",
+      ].join("\n");
+      assert.equal(classifyCommitType(message), "minor");
+    });
+  });
+
   describe("computeBumpFromCommits", () => {
     it("should return major when breaking change is present", () => {
       const { computeBumpFromCommits } = loadClassify();

@@ -136,6 +136,9 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   # classified here for forward-compat with any caller that still
   # references it.
   project_shape
+  # E93-S2 (1): sprint_review is human-managed exclusively via
+  # /gaia-config-sprint-review; never auto-hydrated by the reconciler.
+  sprint_review
 )
 
 # ---- Logging helpers ------------------------------------------------------
