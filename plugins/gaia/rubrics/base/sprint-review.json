@@ -1,0 +1,148 @@
+{
+  "schema_version": "1.0",
+  "skill": "sprint-review",
+  "metadata": {
+    "title": "Base sprint-review rubric",
+    "story": "AI-2026-05-16-1 (PM ADR draft for E93-S3 dependency)",
+    "adr": "ADR-108",
+    "description": "Track A (Val text-validation) severity rules for /gaia-sprint-review. Covers story-to-goal traceability, velocity-vs-capacity fit, and PRD priority coverage. Layer 1 of the four-layer rubric composition (base + regimes + domain + project)."
+  },
+  "severity_rules": [
+    {
+      "id": "sgr-traceability-001",
+      "category": "story-to-goal-traceability",
+      "pattern": "A sprint goal in goals[] has zero stories whose acceptance criteria materially address it — goal text scanned against each story's AC + summary yields no match (orphan goal).",
+      "severity": "High",
+      "description": "Orphan goal. A sprint goal with no delivering stories is unachievable by definition — the sprint committed to an outcome it cannot deliver. This blocks a PASSED verdict on the goal.",
+      "remediation": "Either map existing stories to the goal (their ACs may address it but the link was not explicit) or inject new stories via /gaia-correct-course story_injection to cover the orphan goal.",
+      "references": ["FR-489", "ADR-108-D2"]
+    },
+    {
+      "id": "sgr-traceability-002",
+      "category": "story-to-goal-traceability",
+      "pattern": "A done story in the sprint's stories[] does not trace to any sprint goal — story's ACs scanned against each goal yield no match (orphan story).",
+      "severity": "High",
+      "description": "Orphan story. A completed story that serves no sprint goal suggests scope creep or a goal definition gap. Sprint capacity was consumed without advancing any stated objective.",
+      "remediation": "Either update the goals to reflect the work (via /gaia-correct-course update-goals) or flag the story as unplanned scope for retrospective discussion.",
+      "references": ["FR-489", "ADR-108-D2"]
+    },
+    {
+      "id": "sgr-traceability-003",
+      "category": "story-to-goal-traceability",
+      "pattern": "A goal's story-coverage ratio is below 100% — some stories' ACs partially address the goal but others contributing to the same goal do not fully cover all facets of the goal statement.",
+      "severity": "Medium",
+      "description": "Partial goal coverage. The goal is not orphaned but its full intent is only partially addressed by the delivering stories. Permits a PARTIAL verdict on the goal and surfaces the coverage gap for stakeholder attention.",
+      "remediation": "Review the goal statement against delivering stories' ACs; identify the uncovered facet and determine whether it warrants a rework story or a goal text revision.",
+      "references": ["FR-489", "ADR-108-D2"]
+    },
+    {
+      "id": "sgr-traceability-004",
+      "category": "story-to-goal-traceability",
+      "pattern": "A story's primary contribution to the goal is a refactor, tech-debt reduction, or chore — not user-visible delivery toward the stated goal.",
+      "severity": "Medium",
+      "description": "Infrastructure-only goal contribution. While refactors and tech-debt stories are valuable, a goal whose only delivering stories are non-user-visible suggests the goal was aspirational rather than deliverable in this sprint. Surfaces in PARTIAL verdict reasoning.",
+      "remediation": "Pair infrastructure stories with at least one user-visible story that demonstrates the goal's intent, or revise the goal to accurately reflect the infrastructure outcome.",
+      "references": ["FR-489", "ADR-108-D2"]
+    },
+    {
+      "id": "sgr-traceability-005",
+      "category": "story-to-goal-traceability",
+      "pattern": "Goal text uses ambiguous quantifiers ('improve', 'better', 'faster', 'enhance', 'optimize') without measurable thresholds or concrete acceptance criteria.",
+      "severity": "Low",
+      "description": "Unmeasurable goal. Val cannot deterministically evaluate whether the goal was achieved when the success criterion is subjective. Does not block the verdict but flags the goal for PM revision in the next sprint-planning cycle.",
+      "remediation": "Rewrite the goal with a measurable threshold (e.g., 'reduce page load time below 2s' instead of 'improve performance').",
+      "references": ["FR-485", "ADR-108-D1"]
+    },
+    {
+      "id": "sgr-velocity-001",
+      "category": "velocity-vs-capacity-fit",
+      "pattern": "Sum of completed story points materially exceeds team_size x velocity_capacity (>120% of capacity) — sustained overdelivery suggesting undersizing or scope creep against the goal.",
+      "severity": "High",
+      "description": "Capacity overrun. Delivering significantly more than planned capacity indicates stories were undersized (estimates are unreliable) or unplanned work was absorbed. Either undermines sprint predictability and risks burnout in future sprints.",
+      "remediation": "Review story sizing calibration; check whether unplanned stories were injected without a /gaia-correct-course scope change. Adjust velocity_capacity or story estimation approach for the next sprint.",
+      "references": ["FR-489", "ADR-108-D2"]
+    },
+    {
+      "id": "sgr-velocity-002",
+      "category": "velocity-vs-capacity-fit",
+      "pattern": "Sum of completed story points is significantly under team_size x velocity_capacity (<60% of capacity) — undercommitment suggesting the goal scope was too narrow to demonstrate sprint value.",
+      "severity": "Medium",
+      "description": "Capacity underutilization. Delivering well below planned capacity suggests the sprint goals were too narrow, stories were oversized, or external blockers consumed capacity without being tracked. Flags for sprint-planning retrospective.",
+      "remediation": "Review whether blockers went unrecorded; check story sizing accuracy; consider expanding goal scope in the next sprint to match actual capacity.",
+      "references": ["FR-489", "ADR-108-D2"]
+    },
+    {
+      "id": "sgr-velocity-003",
+      "category": "velocity-vs-capacity-fit",
+      "pattern": "A goal's contributing stories sum to less than 30% of total committed points — the goal is incidental rather than central to the sprint.",
+      "severity": "High",
+      "description": "Incidental goal. A goal that consumes less than 30% of sprint capacity is not a sprint-level objective — it is a side effect. Sprint goals should represent the primary thrust of the sprint's investment. Flags for goal revision in the next sprint.",
+      "remediation": "Demote the incidental goal to a story-level outcome and elevate a goal that represents the sprint's primary investment, or add stories to make the goal substantive.",
+      "references": ["FR-489", "ADR-108-D2"]
+    },
+    {
+      "id": "sgr-velocity-004",
+      "category": "velocity-vs-capacity-fit",
+      "pattern": "Velocity-vs-capacity delta is healthy (80-120%) but distribution is unbalanced — one goal consumed >70% of points while other goals were starved of capacity.",
+      "severity": "Medium",
+      "description": "Goal capacity imbalance. While overall velocity is on track, disproportionate investment in one goal starves the others and creates an all-or-nothing risk profile. The sprint effectively has one real goal and several aspirational ones.",
+      "remediation": "Consolidate starved goals into a single sprint with adequate capacity, or split the dominant goal across sprints to create room for concurrent objectives.",
+      "references": ["FR-489", "ADR-108-D2"]
+    },
+    {
+      "id": "sgr-velocity-005",
+      "category": "velocity-vs-capacity-fit",
+      "pattern": "Carryover from a prior sprint exceeds 30% of the current sprint commitment — legacy work dominates the sprint backlog.",
+      "severity": "Low",
+      "description": "Excessive carryover. High carryover indicates prior sprint scope was unrealistic or blockers persisted across sprint boundaries. Val flags but does not block — carryover management is a sprint-planning responsibility (FR-452-R).",
+      "remediation": "Review carryover stories for stale scope; confirm they still align with current sprint goals; adjust sprint commitment in /gaia-sprint-plan to account for the carryover burden.",
+      "references": ["FR-452-R", "ADR-108-D7"]
+    },
+    {
+      "id": "sgr-priority-001",
+      "category": "prd-priority-coverage",
+      "pattern": "A goal does NOT trace to at least one priority:high PRD requirement OR a priority:critical functional requirement — strategic-alignment concern.",
+      "severity": "High",
+      "description": "Goal-PRD alignment gap. A sprint goal that does not advance any high-priority or critical requirement suggests the sprint is not moving the needle on the product's most important needs. This is a strategic-alignment concern for PM review.",
+      "remediation": "Map the goal to a high/critical PRD requirement; if no mapping exists, escalate to PM for goal reprioritization or PRD revision.",
+      "references": ["FR-489", "ADR-108-D2"]
+    },
+    {
+      "id": "sgr-priority-002",
+      "category": "prd-priority-coverage",
+      "pattern": "All sprint goals trace exclusively to priority:medium or priority:low PRD requirements — the sprint did not advance any high or critical work.",
+      "severity": "Medium",
+      "description": "Low-priority sprint. An entire sprint invested in medium/low-priority work while high/critical requirements remain open suggests a prioritization drift. Does not block verdict but surfaces a strategic concern for PM and stakeholder attention.",
+      "remediation": "Review the product backlog for high/critical requirements that should have been prioritized; adjust the next sprint's goals to include at least one high-priority objective.",
+      "references": ["FR-489", "ADR-108-D2"]
+    },
+    {
+      "id": "sgr-priority-003",
+      "category": "prd-priority-coverage",
+      "pattern": "Sprint introduced new tech-debt action items (in action-items.yaml during this sprint) whose count exceeds the count of completed tech-debt stories — net negative tech-debt trajectory.",
+      "severity": "Medium",
+      "description": "Tech-debt accumulation. Creating more tech-debt action items than resolving tech-debt stories means the sprint left the codebase in worse technical shape than it found it. Flags for the PM and tech lead to allocate explicit tech-debt capacity in the next sprint.",
+      "remediation": "Allocate dedicated tech-debt stories in the next sprint proportional to the deficit; consider a tech-debt-focused sprint goal if accumulation persists across multiple sprints.",
+      "references": ["ADR-108-D7", "FR-492"]
+    },
+    {
+      "id": "sgr-priority-004",
+      "category": "prd-priority-coverage",
+      "pattern": "Goal text references a feature area NOT mapped in the PRD shards — no PRD section, FR, or NFR covers the feature area the goal describes.",
+      "severity": "Low",
+      "description": "Unmapped scope. A goal that references a feature area absent from the PRD suggests either a PRD gap or out-of-scope work. Does not block verdict but surfaces an unmapped scope question for PM follow-up and potential PRD update.",
+      "remediation": "File a PRD update via /gaia-edit-prd to cover the feature area, or revise the goal to reference existing PRD scope.",
+      "references": ["FR-489", "ADR-108-D2"]
+    }
+  ],
+  "verdict_reduction": {
+    "description": "Composite verdict aggregation rule per FR-489 + NFR-070.",
+    "rules": [
+      "If any severity:High rule fires -> per-goal verdict = FAILED.",
+      "If only severity:Medium rules fire -> per-goal verdict = PARTIAL.",
+      "If only severity:Low rules fire OR no rules fire -> per-goal verdict = PASSED.",
+      "Composite sprint verdict = MIN(per-goal verdicts) where order is FAILED < PARTIAL < PASSED.",
+      "Composite verdict feeds the two-track aggregation in NFR-070: Track A composite x Track B composite -> final sprint verdict (PASSED iff both PASSED; FAILED if either FAILED; UNVERIFIED via D6 bypass)."
+    ]
+  }
+}
