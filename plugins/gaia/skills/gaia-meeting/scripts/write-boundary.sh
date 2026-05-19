@@ -89,6 +89,15 @@ if [[ "$path" =~ ^_memory/[A-Za-z0-9_.-]+-sidecar/decisions/ ]]; then
   exit 0
 fi
 
+# Allowed: custom/skills/... (legacy, ADR-020) OR .gaia/custom/skills/...
+# (new, E96-S3 / ADR-111). Dual-path during the 1-sprint deprecation window.
+if [[ "$path" == custom/skills/* ]]; then
+  exit 0
+fi
+if [[ "$path" == .gaia/custom/skills/* ]]; then
+  exit 0
+fi
+
 # Allowed: _memory/meeting-sessions/...yaml (E76-S7, FR-MTG-31 amended)
 if [[ "$path" =~ ^_memory/meeting-sessions/.*\.yaml$ ]]; then
   exit 0

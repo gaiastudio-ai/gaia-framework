@@ -90,6 +90,8 @@ allowlist_match() {
     "$real_root"/.gaia/state/action-items.yaml)                    return 0 ;;
     "$real_root"/custom/skills/*.md)                     return 0 ;;
     "$real_root"/custom/skills/*.customize.yaml)         return 0 ;;
+    "$real_root"/.gaia/custom/skills/*.md)               return 0 ;;
+    "$real_root"/.gaia/custom/skills/*.customize.yaml)   return 0 ;;
     "$real_root"/.customize.yaml)                        return 0 ;;
     *) return 1 ;;
   esac

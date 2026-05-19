@@ -45,7 +45,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 BUILTIN_ROOT="${BUILTIN_ADAPTERS_DIR:-$PLUGIN_DIR/scripts/adapters}"
-DEFAULT_CUSTOM_ROOT="$(cd "$PLUGIN_DIR/../.." 2>/dev/null && pwd)/custom/adapters"
+# E96-S3 / ADR-111 (supersedes ADR-020): prefer .gaia/custom/adapters/ over
+# the legacy <project-root>/custom/adapters/. Legacy fallback retained during
+# the 1-sprint transition window (removed in E96-S5).
+_PROJECT_ROOT_HERE="$(cd "$PLUGIN_DIR/../.." 2>/dev/null && pwd)"
+if [ -d "$_PROJECT_ROOT_HERE/.gaia/custom/adapters" ]; then
+  DEFAULT_CUSTOM_ROOT="$_PROJECT_ROOT_HERE/.gaia/custom/adapters"
+else
+  DEFAULT_CUSTOM_ROOT="$_PROJECT_ROOT_HERE/custom/adapters"
+fi
 CUSTOM_ROOT="${CUSTOM_ADAPTERS_DIR:-$DEFAULT_CUSTOM_ROOT}"
 
 if ! command -v jq >/dev/null 2>&1; then
