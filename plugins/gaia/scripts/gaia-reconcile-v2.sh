@@ -163,7 +163,13 @@ case "$MODE" in
   *)       _grv2_err "unknown MODE='$MODE' (expected 'apply' or 'dry-run')"; exit 1 ;;
 esac
 
-CONFIG_FILE="$PROJECT_ROOT/config/project-config.yaml"
+# E96-S1 / ADR-111: prefer `.gaia/config/` over legacy `config/` location.
+# Legacy fallback retained during the transition window (removed in E96-S5).
+if [ -f "$PROJECT_ROOT/.gaia/config/project-config.yaml" ]; then
+  CONFIG_FILE="$PROJECT_ROOT/.gaia/config/project-config.yaml"
+else
+  CONFIG_FILE="$PROJECT_ROOT/config/project-config.yaml"
+fi
 
 # ---- Schema discovery (AC1 / ADR-101 §1) -----------------------------------
 
