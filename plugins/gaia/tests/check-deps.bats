@@ -227,3 +227,48 @@ EOF
   [ "$status" -eq 0 ]
   [ -z "$stderr" ]
 }
+
+# ---------------------------------------------------------------------------
+# TC-CDX-6: regression — *-review-summary.md sibling MUST NOT match the
+# dep glob and shadow the real nested story file.
+#
+# Scenario: a dep (E93-S1) lives at the nested per-epic layout
+# (epic-E93/stories/E93-S1-*.md, status: done), AND a sibling file named
+# E93-S1-review-summary.md sits flat under docs/implementation-artifacts/
+# (review-output emitted by /gaia-run-all-reviews; no story frontmatter).
+# Before the fix, check-deps.sh matched the flat review-summary.md FIRST
+# and story-parse.sh returned `<unparseable>` on it, causing a false
+# dependency-not-done HALT at exit 1. After the fix, the review-summary.md
+# is skipped and the nested story file is matched, returning exit 0 with
+# the dep correctly resolved to `status: done`.
+# ---------------------------------------------------------------------------
+
+@test "TC-CDX-6: regression — *-review-summary.md sibling does not shadow nested story file" {
+  unset IMPLEMENTATION_ARTIFACTS_DIR
+  # Real story at the nested per-epic path, status: done.
+  _write_nested_story "E93-S1" "done" '[]' "E93"
+  # Sibling review-summary.md file at the flat root with no story frontmatter
+  # (mimics the artifact emitted by /gaia-run-all-reviews).
+  cat > "docs/implementation-artifacts/E93-S1-review-summary.md" <<'EOF'
+# Review summary for E93-S1
+
+This is a /gaia-run-all-reviews artifact; it has no story frontmatter.
+EOF
+  # Consumer story depends_on the real E93-S1.
+  _write_nested_story "E93-S3" "in-progress" '["E93-S1"]' "E93"
+  run --separate-stderr "$CHECK_DEPS" "$TEST_TMP/docs/implementation-artifacts/epic-E93/stories/E93-S3-test.md"
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+}
+
+@test "TC-CDX-6b: regression — only review-summary.md exists for a key (no real story) — exit 2 missing" {
+  unset IMPLEMENTATION_ARTIFACTS_DIR
+  # Sibling review-summary.md ONLY — no real story file anywhere.
+  cat > "docs/implementation-artifacts/E99-S99-review-summary.md" <<'EOF'
+# Review summary for E99-S99 — but no real story file exists.
+EOF
+  _write_nested_story "E93-S3" "in-progress" '["E99-S99"]' "E93"
+  run --separate-stderr "$CHECK_DEPS" "$TEST_TMP/docs/implementation-artifacts/epic-E93/stories/E93-S3-test.md"
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"E99-S99"* ]]
+}
