@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.158.0] — 2026-05-18
+
+### Added
+
+- (E40-S4) document promote-PR squash-merge release-pipeline pitfall
+- (E95-S1) wire Add surface_type column and BLOCKED-severity finding (#773)
+- (E40-S3) add hotfix priority_flag enum + active-sprint injection (#772)
+- (E40-S2) wire Anchor release.yml commit-classification range on mos (#771)
+- (E17-S36) post-install Step 5 summary with canonical path + edit prompt (#768)
+- (E17-S35) add GAIA-MANIFEST-TEMPLATE sentinel + Layer 0 guard (#767)
+- (E17-S34) wire bridge-toggle Step 4 to inline manifest generator (#766)
+- (E17-S33) extract test-environment.yaml generator to scripts/lib helper (#765)
+- (E17-S32) relocate test-environment.yaml canonical path to config/ (ADR-110) (#764)
+- (E17-S31) make bridge-toggle Step 4 option [b] actionable (#760)
+- (E17-S30) wire test-environment.yaml.example installation into V2 plugin (#759)
+
+### Changed
+
+- merge main into staging (resolve conflicts in favor of AF-2026-05-18-4)
+
 ## [1.157.0] — 2026-05-18
 
 ### Added
