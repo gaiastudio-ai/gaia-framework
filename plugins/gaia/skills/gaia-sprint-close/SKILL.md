@@ -47,6 +47,26 @@ This skill is the GAIA-native replacement for manual sprint-boundary writes (per
   - Without `--force-with-rollover`: refuse with an error listing the non-done keys; exit non-zero.
   - With `--force-with-rollover <key1,key2,...>`: validate the comma-separated keys list is **exactly** the non-done set (no extras, no missing). On mismatch, refuse with `error: --force-with-rollover key mismatch; non-done stories are: <keys>; got: <provided>`; exit non-zero.
 
+### Step 3a — Pre-condition: review→closed sentinel verification (E93-S5, FR-492, ADR-108)
+
+When the sprint's current `status:` is `review` (per ADR-108 §D1's new sprint-level state machine added in E93-S1), the new `review → closed` edge requires sentinel-verified evidence that `/gaia-sprint-review` actually ran and produced a verdict. This step is gated on `status: review` — when the sprint is in `active` status, SKIP this step entirely (preserves AC6 backward-compat — the legacy `active → closed` direct edge runs unchanged).
+
+When gated on `status: review`:
+
+1. **Read the sprint-review verdict** via `${SCRIPTS_DIR}/review-gate.sh status --sprint <id> --gate sprint-review`.
+2. **Verify the sentinel exists** — at least ONE of:
+   - E83-style dispatch checkpoint: `_memory/checkpoints/sprint-review-<sprint_id>-val-dispatched.json` (written by `/gaia-sprint-review` Step 3 Track A Val dispatch).
+   - E87-style envelope sentinel: `_memory/checkpoints/val-envelope-<sha256(<sprint_id>):0:16>.json` (written by the orchestrator-side writer per ADR-105).
+3. **Decide based on verdict:**
+   - `PASSED` — permit transition. Route via `sprint-state.sh transition --sprint <id> --to closed` (the new ADR-108 review→closed edge handler in `cmd_transition_sprint`; per NFR-071 / ADR-095 boundary writer; never direct `yq -i`).
+   - `UNVERIFIED` with bypass — read the `review_justification` block from the sentinel (written by `set-review-justification` per E93-S1). When `pm_signoff` and `val_validation` are both present, permit transition via the same `sprint-state.sh transition` path.
+   - `FAILED` — REFUSE with canonical stderr `HALT: sprint-close refused — sprint-review verdict is FAILED; run /gaia-correct-course first`.
+   - Missing sentinel — REFUSE with canonical stderr `HALT: sprint-close refused — sprint-review verdict is MISSING; run /gaia-sprint-review first`.
+
+When the new review→closed path is taken, Step 4 (legacy yaml write) is SKIPPED — `sprint-state.sh transition` performs the equivalent write through the boundary writer. The Step 5 (Archive) and Step 6 (Lifecycle event) still run regardless of which edge was taken.
+
+Traceability: FR-492, AC3 of E93-S5, ADR-108 §D1.
+
 ### Step 4 — Yaml write
 
 - `yq -i '.status = "closed" | .closed_at = "<ISO 8601 UTC>"' <yaml_path>`.
