@@ -34,7 +34,12 @@ teardown() {
   fpath="$TMPDIR_TEST/test-transcript.log"
   printf "hello\n" | write_transcript "$fpath"
   [ -f "$fpath" ]
-  mode=$(stat -f '%Lp' "$fpath" 2>/dev/null || stat -c '%a' "$fpath")
+  # macOS: stat -f '%Lp'; Linux: stat -c '%a'. Detect by OS.
+  if [ "$(uname)" = "Darwin" ]; then
+    mode=$(stat -f '%Lp' "$fpath")
+  else
+    mode=$(stat -c '%a' "$fpath")
+  fi
   [ "$mode" = "600" ]
 }
 

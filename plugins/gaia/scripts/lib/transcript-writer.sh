@@ -43,9 +43,13 @@ write_transcript() {
   fi
   local dir
   dir="$(dirname "$path")"
-  ( umask 077; mkdir -p "$dir"; cat >> "$path" )
-  # Ensure mode is exactly 0600 even if the file pre-existed under a different umask.
-  chmod 600 "$path" 2>/dev/null || true
+  mkdir -p "$dir"
+  # Create the file with mode 0600 atomically: use a subshell with umask 077
+  # to ensure new file creation lands at 0600. Then explicitly chmod 600 to
+  # cover the case where the file pre-existed under a different umask (the
+  # subshell-scoped umask only affects new files, not chmod on existing).
+  ( umask 077; cat >> "$path" )
+  chmod 600 "$path"
 }
 
 # assert_gitignored <pattern>

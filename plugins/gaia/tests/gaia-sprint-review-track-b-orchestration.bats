@@ -78,7 +78,11 @@ teardown() {
   bash "$RUNNER" --sprint sprint-47 --config "$CONFIG" >/dev/null
   transcript="$TMPDIR_TEST/_memory/checkpoints/sprint-review-sprint-47/node.log"
   [ -f "$transcript" ]
-  mode=$(stat -f '%Lp' "$transcript" 2>/dev/null || stat -c '%a' "$transcript")
+  if [ "$(uname)" = "Darwin" ]; then
+    mode=$(stat -f '%Lp' "$transcript")
+  else
+    mode=$(stat -c '%a' "$transcript")
+  fi
   [ "$mode" = "600" ]
   grep -q "hello-from-node" "$transcript"
 }
