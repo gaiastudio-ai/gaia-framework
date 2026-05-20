@@ -29,7 +29,14 @@ fi
 SPEC_NAME="$1"
 
 WORK_DIR="${PROJECT_PATH:-$PWD}"
-CHECKPOINT_DIR="${CHECKPOINT_PATH:-$WORK_DIR/_memory/checkpoints}"
+# E96-S7 partial-4c: smart-fallback
+if [ -n "${CHECKPOINT_PATH:-}" ]; then
+  CHECKPOINT_DIR="$CHECKPOINT_PATH"
+elif [ -d "$WORK_DIR/.gaia/memory/checkpoints" ]; then
+  CHECKPOINT_DIR="$WORK_DIR/.gaia/memory/checkpoints"
+else
+  CHECKPOINT_DIR="$WORK_DIR/_memory/checkpoints"
+fi
 CHECKPOINT="$CHECKPOINT_DIR/quick-dev-${SPEC_NAME}.yaml"
 
 if [ ! -f "$CHECKPOINT" ]; then

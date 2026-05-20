@@ -158,9 +158,13 @@ resolve_strict_mode() {
   # the detector self-contained. The grep is anchored, single-line, and
   # tolerates surrounding whitespace and quoted booleans.
   local cfg=""
+  # E96-S7 partial-4c: prefer .gaia/config/project-config.yaml over legacy config/
   for c in \
+    "${CLAUDE_PROJECT_ROOT:-}/.gaia/config/project-config.yaml" \
     "${CLAUDE_PROJECT_ROOT:-}/config/project-config.yaml" \
+    "${PWD}/.gaia/config/project-config.yaml" \
     "${PWD}/config/project-config.yaml" \
+    "${CLAUDE_SKILL_DIR:-}/.gaia/config/project-config.yaml" \
     "${CLAUDE_SKILL_DIR:-}/config/project-config.yaml"; do
     if [ -n "$c" ] && [ -f "$c" ]; then cfg="$c"; break; fi
   done

@@ -136,7 +136,14 @@ SESSION_STATE_BIN="${GAIA_MEETING_SESSION_STATE_BIN:-${SCRIPT_DIR}/session-state
 # (GAIA_MEETING_SESSION_FILE) — the orchestrator typically constructs the
 # `_memory/meeting-sessions/{YYYY-MM-DD}-{slug}.yaml` path and exports it.
 # When unset, fall back to a conventional path derived from the session id.
-SESSION_FILE="${GAIA_MEETING_SESSION_FILE:-_memory/meeting-sessions/${SESSION_ID}.yaml}"
+# E96-S7 partial-4c: smart-fallback
+if [ -n "${GAIA_MEETING_SESSION_FILE:-}" ]; then
+  SESSION_FILE="$GAIA_MEETING_SESSION_FILE"
+elif [ -d ".gaia/memory/meeting-sessions" ] || [ -d ".gaia/memory" ]; then
+  SESSION_FILE=".gaia/memory/meeting-sessions/${SESSION_ID}.yaml"
+else
+  SESSION_FILE="_memory/meeting-sessions/${SESSION_ID}.yaml"
+fi
 
 # ISO-8601 UTC timestamp — BSD- and GNU-portable.
 ISO8601_NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

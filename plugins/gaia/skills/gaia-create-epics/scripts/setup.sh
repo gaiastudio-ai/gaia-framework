@@ -60,7 +60,15 @@ done <<<"$config_output"
 # ADR-042: quality gates are enforced — validate-gate.sh MUST exit non-zero
 # when the prerequisite is missing; a warning is not sufficient.
 # Remediation: run /gaia-test-design to create test-plan.md
-TEST_PLAN_PATH="${TEST_ARTIFACTS:-docs/test-artifacts}/test-plan.md"
+# E96-S7 partial-4c: smart-fallback
+if [ -z "${TEST_ARTIFACTS:-}" ]; then
+  if [ -d ".gaia/artifacts/test-artifacts" ]; then
+    TEST_ARTIFACTS=".gaia/artifacts/test-artifacts"
+  else
+    TEST_ARTIFACTS="docs/test-artifacts"
+  fi
+fi
+TEST_PLAN_PATH="$TEST_ARTIFACTS/test-plan.md"
 
 if [ -x "$VALIDATE_GATE" ]; then
   if ! "$VALIDATE_GATE" test_plan_exists 2>&1; then
