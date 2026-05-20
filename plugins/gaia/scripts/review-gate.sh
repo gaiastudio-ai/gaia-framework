@@ -186,6 +186,24 @@ Flags:
                      "test-automate-plan" gate; optional for canonical gates.
   --ledger <path>    Override ledger file path (default: $PROJECT_PATH/.review-gate-ledger
                      or $REVIEW_GATE_LEDGER env var).
+  --report <path>    AF-2026-05-20-1 proof-of-execution: path to the
+                     per-review report file written by the dispatched skill.
+                     Required for PASSED / FAILED verdicts (refused if file
+                     does not exist). Not required for UNVERIFIED (seed).
+  --execution-evidence <path>
+                     AF-2026-05-20-1 proof-of-execution: path to
+                     execution-evidence.json. Required (in addition to
+                     --report) for test-execution gates: "QA Tests",
+                     "Test Automation", "Test Review".
+  --report-missing-reason <reason>
+                     AF-2026-05-20-1 explicit escape hatch when no report
+                     exists (e.g. FAILED verdict with no salvageable report).
+                     Suppresses the --report / --execution-evidence checks
+                     and records the reason in the audit log.
+
+  Proof-of-execution can be disabled via REVIEW_GATE_PROOF_OF_EXECUTION=off
+  for bats fixtures that exercise verdict mechanics without dispatching real
+  review skills.
 
 Canonical gate names (case-sensitive):
   "Code Review" | "QA Tests" | "Security Review"
@@ -985,6 +1003,12 @@ main() {
   esac
 
   local story_key="" gate_name="" verdict="" plan_id=""
+  # AF-2026-05-20-1 proof-of-execution flags:
+  # --report <path> — path to the per-review report file written by the dispatched skill.
+  # --execution-evidence <path> — path to execution-evidence.json (required for test-execution gates).
+  # --report-missing-reason <reason> — explicit escape hatch for cases where no report exists
+  #   (e.g. UNVERIFIED seed rows, FAILED verdicts with no salvageable report).
+  local report_path="" execution_evidence="" report_missing_reason=""
   LEDGER_FLAG=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -1010,6 +1034,18 @@ main() {
       --ledger)
         [ $# -ge 2 ] || die "--ledger requires a value"
         LEDGER_FLAG="$2"; shift 2
+        ;;
+      --report)
+        [ $# -ge 2 ] || die "--report requires a value"
+        report_path="$2"; shift 2
+        ;;
+      --execution-evidence)
+        [ $# -ge 2 ] || die "--execution-evidence requires a value"
+        execution_evidence="$2"; shift 2
+        ;;
+      --report-missing-reason)
+        [ $# -ge 2 ] || die "--report-missing-reason requires a value"
+        report_missing_reason="$2"; shift 2
         ;;
       --help|-h)
         usage
@@ -1061,6 +1097,38 @@ main() {
         local allowed_verdicts
         allowed_verdicts=$(join_by ', ' "${CANONICAL_VERDICTS[@]}")
         die "invalid verdict '$verdict' — allowed: $allowed_verdicts"
+      fi
+
+      # AF-2026-05-20-1 proof-of-execution gate.
+      # Disabled when REVIEW_GATE_PROOF_OF_EXECUTION=off (e.g. inside the
+      # script's own bats fixtures that exercise the verdict mechanics
+      # without dispatching real review skills). Enforced by default.
+      if [ "${REVIEW_GATE_PROOF_OF_EXECUTION:-on}" != "off" ] && [ -z "$plan_id" ]; then
+        # UNVERIFIED is the seed-state — no proof required.
+        case "$verdict" in
+          PASSED|FAILED)
+            if [ -n "$report_path" ]; then
+              if [ ! -f "$report_path" ]; then
+                die "proof-of-execution: --report '$report_path' does not exist on disk — refusing $verdict verdict for gate '$gate_name'"
+              fi
+            elif [ -n "$report_missing_reason" ]; then
+              : # explicit escape hatch — operator accepts the gap.
+            else
+              die "proof-of-execution: $verdict verdict for gate '$gate_name' requires --report <path> or --report-missing-reason <reason>"
+            fi
+            # Test-execution gates additionally require execution evidence.
+            case "$gate_name" in
+              "QA Tests"|"Test Automation"|"Test Review")
+                if [ -z "$execution_evidence" ] && [ -z "$report_missing_reason" ]; then
+                  die "proof-of-execution: gate '$gate_name' is a test-execution gate; $verdict verdict requires --execution-evidence <path> (or --report-missing-reason <reason>)"
+                fi
+                if [ -n "$execution_evidence" ] && [ ! -f "$execution_evidence" ]; then
+                  die "proof-of-execution: --execution-evidence '$execution_evidence' does not exist on disk — refusing $verdict verdict for gate '$gate_name'"
+                fi
+                ;;
+            esac
+            ;;
+        esac
       fi
 
       # If --plan-id is present, write to the ledger (NOT the Review Gate table).

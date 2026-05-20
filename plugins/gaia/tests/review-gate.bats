@@ -12,6 +12,12 @@ setup() {
   common_setup
   SCRIPT="$SCRIPTS_DIR/review-gate.sh"
   export PROJECT_PATH="$TEST_TMP"
+  # AF-2026-05-20-1: this suite probes verdict-write mechanics, not the
+  # proof-of-execution contract. Disable the proof-of-execution gate so
+  # the existing fixtures (which don't dispatch real review skills) still
+  # exercise the rewrite/idempotency paths. The proof-of-execution contract
+  # has its own dedicated suite at tests/review-gate-proof-of-execution.bats.
+  export REVIEW_GATE_PROOF_OF_EXECUTION=off
   # Flat implementation-artifacts layout (per 2de74a4 — review-gate.sh
   # locates stories via {IMPLEMENTATION_ARTIFACTS}/<key>-*.md, no stories/
   # subdirectory).

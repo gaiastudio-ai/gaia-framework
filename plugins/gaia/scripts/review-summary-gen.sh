@@ -120,6 +120,16 @@ Exit codes:
   0 — success; absolute path of written file emitted to stdout
   1 — story not found
   2 — write failure: gate table empty/malformed, non-writable output dir, etc.
+  3 — proof-of-execution failure (AF-2026-05-20-1): summary written but at
+      least one PASSED/FAILED verdict references a missing report file.
+      Only emitted when REVIEW_SUMMARY_REQUIRE_REPORTS=on.
+
+Environment variables (AF-2026-05-20-1):
+  REVIEW_SUMMARY_REQUIRE_REPORTS=on
+      When set, exit non-zero (3) if any PASSED/FAILED verdict row references
+      a report file that does not exist on disk. The summary file is still
+      written and lists missing reports in a "Proof-of-Execution Findings"
+      section. Default off for backward compatibility.
 USAGE
 }
 
@@ -378,6 +388,40 @@ _render_summary() {
     relpaths+=("${r//\{key\}/$key}")
   done
 
+  # AF-2026-05-20-1 proof-of-execution: verify each PASSED/FAILED verdict
+  # has a corresponding report file on disk. Missing reports are flagged
+  # MISSING in the summary body and counted for the exit-status decision.
+  local _project_path="${PROJECT_PATH:-.}"
+  local report_missing_idx=""
+  local idx=0
+  while [ $idx -lt 6 ]; do
+    local rp="${relpaths[$idx]}"
+    local verdict_here="${VERDICTS[$idx]}"
+    local abs_rp
+    case "$rp" in
+      /*) abs_rp="$rp" ;;
+      *)  abs_rp="$_project_path/$rp" ;;
+    esac
+    case "$verdict_here" in
+      PASSED|FAILED)
+        if [ ! -f "$abs_rp" ]; then
+          report_missing_idx="${report_missing_idx}${idx},"
+        fi
+        ;;
+    esac
+    idx=$((idx + 1))
+  done
+  # Strip trailing comma
+  report_missing_idx="${report_missing_idx%,}"
+
+  # Helper: was index $1 flagged missing?
+  _is_idx_missing() {
+    case ",$report_missing_idx," in
+      *",$1,"*) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+
   # Reviewer-section H2 headings — V1 schema.
   local headings=(
     "Code Review"
@@ -413,11 +457,33 @@ _render_summary() {
 
       printf '## %s\n' "$heading"
       printf '**Verdict:** %s\n' "$verdict"
-      printf '**Report:** [%s](%s)\n' "$relpath" "$relpath"
+      # AF-2026-05-20-1: mark MISSING when the report file is not on disk.
+      if _is_idx_missing "$i"; then
+        printf '**Report:** MISSING — `%s` not on disk (verdict %s written without evidence)\n' \
+          "$relpath" "$verdict"
+      else
+        printf '**Report:** [%s](%s)\n' "$relpath" "$relpath"
+      fi
       printf '**Synopsis:** %s\n' "$synopsis"
       printf '\n'
       i=$((i + 1))
     done
+
+    # AF-2026-05-20-1: enumerate missing reports in a Findings section.
+    if [ -n "$report_missing_idx" ]; then
+      printf '## Proof-of-Execution Findings\n'
+      printf '\n'
+      printf '> The following per-review report files were referenced by the Review Gate but do not exist on disk. The verdicts were recorded without corresponding evidence — investigate whether the review skills were actually dispatched (see AF-2026-05-20-1).\n'
+      printf '\n'
+      i=0
+      while [ $i -lt 6 ]; do
+        if _is_idx_missing "$i"; then
+          printf '- **%s** (%s) — MISSING: `%s`\n' "${headings[$i]}" "${VERDICTS[$i]}" "${relpaths[$i]}"
+        fi
+        i=$((i + 1))
+      done
+      printf '\n'
+    fi
 
     printf '## Aggregate Gate Status\n'
     printf '\n'
@@ -425,8 +491,13 @@ _render_summary() {
     printf '|---|---|---|\n'
     i=0
     while [ $i -lt 6 ]; do
-      printf '| %s | %s | [link](%s) |\n' \
-        "${headings[$i]}" "${VERDICTS[$i]}" "${relpaths[$i]}"
+      if _is_idx_missing "$i"; then
+        printf '| %s | %s | MISSING |\n' \
+          "${headings[$i]}" "${VERDICTS[$i]}"
+      else
+        printf '| %s | %s | [link](%s) |\n' \
+          "${headings[$i]}" "${VERDICTS[$i]}" "${relpaths[$i]}"
+      fi
       i=$((i + 1))
     done
     printf '\n'
@@ -442,6 +513,15 @@ _render_summary() {
     rm -f "$tmp" 2>/dev/null || true
     _die_write "write failure: $out"
   fi
+
+  # AF-2026-05-20-1: export count of missing reports so main() can decide
+  # exit status (non-zero on missing PASSED/FAILED reports, gated by
+  # REVIEW_SUMMARY_REQUIRE_REPORTS env).
+  local _miss_count=0
+  if [ -n "$report_missing_idx" ]; then
+    _miss_count=$(printf '%s\n' "$report_missing_idx" | awk -F',' '{print NF}')
+  fi
+  REVIEW_SUMMARY_MISSING_COUNT="$_miss_count"
 }
 
 # ---------- Locate the story file (for mtime + default output dir) ----------
@@ -547,6 +627,16 @@ main() {
 
   # Stdout: absolute path.
   printf '%s\n' "$out_path"
+
+  # AF-2026-05-20-1: exit non-zero when reports are missing, gated by
+  # REVIEW_SUMMARY_REQUIRE_REPORTS=on (default off — backward-compatible).
+  # Operators / CI can flip on to fail-closed when verdicts were written
+  # without on-disk evidence.
+  if [ "${REVIEW_SUMMARY_REQUIRE_REPORTS:-off}" = "on" ] \
+     && [ "${REVIEW_SUMMARY_MISSING_COUNT:-0}" -gt 0 ]; then
+    _log "proof-of-execution: $REVIEW_SUMMARY_MISSING_COUNT report file(s) missing — see Proof-of-Execution Findings section in $out_path"
+    exit 3
+  fi
 }
 
 main "$@"
