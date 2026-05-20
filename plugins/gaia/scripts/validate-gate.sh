@@ -62,10 +62,34 @@ LC_ALL=C
 export LC_ALL
 
 # ---------- Fallback config resolution (parallel dev with resolve-config.sh) ----------
-TEST_ARTIFACTS="${TEST_ARTIFACTS:-docs/test-artifacts}"
-PLANNING_ARTIFACTS="${PLANNING_ARTIFACTS:-docs/planning-artifacts}"
-IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-docs/implementation-artifacts}"
+# E96-S7 AC3: smart-fallback — env-var > .gaia/artifacts/<type>-artifacts/ (when
+# present on disk, post-migration canonical) > legacy docs/<type>-artifacts/
+# (in-deprecation-window consumers + bats fixtures). Env-var overrides win.
 PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
+
+if [ -z "${TEST_ARTIFACTS:-}" ]; then
+  if [ -d "${PROJECT_ROOT}/.gaia/artifacts/test-artifacts" ]; then
+    TEST_ARTIFACTS="${PROJECT_ROOT}/.gaia/artifacts/test-artifacts"
+  else
+    TEST_ARTIFACTS="docs/test-artifacts"
+  fi
+fi
+
+if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
+  if [ -d "${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts" ]; then
+    PLANNING_ARTIFACTS="${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts"
+  else
+    PLANNING_ARTIFACTS="docs/planning-artifacts"
+  fi
+fi
+
+if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
+  if [ -d "${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts" ]; then
+    IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts"
+  else
+    IMPLEMENTATION_ARTIFACTS="docs/implementation-artifacts"
+  fi
+fi
 
 # ---------- Constants ----------
 # Supported gate list — keep in sync with gate_path() case block below.

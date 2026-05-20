@@ -99,3 +99,35 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"$PROJECT_ROOT/.gaia/config"* ]]
 }
+
+# E96-S7 AC4: derived checkpoint-dir constant + backward-compat env-var aliases.
+
+@test "gaia-paths.sh: exports GAIA_CHECKPOINT_DIR derived from GAIA_MEMORY_DIR (AC4)" {
+  run bash -c "source '$LIB' && echo CKPT=\$GAIA_CHECKPOINT_DIR && echo MEM=\$GAIA_MEMORY_DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CKPT=$PROJECT_ROOT/.gaia/memory/checkpoints"* ]]
+  [[ "$output" == *"MEM=$PROJECT_ROOT/.gaia/memory"* ]]
+}
+
+@test "gaia-paths.sh: exports MEMORY_PATH alias for backward compat (AC4)" {
+  run bash -c "source '$LIB' && echo MEMORY_PATH=\$MEMORY_PATH"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"MEMORY_PATH=$PROJECT_ROOT/.gaia/memory"* ]]
+}
+
+@test "gaia-paths.sh: exports CHECKPOINT_PATH alias for backward compat (AC4)" {
+  run bash -c "source '$LIB' && echo CHECKPOINT_PATH=\$CHECKPOINT_PATH"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CHECKPOINT_PATH=$PROJECT_ROOT/.gaia/memory/checkpoints"* ]]
+}
+
+@test "gaia-paths.sh: aliases honor GAIA_MEMORY_PATH env-var override (AC4)" {
+  # Override GAIA_MEMORY_PATH; CHECKPOINT_PATH and MEMORY_PATH should follow.
+  local alt="$PROJECT_ROOT/alt-mem"
+  mkdir -p "$alt"
+  run bash -c "GAIA_MEMORY_PATH='$alt' source '$LIB' && echo CKPT=\$CHECKPOINT_PATH && echo MEM=\$MEMORY_PATH"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CKPT=$alt/checkpoints"* ]]
+  [[ "$output" == *"MEM=$alt"* ]]
+  rm -rf "$alt"
+}
