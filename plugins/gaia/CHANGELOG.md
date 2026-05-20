@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.164.1] — 2026-05-20
+
+### Fixed
+
+- (yaml-resolvers) smart-fallback for .gaia/state/sprint-status.yaml
+
 ## [1.164.0] — 2026-05-20
 
 ### Added
