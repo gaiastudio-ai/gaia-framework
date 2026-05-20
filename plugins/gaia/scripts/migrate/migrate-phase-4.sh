@@ -78,6 +78,10 @@ fi
 mkdir -p "$BACKUP_DIR" "$NEW_MEM" "$STATE_DIR"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 TARBALL="$BACKUP_DIR/phase-4-${TS}.tar.gz"
+# E96-S6: pointer-list sidecar for symmetry with sibling phases. Phase 4
+# doesn't auto-rollback today, but the list helps a manual recovery.
+POINTER_LIST="${TARBALL}.pointers.txt"
+: > "$POINTER_LIST"
 
 if [ "$DRY_RUN" = "1" ]; then
   log "DRY-RUN: would create pre-phase tarball -> $TARBALL"
@@ -173,7 +177,9 @@ fi
 
 # Step 5: pointer file at legacy location
 mkdir -p "$LEGACY_MEM"
-printf '%s\n' "MOVED TO .gaia/memory/ (Phase 4 of E96, AF-2026-05-19-1, ADR-111)" > "$LEGACY_MEM/.gaia-pointer"
+pointer="$LEGACY_MEM/.gaia-pointer"
+printf '%s\n' "$pointer" >> "$POINTER_LIST"
+printf '%s\n' "MOVED TO .gaia/memory/ (Phase 4 of E96, AF-2026-05-19-1, ADR-111)" > "$pointer"
 
 # Step 6: .gitignore update for .gaia-migrate-backup/ (AC10)
 GIT_IGNORE="$PROJECT_ROOT/.gitignore"

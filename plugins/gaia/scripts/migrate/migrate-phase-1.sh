@@ -96,6 +96,7 @@ mkdir -p "$BACKUP_DIR"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 TARBALL="$BACKUP_DIR/phase-1-${TS}.tar.gz"
 MANIFEST="$BACKUP_DIR/phase-1-${TS}-manifest.txt"
+POINTER_LIST="${TARBALL}.pointers.txt"
 
 log "operator-notice: CLAUDE.md will be updated by E96-S5 (cleanup story); not touched here"
 
@@ -131,6 +132,10 @@ log "moving $LEGACY_DIR -> $NEW_DIR"
 mv "$LEGACY_DIR" "$NEW_DIR"
 
 # ---------- Step 4: pointer-file ----------
+# E96-S6: write the pointer-list BEFORE writing the pointer file so the gate's
+# rollback can find and clean it up even on partial-write failures.
+
+printf '%s\n' "$POINTER_PATH" > "$POINTER_LIST"
 
 mkdir -p "$LEGACY_DIR"
 printf '%s\n' "$POINTER_CONTENT" > "$POINTER_PATH"
@@ -164,7 +169,10 @@ if ! bash "$LIB_DIR/phase-exit-gate.sh" \
         --manifest "$MANIFEST" \
         --bats-baseline "$BATS_BASELINE" \
         --bats-current "$BATS_CURRENT" \
-        --tarball "$TARBALL"; then
+        --tarball "$TARBALL" \
+        --legacy-path config \
+        --pointer-list "$POINTER_LIST" \
+        --remove-source-dir-if-empty; then
   die "phase-exit gate FAILED — rollback executed" 1
 fi
 

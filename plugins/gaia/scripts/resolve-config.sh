@@ -950,10 +950,22 @@ fi
 # when neither a config file value nor a GAIA_* env override supplied one.
 # Runs AFTER env overrides so an explicit empty value from env never falls
 # through to the default (env overrides use -n so only non-empty wins).
-[ -z "$v_test_artifacts" ]           && v_test_artifacts="${v_project_root}/docs/test-artifacts"
-[ -z "$v_planning_artifacts" ]       && v_planning_artifacts="${v_project_root}/docs/planning-artifacts"
-[ -z "$v_implementation_artifacts" ] && v_implementation_artifacts="${v_project_root}/docs/implementation-artifacts"
-[ -z "$v_creative_artifacts" ]       && v_creative_artifacts="${v_project_root}/docs/creative-artifacts"
+#
+# E96-S6 hotfix (ADR-111): prefer .gaia/artifacts/<subdir>/ over the legacy
+# docs/<subdir>/ default whenever the .gaia/ layout is present on disk.
+# Sweeps every downstream consumer to the new layout without per-script changes.
+_artifact_default() {
+  local subdir="$1"
+  if [ -d "${v_project_root}/.gaia/artifacts/${subdir}" ]; then
+    printf '%s' "${v_project_root}/.gaia/artifacts/${subdir}"
+  else
+    printf '%s' "${v_project_root}/docs/${subdir}"
+  fi
+}
+[ -z "$v_test_artifacts" ]           && v_test_artifacts="$(_artifact_default test-artifacts)"
+[ -z "$v_planning_artifacts" ]       && v_planning_artifacts="$(_artifact_default planning-artifacts)"
+[ -z "$v_implementation_artifacts" ] && v_implementation_artifacts="$(_artifact_default implementation-artifacts)"
+[ -z "$v_creative_artifacts" ]       && v_creative_artifacts="$(_artifact_default creative-artifacts)"
 
 # ---------- Required-field check (post-merge, post-env) ----------
 

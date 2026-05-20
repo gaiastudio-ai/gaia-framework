@@ -25,7 +25,17 @@
 
 resolve_story_file() {
     local story_key="${1:?usage: resolve_story_file <story_key>}"
-    local impl_root="${IMPLEMENTATION_ARTIFACTS:-docs/implementation-artifacts}"
+    # E96-S6 (ADR-111): prefer .gaia/artifacts/implementation-artifacts/ when
+    # present on disk; fall back to legacy docs/ during the deprecation window.
+    # IMPLEMENTATION_ARTIFACTS env-var override wins over both.
+    local impl_root
+    if [[ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]]; then
+        impl_root="$IMPLEMENTATION_ARTIFACTS"
+    elif [[ -d ".gaia/artifacts/implementation-artifacts" ]]; then
+        impl_root=".gaia/artifacts/implementation-artifacts"
+    else
+        impl_root="docs/implementation-artifacts"
+    fi
 
     if [[ ! -d "$impl_root" ]]; then
         printf 'error: implementation-artifacts root not found: %s\n' "$impl_root" >&2
