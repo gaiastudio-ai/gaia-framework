@@ -34,6 +34,11 @@ setup() {
   ART="$TEST_PROJECT/docs/implementation-artifacts"
   mkdir -p "$ART"
   export PROJECT_PATH="$TEST_PROJECT"
+  # AF-2026-05-20-1: skip-check tests seed the gate via review-gate.sh
+  # update with no report file. Disable the proof-of-execution gate so
+  # the skip-check mechanics can be exercised. Proof-of-execution has
+  # its own dedicated suite.
+  export REVIEW_GATE_PROOF_OF_EXECUTION=off
 
   STORY_KEY="E58-S1-FIXTURE"
   STORY_FILE="$ART/${STORY_KEY}-fake.md"
