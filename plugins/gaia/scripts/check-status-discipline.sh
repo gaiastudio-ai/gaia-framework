@@ -162,7 +162,12 @@ MARKER_KEY=$(marker_story_key || true)
 classify_path() {
   local p="$1"
   case "$p" in
-    # Canonical nested layout (E79-S4) — epic-*/stories/{key}-*.md
+    # E96-S8 smoke-test follow-up: post-migration .gaia/ layout (ADR-111)
+    .gaia/artifacts/implementation-artifacts/epic-*/stories/E*-S*-*.md) printf 'story_frontmatter' ;;
+    .gaia/artifacts/implementation-artifacts/E*-S*-*.md) printf 'story_frontmatter' ;;
+    .gaia/state/sprint-status.yaml) printf 'sprint_status' ;;
+    .gaia/artifacts/planning-artifacts/epics-and-stories.md) printf 'epics_md' ;;
+    # Canonical nested layout (E79-S4) — epic-*/stories/{key}-*.md (legacy)
     docs/implementation-artifacts/epic-*/stories/E*-S*-*.md) printf 'story_frontmatter' ;;
     # Legacy flat layout — read-only fallback until E79-S6 migration completes.
     docs/implementation-artifacts/E*-S*-*.md) printf 'story_frontmatter' ;;
