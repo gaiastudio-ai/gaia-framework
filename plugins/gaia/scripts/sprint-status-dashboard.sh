@@ -52,14 +52,20 @@ PROJECT_PATH="${PROJECT_PATH:-.}"
 # without restructuring the fixture tree.
 YAML_PATH="${SPRINT_STATUS_YAML:-}"
 if [[ -z "$YAML_PATH" ]]; then
+  # E96-S8 smoke-test follow-up: prefer .gaia/state/sprint-status.yaml
+  # (post-migration canonical per ADR-111) over the legacy docs/ canonical.
+  # Same pattern as PR #809 sprint-close/close.sh resolve_yaml_path.
+  GAIA_STATE_YAML="$PROJECT_PATH/.gaia/state/sprint-status.yaml"
   CANONICAL_YAML="$PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml"
   FALLBACK_YAML="$PROJECT_PATH/sprint-status.yaml"
-  if [[ -f "$CANONICAL_YAML" ]]; then
+  if [[ -f "$GAIA_STATE_YAML" ]]; then
+    YAML_PATH="$GAIA_STATE_YAML"
+  elif [[ -f "$CANONICAL_YAML" ]]; then
     YAML_PATH="$CANONICAL_YAML"
   elif [[ -f "$FALLBACK_YAML" ]]; then
     YAML_PATH="$FALLBACK_YAML"
   else
-    YAML_PATH="$CANONICAL_YAML"
+    YAML_PATH="$GAIA_STATE_YAML"
   fi
 fi
 
