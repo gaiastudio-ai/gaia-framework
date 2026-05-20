@@ -25,7 +25,7 @@
 
 resolve_story_file() {
     local story_key="${1:?usage: resolve_story_file <story_key>}"
-    local impl_root="${IMPLEMENTATION_ARTIFACTS:-docs/implementation-artifacts}"
+    local impl_root="${IMPLEMENTATION_ARTIFACTS:-.gaia/artifacts/implementation-artifacts}"
 
     if [[ ! -d "$impl_root" ]]; then
         printf 'error: implementation-artifacts root not found: %s\n' "$impl_root" >&2

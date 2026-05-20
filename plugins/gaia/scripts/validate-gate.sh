@@ -63,8 +63,8 @@ export LC_ALL
 
 # ---------- Fallback config resolution (parallel dev with resolve-config.sh) ----------
 TEST_ARTIFACTS="${TEST_ARTIFACTS:-docs/test-artifacts}"
-PLANNING_ARTIFACTS="${PLANNING_ARTIFACTS:-docs/planning-artifacts}"
-IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-docs/implementation-artifacts}"
+PLANNING_ARTIFACTS="${PLANNING_ARTIFACTS:-.gaia/artifacts/planning-artifacts}"
+IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-.gaia/artifacts/implementation-artifacts}"
 PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
 
 # ---------- Constants ----------

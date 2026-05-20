@@ -172,7 +172,7 @@ if printf '%s\n' "$sanitized_body" | grep -qiE "\\b(${ui_pipe})\\b"; then
 fi
 
 # ---------- Rule #3: epic UX classification ----------
-EPICS_FILE="${EPICS_FILE:-${PLANNING_ARTIFACTS:-docs/planning-artifacts}/epics-and-stories.md}"
+EPICS_FILE="${EPICS_FILE:-${PLANNING_ARTIFACTS:-.gaia/artifacts/planning-artifacts}/epics-and-stories.md}"
 if [ -n "$EPIC_KEY" ] && [ -r "$EPICS_FILE" ]; then
   # Look for the epic block, then check whether a `tags:` or `classification:`
   # line within ~30 lines of the epic key carries a UX-related token.
@@ -191,7 +191,7 @@ if [ -n "$EPIC_KEY" ] && [ -r "$EPICS_FILE" ]; then
 fi
 
 # ---------- Rule #4: ux-design.md exists AND mentions epic key ----------
-UX_DESIGN_FILE="${PLANNING_ARTIFACTS:-docs/planning-artifacts}/ux-design.md"
+UX_DESIGN_FILE="${PLANNING_ARTIFACTS:-.gaia/artifacts/planning-artifacts}/ux-design.md"
 if [ -n "$EPIC_KEY" ] && [ -r "$UX_DESIGN_FILE" ]; then
   if grep -qE "(^|[^A-Za-z0-9_])${EPIC_KEY}([^A-Za-z0-9_]|$)" "$UX_DESIGN_FILE"; then
     ux_match=true

@@ -98,6 +98,8 @@ mkdir -p "$BACKUP_DIR" "$NEW_ARTIFACTS" "$NEW_STATE"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 TARBALL="$BACKUP_DIR/phase-2-${TS}.tar.gz"
 MANIFEST="$BACKUP_DIR/phase-2-${TS}-manifest.txt"
+POINTER_LIST="${TARBALL}.pointers.txt"
+: > "$POINTER_LIST"
 
 if [ "$DRY_RUN" = "1" ]; then
   log "DRY-RUN: would create pre-phase tarball -> $TARBALL"
@@ -157,6 +159,8 @@ FILE_COUNT="$(awk 'NF>0' "$MANIFEST" | wc -l | awk '{print $1}')"
 log "manifest captured: $FILE_COUNT files across 5 artifact subdirs"
 
 # Step 4: atomic move of artifact subdirs to .gaia/artifacts/
+# E96-S6: pointer-list written incrementally before each pointer file, so the
+# rollback can clean up partial-write state on failure.
 for sd in "${ARTIFACT_SUBDIRS[@]}"; do
   if [ -d "$LEGACY_DOCS/$sd" ]; then
     if [ -d "$NEW_ARTIFACTS/$sd" ]; then
@@ -165,7 +169,9 @@ for sd in "${ARTIFACT_SUBDIRS[@]}"; do
     log "moving artifact subdir -> \$PROJECT_ROOT/.gaia/artifacts/$sd"
     mv "$LEGACY_DOCS/$sd" "$NEW_ARTIFACTS/$sd"
     mkdir -p "$LEGACY_DOCS/$sd"
-    printf '%s\n' "MOVED TO .gaia/artifacts/$sd (Phase 2 of E96, AF-2026-05-19-1, ADR-111)" > "$LEGACY_DOCS/$sd/.gaia-pointer"
+    pointer="$LEGACY_DOCS/$sd/.gaia-pointer"
+    printf '%s\n' "$pointer" >> "$POINTER_LIST"
+    printf '%s\n' "MOVED TO .gaia/artifacts/$sd (Phase 2 of E96, AF-2026-05-19-1, ADR-111)" > "$pointer"
   fi
 done
 
@@ -175,7 +181,9 @@ for pe in "${STATE_POINTERS[@]:-}"; do
   [ -n "$pe" ] || continue
   legacy_path="${pe%%|*}"
   new_name="${pe##*|}"
-  printf '%s\n' "MOVED TO .gaia/state/$new_name (Phase 2 of E96, AF-2026-05-19-1, ADR-111)" > "${legacy_path}.gaia-pointer"
+  pointer="${legacy_path}.gaia-pointer"
+  printf '%s\n' "$pointer" >> "$POINTER_LIST"
+  printf '%s\n' "MOVED TO .gaia/state/$new_name (Phase 2 of E96, AF-2026-05-19-1, ADR-111)" > "$pointer"
 done
 
 # Step 5: phase-exit gate against the artifacts manifest
@@ -201,7 +209,14 @@ if ! bash "$LIB_DIR/phase-exit-gate.sh" \
         --manifest "$GATE_MANIFEST" \
         --bats-baseline "$BATS_BASELINE" \
         --bats-current "$BATS_BASELINE" \
-        --tarball "$TARBALL"; then
+        --tarball "$TARBALL" \
+        --legacy-path docs/planning-artifacts \
+        --legacy-path docs/implementation-artifacts \
+        --legacy-path docs/test-artifacts \
+        --legacy-path docs/creative-artifacts \
+        --legacy-path docs/research-artifacts \
+        --pointer-list "$POINTER_LIST" \
+        --remove-source-dir-if-empty; then
   die "phase-exit gate FAILED — rollback executed" 1
 fi
 

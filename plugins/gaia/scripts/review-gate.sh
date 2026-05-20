@@ -302,7 +302,7 @@ STORY_FILE=""
 locate_story_file() {
   local key="$1"
   local project_path="${PROJECT_PATH:-.}"
-  local impl_artifacts="${IMPLEMENTATION_ARTIFACTS:-${project_path}/docs/implementation-artifacts}"
+  local impl_artifacts="${IMPLEMENTATION_ARTIFACTS:-${project_path}/.gaia/artifacts/implementation-artifacts}"
   local pattern="${impl_artifacts}/${key}-*.md"
   local epic_pattern="${impl_artifacts}/epic-*/stories/${key}-*.md"
 
