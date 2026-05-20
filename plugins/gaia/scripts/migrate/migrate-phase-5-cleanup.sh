@@ -6,10 +6,16 @@
 #   1. Produces a pre-cleanup tarball of every file the sweep will touch
 #      (CLAUDE.md, README.md, SKILL.md files, framework .sh scripts, ADR-020/044/046).
 #   2. Runs the post-cleanup grep gate (AC10) and reports counts of remaining
-#      legacy references — informational. The actual mechanical rewrite is
-#      done incrementally by maintainers as in-flight workflows allow.
+#      legacy references — informational. THIS SCRIPT AUDITS BUT DOES NOT
+#      SWEEP; the mechanical sweep across the ~151 SKILL.md and ~103 shell
+#      scripts is owned by E96-S7 (E96-S5 silently deferred this work in its
+#      Findings table under the "incremental maintenance" framing, which the
+#      sprint-49 review surfaced as a Review Gate integrity defect; the
+#      sweep was re-scoped into E96-S7 via /gaia-correct-course story_injection).
 #   3. Removes transition pointer files (.gaia-pointer) at legacy locations
-#      IF run after a deprecation window has elapsed.
+#      IF run after a deprecation window has elapsed AND E96-S8 (cleanup) has
+#      landed. The destructive cleanup (legacy dir removal + write-boundary.sh
+#      legacy-entry removal) is owned by E96-S8, not this script.
 #
 # Idempotent.
 #
