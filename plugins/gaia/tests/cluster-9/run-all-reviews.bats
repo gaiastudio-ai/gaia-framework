@@ -35,6 +35,13 @@ setup() {
 
   export PROJECT_PATH="$TEST_PROJECT"
   export REVIEW_GATE_SCRIPT="$SCRIPTS_DIR/review-gate.sh"
+  # AF-2026-05-20-1: this suite exercises the orchestration mechanics with
+  # MOCK_VERDICTS — the mock-orchestrator invokes review-gate.sh update
+  # without --report. Disable the proof-of-execution gate so the suite can
+  # focus on orchestration order / canonical sequence / parity tracing.
+  # The proof-of-execution contract has its own dedicated suite at
+  # tests/review-gate-proof-of-execution.bats.
+  export REVIEW_GATE_PROOF_OF_EXECUTION=off
 
   # Preserve temp dir path on failure for post-mortem (AC fixture doc)
   BATS_PRESERVE_TMPDIR_ON_FAILURE=1
