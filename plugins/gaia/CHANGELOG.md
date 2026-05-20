@@ -3,6 +3,30 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.164.0] — 2026-05-20
+
+### Added
+
+- (E96-S8) post-deprecation cleanup — write-boundary scoped + missed hook (#806)
+- (E96-S7) partial-4 — smart-fallback across 24 missed runtime helpers (#805)
+- (E96-S7) bulk legacy-path sweep — runtime helpers + AC6 fixture+bats (#804)
+- (E96-S5) cleanup — CLAUDE.md / README sweep + audit script + ADR cross-refs (#798)
+- (E96-S4) phase 4 — _memory/ migration with hash-manifest sentinel (#797)
+- (E96-S3) phase 3 — root-state files + custom/ relocation to .gaia/ (#796)
+- (E96-S2) phase 2 — docs/ rename to .gaia/artifacts/ + state extraction (#795)
+- (E96-S1) add gaia-paths helper + Phase 1 config migration + phase-exit gate (#794)
+- (sprint-wiring) E93-S5 — wire /gaia-sprint-plan + /gaia-correct-course + /gaia-sprint-close for ADR-108 sprint-level edges (#788)
+- (sprint-review) E93-S4 — Track B per-stack execution-review runner + threat-model mitigations (#787)
+- (sprint-review) E93-S3 — /gaia-sprint-review skill scaffold (Mode A, Track A Val dispatch, composite verdict, UNVERIFIED bypass) (#786)
+
+### Fixed
+
+- (sprint-close) smart-fallback for .gaia/state + .gaia/memory + .gaia/artifacts (#809)
+- (sidecars) smart-fallback for .gaia/memory/ in retro + val sidecar writers (#808)
+- (E96-S7/S8) gaia-sprint-review/finalize.sh smart-fallback for .gaia/memory/ (#807)
+- (E96-S6) phase-exit-gate cumulative-target + rollback-scope defects + runtime sweep (#801)
+- (sprint-review) E93 manual-test defect bundle (ISSUE-1/-2/-4/-5) (#791)
+
 ## [1.163.0] — 2026-05-20
 
 ## [1.162.0] — 2026-05-20
