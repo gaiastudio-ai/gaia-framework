@@ -478,7 +478,7 @@ _render_summary() {
       i=0
       while [ $i -lt 6 ]; do
         if _is_idx_missing "$i"; then
-          printf '- **%s** (%s) — MISSING: `%s`\n' "${headings[$i]}" "${VERDICTS[$i]}" "${relpaths[$i]}"
+          printf -- '- **%s** (%s) — MISSING: `%s`\n' "${headings[$i]}" "${VERDICTS[$i]}" "${relpaths[$i]}"
         fi
         i=$((i + 1))
       done
