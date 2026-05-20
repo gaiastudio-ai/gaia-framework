@@ -84,6 +84,7 @@ allowlist_match() {
   local real_root="$1" real_target="$2"
   case "$real_target" in
     "$real_root"/_memory/*-sidecar/*.md)                 return 0 ;;
+    "$real_root"/.gaia/memory/*-sidecar/*.md)            return 0 ;;
     "$real_root"/docs/implementation-artifacts/retrospective-*.md) return 0 ;;
     "$real_root"/.gaia/artifacts/implementation-artifacts/retrospective-*.md) return 0 ;;
     "$real_root"/docs/planning-artifacts/action-items.yaml)        return 0 ;;
