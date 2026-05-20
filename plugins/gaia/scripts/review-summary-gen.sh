@@ -456,7 +456,7 @@ STORY_FILE=""
 _locate_story_file() {
   local key="$1"
   local project_path="${PROJECT_PATH:-.}"
-  local impl_artifacts="${IMPLEMENTATION_ARTIFACTS:-${project_path}/.gaia/artifacts/implementation-artifacts}"
+  local impl_artifacts="${IMPLEMENTATION_ARTIFACTS:-${project_path}/docs/implementation-artifacts}"
   local pattern="${impl_artifacts}/${key}-*.md"
   local epic_pattern="${impl_artifacts}/epic-*/stories/${key}-*.md"
 
@@ -515,7 +515,7 @@ main() {
     out_path="$OUTPUT_PATH"
   else
     local project_path="${PROJECT_PATH:-.}"
-    local impl_artifacts="${IMPLEMENTATION_ARTIFACTS:-${project_path}/.gaia/artifacts/implementation-artifacts}"
+    local impl_artifacts="${IMPLEMENTATION_ARTIFACTS:-${project_path}/docs/implementation-artifacts}"
     out_path="${impl_artifacts}/${STORY_KEY}-review-summary.md"
   fi
   out_path="$(_abspath "$out_path")"

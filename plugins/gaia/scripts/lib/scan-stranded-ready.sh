@@ -30,7 +30,7 @@ LC_ALL=C
 export LC_ALL
 
 PROJECT_PATH="${PROJECT_PATH:-.}"
-IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-$PROJECT_PATH/.gaia/artifacts/implementation-artifacts}"
+IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-$PROJECT_PATH/docs/implementation-artifacts}"
 VALIDATOR_DECISION_LOG="${VALIDATOR_DECISION_LOG:-$PROJECT_PATH/_memory/validator-sidecar/decision-log.md}"
 
 # Silently degrade when the implementation-artifacts directory or the decision

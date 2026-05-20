@@ -248,8 +248,8 @@ fi
 # story-state layer.
 
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
-IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts}"
-PLANNING_ARTIFACTS="${PLANNING_ARTIFACTS:-${PROJECT_PATH}/.gaia/artifacts/planning-artifacts}"
+IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_PATH}/docs/implementation-artifacts}"
+PLANNING_ARTIFACTS="${PLANNING_ARTIFACTS:-${PROJECT_PATH}/docs/planning-artifacts}"
 MEMORY_PATH="${MEMORY_PATH:-${PROJECT_PATH}/_memory}"
 
 # E64-S4 — Resolve EPICS_AND_STORIES across the dual-layout invariant

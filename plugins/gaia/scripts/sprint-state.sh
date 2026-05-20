@@ -310,7 +310,7 @@ validate_transition() {
 # E38-S1 bats fixtures which place the yaml at $TEST_TMP root for test speed.
 resolve_paths() {
   PROJECT_PATH="${PROJECT_PATH:-.}"
-  IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts}"
+  IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_PATH}/docs/implementation-artifacts}"
   # E96-S2 / ADR-111: prefer `.gaia/state/sprint-status.yaml` (mutable-runtime-
   # state tier) over the legacy `docs/implementation-artifacts/sprint-status.yaml`
   # (artifacts-tier). Legacy fallback retained during the 1-sprint transition

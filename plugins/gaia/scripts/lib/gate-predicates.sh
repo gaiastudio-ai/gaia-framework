@@ -183,7 +183,7 @@ _gate_check_section_count() {
 # _gate_check_story_status <key> <state>
 _gate_check_story_status() {
   local key="$1" want="$2"
-  local impl_dir="${IMPLEMENTATION_ARTIFACTS:-.gaia/artifacts/implementation-artifacts}"
+  local impl_dir="${IMPLEMENTATION_ARTIFACTS:-docs/implementation-artifacts}"
   local f
   for f in "$impl_dir"/"$key"-*.md "$impl_dir"/"$key".md; do
     [ -f "$f" ] || continue
