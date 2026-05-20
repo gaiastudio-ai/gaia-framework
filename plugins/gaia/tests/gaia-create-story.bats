@@ -22,6 +22,11 @@ setup() {
   mkdir -p "$ART"
   LEDGER="$TEST_TMP/.review-gate-ledger"
   export REVIEW_GATE_LEDGER="$LEDGER"
+  # AF-2026-05-20-1: this suite exercises review-gate.sh canonical-gate
+  # vs plan-id-gate routing without dispatching real review skills.
+  # Disable the proof-of-execution gate so the fixture verdicts can be
+  # written without --report. POE has its own dedicated suite.
+  export REVIEW_GATE_PROOF_OF_EXECUTION=off
 }
 teardown() { common_teardown; }
 
