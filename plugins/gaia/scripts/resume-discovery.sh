@@ -101,7 +101,14 @@ if ! printf '%s' "$SKILL_NAME" | grep -Eq '^[a-z0-9][a-z0-9-]{0,63}$'; then
   die 1 "invalid skill_name: $SKILL_NAME"
 fi
 
-CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-_memory/checkpoints}"
+# E96-S7 partial-4b: smart-fallback for CHECKPOINT_ROOT
+if [ -z "${CHECKPOINT_ROOT:-}" ]; then
+  if [ -d ".gaia/memory/checkpoints" ]; then
+    CHECKPOINT_ROOT=".gaia/memory/checkpoints"
+  else
+    CHECKPOINT_ROOT="_memory/checkpoints"
+  fi
+fi
 SKILL_DIR="$CHECKPOINT_ROOT/$SKILL_NAME"
 
 # ---------- Canonical / temp regexes ----------

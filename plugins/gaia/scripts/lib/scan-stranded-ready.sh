@@ -30,8 +30,21 @@ LC_ALL=C
 export LC_ALL
 
 PROJECT_PATH="${PROJECT_PATH:-.}"
-IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-$PROJECT_PATH/docs/implementation-artifacts}"
-VALIDATOR_DECISION_LOG="${VALIDATOR_DECISION_LOG:-$PROJECT_PATH/_memory/validator-sidecar/decision-log.md}"
+# E96-S7 partial-4b: smart-fallback
+if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
+  if [ -d "$PROJECT_PATH/.gaia/artifacts/implementation-artifacts" ]; then
+    IMPLEMENTATION_ARTIFACTS="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts"
+  else
+    IMPLEMENTATION_ARTIFACTS="$PROJECT_PATH/docs/implementation-artifacts"
+  fi
+fi
+if [ -z "${VALIDATOR_DECISION_LOG:-}" ]; then
+  if [ -d "$PROJECT_PATH/.gaia/memory/validator-sidecar" ]; then
+    VALIDATOR_DECISION_LOG="$PROJECT_PATH/.gaia/memory/validator-sidecar/decision-log.md"
+  else
+    VALIDATOR_DECISION_LOG="$PROJECT_PATH/_memory/validator-sidecar/decision-log.md"
+  fi
+fi
 
 # Silently degrade when the implementation-artifacts directory or the decision
 # log is missing — empty output (no stranded stories) is the correct signal.
