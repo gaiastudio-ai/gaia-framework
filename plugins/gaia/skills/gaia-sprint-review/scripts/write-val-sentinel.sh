@@ -98,8 +98,16 @@ command -v jq >/dev/null 2>&1 || die "jq is required but not installed (sentinel
 SCRIPT_DIR_LOCAL="$(cd "$(dirname "$0")" && pwd)"
 
 if [ -z "${CHECKPOINT_PATH:-}" ]; then
+  # E96-S7 AC3: smart-fallback walk-up — prefer .gaia/memory/checkpoints/
+  # (post-migration canonical) over legacy _memory/checkpoints/ (in-
+  # deprecation-window consumers + bats fixtures). Walk up from CWD looking
+  # for either marker.
   cwd="$(pwd)"
   while [ "$cwd" != "/" ]; do
+    if [ -d "$cwd/.gaia/memory/checkpoints" ] || [ -d "$cwd/.gaia/memory" ]; then
+      CHECKPOINT_PATH="$cwd/.gaia/memory/checkpoints"
+      break
+    fi
     if [ -d "$cwd/_memory/checkpoints" ] || [ -d "$cwd/_memory" ]; then
       CHECKPOINT_PATH="$cwd/_memory/checkpoints"
       break
@@ -107,7 +115,7 @@ if [ -z "${CHECKPOINT_PATH:-}" ]; then
     cwd="$(dirname "$cwd")"
   done
 fi
-[ -n "${CHECKPOINT_PATH:-}" ] || die "could not resolve _memory/checkpoints/ directory (set CHECKPOINT_PATH env var)"
+[ -n "${CHECKPOINT_PATH:-}" ] || die "could not resolve .gaia/memory/checkpoints/ or _memory/checkpoints/ directory (set CHECKPOINT_PATH env var)"
 mkdir -p "$CHECKPOINT_PATH"
 
 # ---------- Read + validate payload ----------

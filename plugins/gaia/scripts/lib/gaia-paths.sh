@@ -9,6 +9,11 @@
 #   GAIA_MEMORY_DIR     = ${project_root}/.gaia/memory
 #   GAIA_CUSTOM_DIR     = ${project_root}/.gaia/custom
 #
+# Plus (E96-S7 AC4) one derived constant + two backward-compat env-var aliases:
+#   GAIA_CHECKPOINT_DIR = ${GAIA_MEMORY_DIR}/checkpoints
+#   MEMORY_PATH         = ${GAIA_MEMORY_DIR}      (alias for scripts that default to ./_memory)
+#   CHECKPOINT_PATH     = ${GAIA_CHECKPOINT_DIR}  (alias for scripts that default to ./_memory/checkpoints)
+#
 # Project root resolution:
 #   1. ${CLAUDE_PROJECT_ROOT} if set
 #   2. ${PWD} as fallback
@@ -174,7 +179,21 @@ _gaia_paths_resolve_override \
   "$_GAIA_ROOT_CANON" \
   GAIA_CUSTOM_DIR || return 1
 
+# E96-S7 AC4: derived checkpoint-dir constant + backward-compat env-var aliases.
+# The checkpoint dir nests under the memory dir; downstream scripts that
+# currently consume `${CHECKPOINT_PATH:-./_memory/checkpoints}` defaults pick
+# up the canonical `.gaia/memory/checkpoints/` path automatically when this
+# helper is sourced. The MEMORY_PATH alias does the same for scripts that
+# default to `./_memory`.
+GAIA_CHECKPOINT_DIR="${GAIA_MEMORY_DIR}/checkpoints"
+
+# Export the env-var aliases — they are READ-ONLY mirrors for backward compat;
+# the canonical writeable constants remain GAIA_*_DIR.
+MEMORY_PATH="$GAIA_MEMORY_DIR"
+CHECKPOINT_PATH="$GAIA_CHECKPOINT_DIR"
+
 export GAIA_CONFIG_DIR GAIA_ARTIFACTS_DIR GAIA_STATE_DIR GAIA_MEMORY_DIR GAIA_CUSTOM_DIR
+export GAIA_CHECKPOINT_DIR MEMORY_PATH CHECKPOINT_PATH
 
 _GAIA_PATHS_LOADED=1
 export _GAIA_PATHS_LOADED

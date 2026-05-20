@@ -230,8 +230,14 @@ fi
 # ---------- python3 preflight ----------
 command -v python3 >/dev/null 2>&1 || die 2 "python3 not found on PATH (required to compose JSON)"
 
-# ---------- Resolve CHECKPOINT_ROOT ----------
-CHECKPOINT_ROOT_RESOLVED="${CHECKPOINT_ROOT:-_memory/checkpoints}"
+# ---------- Resolve CHECKPOINT_ROOT (E96-S7 partial-4b smart-fallback) ----------
+if [ -n "${CHECKPOINT_ROOT:-}" ]; then
+  CHECKPOINT_ROOT_RESOLVED="$CHECKPOINT_ROOT"
+elif [ -d ".gaia/memory/checkpoints" ]; then
+  CHECKPOINT_ROOT_RESOLVED=".gaia/memory/checkpoints"
+else
+  CHECKPOINT_ROOT_RESOLVED="_memory/checkpoints"
+fi
 SKILL_DIR="$CHECKPOINT_ROOT_RESOLVED/$SKILL"
 
 # ---------- Compose the new iteration record + merged val_loop_iterations array ----------

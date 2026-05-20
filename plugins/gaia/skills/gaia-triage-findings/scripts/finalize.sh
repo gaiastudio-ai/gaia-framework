@@ -36,8 +36,19 @@ die() { log "$*"; exit 1; }
 # behavior (Test D backward-compat).
 if [ -n "${GAIA_FINALIZE_SENTINEL_REQUIRED:-}" ]; then
   PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
-  SIDECAR_LOG="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
-  CHECKPOINT_MARKER="${CHECKPOINT_PATH:-$PROJECT_ROOT/_memory/checkpoints}/triage-findings.json"
+  # E96-S7 partial-4c: smart-fallback for sidecar + checkpoint paths
+  if [ -d "$PROJECT_ROOT/.gaia/memory/validator-sidecar" ]; then
+    SIDECAR_LOG="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
+  else
+    SIDECAR_LOG="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
+  fi
+  if [ -n "${CHECKPOINT_PATH:-}" ]; then
+    CHECKPOINT_MARKER="$CHECKPOINT_PATH/triage-findings.json"
+  elif [ -d "$PROJECT_ROOT/.gaia/memory/checkpoints" ]; then
+    CHECKPOINT_MARKER="$PROJECT_ROOT/.gaia/memory/checkpoints/triage-findings.json"
+  else
+    CHECKPOINT_MARKER="$PROJECT_ROOT/_memory/checkpoints/triage-findings.json"
+  fi
 
   if [ ! -f "$SIDECAR_LOG" ]; then
     die "Val sidecar write missing — Step 7 must be invoked before finalize (no decision-log at $SIDECAR_LOG)"

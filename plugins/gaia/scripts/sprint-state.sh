@@ -310,7 +310,17 @@ validate_transition() {
 # E38-S1 bats fixtures which place the yaml at $TEST_TMP root for test speed.
 resolve_paths() {
   PROJECT_PATH="${PROJECT_PATH:-.}"
-  IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_PATH}/docs/implementation-artifacts}"
+  # E96-S7 AC3: smart-fallback for IMPLEMENTATION_ARTIFACTS — prefer
+  # .gaia/artifacts/implementation-artifacts/ when present on disk, fall back
+  # to legacy docs/implementation-artifacts/ for in-deprecation-window
+  # consumers and bats fixtures. Env-var override still wins.
+  if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
+    if [ -d "${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts" ]; then
+      IMPLEMENTATION_ARTIFACTS="${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts"
+    else
+      IMPLEMENTATION_ARTIFACTS="${PROJECT_PATH}/docs/implementation-artifacts"
+    fi
+  fi
   # E96-S2 / ADR-111: prefer `.gaia/state/sprint-status.yaml` (mutable-runtime-
   # state tier) over the legacy `docs/implementation-artifacts/sprint-status.yaml`
   # (artifacts-tier). Legacy fallback retained during the 1-sprint transition

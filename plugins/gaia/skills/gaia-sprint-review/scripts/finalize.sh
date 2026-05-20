@@ -45,13 +45,20 @@ die() { log "$*"; exit 1; }
 # ---------- 1. E83 sentinel guard (FR-362, ADR-063 amendment) ----------
 
 # Resolve CHECKPOINT_PATH (CHECKPOINT_PATH env-var override first;
-# walk-up from CWD looking for the _memory/ project-root marker).
+# walk-up from CWD looking for the .gaia/memory/ or legacy _memory/
+# project-root marker per E96-S8 smart-fallback discipline).
 # Mirrors write-val-sentinel.sh's walk-up — kept inline rather than
 # extracted to lib/ because the duplication is bounded to 2 callers
-# and the walk-up is a 7-line idiom.
+# and the walk-up is a 9-line idiom.
 if [ -z "${CHECKPOINT_PATH:-}" ]; then
   cwd="$(pwd)"
   while [ "$cwd" != "/" ]; do
+    # E96-S8 partial-fix: prefer .gaia/memory/checkpoints/ when present
+    # (post-migration canonical) else legacy _memory/checkpoints/.
+    if [ -d "$cwd/.gaia/memory/checkpoints" ] || [ -d "$cwd/.gaia/memory" ]; then
+      CHECKPOINT_PATH="$cwd/.gaia/memory/checkpoints"
+      break
+    fi
     if [ -d "$cwd/_memory/checkpoints" ] || [ -d "$cwd/_memory" ]; then
       CHECKPOINT_PATH="$cwd/_memory/checkpoints"
       break

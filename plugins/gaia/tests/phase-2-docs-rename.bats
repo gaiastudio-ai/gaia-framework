@@ -107,14 +107,18 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "write-boundary.sh: still accepts legacy docs/creative-artifacts/ path (AC4)" {
+@test "write-boundary.sh: REJECTS legacy docs/creative-artifacts/ path post-E96-S8 (AC4)" {
+  # E96-S8 (AC5) closes the deprecation window — legacy docs/ paths are
+  # no longer in the write-boundary allowlist. Contract flipped from
+  # status=0 (accepted during dual-path window) to status=2 (REJECTED).
   WB="$( cd "$BATS_TEST_DIRNAME/../skills/gaia-meeting/scripts" && pwd )/write-boundary.sh"
   run bash "$WB" "docs/creative-artifacts/meeting-legacy.md"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
 }
 
-@test "write-boundary.sh: still accepts legacy docs/planning-artifacts/action-items.yaml (AC4)" {
+@test "write-boundary.sh: REJECTS legacy docs/planning-artifacts/action-items.yaml post-E96-S8 (AC4)" {
+  # E96-S8 (AC5): legacy docs/ removed from allowlist. Contract flipped to status=2.
   WB="$( cd "$BATS_TEST_DIRNAME/../skills/gaia-meeting/scripts" && pwd )/write-boundary.sh"
   run bash "$WB" "docs/planning-artifacts/action-items.yaml"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
 }

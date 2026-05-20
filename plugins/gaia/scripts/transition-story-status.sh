@@ -38,9 +38,12 @@
 #
 # Config (env vars, all optional):
 #   PROJECT_PATH              — defaults to "."
-#   IMPLEMENTATION_ARTIFACTS  — defaults to ${PROJECT_PATH}/docs/implementation-artifacts
-#   PLANNING_ARTIFACTS        — defaults to ${PROJECT_PATH}/docs/planning-artifacts
-#   MEMORY_PATH               — defaults to ${PROJECT_PATH}/_memory
+#   IMPLEMENTATION_ARTIFACTS  — smart-fallback: ${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts
+#                                (when present) else ${PROJECT_PATH}/docs/implementation-artifacts
+#   PLANNING_ARTIFACTS        — smart-fallback: ${PROJECT_PATH}/.gaia/artifacts/planning-artifacts
+#                                (when present) else ${PROJECT_PATH}/docs/planning-artifacts
+#   MEMORY_PATH               — smart-fallback: ${PROJECT_PATH}/.gaia/memory (when present)
+#                                else ${PROJECT_PATH}/_memory
 #   SPRINT_STATUS_YAML        — overrides default yaml path (forwarded to sprint-state.sh)
 #   EPICS_AND_STORIES         — overrides default planning artifact path
 #   STORY_INDEX_YAML          — overrides per-epic index path resolution
@@ -248,9 +251,30 @@ fi
 # story-state layer.
 
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
-IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_PATH}/docs/implementation-artifacts}"
-PLANNING_ARTIFACTS="${PLANNING_ARTIFACTS:-${PROJECT_PATH}/docs/planning-artifacts}"
-MEMORY_PATH="${MEMORY_PATH:-${PROJECT_PATH}/_memory}"
+
+# E96-S7 partial-4: smart-fallback — env-var > .gaia/<subdir>/ > legacy
+# <subdir>/. Env-var overrides win.
+if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
+  if [ -d "${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts" ]; then
+    IMPLEMENTATION_ARTIFACTS="${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts"
+  else
+    IMPLEMENTATION_ARTIFACTS="${PROJECT_PATH}/docs/implementation-artifacts"
+  fi
+fi
+if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
+  if [ -d "${PROJECT_PATH}/.gaia/artifacts/planning-artifacts" ]; then
+    PLANNING_ARTIFACTS="${PROJECT_PATH}/.gaia/artifacts/planning-artifacts"
+  else
+    PLANNING_ARTIFACTS="${PROJECT_PATH}/docs/planning-artifacts"
+  fi
+fi
+if [ -z "${MEMORY_PATH:-}" ]; then
+  if [ -d "${PROJECT_PATH}/.gaia/memory" ]; then
+    MEMORY_PATH="${PROJECT_PATH}/.gaia/memory"
+  else
+    MEMORY_PATH="${PROJECT_PATH}/_memory"
+  fi
+fi
 
 # E64-S4 — Resolve EPICS_AND_STORIES across the dual-layout invariant
 # (E53-S233 / ADR-070 / ADR-072). Mirrors validate-gate.sh::check_file_nonempty

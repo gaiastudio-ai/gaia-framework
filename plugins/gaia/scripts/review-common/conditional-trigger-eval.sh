@@ -83,8 +83,12 @@ done
 # fixture. Parsing the two narrow keys keeps the evaluator self-contained and
 # matches the single-responsibility shape of other review-common helpers.
 if [ -z "$SHARED" ]; then
+  # E96-S7 partial-4c: prefer .gaia/config/project-config.yaml over the legacy
+  # config/project-config.yaml at both CLAUDE_PROJECT_ROOT and CWD candidates.
   for candidate in \
+    "${CLAUDE_PROJECT_ROOT:-}/.gaia/config/project-config.yaml" \
     "${CLAUDE_PROJECT_ROOT:-}/config/project-config.yaml" \
+    "$PWD/.gaia/config/project-config.yaml" \
     "$PWD/config/project-config.yaml"; do
     if [ -n "$candidate" ] && [ -f "$candidate" ]; then
       SHARED="$candidate"

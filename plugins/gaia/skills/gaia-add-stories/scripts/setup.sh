@@ -53,7 +53,15 @@ while IFS= read -r line; do
 done <<<"$config_output"
 
 # ---------- 2. Validate gate (epics-and-stories.md required) ----------
-EPICS_PATH="${PLANNING_ARTIFACTS:-docs/planning-artifacts}/epics-and-stories.md"
+# E96-S7 partial-4c: smart-fallback
+if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
+  if [ -d ".gaia/artifacts/planning-artifacts" ]; then
+    PLANNING_ARTIFACTS=".gaia/artifacts/planning-artifacts"
+  else
+    PLANNING_ARTIFACTS="docs/planning-artifacts"
+  fi
+fi
+EPICS_PATH="$PLANNING_ARTIFACTS/epics-and-stories.md"
 
 if [ -x "$VALIDATE_GATE" ]; then
   if ! "$VALIDATE_GATE" epics_and_stories_exists 2>&1; then

@@ -7,16 +7,21 @@
 # state-free invariant: /gaia-meeting MUST NOT touch sprint state, story files,
 # PRD, architecture, test plan, threat model, or traceability.
 #
-# Allowed write targets (E76-S3 / ADR-086 reconciliation, E76-S7 / FR-MTG-31 amendment):
-#   - docs/creative-artifacts/meeting-*.md
-#   - docs/planning-artifacts/action-items.yaml
-#   - _memory/{any-prefix}-sidecar/decisions/*.md
-#   - _memory/meeting-sessions/*.yaml      (E76-S7, FR-MTG-31 amended)
+# Allowed write targets (E96-S8 close-out — legacy entries removed; .gaia/ only):
+#   - .gaia/artifacts/creative-artifacts/meeting-*.md
+#   - .gaia/state/action-items.yaml
+#   - .gaia/memory/{any-prefix}-sidecar/decisions/*.md
+#   - .gaia/memory/meeting-sessions/*.yaml
+#   - .gaia/custom/skills/...
 #
-# Note: the legacy E76-S1 path `_memory/action-items/` is RETIRED by ADR-086 —
-# the canonical action-items registry is the single-file YAML at
-# `docs/planning-artifacts/action-items.yaml` (per architecture §10.28.6 /
-# ADR-052 addendum E36-S4). New writes MUST target the canonical location.
+# Legacy entries removed by E96-S8 (post-deprecation cleanup, AC5):
+#   docs/creative-artifacts/, docs/planning-artifacts/action-items.yaml,
+#   _memory/<prefix>-sidecar/decisions/, _memory/meeting-sessions/, custom/skills/.
+# These were dual-path during the E96-S2..E96-S4 deprecation window;
+# E96-S7 swept all framework consumers to smart-fallback through .gaia/
+# (env > .gaia/ > legacy). After E96-S8 removed the legacy directory shells,
+# the legacy entries are no longer reachable and are stripped from this
+# allowlist to make the boundary contract explicit.
 #
 # Usage:
 #   write-boundary.sh <relative-path-from-project-root>
@@ -65,53 +70,32 @@ case "$path" in
     ;;
 esac
 
-# Allowed: docs/creative-artifacts/meeting-*.md (legacy) OR
-# .gaia/artifacts/creative-artifacts/meeting-*.md (new, E96-S2 / ADR-111).
-# Dual-path during the 1-sprint deprecation window; E96-S5 removes the legacy form.
-if [[ "$path" == docs/creative-artifacts/* ]]; then
-  exit 0
-fi
+# Allowed: .gaia/artifacts/creative-artifacts/meeting-*.md
 if [[ "$path" == .gaia/artifacts/creative-artifacts/* ]]; then
   exit 0
 fi
 
-# Allowed: docs/planning-artifacts/action-items.yaml (legacy, ADR-086) OR
-# .gaia/state/action-items.yaml (new, E96-S2 / ADR-111).
-if [[ "$path" == "docs/planning-artifacts/action-items.yaml" ]]; then
-  exit 0
-fi
+# Allowed: .gaia/state/action-items.yaml
 if [[ "$path" == ".gaia/state/action-items.yaml" ]]; then
   exit 0
 fi
 
-# Allowed: _memory/<prefix>-sidecar/decisions/... (legacy) OR
-# .gaia/memory/<prefix>-sidecar/decisions/... (new, E96-S4 / ADR-111).
-if [[ "$path" =~ ^_memory/[A-Za-z0-9_.-]+-sidecar/decisions/ ]]; then
-  exit 0
-fi
+# Allowed: .gaia/memory/<prefix>-sidecar/decisions/...
 if [[ "$path" =~ ^\.gaia/memory/[A-Za-z0-9_.-]+-sidecar/decisions/ ]]; then
   exit 0
 fi
 
-# Allowed: custom/skills/... (legacy, ADR-020) OR .gaia/custom/skills/...
-# (new, E96-S3 / ADR-111). Dual-path during the 1-sprint deprecation window.
-if [[ "$path" == custom/skills/* ]]; then
-  exit 0
-fi
+# Allowed: .gaia/custom/skills/...
 if [[ "$path" == .gaia/custom/skills/* ]]; then
   exit 0
 fi
 
-# Allowed: _memory/meeting-sessions/...yaml (legacy, E76-S7) OR
-# .gaia/memory/meeting-sessions/...yaml (new, E96-S4 / ADR-111).
-if [[ "$path" =~ ^_memory/meeting-sessions/.*\.yaml$ ]]; then
-  exit 0
-fi
+# Allowed: .gaia/memory/meeting-sessions/...yaml
 if [[ "$path" =~ ^\.gaia/memory/meeting-sessions/.*\.yaml$ ]]; then
   exit 0
 fi
 
 echo "write-boundary.sh: REJECTED — '$path' is outside the state-free write boundary (FR-MTG-31)." >&2
-echo "write-boundary.sh: allowed targets: {docs|.gaia/artifacts}/creative-artifacts/meeting-*.md, docs/planning-artifacts/action-items.yaml | .gaia/state/action-items.yaml, _memory/{agent}-sidecar/decisions/*.md, _memory/meeting-sessions/*.yaml" >&2
+echo "write-boundary.sh: allowed targets (.gaia/-only per E96-S8): .gaia/artifacts/creative-artifacts/meeting-*.md, .gaia/state/action-items.yaml, .gaia/memory/{agent}-sidecar/decisions/*.md, .gaia/memory/meeting-sessions/*.yaml, .gaia/custom/skills/*" >&2
 emit_halt "$path is outside the state-free write boundary"
 exit 2

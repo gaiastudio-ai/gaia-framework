@@ -35,8 +35,15 @@ memory_dir="${GAIA_MEMORY_PATH:-${CLAUDE_PROJECT_ROOT:-.}/_memory}"
 if [ -n "${GAIA_REGISTRY_PATH:-}" ]; then
   registry_path="$GAIA_REGISTRY_PATH"
 else
-  # Default: project-root architecture detail-records shard.
-  registry_path="${CLAUDE_PROJECT_ROOT:-.}/docs/planning-artifacts/architecture/12-12-adr-detail-records.md"
+  # E96-S7 partial-4b: smart-fallback — prefer .gaia/artifacts/planning-artifacts/
+  # over legacy docs/planning-artifacts/ for the architecture detail-records shard.
+  _proj="${CLAUDE_PROJECT_ROOT:-.}"
+  if [ -d "$_proj/.gaia/artifacts/planning-artifacts" ]; then
+    registry_path="$_proj/.gaia/artifacts/planning-artifacts/architecture/12-12-adr-detail-records.md"
+  else
+    registry_path="$_proj/docs/planning-artifacts/architecture/12-12-adr-detail-records.md"
+  fi
+  unset _proj
 fi
 
 exit_code=0

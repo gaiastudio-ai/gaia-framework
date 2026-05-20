@@ -124,9 +124,15 @@ if [ "$mode" = "team" ]; then
   exit 0
 fi
 
-# ---- Resolve checkpoint_path ----
+# ---- Resolve checkpoint_path (E96-S7 partial-4b smart-fallback) ----
 if [ -z "$checkpoint_path" ]; then
-  checkpoint_path="${CHECKPOINT_PATH:-./_memory/checkpoints}"
+  if [ -n "${CHECKPOINT_PATH:-}" ]; then
+    checkpoint_path="$CHECKPOINT_PATH"
+  elif [ -d "./.gaia/memory/checkpoints" ]; then
+    checkpoint_path="./.gaia/memory/checkpoints"
+  else
+    checkpoint_path="./_memory/checkpoints"
+  fi
 fi
 mkdir -p "$checkpoint_path" 2>/dev/null || {
   # If we cannot mkdir, emit the warning anyway (better noisy than silent).

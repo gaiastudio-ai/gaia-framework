@@ -229,7 +229,14 @@ if [[ -n "${GAIA_DISPATCH_ENVELOPE_ASSERT_OPT_IN:-}" ]]; then
   # Sentinel path derived from artifact_path (per-turn header value).
   artifact_path_for_sentinel="${ARTIFACT_PATH:-${TURN_ID:-${SESSION_ID:-default}}}"
   sentinel_hash="$(printf '%s' "$artifact_path_for_sentinel" | shasum -a 256 | cut -c1-16)"
-  CHECKPOINT_DIR_FOR_ENV="${CHECKPOINT_PATH:-_memory/checkpoints}"
+  # E96-S7 partial-4c: smart-fallback
+  if [ -n "${CHECKPOINT_PATH:-}" ]; then
+    CHECKPOINT_DIR_FOR_ENV="$CHECKPOINT_PATH"
+  elif [ -d ".gaia/memory/checkpoints" ]; then
+    CHECKPOINT_DIR_FOR_ENV=".gaia/memory/checkpoints"
+  else
+    CHECKPOINT_DIR_FOR_ENV="_memory/checkpoints"
+  fi
   sentinel_path="${CHECKPOINT_DIR_FOR_ENV}/val-envelope-${sentinel_hash}.json"
   mkdir -p "$(dirname "$sentinel_path")" 2>/dev/null || true
 

@@ -20,7 +20,13 @@ cmd="${1:-}"
 shift || true
 
 flag_path() {
-  printf '%s/_memory/.config-stale\n' "${PROJECT_ROOT:-$PWD}"
+  # E96-S7 partial-4b: smart-fallback for memory dir
+  local _proj="${PROJECT_ROOT:-$PWD}"
+  if [ -d "$_proj/.gaia/memory" ]; then
+    printf '%s/.gaia/memory/.config-stale\n' "$_proj"
+  else
+    printf '%s/_memory/.config-stale\n' "$_proj"
+  fi
 }
 
 write_flag() {

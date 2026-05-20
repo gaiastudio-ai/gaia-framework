@@ -74,8 +74,17 @@ if [ -z "${CHECKPOINT_PATH:-}" ]; then
 fi
 
 if [ -z "${CHECKPOINT_PATH:-}" ]; then
-  log "WARNING: CHECKPOINT_PATH not set — using default _memory/checkpoints"
-  export CHECKPOINT_PATH="_memory/checkpoints"
+  # E96-S8: smart-fallback — prefer .gaia/memory/checkpoints when present
+  # (post-migration canonical) else legacy _memory/checkpoints. Closes a
+  # partial-4 gap: this hook bypassed the audit grep because of the
+  # narrative `log "WARNING..."` line preceding the assignment.
+  if [ -d ".gaia/memory" ]; then
+    log "WARNING: CHECKPOINT_PATH not set — using default .gaia/memory/checkpoints"
+    export CHECKPOINT_PATH=".gaia/memory/checkpoints"
+  else
+    log "WARNING: CHECKPOINT_PATH not set — using default _memory/checkpoints"
+    export CHECKPOINT_PATH="_memory/checkpoints"
+  fi
 fi
 
 mkdir -p "$CHECKPOINT_PATH"
