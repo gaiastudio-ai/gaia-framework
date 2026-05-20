@@ -111,14 +111,21 @@ PLAN_ID_GATES=("test-automate-plan" "story-validation")
 PLAN_ID_REGEX='^[A-Za-z0-9._:+-]+$'
 
 # Ledger path: overridable via --ledger flag or $REVIEW_GATE_LEDGER env var.
-# Default: ${PROJECT_PATH:-.}/.review-gate-ledger
+# E96-S3 / ADR-111: default prefers .gaia/state/.review-gate-ledger
+# (mutable-runtime-state tier) over the legacy <project-root>/.review-gate-ledger.
+# Legacy fallback retained during the 1-sprint transition window (removed in E96-S5).
 resolve_ledger_path() {
   if [ -n "${LEDGER_FLAG:-}" ]; then
     printf '%s' "$LEDGER_FLAG"
   elif [ -n "${REVIEW_GATE_LEDGER:-}" ]; then
     printf '%s' "$REVIEW_GATE_LEDGER"
   else
-    printf '%s' "${PROJECT_PATH:-.}/.review-gate-ledger"
+    local root="${PROJECT_PATH:-.}"
+    if [ -f "$root/.gaia/state/.review-gate-ledger" ] || [ -d "$root/.gaia/state" ]; then
+      printf '%s' "$root/.gaia/state/.review-gate-ledger"
+    else
+      printf '%s' "$root/.review-gate-ledger"
+    fi
   fi
 }
 

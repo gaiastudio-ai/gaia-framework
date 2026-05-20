@@ -46,7 +46,15 @@ BUILTIN_ROOT="${BUILTIN_ADAPTERS_DIR:-$PLUGIN_DIR/scripts/adapters}"
 # Default custom root: project-root is two levels above the plugin dir
 # (gaia-public/plugins/gaia → gaia-public). For native installs this resolves
 # correctly; consumers override via CUSTOM_ADAPTERS_DIR when needed.
-DEFAULT_CUSTOM_ROOT="$(cd "$PLUGIN_DIR/../.." 2>/dev/null && pwd)/custom/adapters"
+# E96-S3 / ADR-111 (supersedes ADR-020): prefer .gaia/custom/adapters/ over the
+# legacy custom/adapters/ when both exist. Legacy fallback retained during the
+# 1-sprint transition window.
+_PROJECT_ROOT_HERE="$(cd "$PLUGIN_DIR/../.." 2>/dev/null && pwd)"
+if [ -d "$_PROJECT_ROOT_HERE/.gaia/custom/adapters" ]; then
+  DEFAULT_CUSTOM_ROOT="$_PROJECT_ROOT_HERE/.gaia/custom/adapters"
+else
+  DEFAULT_CUSTOM_ROOT="$_PROJECT_ROOT_HERE/custom/adapters"
+fi
 CUSTOM_ROOT="${CUSTOM_ADAPTERS_DIR:-$DEFAULT_CUSTOM_ROOT}"
 
 if ! command -v jq >/dev/null 2>&1; then

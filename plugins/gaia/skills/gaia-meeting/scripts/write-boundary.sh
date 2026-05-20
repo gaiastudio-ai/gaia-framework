@@ -65,27 +65,53 @@ case "$path" in
     ;;
 esac
 
-# Allowed: docs/creative-artifacts/meeting-*.md (and any descendant under creative-artifacts)
+# Allowed: docs/creative-artifacts/meeting-*.md (legacy) OR
+# .gaia/artifacts/creative-artifacts/meeting-*.md (new, E96-S2 / ADR-111).
+# Dual-path during the 1-sprint deprecation window; E96-S5 removes the legacy form.
 if [[ "$path" == docs/creative-artifacts/* ]]; then
   exit 0
 fi
+if [[ "$path" == .gaia/artifacts/creative-artifacts/* ]]; then
+  exit 0
+fi
 
-# Allowed: docs/planning-artifacts/action-items.yaml (canonical registry, ADR-086)
+# Allowed: docs/planning-artifacts/action-items.yaml (legacy, ADR-086) OR
+# .gaia/state/action-items.yaml (new, E96-S2 / ADR-111).
 if [[ "$path" == "docs/planning-artifacts/action-items.yaml" ]]; then
   exit 0
 fi
-
-# Allowed: _memory/<prefix>-sidecar/decisions/...
-if [[ "$path" =~ ^_memory/[A-Za-z0-9_.-]+-sidecar/decisions/ ]]; then
+if [[ "$path" == ".gaia/state/action-items.yaml" ]]; then
   exit 0
 fi
 
-# Allowed: _memory/meeting-sessions/...yaml (E76-S7, FR-MTG-31 amended)
+# Allowed: _memory/<prefix>-sidecar/decisions/... (legacy) OR
+# .gaia/memory/<prefix>-sidecar/decisions/... (new, E96-S4 / ADR-111).
+if [[ "$path" =~ ^_memory/[A-Za-z0-9_.-]+-sidecar/decisions/ ]]; then
+  exit 0
+fi
+if [[ "$path" =~ ^\.gaia/memory/[A-Za-z0-9_.-]+-sidecar/decisions/ ]]; then
+  exit 0
+fi
+
+# Allowed: custom/skills/... (legacy, ADR-020) OR .gaia/custom/skills/...
+# (new, E96-S3 / ADR-111). Dual-path during the 1-sprint deprecation window.
+if [[ "$path" == custom/skills/* ]]; then
+  exit 0
+fi
+if [[ "$path" == .gaia/custom/skills/* ]]; then
+  exit 0
+fi
+
+# Allowed: _memory/meeting-sessions/...yaml (legacy, E76-S7) OR
+# .gaia/memory/meeting-sessions/...yaml (new, E96-S4 / ADR-111).
 if [[ "$path" =~ ^_memory/meeting-sessions/.*\.yaml$ ]]; then
+  exit 0
+fi
+if [[ "$path" =~ ^\.gaia/memory/meeting-sessions/.*\.yaml$ ]]; then
   exit 0
 fi
 
 echo "write-boundary.sh: REJECTED — '$path' is outside the state-free write boundary (FR-MTG-31)." >&2
-echo "write-boundary.sh: allowed targets: docs/creative-artifacts/meeting-*.md, docs/planning-artifacts/action-items.yaml, _memory/{agent}-sidecar/decisions/*.md, _memory/meeting-sessions/*.yaml" >&2
+echo "write-boundary.sh: allowed targets: {docs|.gaia/artifacts}/creative-artifacts/meeting-*.md, docs/planning-artifacts/action-items.yaml | .gaia/state/action-items.yaml, _memory/{agent}-sidecar/decisions/*.md, _memory/meeting-sessions/*.yaml" >&2
 emit_halt "$path is outside the state-free write boundary"
 exit 2

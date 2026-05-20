@@ -9957,3 +9957,6 @@
 {"timestamp":"2026-05-07T17:59:33.209Z","event_type":"workflow_complete","workflow":"ci-setup","pid":86149}
 {"timestamp":"2026-05-08T20:53:42.287Z","event_type":"workflow_complete","workflow":"atdd","pid":23484}
 {"timestamp":"2026-05-08T20:53:44.273Z","event_type":"workflow_complete","workflow":"atdd","pid":23977}
+{"timestamp":"2026-05-19T20:04:07.336Z","event_type":"sprint_transitioned","workflow":"sprint-state","pid":73969,"story_key":"sprint-99","data":{"sprint_id":"sprint-99","from":"active","to":"review"}}
+{"timestamp":"2026-05-19T20:04:07.506Z","event_type":"sprint_transitioned","workflow":"sprint-state","pid":74014,"story_key":"sprint-99","data":{"sprint_id":"sprint-99","from":"active","to":"review"}}
+{"timestamp":"2026-05-19T20:04:07.668Z","event_type":"sprint_transitioned","workflow":"sprint-state","pid":74054,"story_key":"sprint-99","data":{"sprint_id":"sprint-99","from":"active","to":"review"}}

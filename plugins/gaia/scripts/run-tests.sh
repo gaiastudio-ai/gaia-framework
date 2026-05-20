@@ -190,8 +190,16 @@ case "${TIER_ALIAS:-}" in
 esac
 
 # Resolve config path (--config > $GAIA_TESTS_CONFIG > cwd default).
+# E96-S1 / ADR-111: prefer `.gaia/config/` over legacy `config/`. Legacy
+# fallback retained during the transition window (removed in E96-S5).
 if [ -z "$CONFIG" ]; then
-  CONFIG="${GAIA_TESTS_CONFIG:-config/project-config.yaml}"
+  if [ -n "${GAIA_TESTS_CONFIG:-}" ]; then
+    CONFIG="$GAIA_TESTS_CONFIG"
+  elif [ -f ".gaia/config/project-config.yaml" ]; then
+    CONFIG=".gaia/config/project-config.yaml"
+  else
+    CONFIG="config/project-config.yaml"
+  fi
 fi
 
 # Resolve context.
