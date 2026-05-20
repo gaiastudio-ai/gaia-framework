@@ -32,6 +32,11 @@ setup() {
   # Default ledger path under PROJECT_PATH
   LEDGER="$TEST_TMP/.review-gate-ledger"
   export REVIEW_GATE_LEDGER="$LEDGER"
+  # AF-2026-05-20-1: plan-id ledger semantics + pre-E35 byte-identical
+  # no-plan-id behavior are orthogonal to the proof-of-execution contract.
+  # Disable POE so the existing fixtures (which don't pass --report) still
+  # exercise the verdict-write mechanics.
+  export REVIEW_GATE_PROOF_OF_EXECUTION=off
 }
 
 teardown() { common_teardown; }

@@ -9960,3 +9960,10 @@
 {"timestamp":"2026-05-19T20:04:07.336Z","event_type":"sprint_transitioned","workflow":"sprint-state","pid":73969,"story_key":"sprint-99","data":{"sprint_id":"sprint-99","from":"active","to":"review"}}
 {"timestamp":"2026-05-19T20:04:07.506Z","event_type":"sprint_transitioned","workflow":"sprint-state","pid":74014,"story_key":"sprint-99","data":{"sprint_id":"sprint-99","from":"active","to":"review"}}
 {"timestamp":"2026-05-19T20:04:07.668Z","event_type":"sprint_transitioned","workflow":"sprint-state","pid":74054,"story_key":"sprint-99","data":{"sprint_id":"sprint-99","from":"active","to":"review"}}
+{"timestamp":"2026-05-20T10:18:15.889Z","event_type":"workflow_complete","workflow":"brainstorm-project","pid":90240}
+{"timestamp":"2026-05-20T10:18:16.113Z","event_type":"workflow_complete","workflow":"brainstorm-project","pid":90315}
+{"timestamp":"2026-05-20T10:18:16.334Z","event_type":"workflow_complete","workflow":"brainstorm-project","pid":90391}
+{"timestamp":"2026-05-20T10:18:16.553Z","event_type":"workflow_complete","workflow":"brainstorm-project","pid":90465}
+{"timestamp":"2026-05-20T10:18:16.774Z","event_type":"workflow_complete","workflow":"brainstorm-project","pid":90540}
+{"timestamp":"2026-05-20T10:18:16.996Z","event_type":"workflow_complete","workflow":"brainstorm-project","pid":90621}
+{"timestamp":"2026-05-20T10:18:17.357Z","event_type":"workflow_complete","workflow":"brainstorm-project","pid":90725}

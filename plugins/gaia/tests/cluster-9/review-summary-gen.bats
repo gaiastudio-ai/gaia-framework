@@ -34,6 +34,11 @@ setup() {
   ART="$TEST_PROJECT/docs/implementation-artifacts"
   mkdir -p "$ART"
   export PROJECT_PATH="$TEST_PROJECT"
+  # AF-2026-05-20-1: this suite seeds gate verdicts via review-gate.sh
+  # update with no report files. Disable the proof-of-execution gate so
+  # the summary-gen mechanics can be exercised. Proof-of-execution has
+  # its own dedicated suite at tests/review-gate-proof-of-execution.bats.
+  export REVIEW_GATE_PROOF_OF_EXECUTION=off
 
   STORY_KEY="E58-S2-FIXTURE"
   STORY_FILE="$ART/${STORY_KEY}-fake.md"

@@ -111,47 +111,71 @@ bash scripts/review-skip-check.sh --story {story_key} [--force]
 
 The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--force` was passed by the user, forward it verbatim to the helper — the script owns the bypass semantics (skip becomes `[]`, run becomes the full canonical list). Parse the JSON; if it lacks either the `skip` or `run` key, HALT with a parse error naming `review-skip-check.sh` (AC-EC3).
 
-**Substep 2.3 — Run the `run` slice (LLM judgment + gate write).** For each canonical short-name in `run` (in canonical order), perform the inline LLM review judgment for that reviewer (the per-reviewer logic blocks below) and immediately call:
+**Substep 2.3 — Run the `run` slice (Skill dispatch + report assertion + gate write).** For each canonical short-name in `run` (in canonical order), **dispatch the corresponding per-review skill via the Skill tool** (NEVER inline-judge — see AF-2026-05-20-1). After the skill returns, **assert the per-review report file exists on disk** before writing the verdict. The verdict write itself uses the proof-of-execution contract added by AF-2026-05-20-1:
 
 ```bash
-bash scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" --verdict {PASSED|FAILED}
+bash scripts/review-gate.sh update --story {story_key} \
+  --gate "{gate_name}" --verdict {PASSED|FAILED} \
+  --report <absolute-path-to-per-review-report> \
+  [--execution-evidence <absolute-path-to-execution-evidence.json>]
 ```
 
-If the LLM judgment crashes or returns a malformed verdict, write FAILED for that reviewer and proceed to the next entry in `run` — the cap-and-continue rule applies (AC-EC7).
+For test-execution gates (`QA Tests`, `Test Automation`, `Test Review`), `--execution-evidence` is REQUIRED in addition to `--report` — the gate will refuse the verdict otherwise. The dispatched skill is responsible for producing both files; the orchestrator only asserts their existence.
+
+Skill-dispatch contract:
+
+```
+For each short_name in run:
+  1. Invoke via the Skill tool:
+       Skill({skill: "gaia:<short-name-mapped-to-canonical-skill>", args: "{story_key}"})
+     Canonical short-name → skill mapping:
+       code-review     → gaia:gaia-code-review
+       qa-tests        → gaia:gaia-qa-tests
+       security-review → gaia:gaia-security-review (or gaia:gaia-review-security)
+       test-automate   → gaia:gaia-test-automate
+       test-review     → gaia:gaia-test-review
+       review-perf     → gaia:gaia-review-perf
+
+  2. After the skill returns, derive the expected report path from the
+     CANONICAL_REPORT_RELPATHS table (the same table review-summary-gen.sh
+     uses). Assert `[ -f "$report_path" ]` — if the report file is absent,
+     HALT with an explicit message naming the gate, the expected path, and
+     directing the operator to re-dispatch the review skill. Do NOT write
+     a PASSED verdict for a gate with no on-disk report.
+
+  3. Read the verdict from the skill's emitted report (the per-review
+     skill's contract emits a "Verdict: PASSED|FAILED" line in the report
+     body — orchestrators MUST parse the actual report rather than
+     self-judge).
+
+  4. Write the verdict via review-gate.sh update with --report (and
+     --execution-evidence for test-execution gates).
+
+  5. If the skill dispatch itself fails (skill not installed, subagent
+     errors before returning), record a FAILED verdict with
+     --report-missing-reason "dispatch-failed: <reason>" so the audit
+     trail captures the failure mode. The cap-and-continue rule (AC-EC7)
+     still applies — proceed to the next entry in run.
+```
+
+**The "Per-reviewer LLM judgment blocks" pattern from the legacy SKILL.md is RETIRED under AF-2026-05-20-1.** Inline self-judgment by the orchestrator is forbidden; the per-review skills are the single source of verdicts. If a per-review skill is missing or broken, that is a defect to file — NOT a license for the orchestrator to substitute its own judgment.
 
 **Substep 2.4 — Record SKIPPED entries for the `skip` slice.** For each canonical short-name in `skip`, record a "SKIPPED (already PASSED)" line for the eventual summary block. The summary script (Step 3) consumes the current gate state directly, so SKIPPED rows already at PASSED need no rewrite.
 
-#### Per-reviewer LLM judgment blocks
+#### Per-reviewer skill-dispatch reference table
 
-For each reviewer the substep 2.3 loop visits, perform the corresponding judgment:
+This table replaces the legacy "inline LLM judgment blocks". Each row names the canonical short-name, the skill to dispatch, the canonical gate name written to the Review Gate, the expected report file path, and whether `--execution-evidence` is required.
 
-**Review 1 — Code Review** (gate: `Code Review`):
-- Read the story file to identify all changed/created files listed in the File List section.
-- For each file: read it and review for correctness, security, performance, readability, naming conventions, and test coverage.
-- Produce a verdict: PASSED if no blocking issues, FAILED if blocking issues found.
+| Short-name        | Dispatch                       | Gate name             | Report path                                                        | Execution evidence? |
+|-------------------|--------------------------------|-----------------------|--------------------------------------------------------------------|---------------------|
+| `code-review`     | `gaia:gaia-code-review`        | `Code Review`         | `docs/implementation-artifacts/{key}-code-review.md`               | No                  |
+| `qa-tests`        | `gaia:gaia-qa-tests`           | `QA Tests`            | `docs/test-artifacts/{key}-qa-tests.md`                            | **Yes**             |
+| `security-review` | `gaia:gaia-review-security`    | `Security Review`     | `docs/implementation-artifacts/{key}-security-review.md`           | No                  |
+| `test-automate`   | `gaia:gaia-test-automate`      | `Test Automation`     | `docs/test-artifacts/{key}-test-automation.md`                     | **Yes**             |
+| `test-review`     | `gaia:gaia-test-review`        | `Test Review`         | `docs/test-artifacts/{key}-test-review.md`                         | **Yes**             |
+| `review-perf`     | `gaia:gaia-review-perf`        | `Performance Review`  | `docs/implementation-artifacts/{key}-performance-review.md`        | No                  |
 
-**Review 2 — QA Tests** (gate: `QA Tests`):
-- Read the story's acceptance criteria and test files.
-- Verify test coverage against each AC. Check for missing edge cases, boundary conditions, and error scenarios.
-- Produce a verdict: PASSED if coverage is adequate, FAILED if gaps found.
-
-**Review 3 — Security Review** (gate: `Security Review`):
-- Read the story file and all implementation files.
-- Review for OWASP Top 10 vulnerabilities, injection risks, authentication/authorization issues, secrets exposure, and input validation.
-- Produce a verdict: PASSED if no security issues, FAILED if issues found.
-
-**Review 4 — Test Automation** (gate: `Test Automation`):
-- Read the test files and verify they are automated (can run via `npm test`, `bats`, or equivalent).
-- Check test structure, assertions, mocking patterns, and CI integration.
-- Produce a verdict: PASSED if automation is adequate, FAILED if gaps found.
-
-**Review 5 — Test Review** (gate: `Test Review`):
-- Review test quality: check for flaky tests, proper assertions, test isolation, meaningful names, and arrange-act-assert structure.
-- Produce a verdict: PASSED if test quality is adequate, FAILED if issues found.
-
-**Review 6 — Performance Review** (gate: `Performance Review`):
-- Review implementation for performance concerns: unnecessary loops, missing memoization, unbounded operations, blocking I/O, and algorithmic complexity.
-- Produce a verdict: PASSED if no performance issues, FAILED if concerns found.
+Under the `.gaia/` consolidation (ADR-111), the prefix `docs/` may resolve to `.gaia/artifacts/` — the report paths are constructed via `${GAIA_ARTIFACTS_DIR}` per `gaia-paths.sh`. Both layouts are accepted by `review-gate.sh --report`.
 
 ### Step 3: Generate Summary (deterministic three-call sequence)
 
