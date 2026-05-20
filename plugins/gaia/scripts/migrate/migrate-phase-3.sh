@@ -79,10 +79,14 @@ if is_already_migrated; then
   exit 0
 fi
 
-mkdir -p "$BACKUP_DIR" "$NEW_STATE" "$NEW_CUSTOM"
+mkdir -p "$BACKUP_DIR" "$NEW_STATE"
+# E96-S6 Defect D: do NOT pre-create $NEW_CUSTOM. Create it lazily just before
+# the mv, so rollback's empty-dir-cleanup can remove it cleanly.
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 TARBALL="$BACKUP_DIR/phase-3-${TS}.tar.gz"
 MANIFEST="$BACKUP_DIR/phase-3-${TS}-manifest.txt"
+POINTER_LIST="${TARBALL}.pointers.txt"
+: > "$POINTER_LIST"
 
 if [ "$DRY_RUN" = "1" ]; then
   log "DRY-RUN: would tarball root state files + custom/ -> $TARBALL"
@@ -128,27 +132,30 @@ FILE_COUNT="$(awk 'NF>0' "$MANIFEST" | wc -l | awk '{print $1}')"
 log "manifest captured: $FILE_COUNT files"
 
 # Step 3: move root state files to .gaia/state/
+# E96-S6: pointer-list written incrementally before each pointer file.
 for f in "${ROOT_STATE_FILES[@]}"; do
   if [ -f "$PROJECT_ROOT/$f" ]; then
     log "moving root state file -> \$PROJECT_ROOT/.gaia/state/$f"
     mv "$PROJECT_ROOT/$f" "$NEW_STATE/$f"
-    printf '%s\n' "MOVED TO .gaia/state/$f (Phase 3 of E96, AF-2026-05-19-1, ADR-111)" > "$PROJECT_ROOT/$f.gaia-pointer"
+    pointer="$PROJECT_ROOT/$f.gaia-pointer"
+    printf '%s\n' "$pointer" >> "$POINTER_LIST"
+    printf '%s\n' "MOVED TO .gaia/state/$f (Phase 3 of E96, AF-2026-05-19-1, ADR-111)" > "$pointer"
   fi
 done
 
 # Step 4: relocate custom/ to .gaia/custom/
+# E96-S6 Defect D: create the destination parent only — do NOT pre-create
+# $NEW_CUSTOM. mv handles directory rename atomically.
 if [ -d "$PROJECT_ROOT/custom" ]; then
   log "relocating custom/ -> \$PROJECT_ROOT/.gaia/custom/"
-  # Move contents preserving structure. The destination already exists from
-  # the mkdir -p above, so use a sub-tree merge.
-  if [ -z "$(ls -A "$NEW_CUSTOM" 2>/dev/null)" ]; then
-    rmdir "$NEW_CUSTOM"
-    mv "$PROJECT_ROOT/custom" "$NEW_CUSTOM"
-  else
-    die "target $NEW_CUSTOM is non-empty — refusing to merge" 2
+  if [ -d "$NEW_CUSTOM" ]; then
+    die "target $NEW_CUSTOM already exists — refusing to overwrite" 2
   fi
+  mv "$PROJECT_ROOT/custom" "$NEW_CUSTOM"
   mkdir -p "$PROJECT_ROOT/custom"
-  printf '%s\n' "MOVED TO .gaia/custom/ (Phase 3 of E96, AF-2026-05-19-1, ADR-111)" > "$PROJECT_ROOT/custom/.gaia-pointer"
+  pointer="$PROJECT_ROOT/custom/.gaia-pointer"
+  printf '%s\n' "$pointer" >> "$POINTER_LIST"
+  printf '%s\n' "MOVED TO .gaia/custom/ (Phase 3 of E96, AF-2026-05-19-1, ADR-111)" > "$pointer"
 fi
 
 # Step 5: project-root grep gate (AC7)
@@ -171,7 +178,7 @@ fi
 # manifests.
 
 run_partial_gate() {
-  local src_dir="$1" manifest_filter="$2" manifest_part
+  local src_dir="$1" manifest_filter="$2" extra_legacy="${3:-}" manifest_part
   manifest_part="$(mktemp)"
   # The manifest stores relpaths like `.review-gate-ledger` or `custom/foo`.
   # The filter selects only the rows that match the destination naming.
@@ -196,11 +203,19 @@ run_partial_gate() {
       cp "$manifest_part" "$rewritten" ;;
   esac
   rm -f "$manifest_part"
-  if ! bash "$LIB_DIR/phase-exit-gate.sh" \
-        --source-dir "$src_dir" \
-        --manifest "$rewritten" \
-        --bats-baseline 0 --bats-current 0 \
-        --tarball "$TARBALL"; then
+  # E96-S6: thread legacy-path + pointer-list + remove-if-empty through to the gate.
+  local gate_args=(
+    --source-dir "$src_dir"
+    --manifest "$rewritten"
+    --bats-baseline 0 --bats-current 0
+    --tarball "$TARBALL"
+    --pointer-list "$POINTER_LIST"
+    --remove-source-dir-if-empty
+  )
+  if [ -n "$extra_legacy" ]; then
+    gate_args+=(--legacy-path "$extra_legacy")
+  fi
+  if ! bash "$LIB_DIR/phase-exit-gate.sh" "${gate_args[@]}"; then
     rm -f "$rewritten"
     return 1
   fi
@@ -212,12 +227,17 @@ run_partial_gate() {
 if [ "$FILE_COUNT" -gt 0 ]; then
   STATE_PATTERN="$(printf '%s\n' "${ROOT_STATE_FILES[@]}" | sed 's/[][\.*^$()|]/\\&/g' | paste -sd'|' -)"
   if [ -n "$STATE_PATTERN" ]; then
+    # State files: tarball preserves them at root (legacy-path=$()); rollback's
+    # tarball extraction restores them.
     if ! run_partial_gate "$NEW_STATE" "  (${STATE_PATTERN})$"; then
       die "phase-exit gate FAILED on .gaia/state/ — rollback executed" 1
     fi
   fi
   if [ -d "$NEW_CUSTOM" ]; then
-    if ! run_partial_gate "$NEW_CUSTOM" "  custom/"; then
+    # custom/ rollback: legacy-path=custom (pre-extract cleanup wipes the
+    # legacy placeholder dir + pointer that Phase 3 left behind; tarball
+    # then restores the original custom/ tree).
+    if ! run_partial_gate "$NEW_CUSTOM" "  custom/" "custom"; then
       die "phase-exit gate FAILED on .gaia/custom/ — rollback executed" 1
     fi
   fi

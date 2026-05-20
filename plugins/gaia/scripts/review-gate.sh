@@ -302,7 +302,17 @@ STORY_FILE=""
 locate_story_file() {
   local key="$1"
   local project_path="${PROJECT_PATH:-.}"
-  local impl_artifacts="${IMPLEMENTATION_ARTIFACTS:-${project_path}/docs/implementation-artifacts}"
+  # E96-S6 (ADR-111): prefer .gaia/artifacts/implementation-artifacts/ when
+  # present on disk; fall back to legacy docs/ during the deprecation window.
+  # IMPLEMENTATION_ARTIFACTS env-var override wins over both.
+  local impl_artifacts
+  if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
+    impl_artifacts="$IMPLEMENTATION_ARTIFACTS"
+  elif [ -d "${project_path}/.gaia/artifacts/implementation-artifacts" ]; then
+    impl_artifacts="${project_path}/.gaia/artifacts/implementation-artifacts"
+  else
+    impl_artifacts="${project_path}/docs/implementation-artifacts"
+  fi
   local pattern="${impl_artifacts}/${key}-*.md"
   local epic_pattern="${impl_artifacts}/epic-*/stories/${key}-*.md"
 

@@ -59,7 +59,10 @@ teardown() {
   [[ "$output" == *"PASS"* ]]
 }
 
-@test "phase-exit-gate.sh: find-count mismatch -> rollback + halt (AC7b)" {
+@test "phase-exit-gate.sh: missing manifest file -> rollback + halt (AC7b)" {
+  # E96-S6: Criterion 2 rewritten from `find -type f | wc -l` parity to
+  # per-manifest-row existence check. Deleting a manifest-recorded file
+  # still triggers rollback — only the error wording changed.
   rm "$PROJECT_ROOT/.gaia/config/a.txt"
   run bash "$GATE" \
     --source-dir "$PROJECT_ROOT/.gaia/config" \
@@ -67,7 +70,7 @@ teardown() {
     --bats-baseline 10 --bats-current 10 \
     --tarball "$PROJECT_ROOT/.gaia-migrate-backup/phase-1-test.tar.gz"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"file count mismatch"* ]] || [[ "$output" == *"find-count"* ]]
+  [[ "$output" == *"per-file existence"* ]] || [[ "$output" == *"missing file"* ]] || [[ "$output" == *"file count mismatch"* ]] || [[ "$output" == *"find-count"* ]]
 }
 
 @test "phase-exit-gate.sh: sha256 diff -> rollback + halt (AC7c)" {
