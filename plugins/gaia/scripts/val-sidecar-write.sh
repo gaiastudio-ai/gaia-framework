@@ -181,6 +181,8 @@ allowlist_match() {
   case "$real_target" in
     "$real_root"/_memory/validator-sidecar/decision-log.md)         return 0 ;;
     "$real_root"/_memory/validator-sidecar/conversation-context.md) return 0 ;;
+    "$real_root"/.gaia/memory/validator-sidecar/decision-log.md)         return 0 ;;
+    "$real_root"/.gaia/memory/validator-sidecar/conversation-context.md) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -314,8 +316,17 @@ EOF
 REAL_ROOT="$(resolve_real "$ROOT")"
 [ -z "$REAL_ROOT" ] && REAL_ROOT="$ROOT"
 
-DECISION_LOG="$REAL_ROOT/_memory/validator-sidecar/decision-log.md"
-CONTEXT_FILE="$REAL_ROOT/_memory/validator-sidecar/conversation-context.md"
+# E96-S8 partial-fix: smart-fallback for validator-sidecar location.
+# Prefer .gaia/memory/validator-sidecar/ when the .gaia/ tree is present;
+# fall back to legacy _memory/validator-sidecar/ for in-deprecation-window
+# consumers and bats fixtures.
+if [ -d "$REAL_ROOT/.gaia/memory" ]; then
+  DECISION_LOG="$REAL_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
+  CONTEXT_FILE="$REAL_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
+else
+  DECISION_LOG="$REAL_ROOT/_memory/validator-sidecar/decision-log.md"
+  CONTEXT_FILE="$REAL_ROOT/_memory/validator-sidecar/conversation-context.md"
+fi
 
 # --target overrides only the primary write path — it must still pass the
 # allowlist. This exists so the allowlist guard itself can be exercised
