@@ -145,12 +145,17 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "write-boundary.sh: still accepts legacy _memory/ paths during deprecation (AC5)" {
+@test "write-boundary.sh: REJECTS legacy _memory/ paths post-E96-S8 (AC5)" {
+  # E96-S8 (AC5) closes the deprecation window — legacy _memory/ paths are
+  # no longer in the write-boundary allowlist. Only .gaia/memory/ is allowed.
+  # Prior to E96-S8 this test asserted status=0 (legacy paths accepted during
+  # the 1-sprint deprecation window). Post-E96-S8 the contract flipped to
+  # status=2 (legacy paths REJECTED).
   WB="$( cd "$BATS_TEST_DIRNAME/../../skills/gaia-meeting/scripts" && pwd )/write-boundary.sh"
   run bash "$WB" "_memory/sm-sidecar/decisions/foo.md"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
   run bash "$WB" "_memory/meeting-sessions/2026-05-19.yaml"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
 }
 
 @test "phase-4: write-checkpoint.sh dual-layout default" {

@@ -92,10 +92,12 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "write-boundary.sh: still accepts legacy custom/skills/ path" {
+@test "write-boundary.sh: REJECTS legacy custom/skills/ path post-E96-S8" {
+  # E96-S8 (AC5) closed the deprecation window — legacy custom/skills/
+  # removed from allowlist. Contract flipped from status=0 to status=2.
   WB="$( cd "$BATS_TEST_DIRNAME/../skills/gaia-meeting/scripts" && pwd )/write-boundary.sh"
   run bash "$WB" "custom/skills/example.md"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
 }
 
 @test "retro-sidecar-write.sh: allowlist includes .gaia/custom/skills/ entries (AC5)" {
