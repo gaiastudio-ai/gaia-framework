@@ -232,6 +232,13 @@ if [ "$GAIA_RICH" = "1" ]; then
   _SEARCH_DIR="$PROJECT_PATH"
   _DEPTH=0
   while [ "$_DEPTH" -lt 5 ]; do
+    # E96-S8 smoke-test follow-up: prefer .gaia/state/sprint-status.yaml
+    # (post-migration canonical per ADR-111) over legacy docs/.
+    _GAIA_CANDIDATE="$_SEARCH_DIR/.gaia/state/sprint-status.yaml"
+    if [ -r "$_GAIA_CANDIDATE" ]; then
+      SPRINT_FILE="$_GAIA_CANDIDATE"
+      break
+    fi
     _CANDIDATE="$_SEARCH_DIR/docs/implementation-artifacts/sprint-status.yaml"
     if [ -r "$_CANDIDATE" ]; then
       SPRINT_FILE="$_CANDIDATE"
