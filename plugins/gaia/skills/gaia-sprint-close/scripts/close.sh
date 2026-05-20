@@ -29,27 +29,46 @@ LIFECYCLE_EVENT_SH="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 
 # PROJECT_PATH defaults to CWD; honor a pre-exported value (used by bats).
 PROJECT_PATH="${PROJECT_PATH:-$PWD}"
-MEMORY_PATH="${MEMORY_PATH:-$PROJECT_PATH/_memory}"
+
+# E96-S8: smart-fallback for MEMORY_PATH
+if [ -z "${MEMORY_PATH:-}" ]; then
+  if [ -d "$PROJECT_PATH/.gaia/memory" ]; then
+    MEMORY_PATH="$PROJECT_PATH/.gaia/memory"
+  else
+    MEMORY_PATH="$PROJECT_PATH/_memory"
+  fi
+fi
 export PROJECT_PATH MEMORY_PATH
 
-# Resolve sprint-status.yaml path (env override > canonical > fallback).
+# Resolve sprint-status.yaml path (env override > .gaia/state/ > legacy canonical > fallback).
+# E96-S8: prefer .gaia/state/sprint-status.yaml (post-migration canonical per ADR-111)
+# over docs/implementation-artifacts/sprint-status.yaml (legacy).
 resolve_yaml_path() {
   if [ -n "${SPRINT_STATUS_YAML:-}" ]; then
     printf '%s\n' "$SPRINT_STATUS_YAML"
     return 0
   fi
+  local gaia_state="$PROJECT_PATH/.gaia/state/sprint-status.yaml"
   local canonical="$PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml"
   local fallback="$PROJECT_PATH/sprint-status.yaml"
-  if [ -f "$canonical" ]; then
+  if [ -f "$gaia_state" ]; then
+    printf '%s\n' "$gaia_state"
+  elif [ -f "$canonical" ]; then
     printf '%s\n' "$canonical"
   elif [ -f "$fallback" ]; then
     printf '%s\n' "$fallback"
   else
-    printf '%s\n' "$canonical"
+    printf '%s\n' "$gaia_state"
   fi
 }
 
-ART_DIR="$PROJECT_PATH/docs/implementation-artifacts"
+# E96-S8: smart-fallback for ART_DIR (implementation-artifacts root used for
+# retro-glob + sprint-archive subdir).
+if [ -d "$PROJECT_PATH/.gaia/artifacts/implementation-artifacts" ]; then
+  ART_DIR="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts"
+else
+  ART_DIR="$PROJECT_PATH/docs/implementation-artifacts"
+fi
 ARCHIVE_DIR="$ART_DIR/sprint-archive"
 
 # ---------- Helpers ----------
