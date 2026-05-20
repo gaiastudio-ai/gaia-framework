@@ -78,7 +78,17 @@ USAGE
 # ---------- Arg parse ----------
 
 sprint_id=""
-config_path="config/project-config.yaml"
+# E96-S7 AC3: smart-fallback for the default config path — prefer
+# .gaia/config/project-config.yaml when present (post-migration layout),
+# fall back to the legacy config/project-config.yaml. Explicit --config wins.
+config_path=""
+if [ -f ".gaia/config/project-config.yaml" ]; then
+  config_path=".gaia/config/project-config.yaml"
+elif [ -f "config/project-config.yaml" ]; then
+  config_path="config/project-config.yaml"
+else
+  config_path=".gaia/config/project-config.yaml"  # canonical default for the missing-file diagnostic
+fi
 while [ $# -gt 0 ]; do
   case "$1" in
     --sprint)        [ $# -ge 2 ] || die "--sprint requires an argument"
