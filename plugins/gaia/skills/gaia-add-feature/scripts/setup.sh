@@ -115,11 +115,26 @@ while IFS= read -r line; do
 done <<<"$config_output"
 
 # ---------- 2. Validate gates ----------
-PLANNING="${PLANNING_ARTIFACTS:-docs/planning-artifacts}"
+# E96-S7 partial-4c: smart-fallback
+if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
+  if [ -d ".gaia/artifacts/planning-artifacts" ]; then
+    PLANNING_ARTIFACTS=".gaia/artifacts/planning-artifacts"
+  else
+    PLANNING_ARTIFACTS="docs/planning-artifacts"
+  fi
+fi
+PLANNING="$PLANNING_ARTIFACTS"
 PRD_PATH="$PLANNING/prd.md"
 EPICS_PATH="$PLANNING/epics-and-stories.md"
 
-TEST_ARTIFACTS_DIR="${TEST_ARTIFACTS:-docs/test-artifacts}"
+if [ -z "${TEST_ARTIFACTS:-}" ]; then
+  if [ -d ".gaia/artifacts/test-artifacts" ]; then
+    TEST_ARTIFACTS=".gaia/artifacts/test-artifacts"
+  else
+    TEST_ARTIFACTS="docs/test-artifacts"
+  fi
+fi
+TEST_ARTIFACTS_DIR="$TEST_ARTIFACTS"
 
 if [ -x "$VALIDATE_GATE" ]; then
   if ! "$VALIDATE_GATE" prd_exists 2>&1; then

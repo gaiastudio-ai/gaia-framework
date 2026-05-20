@@ -183,7 +183,15 @@ _gate_check_section_count() {
 # _gate_check_story_status <key> <state>
 _gate_check_story_status() {
   local key="$1" want="$2"
-  local impl_dir="${IMPLEMENTATION_ARTIFACTS:-docs/implementation-artifacts}"
+  # E96-S7 partial-4b: smart-fallback for IMPLEMENTATION_ARTIFACTS
+  local impl_dir
+  if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
+    impl_dir="$IMPLEMENTATION_ARTIFACTS"
+  elif [ -d ".gaia/artifacts/implementation-artifacts" ]; then
+    impl_dir=".gaia/artifacts/implementation-artifacts"
+  else
+    impl_dir="docs/implementation-artifacts"
+  fi
   local f
   for f in "$impl_dir"/"$key"-*.md "$impl_dir"/"$key".md; do
     [ -f "$f" ] || continue

@@ -65,7 +65,14 @@ fi
 
 # Implementation-artifacts directory — used to locate story files for
 # risk-surfacing frontmatter lookup (E38-S1).
-IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-$PROJECT_PATH/docs/implementation-artifacts}"
+# E96-S7 partial-4b: smart-fallback
+if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
+  if [ -d "$PROJECT_PATH/.gaia/artifacts/implementation-artifacts" ]; then
+    IMPLEMENTATION_ARTIFACTS="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts"
+  else
+    IMPLEMENTATION_ARTIFACTS="$PROJECT_PATH/docs/implementation-artifacts"
+  fi
+fi
 
 # Mitigation catalog path (E38-S1, ADR-055 FR-SPQG-5). Defaults to the
 # plugin-bundled catalog sibling to this script. Honors an env override so

@@ -122,7 +122,14 @@ shift
 
 # ---------- shared helpers ----------
 
-CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-_memory/checkpoints}"
+# E96-S7 partial-4b: smart-fallback for CHECKPOINT_ROOT
+if [ -z "${CHECKPOINT_ROOT:-}" ]; then
+  if [ -d ".gaia/memory/checkpoints" ]; then
+    CHECKPOINT_ROOT=".gaia/memory/checkpoints"
+  else
+    CHECKPOINT_ROOT="_memory/checkpoints"
+  fi
+fi
 
 SHA_TOOL=""
 if command -v shasum >/dev/null 2>&1; then

@@ -74,14 +74,36 @@ if [ -n "${EPICS_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$EPICS_ARTIFACT"
 else
-  if [ -f "docs/planning-artifacts/epics-and-stories.md" ]; then
+  # E96-S7 partial-4c: smart-fallback
+  if [ -f ".gaia/artifacts/planning-artifacts/epics-and-stories.md" ]; then
+    ARTIFACT=".gaia/artifacts/planning-artifacts/epics-and-stories.md"
+  elif [ -f "docs/planning-artifacts/epics-and-stories.md" ]; then
     ARTIFACT="docs/planning-artifacts/epics-and-stories.md"
   fi
 fi
 
-TEST_PLAN="${TEST_PLAN_PATH:-docs/test-artifacts/test-plan.md}"
-ARCHITECTURE="${ARCHITECTURE_PATH:-docs/planning-artifacts/architecture.md}"
-PRD="${PRD_PATH:-docs/planning-artifacts/prd.md}"
+# E96-S7 partial-4c: smart-fallback for TEST_PLAN / ARCHITECTURE / PRD
+if [ -n "${TEST_PLAN_PATH:-}" ]; then
+  TEST_PLAN="$TEST_PLAN_PATH"
+elif [ -f ".gaia/artifacts/test-artifacts/test-plan.md" ]; then
+  TEST_PLAN=".gaia/artifacts/test-artifacts/test-plan.md"
+else
+  TEST_PLAN="docs/test-artifacts/test-plan.md"
+fi
+if [ -n "${ARCHITECTURE_PATH:-}" ]; then
+  ARCHITECTURE="$ARCHITECTURE_PATH"
+elif [ -f ".gaia/artifacts/planning-artifacts/architecture.md" ]; then
+  ARCHITECTURE=".gaia/artifacts/planning-artifacts/architecture.md"
+else
+  ARCHITECTURE="docs/planning-artifacts/architecture.md"
+fi
+if [ -n "${PRD_PATH:-}" ]; then
+  PRD="$PRD_PATH"
+elif [ -f ".gaia/artifacts/planning-artifacts/prd.md" ]; then
+  PRD=".gaia/artifacts/planning-artifacts/prd.md"
+else
+  PRD="docs/planning-artifacts/prd.md"
+fi
 
 # ---------- 1. Run the 31-item checklist ----------
 VIOLATIONS=()

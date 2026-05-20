@@ -78,7 +78,15 @@ done <<<"$config_output"
 # file as "had prior setup" — which is the SAFER failure mode (gate runs,
 # catches the missing file, exits non-zero).
 
-TEST_ARTIFACTS_DIR="${TEST_ARTIFACTS:-docs/test-artifacts}"
+# E96-S7 partial-4c: smart-fallback
+if [ -z "${TEST_ARTIFACTS:-}" ]; then
+  if [ -d ".gaia/artifacts/test-artifacts" ]; then
+    TEST_ARTIFACTS=".gaia/artifacts/test-artifacts"
+  else
+    TEST_ARTIFACTS="docs/test-artifacts"
+  fi
+fi
+TEST_ARTIFACTS_DIR="$TEST_ARTIFACTS"
 CI_SETUP_FILE="$TEST_ARTIFACTS_DIR/ci-setup.md"
 RUN_STATE_DIR="${PROJECT_ROOT:-$PWD}/.gaia/run-state"
 HAD_PRIOR_SETUP_MARKER="$RUN_STATE_DIR/ci-edit-had-prior-setup"
