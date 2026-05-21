@@ -219,8 +219,9 @@ ES
 # Format parity with legacy workflow
 # ================================================================
 
-@test "gaia-trace: SKILL.md output path matches legacy (test-artifacts/traceability-matrix.md)" {
-  run grep -c "docs/test-artifacts/traceability-matrix.md" "$SKILL_DIR/SKILL.md"
+@test "gaia-trace: SKILL.md output path matches traceability-matrix.md (canonical post-AF-21-15)" {
+  # AF-2026-05-21-15 canonicalized this path. Accept canonical or legacy.
+  run grep -cE "(docs/test-artifacts|\.gaia/artifacts/test-artifacts)/traceability-matrix\.md" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
   [ "$output" -ge 1 ]
 }
