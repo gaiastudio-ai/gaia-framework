@@ -43,8 +43,17 @@ while IFS= read -r line; do
   esac
 done <<< "$config_output"
 
-# ---------- 2. Verify memory path ----------
-SIDECAR_DIR="${MEMORY_PATH:-_memory}/validator-sidecar"
+# ---------- 2. Verify memory path (AF-2026-05-21-7) ----------
+# Canonical .gaia/memory default; legacy _memory fallback only on positive
+# pre-ADR-111 evidence.
+if [ -z "${MEMORY_PATH:-}" ]; then
+  if [ -d "_memory" ] && [ ! -d ".gaia/memory" ]; then
+    MEMORY_PATH="_memory"
+  else
+    MEMORY_PATH=".gaia/memory"
+  fi
+fi
+SIDECAR_DIR="${MEMORY_PATH}/validator-sidecar"
 if [ ! -d "$SIDECAR_DIR" ]; then
   log "validator-sidecar directory not found at $SIDECAR_DIR — will be created on first save"
 fi

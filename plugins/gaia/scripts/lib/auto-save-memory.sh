@@ -260,7 +260,17 @@ _auto_save_memory() {
     # keeps test harnesses that exercise finalize.sh in isolation
     # cheap — they pay no fork/exec/sleep cost. The fast path runs
     # BEFORE we spawn the background writer.
-    local memdir="${MEMORY_PATH:-_memory}"
+    # AF-2026-05-21-7: canonical-first lookup with legacy fallback only on
+    # positive pre-ADR-111 evidence. Read-only path — no mkdir, so the bug
+    # was lower-priority, but pattern-aligned with the rest of the sweep.
+    local memdir
+    if [ -n "${MEMORY_PATH:-}" ]; then
+        memdir="$MEMORY_PATH"
+    elif [ -d "_memory" ] && [ ! -d ".gaia/memory" ]; then
+        memdir="_memory"
+    else
+        memdir=".gaia/memory"
+    fi
     if [ ! -f "${memdir}/config.yaml" ] || [ ! -x "$_AUTOSAVE_MEMORY_WRITER" ]; then
         return 0
     fi

@@ -46,7 +46,13 @@ Emits a Markdown table to stdout. One row per affected checkpoint file.
 USAGE
 }
 
-checkpoint_path="./_memory/checkpoints"
+# AF-2026-05-21-7: canonical default, legacy fallback only on positive
+# pre-ADR-111 evidence (legacy dir exists AND canonical doesn't).
+if [ -d "./_memory/checkpoints" ] && [ ! -d "./.gaia/memory" ]; then
+  checkpoint_path="./_memory/checkpoints"
+else
+  checkpoint_path="./.gaia/memory/checkpoints"
+fi
 days="90"
 
 while [ $# -gt 0 ]; do
