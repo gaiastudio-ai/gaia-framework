@@ -72,13 +72,22 @@ if [ -n "${PRODUCT_BRIEF_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$PRODUCT_BRIEF_ARTIFACT"
 else
-  # Pick the newest product-brief-*.md under docs/creative-artifacts/
-  # without relying on GNU-only ls flags — portable across BSD/macOS
-  # and GNU coreutils.
-  if [ -d "docs/creative-artifacts" ]; then
+  # ADR-111 smart-fallback: prefer .gaia/artifacts/creative-artifacts/,
+  # fall back to legacy docs/creative-artifacts/ for pre-migration installs.
+  # Pick the newest product-brief-*.md under whichever directory exists,
+  # without relying on GNU-only ls flags — portable across BSD/macOS and
+  # GNU coreutils.
+  if [ -d ".gaia/artifacts/creative-artifacts" ]; then
+    BRIEF_DIR=".gaia/artifacts/creative-artifacts"
+  elif [ -d "docs/creative-artifacts" ]; then
+    BRIEF_DIR="docs/creative-artifacts"
+  else
+    BRIEF_DIR=""
+  fi
+  if [ -n "$BRIEF_DIR" ]; then
     newest=""
     newest_mtime=0
-    for f in docs/creative-artifacts/product-brief-*.md; do
+    for f in "$BRIEF_DIR"/product-brief-*.md; do
       [ -f "$f" ] || continue
       mtime="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)"
       if [ "${mtime:-0}" -gt "$newest_mtime" ] 2>/dev/null; then

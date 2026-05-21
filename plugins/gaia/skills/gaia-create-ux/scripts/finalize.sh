@@ -67,7 +67,10 @@ if [ -n "${UX_DESIGN_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$UX_DESIGN_ARTIFACT"
 else
-  if [ -f "docs/planning-artifacts/ux-design.md" ]; then
+  # ADR-111 smart-fallback: .gaia/artifacts/ first, legacy docs/ second.
+  if [ -f ".gaia/artifacts/planning-artifacts/ux-design.md" ]; then
+    ARTIFACT=".gaia/artifacts/planning-artifacts/ux-design.md"
+  elif [ -f "docs/planning-artifacts/ux-design.md" ]; then
     ARTIFACT="docs/planning-artifacts/ux-design.md"
   fi
 fi
