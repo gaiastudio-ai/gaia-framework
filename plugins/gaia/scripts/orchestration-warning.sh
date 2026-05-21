@@ -124,14 +124,17 @@ if [ "$mode" = "team" ]; then
   exit 0
 fi
 
-# ---- Resolve checkpoint_path (E96-S7 partial-4b smart-fallback) ----
+# ---- Resolve checkpoint_path (AF-2026-05-21-7 inverted precedence) ----
+# Canonical .gaia/memory/checkpoints is the default for greenfield AND
+# post-ADR-111 projects. Legacy _memory/checkpoints fires ONLY when there's
+# positive pre-migration evidence: legacy dir exists AND canonical doesn't.
 if [ -z "$checkpoint_path" ]; then
   if [ -n "${CHECKPOINT_PATH:-}" ]; then
     checkpoint_path="$CHECKPOINT_PATH"
-  elif [ -d "./.gaia/memory/checkpoints" ]; then
-    checkpoint_path="./.gaia/memory/checkpoints"
-  else
+  elif [ -d "./_memory/checkpoints" ] && [ ! -d "./.gaia/memory" ]; then
     checkpoint_path="./_memory/checkpoints"
+  else
+    checkpoint_path="./.gaia/memory/checkpoints"
   fi
 fi
 mkdir -p "$checkpoint_path" 2>/dev/null || {

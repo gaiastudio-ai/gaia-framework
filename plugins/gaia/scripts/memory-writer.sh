@@ -59,7 +59,15 @@ _cleanup_tmps() {
 }
 trap '_cleanup_tmps' EXIT INT TERM
 
-MEMORY_PATH="${MEMORY_PATH:-_memory}"
+# AF-2026-05-21-7: canonical .gaia/memory default, legacy _memory fallback
+# only on positive pre-ADR-111 evidence (legacy dir exists AND canonical doesn't).
+if [ -z "${MEMORY_PATH:-}" ]; then
+  if [ -d "_memory" ] && [ ! -d ".gaia/memory" ]; then
+    MEMORY_PATH="_memory"
+  else
+    MEMORY_PATH=".gaia/memory"
+  fi
+fi
 CONFIG="${MEMORY_PATH}/config.yaml"
 
 # ---------- Startup orphan-tmp sweep (E64-S6) ----------

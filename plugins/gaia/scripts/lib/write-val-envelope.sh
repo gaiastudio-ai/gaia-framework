@@ -184,22 +184,24 @@ else
       # E96-S7 AC3: smart-fallback — prefer .gaia/memory/checkpoints/ when
       # present on disk; fall back to legacy _memory/checkpoints/ for
       # in-deprecation-window consumers and bats fixtures.
+      # AF-2026-05-21-7 inverted precedence: canonical default, legacy
+      # fallback only on positive pre-ADR-111 evidence.
       _root="${_project_root:-.}"
-      if [ -d "${_root}/.gaia/memory/checkpoints" ] || [ -d "${_root}/.gaia/memory" ]; then
-        CHECKPOINT_DIR="${_root}/.gaia/memory/checkpoints"
-      else
+      if [ -d "${_root}/_memory/checkpoints" ] && [ ! -d "${_root}/.gaia/memory" ]; then
         CHECKPOINT_DIR="${_root}/_memory/checkpoints"
+      else
+        CHECKPOINT_DIR="${_root}/.gaia/memory/checkpoints"
       fi
       unset _root
     fi
     unset _own_dir _resolver _resolver_out _project_root _checkpoint_path _line
   else
-    # E96-S7 AC3: smart-fallback when resolve-config.sh is missing — same
-    # precedence as above, but CWD-relative because we have no resolver root.
-    if [ -d ".gaia/memory/checkpoints" ] || [ -d ".gaia/memory" ]; then
-      CHECKPOINT_DIR=".gaia/memory/checkpoints"
-    else
+    # AF-2026-05-21-7 inverted precedence (CWD-relative branch when
+    # resolve-config.sh missing).
+    if [ -d "_memory/checkpoints" ] && [ ! -d ".gaia/memory" ]; then
       CHECKPOINT_DIR="_memory/checkpoints"
+    else
+      CHECKPOINT_DIR=".gaia/memory/checkpoints"
     fi
   fi
 fi
