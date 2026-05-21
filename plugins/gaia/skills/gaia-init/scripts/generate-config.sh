@@ -136,10 +136,15 @@ lines.append(f"config_phase: {phase}")
 # primary_platform exist regardless of phase).
 project_name_val = data.get("project_name") or name
 _pkind = data.get("project_kind") or "application"
-# When the full flow detects project_shape == "claude-code-plugin", force
-# project_kind up front so the emission below and the plugin-shape legacy
-# block (lines ~158-160) don't produce duplicate `project_kind:` entries.
-if phase == "full" and (data.get("project_shape") or "").strip() == "claude-code-plugin":
+# AF-2026-05-21-9: when project_shape == "claude-code-plugin", force
+# project_kind up front. Applies to BOTH phase=full and phase=minimal so
+# Phase 0 Quick setup users selecting "Claude Code plugin" as primary_platform
+# get the canonical project_kind via SKILL.md Step 1b's alias-normalization
+# arm setting project_shape in the bundle. The legacy plugin-shape block
+# (lines ~158-160) is itself gated on `if phase == "full":` so removing
+# this clause's phase gate cannot produce duplicate `project_kind:` entries
+# in either phase.
+if (data.get("project_shape") or "").strip() == "claude-code-plugin":
     _pkind = "claude-code-plugin"
 project_kind_val = _pkind
 version_val = data.get("version") or "0.1.0"

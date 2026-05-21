@@ -108,6 +108,52 @@ JSON
   grep -qE '^primary_platform:[[:space:]]*"?mobile"?$' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
 }
 
+# ---- AF-2026-05-21-9: Phase 0 plugin-kind detection -----------------------
+#
+# Regression coverage for the live repro on 2026-05-21: user ran /gaia-init
+# Quick setup with primary_platform="Claude Code plugin" but the emitted
+# config had project_kind: application. Root cause: generate-config.sh:142
+# had a `phase == "full"` gate on the project_kind upgrade. Post-AF-21-9,
+# the gate fires for both minimal and full phases when the bundle sets
+# project_shape=claude-code-plugin (which the SKILL.md Step 1b prose now
+# instructs the LLM to do when primary_platform alias-normalizes to one of
+# {claude-plugin, plugin, claude-code-plugin}).
+
+# Build a Phase 0 bundle that includes project_shape (the post-alias-
+# normalization signal the LLM emits when primary_platform matches the
+# plugin alias set).
+phase0_plugin_bundle() {
+  cat <<'JSON'
+{
+  "project_name": "Yara",
+  "primary_platform": "claude-code-plugin",
+  "project_shape": "claude-code-plugin",
+  "project_kind": "claude-code-plugin"
+}
+JSON
+}
+
+@test "AF-21-9: Phase 0 + project_shape=claude-code-plugin → emitted config has project_kind: claude-code-plugin" {
+  phase0_plugin_bundle | "$SKILL_SCRIPTS/generate-config.sh" \
+    --path "$FIXTURE_ROOT" --name "Yara" --phase minimal
+  local cfg="$FIXTURE_ROOT/.gaia/config/project-config.yaml"
+  [ -f "$cfg" ]
+  # Canonical post-AF-21-9 emission.
+  grep -qE '^project_kind:[[:space:]]*"?claude-code-plugin"?$' "$cfg"
+  # MUST NOT silently fall back to the default-application path.
+  ! grep -qE '^project_kind:[[:space:]]*"?application"?$' "$cfg"
+}
+
+@test "AF-21-9: Phase 0 regression guard — non-plugin primary_platform still defaults to application" {
+  # Plain web primary_platform with no project_shape signal: the AC7 default
+  # path MUST be unbroken — project_kind stays at application.
+  phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
+    --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
+  local cfg="$FIXTURE_ROOT/.gaia/config/project-config.yaml"
+  grep -qE '^project_kind:[[:space:]]*"?application"?$' "$cfg"
+  ! grep -qE '^project_kind:[[:space:]]*"?claude-code-plugin"?$' "$cfg"
+}
+
 # Negative regression guard (Tex W1): generate-config.sh MUST NOT silently
 # accept un-normalized literal "react" / "ios" aliases — normalization lives
 # SKILL.md-side. If the script ever starts doing its own normalization, this
