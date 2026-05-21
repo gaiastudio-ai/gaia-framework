@@ -152,6 +152,13 @@ plugins/gaia/skills/gaia-edit-prd/scripts/setup.sh
 # branch is permitted.
 plugins/gaia/skills/gaia-edit-ux/scripts/setup.sh
 
+# AF-2026-05-21-15 fix — gaia-threat-model/finalize.sh now uses the
+# three-tier idiom (THREAT_MODEL_ARTIFACT env-var override →
+# positive-evidence legacy fallback → canonical default). Allowlisted
+# so the legacy `docs/planning-artifacts/threat-model.md` literal in the
+# positive-evidence branch is permitted.
+plugins/gaia/skills/gaia-threat-model/scripts/finalize.sh
+
 # --- Bucket 3: retired scripts ---
 
 plugins/gaia/scripts/retired/

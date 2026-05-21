@@ -15,7 +15,9 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are generating a **traceability matrix** that maps every PRD requirement (FR-xxx, NFR-xxx) to its implementing story and covering test case(s). The matrix is written via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): if an existing matrix is found under `docs/test-artifacts/strategy/traceability-matrix.md` (E53 reorganization placement), write to that location to preserve placement; otherwise write to flat `docs/test-artifacts/traceability-matrix.md`. After generation, you invoke `validate-gate.sh traceability_exists` to verify the gate deterministically (the gate already accepts both placements + the sharded `traceability-matrix/index.md` form per ADR-070).
+You are generating a **traceability matrix** that maps every PRD requirement (FR-xxx, NFR-xxx) to its implementing story and covering test case(s). The matrix is written via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): if an existing matrix is found under `.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md` (E53 reorganization placement), write to that location to preserve placement; otherwise write to flat `.gaia/artifacts/test-artifacts/traceability-matrix.md`. After generation, you invoke `validate-gate.sh traceability_exists` to verify the gate deterministically (the gate already accepts both placements + the sharded `traceability-matrix/index.md` form per ADR-070).
+
+**Path resolution (AF-2026-05-21-15).** All path references in this SKILL.md use the canonical post-ADR-111 location under `.gaia/artifacts/test-artifacts/` and `.gaia/artifacts/planning-artifacts/`. The ADR-072 strategy-fallback rule and the ADR-069/FR-396..402 sharded-fallback rule are preserved under path-root substitution — both branches of each fallback are rooted at canonical. Pre-ADR-111 projects continue to work via `validate-gate.sh`'s built-in canonical-first resolution (the gate accepts both layouts).
 
 This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/traceability` workflow (E28-S85, Cluster 11). The step ordering, matrix format, and output path are preserved verbatim from the legacy `instructions.xml` -- do not restructure, re-prompt, or reorder.
 
@@ -24,25 +26,25 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Matrix rows MUST be PRD requirements (FR-001...FR-N, NFR-001...NFR-N), NOT story acceptance criteria. Stories are an intermediate mapping between requirements and tests, not the primary dimension.
 - Map every requirement to at least one test.
 - Identify requirements without test coverage as gaps.
-- Output ALL artifacts to `docs/test-artifacts/` (or `docs/test-artifacts/strategy/` under the E53 reorganization placement — see ADR-072).
-- Resolve the output path via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): if `docs/test-artifacts/strategy/traceability-matrix.md` already exists, write to that path to preserve placement; otherwise default to flat `docs/test-artifacts/traceability-matrix.md`. The legacy flat path remains the default for greenfield projects; existing strategy/ placements are honored to avoid duplicate-matrix shadowing.
+- Output ALL artifacts to `.gaia/artifacts/test-artifacts/` (or `.gaia/artifacts/test-artifacts/strategy/` under the E53 reorganization placement — see ADR-072).
+- Resolve the output path via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): if `.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md` already exists, write to that path to preserve placement; otherwise default to flat `.gaia/artifacts/test-artifacts/traceability-matrix.md`. The legacy flat path remains the default for greenfield projects; existing strategy/ placements are honored to avoid duplicate-matrix shadowing.
 - The legacy `val_validate_output: true` flag is preserved -- the output traceability matrix should be validated when Val integration is active.
 - If validate-gate.sh not found at `${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh` (missing validate-gate script), halt with a clear error identifying the missing script path and exit with non-zero status. Do not attempt to run the gate check without the script.
-- Resolve the PRD via the sharded-fallback rule: first try `docs/planning-artifacts/prd.md` (flat layout); if it does not exist, fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout per ADR-069 / FR-396..402). If NEITHER path exists: HALT -- "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md. Run /gaia-create-prd first. The traceability matrix requires PRD requirements as its primary dimension."
+- Resolve the PRD via the sharded-fallback rule: first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if it does not exist, fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout per ADR-069 / FR-396..402). If NEITHER path exists: HALT -- "PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md. Run /gaia-create-prd first. The traceability matrix requires PRD requirements as its primary dimension."
 - If the FR/NFR set is empty (no requirements found in prd.md): exit gracefully with a warning message "No FR/NFR requirements found in prd.md -- generating empty matrix file." Generate an empty matrix file with headers only (no crash, no partial output).
-- Resolve the test-plan path via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): first try `docs/test-artifacts/test-plan.md` (flat layout); if missing, fall back to `docs/test-artifacts/strategy/test-plan.md` (E53 reorganization placement); the sharded `test-plan/index.md` form per ADR-070 is also accepted by `validate-gate.sh test_plan_exists`. Reads of test-plan throughout the skill resolve via this rule.
+- Resolve the test-plan path via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): first try `.gaia/artifacts/test-artifacts/test-plan.md` (flat layout); if missing, fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (E53 reorganization placement); the sharded `test-plan/index.md` form per ADR-070 is also accepted by `validate-gate.sh test_plan_exists`. Reads of test-plan throughout the skill resolve via this rule.
 - If test-plan.md has malformed table syntax or broken table headers: log a parse warning "Malformed table syntax detected in test-plan.md -- skipping unparseable rows", skip unparseable rows, and generate the matrix from valid rows only.
 
 ## Steps
 
 ### Step 1 -- Load Requirements
 
-- Resolve the PRD path via the sharded-fallback rule (see Critical Rules above): prefer `docs/planning-artifacts/prd.md` (flat layout); if missing, use `docs/planning-artifacts/prd/prd.md` (sharded layout per ADR-069 / FR-396..402). Read the resolved file (and, for the sharded layout, also walk shard sections under `docs/planning-artifacts/prd/04-functional-requirements/` and `docs/planning-artifacts/prd/05-non-functional-requirements.md`) -- extract ALL functional requirements (FR-001 through FR-N) and non-functional requirements (NFR-001 through NFR-N) as the primary requirement inventory. These are the matrix rows.
-- GATE: If neither flat `docs/planning-artifacts/prd.md` nor sharded `docs/planning-artifacts/prd/prd.md` exists or can be loaded: HALT -- "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md. Run /gaia-create-prd first. The traceability matrix requires PRD requirements as its primary dimension."
-- Read `docs/planning-artifacts/epics-and-stories.md` -- for each story, identify which FR/NFR it implements. Build a mapping: FR/NFR -> Story(s) -> Story ACs.
-- Resolve the test-plan path via the strategy-fallback rule (Critical Rules above): try `docs/test-artifacts/test-plan.md` (flat layout); fall back to `docs/test-artifacts/strategy/test-plan.md` (strategy/ placement). Read the resolved file if it exists — extract planned test IDs and their categories (Unit, Integration, E2E, Manual, Performance, Security, Accessibility).
+- Resolve the PRD path via the sharded-fallback rule (see Critical Rules above): prefer `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, use `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout per ADR-069 / FR-396..402). Read the resolved file (and, for the sharded layout, also walk shard sections under `.gaia/artifacts/planning-artifacts/prd/04-functional-requirements/` and `.gaia/artifacts/planning-artifacts/prd/05-non-functional-requirements.md`) -- extract ALL functional requirements (FR-001 through FR-N) and non-functional requirements (NFR-001 through NFR-N) as the primary requirement inventory. These are the matrix rows.
+- GATE: If neither flat `.gaia/artifacts/planning-artifacts/prd.md` nor sharded `.gaia/artifacts/planning-artifacts/prd/prd.md` exists or can be loaded: HALT -- "PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md. Run /gaia-create-prd first. The traceability matrix requires PRD requirements as its primary dimension."
+- Read `.gaia/artifacts/planning-artifacts/epics-and-stories.md` -- for each story, identify which FR/NFR it implements. Build a mapping: FR/NFR -> Story(s) -> Story ACs.
+- Resolve the test-plan path via the strategy-fallback rule (Critical Rules above): try `.gaia/artifacts/test-artifacts/test-plan.md` (flat layout); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement). Read the resolved file if it exists — extract planned test IDs and their categories (Unit, Integration, E2E, Manual, Performance, Security, Accessibility).
 
-> `!scripts/write-checkpoint.sh gaia-trace 1 trace_matrix_path="docs/test-artifacts/traceability-matrix.md" coverage_metrics=pending stage=requirements-loaded`
+> `!scripts/write-checkpoint.sh gaia-trace 1 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics=pending stage=requirements-loaded`
 
 ### Step 2 -- Load Test Inventory
 
@@ -50,7 +52,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - For each test, record: test ID, test type (Unit/Integration/E2E/Manual/Performance/Security/Accessibility), implementation status (planned/implemented), requirement mapping, and file path if implemented.
 - If test-plan.md has broken table syntax or missing headers, log a parse warning and skip unparseable rows. Continue with valid rows only.
 
-> `!scripts/write-checkpoint.sh gaia-trace 2 trace_matrix_path="docs/test-artifacts/traceability-matrix.md" coverage_metrics=pending stage=test-inventory-loaded`
+> `!scripts/write-checkpoint.sh gaia-trace 2 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics=pending stage=test-inventory-loaded`
 
 ### Step 3 -- Build Matrix
 
@@ -71,14 +73,14 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
   - For each story with ACs, list the specific test IDs covering each AC.
   - This section supports the primary FR/NFR matrix but is NOT the primary dimension.
 
-> `!scripts/write-checkpoint.sh gaia-trace 3 trace_matrix_path="docs/test-artifacts/traceability-matrix.md" coverage_metrics=pending stage=matrix-built`
+> `!scripts/write-checkpoint.sh gaia-trace 3 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics=pending stage=matrix-built`
 
 ### Step 4 -- Gap Analysis
 
 - Identify FR/NFR requirements with no mapped story -- flag as "No implementing story" gap.
 - Identify FR/NFR requirements with stories but no mapped tests -- flag as "No test coverage" gap.
 - Identify tests with no requirement mapping -- flag as "Orphan test" warning.
-- For each story tagged Risk: HIGH -- check if `docs/test-artifacts/atdd-{story_key}.md` exists. If missing, flag as "HIGH-RISK STORY WITHOUT ATDD -- run /gaia-atdd before /gaia-dev-story" gap. This is a blocking gap.
+- For each story tagged Risk: HIGH -- check if `.gaia/artifacts/test-artifacts/atdd-{story_key}.md` exists. If missing, flag as "HIGH-RISK STORY WITHOUT ATDD -- run /gaia-atdd before /gaia-dev-story" gap. This is a blocking gap.
 - Prioritize gaps by risk level (High-risk FR/NFRs without coverage are blocking).
 - Calculate implementation rate: count implemented tests vs total planned tests. Record as: Total planned: N, Implemented: M (percentage%).
 
@@ -93,7 +95,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 <!-- E77-S16: plugin-aware chain end -->
 
 
-> `!scripts/write-checkpoint.sh gaia-trace 4 trace_matrix_path="docs/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" stage=gap-analysis-complete`
+> `!scripts/write-checkpoint.sh gaia-trace 4 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" stage=gap-analysis-complete`
 
 ### Step 5 -- Generate Matrix
 
@@ -104,9 +106,9 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
   4. Gap analysis summary
   5. Coverage statistics
   6. Implementation-readiness gate decision: if all High-risk FR/NFRs have at least one planned test AND implementation rate > 50%, declare PASS. If any High-risk FR/NFR has zero test coverage, declare BLOCKED. Otherwise declare CONDITIONAL.
-- Resolve the output path via the strategy-fallback rule (Critical Rules above): if `docs/test-artifacts/strategy/traceability-matrix.md` already exists, write the compiled matrix to that path; otherwise write to flat `docs/test-artifacts/traceability-matrix.md`.
+- Resolve the output path via the strategy-fallback rule (Critical Rules above): if `.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md` already exists, write the compiled matrix to that path; otherwise write to flat `.gaia/artifacts/test-artifacts/traceability-matrix.md`.
 
-> `!scripts/write-checkpoint.sh gaia-trace 5 trace_matrix_path="docs/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" stage=matrix-generated --paths docs/test-artifacts/traceability-matrix.md`
+> `!scripts/write-checkpoint.sh gaia-trace 5 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" stage=matrix-generated --paths .gaia/artifacts/test-artifacts/traceability-matrix.md`
 
 ### Step 6 -- Gate Verification
 
@@ -115,7 +117,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - If validate-gate.sh returns non-zero exit code: gate FAILED -- report the actionable error message listing each uncovered requirement by ID with its title. The error output from validate-gate.sh contains the expected file path and failure reason.
 - If all requirements have zero test coverage (100% uncovered): validate-gate.sh returns non-zero and the error message lists all requirements as uncovered.
 
-> `!scripts/write-checkpoint.sh gaia-trace 6 trace_matrix_path="docs/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" gate_status="$GATE_STATUS" stage=gate-verified`
+> `!scripts/write-checkpoint.sh gaia-trace 6 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" gate_status="$GATE_STATUS" stage=gate-verified`
 
 ### Step 6b — Dispatch-verb integration-coverage enforcement (E88-S6, FR-DPD-6)
 
