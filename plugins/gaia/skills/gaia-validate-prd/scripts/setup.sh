@@ -65,7 +65,12 @@ fi
 
 # ---------- 2b. Guard: prd.md must already exist ----------
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}"
-PRD_PATH="$PROJECT_ROOT/docs/planning-artifacts/prd.md"
+# ADR-111 smart-fallback: .gaia/artifacts/ first, legacy docs/ second.
+if [ -f "$PROJECT_ROOT/.gaia/artifacts/planning-artifacts/prd.md" ]; then
+  PRD_PATH="$PROJECT_ROOT/.gaia/artifacts/planning-artifacts/prd.md"
+else
+  PRD_PATH="$PROJECT_ROOT/docs/planning-artifacts/prd.md"
+fi
 
 if [ ! -f "$PRD_PATH" ]; then
   log "prd.md not found at $PRD_PATH — validate-prd requires an existing PRD (non-fatal in setup)"

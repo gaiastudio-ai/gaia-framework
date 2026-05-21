@@ -144,14 +144,21 @@ case "$MODE" in
     # Reject the intake-shorthand form (ADR-086 reconciliation).
     if [[ "$SIDECAR_AGENT" == agent-decisions/* ]] || [[ "$SIDECAR_AGENT" == */* ]]; then
       echo "research-phase-dispatch.sh: refusing intake-shorthand path '$SIDECAR_AGENT'." >&2
-      echo "Use the canonical agent name only; ADR-086 mandates _memory/<agent>-sidecar/." >&2
+      echo "Use the canonical agent name only; ADR-086/ADR-111 mandates <memory-root>/<agent>-sidecar/." >&2
       exit 2
     fi
     if [[ -z "$SIDECAR_AGENT" ]]; then
       echo "research-phase-dispatch.sh: agent name is empty." >&2
       exit 2
     fi
-    echo "_memory/${SIDECAR_AGENT}-sidecar"
+    # ADR-111 smart-fallback: .gaia/memory/ first, legacy _memory/ second.
+    # PROJECT_ROOT may not be set in some invocation contexts — use $PWD.
+    _pr="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-${PROJECT_ROOT:-.}}}"
+    if [ -d "$_pr/.gaia/memory" ]; then
+      echo ".gaia/memory/${SIDECAR_AGENT}-sidecar"
+    else
+      echo "_memory/${SIDECAR_AGENT}-sidecar"
+    fi
     ;;
   emit-frontmatter)
     if [[ "$SKIP_RESEARCH" -eq 1 ]]; then

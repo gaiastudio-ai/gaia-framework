@@ -68,6 +68,9 @@ ARTIFACT_REQUESTED=0
 if [ -n "${TECH_RESEARCH_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$TECH_RESEARCH_ARTIFACT"
+elif [ -f ".gaia/artifacts/planning-artifacts/technical-research.md" ]; then
+  # ADR-111 smart-fallback: .gaia/artifacts/ first, legacy docs/ second.
+  ARTIFACT=".gaia/artifacts/planning-artifacts/technical-research.md"
 elif [ -f "docs/planning-artifacts/technical-research.md" ]; then
   ARTIFACT="docs/planning-artifacts/technical-research.md"
 fi

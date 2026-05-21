@@ -178,6 +178,25 @@ JSON
   [ "$status" -ne 0 ]
 }
 
+# AF-2026-05-21-6: regression coverage for the ADR-111 path-migration gap.
+# Prior to the fix, generate-config.sh emitted `memory_path: <abs>/_memory`
+# and `checkpoint_path: <abs>/_memory/checkpoints` (pre-migration values).
+# After the fix, these MUST resolve to the canonical post-ADR-111 paths
+# `.gaia/memory` and `.gaia/memory/checkpoints` — matching the working
+# project-config.yaml shape and the constants exported by gaia-paths.sh.
+@test "AF-2026-05-21-6: generate-config.sh emits canonical .gaia/memory paths (full flow)" {
+  mkdir -p "$TEST_TMP/proj/.gaia/config"
+  echo '{}' | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
+  cfg="$TEST_TMP/proj/.gaia/config/project-config.yaml"
+  [ -s "$cfg" ]
+  # Canonical post-ADR-111 paths MUST be present.
+  grep -F "memory_path: $TEST_TMP/proj/.gaia/memory" "$cfg"
+  grep -F "checkpoint_path: $TEST_TMP/proj/.gaia/memory/checkpoints" "$cfg"
+  # Legacy _memory/ paths MUST NOT appear in the emitted config.
+  ! grep -E "memory_path: $TEST_TMP/proj/_memory\b" "$cfg"
+  ! grep -E "checkpoint_path: $TEST_TMP/proj/_memory/checkpoints\b" "$cfg"
+}
+
 # --- AC6: generate-ci-scaffold.sh -----------------------------------------
 
 @test "generate-ci-scaffold.sh: github-actions emits canonical workflow path" {

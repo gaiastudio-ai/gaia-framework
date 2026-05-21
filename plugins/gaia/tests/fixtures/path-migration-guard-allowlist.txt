@@ -73,11 +73,55 @@ plugins/gaia/README.md
 # validator.md persona_sig docstring cites .plugin-version + legacy paths.
 plugins/gaia/agents/validator.md
 
-# All SKILL.md files describe both layouts in their narrative prose.
-# (Broad allow — SKILL.md narrative refers to legacy paths in dozens of skills;
-# enforcing canonical-only in narrative would block every legitimate ADR-111
-# reference. Limit guard scope to executable .sh files.)
-plugins/gaia/skills/
+# SKILL.md narrative refers to legacy paths in dozens of skills — the
+# guard scope was originally intended to allow narrative-only references
+# while still catching executable `.sh` regressions. The blanket
+# `plugins/gaia/skills/` entry made that goal a no-op (allowlisted every
+# file under skills/, not just SKILL.md). AF-2026-05-21-6 tightened the
+# allowlist: SKILL.md is allow-listed by glob; individual `.sh` files
+# documented as legitimate-legacy smart-fallback chains are listed
+# explicitly below.
+#
+# Matching note: the is_allowlisted helper uses `case "$rel" in "$entry"*)`,
+# so glob metacharacters (`*`) are honored. `*/SKILL.md` matches any path
+# whose suffix is `/SKILL.md`.
+*/SKILL.md
+plugins/gaia/skills/gaia-create-arch/architectural-elicitation/
+
+# Legitimate-legacy smart-fallback chains in skill scripts (canonical
+# .gaia/ first, legacy second). Re-allowlisted individually per
+# AF-2026-05-21-6 / Val F4.
+plugins/gaia/skills/gaia-dev-story/scripts/checkpoint.sh
+plugins/gaia/skills/gaia-dev-story/scripts/promotion-chain-guard.sh
+plugins/gaia/skills/gaia-dev-story/scripts/dod-check.sh
+plugins/gaia/skills/gaia-meeting/scripts/dispatch-agent-turn.sh
+plugins/gaia/skills/gaia-meeting/scripts/yield-gate.sh
+plugins/gaia/skills/gaia-meeting/scripts/charter-gate.sh
+plugins/gaia/skills/gaia-meeting/scripts/cite-or-flag-check.sh
+plugins/gaia/skills/gaia-meeting/scripts/write-boundary.sh
+plugins/gaia/skills/gaia-quick-dev/scripts/checkpoint-archive.sh
+plugins/gaia/skills/gaia-quick-dev/scripts/wip-checkpoint-resolve.sh
+plugins/gaia/skills/gaia-triage-findings/scripts/finalize.sh
+plugins/gaia/skills/gaia-retro/scripts/finalize.sh
+plugins/gaia/skills/gaia-add-feature/scripts/setup.sh
+plugins/gaia/skills/gaia-add-feature/scripts/write-val-sentinel.sh
+plugins/gaia/skills/gaia-deploy/scripts/deploy-dispatch.sh
+plugins/gaia/skills/gaia-sprint-review/scripts/track-b-dispatch.sh
+plugins/gaia/skills/gaia-sprint-review/scripts/finalize.sh
+plugins/gaia/skills/gaia-sprint-close/scripts/close.sh
+plugins/gaia/skills/gaia-shard-doc/scripts/h3-shard.sh
+plugins/gaia/skills/gaia-shard-doc/scripts/parse-h2-boundaries.sh
+
+# AF-2026-05-21-6 fixes — these now use ADR-111 smart-fallback (canonical
+# .gaia/ first, legacy second). Allowlisted so the legacy fallback line
+# below the canonical check is permitted.
+plugins/gaia/skills/gaia-init/scripts/generate-config.sh
+plugins/gaia/skills/gaia-meeting/scripts/memory-writethrough.sh
+plugins/gaia/skills/gaia-meeting/scripts/research-phase-dispatch.sh
+plugins/gaia/skills/gaia-validate-prd/scripts/setup.sh
+plugins/gaia/skills/gaia-create-ux/scripts/finalize.sh
+plugins/gaia/skills/gaia-product-brief/scripts/finalize.sh
+plugins/gaia/skills/gaia-tech-research/scripts/finalize.sh
 
 # --- Bucket 3: retired scripts ---
 
