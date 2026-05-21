@@ -6,9 +6,9 @@
 # present in the supplied PRD shard and threat-model file. The
 # canonical sources are:
 #
-#   docs/planning-artifacts/prd/04-functional-requirements/
+#   .gaia/artifacts/planning-artifacts/prd/04-functional-requirements/
 #     40-4-39-gaia-meeting-peer-to-peer-multi-agent-discussion-skill-af-2026-05-05-1.md
-#   docs/planning-artifacts/threat-model.md
+#   .gaia/artifacts/planning-artifacts/threat-model.md
 #
 # Per the story's Technical Notes (ADR-042 scripts-over-LLM): pure
 # deterministic `grep` assertions, no LLM judgment.

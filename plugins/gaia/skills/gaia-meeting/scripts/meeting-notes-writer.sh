@@ -8,7 +8,7 @@
 # decisions, risks, open questions, scratchpad final state, action-item IDs,
 # memory write-through agent list) and renders the canonical saved-notes file
 # at:
-#   <root>/docs/creative-artifacts/meeting-<YYYY-MM-DD>-<slug>.md
+#   <root>/.gaia/artifacts/creative-artifacts/meeting-<YYYY-MM-DD>-<slug>.md
 #
 # Frontmatter contract:
 #   - per-attendee + total token-cost breakdown
@@ -186,7 +186,9 @@ while IFS= read -r id; do
 done <<< "$ACTION_IDS_LIST"
 action_items_inline+="]"
 
-out_dir="$ROOT/docs/creative-artifacts"
+# AF-2026-05-21-16: canonical-unconditional per E96-S8 write-boundary.sh
+# (post-ADR-111 canonical-only enforcement; no legacy fallback supported).
+out_dir="$ROOT/.gaia/artifacts/creative-artifacts"
 out="$out_dir/meeting-${DATE}-${SLUG}.md"
 mkdir -p "$out_dir"
 

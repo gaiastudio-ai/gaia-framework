@@ -58,8 +58,8 @@ Re-invoke /gaia-meeting with --charter "<one-to-three-sentence charter>".
 Example:
   /gaia-meeting --charter "Decide whether to adopt X for Y."
 
-No writes have been made to docs/creative-artifacts/, _memory/action-items/,
-or _memory/{agent}-sidecar/decisions/ (FR-MTG-2, FR-MTG-31, AC1).
+No writes have been made to .gaia/artifacts/creative-artifacts/, .gaia/state/action-items.yaml,
+or .gaia/memory/{agent}-sidecar/decisions/ (FR-MTG-2, FR-MTG-31, AC1).
 EOF
   # Echo BLOCKED on stdout for bats matchers and test consumers
   echo "charter-gate.sh: BLOCKED — meeting charter is required (use --charter \"...\")."

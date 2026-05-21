@@ -4,7 +4,7 @@
 #
 # Emits a deterministic phase-marker line for the live transcript at each
 # phase boundary. The saved meeting transcript at
-# docs/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md MUST contain markers
+# .gaia/artifacts/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md MUST contain markers
 # in this order: INVITE, CHARTER, RESEARCH (skip placeholder in S1),
 # DISCUSS, CLOSE, REVIEW, SAVE.
 #
