@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.164.2] — 2026-05-20
+
+### Fixed
+
+- (AF-2026-05-20-1) opt gaia-create-story.bats out of proof-of-execution
+- (AF-2026-05-20-1) opt remaining bats suites out of proof-of-execution
+- (AF-2026-05-20-1) proof-of-execution gate on review-gate.sh + summary-gen + run-all-reviews
+
 ## [1.164.1] — 2026-05-20
 
 ### Fixed
