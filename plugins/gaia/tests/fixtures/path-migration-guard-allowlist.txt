@@ -138,6 +138,13 @@ plugins/gaia/skills/gaia-create-prd/scripts/finalize.sh
 plugins/gaia/skills/gaia-create-arch/scripts/finalize.sh
 plugins/gaia/skills/gaia-edit-arch/scripts/finalize.sh
 
+# AF-2026-05-21-12 fix — gaia-edit-prd/setup.sh now uses the three-tier
+# idiom (PRD_PATH env-var override → positive-evidence legacy fallback →
+# canonical default). Allowlisted so the legacy
+# `docs/planning-artifacts/prd.md` literal in the positive-evidence branch
+# is permitted.
+plugins/gaia/skills/gaia-edit-prd/scripts/setup.sh
+
 # --- Bucket 3: retired scripts ---
 
 plugins/gaia/scripts/retired/
