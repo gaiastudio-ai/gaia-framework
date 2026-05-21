@@ -82,12 +82,14 @@ teardown() { common_teardown; }
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*product-brief' "$SKILLS_DIR/gaia-product-brief/SKILL.md"
 }
 
-@test "AC1: gaia-create-prd references prd.md artifact_path" {
-  grep -q 'docs/planning-artifacts/prd.md' "$SKILLS_DIR/gaia-create-prd/SKILL.md"
+@test "AC1: gaia-create-prd references prd.md artifact_path (canonical post-AF-21-10)" {
+  # AF-2026-05-21-10 canonicalized this path. Accept canonical or legacy.
+  grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/prd\.md' "$SKILLS_DIR/gaia-create-prd/SKILL.md"
 }
 
-@test "AC1: gaia-create-ux references ux-design.md artifact_path" {
-  grep -q 'docs/planning-artifacts/ux-design.md' "$SKILLS_DIR/gaia-create-ux/SKILL.md"
+@test "AC1: gaia-create-ux references ux-design.md artifact_path (canonical post-AF-21-X)" {
+  # Future AF will canonicalize this path. Accept canonical or legacy.
+  grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/ux-design\.md' "$SKILLS_DIR/gaia-create-ux/SKILL.md"
 }
 
 @test "AC1: gaia-product-brief references product-brief-{slug}.md artifact_path" {
