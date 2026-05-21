@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 # E93-S6 — sprint-state.sh set-shape subcommand coverage.
 #
+# Public functions covered: cmd_set_shape (NFR-052 coverage gate).
+#
 # AC1 — set-shape subcommand validates enum {thrust, completion-pass} and
 # uses the ADR-095 boundary-write pattern.
 
