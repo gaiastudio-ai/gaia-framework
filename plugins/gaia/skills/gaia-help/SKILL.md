@@ -16,7 +16,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/
 
 - **Only suggest commands that exist in `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv` — never invent command names.** This mandate originates in `_gaia/core/engine/workflow.xml` (engine Step 7: Completion — "Only suggest commands that exist in workflow-manifest.csv — never invent command names") and is propagated into this skill because the native model removes the engine layer. Every suggested command MUST appear in `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv` at runtime. If a candidate from `${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv` is not in the manifest, drop it from the suggestion list.
 - **Load `${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv` as the primary intent-to-command map.** That file encodes which slash command handles which user intent (e.g., "I want to start a new project" → `/gaia-brainstorm-project`). It is authored by the team and must not be hard-coded into this skill.
-- **Detect lifecycle phase from `docs/` artifacts** — inspect `docs/planning-artifacts/`, `docs/implementation-artifacts/`, `docs/test-artifacts/`, and `docs/creative-artifacts/` with the Glob tool to determine which Phase the project is in (see Phase Guide below).
+- **Detect lifecycle phase from canonical `.gaia/artifacts/` first, then legacy `docs/` fallback** — inspect `.gaia/artifacts/planning-artifacts/`, `.gaia/artifacts/implementation-artifacts/`, `.gaia/artifacts/test-artifacts/`, and `.gaia/artifacts/creative-artifacts/` with the Glob tool (per ADR-111). If none are present, fall back to the legacy `docs/planning-artifacts/`, `docs/implementation-artifacts/`, `docs/test-artifacts/`, and `docs/creative-artifacts/` locations for pre-migration installs. Determine which Phase the project is in (see Phase Guide below).
 - **If `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv` is missing** (AC-EC2): refuse to suggest any command and fall back to `/gaia` with a clear warning. Do NOT invent. This is the non-negotiable no-hallucination rule. The behavior contract for this fallback mirrors the shared bash helper at `plugins/gaia/scripts/lib/missing-file-fallback.sh` (E28-S162) — emit a clear notice and degrade gracefully to a safe no-op rather than erroring. Bash consumers of the same pattern source the helper directly; this skill, being LLM prose, implements the same contract in Step 1 of the instructions below.
 - Do NOT emit write operations. This skill is read-only and produces text suggestions only.
 
@@ -60,18 +60,24 @@ detection runs once per `/gaia-help` invocation.
 reads the resulting `$PROJECT_STATE` value):
 
 ```bash
-# Step 3a — Project State Detection (ADR-103)
+# Step 3a — Project State Detection (ADR-103, ADR-111)
 # 4-state enum: greenfield > brownfield > post-update > healthy
 # First-match-wins. Bounded I/O: 4 stat + 1 readdir, zero file reads.
+#
+# E97-S1 / ADR-111: prefer canonical `.gaia/{config,artifacts,memory}/` paths
+# first; fall back to legacy `config/`, `docs/`, and `_memory/` on pre-migration
+# installs. The first present path of each pair wins; absent canonical AND
+# absent legacy means "missing".
 
 PROJECT_STATE="healthy"  # default fall-through
 
-# (1) Greenfield: config absent — short-circuit
-if [ ! -f "config/project-config.yaml" ]; then
+# (1) Greenfield: config absent in BOTH canonical and legacy locations — short-circuit
+if [ ! -f ".gaia/config/project-config.yaml" ] && [ ! -f "config/project-config.yaml" ]; then
   PROJECT_STATE="greenfield"
 
 # (2) Brownfield: config present AND planning-artifacts missing-or-empty AND a build-system file exists
-elif [ ! -d "docs/planning-artifacts" ] || [ -z "$(ls -A docs/planning-artifacts 2>/dev/null)" ]; then
+elif { [ ! -d ".gaia/artifacts/planning-artifacts" ] || [ -z "$(ls -A .gaia/artifacts/planning-artifacts 2>/dev/null)" ]; } \
+  && { [ ! -d "docs/planning-artifacts" ]            || [ -z "$(ls -A docs/planning-artifacts 2>/dev/null)" ]; }; then
   BUILD_FILES=("package.json" "pyproject.toml" "go.mod" "Cargo.toml" "pom.xml" "Gemfile")
   for bf in "${BUILD_FILES[@]}"; do
     if [ -f "$bf" ]; then
@@ -81,14 +87,14 @@ elif [ ! -d "docs/planning-artifacts" ] || [ -z "$(ls -A docs/planning-artifacts
   done
   # If no build-system file matched, fall through to post-update / healthy below
   if [ "$PROJECT_STATE" != "brownfield" ]; then
-    if [ -f "_memory/.framework-version-stale" ]; then
+    if [ -f ".gaia/memory/.framework-version-stale" ] || [ -f "_memory/.framework-version-stale" ]; then
       PROJECT_STATE="post-update"
     fi
     # else: healthy (default already set)
   fi
 
 # (3) Post-update: config present, planning-artifacts non-empty, drift marker present
-elif [ -f "_memory/.framework-version-stale" ]; then
+elif [ -f ".gaia/memory/.framework-version-stale" ] || [ -f "_memory/.framework-version-stale" ]; then
   PROJECT_STATE="post-update"
 fi
 # else: healthy (default)

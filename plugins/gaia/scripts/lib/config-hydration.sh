@@ -25,8 +25,12 @@
 #   - Logs sha256 of project-config.yaml before/after the write.
 #
 # Environment overrides (mostly for tests):
-#   CONFIG_HYDRATION_TARGET       — path to project-config.yaml (default: project_root/config/project-config.yaml)
-#   CONFIG_HYDRATION_LOCK_PATH    — path to lock file (default: project_root/config/.config-hydration.lock)
+#   CONFIG_HYDRATION_TARGET       — path to project-config.yaml. Canonical
+#                                   default: ${project_root}/.gaia/config/project-config.yaml
+#                                   (ADR-111). Legacy fallback: ${project_root}/config/project-config.yaml
+#                                   when only the legacy tree exists (pre-migration installs).
+#   CONFIG_HYDRATION_LOCK_PATH    — path to lock file. Resolved as dirname($target)/.config-hydration.lock,
+#                                   so it follows the same canonical-first resolution as the target.
 #   CONFIG_HYDRATION_LOCK_TIMEOUT — seconds (default 30)
 #   CLAUDE_PLUGIN_ROOT            — plugin root (used to resolve config-yaml-editor.sh)
 
@@ -35,6 +39,17 @@ if [ "${_CONFIG_HYDRATION_LOADED:-}" = "1" ]; then
   return 0 2>/dev/null || true
 fi
 _CONFIG_HYDRATION_LOADED=1
+
+# E97-S1 / ADR-111: source lib/gaia-paths.sh so $GAIA_CONFIG_DIR is available
+# for canonical-first target resolution. The helper is idempotent via its own
+# source guard (_GAIA_PATHS_LOADED), so re-sourcing is a no-op.
+# Resolve relative to this script's location; gaia-paths.sh lives in the same
+# scripts/lib/ directory.
+_CH_LIB_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" 2>/dev/null && pwd )"
+if [ -r "${_CH_LIB_DIR}/gaia-paths.sh" ]; then
+  # shellcheck source=/dev/null
+  . "${_CH_LIB_DIR}/gaia-paths.sh" || true
+fi
 
 # ---- Constants -------------------------------------------------------------
 
@@ -351,6 +366,31 @@ _ch_insert_audit_comment() {
 #   1  generic failure (missing file, IO error, etc.)
 #   2  section not in allowlist
 #   3  lock timeout
+# config_hydration_resolve_target — E97-S1 / ADR-111 / FR-511.
+# Return the resolved project-config.yaml target path on stdout. Same
+# resolution order as the in-function target lookup: CONFIG_HYDRATION_TARGET
+# override > $GAIA_CONFIG_DIR/project-config.yaml > $CLAUDE_PLUGIN_ROOT-derived
+# legacy > "config/project-config.yaml" relative fallback. Exposed so callers
+# and tests can inspect resolution without invoking the full hydrate pipeline.
+config_hydration_resolve_target() {
+  local target="${CONFIG_HYDRATION_TARGET:-}"
+  if [ -z "$target" ]; then
+    if [ -n "${GAIA_CONFIG_DIR:-}" ] && [ -f "${GAIA_CONFIG_DIR}/project-config.yaml" ]; then
+      target="${GAIA_CONFIG_DIR}/project-config.yaml"
+    fi
+    if [ -z "$target" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+      local pr
+      pr="$(cd "${CLAUDE_PLUGIN_ROOT}/../../.." 2>/dev/null && pwd || true)"
+      [ -n "$pr" ] && target="${pr}/config/project-config.yaml"
+    fi
+    if [ -z "$target" ] && [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
+      target="${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
+    fi
+    [ -z "$target" ] && target="config/project-config.yaml"
+  fi
+  printf '%s\n' "$target"
+}
+
 config_hydrate_section() {
   if [ "$#" -lt 2 ]; then
     _ch_critical "usage: config_hydrate_section <section_path> <yaml_fragment_file>"
@@ -377,10 +417,18 @@ config_hydrate_section() {
     return 1
   fi
 
-  # Target config path.
+  # Target config path. E97-S1 / ADR-111: prefer .gaia/config/ (canonical)
+  # over legacy config/ (pre-migration fallback). The lib/gaia-paths.sh helper
+  # sourced at the top sets GAIA_CONFIG_DIR; if that directory contains
+  # project-config.yaml, use it. Otherwise fall through to the legacy lookup.
   local target="${CONFIG_HYDRATION_TARGET:-}"
   if [ -z "$target" ]; then
-    if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    # Canonical-first: .gaia/config/project-config.yaml.
+    if [ -n "${GAIA_CONFIG_DIR:-}" ] && [ -f "${GAIA_CONFIG_DIR}/project-config.yaml" ]; then
+      target="${GAIA_CONFIG_DIR}/project-config.yaml"
+    fi
+    # Legacy fallback (retained verbatim for back-compat with pre-migration installs).
+    if [ -z "$target" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
       # Resolve project root by walking up from CLAUDE_PLUGIN_ROOT.
       local pr
       pr="$(cd "${CLAUDE_PLUGIN_ROOT}/../../.." 2>/dev/null && pwd || true)"
