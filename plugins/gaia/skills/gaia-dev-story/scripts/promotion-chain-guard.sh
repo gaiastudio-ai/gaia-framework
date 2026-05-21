@@ -71,18 +71,29 @@ discover_config() {
     printf '%s\n' "$PROJECT_CONFIG"
     return 0
   fi
-  if [ -n "${CLAUDE_PROJECT_ROOT:-}" ] \
-     && [ -f "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml" ]; then
-    printf '%s\n' "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
-    return 0
+  # E96-S1 / ADR-111: check both .gaia/config/ (canonical) and config/ (legacy)
+  # at each level. .gaia/ wins when both are present.
+  if [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
+    if [ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
+      printf '%s\n' "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"
+      return 0
+    fi
+    if [ -f "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml" ]; then
+      printf '%s\n' "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
+      return 0
+    fi
   fi
-  # Walk upward from $PWD (resolved to a physical path) looking for
-  # config/project-config.yaml. Bounded to 8 levels — beyond that the user
-  # is unambiguously outside any sane GAIA project tree.
+  # Walk upward from $PWD (resolved to a physical path) looking for the config
+  # under .gaia/config/ first, then config/. Bounded to 8 levels — beyond that
+  # the user is unambiguously outside any sane GAIA project tree.
   local dir
   dir="$(pwd -P 2>/dev/null || pwd)"
   local depth=0
   while [ -n "$dir" ] && [ "$depth" -lt 8 ]; do
+    if [ -f "${dir}/.gaia/config/project-config.yaml" ]; then
+      printf '%s\n' "${dir}/.gaia/config/project-config.yaml"
+      return 0
+    fi
     if [ -f "${dir}/config/project-config.yaml" ]; then
       printf '%s\n' "${dir}/config/project-config.yaml"
       return 0

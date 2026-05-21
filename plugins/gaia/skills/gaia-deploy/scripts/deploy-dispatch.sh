@@ -133,6 +133,11 @@ resolve_config_path() {
     printf '%s' "$GAIA_DEPLOY_CONFIG"
     return 0
   fi
+  # E96-S1 path resolution: prefer .gaia/config/, fall back to legacy config/
+  if [ -f ".gaia/config/project-config.yaml" ]; then
+    printf '%s' ".gaia/config/project-config.yaml"
+    return 0
+  fi
   if [ -f "config/project-config.yaml" ]; then
     printf '%s' "config/project-config.yaml"
     return 0

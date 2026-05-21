@@ -121,7 +121,8 @@ _check_command() {
 # --- Test-command resolution (E64-S1 AC1 / AC-EC1 / AC-EC2) ---------------
 #
 # Determine the project test command using a deterministic precedence:
-#   1. config/project-config.yaml `test_cmd:`         (explicit user choice)
+#   1. .gaia/config/project-config.yaml `test_cmd:`   (explicit user choice;
+#      legacy config/project-config.yaml is also accepted as fallback)
 #   2. package.json `scripts.test`                    (resolved via `npm test`)
 #   3. bats discovery on `tests/*.bats`               (if `bats` binary on PATH)
 # When nothing resolves, return non-zero — caller emits SKIPPED.
@@ -129,8 +130,15 @@ _check_command() {
 # Outputs the resolved command on stdout (single token or quoted argv string)
 # in a form that survives `bash -c "$cmd"`.
 _resolve_test_cmd() {
-  # 1. project-config.yaml test_cmd:
-  if [ -f "config/project-config.yaml" ]; then
+  # 1. project-config.yaml test_cmd — E96-S1 / ADR-111: prefer .gaia/config/,
+  # fall back to legacy config/.
+  local _cfg=""
+  if [ -f ".gaia/config/project-config.yaml" ]; then
+    _cfg=".gaia/config/project-config.yaml"
+  elif [ -f "config/project-config.yaml" ]; then
+    _cfg="config/project-config.yaml"
+  fi
+  if [ -n "$_cfg" ]; then
     local cmd
     # Match a top-level `test_cmd: <value>` line. Strip surrounding quotes
     # and trailing whitespace; ignore comments after the value.
@@ -148,7 +156,7 @@ _resolve_test_cmd() {
         }
         print; exit
       }
-    ' config/project-config.yaml)"
+    ' "$_cfg")"
     if [ -n "$cmd" ]; then
       printf '%s\n' "$cmd"
       return 0
