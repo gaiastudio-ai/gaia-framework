@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.164.3] — 2026-05-21
+
+### Fixed
+
+- (AF-2026-05-21-1) complete ADR-111 path migration for 8 helper scripts
+- (AF-2026-05-21-1) complete ADR-111 path migration for 8 helper scripts
+- (AF-2026-05-20-1) printf -- escape for Findings-section bullets
+
 ## [1.164.2] — 2026-05-20
 
 ### Fixed
