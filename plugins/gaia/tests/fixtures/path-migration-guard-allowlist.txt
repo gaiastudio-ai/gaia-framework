@@ -123,6 +123,13 @@ plugins/gaia/skills/gaia-create-ux/scripts/finalize.sh
 plugins/gaia/skills/gaia-product-brief/scripts/finalize.sh
 plugins/gaia/skills/gaia-tech-research/scripts/finalize.sh
 
+# AF-2026-05-21-10 fix — gaia-create-prd/finalize.sh now uses the
+# three-tier idiom (PRD_ARTIFACT env-var override → positive-evidence
+# legacy fallback → canonical default). Allowlisted so the legacy
+# `docs/planning-artifacts/prd.md` literal in the positive-evidence
+# branch is permitted.
+plugins/gaia/skills/gaia-create-prd/scripts/finalize.sh
+
 # --- Bucket 3: retired scripts ---
 
 plugins/gaia/scripts/retired/

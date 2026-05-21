@@ -240,7 +240,7 @@ means the artifact IS updated via the appropriate sub-workflow.
   current date (`AF-{YYYY-MM-DD}-{N}`, e.g. `AF-2026-04-26-1`) and `{N}`
   is a monotonically increasing integer for that date. To resolve `{N}`,
   scan `docs/planning-artifacts/epics-and-stories.md` and any prior
-  `docs/planning-artifacts/assessment-AF-{date}-*.md` artifacts; use the
+  `.gaia/artifacts/planning-artifacts/assessment-AF-{date}-*.md` artifacts; use the
   highest existing index for today plus one, or `1` if none exist.
 - Classify the change as **patch**, **enhancement**, or **feature** based
   on scope analysis.
@@ -685,7 +685,7 @@ no assessment-doc is emitted -- the user must resolve the CRITICAL
 finding first and re-invoke the skill.
 
 - Write the assessment-doc to
-  `docs/planning-artifacts/assessment-{feature_id}.md` with the following
+  `.gaia/artifacts/planning-artifacts/assessment-{feature_id}.md` with the following
   sections:
 
   - **Header** -- feature_id, date, author, classification, urgency,
@@ -736,13 +736,13 @@ finding first and re-invoke the skill.
   | Threat Model | {Updated / Skipped} | {changes or "N/A"} |
   | Stories | {Created / Skipped} | {new story keys or "N/A"} |
   | Traceability | {Regenerated / Skipped} | {linkage status} |
-  | Assessment Doc | {emitted / skipped} | docs/planning-artifacts/assessment-{feature_id}.md |
+  | Assessment Doc | {emitted / skipped} | .gaia/artifacts/planning-artifacts/assessment-{feature_id}.md |
 
   **Next steps:**
   - For each new story: run `/gaia-create-story {story_key}` to elaborate.
   - To start development: run `/gaia-sprint-plan` or `/gaia-correct-course`.
   - To audit this change later: read
-    `docs/planning-artifacts/assessment-{feature_id}.md`.
+    `.gaia/artifacts/planning-artifacts/assessment-{feature_id}.md`.
 
 ## References
 
