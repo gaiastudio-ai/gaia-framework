@@ -31,8 +31,13 @@ teardown() {
   [[ "$output" == *"config/"* ]]
 }
 
-@test "AC1: resolve-config.sh line 60 example block mentions .gaia/config/" {
-  run sed -n '58,65p' "$PLUGIN_SCRIPTS/resolve-config.sh"
+@test "AC1: resolve-config.sh Config Split Merge example block mentions .gaia/config/" {
+  # Find the section by content rather than fixed line numbers (the line offsets
+  # shift when adjacent comments are extended — see fix/staging-bats-failures
+  # which moved this block from lines 58-65 to 68-77 by expanding the precedence
+  # list above it). Content-based assertion is line-shift-resilient.
+  run awk '/^# Config Split Merge/,/^$/' "$PLUGIN_SCRIPTS/resolve-config.sh"
+  [ "$status" -eq 0 ]
   [[ "$output" == *".gaia/config/"* ]]
 }
 

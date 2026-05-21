@@ -63,7 +63,7 @@ JSON
 @test "TC-CPH-1: --phase minimal emits 5 user-facing fields + config_phase + schema_version" {
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
-  local cfg="$FIXTURE_ROOT/config/project-config.yaml"
+  local cfg="$FIXTURE_ROOT/.gaia/config/project-config.yaml"
   [ -f "$cfg" ]
   # User-facing keys (5)
   grep -qE '^project_name:[[:space:]]*"?myapp"?$' "$cfg"
@@ -88,7 +88,7 @@ JSON
 @test "TC-CPH-2: project_kind defaults to 'application' when not provided in Phase 0" {
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
-  grep -qE '^project_kind:[[:space:]]*"?application"?$' "$FIXTURE_ROOT/config/project-config.yaml"
+  grep -qE '^project_kind:[[:space:]]*"?application"?$' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
 }
 
 # ---- TC-CPH-3: alias normalization (react -> web, ios -> mobile) ----------
@@ -99,13 +99,13 @@ JSON
   # post-normalization value.
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
-  grep -qE '^primary_platform:[[:space:]]*"?web"?$' "$FIXTURE_ROOT/config/project-config.yaml"
+  grep -qE '^primary_platform:[[:space:]]*"?web"?$' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
 }
 
 @test "TC-CPH-3 (ios): primary_platform=mobile is preserved in Phase 0" {
   phase0_bundle mobile | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
-  grep -qE '^primary_platform:[[:space:]]*"?mobile"?$' "$FIXTURE_ROOT/config/project-config.yaml"
+  grep -qE '^primary_platform:[[:space:]]*"?mobile"?$' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
 }
 
 # Negative regression guard (Tex W1): generate-config.sh MUST NOT silently
@@ -119,7 +119,7 @@ JSON
   # The script faithfully writes whatever it received — alias normalization
   # is SKILL.md-side, not script-side. This regression guard ensures the
   # script does not silently rewrite values behind the SKILL.md's back.
-  grep -qE '^primary_platform:[[:space:]]*"?react"?$' "$FIXTURE_ROOT/config/project-config.yaml"
+  grep -qE '^primary_platform:[[:space:]]*"?react"?$' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
 }
 
 # ---- TC-CPH-4: re-init refusal ---------------------------------------------
@@ -149,7 +149,7 @@ J
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
   local actual
-  actual="$(grep -E '^framework_version:' "$FIXTURE_ROOT/config/project-config.yaml" \
+  actual="$(grep -E '^framework_version:' "$FIXTURE_ROOT/.gaia/config/project-config.yaml" \
     | sed -E 's/^framework_version:[[:space:]]*//; s/^"//; s/"$//')"
   [ "$actual" = "$expected_version" ]
 }
@@ -187,7 +187,7 @@ J
   # Write an initial config.
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
-  [ -f "$FIXTURE_ROOT/config/project-config.yaml" ]
+  [ -f "$FIXTURE_ROOT/.gaia/config/project-config.yaml" ]
   # Second invocation with --phase full (mimicking --full flag end-to-end)
   # must refuse with exit 1.
   run --separate-stderr bash -c '
@@ -203,28 +203,28 @@ JSON
 @test "generate-config.sh: --phase minimal emits config_phase=minimal" {
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
-  grep -qE '^config_phase:[[:space:]]*"?minimal"?$' "$FIXTURE_ROOT/config/project-config.yaml"
+  grep -qE '^config_phase:[[:space:]]*"?minimal"?$' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
 }
 
 @test "generate-config.sh: --phase full emits config_phase=full + full sections" {
   full_bundle | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase full
-  grep -qE '^config_phase:[[:space:]]*"?full"?$' "$FIXTURE_ROOT/config/project-config.yaml"
-  grep -qE '^stacks:' "$FIXTURE_ROOT/config/project-config.yaml"
-  grep -qE '^platforms:' "$FIXTURE_ROOT/config/project-config.yaml"
-  grep -qE '^environments:' "$FIXTURE_ROOT/config/project-config.yaml"
+  grep -qE '^config_phase:[[:space:]]*"?full"?$' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
+  grep -qE '^stacks:' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
+  grep -qE '^platforms:' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
+  grep -qE '^environments:' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
 }
 
 @test "generate-config.sh: default (no --phase) emits config_phase=full (backward compat)" {
   full_bundle | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp"
-  grep -qE '^config_phase:[[:space:]]*"?full"?$' "$FIXTURE_ROOT/config/project-config.yaml"
+  grep -qE '^config_phase:[[:space:]]*"?full"?$' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
 }
 
 @test "generate-config.sh: schema_version 2.0.0 is always emitted" {
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
-  grep -qE '^schema_version:[[:space:]]*"?2\.0\.0"?$' "$FIXTURE_ROOT/config/project-config.yaml"
+  grep -qE '^schema_version:[[:space:]]*"?2\.0\.0"?$' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
 }
 
 # ---- AC6 alias normalization preservation (structural) --------------------

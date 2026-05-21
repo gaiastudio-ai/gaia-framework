@@ -21,13 +21,15 @@ teardown() { common_teardown; }
   local p="$TEST_TMP/demo"
   run "$SCRIPT" --name demo --path "$p"
   [ "$status" -eq 0 ]
-  [ -d "$p/docs/planning-artifacts" ]
-  [ -d "$p/docs/implementation-artifacts" ]
-  [ -d "$p/docs/test-artifacts" ]
-  [ -d "$p/docs/creative-artifacts" ]
-  [ -d "$p/_memory/checkpoints" ]
-  [ -d "$p/config" ]
-  [ -s "$p/config/project-config.yaml" ]
+  # init-project.sh creates the .gaia/ consolidated runtime tree (ADR-111)
+  # instead of the legacy docs/ + _memory/ + config/ split.
+  [ -d "$p/.gaia/artifacts/planning-artifacts" ]
+  [ -d "$p/.gaia/artifacts/implementation-artifacts" ]
+  [ -d "$p/.gaia/artifacts/test-artifacts" ]
+  [ -d "$p/.gaia/artifacts/creative-artifacts" ]
+  [ -d "$p/.gaia/memory/checkpoints" ]
+  [ -d "$p/.gaia/config" ]
+  [ -s "$p/.gaia/config/project-config.yaml" ]
   [ -s "$p/CLAUDE.md" ]
 }
 
