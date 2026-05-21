@@ -11,7 +11,8 @@ setup() {
   SKILL_MD="${PLUGIN_ROOT}/gaia/skills/gaia-bridge-toggle/SKILL.md"
   GENERATOR="${PLUGIN_ROOT}/gaia/scripts/lib/test-environment-manifest.sh"
   TARGET_DIR="$(mktemp -d -t e17s34-bats-XXXXXX)"
-  CANONICAL="${TARGET_DIR}/config/test-environment.yaml"
+  # AF-2026-05-21-8: canonical post-ADR-111 path.
+  CANONICAL="${TARGET_DIR}/.gaia/config/test-environment.yaml"
 }
 
 teardown() {
@@ -52,7 +53,7 @@ teardown() {
   # YOLO branch must mention the generator helper
   echo "${STEP4}" | grep -q "absent (YOLO)"
   # And include the canonical log line
-  echo "${STEP4}" | grep -qF "auto-generated config/test-environment.yaml for detected stack"
+  echo "${STEP4}" | grep -qF "auto-generated .gaia/config/test-environment.yaml for detected stack"
 }
 
 # AC4 — Generator-failure fallback to template-copy

@@ -86,9 +86,9 @@ seed_example() {
   # The YOLO-absent branch must NOT degrade to "auto-skip option [c]".
   # E17-S31 originally introduced "auto-copied test-environment.yaml from template (YOLO mode)";
   # E17-S34 superseded that with the inline-generator log line
-  # "auto-generated config/test-environment.yaml for detected stack: <stack>".
+  # "auto-generated .gaia/config/test-environment.yaml for detected stack: <stack>" (AF-2026-05-21-8).
   # Either log line satisfies S31's intent (YOLO produces a usable manifest, not a fail-fast skip).
-  grep -qE "(auto-copied test-environment.yaml from template|auto-generated config/test-environment.yaml for detected stack)" "${SKILL_MD}"
+  grep -qE "(auto-copied test-environment.yaml from template|auto-generated \.gaia/config/test-environment.yaml for detected stack)" "${SKILL_MD}"
 
   # And must NOT still say "auto-select option [c] Skip" in the YOLO-absent block
   # (defense-in-depth against a partial revert)

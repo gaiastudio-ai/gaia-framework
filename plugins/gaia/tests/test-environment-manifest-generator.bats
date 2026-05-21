@@ -9,7 +9,8 @@ setup() {
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."
   HELPER="${PLUGIN_ROOT}/gaia/scripts/lib/test-environment-manifest.sh"
   TARGET_DIR="$(mktemp -d -t e17s33-bats-XXXXXX)"
-  TARGET_YAML="${TARGET_DIR}/config/test-environment.yaml"
+  # AF-2026-05-21-8: canonical post-ADR-111 path.
+  TARGET_YAML="${TARGET_DIR}/.gaia/config/test-environment.yaml"
 }
 
 teardown() {
@@ -47,7 +48,8 @@ teardown() {
 
 # AC2 — copy-if-absent preserves existing user-edited manifest
 @test "AC2: --write preserves user-edited manifest byte-identical (copy-if-absent)" {
-  mkdir -p "${TARGET_DIR}/config"
+  # AF-2026-05-21-8: canonical post-ADR-111 .gaia/config/ path.
+  mkdir -p "${TARGET_DIR}/.gaia/config"
   cat > "${TARGET_YAML}" << 'YAML'
 # USER EDIT MARKER E17-S33
 version: 2
