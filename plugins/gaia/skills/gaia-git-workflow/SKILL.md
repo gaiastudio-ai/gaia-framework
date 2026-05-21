@@ -128,6 +128,30 @@ Brief description of changes and motivation.
 - **Rebase** for keeping branch up to date with main
 - Never force push to shared branches
 
+### Recovering from a failed commitlint / lint-pr-title check
+
+When `lint-pr-title` (or any commitlint-based check) fails on a PR,
+editing the PR title or body and running `gh run rerun --failed` does
+**NOT** pick up the new content — the rerun replays the same payload
+the failed job saw. Recipes that actually work:
+
+1. **Push an empty commit** to the feature branch. The new push triggers
+   a fresh check-suite that reads the current PR title/body:
+   ```bash
+   git commit --allow-empty -m "chore: trigger fresh PR lint"
+   git push
+   ```
+2. **Close + reopen** the PR. The reopen event re-triggers the check-suite:
+   ```bash
+   gh pr close <pr-number>
+   gh pr reopen <pr-number>
+   ```
+
+The empty-commit approach is preferred when you want an audit trail of
+the fix; close+reopen leaves no git footprint. (AF-2026-05-21-4 Finding 3
+— documented after the recipe was rediscovered during sprint-50
+dogfooding.)
+
 <!-- SECTION: conflict-resolution -->
 ## Conflict Resolution
 

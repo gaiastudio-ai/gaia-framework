@@ -16,17 +16,28 @@
 # Activation signals (architecture §10.30.1):
 #   --yolo flag at the command boundary  -> caller exports GAIA_YOLO_FLAG=1
 #   GAIA_YOLO_MODE=1 inherited from a YOLO-mode parent process
+#   .gaia/state/.yolo-active sentinel file (AF-2026-05-21-4 Finding 2)
 #
 # Precedence order (top wins, architecture §10.30.4):
 #   1. GAIA_CONTEXT=memory-save  -> exit 1   (E9-S8 invariant; FR-YOLO-2(f))
 #   2. GAIA_YOLO_OVERRIDE=no     -> exit 1   (explicit opt-out, e.g. --no-yolo)
 #   3. GAIA_YOLO_FLAG=1          -> exit 0   (direct invocation)
 #   4. GAIA_YOLO_MODE=1          -> exit 0   (inheritance)
-#   5. default                   -> exit 1   (interactive)
+#   5. .yolo-active sentinel     -> exit 0   (cross-tool-call persistence)
+#   6. default                   -> exit 1   (interactive)
 #
 # Both GAIA_YOLO_FLAG and GAIA_YOLO_MODE accept ONLY the exact string "1".
 # Values "0", "false", "no", and the empty string fall through to the
 # default exit-1 branch (ECI-500 regression guard).
+#
+# Sentinel file (AF-2026-05-21-4 Finding 2):
+#   Path: $GAIA_STATE_DIR/.yolo-active (defaults to ./.gaia/state/.yolo-active
+#   when GAIA_STATE_DIR is unset; falls back to ./_memory/.yolo-active on
+#   pre-migration installs). Created by callers via `yolo-mode.sh set` when
+#   they detect --yolo in their arguments. Removed via `yolo-mode.sh clear`
+#   on session end OR on explicit --no-yolo. Sentinel-file YOLO state
+#   SURVIVES across Bash tool calls in environments (Claude Code, CI) that
+#   do not preserve env-var exports across invocations.
 #
 # Usage
 # -----
@@ -70,8 +81,72 @@ is_yolo() {
         return 0
     fi
 
-    # Rule 5 — Default: interactive.
+    # Rule 5 — Sentinel file persistence (AF-2026-05-21-4 Finding 2).
+    # Env vars don't survive across Bash tool calls in Claude Code; the
+    # sentinel file is the cross-call YOLO state contract.
+    local sentinel="${GAIA_YOLO_SENTINEL:-}"
+    if [ -z "$sentinel" ]; then
+        if [ -n "${GAIA_STATE_DIR:-}" ]; then
+            sentinel="${GAIA_STATE_DIR}/.yolo-active"
+        elif [ -d ".gaia/state" ]; then
+            sentinel=".gaia/state/.yolo-active"
+        elif [ -d "_memory" ]; then
+            sentinel="_memory/.yolo-active"
+        else
+            sentinel=".gaia/state/.yolo-active"  # default even if dir absent
+        fi
+    fi
+    if [ -f "$sentinel" ]; then
+        return 0
+    fi
+
+    # Rule 6 — Default: interactive.
     return 1
+}
+
+# yolo_set
+# --------
+# Create the .yolo-active sentinel file so the YOLO state persists across
+# Bash tool calls in environments where env vars do not survive between
+# invocations (Claude Code, CI). Idempotent. Returns 0 on write, 1 on error.
+yolo_set() {
+    local sentinel="${GAIA_YOLO_SENTINEL:-}"
+    if [ -z "$sentinel" ]; then
+        if [ -n "${GAIA_STATE_DIR:-}" ]; then
+            sentinel="${GAIA_STATE_DIR}/.yolo-active"
+        elif [ -d ".gaia/state" ] || mkdir -p ".gaia/state" 2>/dev/null; then
+            sentinel=".gaia/state/.yolo-active"
+        elif [ -d "_memory" ]; then
+            sentinel="_memory/.yolo-active"
+        else
+            sentinel=".gaia/state/.yolo-active"
+        fi
+    fi
+    local dir
+    dir="$(dirname -- "$sentinel")"
+    mkdir -p -- "$dir" 2>/dev/null || return 1
+    : > "$sentinel" || return 1
+    return 0
+}
+
+# yolo_clear
+# ----------
+# Remove the .yolo-active sentinel. Idempotent — absent file is a no-op.
+yolo_clear() {
+    local sentinel="${GAIA_YOLO_SENTINEL:-}"
+    if [ -z "$sentinel" ]; then
+        if [ -n "${GAIA_STATE_DIR:-}" ]; then
+            sentinel="${GAIA_STATE_DIR}/.yolo-active"
+        elif [ -f ".gaia/state/.yolo-active" ]; then
+            sentinel=".gaia/state/.yolo-active"
+        elif [ -f "_memory/.yolo-active" ]; then
+            sentinel="_memory/.yolo-active"
+        else
+            return 0  # nothing to clear
+        fi
+    fi
+    rm -f -- "$sentinel" 2>/dev/null || true
+    return 0
 }
 
 # Direct-invocation entry point — only runs when the script is executed
@@ -86,13 +161,25 @@ if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
             is_yolo
             exit $?
             ;;
+        set)
+            # AF-2026-05-21-4 Finding 2: create the cross-call sentinel.
+            yolo_set
+            exit $?
+            ;;
+        clear)
+            # AF-2026-05-21-4 Finding 2: remove the cross-call sentinel.
+            yolo_clear
+            exit $?
+            ;;
         --help|-h)
             cat <<'EOF'
 yolo-mode.sh — YOLO mode detection helper (ADR-057, architecture §10.30.4)
 
 Usage:
   source yolo-mode.sh && is_yolo                 # library form
-  yolo-mode.sh is_yolo                           # subcommand form
+  yolo-mode.sh is_yolo                           # subcommand form (read state)
+  yolo-mode.sh set                               # write sentinel (start YOLO)
+  yolo-mode.sh clear                             # remove sentinel (end YOLO)
   yolo-mode.sh --help                            # this message
 
 Environment variables (precedence top-down):
@@ -100,6 +187,8 @@ Environment variables (precedence top-down):
   GAIA_YOLO_OVERRIDE=no        explicit opt-out -> exit 1
   GAIA_YOLO_FLAG=1             --yolo flag      -> exit 0
   GAIA_YOLO_MODE=1             inherited YOLO   -> exit 0
+  .yolo-active sentinel        cross-call YOLO  -> exit 0  (AF-2026-05-21-4)
+  GAIA_YOLO_SENTINEL=<path>    override sentinel location (tests)
   (none)                       default          -> exit 1
 EOF
             exit 0
