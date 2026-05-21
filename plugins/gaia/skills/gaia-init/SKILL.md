@@ -79,14 +79,15 @@ If `phase` is NOT `"none"` (config exists), surface the canonical
 stderr error and STOP:
 
 ```
-error: config already exists; use /gaia-config-* to edit or --full to reinitialize
+error: config already exists; use /gaia-config-* to edit, or /gaia-brownfield to onboard an existing codebase
 ```
 
-The error text mentions `--full` for historical-AC continuity, but per
-AC11 `--full` on an existing config still triggers this same refusal
-— `--full` does not override the re-init guard. (Future polish: tighten
-this error text to remove the misleading `--full` reference; captured
-as a Finding.)
+Per AC11 `--full` on an existing config triggers this same refusal —
+`--full` does not override the re-init guard. The error text deliberately
+omits `--full` to avoid steering users toward an option that won't work.
+(AF-2026-05-21-3 polish — replaced the historical "use --full to
+reinitialize" guidance with the canonical /gaia-config-* / /gaia-brownfield
+recovery paths.)
 
 ### Step 1b — Binary opener (Phase 0 vs full discovery)
 
