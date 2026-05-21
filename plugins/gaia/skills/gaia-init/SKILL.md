@@ -114,6 +114,23 @@ Routing:
   `config_phase = minimal` and `schema_version = "2.0.0"`. Skip Step
   2.2-Step 2.7 (the full discovery questionnaire) and proceed to Step
   3 (validate) with `phase=minimal`.
+
+  **Plugin-kind detection in Phase 0 (AF-2026-05-21-9).** Step 2.2's
+  alias normalization arm targets the `project_shape` field; Phase 0
+  captures `primary_platform` instead. The Phase 0 bundle MUST bridge
+  the two: when the user's `primary_platform` answer alias-normalizes
+  to one of `{claude-plugin, plugin, claude-code-plugin}` (the same
+  alias set documented at Step 2.2 for option 8, case-insensitive),
+  set BOTH `project_shape = "claude-code-plugin"` AND
+  `project_kind = "claude-code-plugin"` in the bundle. This is the
+  ONLY Phase 0 deviation from AC7's default `project_kind = application`
+  — all other AC7 defaults (`version = 0.1.0`, `framework_version`
+  resolution, `config_phase = minimal`) remain unchanged. The
+  `project_shape` field drives `generate-config.sh`'s upgrade gate
+  (post-AF-21-9 the gate fires in both `minimal` and `full` phases);
+  the `project_kind` field defends against any future bundle path that
+  reads the schema-required key directly without going through the
+  shape-driven upgrade.
 - **`[f]`** → existing 7-question flow. Proceed to Step 2 unchanged
   with `phase=full`.
 
