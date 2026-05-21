@@ -14,7 +14,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-Initialize a test framework for the current project by detecting the project stack, selecting the appropriate test framework, scaffolding configuration files and folder structure, and designing fixture/factory patterns. The output is a test framework setup document written to `docs/test-artifacts/test-framework-setup.md`.
+Initialize a test framework for the current project by detecting the project stack, selecting the appropriate test framework, scaffolding configuration files and folder structure, and designing fixture/factory patterns. The output is a test framework setup document written to `.gaia/artifacts/test-artifacts/test-framework-setup.md`.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/test-framework` workflow (E28-S87, Cluster 11). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
@@ -25,7 +25,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Scaffold complete setup: config files, folder structure, and test runner scripts (npm scripts or equivalent).
 - Do NOT implement or run any tests — test implementation happens in Phase 4 workflows (/gaia-dev-story, /gaia-qa-tests, /gaia-atdd).
 - Do NOT write sample tests or run any test suite — only set up the infrastructure so tests can be added later.
-- Output ALL artifacts to `docs/test-artifacts/`.
+- Output ALL artifacts to `.gaia/artifacts/test-artifacts/`.
 - This is a single-prompt operation — no subagent invocation needed.
 
 ## Steps
@@ -79,7 +79,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ### Step 5 — Generate Output
 
-Write the test framework setup document to `docs/test-artifacts/test-framework-setup.md` with:
+Write the test framework setup document to `.gaia/artifacts/test-artifacts/test-framework-setup.md` with:
 - Detected stack summary
 - Selected framework and rationale
 - Configuration files created
@@ -88,7 +88,7 @@ Write the test framework setup document to `docs/test-artifacts/test-framework-s
 - Fixture/factory architecture
 - Instructions for adding tests
 
-> `!scripts/write-checkpoint.sh gaia-test-framework 5 detected_stack="$DETECTED_STACK" framework_config_path="$FRAMEWORK_CONFIG_PATH" stage=output-generated --paths docs/test-artifacts/test-framework-setup.md`
+> `!scripts/write-checkpoint.sh gaia-test-framework 5 detected_stack="$DETECTED_STACK" framework_config_path="$FRAMEWORK_CONFIG_PATH" stage=output-generated --paths .gaia/artifacts/test-artifacts/test-framework-setup.md`
 
 ## Validation
 
@@ -114,7 +114,7 @@ Write the test framework setup document to `docs/test-artifacts/test-framework-s
   Validation runs BEFORE the checkpoint and lifecycle-event writes
   (observability is never suppressed by checklist outcome — story AC6).
 
-  See docs/implementation-artifacts/E42-S15-port-gaia-test-framework-atdd-ci-setup-checklists-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S15-port-gaia-test-framework-atdd-ci-setup-checklists-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 — Config files generated

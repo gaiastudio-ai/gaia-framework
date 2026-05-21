@@ -57,8 +57,9 @@ read_frontmatter() {
   grep -Eq "test-architect|Sable" "$STRATEGY_SKILL"
 }
 
-@test "AC2: SKILL.md body references test-strategy.md output path" {
-  grep -q "docs/test-artifacts/strategy/test-strategy.md" "$STRATEGY_SKILL"
+@test "AC2: SKILL.md body references test-strategy.md output path (canonical post-AF-21-18)" {
+  # AF-2026-05-21-18 canonicalized the path. Accept canonical or legacy.
+  grep -qE "(docs/test-artifacts|\.gaia/artifacts/test-artifacts)/strategy/test-strategy\.md" "$STRATEGY_SKILL"
 }
 
 # ---------- AC3: --scaffold mode generates scaffolding ----------
