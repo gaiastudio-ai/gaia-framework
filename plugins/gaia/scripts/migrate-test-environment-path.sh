@@ -3,7 +3,9 @@
 #
 # Backward-compat detect-and-move helper for projects upgraded from v1.156.0 /
 # E17-S30 / E17-S31. Migrates `docs/test-artifacts/test-environment.yaml` to
-# the canonical `config/test-environment.yaml` location.
+# the canonical `.gaia/config/test-environment.yaml` location (post-ADR-111)
+# or the legacy `config/test-environment.yaml` location on pre-ADR-111
+# projects (positive-evidence guard per AF-2026-05-21-7/8).
 #
 # Semantics:
 #   - Legacy file exists AND canonical absent: move legacy → canonical;
@@ -11,9 +13,9 @@
 #   - Both files exist: prefer canonical (do NOT touch legacy); emit INFO log.
 #   - Only canonical exists OR neither exists: no-op (exit 0).
 #
-# The sentinel file `_memory/.test-environment-path-migrated` is created on
-# successful migration (or on the first INFO-log "both files" pass) so the
-# deprecation warning + INFO log are emitted at most once per project.
+# The sentinel file lives at `.gaia/memory/.test-environment-path-migrated`
+# (post-ADR-111) or `_memory/.test-environment-path-migrated` (legacy) so
+# the deprecation warning + INFO log are emitted at most once per project.
 #
 # Usage:
 #   migrate-test-environment-path.sh --target <project-root>
@@ -32,9 +34,11 @@ export LC_ALL
 
 SCRIPT_NAME="migrate-test-environment-path.sh"
 
+# AF-2026-05-21-7/8: CANONICAL_REL + SENTINEL_REL resolved after $target
+# is validated (positive-evidence guards). LEGACY_REL is invariant.
 LEGACY_REL="docs/test-artifacts/test-environment.yaml"
-CANONICAL_REL="config/test-environment.yaml"
-SENTINEL_REL="_memory/.test-environment-path-migrated"
+CANONICAL_REL=""
+SENTINEL_REL=""
 
 target=""
 
@@ -42,9 +46,10 @@ usage() {
   cat <<'USAGE'
 Usage: migrate-test-environment-path.sh --target <project-root>
 
-Detect-and-move helper for ADR-110 canonical-path relocation. Moves a legacy
-docs/test-artifacts/test-environment.yaml to config/test-environment.yaml when
-the canonical location is empty. No-op otherwise.
+Detect-and-move helper for ADR-110 / ADR-111 canonical-path relocation. Moves
+a legacy docs/test-artifacts/test-environment.yaml to .gaia/config/test-environment.yaml
+(canonical post-ADR-111) or config/test-environment.yaml (legacy pre-ADR-111)
+when the canonical location is empty. No-op otherwise.
 
 Exit codes:
   0  success
@@ -65,6 +70,19 @@ done
 
 [ -n "${target}" ] || { printf '%s: --target is required\n' "$SCRIPT_NAME" >&2; usage >&2; exit 2; }
 [ -d "${target}" ] || { printf '%s: target directory does not exist: %s\n' "$SCRIPT_NAME" "${target}" >&2; exit 2; }
+
+# AF-2026-05-21-7/8: resolve CANONICAL_REL with positive-evidence guard.
+if [ -d "${target}/config" ] && [ ! -d "${target}/.gaia/config" ]; then
+  CANONICAL_REL="config/test-environment.yaml"
+else
+  CANONICAL_REL=".gaia/config/test-environment.yaml"
+fi
+# Same positive-evidence guard for the memory sentinel (AF-21-7 idiom).
+if [ -d "${target}/_memory" ] && [ ! -d "${target}/.gaia/memory" ]; then
+  SENTINEL_REL="_memory/.test-environment-path-migrated"
+else
+  SENTINEL_REL=".gaia/memory/.test-environment-path-migrated"
+fi
 
 legacy="${target}/${LEGACY_REL}"
 canonical="${target}/${CANONICAL_REL}"

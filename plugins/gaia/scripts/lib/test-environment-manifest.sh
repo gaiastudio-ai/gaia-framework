@@ -2,7 +2,7 @@
 # test-environment-manifest.sh — E17-S33 + E17-S35 (ADR-110, FR-496, FR-497, FR-499)
 #
 # Shared library helper: detect project stack and emit a stack-specific
-# config/test-environment.yaml on stdout, or write it to the canonical path
+# .gaia/config/test-environment.yaml on stdout, or write it to the canonical path
 # with --write (copy-if-absent semantics).
 #
 # Single canonical generator for test-environment.yaml — both /gaia-brownfield
@@ -37,7 +37,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DETECT_SIGNALS="${PLUGIN_ROOT}/scripts/detect-signals.sh"
 
-MANIFEST_REL="config/test-environment.yaml"
+# AF-2026-05-21-7/8: resolved after $target is validated.
+MANIFEST_REL=""
 
 target=""
 write_mode=0
@@ -47,8 +48,9 @@ usage() {
 Usage: test-environment-manifest.sh --target <project-root> [--write]
 
 Detect project stack and emit a test-environment.yaml manifest. With --write,
-the manifest is written to config/test-environment.yaml at the target root
-(copy-if-absent: preserves user-edited file).
+the manifest is written to .gaia/config/test-environment.yaml at the target
+root (canonical post-ADR-111) or config/test-environment.yaml (legacy pre-
+ADR-111). copy-if-absent: preserves user-edited file.
 
 Exit codes:
   0  success
@@ -71,6 +73,16 @@ done
 
 [ -n "${target}" ] || { printf '%s: --target is required\n' "$SCRIPT_NAME" >&2; usage >&2; exit 2; }
 [ -d "${target}" ] || { printf '%s: target directory does not exist: %s\n' "$SCRIPT_NAME" "${target}" >&2; exit 2; }
+
+# AF-2026-05-21-7/8 (CRITICAL SEQUENCING): the canonical-default guard MUST
+# resolve MANIFEST_REL BEFORE the copy-if-absent short-circuit below — a
+# pre-ADR-111 user with an existing config/test-environment.yaml would
+# otherwise be silently shadowed by a fresh .gaia/config/ write.
+if [ -d "${target}/config" ] && [ ! -d "${target}/.gaia/config" ]; then
+  MANIFEST_REL="config/test-environment.yaml"
+else
+  MANIFEST_REL=".gaia/config/test-environment.yaml"
+fi
 
 # --write copy-if-absent: short-circuit if the manifest already exists
 manifest_path="${target}/${MANIFEST_REL}"
