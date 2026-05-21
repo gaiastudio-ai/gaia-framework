@@ -84,14 +84,43 @@ CANONICAL_SHORT_NAMES=(
 
 # Per-reviewer report relpath template (V1 V1 reference schema lines 73-78).
 # Index-aligned with CANONICAL_GATES / CANONICAL_SHORT_NAMES.
+#
+# E97-S4 / ADR-111: paths use `{impl_artifacts}` and `{test_artifacts}`
+# placeholders resolved at call site by `_resolve_artifact_dirs` below. The
+# placeholders expand to the canonical `.gaia/artifacts/...` tree when present
+# on disk, or fall back to the legacy `docs/...` tree on pre-migration
+# installs. The hardcoded `docs/`-prefix was retired here so the proof-of-
+# execution check at line ~387 (and the output-path resolution at line ~598)
+# read from the same root the reports were actually written to.
 CANONICAL_REPORT_RELPATHS=(
-  "docs/implementation-artifacts/{key}-code-review.md"
-  "docs/test-artifacts/{key}-qa-tests.md"
-  "docs/implementation-artifacts/{key}-security-review.md"
-  "docs/test-artifacts/{key}-test-automation.md"
-  "docs/test-artifacts/{key}-test-review.md"
-  "docs/implementation-artifacts/{key}-performance-review.md"
+  "{impl_artifacts}/{key}-code-review.md"
+  "{test_artifacts}/{key}-qa-tests.md"
+  "{impl_artifacts}/{key}-security-review.md"
+  "{test_artifacts}/{key}-test-automation.md"
+  "{test_artifacts}/{key}-test-review.md"
+  "{impl_artifacts}/{key}-performance-review.md"
 )
+
+# _resolve_artifact_dirs — set `__impl_artifacts` and `__test_artifacts` in the
+# caller's scope, using the same canonical-first + legacy-fallback resolution
+# pattern as lines 539/598 (E96-S7 partial-4b). Idempotent.
+_resolve_artifact_dirs() {
+  local project_path="${PROJECT_PATH:-.}"
+  if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
+    __impl_artifacts="$IMPLEMENTATION_ARTIFACTS"
+  elif [ -d "${project_path}/.gaia/artifacts/implementation-artifacts" ]; then
+    __impl_artifacts="${project_path}/.gaia/artifacts/implementation-artifacts"
+  else
+    __impl_artifacts="${project_path}/docs/implementation-artifacts"
+  fi
+  if [ -n "${TEST_ARTIFACTS:-}" ]; then
+    __test_artifacts="$TEST_ARTIFACTS"
+  elif [ -d "${project_path}/.gaia/artifacts/test-artifacts" ]; then
+    __test_artifacts="${project_path}/.gaia/artifacts/test-artifacts"
+  else
+    __test_artifacts="${project_path}/docs/test-artifacts"
+  fi
+}
 
 # ---------- Helpers ----------
 
@@ -381,11 +410,19 @@ _render_summary() {
 
   local tmp="${out}.tmp.$$"
 
-  # Substitute {key} into report relpaths.
+  # E97-S4 / ADR-111: substitute {impl_artifacts} + {test_artifacts} + {key}
+  # into report relpaths. The two artifact-dir placeholders resolve canonical-
+  # first via _resolve_artifact_dirs (line ~106), with legacy `docs/` fallback
+  # on pre-migration installs. {key} is the story key.
+  local __impl_artifacts __test_artifacts
+  _resolve_artifact_dirs
   local relpaths=()
-  local r
+  local r expanded
   for r in "${CANONICAL_REPORT_RELPATHS[@]}"; do
-    relpaths+=("${r//\{key\}/$key}")
+    expanded="${r//\{impl_artifacts\}/$__impl_artifacts}"
+    expanded="${expanded//\{test_artifacts\}/$__test_artifacts}"
+    expanded="${expanded//\{key\}/$key}"
+    relpaths+=("$expanded")
   done
 
   # AF-2026-05-20-1 proof-of-execution: verify each PASSED/FAILED verdict

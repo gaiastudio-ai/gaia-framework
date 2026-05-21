@@ -241,7 +241,8 @@ if [[ -n "$auto_close_json" ]]; then
   printf '    Every story under this sprint is done, but sprint-status.yaml\n'
   printf '    still reads status: active. Boundary write is overdue.\n'
   printf '    Remediation (manual operator action — never auto-flipped):\n'
-  printf '      yq -i %s.status = \"closed\"%s docs/implementation-artifacts/sprint-status.yaml\n' "'" "'"
+  printf '      yq -i %s.status = \"closed\"%s .gaia/state/sprint-status.yaml\n' "'" "'"
+  printf '      (or, on a pre-migration install: docs/implementation-artifacts/sprint-status.yaml)\n'
   printf '    Then seed the next sprint per feedback_sprint_boundary_yaml_write.md.\n'
   printf -- '-%.0s' {1..72}; printf '\n'
 fi

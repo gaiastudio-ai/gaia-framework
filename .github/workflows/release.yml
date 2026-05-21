@@ -175,6 +175,17 @@ jobs:
             } > "$CHANGELOG_PATH"
           fi
 
+      - name: Sync .plugin-version with bumped plugin.json
+        if: steps.bump.outputs.has_commits == 'true'
+        # E97-S7 / AF-2026-05-21-2: .plugin-version is the persona_sig anchor
+        # read by validator.md line 77 (`val-<version>-<digest>`). Keep it in
+        # lockstep with plugin.json so the semver-tagged persona_sig stays in
+        # sync with the released artifact version. Without this step the file
+        # drifts behind on every release (Val F1 finding on E97-S7).
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          printf '%s' "$NEW_VERSION" > plugins/gaia/.plugin-version
+
       - name: Open release PR
         if: steps.bump.outputs.has_commits == 'true'
         env:
@@ -188,7 +199,9 @@ jobs:
 
           # Force-create the branch (overwrite any stale one from a previous failed attempt)
           git checkout -B "$BRANCH"
-          git add plugins/gaia/.claude-plugin/plugin.json plugins/gaia/CHANGELOG.md
+          # E97-S7: stage .plugin-version alongside plugin.json so the
+          # release-bot bump remains in lockstep across both files.
+          git add plugins/gaia/.claude-plugin/plugin.json plugins/gaia/.plugin-version plugins/gaia/CHANGELOG.md
           git commit -m "chore(release): v${NEW_VERSION}"
           git push -f origin "$BRANCH"
 

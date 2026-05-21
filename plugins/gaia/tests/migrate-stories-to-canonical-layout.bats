@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# migrate-stories-to-canonical-layout.bats — coverage for plugins/gaia/scripts/migrate-stories-to-canonical-layout.sh
+# migrate-stories-to-canonical-layout.bats — coverage for plugins/gaia/scripts/retired/migrate-stories-to-canonical-layout.sh
 #
 # Story: E79-S6 — Migration script — backfill legacy flat stories + flat
 #                 `story-index.yaml`.
@@ -23,7 +23,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   common_setup
-  MIGRATE_SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/migrate-stories-to-canonical-layout.sh"
+  MIGRATE_SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts/retired" && pwd)/migrate-stories-to-canonical-layout.sh"
   CHECK_SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/check-story-layout-sync.sh"
   cd "$TEST_TMP"
   mkdir -p docs/implementation-artifacts docs/planning-artifacts

@@ -130,7 +130,7 @@ YAML
 # --- AC2: generate-config.sh ----------------------------------------------
 
 @test "generate-config.sh: emits required top-level keys" {
-  mkdir -p "$TEST_TMP/proj/config"
+  mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
   "stacks": [{"name": "api", "language": "node", "paths": ["services/api"]}],
@@ -139,41 +139,41 @@ YAML
   "ci_platform": {"provider": "github-actions"}
 }
 JSON
-  [ -s "$TEST_TMP/proj/config/project-config.yaml" ]
-  grep -F 'project_root:' "$TEST_TMP/proj/config/project-config.yaml"
-  grep -F 'stacks:' "$TEST_TMP/proj/config/project-config.yaml"
-  grep -F 'compliance:' "$TEST_TMP/proj/config/project-config.yaml"
-  grep -F 'environments:' "$TEST_TMP/proj/config/project-config.yaml"
-  grep -F 'ci_platform:' "$TEST_TMP/proj/config/project-config.yaml"
+  [ -s "$TEST_TMP/proj/.gaia/config/project-config.yaml" ]
+  grep -F 'project_root:' "$TEST_TMP/proj/.gaia/config/project-config.yaml"
+  grep -F 'stacks:' "$TEST_TMP/proj/.gaia/config/project-config.yaml"
+  grep -F 'compliance:' "$TEST_TMP/proj/.gaia/config/project-config.yaml"
+  grep -F 'environments:' "$TEST_TMP/proj/.gaia/config/project-config.yaml"
+  grep -F 'ci_platform:' "$TEST_TMP/proj/.gaia/config/project-config.yaml"
 }
 
 @test "generate-config.sh: env credentials use env-var name only (no literal secret)" {
-  mkdir -p "$TEST_TMP/proj/config"
+  mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
   "environments": {"staging": {"url": "https://staging.example.com", "credentials": {"api_token": "STAGING_TOKEN"}}}
 }
 JSON
   # env-var NAME is referenced; a literal sk- secret never appears.
-  grep -F 'STAGING_TOKEN' "$TEST_TMP/proj/config/project-config.yaml"
-  ! grep -E 'sk-[A-Za-z0-9]{8,}' "$TEST_TMP/proj/config/project-config.yaml"
+  grep -F 'STAGING_TOKEN' "$TEST_TMP/proj/.gaia/config/project-config.yaml"
+  ! grep -E 'sk-[A-Za-z0-9]{8,}' "$TEST_TMP/proj/.gaia/config/project-config.yaml"
 }
 
 @test "generate-config.sh: populates platforms when mobile shape" {
-  mkdir -p "$TEST_TMP/proj/config"
+  mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
   "stacks": [{"name": "app", "language": "swift", "paths": ["apps/ios"]}],
   "platforms": ["ios"]
 }
 JSON
-  grep -F 'platforms:' "$TEST_TMP/proj/config/project-config.yaml"
-  grep -F 'ios' "$TEST_TMP/proj/config/project-config.yaml"
+  grep -F 'platforms:' "$TEST_TMP/proj/.gaia/config/project-config.yaml"
+  grep -F 'ios' "$TEST_TMP/proj/.gaia/config/project-config.yaml"
 }
 
 @test "generate-config.sh: refuses to overwrite existing config (greenfield invariant)" {
-  mkdir -p "$TEST_TMP/proj/config"
-  printf 'preexisting: true\n' > "$TEST_TMP/proj/config/project-config.yaml"
+  mkdir -p "$TEST_TMP/proj/.gaia/config"
+  printf 'preexisting: true\n' > "$TEST_TMP/proj/.gaia/config/project-config.yaml"
   run bash -c "echo '{}' | '$SKILL_SCRIPTS/generate-config.sh' --path '$TEST_TMP/proj' --name demo"
   [ "$status" -ne 0 ]
 }

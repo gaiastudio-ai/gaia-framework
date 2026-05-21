@@ -18,7 +18,7 @@ _run_with_bundle() {
   local proj="$TEST_TMP/proj"
   mkdir -p "$proj"
   printf '%s' "$1" | "$GENERATE" --path "$proj" --name "TestProj"
-  printf '%s' "$proj/config/project-config.yaml"
+  printf '%s' "$proj/.gaia/config/project-config.yaml"
 }
 
 @test "mobile=yes path emits canonical device_targets shape" {

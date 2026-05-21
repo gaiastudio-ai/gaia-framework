@@ -5,25 +5,36 @@ LC_ALL=C
 export LC_ALL
 #
 # Reads up to two input files and merges them:
-#   - team-shared:  config/project-config.yaml
-#   - machine-local: config/global.yaml
+#   - team-shared:  .gaia/config/project-config.yaml  (canonical per ADR-111;
+#                   legacy config/project-config.yaml retained as fallback
+#                   on pre-migration installs — see precedence list below)
+#   - machine-local: .gaia/config/global.yaml         (canonical per ADR-111;
+#                   legacy config/global.yaml retained as fallback)
 #
-# Shared path discovery precedence (E28-S191 / AC1, extended by AI-2026-05-13-12):
+# Shared path discovery precedence (E28-S191 / AC1, extended by AI-2026-05-13-12;
+# .gaia/config/ canonical added per ADR-111):
 #   1. --shared <path>           explicit flag wins
 #   2. --config <path>           legacy alias from E28-S9 single-file mode
 #   3. $GAIA_SHARED_CONFIG       env override
-#   4. $CLAUDE_PROJECT_ROOT/config/project-config.yaml  (if file exists)
-#   5. $PWD/config/project-config.yaml                  (if file exists)
-#   5b. parent-of-$PWD/config/project-config.yaml       (walk-up; stops at / or $HOME)
-#   6. $CLAUDE_SKILL_DIR/config/project-config.yaml     (legacy, bats fixtures)
+#   4. $CLAUDE_PROJECT_ROOT/.gaia/config/project-config.yaml  (canonical, ADR-111)
+#   4b. $CLAUDE_PROJECT_ROOT/config/project-config.yaml       (legacy fallback)
+#   5. $PWD/.gaia/config/project-config.yaml                  (canonical, ADR-111)
+#   5b. $PWD/config/project-config.yaml                       (legacy fallback)
+#   5c. parent-of-$PWD/.gaia/config/project-config.yaml       (walk-up canonical)
+#   5d. parent-of-$PWD/config/project-config.yaml             (walk-up legacy; stops at / or $HOME)
+#   6. $CLAUDE_SKILL_DIR/config/project-config.yaml           (legacy, bats fixtures)
 #
-# Local overlay discovery precedence (E28-S191 / AC2, extended by AI-2026-05-13-12):
+# Local overlay discovery precedence (E28-S191 / AC2, extended by AI-2026-05-13-12;
+# .gaia/config/ canonical added per ADR-111):
 #   1. --local <path>            explicit flag
 #   2. $GAIA_LOCAL_CONFIG        env override
-#   3. $CLAUDE_PROJECT_ROOT/config/global.yaml          (if file exists)
-#   4. $PWD/config/global.yaml                          (if file exists)
-#   4b. parent-of-$PWD/config/global.yaml               (walk-up; stops at / or $HOME)
-#   5. $CLAUDE_SKILL_DIR/config/global.yaml             (legacy, bats fixtures)
+#   3. $CLAUDE_PROJECT_ROOT/.gaia/config/global.yaml          (canonical, ADR-111)
+#   3b. $CLAUDE_PROJECT_ROOT/config/global.yaml               (legacy fallback)
+#   4. $PWD/.gaia/config/global.yaml                          (canonical, ADR-111)
+#   4b. $PWD/config/global.yaml                               (legacy fallback)
+#   4c. parent-of-$PWD/.gaia/config/global.yaml               (walk-up canonical)
+#   4d. parent-of-$PWD/config/global.yaml                     (walk-up legacy; stops at / or $HOME)
+#   5. $CLAUDE_SKILL_DIR/config/global.yaml                   (legacy, bats fixtures)
 #
 # Applies GAIA_* environment overrides on top, validates required fields,
 # and emits deterministic output on stdout:
@@ -54,12 +65,14 @@ export LC_ALL
 #                     project layer does not declare a sizing_map block.
 #
 # =============================================================================
-# Config Split Merge (ADR-044 / E28-S141 / E28-S142)
+# Config Split Merge (ADR-044 / E28-S141 / E28-S142, post-ADR-111)
 # =============================================================================
 # Two-file merge with strict precedence: env > local > shared.
-# 1. Load the team-shared file (config/project-config.yaml) first as the
+# 1. Load the team-shared file (.gaia/config/project-config.yaml — canonical
+#    per ADR-111; legacy config/project-config.yaml as fallback) first as the
 #    base layer. Missing → empty base layer (AC4 graceful fallback).
-# 2. Overlay the machine-local file (global.yaml). Missing → no overlay.
+# 2. Overlay the machine-local file (.gaia/config/global.yaml — canonical per
+#    ADR-111; legacy config/global.yaml as fallback). Missing → no overlay.
 # 3. Apply GAIA_* environment variables last; env wins over both layers.
 #
 # Flat merge on top-level keys — the resolver already flattens nested keys
