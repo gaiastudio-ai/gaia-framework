@@ -38,7 +38,18 @@ Emits one of: subagent | team
 USAGE
 }
 
-config_path="config/project-config.yaml"
+# Source canonical-path helper (E96-S1, ADR-111). Default config_path uses
+# $GAIA_CONFIG_DIR (.gaia/config), with fallback to legacy config/ if .gaia/
+# is absent. --config CLI flag still overrides.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/gaia-paths.sh
+. "$SCRIPT_DIR/lib/gaia-paths.sh"
+
+if [ -f "$GAIA_CONFIG_DIR/project-config.yaml" ]; then
+  config_path="$GAIA_CONFIG_DIR/project-config.yaml"
+else
+  config_path="config/project-config.yaml"
+fi
 env_flag_name="CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"
 
 while [ $# -gt 0 ]; do

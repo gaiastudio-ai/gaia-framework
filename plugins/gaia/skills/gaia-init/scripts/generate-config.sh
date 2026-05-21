@@ -69,9 +69,12 @@ if [ -f "$PLUGIN_MANIFEST" ] && command -v python3 >/dev/null 2>&1; then
   framework_version="$(python3 -c "import json; print(json.load(open('$PLUGIN_MANIFEST'))['version'])" 2>/dev/null || echo "unknown")"
 fi
 
-mkdir -p -- "$target/config"
+# E96-S1 / ADR-111: new projects get config under .gaia/config/ (canonical
+# post-migration layout). Legacy config/ is no longer the default for new
+# installs — /gaia-migrate handles existing projects with the legacy layout.
+mkdir -p -- "$target/.gaia/config"
 
-cfg_path="$target/config/project-config.yaml"
+cfg_path="$target/.gaia/config/project-config.yaml"
 if [ -e "$cfg_path" ]; then
   printf '%s: refuses to overwrite existing config: %s\n' "$SCRIPT_NAME" "$cfg_path" >&2
   exit 1
