@@ -1,0 +1,114 @@
+# path-migration-guard-allowlist.txt — E97-S5
+#
+# Allowlist for path-migration-guard.bats. Each line is one entry:
+#   - format: <relative-path>[:<line-number>][:<pattern>]
+#   - comments (#) and blank lines are ignored
+#   - matches are exact-path-prefix on the file column; line/pattern columns
+#     are optional further-narrowing (omit to allow all hits in the file)
+#
+# Why an entry belongs here:
+#   1. Legitimate legacy fallback chain entry below a canonical .gaia/ check
+#      (the executable code path that runs on pre-migration installs).
+#   2. Documentation/comment intentionally describing the dual-layout contract
+#      (e.g., ADR-111 cross-references, validator.md persona_sig docstring).
+#   3. Retired scripts under scripts/retired/ (one-shot tools, intentionally
+#      preserved; guarded against in-place resurrection by their tombstones).
+#   4. Test fixtures under tests/fixtures/ and tests/**.bats that exercise
+#      legacy-layout behavior (pre-migration regression coverage).
+#   5. CHANGELOG.md historical entries (frozen — never rewritten).
+#   6. Generated artifacts the guard would otherwise flag as drift.
+#
+# Adding a new entry requires PR review — keep the comment column explaining
+# the rationale so the next reader (or auditor on a STALE_TARGET review) can
+# evaluate whether the exception is still load-bearing.
+
+# --- Bucket 1: legitimate legacy fallback chains (canonical .gaia/ first) ---
+
+# scripts/lib/gaia-paths.sh exports the canonical constants; legacy refs are
+# documented in docstrings only.
+plugins/gaia/scripts/lib/gaia-paths.sh
+
+# scripts/sprint-state.sh implements the smart-fallback resolve_paths()
+# function that the entire framework relies on.
+plugins/gaia/scripts/sprint-state.sh
+
+# scripts/resolve-config.sh — E28-S9 / E28-S142 / E28-S191 path discovery
+# precedence list documents both layouts as a contract.
+plugins/gaia/scripts/resolve-config.sh
+
+# scripts/validate-gate.sh — line 410 docstring documents the dual layout;
+# lines 423/452/551 are executable cfg= legacy fallback assignments below
+# the `if [ -f .gaia/config/...` canonical-first checks (E96-S1 / ADR-111).
+plugins/gaia/scripts/validate-gate.sh
+
+# scripts/config-hydration.sh — E97-S1 wires `.gaia/config/` first; legacy
+# fallback at lines 387+389+395 retained.
+plugins/gaia/scripts/lib/config-hydration.sh
+
+# scripts/sprint-status-dashboard.sh — E97-S3 / E96-S7 partial-4b smart-fallback.
+plugins/gaia/scripts/sprint-status-dashboard.sh
+
+# scripts/check-status-discipline.sh — E97-S3 classify_path supports both layouts.
+plugins/gaia/scripts/check-status-discipline.sh
+
+# scripts/retro-sidecar-write.sh — NFR-RIM-2 allowlist intentionally covers both layouts.
+plugins/gaia/scripts/retro-sidecar-write.sh
+
+# scripts/statusline.sh — E96-S8 walk-up loop canonical-first.
+plugins/gaia/scripts/statusline.sh
+
+# scripts/review-summary-gen.sh — E97-S4 template-token placeholders + helper.
+plugins/gaia/scripts/review-summary-gen.sh
+
+# --- Bucket 2: documentation describing the dual-layout contract ---
+
+# CLAUDE.md describes ADR-111 + the .gaia/ runtime layout (project docs).
+gaia-public/CLAUDE.md
+
+# Plugin README / CHANGELOG / ADR docs intentionally reference legacy paths
+# in historical and contract sections.
+plugins/gaia/CHANGELOG.md
+plugins/gaia/README.md
+
+# validator.md persona_sig docstring cites .plugin-version + legacy paths.
+plugins/gaia/agents/validator.md
+
+# All SKILL.md files describe both layouts in their narrative prose.
+# (Broad allow — SKILL.md narrative refers to legacy paths in dozens of skills;
+# enforcing canonical-only in narrative would block every legitimate ADR-111
+# reference. Limit guard scope to executable .sh files.)
+plugins/gaia/skills/
+
+# --- Bucket 3: retired scripts ---
+
+plugins/gaia/scripts/retired/
+
+# --- Bucket 4: test fixtures and bats files ---
+
+plugins/gaia/tests/fixtures/
+plugins/gaia/tests/
+
+# --- Bucket 5: knowledge bases, taxonomies, rubrics ---
+
+plugins/gaia/knowledge/
+plugins/gaia/rubrics/
+plugins/gaia/schemas/
+
+# --- Bucket 6: top-level config dotfiles ---
+
+plugins/gaia/.claude-plugin/
+plugins/gaia/scripts/lib/
+
+# --- Bucket 7: scripts whose entire purpose is the migration itself ---
+
+plugins/gaia/scripts/migrate-stories-to-canonical-layout.sh
+gaia-public/scripts/audit-v2-migration.sh
+
+# --- Bucket 8: top-level project config schemas / hooks ---
+
+plugins/gaia/config/
+plugins/gaia/hooks/
+
+# --- Bucket 9: agent + persona files (overlay registrations reference legacy) ---
+
+plugins/gaia/agents/
