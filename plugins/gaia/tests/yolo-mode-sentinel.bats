@@ -99,3 +99,22 @@ teardown() {
   GAIA_YOLO_FLAG=1 run bash "$YOLO" is_yolo
   [ "$status" -eq 0 ]
 }
+
+@test "AF-2026-05-21-4 #2: yolo_set + yolo_clear are sourceable library functions" {
+  # NFR-052 public-function coverage: explicitly reference the function names
+  # so the deterministic public-function grep at run-with-coverage.sh sees
+  # them in this bats file. The functions ARE exercised by the `bash
+  # yolo-mode.sh set` / `clear` subcommand tests above (those internally
+  # invoke yolo_set / yolo_clear) — this test pins the canonical name
+  # binding for the coverage gate.
+  run bash -c "source '$YOLO' && declare -F yolo_set yolo_clear"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"yolo_set"* ]]
+  [[ "$output" == *"yolo_clear"* ]]
+  # Direct library invocation — exercises both functions via their canonical
+  # names, complementing the subcommand-form tests above.
+  bash -c "source '$YOLO' && GAIA_YOLO_SENTINEL='$GAIA_YOLO_SENTINEL' yolo_set"
+  [ -f "$GAIA_YOLO_SENTINEL" ]
+  bash -c "source '$YOLO' && GAIA_YOLO_SENTINEL='$GAIA_YOLO_SENTINEL' yolo_clear"
+  [ ! -f "$GAIA_YOLO_SENTINEL" ]
+}
