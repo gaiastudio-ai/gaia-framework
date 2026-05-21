@@ -18,7 +18,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are orchestrating the creation of a risk-based Test Plan. The test planning is delegated to the **test-architect** subagent (Sable), who conducts risk assessment, designs test strategy, and produces the final artifact. You load upstream artifacts (architecture, PRD, project context), validate inputs, coordinate the multi-step flow, and write the output to `docs/test-artifacts/test-plan.md` using the bundled `test-plan-template.md` template structure.
+You are orchestrating the creation of a risk-based Test Plan. The test planning is delegated to the **test-architect** subagent (Sable), who conducts risk assessment, designs test strategy, and produces the final artifact. You load upstream artifacts (architecture, PRD, project context), validate inputs, coordinate the multi-step flow, and write the output to `.gaia/artifacts/test-artifacts/test-plan.md` using the bundled `test-plan-template.md` template structure.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/test-design` workflow (E28-S82, Cluster 11). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` -- do not restructure, re-prompt, or reorder.
 
@@ -28,25 +28,25 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Start with risk assessment -- not all areas need equal coverage.
 - Define quality gates for the CI pipeline.
 - The test plan template MUST exist at `${CLAUDE_PLUGIN_ROOT}/skills/gaia-test-design/test-plan-template.md` and be non-empty. If the template file is empty (0 bytes) or missing, halt with: "Test plan template not found or empty -- cannot produce test plan without template."
-- If architecture.md is missing at `docs/planning-artifacts/architecture.md`: proceed with reduced risk context, log a WARNING ("Architecture document not found -- producing test plan with generic risk ratings"), and use generic risk ratings instead of architecture-informed ones.
-- Resolve the PRD via the sharded-fallback rule (ADR-069 / FR-396..402): try `docs/planning-artifacts/prd.md` (flat layout); fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, proceed with reduced context and log a WARNING ("PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md -- test plan scope may be incomplete").
+- If architecture.md is missing at `.gaia/artifacts/planning-artifacts/architecture.md`: proceed with reduced risk context, log a WARNING ("Architecture document not found -- producing test plan with generic risk ratings"), and use generic risk ratings instead of architecture-informed ones.
+- Resolve the PRD via the sharded-fallback rule (ADR-069 / FR-396..402): try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, proceed with reduced context and log a WARNING ("PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md -- test plan scope may be incomplete").
 - Test planning is delegated to the test-architect subagent (Sable) via native Claude Code subagent invocation -- do NOT inline Sable's persona into this skill body. If the test-architect subagent is not available or not registered, halt with: "test-architect subagent not available -- ensure E28-S21 agents are installed."
 - Template resolution: load `test-plan-template.md` from this skill directory. If `custom/templates/test-plan-template.md` exists and is non-empty, use the custom template instead -- the custom template takes full precedence over the bundled default (ADR-020 / FR-101).
-- Output ALL artifacts to `docs/test-artifacts/`.
+- Output ALL artifacts to `.gaia/artifacts/test-artifacts/`.
 - Val auto-review runs unconditionally via the direct-call contract from E44-S1 -- the deprecated frontmatter flag is superseded by the Step 8 auto-fix loop wired in by E44-S6 (see Step 8 below; ADR-058 / architecture.md §10.31.2).
 
 ## Steps
 
 ### Step 1 -- Load Project Context
 
-- Read `docs/planning-artifacts/architecture.md` if available -- extract system components, their interactions, and high-risk areas.
-- Read the PRD if available — resolve via the sharded-fallback rule (Critical Rules above): try `docs/planning-artifacts/prd.md` (flat layout); fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). Extract requirements (functional and non-functional).
-- Read `docs/planning-artifacts/project-context.md` if available -- extract project-level context.
+- Read `.gaia/artifacts/planning-artifacts/architecture.md` if available -- extract system components, their interactions, and high-risk areas.
+- Read the PRD if available — resolve via the sharded-fallback rule (Critical Rules above): try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). Extract requirements (functional and non-functional).
+- Read `.gaia/artifacts/planning-artifacts/project-context.md` if available -- extract project-level context.
 - If architecture.md is missing: log WARNING and proceed with generic risk context. Do not halt.
 - If prd.md is missing: log WARNING and proceed with reduced scope context. Do not halt.
 - Understand system components and their interactions from whatever context is available.
 
-> `!scripts/write-checkpoint.sh gaia-test-design 1 story_key="$STORY_KEY" test_plan_path="docs/test-artifacts/test-plan.md" stage=context-loaded`
+> `!scripts/write-checkpoint.sh gaia-test-design 1 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=context-loaded`
 
 ### Step 2 -- Risk Assessment
 
@@ -58,13 +58,13 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 - Produce a risk assessment matrix with columns: Area, Risk Level (H/M/L), Probability, Impact, Coverage Strategy.
 - When architecture.md is missing, use generic risk ratings based on common patterns (auth = High, CRUD = Medium, static content = Low).
 
-> `!scripts/write-checkpoint.sh gaia-test-design 2 story_key="$STORY_KEY" test_plan_path="docs/test-artifacts/test-plan.md" risk_level="$RISK_LEVEL" stage=risk-assessment`
+> `!scripts/write-checkpoint.sh gaia-test-design 2 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" risk_level="$RISK_LEVEL" stage=risk-assessment`
 
 ### Step 3 -- Legacy Integration Boundaries (Brownfield)
 
 This step is **optional** -- activate only when brownfield indicators are present.
 
-- If PRD contains "Mode: Brownfield" or project has `docs/planning-artifacts/brownfield-assessment.md`: activate this step.
+- If PRD contains "Mode: Brownfield" or project has `.gaia/artifacts/planning-artifacts/brownfield-assessment.md`: activate this step.
 - Identify integration boundaries: where new code calls legacy code and vice versa.
 - Load knowledge fragment: `knowledge/contract-testing.md` for consumer-driven contract patterns
 - For each boundary: define contract test (input/output schema validation between old and new).
@@ -74,7 +74,7 @@ This step is **optional** -- activate only when brownfield indicators are presen
 - Add legacy boundary risks to the risk assessment from Step 2.
 - If no brownfield indicators are found: skip this step entirely.
 
-> `!scripts/write-checkpoint.sh gaia-test-design 3 story_key="$STORY_KEY" test_plan_path="docs/test-artifacts/test-plan.md" stage=legacy-boundaries`
+> `!scripts/write-checkpoint.sh gaia-test-design 3 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=legacy-boundaries`
 
 ### Step 4 -- Test Strategy
 
@@ -87,7 +87,7 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 - Map each component to its appropriate test level based on risk assessment.
 - Define the test pyramid distribution targets (e.g., 70% unit, 20% integration, 10% E2E).
 
-> `!scripts/write-checkpoint.sh gaia-test-design 4 story_key="$STORY_KEY" test_plan_path="docs/test-artifacts/test-plan.md" stage=test-strategy`
+> `!scripts/write-checkpoint.sh gaia-test-design 4 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=test-strategy`
 
 ### Step 5 -- Test Plan
 
@@ -98,7 +98,7 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 - Specify test data requirements, fixtures, and mocks.
 - Define test environment requirements and setup.
 
-> `!scripts/write-checkpoint.sh gaia-test-design 5 story_key="$STORY_KEY" test_plan_path="docs/test-artifacts/test-plan.md" stage=test-plan-drafted`
+> `!scripts/write-checkpoint.sh gaia-test-design 5 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=test-plan-drafted`
 
 ### Step 6 -- Quality Gates
 
@@ -108,7 +108,7 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 - Specify CI pipeline integration points for each gate.
 - Define gate failure behavior (block merge, warn, advisory).
 
-> `!scripts/write-checkpoint.sh gaia-test-design 6 story_key="$STORY_KEY" test_plan_path="docs/test-artifacts/test-plan.md" stage=quality-gates`
+> `!scripts/write-checkpoint.sh gaia-test-design 6 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=quality-gates`
 
 ### Step 7 -- Generate Output
 
@@ -116,12 +116,12 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 - GATE: verify the template file exists and is non-empty (file size > 0 bytes). If the template is empty or missing, halt with: "Test plan template not found or empty at test-plan-template.md -- cannot produce test plan without template."
 - Check for custom template override: if `custom/templates/test-plan-template.md` exists and is non-empty, use the custom template instead.
 - Compile the test plan by populating the template with: risk assessment (Step 2), legacy integration boundaries (Step 3, if applicable), test strategy (Step 4), test plan details (Step 5), quality gates (Step 6).
-- Write the compiled test plan to `docs/test-artifacts/test-plan.md`.
+- Write the compiled test plan to `.gaia/artifacts/test-artifacts/test-plan.md`.
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/test-artifacts/test-plan.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/test-artifacts/test-plan.md`
 
-> `!scripts/write-checkpoint.sh gaia-test-design 7 story_key="$STORY_KEY" test_plan_path="docs/test-artifacts/test-plan.md" stage=output-generated --paths docs/test-artifacts/test-plan.md`
+> `!scripts/write-checkpoint.sh gaia-test-design 7 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=output-generated --paths .gaia/artifacts/test-artifacts/test-plan.md`
 
 ### Step 8 -- Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -130,17 +130,17 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 
 **Guards (run before invocation):**
 
-- Artifact-existence guard (AC-EC3): if not exists `docs/test-artifacts/test-plan.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
+- Artifact-existence guard (AC-EC3): if not exists `.gaia/artifacts/test-artifacts/test-plan.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
 - Val-skill-availability guard (AC-EC6): if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
 
 **Loop:**
 
 1. iteration = 1.
-2. Invoke `/gaia-val-validate` with `artifact_path = docs/test-artifacts/test-plan.md`, `artifact_type = test-plan`.
+2. Invoke `/gaia-val-validate` with `artifact_path = .gaia/artifacts/test-artifacts/test-plan.md`, `artifact_type = test-plan`.
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
-     a. Apply a fix to `docs/test-artifacts/test-plan.md` addressing the findings.
+     a. Apply a fix to `.gaia/artifacts/test-artifacts/test-plan.md` addressing the findings.
      b. Append an iteration log record to checkpoint `custom.val_loop_iterations`.
      c. iteration += 1.
      d. If iteration <= 3: go to step 2.
@@ -150,9 +150,9 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation runs against the Step 7 artifact write.
 
-> Test Notes: VCP-VAL-04 (`docs/test-artifacts/test-plan.md §11.46.3`) covers this wire-in.
+> Test Notes: VCP-VAL-04 (`.gaia/artifacts/test-artifacts/test-plan.md §11.46.3`) covers this wire-in.
 
-> `!scripts/write-checkpoint.sh gaia-test-design 8 story_key="$STORY_KEY" test_plan_path="docs/test-artifacts/test-plan.md" stage=val-auto-review --paths docs/test-artifacts/test-plan.md`
+> `!scripts/write-checkpoint.sh gaia-test-design 8 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=val-auto-review --paths .gaia/artifacts/test-artifacts/test-plan.md`
 
 ### Step 9 -- Optional: Scaffold Test Framework
 
@@ -161,7 +161,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 - If a test framework already exists: skip this step -- the framework is already configured.
 - This step is informational only -- the actual scaffolding is handled by the separate `/gaia-test-framework` skill.
 
-> `!scripts/write-checkpoint.sh gaia-test-design 9 story_key="$STORY_KEY" test_plan_path="docs/test-artifacts/test-plan.md" stage=scaffold-suggestion`
+> `!scripts/write-checkpoint.sh gaia-test-design 9 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=scaffold-suggestion`
 
 ## Validation
 
@@ -184,7 +184,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
     V1 "Coverage targets defined"                              → SV-05
     V1 "Quality gates specified for CI"                        → SV-06
   Additional structural items (SV-01, SV-02) enforce the V1 output
-  contract (test-plan.md written to docs/test-artifacts/test-plan.md,
+  contract (test-plan.md written to .gaia/artifacts/test-artifacts/test-plan.md,
   non-empty). The V1 "Project context loaded" item collapses to host-LLM
   review because context loading is a Step-1 side effect not provably
   inspected against the artifact body.
@@ -193,10 +193,10 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   Validation runs BEFORE the checkpoint and lifecycle-event writes
   (observability is never suppressed by checklist outcome — story AC5).
 
-  See docs/implementation-artifacts/E42-S14-port-gaia-edit-test-plan-and-gaia-test-design-checklists-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S14-port-gaia-edit-test-plan-and-gaia-test-design-checklists-to-v2.md.
 -->
 
-- [script-verifiable] SV-01 — Output file saved to docs/test-artifacts/test-plan.md
+- [script-verifiable] SV-01 — Output file saved to .gaia/artifacts/test-artifacts/test-plan.md
 - [script-verifiable] SV-02 — Output artifact is non-empty
 - [script-verifiable] SV-03 — Risk assessment section present (risk heading + probability/impact keywords)
 - [script-verifiable] SV-04 — Test strategy section present (test pyramid / test levels keyword)
