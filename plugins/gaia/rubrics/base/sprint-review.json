@@ -74,11 +74,18 @@
     {
       "id": "sgr-velocity-003",
       "category": "velocity-vs-capacity-fit",
-      "pattern": "A goal's contributing stories sum to less than 30% of total committed points — the goal is incidental rather than central to the sprint.",
+      "pattern": "A goal's contributing stories sum to less than the scaled incidental-goal floor — by default 30% of total committed points, but scaled inversely with the number of sprint goals via floor_pct = max(0.10, 0.30 * (4 / max(4, N))) where N is len(goals). A 2-goal thrust sprint keeps the 30% floor; a 5-goal sprint scales to 24%; a 7-goal completion-pass sweep scales to ~17%; the floor never drops below 10%. When sprint_shape: completion-pass is set on sprint-status.yaml, the rule's severity is reduced from High to Low for goals below the scaled floor (E93-S6 calibration).",
       "severity": "High",
-      "description": "Incidental goal. A goal that consumes less than 30% of sprint capacity is not a sprint-level objective — it is a side effect. Sprint goals should represent the primary thrust of the sprint's investment. Flags for goal revision in the next sprint.",
-      "remediation": "Demote the incidental goal to a story-level outcome and elevate a goal that represents the sprint's primary investment, or add stories to make the goal substantive.",
-      "references": ["FR-489", "ADR-108-D2"]
+      "formula": {
+        "floor_pct_expression": "max(0.10, 0.30 * (4 / max(4, N)))",
+        "variables": {"N": "number of sprint goals (len(goals[]))"},
+        "examples": {"N=2": 0.30, "N=4": 0.30, "N=5": 0.24, "N=7": 0.171, "N=10": 0.12},
+        "intermediate_tier": "Goals within 5 percentage points of the scaled floor emit severity Medium (intermediate tier). Goals more than 5 percentage points below the floor emit the rule's default severity (High under thrust, Low under completion-pass).",
+        "shape_modifier": "When sprint_shape: completion-pass is set on sprint-status.yaml, sgr-velocity-003 severity is reduced from High to Low for below-floor goals."
+      },
+      "description": "Incidental goal. A goal that consumes less than the scaled incidental-goal floor of sprint capacity is structurally incidental rather than a primary thrust of the sprint. The 30% baseline floor scales with goal count so that sweep-shaped sprints are not mechanically failed by the rule. When sprint_shape: completion-pass is set, the rule downgrades to advisory (Low) and the rubric-applicability rule sgr-velocity-006 fires.",
+      "remediation": "If the sprint is a traditional thrust sprint, demote the incidental goal to a story-level outcome and elevate a goal that represents the sprint's primary investment, or add stories to make the goal substantive. If the sprint is intentionally sweep-shaped (mechanical follow-ups, parallel cleanup), set sprint_shape: completion-pass via /gaia-correct-course set-shape or sprint-state.sh set-shape.",
+      "references": ["FR-489", "ADR-108-D2", "AI-2026-05-21-1", "E93-S6"]
     },
     {
       "id": "sgr-velocity-004",
@@ -97,6 +104,15 @@
       "description": "Excessive carryover. High carryover indicates prior sprint scope was unrealistic or blockers persisted across sprint boundaries. Val flags but does not block — carryover management is a sprint-planning responsibility (FR-452-R).",
       "remediation": "Review carryover stories for stale scope; confirm they still align with current sprint goals; adjust sprint commitment in /gaia-sprint-plan to account for the carryover burden.",
       "references": ["FR-452-R", "ADR-108-D7"]
+    },
+    {
+      "id": "sgr-velocity-006",
+      "category": "rubric-applicability",
+      "pattern": "sprint_shape: completion-pass is set on sprint-status.yaml. The sgr-velocity-003 incidental-goal floor is scaled per the formula and any below-floor goals are downgraded from High to Low severity. Emits an audit-trail advisory naming the scaled floor and the goals-below-floor count.",
+      "severity": "Low",
+      "description": "Rubric-applicability advisory. Surfaces that a sprint-shape modifier was applied so the audit trail is explicit about why sgr-velocity-003 did not fire at High. Always emits exactly once when sprint_shape: completion-pass is set, even when zero goals fall below the scaled floor. The canonical message is: 'sprint_shape: completion-pass applied — sgr-velocity-003 floor scaled to {floor_pct}% and severity reduced from High to Low for {n_goals_below_floor} goal(s)'.",
+      "remediation": "No action required — this is an audit-trail advisory. If the sprint is NOT a sweep-shape (mistakenly set), clear via sprint-state.sh set-shape --shape thrust.",
+      "references": ["FR-489", "ADR-108-D2", "AI-2026-05-21-1", "E93-S6"]
     },
     {
       "id": "sgr-priority-001",

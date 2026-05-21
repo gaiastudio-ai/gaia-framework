@@ -102,7 +102,12 @@ fi
 for draft in "${drafts[@]}"; do
   agent="$(basename "$draft" .md)"
 
-  out_dir="$ROOT/_memory/${agent}-sidecar/decisions"
+  # ADR-111 smart-fallback: .gaia/memory/ first, legacy _memory/ second
+  if [ -d "$ROOT/.gaia/memory" ]; then
+    out_dir="$ROOT/.gaia/memory/${agent}-sidecar/decisions"
+  else
+    out_dir="$ROOT/_memory/${agent}-sidecar/decisions"
+  fi
   out="$out_dir/${DATE}-${SLUG}.md"
   mkdir -p "$out_dir"
 

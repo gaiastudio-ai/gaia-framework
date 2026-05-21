@@ -119,8 +119,8 @@ lines.append(f"# Project: {name}")
 lines.append("")
 lines.append(f"project_root: {abs_target}")
 lines.append(f"project_path: {abs_target}")
-lines.append(f"memory_path: {abs_target}/_memory")
-lines.append(f"checkpoint_path: {abs_target}/_memory/checkpoints")
+lines.append(f"memory_path: {abs_target}/.gaia/memory")
+lines.append(f"checkpoint_path: {abs_target}/.gaia/memory/checkpoints")
 lines.append(f"installed_path: {abs_target}")
 lines.append(f"framework_version: {yaml_quote(framework_version)}")
 lines.append(f"date: {today}")
@@ -300,8 +300,8 @@ PYEOF
 
 project_root: $abs_target
 project_path: $abs_target
-memory_path: $abs_target/_memory
-checkpoint_path: $abs_target/_memory/checkpoints
+memory_path: $abs_target/.gaia/memory
+checkpoint_path: $abs_target/.gaia/memory/checkpoints
 installed_path: $abs_target
 framework_version: 0.0.0
 date: $(date -u +"%Y-%m-%d")

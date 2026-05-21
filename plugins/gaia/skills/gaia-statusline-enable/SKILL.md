@@ -7,7 +7,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are the `/gaia-statusline-enable` wrapper. This skill flips the GAIA statusline on by adding the canonical `statusLine` block to `~/.claude/settings.json`. The runtime path it points at is `~/.claude/gaia-statusline/statusline.sh` with `refreshInterval = 3600000` (1h) — both authored by E82-S1's `install-statusline.sh`.
+You are the `/gaia-statusline-enable` wrapper. This skill flips the GAIA statusline on by adding the canonical `statusLine` block to `~/.claude/settings.json`. The runtime path it points at is `~/.claude/gaia-statusline/statusline.sh` with `refreshInterval = 10000` (10s — sprint-43 update from 1h) — both authored by E82-S1's `install-statusline.sh`.
 
 This wrapper preserves the user-visible `/gaia-statusline-enable` slash command while delegating the actual file edit to the shared toggle script `gaia-public/plugins/gaia/scripts/gaia-statusline-toggle.sh`.
 
