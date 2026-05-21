@@ -47,6 +47,15 @@ done
 }
 
 # Convert YAML → JSON for ajv. Use python3.
+#
+# AF-2026-05-21-3 fix: pass `default=str` to json.dumps so PyYAML-parsed
+# datetime.date / datetime.datetime objects (e.g. an unquoted top-level
+# `date: 2026-05-21` line emitted by generate-config.sh) are serialized
+# as ISO-8601 strings instead of crashing the whole validator with
+# `TypeError: Object of type date is not JSON serializable`. Before this
+# fix, every freshly /gaia-init'd config tripped this and the SKILL.md
+# delete-on-validation-failure contract would have erased real configs
+# on tooling crashes — not actual schema violations.
 yaml_to_json() {
   python3 -c '
 import sys, json
@@ -54,7 +63,7 @@ try:
     import yaml
 except ImportError:
     sys.exit(2)
-print(json.dumps(yaml.safe_load(sys.stdin)))
+print(json.dumps(yaml.safe_load(sys.stdin), default=str))
 ' < "$1"
 }
 

@@ -54,20 +54,52 @@ fi
 EPIC_KEY="${STORY_KEY%-S*}"
 
 PROJECT_ROOT="${PROJECT_PATH:-$(pwd)}"
-IMPL_DIR="$PROJECT_ROOT/docs/implementation-artifacts"
-TEST_DIR="$PROJECT_ROOT/docs/test-artifacts"
 
-# Locate the story file: docs/implementation-artifacts/{story_key}-*.md
-# Also searches epic-grouped layout: docs/implementation-artifacts/epic-*/stories/{story_key}-*.md
-shopt -s nullglob
-STORY_MATCHES=( "$IMPL_DIR/${STORY_KEY}-"*.md "$IMPL_DIR"/epic-*/stories/"${STORY_KEY}-"*.md )
-shopt -u nullglob
-
-if [ "${#STORY_MATCHES[@]}" -eq 0 ]; then
-  die "story file not found: $IMPL_DIR/${STORY_KEY}-*.md (also checked epic-*/stories/)" 2
+# AF-2026-05-21-4 Finding 1 fix: route through the shared resolver helper
+# so the script honors ADR-111 canonical .gaia/artifacts/ first and legacy
+# docs/ as fallback. Previous hardcoded `$PROJECT_ROOT/docs/implementation-artifacts`
+# made the gate fail-fast on every story under the .gaia/ canonical layout
+# (every low-risk story trips the gate-not-applicable path with a misleading
+# "story file not found" error before the risk field is even read).
+#
+# Resolve under both layouts via the helper. IMPL_DIR is still derived for
+# the test-artifacts ATDD glob below; honor both canonical .gaia/ and legacy
+# docs/ for that secondary lookup too.
+if [ -d "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" ]; then
+  IMPL_DIR="$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts"
+else
+  IMPL_DIR="$PROJECT_ROOT/docs/implementation-artifacts"
+fi
+if [ -d "$PROJECT_ROOT/.gaia/artifacts/test-artifacts" ]; then
+  TEST_DIR="$PROJECT_ROOT/.gaia/artifacts/test-artifacts"
+else
+  TEST_DIR="$PROJECT_ROOT/docs/test-artifacts"
 fi
 
-STORY_FILE="${STORY_MATCHES[0]}"
+# Locate the story file via the shared resolver helper (E79-S7 / FR-476).
+# Helper honors the E79-S4 nested-over-flat precedence rule and the ADR-111
+# canonical-first contract.
+SCRIPT_DIR_RESOLVER="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../../../scripts" 2>/dev/null && pwd )"
+RESOLVER="$SCRIPT_DIR_RESOLVER/resolve-story-file.sh"
+STORY_FILE=""
+if [ -x "$RESOLVER" ]; then
+  STORY_FILE="$( PROJECT_PATH="$PROJECT_ROOT" IMPLEMENTATION_ARTIFACTS="$IMPL_DIR" \
+    bash "$RESOLVER" "$STORY_KEY" 2>/dev/null || true )"
+fi
+
+# Fallback path-glob if the helper was unavailable (deprecated v1.131.x).
+if [ -z "$STORY_FILE" ]; then
+  shopt -s nullglob
+  STORY_MATCHES=( "$IMPL_DIR/${STORY_KEY}-"*.md "$IMPL_DIR"/epic-*/stories/"${STORY_KEY}-"*.md )
+  shopt -u nullglob
+  if [ "${#STORY_MATCHES[@]}" -gt 0 ]; then
+    STORY_FILE="${STORY_MATCHES[0]}"
+  fi
+fi
+
+if [ -z "$STORY_FILE" ] || [ ! -f "$STORY_FILE" ]; then
+  die "story file not found for key $STORY_KEY (searched $IMPL_DIR/${STORY_KEY}-*.md and $IMPL_DIR/epic-*/stories/${STORY_KEY}-*.md)" 2
+fi
 
 # Read the risk field from frontmatter. Accept `risk:` (canonical) or
 # `risk_level:` (PRD/ADR longhand alias). Strip surrounding quotes and

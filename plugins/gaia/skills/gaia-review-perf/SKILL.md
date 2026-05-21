@@ -26,7 +26,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-review-perf [story-key]".
-- The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
+- The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper (E79-S7 / FR-476) which honors the ADR-111 canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then legacy `docs/implementation-artifacts/{story_key}-*.md` as fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob — that breaks on `.gaia/`-canonical projects (AF-2026-05-21-4 Finding 1).
 - The story MUST be in `review` status. If not, fail with "story must be in review status before performance review".
 - This skill is READ-ONLY. Do NOT attempt to call Write or Edit tools -- the fork context allowlist enforces this.
 - Performance analysis MUST be dispatched to the Juno performance subagent -- do NOT perform inline analysis in the fork context.
@@ -41,9 +41,9 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 ### Step 1 -- Resolve Story File
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-review-perf [story-key]"
-- Resolve the story file path using the canonical glob: `docs/implementation-artifacts/{story_key}-*.md`
-- If zero matches: fail with "story file not found for key {story_key} -- searched docs/implementation-artifacts/{story_key}-*.md"
-- If multiple matches: fail with "multiple story files matched key {story_key} -- resolve ambiguity"
+- Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper (E79-S7 / FR-476). It honors the ADR-111 canonical-first contract: searches `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then falls back to legacy `docs/implementation-artifacts/{story_key}-*.md`.
+- If the helper exits 1 (zero matches): fail with "story file not found for key {story_key}".
+- If the helper exits 2 (multiple matches): fail with "multiple story files matched key {story_key} -- resolve ambiguity".
 - Read the resolved story file.
 
 ### Step 2 -- Status Gate

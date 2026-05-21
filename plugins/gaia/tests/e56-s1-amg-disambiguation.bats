@@ -108,19 +108,26 @@ clean_env() {
 # read a harness-injected signal (clause 1) or introduces a system-reminder
 # parser (clause 2). Per the §10.32.5 guard clauses 1 and 2.
 
-@test "amg-guard: is_yolo references ONLY the four canonical YOLO env vars" {
-  # Build a regex that matches GAIA_<X> references that are NOT in the
-  # canonical four. If any such reference exists in is_yolo or its helpers,
-  # the guard has been violated.
+@test "amg-guard: is_yolo references ONLY canonical YOLO env vars + sentinel path vars" {
+  # Build a regex that matches GAIA_<X> references that are NOT canonical.
+  # If any such reference exists in is_yolo or its helpers, the guard has
+  # been violated.
   #
   # Canonical four (architecture §10.30.4):
   #   GAIA_YOLO_FLAG, GAIA_YOLO_MODE, GAIA_YOLO_OVERRIDE, GAIA_CONTEXT
   #
+  # Sentinel path-resolution vars (AF-2026-05-21-4 Finding 2 — added for
+  # cross-Bash-tool-call YOLO state persistence). These are NOT auto-mode
+  # signals — they only control WHERE the .yolo-active sentinel lives:
+  #   GAIA_STATE_DIR        — canonical .gaia/state/ resolution (ADR-111)
+  #   GAIA_YOLO_SENTINEL    — explicit sentinel path override (tests)
+  #
   # Strategy: extract every GAIA_<TOKEN> occurrence from yolo-mode.sh, then
-  # subtract the canonical four. The remaining set MUST be empty.
+  # subtract the canonical + sentinel-path allowlist. The remaining set
+  # MUST be empty.
   local found
   found="$(grep -oE 'GAIA_[A-Z_]+' "$SCRIPT" | sort -u \
-    | grep -vE '^(GAIA_YOLO_FLAG|GAIA_YOLO_MODE|GAIA_YOLO_OVERRIDE|GAIA_CONTEXT)$' \
+    | grep -vE '^(GAIA_YOLO_FLAG|GAIA_YOLO_MODE|GAIA_YOLO_OVERRIDE|GAIA_CONTEXT|GAIA_STATE_DIR|GAIA_YOLO_SENTINEL)$' \
     || true)"
   [ -z "$found" ]
 }
@@ -132,15 +139,17 @@ clean_env() {
   ! grep -qE '(Auto mode is active|auto-mode|harness)' "$SCRIPT"
 }
 
-@test "amg-guard: is_yolo body uses ONLY the four canonical env vars" {
+@test "amg-guard: is_yolo body uses ONLY canonical YOLO env vars + sentinel path vars" {
   # Tighter scope: extract just the is_yolo function body and reapply the
   # subtraction. Catches a regression where someone adds a harness check
   # only inside is_yolo while leaving the rest of the file pristine.
+  # AF-2026-05-21-4 Finding 2: GAIA_STATE_DIR + GAIA_YOLO_SENTINEL are
+  # allowed for sentinel-file path resolution (NOT auto-mode signals).
   local body
   body="$(awk '/^is_yolo\(\)[[:space:]]*\{/,/^\}$/' "$SCRIPT")"
   local found
   found="$(printf '%s\n' "$body" | grep -oE 'GAIA_[A-Z_]+' | sort -u \
-    | grep -vE '^(GAIA_YOLO_FLAG|GAIA_YOLO_MODE|GAIA_YOLO_OVERRIDE|GAIA_CONTEXT)$' \
+    | grep -vE '^(GAIA_YOLO_FLAG|GAIA_YOLO_MODE|GAIA_YOLO_OVERRIDE|GAIA_CONTEXT|GAIA_STATE_DIR|GAIA_YOLO_SENTINEL)$' \
     || true)"
   [ -z "$found" ]
 }
