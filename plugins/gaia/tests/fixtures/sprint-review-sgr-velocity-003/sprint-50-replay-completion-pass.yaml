@@ -8,7 +8,7 @@ status: review
 sprint_shape: completion-pass
 goals:
   - "Land Class A fixes: wire config-hydration.sh + gaia-help/SKILL.md into lib/gaia-paths.sh (E97-S1)"
-  - "Retire migrate-stories-to-canonical-layout.sh one-shot tool (E97-S2)"
+  - "Retire one-shot story-layout migration helper (E97-S2)"
   - "Triage + fix 4 Class B mixed-state scripts (E97-S3)"
   - "Refactor review-summary-gen.sh CANONICAL_REPORT_RELPATHS to resolved variables (E97-S4)"
   - "Land CI regression guard path-migration-guard.bats with grep-allowlist (E97-S5)"
