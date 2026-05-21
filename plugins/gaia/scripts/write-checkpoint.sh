@@ -227,15 +227,16 @@ if [ -n "$CUSTOM_FILE" ]; then
   fi
 fi
 
-# ---------- Resolve CHECKPOINT_ROOT ----------
-# E96-S4 / ADR-111: prefer .gaia/memory/checkpoints/ over the legacy
-# _memory/checkpoints/ location. Legacy fallback retained during the 1-sprint
-# transition window (removed in E96-S5). Env CHECKPOINT_ROOT override wins.
+# ---------- Resolve CHECKPOINT_ROOT (AF-2026-05-21-7 inverted precedence) ----------
+# Canonical .gaia/memory/checkpoints is the default for greenfield AND
+# post-ADR-111 projects. Legacy _memory/checkpoints fires ONLY when there's
+# positive pre-migration evidence: legacy dir exists AND canonical doesn't.
+# Env CHECKPOINT_ROOT override wins.
 if [ -z "${CHECKPOINT_ROOT:-}" ]; then
-  if [ -d ".gaia/memory" ]; then
-    CHECKPOINT_ROOT=".gaia/memory/checkpoints"
-  else
+  if [ -d "_memory/checkpoints" ] && [ ! -d ".gaia/memory" ]; then
     CHECKPOINT_ROOT="_memory/checkpoints"
+  else
+    CHECKPOINT_ROOT=".gaia/memory/checkpoints"
   fi
 fi
 SKILL_DIR="$CHECKPOINT_ROOT/$SKILL_NAME"

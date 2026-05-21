@@ -221,11 +221,20 @@ if [ -n "$data" ]; then
   fi
 fi
 
-# ---------- MEMORY_PATH resolution ----------
+# ---------- MEMORY_PATH resolution (AF-2026-05-21-7) ----------
 
 # Soft dependency on resolve-config.sh — this script is Cluster 2 and may be
-# developed in parallel with script #1. Fall back to ${MEMORY_PATH:-_memory}.
-MEMORY_PATH="${MEMORY_PATH:-_memory}"
+# developed in parallel with script #1. AF-2026-05-21-7 inverted precedence:
+# canonical .gaia/memory default, legacy _memory fallback only on positive
+# pre-ADR-111 evidence (legacy dir exists AND canonical doesn't). Prevents
+# rogue _memory/ creation on greenfield projects.
+if [ -z "${MEMORY_PATH:-}" ]; then
+  if [ -d "_memory" ] && [ ! -d ".gaia/memory" ]; then
+    MEMORY_PATH="_memory"
+  else
+    MEMORY_PATH=".gaia/memory"
+  fi
+fi
 JSONL="${MEMORY_PATH}/lifecycle-events.jsonl"
 
 mkdir -p "$MEMORY_PATH"

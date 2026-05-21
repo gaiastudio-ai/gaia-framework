@@ -101,12 +101,13 @@ if ! printf '%s' "$SKILL_NAME" | grep -Eq '^[a-z0-9][a-z0-9-]{0,63}$'; then
   die 1 "invalid skill_name: $SKILL_NAME"
 fi
 
-# E96-S7 partial-4b: smart-fallback for CHECKPOINT_ROOT
+# AF-2026-05-21-7 inverted precedence: canonical default, legacy fallback
+# only on positive pre-ADR-111 evidence (legacy dir exists AND canonical doesn't).
 if [ -z "${CHECKPOINT_ROOT:-}" ]; then
-  if [ -d ".gaia/memory/checkpoints" ]; then
-    CHECKPOINT_ROOT=".gaia/memory/checkpoints"
-  else
+  if [ -d "_memory/checkpoints" ] && [ ! -d ".gaia/memory" ]; then
     CHECKPOINT_ROOT="_memory/checkpoints"
+  else
+    CHECKPOINT_ROOT=".gaia/memory/checkpoints"
   fi
 fi
 SKILL_DIR="$CHECKPOINT_ROOT/$SKILL_NAME"
