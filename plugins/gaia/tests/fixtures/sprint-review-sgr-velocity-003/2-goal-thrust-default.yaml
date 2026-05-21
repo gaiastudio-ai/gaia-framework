@@ -1,0 +1,21 @@
+sprint_id: "test-2goal-thrust"
+duration: "2 weeks"
+velocity_capacity: 25
+team_size: 1
+total_points: 20
+capacity_utilization: "80%"
+status: review
+goals:
+  - "Goal 1 — Dominant goal (19 pts, 95% of capacity)"
+  - "Goal 2 — Incidental goal (1 pt, 5% of capacity)"
+stories:
+  - key: "T-S1"
+    title: "Goal 1 main story"
+    status: "done"
+    points: 19
+    goal_index: 1
+  - key: "T-S2"
+    title: "Goal 2 incidental story"
+    status: "done"
+    points: 1
+    goal_index: 2
