@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check-manifest-sentinel.sh — E17-S35 (FR-499, ADR-110)
 #
-# Layer 0 readiness guard: inspect a config/test-environment.yaml manifest
+# Layer 0 readiness guard: inspect a .gaia/config/test-environment.yaml manifest
 # for the canonical GAIA-MANIFEST-TEMPLATE sentinel comment. Detection of the
 # sentinel means the user copied the .example template without customizing —
 # FAIL Layer 0 readiness with an actionable error and surface
@@ -34,7 +34,7 @@ usage() {
   cat <<'USAGE'
 Usage: check-manifest-sentinel.sh --manifest <path>
 
-Inspect a config/test-environment.yaml manifest for the canonical
+Inspect a .gaia/config/test-environment.yaml manifest for the canonical
 GAIA-MANIFEST-TEMPLATE sentinel comment. Layer 0 readiness guard.
 
 Exit codes:

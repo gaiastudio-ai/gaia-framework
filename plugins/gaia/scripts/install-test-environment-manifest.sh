@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # install-test-environment-manifest.sh — E17-S31
 #
-# Materialize docs/test-artifacts/test-environment.yaml in a target project by
-# copying docs/test-artifacts/test-environment.yaml.example. This is the
+# Materialize .gaia/config/test-environment.yaml (canonical post-ADR-111) or
+# config/test-environment.yaml (legacy pre-ADR-111) in a target project by
+# copying the matching .example template. This is the
 # concrete "copy .example → .yaml" action invoked from:
 #   - /gaia-bridge-toggle Step 4 option [b] (interactive 3-option prompt)
 #   - /gaia-bridge-toggle Step 4 AC-EC5 YOLO-absent branch (auto-copy)
@@ -34,8 +35,9 @@ export LC_ALL
 
 SCRIPT_NAME="install-test-environment-manifest.sh"
 
-EXAMPLE_REL="config/test-environment.yaml.example"
-MANIFEST_REL="config/test-environment.yaml"
+# AF-2026-05-21-7/8: resolved after $target is validated.
+EXAMPLE_REL=""
+MANIFEST_REL=""
 
 target=""
 
@@ -43,9 +45,11 @@ usage() {
   cat <<'USAGE'
 Usage: install-test-environment-manifest.sh --target <project-root>
 
-Copy docs/test-artifacts/test-environment.yaml.example → test-environment.yaml
-inside the target project. Used by /gaia-bridge-toggle Step 4 option [b] and
-the YOLO-absent auto-copy branch.
+Copy .gaia/config/test-environment.yaml.example → .gaia/config/test-environment.yaml
+inside the target project (canonical post-ADR-111). Falls back to legacy
+config/test-environment.yaml.example → config/test-environment.yaml on pre-
+ADR-111 projects. Used by /gaia-bridge-toggle Step 4 option [b] and the
+YOLO-absent auto-copy branch.
 
 Behavior:
   - .yaml absent + .example present: copy .example -> .yaml.
@@ -71,6 +75,16 @@ done
 
 [ -n "${target}" ] || { printf '%s: --target is required\n' "$SCRIPT_NAME" >&2; usage >&2; exit 2; }
 [ -d "${target}" ] || { printf '%s: target directory does not exist: %s\n' "$SCRIPT_NAME" "${target}" >&2; exit 2; }
+
+# AF-2026-05-21-7/8: canonical .gaia/config/ default; legacy config/ fallback
+# only on positive pre-ADR-111 evidence.
+if [ -d "${target}/config" ] && [ ! -d "${target}/.gaia/config" ]; then
+  EXAMPLE_REL="config/test-environment.yaml.example"
+  MANIFEST_REL="config/test-environment.yaml"
+else
+  EXAMPLE_REL=".gaia/config/test-environment.yaml.example"
+  MANIFEST_REL=".gaia/config/test-environment.yaml"
+fi
 
 example_file="${target}/${EXAMPLE_REL}"
 manifest_file="${target}/${MANIFEST_REL}"

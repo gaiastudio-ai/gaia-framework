@@ -100,25 +100,36 @@ teardown() {
   [ "${status}" -eq 2 ]
 }
 
-# AC1 — install-test-environment-example.sh writes to config/
-@test "AC1: install-test-environment-example.sh writes to config/test-environment.yaml.example" {
+# AC1 — install-test-environment-example.sh writes to .gaia/config/ on greenfield (AF-2026-05-21-8)
+@test "AC1: install-test-environment-example.sh writes to .gaia/config/test-environment.yaml.example" {
   EXAMPLE_HELPER="${PLUGIN_ROOT}/gaia/scripts/install-test-environment-example.sh"
-  TARGET_FILE="${TARGET_DIR}/config/test-environment.yaml.example"
+  # Fresh TARGET_DIR for greenfield assertion (per-test isolation).
+  GREENFIELD_DIR="$(mktemp -d -t e17s32-greenfield-XXXXXX)"
+  TARGET_FILE="${GREENFIELD_DIR}/.gaia/config/test-environment.yaml.example"
 
-  run "${EXAMPLE_HELPER}" --target "${TARGET_DIR}"
+  run "${EXAMPLE_HELPER}" --target "${GREENFIELD_DIR}"
   [ "${status}" -eq 0 ]
   [ -f "${TARGET_FILE}" ]
+  # AF-2026-05-21-8 regression guard: NO rogue config/ created at project root.
+  [ ! -d "${GREENFIELD_DIR}/config" ]
+
+  rm -rf "${GREENFIELD_DIR}"
 }
 
-# AC1 — install-test-environment-manifest.sh copies from config/.example to config/.yaml
-@test "AC1: install-test-environment-manifest.sh copies config/.example → config/.yaml" {
+# AC1 — install-test-environment-manifest.sh copies .gaia/config/.example → .gaia/config/.yaml on greenfield
+@test "AC1: install-test-environment-manifest.sh copies .gaia/config/.example → .gaia/config/.yaml" {
   EXAMPLE_HELPER="${PLUGIN_ROOT}/gaia/scripts/install-test-environment-example.sh"
   MANIFEST_HELPER="${PLUGIN_ROOT}/gaia/scripts/install-test-environment-manifest.sh"
+  GREENFIELD_DIR="$(mktemp -d -t e17s32-greenfield2-XXXXXX)"
 
-  run "${EXAMPLE_HELPER}" --target "${TARGET_DIR}"
+  run "${EXAMPLE_HELPER}" --target "${GREENFIELD_DIR}"
   [ "${status}" -eq 0 ]
-  run "${MANIFEST_HELPER}" --target "${TARGET_DIR}"
+  run "${MANIFEST_HELPER}" --target "${GREENFIELD_DIR}"
   [ "${status}" -eq 0 ]
-  [ -f "${TARGET_DIR}/config/test-environment.yaml" ]
-  [ -f "${TARGET_DIR}/config/test-environment.yaml.example" ]
+  [ -f "${GREENFIELD_DIR}/.gaia/config/test-environment.yaml" ]
+  [ -f "${GREENFIELD_DIR}/.gaia/config/test-environment.yaml.example" ]
+  # AF-2026-05-21-8 regression guard: NO rogue config/ at project root.
+  [ ! -d "${GREENFIELD_DIR}/config" ]
+
+  rm -rf "${GREENFIELD_DIR}"
 }

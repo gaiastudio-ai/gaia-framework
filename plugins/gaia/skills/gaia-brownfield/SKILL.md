@@ -203,7 +203,7 @@ Output to `docs/planning-artifacts/brownfield-scan-test-execution.md`. If the su
 
 ## Phase 5 — Auto-Generate test-environment.yaml from Detected Infrastructure
 
-This phase delegates manifest generation to the shared library helper at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/test-environment-manifest.sh` (E17-S33). The helper is the SINGLE canonical generator for `config/test-environment.yaml` — both `/gaia-brownfield` Phase 5 (this section) and `/gaia-bridge-enable` Step 4 (E17-S34) invoke it.
+This phase delegates manifest generation to the shared library helper at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/test-environment-manifest.sh` (E17-S33). The helper is the SINGLE canonical generator for `.gaia/config/test-environment.yaml` — both `/gaia-brownfield` Phase 5 (this section) and `/gaia-bridge-enable` Step 4 (E17-S34) invoke it.
 
 1. Invoke the shared helper with `--target <project-path> --write` to detect stack signals and emit the manifest:
 
@@ -213,7 +213,7 @@ This phase delegates manifest generation to the shared library helper at `${CLAU
      --write
    ```
 
-   The helper uses `detect-signals.sh` under the hood (same detection-signals.yaml registry brownfield consumes elsewhere). It writes to `config/test-environment.yaml` with copy-if-absent semantics — if the file already exists, the helper preserves it byte-identical and exits 0.
+   The helper uses `detect-signals.sh` under the hood (same detection-signals.yaml registry brownfield consumes elsewhere). It writes to `.gaia/config/test-environment.yaml` with copy-if-absent semantics — if the file already exists, the helper preserves it byte-identical and exits 0.
 
 2. **Conflict resolution** is handled by the helper:
    - File does not exist → helper writes the stack-specific manifest. Log `Created test-environment.yaml from detected infrastructure.`
@@ -222,7 +222,7 @@ This phase delegates manifest generation to the shared library helper at `${CLAU
 
 3. **If the helper exits non-zero**, log the stderr message as a WARN-level entry and proceed. The conditional `test_environment_yaml_required_when_infra_detected` gate (per legacy E19-S12..S15 semantics) is NOT triggered when the helper succeeds OR when no stack is detected.
 
-4. **Normal-mode review pause (E48-S4):** in normal mode, present a summary of the generated `config/test-environment.yaml` (file path + detected stack name + runner names) and pause for user review before continuing to Phase 6. In yolo mode, skip the pause entirely and auto-continue. When the helper reported "preserved byte-identical" (existing file), the review pause is also skipped — the user is presumed to have already engaged with their existing manifest.
+4. **Normal-mode review pause (E48-S4):** in normal mode, present a summary of the generated `.gaia/config/test-environment.yaml` (file path + detected stack name + runner names) and pause for user review before continuing to Phase 6. In yolo mode, skip the pause entirely and auto-continue. When the helper reported "preserved byte-identical" (existing file), the review pause is also skipped — the user is presumed to have already engaged with their existing manifest.
 
 5. Record the helper exit code, detected stack, and chosen file disposition in the brownfield onboarding report for traceability.
 
@@ -406,7 +406,7 @@ The full artifact set emitted by this skill (preserved from the legacy `output.a
 - `docs/planning-artifacts/brownfield-scan-config-contradiction.md` (Phase 3)
 - `docs/planning-artifacts/brownfield-scan-dead-code.md` (Phase 3)
 - `docs/planning-artifacts/brownfield-scan-test-execution.md` (Phase 4)
-- `config/test-environment.yaml` (Phase 5, conditional)
+- `.gaia/config/test-environment.yaml` (Phase 5, conditional)
 - `docs/test-artifacts/nfr-assessment.md` (Phase 6 — gated)
 - `docs/test-artifacts/performance-test-plan-{date}.md` (Phase 6 — gated)
 - `docs/planning-artifacts/consolidated-gaps.md` (Phase 7)
@@ -424,7 +424,7 @@ Three gates enforced via `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh` after
 
 1. **`nfr_assessment_exists`** — checks `docs/test-artifacts/nfr-assessment.md` exists. On fail: `HALT: NFR assessment not found at {test_artifacts}/nfr-assessment.md.`
 2. **`performance_test_plan_exists`** — checks a `docs/test-artifacts/performance-test-plan-*.md` file exists. On fail: `HALT: Performance test plan not found at {test_artifacts}/. Run /gaia-perf-testing.`
-3. **`test_environment_yaml_required_when_infra_detected`** (conditional) — if any of the four test-infrastructure detectors (E19-S12 / S13 / S14 / S15) fired during Phase 5, then `config/test-environment.yaml` MUST exist. On fail: `HALT: Brownfield detected test infrastructure but test-environment.yaml was not generated. Re-run step 2.8 or run /gaia-brownfield again.` When zero test infrastructure was detected (AC-EC3), this gate is NOT triggered — the conditional gate stays silent for greenfield-ish projects.
+3. **`test_environment_yaml_required_when_infra_detected`** (conditional) — if any of the four test-infrastructure detectors (E19-S12 / S13 / S14 / S15) fired during Phase 5, then `.gaia/config/test-environment.yaml` MUST exist. On fail: `HALT: Brownfield detected test infrastructure but test-environment.yaml was not generated. Re-run step 2.8 or run /gaia-brownfield again.` When zero test infrastructure was detected (AC-EC3), this gate is NOT triggered — the conditional gate stays silent for greenfield-ish projects.
 
 `validate-gate.sh` serves the role of the spec-level `file-gate.sh` in the deployed script set (see Reconciliation Note).
 
