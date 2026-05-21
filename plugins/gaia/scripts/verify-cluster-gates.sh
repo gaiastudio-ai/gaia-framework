@@ -47,7 +47,12 @@ if [[ ! -d "$PROJECT_ROOT" ]]; then
   exit 64
 fi
 
-ARTIFACTS_DIR="$PROJECT_ROOT/docs/implementation-artifacts"
+# E96-S1 path resolution: prefer .gaia/artifacts/, fall back to legacy docs/
+if [[ -d "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" ]]; then
+  ARTIFACTS_DIR="$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts"
+else
+  ARTIFACTS_DIR="$PROJECT_ROOT/docs/implementation-artifacts"
+fi
 
 GATES=(
   E28-S76  E28-S81  E28-S95  E28-S99  E28-S118

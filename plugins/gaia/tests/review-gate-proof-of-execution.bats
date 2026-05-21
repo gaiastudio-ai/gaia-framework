@@ -180,6 +180,26 @@ _seed_all_passed_no_reports() {
   grep -q "Proof-of-Execution Findings" "$SUMMARY_FILE"
 }
 
+@test "POE: review-summary-gen Findings section enumerates each missing gate (printf -- bug regression)" {
+  # Regression for the printf-flag bug discovered during user manual test:
+  # the Findings section enumeration uses `printf '- **%s** ...'` whose
+  # format string starts with `-` and was being parsed as a flag by bash's
+  # builtin printf. The fix is `printf --` to terminate flag parsing.
+  _seed_all_passed_no_reports
+  bash "$SUMMARY" --story "$STORY_KEY" >/dev/null
+  SUMMARY_FILE="$ART/${STORY_KEY}-review-summary.md"
+  # The Findings section must list ALL six gates as bullet items.
+  grep -E '^- \*\*Code Review\*\* \(PASSED\) — MISSING:' "$SUMMARY_FILE"
+  grep -E '^- \*\*QA Tests\*\* \(PASSED\) — MISSING:' "$SUMMARY_FILE"
+  grep -E '^- \*\*Security Review\*\* \(PASSED\) — MISSING:' "$SUMMARY_FILE"
+  grep -E '^- \*\*Test Automation\*\* \(PASSED\) — MISSING:' "$SUMMARY_FILE"
+  grep -E '^- \*\*Test Review\*\* \(PASSED\) — MISSING:' "$SUMMARY_FILE"
+  grep -E '^- \*\*Performance Review\*\* \(PASSED\) — MISSING:' "$SUMMARY_FILE"
+  # Exactly six bullet items in the Findings section.
+  bullet_count=$(awk '/^## Proof-of-Execution Findings/,/^## Aggregate/' "$SUMMARY_FILE" | grep -cE '^- \*\*')
+  [ "$bullet_count" = "6" ]
+}
+
 @test "POE: review-summary-gen exits 3 under REVIEW_SUMMARY_REQUIRE_REPORTS=on when reports missing" {
   _seed_all_passed_no_reports
   run env REVIEW_SUMMARY_REQUIRE_REPORTS=on bash "$SUMMARY" --story "$STORY_KEY"

@@ -72,7 +72,12 @@ if [[ -d "$ROOT" ]]; then
   ROOT="$(cd "$ROOT" && pwd)"
 fi
 
-IMPL_DIR_ABS="$ROOT/docs/implementation-artifacts"
+# E96-S1 path resolution: prefer .gaia/artifacts/, fall back to legacy docs/
+if [[ -d "$ROOT/.gaia/artifacts/implementation-artifacts" ]]; then
+  IMPL_DIR_ABS="$ROOT/.gaia/artifacts/implementation-artifacts"
+else
+  IMPL_DIR_ABS="$ROOT/docs/implementation-artifacts"
+fi
 
 # Nothing to check if the implementation-artifacts dir does not exist.
 if [[ ! -d "$IMPL_DIR_ABS" ]]; then
