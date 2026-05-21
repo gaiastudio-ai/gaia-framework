@@ -407,7 +407,10 @@ sections_for_phase() {
   esac
 }
 
-# Read config_phase from ${PROJECT_ROOT}/config/project-config.yaml.
+# Read config_phase from ${PROJECT_ROOT}/.gaia/config/project-config.yaml
+# (canonical per ADR-111; legacy ${PROJECT_ROOT}/config/project-config.yaml
+# retained as fallback on pre-migration installs — see the `if [ -f .gaia/...`
+# / `else cfg=...` branches below at lines 415-420, 444-449, 543-548).
 # Absence-means-full per NFR-062 / ADR-097: missing file OR missing field =>
 # "full". yq is a soft dependency — if absent, treat as "full".
 # Emits the raw value on stdout (caller validates the enum).
