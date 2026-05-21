@@ -1,0 +1,45 @@
+sprint_id: "sprint-50-replay"
+duration: "2 weeks"
+velocity_capacity: 25
+team_size: 1
+total_points: 20
+capacity_utilization: "80%"
+status: review
+sprint_shape: completion-pass
+goals:
+  - "Land Class A fixes: wire config-hydration.sh + gaia-help/SKILL.md into lib/gaia-paths.sh (E97-S1)"
+  - "Retire one-shot story-layout migration helper (E97-S2)"
+  - "Triage + fix 4 Class B mixed-state scripts (E97-S3)"
+  - "Refactor review-summary-gen.sh CANONICAL_REPORT_RELPATHS to resolved variables (E97-S4)"
+  - "Land CI regression guard path-migration-guard.bats with grep-allowlist (E97-S5)"
+  - "Sweep stale comments in resolve-config.sh + validate-gate.sh (E97-S6)"
+  - "Fix release-bot .plugin-version drift (E97-S7)"
+stories:
+  - key: "E97-S1"
+    status: "done"
+    points: 2
+    goal_index: 1
+  - key: "E97-S2"
+    status: "done"
+    points: 2
+    goal_index: 2
+  - key: "E97-S3"
+    status: "done"
+    points: 5
+    goal_index: 3
+  - key: "E97-S4"
+    status: "done"
+    points: 2
+    goal_index: 4
+  - key: "E97-S5"
+    status: "done"
+    points: 5
+    goal_index: 5
+  - key: "E97-S6"
+    status: "done"
+    points: 2
+    goal_index: 6
+  - key: "E97-S7"
+    status: "done"
+    points: 2
+    goal_index: 7

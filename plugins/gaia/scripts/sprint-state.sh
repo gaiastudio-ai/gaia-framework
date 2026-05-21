@@ -149,6 +149,7 @@ Usage:
   sprint-state.sh set-goals                  --sprint <id> --goals "<g1|g2|..>"  (E93-S1)
   sprint-state.sh update-goals               --sprint <id> --goals "<g1|g2|..>"  (E93-S1)
   sprint-state.sh set-review-justification   --sprint <id> --file <path>    (E93-S1)
+  sprint-state.sh set-shape                  --sprint <id> --shape <thrust|completion-pass>  (E93-S6)
   sprint-state.sh reconcile                  [--sprint-id <id>] [--dry-run]
   sprint-state.sh lint-dependencies          [--sprint-id <id>] [--format json|text]
   sprint-state.sh record-escalation-override --item-ids <ids> --user <name> --reason <text>
@@ -2458,6 +2459,60 @@ cmd_update_goals() {
   cmd_set_goals "$@"
 }
 
+# cmd_set_shape — E93-S6. Set the optional `sprint_shape:` field on
+# sprint-status.yaml. Enum values: `thrust` (default; not normally written —
+# absence implies thrust) or `completion-pass`. Used by the rubric evaluator
+# to scale the sgr-velocity-003 incidental-goal floor.
+cmd_set_shape() {
+  local sprint_id="$1" shape="$2"
+  local yaml
+  yaml="$(_resolve_active_yaml)"
+  [ -r "$yaml" ] || die "set-shape: yaml not readable: $yaml"
+  case "$shape" in
+    thrust|completion-pass) ;;
+    *) die "sprint_shape must be one of: thrust, completion-pass — got: $shape" ;;
+  esac
+  # ADR-095 boundary-write pattern: write to a sibling tempfile, then mv into
+  # place atomically. Closes the crash-safety gap on direct truncate+write.
+  local tmp
+  tmp=$(mktemp "${yaml}.tmp.XXXXXX")
+  python3 - "$yaml" "$tmp" "$shape" <<'PY'
+import sys, re
+yaml_path = sys.argv[1]
+tmp_path = sys.argv[2]
+shape = sys.argv[3]
+text = open(yaml_path).read()
+new_line = f"sprint_shape: {shape}\n"
+lines = text.splitlines(keepends=True)
+out = []
+i = 0
+replaced = False
+while i < len(lines):
+    line = lines[i]
+    if not replaced and re.match(r'^sprint_shape:\s', line):
+        out.append(new_line)
+        replaced = True
+        i += 1
+        continue
+    out.append(line)
+    i += 1
+if not replaced:
+    new_out = []
+    inserted = False
+    for line in out:
+        if not inserted and re.match(r'^stories:\s*$', line):
+            new_out.append(new_line)
+            inserted = True
+        new_out.append(line)
+    if not inserted:
+        new_out.append(new_line)
+    out = new_out
+with open(tmp_path, 'w') as f:
+    f.write(''.join(out))
+PY
+  mv -f "$tmp" "$yaml"
+}
+
 # Helper: read top-level `status:` from the active-sprint yaml.
 _yaml_sprint_status() {
   local yaml="$1"
@@ -2669,7 +2724,7 @@ main() {
       usage
       exit 0
       ;;
-    transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification)
+    transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape)
       ;;
     *)
       printf '%s: error: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -2685,7 +2740,8 @@ main() {
   local rollover_from="" rollover_keys=""
   # E93-S1: sprint-level subcommands (get-goals / set-goals / update-goals /
   # set-review-justification + transition --sprint).
-  local goals_arg="" justification_file=""
+  # E93-S6: set-shape subcommand for sprint_shape modifier (thrust | completion-pass).
+  local goals_arg="" justification_file="" shape_arg=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --story)
@@ -2756,6 +2812,12 @@ main() {
         justification_file="$2"; shift 2 ;;
       --file=*)
         justification_file="${1#--file=}"; shift ;;
+      --shape)
+        # E93-S6: sprint_shape enum value for set-shape (thrust | completion-pass).
+        [ $# -ge 2 ] || die "--shape requires a value"
+        shape_arg="$2"; shift 2 ;;
+      --shape=*)
+        shape_arg="${1#--shape=}"; shift ;;
       --help|-h)
         usage
         exit 0 ;;
@@ -2823,6 +2885,10 @@ main() {
       [ -n "$reconcile_sprint_id" ] || die "set-review-justification requires --sprint <id>"
       [ -n "$justification_file" ] || die "set-review-justification requires --file <path>"
       cmd_set_review_justification "$reconcile_sprint_id" "$justification_file" ;;
+    set-shape)
+      [ -n "$reconcile_sprint_id" ] || die "set-shape requires --sprint <id>"
+      [ -n "$shape_arg" ] || die "set-shape requires --shape <thrust|completion-pass>"
+      cmd_set_shape "$reconcile_sprint_id" "$shape_arg" ;;
     inject)
       [ -n "$story_key" ] || die "inject requires --story <key>"
       cmd_inject "$story_key" "${reconcile_sprint_id:-}" ;;
