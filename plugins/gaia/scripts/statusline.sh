@@ -148,6 +148,8 @@ UPDATE_AVAILABLE_RAW=""
 INSTALLED_VERSION_STALE_RAW="false"
 GIT_DIRTY_RAW="false"
 CACHE_FRESH=0
+CACHE_TS=""
+AGE=0
 if [ -r "$CACHE_FILE" ]; then
   CACHE_JSON="$(cat "$CACHE_FILE" 2>/dev/null || printf '')"
   if [ -n "$CACHE_JSON" ]; then
@@ -188,12 +190,12 @@ fi
 _FETCHER="$HOME/.claude/gaia-statusline/statusline-update-check.sh"
 if [ -x "$_FETCHER" ]; then
   _NEED_FETCH=0
-  if [ -z "$CACHE_TS" ]; then
+  if [ -z "${CACHE_TS:-}" ]; then
     _NEED_FETCH=1
   elif [ -n "${CACHE_EPOCH:-}" ]; then
     # 1800 sec = 30min — matches the writer's TTL_SECONDS (sprint-43
     # update from 24h so new GitHub releases surface within 30min).
-    if [ "$AGE" -ge 1800 ]; then
+    if [ "${AGE:-0}" -ge 1800 ]; then
       _NEED_FETCH=1
     fi
   fi

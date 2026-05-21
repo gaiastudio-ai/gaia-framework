@@ -38,6 +38,45 @@ SS
 teardown() { common_teardown; }
 
 # ---------------------------------------------------------------------------
+# AF-2026-05-21-5 — fresh-install render path (fetcher present, cache absent)
+#
+# Regression coverage for the live repro on 2026-05-21: a second machine
+# had the runtime + fetcher installed (statusline-update-check.sh present
+# and executable) but no cache file yet (statusline-update-check.sh had
+# never been invoked, so cache/latest-release.json did not exist). Under
+# `set -u` the runtime aborted at line 191 dereferencing CACHE_TS before
+# emitting any stdout, leaving Claude Code with nothing to render.
+#
+# The existing TC-3 above did not catch this because its fixture has no
+# statusline-update-check.sh under $HOME, so the `[ -x "$_FETCHER" ]`
+# gate at line 189 was false and execution skipped the buggy block. This
+# new test installs a fetcher stub, leaves the cache absent, and asserts
+# the runtime still renders cleanly.
+# ---------------------------------------------------------------------------
+
+@test "AF-2026-05-21-5: fresh install (fetcher present, cache absent) renders exit 0 with empty stderr" {
+  [ -f "$RUNTIME" ]
+  # Install a fetcher stub at the canonical path so the runtime's
+  # `[ -x "$_FETCHER" ]` gate is true and control reaches the
+  # CACHE_TS/AGE dereferences.
+  mkdir -p "$HOME/.claude/gaia-statusline"
+  cat > "$HOME/.claude/gaia-statusline/statusline-update-check.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+  chmod +x "$HOME/.claude/gaia-statusline/statusline-update-check.sh"
+  # Cache file intentionally absent — this is the fresh-install state.
+  [ ! -e "$HOME/.claude/gaia-statusline/cache/latest-release.json" ]
+  cd "$TEST_TMP"
+  run bash -c "printf '%s' '$STDIN_JSON' | '$RUNTIME' 2>/tmp/af-2026-05-21-5-stderr"
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  # Runtime contract: NEVER emit to stderr (statusline.sh:9).
+  [ ! -s /tmp/af-2026-05-21-5-stderr ]
+  rm -f /tmp/af-2026-05-21-5-stderr
+}
+
+# ---------------------------------------------------------------------------
 # TC-STATUSLINE-3 / AT-2 — no-network + no-cache + no-git renders minimal one-liner
 # ---------------------------------------------------------------------------
 
