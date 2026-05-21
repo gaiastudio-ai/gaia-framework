@@ -26,7 +26,7 @@ This skill pattern-matches against `gaia-code-review` (E65-S2) as the canonical 
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-review-qa [story-key]".
-- The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
+- The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper (E79-S7 / FR-476) which honors the ADR-111 canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then legacy `docs/implementation-artifacts/{story_key}-*.md` as fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob — that breaks on `.gaia/`-canonical projects (AF-2026-05-21-4 Finding 1).
 - The story MUST be in `review` status. If not, fail with "story must be in review status before QA tests".
 - This skill is READ-ONLY in the fork. Do NOT attempt to call Write or Edit — the allowlist enforces this. Persistence is routed through the parent context.
 - Do NOT write executable test files to the source tree (`tests/`, `spec/`, `__tests__/`, `e2e/`). Document test cases in the QA report only — test-file authoring belongs to `/gaia-test-automate`.
@@ -117,7 +117,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 ### Phase 1 — Setup
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-review-qa [story-key]"
-- Resolve the story file path using the canonical glob: `docs/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
+- Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper (E79-S7 / FR-476). It honors the ADR-111 canonical-first contract: searches `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then falls back to legacy `docs/implementation-artifacts/{story_key}-*.md`. Exit codes: 0 = single match (stdout = path); 1 = zero matches (fail with "story file not found for key {story_key}"); 2 = multiple matches (fail with "multiple story files matched key {story_key}"). Do NOT inline-hardcode the legacy `docs/` glob — see AF-2026-05-21-4 Finding 1.
 - Read the resolved story file; parse YAML frontmatter to extract `status`, `traces_to`, and `figma:` block (if any).
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch (NFR-DEJ-4 preserved). Forward the persona payload + canonical stack name into the fork.
 - **Tool prereq probe.** For each tool used by the resolved stack: probe via `command -v <tool>` first; fall back to `node_modules/.bin/<tool> --version` (TS/Angular). NEVER use `npx <tool> --version` (triggers npm install and breaks the NFR-DEJ-1 60s P95 budget). Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
