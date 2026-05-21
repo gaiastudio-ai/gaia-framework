@@ -145,6 +145,13 @@ plugins/gaia/skills/gaia-edit-arch/scripts/finalize.sh
 # is permitted.
 plugins/gaia/skills/gaia-edit-prd/scripts/setup.sh
 
+# AF-2026-05-21-14 fix — gaia-edit-ux/setup.sh now uses the three-tier
+# idiom (UX_DESIGN_PATH env-var override → positive-evidence legacy
+# fallback → canonical default). Allowlisted so the legacy
+# `docs/planning-artifacts/ux-design.md` literal in the positive-evidence
+# branch is permitted.
+plugins/gaia/skills/gaia-edit-ux/scripts/setup.sh
+
 # --- Bucket 3: retired scripts ---
 
 plugins/gaia/scripts/retired/

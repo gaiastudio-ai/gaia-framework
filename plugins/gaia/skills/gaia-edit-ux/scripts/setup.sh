@@ -64,11 +64,22 @@ else
 fi
 
 # ---------- 2b. Guard: ux-design.md must already exist ----------
+# AF-2026-05-21-14 three-tier path resolution (mirrors AF-21-10/-11/-12 flat elif chain):
+#   Tier 1 — UX_DESIGN_PATH env-var override wins when set.
+#   Tier 2 — positive pre-ADR-111 evidence (legacy file exists AND canonical
+#            dir does NOT) → use legacy docs/planning-artifacts/ux-design.md.
+#   Tier 3 — canonical default: .gaia/artifacts/planning-artifacts/ux-design.md per ADR-111.
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}"
-UX_DESIGN_PATH="$PROJECT_ROOT/docs/planning-artifacts/ux-design.md"
+if [ -z "${UX_DESIGN_PATH:-}" ]; then
+  if [ -f "$PROJECT_ROOT/docs/planning-artifacts/ux-design.md" ] && [ ! -d "$PROJECT_ROOT/.gaia/artifacts/planning-artifacts" ]; then
+    UX_DESIGN_PATH="$PROJECT_ROOT/docs/planning-artifacts/ux-design.md"
+  else
+    UX_DESIGN_PATH="$PROJECT_ROOT/.gaia/artifacts/planning-artifacts/ux-design.md"
+  fi
+fi
 
 if [ ! -f "$UX_DESIGN_PATH" ]; then
-  log "ux-design.md not found at $UX_DESIGN_PATH — edit-ux requires an existing UX design (non-fatal in setup)"
+  log "ux-design.md not found at $UX_DESIGN_PATH (canonical .gaia/artifacts/planning-artifacts/ux-design.md or legacy docs/planning-artifacts/ux-design.md) — edit-ux requires an existing UX design (non-fatal in setup)"
 fi
 
 # ---------- 3. Load checkpoint state ----------
