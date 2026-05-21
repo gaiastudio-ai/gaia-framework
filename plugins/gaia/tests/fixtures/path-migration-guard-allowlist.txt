@@ -130,6 +130,14 @@ plugins/gaia/skills/gaia-tech-research/scripts/finalize.sh
 # branch is permitted.
 plugins/gaia/skills/gaia-create-prd/scripts/finalize.sh
 
+# AF-2026-05-21-11 fix — gaia-create-arch + gaia-edit-arch finalize.sh
+# scripts now use the same three-tier idiom (ARCHITECTURE_ARTIFACT env-var
+# override → positive-evidence legacy fallback → canonical default).
+# Allowlisted so the legacy `docs/planning-artifacts/architecture.md`
+# literal in the positive-evidence branch is permitted.
+plugins/gaia/skills/gaia-create-arch/scripts/finalize.sh
+plugins/gaia/skills/gaia-edit-arch/scripts/finalize.sh
+
 # --- Bucket 3: retired scripts ---
 
 plugins/gaia/scripts/retired/
