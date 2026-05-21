@@ -4,7 +4,7 @@
 # AC5 / AC6 / AC7 / AC11 / AC12 / FR-MTG-13 / ADR-085.
 #
 # Computes the extraction path purely from the inputs:
-#   docs/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/SP-{N}-{auto-slug}.{ext}
+#   .gaia/artifacts/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/SP-{N}-{auto-slug}.{ext}
 #
 # Auto-slug derivation (FR-MTG-13):
 #   1. If the content's first non-blank line is "textual" (does NOT look like
@@ -148,5 +148,7 @@ if [[ -z "$auto_slug" ]]; then
   auto_slug="untitled"
 fi
 
-printf 'docs/creative-artifacts/meeting-scratchpad/%s/%s/%s-%s.%s\n' \
+# AF-2026-05-21-16: canonical-unconditional per E96-S8 write-boundary.sh
+# (post-ADR-111 canonical-only enforcement; no legacy fallback supported).
+printf '.gaia/artifacts/creative-artifacts/meeting-scratchpad/%s/%s/%s-%s.%s\n' \
   "$YYYY_MM" "$SLUG" "$SP_N" "$auto_slug" "$CTYPE"

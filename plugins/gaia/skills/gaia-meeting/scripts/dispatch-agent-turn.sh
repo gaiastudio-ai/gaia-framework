@@ -181,7 +181,7 @@ fi
 # payload on stdout.
 if [[ -z "${GAIA_DISPATCH_AGENT_STUB:-}" ]]; then
   echo "dispatch-agent-turn.sh: no GAIA_DISPATCH_AGENT_STUB set — production Agent-tool dispatch not yet wired" >&2
-  echo "dispatch-agent-turn.sh: see docs/planning-artifacts/architecture (ADR-045, ADR-063) for the harness contract" >&2
+  echo "dispatch-agent-turn.sh: see .gaia/artifacts/planning-artifacts/architecture (ADR-045, ADR-063) for the harness contract" >&2
   exit 3
 fi
 
