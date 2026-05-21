@@ -28,26 +28,28 @@ fi
 
 ## Mission
 
-You are orchestrating the creation of a UX Design document. The UX design authoring is delegated to the **ux-designer** subagent (Christy), who conducts user research, designs information architecture, creates wireframes, and produces the final artifact. You load the PRD, validate inputs, coordinate the multi-step flow, and write the output to `docs/planning-artifacts/ux-design.md` using the carried `ux-design-assessment-template.md` for brownfield assessments.
+You are orchestrating the creation of a UX Design document. The UX design authoring is delegated to the **ux-designer** subagent (Christy), who conducts user research, designs information architecture, creates wireframes, and produces the final artifact. You load the PRD, validate inputs, coordinate the multi-step flow, and write the output to the canonical post-ADR-111 path `.gaia/artifacts/planning-artifacts/ux-design.md` using the carried `ux-design-assessment-template.md` for brownfield assessments.
+
+**Path resolution (AF-2026-05-21-14).** All UX path references in this SKILL.md use the canonical post-ADR-111 location `.gaia/artifacts/planning-artifacts/ux-design.md`. Pre-ADR-111 projects continue to work via canonical-first two-tier resolution at the script layer (`scripts/finalize.sh` already implements the E96-S7 partial-4c smart-fallback). When writing the UX design via the Write tool, target the canonical path; the pre-ADR-111 fallback is read-side only.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/2-planning/create-ux-design` workflow (brief Cluster 5, story P5-S4 / E28-S43). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 
-- A PRD MUST exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `docs/planning-artifacts/prd.md` (flat layout); if missing, fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
+- A PRD MUST exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - Every design decision must trace to a user need from the PRD.
 - UX design authoring is delegated to the `ux-designer` subagent (Christy) via native Claude Code subagent invocation — do NOT inline Christy's persona into this skill body. If the ux-designer subagent (E28-S21) is not available, fail with "ux-designer subagent not available — install E28-S21" error.
-- If `docs/planning-artifacts/ux-design.md` already exists, warn the user: "An existing UX design was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
+- If `.gaia/artifacts/planning-artifacts/ux-design.md` already exists, warn the user: "An existing UX design was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
 - Template resolution: load `ux-design-assessment-template.md` from this skill directory for brownfield UX assessments. If `custom/templates/ux-design-assessment-template.md` exists and is non-empty, use the custom template instead — the custom template takes full precedence over the framework default (ADR-020 / FR-101).
 
 ## Steps
 
 ### Step 1 — Load PRD
 
-- Resolve the PRD path via the sharded-fallback rule (Critical Rules above). Read the resolved PRD (flat `docs/planning-artifacts/prd.md` OR sharded `docs/planning-artifacts/prd/prd.md`).
-- If neither path resolves, fail fast: "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
+- Resolve the PRD path via the sharded-fallback rule (Critical Rules above). Read the resolved PRD (flat `.gaia/artifacts/planning-artifacts/prd.md` OR sharded `.gaia/artifacts/planning-artifacts/prd/prd.md`).
+- If neither path resolves, fail fast: "PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - Extract: user personas, user journeys, and functional requirements.
-- If `docs/planning-artifacts/ux-design.md` already exists: warn "An existing UX design was found at docs/planning-artifacts/ux-design.md. Continuing will overwrite it. Confirm with user before proceeding."
+- If `.gaia/artifacts/planning-artifacts/ux-design.md` already exists: warn "An existing UX design was found at .gaia/artifacts/planning-artifacts/ux-design.md. Continuing will overwrite it. Confirm with user before proceeding."
 
 > `!scripts/write-checkpoint.sh gaia-create-ux 1 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 
@@ -230,11 +232,11 @@ List frames on the canvas (filtered to `FRAME` nodes at depth-2). For each frame
 
 #### 9d — W3C DTCG Token Extraction
 
-Call the `figma-integration` read API to extract Figma styles + variables, then transform each into a W3C DTCG token entry with the canonical key set: `$value`, `$type`, and optional `$description`. Map Figma style types per the DTCG draft — color → `color`, typography → `typography`, effect → `shadow`, float/number variable → `dimension` or `number`. Tokens whose source Figma type is outside the DTCG registered set (e.g., `BOOLEAN`) are mapped to the closest DTCG type (`boolean` or `other`) with the `$description` annotation preserving the source Figma type (AC-EC6). Emit the document to `docs/planning-artifacts/design-system/design-tokens.json` using the DTCG **nested-group convention** (e.g., `{"colors": {"primary": {"$value": "#0066CC", "$type": "color"}}}`) — flat dot-notation token names are discouraged by the DTCG draft. Include a top-level `$schema` reference to the DTCG draft schema URL so downstream tooling can validate. Apply delta-sync semantics per FR-168: do NOT overwrite tokens that already exist and are unchanged; only add new tokens and update changed token values (Subtask 5.3).
+Call the `figma-integration` read API to extract Figma styles + variables, then transform each into a W3C DTCG token entry with the canonical key set: `$value`, `$type`, and optional `$description`. Map Figma style types per the DTCG draft — color → `color`, typography → `typography`, effect → `shadow`, float/number variable → `dimension` or `number`. Tokens whose source Figma type is outside the DTCG registered set (e.g., `BOOLEAN`) are mapped to the closest DTCG type (`boolean` or `other`) with the `$description` annotation preserving the source Figma type (AC-EC6). Emit the document to `.gaia/artifacts/planning-artifacts/design-system/design-tokens.json` using the DTCG **nested-group convention** (e.g., `{"colors": {"primary": {"$value": "#0066CC", "$type": "color"}}}`) — flat dot-notation token names are discouraged by the DTCG draft. Include a top-level `$schema` reference to the DTCG draft schema URL so downstream tooling can validate. Apply delta-sync semantics per FR-168: do NOT overwrite tokens that already exist and are unchanged; only add new tokens and update changed token values (Subtask 5.3).
 
 #### 9e — Component Specs Generation
 
-Walk imported Figma components filtered to `COMPONENT` and `COMPONENT_SET` nodes. Emit one entry per component under a top-level `components:` map in `docs/planning-artifacts/design-system/component-specs.yaml`. Each entry carries `name`, `figma_node_id`, `variants` (from component-set child names), `states` (inferred from variant property names — `default`, `hover`, `active`, `disabled`, `error`, `loading`), `props` (extracted from component description + variant properties), and `platform_tokens: {}` as an empty placeholder (populated later by platform resolvers per FR-172). Add `schema_version: "1.0"` at the root per the test-plan.md:891 contract. If a component is missing a name or node id, skip its emission and log the skipped component in the FR-140 audit section. When the imported file has zero components (AC-EC5), still emit `component-specs.yaml` with `schema_version: "1.0"` and an empty `components: {}` map; `ux-design.md` notes "No components found".
+Walk imported Figma components filtered to `COMPONENT` and `COMPONENT_SET` nodes. Emit one entry per component under a top-level `components:` map in `.gaia/artifacts/planning-artifacts/design-system/component-specs.yaml`. Each entry carries `name`, `figma_node_id`, `variants` (from component-set child names), `states` (inferred from variant property names — `default`, `hover`, `active`, `disabled`, `error`, `loading`), `props` (extracted from component description + variant properties), and `platform_tokens: {}` as an empty placeholder (populated later by platform resolvers per FR-172). Add `schema_version: "1.0"` at the root per the test-plan.md:891 contract. If a component is missing a name or node id, skip its emission and log the skipped component in the FR-140 audit section. When the imported file has zero components (AC-EC5), still emit `component-specs.yaml` with `schema_version: "1.0"` and an empty `components: {}` map; `ux-design.md` notes "No components found".
 
 #### 9f — FR-140 Compliance Audit (Read-Only)
 
@@ -285,14 +287,14 @@ Append an H2 section "Figma Source (Import)" to `ux-design.md` with the file key
 
 ### Step 10 — Generate Output
 
-Write the UX design document to `docs/planning-artifacts/ux-design.md` with: personas, information architecture, wireframe descriptions, interaction patterns, component specifications, accessibility plan, FR-to-Screen Mapping table. Include Figma metadata sections if Generate or Import mode was active.
+Write the UX design document to `.gaia/artifacts/planning-artifacts/ux-design.md` with: personas, information architecture, wireframe descriptions, interaction patterns, component specifications, accessibility plan, FR-to-Screen Mapping table. Include Figma metadata sections if Generate or Import mode was active.
 
 The `ux-design-assessment-template.md` carried in this skill directory is available for brownfield UX assessments — reference it at `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-ux/ux-design-assessment-template.md`.
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/planning-artifacts/ux-design.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/ux-design.md`
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 10 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH" --paths docs/planning-artifacts/ux-design.md`
+> `!scripts/write-checkpoint.sh gaia-create-ux 10 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH" --paths .gaia/artifacts/planning-artifacts/ux-design.md`
 
 ### Step 11 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -301,17 +303,17 @@ The `ux-design-assessment-template.md` carried in this skill directory is availa
 
 **Guards (run before invocation):**
 
-- Artifact-existence guard (AC-EC3): if not exists `docs/planning-artifacts/ux-design.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
+- Artifact-existence guard (AC-EC3): if not exists `.gaia/artifacts/planning-artifacts/ux-design.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
 - Val-skill-availability guard (AC-EC6): if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
 
 **Loop:**
 
 1. iteration = 1.
-2. Invoke `/gaia-val-validate` with `artifact_path = docs/planning-artifacts/ux-design.md`, `artifact_type = ux-design`.
+2. Invoke `/gaia-val-validate` with `artifact_path = .gaia/artifacts/planning-artifacts/ux-design.md`, `artifact_type = ux-design`.
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
-     a. Apply a fix to `docs/planning-artifacts/ux-design.md` addressing the findings.
+     a. Apply a fix to `.gaia/artifacts/planning-artifacts/ux-design.md` addressing the findings.
      b. Append an iteration log record to checkpoint `custom.val_loop_iterations`.
      c. iteration += 1.
      d. If iteration <= 3: go to step 2.
@@ -321,7 +323,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation runs against the Step 10 primary save (the artifact-as-drafted), independent of whether the optional accessibility review (Step 12) is later executed.
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 11 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH" stage=val-auto-review --paths docs/planning-artifacts/ux-design.md`
+> `!scripts/write-checkpoint.sh gaia-create-ux 11 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/ux-design.md`
 
 ### Step 12 — Optional: Accessibility Review
 
@@ -368,7 +370,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   See docs/implementation-artifacts/E42-S7-port-gaia-create-ux-26-item-checklist-to-v2.md.
 -->
 
-- [script-verifiable] SV-01 — Output file exists at docs/planning-artifacts/ux-design.md
+- [script-verifiable] SV-01 — Output file exists at .gaia/artifacts/planning-artifacts/ux-design.md
 - [script-verifiable] SV-02 — Output artifact is non-empty
 - [script-verifiable] SV-03 — Artifact has frontmatter or top-level title
 - [script-verifiable] SV-04 — Personas section present
