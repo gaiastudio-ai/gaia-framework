@@ -61,9 +61,18 @@ export LC_ALL
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="$SCRIPT_DIR/lib"
+# E97-S2: the script lives under scripts/retired/ but its helpers remain under
+# the active scripts/ tree. Resolve PARENT_SCRIPT_DIR by walking up one level
+# when the basename of SCRIPT_DIR is "retired"; otherwise fall back to
+# SCRIPT_DIR for the original co-located layout (preserves git-history bisect).
+if [ "$(basename "$SCRIPT_DIR")" = "retired" ]; then
+  PARENT_SCRIPT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+else
+  PARENT_SCRIPT_DIR="$SCRIPT_DIR"
+fi
+LIB_DIR="$PARENT_SCRIPT_DIR/lib"
 RESOLVE_EPIC_SLUG_LIB="$LIB_DIR/resolve-epic-slug.sh"
-CHECK_STORY_LAYOUT_SCRIPT="$SCRIPT_DIR/check-story-layout-sync.sh"
+CHECK_STORY_LAYOUT_SCRIPT="$PARENT_SCRIPT_DIR/check-story-layout-sync.sh"
 
 if [ ! -f "$RESOLVE_EPIC_SLUG_LIB" ]; then
   printf 'migrate-stories-to-canonical-layout.sh: missing dependency: %s\n' \
