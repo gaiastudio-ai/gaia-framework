@@ -26,6 +26,8 @@ setup() {
   # Sandbox: all gate evaluations run with PWD pointing at TEST_TMP so
   # `file_exists` predicates resolve relative paths against the fixture
   # tree rather than the real workspace.
+  # AF-2026-05-21-20: canonical .gaia/artifacts/ + legacy docs/ (back-compat).
+  mkdir -p "$TEST_TMP/.gaia/artifacts/creative-artifacts"
   mkdir -p "$TEST_TMP/docs/creative-artifacts"
   mkdir -p "$TEST_TMP/_memory/checkpoints"
   export CHECKPOINT_PATH="$TEST_TMP/_memory/checkpoints"
@@ -107,7 +109,8 @@ _make_brief() {
 # VCP-GATE-01 — pre_start gate passes when brainstorm artifact exists
 # -------------------------------------------------------------------------
 @test "VCP-GATE-01: setup.sh pre_start passes when brainstorm artifact exists" {
-  printf '# brainstorm fixture\n' >"$TEST_TMP/docs/creative-artifacts/brainstorm-fixture.md"
+  # AF-2026-05-21-20: canonical .gaia/artifacts/ path.
+  printf '# brainstorm fixture\n' >"$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-fixture.md"
   cd "$TEST_TMP"
   run "$SETUP"
   [ "$status" -eq 0 ]
@@ -250,8 +253,8 @@ _make_brief() {
 # AC-EC1 — glob pattern matches multiple brainstorm files; gate passes.
 # -------------------------------------------------------------------------
 @test "AC-EC1: pre_start passes when multiple brainstorm files match" {
-  printf '# bs1\n' >"$TEST_TMP/docs/creative-artifacts/brainstorm-one.md"
-  printf '# bs2\n' >"$TEST_TMP/docs/creative-artifacts/brainstorm-two.md"
+  printf '# bs1\n' >"$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-one.md"
+  printf '# bs2\n' >"$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-two.md"
   cd "$TEST_TMP"
   run "$SETUP"
   [ "$status" -eq 0 ]

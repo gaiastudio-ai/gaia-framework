@@ -46,13 +46,15 @@ setup() {
   cp "$FIXTURE_DIR/config/project-config.yaml" "$TEST_TMP/config/project-config.yaml"
   export CLAUDE_SKILL_DIR="$TEST_TMP"
 
-  # E45-S2 — Seed a brainstorm artifact under docs/creative-artifacts/ so
-  # gaia-product-brief's pre_start quality gate passes. The fixture is a
-  # minimal placeholder; the gate only checks that the glob matches >= 1
-  # file (file_exists:docs/creative-artifacts/brainstorm-*.md).
+  # E45-S2 + AF-2026-05-21-20 — Seed a brainstorm artifact under
+  # canonical .gaia/artifacts/creative-artifacts/ so gaia-product-brief's
+  # pre_start quality gate passes. The fixture is a minimal placeholder;
+  # the gate only checks that the glob matches >= 1 file
+  # (file_exists:.gaia/artifacts/creative-artifacts/brainstorm-*.md).
+  mkdir -p "$TEST_TMP/.gaia/artifacts/creative-artifacts"
   mkdir -p "$TEST_TMP/docs/creative-artifacts"
   printf '# brainstorm fixture (e2e cluster-4)\n' \
-    > "$TEST_TMP/docs/creative-artifacts/brainstorm-fixture.md"
+    > "$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-fixture.md"
 
   # Skills in dependency order
   SKILLS=(
