@@ -13,7 +13,7 @@ orchestration_class: conversational
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class conversational --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -180,12 +180,12 @@ After Step 5 completes, persist the sprint's lessons to each of the six canonica
 
 Target sidecars (six fan-out, one entry per agent per sprint):
 
-1. `${CLAUDE_PROJECT_ROOT}/_memory/architect-sidecar/decision-log.md` — architecture-level lessons.
-2. `${CLAUDE_PROJECT_ROOT}/_memory/test-architect-sidecar/decision-log.md` — test strategy lessons.
-3. `${CLAUDE_PROJECT_ROOT}/_memory/security-sidecar/decision-log.md` — security findings.
-4. `${CLAUDE_PROJECT_ROOT}/_memory/devops-sidecar/decision-log.md` — deployment / pipeline lessons.
-5. `${CLAUDE_PROJECT_ROOT}/_memory/sm-sidecar/decision-log.md` — process lessons.
-6. `${CLAUDE_PROJECT_ROOT}/_memory/pm-sidecar/decision-log.md` — stakeholder / prioritization lessons.
+1. `${CLAUDE_PROJECT_ROOT}/.gaia/memory/architect-sidecar/decision-log.md` — architecture-level lessons.
+2. `${CLAUDE_PROJECT_ROOT}/.gaia/memory/test-architect-sidecar/decision-log.md` — test strategy lessons.
+3. `${CLAUDE_PROJECT_ROOT}/.gaia/memory/security-sidecar/decision-log.md` — security findings.
+4. `${CLAUDE_PROJECT_ROOT}/.gaia/memory/devops-sidecar/decision-log.md` — deployment / pipeline lessons.
+5. `${CLAUDE_PROJECT_ROOT}/.gaia/memory/sm-sidecar/decision-log.md` — process lessons.
+6. `${CLAUDE_PROJECT_ROOT}/.gaia/memory/pm-sidecar/decision-log.md` — stakeholder / prioritization lessons.
 
 For each sidecar, compose a payload in ADR-016 decision-log format tagged with the sprint ID, then invoke:
 
@@ -206,7 +206,7 @@ Failure posture:
 
 ### Step 5d --- Velocity Data Persistence (FR-RIM-4, architecture §10.28.5)
 
-Append a velocity row to `${CLAUDE_PROJECT_ROOT}/_memory/sm-sidecar/velocity-data.md`. This runs **unconditionally** on every retro invocation — it is the velocity mandate per architecture §10.28.5. Idempotency key is `sprint_id` alone (one row per sprint).
+Append a velocity row to `${CLAUDE_PROJECT_ROOT}/.gaia/memory/sm-sidecar/velocity-data.md`. This runs **unconditionally** on every retro invocation — it is the velocity mandate per architecture §10.28.5. Idempotency key is `sprint_id` alone (one row per sprint).
 
 Payload schema (architecture §10.28.5):
 
@@ -224,7 +224,7 @@ Invocation:
 ${CLAUDE_PLUGIN_ROOT}/../../scripts/retro-sidecar-write.sh \
   --root       "${CLAUDE_PROJECT_ROOT}" \
   --sprint-id  "${sprint_id}" \
-  --target     "${CLAUDE_PROJECT_ROOT}/_memory/sm-sidecar/velocity-data.md" \
+  --target     "${CLAUDE_PROJECT_ROOT}/.gaia/memory/sm-sidecar/velocity-data.md" \
   --payload    "$(emit_velocity_row)"
 ```
 
@@ -374,12 +374,12 @@ Report the output path to the facilitator.
 
 Final step. After the retro artifact is written, persist the retro's decisions and rolling context to the validator sidecar so Val can cross-reference retro outcomes in subsequent validations. Per architecture §10.28.2 "Relationship to Shared Val Sidecar Writer", this delegation is made concrete by invoking the shared Val sidecar writer helper (`val-sidecar-write.sh`, E34-S1, architecture §10.10). The helper's two-file allowlist (NFR-VSP-2) and composite-key idempotency (NFR-VSP-3) apply uniformly. Placing the helper invocation as the FINAL step satisfies AC3 atomicity — any upstream failure short-circuits before the helper runs, so no partial sidecar entry can appear.
 
-**Fail-closed enforcement (E92-S2 / FR-OEXP-2).** This skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`. The finalize script asserts that `_memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker; if not, it exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize`. Mirrors the sibling guard in `/gaia-triage-findings/scripts/finalize.sh` and the `gaia-add-feature/scripts/finalize.sh:51-82` E83-S1 fail-closed pattern.
+**Fail-closed enforcement (E92-S2 / FR-OEXP-2).** This skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`. The finalize script asserts that `.gaia/memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker; if not, it exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize`. Mirrors the sibling guard in `/gaia-triage-findings/scripts/finalize.sh` and the `gaia-add-feature/scripts/finalize.sh:51-82` E83-S1 fail-closed pattern.
 
 Targets (enforced by the helper allowlist — no other paths are writable):
 
-- `${CLAUDE_PROJECT_ROOT}/_memory/validator-sidecar/decision-log.md` — append one ADR-016-formatted entry per retro (sprint-ID tagged).
-- `${CLAUDE_PROJECT_ROOT}/_memory/validator-sidecar/conversation-context.md` — refresh the rolling body with a one-line summary of the current retro per FR-VSP-2.
+- `${CLAUDE_PROJECT_ROOT}/.gaia/memory/validator-sidecar/decision-log.md` — append one ADR-016-formatted entry per retro (sprint-ID tagged).
+- `${CLAUDE_PROJECT_ROOT}/.gaia/memory/validator-sidecar/conversation-context.md` — refresh the rolling body with a one-line summary of the current retro per FR-VSP-2.
 
 Build the decision payload as `{verdict, findings[], artifact_path}` — the `findings[]` list holds the action-item IDs produced in Step 5 sorted by id; `artifact_path` is the retro artifact written in Step 6.
 
@@ -401,7 +401,7 @@ Re-runs with identical payload yield `status=skipped_duplicate` and must be trea
 
 Failure posture:
 
-- Missing `_memory/validator-sidecar/` directory → the shared helper creates the directory and seeds both files with canonical ADR-016 headers before the first append (AC-EC10).
+- Missing `.gaia/memory/validator-sidecar/` directory → the shared helper creates the directory and seeds both files with canonical ADR-016 headers before the first append (AC-EC10).
 - Degraded-mode running: if Step 5c / 5d / 5 failed earlier, Step 7 still runs so the validator sidecar records the partial-success outcome — retro mandate per architecture §10.28.2.
 - Helper rejection or error → log a warning and continue. Memory persistence is best-effort and MUST NOT fail the skill (FR-RIM-8 non-blocking).
 

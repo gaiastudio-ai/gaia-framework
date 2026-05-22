@@ -30,7 +30,7 @@ Section IDs MUST match exactly. Renaming or merging sections is a breaking chang
 - **Decision entries follow ADR-016.** Every write through `session-save` formats entries per the `decision-formatting` section — never invent a new shape.
 - **Missing sidecars are not errors.** `session-load` returns empty structures when the directory or files are absent. Never create empty sidecar files eagerly.
 - **Full-file read/write only.** Decision logs use read-entire → append-in-memory → write-entire. Never stream-append or partially write; last-writer-wins is the documented concurrency model.
-- **Budget is config-driven.** All thresholds (`budget_warn_at`, `budget_alert_at`, `budget_archive_at`, `token_approximation`, `archive_subdir`) come from `_memory/config.yaml`. Never hardcode.
+- **Budget is config-driven.** All thresholds (`budget_warn_at`, `budget_alert_at`, `budget_archive_at`, `token_approximation`, `archive_subdir`) come from `.gaia/memory/config.yaml`. Never hardcode.
 - **Untiered / Tier-3 agents skip budget enforcement.** Return no-op, never error.
 - **Companion skill:** cross-reference loading across agent sidecars (read-only) lives in `gaia-memory-management-cross-agent` — load that skill when a caller needs `<memory-reads>` resolution.
 
@@ -229,18 +229,18 @@ Detect and merge duplicate decision entries within a decision log.
 <!-- SECTION: budget-monitoring -->
 ## Budget Monitoring
 
-Calculate and report token budget usage per agent sidecar. Reusable by any workflow that needs budget status. All thresholds are config-driven — read from `_memory/config.yaml` archival block at runtime.
+Calculate and report token budget usage per agent sidecar. Reusable by any workflow that needs budget status. All thresholds are config-driven — read from `.gaia/memory/config.yaml` archival block at runtime.
 
 **Input:**
 - Agent sidecar file sizes (bytes) from filesystem scan
-- Tier budgets from `_memory/config.yaml`: `tiers.tier_1.session_budget` (300K), `tiers.tier_2.session_budget` (100K)
+- Tier budgets from `.gaia/memory/config.yaml`: `tiers.tier_1.session_budget` (300K), `tiers.tier_2.session_budget` (100K)
 - Per-agent ground truth budgets: `agents.{agent-id}.ground_truth_budget` (Tier 1 only)
 
 **Token calculation:**
 - Approximate tokens = file size in bytes / 4 (chars-per-token convention)
 - Sum across all sidecar files per agent (decision-log.md + conversation-context.md + ground-truth.md)
 
-**Threshold classification (config-driven from `_memory/config.yaml`):**
+**Threshold classification (config-driven from `.gaia/memory/config.yaml`):**
 - `budget_warn_at` — **warning:** at or above this fraction of budget (default: 0.8 = 80%)
 - `budget_alert_at` — **critical:** at or above this fraction (default: 0.9 = 90%)
 - `budget_archive_at` — **over-budget:** at or above this fraction (default: 1.0 = 100%) — triggers archival

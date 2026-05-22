@@ -16,7 +16,7 @@ Continue from the post-iteration-3 prompt state of VCP-FIX-03.
 ## Assertions
 
 - Skill exits non-zero.
-- Checkpoint at `_memory/checkpoints/<skill>-<step>.json` exists and contains the full `val_loop_iterations` array up to the abort point.
+- Checkpoint at `.gaia/memory/checkpoints/<skill>-<step>.json` exists and contains the full `val_loop_iterations` array up to the abort point.
 - Final iteration record carries `user_decision = abort`.
 - A user-facing message references `/gaia-resume`.
 - The artifact is NOT modified during abort handling (no `## Open Questions` is created on abort).

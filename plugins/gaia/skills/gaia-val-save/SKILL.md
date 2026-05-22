@@ -32,7 +32,7 @@ This skill is the native Claude Code conversion of the legacy val-save-session w
 - Decision-log uses APPEND semantics -- new entries are appended after existing entries. Existing entries are NEVER modified or removed.
 - Conversation-context uses REPLACE semantics -- the body below the first `---` separator is overwritten. The header above `---` is preserved exactly as-is.
 - If no session findings are provided, report "No session findings to save" and exit gracefully without modifying any files.
-- If the `_memory/validator-sidecar/` directory does not exist, create it with `mkdir -p`.
+- If the `.gaia/memory/validator-sidecar/` directory does not exist, create it with `mkdir -p`.
 - If `decision-log.md` is missing, initialize it with the standard header template before appending.
 - If `conversation-context.md` is missing, initialize it with the standard header template before replacing.
 - Each decision-log entry MUST use the ADR-016 standardized header format (shown below).
@@ -119,7 +119,7 @@ If [a]: proceed to Step 4.
 
 ### Step 4 -- Write to Memory Files
 
-1. Ensure `_memory/validator-sidecar/` directory exists (`mkdir -p`).
+1. Ensure `.gaia/memory/validator-sidecar/` directory exists (`mkdir -p`).
 2. For any missing file, create it using the initialization template from above.
 3. **decision-log.md** -- Read the full file. Append new entries at the end. Write the full file back.
 4. **conversation-context.md** -- Read the file. Preserve everything up to and including the first `---`. Replace everything after it with the new session snapshot. Write the full file back.

@@ -12,7 +12,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -110,7 +110,7 @@ Spawn the matching subagent with `context: fork` — this is ADR-045's isolation
 
 1. **The spec body** captured in Step 1 (so the subagent has full context without re-reading the file).
 2. **The resolved `project_path`** as an explicit working-directory parameter (AC-EC8). The subagent MUST write application code to this path, not to the `project-root`. The prompt asserts the discipline: "Write application code to {project_path}, not {project-root}. This is the CLAUDE.md directory-identity rule."
-3. **The checkpoint path** `_memory/checkpoints/quick-dev-{spec_name}.yaml` so the subagent writes checkpoints with `files_touched` (path + sha256 via `shasum -a 256` + ISO-8601 `last_modified`) after each significant step.
+3. **The checkpoint path** `.gaia/memory/checkpoints/quick-dev-{spec_name}.yaml` so the subagent writes checkpoints with `files_touched` (path + sha256 via `shasum -a 256` + ISO-8601 `last_modified`) after each significant step.
 4. **JIT shared-skill references** by `{skill}#{section}` selector — never inline content. Typical references for a quick-dev implementation:
    - `gaia-testing-patterns#tdd-cycle` — apply TDD where practical (same as the legacy Step 3 "Apply TDD where practical" directive)
    - `gaia-git-workflow#commits` — conventional commit discipline for any commits the subagent creates
@@ -136,7 +136,7 @@ On PASS, archive the checkpoint:
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-quick-dev/scripts/checkpoint-archive.sh {spec_name}
 ```
 
-- Moves `_memory/checkpoints/quick-dev-{spec_name}.yaml` to `_memory/checkpoints/completed/quick-dev-{spec_name}.yaml`.
+- Moves `.gaia/memory/checkpoints/quick-dev-{spec_name}.yaml` to `.gaia/memory/checkpoints/completed/quick-dev-{spec_name}.yaml`.
 - Exits non-zero on a missing checkpoint or permission error.
 
 Report implementation complete to the user with the final `files_touched` summary (path + sha256 checksum per entry). Suggest the next step:

@@ -352,31 +352,31 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 
 @test "checkpoint: gaia-create-arch Val loop step emits one write-checkpoint.sh invocation at step 10" {
-  grep -qE '^> `!scripts/write-checkpoint\.sh gaia-create-arch 10 .*stage=val-auto-review' \
+  grep -qE '^> `!(\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh gaia-create-arch 10 .*stage=val-auto-review' \
     "$SKILLS_DIR/gaia-create-arch/SKILL.md"
 }
 
 @test "checkpoint: gaia-edit-arch Val loop step emits one write-checkpoint.sh invocation at step 7" {
-  grep -qE '^> `!scripts/write-checkpoint\.sh gaia-edit-arch 7 .*stage=val-auto-review' \
+  grep -qE '^> `!(\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh gaia-edit-arch 7 .*stage=val-auto-review' \
     "$SKILLS_DIR/gaia-edit-arch/SKILL.md"
 }
 
 @test "checkpoint: gaia-review-api Val loop step emits one write-checkpoint.sh invocation at step 6" {
-  grep -qE '^> `!scripts/write-checkpoint\.sh gaia-review-api 6 .*stage=val-auto-review' \
+  grep -qE '^> `!(\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh gaia-review-api 6 .*stage=val-auto-review' \
     "$SKILLS_DIR/gaia-review-api/SKILL.md"
 }
 
 @test "checkpoint: gaia-create-epics Val loop step emits one write-checkpoint.sh invocation at step 9" {
-  grep -qE '^> `!scripts/write-checkpoint\.sh gaia-create-epics 9 .*stage=val-auto-review' \
+  grep -qE '^> `!(\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh gaia-create-epics 9 .*stage=val-auto-review' \
     "$SKILLS_DIR/gaia-create-epics/SKILL.md"
 }
 
 @test "checkpoint: gaia-threat-model Val loop step emits one write-checkpoint.sh invocation at step 8" {
-  grep -qE '^> `!scripts/write-checkpoint\.sh gaia-threat-model 8 .*stage=val-auto-review' \
+  grep -qE '^> `!(\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh gaia-threat-model 8 .*stage=val-auto-review' \
     "$SKILLS_DIR/gaia-threat-model/SKILL.md"
 }
 
 @test "checkpoint: gaia-infra-design Val loop step emits one write-checkpoint.sh invocation at step 7" {
-  grep -qE '^> `!scripts/write-checkpoint\.sh gaia-infra-design 7 .*stage=val-auto-review' \
+  grep -qE '^> `!(\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh gaia-infra-design 7 .*stage=val-auto-review' \
     "$SKILLS_DIR/gaia-infra-design/SKILL.md"
 }

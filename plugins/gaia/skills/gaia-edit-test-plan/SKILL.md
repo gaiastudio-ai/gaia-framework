@@ -17,7 +17,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -54,7 +54,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Identify existing test areas/categories (e.g., unit, integration, E2E, performance, security).
 - Display current test plan structure summary to the user: section count, test case count, coverage areas.
 
-> `!scripts/write-checkpoint.sh gaia-edit-test-plan 1 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=load stage=test-plan-loaded`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-edit-test-plan 1 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=load stage=test-plan-loaded`
 
 ### Step 2 — Capture Change Scope
 
@@ -144,7 +144,7 @@ passed an empty string masquerading as a value), fall back to the
 matching Step 2b prompt for that specific field. Step 3 MUST NOT execute
 with a missing scope variable.
 
-> `!scripts/write-checkpoint.sh gaia-edit-test-plan 2 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=scope stage=change-scope-captured`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-edit-test-plan 2 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=scope stage=change-scope-captured`
 
 ### Step 3 — Define New Test Cases
 
@@ -159,7 +159,7 @@ For each new requirement, define test cases with:
 
 Determine if new test areas/categories are needed or if cases fit existing categories.
 
-> `!scripts/write-checkpoint.sh gaia-edit-test-plan 3 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=add stage=new-cases-defined`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-edit-test-plan 3 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=add stage=new-cases-defined`
 
 ### Step 4 — Update Test Plan
 
@@ -169,7 +169,7 @@ Determine if new test areas/categories are needed or if cases fit existing categ
 - Update coverage summary if present (new requirements covered / total).
 - Preserve all existing content exactly as-is — no reordering, no reformatting, no removal.
 
-> `!scripts/write-checkpoint.sh gaia-edit-test-plan 4 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=update stage=plan-updated`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-edit-test-plan 4 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=update stage=plan-updated`
 
 ### Step 5 — Add Version Note and Save
 
@@ -186,7 +186,7 @@ If no Version History section exists, create one.
 
 Write the updated test plan to `.gaia/artifacts/test-artifacts/test-plan.md`.
 
-> `!scripts/write-checkpoint.sh gaia-edit-test-plan 5 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=save stage=saved --paths .gaia/artifacts/test-artifacts/test-plan.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-edit-test-plan 5 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=save stage=saved --paths .gaia/artifacts/test-artifacts/test-plan.md`
 
 ### Step 6 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -217,7 +217,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Test Notes: VCP-VAL-04 (`.gaia/artifacts/test-artifacts/test-plan.md §11.46.3`) covers this wire-in.
 
-> `!scripts/write-checkpoint.sh gaia-edit-test-plan 6 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=val stage=val-auto-review --paths .gaia/artifacts/test-artifacts/test-plan.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-edit-test-plan 6 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=val stage=val-auto-review --paths .gaia/artifacts/test-artifacts/test-plan.md`
 
 ### Step 7 — Next Steps
 
@@ -225,7 +225,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 - If high-risk stories need acceptance tests: "Recommend running /gaia-atdd for stories: {story_keys}"
 - If traceability update needed: "Recommend running /gaia-trace to update traceability matrix"
 
-> `!scripts/write-checkpoint.sh gaia-edit-test-plan 7 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=next-steps stage=next-steps-reported`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-edit-test-plan 7 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=next-steps stage=next-steps-reported`
 
 ## Validation
 

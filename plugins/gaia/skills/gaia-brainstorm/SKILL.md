@@ -12,7 +12,7 @@ orchestration_class: conversational
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class conversational --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -43,7 +43,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - If found, load and incorporate insights into the session.
 - If not found, note that no prior creative work exists and proceed.
 
-> `!scripts/write-checkpoint.sh gaia-brainstorm 1 slug="$SLUG" technique="$TECHNIQUE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-brainstorm 1 slug="$SLUG" technique="$TECHNIQUE"`
 
 ### Step 2 — Elicit Project Vision
 
@@ -54,7 +54,7 @@ Ask the user the following questions, one at a time, and wait for a response bef
 3. What pain points does this address?
 4. What makes this different from existing solutions?
 
-> `!scripts/write-checkpoint.sh gaia-brainstorm 2 slug="$SLUG" technique="$TECHNIQUE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-brainstorm 2 slug="$SLUG" technique="$TECHNIQUE"`
 
 ### Step 3 — Competitive Landscape
 
@@ -63,7 +63,7 @@ Ask the user the following questions, one at a time, and wait for a response bef
 - Identify direct and indirect competitors.
 - Map competitive positioning.
 
-> `!scripts/write-checkpoint.sh gaia-brainstorm 3 slug="$SLUG" technique="$TECHNIQUE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-brainstorm 3 slug="$SLUG" technique="$TECHNIQUE"`
 
 ### Step 4 — Opportunity Synthesis
 
@@ -72,7 +72,7 @@ Ask the user the following questions, one at a time, and wait for a response bef
 - Rank opportunities by potential impact and feasibility.
 - Collect all ideas explored during the session that did not make the top opportunity list into a **Parking Lot** — for each, note the idea, why it was deprioritized, and under what conditions it might become viable.
 
-> `!scripts/write-checkpoint.sh gaia-brainstorm 4 slug="$SLUG" technique="$TECHNIQUE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-brainstorm 4 slug="$SLUG" technique="$TECHNIQUE"`
 
 ### Step 5 — Generate Output
 
@@ -91,7 +91,7 @@ Where `{slug}` is a short kebab-case slug derived from the project vision (e.g.,
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/creative-artifacts/brainstorm-${SLUG}.md`
 
-> `!scripts/write-checkpoint.sh gaia-brainstorm 5 slug="$SLUG" technique="$TECHNIQUE" --paths .gaia/artifacts/creative-artifacts/brainstorm-${SLUG}.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-brainstorm 5 slug="$SLUG" technique="$TECHNIQUE" --paths .gaia/artifacts/creative-artifacts/brainstorm-${SLUG}.md`
 
 ### Step 6 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -129,7 +129,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). The `brainstorm` artifact_type may not have a canonical document-ruleset; per E44-S1 AC-EC1 Val skips structural validation for unknown types and still runs factual-claim validation.
 
-> `!scripts/write-checkpoint.sh gaia-brainstorm 6 slug="$SLUG" technique="$TECHNIQUE" stage=val-auto-review --paths .gaia/artifacts/creative-artifacts/brainstorm-${SLUG}.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-brainstorm 6 slug="$SLUG" technique="$TECHNIQUE" stage=val-auto-review --paths .gaia/artifacts/creative-artifacts/brainstorm-${SLUG}.md`
 
 ## Validation
 

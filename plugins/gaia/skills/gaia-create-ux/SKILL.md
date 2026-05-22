@@ -11,7 +11,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -51,7 +51,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Extract: user personas, user journeys, and functional requirements.
 - If `.gaia/artifacts/planning-artifacts/ux-design.md` already exists: warn "An existing UX design was found at .gaia/artifacts/planning-artifacts/ux-design.md. Continuing will overwrite it. Confirm with user before proceeding."
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 1 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 1 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 
 ### Step 2 — User Personas
 
@@ -60,7 +60,7 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to r
 - Refine persona definitions from PRD.
 - Add: scenarios, goals, tech proficiency, accessibility needs.
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 2 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 2 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 
 ### Step 3 — Information Architecture
 
@@ -70,7 +70,7 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to d
 - Define content hierarchy and page relationships.
 - Map each page or section to the FR IDs it serves — every page must trace to at least one FR. Flag any user-facing FR from the PRD that has no corresponding page in the sitemap.
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 3 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 3 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 
 ### Step 4 — Wireframes
 
@@ -80,7 +80,7 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to c
 - Define layout, component placement, interaction patterns.
 - Annotate each wireframe with the FR IDs it addresses. Flag any FR with user-facing behavior that has no wireframe representation.
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 4 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 4 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 
 ### Step 5 — Interaction Patterns
 
@@ -91,7 +91,7 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to d
 - Document form behaviors, validation, error states.
 - Map each interaction flow to the corresponding user journey from the PRD. Every PRD user journey must have a defined interaction pattern.
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 5 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 5 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 
 ### Step 6 — Accessibility
 
@@ -99,7 +99,7 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to d
 - Plan keyboard navigation, screen reader support.
 - Define color contrast and text sizing standards.
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 6 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 6 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 
 ### Step 7 — Figma MCP Detection and Mode Selection
 
@@ -107,7 +107,7 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to d
 - If Figma MCP available: present mode selection — [Generate] Create Figma frames alongside ux-design.md | [Import] Import existing Figma designs (read-only) | [Skip] Text-only UX spec, no Figma integration.
 - If not available: skip Figma integration — proceed with text-only UX design output. Log: "No Figma MCP server detected. Generating markdown-only ux-design.md."
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 7 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 7 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 
 ### Step 8 — Generate Mode (if selected)
 
@@ -212,7 +212,7 @@ fr_140_audit:
 
 The audit logic is symmetric with E46-S2's Import-mode zero-write assertion — the shared classification table and the audit data shape are reused there unchanged.
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 8 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 8 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 
 ### Step 9 — Import Mode (if selected)
 
@@ -283,7 +283,7 @@ The Import-mode audit assertion is symmetric with E46-S1's Generate-mode audit: 
 
 Append an H2 section "Figma Source (Import)" to `ux-design.md` with the file key, file name, `lastModified`, version, frame count, viewport distribution table (Step 9c), and the runtime paths to the emitted `design-tokens.json` + `component-specs.yaml`. The FR-140 Compliance Audit block (Step 9f) sits directly under this section so reviewers can verify the read-only outcome alongside the source metadata.
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 9 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 9 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 
 ### Step 10 — Generate Output
 
@@ -294,7 +294,7 @@ The `ux-design-assessment-template.md` carried in this skill directory is availa
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/ux-design.md`
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 10 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH" --paths .gaia/artifacts/planning-artifacts/ux-design.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 10 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH" --paths .gaia/artifacts/planning-artifacts/ux-design.md`
 
 ### Step 11 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -323,7 +323,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation runs against the Step 10 primary save (the artifact-as-drafted), independent of whether the optional accessibility review (Step 12) is later executed.
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 11 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/ux-design.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 11 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/ux-design.md`
 
 ### Step 12 — Optional: Accessibility Review
 
@@ -331,7 +331,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 - If yes: spawn a subagent to run the accessibility review.
 - If skip: accessibility review can be run anytime later with `/gaia-review-a11y`.
 
-> `!scripts/write-checkpoint.sh gaia-create-ux 12 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 12 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 
 ## Validation
 

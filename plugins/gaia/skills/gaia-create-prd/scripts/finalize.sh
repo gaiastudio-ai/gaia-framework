@@ -100,10 +100,14 @@ item_check() {
 
 # heading_present <file> <heading-text>
 # Pass when an H2 heading whose body begins with the given text
-# (case-insensitive; trailing content tolerated) is present.
+# (case-insensitive; trailing content tolerated; optional numeric outline
+# prefix like "1. ", "10. ", "1.2 " also tolerated) is present.
+# AF-2026-05-22-3 Bug-3 — the framework's own prd-template.md uses numeric
+# outline prefixes (`## 1. Overview`, `## 2. Goals and Non-Goals`, etc.) so
+# the regex MUST accept the prefix or the template fails its own checklist.
 heading_present() {
   local f="$1" text="$2"
-  if grep -Ei "^##[[:space:]]+${text}([[:space:]]|\$|[[:punct:]])" "$f" >/dev/null 2>&1; then
+  if grep -Ei "^##[[:space:]]+([0-9]+(\.[0-9]+)*\.?[[:space:]]+)?${text}([[:space:]]|\$|[[:punct:]])" "$f" >/dev/null 2>&1; then
     echo "pass"
   else
     echo "fail"

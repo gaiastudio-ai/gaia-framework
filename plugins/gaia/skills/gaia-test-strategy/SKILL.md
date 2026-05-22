@@ -87,7 +87,7 @@ Route the selected choice:
 - Option 3 → prompt for the service (skip picker for single-stack projects), prompt for the test type, then run `--scaffold --service <path> --add <test-type>`.
 - Option 4 → read `test_execution` from `project-config.yaml`, list scaffolded services and test types, list existing files under `.gaia/artifacts/test-artifacts/strategy/` and `tests/`, and exit cleanly without writes.
 
-> `!scripts/write-checkpoint.sh gaia-test-strategy 0a stage=interactive-route`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 0a stage=interactive-route`
 
 ### Step 1 — Plan Mode: Load Project Context
 
@@ -101,7 +101,7 @@ Read upstream context (gracefully degrade on missing files):
 
 Detect subsequent-invocation: if `.gaia/artifacts/test-artifacts/strategy/test-strategy.md` already exists, read it and prepare the incremental-update flow — ask the user what to add (new test type, new perf scenarios, new contract suite) and only generate the incremental pieces.
 
-> `!scripts/write-checkpoint.sh gaia-test-strategy 1 mode=plan stage=context-loaded`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 1 mode=plan stage=context-loaded`
 
 ### Step 2 — Plan Mode: Risk Assessment (Delegate to Sable)
 
@@ -112,7 +112,7 @@ Delegate to the **test-architect** subagent (Sable) for risk assessment.
 - Rate each area using probability × impact scoring.
 - Produce a risk assessment matrix with columns: Area, Risk Level (H/M/L), Probability, Impact, Coverage Strategy.
 
-> `!scripts/write-checkpoint.sh gaia-test-strategy 2 mode=plan stage=risk-assessment`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 2 mode=plan stage=risk-assessment`
 
 ### Step 3 — Plan Mode: Test Strategy & Plan (Delegate to Sable)
 
@@ -124,7 +124,7 @@ Delegate to Sable for test strategy and plan authoring.
 - Define coverage targets, naming conventions, fixture/mock requirements.
 - Define quality gates for the CI pipeline.
 
-> `!scripts/write-checkpoint.sh gaia-test-strategy 3 mode=plan stage=test-strategy`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 3 mode=plan stage=test-strategy`
 
 ### Step 4 — Plan Mode: Generate Output
 
@@ -132,7 +132,7 @@ Delegate to Sable for test strategy and plan authoring.
 - For subsequent invocations: append the incremental update section, do not overwrite earlier sections.
 - Offer a follow-up scaffolding prompt: "Set up scaffolding now? [y/n]". On y, route to Step 5.
 
-> `!scripts/write-checkpoint.sh gaia-test-strategy 4 mode=plan stage=output-generated --paths .gaia/artifacts/test-artifacts/strategy/test-strategy.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 4 mode=plan stage=output-generated --paths .gaia/artifacts/test-artifacts/strategy/test-strategy.md`
 
 ### Step 5 — Scaffold Mode: Detect Stack(s)
 
@@ -147,7 +147,7 @@ Read `project-config.yaml` `stacks[]`. The interpretation:
 
 Detect per-service language and build tool: check `package.json`, `requirements.txt` / `pyproject.toml`, `build.gradle` / `pom.xml`, `pubspec.yaml`, `go.mod`. Identify any existing test config (`vitest.config.ts`, `jest.config.js`, `pytest.ini`, etc.).
 
-> `!scripts/write-checkpoint.sh gaia-test-strategy 5 mode=scaffold stage=stack-detected`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 5 mode=scaffold stage=stack-detected`
 
 ### Step 6 — Scaffold Mode: Select Framework
 
@@ -161,7 +161,7 @@ Per detected stack, recommend and apply:
 
 Prefer extending existing project conventions over replacing them. Load the relevant knowledge fragments JIT.
 
-> `!scripts/write-checkpoint.sh gaia-test-strategy 6 mode=scaffold stage=framework-selected`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 6 mode=scaffold stage=framework-selected`
 
 ### Step 7 — Scaffold Mode: Generate Scaffolding
 
@@ -172,7 +172,7 @@ Prefer extending existing project conventions over replacing them. Load the rele
 - For `--add <test-type>`: only generate the incremental pieces (e.g., adding a `perf/` subtree without re-emitting the existing `unit/` config).
 - Do NOT write sample tests beyond the smallest-possible "smoke" assertion needed to confirm the runner is wired.
 
-> `!scripts/write-checkpoint.sh gaia-test-strategy 7 mode=scaffold stage=scaffolded`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 7 mode=scaffold stage=scaffolded`
 
 ### Step 8 — Scaffold Mode: Update project-config.yaml
 
@@ -181,7 +181,7 @@ After successful scaffolding:
 - Update the `test_execution` section of `project-config.yaml` with entries for the scaffolded test types and services.
 - Offer a CI regeneration prompt per source-report §9.6: "Regenerate CI config now? [y/n]". On y, route to `/gaia-config-ci`.
 
-> `!scripts/write-checkpoint.sh gaia-test-strategy 8 mode=scaffold stage=config-updated --paths config/project-config.yaml`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 8 mode=scaffold stage=config-updated --paths config/project-config.yaml`
 
 ## Validation
 

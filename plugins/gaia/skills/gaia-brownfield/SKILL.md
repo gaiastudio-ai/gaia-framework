@@ -14,7 +14,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -364,7 +364,7 @@ If yes: invoke `/gaia-refresh-ground-truth` (if the skill exists) to scan the fi
 - `project-documentation.md` → architecture patterns, conventions, config values
 - `nfr-assessment.md` (if present) → performance targets, security requirements
 
-Write extracted facts to `_memory/validator-sidecar/ground-truth.md`. If the file already exists with content, merge — add new facts, update changed facts, flag removed facts. Never destructive overwrite.
+Write extracted facts to `.gaia/memory/validator-sidecar/ground-truth.md`. If the file already exists with content, merge — add new facts, update changed facts, flag removed facts. Never destructive overwrite.
 
 ### 9c — Tier 1 Agent Ground Truth (optional)
 
@@ -372,9 +372,9 @@ Ask: `Bootstrap Tier 1 agent ground truth (Theo, Derek, Nate)? [y/n]`
 
 If yes:
 
-- **Theo (Architect)** — Read `architecture.md` (fall back to `brownfield-assessment.md`). Extract tech stack (→ variable-inventory), ADRs (→ structural-pattern), component inventory (→ file-inventory), dependency map (→ cross-reference). Token budget: 150K; trim at 60% threshold (90K). Write to `_memory/architect-sidecar/ground-truth.md`.
-- **Derek (Product Manager)** — Read `prd.md` (fall back to `prd-brownfield-gaps.md`). Extract functional requirements, user stories, acceptance criteria summaries. Also read `epics-and-stories.md` for epic overviews and story-to-epic mappings. Also read `nfr-assessment.md` for quality baselines. Token budget: 100K; trim at 60% threshold (60K). Write to `_memory/pm-sidecar/ground-truth.md`.
-- **Nate (Scrum Master)** — Read `sprint-status.yaml` (if exists) for sprint state. Read `_memory/sm-sidecar/velocity-data.md` (if exists) for velocity and capacity. If neither exists, log `insufficient sprint data, velocity unavailable` and write ground-truth.md omitting velocity. Token budget: 100K; trim at 60% threshold (60K). Write to `_memory/sm-sidecar/ground-truth.md`.
+- **Theo (Architect)** — Read `architecture.md` (fall back to `brownfield-assessment.md`). Extract tech stack (→ variable-inventory), ADRs (→ structural-pattern), component inventory (→ file-inventory), dependency map (→ cross-reference). Token budget: 150K; trim at 60% threshold (90K). Write to `.gaia/memory/architect-sidecar/ground-truth.md`.
+- **Derek (Product Manager)** — Read `prd.md` (fall back to `prd-brownfield-gaps.md`). Extract functional requirements, user stories, acceptance criteria summaries. Also read `epics-and-stories.md` for epic overviews and story-to-epic mappings. Also read `nfr-assessment.md` for quality baselines. Token budget: 100K; trim at 60% threshold (60K). Write to `.gaia/memory/pm-sidecar/ground-truth.md`.
+- **Nate (Scrum Master)** — Read `sprint-status.yaml` (if exists) for sprint state. Read `.gaia/memory/sm-sidecar/velocity-data.md` (if exists) for velocity and capacity. If neither exists, log `insufficient sprint data, velocity unavailable` and write ground-truth.md omitting velocity. Token budget: 100K; trim at 60% threshold (60K). Write to `.gaia/memory/sm-sidecar/ground-truth.md`.
 
 After all Tier 1 extractions complete, output a summary: `Seeded {N} entries for Theo, {M} entries for Derek, {K} entries for Nate`. If sprint data was absent, append `(sprint data absent — velocity entries omitted)`. Include token budget status (GREEN/YELLOW/RED) per agent.
 

@@ -1,6 +1,6 @@
 ---
 name: gaia-init
-description: Greenfield conversational setup — bootstraps `config/project-config.yaml` via a discovery questionnaire (project name, project shape, stack/path mapping, platforms, compliance regimes, environments, CI platform) and generates a starter CI workflow. Use when "init a new project" or /gaia-init. Refuses to run on directories that already have a config — directs the user to /gaia-config-* or /gaia-brownfield in that case.
+description: Greenfield conversational setup — bootstraps `.gaia/config/project-config.yaml` via a discovery questionnaire (project name, project shape, stack/path mapping, platforms, compliance regimes, environments, CI platform) and generates a starter CI workflow. Use when "init a new project" or /gaia-init. Refuses to run on directories that already have a config — directs the user to /gaia-config-* or /gaia-brownfield in that case.
 argument-hint: "[project-path]"
 context: main
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
@@ -14,7 +14,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -27,11 +27,11 @@ fi
 
 ## Mission
 
-You are running the GAIA greenfield conversational setup. The user is on a brand-new project and wants `config/project-config.yaml` produced from a guided questionnaire — no manual YAML authoring, no copy-pasting from another project. You also generate a starter CI workflow file (and a never-clobbered `*.user-steps.yml` companion) for the user's selected CI platform.
+You are running the GAIA greenfield conversational setup. The user is on a brand-new project and wants `.gaia/config/project-config.yaml` produced from a guided questionnaire — no manual YAML authoring, no copy-pasting from another project. You also generate a starter CI workflow file (and a never-clobbered `*.user-steps.yml` companion) for the user's selected CI platform.
 
 This skill is a Claude Code native skill — the questionnaire runs as natural conversation; the deterministic checks (greenfield guard, schema validation, atomic file write, CI scaffold emission) are delegated to helper scripts under `${CLAUDE_PLUGIN_ROOT}/skills/gaia-init/scripts/` per ADR-042 (Scripts-over-LLM).
 
-**Greenfield-only boundary:** This skill MUST NOT modify existing configs. If the user already has `config/project-config.yaml`, refuse and direct them to `/gaia-config-*` (E71-S3, mutation path) or `/gaia-brownfield` (E71-S2, codebase onboarding path).
+**Greenfield-only boundary:** This skill MUST NOT modify existing configs. If the user already has `.gaia/config/project-config.yaml`, refuse and direct them to `/gaia-config-*` (E71-S3, mutation path) or `/gaia-brownfield` (E71-S2, codebase onboarding path).
 
 ## Critical Rules
 
@@ -66,7 +66,7 @@ existing config exits non-zero with the same canonical refusal.
 **Step 1b — Re-init guard.** Run:
 
 ```bash
-phase=$(yq '.config_phase // "full"' config/project-config.yaml 2>/dev/null || echo "none")
+phase=$(yq '.config_phase // "full"' .gaia/config/project-config.yaml 2>/dev/null || echo "none")
 ```
 
 - When `yq` succeeds (config exists), `phase` will be `minimal`,
@@ -233,7 +233,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/gaia-init/scripts/validate-platform-stack.sh <bundl
 
 If it returns non-zero, surface the error message and re-prompt the user to either remove the offending platform OR add a capable stack — do NOT proceed to file write until the bundle validates.
 
-### Step 4 — Generate `config/project-config.yaml`
+### Step 4 — Generate `.gaia/config/project-config.yaml`
 
 Pipe the JSON bundle to `generate-config.sh`:
 
@@ -246,7 +246,7 @@ Then validate the freshly-written file against the schema:
 
 ```
 ${CLAUDE_PLUGIN_ROOT}/skills/gaia-init/scripts/validate-against-schema.sh \
-  "$PROJECT_PATH/config/project-config.yaml"
+  "$PROJECT_PATH/.gaia/config/project-config.yaml"
 ```
 
 If validation fails, surface the validator output, delete the just-written file (revert to greenfield state), and re-prompt the user for the offending field.
@@ -284,7 +284,7 @@ Render the following to the user, replacing the placeholder with the concrete fi
 
 ```
 ✓ Generated:
-  - config/project-config.yaml
+  - .gaia/config/project-config.yaml
   - <CI workflow path>
   - <CI user-steps companion path>
   - .gaia/artifacts/test-artifacts/test-environment.yaml.example

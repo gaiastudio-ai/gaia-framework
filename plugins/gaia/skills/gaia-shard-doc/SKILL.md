@@ -130,4 +130,4 @@ This makes the destructive step explicit and user-authored, not buried in the sh
 - FR-323 — Native Skill Format Compliance.
 - NFR-053 — Functional parity with the legacy task.
 - Reference implementation: `plugins/gaia/skills/gaia-fix-story/SKILL.md`.
-- Byte-identity baseline: `_memory/checkpoints/E53-S222-shard-architecture.py::find_h2_boundaries` (the working code-block-aware parser AC3 of E53-S236 mandates parity with).
+- Byte-identity baseline: `.gaia/memory/checkpoints/E53-S222-shard-architecture.py::find_h2_boundaries` (the working code-block-aware parser AC3 of E53-S236 mandates parity with).

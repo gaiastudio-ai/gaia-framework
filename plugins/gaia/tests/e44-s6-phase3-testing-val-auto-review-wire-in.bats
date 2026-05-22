@@ -276,17 +276,17 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 
 @test "checkpoint: gaia-readiness-check Val loop step emits one write-checkpoint.sh invocation at step 11" {
-  grep -qE '^> `!scripts/write-checkpoint\.sh gaia-readiness-check 11 .*stage=val-auto-review' \
+  grep -qE '^> `!(\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh gaia-readiness-check 11 .*stage=val-auto-review' \
     "$SKILLS_DIR/gaia-readiness-check/SKILL.md"
 }
 
 @test "checkpoint: gaia-test-design Val loop step emits one write-checkpoint.sh invocation at step 8" {
-  grep -qE '^> `!scripts/write-checkpoint\.sh gaia-test-design 8 .*stage=val-auto-review' \
+  grep -qE '^> `!(\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh gaia-test-design 8 .*stage=val-auto-review' \
     "$SKILLS_DIR/gaia-test-design/SKILL.md"
 }
 
 @test "checkpoint: gaia-edit-test-plan Val loop step emits one write-checkpoint.sh invocation at step 6" {
-  grep -qE '^> `!scripts/write-checkpoint\.sh gaia-edit-test-plan 6 .*stage=val-auto-review' \
+  grep -qE '^> `!(\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh gaia-edit-test-plan 6 .*stage=val-auto-review' \
     "$SKILLS_DIR/gaia-edit-test-plan/SKILL.md"
 }
 

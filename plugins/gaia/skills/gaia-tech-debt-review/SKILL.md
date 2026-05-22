@@ -39,7 +39,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - **Dashboard trend preservation.** The dashboard overwrites the previous `tech-debt-dashboard.md`, but the **trend section** compares current totals against the previous totals. Read the previous dashboard first; compute deltas; write the merged result.
 - **Dashboard is read-only output.** No user confirmation prompt. The legacy workflow.yaml declared `template_output_prompt: "auto"`; this skill matches that semantic — write the dashboard and exit cleanly.
 - **Sprint-status.yaml is NEVER written by this skill** (Sprint-Status Write Safety rule). It is only read for the current `sprint_id`.
-- **Val memory save is non-blocking.** Step 7 appends a decision-log entry to `_memory/validator-sidecar/decision-log.md`. If the write fails, log a warning and continue — memory save is best-effort.
+- **Val memory save is non-blocking.** Step 7 appends a decision-log entry to `.gaia/memory/validator-sidecar/decision-log.md`. If the write fails, log a warning and continue — memory save is best-effort.
 
 ## Inputs
 
@@ -160,7 +160,7 @@ For each FIX NOW + OVERDUE item, append to `.gaia/artifacts/planning-artifacts/a
 
 Auto-save review decisions to Val's sidecar (no user prompt):
 
-1. Append to `_memory/validator-sidecar/decision-log.md`:
+1. Append to `.gaia/memory/validator-sidecar/decision-log.md`:
    ```
    ### [YYYY-MM-DD] Tech Debt Review: {total_count} items
 
@@ -178,7 +178,7 @@ Auto-save review decisions to Val's sidecar (no user prompt):
    Recommendations: {list of recommended /gaia-* commands}.
    ```
 
-2. Replace the body of `_memory/validator-sidecar/conversation-context.md` (preserve header above the first `---`) with:
+2. Replace the body of `.gaia/memory/validator-sidecar/conversation-context.md` (preserve header above the first `---`) with:
    ```
    Last session: Tech debt review for {sprint_id}.
    Date: {YYYY-MM-DD}. Items: {total_count}. FIX NOW: {fix_now_count}. Overdue: {overdue_count}.
@@ -186,7 +186,7 @@ Auto-save review decisions to Val's sidecar (no user prompt):
    Debt ratio: {ratio}%. Trend: {up/down/stable}.
    ```
 
-If `_memory/validator-sidecar/` or the target files do not exist, create them with the standard sidecar headers. If the write fails, log a warning and continue — memory save is non-blocking.
+If `.gaia/memory/validator-sidecar/` or the target files do not exist, create them with the standard sidecar headers. If the write fails, log a warning and continue — memory save is non-blocking.
 
 ## Finalize
 

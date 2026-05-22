@@ -30,7 +30,7 @@ Consumer skills MUST dispatch Val using the main-turn Agent tool with these para
 
 After the Agent call returns, the consumer skill MUST source `plugins/gaia/scripts/lib/assert-agent-envelope.sh` (delivered by E87-S1) and invoke `assert_agent_envelope <sentinel_path>` against the envelope sentinel that the Val persona wrote during its execution. On non-zero exit the consumer skill MUST HALT with the canonical error — there is no silent fall-through to a self-judged validation verdict (closes the regression class documented in `feedback_add_feature_val_gate_fails_open.md` and `feedback_fix_story_inline_revalidation_bypass.md`).
 
-**Envelope sentinel path convention.** The Val persona writes its sentinel to `_memory/checkpoints/val-envelope-{artifact-hash}.json` where `{artifact-hash}` is `sha256(artifact_path)` truncated to 16 hex characters (deterministic, locatable by consumers without state). The sentinel JSON shape and persona-signature contract live in `validator.md` §Sentinel-Write Contract.
+**Envelope sentinel path convention.** The Val persona writes its sentinel to `.gaia/memory/checkpoints/val-envelope-{artifact-hash}.json` where `{artifact-hash}` is `sha256(artifact_path)` truncated to 16 hex characters (deterministic, locatable by consumers without state). The sentinel JSON shape and persona-signature contract live in `validator.md` §Sentinel-Write Contract.
 
 **Forgery resistance (NFR-064 — field-presence tier).** E87-S1's `assert_agent_envelope` rejects sentinels that omit the `persona_sig` field. This is the *field-presence* tier of forgery resistance: a non-Val agent that emits a sentinel without `persona_sig` fails the assertion. Semantic verification (recomputing the sha256 of `validator.md` and matching against the sentinel's `persona_sig` digest) is roadmapped as a future hardening — until that lands, an attacker who knows the format could craft a sentinel with an arbitrary `persona_sig` value and pass the presence check. The defense-in-depth chain (E83 dispatch checkpoint + E87 envelope presence + planned semantic verification) is the layered control. See TC-VBR-12 in `plugins/gaia/tests/val-bridge-migration.bats`.
 
@@ -206,7 +206,7 @@ The iteration log is **distinguishable by iteration number** so each iteration's
 
 The iteration log is the structured, per-iteration record stream emitted by the auto-fix loop. Audit, debug, and resume consumers read this log to reconstruct what each iteration saw, fixed, and produced — without re-running the loop or scraping free-text logs.
 
-**Storage location.** The log lives in the ADR-059 checkpoint `custom:` namespace under the reserved key `val_loop_iterations` (an array of records, append-only per iteration). Each consumer skill writes its own checkpoint under `_memory/checkpoints/{skill-name}/{timestamp}-step-{N}.json`; the array is namespaced inside that file's `custom` block. There is **no parallel log file** — the checkpoint is the single source of truth.
+**Storage location.** The log lives in the ADR-059 checkpoint `custom:` namespace under the reserved key `val_loop_iterations` (an array of records, append-only per iteration). Each consumer skill writes its own checkpoint under `.gaia/memory/checkpoints/{skill-name}/{timestamp}-step-{N}.json`; the array is namespaced inside that file's `custom` block. There is **no parallel log file** — the checkpoint is the single source of truth.
 
 **Append-only invariant.** Each iteration appends one record. Records are **immutable once written** — subsequent iterations append a new record, never mutate prior records. This preserves audit integrity and lets thrash detection compare iteration N to iteration N-1 deterministically.
 
@@ -314,7 +314,7 @@ E44-S3..S6 wire this snippet into 18 upstream skills. Embed it as a numbered sub
 
 1. iteration = 1.
 2. Invoke /gaia-val-validate via the main-turn Agent tool (per ADR-093 / ADR-104) with artifact_path={ARTIFACT_PATH}, artifact_type={ARTIFACT_TYPE}, model: claude-opus-4-7, effort: high (ADR-074 contract C2 — Val opus pin).
-2.5. ENVELOPE ASSERT (E87-S2 / ADR-104). After the Agent call returns and before consuming the findings, source plugins/gaia/scripts/lib/assert-agent-envelope.sh and invoke assert_agent_envelope {sentinel_path} where sentinel_path = _memory/checkpoints/val-envelope-{sha256(ARTIFACT_PATH) first 16 hex}.json. On non-zero exit, HALT with the canonical error string "HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}". DO NOT fall through to self-judged validation (closes the regression class in `feedback_add_feature_val_gate_fails_open.md` and `feedback_fix_story_inline_revalidation_bypass.md`).
+2.5. ENVELOPE ASSERT (E87-S2 / ADR-104). After the Agent call returns and before consuming the findings, source plugins/gaia/scripts/lib/assert-agent-envelope.sh and invoke assert_agent_envelope {sentinel_path} where sentinel_path = .gaia/memory/checkpoints/val-envelope-{sha256(ARTIFACT_PATH) first 16 hex}.json. On non-zero exit, HALT with the canonical error string "HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}". DO NOT fall through to self-judged validation (closes the regression class in `feedback_add_feature_val_gate_fails_open.md` and `feedback_fix_story_inline_revalidation_bypass.md`).
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
@@ -383,7 +383,7 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
   - Large artifact (over 600 lines): chunk by second-level sections (### headings) for finer granularity
 - Present the section map to confirm scope: "{N} sections identified, {M} chunks for validation"
 
-> `!scripts/write-checkpoint.sh gaia-val-validate 1 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" stage=artifact-loaded`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-val-validate 1 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" stage=artifact-loaded`
 
 ### Step 2 -- Detect Artifact Type and Run Document-Specific Rules
 
@@ -404,7 +404,7 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
 - If artifact type is unknown: skip structural rules entirely. Log: "No document-specific ruleset for this artifact type -- factual verification only." Proceed to Step 3. (Per the Upstream Integration Contract, Val still returns findings normally — graceful degradation per E44-S1 AC-EC1.)
 - If artifact type is recognized: load the matching ruleset section from `gaia-document-rulesets` JIT, execute Pass 1 structural rules against the artifact content, and record structural findings with source tag [STRUCTURAL].
 
-> `!scripts/write-checkpoint.sh gaia-val-validate 2 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" artifact_type="$ARTIFACT_TYPE" stage=type-detected`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-val-validate 2 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" artifact_type="$ARTIFACT_TYPE" stage=type-detected`
 
 ### Step 3 -- Extract Verifiable Claims
 
@@ -418,7 +418,7 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
 - For each claim, record: claim text, source section, source line (approximate), claim type.
 - If no verifiable factual claims are found: produce INFO "No factual claims identified for verification" and skip to Step 7.
 
-> `!scripts/write-checkpoint.sh gaia-val-validate 3 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" claims_count="$CLAIMS_COUNT" stage=claims-extracted`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-val-validate 3 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" claims_count="$CLAIMS_COUNT" stage=claims-extracted`
 
 ### Step 4 -- Codebase Scanning and Filesystem Verification
 
@@ -435,7 +435,7 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
 - For count claims: enumerate actual items and compare against the stated count.
 - For structural claims: verify directory structures match the described layout.
 
-> `!scripts/write-checkpoint.sh gaia-val-validate 4 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" files_scanned="$FILES_SCANNED" stage=codebase-scanned`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-val-validate 4 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" files_scanned="$FILES_SCANNED" stage=codebase-scanned`
 
 ### Step 5 -- Cross-Reference Ground Truth
 
@@ -448,7 +448,7 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
     - Flag any discrepancies between the artifact claim and ground truth
   - For each misalignment: WARNING finding with evidence from both the artifact and ground truth.
 
-> `!scripts/write-checkpoint.sh gaia-val-validate 5 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" stage=ground-truth-cross-referenced`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-val-validate 5 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" stage=ground-truth-cross-referenced`
 
 ### Step 6 -- Classify and Present Findings
 
@@ -470,7 +470,7 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
 
 - Enter discussion loop: present each finding, allow user to approve, dismiss, or edit.
 
-> `!scripts/write-checkpoint.sh gaia-val-validate 6 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" findings_count="$FINDINGS_COUNT" stage=findings-classified`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-val-validate 6 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" findings_count="$FINDINGS_COUNT" stage=findings-classified`
 
 ### Step 7 -- Write Approved Findings
 
@@ -489,7 +489,7 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
 
   Summary: {approved_count} finding(s) from {total_checked} claims verified.
 
-> `!scripts/write-checkpoint.sh gaia-val-validate 7 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" findings_count="$FINDINGS_COUNT" auto_fix_mode="$AUTO_FIX_MODE" stage=findings-written --paths "$ARTIFACT_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-val-validate 7 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" findings_count="$FINDINGS_COUNT" auto_fix_mode="$AUTO_FIX_MODE" stage=findings-written --paths "$ARTIFACT_PATH"`
 
 ### Step 8 -- Save to Val Memory
 
@@ -499,7 +499,7 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
 - If memory sidecar directory does not exist, create it with standard headers.
 - If writing fails, log warning and continue -- memory save is non-blocking.
 
-> `!scripts/write-checkpoint.sh gaia-val-validate 8 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" findings_count="$FINDINGS_COUNT" stage=memory-saved`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-val-validate 8 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" findings_count="$FINDINGS_COUNT" stage=memory-saved`
 
 ## Changelog
 

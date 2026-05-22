@@ -14,7 +14,7 @@ orchestration_class: light-procedural
 
 Provide the cross-agent memory operations that do not fit inside `gaia-memory-management` under the 300-line skill limit:
 
-1. **Cross-reference loading (ADR-015)** — read-only JIT access to another agent's sidecar (e.g., Val reading Theo's `decision-log.md`). Governed by the agent's `<memory-reads>` block and the `cross_references` matrix in `_memory/config.yaml`.
+1. **Cross-reference loading (ADR-015)** — read-only JIT access to another agent's sidecar (e.g., Val reading Theo's `decision-log.md`). Governed by the agent's `<memory-reads>` block and the `cross_references` matrix in `.gaia/memory/config.yaml`.
 2. **Budget monitoring (ADR-014)** — shared utility returning threshold status (`ok`, `warn`, `alert`, `archive_needed`, `no_budget`) used by session-save and any other memory-writing operation.
 
 > **Companion skill:** this skill is paired with `gaia-memory-management`. Callers that need `session-load`, `session-save`, `decision-formatting`, `context-summarization`, `stale-detection`, or `deduplication` should load those sections from the companion instead. The two skills split the memory-management body only because of the 300-line skill limit — their section IDs are unique across both files and callers reference them by name, not by file.
@@ -26,7 +26,7 @@ Provide the cross-agent memory operations that do not fit inside `gaia-memory-ma
 - **JIT only.** Cross-references are loaded during workflow step execution, never at agent activation or session start.
 - **Progressive downgrade is deterministic.** When budget is insufficient: `full` → `recent` → `summary` → `skip`. Every downgrade is logged to the session checkpoint.
 - **Failures are soft.** Missing, empty, or malformed cross-reference targets produce a warning and continue execution — they NEVER halt a workflow.
-- **Budget thresholds come from config.** Read `_memory/config.yaml` `archival` block at runtime. Never hardcode `budget_warn_at`, `budget_alert_at`, `budget_archive_at`, `token_approximation`, or `archive_subdir`.
+- **Budget thresholds come from config.** Read `.gaia/memory/config.yaml` `archival` block at runtime. Never hardcode `budget_warn_at`, `budget_alert_at`, `budget_archive_at`, `token_approximation`, or `archive_subdir`.
 
 <!-- SECTION: cross-reference-loading -->
 ## Cross-Reference Loading (ADR-015)
@@ -54,7 +54,7 @@ Agent persona files declare cross-references using this XML schema inside the `<
 Cross-references are loaded through `load_cross_ref()`, which is a **read-only** path — separate from `load_own()` (the agent's own sidecar, which supports read/write).
 
 **Parameters:**
-- `sidecar_path` — absolute path to the **target** agent's sidecar directory (e.g., `_memory/architect-sidecar/`)
+- `sidecar_path` — absolute path to the **target** agent's sidecar directory (e.g., `.gaia/memory/architect-sidecar/`)
 - `file_name` — which file to read (e.g., "decision-log.md", "ground-truth.md")
 - `mode` — loading mode: `recent`, `full`, or `summary`
 - `budget_remaining` — remaining token budget for cross-references
@@ -67,7 +67,7 @@ Any attempt to write to a sidecar that is not the current agent's own sidecar MU
 2. Check budget_remaining BEFORE loading — if insufficient, apply progressive downgrade
 3. Read the target file from disk (read-only — no file creation, no modification)
 4. Apply mode filtering (see Loading Modes below)
-5. Calculate token estimate: character count / 4 (using `token_approximation` from `_memory/config.yaml`)
+5. Calculate token estimate: character count / 4 (using `token_approximation` from `.gaia/memory/config.yaml`)
 6. Return filtered content as read-only data with token estimate for caller budget deduction
 
 ### Loading Modes
@@ -101,7 +101,7 @@ Cross-references are loaded **just-in-time** during workflow step execution — 
 - Tokens already consumed by previously loaded cross-references
 - Estimated tokens for the next cross-reference (based on mode and file size)
 
-**Per-agent `cross_ref_budget_cap`:** Some agents have a `cross_ref_budget_cap` in `_memory/config.yaml` (e.g., validator: 0.5). This caps cross-reference token consumption at that fraction of the agent's session budget. If loading would exceed the cap, halt loading and downgrade remaining cross-refs progressively.
+**Per-agent `cross_ref_budget_cap`:** Some agents have a `cross_ref_budget_cap` in `.gaia/memory/config.yaml` (e.g., validator: 0.5). This caps cross-reference token consumption at that fraction of the agent's session budget. If loading would exceed the cap, halt loading and downgrade remaining cross-refs progressively.
 
 **Progressive downgrade chain:** When budget is insufficient for the requested mode:
 1. `full` → downgrade to `recent`
@@ -112,7 +112,7 @@ Log every downgrade as a warning in the session checkpoint:
 `"Cross-ref downgraded: {agent}/{file} from {original_mode} to {new_mode} — budget {used}/{total}"`
 
 **Val's 50% cross-ref budget cap:**
-Val (validator) has a `cross_ref_budget_cap` of 0.5 in `_memory/config.yaml`, meaning cross-references may consume at most 50% of Val's 300K session budget (= 150K tokens max for cross-refs). Val's load priority order: architect, pm, sm. If the 150K cap is hit mid-load, remaining cross-references are downgraded progressively.
+Val (validator) has a `cross_ref_budget_cap` of 0.5 in `.gaia/memory/config.yaml`, meaning cross-references may consume at most 50% of Val's 300K session budget (= 150K tokens max for cross-refs). Val's load priority order: architect, pm, sm. If the 150K cap is hit mid-load, remaining cross-references are downgraded progressively.
 
 **Tier budget ceilings:**
 - Tier 1 agents: 300K session budget (own sidecar + cross-refs combined)
@@ -137,16 +137,16 @@ Val (validator) has a `cross_ref_budget_cap` of 0.5 in `_memory/config.yaml`, me
 - If `<cross-ref required="true">` (default) and the target is absent: log warning but still continue
 
 **Agent not in cross-reference matrix:**
-- If the calling agent has no entry in `_memory/config.yaml` `cross_references`, return empty result with no error
+- If the calling agent has no entry in `.gaia/memory/config.yaml` `cross_references`, return empty result with no error
 
 ### Consistency Validation
 
-At session start, validate that agent persona `<memory-reads>` declarations are consistent with `_memory/config.yaml` cross_references matrix:
+At session start, validate that agent persona `<memory-reads>` declarations are consistent with `.gaia/memory/config.yaml` cross_references matrix:
 
 1. Parse the agent's `<memory-reads>` block from the persona file
-2. Load the agent's entry from `_memory/config.yaml` → `cross_references.{agent_id}.reads_from`
+2. Load the agent's entry from `.gaia/memory/config.yaml` → `cross_references.{agent_id}.reads_from`
 3. Compare: every entry in config.yaml should have a matching `<cross-ref>` in the persona file
-4. If mismatch found: produce a **warning** (not an error) — `_memory/config.yaml` is the authoritative source
+4. If mismatch found: produce a **warning** (not an error) — `.gaia/memory/config.yaml` is the authoritative source
 
 **Self-reference guard:**
 If an agent's `<memory-reads>` declares a `<cross-ref>` where the `agent` attribute matches the current agent's own ID, reject it with a validation error at session start. An agent must not reference its own sidecar as a cross-reference — own-sidecar access is through `load_own()`.
@@ -170,13 +170,13 @@ Shared utility for checking token budget usage against tier-defined thresholds. 
 ### Parameters
 
 - `sidecar_path` — absolute path to the agent's sidecar directory
-- `tier_budget` — session token budget for this agent's tier (from `_memory/config.yaml`). If null or absent, the agent is untiered.
+- `tier_budget` — session token budget for this agent's tier (from `.gaia/memory/config.yaml`). If null or absent, the agent is untiered.
 - `current_usage` — current token count (own sidecar files + cross-refs loaded in this session)
 - `projected_addition` — token count of content about to be written/loaded
 
 ### Threshold Definitions (config-driven)
 
-All thresholds are read from `_memory/config.yaml` `archival` block at runtime. Never hardcode these values.
+All thresholds are read from `.gaia/memory/config.yaml` `archival` block at runtime. Never hardcode these values.
 
 - `budget_warn_at` — fraction of budget at which a warning is returned (e.g., 0.8 = 80%)
 - `budget_alert_at` — fraction of budget at which an alert is returned (e.g., 0.9 = 90%)
@@ -186,7 +186,7 @@ All thresholds are read from `_memory/config.yaml` `archival` block at runtime. 
 
 ### Procedure
 
-1. Read `_memory/config.yaml` archival block to get threshold values
+1. Read `.gaia/memory/config.yaml` archival block to get threshold values
 2. Calculate `projected_total = current_usage + projected_addition`
 3. Calculate `usage_ratio = projected_total / tier_budget`
 4. Return threshold status:
@@ -199,7 +199,7 @@ All thresholds are read from `_memory/config.yaml` `archival` block at runtime. 
 
 When status is `archive_needed`:
 1. Identify the oldest N entries in `decision-log.md` that would free sufficient tokens
-2. Move those entries to `{sidecar_path}/{archive_subdir}/` (e.g., `_memory/architect-sidecar/archive/`)
+2. Move those entries to `{sidecar_path}/{archive_subdir}/` (e.g., `.gaia/memory/architect-sidecar/archive/`)
 3. Create the archive subdirectory if it does not exist (`mkdir -p`)
 4. Use atomic read-modify-write pattern: read full file, remove archived entries, write full file back
 5. Re-check budget after archival — if still over budget, archive more entries (up to 3 iterations)
@@ -207,7 +207,7 @@ When status is `archive_needed`:
 
 ### Token Estimation
 
-Token count is approximated using the `token_approximation` value from `_memory/config.yaml` (default: 4 chars per token). No tokenizer library is used — this aligns with ADR-005 (zero runtime dependencies).
+Token count is approximated using the `token_approximation` value from `.gaia/memory/config.yaml` (default: 4 chars per token). No tokenizer library is used — this aligns with ADR-005 (zero runtime dependencies).
 
 Formula: `tokens = character_count / token_approximation`
 
@@ -222,7 +222,7 @@ The combined total is checked against the tier budget ceiling.
 
 ### Untiered Agent Handling
 
-If `tier_budget` is null, absent, or the agent has no tier assignment in `_memory/config.yaml` (applies to 9 untiered agents: analyst, data-engineer, performance, ux-designer, brainstorming-coach, design-thinking-coach, innovation-strategist, presentation-designer, problem-solver):
+If `tier_budget` is null, absent, or the agent has no tier assignment in `.gaia/memory/config.yaml` (applies to 9 untiered agents: analyst, data-engineer, performance, ux-designer, brainstorming-coach, design-thinking-coach, innovation-strategist, presentation-designer, problem-solver):
 - Skip all budget enforcement — no threshold checks, no archival trigger
 - Return status: `no_budget` with no error
 - This is a no-op: the caller proceeds without any budget constraint

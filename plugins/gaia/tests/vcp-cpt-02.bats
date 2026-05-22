@@ -60,7 +60,7 @@ PHASE1_STEPS=(6 7 6 6 5 9)
 
     # Count canonical write-checkpoint.sh invocation lines targeting this slug.
     local cp_lines
-    cp_lines=$(grep -cE "^> \`!scripts/write-checkpoint\.sh ${slug} [0-9]+" "$file" || true)
+    cp_lines=$(grep -cE "^> \`!(\\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh ${slug} [0-9]+" "$file" || true)
     [ "$cp_lines" = "$expected" ] || {
       echo "$slug: expected $expected checkpoint invocations, got $cp_lines"
       return 1
@@ -70,7 +70,7 @@ PHASE1_STEPS=(6 7 6 6 5 9)
     local n
     for n in $(seq 1 "$expected"); do
       local hits
-      hits=$(grep -cE "^> \`!scripts/write-checkpoint\.sh ${slug} ${n}( |\`)" "$file" || true)
+      hits=$(grep -cE "^> \`!(\\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh ${slug} ${n}( |\`)" "$file" || true)
       [ "$hits" = "1" ] || {
         echo "$slug step $n: expected 1 invocation, got $hits"
         return 1
@@ -149,7 +149,7 @@ PHASE1_STEPS=(6 7 6 6 5 9)
     [ -f "$file" ] || { echo "missing SKILL.md: $file"; return 1; }
     local key
     for key in $keys; do
-      grep -qE "^> \`!scripts/write-checkpoint\.sh ${slug} [0-9]+ .*${key}=" "$file" || {
+      grep -qE "^> \`!(\\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh ${slug} [0-9]+ .*${key}=" "$file" || {
         echo "$slug: key_variable '$key' missing from all invocation lines"
         return 1
       }
