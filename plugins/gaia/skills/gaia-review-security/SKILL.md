@@ -10,7 +10,7 @@ orchestration_class: reviewer
 
 You are performing an **OWASP-focused security review** on the target the user supplies. You evaluate the target across three categories: OWASP Top 10 scan, hardcoded secrets detection, and authentication / authorization pattern review. You produce a markdown findings report with OWASP findings table, secrets scan results, auth pattern review, per-finding severity, and remediation recommendations.
 
-This skill is the **anytime review variant** of the security review pair. The pre-merge gate variant `/gaia-security-review` runs under `context: fork` (read-only, ADR-045) and dispatches OWASP analysis to the Zara subagent. This anytime variant runs **inline** — no fork, no subagent delegation — which means it can read `docs/planning-artifacts/threat-model.md` directly with no fork-context limitation. It is therefore the natural place to implement threat-model cross-reference and live-secret severity escalation as inline LLM-judgment work (per ADR-042 — no new scripts required).
+This skill is the **anytime review variant** of the security review pair. The pre-merge gate variant `/gaia-security-review` runs under `context: fork` (read-only, ADR-045) and dispatches OWASP analysis to the Zara subagent. This anytime variant runs **inline** — no fork, no subagent delegation — which means it can read `.gaia/artifacts/planning-artifacts/threat-model.md` directly with no fork-context limitation. It is therefore the natural place to implement threat-model cross-reference and live-secret severity escalation as inline LLM-judgment work (per ADR-042 — no new scripts required).
 
 This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/review-security.xml` task. Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model. Deterministic report-header generation is delegated to the shared foundation script `template-header.sh` (E28-S16) rather than re-prosed per skill.
 
@@ -19,7 +19,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/
 - **Check against all OWASP Top 10 categories.** Every category must be evaluated — none may be silently skipped. The Top 10 (2021) list is the reference: Broken Access Control, Cryptographic Failures, Injection, Insecure Design, Security Misconfiguration, Vulnerable and Outdated Components, Identification and Authentication Failures, Software and Data Integrity Failures, Security Logging and Monitoring Failures, Server-Side Request Forgery (SSRF).
 - **Flag hardcoded secrets, API keys, credentials.** Any literal token, password, connection string, or key-shaped constant is a finding — severity escalated when the value matches a **live-secret** pattern (see Step 3).
 - **Check authentication and authorization patterns.** Review how identity is established, how sessions or tokens are managed, and how authorization decisions are made at every trust boundary — look for privilege escalation paths.
-- **Threat-model cross-reference (ADR-064).** When `docs/planning-artifacts/threat-model.md` exists, OWASP findings MUST cross-reference modeled threats by threat ID via an optional `Related Threat` column. When the file is absent, the column is omitted entirely — no error, no warning, no behavioral change from current V2.
+- **Threat-model cross-reference (ADR-064).** When `.gaia/artifacts/planning-artifacts/threat-model.md` exists, OWASP findings MUST cross-reference modeled threats by threat ID via an optional `Related Threat` column. When the file is absent, the column is omitted entirely — no error, no warning, no behavioral change from current V2.
 - **Live-secret severity escalation.** Findings matching the live-secret pattern registry (AWS `AKIA...`, GCP service account JSON, GitHub PAT prefixes) MUST rank above generic hardcoded string findings.
 - **Optional Review Gate integration.** When a story in `review` status is identifiable from context, the skill MUST offer to write findings to the story's Review Gate `Security Review` row via `review-gate.sh`. This does NOT replace the pre-merge `/gaia-security-review` gate — it supplements it for anytime reviews.
 
@@ -53,7 +53,7 @@ In YOLO mode the optional Review Gate offer auto-proceeds without prompting (aut
 
 The anytime review variant reads `threat-model.md` **directly** with no fork-context limitation (unlike the pre-merge `/gaia-security-review`, which dispatches to Zara via `context: fork`). This means the skill can perform the SELECTIVE_LOAD inline using the Read tool.
 
-- Probe for `docs/planning-artifacts/threat-model.md` via the `Read` tool.
+- Probe for `.gaia/artifacts/planning-artifacts/threat-model.md` via the `Read` tool.
 - **If the file exists:** read its full content. Apply SELECTIVE_LOAD per ADR-064 — extract only:
   - **Threat IDs** matched by the regex `T{N}` (where `{N}` is one or more digits — e.g., `T1`, `T2`, `T37`).
   - **Threat descriptions** (the narrative or short text adjacent to each threat ID, typically one table cell or one paragraph).
@@ -262,8 +262,8 @@ This step is **optional** and **opt-in**. It bridges anytime reviews into the st
 Attempt to identify a candidate story in `review` status from any of these sources:
 
 1. **Explicit argument.** If the user passed a story key as part of `$ARGUMENTS` (e.g., `/gaia-review-security E48-S3`), use that key.
-2. **Branch name.** Run `git branch --show-current` and look for a `{story_key}` token matching the canonical pattern `E\d+-S\d+` (e.g., `feat/E48-S3-...`). Resolve the story file via `docs/implementation-artifacts/{story_key}-*.md`.
-3. **Current sprint context.** Read `docs/planning-artifacts/sprint-status.yaml` (if present) and find any story whose `status` is `review`. If exactly one matches, propose that key. If multiple match, list them and ask the user to pick.
+2. **Branch name.** Run `git branch --show-current` and look for a `{story_key}` token matching the canonical pattern `E\d+-S\d+` (e.g., `feat/E48-S3-...`). Resolve the story file via `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`.
+3. **Current sprint context.** Read `.gaia/artifacts/planning-artifacts/sprint-status.yaml` (if present) and find any story whose `status` is `review`. If exactly one matches, propose that key. If multiple match, list them and ask the user to pick.
 
 If a candidate is found, verify its `status` is `review` by reading the story file YAML frontmatter. A story is **identifiable for Review Gate integration** only when status is exactly `review`.
 

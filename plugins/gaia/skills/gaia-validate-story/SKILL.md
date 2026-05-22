@@ -12,14 +12,14 @@ orchestration_class: reviewer
 
 ## Mission
 
-You are validating a story file against the codebase and ground truth using the Val (validator) subagent. The story file is resolved by `{story_key}` via the shared `resolve-story-file.sh` helper (E79-S7 / FR-476), which honors the E79-S4 nested-over-flat precedence rule across `docs/implementation-artifacts/epic-*/stories/{story_key}-*.md` (canonical) and `docs/implementation-artifacts/{story_key}-*.md` (legacy-flat fallback).
+You are validating a story file against the codebase and ground truth using the Val (validator) subagent. The story file is resolved by `{story_key}` via the shared `resolve-story-file.sh` helper (E79-S7 / FR-476), which honors the E79-S4 nested-over-flat precedence rule across `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` (canonical) and `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` (legacy-flat fallback).
 
 This skill is the native Claude Code conversion of the legacy validate-story workflow (brief Cluster 7, story E28-S54). Per ADR-093 (Orchestrator-as-Bridge) and ADR-104 (Val Bridge Migration), Val is dispatched via the **main-turn Agent tool** — not the broken-substrate `context: fork` declaration this skill carried prior to E87-S3. After dispatch, the skill MUST source `assert-agent-envelope.sh` (E87-S1) and invoke `assert_agent_envelope` against the envelope sentinel that the Val persona wrote during its execution; on non-zero exit the skill HALTs with the canonical error — there is no silent fall-through to a self-judged validation verdict. The outcome is recorded via `review-gate.sh` (E28-S14).
 
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-validate-story [story-key]".
-- The story file MUST be resolvable by `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` (E79-S7 / FR-476). The helper searches the canonical nested path (`docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`) first, then the legacy-flat path (`docs/implementation-artifacts/{story_key}-*.md`) with a stderr WARNING. If the helper returns exit 1 (zero matches), fail before invoking Val with "story file not found for key {story_key}".
+- The story file MUST be resolvable by `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` (E79-S7 / FR-476). The helper searches the canonical nested path (`.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md`) first, then the legacy-flat path (`.gaia/artifacts/implementation-artifacts/{story_key}-*.md`) with a stderr WARNING. If the helper returns exit 1 (zero matches), fail before invoking Val with "story file not found for key {story_key}".
 - The Val (validator) subagent definition MUST be available. If the subagent cannot start, record `UNVERIFIED` via `review-gate.sh` and exit non-zero with a clear error.
 - Validation outcome MUST be recorded via `review-gate.sh` (E28-S14) — NEVER write to the Review Gate table directly.
 - Only canonical verdict values are permitted: `PASSED`, `FAILED`, or `UNVERIFIED`. No other values.
@@ -34,7 +34,7 @@ This skill is the native Claude Code conversion of the legacy validate-story wor
 ### Step 1 -- Resolve Story File
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-validate-story [story-key]"
-- Resolve the story file path via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` (E79-S7 / FR-476). The helper honors the E79-S4 nested-over-flat precedence rule: nested path (`docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`) wins; legacy-flat fallback (`docs/implementation-artifacts/{story_key}-*.md`) is allowed read-only with a stderr WARNING. Capture both stdout (resolved path) and any stderr WARNINGs.
+- Resolve the story file path via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` (E79-S7 / FR-476). The helper honors the E79-S4 nested-over-flat precedence rule: nested path (`.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md`) wins; legacy-flat fallback (`.gaia/artifacts/implementation-artifacts/{story_key}-*.md`) is allowed read-only with a stderr WARNING. Capture both stdout (resolved path) and any stderr WARNINGs.
 - If the helper exits 1 (zero matches): fail with "story file not found for key {story_key}". The helper's stderr already includes the searched paths.
 - If the helper exits 2 (multiple matches — ambiguity): fail with "multiple story files matched key {story_key} -- resolve ambiguity". The helper's stderr lists each match.
 - Read the resolved story file and confirm it has a `## Review Gate` section.

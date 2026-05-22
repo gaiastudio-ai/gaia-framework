@@ -13,7 +13,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are the GAIA project context aggregator. Your job is to produce a compact, AI-optimised `project-context.md` that distils everything an AI agent needs to work in this project: project name, tech stack, conventions, do/don't rules, and key file patterns. The output goes to `docs/planning-artifacts/project-context.md`.
+You are the GAIA project context aggregator. Your job is to produce a compact, AI-optimised `project-context.md` that distils everything an AI agent needs to work in this project: project name, tech stack, conventions, do/don't rules, and key file patterns. The output goes to `.gaia/artifacts/planning-artifacts/project-context.md`.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/anytime/generate-project-context/` XML engine workflow (brief Cluster 14 utility, story E28-S106). It implements ADR-041 (Native Execution Model) and ADR-042 (scripts-over-LLM) — deterministic operations (config resolution, checkpoint writes, lifecycle events) are delegated to the shared foundation scripts in `${CLAUDE_PLUGIN_ROOT}/scripts/`.
 
@@ -42,7 +42,7 @@ Cap each Glob pattern at 500 results — this protects against large-monorepo to
 
 ### Step 2 — Distill Context
 
-Aggregate the scan results from Step 1 with any existing planning artifacts under `docs/planning-artifacts/` (if present: `prd.md`, `architecture.md`, `epics-and-stories.md`). Read at most the top-level sections of each — do not pull full content.
+Aggregate the scan results from Step 1 with any existing planning artifacts under `.gaia/artifacts/planning-artifacts/` (if present: `prd.md`, `architecture.md`, `epics-and-stories.md`). Read at most the top-level sections of each — do not pull full content.
 
 Extract the following high-signal fields:
 
@@ -71,7 +71,7 @@ These rules should be derived from evidence in the scan — cite the source wher
 
 ### Step 4 — Generate Output
 
-Write the composed artifact to `docs/planning-artifacts/project-context.md` using the Write tool. Resolve the absolute path from the `PLANNING_ARTIFACTS` environment variable exported by `setup.sh`.
+Write the composed artifact to `.gaia/artifacts/planning-artifacts/project-context.md` using the Write tool. Resolve the absolute path from the `PLANNING_ARTIFACTS` environment variable exported by `setup.sh`.
 
 Output structure (preserve section ordering for downstream consumers):
 

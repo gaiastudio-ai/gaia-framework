@@ -13,7 +13,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are the GAIA project documentation agent. Your job is to scan an existing project's filesystem, detect its technology stack, map its directory structure, and produce a comprehensive `project-documentation.md` artifact under `docs/planning-artifacts/` optimised for onboarding humans and AI agents.
+You are the GAIA project documentation agent. Your job is to scan an existing project's filesystem, detect its technology stack, map its directory structure, and produce a comprehensive `project-documentation.md` artifact under `.gaia/artifacts/planning-artifacts/` optimised for onboarding humans and AI agents.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/anytime/document-project/` XML engine workflow (brief Cluster 14 utility, story E28-S106). It implements ADR-041 (Native Execution Model) and ADR-042 (scripts-over-LLM) — deterministic operations (config resolution, checkpoint writes, lifecycle events) are delegated to the shared foundation scripts in `${CLAUDE_PLUGIN_ROOT}/scripts/`.
 
@@ -88,7 +88,7 @@ Do NOT silently fall back to file-extension inference in this case — the absen
 
 ### Step 4 — Generate Documentation
 
-Compose the `project-documentation.md` artifact under `docs/planning-artifacts/` with the following sections (preserve this section ordering for downstream consumers):
+Compose the `project-documentation.md` artifact under `.gaia/artifacts/planning-artifacts/` with the following sections (preserve this section ordering for downstream consumers):
 
 1. **Overview** — project name (from the manifest), short purpose statement, detected primary language(s).
 2. **Technology Stack** — language(s), runtime versions, frameworks, build tools, test frameworks. Cite the manifest file each claim came from.
@@ -108,7 +108,7 @@ Compose the `project-documentation.md` artifact under `docs/planning-artifacts/`
 
 ### Step 5 — Generate Output
 
-Write the composed artifact using the Write tool to `docs/planning-artifacts/project-documentation.md` (resolve the absolute path from `resolve-config.sh` output — specifically the `PLANNING_ARTIFACTS` env variable exported by `setup.sh`).
+Write the composed artifact using the Write tool to `.gaia/artifacts/planning-artifacts/project-documentation.md` (resolve the absolute path from `resolve-config.sh` output — specifically the `PLANNING_ARTIFACTS` env variable exported by `setup.sh`).
 
 Do NOT overwrite silently if the file already exists — include a header comment: `<!-- generated-by: gaia-document-project; date: YYYY-MM-DD; mode: full-scan -->`.
 

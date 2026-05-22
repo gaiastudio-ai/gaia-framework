@@ -195,7 +195,7 @@ Ask the user the following question set, in order. Capture answers into a JSON a
    them to canonical `project_kind` enum values vs. reuse-with-flags
    against the existing canonical set) is explicitly out of scope here and
    is the subject of the schema follow-up tracked as `AI-2026-05-08-3` in
-   `docs/planning-artifacts/action-items.yaml`. No change to
+   `.gaia/artifacts/planning-artifacts/action-items.yaml`. No change to
    `config/project-config.schema.json` is made in this step. The downstream
    stack-loop and platform-loop semantics for `web-app` and `fullstack`
    (whether `fullstack` auto-prompts the mobile follow-ups in Step 2a;
@@ -287,7 +287,7 @@ Render the following to the user, replacing the placeholder with the concrete fi
   - config/project-config.yaml
   - <CI workflow path>
   - <CI user-steps companion path>
-  - docs/test-artifacts/test-environment.yaml.example
+  - .gaia/artifacts/test-artifacts/test-environment.yaml.example
 
 Reminders:
   - Set the credential env vars referenced in `environments.*.credentials.*`

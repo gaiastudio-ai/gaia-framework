@@ -97,9 +97,9 @@ Use Glob to discover project structure and Read to extract metadata from key fil
 1. **Project Source Files**: Glob `{project-path}/**/*` (excluding exclusion list). Extract file inventory, directory structure, languages used. Report: "Scanning project source files... found N files across N directories."
 2. **Project Config Files**: Glob `{project-path}/*.{json,yaml,yml,toml,xml}` (root-level). Extract config keys, settings. Report: "Scanning project config files... found N config files."
 3. **Package Manifests**: Glob for `package.json`, `pubspec.yaml`, `pom.xml`, `build.gradle`, `requirements.txt`, `Cargo.toml`, `go.mod`. Extract dependencies, versions. Report: "Scanning package manifests... found N manifests."
-4. **Planning Artifacts**: Glob `docs/planning-artifacts/*.md`. Extract artifact names, types. Report: "Scanning planning artifacts... found N artifacts."
-5. **Implementation Artifacts**: Glob `docs/implementation-artifacts/epic-*/stories/**/*.md` (canonical nested layout per E79) AND `docs/implementation-artifacts/*.md` (legacy flat fallback until E79-S6 backfill completes). Extract artifact names, story keys. Report: "Scanning implementation artifacts... found N artifacts."
-6. **Test Artifacts**: Glob `docs/test-artifacts/*.md`. Extract artifact names, coverage areas. Report: "Scanning test artifacts... found N artifacts."
+4. **Planning Artifacts**: Glob `.gaia/artifacts/planning-artifacts/*.md`. Extract artifact names, types. Report: "Scanning planning artifacts... found N artifacts."
+5. **Implementation Artifacts**: Glob `.gaia/artifacts/implementation-artifacts/epic-*/stories/**/*.md` (canonical nested layout per E79) AND `.gaia/artifacts/implementation-artifacts/*.md` (legacy flat fallback until E79-S6 backfill completes). Extract artifact names, story keys. Report: "Scanning implementation artifacts... found N artifacts."
+6. **Test Artifacts**: Glob `.gaia/artifacts/test-artifacts/*.md`. Extract artifact names, coverage areas. Report: "Scanning test artifacts... found N artifacts."
 
 **For agent = theo**: Filesystem structure scan + architecture.md ADR extraction.
 **For agent = derek**: PRD + epics-and-stories + sprint-status scan.

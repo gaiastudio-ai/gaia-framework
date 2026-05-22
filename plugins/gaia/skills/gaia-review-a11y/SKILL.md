@@ -66,7 +66,7 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 ### Phase 6 — Report
 
-- Write the report to `docs/test-artifacts/accessibility-review-{date}.md` (preserved verbatim from the legacy task path for downstream consumers — traceability, deploy checklist, run-all-reviews aggregation). If a same-day file exists, append a numeric suffix (`-2`, `-3`).
+- Write the report to `.gaia/artifacts/test-artifacts/accessibility-review-{date}.md` (preserved verbatim from the legacy task path for downstream consumers — traceability, deploy checklist, run-all-reviews aggregation). If a same-day file exists, append a numeric suffix (`-2`, `-3`).
 
 ### Phase 7 — Exit
 

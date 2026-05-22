@@ -184,7 +184,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   runs BEFORE the checkpoint and lifecycle-event writes (observability
   is never suppressed by checklist outcome — story AC5).
 
-  See docs/implementation-artifacts/E42-S11-port-gaia-threat-model-25-item-checklist-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S11-port-gaia-threat-model-25-item-checklist-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 — Output file saved to .gaia/artifacts/planning-artifacts/threat-model.md

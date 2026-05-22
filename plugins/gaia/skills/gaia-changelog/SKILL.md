@@ -1,6 +1,6 @@
 ---
 name: gaia-changelog
-description: Generate a changelog entry from git history and sprint-status files. Groups commits by Keep a Changelog category (Added, Changed, Fixed, Deprecated, Removed, Security) and cross-references story keys from docs/implementation-artifacts/. Writes or appends to CHANGELOG.md. Use when "generate changelog" or /gaia-changelog.
+description: Generate a changelog entry from git history and sprint-status files. Groups commits by Keep a Changelog category (Added, Changed, Fixed, Deprecated, Removed, Security) and cross-references story keys from .gaia/artifacts/implementation-artifacts/. Writes or appends to CHANGELOG.md. Use when "generate changelog" or /gaia-changelog.
 argument-hint: "[version — optional, defaults to unreleased range since last tag]"
 allowed-tools: [Read, Write, Edit, Bash, Grep]
 orchestration_class: light-procedural
@@ -8,7 +8,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are producing a **Keep a Changelog**-formatted changelog entry for this repository. You gather commits since the last release tag, group them by conventional-commit type, cross-reference story keys back to `docs/implementation-artifacts/`, and emit (or append to) `CHANGELOG.md` in the repository root.
+You are producing a **Keep a Changelog**-formatted changelog entry for this repository. You gather commits since the last release tag, group them by conventional-commit type, cross-reference story keys back to `.gaia/artifacts/implementation-artifacts/`, and emit (or append to) `CHANGELOG.md` in the repository root.
 
 This skill is the native Claude Code conversion of the legacy generate-changelog task. Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and deterministic git operations are delegated to inline bash (not re-prosed by the LLM).
 
@@ -17,7 +17,7 @@ This skill is the native Claude Code conversion of the legacy generate-changelog
 - **Follow Keep a Changelog format.** See https://keepachangelog.com/ — the six categories are canonical: Added, Changed, Fixed, Deprecated, Removed, Security.
 - **Group every commit into exactly one category.** Map conventional-commit prefixes: `feat:` → Added, `fix:` → Fixed, `refactor:` / `chore:` / `perf:` / `docs:` / `style:` → Changed, `BREAKING CHANGE:` footer or `!` marker → Removed (breaking) section. Commits with no recognizable prefix go to an "Uncategorized" group rather than being silently dropped.
 - **Include version number and date.** The entry header is `## [{version}] — {YYYY-MM-DD}` where `{version}` is either the argument supplied, the next semver tag, or `Unreleased` when no version is known.
-- **Cross-reference story keys.** If a commit subject contains a match for `E\d+-S\d+`, link the entry back to the corresponding story file under `docs/implementation-artifacts/` so reviewers can open the full context.
+- **Cross-reference story keys.** If a commit subject contains a match for `E\d+-S\d+`, link the entry back to the corresponding story file under `.gaia/artifacts/implementation-artifacts/` so reviewers can open the full context.
 - Do NOT invent version numbers or dates. If the argument is missing and no tag exists, use `Unreleased` as the version and today's ISO date as the date.
 - Output path is `CHANGELOG.md` in the repository root. Append to an existing file rather than overwriting; new entries go above the previous top entry.
 
@@ -41,7 +41,7 @@ Use inline bash for the deterministic git operations (ADR-042):
 
 If the previous-tag command returns empty (no tags yet), fall back to `git log --oneline --no-merges` for the entire history.
 
-Then read any sprint-status files in `docs/implementation-artifacts/` that name stories shipping in this release.
+Then read any sprint-status files in `.gaia/artifacts/implementation-artifacts/` that name stories shipping in this release.
 
 Identify the version number for this entry (argument, next tag, or `Unreleased`).
 
@@ -78,7 +78,7 @@ Walk the commit list and bucket each commit into one of the Keep a Changelog cat
 - **Removed** — `BREAKING CHANGE:` footer, `!` marker after the type, or explicit removal notices.
 - **Security** — commits that mention a CVE, a security fix, or start with `security:`.
 
-Extract a meaningful one-line description from each commit subject (strip the conventional-commit prefix). For story-linked commits, append `— [{story_key}](docs/implementation-artifacts/{story_key}-*.md)` so reviewers can open the story file. The story-key cross-reference (`E\d+-S\d+`) is a V2 win and MUST be preserved — do NOT silently drop story-linked commits (FR-394).
+Extract a meaningful one-line description from each commit subject (strip the conventional-commit prefix). For story-linked commits, append `— [{story_key}](.gaia/artifacts/implementation-artifacts/{story_key}-*.md)` so reviewers can open the story file. The story-key cross-reference (`E\d+-S\d+`) is a V2 win and MUST be preserved — do NOT silently drop story-linked commits (FR-394).
 
 Commits with no recognizable conventional-commit prefix are placed in an **Uncategorized** group rather than being silently dropped. The "Uncategorized" group is the V2-added uncategorised-commit capture and MUST be preserved as a distinct section so unparseable commits remain visible (FR-394).
 

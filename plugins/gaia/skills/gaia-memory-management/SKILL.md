@@ -71,7 +71,7 @@ All decision-log entries use this standardized format:
 - Date: ISO 8601 strict (YYYY-MM-DD). Malformed dates (e.g., `[2026-3-5]`) should trigger a warning and best-effort parsing rather than silently dropping the entry. Entries with unrecoverable dates use `[YYYY-MM-DD-UNKNOWN]` as placeholder.
 - Agent: must match an agent ID from the agent manifest
 - Sprint: sprint ID from sprint-status.yaml, or "pre-sprint" if decided outside a sprint
-- Related: comma-separated list of artifact paths or story keys (e.g., `docs/planning-artifacts/architecture.md, E3-S1`)
+- Related: comma-separated list of artifact paths or story keys (e.g., `.gaia/artifacts/planning-artifacts/architecture.md, E3-S1`)
 <!-- END SECTION -->
 
 <!-- SECTION: session-load -->
@@ -186,7 +186,7 @@ Scan a decision log to identify entries that are stale, contradicted, or orphane
 
 3. **Orphaned entries** — decision references a story or epic that has been removed from epics-and-stories.md
    - Extract story/epic keys from `Related` field
-   - Check each key against `docs/planning-artifacts/epics-and-stories.md`
+   - Check each key against `.gaia/artifacts/planning-artifacts/epics-and-stories.md`
    - If the key is not found: flag as orphaned
    - Reason: "Referenced story/epic {key} not found in epics-and-stories.md"
    - Suggested action: `archive` (decision is likely outdated)

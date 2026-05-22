@@ -46,7 +46,7 @@ The persona is lazy-loaded by `load-stack-persona.sh` BEFORE fork dispatch — t
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-review-mobile [story-key]".
-- The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug.
+- The story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug.
 - The story MUST be in `review` status. If not, fail with "story must be in review status before mobile review".
 - This skill is READ-ONLY. Do NOT attempt Write or Edit tools — the fork context allowlist enforces this.
 - Platform-irrelevant validators MUST be skipped silently (e.g., iOS validators skip on `platforms: [android]`). Skipped validators do NOT contribute to the verdict.
@@ -91,7 +91,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 - Resolve config via `resolve-config.sh` (already invoked by `setup.sh`).
 - Read `platforms[]` and `compliance[]` from project-config.
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch (NFR-DEJ-4 preserved). For mobile review the canonical stack name is `mobile-dev` (Talia). Forward the persona payload + canonical stack name into the fork.
-- Resolve the story file path using the canonical glob: `docs/implementation-artifacts/{story_key}-*.md`. Fail on zero or multiple matches.
+- Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. Fail on zero or multiple matches.
 
 ### Phase 2 — Story Gate
 
@@ -207,7 +207,7 @@ The LLM cannot relabel a CRITICAL finding to APPROVE; it can only add context, d
 
 ### Phase 4 — Architecture Conformance + Design Fidelity
 
-Cross-check the diff against the project's architecture and threat-model artifacts (`docs/planning-artifacts/architecture.md`, `docs/planning-artifacts/threat-model.md`) when present. Verify that:
+Cross-check the diff against the project's architecture and threat-model artifacts (`.gaia/artifacts/planning-artifacts/architecture.md`, `.gaia/artifacts/planning-artifacts/threat-model.md`) when present. Verify that:
 
 - New entitlements or permissions are documented in the architecture (or threat model) before being introduced. Undocumented sensitive entitlements (camera, location, contacts, microphone, push) → WARNING.
 - Universal-link domain additions match the architecture's documented external-integration surface.
@@ -235,7 +235,7 @@ Verdict mapping:
 
 ### Phase 6 — Output + Gate Update
 
-Generate the report at `docs/implementation-artifacts/{story_key}-mobile-review.md` containing:
+Generate the report at `.gaia/artifacts/implementation-artifacts/{story_key}-mobile-review.md` containing:
 
 - Story key + title
 - Resolved `platforms[]` and `compliance[]`

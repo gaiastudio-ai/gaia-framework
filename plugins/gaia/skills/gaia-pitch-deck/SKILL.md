@@ -16,7 +16,7 @@ Investor / partner pitch pipeline: **Pitch Context → Load Business
 Artifacts → Standard Pitch Structure → Slide-by-Slide Content → Data
 Visualization → Storytelling Polish → Generate Output**. Produces a
 pitch-deck specification at
-`docs/creative-artifacts/pitch-deck-{date}.md` covering every
+`.gaia/artifacts/creative-artifacts/pitch-deck-{date}.md` covering every
 standard pitch section with speaker notes and chart specs. Converted
 under ADR-041 (native execution model) with full functional parity
 against the legacy source (NFR-053). The legacy-source path is
@@ -44,7 +44,7 @@ source pointer.
   `plugins/gaia/agents/presentation-designer.md` is registered.
   If the subagent is unavailable, facilitate inline — do not halt.
 - Preserve the output contract exactly:
-  `docs/creative-artifacts/pitch-deck-{date}.md` (date as
+  `.gaia/artifacts/creative-artifacts/pitch-deck-{date}.md` (date as
   `YYYY-MM-DD`). Downstream skills glob on this prefix — do not
   rename.
 - This skill and `gaia-slide-deck` share the same Vermeer subagent
@@ -215,12 +215,12 @@ Assemble the final pitch-deck specification.
    specs, visual-design system, and appendix slides into a single
    artifact.
 2. Write the artifact to
-   `docs/creative-artifacts/pitch-deck-{date}.md`.
+   `.gaia/artifacts/creative-artifacts/pitch-deck-{date}.md`.
 
 ## Output
 
 Write the pitch-deck specification to
-`docs/creative-artifacts/pitch-deck-{date}.md` where `{date}` is the
+`.gaia/artifacts/creative-artifacts/pitch-deck-{date}.md` where `{date}` is the
 current date in `YYYY-MM-DD` form. This path is verbatim from the
 legacy workflow's `output.primary` contract (NFR-053 — functional
 parity).
@@ -230,7 +230,7 @@ parity).
 If the output file already exists from a prior same-day run:
 
 1. **Default (safe):** Append a disambiguating suffix —
-   `docs/creative-artifacts/pitch-deck-{date}-{N}.md` where `{N}` is
+   `.gaia/artifacts/creative-artifacts/pitch-deck-{date}-{N}.md` where `{N}` is
    the next available integer starting at 2.
 2. **Overwrite:** Only on explicit user request.
 

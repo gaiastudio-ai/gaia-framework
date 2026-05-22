@@ -85,7 +85,7 @@ Write `{target-folder}/index.md` with the following layout:
 ```
 
 - Derive `{Folder Title}` from the folder name (snake-case or kebab-case → Title Case; e.g., `planning-artifacts` → "Planning Artifacts").
-- Use relative paths in every link (e.g., `./prd.md`, never `/docs/planning-artifacts/prd.md`).
+- Use relative paths in every link (e.g., `./prd.md`, never `/.gaia/artifacts/planning-artifacts/prd.md`).
 - Include the last-updated timestamp in `YYYY-MM-DD` format.
 - Emit the full table of contents between the START/END markers so future re-runs regenerate only that region.
 

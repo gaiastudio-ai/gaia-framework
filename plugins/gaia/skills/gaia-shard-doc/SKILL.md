@@ -71,7 +71,7 @@ The skill runs five steps in strict order, mirroring the legacy `shard-doc.xml`:
 
 ## Step 4 — Write Shards
 
-- Create the output directory — same path as the source file with the extension stripped (e.g., `docs/planning-artifacts/prd.md` → `docs/planning-artifacts/prd/`). Use `!` inline bash for `mkdir -p` per ADR-042.
+- Create the output directory — same path as the source file with the extension stripped (e.g., `.gaia/artifacts/planning-artifacts/prd.md` → `.gaia/artifacts/planning-artifacts/prd/`). Use `!` inline bash for `mkdir -p` per ADR-042.
 - **Before writing each shard, invoke the sub-shard preservation guard** (E53-S250 / FR-453). For every shard slug about to be emitted, run:
 
   ```bash

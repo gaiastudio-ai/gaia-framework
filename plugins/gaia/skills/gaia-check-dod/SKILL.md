@@ -12,14 +12,14 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are checking the Definition of Done (DoD) checklist for a story file. The story is resolved by `{story_key}` via the canonical glob `{story_key}-*.md` in `docs/implementation-artifacts/`. This is a read-only verification -- you report the state of each DoD item but do not modify the story file.
+You are checking the Definition of Done (DoD) checklist for a story file. The story is resolved by `{story_key}` via the canonical glob `{story_key}-*.md` in `.gaia/artifacts/implementation-artifacts/`. This is a read-only verification -- you report the state of each DoD item but do not modify the story file.
 
 This skill is the native Claude Code conversion of the legacy check-dod workflow (brief Cluster 7, story E28-S56, ADR-042 "mostly scripted"). LLM involvement is minimal -- the skill parses the DoD markdown section, emits a structured verdict, and returns.
 
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-check-dod [story-key]".
-- The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
+- The story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
 - This skill is READ-ONLY. Do NOT modify the story file.
 - Parse the `## Definition of Done` section from the story file. Each checklist item is a markdown checkbox line (`- [x]` or `- [ ]`).
 - Report per-item state: checked (done) or unchecked (not done).
@@ -30,8 +30,8 @@ This skill is the native Claude Code conversion of the legacy check-dod workflow
 ### Step 1 -- Resolve Story File
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-check-dod [story-key]"
-- Resolve the story file path using the canonical glob: `docs/implementation-artifacts/{story_key}-*.md`
-- If zero matches: fail with "story file not found for key {story_key} -- searched docs/implementation-artifacts/{story_key}-*.md"
+- Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`
+- If zero matches: fail with "story file not found for key {story_key} -- searched .gaia/artifacts/implementation-artifacts/{story_key}-*.md"
 - If multiple matches: fail with "multiple story files matched key {story_key} -- resolve ambiguity"
 - Read the resolved story file.
 

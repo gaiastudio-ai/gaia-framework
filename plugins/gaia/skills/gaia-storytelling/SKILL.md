@@ -27,7 +27,7 @@ fi
 
 Narrative craft pipeline: **Audience and Purpose → Framework Selection →
 Story Construction → Emotional Beats → Polish and Present**. Produces a
-polished story artifact at `docs/creative-artifacts/story-{date}.md`.
+polished story artifact at `.gaia/artifacts/creative-artifacts/story-{date}.md`.
 Converted under ADR-041 (native execution model) with full functional
 parity against the legacy source (NFR-053). The legacy-source path is
 intentionally omitted from the body per the E28-S104 "zero legacy
@@ -52,7 +52,7 @@ source pointer.
   Agent tool when `plugins/gaia/agents/storyteller.md` is registered.
   If the subagent is unavailable, facilitate inline — do not halt.
 - Preserve the output contract exactly:
-  `docs/creative-artifacts/story-{date}.md` (date as `YYYY-MM-DD`).
+  `.gaia/artifacts/creative-artifacts/story-{date}.md` (date as `YYYY-MM-DD`).
   Downstream skills glob on this prefix — do not rename.
 
 ## Inputs
@@ -206,12 +206,12 @@ Finalize the artifact and test it against the 3-second hook rule.
    Update section of Elara's persona is defined) so future invocations
    can reference the narrative pattern.
 5. **Render the final artifact** and write it to
-   `docs/creative-artifacts/story-{date}.md`.
+   `.gaia/artifacts/creative-artifacts/story-{date}.md`.
 
 ## Output
 
 Write the final story artifact to
-`docs/creative-artifacts/story-{date}.md` where `{date}` is the
+`.gaia/artifacts/creative-artifacts/story-{date}.md` where `{date}` is the
 current date in `YYYY-MM-DD` form. This path is verbatim from the
 legacy workflow's `output.primary` contract (NFR-053 — functional
 parity).
@@ -221,7 +221,7 @@ parity).
 If the output file already exists from a prior same-day run:
 
 1. **Default (safe):** Append a disambiguating suffix —
-   `docs/creative-artifacts/story-{date}-{N}.md` where `{N}` is the
+   `.gaia/artifacts/creative-artifacts/story-{date}-{N}.md` where `{N}` is the
    next available integer starting at 2. Log the disambiguation:
    `Same-day output exists — wrote to story-{date}-{N}.md to avoid
    silent data loss.`
