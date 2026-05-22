@@ -64,11 +64,18 @@ else
 fi
 
 # ---------- 2b. Guard: architecture.md must already exist ----------
+# AF-2026-05-21-25 three-tier idiom (mirrors AF-21-12 gaia-edit-prd/setup.sh).
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}"
-ARCH_PATH="$PROJECT_ROOT/docs/planning-artifacts/architecture.md"
+if [ -z "${ARCH_PATH:-}" ]; then
+  if [ -f "$PROJECT_ROOT/docs/planning-artifacts/architecture.md" ] && [ ! -d "$PROJECT_ROOT/.gaia/artifacts/planning-artifacts" ]; then
+    ARCH_PATH="$PROJECT_ROOT/docs/planning-artifacts/architecture.md"
+  else
+    ARCH_PATH="$PROJECT_ROOT/.gaia/artifacts/planning-artifacts/architecture.md"
+  fi
+fi
 
 if [ ! -f "$ARCH_PATH" ]; then
-  log "architecture.md not found at $ARCH_PATH — edit-arch requires an existing architecture (non-fatal in setup)"
+  log "architecture.md not found at $ARCH_PATH (canonical .gaia/artifacts/planning-artifacts/architecture.md or legacy docs/planning-artifacts/architecture.md) — edit-arch requires an existing architecture (non-fatal in setup)"
 fi
 
 # ---------- 3. Load checkpoint state ----------
