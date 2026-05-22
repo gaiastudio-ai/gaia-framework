@@ -15,7 +15,7 @@
 #
 # Optional environment overrides (used by tests and downstream skills):
 #   PLANNING_ARTIFACTS  Override the planning-artifacts dir for rule #4
-#                       (default: docs/planning-artifacts).
+#                       (default: .gaia/artifacts/planning-artifacts).
 #   EPICS_FILE          Override the epics-and-stories.md path for rule #3.
 #
 # Output (stdout, single line of JSON):

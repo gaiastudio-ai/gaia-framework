@@ -26,7 +26,7 @@
 #
 # Environment:
 #   BRAINSTORM_ARTIFACT  Absolute path to the artifact to validate. When
-#                        unset, the script scans docs/creative-artifacts/
+#                        unset, the script scans .gaia/artifacts/creative-artifacts/
 #                        for the most recent brainstorm-*.md file.
 
 set -euo pipefail
@@ -48,7 +48,7 @@ die() { log "$*"; exit 1; }
 # ---------- 0. Resolve artifact path (AF-2026-05-21-25 three-tier idiom) ----------
 # Tier 1 — BRAINSTORM_ARTIFACT env-var override wins when set.
 # Tier 2 — positive pre-ADR-111 evidence: legacy dir exists AND canonical dir
-#          does NOT → use most-recent docs/creative-artifacts/brainstorm-*.md.
+#          does NOT → use most-recent .gaia/artifacts/creative-artifacts/brainstorm-*.md.
 # Tier 3 — canonical default: most-recent .gaia/artifacts/creative-artifacts/brainstorm-*.md.
 # A missing artifact is NOT fatal — the checklist run is simply skipped.
 ARTIFACT=""

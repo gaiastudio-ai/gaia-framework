@@ -4,7 +4,7 @@
 # E42-S8 extends the bare-bones Cluster 6 finalize scaffolding with a
 # 33-item post-completion checklist (25 script-verifiable + 8
 # LLM-checkable) derived from the V1 /gaia-create-arch (create-architecture)
-# checklist. See docs/implementation-artifacts/E42-S8-* for the
+# checklist. See .gaia/artifacts/implementation-artifacts/E42-S8-* for the
 # V1 -> V2 mapping.
 #
 # Responsibilities (per brief §Cluster 6 + story E42-S8):
@@ -38,7 +38,7 @@
 #                          (AF-2026-05-21-11): prefer
 #                          .gaia/artifacts/planning-artifacts/architecture.md
 #                          (post-ADR-111 canonical); use legacy
-#                          docs/planning-artifacts/architecture.md only on
+#                          .gaia/artifacts/planning-artifacts/architecture.md only on
 #                          positive pre-ADR-111 evidence (legacy file
 #                          exists AND canonical dir does not). If neither
 #                          is present, the checklist run is skipped

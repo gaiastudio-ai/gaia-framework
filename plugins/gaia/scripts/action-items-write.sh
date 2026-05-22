@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # action-items-write.sh — inline fallback action-items writer (E39-S3)
 #
-# Writes structured entries to docs/planning-artifacts/action-items.yaml
+# Writes structured entries to .gaia/artifacts/planning-artifacts/action-items.yaml
 # following architecture §10.28.6 Action Items Schema. This is the inline
 # fallback writer for use until E36-S2 ships the shared writer. The contract
 # is byte-compatible with E36-S2 so swap-in is a pure deletion of this file.

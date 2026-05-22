@@ -12,12 +12,12 @@ without an ADR amending ADR-041.
 ## References
 
 - **ADR-041 — Native Execution:**
-  `docs/planning-artifacts/architecture.md#ADR-041 Native Execution`.
+  `.gaia/artifacts/planning-artifacts/architecture.md#ADR-041 Native Execution`.
   ADR-041 establishes that GAIA subagents run as native Claude Code subagents,
   not under the legacy `_gaia/core/engine/workflow.xml` engine. This schema is
   the concrete frontmatter contract that makes native execution possible.
 - **Feature Brief — GAIA Native Conversion:**
-  `docs/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md`
+  `.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md`
   (specifically the Cluster 3 subagent pattern section, P3-S1). The feature
   brief defines the `name` / `model` / `description` / `context` / `allowed-tools`
   shape and the `## Memory` loader pattern that this schema enforces.

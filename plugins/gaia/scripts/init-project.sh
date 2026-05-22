@@ -8,7 +8,7 @@
 # initialization.
 #
 # Refs: FR-325, FR-328, FR-331, NFR-048, ADR-042, ADR-046, ADR-048
-# Brief: P2-S8, P21-S6 (docs/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
+# Brief: P2-S8, P21-S6 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
 #
 # Invocation contract:
 #

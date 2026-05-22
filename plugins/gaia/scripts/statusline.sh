@@ -19,7 +19,7 @@
 #   - ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json                     (D5: version, active plugin)
 #     Falls back to $PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json (in-tree dev)
 #   - $HOME/.claude/gaia-statusline/cache/latest-release.json             (silent on miss)
-#   - $PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml      (rich theme only, D11)
+#   - $PROJECT_PATH/.gaia/artifacts/implementation-artifacts/sprint-status.yaml      (rich theme only, D11)
 #
 # POSIX discipline: bash 3.2 compatible (macOS default).
 
@@ -223,7 +223,7 @@ else
 fi
 
 # ---- Rich-theme sprint status read (D11, TC-6) -----------------------------
-# Walks UP from PROJECT_PATH looking for docs/implementation-artifacts/
+# Walks UP from PROJECT_PATH looking for .gaia/artifacts/implementation-artifacts/
 # sprint-status.yaml. This handles the common layout where the terminal cwd
 # is inside a subproject (e.g., $PROJECT_ROOT/gaia-public/) but the sprint
 # artifacts live at the project root. Capped at 5 levels to bound stat-call

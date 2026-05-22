@@ -4,7 +4,7 @@
 # E42-S11 extends the bare-bones Cluster 6 finalize scaffolding with a
 # 25-item post-completion checklist (15 script-verifiable + 10
 # LLM-checkable) derived from the V1 security-threat-model checklist.
-# See docs/implementation-artifacts/E42-S11-* for the V1 → V2 mapping.
+# See .gaia/artifacts/implementation-artifacts/E42-S11-* for the V1 → V2 mapping.
 #
 # Responsibilities (per brief §Cluster 6 + story E42-S11):
 #   1. Run the script-verifiable subset of the 25 V1 checklist items
@@ -37,7 +37,7 @@
 #                          to canonical-first resolution (AF-2026-05-21-15):
 #                          prefer .gaia/artifacts/planning-artifacts/threat-model.md
 #                          (post-ADR-111 canonical); use legacy
-#                          docs/planning-artifacts/threat-model.md only
+#                          .gaia/artifacts/planning-artifacts/threat-model.md only
 #                          on positive pre-ADR-111 evidence. If neither
 #                          is present, the checklist run is skipped
 #                          (classic Cluster 6 behaviour — observability

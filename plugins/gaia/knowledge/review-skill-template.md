@@ -93,7 +93,7 @@ Resolver stdout is exactly one of `APPROVE | REQUEST_CHANGES | BLOCKED`. The LLM
 
 ### Phase 6 — Output + Gate Update
 
-- Render the report at `docs/implementation-artifacts/{story_key}-review.md` (or per FR-402 naming convention) with two top-level sections:
+- Render the report at `.gaia/artifacts/implementation-artifacts/{story_key}-review.md` (or per FR-402 naming convention) with two top-level sections:
   - **Deterministic Analysis** — per-tool status table + findings.
   - **LLM Semantic Review** — Critical / Warning / Suggestion organized by category.
   - Final line: `**Verdict: APPROVE | REQUEST_CHANGES | BLOCKED**`.

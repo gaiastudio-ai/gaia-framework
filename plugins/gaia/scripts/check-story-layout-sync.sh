@@ -5,7 +5,7 @@
 # Trace: TC-CSP-7
 #
 # Mirrors the established `check-monolith-shard-sync.sh` advisory pattern.
-# Walks docs/implementation-artifacts/ and emits WARNING lines on stdout
+# Walks .gaia/artifacts/implementation-artifacts/ and emits WARNING lines on stdout
 # when story-file layout drift is detected. The script is ADVISORY: it
 # always exits 0. CRITICAL severity is reserved for future hard-conflict
 # cases (e.g., two per-epic stories sharing the same `key:` under different
@@ -14,11 +14,11 @@
 # Drift classes (each is repairable by the E79-S6 migration script):
 #
 #   1. legacy-flat-path        — story file at docs/implementation-artifacts/
-#                                 instead of docs/implementation-artifacts/
+#                                 instead of .gaia/artifacts/implementation-artifacts/
 #                                 epic-E{N}-{slug}/stories/
-#   2. heterogeneous-story-index — both a flat docs/implementation-artifacts/
+#   2. heterogeneous-story-index — both a flat .gaia/artifacts/implementation-artifacts/
 #                                  story-index.yaml AND one or more per-epic
-#                                  docs/implementation-artifacts/epic-E*/
+#                                  .gaia/artifacts/implementation-artifacts/epic-E*/
 #                                  stories/story-index.yaml files exist.
 #   3. epic-slug-mismatch      — per-epic story file's frontmatter `epic:`
 #                                  field does not match the directory's
@@ -91,7 +91,7 @@ fi
 # Check A — legacy flat-path stories.
 #
 # Emits one WARNING per file matching:
-#   docs/implementation-artifacts/E*-S*-*.md  (maxdepth 1)
+#   .gaia/artifacts/implementation-artifacts/E*-S*-*.md  (maxdepth 1)
 # ---------------------------------------------------------------------------
 
 check_legacy_flat_path() {
@@ -112,9 +112,9 @@ check_legacy_flat_path() {
 # Check B — heterogeneous story-index.
 #
 # Emits exactly ONE line if both
-#   docs/implementation-artifacts/story-index.yaml
+#   .gaia/artifacts/implementation-artifacts/story-index.yaml
 # AND any
-#   docs/implementation-artifacts/epic-E*/stories/story-index.yaml
+#   .gaia/artifacts/implementation-artifacts/epic-E*/stories/story-index.yaml
 # are present. The detail line names the flat-index path and the
 # lexicographically first per-epic match.
 # ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ check_heterogeneous_story_index() {
 # Check C — epic-slug mismatch.
 #
 # For each per-epic story file at
-#   docs/implementation-artifacts/epic-E{N}-{slug}/stories/{key}-{slug}.md
+#   .gaia/artifacts/implementation-artifacts/epic-E{N}-{slug}/stories/{key}-{slug}.md
 # read its frontmatter `epic:` field and compare against the directory's
 # `epic-E{N}` token. Emit a WARNING on mismatch.
 # ---------------------------------------------------------------------------
@@ -198,7 +198,7 @@ check_epic_slug_mismatch() {
     esac
 
     # Derive the directory's epic key from the parent-of-parent directory name:
-    #   .../docs/implementation-artifacts/epic-E{N}-{slug}/stories/<file>
+    #   .../.gaia/artifacts/implementation-artifacts/epic-E{N}-{slug}/stories/<file>
     local stories_dir epic_dir epic_dirname
     stories_dir="$(dirname "$abs_path")"
     epic_dir="$(dirname "$stories_dir")"

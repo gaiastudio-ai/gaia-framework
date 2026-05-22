@@ -7,7 +7,7 @@
 # → deploy-checklist) against the Cluster 19 fixture and records a dated
 # results artifact plus per-stage parity metadata.
 #
-# Contract surface is defined by docs/test-artifacts/atdd-E28-S133.md and
+# Contract surface is defined by .gaia/artifacts/test-artifacts/atdd-E28-S133.md and
 # gaia-public/plugins/gaia/test/e28-s133-full-lifecycle-atdd.bats.
 #
 # Usage:

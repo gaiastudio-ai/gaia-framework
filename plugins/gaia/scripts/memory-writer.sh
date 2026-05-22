@@ -7,7 +7,7 @@
 # close the two-path hybrid memory model (ADR-046).
 #
 # Refs: FR-331, NFR-048, ADR-042, ADR-046, ADR-048, ADR-014
-# Brief: P21-S1 (docs/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
+# Brief: P21-S1 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
 #
 # Invocation contract:
 #

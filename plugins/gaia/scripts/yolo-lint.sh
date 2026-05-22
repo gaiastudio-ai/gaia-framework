@@ -3,7 +3,7 @@
 #
 # Story: E41-S1 (YOLO Mode Contract + Helper)
 # ADR: ADR-057 (YOLO Mode Contract for V2 Phase 4 Commands)
-# Architecture: docs/planning-artifacts/architecture.md §10.30.3 + §10.30.8
+# Architecture: .gaia/artifacts/planning-artifacts/architecture.md §10.30.3 + §10.30.8
 #
 # Purpose
 # -------

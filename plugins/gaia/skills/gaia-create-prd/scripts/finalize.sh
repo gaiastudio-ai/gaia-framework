@@ -35,7 +35,7 @@
 #                 When unset, the script falls back to a canonical-first
 #                 path resolution (AF-2026-05-21-10): prefer
 #                 .gaia/artifacts/planning-artifacts/prd.md (post-ADR-111
-#                 canonical); use docs/planning-artifacts/prd.md only on
+#                 canonical); use .gaia/artifacts/planning-artifacts/prd.md only on
 #                 positive pre-ADR-111 evidence (legacy file exists AND
 #                 canonical dir does not). If neither is present, the
 #                 checklist run is skipped (classic Cluster 5 behaviour

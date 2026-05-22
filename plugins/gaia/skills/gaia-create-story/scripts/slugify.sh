@@ -36,8 +36,8 @@
 #   identical across macOS, Linux, and CI runners.
 #
 # Spec references:
-#   - docs/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.3
-#   - docs/planning-artifacts/architecture.md §Decision Log — ADR-074
+#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.3
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-074
 #   - gaia-public/plugins/gaia/skills/gaia-shell-idioms/SKILL.md (set -euo
 #     pipefail + LC_ALL=C + tr|sed collapse-and-trim)
 

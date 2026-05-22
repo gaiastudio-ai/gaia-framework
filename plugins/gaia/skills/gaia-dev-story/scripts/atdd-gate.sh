@@ -3,12 +3,12 @@
 #
 # Purpose:
 #   For high-risk stories, halt the dev-story workflow at Step 2b unless an
-#   ATDD scenarios file exists under docs/test-artifacts/. For non-high-risk
+#   ATDD scenarios file exists under .gaia/artifacts/test-artifacts/. For non-high-risk
 #   stories, exit 0 unconditionally.
 #
 # Per FR-DSH-6 / ADR-073, the canonical glob set is:
-#   docs/test-artifacts/atdd-{epic_key}*.md   — epic-level ATDD coverage
-#   docs/test-artifacts/atdd-{story_key}*.md  — story-level ATDD coverage
+#   .gaia/artifacts/test-artifacts/atdd-{epic_key}*.md   — epic-level ATDD coverage
+#   .gaia/artifacts/test-artifacts/atdd-{story_key}*.md  — story-level ATDD coverage
 # Either glob matching at least one file satisfies the gate.
 #
 # Field-name alias note: the canonical story template uses `risk:` in

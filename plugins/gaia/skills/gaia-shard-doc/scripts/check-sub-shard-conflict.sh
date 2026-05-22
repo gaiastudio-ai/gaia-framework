@@ -11,7 +11,7 @@
 #   $1 = slug   — the canonical NN-slug for the H2 about to be sharded
 #                 (e.g. "04-functional-requirements"). NO `.md` extension.
 #   $2 = out_dir — the output directory where /gaia-shard-doc would write
-#                  shards (e.g. "docs/planning-artifacts/prd"). The sibling
+#                  shards (e.g. ".gaia/artifacts/planning-artifacts/prd"). The sibling
 #                  directory check looks at "$out_dir/$slug/".
 #
 # Behaviour:

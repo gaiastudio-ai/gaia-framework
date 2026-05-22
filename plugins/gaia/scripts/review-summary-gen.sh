@@ -9,7 +9,7 @@
 # byte-identical when gate state is unchanged.
 #
 # Refs: FR-RAR-2, AF-2026-04-28-7, NFR-RAR-1
-# Brief: docs/planning-artifacts/epics-and-stories.md §E58
+# Brief: .gaia/artifacts/planning-artifacts/epics-and-stories.md §E58
 # Schema source: V1 V1 reference schema lines 80-135 (immutable).
 #
 # Invocation contract (stable for E58-S5 / E58-S6 wiring):

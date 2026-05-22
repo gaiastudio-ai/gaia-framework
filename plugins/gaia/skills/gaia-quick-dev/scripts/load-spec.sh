@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # load-spec.sh — gaia-quick-dev quick-spec loader (E28-S117)
 #
-# Reads the quick spec at docs/implementation-artifacts/quick-spec-{spec_name}.md
+# Reads the quick spec at .gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md
 # and emits its body on stdout. Fails fast with exit code 2 when the spec is
 # missing (AC-EC4 — matches the legacy on_error.missing_file: ask_user contract).
 #

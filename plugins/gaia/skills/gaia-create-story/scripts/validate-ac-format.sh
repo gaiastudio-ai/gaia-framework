@@ -54,12 +54,12 @@
 #   are byte-level and identical on macOS BSD and Linux GNU userland.
 #
 # Spec references:
-#   - docs/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.6
-#   - docs/planning-artifacts/architecture.md §Decision Log — ADR-074
+#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.6
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-074
 #     (deterministic-script lift)
-#   - docs/planning-artifacts/architecture.md §Decision Log — ADR-042
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-042
 #     (Scripts-over-LLM precedent)
-#   - docs/planning-artifacts/architecture.md §Decision Log — ADR-050
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-050
 #     (Shared Val + SM Fix-Loop Dispatch Pattern)
 #   - gaia-public/plugins/gaia/skills/gaia-shell-idioms/SKILL.md
 #   - Sibling: gaia-public/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh (E63-S1)

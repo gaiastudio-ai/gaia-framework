@@ -553,11 +553,11 @@ _check_per_story_status_drift() {
 
 _check_per_story_status_drift
 
-# Special case: PRD monolith may live at docs/planning-artifacts/prd.md
+# Special case: PRD monolith may live at .gaia/artifacts/planning-artifacts/prd.md
 # (legacy layout) with no shard directory. Honor the missing-shard-dir
 # graceful skip path.
 if [[ -f "$ROOT/docs/planning-artifacts/prd.md" ]] && [[ ! -d "$ROOT/docs/planning-artifacts/prd" ]]; then
-  printf 'INFO: prd — monolith %s/docs/planning-artifacts/prd.md exists but no shard dir\n' "$ROOT"
+  printf 'INFO: prd — monolith %s/.gaia/artifacts/planning-artifacts/prd.md exists but no shard dir\n' "$ROOT"
 fi
 
 exit 0

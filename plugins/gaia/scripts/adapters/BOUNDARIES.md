@@ -125,9 +125,9 @@ Custom adapters live under `custom/adapters/{tool}/` (project root) and follow t
 > contracts pending the BOUNDARIES home reorganization tracked by E75-S1.
 > When E75-S1 lands, this section migrates to its replacement.
 
-Editing a monolith document (`docs/planning-artifacts/prd.md`,
-`docs/planning-artifacts/architecture.md`,
-`docs/planning-artifacts/epics-and-stories.md`) MUST be followed by a
+Editing a monolith document (`.gaia/artifacts/planning-artifacts/prd.md`,
+`.gaia/artifacts/planning-artifacts/architecture.md`,
+`.gaia/artifacts/planning-artifacts/epics-and-stories.md`) MUST be followed by a
 re-shard so the per-section shards under the matching shard directory
 (`prd/`, `architecture/`, `epics/`) stay aligned with the monolith. The
 contract is enforced as a documented post-step in five cascade skills:
@@ -135,10 +135,10 @@ contract is enforced as a documented post-step in five cascade skills:
 | Cascade skill | Re-shard step | Monolith touched | Shard directory |
 |---|---|---|---|
 | `/gaia-add-feature` | Step 8c | classification-dependent (PRD, architecture, epics-and-stories) | matching shard dirs |
-| `/gaia-edit-prd` | Step 8 | `prd.md` | `docs/planning-artifacts/prd/` |
-| `/gaia-edit-arch` | Step 9 | `architecture.md` | `docs/planning-artifacts/architecture/` |
-| `/gaia-add-stories` | Step 10 | `epics-and-stories.md` | `docs/planning-artifacts/epics/` |
-| `/gaia-create-story` | Step 6b | `epics-and-stories.md` (via `transition-story-status.sh`) | `docs/planning-artifacts/epics/` |
+| `/gaia-edit-prd` | Step 8 | `prd.md` | `.gaia/artifacts/planning-artifacts/prd/` |
+| `/gaia-edit-arch` | Step 9 | `architecture.md` | `.gaia/artifacts/planning-artifacts/architecture/` |
+| `/gaia-add-stories` | Step 10 | `epics-and-stories.md` | `.gaia/artifacts/planning-artifacts/epics/` |
+| `/gaia-create-story` | Step 6b | `epics-and-stories.md` (via `transition-story-status.sh`) | `.gaia/artifacts/planning-artifacts/epics/` |
 
 Each cascade skill invokes `/gaia-shard-doc <monolith>` after the monolith
 write completes, then runs `check-monolith-shard-sync.sh` to surface any

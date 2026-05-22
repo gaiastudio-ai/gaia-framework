@@ -3,8 +3,8 @@
 # ---------------------------------------------------------------------------
 # Orchestrates `run-all-reviews` against 3 fixture stories (clean,
 # code-review-defect, security-finding) and emits:
-#   - 18 per-review artifacts under docs/implementation-artifacts/
-#   - a native JSONL trace under docs/test-artifacts/traces/
+#   - 18 per-review artifacts under .gaia/artifacts/implementation-artifacts/
+#   - a native JSONL trace under .gaia/artifacts/test-artifacts/traces/
 #   - a strictly monotonic mtime audit log (evidence for ADR-045)
 #
 # Sequential by design (ADR-045): reviews run in canonical order. No parallel

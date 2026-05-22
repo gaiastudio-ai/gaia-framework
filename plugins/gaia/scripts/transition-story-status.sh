@@ -39,9 +39,9 @@
 # Config (env vars, all optional):
 #   PROJECT_PATH              — defaults to "."
 #   IMPLEMENTATION_ARTIFACTS  — smart-fallback: ${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts
-#                                (when present) else ${PROJECT_PATH}/docs/implementation-artifacts
+#                                (when present) else ${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts
 #   PLANNING_ARTIFACTS        — smart-fallback: ${PROJECT_PATH}/.gaia/artifacts/planning-artifacts
-#                                (when present) else ${PROJECT_PATH}/docs/planning-artifacts
+#                                (when present) else ${PROJECT_PATH}/.gaia/artifacts/planning-artifacts
 #   MEMORY_PATH               — smart-fallback: ${PROJECT_PATH}/.gaia/memory (when present)
 #                                else ${PROJECT_PATH}/_memory
 #   SPRINT_STATUS_YAML        — overrides default yaml path (forwarded to sprint-state.sh)
@@ -61,7 +61,7 @@
 #   with identical inputs yields a byte-identical entry block.
 #
 #   Consumer:        plugins/gaia/skills/gaia-create-story/SKILL.md (E63-S11)
-#   Source spec:     docs/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.9
+#   Source spec:     .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.9
 #   Contract source: ADR-074 contract C3 — sole-writer discipline for story-index.yaml
 #
 # Refs: AF-2026-04-28-3, AF-2026-04-28-7, FR-338, NFR-056, ADR-042, ADR-074.

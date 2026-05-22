@@ -61,7 +61,7 @@ done <<<"$config_output"
 #
 #   ${PROJECT_ROOT:-$PWD}/.gaia/run-state/ci-edit-had-prior-setup
 #
-# setup.sh probes for docs/test-artifacts/ci-setup.md at invocation time.
+# setup.sh probes for .gaia/artifacts/test-artifacts/ci-setup.md at invocation time.
 # If it exists, a prior CI setup is in place and an edit is genuinely
 # editing an existing file — in that case finalize.sh MUST still invoke
 # ci_setup_exists as a regression guard (catches the "edit erased the

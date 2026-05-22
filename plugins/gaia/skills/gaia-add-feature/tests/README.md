@@ -51,7 +51,7 @@ inline SM fix that resolved Val F1 from this story's first validation pass.
 
 ### Historical-file allowlist
 
-The live corpus at project-root `docs/planning-artifacts/assessment-AF-*.md`
+The live corpus at project-root `.gaia/artifacts/planning-artifacts/assessment-AF-*.md`
 contains 10 historical (pattern, file, line) tuples spread across 5 files
 that pre-date this convention:
 
@@ -89,7 +89,7 @@ GAIA_PROJECT_ROOT_DOCS=/path/to/project-root/docs \
 # Run the scanner directly (validation mode — disables the allowlist):
 plugins/gaia/skills/gaia-add-feature/scripts/assessment-doc-bypass-check.sh \
   --no-allowlist \
-  /path/to/project-root/docs/planning-artifacts/assessment-AF-*.md
+  /path/to/project-root/.gaia/artifacts/planning-artifacts/assessment-AF-*.md
 ```
 
 ### Output format
@@ -104,7 +104,7 @@ of the smoking-gun string (string 3 normalizes backtick / hyphen variants).
 
 ### Reference
 
-- Root-cause meeting: `docs/planning-artifacts/meeting-2026-05-09-3.md`
+- Root-cause meeting: `.gaia/artifacts/planning-artifacts/meeting-2026-05-09-3.md`
 - Rollback assessment: `assessment-AF-2026-05-09-5.md`
 - Action item: `AI-2026-05-09-12`
 - Epic: E83 — fail-closed enforcement of `/gaia-add-feature` Val gate
