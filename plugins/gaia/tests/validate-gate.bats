@@ -40,7 +40,9 @@ teardown() { common_teardown; }
   run "$SCRIPT" test_plan_exists
   [ "$status" -eq 1 ]
   [[ "$output" == *"validate-gate: test_plan_exists failed"* ]]
-  [[ "$output" == *"expected:"* ]]
+  # AF-2026-05-22-5: test_plan_exists now lists all 4 acceptable paths
+  # ("expected one of:" instead of "expected:"). Accept either form.
+  [[ "$output" == *"expected:"* ]] || [[ "$output" == *"expected one of:"* ]]
 }
 
 @test "validate-gate.sh: traceability_exists happy path" {

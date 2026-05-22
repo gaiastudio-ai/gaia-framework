@@ -43,12 +43,17 @@ teardown() {
 
 # ---------- AC2: validate-gate.sh line 410 ----------
 
-@test "AC2: validate-gate.sh line 410 docstring documents .gaia/config/ canonical" {
-  run sed -n '410p' "$PLUGIN_SCRIPTS/validate-gate.sh"
+@test "AC2: validate-gate.sh 'Read config_phase from' docstring documents .gaia/config/ canonical" {
+  # AF-2026-05-22-5: validate-gate.sh got new lines (test_plan_exists 4-path
+  # error + strategy/test-strategy.md acceptance), shifting the original
+  # line-410 docstring. Match by content instead of fixed line number so
+  # future edits don't break this AC. The 'Read config_phase from' docstring
+  # must reference .gaia/config/ (canonical post-ADR-111).
+  run grep -n "^# Read config_phase from " "$PLUGIN_SCRIPTS/validate-gate.sh"
+  [ "$status" -eq 0 ]
   [[ "$output" == *".gaia/config/"* ]]
-  # Legacy reference MAY remain (as documented fallback). Either way line is
-  # no longer the pure-legacy `${PROJECT_ROOT}/config/project-config.yaml`.
-  [[ "$output" != "# Read config_phase from \${PROJECT_ROOT}/config/project-config.yaml." ]]
+  # Legacy pure-form must NOT be present.
+  [[ "$output" != *"PROJECT_ROOT}/config/project-config.yaml."* ]] || [[ "$output" == *".gaia/config/"* ]]
 }
 
 @test "AC2: validate-gate.sh executable cfg= lines are unchanged (legacy fallback code)" {
