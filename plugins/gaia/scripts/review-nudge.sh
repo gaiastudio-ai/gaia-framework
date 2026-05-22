@@ -21,7 +21,7 @@
 # from surrounding orchestrator output.
 #
 # Refs: FR-RAR-3, AF-2026-04-28-7, NFR-RAR-1
-# Brief: docs/planning-artifacts/epics-and-stories.md §E58-S3
+# Brief: .gaia/artifacts/planning-artifacts/epics-and-stories.md §E58-S3
 # Anchor ADRs: ADR-042 (scripts-over-LLM), ADR-050 (review-gate.sh ledger
 #              + canonical PASSED/FAILED/UNVERIFIED vocabulary),
 #              ADR-054 (review-gate-check composite operation).

@@ -25,12 +25,12 @@ fi
 
 ## Mission
 
-You are generating Acceptance Test-Driven Development (ATDD) artifacts for the specified story key. Each acceptance criterion from the story file is transformed into a failing test skeleton using Given/When/Then format. The output is saved to `docs/test-artifacts/atdd-{story_key}.md`.
+You are generating Acceptance Test-Driven Development (ATDD) artifacts for the specified story key. Each acceptance criterion from the story file is transformed into a failing test skeleton using Given/When/Then format. The output is saved to `.gaia/artifacts/test-artifacts/atdd-{story_key}.md`.
 
 The skill supports two invocation modes:
 
 1. **Single-story mode** — `/gaia-atdd E1-S1` — generate ATDD for one explicit story key. This is the original legacy behavior.
-2. **Batch mode** (argumentless invocation, FR-351) — `/gaia-atdd` — scan `docs/planning-artifacts/epics-and-stories.md` for stories whose risk column is exactly `high`, present an `[all / select / skip]` menu, and generate ATDD artifacts for the chosen subset. When zero high-risk stories are discovered, exit gracefully with the message "No high-risk stories found — nothing to generate" (exit code 0).
+2. **Batch mode** (argumentless invocation, FR-351) — `/gaia-atdd` — scan `.gaia/artifacts/planning-artifacts/epics-and-stories.md` for stories whose risk column is exactly `high`, present an `[all / select / skip]` menu, and generate ATDD artifacts for the chosen subset. When zero high-risk stories are discovered, exit gracefully with the message "No high-risk stories found — nothing to generate" (exit code 0).
 
 This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/atdd/` workflow (brief Cluster 4, story E28-S83). Batch mode and the optional Step 5b red-phase execution are restored under E46-S3 / FR-351.
 
@@ -38,14 +38,14 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 - Knowledge fragments are bundled in this skill's `knowledge/` directory -- load them JIT when referenced by a step.
 - The `story-key` argument is **optional** — when present it MUST follow the `E{number}-S{number}` format (e.g., `E1-S1`, `E28-S83`). When malformed (empty string, missing epic prefix like "S83" without "E{n}-" prefix), exit with a clear validation error message naming the invalid argument.
-- When a story-key is supplied and the key is not found in `docs/planning-artifacts/epics-and-stories.md`, exit with error: "Story {key} not found in epics-and-stories.md" and a non-zero exit code. Do NOT fall back to batch mode (AC-EC3) — the user explicitly asked for one story.
-- When no story-key is supplied, engage **batch mode** (argumentless invocation): scan `docs/planning-artifacts/epics-and-stories.md` for high-risk entries via the bundled `scripts/discover-stories.sh` helper. If `epics-and-stories.md` is missing or unreadable, print "Cannot read docs/planning-artifacts/epics-and-stories.md — halting" and exit non-zero (AC-EC1).
-- A story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md` before proceeding. If the story file is not found for the given key, exit with error: "Story file not found for {story_key}".
+- When a story-key is supplied and the key is not found in `.gaia/artifacts/planning-artifacts/epics-and-stories.md`, exit with error: "Story {key} not found in epics-and-stories.md" and a non-zero exit code. Do NOT fall back to batch mode (AC-EC3) — the user explicitly asked for one story.
+- When no story-key is supplied, engage **batch mode** (argumentless invocation): scan `.gaia/artifacts/planning-artifacts/epics-and-stories.md` for high-risk entries via the bundled `scripts/discover-stories.sh` helper. If `epics-and-stories.md` is missing or unreadable, print "Cannot read .gaia/artifacts/planning-artifacts/epics-and-stories.md — halting" and exit non-zero (AC-EC1).
+- A story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` before proceeding. If the story file is not found for the given key, exit with error: "Story file not found for {story_key}".
 - The story file MUST contain an `## Acceptance Criteria` section with at least one AC entry. If no acceptance criteria are found or the section is empty, exit gracefully with the message: "No acceptance criteria found for {story_key}" and write no ATDD artifact.
 - Each acceptance criterion maps to exactly one failing test skeleton — maintain a strict 1:1 AC-to-test mapping.
 - All generated tests MUST use **Given/When/Then** format for behavior specification.
 - Tests are in the **red phase of TDD** — they describe expected behavior and must fail because the implementation does not exist yet. Do NOT write implementation code.
-- Output MUST be written to `docs/test-artifacts/atdd-{story_key}.md`. If the file already exists from a prior run, overwrite it idempotently — no duplicate content or stale remnants should remain.
+- Output MUST be written to `.gaia/artifacts/test-artifacts/atdd-{story_key}.md`. If the file already exists from a prior run, overwrite it idempotently — no duplicate content or stale remnants should remain.
 - If the generated ATDD output exceeds 10KB (e.g., a story with 20+ ACs), the size advisory fires from `finalize.sh`. The level is risk-aware (E80-S1 AC9): for `risk: high` stories the advisory logs at `[INFO]` (high-risk stories legitimately produce more content); for `medium` / `low` / unset risk it logs at `[WARNING]`. Output must remain complete with no truncation regardless of size.
 - Only high-risk stories typically require ATDD. If the story risk level is not "high", proceed anyway but note in the output header that ATDD was invoked explicitly.
 
@@ -55,18 +55,18 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 - If a story key was provided as an argument (e.g., `/gaia-atdd E1-S1`), use it directly.
 - Validate story key format: must match `E{number}-S{number}` pattern. If malformed, exit with error: "Invalid story key format: {story_key}. Expected format: E{n}-S{n}".
-- When a story-key is supplied and it does not appear in `docs/planning-artifacts/epics-and-stories.md`, exit with "Story {key} not found in epics-and-stories.md" and a non-zero exit code (AC-EC3). Do NOT auto-engage batch mode as a fallback.
+- When a story-key is supplied and it does not appear in `.gaia/artifacts/planning-artifacts/epics-and-stories.md`, exit with "Story {key} not found in epics-and-stories.md" and a non-zero exit code (AC-EC3). Do NOT auto-engage batch mode as a fallback.
 - If no story key was provided, switch to **batch mode** (Step 1b) — do NOT exit.
 
-> `!scripts/write-checkpoint.sh gaia-atdd 1 story_key="$STORY_KEY" test_file_path="docs/test-artifacts/atdd-$STORY_KEY.md" stage=input-validated`
+> `!scripts/write-checkpoint.sh gaia-atdd 1 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" stage=input-validated`
 
 ### Step 1b -- Batch Discovery (argumentless invocation only)
 
 When invoked without a story-key, run batch discovery:
 
-- Invoke `!${CLAUDE_PLUGIN_ROOT}/skills/gaia-atdd/scripts/discover-stories.sh --epics docs/planning-artifacts/epics-and-stories.md --format=menu` to render the discovery menu.
+- Invoke `!${CLAUDE_PLUGIN_ROOT}/skills/gaia-atdd/scripts/discover-stories.sh --epics .gaia/artifacts/planning-artifacts/epics-and-stories.md --format=menu` to render the discovery menu.
 - The script:
-  - Halts with "Cannot read docs/planning-artifacts/epics-and-stories.md — halting" and exit code 1 when the epics file is missing or unreadable (AC-EC1).
+  - Halts with "Cannot read .gaia/artifacts/planning-artifacts/epics-and-stories.md — halting" and exit code 1 when the epics file is missing or unreadable (AC-EC1).
   - Filters rows where the Risk column is exactly `high` (per Dev Notes — exact-value match, not substring). Medium and low risk rows are excluded.
   - Builds a discovery result object per story `{key, title, risk, epic, ac_count}` and surfaces them as a numbered menu listing key, title, and risk.
   - Skips stories whose source file has zero acceptance criteria with a warning "Story {key} has no acceptance criteria — skipping" (AC-EC8) — `ac_count = 0` drives the skip.
@@ -85,7 +85,7 @@ When invoked without a story-key, run batch discovery:
 
 ### Step 2 -- Load Story File
 
-- Search `docs/implementation-artifacts/` for a file matching `{story_key}-*.md`.
+- Search `.gaia/artifacts/implementation-artifacts/` for a file matching `{story_key}-*.md`.
 - If no story file is found, exit with error: "Story file not found for {story_key}".
 - Read the story file and extract:
   - Story title from frontmatter
@@ -93,7 +93,7 @@ When invoked without a story-key, run batch discovery:
   - Acceptance criteria from the `## Acceptance Criteria` section
 - If the Acceptance Criteria section is missing or contains no AC entries, exit with: "No acceptance criteria found for {story_key}".
 
-> `!scripts/write-checkpoint.sh gaia-atdd 2 story_key="$STORY_KEY" test_file_path="docs/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=story-loaded`
+> `!scripts/write-checkpoint.sh gaia-atdd 2 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=story-loaded`
 
 ### Step 3 -- Generate AC-to-Test Mapping
 
@@ -105,7 +105,7 @@ When invoked without a story-key, run batch discovery:
   - **Anti-stub Then-clause (E88-S5, FR-DPD-5, ADR-107).** After the functional Given/When/Then is drafted, invoke `scripts/lib/atdd-anti-stub-emit.sh --ac-text "<ac body>"` and APPEND its output (if any) to the scenario. The helper sources `lib/dispatch-verb-match.sh` (E88-S1) and `lib/canonicalize-dispatch-verb.sh` (this story) to emit one additive Then-clause per unique dispatch primitive matched in the AC body. Non-dispatch ACs receive no clause (byte-for-byte unchanged from pre-E88-S5 behaviour). The clause shape is literal: `Then: $*_STUB env vars are unset AND a real <primitive> was logged`, with `<primitive>` ∈ {`Agent-tool spawn`, `Agent-tool dispatch`, `primitive invocation`, `wiring`, `primitive call`} per the canonicalization map.
 - Build a traceability table mapping each AC to its corresponding test
 
-> `!scripts/write-checkpoint.sh gaia-atdd 3 story_key="$STORY_KEY" test_file_path="docs/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=mapping-generated`
+> `!scripts/write-checkpoint.sh gaia-atdd 3 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=mapping-generated`
 
 ### Step 4 -- Write ATDD Artifact
 
@@ -114,11 +114,11 @@ When invoked without a story-key, run batch discovery:
   - AC-to-test mapping table (AC ID, AC description, test name)
   - Test skeletons in Given/When/Then format for each AC
   - Summary: total ACs, total tests, confirmation all tests are in failing/red state
-- Write the artifact to `docs/test-artifacts/atdd-{story_key}.md` using an **atomic write**: write to a temp path (e.g., `atdd-{story_key}.md.tmp`) first, then `mv` the temp path over the final path on success. This guarantees a Ctrl-C mid-write never leaves a corrupted file (AC-EC9 — interrupt safety).
+- Write the artifact to `.gaia/artifacts/test-artifacts/atdd-{story_key}.md` using an **atomic write**: write to a temp path (e.g., `atdd-{story_key}.md.tmp`) first, then `mv` the temp path over the final path on success. This guarantees a Ctrl-C mid-write never leaves a corrupted file (AC-EC9 — interrupt safety).
 - **Idempotency policy** — if the artifact path already exists from a prior run, overwrite it with a logged warning: "Overwriting existing ATDD artifact at {path}". The policy is `overwrite with warning` (AC-EC10, AC-EC11). In batch mode the per-story result summary distinguishes **generated** from **overwritten** so the user can audit the run.
 - After writing, the size advisory is emitted by `finalize.sh` (E80-S1) — risk-aware: `[INFO]` for `risk: high`, `[WARNING]` for medium / low / unset. The skill body itself does not need to repeat the check.
 
-> `!scripts/write-checkpoint.sh gaia-atdd 4 story_key="$STORY_KEY" test_file_path="docs/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" batch_mode="$BATCH_MODE" stage=artifact-written --paths "docs/test-artifacts/atdd-$STORY_KEY.md"`
+> `!scripts/write-checkpoint.sh gaia-atdd 4 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" batch_mode="$BATCH_MODE" stage=artifact-written --paths ".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md"`
 
 ### Step 5 -- Validation
 
@@ -127,15 +127,15 @@ When invoked without a story-key, run batch discovery:
 - Verify all tests use Given/When/Then format
 - Verify the output file was written successfully
 
-> `!scripts/write-checkpoint.sh gaia-atdd 5 story_key="$STORY_KEY" test_file_path="docs/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=validated`
+> `!scripts/write-checkpoint.sh gaia-atdd 5 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=validated`
 
 ### Step 5b -- Optional Red-Phase Execution
 
 After Step 5, prompt the user: **"Run generated tests now to confirm red phase? [y/N]"**
 
 - On `n` (default), skip this step entirely.
-- On `y`, invoke `!${CLAUDE_PLUGIN_ROOT}/skills/gaia-atdd/scripts/run-red-phase.sh --tests docs/test-artifacts/atdd-{story_key}.md` to execute the configured Test Execution Bridge runner (ADR-026):
-  - The script reads `docs/test-artifacts/test-environment.yaml`. When the file is absent or `bridge_enabled: false`, it logs the warning **"Test runner not configured — skipping red-phase execution"** and exits 0 — the overall `/gaia-atdd` invocation is NOT failed (AC-EC4 non-blocking fallback).
+- On `y`, invoke `!${CLAUDE_PLUGIN_ROOT}/skills/gaia-atdd/scripts/run-red-phase.sh --tests .gaia/artifacts/test-artifacts/atdd-{story_key}.md` to execute the configured Test Execution Bridge runner (ADR-026):
+  - The script reads `.gaia/artifacts/test-artifacts/test-environment.yaml`. When the file is absent or `bridge_enabled: false`, it logs the warning **"Test runner not configured — skipping red-phase execution"** and exits 0 — the overall `/gaia-atdd` invocation is NOT failed (AC-EC4 non-blocking fallback).
   - When a runner is configured, the script enforces a per-test timeout (default 30s, configurable via `--timeout`). Hangs are marked `FAIL (timeout)` and the batch continues to the next test (AC-EC5).
   - The script reports a `red-phase summary: pass=N fail=M` line. All counts are expected to be fails — this is the TDD red phase, the implementation does not exist yet (AC4 / VCP-ATDD-04).
   - When any test unexpectedly PASSES during red phase, the script logs the warning "{N} test(s) unexpectedly passed during red phase — may not be testing unimplemented behavior". This is informational; the script still exits 0.
@@ -166,7 +166,7 @@ After Step 5, prompt the user: **"Run generated tests now to confirm red phase? 
   Validation runs BEFORE the checkpoint and lifecycle-event writes
   (observability is never suppressed by checklist outcome — story AC6).
 
-  See docs/implementation-artifacts/E42-S15-port-gaia-test-framework-atdd-ci-setup-checklists-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S15-port-gaia-test-framework-atdd-ci-setup-checklists-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 — Test-to-AC traceability documented

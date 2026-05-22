@@ -29,7 +29,7 @@ This skill pattern-matches against `gaia-code-review` (E65-S2) as the canonical 
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-security-review [story-key]".
-- The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
+- The story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
 - The story MUST be in `review` status. If not, fail with "story must be in review status before security review".
 - This skill is READ-ONLY in the fork. Do NOT attempt to call Write or Edit — the allowlist enforces this. Persistence is routed through the parent context.
 - The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
@@ -134,7 +134,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 ### Phase 1 — Setup
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-security-review [story-key]"
-- Resolve the story file path using the canonical glob: `docs/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
+- Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
 - Read the resolved story file; parse YAML frontmatter to extract `status` and `figma:` block (if any).
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`).
 - **Persona resolution via `agent-overlay.sh` (ADR-077, V2).** In the parent context, resolve the security reviewer persona via the shared overlay:
@@ -142,7 +142,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
   ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-review-security
   ```
   Stdout is `{"agent_id":"zara","sidecar_path":"_memory/zara-sidecar.md"}`. The parent context lazy-loads the Zara persona + sidecar BEFORE fork dispatch (NFR-RSV2-5 / NFR-DEJ-4 preserved). The sidecar is forwarded into the fork as **read-only context** — the fork tool allowlist `[Read, Grep, Glob, Bash]` provides no write capability against the sidecar file.
-- **Threat-model context (ADR-064).** When `docs/planning-artifacts/threat-model.md` exists, the skill loads it and injects it into the Phase 3B fork context under a "Threat Model Context" section. When the file is absent, proceed silently — preserves exact pre-E48-S2 behavior.
+- **Threat-model context (ADR-064).** When `.gaia/artifacts/planning-artifacts/threat-model.md` exists, the skill loads it and injects it into the Phase 3B fork context under a "Threat Model Context" section. When the file is absent, proceed silently — preserves exact pre-E48-S2 behavior.
 - **Tool prereq probe.** For each tool (Semgrep, gitleaks/trufflehog, the dep-audit binary listed in the toolkit row): probe via `command -v <tool>` first; fall back to local binaries. NEVER use `npx <tool> --version` — registry fetch breaks the NFR-DEJ-1 60s P95 budget. Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
 - **Per-tool wall-clock caps (EC-10):** Semgrep ≤30s, secret scanner ≤15s, dep audit ≤15s. Cumulative Phase 3A budget ≤60s P95 cold (NFR-DEJ-1). On individual tool timeout, that tool's `status: errored` (NOT `failed` — timeout is not a finding); resolver maps to BLOCKED for the run.
 - **Expected-missing-tool (FR-DEJ-4 case 1).** If a required toolkit binary is absent and not optional for the stack: emit Phase 1 BLOCKED with an actionable error message naming the missing tool and the install hint. Do NOT dispatch the fork.
@@ -190,10 +190,10 @@ The Phase 3A toolkit, each routed through the probe and the `${CLAUDE_PLUGIN_ROO
       --findings <gitleaks-output.json>
     ```
    Wrapped by the probe so absent helper → `not_applicable` (no failure) and runtime crash → `ran_and_errored` → BLOCKED.
-5. **`threat-model-validator.sh` (V2 helper).** Cross-references each Phase 3A finding against `docs/planning-artifacts/threat-model.md`. When a finding matches a modeled threat, the validator emits a `threat_ref` field (e.g., `T3`) downstream consumed by Phase 3B for inline cross-reference rendering. Invoked via:
+5. **`threat-model-validator.sh` (V2 helper).** Cross-references each Phase 3A finding against `.gaia/artifacts/planning-artifacts/threat-model.md`. When a finding matches a modeled threat, the validator emits a `threat_ref` field (e.g., `T3`) downstream consumed by Phase 3B for inline cross-reference rendering. Invoked via:
     ```bash
     ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/threat-model-validator.sh \
-      --findings <semgrep-output.json> --threat-model docs/planning-artifacts/threat-model.md
+      --findings <semgrep-output.json> --threat-model .gaia/artifacts/planning-artifacts/threat-model.md
     ```
    Wrapped by the probe so absent threat-model.md → `not_applicable` (silent skip) — preserves the exact pre-E48-S2 behavior.
 6. **Path normalizer + finding deduplicator.** Runs after all tool adapters return; dedup key is `(file, line, finding-type)` tuple. Path normalization to repo-relative covered in detail in the Path normalization sub-section below.
@@ -277,9 +277,9 @@ LLM-cannot-override invariant: a high-confidence deterministic finding cannot be
 
 The fork extends Phase 3B's findings with architecture and design checks; findings flow into the Phase 3B category buckets.
 
-- **Security-architecture conformance.** Fork reads `docs/planning-artifacts/architecture.md` and (when present) `docs/planning-artifacts/threat-model.md`. For each File List entry, verify authn/authz boundaries align with the documented gateway/middleware pattern, secret-storage references match the documented vault path, and any ADRs referenced by the story exist with status Accepted. Findings under `category: architecture`.
+- **Security-architecture conformance.** Fork reads `.gaia/artifacts/planning-artifacts/architecture.md` and (when present) `.gaia/artifacts/planning-artifacts/threat-model.md`. For each File List entry, verify authn/authz boundaries align with the documented gateway/middleware pattern, secret-storage references match the documented vault path, and any ADRs referenced by the story exist with status Accepted. Findings under `category: architecture`.
 - **Threat-model cross-reference.** When threat-model context was provided, findings that match a modeled threat carry an optional `threat_ref` field (e.g., `threat_ref: "T3"`). Format the cross-reference inline as `(see T3 in threat model)`.
-- **Design fidelity.** If the story frontmatter has a `figma:` block, fork compares design-token references in the changed code against `docs/planning-artifacts/design-system/design-tokens.json`. Findings under `category: fidelity`. If no `figma:` block: skip silently (no Warning, no finding).
+- **Design fidelity.** If the story frontmatter has a `figma:` block, fork compares design-token references in the changed code against `.gaia/artifacts/planning-artifacts/design-system/design-tokens.json`. Findings under `category: fidelity`. If no `figma:` block: skip silently (no Warning, no finding).
 
 ### Phase 5 — Verdict
 
@@ -327,7 +327,7 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 
 **Malformed-payload handling.** On any of the above checks failing, the parent persists what it received with an explicit `[INCOMPLETE]` marker prepended to the report, and emits `verdict=BLOCKED` to `review-gate.sh`. Fork output untrustworthy → BLOCKED. The bats fixture covers this case explicitly (mirrors E65-S2 EC-9).
 
-**Parent write to FR-402 locked path.** The parent context writes the rendered report to `docs/implementation-artifacts/security-review-E<NN>-S<NNN>.md` per FR-402 naming convention. The path is **locked**: `security-review-{story_key}.md` — no slug, no date suffix.
+**Parent write to FR-402 locked path.** The parent context writes the rendered report to `.gaia/artifacts/implementation-artifacts/security-review-E<NN>-S<NNN>.md` per FR-402 naming convention. The path is **locked**: `security-review-{story_key}.md` — no slug, no date suffix.
 
 **Re-run handling.** Parent **overwrites** the existing review file on re-run (latest verdict wins). No append, no version-suffix. The `review-gate.sh` row update is the source of truth for verdict history if needed.
 

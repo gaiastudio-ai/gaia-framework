@@ -209,8 +209,9 @@ teardown() { common_teardown; }
 
 # --- TC-DEJ-WRITE-S7-1 — FR-402 review-file path declared ---
 
-@test "TC-DEJ-WRITE-S7-1: FR-402 path performance-review-{story_key}.md declared" {
-  grep -F 'performance-review-' "$SKILL_FILE" | grep -F 'docs/implementation-artifacts/' >/dev/null
+@test "TC-DEJ-WRITE-S7-1: FR-402 path performance-review-{story_key}.md declared (canonical post-AF-21-23)" {
+  # AF-2026-05-21-23 canonicalized this path. Accept canonical or legacy.
+  grep -F 'performance-review-' "$SKILL_FILE" | grep -qE '(docs|\.gaia/artifacts)/implementation-artifacts/'
 }
 
 @test "TC-DEJ-WRITE-S7-1: parent-mediated write (Option A) documented" {

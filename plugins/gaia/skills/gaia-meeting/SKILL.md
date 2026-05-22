@@ -44,19 +44,23 @@ S1 left deterministic insertion-point hooks in the turn loop and lifecycle
 dispatcher so S2..S6 do not need to reshape this skeleton — S2 plugs into the
 RESEARCH and DISCUSS hooks rather than reimplementing the lifecycle.
 
+## Path resolution (AF-2026-05-21-16)
+
+All artifact path references in this SKILL.md use the canonical post-ADR-111 locations under `.gaia/artifacts/creative-artifacts/` (meeting notes, scratchpad extractions), `.gaia/state/action-items.yaml` (action-items registry, cross-family relocation from `docs/planning-artifacts/`), and `.gaia/artifacts/planning-artifacts/` (cross-references to architecture/threat-model). The `scripts/write-boundary.sh` enforces canonical-only writes post-E96-S8 — legacy `docs/` prefix is REJECTED at runtime. Sister scripts (memory-writethrough.sh, research-phase-dispatch.sh, yield-gate.sh) retain smart-fallback resolution for `_memory/`-layout back-compat per AF-2026-05-21-7 — that smart-fallback is intentional and out-of-scope for this AF.
+
 ## Critical Rules
 
 - **Charter required (FR-MTG-2, AC1, AC2).** `--charter "<inline>"` is mandatory.
   `scripts/charter-gate.sh` HALTs with status `BLOCKED` before INVITE if the
-  charter is absent — and **no** writes occur to `docs/creative-artifacts/`,
+  charter is absent — and **no** writes occur to `.gaia/artifacts/creative-artifacts/`,
   `_memory/action-items/`, or `_memory/{agent}-sidecar/decisions/`.
 - **Sequential only (ADR-045).** Never parallelize per-turn invocations. Never
   reorder turns mid-round. The fork allowlist for read-only agent operations
   (full arrival in E76-S2) remains `[Read, Grep, Glob, Bash]` per NFR-048; S1
   introduces no new tool grants.
 - **State-free write boundary (FR-MTG-31, AC10 / AC8).** The skill writes ONLY to:
-  - `docs/creative-artifacts/meeting-*.md`
-  - `docs/planning-artifacts/action-items.yaml` (canonical, ADR-086 / ADR-052)
+  - `.gaia/artifacts/creative-artifacts/meeting-*.md`
+  - `.gaia/state/action-items.yaml` (canonical, ADR-086 / ADR-052)
   - `_memory/{agent}-sidecar/decisions/*.md`
   Every artifact write MUST be routed through `scripts/write-boundary.sh`.
   Disallowed: sprint-status.yaml, story files, PRD, architecture, test plan,
@@ -191,7 +195,7 @@ without halting the meeting.
 | 4 | DISCUSS | Round-robin turns matching invite order. User interjections allowed at turn boundaries. | Live transcript only (no persistence yet) |
 | 5 | CLOSE | Closing-artifact bias depends on active mode. For `decide` (default) — decision record + action items. The full close-phase artifact emission lands in **E76-S3**; S1 emits the marker. | None in S1 (decision-record + action-items writes arrive in E76-S3) |
 | 6 | REVIEW | Brief user-facing review pass — confirm decisions, action items, and any open questions. | None |
-| 7 | SAVE | Persist the live transcript to `docs/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md`. | `docs/creative-artifacts/` only in S1 |
+| 7 | SAVE | Persist the live transcript to `.gaia/artifacts/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md`. | `.gaia/artifacts/creative-artifacts/` only in S1 |
 
 The phase-marker emitter is `scripts/lifecycle-marker.sh`. Every phase emits
 its marker line into the live transcript so AC3 / TC-MTG-CHARTER-3 can scan
@@ -324,15 +328,15 @@ Every artifact write in this skill MUST be gated by
 `scripts/write-boundary.sh`. The asserter accepts a relative path and exits 0
 only if the path is one of:
 
-- `docs/creative-artifacts/meeting-*.md`
-- `docs/planning-artifacts/action-items.yaml` (canonical registry per
+- `.gaia/artifacts/creative-artifacts/meeting-*.md`
+- `.gaia/state/action-items.yaml` (canonical registry per
   ADR-086 / ADR-052 addendum E36-S4)
 - `_memory/{any-prefix}-sidecar/decisions/*.md`
 - `_memory/meeting-sessions/*.yaml` (E76-S7 — interactive checkpoint mode session-state files, FR-MTG-31 amended)
 
 The legacy E76-S1 path `_memory/action-items/` is **retired** by ADR-086 —
 the canonical action-items registry is now the single-file YAML at
-`docs/planning-artifacts/action-items.yaml`. New writes MUST target the
+`.gaia/state/action-items.yaml`. New writes MUST target the
 canonical location.
 
 The `_memory/meeting-sessions/*.yaml` prefix was added by E76-S7 (T-MTG-4
@@ -538,7 +542,7 @@ This story does not introduce a parallel cadence counter.
 
 1. Run `scripts/charter-gate.sh --charter "<inline>"`. If the script exits
    non-zero (BLOCKED), STOP — surface the script's stderr to the user. **No**
-   writes are made under `docs/creative-artifacts/`, `_memory/action-items/`,
+   writes are made under `.gaia/artifacts/creative-artifacts/`, `_memory/action-items/`,
    or `_memory/{agent}-sidecar/decisions/`.
 2. On success, the charter is recorded in `MEETING_STATE_FILE` for later
    persistence (full frontmatter persistence ships with E76-S3 / FR-MTG-27).
@@ -583,7 +587,7 @@ The RESEARCH phase implements the four-step contract from ADR-084:
 2. **Source-of-truth reads (FR-MTG-4 step 2, NFR-048).** Inside a fork whose
    tool allowlist matches the research-phase allowlist (see below), each
    invited agent reads the project files relevant to the charter — typically
-   architecture shards under `docs/planning-artifacts/architecture/`, ADRs in
+   architecture shards under `.gaia/artifacts/planning-artifacts/architecture/`, ADRs in
    `12-12-adr-detail-records.md`, SKILL.md files under
    `gaia-public/plugins/gaia/skills/`, and other planning artifacts. Every
    path the agent reads MUST appear under `Sources consulted:` in the prelude.
@@ -784,7 +788,7 @@ explicit disposition via `scripts/review-gate.sh`:
   the revised draft.
 - **`drop`**   — the SAVE write is suppressed for that artifact. Zero bytes
   are written. **Drop on action-items leaves
-  `docs/planning-artifacts/action-items.yaml` byte-identical to its
+  `.gaia/state/action-items.yaml` byte-identical to its
   pre-meeting state.** Drop on a per-agent memory entry writes zero files
   under that agent's `_memory/{agent}-sidecar/decisions/`.
 
@@ -810,7 +814,7 @@ produces no stdout output. AFTER the helper returns, emit a substrate
 
 Per the §Procedure substrate-enforced turn-terminal contract, the
 AskUserQuestion call ENDS the current LLM turn at the harness layer. No
-artifact write to `docs/creative-artifacts/`, `_memory/{agent}-sidecar/decisions/`,
+artifact write to `.gaia/artifacts/creative-artifacts/`, `_memory/{agent}-sidecar/decisions/`,
 the action-items registry, or `_memory/meeting-sessions/` MUST happen in
 the same LLM turn as the AskUserQuestion call — the SAVE writes resume on
 the next user turn after the user response is captured.
@@ -841,7 +845,7 @@ SAVE performs the three writes that REVIEW accepted, gated through
 `scripts/write-boundary.sh` for the AC10 / FR-MTG-31 state-free invariant:
 
 1. **Action-items registry** (if accepted at REVIEW). Run
-   `scripts/action-items-writer.sh --registry docs/planning-artifacts/action-items.yaml --drafts <accepted-drafts.yaml> --source-meeting <slug> --date <YYYY-MM-DD>`.
+   `scripts/action-items-writer.sh --registry .gaia/state/action-items.yaml --drafts <accepted-drafts.yaml> --source-meeting <slug> --date <YYYY-MM-DD>`.
    The writer:
    - Sets `schema_version: 2` on the registry header (idempotent).
    - Allocates daily-N IDs of the form `AI-{YYYY-MM-DD}-{N}` (N restarts at 1 each
@@ -866,7 +870,7 @@ SAVE performs the three writes that REVIEW accepted, gated through
    - `## Sources I relied on`
 3. **Meeting notes** (if accepted at REVIEW). Run
    `scripts/meeting-notes-writer.sh --root . --payload <payload.yaml> --date <YYYY-MM-DD> --slug <slug>`.
-   The writer emits `docs/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md`
+   The writer emits `.gaia/artifacts/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md`
    with frontmatter (per-attendee + total token-cost breakdown,
    `scratchpad_extractions:` populated from the payload list — empty `[]` when
    no extractions occurred — and `action_items:` IDs from step 1) and the required body sections (charter, summary, research preludes,
@@ -885,8 +889,8 @@ anti-amnesia property the intake mandates.
 
 **State-free write boundary (AC10).** Every disk write in Phase 7 MUST go
 through `scripts/write-boundary.sh`. The asserter rejects any path outside
-`docs/creative-artifacts/meeting-*.md`,
-`docs/planning-artifacts/action-items.yaml`, and
+`.gaia/artifacts/creative-artifacts/meeting-*.md`,
+`.gaia/state/action-items.yaml`, and
 `_memory/{agent}-sidecar/decisions/*.md`.
 
 ## Scratchpad pin + extraction (E76-S4, ADR-085, FR-MTG-11..15)
@@ -921,7 +925,7 @@ and prompts the user with the canonical three-option choice from
 
 | Disposition | Effect at SAVE |
 |-------------|----------------|
-| **Extract** | Writes a permanent file under `docs/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/`; the path is added to the meeting notes' `scratchpad_extractions:` list. |
+| **Extract** | Writes a permanent file under `.gaia/artifacts/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/`; the path is added to the meeting notes' `scratchpad_extractions:` list. |
 | **Keep in notes only** | Item appears in the notes "Scratchpad final state" section; NO extracted file; absent from `scratchpad_extractions:`. |
 | **Drop** | Item is omitted from "Scratchpad final state"; NO extracted file; absent from `scratchpad_extractions:`. |
 
@@ -936,7 +940,7 @@ content-type, content, intent)` — the skill MUST NOT prompt the user for a
 path:
 
 ```
-docs/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/SP-{N}-{auto-slug}.{ext}
+.gaia/artifacts/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/SP-{N}-{auto-slug}.{ext}
 ```
 
 - `{YYYY-MM}` = first seven chars of the meeting date.
@@ -954,7 +958,7 @@ content-type detection. Both are deterministic CLIs.
 
 `{YYYY-MM}` and `{slug}` directories are created **lazily** on first
 extraction — there are no `.gitkeep` placeholders. A future repo-wide sweep
-that runs `find docs/creative-artifacts/meeting-scratchpad -type d -empty
+that runs `find .gaia/artifacts/creative-artifacts/meeting-scratchpad -type d -empty
 -delete` MUST not break the skill; subsequent extractions transparently
 re-create the directories (ADR-069 empty-bucket policy).
 
@@ -998,7 +1002,7 @@ filtered out).
 ### State-free invariant (FR-MTG-31, AC14)
 
 Every extraction write is gated through `scripts/write-boundary.sh`. The
-allowlist is unchanged from S1/S3 — `docs/creative-artifacts/*` already
+allowlist is unchanged from S1/S3 — `.gaia/artifacts/creative-artifacts/*` already
 covers the `meeting-scratchpad/` subtree. The scratchpad codepath MUST NOT
 mutate `_memory/`, sprint state, story files, PRD, architecture, test plan,
 threat model, or traceability.
@@ -1040,14 +1044,14 @@ LLM-side parsing inline — this is single-source-of-truth per ADR-057, ADR-073)
 - **Live transcript** (stdout). Phase markers + per-turn headers + turn bodies
   + user interjections. Always emitted in real time.
 - **Saved meeting transcript** at
-  `docs/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md`. S1 produces a
+  `.gaia/artifacts/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md`. S1 produces a
   minimum viable file (markers + headers); E76-S3 extends to the full
   FR-MTG-27 frontmatter and required sections.
 
 ## Threat-Model Mitigations (E76-S2)
 
 The research / cite-or-flag / raise-hand surface inherits three threats from
-`docs/planning-artifacts/threat-model.md` §3.15. Mitigations live in the S2
+`.gaia/artifacts/planning-artifacts/threat-model.md` §3.15. Mitigations live in the S2
 helpers:
 
 - **T-MTG-1 — web-search exfiltration.** `--no-web` removes `WebSearch` /

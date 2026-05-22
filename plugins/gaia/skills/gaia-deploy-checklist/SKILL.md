@@ -21,7 +21,7 @@ You are generating a pre-deployment verification checklist for the project. Befo
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/deployment-checklist` workflow (Cluster 12, story E28-S92, ADR-041). It follows the canonical skill pattern established by E28-S66 (code-review).
 
-**Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the deployment checklist artifact to `docs/planning-artifacts/`.
+**Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the deployment checklist artifact to `.gaia/artifacts/planning-artifacts/`.
 
 **Foundation script integration (ADR-042):** This skill invokes `validate-gate.sh` from `plugins/gaia/scripts/` for deterministic gate verification. Gate checks (traceability, CI, readiness) belong in bash scripts, not LLM prompts.
 
@@ -138,7 +138,7 @@ Generate a comprehensive deployment checklist covering all pre-deployment verifi
 
 ### Step 5 -- Write Checklist Artifact
 
-- Write the deployment checklist to `docs/planning-artifacts/deployment-checklist.md`.
+- Write the deployment checklist to `.gaia/artifacts/planning-artifacts/deployment-checklist.md`.
 - Include gate verification results at the top of the document.
 - Include all checklist sections from Step 4 with project-specific details.
 

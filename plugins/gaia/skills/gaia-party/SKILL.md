@@ -51,7 +51,7 @@ input-resolution step differs.
   abort the session.
 - **State-free:** This skill does not transition sprint status, update story
   frontmatter, or touch the state machine. It writes ONLY to
-  `docs/creative-artifacts/party-mode-{date}.md`.
+  `.gaia/artifacts/creative-artifacts/party-mode-{date}.md`.
 - **Name disambiguation (FR-159):** GAIA agents always win on name collision.
   Stakeholders get the `[Stakeholder]` prefix in the invite list **and** during
   discussion attribution, preserved for the entire session.
@@ -206,12 +206,12 @@ For each round:
    participant.
 3. Offer the user three next steps:
    - **Save transcript** — write the session to
-     `docs/creative-artifacts/party-mode-{date}.md` (`{date}` as `YYYY-MM-DD`).
+     `.gaia/artifacts/creative-artifacts/party-mode-{date}.md` (`{date}` as `YYYY-MM-DD`).
    - **Activate agent for follow-up** — hand off to a single agent for a
      deeper 1:1.
    - **Start a workflow** from a discussed idea (e.g., `/gaia-create-prd`,
      `/gaia-quick-spec`).
-4. On save: write the transcript to `docs/creative-artifacts/party-mode-{date}.md`.
+4. On save: write the transcript to `.gaia/artifacts/creative-artifacts/party-mode-{date}.md`.
    Structure: header (topic, participants, date), full round-by-round
    transcript with attribution, closing summary, action items.
 5. Thank the participants and close the session.

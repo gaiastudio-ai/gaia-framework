@@ -26,7 +26,7 @@ fi
 
 ## Mission
 
-You are creating a mobile test plan covering device matrix, Appium test infrastructure, React Native / cross-platform testing, responsive viewport testing, and platform-specific checks. The output is written to `docs/test-artifacts/mobile-test-plan-{date}.md`.
+You are creating a mobile test plan covering device matrix, Appium test infrastructure, React Native / cross-platform testing, responsive viewport testing, and platform-specific checks. The output is written to `.gaia/artifacts/test-artifacts/mobile-test-plan-{date}.md`.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/mobile-testing` workflow (E28-S88, Cluster 12, ADR-041). The step ordering, prompts, and output path are preserved from the legacy instructions.xml.
 
@@ -37,7 +37,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - A story key or project context MUST be available. If no story key is provided as an argument and no project context can be loaded, prompt: "Provide a story key or confirm project-level assessment."
 - Device matrix MUST cover the top 90% of the target user base (FR-386 hard constraint).
 - Platform-specific behaviors must be tested on real devices or emulators.
-- Output MUST be written to `docs/test-artifacts/mobile-test-plan-{date}.md` where `{date}` is today's date in YYYY-MM-DD format.
+- Output MUST be written to `.gaia/artifacts/test-artifacts/mobile-test-plan-{date}.md` where `{date}` is today's date in YYYY-MM-DD format.
 - Knowledge fragments are bundled in this skill's `knowledge/` directory -- load them JIT when referenced by a step.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
 
@@ -158,10 +158,10 @@ from version control).
   - Responsive viewport testing matrix
   - Platform-specific test scenarios
   - Touch interaction and gesture testing procedures
-- Write output to `docs/test-artifacts/mobile-test-plan-{date}.md`.
+- Write output to `.gaia/artifacts/test-artifacts/mobile-test-plan-{date}.md`.
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/test-artifacts/mobile-test-plan-${DATE}.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/test-artifacts/mobile-test-plan-${DATE}.md`
 
 ## Finalize
 

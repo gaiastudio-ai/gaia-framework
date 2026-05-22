@@ -8,7 +8,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # sections on demand in later steps. Falls back to FULL_LOAD when the PRD
 # lacks parseable headings.
 discover_inputs: INDEX_GUIDED
-discover_inputs_target: docs/planning-artifacts/prd.md
+discover_inputs_target: .gaia/artifacts/planning-artifacts/prd.md
 orchestration_class: heavy-procedural
 ---
 
@@ -35,17 +35,19 @@ fi
 
 ## Mission
 
-You are orchestrating the creation of a System Architecture document. The architecture authoring is delegated to the **architect** subagent (Theo), who conducts technology selection, designs system components, and produces the final artifact. You load the PRD, validate inputs, coordinate the multi-step flow, and write the output to `docs/planning-artifacts/architecture.md` using the carried `architecture-template.md` template structure.
+You are orchestrating the creation of a System Architecture document. The architecture authoring is delegated to the **architect** subagent (Theo), who conducts technology selection, designs system components, and produces the final artifact. You load the PRD, validate inputs, coordinate the multi-step flow, and write the output to the canonical post-ADR-111 path `.gaia/artifacts/planning-artifacts/architecture.md` using the carried `architecture-template.md` template structure.
+
+**Path resolution (AF-2026-05-21-11).** All architecture path references in this SKILL.md use the canonical post-ADR-111 location `.gaia/artifacts/planning-artifacts/architecture.md`. Pre-ADR-111 projects continue to work via a positive-evidence-legacy fallback at the script layer (`scripts/finalize.sh` three-tier idiom: `ARCHITECTURE_ARTIFACT` env-var override → legacy `docs/planning-artifacts/architecture.md` only when that file exists AND `.gaia/artifacts/planning-artifacts/` does NOT → canonical default). When writing the architecture document via the Write tool, target the canonical path; the pre-ADR-111 fallback is read-side only.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/3-solutioning/create-architecture` workflow (brief Cluster 6, story P6-S1 / E28-S45). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 
-- A PRD MUST exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `docs/planning-artifacts/prd.md` (flat layout); if missing, fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
+- A PRD MUST exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - The PRD MUST contain a "## Review Findings Incorporated" section. If missing, fail fast with "PRD review findings not found — run /gaia-create-prd to complete adversarial review and PRD refinement."
 - Every significant technical decision must be recorded as an ADR inline in the Decision Log table of the architecture document.
 - Architecture authoring is delegated to the `architect` subagent (Theo) via native Claude Code subagent invocation — do NOT inline Theo's persona into this skill body. If the architect subagent (E28-S21) is not available, fail with "architect subagent not available — install E28-S21" error.
-- If `docs/planning-artifacts/architecture.md` already exists, warn the user: "An existing architecture document was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
+- If `.gaia/artifacts/planning-artifacts/architecture.md` already exists, warn the user: "An existing architecture document was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
 - Template resolution: load `architecture-template.md` from this skill directory. If `custom/templates/architecture-template.md` exists and is non-empty, use the custom template instead — the custom template takes full precedence over the framework default (ADR-020 / FR-101).
 - ADRs live inline in the architecture document's Decision Log table — there is no separate ADR directory. Preserve the legacy workflow's ADR placement convention.
 - Every technical decision must connect to business value.
@@ -57,22 +59,22 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 > **Loading strategy: INDEX_GUIDED per ADR-062.** The PRD is routinely
 > 20K+ tokens — full-loading it here burns the context budget before
 > architecture authoring even begins. Heading-scan `prd.md` first (e.g.,
-> `grep -nE '^#{1,3} ' docs/planning-artifacts/prd.md`) to build a section
+> `grep -nE '^#{1,3} ' .gaia/artifacts/planning-artifacts/prd.md`) to build a section
 > index. Fetch §N.x bodies on demand in later steps (`sed -n` between
 > heading anchors). If the PRD has no parseable headings, fall back to
 > FULL_LOAD and log the fallback in the checkpoint.
 
 - Resolve the PRD path via the sharded-fallback rule (Critical Rules above). Heading-scan the resolved PRD to build a section index of requirements (functional and non-functional); for the sharded layout, also heading-scan shard subsections under `prd/04-functional-requirements/` and `prd/05-non-functional-requirements.md`. Do NOT read the full bodies up front.
 - GATE: verify prd.md contains a "## Review Findings Incorporated" section. If missing, HALT — run /gaia-create-prd first to complete adversarial review and PRD refinement.
-- Heading-scan `docs/planning-artifacts/ux-design.md` if available — record section anchors for UI requirements.
-- Check for brownfield artifacts: `docs/planning-artifacts/brownfield-assessment.md` and `docs/planning-artifacts/project-documentation.md`. If either exists, heading-scan them — these contain existing codebase analysis that must inform architecture decisions even if the PRD is not in brownfield mode.
-- Check for `docs/planning-artifacts/threat-model.md`. If it exists, heading-scan it — identified threats and mitigations must inform the security architecture in Step 7. Section bodies are loaded on demand by later steps.
+- Heading-scan `.gaia/artifacts/planning-artifacts/ux-design.md` if available — record section anchors for UI requirements.
+- Check for brownfield artifacts: `.gaia/artifacts/planning-artifacts/brownfield-assessment.md` and `.gaia/artifacts/planning-artifacts/project-documentation.md`. If either exists, heading-scan them — these contain existing codebase analysis that must inform architecture decisions even if the PRD is not in brownfield mode.
+- Check for `.gaia/artifacts/planning-artifacts/threat-model.md`. If it exists, heading-scan it — identified threats and mitigations must inform the security architecture in Step 7. Section bodies are loaded on demand by later steps.
 
 > `!scripts/write-checkpoint.sh gaia-create-arch 1 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION"`
 
 ### Step 2 — Detect Mode
 
-- Check `docs/planning-artifacts/prd.md` header for "Mode: Brownfield".
+- Check `.gaia/artifacts/planning-artifacts/prd.md` header for "Mode: Brownfield".
 - If brownfield mode detected: set mode to brownfield. Use brownfield architecture template.
 - If no brownfield header: set mode to greenfield. Load `architecture-template.md` from this skill directory. If `custom/templates/architecture-template.md` exists and is non-empty, use the custom template instead.
 
@@ -147,7 +149,7 @@ Wait for the user's response before proceeding. Branch handlers:
      pause repeats until the user picks `[a]ccept` or `[m]odify`, or
      escalates to abort.
   2. **Abort workflow** — exit with status `aborted at tech-stack confirmation`.
-     Write NO `docs/planning-artifacts/architecture.md` file. Write NO
+     Write NO `.gaia/artifacts/planning-artifacts/architecture.md` file. Write NO
      sidecar entry. The session ends cleanly with the abort status surfaced
      to the caller.
 
@@ -234,14 +236,14 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to compile 
 
 ### Step 9 — Generate Output
 
-- Write the architecture document to `docs/planning-artifacts/architecture.md` using the `architecture-template.md` section structure.
+- Write the architecture document to `.gaia/artifacts/planning-artifacts/architecture.md` using the `architecture-template.md` section structure.
 - Greenfield: include technology stack, system architecture, data architecture, API design, infrastructure plan, ADR references, and Decision-to-Requirement Mapping table.
 - Brownfield: include C4 diagrams, sequence diagrams, data flow diagram, as-is/target delta table, migration strategy, and cross-references.
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/planning-artifacts/architecture.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/architecture.md`
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 9 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" --paths docs/planning-artifacts/architecture.md`
+> `!scripts/write-checkpoint.sh gaia-create-arch 9 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" --paths .gaia/artifacts/planning-artifacts/architecture.md`
 
 ### Step 10 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -250,17 +252,17 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to compile 
 
 **Guards (run before invocation):**
 
-- Artifact-existence guard (AC-EC3): if not exists `docs/planning-artifacts/architecture.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
+- Artifact-existence guard (AC-EC3): if not exists `.gaia/artifacts/planning-artifacts/architecture.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
 - Val-skill-availability guard (AC-EC6): if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
 
 **Loop:**
 
 1. iteration = 1.
-2. Invoke `/gaia-val-validate` with `artifact_path = docs/planning-artifacts/architecture.md`, `artifact_type = architecture`.
+2. Invoke `/gaia-val-validate` with `artifact_path = .gaia/artifacts/planning-artifacts/architecture.md`, `artifact_type = architecture`.
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
-     a. Apply a fix to `docs/planning-artifacts/architecture.md` addressing the findings.
+     a. Apply a fix to `.gaia/artifacts/planning-artifacts/architecture.md` addressing the findings.
      b. Append an iteration log record to checkpoint `custom.val_loop_iterations`.
      c. iteration += 1.
      d. If iteration <= 3: go to step 2.
@@ -270,7 +272,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation runs against the Step 9 primary write (artifact-as-drafted). Per story E44-S5 AC-EC9 and the Adversarial-loop Val scope decision in story Dev Notes, Step 13's post-adversarial re-write does NOT trigger a second Val invocation.
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 10 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" stage=val-auto-review --paths docs/planning-artifacts/architecture.md`
+> `!scripts/write-checkpoint.sh gaia-create-arch 10 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/architecture.md`
 
 ### Step 11 — Optional: API Design Review
 
@@ -296,9 +298,9 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 - Write the final architecture document.
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/planning-artifacts/architecture.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/architecture.md`
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 13 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" --paths docs/planning-artifacts/architecture.md _memory/architect-sidecar/architecture-decisions.md`
+> `!scripts/write-checkpoint.sh gaia-create-arch 13 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" --paths .gaia/artifacts/planning-artifacts/architecture.md _memory/architect-sidecar/architecture-decisions.md`
 
 #### Append Architecture Decisions to Sidecar (E46-S6 / FR-354)
 
@@ -445,10 +447,10 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   runs BEFORE the checkpoint and lifecycle-event writes (observability
   is never suppressed by checklist outcome — story AC5).
 
-  See docs/implementation-artifacts/E42-S8-port-gaia-create-arch-33-item-checklist-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S8-port-gaia-create-arch-33-item-checklist-to-v2.md.
 -->
 
-- [script-verifiable] SV-01 — Output file exists at docs/planning-artifacts/architecture.md
+- [script-verifiable] SV-01 — Output file exists at .gaia/artifacts/planning-artifacts/architecture.md
 - [script-verifiable] SV-02 — Output artifact is non-empty
 - [script-verifiable] SV-03 — Artifact has frontmatter or top-level title
 - [script-verifiable] SV-04 — System Overview section present

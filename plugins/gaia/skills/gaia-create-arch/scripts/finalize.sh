@@ -4,7 +4,7 @@
 # E42-S8 extends the bare-bones Cluster 6 finalize scaffolding with a
 # 33-item post-completion checklist (25 script-verifiable + 8
 # LLM-checkable) derived from the V1 /gaia-create-arch (create-architecture)
-# checklist. See docs/implementation-artifacts/E42-S8-* for the
+# checklist. See .gaia/artifacts/implementation-artifacts/E42-S8-* for the
 # V1 -> V2 mapping.
 #
 # Responsibilities (per brief §Cluster 6 + story E42-S8):
@@ -33,12 +33,17 @@
 #                          checklist against it. When set but the file does
 #                          not exist, AC4 fires — a single "no artifact to
 #                          validate" violation is emitted and the script
-#                          exits non-zero. When unset, the script looks for
-#                          docs/planning-artifacts/architecture.md relative
-#                          to the current working directory. If neither is
-#                          present, the checklist run is skipped (classic
-#                          Cluster 6 behaviour — observability still runs,
-#                          exit 0).
+#                          exits non-zero. When unset, the script falls
+#                          back to a canonical-first path resolution
+#                          (AF-2026-05-21-11): prefer
+#                          .gaia/artifacts/planning-artifacts/architecture.md
+#                          (post-ADR-111 canonical); use legacy
+#                          .gaia/artifacts/planning-artifacts/architecture.md only on
+#                          positive pre-ADR-111 evidence (legacy file
+#                          exists AND canonical dir does not). If neither
+#                          is present, the checklist run is skipped
+#                          (classic Cluster 6 behaviour — observability
+#                          still runs, exit 0).
 
 set -euo pipefail
 LC_ALL=C
@@ -56,20 +61,25 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Resolve artifact path ----------
-# ARCHITECTURE_ARTIFACT wins when set (test fixtures + explicit invocation).
-# If it is set but the file is missing, AC4 fires. If unset, fall back
-# to docs/planning-artifacts/architecture.md. If neither is present the
-# checklist is simply skipped (observability still runs).
+# ---------- 0. Resolve artifact path (AF-2026-05-21-11 three-tier idiom) ----------
+# Tier 1 — env-var override: ARCHITECTURE_ARTIFACT wins when set (test
+#          fixtures + explicit invocation). If it is set but the file is
+#          missing, AC4 fires.
+# Tier 2 — positive pre-ADR-111 evidence: legacy file exists AND canonical
+#          dir does NOT exist → use legacy docs/planning-artifacts/architecture.md.
+# Tier 3 — canonical default: greenfield + post-ADR-111 projects route to
+#          .gaia/artifacts/planning-artifacts/architecture.md per ADR-111.
+# If neither file is present the checklist is simply skipped (observability
+# still runs).
 ARTIFACT=""
 ARTIFACT_REQUESTED=0
 if [ -n "${ARCHITECTURE_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$ARCHITECTURE_ARTIFACT"
-else
-  if [ -f "docs/planning-artifacts/architecture.md" ]; then
-    ARTIFACT="docs/planning-artifacts/architecture.md"
-  fi
+elif [ -f "docs/planning-artifacts/architecture.md" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
+  ARTIFACT="docs/planning-artifacts/architecture.md"
+elif [ -f ".gaia/artifacts/planning-artifacts/architecture.md" ]; then
+  ARTIFACT=".gaia/artifacts/planning-artifacts/architecture.md"
 fi
 
 # ---------- 1. Run the 33-item checklist ----------
@@ -202,7 +212,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && [ ! -f "$ARTIFACT" ]; then
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-create-arch to produce docs/planning-artifacts/architecture.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-create-arch to produce .gaia/artifacts/planning-artifacts/architecture.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   log "running 33-item checklist against $ARTIFACT"
@@ -211,7 +221,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   # --- Script-verifiable items (25) ---
 
   # Envelope (SV-01..SV-03)
-  item_check "SV-01" "Output file exists at docs/planning-artifacts/architecture.md" \
+  item_check "SV-01" "Output file exists at resolved path ($ARTIFACT)" \
     "$([ -f "$ARTIFACT" ] && echo pass || echo fail)"
   item_check "SV-02" "Output artifact is non-empty" "$(file_nonempty "$ARTIFACT")"
 
@@ -314,7 +324,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no architecture artifact found (ARCHITECTURE_ARTIFACT unset and no docs/planning-artifacts/architecture.md) — skipping checklist run"
+  log "no architecture artifact found (ARCHITECTURE_ARTIFACT unset and no architecture.md at .gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

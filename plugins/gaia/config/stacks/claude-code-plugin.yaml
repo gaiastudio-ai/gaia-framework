@@ -15,9 +15,9 @@
 # config/stacks/ directory and the resolver entry point.
 #
 # Source spec:
-#   docs/planning-artifacts/prd/04-functional-requirements/
+#   .gaia/artifacts/planning-artifacts/prd/04-functional-requirements/
 #     41-4-40-claude-code-plugin-project-support-af-2026-05-06-2.md  (FR-404)
-#   docs/planning-artifacts/architecture/12-12-adr-detail-records.md (ADR-087)
+#   .gaia/artifacts/planning-artifacts/architecture/12-12-adr-detail-records.md (ADR-087)
 
 name: claude-code-plugin
 

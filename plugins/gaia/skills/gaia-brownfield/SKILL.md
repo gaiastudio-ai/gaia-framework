@@ -35,7 +35,9 @@ You are applying the GAIA framework to an existing codebase. This skill runs **d
 
 This skill is the native Claude Code conversion of the legacy `brownfield-onboarding` workflow (E28-S105, Cluster 14). The step ordering, prompts, subagent delegation, template-driven output generation, and post-complete quality gates are preserved from the legacy `instructions.xml` — parity confirmed per NFR-053.
 
-**Main context semantics (ADR-041):** This skill runs under `context: main` with full tool access. It orchestrates a large discovery pipeline that reads the target project and produces a canonical artifact set under `docs/planning-artifacts/` and `docs/test-artifacts/`.
+**Main context semantics (ADR-041):** This skill runs under `context: main` with full tool access. It orchestrates a large discovery pipeline that reads the target project and produces a canonical artifact set under `.gaia/artifacts/planning-artifacts/` and `.gaia/artifacts/test-artifacts/`.
+
+**Path resolution (AF-2026-05-21-17).** All Phase 2 brownfield artifact paths in this SKILL.md use the canonical post-ADR-111 locations under `.gaia/artifacts/planning-artifacts/` and `.gaia/artifacts/test-artifacts/`. The ~10 produced artifacts (brownfield-assessment.md, project-documentation.md, api-documentation.md, ux-design.md, event-catalog.md, dependency-map.md, dependency-audit-{date}.md, brownfield-subagent-summary.md, brownfield-scan-*.md, brownfield-onboarding.md) all target canonical destinations.
 
 **Scripts-over-LLM (ADR-042 / FR-325):** Deterministic operations (config resolution, checkpoint writes, gate validation, lifecycle events) are delegated to the shared foundation scripts under `plugins/gaia/scripts/` via inline `!scripts/*.sh` calls. The canonical foundation set includes: `resolve-config.sh`, `checkpoint.sh` (with `write` / `read` / `validate` subcommands — the consolidated checkpoint surface per architecture §10.26.3), `validate-gate.sh` (deployed equivalent for spec's `file-gate.sh`), `template-header.sh`, `memory-loader.sh`, `lifecycle-event.sh`. See the Reconciliation Note under Critical Rules for the one remaining spec-vs-deployed name mapping.
 
@@ -107,8 +109,8 @@ Each phase is independent in its write targets but must run sequentially because
    - **Plugin-project classification (E77-S16 / FR-420).** `detect-signals.sh` ALSO invokes `plugin-detection.sh` and emits a top-level `project_kind` field. Three or more co-occurring signals from `{SKILL.md, adapter.json, plugin manifest, commands/, settings.json hooks, .claude/}` set `project_kind: claude-code-plugin`. Single-signal detection is rejected to avoid false positives on stray SKILL.md or manifest files in non-plugin repos. Surface `project_kind` to the user so the downstream `/gaia-trace` plugin chain (FR-421) can attach to it.
 <!-- E71-S2: detection-driven config extension end -->
 
-6. Generate the brownfield assessment artifact by reading the assessment template, capturing component inventory, technical debt, migration constraints, coexistence strategy, and adoption path. Include `{project_type}` in the output. Write to `docs/planning-artifacts/brownfield-assessment.md`.
-7. Write the enhanced project documentation — all standard sections plus detected capability flags, `{project_type}`, testing infrastructure summary, and CI/CD pipeline summary. Write to `docs/planning-artifacts/project-documentation.md`.
+6. Generate the brownfield assessment artifact by reading the assessment template, capturing component inventory, technical debt, migration constraints, coexistence strategy, and adoption path. Include `{project_type}` in the output. Write to `.gaia/artifacts/planning-artifacts/brownfield-assessment.md`.
+7. Write the enhanced project documentation — all standard sections plus detected capability flags, `{project_type}`, testing infrastructure summary, and CI/CD pipeline summary. Write to `.gaia/artifacts/planning-artifacts/project-documentation.md`.
 
 Checkpoint after Phase 1 via `!${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh`.
 
@@ -116,14 +118,14 @@ Checkpoint after Phase 1 via `!${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh`.
 
 Spawn the following subagents in parallel (single message, multiple `Agent` tool calls). Only spawn subagents for detected capabilities:
 
-- **If `{has_apis}`** — API Documenter subagent. Scan for routes, controllers, and specs. Validate existing OpenAPI specs against routes or generate a new OpenAPI 3.x spec from code. Document all endpoints with method, path, handler, auth, parameters, request/response schemas, error formats. Include a Mermaid API flow diagram. List undocumented endpoints as gaps. Output to `docs/planning-artifacts/api-documentation.md`.
-- **If `{has_frontend}`** — UX Assessor subagent. Scan UI frameworks, components, design patterns, styling. Document UI patterns, navigation structure (Mermaid sitemap), interaction patterns, accessibility (WCAG, ARIA, keyboard nav). Propose improvements for gaps only. Output to `docs/planning-artifacts/ux-design.md`.
-- **If `{has_events}`** — Event Cataloger subagent. Scan messaging infrastructure, produced/consumed events with schemas, external events, delivery guarantees (retry, DLQ, idempotency). Include Mermaid event flow diagrams (2–3 key flows). Output to `docs/planning-artifacts/event-catalog.md`.
-- **Always** — Dependency Mapper subagent. Document external service dependencies, infrastructure dependencies, key library dependencies (ORM, auth lib — check version currency and CVE risk). Build a Mermaid dependency graph. Document contracts, SLAs, fallback strategies. Identify dependency risks. Output to `docs/planning-artifacts/dependency-map.md`. After writing, run the shared `review-dependency-audit` task to generate a dependency audit report at `docs/test-artifacts/dependency-audit-{date}.md`.
+- **If `{has_apis}`** — API Documenter subagent. Scan for routes, controllers, and specs. Validate existing OpenAPI specs against routes or generate a new OpenAPI 3.x spec from code. Document all endpoints with method, path, handler, auth, parameters, request/response schemas, error formats. Include a Mermaid API flow diagram. List undocumented endpoints as gaps. Output to `.gaia/artifacts/planning-artifacts/api-documentation.md`.
+- **If `{has_frontend}`** — UX Assessor subagent. Scan UI frameworks, components, design patterns, styling. Document UI patterns, navigation structure (Mermaid sitemap), interaction patterns, accessibility (WCAG, ARIA, keyboard nav). Propose improvements for gaps only. Output to `.gaia/artifacts/planning-artifacts/ux-design.md`.
+- **If `{has_events}`** — Event Cataloger subagent. Scan messaging infrastructure, produced/consumed events with schemas, external events, delivery guarantees (retry, DLQ, idempotency). Include Mermaid event flow diagrams (2–3 key flows). Output to `.gaia/artifacts/planning-artifacts/event-catalog.md`.
+- **Always** — Dependency Mapper subagent. Document external service dependencies, infrastructure dependencies, key library dependencies (ORM, auth lib — check version currency and CVE risk). Build a Mermaid dependency graph. Document contracts, SLAs, fallback strategies. Identify dependency risks. Output to `.gaia/artifacts/planning-artifacts/dependency-map.md`. After writing, run the shared `review-dependency-audit` task to generate a dependency audit report at `.gaia/artifacts/test-artifacts/dependency-audit-{date}.md`.
 
-**Post-subagent validation:** verify each expected output file exists. If any subagent failed to write its output file, the orchestrator (this skill) MUST write a stub file on the subagent's behalf using the paths declared in the legacy `output.artifacts` contract. Dependency-audit goes to `docs/test-artifacts/`; all other Phase 2 artifacts go to `docs/planning-artifacts/`. Do NOT use hardcoded paths.
+**Post-subagent validation:** verify each expected output file exists. If any subagent failed to write its output file, the orchestrator (this skill) MUST write a stub file on the subagent's behalf using the paths declared in the legacy `output.artifacts` contract. Dependency-audit goes to `.gaia/artifacts/test-artifacts/`; all other Phase 2 artifacts go to `.gaia/artifacts/planning-artifacts/`. Do NOT use hardcoded paths.
 
-After all subagents return, write a subagent summary at `docs/planning-artifacts/brownfield-subagent-summary.md` (which subagents ran, artifacts produced, file paths, any errors). Pause for user review in `normal` mode before continuing.
+After all subagents return, write a subagent summary at `.gaia/artifacts/planning-artifacts/brownfield-subagent-summary.md` (which subagents ran, artifacts produced, file paths, any errors). Pause for user review in `normal` mode before continuing.
 
 ## Phase 3 — Deep Analysis Multi-Scan Subagents (Infra-Aware)
 
@@ -131,31 +133,31 @@ Spawn seven scan subagents in parallel. These run alongside Phase 2 documentatio
 
 ### Doc-Code Scan
 
-Read the doc-vs-code scan prompt template from the bundled knowledge. Scan the project for mismatches between documentation and code — stale claims, missing endpoints in docs, config values that differ from the documented defaults. Output gap entries to `docs/planning-artifacts/brownfield-scan-doc-code.md` using the standardized gap-entry schema. Contradictory signals between docs and code produce gap rows tagged with evidence_file and evidence_line.
+Read the doc-vs-code scan prompt template from the bundled knowledge. Scan the project for mismatches between documentation and code — stale claims, missing endpoints in docs, config values that differ from the documented defaults. Output gap entries to `.gaia/artifacts/planning-artifacts/brownfield-scan-doc-code.md` using the standardized gap-entry schema. Contradictory signals between docs and code produce gap rows tagged with evidence_file and evidence_line.
 
 ### Hardcoded Values Scan
 
-Scan for hard-coded logic, magic numbers, embedded literals that should be configuration. For `infrastructure` / `platform` projects, also detect hard-coded IPs, magic ports, embedded secrets / AMI IDs, and hard-coded resource limits in IaC files. Output to `docs/planning-artifacts/brownfield-scan-hardcoded.md`.
+Scan for hard-coded logic, magic numbers, embedded literals that should be configuration. For `infrastructure` / `platform` projects, also detect hard-coded IPs, magic ports, embedded secrets / AMI IDs, and hard-coded resource limits in IaC files. Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-hardcoded.md`.
 
 ### Integration Seam Scan
 
-Scan for integration seams between modules, services, and external systems — contracts, shared state, coupling patterns. For `infrastructure` / `platform`, also map service mesh topology, ingress / egress routes, and cross-namespace dependencies. Output to `docs/planning-artifacts/brownfield-scan-integration-seam.md`.
+Scan for integration seams between modules, services, and external systems — contracts, shared state, coupling patterns. For `infrastructure` / `platform`, also map service mesh topology, ingress / egress routes, and cross-namespace dependencies. Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-integration-seam.md`.
 
 ### Runtime Behavior Scan
 
-Catalog runtime behavior: `@Scheduled`, Quartz, startup hooks, background threads, health checks. For `infrastructure` / `platform`, also catalog CronJobs, DaemonSets, init containers, sidecar patterns, health probes. Output to `docs/planning-artifacts/brownfield-scan-runtime-behavior.md`.
+Catalog runtime behavior: `@Scheduled`, Quartz, startup hooks, background threads, health checks. For `infrastructure` / `platform`, also catalog CronJobs, DaemonSets, init containers, sidecar patterns, health probes. Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-runtime-behavior.md`.
 
 ### Security Scan
 
-Audit security posture: mutating endpoints, IDOR candidates, authorization gaps, missing CSRF. For `infrastructure` / `platform`, also detect exposed ports in k8s manifests, permissive ingress rules, overly broad RBAC bindings, missing NetworkPolicy. Output to `docs/planning-artifacts/brownfield-scan-security.md`.
+Audit security posture: mutating endpoints, IDOR candidates, authorization gaps, missing CSRF. For `infrastructure` / `platform`, also detect exposed ports in k8s manifests, permissive ingress rules, overly broad RBAC bindings, missing NetworkPolicy. Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-security.md`.
 
 ### Config Contradiction Scan (infra-aware)
 
-Detect contradictions between configuration files (e.g., different service limits in `values.yaml` vs `deployment.yaml`). For `infrastructure` / `platform`, apply patterns for `terraform.tfvars`, `values.yaml`, and kustomize overlays. Output to `docs/planning-artifacts/brownfield-scan-config-contradiction.md`.
+Detect contradictions between configuration files (e.g., different service limits in `values.yaml` vs `deployment.yaml`). For `infrastructure` / `platform`, apply patterns for `terraform.tfvars`, `values.yaml`, and kustomize overlays. Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-config-contradiction.md`.
 
 ### Dead Code & Dead State Scan
 
-Identify unused modules, orphaned routes, dead migrations, unused feature flags. Output to `docs/planning-artifacts/brownfield-scan-dead-code.md`.
+Identify unused modules, orphaned routes, dead migrations, unused feature flags. Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-dead-code.md`.
 
 **Partial-failure semantics (AC-EC8):** If a scanner crashes mid-run, the other scanners continue. The failed scan writes a gap row tagged `scan failed: {reason}`. The overall skill exits non-zero with a partial-result summary listing which scanners succeeded, which failed, and what recoverable evidence is available. The remaining scanners continue — one failure does not block the cohort.
 
@@ -177,7 +179,7 @@ After all seven Phase 3 scan subagents return (doc-code, hardcoded, integration-
 
 **Canonical scan statuses (four values):**
 
-- `success` — the scan completed and wrote its expected output file under `docs/planning-artifacts/`.
+- `success` — the scan completed and wrote its expected output file under `.gaia/artifacts/planning-artifacts/`.
 - `timeout` — the scan exceeded its time / token budget. The reason string MUST capture the budget threshold and the scanner identity (e.g., `exceeded 5-minute scanner budget`).
 - `resource-capped` — the scan output was truncated per NFR-024 / AC-EC6. The reason string MUST surface the truncation advisory (`scan truncated — review manually`) so the user knows the gap list is partial.
 - `errored` — the scan crashed mid-run per AC-EC8 partial-failure semantics. The reason string MUST contain the underlying error (parser crash, file read failure, subagent unreachable) — do not silently omit failed scans from the diagnostic log.
@@ -199,7 +201,7 @@ Spawn a Test Execution Scanner subagent:
 - Truncate output per NFR-024 token budget if needed.
 - If no test suite is detected, log an info-level gap entry `GAP-TEST-INFO-001`.
 
-Output to `docs/planning-artifacts/brownfield-scan-test-execution.md`. If the subagent fails to write its output file, log a warning and continue.
+Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-test-execution.md`. If the subagent fails to write its output file, log a warning and continue.
 
 ## Phase 5 — Auto-Generate test-environment.yaml from Detected Infrastructure
 
@@ -232,9 +234,9 @@ Invoke the `test-architect` subagent (Sable) via the `Agent` tool:
 
 - Analyze the codebase for non-functional requirements across code quality (linting, complexity, duplication), security posture (dependency vulnerabilities, secrets handling, auth quality), performance (bundle size for frontend, query patterns, caching, resource management), accessibility (ARIA, semantic HTML, keyboard nav for frontend), test coverage (framework, count, coverage %, untested areas, quality), and CI/CD (pipeline, deploy strategy, environments, IaC).
 - Create an NFR Baseline Summary Table with measured values (not placeholders).
-- Output the NFR assessment to `docs/test-artifacts/nfr-assessment.md`.
+- Output the NFR assessment to `.gaia/artifacts/test-artifacts/nfr-assessment.md`.
 - Generate a performance test plan: load k6 patterns; if frontend, also load Lighthouse-CI patterns. Define performance budgets (P50/P95/P99), load test scenarios (gradual, spike, soak), backend profiling targets (slow queries, N+1, connection pools), CI performance gates. If frontend, define Core Web Vitals targets (LCP < 2.5s, INP < 200ms, CLS < 0.1).
-- Output the performance test plan to `docs/test-artifacts/performance-test-plan-{date}.md`.
+- Output the performance test plan to `.gaia/artifacts/test-artifacts/performance-test-plan-{date}.md`.
 
 **AC-EC5 fallback — test-architect unavailable:** If the `test-architect` subagent is not installed or unreachable at runtime, log a non-blocking warning and write a stub `nfr-assessment.md` with a clear banner:
 
@@ -274,7 +276,7 @@ Spawn a Gap Consolidation subagent:
 
 **Step 5 — Budget check.** Estimate token count (~100 tokens per gap entry). If the total exceeds the 40K token budget, truncate low-severity and info entries with a count summary `N additional low/info gaps omitted for budget`. Stay within budget (AC-EC6).
 
-**Step 6 — Generate consolidated output.** Write `docs/planning-artifacts/consolidated-gaps.md` with summary statistics at the top:
+**Step 6 — Generate consolidated output.** Write `.gaia/artifacts/planning-artifacts/consolidated-gaps.md` with summary statistics at the top:
 - Total raw gaps (pre-dedup count)
 - Duplicates removed
 - Final unique count
@@ -312,11 +314,11 @@ If `prd.md` already exists, warn the user: `A PRD already exists. Continuing wil
 
 YAML frontmatter MUST include `mode: brownfield`, `baseline_version: {version from package.json or inferred}`, `focus: gap-filling`. Add `Mode: Brownfield — gaps only` to the header. Include a Priority Matrix section mapping each gap to priority / effort / impact.
 
-Write to `docs/planning-artifacts/prd.md`.
+Write to `.gaia/artifacts/planning-artifacts/prd.md`.
 
 ### 8b — Adversarial Review & PRD Refinement
 
-Spawn a subagent that runs the shared adversarial-review task against the PRD. Target `docs/planning-artifacts/prd.md`; target label `prd`. When the subagent returns, verify `adversarial-review-prd-{date}.md` exists in `docs/planning-artifacts/`. Extract critical and high severity findings. For each critical/high finding, add a new requirement or refine an existing requirement in the PRD. Add a `## Review Findings Incorporated` section to the PRD listing each finding, its severity, and how it was addressed.
+Spawn a subagent that runs the shared adversarial-review task against the PRD. Target `.gaia/artifacts/planning-artifacts/prd.md`; target label `prd`. When the subagent returns, verify `adversarial-review-prd-{date}.md` exists in `.gaia/artifacts/planning-artifacts/`. Extract critical and high severity findings. For each critical/high finding, add a new requirement or refine an existing requirement in the PRD. Add a `## Review Findings Incorporated` section to the PRD listing each finding, its severity, and how it was addressed.
 
 ### 8c — Code-Verified Review
 
@@ -378,7 +380,7 @@ After all Tier 1 extractions complete, output a summary: `Seeded {N} entries for
 
 ## Output — Primary Artifact
 
-Write the final brownfield onboarding report to `docs/planning-artifacts/brownfield-onboarding.md`. This is the primary output artifact (preserved verbatim from the legacy workflow's `output.primary` contract for NFR-053 parity). It summarizes:
+Write the final brownfield onboarding report to `.gaia/artifacts/planning-artifacts/brownfield-onboarding.md`. This is the primary output artifact (preserved verbatim from the legacy workflow's `output.primary` contract for NFR-053 parity). It summarizes:
 
 - Project discovery findings (`{project_type}`, capability flags, tech stack)
 - Links to all generated secondary artifacts
@@ -391,30 +393,30 @@ Write the final brownfield onboarding report to `docs/planning-artifacts/brownfi
 
 The full artifact set emitted by this skill (preserved from the legacy `output.artifacts` contract):
 
-- `docs/planning-artifacts/project-documentation.md` (Phase 1)
-- `docs/planning-artifacts/api-documentation.md` (Phase 2, if `{has_apis}`)
-- `docs/planning-artifacts/ux-design.md` (Phase 2, if `{has_frontend}`)
-- `docs/planning-artifacts/event-catalog.md` (Phase 2, if `{has_events}`)
-- `docs/planning-artifacts/dependency-map.md` (Phase 2)
-- `docs/test-artifacts/dependency-audit-{date}.md` (Phase 2)
-- `docs/planning-artifacts/brownfield-subagent-summary.md` (Phase 2)
-- `docs/planning-artifacts/brownfield-scan-doc-code.md` (Phase 3)
-- `docs/planning-artifacts/brownfield-scan-hardcoded.md` (Phase 3)
-- `docs/planning-artifacts/brownfield-scan-integration-seam.md` (Phase 3)
-- `docs/planning-artifacts/brownfield-scan-runtime-behavior.md` (Phase 3)
-- `docs/planning-artifacts/brownfield-scan-security.md` (Phase 3)
-- `docs/planning-artifacts/brownfield-scan-config-contradiction.md` (Phase 3)
-- `docs/planning-artifacts/brownfield-scan-dead-code.md` (Phase 3)
-- `docs/planning-artifacts/brownfield-scan-test-execution.md` (Phase 4)
+- `.gaia/artifacts/planning-artifacts/project-documentation.md` (Phase 1)
+- `.gaia/artifacts/planning-artifacts/api-documentation.md` (Phase 2, if `{has_apis}`)
+- `.gaia/artifacts/planning-artifacts/ux-design.md` (Phase 2, if `{has_frontend}`)
+- `.gaia/artifacts/planning-artifacts/event-catalog.md` (Phase 2, if `{has_events}`)
+- `.gaia/artifacts/planning-artifacts/dependency-map.md` (Phase 2)
+- `.gaia/artifacts/test-artifacts/dependency-audit-{date}.md` (Phase 2)
+- `.gaia/artifacts/planning-artifacts/brownfield-subagent-summary.md` (Phase 2)
+- `.gaia/artifacts/planning-artifacts/brownfield-scan-doc-code.md` (Phase 3)
+- `.gaia/artifacts/planning-artifacts/brownfield-scan-hardcoded.md` (Phase 3)
+- `.gaia/artifacts/planning-artifacts/brownfield-scan-integration-seam.md` (Phase 3)
+- `.gaia/artifacts/planning-artifacts/brownfield-scan-runtime-behavior.md` (Phase 3)
+- `.gaia/artifacts/planning-artifacts/brownfield-scan-security.md` (Phase 3)
+- `.gaia/artifacts/planning-artifacts/brownfield-scan-config-contradiction.md` (Phase 3)
+- `.gaia/artifacts/planning-artifacts/brownfield-scan-dead-code.md` (Phase 3)
+- `.gaia/artifacts/planning-artifacts/brownfield-scan-test-execution.md` (Phase 4)
 - `.gaia/config/test-environment.yaml` (Phase 5, conditional)
-- `docs/test-artifacts/nfr-assessment.md` (Phase 6 — gated)
-- `docs/test-artifacts/performance-test-plan-{date}.md` (Phase 6 — gated)
-- `docs/planning-artifacts/consolidated-gaps.md` (Phase 7)
-- `docs/planning-artifacts/prd.md` (Phase 8a)
-- `docs/planning-artifacts/adversarial-review-prd-{date}.md` (Phase 8b)
-- `docs/planning-artifacts/architecture.md` (Phase 9a)
-- `docs/planning-artifacts/epics-and-stories.md` (downstream, via next-step chain — see below)
-- `docs/planning-artifacts/brownfield-onboarding.md` (primary)
+- `.gaia/artifacts/test-artifacts/nfr-assessment.md` (Phase 6 — gated)
+- `.gaia/artifacts/test-artifacts/performance-test-plan-{date}.md` (Phase 6 — gated)
+- `.gaia/artifacts/planning-artifacts/consolidated-gaps.md` (Phase 7)
+- `.gaia/artifacts/planning-artifacts/prd.md` (Phase 8a)
+- `.gaia/artifacts/planning-artifacts/adversarial-review-prd-{date}.md` (Phase 8b)
+- `.gaia/artifacts/planning-artifacts/architecture.md` (Phase 9a)
+- `.gaia/artifacts/planning-artifacts/epics-and-stories.md` (downstream, via next-step chain — see below)
+- `.gaia/artifacts/planning-artifacts/brownfield-onboarding.md` (primary)
 
 The `{date}` placeholder is substituted with the current date in `YYYY-MM-DD` form at write time, preserving the legacy substitution pattern.
 
@@ -422,8 +424,8 @@ The `{date}` placeholder is substituted with the current date in `YYYY-MM-DD` fo
 
 Three gates enforced via `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh` after all phases complete:
 
-1. **`nfr_assessment_exists`** — checks `docs/test-artifacts/nfr-assessment.md` exists. On fail: `HALT: NFR assessment not found at {test_artifacts}/nfr-assessment.md.`
-2. **`performance_test_plan_exists`** — checks a `docs/test-artifacts/performance-test-plan-*.md` file exists. On fail: `HALT: Performance test plan not found at {test_artifacts}/. Run /gaia-perf-testing.`
+1. **`nfr_assessment_exists`** — checks `.gaia/artifacts/test-artifacts/nfr-assessment.md` exists. On fail: `HALT: NFR assessment not found at {test_artifacts}/nfr-assessment.md.`
+2. **`performance_test_plan_exists`** — checks a `.gaia/artifacts/test-artifacts/performance-test-plan-*.md` file exists. On fail: `HALT: Performance test plan not found at {test_artifacts}/. Run /gaia-perf-testing.`
 3. **`test_environment_yaml_required_when_infra_detected`** (conditional) — if any of the four test-infrastructure detectors (E19-S12 / S13 / S14 / S15) fired during Phase 5, then `.gaia/config/test-environment.yaml` MUST exist. On fail: `HALT: Brownfield detected test infrastructure but test-environment.yaml was not generated. Re-run step 2.8 or run /gaia-brownfield again.` When zero test infrastructure was detected (AC-EC3), this gate is NOT triggered — the conditional gate stays silent for greenfield-ish projects.
 
 `validate-gate.sh` serves the role of the spec-level `file-gate.sh` in the deployed script set (see Reconciliation Note).

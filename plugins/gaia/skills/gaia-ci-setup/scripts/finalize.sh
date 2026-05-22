@@ -5,11 +5,11 @@
 # 8-item post-completion checklist (6 script-verifiable + 2
 # LLM-checkable) derived from the V1 ci-setup checklist (see the
 # docs/v1-v2-command-gap-analysis.md entry for the verbatim V1 source).
-# See docs/implementation-artifacts/E42-S15-* for the V1 → V2 mapping.
+# See .gaia/artifacts/implementation-artifacts/E42-S15-* for the V1 → V2 mapping.
 #
 # E28-S199 history: the unconditional `validate-gate.sh ci_setup_exists`
 # post-check was removed because this skill IS the producer of
-# docs/test-artifacts/ci-setup.md; a post-check on the producer's own
+# .gaia/artifacts/test-artifacts/ci-setup.md; a post-check on the producer's own
 # output is tautological. That removal stands; E42-S15 only adds the
 # V1 checklist port on top of the post-S199 baseline.
 #
@@ -124,7 +124,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && { [ ! -f "$ARTIFACT" ] || [ ! -s "$ARTIFAC
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-ci-setup to produce docs/test-artifacts/ci-setup.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-ci-setup to produce .gaia/artifacts/test-artifacts/ci-setup.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   log "running 8-item checklist against $ARTIFACT"

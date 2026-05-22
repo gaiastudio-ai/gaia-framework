@@ -22,7 +22,7 @@ You are generating a rollback plan for a release. Your output covers rollback tr
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/rollback-plan` workflow (Cluster 12, story E28-S94, ADR-041). It follows the canonical skill pattern established by E28-S66 (code-review) and E28-S92 (deploy-checklist).
 
-**Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the rollback plan artifact to `docs/implementation-artifacts/`.
+**Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the rollback plan artifact to `.gaia/artifacts/implementation-artifacts/`.
 
 **Foundation script integration (ADR-042):** Config validation and checkpoint management are deterministic operations -- they belong in bash scripts invoked inline via `!scripts/*.sh` calls, not in LLM prose.
 
@@ -104,7 +104,7 @@ Prepare communication templates for:
 
 ### Step 6 -- Generate Rollback Plan Artifact
 
-Write the rollback plan to `docs/implementation-artifacts/rollback-plan-{version}.md` containing:
+Write the rollback plan to `.gaia/artifacts/implementation-artifacts/rollback-plan-{version}.md` containing:
 
 1. **Rollback Trigger Criteria** -- automated and manual triggers with thresholds.
 2. **Step-by-Step Rollback Procedure** -- numbered execution steps with expected duration.

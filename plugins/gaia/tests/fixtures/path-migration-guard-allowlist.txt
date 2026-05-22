@@ -123,6 +123,53 @@ plugins/gaia/skills/gaia-create-ux/scripts/finalize.sh
 plugins/gaia/skills/gaia-product-brief/scripts/finalize.sh
 plugins/gaia/skills/gaia-tech-research/scripts/finalize.sh
 
+# AF-2026-05-21-10 fix — gaia-create-prd/finalize.sh now uses the
+# three-tier idiom (PRD_ARTIFACT env-var override → positive-evidence
+# legacy fallback → canonical default). Allowlisted so the legacy
+# `docs/planning-artifacts/prd.md` literal in the positive-evidence
+# branch is permitted.
+plugins/gaia/skills/gaia-create-prd/scripts/finalize.sh
+
+# AF-2026-05-21-11 fix — gaia-create-arch + gaia-edit-arch finalize.sh
+# scripts now use the same three-tier idiom (ARCHITECTURE_ARTIFACT env-var
+# override → positive-evidence legacy fallback → canonical default).
+# Allowlisted so the legacy `docs/planning-artifacts/architecture.md`
+# literal in the positive-evidence branch is permitted.
+plugins/gaia/skills/gaia-create-arch/scripts/finalize.sh
+plugins/gaia/skills/gaia-edit-arch/scripts/finalize.sh
+
+# AF-2026-05-21-12 fix — gaia-edit-prd/setup.sh now uses the three-tier
+# idiom (PRD_PATH env-var override → positive-evidence legacy fallback →
+# canonical default). Allowlisted so the legacy
+# `docs/planning-artifacts/prd.md` literal in the positive-evidence branch
+# is permitted.
+plugins/gaia/skills/gaia-edit-prd/scripts/setup.sh
+
+# AF-2026-05-21-14 fix — gaia-edit-ux/setup.sh now uses the three-tier
+# idiom (UX_DESIGN_PATH env-var override → positive-evidence legacy
+# fallback → canonical default). Allowlisted so the legacy
+# `docs/planning-artifacts/ux-design.md` literal in the positive-evidence
+# branch is permitted.
+plugins/gaia/skills/gaia-edit-ux/scripts/setup.sh
+
+# AF-2026-05-21-15 fix — gaia-threat-model/finalize.sh now uses the
+# three-tier idiom (THREAT_MODEL_ARTIFACT env-var override →
+# positive-evidence legacy fallback → canonical default). Allowlisted
+# so the legacy `docs/planning-artifacts/threat-model.md` literal in the
+# positive-evidence branch is permitted.
+plugins/gaia/skills/gaia-threat-model/scripts/finalize.sh
+
+# AF-2026-05-21-19 fix — test-cluster scripts (display strings + setup three-tier
+# idiom + atdd canonical-first fallback). Allowlisted so the legacy
+# `docs/test-artifacts/` and `docs/implementation-artifacts/` literals
+# in the positive-evidence fallback branches and display strings are permitted.
+plugins/gaia/skills/gaia-test-design/scripts/finalize.sh
+plugins/gaia/skills/gaia-test-framework/scripts/finalize.sh
+plugins/gaia/skills/gaia-edit-test-plan/scripts/finalize.sh
+plugins/gaia/skills/gaia-edit-test-plan/scripts/setup.sh
+plugins/gaia/skills/gaia-atdd/scripts/finalize.sh
+plugins/gaia/skills/gaia-atdd/scripts/run-red-phase.sh
+
 # --- Bucket 3: retired scripts ---
 
 plugins/gaia/scripts/retired/

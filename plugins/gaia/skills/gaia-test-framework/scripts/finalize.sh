@@ -5,7 +5,7 @@
 # 7-item post-completion checklist (4 script-verifiable + 3
 # LLM-checkable) derived from the V1 test-framework checklist (see the
 # docs/v1-v2-command-gap-analysis.md entry for the verbatim V1 source).
-# See docs/implementation-artifacts/E42-S15-* for the V1 → V2 mapping.
+# See .gaia/artifacts/implementation-artifacts/E42-S15-* for the V1 → V2 mapping.
 #
 # Responsibilities (per brief §Cluster 11 + story E42-S15):
 #   1. Run the script-verifiable subset of the 7 V1 checklist items
@@ -98,7 +98,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && { [ ! -f "$ARTIFACT" ] || [ ! -s "$ARTIFAC
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-test-framework to produce docs/test-artifacts/test-framework-setup.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-test-framework to produce .gaia/artifacts/test-artifacts/test-framework-setup.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   log "running 7-item checklist against $ARTIFACT"

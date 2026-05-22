@@ -38,7 +38,7 @@ This skill is the native Claude Code conversion of the legacy dev-story workflow
 
 ## Critical Rules
 
-- A story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md` before starting. If missing, fail fast with "Story file not found -- run /gaia-create-story first."
+- A story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` before starting. If missing, fail fast with "Story file not found -- run /gaia-create-story first."
 - Story status MUST be `ready-for-dev` or `in-progress`. Any other status is a HALT condition.
 - Follow TDD cycle strictly: Red (failing tests) -> Green (minimal implementation) -> Refactor. Each phase is a separate step -- NEVER combine them.
 - Do NOT write implementation code during the Red phase.
@@ -48,7 +48,7 @@ This skill is the native Claude Code conversion of the legacy dev-story workflow
 - When reading or running application source code, use the project path as the base directory.
 - All mechanical operations (git, checkpoint, sprint-state, sha256, PR, CI, merge) are handled by scripts -- do NOT inline shell commands in the conversation.
 - The PostToolUse hook fires `checkpoint.sh` automatically after every Edit/Write -- you do not need to manually checkpoint file mutations.
-- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `docs/planning-artifacts/epics/` are FORBIDDEN.
+- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `.gaia/artifacts/planning-artifacts/epics/` are FORBIDDEN.
 
 ## Steps
 
@@ -103,8 +103,8 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 ### Step 2b -- ATDD Gate (high-risk stories only)
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/atdd-gate.sh {story_key}`.
-- The script reads the story's `risk` frontmatter field (canonical) — `risk_level` is a PRD/ADR longhand alias for the same semantic field. If `risk: high`, the script requires at least one ATDD scenarios file matching `atdd-{epic_key}*.md` OR `atdd-{story_key}*.md` under `docs/test-artifacts/`. For `medium`, `low`, or unset risk it exits 0 unconditionally.
-- On non-zero exit (high-risk story, no ATDD file): HALT with the script's stderr message naming the expected paths under `docs/test-artifacts/`. Direct the user to `/gaia-atdd {story_key}` to generate the scenarios file before re-running `/gaia-dev-story`.
+- The script reads the story's `risk` frontmatter field (canonical) — `risk_level` is a PRD/ADR longhand alias for the same semantic field. If `risk: high`, the script requires at least one ATDD scenarios file matching `atdd-{epic_key}*.md` OR `atdd-{story_key}*.md` under `.gaia/artifacts/test-artifacts/`. For `medium`, `low`, or unset risk it exits 0 unconditionally.
+- On non-zero exit (high-risk story, no ATDD file): HALT with the script's stderr message naming the expected paths under `.gaia/artifacts/test-artifacts/`. Direct the user to `/gaia-atdd {story_key}` to generate the scenarios file before re-running `/gaia-dev-story`.
 - On exit 0: proceed to Step 3.
 - **Sequencing trade-off:** Step 2b sits AFTER Step 2 (status is already `in-progress`) but BEFORE Step 3 (no feature branch yet). Halting at 2b leaves the story status updated but no branch created — the user reverts status manually (or re-runs /gaia-dev-story after producing the ATDD file) to recover.
 <!-- E55-S5: step 2b atdd gate end -->

@@ -25,7 +25,7 @@ fi
 
 ## Mission
 
-You are facilitating a market research session. Guide the user through scope definition, competitive analysis, customer research, and market sizing (TAM/SAM/SOM), then emit a structured market research report at `docs/planning-artifacts/market-research.md` for downstream consumers (e.g., `/gaia-domain-research`, `/gaia-product-brief`).
+You are facilitating a market research session. Guide the user through scope definition, competitive analysis, customer research, and market sizing (TAM/SAM/SOM), then emit a structured market research report at `.gaia/artifacts/planning-artifacts/market-research.md` for downstream consumers (e.g., `/gaia-domain-research`, `/gaia-product-brief`).
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/1-analysis/market-research` workflow (brief §Cluster 4, story P4-S3). The step ordering, prompts, and output location follow the legacy `instructions.xml` mechanically — do not restructure, re-prompt, or reorder sections.
 
@@ -34,7 +34,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Check web access availability before proceeding with research.
 - If no web access, proceed with user-provided data and general knowledge only.
 - State all market sizing assumptions clearly.
-- The output file path is `docs/planning-artifacts/market-research.md` — downstream consumers read this exact path, so do not relocate it.
+- The output file path is `.gaia/artifacts/planning-artifacts/market-research.md` — downstream consumers read this exact path, so do not relocate it.
 - Mechanical port: the six legacy steps below must appear in this exact order.
 
 ## Steps
@@ -84,7 +84,7 @@ Ask the user, in order, and wait for a response on each:
 
 ### Step 6 — Generate Output
 
-Write a structured market research report to `docs/planning-artifacts/market-research.md` containing, in order:
+Write a structured market research report to `.gaia/artifacts/planning-artifacts/market-research.md` containing, in order:
 
 - **Executive Summary**
 - **Competitive Analysis** — direct and indirect competitors with strengths, weaknesses, market position, pricing model, and a competitive positioning matrix
@@ -97,9 +97,9 @@ Write a structured market research report to `docs/planning-artifacts/market-res
 [Source: _gaia/lifecycle/workflows/1-analysis/market-research/workflow.yaml]
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/planning-artifacts/market-research.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/market-research.md`
 
-> `!scripts/write-checkpoint.sh gaia-market-research 6 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET" --paths docs/planning-artifacts/market-research.md`
+> `!scripts/write-checkpoint.sh gaia-market-research 6 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET" --paths .gaia/artifacts/planning-artifacts/market-research.md`
 
 ### Step 7 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -108,17 +108,17 @@ Write a structured market research report to `docs/planning-artifacts/market-res
 
 **Guards (run before invocation):**
 
-- Artifact-existence guard (AC-EC3): if not exists `docs/planning-artifacts/market-research.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
+- Artifact-existence guard (AC-EC3): if not exists `.gaia/artifacts/planning-artifacts/market-research.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
 - Val-skill-availability guard (AC-EC6): if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
 
 **Loop:**
 
 1. iteration = 1.
-2. Invoke `/gaia-val-validate` with `artifact_path = docs/planning-artifacts/market-research.md`, `artifact_type = market-research`.
+2. Invoke `/gaia-val-validate` with `artifact_path = .gaia/artifacts/planning-artifacts/market-research.md`, `artifact_type = market-research`.
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
-     a. Apply a fix to `docs/planning-artifacts/market-research.md` addressing the findings.
+     a. Apply a fix to `.gaia/artifacts/planning-artifacts/market-research.md` addressing the findings.
      b. Append an iteration log record to checkpoint `custom.val_loop_iterations`.
      c. iteration += 1.
      d. If iteration <= 3: go to step 2.
@@ -128,7 +128,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). The `market-research` artifact_type may not have a canonical document-ruleset; per E44-S1 AC-EC1 Val skips structural validation for unknown types and still runs factual-claim validation.
 
-> `!scripts/write-checkpoint.sh gaia-market-research 7 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET" stage=val-auto-review --paths docs/planning-artifacts/market-research.md`
+> `!scripts/write-checkpoint.sh gaia-market-research 7 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/market-research.md`
 
 ## Validation
 
@@ -149,10 +149,10 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   required output sections as a separate item (+3 net vs. "all required
   sections present"), and adds an Executive Summary / Key Findings /
   Strategic Recommendations section check to mirror the V2 Step 6 output
-  contract. See docs/implementation-artifacts/E42-S2-port-gaia-market-research-28-item-checklist-to-v2.md.
+  contract. See .gaia/artifacts/implementation-artifacts/E42-S2-port-gaia-market-research-28-item-checklist-to-v2.md.
 -->
 
-- [script-verifiable] SV-01 — Output artifact exists at docs/planning-artifacts/market-research.md
+- [script-verifiable] SV-01 — Output artifact exists at .gaia/artifacts/planning-artifacts/market-research.md
 - [script-verifiable] SV-02 — Output artifact is non-empty
 - [script-verifiable] SV-03 — Artifact has frontmatter or top-level title
 - [script-verifiable] SV-04 — Market/industry clearly defined

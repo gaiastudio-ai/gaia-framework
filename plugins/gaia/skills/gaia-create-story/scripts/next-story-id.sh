@@ -30,8 +30,8 @@
 #   character classes behave identically on macOS BSD and Linux GNU.
 #
 # Spec references:
-#   - docs/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.2
-#   - docs/planning-artifacts/architecture.md §Decision Log — ADR-074
+#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.2
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-074
 #   - gaia-public/plugins/gaia/skills/gaia-shell-idioms/SKILL.md
 #   - Sibling: gaia-public/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh
 

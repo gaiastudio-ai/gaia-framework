@@ -16,7 +16,7 @@
 #
 # Environment:
 #   PROJECT_PATH             — project root (default ".")
-#   IMPLEMENTATION_ARTIFACTS — story root (default "$PROJECT_PATH/docs/implementation-artifacts")
+#   IMPLEMENTATION_ARTIFACTS — story root (default "$PROJECT_PATH/.gaia/artifacts/implementation-artifacts")
 #   VALIDATOR_DECISION_LOG   — decision log path (default "$PROJECT_PATH/_memory/validator-sidecar/decision-log.md")
 #
 # Exit codes:

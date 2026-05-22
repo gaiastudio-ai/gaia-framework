@@ -22,7 +22,7 @@ You are generating a staged rollout and release strategy for the project. Your o
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/release-plan` workflow (Cluster 12, story E28-S93, ADR-041). It follows the canonical skill pattern established by E28-S66 (code-review).
 
-**Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the release plan artifact to `docs/implementation-artifacts/`.
+**Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the release plan artifact to `.gaia/artifacts/implementation-artifacts/`.
 
 **Foundation script integration (ADR-042):** This skill invokes `setup.sh` and `finalize.sh` from `plugins/gaia/skills/gaia-release-plan/scripts/` for config resolution and checkpoint management. Deterministic operations belong in bash scripts, not LLM prompts.
 
@@ -120,7 +120,7 @@ Define measurable success metrics per environment:
 
 ### Step 7 -- Generate Release Plan Artifact
 
-Write the release plan to `docs/implementation-artifacts/release-plan-{version}.md` containing:
+Write the release plan to `.gaia/artifacts/implementation-artifacts/release-plan-{version}.md` containing:
 
 1. **Release Scope** -- version number, included stories/features/fixes, breaking changes, dependencies.
 2. **Deployment Strategy** -- selected strategy with justification.

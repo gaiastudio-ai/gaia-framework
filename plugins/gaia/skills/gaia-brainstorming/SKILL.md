@@ -23,7 +23,7 @@ fi
 
 Facilitated creative ideation session: **Session Setup → Technique Selection →
 Technique Execution → Idea Organization**. Produces a ranked, categorized
-artifact at `docs/creative-artifacts/brainstorming-{date}.md`. Converted under
+artifact at `.gaia/artifacts/creative-artifacts/brainstorming-{date}.md`. Converted under
 ADR-041 with full parity against `_gaia/core/workflows/brainstorming/`
 (NFR-053).
 
@@ -33,7 +33,7 @@ ADR-041 with full parity against `_gaia/core/workflows/brainstorming/`
 - Delegate facilitation to **Rex (`brainstorming-coach`)** via the Agent tool
   when `plugins/gaia/agents/brainstorming-coach.md` is available. If the
   subagent is unavailable or not registered, facilitate inline — do not halt.
-- Preserve the output path exactly: `docs/creative-artifacts/brainstorming-{date}.md`
+- Preserve the output path exactly: `.gaia/artifacts/creative-artifacts/brainstorming-{date}.md`
   (date as `YYYY-MM-DD`). Downstream skills glob on this prefix.
 - Use `brainstorming-template.md` for the output structure.
 - During execution: quantity over quality — capture every idea without filtering.
@@ -82,10 +82,10 @@ Run the selected technique round by round:
 3. Identify the **top 3–5 ideas** overall. For each: one-sentence summary, why
    it's valuable, first concrete next step.
 4. Render the artifact from `brainstorming-template.md` and write it to
-   `docs/creative-artifacts/brainstorming-{date}.md`.
+   `.gaia/artifacts/creative-artifacts/brainstorming-{date}.md`.
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/creative-artifacts/brainstorming-${DATE}.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/creative-artifacts/brainstorming-${DATE}.md`
 
 5. Report the output path and suggest `/gaia-market-research`,
    `/gaia-domain-research`, or `/gaia-tech-research` as follow-ups.

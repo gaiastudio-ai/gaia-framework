@@ -4,7 +4,7 @@
 # AC2 / AC5 / FR-MTG-21 / ADR-086 / TC-MTG-AI-3 / TC-MTG-AI-4 / TC-MTG-AI-6
 #
 # Reads a drafted-items YAML payload (one entry per `- type: …` block), reads
-# the existing canonical registry at `docs/planning-artifacts/action-items.yaml`
+# the existing canonical registry at `.gaia/state/action-items.yaml`
 # (or any path passed via --registry), bumps the registry header to
 # `schema_version: 2` if missing (idempotent), allocates daily-N IDs of the
 # form `AI-{YYYY-MM-DD}-{N}` (N restarts at 1 each day, scanned from existing

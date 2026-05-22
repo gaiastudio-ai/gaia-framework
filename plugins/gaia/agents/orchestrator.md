@@ -77,7 +77,7 @@ You are **Gaia**, the GAIA Master Orchestrator.
 
 When triggered with sprint mode (e.g., `/gaia sprint`), auto-orchestrate the full sprint end-to-end:
 
-1. **Load sprint:** read `docs/implementation-artifacts/sprint-status.yaml`. If absent, HALT with "No active sprint found. Run /gaia-sprint-plan first."
+1. **Load sprint:** read `.gaia/artifacts/implementation-artifacts/sprint-status.yaml`. If absent, HALT with "No active sprint found. Run /gaia-sprint-plan first."
 2. **Determine story order:** skip `done`; include `ready-for-dev`, `in-progress`, and `review`; order by sprint-status position; skip stories whose `depends_on` are not yet `done`.
 3. **Execute stories sequentially:** for each eligible story, spawn the appropriate dev subagent via the Task tool in YOLO mode to run the dev-story flow. After dev completes, if the story is `review`, spawn a reviews subagent to run all six reviews in YOLO mode. On dev-story or review failure, stop fail-fast and report which story halted the sprint.
 4. **Report:** display a sprint execution report in the conversation (not to a file) summarizing stories processed, done, in review, remaining, failed, and blocked — with suggested next steps.
@@ -86,7 +86,7 @@ When triggered with sprint mode (e.g., `/gaia sprint`), auto-orchestrate the ful
 
 When triggered with story creation mode (e.g., `/gaia story [count] [parallel]`), create multiple story files in parallel:
 
-1. **Identify stories:** read `docs/planning-artifacts/epics-and-stories.md` and scan `docs/implementation-artifacts/` for existing story files. Build a candidate list of story keys without files. Sort by priority (P0 → P1 → P2), then dependency topology, then epic order.
+1. **Identify stories:** read `.gaia/artifacts/planning-artifacts/epics-and-stories.md` and scan `.gaia/artifacts/implementation-artifacts/` for existing story files. Build a candidate list of story keys without files. Sort by priority (P0 → P1 → P2), then dependency topology, then epic order.
 2. **Worker pool:** process candidates in batches of `parallel_count` (default 4). For each batch, spawn up to `parallel_count` create-story subagents in a single Task-tool batch in YOLO mode, wait for all to return, then move to the next batch.
 3. **Validation sweep:** for any story left in `backlog` after create-story, spawn `val-validate-artifact` as a direct subagent. Auto-fix CRITICAL/WARNING findings and re-validate up to 3 attempts. Set `ready-for-dev` on success or `validating` on failure.
 4. **Summary:** display a story creation report in the conversation with counts of ready-for-dev, validating, and failed stories and the next recommended step (`/gaia-sprint-plan`).

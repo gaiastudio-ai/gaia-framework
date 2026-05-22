@@ -1,6 +1,6 @@
 # detect-open-questions.sh — LLM-Checkable Fixtures (E44-S7 / VCP-OQD-01..08)
 
-> Source story: `docs/implementation-artifacts/E44-S7-open-question-detection-helper-and-wire-into-18-skills.md`
+> Source story: `.gaia/artifacts/implementation-artifacts/E44-S7-open-question-detection-helper-and-wire-into-18-skills.md`
 > Helper under test: `plugins/gaia/scripts/detect-open-questions.sh`
 > Convention: VCP LLM-checkable test (matches existing `*.llm-checkable.md` siblings)
 

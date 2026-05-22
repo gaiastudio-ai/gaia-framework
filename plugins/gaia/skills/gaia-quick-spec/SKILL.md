@@ -1,6 +1,6 @@
 ---
 name: gaia-quick-spec
-description: Create a quick implementation spec for small changes. Use when "create a quick spec" or /gaia-quick-spec. Runs a lightweight five-step flow (Scope → Quick Analysis → Escape Hatch Check → Generate Quick Spec → Generate Output) and writes the spec to docs/implementation-artifacts/quick-spec-{spec_name}.md. Native Claude Code conversion of the legacy quick-spec workflow (E28-S116, Cluster 16).
+description: Create a quick implementation spec for small changes. Use when "create a quick spec" or /gaia-quick-spec. Runs a lightweight five-step flow (Scope → Quick Analysis → Escape Hatch Check → Generate Quick Spec → Generate Output) and writes the spec to .gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md. Native Claude Code conversion of the legacy quick-spec workflow (E28-S116, Cluster 16).
 argument-hint: "[spec-name]"
 allowed-tools: [Read, Write, Edit, Bash]
 orchestration_class: heavy-procedural
@@ -33,7 +33,7 @@ fi
 
 ## Mission
 
-You are creating a lightweight implementation spec for a small change or feature — the quick-flow entry point. This skill intentionally skips the full lifecycle (PRD → architecture → epics/stories → story); use it when scope is well under a day and touches a handful of files. The output is a single markdown file at `docs/implementation-artifacts/quick-spec-{spec_name}.md` with five fixed sections (summary, files to change, implementation steps, acceptance criteria, risks) that a developer can hand straight to `/gaia-quick-dev`.
+You are creating a lightweight implementation spec for a small change or feature — the quick-flow entry point. This skill intentionally skips the full lifecycle (PRD → architecture → epics/stories → story); use it when scope is well under a day and touches a handful of files. The output is a single markdown file at `.gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md` with five fixed sections (summary, files to change, implementation steps, acceptance criteria, risks) that a developer can hand straight to `/gaia-quick-dev`.
 
 This skill is the native Claude Code conversion of the legacy quick-spec workflow at `_gaia/lifecycle/workflows/quick-flow/quick-spec/` (`workflow.yaml` + `instructions.xml`; no checklist, no template, no stack binding beyond `dev-*`). The step order, both Scope prompts, the escape-hatch threshold, and the output path are preserved verbatim per ADR-041 and NFR-053.
 
@@ -41,7 +41,7 @@ This skill is the native Claude Code conversion of the legacy quick-spec workflo
 
 - **If scope exceeds the quick threshold (more than 5 files OR more than 1 day), offer escalation to the full lifecycle before producing the spec.** This is the legacy guardrail — do not remove it, do not soften it, do not make it interactive-only. Suggest `/gaia-create-prd` on escalation.
 - **Ask both Scope prompts verbatim.** The exact prompts are "What small change or feature do you want to spec?" and "Which files are likely affected?" — do not paraphrase.
-- **The output path is fixed:** `docs/implementation-artifacts/quick-spec-{spec_name}.md`. Do not invent a different folder or filename convention.
+- **The output path is fixed:** `.gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md`. Do not invent a different folder or filename convention.
 - **If `{spec_name}` is not supplied on invocation, prompt for it at Step 5** before writing the file. This matches the legacy `{spec_name}` placeholder resolution.
 - **The five output sections are fixed and ordered:** (1) Summary, (2) Files to change, (3) Implementation steps, (4) Acceptance criteria, (5) Risks. Do not add sections, do not drop sections, do not reorder them.
 - **Do not dispatch to a stack-specific developer agent here.** The legacy workflow has `agent: dev-*` with no auto-detect — the quick-spec step itself is stack-agnostic. The stack is selected downstream by `/gaia-quick-dev` (story E28-S117).
@@ -59,7 +59,7 @@ The skill runs five steps in strict order, mirroring the legacy `quick-spec/inst
 2. **Quick Analysis** — identify affected files and dependencies, estimate scope
 3. **Escape Hatch Check** — if scope exceeds the quick threshold, offer escalation to the full lifecycle
 4. **Generate Quick Spec** — assemble the lightweight implementation plan
-5. **Generate Output** — write the spec to `docs/implementation-artifacts/quick-spec-{spec_name}.md`
+5. **Generate Output** — write the spec to `.gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md`
 
 ### Step 1 — Scope
 
@@ -107,7 +107,7 @@ Do not invent new sections. Do not inflate the spec with narrative prose — it 
 
 ### Step 5 — Generate Output
 
-Resolve the output path: `docs/implementation-artifacts/quick-spec-{spec_name}.md`.
+Resolve the output path: `.gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md`.
 
 - If `{spec_name}` was supplied as `$ARGUMENTS` in Step 1, use it directly.
 - If `{spec_name}` was not supplied, prompt: "What short name should this quick spec use in its filename? (e.g., `add-dark-mode-toggle`)" — use lowercase, hyphens, no spaces. Use the response as `{spec_name}`.
@@ -146,7 +146,7 @@ Write the file with this structure:
 
 Confirm the file was written and report the path back to the user. Suggest the next step:
 
-> Quick spec written to `docs/implementation-artifacts/quick-spec-{spec_name}.md`. Run `/gaia-quick-dev {spec_name}` to implement it.
+> Quick spec written to `.gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md`. Run `/gaia-quick-dev {spec_name}` to implement it.
 
 ## Edge Cases
 

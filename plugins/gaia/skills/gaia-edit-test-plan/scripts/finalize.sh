@@ -143,7 +143,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && { [ ! -f "$ARTIFACT" ] || [ ! -s "$ARTIFAC
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-edit-test-plan to produce docs/test-artifacts/test-plan.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-edit-test-plan to produce .gaia/artifacts/test-artifacts/test-plan.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   log "running 21-item checklist against $ARTIFACT"
@@ -152,7 +152,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   # --- Script-verifiable items (7) ---
 
   # SV-01 / V1 "Output file saved to {test_artifacts}/test-plan.md"
-  item_check "SV-01" "Output file saved to docs/test-artifacts/test-plan.md" \
+  item_check "SV-01" "Output file saved to .gaia/artifacts/test-artifacts/test-plan.md" \
     "$(file_exists "$ARTIFACT")"
   # SV-02 / structural — output file non-empty
   item_check "SV-02" "Output artifact is non-empty" \
@@ -191,7 +191,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   LLM-08 — Coverage summary updated (if present)
 
   [reconciled from V1 instruction step outputs]
-  LLM-09 — Existing test plan loaded from docs/test-artifacts/test-plan.md (Step 1 output)
+  LLM-09 — Existing test plan loaded from .gaia/artifacts/test-artifacts/test-plan.md (Step 1 output)
   LLM-10 — Highest existing test case ID identified for auto-increment (Step 1)
   LLM-11 — Existing test areas/categories identified before editing (Step 1)
   LLM-12 — Change scope captured: feature description and FR/NFR IDs recorded (Step 2)

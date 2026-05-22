@@ -44,19 +44,19 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 ## Inputs
 
 - None. The skill discovers its inputs at runtime:
-  - `docs/implementation-artifacts/sprint-status.yaml` — current `sprint_id`.
-  - Story files — recursive walk under `docs/implementation-artifacts/epic-*/stories/**/*.md` (canonical nested layout per E79) PLUS the legacy flat layer `docs/implementation-artifacts/*.md` (read-only fallback until E79-S6 backfill completes). Frontmatter + Findings sections only.
-  - `docs/implementation-artifacts/tech-debt-dashboard.md` — previous dashboard (if present).
+  - `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` — current `sprint_id`.
+  - Story files — recursive walk under `.gaia/artifacts/implementation-artifacts/epic-*/stories/**/*.md` (canonical nested layout per E79) PLUS the legacy flat layer `.gaia/artifacts/implementation-artifacts/*.md` (read-only fallback until E79-S6 backfill completes). Frontmatter + Findings sections only.
+  - `.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md` — previous dashboard (if present).
 
 ## Steps
 
 ### Step 1 — Scan Debt Sources
 
-- If `docs/implementation-artifacts/tech-debt-dashboard.md` exists, read it — capture previous TD-{N} IDs, previous totals, and previous items list for trend comparison.
-- Read `docs/implementation-artifacts/sprint-status.yaml` — identify the current `sprint_id` and the list of backlog stories.
+- If `.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md` exists, read it — capture previous TD-{N} IDs, previous totals, and previous items list for trend comparison.
+- Read `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` — identify the current `sprint_id` and the list of backlog stories.
 - Invoke the scanner:
   ```
-  !${CLAUDE_PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/scan-findings.sh --artifacts-dir docs/implementation-artifacts
+  !${CLAUDE_PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/scan-findings.sh --artifacts-dir .gaia/artifacts/implementation-artifacts
   ```
   The scanner reads only frontmatter + `## Findings` sections (token-budget mandate) and emits pipe-delimited candidate rows:
   `{story_key}|{status}|{sprint_id}|{type}|{severity}|{finding}|{action}`.
@@ -64,7 +64,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
   - every `Type = tech-debt` row,
   - every `Type = bug` row with `Severity = medium | low` that is NOT marked `[TRIAGED]` or `[DISMISSED]` in the finding text.
 - For each candidate marked `[TRIAGED → {target_key}]`, validate the target:
-  1. Glob `docs/implementation-artifacts/{target_key}-*.md`.
+  1. Glob `.gaia/artifacts/implementation-artifacts/{target_key}-*.md`.
   2. If the target file exists, parse its frontmatter `status` field.
   3. Map to a Resolution Status: QUEUED / IN PROGRESS / IN REVIEW / STALE TARGET.
   4. If the target file is missing or the target is not a valid `E{n}-S{m}` key → UNASSIGNED.
@@ -83,7 +83,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
   Merge each duplicate group into a single item: keep the most descriptive title, combine all source stories (e.g., `E8-S2, E8-S4`), keep the same target, tag as `(merged from {count} findings)`. Report: `Merged {N} duplicate findings into {M} items`.
 - **Assign stable `TD-{N}` IDs** to the MERGED set by invoking:
   ```
-  !${CLAUDE_PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/td-id-assign.sh --dashboard docs/implementation-artifacts/tech-debt-dashboard.md --count <N>
+  !${CLAUDE_PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/td-id-assign.sh --dashboard .gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md --count <N>
   ```
   The helper reads the previous dashboard's TD-{N} tokens and emits the next `N` sequential IDs after the highest existing. For items already present in the previous dashboard (matched by file + pattern + source story), preserve their existing TD-{N}. Only genuinely new items receive fresh IDs. **Never renumber.**
 - **Categorize** each item into exactly one category:
@@ -139,7 +139,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
   - **Overdue alerts** — all OVERDUE and auto-escalated items with source and age.
   - **Target validation issues** — STALE TARGET and UNASSIGNED items with re-triage recommendation.
   - **Trend section** — current vs previous totals, delta, resolved since last, new since last. If no previous dashboard, emit `First review — no prior data`.
-- Write the filled template to `docs/implementation-artifacts/tech-debt-dashboard.md`. This output is auto-continue — no user-confirmation prompt (matches legacy `template_output_prompt: "auto"`).
+- Write the filled template to `.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md`. This output is auto-continue — no user-confirmation prompt (matches legacy `template_output_prompt: "auto"`).
 
 ### Step 6 — Recommend Actions
 
@@ -153,7 +153,7 @@ Based on dashboard findings, present specific next-step commands:
 - If INFRASTRUCTURE debt dominates: `Run /gaia-ci-setup to close CI/CD gaps`.
 - If items were auto-escalated: `Review escalated items — aging has upgraded their priority`.
 
-For each FIX NOW + OVERDUE item, append to `docs/planning-artifacts/action-items.yaml` (canonical location per architecture §10.28.6 / ADR-052; reconciled in E36-S4) (if not already tracked) with fields:
+For each FIX NOW + OVERDUE item, append to `.gaia/artifacts/planning-artifacts/action-items.yaml` (canonical location per architecture §10.28.6 / ADR-052; reconciled in E36-S4) (if not already tracked) with fields:
 `type: "implementation"`, `priority: "high"`, `status: "open"`, `source_workflow: "tech-debt-review"`, `source_sprint: {sprint_id}`, `title: "{debt item description}"`, `related_stories: [{target story if exists}]`. Check existing action items by title similarity to avoid duplicates.
 
 ### Step 7 — Save to Val Memory

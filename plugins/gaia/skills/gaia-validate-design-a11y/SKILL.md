@@ -88,7 +88,7 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 ### Phase 6 — Report
 
-- Write the report to `docs/test-artifacts/design-a11y-review-{date}.md`.
+- Write the report to `.gaia/artifacts/test-artifacts/design-a11y-review-{date}.md`.
 - The report includes the verdict, the findings table, the rubric source (path of merged rubric), and the design target reference.
 
 ### Phase 7 — Exit

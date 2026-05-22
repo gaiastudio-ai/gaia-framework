@@ -61,7 +61,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 4 -- Dispatch Performance Analysis to Juno
 
-Invoke the Juno performance subagent to perform deep performance analysis on all performance-relevant changed files. Pass the story key, file list, and architecture context (if available at `docs/planning-artifacts/architecture.md`) to Juno. Juno performs Steps 4a through 4d below and returns findings across the fork boundary.
+Invoke the Juno performance subagent to perform deep performance analysis on all performance-relevant changed files. Pass the story key, file list, and architecture context (if available at `.gaia/artifacts/planning-artifacts/architecture.md`) to Juno. Juno performs Steps 4a through 4d below and returns findings across the fork boundary.
 
 #### Step 4a -- N+1 and Database Analysis
 

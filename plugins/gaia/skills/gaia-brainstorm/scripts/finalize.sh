@@ -26,7 +26,7 @@
 #
 # Environment:
 #   BRAINSTORM_ARTIFACT  Absolute path to the artifact to validate. When
-#                        unset, the script scans docs/creative-artifacts/
+#                        unset, the script scans .gaia/artifacts/creative-artifacts/
 #                        for the most recent brainstorm-*.md file.
 
 set -euo pipefail
@@ -45,17 +45,21 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Resolve artifact path ----------
-# BRAINSTORM_ARTIFACT wins when set (test fixtures + explicit invocation).
-# Otherwise fall back to the most-recent docs/creative-artifacts/brainstorm-*.md
-# in the current working directory. A missing artifact is NOT fatal to the
-# observability side effects — the checklist run is simply skipped.
+# ---------- 0. Resolve artifact path (AF-2026-05-21-25 three-tier idiom) ----------
+# Tier 1 — BRAINSTORM_ARTIFACT env-var override wins when set.
+# Tier 2 — positive pre-ADR-111 evidence: legacy dir exists AND canonical dir
+#          does NOT → use most-recent .gaia/artifacts/creative-artifacts/brainstorm-*.md.
+# Tier 3 — canonical default: most-recent .gaia/artifacts/creative-artifacts/brainstorm-*.md.
+# A missing artifact is NOT fatal — the checklist run is simply skipped.
 ARTIFACT=""
 if [ -n "${BRAINSTORM_ARTIFACT:-}" ]; then
   ARTIFACT="$BRAINSTORM_ARTIFACT"
-elif [ -d "docs/creative-artifacts" ]; then
+elif [ -d "docs/creative-artifacts" ] && [ ! -d ".gaia/artifacts/creative-artifacts" ]; then
   # shellcheck disable=SC2012
   ARTIFACT="$(ls -1t docs/creative-artifacts/brainstorm-*.md 2>/dev/null | head -n 1 || true)"
+elif [ -d ".gaia/artifacts/creative-artifacts" ]; then
+  # shellcheck disable=SC2012
+  ARTIFACT="$(ls -1t .gaia/artifacts/creative-artifacts/brainstorm-*.md 2>/dev/null | head -n 1 || true)"
 fi
 
 # ---------- 1. Run the 24-item checklist ----------
@@ -119,7 +123,7 @@ if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   printf '\nChecklist: /gaia-brainstorm (24 items — 15 script-verifiable, 9 LLM-checkable)\n' >&2
 
   # --- Script-verifiable items (15) ---
-  item_check "SV-01" "Output artifact exists at docs/creative-artifacts/brainstorm-*.md" \
+  item_check "SV-01" "Output artifact exists at resolved path ($ARTIFACT)" \
     "$([ -f "$ARTIFACT" ] && echo pass || echo fail)"
   item_check "SV-02" "Output artifact is non-empty" "$(file_nonempty "$ARTIFACT")"
 
@@ -154,7 +158,7 @@ if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   # Creative-artifacts/ was checked before the session started — verified by
   # the artifact living in that directory or being pointed-at explicitly.
   case "$ARTIFACT" in
-    */docs/creative-artifacts/*|*/fixtures/*|/*) item_check "SV-13" "Creative-artifacts/ checked for prior outputs" pass ;;
+    */.gaia/artifacts/creative-artifacts/*|*/docs/creative-artifacts/*|*/fixtures/*|/*) item_check "SV-13" "Creative-artifacts/ checked for prior outputs" pass ;;
     *)                                            item_check "SV-13" "Creative-artifacts/ checked for prior outputs" fail ;;
   esac
 
@@ -208,7 +212,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no brainstorm artifact found (BRAINSTORM_ARTIFACT unset and no docs/creative-artifacts/brainstorm-*.md) — skipping checklist run"
+  log "no brainstorm artifact found (BRAINSTORM_ARTIFACT unset and no brainstorm-*.md at .gaia/artifacts/creative-artifacts/ or docs/creative-artifacts/) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

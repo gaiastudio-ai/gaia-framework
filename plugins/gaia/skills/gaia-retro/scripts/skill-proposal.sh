@@ -39,13 +39,19 @@ _DEBT_CATEGORIES="architecture|code|test|documentation|process"
 # ---------------------------------------------------------------------------
 extract_tech_debt_reflection() {
   local root="$1" sprint_id="$2"
-  local dashboard="$root/docs/implementation-artifacts/tech-debt-dashboard.md"
+  # AF-2026-05-21-25: canonical-first dashboard lookup.
+  local dashboard
+  if [ -f "$root/.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md" ]; then
+    dashboard="$root/.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md"
+  else
+    dashboard="$root/docs/implementation-artifacts/tech-debt-dashboard.md"
+  fi
 
   if [ ! -f "$dashboard" ]; then
     cat <<'EOF'
 ## Tech Debt Reflection
 
-> No tech debt data available (run `/gaia-tech-debt-review` to generate `docs/implementation-artifacts/tech-debt-dashboard.md`).
+> No tech debt data available (run `/gaia-tech-debt-review` to generate `.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md`).
 EOF
     return 0
   fi

@@ -15,7 +15,7 @@
 #   - .gaia/custom/skills/...
 #
 # Legacy entries removed by E96-S8 (post-deprecation cleanup, AC5):
-#   docs/creative-artifacts/, docs/planning-artifacts/action-items.yaml,
+#   .gaia/artifacts/creative-artifacts/, .gaia/artifacts/planning-artifacts/action-items.yaml,
 #   _memory/<prefix>-sidecar/decisions/, _memory/meeting-sessions/, custom/skills/.
 # These were dual-path during the E96-S2..E96-S4 deprecation window;
 # E96-S7 swept all framework consumers to smart-fallback through .gaia/

@@ -13,14 +13,14 @@ orchestration_class: light-procedural
 
 ## Mission
 
-Display an epic completion dashboard by reading `docs/planning-artifacts/epics-and-stories.md` and `docs/implementation-artifacts/sprint-status.yaml`. When an optional epic key argument is provided (e.g., `E28`), filter the dashboard to show only that epic. This skill is read-only — it NEVER writes to any artifact file.
+Display an epic completion dashboard by reading `.gaia/artifacts/planning-artifacts/epics-and-stories.md` and `.gaia/artifacts/implementation-artifacts/sprint-status.yaml`. When an optional epic key argument is provided (e.g., `E28`), filter the dashboard to show only that epic. This skill is read-only — it NEVER writes to any artifact file.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/epic-status/` XML engine workflow (brief Cluster 8, story E28-S62). Follows ADR-042 (scripts-over-LLM) where applicable, but dashboard rendering uses LLM-layer markdown table output per the story's technical notes.
 
 ## Critical Rules
 
 - NEVER write to `sprint-status.yaml`, `epics-and-stories.md`, or any story file. This skill is strictly read-only.
-- If `sprint-status.yaml` is missing or unreadable, fall back to scanning individual story files in `docs/implementation-artifacts/` to derive per-story status. Do NOT crash or error — the story file is the source of truth per CLAUDE.md Sprint-Status Write Safety.
+- If `sprint-status.yaml` is missing or unreadable, fall back to scanning individual story files in `.gaia/artifacts/implementation-artifacts/` to derive per-story status. Do NOT crash or error — the story file is the source of truth per CLAUDE.md Sprint-Status Write Safety.
 - Percentage rounding: use integer percentages (floor) to avoid noisy decimals.
 - Empty-epic handling: epics with zero stories render as `0 / 0 (---)` to make the placeholder obvious.
 - When an epic key filter is provided, render only the matching epic row. If the key does not match any epic, inform the user and list available epic keys.
@@ -29,7 +29,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 1 --- Parse Epics from epics-and-stories.md
 
-Read `${CLAUDE_PROJECT_ROOT}/docs/planning-artifacts/epics-and-stories.md`.
+Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/epics-and-stories.md`.
 
 Parse the "Epic Overview" table to extract:
 - Epic key (e.g., `E1`, `E28`)
@@ -40,12 +40,12 @@ Then scan the document body for each epic's story list. For each epic section (h
 
 ### Step 2 --- Resolve Per-Story Status
 
-**Primary path:** Read `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/sprint-status.yaml`.
+**Primary path:** Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-status.yaml`.
 - Parse the `stories:` array
 - Map each story key to its `status` field
 
 **Fallback path (sprint-status.yaml missing or unreadable):**
-- Scan `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/` for files matching `E*-S*-*.md`
+- Scan `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/` for files matching `E*-S*-*.md`
 - For each story file, read the YAML frontmatter and extract the `status` field
 - Display a notice: "sprint-status.yaml not found --- deriving status from individual story files."
 

@@ -8,7 +8,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # (TOC, heading scan) first; fetch named sections on demand in later steps.
 # Falls back to FULL_LOAD when an upstream artifact lacks parseable headings.
 discover_inputs: INDEX_GUIDED
-discover_inputs_target: "docs/creative-artifacts/product-brief.md, docs/creative-artifacts/market-research.md, docs/creative-artifacts/domain-research.md, docs/creative-artifacts/tech-research.md"
+discover_inputs_target: ".gaia/artifacts/creative-artifacts/product-brief.md, .gaia/artifacts/creative-artifacts/market-research.md, .gaia/artifacts/creative-artifacts/domain-research.md, .gaia/artifacts/creative-artifacts/tech-research.md"
 orchestration_class: heavy-procedural
 ---
 
@@ -35,7 +35,9 @@ fi
 
 ## Mission
 
-You are orchestrating the creation of a Product Requirements Document (PRD). The PRD authoring is delegated to the **pm** subagent (Derek), who conducts user interviews, elicits requirements, and produces the final artifact. You load the product brief, validate inputs, coordinate the multi-step flow, and write the output to `docs/planning-artifacts/prd.md` using the canonical `prd-template.md` template structure.
+You are orchestrating the creation of a Product Requirements Document (PRD). The PRD authoring is delegated to the **pm** subagent (Derek), who conducts user interviews, elicits requirements, and produces the final artifact. You load the product brief, validate inputs, coordinate the multi-step flow, and write the output to the canonical post-ADR-111 path `.gaia/artifacts/planning-artifacts/prd.md` using the canonical `prd-template.md` template structure.
+
+**Path resolution (AF-2026-05-21-10).** All PRD path references in this SKILL.md use the canonical post-ADR-111 location `.gaia/artifacts/planning-artifacts/prd.md`. Pre-ADR-111 projects continue to work via a positive-evidence-legacy fallback at the script layer (`scripts/finalize.sh` three-tier idiom: `PRD_ARTIFACT` env-var override → legacy `docs/planning-artifacts/prd.md` only when that file exists AND `.gaia/artifacts/planning-artifacts/` does NOT → canonical default). When writing the PRD via the Write tool, target the canonical path; the pre-ADR-111 fallback is read-side only.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/2-planning/create-prd` workflow (brief Cluster 5, story P5-S1 / E28-S40). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
@@ -47,7 +49,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Requirements must be discoverable from user interviews, not guessed.
 - Each requirement must have testable acceptance criteria.
 - PRD authoring prompts are delegated to the `pm` subagent (Derek) via native Claude Code subagent invocation — do NOT inline Derek's persona into this skill body. If the pm subagent (E28-S21) is not available, fail with "pm subagent not available — install E28-S21" error.
-- If `docs/planning-artifacts/prd.md` already exists, warn the user: "An existing PRD was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
+- If `.gaia/artifacts/planning-artifacts/prd.md` already exists, warn the user: "An existing PRD was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
 - Template resolution: load `prd-template.md` from this skill directory. If `custom/templates/prd-template.md` exists and is non-empty, use the custom template instead — the custom template takes full precedence over the framework default (ADR-020 / FR-101).
 
 ## Steps
@@ -64,9 +66,9 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 - Validate that `[product-brief-path]` argument was provided. If missing, fail fast: "product-brief-path required — provide the path to the product brief file."
 - Heading-scan the product brief at the supplied path (build a section index).
-- Heading-scan available research artifacts (`docs/creative-artifacts/market-research*.md`, `domain-research*.md`, `tech-research*.md`) — index-only, not full bodies.
+- Heading-scan available research artifacts (`.gaia/artifacts/creative-artifacts/market-research*.md`, `domain-research*.md`, `tech-research*.md`) — index-only, not full bodies.
 - Extract section anchors (not contents) for: vision, target users, problem statement, proposed solution, scope and boundaries, risks and assumptions, competitive landscape, success metrics. Section bodies are loaded on demand by later steps.
-- If `docs/planning-artifacts/prd.md` already exists: warn "An existing PRD was found at docs/planning-artifacts/prd.md. Continuing will overwrite it. Confirm with user before proceeding."
+- If `.gaia/artifacts/planning-artifacts/prd.md` already exists: warn "An existing PRD was found at .gaia/artifacts/planning-artifacts/prd.md. Continuing will overwrite it. Confirm with user before proceeding."
 
 > `!scripts/write-checkpoint.sh gaia-create-prd 1 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
@@ -156,7 +158,7 @@ Delegate to the **pm** subagent (Derek) to define non-functional requirements:
 
 Load the `prd-template.md` template from this skill directory (or from `custom/templates/prd-template.md` if a custom override exists and is non-empty).
 
-Write the PRD to `docs/planning-artifacts/prd.md` with all sections populated:
+Write the PRD to `.gaia/artifacts/planning-artifacts/prd.md` with all sections populated:
 
 - Overview
 - Goals and Non-Goals
@@ -172,9 +174,9 @@ Write the PRD to `docs/planning-artifacts/prd.md` with all sections populated:
 - Open Questions
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/planning-artifacts/prd.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/prd.md`
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 11 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" --paths docs/planning-artifacts/prd.md`
+> `!scripts/write-checkpoint.sh gaia-create-prd 11 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" --paths .gaia/artifacts/planning-artifacts/prd.md`
 
 ### Step 12 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -183,17 +185,17 @@ Write the PRD to `docs/planning-artifacts/prd.md` with all sections populated:
 
 **Guards (run before invocation):**
 
-- Artifact-existence guard (AC-EC3): if not exists `docs/planning-artifacts/prd.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
+- Artifact-existence guard (AC-EC3): if not exists `.gaia/artifacts/planning-artifacts/prd.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
 - Val-skill-availability guard (AC-EC6): if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
 
 **Loop:**
 
 1. iteration = 1.
-2. Invoke `/gaia-val-validate` with `artifact_path = docs/planning-artifacts/prd.md`, `artifact_type = prd`.
+2. Invoke `/gaia-val-validate` with `artifact_path = .gaia/artifacts/planning-artifacts/prd.md`, `artifact_type = prd`.
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
-     a. Apply a fix to `docs/planning-artifacts/prd.md` addressing the findings.
+     a. Apply a fix to `.gaia/artifacts/planning-artifacts/prd.md` addressing the findings.
      b. Append an iteration log record to checkpoint `custom.val_loop_iterations`.
      c. iteration += 1.
      d. If iteration <= 3: go to step 2.
@@ -203,28 +205,28 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation MUST run against the Step 11 primary write (artifact-as-drafted), not the post-adversarial revision produced by the next steps — see story E44-S4 AC3 rationale.
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 12 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" stage=val-auto-review --paths docs/planning-artifacts/prd.md`
+> `!scripts/write-checkpoint.sh gaia-create-prd 12 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/prd.md`
 
 ### Step 13 — Adversarial Review
 
 - Read `${CLAUDE_PLUGIN_ROOT}/knowledge/adversarial-triggers.yaml` to evaluate trigger rules. (This policy table ships inside the plugin under ADR-041's `knowledge/` convention; the legacy v1 location `_gaia/_config/adversarial-triggers.yaml` is retired and no longer used.) Determine the current `change_type`: if invoked with a change_type context (e.g., from add-feature triage), use that value. If no context is available (standalone PRD creation), default to "feature".
 - Look up the trigger rule for `change_type` + artifact "prd". If adversarial is false for this combination: skip the adversarial review. Add a "## Review Findings Incorporated" section with "Adversarial review not triggered — change type: {change_type}".
-- If adversarial is true: spawn a subagent to run the adversarial review task against `docs/planning-artifacts/prd.md`.
-- When subagent returns: verify `adversarial-review-prd-*.md` exists in `docs/planning-artifacts/`.
+- If adversarial is true: spawn a subagent to run the adversarial review task against `.gaia/artifacts/planning-artifacts/prd.md`.
+- When subagent returns: verify `adversarial-review-prd-*.md` exists in `.gaia/artifacts/planning-artifacts/`.
 
 > `!scripts/write-checkpoint.sh gaia-create-prd 13 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 14 — Incorporate Adversarial Findings
 
-- Read `docs/planning-artifacts/adversarial-review-prd-*.md` — extract critical and high severity findings.
+- Read `.gaia/artifacts/planning-artifacts/adversarial-review-prd-*.md` — extract critical and high severity findings.
 - For each critical/high finding: add as a new requirement or refine an existing requirement in the PRD.
 - Add a "## Review Findings Incorporated" section to the PRD listing each finding, its severity, and how it was addressed (new requirement added / existing requirement refined / acknowledged as risk).
-- Write the updated PRD to `docs/planning-artifacts/prd.md`.
+- Write the updated PRD to `.gaia/artifacts/planning-artifacts/prd.md`.
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/planning-artifacts/prd.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/prd.md`
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 14 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" --paths docs/planning-artifacts/prd.md`
+> `!scripts/write-checkpoint.sh gaia-create-prd 14 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" --paths .gaia/artifacts/planning-artifacts/prd.md`
 
 ## Validation
 
@@ -258,10 +260,10 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   Invoked by `finalize.sh` at post-complete (per §10.31.1). Validation runs
   BEFORE session-memory auto-save (AC-EC6 / ADR-061).
 
-  See docs/implementation-artifacts/E42-S6-port-gaia-create-prd-36-item-checklist-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S6-port-gaia-create-prd-36-item-checklist-to-v2.md.
 -->
 
-- [script-verifiable] SV-01 — Output artifact exists at docs/planning-artifacts/prd.md
+- [script-verifiable] SV-01 — Output artifact exists at .gaia/artifacts/planning-artifacts/prd.md
 - [script-verifiable] SV-02 — Output artifact is non-empty
 - [script-verifiable] SV-03 — Artifact has frontmatter or top-level title
 - [script-verifiable] SV-04 — Overview section present

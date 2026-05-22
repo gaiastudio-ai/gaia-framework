@@ -36,7 +36,7 @@
 #                           "no artifact to validate" violation is
 #                           emitted and the script exits non-zero.
 #                           When unset, the script looks for the most
-#                           recent docs/creative-artifacts/product-brief-*.md
+#                           recent .gaia/artifacts/creative-artifacts/product-brief-*.md
 #                           relative to the current working directory.
 #                           If neither is present, the checklist run
 #                           is skipped (classic Cluster 4 behaviour —
@@ -63,7 +63,7 @@ die() { log "$*"; exit 1; }
 # ---------- 0. Resolve artifact path ----------
 # PRODUCT_BRIEF_ARTIFACT wins when set (test fixtures + explicit
 # invocation). If it is set but the file is missing, AC4 fires. If
-# unset, pick the most recent docs/creative-artifacts/product-brief-*.md.
+# unset, pick the most recent .gaia/artifacts/creative-artifacts/product-brief-*.md.
 # If neither is present the checklist is simply skipped (observability
 # still runs).
 ARTIFACT=""
@@ -306,7 +306,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && [ ! -f "$ARTIFACT" ]; then
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-product-brief to produce docs/creative-artifacts/product-brief-*.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-product-brief to produce .gaia/artifacts/creative-artifacts/product-brief-*.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   log "running 27-item checklist against $ARTIFACT"
@@ -406,7 +406,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no product-brief artifact found (PRODUCT_BRIEF_ARTIFACT unset and no docs/creative-artifacts/product-brief-*.md) — skipping checklist run"
+  log "no product-brief artifact found (PRODUCT_BRIEF_ARTIFACT unset and no .gaia/artifacts/creative-artifacts/product-brief-*.md) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

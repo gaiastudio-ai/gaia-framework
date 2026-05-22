@@ -14,7 +14,7 @@ yolo_steps: [3]
 
 ## Mission
 
-Scan story files in `docs/implementation-artifacts/` for populated Findings tables and triage each finding into actionable backlog stories. New story files are created with complete frontmatter (all 15 required fields populated, `status: backlog`, `sprint_id: null`). The source story's findings table stays intact so re-triage is idempotent-friendly (dedup by source story key + finding text if re-run).
+Scan story files in `.gaia/artifacts/implementation-artifacts/` for populated Findings tables and triage each finding into actionable backlog stories. New story files are created with complete frontmatter (all 15 required fields populated, `status: backlog`, `sprint_id: null`). The source story's findings table stays intact so re-triage is idempotent-friendly (dedup by source story key + finding text if re-run).
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/triage-findings/` XML engine workflow (brief Cluster 8, story E28-S63). Follows ADR-042 (scripts-over-LLM) where applicable.
 
@@ -36,7 +36,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 1 --- Scan for Findings
 
-Scan story files in `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/` for non-empty Findings tables.
+Scan story files in `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/` for non-empty Findings tables.
 
 1. Read all `.md` files matching `E*-S*-*.md` in the implementation artifacts directory.
 2. For each file, look for the `## Findings` section and parse the markdown table.
@@ -156,7 +156,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/triage-guard.sh check \
   --date "$(date -u +%Y-%m-%d)" \
   --finding "${finding_id}" \
   --reason "${user_supplied_reason}" \
-  --report "${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/triage-report.md" \
+  --report "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/triage-report.md" \
   "${target_story_file}"
 ```
 
@@ -193,7 +193,7 @@ source "${CLAUDE_PLUGIN_ROOT}/scripts/action-items-write.sh"
 3. Invoke the writer:
 ```bash
 aiw_write \
-  --target "${CLAUDE_PROJECT_ROOT}/docs/planning-artifacts/action-items.yaml" \
+  --target "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
   --sprint-id "{current_sprint_id}" \
   --classification "{mapped_classification}" \
   --text "{finding_summary}" \
@@ -214,7 +214,7 @@ Story creation is delegated to `/gaia-create-story` via subagent spawn. This rep
 For each CREATE STORY decision:
 
 1. Determine the correct epic from the source story's `epic` field.
-2. Scan `${CLAUDE_PROJECT_ROOT}/docs/planning-artifacts/epics-and-stories.md` and `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/` for all existing stories in that epic.
+2. Scan `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/epics-and-stories.md` and `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/` for all existing stories in that epic.
 3. Find the highest story number and assign the next sequential key.
 4. Update `epics-and-stories.md` with the new story entry under the correct epic.
 
@@ -226,7 +226,7 @@ If validation fails (empty, null, shell-unsafe characters), halt with guidance. 
 
 6. **Collision check:** verify no story file already exists at the canonical path:
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" check-collision "${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts" "${new_story_key}"
+"${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" check-collision "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts" "${new_story_key}"
 ```
 If collision detected, halt with guidance to delete or rename before retry. Do not spawn the subagent.
 
@@ -238,13 +238,13 @@ The spawned `/gaia-create-story` populates the story frontmatter with `origin: "
 
 8. **Post-spawn verification:** after the subagent completes, verify the story file exists and frontmatter is correct:
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" verify "${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/${new_story_key}-*.md" "triage-findings" "${finding_id}"
+"${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" verify "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/${new_story_key}-*.md" "triage-findings" "${finding_id}"
 ```
 If verification fails (schema drift in `origin`/`origin_ref`), halt with actionable guidance referencing NFR-FITP-1.
 
 9. **On subagent failure** (timeout, context overflow, crash): halt with actionable guidance (failure reason, retry instructions). Clean up any partial file:
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" cleanup "${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/${new_story_key}-*.md"
+"${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" cleanup "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/${new_story_key}-*.md"
 ```
 No partial story stubs may persist on disk after a failed spawn.
 
@@ -277,10 +277,10 @@ When the fallback IS triggered, the operator authors the story file in the main 
 - Nullable: `sprint_id`, `priority_flag`
 - Array (may be empty): `depends_on`, `blocks`, `traces_to`
 
-**Inline check 3 — dedup check.** The new story `key` MUST NOT already appear in `docs/planning-artifacts/epics-and-stories.md`:
+**Inline check 3 — dedup check.** The new story `key` MUST NOT already appear in `.gaia/artifacts/planning-artifacts/epics-and-stories.md`:
 
 ```bash
-grep -qE "(### Story ${new_story_key}:|^\\| ${new_story_key} \\|)" docs/planning-artifacts/epics-and-stories.md && echo "DUPLICATE — aborting fallback"
+grep -qE "(### Story ${new_story_key}:|^\\| ${new_story_key} \\|)" .gaia/artifacts/planning-artifacts/epics-and-stories.md && echo "DUPLICATE — aborting fallback"
 ```
 
 Per saved-memory rule `feedback_triage_check_existing_stories.md`, three duplicate stories were created and retired in sprint-40 triage when this check was skipped.
@@ -328,7 +328,7 @@ Derive a deterministic `triage_session_id` of the form `triage-YYYY-MM-DD-<seq>`
 
 ```bash
 today="$(date -u +%Y-%m-%d)"
-seq="$(printf '%03d' "$(( $(ls docs/implementation-artifacts/ 2>/dev/null | grep -c "^triage-${today}-" || echo 0) + 1 ))")"
+seq="$(printf '%03d' "$(( $(ls .gaia/artifacts/implementation-artifacts/ 2>/dev/null | grep -c "^triage-${today}-" || echo 0) + 1 ))")"
 triage_session_id="triage-${today}-${seq}"
 ```
 

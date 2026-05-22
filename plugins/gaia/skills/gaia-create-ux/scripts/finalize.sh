@@ -4,7 +4,7 @@
 # E42-S7 extends the original Cluster 5 finalize scaffolding with a
 # 26-item post-completion checklist (18 script-verifiable + 8
 # LLM-checkable) derived from the V1 /gaia-create-ux (create-ux-design)
-# checklist. See docs/implementation-artifacts/E42-S7-* for the
+# checklist. See .gaia/artifacts/implementation-artifacts/E42-S7-* for the
 # V1 -> V2 mapping.
 #
 # Responsibilities (per brief §Cluster 5 + story E42-S7):
@@ -34,7 +34,7 @@
 #                       not exist, AC4 fires — a single "no artifact to
 #                       validate" violation is emitted and the script
 #                       exits non-zero. When unset, the script looks for
-#                       docs/planning-artifacts/ux-design.md relative to
+#                       .gaia/artifacts/planning-artifacts/ux-design.md relative to
 #                       the current working directory. If neither is
 #                       present, the checklist run is skipped (classic
 #                       Cluster 5 behaviour — observability still runs,
@@ -59,7 +59,7 @@ die() { log "$*"; exit 1; }
 # ---------- 0. Resolve artifact path ----------
 # UX_DESIGN_ARTIFACT wins when set (test fixtures + explicit invocation).
 # If it is set but the file is missing, AC4 fires. If unset, fall back
-# to docs/planning-artifacts/ux-design.md. If neither is present the
+# to .gaia/artifacts/planning-artifacts/ux-design.md. If neither is present the
 # checklist is simply skipped (observability still runs).
 ARTIFACT=""
 ARTIFACT_REQUESTED=0
@@ -195,7 +195,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && [ ! -f "$ARTIFACT" ]; then
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-create-ux to produce docs/planning-artifacts/ux-design.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-create-ux to produce .gaia/artifacts/planning-artifacts/ux-design.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   log "running 26-item checklist against $ARTIFACT"
@@ -283,7 +283,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no UX design artifact found (UX_DESIGN_ARTIFACT unset and no docs/planning-artifacts/ux-design.md) — skipping checklist run"
+  log "no UX design artifact found (UX_DESIGN_ARTIFACT unset and no .gaia/artifacts/planning-artifacts/ux-design.md) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

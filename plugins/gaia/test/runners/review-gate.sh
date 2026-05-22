@@ -3,8 +3,8 @@
 # ---------------------------------------------------------------------------
 # Orchestrates `run-all-reviews` against 3 fixture stories (clean,
 # code-review-defect, security-finding) and emits:
-#   - 18 per-review artifacts under docs/implementation-artifacts/
-#   - a native JSONL trace under docs/test-artifacts/traces/
+#   - 18 per-review artifacts under .gaia/artifacts/implementation-artifacts/
+#   - a native JSONL trace under .gaia/artifacts/test-artifacts/traces/
 #   - a strictly monotonic mtime audit log (evidence for ADR-045)
 #
 # Sequential by design (ADR-045): reviews run in canonical order. No parallel
@@ -99,7 +99,14 @@ audit_append() {
 
 write_artifact() {
   local story_key="$1" review="$2" verdict="$3"
-  local artifact="$REPO_ROOT/docs/implementation-artifacts/cluster-19-${story_key}-${review}.md"
+  # AF-2026-05-21-27 canonical-first.
+  local impl_dir
+  if [ -d "$REPO_ROOT/.gaia/artifacts/implementation-artifacts" ]; then
+    impl_dir="$REPO_ROOT/.gaia/artifacts/implementation-artifacts"
+  else
+    impl_dir="$REPO_ROOT/docs/implementation-artifacts"
+  fi
+  local artifact="$impl_dir/cluster-19-${story_key}-${review}.md"
   local report_rel="cluster-19-${story_key}-${review}.md"
   mkdir -p "$(dirname "$artifact")"
   {

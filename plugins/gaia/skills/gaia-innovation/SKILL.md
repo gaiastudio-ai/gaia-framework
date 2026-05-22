@@ -1,6 +1,6 @@
 ---
 name: gaia-innovation
-description: Identify business-model innovation and strategic disruption opportunities through a five-phase pipeline — Market Context, Jobs-to-be-Done, Blue Ocean / ERRC, Business Model, and Strategic Roadmap. Use when "run innovation strategy" or /gaia-innovation. Delegates facilitation to Orion (innovation-strategist) and produces a creative artifact at docs/creative-artifacts/innovation-strategy-{date}.md.
+description: Identify business-model innovation and strategic disruption opportunities through a five-phase pipeline — Market Context, Jobs-to-be-Done, Blue Ocean / ERRC, Business Model, and Strategic Roadmap. Use when "run innovation strategy" or /gaia-innovation. Delegates facilitation to Orion (innovation-strategist) and produces a creative artifact at .gaia/artifacts/creative-artifacts/innovation-strategy-{date}.md.
 argument-hint: "[innovation domain or product]"
 allowed-tools: [Read, Write, Glob, Agent]
 orchestration_class: heavy-procedural
@@ -30,7 +30,7 @@ Jobs-to-be-Done → Blue Ocean / ERRC → Business Model → Strategic
 Roadmap**. Delegates each phase's facilitation to Orion
 (`innovation-strategist`) via the Agent tool with `context: fork`,
 accumulates the phase outputs in the parent skill, and writes a single
-artifact at `docs/creative-artifacts/innovation-strategy-{date}.md` at
+artifact at `.gaia/artifacts/creative-artifacts/innovation-strategy-{date}.md` at
 completion. Restored under ADR-065 (New Skills Wiring —
 /gaia-design-thinking and /gaia-innovation) with full V1 feature
 preservation: Jobs-to-be-Done with non-consumer identification, the
@@ -51,7 +51,7 @@ beachhead market identification, and tech-adoption-lifecycle mapping
 - Single-level spawning only (NFR-046): this skill invokes Orion;
   Orion MUST NOT spawn further subagents.
 - Preserve the output contract exactly:
-  `docs/creative-artifacts/innovation-strategy-{date}.md` (date as
+  `.gaia/artifacts/creative-artifacts/innovation-strategy-{date}.md` (date as
   `YYYY-MM-DD`). Downstream skills glob on this prefix.
 - Always map innovations to business-model implications. Innovation
   without business-model thinking is theatre.
@@ -372,7 +372,7 @@ Gaia → Orion. Any attempt to nest is rejected.
 ## Output
 
 Write the final artifact to
-`docs/creative-artifacts/innovation-strategy-{date}.md` where
+`.gaia/artifacts/creative-artifacts/innovation-strategy-{date}.md` where
 `{date}` is the current date in `YYYY-MM-DD` form. This path is
 verbatim from the legacy workflow's `output.primary` contract
 (NFR-053).
@@ -382,7 +382,7 @@ verbatim from the legacy workflow's `output.primary` contract
 If the output file already exists from a prior same-day run:
 
 1. **Default (safe):** append a disambiguating suffix —
-   `docs/creative-artifacts/innovation-strategy-{date}-{N}.md` where
+   `.gaia/artifacts/creative-artifacts/innovation-strategy-{date}-{N}.md` where
    `{N}` is the next available integer starting at 2. Log the
    disambiguation: `Same-day output exists — wrote to
    innovation-strategy-{date}-{N}.md to avoid silent data loss.`

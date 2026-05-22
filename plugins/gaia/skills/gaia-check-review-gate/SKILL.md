@@ -12,14 +12,14 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are checking the composite Review Gate status for a story file. The story is resolved by `{story_key}` via the canonical glob `{story_key}-*.md` in `docs/implementation-artifacts/`. This is a read-only verification -- you report the state of each Review Gate row but do not modify the story file.
+You are checking the composite Review Gate status for a story file. The story is resolved by `{story_key}` via the canonical glob `{story_key}-*.md` in `.gaia/artifacts/implementation-artifacts/`. This is a read-only verification -- you report the state of each Review Gate row but do not modify the story file.
 
 This skill is the native Claude Code conversion of the legacy check-review-gate workflow (brief Cluster 7, story E28-S56, ADR-042 "mostly scripted"). LLM involvement is minimal -- the skill shells out to `review-gate.sh`, formats the verdict, and returns.
 
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-check-review-gate [story-key]".
-- The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
+- The story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
 - This skill is READ-ONLY. Do NOT modify the story file.
 - Invoke `review-gate.sh status --story {story_key}` to read the Review Gate table from the story file.
 - Report each review row using exactly the canonical vocabulary: `PASSED`, `FAILED`, `UNVERIFIED`. No other values are permitted.
@@ -30,8 +30,8 @@ This skill is the native Claude Code conversion of the legacy check-review-gate 
 ### Step 1 -- Resolve Story File
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-check-review-gate [story-key]"
-- Resolve the story file path using the canonical glob: `docs/implementation-artifacts/{story_key}-*.md`
-- If zero matches: fail with "story file not found for key {story_key} -- searched docs/implementation-artifacts/{story_key}-*.md"
+- Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`
+- If zero matches: fail with "story file not found for key {story_key} -- searched .gaia/artifacts/implementation-artifacts/{story_key}-*.md"
 - If multiple matches: fail with "multiple story files matched key {story_key} -- resolve ambiguity"
 - Read the resolved story file and confirm it has a `## Review Gate` section.
 

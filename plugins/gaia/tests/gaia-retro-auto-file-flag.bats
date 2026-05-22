@@ -66,8 +66,9 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AC6-2: SKILL.md ## Refs section names the design note" {
-  run grep -F 'docs/planning-artifacts/retro-auto-file-design.md' "$SKILL_MD"
+@test "AC6-2: SKILL.md ## Refs section names the design note (canonical post-AF-21-21)" {
+  # AF-2026-05-21-21 canonicalized this path. Accept canonical or legacy.
+  run grep -E '(docs|\.gaia/artifacts)/planning-artifacts/retro-auto-file-design\.md' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 

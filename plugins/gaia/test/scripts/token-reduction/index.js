@@ -6,7 +6,7 @@
  * implementation) or the native plugin (current implementation), captures the
  * full prompt+context bytes, tokenizes them with the pinned surrogate
  * tokenizer, and writes the pair of artifacts under
- *   docs/test-artifacts/cluster-19/token-budget/{workflow}/{baseline|native}.*
+ *   .gaia/artifacts/test-artifacts/cluster-19/token-budget/{workflow}/{baseline|native}.*
  *
  * Contract (asserted below and by tests/cluster-19-e2e/token-reduction.bats):
  *  - tokenizer_sha is pinned in tokenizer.version — if the pin's SHA does not

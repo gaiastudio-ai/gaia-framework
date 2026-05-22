@@ -124,7 +124,7 @@ Findings persist to `_memory/checkpoints/{story_key}-tdd-review-findings.md`. Th
 
 ## References
 
-- `docs/planning-artifacts/adr-memo-tdd-reviewer-subagent.md` — Option A vs B decision, this agent's contract origin.
-- `docs/planning-artifacts/architecture.md` §Decision Log — ADR-037 (finding shape), ADR-063 (verdict surfacing), ADR-067 (hard-CRITICAL halt).
-- `docs/test-artifacts/test-plan.md` §11.51 — TC-TDR-05 (CRITICAL halt), TC-TDR-06 (WARNING display), TC-TDR-07 (INFO suppression), TC-TDR-08 (timeout fallback).
+- `.gaia/artifacts/planning-artifacts/adr-memo-tdd-reviewer-subagent.md` — Option A vs B decision, this agent's contract origin.
+- `.gaia/artifacts/planning-artifacts/architecture.md` §Decision Log — ADR-037 (finding shape), ADR-063 (verdict surfacing), ADR-067 (hard-CRITICAL halt).
+- `.gaia/artifacts/test-artifacts/test-plan.md` §11.51 — TC-TDR-05 (CRITICAL halt), TC-TDR-06 (WARNING display), TC-TDR-07 (INFO suppression), TC-TDR-08 (timeout fallback).
 - `gaia-public/plugins/gaia/agents/_SCHEMA.md` — frontmatter schema this file conforms to.

@@ -6,7 +6,7 @@
 # This script is READ-ONLY with respect to _memory/ contents.
 #
 # Refs: FR-325, FR-328, NFR-048, ADR-042, ADR-048
-# Brief: P2-S5 (docs/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
+# Brief: P2-S5 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
 #
 # Invocation contract (stable for E28-S17 bats-core authors):
 #

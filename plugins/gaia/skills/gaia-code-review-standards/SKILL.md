@@ -307,13 +307,13 @@ Before a story transitions from `review` to `done`, all 6 individual review repo
 
 | Artifact | Path | Required When |
 |---|---|---|
-| Code review | `docs/implementation-artifacts/{story_key}-review.md` | Always |
-| Security review | `docs/implementation-artifacts/{story_key}-security-review.md` | Always |
-| QA tests | `docs/test-artifacts/{story_key}-qa-tests.md` | Always |
-| Test automation | `docs/test-artifacts/{story_key}-test-automation.md` | Always |
-| Test review | `docs/test-artifacts/{story_key}-test-review.md` | Always |
-| Performance review | `docs/implementation-artifacts/{story_key}-performance-review.md` | Always |
-| **Review summary** | `docs/implementation-artifacts/{story_key}-review-summary.md` | **Always — enforced hard gate** |
+| Code review | `.gaia/artifacts/implementation-artifacts/{story_key}-review.md` | Always |
+| Security review | `.gaia/artifacts/implementation-artifacts/{story_key}-security-review.md` | Always |
+| QA tests | `.gaia/artifacts/test-artifacts/{story_key}-qa-tests.md` | Always |
+| Test automation | `.gaia/artifacts/test-artifacts/{story_key}-test-automation.md` | Always |
+| Test review | `.gaia/artifacts/test-artifacts/{story_key}-test-review.md` | Always |
+| Performance review | `.gaia/artifacts/implementation-artifacts/{story_key}-performance-review.md` | Always |
+| **Review summary** | `.gaia/artifacts/implementation-artifacts/{story_key}-review-summary.md` | **Always — enforced hard gate** |
 
 ### Enforcement Mechanism (Live)
 

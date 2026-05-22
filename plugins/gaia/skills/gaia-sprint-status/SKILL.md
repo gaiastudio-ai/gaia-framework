@@ -73,7 +73,7 @@ PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-stat
 
 **Advisory-only — never mutates `sprint-status.yaml`.** The detect path is strictly read-only. The boundary write (flipping `status: closed` and seeding the next sprint) remains a manual operator action — `sprint-state.sh` rejects self-transitions and cannot seed new sprints per `_memory/feedback_sprint_boundary_yaml_write.md`. Auto-flipping would create false confidence that the next sprint had also been scaffolded. The right ergonomic improvement is **signal, not action**.
 
-When the banner fires, the dashboard prints the sprint id, done / total counts, end_date, and the literal `yq -i '.status = "closed"' docs/implementation-artifacts/sprint-status.yaml` remediation hint so operators can copy-paste the boundary write without re-deriving the exact yq syntax.
+When the banner fires, the dashboard prints the sprint id, done / total counts, end_date, and the literal `yq -i '.status = "closed"' .gaia/artifacts/implementation-artifacts/sprint-status.yaml` remediation hint so operators can copy-paste the boundary write without re-deriving the exact yq syntax.
 
 ### Stranded ready stories (E81-S4)
 

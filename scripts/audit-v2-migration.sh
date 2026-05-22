@@ -213,14 +213,25 @@ prepare_enriched_fixture() {
   local test_dir="$PROJECT_ROOT/docs/test-artifacts"
   local impl_dir="$PROJECT_ROOT/docs/implementation-artifacts"
   local creative_dir="$PROJECT_ROOT/docs/creative-artifacts"
+  # AF-2026-05-21-20: also seed canonical .gaia/artifacts/ dirs.
+  local canonical_planning_dir="$PROJECT_ROOT/.gaia/artifacts/planning-artifacts"
+  local canonical_test_dir="$PROJECT_ROOT/.gaia/artifacts/test-artifacts"
+  local canonical_impl_dir="$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts"
+  local canonical_creative_dir="$PROJECT_ROOT/.gaia/artifacts/creative-artifacts"
   mkdir -p "$planning_dir" "$test_dir" "$impl_dir" "$creative_dir"
+  mkdir -p "$canonical_planning_dir" "$canonical_test_dir" "$canonical_impl_dir" "$canonical_creative_dir"
 
   # E45-S2 — Seed a brainstorm fixture so gaia-product-brief's
-  # pre_start quality gate (file_exists:docs/creative-artifacts/brainstorm-*.md)
-  # passes in enriched mode. The audit only cares that the file exists.
+  # pre_start quality gate passes in enriched mode. The audit only cares
+  # that the file exists. AF-2026-05-21-20: gate now checks canonical
+  # .gaia/artifacts/creative-artifacts/ — seed there too.
   if [ ! -s "$creative_dir/brainstorm-fixture.md" ]; then
     printf '# placeholder — audit-v2-migration.sh --fixture-mode enriched (E45-S2 brainstorm prereq)\n' \
       > "$creative_dir/brainstorm-fixture.md"
+  fi
+  if [ ! -s "$canonical_creative_dir/brainstorm-fixture.md" ]; then
+    printf '# placeholder — audit-v2-migration.sh --fixture-mode enriched (AF-21-20 canonical brainstorm prereq)\n' \
+      > "$canonical_creative_dir/brainstorm-fixture.md"
   fi
 
   # Write only if absent so re-running the harness is idempotent. The file

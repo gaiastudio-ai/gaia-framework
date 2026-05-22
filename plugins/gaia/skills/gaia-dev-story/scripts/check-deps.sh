@@ -19,7 +19,7 @@
 # Consumes the canonical env-var contract from story-parse.sh (E57-S5):
 # the input story's `DEPENDS_ON` and `STORY_PATH` come from a forked
 # story-parse evaluation. For each dep KEY we then locate its story file
-# under "${IMPLEMENTATION_ARTIFACTS_DIR:-docs/implementation-artifacts}"
+# under "${IMPLEMENTATION_ARTIFACTS_DIR:-.gaia/artifacts/implementation-artifacts}"
 # matching the glob "<KEY>-*.md".
 #
 # Refs: FR-DSS-4, AF-2026-04-28-6, TC-DSS-05
@@ -57,7 +57,7 @@ fi
 # Implementation-artifacts directory.
 #
 # E57-S14 / AI-RETRO-S45-3 / AC1-AC3: when no explicit env-var is set, walk
-# UP from the input story path to find the parent `docs/implementation-artifacts/`
+# UP from the input story path to find the parent `.gaia/artifacts/implementation-artifacts/`
 # directory and use that as the search root. This lets `check-deps.sh` see
 # stories across other epics (nested layout: `epic-*/stories/`) — not just the
 # one epic the input story happens to live in.

@@ -109,16 +109,17 @@ teardown() { common_teardown; }
 # AC1/AC2/AC3 — Correct artifact_path per skill
 # ---------------------------------------------------------------------------
 
-@test "AC1: gaia-readiness-check references docs/planning-artifacts/readiness-report.md" {
-  grep -q 'docs/planning-artifacts/readiness-report.md' "$SKILLS_DIR/gaia-readiness-check/SKILL.md"
+@test "AC1: gaia-readiness-check references readiness-report.md (canonical post-AF-21-X)" {
+  # Future AF will canonicalize this path. Accept canonical or legacy.
+  grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/readiness-report\.md' "$SKILLS_DIR/gaia-readiness-check/SKILL.md"
 }
 
-@test "AC2: gaia-test-design references docs/test-artifacts/test-plan.md" {
-  grep -q 'docs/test-artifacts/test-plan.md' "$SKILLS_DIR/gaia-test-design/SKILL.md"
+@test "AC2: gaia-test-design references test-plan.md (canonical post-AF-21-X)" {
+  grep -qE '(docs/test-artifacts|\.gaia/artifacts/test-artifacts)/test-plan\.md' "$SKILLS_DIR/gaia-test-design/SKILL.md"
 }
 
-@test "AC3: gaia-edit-test-plan references docs/test-artifacts/test-plan.md" {
-  grep -q 'docs/test-artifacts/test-plan.md' "$SKILLS_DIR/gaia-edit-test-plan/SKILL.md"
+@test "AC3: gaia-edit-test-plan references test-plan.md (canonical post-AF-21-X)" {
+  grep -qE '(docs/test-artifacts|\.gaia/artifacts/test-artifacts)/test-plan\.md' "$SKILLS_DIR/gaia-edit-test-plan/SKILL.md"
 }
 
 # ---------------------------------------------------------------------------

@@ -25,21 +25,21 @@ fi
 
 ## Mission
 
-You are facilitating a structured brainstorming session for a new project idea. Guide the user through vision, target users, competitive landscape, and opportunity synthesis, then emit a structured brainstorm artifact at `docs/creative-artifacts/brainstorm-*.md` for downstream consumers (e.g., `/gaia-create-prd`).
+You are facilitating a structured brainstorming session for a new project idea. Guide the user through vision, target users, competitive landscape, and opportunity synthesis, then emit a structured brainstorm artifact at `.gaia/artifacts/creative-artifacts/brainstorm-*.md` for downstream consumers (e.g., `/gaia-create-prd`).
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/1-analysis/brainstorm-project` workflow (brief §Cluster 4, story P4-S1). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure or re-prompt.
 
 ## Critical Rules
 
-- Check `docs/creative-artifacts/` for prior brainstorming output before starting.
+- Check `.gaia/artifacts/creative-artifacts/` for prior brainstorming output before starting.
 - All findings must be grounded in user-provided information — no web access, no fabrication.
-- The output file path is `docs/creative-artifacts/brainstorm-{slug}.md` — downstream consumers glob on this pattern, so do not relocate it.
+- The output file path is `.gaia/artifacts/creative-artifacts/brainstorm-{slug}.md` — downstream consumers glob on this pattern, so do not relocate it.
 
 ## Steps
 
 ### Step 1 — Discover Context
 
-- Check `docs/creative-artifacts/` for prior brainstorming output from the creative module.
+- Check `.gaia/artifacts/creative-artifacts/` for prior brainstorming output from the creative module.
 - If found, load and incorporate insights into the session.
 - If not found, note that no prior creative work exists and proceed.
 
@@ -76,7 +76,7 @@ Ask the user the following questions, one at a time, and wait for a response bef
 
 ### Step 5 — Generate Output
 
-Write a structured brainstorm artifact to `docs/creative-artifacts/brainstorm-{slug}.md` containing:
+Write a structured brainstorm artifact to `.gaia/artifacts/creative-artifacts/brainstorm-{slug}.md` containing:
 
 - Vision summary
 - Target users
@@ -89,9 +89,9 @@ Write a structured brainstorm artifact to `docs/creative-artifacts/brainstorm-{s
 Where `{slug}` is a short kebab-case slug derived from the project vision (e.g., `brainstorm-ai-code-review.md`).
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/creative-artifacts/brainstorm-${SLUG}.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/creative-artifacts/brainstorm-${SLUG}.md`
 
-> `!scripts/write-checkpoint.sh gaia-brainstorm 5 slug="$SLUG" technique="$TECHNIQUE" --paths docs/creative-artifacts/brainstorm-${SLUG}.md`
+> `!scripts/write-checkpoint.sh gaia-brainstorm 5 slug="$SLUG" technique="$TECHNIQUE" --paths .gaia/artifacts/creative-artifacts/brainstorm-${SLUG}.md`
 
 ### Step 6 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -100,17 +100,17 @@ Where `{slug}` is a short kebab-case slug derived from the project vision (e.g.,
 
 **Guards (run before invocation):**
 
-- Artifact-existence guard (AC-EC3): if not exists `docs/creative-artifacts/brainstorm-{slug}.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
+- Artifact-existence guard (AC-EC3): if not exists `.gaia/artifacts/creative-artifacts/brainstorm-{slug}.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
 - Val-skill-availability guard (AC-EC6): if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
 
 **Loop:**
 
 1. iteration = 1.
-2. Invoke `/gaia-val-validate` with `artifact_path = docs/creative-artifacts/brainstorm-{slug}.md`, `artifact_type = brainstorm`.
+2. Invoke `/gaia-val-validate` with `artifact_path = .gaia/artifacts/creative-artifacts/brainstorm-{slug}.md`, `artifact_type = brainstorm`.
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
-     a. Apply a fix to `docs/creative-artifacts/brainstorm-{slug}.md` addressing the findings.
+     a. Apply a fix to `.gaia/artifacts/creative-artifacts/brainstorm-{slug}.md` addressing the findings.
      b. Append an iteration log record to checkpoint `custom.val_loop_iterations` by invoking the producer (E44-S15):
         ```
         !${CLAUDE_PLUGIN_ROOT}/scripts/append-val-iteration.sh \
@@ -129,7 +129,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). The `brainstorm` artifact_type may not have a canonical document-ruleset; per E44-S1 AC-EC1 Val skips structural validation for unknown types and still runs factual-claim validation.
 
-> `!scripts/write-checkpoint.sh gaia-brainstorm 6 slug="$SLUG" technique="$TECHNIQUE" stage=val-auto-review --paths docs/creative-artifacts/brainstorm-${SLUG}.md`
+> `!scripts/write-checkpoint.sh gaia-brainstorm 6 slug="$SLUG" technique="$TECHNIQUE" stage=val-auto-review --paths .gaia/artifacts/creative-artifacts/brainstorm-${SLUG}.md`
 
 ## Validation
 
@@ -140,10 +140,10 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
     - LLM-checkable:      9 (LLM-01..LLM-09) — evaluated by the host LLM
       against the brainstorm artifact below.
   Exit code 0 when all script-verifiable items PASS; non-zero otherwise.
-  See docs/implementation-artifacts/E42-S1-port-gaia-brainstorm-checklist.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S1-port-gaia-brainstorm-checklist.md.
 -->
 
-- [script-verifiable] SV-01 — Output artifact exists at docs/creative-artifacts/brainstorm-*.md
+- [script-verifiable] SV-01 — Output artifact exists at .gaia/artifacts/creative-artifacts/brainstorm-*.md
 - [script-verifiable] SV-02 — Output artifact is non-empty
 - [script-verifiable] SV-03 — Output filename matches brainstorm-{slug}.md pattern
 - [script-verifiable] SV-04 — Vision Summary section present

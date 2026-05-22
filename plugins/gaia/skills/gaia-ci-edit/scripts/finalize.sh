@@ -10,7 +10,7 @@
 # conditional guard driven by a runtime marker written by setup.sh.
 #
 # Conditional-guard contract:
-#   setup.sh probes for docs/test-artifacts/ci-setup.md at invocation time.
+#   setup.sh probes for .gaia/artifacts/test-artifacts/ci-setup.md at invocation time.
 #   If present, it writes ${PROJECT_ROOT:-$PWD}/.gaia/run-state/ci-edit-had-prior-setup
 #   as a marker. finalize.sh inspects the same marker:
 #     - marker absent  → no prior setup existed when the edit started;
@@ -65,7 +65,7 @@ trap cleanup_marker EXIT
 
 # ---------- 1. Conditional post-edit gate verification (E28-S199) ----------
 if [ -f "$HAD_PRIOR_SETUP_MARKER" ]; then
-  # setup.sh observed a prior docs/test-artifacts/ci-setup.md. The gate
+  # setup.sh observed a prior .gaia/artifacts/test-artifacts/ci-setup.md. The gate
   # runs as a regression guard — if the edit erased the setup file, the
   # gate fails and we exit non-zero (AC6).
   if [ -x "$VALIDATE_GATE" ]; then

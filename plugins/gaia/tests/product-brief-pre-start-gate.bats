@@ -17,6 +17,8 @@ SETUP="$SKILL_DIR/scripts/setup.sh"
 
 setup() {
   common_setup
+  # AF-2026-05-21-20: canonical .gaia/artifacts/ + legacy docs/ (back-compat).
+  mkdir -p "$TEST_TMP/.gaia/artifacts/creative-artifacts"
   mkdir -p "$TEST_TMP/docs/creative-artifacts"
   mkdir -p "$TEST_TMP/_memory/checkpoints"
   export CHECKPOINT_PATH="$TEST_TMP/_memory/checkpoints"
@@ -46,8 +48,9 @@ teardown() { common_teardown; }
 # VCP-PB-01 — pre_start gate passes when brainstorm artifact exists.
 # -------------------------------------------------------------------------
 @test "VCP-PB-01: setup.sh exits 0 when a brainstorm artifact exists" {
+  # AF-2026-05-21-20: canonical .gaia/artifacts/ path.
   printf '# brainstorm fixture\n' \
-    >"$TEST_TMP/docs/creative-artifacts/brainstorm-foo.md"
+    >"$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-foo.md"
   cd "$TEST_TMP"
   run "$SETUP"
   [ "$status" -eq 0 ]
@@ -58,8 +61,8 @@ teardown() { common_teardown; }
 }
 
 @test "VCP-PB-01: pre_start passes with multiple brainstorm artifacts" {
-  printf '# bs1\n' >"$TEST_TMP/docs/creative-artifacts/brainstorm-one.md"
-  printf '# bs2\n' >"$TEST_TMP/docs/creative-artifacts/brainstorm-two.md"
+  printf '# bs1\n' >"$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-one.md"
+  printf '# bs2\n' >"$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-two.md"
   cd "$TEST_TMP"
   run "$SETUP"
   [ "$status" -eq 0 ]

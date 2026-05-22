@@ -4,8 +4,8 @@
 # E42-S15 extends the bare-bones Cluster 4 finalize scaffolding with a
 # 5-item post-completion checklist (1 script-verifiable + 4
 # LLM-checkable) derived from the V1 atdd checklist (see the
-# docs/v1-v2-command-gap-analysis.md entry for the verbatim V1 source).
-# See docs/implementation-artifacts/E42-S15-* for the V1 → V2 mapping.
+# .gaia/artifacts/planning-artifacts/v1-v2-command-gap-analysis.md entry for the verbatim V1 source).
+# See .gaia/artifacts/implementation-artifacts/E42-S15-* for the V1 → V2 mapping.
 #
 # Responsibilities (per brief §Cluster 4 + story E42-S15):
 #   1. Run the script-verifiable subset of the 5 V1 checklist items
@@ -55,7 +55,7 @@ die() { log "$*"; exit 1; }
 
 # ---------- 0. Resolve artifact paths ----------
 # E80-S1 (AC8): the artifact path is deterministically derivable from
-# STORY_KEY — `docs/test-artifacts/atdd-${STORY_KEY}.md`. Earlier revisions
+# STORY_KEY — `.gaia/artifacts/test-artifacts/atdd-${STORY_KEY}.md`. Earlier revisions
 # silently skipped the SV-01 traceability checklist whenever ATDD_ARTIFACT
 # was unset, even though the path is reconstructable. We now derive it
 # whenever STORY_KEY is set; ATDD_ARTIFACT remains the explicit override
@@ -68,8 +68,13 @@ if [ -n "${ATDD_ARTIFACT:-}" ]; then
 elif [ -n "${STORY_KEY:-}" ]; then
   # Derive from the story key relative to the project root. PROJECT_ROOT
   # falls back to GAIA_PROJECT_ROOT, then to PWD when neither is set.
+  # AF-2026-05-21-19: canonical-first with positive-evidence legacy fallback.
   derive_root="${PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}"
-  ARTIFACT="$derive_root/docs/test-artifacts/atdd-${STORY_KEY}.md"
+  if [ -f "$derive_root/docs/test-artifacts/atdd-${STORY_KEY}.md" ] && [ ! -d "$derive_root/.gaia/artifacts/test-artifacts" ]; then
+    ARTIFACT="$derive_root/docs/test-artifacts/atdd-${STORY_KEY}.md"
+  else
+    ARTIFACT="$derive_root/.gaia/artifacts/test-artifacts/atdd-${STORY_KEY}.md"
+  fi
   ARTIFACT_REQUESTED=1
 fi
 
@@ -120,7 +125,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && { [ ! -f "$ARTIFACT" ] || [ ! -s "$ARTIFAC
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-atdd to produce docs/test-artifacts/atdd-{story_key}.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-atdd to produce .gaia/artifacts/test-artifacts/atdd-{story_key}.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   log "running 5-item checklist against $ARTIFACT"
@@ -182,7 +187,12 @@ if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
     story_risk="medium"
     if [ -n "${STORY_KEY:-}" ]; then
       project_root_for_risk="${PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}"
-      story_glob="$project_root_for_risk/docs/implementation-artifacts/${STORY_KEY}-"*.md
+      # AF-2026-05-21-19: canonical-first with positive-evidence legacy fallback.
+      if [ -d "$project_root_for_risk/.gaia/artifacts/implementation-artifacts" ]; then
+        story_glob="$project_root_for_risk/.gaia/artifacts/implementation-artifacts/${STORY_KEY}-"*.md
+      else
+        story_glob="$project_root_for_risk/docs/implementation-artifacts/${STORY_KEY}-"*.md
+      fi
       # shellcheck disable=SC2086
       for sf in $story_glob; do
         if [ -f "$sf" ]; then

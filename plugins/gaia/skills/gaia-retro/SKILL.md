@@ -1,6 +1,6 @@
 ---
 name: gaia-retro
-description: "Facilitate a post-sprint retrospective capturing went-well, didn't-go-well, and action-items sections. Writes a retro artifact to docs/implementation-artifacts/. GAIA-native replacement for the legacy retrospective XML engine workflow."
+description: "Facilitate a post-sprint retrospective capturing went-well, didn't-go-well, and action-items sections. Writes a retro artifact to .gaia/artifacts/implementation-artifacts/. GAIA-native replacement for the legacy retrospective XML engine workflow."
 argument-hint: "[sprint-id?] [--auto-file?]"
 allowed-tools: [Read, Write, Bash]
 version: "1.0.0"
@@ -26,7 +26,7 @@ fi
 
 ## Mission
 
-Facilitate a structured post-sprint retrospective by collecting team feedback across three sections (went well, what could improve, action items) and writing the resulting retro artifact to `docs/implementation-artifacts/`. When an optional sprint-id argument is provided (e.g., `sprint-42`), use that sprint. Otherwise, resolve the current sprint from `docs/implementation-artifacts/sprint-status.yaml`.
+Facilitate a structured post-sprint retrospective by collecting team feedback across three sections (went well, what could improve, action items) and writing the resulting retro artifact to `.gaia/artifacts/implementation-artifacts/`. When an optional sprint-id argument is provided (e.g., `sprint-42`), use that sprint. Otherwise, resolve the current sprint from `.gaia/artifacts/implementation-artifacts/sprint-status.yaml`.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/retrospective/` XML engine workflow (brief Cluster 8, story E28-S64). Follows ADR-041 and the canonical SKILL.md shape from E28-S19 and E28-S53.
 
@@ -44,7 +44,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 If a sprint-id argument was provided, use it directly.
 
-Otherwise, read `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/sprint-status.yaml` and extract the current `sprint_id` from the top-level metadata.
+Otherwise, read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-status.yaml` and extract the current `sprint_id` from the top-level metadata.
 
 If sprint-status.yaml is missing or unreadable, ask the user for the sprint ID.
 
@@ -56,7 +56,7 @@ Invoke:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/gaia-retro/scripts/review-extract.sh \
-  --impl-dir "${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts" \
+  --impl-dir "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts" \
   --sprint-id "${sprint_id}"
 ```
 
@@ -66,12 +66,12 @@ Hold the scanner output in session memory — do NOT copy it verbatim into the f
 
 ### Step 2 --- Load Sprint Data
 
-Read `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/sprint-status.yaml` to extract:
+Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-status.yaml` to extract:
 - All story keys for the resolved sprint
 - Planned points and completed points
 - Story statuses (done, in-progress, review, blocked, carried over)
 
-For each story in the sprint, read its story file from `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/` to extract:
+For each story in the sprint, read its story file from `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/` to extract:
 - Review Gate results (PASSED/FAILED/UNVERIFIED)
 - Findings table entries
 - Definition of Done status
@@ -126,7 +126,7 @@ Prompt the facilitator:
 
 > Review the proposed action items. Add, remove, or modify items. Each action item needs an owner and target sprint.
 
-Collect the facilitator's input and compile the final action items list, then persist each item to `${CLAUDE_PROJECT_ROOT}/docs/planning-artifacts/action-items.yaml` using the shared retro writer helper (ADR-052). The YAML schema is authoritative — see architecture §10.28.6.
+Collect the facilitator's input and compile the final action items list, then persist each item to `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml` using the shared retro writer helper (ADR-052). The YAML schema is authoritative — see architecture §10.28.6.
 
 Per-item payload (one YAML list element per action, FR-RIM-5):
 
@@ -147,7 +147,7 @@ Invoke the shared writer once per action item:
 ${CLAUDE_PLUGIN_ROOT}/../../scripts/retro-sidecar-write.sh \
   --root       "${CLAUDE_PROJECT_ROOT}" \
   --sprint-id  "${sprint_id}" \
-  --target     "${CLAUDE_PROJECT_ROOT}/docs/planning-artifacts/action-items.yaml" \
+  --target     "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
   --payload    "$(emit_action_item_yaml)"
 ```
 
@@ -166,7 +166,7 @@ After Step 5 persists all action items, check the skill arguments for the litera
 
 When `--auto-file` IS present:
 
-1. For each action item appended in Step 5 with an eligible `type` value (per the design note at `docs/planning-artifacts/retro-auto-file-design.md`: `feature`, `new-story`, `bug`, `enhancement`, `automation`), synthesise an `/gaia-add-feature --text "<text>"` invocation (for everything except `new-story`) or `/gaia-create-story` (for `new-story` with the operator-confirmed bucket).
+1. For each action item appended in Step 5 with an eligible `type` value (per the design note at `.gaia/artifacts/planning-artifacts/retro-auto-file-design.md`: `feature`, `new-story`, `bug`, `enhancement`, `automation`), synthesise an `/gaia-add-feature --text "<text>"` invocation (for everything except `new-story`) or `/gaia-create-story` (for `new-story` with the operator-confirmed bucket).
 2. **AC-EC7 invariant:** every invocation goes through the destination skill's classification confirmation gate (`AskUserQuestion` bucket prompt). Auto-file means "auto-spawn the gate", NOT "auto-bypass it". The operator confirms each bucket as if they had run the filing skill manually.
 3. Items with ineligible `type` (`tech-debt`, `process`, `clarification`, `planning`, `investigation`, `escalation`) are skipped — they do not produce stories. The rubric is the design note's eligibility table.
 4. Items written via the v1 dual-schema path (i.e., entries with `classification` rather than `type`) are NEVER auto-filed — v1 entries are read-only by `/gaia-action-items` per ADR-086 dual-schema routing, and the same read-only invariant applies here.
@@ -236,7 +236,7 @@ Failure posture:
 
 ### Step 5e --- Tech Debt Reflection (FR-RIM-7, architecture §10.28.8)
 
-Read `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/tech-debt-dashboard.md` and extract a Tech Debt Reflection block for the retro artifact. This step is **read-only** — it MUST NOT modify the dashboard file.
+Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md` and extract a Tech Debt Reflection block for the retro artifact. This step is **read-only** — it MUST NOT modify the dashboard file.
 
 Invoke:
 
@@ -268,8 +268,8 @@ Invoke:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/gaia-retro/scripts/cross-retro-detect.sh \
-  --retros-dir     "${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts" \
-  --action-items   "${CLAUDE_PROJECT_ROOT}/docs/planning-artifacts/action-items.yaml" \
+  --retros-dir     "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts" \
+  --action-items   "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
   --current-sprint "${sprint_id}"
 ```
 
@@ -363,7 +363,7 @@ Compose the retrospective artifact with the following sections:
 - Skill Improvement Proposals (from Step 5f — approved, rejected, and skipped proposals)
 
 Determine the output file path:
-- Default: `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/retrospective-{sprint_id}-{YYYY-MM-DD}.md`
+- Default: `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/retrospective-{sprint_id}-{YYYY-MM-DD}.md`
 - If that file already exists: use `retrospective-{sprint_id}-{YYYY-MM-DD}-{HHMM}.md` to avoid clobbering
 
 Write the artifact to the determined path.
@@ -409,11 +409,11 @@ Failure posture:
 
 ## Changelog
 
-- **2026-05-15 — E92-S5 — Opt-in `--auto-file` flag for retro action items (AI-84 / AI-RETRO-S46-3).** Added Step 5b (between Step 5 and Step 5c) describing the opt-in `--auto-file` flag that walks action items at retro close and auto-spawns `/gaia-add-feature` (for `feature`/`bug`/`enhancement`/`automation` types) or `/gaia-create-story` (for `new-story`). The AC-EC7 classification confirmation gate is preserved — auto-file means "auto-spawn the gate prompt", not "auto-bypass it". Default is OFF (preserves sprint-45/46/47 muscle memory). Eligibility rubric in `docs/planning-artifacts/retro-auto-file-design.md`. Substrate-gap-deferred subagent dispatch path is documented in the same design note; full cross-skill spawn lands once the upstream Claude Code substrate fix closes (#49559).
+- **2026-05-15 — E92-S5 — Opt-in `--auto-file` flag for retro action items (AI-84 / AI-RETRO-S46-3).** Added Step 5b (between Step 5 and Step 5c) describing the opt-in `--auto-file` flag that walks action items at retro close and auto-spawns `/gaia-add-feature` (for `feature`/`bug`/`enhancement`/`automation` types) or `/gaia-create-story` (for `new-story`). The AC-EC7 classification confirmation gate is preserved — auto-file means "auto-spawn the gate prompt", not "auto-bypass it". Default is OFF (preserves sprint-45/46/47 muscle memory). Eligibility rubric in `.gaia/artifacts/planning-artifacts/retro-auto-file-design.md`. Substrate-gap-deferred subagent dispatch path is documented in the same design note; full cross-skill spawn lands once the upstream Claude Code substrate fix closes (#49559).
 
 ## Refs
 
-- `docs/planning-artifacts/retro-auto-file-design.md` — E92-S5 design note (eligibility rubric + AC-EC7 interaction + Option-B rationale)
+- `.gaia/artifacts/planning-artifacts/retro-auto-file-design.md` — E92-S5 design note (eligibility rubric + AC-EC7 interaction + Option-B rationale)
 - Saved memory: `feedback_askuserquestion_forked_skill_gap` — substrate constraint on subagent interactive prompts
 - Saved memory: `feedback_no_inline_meeting_stories` — `/gaia-meeting` precedent for routing action items via `/gaia-add-feature`
 - ADR-086 §11 — action-items.yaml dual-schema routing

@@ -15,7 +15,7 @@ orchestration_class: light-procedural
 Presentation design pipeline: **Audience and Purpose → Content
 Inventory → Narrative Arc → Slide Outline → Visual Design → Generate
 Output**. Produces a slide-deck specification at
-`docs/creative-artifacts/slide-deck-{date}.md` with slide-by-slide
+`.gaia/artifacts/creative-artifacts/slide-deck-{date}.md` with slide-by-slide
 content, speaker notes, and a visual-design system. Converted under
 ADR-041 (native execution model) with full functional parity against
 the legacy source (NFR-053). The legacy-source path is intentionally
@@ -40,7 +40,7 @@ pointer.
   `plugins/gaia/agents/presentation-designer.md` is registered.
   If the subagent is unavailable, facilitate inline — do not halt.
 - Preserve the output contract exactly:
-  `docs/creative-artifacts/slide-deck-{date}.md` (date as
+  `.gaia/artifacts/creative-artifacts/slide-deck-{date}.md` (date as
   `YYYY-MM-DD`). Downstream skills glob on this prefix — do not
   rename.
 - This skill and `gaia-pitch-deck` share the same Vermeer subagent
@@ -171,12 +171,12 @@ Assemble the final slide-deck specification.
 2. For each slide, render: title, key message, supporting visual
    spec, speaker notes, slide role, and layout reference.
 3. Write the artifact to
-   `docs/creative-artifacts/slide-deck-{date}.md`.
+   `.gaia/artifacts/creative-artifacts/slide-deck-{date}.md`.
 
 ## Output
 
 Write the slide-deck specification to
-`docs/creative-artifacts/slide-deck-{date}.md` where `{date}` is the
+`.gaia/artifacts/creative-artifacts/slide-deck-{date}.md` where `{date}` is the
 current date in `YYYY-MM-DD` form. This path is verbatim from the
 legacy workflow's `output.primary` contract (NFR-053 — functional
 parity).
@@ -186,7 +186,7 @@ parity).
 If the output file already exists from a prior same-day run:
 
 1. **Default (safe):** Append a disambiguating suffix —
-   `docs/creative-artifacts/slide-deck-{date}-{N}.md` where `{N}` is
+   `.gaia/artifacts/creative-artifacts/slide-deck-{date}-{N}.md` where `{N}` is
    the next available integer starting at 2. Log the disambiguation.
 2. **Overwrite:** Only on explicit user request.
 

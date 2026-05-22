@@ -247,9 +247,10 @@ teardown() { common_teardown; }
 # AC5 — End-to-end persist + fork allowlist (FR-402, NFR-DEJ-4)
 # ----------------------------------------------------------------------
 
-@test "AC5 (a): SKILL.md prescribes parent-mediated write to FR-402 path security-review-{key}.md" {
+@test "AC5 (a): SKILL.md prescribes parent-mediated write to FR-402 path security-review-{key}.md (canonical post-AF-21-22)" {
   grep -F 'security-review-' "$SKILL_FILE" >/dev/null
-  grep -F 'docs/implementation-artifacts/' "$SKILL_FILE" >/dev/null
+  # AF-2026-05-21-22 canonicalized this path. Accept canonical or legacy.
+  grep -qE '(docs|\.gaia/artifacts)/implementation-artifacts/' "$SKILL_FILE"
   grep -iF 'parent' "$SKILL_FILE" >/dev/null
 }
 

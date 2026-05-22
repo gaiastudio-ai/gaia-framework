@@ -253,7 +253,7 @@ is_allowlisted() {
   # describing how to clean up legacy V1 (workflow.xml-engine-era) checkpoints, so
   # its prose intentionally names workflow.xml as the historical engine the
   # checkpoints belong to. The fixture is a CI-stable copy of the canonical plan
-  # at docs/planning-artifacts/v1-checkpoint-deletion-plan.md (allowlisted by the
+  # at .gaia/artifacts/planning-artifacts/v1-checkpoint-deletion-plan.md (allowlisted by the
   # docs/ rule above). The fixture's bats test (e29-s7-v1-checkpoint-deletion-plan.bats)
   # asserts these exact tokens are present, so scrubbing them would break the gate.
   [[ "$path" == */plugins/gaia/tests/fixtures/e29-s7-deletion-plan/* ]] && return 0
@@ -284,7 +284,7 @@ is_allowlisted() {
   # These are historical documentation, not active loads. The commands-guard from
   # E28-S127 and the PATTERN negative-filter catch real regressions; active loads
   # would break at runtime and be caught by the Cluster 19 parity harness.
-  # See docs/implementation-artifacts/E28-S128-triage-ledger.md for the full triage.
+  # See .gaia/artifacts/implementation-artifacts/E28-S128-triage-ledger.md for the full triage.
   case "$path" in
     */plugins/gaia/scripts/tests/smoke-e28-s36.sh|\
     */plugins/gaia/skills/edge-cases/SKILL.md|\

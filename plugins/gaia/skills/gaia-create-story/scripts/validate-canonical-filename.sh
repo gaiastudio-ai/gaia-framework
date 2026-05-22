@@ -15,8 +15,8 @@
 #     6.10 integration note (rather than duplicating slug-comparison logic).
 #
 # Contract source:
-#   - docs/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.10
-#   - docs/planning-artifacts/architecture.md §Decision Log — ADR-074
+#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.10
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-074
 #     (deterministic-script lift)
 #   - Sibling: gaia-public/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh
 #
@@ -210,16 +210,19 @@ fi
 #   - flat only (pre-migration legacy state)   -> ACCEPT with stderr WARNING
 #
 # Project root resolution: walk up from $file until we find a directory
-# whose path ends in "/docs/implementation-artifacts" — the parent of that
+# whose path ends in "/.gaia/artifacts/implementation-artifacts" — the parent of that
 # dir is the project root. If we cannot locate the docs subtree, skip the
 # shadow check (non-canonical layout context, e.g. unit-test fixtures
 # without a docs/ tree).
 
 resolve_impl_dir() {
+  # AF-2026-05-21-25: also recognize canonical .gaia/artifacts/implementation-artifacts.
   local p
   p="$(cd "$(dirname "$1")" && pwd)"
   while [ "$p" != "/" ] && [ -n "$p" ]; do
     case "$p" in
+      */.gaia/artifacts/implementation-artifacts) printf '%s' "$p"; return 0 ;;
+      */.gaia/artifacts/implementation-artifacts/*) p="${p%/*}" ;;
       */docs/implementation-artifacts) printf '%s' "$p"; return 0 ;;
       */docs/implementation-artifacts/*) p="${p%/*}" ;;
       *) p="${p%/*}" ;;

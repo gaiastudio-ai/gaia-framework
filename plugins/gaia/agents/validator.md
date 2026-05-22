@@ -157,5 +157,5 @@ This is the framework-wide Val opus-pin contract (ADR-074 contract C2). It gener
 
 **References:**
 
-- [Source: docs/planning-artifacts/architecture.md §Decision Log ADR-074] — Val opus-pin contract C2 (framework-wide)
-- [Source: docs/planning-artifacts/architecture.md §Decision Log ADR-012] — prior decision establishing mandatory opus for Val; ADR-074 contract C2 generalises it
+- [Source: .gaia/artifacts/planning-artifacts/architecture.md §Decision Log ADR-074] — Val opus-pin contract C2 (framework-wide)
+- [Source: .gaia/artifacts/planning-artifacts/architecture.md §Decision Log ADR-012] — prior decision establishing mandatory opus for Val; ADR-074 contract C2 generalises it

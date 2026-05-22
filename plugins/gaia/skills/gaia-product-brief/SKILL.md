@@ -8,15 +8,15 @@ allowed-tools: [Read, Write, Glob, Grep, Bash]
 # heading scan) first; fetch named sections on demand in later steps.
 # Falls back to FULL_LOAD when an upstream artifact lacks parseable headings.
 discover_inputs: INDEX_GUIDED
-discover_inputs_target: docs/creative-artifacts/
+discover_inputs_target: .gaia/artifacts/creative-artifacts/
 # Quality gates (FR-347, FR-358 — E45-S2 reference implementation)
 # pre_start: enforced by scripts/setup.sh before Step 1 runs.
 # post_complete: enforced by scripts/finalize.sh against the generated
-#   product brief artifact (docs/creative-artifacts/product-brief-*.md)
+#   product brief artifact (.gaia/artifacts/creative-artifacts/product-brief-*.md)
 #   in addition to the existing 27-item checklist.
 quality_gates:
   pre_start:
-    - condition: "file_exists:docs/creative-artifacts/brainstorm-*.md"
+    - condition: "file_exists:.gaia/artifacts/creative-artifacts/brainstorm-*.md"
       error_message: "Run `/gaia-brainstorm` first to create a brainstorm artifact"
   post_complete:
     - condition: "section_present:Vision Statement"
@@ -59,7 +59,7 @@ fi
 
 ## Mission
 
-You are facilitating a collaborative discovery session to produce a product brief. Guide the user through vision, target users, problem statement, proposed solution, scope, risks, competitive landscape, and success metrics, then emit a structured product brief artifact at `docs/creative-artifacts/product-brief-*.md` for downstream consumers (e.g., `/gaia-create-prd`).
+You are facilitating a collaborative discovery session to produce a product brief. Guide the user through vision, target users, problem statement, proposed solution, scope, risks, competitive landscape, and success metrics, then emit a structured product brief artifact at `.gaia/artifacts/creative-artifacts/product-brief-*.md` for downstream consumers (e.g., `/gaia-create-prd`).
 
 **Agent:** `analyst` (Elena) — the analyst subagent facilitates discovery and drafts the brief sections. Persona definition lives at `${CLAUDE_PLUGIN_ROOT}/agents/analyst.md`; do not duplicate the persona content here.
 
@@ -71,7 +71,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 - All sections must be collaboratively developed with the user — do not invent vision, users, or metrics.
 - Ground every claim in upstream artifacts (brainstorm, market research, domain research, technical research) when available; otherwise elicit from the user.
-- The output file path is `docs/creative-artifacts/product-brief-{slug}.md` — downstream consumers glob on this pattern, so do not relocate it.
+- The output file path is `.gaia/artifacts/creative-artifacts/product-brief-{slug}.md` — downstream consumers glob on this pattern, so do not relocate it.
 - Mechanical port: the eight legacy steps below must appear in this exact order.
 
 ## Steps
@@ -101,11 +101,11 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 > fallback in the checkpoint — the runtime heuristic MUST NOT halt or
 > error on a small or unstructured file (AC3).
 
-- Scan prior brainstorm output if available (heading scan over `docs/creative-artifacts/brainstorm-*.md`).
-- Scan market research if available (heading scan over `docs/creative-artifacts/market-research*.md`).
-- Scan domain research if available (heading scan over `docs/creative-artifacts/domain-research*.md`).
-- Scan technical research if available (heading scan over `docs/creative-artifacts/tech-research*.md`).
-- Scan any other creative outputs under `docs/creative-artifacts/` for relevant indexes.
+- Scan prior brainstorm output if available (heading scan over `.gaia/artifacts/creative-artifacts/brainstorm-*.md`).
+- Scan market research if available (heading scan over `.gaia/artifacts/creative-artifacts/market-research*.md`).
+- Scan domain research if available (heading scan over `.gaia/artifacts/creative-artifacts/domain-research*.md`).
+- Scan technical research if available (heading scan over `.gaia/artifacts/creative-artifacts/tech-research*.md`).
+- Scan any other creative outputs under `.gaia/artifacts/creative-artifacts/` for relevant indexes.
 - Summarize what upstream context was found (section list, not full content) and flag any missing inputs to the user before proceeding.
 
 > `!scripts/write-checkpoint.sh gaia-product-brief 1 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
@@ -157,9 +157,9 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 8 — Generate Output
 
-Use the template at `${CLAUDE_PLUGIN_ROOT}/templates/product-brief-template.md` as the structural source for the 9 required sections. Do not invent alternate section headings — they are the exact post_complete gate targets enforced by `scripts/finalize.sh` against `docs/creative-artifacts/product-brief-*.md`.
+Use the template at `${CLAUDE_PLUGIN_ROOT}/templates/product-brief-template.md` as the structural source for the 9 required sections. Do not invent alternate section headings — they are the exact post_complete gate targets enforced by `scripts/finalize.sh` against `.gaia/artifacts/creative-artifacts/product-brief-*.md`.
 
-Write a structured product brief to `docs/creative-artifacts/product-brief-{slug}.md` containing the exact sections below, in order:
+Write a structured product brief to `.gaia/artifacts/creative-artifacts/product-brief-{slug}.md` containing the exact sections below, in order:
 
 - **Vision Statement** — core product vision
 - **Target Users** — user personas (name, role, goals, pain points, context for each)
@@ -175,9 +175,9 @@ Write a structured product brief to `docs/creative-artifacts/product-brief-{slug
 Where `{slug}` is a short kebab-case slug derived from the product vision (e.g., `product-brief-ai-code-review.md`).
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/creative-artifacts/product-brief-${SLUG}.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/creative-artifacts/product-brief-${SLUG}.md`
 
-> `!scripts/write-checkpoint.sh gaia-product-brief 8 product_name="$PRODUCT_NAME" target_user="$TARGET_USER" --paths docs/creative-artifacts/product-brief-${SLUG}.md`
+> `!scripts/write-checkpoint.sh gaia-product-brief 8 product_name="$PRODUCT_NAME" target_user="$TARGET_USER" --paths .gaia/artifacts/creative-artifacts/product-brief-${SLUG}.md`
 
 ### Step 9 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -186,17 +186,17 @@ Where `{slug}` is a short kebab-case slug derived from the product vision (e.g.,
 
 **Guards (run before invocation):**
 
-- Artifact-existence guard (AC-EC3): if not exists `docs/creative-artifacts/product-brief-{slug}.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
+- Artifact-existence guard (AC-EC3): if not exists `.gaia/artifacts/creative-artifacts/product-brief-{slug}.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
 - Val-skill-availability guard (AC-EC6): if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
 
 **Loop:**
 
 1. iteration = 1.
-2. Invoke `/gaia-val-validate` with `artifact_path = docs/creative-artifacts/product-brief-{slug}.md`, `artifact_type = product-brief`.
+2. Invoke `/gaia-val-validate` with `artifact_path = .gaia/artifacts/creative-artifacts/product-brief-{slug}.md`, `artifact_type = product-brief`.
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
-     a. Apply a fix to `docs/creative-artifacts/product-brief-{slug}.md` addressing the findings.
+     a. Apply a fix to `.gaia/artifacts/creative-artifacts/product-brief-{slug}.md` addressing the findings.
      b. Append an iteration log record to checkpoint `custom.val_loop_iterations`.
      c. iteration += 1.
      d. If iteration <= 3: go to step 2.
@@ -206,7 +206,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). The `product-brief` artifact_type uses Val's factual-claim validation against ground-truth plus the document-ruleset for product briefs (per E44-S1).
 
-> `!scripts/write-checkpoint.sh gaia-product-brief 9 product_name="$PRODUCT_NAME" target_user="$TARGET_USER" stage=val-auto-review --paths docs/creative-artifacts/product-brief-${SLUG}.md`
+> `!scripts/write-checkpoint.sh gaia-product-brief 9 product_name="$PRODUCT_NAME" target_user="$TARGET_USER" stage=val-auto-review --paths .gaia/artifacts/creative-artifacts/product-brief-${SLUG}.md`
 
 ## Validation
 
@@ -235,10 +235,10 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
   Invoked by `finalize.sh` at post-complete (per §10.31.1).
 
-  See docs/implementation-artifacts/E42-S5-port-gaia-product-brief-27-item-checklist-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S5-port-gaia-product-brief-27-item-checklist-to-v2.md.
 -->
 
-- [script-verifiable] SV-01 — Output artifact exists at docs/creative-artifacts/product-brief-*.md
+- [script-verifiable] SV-01 — Output artifact exists at .gaia/artifacts/creative-artifacts/product-brief-*.md
 - [script-verifiable] SV-02 — Output artifact is non-empty
 - [script-verifiable] SV-03 — Artifact has frontmatter or top-level title
 - [script-verifiable] SV-04 — Vision Statement section present

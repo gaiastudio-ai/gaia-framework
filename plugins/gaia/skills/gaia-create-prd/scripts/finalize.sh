@@ -32,11 +32,14 @@
 #                 against it. When set but the file does not exist,
 #                 AC-EC3 fires — a single "no artifact to validate"
 #                 violation is emitted and the script exits non-zero.
-#                 When unset, the script looks for
-#                 docs/planning-artifacts/prd.md relative to the
-#                 current working directory. If neither is present,
-#                 the checklist run is skipped (classic Cluster 5
-#                 behaviour — observability still runs, exit 0).
+#                 When unset, the script falls back to a canonical-first
+#                 path resolution (AF-2026-05-21-10): prefer
+#                 .gaia/artifacts/planning-artifacts/prd.md (post-ADR-111
+#                 canonical); use .gaia/artifacts/planning-artifacts/prd.md only on
+#                 positive pre-ADR-111 evidence (legacy file exists AND
+#                 canonical dir does not). If neither is present, the
+#                 checklist run is skipped (classic Cluster 5 behaviour
+#                 — observability still runs, exit 0).
 
 set -euo pipefail
 LC_ALL=C
@@ -54,20 +57,25 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Resolve artifact path ----------
-# PRD_ARTIFACT wins when set (test fixtures + explicit invocation). If
-# it is set but the file is missing, AC-EC3 fires. If unset, fall back
-# to docs/planning-artifacts/prd.md. If neither is present the
-# checklist is simply skipped (observability still runs).
+# ---------- 0. Resolve artifact path (AF-2026-05-21-10 three-tier idiom) ----------
+# Tier 1 — env-var override: PRD_ARTIFACT wins when set (test fixtures +
+#          explicit invocation). If it is set but the file is missing,
+#          AC-EC3 fires.
+# Tier 2 — positive pre-ADR-111 evidence: legacy file exists AND canonical
+#          dir does NOT exist → use legacy docs/planning-artifacts/prd.md.
+# Tier 3 — canonical default: greenfield + post-ADR-111 projects route to
+#          .gaia/artifacts/planning-artifacts/prd.md per ADR-111.
+# If neither file is present the checklist is simply skipped (observability
+# still runs).
 ARTIFACT=""
 ARTIFACT_REQUESTED=0
 if [ -n "${PRD_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$PRD_ARTIFACT"
-else
-  if [ -f "docs/planning-artifacts/prd.md" ]; then
-    ARTIFACT="docs/planning-artifacts/prd.md"
-  fi
+elif [ -f "docs/planning-artifacts/prd.md" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
+  ARTIFACT="docs/planning-artifacts/prd.md"
+elif [ -f ".gaia/artifacts/planning-artifacts/prd.md" ]; then
+  ARTIFACT=".gaia/artifacts/planning-artifacts/prd.md"
 fi
 
 # ---------- 1. Run the 36-item checklist ----------
@@ -232,7 +240,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && [ ! -f "$ARTIFACT" ]; then
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-create-prd to produce docs/planning-artifacts/prd.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-create-prd to produce .gaia/artifacts/planning-artifacts/prd.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   log "running 36-item checklist against $ARTIFACT"
@@ -241,7 +249,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   # --- Script-verifiable items (24) ---
 
   # Envelope (SV-01..SV-03)
-  item_check "SV-01" "Output artifact exists at docs/planning-artifacts/prd.md" \
+  item_check "SV-01" "Output artifact exists at resolved path ($ARTIFACT)" \
     "$([ -f "$ARTIFACT" ] && echo pass || echo fail)"
   item_check "SV-02" "Output artifact is non-empty" "$(file_nonempty "$ARTIFACT")"
 
@@ -337,7 +345,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no PRD artifact found (PRD_ARTIFACT unset and no docs/planning-artifacts/prd.md) — skipping checklist run"
+  log "no PRD artifact found (PRD_ARTIFACT unset and no prd.md at .gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

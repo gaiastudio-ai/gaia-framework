@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # discover-stories.sh — /gaia-atdd batch discovery (E46-S3)
 #
-# Scans docs/planning-artifacts/epics-and-stories.md for high-risk stories
+# Scans .gaia/artifacts/planning-artifacts/epics-and-stories.md for high-risk stories
 # and emits either the keys list or a [all / select / skip] menu. Powers
 # the argumentless invocation branch of /gaia-atdd (FR-351, VCP-ATDD-01..05).
 #

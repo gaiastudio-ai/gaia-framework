@@ -146,7 +146,7 @@ Non-canonical inputs (e.g., a typo) are rejected at the script boundary with can
 
 When `$COMPOSITE` is `PASSED`:
 
-1. Write the sprint-review artifact to `docs/implementation-artifacts/sprint-review-${SPRINT_ID}-$(date +%Y-%m-%d).md`. Body: charter + goals[] + Track A Val verdict (with findings) + Track B per-stack output + per-goal stakeholder confirmations + composite verdict + handoff routing decision.
+1. Write the sprint-review artifact to `.gaia/artifacts/implementation-artifacts/sprint-review-${SPRINT_ID}-$(date +%Y-%m-%d).md`. Body: charter + goals[] + Track A Val verdict (with findings) + Track B per-stack output + per-goal stakeholder confirmations + composite verdict + handoff routing decision.
 2. Emit the canonical handoff message to the user: `/gaia-sprint-review: composite verdict PASSED — sprint <id> ready to close; invoke /gaia-sprint-close to finalize`.
 
 The actual `review → closed` transition is enforced by `/gaia-sprint-close` (E93-S5 scope) — this skill only emits the handoff. `/gaia-sprint-close` accepts the new edge AND validates the dispatch sentinel before writing `status: closed`.
@@ -168,7 +168,7 @@ When `$COMPOSITE` is `FAILED`:
    # → /gaia-correct-course
    ```
 
-   Use type `sprint-correction` (the canonical type for sprint-review-FAILED rework per ADR-086 / FR-MTG-20). One entry per failed goal/scenario, recorded in `docs/planning-artifacts/action-items.yaml`. **Invoke the resolver script — do NOT append YAML directly** (memory rule `feedback_action_items_writer_resolver_bypass.md`).
+   Use type `sprint-correction` (the canonical type for sprint-review-FAILED rework per ADR-086 / FR-MTG-20). One entry per failed goal/scenario, recorded in `.gaia/artifacts/planning-artifacts/action-items.yaml`. **Invoke the resolver script — do NOT append YAML directly** (memory rule `feedback_action_items_writer_resolver_bypass.md`).
 
 3. Write the sprint-review artifact (same template as Step 6 — with composite verdict FAILED + the recorded findings).
 
@@ -180,7 +180,7 @@ The `review → correction` edge acceptance + `story_injection` mechanics are in
 
 When `$COMPOSITE` is `UNVERIFIED`:
 
-1. Collect mechanical signals per AI-2026-05-16-5 (`docs/planning-artifacts/sprint-review-unverifiable-criteria.md`):
+1. Collect mechanical signals per AI-2026-05-16-5 (`.gaia/artifacts/planning-artifacts/sprint-review-unverifiable-criteria.md`):
    - `primary_criterion`: one of C1 (infra-only) / C2 (docs-only / planning-only) / C3 (deferred-implementation).
    - `qualifying_story_points`: sum of points matching the primary criterion.
    - `total_story_points`: sum of all completed story points.
@@ -224,7 +224,7 @@ When `$COMPOSITE` is `UNVERIFIED`:
 - **NFR-071**: boundary-write compliance for goals[] + review_justification.
 - **T-SGR-6**: Mode A bypass mitigation (anti-pattern bats check).
 - **AI-2026-05-16-1**: Val rubric at `rubrics/base/sprint-review.json`.
-- **AI-2026-05-16-5**: un-reviewable criteria spec at `docs/planning-artifacts/sprint-review-unverifiable-criteria.md`.
+- **AI-2026-05-16-5**: un-reviewable criteria spec at `.gaia/artifacts/planning-artifacts/sprint-review-unverifiable-criteria.md`.
 - **E93-S1**: sprint-state.sh boundary writers (`set-goals`, `update-goals`, `set-review-justification`, sprint-level transitions).
 - **E93-S2**: `sprint_review:` config section + `/gaia-config-sprint-review` editor.
 - **E93-S4** (deferred): Track B per-stack execution runner replacing the E93-S3 stub.

@@ -25,7 +25,7 @@
 #     never write to sprint-status.yaml, epics-and-stories.md,
 #     story-index.yaml, or test-plan.md)
 #   - ADR-042            — Scripts-over-LLM rationale
-#   - docs/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.4
+#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.4
 #
 # Algorithm (in order):
 #   1. Parse CLI flags: --template, --output, --frontmatter (string or `-`

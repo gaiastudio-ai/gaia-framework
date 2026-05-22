@@ -12,19 +12,19 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are fixing a story file that has open validation findings. The story is resolved by `{story_key}` via the shared `resolve-story-file.sh` helper (E79-S7 / FR-476), which honors the E79-S4 nested-over-flat precedence rule across `docs/implementation-artifacts/epic-*/stories/{story_key}-*.md` (canonical) and `docs/implementation-artifacts/{story_key}-*.md` (legacy-flat fallback). After applying fixes, you re-invoke validation to confirm the story is clean and transition it to `ready-for-dev`.
+You are fixing a story file that has open validation findings. The story is resolved by `{story_key}` via the shared `resolve-story-file.sh` helper (E79-S7 / FR-476), which honors the E79-S4 nested-over-flat precedence rule across `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` (canonical) and `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` (legacy-flat fallback). After applying fixes, you re-invoke validation to confirm the story is clean and transition it to `ready-for-dev`.
 
 This skill is the native Claude Code conversion of the legacy fix-story workflow (brief Cluster 7, story E28-S55). It reads Val findings, rewrites affected sections, and re-validates via the `gaia-val-validate` skill.
 
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-fix-story [story-key]".
-- The story file MUST be resolvable by `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` (E79-S7 / FR-476). The helper searches the canonical nested path first (`docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`), then the legacy-flat path (`docs/implementation-artifacts/{story_key}-*.md`) with a stderr WARNING. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}".
+- The story file MUST be resolvable by `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` (E79-S7 / FR-476). The helper searches the canonical nested path first (`.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md`), then the legacy-flat path (`.gaia/artifacts/implementation-artifacts/{story_key}-*.md`) with a stderr WARNING. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}".
 - The story MUST be in `validating` status. Any other status is a hard gate -- exit with guidance: "story not in validating state -- use /gaia-validate-story first".
 - NEVER drop required YAML frontmatter fields during a fix pass. Preserve all 15 required fields: key, title, epic, status, priority, size, points, risk, sprint_id, depends_on, blocks, traces_to, date, author, priority_flag (plus optional: origin, origin_ref, figma).
 - Do NOT loop infinitely. If re-validation still reports findings after applying fixes, exit non-zero with a summary and leave status at `validating`.
 - Sprint-Status Write Safety: re-read `sprint-status.yaml` immediately before writing the new `ready-for-dev` state.
-- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `docs/planning-artifacts/epics/` are FORBIDDEN.
+- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `.gaia/artifacts/planning-artifacts/epics/` are FORBIDDEN.
 
 ## Steps
 
@@ -66,7 +66,7 @@ Preserve all existing valid content -- only modify sections flagged by findings.
 
 ### Step 5 -- Re-Validate (Main-Turn Dispatch per ADR-104)
 
-- Invoke the `gaia-val-validate` skill (NOT the legacy workflow) against the updated story file via the **main-turn Agent tool** (per ADR-093 / ADR-104). The story file path was resolved in Step 1 via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh` (E79-S7 / FR-476) and may live at either the canonical nested path (`docs/implementation-artifacts/epic-*/stories/{story_key}-{slug}.md`) or the legacy-flat fallback (`docs/implementation-artifacts/{story_key}-{slug}.md`) — pass the resolved path:
+- Invoke the `gaia-val-validate` skill (NOT the legacy workflow) against the updated story file via the **main-turn Agent tool** (per ADR-093 / ADR-104). The story file path was resolved in Step 1 via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh` (E79-S7 / FR-476) and may live at either the canonical nested path (`.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-{slug}.md`) or the legacy-flat fallback (`.gaia/artifacts/implementation-artifacts/{story_key}-{slug}.md`) — pass the resolved path:
   ```
   /gaia-val-validate {resolved_story_path}
   ```
@@ -80,7 +80,7 @@ Preserve all existing valid content -- only modify sections flagged by findings.
 - On clean re-validation only:
   - Update the story file frontmatter `status` from `validating` to `ready-for-dev`.
   - Update the body `**Status:**` line to match.
-  - Re-read `docs/implementation-artifacts/sprint-status.yaml` immediately before writing (Sprint-Status Write Safety).
+  - Re-read `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` immediately before writing (Sprint-Status Write Safety).
   - Call `scripts/load-story.sh {story_key}` to verify the story is registered.
   - Report: "Story {story_key} fixed and transitioned to ready-for-dev."
 

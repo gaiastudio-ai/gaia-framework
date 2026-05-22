@@ -17,7 +17,7 @@
 #   --help, -h          Show this help and exit 0
 #
 # Behavior:
-#   - Reads {GAIA_PROJECT_ROOT}/docs/test-artifacts/test-environment.yaml.
+#   - Reads {GAIA_PROJECT_ROOT}/.gaia/artifacts/test-artifacts/test-environment.yaml (with legacy docs/ fallback).
 #   - If absent or bridge_enabled is false: log a "Test runner not configured —
 #     skipping red-phase execution" warning and exit 0 (AC-EC4 non-blocking).
 #   - Otherwise: invoke the configured runner against --tests, enforce the
@@ -67,7 +67,12 @@ done
 [ -n "$_TESTS" ] || _die "--tests is required"
 
 _PROJECT_ROOT="${GAIA_PROJECT_ROOT:-${PROJECT_ROOT:-.}}"
-_BRIDGE_FILE="$_PROJECT_ROOT/docs/test-artifacts/test-environment.yaml"
+# AF-2026-05-21-19: canonical-first with positive-evidence legacy fallback.
+if [ -f "$_PROJECT_ROOT/docs/test-artifacts/test-environment.yaml" ] && [ ! -d "$_PROJECT_ROOT/.gaia/artifacts/test-artifacts" ]; then
+  _BRIDGE_FILE="$_PROJECT_ROOT/docs/test-artifacts/test-environment.yaml"
+else
+  _BRIDGE_FILE="$_PROJECT_ROOT/.gaia/artifacts/test-artifacts/test-environment.yaml"
+fi
 
 # ---------- Test runner detection (AC-EC4) ----------
 

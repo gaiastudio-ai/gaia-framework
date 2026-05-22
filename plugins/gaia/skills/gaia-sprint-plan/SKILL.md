@@ -25,7 +25,7 @@ fi
 
 ## Mission
 
-You are planning a sprint using the Nate (Scrum Master) persona. This skill reads the backlog from `docs/planning-artifacts/epics-and-stories.md`, classifies stories by readiness, applies sizing and priority rules, and commits the finalized sprint atomically to `sprint-status.yaml` via `sprint-state.sh` (E28-S11). The skill MUST NOT write to `sprint-status.yaml` directly -- all state mutations go through `sprint-state.sh`.
+You are planning a sprint using the Nate (Scrum Master) persona. This skill reads the backlog from `.gaia/artifacts/planning-artifacts/epics-and-stories.md`, classifies stories by readiness, applies sizing and priority rules, and commits the finalized sprint atomically to `sprint-status.yaml` via `sprint-state.sh` (E28-S11). The skill MUST NOT write to `sprint-status.yaml` directly -- all state mutations go through `sprint-state.sh`.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/sprint-planning/` XML engine workflow (brief Cluster 8, story E28-S60). It delegates planning reasoning to the `sm` subagent and uses `sprint-state.sh` for atomic state updates per ADR-042.
 
@@ -43,7 +43,7 @@ The `priority_flag` field is set only by humans (via frontmatter edit in triage,
 - Sprint commitments respect the velocity estimate from the `sizing_map` config key, resolved via `!scripts/resolve-config.sh sizing_map` (ADR-044 §10.26.3).
 - Use the sm subagent (Nate) persona for planning reasoning -- do not re-implement planning logic inline.
 - NEVER auto-set `priority_flag: "next-sprint"` on any story. Only humans set this flag. The skill reads and clears it only (per `feedback_priority_flag_never_auto_set`).
-- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `docs/planning-artifacts/epics/` are FORBIDDEN.
+- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `.gaia/artifacts/planning-artifacts/epics/` are FORBIDDEN.
 
 ## Steps
 
@@ -51,7 +51,7 @@ The `priority_flag` field is set only by humans (via frontmatter edit in triage,
 
 Before sprint scoping begins, verify the previous sprint has been closed via `/gaia-sprint-close` (E81-S5). This prevents planning a new sprint while the prior sprint's `sprint-status.yaml` still shows `status: active` — which would orphan in-flight work and bypass the close ceremony.
 
-- Resolve the previous sprint's yaml: search `docs/implementation-artifacts/sprint-archive/` for the most recent `*-closed-*.yaml`, OR check the current `docs/implementation-artifacts/sprint-status.yaml` for `status: active` (= prior sprint not yet closed).
+- Resolve the previous sprint's yaml: search `.gaia/artifacts/implementation-artifacts/sprint-archive/` for the most recent `*-closed-*.yaml`, OR check the current `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` for `status: active` (= prior sprint not yet closed).
 - If `status: active` (or `status:` field absent on a non-fresh tree), refuse with `error: previous sprint {id} not closed; run /gaia-sprint-close first` and exit non-zero.
 - If user passes `--allow-stale-prior`, skip the guard with a warning: `warning: proceeding despite prior sprint {id} not closed (--allow-stale-prior)`.
 - If `status: closed`, proceed to Step 1.
@@ -60,7 +60,7 @@ Before sprint scoping begins, verify the previous sprint has been closed via `/g
 Reference shell idiom (the SKILL.md should invoke this check via a small helper or inline grep; both are acceptable):
 
 ```bash
-SS_YAML="docs/implementation-artifacts/sprint-status.yaml"
+SS_YAML=".gaia/artifacts/implementation-artifacts/sprint-status.yaml"
 if [ -r "$SS_YAML" ]; then
   prior_status="$(grep '^status:' "$SS_YAML" | head -1 | sed 's/^status:[[:space:]]*//' | tr -d '"' || true)"
   if [ "$prior_status" != "closed" ]; then
@@ -76,17 +76,17 @@ fi
 
 ### Step 1 -- Load Epics, Stories, and Previous Retro
 
-- Read `docs/planning-artifacts/epics-and-stories.md`.
+- Read `.gaia/artifacts/planning-artifacts/epics-and-stories.md`.
 - Parse all stories with their priorities, sizes, and dependencies.
-- Resolve individual story files via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh` helper (E79-S7 / FR-476). For each story key parsed from `epics-and-stories.md`, call the helper to get the resolved path, capturing both stdout (path) and stderr (WARNINGs). The helper centralizes the E79-S4 nested-over-flat precedence rule: it walks `docs/implementation-artifacts/epic-*/stories/{key}-*.md` recursively as the canonical layer (the recursive idiom `find "${IMPLEMENTATION_ARTIFACTS}" -path '*/stories/*.md' -type f -print0` is encapsulated inside the helper — bash globs do NOT recurse, so any non-recursive `for f in docs/implementation-artifacts/*.md` loop would silently miss every nested story), and falls back to the legacy-flat layout `docs/implementation-artifacts/{key}-*.md` with stderr `WARNING: legacy-flat path — {flat_path} (migrate via E79-S6)`. **Precedence rule (E79-S4):** if a story file exists at BOTH layers for the same `{key}`, the nested file wins and the flat sibling is logged as `WARNING: legacy-flat shadow ignored — {flat_path}` (deterministic — no glob-ordering dependence). Helper exit codes: 0 = resolved (single hit), 1 = zero matches (the story file is missing — classify as NOT SELECTABLE), 2 = multi-match ambiguity (operator must resolve). For each resolved file, read its frontmatter `status` field.
+- Resolve individual story files via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh` helper (E79-S7 / FR-476). For each story key parsed from `epics-and-stories.md`, call the helper to get the resolved path, capturing both stdout (path) and stderr (WARNINGs). The helper centralizes the E79-S4 nested-over-flat precedence rule: it walks `.gaia/artifacts/implementation-artifacts/epic-*/stories/{key}-*.md` recursively as the canonical layer (the recursive idiom `find "${IMPLEMENTATION_ARTIFACTS}" -path '*/stories/*.md' -type f -print0` is encapsulated inside the helper — bash globs do NOT recurse, so any non-recursive `for f in .gaia/artifacts/implementation-artifacts/*.md` loop would silently miss every nested story), and falls back to the legacy-flat layout `.gaia/artifacts/implementation-artifacts/{key}-*.md` with stderr `WARNING: legacy-flat path — {flat_path} (migrate via E79-S6)`. **Precedence rule (E79-S4):** if a story file exists at BOTH layers for the same `{key}`, the nested file wins and the flat sibling is logged as `WARNING: legacy-flat shadow ignored — {flat_path}` (deterministic — no glob-ordering dependence). Helper exit codes: 0 = resolved (single hit), 1 = zero matches (the story file is missing — classify as NOT SELECTABLE), 2 = multi-match ambiguity (operator must resolve). For each resolved file, read its frontmatter `status` field.
 - Classify stories into selectable and non-selectable:
   - **SELECTABLE:** stories with individual files AND `status: ready-for-dev`
   - **NOT SELECTABLE (no file):** "Story {key} has no individual file -- run `/gaia-create-story {key}` first."
   - **NOT SELECTABLE (wrong status):** "Story {key} is in '{status}' status -- must be `ready-for-dev` to be selectable."
 - Display the classification: selectable stories table (`Key | Title | Priority | Size | Risk | Status`) and non-selectable stories with reasons.
-- **Priority-flag pre-scan (E38-S4):** run `pflag_scan_backlog` from `${CLAUDE_PLUGIN_ROOT}/scripts/priority-flag.sh` against `docs/implementation-artifacts/`. This returns all story keys whose frontmatter has `status: backlog` AND `priority_flag: "next-sprint"`. Display these as a separate section: "Auto-included by priority_flag: [list of keys]". These stories are pre-filled into the candidate set in Step 3 before user selection. If no flagged stories are found, display "priority_flag: no flagged backlog stories found" and proceed normally.
-- **Hotfix active-sprint inject (E40-S3, ADR-109 §D3):** run `pflag_scan_active_hotfix` from `${CLAUDE_PLUGIN_ROOT}/scripts/priority-flag.sh` against `docs/implementation-artifacts/`. This returns all story keys with `priority_flag: "hotfix"` regardless of current status (backlog | in-progress | ready-for-dev). For each match, invoke `bash ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh inject --story <key>` (ADR-095 sanctioned boundary writer) to add the story to the ACTIVE sprint. Emit one WARNING log line per injection: `WARNING: hotfix story <key> injected into active sprint via priority_flag: "hotfix" (ADR-109 §D3)`. Per ADR-109 §D4: hotfix stories MUST still pass the full `/gaia-run-all-reviews` including NFR-073 wire-verification — a hotfix is faster to PLAN, NOT faster to TEST. `sprint-state.sh inject` is idempotent under lock — re-runs are no-ops via the existing `yaml_has_story_key` check. The capacity-exceeded case does NOT block hotfix injection (ADR-109 §D3 — hotfix is a sanctioned bypass of normal sprint capacity).
-- Load most recent `retro-{sprint_id}.md` from `docs/implementation-artifacts/` if available. If retro found: extract open action items and present them as sprint constraints.
+- **Priority-flag pre-scan (E38-S4):** run `pflag_scan_backlog` from `${CLAUDE_PLUGIN_ROOT}/scripts/priority-flag.sh` against `.gaia/artifacts/implementation-artifacts/`. This returns all story keys whose frontmatter has `status: backlog` AND `priority_flag: "next-sprint"`. Display these as a separate section: "Auto-included by priority_flag: [list of keys]". These stories are pre-filled into the candidate set in Step 3 before user selection. If no flagged stories are found, display "priority_flag: no flagged backlog stories found" and proceed normally.
+- **Hotfix active-sprint inject (E40-S3, ADR-109 §D3):** run `pflag_scan_active_hotfix` from `${CLAUDE_PLUGIN_ROOT}/scripts/priority-flag.sh` against `.gaia/artifacts/implementation-artifacts/`. This returns all story keys with `priority_flag: "hotfix"` regardless of current status (backlog | in-progress | ready-for-dev). For each match, invoke `bash ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh inject --story <key>` (ADR-095 sanctioned boundary writer) to add the story to the ACTIVE sprint. Emit one WARNING log line per injection: `WARNING: hotfix story <key> injected into active sprint via priority_flag: "hotfix" (ADR-109 §D3)`. Per ADR-109 §D4: hotfix stories MUST still pass the full `/gaia-run-all-reviews` including NFR-073 wire-verification — a hotfix is faster to PLAN, NOT faster to TEST. `sprint-state.sh inject` is idempotent under lock — re-runs are no-ops via the existing `yaml_has_story_key` check. The capacity-exceeded case does NOT block hotfix injection (ADR-109 §D3 — hotfix is a sanctioned bypass of normal sprint capacity).
+- Load most recent `retro-{sprint_id}.md` from `.gaia/artifacts/implementation-artifacts/` if available. If retro found: extract open action items and present them as sprint constraints.
 
 ### Step 1.5 -- Action-Item Escalation Halt (E38-S2, FR-SPQG-1)
 
@@ -98,13 +98,13 @@ Before proceeding to sprint scoping, halt if any HIGH-priority action item has b
 !${CLAUDE_PLUGIN_ROOT}/scripts/escalation-halt.sh  # library-only; source + call
 bash -c "source ${CLAUDE_PLUGIN_ROOT}/scripts/escalation-halt.sh && \
   esch_check_blocking \
-    '${CLAUDE_PROJECT_ROOT}/docs/planning-artifacts/action-items.yaml' \
-    '${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/sprint-status.yaml'"
+    '${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml' \
+    '${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-status.yaml'"
 ```
 
 **Contract:**
 
-- Reads `docs/planning-artifacts/action-items.yaml` (schema owned by E36-S2 / FR-RIM-5).
+- Reads `.gaia/artifacts/planning-artifacts/action-items.yaml` (schema owned by E36-S2 / FR-RIM-5).
 - Filter predicate: `priority == "HIGH"` AND `escalation_count >= 2` AND `status == "open"` (case-sensitive).
 - **Exit 0 (proceed):** no matching items, OR all matching items have a recorded override in the current `sprint-status.yaml`.
 - **Exit 1 (halt):** one or more matching items with no recorded override. Halt message on stdout lists each blocking item (`id`, `title`, `escalation_count`, `priority: HIGH`) followed by exit guidance pointing to `/gaia-action-items` or the explicit override flag. No `sprint-status.yaml` mutation and no story-selection prompt occur when the halt fires.
@@ -158,8 +158,8 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
 - Ensure total size fits within velocity estimate using `sizing_map` point values.
 - **Dependency blocking:** for each candidate, check its `depends_on` list. If any dependency is NOT `done`, the story CANNOT be included. Display: "BLOCKED: Story {key} depends on {dep_key} (status: {dep_status})."
 - **Priority surfacing:** after selection, check for P0 stories that are `ready-for-dev` but NOT selected. If any found, warn: "WARNING: P0 stories ready but not selected:" and ask user to confirm the exclusion.
-- Resolve the test-plan via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `docs/test-artifacts/test-plan.md` (flat); fall back to `docs/test-artifacts/strategy/test-plan.md` (strategy/ placement). If the resolved file exists: apply risk levels -- buffer 20% for high-risk stories.
-- **ATDD check (high-risk only):** for each high-risk story, check if `docs/test-artifacts/atdd-{story_key}.md` exists. If missing: "HIGH-RISK story {key} has no ATDD file -- run `/gaia-atdd {key}` before development."
+- Resolve the test-plan via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `.gaia/artifacts/test-artifacts/test-plan.md` (flat); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement). If the resolved file exists: apply risk levels -- buffer 20% for high-risk stories.
+- **ATDD check (high-risk only):** for each high-risk story, check if `.gaia/artifacts/test-artifacts/atdd-{story_key}.md` exists. If missing: "HIGH-RISK story {key} has no ATDD file -- run `/gaia-atdd {key}` before development."
 - Present the candidate sprint to the user and capture confirmation.
 
 ### Step 4 -- Update Story Files
@@ -193,7 +193,7 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
       blocked_by: null
       updated: "{date}"
   ```
-- Write `sprint-status.yaml` to `docs/implementation-artifacts/sprint-status.yaml` EXCLUSIVELY via `sprint-state.sh`:
+- Write `sprint-status.yaml` to `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` EXCLUSIVELY via `sprint-state.sh`:
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh inject \
     --story "{story_key}" [--sprint-id "{sprint_id}"]
@@ -254,7 +254,7 @@ Traceability: FR-486, FR-495, AC1 of E93-S5, ADR-108 §D1.
 
 ### Step 7 -- Save Sprint Plan Document
 
-- Write the sprint plan document to `docs/implementation-artifacts/{sprint_id}-plan.md`.
+- Write the sprint plan document to `.gaia/artifacts/implementation-artifacts/{sprint_id}-plan.md`.
 - The document includes all sections from Step 5.
 
 ### Step 8 -- Val Validation (optional)
@@ -298,7 +298,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/val-sidecar-write.sh \
   --sprint-id    "${sprint_id}" \
   --decision-payload "$(jq -cn \
     --arg verdict       "${verdict:-skipped}" \
-    --arg artifact_path "docs/implementation-artifacts/${sprint_id}-plan.md" \
+    --arg artifact_path ".gaia/artifacts/implementation-artifacts/${sprint_id}-plan.md" \
     --argjson findings  "${findings_json:-[]}" \
     '{verdict: $verdict, findings: $findings, artifact_path: $artifact_path}')"
 ```

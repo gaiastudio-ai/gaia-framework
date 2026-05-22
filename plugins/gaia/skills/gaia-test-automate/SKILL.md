@@ -24,7 +24,7 @@ usage: /gaia-test-automate {story_key} --status
 ```
 
 **Arguments**
-- `{story_key}` — required, e.g. `E28-S66`. Resolves the story file via the canonical `docs/implementation-artifacts/{story_key}-*.md` glob.
+- `{story_key}` — required, e.g. `E28-S66`. Resolves the story file via the canonical `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` glob (with legacy `docs/implementation-artifacts/` fallback for pre-ADR-111 projects).
 
 **Output format (stdout)**
 ```
@@ -183,7 +183,7 @@ This skill is the **ADR-051 hybrid** of the six review skills. The seven canonic
 - The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
 - **Three-way verdict mapping for ADR-051 (AC-EC3):** APPROVE → full plan written + auto-presents at Approval Gate with verdict line; REQUEST_CHANGES → full plan written + presents with "plan changes recommended" marker; BLOCKED → SHORT-CIRCUIT before Review Phase 6 full plan-write — emit a stub/short-form plan file with `verdict: BLOCKED` in frontmatter (NO full plan body) so the user has a record of the failed run, NO `review-gate.sh` invocation, user re-runs after fixing the underlying issue.
 - **Review Phase 6 does NOT invoke `review-gate.sh` (AC-EC1).** Phase 6 emits `analysis-results.json`, the FR-402 review report, AND the ADR-051 plan file. `review-gate.sh` invocation is deferred to the ADR-051 Approval Gate section, keyed on `plan_id`, and runs only after user approval or rejection. This is the single most important architectural difference S5 introduces vs S3/S4/S6/S7.
-- **Strict schema separation (AC-EC2):** `analysis-results.json` (under `.review/gaia-test-automate/{story_key}/`) records DETERMINISTIC ANALYSIS output (test-execution-toolkit findings) ONLY. The plan file (under `docs/test-artifacts/test-automate-plan-{story_key}.md`) records the GENERATIVE PLAN (what tests to write, source-file SHA-256 entries) ONLY. Zero content overlap.
+- **Strict schema separation (AC-EC2):** `analysis-results.json` (under `.review/gaia-test-automate/{story_key}/`) records DETERMINISTIC ANALYSIS output (test-execution-toolkit findings) ONLY. The plan file (under `.gaia/artifacts/test-artifacts/test-automate-plan-{story_key}.md`) records the GENERATIVE PLAN (what tests to write, source-file SHA-256 entries) ONLY. Zero content overlap.
 - **plan_id determinism canonicalization (AC-EC8):** `plan_id` is sha256 of NORMALIZED plan contents — findings sorted by `{category, severity}`, finding message text EXCLUDED from the hash. NFR-DEJ-2 textual variation does NOT change `plan_id`.
 - **Single source of truth for `file_hashes` (AC-EC6):** Review Phase 3A computes `file_hashes` once; both `analysis-results.json` (cache invalidation) AND the plan file (source-file SHA-256 entries) reference the same field. Avoids divergence between two independent hash mechanisms.
 - Mapping to Review Gate canonical vocabulary (inline, no separate script): APPROVE → PASSED; REQUEST_CHANGES → FAILED; BLOCKED → FAILED.
@@ -364,9 +364,9 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 
 The fork extends Phase 3B's findings with architecture and design checks; findings flow into the Phase 3B category buckets.
 
-- **Test architecture conformance.** Fork reads `docs/planning-artifacts/architecture.md` and (when present) `docs/planning-artifacts/test-plan.md`. For each test in the inventory, verify it follows the documented test pyramid (unit / integration / e2e ratios) and lives under the architecture-mandated test directory. Findings under `category: architecture`.
+- **Test architecture conformance.** Fork reads `.gaia/artifacts/planning-artifacts/architecture.md` and (when present) `.gaia/artifacts/planning-artifacts/test-plan.md`. For each test in the inventory, verify it follows the documented test pyramid (unit / integration / e2e ratios) and lives under the architecture-mandated test directory. Findings under `category: architecture`.
 - **FR-traceability check.** When story frontmatter `traces_to: [FR-...]` is set, fork searches discovered test bodies for FR ID references (comments or test descriptions). Missing FR-traceability surfaces as a Suggestion-tier finding.
-- **Design fidelity.** If the story frontmatter has a `figma:` block, fork compares E2E selectors in the discovered tests against `docs/planning-artifacts/design-system/design-tokens.json` and the Figma component manifest. Findings under `category: fidelity`. If no `figma:` block: skip silently (no Warning, no finding).
+- **Design fidelity.** If the story frontmatter has a `figma:` block, fork compares E2E selectors in the discovered tests against `.gaia/artifacts/planning-artifacts/design-system/design-tokens.json` and the Figma component manifest. Findings under `category: fidelity`. If no `figma:` block: skip silently (no Warning, no finding).
 
 ### Phase 5 — Verdict
 
@@ -416,16 +416,16 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 
 **Malformed-payload handling.** On any of the above checks failing, the parent persists what it received with an explicit `[INCOMPLETE]` marker prepended to the report, sets the plan file's frontmatter `verdict: BLOCKED`, and short-circuits — the ADR-051 Approval Gate is NOT entered. Fork output untrustworthy → BLOCKED.
 
-**Parent write — review report (FR-402).** The parent writes the rendered report to `docs/implementation-artifacts/test-automate-review-{story_key}.md` per FR-402 naming convention. The path is **locked**: `test-automate-review-{story_key}.md` — no slug, no date suffix. Written REGARDLESS of approval outcome (AC-EC14).
+**Parent write — review report (FR-402).** The parent writes the rendered report to `.gaia/artifacts/implementation-artifacts/test-automate-review-{story_key}.md` per FR-402 naming convention. The path is **locked**: `test-automate-review-{story_key}.md` — no slug, no date suffix. Written REGARDLESS of approval outcome (AC-EC14).
 
-**Parent write — ADR-051 plan file.** The parent writes the structured plan-content payload atomically (per-PID temp file + `mv` rename) to `docs/test-artifacts/test-automate-plan-{story_key}.md` per ADR-051 §10.27.3. Written REGARDLESS of approval outcome (AC-EC14). The plan file frontmatter contains `plan_id`, `analyzed_sources[]` (referencing the SAME `file_hashes` from `analysis-results.json` — AC-EC6), and an empty `approval` block awaiting the Approval Gate.
+**Parent write — ADR-051 plan file.** The parent writes the structured plan-content payload atomically (per-PID temp file + `mv` rename) to `.gaia/artifacts/test-artifacts/test-automate-plan-{story_key}.md` per ADR-051 §10.27.3. Written REGARDLESS of approval outcome (AC-EC14). The plan file frontmatter contains `plan_id`, `analyzed_sources[]` (referencing the SAME `file_hashes` from `analysis-results.json` — AC-EC6), and an empty `approval` block awaiting the Approval Gate.
 
 **File-naming coexistence (AC-EC4).** Two distinct artifacts share the `test-automate-` prefix. They live in different directories with non-overlapping schemas:
 
 | File path                                                       | Schema      | Domain                                  | When written       |
 |------------------------------------------------------------------|-------------|------------------------------------------|--------------------|
-| `docs/implementation-artifacts/test-automate-review-{story_key}.md` | FR-402      | Review report (verdict + LLM findings)  | Phase 6 (parent)   |
-| `docs/test-artifacts/test-automate-plan-{story_key}.md`          | ADR-051 §10.27.3 | Generative plan (source SHA-256 + plan body) | Phase 6 (parent)   |
+| `.gaia/artifacts/implementation-artifacts/test-automate-review-{story_key}.md` | FR-402      | Review report (verdict + LLM findings)  | Phase 6 (parent)   |
+| `.gaia/artifacts/test-artifacts/test-automate-plan-{story_key}.md`          | ADR-051 §10.27.3 | Generative plan (source SHA-256 + plan body) | Phase 6 (parent)   |
 | `.review/gaia-test-automate/{story_key}/analysis-results.json`   | FR-DEJ-5    | Deterministic toolkit findings only     | Phase 3A (parent)  |
 
 **BLOCKED short-circuit (AC-EC11).** If verdict is BLOCKED (resolver rule 1 fired), Phase 6 emits a **stub/short-form plan file** with `verdict: BLOCKED` in frontmatter, an empty plan body, and `analyzed_sources: []`. NO full plan body is written. The review report (FR-402) IS still written so the user has a record of the failed run. NO `review-gate.sh` invocation. The ADR-051 Approval Gate section is NOT entered — Phase 7 finalizes and the skill exits.
@@ -451,8 +451,8 @@ This section preserves the existing ADR-051 plan-then-execute split-phase contra
 The Approval Gate runs in the **parent (main) context** — NOT in the fork. The fork's `analysis-results.json` and the parent-written plan file (Phase 6 outputs) are the inputs.
 
 **Pre-conditions:**
-- The plan file MUST exist at `docs/test-artifacts/test-automate-plan-{story_key}.md` (emitted by Phase 6).
-- The story file MUST exist at `docs/implementation-artifacts/{story_key}-*.md`.
+- The plan file MUST exist at `.gaia/artifacts/test-artifacts/test-automate-plan-{story_key}.md` (emitted by Phase 6).
+- The story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`.
 - The verdict from Phase 5 MUST be APPROVE or REQUEST_CHANGES (BLOCKED short-circuited at Phase 6 — Approval Gate is NOT entered).
 
 ### Step 1 — Read and validate plan file
@@ -474,7 +474,7 @@ The Approval Gate runs in the **parent (main) context** — NOT in the fork. The
   [a] Approve (PASSED) | [r] Reject (FAILED) | [x] Abort
   ```
 - In **YOLO mode**: auto-approve path:
-  1. Load tier-directory allowlist by invoking `test-env-allowlist.sh --test-env docs/test-artifacts/test-environment.yaml`.
+  1. Load tier-directory allowlist by invoking `test-env-allowlist.sh --test-env .gaia/artifacts/test-artifacts/test-environment.yaml`.
   2. If `test-environment.yaml` is missing: pause for explicit user approval. Log: "allowlist source absent — cannot auto-approve."
   3. For each `proposed_tests[].test_file` path in the plan, check whether it falls within any allowlisted tier directory (prefix match after path normalization).
   4. If ALL proposed test paths are within the allowlist: auto-approve. Set verdict = PASSED.

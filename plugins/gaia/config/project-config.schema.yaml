@@ -2,7 +2,7 @@
 #
 # Realizes ADR-044 (config split) — the single per-project config surface.
 # Referenced by feature brief P2-S10 / P20-S1 in:
-#   docs/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md
+#   .gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md
 #
 # Finalized under E28-S141 (extends the initial draft from E28-S18).
 #
@@ -100,25 +100,25 @@ fields:
     type: path
     required: false
     default: null
-    description: "Absolute (or project-root-relative) path to the docs/test-artifacts directory. Defaults to {project_root}/docs/test-artifacts when absent. Added under E28-S200 so skill setup.sh scripts no longer fall back to PWD-relative resolution when the audit harness runs from /tmp. See ADR-044."
+    description: "Absolute (or project-root-relative) path to the .gaia/artifacts/test-artifacts directory (canonical post-ADR-111, with legacy docs/test-artifacts fallback). Defaults to {project_root}/.gaia/artifacts/test-artifacts when absent. Added under E28-S200 so skill setup.sh scripts no longer fall back to PWD-relative resolution when the audit harness runs from /tmp. See ADR-044."
 
   planning_artifacts:
     type: path
     required: false
     default: null
-    description: "Absolute (or project-root-relative) path to the docs/planning-artifacts directory. Defaults to {project_root}/docs/planning-artifacts when absent. Added under E28-S200 (see test_artifacts)."
+    description: "Absolute (or project-root-relative) path to the .gaia/artifacts/planning-artifacts directory (canonical post-ADR-111, with legacy docs/planning-artifacts fallback). Defaults to {project_root}/.gaia/artifacts/planning-artifacts when absent. Added under E28-S200 (see test_artifacts)."
 
   implementation_artifacts:
     type: path
     required: false
     default: null
-    description: "Absolute (or project-root-relative) path to the docs/implementation-artifacts directory. Defaults to {project_root}/docs/implementation-artifacts when absent. Added under E28-S200 (see test_artifacts)."
+    description: "Absolute (or project-root-relative) path to the .gaia/artifacts/implementation-artifacts directory (canonical post-ADR-111, with legacy docs/implementation-artifacts fallback). Defaults to {project_root}/.gaia/artifacts/implementation-artifacts when absent. Added under E28-S200 (see test_artifacts)."
 
   creative_artifacts:
     type: path
     required: false
     default: null
-    description: "Absolute (or project-root-relative) path to the docs/creative-artifacts directory. Defaults to {project_root}/docs/creative-artifacts when absent. Added under E60-S1 / ADR-074 contract C1 (mirrors test_artifacts/planning_artifacts/implementation_artifacts pattern)."
+    description: "Absolute (or project-root-relative) path to the .gaia/artifacts/creative-artifacts directory (canonical post-ADR-111, with legacy docs/creative-artifacts fallback). Defaults to {project_root}/.gaia/artifacts/creative-artifacts when absent. Added under E60-S1 / ADR-074 contract C1 (mirrors test_artifacts/planning_artifacts/implementation_artifacts pattern)."
 
   val_integration:
     type: map

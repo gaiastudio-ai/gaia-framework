@@ -168,12 +168,12 @@ This table replaces the legacy "inline LLM judgment blocks". Each row names the 
 
 | Short-name        | Dispatch                       | Gate name             | Report path                                                        | Execution evidence? |
 |-------------------|--------------------------------|-----------------------|--------------------------------------------------------------------|---------------------|
-| `code-review`     | `gaia:gaia-code-review`        | `Code Review`         | `docs/implementation-artifacts/{key}-code-review.md`               | No                  |
-| `qa-tests`        | `gaia:gaia-qa-tests`           | `QA Tests`            | `docs/test-artifacts/{key}-qa-tests.md`                            | **Yes**             |
-| `security-review` | `gaia:gaia-review-security`    | `Security Review`     | `docs/implementation-artifacts/{key}-security-review.md`           | No                  |
-| `test-automate`   | `gaia:gaia-test-automate`      | `Test Automation`     | `docs/test-artifacts/{key}-test-automation.md`                     | **Yes**             |
-| `test-review`     | `gaia:gaia-test-review`        | `Test Review`         | `docs/test-artifacts/{key}-test-review.md`                         | **Yes**             |
-| `review-perf`     | `gaia:gaia-review-perf`        | `Performance Review`  | `docs/implementation-artifacts/{key}-performance-review.md`        | No                  |
+| `code-review`     | `gaia:gaia-code-review`        | `Code Review`         | `.gaia/artifacts/implementation-artifacts/{key}-code-review.md`               | No                  |
+| `qa-tests`        | `gaia:gaia-qa-tests`           | `QA Tests`            | `.gaia/artifacts/test-artifacts/{key}-qa-tests.md`                            | **Yes**             |
+| `security-review` | `gaia:gaia-review-security`    | `Security Review`     | `.gaia/artifacts/implementation-artifacts/{key}-security-review.md`           | No                  |
+| `test-automate`   | `gaia:gaia-test-automate`      | `Test Automation`     | `.gaia/artifacts/test-artifacts/{key}-test-automation.md`                     | **Yes**             |
+| `test-review`     | `gaia:gaia-test-review`        | `Test Review`         | `.gaia/artifacts/test-artifacts/{key}-test-review.md`                         | **Yes**             |
+| `review-perf`     | `gaia:gaia-review-perf`        | `Performance Review`  | `.gaia/artifacts/implementation-artifacts/{key}-performance-review.md`        | No                  |
 
 Under the `.gaia/` consolidation (ADR-111), the prefix `docs/` may resolve to `.gaia/artifacts/` — the report paths are constructed via `${GAIA_ARTIFACTS_DIR}` per `gaia-paths.sh`. Both layouts are accepted by `review-gate.sh --report`.
 
@@ -189,7 +189,7 @@ After Substeps 2.3–2.4 finish, run the three deterministic helper scripts in f
    bash scripts/review-summary-gen.sh --story {story_key} [--synopsis-file <path>]
    ```
 
-   The script reads the current Review Gate table and writes the V1-locked schema to `docs/implementation-artifacts/{story_key}-review-summary.md`. If the script exits non-zero with a write failure (read-only filesystem / permission denied), HALT with an explicit write-failure message; story status is left untouched (AC-EC8).
+   The script reads the current Review Gate table and writes the V1-locked schema to `.gaia/artifacts/implementation-artifacts/{story_key}-review-summary.md`. If the script exits non-zero with a write failure (read-only filesystem / permission denied), HALT with an explicit write-failure message; story status is left untouched (AC-EC8).
 
 2. **Compute the composite verdict** via `review-gate.sh review-gate-check` and use its **exit code** as the single source of truth (ADR-054):
 

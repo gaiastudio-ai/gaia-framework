@@ -207,12 +207,12 @@ classification:
 
 | Artifact | patch | enhancement | feature |
 |----------|-------|-------------|---------|
-| PRD (`docs/planning-artifacts/prd.md`) | -- | -- | YES |
-| Architecture (`docs/planning-artifacts/architecture.md`) | -- | -- | YES |
-| Epics & Stories (`docs/planning-artifacts/epics-and-stories.md`) | -- | YES | YES |
-| Test Plan (`docs/test-artifacts/test-plan.md`) | -- | YES | YES |
-| Threat Model (`docs/planning-artifacts/threat-model.md`) | -- | -- | YES |
-| Traceability (`docs/test-artifacts/traceability-matrix.md`) | -- | YES | YES |
+| PRD (`.gaia/artifacts/planning-artifacts/prd.md`) | -- | -- | YES |
+| Architecture (`.gaia/artifacts/planning-artifacts/architecture.md`) | -- | -- | YES |
+| Epics & Stories (`.gaia/artifacts/planning-artifacts/epics-and-stories.md`) | -- | YES | YES |
+| Test Plan (`.gaia/artifacts/test-artifacts/test-plan.md`) | -- | YES | YES |
+| Threat Model (`.gaia/artifacts/planning-artifacts/threat-model.md`) | -- | -- | YES |
+| Traceability (`.gaia/artifacts/test-artifacts/traceability-matrix.md`) | -- | YES | YES |
 
 "--" means the artifact is NOT touched for that classification. "YES"
 means the artifact IS updated via the appropriate sub-workflow.
@@ -234,13 +234,13 @@ means the artifact IS updated via the appropriate sub-workflow.
   - tech-debt -- internal quality, maintainability, or refactor.
   - opportunity -- new market, capability, or strategic improvement.
 - Ask: Is this linked to a change request? If so, provide the CR ID.
-- If CR exists: read `docs/planning-artifacts/change-request-{cr_id}.md`
+- If CR exists: read `.gaia/artifacts/planning-artifacts/change-request-{cr_id}.md`
   for context (impact analysis, approval status).
 - Generate `feature_id` in the format `AF-{date}-{N}` where `{date}` is the
   current date (`AF-{YYYY-MM-DD}-{N}`, e.g. `AF-2026-04-26-1`) and `{N}`
   is a monotonically increasing integer for that date. To resolve `{N}`,
-  scan `docs/planning-artifacts/epics-and-stories.md` and any prior
-  `docs/planning-artifacts/assessment-AF-{date}-*.md` artifacts; use the
+  scan `.gaia/artifacts/planning-artifacts/epics-and-stories.md` and any prior
+  `.gaia/artifacts/planning-artifacts/assessment-AF-{date}-*.md` artifacts; use the
   highest existing index for today plus one, or `1` if none exist.
 - Classify the change as **patch**, **enhancement**, or **feature** based
   on scope analysis.
@@ -490,7 +490,7 @@ adhere to the hygiene rules at dispatch time.
     `setup.sh` via `validate-gate.sh test_plan_exists` when
     `--classification=enhancement|feature` is passed. Arriving at Step 6
     implies the test plan exists at the path `validate-gate.sh test_plan_exists`
-    resolves (flat `docs/test-artifacts/test-plan.md` OR strategy/ form OR
+    resolves (flat `.gaia/artifacts/test-artifacts/test-plan.md` OR strategy/ form OR
     sharded form, per ADR-070, ADR-072). If the gate failed, this skill
     has already HALTed with the canonical message `HALT: test-plan.md is
     missing — run /gaia-test-design first, then re-invoke /gaia-add-feature
@@ -518,7 +518,7 @@ adhere to the hygiene rules at dispatch time.
 ### Step 7 -- Edit Threat Model (feature only)
 
 - If classification is `feature`:
-  - Check if `docs/planning-artifacts/threat-model.md` exists.
+  - Check if `.gaia/artifacts/planning-artifacts/threat-model.md` exists.
   - If it exists: update the threat model to account for new attack
     surfaces introduced by the feature.
   - Store: `threat_model_diff`.
@@ -633,8 +633,8 @@ If classification is `patch`: skip this step.
 ### Step 8c -- Re-shard touched documents (E53-S244, ADR-070)
 
 Cascade execution may have written to one or more monolith documents:
-`docs/planning-artifacts/prd.md`, `docs/planning-artifacts/architecture.md`,
-and/or `docs/planning-artifacts/epics-and-stories.md` (and, transitively
+`.gaia/artifacts/planning-artifacts/prd.md`, `.gaia/artifacts/planning-artifacts/architecture.md`,
+and/or `.gaia/artifacts/planning-artifacts/epics-and-stories.md` (and, transitively
 via Step 8 sub-workflow, story files and traceability). Once the cascade
 finishes, MUST re-shard each touched monolith so the per-section shards
 stay aligned with the monolith. This step honours the monolith-vs-shard
@@ -650,11 +650,11 @@ PR-merge time).
   `/gaia-shard-doc` (or merging shards back to the monolith) before
   commit.
 - Otherwise, build the touched-monolith set from the prior cascade steps:
-  - if Step 4 (Edit PRD) ran -> include `docs/planning-artifacts/prd.md`
+  - if Step 4 (Edit PRD) ran -> include `.gaia/artifacts/planning-artifacts/prd.md`
   - if Step 5 (Edit Architecture) ran -> include
-    `docs/planning-artifacts/architecture.md`
+    `.gaia/artifacts/planning-artifacts/architecture.md`
   - if Step 8 (Add Feature Stories) ran -> include
-    `docs/planning-artifacts/epics-and-stories.md`
+    `.gaia/artifacts/planning-artifacts/epics-and-stories.md`
   - for `patch` classification: include only the directly-edited monolith
     (no cascade ran)
 - For each monolith in the touched set, invoke `/gaia-shard-doc <path>`.
@@ -685,7 +685,7 @@ no assessment-doc is emitted -- the user must resolve the CRITICAL
 finding first and re-invoke the skill.
 
 - Write the assessment-doc to
-  `docs/planning-artifacts/assessment-{feature_id}.md` with the following
+  `.gaia/artifacts/planning-artifacts/assessment-{feature_id}.md` with the following
   sections:
 
   - **Header** -- feature_id, date, author, classification, urgency,
@@ -736,13 +736,13 @@ finding first and re-invoke the skill.
   | Threat Model | {Updated / Skipped} | {changes or "N/A"} |
   | Stories | {Created / Skipped} | {new story keys or "N/A"} |
   | Traceability | {Regenerated / Skipped} | {linkage status} |
-  | Assessment Doc | {emitted / skipped} | docs/planning-artifacts/assessment-{feature_id}.md |
+  | Assessment Doc | {emitted / skipped} | .gaia/artifacts/planning-artifacts/assessment-{feature_id}.md |
 
   **Next steps:**
   - For each new story: run `/gaia-create-story {story_key}` to elaborate.
   - To start development: run `/gaia-sprint-plan` or `/gaia-correct-course`.
   - To audit this change later: read
-    `docs/planning-artifacts/assessment-{feature_id}.md`.
+    `.gaia/artifacts/planning-artifacts/assessment-{feature_id}.md`.
 
 ## References
 
@@ -779,7 +779,7 @@ finding first and re-invoke the skill.
 
 ## Changelog
 
-- **2026-05-14 — E89-S3 — Deterministic parent-epic inference (FR-AFE-3, AI-2026-05-13-21).** Added `scripts/lib/infer-parent-epic.sh` — advisory helper that maps comma-separated affected_skills to open epics in `docs/planning-artifacts/epics-and-stories.md`. Emits one of three modes on stdout (exit 0 always): `deterministic <epic_key>` / `ambiguous: <key1>,<key2>,...` / `no-match`. Step 8 prose updated with a pre-flight subsection that invokes the helper before story-creation logic; the result is recorded in the assessment-doc Cascade Plan as `parent_epic_match: <mode> [— <details>]`. Open-epic definition: a detail block is OPEN unless `**Status: closed**`, `**Status: retired**`, or `**Status: sunset**` appears within it. Empty `affected_skills` cleanly emits `no-match`. Closes the friction-point 3 drift surfaced by the AF-2026-05-13-1 smoke test (LLMs reading a long epics-and-stories.md inconsistently picked between parent-epic candidates).
+- **2026-05-14 — E89-S3 — Deterministic parent-epic inference (FR-AFE-3, AI-2026-05-13-21).** Added `scripts/lib/infer-parent-epic.sh` — advisory helper that maps comma-separated affected_skills to open epics in `.gaia/artifacts/planning-artifacts/epics-and-stories.md`. Emits one of three modes on stdout (exit 0 always): `deterministic <epic_key>` / `ambiguous: <key1>,<key2>,...` / `no-match`. Step 8 prose updated with a pre-flight subsection that invokes the helper before story-creation logic; the result is recorded in the assessment-doc Cascade Plan as `parent_epic_match: <mode> [— <details>]`. Open-epic definition: a detail block is OPEN unless `**Status: closed**`, `**Status: retired**`, or `**Status: sunset**` appears within it. Empty `affected_skills` cleanly emits `no-match`. Closes the friction-point 3 drift surfaced by the AF-2026-05-13-1 smoke test (LLMs reading a long epics-and-stories.md inconsistently picked between parent-epic candidates).
 - **2026-05-14 — E89-S2 — Step 8 deferred-seed-brief mode + `step_8_mode` Cascade Plan field (FR-AFE-2, AI-2026-05-13-20).** Step 8 prose rewritten to document TWO modes: `inline-dispatch` (legacy default for YOLO, materializes story files in-cascade) and `deferred-seed-brief` (new default for non-YOLO, reserves story keys + emits `### Story seed brief for <story_key>` subsections in the assessment-doc; user dispatches `/gaia-create-story <key>` as a follow-up). Default selection is YOLO-keyed: YOLO active → inline-dispatch (legacy preserved); YOLO inactive → deferred-seed-brief (new default). `setup.sh` gained a `--step-8-mode <inline-dispatch|deferred-seed-brief>` CLI override (and inline form) with canonical rejection stderr `gaia-add-feature: invalid --step-8-mode value (expected inline-dispatch or deferred-seed-brief, got: <value>)`. The Before/After default flip is documented explicitly per Val F9 (AF-2026-05-14-7 cascade) — reviewers see the policy change, not just a new field. Rationale: post-ADR-093 main-turn orchestration model makes inline sub-skill dispatch heavier than under the legacy fork-context model; AF-2026-05-13-1 smoke-test surfaced this as friction-point 2.
 - **2026-05-14 — E89-S1 — Steps 6/8b HALT-or-bootstrap on missing canonical test artifacts (FR-AFE-1, AI-2026-05-13-1 friction-point 1).** `setup.sh` gained two new optional CLI flags (`--classification <patch|enhancement|feature>`, `--feature-id <AF-{date}-{N}>`) parsed BEFORE resolve-config so the classification is available when gates fire. Under classification `enhancement` / `feature`, `setup.sh` invokes `validate-gate.sh test_plan_exists` and `validate-gate.sh traceability_exists` (extending the existing `prd_exists` / `epics_and_stories_exists` consumer pattern at L62/L65). On either gate failure, `setup.sh` `die`'s with canonical stderr `HALT: test-plan.md is missing — run /gaia-test-design first, then re-invoke /gaia-add-feature {feature_id}` (or the `/gaia-trace` mirror). Patch classifications skip both gates. SKILL.md Steps 6 + 8b prose rewritten to document the prereq contract; Step 1c re-invocation added so the classification captured in Step 1 flows back to `setup.sh`. Closes the friction-point 1 drift surfaced by the AF-2026-05-13-1 smoke test (Step 6 silently skipped its Test Plan edit because the artifact did not yet exist on disk).
 - **2026-05-14 — E88-S2 — Intake-time dispatch-verb enforcement (FR-DPD-2, ADR-107, AI-2026-05-13-4).** Added Step 8a between Step 8 (Add Feature Stories) and Step 8b (Update Traceability). The step invokes `scripts/lib/intake-dispatch-verb-check.sh --story-file <path>` for every story produced by Step 8. The helper sources `scripts/lib/dispatch-verb-match.sh` (E88-S1) and HALTs with the canonical message when a dispatch-verb AC lacks a companion integration-test AC and has no `<!-- gaia:contract-only: <reason> -->` override. Closes the drift class documented in AI-2026-05-13-4 (dispatch-verb ACs landing without integration coverage). Story-template.md and validate-frontmatter.sh gain a new 16th required `delivered:` boolean field (default `true`) — the bookkeeping primitive E88-S6 will consume for retroactive E76-S10 back-fill.

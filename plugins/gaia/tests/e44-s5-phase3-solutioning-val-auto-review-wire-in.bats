@@ -123,28 +123,35 @@ teardown() { common_teardown; }
 # AC4 — Correct artifact_path per skill
 # ---------------------------------------------------------------------------
 
-@test "AC4: gaia-create-arch references docs/planning-artifacts/architecture.md artifact_path" {
-  grep -q 'docs/planning-artifacts/architecture.md' "$SKILLS_DIR/gaia-create-arch/SKILL.md"
+@test "AC4: gaia-create-arch references architecture.md artifact_path (canonical post-AF-21-11)" {
+  # AF-2026-05-21-11 canonicalized this path. Accept either canonical .gaia/
+  # or legacy docs/ for back-compat with pre-ADR-111 forks.
+  grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/architecture\.md' "$SKILLS_DIR/gaia-create-arch/SKILL.md"
 }
 
-@test "AC4: gaia-edit-arch references docs/planning-artifacts/architecture.md artifact_path" {
-  grep -q 'docs/planning-artifacts/architecture.md' "$SKILLS_DIR/gaia-edit-arch/SKILL.md"
+@test "AC4: gaia-edit-arch references architecture.md artifact_path (canonical post-AF-21-11)" {
+  grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/architecture\.md' "$SKILLS_DIR/gaia-edit-arch/SKILL.md"
 }
 
 @test "AC4: gaia-review-api references api-design-review-{date} artifact_path" {
   grep -qE 'api-design-review-\{date\}' "$SKILLS_DIR/gaia-review-api/SKILL.md"
 }
 
-@test "AC4: gaia-create-epics references docs/planning-artifacts/epics-and-stories.md artifact_path" {
-  grep -q 'docs/planning-artifacts/epics-and-stories.md' "$SKILLS_DIR/gaia-create-epics/SKILL.md"
+@test "AC4: gaia-create-epics references epics-and-stories.md artifact_path (canonical post-AF-21-13)" {
+  # AF-2026-05-21-13 canonicalized this path. Accept either canonical .gaia/
+  # or legacy docs/ for back-compat with pre-ADR-111 forks.
+  grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/epics-and-stories\.md' "$SKILLS_DIR/gaia-create-epics/SKILL.md"
 }
 
-@test "AC4: gaia-threat-model references docs/planning-artifacts/threat-model.md artifact_path" {
-  grep -q 'docs/planning-artifacts/threat-model.md' "$SKILLS_DIR/gaia-threat-model/SKILL.md"
+@test "AC4: gaia-threat-model references threat-model.md artifact_path (canonical post-AF-21-14)" {
+  # Future AF-21-14+ will canonicalize this path. Accept either canonical .gaia/
+  # or legacy docs/ for back-compat with pre-ADR-111 forks.
+  grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/threat-model\.md' "$SKILLS_DIR/gaia-threat-model/SKILL.md"
 }
 
-@test "AC4: gaia-infra-design references docs/planning-artifacts/infrastructure-design.md artifact_path" {
-  grep -q 'docs/planning-artifacts/infrastructure-design.md' "$SKILLS_DIR/gaia-infra-design/SKILL.md"
+@test "AC4: gaia-infra-design references infrastructure-design.md artifact_path (canonical post-AF-21-X)" {
+  # Future AF will canonicalize this path. Accept canonical OR legacy.
+  grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/infrastructure-design\.md' "$SKILLS_DIR/gaia-infra-design/SKILL.md"
 }
 
 # ---------------------------------------------------------------------------

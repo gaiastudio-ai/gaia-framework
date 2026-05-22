@@ -11,7 +11,7 @@
 #       NFR-048 (40–55% token reduction),
 #       ADR-042 (foundation scripts catalog, §10.26.3),
 #       ADR-048 (engine deletion as program-closing action).
-# Brief: P2-S7 (docs/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
+# Brief: P2-S7 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
 #
 # Consumers: every workflow declaring quality_gates.pre_start /
 # quality_gates.post_complete, the testing-integration gates enumerated in

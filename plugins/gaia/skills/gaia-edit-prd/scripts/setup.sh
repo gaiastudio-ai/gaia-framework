@@ -64,11 +64,22 @@ else
 fi
 
 # ---------- 2b. Guard: prd.md must already exist ----------
+# AF-2026-05-21-12 three-tier path resolution (mirrors AF-21-10's flat elif chain):
+#   Tier 1 — PRD_PATH env-var override wins when set.
+#   Tier 2 — positive pre-ADR-111 evidence (legacy file exists AND canonical
+#            dir does NOT) → use legacy docs/planning-artifacts/prd.md.
+#   Tier 3 — canonical default: .gaia/artifacts/planning-artifacts/prd.md per ADR-111.
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}"
-PRD_PATH="$PROJECT_ROOT/docs/planning-artifacts/prd.md"
+if [ -z "${PRD_PATH:-}" ]; then
+  if [ -f "$PROJECT_ROOT/docs/planning-artifacts/prd.md" ] && [ ! -d "$PROJECT_ROOT/.gaia/artifacts/planning-artifacts" ]; then
+    PRD_PATH="$PROJECT_ROOT/docs/planning-artifacts/prd.md"
+  else
+    PRD_PATH="$PROJECT_ROOT/.gaia/artifacts/planning-artifacts/prd.md"
+  fi
+fi
 
 if [ ! -f "$PRD_PATH" ]; then
-  log "prd.md not found at $PRD_PATH — edit-prd requires an existing PRD (non-fatal in setup)"
+  log "prd.md not found at $PRD_PATH (canonical .gaia/artifacts/planning-artifacts/prd.md or legacy docs/planning-artifacts/prd.md) — edit-prd requires an existing PRD (non-fatal in setup)"
 fi
 
 # ---------- 3. Load checkpoint state ----------

@@ -28,13 +28,15 @@ fi
 
 ## Mission
 
-This skill orchestrates edits to an existing Product Requirements Document (PRD). PRD authoring and reasoning is delegated to the **pm** subagent (Derek), who evaluates change impact, validates consistency, and produces the updated artifact. The skill loads the current PRD, coordinates the multi-step edit flow, detects cascade impacts on downstream artifacts, and writes the output to `docs/planning-artifacts/prd.md`.
+This skill orchestrates edits to an existing Product Requirements Document (PRD). PRD authoring and reasoning is delegated to the **pm** subagent (Derek), who evaluates change impact, validates consistency, and produces the updated artifact. The skill loads the current PRD, coordinates the multi-step edit flow, detects cascade impacts on downstream artifacts, and writes the output to the canonical post-ADR-111 path `.gaia/artifacts/planning-artifacts/prd.md`.
+
+**Path resolution (AF-2026-05-21-12).** All PRD path references in this SKILL.md use the canonical post-ADR-111 location `.gaia/artifacts/planning-artifacts/prd.md` (flat) and `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded, per ADR-069/FR-396..402's sharded-fallback rule). The shard directory and adversarial-review artifact location use `.gaia/artifacts/planning-artifacts/` as well. Pre-ADR-111 projects continue to work via a positive-evidence-legacy fallback at the script layer (`scripts/setup.sh` three-tier idiom: `PRD_PATH` env-var override → legacy `docs/planning-artifacts/prd.md` only when that file exists AND `.gaia/artifacts/planning-artifacts/` does NOT → canonical default). When writing the PRD via the Write tool, target the canonical path; the pre-ADR-111 fallback is read-side only.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/2-planning/edit-prd` workflow (brief Cluster 5, story P5-S2 / E28-S41). The step ordering, cascade-aware semantics, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 
-- A PRD MUST already exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `docs/planning-artifacts/prd.md` (flat layout); if missing, fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "No PRD found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
+- A PRD MUST already exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "No PRD found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - Preserve existing content not being changed — edits are surgical, not wholesale rewrites.
 - Add a version note documenting what changed and why after every edit session.
 - Update "Review Findings Incorporated" section after adversarial review (if triggered).
@@ -51,8 +53,8 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 1 — Load PRD
 
-- Resolve the PRD path via the sharded-fallback rule (Critical Rules above). Read the resolved PRD (flat `docs/planning-artifacts/prd.md` OR sharded `docs/planning-artifacts/prd/prd.md`).
-- If neither path resolves, fail fast: "No PRD found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
+- Resolve the PRD path via the sharded-fallback rule (Critical Rules above). Read the resolved PRD (flat `.gaia/artifacts/planning-artifacts/prd.md` OR sharded `.gaia/artifacts/planning-artifacts/prd/prd.md`).
+- If neither path resolves, fail fast: "No PRD found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - Display the current structure summary to the user: list all section headers, requirement count (FR-### and NFR-### IDs), and last version note date.
 
 ### Step 2 — Identify Changes
@@ -77,27 +79,27 @@ Delegate to the **pm** subagent (Derek) via `agents/pm` to apply the edits:
 
 ### Step 4 — Save Updated PRD
 
-Write the updated PRD to `docs/planning-artifacts/prd.md` with the version note prepended.
+Write the updated PRD to `.gaia/artifacts/planning-artifacts/prd.md` with the version note prepended.
 
 ### Step 5 — Adversarial Review
 
 - Read `${CLAUDE_PLUGIN_ROOT}/knowledge/adversarial-triggers.yaml` to evaluate trigger rules. (This policy table ships inside the plugin under ADR-041's `knowledge/` convention; the legacy v1 location `_gaia/_config/adversarial-triggers.yaml` is retired and no longer used.) Determine the current `change_type`: if invoked with a change_type context (e.g., from add-feature triage), use that value. If no context is available, infer from the change scope: minor edits map to "low-risk-enhancement", significant feature additions map to "feature".
 - Look up the trigger rule for `change_type` + artifact "prd". If adversarial is false for this combination: skip adversarial review — mark "Review Findings Incorporated" as "Adversarial review not triggered — change type: {change_type} per adversarial-triggers.yaml". Proceed to Step 7.
-- If adversarial is true: spawn a subagent to run the adversarial review task against `docs/planning-artifacts/prd.md`.
-- When subagent returns: verify `adversarial-review-prd-*.md` exists in `docs/planning-artifacts/`.
+- If adversarial is true: spawn a subagent to run the adversarial review task against `.gaia/artifacts/planning-artifacts/prd.md`.
+- When subagent returns: verify `adversarial-review-prd-*.md` exists in `.gaia/artifacts/planning-artifacts/`.
 
 ### Step 6 — Incorporate Review Findings
 
-- Read `docs/planning-artifacts/adversarial-review-prd-*.md` — extract critical and high severity findings.
+- Read `.gaia/artifacts/planning-artifacts/adversarial-review-prd-*.md` — extract critical and high severity findings.
 - For each critical/high finding: add or refine requirement in the PRD.
 - Update the "## Review Findings Incorporated" section — append new entries with amendment date.
-- Write the updated PRD to `docs/planning-artifacts/prd.md`.
+- Write the updated PRD to `.gaia/artifacts/planning-artifacts/prd.md`.
 
 ### Step 7 — Architecture Cascade Check
 
 This is the cascade-aware behavior preserved from the legacy edit-prd workflow — the key semantic that distinguishes editing from creation.
 
-- Read `docs/planning-artifacts/architecture.md` section headers.
+- Read `.gaia/artifacts/planning-artifacts/architecture.md` section headers.
 - Compare PRD changes against architecture scope.
 - Classify cascade impact:
   - **NONE:** Requirements-only changes — architecture unaffected.
@@ -107,10 +109,10 @@ This is the cascade-aware behavior preserved from the legacy edit-prd workflow �
 
 ### Step 8 — Re-shard touched documents (E53-S244, ADR-070)
 
-Editing the PRD monolith MUST be followed by a re-shard so the per-section shards under `docs/planning-artifacts/prd/` stay aligned with the monolith. This step honours the monolith-vs-shard sync contract in ADR-070 (extended in E53-S243) — it is not optional unless the user passes `--monolith-only` for an explicit atomic same-PR edit (see below).
+Editing the PRD monolith MUST be followed by a re-shard so the per-section shards under `.gaia/artifacts/planning-artifacts/prd/` stay aligned with the monolith. This step honours the monolith-vs-shard sync contract in ADR-070 (extended in E53-S243) — it is not optional unless the user passes `--monolith-only` for an explicit atomic same-PR edit (see below).
 
 - If `$ARGUMENTS` contains `--monolith-only`: skip this step entirely. The user takes responsibility for re-running `/gaia-shard-doc` (or merging shards back to the monolith) before commit. Record `reshard: skipped (--monolith-only)` in the cascade summary.
-- Otherwise, invoke `/gaia-shard-doc docs/planning-artifacts/prd.md` (or the canonical monolith path resolved at runtime). The skill writes to `docs/planning-artifacts/prd/` — `_preamble.md`, `01-*.md`, `02-*.md`, etc.
+- Otherwise, invoke `/gaia-shard-doc .gaia/artifacts/planning-artifacts/prd.md` (or the canonical monolith path resolved at runtime). The skill writes to `.gaia/artifacts/planning-artifacts/prd/` — `_preamble.md`, `01-*.md`, `02-*.md`, etc.
 - After the re-shard returns, run `${CLAUDE_PLUGIN_ROOT}/scripts/check-monolith-shard-sync.sh` against the project root. The check is advisory (always exits 0). If it emits any `WARNING` lines naming `prd.md`, surface those WARNINGs to the user — they indicate the re-shard did not converge and the user must investigate before commit.
 - Record `reshard: invoked (gaia-shard-doc)` in the cascade summary so the audit trail captures the invocation.
 

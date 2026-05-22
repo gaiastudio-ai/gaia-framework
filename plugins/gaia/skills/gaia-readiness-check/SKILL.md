@@ -10,7 +10,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # during cross-reference checks. Falls back to FULL_LOAD when an artifact
 # lacks parseable headings.
 discover_inputs: INDEX_GUIDED
-discover_inputs_target: "docs/planning-artifacts/prd.md (or docs/planning-artifacts/prd/prd.md), docs/planning-artifacts/architecture.md, docs/test-artifacts/test-plan.md (or docs/test-artifacts/strategy/test-plan.md), docs/planning-artifacts/epics-and-stories.md"
+discover_inputs_target: ".gaia/artifacts/planning-artifacts/prd.md (or .gaia/artifacts/planning-artifacts/prd/prd.md), .gaia/artifacts/planning-artifacts/architecture.md, .gaia/artifacts/test-artifacts/test-plan.md (or .gaia/artifacts/test-artifacts/strategy/test-plan.md), .gaia/artifacts/planning-artifacts/epics-and-stories.md"
 orchestration_class: heavy-procedural
 ---
 
@@ -45,8 +45,8 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 ## Critical Rules
 
 - Both quality gates are **mandatory** per ADR-042 — there is no "single gate" fallback, no env-var bypass, and no flag to make either gate optional. Partial-pass is a bug.
-- `traceability-matrix.md` MUST exist. Resolve via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `docs/test-artifacts/traceability-matrix.md` (flat); fall back to `docs/test-artifacts/strategy/traceability-matrix.md` (strategy/ placement); the gate `validate-gate.sh traceability_exists` also accepts the sharded `traceability-matrix/index.md` form per ADR-070. If missing from ALL placements, HALT with: "Gate failed: traceability-matrix.md not found at docs/test-artifacts/traceability-matrix.md, docs/test-artifacts/strategy/traceability-matrix.md, or docs/test-artifacts/traceability-matrix/index.md. Run /gaia-trace to generate the traceability matrix."
-- `ci-setup.md` MUST exist at `docs/test-artifacts/ci-setup.md`. If missing, HALT with: "Gate failed: ci-setup.md not found. Run /gaia-ci-setup to configure the CI pipeline."
+- `traceability-matrix.md` MUST exist. Resolve via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `.gaia/artifacts/test-artifacts/traceability-matrix.md` (flat); fall back to `.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md` (strategy/ placement); the gate `validate-gate.sh traceability_exists` also accepts the sharded `traceability-matrix/index.md` form per ADR-070. If missing from ALL placements, HALT with: "Gate failed: traceability-matrix.md not found at .gaia/artifacts/test-artifacts/traceability-matrix.md, .gaia/artifacts/test-artifacts/strategy/traceability-matrix.md, or .gaia/artifacts/test-artifacts/traceability-matrix/index.md. Run /gaia-trace to generate the traceability matrix."
+- `ci-setup.md` MUST exist at `.gaia/artifacts/test-artifacts/ci-setup.md`. If missing, HALT with: "Gate failed: ci-setup.md not found. Run /gaia-ci-setup to configure the CI pipeline."
 - Check ALL artifacts — do not stop at first failure (except for the mandatory gates which halt immediately).
 - If the traceability matrix declares its own gate as BLOCKED or FAIL, the readiness report MUST NOT declare traceability_complete: true.
 - Output must include a machine-readable PASS/FAIL gate report in YAML frontmatter.
@@ -66,15 +66,15 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 > headings, fall back to FULL_LOAD for that file only and log the fallback
 > in the checkpoint.
 
-- Heading-scan the PRD for the requirements section index (functional and non-functional) — resolve via the sharded-fallback rule (ADR-069 / FR-396..402): try `docs/planning-artifacts/prd.md` (flat layout); fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout, with shard subsections under `prd/04-functional-requirements/` and `prd/05-non-functional-requirements.md`).
-- Heading-scan `docs/planning-artifacts/ux-design.md` if available for the UI-requirements section index.
-- Heading-scan `docs/planning-artifacts/architecture.md` for architecture-decision and component section anchors.
-- Heading-scan `docs/planning-artifacts/epics-and-stories.md` for the story-coverage section index.
-- Heading-scan the traceability matrix for the requirement-coverage summary section — resolve via the strategy-fallback rule (Critical Rules above): try `docs/test-artifacts/traceability-matrix.md` (flat); fall back to `docs/test-artifacts/strategy/traceability-matrix.md` (strategy/ placement).
-- Heading-scan `docs/test-artifacts/ci-setup.md` for the pipeline quality-gates summary section.
-- Heading-scan the test plan if it exists for the risk-assessment section — resolve via the strategy-fallback rule (Critical Rules above): try `docs/test-artifacts/test-plan.md` (flat); fall back to `docs/test-artifacts/strategy/test-plan.md` (strategy/ placement).
-- Heading-scan `docs/planning-artifacts/threat-model.md` if exists for security-requirement section anchors.
-- Heading-scan `docs/planning-artifacts/infrastructure-design.md` if exists for deployment-topology section anchors.
+- Heading-scan the PRD for the requirements section index (functional and non-functional) — resolve via the sharded-fallback rule (ADR-069 / FR-396..402): try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout, with shard subsections under `prd/04-functional-requirements/` and `prd/05-non-functional-requirements.md`).
+- Heading-scan `.gaia/artifacts/planning-artifacts/ux-design.md` if available for the UI-requirements section index.
+- Heading-scan `.gaia/artifacts/planning-artifacts/architecture.md` for architecture-decision and component section anchors.
+- Heading-scan `.gaia/artifacts/planning-artifacts/epics-and-stories.md` for the story-coverage section index.
+- Heading-scan the traceability matrix for the requirement-coverage summary section — resolve via the strategy-fallback rule (Critical Rules above): try `.gaia/artifacts/test-artifacts/traceability-matrix.md` (flat); fall back to `.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md` (strategy/ placement).
+- Heading-scan `.gaia/artifacts/test-artifacts/ci-setup.md` for the pipeline quality-gates summary section.
+- Heading-scan the test plan if it exists for the risk-assessment section — resolve via the strategy-fallback rule (Critical Rules above): try `.gaia/artifacts/test-artifacts/test-plan.md` (flat); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement).
+- Heading-scan `.gaia/artifacts/planning-artifacts/threat-model.md` if exists for security-requirement section anchors.
+- Heading-scan `.gaia/artifacts/planning-artifacts/infrastructure-design.md` if exists for deployment-topology section anchors.
 - Note any missing artifacts immediately. Section bodies are loaded on demand by Steps 2-9 via `sed -n` between heading anchors.
 
 > `!scripts/write-checkpoint.sh gaia-readiness-check 1 project_name="$PROJECT_NAME" gate_status=pending artifacts_inspected_count="$ARTIFACTS_INSPECTED_COUNT" stage=load`
@@ -140,7 +140,7 @@ Record all contradictions in a structured list with contradiction_id, type, sour
 
 #### Compliance scan (FR-352 / E46-S4)
 
-Read `docs/planning-artifacts/epics-and-stories.md` once and harvest, for every story, its key, its priority (`P0..P3`), its compliance tags, and the phase classification of its owning epic. The same harvest feeds both the priority/schedule conflict detector and the compliance timeline estimator below — they share one pass.
+Read `.gaia/artifacts/planning-artifacts/epics-and-stories.md` once and harvest, for every story, its key, its priority (`P0..P3`), its compliance tags, and the phase classification of its owning epic. The same harvest feeds both the priority/schedule conflict detector and the compliance timeline estimator below — they share one pass.
 
 If `epics-and-stories.md` is missing or malformed, log the WARNING `epics-and-stories.md not found — priority/schedule and compliance checks skipped` and continue to Step 8 (AC-EC2). The gate is NOT blocked solely by a missing epics file.
 
@@ -176,14 +176,14 @@ Delegate operational readiness assessment to the **devops** subagent (Soren) via
 
 ### Step 9 — Brownfield Completeness Check (optional)
 
-- Skip if `docs/planning-artifacts/brownfield-onboarding.md` does not exist.
+- Skip if `.gaia/artifacts/planning-artifacts/brownfield-onboarding.md` does not exist.
 - Verify brownfield-specific artifacts (dependency-map, nfr-assessment, api-documentation).
 
 > `!scripts/write-checkpoint.sh gaia-readiness-check 9 project_name="$PROJECT_NAME" gate_status=pending artifacts_inspected_count="$ARTIFACTS_INSPECTED_COUNT" stage=brownfield`
 
 ### Step 10 — Generate Gate Report
 
-Write the readiness report to `docs/planning-artifacts/readiness-report.md` with YAML frontmatter containing machine-readable PASS/FAIL status for each check area.
+Write the readiness report to `.gaia/artifacts/planning-artifacts/readiness-report.md` with YAML frontmatter containing machine-readable PASS/FAIL status for each check area.
 
 #### Self-Contradiction Sweep (FR-352 / E46-S4)
 
@@ -216,7 +216,7 @@ Older reports that pre-date the FR-352 upgrade are read-compatible: consumers (`
 
 If `self_contradictions_count > 0`, the overall gate status MUST NOT be PASS — it must be at least CONDITIONAL PASS, with each contradiction pair listed as a blocker in the report body. Priority/schedule conflicts and compliance timeline entries are informational (WARNING) and do NOT on their own downgrade PASS — this protects against an over-gating regression where a loud-but-not-broken report flips to FAIL purely because the new sections rendered.
 
-> `!scripts/write-checkpoint.sh gaia-readiness-check 10 project_name="$PROJECT_NAME" gate_status="$GATE_STATUS" artifacts_inspected_count="$ARTIFACTS_INSPECTED_COUNT" stage=report --paths docs/planning-artifacts/readiness-report.md`
+> `!scripts/write-checkpoint.sh gaia-readiness-check 10 project_name="$PROJECT_NAME" gate_status="$GATE_STATUS" artifacts_inspected_count="$ARTIFACTS_INSPECTED_COUNT" stage=report --paths .gaia/artifacts/planning-artifacts/readiness-report.md`
 
 ### Step 11 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -225,17 +225,17 @@ If `self_contradictions_count > 0`, the overall gate status MUST NOT be PASS —
 
 **Guards (run before invocation):**
 
-- Artifact-existence guard (AC-EC3): if not exists `docs/planning-artifacts/readiness-report.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
+- Artifact-existence guard (AC-EC3): if not exists `.gaia/artifacts/planning-artifacts/readiness-report.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
 - Val-skill-availability guard (AC-EC6): if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
 
 **Loop:**
 
 1. iteration = 1.
-2. Invoke `/gaia-val-validate` with `artifact_path = docs/planning-artifacts/readiness-report.md`, `artifact_type = readiness`.
+2. Invoke `/gaia-val-validate` with `artifact_path = .gaia/artifacts/planning-artifacts/readiness-report.md`, `artifact_type = readiness`.
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
-     a. Apply a fix to `docs/planning-artifacts/readiness-report.md` addressing the findings.
+     a. Apply a fix to `.gaia/artifacts/planning-artifacts/readiness-report.md` addressing the findings.
      b. Append an iteration log record to checkpoint `custom.val_loop_iterations`.
      c. iteration += 1.
      d. If iteration <= 3: go to step 2.
@@ -245,9 +245,9 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation runs against the Step 10 primary write (artifact-as-drafted). Step 13's post-adversarial re-write does NOT trigger a second Val invocation.
 
-> Test Notes: VCP-VAL-04 (`docs/test-artifacts/test-plan.md §11.46.3`) covers this wire-in.
+> Test Notes: VCP-VAL-04 (`.gaia/artifacts/test-artifacts/test-plan.md §11.46.3`) covers this wire-in.
 
-> `!scripts/write-checkpoint.sh gaia-readiness-check 11 project_name="$PROJECT_NAME" gate_status="$GATE_STATUS" artifacts_inspected_count="$ARTIFACTS_INSPECTED_COUNT" stage=val-auto-review --paths docs/planning-artifacts/readiness-report.md`
+> `!scripts/write-checkpoint.sh gaia-readiness-check 11 project_name="$PROJECT_NAME" gate_status="$GATE_STATUS" artifacts_inspected_count="$ARTIFACTS_INSPECTED_COUNT" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/readiness-report.md`
 
 ### Step 12 — Adversarial Review
 
@@ -259,7 +259,7 @@ Invoke an adversarial review of the readiness report for critical scrutiny.
 
 Update the readiness report with adversarial review findings. If any Critical findings exist, set status to FAIL.
 
-> `!scripts/write-checkpoint.sh gaia-readiness-check 13 project_name="$PROJECT_NAME" gate_status="$GATE_STATUS" artifacts_inspected_count="$ARTIFACTS_INSPECTED_COUNT" stage=incorporate --paths docs/planning-artifacts/readiness-report.md`
+> `!scripts/write-checkpoint.sh gaia-readiness-check 13 project_name="$PROJECT_NAME" gate_status="$GATE_STATUS" artifacts_inspected_count="$ARTIFACTS_INSPECTED_COUNT" stage=incorporate --paths .gaia/artifacts/planning-artifacts/readiness-report.md`
 
 ## Validation
 
@@ -320,7 +320,7 @@ Update the readiness report with adversarial review findings. If any Critical fi
   (AC-EC4). Timeouts and malformed verdicts MUST NOT cause the skill
   to deadlock.
 
-  See docs/implementation-artifacts/E42-S13-port-gaia-readiness-check-65-item-checklist-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S13-port-gaia-readiness-check-65-item-checklist-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 [category: artifact presence] — Readiness report artifact exists

@@ -29,7 +29,7 @@
 # Environment:
 #   DOMAIN_RESEARCH_ARTIFACT  Absolute path to the artifact to validate.
 #                             When unset, the script looks for
-#                             docs/planning-artifacts/domain-research.md
+#                             .gaia/artifacts/planning-artifacts/domain-research.md
 #                             relative to the current working directory.
 
 set -euo pipefail
@@ -51,14 +51,17 @@ die() { log "$*"; exit 1; }
 # ---------- 0. Resolve artifact path ----------
 # DOMAIN_RESEARCH_ARTIFACT wins when set (test fixtures + explicit
 # invocation). Otherwise fall back to the canonical output location
-# docs/planning-artifacts/domain-research.md in the current working
+# .gaia/artifacts/planning-artifacts/domain-research.md in the current working
 # directory. A missing artifact is NOT fatal to the observability side
 # effects — the checklist run is simply skipped.
 ARTIFACT=""
+# AF-2026-05-21-25 three-tier idiom: env-var → positive-evidence legacy → canonical default.
 if [ -n "${DOMAIN_RESEARCH_ARTIFACT:-}" ]; then
   ARTIFACT="$DOMAIN_RESEARCH_ARTIFACT"
-elif [ -f "docs/planning-artifacts/domain-research.md" ]; then
+elif [ -f "docs/planning-artifacts/domain-research.md" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
   ARTIFACT="docs/planning-artifacts/domain-research.md"
+elif [ -f ".gaia/artifacts/planning-artifacts/domain-research.md" ]; then
+  ARTIFACT=".gaia/artifacts/planning-artifacts/domain-research.md"
 fi
 
 # ---------- 1. Run the 22-item checklist ----------
@@ -128,7 +131,7 @@ if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   printf '\nChecklist: /gaia-domain-research (22 items — 13 script-verifiable, 9 LLM-checkable)\n' >&2
 
   # --- Script-verifiable items (13) ---
-  item_check "SV-01" "Output artifact exists at docs/planning-artifacts/domain-research.md" \
+  item_check "SV-01" "Output artifact exists at resolved path ($ARTIFACT)" \
     "$([ -f "$ARTIFACT" ] && echo pass || echo fail)"
   item_check "SV-02" "Output artifact is non-empty" "$(file_nonempty "$ARTIFACT")"
 
@@ -204,7 +207,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no domain-research artifact found (DOMAIN_RESEARCH_ARTIFACT unset and no docs/planning-artifacts/domain-research.md) — skipping checklist run"
+  log "no domain-research artifact found (DOMAIN_RESEARCH_ARTIFACT unset and no domain-research.md at .gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

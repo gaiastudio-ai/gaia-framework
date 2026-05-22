@@ -28,13 +28,15 @@ fi
 
 ## Mission
 
-This skill orchestrates edits to an existing UX Design document. UX design authoring and reasoning is delegated to the **ux-designer** subagent (Christy), who evaluates change impact, validates consistency, and produces the updated artifact. The skill loads the current UX design, coordinates the multi-step edit flow, detects cascade impacts on downstream artifacts, and writes the output to `docs/planning-artifacts/ux-design.md`.
+This skill orchestrates edits to an existing UX Design document. UX design authoring and reasoning is delegated to the **ux-designer** subagent (Christy), who evaluates change impact, validates consistency, and produces the updated artifact. The skill loads the current UX design, coordinates the multi-step edit flow, detects cascade impacts on downstream artifacts, and writes the output to the canonical post-ADR-111 path `.gaia/artifacts/planning-artifacts/ux-design.md`.
+
+**Path resolution (AF-2026-05-21-14).** All UX path references in this SKILL.md use the canonical post-ADR-111 location `.gaia/artifacts/planning-artifacts/ux-design.md`. Pre-ADR-111 projects continue to work via a positive-evidence-legacy fallback at the script layer (`scripts/setup.sh` three-tier idiom: `UX_DESIGN_PATH` env-var override → legacy `docs/planning-artifacts/ux-design.md` only when that file exists AND `.gaia/artifacts/planning-artifacts/` does NOT → canonical default). When writing the UX design via the Write tool, target the canonical path; the pre-ADR-111 fallback is read-side only.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/2-planning/edit-ux-design` workflow (brief Cluster 5, story P5-S4 / E28-S43). The step ordering, cascade-aware semantics, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 
-- A UX design MUST already exist at `docs/planning-artifacts/ux-design.md` before starting. If missing, fail fast with "No UX design found at docs/planning-artifacts/ux-design.md — run /gaia-create-ux first."
+- A UX design MUST already exist at `.gaia/artifacts/planning-artifacts/ux-design.md` before starting. If missing, fail fast with "No UX design found at .gaia/artifacts/planning-artifacts/ux-design.md — run /gaia-create-ux first."
 - Preserve existing content not being changed — edits are surgical, not wholesale rewrites.
 - Add a version note documenting what changed and why after every edit session.
 - Update "Review Findings Incorporated" section after adversarial review (if triggered).
@@ -51,8 +53,8 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 1 — Load Existing UX Design
 
-- Read the current UX design at `docs/planning-artifacts/ux-design.md`.
-- If the file does not exist, fail fast: "No UX design found at docs/planning-artifacts/ux-design.md — run /gaia-create-ux first."
+- Read the current UX design at `.gaia/artifacts/planning-artifacts/ux-design.md`.
+- If the file does not exist, fail fast: "No UX design found at .gaia/artifacts/planning-artifacts/ux-design.md — run /gaia-create-ux first."
 - Identify existing sections: personas, information architecture, wireframes, interaction patterns, accessibility.
 - Identify existing Version History entries — note last version for auto-increment.
 - Display current structure summary to user: section headers, persona count, wireframe count, current version.
@@ -95,27 +97,27 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to a
 ### Step 5 — Save Updated UX Design
 
 - Generate a diff summary showing exactly what changed.
-- Write updated UX design to `docs/planning-artifacts/ux-design.md` with all edits applied, unchanged sections preserved, and version note added.
+- Write updated UX design to `.gaia/artifacts/planning-artifacts/ux-design.md` with all edits applied, unchanged sections preserved, and version note added.
 
 ### Step 6 — Adversarial Review
 
 - Read `${CLAUDE_PLUGIN_ROOT}/knowledge/adversarial-triggers.yaml` to evaluate trigger rules. (This policy table ships inside the plugin under ADR-041's `knowledge/` convention; the legacy v1 location `_gaia/_config/adversarial-triggers.yaml` is retired and no longer used.) Determine the current `change_type`: if invoked with a change_type context (e.g., from add-feature triage), use that value. If no context is available, infer from the change scope: minor edits map to "low-risk-enhancement", significant feature additions map to "feature".
 - Look up the trigger rule for `change_type` + artifact "ux-design". If adversarial is false for this combination: skip adversarial review — mark "Review Findings Incorporated" as "Adversarial review not triggered — change type: {change_type} per adversarial-triggers.yaml". Proceed to Step 8.
-- If adversarial is true: spawn a subagent to run the adversarial review task against `docs/planning-artifacts/ux-design.md`.
-- When subagent returns: verify `adversarial-review-ux-design-*.md` exists in `docs/planning-artifacts/`.
+- If adversarial is true: spawn a subagent to run the adversarial review task against `.gaia/artifacts/planning-artifacts/ux-design.md`.
+- When subagent returns: verify `adversarial-review-ux-design-*.md` exists in `.gaia/artifacts/planning-artifacts/`.
 
 ### Step 7 — Incorporate Review Findings
 
-- Read `docs/planning-artifacts/adversarial-review-ux-design-*.md` — extract critical and high severity findings.
+- Read `.gaia/artifacts/planning-artifacts/adversarial-review-ux-design-*.md` — extract critical and high severity findings.
 - For each critical/high finding: incorporate into UX design document.
 - Update the "## Review Findings Incorporated" section — append new entries with amendment date.
-- Write the updated UX design to `docs/planning-artifacts/ux-design.md`.
+- Write the updated UX design to `.gaia/artifacts/planning-artifacts/ux-design.md`.
 
 ### Step 8 — Cascade Impact Check
 
 This is the cascade-aware behavior preserved from the legacy edit-ux-design workflow — the key semantic that distinguishes editing from creation.
 
-- Read `docs/planning-artifacts/architecture.md` section headers.
+- Read `.gaia/artifacts/planning-artifacts/architecture.md` section headers.
 - Compare UX design changes against architecture scope and downstream artifacts (epics-and-stories.md, test-plan.md).
 - Classify cascade impact:
   - **NONE:** UX-only changes — architecture and stories unaffected.

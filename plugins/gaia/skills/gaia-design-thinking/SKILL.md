@@ -1,6 +1,6 @@
 ---
 name: gaia-design-thinking
-description: Guide a human-centered design session through the five-phase Stanford d.school pipeline — Empathize, Define, Ideate, Prototype, Test. Use when "run design thinking" or /gaia-design-thinking. Delegates facilitation to Lyra (design-thinking-coach) and produces a creative artifact at docs/creative-artifacts/design-thinking-{date}.md.
+description: Guide a human-centered design session through the five-phase Stanford d.school pipeline — Empathize, Define, Ideate, Prototype, Test. Use when "run design thinking" or /gaia-design-thinking. Delegates facilitation to Lyra (design-thinking-coach) and produces a creative artifact at .gaia/artifacts/creative-artifacts/design-thinking-{date}.md.
 argument-hint: "[design challenge]"
 allowed-tools: [Read, Write, Glob, Agent]
 orchestration_class: conversational
@@ -29,7 +29,7 @@ Five-phase human-centered design pipeline: **Empathize → Define → Ideate →
 Prototype → Test**. Delegates each phase's facilitation to Lyra
 (`design-thinking-coach`) via the Agent tool with `context: fork`, accumulates
 the phase outputs in the parent skill, and writes a single artifact at
-`docs/creative-artifacts/design-thinking-{date}.md` at completion. Restored
+`.gaia/artifacts/creative-artifacts/design-thinking-{date}.md` at completion. Restored
 under ADR-065 (New Skills Wiring — /gaia-design-thinking and /gaia-innovation)
 with full V1 feature preservation: empathy mapping prompts, the V1 PoV
 template, the design-methods CSV catalog, and the >=10 ideas mandate in
@@ -46,7 +46,7 @@ Phase 3 (NFR-053).
 - Single-level spawning only (NFR-046): this skill invokes Lyra; Lyra MUST
   NOT spawn further subagents.
 - Preserve the output contract exactly:
-  `docs/creative-artifacts/design-thinking-{date}.md` (date as `YYYY-MM-DD`).
+  `.gaia/artifacts/creative-artifacts/design-thinking-{date}.md` (date as `YYYY-MM-DD`).
   Downstream skills glob on this prefix.
 - Validate assumptions through real human input — never fabricate user
   insights, personas, or empathy data.
@@ -275,7 +275,7 @@ Gaia → Lyra. Any attempt to nest is rejected.
 ## Output
 
 Write the final artifact to
-`docs/creative-artifacts/design-thinking-{date}.md` where `{date}` is the
+`.gaia/artifacts/creative-artifacts/design-thinking-{date}.md` where `{date}` is the
 current date in `YYYY-MM-DD` form. This path is verbatim from the legacy
 workflow's `output.primary` contract (NFR-053).
 
@@ -284,7 +284,7 @@ workflow's `output.primary` contract (NFR-053).
 If the output file already exists from a prior same-day run:
 
 1. **Default (safe):** append a disambiguating suffix —
-   `docs/creative-artifacts/design-thinking-{date}-{N}.md` where `{N}` is
+   `.gaia/artifacts/creative-artifacts/design-thinking-{date}-{N}.md` where `{N}` is
    the next available integer starting at 2. Log the disambiguation:
    `Same-day output exists — wrote to design-thinking-{date}-{N}.md to
    avoid silent data loss.`

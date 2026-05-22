@@ -76,7 +76,7 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 ### Phase 6 — Report
 
-- Write the report to `docs/test-artifacts/accessibility-report-{date}.md` (preserved verbatim from the legacy task path for downstream consumers — deploy checklist aggregation).
+- Write the report to `.gaia/artifacts/test-artifacts/accessibility-report-{date}.md` (preserved verbatim from the legacy task path for downstream consumers — deploy checklist aggregation).
 
 ### Phase 7 — Exit
 
@@ -106,7 +106,7 @@ The legacy test-plan workflow (E28-S88) is preserved verbatim below so existing 
 
 ## Mission
 
-You are creating a WCAG 2.1 accessibility test plan for the specified story or project context. The plan covers automated checks (axe-core, pa11y), manual test procedures (keyboard navigation, screen reader testing), ARIA audits, and remediation priorities. The output is written to `docs/test-artifacts/accessibility-report-{date}.md`.
+You are creating a WCAG 2.1 accessibility test plan for the specified story or project context. The plan covers automated checks (axe-core, pa11y), manual test procedures (keyboard navigation, screen reader testing), ARIA audits, and remediation priorities. The output is written to `.gaia/artifacts/test-artifacts/accessibility-report-{date}.md`.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/accessibility-testing` workflow (E28-S88, Cluster 12, ADR-041). The step ordering, prompts, and output path are preserved from the legacy instructions.xml.
 
@@ -119,7 +119,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Automated checks MUST cover EVERY identified page and component — no partial coverage. Cross-reference Step 1 targets against Step 2 test scenarios before proceeding to Step 3.
 - Every finding row MUST include a specific WCAG success criterion reference in the form `X.Y.Z Criterion Name` (e.g., `1.4.3 Contrast Minimum`).
 - Every Critical-severity finding MUST include at least one specific remediation recommendation. Reports with unremediated Critical findings MUST NOT be written.
-- Output MUST be written to `docs/test-artifacts/accessibility-report-{date}.md` where `{date}` is today's date in YYYY-MM-DD format.
+- Output MUST be written to `.gaia/artifacts/test-artifacts/accessibility-report-{date}.md` where `{date}` is today's date in YYYY-MM-DD format.
 - Knowledge fragments are bundled in this skill's `knowledge/` directory -- load them JIT when referenced by a step.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
 
@@ -130,7 +130,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Identify which pages and components to test from the story context or architecture.
 - **Declare target WCAG level (mandatory user prompt — no silent default).** Prompt the user inline: `Select WCAG level: A, AA, or AAA`. Wait for the user's response before proceeding. The selected level propagates to Step 2 rule set configuration (`wcag2a` for A, `wcag2aa` for AA, `wcag2aaa` for AAA — Level AAA inherits A and AA criteria). YOLO mode handling: when YOLO mode is active, auto-select `AA` (the sensible default) without prompting and emit the log line `YOLO: auto-selected WCAG 2.1 Level AA` so the auto-selection is auditable in the report.
 - Document user personas including users with disabilities (screen reader users, keyboard-only users, low vision users, cognitive disabilities).
-- If architecture.md is available at `docs/planning-artifacts/architecture.md`, extract frontend components and routes.
+- If architecture.md is available at `.gaia/artifacts/planning-artifacts/architecture.md`, extract frontend components and routes.
 - If story file is available, extract UI components from acceptance criteria and subtasks.
 
 ### Step 2 -- Automated Checks
@@ -182,10 +182,10 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
   - Remediation priorities with impact categorization, rendered using the Step 5 schema (`# | Severity | Component / Page | Finding | WCAG Criterion | Remediation`)
   - **Per-finding WCAG success criterion reference** in the format `X.Y.Z Criterion Name` (e.g., `1.4.3 Contrast Minimum`) — the `WCAG Criterion` column is populated for every row.
 - **Pre-write validation gate (hard rule):** before writing the report, scan the findings table and verify (a) every row has a non-empty `WCAG Criterion` cell formatted as `X.Y.Z Criterion Name`, and (b) every row whose `Severity` is `Critical` has a non-empty `Remediation` cell. If either check fails, do NOT write the report — return to Step 5 and fill the missing data.
-- Write output to `docs/test-artifacts/accessibility-report-{date}.md`.
+- Write output to `.gaia/artifacts/test-artifacts/accessibility-report-{date}.md`.
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/test-artifacts/accessibility-report-${DATE}.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/test-artifacts/accessibility-report-${DATE}.md`
 
 ## Finalize
 
