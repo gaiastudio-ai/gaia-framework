@@ -39,10 +39,10 @@ date: 2026-04-15
 # Artifact paths — relative to project_root (E60-S1 / ADR-074 contract C1).
 # Optional. Resolver composes absolute paths at call time; do NOT prepend
 # ${project_root}/. Defaults shown below match the framework layout.
-planning_artifacts: docs/planning-artifacts
-implementation_artifacts: docs/implementation-artifacts
-test_artifacts: docs/test-artifacts
-creative_artifacts: docs/creative-artifacts
+planning_artifacts: .gaia/artifacts/planning-artifacts
+implementation_artifacts: .gaia/artifacts/implementation-artifacts
+test_artifacts: .gaia/artifacts/test-artifacts
+creative_artifacts: .gaia/artifacts/creative-artifacts
 
 # Val integration — template-output review gates. See ADR-042.
 # Optional. Default: { template_output_review: true }
