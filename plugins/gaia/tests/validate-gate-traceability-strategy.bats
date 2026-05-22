@@ -165,13 +165,19 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AI-2026-05-16-9: test_plan_exists no-layout fails with FLAT-path error" {
+@test "AI-2026-05-16-9: test_plan_exists no-layout fails with all 4 acceptable paths listed (post-AF-22-5)" {
+  # AF-2026-05-22-5: the error message used to surface only the flat path.
+  # It now lists all 4 acceptable forms (flat / strategy/test-plan.md /
+  # strategy/test-strategy.md / test-plan/index.md) so users following the
+  # documented /gaia-test-strategy → /gaia-create-epics path see why their
+  # test-strategy.md is acceptable. Verify the new "expected one of:" form
+  # contains the flat path AND the strategy/test-strategy.md alternate.
   run "$SCRIPT" test_plan_exists
   [ "$status" -eq 1 ]
   [[ "$output" == *"validate-gate: test_plan_exists failed"* ]]
-  [[ "$output" == *"expected:"* ]]
+  [[ "$output" == *"expected:"* ]] || [[ "$output" == *"expected one of:"* ]]
   [[ "$output" == *"test-plan.md"* ]]
-  [[ "$output" != *"strategy/test-plan.md"* ]]
+  [[ "$output" == *"strategy/test-strategy.md"* ]]
 }
 
 @test "AI-2026-05-16-9: test_plan_exists strategy/ empty file fails naming strategy path" {

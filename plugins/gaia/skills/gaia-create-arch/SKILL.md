@@ -301,7 +301,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/architecture.md`
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 13 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" --paths .gaia/artifacts/planning-artifacts/architecture.md .gaia/memory/architect-sidecar/architecture-decisions.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 13 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" --paths .gaia/artifacts/planning-artifacts/architecture.md .gaia/memory/architect-sidecar/architecture-decisions.md`
 
 #### Append Architecture Decisions to Sidecar (E46-S6 / FR-354)
 
@@ -388,7 +388,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 > both fragment files after the calls return.
 
 > **Idempotency contract (ADR-098).** When `config_phase` is already
-> `partial` or `full` in `config/project-config.yaml`, both calls are
+> `partial` or `full` in `.gaia/config/project-config.yaml`, both calls are
 > safe no-ops — the helper short-circuits the write and the file is
 > byte-unchanged. When `config_phase` is `minimal`, the helper writes
 > the section and advances `config_phase` to `partial` monotonically.
