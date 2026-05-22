@@ -99,7 +99,14 @@ audit_append() {
 
 write_artifact() {
   local story_key="$1" review="$2" verdict="$3"
-  local artifact="$REPO_ROOT/docs/implementation-artifacts/cluster-19-${story_key}-${review}.md"
+  # AF-2026-05-21-27 canonical-first.
+  local impl_dir
+  if [ -d "$REPO_ROOT/.gaia/artifacts/implementation-artifacts" ]; then
+    impl_dir="$REPO_ROOT/.gaia/artifacts/implementation-artifacts"
+  else
+    impl_dir="$REPO_ROOT/docs/implementation-artifacts"
+  fi
+  local artifact="$impl_dir/cluster-19-${story_key}-${review}.md"
   local report_rel="cluster-19-${story_key}-${review}.md"
   mkdir -p "$(dirname "$artifact")"
   {
