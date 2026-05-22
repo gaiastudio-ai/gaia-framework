@@ -61,7 +61,7 @@ Workflows that previously JIT-loaded `_gaia/dev/skills/figma-integration.md` now
 
 ## FR-140 Read/Write Classification Table
 
-> **Policy contract — not premium implementation.** This table is the canonical FR-140 read-heavy/write-light enforcement source for every Figma MCP call any consuming workflow may attempt. The premium enterprise plugin implements the actual MCP wrappers; the classification rules (which call is read vs write, and which mode is permitted to issue it) live here so OSS and enterprise both agree on the policy. Cross-referenced from `docs/planning-artifacts/architecture.md §10.17` (ADR-024) — the architecture document points back to this table.
+> **Policy contract — not premium implementation.** This table is the canonical FR-140 read-heavy/write-light enforcement source for every Figma MCP call any consuming workflow may attempt. The premium enterprise plugin implements the actual MCP wrappers; the classification rules (which call is read vs write, and which mode is permitted to issue it) live here so OSS and enterprise both agree on the policy. Cross-referenced from `.gaia/artifacts/planning-artifacts/architecture.md §10.17` (ADR-024) — the architecture document points back to this table.
 
 The table classifies every Figma MCP call the consuming workflows (`/gaia-create-ux`, `/gaia-edit-ux`, `/gaia-code-review` fidelity gate, `/gaia-dev-story` Figma hook) may issue. Two columns govern enforcement:
 

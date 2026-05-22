@@ -106,7 +106,7 @@ else
 
 ### Acceptance Criteria
 
-See story file: docs/implementation-artifacts/epic-*/stories/${STORY_KEY}-*.md (canonical, E79) — legacy-flat fallback: docs/implementation-artifacts/${STORY_KEY}-*.md
+See story file: .gaia/artifacts/implementation-artifacts/epic-*/stories/${STORY_KEY}-*.md (canonical, E79/ADR-111) — legacy-flat fallback: docs/implementation-artifacts/${STORY_KEY}-*.md
 
 Story: ${STORY_KEY}"
 fi
