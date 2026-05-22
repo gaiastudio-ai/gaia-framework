@@ -1,6 +1,6 @@
 ---
 name: gaia-sprint-close
-description: "Close the active sprint — write status: closed + closed_at to sprint-status.yaml, archive the yaml under docs/implementation-artifacts/sprint-archive/, and emit a sprint_closed lifecycle event. This skill is the sanctioned boundary-write replacement for manual `yq -i` edits on sprint-status.yaml (per ADR-095). Use when 'close the sprint' or /gaia-sprint-close."
+description: "Close the active sprint — write status: closed + closed_at to sprint-status.yaml, archive the yaml under .gaia/artifacts/implementation-artifacts/sprint-archive/, and emit a sprint_closed lifecycle event. This skill is the sanctioned boundary-write replacement for manual `yq -i` edits on sprint-status.yaml (per ADR-095). Use when 'close the sprint' or /gaia-sprint-close."
 allowed-tools: [Bash, Read]
 version: "1.0.0"
 orchestration_class: light-procedural
@@ -16,7 +16,7 @@ Mark the active sprint as closed and emit the close lifecycle artifacts. The ski
 
 1. **Pre-conditions** — refuse unless a retro doc exists for the sprint, all stories are `done` (or the operator explicitly opts into `--force-with-rollover`), and the sprint is not already closed.
 2. **Yaml write** — `yq -i '.status = "closed" | .closed_at = "<ISO>"'` on `sprint-status.yaml`.
-3. **Archive** — copy the closed yaml to `docs/implementation-artifacts/sprint-archive/{sprint_id}-closed-{YYYY-MM-DD}.yaml`.
+3. **Archive** — copy the closed yaml to `.gaia/artifacts/implementation-artifacts/sprint-archive/{sprint_id}-closed-{YYYY-MM-DD}.yaml`.
 4. **Lifecycle event** — append a `sprint_closed` event to `_memory/lifecycle-events.jsonl` via the shared `lifecycle-event.sh` helper.
 
 This skill is the GAIA-native replacement for manual sprint-boundary writes (per ADR-095, AF-2026-05-11-7). The historical restriction on direct `yq -i` against `sprint-status.yaml` (per `feedback_sprint_boundary_yaml_write.md`) is lifted **only** inside this skill's `close.sh` — that helper IS the sanctioned boundary-write path going forward.
@@ -24,7 +24,7 @@ This skill is the GAIA-native replacement for manual sprint-boundary writes (per
 ## Critical Rules
 
 - The skill MUST be idempotent on already-closed sprints — re-running emits a warning and exits 0 with no yaml mutation, no new archive copy, and no new lifecycle event.
-- The skill MUST refuse with non-zero exit if the retro doc is absent (glob `docs/implementation-artifacts/retrospective-{sprint_id}-*.md` — accepts both `retrospective-{id}-{date}.md` and `retrospective-{id}-{date}-{HHMM}.md` clobber-avoidance variants from `/gaia-retro`).
+- The skill MUST refuse with non-zero exit if the retro doc is absent (glob `.gaia/artifacts/implementation-artifacts/retrospective-{sprint_id}-*.md` — accepts both `retrospective-{id}-{date}.md` and `retrospective-{id}-{date}-{HHMM}.md` clobber-avoidance variants from `/gaia-retro`).
 - The skill MUST refuse with non-zero exit if any story is not in `done` state, unless `--force-with-rollover <keys>` lists exactly the non-done stories.
 - The archive copy MUST be created AFTER the yaml write so the archived snapshot reflects the closed state (ADR-095 §Component 4).
 - Lifecycle event payload uses the nested-`data` schema enforced by `lifecycle-event.sh` (per ADR-095 §Component 5). The JSONL line shape is `{timestamp, event_type:"sprint_closed", workflow:"gaia-sprint-close", pid, data:{sprint_id, closed_at, total_points, stories_done, stories_rolled_over, rollover_target_sprint}}`.
@@ -35,7 +35,7 @@ This skill is the GAIA-native replacement for manual sprint-boundary writes (per
 
 ### Step 1 — Pre-condition: retro exists
 
-- Glob `docs/implementation-artifacts/retrospective-{sprint_id}-*.md`. If empty, refuse with `error: retro doc not found for {sprint_id}; run /gaia-retro first` and exit non-zero.
+- Glob `.gaia/artifacts/implementation-artifacts/retrospective-{sprint_id}-*.md`. If empty, refuse with `error: retro doc not found for {sprint_id}; run /gaia-retro first` and exit non-zero.
 
 ### Step 2 — Pre-condition: idempotency
 
@@ -73,8 +73,8 @@ Traceability: FR-492, AC3 of E93-S5, ADR-108 §D1.
 
 ### Step 5 — Archive
 
-- `mkdir -p docs/implementation-artifacts/sprint-archive/`.
-- `cp <yaml_path> docs/implementation-artifacts/sprint-archive/{sprint_id}-closed-{YYYY-MM-DD}.yaml`.
+- `mkdir -p .gaia/artifacts/implementation-artifacts/sprint-archive/`.
+- `cp <yaml_path> .gaia/artifacts/implementation-artifacts/sprint-archive/{sprint_id}-closed-{YYYY-MM-DD}.yaml`.
 - Date is the close date (today, UTC). Override via `GAIA_SPRINT_CLOSE_DATE` for deterministic tests.
 
 ### Step 6 — Lifecycle event
@@ -92,12 +92,12 @@ Traceability: FR-492, AC3 of E93-S5, ADR-108 §D1.
 - Positional argument: none.
 - Optional flag: `--force-with-rollover <key1,key2,...>` — comma-separated story keys to roll over.
 - Optional env: `GAIA_SPRINT_CLOSE_DATE` — override the close-date stamp used in the archive filename (default: today UTC).
-- Optional env: `SPRINT_STATUS_YAML` — override the yaml lookup (default: `docs/implementation-artifacts/sprint-status.yaml` with fallback to `<project-root>/sprint-status.yaml`).
+- Optional env: `SPRINT_STATUS_YAML` — override the yaml lookup (default: `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` with fallback to `<project-root>/sprint-status.yaml`).
 
 ## Outputs
 
 - Modified `sprint-status.yaml` with `status: closed` + `closed_at: <ISO>`.
-- New archive at `docs/implementation-artifacts/sprint-archive/{sprint_id}-closed-{YYYY-MM-DD}.yaml`.
+- New archive at `.gaia/artifacts/implementation-artifacts/sprint-archive/{sprint_id}-closed-{YYYY-MM-DD}.yaml`.
 - Appended `sprint_closed` event in `_memory/lifecycle-events.jsonl`.
 - Single-line confirmation on stdout.
 

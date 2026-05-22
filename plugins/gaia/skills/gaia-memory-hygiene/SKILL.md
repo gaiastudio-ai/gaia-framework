@@ -18,7 +18,7 @@ You are running a cross-sidecar hygiene pass across the project's agent memory. 
 
 This skill is the native Claude Code conversion of the legacy `memory-hygiene` workflow (E28-S107, Cluster 14). The 12-step prose structure, JIT discipline, cross-reference cap, token approximation, and 7-section enhanced report layout are preserved from the legacy `instructions.xml` — parity confirmed per NFR-053.
 
-**Main context semantics (ADR-041):** This skill runs under `context: main`. It reads `_memory/`, reads `docs/planning-artifacts/`, `docs/implementation-artifacts/`, `docs/test-artifacts/`, and writes a hygiene report plus (on user confirmation) targeted sidecar edits.
+**Main context semantics (ADR-041):** This skill runs under `context: main`. It reads `_memory/`, reads `.gaia/artifacts/planning-artifacts/`, `.gaia/artifacts/implementation-artifacts/`, `.gaia/artifacts/test-artifacts/`, and writes a hygiene report plus (on user confirmation) targeted sidecar edits.
 
 **Scripts-over-LLM (ADR-042 / FR-325):** Deterministic foundation operations (config resolution, checkpoint writes, lifecycle events) are delegated to `plugins/gaia/scripts/` via inline `!${CLAUDE_PLUGIN_ROOT}/...` calls. Agent sidecar reads use the hybrid memory-loading pattern (ADR-046).
 
@@ -58,7 +58,7 @@ The skill runs twelve steps in strict order, mirroring the legacy `instructions.
 7. **Token Budget Reporting** — reuses the `budget-monitoring` section of the shared memory-management skill
 8. **Archival Recommendations** — budget pressure / staleness / age
 9. **Ground Truth Refresh Trigger** — Tier 1 agents only (Val, Theo, Derek, Nate via config)
-10. **Present Enhanced Report** — 7-section artifact written to `docs/implementation-artifacts/memory-hygiene-report-{date}.md`
+10. **Present Enhanced Report** — 7-section artifact written to `.gaia/artifacts/implementation-artifacts/memory-hygiene-report-{date}.md`
 11. **User Action on Flagged Items** — Keep / Archive / Delete per entry
 12. **Optional Checkpoint Pruning** — opt-in, user prompt
 
@@ -112,12 +112,12 @@ For each sidecar in the master list, process one at a time (**JIT — release pr
 
 Attempt to read each reference artifact (record which exist and which are missing):
 
-- `docs/planning-artifacts/architecture.md` — for architectural decision validation
-- `docs/planning-artifacts/prd.md` — for product decision validation (per ADR-069 / FR-396..402, fall back to `docs/planning-artifacts/prd/prd.md` if the flat path is absent)
-- `docs/planning-artifacts/infrastructure-design.md` — for infrastructure validation
-- `docs/test-artifacts/test-plan.md` — for test strategy validation (per ADR-072 / AF-2026-05-08-5, fall back to `docs/test-artifacts/strategy/test-plan.md` if the flat path is absent)
-- `docs/implementation-artifacts/sprint-status.yaml` — for sprint references and current sprint ID
-- `docs/planning-artifacts/epics-and-stories.md` — for story / epic key validation
+- `.gaia/artifacts/planning-artifacts/architecture.md` — for architectural decision validation
+- `.gaia/artifacts/planning-artifacts/prd.md` — for product decision validation (per ADR-069 / FR-396..402, fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` if the flat path is absent)
+- `.gaia/artifacts/planning-artifacts/infrastructure-design.md` — for infrastructure validation
+- `.gaia/artifacts/test-artifacts/test-plan.md` — for test strategy validation (per ADR-072 / AF-2026-05-08-5, fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` if the flat path is absent)
+- `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` — for sprint references and current sprint ID
+- `.gaia/artifacts/planning-artifacts/epics-and-stories.md` — for story / epic key validation
 
 For each artifact that exists: retain key sections for comparison in Steps 4, 5, 6, and 8.
 
@@ -257,7 +257,7 @@ Tier 2, Tier 3, and Untiered agents have no `ground-truth.md` — exclude them f
 
 ## Step 10 — Present Enhanced Report (7 Sections)
 
-Write the enhanced findings report to `docs/implementation-artifacts/memory-hygiene-report-{date}.md` with the following **seven sections** (layout preserved from the legacy workflow for NFR-053 parity):
+Write the enhanced findings report to `.gaia/artifacts/implementation-artifacts/memory-hygiene-report-{date}.md` with the following **seven sections** (layout preserved from the legacy workflow for NFR-053 parity):
 
 ### 1. Summary
 
@@ -334,7 +334,7 @@ Ask the user: "Would you like to prune old completed checkpoints? (yes / skip)"
 
 ## Output — Primary Artifact
 
-Write the hygiene report to `docs/implementation-artifacts/memory-hygiene-report-{date}.md` (path preserved verbatim from the legacy `output.primary` contract for NFR-053 parity).
+Write the hygiene report to `.gaia/artifacts/implementation-artifacts/memory-hygiene-report-{date}.md` (path preserved verbatim from the legacy `output.primary` contract for NFR-053 parity).
 
 The `{date}` placeholder is substituted with the current date in `YYYY-MM-DD` form at write time, preserving the legacy substitution pattern.
 

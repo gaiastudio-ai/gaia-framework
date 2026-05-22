@@ -31,9 +31,9 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 Read the current sprint context:
 
-1. Read `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/sprint-status.yaml` to understand current sprint state.
-2. Read `${CLAUDE_PROJECT_ROOT}/docs/planning-artifacts/epics-and-stories.md` to identify stories not yet in any sprint (candidates for injection).
-3. Scan `${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/retro-*.md` files if available -- check if the current issue matches a known pattern from past retrospectives. If a match is found, note it: "This issue was flagged in retro-{sprint_id}: {finding}. Previous recommendation: {recommendation}."
+1. Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-status.yaml` to understand current sprint state.
+2. Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/epics-and-stories.md` to identify stories not yet in any sprint (candidates for injection).
+3. Scan `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/retro-*.md` files if available -- check if the current issue matches a known pattern from past retrospectives. If a match is found, note it: "This issue was flagged in retro-{sprint_id}: {finding}. Previous recommendation: {recommendation}."
 
 ### Step 2 --- Identify Change
 
@@ -105,7 +105,7 @@ If validation fails, halt with guidance. Do not spawn the subagent.
 
 2. **Collision check:** verify no story file already exists at the canonical path:
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" check-collision "${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts" "${story_key}"
+"${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" check-collision "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts" "${story_key}"
 ```
 If collision detected, halt with guidance to delete or rename before retry. Do not spawn the subagent.
 
@@ -117,13 +117,13 @@ The spawned `/gaia-create-story` populates the story frontmatter with `origin: "
 
 4. **Post-spawn verification:** after the subagent completes, verify the story file exists and frontmatter is correct:
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" verify "${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/${story_key}-*.md" "correct-course" "${sprint_id}"
+"${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" verify "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/${story_key}-*.md" "correct-course" "${sprint_id}"
 ```
 If verification fails (schema drift), halt with actionable guidance referencing NFR-FITP-1.
 
 5. **On subagent failure** (timeout, context overflow, crash): halt with actionable guidance (failure reason, retry instructions). Clean up any partial file:
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" cleanup "${CLAUDE_PROJECT_ROOT}/docs/implementation-artifacts/${story_key}-*.md"
+"${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" cleanup "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/${story_key}-*.md"
 ```
 No partial story stubs may persist on disk after a failed spawn.
 
@@ -140,7 +140,7 @@ When the fallback IS triggered, the operator authors the story file in the main 
 
 1. **Canonical-filename validation** — basename matches `^E[0-9]+-S[0-9]+-[a-z0-9-]+\.md$` (cross-check via `validate-canonical-filename.sh --file`).
 2. **Frontmatter required-fields check** — all of: `template`, `version`, `used_by`, `key`, `title`, `epic`, `status`, `priority`, `size`, `points`, `risk`, `origin`, `origin_ref`, `date`, `author` (plus nullable `sprint_id`/`priority_flag` and array `depends_on`/`blocks`/`traces_to`).
-3. **Dedup check** — `key` does NOT already appear in `docs/planning-artifacts/epics-and-stories.md`.
+3. **Dedup check** — `key` does NOT already appear in `.gaia/artifacts/planning-artifacts/epics-and-stories.md`.
 
 The resulting story file MUST carry `spawn_fallback: "direct-write"` and `spawn_fallback_reason: "<trigger>"` frontmatter fields to preserve the audit trail. See `gaia-triage-findings/SKILL.md` Step 4 "Main-turn direct-write fallback" for the full contract — the prose there is authoritative.
 
@@ -161,7 +161,7 @@ source "${CLAUDE_PLUGIN_ROOT}/scripts/action-items-write.sh"
 2. For each dropped or deferred story, invoke the writer:
 ```bash
 aiw_write \
-  --target "${CLAUDE_PROJECT_ROOT}/docs/planning-artifacts/action-items.yaml" \
+  --target "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
   --sprint-id "{current_sprint_id}" \
   --classification "process" \
   --text "Dropped/deferred {story_key}: {reason}" \
@@ -196,7 +196,7 @@ This step is gated: when the sprint is NOT in `review` status AND no `--from-rev
 
 When the gate fires:
 
-1. **Read failed findings** from `docs/planning-artifacts/action-items.yaml`, filtered to entries originating from the current sprint-review run (matching the sprint_id).
+1. **Read failed findings** from `.gaia/artifacts/planning-artifacts/action-items.yaml`, filtered to entries originating from the current sprint-review run (matching the sprint_id).
 2. **Draft `story_injection` proposals** — for each finding, generate a story title + AC drafts derived from the finding context. Output the drafts inline to the user.
 3. **Present drafts via `AskUserQuestion`** at main-turn (per NFR-067) with `[approve / edit / skip]` options per draft.
 4. **On approve** for a draft:

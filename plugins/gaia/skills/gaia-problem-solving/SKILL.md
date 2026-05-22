@@ -29,7 +29,7 @@ Context-aware problem-solving pipeline with an explicit **plan → approve →
 execute** contract, auto artifact gathering against a 30K token
 context budget, and tiered resolution routing (quick fix / bug /
 enhancement / systemic). Produces a structured problem-solving report
-at `docs/creative-artifacts/problem-solving-{date}.md` and routes the
+at `.gaia/artifacts/creative-artifacts/problem-solving-{date}.md` and routes the
 resolution into the right downstream flow (`/gaia-create-story`,
 `/gaia-add-feature`, or escalation to architect / PM). Converted under
 ADR-041 (native execution model) with full functional parity against
@@ -65,7 +65,7 @@ pointer.
   when `plugins/gaia/agents/problem-solver.md` is registered. If the
   subagent is unavailable, fail fast — do not continue inline.
 - Preserve the output contract exactly:
-  `docs/creative-artifacts/problem-solving-{date}.md` (date as
+  `.gaia/artifacts/creative-artifacts/problem-solving-{date}.md` (date as
   `YYYY-MM-DD`). Downstream skills glob on this prefix — do not
   rename.
 
@@ -336,7 +336,7 @@ Codebase Scan, Test Coverage) are set to empty arrays / strings —
 and the skill proceeds without error — partial answers are valid.
 
 The output artifact at
-`docs/creative-artifacts/problem-solving-{date}.md` produced from
+`.gaia/artifacts/creative-artifacts/problem-solving-{date}.md` produced from
 fallback-interrogation context has the same sectional structure as
 artifact-sourced runs — no degraded experience, no errors, no
 missing sections.
@@ -394,7 +394,7 @@ with an action plan only).
 
 **Phase 9 — Problem-Solving Artifact.** Render the structured
 artifact (see below) and write it to
-`docs/creative-artifacts/problem-solving-{date}.md`.
+`.gaia/artifacts/creative-artifacts/problem-solving-{date}.md`.
 
 **Phase 10 — Resolution Execution.** Based on classification, route:
 
@@ -441,7 +441,7 @@ methodology library. No partial output written.
 ## Output
 
 Write the problem-solving artifact to
-`docs/creative-artifacts/problem-solving-{date}.md` where `{date}` is
+`.gaia/artifacts/creative-artifacts/problem-solving-{date}.md` where `{date}` is
 the current date in `YYYY-MM-DD` form. This path is verbatim from the
 legacy workflow's `output.primary` contract (NFR-053 — functional
 parity).
@@ -451,7 +451,7 @@ parity).
 If the output file already exists from a prior same-day run:
 
 1. **Default (safe):** Append a disambiguating suffix —
-   `docs/creative-artifacts/problem-solving-{date}-{N}.md` where
+   `.gaia/artifacts/creative-artifacts/problem-solving-{date}-{N}.md` where
    `{N}` is the next available integer starting at 2.
 2. **Overwrite:** Only on explicit user request.
 
