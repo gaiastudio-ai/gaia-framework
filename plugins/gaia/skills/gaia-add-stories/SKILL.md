@@ -36,7 +36,7 @@ This skill is the native Claude Code conversion of the legacy add-stories workfl
 ### Step 1 -- Load and Analyze Existing State
 
 - Read `.gaia/artifacts/planning-artifacts/epics-and-stories.md` in full.
-- Read `docs/implementation-artifacts/sprint-status.yaml` in full.
+- Read `.gaia/state/sprint-status.yaml` in full.
 - Parse all existing epic IDs and names.
 - Parse all existing story IDs per epic -- identify highest ID per epic and overall.
 - Build protection map for each story based on its current status:

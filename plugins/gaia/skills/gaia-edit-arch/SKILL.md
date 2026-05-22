@@ -128,7 +128,7 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to record a
 - Read `${CLAUDE_PLUGIN_ROOT}/knowledge/adversarial-triggers.yaml` to evaluate trigger rules. (This policy table ships inside the plugin under ADR-041's `knowledge/` convention; the legacy v1 location `_gaia/_config/adversarial-triggers.yaml` is retired and no longer used.) Determine the current `change_type`: if this workflow was invoked with a change_type context (e.g., from add-feature triage), use that value. If no context is available, infer from the change scope and driver: adversarial-finding or technical-discovery maps to "feature", change-request depends on the CR classification.
 - Look up the trigger rule for `change_type` + artifact "architecture". If adversarial is false for this combination: skip adversarial review — mark "Review Findings Incorporated" as "Adversarial review not triggered — change type: {change_type} per adversarial-triggers.yaml". Proceed to Step 7.
 - If adversarial is true and magnitude meets or exceeds threshold: spawn a subagent to run the adversarial review task against `.gaia/artifacts/planning-artifacts/architecture.md`, focused on changed sections.
-- When subagent returns: verify `adversarial-review-architecture-*.md` exists in `docs/planning-artifacts/`.
+- When subagent returns: verify `adversarial-review-architecture-*.md` exists in `.gaia/artifacts/planning-artifacts/`.
 - Read findings — extract critical and high severity items.
 - For each critical/high finding: incorporate into architecture document.
 - Update "Review Findings Incorporated" section — append new entries with amendment date.
@@ -243,7 +243,7 @@ This step runs in YOLO mode automatically — re-sharding is deterministic per A
   runs BEFORE the checkpoint and lifecycle-event writes (observability
   is never suppressed by checklist outcome — story AC5).
 
-  See docs/implementation-artifacts/E42-S9-port-gaia-edit-arch-25-item-checklist-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S9-port-gaia-edit-arch-25-item-checklist-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 — Output file saved to .gaia/artifacts/planning-artifacts/architecture.md

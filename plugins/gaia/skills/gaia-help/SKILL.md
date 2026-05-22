@@ -130,13 +130,13 @@ generic — see "Suggestion text by state" below.
 > below unchanged. State-aware promotion happens BEFORE the lifecycle-
 > phase ranking executes.
 
-Inspect the artifact tree with Glob to determine the current phase:
+Inspect the artifact tree with Glob to determine the current phase (canonical `.gaia/artifacts/` first, legacy `docs/` fallback for pre-ADR-111 projects):
 
-- No artifacts in any of the four `docs/` subdirectories → **Phase 1 (Analysis)**.
-- PRD present in `docs/planning-artifacts/` but no architecture → **Phase 2/3 (Planning / Solutioning)**.
-- Architecture present but no sprint plan in `docs/implementation-artifacts/` → **Phase 3/4 (Solutioning / Implementation)**.
-- Sprint plan / stories present in `docs/implementation-artifacts/` → **Phase 4 (Implementation)** — suggest specific story or review workflows.
-- Test plans in `docs/test-artifacts/` and release material → **Phase 5 (Deployment)**.
+- No artifacts in any of the four artifact subdirectories → **Phase 1 (Analysis)**.
+- PRD present in `.gaia/artifacts/planning-artifacts/` (or legacy `docs/planning-artifacts/`) but no architecture → **Phase 2/3 (Planning / Solutioning)**.
+- Architecture present but no sprint plan in `.gaia/artifacts/implementation-artifacts/` (or legacy `docs/implementation-artifacts/`) → **Phase 3/4 (Solutioning / Implementation)**.
+- Sprint plan / stories present in `.gaia/artifacts/implementation-artifacts/` (or legacy `docs/implementation-artifacts/`) → **Phase 4 (Implementation)** — suggest specific story or review workflows.
+- Test plans in `.gaia/artifacts/test-artifacts/` (or legacy `docs/test-artifacts/`) and release material → **Phase 5 (Deployment)**.
 
 Use these heuristics to rank which `${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv` matches are most relevant given where the project is.
 
