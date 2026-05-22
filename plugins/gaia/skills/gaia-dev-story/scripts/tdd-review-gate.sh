@@ -118,7 +118,13 @@ source "$RESOLVE_STORY_FILE"
 # every gate invocation with migration-nag output. The legacy-flat warning
 # is already surfaced by every other resolver caller (story-parse,
 # dod-check, finalize, etc.), so dropping it here loses no information.
-STORY_FILE=$(IMPLEMENTATION_ARTIFACTS="$PROJECT_ROOT/docs/implementation-artifacts" \
+# AF-2026-05-21-27 canonical-first: pick .gaia/artifacts/ when present, else legacy.
+if [ -d "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" ]; then
+  _IMPL_DIR="$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts"
+else
+  _IMPL_DIR="$PROJECT_ROOT/docs/implementation-artifacts"
+fi
+STORY_FILE=$(IMPLEMENTATION_ARTIFACTS="$_IMPL_DIR" \
              resolve_story_file "$STORY_KEY" 2>/dev/null) \
   || die "story file not found for key $STORY_KEY (resolve-story-file.sh non-zero)"
 

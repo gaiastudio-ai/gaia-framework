@@ -36,7 +36,12 @@ fi
 
 SPEC_NAME="$1"
 WORK_DIR="${PROJECT_PATH:-$PWD}"
-SPEC_PATH="$WORK_DIR/docs/implementation-artifacts/quick-spec-${SPEC_NAME}.md"
+# AF-2026-05-21-27 canonical-first SPEC_PATH (mirrors load-spec.sh).
+if [ -f "$WORK_DIR/.gaia/artifacts/implementation-artifacts/quick-spec-${SPEC_NAME}.md" ]; then
+  SPEC_PATH="$WORK_DIR/.gaia/artifacts/implementation-artifacts/quick-spec-${SPEC_NAME}.md"
+else
+  SPEC_PATH="$WORK_DIR/docs/implementation-artifacts/quick-spec-${SPEC_NAME}.md"
+fi
 
 declare -a stacks=()
 
