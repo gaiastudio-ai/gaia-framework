@@ -61,7 +61,7 @@ teardown() { common_teardown; }
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"[PASS] SV-01 — Output file saved to docs/test-artifacts/test-plan.md"* ]]
+  [[ "$output" == *"[PASS] SV-01 — Output file saved to .gaia/artifacts/test-artifacts/test-plan.md"* ]]
   [[ "$output" == *"[PASS] SV-02 — Output artifact is non-empty"* ]]
   [[ "$output" == *"[PASS] SV-03 — Risk assessment section present"* ]]
   [[ "$output" == *"[PASS] SV-04 — Test strategy section present"* ]]

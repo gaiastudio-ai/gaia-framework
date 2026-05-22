@@ -159,6 +159,17 @@ plugins/gaia/skills/gaia-edit-ux/scripts/setup.sh
 # positive-evidence branch is permitted.
 plugins/gaia/skills/gaia-threat-model/scripts/finalize.sh
 
+# AF-2026-05-21-19 fix — test-cluster scripts (display strings + setup three-tier
+# idiom + atdd canonical-first fallback). Allowlisted so the legacy
+# `docs/test-artifacts/` and `docs/implementation-artifacts/` literals
+# in the positive-evidence fallback branches and display strings are permitted.
+plugins/gaia/skills/gaia-test-design/scripts/finalize.sh
+plugins/gaia/skills/gaia-test-framework/scripts/finalize.sh
+plugins/gaia/skills/gaia-edit-test-plan/scripts/finalize.sh
+plugins/gaia/skills/gaia-edit-test-plan/scripts/setup.sh
+plugins/gaia/skills/gaia-atdd/scripts/finalize.sh
+plugins/gaia/skills/gaia-atdd/scripts/run-red-phase.sh
+
 # --- Bucket 3: retired scripts ---
 
 plugins/gaia/scripts/retired/
