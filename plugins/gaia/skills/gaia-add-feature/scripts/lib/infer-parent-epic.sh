@@ -61,9 +61,13 @@ if [ -z "$AFFECTED_SKILLS" ]; then
   exit 0
 fi
 
-# Default epics file
+# Default epics file (AF-2026-05-21-25 canonical-first with legacy fallback).
 if [ -z "$EPICS_FILE" ]; then
-  EPICS_FILE="docs/planning-artifacts/epics-and-stories.md"
+  if [ -f ".gaia/artifacts/planning-artifacts/epics-and-stories.md" ]; then
+    EPICS_FILE=".gaia/artifacts/planning-artifacts/epics-and-stories.md"
+  else
+    EPICS_FILE="docs/planning-artifacts/epics-and-stories.md"
+  fi
 fi
 if [ ! -f "$EPICS_FILE" ]; then
   echo "no-match"
