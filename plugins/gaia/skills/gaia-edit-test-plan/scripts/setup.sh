@@ -63,11 +63,22 @@ else
 fi
 
 # ---------- 2b. Guard: test-plan.md must already exist ----------
+# AF-2026-05-21-19 three-tier path resolution (mirrors AF-21-12/-14 flat elif chain):
+#   Tier 1 — TEST_PLAN_PATH env-var override wins when set.
+#   Tier 2 — positive pre-ADR-111 evidence (legacy file exists AND canonical
+#            dir does NOT) → use legacy docs/test-artifacts/test-plan.md.
+#   Tier 3 — canonical default: .gaia/artifacts/test-artifacts/test-plan.md per ADR-111.
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}"
-TEST_PLAN_PATH="$PROJECT_ROOT/docs/test-artifacts/test-plan.md"
+if [ -z "${TEST_PLAN_PATH:-}" ]; then
+  if [ -f "$PROJECT_ROOT/docs/test-artifacts/test-plan.md" ] && [ ! -d "$PROJECT_ROOT/.gaia/artifacts/test-artifacts" ]; then
+    TEST_PLAN_PATH="$PROJECT_ROOT/docs/test-artifacts/test-plan.md"
+  else
+    TEST_PLAN_PATH="$PROJECT_ROOT/.gaia/artifacts/test-artifacts/test-plan.md"
+  fi
+fi
 
 if [ ! -f "$TEST_PLAN_PATH" ]; then
-  log "test-plan.md not found at $TEST_PLAN_PATH — edit-test-plan requires an existing test plan (non-fatal in setup)"
+  log "test-plan.md not found at $TEST_PLAN_PATH (canonical .gaia/artifacts/test-artifacts/test-plan.md or legacy docs/test-artifacts/test-plan.md) — edit-test-plan requires an existing test plan (non-fatal in setup)"
 fi
 
 # ---------- 3. Load checkpoint state ----------

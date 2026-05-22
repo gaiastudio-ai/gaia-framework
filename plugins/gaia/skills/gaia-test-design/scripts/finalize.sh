@@ -5,7 +5,7 @@
 # 8-item post-completion checklist (6 script-verifiable + 2 LLM-checkable)
 # derived from the V1 test-design checklist (see the
 # docs/v1-v2-command-gap-analysis.md §5 entry for the verbatim V1 source).
-# See docs/implementation-artifacts/E42-S14-* for the V1 → V2 mapping.
+# See .gaia/artifacts/implementation-artifacts/E42-S14-* for the V1 → V2 mapping.
 #
 # Responsibilities (per brief §Cluster 11 + story E42-S14):
 #   1. Run the script-verifiable subset of the 8 V1 checklist items
@@ -34,7 +34,7 @@
 #                       not exist or is empty, AC3 fires — a single "no
 #                       artifact to validate" violation is emitted and
 #                       the script exits non-zero. When unset, the
-#                       script looks for docs/test-artifacts/test-plan.md
+#                       script looks for .gaia/artifacts/test-artifacts/test-plan.md
 #                       relative to the current working directory. If
 #                       neither is present, the checklist run is skipped
 #                       (classic Cluster 11 behaviour — observability
@@ -59,7 +59,7 @@ die() { log "$*"; exit 1; }
 # ---------- 0. Resolve artifact paths ----------
 # TEST_PLAN_ARTIFACT wins when set (test fixtures + explicit invocation).
 # The checklist only runs when TEST_PLAN_ARTIFACT is EXPLICITLY set —
-# we do NOT auto-pick up docs/test-artifacts/test-plan.md on disk,
+# we do NOT auto-pick up .gaia/artifacts/test-artifacts/test-plan.md on disk,
 # because the audit-v2-migration harness (enriched fixture mode) may
 # pre-create a placeholder test-plan.md to satisfy downstream skills'
 # validate-gate.sh probes. Auto-validating that placeholder would be a
@@ -118,7 +118,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && { [ ! -f "$ARTIFACT" ] || [ ! -s "$ARTIFAC
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-test-design to produce docs/test-artifacts/test-plan.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-test-design to produce .gaia/artifacts/test-artifacts/test-plan.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   log "running 8-item checklist against $ARTIFACT"
@@ -127,7 +127,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   # --- Script-verifiable items (6) ---
 
   # SV-01 / V1 "Output file saved to {test_artifacts}/test-plan.md"
-  item_check "SV-01" "Output file saved to docs/test-artifacts/test-plan.md" \
+  item_check "SV-01" "Output file saved to .gaia/artifacts/test-artifacts/test-plan.md" \
     "$(file_exists "$ARTIFACT")"
   # SV-02 / structural — output file non-empty
   item_check "SV-02" "Output artifact is non-empty" \
