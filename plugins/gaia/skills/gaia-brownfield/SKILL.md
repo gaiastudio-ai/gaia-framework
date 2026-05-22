@@ -318,7 +318,7 @@ Write to `.gaia/artifacts/planning-artifacts/prd.md`.
 
 ### 8b — Adversarial Review & PRD Refinement
 
-Spawn a subagent that runs the shared adversarial-review task against the PRD. Target `.gaia/artifacts/planning-artifacts/prd.md`; target label `prd`. When the subagent returns, verify `adversarial-review-prd-{date}.md` exists in `.gaia/artifacts/planning-artifacts/`. Extract critical and high severity findings. For each critical/high finding, add a new requirement or refine an existing requirement in the PRD. Add a `## Review Findings Incorporated` section to the PRD listing each finding, its severity, and how it was addressed.
+Dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique the PRD. Target `.gaia/artifacts/planning-artifacts/prd.md`; report output path `.gaia/artifacts/planning-artifacts/adversarial-review-prd-{YYYY-MM-DD}.md` (use today's UTC date). Sage's persona at `plugins/gaia/agents/adversarial-reviewer.md` defines the review structure, severity vocabulary (CRITICAL/WARNING/INFO per ADR-037), and brownfield-relevant lenses (documented-vs-actual drift, hidden coupling, known-knowns vs known-unknowns). When the subagent returns, verify `adversarial-review-prd-{date}.md` exists in `.gaia/artifacts/planning-artifacts/`. Per ADR-063 (Mandatory Verdict Surfacing), display the returned ADR-037 envelope to the user. Extract critical and high severity findings. For each critical/high finding, add a new requirement or refine an existing requirement in the PRD. Add a `## Review Findings Incorporated` section to the PRD listing each finding, its severity, and how it was addressed.
 
 ### 8c — Code-Verified Review
 

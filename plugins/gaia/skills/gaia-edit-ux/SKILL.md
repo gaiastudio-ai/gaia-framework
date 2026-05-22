@@ -103,8 +103,8 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to a
 
 - Read `${CLAUDE_PLUGIN_ROOT}/knowledge/adversarial-triggers.yaml` to evaluate trigger rules. (This policy table ships inside the plugin under ADR-041's `knowledge/` convention; the legacy v1 location `_gaia/_config/adversarial-triggers.yaml` is retired and no longer used.) Determine the current `change_type`: if invoked with a change_type context (e.g., from add-feature triage), use that value. If no context is available, infer from the change scope: minor edits map to "low-risk-enhancement", significant feature additions map to "feature".
 - Look up the trigger rule for `change_type` + artifact "ux-design". If adversarial is false for this combination: skip adversarial review — mark "Review Findings Incorporated" as "Adversarial review not triggered — change type: {change_type} per adversarial-triggers.yaml". Proceed to Step 8.
-- If adversarial is true: spawn a subagent to run the adversarial review task against `.gaia/artifacts/planning-artifacts/ux-design.md`.
-- When subagent returns: verify `adversarial-review-ux-design-*.md` exists in `.gaia/artifacts/planning-artifacts/`.
+- If adversarial is true: dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique `.gaia/artifacts/planning-artifacts/ux-design.md`. The dispatch prompt MUST specify (a) the artifact path to review and (b) the report output path `.gaia/artifacts/planning-artifacts/adversarial-review-ux-design-{YYYY-MM-DD}.md` (use today's UTC date). Sage's persona at `plugins/gaia/agents/adversarial-reviewer.md` defines the review structure and UX-specific lenses (accessibility, empty/loading/error states, adversarial users, localization).
+- When the subagent returns: verify `adversarial-review-ux-design-*.md` exists in `.gaia/artifacts/planning-artifacts/`. Per ADR-063, display the returned ADR-037 envelope (status + summary + findings) to the user.
 
 ### Step 7 — Incorporate Review Findings
 
