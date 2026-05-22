@@ -152,6 +152,31 @@ Multiple violations are emitted as an ordered list. Field names use dotted-path 
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-ci-setup 9 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=output-generated --paths .gaia/artifacts/test-artifacts/ci-setup.md`
 
+## Regen Contract — `gaia-` Prefix Is the Ownership Boundary (ADR-114, E98-S1)
+
+`/gaia-config-ci --regenerate` is permitted to overwrite **only** files classified as `generated` by the canonical helper `${CLAUDE_PLUGIN_ROOT}/scripts/lib/ci-prefix-detection.sh`. Source the helper and call `gaia_ci_classify <path>` to obtain one of:
+
+| Classification | Match rule (first match wins) | Regen behavior |
+|---|---|---|
+| `overlay` | `gaia-*.user-jobs.yml` OR `gaia-*.user-steps.yml` | NEVER overwrite. Stitch via `ci-regen-user-steps.sh` (see Sub-flow C step 2). |
+| `generated` | basename starts with `gaia-` (and did not match overlay) | Eligible for regen. Header + body fully overwritten. |
+| `user-authored` | basename starts with `user-` | NEVER touch. Refuse with actionable error citing ADR-114. |
+| `unprefixed` | none of the above | NEVER touch. Route through the E98-S5 auto-rename migration prompt per FR-519. |
+
+The four-value enum is exhaustive and ordered — overlay precedence is load-bearing so that `gaia-ci.user-jobs.yml` is classified `overlay` (not `generated`), preventing regen from stomping overlay files. The `unprefixed` state is the migration-trigger surface per FR-519 and is intentionally distinct from `user-authored` (fail-safe-conservative fallback).
+
+Refuse-to-touch error for `user-authored` / `overlay` / `unprefixed`:
+
+```
+/gaia-config-ci: refusing to overwrite <path> (classification: <kind>).
+  Regen owns gaia-*.yml only — per ADR-114's CI customization layered model.
+  - user-authored files: yours; regen will never modify them.
+  - overlay files (gaia-*.user-jobs.yml / gaia-*.user-steps.yml): stitched, never overwritten.
+  - unprefixed files: run /gaia-config-ci to migrate via the E98-S5 auto-rename flow (FR-519).
+```
+
+`ci-prefix-detection.sh` is the single source of truth for this classification. Sub-flow A's `ci-regen-detect-edit.sh` MUST consult `gaia_ci_classify` before scanning for manual edits — no file outside the `generated` class is a candidate for the regen loop.
+
 ## `--regenerate` Mode (E71-S4)
 
 When the user invokes `/gaia-config-ci --regenerate`, this mode replaces Steps 1-9 entirely. It is the deterministic refresh path for previously-generated workflow files. The five sub-flows below map 1:1 to AC1-AC10 (TS-01..TS-12). The mode does not write a step-level checkpoint — it is a re-entry into the generator, not a new phase, and the existing Step 9 checkpoint covers the regenerated artifact.
