@@ -99,7 +99,7 @@ _step1_body() {
 @test "AC2: Step 1 prose references the brainstorm artifact glob" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
-  echo "$body" | grep -qE 'brainstorm-\*\.md|brainstorm\*\.md|docs/creative-artifacts/brainstorm'
+  echo "$body" | grep -qE 'brainstorm-\*\.md|brainstorm\*\.md|(docs|\.gaia/artifacts)/creative-artifacts/brainstorm'
 }
 
 # ---------- AC3: graceful fallback prose (no halt for small artifacts) ----------
@@ -122,6 +122,7 @@ _step1_body() {
 
 # ---------- Regression: output file path unchanged (DoD line) ----------
 
-@test "regression: output path docs/creative-artifacts/product-brief- is unchanged" {
-  grep -qE 'docs/creative-artifacts/product-brief-' "$SKILL_FILE"
+@test "regression: output path product-brief- is unchanged (canonical post-AF-21-20)" {
+  # AF-2026-05-21-20 canonicalized this path. Accept canonical or legacy.
+  grep -qE '(docs|\.gaia/artifacts)/creative-artifacts/product-brief-' "$SKILL_FILE"
 }
