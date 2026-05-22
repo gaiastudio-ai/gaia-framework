@@ -180,10 +180,22 @@ function generateChangelog(commits, version) {
 
 // CLI mode
 if (require.main === module) {
-  const input = process.argv[2];
-  if (!input) {
-    console.error("Usage: node scripts/classify-commits.js <commits-encoded>");
-    process.exit(1);
+  // AF-2026-05-22-2: support --stdin to avoid ARG_MAX (E_2BIG) failures when
+  // the release workflow processes large commit ranges (e.g., the sprint-52
+  // staging→main merge with 45+ commits exceeded the Linux argv limit).
+  // Backwards-compat: argv[2] still works for small ranges and legacy callers.
+  let input;
+  if (process.argv[2] === "--stdin") {
+    input = require("fs").readFileSync(0, "utf8");
+  } else {
+    input = process.argv[2];
+    if (!input) {
+      console.error(
+        "Usage: node scripts/classify-commits.js <commits-encoded>\n" +
+        "       node scripts/classify-commits.js --stdin  < commits-encoded.txt"
+      );
+      process.exit(1);
+    }
   }
 
   // E40-S4: input encoding contract.
