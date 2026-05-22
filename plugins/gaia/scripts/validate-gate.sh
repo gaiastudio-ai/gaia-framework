@@ -177,7 +177,7 @@ gate_path() {
 }
 
 list_gates() {
-  local g pattern rc alt strategy_alt
+  local g pattern rc alt strategy_alt strategy_named
   for g in $SUPPORTED_GATES; do
     if [ "$g" = "file_exists" ]; then
       printf '%s\t%s\n' "$g" "(uses --file <path> args)"
@@ -206,7 +206,15 @@ list_gates() {
       # treatment from E53-S248. The canonical test-plan in projects with
       # an E53-style docs reorganization lives under strategy/.
       case "$g" in
-        test_plan_exists|traceability_exists)
+        test_plan_exists)
+          # AF-2026-05-22-5: also accept strategy/test-strategy.md (renamed by /gaia-test-strategy).
+          alt="${pattern%.md}/index.md"
+          strategy_alt="${pattern%/*}/strategy/${pattern##*/}"
+          strategy_named="${pattern%/*}/strategy/test-strategy.md"
+          printf '%s\t%s OR %s OR %s OR %s\n' "$g" "$pattern" "$strategy_alt" "$strategy_named" "$alt"
+          continue
+          ;;
+        traceability_exists)
           alt="${pattern%.md}/index.md"
           strategy_alt="${pattern%/*}/strategy/${pattern##*/}"
           printf '%s\t%s OR %s OR %s\n' "$g" "$pattern" "$strategy_alt" "$alt"
@@ -338,11 +346,35 @@ check_file_nonempty() {
         fi
         return 0
       fi
+      # AF-2026-05-22-5: /gaia-test-strategy --plan renamed the artifact from
+      # test-plan.md to test-strategy.md (and ships under strategy/). Accept
+      # both filenames so the documented happy path /gaia-test-strategy --plan
+      # → /gaia-create-epics succeeds without a workaround. Sibling resolution
+      # arms above (strategy/test-plan.md, test-plan/index.md) remain unchanged.
+      strategy_named="$dir/strategy/test-strategy.md"
+      if [ -f "$strategy_named" ]; then
+        if [ ! -s "$strategy_named" ]; then
+          abs=$(abs_path "$strategy_named")
+          warn "$gate failed — file is empty (0 bytes): $abs"
+          return 1
+        fi
+        return 0
+      fi
       ;;
   esac
   # No layout exists — report the flat path (log-parser contract).
+  # AF-2026-05-22-5: when the test_plan gate fails, also list the alternate
+  # canonical paths so users aren't pointed at the legacy/flat location only.
   abs=$(abs_path "$filepath")
-  warn "$gate failed — expected: $abs"
+  case "$gate" in
+    test_plan_exists)
+      dir="${filepath%/*}"
+      warn "$gate failed — expected one of: $abs OR $(abs_path "$dir/strategy/test-plan.md") OR $(abs_path "$dir/strategy/test-strategy.md") OR $(abs_path "${filepath%.md}/index.md")"
+      ;;
+    *)
+      warn "$gate failed — expected: $abs"
+      ;;
+  esac
   return 1
 }
 

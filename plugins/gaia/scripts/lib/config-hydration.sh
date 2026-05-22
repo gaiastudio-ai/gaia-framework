@@ -375,17 +375,39 @@ _ch_insert_audit_comment() {
 config_hydration_resolve_target() {
   local target="${CONFIG_HYDRATION_TARGET:-}"
   if [ -z "$target" ]; then
+    # Tier 1: GAIA_CONFIG_DIR override (E97-S1).
     if [ -n "${GAIA_CONFIG_DIR:-}" ] && [ -f "${GAIA_CONFIG_DIR}/project-config.yaml" ]; then
       target="${GAIA_CONFIG_DIR}/project-config.yaml"
     fi
+    # Tier 2 (AF-2026-05-22-5): CLAUDE_PROJECT_ROOT canonical .gaia/config/ —
+    # this is where /gaia-init actually writes post-ADR-111. Previously the
+    # resolver fell straight through to the legacy config/ path, causing
+    # /gaia-create-arch's hydrate-config step to skip with "no
+    # config/project-config.yaml found" even on greenfield projects that
+    # had a properly initialized .gaia/config/project-config.yaml.
+    if [ -z "$target" ] && [ -n "${CLAUDE_PROJECT_ROOT:-}" ] \
+       && [ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
+      target="${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"
+    fi
+    # Tier 3: CLAUDE_PLUGIN_ROOT-derived (rare — used by some test harnesses).
     if [ -z "$target" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
       local pr
       pr="$(cd "${CLAUDE_PLUGIN_ROOT}/../../.." 2>/dev/null && pwd || true)"
-      [ -n "$pr" ] && target="${pr}/config/project-config.yaml"
+      if [ -n "$pr" ] && [ -f "${pr}/.gaia/config/project-config.yaml" ]; then
+        target="${pr}/.gaia/config/project-config.yaml"
+      elif [ -n "$pr" ]; then
+        target="${pr}/config/project-config.yaml"
+      fi
     fi
+    # Tier 4: CLAUDE_PROJECT_ROOT legacy.
     if [ -z "$target" ] && [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
       target="${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
     fi
+    # Tier 5: relative-canonical (post-ADR-111 default for CWD-rooted runs).
+    if [ -z "$target" ] && [ -f ".gaia/config/project-config.yaml" ]; then
+      target=".gaia/config/project-config.yaml"
+    fi
+    # Tier 6: relative-legacy fallback (pre-migration).
     [ -z "$target" ] && target="config/project-config.yaml"
   fi
   printf '%s\n' "$target"
