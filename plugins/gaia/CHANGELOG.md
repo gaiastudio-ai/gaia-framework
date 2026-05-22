@@ -3,6 +3,59 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.173.0] — 2026-05-22
+
+### Added
+
+- (AF-2026-05-22-1) adversarial-reviewer agent (Sage) + wire 6 SKILL.md dispatches (#873)
+- (E93-S6) calibrate sgr-velocity-003 incidental-goal floor for completion-pass sprint shape (#839)
+- (E97-S5) add CI regression guard — path-migration-guard.bats with grep-allowlist
+- (E97-S7) fix release-bot .plugin-version drift; add lockstep guard
+- (E97-S6) stale-comment sweep in resolve-config.sh + validate-gate.sh
+- (E97-S4) derive review-summary-gen.sh CANONICAL_REPORT_RELPATHS from resolved variables
+- (E97-S3) triage class-b mixed-state scripts; fix sprint-status remediation hint
+- (E97-S2) retire migrate-stories-to-canonical-layout.sh to scripts/retired/
+- (E97-S1) wire config-hydration.sh + gaia-help/SKILL.md into lib/gaia-paths.sh
+
+### Changed
+
+- sync main into staging (resolve v1.171.0 version-bump conflict) (#875)
+
+### Fixed
+
+- (AF-2026-05-22-4) memory-sidecar paths canonical in SKILL.md prose (#882)
+- (AF-2026-05-22-3) 5 PRD-dogfooding bugs + minor checkpoint paths (#881)
+- (AF-2026-05-22-2) release-bot ARG_MAX failure on large commit ranges (#878)
+- (AF-2026-05-21-30) final polish — 3 missed display-string canonical refs (#870)
+- (AF-2026-05-21-29) residual canonical-path sweep — 234 lines / 105 files (#869)
+- (AF-2026-05-21-28) config templates + gaia-help.csv canonical-first (#868)
+- (AF-2026-05-21-27) class-1 scripts batch 3 — framework-wide closure (#867)
+- (AF-2026-05-21-26) class-1 scripts batch 2 canonical-first migrations (#866)
+- (AF-2026-05-21-25) class-1 script-side canonical-path migration (#865)
+- (AF-2026-05-21-24) caveat-files surgical canonical-path cleanup (#864)
+- (AF-2026-05-21-23) bulk SKILL.md canonical-path sweep (58 simple files) (#863)
+- (AF-2026-05-21-22) final 10-skill SKILL.md canonical-path sweep (#862)
+- (AF-2026-05-21-21) 9-skill SKILL.md canonical-path sweep (#861)
+- (AF-2026-05-21-20) research cluster SKILL.md canonical-path migration (#860)
+- (AF-2026-05-21-19) test-cluster scripts canonical-path migration (#859)
+- (AF-2026-05-21-18) test-cluster SKILL.md writes to legacy docs/ instead of .gaia/ (#858)
+- (AF-2026-05-21-17) gaia-brownfield writes to legacy docs/ instead of canonical .gaia/ (#857)
+- (AF-2026-05-21-16) gaia-meeting writes to legacy docs/ instead of canonical .gaia/ (#856)
+- (AF-2026-05-21-15) trace + threat-model write to legacy docs/ instead of canonical .gaia/ (#855)
+- (AF-2026-05-21-14) ux cluster writes to legacy docs/ instead of canonical .gaia/ (#854)
+- (AF-2026-05-21-13) epics cluster SKILL.md writes to legacy docs/ instead of canonical .gaia/ (#853)
+- (AF-2026-05-21-12) /gaia-edit-prd writes to legacy docs/ instead of canonical .gaia/ (#852)
+- (AF-2026-05-21-11) arch cluster writes to legacy docs/ instead of canonical .gaia/ (#851)
+- (AF-2026-05-21-10) /gaia-create-prd writes PRD to legacy docs/ instead of canonical .gaia/ (#850)
+- (AF-2026-05-21-9) /gaia-init Phase 0 loses project_kind=claude-code-plugin signal (#847)
+- (AF-2026-05-21-8) 4 scripts default to legacy config/ on greenfield, creating rogue dirs (#844)
+- (AF-2026-05-21-7) 14 scripts default to legacy _memory/ on greenfield, creating rogue dirs (#841)
+- (AF-2026-05-21-6) /gaia-init emits legacy _memory/ paths + path-migration-guard blanket (#837)
+- (AF-2026-05-21-5) statusline.sh unbound CACHE_TS on fresh install + SKILL.md refreshInterval (#836)
+- (AF-2026-05-21-4) repair 3 dogfooding findings from sprint-50 (#833)
+- (AF-2026-05-21-3) validate-against-schema.sh date crash + SKILL.md --full polish (#832)
+- (staging) repair 28 bats failures from ADR-111 path-migration drift (#829)
+
 ## [1.172.0] — 2026-05-22
 
 ## [1.171.0] — 2026-05-22
