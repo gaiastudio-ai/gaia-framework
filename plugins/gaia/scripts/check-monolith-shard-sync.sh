@@ -394,22 +394,30 @@ _compare_monolith() {
 # Main.
 # ---------------------------------------------------------------------------
 
+# AF-2026-05-21-25: resolve artifacts dir canonical-first (.gaia/) with legacy
+# (docs/) fallback for pre-ADR-111 projects.
+if [ -d "$ROOT/.gaia/artifacts/planning-artifacts" ]; then
+  _ARTIFACTS_DIR="$ROOT/.gaia/artifacts/planning-artifacts"
+else
+  _ARTIFACTS_DIR="$ROOT/docs/planning-artifacts"
+fi
+
 # PRD.
 _compare_monolith \
-  "$ROOT/docs/planning-artifacts/prd/prd.md" \
-  "$ROOT/docs/planning-artifacts/prd" \
+  "$_ARTIFACTS_DIR/prd/prd.md" \
+  "$_ARTIFACTS_DIR/prd" \
   "prd"
 
 # Architecture.
 _compare_monolith \
-  "$ROOT/docs/planning-artifacts/architecture/architecture.md" \
-  "$ROOT/docs/planning-artifacts/architecture" \
+  "$_ARTIFACTS_DIR/architecture/architecture.md" \
+  "$_ARTIFACTS_DIR/architecture" \
   "architecture"
 
 # Epics.
 _compare_monolith \
-  "$ROOT/docs/planning-artifacts/epics/epics-and-stories.md" \
-  "$ROOT/docs/planning-artifacts/epics" \
+  "$_ARTIFACTS_DIR/epics/epics-and-stories.md" \
+  "$_ARTIFACTS_DIR/epics" \
   "epics"
 
 # ---------------------------------------------------------------------------
@@ -428,22 +436,30 @@ _compare_monolith \
 
 _check_per_story_status_drift() {
   # Resolve the monolith across the dual layout (E64-S4): the canonical
-  # path is `docs/planning-artifacts/epics/epics-and-stories.md`, but
-  # legacy projects keep it flat at `docs/planning-artifacts/epics-and-stories.md`.
+  # path is `{artifacts_dir}/epics/epics-and-stories.md`, but
+  # legacy projects keep it flat at `{artifacts_dir}/epics-and-stories.md`.
+  # AF-2026-05-21-25: probe canonical .gaia/artifacts/ first, then legacy docs/.
   # Mirror the resolver order in transition-story-status.sh to stay in sync.
   local monolith=""
-  if [[ -f "$ROOT/docs/planning-artifacts/epics-and-stories.md" ]]; then
-    monolith="$ROOT/docs/planning-artifacts/epics-and-stories.md"
-  elif [[ -f "$ROOT/docs/planning-artifacts/epics-and-stories/index.md" ]]; then
-    monolith="$ROOT/docs/planning-artifacts/epics-and-stories/index.md"
-  elif [[ -f "$ROOT/docs/planning-artifacts/epics/epics-and-stories.md" ]]; then
-    monolith="$ROOT/docs/planning-artifacts/epics/epics-and-stories.md"
-  elif [[ -f "$ROOT/docs/planning-artifacts/epics/index.md" ]]; then
-    monolith="$ROOT/docs/planning-artifacts/epics/index.md"
-  else
+  local artifacts_dirs=("$ROOT/.gaia/artifacts/planning-artifacts" "$ROOT/docs/planning-artifacts")
+  for d in "${artifacts_dirs[@]}"; do
+    if [[ -f "$d/epics-and-stories.md" ]]; then
+      monolith="$d/epics-and-stories.md"; break
+    elif [[ -f "$d/epics-and-stories/index.md" ]]; then
+      monolith="$d/epics-and-stories/index.md"; break
+    elif [[ -f "$d/epics/epics-and-stories.md" ]]; then
+      monolith="$d/epics/epics-and-stories.md"; break
+    elif [[ -f "$d/epics/index.md" ]]; then
+      monolith="$d/epics/index.md"; break
+    fi
+  done
+  if [[ -z "$monolith" ]]; then
     return 0
   fi
-  local shard_dir="$ROOT/docs/planning-artifacts/epics"
+  # Shard dir lives under the same artifacts root as the resolved monolith.
+  local monolith_root="${monolith%/*}"
+  monolith_root="${monolith_root%/epics*}"
+  local shard_dir="$monolith_root/epics"
   if [[ ! -d "$shard_dir" ]]; then
     return 0
   fi

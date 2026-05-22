@@ -124,7 +124,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && { [ ! -f "$ARTIFACT" ] || [ ! -s "$ARTIFAC
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-ci-setup to produce docs/test-artifacts/ci-setup.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-ci-setup to produce .gaia/artifacts/test-artifacts/ci-setup.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   log "running 8-item checklist against $ARTIFACT"

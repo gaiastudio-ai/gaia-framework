@@ -54,10 +54,13 @@ die() { log "$*"; exit 1; }
 # directory. A missing artifact is NOT fatal to the observability side
 # effects — the checklist run is simply skipped.
 ARTIFACT=""
+# AF-2026-05-21-25 three-tier idiom.
 if [ -n "${MARKET_RESEARCH_ARTIFACT:-}" ]; then
   ARTIFACT="$MARKET_RESEARCH_ARTIFACT"
-elif [ -f "docs/planning-artifacts/market-research.md" ]; then
+elif [ -f "docs/planning-artifacts/market-research.md" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
   ARTIFACT="docs/planning-artifacts/market-research.md"
+elif [ -f ".gaia/artifacts/planning-artifacts/market-research.md" ]; then
+  ARTIFACT=".gaia/artifacts/planning-artifacts/market-research.md"
 fi
 
 # ---------- 1. Run the 28-item checklist ----------
@@ -150,7 +153,7 @@ if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   printf '\nChecklist: /gaia-market-research (28 items — 18 script-verifiable, 10 LLM-checkable)\n' >&2
 
   # --- Script-verifiable items (18) ---
-  item_check "SV-01" "Output artifact exists at docs/planning-artifacts/market-research.md" \
+  item_check "SV-01" "Output artifact exists at resolved path ($ARTIFACT)" \
     "$([ -f "$ARTIFACT" ] && echo pass || echo fail)"
   item_check "SV-02" "Output artifact is non-empty" "$(file_nonempty "$ARTIFACT")"
 
@@ -240,7 +243,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no market-research artifact found (MARKET_RESEARCH_ARTIFACT unset and no docs/planning-artifacts/market-research.md) — skipping checklist run"
+  log "no market-research artifact found (MARKET_RESEARCH_ARTIFACT unset and no market-research.md at .gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

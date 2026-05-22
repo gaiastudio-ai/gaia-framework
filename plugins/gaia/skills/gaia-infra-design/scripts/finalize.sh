@@ -66,13 +66,14 @@ die() { log "$*"; exit 1; }
 # present the checklist is simply skipped (observability still runs).
 ARTIFACT=""
 ARTIFACT_REQUESTED=0
+# AF-2026-05-21-25 three-tier idiom: env-var → positive-evidence legacy → canonical default.
 if [ -n "${INFRA_DESIGN_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$INFRA_DESIGN_ARTIFACT"
-else
-  if [ -f "docs/planning-artifacts/infrastructure-design.md" ]; then
-    ARTIFACT="docs/planning-artifacts/infrastructure-design.md"
-  fi
+elif [ -f "docs/planning-artifacts/infrastructure-design.md" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
+  ARTIFACT="docs/planning-artifacts/infrastructure-design.md"
+elif [ -f ".gaia/artifacts/planning-artifacts/infrastructure-design.md" ]; then
+  ARTIFACT=".gaia/artifacts/planning-artifacts/infrastructure-design.md"
 fi
 
 # ---------- 1. Run the 25-item checklist ----------
@@ -144,7 +145,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && { [ ! -f "$ARTIFACT" ] || [ ! -s "$ARTIFAC
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-infra-design to produce docs/planning-artifacts/infrastructure-design.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-infra-design to produce .gaia/artifacts/planning-artifacts/infrastructure-design.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   log "running 25-item checklist against $ARTIFACT"
@@ -153,7 +154,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   # --- Script-verifiable items (15) ---
 
   # Output Verification (SV-01..SV-02)
-  item_check "SV-01" "Output file saved to docs/planning-artifacts/infrastructure-design.md" \
+  item_check "SV-01" "Output file saved to resolved path ($ARTIFACT)" \
     "$(file_exists "$ARTIFACT")"
   item_check "SV-02" "Output artifact is non-empty" "$(file_nonempty "$ARTIFACT")"
 
@@ -225,7 +226,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no infrastructure-design artifact found (INFRA_DESIGN_ARTIFACT unset and no docs/planning-artifacts/infrastructure-design.md) — skipping checklist run"
+  log "no infrastructure-design artifact found (INFRA_DESIGN_ARTIFACT unset and no infrastructure-design.md at .gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 
