@@ -12,7 +12,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -63,7 +63,7 @@ Ask the user, in order, and wait for a response on each:
 - **"Who are the key stakeholders?"**
 - **"Are there specific requirements gaps or assumptions from the research that you want to validate?"**
 
-> `!scripts/write-checkpoint.sh gaia-advanced-elicitation 1 elicitation_topic="$ELICITATION_TOPIC" technique="$TECHNIQUE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-advanced-elicitation 1 elicitation_topic="$ELICITATION_TOPIC" technique="$TECHNIQUE"`
 
 ### Step 2 — Method Selection
 
@@ -75,7 +75,7 @@ Ask the user:
 
 - If user defers: recommend 2-3 methods based on the project context.
 
-> `!scripts/write-checkpoint.sh gaia-advanced-elicitation 2 elicitation_topic="$ELICITATION_TOPIC" technique="$TECHNIQUE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-advanced-elicitation 2 elicitation_topic="$ELICITATION_TOPIC" technique="$TECHNIQUE"`
 
 ### Step 3 — Elicitation Execution
 
@@ -92,7 +92,7 @@ For each selected method, execute the structured questioning flow:
 
 Document all requirements discovered during each method.
 
-> `!scripts/write-checkpoint.sh gaia-advanced-elicitation 3 elicitation_topic="$ELICITATION_TOPIC" technique="$TECHNIQUE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-advanced-elicitation 3 elicitation_topic="$ELICITATION_TOPIC" technique="$TECHNIQUE"`
 
 ### Step 4 — Requirements Synthesis
 
@@ -102,7 +102,7 @@ Document all requirements discovered during each method.
 - Tag each requirement with source method and confidence level.
 - Identify gaps where further elicitation is needed.
 
-> `!scripts/write-checkpoint.sh gaia-advanced-elicitation 4 elicitation_topic="$ELICITATION_TOPIC" technique="$TECHNIQUE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-advanced-elicitation 4 elicitation_topic="$ELICITATION_TOPIC" technique="$TECHNIQUE"`
 
 ### Step 5 — Generate Output
 
@@ -121,7 +121,7 @@ Write a structured elicitation report to `.gaia/artifacts/planning-artifacts/eli
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/elicitation-report-${DATE}.md`
 
-> `!scripts/write-checkpoint.sh gaia-advanced-elicitation 5 elicitation_topic="$ELICITATION_TOPIC" technique="$TECHNIQUE" --paths .gaia/artifacts/planning-artifacts/elicitation-report-${DATE}.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-advanced-elicitation 5 elicitation_topic="$ELICITATION_TOPIC" technique="$TECHNIQUE" --paths .gaia/artifacts/planning-artifacts/elicitation-report-${DATE}.md`
 
 ## Finalize
 

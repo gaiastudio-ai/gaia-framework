@@ -46,7 +46,7 @@ PHASE1_SLUGS=(
     [ -f "$file" ] || continue
     # Match any `> _memory/checkpoints` redirect. Real shell redirects
     # (in a bash block) would hit this; markdown blockquote lines like
-    # `> \`!scripts/write-checkpoint.sh ...\`` would not because the > is
+    # `> \`!(\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint.sh ...\`` would not because the > is
     # followed by a space and a backtick, not a path.
     local hit
     hit=$(grep -nE '>\s*_memory/checkpoints' "$file" || true)

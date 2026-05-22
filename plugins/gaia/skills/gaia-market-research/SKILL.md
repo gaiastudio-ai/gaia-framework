@@ -12,7 +12,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -47,7 +47,7 @@ Ask the user, in order, and wait for a response on each:
 - **"Are there specific competitors you want analyzed?"**
 - **"What geographic scope? (global, regional, local)"**
 
-> `!scripts/write-checkpoint.sh gaia-market-research 1 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-market-research 1 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET"`
 
 ### Step 2 — Web Access Check
 
@@ -55,7 +55,7 @@ Ask the user, in order, and wait for a response on each:
 - If web access is available, proceed with live web research in subsequent steps.
 - If no web access, notify the user: *"Web access unavailable. Proceeding with user-provided data and general knowledge. Results may be less comprehensive."*
 
-> `!scripts/write-checkpoint.sh gaia-market-research 2 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-market-research 2 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET"`
 
 ### Step 3 — Competitive Analysis
 
@@ -63,7 +63,7 @@ Ask the user, in order, and wait for a response on each:
 - For each competitor capture: strengths, weaknesses, market position, pricing model.
 - Create a competitive positioning matrix.
 
-> `!scripts/write-checkpoint.sh gaia-market-research 3 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-market-research 3 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET"`
 
 ### Step 4 — Customer Research
 
@@ -71,7 +71,7 @@ Ask the user, in order, and wait for a response on each:
 - Analyze user behavior patterns and needs.
 - Identify underserved needs and market gaps.
 
-> `!scripts/write-checkpoint.sh gaia-market-research 4 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-market-research 4 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET"`
 
 ### Step 5 — Market Sizing
 
@@ -80,7 +80,7 @@ Ask the user, in order, and wait for a response on each:
 - Estimate Serviceable Obtainable Market (SOM).
 - State all assumptions clearly.
 
-> `!scripts/write-checkpoint.sh gaia-market-research 5 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-market-research 5 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET"`
 
 ### Step 6 — Generate Output
 
@@ -99,7 +99,7 @@ Write a structured market research report to `.gaia/artifacts/planning-artifacts
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/market-research.md`
 
-> `!scripts/write-checkpoint.sh gaia-market-research 6 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET" --paths .gaia/artifacts/planning-artifacts/market-research.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-market-research 6 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET" --paths .gaia/artifacts/planning-artifacts/market-research.md`
 
 ### Step 7 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -128,7 +128,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). The `market-research` artifact_type may not have a canonical document-ruleset; per E44-S1 AC-EC1 Val skips structural validation for unknown types and still runs factual-claim validation.
 
-> `!scripts/write-checkpoint.sh gaia-market-research 7 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/market-research.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-market-research 7 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/market-research.md`
 
 ## Validation
 

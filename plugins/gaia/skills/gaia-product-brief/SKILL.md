@@ -46,7 +46,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -108,7 +108,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Scan any other creative outputs under `.gaia/artifacts/creative-artifacts/` for relevant indexes.
 - Summarize what upstream context was found (section list, not full content) and flag any missing inputs to the user before proceeding.
 
-> `!scripts/write-checkpoint.sh gaia-product-brief 1 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-product-brief 1 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
 
 ### Step 2 — Vision Statement
 
@@ -116,21 +116,21 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Incorporate insights from prior analysis if available.
 - Elena (analyst) asks the user: **"What is the core vision for this product?"** — wait for a response before moving on.
 
-> `!scripts/write-checkpoint.sh gaia-product-brief 2 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-product-brief 2 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
 
 ### Step 3 — Target Users
 
 - Define user personas based on research.
 - For each persona capture: name, role, goals, pain points, context.
 
-> `!scripts/write-checkpoint.sh gaia-product-brief 3 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-product-brief 3 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
 
 ### Step 4 — Problem Statement
 
 - Articulate the core problem being solved.
 - Ground the statement in user research, market findings, and domain landscape where available.
 
-> `!scripts/write-checkpoint.sh gaia-product-brief 4 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-product-brief 4 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
 
 ### Step 5 — Proposed Solution
 
@@ -138,7 +138,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Capture key features and differentiators.
 - Reference technical research for technology selection rationale if available.
 
-> `!scripts/write-checkpoint.sh gaia-product-brief 5 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-product-brief 5 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
 
 ### Step 6 — Scope, Risks and Competitive Landscape
 
@@ -146,14 +146,14 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Document known risks, dependencies, and assumptions the solution depends on.
 - Summarize competitive landscape from upstream brainstorm and market research — key competitors, positioning, and differentiation.
 
-> `!scripts/write-checkpoint.sh gaia-product-brief 6 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-product-brief 6 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
 
 ### Step 7 — Success Metrics
 
 - Define measurable KPIs and success criteria.
 - Include both quantitative and qualitative metrics.
 
-> `!scripts/write-checkpoint.sh gaia-product-brief 7 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-product-brief 7 product_name="$PRODUCT_NAME" target_user="$TARGET_USER"`
 
 ### Step 8 — Generate Output
 
@@ -177,7 +177,7 @@ Where `{slug}` is a short kebab-case slug derived from the product vision (e.g.,
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/creative-artifacts/product-brief-${SLUG}.md`
 
-> `!scripts/write-checkpoint.sh gaia-product-brief 8 product_name="$PRODUCT_NAME" target_user="$TARGET_USER" --paths .gaia/artifacts/creative-artifacts/product-brief-${SLUG}.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-product-brief 8 product_name="$PRODUCT_NAME" target_user="$TARGET_USER" --paths .gaia/artifacts/creative-artifacts/product-brief-${SLUG}.md`
 
 ### Step 9 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -206,7 +206,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). The `product-brief` artifact_type uses Val's factual-claim validation against ground-truth plus the document-ruleset for product briefs (per E44-S1).
 
-> `!scripts/write-checkpoint.sh gaia-product-brief 9 product_name="$PRODUCT_NAME" target_user="$TARGET_USER" stage=val-auto-review --paths .gaia/artifacts/creative-artifacts/product-brief-${SLUG}.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-product-brief 9 product_name="$PRODUCT_NAME" target_user="$TARGET_USER" stage=val-auto-review --paths .gaia/artifacts/creative-artifacts/product-brief-${SLUG}.md`
 
 ## Validation
 

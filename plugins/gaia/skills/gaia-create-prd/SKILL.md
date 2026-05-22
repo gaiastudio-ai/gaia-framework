@@ -18,7 +18,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -70,7 +70,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Extract section anchors (not contents) for: vision, target users, problem statement, proposed solution, scope and boundaries, risks and assumptions, competitive landscape, success metrics. Section bodies are loaded on demand by later steps.
 - If `.gaia/artifacts/planning-artifacts/prd.md` already exists: warn "An existing PRD was found at .gaia/artifacts/planning-artifacts/prd.md. Continuing will overwrite it. Confirm with user before proceeding."
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 1 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 1 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 2 — User Interviews
 
@@ -84,7 +84,7 @@ The pm subagent asks the user:
 
 Structure responses into user need statements.
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 2 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 2 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 3 — Functional Requirements
 
@@ -95,7 +95,7 @@ Delegate to the **pm** subagent (Derek) to elicit and structure functional requi
 - Assign unique IDs: FR-001, FR-002, ... — IDs are sequential and never reused.
 - Cross-reference with product brief: verify each FR is traceable to the brief's proposed solution or key features. Flag any FR that introduces scope not present in the brief — confirm with user before including.
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 3 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 3 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 4 — Non-Functional Requirements
 
@@ -106,21 +106,21 @@ Delegate to the **pm** subagent (Derek) to define non-functional requirements:
 - Assign unique IDs: NFR-001, NFR-002, ... — IDs are sequential and never reused.
 - Each NFR MUST include a measurable target with a specific threshold (e.g., "response time < 200ms at p95", "99.9% uptime", "WCAG 2.1 AA compliance"). Reject vague qualifiers like "fast", "secure", "scalable" without numeric criteria.
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 4 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 4 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 5 — User Journeys
 
 - Map key user flows with happy path and error paths.
 - Include: entry point, steps, decision points, exit conditions.
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 5 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 5 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 6 — Data Requirements
 
 - Identify data stored, processed, and exchanged.
 - Define data retention, privacy, and security policies.
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 6 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 6 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 7 — Integration Requirements
 
@@ -128,7 +128,7 @@ Delegate to the **pm** subagent (Derek) to define non-functional requirements:
 - Define integration patterns and data exchange formats.
 - For each critical dependency: define failure mode, fallback behavior, and SLA expectations.
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 7 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 7 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 8 — Out of Scope
 
@@ -136,7 +136,7 @@ Delegate to the **pm** subagent (Derek) to define non-functional requirements:
 - For each exclusion: state what is excluded and why (deferred, not needed, separate product).
 - Cross-reference with product brief: items listed as out-of-scope in the brief's "Scope and Boundaries" section must appear here. Flag any brief out-of-scope item missing from this list.
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 8 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 8 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 9 — Constraints and Assumptions
 
@@ -144,7 +144,7 @@ Delegate to the **pm** subagent (Derek) to define non-functional requirements:
 - List all assumptions that requirements depend on.
 - Cross-reference with product brief: carry forward every risk and assumption from the brief's "Risks and Assumptions" section. Each must appear in this section or be explicitly noted as resolved with justification.
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 9 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 9 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 10 — Success Criteria
 
@@ -152,7 +152,7 @@ Delegate to the **pm** subagent (Derek) to define non-functional requirements:
 - Define overall product success metrics.
 - Cross-reference with product brief: every metric from the brief's "Success Metrics" section must have a corresponding measurable criterion in the PRD. Flag any brief metric not covered.
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 10 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 10 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 11 — Generate Output
 
@@ -176,7 +176,7 @@ Write the PRD to `.gaia/artifacts/planning-artifacts/prd.md` with all sections p
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/prd.md`
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 11 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" --paths .gaia/artifacts/planning-artifacts/prd.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 11 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" --paths .gaia/artifacts/planning-artifacts/prd.md`
 
 ### Step 12 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -205,7 +205,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation MUST run against the Step 11 primary write (artifact-as-drafted), not the post-adversarial revision produced by the next steps — see story E44-S4 AC3 rationale.
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 12 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/prd.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 12 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/prd.md`
 
 ### Step 13 — Adversarial Review
 
@@ -214,7 +214,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 - If adversarial is true: dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique `.gaia/artifacts/planning-artifacts/prd.md`. The dispatch prompt MUST specify (a) the artifact path to review and (b) the report output path `.gaia/artifacts/planning-artifacts/adversarial-review-prd-{YYYY-MM-DD}.md` (use today's UTC date). Sage's persona at `plugins/gaia/agents/adversarial-reviewer.md` defines the review structure, severity vocabulary (CRITICAL/WARNING/INFO per ADR-037), and lens checklist for PRD artifacts.
 - When the subagent returns: verify `adversarial-review-prd-*.md` exists in `.gaia/artifacts/planning-artifacts/`. Per ADR-063 (Mandatory Verdict Surfacing), display the returned ADR-037 envelope status + summary + findings list to the user before proceeding to Step 14. A `CRITICAL` verdict does NOT halt the cascade — adversarial findings are advisory and incorporated in Step 14; Val (Step 12) is the gating reviewer for hard-halt semantics.
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 13 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 13 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 14 — Incorporate Adversarial Findings
 
@@ -226,7 +226,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/prd.md`
 
-> `!scripts/write-checkpoint.sh gaia-create-prd 14 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" --paths .gaia/artifacts/planning-artifacts/prd.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 14 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" --paths .gaia/artifacts/planning-artifacts/prd.md`
 
 ## Validation
 
