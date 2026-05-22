@@ -12,7 +12,7 @@ byte-identical artifact (no-op fix), and Val returns the same findings on
 the next iteration. The skill is wired with the canonical Auto-Fix Loop
 Pattern (see `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 § "Auto-Fix Loop Pattern"). The checkpoint write path lives at
-`_memory/checkpoints/{skill-name}/{timestamp}-step-{N}.json` per ADR-059.
+`.gaia/memory/checkpoints/{skill-name}/{timestamp}-step-{N}.json` per ADR-059.
 
 ## Steps
 

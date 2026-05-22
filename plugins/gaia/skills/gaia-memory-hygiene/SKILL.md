@@ -14,15 +14,15 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are running a cross-sidecar hygiene pass across the project's agent memory. This skill discovers every `_memory/*-sidecar/` directory, classifies each sidecar by tier, scans each decision-log / ground-truth / conversation-context file under strict JIT discipline, cross-references decisions against current planning and architecture artifacts, classifies each entry into one of five statuses (ACTIVE, STALE, CONTRADICTED, ORPHANED, UNVERIFIABLE-FORMAT), reports token-budget pressure per agent, recommends archival for budget / staleness / age, triggers ground-truth refresh for lagging Tier 1 agents, and — only with explicit per-entry user confirmation — applies Keep / Archive / Delete actions to sidecar files.
+You are running a cross-sidecar hygiene pass across the project's agent memory. This skill discovers every `.gaia/memory/*-sidecar/` directory, classifies each sidecar by tier, scans each decision-log / ground-truth / conversation-context file under strict JIT discipline, cross-references decisions against current planning and architecture artifacts, classifies each entry into one of five statuses (ACTIVE, STALE, CONTRADICTED, ORPHANED, UNVERIFIABLE-FORMAT), reports token-budget pressure per agent, recommends archival for budget / staleness / age, triggers ground-truth refresh for lagging Tier 1 agents, and — only with explicit per-entry user confirmation — applies Keep / Archive / Delete actions to sidecar files.
 
 This skill is the native Claude Code conversion of the legacy `memory-hygiene` workflow (E28-S107, Cluster 14). The 12-step prose structure, JIT discipline, cross-reference cap, token approximation, and 7-section enhanced report layout are preserved from the legacy `instructions.xml` — parity confirmed per NFR-053.
 
-**Main context semantics (ADR-041):** This skill runs under `context: main`. It reads `_memory/`, reads `.gaia/artifacts/planning-artifacts/`, `.gaia/artifacts/implementation-artifacts/`, `.gaia/artifacts/test-artifacts/`, and writes a hygiene report plus (on user confirmation) targeted sidecar edits.
+**Main context semantics (ADR-041):** This skill runs under `context: main`. It reads `.gaia/memory/` (canonical, post-ADR-111; falls back to legacy `_memory/` only on pre-migration projects), reads `.gaia/artifacts/planning-artifacts/`, `.gaia/artifacts/implementation-artifacts/`, `.gaia/artifacts/test-artifacts/`, and writes a hygiene report plus (on user confirmation) targeted sidecar edits.
 
 **Scripts-over-LLM (ADR-042 / FR-325):** Deterministic foundation operations (config resolution, checkpoint writes, lifecycle events) are delegated to `plugins/gaia/scripts/` via inline `!${CLAUDE_PLUGIN_ROOT}/...` calls. Agent sidecar reads use the hybrid memory-loading pattern (ADR-046).
 
-**Hybrid memory loading (ADR-046):** Where per-agent sidecar content needs to be read, the skill invokes `!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh <agent_name> <tier>` where `<tier>` is one of `decision-log`, `ground-truth`, or `all` (see E28-S13 AC1 for the canonical loader signature). Sidecar directory names are resolved from `_memory/config.yaml` `agents.{id}.sidecar` — never hard-coded.
+**Hybrid memory loading (ADR-046):** Where per-agent sidecar content needs to be read, the skill invokes `!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh <agent_name> <tier>` where `<tier>` is one of `decision-log`, `ground-truth`, or `all` (see E28-S13 AC1 for the canonical loader signature). Sidecar directory names are resolved from `.gaia/memory/config.yaml` `agents.{id}.sidecar` — never hard-coded.
 
 ## Critical Rules
 
@@ -31,8 +31,8 @@ This skill is the native Claude Code conversion of the legacy `memory-hygiene` w
 - **Preserve the sidecar file header and marker comment** in all modifications. The `<!-- Decisions will be appended below this line -->` marker and the file title / description block are invariant.
 - **Process sidecars one at a time.** Release previous sidecar content from active context before loading the next (JIT). This is the per-sidecar token budget discipline that keeps the skill within the NFR-048 activation budget.
 - **Archival is never auto-executed.** All recommendations require user confirmation per entry before any file changes are made.
-- **Cross-reference validation scope is limited to the declared matrix** in `_memory/config.yaml` under `cross_references:`. Do NOT traverse arbitrary cross-agent reads — the matrix is the authoritative boundary.
-- **Token approximation is 4 chars per token** (file size in bytes / 4). This value is read from `_memory/config.yaml` `archival.token_approximation` — the skill does not hard-code the ratio.
+- **Cross-reference validation scope is limited to the declared matrix** in `.gaia/memory/config.yaml` under `cross_references:`. Do NOT traverse arbitrary cross-agent reads — the matrix is the authoritative boundary.
+- **Token approximation is 4 chars per token** (file size in bytes / 4). This value is read from `.gaia/memory/config.yaml` `archival.token_approximation` — the skill does not hard-code the ratio.
 - **Sprint-status.yaml is NEVER written by this skill** (Sprint-Status Write Safety rule). The skill only reads sprint-status.yaml for current sprint ID.
 - **Graceful degradation (AC-EC10 — no _memory/ directory):** If `_memory/` does not exist at all, exit gracefully with the message "no sidecars discovered — `_memory/` directory not present" and do NOT create any files.
 - **Token budget guard (AC-EC6, NFR-048):** Per-sidecar JIT release prevents accumulation. If a single decision-log exceeds the per-agent budget, flag the agent as over-budget in the Token Budget Table but complete the scan.
@@ -52,7 +52,7 @@ The skill runs twelve steps in strict order, mirroring the legacy `instructions.
 1. **Dynamic Sidecar Discovery** — tier classification, legacy-filename detection, archive/ exclusion
 2. **Tier-Aware Multi-File Scanning** — per-tier file enumeration with JIT release between sidecars
 3. **Reference Artifact Loading** — architecture.md, prd.md, infrastructure-design.md, test-plan.md, sprint-status.yaml, epics-and-stories.md
-4. **Cross-Reference Validation** — applies the `cross_references:` matrix from `_memory/config.yaml`
+4. **Cross-Reference Validation** — applies the `cross_references:` matrix from `.gaia/memory/config.yaml`
 5. **Stale Detection** — reuses the `stale-detection` section of the shared memory-management skill
 6. **Classify Entries** — assigns one of five statuses to every entry
 7. **Token Budget Reporting** — reuses the `budget-monitoring` section of the shared memory-management skill
@@ -64,14 +64,14 @@ The skill runs twelve steps in strict order, mirroring the legacy `instructions.
 
 ## Step 1 — Dynamic Sidecar Discovery
 
-1. Read `_memory/config.yaml` to load:
+1. Read `.gaia/memory/config.yaml` to load:
    - Tier assignments (`tiers.tier_1.agents`, `tiers.tier_2.agents`, `tiers.tier_3.agents`)
    - Token budgets (`tiers.tier_1.session_budget`, `tiers.tier_2.session_budget`; Tier 3 has `session_budget: null` — no enforcement)
    - Cross-reference matrix (`cross_references:`)
    - Token approximation (`archival.token_approximation`, default 4 chars/token)
    - Budget warn threshold (`archival.budget_warn_at`, default 0.8)
 2. For each agent, resolve the sidecar directory name from the `agents.{agent-id}.sidecar` field. If an agent has no explicit `agents.{id}.sidecar` entry, fall back to `{agent-id}-sidecar/`.
-3. Enumerate all on-disk `_memory/*-sidecar/` directories.
+3. Enumerate all on-disk `.gaia/memory/*-sidecar/` directories.
 4. Union the config-declared sidecars with the on-disk sidecars into a master list. For each sidecar, classify by tier:
    - Agent in `tiers.tier_1.agents` → **Tier 1** (3 files: `ground-truth.md`, `decision-log.md`, `conversation-context.md`)
    - Agent in `tiers.tier_2.agents` → **Tier 2** (2 files: `decision-log.md`, `conversation-context.md`)
@@ -142,7 +142,7 @@ For entries with the `Status:` field:
 
 For entries with `Related:` pointing to other agents' decisions:
 
-- Use the **cross-reference matrix** from `_memory/config.yaml` (`cross_references:`) to determine valid cross-agent reads.
+- Use the **cross-reference matrix** from `.gaia/memory/config.yaml` (`cross_references:`) to determine valid cross-agent reads.
 - For each cross-agent reference: look up the referenced entry's `Status:` in the source agent's decision-log (loaded via `memory-loader.sh <source_agent> decision-log`).
 - If the referenced entry has `Status: superseded` or `Status: archived` → flag as **STALE** with evidence pointing to the superseded entry.
 - If the referenced entry is not found → flag as **ORPHANED**.
@@ -155,9 +155,9 @@ For all entries: scan the `Related:` field for artifact paths and story / epic k
 - Cross-reference story / epic keys against `epics-and-stories.md` — if not found, flag as **ORPHANED**.
 - For ORPHANED candidates: search for semantically similar names and suggest likely renames.
 
-**AC-EC5 — cross-reference matrix missing:** if `cross_references:` is absent from `_memory/config.yaml`, the skill degrades to structural checks + budget reporting only. Log a warning "cross-reference matrix missing from `_memory/config.yaml` — skipping cross-agent validation" and do NOT crash.
+**AC-EC5 — cross-reference matrix missing:** if `cross_references:` is absent from `.gaia/memory/config.yaml`, the skill degrades to structural checks + budget reporting only. Log a warning "cross-reference matrix missing from `.gaia/memory/config.yaml` — skipping cross-agent validation" and do NOT crash.
 
-**Cross-Agent Read Authorisation Matrix (FR-383):** the `cross_references:` block in `_memory/config.yaml` is the authoritative boundary for every cross-agent read this skill performs. The matrix authorises nine canonical reader contexts (each entry is a reader → source/file/mode triple):
+**Cross-Agent Read Authorisation Matrix (FR-383):** the `cross_references:` block in `.gaia/memory/config.yaml` is the authoritative boundary for every cross-agent read this skill performs. The matrix authorises nine canonical reader contexts (each entry is a reader → source/file/mode triple):
 
 - `architect` — reads `pm/decision-log` and `validator/ground-truth`
 - `pm` — reads `architect/decision-log` and `sm/ground-truth`
@@ -169,9 +169,9 @@ For all entries: scan the `Related:` field for artifact paths and story / epic k
 - `validator` — reads `architect`, `pm`, and `sm` `decision-log` (full mode, capped at 50% of session budget)
 - `dev-agents` — reads `validator/ground-truth` and `architect/decision-log`
 
-The matrix is the cross-agent authorisation source of truth — the SKILL.md does NOT duplicate the triples; it points readers to `_memory/config.yaml#cross_references` as the single canonical record. Any reader / source / file combination NOT enumerated above is unauthorised by definition.
+The matrix is the cross-agent authorisation source of truth — the SKILL.md does NOT duplicate the triples; it points readers to `.gaia/memory/config.yaml#cross_references` as the single canonical record. Any reader / source / file combination NOT enumerated above is unauthorised by definition.
 
-**Cross-agent authorisation gate (block-and-log):** before invoking `memory-loader.sh <source_agent> <file>` for ANY cross-reference, the skill MUST verify that the (reader, source_agent, file) triple is present in `_memory/config.yaml#cross_references`. If the triple is NOT present:
+**Cross-agent authorisation gate (block-and-log):** before invoking `memory-loader.sh <source_agent> <file>` for ANY cross-reference, the skill MUST verify that the (reader, source_agent, file) triple is present in `.gaia/memory/config.yaml#cross_references`. If the triple is NOT present:
 
 1. Skip the read — do NOT load the source agent's file.
 2. Log the denial as `cross-ref denied: {reader} → {source}/{file} (not in matrix)` to the report's Detailed Findings (or to a "Cross-Ref Denials" sub-section if present).
@@ -209,7 +209,7 @@ Record evidence for each classification: which artifact section confirms or cont
 
 JIT-load the `budget-monitoring` section from `_gaia/lifecycle/skills/memory-management.md`. Load only the content between `<!-- SECTION: budget-monitoring -->` and `<!-- END SECTION -->` markers.
 
-Apply the budget-monitoring procedure using the file sizes from the Step 2 inventory and tier budgets from `_memory/config.yaml`:
+Apply the budget-monitoring procedure using the file sizes from the Step 2 inventory and tier budgets from `.gaia/memory/config.yaml`:
 
 - Calculate token usage per agent: sum sidecar file sizes and convert via the skill formula (default 4 chars/token from `archival.token_approximation`).
 - Classify each agent by threshold status (**OK** / **warning** at ≥ 0.8 / **critical** at ≥ 0.9 / **over-budget** at ≥ 1.0).
@@ -235,7 +235,7 @@ Classify each recommendation:
 
 - `{N}` = `bytes / token_approximation` rounded to the nearest integer
 - `bytes` is the on-disk byte size of the candidate entry (from the Step 2 content inventory)
-- `token_approximation` is the value loaded from `_memory/config.yaml` `archival.token_approximation` (default 4 chars/token)
+- `token_approximation` is the value loaded from `.gaia/memory/config.yaml` `archival.token_approximation` (default 4 chars/token)
 
 Reuse the same `archival.token_approximation` ratio that drives the Step 7 Token Budget Table — do NOT hard-code a different ratio in archival recommendations. The two outputs share a single source of truth.
 
@@ -245,7 +245,7 @@ Archival is never auto-executed — all recommendations require user confirmatio
 
 ## Step 9 — Ground Truth Refresh Trigger
 
-For each **Tier 1 agent** (as listed in `tiers.tier_1.agents` within `_memory/config.yaml` — e.g., Val, Theo, Derek, Nate) that has a `ground-truth.md` file:
+For each **Tier 1 agent** (as listed in `tiers.tier_1.agents` within `.gaia/memory/config.yaml` — e.g., Val, Theo, Derek, Nate) that has a `ground-truth.md` file:
 
 1. Read the most recent entry's `Sprint:` field from `ground-truth.md`.
 2. Compare against the current sprint ID from `sprint-status.yaml`.
@@ -294,7 +294,7 @@ Tier 1 agents only.
 
 | Agent | Sidecar Dir | Files Found | Recommendation |
 
-For each untiered agent: recommend adding to `_memory/config.yaml` as Tier 3.
+For each untiered agent: recommend adding to `.gaia/memory/config.yaml` as Tier 3.
 
 ### 7. Skipped Sidecars
 
@@ -325,7 +325,7 @@ After all user actions are processed: report a summary of changes made to each s
 
 Ask the user: "Would you like to prune old completed checkpoints? (yes / skip)"
 
-- If yes: read `_memory/checkpoints/completed/` and list all `.yaml` files with dates.
+- If yes: read `.gaia/memory/checkpoints/completed/` and list all `.yaml` files with dates.
 - Ask: "How many sprints of checkpoints to retain? (default: 2)"
 - Delete checkpoint files older than the retention window.
 - Report: `Pruned {N} completed checkpoint(s). Retained {M} within the {retention}-sprint window.`

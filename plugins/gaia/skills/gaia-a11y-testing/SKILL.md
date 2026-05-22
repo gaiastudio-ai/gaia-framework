@@ -89,7 +89,7 @@ Per ADR-077 wiring table, this skill resolves to **Sable (Test Architect)** via:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-test-a11y
-# {"agent_id":"sable","sidecar_path":"_memory/sable-sidecar.md"}
+# {"agent_id":"sable","sidecar_path":".gaia/memory/sable-sidecar.md"}
 ```
 
 Sable owns post-deploy testing across all phases (e2e, perf, dast, a11y).

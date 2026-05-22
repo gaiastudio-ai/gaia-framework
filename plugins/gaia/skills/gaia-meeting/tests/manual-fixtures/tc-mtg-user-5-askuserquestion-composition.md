@@ -18,7 +18,7 @@
    ```
 2. Verify session-state is created with `user_attendance: true`:
    ```
-   grep '^user_attendance:' _memory/meeting-sessions/$(ls -t _memory/meeting-sessions/ | head -1)
+   grep '^user_attendance:' .gaia/memory/meeting-sessions/$(ls -t .gaia/memory/meeting-sessions/ | head -1)
    # expected: user_attendance: true
    ```
 

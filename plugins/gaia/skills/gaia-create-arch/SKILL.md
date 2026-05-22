@@ -301,7 +301,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/architecture.md`
 
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 13 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" --paths .gaia/artifacts/planning-artifacts/architecture.md _memory/architect-sidecar/architecture-decisions.md`
+> `!scripts/write-checkpoint.sh gaia-create-arch 13 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" --paths .gaia/artifacts/planning-artifacts/architecture.md .gaia/memory/architect-sidecar/architecture-decisions.md`
 
 #### Append Architecture Decisions to Sidecar (E46-S6 / FR-354)
 
@@ -312,7 +312,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 > matching architecture document is worse than no sidecar.
 
 > **Sidecar path — fixed.** Write to
-> `_memory/architect-sidecar/architecture-decisions.md`. This path is
+> `.gaia/memory/architect-sidecar/architecture-decisions.md`. This path is
 > not configurable via `global.yaml`; it is fixed by ADR-016 and
 > §10.10 of `architecture.md`. Do NOT relocate it under `custom/` or
 > under `_gaia/`.
@@ -323,7 +323,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
    the architecture.md `§ Decision Log` table during Steps 3–13, and
    (b) every audit entry buffered by Step 3.5 (accept / modify /
    reject / YOLO auto-accept).
-2. If `_memory/architect-sidecar/architecture-decisions.md` does NOT
+2. If `.gaia/memory/architect-sidecar/architecture-decisions.md` does NOT
    exist, create it with the canonical header:
 
    ```markdown

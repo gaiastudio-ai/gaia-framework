@@ -98,7 +98,7 @@ Val returns the ADR-037 envelope `{ status, summary, artifacts, findings, next, 
 1. Parses `sentinel_envelope` from Val's return.
 2. Writes the E87 envelope sentinel via `${CLAUDE_PLUGIN_ROOT}/scripts/lib/write-val-envelope.sh --envelope "$sentinel_envelope"` (captures the path on stdout).
 3. Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invokes `assert_agent_envelope <path>` to verify forgery resistance (NFR-064). On non-zero exit, HALT with the canonical error `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at <path>`.
-4. Writes the E83 dispatch sentinel via `scripts/write-val-sentinel.sh --sprint-id "$SPRINT_ID"` piped the Val ADR-037 return on stdin. The sentinel lands at `_memory/checkpoints/sprint-review-${SPRINT_ID}-val-dispatched.json`.
+4. Writes the E83 dispatch sentinel via `scripts/write-val-sentinel.sh --sprint-id "$SPRINT_ID"` piped the Val ADR-037 return on stdin. The sentinel lands at `.gaia/memory/checkpoints/sprint-review-${SPRINT_ID}-val-dispatched.json`.
 5. Applies the ADR-063 verdict-surfacing contract: display `status` + `summary` inline; HALT on CRITICAL before Track B fires; surface WARNING findings; log INFO findings.
 
 When Val returns PASS or WARNING, capture the per-goal verdicts as Track A's composite. CRITICAL HALTS the skill — no Track B dispatch, no composite computation.

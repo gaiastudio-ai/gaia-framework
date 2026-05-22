@@ -10,11 +10,11 @@
 #   name:       skill directory name under plugins/gaia/skills/
 #   personas:   one entry per persona the skill dispatches (multi-dispatch
 #               skills carry multiple personas). Each entry binds an agent_id
-#               (the resolvable GAIA persona in _memory/config.yaml) to the
+#               (the resolvable GAIA persona in .gaia/memory/config.yaml) to the
 #               canonical tier argument for memory-loader.sh. Tier is `all`
 #               for Tier 1 personas, `decision-log` for Tier 2 and Tier 3.
 #
-# Agent-id ↔ tier mapping comes from _memory/config.yaml:
+# Agent-id ↔ tier mapping comes from .gaia/memory/config.yaml:
 #   Tier 1 (all):           validator, architect, pm, sm
 #   Tier 2 (decision-log):  orchestrator, security, devops, test-architect
 #   Tier 3 (decision-log):  storyteller, tech-writer, ux-designer,

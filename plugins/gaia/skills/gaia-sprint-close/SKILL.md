@@ -17,7 +17,7 @@ Mark the active sprint as closed and emit the close lifecycle artifacts. The ski
 1. **Pre-conditions** — refuse unless a retro doc exists for the sprint, all stories are `done` (or the operator explicitly opts into `--force-with-rollover`), and the sprint is not already closed.
 2. **Yaml write** — `yq -i '.status = "closed" | .closed_at = "<ISO>"'` on `sprint-status.yaml`.
 3. **Archive** — copy the closed yaml to `.gaia/artifacts/implementation-artifacts/sprint-archive/{sprint_id}-closed-{YYYY-MM-DD}.yaml`.
-4. **Lifecycle event** — append a `sprint_closed` event to `_memory/lifecycle-events.jsonl` via the shared `lifecycle-event.sh` helper.
+4. **Lifecycle event** — append a `sprint_closed` event to `.gaia/memory/lifecycle-events.jsonl` via the shared `lifecycle-event.sh` helper.
 
 This skill is the GAIA-native replacement for manual sprint-boundary writes (per ADR-095, AF-2026-05-11-7). The historical restriction on direct `yq -i` against `sprint-status.yaml` (per `feedback_sprint_boundary_yaml_write.md`) is lifted **only** inside this skill's `close.sh` — that helper IS the sanctioned boundary-write path going forward.
 
@@ -55,8 +55,8 @@ When gated on `status: review`:
 
 1. **Read the sprint-review verdict** via `${SCRIPTS_DIR}/review-gate.sh status --sprint <id> --gate sprint-review`.
 2. **Verify the sentinel exists** — at least ONE of:
-   - E83-style dispatch checkpoint: `_memory/checkpoints/sprint-review-<sprint_id>-val-dispatched.json` (written by `/gaia-sprint-review` Step 3 Track A Val dispatch).
-   - E87-style envelope sentinel: `_memory/checkpoints/val-envelope-<sha256(<sprint_id>):0:16>.json` (written by the orchestrator-side writer per ADR-105).
+   - E83-style dispatch checkpoint: `.gaia/memory/checkpoints/sprint-review-<sprint_id>-val-dispatched.json` (written by `/gaia-sprint-review` Step 3 Track A Val dispatch).
+   - E87-style envelope sentinel: `.gaia/memory/checkpoints/val-envelope-<sha256(<sprint_id>):0:16>.json` (written by the orchestrator-side writer per ADR-105).
 3. **Decide based on verdict:**
    - `PASSED` — permit transition. Route via `sprint-state.sh transition --sprint <id> --to closed` (the new ADR-108 review→closed edge handler in `cmd_transition_sprint`; per NFR-071 / ADR-095 boundary writer; never direct `yq -i`).
    - `UNVERIFIED` with bypass — read the `review_justification` block from the sentinel (written by `set-review-justification` per E93-S1). When `pm_signoff` and `val_validation` are both present, permit transition via the same `sprint-state.sh transition` path.
@@ -98,7 +98,7 @@ Traceability: FR-492, AC3 of E93-S5, ADR-108 §D1.
 
 - Modified `sprint-status.yaml` with `status: closed` + `closed_at: <ISO>`.
 - New archive at `.gaia/artifacts/implementation-artifacts/sprint-archive/{sprint_id}-closed-{YYYY-MM-DD}.yaml`.
-- Appended `sprint_closed` event in `_memory/lifecycle-events.jsonl`.
+- Appended `sprint_closed` event in `.gaia/memory/lifecycle-events.jsonl`.
 - Single-line confirmation on stdout.
 
 ## Action

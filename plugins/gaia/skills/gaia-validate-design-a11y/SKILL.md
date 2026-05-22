@@ -103,7 +103,7 @@ Per ADR-077 wiring table, this skill resolves to **Christy (UX Designer)** via:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-validate-design-a11y
-# {"agent_id":"christy","sidecar_path":"_memory/christy-sidecar.md"}
+# {"agent_id":"christy","sidecar_path":".gaia/memory/christy-sidecar.md"}
 ```
 
 Design-time a11y is a UX-design concern; Christy owns the design fidelity review.
