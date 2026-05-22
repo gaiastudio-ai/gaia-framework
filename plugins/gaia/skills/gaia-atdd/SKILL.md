@@ -12,7 +12,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -58,7 +58,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - When a story-key is supplied and it does not appear in `.gaia/artifacts/planning-artifacts/epics-and-stories.md`, exit with "Story {key} not found in epics-and-stories.md" and a non-zero exit code (AC-EC3). Do NOT auto-engage batch mode as a fallback.
 - If no story key was provided, switch to **batch mode** (Step 1b) — do NOT exit.
 
-> `!scripts/write-checkpoint.sh gaia-atdd 1 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" stage=input-validated`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-atdd 1 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" stage=input-validated`
 
 ### Step 1b -- Batch Discovery (argumentless invocation only)
 
@@ -93,7 +93,7 @@ When invoked without a story-key, run batch discovery:
   - Acceptance criteria from the `## Acceptance Criteria` section
 - If the Acceptance Criteria section is missing or contains no AC entries, exit with: "No acceptance criteria found for {story_key}".
 
-> `!scripts/write-checkpoint.sh gaia-atdd 2 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=story-loaded`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-atdd 2 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=story-loaded`
 
 ### Step 3 -- Generate AC-to-Test Mapping
 
@@ -105,7 +105,7 @@ When invoked without a story-key, run batch discovery:
   - **Anti-stub Then-clause (E88-S5, FR-DPD-5, ADR-107).** After the functional Given/When/Then is drafted, invoke `scripts/lib/atdd-anti-stub-emit.sh --ac-text "<ac body>"` and APPEND its output (if any) to the scenario. The helper sources `lib/dispatch-verb-match.sh` (E88-S1) and `lib/canonicalize-dispatch-verb.sh` (this story) to emit one additive Then-clause per unique dispatch primitive matched in the AC body. Non-dispatch ACs receive no clause (byte-for-byte unchanged from pre-E88-S5 behaviour). The clause shape is literal: `Then: $*_STUB env vars are unset AND a real <primitive> was logged`, with `<primitive>` ∈ {`Agent-tool spawn`, `Agent-tool dispatch`, `primitive invocation`, `wiring`, `primitive call`} per the canonicalization map.
 - Build a traceability table mapping each AC to its corresponding test
 
-> `!scripts/write-checkpoint.sh gaia-atdd 3 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=mapping-generated`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-atdd 3 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=mapping-generated`
 
 ### Step 4 -- Write ATDD Artifact
 
@@ -118,7 +118,7 @@ When invoked without a story-key, run batch discovery:
 - **Idempotency policy** — if the artifact path already exists from a prior run, overwrite it with a logged warning: "Overwriting existing ATDD artifact at {path}". The policy is `overwrite with warning` (AC-EC10, AC-EC11). In batch mode the per-story result summary distinguishes **generated** from **overwritten** so the user can audit the run.
 - After writing, the size advisory is emitted by `finalize.sh` (E80-S1) — risk-aware: `[INFO]` for `risk: high`, `[WARNING]` for medium / low / unset. The skill body itself does not need to repeat the check.
 
-> `!scripts/write-checkpoint.sh gaia-atdd 4 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" batch_mode="$BATCH_MODE" stage=artifact-written --paths ".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-atdd 4 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" batch_mode="$BATCH_MODE" stage=artifact-written --paths ".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md"`
 
 ### Step 5 -- Validation
 
@@ -127,7 +127,7 @@ When invoked without a story-key, run batch discovery:
 - Verify all tests use Given/When/Then format
 - Verify the output file was written successfully
 
-> `!scripts/write-checkpoint.sh gaia-atdd 5 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=validated`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-atdd 5 story_key="$STORY_KEY" test_file_path=".gaia/artifacts/test-artifacts/atdd-$STORY_KEY.md" ac_count="$AC_COUNT" stage=validated`
 
 ### Step 5b -- Optional Red-Phase Execution
 

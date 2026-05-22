@@ -45,40 +45,64 @@ used_by: ['create-prd']
 | NFR-002 | Security | {requirement} | {target} |
 | NFR-003 | Accessibility | {requirement} | {target} |
 
-## 6. Out of Scope
+## 6. User Journeys
+
+| Journey | Trigger | Steps | Outcome |
+|---------|---------|-------|---------|
+| {journey name} | {what initiates it} | {primary path through the product} | {what the user achieves} |
+
+## 7. Data Requirements
+
+| Entity | Purpose | Key Attributes | Retention | PII / Sensitivity |
+|--------|---------|----------------|-----------|-------------------|
+| {entity} | {what role it plays} | {fields / structure} | {how long it lives} | {none / PII / regulated} |
+
+## 8. Integration Requirements
+
+| Integration | Direction | Protocol | Auth | Failure Mode |
+|-------------|-----------|----------|------|--------------|
+| {external system} | {inbound / outbound / both} | {REST / GraphQL / webhook / message bus} | {OAuth / API key / mTLS} | {what happens on outage} |
+
+## 9. Out of Scope
 
 | Exclusion | Reason |
 |-----------|--------|
 | {feature or integration} | {deferred / not needed / separate product} |
 
-## 7. UX Requirements
+## 10. UX Requirements
 
 {Key interaction patterns, wireframe references, accessibility needs.}
 
-## 8. Technical Constraints
+## 11. Constraints
 
-- {Platform, language, or integration constraint}
+- {Platform, language, integration, regulatory, or business constraint}
 
-## 9. Dependencies
+## 12. Success Criteria
+
+| Metric | Definition | Target | Measurement Method |
+|--------|------------|--------|--------------------|
+| {KPI or outcome} | {what counts as success} | {threshold / direction} | {how it's measured post-launch} |
+
+## 13. Dependencies
 
 | Dependency | Type | Failure Mode | Fallback Behavior | SLA Expectation |
 |------------|------|-------------|-------------------|-----------------|
 | {service or system} | {API / Database / Message Queue / CDN / Auth Provider} | {What happens when it's unavailable} | {Graceful degradation / Retry / Queue / Circuit breaker / Hard fail} | {Expected uptime / latency / throughput} |
 
-## 10. Milestones
+## 14. Milestones
 
 | Milestone | Target Date | Deliverables |
 |-----------|------------|-------------|
 | {milestone} | {date} | {deliverables} |
 
-## 11. Requirements Summary
+## 15. Requirements Summary
 
 | ID | Description | Priority | Status |
 |----|------------|----------|--------|
 | FR-001 | {description} | {Must-Have/Should-Have/Nice-to-Have} | {Draft/Approved} |
 | NFR-001 | {description} | {Must-Have/Should-Have/Nice-to-Have} | {Draft/Approved} |
 
-## 12. Open Questions
+## 16. Open Questions
 
 - [ ] {Unresolved question}
 

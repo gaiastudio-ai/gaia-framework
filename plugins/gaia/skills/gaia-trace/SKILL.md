@@ -44,7 +44,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Read `.gaia/artifacts/planning-artifacts/epics-and-stories.md` -- for each story, identify which FR/NFR it implements. Build a mapping: FR/NFR -> Story(s) -> Story ACs.
 - Resolve the test-plan path via the strategy-fallback rule (Critical Rules above): try `.gaia/artifacts/test-artifacts/test-plan.md` (flat layout); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement). Read the resolved file if it exists — extract planned test IDs and their categories (Unit, Integration, E2E, Manual, Performance, Security, Accessibility).
 
-> `!scripts/write-checkpoint.sh gaia-trace 1 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics=pending stage=requirements-loaded`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-trace 1 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics=pending stage=requirements-loaded`
 
 ### Step 2 -- Load Test Inventory
 
@@ -52,7 +52,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - For each test, record: test ID, test type (Unit/Integration/E2E/Manual/Performance/Security/Accessibility), implementation status (planned/implemented), requirement mapping, and file path if implemented.
 - If test-plan.md has broken table syntax or missing headers, log a parse warning and skip unparseable rows. Continue with valid rows only.
 
-> `!scripts/write-checkpoint.sh gaia-trace 2 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics=pending stage=test-inventory-loaded`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-trace 2 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics=pending stage=test-inventory-loaded`
 
 ### Step 3 -- Build Matrix
 
@@ -73,7 +73,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
   - For each story with ACs, list the specific test IDs covering each AC.
   - This section supports the primary FR/NFR matrix but is NOT the primary dimension.
 
-> `!scripts/write-checkpoint.sh gaia-trace 3 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics=pending stage=matrix-built`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-trace 3 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics=pending stage=matrix-built`
 
 ### Step 4 -- Gap Analysis
 
@@ -95,7 +95,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 <!-- E77-S16: plugin-aware chain end -->
 
 
-> `!scripts/write-checkpoint.sh gaia-trace 4 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" stage=gap-analysis-complete`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-trace 4 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" stage=gap-analysis-complete`
 
 ### Step 5 -- Generate Matrix
 
@@ -108,7 +108,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
   6. Implementation-readiness gate decision: if all High-risk FR/NFRs have at least one planned test AND implementation rate > 50%, declare PASS. If any High-risk FR/NFR has zero test coverage, declare BLOCKED. Otherwise declare CONDITIONAL.
 - Resolve the output path via the strategy-fallback rule (Critical Rules above): if `.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md` already exists, write the compiled matrix to that path; otherwise write to flat `.gaia/artifacts/test-artifacts/traceability-matrix.md`.
 
-> `!scripts/write-checkpoint.sh gaia-trace 5 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" stage=matrix-generated --paths .gaia/artifacts/test-artifacts/traceability-matrix.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-trace 5 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" stage=matrix-generated --paths .gaia/artifacts/test-artifacts/traceability-matrix.md`
 
 ### Step 6 -- Gate Verification
 
@@ -117,7 +117,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - If validate-gate.sh returns non-zero exit code: gate FAILED -- report the actionable error message listing each uncovered requirement by ID with its title. The error output from validate-gate.sh contains the expected file path and failure reason.
 - If all requirements have zero test coverage (100% uncovered): validate-gate.sh returns non-zero and the error message lists all requirements as uncovered.
 
-> `!scripts/write-checkpoint.sh gaia-trace 6 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" gate_status="$GATE_STATUS" stage=gate-verified`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-trace 6 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" gate_status="$GATE_STATUS" stage=gate-verified`
 
 ### Step 6b — Dispatch-verb integration-coverage enforcement (E88-S6, FR-DPD-6)
 

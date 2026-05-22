@@ -11,7 +11,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -48,7 +48,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Extract component inventory, service boundaries, data stores.
 - Identify compute, storage, and networking requirements.
 
-> `!scripts/write-checkpoint.sh gaia-infra-design 1 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" topology_version="$TOPOLOGY_VERSION"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-infra-design 1 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" topology_version="$TOPOLOGY_VERSION"`
 
 ### Step 2 — Environment Design
 
@@ -58,7 +58,7 @@ Delegate to the **devops** subagent (Soren) via `agents/devops` to design enviro
 - Specify environment parity strategy — how close staging mirrors production.
 - Define access policies and promotion gates between environments.
 
-> `!scripts/write-checkpoint.sh gaia-infra-design 2 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=environments`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-infra-design 2 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=environments`
 
 ### Step 3 — Deployment Topology
 
@@ -69,7 +69,7 @@ Delegate to the **devops** subagent (Soren) via `agents/devops` to design the de
 - Specify scaling strategy: horizontal, vertical, auto-scaling triggers.
 - Define networking: VPC, subnets, security groups, CDN.
 
-> `!scripts/write-checkpoint.sh gaia-infra-design 3 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=topology`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-infra-design 3 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=topology`
 
 ### Step 4 — IaC Structure
 
@@ -80,7 +80,7 @@ Delegate to the **devops** subagent (Soren) via `agents/devops` to define infras
 - Design module boundaries matching service boundaries.
 - Define state management strategy.
 
-> `!scripts/write-checkpoint.sh gaia-infra-design 4 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=iac`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-infra-design 4 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=iac`
 
 ### Step 5 — Observability Plan
 
@@ -91,7 +91,7 @@ Delegate to the **devops** subagent (Soren) via `agents/devops` to define observ
 - Define tracing: distributed tracing, correlation IDs.
 - Define alerting: SLO-based alerts, escalation policies, on-call rotation.
 
-> `!scripts/write-checkpoint.sh gaia-infra-design 5 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=observability`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-infra-design 5 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=observability`
 
 ### Step 6 — Generate Output
 
@@ -101,7 +101,7 @@ Delegate to the **devops** subagent (Soren) via `agents/devops` to define observ
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/infrastructure-design.md`
 
-> `!scripts/write-checkpoint.sh gaia-infra-design 6 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=output --paths .gaia/artifacts/planning-artifacts/infrastructure-design.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-infra-design 6 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=output --paths .gaia/artifacts/planning-artifacts/infrastructure-design.md`
 
 ### Step 7 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -130,7 +130,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Per story E44-S5 Task 6.2, Val's scope here is the artifact file ONLY (`.gaia/artifacts/planning-artifacts/infrastructure-design.md`). The devops-sidecar memory writes performed in Step 6 are out of scope for Val per the E44-S1 contract (sibling pattern with threat-model AC-EC10).
 
-> `!scripts/write-checkpoint.sh gaia-infra-design 7 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/infrastructure-design.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-infra-design 7 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/infrastructure-design.md`
 
 #### Hydrate project-config.yaml (E85-S6 / FR-458)
 

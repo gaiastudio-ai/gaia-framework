@@ -46,7 +46,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - If prd.md is missing: log WARNING and proceed with reduced scope context. Do not halt.
 - Understand system components and their interactions from whatever context is available.
 
-> `!scripts/write-checkpoint.sh gaia-test-design 1 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=context-loaded`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-design 1 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=context-loaded`
 
 ### Step 2 -- Risk Assessment
 
@@ -58,7 +58,7 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 - Produce a risk assessment matrix with columns: Area, Risk Level (H/M/L), Probability, Impact, Coverage Strategy.
 - When architecture.md is missing, use generic risk ratings based on common patterns (auth = High, CRUD = Medium, static content = Low).
 
-> `!scripts/write-checkpoint.sh gaia-test-design 2 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" risk_level="$RISK_LEVEL" stage=risk-assessment`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-design 2 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" risk_level="$RISK_LEVEL" stage=risk-assessment`
 
 ### Step 3 -- Legacy Integration Boundaries (Brownfield)
 
@@ -74,7 +74,7 @@ This step is **optional** -- activate only when brownfield indicators are presen
 - Add legacy boundary risks to the risk assessment from Step 2.
 - If no brownfield indicators are found: skip this step entirely.
 
-> `!scripts/write-checkpoint.sh gaia-test-design 3 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=legacy-boundaries`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-design 3 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=legacy-boundaries`
 
 ### Step 4 -- Test Strategy
 
@@ -87,7 +87,7 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 - Map each component to its appropriate test level based on risk assessment.
 - Define the test pyramid distribution targets (e.g., 70% unit, 20% integration, 10% E2E).
 
-> `!scripts/write-checkpoint.sh gaia-test-design 4 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=test-strategy`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-design 4 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=test-strategy`
 
 ### Step 5 -- Test Plan
 
@@ -98,7 +98,7 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 - Specify test data requirements, fixtures, and mocks.
 - Define test environment requirements and setup.
 
-> `!scripts/write-checkpoint.sh gaia-test-design 5 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=test-plan-drafted`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-design 5 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=test-plan-drafted`
 
 ### Step 6 -- Quality Gates
 
@@ -108,7 +108,7 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 - Specify CI pipeline integration points for each gate.
 - Define gate failure behavior (block merge, warn, advisory).
 
-> `!scripts/write-checkpoint.sh gaia-test-design 6 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=quality-gates`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-design 6 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=quality-gates`
 
 ### Step 7 -- Generate Output
 
@@ -121,7 +121,7 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/test-artifacts/test-plan.md`
 
-> `!scripts/write-checkpoint.sh gaia-test-design 7 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=output-generated --paths .gaia/artifacts/test-artifacts/test-plan.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-design 7 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=output-generated --paths .gaia/artifacts/test-artifacts/test-plan.md`
 
 ### Step 8 -- Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -152,7 +152,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Test Notes: VCP-VAL-04 (`.gaia/artifacts/test-artifacts/test-plan.md §11.46.3`) covers this wire-in.
 
-> `!scripts/write-checkpoint.sh gaia-test-design 8 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=val-auto-review --paths .gaia/artifacts/test-artifacts/test-plan.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-design 8 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=val-auto-review --paths .gaia/artifacts/test-artifacts/test-plan.md`
 
 ### Step 9 -- Optional: Scaffold Test Framework
 
@@ -161,7 +161,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 - If a test framework already exists: skip this step -- the framework is already configured.
 - This step is informational only -- the actual scaffolding is handled by the separate `/gaia-test-framework` skill.
 
-> `!scripts/write-checkpoint.sh gaia-test-design 9 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=scaffold-suggestion`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-design 9 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=scaffold-suggestion`
 
 ## Validation
 

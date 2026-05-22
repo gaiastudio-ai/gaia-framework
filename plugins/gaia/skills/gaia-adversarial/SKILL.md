@@ -36,7 +36,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/
 - Identify what kind of artifact it is (PRD, architecture, story, code, UX design, etc.) — this shapes the set of attack angles.
 - Derive the `{target}` label used for the output filename: use the target label passed by the caller (e.g., `prd`, `architecture`, `epics`, `readiness`). If no label is given, derive it from the target filename by stripping the extension (e.g., `prd.md` → `prd`, `architecture.md` → `architecture`, `epics-and-stories.md` → `epics`).
 
-> `!scripts/write-checkpoint.sh gaia-adversarial 1 target_artifact_path="$TARGET_ARTIFACT_PATH" adversarial_angle=load target_label="$TARGET_LABEL"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-adversarial 1 target_artifact_path="$TARGET_ARTIFACT_PATH" adversarial_angle=load target_label="$TARGET_LABEL"`
 
 ### Step 2 — Adversarial Analysis
 
@@ -53,7 +53,7 @@ Attack the target from each of these perspectives:
 - **User impact:** where will users get confused or frustrated? Empty states, error recovery, mode switches?
 - **Business risk:** what could make this commercially unviable? Pricing, partnerships, legal, reputational?
 
-> `!scripts/write-checkpoint.sh gaia-adversarial 2 target_artifact_path="$TARGET_ARTIFACT_PATH" adversarial_angle=analysis target_label="$TARGET_LABEL"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-adversarial 2 target_artifact_path="$TARGET_ARTIFACT_PATH" adversarial_angle=analysis target_label="$TARGET_LABEL"`
 
 ### Step 3 — Generate Report
 
@@ -81,7 +81,7 @@ The report contains, in order:
 
 If the target is empty or resolves to no files (AC-EC6), exit with `No review target resolved` and do NOT write an empty report.
 
-> `!scripts/write-checkpoint.sh gaia-adversarial 3 target_artifact_path="$TARGET_ARTIFACT_PATH" adversarial_angle=report target_label="$TARGET_LABEL" --paths "$REPORT_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-adversarial 3 target_artifact_path="$TARGET_ARTIFACT_PATH" adversarial_angle=report target_label="$TARGET_LABEL" --paths "$REPORT_PATH"`
 
 ### Step 4 Invocation Contract
 
@@ -116,7 +116,7 @@ Step 4 (Incorporate Findings) is **opt-in on a per-caller basis** — the closed
 
 This step is **only** executed when the caller explicitly requests incorporation. Per the critical rule above, adversarial review itself does not suggest or apply fixes — this optional follow-on is a controlled handoff to the target document owner.
 
-> `!scripts/write-checkpoint.sh gaia-adversarial 4 target_artifact_path="$TARGET_ARTIFACT_PATH" adversarial_angle=incorporate target_label="$TARGET_LABEL"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-adversarial 4 target_artifact_path="$TARGET_ARTIFACT_PATH" adversarial_angle=incorporate target_label="$TARGET_LABEL"`
 
 ## References
 

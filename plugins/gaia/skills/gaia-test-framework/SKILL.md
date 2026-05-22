@@ -37,7 +37,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Identify any existing test configuration (vitest.config.ts, jest.config.js, pytest.ini, etc.).
 - Report detected stack to the user: language, framework, existing test infrastructure.
 
-> `!scripts/write-checkpoint.sh gaia-test-framework 1 detected_stack="$DETECTED_STACK" framework_config_path="$FRAMEWORK_CONFIG_PATH" stage=stack-detected`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-framework 1 detected_stack="$DETECTED_STACK" framework_config_path="$FRAMEWORK_CONFIG_PATH" stage=stack-detected`
 
 ### Step 2 — Select Framework
 
@@ -55,7 +55,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Consider existing project conventions — if a framework is already partially set up, prefer extending it over replacing it.
 - Present recommendation with rationale.
 
-> `!scripts/write-checkpoint.sh gaia-test-framework 2 detected_stack="$DETECTED_STACK" framework_config_path="$FRAMEWORK_CONFIG_PATH" stage=framework-selected`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-framework 2 detected_stack="$DETECTED_STACK" framework_config_path="$FRAMEWORK_CONFIG_PATH" stage=framework-selected`
 
 ### Step 3 — Scaffold
 
@@ -64,7 +64,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Add test runner scripts to the project build tool (e.g., npm scripts in package.json, Makefile targets).
 - Do NOT write sample tests or run any test suite — only set up the infrastructure.
 
-> `!scripts/write-checkpoint.sh gaia-test-framework 3 detected_stack="$DETECTED_STACK" framework_config_path="$FRAMEWORK_CONFIG_PATH" stage=scaffolded`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-framework 3 detected_stack="$DETECTED_STACK" framework_config_path="$FRAMEWORK_CONFIG_PATH" stage=scaffolded`
 
 ### Step 4 — Fixture Architecture
 
@@ -75,7 +75,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Define a consistent pattern for test data creation (factory functions, builder pattern, or fixture files).
 - Document the fixture architecture in the output.
 
-> `!scripts/write-checkpoint.sh gaia-test-framework 4 detected_stack="$DETECTED_STACK" framework_config_path="$FRAMEWORK_CONFIG_PATH" stage=fixtures-designed`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-framework 4 detected_stack="$DETECTED_STACK" framework_config_path="$FRAMEWORK_CONFIG_PATH" stage=fixtures-designed`
 
 ### Step 5 — Generate Output
 
@@ -88,7 +88,7 @@ Write the test framework setup document to `.gaia/artifacts/test-artifacts/test-
 - Fixture/factory architecture
 - Instructions for adding tests
 
-> `!scripts/write-checkpoint.sh gaia-test-framework 5 detected_stack="$DETECTED_STACK" framework_config_path="$FRAMEWORK_CONFIG_PATH" stage=output-generated --paths .gaia/artifacts/test-artifacts/test-framework-setup.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-framework 5 detected_stack="$DETECTED_STACK" framework_config_path="$FRAMEWORK_CONFIG_PATH" stage=output-generated --paths .gaia/artifacts/test-artifacts/test-framework-setup.md`
 
 ## Validation
 
