@@ -263,8 +263,8 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 
 The fork extends Phase 3B's findings with architecture and design checks; findings flow into the Phase 3B category buckets.
 
-- **Test-architecture conformance.** Fork reads `docs/planning-artifacts/architecture.md` and (when present) `docs/planning-artifacts/test-plan.md`. For each test discovered, verify it follows the documented test pyramid (unit / integration / e2e ratios) and lives under the architecture-mandated test directory. Findings under `category: architecture`.
-- **Design fidelity.** If the story frontmatter has a `figma:` block, fork compares E2E selectors used in the discovered tests against `docs/planning-artifacts/design-system/design-tokens.json` and the Figma component manifest — brittle CSS-class selectors against MUI internals are a fidelity concern as well as a brittle-selector smell. Findings under `category: fidelity`. If no `figma:` block: skip silently (no Warning, no finding).
+- **Test-architecture conformance.** Fork reads `.gaia/artifacts/planning-artifacts/architecture.md` and (when present) `.gaia/artifacts/planning-artifacts/test-plan.md`. For each test discovered, verify it follows the documented test pyramid (unit / integration / e2e ratios) and lives under the architecture-mandated test directory. Findings under `category: architecture`.
+- **Design fidelity.** If the story frontmatter has a `figma:` block, fork compares E2E selectors used in the discovered tests against `.gaia/artifacts/planning-artifacts/design-system/design-tokens.json` and the Figma component manifest — brittle CSS-class selectors against MUI internals are a fidelity concern as well as a brittle-selector smell. Findings under `category: fidelity`. If no `figma:` block: skip silently (no Warning, no finding).
 
 ### Phase 5 — Verdict
 

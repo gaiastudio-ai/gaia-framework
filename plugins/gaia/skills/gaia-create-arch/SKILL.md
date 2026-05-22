@@ -8,7 +8,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # sections on demand in later steps. Falls back to FULL_LOAD when the PRD
 # lacks parseable headings.
 discover_inputs: INDEX_GUIDED
-discover_inputs_target: docs/planning-artifacts/prd.md
+discover_inputs_target: .gaia/artifacts/planning-artifacts/prd.md
 orchestration_class: heavy-procedural
 ---
 
@@ -43,7 +43,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ## Critical Rules
 
-- A PRD MUST exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `docs/planning-artifacts/prd.md` (flat layout); if missing, fall back to `docs/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at docs/planning-artifacts/prd.md or docs/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
+- A PRD MUST exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - The PRD MUST contain a "## Review Findings Incorporated" section. If missing, fail fast with "PRD review findings not found — run /gaia-create-prd to complete adversarial review and PRD refinement."
 - Every significant technical decision must be recorded as an ADR inline in the Decision Log table of the architecture document.
 - Architecture authoring is delegated to the `architect` subagent (Theo) via native Claude Code subagent invocation — do NOT inline Theo's persona into this skill body. If the architect subagent (E28-S21) is not available, fail with "architect subagent not available — install E28-S21" error.
@@ -59,22 +59,22 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 > **Loading strategy: INDEX_GUIDED per ADR-062.** The PRD is routinely
 > 20K+ tokens — full-loading it here burns the context budget before
 > architecture authoring even begins. Heading-scan `prd.md` first (e.g.,
-> `grep -nE '^#{1,3} ' docs/planning-artifacts/prd.md`) to build a section
+> `grep -nE '^#{1,3} ' .gaia/artifacts/planning-artifacts/prd.md`) to build a section
 > index. Fetch §N.x bodies on demand in later steps (`sed -n` between
 > heading anchors). If the PRD has no parseable headings, fall back to
 > FULL_LOAD and log the fallback in the checkpoint.
 
 - Resolve the PRD path via the sharded-fallback rule (Critical Rules above). Heading-scan the resolved PRD to build a section index of requirements (functional and non-functional); for the sharded layout, also heading-scan shard subsections under `prd/04-functional-requirements/` and `prd/05-non-functional-requirements.md`. Do NOT read the full bodies up front.
 - GATE: verify prd.md contains a "## Review Findings Incorporated" section. If missing, HALT — run /gaia-create-prd first to complete adversarial review and PRD refinement.
-- Heading-scan `docs/planning-artifacts/ux-design.md` if available — record section anchors for UI requirements.
-- Check for brownfield artifacts: `docs/planning-artifacts/brownfield-assessment.md` and `docs/planning-artifacts/project-documentation.md`. If either exists, heading-scan them — these contain existing codebase analysis that must inform architecture decisions even if the PRD is not in brownfield mode.
-- Check for `docs/planning-artifacts/threat-model.md`. If it exists, heading-scan it — identified threats and mitigations must inform the security architecture in Step 7. Section bodies are loaded on demand by later steps.
+- Heading-scan `.gaia/artifacts/planning-artifacts/ux-design.md` if available — record section anchors for UI requirements.
+- Check for brownfield artifacts: `.gaia/artifacts/planning-artifacts/brownfield-assessment.md` and `.gaia/artifacts/planning-artifacts/project-documentation.md`. If either exists, heading-scan them — these contain existing codebase analysis that must inform architecture decisions even if the PRD is not in brownfield mode.
+- Check for `.gaia/artifacts/planning-artifacts/threat-model.md`. If it exists, heading-scan it — identified threats and mitigations must inform the security architecture in Step 7. Section bodies are loaded on demand by later steps.
 
 > `!scripts/write-checkpoint.sh gaia-create-arch 1 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION"`
 
 ### Step 2 — Detect Mode
 
-- Check `docs/planning-artifacts/prd.md` header for "Mode: Brownfield".
+- Check `.gaia/artifacts/planning-artifacts/prd.md` header for "Mode: Brownfield".
 - If brownfield mode detected: set mode to brownfield. Use brownfield architecture template.
 - If no brownfield header: set mode to greenfield. Load `architecture-template.md` from this skill directory. If `custom/templates/architecture-template.md` exists and is non-empty, use the custom template instead.
 
@@ -447,7 +447,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   runs BEFORE the checkpoint and lifecycle-event writes (observability
   is never suppressed by checklist outcome — story AC5).
 
-  See docs/implementation-artifacts/E42-S8-port-gaia-create-arch-33-item-checklist-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S8-port-gaia-create-arch-33-item-checklist-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 — Output file exists at .gaia/artifacts/planning-artifacts/architecture.md

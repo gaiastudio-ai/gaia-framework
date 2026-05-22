@@ -8,7 +8,7 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 # (TOC, heading scan) first; fetch named sections on demand in later steps.
 # Falls back to FULL_LOAD when an upstream artifact lacks parseable headings.
 discover_inputs: INDEX_GUIDED
-discover_inputs_target: "docs/creative-artifacts/product-brief.md, docs/creative-artifacts/market-research.md, docs/creative-artifacts/domain-research.md, docs/creative-artifacts/tech-research.md"
+discover_inputs_target: ".gaia/artifacts/creative-artifacts/product-brief.md, .gaia/artifacts/creative-artifacts/market-research.md, .gaia/artifacts/creative-artifacts/domain-research.md, .gaia/artifacts/creative-artifacts/tech-research.md"
 orchestration_class: heavy-procedural
 ---
 
@@ -66,7 +66,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 - Validate that `[product-brief-path]` argument was provided. If missing, fail fast: "product-brief-path required — provide the path to the product brief file."
 - Heading-scan the product brief at the supplied path (build a section index).
-- Heading-scan available research artifacts (`docs/creative-artifacts/market-research*.md`, `domain-research*.md`, `tech-research*.md`) — index-only, not full bodies.
+- Heading-scan available research artifacts (`.gaia/artifacts/creative-artifacts/market-research*.md`, `domain-research*.md`, `tech-research*.md`) — index-only, not full bodies.
 - Extract section anchors (not contents) for: vision, target users, problem statement, proposed solution, scope and boundaries, risks and assumptions, competitive landscape, success metrics. Section bodies are loaded on demand by later steps.
 - If `.gaia/artifacts/planning-artifacts/prd.md` already exists: warn "An existing PRD was found at .gaia/artifacts/planning-artifacts/prd.md. Continuing will overwrite it. Confirm with user before proceeding."
 
@@ -212,13 +212,13 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 - Read `${CLAUDE_PLUGIN_ROOT}/knowledge/adversarial-triggers.yaml` to evaluate trigger rules. (This policy table ships inside the plugin under ADR-041's `knowledge/` convention; the legacy v1 location `_gaia/_config/adversarial-triggers.yaml` is retired and no longer used.) Determine the current `change_type`: if invoked with a change_type context (e.g., from add-feature triage), use that value. If no context is available (standalone PRD creation), default to "feature".
 - Look up the trigger rule for `change_type` + artifact "prd". If adversarial is false for this combination: skip the adversarial review. Add a "## Review Findings Incorporated" section with "Adversarial review not triggered — change type: {change_type}".
 - If adversarial is true: spawn a subagent to run the adversarial review task against `.gaia/artifacts/planning-artifacts/prd.md`.
-- When subagent returns: verify `adversarial-review-prd-*.md` exists in `docs/planning-artifacts/`.
+- When subagent returns: verify `adversarial-review-prd-*.md` exists in `.gaia/artifacts/planning-artifacts/`.
 
 > `!scripts/write-checkpoint.sh gaia-create-prd 13 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 14 — Incorporate Adversarial Findings
 
-- Read `docs/planning-artifacts/adversarial-review-prd-*.md` — extract critical and high severity findings.
+- Read `.gaia/artifacts/planning-artifacts/adversarial-review-prd-*.md` — extract critical and high severity findings.
 - For each critical/high finding: add as a new requirement or refine an existing requirement in the PRD.
 - Add a "## Review Findings Incorporated" section to the PRD listing each finding, its severity, and how it was addressed (new requirement added / existing requirement refined / acknowledged as risk).
 - Write the updated PRD to `.gaia/artifacts/planning-artifacts/prd.md`.
@@ -260,7 +260,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   Invoked by `finalize.sh` at post-complete (per §10.31.1). Validation runs
   BEFORE session-memory auto-save (AC-EC6 / ADR-061).
 
-  See docs/implementation-artifacts/E42-S6-port-gaia-create-prd-36-item-checklist-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S6-port-gaia-create-prd-36-item-checklist-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 — Output artifact exists at .gaia/artifacts/planning-artifacts/prd.md
