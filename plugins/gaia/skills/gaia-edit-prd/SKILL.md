@@ -85,8 +85,8 @@ Write the updated PRD to `.gaia/artifacts/planning-artifacts/prd.md` with the ve
 
 - Read `${CLAUDE_PLUGIN_ROOT}/knowledge/adversarial-triggers.yaml` to evaluate trigger rules. (This policy table ships inside the plugin under ADR-041's `knowledge/` convention; the legacy v1 location `_gaia/_config/adversarial-triggers.yaml` is retired and no longer used.) Determine the current `change_type`: if invoked with a change_type context (e.g., from add-feature triage), use that value. If no context is available, infer from the change scope: minor edits map to "low-risk-enhancement", significant feature additions map to "feature".
 - Look up the trigger rule for `change_type` + artifact "prd". If adversarial is false for this combination: skip adversarial review — mark "Review Findings Incorporated" as "Adversarial review not triggered — change type: {change_type} per adversarial-triggers.yaml". Proceed to Step 7.
-- If adversarial is true: spawn a subagent to run the adversarial review task against `.gaia/artifacts/planning-artifacts/prd.md`.
-- When subagent returns: verify `adversarial-review-prd-*.md` exists in `.gaia/artifacts/planning-artifacts/`.
+- If adversarial is true: dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique `.gaia/artifacts/planning-artifacts/prd.md`. The dispatch prompt MUST specify (a) the artifact path to review and (b) the report output path `.gaia/artifacts/planning-artifacts/adversarial-review-prd-{YYYY-MM-DD}.md` (use today's UTC date). Sage's persona at `plugins/gaia/agents/adversarial-reviewer.md` defines the review structure and severity vocabulary (CRITICAL/WARNING/INFO per ADR-037).
+- When the subagent returns: verify `adversarial-review-prd-*.md` exists in `.gaia/artifacts/planning-artifacts/`. Per ADR-063 (Mandatory Verdict Surfacing), display the returned ADR-037 envelope status + summary + findings list to the user before proceeding to Step 6.
 
 ### Step 6 — Incorporate Review Findings
 
