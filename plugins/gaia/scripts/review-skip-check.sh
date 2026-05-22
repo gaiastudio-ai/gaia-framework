@@ -9,7 +9,7 @@
 #
 # Refs: FR-RAR-1, AF-2026-04-28-7, ADR-054 (Composite Review Gate Check),
 #       ADR-050 (Shared Val + SM Fix-Loop)
-# Brief: docs/planning-artifacts/epics-and-stories.md §E58
+# Brief: .gaia/artifacts/planning-artifacts/epics-and-stories.md §E58
 #
 # Invocation contract (stable for E58-S5 / E58-S6 wiring):
 #

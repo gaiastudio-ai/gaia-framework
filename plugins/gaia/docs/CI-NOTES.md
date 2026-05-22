@@ -3,7 +3,7 @@
 > **Why this file exists.** The `bats-tests` job in `plugin-ci.yml` is the
 > framework's primary integration gate. Wall-clock has crept from ~150 s
 > (sprint-23, ~1300 tests) to ~270 s (sprint-28, 2085 tests) — see
-> `docs/planning-artifacts/E45-S6-adr-memo-bats-scaling.md` for the full
+> `.gaia/artifacts/planning-artifacts/E45-S6-adr-memo-bats-scaling.md` for the full
 > trajectory. This runbook tells contributors how to add new tests
 > without pushing the suite into another timeout escalation.
 
@@ -90,7 +90,7 @@ than on the PR.
 
 ## Related artifacts
 
-- `docs/planning-artifacts/E45-S6-adr-memo-bats-scaling.md` — ADR-062.
+- `.gaia/artifacts/planning-artifacts/E45-S6-adr-memo-bats-scaling.md` — ADR-062.
 - `gaia-public/.github/workflows/plugin-ci.yml` — the wired-in
   `bats-tests` job (lines around the "Run bats suite with coverage
   wrapper (budget-watched)" step).

@@ -2,7 +2,7 @@
 #
 # Realizes ADR-044 (config split) — the single per-project config surface.
 # Referenced by feature brief P2-S10 / P20-S1 in:
-#   docs/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md
+#   .gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md
 #
 # Finalized under E28-S141 (extends the initial draft from E28-S18).
 #

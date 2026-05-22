@@ -27,7 +27,7 @@
 
 # --- Canonical Phase 1-3 skill set (24 entries, ADR-061 scope) -------------
 #
-# Source of truth: docs/creative-artifacts/product-brief-v1-v2-gap-remediation-2026-04-24.md
+# Source of truth: .gaia/artifacts/creative-artifacts/product-brief-v1-v2-gap-remediation-2026-04-24.md
 # Derived from: architecture.md §10.31 (V2 Skill Completeness and Parity).
 #
 # This list is intentionally a flat space-separated string so the single

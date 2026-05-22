@@ -28,7 +28,7 @@
 #     or writes sprint-status.yaml, epics-and-stories.md, story files, or
 #     story-index.yaml. Its scope is strictly the file passed via --test-plan.
 #   - ADR-042            — Scripts-over-LLM rationale.
-#   - docs/planning-artifacts/feature-create-story-hardening.md — Work Item
+#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md — Work Item
 #     6.8 (script migration of test-plan TC append).
 #
 # Algorithm (in order):

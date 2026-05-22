@@ -18,7 +18,7 @@
 #   - ADR-074 contract C1 — project-overridable `sizing_map`
 #   - ADR-044 §10.26.3   — config-split precedence (project > global)
 #   - ADR-042            — Scripts-over-LLM rationale
-#   - docs/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.1
+#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.1
 #
 # Algorithm (in order):
 #   1. Parse CLI flags: --story-key, --epics-file, --project-config (required);

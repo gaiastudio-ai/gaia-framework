@@ -4,7 +4,7 @@
 # Closes the active sprint:
 #   1. Pre-conditions — retro doc present, idempotency check, all-done-or-force.
 #   2. Yaml write — `yq -i '.status = "closed" | .closed_at = "<ISO>"'`.
-#   3. Archive — copy yaml to docs/implementation-artifacts/sprint-archive/.
+#   3. Archive — copy yaml to .gaia/artifacts/implementation-artifacts/sprint-archive/.
 #   4. Lifecycle event — append `sprint_closed` via lifecycle-event.sh.
 #
 # Per ADR-095 + AF-2026-05-11-7. Lifts the boundary-write restriction from

@@ -8,7 +8,7 @@ Upstream consumer skill that uses the canonical loop-pattern snippet (E44-S3..S6
 
 ## Steps
 
-1. Upstream skill writes `docs/planning-artifacts/test-artifact.md`.
+1. Upstream skill writes `.gaia/artifacts/planning-artifacts/test-artifact.md`.
 2. Iteration 1: `/gaia-val-validate` invoked per the Upstream Integration Contract; returns one CRITICAL finding.
 3. Upstream skill applies a fix.
 4. Iteration 2: re-invoke; Val returns `findings: []`.

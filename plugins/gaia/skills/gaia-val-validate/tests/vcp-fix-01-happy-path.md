@@ -4,7 +4,7 @@
 
 ## Setup
 
-- A planning artifact at `docs/planning-artifacts/test-artifact.md` containing one auto-correctable CRITICAL finding (e.g., a referenced file path that does not exist on disk because of a typo — the upstream skill knows the correct path).
+- A planning artifact at `.gaia/artifacts/planning-artifacts/test-artifact.md` containing one auto-correctable CRITICAL finding (e.g., a referenced file path that does not exist on disk because of a typo — the upstream skill knows the correct path).
 
 ## Steps
 

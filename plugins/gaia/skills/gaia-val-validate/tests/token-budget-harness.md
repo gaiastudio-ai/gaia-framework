@@ -18,7 +18,7 @@ verified.
 
 ## Inputs
 
-- A representative artifact at `docs/planning-artifacts/test-artifact.md`
+- A representative artifact at `.gaia/artifacts/planning-artifacts/test-artifact.md`
   sized 5–10 KB.
 - A controllable upstream skill that can drive the loop deterministically
   for 1, 2, or 3 iterations (e.g., the VCP-FIX-07 thrash setup).

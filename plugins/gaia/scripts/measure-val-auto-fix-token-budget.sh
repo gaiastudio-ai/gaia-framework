@@ -6,7 +6,7 @@
 # the checkpoint custom.val_loop_iterations array, or (b) explicit CLI flags
 # (the E44-S2 AC-EC8 fallback path when instrumentation is unavailable).
 #
-# Bounds (per docs/planning-artifacts/prd.md §NFR-VCP-2):
+# Bounds (per .gaia/artifacts/planning-artifacts/prd.md §NFR-VCP-2):
 #   per_iteration_ratio = iteration_1_tokens / baseline_tokens     ≤ 2.0
 #   total_loop_ratio    = loop_total_tokens / baseline_tokens      ≤ 6.0
 #

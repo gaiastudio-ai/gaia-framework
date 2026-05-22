@@ -6,7 +6,7 @@
 # only — the consumer side is out of scope and lands in a follow-up cascade.
 #
 # Refs: FR-325, FR-328, NFR-048, ADR-042, ADR-048
-# Brief: P2-S4 (docs/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
+# Brief: P2-S4 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
 #
 # Invocation contract (stable for E28-S17 bats-core authors):
 #

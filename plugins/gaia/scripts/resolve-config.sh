@@ -109,10 +109,10 @@ export LC_ALL
 #   creative_artifacts are the canonical docs/ subdirectory paths the
 #   audit harness + skill setup.sh scripts expect. Defaults resolve
 #   relative to project_root:
-#     test_artifacts           = {project_root}/docs/test-artifacts
-#     planning_artifacts       = {project_root}/docs/planning-artifacts
-#     implementation_artifacts = {project_root}/docs/implementation-artifacts
-#     creative_artifacts       = {project_root}/docs/creative-artifacts
+#     test_artifacts           = {project_root}/.gaia/artifacts/test-artifacts
+#     planning_artifacts       = {project_root}/.gaia/artifacts/planning-artifacts
+#     implementation_artifacts = {project_root}/.gaia/artifacts/implementation-artifacts
+#     creative_artifacts       = {project_root}/.gaia/artifacts/creative-artifacts
 #   project-config.yaml may override each; GAIA_* env vars win over both.
 #   See E28-S197 triage §2a + E46-S9 for context.
 #

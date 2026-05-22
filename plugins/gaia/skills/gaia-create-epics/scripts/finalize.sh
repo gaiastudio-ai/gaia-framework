@@ -5,7 +5,7 @@
 # 31-item post-completion checklist (21 script-verifiable + 10
 # LLM-checkable) derived from the V1 /gaia-create-epics
 # (create-epics-stories) checklist. See
-# docs/implementation-artifacts/E42-S10-* for the V1 -> V2 mapping.
+# .gaia/artifacts/implementation-artifacts/E42-S10-* for the V1 -> V2 mapping.
 #
 # Responsibilities (per brief §Cluster 6 + story E42-S10):
 #   1. Run the script-verifiable subset of the 31 V1 checklist items
@@ -35,17 +35,17 @@
 #                          single "no artifact to validate" violation is
 #                          emitted and the script exits non-zero. When
 #                          unset, the script looks for
-#                          docs/planning-artifacts/epics-and-stories.md
+#                          .gaia/artifacts/planning-artifacts/epics-and-stories.md
 #                          relative to the current working directory. If
 #                          neither is present, the checklist run is
 #                          skipped (classic Cluster 6 behaviour —
 #                          observability still runs, exit 0).
 #   TEST_PLAN_PATH         Override path to test-plan.md (default:
-#                          docs/test-artifacts/test-plan.md).
+#                          .gaia/artifacts/test-artifacts/test-plan.md).
 #   ARCHITECTURE_PATH      Override path to architecture.md (default:
-#                          docs/planning-artifacts/architecture.md).
+#                          .gaia/artifacts/planning-artifacts/architecture.md).
 #   PRD_PATH               Override path to prd.md (default:
-#                          docs/planning-artifacts/prd.md).
+#                          .gaia/artifacts/planning-artifacts/prd.md).
 
 set -euo pipefail
 LC_ALL=C
@@ -66,7 +66,7 @@ die() { log "$*"; exit 1; }
 # ---------- 0. Resolve artifact paths ----------
 # EPICS_ARTIFACT wins when set (test fixtures + explicit invocation).
 # If it is set but the file is missing or empty, AC4 fires. If unset,
-# fall back to docs/planning-artifacts/epics-and-stories.md. If neither
+# fall back to .gaia/artifacts/planning-artifacts/epics-and-stories.md. If neither
 # is present the checklist is simply skipped (observability still runs).
 ARTIFACT=""
 ARTIFACT_REQUESTED=0
@@ -332,7 +332,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && { [ ! -f "$ARTIFACT" ] || [ ! -s "$ARTIFAC
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-create-epics to produce docs/planning-artifacts/epics-and-stories.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-create-epics to produce .gaia/artifacts/planning-artifacts/epics-and-stories.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   log "running 31-item checklist against $ARTIFACT"
@@ -429,7 +429,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no epics-and-stories artifact found (EPICS_ARTIFACT unset and no docs/planning-artifacts/epics-and-stories.md) — skipping checklist run"
+  log "no epics-and-stories artifact found (EPICS_ARTIFACT unset and no .gaia/artifacts/planning-artifacts/epics-and-stories.md) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

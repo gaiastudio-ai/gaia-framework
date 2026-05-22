@@ -12,10 +12,10 @@
 # Surfaces guarded
 # ----------------
 #   1. Story frontmatter `status:` line in either layout (E79-S4):
-#      - canonical: `docs/implementation-artifacts/epic-*/stories/E*-S*-*.md`
+#      - canonical: `.gaia/artifacts/implementation-artifacts/epic-*/stories/E*-S*-*.md`
 #      - legacy flat: `docs/implementation-artifacts/E*-S*-*.md`
-#   2. `docs/implementation-artifacts/sprint-status.yaml` per-story `status:` keys
-#   3. `docs/planning-artifacts/epics-and-stories.md` per-story `**Status:** ...`
+#   2. `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` per-story `status:` keys
+#   3. `.gaia/artifacts/planning-artifacts/epics-and-stories.md` per-story `**Status:** ...`
 #      indicators
 #
 # Legitimate-transition heuristic
@@ -167,7 +167,8 @@ classify_path() {
     .gaia/artifacts/implementation-artifacts/E*-S*-*.md) printf 'story_frontmatter' ;;
     .gaia/state/sprint-status.yaml) printf 'sprint_status' ;;
     .gaia/artifacts/planning-artifacts/epics-and-stories.md) printf 'epics_md' ;;
-    # Canonical nested layout (E79-S4) — epic-*/stories/{key}-*.md (legacy)
+    # Legacy docs/ layout (pre-ADR-111) — accepted as fallback for back-compat.
+    # Canonical nested layout (E79-S4) — epic-*/stories/{key}-*.md
     docs/implementation-artifacts/epic-*/stories/E*-S*-*.md) printf 'story_frontmatter' ;;
     # Legacy flat layout — read-only fallback until E79-S6 migration completes.
     docs/implementation-artifacts/E*-S*-*.md) printf 'story_frontmatter' ;;

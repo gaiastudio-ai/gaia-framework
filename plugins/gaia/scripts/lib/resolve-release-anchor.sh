@@ -4,7 +4,7 @@
 #
 # Story: E40-S2 — Anchor release.yml commit-classification range on
 #                 most-recent v* tag.
-# Origin: docs/creative-artifacts/meeting-2026-05-15-ci-review-section-deploy-versioning-redesign.md
+# Origin: .gaia/artifacts/creative-artifacts/meeting-2026-05-15-ci-review-section-deploy-versioning-redesign.md
 # Traces to: ADR-025 (Model B version source of truth — preserved),
 #            ADR-049 (v1 retirement — this story strengthens v2),
 #            ADR-109 (wired-vs-implemented gate — out of scope for this

@@ -35,7 +35,7 @@
 #                           "no artifact to validate" violation is
 #                           emitted and the script exits non-zero.
 #                           When unset, the script looks for
-#                           docs/planning-artifacts/technical-research.md
+#                           .gaia/artifacts/planning-artifacts/technical-research.md
 #                           relative to the current working directory.
 #                           If neither is present, the checklist run
 #                           is skipped (classic Cluster 4 behaviour —
@@ -61,7 +61,7 @@ die() { log "$*"; exit 1; }
 # TECH_RESEARCH_ARTIFACT wins when set (test fixtures + explicit
 # invocation). If it is set but the file is missing, AC4 fires. If
 # unset, fall back to the canonical output location
-# docs/planning-artifacts/technical-research.md. If neither is present
+# .gaia/artifacts/planning-artifacts/technical-research.md. If neither is present
 # the checklist is simply skipped (observability still runs).
 ARTIFACT=""
 ARTIFACT_REQUESTED=0
@@ -172,7 +172,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && [ ! -f "$ARTIFACT" ]; then
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
-  printf 'Remediation: rerun /gaia-tech-research to produce docs/planning-artifacts/technical-research.md, then rerun finalize.sh.\n' >&2
+  printf 'Remediation: rerun /gaia-tech-research to produce .gaia/artifacts/planning-artifacts/technical-research.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   log "running 22-item checklist against $ARTIFACT"
@@ -263,7 +263,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no technical-research artifact found (TECH_RESEARCH_ARTIFACT unset and no docs/planning-artifacts/technical-research.md) — skipping checklist run"
+  log "no technical-research artifact found (TECH_RESEARCH_ARTIFACT unset and no .gaia/artifacts/planning-artifacts/technical-research.md) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

@@ -2,7 +2,7 @@
 # resolve-story-file.sh — canonical story-file resolver (E79-S7 / AF-2026-05-12-1, FR-476)
 #
 # Resolves a {story_key} to its on-disk path using the E79-S4 precedence rule:
-#   1. Canonical nested path: docs/implementation-artifacts/epic-*/stories/{story_key}-*.md
+#   1. Canonical nested path: .gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md
 #   2. Legacy flat fallback:  docs/implementation-artifacts/{story_key}-*.md (read-only,
 #      with stderr WARNING "legacy-flat path — {flat_path} (migrate via E79-S6)")
 #
@@ -21,7 +21,7 @@
 #   resolve-story-file.sh E85-S1
 #
 # Override $IMPLEMENTATION_ARTIFACTS to retarget the search root (defaults to
-# docs/implementation-artifacts/ relative to CWD).
+# .gaia/artifacts/implementation-artifacts/ relative to CWD).
 
 resolve_story_file() {
     local story_key="${1:?usage: resolve_story_file <story_key>}"

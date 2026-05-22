@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * consolidate.mjs — read every {workflow}/{baseline,native}.token-count.json
- * under docs/test-artifacts/cluster-19/token-budget/, compute reductions and
+ * under .gaia/artifacts/test-artifacts/cluster-19/token-budget/, compute reductions and
  * aggregates, and re-emit the per-workflow table into
- * docs/test-artifacts/cluster-19/token-reduction-results.md.
+ * .gaia/artifacts/test-artifacts/cluster-19/token-reduction-results.md.
  *
  * This is informational — the committed results.md is hand-authored to match
  * the formula exactly and to include narrative context. consolidate.mjs is

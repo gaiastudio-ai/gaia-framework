@@ -23,7 +23,7 @@
 #   - ADR-074 contract C2 — AC immutability hash check (the contractual
 #     home for the SHA-256 mechanism replacing the count-drift check).
 #   - ADR-042            — Scripts-over-LLM rationale.
-#   - docs/planning-artifacts/feature-create-story-hardening.md — Work
+#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md — Work
 #     Item 4 (hash check) + Work Item 6.7 (script migration).
 #
 # Algorithm (in order):

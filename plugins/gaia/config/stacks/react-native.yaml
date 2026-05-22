@@ -12,7 +12,7 @@
 # referenced under `adapters.static` so that mixed-language review can fan
 # out per directory.
 #
-# Source spec: docs/planning-artifacts/decisions/gaia-review-system-final-report.md
+# Source spec: .gaia/artifacts/planning-artifacts/decisions/gaia-review-system-final-report.md
 # §4.1, §5.7, §7.2.1.
 
 name: react-native

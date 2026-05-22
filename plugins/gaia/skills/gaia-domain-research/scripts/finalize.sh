@@ -29,7 +29,7 @@
 # Environment:
 #   DOMAIN_RESEARCH_ARTIFACT  Absolute path to the artifact to validate.
 #                             When unset, the script looks for
-#                             docs/planning-artifacts/domain-research.md
+#                             .gaia/artifacts/planning-artifacts/domain-research.md
 #                             relative to the current working directory.
 
 set -euo pipefail
@@ -51,7 +51,7 @@ die() { log "$*"; exit 1; }
 # ---------- 0. Resolve artifact path ----------
 # DOMAIN_RESEARCH_ARTIFACT wins when set (test fixtures + explicit
 # invocation). Otherwise fall back to the canonical output location
-# docs/planning-artifacts/domain-research.md in the current working
+# .gaia/artifacts/planning-artifacts/domain-research.md in the current working
 # directory. A missing artifact is NOT fatal to the observability side
 # effects — the checklist run is simply skipped.
 ARTIFACT=""

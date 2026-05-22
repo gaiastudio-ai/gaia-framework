@@ -8,7 +8,7 @@
 # edits — one engine token-burn path per ADR-042 / NFR-048.
 #
 # Refs: FR-325, FR-328, NFR-048, ADR-042, ADR-048
-# Brief: P2-S6 (docs/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
+# Brief: P2-S6 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
 #
 # Invocation contract (stable for E28-S17 bats-core authors):
 #
@@ -47,7 +47,7 @@
 #     foundation scripts can land in any order (soft dependency per story
 #     notes / Task 1 Subtask 1.3).
 #   IMPLEMENTATION_ARTIFACTS — optional. Defaults to
-#     "${PROJECT_PATH}/docs/implementation-artifacts" when unset. Same env var
+#     "${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts" when unset. Same env var
 #     convention as sprint-state.sh (E28-S11). Aligned by E28-S99.
 #
 # Story file location (flat layout — aligned with sprint-state.sh per E28-S99):

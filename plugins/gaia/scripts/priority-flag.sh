@@ -50,7 +50,7 @@ pflag_read() {
 # pflag_scan_backlog — scan impl dir for backlog stories with next-sprint flag
 #
 # E79-S4: walks the canonical nested layout
-#   docs/implementation-artifacts/epic-*/stories/**/*.md
+#   .gaia/artifacts/implementation-artifacts/epic-*/stories/**/*.md
 # recursively, AND keeps a parallel non-recursive pass over the legacy flat
 # layout so flat-path stories remain surfaced during the migration window
 # (until E79-S6 backfill completes). Frontmatter parse failures are tolerated

@@ -26,13 +26,13 @@
 #     E63-S4 sibling once E63-S11 wires this script in production).
 #
 # Contract source:
-#   - docs/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.5
-#   - docs/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.10
-#   - docs/planning-artifacts/architecture.md §Decision Log — ADR-074
+#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.5
+#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.10
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-074
 #     (gaia-create-story Hardening Bundle, contract C3 status-edit discipline)
-#   - docs/planning-artifacts/architecture.md §Decision Log — ADR-042
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-042
 #     (Scripts-over-LLM rationale)
-#   - docs/planning-artifacts/architecture.md §Decision Log — ADR-050
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-050
 #     (Shared Val + SM Fix-Loop Dispatch Pattern, severity vocabulary)
 #
 # Algorithm (in order):

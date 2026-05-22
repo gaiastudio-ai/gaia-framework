@@ -85,7 +85,7 @@ As a {role}, I want to {action}, so that {benefit}.
 ### References
 
 - Cite all technical details with source paths and sections, e.g. [Source: docs/<file>.md#Section]
-- For ADR lookups, reference the inline decision log in `docs/planning-artifacts/architecture.md §Decision Log` — ADRs live inline in that table rather than in a separate ADR directory.
+- For ADR lookups, reference the inline decision log in `.gaia/artifacts/planning-artifacts/architecture.md §Decision Log` — ADRs live inline in that table rather than in a separate ADR directory.
 
 ## Dev Agent Record
 

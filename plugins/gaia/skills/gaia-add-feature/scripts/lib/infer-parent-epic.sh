@@ -6,7 +6,7 @@
 #   --affected-skills <comma-separated list>
 #   --affected-skills=<list>
 #   --epics-file <path>    (optional override; defaults to
-#                           docs/planning-artifacts/epics-and-stories.md
+#                           .gaia/artifacts/planning-artifacts/epics-and-stories.md
 #                           relative to CWD)
 #
 # Output (stdout, exactly one of three modes)

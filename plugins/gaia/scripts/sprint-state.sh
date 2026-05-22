@@ -8,7 +8,7 @@
 # script per ADR-042 / ADR-048.
 #
 # Refs: FR-325, FR-328, NFR-048, ADR-042, ADR-048
-# Brief: P2-S3 (docs/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
+# Brief: P2-S3 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
 #
 # Invocation contract (stable for E28-S17 bats-core authors):
 #
@@ -56,7 +56,7 @@
 # Config:
 #   PROJECT_PATH                — defaults to "." when unset. Story files and
 #                                 sprint-status.yaml are located relative to it.
-#   IMPLEMENTATION_ARTIFACTS    — defaults to "${PROJECT_PATH}/docs/implementation-artifacts".
+#   IMPLEMENTATION_ARTIFACTS    — defaults to "${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts".
 #   SPRINT_STATE_SCRIPT_DIR     — internal. Directory of this script, used to
 #                                 locate sibling scripts (lifecycle-event.sh,
 #                                 review-gate.sh). Override only in tests.
@@ -659,9 +659,9 @@ check_review_gate_all_passed() {
     die "review-gate.sh not found or not executable at $review_gate_sh (required for ' -> done' transitions)"
   fi
   # Call with an isolated PROJECT_PATH if review-gate.sh lays out story files
-  # under docs/implementation-artifacts/stories/ — our layout is flat, so we
+  # under .gaia/artifacts/implementation-artifacts/stories/ — our layout is flat, so we
   # instead call `check` directly and rely on its own locator. review-gate.sh
-  # uses `${PROJECT_PATH}/docs/implementation-artifacts/stories/<key>-*.md`;
+  # uses `${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts/stories/<key>-*.md`;
   # fall back to a thin parser that reads the Review Gate table from the
   # story file we already resolved. This keeps E28-S11 independent of any
   # later refactor to review-gate.sh's layout assumptions.
@@ -842,7 +842,7 @@ cmd_transition() {
 #
 # Append a backlog story's metadata to the active sprint's sprint-status.yaml
 # entry list. Closes the F-CC-INJECT placeholder cited in
-# docs/implementation-artifacts/sprint-status.yaml — until this subcommand
+# .gaia/artifacts/implementation-artifacts/sprint-status.yaml — until this subcommand
 # landed, /gaia-correct-course story-injection had no canonical write path
 # and operators had to hand-edit sprint-status.yaml (CLAUDE.md hard-rule
 # violation).
@@ -2197,7 +2197,7 @@ cmd_detect_auto_close() {
 # (some keys committed + some rolled back, non-zero exit + summary).
 #
 # Per-key flow:
-#   1. Locate story file via scan of docs/implementation-artifacts/**/stories/*.md
+#   1. Locate story file via scan of .gaia/artifacts/implementation-artifacts/**/stories/*.md
 #   2. Read frontmatter `sprint_id` field
 #   3. Verify it matches --from value OR is `null`. Otherwise refuse this key.
 #   4. Rewrite `sprint_id:` line to the --to value.
@@ -2248,7 +2248,7 @@ cmd_rollover() {
 _rollover_one() {
   local key="$1" from_sprint="$2" to_sprint="$3"
 
-  # Locate the story file. Pattern: docs/implementation-artifacts/**/stories/<key>-*.md
+  # Locate the story file. Pattern: .gaia/artifacts/implementation-artifacts/**/stories/<key>-*.md
   local story_file
   story_file=$(find "${IMPLEMENTATION_ARTIFACTS}" -type f -name "${key}-*.md" 2>/dev/null | head -1)
   if [ -z "$story_file" ] || [ ! -f "$story_file" ]; then

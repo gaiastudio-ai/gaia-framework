@@ -6,7 +6,7 @@
 # LLM-checkable) derived from the V1 implementation-readiness checklist
 # plus the reconciled items from the gap analysis (§14
 # /gaia-readiness-check).
-# See docs/implementation-artifacts/E42-S13-* for the V1 -> V2 mapping.
+# See .gaia/artifacts/implementation-artifacts/E42-S13-* for the V1 -> V2 mapping.
 #
 # Responsibilities (per brief §Cluster 6 + story E42-S13):
 #   1. Run the script-verifiable subset of the 65 V1 checklist items
@@ -37,7 +37,7 @@
 #                         fires — a single "no readiness report to
 #                         validate" violation is emitted and the script
 #                         exits non-zero. When unset, the script looks
-#                         for docs/planning-artifacts/readiness-report.md
+#                         for .gaia/artifacts/planning-artifacts/readiness-report.md
 #                         relative to the current working directory.
 #                         If neither is present, the checklist run is
 #                         skipped (classic Cluster 6 behaviour —
@@ -73,7 +73,7 @@ die() { log "$*"; exit 1; }
 # READINESS_ARTIFACT wins when set (test fixtures + explicit
 # invocation). If it is set but the file is missing or empty, AC4
 # fires. If unset, fall back to
-# docs/planning-artifacts/readiness-report.md. If neither is present
+# .gaia/artifacts/planning-artifacts/readiness-report.md. If neither is present
 # the checklist is simply skipped (observability still runs).
 # PROJECT_ROOT is used only for upstream-artifact presence checks
 # (AC-EC5) against the READINESS_ARTIFACT body. Precedence:
@@ -86,7 +86,7 @@ PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-$PWD}}"
 # READINESS_ARTIFACT is EXPLICITLY set — we do NOT auto-pick up a
 # readiness-report.md on disk, because the audit-v2-migration harness
 # (enriched fixture mode) pre-creates a placeholder
-# docs/planning-artifacts/readiness-report.md to satisfy downstream
+# .gaia/artifacts/planning-artifacts/readiness-report.md to satisfy downstream
 # skills' validate-gate.sh probes. Auto-validating that placeholder
 # would be a false positive regression — the audit would record
 # finalize.sh FAIL when in fact nothing asked for validation.

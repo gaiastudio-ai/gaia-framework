@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # sprint-status-dashboard.sh — deterministic sprint status dashboard formatter (E28-S61)
 #
-# Reads sprint-status.yaml (located at ${PROJECT_PATH}/docs/implementation-artifacts/
+# Reads sprint-status.yaml (located at ${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts/
 # sprint-status.yaml) and renders a plain-text dashboard table to stdout. This script
 # is the read-only rendering peer to sprint-state.sh (E28-S11) — it NEVER opens
 # sprint-status.yaml for write under any code path.
 #
 # Refs: FR-323, FR-325, NFR-048, NFR-053, ADR-041, ADR-042
-# Brief: P8-S2 (docs/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
+# Brief: P8-S2 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
 #
 # Invocation:
 #   sprint-status-dashboard.sh [--help]
