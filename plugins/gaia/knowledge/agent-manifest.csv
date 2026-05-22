@@ -27,3 +27,4 @@ name,displayName,title,icon,module
 "data-engineer","Milo","Data Pipeline Architect","📊","lifecycle"
 "performance","Juno","Performance Specialist","⚡","lifecycle"
 "validator","Val","Artifact Validator","🔍","lifecycle"
+"adversarial-reviewer","Sage","Adversarial Reviewer","🛡️","lifecycle"
