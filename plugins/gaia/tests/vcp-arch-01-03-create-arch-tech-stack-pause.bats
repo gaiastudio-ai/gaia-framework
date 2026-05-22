@@ -75,9 +75,9 @@ teardown() { common_teardown; }
 # append-only semantics and non-blocking failure policy.
 # -------------------------------------------------------------------------
 
-@test "VCP-ARCH-03: SKILL.md wires the sidecar path _memory/architect-sidecar/architecture-decisions.md" {
-  run grep -F "_memory/architect-sidecar/architecture-decisions.md" "$SKILL_MD"
-  [ "$status" -eq 0 ]
+@test "VCP-ARCH-03: SKILL.md wires the sidecar path .gaia/memory/architect-sidecar/architecture-decisions.md (canonical post-AF-22-4)" {
+  # AF-2026-05-22-4 canonicalized the sidecar path. Accept canonical or legacy.
+  grep -qE '(_memory|\.gaia/memory)/architect-sidecar/architecture-decisions\.md' "$SKILL_MD"
 }
 
 @test "VCP-ARCH-03: SKILL.md documents append-only sidecar contract" {

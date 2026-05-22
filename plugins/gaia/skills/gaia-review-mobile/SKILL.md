@@ -38,7 +38,7 @@ Per the ADR-077 wiring table, this skill resolves to **Talia (Mobile Developer)*
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-review-mobile
-# {"agent_id":"talia","sidecar_path":"_memory/talia-sidecar.md"}
+# {"agent_id":"talia","sidecar_path":".gaia/memory/talia-sidecar.md"}
 ```
 
 The persona is lazy-loaded by `load-stack-persona.sh` BEFORE fork dispatch — the parent context resolves the persona payload, then the fork inherits it. The fork tool allowlist `[Read, Grep, Glob, Bash]` stays intact (NFR-RSV2-5 / NFR-048 preserved).

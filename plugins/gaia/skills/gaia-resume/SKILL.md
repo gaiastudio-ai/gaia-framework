@@ -1,13 +1,13 @@
 ---
 name: gaia-resume
-description: "Resume from the last checkpoint after context loss or a session break. Lists active checkpoints from _memory/checkpoints/, reads the selected one via checkpoint.sh read, validates it via checkpoint.sh validate, and surfaces a Proceed / Start fresh / Review prompt if validation detects drift or missing files. Use when 'resume' or /gaia-resume."
+description: "Resume from the last checkpoint after context loss or a session break. Lists active checkpoints from .gaia/memory/checkpoints/, reads the selected one via checkpoint.sh read, validates it via checkpoint.sh validate, and surfaces a Proceed / Start fresh / Review prompt if validation detects drift or missing files. Use when 'resume' or /gaia-resume."
 allowed-tools: [Bash, Read, Glob]
 orchestration_class: light-procedural
 ---
 
 ## Mission
 
-You are the **GAIA resume system**. Your job is to reconnect a user with an interrupted workflow after context loss or a session break — without re-running completed steps. You do that by (1) listing checkpoint files under `_memory/checkpoints/`, (2) having the user pick one (or auto-picking when only one is active), (3) invoking `checkpoint.sh read` to load the recorded workflow state, (4) invoking `checkpoint.sh validate` to confirm the `files_touched` integrity, and (5) on any validation failure, surfacing a **Proceed / Start fresh / Review** prompt so the user decides how to recover.
+You are the **GAIA resume system**. Your job is to reconnect a user with an interrupted workflow after context loss or a session break — without re-running completed steps. You do that by (1) listing checkpoint files under `.gaia/memory/checkpoints/`, (2) having the user pick one (or auto-picking when only one is active), (3) invoking `checkpoint.sh read` to load the recorded workflow state, (4) invoking `checkpoint.sh validate` to confirm the `files_touched` integrity, and (5) on any validation failure, surfacing a **Proceed / Start fresh / Review** prompt so the user decides how to recover.
 
 This skill is the native Claude Code `/gaia-resume` entry point. Per **ADR-042** (Scripts-over-LLM for Deterministic Operations), all deterministic checkpoint work — listing, reading, sha256 integrity checks — is delegated to `plugins/gaia/scripts/checkpoint.sh`. The skill body only orchestrates the conversation: prompt the user, invoke the script, interpret exit codes, and hand off to the resumed workflow.
 
@@ -15,22 +15,22 @@ This skill is the native Claude Code `/gaia-resume` entry point. Per **ADR-042**
 
 Invoke `/gaia-resume` when:
 - You have just returned from **context loss** or a **session break** and need to pick up the last workflow where it left off.
-- Claude Code was interrupted mid-workflow (e.g., `/gaia-dev-story` crashed, `/gaia-create-story` was paused) and a checkpoint file exists under `_memory/checkpoints/`.
+- Claude Code was interrupted mid-workflow (e.g., `/gaia-dev-story` crashed, `/gaia-create-story` was paused) and a checkpoint file exists under `.gaia/memory/checkpoints/`.
 - You want to inspect which workflows have an active checkpoint before deciding to resume, restart, or discard them.
 
 Do NOT invoke `/gaia-resume` when:
 - You want to start a fresh workflow from the beginning — use the specific slash command (e.g., `/gaia-dev-story`) directly.
-- No checkpoint exists in `_memory/checkpoints/` — this skill will report "no active workflows to resume" and exit.
+- No checkpoint exists in `.gaia/memory/checkpoints/` — this skill will report "no active workflows to resume" and exit.
 
 ## Critical Rules
 
 - **Delegate all checkpoint I/O to scripts.** For V1 YAML checkpoints, use `checkpoint.sh read` / `checkpoint.sh validate` (E28-S136). For V2 JSON per-skill checkpoints (ADR-059, E43 cluster), delegate discovery, temp-file filtering, and corruption classification to `resume-discovery.sh` (E43-S7). Do NOT parse checkpoint YAML/JSON, compute sha256 checksums, filter orphan temp files, or re-implement drift / corruption detection in the LLM layer — the scripts are the single source of truth (ADR-042).
 - **Never silently resume past a validation failure.** If `checkpoint.sh validate` returns a non-zero exit code, the user MUST be prompted with Proceed / Start fresh / Review. Auto-resuming past drift or missing files is a protocol violation.
 - **Never silently resume past a corruption failure.** If `resume-discovery.sh` exits 3 (corrupted checkpoint), the user MUST see the classified `corrupted checkpoint: {path} — {reason}. Suggestion: re-run /gaia-{skill} from scratch, or select a different checkpoint from {dir}.` message and be offered a re-run or fallback path. Never auto-retry past a corrupted checkpoint.
-- **Exclude the `completed/` subdirectory when listing active checkpoints.** Archived checkpoints under `_memory/checkpoints/completed/` represent finished workflows and are not resumable. Only live checkpoint files directly under `_memory/checkpoints/` are candidates.
+- **Exclude the `completed/` subdirectory when listing active checkpoints.** Archived checkpoints under `.gaia/memory/checkpoints/completed/` represent finished workflows and are not resumable. Only live checkpoint files directly under `.gaia/memory/checkpoints/` are candidates.
 - **Filter orphan temp files and non-canonical filenames during discovery.** The V2 checkpoint writer (`write-checkpoint.sh`) uses an atomic write pattern (`{FINAL}.tmp.$$` renamed to `{FINAL}`). If a crash leaves an orphan temp file behind, the discovery logic (`resume-discovery.sh`) MUST ignore it during resume routing and surface it to the user as cleanup guidance — never attempt to parse a temp file or non-canonical filename as a valid checkpoint.
 - **Read-only with respect to checkpoint files.** This skill does NOT write, delete, or modify any checkpoint file. It invokes read/validate/discovery subcommands only; any resumption that proceeds past this skill re-enters the owning workflow, which is responsible for its own checkpoint writes.
-- **Never invent a checkpoint or workflow name.** If the user's input does not match a real checkpoint file under `_memory/checkpoints/`, report the mismatch and re-prompt — do not fabricate a resume target.
+- **Never invent a checkpoint or workflow name.** If the user's input does not match a real checkpoint file under `.gaia/memory/checkpoints/`, report the mismatch and re-prompt — do not fabricate a resume target.
 
 ## Inputs
 
@@ -42,9 +42,9 @@ Do NOT invoke `/gaia-resume` when:
 
 Use the **Glob** tool to discover checkpoint files. Both formats coexist during the V1→V2 migration (per ADR-048 program-closing invariant):
 
-- V2 (ADR-059) — the canonical active-workflow format: `_memory/checkpoints/**/*.json` (per-skill subdirectories under the root).
+- V2 (ADR-059) — the canonical active-workflow format: `.gaia/memory/checkpoints/**/*.json` (per-skill subdirectories under the root).
 - V1 (legacy, E28-S136) — still honored until the V1 engine retires: `_memory/checkpoints/*.yaml`.
-- Exclude: any path containing `_memory/checkpoints/completed/` (archived, not resumable).
+- Exclude: any path containing `.gaia/memory/checkpoints/completed/` (archived, not resumable).
 
 Dispatch by extension: `.json` → ADR-059 path (delegate to `resume-checkpoint.sh` and `resume-discovery.sh`); `.yaml` → legacy path (delegate to `checkpoint.sh`). NEVER parse JSON or YAML in the LLM layer.
 
@@ -69,7 +69,7 @@ Active checkpoints:
 
 Dispatch by checkpoint format:
 
-**ADR-059 JSON checkpoint (V2 — per-skill, under `_memory/checkpoints/{skill}/`):**
+**ADR-059 JSON checkpoint (V2 — per-skill, under `.gaia/memory/checkpoints/{skill}/`):**
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/resume-checkpoint.sh" read --skill "{skill_name}" --latest
@@ -223,7 +223,7 @@ This section summarizes the five user-observable flows `/gaia-resume` implements
 
 ### Flow 3 — Missing checkpoint (VCP-CPT-05, AC3)
 
-- Inputs: no checkpoint exists under `_memory/checkpoints/{skill_name}/` — directory absent, empty, or filtered to zero valid JSONs.
+- Inputs: no checkpoint exists under `.gaia/memory/checkpoints/{skill_name}/` — directory absent, empty, or filtered to zero valid JSONs.
 - `resume-checkpoint.sh list --skill {skill_name}` returns exit 2 and emits `No checkpoint found for skill: {skill_name}` plus a list of resumable alternatives across other skill directories.
 - Skill surfaces the message verbatim and exits without starting the skill from step 1 — never silently fall through.
 
@@ -251,7 +251,7 @@ This section summarizes the five user-observable flows `/gaia-resume` implements
 
 ## V2 Checkpoint Discovery (E43, per-skill JSON checkpoints)
 
-The V2 checkpoint infrastructure introduced by E43 writes per-skill JSON checkpoints under `_memory/checkpoints/{skill_name}/{ISO8601-microseconds-Z}-step-{N}.json`. When the user requests resume for a V2 skill (any of the 24 Phase 1–3 skills wired in E43-S2..S5), delegate discovery, temp-file filtering, and corruption classification to `resume-discovery.sh`:
+The V2 checkpoint infrastructure introduced by E43 writes per-skill JSON checkpoints under `.gaia/memory/checkpoints/{skill_name}/{ISO8601-microseconds-Z}-step-{N}.json`. When the user requests resume for a V2 skill (any of the 24 Phase 1–3 skills wired in E43-S2..S5), delegate discovery, temp-file filtering, and corruption classification to `resume-discovery.sh`:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/resume-discovery.sh" "{skill_name}"
@@ -301,7 +301,7 @@ No code path emits an unhandled parse error, stack trace, or bare `command not f
 - `plugins/gaia/scripts/write-checkpoint.sh` — the deterministic V2 JSON per-skill checkpoint writer (atomic temp-file rename) from E43-S1; extended by E43-S6 with the `--skill-md` flag that embeds `skill_md_content_hash`.
 - `plugins/gaia/scripts/resume-checkpoint.sh` — the V2 read / validate / list helper from E43-S6. All ADR-059 checkpoint I/O in this skill is delegated here; the LLM layer never parses JSON directly.
 - `plugins/gaia/scripts/resume-discovery.sh` — the V2 discovery + corruption classifier (temp-file filtering, non-canonical filtering, JSON parse guard, cleanup guidance) from E43-S7.
-- `_memory/checkpoints/` — active checkpoint files; `_memory/checkpoints/completed/` — archived, non-resumable.
+- `.gaia/memory/checkpoints/` — active checkpoint files; `.gaia/memory/checkpoints/completed/` — archived, non-resumable.
 - `${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv` — registers `/gaia-resume` so `/gaia-help` can discover it.
 - ADR-041: Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
 - ADR-042: Scripts-over-LLM for Deterministic Operations.

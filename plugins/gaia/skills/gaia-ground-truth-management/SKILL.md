@@ -20,8 +20,8 @@ Sections below are loaded JIT by callers under the ADR-041 native execution mode
 
 - **Filesystem is always the source of truth.** When ground truth disagrees with the filesystem scan, update the entry automatically — do not flip the direction of truth.
 - **Never silently drop entries.** Malformed or unresolvable entries must be flagged (WARNING) and attempted for reconstruction before anything is removed; removal of a live entry always requires user confirmation.
-- **Empty-seed invariant is hard-enforced (dual-refresh §3).** The committed `{project-path}/_memory/{agent}-sidecar/ground-truth.md` must always have `entry_count: 0` and `estimated_tokens: 0` after Step 8b. Halt if not.
-- **Token budgets are per-tier and config-driven.** Never hardcode the 200K Tier-1 ceiling or the 60%/80% thresholds in code — read from `_memory/config.yaml`.
+- **Empty-seed invariant is hard-enforced (dual-refresh §3).** The committed `{project-path}/.gaia/memory/{agent}-sidecar/ground-truth.md` must always have `entry_count: 0` and `estimated_tokens: 0` after Step 8b. Halt if not.
+- **Token budgets are per-tier and config-driven.** Never hardcode the 200K Tier-1 ceiling or the 60%/80% thresholds in code — read from `.gaia/memory/config.yaml`.
 - **Do not conflate runtime sidecar and committed seed.** Dual-refresh writes both; only `last_refresh` is updated on the committed seed.
 
 <!-- SECTION: entry-structure -->
@@ -128,8 +128,8 @@ When the framework and the project source are in separate directories (`project_
 
 | Location | Path (resolved) | Role | Content |
 |----------|-----------------|------|---------|
-| Runtime sidecar | `{project-root}/_memory/{agent}-sidecar/ground-truth.md` | Working copy used by the agent at runtime | Full runtime entries — `entry_count` and `estimated_tokens` reflect reality |
-| Committed seed | `{project-path}/_memory/{agent}-sidecar/ground-truth.md` | Shipping template committed to the framework repo and published to npm | **Empty template** — `entry_count: 0`, `estimated_tokens: 0` (per E28-S31 invariant) |
+| Runtime sidecar | `{project-root}/.gaia/memory/{agent}-sidecar/ground-truth.md` | Working copy used by the agent at runtime | Full runtime entries — `entry_count` and `estimated_tokens` reflect reality |
+| Committed seed | `{project-path}/.gaia/memory/{agent}-sidecar/ground-truth.md` | Shipping template committed to the framework repo and published to npm | **Empty template** — `entry_count: 0`, `estimated_tokens: 0` (per E28-S31 invariant) |
 
 ### Why both must refresh together
 

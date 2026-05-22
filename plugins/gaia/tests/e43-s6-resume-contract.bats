@@ -434,7 +434,8 @@ latest_checkpoint_for() {
   grep -q 'Abort' "$skill"
 }
 
-@test "SKILL.md documents the JSON glob pattern _memory/checkpoints/**/*.json" {
+@test "SKILL.md documents the JSON glob pattern for checkpoint files (canonical or legacy, post-AF-22-4)" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-resume/SKILL.md"
-  grep -qE '_memory/checkpoints/.*\.json|_memory/checkpoints/[\*][\*]/\*\.json' "$skill"
+  # AF-2026-05-22-4 canonicalized memory paths. Accept canonical .gaia/memory/ or legacy _memory/.
+  grep -qE '(_memory|\.gaia/memory)/checkpoints/.*\.json' "$skill"
 }

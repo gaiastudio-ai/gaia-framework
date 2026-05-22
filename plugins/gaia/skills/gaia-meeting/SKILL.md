@@ -53,7 +53,7 @@ All artifact path references in this SKILL.md use the canonical post-ADR-111 loc
 - **Charter required (FR-MTG-2, AC1, AC2).** `--charter "<inline>"` is mandatory.
   `scripts/charter-gate.sh` HALTs with status `BLOCKED` before INVITE if the
   charter is absent — and **no** writes occur to `.gaia/artifacts/creative-artifacts/`,
-  `_memory/action-items/`, or `_memory/{agent}-sidecar/decisions/`.
+  `.gaia/memory/action-items/`, or `.gaia/memory/{agent}-sidecar/decisions/`.
 - **Sequential only (ADR-045).** Never parallelize per-turn invocations. Never
   reorder turns mid-round. The fork allowlist for read-only agent operations
   (full arrival in E76-S2) remains `[Read, Grep, Glob, Bash]` per NFR-048; S1
@@ -61,7 +61,7 @@ All artifact path references in this SKILL.md use the canonical post-ADR-111 loc
 - **State-free write boundary (FR-MTG-31, AC10 / AC8).** The skill writes ONLY to:
   - `.gaia/artifacts/creative-artifacts/meeting-*.md`
   - `.gaia/state/action-items.yaml` (canonical, ADR-086 / ADR-052)
-  - `_memory/{agent}-sidecar/decisions/*.md`
+  - `.gaia/memory/{agent}-sidecar/decisions/*.md`
   Every artifact write MUST be routed through `scripts/write-boundary.sh`.
   Disallowed: sprint-status.yaml, story files, PRD, architecture, test plan,
   threat model, traceability. The legacy E76-S1 root `_memory/action-items/`
@@ -331,19 +331,19 @@ only if the path is one of:
 - `.gaia/artifacts/creative-artifacts/meeting-*.md`
 - `.gaia/state/action-items.yaml` (canonical registry per
   ADR-086 / ADR-052 addendum E36-S4)
-- `_memory/{any-prefix}-sidecar/decisions/*.md`
-- `_memory/meeting-sessions/*.yaml` (E76-S7 — interactive checkpoint mode session-state files, FR-MTG-31 amended)
+- `.gaia/memory/{any-prefix}-sidecar/decisions/*.md`
+- `.gaia/memory/meeting-sessions/*.yaml` (E76-S7 — interactive checkpoint mode session-state files, FR-MTG-31 amended)
 
 The legacy E76-S1 path `_memory/action-items/` is **retired** by ADR-086 —
 the canonical action-items registry is now the single-file YAML at
 `.gaia/state/action-items.yaml`. New writes MUST target the
 canonical location.
 
-The `_memory/meeting-sessions/*.yaml` prefix was added by E76-S7 (T-MTG-4
+The `.gaia/memory/meeting-sessions/*.yaml` prefix was added by E76-S7 (T-MTG-4
 mitigation (e)) so the session-state helper can persist FR-MTG-33 fields
 across user-driven yields without violating the state-free invariant. Reaping
 of stale session files is handled by the SAME 30-day reaper that walks
-`_memory/checkpoints/` (`scripts/lib/checkpoint-reaper.sh`) — single source
+`.gaia/memory/checkpoints/` (`scripts/lib/checkpoint-reaper.sh`) — single source
 of truth for retention policy.
 
 Any other path is REJECTED with exit code 2. This is the invariant that keeps
@@ -404,7 +404,7 @@ Every `/gaia-meeting` invocation yields at exactly these points:
 ### Session-state helper (FR-MTG-33)
 
 `scripts/session-state.sh` is the single source of truth for persisting
-session state to `_memory/meeting-sessions/{YYYY-MM-DD}-{slug}.yaml`. Schema
+session state to `.gaia/memory/meeting-sessions/{YYYY-MM-DD}-{slug}.yaml`. Schema
 (every field round-trips losslessly per AC1 / TC-MTG-CHKPT-1):
 
 | Field | Type | Purpose |
@@ -461,7 +461,7 @@ re-entry surface.
 ### Helper-script byte-identity baseline (AC4 / T4.1)
 
 The pre-story SHA-256 baseline of the five protected helpers is recorded at
-`_memory/checkpoints/E76-S7-baseline.sha256`. CI verifies the baseline on
+`.gaia/memory/checkpoints/E76-S7-baseline.sha256`. CI verifies the baseline on
 every PR — modifying any of the protected helpers MUST be a deliberate,
 separate story with an updated baseline:
 
@@ -542,8 +542,8 @@ This story does not introduce a parallel cadence counter.
 
 1. Run `scripts/charter-gate.sh --charter "<inline>"`. If the script exits
    non-zero (BLOCKED), STOP — surface the script's stderr to the user. **No**
-   writes are made under `.gaia/artifacts/creative-artifacts/`, `_memory/action-items/`,
-   or `_memory/{agent}-sidecar/decisions/`.
+   writes are made under `.gaia/artifacts/creative-artifacts/`, `.gaia/memory/action-items/`,
+   or `.gaia/memory/{agent}-sidecar/decisions/`.
 2. On success, the charter is recorded in `MEETING_STATE_FILE` for later
    persistence (full frontmatter persistence ships with E76-S3 / FR-MTG-27).
 3. Emit the `## Phase: CHARTER` marker.
@@ -580,7 +580,7 @@ The RESEARCH phase implements the four-step contract from ADR-084:
 1. **Per-agent sidecar load (FR-MTG-4 step 1).** For each invited agent, load
    the canonical sidecar at `_memory/<agent>-sidecar/` via the existing tier-
    aware load contract (§4.10). The intake-shorthand path
-   `_memory/agent-decisions/<agent>/` is NOT canonical — ADR-086 reconciled
+   `.gaia/memory/agent-decisions/<agent>/` is NOT canonical — ADR-086 reconciled
    on `<agent>-sidecar/`. Resolve via
    `scripts/research-phase-dispatch.sh --sidecar-path <agent>`. Reads MUST be
    read-only — sidecar files MUST NOT be mutated during RESEARCH.
@@ -790,7 +790,7 @@ explicit disposition via `scripts/review-gate.sh`:
   are written. **Drop on action-items leaves
   `.gaia/state/action-items.yaml` byte-identical to its
   pre-meeting state.** Drop on a per-agent memory entry writes zero files
-  under that agent's `_memory/{agent}-sidecar/decisions/`.
+  under that agent's `.gaia/memory/{agent}-sidecar/decisions/`.
 
 Per-agent memory entries are reviewed **per-agent**: a meeting with N
 participating agents may produce K accepted entries with K ≤ N (FR-MTG-25 /
@@ -814,8 +814,8 @@ produces no stdout output. AFTER the helper returns, emit a substrate
 
 Per the §Procedure substrate-enforced turn-terminal contract, the
 AskUserQuestion call ENDS the current LLM turn at the harness layer. No
-artifact write to `.gaia/artifacts/creative-artifacts/`, `_memory/{agent}-sidecar/decisions/`,
-the action-items registry, or `_memory/meeting-sessions/` MUST happen in
+artifact write to `.gaia/artifacts/creative-artifacts/`, `.gaia/memory/{agent}-sidecar/decisions/`,
+the action-items registry, or `.gaia/memory/meeting-sessions/` MUST happen in
 the same LLM turn as the AskUserQuestion call — the SAVE writes resume on
 the next user turn after the user response is captured.
 
@@ -860,7 +860,7 @@ SAVE performs the three writes that REVIEW accepted, gated through
 2. **Per-agent memory entries** (one per accepted draft). Run
    `scripts/memory-writethrough.sh --root . --drafts <accepted-mem-drafts/> --source-meeting <slug> --date <YYYY-MM-DD> --slug <slug>`.
    The writer emits one file per agent at
-   `_memory/{agent}-sidecar/decisions/{YYYY-MM-DD}-{slug}.md` with frontmatter
+   `.gaia/memory/{agent}-sidecar/decisions/{YYYY-MM-DD}-{slug}.md` with frontmatter
    (`agent`, `date`, `source_meeting`, `type: decision`, `tags`) and the four
    mandatory H2 sections in fixed order:
    - `## What I decided / agreed to in this meeting`
@@ -891,7 +891,7 @@ anti-amnesia property the intake mandates.
 through `scripts/write-boundary.sh`. The asserter rejects any path outside
 `.gaia/artifacts/creative-artifacts/meeting-*.md`,
 `.gaia/state/action-items.yaml`, and
-`_memory/{agent}-sidecar/decisions/*.md`.
+`.gaia/memory/{agent}-sidecar/decisions/*.md`.
 
 ## Scratchpad pin + extraction (E76-S4, ADR-085, FR-MTG-11..15)
 

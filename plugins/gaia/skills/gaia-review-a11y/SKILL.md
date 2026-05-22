@@ -79,7 +79,7 @@ Per the E69-S2 wiring-table delta (added to ADR-077 wiring table), this skill re
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-review-a11y
-# {"agent_id":"christy","sidecar_path":"_memory/christy-sidecar.md"}
+# {"agent_id":"christy","sidecar_path":".gaia/memory/christy-sidecar.md"}
 ```
 
 Pre-merge a11y review is a UX-design concern, consistent with `gaia-validate-design-a11y -> Christy`. Sable owns post-deploy a11y _testing_, not pre-merge a11y _review_.

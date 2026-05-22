@@ -161,7 +161,7 @@ For each open item (highest priority first, then oldest first):
   - `related_stories`: append any newly created story keys
   - Update the `last_updated` timestamp at the top of the file
 - Save the updated `action-items.yaml` via the `Edit` tool (surgical updates — do not regenerate the entire file).
-- Save to Val memory (`_memory/validator-sidecar/decision-log.md`):
+- Save to Val memory (`.gaia/memory/validator-sidecar/decision-log.md`):
 
   ```
   ### [YYYY-MM-DD] Action Items Processed

@@ -26,7 +26,7 @@ hooks:
 1. Claude Code detects that a tool call matching `Edit|Write` just completed within this skill's fork context.
 2. It invokes `scripts/checkpoint.sh write gaia-dev-story` as a post-tool-use hook.
 3. The skill-local `checkpoint.sh` wrapper translates this into the shared foundation `checkpoint.sh`'s `--workflow gaia-dev-story --step 0` contract, where `--step 0` is a sentinel value for hook-triggered checkpoints.
-4. The shared `checkpoint.sh` writes a YAML checkpoint file to `_memory/checkpoints/gaia-dev-story.yaml` with an atomic temp-file + rename operation.
+4. The shared `checkpoint.sh` writes a YAML checkpoint file to `.gaia/memory/checkpoints/gaia-dev-story.yaml` with an atomic temp-file + rename operation.
 
 ### Adapting This Pattern
 

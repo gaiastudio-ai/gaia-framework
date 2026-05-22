@@ -25,7 +25,7 @@ This skill is the native Claude Code conversion of the legacy val-refresh-ground
 - Ground truth accuracy is foundational -- every other Val workflow depends on it
 - Never silently delete entries -- mark removed files with REMOVED status and detection date
 - Always verify claims against the filesystem using Glob and Read tools -- no trust, no assumptions
-- Write ground-truth.md to `_memory/validator-sidecar/ground-truth.md` in the format expected by `memory-loader.sh` (ADR-046)
+- Write ground-truth.md to `.gaia/memory/validator-sidecar/ground-truth.md` in the format expected by `memory-loader.sh` (ADR-046)
 - The ground-truth format MUST include: `# Ground Truth` header, `<!-- last-refresh: ... -->` timestamp, `<!-- mode: full|incremental -->`, `<!-- entry-count: N -->` metadata comments, and structured `**[category]**` entries with `Source:` and `Verified:` lines
 - On first scan when no prior ground-truth exists: create ground-truth.md from scratch with full scan results and report "initial scan -- no prior baseline" in the diff report
 - On empty or minimal project (no scannable files): complete with an empty or minimal ground-truth, diff shows no meaningful content, no error
@@ -47,16 +47,16 @@ This skill is the native Claude Code conversion of the legacy val-refresh-ground
 - Validate agent name against allowed values: val, theo, derek, nate, all.
   If the agent name is not in the allowed values list: fail with "Unknown agent '{agent_name}'. Valid values: val, theo, derek, nate, all."
 - Resolve target sidecar path based on agent:
-  - val: `_memory/validator-sidecar/`
-  - theo: `_memory/architect-sidecar/`
-  - derek: `_memory/pm-sidecar/`
-  - nate: `_memory/sm-sidecar/`
+  - val: `.gaia/memory/validator-sidecar/`
+  - theo: `.gaia/memory/architect-sidecar/`
+  - derek: `.gaia/memory/pm-sidecar/`
+  - nate: `.gaia/memory/sm-sidecar/`
   - all: run sequentially for val, theo, derek, nate (see Step 10)
 - Check if `--incremental` flag was passed. If yes, set mode to incremental (only scan files modified since last-refresh timestamp). If no, set mode to full.
 
 ### Step 2 -- Initialize Sidecar Directory
 
-- Check if the resolved target sidecar directory exists (e.g., `_memory/validator-sidecar/` for val).
+- Check if the resolved target sidecar directory exists (e.g., `.gaia/memory/validator-sidecar/` for val).
 - If the directory does not exist: Create the sidecar directory. This handles AC-EC7 -- missing validator-sidecar.
 - If `ground-truth.md` does not exist in the sidecar: this is a first scan (AC-EC1). Create an empty ground-truth.md with header containing `last-refresh: never`.
 - If `decision-log.md` does not exist: create with header `# {agent_display_name} Decision Log`.
@@ -135,7 +135,7 @@ Use Glob to discover project structure and Read to extract metadata from key fil
 
 ### Step 7 -- Dual-Write Committed Seed (if applicable)
 
-- Resolve committed seed path: `{project-path}/_memory/{agent-sidecar}/ground-truth.md`.
+- Resolve committed seed path: `{project-path}/.gaia/memory/{agent-sidecar}/ground-truth.md`.
 - If `{project-path}` resolves to `{project-root}` (single-location layout): SKIP -- no mirror to refresh.
 - If committed seed file is missing: HALT with error about missing committed seed.
 - Update only the `last_refresh` timestamp in the committed seed frontmatter.
@@ -156,7 +156,7 @@ Use Glob to discover project structure and Read to extract metadata from key fil
 
 After Step 6 has written the updated ground-truth.md, perform an explicit post-refresh token-budget check. This step MUST run for every refreshed agent so each refresh emits one budget line per agent and surfaces archival guidance when a Tier 1 agent approaches the configured threshold.
 
-Inputs (read from `_memory/config.yaml`):
+Inputs (read from `.gaia/memory/config.yaml`):
 
 - `tiers.tier_1.session_budget` -- canonical session-token budget for the agent's tier (Tier 1 agents only carry an enforceable budget here; Tier 2 / Tier 3 budgets, when enforced, come from the matching `tiers.<tier>.session_budget`).
 - `archival.budget_warn_at` -- decimal warning threshold (default `0.8` -- 80% of budget). Read this value -- never hard-code it.

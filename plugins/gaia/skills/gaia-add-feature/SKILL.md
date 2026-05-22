@@ -68,7 +68,7 @@ and delegation model are preserved verbatim from the legacy workflow.
   NOT substitute stdout sentinels, Stop hooks, or pause-and-wait scripts
   -- they are bypassed under Auto Mode (the gaia-meeting precedent).
 - **Sentinel checkpoint MUST exist before Step 3** (E83-S1). Step 2 MUST
-  write `_memory/checkpoints/add-feature-{feature_id}-val-dispatched.json`
+  write `.gaia/memory/checkpoints/add-feature-{feature_id}-val-dispatched.json`
   via the dedicated `scripts/write-val-sentinel.sh` writer (which delegates
   to atomic tempfile + `mv` and constructs JSON via `jq -n`, never via
   heredoc). `finalize.sh` validates the sentinel before allowing cascade
@@ -129,7 +129,7 @@ per ADR-074 contract C2 (Val opus pin — validation rigor is the contract).
 and BEFORE consuming the Val verdict, the skill MUST source
 `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke
 `assert_agent_envelope {sentinel_path}` where
-`{sentinel_path} = _memory/checkpoints/val-envelope-{sha256(artifact_path) first 16 hex}.json`.
+`{sentinel_path} = .gaia/memory/checkpoints/val-envelope-{sha256(artifact_path) first 16 hex}.json`.
 On non-zero exit, HALT with the canonical error string
 `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}` —
 DO NOT fall through to a self-judged verdict. Closes the regression class
@@ -139,10 +139,10 @@ documented in `feedback_add_feature_val_gate_fails_open.md`
 **E83 + E87 sentinel coexistence (AC4).** Two layered sentinels coexist
 post-migration — they answer different questions:
 - E83 dispatch checkpoint
-  (`_memory/checkpoints/add-feature-{feature_id}-val-dispatched.json`) —
+  (`.gaia/memory/checkpoints/add-feature-{feature_id}-val-dispatched.json`) —
   validated by `finalize.sh`, proves dispatch HAPPENED.
 - E87 envelope sentinel
-  (`_memory/checkpoints/val-envelope-{artifact-hash}.json`) — validated by
+  (`.gaia/memory/checkpoints/val-envelope-{artifact-hash}.json`) — validated by
   `assert_agent_envelope`, proves the dispatcher was AUTHENTIC (Val persona).
 Both MUST pass for the cascade to proceed. The two sentinel paths are
 distinct slugs (`add-feature-...val-dispatched.json` vs `val-envelope-...json`)
@@ -386,7 +386,7 @@ adhere to the hygiene rules at dispatch time.
   returns and BEFORE consuming the Val verdict, source
   `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke
   `assert_agent_envelope {sentinel_path}` where
-  `{sentinel_path} = _memory/checkpoints/val-envelope-{sha256(artifact_path) first 16 hex}.json`.
+  `{sentinel_path} = .gaia/memory/checkpoints/val-envelope-{sha256(artifact_path) first 16 hex}.json`.
   For `/gaia-add-feature` the validation target is an in-memory intake
   object, not an on-disk artifact — the orchestrator MUST pass the
   `feature_id` (e.g. `AF-2026-05-13-1`) as the literal `artifact_path`
@@ -444,7 +444,7 @@ adhere to the hygiene rules at dispatch time.
   `cat <<EOF`), validates the required keys (status enum, summary,
   findings array, agent=val), and writes atomically (sibling tempfile +
   `mv`). The sentinel path is
-  `_memory/checkpoints/add-feature-${FEATURE_ID}-val-dispatched.json`.
+  `.gaia/memory/checkpoints/add-feature-${FEATURE_ID}-val-dispatched.json`.
 
   `finalize.sh` validates the sentinel before allowing cascade completion;
   a missing or malformed sentinel HALTs the skill with stderr matching
@@ -785,7 +785,7 @@ finding first and re-invoke the skill.
 - **2026-05-14 — E88-S2 — Intake-time dispatch-verb enforcement (FR-DPD-2, ADR-107, AI-2026-05-13-4).** Added Step 8a between Step 8 (Add Feature Stories) and Step 8b (Update Traceability). The step invokes `scripts/lib/intake-dispatch-verb-check.sh --story-file <path>` for every story produced by Step 8. The helper sources `scripts/lib/dispatch-verb-match.sh` (E88-S1) and HALTs with the canonical message when a dispatch-verb AC lacks a companion integration-test AC and has no `<!-- gaia:contract-only: <reason> -->` override. Closes the drift class documented in AI-2026-05-13-4 (dispatch-verb ACs landing without integration coverage). Story-template.md and validate-frontmatter.sh gain a new 16th required `delivered:` boolean field (default `true`) — the bookkeeping primitive E88-S6 will consume for retroactive E76-S10 back-fill.
 - **2026-05-13 — E87-S7 — Sentinel-Write Writer Shift (ADR-105 amends ADR-104).** Following the AI-2026-05-13-13 incident, the Val sentinel write has been relocated from the Val sub-agent context to the orchestrator's main turn. Val now RETURNS the sentinel content as a `sentinel_envelope` field inside the ADR-037 envelope; the orchestrator parses the field and writes the sentinel via the new helper `plugins/gaia/scripts/lib/write-val-envelope.sh`. This closes the Claude Code substrate content-integrity false-fire that blocked the cascade end-to-end after E87-S5 / E87-S6 landed. Forgery resistance preserved via `persona_sig` binding to validator.md's on-disk sha256 (NFR-064 unchanged). The Step 2b dispatch contract now reads: (1) spawn Val via Agent tool; (2) parse `sentinel_envelope` from Val's return; (3) write sentinel via `write-val-envelope.sh --envelope "$sentinel_envelope"` (captures the path on stdout); (4) source `assert-agent-envelope.sh`; (5) `assert_agent_envelope` against the captured path; (6) HALT on non-zero; (7) consume verdict. The E83 four-layer fail-closed enforcement (E83 dispatch checkpoint, AskUserQuestion precondition, dispatch prompt hygiene, bats anti-pattern check) is preserved intact. Coverage: TC-WVE-1..10 in `plugins/gaia/tests/write-val-envelope.bats` (helper-level); existing TC-VBR-11..11g in `plugins/gaia/tests/val-bridge-migration.bats` continues to pass (assertion logic unchanged); validator.md §Sentinel-Write Contract rewritten to specify the return-channel.
 - **2026-05-13 — AI-2026-05-13-11 — Dispatch prompt hygiene + hash-basis reconcile.** Fixed three operator-error vectors surfaced by the 2026-05-13 AF-2026-05-13-1 cascade attempt (substrate content-integrity HALT). (a) Reconciled the envelope sentinel hash basis: Step 2b body had drifted to `sha256(feature_id)` while the Subagent Dispatch Contract section (L114) and validator persona §Sentinel-Write Contract both say `sha256(artifact_path)`. Step 2b now matches; the convention is documented as "pass `feature_id` as the literal `artifact_path`" so caller and persona hash the same string. Validator persona amended with the same convention. (b) Added an explicit "Dispatch prompt hygiene" block to Step 2b enumerating three forbidden patterns: caller-side sentinel JSON shape override (causes Val to write a malformed sentinel that fails `assert_agent_envelope`), prior-findings pre-loading on re-dispatch (substrate content-integrity guard flags as forgery), and `artifact_path` invention (breaks hash agreement). Anchored to memory rule `feedback_val_redispatch_no_preload.md` (also 2026-05-13). (c) Mirrored the hygiene rule into Critical Rules so it survives Step 2b skim. No script changes — `write-val-sentinel.sh` and `finalize.sh` are unchanged; the bug surface is entirely in the SKILL.md prose contract with Val.
-- **2026-05-13 — E87-S5 — Val Bridge Migration, FINAL self-referential migration (ADR-104).** Migrated `/gaia-add-feature` Step 2 Val gate from `context: fork` (per ADR-045) to **main-turn Agent-tool dispatch** (per ADR-093 / ADR-104). Added the post-dispatch envelope-assert step (`source assert-agent-envelope.sh` + `assert_agent_envelope` + HALT on non-zero) at Step 2b. The E83 four-layer fail-closed enforcement (sentinel checkpoint, AskUserQuestion precondition, prose hardening, bats anti-pattern check) is preserved intact — E87 adds the envelope-assert as a NEW layer ON TOP of E83, not as a replacement. Two layered sentinels coexist at distinct paths: E83 dispatch checkpoint `_memory/checkpoints/add-feature-{feature_id}-val-dispatched.json` (validated by `finalize.sh`, proves dispatch HAPPENED) and E87 envelope sentinel `_memory/checkpoints/val-envelope-{artifact-hash}.json` (validated by `assert_agent_envelope`, proves dispatcher was AUTHENTIC Val persona). Closes `feedback_add_feature_val_gate_fails_open.md` (AI-2026-05-09-12) at the authenticity layer. Coverage by TC-VBR-11..11g in `plugins/gaia/tests/val-bridge-migration.bats`; E83 TC-VFC-* suite continues to pass.
+- **2026-05-13 — E87-S5 — Val Bridge Migration, FINAL self-referential migration (ADR-104).** Migrated `/gaia-add-feature` Step 2 Val gate from `context: fork` (per ADR-045) to **main-turn Agent-tool dispatch** (per ADR-093 / ADR-104). Added the post-dispatch envelope-assert step (`source assert-agent-envelope.sh` + `assert_agent_envelope` + HALT on non-zero) at Step 2b. The E83 four-layer fail-closed enforcement (sentinel checkpoint, AskUserQuestion precondition, prose hardening, bats anti-pattern check) is preserved intact — E87 adds the envelope-assert as a NEW layer ON TOP of E83, not as a replacement. Two layered sentinels coexist at distinct paths: E83 dispatch checkpoint `.gaia/memory/checkpoints/add-feature-{feature_id}-val-dispatched.json` (validated by `finalize.sh`, proves dispatch HAPPENED) and E87 envelope sentinel `.gaia/memory/checkpoints/val-envelope-{artifact-hash}.json` (validated by `assert_agent_envelope`, proves dispatcher was AUTHENTIC Val persona). Closes `feedback_add_feature_val_gate_fails_open.md` (AI-2026-05-09-12) at the authenticity layer. Coverage by TC-VBR-11..11g in `plugins/gaia/tests/val-bridge-migration.bats`; E83 TC-VFC-* suite continues to pass.
 
 ## Finalize
 

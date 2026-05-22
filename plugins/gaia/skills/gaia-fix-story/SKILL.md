@@ -46,7 +46,7 @@ This skill is the native Claude Code conversion of the legacy fix-story workflow
 ### Step 3 -- Load Findings
 
 - Check for a `## Validation Findings` section in the story file body.
-- Also check the validator-sidecar at `_memory/validator-sidecar/` for findings referencing this story key.
+- Also check the validator-sidecar at `.gaia/memory/validator-sidecar/` for findings referencing this story key.
 - Parse each finding: extract severity (CRITICAL, WARNING, INFO), affected section/field, and description.
 - If no findings found anywhere: exit with "No findings to fix for {story_key}. Story is already clean -- transition to ready-for-dev manually or re-validate."
 
@@ -70,7 +70,7 @@ Preserve all existing valid content -- only modify sections flagged by findings.
   ```
   /gaia-val-validate {resolved_story_path}
   ```
-- **Envelope assertion (E87-S3 / ADR-104).** After `/gaia-val-validate` returns and BEFORE consuming its verdict, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` where `{sentinel_path} = _memory/checkpoints/val-envelope-{sha256(resolved_story_path) first 16 hex}.json`. On non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}`. DO NOT fall through to a self-judged validation verdict. This directly closes the bypass class documented in memory rule `feedback_fix_story_inline_revalidation_bypass.md` (AI-2026-05-09-12 sibling defect).
+- **Envelope assertion (E87-S3 / ADR-104).** After `/gaia-val-validate` returns and BEFORE consuming its verdict, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` where `{sentinel_path} = .gaia/memory/checkpoints/val-envelope-{sha256(resolved_story_path) first 16 hex}.json`. On non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}`. DO NOT fall through to a self-judged validation verdict. This directly closes the bypass class documented in memory rule `feedback_fix_story_inline_revalidation_bypass.md` (AI-2026-05-09-12 sibling defect).
 - Parse the re-validation result:
   - If zero CRITICAL/WARNING findings: validation is clean -- proceed to Step 6.
   - If CRITICAL/WARNING findings remain: do NOT loop. Exit non-zero with a summary listing each remaining finding. Leave status at `validating`.
