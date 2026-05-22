@@ -108,15 +108,15 @@ EOF
   echo "$region" | grep -qiE "HALT"
 }
 
-@test "AC1 Test 4: Step 2b region documents the canonical ATDD glob patterns" {
+@test "AC1 Test 4: Step 2b region documents the canonical ATDD glob patterns (canonical post-AF-21-23)" {
   region="$(extract_step2b_region)"
   [ -n "$region" ]
   # Must reference both the epic_key glob and the story_key glob and the
-  # docs/test-artifacts directory.
+  # test-artifacts directory (canonical .gaia/artifacts/ or legacy docs/).
   echo "$region" | grep -qF "atdd-"
   echo "$region" | grep -qF "epic_key"
   echo "$region" | grep -qF "story_key"
-  echo "$region" | grep -qF "docs/test-artifacts"
+  echo "$region" | grep -qE "(docs|\.gaia/artifacts)/test-artifacts"
 }
 
 @test "AC1 Test 5: Step 2b sits between Step 2 (Update Status) and Step 3 (Create Feature Branch)" {

@@ -22,7 +22,7 @@ You are validating a deployment by checking service health, running smoke tests,
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/post-deploy-verify` workflow (Cluster 12, story E28-S94, ADR-041). It follows the canonical skill pattern established by E28-S66 (code-review) and E28-S92 (deploy-checklist).
 
-**Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the post-deployment report artifact to `docs/implementation-artifacts/`.
+**Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the post-deployment report artifact to `.gaia/artifacts/implementation-artifacts/`.
 
 **Foundation script integration (ADR-042):** Health endpoint checks, error rate calculations, and metric validation are deterministic operations -- they belong in bash scripts invoked inline via `!scripts/*.sh` calls, not in LLM prose. The skill delegates all measurable checks to scripts and reserves prose for analysis, canary comparison, and report generation.
 
@@ -82,7 +82,7 @@ If the deployment is not a canary deployment, note "Canary analysis: N/A -- full
 
 ### Step 5 -- Generate Post-Deployment Report
 
-Write the post-deployment report to `docs/implementation-artifacts/post-deploy-{date}.md` containing:
+Write the post-deployment report to `.gaia/artifacts/implementation-artifacts/post-deploy-{date}.md` containing:
 
 1. **Deployment Summary** -- version deployed, environment, timestamp, deployment method.
 2. **Health Check Results** -- table of endpoints with status (PASS/FAIL), response time, and error details for failures.

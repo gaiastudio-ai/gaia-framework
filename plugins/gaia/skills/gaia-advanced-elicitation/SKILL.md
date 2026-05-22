@@ -25,7 +25,7 @@ fi
 
 ## Mission
 
-You are facilitating a deep requirements elicitation session. Guide the user through context gathering, method selection, structured elicitation execution, and requirements synthesis, then emit a structured elicitation report at `docs/planning-artifacts/elicitation-report-{date}.md` for downstream consumers (e.g., `/gaia-create-prd`).
+You are facilitating a deep requirements elicitation session. Guide the user through context gathering, method selection, structured elicitation execution, and requirements synthesis, then emit a structured elicitation report at `.gaia/artifacts/planning-artifacts/elicitation-report-{date}.md` for downstream consumers (e.g., `/gaia-create-prd`).
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/1-analysis/advanced-elicitation` workflow (brief §Cluster 4, story P4-S4). The step ordering, prompts, and output location follow the legacy `instructions.xml` mechanically — do not restructure, re-prompt, or reorder sections.
 
@@ -34,7 +34,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Use structured questioning techniques from the methods table below.
 - Document all requirements discovered with clear traceability.
 - Distinguish between stated needs, implied needs, and assumed needs.
-- The output file path is `docs/planning-artifacts/elicitation-report-{date}.md` — downstream consumers read this exact path pattern, so do not relocate it.
+- The output file path is `.gaia/artifacts/planning-artifacts/elicitation-report-{date}.md` — downstream consumers read this exact path pattern, so do not relocate it.
 - Mechanical port: the five legacy steps below must appear in this exact order.
 
 ## Elicitation Methods
@@ -106,7 +106,7 @@ Document all requirements discovered during each method.
 
 ### Step 5 — Generate Output
 
-Write a structured elicitation report to `docs/planning-artifacts/elicitation-report-{date}.md` containing, in order:
+Write a structured elicitation report to `.gaia/artifacts/planning-artifacts/elicitation-report-{date}.md` containing, in order:
 
 - **Context Summary** — upstream research themes and stakeholder context
 - **Methods Used** — which elicitation techniques were applied and why
@@ -119,9 +119,9 @@ Write a structured elicitation report to `docs/planning-artifacts/elicitation-re
 [Source: _gaia/lifecycle/workflows/1-analysis/advanced-elicitation/workflow.yaml]
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh docs/planning-artifacts/elicitation-report-${DATE}.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/elicitation-report-${DATE}.md`
 
-> `!scripts/write-checkpoint.sh gaia-advanced-elicitation 5 elicitation_topic="$ELICITATION_TOPIC" technique="$TECHNIQUE" --paths docs/planning-artifacts/elicitation-report-${DATE}.md`
+> `!scripts/write-checkpoint.sh gaia-advanced-elicitation 5 elicitation_topic="$ELICITATION_TOPIC" technique="$TECHNIQUE" --paths .gaia/artifacts/planning-artifacts/elicitation-report-${DATE}.md`
 
 ## Finalize
 

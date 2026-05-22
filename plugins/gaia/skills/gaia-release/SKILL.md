@@ -141,5 +141,5 @@ For RC builds add `--prerelease` so the release is flagged correctly on GitHub:
 - ADR-025 (Model B): canonical 2-target version storage — `package.json` + the `framework_version` config key (resolved via `scripts/resolve-config.sh` per ADR-042/ADR-044).
 - ADR-044 — Two-file config split (`config/project-config.yaml` shared + `config/global.yaml` machine-local); the `framework_version` key lives in the shared project config.
 - FR-327 / ADR-048: CLAUDE.md slim-down — procedural detail moved to SKILL.md files.
-- Story: `docs/implementation-artifacts/E28-S167-document-version-bump-procedure-in-gaia-release-skill.md` (origin: triage finding F4 from E28-S129).
+- Story: `.gaia/artifacts/implementation-artifacts/E28-S167-document-version-bump-procedure-in-gaia-release-skill.md` (origin: triage finding F4 from E28-S129).
 - Related: `/gaia-changelog` for release-note generation.

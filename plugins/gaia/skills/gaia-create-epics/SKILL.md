@@ -258,7 +258,7 @@ Skip this step if mode is greenfield.
   runs BEFORE the checkpoint and lifecycle-event writes (observability
   is never suppressed by checklist outcome — story AC5).
 
-  See docs/implementation-artifacts/E42-S10-port-gaia-create-epics-31-item-checklist-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S10-port-gaia-create-epics-31-item-checklist-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 — Output file saved to .gaia/artifacts/planning-artifacts/epics-and-stories.md

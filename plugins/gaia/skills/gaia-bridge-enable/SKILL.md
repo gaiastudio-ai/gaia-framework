@@ -25,7 +25,7 @@ Follow the full `gaia-bridge-toggle` skill body with `mode = enable`:
 2. If the section is missing, fail fast with `test_execution_bridge block missing — run /gaia-ci-setup first`.
 3. If already `true`, report `Bridge already enabled` and exit without writing.
 4. Otherwise, perform the regex-based in-place edit to `config/project-config.yaml` to flip `bridge_enabled: false` → `bridge_enabled: true`, preserving all comments and formatting.
-5. Run the Post-Flip Checks (enable-only — stat `docs/test-artifacts/test-environment.yaml`; for absent in YOLO, auto-skip with a warning).
+5. Run the Post-Flip Checks (enable-only — stat `.gaia/artifacts/test-artifacts/test-environment.yaml`; for absent in YOLO, auto-skip with a warning).
 6. Emit the summary. Under the native plugin (ADR-044/ADR-048) the flag change takes effect immediately — no config rebuild is required.
 
 The full step-by-step procedure is documented in `plugins/gaia/skills/gaia-bridge-toggle/SKILL.md`. This wrapper inherits all behavior from that skill.

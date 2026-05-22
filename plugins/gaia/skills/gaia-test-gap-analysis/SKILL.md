@@ -44,14 +44,14 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ### Step 2 -- Scan Test Plan (Coverage Mode)
 
-- Resolve the test-plan via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `docs/test-artifacts/test-plan.md` (flat); fall back to `docs/test-artifacts/strategy/test-plan.md` (strategy/ placement). Read the resolved file.
+- Resolve the test-plan via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `.gaia/artifacts/test-artifacts/test-plan.md` (flat); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement). Read the resolved file.
 - Extract all test case IDs and their linked story keys from the test plan.
 - Build a map of `test_case_id -> [story_keys]` for cross-referencing.
 - If `test-plan.md` is missing, log warning: "test-plan.md not found -- partial coverage analysis only" and continue with empty test case map (AC-EC1).
 
 ### Step 3 -- Scan Story Files (Coverage Mode)
 
-- Scan all story files in `docs/implementation-artifacts/` matching pattern `*-*.md`.
+- Scan all story files in `.gaia/artifacts/implementation-artifacts/` matching pattern `*-*.md`.
 - For each story file, extract all acceptance criteria (AC items) from the "Acceptance Criteria" section.
 - Build a map of `story_key -> [AC items]` with their identifiers (AC1, AC2, etc.).
 - Track untested acceptance criteria -- ACs that have no matching test case in the test plan map.
@@ -108,7 +108,7 @@ This linkage validation is performed inline by the skill (the skill itself reads
 
 ### Step 7 -- Scan Generated Test Cases (Verification Mode)
 
-- Scan `docs/test-artifacts/` for all generated test case files matching `{story_key}-*.md` and ATDD files `atdd-{story_key}*.md`.
+- Scan `.gaia/artifacts/test-artifacts/` for all generated test case files matching `{story_key}-*.md` and ATDD files `atdd-{story_key}*.md`.
 - Build a map of generated test cases per story: `story_key -> [test_case_id, test_file, test_name]`.
 - Count total generated test cases per story (`generated` count) and in aggregate (`total_generated`).
 
@@ -146,7 +146,7 @@ This linkage validation is performed inline by the skill (the skill itself reads
 
 ## Pinned Schemas (E48-S5)
 
-The skill reads `docs/test-artifacts/test-plan.md` and story frontmatter as plain markdown -- there is no runtime schema validator. The schemas below are pinned in this SKILL.md so the LLM knows what column names, story-key format, and frontmatter fields to expect. Deviations are handled with the documented fallbacks; they do not abort the run.
+The skill reads `.gaia/artifacts/test-artifacts/test-plan.md` and story frontmatter as plain markdown -- there is no runtime schema validator. The schemas below are pinned in this SKILL.md so the LLM knows what column names, story-key format, and frontmatter fields to expect. Deviations are handled with the documented fallbacks; they do not abort the run.
 
 ### test-plan.md test-case table schema
 

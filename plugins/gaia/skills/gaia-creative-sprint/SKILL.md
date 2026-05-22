@@ -74,10 +74,10 @@ reordered); only the participant set and per-step output contract differ.
   before running /gaia-creative-sprint` and do not attempt later phases.
 - **State-free:** This skill does not transition sprint status, update story
   frontmatter, or touch the state machine. It writes ONLY to
-  `docs/creative-artifacts/creative-sprint-{date}.md` (and optional
+  `.gaia/artifacts/creative-artifacts/creative-sprint-{date}.md` (and optional
   scratch-state files for partial phase outputs).
 - **Output contract preserved (NFR-053):** The unified brief path template
-  `docs/creative-artifacts/creative-sprint-{date}.md` is preserved verbatim
+  `.gaia/artifacts/creative-artifacts/creative-sprint-{date}.md` is preserved verbatim
   from the legacy `workflow.yaml:output.primary`. Do not rename.
 
 ## Inputs
@@ -200,7 +200,7 @@ merging with attribution.
 ## Output
 
 Write the unified creative brief to
-`docs/creative-artifacts/creative-sprint-{date}.md` where `{date}` is the
+`.gaia/artifacts/creative-artifacts/creative-sprint-{date}.md` where `{date}` is the
 current date in `YYYY-MM-DD` form. This path is verbatim from the legacy
 workflow's `output.primary` contract (NFR-053 — functional parity).
 
@@ -209,7 +209,7 @@ workflow's `output.primary` contract (NFR-053 — functional parity).
 If the output file already exists from a prior run on the same date:
 
 1. **Default (safe):** Append a disambiguating suffix —
-   `docs/creative-artifacts/creative-sprint-{date}-{N}.md` where `{N}` is
+   `.gaia/artifacts/creative-artifacts/creative-sprint-{date}-{N}.md` where `{N}` is
    the next available integer starting at 2. Log the disambiguation:
    `Same-day output exists — wrote to creative-sprint-{date}-{N}.md to
    avoid silent data loss.`

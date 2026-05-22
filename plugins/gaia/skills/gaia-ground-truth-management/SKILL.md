@@ -103,9 +103,9 @@ Complete scan of the framework and project to rebuild or reconcile the entire gr
 | Project source files | `{project-path}/**/*` | File inventory, directory structure, languages, entry points |
 | Project config files | `{project-path}/*.{json,yaml,yml,toml,xml,env.example}` | Config keys, settings, dependencies |
 | Package manifests | `{project-path}/**/package.json`, `pubspec.yaml`, `pom.xml`, etc. | Dependencies, versions, scripts |
-| Planning artifacts | `docs/planning-artifacts/*.md` | Artifact count, names, dates |
-| Implementation artifacts | `docs/implementation-artifacts/epic-*/stories/**/*.md` (canonical, E79) + `docs/implementation-artifacts/*.md` (legacy flat fallback) | Artifact count, story keys, types |
-| Test artifacts | `docs/test-artifacts/*.md` | Artifact count, coverage areas |
+| Planning artifacts | `.gaia/artifacts/planning-artifacts/*.md` | Artifact count, names, dates |
+| Implementation artifacts | `.gaia/artifacts/implementation-artifacts/epic-*/stories/**/*.md` (canonical, E79) + `.gaia/artifacts/implementation-artifacts/*.md` (legacy flat fallback) | Artifact count, story keys, types |
+| Test artifacts | `.gaia/artifacts/test-artifacts/*.md` | Artifact count, coverage areas |
 
 ### Exclusions
 
@@ -273,8 +273,8 @@ Seeds initial ground truth from existing project artifacts during `/gaia-brownfi
 
 | Document | Path | Facts to Extract |
 |----------|------|-----------------|
-| Brownfield assessment | `docs/planning-artifacts/brownfield-assessment.md` | Tech stack, dependencies, file counts, project structure |
-| Project documentation | `docs/planning-artifacts/project-documentation.md` | Architecture patterns, conventions, config values |
+| Brownfield assessment | `.gaia/artifacts/planning-artifacts/brownfield-assessment.md` | Tech stack, dependencies, file counts, project structure |
+| Project documentation | `.gaia/artifacts/planning-artifacts/project-documentation.md` | Architecture patterns, conventions, config values |
 
 ### Parsing Rules
 

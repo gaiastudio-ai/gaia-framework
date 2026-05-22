@@ -30,7 +30,7 @@ If the user has NOT installed the v2 plugins yet, point them to §1 Prerequisite
 **Detection condition (ADR-100 §exit-11):** `gaia-migrate.sh` returns exit
 code 11 when the project root contains `config/project-config.yaml` AND no
 v1 markers (`_gaia/` absent, `custom/` absent) AND at least one v2-era state
-directory is present (`_memory/` OR `docs/planning-artifacts/`). The
+directory is present (`_memory/` OR `.gaia/artifacts/planning-artifacts/`). The
 detection is performed by `_detect_v1` in `gaia-migrate.sh` and fires BEFORE
 the existing return-10 "nothing to migrate" idempotent-success branch and
 BEFORE the v1+v2 mixed-state HALT.
@@ -115,7 +115,7 @@ The mechanical migration steps are documented in `gaia-public/docs/migration-gui
 
 - Migration guide (authoritative manual-steps source): `gaia-public/docs/migration-guide-v2.md` (E28-S130)
 - Backing script: `plugins/gaia/scripts/gaia-migrate.sh`
-- Manual integration-test plan (edge cases AC-EC2/3/5/7): `docs/test-artifacts/E28-S170-gaia-migrate-edge-cases-test-plan.md` (E28-S170) — reproducible steps, expected behavior, and environment setup for edge cases that are not bats-testable without dedicated scaffolding (tmpfs size caps, corrupt-byte fixtures, signal-interrupt timing)
+- Manual integration-test plan (edge cases AC-EC2/3/5/7): `.gaia/artifacts/test-artifacts/E28-S170-gaia-migrate-edge-cases-test-plan.md` (E28-S170) — reproducible steps, expected behavior, and environment setup for edge cases that are not bats-testable without dedicated scaffolding (tmpfs size caps, corrupt-byte fixtures, signal-interrupt timing)
 - ADR-042: Scripts-over-LLM for Deterministic Operations
 - ADR-048: Engine Deletion as Program-Closing Action
 - FR-326: Config Split (drives subtask 4.3 partition rules)

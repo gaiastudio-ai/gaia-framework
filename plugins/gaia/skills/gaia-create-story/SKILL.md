@@ -47,7 +47,7 @@ Native Claude Code conversion of the legacy create-story workflow (Cluster 7, E2
 - Step 6 (Validation) implements the ADR-050 Val + SM Fix-Loop dispatch pattern. SM fix is INLINE via this skill's own `Edit`/`Write` tools; nested subagent spawning for the fix is forbidden (NFR-046 single-spawn-level).
 - Step 6 3-attempt cap is hard. YOLO MUST NOT bypass the cap or the terminal FAILED verdict (FR-340).
 - Step 6 terminal verdicts are recorded via `review-gate.sh` against the ledger-keyed `story-validation` gate (`--plan-id <id>`); does NOT touch the six canonical Review Gate table rows.
-- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `docs/planning-artifacts/epics/` are FORBIDDEN.
+- Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `.gaia/artifacts/planning-artifacts/epics/` are FORBIDDEN.
 
 ## Steps
 
@@ -441,10 +441,10 @@ Self-transitions are no-ops.
 
 ### Step 6b — Re-shard touched documents (E53-S244, ADR-070)
 
-Step 5 (`transition-story-status.sh`) writes to the epics-and-stories monolith as part of the four-surface atomic update. Once Step 6 validation finishes, MUST follow with a re-shard so the per-epic shards under `docs/planning-artifacts/epics/` stay aligned with the monolith. This step honours the monolith-vs-shard sync contract in ADR-070 (extended in E53-S243) — it is not optional unless the user passes `--monolith-only` for an explicit atomic same-PR edit. This step sits BEFORE Step 7 (Val sidecar persistence) so the sidecar payload reflects the post-shard state on disk; Step 7 still runs last per AC3 atomicity.
+Step 5 (`transition-story-status.sh`) writes to the epics-and-stories monolith as part of the four-surface atomic update. Once Step 6 validation finishes, MUST follow with a re-shard so the per-epic shards under `.gaia/artifacts/planning-artifacts/epics/` stay aligned with the monolith. This step honours the monolith-vs-shard sync contract in ADR-070 (extended in E53-S243) — it is not optional unless the user passes `--monolith-only` for an explicit atomic same-PR edit. This step sits BEFORE Step 7 (Val sidecar persistence) so the sidecar payload reflects the post-shard state on disk; Step 7 still runs last per AC3 atomicity.
 
 - If `$ARGUMENTS` contains `--monolith-only`: skip this step entirely. The user takes responsibility for re-running `/gaia-shard-doc` (or merging shards back to the monolith) before commit. Record `reshard: skipped (--monolith-only)` in the workflow checkpoint.
-- Otherwise, invoke `/gaia-shard-doc docs/planning-artifacts/epics-and-stories.md` (or the canonical monolith path resolved at runtime). The skill writes to `docs/planning-artifacts/epics/` — `01-change-log.md` and per-epic `NN-eNN-...md` shards.
+- Otherwise, invoke `/gaia-shard-doc .gaia/artifacts/planning-artifacts/epics-and-stories.md` (or the canonical monolith path resolved at runtime). The skill writes to `.gaia/artifacts/planning-artifacts/epics/` — `01-change-log.md` and per-epic `NN-eNN-...md` shards.
 - After the re-shard returns, run `${CLAUDE_PLUGIN_ROOT}/scripts/check-monolith-shard-sync.sh` against the project root. The check is advisory (always exits 0). If it emits any `WARNING` lines naming `epics-and-stories.md`, surface those WARNINGs to the user — they indicate the re-shard did not converge and the user must investigate before commit.
 - Record `reshard: invoked (gaia-shard-doc)` in the workflow checkpoint so the audit trail captures the invocation.
 

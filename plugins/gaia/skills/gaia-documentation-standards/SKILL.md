@@ -133,7 +133,7 @@ State the decision clearly and concisely.
 
 ### ADR Conventions
 - Number ADRs sequentially: `ADR-001`, `ADR-002`, etc.
-- Store in `docs/adr/` or `docs/planning-artifacts/adr/`
+- Store in `docs/adr/` or `.gaia/artifacts/planning-artifacts/adr/`
 - Never delete ADRs; mark as `Deprecated` or `Superseded`
 - Write ADRs before or during implementation, not after
 - One decision per ADR; split compound decisions into separate records

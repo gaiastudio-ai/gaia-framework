@@ -17,7 +17,7 @@ The runtime supports **exactly three themes** selected via `GAIA_STATUSLINE_THEM
 |---|---|---|
 | `minimal` | `GAIA_STATUSLINE_THEME=minimal` | Brand chunk only — `◆ GAIA <version>`. Identical to the `<32` cols width-ladder fallback. |
 | `default` | unset OR `GAIA_STATUSLINE_THEME=default` | One-liner: `◆ GAIA <version> | <model> | <project>/<branch> | <context-%>` |
-| `rich` | `GAIA_STATUSLINE_THEME=rich` | Default one-liner PLUS a second line `sprint | story | agent` (sprint comes from `docs/implementation-artifacts/sprint-status.yaml`). |
+| `rich` | `GAIA_STATUSLINE_THEME=rich` | Default one-liner PLUS a second line `sprint | story | agent` (sprint comes from `.gaia/artifacts/implementation-artifacts/sprint-status.yaml`). |
 
 **Hard contract (R4 mitigation): a fourth theme variant requires a new ADR.** This is not a config flag and not a future-proofed extension point. Any addition is a deliberate architectural change.
 

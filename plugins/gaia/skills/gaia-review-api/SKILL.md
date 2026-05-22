@@ -95,7 +95,7 @@ If the target is empty or resolves to no API definitions (AC-EC6), exit with `No
 
 **Guards (run before invocation):**
 
-- Artifact-existence guard (AC-EC3): if not exists `$REPORT_PATH` (the actual resolved write path emitted by Step 5, which may be `docs/planning-artifacts/api-design-review-{date}.md` or a same-day suffix-incremented variant such as `api-design-review-{date}-2.md`) -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
+- Artifact-existence guard (AC-EC3): if not exists `$REPORT_PATH` (the actual resolved write path emitted by Step 5, which may be `.gaia/artifacts/planning-artifacts/api-design-review-{date}.md` or a same-day suffix-incremented variant such as `api-design-review-{date}-2.md`) -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
 - Val-skill-availability guard (AC-EC6): if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
 
 **Loop:**

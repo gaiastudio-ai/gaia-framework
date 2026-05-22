@@ -20,7 +20,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 **Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes pipeline configuration files and modifies `global.yaml`.
 
-**Foundation script integration (ADR-042):** This skill relies on `validate-gate.sh` from `plugins/gaia/scripts/` as a dependency check in `setup.sh` (the foundation script must be present and executable before the skill body runs). The skill's `finalize.sh` does NOT post-check `ci_setup_exists` — removed by E28-S199, since this skill is the producer of `docs/test-artifacts/ci-setup.md` and a post-check on the producer's own output is tautological (success path) or misleading (failure path). Deterministic operations (config resolution, gate verification) belong in bash scripts, not LLM prompts.
+**Foundation script integration (ADR-042):** This skill relies on `validate-gate.sh` from `plugins/gaia/scripts/` as a dependency check in `setup.sh` (the foundation script must be present and executable before the skill body runs). The skill's `finalize.sh` does NOT post-check `ci_setup_exists` — removed by E28-S199, since this skill is the producer of `.gaia/artifacts/test-artifacts/ci-setup.md` and a post-check on the producer's own output is tautological (success path) or misleading (failure path). Deterministic operations (config resolution, gate verification) belong in bash scripts, not LLM prompts.
 
 ## Critical Rules
 
@@ -102,7 +102,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ### Schema Validation Retry Loop
 
-> Implements **FR-355** (`/gaia-ci-setup` Schema Validation Retry Loop). Verified by **VCP-CI-01** (valid first-pass), **VCP-CI-02** (single retry), and **VCP-CI-03** (multi-retry) — see `docs/test-artifacts/test-plan.md §11.46.15`.
+> Implements **FR-355** (`/gaia-ci-setup` Schema Validation Retry Loop). Verified by **VCP-CI-01** (valid first-pass), **VCP-CI-02** (single retry), and **VCP-CI-03** (multi-retry) — see `.gaia/artifacts/test-artifacts/test-plan.md §11.46.15`.
 
 The Step 8 schema validation invocation is wrapped in a retry loop so the user can iteratively correct CI configuration violations within a single `/gaia-ci-setup` invocation instead of restarting the workflow.
 
@@ -125,7 +125,7 @@ The Step 8 schema validation invocation is wrapped in a retry loop so the user c
 
 **Prompt mode interactions.** In YOLO mode the retry loop still prompts `[c]`/`[x]`. Violations require human input and cannot be auto-answered — this matches the engine's `open-question` indicator handling.
 
-**Atomic write semantics.** The skill does NOT write a partial `docs/test-artifacts/ci-setup.md` on the abort path. If `ci-setup.md` generation already occurred before validation in a future revision, that ordering must be documented here so users understand what the abort path leaves behind. Today the artifact is written by Step 9 (after validation passes), so the abort path leaves no `ci-setup.md` behind.
+**Atomic write semantics.** The skill does NOT write a partial `.gaia/artifacts/test-artifacts/ci-setup.md` on the abort path. If `ci-setup.md` generation already occurred before validation in a future revision, that ordering must be documented here so users understand what the abort path leaves behind. Today the artifact is written by Step 9 (after validation passes), so the abort path leaves no `ci-setup.md` behind.
 
 #### Violation Output Format
 
@@ -145,12 +145,12 @@ Multiple violations are emitted as an ordered list. Field names use dotted-path 
 
 ### Step 9 -- Generate Output
 
-- Generate the CI/CD pipeline configuration document at `docs/test-artifacts/ci-setup.md`.
+- Generate the CI/CD pipeline configuration document at `.gaia/artifacts/test-artifacts/ci-setup.md`.
 - Include: pipeline stages, quality gates, secrets management, deployment strategy, monitoring setup.
 - When the generated workflow is written to disk (e.g. `.github/workflows/gaia-pre-merge.yml`), prepend the four-line header emitted by `${CLAUDE_PLUGIN_ROOT}/scripts/lib/ci-regen-header.sh emit <hash>` where `<hash>` is the sha256 of the CI-relevant config sections (computed via the same helper's `hash` subcommand). The header records: attribution, DO NOT EDIT warning referencing `--regenerate`, source-hash, and the ISO-8601 generated-at timestamp.
 - Immediately after the workflow file is written, invoke `${CLAUDE_PLUGIN_ROOT}/scripts/ci-regen-user-steps.sh scaffold <ci-file>` to drop a sibling `*.user-steps.yml` scaffold next to it (no-op when the user-steps file already exists). This is the AC8 first-run scaffold path.
 
-> `!scripts/write-checkpoint.sh gaia-ci-setup 9 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=output-generated --paths docs/test-artifacts/ci-setup.md`
+> `!scripts/write-checkpoint.sh gaia-ci-setup 9 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=output-generated --paths .gaia/artifacts/test-artifacts/ci-setup.md`
 
 ## `--regenerate` Mode (E71-S4)
 
@@ -248,7 +248,7 @@ Answer `y` returns to the caller for an immediate `/gaia-config-ci --regenerate`
   Validation runs BEFORE the checkpoint and lifecycle-event writes
   (observability is never suppressed by checklist outcome — story AC6).
 
-  See docs/implementation-artifacts/E42-S15-port-gaia-test-framework-atdd-ci-setup-checklists-to-v2.md.
+  See .gaia/artifacts/implementation-artifacts/E42-S15-port-gaia-test-framework-atdd-ci-setup-checklists-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 — Pipeline stages defined (build, lint, test, coverage)

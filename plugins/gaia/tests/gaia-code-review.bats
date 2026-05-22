@@ -176,10 +176,11 @@ teardown() { common_teardown; }
   [[ "$line" != *Edit* ]]
 }
 
-@test "AC6 (a): SKILL.md prescribes parent-mediated write to FR-402 path" {
+@test "AC6 (a): SKILL.md prescribes parent-mediated write to FR-402 path (canonical post-AF-21-23)" {
   # The output phase MUST mention the FR-402 locked path code-review-E<NN>-S<NNN>.md.
   grep -F 'code-review-' "$SKILL_FILE" >/dev/null
-  grep -F 'docs/implementation-artifacts/' "$SKILL_FILE" >/dev/null
+  # AF-2026-05-21-23 canonicalized this path. Accept canonical or legacy.
+  grep -qE '(docs|\.gaia/artifacts)/implementation-artifacts/' "$SKILL_FILE"
   # Parent-mediated persistence keyword (Option A, parent context writes).
   grep -iF 'parent' "$SKILL_FILE" >/dev/null
 }

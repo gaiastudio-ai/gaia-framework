@@ -203,8 +203,8 @@ This section summarizes the five user-observable flows `/gaia-resume` implements
   "skill_name": "gaia-create-prd",
   "timestamp": "2026-04-24T14:30:00.123456Z",
   "key_variables": { "project_name": "Example", "prd_version": "1.0.0" },
-  "output_paths": ["docs/planning-artifacts/prd.md"],
-  "file_checksums": { "docs/planning-artifacts/prd.md": "sha256:a1b2c3..." },
+  "output_paths": [".gaia/artifacts/planning-artifacts/prd.md"],
+  "file_checksums": { ".gaia/artifacts/planning-artifacts/prd.md": "sha256:a1b2c3..." },
   "skill_md_content_hash": "sha256:d4e5f6..."
 }
 ```

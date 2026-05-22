@@ -1,6 +1,6 @@
 ---
 name: gaia-quick-dev
-description: Implement a quick spec with auto-detected stack developer. Use when "dev this quick spec" or /gaia-quick-dev. Runs a five-step flow (Load Spec -> Resolve WIP -> Delegate to gaia:stack-dev subagent -> Verify -> Complete) against docs/implementation-artifacts/quick-spec-{spec-name}.md. Native Claude Code conversion of the legacy quick-dev workflow (E28-S117, Cluster 16).
+description: Implement a quick spec with auto-detected stack developer. Use when "dev this quick spec" or /gaia-quick-dev. Runs a five-step flow (Load Spec -> Resolve WIP -> Delegate to gaia:stack-dev subagent -> Verify -> Complete) against .gaia/artifacts/implementation-artifacts/quick-spec-{spec-name}.md. Native Claude Code conversion of the legacy quick-dev workflow (E28-S117, Cluster 16).
 argument-hint: "[spec-name]"
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 orchestration_class: heavy-procedural
@@ -37,7 +37,7 @@ fi
 
 ## Mission
 
-You are implementing a quick spec end-to-end — the fastest path from idea to code in GAIA. Given `docs/implementation-artifacts/quick-spec-{spec-name}.md`, load the spec, check for an in-progress WIP checkpoint, auto-detect the project's stack, delegate implementation to the matching native stack-dev subagent (`typescript-dev`, `angular-dev`, `flutter-dev`, `java-dev`, `python-dev`, `mobile-dev`, or `go-dev`) via `context: fork`, run the project's tests, validate against the spec's acceptance criteria, and archive the checkpoint.
+You are implementing a quick spec end-to-end — the fastest path from idea to code in GAIA. Given `.gaia/artifacts/implementation-artifacts/quick-spec-{spec-name}.md`, load the spec, check for an in-progress WIP checkpoint, auto-detect the project's stack, delegate implementation to the matching native stack-dev subagent (`typescript-dev`, `angular-dev`, `flutter-dev`, `java-dev`, `python-dev`, `mobile-dev`, or `go-dev`) via `context: fork`, run the project's tests, validate against the spec's acceptance criteria, and archive the checkpoint.
 
 This skill is the native Claude Code conversion of the legacy quick-dev workflow at `_gaia/lifecycle/workflows/quick-flow/quick-dev/`. The five-step order, the WIP checkpoint resume UX (Proceed / Start fresh / Review), the `files_touched` shape with sha256 checksums, and the legacy dev agent auto-detect behavior (rule-76 "Auto-detected developer: {agent_name} based on {detection_source}") are preserved verbatim per ADR-041 and NFR-053.
 
@@ -56,7 +56,7 @@ This skill is the native Claude Code conversion of the legacy quick-dev workflow
 
 ## Inputs
 
-1. **Spec name** — optional via `$ARGUMENTS`. Expands to `docs/implementation-artifacts/quick-spec-{spec_name}.md`. If missing, prompt for it before Step 1.
+1. **Spec name** — optional via `$ARGUMENTS`. Expands to `.gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md`. If missing, prompt for it before Step 1.
 
 ## Pipeline Overview
 
