@@ -216,10 +216,13 @@ fi
 # without a docs/ tree).
 
 resolve_impl_dir() {
+  # AF-2026-05-21-25: also recognize canonical .gaia/artifacts/implementation-artifacts.
   local p
   p="$(cd "$(dirname "$1")" && pwd)"
   while [ "$p" != "/" ] && [ -n "$p" ]; do
     case "$p" in
+      */.gaia/artifacts/implementation-artifacts) printf '%s' "$p"; return 0 ;;
+      */.gaia/artifacts/implementation-artifacts/*) p="${p%/*}" ;;
       */docs/implementation-artifacts) printf '%s' "$p"; return 0 ;;
       */docs/implementation-artifacts/*) p="${p%/*}" ;;
       *) p="${p%/*}" ;;

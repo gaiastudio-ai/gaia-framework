@@ -31,7 +31,12 @@ SPEC_NAME="$1"
 # Resolve the project root — prefer $PROJECT_PATH, fall back to cwd (matches
 # the legacy resolve-config.sh contract and the brownfield/native split).
 WORK_DIR="${PROJECT_PATH:-$PWD}"
-SPEC_PATH="$WORK_DIR/docs/implementation-artifacts/quick-spec-${SPEC_NAME}.md"
+# AF-2026-05-21-25: canonical-first spec lookup, legacy fallback.
+if [ -f "$WORK_DIR/.gaia/artifacts/implementation-artifacts/quick-spec-${SPEC_NAME}.md" ]; then
+  SPEC_PATH="$WORK_DIR/.gaia/artifacts/implementation-artifacts/quick-spec-${SPEC_NAME}.md"
+else
+  SPEC_PATH="$WORK_DIR/docs/implementation-artifacts/quick-spec-${SPEC_NAME}.md"
+fi
 
 if [ ! -f "$SPEC_PATH" ]; then
   log "Quick spec not found — run /gaia-quick-spec first."

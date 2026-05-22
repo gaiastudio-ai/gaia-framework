@@ -670,7 +670,12 @@ fi
 
 info "Step 4: Test Execution Bridge invocation"
 
-EVIDENCE_DIR="$PROJECT_ROOT/docs/test-artifacts/test-results"
+# AF-2026-05-21-25: canonical-first evidence dir; fall back to legacy on pre-ADR-111.
+if [ -d "$PROJECT_ROOT/.gaia/artifacts/test-artifacts" ] || [ ! -d "$PROJECT_ROOT/docs/test-artifacts" ]; then
+  EVIDENCE_DIR="$PROJECT_ROOT/.gaia/artifacts/test-artifacts/test-results"
+else
+  EVIDENCE_DIR="$PROJECT_ROOT/docs/test-artifacts/test-results"
+fi
 EVIDENCE_PATH="$EVIDENCE_DIR/${STORY_KEY}-execution.json"
 mkdir -p "$EVIDENCE_DIR"
 
@@ -843,8 +848,13 @@ info "Step 5: plan file updated (phase=executed)"
 
 # 5.2 — Update story Review Gate (inline for AC8 synthetic fixture per Val INFO #2)
 # Look for a story artifact at the canonical path under PROJECT_ROOT
+# AF-2026-05-21-25: canonical-first lookup, legacy fallback.
 STORY_ARTIFACT=""
-STORY_GLOB="$PROJECT_ROOT/docs/implementation-artifacts/${STORY_KEY}-*.md"
+if [ -d "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" ]; then
+  STORY_GLOB="$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts/${STORY_KEY}-*.md"
+else
+  STORY_GLOB="$PROJECT_ROOT/docs/implementation-artifacts/${STORY_KEY}-*.md"
+fi
 for f in $STORY_GLOB; do
   [ -f "$f" ] && STORY_ARTIFACT="$f" && break
 done
