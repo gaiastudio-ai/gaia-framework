@@ -117,8 +117,10 @@ jobs:
             exit 0
           fi
 
+          # AF-2026-05-22-2: pipe via stdin to avoid ARG_MAX on large ranges
+          # (e.g., 45+-commit staging→main merges that exceed the Linux argv limit).
           ESCAPED=$(echo "$FILTERED" | sed ':a;N;$!ba;s/\n/\\n/g')
-          RESULT=$(node scripts/classify-commits.js "$ESCAPED")
+          RESULT=$(printf '%s' "$ESCAPED" | node scripts/classify-commits.js --stdin)
           BUMP_SIZE=$(echo "$RESULT" | grep "bump_size=" | cut -d= -f2)
           HAS_COMMITS=$(echo "$RESULT" | grep "has_commits=" | cut -d= -f2)
 
@@ -149,12 +151,17 @@ jobs:
           COMMITS=$(cat /tmp/commit-messages.txt)
           ESCAPED=$(echo "$COMMITS" | sed ':a;N;$!ba;s/\n/\\n/g')
 
-          node -e "
+          # AF-2026-05-22-2: pipe via stdin to avoid ARG_MAX on large ranges.
+          # The node -e block reads the escaped commit blob from stdin (fd 0)
+          # instead of process.argv, mirroring the classify-commits.js --stdin
+          # fix above.
+          printf '%s' "$ESCAPED" | node -e "
             const { generateChangelog } = require('./scripts/classify-commits.js');
-            const commits = process.argv[1].split('\\\\n').filter(Boolean);
+            const input = require('fs').readFileSync(0, 'utf8');
+            const commits = input.split('\\\\n').filter(Boolean);
             const delta = generateChangelog(commits, '$NEW_VERSION');
             process.stdout.write(delta);
-          " "$ESCAPED" > /tmp/changelog-delta.md
+          " > /tmp/changelog-delta.md
 
           if [ -f "$CHANGELOG_PATH" ]; then
             HEAD=$(head -n 4 "$CHANGELOG_PATH")
