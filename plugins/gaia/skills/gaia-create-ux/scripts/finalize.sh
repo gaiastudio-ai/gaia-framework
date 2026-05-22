@@ -204,7 +204,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   # --- Script-verifiable items (18) ---
 
   # Envelope (SV-01..SV-03)
-  item_check "SV-01" "Output file exists at docs/planning-artifacts/ux-design.md" \
+  item_check "SV-01" "Output file exists at resolved path ($ARTIFACT)" \
     "$([ -f "$ARTIFACT" ] && echo pass || echo fail)"
   item_check "SV-02" "Output artifact is non-empty" "$(file_nonempty "$ARTIFACT")"
 

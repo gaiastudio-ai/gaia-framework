@@ -41,7 +41,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - If no config found: note that no existing CI platform was detected.
 - Ask which CI platform to use: GitHub Actions, GitLab CI, Jenkins, CircleCI, or other.
 
-> `!scripts/write-checkpoint.sh gaia-ci-setup 1 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=platform-detected`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-ci-setup 1 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=platform-detected`
 
 ### Step 2 -- Preset Selection (Promotion Chain)
 
@@ -52,14 +52,14 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - For custom: prompt for each environment field (id, name, branch, ci_provider, merge_strategy, ci_checks).
 - Write the selected chain to `global.yaml` preserving all existing fields.
 
-> `!scripts/write-checkpoint.sh gaia-ci-setup 2 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" preset="$PRESET" stage=preset-selected`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-ci-setup 2 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" preset="$PRESET" stage=preset-selected`
 
 ### Step 3 -- Define Pipeline
 
 - Configure build, lint, test, coverage, and deploy gates.
 - Map gates to the selected CI platform's syntax.
 
-> `!scripts/write-checkpoint.sh gaia-ci-setup 3 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=pipeline-defined`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-ci-setup 3 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=pipeline-defined`
 
 ### Step 4 -- Quality Gates
 
@@ -67,7 +67,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Define pass/fail thresholds: coverage percentage, test pass rate.
 - Configure gate enforcement (blocking vs advisory).
 
-> `!scripts/write-checkpoint.sh gaia-ci-setup 4 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=quality-gates-defined`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-ci-setup 4 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=quality-gates-defined`
 
 ### Step 5 -- Secrets Management
 
@@ -75,7 +75,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Document how to add secrets to the selected CI platform.
 - Define environment-level separation for staging vs production secrets.
 
-> `!scripts/write-checkpoint.sh gaia-ci-setup 5 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=secrets-configured`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-ci-setup 5 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=secrets-configured`
 
 ### Step 6 -- Deployment Strategy
 
@@ -83,7 +83,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Define production deployment: manual approval gate.
 - Define rollback procedure.
 
-> `!scripts/write-checkpoint.sh gaia-ci-setup 6 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=deployment-strategy-defined`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-ci-setup 6 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=deployment-strategy-defined`
 
 ### Step 7 -- Monitoring and Notifications
 
@@ -91,14 +91,14 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Add pipeline status badge for README.
 - Recommend metrics dashboard for pipeline health.
 
-> `!scripts/write-checkpoint.sh gaia-ci-setup 7 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=monitoring-configured`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-ci-setup 7 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=monitoring-configured`
 
 ### Step 8 -- Generate Pipeline Config
 
 - Generate the CI config file (e.g., `.github/workflows/ci.yml`) for the selected platform.
 - Validate the generated config syntax. The validation step is wrapped in the retry loop documented below under [Schema Validation Retry Loop](#schema-validation-retry-loop) -- see that subsection for entry, body, exit, and abort semantics. The loop wraps `validate-gate.sh` (do not duplicate its logic inline).
 
-> `!scripts/write-checkpoint.sh gaia-ci-setup 8 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" schema_retry_count="$SCHEMA_RETRY_COUNT" stage=pipeline-config-generated --paths "$CI_CONFIG_PATH"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-ci-setup 8 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" schema_retry_count="$SCHEMA_RETRY_COUNT" stage=pipeline-config-generated --paths "$CI_CONFIG_PATH"`
 
 ### Schema Validation Retry Loop
 
@@ -150,7 +150,7 @@ Multiple violations are emitted as an ordered list. Field names use dotted-path 
 - When the generated workflow is written to disk (e.g. `.github/workflows/gaia-pre-merge.yml`), prepend the four-line header emitted by `${CLAUDE_PLUGIN_ROOT}/scripts/lib/ci-regen-header.sh emit <hash>` where `<hash>` is the sha256 of the CI-relevant config sections (computed via the same helper's `hash` subcommand). The header records: attribution, DO NOT EDIT warning referencing `--regenerate`, source-hash, and the ISO-8601 generated-at timestamp.
 - Immediately after the workflow file is written, invoke `${CLAUDE_PLUGIN_ROOT}/scripts/ci-regen-user-steps.sh scaffold <ci-file>` to drop a sibling `*.user-steps.yml` scaffold next to it (no-op when the user-steps file already exists). This is the AC8 first-run scaffold path.
 
-> `!scripts/write-checkpoint.sh gaia-ci-setup 9 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=output-generated --paths .gaia/artifacts/test-artifacts/ci-setup.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-ci-setup 9 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=output-generated --paths .gaia/artifacts/test-artifacts/ci-setup.md`
 
 ## `--regenerate` Mode (E71-S4)
 

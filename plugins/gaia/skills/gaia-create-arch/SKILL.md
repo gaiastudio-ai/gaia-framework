@@ -18,7 +18,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -70,7 +70,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Check for brownfield artifacts: `.gaia/artifacts/planning-artifacts/brownfield-assessment.md` and `.gaia/artifacts/planning-artifacts/project-documentation.md`. If either exists, heading-scan them — these contain existing codebase analysis that must inform architecture decisions even if the PRD is not in brownfield mode.
 - Check for `.gaia/artifacts/planning-artifacts/threat-model.md`. If it exists, heading-scan it — identified threats and mitigations must inform the security architecture in Step 7. Section bodies are loaded on demand by later steps.
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 1 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 1 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION"`
 
 ### Step 2 — Detect Mode
 
@@ -78,7 +78,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - If brownfield mode detected: set mode to brownfield. Use brownfield architecture template.
 - If no brownfield header: set mode to greenfield. Load `architecture-template.md` from this skill directory. If `custom/templates/architecture-template.md` exists and is non-empty, use the custom template instead.
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 2 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" arch_mode="$ARCH_MODE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 2 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" arch_mode="$ARCH_MODE"`
 
 ### Step 3 — Technology Selection
 
@@ -90,7 +90,7 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to select t
 - Record decision as ADR in the architecture document's Decision Log table.
 - Present recommended technology stack to the user for confirmation.
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 3 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" section_slug=technology-selection`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 3 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" section_slug=technology-selection`
 
 ### Step 3.5 — Tech-Stack Confirmation Pause
 
@@ -189,7 +189,7 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to design t
   - Target architecture for gaps identified in the PRD
   - As-is vs target delta table
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 4 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" section_slug=system-architecture`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 4 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" section_slug=system-architecture`
 
 ### Step 5 — Data Architecture
 
@@ -199,7 +199,7 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to design d
 - Define data flow between components.
 - Specify data storage, caching, and replication strategies.
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 5 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" section_slug=data-architecture`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 5 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" section_slug=data-architecture`
 
 ### Step 6 — API Design
 
@@ -209,7 +209,7 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to design A
 - Specify authentication and authorization strategy.
 - Document API versioning approach.
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 6 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" section_slug=api-design`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 6 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" section_slug=api-design`
 
 ### Step 7 — Infrastructure and Cross-Cutting Concerns
 
@@ -221,7 +221,7 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to define i
 - Define security architecture: if threat-model.md was loaded, cross-reference identified threats and map each critical/high threat to an architectural mitigation. If no threat model exists, prompt user for key security requirements.
 - Brownfield: document security architecture, cross-cutting concerns with current state and gaps. Define migration strategy. Cross-reference api-documentation.md, event-catalog.md, dependency-map.md in the Integration Architecture section.
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 7 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" section_slug=infra-and-cross-cutting`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 7 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" section_slug=infra-and-cross-cutting`
 
 ### Step 8 — Architecture Decision Records
 
@@ -232,7 +232,7 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to compile 
 - Brownfield: mark existing decisions as status "Existing", new gap-related decisions as "Proposed".
 - Generate a "Decision to Requirement Mapping" table mapping each ADR to the FR/NFR IDs it addresses. Flag any FR/NFR from the PRD with no corresponding ADR as a coverage gap.
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 8 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" adr_count="$ADR_COUNT"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 8 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" adr_count="$ADR_COUNT"`
 
 ### Step 9 — Generate Output
 
@@ -243,7 +243,7 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to compile 
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/architecture.md`
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 9 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" --paths .gaia/artifacts/planning-artifacts/architecture.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 9 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" --paths .gaia/artifacts/planning-artifacts/architecture.md`
 
 ### Step 10 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -272,7 +272,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation runs against the Step 9 primary write (artifact-as-drafted). Per story E44-S5 AC-EC9 and the Adversarial-loop Val scope decision in story Dev Notes, Step 13's post-adversarial re-write does NOT trigger a second Val invocation.
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 10 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/architecture.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 10 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/architecture.md`
 
 ### Step 11 — Optional: API Design Review
 
@@ -280,7 +280,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 - If yes: invoke the API design review task.
 - If skip: API review can be run anytime later with /gaia-review-api.
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 11 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" api_review_run="$API_REVIEW_RUN"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 11 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" api_review_run="$API_REVIEW_RUN"`
 
 ### Step 12 — Adversarial Review
 
@@ -289,7 +289,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 - When the subagent returns: verify `adversarial-review-architecture-*.md` exists in `.gaia/artifacts/planning-artifacts/`. Per ADR-063, display the returned ADR-037 envelope (status + summary + findings) to the user.
 - If not triggered: add "## Review Findings Incorporated" section noting the review was not triggered.
 
-> `!scripts/write-checkpoint.sh gaia-create-arch 12 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" adversarial_triggered="$ADVERSARIAL_TRIGGERED"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 12 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" adversarial_triggered="$ADVERSARIAL_TRIGGERED"`
 
 ### Step 13 — Incorporate Adversarial Findings
 

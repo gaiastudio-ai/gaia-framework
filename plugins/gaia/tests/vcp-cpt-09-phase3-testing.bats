@@ -76,7 +76,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
 
     # Count canonical write-checkpoint.sh invocation lines targeting this slug.
     local cp_lines
-    cp_lines=$(grep -cE "^> \`!scripts/write-checkpoint\.sh ${slug} [0-9]+" "$file" || true)
+    cp_lines=$(grep -cE "^> \`!(\\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh ${slug} [0-9]+" "$file" || true)
     [ "$cp_lines" = "$expected" ] || {
       echo "$slug: expected $expected checkpoint invocations, got $cp_lines"
       return 1
@@ -86,7 +86,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
     local n
     for n in $(seq 1 "$expected"); do
       local hits
-      hits=$(grep -cE "^> \`!scripts/write-checkpoint\.sh ${slug} ${n}( |\`)" "$file" || true)
+      hits=$(grep -cE "^> \`!(\\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh ${slug} ${n}( |\`)" "$file" || true)
       [ "$hits" = "1" ] || {
         echo "$slug step $n: expected 1 invocation, got $hits"
         return 1
@@ -118,7 +118,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
     [ -f "$file" ] || { echo "missing SKILL.md: $file"; return 1; }
     local key
     for key in $keys; do
-      grep -qE "^> \`!scripts/write-checkpoint\.sh ${slug} [0-9]+ .*${key}=" "$file" || {
+      grep -qE "^> \`!(\\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh ${slug} [0-9]+ .*${key}=" "$file" || {
         echo "$slug: key_variable '$key' missing from all invocation lines"
         return 1
       }
@@ -196,7 +196,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
     local bad
     bad=$(grep -nE '^> `!scripts/write-checkpoint\.sh /' "$file" || true)
     [ -z "$bad" ] || { echo "$slug: leading-slash skill_name found: $bad"; return 1; }
-    bad=$(grep -nE "^> \`!scripts/write-checkpoint\.sh [a-z0-9-]+ " "$file" | grep -vE "write-checkpoint\.sh ${slug} " || true)
+    bad=$(grep -nE "^> \`!(\\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh [a-z0-9-]+ " "$file" | grep -vE "write-checkpoint\.sh ${slug} " || true)
     [ -z "$bad" ] || { echo "$slug: wrong skill_name in invocation: $bad"; return 1; }
   done
 }

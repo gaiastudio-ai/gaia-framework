@@ -12,7 +12,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -47,7 +47,7 @@ Ask the user, in order, and wait for a response on each:
 - **"What is the use case or problem context?"**
 - **"Are there constraints (team expertise, budget, timeline)?"**
 
-> `!scripts/write-checkpoint.sh gaia-tech-research 1 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-tech-research 1 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA"`
 
 ### Step 2 — Web Access Check
 
@@ -55,7 +55,7 @@ Ask the user, in order, and wait for a response on each:
 - If web access is available, proceed with live web research in subsequent steps.
 - If no web access, notify the user: *"Web access unavailable. Proceeding with user-provided data and general knowledge. Results may be less comprehensive."*
 
-> `!scripts/write-checkpoint.sh gaia-tech-research 2 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-tech-research 2 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA"`
 
 ### Step 3 — Technology Evaluation
 
@@ -63,7 +63,7 @@ Ask the user, in order, and wait for a response on each:
 - Evaluate ecosystem: libraries, tools, IDE support, documentation quality.
 - Check production readiness: stability, performance characteristics, scalability.
 
-> `!scripts/write-checkpoint.sh gaia-tech-research 3 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-tech-research 3 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA"`
 
 ### Step 4 — Trade-off Analysis
 
@@ -71,7 +71,7 @@ Ask the user, in order, and wait for a response on each:
 - Compare alternatives across key dimensions.
 - Provide recommendation with clear rationale.
 
-> `!scripts/write-checkpoint.sh gaia-tech-research 4 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-tech-research 4 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA"`
 
 ### Step 5 — Generate Output
 
@@ -89,7 +89,7 @@ Write a structured technical research report to `.gaia/artifacts/planning-artifa
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/technical-research.md`
 
-> `!scripts/write-checkpoint.sh gaia-tech-research 5 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA" --paths .gaia/artifacts/planning-artifacts/technical-research.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-tech-research 5 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA" --paths .gaia/artifacts/planning-artifacts/technical-research.md`
 
 ### Step 6 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -118,7 +118,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). The `technical-research` artifact_type matches the on-disk filename `technical-research.md` (slug-filename symmetry per E44-S11). It may not have a canonical document-ruleset; per E44-S1 AC-EC1 Val skips structural validation for unknown types and still runs factual-claim validation.
 
-> `!scripts/write-checkpoint.sh gaia-tech-research 6 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/technical-research.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-tech-research 6 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/technical-research.md`
 
 ## Validation
 

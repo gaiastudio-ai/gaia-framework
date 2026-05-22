@@ -12,7 +12,7 @@ orchestration_class: heavy-procedural
 SESSION_MODE=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-orchestration-mode.sh")
 WARNING_OUTPUT=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/orchestration-warning.sh" --skill-class heavy-procedural --mode "$SESSION_MODE")
 if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
-  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | awk '/^SURFACE-WARNING: /{print $2; exit}')
+  SENTINEL_PATH=$(printf '%s' "$WARNING_OUTPUT" | sed -n 's/^SURFACE-WARNING: //p' | head -n1)
   cat "$SENTINEL_PATH"
 fi
 ```
@@ -45,14 +45,14 @@ Ask the user, in order, and wait for a response on each:
 - **"What domain or industry do you want to research?"**
 - **"Are there specific aspects you want to focus on?"**
 
-> `!scripts/write-checkpoint.sh gaia-domain-research 1 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-domain-research 1 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE"`
 
 ### Step 2 — Web Access Check
 
 - Check if MCP web tools are available.
 - If no web access, notify the user and proceed with general knowledge only.
 
-> `!scripts/write-checkpoint.sh gaia-domain-research 2 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-domain-research 2 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE"`
 
 ### Step 3 — Domain Landscape
 
@@ -61,7 +61,7 @@ Ask the user, in order, and wait for a response on each:
 - Map industry trends and emerging patterns.
 - Define domain-specific terminology and concepts.
 
-> `!scripts/write-checkpoint.sh gaia-domain-research 3 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-domain-research 3 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE"`
 
 ### Step 4 — Domain-Specific Risks
 
@@ -69,7 +69,7 @@ Ask the user, in order, and wait for a response on each:
 - Assess technical risks specific to the domain.
 - Evaluate market and competitive risks.
 
-> `!scripts/write-checkpoint.sh gaia-domain-research 4 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE"`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-domain-research 4 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE"`
 
 ### Step 5 — Generate Output
 
@@ -89,7 +89,7 @@ Write a structured domain research report to `.gaia/artifacts/planning-artifacts
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/domain-research.md`
 
-> `!scripts/write-checkpoint.sh gaia-domain-research 5 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE" --paths .gaia/artifacts/planning-artifacts/domain-research.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-domain-research 5 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE" --paths .gaia/artifacts/planning-artifacts/domain-research.md`
 
 ### Step 6 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
@@ -118,7 +118,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). The `domain-research` artifact_type may not have a canonical document-ruleset; per E44-S1 AC-EC1 Val skips structural validation for unknown types and still runs factual-claim validation.
 
-> `!scripts/write-checkpoint.sh gaia-domain-research 6 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/domain-research.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-domain-research 6 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/domain-research.md`
 
 ## Validation
 
