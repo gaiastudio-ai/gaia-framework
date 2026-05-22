@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.173.1] — 2026-05-22
+
+### Fixed
+
+- (AF-2026-05-22-5) test-strategy gate + missing scripts + config-hydration (#885) (#886)
+
 ## [1.173.0] — 2026-05-22
 
 ### Added
