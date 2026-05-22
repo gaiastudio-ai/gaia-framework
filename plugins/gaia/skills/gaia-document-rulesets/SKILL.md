@@ -55,7 +55,7 @@ Upstream skills invoke `/gaia-val-validate` with an explicit `artifact_type` slu
 | `domain-research` | domain-research-rules | Domain Research artifact emitted by `/gaia-domain-research` |
 | `technical-research` | technical-research-rules | Technical Research artifact emitted by `/gaia-tech-research` (slug aligned with filename per E44-S11) |
 
-For the Phase 1 artifact types above, the slug is the canonical detection signal because their on-disk filenames vary by `{slug}` (brainstorm) or live in `docs/planning-artifacts/` alongside other planning docs (market/domain/technical research) and may not carry a `template:` frontmatter field. Detection precedence: `artifact_type` slug -> frontmatter `template` -> filename basename -> unknown.
+For the Phase 1 artifact types above, the slug is the canonical detection signal because their on-disk filenames vary by `{slug}` (brainstorm) or live in `.gaia/artifacts/planning-artifacts/` alongside other planning docs (market/domain/technical research) and may not carry a `template:` frontmatter field. Detection precedence: `artifact_type` slug -> frontmatter `template` -> filename basename -> unknown.
 
 ### Path-to-Ruleset Mapping (Fallback)
 
@@ -76,7 +76,7 @@ If no frontmatter match is found, detect the artifact type from the file path ba
 
 ### Path-Based Detection Algorithm
 
-1. Extract the basename from the artifact path (e.g., `docs/planning-artifacts/prd.md` -> `prd.md`)
+1. Extract the basename from the artifact path (e.g., `.gaia/artifacts/planning-artifacts/prd.md` -> `prd.md`)
 2. Match basename against the mapping table above (case-insensitive)
 3. If a match is found, return the corresponding ruleset ID
 4. If no match is found, return `unknown` — skip document-specific rules, run factual claim verification only
@@ -263,7 +263,7 @@ Verify all `depends_on` and `blocks` references point to existing stories. Check
 
 Structural quality checks for the test gap analysis output artifact produced by `/gaia-test-gap-analysis`. These rules validate conformance to the FR-223 output schema defined by `_gaia/lifecycle/templates/test-gap-analysis-template.md` (E19-S3, ADR-030 §10.22).
 
-**Scope:** files matching `docs/test-artifacts/test-gap-analysis-*.md`.
+**Scope:** files matching `.gaia/artifacts/test-artifacts/test-gap-analysis-*.md`.
 
 **Schema version:** 1.0.0
 
@@ -350,9 +350,9 @@ verification` appears in the frontmatter.
 <!-- SECTION: brainstorm-rules -->
 ## Brainstorm Validation Rules
 
-Structural quality checks for brainstorm artifacts emitted by `/gaia-brainstorm` to `docs/creative-artifacts/brainstorm-{slug}.md`. This ruleset complements the `/gaia-brainstorm` 24-item finalize.sh checklist (E42-S1) — finalize.sh enforces the script-verifiable items at write time; this ruleset is what Val applies during auto-review.
+Structural quality checks for brainstorm artifacts emitted by `/gaia-brainstorm` to `.gaia/artifacts/creative-artifacts/brainstorm-{slug}.md`. This ruleset complements the `/gaia-brainstorm` 24-item finalize.sh checklist (E42-S1) — finalize.sh enforces the script-verifiable items at write time; this ruleset is what Val applies during auto-review.
 
-**Scope:** files matching `docs/creative-artifacts/brainstorm-*.md`. Detected via `artifact_type = brainstorm` per the slug mapping table.
+**Scope:** files matching `.gaia/artifacts/creative-artifacts/brainstorm-*.md`. Detected via `artifact_type = brainstorm` per the slug mapping table.
 
 ### Required Sections
 
@@ -389,9 +389,9 @@ The `## Next Steps` section must reference at least one downstream GAIA workflow
 <!-- SECTION: market-research-rules -->
 ## Market Research Validation Rules
 
-Structural quality checks for market research artifacts emitted by `/gaia-market-research` to `docs/planning-artifacts/market-research.md`. This ruleset complements the `/gaia-market-research` 28-item finalize.sh checklist (E42-S2).
+Structural quality checks for market research artifacts emitted by `/gaia-market-research` to `.gaia/artifacts/planning-artifacts/market-research.md`. This ruleset complements the `/gaia-market-research` 28-item finalize.sh checklist (E42-S2).
 
-**Scope:** files matching `docs/planning-artifacts/market-research.md`. Detected via `artifact_type = market-research` per the slug mapping table.
+**Scope:** files matching `.gaia/artifacts/planning-artifacts/market-research.md`. Detected via `artifact_type = market-research` per the slug mapping table.
 
 ### Required Sections
 
@@ -435,9 +435,9 @@ The artifact should declare whether web access was available during the research
 <!-- SECTION: domain-research-rules -->
 ## Domain Research Validation Rules
 
-Structural quality checks for domain research artifacts emitted by `/gaia-domain-research` to `docs/planning-artifacts/domain-research.md`. This ruleset complements the `/gaia-domain-research` finalize.sh checklist (E42-S3).
+Structural quality checks for domain research artifacts emitted by `/gaia-domain-research` to `.gaia/artifacts/planning-artifacts/domain-research.md`. This ruleset complements the `/gaia-domain-research` finalize.sh checklist (E42-S3).
 
-**Scope:** files matching `docs/planning-artifacts/domain-research.md`. Detected via `artifact_type = domain-research` per the slug mapping table.
+**Scope:** files matching `.gaia/artifacts/planning-artifacts/domain-research.md`. Detected via `artifact_type = domain-research` per the slug mapping table.
 
 ### Required Sections
 
@@ -477,9 +477,9 @@ The artifact should declare whether web access was available during the research
 <!-- SECTION: technical-research-rules -->
 ## Technical Research Validation Rules
 
-Structural quality checks for technical research artifacts emitted by `/gaia-tech-research` to `docs/planning-artifacts/technical-research.md`. This ruleset complements the `/gaia-tech-research` 22-item finalize.sh checklist (E42-S4). The artifact_type slug `technical-research` is aligned with the on-disk filename per E44-S11.
+Structural quality checks for technical research artifacts emitted by `/gaia-tech-research` to `.gaia/artifacts/planning-artifacts/technical-research.md`. This ruleset complements the `/gaia-tech-research` 22-item finalize.sh checklist (E42-S4). The artifact_type slug `technical-research` is aligned with the on-disk filename per E44-S11.
 
-**Scope:** files matching `docs/planning-artifacts/technical-research.md`. Detected via `artifact_type = technical-research` per the slug mapping table.
+**Scope:** files matching `.gaia/artifacts/planning-artifacts/technical-research.md`. Detected via `artifact_type = technical-research` per the slug mapping table.
 
 ### Required Sections
 

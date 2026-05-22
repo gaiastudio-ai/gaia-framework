@@ -30,8 +30,9 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../skills/gaia-test-automate/SKILL.md"
     || grep -B1 -A4 'review-gate.sh update' "$SKILL_FILE" | grep -F -- '--plan-id' >/dev/null
 }
 
-@test "adr-051: SKILL.md references the canonical plan file path docs/test-artifacts/test-automate-plan-" {
-  grep -F 'docs/test-artifacts/test-automate-plan-' "$SKILL_FILE" >/dev/null
+@test "adr-051: SKILL.md references the canonical plan file path test-automate-plan- (canonical post-AF-21-21)" {
+  # AF-2026-05-21-21 canonicalized this path. Accept canonical or legacy.
+  grep -E '(docs|\.gaia/artifacts)/test-artifacts/test-automate-plan-' "$SKILL_FILE" >/dev/null
 }
 
 # --- AC-EC1: Phase 6 does NOT invoke review-gate.sh ---
