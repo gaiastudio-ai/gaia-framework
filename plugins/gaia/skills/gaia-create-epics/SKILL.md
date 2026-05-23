@@ -55,6 +55,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - If `.gaia/artifacts/planning-artifacts/epics-and-stories.md` already exists, warn the user: "An existing epics-and-stories document was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
 - Every story must have `depends_on` and `blocks` declarations — no circular dependencies.
 - Stories must be ordered by dependency topology first, then business priority.
+- **Per-epic directory naming (AF-2026-05-22-8 Bug-18)** — When Derek bulk-authors per-story `.md` files (Step 4), each story MUST land at `${implementation_artifacts}/{resolve_epic_slug output}/stories/{story_key}-{slug}.md`. The `{resolve_epic_slug output}` is computed by `scripts/lib/resolve-epic-slug.sh --epic-key E{N} --epics-file ...` and is e.g. `epic-E1-core-brain-vault`. Do NOT write to `epic-{N}/stories/...` (numeric-only, no slug) — `transition-story-status.sh` uses the resolver-output directory for `story-index.yaml`, so any other naming produces SPLIT STATE across two directories per epic. This is the recurring Bug-18 from the YARA test report — when create-epics bulk-writes stories without invoking the resolver, the result is `epic-1/stories/E1-S1-*.md` (story body) in one dir and `epic-E1-core-brain-vault/stories/story-index.yaml` (state) in another.
 
 ## Steps
 
