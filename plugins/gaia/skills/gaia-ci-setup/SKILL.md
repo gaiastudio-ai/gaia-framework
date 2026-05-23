@@ -152,6 +152,49 @@ Multiple violations are emitted as an ordered list. Field names use dotted-path 
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-ci-setup 9 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" stage=output-generated --paths .gaia/artifacts/test-artifacts/ci-setup.md`
 
+## Four-Phase Stitching Order (ADR-114 §(c), FR-517, E98-S2)
+
+When `/gaia-config-ci --regenerate` rewrites a `gaia-*.yml` workflow, the engine at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/ci-workflow-stitcher.sh` composes the output in this **fixed, non-negotiable** four-phase order:
+
+1. **GAIA template scaffold** — the managed workflow body as generated from `project-config.yaml`.
+2. **`steps_before_gaia`** — entries from `gaia-{base}.user-steps.yml` are spliced **before** the managed steps block.
+3. **`gaia-generated jobs ∪ user-jobs`** — entries from `gaia-{base}.user-jobs.yml` are YAML-unioned into the managed `jobs:` map (last-writer-wins on key collision; collision detection is E98-S3's job).
+4. **`steps_after_gaia`** — entries from `gaia-{base}.user-steps.yml` are spliced **after** the managed steps block.
+
+### Overlay shapes
+
+```yaml
+# gaia-ci.user-jobs.yml — merged into managed jobs: map
+jobs:
+  coverage-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo coverage
+  notify-slack:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo slack
+```
+
+```yaml
+# gaia-ci.user-steps.yml — block-level splicing
+steps_before_gaia:
+  - name: user-pre
+    run: echo before
+steps_after_gaia:
+  - name: user-post
+    run: echo after
+```
+
+### Invariants
+
+- **Block-level edges only.** Per-step `insert_after` / `insert_before` markers are **NOT** honored (deliberate scope cut per ADR-114 §Rationale — those are template forks, not overlays).
+- **GAIA-generated steps and jobs are never reordered or modified.** The stitcher composes around them; it does not rewrite them.
+- **Comments preserved.** Comments in both the template-derived sections and the overlay-derived sections survive the stitch (per ADR-044 / ADR-114 §(c)).
+- **Deterministic.** Same inputs → byte-identical output (TC-CCL-8). Sort key: alphabetical by overlay filename, then declaration order within each overlay file.
+
+`gaia_ci_stitch <managed-yml> [<output-path>]` is the single function in the stitcher; downstream consumers (Sub-flow C of `--regenerate` mode) source it and call directly.
+
 ## Regen Contract — `gaia-` Prefix Is the Ownership Boundary (ADR-114, E98-S1)
 
 `/gaia-config-ci --regenerate` is permitted to overwrite **only** files classified as `generated` by the canonical helper `${CLAUDE_PLUGIN_ROOT}/scripts/lib/ci-prefix-detection.sh`. Source the helper and call `gaia_ci_classify <path>` to obtain one of:
