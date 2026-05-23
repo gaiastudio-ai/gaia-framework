@@ -42,10 +42,13 @@ _GAIA_CI_WORKFLOW_STITCHER_LOADED=1
 LC_ALL=C
 export LC_ALL
 
-# Internal: locate the prefix-detection helper (E98-S1) for overlay classification.
+# Internal: locate the prefix-detection helper (E98-S1) for overlay classification
+# and the protected-jobs assertion (E98-S3) for the FR-517 union-step guard.
 _GAIA_STITCHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck disable=SC1091
 . "$_GAIA_STITCHER_DIR/ci-prefix-detection.sh"
+# shellcheck disable=SC1091
+. "$_GAIA_STITCHER_DIR/assert-protected-jobs.sh"
 
 # Internal: extract a YAML list under a top-level key from a user-steps.yml
 # file. Stops at the next top-level key or EOF. Emits the indented list
@@ -261,6 +264,16 @@ gaia_ci_stitch() {
       cat "$managed"
     fi
     return 0
+  fi
+
+  # Phase 3 pre-check: protected-jobs assertion (E98-S3 / FR-517 / ADR-114 §(d)).
+  # Runs BEFORE any temp-dir creation or YAML manipulation so the fail-closed
+  # contract holds: no partial regeneration, no output file written when a
+  # user-jobs overlay declares a protected GAIA-template job name.
+  if [ -n "$jobs_ovl" ]; then
+    if ! assert_protected_jobs "$jobs_ovl"; then
+      return 1
+    fi
   fi
 
   # Create a per-invocation temp directory using mktemp (works regardless of
