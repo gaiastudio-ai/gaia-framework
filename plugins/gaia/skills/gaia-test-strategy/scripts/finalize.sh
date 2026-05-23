@@ -181,23 +181,28 @@ else
 fi
 
 # ---------- 2. Write checkpoint ----------
+# AF-2026-05-22-9 Bug-16: capture stderr so the underlying failure is visible
+# in the operator log instead of being silently dropped. Failure remains
+# non-fatal (observability is non-blocking) but the cause is now surfaced.
 if [ -x "$CHECKPOINT" ]; then
-  if ! "$CHECKPOINT" write --workflow "$WORKFLOW_NAME" >/dev/null 2>&1; then
-    log "checkpoint.sh write failed (non-fatal — observability gap only)"
-  fi
+  _cp_err=$("$CHECKPOINT" write --workflow "$WORKFLOW_NAME" 2>&1 >/dev/null) || {
+    log "checkpoint.sh write failed (non-fatal — observability gap only): ${_cp_err:-no stderr}"
+  }
+  unset _cp_err
 else
   log "checkpoint.sh not found at $CHECKPOINT — skipping checkpoint write"
 fi
 
 # ---------- 3. Emit lifecycle event ----------
 if [ -x "$LIFECYCLE_EVENT" ]; then
-  if ! "$LIFECYCLE_EVENT" emit \
+  _le_err=$("$LIFECYCLE_EVENT" emit \
       --workflow "$WORKFLOW_NAME" \
       --event finalize-complete \
       --status "$([ "$CHECKLIST_STATUS" -eq 0 ] && echo pass || echo fail)" \
-      >/dev/null 2>&1; then
-    log "lifecycle-event.sh emit failed (non-fatal — observability gap only)"
-  fi
+      2>&1 >/dev/null) || {
+    log "lifecycle-event.sh emit failed (non-fatal — observability gap only): ${_le_err:-no stderr}"
+  }
+  unset _le_err
 else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emit"
 fi

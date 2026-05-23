@@ -79,7 +79,17 @@ if [ -n "${SPRINT_ID:-}" ]; then
   fi
   log "Val gate sentinel validated: $SENTINEL"
 else
-  log "SPRINT_ID unset — skipping sentinel guard (legacy fixture path; production cascades MUST export SPRINT_ID)"
+  # AF-2026-05-22-9 Bug-12: previously this branch silently downgraded to
+  # "skipping sentinel guard" even in production cascades. The legitimate
+  # legacy-fixture path now MUST set GAIA_SPRINT_REVIEW_FIXTURE=1 to
+  # opt into the no-sentinel path; otherwise this is a hard error so
+  # production cascades that forgot to export SPRINT_ID fail loudly
+  # instead of bypassing the gate.
+  if [ "${GAIA_SPRINT_REVIEW_FIXTURE:-0}" = "1" ]; then
+    log "SPRINT_ID unset and GAIA_SPRINT_REVIEW_FIXTURE=1 — skipping sentinel guard (legacy fixture path)"
+  else
+    die "SPRINT_ID is unset — production cascades MUST export SPRINT_ID; set GAIA_SPRINT_REVIEW_FIXTURE=1 only for legacy fixture invocation"
+  fi
 fi
 
 # ---------- 2. Checkpoint write ----------

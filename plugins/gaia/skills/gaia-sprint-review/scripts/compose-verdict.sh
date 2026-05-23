@@ -82,11 +82,18 @@ is_canonical() {
   esac
 }
 
+# AF-2026-05-22-9 Bug-13: Val emits WARNING as a non-blocking verdict per
+# ADR-063 ("WARNING is informational; cascade proceeds"). Accept WARNING on
+# either track and normalize to PASSED before the reduction so callers do
+# not have to hand-map WARNING -> PASSED at each call site.
+if [ "$track_a" = "WARNING" ]; then track_a="PASSED"; fi
+if [ "$track_b" = "WARNING" ]; then track_b="PASSED"; fi
+
 if ! is_canonical "$track_a"; then
-  die "non-canonical track-a verdict: '$track_a' (expected one of: PASSED, FAILED, UNVERIFIED, PARTIAL, SKIPPED)"
+  die "non-canonical track-a verdict: '$track_a' (expected one of: PASSED, FAILED, UNVERIFIED, PARTIAL, SKIPPED, WARNING)"
 fi
 if ! is_canonical "$track_b"; then
-  die "non-canonical track-b verdict: '$track_b' (expected one of: PASSED, FAILED, UNVERIFIED, PARTIAL, SKIPPED)"
+  die "non-canonical track-b verdict: '$track_b' (expected one of: PASSED, FAILED, UNVERIFIED, PARTIAL, SKIPPED, WARNING)"
 fi
 
 # ---------- Reduction ----------

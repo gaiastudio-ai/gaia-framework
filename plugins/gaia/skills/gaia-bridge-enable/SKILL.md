@@ -22,7 +22,7 @@ This skill is part of the native Claude Code conversion under E28-S111 (Cluster 
 Follow the full `gaia-bridge-toggle` skill body with `mode = enable`:
 
 1. Resolve the current `test_execution_bridge.bridge_enabled` value via `scripts/resolve-config.sh` (per ADR-044 — the flag lives at `test_execution_bridge.bridge_enabled` in `config/project-config.yaml`; the legacy v1 location `_gaia/_config/global.yaml` is retired and no longer used).
-2. If the section is missing, fail fast with `test_execution_bridge block missing — run /gaia-ci-setup first`.
+2. If the section is missing, scaffold a minimal stub instead of halting (AF-2026-05-22-9 Bug-7). For operators who intentionally skip `/gaia-ci-setup` (e.g. local-only projects, or CI explicitly out of scope), append the following block to `.gaia/config/project-config.yaml` (or `config/project-config.yaml` if the canonical path is absent): `test_execution_bridge:\n  bridge_enabled: false\n  # AF-2026-05-22-9 Bug-7: minimal scaffold seeded by /gaia-bridge-enable.\n  # /gaia-ci-setup populates the full block (workflow, secrets, runners).\n`. Then continue with the toggle below. If the operator does want full CI wiring, the SKILL still emits an informational note suggesting `/gaia-ci-setup` for the canonical block.
 3. If already `true`, report `Bridge already enabled` and exit without writing.
 4. Otherwise, perform the regex-based in-place edit to `config/project-config.yaml` to flip `bridge_enabled: false` → `bridge_enabled: true`, preserving all comments and formatting.
 5. Run the Post-Flip Checks (enable-only — stat `.gaia/artifacts/test-artifacts/test-environment.yaml`; for absent in YOLO, auto-skip with a warning).
