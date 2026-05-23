@@ -239,8 +239,14 @@
           "properties": {
             "disable": {
               "type": "array",
-              "items": { "type": "string" },
-              "description": "Job names to remove from the generated workflow's jobs: map. Names in the SR-78 closed enum (commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit — after hyphen+case canonicalization) are REJECTED at regen time per threat T-TOV-1."
+              "items": {
+                "type": "string",
+                "not": {
+                  "enum": ["commitlint", "adr-048-guard", "no-claude-attribution", "secrets-scan", "nfr-082-credential-audit"]
+                },
+                "description": "Job name to remove. The five SR-78 security-critical names (commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit) are REJECTED at /gaia-config-validate time per threat T-TOV-1. Note: the schema enforces the LITERAL form only — hyphen+case canonicalization (e.g. `commit-lint` → `commitlint`) happens at regen time in template-overrides.sh as a defense-in-depth layer."
+              },
+              "description": "Job names to remove from the generated workflow's jobs: map. Names in the SR-78 closed enum (commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit) are REJECTED both at /gaia-config-validate time (schema-level not.enum) and at regen time (template-overrides.sh, with hyphen+case canonicalization for defense in depth) per threat T-TOV-1."
             },
             "timeout_overrides": {
               "type": "object",

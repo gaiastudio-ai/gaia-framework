@@ -49,6 +49,8 @@ This skill is the native Claude Code entry point for the `/gaia-config-validate`
 - On exit 1: print every violation line as emitted by the script — each line carries a JSONPath location (e.g., `$.project_root`) and a human-readable message. Exit 1 (file is invalid).
 - On exit 2: surface the I/O / usage error verbatim and exit 2.
 
+**`ci_cd.template_overrides:` SR-78 enforcement (E98-S4 / FR-518 / ADR-114 §(e)).** The schema's `ci_cd.template_overrides.disable.items` carries a `not.enum` clause for the five SR-78 security-critical job names (`commitlint`, `adr-048-guard`, `no-claude-attribution`, `secrets-scan`, `nfr-082-credential-audit`). Any literal-form match here is reported by `ajv-cli` as a schema violation at validate time (T-TOV-1 mitigation, enforced BEFORE regen). Defense-in-depth: `template-overrides.sh` at regen time also rejects hyphen+case-canonicalized forms (e.g., `commit-lint`, `Commit-Lint`) that bypass the literal-only schema enum.
+
 ### Step 4 — Rubric-Validation Mode (legacy E68-S2)
 
 - If `--skill <name>` is provided, validate only that skill's merged rubric.
