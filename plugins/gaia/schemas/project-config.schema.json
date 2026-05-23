@@ -230,7 +230,33 @@
     "implementation_artifacts": { "type": "string" },
     "creative_artifacts":       { "type": "string" },
     "val_integration":          { "type": "object" },
-    "ci_cd":                    { "type": "object" },
+    "ci_cd":                    {
+      "type": "object",
+      "properties": {
+        "template_overrides": {
+          "type": "object",
+          "description": "Declarative overrides applied to generated workflows during /gaia-config-ci --regenerate (FR-518, ADR-114 §(e), E98-S4). Three fields: disable (array of job names), timeout_overrides (map of job-name → integer minutes), adapter_versions (map of adapter-name → semver). The disable: array is gated by the SR-78 closed-enum of security-critical job names — see plugins/gaia/scripts/lib/template-overrides.sh for the canonical list.",
+          "properties": {
+            "disable": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Job names to remove from the generated workflow's jobs: map. Names in the SR-78 closed enum (commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit — after hyphen+case canonicalization) are REJECTED at regen time per threat T-TOV-1."
+            },
+            "timeout_overrides": {
+              "type": "object",
+              "additionalProperties": { "type": "integer", "minimum": 1, "maximum": 360 },
+              "description": "Per-job timeout-minutes override. Values outside [1, 360] are HARD ERROR at regen time."
+            },
+            "adapter_versions": {
+              "type": "object",
+              "additionalProperties": { "type": "string" },
+              "description": "Adapter-name → semver pin (e.g. {markdownlint: \"0.41.0\"}). Unknown adapter names and unparseable semver values are HARD ERROR at regen time."
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
     "testing":                  { "type": "object" },
     "test_execution_bridge":    { "type": "object" },
     "sprint":                   { "type": "object" },
