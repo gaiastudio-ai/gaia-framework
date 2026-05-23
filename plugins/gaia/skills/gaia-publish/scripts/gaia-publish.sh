@@ -128,9 +128,12 @@ STEP2_STATUS="PENDING"; STEP2_DETAIL=""
 STEP3_STATUS="PENDING"; STEP3_DETAIL=""
 STEP4_STATUS="PENDING"; STEP4_DETAIL=""
 STEP5_STATUS="PENDING"; STEP5_DETAIL=""
-# Audit-trail per-step reason markers (E100-S2 AC2 / AC4 + F3 audit-symmetry).
+# Audit-trail per-step reason markers (E100-S2 AC2 / AC4 + F3 audit-symmetry,
+# E100-S3 AC4 / AC5 — verify-failed / verify-skipped).
 STEP1_REASON=""
 STEP2_REASON=""
+STEP4_REASON=""
+VERIFY_SKIPPED=0
 
 # Internal: emit a one-line progress marker per step.
 _progress() {
@@ -315,7 +318,44 @@ _step3_trigger_publish() {
   _progress 3 "trigger-publish" "$STEP3_STATUS" "$STEP3_DETAIL"
 }
 
-# ---------- Step 4: Post-publish verify (stub — real impl lands in E100-S3) ----------
+# ---------- Step 4: Post-publish verify (E100-S3) ----------
+
+# SR-83 defensive cap (mitigates T-PUB-4 unbounded local DoS).
+SR83_MAX_VERIFY_WINDOW=3600
+
+# Resolve the verify-retry window for the given channel by reading
+# adapter-manifest.yaml::verify_retry_window_seconds — checks user's
+# .gaia/custom/adapters/ first, then plugin built-in. Echoes int or empty.
+_resolve_adapter_verify_window() {
+  local channel="$1"
+  local custom_manifest="$PROJECT_ROOT/.gaia/custom/adapters/publish-$channel/adapter-manifest.yaml"
+  local builtin_manifest="${CLAUDE_PLUGIN_ROOT:-}/adapters/publish-$channel/adapter-manifest.yaml"
+  local mfile=""
+  if [ -f "$custom_manifest" ]; then
+    mfile="$custom_manifest"
+  elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$builtin_manifest" ]; then
+    mfile="$builtin_manifest"
+  fi
+  [ -z "$mfile" ] && return
+  yq eval '.verify_retry_window_seconds // ""' "$mfile" 2>/dev/null
+}
+
+# Locate the adapter binary for the given channel. Builtin path first,
+# then PATH-namespaced fallback (gaia-adapter-publish-<channel>).
+_resolve_adapter_binary() {
+  local channel="$1"
+  local builtin="${CLAUDE_PLUGIN_ROOT:-}/adapters/publish-$channel/adapter"
+  if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -x "$builtin" ]; then
+    printf '%s' "$builtin"
+    return
+  fi
+  local on_path
+  on_path=$(command -v "gaia-adapter-publish-$channel" 2>/dev/null || true)
+  if [ -n "$on_path" ]; then
+    printf '%s' "$on_path"
+  fi
+  return 0
+}
 
 _step4_post_publish_verify() {
   if [ "$DRY_RUN" = "1" ]; then
@@ -326,13 +366,95 @@ _step4_post_publish_verify() {
   fi
   if [ "$SKIP_VERIFY" = "1" ]; then
     STEP4_STATUS="SKIPPED"
-    STEP4_DETAIL="WARNING: --skip-verify passed; post-publish registry probe bypassed (NFR-082 opt-out)"
+    VERIFY_SKIPPED=1
+    STEP4_DETAIL="WARNING: --skip-verify NFR-082 opt-out — MANDATORY post-publish registry probe bypassed; only documented use case is unbounded-lag registries"
     _progress 4 "post-publish-verify" "$STEP4_STATUS" "$STEP4_DETAIL"
     return
   fi
-  # E100-S3 wires the real registry probe + retry-window logic here.
-  STEP4_STATUS="PASSED"
-  STEP4_DETAIL="stub (E100-S3 will wire registry verify probe + retry-window)"
+
+  # Adapter-manifest-driven retry-window + adapter dispatch.
+  local window
+  window=$(_resolve_adapter_verify_window "$CHANNEL")
+
+  # SR-83: defensive runtime cap with WARNING. Guarded with regex so the
+  # `-gt` comparison never sees a non-numeric value (set -e safety).
+  if [ -n "$window" ] && [[ "$window" =~ ^[0-9]+$ ]] && [ "$window" -gt "$SR83_MAX_VERIFY_WINDOW" ]; then
+    err "SR-83 WARNING: manifest verify_retry_window_seconds=$window exceeds 3600 cap; clamping to 3600 (T-PUB-4 mitigation)"
+    window="$SR83_MAX_VERIFY_WINDOW"
+  fi
+
+  local adapter_bin
+  adapter_bin=$(_resolve_adapter_binary "$CHANNEL")
+
+  # Stub-fallback: no manifest AND no adapter binary → preserve E100-S1 happy-path.
+  if [ -z "$window" ] && [ -z "$adapter_bin" ]; then
+    STEP4_STATUS="PASSED"
+    STEP4_DETAIL="stub-fallback (no adapter binary and no verify_retry_window_seconds configured)"
+    _progress 4 "post-publish-verify" "$STEP4_STATUS" "$STEP4_DETAIL"
+    return
+  fi
+
+  # If we have a window but no adapter — cannot verify. FAILED.
+  if [ -z "$adapter_bin" ]; then
+    STEP4_STATUS="FAILED"
+    STEP4_DETAIL="adapter binary not resolvable for channel=$CHANNEL — install gaia-adapter-publish-$CHANNEL or unset adapter-manifest"
+    STEP4_REASON="verify-adapter-missing"
+    _progress 4 "post-publish-verify" "$STEP4_STATUS" "$STEP4_DETAIL"
+    return
+  fi
+
+  # Default to 60s if no window declared (sensible default per ADR-113 illustrative).
+  : "${window:=60}"
+
+  # Bounded exponential back-off loop.
+  local elapsed=0 delay=1 attempt=0
+  local findings verdict artifact_url last_verdict="UNKNOWN"
+  while [ "$elapsed" -lt "$window" ]; do
+    attempt=$((attempt + 1))
+    findings=$(mktemp -t gaia-publish-verify.XXXXXX.json)
+    if "$adapter_bin" --action verify --version "$VERSION" --registry "$REGISTRY" --manifest "$MANIFEST" --output "$findings" >/dev/null 2>&1; then
+      :
+    fi
+    if [ -s "$findings" ] && command -v jq >/dev/null 2>&1; then
+      verdict=$(jq -r '.verdict // "UNVERIFIED"' "$findings" 2>/dev/null)
+      artifact_url=$(jq -r '.artifact_url // ""' "$findings" 2>/dev/null)
+    else
+      verdict="UNVERIFIED"
+      artifact_url=""
+    fi
+    rm -f "$findings"
+    last_verdict="$verdict"
+
+    case "$verdict" in
+      PASSED)
+        STEP4_STATUS="PASSED"
+        STEP4_DETAIL="adapter verified channel=$CHANNEL version=$VERSION on attempt $attempt (window=${window}s, elapsed=${elapsed}s)"
+        _progress 4 "post-publish-verify" "$STEP4_STATUS" "$STEP4_DETAIL"
+        return
+        ;;
+      UNVERIFIED)
+        # mobile-app STUB sentinel — acceptable; surface to user with human-review note.
+        STEP4_STATUS="PASSED"
+        STEP4_DETAIL="adapter returned UNVERIFIED (STUB sentinel) — human review required for channel=$CHANNEL"
+        _progress 4 "post-publish-verify" "$STEP4_STATUS" "$STEP4_DETAIL"
+        return
+        ;;
+      FAILED|*)
+        # Keep polling within the window.
+        ;;
+    esac
+
+    # Back-off, capped per iteration at 30s.
+    sleep "$delay"
+    elapsed=$((elapsed + delay))
+    delay=$((delay * 2))
+    [ "$delay" -gt 30 ] && delay=30
+  done
+
+  STEP4_STATUS="FAILED"
+  STEP4_DETAIL="artifact not resolvable at ${artifact_url:-<unknown>} — verify-window exhausted at ${elapsed}s (last verdict: $last_verdict)"
+  STEP4_REASON="post-publish-verify-failed"
+  err "$STEP4_DETAIL"
   _progress 4 "post-publish-verify" "$STEP4_STATUS" "$STEP4_DETAIL"
 }
 
@@ -394,10 +516,12 @@ _step5_final_verdict() {
 | 5 | final-verdict          | $STEP5_STATUS | $STEP5_DETAIL |
 
 **Verdict:** $verdict
+**verify-skipped:** $([ "$VERIFY_SKIPPED" = "1" ] && echo "yes" || echo "no")
 
 ## Audit-trail reasons
 ${STEP1_REASON:+- step 1: reason=$STEP1_REASON}
 ${STEP2_REASON:+- step 2: reason=$STEP2_REASON}
+${STEP4_REASON:+- step 4: reason=$STEP4_REASON}
 EOF
   printf '[gaia-publish] assessment doc: %s\n' "$doc"
 

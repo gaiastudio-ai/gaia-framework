@@ -56,9 +56,19 @@ Resolve and dispatch the adapter per `distribution.channel`. **Real adapter disp
 Under `--dry-run`, the adapter is dispatched in DRY-RUN mode — the adapter returns the would-have-published payload without actually invoking the registry. The orchestrator then SKIPs steps 4-5.
 
 ### Step 4 — Post-publish verify (MANDATORY by default)
-Invoke the adapter's `verify` action against the registry. Confirms the published artifact appears at the expected version. **Real verify + retry-window logic lands in E100-S3.** Today this step is a PASSED stub.
+Invoke the adapter's `verify` action against the registry (E100-S3). The orchestrator:
 
-Bypassed under `--skip-verify` (NFR-082 opt-out) with a WARNING in the assessment doc. Bypassed under `--dry-run` (SKIPPED with the dry-run marker).
+1. Reads `verify_retry_window_seconds` from `adapter-manifest.yaml` (custom adapter under `.gaia/custom/adapters/publish-<channel>/` takes precedence over plugin built-in). Per NFR-082, the window is per-adapter — the orchestrator NEVER imposes its own retry policy.
+2. Applies the SR-83 defensive cap: if the declared window exceeds 3600s, clamps to 3600s and logs a WARNING. Mitigates T-PUB-4 (local DoS via malicious manifest declaring e.g. 86400s).
+3. Resolves the adapter binary: `${CLAUDE_PLUGIN_ROOT}/adapters/publish-<channel>/adapter` first, then PATH-namespaced `gaia-adapter-publish-<channel>` as fallback. Never raw PATH lookup.
+4. Polls in an exponential back-off loop (start 1s, double, cap 30s per iteration) bounded by the window. Each iteration re-invokes the adapter with `--action verify --version <V> --registry <R> --manifest <M> --output <findings.json>`. Verdict is read from the ADR-037 envelope `verdict` field (PASSED / FAILED / UNVERIFIED) — NOT exit code.
+5. **PASSED** → step 4 PASSED, proceed. **UNVERIFIED** (the `null` sentinel reserved for `mobile-app`) → step 4 PASSED with human-review note. **FAILED throughout** → step 4 FAILED with stderr "artifact not resolvable at <url> — verify-window exhausted at <N>s"; audit reason `post-publish-verify-failed`.
+
+Backward-compat: when no `adapter-manifest.yaml` AND no adapter binary are resolvable, step 4 emits PASSED with `stub-fallback` marker (preserves E100-S1 happy path for projects that have not wired adapters yet).
+
+**Bypassed under `--skip-verify` (NFR-082 opt-out)** with a documented WARNING surfaced to stderr ("MANDATORY post-publish registry probe bypassed; only documented use case is unbounded-lag registries"). The assessment doc records `verify-skipped: yes`. The `--skip-verify` flag is opt-in only — never the default.
+
+Bypassed under `--dry-run` (SKIPPED with the dry-run marker).
 
 ### Step 5 — Final verdict
 Emit the assessment doc to `.gaia/artifacts/implementation-artifacts/assessment-publish-{channel}-{timestamp}.md` (fallback to legacy `docs/implementation-artifacts/` on pre-ADR-111 projects). The doc records per-step status + detail + the configuration snapshot. The orchestrator's exit code reflects the verdict (0 = PASSED or DRY_RUN; 1 = FAILED).
