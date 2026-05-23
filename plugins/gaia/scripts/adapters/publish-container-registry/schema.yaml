@@ -10,7 +10,7 @@ $id: "publish-container-registry-schema-v1"
 title: "publish-container-registry sub-field schema"
 description: "Sub-field requirements for distribution.channel: container-registry per FR-522 + ADR-112 §(d). Common fields are at the project-config.schema.json level."
 type: object
-required: ["image_name tag_strategy"]
+required: [image_name, tag_strategy]
 properties:
   image_name: {type: string, minLength: 1}
   tag_strategy: {type: string, enum: [semver, sha, latest]}
