@@ -164,7 +164,7 @@ _step2_manifest_version_check() {
       manifest_version=$(grep -E '^version[[:space:]]*=' "$manifest_path" | head -1 \
         | sed -E 's/version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
       ;;
-    *.xml|*pom.xml)
+    *.xml)
       manifest_version=$(grep -oE '<version>[^<]+</version>' "$manifest_path" | head -1 \
         | sed -E 's|<version>([^<]+)</version>|\1|')
       ;;
