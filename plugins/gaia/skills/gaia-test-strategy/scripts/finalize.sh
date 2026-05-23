@@ -202,5 +202,50 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emit"
 fi
 
+# ---------- 4. Config hydration fail-safe (AF-2026-05-22-7 Bug-21) ----------
+# Bug-21 root cause: /gaia-test-strategy --plan is supposed to populate the
+# test_execution / test_execution_bridge / environments blocks in
+# project-config.yaml after authoring the strategy. The hydration step
+# doesn't fire because there's no enforcement. Downstream /gaia-bridge-enable
+# then halts with "test_execution_bridge missing — run /gaia-ci-setup first"
+# pointing at the wrong upstream skill.
+#
+# Fail-safe: if a strategy artifact was written AND the project config still
+# lacks the sections this skill owns, log a CRITICAL warning that names the
+# missing sections and the correct remediation. Non-fatal — strategy artifact
+# is the primary deliverable — but the warning makes downstream halts
+# attributable to the right upstream skill.
+if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
+  CONFIG_PATH=""
+  if [ -f ".gaia/config/project-config.yaml" ]; then
+    CONFIG_PATH=".gaia/config/project-config.yaml"
+  elif [ -f "config/project-config.yaml" ]; then
+    CONFIG_PATH="config/project-config.yaml"
+  fi
+  if [ -n "$CONFIG_PATH" ]; then
+    missing_sections=""
+    grep -qE "^test_execution:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} test_execution"
+    grep -qE "^test_execution_bridge:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} test_execution_bridge"
+    grep -qE "^environments:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} environments"
+    if [ -n "$missing_sections" ]; then
+      log "WARNING: test-strategy.md was written but project-config.yaml hydration was SKIPPED."
+      log "         Missing sections in $CONFIG_PATH:${missing_sections}"
+      log ""
+      log "         Downstream skills (/gaia-bridge-enable expects test_execution_bridge,"
+      log "         /gaia-test-automate expects test_execution.tier_N.command per AF-22-6"
+      log "         Bug-6, /gaia-deploy expects environments) will halt with generic"
+      log "         'X missing' errors that point at the wrong upstream remediation."
+      log ""
+      log "         Remediation: source \${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-hydration.sh"
+      log "         and call config_hydrate_section <section> <yaml-fragment-file> for each"
+      log "         missing section. The fragments must match the test_execution placements"
+      log "         + tier_N commands + environments declared in test-strategy.md §Test Plan."
+      log ""
+      log "         This warning is fail-safe only — test-strategy.md was written"
+      log "         successfully and is the primary artifact."
+    fi
+  fi
+fi
+
 log "finalize complete for $WORKFLOW_NAME"
 exit "$CHECKLIST_STATUS"
