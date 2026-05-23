@@ -62,7 +62,7 @@ Invoke the adapter's `verify` action against the registry (E100-S3). The orchest
 2. Applies the SR-83 defensive cap: if the declared window exceeds 3600s, clamps to 3600s and logs a WARNING. Mitigates T-PUB-4 (local DoS via malicious manifest declaring e.g. 86400s).
 3. Resolves the adapter binary: `${CLAUDE_PLUGIN_ROOT}/adapters/publish-<channel>/adapter` first, then PATH-namespaced `gaia-adapter-publish-<channel>` as fallback. Never raw PATH lookup.
 4. Polls in an exponential back-off loop (start 1s, double, cap 30s per iteration) bounded by the window. Each iteration re-invokes the adapter with `--action verify --version <V> --registry <R> --manifest <M> --output <findings.json>`. Verdict is read from the ADR-037 envelope `verdict` field (PASSED / FAILED / UNVERIFIED) — NOT exit code.
-5. **PASSED** → step 4 PASSED, proceed. **UNVERIFIED** (mobile-app STUB sentinel) → step 4 PASSED with human-review note. **FAILED throughout** → step 4 FAILED with stderr "artifact not resolvable at <url> — verify-window exhausted at <N>s"; audit reason `post-publish-verify-failed`.
+5. **PASSED** → step 4 PASSED, proceed. **UNVERIFIED** (the `null` sentinel reserved for `mobile-app`) → step 4 PASSED with human-review note. **FAILED throughout** → step 4 FAILED with stderr "artifact not resolvable at <url> — verify-window exhausted at <N>s"; audit reason `post-publish-verify-failed`.
 
 Backward-compat: when no `adapter-manifest.yaml` AND no adapter binary are resolvable, step 4 emits PASSED with `stub-fallback` marker (preserves E100-S1 happy path for projects that have not wired adapters yet).
 
