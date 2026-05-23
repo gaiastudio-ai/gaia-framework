@@ -48,6 +48,7 @@ Native Claude Code conversion of the legacy create-story workflow (Cluster 7, E2
 - Step 6 3-attempt cap is hard. YOLO MUST NOT bypass the cap or the terminal FAILED verdict (FR-340).
 - Step 6 terminal verdicts are recorded via `review-gate.sh` against the ledger-keyed `story-validation` gate (`--plan-id <id>`); does NOT touch the six canonical Review Gate table rows.
 - Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `.gaia/artifacts/planning-artifacts/epics/` are FORBIDDEN.
+- **Per-epic directory naming (AF-2026-05-22-8 Bug-18)** — The canonical per-epic directory name is the FULL output of `resolve-epic-slug.sh` (e.g., `epic-E1-core-brain-vault`). Do NOT write story files to `epic-{N}/stories/...` (numeric-only, no slug) — `transition-story-status.sh` writes the `story-index.yaml` to the resolver-output directory, so any other naming produces SPLIT STATE across two directories per epic (story `.md` files in one, `story-index.yaml` in the other). Even when bulk-authoring stories WITHOUT this skill (e.g., Derek writing 36 stories in one pass), every story MUST land at `{implementation_artifacts}/{resolve_epic_slug output}/stories/{story_key}-{slug}.md`. Bypassing the resolver and using `epic-{N}/` is the recurring bug class — the resolver exists precisely to keep create-story and transition-story-status in sync.
 
 ## Steps
 
@@ -304,12 +305,24 @@ FRONTMATTER_YAML=$(!scripts/generate-frontmatter.sh \
   --project-config config/project-config.yaml \
   [--origin <s>] [--origin-ref <s>])
 
-# 3b. Resolve the canonical per-epic directory slug (E79-S2 / E79-S1).
+# 3b. Resolve the canonical per-epic directory name (E79-S2 / E79-S1).
 #     Delegated to resolve-epic-slug.sh — single source of truth for the
-#     `epic-{slug}/` segment. HALT on resolver non-zero exit per the
-#     ADR-074 deterministic-script-lift principle (no silent fallback to a
-#     hardcoded slug).
-EPIC_SLUG=$(!scripts/lib/resolve-epic-slug.sh \
+#     per-epic directory name. The resolver's stdout is the COMPLETE basename
+#     (e.g., `epic-E1-core-brain-vault`) — it ALREADY includes the `epic-`
+#     prefix. Do NOT prepend another `epic-` segment when constructing paths.
+#     HALT on resolver non-zero exit per the ADR-074 deterministic-script-lift
+#     principle (no silent fallback to a hardcoded slug).
+#
+# AF-2026-05-22-8 Bug-18 canonical-naming contract:
+#   - Use the resolver output VERBATIM as the per-epic directory name.
+#   - Path: ${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/{story_key}-{slug}.md
+#   - Do NOT write to `epic-{N}/stories/...` (numeric-only, no slug) — that
+#     bypasses resolve-epic-slug.sh and produces split state with
+#     transition-story-status.sh which uses the resolver path directly.
+#     Per Bug-18 from the YARA test report, mixing the two produces split
+#     state across TWO directories per epic: story .md files in one,
+#     story-index.yaml in the other.
+EPIC_DIR=$(!scripts/lib/resolve-epic-slug.sh \
   --epic-key "<epic_key>" \
   --epics-file "$(!scripts/resolve-config.sh planning_artifacts)/epics-and-stories.md")
 
@@ -322,7 +335,7 @@ EPIC_SLUG=$(!scripts/lib/resolve-epic-slug.sh \
 #     /gaia-dev-story E79-S6 migration first to unify flat/nested layouts.
 if compgen -G "${IMPLEMENTATION_ARTIFACTS}/${STORY_KEY}-*.md" >/dev/null; then
   flat_path=$(compgen -G "${IMPLEMENTATION_ARTIFACTS}/${STORY_KEY}-*.md" | head -1)
-  nested_path="${IMPLEMENTATION_ARTIFACTS}/epic-${EPIC_SLUG}/stories/${STORY_KEY}-${SLUG}.md"
+  nested_path="${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/${STORY_KEY}-${SLUG}.md"
   printf '[gaia-create-story] REFUSED: legacy flat file %s exists; will NOT write nested sibling %s. Run /gaia-dev-story E79-S6 migration first.\n' \
     "$flat_path" "$nested_path" >&2
   exit 1
@@ -335,18 +348,18 @@ fi
 #    of the per-epic stories/ directory is idempotent under POSIX semantics
 #    so concurrent /gaia-create-story invocations under the same epic do not
 #    race on directory creation (E79-S2 / AC2, AC5 / TC-CSP-2).
-mkdir -p "${IMPLEMENTATION_ARTIFACTS}/epic-${EPIC_SLUG}/stories"
+mkdir -p "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories"
 SECTIONS=$(!scripts/scaffold-story.sh \
   --template ${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/story-template.md \
-  --output "${IMPLEMENTATION_ARTIFACTS}/epic-${EPIC_SLUG}/stories/<story_key>-${SLUG}.md" \
+  --output "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/<story_key>-${SLUG}.md" \
   --frontmatter "${FRONTMATTER_YAML}")
 
 # 5. Post-write validation — delegated to validate-canonical-filename.sh (E63-S4 / S5)
 #    and validate-frontmatter.sh (E63-S5). Both HALT on non-zero with stderr passthrough.
 #    The validators inspect basename only, so the canonical nested path is accepted
 #    unchanged (E79-S2 / AC7).
-!scripts/validate-canonical-filename.sh --file "${IMPLEMENTATION_ARTIFACTS}/epic-${EPIC_SLUG}/stories/<story_key>-${SLUG}.md"
-!scripts/validate-frontmatter.sh         --file "${IMPLEMENTATION_ARTIFACTS}/epic-${EPIC_SLUG}/stories/<story_key>-${SLUG}.md"
+!scripts/validate-canonical-filename.sh --file "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/<story_key>-${SLUG}.md"
+!scripts/validate-frontmatter.sh         --file "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/<story_key>-${SLUG}.md"
 ```
 
 After the scaffold returns the seven content section names (`User Story`, `Acceptance Criteria`, `Tasks / Subtasks`, `Dev Notes`, `Technical Notes`, `Dependencies`, `Test Scenarios`), fill each `{CONTENT_PLACEHOLDER}` with judgment-bearing content via Edit calls. ACs use Given/When/Then format (validated post-fill by `validate-ac-format.sh`, E63-S6).

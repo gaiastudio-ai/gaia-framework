@@ -230,7 +230,39 @@
     "implementation_artifacts": { "type": "string" },
     "creative_artifacts":       { "type": "string" },
     "val_integration":          { "type": "object" },
-    "ci_cd":                    { "type": "object" },
+    "ci_cd":                    {
+      "type": "object",
+      "properties": {
+        "template_overrides": {
+          "type": "object",
+          "description": "Declarative overrides applied to generated workflows during /gaia-config-ci --regenerate (FR-518, ADR-114 §(e), E98-S4). Three fields: disable (array of job names), timeout_overrides (map of job-name → integer minutes), adapter_versions (map of adapter-name → semver). The disable: array is gated by the SR-78 closed-enum of security-critical job names — see plugins/gaia/scripts/lib/template-overrides.sh for the canonical list.",
+          "properties": {
+            "disable": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "not": {
+                  "enum": ["commitlint", "adr-048-guard", "no-claude-attribution", "secrets-scan", "nfr-082-credential-audit"]
+                },
+                "description": "Job name to remove. The five SR-78 security-critical names (commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit) are REJECTED at /gaia-config-validate time per threat T-TOV-1. Note: the schema enforces the LITERAL form only — hyphen+case canonicalization (e.g. `commit-lint` → `commitlint`) happens at regen time in template-overrides.sh as a defense-in-depth layer."
+              },
+              "description": "Job names to remove from the generated workflow's jobs: map. Names in the SR-78 closed enum (commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit) are REJECTED both at /gaia-config-validate time (schema-level not.enum) and at regen time (template-overrides.sh, with hyphen+case canonicalization for defense in depth) per threat T-TOV-1."
+            },
+            "timeout_overrides": {
+              "type": "object",
+              "additionalProperties": { "type": "integer", "minimum": 1, "maximum": 360 },
+              "description": "Per-job timeout-minutes override. Values outside [1, 360] are HARD ERROR at regen time."
+            },
+            "adapter_versions": {
+              "type": "object",
+              "additionalProperties": { "type": "string" },
+              "description": "Adapter-name → semver pin (e.g. {markdownlint: \"0.41.0\"}). Unknown adapter names and unparseable semver values are HARD ERROR at regen time."
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
     "testing":                  { "type": "object" },
     "test_execution_bridge":    { "type": "object" },
     "sprint":                   { "type": "object" },
@@ -291,24 +323,36 @@
       }
     },
     "test_execution": {
-      "description": "Pipeline-tier placement for the three test tiers (FR-RSV2-11).",
+      "description": "Pipeline-tier placement + runner command for the three test tiers (FR-RSV2-11, AF-2026-05-22-6). Each tier MAY carry: `placement` (which pipeline stage runs the tier), `command` (the runner command-string the bridge dispatcher executes), and `timeout_seconds` (per-tier execution budget). The bridge dispatcher (`scripts/run-tests.sh`) reads `command` and `timeout_seconds` — without these the bridge emits a `no command declared` skip-evidence and the run never drives the test runner. Pre-AF-22-6 the schema disallowed `command`/`timeout_seconds`, so the dispatcher could only ever skip.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "tier_1": {
           "type": "object",
           "additionalProperties": false,
-          "properties": { "placement": { "$ref": "#/definitions/testPlacement" } }
+          "properties": {
+            "placement":       { "$ref": "#/definitions/testPlacement" },
+            "command":         { "type": "string", "minLength": 1 },
+            "timeout_seconds": { "type": "integer", "minimum": 1 }
+          }
         },
         "tier_2": {
           "type": "object",
           "additionalProperties": false,
-          "properties": { "placement": { "$ref": "#/definitions/testPlacement" } }
+          "properties": {
+            "placement":       { "$ref": "#/definitions/testPlacement" },
+            "command":         { "type": "string", "minLength": 1 },
+            "timeout_seconds": { "type": "integer", "minimum": 1 }
+          }
         },
         "tier_3": {
           "type": "object",
           "additionalProperties": false,
-          "properties": { "placement": { "$ref": "#/definitions/testPlacement" } }
+          "properties": {
+            "placement":       { "$ref": "#/definitions/testPlacement" },
+            "command":         { "type": "string", "minLength": 1 },
+            "timeout_seconds": { "type": "integer", "minimum": 1 }
+          }
         }
       }
     },
@@ -423,19 +467,45 @@
       }
     },
     "environments": {
-      "description": "Environment list with env-var-only credential references (FR-RSV2-9, NFR-RSV2-7). Literal credential values are rejected by the credentialEnvVarRef constraint per AC11.",
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "url":         { "type": "string" },
-          "credentials": {
+      "description": "Environment list with env-var-only credential references (FR-RSV2-9, NFR-RSV2-7) and a 3-value kind discriminator per FR-520 / ADR-112 §(a). Two shapes accepted: (a) the legacy map-of-entries (`environments: {staging: {...}, prod: {...}}`) preserved for back-compat; (b) the FR-520 array-of-entries with `id` + closed-enum `kind` per E99-S1.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": {
             "type": "object",
-            "additionalProperties": { "$ref": "#/definitions/credentialEnvVarRef" }
+            "additionalProperties": false,
+            "properties": {
+              "url":         { "type": "string" },
+              "credentials": {
+                "type": "object",
+                "additionalProperties": { "$ref": "#/definitions/credentialEnvVarRef" }
+              }
+            }
+          }
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id":     { "type": "string", "minLength": 1 },
+              "name":   { "type": "string" },
+              "branch": { "type": "string" },
+              "kind": {
+                "description": "FR-520 / ADR-112 §(a) closed 3-value discriminator. Field is optional — read-time default is `deployable` per NFR-080 silent back-compat (resolved by scripts/lib/resolve-env-kind.sh). Unknown values are rejected at schema-validation time (E99-S1 AC6 / TC-EKD-6).",
+                "type": "string",
+                "enum": ["deployable", "branch-only", "distribution-only"]
+              },
+              "url":    { "type": "string" },
+              "credentials": {
+                "type": "object",
+                "additionalProperties": { "$ref": "#/definitions/credentialEnvVarRef" }
+              }
+            }
           }
         }
-      }
+      ]
     },
     "ci_platform": {
       "description": "CI provider selection and pipeline pointer.",
@@ -465,16 +535,87 @@
       "additionalProperties": { "$ref": "#/definitions/deviceTargetEntry" }
     },
     "distribution": {
-      "description": "Plugin / artifact distribution configuration (FR-424, E78-S2). Optional — backward compatibility is preserved when the key is omitted (no functional regression). The `channels[]` array carries one or more channel entries; each entry is validated against `distributionChannel`. ADR-087 (project_kind axis) is the anchor ADR. The downstream `/gaia-deploy` adapter dispatch (E78-S4) resolves `deploy_adapter` per channel.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "channels": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/distributionChannel" },
-          "minItems": 1
+      "description": "Distribution / publish configuration. Two shapes accepted via oneOf: (a) legacy `channels[]` array per E78-S2 / FR-424; (b) FR-521 / ADR-112 §(b) single-channel shape with 4 required common fields (channel, registry, manifest, release_workflow) plus per-channel sub-fields. The new (b) shape is the canonical surface for /gaia-publish (E100); the (a) shape is preserved for back-compat. Optional — backward compatibility is preserved when the key is omitted (no functional regression).",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "channels": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/distributionChannel" },
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["channel", "registry", "manifest", "release_workflow"],
+          "properties": {
+            "channel": {
+              "description": "FR-522 / ADR-112 §(c) closed 10-channel enum. Adding a named channel is a future ADR amendment + schema bump; do NOT extend this list inline.",
+              "type": "string",
+              "enum": [
+                "claude-marketplace",
+                "npm",
+                "pypi",
+                "maven",
+                "homebrew",
+                "github-releases",
+                "mobile-app",
+                "container-registry",
+                "static-site",
+                "custom"
+              ]
+            },
+            "registry":         { "type": "string", "minLength": 1, "description": "Free-form registry URL or identifier (e.g., https://registry.npmjs.org, ghcr.io/myorg/myimage)." },
+            "manifest":         { "type": "string", "minLength": 1, "description": "Relative path to the version-bearing manifest file (e.g., plugin.json, package.json, Cargo.toml)." },
+            "release_workflow": { "type": "string", "minLength": 1, "description": "Relative path or name of the workflow under .github/workflows/ that publishes the artifact." },
+            "platform":         { "type": "string", "enum": ["ios", "android", "both"], "description": "mobile-app required sub-field" },
+            "store_id":         { "type": "string", "description": "mobile-app required sub-field" },
+            "review_required":  { "type": "boolean", "description": "mobile-app required sub-field" },
+            "image_name":       { "type": "string", "description": "container-registry required sub-field" },
+            "tag_strategy":     { "type": "string", "enum": ["semver", "sha", "latest"], "description": "container-registry required sub-field" },
+            "provider":         { "type": "string", "enum": ["cloudflare-pages", "s3", "netlify", "vercel", "github-pages", "custom"], "description": "static-site required sub-field" },
+            "domain":           { "type": "string", "description": "static-site required sub-field" },
+            "group_id":         { "type": "string", "description": "maven required sub-field" },
+            "artifact_id":      { "type": "string", "description": "maven required sub-field" },
+            "tap":              { "type": "string", "description": "homebrew required sub-field" },
+            "repo":             { "type": "string", "description": "github-releases required sub-field" },
+            "adapter_name":     { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "custom required sub-field — names the directory under .gaia/custom/adapters/publish-<adapter_name>/" }
+          },
+          "allOf": [
+            {
+              "if":   { "properties": { "channel": { "const": "mobile-app" } } },
+              "then": { "required": ["platform", "store_id", "review_required"] }
+            },
+            {
+              "if":   { "properties": { "channel": { "const": "container-registry" } } },
+              "then": { "required": ["image_name", "tag_strategy"] }
+            },
+            {
+              "if":   { "properties": { "channel": { "const": "static-site" } } },
+              "then": { "required": ["provider", "domain"] }
+            },
+            {
+              "if":   { "properties": { "channel": { "const": "maven" } } },
+              "then": { "required": ["group_id", "artifact_id"] }
+            },
+            {
+              "if":   { "properties": { "channel": { "const": "homebrew" } } },
+              "then": { "required": ["tap"] }
+            },
+            {
+              "if":   { "properties": { "channel": { "const": "github-releases" } } },
+              "then": { "required": ["repo"] }
+            },
+            {
+              "if":   { "properties": { "channel": { "const": "custom" } } },
+              "then": { "required": ["adapter_name"] }
+            }
+          ]
         }
-      }
+      ]
     },
     "health_check": { "$ref": "#/definitions/healthCheck" }
   },

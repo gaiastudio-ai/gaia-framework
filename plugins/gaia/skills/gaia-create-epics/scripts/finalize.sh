@@ -205,7 +205,11 @@ per_story_field_present() {
     in_story {
       lower = tolower($0)
       lab = tolower(label)
-      pat = "^[[:space:]]*[-*]?[[:space:]]*" lab "[[:space:]]*:"
+      # AF-2026-05-22-9 Bug-3: also accept bolded `**Priority:**` /
+      # `**Size:**` / etc. field labels, which Derek emits for visual
+      # clarity in epics-and-stories.md. Optional `**` markers before
+      # the label and around the colon are now tolerated.
+      pat = "^[[:space:]]*[-*]?[[:space:]]*(\\*\\*)?" lab "(\\*\\*)?[[:space:]]*:"
       if (match(lower, pat)) { has_field = 1 }
     }
     END {
@@ -230,12 +234,14 @@ per_story_enum_valid() {
     in_story {
       lower = tolower($0)
       lab = tolower(label)
-      pat = "^[[:space:]]*[-*]?[[:space:]]*" lab "[[:space:]]*:[[:space:]]*"
+      # AF-2026-05-22-9 Bug-3 mirror: accept bolded labels here too so
+      # enum-validation does not silently miss `**Priority:** must` etc.
+      pat = "^[[:space:]]*[-*]?[[:space:]]*(\\*\\*)?" lab "(\\*\\*)?[[:space:]]*:[[:space:]]*"
       if (match(lower, pat)) {
         rest = substr(lower, RSTART + RLENGTH)
-        # Trim leading spaces and surrounding quotes/backticks.
-        gsub(/^[[:space:]`"'"'"']+/, "", rest)
-        gsub(/[[:space:]`"'"'"'].*$/, "", rest)
+        # Trim leading spaces and surrounding quotes/backticks/asterisks.
+        gsub(/^[[:space:]`"'"'"'*]+/, "", rest)
+        gsub(/[[:space:]`"'"'"'*].*$/, "", rest)
         if (rest !~ allowed) { invalid = 1 }
       }
     }

@@ -26,6 +26,7 @@
 #       docs/test-artifacts/test-plan.md §11.46.2,
 #       docs/planning-artifacts/architecture.md §10.31.3 (ADR-059).
 
+bats_require_minimum_version 1.5.0
 load 'test_helper.bash'
 
 setup() {
@@ -325,7 +326,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
 # ---------- AC-EC7: missing helper trips a loud error ----------
 
 @test "AC-EC7: invoking a renamed helper fails loudly (missing write-checkpoint.sh path)" {
-  run bash -c '/nonexistent/scripts/write-checkpoint.sh gaia-val-validate 1 x=y 2>&1'
+  run -127 bash -c '/nonexistent/scripts/write-checkpoint.sh gaia-val-validate 1 x=y 2>&1'
   [ "$status" -ne 0 ]
 }
 

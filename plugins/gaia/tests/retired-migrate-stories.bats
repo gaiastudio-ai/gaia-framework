@@ -35,8 +35,10 @@ teardown() {
 }
 
 @test "AC3: no references to migrate-stories-to-canonical-layout.sh in SKILL.md / runbooks" {
-  # Exclude the tombstone README (which legitimately mentions the script)
-  # and the retired script itself.
+  # Exclude the tombstone README (which legitimately mentions the script),
+  # the retired script itself, and CHANGELOG.md (which historically
+  # documents the E97-S2 retirement — that is precisely what AC3 expects
+  # to remain on disk, not a stale operational reference).
   run bash -c "grep -rln 'migrate-stories-to-canonical-layout' '$PLUGIN_ROOT/' \
     --include='*.md' \
     --include='*.yaml' \
@@ -44,7 +46,8 @@ teardown() {
     2>/dev/null \
     | grep -v 'scripts/retired/' \
     | grep -v 'tests/retired-migrate-stories\\.bats' \
-    | grep -v 'tests/migrate-stories-to-canonical-layout\\.bats'"
+    | grep -v 'tests/migrate-stories-to-canonical-layout\\.bats' \
+    | grep -v 'CHANGELOG\\.md'"
   # Empty output => zero stale refs => grep -v chain exits non-zero on empty
   [ -z "$output" ]
 }

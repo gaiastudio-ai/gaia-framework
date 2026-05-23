@@ -55,6 +55,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - If `.gaia/artifacts/planning-artifacts/epics-and-stories.md` already exists, warn the user: "An existing epics-and-stories document was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
 - Every story must have `depends_on` and `blocks` declarations — no circular dependencies.
 - Stories must be ordered by dependency topology first, then business priority.
+- **Per-epic directory naming (AF-2026-05-22-8 Bug-18)** — When Derek bulk-authors per-story `.md` files (Step 4), each story MUST land at `${implementation_artifacts}/{resolve_epic_slug output}/stories/{story_key}-{slug}.md`. The `{resolve_epic_slug output}` is computed by `scripts/lib/resolve-epic-slug.sh --epic-key E{N} --epics-file ...` and is e.g. `epic-E1-core-brain-vault`. Do NOT write to `epic-{N}/stories/...` (numeric-only, no slug) — `transition-story-status.sh` uses the resolver-output directory for `story-index.yaml`, so any other naming produces SPLIT STATE across two directories per epic. This is the recurring Bug-18 from the YARA test report — when create-epics bulk-writes stories without invoking the resolver, the result is `epic-1/stories/E1-S1-*.md` (story body) in one dir and `epic-E1-core-brain-vault/stories/story-index.yaml` (state) in another.
 
 ## Steps
 
@@ -91,6 +92,13 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to define e
 - Group related features into logical epics.
 - Each epic: name, description, goal, success criteria.
 - Brownfield: epics should focus on gap closure — not existing functionality.
+
+**Epic heading format (required for downstream resolver compatibility).** When Theo and Derek author `epics-and-stories.md` in Step 4, every epic MUST use ONE of the two accepted H2 heading forms (both are honored by `scripts/lib/resolve-epic-slug.sh` post-AF-22-6):
+
+- Form (a) — canonical em-dash form: `## E{N} — {Epic Title}` (e.g., `## E1 — Core Brain Vault`)
+- Form (b) — natural-language form: `## Epic {N}: {Epic Title}` (e.g., `## Epic 1: Core Brain Vault`)
+
+Either form resolves the per-epic slug correctly for `transition-story-status.sh`, `gaia-dev-story`, and `gaia-sprint-plan`. Do NOT mix forms within a single file. Headings using neither form (e.g., `## 1. Core Brain Vault`) will cause `transition-story-status.sh` to fail with "epic key E{N} not found".
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-epics 3 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" epic_count="$EPIC_COUNT"`
 

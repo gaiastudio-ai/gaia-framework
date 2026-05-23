@@ -1,0 +1,15 @@
+# publish-custom adapter schema (E99-S2 / FR-521 / ADR-112 §(d))
+#
+# Per-channel sub-field schema co-located with the adapter per ADR-112 §(d).
+# The canonical 4 required common fields (channel, registry, manifest,
+# release_workflow) are enforced at the top level by project-config.schema.json.
+# This file lists the additional per-channel sub-fields custom requires.
+
+$schema: "http://json-schema.org/draft-07/schema#"
+$id: "publish-custom-schema-v1"
+title: "publish-custom sub-field schema"
+description: "Sub-field requirements for distribution.channel: custom per FR-522 + ADR-112 §(d). Common fields are at the project-config.schema.json level."
+type: object
+required: [adapter_name]
+properties:
+  adapter_name: {type: string, pattern: "^[A-Za-z0-9_-]+$"}

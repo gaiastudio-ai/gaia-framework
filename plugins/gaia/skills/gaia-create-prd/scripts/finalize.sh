@@ -124,10 +124,15 @@ file_nonempty() {
 # non-comment content line before the next H2 heading.
 section_body_nonempty() {
   local f="$1" pattern="$2"
+  # AF-2026-05-22-9 Bug-2: also tolerate a leading numeric outline prefix
+  # (`## 9. Out of Scope`, `## 10.1 Constraints`) the way heading_present
+  # already does. The framework's own prd-template.md uses numbered
+  # outlines, so SV-21..SV-24 failed against valid template-conformant
+  # PRDs before this fix.
   awk -v pat="$pattern" '
     BEGIN { in_section = 0; found = 0 }
     {
-      if ($0 ~ "^##[[:space:]]+" pat "([[:space:]]|$|[[:punct:]])") {
+      if ($0 ~ "^##[[:space:]]+([0-9]+(\\.[0-9]+)*\\.?[[:space:]]+)?" pat "([[:space:]]|$|[[:punct:]])") {
         in_section = 1; next
       }
       if (in_section && /^##[[:space:]]/) { in_section = 0 }
@@ -151,7 +156,7 @@ summary_table_present() {
   awk '
     BEGIN { in_section = 0; saw_header = 0; saw_sep = 0 }
     {
-      if ($0 ~ /^##[[:space:]]+[Rr]equirements[[:space:]]+[Ss]ummary([[:space:]]+[Tt]able)?([[:space:]]|$|[[:punct:]])/) {
+      if ($0 ~ /^##[[:space:]]+([0-9]+(\.[0-9]+)*\.?[[:space:]]+)?[Rr]equirements[[:space:]]+[Ss]ummary([[:space:]]+[Tt]able)?([[:space:]]|$|[[:punct:]])/) {
         in_section = 1; next
       }
       if (in_section && /^##[[:space:]]/) { in_section = 0 }
@@ -172,7 +177,7 @@ summary_table_has_rows() {
   awk '
     BEGIN { in_section = 0; saw_sep = 0; rows = 0 }
     {
-      if ($0 ~ /^##[[:space:]]+[Rr]equirements[[:space:]]+[Ss]ummary([[:space:]]+[Tt]able)?([[:space:]]|$|[[:punct:]])/) {
+      if ($0 ~ /^##[[:space:]]+([0-9]+(\.[0-9]+)*\.?[[:space:]]+)?[Rr]equirements[[:space:]]+[Ss]ummary([[:space:]]+[Tt]able)?([[:space:]]|$|[[:punct:]])/) {
         in_section = 1; saw_sep = 0; next
       }
       if (in_section && /^##[[:space:]]/) { in_section = 0 }
@@ -204,7 +209,7 @@ deps_failure_modes_defined() {
   awk '
     BEGIN { in_section = 0; has_fail = 0; has_fallback = 0 }
     {
-      if ($0 ~ /^##[[:space:]]+[Dd]ependencies([[:space:]]|$|[[:punct:]])/) {
+      if ($0 ~ /^##[[:space:]]+([0-9]+(\.[0-9]+)*\.?[[:space:]]+)?[Dd]ependencies([[:space:]]|$|[[:punct:]])/) {
         in_section = 1; next
       }
       if (in_section && /^##[[:space:]]/) { in_section = 0 }
