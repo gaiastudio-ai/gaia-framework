@@ -92,6 +92,13 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to define e
 - Each epic: name, description, goal, success criteria.
 - Brownfield: epics should focus on gap closure — not existing functionality.
 
+**Epic heading format (required for downstream resolver compatibility).** When Theo and Derek author `epics-and-stories.md` in Step 4, every epic MUST use ONE of the two accepted H2 heading forms (both are honored by `scripts/lib/resolve-epic-slug.sh` post-AF-22-6):
+
+- Form (a) — canonical em-dash form: `## E{N} — {Epic Title}` (e.g., `## E1 — Core Brain Vault`)
+- Form (b) — natural-language form: `## Epic {N}: {Epic Title}` (e.g., `## Epic 1: Core Brain Vault`)
+
+Either form resolves the per-epic slug correctly for `transition-story-status.sh`, `gaia-dev-story`, and `gaia-sprint-plan`. Do NOT mix forms within a single file. Headings using neither form (e.g., `## 1. Core Brain Vault`) will cause `transition-story-status.sh` to fail with "epic key E{N} not found".
+
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-epics 3 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" epic_count="$EPIC_COUNT"`
 
 ### Step 4 — Break Into Stories

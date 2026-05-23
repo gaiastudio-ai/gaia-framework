@@ -323,24 +323,36 @@
       }
     },
     "test_execution": {
-      "description": "Pipeline-tier placement for the three test tiers (FR-RSV2-11).",
+      "description": "Pipeline-tier placement + runner command for the three test tiers (FR-RSV2-11, AF-2026-05-22-6). Each tier MAY carry: `placement` (which pipeline stage runs the tier), `command` (the runner command-string the bridge dispatcher executes), and `timeout_seconds` (per-tier execution budget). The bridge dispatcher (`scripts/run-tests.sh`) reads `command` and `timeout_seconds` — without these the bridge emits a `no command declared` skip-evidence and the run never drives the test runner. Pre-AF-22-6 the schema disallowed `command`/`timeout_seconds`, so the dispatcher could only ever skip.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "tier_1": {
           "type": "object",
           "additionalProperties": false,
-          "properties": { "placement": { "$ref": "#/definitions/testPlacement" } }
+          "properties": {
+            "placement":       { "$ref": "#/definitions/testPlacement" },
+            "command":         { "type": "string", "minLength": 1 },
+            "timeout_seconds": { "type": "integer", "minimum": 1 }
+          }
         },
         "tier_2": {
           "type": "object",
           "additionalProperties": false,
-          "properties": { "placement": { "$ref": "#/definitions/testPlacement" } }
+          "properties": {
+            "placement":       { "$ref": "#/definitions/testPlacement" },
+            "command":         { "type": "string", "minLength": 1 },
+            "timeout_seconds": { "type": "integer", "minimum": 1 }
+          }
         },
         "tier_3": {
           "type": "object",
           "additionalProperties": false,
-          "properties": { "placement": { "$ref": "#/definitions/testPlacement" } }
+          "properties": {
+            "placement":       { "$ref": "#/definitions/testPlacement" },
+            "command":         { "type": "string", "minLength": 1 },
+            "timeout_seconds": { "type": "integer", "minimum": 1 }
+          }
         }
       }
     },
