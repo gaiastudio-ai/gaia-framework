@@ -195,6 +195,45 @@ steps_after_gaia:
 
 `gaia_ci_stitch <managed-yml> [<output-path>]` is the single function in the stitcher; downstream consumers (Sub-flow C of `--regenerate` mode) source it and call directly.
 
+## `template_overrides:` Declarative Overrides (FR-518, ADR-114 §(e), E98-S4)
+
+`ci_cd.template_overrides:` is a three-field declarative surface in `project-config.yaml` that lets project owners modify generated workflows without authoring overlay files. The interpreter lives at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/template-overrides.sh` and runs on the stitched workflow stream during `/gaia-config-ci --regenerate`.
+
+### The three fields
+
+```yaml
+ci_cd:
+  template_overrides:
+    disable: [shellcheck]            # remove named jobs from generated jobs: map
+    timeout_overrides:               # override per-job timeout-minutes
+      bats-tests: 15
+    adapter_versions:                # pin adapter version in job invocations
+      markdownlint: "0.41.0"
+```
+
+### SR-78 disable-allowlist (T-TOV-1 mitigation)
+
+The closed enum of security-critical job names that **CANNOT** be disabled is hard-coded:
+
+- `commitlint`
+- `adr-048-guard`
+- `no-claude-attribution`
+- `secrets-scan`
+- `nfr-082-credential-audit`
+
+Any `disable:` entry matching one of these names (after hyphen+case canonicalization — `commit-lint` / `Commit-Lint` / `commitlint` all collide with the canonical token) is **REJECTED** with a non-zero exit and an actionable error citing SR-78 / T-TOV-1.
+
+### Per-field validation
+
+- **Unknown `disable:` name** → WARNING (graceful — catalog may drift between framework releases).
+- **`timeout_overrides:` minutes outside [1, 360]** → HARD ERROR.
+- **Unknown `adapter_versions:` adapter name** → HARD ERROR (pinning to a non-existent adapter is always a typo).
+- **Unparseable semver in `adapter_versions:`** → HARD ERROR (expects `N.N.N` with optional prerelease/build).
+
+### Sequencing
+
+The interpreter runs against the **already-stitched** workflow stream (E98-S2's `ci-workflow-stitcher.sh` output), not the raw template. Override application is the final pass before the workflow is written to disk.
+
 ## Regen Contract — `gaia-` Prefix Is the Ownership Boundary (ADR-114, E98-S1)
 
 `/gaia-config-ci --regenerate` is permitted to overwrite **only** files classified as `generated` by the canonical helper `${CLAUDE_PLUGIN_ROOT}/scripts/lib/ci-prefix-detection.sh`. Source the helper and call `gaia_ci_classify <path>` to obtain one of:
