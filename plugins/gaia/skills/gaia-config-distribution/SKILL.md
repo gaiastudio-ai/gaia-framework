@@ -33,6 +33,8 @@ This skill targets ONLY the `distribution:` section. Other top-level sections (`
 
 ## Sub-commands (per FR-523)
 
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+
 ### `add`
 
 Add a fresh `distribution:` block. REFUSES when one already exists.
