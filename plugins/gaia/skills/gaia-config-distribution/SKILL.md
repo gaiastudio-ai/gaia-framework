@@ -102,7 +102,10 @@ Render `diff -u <original> <prospective>` to the user. Prompt `[y]es / [n]o / [d
 
 ### Step 6 — Atomic write
 
-On confirmation, invoke `${CLAUDE_PLUGIN_ROOT}/scripts/config-yaml-editor.sh replace <path> distribution <new-section>` (or `delete` for the `clear` op). The editor uses per-PID temp + `mv` rename for atomicity.
+On confirmation:
+- **`add`** — write the rendered new-section content to a per-PID temp file `${TMPDIR}/gaia-config-distribution.add.$$.yml`, then invoke `${CLAUDE_PLUGIN_ROOT}/scripts/config-yaml-editor.sh insert <path> distribution <temp-file>`. The `insert` primitive appends the new section at end-of-file by current API; the documented canonical placement between `ci_cd:` and `environments:` is a follow-up tech-debt item — see Findings table. The editor uses per-PID temp + `mv` rename for atomicity.
+- **`set`** — write the merged section content to a per-PID temp file, then invoke `${CLAUDE_PLUGIN_ROOT}/scripts/config-yaml-editor.sh replace <path> distribution <temp-file>`. Note the third arg is a FILE PATH, not inline content. The replace primitive does a comment-preserving in-place splice.
+- **`clear`** — `config-yaml-editor.sh` does NOT currently expose a `delete` primitive. Compose via: (a) extract every other top-level section via `sections` + per-section `extract`, (b) rebuild the file omitting the `distribution:` block, (c) atomic-rename the rebuilt file over the original. Surrounding comments are preserved by the per-section extract chain. Filing a `delete` primitive as a separate tech-debt entry (this skill is the first consumer to need it).
 
 ### Step 7 — Post-write verification
 
