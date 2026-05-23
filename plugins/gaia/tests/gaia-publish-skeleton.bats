@@ -30,6 +30,47 @@ _write_plugin_json() {
   printf '{"version":"%s","name":"example"}\n' "$version" > "$PROJECT_ROOT/plugin.json"
 }
 
+# Write a config that carries ci_cd.promotion_chain[].ci_checks so the
+# step-1 gate has a contract to evaluate.
+_write_config_with_ci_checks() {
+  local checks="${1:-test}"
+  cat > "$CONFIG" <<YAML
+distribution:
+  channel: claude-marketplace
+  registry: https://anthropic.com/marketplace
+  manifest: plugin.json
+  release_workflow: gaia-release.yml
+ci_cd:
+  promotion_chain:
+    - branch: staging
+      ci_checks:
+$(printf '        - %s\n' $checks)
+YAML
+}
+
+# Install a gh-shim on PATH that emits a canned JSON payload. The shim
+# expects $GH_FAKE_JSON to be set to the JSON body to echo for
+# 'gh run list ...'.
+_install_gh_shim() {
+  local shim_dir="$TEST_TMP/bin"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/gh" <<'SHIM'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "run list")
+    printf '%s' "${GH_FAKE_JSON:-[]}"
+    ;;
+  *)
+    echo "gh-shim: unhandled args: $*" >&2
+    exit 2
+    ;;
+esac
+SHIM
+  chmod +x "$shim_dir/gh"
+  PATH="$shim_dir:$PATH"
+  export PATH
+}
+
 # ---------- AC1: skill scaffold + script ----------
 
 @test "AC1: SKILL.md exists at canonical path" {
@@ -191,6 +232,109 @@ YAML
   grep -q 'Step 3.*[Tt]rigger publish' "$SKILL"
   grep -q 'Step 4.*[Pp]ost-publish verify' "$SKILL"
   grep -q 'Step 5.*[Ff]inal verdict' "$SKILL"
+}
+
+# ---------- TC-GPO-2: red CI HALTs step 1 BEFORE step 2 ----------
+
+@test "TC-GPO-2: red CI on source-branch HEAD HALTs after step 1 (exit 1, reason pre-publish-gate-failed)" {
+  _write_config_with_ci_checks "test lint"
+  _write_plugin_json 1.0.0
+  _install_gh_shim
+  # gh returns one red check ('test' failed) for source-branch HEAD.
+  export GH_FAKE_JSON='[{"name":"test","status":"completed","conclusion":"failure","headSha":"abc123"},{"name":"lint","status":"completed","conclusion":"success","headSha":"abc123"}]'
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): FAILED'
+  # Step 2 MUST NOT run with PASSED status before the HALT — it is SKIPPED.
+  echo "$output" | grep -q 'step 2/5 (manifest-version-check): SKIPPED'
+  # Step 3 (adapter trigger) MUST NOT run.
+  echo "$output" | grep -q 'step 3/5 (trigger-publish): SKIPPED'
+  # Stderr / output names the red check + commit SHA + remediation hint.
+  echo "$output" | grep -q 'test'
+  echo "$output" | grep -q 'abc123'
+  echo "$output" | grep -qi 'CI'
+  # Audit-trail reason marker in assessment doc.
+  local doc
+  doc=$(find "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" -name 'assessment-publish-*.md' | head -1)
+  [ -f "$doc" ]
+  grep -q 'pre-publish-gate-failed' "$doc"
+}
+
+@test "TC-GPO-2: all required ci_checks green → step 1 PASSED → flow proceeds" {
+  _write_config_with_ci_checks "test lint"
+  _write_plugin_json 1.0.0
+  _install_gh_shim
+  export GH_FAKE_JSON='[{"name":"test","status":"completed","conclusion":"success","headSha":"abc123"},{"name":"lint","status":"completed","conclusion":"success","headSha":"abc123"}]'
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): PASSED'
+}
+
+@test "TC-GPO-2: missing required check on HEAD → step 1 FAILED (treated as not-success)" {
+  _write_config_with_ci_checks "test lint required-extra"
+  _write_plugin_json 1.0.0
+  _install_gh_shim
+  # 'required-extra' is missing from the JSON entirely.
+  export GH_FAKE_JSON='[{"name":"test","status":"completed","conclusion":"success","headSha":"abc123"},{"name":"lint","status":"completed","conclusion":"success","headSha":"abc123"}]'
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): FAILED'
+  echo "$output" | grep -q 'required-extra'
+}
+
+@test "TC-GPO-2: pending CI conclusion → step 1 FAILED" {
+  _write_config_with_ci_checks "test"
+  _write_plugin_json 1.0.0
+  _install_gh_shim
+  export GH_FAKE_JSON='[{"name":"test","status":"in_progress","conclusion":null,"headSha":"abc123"}]'
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): FAILED'
+}
+
+# ---------- TC-GPO-3: manifest version mismatch verbatim stderr ----------
+
+@test "TC-GPO-3: manifest version mismatch produces verbatim AC4 stderr" {
+  _write_config_with_ci_checks "test"
+  _write_plugin_json 1.2.4
+  _install_gh_shim
+  export GH_FAKE_JSON='[{"name":"test","status":"completed","conclusion":"success","headSha":"abc123"}]'
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version v1.2.3
+  [ "$status" -eq 1 ]
+  # Step 2 FAILED; step 3 SKIPPED (no adapter trigger).
+  echo "$output" | grep -q 'step 2/5 (manifest-version-check): FAILED'
+  echo "$output" | grep -q 'step 3/5 (trigger-publish): SKIPPED'
+  # Verbatim AC4 format: "manifest version 1.2.4 does not match --version v1.2.3"
+  echo "$output" | grep -qF 'manifest version 1.2.4 does not match --version v1.2.3'
+  # Audit-trail reason marker.
+  local doc
+  doc=$(find "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" -name 'assessment-publish-*.md' | head -1)
+  [ -f "$doc" ]
+  grep -q 'manifest-version-mismatch' "$doc"
+}
+
+# ---------- AC5: --dry-run still runs gates ----------
+
+@test "AC5: --dry-run + red CI still HALTs at step 1 (gates fail-closed in dry-run)" {
+  _write_config_with_ci_checks "test"
+  _write_plugin_json 1.0.0
+  _install_gh_shim
+  export GH_FAKE_JSON='[{"name":"test","status":"completed","conclusion":"failure","headSha":"abc123"}]'
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0 --dry-run
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): FAILED'
+  echo "$output" | grep -q 'step 3/5 (trigger-publish): SKIPPED'
+}
+
+# ---------- Backward-compat: config WITHOUT ci_cd.promotion_chain ----------
+
+@test "no ci_cd.promotion_chain → step 1 PASSED with stub-fallback detail" {
+  # Preserves the E100-S1 happy path for projects that haven't wired CI checks yet.
+  _write_config
+  _write_plugin_json 1.0.0
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): PASSED'
 }
 
 # ---------- Edge: missing manifest file ----------

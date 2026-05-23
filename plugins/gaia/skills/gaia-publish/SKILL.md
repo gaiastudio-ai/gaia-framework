@@ -35,10 +35,20 @@ You are running the Phase 5 publish action for a non-deployable project. The ski
 ## Five-step orchestration (FR-525 canonical order)
 
 ### Step 1 — Pre-publish gate
-Verify all required `ci_cd.promotion_chain[].ci_checks` are green on the source branch. **Real implementation lands in E100-S2.** Today this step is a PASSED stub with the `not-yet-implemented` marker so downstream bats fixtures can exercise the orchestration shape.
+Verify all required `ci_cd.promotion_chain[].ci_checks` are green on the source branch (E100-S2). Implementation:
+
+1. Resolve source branch — git HEAD if HEAD matches any `promotion_chain[].branch`, else the first chain entry (typically `staging`).
+2. Read required checks from `ci_cd.promotion_chain[<resolved-entry>].ci_checks[]`.
+3. Probe `gh run list --branch <src> --limit 50 --json status,conclusion,name,headSha` (single invocation).
+4. For each required check, find the most-recent run; verify `status: completed` AND `conclusion: success`. Anything else (`failure`, `cancelled`, `null`, missing entry) FAILs the gate.
+5. **Failure mode:** stderr names red checks, the source branch, the HEAD commit SHA, and the remediation hint "re-run after CI is green". The assessment doc records `reason: pre-publish-gate-failed`. Steps 2-5 are SKIPPED — no adapter trigger.
+
+Backward-compat: when no `ci_cd.promotion_chain[].ci_checks` is configured, step 1 emits PASSED with the `stub-fallback` marker so projects that haven't wired CI checks yet still progress.
 
 ### Step 2 — Manifest version check
-Read the path named by `distribution.manifest` (e.g., `plugin.json`, `package.json`, `pyproject.toml`, `Cargo.toml`, `pom.xml`), parse the version field, and confirm it matches the `--version` argument. Leading `v` is stripped on both sides before comparison. Mismatch is FAILED.
+Read the path named by `distribution.manifest` (e.g., `plugin.json`, `package.json`, `pyproject.toml`, `Cargo.toml`, `pom.xml`), parse the version field, and confirm it matches the `--version` argument. Leading `v` is stripped on both sides for comparison only — reporting retains the operator's raw value.
+
+**Failure mode (E100-S2):** stderr emits the verbatim "manifest version <X> does not match --version <Y>" line — raw manifest value on the left, raw `--version` (including leading `v`) on the right. The assessment doc records `reason: manifest-version-mismatch`. Steps 3-5 are SKIPPED — no adapter trigger.
 
 ### Step 3 — Trigger publish
 Resolve and dispatch the adapter per `distribution.channel`. **Real adapter dispatch lands in E100-S4..S8**; today this step is a PASSED stub so the orchestration is testable end-to-end with mocked channels.
