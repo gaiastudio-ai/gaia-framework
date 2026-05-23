@@ -71,6 +71,50 @@ SHIM
   export PATH
 }
 
+# Install an adapter shim at gaia-adapter-publish-<channel> on PATH.
+# The shim writes ADR-037 envelope to --output <path>.
+# Reads $ADAPTER_VERIFY_OUTCOME (PASSED|FAILED|UNVERIFIED, default PASSED)
+# and $ADAPTER_VERIFY_DELAY_S (sleep before responding, default 0).
+_install_adapter_shim() {
+  local channel="${1:-claude-marketplace}"
+  local shim_dir="$TEST_TMP/bin"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/gaia-adapter-publish-$channel" <<'SHIM'
+#!/usr/bin/env bash
+output=""
+action=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --action) action="$2"; shift 2;;
+    --output) output="$2"; shift 2;;
+    *) shift;;
+  esac
+done
+[ "$action" = "verify" ] || { echo "shim: unsupported action: $action" >&2; exit 2; }
+[ -n "$output" ] || { echo "shim: --output required" >&2; exit 2; }
+sleep "${ADAPTER_VERIFY_DELAY_S:-0}"
+cat > "$output" <<JSON
+{"agent":"adapter-shim","verdict":"${ADAPTER_VERIFY_OUTCOME:-PASSED}","artifact_url":"https://example.com/artifact"}
+JSON
+SHIM
+  chmod +x "$shim_dir/gaia-adapter-publish-$channel"
+  PATH="$shim_dir:$PATH"
+  export PATH
+}
+
+# Write a config carrying ci_checks AND a verify_retry_window_seconds-aware
+# adapter manifest under .gaia/custom/adapters/publish-<channel>/.
+_write_adapter_manifest() {
+  local channel="${1:-claude-marketplace}"
+  local window="${2:-2}"
+  local dir="$PROJECT_ROOT/.gaia/custom/adapters/publish-$channel"
+  mkdir -p "$dir"
+  cat > "$dir/adapter-manifest.yaml" <<YAML
+name: publish-$channel
+verify_retry_window_seconds: $window
+YAML
+}
+
 # ---------- AC1: skill scaffold + script ----------
 
 @test "AC1: SKILL.md exists at canonical path" {
@@ -335,6 +379,102 @@ YAML
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'step 1/5 (pre-publish-gate): PASSED'
+}
+
+# ---------- TC-GPO-5: post-publish verify adapter dispatch ----------
+
+@test "TC-GPO-5: adapter verify returns PASSED → step 4 PASSED → flow proceeds" {
+  _write_config
+  _write_plugin_json 1.0.0
+  _write_adapter_manifest claude-marketplace 2
+  ADAPTER_VERIFY_OUTCOME=PASSED _install_adapter_shim claude-marketplace
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_VERIFY_OUTCOME=PASSED bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'step 4/5 (post-publish-verify): PASSED'
+}
+
+@test "TC-GPO-5: adapter verify returns FAILED → step 4 FAILED → orchestrator FAILED (AC4)" {
+  _write_config
+  _write_plugin_json 1.0.0
+  _write_adapter_manifest claude-marketplace 2
+  _install_adapter_shim claude-marketplace
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_VERIFY_OUTCOME=FAILED bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'step 4/5 (post-publish-verify): FAILED'
+  echo "$output" | grep -qi 'artifact not resolvable'
+  # Audit trail records the FAILED step.
+  local doc
+  doc=$(find "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" -name 'assessment-publish-*.md' | head -1)
+  grep -qi 'verify-failed\|post-publish-verify-failed' "$doc"
+}
+
+@test "TC-GPO-5: UNVERIFIED envelope (mobile-app STUB) → step 4 PASSED with warning" {
+  _write_config
+  _write_plugin_json 1.0.0
+  _write_adapter_manifest claude-marketplace 2
+  _install_adapter_shim claude-marketplace
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_VERIFY_OUTCOME=UNVERIFIED bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'step 4/5 (post-publish-verify): PASSED'
+  echo "$output" | grep -qi 'unverified'
+}
+
+# ---------- TC-GPO-6: --skip-verify NFR-082 opt-out ----------
+
+@test "TC-GPO-6: --skip-verify emits NFR-082 WARNING + verify-skipped audit flag" {
+  _write_config
+  _write_plugin_json 1.0.0
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0 --skip-verify
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'step 4/5 (post-publish-verify): SKIPPED'
+  echo "$output" | grep -q 'NFR-082'
+  echo "$output" | grep -qi 'WARNING'
+  # Audit trail records verify-skipped flag.
+  local doc
+  doc=$(find "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" -name 'assessment-publish-*.md' | head -1)
+  grep -q 'verify-skipped' "$doc"
+}
+
+# ---------- TC-NFR-082-2: orchestrator respects per-adapter window ----------
+
+@test "TC-NFR-082-2: 2s window + FAILED throughout → loop times out at ~2s (±5s tolerance)" {
+  _write_config
+  _write_plugin_json 1.0.0
+  _write_adapter_manifest claude-marketplace 2
+  _install_adapter_shim claude-marketplace
+  local start end elapsed
+  start=$SECONDS
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_VERIFY_OUTCOME=FAILED bash "$ORCH" --version 1.0.0
+  end=$SECONDS
+  elapsed=$((end - start))
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'step 4/5 (post-publish-verify): FAILED'
+  # Tolerance band: 2s window + up to 5s CI jitter → elapsed should be < 8s.
+  [ "$elapsed" -lt 8 ] || { echo "elapsed=${elapsed}s exceeds 8s tolerance" >&2; false; }
+}
+
+# ---------- SR-83: 3600s defensive cap ----------
+
+@test "SR-83: manifest declares 7200s → orchestrator clamps to 3600 + WARNING" {
+  _write_config
+  _write_plugin_json 1.0.0
+  _write_adapter_manifest claude-marketplace 7200
+  _install_adapter_shim claude-marketplace
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_VERIFY_OUTCOME=PASSED bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -qi 'SR-83'
+  echo "$output" | grep -qi '3600'
+}
+
+# ---------- Backward-compat: no adapter binary AND no manifest ----------
+
+@test "no adapter + no manifest → step 4 PASSED stub-fallback (TC-GPO-1 happy path preserved)" {
+  _write_config
+  _write_plugin_json 1.0.0
+  # No adapter shim, no adapter manifest.
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'step 4/5 (post-publish-verify): PASSED'
 }
 
 # ---------- Edge: missing manifest file ----------
