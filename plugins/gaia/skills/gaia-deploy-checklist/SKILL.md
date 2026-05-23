@@ -35,6 +35,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - The readiness gate checks that `${PLANNING_ARTIFACTS}/readiness-report.md` exists.
 - If `validate-gate.sh` returns a non-zero exit code but produces no structured error output, treat as: "Gate check failed with unknown error -- exit code {N}" and HALT (AC-EC2).
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
+- **`environments[].kind` shape-agnostic (E99-S1 / FR-520 / ADR-112 §(a)).** This skill is GATE-FREE on `kind` — it produces a checklist for ALL three resolved kinds (`deployable | branch-only | distribution-only`). Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-env-kind.sh` and call `gaia_resolve_env_kind <project-config.yaml> <env-id>` to read the resolved kind, then render the checklist with shape-aware verbage: the `deployable` checklist references deploy steps; the `branch-only` and `distribution-only` checklists reference publish steps per FR-524's publish-readiness mode. Single template-variable swap (`{{action_verb}}` → `"deploy"` or `"publish"`). NEVER HALT on `kind` — that gate belongs to `/gaia-deploy` + `/gaia-post-deploy` only (TC-EKD-4).
 
 ## Steps
 

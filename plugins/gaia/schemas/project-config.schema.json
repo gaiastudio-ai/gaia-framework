@@ -455,19 +455,45 @@
       }
     },
     "environments": {
-      "description": "Environment list with env-var-only credential references (FR-RSV2-9, NFR-RSV2-7). Literal credential values are rejected by the credentialEnvVarRef constraint per AC11.",
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "url":         { "type": "string" },
-          "credentials": {
+      "description": "Environment list with env-var-only credential references (FR-RSV2-9, NFR-RSV2-7) and a 3-value kind discriminator per FR-520 / ADR-112 §(a). Two shapes accepted: (a) the legacy map-of-entries (`environments: {staging: {...}, prod: {...}}`) preserved for back-compat; (b) the FR-520 array-of-entries with `id` + closed-enum `kind` per E99-S1.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": {
             "type": "object",
-            "additionalProperties": { "$ref": "#/definitions/credentialEnvVarRef" }
+            "additionalProperties": false,
+            "properties": {
+              "url":         { "type": "string" },
+              "credentials": {
+                "type": "object",
+                "additionalProperties": { "$ref": "#/definitions/credentialEnvVarRef" }
+              }
+            }
+          }
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id":     { "type": "string", "minLength": 1 },
+              "name":   { "type": "string" },
+              "branch": { "type": "string" },
+              "kind": {
+                "description": "FR-520 / ADR-112 §(a) closed 3-value discriminator. Field is optional — read-time default is `deployable` per NFR-080 silent back-compat (resolved by scripts/lib/resolve-env-kind.sh). Unknown values are rejected at schema-validation time (E99-S1 AC6 / TC-EKD-6).",
+                "type": "string",
+                "enum": ["deployable", "branch-only", "distribution-only"]
+              },
+              "url":    { "type": "string" },
+              "credentials": {
+                "type": "object",
+                "additionalProperties": { "$ref": "#/definitions/credentialEnvVarRef" }
+              }
+            }
           }
         }
-      }
+      ]
     },
     "ci_platform": {
       "description": "CI provider selection and pipeline pointer.",

@@ -52,6 +52,7 @@ Pattern A invariants:
 - The skill operates in `context: main` (not fork) because it writes evidence files and orchestrates Skill-tool calls to the smoke action skills. The fork pattern used by review skills does not apply here.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
 - This skill is the only orchestrator allowed to invoke E73-S1..S4 action skills (`gaia-test-e2e`, `gaia-test-perf`, `gaia-test-dast`, `gaia-test-a11y`) as **deployment-phase smoke**. Each action skill runs its own Phase 3A/3B pipeline independently against the target environment URL.
+- **`environments[].kind` gate (E99-S1 / FR-520 / ADR-112 §(a)).** BEFORE any deploy phase runs, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-env-kind.sh` and call `gaia_resolve_env_kind <project-config.yaml> <env-id>`. If the resolved kind is NOT `deployable`, HALT non-zero with the canonical stderr text: `environment '<env-id>' is kind: <kind> — use /gaia-publish instead`. No deploy step runs; no partial mutation of any artifact. The resolver applies the NFR-080 silent default (`deployable`) when `kind:` is absent, so legacy configs proceed unchanged.
 
 ## CLI Flags
 
