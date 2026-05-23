@@ -100,6 +100,27 @@ if [ -z "$CHANNEL" ]; then
   die "distribution.channel not set in $PROJECT_CONFIG — see /gaia-config-distribution"
 fi
 
+# Read first-promotion-chain entry. Per F1 resolution: if HEAD branch matches
+# any promotion_chain[].branch, use that entry; otherwise default to index 0
+# (typically `staging`). Falls back to empty (= legacy stub) when the chain
+# is absent.
+SRC_BRANCH=""
+REQ_CI_CHECKS=""
+if yq eval '.ci_cd.promotion_chain' "$PROJECT_CONFIG" 2>/dev/null | grep -q '^- '; then
+  # Chain present. Resolve source-branch from HEAD if available, else first entry.
+  HEAD_BR=""
+  if command -v git >/dev/null 2>&1; then
+    HEAD_BR=$(git -C "$PROJECT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  fi
+  if [ -n "$HEAD_BR" ] && yq eval ".ci_cd.promotion_chain[] | select(.branch == \"$HEAD_BR\") | .branch" "$PROJECT_CONFIG" 2>/dev/null | grep -q .; then
+    SRC_BRANCH="$HEAD_BR"
+    REQ_CI_CHECKS=$(yq eval ".ci_cd.promotion_chain[] | select(.branch == \"$HEAD_BR\") | .ci_checks[]" "$PROJECT_CONFIG" 2>/dev/null)
+  else
+    SRC_BRANCH=$(yq eval '.ci_cd.promotion_chain[0].branch // ""' "$PROJECT_CONFIG" 2>/dev/null)
+    REQ_CI_CHECKS=$(yq eval '.ci_cd.promotion_chain[0].ci_checks[]' "$PROJECT_CONFIG" 2>/dev/null)
+  fi
+fi
+
 # ---------- Per-step state tracking ----------
 
 STEP1_STATUS="PENDING"; STEP1_DETAIL=""
@@ -107,6 +128,9 @@ STEP2_STATUS="PENDING"; STEP2_DETAIL=""
 STEP3_STATUS="PENDING"; STEP3_DETAIL=""
 STEP4_STATUS="PENDING"; STEP4_DETAIL=""
 STEP5_STATUS="PENDING"; STEP5_DETAIL=""
+# Audit-trail per-step reason markers (E100-S2 AC2 / AC4 + F3 audit-symmetry).
+STEP1_REASON=""
+STEP2_REASON=""
 
 # Internal: emit a one-line progress marker per step.
 _progress() {
@@ -118,12 +142,86 @@ _progress() {
 
 # ---------- Step 1: Pre-publish gate (stub — real impl lands in E100-S2) ----------
 
+# Probe gh for the most-recent run status of a given check name on the
+# source-branch HEAD. Echoes the conclusion (success|failure|cancelled|...)
+# or the literal token "missing" if no run is recorded for that name.
+# Echoes "pending" when status != completed.
+_gh_check_conclusion() {
+  local check_name="$1"
+  # GH_FAKE_JSON-aware test shim is invoked transparently — production
+  # invocation is the real gh CLI; both produce the same JSON shape.
+  local row
+  row=$(printf '%s' "$GH_RUNS_JSON" | jq -r --arg n "$check_name" \
+    '[.[] | select(.name == $n)] | first // empty' 2>/dev/null)
+  if [ -z "$row" ] || [ "$row" = "null" ]; then
+    printf 'missing'
+    return
+  fi
+  local st conc
+  st=$(printf '%s' "$row" | jq -r '.status // "unknown"')
+  conc=$(printf '%s' "$row" | jq -r '.conclusion // "null"')
+  if [ "$st" != "completed" ]; then
+    printf 'pending'
+  else
+    printf '%s' "$conc"
+  fi
+}
+
 _step1_pre_publish_gate() {
-  # E100-S2 wires the real ci_cd.promotion_chain[].ci_checks probe here.
-  # For now, the stub emits PASSED with the not-yet-implemented marker so
-  # downstream bats fixtures can exercise the orchestration shape.
-  STEP1_STATUS="PASSED"
-  STEP1_DETAIL="stub (E100-S2 will wire ci_cd.promotion_chain[].ci_checks probe)"
+  # Backward-compat: when ci_cd.promotion_chain is absent or carries no
+  # ci_checks, preserve the E100-S1 stub-PASS path so existing fixtures
+  # (and projects that haven't wired CI checks yet) continue to work.
+  if [ -z "$REQ_CI_CHECKS" ]; then
+    STEP1_STATUS="PASSED"
+    STEP1_DETAIL="no ci_cd.promotion_chain ci_checks configured (stub-fallback)"
+    _progress 1 "pre-publish-gate" "$STEP1_STATUS" "$STEP1_DETAIL"
+    return
+  fi
+
+  # Real probe — needs gh + jq.
+  if ! command -v gh >/dev/null 2>&1; then
+    STEP1_STATUS="FAILED"
+    STEP1_DETAIL="gh CLI required for ci_cd.promotion_chain probe but not on PATH"
+    STEP1_REASON="pre-publish-gate-failed"
+    _progress 1 "pre-publish-gate" "$STEP1_STATUS" "$STEP1_DETAIL"
+    return
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    STEP1_STATUS="FAILED"
+    STEP1_DETAIL="jq required to parse gh JSON output but not on PATH"
+    STEP1_REASON="pre-publish-gate-failed"
+    _progress 1 "pre-publish-gate" "$STEP1_STATUS" "$STEP1_DETAIL"
+    return
+  fi
+
+  # Single gh invocation; reuse the JSON for all required-check probes.
+  GH_RUNS_JSON=$(gh run list --branch "$SRC_BRANCH" --limit 50 \
+    --json status,conclusion,name,headSha 2>/dev/null || echo "[]")
+
+  # HEAD SHA from the first entry (the most-recent run on the branch).
+  local head_sha
+  head_sha=$(printf '%s' "$GH_RUNS_JSON" | jq -r '.[0].headSha // "unknown"' 2>/dev/null)
+
+  # Iterate required checks; collect failures.
+  local failed_checks=""
+  local check_name conc
+  while IFS= read -r check_name; do
+    [ -z "$check_name" ] && continue
+    conc=$(_gh_check_conclusion "$check_name")
+    if [ "$conc" != "success" ]; then
+      failed_checks="${failed_checks}${check_name}=${conc} "
+    fi
+  done <<<"$REQ_CI_CHECKS"
+
+  if [ -n "$failed_checks" ]; then
+    STEP1_STATUS="FAILED"
+    STEP1_DETAIL="red/missing CI checks on branch $SRC_BRANCH HEAD $head_sha: ${failed_checks% } — re-run after CI is green"
+    STEP1_REASON="pre-publish-gate-failed"
+    err "$STEP1_DETAIL"
+  else
+    STEP1_STATUS="PASSED"
+    STEP1_DETAIL="all required ci_checks success on branch $SRC_BRANCH HEAD $head_sha"
+  fi
   _progress 1 "pre-publish-gate" "$STEP1_STATUS" "$STEP1_DETAIL"
 }
 
@@ -177,19 +275,26 @@ _step2_manifest_version_check() {
       ;;
   esac
 
-  # Normalize: strip leading 'v' from requested version for comparison.
-  local req_version="${VERSION#v}"
-  local mfst_version="${manifest_version#v}"
+  # Normalize: strip leading 'v' from requested version for comparison only.
+  # Reporting (stderr) retains the operator's raw --version including any 'v'.
+  local req_compare="${VERSION#v}"
+  local mfst_compare="${manifest_version#v}"
 
-  if [ -z "$mfst_version" ]; then
+  if [ -z "$mfst_compare" ]; then
     STEP2_STATUS="FAILED"
     STEP2_DETAIL="could not extract version from manifest $MANIFEST"
-  elif [ "$mfst_version" != "$req_version" ]; then
+    STEP2_REASON="manifest-version-mismatch"
+    err "$STEP2_DETAIL"
+  elif [ "$mfst_compare" != "$req_compare" ]; then
     STEP2_STATUS="FAILED"
-    STEP2_DETAIL="manifest version ($mfst_version) does not match --version ($req_version)"
+    # Verbatim AC4 format: "manifest version <X> does not match --version <Y>"
+    # Raw manifest value on the left, raw --version (including leading 'v') on the right.
+    STEP2_DETAIL="manifest version $manifest_version does not match --version $VERSION"
+    STEP2_REASON="manifest-version-mismatch"
+    err "$STEP2_DETAIL"
   else
     STEP2_STATUS="PASSED"
-    STEP2_DETAIL="manifest version $mfst_version matches --version"
+    STEP2_DETAIL="manifest version $manifest_version matches --version"
   fi
   _progress 2 "manifest-version-check" "$STEP2_STATUS" "$STEP2_DETAIL"
 }
@@ -289,6 +394,10 @@ _step5_final_verdict() {
 | 5 | final-verdict          | $STEP5_STATUS | $STEP5_DETAIL |
 
 **Verdict:** $verdict
+
+## Audit-trail reasons
+${STEP1_REASON:+- step 1: reason=$STEP1_REASON}
+${STEP2_REASON:+- step 2: reason=$STEP2_REASON}
 EOF
   printf '[gaia-publish] assessment doc: %s\n' "$doc"
 
