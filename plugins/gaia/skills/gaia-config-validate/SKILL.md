@@ -51,6 +51,8 @@ This skill is the native Claude Code entry point for the `/gaia-config-validate`
 
 **`ci_cd.template_overrides:` SR-78 enforcement (E98-S4 / FR-518 / ADR-114 §(e)).** The schema's `ci_cd.template_overrides.disable.items` carries a `not.enum` clause for the five SR-78 security-critical job names (`commitlint`, `adr-048-guard`, `no-claude-attribution`, `secrets-scan`, `nfr-082-credential-audit`). Any literal-form match here is reported by `ajv-cli` as a schema violation at validate time (T-TOV-1 mitigation, enforced BEFORE regen). Defense-in-depth: `template-overrides.sh` at regen time also rejects hyphen+case-canonicalized forms (e.g., `commit-lint`, `Commit-Lint`) that bypass the literal-only schema enum.
 
+**E99 multi-shape migration WARNING (E99-S6 / FR-528).** After schema validation passes, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-migration-status.sh` and call `gaia_config_migration_status <project-config.yaml>`. When the status is `pre-migration`, `partial-missing-distribution`, or `partial-missing-kind`, emit the WARNING text from `gaia_config_migration_warning_text <config>` to stderr. The WARNING is informational (exit 0); the validator does NOT fail on pre-migration configs per NFR-080 zero-breakage. The companion `gaia_config_migration_stale_flag_write` writer drops a `_memory/.config-stale` marker per ADR-102 so `/gaia-help` surfaces the deferred migration on the next session. When status is `clean` or `unknown`, no warning is emitted (legacy all-deployable projects are vacuously clean per the NFR-080 default).
+
 ### Step 4 — Rubric-Validation Mode (legacy E68-S2)
 
 - If `--skill <name>` is provided, validate only that skill's merged rubric.
