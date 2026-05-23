@@ -91,12 +91,26 @@ teardown() { common_teardown; }
   [ -f "$backup_dir/ci.yml" ]
   bak_sha=$(shasum -a 256 "$backup_dir/ci.yml" | awk '{print $1}')
   [ "$pre_sha" = "$bak_sha" ]
-  # Permissions check (0755 dir, 0644 file)
+  # Permissions check (0755 dir, 0644 file).
+  # macOS uses `stat -f '%Lp'`, Linux uses `stat -c '%a'` — and stat -f on
+  # Linux returns success with garbage, so we probe macOS form first
+  # explicitly and fall back to Linux form only if it parsed cleanly.
   local dir_mode file_mode
-  dir_mode=$(stat -f '%Lp' "$backup_dir" 2>/dev/null || stat -c '%a' "$backup_dir")
-  file_mode=$(stat -f '%Lp' "$backup_dir/ci.yml" 2>/dev/null || stat -c '%a' "$backup_dir/ci.yml")
-  [ "$dir_mode" = "755" ]
-  [ "$file_mode" = "644" ]
+  if stat --version >/dev/null 2>&1; then
+    # GNU coreutils stat (Linux)
+    dir_mode=$(stat -c '%a' "$backup_dir")
+    file_mode=$(stat -c '%a' "$backup_dir/ci.yml")
+  else
+    # BSD stat (macOS)
+    dir_mode=$(stat -f '%Lp' "$backup_dir")
+    file_mode=$(stat -f '%Lp' "$backup_dir/ci.yml")
+  fi
+  # Strip leading sticky/setuid/setgid bits (e.g., "2755" → "755") for
+  # comparison so we only assert the user/group/other triplet.
+  dir_mode="${dir_mode: -3}"
+  file_mode="${file_mode: -3}"
+  [ "$dir_mode" = "755" ] || { echo "dir_mode='$dir_mode' (expected 755)" >&2; return 1; }
+  [ "$file_mode" = "644" ] || { echo "file_mode='$file_mode' (expected 644)" >&2; return 1; }
 }
 
 # ---------- AC6: SR-84 non-interactive HALT ----------
