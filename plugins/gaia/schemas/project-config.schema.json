@@ -523,16 +523,87 @@
       "additionalProperties": { "$ref": "#/definitions/deviceTargetEntry" }
     },
     "distribution": {
-      "description": "Plugin / artifact distribution configuration (FR-424, E78-S2). Optional — backward compatibility is preserved when the key is omitted (no functional regression). The `channels[]` array carries one or more channel entries; each entry is validated against `distributionChannel`. ADR-087 (project_kind axis) is the anchor ADR. The downstream `/gaia-deploy` adapter dispatch (E78-S4) resolves `deploy_adapter` per channel.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "channels": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/distributionChannel" },
-          "minItems": 1
+      "description": "Distribution / publish configuration. Two shapes accepted via oneOf: (a) legacy `channels[]` array per E78-S2 / FR-424; (b) FR-521 / ADR-112 §(b) single-channel shape with 4 required common fields (channel, registry, manifest, release_workflow) plus per-channel sub-fields. The new (b) shape is the canonical surface for /gaia-publish (E100); the (a) shape is preserved for back-compat. Optional — backward compatibility is preserved when the key is omitted (no functional regression).",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "channels": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/distributionChannel" },
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["channel", "registry", "manifest", "release_workflow"],
+          "properties": {
+            "channel": {
+              "description": "FR-522 / ADR-112 §(c) closed 10-channel enum. Adding a named channel is a future ADR amendment + schema bump; do NOT extend this list inline.",
+              "type": "string",
+              "enum": [
+                "claude-marketplace",
+                "npm",
+                "pypi",
+                "maven",
+                "homebrew",
+                "github-releases",
+                "mobile-app",
+                "container-registry",
+                "static-site",
+                "custom"
+              ]
+            },
+            "registry":         { "type": "string", "minLength": 1, "description": "Free-form registry URL or identifier (e.g., https://registry.npmjs.org, ghcr.io/myorg/myimage)." },
+            "manifest":         { "type": "string", "minLength": 1, "description": "Relative path to the version-bearing manifest file (e.g., plugin.json, package.json, Cargo.toml)." },
+            "release_workflow": { "type": "string", "minLength": 1, "description": "Relative path or name of the workflow under .github/workflows/ that publishes the artifact." },
+            "platform":         { "type": "string", "enum": ["ios", "android", "both"], "description": "mobile-app required sub-field" },
+            "store_id":         { "type": "string", "description": "mobile-app required sub-field" },
+            "review_required":  { "type": "boolean", "description": "mobile-app required sub-field" },
+            "image_name":       { "type": "string", "description": "container-registry required sub-field" },
+            "tag_strategy":     { "type": "string", "enum": ["semver", "sha", "latest"], "description": "container-registry required sub-field" },
+            "provider":         { "type": "string", "enum": ["cloudflare-pages", "s3", "netlify", "vercel", "github-pages", "custom"], "description": "static-site required sub-field" },
+            "domain":           { "type": "string", "description": "static-site required sub-field" },
+            "group_id":         { "type": "string", "description": "maven required sub-field" },
+            "artifact_id":      { "type": "string", "description": "maven required sub-field" },
+            "tap":              { "type": "string", "description": "homebrew required sub-field" },
+            "repo":             { "type": "string", "description": "github-releases required sub-field" },
+            "adapter_name":     { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "custom required sub-field — names the directory under .gaia/custom/adapters/publish-<adapter_name>/" }
+          },
+          "allOf": [
+            {
+              "if":   { "properties": { "channel": { "const": "mobile-app" } } },
+              "then": { "required": ["platform", "store_id", "review_required"] }
+            },
+            {
+              "if":   { "properties": { "channel": { "const": "container-registry" } } },
+              "then": { "required": ["image_name", "tag_strategy"] }
+            },
+            {
+              "if":   { "properties": { "channel": { "const": "static-site" } } },
+              "then": { "required": ["provider", "domain"] }
+            },
+            {
+              "if":   { "properties": { "channel": { "const": "maven" } } },
+              "then": { "required": ["group_id", "artifact_id"] }
+            },
+            {
+              "if":   { "properties": { "channel": { "const": "homebrew" } } },
+              "then": { "required": ["tap"] }
+            },
+            {
+              "if":   { "properties": { "channel": { "const": "github-releases" } } },
+              "then": { "required": ["repo"] }
+            },
+            {
+              "if":   { "properties": { "channel": { "const": "custom" } } },
+              "then": { "required": ["adapter_name"] }
+            }
+          ]
         }
-      }
+      ]
     },
     "health_check": { "$ref": "#/definitions/healthCheck" }
   },
