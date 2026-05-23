@@ -138,6 +138,19 @@ Inspect the artifact tree with Glob to determine the current phase (canonical `.
 - Sprint plan / stories present in `.gaia/artifacts/implementation-artifacts/` (or legacy `docs/implementation-artifacts/`) → **Phase 4 (Implementation)** — suggest specific story or review workflows.
 - Test plans in `.gaia/artifacts/test-artifacts/` (or legacy `docs/test-artifacts/`) and release material → **Phase 5 (Deployment)**.
 
+#### Phase 5 config-shape routing (E99-S5 / FR-524 / ADR-112 §(f))
+
+When the heuristics route the user into Phase 5, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-shape-detect.sh` and call `gaia_config_shape_detect <project-config.yaml>`. The detector reads `environments[*].kind` (with the E99-S1 read-time default to `deployable`) and the presence/absence of the top-level `distribution:` section, emitting exactly one of four tokens. Apply the suggestion table:
+
+| Detector token | Phase 5 primary suggestion | Notes |
+|---|---|---|
+| `deploy-only` | `/gaia-deploy` | All envs `deployable`, no `distribution:` — historical baseline (NFR-080 byte-identical). Do NOT suggest `/gaia-publish`. |
+| `publish-primary` | `/gaia-publish` | No env is `deployable` (all `branch-only` / `distribution-only`) — publish-via-channel is the canonical release path. Do NOT suggest `/gaia-deploy` (it would HALT per E99-S1's TC-EKD-2 gate). |
+| `deploy-and-publish` | BOTH `/gaia-deploy` AND `/gaia-publish` | Mixed shape — at least one `deployable` env + `distribution:` present. The body MUST distinguish which envs are reachable via which command. |
+| `unknown` | Fall back to the gaia-help.csv lookup unchanged. | environments[] absent — caller decides. |
+
+The routing is config-shape-driven (NOT intent-keyword-driven); `gaia-help.csv` intent map remains the canonical lookup for non-Phase-5 intents. State-detection (ADR-103) is orthogonal — Phase 5 routing runs after the state-aware pre-filter completes.
+
 Use these heuristics to rank which `${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv` matches are most relevant given where the project is.
 
 ### Step 4 — Cross-Check Against the Manifest
