@@ -197,9 +197,21 @@ steps_after_gaia:
 
 ## Auto-Rename Migration (FR-519, ADR-114 §(f), SR-84, E98-S5)
 
-When `/gaia-config-ci --regenerate` runs against a project whose `.github/workflows/` contains files **without** a `gaia-*` or `user-*` prefix, the migration helper at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/auto-rename-migration.sh` is invoked BEFORE the regen loop. It detects no-prefix files via the E98-S1 classifier (`unprefixed` classification) and presents a per-file three-branch prompt via `AskUserQuestion`:
+### Orchestration contract (caller responsibility)
 
-- **(y)** Rename to `gaia-{base}.yml` + scaffold empty overlay stubs (`gaia-{base}.user-jobs.yml`, `gaia-{base}.user-steps.yml`).
+The `gaia_auto_rename_migration` helper at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/auto-rename-migration.sh` is **decision-driven** — it consumes a per-file decision from the env-var `GAIA_MIGRATE_DECISION_{basename_with_underscores}` (e.g., `GAIA_MIGRATE_DECISION_ci_yml=y`). The production caller (the LLM running `/gaia-config-ci --regenerate`) is responsible for the interactive orchestration:
+
+1. **Pre-flight enumerate.** Source the helper and call `gaia_auto_rename_migration` with no decisions set — it will list candidates and (default-to-skip) write `_memory/.config-stale` for each. Read the list of candidates from `.github/workflows/*.yml` filtered through `gaia_ci_classify == unprefixed`.
+2. **Per-file `AskUserQuestion`.** For EACH candidate, dispatch `AskUserQuestion` with the canonical three options:
+   - **`y` — gaia-rename + overlays** — managed by GAIA per FR-516; you keep custom logic via overlay stubs.
+   - **`n` — user-rename** — file is yours; GAIA will never modify it again.
+   - **`s` — skip-all** — defer the decision; `_memory/.config-stale` is written and `/gaia-help` will surface the deferred migration.
+3. **Set decision env-var + re-invoke.** Export `GAIA_MIGRATE_DECISION_{basename_with_underscores}=<choice>` for each resolved decision, then re-invoke `gaia_auto_rename_migration` to execute the renames + backups.
+4. **Y-branch regen step.** AFTER the helper renames a file to `gaia-{base}.yml`, the orchestrator MUST re-enter Sub-flow C for that file: generate the canonical body (Sub-flow C step 1), stitch overlays (step 2), apply `template_overrides` (step 4), prepend header (step 5). The helper itself does NOT regenerate the body — it only renames + scaffolds the empty overlay stubs.
+
+### Three branches (helper-level behavior)
+
+- **(y)** Rename to `gaia-{base}.yml` + scaffold empty overlay stubs (`gaia-{base}.user-jobs.yml`, `gaia-{base}.user-steps.yml`). **Body regen is the orchestrator's responsibility** (see step 4 of the orchestration contract above) — the helper does NOT call back into the canonical template generator.
 - **(n)** Rename to `user-{base}.yml` (byte-identical content; the file is now user-owned per FR-516).
 - **(s)** Skip-all — leave the file untouched and write `_memory/.config-stale` per FR-528 / ADR-102. The deferred migration is surfaced by `/gaia-help`.
 
