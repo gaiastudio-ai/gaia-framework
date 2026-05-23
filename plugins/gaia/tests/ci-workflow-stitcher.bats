@@ -184,6 +184,84 @@ YAML
   [ "$output" = "OK" ]
 }
 
+# ---------- AC3/AC4 implicit: stitched output is structurally valid YAML ----------
+
+@test "stitched output is valid YAML parseable by yq (AC3/AC4 implicit)" {
+  cat > "$WORKDIR/gaia-ci.yml" <<'YAML'
+name: ci
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: gaia-checkout
+        uses: actions/checkout@v4
+      - name: gaia-build
+        run: echo build
+YAML
+
+  cat > "$WORKDIR/gaia-ci.user-steps.yml" <<'YAML'
+steps_before_gaia:
+  - name: user-pre
+    run: echo before
+steps_after_gaia:
+  - name: user-post
+    run: echo after
+YAML
+
+  out=$(bash -c "source '$STITCHER' && gaia_ci_stitch '$WORKDIR/gaia-ci.yml'")
+  # Round-trip through yq to confirm structural validity.
+  printf '%s' "$out" | yq eval '.' >/dev/null
+}
+
+@test "stitched output preserves comments (AC5)" {
+  cat > "$WORKDIR/gaia-ci.yml" <<'YAML'
+# top-level managed comment
+name: ci
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # managed-step comment
+    steps:
+      - name: gaia-checkout
+        uses: actions/checkout@v4
+YAML
+
+  run bash -c "source '$STITCHER' && gaia_ci_stitch '$WORKDIR/gaia-ci.yml'"
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -q '# top-level managed comment'
+  printf '%s\n' "$output" | grep -q '# managed-step comment'
+}
+
+# ---------- TEST_TMP is NOT required at runtime (Critical 1 fix) ----------
+
+@test "gaia_ci_stitch works without TEST_TMP defined (production-callable)" {
+  cat > "$WORKDIR/gaia-ci.yml" <<'YAML'
+name: ci
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: gaia-checkout
+        uses: actions/checkout@v4
+YAML
+
+  cat > "$WORKDIR/gaia-ci.user-steps.yml" <<'YAML'
+steps_before_gaia:
+  - name: user-pre
+    run: echo before
+steps_after_gaia: []
+YAML
+
+  # Clear TEST_TMP for this invocation only — function MUST resolve its
+  # own temp dir via mktemp.
+  run env -u TEST_TMP bash -c "source '$STITCHER' && gaia_ci_stitch '$WORKDIR/gaia-ci.yml'"
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -q 'name: user-pre'
+}
+
 # ---------- Block-level only: no per-step insert_after/insert_before honored ----------
 
 @test "block-level only: per-step markers are NOT honored (deliberate FR-517 scope cut)" {

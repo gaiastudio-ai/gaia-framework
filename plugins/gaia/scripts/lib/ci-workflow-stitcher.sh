@@ -80,16 +80,52 @@ _gaia_stitcher_splice_steps() {
   local before="$1"   # path to a file containing steps_before_gaia entries (may be empty)
   local after="$2"   # path to a file containing steps_after_gaia entries (may be empty)
 
-  awk -v bf="$before" -v af="$after" '
-    function emit_file(path,    line) {
+  # Helper: detect the leading-whitespace count of the FIRST non-blank line in
+  # a file. Used to re-indent overlay entries to match the managed steps block.
+  _gss_src_indent() {
+    local f="$1"
+    [ -s "$f" ] || { echo "0"; return; }
+    awk '/^[ \t]*[^ \t#]/ { match($0, /^[ \t]*/); print RLENGTH; exit }' "$f"
+  }
+
+  local src_before src_after
+  src_before=$(_gss_src_indent "$before")
+  src_after=$(_gss_src_indent "$after")
+
+  awk -v bf="$before" -v af="$after" \
+      -v src_bf="$src_before" -v src_af="$src_after" '
+    # Re-indent overlay lines to target indent. Source indent (src) is the
+    # leading-whitespace count of the first non-blank line in the overlay
+    # file; target is the entry indent inside the managed steps block.
+    function emit_file(path, src, target,    line, cur, delta, pad) {
       if (path == "" ) return
-      while ((getline line < path) > 0) print line
+      delta = target - src
+      pad = ""
+      if (delta > 0) {
+        for (i = 0; i < delta; i++) pad = pad " "
+      }
+      while ((getline line < path) > 0) {
+        if (line ~ /^[ \t]*$/) { print line; continue }
+        if (delta == 0) { print line }
+        else if (delta > 0) { print pad line }
+        else {
+          # Negative delta: strip up to -delta leading spaces (only spaces;
+          # tabs left untouched to avoid corrupting them).
+          cut = -delta
+          # Compute actual leading spaces on this line.
+          match(line, /^[ ]*/)
+          have = RLENGTH
+          if (have >= cut) print substr(line, cut + 1)
+          else print substr(line, have + 1)
+        }
+      }
       close(path)
     }
     BEGIN {
       seen_steps = 0
       in_steps = 0
       steps_indent = -1
+      entry_indent = -1
     }
     # First steps: key opens the managed steps block.
     !seen_steps && /^[ \t]+steps:[ \t]*$/ {
@@ -97,22 +133,34 @@ _gaia_stitcher_splice_steps() {
       # Compute the leading indent of the "steps:" key so we can detect end.
       match($0, /^[ \t]+/)
       steps_indent = RLENGTH
+      # Assume entry indent is steps_indent + 2 (YAML convention). The first
+      # in-block list line will refine this if it differs.
+      entry_indent = steps_indent + 2
       seen_steps = 1
       in_steps = 1
-      emit_file(bf)
+      pending_before = 1
       next
+    }
+    # First in-block line — refine entry_indent from the first list marker.
+    in_steps && pending_before {
+      if ($0 ~ /^[ \t]*-[ \t]/) {
+        match($0, /^[ \t]*/)
+        entry_indent = RLENGTH
+      }
+      # Now splice the before-block at the refined entry indent.
+      emit_file(bf, src_bf, entry_indent)
+      pending_before = 0
     }
     # Track end of the steps block: next non-blank line with leading whitespace
     # less than or equal to steps_indent indicates the block has ended.
     in_steps {
       # Blank line — emit and continue (still inside block).
       if ($0 ~ /^[ \t]*$/) { print; next }
-      # Compute current leading-whitespace length.
       match($0, /^[ \t]*/)
       cur_indent = RLENGTH
       if (cur_indent <= steps_indent) {
-        # End of block — splice steps_after_gaia first, then this line.
-        emit_file(af)
+        # End of block — splice steps_after_gaia at the entry indent.
+        emit_file(af, src_af, entry_indent)
         in_steps = 0
         print
         next
@@ -121,7 +169,7 @@ _gaia_stitcher_splice_steps() {
     { print }
     END {
       # If the file ended while still inside the steps block, splice after.
-      if (in_steps) emit_file(af)
+      if (in_steps) emit_file(af, src_af, entry_indent)
     }
   '
 }
@@ -141,26 +189,24 @@ _gaia_stitcher_union_jobs() {
     cat "$managed"
     return 0
   fi
-  # yq eval-all '. as $item ireduce ({}; . * $item)' merges all docs; we
-  # restrict to the jobs: subtree to avoid clobbering top-level scalars
-  # (name, on, etc.). The pretty-print profile (-P) is comment-safe in 4.x
-  # for top-level keys; nested jobs maps in this codebase rarely carry
-  # comments (FR-517 convention: configure via top-level overlay comments,
-  # not nested).
-  local jobs_union
-  jobs_union=$(yq eval-all '
-    . as $item ireduce ({}; . * $item) | .jobs
-  ' "$managed" "$jobs_ovl")
-
-  # Now substitute the unioned jobs: block back into the managed workflow.
-  # Use yq to set .jobs = jobs_union, then re-emit with -P.
-  yq eval ".jobs = ${jobs_union@Q}" "$managed" 2>/dev/null || {
-    # Fallback: pass through the merged document directly (loses non-jobs
-    # comments but preserves correctness).
-    yq eval-all '
-      . as $item ireduce ({}; . * $item)
-    ' "$managed" "$jobs_ovl"
-  }
+  # yq eval-all '. as $item ireduce ({}; . * $item)' merges all docs.
+  # The union pulls overlay top-level keys into the managed doc — which
+  # includes the overlay's `jobs:` map being unioned into the managed
+  # workflow's `jobs:` map (last-writer-wins on key collision; collision
+  # detection is E98-S3's job per FR-517).
+  #
+  # File-based union (no shell-quoted YAML scalar round-trip — that was
+  # version-fragile per pre-merge review): yq processes both files in one
+  # pass with `eval-all` and the ireduce merge accumulator. Exit-status is
+  # propagated explicitly to the caller via the explicit return; previous
+  # implementation swallowed failures via the fallback branch.
+  if ! yq eval-all '
+    . as $item ireduce ({}; . * $item)
+  ' "$managed" "$jobs_ovl"; then
+    printf 'ci-workflow-stitcher.sh: yq union failed for %s + %s\n' \
+      "$managed" "$jobs_ovl" >&2
+    return 1
+  fi
 }
 
 gaia_ci_stitch() {
@@ -217,9 +263,18 @@ gaia_ci_stitch() {
     return 0
   fi
 
+  # Create a per-invocation temp directory using mktemp (works regardless of
+  # TEST_TMP — bats sets that, real callers don't). Cleaned up on return.
+  local tmp_dir
+  tmp_dir="$(mktemp -d -t gaia-stitcher.XXXXXXXXXX)"
+  if [ -z "$tmp_dir" ] || [ ! -d "$tmp_dir" ]; then
+    printf 'ci-workflow-stitcher.sh: mktemp failed\n' >&2
+    return 1
+  fi
+
   # Phase 3 (compute first, since phases 2/4 splice INTO the jobs-unioned
   # stream): YAML-union the user-jobs.yml into the managed jobs: map.
-  local tmp_unioned="$TEST_TMP/.gaia-stitcher-unioned-$$.yml"
+  local tmp_unioned="$tmp_dir/unioned.yml"
   if [ -n "$jobs_ovl" ]; then
     _gaia_stitcher_union_jobs "$managed" "$jobs_ovl" > "$tmp_unioned"
   else
@@ -229,8 +284,8 @@ gaia_ci_stitch() {
   # Phases 2 + 4: splice steps_before_gaia / steps_after_gaia around the
   # managed steps block. The splicer extracts the two blocks from the
   # user-steps overlay first, then streams the unioned workflow through awk.
-  local tmp_before="$TEST_TMP/.gaia-stitcher-before-$$.yml"
-  local tmp_after="$TEST_TMP/.gaia-stitcher-after-$$.yml"
+  local tmp_before="$tmp_dir/before.yml"
+  local tmp_after="$tmp_dir/after.yml"
   : > "$tmp_before"
   : > "$tmp_after"
   if [ -n "$steps_ovl" ]; then
@@ -245,6 +300,6 @@ gaia_ci_stitch() {
   fi
 
   # Cleanup
-  rm -f "$tmp_unioned" "$tmp_before" "$tmp_after" 2>/dev/null || true
+  rm -rf "$tmp_dir" 2>/dev/null || true
   return 0
 }
