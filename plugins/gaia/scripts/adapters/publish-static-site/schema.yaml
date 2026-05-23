@@ -10,7 +10,7 @@ $id: "publish-static-site-schema-v1"
 title: "publish-static-site sub-field schema"
 description: "Sub-field requirements for distribution.channel: static-site per FR-522 + ADR-112 §(d). Common fields are at the project-config.schema.json level."
 type: object
-required: ["provider domain"]
+required: [provider, domain]
 properties:
   provider: {type: string, enum: [cloudflare-pages, s3, netlify, vercel, github-pages, custom]}
   domain: {type: string, minLength: 1}

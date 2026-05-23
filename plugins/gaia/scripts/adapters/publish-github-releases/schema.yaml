@@ -10,6 +10,6 @@ $id: "publish-github-releases-schema-v1"
 title: "publish-github-releases sub-field schema"
 description: "Sub-field requirements for distribution.channel: github-releases per FR-522 + ADR-112 §(d). Common fields are at the project-config.schema.json level."
 type: object
-required: ["repo"]
+required: [repo]
 properties:
   repo: {type: string, minLength: 1}

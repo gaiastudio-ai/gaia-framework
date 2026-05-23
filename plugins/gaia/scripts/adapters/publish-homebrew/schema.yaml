@@ -10,6 +10,6 @@ $id: "publish-homebrew-schema-v1"
 title: "publish-homebrew sub-field schema"
 description: "Sub-field requirements for distribution.channel: homebrew per FR-522 + ADR-112 §(d). Common fields are at the project-config.schema.json level."
 type: object
-required: ["tap"]
+required: [tap]
 properties:
   tap: {type: string, minLength: 1}
