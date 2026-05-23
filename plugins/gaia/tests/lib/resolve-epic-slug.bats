@@ -65,7 +65,7 @@ _project_root() {
 
 @test "resolve-epic-slug: resolves E79 to live directory basename" {
   local root; root="$(_project_root)"
-  run "$SCRIPT" --epic-key E79 --epics-file "$root/docs/planning-artifacts/epics-and-stories.md"
+  run "$SCRIPT" --epic-key E79 --epics-file "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md"
   [ "$status" -eq 0 ]
   [ "$output" = "epic-E79-canonical-per-epic-story-file-layout" ]
 }
@@ -82,7 +82,7 @@ _project_root() {
 
 @test "resolve-epic-slug: sourced function resolves E79 slug" {
   local root; root="$(_project_root)"
-  run bash -c "set -euo pipefail; source '$SCRIPT'; resolve_epic_slug E79 '$root/docs/planning-artifacts/epics-and-stories.md'"
+  run bash -c "set -euo pipefail; source '$SCRIPT'; resolve_epic_slug E79 '$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md'"
   [ "$status" -eq 0 ]
   [ "$output" = "epic-E79-canonical-per-epic-story-file-layout" ]
 }
@@ -92,7 +92,7 @@ _project_root() {
 
 @test "resolve-epic-slug: unknown epic key fails closed (exit 1)" {
   local root; root="$(_project_root)"
-  run "$SCRIPT" --epic-key E999 --epics-file "$root/docs/planning-artifacts/epics-and-stories.md"
+  run "$SCRIPT" --epic-key E999 --epics-file "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md"
   [ "$status" -eq 1 ]
   # stderr names both the missing key and the resolved file path
   [[ "$output" == *"E999"* ]]
@@ -106,7 +106,7 @@ _project_root() {
 
 @test "resolve-epic-slug: missing --epic-key flag is usage error (exit 2)" {
   local root; root="$(_project_root)"
-  run "$SCRIPT" --epics-file "$root/docs/planning-artifacts/epics-and-stories.md"
+  run "$SCRIPT" --epics-file "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md"
   [ "$status" -eq 2 ]
 }
 
@@ -165,7 +165,7 @@ _drifted_dirs() {
 
 @test "resolve-epic-slug: TC-CSP-4 byte-identical to every (non-drifted) live epic-{slug}/ dir" {
   local root; root="$(_project_root)"
-  local epics_file="$root/docs/planning-artifacts/epics-and-stories.md"
+  local epics_file="$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md"
   local impl_dir="$root/docs/implementation-artifacts"
   local fail_lines=()
   local matched=0
@@ -209,7 +209,7 @@ _drifted_dirs() {
   # slug whose prefix matches `epic-E<key>-`. This catches accidental
   # regressions where the resolver fails entirely on these epic keys.
   local root; root="$(_project_root)"
-  local epics_file="$root/docs/planning-artifacts/epics-and-stories.md"
+  local epics_file="$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md"
   local impl_dir="$root/docs/implementation-artifacts"
 
   for dir in "$impl_dir"/epic-E*; do
@@ -233,7 +233,7 @@ _drifted_dirs() {
   local root; root="$(_project_root)"
   # Use the canonical E79 directory which already exists on disk.
   local slug
-  slug="$("$SCRIPT" --epic-key E79 --epics-file "$root/docs/planning-artifacts/epics-and-stories.md")"
+  slug="$("$SCRIPT" --epic-key E79 --epics-file "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md")"
   local target="$TEST_TMP/$slug/stories"
 
   # First mkdir -p — directory does not yet exist.

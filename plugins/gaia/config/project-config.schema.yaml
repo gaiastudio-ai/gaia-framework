@@ -209,7 +209,7 @@ fields:
     type: map
     required: false
     default: null
-    description: "Pipeline-tier placement for the three test tiers (FR-RSV2-11). Sub-keys: tier_1, tier_2, tier_3 — each with a placement value from the canonical set: local | ci-pre-merge | ci-post-merge | deployment | post-deploy."
+    description: "Pipeline-tier placement + runner command for the three test tiers (FR-RSV2-11, AF-2026-05-22-6). Sub-keys: tier_1, tier_2, tier_3. Each tier MAY carry: placement (canonical set local | ci-pre-merge | ci-post-merge | deployment | post-deploy), command (string — runner command-string the bridge dispatcher scripts/run-tests.sh executes), and timeout_seconds (positive integer — per-tier execution budget). Pre-AF-22-6 the schema only declared placement; the dispatcher read command but the schema rejected it, so the bridge could never drive tests."
 
   severity:
     type: map

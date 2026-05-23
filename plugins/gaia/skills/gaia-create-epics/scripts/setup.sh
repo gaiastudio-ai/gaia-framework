@@ -68,22 +68,38 @@ if [ -z "${TEST_ARTIFACTS:-}" ]; then
     TEST_ARTIFACTS="docs/test-artifacts"
   fi
 fi
-TEST_PLAN_PATH="$TEST_ARTIFACTS/test-plan.md"
+# AF-2026-05-22-6 Bug-4: resolve the actual test-plan path via the same
+# 4-path fallback that validate-gate.sh test_plan_exists honors (flat /
+# strategy/test-plan.md / strategy/test-strategy.md / test-plan/index.md).
+# Previously this script independently checked only $TEST_ARTIFACTS/test-plan.md
+# (the flat path), so /gaia-test-strategy --plan (which writes
+# strategy/test-strategy.md) caused a false-halt with "exists but empty"
+# even though the artifact existed under a different accepted path.
+TEST_PLAN_PATH=""
+for candidate in \
+  "$TEST_ARTIFACTS/test-plan.md" \
+  "$TEST_ARTIFACTS/strategy/test-plan.md" \
+  "$TEST_ARTIFACTS/strategy/test-strategy.md" \
+  "$TEST_ARTIFACTS/test-plan/index.md"; do
+  if [ -s "$candidate" ]; then
+    TEST_PLAN_PATH="$candidate"
+    break
+  fi
+done
 
 if [ -x "$VALIDATE_GATE" ]; then
   if ! "$VALIDATE_GATE" test_plan_exists 2>&1; then
-    die "HALT: test-plan.md not found at $TEST_PLAN_PATH — run /gaia-test-design first to create it (ADR-042 enforced gate)"
+    die "HALT: test-plan.md not found — run /gaia-test-strategy --plan first to create it (ADR-042 enforced gate). Accepted paths: $TEST_ARTIFACTS/test-plan.md OR $TEST_ARTIFACTS/strategy/test-plan.md OR $TEST_ARTIFACTS/strategy/test-strategy.md OR $TEST_ARTIFACTS/test-plan/index.md"
   fi
 else
   log "validate-gate.sh not found at $VALIDATE_GATE — skipping gate (non-fatal)"
 fi
 
-# ---------- 2b. Guard: test-plan.md must be non-empty (AC-EC1) ----------
-# The shared validate-gate.sh checks file existence only. Per AC-EC1 and
-# ADR-042, a zero-byte file is treated as missing — existence alone is
-# not sufficient.
-if [ ! -s "$TEST_PLAN_PATH" ]; then
-  die "HALT: test-plan.md exists but is empty (zero-byte) at $TEST_PLAN_PATH — run /gaia-test-design to populate it (ADR-042 enforced gate)"
+# ---------- 2b. Guard: resolved test-plan must be non-empty (AC-EC1) ----------
+# validate-gate.sh checks non-empty too, but emit a clearer error if the
+# resolver chose a path that turned out empty (race or odd FS state).
+if [ -z "$TEST_PLAN_PATH" ] || [ ! -s "$TEST_PLAN_PATH" ]; then
+  die "HALT: no non-empty test-plan artifact found under $TEST_ARTIFACTS/ (checked test-plan.md, strategy/test-plan.md, strategy/test-strategy.md, test-plan/index.md) — run /gaia-test-strategy --plan to populate it (ADR-042 enforced gate)"
 fi
 
 # ---------- 3. Load checkpoint state ----------

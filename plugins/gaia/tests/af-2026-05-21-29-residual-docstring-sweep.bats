@@ -54,5 +54,10 @@ teardown() { common_teardown; }
 }
 
 @test "AF-21-29: control-flow / smart-fallback branches preserved (sprint-close)" {
-  grep -qF 'canonical="$PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml"' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
+  # AF-2026-05-22-6 Bug-10: the variable previously named `canonical` was
+  # renamed to `legacy_docs` to clarify intent (the docs/ path is the LEGACY
+  # location, not the canonical post-ADR-111 one). Assert against the new
+  # name OR the old name so the fixture survives both pre- and post-AF-22-6
+  # checkouts.
+  grep -qE '(canonical|legacy_docs)="\$PROJECT_PATH/docs/implementation-artifacts/sprint-status\.yaml"' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
 }
