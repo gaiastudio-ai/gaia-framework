@@ -110,13 +110,20 @@ _gaia_arm_backup_one() {
   local file="$2"
   local backup_root="$3"   # pre-computed timestamped dir
 
-  mkdir -p "$backup_root"
-  chmod 0755 "$backup_root" 2>/dev/null || true
+  # `install -d -m 0755` sets the mode atomically regardless of umask
+  # (more reliable than `mkdir -p && chmod 0755` under unusual umasks).
+  # `install` is in coreutils on Linux and macOS.
+  install -d -m 0755 "$backup_root" || {
+    mkdir -p "$backup_root"
+    chmod 0755 "$backup_root" 2>/dev/null || true
+  }
 
   local base
   base="$(basename "$file")"
-  cp "$file" "$backup_root/$base"
-  chmod 0644 "$backup_root/$base" 2>/dev/null || true
+  install -m 0644 "$file" "$backup_root/$base" || {
+    cp "$file" "$backup_root/$base"
+    chmod 0644 "$backup_root/$base" 2>/dev/null || true
+  }
 
   # sha256-verify byte-identical copy.
   local src_sha bak_sha
