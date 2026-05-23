@@ -157,6 +157,12 @@ Usage:
   sprint-state.sh --help
 
 Subcommands:
+  init              AF-2026-05-22-9 Bug-8. Bootstrap a fresh sprint-status.yaml
+                    when none exists yet. Seeds the canonical shape
+                    (sprint_id / state=active / total_points=0 / goals=[] /
+                    items=[]) under flock. Idempotent — refuses to overwrite
+                    an existing yaml. Required before the first `inject` in a
+                    new project. Usage: sprint-state.sh init --sprint-id <id>.
   transition        Atomically transition a story to <state>. Validates
                     adjacency, re-reads sprint-status.yaml under flock,
                     rewrites story file frontmatter + body Status line +
@@ -2359,6 +2365,38 @@ _resolve_active_yaml() {
   fi
 }
 
+# cmd_init — bootstrap a sprint-status.yaml when none exists yet.
+# AF-2026-05-22-9 Bug-8: first-ever sprint had no `init` subcommand; the
+# operator had to hand-write a yaml seed before `inject`. Seeds the
+# canonical shape (sprint id/state/total_points=0/items=[]/goals=[]),
+# under flock to remain consistent with all other writers, and is
+# idempotent: re-init against an existing yaml is rejected.
+cmd_init() {
+  local sprint_id="$1"
+  [ -n "$sprint_id" ] || die "init: --sprint-id is required"
+  local yaml
+  yaml="$(_resolve_active_yaml)"
+  if [ -e "$yaml" ]; then
+    die "init: $yaml already exists — refusing to overwrite (use sprint-status.yaml directly or transition)"
+  fi
+  mkdir -p "$(dirname "$yaml")"
+  # No flock here: the init path is the FIRST writer (it refuses to overwrite
+  # an existing yaml), so there is no concurrent reader/writer to coordinate
+  # with. Subsequent writes route through transition/inject/set-goals which
+  # already acquire the canonical sprint-status.yaml.lock under flock.
+  local tmp
+  tmp="$(mktemp "${yaml}.XXXXXX")"
+  cat >"$tmp" <<EOF
+sprint_id: "${sprint_id}"
+state: active
+total_points: 0
+goals: []
+items: []
+EOF
+  mv "$tmp" "$yaml"
+  printf 'init: seeded %s for sprint %s\n' "$yaml" "$sprint_id"
+}
+
 # cmd_get_goals — read goals[] from sprint-status.yaml and emit verbatim.
 # Backward-compat: missing goals: key → empty stdout, exit 0.
 cmd_get_goals() {
@@ -2423,7 +2461,13 @@ i = 0
 replaced = False
 while i < len(lines):
     line = lines[i]
-    if not replaced and re.match(r'^goals:\s*$', line):
+    # AF-2026-05-22-9 Bug-9: also match the empty-list seed form
+    # `goals: []`. Previously the regex was `^goals:\s*$`, which did NOT
+    # match `goals: []`, leaving the seed line in place and appending a
+    # second `goals:` block on every set-goals invocation. The expanded
+    # match accepts either an empty-list inline form OR an end-of-line
+    # form followed by indented `- ...` items.
+    if not replaced and re.match(r'^goals:\s*(\[\s*\]\s*)?$', line):
         # Skip the existing block: the goals: line + every following `  - ...` line
         i += 1
         while i < len(lines) and re.match(r'^\s*-\s', lines[i]):
@@ -2724,7 +2768,7 @@ main() {
       usage
       exit 0
       ;;
-    transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape)
+    init|transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape)
       ;;
     *)
       printf '%s: error: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -2853,6 +2897,10 @@ main() {
   fi
 
   case "$subcmd" in
+    init)
+      # AF-2026-05-22-9 Bug-8 — bootstrap a fresh sprint-status.yaml.
+      [ -n "$reconcile_sprint_id" ] || die "init requires --sprint-id <id>"
+      cmd_init "$reconcile_sprint_id" ;;
     get)
       [ -n "$story_key" ] || die "get requires --story <key>"
       cmd_get "$story_key" ;;

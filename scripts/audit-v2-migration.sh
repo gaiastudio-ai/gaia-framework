@@ -193,6 +193,12 @@ if [ "$FIXTURE_MODE" = "enriched" ]; then
     "TEST_ARTIFACTS=$PROJECT_ROOT/docs/test-artifacts"
     "PLANNING_ARTIFACTS=$PROJECT_ROOT/docs/planning-artifacts"
     "IMPLEMENTATION_ARTIFACTS=$PROJECT_ROOT/docs/implementation-artifacts"
+    # AF-2026-05-22-9 Bug-12: gaia-sprint-review/finalize.sh now hard-errors
+    # when SPRINT_ID is unset unless this fixture-opt-in flag is set. The
+    # audit harness is the canonical legacy-fixture invocation path the
+    # comment in finalize.sh refers to — we don't have a real SPRINT_ID to
+    # export here, so set the fixture flag.
+    "GAIA_SPRINT_REVIEW_FIXTURE=1"
   )
 fi
 
