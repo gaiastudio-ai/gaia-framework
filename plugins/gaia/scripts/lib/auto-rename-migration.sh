@@ -133,6 +133,12 @@ _gaia_arm_backup_one() {
     printf 'auto-rename-migration.sh: backup sha256 mismatch for %s\n' "$file" >&2
     return 1
   fi
+
+  # SR-84 manifest append (E98-S6): record `<sha256>  <relpath>` for the
+  # backed-up file. The manifest is rebuilt cumulatively per call so the
+  # final file lists every backed-up entry. verify-backup-integrity.sh
+  # reads this file as its expected-state source of truth.
+  printf '%s  %s\n' "$bak_sha" "$base" >> "$backup_root/.sha256-manifest"
 }
 
 # Internal: read per-file decision. Order:
