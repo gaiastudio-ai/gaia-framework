@@ -207,6 +207,14 @@ if phase == "full":
         lines.append("  - yamllint")
 
     compliance = data.get("compliance") or {}
+    # AF-2026-05-22-9 Bug-15: coerce list-form compliance (operator submits
+    # `compliance: []` per a misreading of the questionnaire) into the
+    # object form documented by the SKILL prompt. Empty list → empty object
+    # (omitted from output). Non-empty list is treated as a regimes-array
+    # under the canonical `{ regimes: [...] }` shape, preserving operator
+    # intent without crashing on `.get()` against a `str`/`list`.
+    if isinstance(compliance, list):
+        compliance = {"regimes": compliance} if compliance else {}
     if compliance:
         lines.append("")
         lines.append("compliance:")
@@ -242,6 +250,15 @@ if phase == "full":
         lines.append(f"  provider: {yaml_quote(ci['provider'])}")
         if ci.get("pipeline"):
             lines.append(f"  pipeline: {yaml_quote(ci['pipeline'])}")
+
+    # AF-2026-05-22-9 Bug-1: the schema v2.0.0 full-phase allOf requires the
+    # `ci_cd:` key (config-block for CI behavior — distinct from
+    # `ci_platform:`, which is detection output). Emit an empty stub here so
+    # the generated config validates against its own schema at phase=full.
+    # /gaia-ci-setup later populates ci_cd.* with real settings.
+    if phase == "full":
+        lines.append("")
+        lines.append("ci_cd: {}")
 
     platforms = data.get("platforms") or []
     if platforms:

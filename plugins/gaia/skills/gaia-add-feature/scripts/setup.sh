@@ -164,8 +164,14 @@ else
   fi
   # E89-S1 fallback mirror: same classification-conditional behaviour.
   if [ "$CLASSIFICATION" = "enhancement" ] || [ "$CLASSIFICATION" = "feature" ]; then
-    if [ ! -s "$TEST_ARTIFACTS_DIR/test-plan.md" ] && [ ! -s "$TEST_ARTIFACTS_DIR/strategy/test-plan.md" ]; then
-      die "HALT: test-plan.md is missing — run /gaia-test-design first, then re-invoke /gaia-add-feature $FEATURE_ID"
+    # AF-2026-05-22-6 Bug-20: also accept strategy/test-strategy.md (the actual
+    # output of /gaia-test-strategy --plan) and the sharded test-plan/index.md
+    # form. Mirrors the 4-path fallback in validate-gate.sh test_plan_exists.
+    if [ ! -s "$TEST_ARTIFACTS_DIR/test-plan.md" ] \
+       && [ ! -s "$TEST_ARTIFACTS_DIR/strategy/test-plan.md" ] \
+       && [ ! -s "$TEST_ARTIFACTS_DIR/strategy/test-strategy.md" ] \
+       && [ ! -s "$TEST_ARTIFACTS_DIR/test-plan/index.md" ]; then
+      die "HALT: test-plan.md is missing — run /gaia-test-strategy --plan first, then re-invoke /gaia-add-feature $FEATURE_ID"
     fi
     if [ ! -s "$TEST_ARTIFACTS_DIR/traceability-matrix.md" ] && [ ! -s "$TEST_ARTIFACTS_DIR/strategy/traceability-matrix.md" ]; then
       die "HALT: traceability-matrix.md is missing — run /gaia-trace first, then re-invoke /gaia-add-feature $FEATURE_ID"

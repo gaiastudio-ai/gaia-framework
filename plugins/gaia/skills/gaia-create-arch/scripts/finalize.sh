@@ -328,6 +328,55 @@ else
   CHECKLIST_STATUS=0
 fi
 
+# ---------- 1b. Config hydration fail-safe (AF-2026-05-22-7 Bug-21) ----------
+# Bug-21 root cause: SKILL.md Step 13 describes a "Hydrate project-config.yaml"
+# sub-step (build YAML fragment files from confirmed_tech_stack, call
+# config_hydrate_section for `stacks:` + `platforms:`). In practice the
+# LLM orchestrator skipped this sub-step ~100% of the time on real runs,
+# silently leaving config_phase=minimal with no `stacks:` / `platforms:`.
+# Downstream skills (/gaia-bridge-enable, /gaia-create-epics) then halted
+# with generic "X missing" errors pointing at the WRONG upstream remediation.
+#
+# Fail-safe: if a written architecture artifact resolved AND the project
+# config still lacks `stacks:` / `platforms:` AND `config_phase` is still
+# `minimal`, log a CRITICAL warning telling the operator how to hydrate
+# manually. Non-fatal — architecture.md is the primary artifact — but the
+# warning is unmistakable so downstream "X missing" halts have a clear
+# upstream attribution.
+if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
+  CONFIG_PATH=""
+  if [ -f ".gaia/config/project-config.yaml" ]; then
+    CONFIG_PATH=".gaia/config/project-config.yaml"
+  elif [ -f "config/project-config.yaml" ]; then
+    CONFIG_PATH="config/project-config.yaml"
+  fi
+  if [ -n "$CONFIG_PATH" ]; then
+    # `config_phase` and `stacks:` / `platforms:` presence are flat-grep
+    # checks — no yq dependency. False positives only if the user puts these
+    # keys inside a quoted string, which is extremely unlikely.
+    config_phase_val=$(grep -E "^config_phase:" "$CONFIG_PATH" 2>/dev/null | head -1 | sed 's/^config_phase:[[:space:]]*//' | tr -d '"' || true)
+    stacks_present=0; platforms_present=0
+    grep -qE "^stacks:" "$CONFIG_PATH" 2>/dev/null && stacks_present=1
+    grep -qE "^platforms:" "$CONFIG_PATH" 2>/dev/null && platforms_present=1
+    if [ "${config_phase_val:-minimal}" = "minimal" ] && [ "$stacks_present" -eq 0 ] && [ "$platforms_present" -eq 0 ]; then
+      log "WARNING: architecture.md was written but project-config.yaml hydration was SKIPPED."
+      log "         config_phase is still 'minimal' and stacks: / platforms: are not declared."
+      log "         Downstream skills (/gaia-bridge-enable, /gaia-create-epics, /gaia-ci-setup)"
+      log "         will halt with 'X missing' errors that point at the wrong remediation."
+      log ""
+      log "         Remediation: source \${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-hydration.sh"
+      log "         and call config_hydrate_section stacks <yaml-fragment-file> followed by"
+      log "         config_hydrate_section platforms <yaml-fragment-file>. The fragments must"
+      log "         match the confirmed_tech_stack captured at Step 3.5 of /gaia-create-arch."
+      log "         See SKILL.md \"Hydrate project-config.yaml (E85-S5 / FR-457)\" sub-section."
+      log ""
+      log "         This warning is fail-safe only — architecture.md was written successfully"
+      log "         and is the primary artifact. Run /gaia-create-arch again or invoke the"
+      log "         hydrate helper manually before proceeding to /gaia-bridge-enable."
+    fi
+  fi
+fi
+
 # ---------- 2. Write checkpoint (observability — never suppressed) ----------
 if [ -x "$CHECKPOINT" ]; then
   if ! "$CHECKPOINT" write --workflow "$WORKFLOW_NAME" --step 12 >/dev/null 2>&1; then

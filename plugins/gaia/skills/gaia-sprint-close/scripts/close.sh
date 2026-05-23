@@ -40,25 +40,36 @@ if [ -z "${MEMORY_PATH:-}" ]; then
 fi
 export PROJECT_PATH MEMORY_PATH
 
-# Resolve sprint-status.yaml path (env override > .gaia/state/ > legacy canonical > fallback).
-# E96-S8: prefer .gaia/state/sprint-status.yaml (post-migration canonical per ADR-111)
-# over docs/implementation-artifacts/sprint-status.yaml (legacy).
+# Resolve sprint-status.yaml path.
+# AF-2026-05-22-6 Bug-10: previously the resolver checked .gaia/state/ +
+# docs/implementation-artifacts/ but NOT .gaia/artifacts/implementation-artifacts/
+# (the canonical post-ADR-111 location where sprint-state.sh inject actually
+# writes). Result: /gaia-sprint-close halted with "file not found at
+# .gaia/state/sprint-status.yaml" even on a properly-initialized sprint.
+# Resolution order (env override > .gaia/state/ > canonical .gaia/artifacts/
+# > legacy docs/ > project-root fallback).
 resolve_yaml_path() {
   if [ -n "${SPRINT_STATUS_YAML:-}" ]; then
     printf '%s\n' "$SPRINT_STATUS_YAML"
     return 0
   fi
   local gaia_state="$PROJECT_PATH/.gaia/state/sprint-status.yaml"
-  local canonical="$PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml"
+  local gaia_artifacts="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts/sprint-status.yaml"
+  local legacy_docs="$PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml"
   local fallback="$PROJECT_PATH/sprint-status.yaml"
   if [ -f "$gaia_state" ]; then
     printf '%s\n' "$gaia_state"
-  elif [ -f "$canonical" ]; then
-    printf '%s\n' "$canonical"
+  elif [ -f "$gaia_artifacts" ]; then
+    printf '%s\n' "$gaia_artifacts"
+  elif [ -f "$legacy_docs" ]; then
+    printf '%s\n' "$legacy_docs"
   elif [ -f "$fallback" ]; then
     printf '%s\n' "$fallback"
   else
-    printf '%s\n' "$gaia_state"
+    # Default to .gaia/artifacts/ (canonical) instead of .gaia/state/ so the
+    # file-not-found error points at the location sprint-state.sh inject
+    # actually writes to (post-ADR-111 default).
+    printf '%s\n' "$gaia_artifacts"
   fi
 }
 

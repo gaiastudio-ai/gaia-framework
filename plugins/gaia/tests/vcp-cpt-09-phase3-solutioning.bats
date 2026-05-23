@@ -24,6 +24,7 @@
 #       docs/test-artifacts/test-plan.md §11.46.2,
 #       docs/planning-artifacts/architecture.md §10.31.3 (ADR-059).
 
+bats_require_minimum_version 1.5.0
 load 'test_helper.bash'
 
 setup() {
@@ -427,7 +428,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
   # Simulate the helper being absent by pointing at a non-existent path.
   # The SKILL.md uses the literal `scripts/write-checkpoint.sh`; if the
   # helper is removed from the installed framework, the step fails.
-  run bash -c '/nonexistent/scripts/write-checkpoint.sh gaia-adversarial 1 x=y 2>&1'
+  run -127 bash -c '/nonexistent/scripts/write-checkpoint.sh gaia-adversarial 1 x=y 2>&1'
   [ "$status" -ne 0 ]
 }
 

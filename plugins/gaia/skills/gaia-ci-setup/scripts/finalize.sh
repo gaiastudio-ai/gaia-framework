@@ -226,5 +226,39 @@ else
   log "auto-save-memory.sh not found at $AUTOSAVE_LIB — skipping auto-save (non-fatal)"
 fi
 
+# ---------- 5. Config hydration fail-safe (AF-2026-05-22-7 Bug-21) ----------
+# Bug-21 root cause: /gaia-ci-setup is supposed to populate the `ci_cd:`
+# block in project-config.yaml after authoring the CI workflow. The
+# hydration step doesn't fire because there's no enforcement. Downstream
+# /gaia-bridge-enable then halts with "ci_cd block missing — run
+# /gaia-ci-setup first" — even though the user DID just run it.
+#
+# Fail-safe: if a CI artifact was written AND the project config still
+# lacks `ci_cd:`, log a CRITICAL warning that names the missing section and
+# the correct remediation.
+if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
+  CONFIG_PATH=""
+  if [ -f ".gaia/config/project-config.yaml" ]; then
+    CONFIG_PATH=".gaia/config/project-config.yaml"
+  elif [ -f "config/project-config.yaml" ]; then
+    CONFIG_PATH="config/project-config.yaml"
+  fi
+  if [ -n "$CONFIG_PATH" ] && ! grep -qE "^ci_cd:" "$CONFIG_PATH" 2>/dev/null; then
+    log "WARNING: ci-setup.md was written but project-config.yaml hydration was SKIPPED."
+    log "         Missing section in $CONFIG_PATH: ci_cd"
+    log ""
+    log "         Downstream /gaia-bridge-enable expects ci_cd: and will halt with"
+    log "         'ci_cd block missing — run /gaia-ci-setup first' pointing back at"
+    log "         this skill even though the artifact is already on disk."
+    log ""
+    log "         Remediation: source \${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-hydration.sh"
+    log "         and call config_hydrate_section ci_cd <yaml-fragment-file>. The fragment"
+    log "         must match the providers/branches/checks declared in ci-setup.md."
+    log ""
+    log "         This warning is fail-safe only — ci-setup.md was written successfully"
+    log "         and is the primary artifact."
+  fi
+fi
+
 log "finalize complete for $WORKFLOW_NAME"
 exit "$CHECKLIST_STATUS"
