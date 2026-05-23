@@ -195,6 +195,30 @@ steps_after_gaia:
 
 `gaia_ci_stitch <managed-yml> [<output-path>]` is the single function in the stitcher; downstream consumers (Sub-flow C of `--regenerate` mode) source it and call directly.
 
+## Auto-Rename Migration (FR-519, ADR-114 §(f), SR-84, E98-S5)
+
+When `/gaia-config-ci --regenerate` runs against a project whose `.github/workflows/` contains files **without** a `gaia-*` or `user-*` prefix, the migration helper at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/auto-rename-migration.sh` is invoked BEFORE the regen loop. It detects no-prefix files via the E98-S1 classifier (`unprefixed` classification) and presents a per-file three-branch prompt via `AskUserQuestion`:
+
+- **(y)** Rename to `gaia-{base}.yml` + scaffold empty overlay stubs (`gaia-{base}.user-jobs.yml`, `gaia-{base}.user-steps.yml`).
+- **(n)** Rename to `user-{base}.yml` (byte-identical content; the file is now user-owned per FR-516).
+- **(s)** Skip-all — leave the file untouched and write `_memory/.config-stale` per FR-528 / ADR-102. The deferred migration is surfaced by `/gaia-help`.
+
+### Backup contract
+
+Backup-first BEFORE any rename: `.gaia-backup/ci-regen-{ISO-8601-timestamp}/` at PROJECT_ROOT (NOT under `.gaia/`), mode 0755, files mode 0644, sha256-verified byte-identical copy of every file the migration is about to mutate.
+
+### SR-84 non-interactive guard (T-ARM-1 mitigation)
+
+In non-interactive contexts (`GAIA_NONINTERACTIVE=1`), the migration requires **BOTH** `--force` CLI arg AND `GAIA_MIGRATE_ALLOW_FORCE=1` env-var. Either alone HALTs with:
+
+```
+auto-rename-migration.sh: HALT: non-interactive auto-rename migration requires --force AND GAIA_MIGRATE_ALLOW_FORCE=1 per SR-84
+```
+
+### Idempotency
+
+Already-prefixed files (`gaia-*.yml` or `user-*.yml`) are classified by `gaia_ci_classify` as `generated` / `user-authored` / `overlay` and never re-fire the prompt. Subsequent regen runs produce byte-identical output (extends TC-CCL-8 determinism).
+
 ## `template_overrides:` Declarative Overrides (FR-518, ADR-114 §(e), E98-S4)
 
 `ci_cd.template_overrides:` is a three-field declarative surface in `project-config.yaml` that lets project owners modify generated workflows without authoring overlay files. The interpreter lives at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/template-overrides.sh` and runs on the stitched workflow stream during `/gaia-config-ci --regenerate`.
