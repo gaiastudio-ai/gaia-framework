@@ -15,7 +15,7 @@ orchestration_class: reviewer
 
 ## Mission
 
-You are performing a performance review for a story. The story is resolved by `{story_key}` via the canonical glob `{story_key}-*.md` in `docs/implementation-artifacts/`. You analyze each changed file for performance bottlenecks -- N+1 queries, memory leaks, algorithmic complexity, bundle size, caching gaps -- and produce a machine-readable verdict (PASSED or FAILED) written to the story's Review Gate "Performance Review" row via `review-gate.sh`.
+You are performing a performance review for a story. The story is resolved by `{story_key}` via the canonical glob `{story_key}-*.md` in `.gaia/artifacts/implementation-artifacts/` (post-ADR-111; with legacy `docs/implementation-artifacts/` fallback for pre-ADR-111 projects). You analyze each changed file for performance bottlenecks -- N+1 queries, memory leaks, algorithmic complexity, bundle size, caching gaps -- and produce a machine-readable verdict (PASSED or FAILED) written to the story's Review Gate "Performance Review" row via `review-gate.sh`.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/anytime/performance-review` workflow (brief Cluster 9, story E28-S71, ADR-042). It follows the canonical reviewer skill pattern established by E28-S66 (code-review).
 
@@ -107,7 +107,7 @@ Invoke the Juno performance subagent to perform deep performance analysis on all
   - Caching and complexity review results
   - Findings organized by severity (Critical, High, Medium, Low)
   - Machine-readable verdict line: `**Verdict: PASSED**` or `**Verdict: FAILED**`
-- Save the report to `docs/implementation-artifacts/{story_key}-performance-review.md`.
+- Save the report to `.gaia/artifacts/implementation-artifacts/performance-review-{story_key}.md` (FR-402 locked naming: `{review-type}-{story_key}.md` — type FIRST, no slug, no date suffix; post-ADR-111 canonical path). Per F-12 on Test02: do NOT write to the pre-ADR-111 `docs/implementation-artifacts/` location AND do NOT use the legacy `{story_key}-performance-review.md` ordering (that violates FR-402 and matches user memory `feedback_review_report_filename_collision`).
 
 ### Step 7 -- Update Review Gate
 
