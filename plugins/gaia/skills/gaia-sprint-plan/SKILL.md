@@ -254,7 +254,8 @@ Traceability: FR-486, FR-495, AC1 of E93-S5, ADR-108 §D1.
 
 ### Step 7 -- Save Sprint Plan Document
 
-- Write the sprint plan document to `.gaia/artifacts/implementation-artifacts/{sprint_id}-plan.md`.
+- Run `mkdir -p .gaia/artifacts/implementation-artifacts/sprint-plan/` so the nested directory exists on first run (ADR-119).
+- Write the sprint plan document to `.gaia/artifacts/implementation-artifacts/sprint-plan/{sprint_id}-plan.md`.
 - The document includes all sections from Step 5.
 
 ### Step 8 -- Val Validation (optional)
@@ -298,7 +299,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/val-sidecar-write.sh \
   --sprint-id    "${sprint_id}" \
   --decision-payload "$(jq -cn \
     --arg verdict       "${verdict:-skipped}" \
-    --arg artifact_path ".gaia/artifacts/implementation-artifacts/${sprint_id}-plan.md" \
+    --arg artifact_path ".gaia/artifacts/implementation-artifacts/sprint-plan/${sprint_id}-plan.md" \
     --argjson findings  "${findings_json:-[]}" \
     '{verdict: $verdict, findings: $findings, artifact_path: $artifact_path}')"
 ```

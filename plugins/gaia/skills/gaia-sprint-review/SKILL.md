@@ -146,7 +146,7 @@ Non-canonical inputs (e.g., a typo) are rejected at the script boundary with can
 
 When `$COMPOSITE` is `PASSED`:
 
-1. Write the sprint-review artifact to `.gaia/artifacts/implementation-artifacts/sprint-review-${SPRINT_ID}-$(date +%Y-%m-%d).md`. Body: charter + goals[] + Track A Val verdict (with findings) + Track B per-stack output + per-goal stakeholder confirmations + composite verdict + handoff routing decision.
+1. Run `mkdir -p .gaia/artifacts/implementation-artifacts/sprint-review/` so the nested directory exists on first run (ADR-119). Write the sprint-review artifact to `.gaia/artifacts/implementation-artifacts/sprint-review/sprint-review-${SPRINT_ID}-$(date +%Y-%m-%d).md`. Body: charter + goals[] + Track A Val verdict (with findings) + Track B per-stack output + per-goal stakeholder confirmations + composite verdict + handoff routing decision.
 2. Emit the canonical handoff message to the user: `/gaia-sprint-review: composite verdict PASSED — sprint <id> ready to close; invoke /gaia-sprint-close to finalize`.
 
 The actual `review → closed` transition is enforced by `/gaia-sprint-close` (E93-S5 scope) — this skill only emits the handoff. `/gaia-sprint-close` accepts the new edge AND validates the dispatch sentinel before writing `status: closed`.

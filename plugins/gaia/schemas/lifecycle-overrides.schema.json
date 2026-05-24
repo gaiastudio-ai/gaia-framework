@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gaiastudio.ai/gaia/lifecycle-overrides.schema.json",
+  "title": "lifecycle-overrides.yaml",
+  "description": "ADR-120 — append-only audit trail of bypassed MANDATORY lifecycle skills, scoped per sprint.",
+  "type": "object",
+  "required": ["bypasses"],
+  "additionalProperties": false,
+  "properties": {
+    "bypasses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["skill", "reason", "recorded_at", "recorded_by", "sprint_id"],
+        "additionalProperties": false,
+        "properties": {
+          "skill": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Bypassed slash-command name (with or without leading slash)."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 500,
+            "description": "Free-form rationale, 10..500 chars."
+          },
+          "recorded_at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+            "description": "ISO-8601 UTC timestamp."
+          },
+          "recorded_by": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Identity string; falls back to $USER when git config user.name is unset."
+          },
+          "sprint_id": {
+            "type": "string",
+            "pattern": "^sprint-[0-9]+$",
+            "description": "Sprint scope; bypasses are per-sprint."
+          }
+        }
+      }
+    }
+  }
+}

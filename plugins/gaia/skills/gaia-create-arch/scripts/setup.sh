@@ -96,5 +96,58 @@ else
   log "checkpoint.sh not found at $CHECKPOINT — skipping checkpoint load (non-fatal)"
 fi
 
+# ---------- 5. Conditional threat-model gate (ADR-120 / E103-S6) ----------
+# When `compliance.ui_present: true`, require either a threat-model artifact
+# OR a recorded `gaia-threat-model` bypass for the active sprint. When
+# `compliance.ui_present` is false / absent, the gate is a no-op.
+
+SCRIPT_DIR_S6="$(cd "$(dirname "$0")" && pwd)"
+LIFECYCLE_LIB_S6="$(cd "$SCRIPT_DIR_S6/../../.." && pwd)/scripts/lib/lifecycle-overrides.sh"
+STRICT_HELPER_S6="$(cd "$SCRIPT_DIR_S6/../../.." && pwd)/scripts/lib/lifecycle-strict-mode.sh"
+
+# Read compliance.ui_present from project-config.yaml.
+PROJECT_CONFIG_S6="${PROJECT_CONFIG:-.gaia/config/project-config.yaml}"
+ui_present="false"
+if [ -f "$PROJECT_CONFIG_S6" ] && command -v yq >/dev/null 2>&1; then
+  ui_present="$(yq eval '.compliance.ui_present // false' "$PROJECT_CONFIG_S6" 2>/dev/null || echo "false")"
+fi
+
+if [ "$ui_present" != "true" ]; then
+  log "threat-model gate skipped: compliance.ui_present is false (or absent)"
+else
+  # Strict-mode resolution.
+  strict_on=1
+  if [ -x "$STRICT_HELPER_S6" ]; then
+    if "$STRICT_HELPER_S6" lifecycle_strict_mode_enabled >/dev/null 2>&1; then
+      strict_on=1
+    else
+      strict_on=0
+    fi
+  fi
+
+  TM_ART="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/threat-model.md"
+  if [ -f "$TM_ART" ] && [ -s "$TM_ART" ]; then
+    log "threat-model artifact present: $TM_ART"
+  else
+    # Check for bypass.
+    has_tm_bypass=0
+    bp_reason=""
+    if [ -f "$LIFECYCLE_LIB_S6" ] && [ -n "${SPRINT_ID:-}" ]; then
+      bp_json="$(bash "$LIFECYCLE_LIB_S6" read --sprint-id "$SPRINT_ID" 2>/dev/null || echo '{"bypasses":[]}')"
+      if printf '%s' "$bp_json" | jq -e '.bypasses | any(.skill == "gaia-threat-model" or .skill == "/gaia-threat-model")' >/dev/null 2>&1; then
+        has_tm_bypass=1
+        bp_reason="$(printf '%s' "$bp_json" | jq -r '[.bypasses[] | select(.skill == "gaia-threat-model" or .skill == "/gaia-threat-model")][0].reason')"
+      fi
+    fi
+    if [ "$has_tm_bypass" -eq 1 ]; then
+      log "threat-model gate bypassed: ${bp_reason}"
+    elif [ "$strict_on" -eq 0 ]; then
+      log "WARNING: compliance.ui_present=true but no threat-model.md found — would block in strict mode; consider --bypass gaia-threat-model --reason \"<text>\""
+    else
+      die "compliance.ui_present=true but no threat-model.md found; run /gaia-threat-model OR add --bypass gaia-threat-model --reason \"<text>\""
+    fi
+  fi
+fi
+
 log "setup complete for $WORKFLOW_NAME"
 exit 0
