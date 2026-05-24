@@ -369,21 +369,28 @@ _resolve_adapter_binary() {
     if [ -z "$plugin_root" ]; then
       plugin_root="$(cd "$(dirname "$0")/../../.." && pwd)"
     fi
+    # W2 fix: surface resolver stderr (SR-82 WARN + HALT messages) to user.
+    # W1 fix: --strict-builtin HALT is the resolver's responsibility; the
+    # caller propagates by leaving stdout empty. Step 3's main flow already
+    # checks for empty adapter_bin and FAILs cleanly.
     local adapter_dir
     set +e
-    adapter_dir=$("$resolver" --adapter "$channel" --project-root "$PROJECT_ROOT" --plugin-root "$plugin_root" $strict_arg 2>/dev/null)
+    adapter_dir=$("$resolver" --adapter "$channel" --project-root "$PROJECT_ROOT" --plugin-root "$plugin_root" $strict_arg 2>&1 >/tmp/.gaia-resolver.$$.stdout)
     local resolver_exit=$?
     set -e
-    if [ "$resolver_exit" = "3" ]; then
-      STEP3_STATUS="FAILED"
-      STEP3_DETAIL="--strict-builtin refuses custom shadow for sensitive channel $channel"
-      err "HALT: --strict-builtin refuses custom shadow for sensitive channel"
-      return 0
+    # Forward resolver stderr (WARN/HALT lines).
+    if [ -n "$adapter_dir" ]; then
+      printf '%s\n' "$adapter_dir" >&2
     fi
+    adapter_dir=$(cat /tmp/.gaia-resolver.$$.stdout 2>/dev/null || true)
+    rm -f /tmp/.gaia-resolver.$$.stdout
     if [ "$resolver_exit" = "0" ] && [ -x "$adapter_dir/run.sh" ]; then
       printf '%s' "$adapter_dir/run.sh"
       return 0
     fi
+    # resolver_exit=3 (strict-builtin HALT) and resolver_exit=2 (SR-81
+    # traversal) both leave stdout empty → caller's "no adapter" branch
+    # records FAILED without internal step-3 inconsistency.
   fi
   return 0
 }

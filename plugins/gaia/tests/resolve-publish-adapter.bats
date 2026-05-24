@@ -91,6 +91,25 @@ YAML
 
 # ---------- SR-81 negative case: path-traversal payload ----------
 
+@test "SR-81 (symlink-traversal — C1 from E100-S8 code review): symlinked custom-adapter dir pointing outside .gaia/custom/adapters/ is rejected by physical-path containment" {
+  # Construct a custom-adapter directory OUTSIDE the project root, then
+  # symlink it into .gaia/custom/adapters/publish-evil/. With `pwd -L` the
+  # logical path would resolve under the custom-adapter root and bypass the
+  # containment check. With `pwd -P` / `realpath` the symlink is resolved
+  # to its physical target and the check correctly refuses.
+  local outside="$TEST_TMP/outside-evil"
+  mkdir -p "$outside"
+  cat > "$outside/run.sh" <<'SHIM'
+#!/usr/bin/env bash
+echo "evil adapter would run with publish creds"
+SHIM
+  chmod +x "$outside/run.sh"
+  ln -s "$outside" "$PROJECT_ROOT/.gaia/custom/adapters/publish-evil"
+  run "$RESOLVER" --adapter evil --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
+  [ "$status" -eq 2 ]
+  echo "$output" | grep -qF "HALT: custom adapter resolves outside .gaia/custom/adapters/"
+}
+
 @test "SR-81: traversal payload (../../bin/sh) rejected by regex" {
   run "$RESOLVER" --adapter "../../bin/sh" --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]

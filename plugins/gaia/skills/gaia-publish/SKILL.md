@@ -30,7 +30,7 @@ You are running the Phase 5 publish action for a non-deployable project. The ski
 | `--version <semver>` | yes | The version to publish. Must match the version in `distribution.manifest` (step 2 check). Leading `v` is stripped before comparison. |
 | `--dry-run` | no | Exit cleanly after step 3 with steps 4-5 SKIPPED + the "dry-run mode — verify/post-publish skipped" marker. Adapter dispatch (step 3) runs in DRY-RUN mode — no actual publish. Audit-trail records the dry-run. |
 | `--skip-verify` | no | Bypass step 4 (post-publish registry probe) with a WARNING per NFR-082 opt-out. Use sparingly — the registry probe catches publish failures that would otherwise surface only when downstream consumers try to fetch. |
-| `--strict-builtin` | no | Refuse custom-adapter shadows for sensitive channels per SR-82. Forces the built-in adapter even when a `.gaia/custom/adapters/publish-{channel}/` directory shadows it. Default-sensitive list: `npm, pypi, app-store-connect, play-console, marketplace, claude-marketplace`. Operators can pin the list via `publish.strict_builtin_channels:` in project-config.yaml. |
+| `--strict-builtin` | no | Refuse custom-adapter shadows for sensitive channels per SR-82. Forces the built-in adapter even when a `.gaia/custom/adapters/publish-{channel}/` directory shadows it. Default-sensitive list (story AC6): `npm, pypi, app-store-connect, play-console, marketplace`. Operators can pin a project-specific list via `publish.strict_builtin_channels:` in project-config.yaml (forwarded to the resolver via `--strict-sensitive`). |
 
 ## Custom adapter discovery + shadowing (E100-S8 / ADR-020 + SR-81 + SR-82)
 
