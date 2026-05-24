@@ -200,6 +200,18 @@
     }
   },
   "properties": {
+    "lifecycle": {
+      "description": "ADR-120 lifecycle-ordering enforcement settings. Currently exposes `strict_mode` only; future fields land in this object so the top-level surface stays minimal. `strict_mode: true` (default per ADR-120) causes E103-S3/S4/S6 gates to hard-error on missing MANDATORY upstream artifacts unless a `--bypass <skill> --reason \"<text>\"` record exists in `.gaia/state/lifecycle-overrides.yaml`. `strict_mode: false` downgrades the gates to advisory warnings.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strict_mode": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true (default), E103 gates hard-error on missing MANDATORY upstream artifacts. When false, gates downgrade to WARNING logs."
+        }
+      }
+    },
     "config_phase": {
       "description": "Config-phase state machine value per ADR-096. Enum: minimal | partial | full. `default: \"full\"` is a documentation hint — gate-side code treats absence as `full` per ADR-097 (absence-over-sentinel) and NFR-062 (backward compatibility). The conditional `required` blocks in `allOf` are guarded by `required:[config_phase]` so legacy configs without this field skip all phase-conditional requirements.",
       "type": "string",

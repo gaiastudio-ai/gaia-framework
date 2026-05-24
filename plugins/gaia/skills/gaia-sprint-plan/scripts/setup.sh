@@ -70,5 +70,65 @@ else
   log "checkpoint.sh not found at $CHECKPOINT — skipping checkpoint load (non-fatal)"
 fi
 
+# ---------- 4. Lifecycle gates (ADR-120 / E103-S3) ----------
+# Hard-error when upstream MANDATORY skills' artifacts are missing AND no
+# `--bypass` recorded for the active sprint in `.gaia/state/lifecycle-overrides.yaml`.
+# Source the E103-S2 helper for bypass reads.
+
+LIFECYCLE_LIB="$(cd "$SCRIPT_DIR/../../.." && pwd)/scripts/lib/lifecycle-overrides.sh"
+STRICT_HELPER="$(cd "$SCRIPT_DIR/../../.." && pwd)/scripts/lib/lifecycle-strict-mode.sh"
+
+# Strict-mode resolution (E103-S5 helper; falls back to ON when helper absent).
+strict_mode_on=1
+if [ -x "$STRICT_HELPER" ]; then
+  if "$STRICT_HELPER" lifecycle_strict_mode_enabled >/dev/null 2>&1; then
+    strict_mode_on=1
+  else
+    strict_mode_on=0
+  fi
+fi
+
+if [ -f "$LIFECYCLE_LIB" ]; then
+  SPRINT_ID_FOR_GATE="${SPRINT_ID:-${sprint_id:-}}"
+  bypass_payload=""
+  if [ -n "$SPRINT_ID_FOR_GATE" ]; then
+    bypass_payload="$(bash "$LIFECYCLE_LIB" read --sprint-id "$SPRINT_ID_FOR_GATE" 2>/dev/null || echo '{"bypasses":[]}')"
+  fi
+  _has_bypass_for() {
+    local skill="$1"
+    printf '%s' "$bypass_payload" | jq -e --arg s "$skill" '.bypasses | any(.skill == $s or .skill == ("/" + $s))' >/dev/null 2>&1
+  }
+
+  # ---- Gate: traceability-matrix.md ----
+  TRACE_ART="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/traceability-matrix.md"
+  if [ ! -f "$TRACE_ART" ]; then
+    if _has_bypass_for "gaia-trace"; then
+      log "traceability gate bypassed: bypass record found for /gaia-trace"
+    elif [ "$strict_mode_on" -eq 0 ]; then
+      log "WARNING: traceability-matrix.md not found — would block in strict mode (run /gaia-trace OR --bypass gaia-trace --reason \"<text>\")"
+    else
+      die "traceability-matrix.md not found; run /gaia-trace OR add --bypass gaia-trace --reason \"<text>\""
+    fi
+  fi
+
+  # ---- Gate: /gaia-readiness-check PASSED ----
+  READINESS_LEDGER="${GAIA_STATE_DIR:-.gaia/state}/readiness-check-ledger.yaml"
+  has_passed_readiness=0
+  if [ -f "$READINESS_LEDGER" ]; then
+    if grep -qE "^[[:space:]]*verdict:[[:space:]]*PASSED" "$READINESS_LEDGER" 2>/dev/null; then
+      has_passed_readiness=1
+    fi
+  fi
+  if [ "$has_passed_readiness" -eq 0 ]; then
+    if _has_bypass_for "gaia-readiness-check"; then
+      log "readiness gate bypassed: bypass record found for /gaia-readiness-check"
+    elif [ "$strict_mode_on" -eq 0 ]; then
+      log "WARNING: no PASSED /gaia-readiness-check verdict on record — would block in strict mode (run /gaia-readiness-check OR --bypass gaia-readiness-check --reason \"<text>\")"
+    else
+      die "no PASSED /gaia-readiness-check verdict on record; run /gaia-readiness-check OR add --bypass gaia-readiness-check --reason \"<text>\""
+    fi
+  fi
+fi
+
 log "setup complete for $WORKFLOW_NAME"
 exit 0
