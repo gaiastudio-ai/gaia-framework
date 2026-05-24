@@ -162,26 +162,135 @@ _assert_envelope_well_formed() {
   [ "$(jq -r '.verdict' "$OUTPUT")" = "FAILED" ]
 }
 
+# ---------- TC-PUB-5: github-releases ----------
+
+@test "TC-PUB-5: github-releases trigger emits PASSED envelope with release URL in summary" {
+  GH_PUBLISH_MOCK=1 GH_TOKEN=test run _run_adapter github-releases \
+    --action trigger --manifest x --version 1.0.0 --registry https://github.com/myorg/myrepo
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
+  jq -r '.summary' "$OUTPUT" | grep -qF 'releases/tag/v1.0.0'
+}
+
+@test "TC-PUB-5: github-releases trigger FAILED → stderr surfaced in evidence" {
+  GH_PUBLISH_MOCK=1 GH_TOKEN=test GH_PUBLISH_OUTCOME=FAILED GH_PUBLISH_STDERR="tag v1.0.0 already exists" \
+    run _run_adapter github-releases \
+    --action trigger --manifest x --version 1.0.0 --registry https://github.com/myorg/myrepo
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "FAILED" ]
+  jq -r '.evidence[0].content' "$OUTPUT" | grep -qF 'already exists'
+}
+
+@test "TC-PUB-5 (NFR-081): missing GH_TOKEN → trigger FAILED" {
+  unset GH_TOKEN GH_PUBLISH_MOCK
+  run _run_adapter github-releases \
+    --action trigger --manifest x --version 1.0.0 --registry https://github.com/myorg/myrepo
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "FAILED" ]
+  jq -r '.summary' "$OUTPUT" | grep -qi 'GH_TOKEN missing'
+}
+
+# ---------- TC-PUB-6: mobile-app STUB returns UNVERIFIED ----------
+
+@test "TC-PUB-6: mobile-app STUB trigger returns UNVERIFIED with next_step marker" {
+  run _run_adapter mobile-app \
+    --action trigger --manifest x --version 1.0.0 --registry app-store \
+    --platform ios --store-id 12345
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "UNVERIFIED" ]
+  [ "$(jq -r '.next_step' "$OUTPUT")" = "human-review-required" ]
+  jq -r '.summary' "$OUTPUT" | grep -qi 'human review required'
+}
+
+@test "TC-PUB-6: mobile-app STUB verify also returns UNVERIFIED" {
+  run _run_adapter mobile-app \
+    --action verify --manifest x --version 1.0.0 --registry app-store \
+    --platform android --store-id com.foo.bar
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "UNVERIFIED" ]
+}
+
+@test "TC-PUB-6 (AC3): mobile-app adapter-manifest verify_retry_window_seconds is null" {
+  local manifest="$PLUGIN_DIR/scripts/adapters/publish-mobile-app/adapter-manifest.yaml"
+  [ -f "$manifest" ]
+  local window
+  window=$(yq eval '.verify_retry_window_seconds' "$manifest")
+  [ "$window" = "null" ]
+}
+
+# ---------- TC-PUB-7: container-registry matrix ----------
+
+@test "TC-PUB-7: container-registry docker.io + semver tag strategy" {
+  CONTAINER_PUSH_MOCK=1 DOCKER_TOKEN=t run _run_adapter container-registry \
+    --action trigger --manifest x --version 1.2.3 --registry docker.io \
+    --image-name myorg/myimg --tag-strategy semver
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
+  # semver strategy produces v1.2.3, v1.2, latest
+  jq -r '.summary' "$OUTPUT" | grep -qF 'v1.2.3'
+  jq -r '.summary' "$OUTPUT" | grep -qF 'v1.2'
+  jq -r '.summary' "$OUTPUT" | grep -qF 'latest'
+}
+
+@test "TC-PUB-7: container-registry ghcr.io + commit-sha strategy" {
+  CONTAINER_PUSH_MOCK=1 GH_TOKEN=t run _run_adapter container-registry \
+    --action trigger --manifest x --version 1.0.0 --registry ghcr.io \
+    --image-name myorg/myimg --tag-strategy commit-sha --commit-sha abc123def
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
+  jq -r '.summary' "$OUTPUT" | grep -qF 'abc123def'
+}
+
+@test "TC-PUB-7 (NFR-081): container-registry docker.io requires DOCKER_TOKEN" {
+  unset DOCKER_TOKEN GH_TOKEN CONTAINER_PUSH_MOCK
+  run _run_adapter container-registry \
+    --action trigger --manifest x --version 1.0.0 --registry docker.io \
+    --image-name myorg/myimg --tag-strategy semver
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "FAILED" ]
+  jq -r '.summary' "$OUTPUT" | grep -qi 'credential.*docker'
+}
+
+@test "TC-PUB-7 (NFR-081): container-registry ghcr.io requires GH_TOKEN" {
+  unset DOCKER_TOKEN GH_TOKEN CONTAINER_PUSH_MOCK
+  run _run_adapter container-registry \
+    --action trigger --manifest x --version 1.0.0 --registry ghcr.io \
+    --image-name myorg/myimg --tag-strategy semver
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "FAILED" ]
+  jq -r '.summary' "$OUTPUT" | grep -qi 'credential.*ghcr'
+}
+
 # ---------- Contract conformance: all 4 adapters ----------
 
-@test "All 4 adapters comply with FR-526 (--action mandatory, fails on missing)" {
-  for ch in claude-marketplace npm pypi homebrew; do
+@test "All 7 adapters comply with FR-526 (--action mandatory, fails on missing)" {
+  for ch in claude-marketplace npm pypi homebrew github-releases container-registry mobile-app; do
     run "$PLUGIN_DIR/scripts/adapters/publish-$ch/run.sh" --version 1.0.0 --manifest x --registry x --output "$TEST_TMP/o-$ch.json"
     [ "$status" -ne 0 ] || { echo "$ch did not fail on missing --action" >&2; false; }
   done
 }
 
-@test "All 4 adapters comply with FR-526 (--dry-run accepted)" {
-  # All four adapters accept --dry-run without crashing.
-  for ch in claude-marketplace npm pypi homebrew; do
+@test "All adapters accept --dry-run without crashing (FR-526)" {
+  # Mobile-app STUB and container-registry need channel-specific flags; tested separately above.
+  for ch in claude-marketplace npm pypi homebrew github-releases; do
     case "$ch" in
       claude-marketplace) MARKETPLACE_PUBLISH_MOCK=1 ;;
       npm) NPM_PUBLISH_MOCK=1; export NPM_TOKEN=test ;;
       pypi) export TWINE_MOCK_EXIT=0 ;;
       homebrew) HOMEBREW_MOCK=1 ;;
+      github-releases) GH_PUBLISH_MOCK=1 ;;
     esac
-    run env CLAUDE_MARKETPLACE_TOKEN=x NPM_TOKEN=x PYPI_API_TOKEN=x HOMEBREW_GITHUB_TOKEN=x \
-        MARKETPLACE_PUBLISH_MOCK=1 NPM_PUBLISH_MOCK=1 HOMEBREW_MOCK=1 \
+    run env CLAUDE_MARKETPLACE_TOKEN=x NPM_TOKEN=x PYPI_API_TOKEN=x HOMEBREW_GITHUB_TOKEN=x GH_TOKEN=x \
+        MARKETPLACE_PUBLISH_MOCK=1 NPM_PUBLISH_MOCK=1 HOMEBREW_MOCK=1 GH_PUBLISH_MOCK=1 \
         "$PLUGIN_DIR/scripts/adapters/publish-$ch/run.sh" \
         --action trigger --manifest m --version 1.0.0 --registry r --output "$TEST_TMP/dr-$ch.json" --dry-run
     [ "$status" -eq 0 ]
@@ -189,8 +298,9 @@ _assert_envelope_well_formed() {
   done
 }
 
-@test "All 4 adapters comply with FR-526 (unknown flag rejected — fail-closed AC2)" {
-  for ch in claude-marketplace npm pypi homebrew; do
+@test "All 7 adapters comply with FR-526 (unknown flag rejected — fail-closed AC2)" {
+  # mobile-app STUB also rejects unknown flags via EXTRA_ARGS parse.
+  for ch in claude-marketplace npm pypi homebrew github-releases container-registry mobile-app; do
     run "$PLUGIN_DIR/scripts/adapters/publish-$ch/run.sh" \
       --action trigger --manifest m --version 1.0.0 --registry r --output "$TEST_TMP/uf-$ch.json" --bogus
     [ "$status" -ne 0 ] || { echo "$ch did not reject --bogus" >&2; false; }
@@ -198,19 +308,23 @@ _assert_envelope_well_formed() {
   done
 }
 
-@test "All 4 adapter-manifest.yaml files validate against adapter-manifest.schema.json shape" {
+@test "All 7 adapter-manifest.yaml files validate against adapter-manifest.schema.json shape" {
   local schema="$PLUGIN_DIR/schemas/adapter-manifest.schema.json"
   [ -f "$schema" ]
-  for ch in claude-marketplace npm pypi homebrew; do
+  for ch in claude-marketplace npm pypi homebrew github-releases container-registry mobile-app; do
     local manifest="$PLUGIN_DIR/scripts/adapters/publish-$ch/adapter-manifest.yaml"
     [ -f "$manifest" ]
-    # Top-level required fields present.
-    for field in adapter_name adapter_version channel verify_retry_window_seconds credential_env_vars description; do
+    # Top-level required fields present (verify_retry_window_seconds may be null for mobile-app).
+    for field in adapter_name adapter_version channel credential_env_vars description; do
       yq eval ".$field" "$manifest" | grep -qv '^null$' || { echo "$ch missing $field" >&2; false; }
     done
-    # Window within SR-83 cap.
+    # verify_retry_window_seconds must be present (either integer or null).
+    yq eval 'has("verify_retry_window_seconds")' "$manifest" | grep -q '^true$' || { echo "$ch missing verify_retry_window_seconds key" >&2; false; }
+    # SR-83 cap (skip for null/mobile-app).
     local window
     window=$(yq eval '.verify_retry_window_seconds' "$manifest")
-    [ "$window" -le 3600 ] || { echo "$ch window $window exceeds SR-83 cap" >&2; false; }
+    if [ "$window" != "null" ]; then
+      [ "$window" -le 3600 ] || { echo "$ch window $window exceeds SR-83 cap" >&2; false; }
+    fi
   done
 }
