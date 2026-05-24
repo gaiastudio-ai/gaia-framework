@@ -91,12 +91,19 @@ PYEOF
   fi
 
   # Fall back to ajv-cli.
+  # AF-2026-05-24-7 / Test02 F-1: pass --strict=false so ajv accepts the
+  # framework's custom x-no-auto-hydration annotation (declared on schema
+  # properties that opt out of E85 auto-hydration). Without this flag, ajv
+  # strict mode fails the whole schema with "unknown keyword: x-no-auto-
+  # hydration" — and per SKILL.md the failure handler would delete a valid
+  # config. The Python `jsonschema` validator (line 79) does not have an
+  # equivalent strict mode and accepts the annotation natively.
   if command -v ajv >/dev/null 2>&1; then
-    ajv validate -s "$schema" -d "$json_tmp" >/dev/null
+    ajv validate -s "$schema" -d "$json_tmp" --strict=false >/dev/null
     exit $?
   fi
   if command -v npx >/dev/null 2>&1; then
-    npx --yes ajv-cli validate -s "$schema" -d "$json_tmp" >/dev/null && exit 0 || exit 1
+    npx --yes ajv-cli validate -s "$schema" -d "$json_tmp" --strict=false >/dev/null && exit 0 || exit 1
   fi
 fi
 

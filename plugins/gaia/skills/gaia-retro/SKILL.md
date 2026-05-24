@@ -126,7 +126,7 @@ Prompt the facilitator:
 
 > Review the proposed action items. Add, remove, or modify items. Each action item needs an owner and target sprint.
 
-Collect the facilitator's input and compile the final action items list, then persist each item to `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml` using the shared retro writer helper (ADR-052). The YAML schema is authoritative — see architecture §10.28.6.
+Collect the facilitator's input and compile the final action items list, then persist each item to `${CLAUDE_PROJECT_ROOT}/.gaia/state/action-items.yaml` using the shared retro writer helper (ADR-052). The YAML schema is authoritative — see architecture §10.28.6.
 
 Per-item payload (one YAML list element per action, FR-RIM-5):
 
@@ -147,18 +147,18 @@ Invoke the shared writer once per action item:
 ${CLAUDE_PLUGIN_ROOT}/../../scripts/retro-sidecar-write.sh \
   --root       "${CLAUDE_PROJECT_ROOT}" \
   --sprint-id  "${sprint_id}" \
-  --target     "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
+  --target     "${CLAUDE_PROJECT_ROOT}/.gaia/state/action-items.yaml" \
   --payload    "$(emit_action_item_yaml)"
 ```
 
 Failure posture:
 
-- Missing `action-items.yaml` → writer seeds the file with the schema header from architecture §10.28.6 before appending (AC-EC3).
+- Missing `.gaia/state/action-items.yaml` → writer seeds the file with the schema header from architecture §10.28.6 before appending (AC-EC3).
 - Malformed existing YAML → writer HALTs with a line-pointer error; fix the YAML manually and re-run (AC-EC3).
 - Dedup by stable `AI-{n}` ID when the prose retro already referenced an item — in-place `text` update rather than duplicate row (AC-EC8).
 - `flock` on the YAML file serializes auto-increment across concurrent writers (AC-EC9).
 
-The prose retrospective artifact written in Step 6 references each item by `AI-{n}` ID rather than duplicating text — `action-items.yaml` is the source of truth.
+The prose retrospective artifact written in Step 6 references each item by `AI-{n}` ID rather than duplicating text — `.gaia/state/action-items.yaml` is the source of truth.
 
 #### Step 5b --- Optional auto-file pass (E92-S5, opt-in via `--auto-file`)
 
@@ -172,7 +172,7 @@ When `--auto-file` IS present:
 4. Items written via the v1 dual-schema path (i.e., entries with `classification` rather than `type`) are NEVER auto-filed — v1 entries are read-only by `/gaia-action-items` per ADR-086 dual-schema routing, and the same read-only invariant applies here.
 5. On any per-item failure (filing skill non-zero exit, bucket-prompt cancellation, substrate gap on subagent dispatch), log the failure to the retro prose artifact's `## Auto-file outcomes` section. The retro itself proceeds — the failure is informational, not blocking.
 
-**Substrate-driven limitation (per saved memory `feedback_askuserquestion_forked_skill_gap` + `feedback_plugin_context_fork_broken`):** the cross-skill subagent dispatch path for `/gaia-add-feature` and `/gaia-create-story` is currently lossy for interactive prompts. Until the upstream substrate gap closes (Claude Code issue #49559), the auto-file branch logs an `auto_file: substrate-deferred — no spawn` line for each eligible item and writes the synthesised `--text` payload to `action-items.yaml`'s `auto_file_queued` field so a follow-up `/gaia-action-items --auto-file` invocation can drain the queue at next-sprint planning. This is a documented bridge mechanism, not silent failure.
+**Substrate-driven limitation (per saved memory `feedback_askuserquestion_forked_skill_gap` + `feedback_plugin_context_fork_broken`):** the cross-skill subagent dispatch path for `/gaia-add-feature` and `/gaia-create-story` is currently lossy for interactive prompts. Until the upstream substrate gap closes (Claude Code issue #49559), the auto-file branch logs an `auto_file: substrate-deferred — no spawn` line for each eligible item and writes the synthesised `--text` payload to `.gaia/state/action-items.yaml`'s `auto_file_queued` field so a follow-up `/gaia-action-items --auto-file` invocation can drain the queue at next-sprint planning. This is a documented bridge mechanism, not silent failure.
 
 ### Step 5c --- Agent Memory Updates (FR-RIM-3, ADR-016, ADR-052)
 
@@ -262,21 +262,21 @@ Failure posture:
 
 ### Step 5b --- Cross-Retro Pattern Detection (FR-RIM-1)
 
-After action items are drafted in Step 5, scan prior retrospective files for recurring themes. Themes appearing in 2+ distinct sprints are flagged systemic, and their parent `action-items.yaml` entry receives an `escalation_count` increment.
+After action items are drafted in Step 5, scan prior retrospective files for recurring themes. Themes appearing in 2+ distinct sprints are flagged systemic, and their parent `.gaia/state/action-items.yaml` entry receives an `escalation_count` increment.
 
 Invoke:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/gaia-retro/scripts/cross-retro-detect.sh \
   --retros-dir     "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts" \
-  --action-items   "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
+  --action-items   "${CLAUDE_PROJECT_ROOT}/.gaia/state/action-items.yaml" \
   --current-sprint "${sprint_id}"
 ```
 
 The scanner:
 
 1. Globs `retrospective-*.md` under the retros dir.
-2. Extracts action-item lines under `## Action Items` sections (or resolves `AI-{n}` references in `action-items.yaml`).
+2. Extracts action-item lines under `## Action Items` sections (or resolves `AI-{n}` references in `.gaia/state/action-items.yaml`).
 3. Normalizes each line (`lowercase(trim(text))`) and computes `SHA-256(norm)`.
 4. Flags themes seen in 2+ distinct sprint IDs as systemic.
 5. For each systemic theme, delegates to `action-items-increment.sh` using `(current_sprint, theme_hash)` as the idempotency key so re-running the same retro never double-increments (NFR-RIM-3).
@@ -284,7 +284,7 @@ The scanner:
 All edge paths are non-blocking (per the story's "Failure posture"):
 
 - No prior retros → success, zero escalations (AC3 / AC-EC9).
-- Missing or unreadable `action-items.yaml` → warn on stderr, continue (AC-EC2).
+- Missing or unreadable `.gaia/state/action-items.yaml` → warn on stderr, continue (AC-EC2).
 - Orphan `AI-{n}` reference → log orphan, skip that item, continue (AC-EC6).
 - Empty / zero-byte retro file → contributes zero themes (AC-EC9).
 - Mixed-case or whitespace variants → normalize to the same hash (AC-EC10).
