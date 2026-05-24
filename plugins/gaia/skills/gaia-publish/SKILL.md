@@ -51,7 +51,7 @@ Read the path named by `distribution.manifest` (e.g., `plugin.json`, `package.js
 **Failure mode (E100-S2):** stderr emits the verbatim "manifest version <X> does not match --version <Y>" line — raw manifest value on the left, raw `--version` (including leading `v`) on the right. The assessment doc records `reason: manifest-version-mismatch`. Steps 3-5 are SKIPPED — no adapter trigger.
 
 ### Step 3 — Trigger publish
-Resolve and dispatch the adapter per `distribution.channel`. **Real adapter dispatch lands in E100-S4..S8**; today this step is a PASSED stub so the orchestration is testable end-to-end with mocked channels.
+Resolve and dispatch the adapter per `distribution.channel`. The adapter contract is fully defined in `plugins/gaia/scripts/adapters/PUBLISH-CONTRACT.md` per FR-526 + ADR-113 (E100-S4). Adapter binary discovery: `${CLAUDE_PLUGIN_ROOT}/scripts/adapters/publish-<channel>/run.sh` first, then PATH-namespaced `gaia-adapter-publish-<channel>` as fallback. Actual built-in adapter implementations land in E100-S5/S6/S7; custom-adapter shadowing in E100-S8.
 
 Under `--dry-run`, the adapter is dispatched in DRY-RUN mode — the adapter returns the would-have-published payload without actually invoking the registry. The orchestrator then SKIPs steps 4-5.
 
@@ -61,8 +61,11 @@ Invoke the adapter's `verify` action against the registry (E100-S3). The orchest
 1. Reads `verify_retry_window_seconds` from `adapter-manifest.yaml` (custom adapter under `.gaia/custom/adapters/publish-<channel>/` takes precedence over plugin built-in). Per NFR-082, the window is per-adapter — the orchestrator NEVER imposes its own retry policy.
 2. Applies the SR-83 defensive cap: if the declared window exceeds 3600s, clamps to 3600s and logs a WARNING. Mitigates T-PUB-4 (local DoS via malicious manifest declaring e.g. 86400s).
 3. Resolves the adapter binary: `${CLAUDE_PLUGIN_ROOT}/adapters/publish-<channel>/adapter` first, then PATH-namespaced `gaia-adapter-publish-<channel>` as fallback. Never raw PATH lookup.
-4. Polls in an exponential back-off loop (start 1s, double, cap 30s per iteration) bounded by the window. Each iteration re-invokes the adapter with `--action verify --version <V> --registry <R> --manifest <M> --output <findings.json>`. Verdict is read from the ADR-037 envelope `verdict` field (PASSED / FAILED / UNVERIFIED) — NOT exit code.
-5. **PASSED** → step 4 PASSED, proceed. **UNVERIFIED** (the `null` sentinel reserved for `mobile-app`) → step 4 PASSED with human-review note. **FAILED throughout** → step 4 FAILED with stderr "artifact not resolvable at <url> — verify-window exhausted at <N>s"; audit reason `post-publish-verify-failed`.
+4. Polls in an exponential back-off loop (start 1s, double, cap 30s per iteration) bounded by the window. Each iteration re-invokes the adapter with `--action verify --version <V> --registry <R> --manifest <M> --output <findings.json>`. Per E100-S4, the orchestrator validates the ADR-037 envelope shape via `scripts/lib/validate-adr037-envelope.sh` BEFORE reading `verdict`. Three failure modes are distinct (see PUBLISH-CONTRACT.md "Exit-code discipline"):
+   - `adapter-internal-failure` — adapter exits non-zero BEFORE writing findings.json.
+   - `envelope-schema-violation` — findings written but malformed (missing `verdict`, outside enum, etc.). Stderr names the JSONPath.
+   - `verdict-failed` — well-formed envelope with `verdict: FAILED`. Adapter `summary` surfaces in the assessment doc under "Publish Adapter Findings".
+5. **PASSED** → step 4 PASSED, proceed. **UNVERIFIED** (the `null` sentinel reserved for `mobile-app`) → step 4 PASSED with human-review note. **FAILED throughout** → step 4 FAILED with stderr naming the exhausted window + last verdict + adapter summary; audit reason `post-publish-verify-failed`.
 
 Backward-compat: when no `adapter-manifest.yaml` AND no adapter binary are resolvable, step 4 emits PASSED with `stub-fallback` marker (preserves E100-S1 happy path for projects that have not wired adapters yet).
 
