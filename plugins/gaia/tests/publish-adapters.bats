@@ -270,10 +270,107 @@ _assert_envelope_well_formed() {
   jq -r '.summary' "$OUTPUT" | grep -qi 'credential.*ghcr'
 }
 
+# ---------- TC-PUB-8: static-site 6-provider dispatch + cdn_invalidation ----------
+
+_run_static_site() {
+  local provider="$1"; shift
+  STATIC_SITE_MOCK=1 "$PLUGIN_DIR/scripts/adapters/publish-static-site/run.sh" \
+    --action trigger --manifest x --version 1.0.0 --registry https://example.com \
+    --output "$OUTPUT" --provider "$provider" --domain example.com --dry-run "$@"
+}
+
+@test "TC-PUB-8 (cloudflare-pages): provider dispatch + envelope PASSED" {
+  run _run_static_site cloudflare-pages
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
+  [ "$(jq -r '.adapter_metadata.provider' "$OUTPUT")" = "cloudflare-pages" ]
+  jq -r '.summary' "$OUTPUT" | grep -qi 'wrangler\|cloudflare'
+}
+
+@test "TC-PUB-8 (s3 no cdn): aws s3 sync invoked, NO CloudFront invalidation" {
+  run _run_static_site s3 --cdn-invalidation false
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
+  jq -r '.summary' "$OUTPUT" | grep -qi 'cdn_invalidation=false\|no CDN invalidation\|s3 sync'
+  # Verify NO cloudfront in evidence (dry-run output)
+  ! jq -r '.evidence[].content' "$OUTPUT" | grep -qi 'cloudfront'
+}
+
+@test "TC-PUB-8 (s3 + cdn): aws s3 sync THEN cloudfront create-invalidation" {
+  # Non-dry-run path to exercise the CDN branch.
+  STATIC_SITE_MOCK=1 run "$PLUGIN_DIR/scripts/adapters/publish-static-site/run.sh" \
+    --action trigger --manifest x --version 1.0.0 --registry https://s3.example.com \
+    --output "$OUTPUT" --provider s3 --domain example.com --cdn-invalidation true
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
+  jq -r '.evidence[].content' "$OUTPUT" | grep -qF 'aws s3 sync'
+  jq -r '.evidence[].content' "$OUTPUT" | grep -qF 'cloudfront create-invalidation'
+}
+
+@test "TC-PUB-8 (netlify): provider dispatch" {
+  run _run_static_site netlify
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
+  jq -r '.summary' "$OUTPUT" | grep -qi 'netlify'
+}
+
+@test "TC-PUB-8 (vercel): provider dispatch" {
+  run _run_static_site vercel
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
+  jq -r '.summary' "$OUTPUT" | grep -qi 'vercel'
+}
+
+@test "TC-PUB-8 (github-pages): provider dispatch" {
+  run _run_static_site github-pages
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
+  jq -r '.summary' "$OUTPUT" | grep -qi 'gh-pages\|github pages'
+}
+
+@test "TC-PUB-8 (custom): escape-hatch returns UNVERIFIED with deferred-to-wrapper marker" {
+  run _run_static_site custom
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "UNVERIFIED" ]
+  jq -r '.summary' "$OUTPUT" | grep -qi 'user-supplied\|custom'
+}
+
+@test "TC-PUB-8 (unknown provider): closed-enum rejection with documented error" {
+  run "$PLUGIN_DIR/scripts/adapters/publish-static-site/run.sh" \
+    --action trigger --manifest x --version 1.0.0 --registry x \
+    --output "$OUTPUT" --provider invalid --domain x
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qF "unknown static-site provider 'invalid'"
+  echo "$output" | grep -qF 'must be one of {cloudflare-pages, s3, netlify, vercel, github-pages, custom}'
+}
+
+@test "TC-PUB-8 (NFR-081): netlify non-mock without NETLIFY_AUTH_TOKEN → FAILED" {
+  unset NETLIFY_AUTH_TOKEN
+  unset STATIC_SITE_MOCK
+  run "$PLUGIN_DIR/scripts/adapters/publish-static-site/run.sh" \
+    --action trigger --manifest x --version 1.0.0 --registry https://example.com \
+    --output "$OUTPUT" --provider netlify --domain example.com
+  [ "$status" -eq 0 ]
+  _assert_envelope_well_formed
+  [ "$(jq -r '.verdict' "$OUTPUT")" = "FAILED" ]
+  jq -r '.summary' "$OUTPUT" | grep -qF 'NETLIFY_AUTH_TOKEN'
+}
+
+@test "TC-PUB-8 (manifest): static-site adapter-manifest declares verify_retry_window_seconds: 30" {
+  local manifest="$PLUGIN_DIR/scripts/adapters/publish-static-site/adapter-manifest.yaml"
+  [ -f "$manifest" ]
+  local window
+  window=$(yq eval '.verify_retry_window_seconds' "$manifest")
+  [ "$window" = "30" ]
+}
+
 # ---------- Contract conformance: all 4 adapters ----------
 
-@test "All 7 adapters comply with FR-526 (--action mandatory, fails on missing)" {
-  for ch in claude-marketplace npm pypi homebrew github-releases container-registry mobile-app; do
+@test "All 8 adapters comply with FR-526 (--action mandatory, fails on missing)" {
+  for ch in claude-marketplace npm pypi homebrew github-releases container-registry mobile-app static-site; do
     run "$PLUGIN_DIR/scripts/adapters/publish-$ch/run.sh" --version 1.0.0 --manifest x --registry x --output "$TEST_TMP/o-$ch.json"
     [ "$status" -ne 0 ] || { echo "$ch did not fail on missing --action" >&2; false; }
   done
@@ -298,9 +395,9 @@ _assert_envelope_well_formed() {
   done
 }
 
-@test "All 7 adapters comply with FR-526 (unknown flag rejected — fail-closed AC2)" {
+@test "All 8 adapters comply with FR-526 (unknown flag rejected — fail-closed AC2)" {
   # mobile-app STUB also rejects unknown flags via EXTRA_ARGS parse.
-  for ch in claude-marketplace npm pypi homebrew github-releases container-registry mobile-app; do
+  for ch in claude-marketplace npm pypi homebrew github-releases container-registry mobile-app static-site; do
     run "$PLUGIN_DIR/scripts/adapters/publish-$ch/run.sh" \
       --action trigger --manifest m --version 1.0.0 --registry r --output "$TEST_TMP/uf-$ch.json" --bogus
     [ "$status" -ne 0 ] || { echo "$ch did not reject --bogus" >&2; false; }
@@ -308,10 +405,10 @@ _assert_envelope_well_formed() {
   done
 }
 
-@test "All 7 adapter-manifest.yaml files validate against adapter-manifest.schema.json shape" {
+@test "All 8 adapter-manifest.yaml files validate against adapter-manifest.schema.json shape" {
   local schema="$PLUGIN_DIR/schemas/adapter-manifest.schema.json"
   [ -f "$schema" ]
-  for ch in claude-marketplace npm pypi homebrew github-releases container-registry mobile-app; do
+  for ch in claude-marketplace npm pypi homebrew github-releases container-registry mobile-app static-site; do
     local manifest="$PLUGIN_DIR/scripts/adapters/publish-$ch/adapter-manifest.yaml"
     [ -f "$manifest" ]
     # Top-level required fields present (verify_retry_window_seconds may be null for mobile-app).
