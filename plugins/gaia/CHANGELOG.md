@@ -3,6 +3,39 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.174.0] — 2026-05-23
+
+### Added
+
+- (E99-S4) /gaia-config-distribution section editor (#903)
+- (E99-S3) distribution.manifest path canonicalization (SR-79 + SR-80) (#901)
+- (E99-S2) distribution section schema + 10-channel registry (#899)
+- (E99-S1) environments[].kind discriminator + resolver + default semantics (#898)
+- (E98-S6) wire backup integrity (sha256 manifest) + retention tutorial (#897)
+- (E98-S5) wire auto-rename migration flow with AskUserQuestion (#895)
+- (E98-S4) wire template_overrides interpreter + SR-78 disable-allowlist (#892)
+- (E98-S3) wire Protected-jobs assertion script (#891)
+- (E98-S2) wire Overlay stitching engine (jobs + steps) (#889)
+- (E98-S1) wire Prefix-detection helper + regen contract (#888)
+
+### Changed
+
+- merge main into staging — resolve test-strategy finalize conflict
+
+### Fixed
+
+- (AF-2026-05-22-9) yara test-report bundle (bugs 1,2,3,7,8,9,11,12,13,15,16) (#908)
+- (AF-2026-05-22-8) epic-dir naming convergence (bug 18 high) (#907)
+- (AF-2026-05-22-7) config-hydration fail-safe (bug 21 critical) (#905)
+- (AF-2026-05-22-6) 5 HIGH-severity bugs from YARA test report (#902)
+- (E99-S4) correct SKILL.md vs config-yaml-editor.sh API divergence (code-review C1+C2) (#904)
+- (E99-S2) correct malformed YAML required arrays in 7 publish-* schemas (#900)
+- (E98-S5) document AskUserQuestion orchestration + Y-branch regen step (code-review C1+C2) (#896)
+- (E98-S4) close AC3 validate-side + AC8 config-show extension (code-review C1-NEW, C2-NEW) (#894)
+- (E98-S4) wire template_overrides interpreter into Sub-flow C (code-review C1) (#893)
+- (E98-S2) address code-review Critical findings — mktemp + YAML re-indent (#890)
+- (AF-2026-05-22-5) test-strategy gate + missing scripts + config-hydration (#885)
+
 ## [1.173.1] — 2026-05-22
 
 ### Fixed
