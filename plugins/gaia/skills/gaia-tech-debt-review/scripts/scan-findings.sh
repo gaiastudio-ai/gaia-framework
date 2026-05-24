@@ -109,8 +109,19 @@ while IFS= read -r -d '' story_file; do
     # Strip leading/trailing pipes, then split by |
     trimmed="${line## }"
     trimmed="${trimmed%% }"
-    # Expect at least 6 pipe-separated cells: #, Type, Severity, Finding, Action
-    # (header has these; legacy rows may have 5 or 6; be lenient)
+    # AF-2026-05-24-10 / Test02 F-22: the scanner originally read `col1`
+    # as the Type column, but with the 5-col header `# | Type | Severity
+    # | Finding | Action`, `col1` is the row-number `#` not Type. After
+    # `_blank col1 col2 col3 col4 col5`, the actual columns are:
+    #   _blank=leading-pipe, col1=#, col2=Type, col3=Severity,
+    #   col4=Finding, col5=Action.
+    # We now correctly map col2 → Type, col3 → Severity, etc.
+    #
+    # Additionally per F-22: dev-story templates ship a 4-column schema
+    # (ID | Severity | Description | Status). Sniff the header to handle
+    # both: if col2 is "Type" we use the 5-col schema; if col1 is "ID" we
+    # use the 4-col legacy schema; otherwise we apply best-effort
+    # heuristic.
     IFS='|' read -r _blank col1 col2 col3 col4 col5 _rest <<<"$trimmed"
     # Trim cell whitespace
     col1="${col1## }"; col1="${col1%% }"
@@ -118,24 +129,50 @@ while IFS= read -r -d '' story_file; do
     col3="${col3## }"; col3="${col3%% }"
     col4="${col4## }"; col4="${col4%% }"
     col5="${col5## }"; col5="${col5%% }"
-    # Skip header row ("# Type Severity ...") and dash-placeholder row
-    if [ "$col1" = "Type" ] || [ "$col1" = "—" ] || [ -z "$col1" ]; then
+    # Skip header rows and dash-placeholder rows. Header is recognized by
+    # either col1="#" / "ID" or col2="Type" / "Severity".
+    if [ "$col1" = "#" ] || [ "$col1" = "ID" ] || [ "$col2" = "Type" ] || [ "$col2" = "Severity" ] || [ "$col1" = "—" ] || [ -z "$col1$col2" ]; then
       continue
     fi
-    type="$col1"
-    severity="$col2"
-    finding="$col3"
-    action="$col4"
+    # Determine schema from cell content. The 5-col schema has col2=Type
+    # (one of: tech-debt, bug, framework-defect, security, etc.); the
+    # 4-col schema has col1 as an ID (e.g. F-1) and col2 as severity.
+    type=""
+    severity=""
+    finding=""
+    action=""
+    case "$col2" in
+      tech-debt|bug|framework-defect|security|test-debt|process-debt|code-debt|doc-debt|design-debt)
+        # 5-col canonical schema: # | Type | Severity | Finding | Action
+        type="$col2"
+        severity="$col3"
+        finding="$col4"
+        action="$col5"
+        ;;
+      *)
+        # 4-col legacy dev-story schema: ID | Severity | Description | Status
+        # No "Type" column → infer from the ID prefix or default to tech-debt.
+        case "$col1" in
+          BUG-*|B-*|Bug-*) type="bug" ;;
+          *) type="tech-debt" ;;
+        esac
+        severity="$col2"
+        finding="$col3"
+        action="$col4"
+        ;;
+    esac
     # Legacy rule: tech-debt type always included; bug with medium/low severity
-    # included UNLESS marked [TRIAGED] or [DISMISSED] in the finding text
+    # included UNLESS marked [TRIAGED] or [DISMISSED] in the finding text OR
+    # action text (per F-23 below — we don't ship F-23 here but the scan
+    # for both columns mirrors that recommended pattern).
     include=0
     case "$type" in
-      tech-debt)
+      tech-debt|framework-defect|test-debt|process-debt|code-debt|doc-debt|design-debt|security)
         include=1
         ;;
       bug)
         if [ "$severity" = "medium" ] || [ "$severity" = "low" ]; then
-          if ! printf '%s' "$finding" | grep -qE '\[TRIAGED|\[DISMISSED'; then
+          if ! printf '%s' "$finding $action" | grep -qE '\[TRIAGED|\[DISMISSED'; then
             include=1
             type="bug:$severity"
           fi
