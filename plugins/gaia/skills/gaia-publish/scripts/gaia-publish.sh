@@ -342,19 +342,48 @@ _resolve_adapter_verify_window() {
   yq eval '.verify_retry_window_seconds // ""' "$mfile" 2>/dev/null
 }
 
-# Locate the adapter binary for the given channel. Builtin path first,
-# then PATH-namespaced fallback (gaia-adapter-publish-<channel>).
+# Locate the adapter binary for the given channel. PATH-namespaced shim is
+# tried FIRST (allows test fixtures and operator overrides to take effect),
+# then the resolve-publish-adapter.sh helper (E100-S8) which implements
+# ADR-020 custom-shadow precedence + SR-81 path-traversal mitigation +
+# SR-82 --strict-builtin gate.
 _resolve_adapter_binary() {
   local channel="$1"
-  local builtin="${CLAUDE_PLUGIN_ROOT:-}/adapters/publish-$channel/adapter"
-  if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -x "$builtin" ]; then
-    printf '%s' "$builtin"
-    return
-  fi
+  # PATH-shim has highest precedence for backward-compat with E100-S1..S7 bats.
   local on_path
   on_path=$(command -v "gaia-adapter-publish-$channel" 2>/dev/null || true)
   if [ -n "$on_path" ]; then
     printf '%s' "$on_path"
+    return 0
+  fi
+
+  # E100-S8: resolve-publish-adapter.sh handles ADR-020 + SR-81 + SR-82.
+  local resolver="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/resolve-publish-adapter.sh"
+  if [ ! -x "$resolver" ]; then
+    resolver="$(dirname "$0")/../../../scripts/lib/resolve-publish-adapter.sh"
+  fi
+  if [ -x "$resolver" ]; then
+    local strict_arg=""
+    [ "$STRICT_BUILTIN" = "1" ] && strict_arg="--strict-builtin"
+    local plugin_root="${CLAUDE_PLUGIN_ROOT:-}"
+    if [ -z "$plugin_root" ]; then
+      plugin_root="$(cd "$(dirname "$0")/../../.." && pwd)"
+    fi
+    local adapter_dir
+    set +e
+    adapter_dir=$("$resolver" --adapter "$channel" --project-root "$PROJECT_ROOT" --plugin-root "$plugin_root" $strict_arg 2>/dev/null)
+    local resolver_exit=$?
+    set -e
+    if [ "$resolver_exit" = "3" ]; then
+      STEP3_STATUS="FAILED"
+      STEP3_DETAIL="--strict-builtin refuses custom shadow for sensitive channel $channel"
+      err "HALT: --strict-builtin refuses custom shadow for sensitive channel"
+      return 0
+    fi
+    if [ "$resolver_exit" = "0" ] && [ -x "$adapter_dir/run.sh" ]; then
+      printf '%s' "$adapter_dir/run.sh"
+      return 0
+    fi
   fi
   return 0
 }
