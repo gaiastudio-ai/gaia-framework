@@ -26,8 +26,11 @@ export LC_ALL
 prog="$(basename "$0")"
 err() { printf '%s: %s\n' "$prog" "$*" >&2; }
 
-# Default sensitive channels per SR-82.
-DEFAULT_SENSITIVE="npm,pypi,app-store-connect,play-console,marketplace,claude-marketplace"
+# Default sensitive channels per SR-82 (story AC6 5-channel list).
+# `marketplace` covers the broader marketplace family including claude-marketplace;
+# operators can pin a project-specific list via publish.strict_builtin_channels in
+# project-config.yaml (--strict-sensitive flag forwards that override).
+DEFAULT_SENSITIVE="npm,pypi,app-store-connect,play-console,marketplace"
 
 ADAPTER=""
 STRICT_BUILTIN=0
@@ -78,9 +81,18 @@ _is_sensitive() {
 }
 
 if [ "$custom_exists" = "1" ]; then
-  # Post-resolution containment via realpath (SR-81 mitigates T-DCH-3).
-  resolved="$(cd "$CUSTOM_DIR" 2>/dev/null && pwd)"
-  custom_root="$(cd "$PROJECT_ROOT/.gaia/custom/adapters" 2>/dev/null && pwd)"
+  # Post-resolution containment via physical-path resolution (SR-81 mitigates
+  # T-DCH-3). MUST use `pwd -P` (or realpath when available) — the default
+  # `cd && pwd` returns the LOGICAL path (Bash `pwd -L` default) which a
+  # symlink under .gaia/custom/adapters/ pointing outside the tree would
+  # successfully spoof, bypassing the containment check.
+  if command -v realpath >/dev/null 2>&1; then
+    resolved="$(realpath "$CUSTOM_DIR" 2>/dev/null)"
+    custom_root="$(realpath "$PROJECT_ROOT/.gaia/custom/adapters" 2>/dev/null)"
+  else
+    resolved="$(cd "$CUSTOM_DIR" 2>/dev/null && pwd -P)"
+    custom_root="$(cd "$PROJECT_ROOT/.gaia/custom/adapters" 2>/dev/null && pwd -P)"
+  fi
   case "$resolved" in
     "$custom_root"/*) ;;
     *)
