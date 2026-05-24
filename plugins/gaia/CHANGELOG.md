@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.176.0] — 2026-05-24
+
+### Added
+
+- (sprint-52) artifact-taxonomy cleanup + lifecycle ordering enforcement
+- (E103) enforce lifecycle ordering across gaia skills
+- (E102) group flat artifact files into purpose-named subdirectories
+- (E101) add bats fixtures for ADR-118 decision and DOCUMENT path
+
+### Fixed
+
+- (AF-2026-05-24-4) relocate review evidence to .gaia/state/review/ and strip gaia- prefix
+- (sprint-52) unbreak existing bats suites after sprint-52 wiring
+- (E103-S3) skip lifecycle gates when no upstream artifacts present
+
 ## [1.175.0] — 2026-05-24
 
 ### Added
