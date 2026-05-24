@@ -374,6 +374,21 @@ _step3_trigger_publish() {
     return
   fi
 
+  # E100-S9 SR-76: pre-flight credential audit against the resolved adapter dir.
+  # Refuse to invoke run.sh on audit FAIL — closes T-PUB-1 (DREAD 5.8 High) at runtime.
+  local audit_script="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/audit-publish-adapter-credentials.sh"
+  [ -x "$audit_script" ] || audit_script="$(dirname "$0")/../../../scripts/lib/audit-publish-adapter-credentials.sh"
+  if [ -x "$audit_script" ] && [ -n "$adapter_bin" ]; then
+    local adapter_dir
+    adapter_dir=$(dirname "$adapter_bin")
+    if ! "$audit_script" "$adapter_dir" >&2; then
+      STEP3_STATUS="FAILED"
+      STEP3_DETAIL="HALT: adapter credential audit failed — undeclared credential source"
+      _progress 3 "trigger-publish" "$STEP3_STATUS" "$STEP3_DETAIL"
+      return
+    fi
+  fi
+
   # Custom adapter present → invoke its --action trigger.
   if [ "$DRY_RUN" = "1" ]; then
     STEP3_STATUS="PASSED"
