@@ -1,0 +1,6 @@
+adapter_name: publish-mobile-app
+adapter_version: "1.0.0"
+channel: mobile-app
+verify_retry_window_seconds: null
+credential_env_vars: []
+description: STUB adapter for App Store Connect / Play Console publishes — returns UNVERIFIED with human-review-required marker per FR-527.

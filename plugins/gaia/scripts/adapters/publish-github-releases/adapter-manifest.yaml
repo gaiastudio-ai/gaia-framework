@@ -1,0 +1,7 @@
+adapter_name: publish-github-releases
+adapter_version: "1.0.0"
+channel: github-releases
+verify_retry_window_seconds: 60
+credential_env_vars:
+  - GH_TOKEN
+description: Create a GitHub Release via `gh release create`; verify by polling the release API.
