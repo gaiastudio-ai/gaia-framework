@@ -1,0 +1,7 @@
+adapter_name: publish-claude-marketplace
+adapter_version: "1.0.0"
+channel: claude-marketplace
+verify_retry_window_seconds: 30
+credential_env_vars:
+  - CLAUDE_MARKETPLACE_TOKEN
+description: Publish Claude Code plugin to the Anthropic marketplace via the plugin push API.

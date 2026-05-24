@@ -1,0 +1,7 @@
+adapter_name: publish-pypi
+adapter_version: "1.0.0"
+channel: pypi
+verify_retry_window_seconds: 30
+credential_env_vars:
+  - PYPI_API_TOKEN
+description: Publish a Python package to PyPI via `twine upload`; verify via PyPI JSON API.
