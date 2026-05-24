@@ -74,5 +74,46 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event (non-fatal)"
 fi
 
+# ---------- 5. Write run-start sentinel for finalize fail-closed (AF-2026-05-24-12 / Test02 F-21) ----------
+# Test02 F-21 (HIGH): finalize.sh's GAIA_FINALIZE_SENTINEL_REQUIRED contract
+# (E92-S2) asserts the existence of $CHECKPOINT_PATH/triage-findings.json
+# with mtime OLDER than the Val sidecar write. Setup never created the
+# sentinel, so the gate was fail-closed-unusable: any invocation with the
+# sentinel-required flag set halted at finalize with "Val sidecar write
+# missing".
+#
+# This block writes the sentinel at run-start so finalize can assert
+# correctly: setup creates the .json marker NOW; finalize asserts that
+# any subsequent sidecar write has mtime > sentinel mtime. The sentinel
+# itself is a minimal JSON payload identifying the run.
+SENTINEL_DIR=""
+if [ -n "${CHECKPOINT_PATH:-}" ]; then
+  SENTINEL_DIR="$CHECKPOINT_PATH"
+elif [ -n "${PROJECT_ROOT:-}" ] && [ -d "$PROJECT_ROOT/.gaia/memory/checkpoints" ]; then
+  SENTINEL_DIR="$PROJECT_ROOT/.gaia/memory/checkpoints"
+elif [ -n "${PROJECT_ROOT:-}" ] && [ -d "$PROJECT_ROOT/_memory/checkpoints" ]; then
+  SENTINEL_DIR="$PROJECT_ROOT/_memory/checkpoints"
+elif [ -d ".gaia/memory/checkpoints" ]; then
+  SENTINEL_DIR=".gaia/memory/checkpoints"
+fi
+
+if [ -n "$SENTINEL_DIR" ]; then
+  mkdir -p "$SENTINEL_DIR" 2>/dev/null || true
+  SENTINEL_PATH="$SENTINEL_DIR/triage-findings.json"
+  # Write minimal run-start payload via atomic tempfile + mv
+  tmp_sentinel="$(mktemp "${SENTINEL_PATH}.XXXXXX" 2>/dev/null || mktemp)"
+  cat > "$tmp_sentinel" <<EOF
+{"workflow":"$WORKFLOW_NAME","run_started_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","source":"gaia-triage-findings/setup.sh","af":"AF-2026-05-24-12"}
+EOF
+  if mv "$tmp_sentinel" "$SENTINEL_PATH" 2>/dev/null; then
+    log "wrote run-start sentinel: $SENTINEL_PATH"
+  else
+    rm -f "$tmp_sentinel" 2>/dev/null
+    log "WARNING: could not write run-start sentinel at $SENTINEL_PATH — finalize fail-closed gate may halt (F-21)"
+  fi
+else
+  log "WARNING: no checkpoint dir resolved — F-21 run-start sentinel skipped"
+fi
+
 log "setup complete for $WORKFLOW_NAME"
 exit 0

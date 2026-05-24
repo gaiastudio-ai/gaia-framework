@@ -72,5 +72,29 @@ else
   log "auto-save-memory.sh not found at $AUTOSAVE_LIB — skipping auto-save (non-fatal)"
 fi
 
+# ---------- 5. Matrix-verdict gate (AF-2026-05-24-13 / Test02 F-39) ----------
+# Test02 F-39: validate-gate.sh traceability_exists returned exit 0 against
+# matrices that declared their OWN verdict as BLOCKED — the check is
+# path-based, not semantic. Per the /gaia-readiness-check Critical Rules,
+# if the matrix's gate verdict is BLOCKED, downstream must not declare
+# traceability_complete: true. F-39 fix: trace finalize surfaces a
+# WARNING when its generated matrix declares BLOCKED or FAIL so the
+# caller has an explicit signal rather than burying it inside the
+# artifact body.
+#
+# Idempotent: when no matrix is present (skill ran in --dry-run or the
+# write was skipped), this block is a silent no-op.
+TM_PATHS="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/strategy/traceability-matrix.md ${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/traceability-matrix.md"
+for tm in $TM_PATHS; do
+  if [ -f "$tm" ] && [ -s "$tm" ]; then
+    # Look for the matrix's self-declared verdict in the first ~200 lines.
+    # Canonical form: a line like "Verdict: BLOCKED" or "**Gate verdict:** BLOCKED"
+    if head -200 "$tm" 2>/dev/null | grep -qiE '(verdict|gate.*verdict)[^a-zA-Z]+(BLOCKED|FAILED|FAIL)'; then
+      log "WARNING: traceability matrix at $tm declares its own verdict as BLOCKED/FAIL — downstream /gaia-readiness-check should NOT mark traceability_complete: true (F-39 mitigation; path-based gates pass but semantic gate fails)"
+    fi
+    break
+  fi
+done
+
 log "finalize complete for $WORKFLOW_NAME"
 exit 0

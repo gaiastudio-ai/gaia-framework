@@ -86,11 +86,46 @@ declare -a matched=()
 # `declare -a artifacts=()` above gives a clean baseline; this expansion
 # guard handles the case where Bash 3.2 (macOS default) still treats an
 # empty indexed array as unbound under `set -u` even after declaration.
+# AF-2026-05-24-10 / Test02 F-24: when an artifact lacks sprint_id
+# frontmatter (manual / minimal review reports often omit it, and some
+# auto-generated ones do too), fall back to glob-matching by story key
+# against sprint-status.yaml. Without this fallback, the retro skill
+# reported "no review artifacts for sprint X" despite N review reports
+# being on disk.
+
+# Build a set of story keys for the active sprint
+SPRINT_STORY_KEYS=""
+SPRINT_STATUS_YAML="${GAIA_STATE_DIR:-.gaia/state}/sprint-status.yaml"
+if [ -f "$SPRINT_STATUS_YAML" ] && command -v yq >/dev/null 2>&1; then
+  SPRINT_STORY_KEYS="$(yq eval '.stories[].key' "$SPRINT_STATUS_YAML" 2>/dev/null | tr '\n' ' ')"
+fi
+
+# Helper: extract story key from a review-report filename like
+# `code-review-E1-S1.md` or `qa-tests-E101-S1.md`. Returns the EN-SM token.
+story_key_from_filename() {
+  local b="$(basename "$1")"
+  # Strip the review-type prefix and .md suffix to get the story key
+  printf '%s' "$b" | awk '{
+    gsub(/\.md$/, "");
+    if (match($0, /E[0-9]+-S[0-9]+/)) {
+      print substr($0, RSTART, RLENGTH)
+    }
+  }'
+}
+
 for art in ${artifacts[@]+"${artifacts[@]}"}; do
   [ -f "$art" ] || continue
   s="$(frontmatter_sprint "$art")"
   if [ "$s" = "$SPRINT_ID" ]; then
     matched+=("$art")
+    continue
+  fi
+  # Frontmatter-miss fallback per F-24: match by story key
+  if [ -z "$s" ] && [ -n "$SPRINT_STORY_KEYS" ]; then
+    key="$(story_key_from_filename "$art")"
+    if [ -n "$key" ] && printf ' %s ' "$SPRINT_STORY_KEYS" | grep -qF " $key "; then
+      matched+=("$art")
+    fi
   fi
 done
 

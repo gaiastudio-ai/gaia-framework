@@ -371,7 +371,14 @@ has_tag_java() {
 
 has_tag_python() {
   local f="$1"
-  grep -Eq '@pytest\.mark\.[A-Za-z_][A-Za-z0-9_]*' "$f" 2>/dev/null
+  # AF-2026-05-24-10 / Test02 F-14: also recognize module-level
+  # `pytestmark = pytest.mark.unit` and the list form
+  # `pytestmark = [pytest.mark.unit, pytest.mark.smoke]`. The original
+  # check only matched per-test decorators (@pytest.mark.X), missing
+  # the equally-canonical module-level form.
+  grep -Eq '@pytest\.mark\.[A-Za-z_][A-Za-z0-9_]*' "$f" 2>/dev/null && return 0
+  grep -Eq '^[[:space:]]*pytestmark[[:space:]]*=[[:space:]]*(\[[[:space:]]*)?pytest\.mark\.' "$f" 2>/dev/null && return 0
+  return 1
 }
 
 has_tag_go() {
@@ -399,7 +406,24 @@ has_tag_mobile() {
 resolve_stack_for_file() {
   local f="$1"
   if [ -n "$STACK" ]; then
-    printf '%s\n' "$STACK"
+    # AF-2026-05-24-10 / Test02 F-14: even when --stack is explicit, only
+    # apply the per-stack tag check to files that LOOK like test files
+    # for that stack. Otherwise source files passed in via the story File
+    # List (e.g. `core/budget/tracker.py`) get checked for @pytest.mark
+    # and reported as missing-tag — a false-positive on source code that
+    # has no business carrying test tags.
+    #
+    # We cross-check by calling auto-classify: if the file's extension/
+    # name matches the explicit stack's test pattern, accept; otherwise
+    # skip silently. This preserves the legacy single-stack contract for
+    # actual test files while filtering source-file noise.
+    local auto
+    auto="$(classify_path_to_stack "$f")"
+    if [ "$auto" = "$STACK" ]; then
+      printf '%s\n' "$STACK"
+    else
+      printf '\n'  # skip — not a test file for the explicit stack
+    fi
   else
     classify_path_to_stack "$f"
   fi
