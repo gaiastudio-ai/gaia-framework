@@ -358,13 +358,16 @@ Compose the retrospective artifact with the following sections:
 - Sprint metadata (sprint_id, date, velocity, completion rate)
 - What Went Well (from Step 3)
 - What Could Improve (from Step 4)
+- Bypasses (ADR-120 / E103-S5 — render between "What Went Well" and "Action items"; consume `lifecycle_list_bypasses_for_sprint "$SPRINT_ID" --format json` from `scripts/lib/lifecycle-overrides.sh` and render one `- **<skill>** — <reason> (recorded by <recorded_by> at <recorded_at>)` row per bypass. Empty state: emit the single line `No bypasses recorded for sprint-<id>.` Preserve the section heading even when empty so retro readers see a consistent template across sprints.)
 - Action Items (from Step 5)
 - Tech Debt Reflection (from Step 5e)
 - Skill Improvement Proposals (from Step 5f — approved, rejected, and skipped proposals)
 
 Determine the output file path:
-- Default: `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/retrospective-{sprint_id}-{YYYY-MM-DD}.md`
-- If that file already exists: use `retrospective-{sprint_id}-{YYYY-MM-DD}-{HHMM}.md` to avoid clobbering
+- Default: `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/retrospective/retrospective-{sprint_id}-{YYYY-MM-DD}.md`
+- If that file already exists: use `retrospective-{sprint_id}-{YYYY-MM-DD}-{HHMM}.md` (still under the nested `retrospective/` directory) to avoid clobbering
+
+Before writing, run `mkdir -p ${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/retrospective/` so the nested directory exists on first run (ADR-119).
 
 Write the artifact to the determined path.
 
