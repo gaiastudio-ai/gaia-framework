@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.175.0] — 2026-05-24
+
+### Added
+
+- (E100-S9) wire Credential-isolation bats audit + permanent CI guard (#925)
+- (E100-S8) wire Custom adapter discovery + shadowing + `--strict-bui (#922)
+- (E100-S7) wire `static-site` adapter with 6-provider dispatch + cdn (#921)
+- (E100-S6) wire `github-releases` + `container-registry` adapters + (#920)
+- (E100-S5) wire `claude-marketplace` + `npm` + `pypi` + `homebrew` a (#919)
+- (E100-S4) wire Adapter contract enforcement + ADR-037 envelope shap (#918)
+- (E100-S2) wire Pre-publish gates (CI green + manifest version match (#916)
+- (E100-S1) gaia-publish five-step orchestrator skeleton + happy path (#914)
+- (E99-S6) migration safety net (.config-stale + /gaia-config-validate warn) (#913)
+- (E99-S5) phase 5 routing + deploy-checklist publish-readiness (#906)
+
+### Fixed
+
+- (E100-S9) address Code Review findings C1+C2 (#926)
+- (E100-S8) address Code Review findings C1+C2+W1 (third pass) (#924)
+- (E100-S8) address Code Review findings C1+W1+W2+W3 (#923)
+- (E100-S1) drop dead pom.xml alternative (shellcheck SC2221/SC2222) (#915)
+
 ## [1.174.0] — 2026-05-23
 
 ### Added
