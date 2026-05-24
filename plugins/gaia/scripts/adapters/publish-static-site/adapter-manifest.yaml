@@ -1,0 +1,12 @@
+adapter_name: publish-static-site
+adapter_version: "1.0.0"
+channel: static-site
+verify_retry_window_seconds: 30
+credential_env_vars:
+  - CLOUDFLARE_API_TOKEN
+  - AWS_ACCESS_KEY_ID
+  - AWS_SECRET_ACCESS_KEY
+  - NETLIFY_AUTH_TOKEN
+  - VERCEL_TOKEN
+  - GITHUB_TOKEN
+description: "Publish a static site via one of 6 providers (cloudflare-pages, s3, netlify, vercel, github-pages, custom). Per-provider sub-handlers under providers/."
