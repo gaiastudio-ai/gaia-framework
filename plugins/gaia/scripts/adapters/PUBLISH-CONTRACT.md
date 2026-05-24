@@ -100,6 +100,33 @@ The schema enforces per-channel allowlists via `allOf` + `if/then` chains:
 
 Schema-side `maximum: 3600` enforces the SR-83 ceiling. Runtime defensive cap in `gaia-publish.sh::_step4_post_publish_verify` clamps any manifest-declared value exceeding 3600s back to 3600s and logs a WARNING. Mitigates T-PUB-4 (local DoS via malicious manifest declaring e.g. 86400s).
 
+## NFR-081 — Credential Isolation (audit-enforced)
+
+Adapters MUST source credentials ONLY from environment variables declared in
+their `adapter-manifest.yaml::credential_env_vars` list. No reads from
+`~/.npmrc`, `~/.pypirc`, `~/.aws/credentials`, `~/.docker/config.json`,
+keychain, or other ambient credential sources are permitted.
+
+**SR-76 deny-list** (audit-enforced at `tests/adapters/credential-isolation.bats`):
+`~/.npmrc`, `~/.aws/`, `~/.docker/config.json`, `security find-internet-password`,
+`aws configure`, `gcloud auth`, `keychain`. The audit extends to custom adapters
+under `.gaia/custom/adapters/publish-*/run.sh` per SR-76.
+
+**Three-dimension audit** (E100-S9):
+1. **Dimension 1 — manifest declaration** (TC-NFR-081-1): each adapter manifest
+   declares non-empty `credential_env_vars:` (or empty `maxItems: 0` for the
+   `mobile-app` STUB per SR-77).
+2. **Dimension 2 — static grep** (TC-PUB-11 + TC-NFR-081-2): no hardcoded
+   credential patterns (`AKIA*`, `-----BEGIN`, `ghp_*`, etc.) in adapter
+   source.
+3. **Dimension 3 — runtime no-implicit-reads** (TC-NFR-081-3): adapter
+   invoked with declared env vars UNSET + poisoned `~/.npmrc`/`~/.pypirc`/etc.
+   in `$HOME` MUST NOT silently consume the ambient credential.
+
+**T-PUB-1** (DREAD 5.8 High) and **T-PUB-2** (DREAD 5.4 Medium) are closed as
+permanent regression-class defects by this audit. Any regression in a future
+adapter PR fails CI via the directory-sweep bats pickup.
+
 ## References
 
 - FR-526 (uniform adapter CLI shape)
