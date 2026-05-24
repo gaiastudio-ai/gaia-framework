@@ -1,0 +1,8 @@
+adapter_name: publish-npm
+adapter_version: "1.0.0"
+channel: npm
+verify_retry_window_seconds: 30
+credential_env_vars:
+  - NPM_TOKEN
+  - NPM_REGISTRY_URL
+description: Publish a Node package to npm via `npm publish`; verify via `npm view`.

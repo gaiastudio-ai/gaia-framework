@@ -1,0 +1,6 @@
+adapter_name: publish-bad-fixture
+adapter_version: "1.0.0"
+channel: custom
+verify_retry_window_seconds: 60
+credential_env_vars: []
+description: "Negative-control fixture — empty credential_env_vars MUST fail the audit."

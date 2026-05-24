@@ -1,0 +1,6 @@
+{
+  "verdict": "SUCCESS",
+  "evidence": [{"type": "log-excerpt", "content": "...", "source": "x"}],
+  "summary": "verdict outside enum",
+  "adapter_metadata": {"adapter_name": "x", "adapter_version": "1.0.0", "channel": "npm", "action": "trigger"}
+}

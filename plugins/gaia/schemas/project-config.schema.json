@@ -582,7 +582,7 @@
             "artifact_id":      { "type": "string", "description": "maven required sub-field" },
             "tap":              { "type": "string", "description": "homebrew required sub-field" },
             "repo":             { "type": "string", "description": "github-releases required sub-field" },
-            "adapter_name":     { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "custom required sub-field — names the directory under .gaia/custom/adapters/publish-<adapter_name>/" }
+            "adapter_name":     { "type": "string", "pattern": "^[a-z0-9-]{1,64}$", "description": "custom required sub-field — names the directory under .gaia/custom/adapters/publish-<adapter_name>/. SR-81: regex bars slashes / dots / uppercase to prevent path-traversal (T-DCH-3)." }
           },
           "allOf": [
             {

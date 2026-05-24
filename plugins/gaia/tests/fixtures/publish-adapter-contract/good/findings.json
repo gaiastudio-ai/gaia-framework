@@ -1,0 +1,13 @@
+{
+  "verdict": "FAILED",
+  "evidence": [
+    {"type": "log-excerpt", "content": "auth failure: 401 Unauthorized", "source": "https://registry.npmjs.org/-/whoami"}
+  ],
+  "summary": "Authentication failed against npm registry — NPM_TOKEN appears invalid.",
+  "adapter_metadata": {
+    "adapter_name": "publish-npm",
+    "adapter_version": "1.0.0",
+    "channel": "npm",
+    "action": "trigger"
+  }
+}

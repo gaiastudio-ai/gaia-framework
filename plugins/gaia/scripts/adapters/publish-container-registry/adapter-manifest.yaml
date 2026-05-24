@@ -1,0 +1,8 @@
+adapter_name: publish-container-registry
+adapter_version: "1.0.0"
+channel: container-registry
+verify_retry_window_seconds: 60
+credential_env_vars:
+  - DOCKER_TOKEN
+  - GH_TOKEN
+description: "Push a container image to docker.io or ghcr.io. Tag strategies: semver (vX.Y.Z, vX.Y, latest), commit-sha, latest."
