@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gaiastudio.ai/schemas/adapter-manifest.schema.json",
+  "title": "GAIA Publish Adapter Manifest",
+  "description": "Schema for adapter-manifest.yaml co-located with each publish adapter under plugins/gaia/scripts/adapters/publish-<channel>/ per ADR-113 §clause (c). Enforces SR-77 per-channel credential_env_vars allowlist and SR-83 verify_retry_window_seconds.maximum=3600 cap.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "adapter_name",
+    "adapter_version",
+    "channel",
+    "verify_retry_window_seconds",
+    "credential_env_vars",
+    "description"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "pattern": "^publish-[a-z0-9-]+$",
+      "description": "Adapter directory name. Must match the publish-<channel> convention."
+    },
+    "adapter_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Semver version of the adapter implementation."
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "claude-marketplace",
+        "npm",
+        "pypi",
+        "homebrew",
+        "github-releases",
+        "container-registry",
+        "static-site",
+        "mobile-app",
+        "maven",
+        "custom"
+      ],
+      "description": "Closed channel registry per ADR-112 §(c). The 10 first-class channels + 'custom'."
+    },
+    "verify_retry_window_seconds": {
+      "oneOf": [
+        {"type": "integer", "minimum": 1, "maximum": 3600},
+        {"type": "null"}
+      ],
+      "description": "Per-NFR-082: bounded retry window for step 4 verify probe. SR-83: schema-side cap at 3600s mitigates T-PUB-4 unbounded local DoS. null permitted only for channels with intrinsically unbounded propagation (mobile-app)."
+    },
+    "credential_env_vars": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Per-channel allowlist of permitted credential environment variables (SR-77). Enforced by allOf chain below."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short human-readable description of the adapter."
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"channel": {"const": "npm"}}, "required": ["channel"]},
+      "then": {"properties": {"credential_env_vars": {"items": {"enum": ["NPM_TOKEN", "NPM_REGISTRY_URL"]}}}}
+    },
+    {
+      "if": {"properties": {"channel": {"const": "pypi"}}, "required": ["channel"]},
+      "then": {"properties": {"credential_env_vars": {"items": {"enum": ["PYPI_API_TOKEN"]}}}}
+    },
+    {
+      "if": {"properties": {"channel": {"const": "github-releases"}}, "required": ["channel"]},
+      "then": {"properties": {"credential_env_vars": {"items": {"enum": ["GH_TOKEN", "GITHUB_TOKEN"]}}}}
+    },
+    {
+      "if": {"properties": {"channel": {"const": "homebrew"}}, "required": ["channel"]},
+      "then": {"properties": {"credential_env_vars": {"items": {"enum": ["HOMEBREW_GITHUB_TOKEN"]}}}}
+    },
+    {
+      "if": {"properties": {"channel": {"const": "container-registry"}}, "required": ["channel"]},
+      "then": {"properties": {"credential_env_vars": {"items": {"enum": ["REGISTRY_USERNAME", "REGISTRY_PASSWORD"]}}}}
+    },
+    {
+      "if": {"properties": {"channel": {"const": "claude-marketplace"}}, "required": ["channel"]},
+      "then": {"properties": {"credential_env_vars": {"items": {"enum": ["CLAUDE_MARKETPLACE_TOKEN"]}}}}
+    },
+    {
+      "if": {"properties": {"channel": {"const": "static-site"}}, "required": ["channel"]},
+      "then": {"properties": {"credential_env_vars": {"items": {"enum": ["NETLIFY_TOKEN", "VERCEL_TOKEN", "CF_API_TOKEN", "S3_ACCESS_KEY", "S3_SECRET_KEY"]}}}}
+    },
+    {
+      "if": {"properties": {"channel": {"const": "mobile-app"}}, "required": ["channel"]},
+      "then": {"properties": {"credential_env_vars": {"maxItems": 0}}}
+    },
+    {
+      "if": {"properties": {"channel": {"const": "maven"}}, "required": ["channel"]},
+      "then": {"properties": {"credential_env_vars": {"items": {"enum": ["MAVEN_USERNAME", "MAVEN_PASSWORD", "MAVEN_GPG_PASSPHRASE"]}}}}
+    }
+  ]
+}

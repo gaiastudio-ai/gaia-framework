@@ -129,11 +129,13 @@ STEP3_STATUS="PENDING"; STEP3_DETAIL=""
 STEP4_STATUS="PENDING"; STEP4_DETAIL=""
 STEP5_STATUS="PENDING"; STEP5_DETAIL=""
 # Audit-trail per-step reason markers (E100-S2 AC2 / AC4 + F3 audit-symmetry,
-# E100-S3 AC4 / AC5 — verify-failed / verify-skipped).
+# E100-S3 AC4 / AC5 — verify-failed / verify-skipped,
+# E100-S4 — adapter findings surfacing + envelope-schema-violation distinction).
 STEP1_REASON=""
 STEP2_REASON=""
 STEP4_REASON=""
 VERIFY_SKIPPED=0
+ADAPTER_FINDINGS_SUMMARY=""
 
 # Internal: emit a one-line progress marker per step.
 _progress() {
@@ -406,22 +408,58 @@ _step4_post_publish_verify() {
   # Default to 60s if no window declared (sensible default per ADR-113 illustrative).
   : "${window:=60}"
 
+  # E100-S4: ADR-037 envelope validator helper.
+  local envelope_validator="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/validate-adr037-envelope.sh"
+  # Fallback for development trees where CLAUDE_PLUGIN_ROOT is not set.
+  if [ ! -x "$envelope_validator" ]; then
+    envelope_validator="$(dirname "$0")/../../../scripts/lib/validate-adr037-envelope.sh"
+  fi
+
   # Bounded exponential back-off loop.
   local elapsed=0 delay=1 attempt=0
-  local findings verdict artifact_url last_verdict="UNKNOWN"
+  local findings adapter_exit verdict adapter_summary last_verdict="UNKNOWN"
   while [ "$elapsed" -lt "$window" ]; do
     attempt=$((attempt + 1))
     findings=$(mktemp -t gaia-publish-verify.XXXXXX.json)
-    if "$adapter_bin" --action verify --version "$VERSION" --registry "$REGISTRY" --manifest "$MANIFEST" --output "$findings" >/dev/null 2>&1; then
-      :
+    rm -f "$findings"  # mktemp creates; we want it to be created by the adapter
+    set +e
+    "$adapter_bin" --action verify --version "$VERSION" --registry "$REGISTRY" --manifest "$MANIFEST" --output "$findings" >/dev/null 2>&1
+    adapter_exit=$?
+    set -e
+
+    # E100-S4 AC4: adapter-internal-failure — non-zero exit BEFORE findings written.
+    if [ "$adapter_exit" -ne 0 ] && [ ! -s "$findings" ]; then
+      STEP4_STATUS="FAILED"
+      STEP4_DETAIL="adapter $(basename "$adapter_bin") exited $adapter_exit without writing findings.json — adapter-internal-failure"
+      STEP4_REASON="adapter-internal-failure"
+      err "$STEP4_DETAIL"
+      _progress 4 "post-publish-verify" "$STEP4_STATUS" "$STEP4_DETAIL"
+      rm -f "$findings"
+      return
     fi
+
+    # E100-S4 AC6: envelope-schema-violation — findings written but malformed.
+    if [ -x "$envelope_validator" ]; then
+      local validate_err
+      if ! validate_err=$("$envelope_validator" "$findings" 2>&1); then
+        STEP4_STATUS="FAILED"
+        STEP4_DETAIL="ADR-037 envelope-schema-violation in findings.json: $validate_err"
+        STEP4_REASON="envelope-schema-violation"
+        err "$STEP4_DETAIL"
+        _progress 4 "post-publish-verify" "$STEP4_STATUS" "$STEP4_DETAIL"
+        rm -f "$findings"
+        return
+      fi
+    fi
+
     if [ -s "$findings" ] && command -v jq >/dev/null 2>&1; then
       verdict=$(jq -r '.verdict // "UNVERIFIED"' "$findings" 2>/dev/null)
-      artifact_url=$(jq -r '.artifact_url // ""' "$findings" 2>/dev/null)
+      adapter_summary=$(jq -r '.summary // ""' "$findings" 2>/dev/null)
     else
       verdict="UNVERIFIED"
-      artifact_url=""
+      adapter_summary=""
     fi
+    ADAPTER_FINDINGS_SUMMARY="$adapter_summary"
     rm -f "$findings"
     last_verdict="$verdict"
 
@@ -452,7 +490,7 @@ _step4_post_publish_verify() {
   done
 
   STEP4_STATUS="FAILED"
-  STEP4_DETAIL="artifact not resolvable at ${artifact_url:-<unknown>} — verify-window exhausted at ${elapsed}s (last verdict: $last_verdict)"
+  STEP4_DETAIL="artifact not resolvable — verify-window exhausted at ${elapsed}s (last verdict: $last_verdict; adapter summary: ${ADAPTER_FINDINGS_SUMMARY:-<none>})"
   STEP4_REASON="post-publish-verify-failed"
   err "$STEP4_DETAIL"
   _progress 4 "post-publish-verify" "$STEP4_STATUS" "$STEP4_DETAIL"
@@ -522,6 +560,9 @@ _step5_final_verdict() {
 ${STEP1_REASON:+- step 1: reason=$STEP1_REASON}
 ${STEP2_REASON:+- step 2: reason=$STEP2_REASON}
 ${STEP4_REASON:+- step 4: reason=$STEP4_REASON}
+
+## Publish Adapter Findings
+${ADAPTER_FINDINGS_SUMMARY:+adapter summary: $ADAPTER_FINDINGS_SUMMARY}
 EOF
   printf '[gaia-publish] assessment doc: %s\n' "$doc"
 

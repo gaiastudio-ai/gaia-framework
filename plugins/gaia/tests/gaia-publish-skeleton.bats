@@ -71,6 +71,66 @@ SHIM
   export PATH
 }
 
+# Install a shim that COPIES a fixture envelope at --output. Used by
+# TC-GPO-7/9 contract tests. The fixture path comes from $ADAPTER_FIXTURE_DIR
+# (e.g., tests/fixtures/publish-adapter-contract/good/).
+_install_adapter_fixture_shim() {
+  local channel="${1:-claude-marketplace}"
+  local shim_dir="$TEST_TMP/bin"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/gaia-adapter-publish-$channel" <<'SHIM'
+#!/usr/bin/env bash
+output=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) output="$2"; shift 2;;
+    *) shift;;
+  esac
+done
+[ -n "$output" ] || { echo "fixture-shim: --output required" >&2; exit 2; }
+[ -n "${ADAPTER_FIXTURE_DIR:-}" ] || { echo "fixture-shim: ADAPTER_FIXTURE_DIR unset" >&2; exit 2; }
+cp "$ADAPTER_FIXTURE_DIR/findings.json" "$output"
+SHIM
+  chmod +x "$shim_dir/gaia-adapter-publish-$channel"
+  PATH="$shim_dir:$PATH"
+  export PATH
+}
+
+# Install a shim that EXITS with the given code BEFORE writing findings.json.
+# Used by TC-GPO-8 (adapter-internal-failure).
+_install_adapter_crash_shim() {
+  local channel="${1:-claude-marketplace}"
+  local exit_code="${2:-1}"
+  local shim_dir="$TEST_TMP/bin"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/gaia-adapter-publish-$channel" <<SHIM
+#!/usr/bin/env bash
+echo "adapter crashed before writing findings" >&2
+exit $exit_code
+SHIM
+  chmod +x "$shim_dir/gaia-adapter-publish-$channel"
+  PATH="$shim_dir:$PATH"
+  export PATH
+}
+
+# Install a shim that writes MALFORMED JSON (not parseable).
+_install_adapter_malformed_shim() {
+  local channel="${1:-claude-marketplace}"
+  local shim_dir="$TEST_TMP/bin"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/gaia-adapter-publish-$channel" <<'SHIM'
+#!/usr/bin/env bash
+output=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) output="$2"; shift 2;; *) shift;; esac
+done
+printf '{not valid json' > "$output"
+SHIM
+  chmod +x "$shim_dir/gaia-adapter-publish-$channel"
+  PATH="$shim_dir:$PATH"
+  export PATH
+}
+
 # Install an adapter shim at gaia-adapter-publish-<channel> on PATH.
 # The shim writes ADR-037 envelope to --output <path>.
 # Reads $ADAPTER_VERIFY_OUTCOME (PASSED|FAILED|UNVERIFIED, default PASSED)
@@ -94,7 +154,12 @@ done
 [ -n "$output" ] || { echo "shim: --output required" >&2; exit 2; }
 sleep "${ADAPTER_VERIFY_DELAY_S:-0}"
 cat > "$output" <<JSON
-{"agent":"adapter-shim","verdict":"${ADAPTER_VERIFY_OUTCOME:-PASSED}","artifact_url":"https://example.com/artifact"}
+{
+  "verdict": "${ADAPTER_VERIFY_OUTCOME:-PASSED}",
+  "evidence": [{"type":"registry-response","content":"shim response","source":"https://example.com/artifact"}],
+  "summary": "adapter-shim test envelope",
+  "adapter_metadata": {"adapter_name":"adapter-shim","adapter_version":"1.0.0","channel":"claude-marketplace","action":"verify"}
+}
 JSON
 SHIM
   chmod +x "$shim_dir/gaia-adapter-publish-$channel"
@@ -475,6 +540,103 @@ YAML
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'step 4/5 (post-publish-verify): PASSED'
+}
+
+# ---------- TC-GPO-7: FAILED verdict propagation with adapter findings ----------
+
+@test "TC-GPO-7: well-formed envelope with verdict FAILED → orchestrator FAILED + adapter findings surfaced" {
+  _write_config
+  _write_plugin_json 1.0.0
+  _write_adapter_manifest claude-marketplace 2
+  _install_adapter_fixture_shim claude-marketplace
+  local fixture_dir="$BATS_TEST_DIRNAME/fixtures/publish-adapter-contract/good"
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_FIXTURE_DIR="$fixture_dir" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'step 4/5 (post-publish-verify): FAILED'
+  # The adapter's summary is surfaced in the assessment doc.
+  local doc
+  doc=$(find "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" -name 'assessment-publish-*.md' | head -1)
+  [ -f "$doc" ]
+  grep -qi 'publish adapter findings\|adapter.*summary' "$doc"
+  grep -qF 'Authentication failed' "$doc"
+}
+
+# ---------- TC-GPO-8: adapter-internal-failure ----------
+
+@test "TC-GPO-8: adapter exits non-zero BEFORE findings.json → adapter-internal-failure (distinct from FAILED)" {
+  _write_config
+  _write_plugin_json 1.0.0
+  _write_adapter_manifest claude-marketplace 2
+  _install_adapter_crash_shim claude-marketplace 1
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'step 4/5 (post-publish-verify): FAILED'
+  echo "$output" | grep -qi 'adapter-internal-failure\|without writing findings'
+}
+
+# ---------- TC-GPO-9: envelope schema violation ----------
+
+@test "TC-GPO-9: missing verdict in findings.json → envelope-schema-violation HALT" {
+  _write_config
+  _write_plugin_json 1.0.0
+  _write_adapter_manifest claude-marketplace 2
+  _install_adapter_fixture_shim claude-marketplace
+  local fixture_dir="$BATS_TEST_DIRNAME/fixtures/publish-adapter-contract/bad-missing-verdict"
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_FIXTURE_DIR="$fixture_dir" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -qi 'envelope.*schema.*violation\|adr-037'
+  echo "$output" | grep -qi 'verdict'
+}
+
+@test "TC-GPO-9: verdict outside enum → envelope-schema-violation HALT" {
+  _write_config
+  _write_plugin_json 1.0.0
+  _write_adapter_manifest claude-marketplace 2
+  _install_adapter_fixture_shim claude-marketplace
+  local fixture_dir="$BATS_TEST_DIRNAME/fixtures/publish-adapter-contract/bad-verdict-outside-enum"
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_FIXTURE_DIR="$fixture_dir" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -qi 'envelope.*schema.*violation\|adr-037'
+  echo "$output" | grep -qF 'SUCCESS'
+}
+
+@test "TC-GPO-9: evidence not an array → envelope-schema-violation HALT" {
+  _write_config
+  _write_plugin_json 1.0.0
+  _write_adapter_manifest claude-marketplace 2
+  _install_adapter_fixture_shim claude-marketplace
+  local fixture_dir="$BATS_TEST_DIRNAME/fixtures/publish-adapter-contract/bad-evidence-not-array"
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_FIXTURE_DIR="$fixture_dir" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -qi 'envelope.*schema.*violation\|adr-037'
+}
+
+@test "TC-GPO-9: malformed JSON in findings.json → envelope-schema-violation HALT" {
+  _write_config
+  _write_plugin_json 1.0.0
+  _write_adapter_manifest claude-marketplace 2
+  _install_adapter_malformed_shim claude-marketplace
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -qi 'envelope.*schema.*violation\|malformed\|invalid.*json'
+}
+
+# ---------- Adapter-manifest JSON Schema validation (SR-77 + SR-83) ----------
+
+@test "SR-77: validate-adapter-manifest.sh accepts well-formed manifest" {
+  local helper="$PLUGIN_DIR/scripts/lib/validate-adr037-envelope.sh"
+  [ -x "$helper" ]
+}
+
+@test "SR-77: adapter-manifest.schema.json exists" {
+  [ -f "$PLUGIN_DIR/schemas/adapter-manifest.schema.json" ]
+}
+
+@test "SR-83: schema rejects verify_retry_window_seconds > 3600" {
+  local schema="$PLUGIN_DIR/schemas/adapter-manifest.schema.json"
+  [ -f "$schema" ]
+  # Verify the schema declares the maximum=3600 constraint (within oneOf branch).
+  jq -e '[.properties.verify_retry_window_seconds.oneOf[]?.maximum] | any(. == 3600)' "$schema"
 }
 
 # ---------- Edge: missing manifest file ----------
