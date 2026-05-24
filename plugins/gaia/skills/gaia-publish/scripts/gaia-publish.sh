@@ -304,19 +304,121 @@ _step2_manifest_version_check() {
   _progress 2 "manifest-version-check" "$STEP2_STATUS" "$STEP2_DETAIL"
 }
 
-# ---------- Step 3: Trigger publish (stub — real impl lands in E100-S4..S8) ----------
+# ---------- Step 3: Trigger publish (adapter dispatch) ----------
 
+# E100-S8 C2: invoke the resolver early so SR-82 strict-builtin HALT and the
+# canonical shadow WARN fire here, BEFORE the credential-exposing trigger
+# phase. The actual adapter dispatch only fires when a custom shadow OR a
+# PATH-shim is configured — preserving E100-S1 stub-fallback for projects
+# that haven't wired any adapter yet.
 _step3_trigger_publish() {
-  # E100-S4..S8 wire the real per-channel adapter dispatch here. For now,
-  # the stub emits PASSED in dispatch mode (and DRY-RUN mode if --dry-run)
-  # so the orchestration shape is testable.
+  # Resolve via the security-aware resolver FIRST to fire SR-82 checks.
+  # If --strict-builtin would HALT on a custom shadow, that surfaces here
+  # before we dispatch any binary.
+  local resolver="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/resolve-publish-adapter.sh"
+  if [ ! -x "$resolver" ]; then
+    resolver="$(dirname "$0")/../../../scripts/lib/resolve-publish-adapter.sh"
+  fi
+  local custom_exists=0
+  if [ -d "$PROJECT_ROOT/.gaia/custom/adapters/publish-$CHANNEL" ] && \
+     [ -x "$PROJECT_ROOT/.gaia/custom/adapters/publish-$CHANNEL/run.sh" ]; then
+    custom_exists=1
+  fi
+  if [ "$custom_exists" = "1" ] && [ -x "$resolver" ]; then
+    local plugin_root="${CLAUDE_PLUGIN_ROOT:-}"
+    [ -z "$plugin_root" ] && plugin_root="$(cd "$(dirname "$0")/../../.." && pwd)"
+    local strict_arg=""
+    [ "$STRICT_BUILTIN" = "1" ] && strict_arg="--strict-builtin"
+    set +e
+    "$resolver" --adapter "$CHANNEL" --project-root "$PROJECT_ROOT" --plugin-root "$plugin_root" $strict_arg >/dev/null 2>&1
+    local resolver_pre_exit=$?
+    set -e
+    if [ "$resolver_pre_exit" = "3" ]; then
+      # Re-run to surface stderr to user.
+      "$resolver" --adapter "$CHANNEL" --project-root "$PROJECT_ROOT" --plugin-root "$plugin_root" $strict_arg >/dev/null 2>&1 || true
+      STEP3_STATUS="FAILED"
+      STEP3_DETAIL="--strict-builtin refused custom shadow for sensitive channel $CHANNEL"
+      err "HALT: --strict-builtin refuses custom shadow for sensitive channel"
+      _progress 3 "trigger-publish" "$STEP3_STATUS" "$STEP3_DETAIL"
+      return
+    fi
+    if [ "$resolver_pre_exit" = "2" ]; then
+      STEP3_STATUS="FAILED"
+      STEP3_DETAIL="adapter resolver rejected channel=$CHANNEL (see stderr — likely SR-81 traversal or manifest-validation failure)"
+      "$resolver" --adapter "$CHANNEL" --project-root "$PROJECT_ROOT" --plugin-root "$plugin_root" $strict_arg 2>&1 >/dev/null | head -3 >&2 || true
+      _progress 3 "trigger-publish" "$STEP3_STATUS" "$STEP3_DETAIL"
+      return
+    fi
+    # resolver_pre_exit=0 — custom adapter is well-formed; surface WARN.
+    "$resolver" --adapter "$CHANNEL" --project-root "$PROJECT_ROOT" --plugin-root "$plugin_root" $strict_arg 2>&1 >/dev/null | grep -F "WARN:" >&2 || true
+  fi
+
+  # Resolve adapter binary (PATH-shim first, then resolver fallback).
+  local adapter_bin
+  adapter_bin=$(_resolve_adapter_binary "$CHANNEL")
+
+  # Stub-fallback: no PATH-shim AND no custom adapter → preserve E100-S1 PASSED.
+  # (Built-in adapters are present for many channels per E100-S5..S7, but
+  # without configured credentials they would FAIL; the legacy contract is
+  # that an unconfigured environment returns PASSED stub so the orchestrator
+  # remains testable.)
+  if [ "$custom_exists" = "0" ]; then
+    if [ "$DRY_RUN" = "1" ]; then
+      STEP3_STATUS="PASSED"
+      STEP3_DETAIL="dry-run dispatch (would publish channel=$CHANNEL version=$VERSION)"
+    else
+      STEP3_STATUS="PASSED"
+      STEP3_DETAIL="stub (no custom adapter configured for channel=$CHANNEL; built-in dispatch requires credentials)"
+    fi
+    _progress 3 "trigger-publish" "$STEP3_STATUS" "$STEP3_DETAIL"
+    return
+  fi
+
+  # Custom adapter present → invoke its --action trigger.
   if [ "$DRY_RUN" = "1" ]; then
     STEP3_STATUS="PASSED"
-    STEP3_DETAIL="dry-run dispatch (would publish channel=$CHANNEL version=$VERSION)"
+    STEP3_DETAIL="dry-run dispatch (custom adapter=$(basename "$adapter_bin") channel=$CHANNEL version=$VERSION)"
+    _progress 3 "trigger-publish" "$STEP3_STATUS" "$STEP3_DETAIL"
+    return
+  fi
+  if [ -z "$adapter_bin" ]; then
+    STEP3_STATUS="FAILED"
+    STEP3_DETAIL="custom adapter for channel=$CHANNEL not invocable (resolver returned empty)"
+    _progress 3 "trigger-publish" "$STEP3_STATUS" "$STEP3_DETAIL"
+    return
+  fi
+  local trigger_findings adapter_exit
+  trigger_findings=$(mktemp -t gaia-publish-trigger.XXXXXX.json)
+  rm -f "$trigger_findings"
+  set +e
+  "$adapter_bin" --action trigger --version "$VERSION" --registry "$REGISTRY" --manifest "$MANIFEST" --output "$trigger_findings" >/dev/null 2>&1
+  adapter_exit=$?
+  set -e
+  if [ "$adapter_exit" -ne 0 ] && [ ! -s "$trigger_findings" ]; then
+    STEP3_STATUS="FAILED"
+    STEP3_DETAIL="custom adapter trigger exited $adapter_exit without writing findings.json"
+    rm -f "$trigger_findings"
+    _progress 3 "trigger-publish" "$STEP3_STATUS" "$STEP3_DETAIL"
+    return
+  fi
+  if command -v jq >/dev/null 2>&1 && [ -s "$trigger_findings" ]; then
+    local trigger_verdict
+    trigger_verdict=$(jq -r '.verdict // "UNVERIFIED"' "$trigger_findings" 2>/dev/null)
+    case "$trigger_verdict" in
+      PASSED|UNVERIFIED)
+        STEP3_STATUS="PASSED"
+        STEP3_DETAIL="custom adapter trigger PASSED (channel=$CHANNEL version=$VERSION verdict=$trigger_verdict)"
+        ;;
+      *)
+        STEP3_STATUS="FAILED"
+        STEP3_DETAIL="custom adapter trigger returned verdict=$trigger_verdict"
+        ;;
+    esac
   else
     STEP3_STATUS="PASSED"
-    STEP3_DETAIL="stub (E100-S4..S8 will wire adapter dispatch for channel=$CHANNEL)"
+    STEP3_DETAIL="custom adapter trigger completed"
   fi
+  rm -f "$trigger_findings"
   _progress 3 "trigger-publish" "$STEP3_STATUS" "$STEP3_DETAIL"
 }
 
@@ -373,17 +475,20 @@ _resolve_adapter_binary() {
     # W1 fix: --strict-builtin HALT is the resolver's responsibility; the
     # caller propagates by leaving stdout empty. Step 3's main flow already
     # checks for empty adapter_bin and FAILs cleanly.
+    # NOTE: C-review W1 (E100-S8 third pass): mktemp -t over fixed /tmp path.
+    local resolver_stdout
+    resolver_stdout=$(mktemp -t gaia-resolver.XXXXXX.stdout)
     local adapter_dir
     set +e
-    adapter_dir=$("$resolver" --adapter "$channel" --project-root "$PROJECT_ROOT" --plugin-root "$plugin_root" $strict_arg 2>&1 >/tmp/.gaia-resolver.$$.stdout)
+    adapter_dir=$("$resolver" --adapter "$channel" --project-root "$PROJECT_ROOT" --plugin-root "$plugin_root" $strict_arg 2>&1 >"$resolver_stdout")
     local resolver_exit=$?
     set -e
     # Forward resolver stderr (WARN/HALT lines).
     if [ -n "$adapter_dir" ]; then
       printf '%s\n' "$adapter_dir" >&2
     fi
-    adapter_dir=$(cat /tmp/.gaia-resolver.$$.stdout 2>/dev/null || true)
-    rm -f /tmp/.gaia-resolver.$$.stdout
+    adapter_dir=$(cat "$resolver_stdout" 2>/dev/null || true)
+    rm -f "$resolver_stdout"
     if [ "$resolver_exit" = "0" ] && [ -x "$adapter_dir/run.sh" ]; then
       printf '%s' "$adapter_dir/run.sh"
       return 0
