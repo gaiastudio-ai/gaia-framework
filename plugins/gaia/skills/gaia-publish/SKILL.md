@@ -30,7 +30,25 @@ You are running the Phase 5 publish action for a non-deployable project. The ski
 | `--version <semver>` | yes | The version to publish. Must match the version in `distribution.manifest` (step 2 check). Leading `v` is stripped before comparison. |
 | `--dry-run` | no | Exit cleanly after step 3 with steps 4-5 SKIPPED + the "dry-run mode — verify/post-publish skipped" marker. Adapter dispatch (step 3) runs in DRY-RUN mode — no actual publish. Audit-trail records the dry-run. |
 | `--skip-verify` | no | Bypass step 4 (post-publish registry probe) with a WARNING per NFR-082 opt-out. Use sparingly — the registry probe catches publish failures that would otherwise surface only when downstream consumers try to fetch. |
-| `--strict-builtin` | no | Refuse custom-adapter shadows for sensitive channels per SR-82. Forces the built-in adapter even when a `.gaia/custom/adapters/publish-{channel}/` directory shadows it. E100-S8 wires the actual shadow detection. |
+| `--strict-builtin` | no | Refuse custom-adapter shadows for sensitive channels per SR-82. Forces the built-in adapter even when a `.gaia/custom/adapters/publish-{channel}/` directory shadows it. Default-sensitive list: `npm, pypi, app-store-connect, play-console, marketplace, claude-marketplace`. Operators can pin the list via `publish.strict_builtin_channels:` in project-config.yaml. |
+
+## Custom adapter discovery + shadowing (E100-S8 / ADR-020 + SR-81 + SR-82)
+
+Custom adapters at `<project-root>/.gaia/custom/adapters/publish-<adapter_name>/` shadow built-in adapters at `<plugin-root>/scripts/adapters/publish-<channel>/` per ADR-020 precedence. The `scripts/lib/resolve-publish-adapter.sh` helper implements the discovery + containment + warning flow:
+
+- **Discovery:** filesystem scan of `.gaia/custom/adapters/publish-<adapter_name>/run.sh` (no registration file — the filesystem IS the registry).
+- **SR-81 path-traversal mitigation:** `adapter_name` MUST match regex `^[a-z0-9-]{1,64}$` (no slashes, no dots, no uppercase). Schema rejects violations at `/gaia-config-validate` time. Resolver re-checks at runtime. Post-resolution canonicalization via `realpath` ensures the resolved path is inside `.gaia/custom/adapters/`.
+- **SR-82 shadow warning:** when a custom adapter shadows a built-in, the resolver emits the canonical stderr line `WARN: custom adapter at .gaia/custom/adapters/publish-<channel>/ shadows built-in adapter`. This is the SOLE shadow-surfacing message; downstream skills MUST NOT emit alternative variants.
+- **SR-82 `--strict-builtin` HALT:** when `--strict-builtin` is passed AND the resolved channel is in the sensitive list, the resolver exits 3 with `HALT: --strict-builtin refuses custom shadow for sensitive channel`.
+
+### Trust model (T-CUS-1)
+
+Custom adapters execute with publish-time credentials — by design under ADR-020 precedence. This is a deliberate trade-off:
+
+- **(a) T-CUS-1 risk:** A malicious custom adapter under `.gaia/custom/adapters/publish-npm/` could exfiltrate the operator's `NPM_TOKEN` at the moment `/gaia-publish --version v1.0.0` runs.
+- **(b) `--strict-builtin` is the opt-out** for risk-averse operators on sensitive channels.
+- **(c) CODEOWNERS recommendation:** extend the SR-42 pattern to `.gaia/custom/adapters/publish-*/` for sensitive-channel custom shadows so review is required before any change to the shadow adapter lands.
+- **(d) Defense-in-depth via E100-S9:** the bats credential-isolation audit extends to custom adapters as a structural control (proves no shell read of `~/.npmrc`, `~/.pypirc`, etc.).
 
 ## Five-step orchestration (FR-525 canonical order)
 
