@@ -216,7 +216,7 @@ When `$COMPOSITE` is `UNVERIFIED`:
 - **ADR-095**: sanctioned boundary writes via `sprint-state.sh` (no direct `yq -i` against `sprint-status.yaml`).
 - **ADR-086**: action-items.yaml canonical registry + 11-type resolver.
 - **ADR-074 C3**: no silent fallback in scripts.
-- **ADR-067**: YOLO mode contract (this skill has `yolo_steps: []` — sprint review is an interactive ceremony only, NOT YOLO-able).
+- **ADR-067**: YOLO mode contract (this skill has `yolo_steps: []` — sprint review is an interactive ceremony only, NOT YOLO-able). **Per AF-2026-05-24-11 / Test02 F-15:** this is a deliberate design choice, not an oversight. The three `AskUserQuestion` boundaries (Step 3 pre-Val dispatch, Step 4 per-goal stakeholder confirmation, Step 8 UNVERIFIED bypass explanation) require human judgment that cannot be safely auto-answered. CI / unattended pipelines that need sprint-review automation should script the boundary writes directly via `sprint-state.sh transition --sprint <id> --to review` + write the sprint-review artifact + Val sentinel + invoke `finalize.sh` (matching the YARA-2 manual workaround pattern). A future enhancement may add a `--yolo-defaults works-as-expected` flag if stakeholder-confirmation auto-resolution becomes desirable (E14 enhancement candidate).
 - **FR-488..FR-495**: the 8-step orchestration FRs.
 - **NFR-067**: main-turn Mode A invariant (AskUserQuestion reachability).
 - **NFR-069**: foreground-mode invariant (Track B enforced headed in E93-S4).

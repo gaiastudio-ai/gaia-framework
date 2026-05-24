@@ -105,6 +105,37 @@ else
   PRD="docs/planning-artifacts/prd.md"
 fi
 
+# ---------- 0b. Em-dash heading normalization (AF-2026-05-24-9 / Test02 F-7) ----------
+# Test02 F-7: the PM/architect subagent reliably emits ASCII `--` instead
+# of the canonical em-dash `—` (U+2014) in epic headings. The
+# `resolve-epic-slug.sh` resolver accepts both forms per AF-2026-05-22-6
+# Bug-5, but `finalize.sh` SV-03 only recognizes the `## Epic N:` form
+# (F-8 separate). Either way, the ASCII `--` form is a Markdown
+# autocorrect artifact, not the canonical heading shape.
+#
+# Producer-side fix: normalize ASCII `## EN -- Title` → `## EN — Title`
+# (em-dash) in epic headings. Stories under H3 use a different pattern
+# (### Story EN-SM — Title) which is harmless to normalize too.
+#
+# Idempotent: re-runs on already-normalized text are no-ops.
+if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
+  # Use python3 (always available per ADR-074) for the unicode-aware rewrite.
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$ARTIFACT" <<'NORMPY' || log "WARNING: em-dash normalization failed (F-7 mitigation)"
+import sys, re, io
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8') as f:
+    content = f.read()
+# Match: ## E{N} -- Title (epic headings) and ### Story EN-SM -- Title
+new = re.sub(r'^(##+\s+(?:E\d+|Story\s+E\d+-S\d+))\s+--\s+', r'\1 — ', content, flags=re.MULTILINE)
+if new != content:
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(new)
+NORMPY
+    log "em-dash normalization applied to $ARTIFACT (F-7 mitigation — ASCII -- → em-dash)"
+  fi
+fi
+
 # ---------- 1. Run the 31-item checklist ----------
 VIOLATIONS=()
 CHECKED=0

@@ -66,14 +66,33 @@ else
   log "resolve-config.sh not found at $RESOLVE_CONFIG — using environment defaults"
 fi
 
-# ---------- 2. Validate gates (prereqs) — BOTH mandatory per ADR-042 ----------
-# The readiness-check skill requires BOTH traceability-matrix.md AND ci-setup.md
-# to exist. Neither gate is optional. Neither can be skipped via flag.
-# We use --multi to evaluate both in order; validate-gate.sh fails fast on the
-# first missing artifact with a clear gate-specific error message.
+# ---------- 2. Validate gates (prereqs) — ADR-042 mandatory gates ----------
+# AF-2026-05-24-13 / Test02 F-36: the ci-setup.md gate was originally
+# unconditional, but /gaia-init accepts `ci_platform.provider: none` as a
+# valid config for projects that deliberately skip CI. Those projects
+# could not run /gaia-readiness-check at all. F-36 fix: make the
+# ci_setup_exists gate conditional on `ci_platform.provider != none`.
+# When `none`, only the traceability gate fires.
+NEEDS_CI_GATE=1
+PROJECT_CONFIG_PATH="${PROJECT_CONFIG:-.gaia/config/project-config.yaml}"
+if [ -f "$PROJECT_CONFIG_PATH" ] && command -v yq >/dev/null 2>&1; then
+  ci_provider="$(yq eval '.ci_platform.provider // .ci_cd.provider // ""' "$PROJECT_CONFIG_PATH" 2>/dev/null || echo "")"
+  if [ "$ci_provider" = "none" ]; then
+    NEEDS_CI_GATE=0
+    log "F-36: ci-setup.md gate skipped (ci_platform.provider=none — no-CI project shape per ADR-081)"
+  fi
+fi
+
 if [ -x "$VALIDATE_GATE" ]; then
-  if ! "$VALIDATE_GATE" --multi "traceability_exists,ci_setup_exists" 2>&1; then
-    die "Quality gate failed for $WORKFLOW_NAME — required artifact(s) missing. Run /gaia-trace and/or /gaia-ci-setup to generate the missing artifact(s)."
+  if [ "$NEEDS_CI_GATE" -eq 1 ]; then
+    GATE_LIST="traceability_exists,ci_setup_exists"
+    GATE_REMEDIATION="Run /gaia-trace and/or /gaia-ci-setup to generate the missing artifact(s)."
+  else
+    GATE_LIST="traceability_exists"
+    GATE_REMEDIATION="Run /gaia-trace to generate the missing artifact."
+  fi
+  if ! "$VALIDATE_GATE" --multi "$GATE_LIST" 2>&1; then
+    die "Quality gate failed for $WORKFLOW_NAME — required artifact(s) missing. $GATE_REMEDIATION"
   fi
 else
   die "validate-gate.sh not found at $VALIDATE_GATE — cannot enforce mandatory gates"
@@ -89,9 +108,12 @@ if [ ! -s "$TRACE_PATH" ]; then
 fi
 
 # ---------- 2c. Guard: ci-setup.md must be non-empty (E28-S98) ----------
-CI_PATH="${TEST_ARTIFACTS}/ci-setup.md"
-if [ ! -s "$CI_PATH" ]; then
-  die "HALT: ci-setup.md exists but is empty (zero-byte) — run /gaia-ci-setup to populate it (ADR-042 enforced gate)"
+# Skipped when ci_platform.provider=none per F-36.
+if [ "$NEEDS_CI_GATE" -eq 1 ]; then
+  CI_PATH="${TEST_ARTIFACTS}/ci-setup.md"
+  if [ ! -s "$CI_PATH" ]; then
+    die "HALT: ci-setup.md exists but is empty (zero-byte) — run /gaia-ci-setup to populate it (ADR-042 enforced gate)"
+  fi
 fi
 
 # ---------- 3. Load checkpoint state ----------

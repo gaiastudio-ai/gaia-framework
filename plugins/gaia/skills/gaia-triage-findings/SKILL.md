@@ -86,7 +86,7 @@ For each finding, show:
 ### Step 3 --- Triage Each Finding
 
 > [!yolo]
-> Step 3 honors the declarative `yolo_steps: [3]` frontmatter declaration per ADR-057 §10.30.2 (wire-up table §10.30.6 row E41-S5). Under YOLO, the recommended disposition (DEFER / ADD TO EXISTING / NEW STORY / NOW) is auto-applied per finding without the per-finding `confirm or override` prompt. Subagent inheritance: `GAIA_YOLO_MODE=1` propagates to delegated `/gaia-create-story` spawns per §10.30.5. Hard gates remain enforced in BOTH modes: Step 3a (Reproduction Required, E28-S223), Step 3b (Done-Story Guard, FR-FITP-1), and Step 3c (action-items persistence, FR-FITP-3) are NEVER bypassed — `yolo_steps` covers only Step 3 itself, never 3a/3b/3c. Data-sufficiency interactive fallback per ECI-505: if a finding lacks fields required by its recommendation (missing epic key, unresolvable target story, missing sprint ID for NOW), the auto-apply pauses for that finding only and surfaces the per-finding interactive fallback — no silent default. Ctrl-C recovery per ECI-508: the existing `[TRIAGED]` / `[DISMISSED]` markers + `(finding_id, sprint_id)` dedup key on `action-items.yaml` guarantee re-run idempotency.
+> Step 3 honors the declarative `yolo_steps: [3]` frontmatter declaration per ADR-057 §10.30.2 (wire-up table §10.30.6 row E41-S5). Under YOLO, the recommended disposition (DEFER / ADD TO EXISTING / NEW STORY / NOW) is auto-applied per finding without the per-finding `confirm or override` prompt. Subagent inheritance: `GAIA_YOLO_MODE=1` propagates to delegated `/gaia-create-story` spawns per §10.30.5. Hard gates remain enforced in BOTH modes: Step 3a (Reproduction Required, E28-S223), Step 3b (Done-Story Guard, FR-FITP-1), and Step 3c (action-items persistence, FR-FITP-3) are NEVER bypassed — `yolo_steps` covers only Step 3 itself, never 3a/3b/3c. Data-sufficiency interactive fallback per ECI-505: if a finding lacks fields required by its recommendation (missing epic key, unresolvable target story, missing sprint ID for NOW), the auto-apply pauses for that finding only and surfaces the per-finding interactive fallback — no silent default. Ctrl-C recovery per ECI-508: the existing `[TRIAGED]` / `[DISMISSED]` markers + `(finding_id, sprint_id)` dedup key on `.gaia/state/action-items.yaml` guarantee re-run idempotency.
 
 Detect YOLO via the canonical helper (do NOT re-implement detection inline per §10.30.8 anti-patterns):
 
@@ -173,7 +173,7 @@ The guard exits 0 and appends an override record to the triage report under a `#
 
 `retro_flag: true` ensures `/gaia-retro` surfaces the override for retrospective review. Proceed with the ADD TO EXISTING mutation only after the guard exits 0.
 
-**Non-mutation invariant:** on the guard-fired path (no override), zero writes to the target story file, zero writes to `sprint-status.yaml`, zero writes to `action-items.yaml` (action-items writes land in Step 3c below).
+**Non-mutation invariant:** on the guard-fired path (no override), zero writes to the target story file, zero writes to `sprint-status.yaml`, zero writes to `.gaia/state/action-items.yaml` (action-items writes land in Step 3c below).
 
 ### Step 3c --- Record Action Items for NOW Classifications (E39-S3, FR-FITP-3)
 
@@ -193,7 +193,7 @@ source "${CLAUDE_PLUGIN_ROOT}/scripts/action-items-write.sh"
 3. Invoke the writer:
 ```bash
 aiw_write \
-  --target "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
+  --target "${CLAUDE_PROJECT_ROOT}/.gaia/state/action-items.yaml" \
   --sprint-id "{current_sprint_id}" \
   --classification "{mapped_classification}" \
   --text "{finding_summary}" \
@@ -202,7 +202,7 @@ aiw_write \
 ```
 
 The writer handles:
-- **Bootstrap:** creates `action-items.yaml` with the architecture §10.28.6 schema header if the file does not exist.
+- **Bootstrap:** creates `.gaia/state/action-items.yaml` with the architecture §10.28.6 schema header if the file does not exist.
 - **Auto-increment:** computes the next `AI-{n}` id from existing entries.
 - **Idempotency:** dedup key is `(finding_id, sprint_id)` -- re-running the same triage does not duplicate.
 - **Schema compliance:** entry fields match architecture §10.28.6 exactly (`id`, `sprint_id`, `text`, `classification`, `status: open`, `escalation_count: 0`, `created_at`, `theme_hash`, `finding_id`).

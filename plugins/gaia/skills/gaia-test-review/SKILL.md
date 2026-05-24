@@ -310,7 +310,7 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 
 **Malformed-payload handling.** On any of the above checks failing, the parent persists what it received with an explicit `[INCOMPLETE]` marker prepended to the report, and emits `verdict=BLOCKED` to `review-gate.sh`. Fork output untrustworthy → BLOCKED. The bats fixture covers this case explicitly (mirrors E65-S2 EC-9).
 
-**Parent write to FR-402 locked path.** The parent context writes the rendered report to `docs/implementation-artifacts/test-review-E<NN>-S<NNN>.md` per FR-402 naming convention. The path is **locked**: `test-review-{story_key}.md` — no slug, no date suffix.
+**Parent write to FR-402 locked path.** The parent context writes the rendered report to `.gaia/artifacts/implementation-artifacts/test-review-E<NN>-S<NNN>.md` per FR-402 naming convention (post-ADR-111). The path is **locked**: `test-review-{story_key}.md` — no slug, no date suffix. Per F-12 on Test02: do NOT write to the pre-ADR-111 `docs/implementation-artifacts/` path — that violates the `.gaia/` consolidation contract.
 
 **Re-run handling.** Parent **overwrites** the existing review file on re-run (latest verdict wins). No append, no version-suffix. The `review-gate.sh` row update is the source of truth for verdict history if needed.
 

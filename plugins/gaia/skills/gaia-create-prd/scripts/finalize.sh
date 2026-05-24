@@ -252,6 +252,31 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && [ ! -f "$ARTIFACT" ]; then
   printf 'Remediation: rerun /gaia-create-prd to produce .gaia/artifacts/planning-artifacts/prd.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
+  # ---------- 1a. Deterministic Review Findings auto-append (AF-2026-05-24-9 / Test02 F-4) ----------
+  # Test02 F-4: the PM subagent reliably omits the "## Review Findings
+  # Incorporated" section, but /gaia-create-arch's setup.sh halts when
+  # the PRD lacks it — a circular failure that has no LLM-side fix
+  # (re-running create-prd reproduces the omission). Per F-4's
+  # recommendation: make the adversarial-skip note a deterministic post-
+  # step write (script appends it) rather than relying on LLM behavior.
+  #
+  # This block runs BEFORE the checklist. It appends a minimal default
+  # "Adversarial review not triggered" stub ONLY if the section is
+  # entirely absent. If a real "## Review Findings Incorporated" section
+  # exists (e.g., authored by Step 14 after adversarial review fired),
+  # this is a no-op.
+  if ! grep -qE '^##[[:space:]]+Review[[:space:]]+Findings[[:space:]]+Incorporated' "$ARTIFACT"; then
+    cat >> "$ARTIFACT" <<'AUTO_APPEND'
+
+## Review Findings Incorporated
+
+Adversarial review not triggered — change type: feature.
+
+> Auto-appended by `gaia-create-prd/scripts/finalize.sh` per AF-2026-05-24-9 / Test02 F-4. If the change type was not "feature" or an adversarial review WAS performed, this stub will be overwritten by Step 14's authored content on re-run.
+AUTO_APPEND
+    log "auto-appended Review Findings Incorporated section (F-4 mitigation)"
+  fi
+
   log "running 36-item checklist against $ARTIFACT"
   printf '\nChecklist: /gaia-create-prd (36 items — 24 script-verifiable, 12 LLM-checkable)\n' >&2
 

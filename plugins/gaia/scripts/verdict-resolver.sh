@@ -294,12 +294,20 @@ fi
 # A check is failed-blocking if status == "failed". A failed check with no
 # findings is still treated as blocking (the tool itself signaled failure).
 # When findings exist we additionally honor an explicit blocking=true marker.
+#
+# AF-2026-05-24-10 / Test02 F-13: the original idiom `(.blocking // true)`
+# was buggy — jq's `//` operator returns the RHS when the LHS is `null` OR
+# `false`. So explicit `"blocking": false` findings were being inflated to
+# blocking, and the resolver returned REQUEST_CHANGES even for purely
+# advisory results. The corrected form distinguishes null (use default
+# true) from false (use false): `if .blocking == null then true else
+# .blocking end`.
 if jq -e '
   [.checks[]?
     | select(.status == "failed")
     | select(
-        (.findings // []) == []                      # no findings at all -> blocking
-        or any(.findings[]?; (.blocking // true))    # explicit blocking, default true
+        (.findings // []) == []                                          # no findings at all -> blocking
+        or any(.findings[]?; if .blocking == null then true else .blocking end)  # respect explicit false
       )
   ] | length > 0
 ' "$ANALYSIS" >/dev/null 2>&1; then

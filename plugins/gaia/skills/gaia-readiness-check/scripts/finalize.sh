@@ -97,6 +97,27 @@ ARTIFACT_REQUESTED=0
 if [ -n "${READINESS_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$READINESS_ARTIFACT"
+else
+  # AF-2026-05-24-13 / Test02 F-35: the original strict-env-var-only
+  # resolution meant interactive /gaia-readiness-check runs (without
+  # READINESS_ARTIFACT explicitly exported) saw "no artifact found"
+  # even when the canonical .gaia/artifacts/planning-artifacts/readiness-report.md
+  # existed on disk. The audit-v2-migration harness's enriched-fixture
+  # placeholder concern (above) is preserved by an opt-out signal:
+  # GAIA_READINESS_FIXTURE_GUARD=1 reproduces the strict-env-var-only
+  # behavior for the audit harness. The default behavior now auto-picks
+  # up the canonical artifact when present, fixing the interactive UX.
+  if [ "${GAIA_READINESS_FIXTURE_GUARD:-0}" != "1" ]; then
+    CANONICAL_RR="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/readiness-report.md"
+    LEGACY_RR="docs/planning-artifacts/readiness-report.md"
+    if [ -f "$CANONICAL_RR" ] && [ -s "$CANONICAL_RR" ]; then
+      ARTIFACT_REQUESTED=1
+      ARTIFACT="$CANONICAL_RR"
+    elif [ -f "$LEGACY_RR" ] && [ -s "$LEGACY_RR" ]; then
+      ARTIFACT_REQUESTED=1
+      ARTIFACT="$LEGACY_RR"
+    fi
+  fi
 fi
 
 # ---------- 1. Run the 65-item checklist ----------
