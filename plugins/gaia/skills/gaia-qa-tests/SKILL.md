@@ -134,7 +134,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 ### Phase 3A — Deterministic Analysis
 
-Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.review/gaia-qa-tests/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
+Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.gaia/state/review/qa-tests/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
 
 **Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Run test-discovery + AC-coverage analyzer per row.
 
@@ -161,7 +161,7 @@ Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `
 
 **Path normalization.** Tool outputs vary in path convention. Phase 3A normalizes all `findings[].file` to repo-relative before writing `analysis-results.json` (consistent with E65-S2 / E65-S3 pattern).
 
-**Cache plumbing (FR-DEJ-11).** Cache lives at `.review/gaia-qa-tests/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
+**Cache plumbing (FR-DEJ-11).** Cache lives at `.gaia/state/review/qa-tests/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
 
 Cache key:
 ```
@@ -178,11 +178,11 @@ sha256(
 
 Cache lookup:
 1. Compute the candidate cache key from current File List + test file hashes + story_acs_hash + tool versions.
-2. Look up `.review/gaia-qa-tests/{story_key}/.cache/{cache_key}.json`. On miss: run analyzer.
+2. Look up `.gaia/state/review/qa-tests/{story_key}/.cache/{cache_key}.json`. On miss: run analyzer.
 3. On candidate hit, **revalidate file_hashes AND test_file_hashes** against current on-disk hashes. Either input edited externally without changing other cache-key fields → treat as miss.
 
 Cache write (same-story parallel-invocation safety):
-- Write `analysis-results.json` to a per-PID temp path: `.review/gaia-qa-tests/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
+- Write `analysis-results.json` to a per-PID temp path: `.gaia/state/review/qa-tests/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
 - `mv` (atomic rename) to the final `.cache/{cache_key}.json` path. Atomic-rename gives last-writer-wins without corruption.
 - Cross-story parallel invocations are safe by per-story directory partitioning.
 - Persist via `${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh write --workflow qa-tests --step 3 --file <results.json> --var cache_key=<hash>` so `checkpoint.sh validate --workflow qa-tests` can detect drift later.
@@ -198,11 +198,11 @@ After the test-discovery / AC-coverage analyzer completes, the skill MAY run the
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-test-runner.sh \
   --story-key {story_key} \
-  --workdir .review/gaia-qa-tests/{story_key} \
+  --workdir .gaia/state/review/qa-tests/{story_key} \
   --config config/project-config.yaml
 ```
 
-The runner emits `.review/gaia-qa-tests/{story_key}/execution-evidence.json` validating against `plugins/gaia/schemas/execution-evidence.schema.json`.
+The runner emits `.gaia/state/review/qa-tests/{story_key}/execution-evidence.json` validating against `plugins/gaia/schemas/execution-evidence.schema.json`.
 
 **Tier resolution.** The runner reads `test_execution.tier_{1,2,3}.placement` from `project-config.yaml` (per FR-RSV2-11, ADR-077) and matches each tier's placement against `GAIA_EXECUTION_CONTEXT` (`local | ci_pre_merge | ci_post_merge | deployment | post_deploy`). Only tiers whose placement matches the active context run; the rest are skipped.
 
@@ -235,7 +235,7 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 
 Phase 3C runs after Phase 3B's semantic review and produces TC specifications for ACs flagged uncovered by Phase 3A's coverage analyzer. The output feeds `/gaia-test-automate` as the queue of new test cases to author.
 
-**Output.** `.review/gaia-qa-tests/{story_key}/qa-test-cases-{story_key}.json` — a JSON array of TC entries validating against `plugins/gaia/schemas/qa-test-cases.schema.json`. Each entry contains:
+**Output.** `.gaia/state/review/qa-tests/{story_key}/qa-test-cases-{story_key}.json` — a JSON array of TC entries validating against `plugins/gaia/schemas/qa-test-cases.schema.json`. Each entry contains:
 
 | Field         | Type     | Notes                                                                |
 |---------------|----------|----------------------------------------------------------------------|
@@ -254,7 +254,7 @@ Phase 3C runs after Phase 3B's semantic review and produces TC specifications fo
 - `tc_id` values within a single file MUST be unique (no duplicates).
 - When all ACs are covered, the file is an empty JSON array (`[]`) — Phase 3C does NOT emit superfluous TCs.
 
-**Deterministic boilerplate step (E67-S8).** Before LLM scenario authoring, the fork invokes `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-tc-generator.sh --story <path> --output .review/gaia-qa-tests/{story_key}/qa-test-cases-{story_key}.json` to produce deterministic TC scaffolds (one row per AC, schema-conformant, idempotent re-runs are no-ops). The generator is the boilerplate layer — it never invokes an LLM. Output rows have `type: "Unit"` and scaffold `given/when/then` text derived 1:1 from the AC body.
+**Deterministic boilerplate step (E67-S8).** Before LLM scenario authoring, the fork invokes `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-tc-generator.sh --story <path> --output .gaia/state/review/qa-tests/{story_key}/qa-test-cases-{story_key}.json` to produce deterministic TC scaffolds (one row per AC, schema-conformant, idempotent re-runs are no-ops). The generator is the boilerplate layer — it never invokes an LLM. Output rows have `type: "Unit"` and scaffold `given/when/then` text derived 1:1 from the AC body.
 
 **LLM-assisted scenario authoring.** After the deterministic boilerplate step, Phase 3C is LLM-assisted within the fork (Vera persona). The fork reads the uncovered-AC list from Phase 3A `analysis-results.json`, the boilerplate scaffolds emitted by `qa-tc-generator.sh`, and the story file's AC text, then refines the `given/when/then` text and may upgrade `type` to `Integration` or `E2E`. The deterministic part (schema, traceability, uniqueness, AC mapping) is enforced by `qa-tc-generator.sh` and the schema before the parent persists the file.
 
@@ -274,9 +274,9 @@ The verdict is computed by `verdict-resolver.sh`. The LLM never computes or over
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
-  --analysis-results .review/gaia-qa-tests/{story_key}/analysis-results.json \
-  --llm-findings .review/gaia-qa-tests/{story_key}/llm-findings.json \
-  [--execution-evidence .review/gaia-qa-tests/{story_key}/execution-evidence.json]
+  --analysis-results .gaia/state/review/qa-tests/{story_key}/analysis-results.json \
+  --llm-findings .gaia/state/review/qa-tests/{story_key}/llm-findings.json \
+  [--execution-evidence .gaia/state/review/qa-tests/{story_key}/execution-evidence.json]
 ```
 
 The resolver applies strict first-match-wins precedence (FR-DEJ-6, extended by E67-S4 AC9):
@@ -319,9 +319,9 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 
 **Parent write to FR-402 locked path.** The parent context writes the rendered report to `docs/implementation-artifacts/qa-tests-E<NN>-S<NNN>.md` per FR-402 naming convention. The path is **locked**: `qa-tests-{story_key}.md` — no slug, no date suffix.
 
-**Phase 3C TC artifact persistence.** When Phase 3C produced uncovered-AC TCs, the parent ALSO writes the rendered TC array to `.review/gaia-qa-tests/{story_key}/qa-test-cases-{story_key}.json` (validating against `plugins/gaia/schemas/qa-test-cases.schema.json`). Empty arrays are omitted. The TC file is consumed downstream by `/gaia-test-automate`.
+**Phase 3C TC artifact persistence.** When Phase 3C produced uncovered-AC TCs, the parent ALSO writes the rendered TC array to `.gaia/state/review/qa-tests/{story_key}/qa-test-cases-{story_key}.json` (validating against `plugins/gaia/schemas/qa-test-cases.schema.json`). Empty arrays are omitted. The TC file is consumed downstream by `/gaia-test-automate`.
 
-**Phase 3A.1 evidence artifact.** When Phase 3A.1 ran, `.review/gaia-qa-tests/{story_key}/execution-evidence.json` is already present (written by `qa-test-runner.sh`). The parent does not duplicate the write; the file is referenced by the verdict-resolver invocation in Phase 5.
+**Phase 3A.1 evidence artifact.** When Phase 3A.1 ran, `.gaia/state/review/qa-tests/{story_key}/execution-evidence.json` is already present (written by `qa-test-runner.sh`). The parent does not duplicate the write; the file is referenced by the verdict-resolver invocation in Phase 5.
 
 **Re-run handling.** Parent **overwrites** the existing review file on re-run (latest verdict wins). No append, no version-suffix. The `review-gate.sh` row update is the source of truth for verdict history if needed.
 

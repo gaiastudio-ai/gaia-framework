@@ -143,7 +143,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 ### Phase 3A — Deterministic Analysis
 
-Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.review/gaia-performance-review/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
+Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.gaia/state/review/performance-review/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
 
 **Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Run the four sub-toolkits in this order:
 
@@ -167,7 +167,7 @@ After the four core sub-toolkits, two annotation passes run:
 
 **Per-tool timeout enforcement (EC-14).** Each sub-toolkit is wrapped in `timeout <cap>s <cmd>`. On individual tool timeout, that tool's status=`errored` only — the other tools continue. Cumulative budget enforcement: if combined wall-clock exceeds 60s P95 cold, escalate as a regression signal but do not blanket-fail. Cache hit ≤3s P95 still required.
 
-**Cache plumbing (FR-DEJ-11).** Cache lives at `.review/gaia-performance-review/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
+**Cache plumbing (FR-DEJ-11).** Cache lives at `.gaia/state/review/performance-review/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
 
 Cache key:
 ```
@@ -188,11 +188,11 @@ sha256(
 
 Cache lookup:
 1. Compute the candidate cache key from current File List + tool versions + resolved configs + bundle_config_hash + schema_hash.
-2. Look up `.review/gaia-performance-review/{story_key}/.cache/{cache_key}.json`. On miss: run tools.
+2. Look up `.gaia/state/review/performance-review/{story_key}/.cache/{cache_key}.json`. On miss: run tools.
 3. On candidate hit, **revalidate file_hashes** against current on-disk file hashes. A file in the File List can be edited externally without changing any cache-key input — if any cached `file_hashes` entry diverges from the current on-disk hash, treat as miss.
 
 Cache write (same-story parallel-invocation safety):
-- Write `analysis-results.json` to a per-PID temp path: `.review/gaia-performance-review/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
+- Write `analysis-results.json` to a per-PID temp path: `.gaia/state/review/performance-review/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
 - `mv` (atomic rename) to the final `.cache/{cache_key}.json` path. Atomic rename gives last-writer-wins without corruption.
 - Cross-story parallel invocations are safe by per-story directory partitioning.
 - Persist via `${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh write --workflow performance-review --step 3 --file <results.json> --var cache_key=<hash>` so `checkpoint.sh validate --workflow performance-review` can detect drift later.
@@ -242,8 +242,8 @@ The verdict is computed by `verdict-resolver.sh`. The LLM never computes or over
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
-  --analysis-results .review/gaia-performance-review/{story_key}/analysis-results.json \
-  --llm-findings .review/gaia-performance-review/{story_key}/llm-findings.json
+  --analysis-results .gaia/state/review/performance-review/{story_key}/analysis-results.json \
+  --llm-findings .gaia/state/review/performance-review/{story_key}/llm-findings.json
 ```
 
 The resolver applies strict first-match-wins precedence (FR-DEJ-6):

@@ -142,7 +142,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 ### Phase 3A — Deterministic Analysis
 
-Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.review/gaia-test-review/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
+Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.gaia/state/review/test-review/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
 
 **Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Phase 3A runs four deterministic analyzers in sequence — driven by the canonical helper `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/phase3a-test-review.sh` (E67-S1, FR-RSV2-1/2). The helper invokes `smell-detector.sh`, `flakiness-analyzer.sh`, `fixture-analyzer.sh`, and `tag-conformance-detector.sh --stack <stack>` (and propagates `--strict` when `GAIA_TEST_TAGGING_STRICT=1` is set per E72-S4 / FR-RSV2-42) and merges their `checks[]` fragments into a single canonical `analysis-results.json` document validating against `plugins/gaia/schemas/analysis-results.schema.json`. Cumulative wall-clock budget per NFR-RSV2-2: ≤90s P95 on a typical story (<500 LOC diff).
 
@@ -201,7 +201,7 @@ The four scanners cover the analyzers below (1–3 plus the new tag-conformance 
 
 **Path normalization.** Tool outputs vary in path convention. Phase 3A normalizes all `findings[].file` to repo-relative before writing `analysis-results.json` (consistent with E65-S2 / S3 / S4 pattern).
 
-**Cache plumbing (FR-DEJ-11).** Cache lives at `.review/gaia-test-review/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
+**Cache plumbing (FR-DEJ-11).** Cache lives at `.gaia/state/review/test-review/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
 
 Cache key:
 ```
@@ -219,11 +219,11 @@ sha256(
 
 Cache lookup:
 1. Compute the candidate cache key from current File List + tool versions + ci_history_fingerprint.
-2. Look up `.review/gaia-test-review/{story_key}/.cache/{cache_key}.json`. On miss: run analyzer.
+2. Look up `.gaia/state/review/test-review/{story_key}/.cache/{cache_key}.json`. On miss: run analyzer.
 3. On candidate hit, **revalidate file_hashes AND test_file_hashes** against current on-disk hashes. Either input edited externally without changing other cache-key fields → treat as miss.
 
 Cache write (same-story parallel-invocation safety):
-- Write `analysis-results.json` to a per-PID temp path: `.review/gaia-test-review/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
+- Write `analysis-results.json` to a per-PID temp path: `.gaia/state/review/test-review/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
 - `mv` (atomic rename) to the final `.cache/{cache_key}.json` path. Atomic-rename gives last-writer-wins without corruption.
 - Cross-story parallel invocations are safe by per-story directory partitioning.
 - Persist via `${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh write --workflow test-review --step 3 --file <results.json> --var cache_key=<hash>` so `checkpoint.sh validate --workflow test-review` can detect drift later.
@@ -272,8 +272,8 @@ The verdict is computed by `verdict-resolver.sh`. The LLM never computes or over
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
-  --analysis-results .review/gaia-test-review/{story_key}/analysis-results.json \
-  --llm-findings .review/gaia-test-review/{story_key}/llm-findings.json
+  --analysis-results .gaia/state/review/test-review/{story_key}/analysis-results.json \
+  --llm-findings .gaia/state/review/test-review/{story_key}/llm-findings.json
 ```
 
 The resolver applies strict first-match-wins precedence (FR-DEJ-6):

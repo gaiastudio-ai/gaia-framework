@@ -233,8 +233,30 @@ fi
 
 # Glob accepts both `retrospective-{id}-{date}.md` and
 # `retrospective-{id}-{date}-{HHMM}.md` clobber-avoidance variants.
+# E102-S6 / ADR-119: route through the shared three-tier resolver at
+# `gaia-public/plugins/gaia/scripts/lib/artifact-three-tier-resolve.sh`
+# (env-var → legacy-flat-positive-evidence → canonical-nested-default)
+# so both legacy `implementation-artifacts/retrospective-*.md` AND the new
+# `implementation-artifacts/retrospective/retrospective-*.md` resolve.
+SCRIPT_DIR_S6="$(cd "$(dirname "$0")" && pwd)"
+RESOLVER_HELPER="${SCRIPT_DIR_S6}/../../../scripts/lib/artifact-three-tier-resolve.sh"
+
+# Always search the existing $ART_DIR (the canonical location the existing
+# tests + production wiring already pass in). When the new resolver is
+# available, ALSO probe its result so the dual-path layout (legacy flat +
+# canonical nested per ADR-119) is honored. Preserves backward-compat
+# verbatim while adding new-layout support.
 retro_match_count=$(find "$ART_DIR" -maxdepth 1 -type f \
   -name "retrospective-${SPRINT_ID}-*.md" 2>/dev/null | wc -l | tr -d ' ')
+
+if [ "${retro_match_count:-0}" -eq 0 ] && [ -x "$RESOLVER_HELPER" ]; then
+  resolver_dir="$(bash "$RESOLVER_HELPER" --family retro --id "$SPRINT_ID" --project-root "${PROJECT_PATH:-${PROJECT_ROOT:-$PWD}}" 2>/dev/null || true)"
+  if [ -n "$resolver_dir" ] && [ -d "$resolver_dir" ] && [ "$resolver_dir" != "$ART_DIR" ]; then
+    retro_match_count=$(find "$resolver_dir" -maxdepth 1 -type f \
+      -name "retrospective-${SPRINT_ID}-*.md" 2>/dev/null | wc -l | tr -d ' ')
+  fi
+fi
+
 if [ "${retro_match_count:-0}" -eq 0 ]; then
   die "error: retro doc not found for ${SPRINT_ID}; run /gaia-retro first"
 fi
@@ -327,6 +349,71 @@ else
   printf '{"timestamp":"%s","event_type":"sprint_closed","workflow":"gaia-sprint-close","pid":%d,"data":%s}\n' \
     "$ts" "$$" "$data_payload" >> "$lc_file"
 fi
+
+# ---------- Step 6b — Advisory checklist (ADR-120 / E103-S4) ----------
+# Append a non-blocking "Lifecycle Skill Checklist (advisory)" section to the
+# sprint-close summary, enumerating canonical artifact-producing skills and
+# their on-disk state. Consumes the E103-S2 lifecycle-overrides helper for
+# the [~] bypassed-row case. Non-blocking — never affects exit status.
+
+LIFECYCLE_LIB_S4="$(cd "$(dirname "$0")/../../.." && pwd)/scripts/lib/lifecycle-overrides.sh"
+SUMMARY_FILE="${ARCHIVE_PATH%.yaml}-close-summary.md"
+
+# Resolve sprint-scoped bypasses (defensive against helper absence).
+bypass_json='{"bypasses":[]}'
+if [ -f "$LIFECYCLE_LIB_S4" ]; then
+  bypass_json="$(bash "$LIFECYCLE_LIB_S4" read --sprint-id "$SPRINT_ID" 2>/dev/null || echo '{"bypasses":[]}')"
+fi
+
+# Canonical skill → artifact map. Each entry: skill|artifact-path-relative-to-.gaia/artifacts
+declare -a SKILL_ARTIFACT_MAP=(
+  "gaia-trace|test-artifacts/traceability-matrix.md"
+  "gaia-readiness-check|../state/readiness-check-ledger.yaml"
+  "gaia-threat-model|planning-artifacts/threat-model.md"
+  "gaia-create-prd|planning-artifacts/prd.md"
+  "gaia-create-arch|planning-artifacts/architecture.md"
+  "gaia-create-epics|planning-artifacts/epics-and-stories.md"
+  "gaia-test-strategy|test-artifacts/test-plan.md"
+)
+
+ART_BASE="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}"
+checklist_tmp="$(mktemp)"
+missing_count=0
+bypass_count=0
+present_count=0
+{
+  printf '\n## Lifecycle Skill Checklist (advisory)\n\n'
+  for row in "${SKILL_ARTIFACT_MAP[@]}"; do
+    skill="${row%%|*}"
+    relpath="${row##*|}"
+    artpath="$ART_BASE/$relpath"
+    is_bypassed=0
+    if printf '%s' "$bypass_json" | jq -e --arg s "$skill" '.bypasses | any(.skill == $s or .skill == ("/" + $s))' >/dev/null 2>&1; then
+      is_bypassed=1
+    fi
+    if [ "$is_bypassed" -eq 1 ]; then
+      reason="$(printf '%s' "$bypass_json" | jq -r --arg s "$skill" '[.bypasses[] | select(.skill == $s or .skill == ("/" + $s))][0].reason')"
+      printf -- '- [~] %s — bypassed: %s\n' "$skill" "$reason"
+      bypass_count=$((bypass_count + 1))
+    elif [ -f "$artpath" ]; then
+      printf -- '- [x] %s — %s present\n' "$skill" "$relpath"
+      present_count=$((present_count + 1))
+    else
+      printf -- '- [ ] %s — %s MISSING (no bypass recorded)\n' "$skill" "$relpath"
+      missing_count=$((missing_count + 1))
+    fi
+  done
+  if [ "$missing_count" -eq 0 ] && [ "$bypass_count" -eq 0 ]; then
+    printf '\nAll lifecycle skills produced their canonical artifacts; no bypasses recorded for %s.\n' "$SPRINT_ID"
+  fi
+} > "$checklist_tmp"
+
+# Append to summary file (create if absent).
+if [ ! -f "$SUMMARY_FILE" ]; then
+  printf '# Sprint %s close summary\n\nClosed at %s.\n' "$SPRINT_ID" "$CLOSED_AT" > "$SUMMARY_FILE"
+fi
+cat "$checklist_tmp" >> "$SUMMARY_FILE"
+rm -f "$checklist_tmp"
 
 # ---------- Step 7 — Confirmation ----------
 

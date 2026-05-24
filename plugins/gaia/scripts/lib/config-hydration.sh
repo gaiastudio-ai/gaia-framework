@@ -154,6 +154,11 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   # E93-S2 (1): sprint_review is human-managed exclusively via
   # /gaia-config-sprint-review; never auto-hydrated by the reconciler.
   sprint_review
+  # E103-S5 (ADR-120, 1): lifecycle is operator-managed (lifecycle.strict_mode
+  # default-ON per ADR-120). Never auto-hydrated by the reconciler — operators
+  # opt in/out explicitly. The schema property also carries
+  # `x-no-auto-hydration: true` as defense-in-depth documentation.
+  lifecycle
 )
 
 # ---- Logging helpers ------------------------------------------------------

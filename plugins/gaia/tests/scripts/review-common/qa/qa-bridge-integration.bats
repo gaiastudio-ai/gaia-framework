@@ -9,7 +9,7 @@ bats_require_minimum_version 1.5.0
 setup() {
   common_setup
   STORY_KEY="E67-S4"
-  WORKDIR="${TEST_TMP}/.review/qa/${STORY_KEY}"
+  WORKDIR="${TEST_TMP}/.gaia/state/review/qa-tests/${STORY_KEY}"
   mkdir -p "$WORKDIR"
   # Fake bridge run-tests.sh records its invocation to a sentinel file.
   BRIDGE_DIR="${TEST_TMP}/bridge"

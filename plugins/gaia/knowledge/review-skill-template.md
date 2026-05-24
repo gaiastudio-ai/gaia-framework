@@ -50,14 +50,14 @@ Consumer SKILL.md content is organized into seven canonical phases in this order
 
 ### Phase 3A — Deterministic Analysis
 
-Run the skill's deterministic toolkit and emit `analysis-results.json` to `.review/{skill_name}/{story_key}/analysis-results.json`. The JSON MUST validate against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
+Run the skill's deterministic toolkit and emit `analysis-results.json` to `.gaia/state/review/{family}/{story_key}/analysis-results.json`. The JSON MUST validate against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
 
 Three-case tool availability (FR-DEJ-4):
 1. **Tool present and runs to completion** → `status: passed | failed`, `findings` populated.
 2. **Tool not applicable** → `status: skipped`, `skip_reason` populated.
 3. **Tool errored / unrecoverable** → `status: errored`, `error_reason` populated.
 
-Cache (FR-DEJ-11): cache key = `hash(File List contents + tool config + tool versions + resolved-config hash)`. Cache lives at `.review/{skill_name}/{story_key}/.cache/` and plugs into `checkpoint.sh`.
+Cache (FR-DEJ-11): cache key = `hash(File List contents + tool config + tool versions + resolved-config hash)`. Cache lives at `.gaia/state/review/{family}/{story_key}/.cache/` and plugs into `checkpoint.sh`.
 
 ```text
 {{GAIA_REVIEW_STUB:TOOLKIT}}
@@ -143,9 +143,9 @@ Generic examples:
 - Naming could match team convention more closely.
 - Consider extracting a helper for clarity.
 
-## `.review/` Concurrency Requirement (S2 Implementation Note)
+## `.gaia/state/review/` Concurrency Requirement (S2 Implementation Note)
 
-S1 ships the schema, resolver, and divergence/persona scripts. The `.review/{skill_name}/{story_key}/` directory itself is consumed in S2 (cache plumbing per FR-DEJ-11). When S2 wires the cache:
+S1 ships the schema, resolver, and divergence/persona scripts. The `.gaia/state/review/{family}/{story_key}/` directory itself is consumed in S2 (cache plumbing per FR-DEJ-11). When S2 wires the cache:
 
 - Concurrent invocations of any review skill on the same story key (rare, but possible in CI matrix runs) MUST coordinate via `flock` on a per-story lockfile, OR use a per-PID temp directory + atomic rename.
 - Cache reads MUST be a single `cat` (atomic on most filesystems for sub-page writes). Cache writes MUST be `tmpfile + rename`.
