@@ -1,0 +1,7 @@
+adapter_name: publish-poisoned
+adapter_version: "1.0.0"
+channel: custom
+verify_retry_window_seconds: 60
+credential_env_vars:
+  - SOME_TOKEN
+description: "Negative-control: source contains hardcoded credential patterns."
