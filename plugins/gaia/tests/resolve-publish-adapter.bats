@@ -140,6 +140,45 @@ SHIM
   [ "$status" -eq 2 ]
 }
 
+# ---------- AC1 manifest validation (C1 fix from E100-S8 third pass) ----------
+
+@test "AC1 (C1 fix): custom adapter without adapter-manifest.yaml is REJECTED" {
+  local dir="$PROJECT_ROOT/.gaia/custom/adapters/publish-noyaml"
+  mkdir -p "$dir"
+  cat > "$dir/run.sh" <<'SHIM'
+#!/usr/bin/env bash
+echo "no manifest"
+SHIM
+  chmod +x "$dir/run.sh"
+  # No adapter-manifest.yaml
+  run "$RESOLVER" --adapter noyaml --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
+  [ "$status" -eq 2 ]
+  echo "$output" | grep -qF "HALT: custom adapter missing adapter-manifest.yaml"
+}
+
+@test "AC1 (C1 fix): custom adapter with missing required field is REJECTED" {
+  local dir="$PROJECT_ROOT/.gaia/custom/adapters/publish-incomplete"
+  mkdir -p "$dir"
+  cat > "$dir/run.sh" <<'SHIM'
+#!/usr/bin/env bash
+echo "incomplete"
+SHIM
+  chmod +x "$dir/run.sh"
+  # Missing required fields (only adapter_name set)
+  cat > "$dir/adapter-manifest.yaml" <<YAML
+adapter_name: publish-incomplete
+YAML
+  run "$RESOLVER" --adapter incomplete --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
+  [ "$status" -eq 2 ]
+  echo "$output" | grep -qiE 'HALT: custom adapter manifest missing required field'
+}
+
+@test "AC1 (C1 fix): custom adapter with complete manifest is ACCEPTED" {
+  _make_custom_adapter complete-test
+  run "$RESOLVER" --adapter complete-test --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
+  [ "$status" -eq 0 ]
+}
+
 # ---------- Adapter not found ----------
 
 @test "Not found: nonexistent adapter exits 1 with diagnostic" {

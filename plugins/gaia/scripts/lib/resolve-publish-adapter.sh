@@ -70,6 +70,42 @@ builtin_exists=0
 [ -d "$CUSTOM_DIR" ] && [ -x "$CUSTOM_DIR/run.sh" ] && custom_exists=1
 [ -d "$BUILTIN_DIR" ] && [ -x "$BUILTIN_DIR/run.sh" ] && builtin_exists=1
 
+# AC1 + ADR-113 §clause (d) custom-channel 6-requirement contract validation.
+# Custom adapters MUST ship a well-formed adapter-manifest.yaml declaring the
+# canonical fields. Built-in adapters are validated at PR-review time by the
+# framework's own bats suite; the runtime check fires only on custom shadows
+# to mitigate T-CUS-1 (malformed manifest from an untrusted source).
+_validate_custom_manifest() {
+  local dir="$1"
+  local manifest="$dir/adapter-manifest.yaml"
+  [ -f "$manifest" ] || {
+    err "HALT: custom adapter missing adapter-manifest.yaml at $dir (ADR-113 §clause (d) requirement 1)"
+    return 1
+  }
+  command -v yq >/dev/null 2>&1 || {
+    err "WARN: yq not on PATH — cannot validate custom adapter manifest shape"
+    return 0
+  }
+  # Required ADR-113 §clause (d) fields:
+  #   (1) adapter_name, (2) adapter_version, (3) channel,
+  #   (4) credential_env_vars (NFR-081), (5) verify_retry_window_seconds (NFR-082),
+  #   (6) description.
+  local field val
+  for field in adapter_name adapter_version channel credential_env_vars description; do
+    val=$(yq eval ".$field" "$manifest" 2>/dev/null)
+    if [ -z "$val" ] || [ "$val" = "null" ]; then
+      err "HALT: custom adapter manifest missing required field '.$field' (ADR-113 §clause (d))"
+      return 1
+    fi
+  done
+  # verify_retry_window_seconds: integer or null (mobile-app sentinel).
+  if ! yq eval 'has("verify_retry_window_seconds")' "$manifest" 2>/dev/null | grep -q '^true$'; then
+    err "HALT: custom adapter manifest missing required field '.verify_retry_window_seconds' (NFR-082)"
+    return 1
+  fi
+  return 0
+}
+
 # Helper: is channel in the sensitive list?
 _is_sensitive() {
   local c="$1"
@@ -100,6 +136,9 @@ if [ "$custom_exists" = "1" ]; then
       exit 2
       ;;
   esac
+
+  # AC1: validate custom adapter manifest shape (ADR-113 §clause (d) 6-requirement).
+  _validate_custom_manifest "$resolved" || exit 2
 
   # SR-82 strict-builtin gate (when shadow + sensitive).
   if [ "$builtin_exists" = "1" ] && [ "$STRICT_BUILTIN" = "1" ] && _is_sensitive "$ADAPTER"; then
