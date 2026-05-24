@@ -26,6 +26,67 @@ export LC_ALL
 SCRIPT_NAME="gaia-create-arch/setup.sh"
 WORKFLOW_NAME="create-architecture"
 
+# ---------- 0. Parse --bypass / --reason flags (AF-2026-05-24-8 / Test02 F-3) ----------
+# Test02 F-3: the threat-model gate error message advertised
+# `--bypass gaia-threat-model --reason "<text>"` but setup.sh never parsed
+# the flags — so passing them did nothing and the gate still halted. The
+# canonical primitive is `bash scripts/lib/lifecycle-overrides.sh append
+# --skill --reason --sprint-id` which records the bypass to
+# .gaia/state/lifecycle-overrides.yaml. This block parses the advertised
+# flags and writes the bypass record before the gate check below runs.
+BYPASS_SKILL=""
+BYPASS_REASON=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --bypass)
+      [ $# -ge 2 ] || { printf '%s: --bypass requires a skill name (e.g. gaia-threat-model)\n' "$SCRIPT_NAME" >&2; exit 2; }
+      BYPASS_SKILL="$2"; shift 2 ;;
+    --reason)
+      [ $# -ge 2 ] || { printf '%s: --reason requires a quoted text argument\n' "$SCRIPT_NAME" >&2; exit 2; }
+      BYPASS_REASON="$2"; shift 2 ;;
+    --help|-h)
+      printf 'Usage: %s [--bypass <skill> --reason "<text>"]\n' "$SCRIPT_NAME"
+      exit 0 ;;
+    -*)
+      printf '%s: unknown flag: %s\n' "$SCRIPT_NAME" "$1" >&2
+      exit 2 ;;
+    *)
+      shift ;;
+  esac
+done
+
+# If --bypass was specified, --reason MUST also be specified
+if [ -n "$BYPASS_SKILL" ] && [ -z "$BYPASS_REASON" ]; then
+  printf '%s: --bypass %s also requires --reason "<text>" (no anonymous bypasses)\n' "$SCRIPT_NAME" "$BYPASS_SKILL" >&2
+  exit 2
+fi
+
+# Record the bypass via the canonical helper. The helper writes to
+# .gaia/state/lifecycle-overrides.yaml (per ADR-120 / E103-S2 contract).
+# We do this BEFORE the gate check below so the gate's bypass-lookup
+# finds the record.
+if [ -n "$BYPASS_SKILL" ]; then
+  SCRIPT_DIR_BP="$(cd "$(dirname "$0")" && pwd)"
+  LIFECYCLE_LIB_BP="$(cd "$SCRIPT_DIR_BP/../../.." && pwd)/scripts/lib/lifecycle-overrides.sh"
+  if [ -f "$LIFECYCLE_LIB_BP" ]; then
+    # The lib is sourced-style (defines functions) AND has a `bash $lib append --skill --reason --sprint-id` CLI mode.
+    # SPRINT_ID may not yet be resolved (resolve-config runs in §1 below), so try yq for it from the canonical state file.
+    BP_SPRINT_ID="${SPRINT_ID:-}"
+    if [ -z "$BP_SPRINT_ID" ] && [ -f ".gaia/state/sprint-status.yaml" ] && command -v yq >/dev/null 2>&1; then
+      BP_SPRINT_ID="$(yq eval '.sprint_id // ""' .gaia/state/sprint-status.yaml 2>/dev/null || echo "")"
+    fi
+    if [ -n "$BP_SPRINT_ID" ]; then
+      bash "$LIFECYCLE_LIB_BP" append --skill "$BYPASS_SKILL" --reason "$BYPASS_REASON" --sprint-id "$BP_SPRINT_ID" 2>&1 || {
+        printf '%s: WARNING: lifecycle-overrides.sh append failed; gate may still halt\n' "$SCRIPT_NAME" >&2
+      }
+    else
+      printf '%s: WARNING: cannot record --bypass without resolvable SPRINT_ID (no .gaia/state/sprint-status.yaml or env SPRINT_ID); gate may still halt\n' "$SCRIPT_NAME" >&2
+    fi
+  else
+    printf '%s: WARNING: lifecycle-overrides.sh not found at %s; --bypass flag is a no-op\n' "$SCRIPT_NAME" "$LIFECYCLE_LIB_BP" >&2
+  fi
+fi
+
 # Resolve the GAIA plugin scripts directory from this script's location:
 #   skills/gaia-create-arch/scripts/setup.sh → ../../../scripts
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -124,6 +124,25 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   log "running 6-item checklist against $ARTIFACT"
   printf '\nChecklist: /gaia-test-strategy (6 items — script-verifiable)\n' >&2
 
+  # ---------- 0c. Producer-side test-plan.md alias (AF-2026-05-24-9 / Test02 F-5) ----------
+  # Test02 F-5: /gaia-test-strategy --plan writes test-strategy.md but
+  # /gaia-create-epics gates on test-plan.md (via validate-gate.sh
+  # test_plan_exists). The legacy /gaia-test-design is deprecated and
+  # routes to /gaia-test-strategy, so the operator gets a naming-mismatch
+  # halt that requires manual `cp test-strategy.md test-plan.md`.
+  #
+  # Producer-side fix: write a sibling test-plan.md alias next to the
+  # canonical test-strategy.md so both names resolve to the same content.
+  # When /gaia-create-epics later checks for test-plan.md, it finds it.
+  # Idempotent on re-runs (overwrites).
+  ARTIFACT_DIR="$(dirname "$ARTIFACT")"
+  TEST_PLAN_ALIAS="$ARTIFACT_DIR/test-plan.md"
+  if [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
+    cp "$ARTIFACT" "$TEST_PLAN_ALIAS" 2>/dev/null && \
+      log "wrote test-plan.md alias at $TEST_PLAN_ALIAS (F-5 mitigation — downstream /gaia-create-epics gates on this name)" || \
+      log "WARNING: could not write test-plan.md alias at $TEST_PLAN_ALIAS"
+  fi
+
   # SV-01: test-strategy.md written.
   item_check "SV-01" "Output file exists at resolved path ($ARTIFACT)" \
     "$(file_exists "$ARTIFACT")"
