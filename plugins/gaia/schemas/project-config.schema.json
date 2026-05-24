@@ -201,9 +201,10 @@
   },
   "properties": {
     "lifecycle": {
-      "description": "ADR-120 lifecycle-ordering enforcement settings. Currently exposes `strict_mode` only; future fields land in this object so the top-level surface stays minimal. `strict_mode: true` (default per ADR-120) causes E103-S3/S4/S6 gates to hard-error on missing MANDATORY upstream artifacts unless a `--bypass <skill> --reason \"<text>\"` record exists in `.gaia/state/lifecycle-overrides.yaml`. `strict_mode: false` downgrades the gates to advisory warnings.",
+      "description": "ADR-120 lifecycle-ordering enforcement settings. Currently exposes `strict_mode` only; future fields land in this object so the top-level surface stays minimal. `strict_mode: true` (default per ADR-120) causes E103-S3/S4/S6 gates to hard-error on missing MANDATORY upstream artifacts unless a `--bypass <skill> --reason \"<text>\"` record exists in `.gaia/state/lifecycle-overrides.yaml`. `strict_mode: false` downgrades the gates to advisory warnings. Opted out of config-hydration auto-allowlist (operator-managed only).",
       "type": "object",
       "additionalProperties": false,
+      "x-no-auto-hydration": true,
       "properties": {
         "strict_mode": {
           "type": "boolean",

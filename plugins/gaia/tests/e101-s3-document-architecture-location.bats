@@ -11,6 +11,10 @@ load 'test_helper.bash'
 setup() {
   common_setup
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
+  # Project-root-evidence fixture; skip outside the project-root workspace.
+  if [ ! -f "$REPO_ROOT/.gaia/artifacts/README.md" ]; then
+    skip "project-root .gaia/artifacts/README.md not present — skipping story-evidence fixture"
+  fi
   README="$REPO_ROOT/.gaia/artifacts/README.md"
   PLUGIN_ROOT="$REPO_ROOT/gaia-public/plugins/gaia"
 }

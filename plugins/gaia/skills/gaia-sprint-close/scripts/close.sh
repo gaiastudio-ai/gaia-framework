@@ -240,12 +240,23 @@ fi
 # `implementation-artifacts/retrospective/retrospective-*.md` resolve.
 SCRIPT_DIR_S6="$(cd "$(dirname "$0")" && pwd)"
 RESOLVER_HELPER="${SCRIPT_DIR_S6}/../../../scripts/lib/artifact-three-tier-resolve.sh"
-retro_search_dir="$ART_DIR"
-if [ -x "$RESOLVER_HELPER" ]; then
-  retro_search_dir="$(bash "$RESOLVER_HELPER" --family retro --id "$SPRINT_ID" --project-root "${PROJECT_ROOT:-$PWD}" 2>/dev/null || echo "$ART_DIR")"
-fi
-retro_match_count=$(find "$retro_search_dir" -maxdepth 1 -type f \
+
+# Always search the existing $ART_DIR (the canonical location the existing
+# tests + production wiring already pass in). When the new resolver is
+# available, ALSO probe its result so the dual-path layout (legacy flat +
+# canonical nested per ADR-119) is honored. Preserves backward-compat
+# verbatim while adding new-layout support.
+retro_match_count=$(find "$ART_DIR" -maxdepth 1 -type f \
   -name "retrospective-${SPRINT_ID}-*.md" 2>/dev/null | wc -l | tr -d ' ')
+
+if [ "${retro_match_count:-0}" -eq 0 ] && [ -x "$RESOLVER_HELPER" ]; then
+  resolver_dir="$(bash "$RESOLVER_HELPER" --family retro --id "$SPRINT_ID" --project-root "${PROJECT_PATH:-${PROJECT_ROOT:-$PWD}}" 2>/dev/null || true)"
+  if [ -n "$resolver_dir" ] && [ -d "$resolver_dir" ] && [ "$resolver_dir" != "$ART_DIR" ]; then
+    retro_match_count=$(find "$resolver_dir" -maxdepth 1 -type f \
+      -name "retrospective-${SPRINT_ID}-*.md" 2>/dev/null | wc -l | tr -d ' ')
+  fi
+fi
+
 if [ "${retro_match_count:-0}" -eq 0 ]; then
   die "error: retro doc not found for ${SPRINT_ID}; run /gaia-retro first"
 fi
@@ -382,13 +393,13 @@ present_count=0
     fi
     if [ "$is_bypassed" -eq 1 ]; then
       reason="$(printf '%s' "$bypass_json" | jq -r --arg s "$skill" '[.bypasses[] | select(.skill == $s or .skill == ("/" + $s))][0].reason')"
-      printf '- [~] %s — bypassed: %s\n' "$skill" "$reason"
+      printf -- '- [~] %s — bypassed: %s\n' "$skill" "$reason"
       bypass_count=$((bypass_count + 1))
     elif [ -f "$artpath" ]; then
-      printf '- [x] %s — %s present\n' "$skill" "$relpath"
+      printf -- '- [x] %s — %s present\n' "$skill" "$relpath"
       present_count=$((present_count + 1))
     else
-      printf '- [ ] %s — %s MISSING (no bypass recorded)\n' "$skill" "$relpath"
+      printf -- '- [ ] %s — %s MISSING (no bypass recorded)\n' "$skill" "$relpath"
       missing_count=$((missing_count + 1))
     fi
   done

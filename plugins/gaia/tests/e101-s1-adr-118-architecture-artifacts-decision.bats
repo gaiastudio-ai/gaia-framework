@@ -16,6 +16,14 @@ load 'test_helper.bash'
 setup() {
   common_setup
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
+  # Project-root-evidence fixture: only run when invoked from a workspace
+  # that has the project-root .gaia/ tree (CLAUDE.md non-git workspace
+  # mode). In a standalone gaia-public/ CI checkout, this is absent and
+  # the fixture is skipped — the assertions cover story artifacts that
+  # live OUTSIDE the in-tree repo by design.
+  if [ ! -d "$REPO_ROOT/.gaia/artifacts/planning-artifacts/architecture" ]; then
+    skip "project-root .gaia/ not present — skipping story-evidence fixture"
+  fi
   ARCH_DIR="$REPO_ROOT/.gaia/artifacts/planning-artifacts/architecture"
   ADR_FILE=""
   if [ -d "$ARCH_DIR" ]; then

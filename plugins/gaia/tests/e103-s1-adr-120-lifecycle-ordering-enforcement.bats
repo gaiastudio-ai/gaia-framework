@@ -8,6 +8,10 @@ load 'test_helper.bash'
 setup() {
   common_setup
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
+  # Project-root-evidence fixture; skip outside the project-root workspace.
+  if [ ! -d "$REPO_ROOT/.gaia/artifacts/planning-artifacts/architecture" ]; then
+    skip "project-root .gaia/ not present — skipping story-evidence fixture"
+  fi
   ARCH_DIR="$REPO_ROOT/.gaia/artifacts/planning-artifacts/architecture"
   ADR_FILE=""
   if [ -d "$ARCH_DIR" ]; then
