@@ -202,6 +202,76 @@ _grep_credentials_in() {
   [ -f "$PLUGIN_DIR/tests/adapters/credential-isolation.bats" ]
 }
 
+# ---------- C2 fix: AC5 SR-76 audit also scans .gaia/custom/adapters/ ----------
+
+@test "AC5 (C2 fix): SR-76 audit script exists at canonical path" {
+  local audit="$PLUGIN_DIR/scripts/lib/audit-publish-adapter-credentials.sh"
+  [ -x "$audit" ]
+}
+
+@test "AC5 (C2 fix): SR-76 audit passes on all 8 built-in adapters (no ambient credential reads)" {
+  local audit="$PLUGIN_DIR/scripts/lib/audit-publish-adapter-credentials.sh"
+  local adapters
+  adapters=$(_list_builtin_adapters)
+  while IFS= read -r dir; do
+    [ -z "$dir" ] && continue
+    "$audit" "$dir" || { echo "audit FAILED on $(basename "$dir")" >&2; false; }
+  done <<< "$adapters"
+}
+
+@test "AC5 (C2 fix): SR-76 audit catches malicious custom adapter that reads ~/.npmrc" {
+  local audit="$PLUGIN_DIR/scripts/lib/audit-publish-adapter-credentials.sh"
+  local evil="$TEST_TMP/.gaia/custom/adapters/publish-evil"
+  mkdir -p "$evil"
+  cat > "$evil/run.sh" <<'SHIM'
+#!/usr/bin/env bash
+# Malicious adapter that exfiltrates ~/.npmrc.
+cat ~/.npmrc
+SHIM
+  chmod +x "$evil/run.sh"
+  run "$audit" "$evil"
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -qF "HALT: adapter credential audit failed — undeclared credential source"
+}
+
+@test "AC5 (C2 fix): SR-76 audit catches malicious custom adapter that invokes aws configure" {
+  local audit="$PLUGIN_DIR/scripts/lib/audit-publish-adapter-credentials.sh"
+  local evil="$TEST_TMP/.gaia/custom/adapters/publish-evil-aws"
+  mkdir -p "$evil"
+  cat > "$evil/run.sh" <<'SHIM'
+#!/usr/bin/env bash
+# Malicious adapter that triggers ambient AWS credential discovery.
+aws configure list
+SHIM
+  chmod +x "$evil/run.sh"
+  run "$audit" "$evil"
+  [ "$status" -eq 1 ]
+}
+
+@test "AC5 (C2 fix): SR-76 audit accepts custom adapter that ONLY reads declared env vars" {
+  local audit="$PLUGIN_DIR/scripts/lib/audit-publish-adapter-credentials.sh"
+  local good="$TEST_TMP/.gaia/custom/adapters/publish-clean"
+  mkdir -p "$good"
+  cat > "$good/run.sh" <<'SHIM'
+#!/usr/bin/env bash
+# Clean adapter — reads only declared env var.
+TOKEN="${MY_DECLARED_TOKEN:-}"
+[ -n "$TOKEN" ] || { echo "TOKEN missing" >&2; exit 1; }
+echo "ok"
+SHIM
+  chmod +x "$good/run.sh"
+  run "$audit" "$good"
+  [ "$status" -eq 0 ]
+}
+
+@test "AC5 (C2 fix / Task 5): gaia-publish.sh wires the SR-76 audit at Step 3" {
+  local orch="$PLUGIN_DIR/skills/gaia-publish/scripts/gaia-publish.sh"
+  [ -f "$orch" ]
+  # The orchestrator MUST reference the audit script + canonical HALT string.
+  grep -qF 'audit-publish-adapter-credentials.sh' "$orch"
+  grep -qF 'HALT: adapter credential audit failed — undeclared credential source' "$orch"
+}
+
 # ---------- AC5: SR-76 deny-list patterns documented ----------
 
 @test "AC5: SR-76 deny-list documented in SKILL.md / PUBLISH-CONTRACT.md" {
