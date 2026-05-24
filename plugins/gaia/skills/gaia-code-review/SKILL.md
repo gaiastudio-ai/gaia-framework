@@ -119,7 +119,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 ### Phase 3A — Deterministic Analysis
 
-Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.review/gaia-code-review/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
+Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.gaia/state/review/code-review/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
 
 **Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Run file-scoped tools (linter, formatter, per-file rules) against the File List. Run project-scoped tools (type checker, build verification) against the project root. Phase 3A scope is strict — see scope table above.
 
@@ -136,7 +136,7 @@ Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `
 - `mypy` skip when no `.py` files in File List: `skip_reason: "no Python files in File List"` (verbatim).
 - The skip decision is **File-List-driven**, not project-structure-driven. A monorepo with `tsconfig.json` at the project root but a Python-only File List still skips `tsc`. The verdict is unaffected by the skip.
 
-**Cache plumbing (FR-DEJ-11, EC-1, EC-3, EC-5, EC-13).** Cache lives at `.review/gaia-code-review/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe at directory creation).
+**Cache plumbing (FR-DEJ-11, EC-1, EC-3, EC-5, EC-13).** Cache lives at `.gaia/state/review/code-review/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe at directory creation).
 
 Cache key:
 ```
@@ -153,11 +153,11 @@ sha256(
 
 Cache lookup:
 1. Compute the candidate cache key from current File List + tool versions + resolved configs.
-2. Look up `.review/gaia-code-review/{story_key}/.cache/{cache_key}.json`. On miss: run tools.
+2. Look up `.gaia/state/review/code-review/{story_key}/.cache/{cache_key}.json`. On miss: run tools.
 3. On candidate hit, **revalidate file_hashes** against current on-disk file hashes (EC-3). A file in the File List can be edited externally without changing any cache-key input — if any cached `file_hashes` entry diverges from the current on-disk hash, treat as miss. Cache key is necessary but not sufficient.
 
 Cache write (EC-5 same-story parallel-invocation safety):
-- Write `analysis-results.json` to a per-PID temp path: `.review/gaia-code-review/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
+- Write `analysis-results.json` to a per-PID temp path: `.gaia/state/review/code-review/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
 - `mv` (atomic rename) to the final `.cache/{cache_key}.json` path. Atomic-rename gives last-writer-wins without corruption.
 - Cross-story parallel invocations are safe by per-story directory partitioning.
 - Persist via `${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh write --workflow code-review --step 3 --file <results.json> --var cache_key=<hash>` so `checkpoint.sh validate --workflow code-review` can detect drift later.
@@ -231,8 +231,8 @@ The verdict is computed by `verdict-resolver.sh`. The LLM never computes or over
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
-  --analysis-results .review/gaia-code-review/{story_key}/analysis-results.json \
-  --llm-findings .review/gaia-code-review/{story_key}/llm-findings.json
+  --analysis-results .gaia/state/review/code-review/{story_key}/analysis-results.json \
+  --llm-findings .gaia/state/review/code-review/{story_key}/llm-findings.json
 ```
 
 The resolver applies strict first-match-wins precedence (FR-DEJ-6):

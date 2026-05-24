@@ -64,8 +64,8 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../skills/gaia-test-automate/SKILL.md"
 
 # --- AC2 / AC-EC2: schema separation between analysis-results.json and plan file ---
 
-@test "adr-051: SKILL.md references analysis-results.json under .review/gaia-test-automate/" {
-  grep -F '.review/gaia-test-automate/' "$SKILL_FILE" >/dev/null
+@test "adr-051: SKILL.md references analysis-results.json under .gaia/state/review/test-automate/" {
+  grep -F '.gaia/state/review/test-automate/' "$SKILL_FILE" >/dev/null
 }
 
 # --- AC-EC3 / AC-EC11: three-way verdict mapping with BLOCKED short-circuit ---

@@ -183,7 +183,7 @@ This skill is the **ADR-051 hybrid** of the six review skills. The seven canonic
 - The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
 - **Three-way verdict mapping for ADR-051 (AC-EC3):** APPROVE → full plan written + auto-presents at Approval Gate with verdict line; REQUEST_CHANGES → full plan written + presents with "plan changes recommended" marker; BLOCKED → SHORT-CIRCUIT before Review Phase 6 full plan-write — emit a stub/short-form plan file with `verdict: BLOCKED` in frontmatter (NO full plan body) so the user has a record of the failed run, NO `review-gate.sh` invocation, user re-runs after fixing the underlying issue.
 - **Review Phase 6 does NOT invoke `review-gate.sh` (AC-EC1).** Phase 6 emits `analysis-results.json`, the FR-402 review report, AND the ADR-051 plan file. `review-gate.sh` invocation is deferred to the ADR-051 Approval Gate section, keyed on `plan_id`, and runs only after user approval or rejection. This is the single most important architectural difference S5 introduces vs S3/S4/S6/S7.
-- **Strict schema separation (AC-EC2):** `analysis-results.json` (under `.review/gaia-test-automate/{story_key}/`) records DETERMINISTIC ANALYSIS output (test-execution-toolkit findings) ONLY. The plan file (under `.gaia/artifacts/test-artifacts/test-automate-plan-{story_key}.md`) records the GENERATIVE PLAN (what tests to write, source-file SHA-256 entries) ONLY. Zero content overlap.
+- **Strict schema separation (AC-EC2):** `analysis-results.json` (under `.gaia/state/review/test-automate/{story_key}/`) records DETERMINISTIC ANALYSIS output (test-execution-toolkit findings) ONLY. The plan file (under `.gaia/artifacts/test-artifacts/test-automate-plan-{story_key}.md`) records the GENERATIVE PLAN (what tests to write, source-file SHA-256 entries) ONLY. Zero content overlap.
 - **plan_id determinism canonicalization (AC-EC8):** `plan_id` is sha256 of NORMALIZED plan contents — findings sorted by `{category, severity}`, finding message text EXCLUDED from the hash. NFR-DEJ-2 textual variation does NOT change `plan_id`.
 - **Single source of truth for `file_hashes` (AC-EC6):** Review Phase 3A computes `file_hashes` once; both `analysis-results.json` (cache invalidation) AND the plan file (source-file SHA-256 entries) reference the same field. Avoids divergence between two independent hash mechanisms.
 - Mapping to Review Gate canonical vocabulary (inline, no separate script): APPROVE → PASSED; REQUEST_CHANGES → FAILED; BLOCKED → FAILED.
@@ -291,7 +291,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 ### Phase 3A — Deterministic Analysis
 
-Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.review/gaia-test-automate/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`). **Strict scope (AC-EC2):** `analysis-results.json` records DETERMINISTIC ANALYSIS output ONLY (test-execution-toolkit findings). The ADR-051 plan file (written in Review Phase 6) records the GENERATIVE PLAN ONLY (what tests to write). Zero content overlap.
+Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.gaia/state/review/test-automate/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`). **Strict scope (AC-EC2):** `analysis-results.json` records DETERMINISTIC ANALYSIS output ONLY (test-execution-toolkit findings). The ADR-051 plan file (written in Review Phase 6) records the GENERATIVE PLAN ONLY (what tests to write). Zero content overlap.
 
 **Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1.
 
@@ -313,7 +313,7 @@ Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `
 
 **Path normalization.** Toolkit outputs vary in path convention. Phase 3A normalizes all `findings[].file` to repo-relative before writing `analysis-results.json` (consistent with E65-S2 / E65-S4 pattern).
 
-**Cache plumbing (FR-DEJ-11).** Cache lives at `.review/gaia-test-automate/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
+**Cache plumbing (FR-DEJ-11).** Cache lives at `.gaia/state/review/test-automate/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
 
 Cache key:
 ```
@@ -328,11 +328,11 @@ sha256(
 
 Cache lookup:
 1. Compute the candidate cache key from current File List + file_hashes + tests-discovered hash + tool versions + runner config.
-2. Look up `.review/gaia-test-automate/{story_key}/.cache/{cache_key}.json`. On miss: run toolkit.
+2. Look up `.gaia/state/review/test-automate/{story_key}/.cache/{cache_key}.json`. On miss: run toolkit.
 3. On candidate hit, **revalidate file_hashes** against current on-disk hashes. A File List entry edited externally without changing other cache-key fields → treat as miss.
 
 Cache write (same-story parallel-invocation safety per AC-EC10):
-- Write `analysis-results.json` to a per-PID temp path: `.review/gaia-test-automate/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
+- Write `analysis-results.json` to a per-PID temp path: `.gaia/state/review/test-automate/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
 - `mv` (atomic rename) to the final `.cache/{cache_key}.json` path. Atomic-rename gives last-writer-wins without corruption.
 - Cross-story parallel invocations are safe by per-story directory partitioning.
 - Persist via `${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh write --workflow test-automate --step 3 --file <results.json> --var cache_key=<hash>` so `checkpoint.sh validate --workflow test-automate` can detect drift later.
@@ -374,8 +374,8 @@ The verdict is computed by `verdict-resolver.sh`. The LLM never computes or over
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
-  --analysis-results .review/gaia-test-automate/{story_key}/analysis-results.json \
-  --llm-findings .review/gaia-test-automate/{story_key}/llm-findings.json
+  --analysis-results .gaia/state/review/test-automate/{story_key}/analysis-results.json \
+  --llm-findings .gaia/state/review/test-automate/{story_key}/llm-findings.json
 ```
 
 The resolver applies strict first-match-wins precedence (FR-DEJ-6):
@@ -426,7 +426,7 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 |------------------------------------------------------------------|-------------|------------------------------------------|--------------------|
 | `.gaia/artifacts/implementation-artifacts/test-automate-review-{story_key}.md` | FR-402      | Review report (verdict + LLM findings)  | Phase 6 (parent)   |
 | `.gaia/artifacts/test-artifacts/test-automate-plan-{story_key}.md`          | ADR-051 §10.27.3 | Generative plan (source SHA-256 + plan body) | Phase 6 (parent)   |
-| `.review/gaia-test-automate/{story_key}/analysis-results.json`   | FR-DEJ-5    | Deterministic toolkit findings only     | Phase 3A (parent)  |
+| `.gaia/state/review/test-automate/{story_key}/analysis-results.json`   | FR-DEJ-5    | Deterministic toolkit findings only     | Phase 3A (parent)  |
 
 **BLOCKED short-circuit (AC-EC11).** If verdict is BLOCKED (resolver rule 1 fired), Phase 6 emits a **stub/short-form plan file** with `verdict: BLOCKED` in frontmatter, an empty plan body, and `analyzed_sources: []`. NO full plan body is written. The review report (FR-402) IS still written so the user has a record of the failed run. NO `review-gate.sh` invocation. The ADR-051 Approval Gate section is NOT entered — Phase 7 finalizes and the skill exits.
 
