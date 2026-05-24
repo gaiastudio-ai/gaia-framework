@@ -157,7 +157,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 ### Phase 3A — Deterministic Analysis
 
-Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.review/gaia-security-review/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
+Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.gaia/state/review/security-review/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
 
 **Toolkit invocation (V2 / ADR-077).** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Each tool invocation is wrapped in `${CLAUDE_PLUGIN_ROOT}/scripts/tool-availability-probe.sh` (E66-S2) which performs a deterministic three-state classification before dispatching the adapter:
 
@@ -215,7 +215,7 @@ Phase 3A normalizes all `findings[].file` to repo-relative before writing `analy
 
 **Finding deduplication (EC-11).** Phase 3A deduplicates findings across tools by the tuple `(file, line, finding_type)` before passing to Phase 3B. Example: an API key on `src/config.ts:12` flagged by both gitleaks and Semgrep `p/secrets` is deduplicated to a single finding. The dedup key is documented here so resolver counts unique findings only.
 
-**Cache plumbing (FR-DEJ-11).** Cache lives at `.review/gaia-security-review/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
+**Cache plumbing (FR-DEJ-11).** Cache lives at `.gaia/state/review/security-review/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
 
 Cache key:
 ```
@@ -235,11 +235,11 @@ sha256(
 
 Cache lookup:
 1. Compute the candidate cache key from current File List + tool versions + resolved configs + advisory_db_fingerprint.
-2. Look up `.review/gaia-security-review/{story_key}/.cache/{cache_key}.json`. On miss: run tools.
+2. Look up `.gaia/state/review/security-review/{story_key}/.cache/{cache_key}.json`. On miss: run tools.
 3. On candidate hit, **revalidate file_hashes** against current on-disk file hashes. A file in the File List can be edited externally without changing any cache-key input — if any cached `file_hashes` entry diverges from the current on-disk hash, treat as miss.
 
 Cache write (same-story parallel-invocation safety):
-- Write `analysis-results.json` to a per-PID temp path: `.review/gaia-security-review/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
+- Write `analysis-results.json` to a per-PID temp path: `.gaia/state/review/security-review/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
 - `mv` (atomic rename) to the final `.cache/{cache_key}.json` path. Atomic rename gives last-writer-wins without corruption.
 - Cross-story parallel invocations are safe by per-story directory partitioning.
 - Persist via `${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh write --workflow security-review --step 3 --file <results.json> --var cache_key=<hash>` so `checkpoint.sh validate --workflow security-review` can detect drift later.
@@ -287,8 +287,8 @@ The verdict is computed by the parameterized `verdict-resolver.sh` from `review-
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh \
-  --analysis-results .review/gaia-security-review/{story_key}/analysis-results.json \
-  --llm-findings .review/gaia-security-review/{story_key}/llm-findings.json
+  --analysis-results .gaia/state/review/security-review/{story_key}/analysis-results.json \
+  --llm-findings .gaia/state/review/security-review/{story_key}/llm-findings.json
 ```
 
 Legacy single-skill invocations of `${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh` (the symlinked entry-point preserved for back-compat with E65-S2 fixtures) emit identical stdout — the parameterized resolver is the canonical path under V2.

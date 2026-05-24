@@ -12,7 +12,7 @@ bats_require_minimum_version 1.5.0
 setup() {
   common_setup
   STORY_KEY="E67-S4"
-  WORKDIR="${TEST_TMP}/.review/qa/${STORY_KEY}"
+  WORKDIR="${TEST_TMP}/.gaia/state/review/qa-tests/${STORY_KEY}"
   mkdir -p "$WORKDIR"
   SCHEMA="${SCHEMAS_DIR}/execution-evidence.schema.json"
 }
