@@ -217,6 +217,30 @@ fi
 
 Adapter dispatch then consumes each `<stack>.files` list via the existing `run.sh --input` contract — no adapter change. (Detection of nested ecosystem manifests is E70-S11's responsibility; this orchestrator only respects the `path_root` boundary and does not double-count files under a nested manifest.)
 
+### Phase 3 SBOM completeness check (E104-S3 / FR-543)
+
+After the cdxgen SBOM is produced, run the completeness check: compare the declared dependency count (from lock files) against the SBOM component count, and WARN when `abs(divergence_pct)` exceeds 10% — or 15% when any of five per-ecosystem carve-outs auto-detects (Yarn Berry PnP, conda, Go vendor, Gradle no-lockfile, Gradle shadow/shade) — so real-dependency CVEs don't silently fail to surface from an incomplete SBOM. NEVER aborts (NFR-84). When the SBOM is absent (the cdxgen SBOM-persist producer is not yet wired — tracked Finding), the check INFO-skips.
+
+```bash
+SBOM_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.sbom_completeness_enabled 2>/dev/null)"
+export GAIA_BROWNFIELD_SBOM_COMPLETENESS_ENABLED="${SBOM_ON:-true}"
+sbomck_start=$(date +%s)
+SBOM_PROJECT_ROOT="${GAIA_PROJECT_PATH:-.}" \
+  SBOM_FILE="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit/sbom.json" \
+  SBOM_REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md" \
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/sbom-completeness-check.sh" || true
+sbomck_seconds=$(( $(date +%s) - sbomck_start ))
+# The check writes sbom_completeness_warning / divergence_pct / applied_threshold /
+# detected_carve_outs / llm_token_count via brownfield-telemetry.sh; the orchestrator adds
+# the runtime fields (single-author).
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
+if [ -f "$REPORT" ]; then
+  bash "$TELEM" --report "$REPORT" --field phase_runtime_seconds.sbom_completeness --value "$sbomck_seconds" || true
+  bash "$TELEM" --report "$REPORT" --field deterministic_tool_seconds.sbom_completeness --value "$sbomck_seconds" || true
+fi
+```
+
 Spawn seven scan subagents in parallel. These run alongside Phase 2 documentation to detect gaps that structural analysis misses. Each scanner receives `{tech_stack}`, `{project-path}`, and `{project_type}` as context. When `{project_type}` is `infrastructure` or `platform`, infra-specific detection patterns are applied alongside application patterns; for `application`, only application patterns run.
 
 ### Doc-Code Scan
@@ -295,6 +319,8 @@ gap-consolidation report (Phase 7) can attribute runtime and token cost:
 | `per_stack_file_counts.<stack>` | orchestrator (E70-S10) | Post-intersection file count per declared stack (explicit 0 for empty stacks). Orchestrator-owned. |
 | `phase_runtime_seconds.detect_signals` / `deterministic_tool_seconds.detect_signals` | detect-signals (E70-S11) | Wall-clock of the Phase 1 stacks[].path proposal/audit; detect-signals-owned. |
 | `detect_signals_mode` | detect-signals (E70-S11) | `proposal` \| `audit` \| `skipped` — the stacks-path mode taken. detect-signals-owned. |
+| `phase_runtime_seconds.sbom_completeness` / `deterministic_tool_seconds.sbom_completeness` | sbom-completeness (E104-S3) | Wall-clock of the SBOM completeness check; sbom-completeness-owned. |
+| `sbom_completeness_warning` / `divergence_pct` / `applied_threshold` / `detected_carve_outs` | sbom-completeness (E104-S3) | Lock-vs-SBOM divergence WARNING + the percentage, applied 10/15% threshold, and matched carve-outs. sbom-completeness-owned. |
 
 > **Single-author writer (AF-2026-05-09-12 sibling-defect guidance).** Each field
 > is written by exactly ONE owning phase via `brownfield-telemetry.sh` — no fan-out.
@@ -303,7 +329,9 @@ gap-consolidation report (Phase 7) can attribute runtime and token cost:
 > `llm_token_count`; the Grype adapter owns `*.grype` + `grype_db_checksum` +
 > `grype_db_built_age`; the orchestrator owns `*.orchestrator_intersection` +
 > `per_stack_file_counts.*`; detect-signals owns `*.detect_signals` +
-> `detect_signals_mode`. The `gap_count_*` values are populated for real by
+> `detect_signals_mode`; sbom-completeness owns `*.sbom_completeness` +
+> `sbom_completeness_warning` + `divergence_pct` + `applied_threshold` +
+> `detected_carve_outs`. The `gap_count_*` values are populated for real by
 > the dedup (E104-S1) / reconciliation (E104-S2) phases.
 
 ## Phase 4 — Test Execution During Discovery
