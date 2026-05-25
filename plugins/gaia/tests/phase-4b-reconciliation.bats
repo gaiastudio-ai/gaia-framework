@@ -85,6 +85,26 @@ run_recon() {
   [ "$output" = "util.Helper" ]
 }
 
+# --- multi-callgraph overlap → entry_points UNIONed (not last-write-wins) -----
+@test "E104-S2: same file across two call-graphs → entry_points unioned" {
+  ov="$TEST_TMP/overlap"; mkdir -p "$ov"
+  cat > "$ov/deduped-findings.json" <<'JSON'
+[ { "ruleId": "dead-code/js", "file_path": "src/shared.ts", "severity": "warning", "source_tool": "dead-exports", "qualifier": "x", "start_line": 1 } ]
+JSON
+  cat > "$ov/callgraph-js.json" <<'JSON'
+{ "entry_points": ["a"], "reachable": [ { "file": "src/shared.ts", "referenced_by": ["src/a.tsx"] } ] }
+JSON
+  cat > "$ov/callgraph-go.json" <<'JSON'
+{ "entry_points": ["b"], "reachable": [ { "file": "src/shared.ts", "referenced_by": ["src/b.go"] } ] }
+JSON
+  GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_PHASE_4B_ENABLED=true \
+    RECON_FINDINGS="$ov/deduped-findings.json" RECON_CALLGRAPH_DIR="$ov" RECON_OUTPUT="$OUT" run bash "$ADAPTER"
+  [ "$status" -eq 0 ]
+  # both referencing files present (union across the two call-graphs), not just one
+  run jq -e '.[0].entry_points | (index("src/a.tsx") and index("src/b.go"))' "$OUT"
+  [ "$status" -eq 0 ]
+}
+
 # --- scenario 4 — empty call-graph → passthrough unchanged + WARN -------------
 @test "E104-S2 (scenario 4): empty call-graph → no demotion, findings pass through + WARN" {
   run_recon empty-callgraph
