@@ -233,13 +233,19 @@ gap-consolidation report (Phase 7) can attribute runtime and token cost:
 | `llm_token_count` | `0` for pre-warm | Pre-warm is fully deterministic — zero LLM tokens (NFR-85). |
 | `gap_count_before_dedup` | gap-consolidation | Populated by Phase 7 / E104-S1 dedup; pre-warm contributes 0. |
 | `gap_count_after_dedup` | gap-consolidation | Populated by Phase 7 / E104-S2 reconciliation; pre-warm contributes 0. |
+| `phase_runtime_seconds.sarif_merge` / `deterministic_tool_seconds.sarif_merge` | SARIF merge pre-step (E104-S4) | Wall-clock of the SARIF Multitool merge; SARIF-merge-owned. |
+| `phase_runtime_seconds.dedup` / `deterministic_tool_seconds.dedup` | dedup sub-step (E104-S1) | Wall-clock of the cross-tool dedup; dedup-owned. |
+| `phase_runtime_seconds.grype` / `deterministic_tool_seconds.grype` | Grype adapter (E70-S9) | Wall-clock of the Grype CVE scan; Grype-owned. |
+| `grype_db_checksum` | Grype adapter (E70-S9) | SHA-256 of the resolved grype-db.sqlite at scan time (trust-boundary; ADR-122). Grype-owned. |
+| `grype_db_built_age` | Grype adapter (E70-S9) | Seconds since the Grype DB build timestamp. Grype-owned. |
 
-> **Single-author writer (AF-2026-05-09-12 sibling-defect guidance).** These
-> fields are written by ONE author per field — the pre-flight writes the
-> `pre_warm` runtime fields; gap-consolidation writes the dedup counters. No
-> fan-out. The `gap_count_*` values are 0 from pre-warm's contribution and are
-> populated for real by the downstream dedup/reconciliation stories (E104-S1,
-> E104-S2) — see those stories for the consuming writer.
+> **Single-author writer (AF-2026-05-09-12 sibling-defect guidance).** Each field
+> is written by exactly ONE owning phase via `brownfield-telemetry.sh` — no fan-out.
+> Ownership: the pre-warm pre-flight owns `*.pre_warm`; the SARIF merge owns
+> `*.sarif_merge`; the dedup sub-step owns `*.dedup` + `gap_count_*` +
+> `llm_token_count`; the Grype adapter owns `*.grype` + `grype_db_checksum` +
+> `grype_db_built_age`. The `gap_count_*` values are populated for real by the
+> dedup (E104-S1) / reconciliation (E104-S2) phases.
 
 ## Phase 4 — Test Execution During Discovery
 
