@@ -1,0 +1,7 @@
+{
+  "edges": [
+    { "source": "services/api/main.go",  "target": "services/web/handler.ts" },
+    { "source": "services/api/util.go",  "target": "services/api/helper.go" },
+    { "source": "services/worker/job.py", "target": "services/worker/lib.py" }
+  ]
+}

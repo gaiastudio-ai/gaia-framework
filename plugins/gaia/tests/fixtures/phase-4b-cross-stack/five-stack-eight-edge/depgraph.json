@@ -1,0 +1,12 @@
+{
+  "edges": [
+    { "source": "s1/a.go", "target": "s2/a.go" },
+    { "source": "s1/b.go", "target": "s3/a.go" },
+    { "source": "s2/a.go", "target": "s3/b.go" },
+    { "source": "s2/b.go", "target": "s4/a.go" },
+    { "source": "s3/a.go", "target": "s4/b.go" },
+    { "source": "s3/b.go", "target": "s5/a.go" },
+    { "source": "s4/a.go", "target": "s5/b.go" },
+    { "source": "s5/a.go", "target": "s1/c.go" }
+  ]
+}
