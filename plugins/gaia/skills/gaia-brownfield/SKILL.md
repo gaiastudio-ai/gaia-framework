@@ -325,6 +325,15 @@ sarif_merge_start=$(date +%s)
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/sarif-merge.sh" || true
 sarif_merge_seconds=$(( $(date +%s) - sarif_merge_start ))
 
+# Telemetry population (E104-S1 brownfield-telemetry.sh — shared, single-author-per-field).
+# The SARIF merge step OWNS the *.sarif_merge fields (no fan-out).
+SARIF_REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+SARIF_TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
+if [ -f "$SARIF_REPORT" ]; then
+  bash "$SARIF_TELEM" --report "$SARIF_REPORT" --field phase_runtime_seconds.sarif_merge --value "$sarif_merge_seconds" || true
+  bash "$SARIF_TELEM" --report "$SARIF_REPORT" --field deterministic_tool_seconds.sarif_merge --value "$sarif_merge_seconds" || true
+fi
+
 # DefectDojo export is opt-in (default off → zero network). Fire-and-forget.
 DD_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defectdojo_enabled 2>/dev/null)"
 export GAIA_BROWNFIELD_DEFECTDOJO_ENABLED="${DD_ON:-false}"
