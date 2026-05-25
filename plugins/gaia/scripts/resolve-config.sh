@@ -775,6 +775,18 @@ v_dev_story_tdd_review_qa_timeout_seconds=$(merge_doubly_nested_key dev_story td
 # `prewarm_enabled` spelling rather than a hyphenated `tools.pre-warm.enabled`).
 v_brownfield_deterministic_tools=$(merge_nested_key brownfield deterministic_tools)
 v_brownfield_prewarm_enabled=$(merge_nested_key brownfield prewarm_enabled)
+# E104-S4 — SARIF merge per-tool override + DefectDojo opt-in (same depth-2
+# flat-underscore-key constraint as above; AC's hyphenated
+# tools.sarif-merge.enabled / tools.defectdojo.enabled are unparseable, so
+# spelled flat — semantics unchanged per ADR-078).
+v_brownfield_sarif_merge_enabled=$(merge_nested_key brownfield sarif_merge_enabled)
+v_brownfield_defectdojo_enabled=$(merge_nested_key brownfield defectdojo_enabled)
+# E104-S4 — DefectDojo export companion config (only consumed when
+# defectdojo_enabled=true). api_token holds the NAME of an env var, never a
+# literal secret (NFR-RSV2-7).
+v_brownfield_defectdojo_api_url=$(merge_nested_key brownfield defectdojo_api_url)
+v_brownfield_defectdojo_api_token=$(merge_nested_key brownfield defectdojo_api_token)
+v_brownfield_defectdojo_engagement_id=$(merge_nested_key brownfield defectdojo_engagement_id)
 
 # Defaults (applied when no layer set a value).
 [ -z "$v_dev_story_tdd_review_threshold" ]          && v_dev_story_tdd_review_threshold="medium"
@@ -1213,6 +1225,16 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_brownfield_deterministic_tools" ;;
     brownfield.prewarm_enabled)
       printf '%s\n' "$v_brownfield_prewarm_enabled" ;;
+    brownfield.sarif_merge_enabled)
+      printf '%s\n' "$v_brownfield_sarif_merge_enabled" ;;
+    brownfield.defectdojo_enabled)
+      printf '%s\n' "$v_brownfield_defectdojo_enabled" ;;
+    brownfield.defectdojo_api_url)
+      printf '%s\n' "$v_brownfield_defectdojo_api_url" ;;
+    brownfield.defectdojo_api_token)
+      printf '%s\n' "$v_brownfield_defectdojo_api_token" ;;
+    brownfield.defectdojo_engagement_id)
+      printf '%s\n' "$v_brownfield_defectdojo_engagement_id" ;;
     severity.Critical)
       printf '%s\n' "$v_severity_Critical" ;;
     severity.High)

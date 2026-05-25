@@ -301,9 +301,44 @@ The post-complete gate then reports the gap rather than crashing. Also write a s
 
 ## Phase 7 — Gap Consolidation & Deduplication
 
+### Phase 7 PRE-step — SARIF Multitool merge (E104-S4 / FR-544 / ADR-125)
+
+Before the 6-step gap-consolidation recipe runs, merge all scanner SARIF outputs into one merged SARIF. This gives the recipe (and downstream dedup E104-S1) a single uniform interchange format instead of bespoke per-tool JSON.
+
+```bash
+# Flag resolution (ADR-078 master flag + per-tool override). Empty → treated false.
+DET_TOOLS="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.deterministic_tools 2>/dev/null)"
+SARIF_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.sarif_merge_enabled 2>/dev/null)"
+export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-false}"
+export GAIA_BROWNFIELD_SARIF_MERGE_ENABLED="${SARIF_ON:-false}"
+
+sarif_merge_start=$(date +%s)
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/sarif-merge.sh" || true
+sarif_merge_seconds=$(( $(date +%s) - sarif_merge_start ))
+
+# DefectDojo export is opt-in (default off → zero network). Fire-and-forget.
+DD_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defectdojo_enabled 2>/dev/null)"
+export GAIA_BROWNFIELD_DEFECTDOJO_ENABLED="${DD_ON:-false}"
+if [ "${GAIA_BROWNFIELD_DEFECTDOJO_ENABLED}" = "true" ]; then
+  export GAIA_BROWNFIELD_DEFECTDOJO_API_URL="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defectdojo_api_url 2>/dev/null)"
+  # api_token config holds the NAME of an env var (NFR-RSV2-7); resolve the name, then deref it.
+  DD_TOKEN_VAR="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defectdojo_api_token 2>/dev/null)"
+  export GAIA_BROWNFIELD_DEFECTDOJO_API_TOKEN="${!DD_TOKEN_VAR:-}"
+  export GAIA_BROWNFIELD_DEFECTDOJO_ENGAGEMENT_ID="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defectdojo_engagement_id 2>/dev/null)"
+fi
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/defectdojo-export.sh" \
+  "${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/brownfield-sarif-merged.json" || true
+```
+
+**SARIF-as-interchange rationale (AC6).** SARIF 2.1.0 is the consensus interchange format — named independently by Zara (security), Soren (DevOps), Hugo (Java), and Derek (PM) in the 2026-05-23 brownfield deterministic-tools meeting. Microsoft's `Sarif.Multitool` is the canonical merger: it preserves per-tool attribution by concatenating one `run` per scanner (each carrying its `tool.driver.name`). Migrating bespoke per-tool JSON to merged SARIF removes per-tool parser maintenance and enables uniform downstream consumption (dedup, reconciliation, ranking). See `scripts/adapters/brownfield/sarif-merge.README.md`.
+
+**Migration shim (1-sprint deprecation).** When no `*.sarif` inputs exist (or the flag is off), `sarif-merge.sh` emits a WARN/INFO line and the 6-step recipe below falls back to its prior per-tool JSON consumption at Step 1. The legacy per-tool JSON path is slated for removal in the next sprint.
+
+`sarif_merge_seconds` feeds the `phase_runtime_seconds.sarif_merge` telemetry field (see the Phase 3 telemetry subsection; the populating writer lands with E104-S1/S2).
+
 Spawn a Gap Consolidation subagent:
 
-**Step 1 — Load all scan outputs.** Load gap entries from all of the following sources. If a file is empty or missing, log a warning noting which scanner produced no results and continue.
+**Step 1 — Load all scan outputs.** When the SARIF merge pre-step produced `.gaia/artifacts/planning-artifacts/brownfield-sarif-merged.json`, load gap entries from that MERGED SARIF as the primary scanner-finding source (one `run` per contributing scanner, attributed by `tool.driver.name`). When the merge was skipped/fell back (no SARIF inputs or flag off), load gap entries from the legacy per-tool sources below instead. In BOTH paths, also load the non-scanner gap sources. If a file is empty or missing, log a warning noting which scanner produced no results and continue.
 
 - Deep analysis scans (7 files from Phase 3): config-contradiction, dead-code, hardcoded, security, runtime-behavior, doc-code, integration-seam.
 - Test execution scan (1 file from Phase 4): brownfield-scan-test-execution.md.

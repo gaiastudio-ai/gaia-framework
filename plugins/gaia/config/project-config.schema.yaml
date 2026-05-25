@@ -148,7 +148,7 @@ fields:
     type: map
     required: false
     default: null
-    description: "Brownfield deterministic-tools configuration (E70-S7 / FR-539 / ADR-121). Nested keys (resolved via resolve-config.sh --field brownfield.<key>): deterministic_tools (master flag, bool, default false) and prewarm_enabled (per-tool override for the Phase 3 cdxgen+Grype pre-warm pre-flight, bool, default false). ADR-078 master-flag + per-tool-override pattern."
+    description: "Brownfield deterministic-tools configuration (E70-S7/E104-S4 / FR-539,FR-544 / ADR-121,ADR-125). Nested keys (resolved via resolve-config.sh --field brownfield.<key>): deterministic_tools (master flag, bool, default false); prewarm_enabled (Phase 3 cdxgen+Grype pre-warm pre-flight override, bool, default false); sarif_merge_enabled (Phase 7 SARIF Multitool merge override, bool, default false); defectdojo_enabled (opt-in DefectDojo export, bool, default false; companion keys defectdojo_api_url/_api_token/_engagement_id). ADR-078 master-flag + per-tool-override pattern."
 
   sprint:
     type: map
