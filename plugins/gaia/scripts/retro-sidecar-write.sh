@@ -337,8 +337,35 @@ _append() {
       } >> "$REAL_TARGET"
       ;;
     */action-items.yaml)
+      # AF-2026-05-24-14 / Test02 F-26: substitute `AI-{auto}` placeholders
+      # with the next sequential `AI-{n}` value. Previously the writer
+      # treated the payload as opaque and wrote `AI-{auto}` literally,
+      # leaving callers with duplicate-placeholder IDs that broke
+      # downstream consumers (escalation-halt.sh, /gaia-action-items
+      # reader). The substitution scans the existing file for the highest
+      # numeric AI-N and assigns the next integer to each occurrence in
+      # the payload, in order.
+      local _highest _next _resolved_payload
+      _highest=0
+      if [ -s "$REAL_TARGET" ]; then
+        _highest="$(grep -oE 'AI-[0-9]+' "$REAL_TARGET" 2>/dev/null | sed 's/^AI-//' | sort -n | tail -1 || echo 0)"
+        [ -z "$_highest" ] && _highest=0
+      fi
+      _resolved_payload="$NORM_PAYLOAD"
+      while printf '%s' "$_resolved_payload" | grep -qF 'AI-{auto}'; do
+        _next=$((_highest + 1))
+        # Substitute the FIRST remaining `AI-{auto}` with AI-N
+        _resolved_payload="$(printf '%s' "$_resolved_payload" | awk -v repl="AI-${_next}" '
+          !done && /AI-\{auto\}/ {
+            sub(/AI-\{auto\}/, repl)
+            done=1
+          }
+          { print }
+        ')"
+        _highest=$_next
+      done
       {
-        printf '\n%s\n' "$NORM_PAYLOAD"
+        printf '\n%s\n' "$_resolved_payload"
         printf '# dedup_key: %s\n' "$DEDUP_KEY"
       } >> "$REAL_TARGET"
       ;;
