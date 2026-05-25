@@ -1,0 +1,4 @@
+[
+  { "ruleId": "dead-code/go", "file_path": "pkg/util/helper.go", "severity": "warning", "source_tool": "go-deadcode", "qualifier": "util.Helper", "start_line": 10 },
+  { "ruleId": "dead-code/js", "file_path": "web/src/api.ts", "severity": "warning", "source_tool": "dead-exports", "qualifier": "fetchUser", "start_line": 3 }
+]

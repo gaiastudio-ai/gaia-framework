@@ -1,0 +1,4 @@
+[
+  { "ruleId": "dead-code/js", "file_path": "src/index.ts", "severity": "warning", "source_tool": "dead-exports", "qualifier": "default", "start_line": 1 },
+  { "ruleId": "dead-code/js", "file_path": "src/orphan.ts", "severity": "warning", "source_tool": "dead-exports", "qualifier": "helper", "start_line": 5 }
+]

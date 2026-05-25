@@ -358,6 +358,8 @@ gap-consolidation report (Phase 7) can attribute runtime and token cost:
 | `phase_runtime_seconds.deadcode_go` / `deterministic_tool_seconds.deadcode_go` | go-deadcode adapter (E70-S8) | Wall-clock of the Go deadcode scan; go-deadcode-owned. |
 | `phase_runtime_seconds.deadcode_python` / `deterministic_tool_seconds.deadcode_python` | python-vulture adapter (E70-S8) | Wall-clock of the Python vulture scan; python-vulture-owned. |
 | `phase_runtime_seconds.deadcode_jvm` / `deterministic_tool_seconds.deadcode_jvm` | jvm-spotbugs adapter (E70-S8) | Wall-clock of the JVM SpotBugs scan; jvm-spotbugs-owned. |
+| `phase_runtime_seconds.phase_4b` / `deterministic_tool_seconds.phase_4b` | reconciliation (E104-S2) | Wall-clock of the Phase 4b reconciliation JSON-join; reconciliation-owned. |
+| `findings_demoted_by_reconciliation` | reconciliation (E104-S2) | Count of file-only findings demoted to INFO (reachable from entry points); reconciliation-owned. `gap_count_*` stay dedup-owned (read-through). |
 | `phase_runtime_seconds.phase_4b_cross_stack` / `deterministic_tool_seconds.phase_4b_cross_stack` | cross-stack analysis (E104-S5) | Wall-clock of the Phase 4b cross-stack edge inspection; cross-stack-owned. |
 | `cross_stack_warnings` | cross-stack analysis (E104-S5) | Array of `{source_stack, source_file, target_stack, target_file}` detail rows (possibly empty); cross-stack-owned. |
 | `cross_stack_bypass_applied` | cross-stack analysis (E104-S5) | Bool — whether `--bypass cross-stack-refs` suppressed WARNINGs this run; cross-stack-owned. |
@@ -394,9 +396,28 @@ Spawn a Test Execution Scanner subagent:
 
 Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-test-execution.md`. If the subagent fails to write its output file, log a warning and continue.
 
+## Phase 4b — Reconciliation (E104-S2 / FR-540 / ADR-124)
+
+Inserted between Phase 4 (test execution) and Phase 5 (test-environment.yaml). When `brownfield.deterministic_tools: true` AND `brownfield.phase_4b_enabled: true`, Phase 4b reconciles Phase 3 file-only findings against the dependency graph and **demotes** (never removes) findings whose file is reachable from an application entry point — the barrel-file / dynamic-import false-positive guard that keeps FP rates tolerable for the deterministic-tools rollout.
+
+It is a **pure JSON-join** — NO tool re-invocation — consuming already-computed outputs: the E104-S1 deduped finding stream + per-stack call-graphs (`callgraph-{js,go,python}.json`).
+
+```bash
+AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/reconcile.sh"
+# Reads AUDIT/deduped-findings.json + AUDIT/callgraph-*.json; writes
+# AUDIT/reconciled-findings.json. Degrades (WARN + passthrough) when the call-graph
+# is absent (producer is Phase 4 supplementary tooling — not yet wired).
+```
+
+**Demote, don't remove (audit integrity).** A reachable finding keeps every identity field (`file_path`, `qualifier`, `source_tool`, `ruleId`, `start_line` — UNCHANGED) and gains `severity: info`, `reconciled: true`, `original_severity`, `entry_points: [...]`, `reconciliation_reason`. Files not reachable retain their original severity. Single-level reachability suffices (the call-graphs already encode transitivity), so the join is O(n log n) build + O(n) lookup — < 5s on a 1M-line monorepo (AC5). Telemetry: `findings_demoted_by_reconciliation`, `phase_runtime_seconds.phase_4b` (single-author; `gap_count_*` stay dedup-owned). See `scripts/adapters/brownfield/reconcile.README.md`.
+
+The **Phase 4 → Phase 4b → Phase 5** ordering is preserved on every brownfield run. The cross-stack scope sub-step below composes WITHIN this Phase 4b body.
+
 ### Phase 4b cross-stack scope + WARNING emission (E104-S5 / FR-547 / NFR-89 / ADR-063 / ADR-120 / ADR-126)
 
-When `brownfield.deterministic_tools: true` AND `brownfield.phase_4b_cross_stack_enabled: true`, Phase 4b reconciliation (E104-S2 baseline) is extended with a cross-stack scope sub-step that catches **unintended coupling** in multi-stack monorepos. It respects `stacks[].path` partitioning (per-stack reconciliation runs in isolation) and inspects the dependency-graph for edges that cross a stack boundary.
+A sub-step within Phase 4b. When `brownfield.deterministic_tools: true` AND `brownfield.phase_4b_cross_stack_enabled: true`, the reconciliation body above is extended with a cross-stack scope check that catches **unintended coupling** in multi-stack monorepos. It respects `stacks[].path` partitioning (per-stack reconciliation runs in isolation) and inspects the dependency-graph for edges that cross a stack boundary.
 
 ```bash
 AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
