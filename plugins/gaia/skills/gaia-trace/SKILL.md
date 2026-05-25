@@ -116,6 +116,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - If validate-gate.sh returns exit code 0: gate PASSED -- report success.
 - If validate-gate.sh returns non-zero exit code: gate FAILED -- report the actionable error message listing each uncovered requirement by ID with its title. The error output from validate-gate.sh contains the expected file path and failure reason.
 - If all requirements have zero test coverage (100% uncovered): validate-gate.sh returns non-zero and the error message lists all requirements as uncovered.
+- **AF-2026-05-24-14 / Test02 F-37 — multi-gate summary surfacing.** When invoking `validate-gate.sh --multi` (any combination of gates), the script emits per-gate failure lines to stderr but exit code reflects only the OVERALL result. The LLM MUST scan stderr for `validate-gate: <gate_name> failed` lines, count them, and emit a single-line operator summary `WARNING: N of M gates failed — downstream skills may halt` BEFORE continuing past the gate check. Without this summary line, operators relying on log scroll-back miss the per-gate failure signal — F-37 surfaced this on a YARA-2 dogfooding run where two `multi chain failed at gate 2` warnings appeared on stderr but setup.sh exit was 0 with no top-line summary.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-trace 6 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" gate_status="$GATE_STATUS" stage=gate-verified`
 

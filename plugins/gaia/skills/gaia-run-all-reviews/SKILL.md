@@ -80,7 +80,7 @@ A summary block with 5 SKIPPED + 1 ran reads (excerpt):
   - `/gaia-review-test` failure findings on missing automation coverage for a P0 AC.
   When triggered, `/gaia-test-automate` runs in its own context with the two-phase persona wiring (Phase 1 Sable, Phase 2 stack-developer per `agent-overlay.sh`).
 - **Never short-circuit on failure.** If a reviewer returns FAILED, record the verdict and continue to the next reviewer. The entire purpose is to surface ALL issues in one pass.
-- After each reviewer completes, update the Review Gate table via `scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" --verdict {PASSED|FAILED}`.
+- After each reviewer completes, update the Review Gate table via `${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" --verdict {PASSED|FAILED}` (per AF-2026-05-24-14 / Test02 F-16: use the absolute plugin scripts path; this skill has no `scripts/` subdirectory — the scripts live in the global `plugins/gaia/scripts/` resolved via `${CLAUDE_PLUGIN_ROOT}`).
 - If a reviewer crashes (unexpected non-zero exit / malformed verdict), record FAILED for that reviewer and continue (AC-EC7).
 - If `review-gate.sh` fails to update a row, log the failure and continue to the next reviewer.
 - If `review-skip-check.sh` returns malformed JSON (missing `skip` or `run` keys), HALT with a parse-error message identifying the failing script — do NOT silently treat all 6 as run (AC-EC3).
@@ -106,8 +106,10 @@ Six substeps. Substeps 2.1–2.2 run once. Substeps 2.3–2.4 partition the cano
 **Substep 2.2 — Skip-check.** Run:
 
 ```bash
-bash scripts/review-skip-check.sh --story {story_key} [--force]
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-skip-check.sh --story {story_key} [--force]
 ```
+
+(AF-2026-05-24-14 / Test02 F-16: use the absolute `${CLAUDE_PLUGIN_ROOT}/scripts/` prefix — this skill's directory contains only `SKILL.md`, no `scripts/` subdirectory. Bare `scripts/review-skip-check.sh` invocations fail with "No such file or directory".)
 
 The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--force` was passed by the user, forward it verbatim to the helper — the script owns the bypass semantics (skip becomes `[]`, run becomes the full canonical list). Parse the JSON; if it lacks either the `skip` or `run` key, HALT with a parse error naming `review-skip-check.sh` (AC-EC3).
 
@@ -128,12 +130,12 @@ Skill-dispatch contract:
 For each short_name in run:
   1. Invoke via the Skill tool:
        Skill({skill: "gaia:<short-name-mapped-to-canonical-skill>", args: "{story_key}"})
-     Canonical short-name → skill mapping:
+     Canonical short-name → skill mapping (AF-2026-05-24-14 / Test02 F-20: one canonical name per skill — the `(or …)` hedging was removed; the listed name is authoritative; deprecated_aliases live on the skill's own frontmatter):
        code-review     → gaia:gaia-code-review
-       qa-tests        → gaia:gaia-qa-tests
-       security-review → gaia:gaia-security-review (or gaia:gaia-review-security)
+       qa-tests        → gaia:gaia-review-qa
+       security-review → gaia:gaia-review-security
        test-automate   → gaia:gaia-test-automate
-       test-review     → gaia:gaia-test-review
+       test-review     → gaia:gaia-review-test
        review-perf     → gaia:gaia-review-perf
 
   2. After the skill returns, derive the expected report path from the
