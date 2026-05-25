@@ -803,6 +803,10 @@ v_brownfield_deadcode_jvm_enabled=$(merge_nested_key brownfield deadcode_jvm_ena
 # key; AC's hyphenated brownfield.tools.phase-4b-cross-stack.enabled spelled flat —
 # semantics unchanged per ADR-078).
 v_brownfield_phase_4b_cross_stack_enabled=$(merge_nested_key brownfield phase_4b_cross_stack_enabled)
+# E104-S2 — Phase 4b reconciliation per-tool override (depth-2 flat key; AC's
+# hyphenated brownfield.tools.phase-4b.enabled spelled flat — semantics unchanged
+# per ADR-078).
+v_brownfield_phase_4b_enabled=$(merge_nested_key brownfield phase_4b_enabled)
 # E104-S4 — DefectDojo export companion config (only consumed when
 # defectdojo_enabled=true). api_token holds the NAME of an env var, never a
 # literal secret (NFR-RSV2-7).
@@ -1267,6 +1271,8 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_brownfield_deadcode_jvm_enabled" ;;
     brownfield.phase_4b_cross_stack_enabled)
       printf '%s\n' "$v_brownfield_phase_4b_cross_stack_enabled" ;;
+    brownfield.phase_4b_enabled)
+      printf '%s\n' "$v_brownfield_phase_4b_enabled" ;;
     brownfield.defectdojo_api_url)
       printf '%s\n' "$v_brownfield_defectdojo_api_url" ;;
     brownfield.defectdojo_api_token)

@@ -1,0 +1,7 @@
+{
+  "entry_points": ["src/app.tsx"],
+  "reachable": [
+    { "file": "src/index.ts",      "referenced_by": ["src/app.tsx", "src/pages/index.tsx"] },
+    { "file": "src/components/Button.tsx", "referenced_by": ["src/app.tsx"] }
+  ]
+}
