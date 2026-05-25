@@ -227,6 +227,27 @@ YAML
   [ "$status" -eq 0 ]
 }
 
+# --- AC-X2/AC-X3 — sarif_merge telemetry via the shared writer (E104-S1) ----
+
+@test "E104-S4 AC-X2/AC-X3: brownfield-telemetry.sh populates *.sarif_merge fields on the report" {
+  TELEM="$(cd "$BATS_TEST_DIRNAME/../scripts/adapters/brownfield" && pwd)/brownfield-telemetry.sh"
+  [ -x "$TELEM" ]
+  cat > "$TEST_TMP/report.md" <<'MD'
+---
+title: brownfield report
+---
+body
+MD
+  run bash "$TELEM" --report "$TEST_TMP/report.md" --field phase_runtime_seconds.sarif_merge --value 5
+  [ "$status" -eq 0 ]
+  run bash "$TELEM" --report "$TEST_TMP/report.md" --field deterministic_tool_seconds.sarif_merge --value 5
+  [ "$status" -eq 0 ]
+  run bash "$TELEM" --report "$TEST_TMP/report.md" --get phase_runtime_seconds.sarif_merge
+  [ "$output" = "5" ]
+  run grep -F "body" "$TEST_TMP/report.md"
+  [ "$status" -eq 0 ]
+}
+
 # --- Hygiene --------------------------------------------------------------
 
 @test "E104-S4: sarif-merge.sh + defectdojo-export.sh exist, executable, pass bash -n" {
