@@ -263,7 +263,8 @@ if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
       # "section present but empty" error pointing at the right skill
       # to populate them.
       log "test-strategy.md was written; project-config.yaml is missing sections:${missing_sections}"
-      log "F-6 auto-stub-hydration: writing empty stubs for each missing section so downstream skills can resolve the keys (you'll still need to populate the section bodies via /gaia-config-test, /gaia-bridge-enable scaffold, /gaia-config-env, etc.)"
+      log "F-6 auto-stub-hydration: writing empty stubs for each missing section so downstream skills can resolve the keys"
+      log "Downstream skills affected: /gaia-bridge-enable (test_execution_bridge), /gaia-test-automate (test_execution.tier_N.command), /gaia-deploy (environments). Populate the stubs via /gaia-config-test, /gaia-bridge-enable scaffold, /gaia-config-env before invoking those."
 
       # Append empty-stub blocks. Each block has a comment marker so it's
       # obvious which sections came from the auto-hydrator vs being
