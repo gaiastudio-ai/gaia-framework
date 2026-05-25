@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.176.2] — 2026-05-25
+
+### Fixed
+
+- (AF-2026-05-24-14 pr-b) 6 script-behavior test02 medium findings (#941)
+- (AF-2026-05-24-14 pr-a) 13 quick-fix test02 medium/low findings (#940)
+
 ## [1.176.1] — 2026-05-24
 
 ### Fixed
