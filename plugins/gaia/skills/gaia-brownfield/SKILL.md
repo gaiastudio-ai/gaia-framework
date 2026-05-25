@@ -271,6 +271,40 @@ Detect contradictions between configuration files (e.g., different service limit
 
 Identify unused modules, orphaned routes, dead migrations, unused feature flags. Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-dead-code.md`.
 
+#### Per-stack deterministic dead-code adapters (E70-S8 / FR-545 / NFR-87 / ADR-078)
+
+When `brownfield.deterministic_tools: true`, the LLM dead-code heuristic is
+**replaced** by three sound per-stack adapters under
+`scripts/adapters/dead-code/`. Each is independently gated by its per-tool
+override (`brownfield.deadcode_go_enabled` / `deadcode_python_enabled` /
+`deadcode_jvm_enabled`, default true) and degrades gracefully (WARN + exit 0)
+when its toolchain is absent — Phase 3 never aborts (NFR-84).
+
+```bash
+AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
+ADAPT="$GAIA_PLUGIN_ROOT/scripts/adapters/dead-code"
+# Each adapter writes BOTH a flat JSON (AUDIT/dead-code/<tool>.json — report
+# rendering) AND a SARIF run (AUDIT/sarif/<tool>.sarif — feeds the Phase 7
+# E104-S1 dedup precision ladder via .properties.symbol).
+GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true DEADCODE_PROJECT_ROOT="$PROJECT_PATH" \
+  DEADCODE_OUT_DIR="$AUDIT" bash "$ADAPT/go-deadcode/adapter.sh"
+GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true PY_PROJECT_ROOT="$PROJECT_PATH" \
+  PY_OUT_DIR="$AUDIT" bash "$ADAPT/python-vulture/adapter.sh"
+GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true JVM_PROJECT_ROOT="$PROJECT_PATH" \
+  JVM_OUT_DIR="$AUDIT" bash "$ADAPT/jvm-spotbugs/adapter.sh"
+```
+
+**Per-stack precision is the contract, not a bug (NFR-87).** Go reports a
+whole-program reachability binary verdict (`<pkg>.<Function>`), Python a
+confidence percentage (`<line>:<symbol>@<conf>`), JVM a priority×rank ordinal
+(`<FQCN>.<method>(<sig>)`). The framework MUST NOT synthesize a unified
+cross-stack confidence score — `file_path` is the universal JOIN key, and each
+stack-native `qualifier` is preserved verbatim. The unified "Test Quality"
+report section is rendered in Phase 7 (see the Phase 7 render sub-step) as THREE
+labeled per-stack sub-sections — never one flat list. Telemetry
+(`phase_runtime_seconds.deadcode_{go,python,jvm}` etc.) is written by each
+adapter through the single-author `brownfield-telemetry.sh`.
+
 **Partial-failure semantics (AC-EC8):** If a scanner crashes mid-run, the other scanners continue. The failed scan writes a gap row tagged `scan failed: {reason}`. The overall skill exits non-zero with a partial-result summary listing which scanners succeeded, which failed, and what recoverable evidence is available. The remaining scanners continue — one failure does not block the cohort.
 
 ### Per-Subagent Scan Diagnostic Table (E48-S4)
@@ -321,6 +355,9 @@ gap-consolidation report (Phase 7) can attribute runtime and token cost:
 | `detect_signals_mode` | detect-signals (E70-S11) | `proposal` \| `audit` \| `skipped` — the stacks-path mode taken. detect-signals-owned. |
 | `phase_runtime_seconds.sbom_completeness` / `deterministic_tool_seconds.sbom_completeness` | sbom-completeness (E104-S3) | Wall-clock of the SBOM completeness check; sbom-completeness-owned. |
 | `sbom_completeness_warning` / `divergence_pct` / `applied_threshold` / `detected_carve_outs` | sbom-completeness (E104-S3) | Lock-vs-SBOM divergence WARNING + the percentage, applied 10/15% threshold, and matched carve-outs. sbom-completeness-owned. |
+| `phase_runtime_seconds.deadcode_go` / `deterministic_tool_seconds.deadcode_go` | go-deadcode adapter (E70-S8) | Wall-clock of the Go deadcode scan; go-deadcode-owned. |
+| `phase_runtime_seconds.deadcode_python` / `deterministic_tool_seconds.deadcode_python` | python-vulture adapter (E70-S8) | Wall-clock of the Python vulture scan; python-vulture-owned. |
+| `phase_runtime_seconds.deadcode_jvm` / `deterministic_tool_seconds.deadcode_jvm` | jvm-spotbugs adapter (E70-S8) | Wall-clock of the JVM SpotBugs scan; jvm-spotbugs-owned. |
 
 > **Single-author writer (AF-2026-05-09-12 sibling-defect guidance).** Each field
 > is written by exactly ONE owning phase via `brownfield-telemetry.sh` — no fan-out.
@@ -479,6 +516,30 @@ fi
 When the dedup flag is off (or the master flag is off), `dedup.sh` passes the raw stream through unchanged (`gap_count_before_dedup == gap_count_after_dedup`) and logs an INFO skip. The deduped stream is written to `.gaia/memory/brownfield-audit/deduped-findings.json` for the E104-S2 Phase 4b reconciliation consumer.
 
 > **Single-author-per-field telemetry (AF-2026-05-09-12).** `brownfield-telemetry.sh` is the shared writer mechanism, but each field has exactly ONE owning phase: the pre-warm pre-flight owns `*.pre_warm`, the SARIF merge owns `*.sarif_merge`, and this dedup sub-step owns `*.dedup` + `gap_count_*` + `llm_token_count`. No field is written by more than one phase (no fan-out).
+
+### Phase 7 dead-code "Test Quality" render sub-step (E70-S8 / FR-545 / NFR-87)
+
+After the dedup sub-step, render the unified **Test Quality** section into
+`consolidated-gaps.md` from the three per-stack dead-code adapter outputs
+collected in Phase 3. This is a NET-NEW section (created, not edited) and is
+intentionally rendered as ONE `## Test Quality` H2 with THREE per-stack H3
+sub-sections (Go / Python / JVM) — each showing its stack-native qualifier
+verbatim. The renderer is idempotent (re-running replaces, never duplicates).
+
+```bash
+AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/dead-code/render-test-quality.sh" \
+  --out-dir "$AUDIT" --report "$REPORT" || true
+```
+
+**Anti-pattern guard (NFR-87 / AC4).** The section MUST NOT collapse the three
+stacks into one flat list with a synthesized cross-stack confidence column — Go's
+binary reachability verdict, Python's confidence %, and JVM's priority×rank ordinal
+are NOT commensurable. Per-stack precision is the contract this story preserves
+(meeting-2026-05-23, Sable turn 12). The per-stack SARIF runs (Phase 3) ALSO feed
+the dedup precision ladder above via `.properties.symbol`, so the dead-code findings
+participate in cross-tool dedup without forfeiting their native qualifier.
 
 Spawn a Gap Consolidation subagent:
 

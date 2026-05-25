@@ -1,0 +1,13 @@
+{
+  "provider": "go-deadcode",
+  "category": "dead-code",
+  "version-range": ">=0.0.0-20240520",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 120,
+  "file-extensions": [".go"],
+  "description": "golang.org/x/tools/cmd/deadcode — whole-program reachability (Rapid Type Analysis) dead-function detection for Go. Binary verdict, zero false positives by construction. Emits file_path JOIN key + qualifier '<pkg>.<Function>'.",
+  "provider-binary": "deadcode",
+  "availability-probe": "command -v deadcode && command -v go",
+  "platforms": ["go"],
+  "applies_to_skills": ["brownfield"]
+}

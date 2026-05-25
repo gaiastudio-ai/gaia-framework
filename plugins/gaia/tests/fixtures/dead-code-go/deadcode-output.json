@@ -1,0 +1,6 @@
+[
+  {
+    "name": "example.com/deadcodefix/unused_pkg.UnusedFunc",
+    "posn": "unused_pkg/lib.go:10:6"
+  }
+]

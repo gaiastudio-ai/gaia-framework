@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BugCollection>
+  <BugInstance type="NP_GUARANTEED_DEREF" priority="1" rank="4">
+    <Class classname="com.example.Svc"/>
+    <Method classname="com.example.Svc" name="run" signature="(I)V"/>
+    <SourceLine classname="com.example.Svc" sourcefile="Svc.java" sourcepath="com/example/Svc.java" start="6"/>
+  </BugInstance>
+</BugCollection>

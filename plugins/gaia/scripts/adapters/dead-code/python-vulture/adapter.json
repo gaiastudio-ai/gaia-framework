@@ -1,0 +1,13 @@
+{
+  "provider": "vulture",
+  "category": "dead-code",
+  "version-range": ">=2.11",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 120,
+  "file-extensions": [".py"],
+  "description": "vulture — confidence-scored dead-code detection for Python (--min-confidence 80 default). Emits file_path JOIN key + qualifier '<line>:<symbol>@<confidence>'. Per-stack precision: confidence preserved verbatim, never synthesized onto a cross-stack scale.",
+  "provider-binary": "vulture",
+  "availability-probe": "command -v vulture",
+  "platforms": ["python"],
+  "applies_to_skills": ["brownfield"]
+}

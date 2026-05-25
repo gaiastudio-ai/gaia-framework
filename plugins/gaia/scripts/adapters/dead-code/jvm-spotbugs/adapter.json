@@ -1,0 +1,13 @@
+{
+  "provider": "spotbugs",
+  "category": "dead-code",
+  "version-range": ">=4.8.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 300,
+  "file-extensions": [".java", ".class"],
+  "description": "SpotBugs — JVM static analysis, filtered to priority=1 AND rank<=4 as a conservative proven-dead-equivalent default. Emits file_path JOIN key + qualifier '<FQCN>.<method>(<signature>)'. Per-stack precision: priority x rank ordinal, never a synthesized confidence.",
+  "provider-binary": "spotbugs",
+  "availability-probe": "command -v spotbugs",
+  "platforms": ["jvm", "android"],
+  "applies_to_skills": ["brownfield"]
+}
