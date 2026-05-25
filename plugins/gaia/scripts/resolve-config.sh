@@ -769,6 +769,13 @@ v_dev_story_tdd_review_phases=$(merge_doubly_nested_key dev_story tdd_review pha
 v_dev_story_tdd_review_qa_auto_in_yolo=$(merge_doubly_nested_key dev_story tdd_review qa_auto_in_yolo)
 v_dev_story_tdd_review_qa_timeout_seconds=$(merge_doubly_nested_key dev_story tdd_review qa_timeout_seconds)
 
+# E70-S7 — brownfield deterministic-tools master flag (ADR-121) + per-tool
+# override (ADR-078). Depth-2 nested keys (the resolver supports up to depth-3
+# but only ASCII-underscore segments, so the per-tool override uses the flat
+# `prewarm_enabled` spelling rather than a hyphenated `tools.pre-warm.enabled`).
+v_brownfield_deterministic_tools=$(merge_nested_key brownfield deterministic_tools)
+v_brownfield_prewarm_enabled=$(merge_nested_key brownfield prewarm_enabled)
+
 # Defaults (applied when no layer set a value).
 [ -z "$v_dev_story_tdd_review_threshold" ]          && v_dev_story_tdd_review_threshold="medium"
 [ -z "$v_dev_story_tdd_review_phases" ]             && v_dev_story_tdd_review_phases="[red]"
@@ -1200,6 +1207,12 @@ if [ -n "$FIELD" ]; then
     # per gaia-bridge-toggle SKILL.md AC-EC3).
     test_execution_bridge.bridge_enabled)
       printf '%s\n' "$v_test_execution_bridge_bridge_enabled" ;;
+    # E70-S7 — brownfield deterministic-tools flags (consumers treat empty as
+    # `false`; the /gaia-brownfield Phase 3 prelude reads both before pre-warm).
+    brownfield.deterministic_tools)
+      printf '%s\n' "$v_brownfield_deterministic_tools" ;;
+    brownfield.prewarm_enabled)
+      printf '%s\n' "$v_brownfield_prewarm_enabled" ;;
     severity.Critical)
       printf '%s\n' "$v_severity_Critical" ;;
     severity.High)
