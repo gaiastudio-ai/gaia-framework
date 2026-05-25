@@ -334,7 +334,40 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/defectdojo-export.sh" \
 
 **Migration shim (1-sprint deprecation).** When no `*.sarif` inputs exist (or the flag is off), `sarif-merge.sh` emits a WARN/INFO line and the 6-step recipe below falls back to its prior per-tool JSON consumption at Step 1. The legacy per-tool JSON path is slated for removal in the next sprint.
 
-`sarif_merge_seconds` feeds the `phase_runtime_seconds.sarif_merge` telemetry field (see the Phase 3 telemetry subsection; the populating writer lands with E104-S1/S2).
+`sarif_merge_seconds` feeds the `phase_runtime_seconds.sarif_merge` telemetry field (see the Phase 3 telemetry subsection; the populating writer is `brownfield-telemetry.sh`, landed by E104-S1).
+
+### Phase 7 dedup sub-step (E104-S1 / FR-541 / ADR-123)
+
+Immediately after the SARIF merge PRE-step and BEFORE Phase 4b reconciliation (E104-S2), run the cross-tool dedup over the merged SARIF. Dedup is the FIRST sub-step of the 6-step recipe (reordered to **load → dedup → validate → rank → budget → write**) — dedup-first shrinks the working set the downstream validate/rank/budget steps process. Dedup uses two key shapes (CVE-class keyed `(CVE-ID, file, severity)` with Grype-canonical tie-break; non-CVE-class grouped `(file, symbol)` with the precision ladder) per `docs/dedup-contract.md`.
+
+```bash
+DEDUP_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.dedup_enabled 2>/dev/null)"
+export GAIA_BROWNFIELD_DEDUP_ENABLED="${DEDUP_ON:-true}"   # default-on per E104-S1 Task 5
+dedup_start=$(date +%s)
+# Capture dedup.sh stdout so the gap_count_* values can be parsed from its INFO log line:
+#   "dedup: <N> raw finding(s) -> <M> deduped (gap_count_before_dedup=<N> gap_count_after_dedup=<M>) ..."
+dedup_log="$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/dedup.sh" 2>&1 || true)"
+printf '%s\n' "$dedup_log"
+dedup_seconds=$(( $(date +%s) - dedup_start ))
+gap_before="$(printf '%s' "$dedup_log" | sed -n 's/.*gap_count_before_dedup=\([0-9][0-9]*\).*/\1/p' | head -n1)"
+gap_after="$(printf '%s' "$dedup_log" | sed -n 's/.*gap_count_after_dedup=\([0-9][0-9]*\).*/\1/p' | head -n1)"
+
+# Telemetry population (E104-S1 brownfield-telemetry.sh — the shared, single-author-per-field
+# writer). The dedup phase OWNS gap_count_*, *.dedup runtime, and llm_token_count (deterministic).
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
+if [ -f "$REPORT" ]; then
+  bash "$TELEM" --report "$REPORT" --field phase_runtime_seconds.dedup --value "$dedup_seconds" || true
+  bash "$TELEM" --report "$REPORT" --field deterministic_tool_seconds.dedup --value "$dedup_seconds" || true
+  bash "$TELEM" --report "$REPORT" --field llm_token_count --value 0 || true
+  [ -n "$gap_before" ] && bash "$TELEM" --report "$REPORT" --field gap_count_before_dedup --value "$gap_before" || true
+  [ -n "$gap_after" ]  && bash "$TELEM" --report "$REPORT" --field gap_count_after_dedup  --value "$gap_after"  || true
+fi
+```
+
+When the dedup flag is off (or the master flag is off), `dedup.sh` passes the raw stream through unchanged (`gap_count_before_dedup == gap_count_after_dedup`) and logs an INFO skip. The deduped stream is written to `.gaia/memory/brownfield-audit/deduped-findings.json` for the E104-S2 Phase 4b reconciliation consumer.
+
+> **Single-author-per-field telemetry (AF-2026-05-09-12).** `brownfield-telemetry.sh` is the shared writer mechanism, but each field has exactly ONE owning phase: the pre-warm pre-flight owns `*.pre_warm`, the SARIF merge owns `*.sarif_merge`, and this dedup sub-step owns `*.dedup` + `gap_count_*` + `llm_token_count`. No field is written by more than one phase (no fan-out).
 
 Spawn a Gap Consolidation subagent:
 
@@ -347,7 +380,7 @@ Spawn a Gap Consolidation subagent:
 
 **Step 2 — Validate entries against schema.** Required fields: `id`, `category`, `severity`, `title`, `description` (or `evidence`), `evidence_file`, `evidence_line`, `recommendation`. Entries missing required fields are logged as warnings (noting source file and missing field) and skipped from consolidation.
 
-**Step 3 — Deduplicate.** Group gap entries by `evidence_file` + `evidence_line` exact match. For each group:
+**Step 3 — Deduplicate (LLM entry-level).** Cross-tool scanner-finding dedup already ran as the deterministic dedup sub-step BEFORE this recipe (E104-S1 `dedup.sh`, the FIRST sub-step of the reordered load → dedup → validate → rank → budget → write recipe). This Step 3 is a SECONDARY, coarser entry-level dedup over the consolidated gap entries (including the non-scanner sources). Group gap entries by `evidence_file` + `evidence_line` exact match. For each group:
 - Retain the entry with the highest severity (critical > high > medium > low).
 - Merge recommendations from all duplicate entries into the retained entry.
 - Add a `merged_from` field listing all original gap IDs.

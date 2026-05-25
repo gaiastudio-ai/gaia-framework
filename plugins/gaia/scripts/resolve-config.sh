@@ -781,6 +781,8 @@ v_brownfield_prewarm_enabled=$(merge_nested_key brownfield prewarm_enabled)
 # spelled flat — semantics unchanged per ADR-078).
 v_brownfield_sarif_merge_enabled=$(merge_nested_key brownfield sarif_merge_enabled)
 v_brownfield_defectdojo_enabled=$(merge_nested_key brownfield defectdojo_enabled)
+# E104-S1 — dedup per-tool override (depth-2 flat key; default true per story Task 5).
+v_brownfield_dedup_enabled=$(merge_nested_key brownfield dedup_enabled)
 # E104-S4 — DefectDojo export companion config (only consumed when
 # defectdojo_enabled=true). api_token holds the NAME of an env var, never a
 # literal secret (NFR-RSV2-7).
@@ -1229,6 +1231,8 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_brownfield_sarif_merge_enabled" ;;
     brownfield.defectdojo_enabled)
       printf '%s\n' "$v_brownfield_defectdojo_enabled" ;;
+    brownfield.dedup_enabled)
+      printf '%s\n' "$v_brownfield_dedup_enabled" ;;
     brownfield.defectdojo_api_url)
       printf '%s\n' "$v_brownfield_defectdojo_api_url" ;;
     brownfield.defectdojo_api_token)
