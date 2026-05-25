@@ -252,21 +252,58 @@ if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
     grep -qE "^test_execution_bridge:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} test_execution_bridge"
     grep -qE "^environments:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} environments"
     if [ -n "$missing_sections" ]; then
-      log "WARNING: test-strategy.md was written but project-config.yaml hydration was SKIPPED."
-      log "         Missing sections in $CONFIG_PATH:${missing_sections}"
-      log ""
-      log "         Downstream skills (/gaia-bridge-enable expects test_execution_bridge,"
-      log "         /gaia-test-automate expects test_execution.tier_N.command per AF-22-6"
-      log "         Bug-6, /gaia-deploy expects environments) will halt with generic"
-      log "         'X missing' errors that point at the wrong upstream remediation."
-      log ""
-      log "         Remediation: source \${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-hydration.sh"
-      log "         and call config_hydrate_section <section> <yaml-fragment-file> for each"
-      log "         missing section. The fragments must match the test_execution placements"
-      log "         + tier_N commands + environments declared in test-strategy.md §Test Plan."
-      log ""
-      log "         This warning is fail-safe only — test-strategy.md was written"
-      log "         successfully and is the primary artifact."
+      # AF-2026-05-24-14 / Test02 F-6: upgraded from warn-only to
+      # auto-stub-hydrate. Previously this block only emitted a WARNING
+      # and asked the operator to manually invoke config_hydrate_section
+      # — but downstream skills (gaia-bridge-enable, gaia-test-automate,
+      # gaia-deploy) still halted with generic "X missing" errors.
+      # We now write empty stubs for the missing sections so those
+      # downstream skills find the keys present (with empty bodies) and
+      # can either proceed with defaults OR emit a more-specific
+      # "section present but empty" error pointing at the right skill
+      # to populate them.
+      log "test-strategy.md was written; project-config.yaml is missing sections:${missing_sections}"
+      log "F-6 auto-stub-hydration: writing empty stubs for each missing section so downstream skills can resolve the keys (you'll still need to populate the section bodies via /gaia-config-test, /gaia-bridge-enable scaffold, /gaia-config-env, etc.)"
+
+      # Append empty-stub blocks. Each block has a comment marker so it's
+      # obvious which sections came from the auto-hydrator vs being
+      # operator-authored.
+      ensure_trailing_newline() {
+        if [ -s "$1" ] && [ "$(tail -c 1 "$1" | wc -l | tr -d ' ')" = "0" ]; then
+          printf '\n' >> "$1"
+        fi
+      }
+      ensure_trailing_newline "$CONFIG_PATH"
+
+      case " $missing_sections " in
+        *" test_execution "*)
+          cat >> "$CONFIG_PATH" <<'STUB'
+
+# AF-2026-05-24-14 F-6 auto-stub — populate via /gaia-config-test
+test_execution: {}
+STUB
+          ;;
+      esac
+      case " $missing_sections " in
+        *" test_execution_bridge "*)
+          cat >> "$CONFIG_PATH" <<'STUB'
+
+# AF-2026-05-24-14 F-6 auto-stub — populate via /gaia-bridge-enable
+test_execution_bridge:
+  bridge_enabled: false
+STUB
+          ;;
+      esac
+      case " $missing_sections " in
+        *" environments "*)
+          cat >> "$CONFIG_PATH" <<'STUB'
+
+# AF-2026-05-24-14 F-6 auto-stub — populate via /gaia-config-env
+environments: {}
+STUB
+          ;;
+      esac
+      log "auto-stub-hydration complete; review $CONFIG_PATH and populate the stubs before invoking downstream skills"
     fi
   fi
 fi

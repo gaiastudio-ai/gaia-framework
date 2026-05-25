@@ -115,11 +115,12 @@ The stub reads `sprint_review:` from `config/project-config.yaml` (E93-S2 delive
 
 #### Step 4a — Per-goal stakeholder confirmation (AskUserQuestion)
 
-For each sprint goal, fire an `AskUserQuestion` at the main-turn caller level with the canonical 3-option set:
+For each sprint goal, fire an `AskUserQuestion` at the main-turn caller level with the canonical 4-option set (AF-2026-05-24-14 / Test02 F-27 — expanded from 3 to 4 to capture the legitimate "let the rubric judge instead of me" intent that operators were typing in free-text on the YARA-2 run):
 
 - `works-as-expected` — stakeholder confirms the goal was met.
 - `fails-goal` — stakeholder rejects the goal as not met.
 - `needs-rework` — stakeholder accepts the goal partially but flags follow-up.
+- `delegate-to-val` — stakeholder explicitly defers to Track A's per-goal Val rubric verdict. The recorded per-goal verdict for this case is `delegate-to-val:{val-verdict}` (e.g., `delegate-to-val:PASSED`), preserving the audit trail of the delegation. The composite-verdict reducer treats this row as PASSED-equivalent when Val's per-goal verdict was PASSED; FAILED-equivalent otherwise.
 
 Record the per-goal response into the sprint-review artifact. **This MUST run at the main turn**, not inside the forked Track B script — `AskUserQuestion` is not exposed inside forked skill executions (memory rule `feedback_askuserquestion_forked_skill_gap.md`).
 
