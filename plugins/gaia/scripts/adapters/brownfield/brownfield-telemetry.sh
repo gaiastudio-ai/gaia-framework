@@ -32,12 +32,12 @@ export LC_ALL
 SCRIPT_NAME="adapters/brownfield/brownfield-telemetry.sh"
 die() { printf 'ERROR: %s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
-REPORT="" FIELD="" VALUE="" GET=""
+REPORT="" FIELD="" VALUE="" GET="" VALUE_SET=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --report) REPORT="$2"; shift 2 ;;
     --field)  FIELD="$2"; shift 2 ;;
-    --value)  VALUE="$2"; shift 2 ;;
+    --value)  VALUE="$2"; VALUE_SET=1; shift 2 ;;
     --get)    GET="$2"; shift 2 ;;
     *) die "unknown arg: $1" ;;
   esac
@@ -54,7 +54,9 @@ second_fence="$(grep -n '^---[[:space:]]*$' "$REPORT" | sed -n '2p' | cut -d: -f
 [ "${first_fence:-}" = "1" ] || die "no leading YAML frontmatter in $REPORT"
 [ -n "${second_fence:-}" ] || die "unterminated YAML frontmatter in $REPORT"
 
-fm_tmp="$(mktemp)"; body_tmp="$(mktemp)"
+fm_tmp="$(mktemp)"; body_tmp="$(mktemp)"; out_tmp=""
+# Clean up all temp files on any exit (incl. a mid-edit yq failure under set -e).
+trap 'rm -f "$fm_tmp" "$body_tmp" ${out_tmp:+"$out_tmp"}' EXIT
 sed -n "2,$((second_fence-1))p" "$REPORT" > "$fm_tmp"
 sed -n "$((second_fence+1)),\$p" "$REPORT" > "$body_tmp"
 
@@ -67,8 +69,9 @@ if [ -n "$GET" ]; then
 fi
 
 [ -n "$FIELD" ] || die "--field <dotted-key> required (or use --get)"
-# --value may be empty only when explicitly intended; require it for set.
-if [ -z "${VALUE+x}" ]; then die "--value required with --field"; fi
+# --value is required for a set; an explicitly-passed empty value is allowed
+# (VALUE_SET sentinel distinguishes "omitted" from "passed empty string").
+[ "$VALUE_SET" -eq 1 ] || die "--value required with --field"
 
 # Numeric values become YAML numbers; otherwise a quoted string.
 if printf '%s' "$VALUE" | grep -Eq '^-?[0-9]+$'; then

@@ -148,12 +148,21 @@ prewarm_start=$(date +%s)
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/pre-warm.sh" || true
 prewarm_seconds=$(( $(date +%s) - prewarm_start ))
 
+# Telemetry population (E104-S1 brownfield-telemetry.sh — the shared, single-author-per-field
+# writer). The pre-warm pre-flight OWNS the *.pre_warm fields (no fan-out).
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
+if [ -f "$REPORT" ]; then
+  bash "$TELEM" --report "$REPORT" --field phase_runtime_seconds.pre_warm --value "$prewarm_seconds" || true
+  bash "$TELEM" --report "$REPORT" --field deterministic_tool_seconds.pre_warm --value "$prewarm_seconds" || true
+fi
+
 # Phase 3 scan timer anchor (E70-S7 AC2 / AC-X2). pre-warm MUST complete BEFORE
 # this start_ts so its runtime is attributed to pre_warm, not the scan budget.
 start_ts=$(date +%s)
 ```
 
-`prewarm_seconds` feeds the `phase_runtime_seconds.pre_warm` / `deterministic_tool_seconds.pre_warm` telemetry fields (see the Phase 3 telemetry subsection below). When the flags are off, `pre-warm.sh` emits an INFO skip line and contributes 0.
+`prewarm_seconds` feeds the `phase_runtime_seconds.pre_warm` / `deterministic_tool_seconds.pre_warm` telemetry fields, populated via `brownfield-telemetry.sh` (the shared writer landed by E104-S1). When the flags are off, `pre-warm.sh` emits an INFO skip line and contributes 0.
 
 Spawn seven scan subagents in parallel. These run alongside Phase 2 documentation to detect gaps that structural analysis misses. Each scanner receives `{tech_stack}`, `{project-path}`, and `{project_type}` as context. When `{project_type}` is `infrastructure` or `platform`, infra-specific detection patterns are applied alongside application patterns; for `application`, only application patterns run.
 
