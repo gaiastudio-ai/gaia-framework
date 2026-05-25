@@ -14,6 +14,9 @@
 #   phase_runtime_seconds.<phase>                   (each phase, its own key)
 #   deterministic_tool_seconds.<phase>              (each phase, its own key)
 #   llm_token_count                                 (deterministic phases set 0)
+#   cross_stack_warnings (array), cross_stack_bypass_applied (bool)  (E104-S5)
+#   (array + bool value-typing added by E104-S3; phase keys incl. deadcode_{go,
+#    python,jvm} from E70-S8 and phase_4b_cross_stack from E104-S5)
 #
 # Operates ONLY on the YAML frontmatter block (between the leading `---`
 # fences); the markdown body is preserved byte-for-byte. yq v4 drives the edit.

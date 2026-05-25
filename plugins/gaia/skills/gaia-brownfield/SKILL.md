@@ -358,6 +358,9 @@ gap-consolidation report (Phase 7) can attribute runtime and token cost:
 | `phase_runtime_seconds.deadcode_go` / `deterministic_tool_seconds.deadcode_go` | go-deadcode adapter (E70-S8) | Wall-clock of the Go deadcode scan; go-deadcode-owned. |
 | `phase_runtime_seconds.deadcode_python` / `deterministic_tool_seconds.deadcode_python` | python-vulture adapter (E70-S8) | Wall-clock of the Python vulture scan; python-vulture-owned. |
 | `phase_runtime_seconds.deadcode_jvm` / `deterministic_tool_seconds.deadcode_jvm` | jvm-spotbugs adapter (E70-S8) | Wall-clock of the JVM SpotBugs scan; jvm-spotbugs-owned. |
+| `phase_runtime_seconds.phase_4b_cross_stack` / `deterministic_tool_seconds.phase_4b_cross_stack` | cross-stack analysis (E104-S5) | Wall-clock of the Phase 4b cross-stack edge inspection; cross-stack-owned. |
+| `cross_stack_warnings` | cross-stack analysis (E104-S5) | Array of `{source_stack, source_file, target_stack, target_file}` detail rows (possibly empty); cross-stack-owned. |
+| `cross_stack_bypass_applied` | cross-stack analysis (E104-S5) | Bool — whether `--bypass cross-stack-refs` suppressed WARNINGs this run; cross-stack-owned. |
 
 > **Single-author writer (AF-2026-05-09-12 sibling-defect guidance).** Each field
 > is written by exactly ONE owning phase via `brownfield-telemetry.sh` — no fan-out.
@@ -368,7 +371,10 @@ gap-consolidation report (Phase 7) can attribute runtime and token cost:
 > `per_stack_file_counts.*`; detect-signals owns `*.detect_signals` +
 > `detect_signals_mode`; sbom-completeness owns `*.sbom_completeness` +
 > `sbom_completeness_warning` + `divergence_pct` + `applied_threshold` +
-> `detected_carve_outs`. The `gap_count_*` values are populated for real by
+> `detected_carve_outs`; the per-stack dead-code adapters own
+> `*.deadcode_{go,python,jvm}`; the cross-stack analysis owns
+> `*.phase_4b_cross_stack` + `cross_stack_warnings` + `cross_stack_bypass_applied`.
+> The `gap_count_*` values are populated for real by
 > the dedup (E104-S1) / reconciliation (E104-S2) phases.
 
 ## Phase 4 — Test Execution During Discovery
@@ -387,6 +393,34 @@ Spawn a Test Execution Scanner subagent:
 - If no test suite is detected, log an info-level gap entry `GAP-TEST-INFO-001`.
 
 Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-test-execution.md`. If the subagent fails to write its output file, log a warning and continue.
+
+### Phase 4b cross-stack scope + WARNING emission (E104-S5 / FR-547 / NFR-89 / ADR-063 / ADR-120 / ADR-126)
+
+When `brownfield.deterministic_tools: true` AND `brownfield.phase_4b_cross_stack_enabled: true`, Phase 4b reconciliation (E104-S2 baseline) is extended with a cross-stack scope sub-step that catches **unintended coupling** in multi-stack monorepos. It respects `stacks[].path` partitioning (per-stack reconciliation runs in isolation) and inspects the dependency-graph for edges that cross a stack boundary.
+
+```bash
+AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/reconcile-cross-stack.sh" \
+  --bypass "$BYPASS_SKILL" --reason "$BYPASS_REASON"   # bypass args forwarded only when present
+# Reads stacks[].path + cross_refs[] from project-config; reads the dep-graph from
+# AUDIT/depgraph.json (producer wired by E104-S2 — degrades to INFO-skip if absent).
+```
+
+An edge from stack A to stack B where B is NOT in A's `cross_refs[]` allowlist emits the canonical ADR-063 WARNING (exact — operators/CI may grep it):
+
+```
+unsanctioned-cross-stack-reference: <source_stack>:<file> -> <target_stack>:<file>
+```
+
+**`cross_refs[]` is a per-source-stack outbound allowlist** (`A.cross_refs: [B]` ⇒ A may reference B). Shared subdirs require explicit declaration on EACH consuming stack — there is no "shared resource" concept (ADR-126 §Corner Cases). **Asymmetric allowlists are valid**: if `api` declares `[shared]` but `web` does not, only `web→shared` warns.
+
+**Worked shared-subdir example.** `/shared` imported by both `/services/api` and `/services/web`:
+- Both declare `cross_refs: [shared]` → no WARNING (both edges sanctioned).
+- Drop `shared` from `web` only → one WARNING for `web→shared`; `api→shared` stays silent.
+
+**Bypass (ADR-120).** `--bypass cross-stack-refs --reason "<text>"` suppresses the WARNINGs for the run and appends to `.gaia/memory/brownfield-audit/bypass-log.json`. The flag is parsed by the shared `scripts/lib/parse-bypass-flag.sh` (E85-S14 — required-reason, length 10–500); the SR-86 reason char-class (`^[A-Za-z0-9 ._-]+$`, shell metachars rejected) is enforced in the adapter. See E85-S14 for the canonical bypass-vocabulary doc (not duplicated here).
+
+**Performance (NFR-89).** A `{file→stack}` reverse-index (longest-path-prefix match over `stacks[].path`) makes each edge an O(1) lookup — no per-edge graph walk; per-stack-pair detection is well under 100ms. **Single-stack** (`path: null`) collapses to one catch-all stack → zero cross-stack edges → byte-identical to the E104-S2 baseline (zero-regression). See `scripts/adapters/brownfield/reconcile-cross-stack.README.md`.
 
 ## Phase 5 — Auto-Generate test-environment.yaml from Detected Infrastructure
 
