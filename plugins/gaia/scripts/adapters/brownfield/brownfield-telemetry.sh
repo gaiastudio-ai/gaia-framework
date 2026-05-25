@@ -73,8 +73,17 @@ fi
 # (VALUE_SET sentinel distinguishes "omitted" from "passed empty string").
 [ "$VALUE_SET" -eq 1 ] || die "--value required with --field"
 
-# Numeric values become YAML numbers; otherwise a quoted string.
+# Value typing:
+#   - integers            -> YAML number   (e.g. 11)
+#   - true|false          -> YAML boolean   (e.g. sbom_completeness_warning: true)
+#   - [..] JSON array     -> YAML sequence  (e.g. detected_carve_outs: [a, b])
+#   - everything else     -> quoted string
 if printf '%s' "$VALUE" | grep -Eq '^-?[0-9]+$'; then
+  yq eval -i ".${FIELD} = ${VALUE}" "$fm_tmp"
+elif [ "$VALUE" = "true" ] || [ "$VALUE" = "false" ]; then
+  yq eval -i ".${FIELD} = ${VALUE}" "$fm_tmp"
+elif printf '%s' "$VALUE" | grep -Eq '^\[.*\]$'; then
+  # Parse the JSON array into a native YAML sequence (flow style preserved by yq).
   yq eval -i ".${FIELD} = ${VALUE}" "$fm_tmp"
 else
   yq eval -i ".${FIELD} = \"${VALUE}\"" "$fm_tmp"

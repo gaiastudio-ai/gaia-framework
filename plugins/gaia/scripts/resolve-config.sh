@@ -790,6 +790,8 @@ v_brownfield_grype_enabled=$(merge_nested_key brownfield grype_enabled)
 # (depth-2 flat key; AC's hyphenated brownfield.tools.detect-signals.enabled is
 # unparseable, so spelled flat — semantics unchanged per ADR-078).
 v_brownfield_detect_signals_enabled=$(merge_nested_key brownfield detect_signals_enabled)
+# E104-S3 — SBOM completeness check per-tool override (depth-2 flat key).
+v_brownfield_sbom_completeness_enabled=$(merge_nested_key brownfield sbom_completeness_enabled)
 # E104-S4 — DefectDojo export companion config (only consumed when
 # defectdojo_enabled=true). api_token holds the NAME of an env var, never a
 # literal secret (NFR-RSV2-7).
@@ -1244,6 +1246,8 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_brownfield_grype_enabled" ;;
     brownfield.detect_signals_enabled)
       printf '%s\n' "$v_brownfield_detect_signals_enabled" ;;
+    brownfield.sbom_completeness_enabled)
+      printf '%s\n' "$v_brownfield_sbom_completeness_enabled" ;;
     brownfield.defectdojo_api_url)
       printf '%s\n' "$v_brownfield_defectdojo_api_url" ;;
     brownfield.defectdojo_api_token)
