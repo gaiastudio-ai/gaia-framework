@@ -89,28 +89,40 @@ for cg in "$CG_DIR"/callgraph-*.json; do
   [ -f "$cg" ] && cg_files+=("$cg")
 done
 
-reachable_json="{}"   # { "<file>": ["<entry>", ...], ... }
+# Written to a temp file (NOT an --argjson string): a large reachable-set would
+# blow ARG_MAX (~1MB) on a real monorepo, so we pass it via --slurpfile to keep
+# the reconcile join within the AC5 budget at 1M-line scale (Juno perf P1).
+reach_tmp="$(mktemp)"
+trap 'rm -f "$reach_tmp"' EXIT
+printf '{}' > "$reach_tmp"   # { "<file>": ["<entry>", ...], ... }
 if [ "${#cg_files[@]}" -gt 0 ]; then
   # Merge every call-graph's reachable[] into one {file: referenced_by[]} object.
-  reachable_json="$(jq -s '
-    [ .[] | .reachable[]? | {key: .file, value: (.referenced_by // [])} ]
+  # A file referenced across MULTIPLE call-graphs has its referenced_by lists
+  # UNIONed (group_by + unique) — not last-write-wins — so the entry_points
+  # annotation is complete (code-review INFO fix).
+  jq -s '
+    [ .[] | .reachable[]? | {file: .file, refs: (.referenced_by // [])} ]
+    | group_by(.file)
+    | map({ key: .[0].file, value: ([ .[].refs[] ] | unique) })
     | from_entries
-  ' "${cg_files[@]}" 2>/dev/null || printf '{}')"
+  ' "${cg_files[@]}" > "$reach_tmp" 2>/dev/null || printf '{}' > "$reach_tmp"
 fi
-reachable_count="$(printf '%s' "$reachable_json" | jq 'length')"
+reachable_count="$(jq 'length' "$reach_tmp")"
 
 if [ "$reachable_count" -eq 0 ]; then
   log_warn "no call-graph reachability data under $CG_DIR — reconciliation passes findings through unchanged (no demotion)"
 fi
 
 # --- Reconcile: demote findings whose file is in the reachable-set ---------
-# Pure jq join: for each finding, if reachable_json[.file_path] exists, demote +
-# annotate; else pass through unchanged. Identity fields are never mutated (the
-# object is extended, severity overridden, annotations added).
-reconciled="$(jq -c --argjson reach "$reachable_json" '
-  map(
+# Pure jq join: for each finding, if reach[.file_path] exists, demote + annotate;
+# else pass through unchanged. Identity fields are never mutated (the object is
+# extended, severity overridden, annotations added). --slurpfile binds the
+# reachable-set as a 1-element array → dereference $reach[0].
+reconciled="$(jq -c --slurpfile reach "$reach_tmp" '
+  ($reach[0]) as $r
+  | map(
     . as $f
-    | ($reach[$f.file_path]) as $eps
+    | ($r[$f.file_path]) as $eps
     | if ($eps != null)
       then $f + {
         severity: "info",
