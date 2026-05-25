@@ -144,6 +144,12 @@ fields:
     default: null
     description: "Test Execution Bridge configuration. Enables real-runner integration with evidence files (FR-194, FR-197, NFR-034, ADR-028)."
 
+  brownfield:
+    type: map
+    required: false
+    default: null
+    description: "Brownfield deterministic-tools configuration (E70-S7 / FR-539 / ADR-121). Nested keys (resolved via resolve-config.sh --field brownfield.<key>): deterministic_tools (master flag, bool, default false) and prewarm_enabled (per-tool override for the Phase 3 cdxgen+Grype pre-warm pre-flight, bool, default false). ADR-078 master-flag + per-tool-override pattern."
+
   sprint:
     type: map
     required: false

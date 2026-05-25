@@ -129,6 +129,32 @@ After all subagents return, write a subagent summary at `.gaia/artifacts/plannin
 
 ## Phase 3 — Deep Analysis Multi-Scan Subagents (Infra-Aware)
 
+### Phase 3 pre-flight — deterministic-tools pre-warm (E70-S7 / FR-539 / ADR-121)
+
+Before the Phase 3 scan timer starts, run the deterministic-tools pre-flight. This primes the Grype vulnerability DB and cdxgen package-registry caches so a cold runner does not pay the 15–30s cold-fetch against the NFR-84 120s WARNING budget.
+
+```bash
+# Resolve the master flag + per-tool override (ADR-121 / ADR-078) and export
+# them for the adapter scripts. resolve-config.sh is the single config source.
+DET_TOOLS="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.deterministic_tools 2>/dev/null)"
+PREWARM_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.prewarm_enabled 2>/dev/null)"
+# resolve-config emits empty when the key is unset; consumers treat empty as
+# false (ADR-078 / matches the test_execution_bridge.bridge_enabled idiom).
+export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-false}"
+export GAIA_BROWNFIELD_PREWARM_ENABLED="${PREWARM_ON:-false}"
+
+# Run pre-warm (it self-skips with an INFO line when either flag is off).
+prewarm_start=$(date +%s)
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/pre-warm.sh" || true
+prewarm_seconds=$(( $(date +%s) - prewarm_start ))
+
+# Phase 3 scan timer anchor (E70-S7 AC2 / AC-X2). pre-warm MUST complete BEFORE
+# this start_ts so its runtime is attributed to pre_warm, not the scan budget.
+start_ts=$(date +%s)
+```
+
+`prewarm_seconds` feeds the `phase_runtime_seconds.pre_warm` / `deterministic_tool_seconds.pre_warm` telemetry fields (see the Phase 3 telemetry subsection below). When the flags are off, `pre-warm.sh` emits an INFO skip line and contributes 0.
+
 Spawn seven scan subagents in parallel. These run alongside Phase 2 documentation to detect gaps that structural analysis misses. Each scanner receives `{tech_stack}`, `{project-path}`, and `{project_type}` as context. When `{project_type}` is `infrastructure` or `platform`, infra-specific detection patterns are applied alongside application patterns; for `application`, only application patterns run.
 
 ### Doc-Code Scan
@@ -185,6 +211,26 @@ After all seven Phase 3 scan subagents return (doc-code, hardcoded, integration-
 - `errored` — the scan crashed mid-run per AC-EC8 partial-failure semantics. The reason string MUST contain the underlying error (parser crash, file read failure, subagent unreachable) — do not silently omit failed scans from the diagnostic log.
 
 The table is rendered to the conversation after Phase 3 scans complete, before the Phase 3 user-review pause point. Timed-out and errored scans MUST appear with their canonical status and reason string — they are never silently omitted from the log even though their gap rows are also tagged `scan failed: {reason}` per AC-EC8.
+
+### Phase 3 deterministic-tools telemetry (E70-S7 / NFR-85)
+
+The brownfield report frontmatter records deterministic-tools telemetry so the
+gap-consolidation report (Phase 7) can attribute runtime and token cost:
+
+| Frontmatter field | Source | Notes |
+|-------------------|--------|-------|
+| `phase_runtime_seconds.pre_warm` | `prewarm_seconds` (pre-flight) | Wall-clock of the pre-warm pre-flight; tracked WARNING-only against the NFR-84 120s budget — no hard timeout abort (AC-X2). |
+| `deterministic_tool_seconds.pre_warm` | `prewarm_seconds` | Deterministic-tool runtime contribution (same value; separated so LLM vs deterministic cost is distinguishable). |
+| `llm_token_count` | `0` for pre-warm | Pre-warm is fully deterministic — zero LLM tokens (NFR-85). |
+| `gap_count_before_dedup` | gap-consolidation | Populated by Phase 7 / E104-S1 dedup; pre-warm contributes 0. |
+| `gap_count_after_dedup` | gap-consolidation | Populated by Phase 7 / E104-S2 reconciliation; pre-warm contributes 0. |
+
+> **Single-author writer (AF-2026-05-09-12 sibling-defect guidance).** These
+> fields are written by ONE author per field — the pre-flight writes the
+> `pre_warm` runtime fields; gap-consolidation writes the dedup counters. No
+> fan-out. The `gap_count_*` values are 0 from pre-warm's contribution and are
+> populated for real by the downstream dedup/reconciliation stories (E104-S1,
+> E104-S2) — see those stories for the consuming writer.
 
 ## Phase 4 — Test Execution During Discovery
 
