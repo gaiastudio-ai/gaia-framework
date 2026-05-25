@@ -1,0 +1,3 @@
+[
+  { "name": "example.com/multistack/unused_pkg.DeadGoFunc", "posn": "unused_pkg/lib.go:6:6" }
+]

@@ -792,6 +792,13 @@ v_brownfield_grype_enabled=$(merge_nested_key brownfield grype_enabled)
 v_brownfield_detect_signals_enabled=$(merge_nested_key brownfield detect_signals_enabled)
 # E104-S3 — SBOM completeness check per-tool override (depth-2 flat key).
 v_brownfield_sbom_completeness_enabled=$(merge_nested_key brownfield sbom_completeness_enabled)
+# E70-S8 — per-stack dead-code adapter per-tool overrides (depth-2 flat keys; the
+# AC's hyphenated brownfield.tools.deadcode-{go,python,jvm}.enabled is unparseable,
+# so spelled flat — semantics unchanged per ADR-078. Default true at the adapter
+# consumer layer: the resolver emits empty when unset; the adapters apply :-true).
+v_brownfield_deadcode_go_enabled=$(merge_nested_key brownfield deadcode_go_enabled)
+v_brownfield_deadcode_python_enabled=$(merge_nested_key brownfield deadcode_python_enabled)
+v_brownfield_deadcode_jvm_enabled=$(merge_nested_key brownfield deadcode_jvm_enabled)
 # E104-S4 — DefectDojo export companion config (only consumed when
 # defectdojo_enabled=true). api_token holds the NAME of an env var, never a
 # literal secret (NFR-RSV2-7).
@@ -1248,6 +1255,12 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_brownfield_detect_signals_enabled" ;;
     brownfield.sbom_completeness_enabled)
       printf '%s\n' "$v_brownfield_sbom_completeness_enabled" ;;
+    brownfield.deadcode_go_enabled)
+      printf '%s\n' "$v_brownfield_deadcode_go_enabled" ;;
+    brownfield.deadcode_python_enabled)
+      printf '%s\n' "$v_brownfield_deadcode_python_enabled" ;;
+    brownfield.deadcode_jvm_enabled)
+      printf '%s\n' "$v_brownfield_deadcode_jvm_enabled" ;;
     brownfield.defectdojo_api_url)
       printf '%s\n' "$v_brownfield_defectdojo_api_url" ;;
     brownfield.defectdojo_api_token)
