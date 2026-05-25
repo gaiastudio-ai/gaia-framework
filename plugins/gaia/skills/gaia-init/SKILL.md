@@ -287,7 +287,7 @@ Render the following to the user, replacing the placeholder with the concrete fi
   - .gaia/config/project-config.yaml
   - <CI workflow path>
   - <CI user-steps companion path>
-  - .gaia/artifacts/test-artifacts/test-environment.yaml.example
+  - .gaia/config/test-environment.yaml.example
 
 Reminders:
   - Set the credential env vars referenced in `environments.*.credentials.*`
