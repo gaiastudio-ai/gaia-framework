@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": { "driver": { "name": "spotbugs", "rules": [ { "id": "SQL_INJECTION" } ] } },
+      "results": [
+        {
+          "ruleId": "SQL_INJECTION",
+          "level": "error",
+          "message": { "text": "finding from spotbugs" },
+          "locations": [ { "physicalLocation": { "artifactLocation": { "uri": "src/Main.java" }, "region": { "startLine": 1 } } } ]
+        }
+      ]
+    }
+  ]
+}
