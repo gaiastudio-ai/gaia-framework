@@ -164,6 +164,39 @@ start_ts=$(date +%s)
 
 `prewarm_seconds` feeds the `phase_runtime_seconds.pre_warm` / `deterministic_tool_seconds.pre_warm` telemetry fields, populated via `brownfield-telemetry.sh` (the shared writer landed by E104-S1). When the flags are off, `pre-warm.sh` emits an INFO skip line and contributes 0.
 
+### Phase 3 per-stack file-list intersection (E70-S10 / FR-546 / ADR-126)
+
+When the master flag is on, the deterministic-tools orchestrator computes, for each `stacks[]` entry, the file-list passed to that stack's per-tool adapters as `(path_root ∩ paths[]) − excludes[]` (path_root = `stack.path || '.'`; excludes ALWAYS win on collision). The intersection is applied BEFORE adapter dispatch so per-stack adapters see only files within their declared stack scope — the ADR-078 `run.sh --input <file-list>` contract is byte-stable (adapters receive a flat file-list, never `path`/`paths`/`excludes` metadata). Single-stack repos (`stacks[].path: null`) collapse to `'.' ∩ paths − excludes`, byte-identical to pre-deploy (zero-regression invariant — the dominant deployment shape).
+
+```bash
+orch_start=$(date +%s)
+# Per-stack file-lists are written to $ORCH_OUT_DIR/<stack>.files (sorted, repo-root-relative);
+# the orchestrator logs `per_stack_file_counts: <stack>=<count> ...` for telemetry.
+orch_log="$(GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true \
+  ORCH_CONFIG="${GAIA_CONFIG_DIR:-.gaia/config}/project-config.yaml" \
+  ORCH_ROOT="${GAIA_PROJECT_PATH:-.}" \
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/orchestrator.sh" 2>&1 || true)"
+printf '%s\n' "$orch_log"
+orch_seconds=$(( $(date +%s) - orch_start ))
+
+# Telemetry (E104-S1 brownfield-telemetry.sh — orchestrator owns *.orchestrator_intersection
+# + per_stack_file_counts; single-author, no fan-out). Parse the per-stack counts from the log.
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
+if [ -f "$REPORT" ]; then
+  bash "$TELEM" --report "$REPORT" --field phase_runtime_seconds.orchestrator_intersection --value "$orch_seconds" || true
+  bash "$TELEM" --report "$REPORT" --field deterministic_tool_seconds.orchestrator_intersection --value "$orch_seconds" || true
+  bash "$TELEM" --report "$REPORT" --field llm_token_count --value 0 || true
+  # per_stack_file_counts: one nested key per stack from the `<stack>=<count>` pairs in $orch_log.
+  for pair in $(printf '%s' "$orch_log" | sed -n 's/.*per_stack_file_counts: //p'); do
+    s="${pair%%=*}"; c="${pair##*=}"
+    [ -n "$s" ] && bash "$TELEM" --report "$REPORT" --field "per_stack_file_counts.$s" --value "$c" || true
+  done
+fi
+```
+
+Adapter dispatch then consumes each `<stack>.files` list via the existing `run.sh --input` contract — no adapter change. (Detection of nested ecosystem manifests is E70-S11's responsibility; this orchestrator only respects the `path_root` boundary and does not double-count files under a nested manifest.)
+
 Spawn seven scan subagents in parallel. These run alongside Phase 2 documentation to detect gaps that structural analysis misses. Each scanner receives `{tech_stack}`, `{project-path}`, and `{project_type}` as context. When `{project_type}` is `infrastructure` or `platform`, infra-specific detection patterns are applied alongside application patterns; for `application`, only application patterns run.
 
 ### Doc-Code Scan
@@ -238,14 +271,17 @@ gap-consolidation report (Phase 7) can attribute runtime and token cost:
 | `phase_runtime_seconds.grype` / `deterministic_tool_seconds.grype` | Grype adapter (E70-S9) | Wall-clock of the Grype CVE scan; Grype-owned. |
 | `grype_db_checksum` | Grype adapter (E70-S9) | SHA-256 of the resolved grype-db.sqlite at scan time (trust-boundary; ADR-122). Grype-owned. |
 | `grype_db_built_age` | Grype adapter (E70-S9) | Seconds since the Grype DB build timestamp. Grype-owned. |
+| `phase_runtime_seconds.orchestrator_intersection` / `deterministic_tool_seconds.orchestrator_intersection` | orchestrator (E70-S10) | Wall-clock of the per-stack file-list intersection; orchestrator-owned. |
+| `per_stack_file_counts.<stack>` | orchestrator (E70-S10) | Post-intersection file count per declared stack (explicit 0 for empty stacks). Orchestrator-owned. |
 
 > **Single-author writer (AF-2026-05-09-12 sibling-defect guidance).** Each field
 > is written by exactly ONE owning phase via `brownfield-telemetry.sh` — no fan-out.
 > Ownership: the pre-warm pre-flight owns `*.pre_warm`; the SARIF merge owns
 > `*.sarif_merge`; the dedup sub-step owns `*.dedup` + `gap_count_*` +
 > `llm_token_count`; the Grype adapter owns `*.grype` + `grype_db_checksum` +
-> `grype_db_built_age`. The `gap_count_*` values are populated for real by the
-> dedup (E104-S1) / reconciliation (E104-S2) phases.
+> `grype_db_built_age`; the orchestrator owns `*.orchestrator_intersection` +
+> `per_stack_file_counts.*`. The `gap_count_*` values are populated for real by
+> the dedup (E104-S1) / reconciliation (E104-S2) phases.
 
 ## Phase 4 — Test Execution During Discovery
 
