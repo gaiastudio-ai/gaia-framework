@@ -244,6 +244,27 @@ YAML
   [ -z "$output" ]
 }
 
+# --- AC-X2 / AC-X3 — pre_warm telemetry via the shared writer (E104-S1) -----
+
+@test "E70-S7 AC-X2/AC-X3: brownfield-telemetry.sh populates *.pre_warm fields on the report frontmatter" {
+  TELEM="$(cd "$BATS_TEST_DIRNAME/../scripts/adapters/brownfield" && pwd)/brownfield-telemetry.sh"
+  [ -x "$TELEM" ]
+  cat > "$TEST_TMP/report.md" <<'MD'
+---
+title: brownfield report
+---
+body
+MD
+  run bash "$TELEM" --report "$TEST_TMP/report.md" --field phase_runtime_seconds.pre_warm --value 7
+  [ "$status" -eq 0 ]
+  run bash "$TELEM" --report "$TEST_TMP/report.md" --field deterministic_tool_seconds.pre_warm --value 7
+  [ "$status" -eq 0 ]
+  run bash "$TELEM" --report "$TEST_TMP/report.md" --get phase_runtime_seconds.pre_warm
+  [ "$output" = "7" ]
+  run grep -F "body" "$TEST_TMP/report.md"
+  [ "$status" -eq 0 ]
+}
+
 # --- Hygiene --------------------------------------------------------------
 
 @test "E70-S7: pre-warm.sh exists, is executable, and passes bash -n" {
