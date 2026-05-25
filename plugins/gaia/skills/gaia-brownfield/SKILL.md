@@ -109,6 +109,26 @@ Each phase is independent in its write targets but must run sequentially because
    - **Plugin-project classification (E77-S16 / FR-420).** `detect-signals.sh` ALSO invokes `plugin-detection.sh` and emits a top-level `project_kind` field. Three or more co-occurring signals from `{SKILL.md, adapter.json, plugin manifest, commands/, settings.json hooks, .claude/}` set `project_kind: claude-code-plugin`. Single-signal detection is rejected to avoid false positives on stray SKILL.md or manifest files in non-plugin repos. Surface `project_kind` to the user so the downstream `/gaia-trace` plugin chain (FR-421) can attach to it.
 <!-- E71-S2: detection-driven config extension end -->
 
+5b. **Multi-stack `stacks[].path` proposal / audit (E70-S11 / FR-548 / NFR-88 / ADR-126).** When the deterministic-tools master flag (`brownfield.deterministic_tools`) and per-tool override (`brownfield.detect_signals_enabled`, default true) are on, run `detect-signals.sh` in the OPT-IN stacks-path mode to give multi-stack monorepos advisory partitioning help. This is distinct from the E71-S2 root-only detection above (that path is unchanged):
+
+   ```bash
+   ds_start=$(date +%s)
+   # auto = audit when stacks[].path is already declared, else propose.
+   DECLARED="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh project_config_path 2>/dev/null \
+     | xargs -I{} yq eval '[.stacks[].path | select(. != null)] | join(",")' {} 2>/dev/null || true)"
+   ds_mode="proposal"; [ -n "$DECLARED" ] && ds_mode="audit"
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-signals.sh" --project-root "${GAIA_PROJECT_PATH:-.}" \
+     --stacks-path-mode "$ds_mode" --declared-paths "$DECLARED" \
+     --draft-out "${GAIA_CONFIG_DIR:-.gaia/config}/project-config.draft.yaml" \
+     --audit-out "${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit/partitioning-audit.json" \
+     --format json || true
+   ds_seconds=$(( $(date +%s) - ds_start ))
+   ```
+
+   - **Proposal mode** (no `stacks[].path` declared): scans ecosystem manifests and writes a `stacks[].path` mapping to `project-config.draft.yaml` (advisory — the user accepts by renaming to `project-config.yaml` OR merging the entries via `/gaia-config-stack`; declared truth always wins). A single root-level stack emits "nothing to propose" and writes no draft. Nested manifests (a manifest inside another stack's path) scope to the parent — `ignore_nested_manifests: true` default per FR-546 / E85-S14; they do NOT spawn a phantom child stack.
+   - **Audit mode** (`stacks[].path` IS declared): compares declared vs auto-detected and logs disagreement to `.gaia/memory/brownfield-audit/partitioning-audit.json` (`{auto_detected_partitioning, declared_partitioning, disagreement_count}`); it does NOT regenerate the draft (auto-detection vs explicit precedence, TC-MSP-3). Never overrides the declared config.
+   - Telemetry (E104-S1 `brownfield-telemetry.sh`; detect_signals owns its fields, single-author): populate `phase_runtime_seconds.detect_signals` / `deterministic_tool_seconds.detect_signals` / `llm_token_count:0` / `detect_signals_mode: proposal|audit|skipped` (skipped when the flags are off). Advisory, never gating — runs in ≤2s on a 10-manifest fixture (NFR-88).
+
 6. Generate the brownfield assessment artifact by reading the assessment template, capturing component inventory, technical debt, migration constraints, coexistence strategy, and adoption path. Include `{project_type}` in the output. Write to `.gaia/artifacts/planning-artifacts/brownfield-assessment.md`.
 7. Write the enhanced project documentation — all standard sections plus detected capability flags, `{project_type}`, testing infrastructure summary, and CI/CD pipeline summary. Write to `.gaia/artifacts/planning-artifacts/project-documentation.md`.
 
@@ -273,6 +293,8 @@ gap-consolidation report (Phase 7) can attribute runtime and token cost:
 | `grype_db_built_age` | Grype adapter (E70-S9) | Seconds since the Grype DB build timestamp. Grype-owned. |
 | `phase_runtime_seconds.orchestrator_intersection` / `deterministic_tool_seconds.orchestrator_intersection` | orchestrator (E70-S10) | Wall-clock of the per-stack file-list intersection; orchestrator-owned. |
 | `per_stack_file_counts.<stack>` | orchestrator (E70-S10) | Post-intersection file count per declared stack (explicit 0 for empty stacks). Orchestrator-owned. |
+| `phase_runtime_seconds.detect_signals` / `deterministic_tool_seconds.detect_signals` | detect-signals (E70-S11) | Wall-clock of the Phase 1 stacks[].path proposal/audit; detect-signals-owned. |
+| `detect_signals_mode` | detect-signals (E70-S11) | `proposal` \| `audit` \| `skipped` — the stacks-path mode taken. detect-signals-owned. |
 
 > **Single-author writer (AF-2026-05-09-12 sibling-defect guidance).** Each field
 > is written by exactly ONE owning phase via `brownfield-telemetry.sh` — no fan-out.
@@ -280,7 +302,8 @@ gap-consolidation report (Phase 7) can attribute runtime and token cost:
 > `*.sarif_merge`; the dedup sub-step owns `*.dedup` + `gap_count_*` +
 > `llm_token_count`; the Grype adapter owns `*.grype` + `grype_db_checksum` +
 > `grype_db_built_age`; the orchestrator owns `*.orchestrator_intersection` +
-> `per_stack_file_counts.*`. The `gap_count_*` values are populated for real by
+> `per_stack_file_counts.*`; detect-signals owns `*.detect_signals` +
+> `detect_signals_mode`. The `gap_count_*` values are populated for real by
 > the dedup (E104-S1) / reconciliation (E104-S2) phases.
 
 ## Phase 4 — Test Execution During Discovery
