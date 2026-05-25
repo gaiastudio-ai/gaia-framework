@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 # finalize.sh — gaia-tech-debt-review skill finalize (E28-S108, Cluster 14)
+#
+# AF-2026-05-24-14 / Test02 F-30 (carve-out documentation):
+# This finalize.sh does NOT enforce GAIA_FINALIZE_SENTINEL_REQUIRED
+# (the fail-closed Val sentinel pattern shipped by /gaia-triage-findings
+# and /gaia-retro). The intentional carve-out: fail-closed-on-Val applies
+# ONLY to skills that mutate .gaia/state/action-items.yaml (triage,
+# retro). /gaia-tech-debt-review produces a read-and-write-dashboard
+# artifact only (tech-debt-dashboard.md) and does NOT touch action-items;
+# the dashboard is regenerable from scan-findings.sh on every invocation,
+# so a missing-Val-sentinel run still produces correct output. The
+# operator is not blocked by a stale Val-sentinel mismatch.
 
 set -euo pipefail
 LC_ALL=C

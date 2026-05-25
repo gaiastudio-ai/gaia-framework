@@ -184,10 +184,15 @@ pattern_present() {
 }
 
 # epic_headings_present <file>
-# Pass when at least one "## Epic N:" heading exists.
+# Pass when at least one canonical epic heading exists in either form:
+#   `## Epic N:` (legacy form) OR `## EN — Title` (em-dash form preferred
+#   by resolve-epic-slug.sh per AF-2026-05-22-6 Bug-5).
+# AF-2026-05-24-14 / Test02 F-8: SV-03 previously only accepted the
+# `## Epic N:` form, marking the em-dash form as a violation even
+# though the resolver accepts both. Now accepts both forms.
 epic_headings_present() {
   local f="$1"
-  grep -Eq '^##[[:space:]]+Epic[[:space:]]+[0-9]+' "$f" 2>/dev/null \
+  grep -Eq '^##[[:space:]]+(Epic[[:space:]]+[0-9]+|E[0-9]+[[:space:]]+(—|--))' "$f" 2>/dev/null \
     && echo "pass" || echo "fail"
 }
 

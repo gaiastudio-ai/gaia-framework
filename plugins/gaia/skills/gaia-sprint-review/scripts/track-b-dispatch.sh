@@ -109,9 +109,11 @@ done
 if [ "${GAIA_HEADLESS:-0}" = "1" ]; then
   die "HALT: Track B requires foreground execution (NFR-069); GAIA_HEADLESS=1 detected"
 fi
-if [ ! -t 1 ]; then
-  log "WARNING: stdout is not a TTY — Track B foreground assumption may not hold (script(1)/tmux is OK; CI is not)"
-fi
+# AF-2026-05-24-14 / Test02 F-31: only warn about non-TTY stdout when
+# we're actually going to run something. If the sprint_review matrix is
+# empty / absent (the SKIPPED path), there's no foreground assumption to
+# violate — emitting the warning here is noise. Defer the check to
+# after the config read.
 
 # ---------- Read sprint_review matrix from project-config.yaml ----------
 #
@@ -164,6 +166,13 @@ if [ -z "$all_stacks" ]; then
   log "no Track B stacks configured in $config_path sprint_review section — emitting empty envelope"
   printf '[]\n'
   exit 0
+fi
+
+# AF-2026-05-24-14 / Test02 F-31: TTY check moved here from the top so
+# it only fires when we actually have stacks to dispatch. The foreground
+# assumption doesn't matter when there's nothing to run.
+if [ ! -t 1 ]; then
+  log "WARNING: stdout is not a TTY — Track B foreground assumption may not hold (script(1)/tmux is OK; CI is not)"
 fi
 
 # ---------- .gitignore pre-flight (T-SGR-7 / SR-65) ----------

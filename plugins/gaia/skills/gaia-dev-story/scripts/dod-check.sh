@@ -161,6 +161,29 @@ _resolve_test_cmd() {
       printf '%s\n' "$cmd"
       return 0
     fi
+    # 1b. AF-2026-05-24-14 / Test02 F-10: also check the canonical
+    # test_execution.tier_1.command (added by AF-2026-05-22-6 Bug-6).
+    # The legacy single `test_cmd:` key is preferred for backward compat,
+    # but post-AF-22-6 projects only use the nested form. Use yq when
+    # available; fall back to awk.
+    if command -v yq >/dev/null 2>&1; then
+      cmd="$(yq eval '.test_execution.tier_1.command // ""' "$_cfg" 2>/dev/null || echo "")"
+      if [ -n "$cmd" ] && [ "$cmd" != "null" ]; then
+        printf '%s\n' "$cmd"
+        return 0
+      fi
+    fi
+  fi
+  # 1c. AF-2026-05-24-14 / Test02 F-10: pytest fallback. If pytest is on
+  # PATH AND there's a tests/ directory with at least one test_*.py file,
+  # use pytest. This catches the common pytest+greenfield case where
+  # neither test_cmd nor test_execution is hydrated but the operator
+  # clearly has a working pytest setup.
+  if command -v pytest >/dev/null 2>&1; then
+    if find tests -maxdepth 3 -type f -name 'test_*.py' -print -quit 2>/dev/null | grep -q .; then
+      printf 'pytest tests/\n'
+      return 0
+    fi
   fi
   # 2. package.json scripts.test (only if `npm` is on PATH)
   if [ -f "package.json" ] && command -v npm >/dev/null 2>&1; then

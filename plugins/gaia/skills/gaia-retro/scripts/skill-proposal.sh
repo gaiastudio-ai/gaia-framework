@@ -1,20 +1,47 @@
 #!/usr/bin/env bash
 # skill-proposal.sh — Skill improvement proposal helpers (E36-S3, ADR-053)
 #
-# Public functions:
+# Public functions (AF-2026-05-24-14 / Test02 F-32: expanded with output
+# format + failure modes after dogfooding feedback that the original
+# header only listed signatures, leaving consumers guessing about return
+# shape and error semantics):
+#
 #   extract_tech_debt_reflection <project_root> <sprint_id>
 #     → Reads tech-debt-dashboard.md and produces a Tech Debt Reflection block.
+#     Stdout: a Markdown block with one `### {Category}` section per non-empty
+#       debt category (architecture/code/test/documentation/process), each
+#       enumerating the TD-* IDs and titles for the named sprint_id.
+#     Stderr: WARNING lines on missing dashboard, malformed rows.
+#     Exit: 0 always — empty stdout if no dashboard or no matching rows.
+#     Failure mode: gracefully degrades to empty output (no HALT) so the
+#       caller can splice into a retro doc without conditional logic.
 #
 #   build_proposal <finding_ref> <target_skill> <rationale> <diff>
 #     → Produces a structured YAML proposal object.
+#     Stdout: a 4-key YAML map: `finding_ref`, `target_skill`, `rationale`,
+#       `diff` (the diff body literally embedded as a YAML literal block).
+#     Exit: 0 always.
+#     Failure mode: caller MUST pass non-empty `finding_ref` + `target_skill`;
+#       blank fields produce malformed YAML (no validation here — see
+#       `validate_proposal` for the safe-build pattern).
 #
 #   validate_proposal <finding_ref> <target_skill> <rationale> <diff>
-#     → Validates the proposal (diff size, UTF-8). Exit 0 = valid, 1 = invalid.
+#     → Validates the proposal (diff size, UTF-8).
+#     Stdout: empty.
+#     Stderr: `validate_proposal: <reason>` on failure.
+#     Exit: 0 = valid; 1 = invalid (diff > 8KB, non-UTF-8 content, or any
+#       required field empty).
 #
 #   write_approved_proposal <root> <sprint_id> <target_skill> <target_path> \
 #                           <rationale> <diff_content> <writer_script>
 #     → Writes custom/skills/{name}.md and registers in .customize.yaml
 #       via the shared retro writer (ADR-052).
+#     Stdout: the resolved write path on success.
+#     Stderr: `write_approved_proposal: <reason>` on failure.
+#     Exit: 0 = wrote successfully; non-zero = writer-script failure
+#       (forwards the writer's exit code).
+#     Failure mode: validate_proposal MUST pass before calling this;
+#       unvalidated input may produce a malformed custom/skills/ file.
 #
 # Refs: ADR-053 (custom skill proposal pipeline), ADR-052 (shared writer),
 #       FR-RIM-6 (skill improvement proposals), FR-RIM-7 (tech debt reflection),

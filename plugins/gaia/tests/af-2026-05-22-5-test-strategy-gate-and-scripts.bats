@@ -135,11 +135,12 @@ teardown() { common_teardown; }
   grep -Ei "^##[[:space:]]+([0-9]+\.[[:space:]]+)?Review[[:space:]]+Findings[[:space:]]+Incorporated([[:space:]]|\$|[[:punct:]])" "$tmp"
 }
 
-@test "AF-22-5 Bug-6: gaia-create-epics SV-03 epic_headings_present supports ## Epic E1: (kebab-key form)" {
-  # Today's behavior: epic_headings_present requires `## Epic N` where N is
-  # numeric. The user reported having to rename `## Epic E1:` → `## Epic 1:`
-  # — confirming the regex requires numeric. This test documents the current
-  # contract: the check IS numeric-only by design (matches the SKILL.md
-  # Step-8 spec). Future work may widen to accept E1 — bats anchor exists.
-  grep -qE "grep -Eq '\\^##\\[\\[:space:\\]\\]\\+Epic\\[\\[:space:\\]\\]\\+\\[0-9\\]\\+'" "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
+@test "AF-22-5 Bug-6 + AF-24-14 F-8: gaia-create-epics SV-03 epic_headings_present accepts both numeric (## Epic N:) AND em-dash (## EN — Title) forms" {
+  # AF-2026-05-24-14 / Test02 F-8 widened the regex from numeric-only
+  # `^##[[:space:]]+Epic[[:space:]]+[0-9]+` to also accept the em-dash
+  # form `^##[[:space:]]+E[0-9]+[[:space:]]+(—|--)`. The combined
+  # alternation `(Epic[[:space:]]+[0-9]+|E[0-9]+[[:space:]]+(—|--))`
+  # matches both forms — closing the producer/validator drift where the
+  # resolver accepted em-dash but the validator only accepted numeric.
+  grep -qF '(Epic[[:space:]]+[0-9]+|E[0-9]+[[:space:]]+(—|--))' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
 }

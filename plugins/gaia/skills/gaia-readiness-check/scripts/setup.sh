@@ -102,6 +102,13 @@ fi
 # The shared validate-gate.sh checks file existence only (-f). Per AC-EC1 and
 # ADR-042, a zero-byte file is treated as missing — existence alone is not
 # sufficient. This mirrors the create-epics pattern.
+# AF-2026-05-24-14 / Test02 F-34: TEST_ARTIFACTS may be unbound after
+# resolve-config.sh when the script runs without a fully-hydrated config
+# (e.g., interactive call without --plan output). Default it to the
+# canonical .gaia/artifacts/test-artifacts/ post-ADR-111 path so the
+# bash `set -u` regression doesn't leak through. resolve-config.sh's
+# value wins when set.
+TEST_ARTIFACTS="${TEST_ARTIFACTS:-.gaia/artifacts/test-artifacts}"
 TRACE_PATH="${TEST_ARTIFACTS}/traceability-matrix.md"
 if [ ! -s "$TRACE_PATH" ]; then
   die "HALT: traceability-matrix.md exists but is empty (zero-byte) — run /gaia-trace to populate it (ADR-042 enforced gate)"
