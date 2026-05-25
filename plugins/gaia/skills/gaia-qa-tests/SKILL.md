@@ -206,6 +206,22 @@ The runner emits `.gaia/state/review/qa-tests/{story_key}/execution-evidence.jso
 
 **Tier resolution.** The runner reads `test_execution.tier_{1,2,3}.placement` from `project-config.yaml` (per FR-RSV2-11, ADR-077) and matches each tier's placement against `GAIA_EXECUTION_CONTEXT` (`local | ci_pre_merge | ci_post_merge | deployment | post_deploy`). Only tiers whose placement matches the active context run; the rest are skipped.
 
+**Required `placement` schema (AF-2026-05-24-14 / Test02 F-11).** Each `tier_N` block in `project-config.yaml` MUST include a `placement` field — without it the runner silently skips that tier (defeating the "tests executed in reviews" contract). Canonical shape per tier:
+
+```yaml
+test_execution:
+  tier_1:
+    placement: ["local", "ci_pre_merge"]   # REQUIRED — array of execution contexts
+    command: "npm test"                     # REQUIRED — the command to run
+    timeout_seconds: 300                    # optional, default 300
+    pattern: "tests/unit/**/*.test.ts"      # optional, default empty
+  tier_2:
+    placement: ["ci_post_merge", "deployment"]
+    command: "npm run test:integration"
+```
+
+`placement` valid values: `local`, `ci_pre_merge`, `ci_post_merge`, `deployment`, `post_deploy`. A tier with no `placement` is treated as "never run" — `/gaia-init` and `/gaia-test-strategy` should hydrate `placement` for every tier they declare. Operators authoring `test_execution` by hand MUST set `placement` explicitly.
+
 **Per-tier execution.** Each active tier's `command` is invoked with `timeout_seconds` enforcement (POSIX-portable; `timeout` when present, `perl` alarm fallback for macOS bash 3.2). The runner captures `exit_code`, `duration_seconds`, `pass_count`, `fail_count`, and `timeout` per suite.
 
 **Test Execution Bridge integration (ADR-044, AC8).** When `test_execution_bridge.bridge_enabled: true`, the runner delegates execution to the configured `run_tests_path` (the bridge's `run-tests.sh` entry point) instead of invoking commands directly. The bridge's JSON response is normalized into the `suites[]` shape of `execution-evidence.json`, and `bridge_used: true` is recorded for the audit trail. When the bridge is disabled or the binary is absent, the runner falls back to direct execution.
