@@ -1,0 +1,14 @@
+# Single-stack fixture — one stack, no `path` field set. Models the common
+# single-stack repo where /gaia-init SKIPS the per-stack path prompt entirely
+# (Test Scenario 3). Validates unchanged (path is optional).
+project_root: /tmp/gaia
+project_path: /tmp/gaia/app
+memory_path: /tmp/gaia/_memory
+checkpoint_path: /tmp/gaia/_memory/checkpoints
+installed_path: /tmp/gaia/_gaia
+framework_version: 1.176.0
+date: 2026-05-25
+stacks:
+  - name: monolith
+    language: python
+    paths: ["**/*.py"]

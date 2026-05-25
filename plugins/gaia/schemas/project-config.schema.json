@@ -441,7 +441,7 @@
       }
     },
     "stacks": {
-      "description": "Ordered list of stack-path rules for multi-service repos (FR-RSV2-6).",
+      "description": "Ordered list of stack-path rules for multi-service repos (FR-RSV2-6). The four additive properties `path`, `excludes`, `cross_refs`, and `ignore_nested_manifests` (FR-546 / ADR-126) extend each entry for multi-stack monorepo path partitioning; all four are OPTIONAL with safe defaults so pre-deploy entries validate byte-compatible (zero-regression invariant for the single-stack majority).",
       "type": "array",
       "items": {
         "type": "object",
@@ -454,6 +454,29 @@
             "type": "array",
             "items":    { "type": "string", "minLength": 1 },
             "minItems": 1
+          },
+          "path": {
+            "description": "Stack ROOT directory — a coarse-grained partitioning anchor (FR-546 / ADR-126). Distinct from `paths` (the in-stack glob list): the deterministic-tools orchestrator scopes adapter dispatch to this subtree BEFORE applying `paths` glob matching. Default null (unset) — single-stack repos omit it entirely.",
+            "type": "string",
+            "minLength": 1,
+            "default": null
+          },
+          "excludes": {
+            "description": "Glob patterns excluded from this stack's file set (ADR-126). Defaults to the SR-87 secret-file patterns (`.env`, `.env.*`, `secrets/`, `*.pem`, `*.key`) when seeded by /gaia-init, reducing the chance of credentials leaking into deterministic-tool scans.",
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "default": []
+          },
+          "cross_refs": {
+            "description": "Allowed cross-stack references — each entry MUST name another stack in this `stacks[]` list (ADR-126 / E104-S5 Phase 4b cross-stack WARNING allowlist). Referential integrity (entry names an existing stack) is enforced as a post-validation pass in /gaia-config-stack and /gaia-config-validate, NOT in this schema (JSON Schema cannot express cross-property validation).",
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "default": []
+          },
+          "ignore_nested_manifests": {
+            "description": "When true (default), ecosystem-manifest auto-detection ignores manifests nested under this stack's `path` so a monorepo subtree is not double-counted as its own stack (ADR-126 / E70-S11).",
+            "type": "boolean",
+            "default": true
           }
         }
       }

@@ -1,0 +1,14 @@
+# Negative fixture — `excludes` is a string, but the schema requires an
+# array of glob strings. MUST be REJECTED by ajv.
+project_root: /tmp/gaia
+project_path: /tmp/gaia/app
+memory_path: /tmp/gaia/_memory
+checkpoint_path: /tmp/gaia/_memory/checkpoints
+installed_path: /tmp/gaia/_gaia
+framework_version: 1.176.0
+date: 2026-05-25
+stacks:
+  - name: api
+    language: go
+    paths: ["services/api/**"]
+    excludes: ".env"

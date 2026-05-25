@@ -1,0 +1,14 @@
+# Pre-deploy fixture (TC-MSP-1) — stacks[] items use ONLY the original
+# three fields (name, language, paths). MUST validate byte-compatible after
+# the 4-field schema bump (AC-X1 zero-regression invariant).
+project_root: /tmp/gaia
+project_path: /tmp/gaia/app
+memory_path: /tmp/gaia/_memory
+checkpoint_path: /tmp/gaia/_memory/checkpoints
+installed_path: /tmp/gaia/_gaia
+framework_version: 1.176.0
+date: 2026-05-25
+stacks:
+  - name: app
+    language: typescript
+    paths: ["src/**"]
