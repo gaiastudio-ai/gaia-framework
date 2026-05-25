@@ -786,6 +786,10 @@ v_brownfield_dedup_enabled=$(merge_nested_key brownfield dedup_enabled)
 # E70-S9 — grype adapter per-tool override (depth-2 flat key, same constraint as
 # the AC's hyphenated brownfield.tools.grype.enabled — semantics unchanged per ADR-078).
 v_brownfield_grype_enabled=$(merge_nested_key brownfield grype_enabled)
+# E70-S11 — detect-signals stacks[].path proposal/audit per-tool override
+# (depth-2 flat key; AC's hyphenated brownfield.tools.detect-signals.enabled is
+# unparseable, so spelled flat — semantics unchanged per ADR-078).
+v_brownfield_detect_signals_enabled=$(merge_nested_key brownfield detect_signals_enabled)
 # E104-S4 — DefectDojo export companion config (only consumed when
 # defectdojo_enabled=true). api_token holds the NAME of an env var, never a
 # literal secret (NFR-RSV2-7).
@@ -1238,6 +1242,8 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_brownfield_dedup_enabled" ;;
     brownfield.grype_enabled)
       printf '%s\n' "$v_brownfield_grype_enabled" ;;
+    brownfield.detect_signals_enabled)
+      printf '%s\n' "$v_brownfield_detect_signals_enabled" ;;
     brownfield.defectdojo_api_url)
       printf '%s\n' "$v_brownfield_defectdojo_api_url" ;;
     brownfield.defectdojo_api_token)
