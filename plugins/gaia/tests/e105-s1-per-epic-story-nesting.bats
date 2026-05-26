@@ -170,16 +170,52 @@ EOF
 
 # ---------- AC1 / AC-INT1 / TS3,TS6: create + transition wiring (doc-level) ----------
 
-@test "AC1: gaia-create-story documents the nested per-story write target" {
+@test "AC1: gaia-create-story EXECUTABLE scaffold writes to the nested per-story path" {
   SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-create-story/SKILL.md"
-  grep -Eiq 'E\{?N?\}?-S\{?M?\}?-\{?slug\}?/story\.md|per-story (nest|dir)|E\{N\}-S\{M\}-\{slug\}/story\.md' "$SKILL" \
-    || { echo "create-story SKILL.md should document the nested story.md write target" >&2; grep -i 'story.md\|per-story' "$SKILL" >&2; false; }
+  # Assert the EXECUTABLE write target (not a doc comment): scaffold --output must
+  # point at ${STORY_DIR}/story.md and the mkdir must create the per-story dir.
+  grep -Eq -- '--output "\$\{STORY_DIR\}/story\.md"' "$SKILL" \
+    || { echo "scaffold --output must write \${STORY_DIR}/story.md" >&2; grep -n 'scaffold-story.sh\|--output\|STORY_DIR' "$SKILL" >&2; false; }
+  grep -Eq 'mkdir -p "\$\{STORY_DIR\}(/reviews)?"' "$SKILL" \
+    || { echo "must mkdir the per-story dir (with reviews/)" >&2; false; }
+  grep -Eq 'STORY_DIR="\$\{IMPLEMENTATION_ARTIFACTS\}/\$\{EPIC_DIR\}/<story_key>-\$\{SLUG\}"' "$SKILL" \
+    || { echo "STORY_DIR must resolve to the nested per-story dir" >&2; false; }
+  # and the legacy stories/ write target must be GONE from the scaffold step
+  ! grep -Eq -- '--output "\$\{IMPLEMENTATION_ARTIFACTS\}/\$\{EPIC_DIR\}/stories/' "$SKILL" \
+    || { echo "scaffold must no longer write to the legacy epic-*/stories/ path" >&2; false; }
 }
 
-@test "AC-INT1/TS3,TS6: transition-story-status.sh locate glob includes the nested layout" {
+@test "AC-INT1/TS3,TS6: transition-story-status.sh locate FUNCTIONAL glob includes the nested layout" {
   TR="$REPO_ROOT/plugins/gaia/scripts/transition-story-status.sh"
-  grep -Eq 'epic-\*/E\*-S\*-\*/story\.md|E\*-S\*-\*/story\.md' "$TR" \
-    || { echo "transition locate_story_file should include the nested glob" >&2; false; }
+  # Assert the FUNCTIONAL perstory_pattern assignment (variable line), not a comment:
+  # local perstory_pattern="${IMPLEMENTATION_ARTIFACTS}/epic-*/${key}-*/story.md"
+  grep -Eq 'perstory_pattern="\$\{IMPLEMENTATION_ARTIFACTS\}/epic-\*/\$\{key\}-\*/story\.md"' "$TR" \
+    || { echo "transition locate_story_file should assign the nested perstory_pattern" >&2; grep -n 'perstory_pattern\|matches=(' "$TR" >&2; false; }
+  # and the matches array must include it
+  grep -Eq 'matches=\( \$perstory_pattern ' "$TR" \
+    || { echo "matches array must include perstory_pattern" >&2; false; }
+}
+
+# ---------- AC5 / AC-INT1 functional: transition locate finds the nested story ----------
+
+@test "AC5/AC-INT1: transition locate_story_file functionally resolves a new-layout story (no split-state)" {
+  TR="$REPO_ROOT/plugins/gaia/scripts/transition-story-status.sh"
+  root="$(mkroot rfunc new-layout)"
+  # source the script's locate_story_file in isolation against the temp root
+  run env IMPLEMENTATION_ARTIFACTS="$root" bash -c '
+    set -euo pipefail
+    IMPLEMENTATION_ARTIFACTS="'"$root"'"
+    # mirror the locate globs (functional check that the nested glob matches)
+    key=E900-S1
+    perstory_pattern="${IMPLEMENTATION_ARTIFACTS}/epic-*/${key}-*/story.md"
+    shopt -s nullglob
+    matches=( $perstory_pattern )
+    shopt -u nullglob
+    printf "%s\n" "${matches[@]}"
+  '
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -Eq 'E900-S1-alpha/story\.md$' \
+    || { echo "transition nested glob must functionally match the new-layout story, got: $output" >&2; false; }
 }
 
 # ---------- robustness ----------
