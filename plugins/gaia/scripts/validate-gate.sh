@@ -311,6 +311,18 @@ check_file_nonempty() {
       fi
       ;;
     */traceability-matrix.md)
+      # E105-S2 / ADR-127 §7.2: the NEW canonical home for docs-about-testing is
+      # planning-artifacts/ (traceability-matrix moved out of test-artifacts/).
+      # Highest-precedence read-side fallback; the legacy strategy/ + flat arms
+      # below remain for the migration read-compat window (ADR-070 three-tier).
+      if [ -n "${PLANNING_ARTIFACTS:-}" ] && [ -f "${PLANNING_ARTIFACTS}/traceability-matrix.md" ]; then
+        if [ ! -s "${PLANNING_ARTIFACTS}/traceability-matrix.md" ]; then
+          abs=$(abs_path "${PLANNING_ARTIFACTS}/traceability-matrix.md")
+          warn "$gate failed — file is empty (0 bytes): $abs"
+          return 1
+        fi
+        return 0
+      fi
       # E53-S248: post-E53 / ADR-072 placement under strategy/. The
       # canonical artifact ships at `${TEST_ARTIFACTS}/strategy/traceability-matrix.md`
       # since the E53 docs reorganization. Accept it here as a third
@@ -330,6 +342,23 @@ check_file_nonempty() {
       fi
       ;;
     */test-plan.md)
+      # E105-S2 / ADR-127 §7.2: the NEW canonical home for docs-about-testing is
+      # planning-artifacts/ (test-plan moved out of test-artifacts/). Highest-
+      # precedence read-side fallback; the legacy strategy/ + test-strategy.md +
+      # flat arms below remain for the migration read-compat window. Also accept
+      # the renamed test-strategy.md at the new home.
+      if [ -n "${PLANNING_ARTIFACTS:-}" ]; then
+        for _pa in "${PLANNING_ARTIFACTS}/test-plan.md" "${PLANNING_ARTIFACTS}/test-strategy.md"; do
+          if [ -f "$_pa" ]; then
+            if [ ! -s "$_pa" ]; then
+              abs=$(abs_path "$_pa")
+              warn "$gate failed — file is empty (0 bytes): $abs"
+              return 1
+            fi
+            return 0
+          fi
+        done
+      fi
       # AI-2026-05-16-9: post-E53 / ADR-072 placement under strategy/. The
       # canonical test plan ships at `${TEST_ARTIFACTS}/strategy/test-plan.md`
       # since the E53 docs reorganization, mirroring traceability-matrix.md
