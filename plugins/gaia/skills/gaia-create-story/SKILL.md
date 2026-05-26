@@ -32,6 +32,14 @@ The four artifact placeholders resolve at skill-load via `!scripts/resolve-confi
 
 Native Claude Code conversion of the legacy create-story workflow (Cluster 7, E28-S52).
 
+### `--for-sprint <id>` batch mode (E107-S3 / ADR-128, FR-559)
+
+`/gaia-create-story --for-sprint <id> [--refresh]` materializes ONLY the stories a sprint selected (E107-S2 backlog selection), in one invocation — so an operator does not run `/gaia-create-story` per story (fixes Test02 F-9 / Test01 E2; consolidates the prior `--bulk` + `--materialize` proposals). It is **create-if-missing and idempotent**: a key that already has a file is skipped; `--refresh` re-elaborates a rolled-over story BUT never clobbers an in-progress/review/done one (status-guarded).
+
+The deterministic half runs `${CLAUDE_PLUGIN_ROOT}/scripts/materialize-sprint-stories.sh --keys "<selected keys>" --epics <epics-and-stories.md> --impl-root <implementation-artifacts> --project-config <yaml> [--refresh] --manifest <path>`: it scaffolds each missing story as a skeleton (priority_flag: null per `feedback_priority_flag_never_auto_set`) into the E105-S1 per-story layout (`epic-{slug}/{key}-{slug}/story.md` via `resolve-epic-slug.sh`), and writes an **elaboration manifest** of the newly-scaffolded keys.
+
+Story ELABORATION — filling the `{CONTENT_PLACEHOLDER}` bodies (real ACs/tasks/test-scenarios) — is NOT scriptable: it is the LLM-driven Step 3/Step 4 work below. So `--for-sprint` is a **main-turn loop** (ADR-093): for each key in the manifest, run the per-story elaboration (Steps 3–6), then transition the story to `ready-for-dev` via `transition-story-status.sh` (NOT a direct `status:` edit, per ADR-095). The sprint that selected these stories commits as `status: planned` (E107-S1); E107-S4's readiness gate activates it after materialization + ATDD.
+
 ## Critical Rules
 
 - An epics-and-stories document MUST exist at `{planning_artifacts}/epics-and-stories.md` before starting (path resolved via `!scripts/resolve-config.sh planning_artifacts`). If missing, fail fast with "epics-and-stories.md not found at {planning_artifacts}/epics-and-stories.md -- run /gaia-create-epics first."
