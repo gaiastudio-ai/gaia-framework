@@ -84,7 +84,11 @@ fi
 #
 # Idempotent: when no matrix is present (skill ran in --dry-run or the
 # write was skipped), this block is a silent no-op.
-TM_PATHS="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/strategy/traceability-matrix.md ${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/traceability-matrix.md"
+# E105-S2 / ADR-127 §7.2: the traceability-matrix now lives under
+# planning-artifacts/ (docs-about-testing moved out of test-artifacts/). The
+# planning-artifacts/ home is highest precedence; the legacy test-artifacts/
+# (strategy/) paths remain for the migration read-compat window.
+TM_PATHS="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/traceability-matrix.md ${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/strategy/traceability-matrix.md ${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/traceability-matrix.md"
 for tm in $TM_PATHS; do
   if [ -f "$tm" ] && [ -s "$tm" ]; then
     # Look for the matrix's self-declared verdict in the first ~200 lines.
