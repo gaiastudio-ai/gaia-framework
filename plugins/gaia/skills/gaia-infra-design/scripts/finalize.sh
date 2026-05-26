@@ -171,14 +171,21 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
     "$(heading_present "$ARTIFACT" "Deployment")"
   item_check "SV-07" "Load balancing and scaling approach specified (scaling keyword present)" \
     "$(pattern_present "$ARTIFACT" '(auto-?scal(e|ing)|horizontal[[:space:]]+scal|vertical[[:space:]]+scal|load[[:space:]]+balanc)')"
-  item_check "SV-08" "Networking design documented (VPC/subnet/CDN/security-group keyword present)" \
-    "$(pattern_present "$ARTIFACT" '(\bVPC\b|\bsubnet(s)?\b|\bCDN\b|security[[:space:]]+group)')"
+  # F-18 (AF-2026-05-26-4): the networking allowlist was cloud-biased. Single-host
+  # topologies document firewall / loopback / localhost rather than VPC/subnet/CDN.
+  item_check "SV-08" "Networking design documented (VPC/subnet/CDN/security-group/firewall/loopback/localhost keyword present)" \
+    "$(pattern_present "$ARTIFACT" '(\bVPC\b|\bsubnet(s)?\b|\bCDN\b|security[[:space:]]+group|\bfirewall\b|\bloopback\b|\blocalhost\b)')"
 
   # IaC (SV-09..SV-11)
-  item_check "SV-09" "IaC section present (## IaC heading)" \
-    "$(heading_present "$ARTIFACT" "IaC")"
-  item_check "SV-10" "IaC tool named (Terraform/Pulumi/CloudFormation/CDK/Bicep/OpenTofu)" \
-    "$(pattern_present "$ARTIFACT" '(\bTerraform\b|\bPulumi\b|\bCloudFormation\b|\bCDK\b|\bBicep\b|\bOpenTofu\b|\bAnsible\b)')"
+  # F-19 (AF-2026-05-26-4): accept the spelled-out "Infrastructure as Code"
+  # heading, not only the "## IaC" abbreviation. heading_present interpolates
+  # the arg into an -E regex anchored as ^## <text>(...), so the alternation works.
+  item_check "SV-09" "IaC section present (## IaC OR ## Infrastructure as Code heading)" \
+    "$(heading_present "$ARTIFACT" "(IaC|Infrastructure as Code)")"
+  # F-20 (AF-2026-05-26-4): config-management single-host projects use Chef/Puppet
+  # rather than Terraform/Pulumi/etc. Word-anchored to match the existing style.
+  item_check "SV-10" "IaC tool named (Terraform/Pulumi/CloudFormation/CDK/Bicep/OpenTofu/Ansible/Chef/Puppet)" \
+    "$(pattern_present "$ARTIFACT" '(\bTerraform\b|\bPulumi\b|\bCloudFormation\b|\bCDK\b|\bBicep\b|\bOpenTofu\b|\bAnsible\b|\bChef\b|\bPuppet\b)')"
   item_check "SV-11" "State management strategy specified (state keyword present)" \
     "$(pattern_present "$ARTIFACT" '(state[[:space:]]+(management|backend|locking|storage)|remote[[:space:]]+state|terraform[[:space:]]+state)')"
 

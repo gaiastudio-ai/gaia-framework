@@ -207,6 +207,16 @@ extract_array() {
   val="${val%% (*}"
   # Trim whitespace.
   val="$(printf '%s' "$val" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  # F-9 (AF-2026-05-26-3): the production epics-and-stories.md writes the
+  # bracketed YAML flow-sequence form (`[E1-S1, E1-S2]`, `[E9-S11]`, `[]`)
+  # almost exclusively. Without stripping the surrounding brackets the comma
+  # split embedded them in the first/last element (`["[E1-S1", "E1-S2]"]`) and
+  # an empty `[]` produced a phantom dependency `["[]"]`. Strip one leading `[`
+  # and one trailing `]`, then re-trim, so both bracketed and unbracketed
+  # forms parse identically. No-op on the unbracketed comma form.
+  val="${val#[}"
+  val="${val%]}"
+  val="$(printf '%s' "$val" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
   if [ -z "$val" ] || [ "$val" = "—" ] || [ "$val" = "-" ] || [ "$val" = "None" ] || [ "$val" = "none" ]; then
     printf '[]'
     return

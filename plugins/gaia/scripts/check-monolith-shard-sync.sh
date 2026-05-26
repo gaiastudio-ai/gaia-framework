@@ -53,6 +53,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       cat <<USAGE
 Usage: check-monolith-shard-sync.sh [--root <project-root>]
+       check-monolith-shard-sync.sh <project-root>   # positional alias for --root
 
 Compare each monolith document to its shard set and emit WARNING lines on
 drift. Always exits 0 (advisory).
@@ -67,9 +68,16 @@ Documented exceptions: Change Log monolith-as-source-of-truth and the
 USAGE
       exit 0
       ;;
-    *)
+    --*)
       printf 'check-monolith-shard-sync: unknown arg: %s\n' "$1" >&2
       exit 64
+      ;;
+    *)
+      # F-8 (AF-2026-05-26-1): accept a bare positional path as an alias for
+      # --root. Callers' SKILL.md prose says "run against the project root";
+      # a positional invocation now resolves rather than exiting 64.
+      ROOT="$1"
+      shift
       ;;
   esac
 done

@@ -82,13 +82,23 @@ else
   fi
 fi
 
-# E96-S7 partial-4c: smart-fallback for TEST_PLAN / ARCHITECTURE / PRD
+# E96-S7 partial-4c: smart-fallback for TEST_PLAN / ARCHITECTURE / PRD.
+# F-17 (AF-2026-05-26-4): add the strategy/ subdir rung. /gaia-test-strategy
+# writes its test-plan alias to .gaia/artifacts/test-artifacts/strategy/test-plan.md
+# (the F-5 fix, AF-2026-05-24-9), so SV-16/SV-17 falsely failed when the plan
+# lived there. Honour the canonical ADR-072 two-rung order — flat before
+# strategy/ — that 8 sibling skills (gaia-trace, gaia-sprint-plan,
+# gaia-readiness-check, gaia-edit-test-plan, ...) already use.
 if [ -n "${TEST_PLAN_PATH:-}" ]; then
   TEST_PLAN="$TEST_PLAN_PATH"
 elif [ -f ".gaia/artifacts/test-artifacts/test-plan.md" ]; then
   TEST_PLAN=".gaia/artifacts/test-artifacts/test-plan.md"
-else
+elif [ -f ".gaia/artifacts/test-artifacts/strategy/test-plan.md" ]; then
+  TEST_PLAN=".gaia/artifacts/test-artifacts/strategy/test-plan.md"
+elif [ -f "docs/test-artifacts/test-plan.md" ]; then
   TEST_PLAN="docs/test-artifacts/test-plan.md"
+else
+  TEST_PLAN="docs/test-artifacts/strategy/test-plan.md"
 fi
 if [ -n "${ARCHITECTURE_PATH:-}" ]; then
   ARCHITECTURE="$ARCHITECTURE_PATH"

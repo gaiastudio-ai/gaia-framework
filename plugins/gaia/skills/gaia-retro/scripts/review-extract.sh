@@ -93,11 +93,25 @@ declare -a matched=()
 # reported "no review artifacts for sprint X" despite N review reports
 # being on disk.
 
-# Build a set of story keys for the active sprint
+# Build a set of story keys for the active sprint.
+# F-22 (AF-2026-05-26-4): the yq-gated extraction silently no-op'd when yq was
+# absent (an optional dep), so the F-24 frontmatter-miss fallback never fired
+# on hosts without yq and reports without sprint_id were dropped. Add a yq-less
+# path that greps the `key:` lines and validates each token as E<N>-S<N>,
+# normalising to the same space-delimited shape the yq path produced.
 SPRINT_STORY_KEYS=""
 SPRINT_STATUS_YAML="${GAIA_STATE_DIR:-.gaia/state}/sprint-status.yaml"
-if [ -f "$SPRINT_STATUS_YAML" ] && command -v yq >/dev/null 2>&1; then
-  SPRINT_STORY_KEYS="$(yq eval '.stories[].key' "$SPRINT_STATUS_YAML" 2>/dev/null | tr '\n' ' ')"
+if [ -f "$SPRINT_STATUS_YAML" ]; then
+  if command -v yq >/dev/null 2>&1; then
+    SPRINT_STORY_KEYS="$(yq eval '.stories[].key' "$SPRINT_STATUS_YAML" 2>/dev/null | tr '\n' ' ')"
+  fi
+  # yq-less fallback (also a backstop if the yq query returned nothing): pull
+  # E<N>-S<N> tokens from `key:` lines, strip quotes, space-delimit.
+  if [ -z "${SPRINT_STORY_KEYS// /}" ]; then
+    SPRINT_STORY_KEYS="$(grep -E '^[[:space:]]*-?[[:space:]]*key:' "$SPRINT_STATUS_YAML" 2>/dev/null \
+      | grep -oE 'E[0-9]+-S[0-9]+' \
+      | tr '\n' ' ')"
+  fi
 fi
 
 # Helper: extract story key from a review-report filename like
