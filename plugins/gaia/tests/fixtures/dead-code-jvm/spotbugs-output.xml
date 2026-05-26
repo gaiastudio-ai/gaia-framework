@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BugCollection>
+  <BugInstance type="NP_GUARANTEED_DEREF" priority="1" rank="4">
+    <Class classname="com.example.Foo"/>
+    <Method classname="com.example.Foo" name="bar" signature="(I)V"/>
+    <SourceLine classname="com.example.Foo" sourcefile="Foo.java" sourcepath="com/example/Foo.java" start="6"/>
+  </BugInstance>
+  <BugInstance type="DLS_DEAD_LOCAL_STORE" priority="2" rank="14">
+    <Class classname="com.example.Foo"/>
+    <Method classname="com.example.Foo" name="bar" signature="(I)V"/>
+    <SourceLine classname="com.example.Foo" sourcefile="Foo.java" sourcepath="com/example/Foo.java" start="5"/>
+  </BugInstance>
+</BugCollection>

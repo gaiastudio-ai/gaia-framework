@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": { "driver": { "name": "codeql", "rules": [ { "id": "py/sql-injection" } ] } },
+      "results": [
+        {
+          "ruleId": "py/sql-injection",
+          "level": "error",
+          "message": { "text": "finding from codeql" },
+          "locations": [ { "physicalLocation": { "artifactLocation": { "uri": "src/db.py" }, "region": { "startLine": 1 } } } ]
+        }
+      ]
+    }
+  ]
+}

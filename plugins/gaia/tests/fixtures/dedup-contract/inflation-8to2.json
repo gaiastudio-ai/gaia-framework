@@ -1,0 +1,17 @@
+{"version":"2.1.0","runs":[
+  {"tool":{"driver":{"name":"grype"}},"results":[
+    {"ruleId":"CVE-2024-AAAA","level":"error","locations":[{"physicalLocation":{"artifactLocation":{"uri":"pkg/x.go"}}}],"properties":{"severity":"HIGH"}}]},
+  {"tool":{"driver":{"name":"osv-scanner"}},"results":[
+    {"ruleId":"CVE-2024-AAAA","level":"error","locations":[{"physicalLocation":{"artifactLocation":{"uri":"pkg/x.go"}}}],"properties":{"severity":"HIGH"}}]},
+  {"tool":{"driver":{"name":"owasp-depcheck"}},"results":[
+    {"ruleId":"CVE-2024-AAAA","level":"error","locations":[{"physicalLocation":{"artifactLocation":{"uri":"pkg/x.go"}}}],"properties":{"severity":"HIGH"}},
+    {"ruleId":"CVE-2024-AAAA","level":"error","locations":[{"physicalLocation":{"artifactLocation":{"uri":"pkg/x.go"}}}],"properties":{"severity":"HIGH"}}]},
+  {"tool":{"driver":{"name":"deadcode-go"}},"results":[
+    {"ruleId":"deadcode","level":"warning","locations":[{"physicalLocation":{"artifactLocation":{"uri":"pkg/y.go"}}}],"properties":{"symbol":"Sym"}}]},
+  {"tool":{"driver":{"name":"spotbugs"}},"results":[
+    {"ruleId":"DLS_DEAD_LOCAL","level":"warning","locations":[{"physicalLocation":{"artifactLocation":{"uri":"pkg/y.go"}}}],"properties":{"symbol":"Sym"}}]},
+  {"tool":{"driver":{"name":"vulture"}},"results":[
+    {"ruleId":"unused-function","level":"warning","locations":[{"physicalLocation":{"artifactLocation":{"uri":"pkg/y.go"}}}],"properties":{"symbol":"Sym"}}]},
+  {"tool":{"driver":{"name":"lint"}},"results":[
+    {"ruleId":"no-unused","level":"note","locations":[{"physicalLocation":{"artifactLocation":{"uri":"pkg/y.go"}}}],"properties":{"symbol":"Sym"}}]}
+]}

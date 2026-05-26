@@ -1,0 +1,6 @@
+{
+  "edges": [
+    { "source": "src/a.go", "target": "src/b.go" },
+    { "source": "src/b.go", "target": "lib/c.go" }
+  ]
+}

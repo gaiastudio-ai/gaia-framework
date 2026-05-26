@@ -31,6 +31,8 @@ You are running the GAIA greenfield conversational setup. The user is on a brand
 
 This skill is a Claude Code native skill — the questionnaire runs as natural conversation; the deterministic checks (greenfield guard, schema validation, atomic file write, CI scaffold emission) are delegated to helper scripts under `${CLAUDE_PLUGIN_ROOT}/skills/gaia-init/scripts/` per ADR-042 (Scripts-over-LLM).
 
+> **Note:** The questionnaire and CRUD menu below are the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the prompt flow is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+
 **Greenfield-only boundary:** This skill MUST NOT modify existing configs. If the user already has `.gaia/config/project-config.yaml`, refuse and direct them to `/gaia-config-*` (E71-S3, mutation path) or `/gaia-brownfield` (E71-S2, codebase onboarding path).
 
 ## Critical Rules
@@ -203,6 +205,10 @@ Ask the user the following question set, in order. Capture answers into a JSON a
    the schema follow-up — Step 2a's mobile-trigger predicate below is
    unchanged in this step.
 3. **Stacks (iterative).** For each service in the project, capture: `name`, `language` (e.g., `node`, `python`, `java`, `swift`, `kotlin`, `react-native`, `flutter`, `objective-c`), `paths` (one or more globs / directory paths). Loop until the user is done — minimum one stack. **Skip this step entirely when project shape is `claude-code-plugin`** — the plugin stack file is referenced verbatim and there are no per-service stacks to enumerate.
+
+   **Multi-stack `path` prompt (E85-S14 / FR-546 / ADR-126).** When more than one stack is detected or declared — i.e. `len(stacks) > 1` (the stack-discovery step found ≥2 ecosystem manifests and the user confirmed ≥2 stacks, OR the user explicitly entered ≥2 stack names) — add a per-stack `path` prompt, asked once per stack: "Root directory for stack `<name>`? (the coarse partitioning anchor; distinct from `paths`)." Record each answer as that entry's `path`. **When exactly one stack is present (single-stack repo), SKIP the `path` prompt entirely** — zero net friction for the common case. `path` is optional; an empty answer leaves it unset.
+
+   **SR-87 default `excludes[]` (E85-S14 / AC4).** When populating a new stack's `excludes`, offer the canonical secret-file patterns as default-on candidates: `.env`, `.env.*`, `secrets/`, `*.pem`, `*.key`. The user can accept all, accept a subset, or override completely. These reduce the chance of credentials leaking into deterministic-tool scans. `cross_refs` defaults to `[]` and `ignore_nested_manifests` defaults to `true`; neither is prompted at init — both are tunable later via `/gaia-config-stack`.
 4. **Compliance regimes.** Multi-select from: `gdpr`, `hipaa`, `pci-dss`, `sox`, `ccpa`, `soc2`, `iso-27001`, `wcag-2.1-aa`, `wcag-2.1-aaa`. Optional.
 5. **`ui_present`.** Boolean. Drives downstream a11y rubric layer selection.
 6. **Environments (iterative).** For each environment (none is OK): `name` (e.g., `staging`, `production`), `url`, `auth_type`, and the **NAME** of the env var holding the credential (e.g., `STAGING_TOKEN`). Never accept or echo a literal secret.

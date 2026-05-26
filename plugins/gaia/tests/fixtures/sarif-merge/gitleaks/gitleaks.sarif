@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": { "driver": { "name": "gitleaks", "rules": [ { "id": "generic-api-key" } ] } },
+      "results": [
+        {
+          "ruleId": "generic-api-key",
+          "level": "error",
+          "message": { "text": "finding from gitleaks" },
+          "locations": [ { "physicalLocation": { "artifactLocation": { "uri": "config/settings.py" }, "region": { "startLine": 1 } } } ]
+        }
+      ]
+    }
+  ]
+}

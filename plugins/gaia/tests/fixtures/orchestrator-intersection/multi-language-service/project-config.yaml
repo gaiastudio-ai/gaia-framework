@@ -1,0 +1,12 @@
+project_root: /tmp/gaia
+project_path: /tmp/gaia
+memory_path: /tmp/gaia/.gaia/memory
+checkpoint_path: /tmp/gaia/.gaia/memory/checkpoints
+installed_path: /tmp/gaia/_gaia
+framework_version: 1.176.0
+date: 2026-05-25
+stacks:
+  - name: ml
+    language: go
+    path: .
+    paths: ["src/**/*.go", "scripts/**/*.py"]

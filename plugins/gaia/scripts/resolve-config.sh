@@ -769,6 +769,51 @@ v_dev_story_tdd_review_phases=$(merge_doubly_nested_key dev_story tdd_review pha
 v_dev_story_tdd_review_qa_auto_in_yolo=$(merge_doubly_nested_key dev_story tdd_review qa_auto_in_yolo)
 v_dev_story_tdd_review_qa_timeout_seconds=$(merge_doubly_nested_key dev_story tdd_review qa_timeout_seconds)
 
+# E70-S7 — brownfield deterministic-tools master flag (ADR-121) + per-tool
+# override (ADR-078). Depth-2 nested keys (the resolver supports up to depth-3
+# but only ASCII-underscore segments, so the per-tool override uses the flat
+# `prewarm_enabled` spelling rather than a hyphenated `tools.pre-warm.enabled`).
+v_brownfield_deterministic_tools=$(merge_nested_key brownfield deterministic_tools)
+v_brownfield_prewarm_enabled=$(merge_nested_key brownfield prewarm_enabled)
+# E104-S4 — SARIF merge per-tool override + DefectDojo opt-in (same depth-2
+# flat-underscore-key constraint as above; AC's hyphenated
+# tools.sarif-merge.enabled / tools.defectdojo.enabled are unparseable, so
+# spelled flat — semantics unchanged per ADR-078).
+v_brownfield_sarif_merge_enabled=$(merge_nested_key brownfield sarif_merge_enabled)
+v_brownfield_defectdojo_enabled=$(merge_nested_key brownfield defectdojo_enabled)
+# E104-S1 — dedup per-tool override (depth-2 flat key; default true per story Task 5).
+v_brownfield_dedup_enabled=$(merge_nested_key brownfield dedup_enabled)
+# E70-S9 — grype adapter per-tool override (depth-2 flat key, same constraint as
+# the AC's hyphenated brownfield.tools.grype.enabled — semantics unchanged per ADR-078).
+v_brownfield_grype_enabled=$(merge_nested_key brownfield grype_enabled)
+# E70-S11 — detect-signals stacks[].path proposal/audit per-tool override
+# (depth-2 flat key; AC's hyphenated brownfield.tools.detect-signals.enabled is
+# unparseable, so spelled flat — semantics unchanged per ADR-078).
+v_brownfield_detect_signals_enabled=$(merge_nested_key brownfield detect_signals_enabled)
+# E104-S3 — SBOM completeness check per-tool override (depth-2 flat key).
+v_brownfield_sbom_completeness_enabled=$(merge_nested_key brownfield sbom_completeness_enabled)
+# E70-S8 — per-stack dead-code adapter per-tool overrides (depth-2 flat keys; the
+# AC's hyphenated brownfield.tools.deadcode-{go,python,jvm}.enabled is unparseable,
+# so spelled flat — semantics unchanged per ADR-078. Default true at the adapter
+# consumer layer: the resolver emits empty when unset; the adapters apply :-true).
+v_brownfield_deadcode_go_enabled=$(merge_nested_key brownfield deadcode_go_enabled)
+v_brownfield_deadcode_python_enabled=$(merge_nested_key brownfield deadcode_python_enabled)
+v_brownfield_deadcode_jvm_enabled=$(merge_nested_key brownfield deadcode_jvm_enabled)
+# E104-S5 — Phase 4b cross-stack WARNING-emission per-tool override (depth-2 flat
+# key; AC's hyphenated brownfield.tools.phase-4b-cross-stack.enabled spelled flat —
+# semantics unchanged per ADR-078).
+v_brownfield_phase_4b_cross_stack_enabled=$(merge_nested_key brownfield phase_4b_cross_stack_enabled)
+# E104-S2 — Phase 4b reconciliation per-tool override (depth-2 flat key; AC's
+# hyphenated brownfield.tools.phase-4b.enabled spelled flat — semantics unchanged
+# per ADR-078).
+v_brownfield_phase_4b_enabled=$(merge_nested_key brownfield phase_4b_enabled)
+# E104-S4 — DefectDojo export companion config (only consumed when
+# defectdojo_enabled=true). api_token holds the NAME of an env var, never a
+# literal secret (NFR-RSV2-7).
+v_brownfield_defectdojo_api_url=$(merge_nested_key brownfield defectdojo_api_url)
+v_brownfield_defectdojo_api_token=$(merge_nested_key brownfield defectdojo_api_token)
+v_brownfield_defectdojo_engagement_id=$(merge_nested_key brownfield defectdojo_engagement_id)
+
 # Defaults (applied when no layer set a value).
 [ -z "$v_dev_story_tdd_review_threshold" ]          && v_dev_story_tdd_review_threshold="medium"
 [ -z "$v_dev_story_tdd_review_phases" ]             && v_dev_story_tdd_review_phases="[red]"
@@ -1200,6 +1245,40 @@ if [ -n "$FIELD" ]; then
     # per gaia-bridge-toggle SKILL.md AC-EC3).
     test_execution_bridge.bridge_enabled)
       printf '%s\n' "$v_test_execution_bridge_bridge_enabled" ;;
+    # E70-S7 — brownfield deterministic-tools flags (consumers treat empty as
+    # `false`; the /gaia-brownfield Phase 3 prelude reads both before pre-warm).
+    brownfield.deterministic_tools)
+      printf '%s\n' "$v_brownfield_deterministic_tools" ;;
+    brownfield.prewarm_enabled)
+      printf '%s\n' "$v_brownfield_prewarm_enabled" ;;
+    brownfield.sarif_merge_enabled)
+      printf '%s\n' "$v_brownfield_sarif_merge_enabled" ;;
+    brownfield.defectdojo_enabled)
+      printf '%s\n' "$v_brownfield_defectdojo_enabled" ;;
+    brownfield.dedup_enabled)
+      printf '%s\n' "$v_brownfield_dedup_enabled" ;;
+    brownfield.grype_enabled)
+      printf '%s\n' "$v_brownfield_grype_enabled" ;;
+    brownfield.detect_signals_enabled)
+      printf '%s\n' "$v_brownfield_detect_signals_enabled" ;;
+    brownfield.sbom_completeness_enabled)
+      printf '%s\n' "$v_brownfield_sbom_completeness_enabled" ;;
+    brownfield.deadcode_go_enabled)
+      printf '%s\n' "$v_brownfield_deadcode_go_enabled" ;;
+    brownfield.deadcode_python_enabled)
+      printf '%s\n' "$v_brownfield_deadcode_python_enabled" ;;
+    brownfield.deadcode_jvm_enabled)
+      printf '%s\n' "$v_brownfield_deadcode_jvm_enabled" ;;
+    brownfield.phase_4b_cross_stack_enabled)
+      printf '%s\n' "$v_brownfield_phase_4b_cross_stack_enabled" ;;
+    brownfield.phase_4b_enabled)
+      printf '%s\n' "$v_brownfield_phase_4b_enabled" ;;
+    brownfield.defectdojo_api_url)
+      printf '%s\n' "$v_brownfield_defectdojo_api_url" ;;
+    brownfield.defectdojo_api_token)
+      printf '%s\n' "$v_brownfield_defectdojo_api_token" ;;
+    brownfield.defectdojo_engagement_id)
+      printf '%s\n' "$v_brownfield_defectdojo_engagement_id" ;;
     severity.Critical)
       printf '%s\n' "$v_severity_Critical" ;;
     severity.High)

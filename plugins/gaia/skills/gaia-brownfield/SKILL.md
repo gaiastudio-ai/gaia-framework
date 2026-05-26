@@ -109,6 +109,26 @@ Each phase is independent in its write targets but must run sequentially because
    - **Plugin-project classification (E77-S16 / FR-420).** `detect-signals.sh` ALSO invokes `plugin-detection.sh` and emits a top-level `project_kind` field. Three or more co-occurring signals from `{SKILL.md, adapter.json, plugin manifest, commands/, settings.json hooks, .claude/}` set `project_kind: claude-code-plugin`. Single-signal detection is rejected to avoid false positives on stray SKILL.md or manifest files in non-plugin repos. Surface `project_kind` to the user so the downstream `/gaia-trace` plugin chain (FR-421) can attach to it.
 <!-- E71-S2: detection-driven config extension end -->
 
+5b. **Multi-stack `stacks[].path` proposal / audit (E70-S11 / FR-548 / NFR-88 / ADR-126).** When the deterministic-tools master flag (`brownfield.deterministic_tools`) and per-tool override (`brownfield.detect_signals_enabled`, default true) are on, run `detect-signals.sh` in the OPT-IN stacks-path mode to give multi-stack monorepos advisory partitioning help. This is distinct from the E71-S2 root-only detection above (that path is unchanged):
+
+   ```bash
+   ds_start=$(date +%s)
+   # auto = audit when stacks[].path is already declared, else propose.
+   DECLARED="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh project_config_path 2>/dev/null \
+     | xargs -I{} yq eval '[.stacks[].path | select(. != null)] | join(",")' {} 2>/dev/null || true)"
+   ds_mode="proposal"; [ -n "$DECLARED" ] && ds_mode="audit"
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect-signals.sh" --project-root "${GAIA_PROJECT_PATH:-.}" \
+     --stacks-path-mode "$ds_mode" --declared-paths "$DECLARED" \
+     --draft-out "${GAIA_CONFIG_DIR:-.gaia/config}/project-config.draft.yaml" \
+     --audit-out "${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit/partitioning-audit.json" \
+     --format json || true
+   ds_seconds=$(( $(date +%s) - ds_start ))
+   ```
+
+   - **Proposal mode** (no `stacks[].path` declared): scans ecosystem manifests and writes a `stacks[].path` mapping to `project-config.draft.yaml` (advisory — the user accepts by renaming to `project-config.yaml` OR merging the entries via `/gaia-config-stack`; declared truth always wins). A single root-level stack emits "nothing to propose" and writes no draft. Nested manifests (a manifest inside another stack's path) scope to the parent — `ignore_nested_manifests: true` default per FR-546 / E85-S14; they do NOT spawn a phantom child stack.
+   - **Audit mode** (`stacks[].path` IS declared): compares declared vs auto-detected and logs disagreement to `.gaia/memory/brownfield-audit/partitioning-audit.json` (`{auto_detected_partitioning, declared_partitioning, disagreement_count}`); it does NOT regenerate the draft (auto-detection vs explicit precedence, TC-MSP-3). Never overrides the declared config.
+   - Telemetry (E104-S1 `brownfield-telemetry.sh`; detect_signals owns its fields, single-author): populate `phase_runtime_seconds.detect_signals` / `deterministic_tool_seconds.detect_signals` / `llm_token_count:0` / `detect_signals_mode: proposal|audit|skipped` (skipped when the flags are off). Advisory, never gating — runs in ≤2s on a 10-manifest fixture (NFR-88).
+
 6. Generate the brownfield assessment artifact by reading the assessment template, capturing component inventory, technical debt, migration constraints, coexistence strategy, and adoption path. Include `{project_type}` in the output. Write to `.gaia/artifacts/planning-artifacts/brownfield-assessment.md`.
 7. Write the enhanced project documentation — all standard sections plus detected capability flags, `{project_type}`, testing infrastructure summary, and CI/CD pipeline summary. Write to `.gaia/artifacts/planning-artifacts/project-documentation.md`.
 
@@ -128,6 +148,98 @@ Spawn the following subagents in parallel (single message, multiple `Agent` tool
 After all subagents return, write a subagent summary at `.gaia/artifacts/planning-artifacts/brownfield-subagent-summary.md` (which subagents ran, artifacts produced, file paths, any errors). Pause for user review in `normal` mode before continuing.
 
 ## Phase 3 — Deep Analysis Multi-Scan Subagents (Infra-Aware)
+
+### Phase 3 pre-flight — deterministic-tools pre-warm (E70-S7 / FR-539 / ADR-121)
+
+Before the Phase 3 scan timer starts, run the deterministic-tools pre-flight. This primes the Grype vulnerability DB and cdxgen package-registry caches so a cold runner does not pay the 15–30s cold-fetch against the NFR-84 120s WARNING budget.
+
+```bash
+# Resolve the master flag + per-tool override (ADR-121 / ADR-078) and export
+# them for the adapter scripts. resolve-config.sh is the single config source.
+DET_TOOLS="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.deterministic_tools 2>/dev/null)"
+PREWARM_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.prewarm_enabled 2>/dev/null)"
+# resolve-config emits empty when the key is unset; consumers treat empty as
+# false (ADR-078 / matches the test_execution_bridge.bridge_enabled idiom).
+export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-false}"
+export GAIA_BROWNFIELD_PREWARM_ENABLED="${PREWARM_ON:-false}"
+
+# Run pre-warm (it self-skips with an INFO line when either flag is off).
+prewarm_start=$(date +%s)
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/pre-warm.sh" || true
+prewarm_seconds=$(( $(date +%s) - prewarm_start ))
+
+# Telemetry population (E104-S1 brownfield-telemetry.sh — the shared, single-author-per-field
+# writer). The pre-warm pre-flight OWNS the *.pre_warm fields (no fan-out).
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
+if [ -f "$REPORT" ]; then
+  bash "$TELEM" --report "$REPORT" --field phase_runtime_seconds.pre_warm --value "$prewarm_seconds" || true
+  bash "$TELEM" --report "$REPORT" --field deterministic_tool_seconds.pre_warm --value "$prewarm_seconds" || true
+fi
+
+# Phase 3 scan timer anchor (E70-S7 AC2 / AC-X2). pre-warm MUST complete BEFORE
+# this start_ts so its runtime is attributed to pre_warm, not the scan budget.
+start_ts=$(date +%s)
+```
+
+`prewarm_seconds` feeds the `phase_runtime_seconds.pre_warm` / `deterministic_tool_seconds.pre_warm` telemetry fields, populated via `brownfield-telemetry.sh` (the shared writer landed by E104-S1). When the flags are off, `pre-warm.sh` emits an INFO skip line and contributes 0.
+
+### Phase 3 per-stack file-list intersection (E70-S10 / FR-546 / ADR-126)
+
+When the master flag is on, the deterministic-tools orchestrator computes, for each `stacks[]` entry, the file-list passed to that stack's per-tool adapters as `(path_root ∩ paths[]) − excludes[]` (path_root = `stack.path || '.'`; excludes ALWAYS win on collision). The intersection is applied BEFORE adapter dispatch so per-stack adapters see only files within their declared stack scope — the ADR-078 `run.sh --input <file-list>` contract is byte-stable (adapters receive a flat file-list, never `path`/`paths`/`excludes` metadata). Single-stack repos (`stacks[].path: null`) collapse to `'.' ∩ paths − excludes`, byte-identical to pre-deploy (zero-regression invariant — the dominant deployment shape).
+
+```bash
+orch_start=$(date +%s)
+# Per-stack file-lists are written to $ORCH_OUT_DIR/<stack>.files (sorted, repo-root-relative);
+# the orchestrator logs `per_stack_file_counts: <stack>=<count> ...` for telemetry.
+orch_log="$(GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true \
+  ORCH_CONFIG="${GAIA_CONFIG_DIR:-.gaia/config}/project-config.yaml" \
+  ORCH_ROOT="${GAIA_PROJECT_PATH:-.}" \
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/orchestrator.sh" 2>&1 || true)"
+printf '%s\n' "$orch_log"
+orch_seconds=$(( $(date +%s) - orch_start ))
+
+# Telemetry (E104-S1 brownfield-telemetry.sh — orchestrator owns *.orchestrator_intersection
+# + per_stack_file_counts; single-author, no fan-out). Parse the per-stack counts from the log.
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
+if [ -f "$REPORT" ]; then
+  bash "$TELEM" --report "$REPORT" --field phase_runtime_seconds.orchestrator_intersection --value "$orch_seconds" || true
+  bash "$TELEM" --report "$REPORT" --field deterministic_tool_seconds.orchestrator_intersection --value "$orch_seconds" || true
+  bash "$TELEM" --report "$REPORT" --field llm_token_count --value 0 || true
+  # per_stack_file_counts: one nested key per stack from the `<stack>=<count>` pairs in $orch_log.
+  for pair in $(printf '%s' "$orch_log" | sed -n 's/.*per_stack_file_counts: //p'); do
+    s="${pair%%=*}"; c="${pair##*=}"
+    [ -n "$s" ] && bash "$TELEM" --report "$REPORT" --field "per_stack_file_counts.$s" --value "$c" || true
+  done
+fi
+```
+
+Adapter dispatch then consumes each `<stack>.files` list via the existing `run.sh --input` contract — no adapter change. (Detection of nested ecosystem manifests is E70-S11's responsibility; this orchestrator only respects the `path_root` boundary and does not double-count files under a nested manifest.)
+
+### Phase 3 SBOM completeness check (E104-S3 / FR-543)
+
+After the cdxgen SBOM is produced, run the completeness check: compare the declared dependency count (from lock files) against the SBOM component count, and WARN when `abs(divergence_pct)` exceeds 10% — or 15% when any of five per-ecosystem carve-outs auto-detects (Yarn Berry PnP, conda, Go vendor, Gradle no-lockfile, Gradle shadow/shade) — so real-dependency CVEs don't silently fail to surface from an incomplete SBOM. NEVER aborts (NFR-84). When the SBOM is absent (the cdxgen SBOM-persist producer is not yet wired — tracked Finding), the check INFO-skips.
+
+```bash
+SBOM_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.sbom_completeness_enabled 2>/dev/null)"
+export GAIA_BROWNFIELD_SBOM_COMPLETENESS_ENABLED="${SBOM_ON:-true}"
+sbomck_start=$(date +%s)
+SBOM_PROJECT_ROOT="${GAIA_PROJECT_PATH:-.}" \
+  SBOM_FILE="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit/sbom.json" \
+  SBOM_REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md" \
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/sbom-completeness-check.sh" || true
+sbomck_seconds=$(( $(date +%s) - sbomck_start ))
+# The check writes sbom_completeness_warning / divergence_pct / applied_threshold /
+# detected_carve_outs / llm_token_count via brownfield-telemetry.sh; the orchestrator adds
+# the runtime fields (single-author).
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
+if [ -f "$REPORT" ]; then
+  bash "$TELEM" --report "$REPORT" --field phase_runtime_seconds.sbom_completeness --value "$sbomck_seconds" || true
+  bash "$TELEM" --report "$REPORT" --field deterministic_tool_seconds.sbom_completeness --value "$sbomck_seconds" || true
+fi
+```
 
 Spawn seven scan subagents in parallel. These run alongside Phase 2 documentation to detect gaps that structural analysis misses. Each scanner receives `{tech_stack}`, `{project-path}`, and `{project_type}` as context. When `{project_type}` is `infrastructure` or `platform`, infra-specific detection patterns are applied alongside application patterns; for `application`, only application patterns run.
 
@@ -159,6 +271,40 @@ Detect contradictions between configuration files (e.g., different service limit
 
 Identify unused modules, orphaned routes, dead migrations, unused feature flags. Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-dead-code.md`.
 
+#### Per-stack deterministic dead-code adapters (E70-S8 / FR-545 / NFR-87 / ADR-078)
+
+When `brownfield.deterministic_tools: true`, the LLM dead-code heuristic is
+**replaced** by three sound per-stack adapters under
+`scripts/adapters/dead-code/`. Each is independently gated by its per-tool
+override (`brownfield.deadcode_go_enabled` / `deadcode_python_enabled` /
+`deadcode_jvm_enabled`, default true) and degrades gracefully (WARN + exit 0)
+when its toolchain is absent — Phase 3 never aborts (NFR-84).
+
+```bash
+AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
+ADAPT="$GAIA_PLUGIN_ROOT/scripts/adapters/dead-code"
+# Each adapter writes BOTH a flat JSON (AUDIT/dead-code/<tool>.json — report
+# rendering) AND a SARIF run (AUDIT/sarif/<tool>.sarif — feeds the Phase 7
+# E104-S1 dedup precision ladder via .properties.symbol).
+GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true DEADCODE_PROJECT_ROOT="$PROJECT_PATH" \
+  DEADCODE_OUT_DIR="$AUDIT" bash "$ADAPT/go-deadcode/adapter.sh"
+GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true PY_PROJECT_ROOT="$PROJECT_PATH" \
+  PY_OUT_DIR="$AUDIT" bash "$ADAPT/python-vulture/adapter.sh"
+GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true JVM_PROJECT_ROOT="$PROJECT_PATH" \
+  JVM_OUT_DIR="$AUDIT" bash "$ADAPT/jvm-spotbugs/adapter.sh"
+```
+
+**Per-stack precision is the contract, not a bug (NFR-87).** Go reports a
+whole-program reachability binary verdict (`<pkg>.<Function>`), Python a
+confidence percentage (`<line>:<symbol>@<conf>`), JVM a priority×rank ordinal
+(`<FQCN>.<method>(<sig>)`). The framework MUST NOT synthesize a unified
+cross-stack confidence score — `file_path` is the universal JOIN key, and each
+stack-native `qualifier` is preserved verbatim. The unified "Test Quality"
+report section is rendered in Phase 7 (see the Phase 7 render sub-step) as THREE
+labeled per-stack sub-sections — never one flat list. Telemetry
+(`phase_runtime_seconds.deadcode_{go,python,jvm}` etc.) is written by each
+adapter through the single-author `brownfield-telemetry.sh`.
+
 **Partial-failure semantics (AC-EC8):** If a scanner crashes mid-run, the other scanners continue. The failed scan writes a gap row tagged `scan failed: {reason}`. The overall skill exits non-zero with a partial-result summary listing which scanners succeeded, which failed, and what recoverable evidence is available. The remaining scanners continue — one failure does not block the cohort.
 
 ### Per-Subagent Scan Diagnostic Table (E48-S4)
@@ -186,6 +332,53 @@ After all seven Phase 3 scan subagents return (doc-code, hardcoded, integration-
 
 The table is rendered to the conversation after Phase 3 scans complete, before the Phase 3 user-review pause point. Timed-out and errored scans MUST appear with their canonical status and reason string — they are never silently omitted from the log even though their gap rows are also tagged `scan failed: {reason}` per AC-EC8.
 
+### Phase 3 deterministic-tools telemetry (E70-S7 / NFR-85)
+
+The brownfield report frontmatter records deterministic-tools telemetry so the
+gap-consolidation report (Phase 7) can attribute runtime and token cost:
+
+| Frontmatter field | Source | Notes |
+|-------------------|--------|-------|
+| `phase_runtime_seconds.pre_warm` | `prewarm_seconds` (pre-flight) | Wall-clock of the pre-warm pre-flight; tracked WARNING-only against the NFR-84 120s budget — no hard timeout abort (AC-X2). |
+| `deterministic_tool_seconds.pre_warm` | `prewarm_seconds` | Deterministic-tool runtime contribution (same value; separated so LLM vs deterministic cost is distinguishable). |
+| `llm_token_count` | `0` for pre-warm | Pre-warm is fully deterministic — zero LLM tokens (NFR-85). |
+| `gap_count_before_dedup` | gap-consolidation | Populated by Phase 7 / E104-S1 dedup; pre-warm contributes 0. |
+| `gap_count_after_dedup` | gap-consolidation | Populated by Phase 7 / E104-S2 reconciliation; pre-warm contributes 0. |
+| `phase_runtime_seconds.sarif_merge` / `deterministic_tool_seconds.sarif_merge` | SARIF merge pre-step (E104-S4) | Wall-clock of the SARIF Multitool merge; SARIF-merge-owned. |
+| `phase_runtime_seconds.dedup` / `deterministic_tool_seconds.dedup` | dedup sub-step (E104-S1) | Wall-clock of the cross-tool dedup; dedup-owned. |
+| `phase_runtime_seconds.grype` / `deterministic_tool_seconds.grype` | Grype adapter (E70-S9) | Wall-clock of the Grype CVE scan; Grype-owned. |
+| `grype_db_checksum` | Grype adapter (E70-S9) | SHA-256 of the resolved grype-db.sqlite at scan time (trust-boundary; ADR-122). Grype-owned. |
+| `grype_db_built_age` | Grype adapter (E70-S9) | Seconds since the Grype DB build timestamp. Grype-owned. |
+| `phase_runtime_seconds.orchestrator_intersection` / `deterministic_tool_seconds.orchestrator_intersection` | orchestrator (E70-S10) | Wall-clock of the per-stack file-list intersection; orchestrator-owned. |
+| `per_stack_file_counts.<stack>` | orchestrator (E70-S10) | Post-intersection file count per declared stack (explicit 0 for empty stacks). Orchestrator-owned. |
+| `phase_runtime_seconds.detect_signals` / `deterministic_tool_seconds.detect_signals` | detect-signals (E70-S11) | Wall-clock of the Phase 1 stacks[].path proposal/audit; detect-signals-owned. |
+| `detect_signals_mode` | detect-signals (E70-S11) | `proposal` \| `audit` \| `skipped` — the stacks-path mode taken. detect-signals-owned. |
+| `phase_runtime_seconds.sbom_completeness` / `deterministic_tool_seconds.sbom_completeness` | sbom-completeness (E104-S3) | Wall-clock of the SBOM completeness check; sbom-completeness-owned. |
+| `sbom_completeness_warning` / `divergence_pct` / `applied_threshold` / `detected_carve_outs` | sbom-completeness (E104-S3) | Lock-vs-SBOM divergence WARNING + the percentage, applied 10/15% threshold, and matched carve-outs. sbom-completeness-owned. |
+| `phase_runtime_seconds.deadcode_go` / `deterministic_tool_seconds.deadcode_go` | go-deadcode adapter (E70-S8) | Wall-clock of the Go deadcode scan; go-deadcode-owned. |
+| `phase_runtime_seconds.deadcode_python` / `deterministic_tool_seconds.deadcode_python` | python-vulture adapter (E70-S8) | Wall-clock of the Python vulture scan; python-vulture-owned. |
+| `phase_runtime_seconds.deadcode_jvm` / `deterministic_tool_seconds.deadcode_jvm` | jvm-spotbugs adapter (E70-S8) | Wall-clock of the JVM SpotBugs scan; jvm-spotbugs-owned. |
+| `phase_runtime_seconds.phase_4b` / `deterministic_tool_seconds.phase_4b` | reconciliation (E104-S2) | Wall-clock of the Phase 4b reconciliation JSON-join; reconciliation-owned. |
+| `findings_demoted_by_reconciliation` | reconciliation (E104-S2) | Count of file-only findings demoted to INFO (reachable from entry points); reconciliation-owned. `gap_count_*` stay dedup-owned (read-through). |
+| `phase_runtime_seconds.phase_4b_cross_stack` / `deterministic_tool_seconds.phase_4b_cross_stack` | cross-stack analysis (E104-S5) | Wall-clock of the Phase 4b cross-stack edge inspection; cross-stack-owned. |
+| `cross_stack_warnings` | cross-stack analysis (E104-S5) | Array of `{source_stack, source_file, target_stack, target_file}` detail rows (possibly empty); cross-stack-owned. |
+| `cross_stack_bypass_applied` | cross-stack analysis (E104-S5) | Bool — whether `--bypass cross-stack-refs` suppressed WARNINGs this run; cross-stack-owned. |
+
+> **Single-author writer (AF-2026-05-09-12 sibling-defect guidance).** Each field
+> is written by exactly ONE owning phase via `brownfield-telemetry.sh` — no fan-out.
+> Ownership: the pre-warm pre-flight owns `*.pre_warm`; the SARIF merge owns
+> `*.sarif_merge`; the dedup sub-step owns `*.dedup` + `gap_count_*` +
+> `llm_token_count`; the Grype adapter owns `*.grype` + `grype_db_checksum` +
+> `grype_db_built_age`; the orchestrator owns `*.orchestrator_intersection` +
+> `per_stack_file_counts.*`; detect-signals owns `*.detect_signals` +
+> `detect_signals_mode`; sbom-completeness owns `*.sbom_completeness` +
+> `sbom_completeness_warning` + `divergence_pct` + `applied_threshold` +
+> `detected_carve_outs`; the per-stack dead-code adapters own
+> `*.deadcode_{go,python,jvm}`; the cross-stack analysis owns
+> `*.phase_4b_cross_stack` + `cross_stack_warnings` + `cross_stack_bypass_applied`.
+> The `gap_count_*` values are populated for real by
+> the dedup (E104-S1) / reconciliation (E104-S2) phases.
+
 ## Phase 4 — Test Execution During Discovery
 
 After Phases 2 / 3 scans complete, execute the existing test suite at the project path to capture test failures as gap entries. **This step is non-blocking** — test execution failures must not halt the overall brownfield onboarding workflow.
@@ -202,6 +395,53 @@ Spawn a Test Execution Scanner subagent:
 - If no test suite is detected, log an info-level gap entry `GAP-TEST-INFO-001`.
 
 Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-test-execution.md`. If the subagent fails to write its output file, log a warning and continue.
+
+## Phase 4b — Reconciliation (E104-S2 / FR-540 / ADR-124)
+
+Inserted between Phase 4 (test execution) and Phase 5 (test-environment.yaml). When `brownfield.deterministic_tools: true` AND `brownfield.phase_4b_enabled: true`, Phase 4b reconciles Phase 3 file-only findings against the dependency graph and **demotes** (never removes) findings whose file is reachable from an application entry point — the barrel-file / dynamic-import false-positive guard that keeps FP rates tolerable for the deterministic-tools rollout.
+
+It is a **pure JSON-join** — NO tool re-invocation — consuming already-computed outputs: the E104-S1 deduped finding stream + per-stack call-graphs (`callgraph-{js,go,python}.json`).
+
+```bash
+AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/reconcile.sh"
+# Reads AUDIT/deduped-findings.json + AUDIT/callgraph-*.json; writes
+# AUDIT/reconciled-findings.json. Degrades (WARN + passthrough) when the call-graph
+# is absent (producer is Phase 4 supplementary tooling — not yet wired).
+```
+
+**Demote, don't remove (audit integrity).** A reachable finding keeps every identity field (`file_path`, `qualifier`, `source_tool`, `ruleId`, `start_line` — UNCHANGED) and gains `severity: info`, `reconciled: true`, `original_severity`, `entry_points: [...]`, `reconciliation_reason`. Files not reachable retain their original severity. Single-level reachability suffices (the call-graphs already encode transitivity), so the join is O(n log n) build + O(n) lookup — < 5s on a 1M-line monorepo (AC5). Telemetry: `findings_demoted_by_reconciliation`, `phase_runtime_seconds.phase_4b` (single-author; `gap_count_*` stay dedup-owned). See `scripts/adapters/brownfield/reconcile.README.md`.
+
+The **Phase 4 → Phase 4b → Phase 5** ordering is preserved on every brownfield run. The cross-stack scope sub-step below composes WITHIN this Phase 4b body.
+
+### Phase 4b cross-stack scope + WARNING emission (E104-S5 / FR-547 / NFR-89 / ADR-063 / ADR-120 / ADR-126)
+
+A sub-step within Phase 4b. When `brownfield.deterministic_tools: true` AND `brownfield.phase_4b_cross_stack_enabled: true`, the reconciliation body above is extended with a cross-stack scope check that catches **unintended coupling** in multi-stack monorepos. It respects `stacks[].path` partitioning (per-stack reconciliation runs in isolation) and inspects the dependency-graph for edges that cross a stack boundary.
+
+```bash
+AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/reconcile-cross-stack.sh" \
+  --bypass "$BYPASS_SKILL" --reason "$BYPASS_REASON"   # bypass args forwarded only when present
+# Reads stacks[].path + cross_refs[] from project-config; reads the dep-graph from
+# AUDIT/depgraph.json (producer wired by E104-S2 — degrades to INFO-skip if absent).
+```
+
+An edge from stack A to stack B where B is NOT in A's `cross_refs[]` allowlist emits the canonical ADR-063 WARNING (exact — operators/CI may grep it):
+
+```
+unsanctioned-cross-stack-reference: <source_stack>:<file> -> <target_stack>:<file>
+```
+
+**`cross_refs[]` is a per-source-stack outbound allowlist** (`A.cross_refs: [B]` ⇒ A may reference B). Shared subdirs require explicit declaration on EACH consuming stack — there is no "shared resource" concept (ADR-126 §Corner Cases). **Asymmetric allowlists are valid**: if `api` declares `[shared]` but `web` does not, only `web→shared` warns.
+
+**Worked shared-subdir example.** `/shared` imported by both `/services/api` and `/services/web`:
+- Both declare `cross_refs: [shared]` → no WARNING (both edges sanctioned).
+- Drop `shared` from `web` only → one WARNING for `web→shared`; `api→shared` stays silent.
+
+**Bypass (ADR-120).** `--bypass cross-stack-refs --reason "<text>"` suppresses the WARNINGs for the run and appends to `.gaia/memory/brownfield-audit/bypass-log.json`. The flag is parsed by the shared `scripts/lib/parse-bypass-flag.sh` (E85-S14 — required-reason, length 10–500); the SR-86 reason char-class (`^[A-Za-z0-9 ._-]+$`, shell metachars rejected) is enforced in the adapter. See E85-S14 for the canonical bypass-vocabulary doc (not duplicated here).
+
+**Performance (NFR-89).** A `{file→stack}` reverse-index (longest-path-prefix match over `stacks[].path`) makes each edge an O(1) lookup — no per-edge graph walk; per-stack-pair detection is well under 100ms. **Single-stack** (`path: null`) collapses to one catch-all stack → zero cross-stack edges → byte-identical to the E104-S2 baseline (zero-regression). See `scripts/adapters/brownfield/reconcile-cross-stack.README.md`.
 
 ## Phase 5 — Auto-Generate test-environment.yaml from Detected Infrastructure
 
@@ -255,9 +495,110 @@ The post-complete gate then reports the gap rather than crashing. Also write a s
 
 ## Phase 7 — Gap Consolidation & Deduplication
 
+### Phase 7 PRE-step — SARIF Multitool merge (E104-S4 / FR-544 / ADR-125)
+
+Before the 6-step gap-consolidation recipe runs, merge all scanner SARIF outputs into one merged SARIF. This gives the recipe (and downstream dedup E104-S1) a single uniform interchange format instead of bespoke per-tool JSON.
+
+```bash
+# Flag resolution (ADR-078 master flag + per-tool override). Empty → treated false.
+DET_TOOLS="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.deterministic_tools 2>/dev/null)"
+SARIF_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.sarif_merge_enabled 2>/dev/null)"
+export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-false}"
+export GAIA_BROWNFIELD_SARIF_MERGE_ENABLED="${SARIF_ON:-false}"
+
+sarif_merge_start=$(date +%s)
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/sarif-merge.sh" || true
+sarif_merge_seconds=$(( $(date +%s) - sarif_merge_start ))
+
+# Telemetry population (E104-S1 brownfield-telemetry.sh — shared, single-author-per-field).
+# The SARIF merge step OWNS the *.sarif_merge fields (no fan-out).
+SARIF_REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+SARIF_TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
+if [ -f "$SARIF_REPORT" ]; then
+  bash "$SARIF_TELEM" --report "$SARIF_REPORT" --field phase_runtime_seconds.sarif_merge --value "$sarif_merge_seconds" || true
+  bash "$SARIF_TELEM" --report "$SARIF_REPORT" --field deterministic_tool_seconds.sarif_merge --value "$sarif_merge_seconds" || true
+fi
+
+# DefectDojo export is opt-in (default off → zero network). Fire-and-forget.
+DD_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defectdojo_enabled 2>/dev/null)"
+export GAIA_BROWNFIELD_DEFECTDOJO_ENABLED="${DD_ON:-false}"
+if [ "${GAIA_BROWNFIELD_DEFECTDOJO_ENABLED}" = "true" ]; then
+  export GAIA_BROWNFIELD_DEFECTDOJO_API_URL="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defectdojo_api_url 2>/dev/null)"
+  # api_token config holds the NAME of an env var (NFR-RSV2-7); resolve the name, then deref it.
+  DD_TOKEN_VAR="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defectdojo_api_token 2>/dev/null)"
+  export GAIA_BROWNFIELD_DEFECTDOJO_API_TOKEN="${!DD_TOKEN_VAR:-}"
+  export GAIA_BROWNFIELD_DEFECTDOJO_ENGAGEMENT_ID="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defectdojo_engagement_id 2>/dev/null)"
+fi
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/defectdojo-export.sh" \
+  "${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/brownfield-sarif-merged.json" || true
+```
+
+**SARIF-as-interchange rationale (AC6).** SARIF 2.1.0 is the consensus interchange format — named independently by Zara (security), Soren (DevOps), Hugo (Java), and Derek (PM) in the 2026-05-23 brownfield deterministic-tools meeting. Microsoft's `Sarif.Multitool` is the canonical merger: it preserves per-tool attribution by concatenating one `run` per scanner (each carrying its `tool.driver.name`). Migrating bespoke per-tool JSON to merged SARIF removes per-tool parser maintenance and enables uniform downstream consumption (dedup, reconciliation, ranking). See `scripts/adapters/brownfield/sarif-merge.README.md`.
+
+**Migration shim (1-sprint deprecation).** When no `*.sarif` inputs exist (or the flag is off), `sarif-merge.sh` emits a WARN/INFO line and the 6-step recipe below falls back to its prior per-tool JSON consumption at Step 1. The legacy per-tool JSON path is slated for removal in the next sprint.
+
+`sarif_merge_seconds` feeds the `phase_runtime_seconds.sarif_merge` telemetry field (see the Phase 3 telemetry subsection; the populating writer is `brownfield-telemetry.sh`, landed by E104-S1).
+
+### Phase 7 dedup sub-step (E104-S1 / FR-541 / ADR-123)
+
+Immediately after the SARIF merge PRE-step and BEFORE Phase 4b reconciliation (E104-S2), run the cross-tool dedup over the merged SARIF. Dedup is the FIRST sub-step of the 6-step recipe (reordered to **load → dedup → validate → rank → budget → write**) — dedup-first shrinks the working set the downstream validate/rank/budget steps process. Dedup uses two key shapes (CVE-class keyed `(CVE-ID, file, severity)` with Grype-canonical tie-break; non-CVE-class grouped `(file, symbol)` with the precision ladder) per `docs/dedup-contract.md`.
+
+```bash
+DEDUP_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.dedup_enabled 2>/dev/null)"
+export GAIA_BROWNFIELD_DEDUP_ENABLED="${DEDUP_ON:-true}"   # default-on per E104-S1 Task 5
+dedup_start=$(date +%s)
+# Capture dedup.sh stdout so the gap_count_* values can be parsed from its INFO log line:
+#   "dedup: <N> raw finding(s) -> <M> deduped (gap_count_before_dedup=<N> gap_count_after_dedup=<M>) ..."
+dedup_log="$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/dedup.sh" 2>&1 || true)"
+printf '%s\n' "$dedup_log"
+dedup_seconds=$(( $(date +%s) - dedup_start ))
+gap_before="$(printf '%s' "$dedup_log" | sed -n 's/.*gap_count_before_dedup=\([0-9][0-9]*\).*/\1/p' | head -n1)"
+gap_after="$(printf '%s' "$dedup_log" | sed -n 's/.*gap_count_after_dedup=\([0-9][0-9]*\).*/\1/p' | head -n1)"
+
+# Telemetry population (E104-S1 brownfield-telemetry.sh — the shared, single-author-per-field
+# writer). The dedup phase OWNS gap_count_*, *.dedup runtime, and llm_token_count (deterministic).
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
+if [ -f "$REPORT" ]; then
+  bash "$TELEM" --report "$REPORT" --field phase_runtime_seconds.dedup --value "$dedup_seconds" || true
+  bash "$TELEM" --report "$REPORT" --field deterministic_tool_seconds.dedup --value "$dedup_seconds" || true
+  bash "$TELEM" --report "$REPORT" --field llm_token_count --value 0 || true
+  [ -n "$gap_before" ] && bash "$TELEM" --report "$REPORT" --field gap_count_before_dedup --value "$gap_before" || true
+  [ -n "$gap_after" ]  && bash "$TELEM" --report "$REPORT" --field gap_count_after_dedup  --value "$gap_after"  || true
+fi
+```
+
+When the dedup flag is off (or the master flag is off), `dedup.sh` passes the raw stream through unchanged (`gap_count_before_dedup == gap_count_after_dedup`) and logs an INFO skip. The deduped stream is written to `.gaia/memory/brownfield-audit/deduped-findings.json` for the E104-S2 Phase 4b reconciliation consumer.
+
+> **Single-author-per-field telemetry (AF-2026-05-09-12).** `brownfield-telemetry.sh` is the shared writer mechanism, but each field has exactly ONE owning phase: the pre-warm pre-flight owns `*.pre_warm`, the SARIF merge owns `*.sarif_merge`, and this dedup sub-step owns `*.dedup` + `gap_count_*` + `llm_token_count`. No field is written by more than one phase (no fan-out).
+
+### Phase 7 dead-code "Test Quality" render sub-step (E70-S8 / FR-545 / NFR-87)
+
+After the dedup sub-step, render the unified **Test Quality** section into
+`consolidated-gaps.md` from the three per-stack dead-code adapter outputs
+collected in Phase 3. This is a NET-NEW section (created, not edited) and is
+intentionally rendered as ONE `## Test Quality` H2 with THREE per-stack H3
+sub-sections (Go / Python / JVM) — each showing its stack-native qualifier
+verbatim. The renderer is idempotent (re-running replaces, never duplicates).
+
+```bash
+AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/dead-code/render-test-quality.sh" \
+  --out-dir "$AUDIT" --report "$REPORT" || true
+```
+
+**Anti-pattern guard (NFR-87 / AC4).** The section MUST NOT collapse the three
+stacks into one flat list with a synthesized cross-stack confidence column — Go's
+binary reachability verdict, Python's confidence %, and JVM's priority×rank ordinal
+are NOT commensurable. Per-stack precision is the contract this story preserves
+(meeting-2026-05-23, Sable turn 12). The per-stack SARIF runs (Phase 3) ALSO feed
+the dedup precision ladder above via `.properties.symbol`, so the dead-code findings
+participate in cross-tool dedup without forfeiting their native qualifier.
+
 Spawn a Gap Consolidation subagent:
 
-**Step 1 — Load all scan outputs.** Load gap entries from all of the following sources. If a file is empty or missing, log a warning noting which scanner produced no results and continue.
+**Step 1 — Load all scan outputs.** When the SARIF merge pre-step produced `.gaia/artifacts/planning-artifacts/brownfield-sarif-merged.json`, load gap entries from that MERGED SARIF as the primary scanner-finding source (one `run` per contributing scanner, attributed by `tool.driver.name`). When the merge was skipped/fell back (no SARIF inputs or flag off), load gap entries from the legacy per-tool sources below instead. In BOTH paths, also load the non-scanner gap sources. If a file is empty or missing, log a warning noting which scanner produced no results and continue.
 
 - Deep analysis scans (7 files from Phase 3): config-contradiction, dead-code, hardcoded, security, runtime-behavior, doc-code, integration-seam.
 - Test execution scan (1 file from Phase 4): brownfield-scan-test-execution.md.
@@ -266,7 +607,7 @@ Spawn a Gap Consolidation subagent:
 
 **Step 2 — Validate entries against schema.** Required fields: `id`, `category`, `severity`, `title`, `description` (or `evidence`), `evidence_file`, `evidence_line`, `recommendation`. Entries missing required fields are logged as warnings (noting source file and missing field) and skipped from consolidation.
 
-**Step 3 — Deduplicate.** Group gap entries by `evidence_file` + `evidence_line` exact match. For each group:
+**Step 3 — Deduplicate (LLM entry-level).** Cross-tool scanner-finding dedup already ran as the deterministic dedup sub-step BEFORE this recipe (E104-S1 `dedup.sh`, the FIRST sub-step of the reordered load → dedup → validate → rank → budget → write recipe). This Step 3 is a SECONDARY, coarser entry-level dedup over the consolidated gap entries (including the non-scanner sources). Group gap entries by `evidence_file` + `evidence_line` exact match. For each group:
 - Retain the entry with the highest severity (critical > high > medium > low).
 - Merge recommendations from all duplicate entries into the retained entry.
 - Add a `merged_from` field listing all original gap IDs.

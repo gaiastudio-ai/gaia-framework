@@ -1,0 +1,23 @@
+project_root: /tmp/ms
+project_path: /tmp/ms
+memory_path: /tmp/ms/.gaia/memory
+checkpoint_path: /tmp/ms/.gaia/memory/checkpoints
+installed_path: /tmp/ms/_gaia
+framework_version: 1.176.0
+date: 2026-05-25
+brownfield:
+  deterministic_tools: true
+  phase_4b_cross_stack_enabled: true
+stacks:
+  - name: api
+    language: go
+    path: services/api
+    cross_refs: [shared]
+  - name: web
+    language: typescript
+    path: services/web
+    cross_refs: [shared]
+  - name: shared
+    language: go
+    path: shared
+    cross_refs: []

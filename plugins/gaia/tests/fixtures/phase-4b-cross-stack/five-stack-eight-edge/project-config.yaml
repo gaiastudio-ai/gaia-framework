@@ -1,0 +1,31 @@
+project_root: /tmp/ms
+project_path: /tmp/ms
+memory_path: /tmp/ms/.gaia/memory
+checkpoint_path: /tmp/ms/.gaia/memory/checkpoints
+installed_path: /tmp/ms/_gaia
+framework_version: 1.176.0
+date: 2026-05-25
+brownfield:
+  deterministic_tools: true
+  phase_4b_cross_stack_enabled: true
+stacks:
+  - name: s1
+    language: go
+    path: s1
+    cross_refs: []
+  - name: s2
+    language: go
+    path: s2
+    cross_refs: []
+  - name: s3
+    language: go
+    path: s3
+    cross_refs: []
+  - name: s4
+    language: go
+    path: s4
+    cross_refs: []
+  - name: s5
+    language: go
+    path: s5
+    cross_refs: []

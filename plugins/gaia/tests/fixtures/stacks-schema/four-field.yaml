@@ -1,0 +1,18 @@
+# 4-field fixture (TC-MSP-2) — a stacks[] item populating ALL four new
+# optional properties (path, excludes, cross_refs, ignore_nested_manifests).
+# MUST validate with additionalProperties:false preserved on the items schema.
+project_root: /tmp/gaia
+project_path: /tmp/gaia/app
+memory_path: /tmp/gaia/_memory
+checkpoint_path: /tmp/gaia/_memory/checkpoints
+installed_path: /tmp/gaia/_gaia
+framework_version: 1.176.0
+date: 2026-05-25
+stacks:
+  - name: api
+    language: go
+    paths: ["services/api/**"]
+    path: services/api
+    excludes: [".env", ".env.*", "secrets/", "*.pem", "*.key"]
+    cross_refs: ["shared", "common"]
+    ignore_nested_manifests: true

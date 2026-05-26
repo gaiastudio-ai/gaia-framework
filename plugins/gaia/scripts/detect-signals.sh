@@ -46,6 +46,12 @@ FORMAT="json"
 MERGE_INTO=""
 OUTPUT=""
 SCHEMA=""
+# E70-S11 — opt-in stacks[].path proposal/audit mode (default OFF; the legacy
+# E71-S2 root-only detection path is byte-stable when this is unset).
+STACKS_PATH_MODE=""
+DRAFT_OUT=""
+AUDIT_OUT=""
+DECLARED_PATHS=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -54,6 +60,26 @@ while [ $# -gt 0 ]; do
       PROJECT_ROOT="$2"; shift 2 ;;
     --project-root=*)
       PROJECT_ROOT="${1#--project-root=}"; shift ;;
+    --stacks-path-mode)
+      [ $# -ge 2 ] || { err "--stacks-path-mode requires proposal|audit|auto"; exit 1; }
+      STACKS_PATH_MODE="$2"; shift 2 ;;
+    --stacks-path-mode=*)
+      STACKS_PATH_MODE="${1#--stacks-path-mode=}"; shift ;;
+    --draft-out)
+      [ $# -ge 2 ] || { err "--draft-out requires a path"; exit 1; }
+      DRAFT_OUT="$2"; shift 2 ;;
+    --draft-out=*)
+      DRAFT_OUT="${1#--draft-out=}"; shift ;;
+    --audit-out)
+      [ $# -ge 2 ] || { err "--audit-out requires a path"; exit 1; }
+      AUDIT_OUT="$2"; shift 2 ;;
+    --audit-out=*)
+      AUDIT_OUT="${1#--audit-out=}"; shift ;;
+    --declared-paths)
+      [ $# -ge 2 ] || { err "--declared-paths requires a comma-list"; exit 1; }
+      DECLARED_PATHS="$2"; shift 2 ;;
+    --declared-paths=*)
+      DECLARED_PATHS="${1#--declared-paths=}"; shift ;;
     --format)
       [ $# -ge 2 ] || { err "--format requires a value"; exit 1; }
       FORMAT="$2"; shift 2 ;;
@@ -100,6 +126,134 @@ fi
 
 # Make absolute for predictable behavior even after a future cd.
 PROJECT_ROOT="$(cd "$PROJECT_ROOT" && pwd)"
+
+# ---------------------------------------------------------------------------
+# E70-S11 — stacks[].path proposal / audit mode (opt-in; FR-548 / NFR-88 / ADR-126)
+# ---------------------------------------------------------------------------
+# When --stacks-path-mode is set, run the multi-stack path-partitioning logic
+# and EXIT before the legacy E71-S2 root-only detection. This keeps the legacy
+# invocation (no flag) byte-identical (zero-regression).
+#
+#   proposal : no stack declares `path` -> scan ecosystem manifests, propose a
+#              stacks[].path mapping to --draft-out. Single-stack -> no draft.
+#   audit    : `path` declared (--declared-paths) -> compare declared vs detected,
+#              write disagreement to --audit-out; do NOT regenerate the draft.
+#   auto     : audit when --declared-paths non-empty, else proposal.
+#
+# Nested manifests (a manifest with a strict-ancestor manifest) scope to the
+# ancestor stack — `ignore_nested_manifests: true` default per E85-S14 / FR-546.
+if [ -n "$STACKS_PATH_MODE" ]; then
+  # Canonical ecosystem manifest filenames (explicit -name; not regex — faster).
+  _MANIFESTS=(go.mod package.json pyproject.toml pom.xml build.gradle build.gradle.kts \
+              Cargo.toml Gemfile composer.json Pipfile requirements.txt env.yml environment.yml)
+
+  # Single cached find pass over all manifest names (NFR-88: one traversal).
+  _find_args=()
+  for m in "${_MANIFESTS[@]}"; do _find_args+=(-name "$m" -o); done
+  unset '_find_args[${#_find_args[@]}-1]'   # drop trailing -o
+  mapfile -t _hits < <(cd "$PROJECT_ROOT" && find . -type f \( "${_find_args[@]}" \) 2>/dev/null \
+                         | sed 's#^\./##' | sort)
+
+  # Candidate path = parent dir of each manifest ('.' for a root manifest).
+  declare -A _cand=()
+  for f in "${_hits[@]}"; do
+    d="$(dirname "$f")"
+    _cand["$d"]=1
+  done
+
+  # Nested-manifest scoping: drop a candidate dir if a STRICT-ANCESTOR dir is
+  # also a candidate (the nested manifest is tooling inside the parent stack).
+  declare -a _paths=()
+  for d in "${!_cand[@]}"; do
+    nested=0
+    for a in "${!_cand[@]}"; do
+      [ "$a" = "$d" ] && continue
+      case "$d/" in "$a/"*) nested=1; break ;; esac
+    done
+    [ "$nested" -eq 0 ] && _paths+=("$d")
+  done
+  # Sort the partitions — but guard the empty case: a bare
+  # `printf '%s\n' "${_paths[@]}"` on an empty array emits one blank line, which
+  # mapfile would turn into a 1-element empty-string array and defeat the
+  # zero-partition degenerate guard below (Val F1). Only re-sort when non-empty.
+  if [ "${#_paths[@]}" -gt 0 ]; then
+    mapfile -t _paths < <(printf '%s\n' "${_paths[@]}" | sort)
+  fi
+
+  # Mode resolution + ecosystem inference for the draft.
+  _eco_of() {
+    case "$1" in
+      go.mod) printf 'go' ;;
+      package.json) printf 'node' ;;
+      pyproject.toml|Pipfile|requirements.txt) printf 'python' ;;
+      pom.xml) printf 'java-maven' ;;
+      build.gradle|build.gradle.kts) printf 'java-gradle' ;;
+      Cargo.toml) printf 'rust' ;;
+      Gemfile) printf 'ruby' ;;
+      composer.json) printf 'php' ;;
+      env.yml|environment.yml) printf 'conda' ;;
+      *) printf 'unknown' ;;
+    esac
+  }
+  # First manifest filename seen under a candidate path -> its ecosystem.
+  _eco_for_path() {
+    local p="$1" f
+    for f in "${_hits[@]}"; do
+      if [ "$(dirname "$f")" = "$p" ]; then _eco_of "$(basename "$f")"; return; fi
+    done
+    printf 'unknown'
+  }
+
+  _effective_mode="$STACKS_PATH_MODE"
+  if [ "$_effective_mode" = "auto" ]; then
+    if [ -n "$DECLARED_PATHS" ]; then _effective_mode="audit"; else _effective_mode="proposal"; fi
+  fi
+
+  if [ "$_effective_mode" = "audit" ]; then
+    # Compare declared (CSV) vs detected; symmetric-difference count.
+    # `grep -v '^$'` exits 1 when ALL lines are blank (empty declared/detected),
+    # which would abort under `set -e` — `|| true` keeps an empty list as []
+    # (Val F2: audit with empty --declared-paths must still emit a valid audit).
+    declared_json="$(printf '%s' "$DECLARED_PATHS" | tr ',' '\n' | { grep -v '^$' || true; } | sort -u | jq -R . | jq -s .)"
+    detected_json="$(printf '%s\n' "${_paths[@]}" | { grep -v '^$' || true; } | sort -u | jq -R . | jq -s .)"
+    disagree="$(jq -n --argjson d "$declared_json" --argjson a "$detected_json" \
+      '(($d - $a) + ($a - $d)) | length')"
+    [ -n "$AUDIT_OUT" ] && mkdir -p "$(dirname "$AUDIT_OUT")"
+    jq -n --argjson auto "$detected_json" --argjson decl "$declared_json" --argjson n "$disagree" \
+      '{auto_detected_partitioning:$auto, declared_partitioning:$decl, disagreement_count:$n}' \
+      > "${AUDIT_OUT:-/dev/stdout}"
+    err "detect-signals: audit mode — disagreement_count=$disagree (declared not overridden; no draft regenerated)"
+    printf '{"detect_signals_mode":"audit","disagreement_count":%s}\n' "$disagree"
+    exit 0
+  fi
+
+  # proposal mode
+  # Degenerate "nothing to propose" = zero partitions, OR a single partition that
+  # IS the repo root '.' (a flat single-stack repo with only a root manifest —
+  # there is no path structure to propose). A single NON-root partition (e.g. a
+  # Go stack at services/api with a nested manifest scoped into it) IS proposed,
+  # so AC4's nested-scoping case yields a 1-stack draft (proving no phantom stack).
+  if [ "${#_paths[@]}" -eq 0 ] || { [ "${#_paths[@]}" -eq 1 ] && [ "${_paths[0]}" = "." ]; }; then
+    err "detect-signals: nothing to propose (single root-level stack) — no draft written"
+    printf '{"detect_signals_mode":"proposal","stacks_proposed":%s}\n' "${#_paths[@]}"
+    exit 0
+  fi
+  [ -n "$DRAFT_OUT" ] || { err "--draft-out required in proposal mode"; exit 1; }
+  mkdir -p "$(dirname "$DRAFT_OUT")"
+  {
+    printf '# project-config.draft.yaml — E70-S11 auto-detected stacks[].path proposal.\n'
+    printf '# Advisory only. To accept: rename to project-config.yaml OR merge the\n'
+    printf '# stacks[].path entries via /gaia-config-stack. Declared truth always wins.\n'
+    printf 'stacks:\n'
+    for p in "${_paths[@]}"; do
+      eco="$(_eco_for_path "$p")"
+      printf '  - name: %s\n    language: %s\n    path: %s\n' "$(basename "$p")" "$eco" "$p"
+    done
+  } > "$DRAFT_OUT"
+  err "detect-signals: proposal written to $DRAFT_OUT (${#_paths[@]} stacks)"
+  printf '{"detect_signals_mode":"proposal","stacks_proposed":%s}\n' "${#_paths[@]}"
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # Helpers

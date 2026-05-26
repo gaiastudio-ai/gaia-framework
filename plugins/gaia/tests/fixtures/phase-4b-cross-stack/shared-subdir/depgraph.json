@@ -1,0 +1,6 @@
+{
+  "edges": [
+    { "source": "services/api/main.go",   "target": "shared/util.go" },
+    { "source": "services/web/index.ts",   "target": "shared/util.go" }
+  ]
+}
