@@ -1,0 +1,20 @@
+sprint_id: "sprint-900"
+status: planned
+total_points: 0
+goals: []
+stories:
+  - key: "E900-S1"
+    title: "Ready low-risk story"
+    status: "ready-for-dev"
+    points: 5
+    risk_level: "low"
+  - key: "E900-S2"
+    title: "Ready high-risk story"
+    status: "ready-for-dev"
+    points: 8
+    risk_level: "high"
+  - key: "E900-S3"
+    title: "Another ready story"
+    status: "ready-for-dev"
+    points: 3
+    risk_level: "low"
