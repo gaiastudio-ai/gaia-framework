@@ -229,6 +229,31 @@ if phase == "full":
             lines.append(f"  domain: {yaml_quote(compliance['domain'])}")
 
     envs = data.get("environments") or {}
+    # F-2 (AF-2026-05-26-2): mirror the list-form compliance coercion above.
+    # An operator who submits `environments: []` (or a list, per a misreading
+    # of the iterative questionnaire) previously crashed at `.items()` below
+    # with `AttributeError: 'list' object has no attribute 'items'`. An empty
+    # list collapses to {} (block omitted); a non-empty list cannot be mapped
+    # to the {name: body} shape, so reject it with a clear message rather than
+    # crash.
+    if isinstance(envs, list):
+        if not envs:
+            envs = {}
+        else:
+            sys.stderr.write(
+                "generate-config.sh: environments must be a mapping of "
+                "{env_name: {url, credentials}}, not a list — got a non-empty "
+                "list; omitting. Re-run with the object form.\n"
+            )
+            envs = {}
+    # F-4 (AF-2026-05-26-2): schema allOf[2] (config_phase=full) requires a
+    # populated `environments` block, but the questionnaire permits "no
+    # environments". Seed a minimal `local` map-shape entry so a full-phase
+    # config validates out of the box; the operator refines it later via
+    # /gaia-config-env. Coupled with F-3 — both platforms and environments
+    # are required by allOf[2] (ci_cd:{} is already emitted above).
+    if phase == "full" and not envs:
+        envs = {"local": {"url": "http://localhost"}}
     if envs:
         lines.append("")
         lines.append("environments:")
@@ -261,6 +286,16 @@ if phase == "full":
         lines.append("ci_cd: {}")
 
     platforms = data.get("platforms") or []
+    # F-3 (AF-2026-05-26-2): schema allOf[2] (config_phase=full) requires a
+    # non-empty `platforms` array. gaia-init never emits config_phase=partial
+    # (only minimal|full), so the gap is full-phase only. For web-oriented
+    # shapes that don't gather a platform list, default to [web] — `web` is in
+    # the platformId enum and validate-platform-stack.sh returns 0 for web
+    # unconditionally, so this default never trips the platform/stack gate.
+    if phase == "full" and not platforms:
+        _shape = (data.get("project_shape") or "").strip().lower()
+        if _shape in ("web-app", "fullstack", "single backend", "microservices", "application", ""):
+            platforms = ["web"]
     if platforms:
         lines.append("")
         lines.append("platforms:")
