@@ -345,10 +345,15 @@ locate_story_file() {
   local key="$1"
   local pattern="${IMPLEMENTATION_ARTIFACTS}/${key}-*.md"
   local epic_pattern="${IMPLEMENTATION_ARTIFACTS}/epic-*/stories/${key}-*.md"
+  # E105-S1 / ADR-127: new per-story nested layout — epic-*/{key}-{slug}/story.md.
+  # The directory name carries the key (boundary "${key}-"); the basename is
+  # story.md. The existing `template: story` frontmatter filter below rejects any
+  # E*-S*-*/story.md evidence-dir false-matches (Val W1), so this glob is safe to add.
+  local perstory_pattern="${IMPLEMENTATION_ARTIFACTS}/epic-*/${key}-*/story.md"
 
   shopt -s nullglob
   # shellcheck disable=SC2206
-  local matches=( $pattern $epic_pattern )
+  local matches=( $perstory_pattern $pattern $epic_pattern )
   shopt -u nullglob
 
   if [ "${#matches[@]}" -eq 0 ]; then

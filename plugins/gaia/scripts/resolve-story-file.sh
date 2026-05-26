@@ -1,13 +1,24 @@
 #!/usr/bin/env bash
 # resolve-story-file.sh — canonical story-file resolver (E79-S7 / AF-2026-05-12-1, FR-476)
 #
-# Resolves a {story_key} to its on-disk path using the E79-S4 precedence rule:
-#   1. Canonical nested path: .gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md
+# Resolves a {story_key} to its on-disk path using a THREE-tier precedence rule
+# (E105-S1 / ADR-127 extends the E79-S4 two-tier rule):
+#   0. New per-story nested layout: epic-{slug}/{story_key}-{story-slug}/story.md
+#      (highest precedence; the directory name carries the key). New writes use
+#      this form. Two guards keep tier-0 strictly the new layout: (a) any
+#      candidate path containing a `/stories/` segment is excluded (that is the
+#      legacy tier-1 layer — and since `find -path` lets `*` match `/`, the glob
+#      alone would otherwise also traverse `epic-*/stories/E*-S*-*/` evidence
+#      dirs), and (b) the directory basename is post-filtered on the
+#      `{story_key}-` prefix BOUNDARY so requesting E28-S2 never matches
+#      E28-S21-* (Val C1 + WARNING-1).
+#   1. Legacy nested: .gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md
 #   2. Legacy flat fallback:  docs/implementation-artifacts/{story_key}-*.md (read-only,
 #      with stderr WARNING "legacy-flat path — {flat_path} (migrate via E79-S6)")
 #
-# If both exist for the same {story_key}, the nested file wins and the flat sibling is
-# logged as "WARNING: legacy-flat shadow ignored — {flat_path}" and NOT returned.
+# Precedence: per-story (0) > legacy-nested (1) > flat (2). When a higher tier
+# resolves, lower-tier siblings for the same key are logged as ignored shadows
+# (WARNING) and NOT returned. Existing files are NEVER migrated — read-compat only.
 #
 # Exit codes:
 #   0 - single match resolved; path written to stdout
@@ -42,9 +53,38 @@ resolve_story_file() {
         return 1
     fi
 
-    # 1. Canonical nested search: epic-*/stories/{key}-*.md
+    # 0. New per-story nested layout (E105-S1, ADR-127): the story's directory
+    #    name carries the key — epic-{slug}/{key}-{story-slug}/story.md. This is
+    #    the HIGHEST-precedence tier; new writes always use this form.
+    #    Two guards keep tier-0 strictly the new layout (Val C1 + WARNING-1):
+    #      (a) the candidate path MUST NOT contain a `/stories/` segment — that is
+    #          the legacy tier-1 layer, and since `find -path` lets `*` match `/`,
+    #          the `epic-*/E*-S*-*/story.md` glob would otherwise also traverse
+    #          `epic-*/stories/E*-S*-*/` evidence dirs;
+    #      (b) the directory basename MUST begin with the `{story_key}-` PREFIX
+    #          BOUNDARY so requesting E28-S2 never matches E28-S21-*.
+    local perstory_matches=()
+    while IFS= read -r -d '' path; do
+        # (a) exclude any legacy stories/ segment — tier-0 is the new layout only.
+        case "$path" in
+            */stories/*) continue ;;
+        esac
+        # (b) {dir} basename must begin with exactly "{story_key}-" (boundary).
+        local sdir
+        sdir="$(basename "$(dirname "$path")")"
+        case "$sdir" in
+            "${story_key}-"*) perstory_matches+=("$path") ;;
+        esac
+    done < <(find "$impl_root" -type f -path "${impl_root%/}/epic-*/E*-S*-*/story.md" -print0 2>/dev/null)
+
+    # 1. Canonical nested search: epic-*/stories/{key}-*.md — DIRECT children of
+    #    a `stories/` dir only. The parent-basename guard prevents the glob (whose
+    #    `*` spans `/`) from matching a deeper file such as
+    #    `stories/{key}-evidence/story.md` (a per-story evidence dir), which is a
+    #    tier-0 concern, not a legacy tier-1 story.
     local nested_matches=()
     while IFS= read -r -d '' path; do
+        [[ "$(basename "$(dirname "$path")")" == "stories" ]] || continue
         nested_matches+=("$path")
     done < <(find "$impl_root" -type f -path "*/stories/${story_key}-*.md" -print0 2>/dev/null)
 
@@ -55,8 +95,36 @@ resolve_story_file() {
         [[ -f "$f" ]] && flat_matches+=("$f")
     done
 
+    local perstory_count=${#perstory_matches[@]}
     local nested_count=${#nested_matches[@]}
     local flat_count=${#flat_matches[@]}
+
+    # New per-story layout takes precedence over BOTH legacy layers. Multi-match
+    # is a misconfiguration the operator must resolve.
+    if (( perstory_count > 1 )); then
+        printf 'error: multiple per-story story files matched key %s — resolve ambiguity\n' "$story_key" >&2
+        local m
+        for m in "${perstory_matches[@]}"; do
+            printf '  %s\n' "$m" >&2
+        done
+        return 2
+    fi
+    if (( perstory_count == 1 )); then
+        if (( nested_count > 0 )); then
+            local np
+            for np in "${nested_matches[@]}"; do
+                printf 'WARNING: legacy epic-*/stories shadow ignored — %s\n' "$np" >&2
+            done
+        fi
+        if (( flat_count > 0 )); then
+            local fp
+            for fp in "${flat_matches[@]}"; do
+                printf 'WARNING: legacy-flat shadow ignored — %s\n' "$fp" >&2
+            done
+        fi
+        printf '%s\n' "${perstory_matches[0]}"
+        return 0
+    fi
 
     # Multi-nested ambiguity: misconfiguration, operator must resolve
     if (( nested_count > 1 )); then

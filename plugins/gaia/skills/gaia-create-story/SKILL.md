@@ -315,13 +315,25 @@ FRONTMATTER_YAML=$(!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/gener
 #
 # AF-2026-05-22-8 Bug-18 canonical-naming contract:
 #   - Use the resolver output VERBATIM as the per-epic directory name.
-#   - Path: ${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/{story_key}-{slug}.md
 #   - Do NOT write to `epic-{N}/stories/...` (numeric-only, no slug) — that
 #     bypasses resolve-epic-slug.sh and produces split state with
 #     transition-story-status.sh which uses the resolver path directly.
 #     Per Bug-18 from the YARA test report, mixing the two produces split
 #     state across TWO directories per epic: story .md files in one,
 #     story-index.yaml in the other.
+#
+# E105-S1 / ADR-127 — NEW per-story nested write target (drops the `stories/`
+# middle level so a story's location encodes its key as a single moveable unit):
+#   - Path: ${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/{story_key}-{slug}/story.md
+#   - A sibling `reviews/` subdir under {story_key}-{slug}/ holds the FR-402
+#     type-FIRST review reports (code-review-{key}.md, qa-tests-{key}.md, …) —
+#     never the reversed {key}-<type>.md form (check-deps.sh glob collision).
+#   - NEW writes always use this nested per-story form. Legacy
+#     `${EPIC_DIR}/stories/{story_key}-{slug}.md` and flat layouts remain
+#     READ-ONLY fallback via resolve-story-file.sh's three-tier resolver — this
+#     story does NOT migrate existing files (read-compat only).
+#   - validate-canonical-filename.sh validates the key from the directory name
+#     `{story_key}-{slug}/` (location encodes key) when the basename is story.md.
 EPIC_DIR=$(!scripts/lib/resolve-epic-slug.sh \
   --epic-key "<epic_key>" \
   --epics-file "$(!scripts/resolve-config.sh planning_artifacts)/epics-and-stories.md")
