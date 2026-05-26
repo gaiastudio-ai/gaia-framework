@@ -97,16 +97,44 @@ STRICT_HELPER="$(cd "$SCRIPT_DIR/../../.." && pwd)/scripts/lib/lifecycle-strict-
 # (which accepts flat | strategy/ | sharded) while KEEPING the strict-mode +
 # bypass-record wrapper intact (validate-gate.sh has no strict/bypass awareness).
 GATE_LIFECYCLE_LEDGER="${GAIA_STATE_DIR:-.gaia/state}/lifecycle-overrides.yaml"
+# AF-2026-05-26-9 (follow-up): resolve the planning/test artifact dirs with the
+# SAME precedence validate-gate.sh uses (validate-gate.sh:78-82) — uppercase
+# PLANNING_ARTIFACTS/TEST_ARTIFACTS exported by resolve-config.sh (and by the
+# audit-v2-migration enriched fixture), then `.gaia/artifacts/...` canonical,
+# then `docs/...`. The prior fallbacks keyed off GAIA_PLANNING_ARTIFACTS /
+# GAIA_ARTIFACTS_DIR (which neither the resolver nor the fixture export), so the
+# readiness-report status-read below looked in `.gaia/` while a docs/-idiom
+# project (and the enriched fixture) seeds it under `docs/` — the gate then
+# hard-died with a phantom "no readiness verdict" even though the report exists.
+_resolve_planning_dir() {
+  if [ -n "${PLANNING_ARTIFACTS:-}" ]; then
+    printf '%s' "$PLANNING_ARTIFACTS"
+  elif [ -d "${CLAUDE_PROJECT_ROOT:-.}/.gaia/artifacts/planning-artifacts" ]; then
+    printf '%s' "${CLAUDE_PROJECT_ROOT:-.}/.gaia/artifacts/planning-artifacts"
+  else
+    printf '%s' "docs/planning-artifacts"
+  fi
+}
+_resolve_test_dir() {
+  if [ -n "${TEST_ARTIFACTS:-}" ]; then
+    printf '%s' "$TEST_ARTIFACTS"
+  elif [ -d "${CLAUDE_PROJECT_ROOT:-.}/.gaia/artifacts/test-artifacts" ]; then
+    printf '%s' "${CLAUDE_PROJECT_ROOT:-.}/.gaia/artifacts/test-artifacts"
+  else
+    printf '%s' "docs/test-artifacts"
+  fi
+}
 # Multi-path traceability existence probe via validate-gate.sh (exit 0 = present
-# at any accepted placement). Falls back to the flat literal when the script is
-# absent so the probe never crashes.
+# at any accepted placement). Falls back to the resolver-aligned dir when the
+# script is absent so the probe never crashes.
 _trace_present() {
   if [ -x "$VALIDATE_GATE" ]; then
     "$VALIDATE_GATE" traceability_exists >/dev/null 2>&1
   else
-    [ -f "${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/traceability-matrix.md" ] \
-      || [ -f "${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/strategy/traceability-matrix.md" ] \
-      || [ -f "${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/traceability-matrix/index.md" ]
+    local td; td="$(_resolve_test_dir)"
+    [ -f "$td/traceability-matrix.md" ] \
+      || [ -f "$td/strategy/traceability-matrix.md" ] \
+      || [ -f "$td/traceability-matrix/index.md" ]
   fi
 }
 # Multi-path readiness-report existence probe (replaces the never-written
@@ -117,8 +145,8 @@ _readiness_report_present() {
   if [ -x "$VALIDATE_GATE" ]; then
     "$VALIDATE_GATE" readiness_report_exists >/dev/null 2>&1
   else
-    [ -f "${GAIA_PLANNING_ARTIFACTS:-.gaia/artifacts/planning-artifacts}/readiness-report.md" ] \
-      || [ -f "${GAIA_PLANNING_ARTIFACTS:-.gaia/artifacts/planning-artifacts}/readiness-report/index.md" ]
+    local pd; pd="$(_resolve_planning_dir)"
+    [ -f "$pd/readiness-report.md" ] || [ -f "$pd/readiness-report/index.md" ]
   fi
 }
 if [ ! -f "$GATE_LIFECYCLE_LEDGER" ] && ! _trace_present && ! _readiness_report_present; then
@@ -167,17 +195,32 @@ if [ -f "$LIFECYCLE_LIB" ]; then
   # status instead: PASS or CONDITIONAL clears (CONDITIONAL is a known-gaps pass
   # per the readiness-check contract); FAIL or absent report does not.
   has_passed_readiness=0
+  readiness_report_is_stub=0
   if _readiness_report_present; then
-    READINESS_REPORT="${GAIA_PLANNING_ARTIFACTS:-.gaia/artifacts/planning-artifacts}/readiness-report.md"
-    [ -f "$READINESS_REPORT" ] || READINESS_REPORT="${GAIA_PLANNING_ARTIFACTS:-.gaia/artifacts/planning-artifacts}/readiness-report/index.md"
+    _pd="$(_resolve_planning_dir)"
+    READINESS_REPORT="$_pd/readiness-report.md"
+    [ -f "$READINESS_REPORT" ] || READINESS_REPORT="$_pd/readiness-report/index.md"
     # Read the frontmatter status line (PASS / CONDITIONAL clears; FAIL does not).
     if grep -qE "^[[:space:]]*status:[[:space:]]*(PASS|PASSED|CONDITIONAL)" "$READINESS_REPORT" 2>/dev/null; then
       has_passed_readiness=1
+    elif ! grep -qE "^[[:space:]]*status:[[:space:]]*\S" "$READINESS_REPORT" 2>/dev/null; then
+      # AF-2026-05-26-9 (follow-up): the report exists but carries NO SV-20
+      # `status:` frontmatter field at all — i.e. a placeholder/stub, not a
+      # real readiness verdict. A genuine gaia-readiness-check report always
+      # emits `status:` (SV-20). Treat a field-less stub as bootstrap/fixture
+      # context (the audit-v2-migration enriched fixture seeds exactly such a
+      # placeholder): downgrade the hard die to a WARNING so a smarter,
+      # path-correct existence probe does not regress the fixture-skip that the
+      # flat-only staging probe got "for free". A report WITH a status field
+      # (incl. `status: FAIL`) is a real verdict and still gates in strict mode.
+      readiness_report_is_stub=1
     fi
   fi
   if [ "$has_passed_readiness" -eq 0 ]; then
     if _has_bypass_for "gaia-readiness-check"; then
       log "readiness gate bypassed: bypass record found for /gaia-readiness-check"
+    elif [ "$readiness_report_is_stub" -eq 1 ]; then
+      log "WARNING: readiness-report exists but has no SV-20 status: field (placeholder/stub) — treating as bootstrap/fixture context; run /gaia-readiness-check to produce a real PASS/CONDITIONAL verdict"
     elif [ "$strict_mode_on" -eq 0 ]; then
       log "WARNING: no PASS/CONDITIONAL /gaia-readiness-check verdict on record — would block in strict mode (run /gaia-readiness-check OR --bypass gaia-readiness-check --reason \"<text>\")"
     else

@@ -48,7 +48,14 @@ teardown() { common_teardown; }
 }
 
 @test "AF-26-9 F1: _trace_present fallback accepts flat | strategy/ | sharded" {
-  for p in 'test-artifacts/traceability-matrix.md' 'test-artifacts/strategy/traceability-matrix.md' 'test-artifacts/traceability-matrix/index.md'; do
+  # AF-2026-05-26-9 (follow-up): the fallback was refactored to build paths from
+  # a resolver-aligned base dir ($td = _resolve_test_dir, always ending in
+  # test-artifacts) instead of inlining the GAIA_ARTIFACTS_DIR literal. Assert
+  # the three placements against the $td-relative form. _resolve_test_dir is the
+  # base-dir helper that mirrors validate-gate.sh's PLANNING/TEST_ARTIFACTS
+  # precedence (uppercase env → .gaia/artifacts → docs/).
+  grep -qF '_resolve_test_dir' "$SP_SETUP"
+  for p in '$td/traceability-matrix.md' '$td/strategy/traceability-matrix.md' '$td/traceability-matrix/index.md'; do
     grep -qF "$p" "$SP_SETUP" || { echo "missing placement $p in sprint-plan fallback"; false; }
   done
 }
@@ -115,4 +122,44 @@ teardown() { common_teardown; }
   printf -- '---\nstatus: CONDITIONAL\n---\n' > "$pa/readiness-report.md"
   PLANNING_ARTIFACTS="$pa" run bash "$VALIDATE_GATE" readiness_report_exists
   [ "$status" -eq 0 ]
+}
+
+# --- follow-up (audit-v2-migration regression): a placeholder readiness-report
+#     with NO SV-20 status: field is bootstrap/fixture context, not a hard fail.
+#     A real report (status: present) still gates. Mirrors the docs/ idiom the
+#     enriched audit fixture uses (uppercase PLANNING_ARTIFACTS/TEST_ARTIFACTS). ---
+
+@test "AF-26-9 follow-up: statusless placeholder readiness-report → setup warns, exits 0" {
+  local root="$BATS_TEST_TMPDIR/proj"
+  local pa="$root/docs/planning-artifacts" ta="$root/docs/test-artifacts"
+  mkdir -p "$pa" "$ta"
+  # Seed a traceability matrix (so the bootstrap-skip does NOT fire — this is
+  # the exact condition that exposed the regression) + a STATUSLESS readiness
+  # placeholder (no `status:` frontmatter), exactly like the enriched fixture.
+  printf '# placeholder\n' > "$ta/traceability-matrix.md"
+  printf '# placeholder\n' > "$pa/readiness-report.md"
+  run env CLAUDE_SKILL_DIR="$PLUGIN/skills/gaia-sprint-plan" \
+          CLAUDE_PROJECT_ROOT="$root" \
+          TEST_ARTIFACTS="$ta" PLANNING_ARTIFACTS="$pa" \
+          IMPLEMENTATION_ARTIFACTS="$root/docs/implementation-artifacts" \
+          bash "$SP_SETUP"
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -qF 'no SV-20 status: field'
+}
+
+@test "AF-26-9 follow-up: real readiness-report with status: FAIL still gates (strict)" {
+  local root="$BATS_TEST_TMPDIR/proj2"
+  local pa="$root/docs/planning-artifacts" ta="$root/docs/test-artifacts"
+  mkdir -p "$pa" "$ta"
+  printf '# placeholder\n' > "$ta/traceability-matrix.md"
+  # A REAL report carries the SV-20 status: field — status: FAIL is a genuine
+  # verdict and must NOT be treated as a stub; the gate still dies in strict mode.
+  printf -- '---\nstatus: FAIL\n---\n' > "$pa/readiness-report.md"
+  run env CLAUDE_SKILL_DIR="$PLUGIN/skills/gaia-sprint-plan" \
+          CLAUDE_PROJECT_ROOT="$root" \
+          TEST_ARTIFACTS="$ta" PLANNING_ARTIFACTS="$pa" \
+          IMPLEMENTATION_ARTIFACTS="$root/docs/implementation-artifacts" \
+          bash "$SP_SETUP"
+  [ "$status" -ne 0 ]
+  printf '%s\n' "$output" | grep -qF 'no PASS/CONDITIONAL'
 }
