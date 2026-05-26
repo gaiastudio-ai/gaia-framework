@@ -61,8 +61,13 @@ teardown() { common_teardown; }
 # --- AC1 — gate passes when traceability-matrix is present (structural assert) ---
 
 @test "F-33: setup.sh checks for traceability-matrix.md at canonical + legacy paths" {
-  grep -qF 'test-artifacts/strategy/traceability-matrix.md' "$SETUP_SH"
-  grep -qF 'test-artifacts/traceability-matrix.md' "$SETUP_SH"
+  # AF-2026-05-26-9 (F2): the gate now resolves the matrix across all three
+  # ADR-070/072 placements via a $_ta base-dir variable (strategy/ / flat /
+  # sharded index.md). The literal full paths were replaced by $_ta-relative
+  # forms; assert the variable-based three-placement resolution.
+  grep -qF '$_ta/strategy/traceability-matrix.md' "$SETUP_SH"
+  grep -qF '$_ta/traceability-matrix.md' "$SETUP_SH"
+  grep -qF '$_ta/traceability-matrix/index.md' "$SETUP_SH"
 }
 
 # --- AC3 — strict mode OFF: warns but does not exit non-zero on missing matrix ---
