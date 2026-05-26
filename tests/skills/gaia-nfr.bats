@@ -63,7 +63,7 @@ setup() {
 }
 
 @test "AC3: SKILL.md references NFR assessment output" {
-  grep -q "nfr-assessment\|test-artifacts" "$SKILL_FILE"
+  grep -q "nfr-assessment\|test-artifacts\|planning-artifacts" "$SKILL_FILE"
 }
 
 # ---------- AC5: Shared setup.sh/finalize.sh pattern ----------
@@ -107,5 +107,5 @@ setup() {
 # ---------- AC6: Output format verification ----------
 
 @test "AC6: SKILL.md references output to docs/test-artifacts/" {
-  grep -q "docs/test-artifacts\|test-artifacts/" "$SKILL_FILE"
+  grep -q "planning-artifacts/nfr-assessment\|test-artifacts/\|docs/test-artifacts" "$SKILL_FILE"  # E105-S3 / ADR-127 Pillar 3: nfr-assessment moved to planning-artifacts/ (legacy test-artifacts/ read-only)
 }
