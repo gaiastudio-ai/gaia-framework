@@ -78,7 +78,9 @@ teardown() { common_teardown; }
     bash "$PLUGIN_ROOT/scripts/sprint-state.sh" init --sprint-id sprint-7
   [ -f "$tmp/sprint-status.yaml" ]
   grep -qF 'sprint_id: "sprint-7"' "$tmp/sprint-status.yaml"
-  grep -qF 'state: active' "$tmp/sprint-status.yaml"
+  # E107-S1 / ADR-108: cmd_init now seeds the canonical `status: planned` field
+  # (the prior `state: active` line was a dead orphan read by no consumer).
+  grep -qF 'status: planned' "$tmp/sprint-status.yaml"
   grep -qF 'total_points: 0' "$tmp/sprint-status.yaml"
   grep -qF 'goals: []' "$tmp/sprint-status.yaml"
   grep -qF 'items: []' "$tmp/sprint-status.yaml"

@@ -159,8 +159,10 @@ Usage:
 Subcommands:
   init              AF-2026-05-22-9 Bug-8. Bootstrap a fresh sprint-status.yaml
                     when none exists yet. Seeds the canonical shape
-                    (sprint_id / state=active / total_points=0 / goals=[] /
-                    items=[]) under flock. Idempotent — refuses to overwrite
+                    (sprint_id / status=planned / total_points=0 / goals=[] /
+                    items=[]) under flock — E107-S1 / ADR-108: a fresh sprint
+                    starts in the `planned` state (planned → active → review →
+                    closed). Idempotent — refuses to overwrite
                     an existing yaml. Required before the first `inject` in a
                     new project. Usage: sprint-state.sh init --sprint-id <id>.
   transition        Atomically transition a story to <state>. Validates
@@ -2386,9 +2388,16 @@ cmd_init() {
   # already acquire the canonical sprint-status.yaml.lock under flock.
   local tmp
   tmp="$(mktemp "${yaml}.XXXXXX")"
+  # E107-S1 / ADR-108: seed the canonical top-level `status:` field (read by
+  # _yaml_sprint_status + the transition writer + the dashboard). A fresh sprint
+  # starts in the new `planned` state (planned → active → review → closed); the
+  # planned → active edge is gated by the E107-S4 readiness gate when present.
+  # NB: the prior `state: active` line was a dead orphan that no consumer read —
+  # seeding `status: planned` is what actually makes the sprint planned AND
+  # transitionable (a status:-less seed could not be transitioned at all).
   cat >"$tmp" <<EOF
 sprint_id: "${sprint_id}"
-state: active
+status: planned
 total_points: 0
 goals: []
 items: []
@@ -2603,10 +2612,12 @@ cmd_transition_sprint() {
   current="$(_yaml_sprint_status "$yaml")"
   [ -n "$current" ] || die "transition --sprint: cannot read current status from $yaml"
 
-  # Validate edge per ADR-108 D1
+  # Validate edge per ADR-108 D1. E107-S1 adds the sprint-level `planned` state
+  # before `active` (planned → active → review → closed); the planned → active
+  # edge is unconditional here — E107-S4 layers the readiness gate on top.
   local legal=0
   case "${current}→${target}" in
-    "active→review"|"review→closed"|"review→correction"|"correction→active")
+    "planned→active"|"active→review"|"review→closed"|"review→correction"|"correction→active")
       legal=1 ;;
   esac
   if [ "$legal" -ne 1 ]; then
