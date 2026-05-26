@@ -3,6 +3,37 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.176.2] — 2026-05-25
+
+### Fixed
+
+- (AF-2026-05-24-14 pr-b) 6 script-behavior test02 medium findings (#941)
+- (AF-2026-05-24-14 pr-a) 13 quick-fix test02 medium/low findings (#940)
+
+## [1.176.1] — 2026-05-24
+
+### Fixed
+
+- (AF-24-10+11+12+13) bundle test02 10 high findings (f-13,14,15,21,22,24,35,36,39) (#936)
+- (AF-24-7+8+9) bundle test02 7 high findings (f-1,2,3,4,5,7,25) (#935)
+- (AF-2026-05-24-6) distribute ADR-042 traceability gate to dev-story (F-33 minimal) (#934)
+- (AF-2026-05-24-5) review parent-write paths use .gaia/ canonical (F-12 critical) (#933)
+
+## [1.176.0] — 2026-05-24
+
+### Added
+
+- (sprint-52) artifact-taxonomy cleanup + lifecycle ordering enforcement
+- (E103) enforce lifecycle ordering across gaia skills
+- (E102) group flat artifact files into purpose-named subdirectories
+- (E101) add bats fixtures for ADR-118 decision and DOCUMENT path
+
+### Fixed
+
+- (AF-2026-05-24-4) relocate review evidence to .gaia/state/review/ and strip gaia- prefix
+- (sprint-52) unbreak existing bats suites after sprint-52 wiring
+- (E103-S3) skip lifecycle gates when no upstream artifacts present
+
 ## [1.175.0] — 2026-05-24
 
 ### Added
