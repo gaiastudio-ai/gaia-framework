@@ -72,9 +72,12 @@ teardown() { rm -rf "$TEST_TMP" 2>/dev/null || true; }
 # ---------- AC1 / AC2 / AC3: convention documented + producers + conformance ----------
 
 @test "AC1: ADR-127 Pillar 3 documents the three-class date-suffix rule" {
+  # ADR-127 is a PROJECT-ROOT artifact (.gaia/artifacts/planning-artifacts/), which
+  # is NOT part of the gaia-public checkout that CI runs against. Per
+  # feedback_no_project_root_artifact_assert_in_gaia_public_bats, this test must
+  # SKIP when the ADR is absent (CI) rather than hard-fail on an absolute path.
   ADR="$REPO_ROOT/../.gaia/artifacts/planning-artifacts/architecture/27-adr-127-consolidated-artifact-layout.md"
-  [ -f "$ADR" ] || ADR="/Users/jlouage/Dev/GAIA-Framework/.gaia/artifacts/planning-artifacts/architecture/27-adr-127-consolidated-artifact-layout.md"
-  [ -f "$ADR" ]
+  [ -f "$ADR" ] || skip "ADR-127 is a project-root artifact not present in the gaia-public checkout"
   # the three classes named in the date-suffix rule (living / periodically re-assessed / per-event)
   grep -Eiq 'living' "$ADR" && grep -Eiq 'periodically re-?assess' "$ADR" && grep -Eiq 'per-event' "$ADR" \
     || { echo "ADR-127 should name the three date-suffix classes" >&2; grep -in 'date-suffix\|living\|per-event' "$ADR" | head >&2; false; }
