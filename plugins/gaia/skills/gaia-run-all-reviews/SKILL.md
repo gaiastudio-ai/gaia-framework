@@ -170,12 +170,24 @@ This table replaces the legacy "inline LLM judgment blocks". Each row names the 
 
 | Short-name        | Dispatch                       | Gate name             | Report path                                                        | Execution evidence? |
 |-------------------|--------------------------------|-----------------------|--------------------------------------------------------------------|---------------------|
-| `code-review`     | `gaia:gaia-code-review`        | `Code Review`         | `.gaia/artifacts/implementation-artifacts/{key}-code-review.md`               | No                  |
-| `qa-tests`        | `gaia:gaia-qa-tests`           | `QA Tests`            | `.gaia/artifacts/test-artifacts/{key}-qa-tests.md`                            | **Yes**             |
-| `security-review` | `gaia:gaia-review-security`    | `Security Review`     | `.gaia/artifacts/implementation-artifacts/{key}-security-review.md`           | No                  |
-| `test-automate`   | `gaia:gaia-test-automate`      | `Test Automation`     | `.gaia/artifacts/test-artifacts/{key}-test-automation.md`                     | **Yes**             |
-| `test-review`     | `gaia:gaia-test-review`        | `Test Review`         | `.gaia/artifacts/test-artifacts/{key}-test-review.md`                         | **Yes**             |
-| `review-perf`     | `gaia:gaia-review-perf`        | `Performance Review`  | `.gaia/artifacts/implementation-artifacts/{key}-performance-review.md`        | No                  |
+| `code-review`     | `gaia:gaia-code-review`        | `Code Review`         | `.gaia/artifacts/implementation-artifacts/code-review-{key}.md`               | No                  |
+| `qa-tests`        | `gaia:gaia-qa-tests`           | `QA Tests`            | `.gaia/artifacts/implementation-artifacts/qa-tests-{key}.md`                  | **Yes**             |
+| `security-review` | `gaia:gaia-review-security`    | `Security Review`     | `.gaia/artifacts/implementation-artifacts/security-review-{key}.md`           | No                  |
+| `test-automate`   | `gaia:gaia-test-automate`      | `Test Automation`     | `.gaia/artifacts/implementation-artifacts/test-automate-review-{key}.md`      | **Yes**             |
+| `test-review`     | `gaia:gaia-test-review`        | `Test Review`         | `.gaia/artifacts/implementation-artifacts/test-review-{key}.md`               | **Yes**             |
+| `review-perf`     | `gaia:gaia-review-perf`        | `Performance Review`  | `.gaia/artifacts/implementation-artifacts/performance-review-{key}.md`        | No                  |
+
+> **F-28 (AF-2026-05-26-6) — type-first naming reconciliation.** These paths were
+> corrected to the FR-402 type-prefix-FIRST convention (`<type>-{key}.md` under
+> `implementation-artifacts/`) that the six per-review skills actually write to
+> (verified on disk: `code-review-E100-S1.md`, `qa-tests-E100-S1.md`,
+> `test-automate-review-E100-S1.md`, `test-review-E100-S1.md`, etc.). The prior
+> reversed `{key}-<type>.md` form — and the stray `test-artifacts/` directory on
+> the test-aligned rows — disagreed with FR-402, made `review-summary-gen.sh`'s
+> proof-of-execution check flag every report MISSING, and risked the
+> `check-deps.sh` `{key}-*.md` glob collision documented in
+> `feedback_review_report_filename_collision`. The per-review SKILL.md write
+> paths were already FR-402-correct and are deliberately UNCHANGED.
 
 Under the `.gaia/` consolidation (ADR-111), the prefix `docs/` may resolve to `.gaia/artifacts/` — the report paths are constructed via `${GAIA_ARTIFACTS_DIR}` per `gaia-paths.sh`. Both layouts are accepted by `review-gate.sh --report`.
 

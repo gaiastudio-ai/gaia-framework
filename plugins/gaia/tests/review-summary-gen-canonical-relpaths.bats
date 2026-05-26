@@ -52,14 +52,17 @@ status: review
 | Performance Review | PASSED | — |
 EOF
 
-  # Six reports at the .gaia/artifacts/ canonical locations.
+  # Six reports at the .gaia/artifacts/ canonical locations. F-28
+  # (AF-2026-05-26-6): seed the FR-402 type-prefix-FIRST form under
+  # implementation-artifacts/ — the form the reviewers actually write and the
+  # corrected CANONICAL_REPORT_RELPATHS now expects.
   for r in \
-    "implementation-artifacts/${key}-code-review.md" \
-    "test-artifacts/${key}-qa-tests.md" \
-    "implementation-artifacts/${key}-security-review.md" \
-    "test-artifacts/${key}-test-automation.md" \
-    "test-artifacts/${key}-test-review.md" \
-    "implementation-artifacts/${key}-performance-review.md"; do
+    "implementation-artifacts/code-review-${key}.md" \
+    "implementation-artifacts/qa-tests-${key}.md" \
+    "implementation-artifacts/security-review-${key}.md" \
+    "implementation-artifacts/test-automate-review-${key}.md" \
+    "implementation-artifacts/test-review-${key}.md" \
+    "implementation-artifacts/performance-review-${key}.md"; do
     mkdir -p "$(dirname "$PROJECT_ROOT/.gaia/artifacts/$r")"
     printf 'stub report\n' > "$PROJECT_ROOT/.gaia/artifacts/$r"
   done
@@ -111,13 +114,14 @@ status: review
 | Test Review | PASSED | — |
 | Performance Review | PASSED | — |
 EOF
+  # F-28 (AF-2026-05-26-6): type-first form under the legacy docs/ tree too.
   for r in \
-    "docs/implementation-artifacts/${key}-code-review.md" \
-    "docs/test-artifacts/${key}-qa-tests.md" \
-    "docs/implementation-artifacts/${key}-security-review.md" \
-    "docs/test-artifacts/${key}-test-automation.md" \
-    "docs/test-artifacts/${key}-test-review.md" \
-    "docs/implementation-artifacts/${key}-performance-review.md"; do
+    "docs/implementation-artifacts/code-review-${key}.md" \
+    "docs/implementation-artifacts/qa-tests-${key}.md" \
+    "docs/implementation-artifacts/security-review-${key}.md" \
+    "docs/implementation-artifacts/test-automate-review-${key}.md" \
+    "docs/implementation-artifacts/test-review-${key}.md" \
+    "docs/implementation-artifacts/performance-review-${key}.md"; do
     mkdir -p "$(dirname "$PROJECT_ROOT/$r")"
     printf 'stub report\n' > "$PROJECT_ROOT/$r"
   done
