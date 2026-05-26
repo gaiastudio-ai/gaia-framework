@@ -113,22 +113,28 @@ sprint_points_awk='
 '
 
 POINTS_TSV=""
-append_points_from_yaml() {
-  local y="$1"
-  [ -n "$y" ] && [ -r "$y" ] || return 0
-  local rows
-  rows="$(awk "$sprint_points_awk" "$y")"
-  [ -n "$rows" ] && POINTS_TSV="${POINTS_TSV}${rows}
-"
-}
 
-append_points_from_yaml "$SPRINT_YAML"
-
+# Collect candidate sprint yamls (active first, then any archived sprint yamls),
+# emit their `stories:` block points rows inline — no named helper (keeps the
+# script free of additional public functions under the NFR-052 coverage gate).
+YAML_LIST=""
+[ -n "$SPRINT_YAML" ] && [ -r "$SPRINT_YAML" ] && YAML_LIST="$SPRINT_YAML"
 if [ -n "$ARCHIVE_DIR" ] && [ -d "$ARCHIVE_DIR" ]; then
   for y in "$ARCHIVE_DIR"/*.yaml; do
     [ -e "$y" ] || continue
-    append_points_from_yaml "$y"
+    YAML_LIST="${YAML_LIST}
+${y}"
   done
+fi
+if [ -n "$YAML_LIST" ]; then
+  while IFS= read -r y; do
+    [ -n "$y" ] && [ -r "$y" ] || continue
+    rows="$(awk "$sprint_points_awk" "$y")"
+    [ -n "$rows" ] && POINTS_TSV="${POINTS_TSV}${rows}
+"
+  done <<EOF
+$YAML_LIST
+EOF
 fi
 
 if [ -n "$STORY_DIR" ] && [ -d "$STORY_DIR" ]; then
