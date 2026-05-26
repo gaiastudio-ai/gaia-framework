@@ -26,7 +26,7 @@ fi
 
 ## Mission
 
-You are producing an NFR assessment report covering performance, scalability, reliability, and security requirements. Each dimension is rated with risk levels (high, medium, low) with justification. The output is written to `.gaia/artifacts/test-artifacts/nfr-assessment.md`.
+You are producing an NFR assessment report covering performance, scalability, reliability, and security requirements. Each dimension is rated with risk levels (high, medium, low) with justification. The output is written to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{YYYY-MM-DD}.md` (E105-S3 / ADR-127 Pillar 3 — periodically-reassessed plans carry a date suffix + group under a named subdir; legacy undated `nfr-assessment.md` remains read-only fallback).
 
 This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/nfr-assessment` workflow (E28-S88, Cluster 12, ADR-041). The step ordering, prompts, and output path are preserved from the legacy instructions.xml.
 
@@ -39,7 +39,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Assess all dimensions: performance, security, reliability, and scalability.
 - Per-dimension justification is a **hard output requirement**: every risk rating MUST be accompanied by a justification that explicitly explains **why** the chosen risk level (high, medium, or low) was selected. Justification is a required output, not an optional nudge -- a rating without a "why high/medium/low" justification is incomplete and MUST be rewritten.
 - Migration-assessment activation trigger (Step 6): activate the migration assessment step when **(a)** the PRD contains "Mode: Brownfield" OR **(b)** `.gaia/artifacts/planning-artifacts/brownfield-assessment.md` exists. If neither indicator is present, skip Step 6 entirely.
-- Output MUST be written to `.gaia/artifacts/test-artifacts/nfr-assessment.md`.
+- Output MUST be written to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{YYYY-MM-DD}.md` (E105-S3 / ADR-127 Pillar 3 — periodically-reassessed plans carry a date suffix + group under a named subdir; legacy undated `nfr-assessment.md` remains read-only fallback).
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
 
 ## Steps
@@ -109,7 +109,7 @@ Rate each migration risk dimension (high/medium/low). The justification for each
   - Migration assessment (if brownfield, otherwise omit) -- when present, the report MUST include both a **Dual-Write Latency** sub-section and a **Legacy API Parity** sub-section, each with its own risk rating and justification
   - Consolidated risk matrix: dimension, risk level, probability, impact
 - Every dimension and migration sub-dimension in the report MUST carry a justification explaining **why** the rating was chosen. A rating without a "why high/medium/low" justification is incomplete output.
-- Write output to `.gaia/artifacts/test-artifacts/nfr-assessment.md`.
+- Write output to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{YYYY-MM-DD}.md` (E105-S3 / ADR-127 Pillar 3 — periodically-reassessed plans carry a date suffix + group under a named subdir; legacy undated `nfr-assessment.md` remains read-only fallback).
 
 ## Finalize
 
