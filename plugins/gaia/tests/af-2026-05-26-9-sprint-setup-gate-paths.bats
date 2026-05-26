@@ -129,10 +129,37 @@ teardown() { common_teardown; }
 #     A real report (status: present) still gates. Mirrors the docs/ idiom the
 #     enriched audit fixture uses (uppercase PLANNING_ARTIFACTS/TEST_ARTIFACTS). ---
 
+# Seed a minimal config/project-config.yaml under $1 pointing the artifact dirs
+# at the project's docs/ tree — required because setup.sh's FIRST step is
+# resolve-config.sh, which dies (exit 1) when no project-config.yaml is found
+# (the audit-v2-migration enriched fixture seeds exactly this; without it the
+# gate body under test is never reached). Mirrors prepare_enriched_fixture in
+# scripts/audit-v2-migration.sh.
+_seed_fixture_config() {
+  local root="$1" cfg="$1/config/project-config.yaml"
+  mkdir -p "$1/config"
+  # Full required-field set — resolve-config.sh requires checkpoint_path (and
+  # the memory/installed paths) or it dies before the gate runs. Matches
+  # prepare_enriched_fixture in scripts/audit-v2-migration.sh.
+  cat > "$cfg" <<YAML
+framework_version: "1.0.0-fixture"
+date: "2026-01-01"
+project_root: "$root"
+project_path: "."
+memory_path: "$root/_memory"
+checkpoint_path: "$root/_memory/checkpoints"
+installed_path: "$root/_gaia"
+planning_artifacts: "$root/docs/planning-artifacts"
+implementation_artifacts: "$root/docs/implementation-artifacts"
+test_artifacts: "$root/docs/test-artifacts"
+YAML
+}
+
 @test "AF-26-9 follow-up: statusless placeholder readiness-report → setup warns, exits 0" {
   local root="$BATS_TEST_TMPDIR/proj"
   local pa="$root/docs/planning-artifacts" ta="$root/docs/test-artifacts"
   mkdir -p "$pa" "$ta"
+  _seed_fixture_config "$root"
   # Seed a traceability matrix (so the bootstrap-skip does NOT fire — this is
   # the exact condition that exposed the regression) + a STATUSLESS readiness
   # placeholder (no `status:` frontmatter), exactly like the enriched fixture.
@@ -151,6 +178,7 @@ teardown() { common_teardown; }
   local root="$BATS_TEST_TMPDIR/proj2"
   local pa="$root/docs/planning-artifacts" ta="$root/docs/test-artifacts"
   mkdir -p "$pa" "$ta"
+  _seed_fixture_config "$root"
   printf '# placeholder\n' > "$ta/traceability-matrix.md"
   # A REAL report carries the SV-20 status: field — status: FAIL is a genuine
   # verdict and must NOT be treated as a stub; the gate still dies in strict mode.
