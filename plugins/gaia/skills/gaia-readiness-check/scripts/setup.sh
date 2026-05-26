@@ -109,9 +109,21 @@ fi
 # bash `set -u` regression doesn't leak through. resolve-config.sh's
 # value wins when set.
 TEST_ARTIFACTS="${TEST_ARTIFACTS:-.gaia/artifacts/test-artifacts}"
+# AF-2026-05-26-9 (F-17 class / F3): the earlier validate-gate.sh traceability_exists
+# check (which accepts flat | strategy/ | sharded) already PASSED — but this
+# zero-byte guard re-probed ONLY the flat path, so it falsely die'd "exists but
+# empty" on a project whose matrix lives non-empty at strategy/ or the sharded
+# index.md. Resolve TRACE_PATH across all three placements before the -s check.
 TRACE_PATH="${TEST_ARTIFACTS}/traceability-matrix.md"
+if [ ! -f "$TRACE_PATH" ]; then
+  if [ -f "${TEST_ARTIFACTS}/strategy/traceability-matrix.md" ]; then
+    TRACE_PATH="${TEST_ARTIFACTS}/strategy/traceability-matrix.md"
+  elif [ -f "${TEST_ARTIFACTS}/traceability-matrix/index.md" ]; then
+    TRACE_PATH="${TEST_ARTIFACTS}/traceability-matrix/index.md"
+  fi
+fi
 if [ ! -s "$TRACE_PATH" ]; then
-  die "HALT: traceability-matrix.md exists but is empty (zero-byte) — run /gaia-trace to populate it (ADR-042 enforced gate)"
+  die "HALT: traceability-matrix.md not found or empty at any accepted placement (flat / strategy/ / sharded) — run /gaia-trace to populate it (ADR-042 enforced gate)"
 fi
 
 # ---------- 2c. Guard: ci-setup.md must be non-empty (E28-S98) ----------
