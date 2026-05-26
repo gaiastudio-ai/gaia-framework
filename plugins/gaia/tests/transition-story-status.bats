@@ -1015,7 +1015,9 @@ e59_s6_shard_status() {
     STORY_STATUS_LOCK="$proj/_memory/.story-status.lock" \
     "$TRANSITION" "$key" --to ready-for-dev
   [ "$status" -eq 0 ]
-  [[ "$output" == *"no per-epic shard entry"* ]] || [[ "$stderr" == *"no per-epic shard entry"* ]]
+  # F-14 (AF-2026-05-26-1): the per-epic-shard-absent log was reworded to a
+  # non-alarming info note ("... has no optional per-epic shard ... not an error").
+  [[ "$output" == *"no optional per-epic shard"* ]] || [[ "$stderr" == *"no optional per-epic shard"* ]]
   # Story file frontmatter still advances.
   grep -q '^status: ready-for-dev' "$file"
 }

@@ -21,8 +21,11 @@ teardown() {
 }
 
 stage_run_started() {
-  printf '{"workflow":"retrospective","ts":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    > "$CHECKPOINT_PATH/retrospective.json"
+  # F-21 (AF-2026-05-26-1): finalize.sh now checks the retrospective.yaml
+  # marker (the extension checkpoint.sh actually writes), not .json. Seed the
+  # .yaml form so the run-started precondition is satisfied.
+  printf 'workflow: retrospective\nts: "%s"\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    > "$CHECKPOINT_PATH/retrospective.yaml"
 }
 
 write_sidecar_newer() {
