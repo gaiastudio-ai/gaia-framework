@@ -1015,15 +1015,25 @@ fi
 # Runs AFTER env overrides so an explicit empty value from env never falls
 # through to the default (env overrides use -n so only non-empty wins).
 #
-# E96-S6 hotfix (ADR-111): prefer .gaia/artifacts/<subdir>/ over the legacy
-# docs/<subdir>/ default whenever the .gaia/ layout is present on disk.
-# Sweeps every downstream consumer to the new layout without per-script changes.
+# E96-S6 hotfix (ADR-111), corrected by AF-2026-05-26-4 (F-1): default to the
+# canonical .gaia/artifacts/<subdir>/ for greenfield AND post-ADR-111 projects.
+# The prior gate (`[ -d .gaia/artifacts/<subdir> ]`) only chose the canonical
+# path when that SPECIFIC subdir already existed — so on a greenfield project
+# (where .gaia/artifacts/implementation-artifacts/ does not exist yet when
+# /gaia-create-story first runs) it fell back to docs/ and wrote artifacts
+# OUTSIDE .gaia/. Adopt the same inverted idiom the sibling sweep scripts use
+# (write-checkpoint.sh:236, lifecycle-event.sh:232, orchestration-warning.sh:134
+# — AF-2026-05-21-7): fall back to legacy docs/<subdir> ONLY when there is
+# positive pre-migration evidence — the legacy dir exists AND no .gaia/ tree is
+# present. A stray/empty .gaia/ dir on an otherwise-legacy tree therefore does
+# NOT mis-route a populated docs/ project, and greenfield correctly defaults to
+# .gaia/artifacts/.
 _artifact_default() {
   local subdir="$1"
-  if [ -d "${v_project_root}/.gaia/artifacts/${subdir}" ]; then
-    printf '%s' "${v_project_root}/.gaia/artifacts/${subdir}"
-  else
+  if [ -d "${v_project_root}/docs/${subdir}" ] && [ ! -d "${v_project_root}/.gaia" ]; then
     printf '%s' "${v_project_root}/docs/${subdir}"
+  else
+    printf '%s' "${v_project_root}/.gaia/artifacts/${subdir}"
   fi
 }
 [ -z "$v_test_artifacts" ]           && v_test_artifacts="$(_artifact_default test-artifacts)"

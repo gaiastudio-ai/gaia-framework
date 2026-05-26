@@ -453,9 +453,12 @@ YAML
   mk_cfg_no_artifacts "$TEST_TMP/skill"
   CLAUDE_SKILL_DIR="$TEST_TMP/skill" run "$SCRIPT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"test_artifacts='/tmp/gaia-art/docs/test-artifacts'"* ]]
-  [[ "$output" == *"planning_artifacts='/tmp/gaia-art/docs/planning-artifacts'"* ]]
-  [[ "$output" == *"implementation_artifacts='/tmp/gaia-art/docs/implementation-artifacts'"* ]]
+  # AF-2026-05-26-4 (F-1): greenfield project_root (/tmp/gaia-art has neither
+  # docs/ nor .gaia/ on disk) now defaults to canonical .gaia/artifacts/ per
+  # ADR-111, not the legacy docs/ that mis-routed greenfield artifacts.
+  [[ "$output" == *"test_artifacts='/tmp/gaia-art/.gaia/artifacts/test-artifacts'"* ]]
+  [[ "$output" == *"planning_artifacts='/tmp/gaia-art/.gaia/artifacts/planning-artifacts'"* ]]
+  [[ "$output" == *"implementation_artifacts='/tmp/gaia-art/.gaia/artifacts/implementation-artifacts'"* ]]
 }
 
 @test "E28-S200 AC11: project-config.yaml values override the defaults" {
@@ -487,9 +490,10 @@ YAML
   [[ "$output" == *'"test_artifacts"'* ]]
   [[ "$output" == *'"planning_artifacts"'* ]]
   [[ "$output" == *'"implementation_artifacts"'* ]]
-  [[ "$output" == *'/tmp/gaia-art/docs/test-artifacts'* ]]
-  [[ "$output" == *'/tmp/gaia-art/docs/planning-artifacts'* ]]
-  [[ "$output" == *'/tmp/gaia-art/docs/implementation-artifacts'* ]]
+  # AF-2026-05-26-4 (F-1): greenfield default is canonical .gaia/artifacts/.
+  [[ "$output" == *'/tmp/gaia-art/.gaia/artifacts/test-artifacts'* ]]
+  [[ "$output" == *'/tmp/gaia-art/.gaia/artifacts/planning-artifacts'* ]]
+  [[ "$output" == *'/tmp/gaia-art/.gaia/artifacts/implementation-artifacts'* ]]
 }
 
 @test "E28-S200 AC4: --help documents the 3 new artifact-dir keys" {
@@ -527,7 +531,8 @@ YAML
   mk_cfg_no_artifacts "$TEST_TMP/skill"
   CLAUDE_SKILL_DIR="$TEST_TMP/skill" run "$SCRIPT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"creative_artifacts='/tmp/gaia-art/docs/creative-artifacts'"* ]]
+  # AF-2026-05-26-4 (F-1): greenfield default is canonical .gaia/artifacts/.
+  [[ "$output" == *"creative_artifacts='/tmp/gaia-art/.gaia/artifacts/creative-artifacts'"* ]]
 }
 
 @test "E46-S9: project-config.yaml creative_artifacts overrides the default" {
@@ -551,7 +556,8 @@ YAML
   CLAUDE_SKILL_DIR="$TEST_TMP/skill" run "$SCRIPT" --format json
   [ "$status" -eq 0 ]
   [[ "$output" == *'"creative_artifacts"'* ]]
-  [[ "$output" == *'/tmp/gaia-art/docs/creative-artifacts'* ]]
+  # AF-2026-05-26-4 (F-1): greenfield default is canonical .gaia/artifacts/.
+  [[ "$output" == *'/tmp/gaia-art/.gaia/artifacts/creative-artifacts'* ]]
 }
 
 @test "E46-S9: --help documents the GAIA_CREATIVE_ARTIFACTS env var" {
