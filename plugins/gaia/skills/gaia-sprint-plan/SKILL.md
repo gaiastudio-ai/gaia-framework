@@ -155,7 +155,7 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
 
 - Select stories for this sprint based on priority ordering (P0 > P1 > P2) and dependency topology -- only from stories classified as SELECTABLE in Step 1.
 - **Priority-flag pre-fill (E38-S4):** any story keys returned by the priority-flag pre-scan in Step 1 are pre-selected in the candidate set before user interaction. Annotate each auto-included entry with `[priority_flag: next-sprint]` so the user sees why it was pre-filled. The user may deselect any pre-filled story -- deselection preserves the flag for the next planning run (AC2).
-- Ensure total size fits within velocity estimate using `sizing_map` point values.
+- **Agent-native capacity check (E106-S3, ADR-128, FR-552).** The "is this sprint too big" gate is evaluated on three agent-native measures — NOT the human points-per-duration heuristic (which false-flagged the 73-point sprint-53 sweep). Run `${CLAUDE_PLUGIN_ROOT}/scripts/sm-capacity-check.sh --stories-file <candidate-set>` (one `KEY|DEPS|POINTS` line per candidate) and read its verdict: (1) dependency critical-path **depth** (longest serial chain over `depends_on`), (2) context-coherence **ceiling** (distinct story count the agent can carry before quality degrades / forced compaction), and (3) telemetry-gated measured agent **wall-clock** (E106-S1 median minutes/story × story count) vs a configured agent-session budget. A sprint is "too big" only when one of these three measures is exceeded. Cold start (no closed-sprint telemetry) uses depth + coherence only, with no fabricated constant (NFR-90). Story `points` are RETAINED as the relative complexity/risk signal (review rigor, Val scrutiny, sizing display) — but `total_points <= velocity` is NO LONGER the capacity gate.
 - **Dependency blocking:** for each candidate, check its `depends_on` list. If any dependency is NOT `done`, the story CANNOT be included. Display: "BLOCKED: Story {key} depends on {dep_key} (status: {dep_status})."
 - **Priority surfacing:** after selection, check for P0 stories that are `ready-for-dev` but NOT selected. If any found, warn: "WARNING: P0 stories ready but not selected:" and ask user to confirm the exclusion.
 - Resolve the test-plan via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `.gaia/artifacts/test-artifacts/test-plan.md` (flat); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement). If the resolved file exists: apply risk levels -- buffer 20% for high-risk stories.
@@ -273,7 +273,7 @@ Traceability: FR-486, FR-495, AC1 of E93-S5, ADR-108 §D1.
 - If the Val subagent is available: invoke Val to validate the sprint plan. Val verifies:
   - All selected story keys exist as story files with status `ready-for-dev`
   - Dependency ordering is correct
-  - Points math is correct (total <= velocity)
+  - Points sum is recorded (relative-complexity signal) and the agent-native capacity check (`sm-capacity-check.sh`: depth + coherence + telemetry-gated wall-clock) did not flag the batch — the legacy `total <= velocity` points-gate is NOT the capacity criterion (E106-S3, ADR-128)
   - No duplicate story keys
 - If Val returns findings: auto-fix and re-validate.
 - If Val fails or is unavailable: log warning and continue -- validation is non-blocking for sprint planning.
