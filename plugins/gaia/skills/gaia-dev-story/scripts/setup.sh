@@ -99,12 +99,17 @@ fi
 if [ -z "$F33_SPRINT_ID" ]; then
   log "F-33 traceability gate skipped (no SPRINT_ID resolved — fixture/setup-smoke context)"
 else
-  TM_ART="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/strategy/traceability-matrix.md"
+  # AF-2026-05-26-9 (F-17 class / F2): resolve the traceability matrix across
+  # ALL THREE accepted placements — flat, ADR-072 strategy/, and ADR-070 sharded
+  # index.md. The prior chain checked strategy/ then flat but MISSED the sharded
+  # form, so a sharded-layout project hard-died at the F-33 gate below.
+  _ta="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts"
+  TM_ART="$_ta/strategy/traceability-matrix.md"
   if [ ! -f "$TM_ART" ]; then
-    # Legacy fallback location
-    TM_ART_LEGACY="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/traceability-matrix.md"
-    if [ -f "$TM_ART_LEGACY" ]; then
-      TM_ART="$TM_ART_LEGACY"
+    if [ -f "$_ta/traceability-matrix.md" ]; then
+      TM_ART="$_ta/traceability-matrix.md"
+    elif [ -f "$_ta/traceability-matrix/index.md" ]; then
+      TM_ART="$_ta/traceability-matrix/index.md"
     fi
   fi
 
