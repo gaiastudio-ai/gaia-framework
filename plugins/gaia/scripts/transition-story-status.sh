@@ -971,7 +971,7 @@ update_per_epic_shard() {
   esac
 
   if [ -z "$glob_out" ]; then
-    [ "$_is_backlog" -eq 1 ] || log "no per-epic shard entry found for ${key} — monolith-only write"
+    [ "$_is_backlog" -eq 1 ] || log "info: ${key} has no optional per-epic shard under planning-artifacts/epics/ — status written to monolith + story-index only (not an error; the per-epic shard is an opt-in mirror)"
     return 0
   fi
   kind="${glob_out%%$'\t'*}"
@@ -982,7 +982,7 @@ update_per_epic_shard() {
   fi
   # Confirm the shard contains the `### Story <KEY>:` block.
   if ! grep -qE "^### Story ${key}:" "$shard"; then
-    [ "$_is_backlog" -eq 1 ] || log "no per-epic shard entry found for ${key} — monolith-only write"
+    [ "$_is_backlog" -eq 1 ] || log "info: ${key} has no optional per-epic shard under planning-artifacts/epics/ — status written to monolith + story-index only (not an error; the per-epic shard is an opt-in mirror)"
     return 0
   fi
 

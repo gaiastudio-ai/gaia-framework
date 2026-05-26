@@ -916,10 +916,16 @@ v_platforms=$(merge_inline_list platforms)
 # NOT block); silent when the field is omitted (backward compat).
 v_project_kind=$(merge_key project_kind)
 if [ -n "$v_project_kind" ]; then
+  # F-23 (AF-2026-05-26-1): `application` is the value /gaia-init writes by
+  # default (generate-config.sh: `project_kind = data.get("project_kind") or
+  # "application"`), so every freshly-init'd project tripped the warning.
+  # Add it to the recognized set. For genuinely non-canonical values, lead
+  # with "non-canonical (accepted per ADR-087)" rather than the alarming
+  # "unknown" — open-vocabulary values are valid by design, not errors.
   case "$v_project_kind" in
-    claude-code-plugin|web-app|mobile-app|api|library) : ;;
+    claude-code-plugin|web-app|mobile-app|api|library|application) : ;;
     *)
-      printf 'resolve-config.sh: warning: unknown project_kind "%s" — recognized values: claude-code-plugin, web-app, mobile-app, api, library (accepted as extensible per ADR-087)\n' "$v_project_kind" >&2
+      printf 'resolve-config.sh: note: project_kind "%s" is non-canonical (accepted per ADR-087 open vocabulary); canonical values are: claude-code-plugin, web-app, mobile-app, api, library, application\n' "$v_project_kind" >&2
       ;;
   esac
 fi

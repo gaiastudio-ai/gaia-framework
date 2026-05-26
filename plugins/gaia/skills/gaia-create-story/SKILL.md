@@ -232,7 +232,7 @@ Append edge-case-derived AC rows to the story file. The append is delegated to `
 **Traces to:** FR-229, ADR-074 C2, ADR-042, AF-2026-04-28-7 Work Items 4 + 6.7.
 
 ```
-!scripts/append-edge-case-acs.sh \
+!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/append-edge-case-acs.sh \
   --file <story-file> \
   --edge-cases '<json-array-of-edge-case-results>'
 ```
@@ -248,8 +248,8 @@ Append edge-case rows to `{planning_artifacts}/test-plan.md`. The append, dedup,
 **Traces to:** FR-230.
 
 ```
-!scripts/append-edge-case-tests.sh \
-  --test-plan "$(./scripts/resolve-config.sh planning_artifacts)/test-plan.md" \
+!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/append-edge-case-tests.sh \
+  --test-plan "$(!scripts/resolve-config.sh planning_artifacts)/test-plan.md" \
   --story-key "<story_key>" \
   --edge-cases '<json-array-of-edge-case-results>'
 ```
@@ -284,7 +284,7 @@ The deterministic operations of Step 4 — slug, frontmatter YAML, scaffold rend
 IMPLEMENTATION_ARTIFACTS=$(!scripts/resolve-config.sh implementation_artifacts)
 
 # 2. Slug — delegated to slugify.sh (E63-S1).
-SLUG=$(!scripts/slugify.sh --title "<story-title>")
+SLUG=$(!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/slugify.sh --title "<story-title>")
 
 # 2a. Canonical basename preview (E55-S13 D5 / AF-2026-05-13-4).
 #     Display the filename that scaffold-story.sh will write BEFORE the
@@ -299,7 +299,7 @@ echo "[gaia-create-story] Canonical basename preview: ${STORY_KEY}-${SLUG}.md"
 # 3. Frontmatter YAML — delegated to generate-frontmatter.sh (E63-S3),
 #    which derives points from size via the resolved sizing_map (ADR-074 C1)
 #    and HALTs on resolver failure (no silent fallback).
-FRONTMATTER_YAML=$(!scripts/generate-frontmatter.sh \
+FRONTMATTER_YAML=$(!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/generate-frontmatter.sh \
   --story-key "<story_key>" \
   --epics-file "$(!scripts/resolve-config.sh planning_artifacts)/epics-and-stories.md" \
   --project-config config/project-config.yaml \
@@ -349,7 +349,7 @@ fi
 #    so concurrent /gaia-create-story invocations under the same epic do not
 #    race on directory creation (E79-S2 / AC2, AC5 / TC-CSP-2).
 mkdir -p "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories"
-SECTIONS=$(!scripts/scaffold-story.sh \
+SECTIONS=$(!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/scaffold-story.sh \
   --template ${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/story-template.md \
   --output "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/<story_key>-${SLUG}.md" \
   --frontmatter "${FRONTMATTER_YAML}")
@@ -358,8 +358,8 @@ SECTIONS=$(!scripts/scaffold-story.sh \
 #    and validate-frontmatter.sh (E63-S5). Both HALT on non-zero with stderr passthrough.
 #    The validators inspect basename only, so the canonical nested path is accepted
 #    unchanged (E79-S2 / AC7).
-!scripts/validate-canonical-filename.sh --file "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/<story_key>-${SLUG}.md"
-!scripts/validate-frontmatter.sh         --file "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/<story_key>-${SLUG}.md"
+!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/validate-canonical-filename.sh --file "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/<story_key>-${SLUG}.md"
+!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/validate-frontmatter.sh         --file "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/<story_key>-${SLUG}.md"
 ```
 
 After the scaffold returns the seven content section names (`User Story`, `Acceptance Criteria`, `Tasks / Subtasks`, `Dev Notes`, `Technical Notes`, `Dependencies`, `Test Scenarios`), fill each `{CONTENT_PLACEHOLDER}` with judgment-bearing content via Edit calls. ACs use Given/When/Then format (validated post-fill by `validate-ac-format.sh`, E63-S6).
