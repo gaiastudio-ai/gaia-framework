@@ -157,7 +157,11 @@ teardown() { common_teardown; }
   echo "real content" > "$TEST_ARTIFACTS/ci-setup.md"
   PLUGIN_SCRIPTS_DIR="$MOCK_SCRIPTS" run "$SETUP_SCRIPT"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"empty (zero-byte)"* ]]
+  # AF-2026-05-26-9 (F3): the zero-byte guard now resolves all 3 placements
+  # (flat / strategy/ / sharded) before the -s check, so the die message names
+  # the accepted placements rather than the old flat-only "exists but empty"
+  # wording. HALT behaviour on a zero-byte flat matrix is unchanged.
+  [[ "$output" == *"not found or empty"* ]]
   [[ "$output" == *"traceability-matrix.md"* ]]
 }
 
