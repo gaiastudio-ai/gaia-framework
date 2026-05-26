@@ -185,7 +185,28 @@ title="$(extract_field "title")"
 [ -n "$key" ]   || die_input "missing field 'key' in frontmatter of: $file"
 [ -n "$title" ] || die_input "missing field 'title' in frontmatter of: $file"
 
-# ---------- Compute expected basename ----------
+# ---------- E105-S1 / ADR-127 — new per-story nested layout ----------
+# In the new layout the file is `story.md` and the PARENT DIRECTORY carries the
+# key: `epic-{slug}/{key}-{story-slug}/story.md`. Here "location encodes key" —
+# validate the key from the directory name (boundary `{key}-`) rather than the
+# basename. This branch is purely additive: legacy `{key}-{slug}.md` files fall
+# through to the existing basename-drift check below, unchanged (Val W2).
+actual_basename="$(basename "$file")"
+if [ "$actual_basename" = "story.md" ]; then
+  parent_dir="$(basename "$(dirname "$file")")"
+  case "$parent_dir" in
+    "${key}-"*)
+      # directory name begins with the frontmatter key + boundary — accept.
+      log "new per-story layout accepted — key '${key}' validated from directory '${parent_dir}'"
+      exit 0
+      ;;
+    *)
+      die_drift "new-layout key drift -- frontmatter key '${key}' does not match parent directory '${parent_dir}'"
+      ;;
+  esac
+fi
+
+# ---------- Compute expected basename (legacy {key}-{slug}.md) ----------
 
 slug=""
 if ! slug="$("$SLUGIFY" --title "$title" 2>/dev/null)"; then
@@ -193,7 +214,6 @@ if ! slug="$("$SLUGIFY" --title "$title" 2>/dev/null)"; then
 fi
 
 expected_basename="${key}-${slug}.md"
-actual_basename="$(basename "$file")"
 
 # ---------- Compare ----------
 
