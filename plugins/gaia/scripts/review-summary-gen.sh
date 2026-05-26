@@ -92,13 +92,22 @@ CANONICAL_SHORT_NAMES=(
 # installs. The hardcoded `docs/`-prefix was retired here so the proof-of-
 # execution check at line ~387 (and the output-path resolution at line ~598)
 # read from the same root the reports were actually written to.
+# F-28 (AF-2026-05-26-6): corrected to the FR-402 type-prefix-FIRST convention
+# (`<type>-{key}.md` under implementation-artifacts/) that the six per-review
+# skills actually write to. The prior reversed `{key}-<type>.md` form and the
+# stray `test_artifacts/` dir on the test-aligned rows made the proof-of-execution
+# check below flag every report MISSING (reviewers never wrote to those paths),
+# and the reversed `{key}-*.md` form risked the check-deps.sh glob collision
+# documented in feedback_review_report_filename_collision. All six reviewers
+# write to implementation-artifacts/; the test-automate REVIEW report is
+# `test-automate-review-{key}.md` (distinct from the test-artifacts/ plan file).
 CANONICAL_REPORT_RELPATHS=(
-  "{impl_artifacts}/{key}-code-review.md"
-  "{test_artifacts}/{key}-qa-tests.md"
-  "{impl_artifacts}/{key}-security-review.md"
-  "{test_artifacts}/{key}-test-automation.md"
-  "{test_artifacts}/{key}-test-review.md"
-  "{impl_artifacts}/{key}-performance-review.md"
+  "{impl_artifacts}/code-review-{key}.md"
+  "{impl_artifacts}/qa-tests-{key}.md"
+  "{impl_artifacts}/security-review-{key}.md"
+  "{impl_artifacts}/test-automate-review-{key}.md"
+  "{impl_artifacts}/test-review-{key}.md"
+  "{impl_artifacts}/performance-review-{key}.md"
 )
 
 # _resolve_artifact_dirs — set `__impl_artifacts` and `__test_artifacts` in the

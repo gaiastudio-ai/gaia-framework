@@ -204,7 +204,10 @@ fi
 # in the operator log instead of being silently dropped. Failure remains
 # non-fatal (observability is non-blocking) but the cause is now surfaced.
 if [ -x "$CHECKPOINT" ]; then
-  _cp_err=$("$CHECKPOINT" write --workflow "$WORKFLOW_NAME" 2>&1 >/dev/null) || {
+  # F-15 (AF-2026-05-26-1): checkpoint.sh write REQUIRES --step (it die's
+  # "--step is required" without it). Pass the final step number so the
+  # observability write actually lands instead of failing silently.
+  _cp_err=$("$CHECKPOINT" write --workflow "$WORKFLOW_NAME" --step 1 2>&1 >/dev/null) || {
     log "checkpoint.sh write failed (non-fatal — observability gap only): ${_cp_err:-no stderr}"
   }
   unset _cp_err
@@ -214,10 +217,15 @@ fi
 
 # ---------- 3. Emit lifecycle event ----------
 if [ -x "$LIFECYCLE_EVENT" ]; then
-  _le_err=$("$LIFECYCLE_EVENT" emit \
+  # F-15 (AF-2026-05-26-1): lifecycle-event.sh has NO `emit` subcommand and no
+  # --event/--status flags — its interface is `--type <event_type> --workflow
+  # <name> [--data <json>]`. The prior `emit --event ... --status ...` shape hit
+  # the unknown-flag path and exited 1 (events never emitted). Carry the
+  # checklist pass/fail outcome in --data to preserve the observability intent.
+  _le_err=$("$LIFECYCLE_EVENT" \
+      --type workflow_complete \
       --workflow "$WORKFLOW_NAME" \
-      --event finalize-complete \
-      --status "$([ "$CHECKLIST_STATUS" -eq 0 ] && echo pass || echo fail)" \
+      --data "{\"checklist\":\"$([ "$CHECKLIST_STATUS" -eq 0 ] && echo pass || echo fail)\"}" \
       2>&1 >/dev/null) || {
     log "lifecycle-event.sh emit failed (non-fatal — observability gap only): ${_le_err:-no stderr}"
   }

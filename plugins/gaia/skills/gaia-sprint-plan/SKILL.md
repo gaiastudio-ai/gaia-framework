@@ -195,10 +195,20 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
   ```
 - Write `sprint-status.yaml` to `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` EXCLUSIVELY via `sprint-state.sh`:
   ```bash
+  # F-7 (AF-2026-05-26-3): for the FIRST-EVER sprint on a fresh project there
+  # is no sprint-status.yaml yet, and `inject` halts with "sprint-status.yaml
+  # is missing or empty". Bootstrap it via `init` FIRST — but only when the
+  # yaml is absent: `init` refuses to overwrite an existing yaml (exits
+  # non-zero), so guard the call on absence rather than swallowing its error
+  # (swallowing would violate the "abort on non-zero" contract below).
+  SPRINT_YAML=".gaia/artifacts/implementation-artifacts/sprint-status.yaml"
+  [ -e "$SPRINT_YAML" ] || \
+    ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh init --sprint-id "{sprint_id}"
+
   ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh inject \
     --story "{story_key}" [--sprint-id "{sprint_id}"]
   ```
-  Invoke once per selected story to register it in the sprint. The `inject` subcommand (E38-S10, ADR-055 §10.29) appends the story's metadata mirrored from the story file's frontmatter — the four required fields (`sprint_id`, `status`, `points`, `risk`) MUST be present in the story file before the call. `inject` is idempotent — re-running on an already-registered key is a no-op. Use `transition` only for in-sprint status changes after the entry exists. If `sprint-state.sh` exits non-zero, abort cleanly and surface the error to the user. Do NOT fall back to direct YAML writes.
+  Invoke `init` once (guarded on yaml absence), then `inject` once per selected story to register it in the sprint. The `init` subcommand (AF-2026-05-22-9 Bug-8) seeds the canonical shape (`sprint_id`/`state: active`/`total_points: 0`/`goals: []`/`items: []`). The `inject` subcommand (E38-S10, ADR-055 §10.29) appends the story's metadata mirrored from the story file's frontmatter — the four required fields (`sprint_id`, `status`, `points`, `risk`) MUST be present in the story file before the call. `inject` is idempotent — re-running on an already-registered key is a no-op. Use `transition` only for in-sprint status changes after the entry exists. If `sprint-state.sh` exits non-zero, abort cleanly and surface the error to the user. Do NOT fall back to direct YAML writes.
 
 ### Step 6a -- Sprint Goal Routing (E93-S5, FR-486, FR-495, ADR-108)
 
@@ -208,7 +218,7 @@ This step is gated on the sprint having at least one selected story — if zero 
 
 The router presents `AskUserQuestion` at main-turn with the canonical 3-lane menu (per NFR-067 main-turn-only invariant):
 
-- `user-direct` — the user edits the suggested goals inline via a follow-up `AskUserQuestion` (free-form) and the result persists via `sprint-state.sh set-goals --sprint <id> --goals <json>` (per E93-S1 boundary writer; never direct `yq -i`).
+- `user-direct` — the user edits the suggested goals inline via a follow-up `AskUserQuestion` (free-form) and the result persists via `sprint-state.sh set-goals --sprint <id> --goals "<g1|g2|...>"` (per E93-S1 boundary writer; never direct `yq -i`). **F-10 (AF-2026-05-26-3):** `--goals` is PIPE-DELIMITED, not JSON — `cmd_set_goals` parses it with `IFS='|'`. Pass `"Goal one|Goal two|Goal three"`, not a JSON array.
 - `pm-route` — dispatch Val via the **main-turn Agent tool** (per ADR-093 / ADR-104) with the AI-1 sprint-review rubric at `gaia-public/plugins/gaia/rubrics/base/sprint-review.json` to score the suggested goals against the selected stories' ACs. Display Val's verdict + findings inline, then present a follow-up `AskUserQuestion` directed at the USER (NOT the PM) for the final accept — this preserves the **PM-cannot-self-approve** invariant from ADR-104. On user accept: `sprint-state.sh set-goals`. The PM may DRAFT but the USER ratifies.
 - `yolo` — dispatch Val identically to the pm-route lane. On Val PASSED: auto-accept and persist via `sprint-state.sh set-goals`. On Val FAILED: HALT with the findings list — YOLO MUST NOT bypass a FAILED verdict per ADR-067.
 

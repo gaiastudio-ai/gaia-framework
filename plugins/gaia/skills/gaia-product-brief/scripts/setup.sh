@@ -73,7 +73,15 @@ fi
 # list declared in this skill's SKILL.md frontmatter. Backward
 # compatible: if the block is absent or empty, this is a no-op.
 # HALT on first failure to match workflow.xml rule n="10".
-if [ -f "$GATE_PREDICATES" ]; then
+#
+# F-16 (AF-2026-05-26-2): the sole pre_start gate is the brainstorm-artifact
+# existence check. The legitimate flow where a brief already exists or the
+# operator seeds from outside material had no escape hatch. GAIA_SKIP_BRAINSTORM=1
+# bypasses the pre_start gates (framework env-var convention, cf. GAIA_YOLO_FLAG)
+# and emits a visible audit warning so the bypass is traceable.
+if [ -n "${GAIA_SKIP_BRAINSTORM:-}" ]; then
+  log "WARNING: GAIA_SKIP_BRAINSTORM set — bypassing pre_start brainstorm gate (operator-asserted brief/source material exists)"
+elif [ -f "$GATE_PREDICATES" ]; then
   # shellcheck disable=SC1090
   . "$GATE_PREDICATES"
   if ! _gate_run_pre_start "$SKILL_MD_PATH" "$SCRIPT_NAME: quality-gate"; then

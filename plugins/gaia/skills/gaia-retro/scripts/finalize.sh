@@ -41,12 +41,16 @@ if [ -n "${GAIA_FINALIZE_SENTINEL_REQUIRED:-}" ]; then
   else
     SIDECAR_LOG="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
   fi
+  # F-21 (AF-2026-05-26-1): checkpoint.sh write emits "$workflow.yaml"
+  # (i.e. retrospective.yaml), NOT .json. The prior .json marker could never
+  # be found, so this sentinel guard falsely refused whenever
+  # GAIA_FINALIZE_SENTINEL_REQUIRED was set. Align the extension to .yaml.
   if [ -n "${CHECKPOINT_PATH:-}" ]; then
-    CHECKPOINT_MARKER="$CHECKPOINT_PATH/retrospective.json"
+    CHECKPOINT_MARKER="$CHECKPOINT_PATH/retrospective.yaml"
   elif [ -d "$PROJECT_ROOT/.gaia/memory/checkpoints" ]; then
-    CHECKPOINT_MARKER="$PROJECT_ROOT/.gaia/memory/checkpoints/retrospective.json"
+    CHECKPOINT_MARKER="$PROJECT_ROOT/.gaia/memory/checkpoints/retrospective.yaml"
   else
-    CHECKPOINT_MARKER="$PROJECT_ROOT/_memory/checkpoints/retrospective.json"
+    CHECKPOINT_MARKER="$PROJECT_ROOT/_memory/checkpoints/retrospective.yaml"
   fi
 
   if [ ! -f "$SIDECAR_LOG" ]; then

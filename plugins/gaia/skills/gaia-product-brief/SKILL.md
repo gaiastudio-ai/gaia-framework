@@ -17,7 +17,7 @@ discover_inputs_target: .gaia/artifacts/creative-artifacts/
 quality_gates:
   pre_start:
     - condition: "file_exists:.gaia/artifacts/creative-artifacts/brainstorm-*.md"
-      error_message: "Run `/gaia-brainstorm` first to create a brainstorm artifact"
+      error_message: "Run `/gaia-brainstorm` first to create a brainstorm artifact (or set GAIA_SKIP_BRAINSTORM=1 to seed from an existing brief / outside material — F-16)"
   post_complete:
     - condition: "section_present:Vision Statement"
       error_message: "Vision Statement section is required"

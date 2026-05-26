@@ -916,10 +916,16 @@ v_platforms=$(merge_inline_list platforms)
 # NOT block); silent when the field is omitted (backward compat).
 v_project_kind=$(merge_key project_kind)
 if [ -n "$v_project_kind" ]; then
+  # F-23 (AF-2026-05-26-1): `application` is the value /gaia-init writes by
+  # default (generate-config.sh: `project_kind = data.get("project_kind") or
+  # "application"`), so every freshly-init'd project tripped the warning.
+  # Add it to the recognized set. For genuinely non-canonical values, lead
+  # with "non-canonical (accepted per ADR-087)" rather than the alarming
+  # "unknown" — open-vocabulary values are valid by design, not errors.
   case "$v_project_kind" in
-    claude-code-plugin|web-app|mobile-app|api|library) : ;;
+    claude-code-plugin|web-app|mobile-app|api|library|application) : ;;
     *)
-      printf 'resolve-config.sh: warning: unknown project_kind "%s" — recognized values: claude-code-plugin, web-app, mobile-app, api, library (accepted as extensible per ADR-087)\n' "$v_project_kind" >&2
+      printf 'resolve-config.sh: note: project_kind "%s" is non-canonical (accepted per ADR-087 open vocabulary); canonical values are: claude-code-plugin, web-app, mobile-app, api, library, application\n' "$v_project_kind" >&2
       ;;
   esac
 fi
@@ -1009,15 +1015,25 @@ fi
 # Runs AFTER env overrides so an explicit empty value from env never falls
 # through to the default (env overrides use -n so only non-empty wins).
 #
-# E96-S6 hotfix (ADR-111): prefer .gaia/artifacts/<subdir>/ over the legacy
-# docs/<subdir>/ default whenever the .gaia/ layout is present on disk.
-# Sweeps every downstream consumer to the new layout without per-script changes.
+# E96-S6 hotfix (ADR-111), corrected by AF-2026-05-26-4 (F-1): default to the
+# canonical .gaia/artifacts/<subdir>/ for greenfield AND post-ADR-111 projects.
+# The prior gate (`[ -d .gaia/artifacts/<subdir> ]`) only chose the canonical
+# path when that SPECIFIC subdir already existed — so on a greenfield project
+# (where .gaia/artifacts/implementation-artifacts/ does not exist yet when
+# /gaia-create-story first runs) it fell back to docs/ and wrote artifacts
+# OUTSIDE .gaia/. Adopt the same inverted idiom the sibling sweep scripts use
+# (write-checkpoint.sh:236, lifecycle-event.sh:232, orchestration-warning.sh:134
+# — AF-2026-05-21-7): fall back to legacy docs/<subdir> ONLY when there is
+# positive pre-migration evidence — the legacy dir exists AND no .gaia/ tree is
+# present. A stray/empty .gaia/ dir on an otherwise-legacy tree therefore does
+# NOT mis-route a populated docs/ project, and greenfield correctly defaults to
+# .gaia/artifacts/.
 _artifact_default() {
   local subdir="$1"
-  if [ -d "${v_project_root}/.gaia/artifacts/${subdir}" ]; then
-    printf '%s' "${v_project_root}/.gaia/artifacts/${subdir}"
-  else
+  if [ -d "${v_project_root}/docs/${subdir}" ] && [ ! -d "${v_project_root}/.gaia" ]; then
     printf '%s' "${v_project_root}/docs/${subdir}"
+  else
+    printf '%s' "${v_project_root}/.gaia/artifacts/${subdir}"
   fi
 }
 [ -z "$v_test_artifacts" ]           && v_test_artifacts="$(_artifact_default test-artifacts)"

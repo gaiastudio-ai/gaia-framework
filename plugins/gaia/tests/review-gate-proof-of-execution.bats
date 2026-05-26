@@ -209,16 +209,12 @@ _seed_all_passed_no_reports() {
 
 @test "POE: review-summary-gen exits 0 under REVIEW_SUMMARY_REQUIRE_REPORTS=on when reports present" {
   # Create all six report files then seed verdicts via POE-respecting path.
-  for r in code-review qa-tests security-review test-automation test-review performance-review; do
-    case "$r" in
-      qa-tests|test-automation|test-review)
-        DIR="$TST"
-        ;;
-      *)
-        DIR="$ART"
-        ;;
-    esac
-    echo "report body" > "$DIR/${STORY_KEY}-${r}.md"
+  # F-28 (AF-2026-05-26-6): canonical report paths are FR-402 type-FIRST, all
+  # under implementation-artifacts/; the test-automate review report token is
+  # `test-automate-review`. Seed those exact paths so summary-gen's
+  # proof-of-execution check finds them.
+  for r in code-review qa-tests security-review test-automate-review test-review performance-review; do
+    echo "report body" > "$ART/${r}-${STORY_KEY}.md"
   done
   # Seed all PASSED bypassing POE — the goal here is to verify summary-gen
   # is happy when the reports exist.
