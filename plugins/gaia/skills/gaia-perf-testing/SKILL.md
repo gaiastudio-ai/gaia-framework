@@ -26,7 +26,7 @@ fi
 
 ## Mission
 
-You are creating a performance test plan covering performance budgets, load test scenarios (k6), frontend performance (Core Web Vitals via Lighthouse CI), backend profiling, and CI pipeline integration. The output is written to `.gaia/artifacts/test-artifacts/performance-test-plan-{date}.md`.
+You are creating a performance test plan covering performance budgets, load test scenarios (k6), frontend performance (Core Web Vitals via Lighthouse CI), backend profiling, and CI pipeline integration. The output is written to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (E105-S3 / ADR-127 Pillar 3 — grouped under a named subdir for the periodically-reassessed class; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback).
 
 This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/performance-testing` workflow (E28-S88, Cluster 12, ADR-041). The step ordering, prompts, and output path are preserved from the legacy instructions.xml.
 
@@ -37,7 +37,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - A story key or project context MUST be available. If no story key is provided as an argument and no project context can be loaded, prompt: "Provide a story key or confirm project-level assessment."
 - Performance budgets must be defined with measurable thresholds.
 - Load test scenarios must include realistic traffic patterns.
-- Output MUST be written to `.gaia/artifacts/test-artifacts/performance-test-plan-{date}.md` where `{date}` is today's date in YYYY-MM-DD format.
+- Output MUST be written to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (E105-S3 / ADR-127 Pillar 3 — grouped under a named subdir for the periodically-reassessed class; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback) where `{date}` is today's date in YYYY-MM-DD format.
 - Knowledge fragments are bundled in this skill's `knowledge/` directory -- load them JIT when referenced by a step.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
 
@@ -95,10 +95,10 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
   - Backend profiling checklist
   - CI gate configuration and pass/fail criteria
   - Bundle size budgets and enforcement
-- Write output to `.gaia/artifacts/test-artifacts/performance-test-plan-{date}.md`.
+- Write output to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (E105-S3 / ADR-127 Pillar 3 — grouped under a named subdir for the periodically-reassessed class; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback).
 
 > After artifact write: run open-question detection snippet
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/test-artifacts/performance-test-plan-${DATE}.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-${DATE}.md`
 
 ## Finalize
 
