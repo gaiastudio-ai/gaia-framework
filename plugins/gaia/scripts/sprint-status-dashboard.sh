@@ -55,17 +55,37 @@ if [[ -z "$YAML_PATH" ]]; then
   # E96-S8 smoke-test follow-up: prefer .gaia/state/sprint-status.yaml
   # (post-migration canonical per ADR-111) over the legacy docs/ canonical.
   # Same pattern as PR #809 sprint-close/close.sh resolve_yaml_path.
-  GAIA_STATE_YAML="$PROJECT_PATH/.gaia/state/sprint-status.yaml"
-  CANONICAL_YAML="$PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml"
-  FALLBACK_YAML="$PROJECT_PATH/sprint-status.yaml"
-  if [[ -f "$GAIA_STATE_YAML" ]]; then
-    YAML_PATH="$GAIA_STATE_YAML"
-  elif [[ -f "$CANONICAL_YAML" ]]; then
-    YAML_PATH="$CANONICAL_YAML"
-  elif [[ -f "$FALLBACK_YAML" ]]; then
-    YAML_PATH="$FALLBACK_YAML"
+  # AF-2026-05-27-8 / Test06 F-014: route through the shared
+  # resolve-artifact-path.sh helper, whose sprint_status precedence is
+  # [.gaia/state/, .gaia/artifacts/implementation-artifacts/, docs/impl-artifacts/,
+  # ./]. The middle rung was MISSING from this reader before — sprint-state.sh
+  # init seeded the yaml there on fresh projects, so /gaia-sprint-status errored
+  # "not found" despite a successful sprint-plan. The writer now defaults to
+  # .gaia/state/, but the impl-artifacts rung stays for projects seeded earlier.
+  _DASH_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  _RESOLVE_ARTIFACT_PATH="$_DASH_SCRIPT_DIR/lib/resolve-artifact-path.sh"
+  if [[ -x "$_RESOLVE_ARTIFACT_PATH" ]]; then
+    YAML_PATH="$("$_RESOLVE_ARTIFACT_PATH" sprint_status --project-root "$PROJECT_PATH" --existing-only 2>/dev/null || true)"
+    # No existing rung → report the canonical .gaia/state/ path so the
+    # not-found error below names the canonical location.
+    [[ -z "$YAML_PATH" ]] && YAML_PATH="$("$_RESOLVE_ARTIFACT_PATH" sprint_status --project-root "$PROJECT_PATH" 2>/dev/null || echo "$PROJECT_PATH/.gaia/state/sprint-status.yaml")"
   else
-    YAML_PATH="$GAIA_STATE_YAML"
+    # Resolver unavailable — preserve the legacy local precedence.
+    GAIA_STATE_YAML="$PROJECT_PATH/.gaia/state/sprint-status.yaml"
+    IMPL_YAML="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts/sprint-status.yaml"
+    CANONICAL_YAML="$PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml"
+    FALLBACK_YAML="$PROJECT_PATH/sprint-status.yaml"
+    if [[ -f "$GAIA_STATE_YAML" ]]; then
+      YAML_PATH="$GAIA_STATE_YAML"
+    elif [[ -f "$IMPL_YAML" ]]; then
+      YAML_PATH="$IMPL_YAML"
+    elif [[ -f "$CANONICAL_YAML" ]]; then
+      YAML_PATH="$CANONICAL_YAML"
+    elif [[ -f "$FALLBACK_YAML" ]]; then
+      YAML_PATH="$FALLBACK_YAML"
+    else
+      YAML_PATH="$GAIA_STATE_YAML"
+    fi
   fi
 fi
 

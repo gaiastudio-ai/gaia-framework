@@ -89,16 +89,22 @@ fi
 # lived there. Honour the canonical ADR-072 two-rung order — flat before
 # strategy/ — that 8 sibling skills (gaia-trace, gaia-sprint-plan,
 # gaia-readiness-check, gaia-edit-test-plan, ...) already use.
+# AF-2026-05-27-8 / Test06 F-008: resolve the test-plan path via the shared
+# resolve-artifact-path.sh helper. The previous local precedence list omitted
+# the canonical .gaia/artifacts/planning-artifacts/ home (E105-S2 / ADR-127
+# §7.2), so SV-16 falsely failed when /gaia-test-strategy --plan wrote the
+# test-plan/test-strategy under planning-artifacts/. The resolver puts that
+# home at rung 1 and keeps the test-artifacts/{,strategy/} read-compat rungs.
+RESOLVE_ARTIFACT_PATH="$PLUGIN_SCRIPTS_DIR/lib/resolve-artifact-path.sh"
 if [ -n "${TEST_PLAN_PATH:-}" ]; then
   TEST_PLAN="$TEST_PLAN_PATH"
-elif [ -f ".gaia/artifacts/test-artifacts/test-plan.md" ]; then
-  TEST_PLAN=".gaia/artifacts/test-artifacts/test-plan.md"
-elif [ -f ".gaia/artifacts/test-artifacts/strategy/test-plan.md" ]; then
-  TEST_PLAN=".gaia/artifacts/test-artifacts/strategy/test-plan.md"
-elif [ -f "docs/test-artifacts/test-plan.md" ]; then
-  TEST_PLAN="docs/test-artifacts/test-plan.md"
+elif [ -x "$RESOLVE_ARTIFACT_PATH" ]; then
+  # Print-mode (no --existing-only): returns the first existing rung, or the
+  # canonical rung-1 path when none exist (stable "expected" path for SV-16's
+  # error message).
+  TEST_PLAN="$("$RESOLVE_ARTIFACT_PATH" test_plan 2>/dev/null || echo ".gaia/artifacts/planning-artifacts/test-plan.md")"
 else
-  TEST_PLAN="docs/test-artifacts/strategy/test-plan.md"
+  TEST_PLAN=".gaia/artifacts/planning-artifacts/test-plan.md"
 fi
 if [ -n "${ARCHITECTURE_PATH:-}" ]; then
   ARCHITECTURE="$ARCHITECTURE_PATH"
@@ -178,14 +184,29 @@ file_exists() {
 
 # heading_present <file> <heading-regex>
 # Pass when an H2 heading containing the pattern is present.
-heading_present() {
-  local f="$1" text="$2"
-  if grep -Eiq "^##[[:space:]]+${text}([[:space:]]|\$|[[:punct:]])" "$f" 2>/dev/null; then
-    echo "pass"
-  else
-    echo "fail"
-  fi
-}
+# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
+# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
+# uniform, permissive regex accepting optional numbered+lettered outline
+# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
+# divergent inline copies, so the same heading passed one skill's check and
+# failed another's. Sourced via a $0-relative path so it works whether or not
+# this script defines PLUGIN_SCRIPTS_DIR.
+_GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
+if [ -r "$_GAIA_HEADING_LIB" ]; then
+  # shellcheck source=/dev/null
+  . "$_GAIA_HEADING_LIB"
+else
+  # Fallback inline definition (kept byte-equivalent to the shared lib) so the
+  # checklist still runs if the lib is somehow unreadable.
+  heading_present() {
+    local f="$1" text="$2"
+    if grep -Ei "^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?${text}([[:space:]]|\$|[[:punct:]])" "$f" >/dev/null 2>&1; then
+      echo "pass"
+    else
+      echo "fail"
+    fi
+  }
+fi
 
 # pattern_present <file> <extended-regex>
 pattern_present() {

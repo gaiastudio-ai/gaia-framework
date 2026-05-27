@@ -338,12 +338,26 @@ resolve_paths() {
     local gaia_state="${PROJECT_PATH}/.gaia/state/sprint-status.yaml"
     local canonical="${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml"
     local fallback="${PROJECT_PATH}/sprint-status.yaml"
+    # AF-2026-05-27-8 / Test06 F-014: .gaia/state/ is the canonical home for
+    # sprint-status.yaml (ADR-111 mutable-runtime-state tier) and is what
+    # sprint-status-dashboard.sh reads first. Resolution order:
+    #   1. existing .gaia/state/   yaml — canonical, already seeded
+    #   2. existing impl-artifacts yaml — read-compat for projects seeded there
+    #      before this fix (the prior default write target)
+    #   3. existing project-root fallback (E38-S1 bats fixtures)
+    #   4. fresh write → canonical .gaia/state/ default
+    # Previously fresh writes (rung 4) defaulted to impl-artifacts, a path the
+    # dashboard never looked at — so `init` succeeded but `/gaia-sprint-status`
+    # then errored "not found". Defaulting fresh writes to .gaia/state/ aligns
+    # the writer with the canonical reader.
     if [ -e "$gaia_state" ]; then
       SPRINT_STATUS_YAML="$gaia_state"
-    elif [ -e "$canonical" ] || [ ! -e "$fallback" ]; then
+    elif [ -e "$canonical" ]; then
       SPRINT_STATUS_YAML="$canonical"
-    else
+    elif [ -e "$fallback" ]; then
       SPRINT_STATUS_YAML="$fallback"
+    else
+      SPRINT_STATUS_YAML="$gaia_state"
     fi
   fi
   SPRINT_STATUS_LOCK="${SPRINT_STATUS_YAML}.lock"
@@ -2397,9 +2411,13 @@ _rollover_one() {
 # ${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml. Read-only — does not write.
 _resolve_active_yaml() {
   if [ -n "${SPRINT_STATUS_YAML:-}" ]; then
+    # resolve_paths() is the single source of truth for this value — it applies
+    # the AF-2026-05-27-8 / Test06 F-014 canonical-state-tier resolution order
+    # (.gaia/state/ first, impl-artifacts read-compat, fresh writes → state).
     printf '%s' "$SPRINT_STATUS_YAML"
   else
-    printf '%s/sprint-status.yaml' "${IMPLEMENTATION_ARTIFACTS}"
+    # Safety net for callers that invoke this without resolve_paths() first.
+    printf '%s/.gaia/state/sprint-status.yaml' "${PROJECT_PATH:-.}"
   fi
 }
 

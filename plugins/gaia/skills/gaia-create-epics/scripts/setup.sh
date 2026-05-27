@@ -75,25 +75,20 @@ fi
 # (the flat path), so /gaia-test-strategy --plan (which writes
 # strategy/test-strategy.md) caused a false-halt with "exists but empty"
 # even though the artifact existed under a different accepted path.
+# AF-2026-05-27-8 / Test06 F-007: resolve the test-plan path via the shared
+# resolve-artifact-path.sh helper rather than a local candidate loop. The
+# previous loop referenced ${PLANNING_ARTIFACTS:-} expecting the resolve-config
+# export loop above to have populated it — but resolve-config emits the key in
+# lowercase (planning_artifacts=...) and the `[A-Z_]*=*` export filter drops it,
+# so the planning-artifacts rungs were silently dead and the loop fell through
+# to a false HALT even when test-strategy.md existed under planning-artifacts/.
+# The shared resolver hard-codes the canonical .gaia/artifacts/planning-artifacts/
+# home as rung 1 (E105-S2 / ADR-127 §7.2) and needs no env contract.
+RESOLVE_ARTIFACT_PATH="$PLUGIN_SCRIPTS_DIR/lib/resolve-artifact-path.sh"
 TEST_PLAN_PATH=""
-# E105-S2 / ADR-127 §7.2: the test-plan/test-strategy now live under
-# planning-artifacts/ (docs-about-testing moved out of test-artifacts/). The
-# planning-artifacts/ candidates are highest precedence; the test-artifacts/
-# (strategy/) candidates remain for the migration read-compat window.
-for candidate in \
-  "${PLANNING_ARTIFACTS:-}/test-plan.md" \
-  "${PLANNING_ARTIFACTS:-}/test-strategy.md" \
-  "$TEST_ARTIFACTS/test-plan.md" \
-  "$TEST_ARTIFACTS/strategy/test-plan.md" \
-  "$TEST_ARTIFACTS/strategy/test-strategy.md" \
-  "$TEST_ARTIFACTS/test-plan/index.md"; do
-  [ "$candidate" = "/test-plan.md" ] && continue        # guard: empty PLANNING_ARTIFACTS
-  [ "$candidate" = "/test-strategy.md" ] && continue
-  if [ -s "$candidate" ]; then
-    TEST_PLAN_PATH="$candidate"
-    break
-  fi
-done
+if [ -x "$RESOLVE_ARTIFACT_PATH" ]; then
+  TEST_PLAN_PATH="$("$RESOLVE_ARTIFACT_PATH" test_plan --existing-only 2>/dev/null || true)"
+fi
 
 if [ -x "$VALIDATE_GATE" ]; then
   if ! "$VALIDATE_GATE" test_plan_exists 2>&1; then
@@ -107,7 +102,7 @@ fi
 # validate-gate.sh checks non-empty too, but emit a clearer error if the
 # resolver chose a path that turned out empty (race or odd FS state).
 if [ -z "$TEST_PLAN_PATH" ] || [ ! -s "$TEST_PLAN_PATH" ]; then
-  die "HALT: no non-empty test-plan artifact found (checked ${PLANNING_ARTIFACTS:-<planning-artifacts>}/test-plan.md, ${PLANNING_ARTIFACTS:-<planning-artifacts>}/test-strategy.md, $TEST_ARTIFACTS/test-plan.md, strategy/test-plan.md, strategy/test-strategy.md, test-plan/index.md) — run /gaia-test-strategy --plan to populate it (ADR-042 enforced gate)"
+  die "HALT: no non-empty test-plan artifact found (canonical: .gaia/artifacts/planning-artifacts/test-plan.md or test-strategy.md, with .gaia/artifacts/test-artifacts/{,strategy/} read-compat fallbacks — see resolve-artifact-path.sh test_plan) — run /gaia-test-strategy --plan to populate it (ADR-042 enforced gate)"
 fi
 
 # ---------- 3. Load checkpoint state ----------
