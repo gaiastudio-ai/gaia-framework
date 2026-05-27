@@ -11,7 +11,7 @@
 #   print          Render the three-option prompt to stdout.
 #   handle <ans>   Apply the side-effect for answer <ans>. Valid answers:
 #                    y — caller proceeds to /gaia-config-ci --regenerate now.
-#                    n — write the _memory/.config-stale marker.
+#                    n — write the .gaia/memory/.config-stale marker.
 #                    d — emit a hint pointing the caller at the diff command.
 #                  Any other answer exits non-zero (caller re-asks).
 #
@@ -48,7 +48,7 @@ handle_answer() {
       ;;
     n|N)
       bash "$STALE_FLAG" write
-      echo "deferred: _memory/.config-stale flag written. Subsequent /gaia-* commands will warn."
+      echo "deferred: .gaia/memory/.config-stale flag written. Subsequent /gaia-* commands will warn."
       ;;
     d|D)
       echo "diff hint: run /gaia-config-show ci_cd to inspect the new ci_cd block, then re-prompt."

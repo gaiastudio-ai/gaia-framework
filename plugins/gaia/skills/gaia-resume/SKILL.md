@@ -43,7 +43,7 @@ Do NOT invoke `/gaia-resume` when:
 Use the **Glob** tool to discover checkpoint files. Both formats coexist during the V1→V2 migration (per ADR-048 program-closing invariant):
 
 - V2 (ADR-059) — the canonical active-workflow format: `.gaia/memory/checkpoints/**/*.json` (per-skill subdirectories under the root).
-- V1 (legacy, E28-S136) — still honored until the V1 engine retires: `_memory/checkpoints/*.yaml`.
+- V1 (legacy, E28-S136) — still honored until the V1 engine retires: `.gaia/memory/checkpoints/*.yaml`.
 - Exclude: any path containing `.gaia/memory/checkpoints/completed/` (archived, not resumable).
 
 Dispatch by extension: `.json` → ADR-059 path (delegate to `resume-checkpoint.sh` and `resume-discovery.sh`); `.yaml` → legacy path (delegate to `checkpoint.sh`). NEVER parse JSON or YAML in the LLM layer.

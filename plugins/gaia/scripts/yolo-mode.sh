@@ -32,8 +32,9 @@
 #
 # Sentinel file (AF-2026-05-21-4 Finding 2):
 #   Path: $GAIA_STATE_DIR/.yolo-active (defaults to ./.gaia/state/.yolo-active
-#   when GAIA_STATE_DIR is unset; falls back to ./_memory/.yolo-active on
-#   pre-migration installs). Created by callers via `yolo-mode.sh set` when
+#   when GAIA_STATE_DIR is unset). The legacy ./_memory/.yolo-active fallback
+#   was removed in AF-2026-05-27-3 (ADR-111 — .gaia/ is canonical). Created by
+#   callers via `yolo-mode.sh set` when
 #   they detect --yolo in their arguments. Removed via `yolo-mode.sh clear`
 #   on session end OR on explicit --no-yolo. Sentinel-file YOLO state
 #   SURVIVES across Bash tool calls in environments (Claude Code, CI) that
@@ -90,8 +91,6 @@ is_yolo() {
             sentinel="${GAIA_STATE_DIR}/.yolo-active"
         elif [ -d ".gaia/state" ]; then
             sentinel=".gaia/state/.yolo-active"
-        elif [ -d "_memory" ]; then
-            sentinel="_memory/.yolo-active"
         else
             sentinel=".gaia/state/.yolo-active"  # default even if dir absent
         fi
@@ -116,8 +115,6 @@ yolo_set() {
             sentinel="${GAIA_STATE_DIR}/.yolo-active"
         elif [ -d ".gaia/state" ] || mkdir -p ".gaia/state" 2>/dev/null; then
             sentinel=".gaia/state/.yolo-active"
-        elif [ -d "_memory" ]; then
-            sentinel="_memory/.yolo-active"
         else
             sentinel=".gaia/state/.yolo-active"
         fi
@@ -139,8 +136,6 @@ yolo_clear() {
             sentinel="${GAIA_STATE_DIR}/.yolo-active"
         elif [ -f ".gaia/state/.yolo-active" ]; then
             sentinel=".gaia/state/.yolo-active"
-        elif [ -f "_memory/.yolo-active" ]; then
-            sentinel="_memory/.yolo-active"
         else
             return 0  # nothing to clear
         fi

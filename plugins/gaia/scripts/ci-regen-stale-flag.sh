@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ci-regen-stale-flag.sh — config-stale flag lifecycle for /gaia-config-ci (E71-S4).
 #
-# Maintains the marker file `_memory/.config-stale`. Presence of the file
+# Maintains the marker file `.gaia/memory/.config-stale`. Presence of the file
 # means the project's CI workflow files are out of sync with the latest
 # config-mutating /gaia-config-* edits. Absence means in-sync.
 #
@@ -20,13 +20,9 @@ cmd="${1:-}"
 shift || true
 
 flag_path() {
-  # E96-S7 partial-4b: smart-fallback for memory dir
-  local _proj="${PROJECT_ROOT:-$PWD}"
-  if [ -d "$_proj/.gaia/memory" ]; then
-    printf '%s/.gaia/memory/.config-stale\n' "$_proj"
-  else
-    printf '%s/_memory/.config-stale\n' "$_proj"
-  fi
+  # AF-2026-05-27-3 (ADR-111): .gaia/memory is the only marker home; legacy
+  # _memory fallback removed with the consolidation migration.
+  printf '%s/.gaia/memory/.config-stale\n' "${PROJECT_ROOT:-$PWD}"
 }
 
 write_flag() {

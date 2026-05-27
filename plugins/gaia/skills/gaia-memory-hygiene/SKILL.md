@@ -18,7 +18,7 @@ You are running a cross-sidecar hygiene pass across the project's agent memory. 
 
 This skill is the native Claude Code conversion of the legacy `memory-hygiene` workflow (E28-S107, Cluster 14). The 12-step prose structure, JIT discipline, cross-reference cap, token approximation, and 7-section enhanced report layout are preserved from the legacy `instructions.xml` — parity confirmed per NFR-053.
 
-**Main context semantics (ADR-041):** This skill runs under `context: main`. It reads `.gaia/memory/` (canonical, post-ADR-111; falls back to legacy `_memory/` only on pre-migration projects), reads `.gaia/artifacts/planning-artifacts/`, `.gaia/artifacts/implementation-artifacts/`, `.gaia/artifacts/test-artifacts/`, and writes a hygiene report plus (on user confirmation) targeted sidecar edits.
+**Main context semantics (ADR-041):** This skill runs under `context: main`. It reads `.gaia/memory/` (the canonical and only memory tree post-ADR-111; the legacy `_memory/` fallback was removed in AF-2026-05-27-3), reads `.gaia/artifacts/planning-artifacts/`, `.gaia/artifacts/implementation-artifacts/`, `.gaia/artifacts/test-artifacts/`, and writes a hygiene report plus (on user confirmation) targeted sidecar edits.
 
 **Scripts-over-LLM (ADR-042 / FR-325):** Deterministic foundation operations (config resolution, checkpoint writes, lifecycle events) are delegated to `plugins/gaia/scripts/` via inline `!${CLAUDE_PLUGIN_ROOT}/...` calls. Agent sidecar reads use the hybrid memory-loading pattern (ADR-046).
 
@@ -34,7 +34,7 @@ This skill is the native Claude Code conversion of the legacy `memory-hygiene` w
 - **Cross-reference validation scope is limited to the declared matrix** in `.gaia/memory/config.yaml` under `cross_references:`. Do NOT traverse arbitrary cross-agent reads — the matrix is the authoritative boundary.
 - **Token approximation is 4 chars per token** (file size in bytes / 4). This value is read from `.gaia/memory/config.yaml` `archival.token_approximation` — the skill does not hard-code the ratio.
 - **Sprint-status.yaml is NEVER written by this skill** (Sprint-Status Write Safety rule). The skill only reads sprint-status.yaml for current sprint ID.
-- **Graceful degradation (AC-EC10 — no _memory/ directory):** If `_memory/` does not exist at all, exit gracefully with the message "no sidecars discovered — `_memory/` directory not present" and do NOT create any files.
+- **Graceful degradation (AC-EC10 — no .gaia/memory/ directory):** If `.gaia/memory/` does not exist at all, exit gracefully with the message "no sidecars discovered — `.gaia/memory/` directory not present" and do NOT create any files.
 - **Token budget guard (AC-EC6, NFR-048):** Per-sidecar JIT release prevents accumulation. If a single decision-log exceeds the per-agent budget, flag the agent as over-budget in the Token Budget Table but complete the scan.
 - **Fail-fast on missing foundation scripts (AC-EC2 equivalent):** `setup.sh` aborts with an actionable error identifying the missing / non-executable script path when `resolve-config.sh` is missing.
 
@@ -85,7 +85,7 @@ The skill runs twelve steps in strict order, mirroring the legacy `instructions.
    - Untiered sidecars (decision-log.md only)
    - **Empty sidecars** — directories with no content files (AC-EC2: log "empty sidecar" and continue)
    - **Sidecars with legacy filenames** — `architecture-decisions.md` (architect), `infrastructure-decisions.md` (devops), `threat-model-decisions.md` (security), `velocity-data.md` (sm) — flag for migration to `decision-log.md` (AC-EC3)
-7. **AC-EC10 — no _memory/ directory:** if the `_memory/` directory does not exist, report "no sidecars discovered — `_memory/` directory not present" and complete the skill. Do NOT create files.
+7. **AC-EC10 — no .gaia/memory/ directory:** if the `.gaia/memory/` directory does not exist, report "no sidecars discovered — `.gaia/memory/` directory not present" and complete the skill. Do NOT create files.
 8. **Zero-content short-circuit:** if every discovered sidecar is empty, report "All sidecars are empty — nothing to review" and complete the skill.
 9. Report to user: `{N} sidecars discovered ({T1} Tier 1, {T2} Tier 2, {T3} Tier 3, {U} untiered), {E} empty. {L} legacy filenames detected. Proceeding with review.`
 
@@ -353,7 +353,7 @@ No post-complete gate is enforced. The skill's output is advisory: the user deci
 - **AC-EC7 — circular Related-field references between agents:** cross-reference scan terminates after one full pass (the cross-reference cap enforces this). No infinite loop.
 - **AC-EC8 — Unicode / special characters in agent sidecar names:** path resolution preserves the original encoding. Scan completes without re-encoding errors.
 - **AC-EC9 — parity harness diff between legacy and converted skill:** the Cluster 14 parity harness at `gaia-public/tests/cluster-14-parity/memory-hygiene-parity.bats` acts as the automated regression gate for NFR-053. Any behavioral drift surfaces as a failing test.
-- **AC-EC10 — project with no _memory/ directory at all:** Step 1 exits gracefully with "no sidecars discovered — `_memory/` directory not present". No files are created.
+- **AC-EC10 — project with no .gaia/memory/ directory at all:** Step 1 exits gracefully with "no sidecars discovered — `.gaia/memory/` directory not present". No files are created.
 
 ## Frontmatter Linter Compliance
 

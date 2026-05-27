@@ -86,14 +86,14 @@ fi
 # correctly: setup creates the .json marker NOW; finalize asserts that
 # any subsequent sidecar write has mtime > sentinel mtime. The sentinel
 # itself is a minimal JSON payload identifying the run.
+# AF-2026-05-27-3 (ADR-111): canonical .gaia/memory/checkpoints only; legacy
+# _memory probe removed. Env CHECKPOINT_PATH override wins.
 SENTINEL_DIR=""
 if [ -n "${CHECKPOINT_PATH:-}" ]; then
   SENTINEL_DIR="$CHECKPOINT_PATH"
-elif [ -n "${PROJECT_ROOT:-}" ] && [ -d "$PROJECT_ROOT/.gaia/memory/checkpoints" ]; then
+elif [ -n "${PROJECT_ROOT:-}" ]; then
   SENTINEL_DIR="$PROJECT_ROOT/.gaia/memory/checkpoints"
-elif [ -n "${PROJECT_ROOT:-}" ] && [ -d "$PROJECT_ROOT/_memory/checkpoints" ]; then
-  SENTINEL_DIR="$PROJECT_ROOT/_memory/checkpoints"
-elif [ -d ".gaia/memory/checkpoints" ]; then
+else
   SENTINEL_DIR=".gaia/memory/checkpoints"
 fi
 

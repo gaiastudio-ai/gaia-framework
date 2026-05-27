@@ -29,7 +29,9 @@ LC_ALL=C
 export LC_ALL
 
 # ---- Resolve memory dir ----
-memory_dir="${GAIA_MEMORY_PATH:-${CLAUDE_PROJECT_ROOT:-.}/_memory}"
+# AF-2026-05-27-3 (ADR-111): markers live under the canonical .gaia/memory tree;
+# the legacy _memory default was removed with the consolidation migration.
+memory_dir="${GAIA_MEMORY_PATH:-${CLAUDE_PROJECT_ROOT:-.}/.gaia/memory}"
 
 # ---- Resolve registry path ----
 if [ -n "${GAIA_REGISTRY_PATH:-}" ]; then
@@ -80,14 +82,17 @@ if [ ! -f "$registry_path" ]; then
 fi
 
 # ---- Parse registry: extract marker basenames from rows like ----
-#   | `_memory/.{name}-stale` | ... | ... | ... |
-registered=$(grep -oE '`_memory/\.[A-Za-z0-9_-]+-stale`' "$registry_path" \
-             | sed 's:^`_memory/::; s:`$::')
+#   | `.gaia/memory/.{name}-stale` | ... | ... | ... |
+# AF-2026-05-27-3 (ADR-111): markers are registered under .gaia/memory/. The
+# legacy `_memory/` prefix is still accepted here so the project-root ADR-102
+# registry shard can be migrated separately (it lives outside this repo).
+registered=$(grep -oE '`(\.gaia/memory|_memory)/\.[A-Za-z0-9_-]+-stale`' "$registry_path" \
+             | sed -E 's:^`(\.gaia/memory|_memory)/::; s:`$::')
 
 # ---- Audit found vs registered ----
 for marker in $found_markers; do
   if ! printf '%s\n' "$registered" | grep -qxF "$marker"; then
-    printf 'CRITICAL: Unregistered stale-flag marker: _memory/%s. Register in ADR-102 or remove.\n' \
+    printf 'CRITICAL: Unregistered stale-flag marker: .gaia/memory/%s. Register in ADR-102 or remove.\n' \
       "$marker"
     exit_code=1
   fi

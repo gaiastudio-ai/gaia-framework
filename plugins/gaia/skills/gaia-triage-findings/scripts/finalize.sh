@@ -36,18 +36,13 @@ die() { log "$*"; exit 1; }
 # behavior (Test D backward-compat).
 if [ -n "${GAIA_FINALIZE_SENTINEL_REQUIRED:-}" ]; then
   PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
-  # E96-S7 partial-4c: smart-fallback for sidecar + checkpoint paths
-  if [ -d "$PROJECT_ROOT/.gaia/memory/validator-sidecar" ]; then
-    SIDECAR_LOG="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
-  else
-    SIDECAR_LOG="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
-  fi
+  # AF-2026-05-27-3 (ADR-111): canonical .gaia/ paths only; the legacy _memory
+  # fallbacks were removed with the consolidation migration. Env CHECKPOINT_PATH wins.
+  SIDECAR_LOG="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   if [ -n "${CHECKPOINT_PATH:-}" ]; then
     CHECKPOINT_MARKER="$CHECKPOINT_PATH/triage-findings.json"
-  elif [ -d "$PROJECT_ROOT/.gaia/memory/checkpoints" ]; then
-    CHECKPOINT_MARKER="$PROJECT_ROOT/.gaia/memory/checkpoints/triage-findings.json"
   else
-    CHECKPOINT_MARKER="$PROJECT_ROOT/_memory/checkpoints/triage-findings.json"
+    CHECKPOINT_MARKER="$PROJECT_ROOT/.gaia/memory/checkpoints/triage-findings.json"
   fi
 
   if [ ! -f "$SIDECAR_LOG" ]; then

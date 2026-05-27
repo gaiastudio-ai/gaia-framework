@@ -44,24 +44,35 @@ teardown() { common_teardown; }
   grep -qF 'when a stable session id is available' "$PLUGIN_ROOT/scripts/orchestration-warning.sh"
 }
 
-# --- F-005: greenfield silent, incomplete-migration warns ---
+# --- F-005: greenfield silent (the read-only-until-migration logic was removed
+#     in AF-2026-05-27-3 with the legacy _memory/ consolidation migration; a
+#     stray _memory/ now triggers the hygiene warning, NOT a read-only halt) ---
 
-@test "F-005: memory-loader silent on greenfield (.gaia/memory, no legacy _memory)" {
+@test "F-005: memory-loader is silent on greenfield (.gaia/memory, no stray _memory)" {
   mkdir -p "$TEST_TMP/.gaia/memory"
-  eval "$(awk '/^_gaia_session_load_sentinel_check\(\) \{/,/^}/' "$PLUGIN_ROOT/scripts/memory-loader.sh")"
-  unset _GAIA_SESSION_LOAD_READ_ONLY
   run env MEMORY_PATH="$TEST_TMP/.gaia/memory" bash -c '
-    eval "$(awk "/^_gaia_session_load_sentinel_check\\(\\) \\{/,/^}/" "'"$PLUGIN_ROOT"'/scripts/memory-loader.sh")"
-    _gaia_session_load_sentinel_check 2>&1'
+    eval "$(awk "/^_gaia_stray_legacy_memory_warn\\(\\) \\{/,/^}/" "'"$PLUGIN_ROOT"'/scripts/memory-loader.sh")"
+    _gaia_stray_legacy_memory_warn 2>&1'
   [ -z "$output" ]
 }
 
-@test "F-005: memory-loader warns on incomplete migration (legacy _memory present, no manifest)" {
+@test "F-005: read-only-until-migration logic is gone (no _GAIA_SESSION_LOAD_READ_ONLY producer)" {
+  # AF-2026-05-27-3: the .migration-manifest sentinel + the read-only producer
+  # were removed with the Family A migration. The function must be gone, and the
+  # read-only var must no longer be SET/exported (a documentary comment mention
+  # is fine). Assert no executable producer remains.
+  ! grep -qF '_gaia_session_load_sentinel_check' "$PLUGIN_ROOT/scripts/memory-loader.sh"
+  ! grep -qE '(export|^[[:space:]]*)_GAIA_SESSION_LOAD_READ_ONLY=' "$PLUGIN_ROOT/scripts/memory-loader.sh"
+  # No active .migration-manifest read (a comment reference is acceptable).
+  ! grep -qE '(\[|-f|cat|read|awk).*\.migration-manifest' "$PLUGIN_ROOT/scripts/memory-loader.sh"
+}
+
+@test "F-005: stray _memory/ coexisting with .gaia/memory/ now triggers the hygiene warning" {
   mkdir -p "$TEST_TMP/.gaia/memory" "$TEST_TMP/_memory"
   run env MEMORY_PATH="$TEST_TMP/.gaia/memory" bash -c '
-    eval "$(awk "/^_gaia_session_load_sentinel_check\\(\\) \\{/,/^}/" "'"$PLUGIN_ROOT"'/scripts/memory-loader.sh")"
-    _gaia_session_load_sentinel_check 2>&1'
-  printf '%s\n' "$output" | grep -qF 'legacy _memory/ present'
+    eval "$(awk "/^_gaia_stray_legacy_memory_warn\\(\\) \\{/,/^}/" "'"$PLUGIN_ROOT"'/scripts/memory-loader.sh")"
+    _gaia_stray_legacy_memory_warn 2>&1'
+  printf '%s\n' "$output" | grep -qF 'coexists with the canonical .gaia/memory/'
 }
 
 # --- F-006: GC sweep present ---

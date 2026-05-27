@@ -70,7 +70,7 @@ Options:
                           python-dev, go-dev, flutter-dev, mobile-dev, angular-dev)
   --project-root <dir>    Where to run file-glob heuristics (default: cwd)
   --agents-dir <dir>      Where to find <stack>.md agent files (default: plugin agents)
-  --memory-dir <dir>      Where to find <stack>-sidecar.md (default: _memory/)
+  --memory-dir <dir>      Where to find <stack>-sidecar.md (default: .gaia/memory/)
   --help                  Show this help and exit 0
 
 Output (stdout, shell-evalable):

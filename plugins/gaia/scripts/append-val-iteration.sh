@@ -230,12 +230,10 @@ fi
 # ---------- python3 preflight ----------
 command -v python3 >/dev/null 2>&1 || die 2 "python3 not found on PATH (required to compose JSON)"
 
-# ---------- Resolve CHECKPOINT_ROOT (AF-2026-05-21-7 inverted precedence) ----------
-# Canonical default; legacy fallback only on positive pre-ADR-111 evidence.
+# ---------- Resolve CHECKPOINT_ROOT (ADR-111: .gaia/ canonical) ----------
+# AF-2026-05-27-3: legacy _memory/checkpoints fallback removed; env override wins.
 if [ -n "${CHECKPOINT_ROOT:-}" ]; then
   CHECKPOINT_ROOT_RESOLVED="$CHECKPOINT_ROOT"
-elif [ -d "_memory/checkpoints" ] && [ ! -d ".gaia/memory" ]; then
-  CHECKPOINT_ROOT_RESOLVED="_memory/checkpoints"
 else
   CHECKPOINT_ROOT_RESOLVED=".gaia/memory/checkpoints"
 fi

@@ -46,7 +46,7 @@ RESEARCH and DISCUSS hooks rather than reimplementing the lifecycle.
 
 ## Path resolution (AF-2026-05-21-16)
 
-All artifact path references in this SKILL.md use the canonical post-ADR-111 locations under `.gaia/artifacts/creative-artifacts/` (meeting notes, scratchpad extractions), `.gaia/state/action-items.yaml` (action-items registry, cross-family relocation from `docs/planning-artifacts/`), and `.gaia/artifacts/planning-artifacts/` (cross-references to architecture/threat-model). The `scripts/write-boundary.sh` enforces canonical-only writes post-E96-S8 — legacy `docs/` prefix is REJECTED at runtime. Sister scripts (memory-writethrough.sh, research-phase-dispatch.sh, yield-gate.sh) retain smart-fallback resolution for `_memory/`-layout back-compat per AF-2026-05-21-7 — that smart-fallback is intentional and out-of-scope for this AF.
+All artifact path references in this SKILL.md use the canonical post-ADR-111 locations under `.gaia/artifacts/creative-artifacts/` (meeting notes, scratchpad extractions), `.gaia/state/action-items.yaml` (action-items registry, cross-family relocation from `docs/planning-artifacts/`), and `.gaia/artifacts/planning-artifacts/` (cross-references to architecture/threat-model). The `scripts/write-boundary.sh` enforces canonical-only writes post-E96-S8 — legacy `docs/` prefix is REJECTED at runtime. Sister scripts (memory-writethrough.sh, research-phase-dispatch.sh, yield-gate.sh) resolve memory/session paths under `.gaia/memory/` only — the legacy `_memory/` smart-fallback was removed in AF-2026-05-27-3 (ADR-111; `.gaia/` is the sole tree).
 
 ## Critical Rules
 
@@ -77,7 +77,7 @@ All artifact path references in this SKILL.md use the canonical post-ADR-111 loc
 - **Cite-or-flag is enforced (E76-S2).** Every DISCUSS turn line that asserts a
   factual claim (about a file path, code behavior, prior decision, external
   system, or memory entry) MUST carry either a citation marker (project file
-  path, URL, or `_memory/...` reference) or the literal `[inference]` token.
+  path, URL, or `.gaia/memory/...` reference) or the literal `[inference]` token.
   The facilitator's pre-persistence check halts round-robin advancement on
   unflagged-inference lines BEFORE they land in the persisted transcript
   (FR-MTG-5 / FR-MTG-28 hard guardrail).
@@ -578,7 +578,7 @@ The canonical wrapper is `scripts/dispatch-agent-turn.sh --agent <id> --phase re
 The RESEARCH phase implements the four-step contract from ADR-084:
 
 1. **Per-agent sidecar load (FR-MTG-4 step 1).** For each invited agent, load
-   the canonical sidecar at `_memory/<agent>-sidecar/` via the existing tier-
+   the canonical sidecar at `.gaia/memory/<agent>-sidecar/` via the existing tier-
    aware load contract (§4.10). The intake-shorthand path
    `.gaia/memory/agent-decisions/<agent>/` is NOT canonical — ADR-086 reconciled
    on `<agent>-sidecar/`. Resolve via
@@ -1159,7 +1159,7 @@ fire-indices across a K=0 and a K=4 raise-hand run.
 - AI-2026-05-09-9 — Audit finding: SKILL.md L80-116 / L81 / L94-103 / L474 / L563 categorically excluded the user-as-attendee path; absolute-prohibition language without an explicit carve-out led downstream readers to extrapolate the wrong behavior. Resolved by E76-S20 carve-out subsection + EXCEPT clause + 3-channel enumeration + Phase 3/4 back-references.
 - Memory rule `feedback_askuserquestion_under_automode.md` — `AskUserQuestion` is substrate-enforced and halts the LLM turn under Auto Mode (verified 2026-05-09).
 - ADR-084 — Research-phase contract (sidecar load → SoT reads → web search → cited prelude).
-- ADR-086 — Sidecar path reconciliation: `_memory/<agent>-sidecar/` is canonical.
+- ADR-086 — Sidecar path reconciliation: `<agent>-sidecar/` under the memory tree is canonical (post-ADR-111: `.gaia/memory/<agent>-sidecar/`).
 - Test plan §11.56 — TC-MTG-CHARTER-1..3, TC-MTG-TURN-1..3, TC-MTG-STREAM-1, TC-MTG-STREAM-3, TC-MTG-RESEARCH-1..6, TC-MTG-GUARD-1.
 - Threat model §3.15 — T-MTG-1 (web-search exfiltration), T-MTG-2 (prompt-injection from external pages), T-MTG-3 (over-broad agent file reads).
 - FR-329 — Slash commands resolve via SKILL.md, not via the retired `commands/` directory.

@@ -8,15 +8,14 @@
 # brand-new project — orchestration-warning.sh and lifecycle-event.sh
 # both materialized `_memory/` on first invocation.
 #
-# This bats file covers the 3-quadrant matrix for two representative
-# scripts (one Category A smart-fallback, one Category B unconditional):
-#   - greenfield (neither dir present)   → canonical .gaia/memory wins
-#   - post-ADR-111 (only .gaia/ present) → canonical .gaia/memory wins
-#   - pre-ADR-111 (only _memory/ present, no .gaia/) → legacy back-compat
-#
-# Plus a 4th quadrant (Val F8): both dirs present (common in long-running
-# dev environments) → canonical wins (positive-evidence guard fails on
-# the `! -d .gaia/memory` clause).
+# This bats file covers the path-resolution matrix for representative scripts.
+# AF-2026-05-27-3 (ADR-111): the legacy `_memory/` fallback was REMOVED — every
+# quadrant now resolves the canonical `.gaia/memory` tree:
+#   - greenfield (neither dir present)        → .gaia/memory
+#   - post-ADR-111 (only .gaia/ present)      → .gaia/memory
+#   - stray _memory/ present (no .gaia/)      → .gaia/memory (legacy NOT honored)
+#   - both dirs present                       → .gaia/memory
+# (Env overrides like MEMORY_PATH / CHECKPOINT_PATH still win where supported.)
 
 load 'test_helper.bash'
 
@@ -51,16 +50,16 @@ teardown() { common_teardown; }
   [ ! -d "_memory" ]
 }
 
-@test "AF-21-7 / orchestration-warning.sh: pre-ADR-111 (only _memory/) → legacy honored" {
+@test "AF-21-7 / orchestration-warning.sh: stray _memory/ present → canonical .gaia/memory wins (AF-2026-05-27-3)" {
+  # AF-2026-05-27-3: the legacy _memory/ fallback was removed (ADR-111). Even
+  # when a stray _memory/checkpoints exists, the sentinel now lands in the
+  # canonical .gaia/memory/checkpoints — the legacy dir is NOT honored.
   mkdir -p "_memory/checkpoints"
   run bash "$SCRIPTS_DIR/orchestration-warning.sh" \
     --skill-class heavy-procedural --mode subagent --session-id "test-$$"
   [ "$status" -eq 0 ]
-  # Legacy dir must be used; canonical must NOT be created.
-  [ -d "_memory/checkpoints" ]
-  [ ! -d ".gaia/memory" ]
-  # Sentinel landed in legacy dir.
-  ls _memory/checkpoints/orchestration-warning-pending.test-* >/dev/null 2>&1
+  ls .gaia/memory/checkpoints/orchestration-warning-pending.test-* >/dev/null 2>&1
+  ! ls _memory/checkpoints/orchestration-warning-pending.test-* >/dev/null 2>&1
 }
 
 @test "AF-21-7 / orchestration-warning.sh: both dirs present → canonical wins (Val F8)" {
@@ -88,12 +87,14 @@ teardown() { common_teardown; }
   [ ! -d "_memory" ]
 }
 
-@test "AF-21-7 / lifecycle-event.sh: pre-ADR-111 (only _memory/) → legacy honored" {
+@test "AF-21-7 / lifecycle-event.sh: stray _memory/ present → canonical .gaia/memory wins (AF-2026-05-27-3)" {
+  # AF-2026-05-27-3: legacy _memory/ fallback removed (ADR-111). Events land in
+  # .gaia/memory/ even when a stray _memory/ exists; the legacy dir is untouched.
   mkdir -p "_memory"
   run bash "$SCRIPTS_DIR/lifecycle-event.sh" --type test --workflow af-21-7-test
   [ "$status" -eq 0 ]
-  [ -f "_memory/lifecycle-events.jsonl" ]
-  [ ! -d ".gaia/memory" ]
+  [ -f ".gaia/memory/lifecycle-events.jsonl" ]
+  [ ! -f "_memory/lifecycle-events.jsonl" ]
 }
 
 @test "AF-21-7 / lifecycle-event.sh: post-ADR-111 → canonical wins" {
@@ -119,10 +120,12 @@ teardown() { common_teardown; }
   [ ! -d "_memory" ]
 }
 
-@test "AF-21-7 / write-checkpoint.sh: pre-ADR-111 (only _memory/) → legacy honored" {
+@test "AF-21-7 / write-checkpoint.sh: stray _memory/ present → canonical .gaia/memory wins (AF-2026-05-27-3)" {
+  # AF-2026-05-27-3: legacy _memory/ fallback removed (ADR-111). Checkpoints land
+  # in .gaia/memory/checkpoints even when a stray _memory/checkpoints exists.
   mkdir -p "_memory/checkpoints"
   run bash "$SCRIPTS_DIR/write-checkpoint.sh" af-21-7-test 1
   [ "$status" -eq 0 ]
-  [ -d "_memory/checkpoints/af-21-7-test" ]
-  [ ! -d ".gaia/memory" ]
+  [ -d ".gaia/memory/checkpoints/af-21-7-test" ]
+  [ ! -d "_memory/checkpoints/af-21-7-test" ]
 }

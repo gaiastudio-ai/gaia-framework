@@ -16,7 +16,7 @@ setup() {
 
   TEST_TMP="$BATS_TEST_TMPDIR/ssdsr-$$"
   mkdir -p "$TEST_TMP/docs/implementation-artifacts"
-  mkdir -p "$TEST_TMP/_memory/validator-sidecar"
+  mkdir -p "$TEST_TMP/.gaia/memory/validator-sidecar"
   export PROJECT_PATH="$TEST_TMP"
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/docs/implementation-artifacts"
 }
@@ -28,7 +28,7 @@ teardown() {
 load_fixture() {
   local name="$1"
   cp "$FIXTURE_ROOT/$name/sprint-status.yaml" "$IMPLEMENTATION_ARTIFACTS/sprint-status.yaml"
-  cp "$FIXTURE_ROOT/$name/decision-log.md" "$TEST_TMP/_memory/validator-sidecar/decision-log.md"
+  cp "$FIXTURE_ROOT/$name/decision-log.md" "$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md"
   # Copy all story-*.md files into the implementation-artifacts root (flat layout)
   for f in "$FIXTURE_ROOT/$name/"story-*.md; do
     [ -e "$f" ] || continue

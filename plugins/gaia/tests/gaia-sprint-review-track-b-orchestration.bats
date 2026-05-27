@@ -22,10 +22,10 @@ EOF
   }
   # Default config (overridable per-test via write_config)
   write_config 5
-  # Set up _memory/checkpoints under TMPDIR + matching .gitignore
-  mkdir -p "$TMPDIR_TEST/_memory/checkpoints"
+  # Set up .gaia/memory/checkpoints under TMPDIR + matching .gitignore
+  mkdir -p "$TMPDIR_TEST/.gaia/memory/checkpoints"
   cat >"$TMPDIR_TEST/.gitignore" <<EOF
-_memory/checkpoints/sprint-review-*
+.gaia/memory/checkpoints/sprint-review-*
 EOF
   cd "$TMPDIR_TEST"
 }
@@ -71,12 +71,12 @@ teardown() {
   echo "$output" | grep -q "TIMEOUT"
 }
 
-@test "TC-SGR-29: transcript file lands under _memory/checkpoints/sprint-review-{sprint_id}/ at mode 0600" {
+@test "TC-SGR-29: transcript file lands under .gaia/memory/checkpoints/sprint-review-{sprint_id}/ at mode 0600" {
   export FIXTURE_STDOUT="hello-from-node"
   export FIXTURE_EXIT_CODE=0
   write_config 5
   bash "$RUNNER" --sprint sprint-47 --config "$CONFIG" >/dev/null
-  transcript="$TMPDIR_TEST/_memory/checkpoints/sprint-review-sprint-47/node.log"
+  transcript="$TMPDIR_TEST/.gaia/memory/checkpoints/sprint-review-sprint-47/node.log"
   [ -f "$transcript" ]
   if [ "$(uname)" = "Darwin" ]; then
     mode=$(stat -f '%Lp' "$transcript")

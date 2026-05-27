@@ -201,11 +201,11 @@ steps_after_gaia:
 
 The `gaia_auto_rename_migration` helper at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/auto-rename-migration.sh` is **decision-driven** — it consumes a per-file decision from the env-var `GAIA_MIGRATE_DECISION_{basename_with_underscores}` (e.g., `GAIA_MIGRATE_DECISION_ci_yml=y`). The production caller (the LLM running `/gaia-config-ci --regenerate`) is responsible for the interactive orchestration:
 
-1. **Pre-flight enumerate.** Source the helper and call `gaia_auto_rename_migration` with no decisions set — it will list candidates and (default-to-skip) write `_memory/.config-stale` for each. Read the list of candidates from `.github/workflows/*.yml` filtered through `gaia_ci_classify == unprefixed`.
+1. **Pre-flight enumerate.** Source the helper and call `gaia_auto_rename_migration` with no decisions set — it will list candidates and (default-to-skip) write `.gaia/memory/.config-stale` for each. Read the list of candidates from `.github/workflows/*.yml` filtered through `gaia_ci_classify == unprefixed`.
 2. **Per-file `AskUserQuestion`.** For EACH candidate, dispatch `AskUserQuestion` with the canonical three options:
    - **`y` — gaia-rename + overlays** — managed by GAIA per FR-516; you keep custom logic via overlay stubs.
    - **`n` — user-rename** — file is yours; GAIA will never modify it again.
-   - **`s` — skip-all** — defer the decision; `_memory/.config-stale` is written and `/gaia-help` will surface the deferred migration.
+   - **`s` — skip-all** — defer the decision; `.gaia/memory/.config-stale` is written and `/gaia-help` will surface the deferred migration.
 3. **Set decision env-var + re-invoke.** Export `GAIA_MIGRATE_DECISION_{basename_with_underscores}=<choice>` for each resolved decision, then re-invoke `gaia_auto_rename_migration` to execute the renames + backups.
 4. **Y-branch regen step.** AFTER the helper renames a file to `gaia-{base}.yml`, the orchestrator MUST re-enter Sub-flow C for that file: generate the canonical body (Sub-flow C step 1), stitch overlays (step 2), apply `template_overrides` (step 4), prepend header (step 5). The helper itself does NOT regenerate the body — it only renames + scaffolds the empty overlay stubs.
 
@@ -213,7 +213,7 @@ The `gaia_auto_rename_migration` helper at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/au
 
 - **(y)** Rename to `gaia-{base}.yml` + scaffold empty overlay stubs (`gaia-{base}.user-jobs.yml`, `gaia-{base}.user-steps.yml`). **Body regen is the orchestrator's responsibility** (see step 4 of the orchestration contract above) — the helper does NOT call back into the canonical template generator.
 - **(n)** Rename to `user-{base}.yml` (byte-identical content; the file is now user-owned per FR-516).
-- **(s)** Skip-all — leave the file untouched and write `_memory/.config-stale` per FR-528 / ADR-102. The deferred migration is surfaced by `/gaia-help`.
+- **(s)** Skip-all — leave the file untouched and write `.gaia/memory/.config-stale` per FR-528 / ADR-102. The deferred migration is surfaced by `/gaia-help`.
 
 ### Backup contract
 
@@ -322,7 +322,7 @@ Resolve the answer:
 
 - `d` — render `diff -u <file> <regenerated-content>` and re-issue the prompt.
 - `b` — invoke `${CLAUDE_PLUGIN_ROOT}/scripts/ci-regen-backup.sh <file>` to create the backup directory, then proceed to sub-flow C. The backup directory uses the convention `.gaia-backup/{ci-file}-{ISO-8601-timestamp}/` at project root (AC4, TS-04).
-- `m` — abort the regen for this file. Write the `_memory/.config-stale` flag via `${CLAUDE_PLUGIN_ROOT}/scripts/ci-regen-stale-flag.sh write` so subsequent commands surface the stale-config warning.
+- `m` — abort the regen for this file. Write the `.gaia/memory/.config-stale` flag via `${CLAUDE_PLUGIN_ROOT}/scripts/ci-regen-stale-flag.sh write` so subsequent commands surface the stale-config warning.
 - `f` — proceed to sub-flow C without creating a backup.
 
 **Sub-flow C — Regenerate the workflow (AC1, AC5, AC6, AC7).**
@@ -340,7 +340,7 @@ Compute the canonical content for the workflow:
 6. After every workflow has been refreshed successfully, clear the stale flag via `${CLAUDE_PLUGIN_ROOT}/scripts/ci-regen-stale-flag.sh clear`.
 
 **Sub-flow D — Stale-flag lifecycle (AC9, TS-09..TS-11).**
-The flag file `_memory/.config-stale` is the single signal that the project's CI workflows are out-of-date relative to `project-config.yaml`:
+The flag file `.gaia/memory/.config-stale` is the single signal that the project's CI workflows are out-of-date relative to `project-config.yaml`:
 
 - `write` — set on `m` (merge-manually) in sub-flow B and on `n` (defer) in the post-edit prompt (sub-flow E).
 - `check` — emitted at the top of `/gaia-*` runs that consume the config; exits 0 with a stderr warning when present, exits 1 silently when absent.

@@ -279,22 +279,22 @@ YAML
 
 # ---------------- AC9 / TS-09..TS-11: Stale flag -----------------
 
-@test "AC9 (TS-09) — ci-regen-stale-flag.sh write creates _memory/.config-stale" {
+@test "AC9 (TS-09) — ci-regen-stale-flag.sh write creates .gaia/memory/.config-stale" {
   local sf="$SCRIPTS_DIR/ci-regen-stale-flag.sh"
   [ -x "$sf" ]
   cd "$TEST_TMPDIR"
-  mkdir -p _memory
+  mkdir -p .gaia/memory
 
   run bash "$sf" write
   [ "$status" -eq 0 ]
-  [ -f _memory/.config-stale ]
+  [ -f .gaia/memory/.config-stale ]
 }
 
 @test "AC9 (TS-10) — ci-regen-stale-flag.sh check exits 0 when flag present, prints warning to stderr" {
   local sf="$SCRIPTS_DIR/ci-regen-stale-flag.sh"
   cd "$TEST_TMPDIR"
-  mkdir -p _memory
-  : > _memory/.config-stale
+  mkdir -p .gaia/memory
+  : > .gaia/memory/.config-stale
 
   run bash "$sf" check
   [ "$status" -eq 0 ]
@@ -304,7 +304,7 @@ YAML
 @test "AC9 — ci-regen-stale-flag.sh check exits 1 when flag absent (silent)" {
   local sf="$SCRIPTS_DIR/ci-regen-stale-flag.sh"
   cd "$TEST_TMPDIR"
-  mkdir -p _memory
+  mkdir -p .gaia/memory
 
   run bash "$sf" check
   [ "$status" -eq 1 ]
@@ -313,21 +313,21 @@ YAML
 @test "AC9 (TS-11) — ci-regen-stale-flag.sh clear removes the flag file" {
   local sf="$SCRIPTS_DIR/ci-regen-stale-flag.sh"
   cd "$TEST_TMPDIR"
-  mkdir -p _memory
-  : > _memory/.config-stale
+  mkdir -p .gaia/memory
+  : > .gaia/memory/.config-stale
 
   run bash "$sf" clear
   [ "$status" -eq 0 ]
-  [ ! -e _memory/.config-stale ]
+  [ ! -e .gaia/memory/.config-stale ]
 }
 
 @test "AC9 — ci-regen-stale-flag.sh clear is idempotent when flag already absent" {
   local sf="$SCRIPTS_DIR/ci-regen-stale-flag.sh"
   cd "$TEST_TMPDIR"
-  mkdir -p _memory
+  mkdir -p .gaia/memory
   run bash "$sf" clear
   [ "$status" -eq 0 ]
-  [ ! -e _memory/.config-stale ]
+  [ ! -e .gaia/memory/.config-stale ]
 }
 
 # ---------------- AC10 / TS-12: Post-edit prompt -----------------
@@ -357,11 +357,11 @@ YAML
 @test "AC10 — ci-regen-post-edit-prompt.sh handle n writes the stale flag" {
   local pe="$SCRIPTS_DIR/ci-regen-post-edit-prompt.sh"
   cd "$TEST_TMPDIR"
-  mkdir -p _memory
+  mkdir -p .gaia/memory
 
   run bash "$pe" handle n
   [ "$status" -eq 0 ]
-  [ -f _memory/.config-stale ]
+  [ -f .gaia/memory/.config-stale ]
 }
 
 @test "AC10 — ci-regen-post-edit-prompt.sh handle d emits diff hint" {

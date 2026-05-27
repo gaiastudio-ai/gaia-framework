@@ -173,14 +173,14 @@ Per-agent procedure (run for every agent refreshed in Steps 2-9):
 6. Threshold check (Tier 1 only -- Tier 2 reports the line but does not fire archival guidance unless its tier opts in): if `(used / budget) >= archival.budget_warn_at`, emit archival guidance immediately after the budget line. The guidance MUST:
    - Name the affected agent and current usage.
    - Reference the `budget_warn_at` threshold (e.g., `>= 80% of session_budget (budget_warn_at=0.8)`).
-   - Point to archival next steps -- the `_memory/<agent>-sidecar/archive/` directory and the `/gaia-memory-hygiene` workflow for archival recommendations and confirmed archival actions.
+   - Point to archival next steps -- the `.gaia/memory/<agent>-sidecar/archive/` directory and the `/gaia-memory-hygiene` workflow for archival recommendations and confirmed archival actions.
    - Use a fixed phrasing template so the audit grep TC-GR37-23 matches both `budget_warn_at` and the archival guidance text in the same proximity.
 7. Log every per-agent line to the diff report appended to `decision-log.md` in Step 9.
 
 Reference template for the archival guidance line (sample text emitted to the user when threshold tripped):
 
 ```
-WARN: <agent> ground-truth at <pct>% of session_budget (>= budget_warn_at=<threshold>). Archival guidance: review oldest entries via /gaia-memory-hygiene; archive candidates land in _memory/<agent>-sidecar/archive/ (gitignored). Re-run /gaia-refresh-ground-truth after archival to confirm the budget recovers.
+WARN: <agent> ground-truth at <pct>% of session_budget (>= budget_warn_at=<threshold>). Archival guidance: review oldest entries via /gaia-memory-hygiene; archive candidates land in .gaia/memory/<agent>-sidecar/archive/ (gitignored). Re-run /gaia-refresh-ground-truth after archival to confirm the budget recovers.
 ```
 
 Wording must remain stable across releases so the audit grep stays green; coordinate edits with `gaia-memory-hygiene/SKILL.md` to keep archival-pointer phrasing aligned (E52-S7).

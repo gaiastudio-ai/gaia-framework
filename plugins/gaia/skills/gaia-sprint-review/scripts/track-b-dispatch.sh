@@ -177,7 +177,7 @@ fi
 
 # ---------- .gitignore pre-flight (T-SGR-7 / SR-65) ----------
 
-assert_gitignored "_memory/checkpoints/sprint-review-" || exit 1
+assert_gitignored ".gaia/memory/checkpoints/sprint-review-" || exit 1
 
 # ---------- Per-stack execution loop ----------
 

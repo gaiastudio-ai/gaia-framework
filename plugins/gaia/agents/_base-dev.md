@@ -155,7 +155,7 @@ precedence over the default skill path.
 
 ## Checkpoint Writing
 
-- After each subtask: write a checkpoint to `_memory/checkpoints/`.
+- After each subtask: write a checkpoint to `.gaia/memory/checkpoints/`.
 - Include: story key, subtask index, files changed, test results.
 - Include `files_touched` with SHA-256 checksums (`shasum -a 256 {path}`) and `last_modified` (ISO 8601) for every file created or modified.
 - On resume: if the checkpoint has `files_touched`, validate checksums before offering resume — flag changed or deleted files.

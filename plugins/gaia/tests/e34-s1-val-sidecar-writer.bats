@@ -17,7 +17,7 @@ setup() {
   common_setup
   # Build a fake project root with the required directories.
   PROJECT_ROOT="$TEST_TMP/proj"
-  mkdir -p "$PROJECT_ROOT/_memory/validator-sidecar"
+  mkdir -p "$PROJECT_ROOT/.gaia/memory/validator-sidecar"
   export PROJECT_ROOT
 }
 
@@ -40,7 +40,7 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
   # Entry body contains ADR-016 header fields.
-  local log="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
+  local log="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   [ -f "$log" ]
   grep -q "agent: val" "$log"
   grep -q "sprint: sprint-26" "$log"
@@ -60,12 +60,12 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
     --input-id "E99-S2" --decision-payload "$payload" --sprint-id "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
-  local before; before=$(wc -c <"$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md")
+  local before; before=$(wc -c <"$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md")
   run "$SCRIPT" --root "$PROJECT_ROOT" --command-name "/gaia-validate-story" \
     --input-id "E99-S2" --decision-payload "$payload" --sprint-id "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=skipped_duplicate"* ]]
-  local after; after=$(wc -c <"$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md")
+  local after; after=$(wc -c <"$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md")
   [ "$before" -eq "$after" ]
 }
 
@@ -98,10 +98,10 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
 
 @test "TC-VSP-3b: rejects sidecar-file-sibling paths outside validator-sidecar" {
   local payload='{"verdict":"passed","findings":[],"artifact_path":"x"}'
-  mkdir -p "$PROJECT_ROOT/_memory/sm-sidecar"
+  mkdir -p "$PROJECT_ROOT/.gaia/memory/sm-sidecar"
   run "$SCRIPT" --root "$PROJECT_ROOT" --command-name "/gaia-create-story" \
     --input-id "E99-S3" --decision-payload "$payload" --sprint-id "sprint-26" \
-    --target "$PROJECT_ROOT/_memory/sm-sidecar/decision-log.md"
+    --target "$PROJECT_ROOT/.gaia/memory/sm-sidecar/decision-log.md"
   [ "$status" -ne 0 ]
   [[ "$output" == *"status=rejected"* || "$stderr" == *"status=rejected"* ]]
 }
@@ -110,7 +110,7 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
   local payload='{"verdict":"passed","findings":[],"artifact_path":"x"}'
   local outside="$TEST_TMP/outside.md"; : > "$outside"
   # Create a symlink inside validator-sidecar/ that points outside.
-  ln -s "$outside" "$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
+  ln -s "$outside" "$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   run "$SCRIPT" --root "$PROJECT_ROOT" --command-name "/gaia-create-story" \
     --input-id "E99-S3" --decision-payload "$payload" --sprint-id "sprint-26"
   [ "$status" -ne 0 ]
@@ -129,14 +129,14 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
     --input-id "E99-S4" --decision-payload "$payload" --sprint-id "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
-  local ctx="$PROJECT_ROOT/_memory/validator-sidecar/conversation-context.md"
+  local ctx="$PROJECT_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
   [ -f "$ctx" ]
   grep -q "command: /gaia-create-story" "$ctx"
   grep -q "input_id: E99-S4" "$ctx"
 }
 
 @test "AC5: conversation-context header above first --- is preserved on subsequent writes" {
-  local ctx="$PROJECT_ROOT/_memory/validator-sidecar/conversation-context.md"
+  local ctx="$PROJECT_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
   cat > "$ctx" <<'EOF'
 # Val Validator — Conversation Context
 
@@ -167,7 +167,7 @@ EOF
     --input-id "sprint-nil" --decision-payload "$payload"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
-  grep -q "sprint: N/A" "$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
+  grep -q "sprint: N/A" "$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
 }
 
 # ---------------------------------------------------------------------------

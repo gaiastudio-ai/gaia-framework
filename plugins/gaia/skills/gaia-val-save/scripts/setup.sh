@@ -43,15 +43,11 @@ while IFS= read -r line; do
   esac
 done <<< "$config_output"
 
-# ---------- 2. Verify memory path (AF-2026-05-21-7) ----------
-# Canonical .gaia/memory default; legacy _memory fallback only on positive
-# pre-ADR-111 evidence.
+# ---------- 2. Verify memory path (ADR-111: .gaia/ canonical) ----------
+# AF-2026-05-27-3: .gaia/memory is the only memory tree; legacy _memory fallback
+# removed with the consolidation migration. Env override wins.
 if [ -z "${MEMORY_PATH:-}" ]; then
-  if [ -d "_memory" ] && [ ! -d ".gaia/memory" ]; then
-    MEMORY_PATH="_memory"
-  else
-    MEMORY_PATH=".gaia/memory"
-  fi
+  MEMORY_PATH=".gaia/memory"
 fi
 SIDECAR_DIR="${MEMORY_PATH}/validator-sidecar"
 if [ ! -d "$SIDECAR_DIR" ]; then

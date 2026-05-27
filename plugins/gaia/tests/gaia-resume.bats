@@ -46,8 +46,8 @@ teardown() { common_teardown; }
 
 # ---------- AC2: list checkpoints from _memory/checkpoints/ ----------
 
-@test "AC2: SKILL.md documents listing checkpoints from _memory/checkpoints/" {
-  grep -q '_memory/checkpoints' "$SKILL_FILE"
+@test "AC2: SKILL.md documents listing checkpoints from .gaia/memory/checkpoints/" {
+  grep -q '.gaia/memory/checkpoints' "$SKILL_FILE"
 }
 
 @test "AC2: SKILL.md excludes completed/ subdirectory from listing" {

@@ -39,11 +39,8 @@ if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
   fi
 fi
 if [ -z "${VALIDATOR_DECISION_LOG:-}" ]; then
-  if [ -d "$PROJECT_PATH/.gaia/memory/validator-sidecar" ]; then
-    VALIDATOR_DECISION_LOG="$PROJECT_PATH/.gaia/memory/validator-sidecar/decision-log.md"
-  else
-    VALIDATOR_DECISION_LOG="$PROJECT_PATH/_memory/validator-sidecar/decision-log.md"
-  fi
+  # AF-2026-05-27-3 (ADR-111): canonical .gaia/memory only; legacy _memory removed.
+  VALIDATOR_DECISION_LOG="$PROJECT_PATH/.gaia/memory/validator-sidecar/decision-log.md"
 fi
 
 # Silently degrade when the implementation-artifacts directory or the decision

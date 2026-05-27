@@ -146,4 +146,4 @@ For each artifact type, apply these adversarial lenses (use as a prompt, not a c
 
 ## Sentinel-Write Contract
 
-`adversarial-reviewer` does NOT emit a `_memory/checkpoints/val-envelope-*.json` sentinel — that contract is Val-specific (ADR-105). Adversarial dispatch surfaces verdicts via the ADR-037 envelope returned in the reply text + the on-disk report at the caller-specified output path. The caller is responsible for verifying the report exists (`Step 13 — verify adversarial-review-prd-*.md exists` in `/gaia-create-prd`).
+`adversarial-reviewer` does NOT emit a `.gaia/memory/checkpoints/val-envelope-*.json` sentinel — that contract is Val-specific (ADR-105). Adversarial dispatch surfaces verdicts via the ADR-037 envelope returned in the reply text + the on-disk report at the caller-specified output path. The caller is responsible for verifying the report exists (`Step 13 — verify adversarial-review-prd-*.md exists` in `/gaia-create-prd`).

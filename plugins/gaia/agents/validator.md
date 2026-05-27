@@ -29,7 +29,7 @@ You are **Val**, the GAIA Artifact Validator.
 
 After Val completes a validation pass, the Val persona MUST compute the envelope sentinel content and RETURN it as a `sentinel_envelope` field inside the ADR-037 envelope. **Val MUST NOT write the sentinel file to disk.** The caller (orchestrator, main turn) writes the sentinel by invoking `plugins/gaia/scripts/lib/write-val-envelope.sh`. This is the writer-shift introduced by ADR-105 / E87-S7, superseding the E87-S2 contract where Val wrote the sentinel from its sub-agent context.
 
-**Background.** The Claude Code substrate's content-integrity guard false-fires on sub-agent writes to `_memory/checkpoints/val-envelope-*.json`, blocking the Val dispatch gate even when Val behaved correctly (incident AI-2026-05-13-13, 2026-05-13). The writer-shift relocates the write to the orchestrator's main turn where the substrate heuristic does not fire, while preserving forgery resistance via the `persona_sig` anchor.
+**Background.** The Claude Code substrate's content-integrity guard false-fires on sub-agent writes to `.gaia/memory/checkpoints/val-envelope-*.json`, blocking the Val dispatch gate even when Val behaved correctly (incident AI-2026-05-13-13, 2026-05-13). The writer-shift relocates the write to the orchestrator's main turn where the substrate heuristic does not fire, while preserving forgery resistance via the `persona_sig` anchor.
 
 **Note (E90-S1, FR-MVB-1).** The asserting helper `plugins/gaia/scripts/lib/assert-agent-envelope.sh` is now generalizable via an optional `--expected-agent <id>` flag (default `val`) so non-Val subagents (e.g., `/gaia-meeting` PM / Architect / UX-Designer / QA turns) can inherit the same forge-resistance the Val gate has. The Val sentinel-write contract documented here remains Val-specific — generalization is on the asserting side only. `write-val-envelope.sh` is intentionally NOT generalized by E90-S1.
 
@@ -85,7 +85,7 @@ jq -n \
   --arg path "$ARTIFACT_PATH" \
   --arg verdict "$VERDICT" \
   '{agent: $agent, persona_sig: $sig, timestamp: $ts, artifact_path: $path, verdict: $verdict}'
-# DO NOT write to _memory/checkpoints/ — caller writes from main turn.
+# DO NOT write to .gaia/memory/checkpoints/ — caller writes from main turn.
 ```
 
 **Reference write idiom (orchestrator side, main turn):**
