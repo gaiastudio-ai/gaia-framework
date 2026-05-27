@@ -72,10 +72,16 @@ _load_helpers() {
 # allowlist_match — NFR-RIM-2 path classification
 # ---------------------------------------------------------------------------
 
-@test "allowlist_match accepts a sidecar decision-log under _memory/{agent}-sidecar/" {
+@test "allowlist_match accepts a sidecar decision-log under .gaia/memory/{agent}-sidecar/" {
   _load_helpers
   local root="/tmp/gaia-al-root"
-  allowlist_match "$root" "$root/_memory/architect-sidecar/decision-log.md"
+  allowlist_match "$root" "$root/.gaia/memory/architect-sidecar/decision-log.md"
+}
+
+@test "allowlist_match REJECTS the legacy _memory/{agent}-sidecar/ path (AF-2026-05-27-3)" {
+  _load_helpers
+  local root="/tmp/gaia-al-root"
+  ! allowlist_match "$root" "$root/_memory/architect-sidecar/decision-log.md"
 }
 
 @test "allowlist_match accepts a retrospective artifact" {

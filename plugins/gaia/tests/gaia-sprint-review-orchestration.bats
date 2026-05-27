@@ -283,11 +283,11 @@ teardown() { common_teardown; }
   [ -x "$WRITE_VAL_SENTINEL" ] || skip "write-val-sentinel.sh not yet implemented (TDD red)"
   # Smoke-test: feed mock Val return JSON, expect sentinel at the canonical path
   cd "$TEST_TMP"
-  mkdir -p _memory/checkpoints
+  mkdir -p .gaia/memory/checkpoints
   mock_val_return='{"status":"PASS","summary":"mock","findings":[],"agent":"val"}'
   result=$(printf '%s' "$mock_val_return" | bash "$WRITE_VAL_SENTINEL" --sprint-id sprint-99 2>&1 || true)
   # The helper should either write the sentinel or print a usage error on missing flags.
-  # Verify the script accepts --sprint-id and emits a path on stdout / writes to _memory/checkpoints/
+  # Verify the script accepts --sprint-id and emits a path on stdout / writes to .gaia/memory/checkpoints/
   echo "$result" | grep -qE 'sentinel.*written|sprint-99.*val-dispatched|sprint-review-sprint-99-val-dispatched' || {
     echo "write-val-sentinel.sh did not write the E83 dispatch sentinel for sprint-99"
     echo "Output: $result"

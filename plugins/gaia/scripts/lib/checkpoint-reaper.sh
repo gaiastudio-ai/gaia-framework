@@ -78,7 +78,9 @@ reap_dir() {
   done < <(find "$dir" -type f -mtime "$MTIME_ARG" -print0 2>/dev/null)
 }
 
-reap_dir "$ROOT/_memory/checkpoints"
-reap_dir "$ROOT/_memory/meeting-sessions"
+# AF-2026-05-27-3 (ADR-111): reap the canonical .gaia/memory tree. The prior
+# code reaped only the legacy _memory/ paths, so post-ADR-111 it reaped nothing.
+reap_dir "$ROOT/.gaia/memory/checkpoints"
+reap_dir "$ROOT/.gaia/memory/meeting-sessions"
 
 exit 0

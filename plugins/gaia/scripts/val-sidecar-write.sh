@@ -179,8 +179,6 @@ resolve_real() {
 allowlist_match() {
   local real_root="$1" real_target="$2"
   case "$real_target" in
-    "$real_root"/_memory/validator-sidecar/decision-log.md)         return 0 ;;
-    "$real_root"/_memory/validator-sidecar/conversation-context.md) return 0 ;;
     "$real_root"/.gaia/memory/validator-sidecar/decision-log.md)         return 0 ;;
     "$real_root"/.gaia/memory/validator-sidecar/conversation-context.md) return 0 ;;
     *) return 1 ;;
@@ -318,30 +316,14 @@ REAL_ROOT="$(resolve_real "$ROOT")"
 
 # Validator-sidecar location routing.
 #
-# Test04 (project-root _memory/ leak) — the prior probe keyed on whether the
-# `.gaia/memory/` SUBDIR already existed. That is racy: the first sidecar write
-# of a run can fire BEFORE `.gaia/memory/` has been mkdir'd, so on a project that
-# IS a .gaia/-layout project the write leaked to legacy `_memory/` and was never
-# migrated (the canonical file then appeared once the subdir existed, leaving a
-# stray orphan at `_memory/validator-sidecar/decision-log.md`).
-#
-# Fix: route on the PROJECT LAYOUT, not on subdir existence. A project is a
-# .gaia/-layout project when the `.gaia/` tree exists at all (ADR-111 canonical),
-# regardless of whether the memory subdir has been created yet — we mkdir it
-# below. Only fall back to legacy `_memory/` for a genuine pre-ADR-111 project:
-# no `.gaia/` tree AND an existing legacy `_memory/` to append to.
-if [ -d "$REAL_ROOT/.gaia" ]; then
-  DECISION_LOG="$REAL_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
-  CONTEXT_FILE="$REAL_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
-elif [ -d "$REAL_ROOT/_memory" ]; then
-  DECISION_LOG="$REAL_ROOT/_memory/validator-sidecar/decision-log.md"
-  CONTEXT_FILE="$REAL_ROOT/_memory/validator-sidecar/conversation-context.md"
-else
-  # No layout signal at all (fresh/bare root): default to the ADR-111 canonical
-  # `.gaia/` location rather than seeding a legacy `_memory/` tree.
-  DECISION_LOG="$REAL_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
-  CONTEXT_FILE="$REAL_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
-fi
+# AF-2026-05-27-3 (ADR-111): the validator sidecar lives at
+# `.gaia/memory/validator-sidecar/` exclusively. The legacy `_memory/` arm was
+# removed with the consolidation migration — `.gaia/memory/` is the only target.
+# `ensure_header` mkdir's the parent below, so the subdir need not pre-exist.
+# (This supersedes the AF-2026-05-27-2 layout-probe fix, which kept a transitional
+# `_memory/` arm for genuine pre-ADR-111 projects; that arm is now gone.)
+DECISION_LOG="$REAL_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
+CONTEXT_FILE="$REAL_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
 
 # --target overrides only the primary write path — it must still pass the
 # allowlist. This exists so the allowlist guard itself can be exercised

@@ -46,13 +46,9 @@ Emits a Markdown table to stdout. One row per affected checkpoint file.
 USAGE
 }
 
-# AF-2026-05-21-7: canonical default, legacy fallback only on positive
-# pre-ADR-111 evidence (legacy dir exists AND canonical doesn't).
-if [ -d "./_memory/checkpoints" ] && [ ! -d "./.gaia/memory" ]; then
-  checkpoint_path="./_memory/checkpoints"
-else
-  checkpoint_path="./.gaia/memory/checkpoints"
-fi
+# AF-2026-05-27-3 (ADR-111): .gaia/memory/checkpoints is the only location;
+# the legacy _memory/checkpoints fallback was removed with the migration.
+checkpoint_path="./.gaia/memory/checkpoints"
 days="90"
 
 while [ $# -gt 0 ]; do

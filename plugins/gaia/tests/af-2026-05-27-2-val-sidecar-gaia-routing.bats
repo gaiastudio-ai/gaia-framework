@@ -44,18 +44,20 @@ _write() {
   [ ! -f "$root/_memory/validator-sidecar/decision-log.md" ]
 }
 
-@test "AF-27-2: genuine legacy project (no .gaia/, existing _memory/) → stays on _memory/" {
+@test "AF-27-2: AF-2026-05-27-3 — even a pre-existing _memory/ is IGNORED; writer uses .gaia/memory/" {
+  # The legacy _memory/ arm was removed (ADR-111, .gaia/ is the only tree). Even
+  # when a stray _memory/ tree exists, the writer targets .gaia/memory/ and does
+  # NOT append to the legacy file.
   local root="$TEST_TMP/p3"
   mkdir -p "$root/_memory/validator-sidecar"
   printf '# Val Validator — Decision Log\n\n' > "$root/_memory/validator-sidecar/decision-log.md"
   run _write "$root" "t-003"
   [ "$status" -eq 0 ]
-  # appended to the legacy tree; no spurious .gaia/memory/ created.
-  grep -q 't-003' "$root/_memory/validator-sidecar/decision-log.md"
-  [ ! -d "$root/.gaia/memory" ]
+  grep -q 't-003' "$root/.gaia/memory/validator-sidecar/decision-log.md"
+  ! grep -q 't-003' "$root/_memory/validator-sidecar/decision-log.md"
 }
 
-@test "AF-27-2: .gaia/ AND legacy _memory/ both present → prefers .gaia/memory/" {
+@test "AF-27-2: .gaia/ AND legacy _memory/ both present → writes .gaia/memory/ only" {
   local root="$TEST_TMP/p4"
   mkdir -p "$root/.gaia/config" "$root/_memory/validator-sidecar"
   printf '# Val Validator — Decision Log\n\n' > "$root/_memory/validator-sidecar/decision-log.md"
@@ -66,10 +68,12 @@ _write() {
   ! grep -q 't-004' "$root/_memory/validator-sidecar/decision-log.md"
 }
 
-@test "AF-27-2: writer no longer routes on the .gaia/memory subdir existence probe" {
-  # Guard against the racy probe reappearing.
+@test "AF-27-2: writer routes to .gaia/memory unconditionally (no _memory arm, no subdir probe)" {
+  # AF-2026-05-27-3: the transitional layout probe AND the legacy _memory arm are
+  # both gone — the writer hardcodes the canonical .gaia/memory/ target.
   ! grep -qF 'if [ -d "$REAL_ROOT/.gaia/memory" ]; then' "$WRITER"
-  grep -qF 'if [ -d "$REAL_ROOT/.gaia" ]; then' "$WRITER"
+  ! grep -qE 'DECISION_LOG="\$REAL_ROOT/_memory' "$WRITER"
+  grep -qF 'DECISION_LOG="$REAL_ROOT/.gaia/memory/validator-sidecar/decision-log.md"' "$WRITER"
 }
 
 # --- cross-writer hygiene detector in memory-loader.sh ---

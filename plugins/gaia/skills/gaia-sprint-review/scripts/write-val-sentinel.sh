@@ -102,20 +102,18 @@ if [ -z "${CHECKPOINT_PATH:-}" ]; then
   # (post-migration canonical) over legacy _memory/checkpoints/ (in-
   # deprecation-window consumers + bats fixtures). Walk up from CWD looking
   # for either marker.
+  # AF-2026-05-27-3 (ADR-111): walk up for the canonical .gaia/memory only;
+  # the legacy _memory probe was removed with the consolidation migration.
   cwd="$(pwd)"
   while [ "$cwd" != "/" ]; do
     if [ -d "$cwd/.gaia/memory/checkpoints" ] || [ -d "$cwd/.gaia/memory" ]; then
       CHECKPOINT_PATH="$cwd/.gaia/memory/checkpoints"
       break
     fi
-    if [ -d "$cwd/_memory/checkpoints" ] || [ -d "$cwd/_memory" ]; then
-      CHECKPOINT_PATH="$cwd/_memory/checkpoints"
-      break
-    fi
     cwd="$(dirname "$cwd")"
   done
 fi
-[ -n "${CHECKPOINT_PATH:-}" ] || die "could not resolve .gaia/memory/checkpoints/ or _memory/checkpoints/ directory (set CHECKPOINT_PATH env var)"
+[ -n "${CHECKPOINT_PATH:-}" ] || die "could not resolve .gaia/memory/checkpoints/ directory (set CHECKPOINT_PATH env var)"
 mkdir -p "$CHECKPOINT_PATH"
 
 # ---------- Read + validate payload ----------

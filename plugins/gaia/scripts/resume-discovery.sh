@@ -101,14 +101,11 @@ if ! printf '%s' "$SKILL_NAME" | grep -Eq '^[a-z0-9][a-z0-9-]{0,63}$'; then
   die 1 "invalid skill_name: $SKILL_NAME"
 fi
 
-# AF-2026-05-21-7 inverted precedence: canonical default, legacy fallback
-# only on positive pre-ADR-111 evidence (legacy dir exists AND canonical doesn't).
+# AF-2026-05-27-3 (ADR-111): .gaia/memory/checkpoints is the only location —
+# the legacy _memory/checkpoints fallback was removed with the consolidation
+# migration. Env CHECKPOINT_ROOT override still wins.
 if [ -z "${CHECKPOINT_ROOT:-}" ]; then
-  if [ -d "_memory/checkpoints" ] && [ ! -d ".gaia/memory" ]; then
-    CHECKPOINT_ROOT="_memory/checkpoints"
-  else
-    CHECKPOINT_ROOT=".gaia/memory/checkpoints"
-  fi
+  CHECKPOINT_ROOT=".gaia/memory/checkpoints"
 fi
 SKILL_DIR="$CHECKPOINT_ROOT/$SKILL_NAME"
 

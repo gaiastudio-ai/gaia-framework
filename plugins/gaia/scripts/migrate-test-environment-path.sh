@@ -77,12 +77,9 @@ if [ -d "${target}/config" ] && [ ! -d "${target}/.gaia/config" ]; then
 else
   CANONICAL_REL=".gaia/config/test-environment.yaml"
 fi
-# Same positive-evidence guard for the memory sentinel (AF-21-7 idiom).
-if [ -d "${target}/_memory" ] && [ ! -d "${target}/.gaia/memory" ]; then
-  SENTINEL_REL="_memory/.test-environment-path-migrated"
-else
-  SENTINEL_REL=".gaia/memory/.test-environment-path-migrated"
-fi
+# AF-2026-05-27-3 (ADR-111): the migration sentinel lives under .gaia/memory;
+# legacy _memory fallback removed with the consolidation migration.
+SENTINEL_REL=".gaia/memory/.test-environment-path-migrated"
 
 legacy="${target}/${LEGACY_REL}"
 canonical="${target}/${CANONICAL_REL}"

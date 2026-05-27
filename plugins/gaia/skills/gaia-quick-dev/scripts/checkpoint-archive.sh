@@ -27,13 +27,12 @@ fi
 
 SPEC_NAME="$1"
 WORK_DIR="${PROJECT_PATH:-$PWD}"
-# E96-S7 partial-4c: smart-fallback
+# AF-2026-05-27-3 (ADR-111): canonical .gaia/memory/checkpoints only; legacy
+# _memory fallback removed. Env CHECKPOINT_PATH override wins.
 if [ -n "${CHECKPOINT_PATH:-}" ]; then
   CHECKPOINT_DIR="$CHECKPOINT_PATH"
-elif [ -d "$WORK_DIR/.gaia/memory/checkpoints" ]; then
-  CHECKPOINT_DIR="$WORK_DIR/.gaia/memory/checkpoints"
 else
-  CHECKPOINT_DIR="$WORK_DIR/_memory/checkpoints"
+  CHECKPOINT_DIR="$WORK_DIR/.gaia/memory/checkpoints"
 fi
 ACTIVE="$CHECKPOINT_DIR/quick-dev-${SPEC_NAME}.yaml"
 ARCHIVE_DIR="$CHECKPOINT_DIR/completed"

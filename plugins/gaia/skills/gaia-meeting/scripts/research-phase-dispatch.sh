@@ -152,13 +152,9 @@ case "$MODE" in
       exit 2
     fi
     # ADR-111 smart-fallback: .gaia/memory/ first, legacy _memory/ second.
-    # PROJECT_ROOT may not be set in some invocation contexts — use $PWD.
-    _pr="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-${PROJECT_ROOT:-.}}}"
-    if [ -d "$_pr/.gaia/memory" ]; then
-      echo ".gaia/memory/${SIDECAR_AGENT}-sidecar"
-    else
-      echo "_memory/${SIDECAR_AGENT}-sidecar"
-    fi
+    # AF-2026-05-27-3 (ADR-111): .gaia/memory is the only sidecar tree; legacy
+    # _memory fallback removed.
+    echo ".gaia/memory/${SIDECAR_AGENT}-sidecar"
     ;;
   emit-frontmatter)
     if [[ "$SKIP_RESEARCH" -eq 1 ]]; then

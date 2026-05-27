@@ -57,8 +57,9 @@ classify_line() {
   if printf '%s' "$trimmed" | grep -Eq 'https?://[^[:space:]]+'; then
     has_citation=1
   fi
-  # _memory/ reference (path component, not bare word).
-  if printf '%s' "$trimmed" | grep -Eq '(^|[[:space:]/(])_memory/[A-Za-z0-9._/-]+'; then
+  # .gaia/memory/ reference (path component, not bare word). AF-2026-05-27-3:
+  # legacy _memory/ recognition dropped — .gaia/ is the canonical tree (ADR-111).
+  if printf '%s' "$trimmed" | grep -Eq '(^|[[:space:]/(])\.gaia/memory/[A-Za-z0-9._/-]+'; then
     has_citation=1
   fi
   # Project-relative file path matching docs/ or gaia-public/ or _gaia/ prefix
@@ -143,7 +144,7 @@ cmd_gate_draft_turn() {
   echo "HALT — unflagged-inference detected; round-robin advancement halted"
   printf '%s\n' "${violators[@]}"
   echo ""
-  echo "Re-emit the turn with a citation marker (file path, URL, or _memory/ ref)"
+  echo "Re-emit the turn with a citation marker (file path, URL, or .gaia/memory/ ref)"
   echo "or the literal [inference] token before persistence (FR-MTG-5, FR-MTG-28)."
   exit 2
 }
