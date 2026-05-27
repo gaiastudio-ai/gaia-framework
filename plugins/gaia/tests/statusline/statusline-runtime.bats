@@ -547,3 +547,52 @@ _model_line() { # $1 = display_name ; prints stripped line 1 (no color)
   _model_line "Opus 4.7 (preview)"
   echo "$output" | grep -qF "Opus 4.7 (preview)"
 }
+
+# ---------- AF-27-7: installed runtime self-heals from the plugin cache -----
+# /plugin update refreshes only the plugin CACHE, never ~/.claude/gaia-statusline/.
+# The runtime now self-heals: when run AS the installed copy and the cached
+# runtime differs, it re-copies the runtime + helpers in place and stamps the
+# .installed-version marker — so users get shipped fixes on the next render.
+
+@test "AF-27-7: installed runtime re-copies a newer cache runtime + stamps marker" {
+  [ -f "$RUNTIME" ]
+  local install_dir="$HOME/.claude/gaia-statusline"
+  local cache_scripts="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/1.180.3/scripts"
+  mkdir -p "$install_dir/lib" "$cache_scripts/lib" \
+           "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/1.180.3/.claude-plugin"
+  printf '{ "name":"gaia","version":"1.180.3" }' > "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/1.180.3/.claude-plugin/plugin.json"
+  # CACHE = real current runtime + helpers, with a trailing byte so it DIFFERS
+  # from the installed copy (forces the self-heal trigger).
+  cp "$RUNTIME" "$cache_scripts/statusline.sh"; printf '\n# newer\n' >> "$cache_scripts/statusline.sh"
+  cp "$PLUGIN_ROOT/scripts/lib/statusline-colors.sh" "$cache_scripts/lib/statusline-colors.sh"
+  cp "$PLUGIN_ROOT/scripts/lib/statusline-glyphs.sh" "$cache_scripts/lib/statusline-glyphs.sh" 2>/dev/null || true
+  cp "$PLUGIN_ROOT/scripts/statusline-update-check.sh" "$PLUGIN_ROOT/scripts/statusline-git-dirty-check.sh" "$cache_scripts/" 2>/dev/null || true
+  # INSTALLED = the current runtime (so it carries the self-heal logic) but a
+  # STALE colors lib + NO marker.
+  cp "$RUNTIME" "$install_dir/statusline.sh"; chmod +x "$install_dir/statusline.sh"
+  printf 'STALE COLORS\n' > "$install_dir/lib/statusline-colors.sh"
+  rm -f "$install_dir/.installed-version"
+  # Run the INSTALLED runtime.
+  run bash -c "printf '%s' '$STDIN_JSON' | env HOME='$HOME' COLUMNS=200 NO_COLOR=1 PROJECT_PATH='$PROJECT_PATH' '$install_dir/statusline.sh'"
+  [ "$status" -eq 0 ]
+  # Installed statusline now matches the cache copy.
+  cmp -s "$install_dir/statusline.sh" "$cache_scripts/statusline.sh"
+  # Stale lib was replaced with the real one.
+  ! grep -q 'STALE COLORS' "$install_dir/lib/statusline-colors.sh"
+  grep -q 'gradient_color' "$install_dir/lib/statusline-colors.sh"
+  # Marker stamped with the active version.
+  [ "$(cat "$install_dir/.installed-version" 2>/dev/null)" = "1.180.3" ]
+}
+
+@test "AF-27-7: dev/in-tree run (NOT the install dir) does NOT self-heal" {
+  [ -f "$RUNTIME" ]
+  local install_dir="$HOME/.claude/gaia-statusline"
+  mkdir -p "$install_dir"
+  rm -f "$install_dir/.installed-version" "$install_dir/statusline.sh"
+  # Run the repo runtime directly (path is NOT under the install dir).
+  run bash -c "printf '%s' '$STDIN_JSON' | env HOME='$HOME' COLUMNS=200 NO_COLOR=1 PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  # No marker written, no install-dir runtime created by the dev run.
+  [ ! -f "$install_dir/.installed-version" ]
+  [ ! -f "$install_dir/statusline.sh" ]
+}

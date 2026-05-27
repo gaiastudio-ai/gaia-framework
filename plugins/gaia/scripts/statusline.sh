@@ -101,6 +101,55 @@ fi
 # Tier 3: last-resort literal.
 [ -n "$GAIA_VERSION" ] || GAIA_VERSION="dev"
 
+# ---- Self-heal the installed runtime against the active plugin (AF-2026-05-27-7)
+# The statusline RUNTIME is a standalone copy under ~/.claude/gaia-statusline/
+# (installed once by install-statusline.sh). `/plugin marketplace update` only
+# refreshes the plugin CACHE — it never touches the installed runtime — so the
+# runtime silently froze at whatever version the user first installed and NONE
+# of the shipped fixes appeared after an update. The pre-existing staleness
+# detector also stayed silent for installs with no `.installed-version` marker.
+#
+# Fix: when this script is running AS the installed runtime AND a newer (or
+# simply different) runtime exists in the resolved plugin cache, re-copy the
+# runtime + helpers in place and (re)write the marker. This makes every user
+# self-heal on the next render after a `/plugin` update — no manual re-install.
+#
+# Guards: best-effort (never breaks the render), only fires from the installed
+# location (so dev/in-tree runs are untouched), and only copies a file when it
+# actually differs (`cmp -s`). The copied runtime takes effect on the NEXT
+# render; this render finishes with the current (about-to-be-replaced) code.
+_GAIA_INSTALL_DIR="$HOME/.claude/gaia-statusline"
+_GAIA_SELF="${BASH_SOURCE[0]:-$0}"
+case "$_GAIA_SELF" in
+  "$_GAIA_INSTALL_DIR"/*)
+    # We ARE the installed runtime. Is there a newer cache runtime to pull in?
+    if [ -n "${GAIA_VERSION_CACHED:-}" ]; then
+      _GAIA_CACHE_SCRIPTS="$PLUGIN_CACHE_DIR/$GAIA_VERSION_CACHED/scripts"
+      if [ -d "$_GAIA_CACHE_SCRIPTS" ] && [ -f "$_GAIA_CACHE_SCRIPTS/statusline.sh" ]; then
+        # Only act when the runtime actually differs (cheap cmp, no churn).
+        if ! cmp -s "$_GAIA_CACHE_SCRIPTS/statusline.sh" "$_GAIA_INSTALL_DIR/statusline.sh" 2>/dev/null; then
+          mkdir -p "$_GAIA_INSTALL_DIR/lib" 2>/dev/null || true
+          # Mirror exactly what install-statusline.sh copies.
+          for _gp in \
+            "statusline.sh:$_GAIA_INSTALL_DIR/statusline.sh" \
+            "lib/statusline-glyphs.sh:$_GAIA_INSTALL_DIR/lib/statusline-glyphs.sh" \
+            "lib/statusline-colors.sh:$_GAIA_INSTALL_DIR/lib/statusline-colors.sh" \
+            "statusline-update-check.sh:$_GAIA_INSTALL_DIR/statusline-update-check.sh" \
+            "statusline-git-dirty-check.sh:$_GAIA_INSTALL_DIR/statusline-git-dirty-check.sh"; do
+            _gp_src="$_GAIA_CACHE_SCRIPTS/${_gp%%:*}"
+            _gp_dst="${_gp#*:}"
+            if [ -f "$_gp_src" ] && ! cmp -s "$_gp_src" "$_gp_dst" 2>/dev/null; then
+              cp "$_gp_src" "$_gp_dst" 2>/dev/null && chmod +x "$_gp_dst" 2>/dev/null || true
+            fi
+          done
+          # Stamp the marker so the staleness detector + future self-heals agree.
+          printf '%s' "$GAIA_VERSION" > "$_GAIA_INSTALL_DIR/.installed-version" 2>/dev/null || true
+        fi
+      fi
+    fi
+    ;;
+esac
+
 # ---- Read model from stdin -------------------------------------------------
 MODEL_NAME="$(printf '%s' "$INPUT" | jq -r '.model.display_name // .model.id // "claude"' 2>/dev/null)"
 [ -n "$MODEL_NAME" ] || MODEL_NAME="claude"
