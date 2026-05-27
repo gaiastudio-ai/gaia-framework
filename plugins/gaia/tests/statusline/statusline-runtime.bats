@@ -475,3 +475,44 @@ JSON
   [ "$status" -eq 0 ]
   ! echo "$output" | grep -q "feature/x\*"
 }
+
+# ---------- model display-name: strip trailing context-window parenthetical ----
+# The statusline shows just the model, not its context-window suffix (user req).
+# "Opus 4.7 (1M context)" -> "Opus 4.7"; non-context parentheticals are kept.
+
+_model_line() { # $1 = display_name ; prints stripped line 1 (no color)
+  local dn="$1"
+  local stdin
+  stdin='{"model":{"id":"x","display_name":"'"$dn"'"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"context_window":{"used_percentage":20,"current_usage":100}}'
+  run bash -c "COLUMNS=200 NO_COLOR=1 printf '%s' '$stdin' | env COLUMNS=200 NO_COLOR=1 '$RUNTIME'"
+  [ "$status" -eq 0 ]
+}
+
+@test "model: strips '(1M context)' suffix -> shows bare model" {
+  _model_line "Opus 4.7 (1M context)"
+  echo "$output" | grep -q "Opus 4.7"
+  ! echo "$output" | grep -q "1M context"
+  ! echo "$output" | grep -qF "(1M"
+}
+
+@test "model: strips '(1M)' suffix" {
+  _model_line "Opus 4.7 (1M)"
+  echo "$output" | grep -q "Opus 4.7"
+  ! echo "$output" | grep -qF "(1M)"
+}
+
+@test "model: strips '(200K context)' suffix" {
+  _model_line "Sonnet 4.6 (200K context)"
+  echo "$output" | grep -q "Sonnet 4.6"
+  ! echo "$output" | grep -q "200K context"
+}
+
+@test "model: leaves a plain model name unchanged" {
+  _model_line "Claude Opus 4.7"
+  echo "$output" | grep -q "Claude Opus 4.7"
+}
+
+@test "model: leaves a NON-context parenthetical intact (e.g. '(preview)')" {
+  _model_line "Opus 4.7 (preview)"
+  echo "$output" | grep -qF "Opus 4.7 (preview)"
+}

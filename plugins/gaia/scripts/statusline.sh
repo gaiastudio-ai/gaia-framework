@@ -104,6 +104,16 @@ fi
 # ---- Read model from stdin -------------------------------------------------
 MODEL_NAME="$(printf '%s' "$INPUT" | jq -r '.model.display_name // .model.id // "claude"' 2>/dev/null)"
 [ -n "$MODEL_NAME" ] || MODEL_NAME="claude"
+# Strip a trailing context-window parenthetical from the display name so the
+# statusline shows just the model (e.g. "Opus 4.7 (1M context)" -> "Opus 4.7").
+# Only drops a final "( ... )" group whose contents mention context / a token
+# window (1M / 200K / "context") — other parentheticals are left intact.
+case "$MODEL_NAME" in
+  *\(*context*\)|*\(*[0-9][MmKk]\))
+    MODEL_NAME="$(printf '%s' "$MODEL_NAME" | sed -E 's/[[:space:]]*\([^)]*([Cc]ontext|[0-9]+[MmKk])[^)]*\)[[:space:]]*$//')"
+    ;;
+esac
+[ -n "$MODEL_NAME" ] || MODEL_NAME="claude"
 
 # ---- Project name ----------------------------------------------------------
 PROJECT_NAME="$(basename "$PROJECT_PATH" 2>/dev/null || printf 'project')"
