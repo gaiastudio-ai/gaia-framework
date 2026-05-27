@@ -225,9 +225,18 @@ teardown() { common_teardown; }
 }
 
 @test "AF-2026-05-17-9: all three a11y skills contain the SKIPPED-on-false guard wording" {
+  # AF-2026-05-27-1 / Test04 F-012: gaia-validate-design-a11y's guard message was
+  # enriched to an actionable form (`SKIPPED — a11y review not run: compliance.
+  # ui_present is not true (...) run /gaia-config-compliance ...`), so the exact
+  # `SKIPPED — compliance.ui_present is not true` literal no longer matches there.
+  # Assert the stable contract substring `compliance.ui_present is not true`
+  # (present in all three skills) within a SKIPPED guard, which is what this test
+  # actually guarantees — the three-phase a11y family all gate on ui_present.
   for skill in gaia-validate-design-a11y gaia-review-a11y gaia-test-a11y; do
-    run grep -F 'SKIPPED — compliance.ui_present is not true' "$SKILLS_DIR/$skill/SKILL.md"
-    [ "$status" -eq 0 ] || { echo "FAIL: $skill SKILL.md missing SKIPPED guard wording"; return 1; }
+    run grep -F 'compliance.ui_present is not true' "$SKILLS_DIR/$skill/SKILL.md"
+    [ "$status" -eq 0 ] || { echo "FAIL: $skill SKILL.md missing the ui_present SKIPPED guard"; return 1; }
+    run grep -F 'SKIPPED' "$SKILLS_DIR/$skill/SKILL.md"
+    [ "$status" -eq 0 ] || { echo "FAIL: $skill SKILL.md missing the SKIPPED keyword"; return 1; }
   done
 }
 

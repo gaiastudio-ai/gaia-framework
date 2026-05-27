@@ -23,6 +23,16 @@ Follow the full `gaia-bridge-toggle` skill body with `mode = enable`:
 
 1. Resolve the current `test_execution_bridge.bridge_enabled` value via `scripts/resolve-config.sh` (per ADR-044 — the flag lives at `test_execution_bridge.bridge_enabled` in `config/project-config.yaml`; the legacy v1 location `_gaia/_config/global.yaml` is retired and no longer used).
 2. If the section is missing, scaffold a minimal stub instead of halting (AF-2026-05-22-9 Bug-7, hardened by AF-2026-05-24-7 / Test02 F-2). Run the deterministic helper `bash ${CLAUDE_PLUGIN_ROOT}/skills/gaia-bridge-enable/scripts/bridge-stub-scaffold.sh` — it idempotently appends the canonical minimal block (resolves the canonical `.gaia/config/project-config.yaml` path with legacy `config/project-config.yaml` fallback). The helper exits 0 on append OR when the section is already present (idempotent). Do NOT inline the YAML block in the LLM prose — that pattern was fragile under Mode A subagent dispatch (Test02 F-2). Then continue with the toggle below. The operator can run `/gaia-ci-setup` later to populate the full block.
+   > **Why scaffold-then-flip is two steps (F-009, Test04).** On a greenfield
+   > config the stub is written with `bridge_enabled: false` (step 2) and then
+   > flipped to `true` (step 4). This is intentional, not an oversight: the
+   > scaffold helper is shared with `/gaia-bridge-disable` and `gaia-bridge-toggle`
+   > (it only guarantees the section EXISTS in canonical shape), while the
+   > enable/disable VALUE is owned by the toggle step. Collapsing them into a
+   > single write would duplicate the canonical-block definition across the
+   > scaffold helper and the toggle, reintroducing the inline-YAML fragility
+   > Test02 F-2 fixed. Both steps are deterministic and idempotent, so the
+   > two-write sequence is safe and re-runnable.
 3. If already `true`, report `Bridge already enabled` and exit without writing.
 4. Otherwise, perform the regex-based in-place edit to `config/project-config.yaml` to flip `bridge_enabled: false` → `bridge_enabled: true`, preserving all comments and formatting.
 5. Run the Post-Flip Checks (enable-only — stat `.gaia/artifacts/test-artifacts/test-environment.yaml`; for absent in YOLO, auto-skip with a warning).

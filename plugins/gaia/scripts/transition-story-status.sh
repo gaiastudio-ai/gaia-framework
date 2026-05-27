@@ -702,8 +702,25 @@ update_sprint_status_yaml() {
   fi
 
   if [ ! -s "$yaml" ]; then
-    # sprint-status.yaml may not exist in fresh-project flows; skip silently.
-    log "sprint-status.yaml not found at '$yaml' — skipping yaml update"
+    # F-019 (Test04): the four-surface atomic transition degrades to three
+    # surfaces when sprint-status.yaml is absent. That is LEGITIMATE for a
+    # backlog story (sprint_id: null) in a fresh/no-sprint project — stay quiet.
+    # But if the story HAS a sprint_id set, the missing yaml is real drift: the
+    # story believes it belongs to a sprint whose status file is gone. Surface
+    # that as a WARNING (stderr) rather than a silent skip, mirroring the
+    # backlog-vs-drift discrimination already applied to the no-entry path below.
+    local _sid=""
+    if [ -n "${STORY_FILE:-}" ] && [ -f "${STORY_FILE:-}" ]; then
+      _sid="$(read_frontmatter_field "$STORY_FILE" sprint_id)"
+    fi
+    case "$_sid" in
+      ""|null|"~")
+        log "sprint-status.yaml not found at '$yaml' — skipping yaml update (story is backlog: sprint_id unset)"
+        ;;
+      *)
+        err "WARNING: story '$key' has sprint_id '$_sid' but sprint-status.yaml is missing at '$yaml' — yaml surface NOT updated (3 of 4 surfaces written); run /gaia-sprint-status to reconcile"
+        ;;
+    esac
     return 0
   fi
 

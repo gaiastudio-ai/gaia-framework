@@ -100,7 +100,12 @@ item_check() {
 # (case-insensitive; trailing content tolerated) is present.
 heading_present() {
   local f="$1" text="$2"
-  if grep -Ei "^##[[:space:]]+${text}([[:space:]]|\$|[[:punct:]])" "$f" >/dev/null 2>&1; then
+  # F-011 (Test04): tolerate optional numeric outline prefixes on H2 headings
+  # (`## 1. Personas`, `## 10.1 Flows`) — back-ported from the sibling
+  # gaia-create-prd/finalize.sh (patched under AF-2026-05-22-3 Bug-3). The
+  # ux-designer subagent authors numbered headings as a natural document
+  # convention; without this the checklist fails even when all sections exist.
+  if grep -Ei "^##[[:space:]]+([0-9]+(\.[0-9]+)*\.?[[:space:]]+)?${text}([[:space:]]|\$|[[:punct:]])" "$f" >/dev/null 2>&1; then
     echo "pass"
   else
     echo "fail"
@@ -120,7 +125,7 @@ section_body_nonempty() {
   awk -v pat="$pattern" '
     BEGIN { in_section = 0; found = 0 }
     {
-      if ($0 ~ "^##[[:space:]]+" pat "([[:space:]]|$|[[:punct:]])") {
+      if ($0 ~ "^##[[:space:]]+([0-9]+(\\.[0-9]+)*\\.?[[:space:]]+)?" pat "([[:space:]]|$|[[:punct:]])") {
         in_section = 1; next
       }
       if (in_section && /^##[[:space:]]/) { in_section = 0 }
@@ -143,7 +148,7 @@ fr_screen_table_present() {
   awk '
     BEGIN { in_section = 0; saw_header = 0; saw_sep = 0 }
     {
-      if ($0 ~ /^##[[:space:]]+FR-to-Screen[[:space:]]+Mapping([[:space:]]|$|[[:punct:]])/) {
+      if ($0 ~ /^##[[:space:]]+([0-9]+(\.[0-9]+)*\.?[[:space:]]+)?FR-to-Screen[[:space:]]+Mapping([[:space:]]|$|[[:punct:]])/) {
         in_section = 1; next
       }
       if (in_section && /^##[[:space:]]/) { in_section = 0 }
@@ -164,7 +169,7 @@ fr_screen_table_has_rows() {
   awk '
     BEGIN { in_section = 0; saw_sep = 0; rows = 0 }
     {
-      if ($0 ~ /^##[[:space:]]+FR-to-Screen[[:space:]]+Mapping([[:space:]]|$|[[:punct:]])/) {
+      if ($0 ~ /^##[[:space:]]+([0-9]+(\.[0-9]+)*\.?[[:space:]]+)?FR-to-Screen[[:space:]]+Mapping([[:space:]]|$|[[:punct:]])/) {
         in_section = 1; saw_sep = 0; next
       }
       if (in_section && /^##[[:space:]]/) { in_section = 0 }
