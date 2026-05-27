@@ -59,14 +59,10 @@ _cleanup_tmps() {
 }
 trap '_cleanup_tmps' EXIT INT TERM
 
-# AF-2026-05-21-7: canonical .gaia/memory default, legacy _memory fallback
-# only on positive pre-ADR-111 evidence (legacy dir exists AND canonical doesn't).
+# AF-2026-05-27-3 (ADR-111): .gaia/memory is the only memory tree — the legacy
+# _memory fallback was removed with the consolidation migration. Env override wins.
 if [ -z "${MEMORY_PATH:-}" ]; then
-  if [ -d "_memory" ] && [ ! -d ".gaia/memory" ]; then
-    MEMORY_PATH="_memory"
-  else
-    MEMORY_PATH=".gaia/memory"
-  fi
+  MEMORY_PATH=".gaia/memory"
 fi
 CONFIG="${MEMORY_PATH}/config.yaml"
 

@@ -59,27 +59,6 @@ CONFIG="${MEMORY_PATH}/config.yaml"
 # cross-writer stray-`_memory/` hygiene warning below, which flags a leaked
 # legacy tree without forcing read-only.
 
-# Stray-legacy-memory hygiene warning (AF-2026-05-27-2/3). A .gaia/-layout
-# project should have NO project-root _memory/ tree. Warn (once, non-fatal,
-# never read-only) whenever a stray _memory/ coexists with the canonical
-# .gaia/memory/, so any leak from any writer is surfaced at session load rather
-# than silently accumulating. Does NOT delete anything — cleanup is an explicit
-# operator action.
-_gaia_stray_legacy_memory_warn() {
-  case "$MEMORY_PATH" in
-    *"/.gaia/memory"|".gaia/memory")
-      local _root
-      _root="$(cd "${MEMORY_PATH%/.gaia/memory}" 2>/dev/null && pwd || true)"
-      [ -n "$_root" ] || return 0
-      if [ -d "${_root}/.gaia/memory" ] && [ -d "${_root}/_memory" ]; then
-        printf 'session-load: WARNING — a project-root _memory/ tree coexists with the canonical .gaia/memory/ (ADR-111). A writer likely leaked a sidecar/checkpoint outside .gaia/. Review %s and reconcile into .gaia/memory/.\n' "${_root}/_memory" >&2
-      fi
-      ;;
-  esac
-  return 0
-}
-_gaia_stray_legacy_memory_warn || true
-
 # Stray-legacy-memory hygiene warning (Test04 _memory leak follow-up).
 # A .gaia/-layout project should have NO project-root _memory/ tree — but a
 # buggy writer that resolved its path on a racy "does .gaia/memory exist yet"
