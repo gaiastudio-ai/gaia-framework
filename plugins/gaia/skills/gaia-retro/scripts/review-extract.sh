@@ -16,9 +16,87 @@
 
 set -euo pipefail
 
+MAX_BYTES=65536
+
+# Extract sprint_id from frontmatter; returns empty string on miss.
+frontmatter_sprint() {
+  local f="$1"
+  head -c "$MAX_BYTES" "$f" | awk '/^sprint_id:/ { gsub(/"/, "", $2); print $2; exit }'
+}
+
+# extract_verdict — return the review-report verdict VALUE, or UNKNOWN when no
+# verdict line is present (E105-S4 / AI-99). Tolerant of every real-world
+# verdict-line shape observed across the report corpus so a present verdict
+# never parses as UNKNOWN due to formatting drift:
+#   **Verdict:** VALUE         (colon outside the bold span)
+#   **Verdict: VALUE**         (colon inside the bold span — the dominant form)
+#   ## Verdict: VALUE          (H2 heading form, e.g. code-review-E106-S1.md)
+#   Verdict: VALUE             (plain)
+#   **Verdict: ORIG -> VALUE** (arrow-override — the POST-arrow value wins)
+# The value token is the last ALL-CAPS/underscore word on the line after any
+# `->`/`→` override arrow, with surrounding markdown (`*`) stripped.
+extract_verdict() {
+  local f="$1" v
+  v="$(head -c "$MAX_BYTES" "$f" | awk '
+    # Portable unicode rightwards-arrow (U+2192) — BSD awk does not interpret
+    # \xNN in a regex literal, so build the byte sequence via sprintf and match
+    # the ASCII "->" plus this string explicitly (E105-S4 Val F1 portability).
+    BEGIN { UARROW = sprintf("%c%c%c", 226, 134, 146) }
+    # Match a line that introduces a verdict in any of the accepted shapes.
+    # Strip leading markdown heading/bold + the literal "Verdict" label + colon.
+    /[Vv]erdict[*: ]/ && /[Vv]erdict/ {
+      line = $0
+      # only consider lines whose first non-space token is a Verdict label
+      # (heading `##`, bold `**`, or bare) — avoids matching prose mentions.
+      probe = line
+      gsub(/^[[:space:]]*[#*]*[[:space:]]*/, "", probe)
+      if (probe !~ /^[Vv]erdict[[:space:]]*:/) next
+      # drop everything up to and including the FIRST colon after "Verdict"
+      sub(/^[^:]*:/, "", line)
+      # strip markdown bold/italic markers
+      gsub(/\*/, "", line)
+      # Base verdict = FIRST uppercase/underscore word after the label.
+      n = split(line, words, /[[:space:]]+/)
+      base = ""
+      for (i = 1; i <= n; i++) {
+        if (words[i] ~ /^[A-Z][A-Z_]+$/) { base = words[i]; break }
+      }
+      # Arrow-override (e.g. "FAILED -> PASSED"): take the post-arrow value ONLY
+      # when the immediate post-arrow token is a BARE verdict word — NOT a
+      # gate-row annotation like "APPROVE -> Review Gate row = PASSED" (E105-S4
+      # Val F1). When the post-arrow text is an annotation, the base verdict wins.
+      if (line ~ /->/ || index(line, UARROW) > 0) {
+        after = line
+        # strip everything through the LAST arrow (ASCII or unicode)
+        sub(/^.*->[[:space:]]*/, "", after)
+        ua = index(after, UARROW)
+        if (ua > 0) { after = substr(after, ua + length(UARROW)) }
+        sub(/^[[:space:]]+/, "", after)
+        m = split(after, awords, /[[:space:]]+/)
+        # bare override = first post-arrow token is an ALL-CAPS verdict word AND
+        # is not immediately part of a "word = value" / "row" annotation phrase.
+        if (m >= 1 && awords[1] ~ /^[A-Z][A-Z_]+$/ && after !~ /[=]|[Rr]ow/) {
+          print awords[1]; exit
+        }
+      }
+      if (base != "") { print base; exit }
+    }')"
+  if [ -z "$v" ]; then
+    printf 'UNKNOWN'
+  else
+    printf '%s' "$v"
+  fi
+}
+
+# ---------- Sourced-guard (E105-S4): expose the functions for unit testing ----------
+# When sourced (BASH_SOURCE != $0) only the functions above are defined; the
+# arg-parsing + main report body below runs ONLY on direct execution.
+if [ "${BASH_SOURCE[0]:-$0}" != "${0}" ]; then
+  return 0 2>/dev/null || true
+fi
+
 IMPL_DIR=""
 SPRINT_ID=""
-MAX_BYTES=65536
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -37,32 +115,6 @@ if [ ! -d "$IMPL_DIR" ]; then
   echo "no review artifacts for sprint $SPRINT_ID (impl-dir missing)"
   exit 0
 fi
-
-# Extract sprint_id from frontmatter; returns empty string on miss.
-frontmatter_sprint() {
-  local f="$1"
-  head -c "$MAX_BYTES" "$f" | awk '/^sprint_id:/ { gsub(/"/, "", $2); print $2; exit }'
-}
-
-extract_verdict() {
-  local f="$1" v
-  v="$(head -c "$MAX_BYTES" "$f" | awk -F '[:*]' '
-    /^\*\*Verdict:\*\*/ {
-      # Line is like: **Verdict:** PASSED
-      match($0, /\*\*Verdict:\*\*[[:space:]]*[A-Za-z]+/)
-      if (RLENGTH > 0) {
-        chunk = substr($0, RSTART, RLENGTH)
-        n = split(chunk, parts, /[[:space:]]+/)
-        print parts[n]
-        exit
-      }
-    }')"
-  if [ -z "$v" ]; then
-    printf 'UNKNOWN'
-  else
-    printf '%s' "$v"
-  fi
-}
 
 emit_block() {
   local header="$1"

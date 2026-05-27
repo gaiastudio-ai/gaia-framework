@@ -107,7 +107,7 @@ setup() {
 # ---------- AC6: Output format verification ----------
 
 @test "AC6: SKILL.md references output to docs/test-artifacts/" {
-  grep -q "docs/test-artifacts\|test-artifacts/" "$SKILL_FILE"
+  grep -q "planning-artifacts/performance-test-plan\|test-artifacts/\|docs/test-artifacts" "$SKILL_FILE"  # E105-S3 / ADR-127 Pillar 3: performance-test-plan grouped under planning-artifacts/ (legacy test-artifacts/ read-only)
 }
 
 # ---------- Knowledge bundling (NFR-048) ----------

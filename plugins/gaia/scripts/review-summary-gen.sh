@@ -110,6 +110,22 @@ CANONICAL_REPORT_RELPATHS=(
   "{impl_artifacts}/performance-review-{key}.md"
 )
 
+# E105-S4 / ADR-127 §7.4 / E105-S1: the per-story `reviews/` subdir is the NEW
+# canonical home for review reports — epic-*/{key}-{slug}/reviews/<type>-{key}.md
+# (FR-402 type-first names, identical to the flat form's basenames). The flat
+# {impl_artifacts}/<type>-{key}.md form above is the read-side fallback during
+# the migration window. The proof-of-execution check (below) accepts a report at
+# EITHER home so a report written to the per-story reviews/ dir is not flagged
+# MISSING. The basenames are the single source — only the directory differs.
+CANONICAL_REPORT_BASENAMES=(
+  "code-review-{key}.md"
+  "qa-tests-{key}.md"
+  "security-review-{key}.md"
+  "test-automate-review-{key}.md"
+  "test-review-{key}.md"
+  "performance-review-{key}.md"
+)
+
 # _resolve_artifact_dirs — set `__impl_artifacts` and `__test_artifacts` in the
 # caller's scope, using the same canonical-first + legacy-fallback resolution
 # pattern as lines 539/598 (E96-S7 partial-4b). Idempotent.
@@ -450,7 +466,17 @@ _render_summary() {
     esac
     case "$verdict_here" in
       PASSED|FAILED)
-        if [ ! -f "$abs_rp" ]; then
+        local found=0
+        [ -f "$abs_rp" ] && found=1
+        # E105-S4: accept the report at the per-story reviews/ home too
+        # (epic-*/{key}-{slug}/reviews/<basename>), the new canonical location.
+        if [ "$found" -eq 0 ]; then
+          local _bn="${CANONICAL_REPORT_BASENAMES[$idx]//\{key\}/$key}"
+          local _hit
+          _hit="$(find "$__impl_artifacts" -type f -path "*/${key}-*/reviews/${_bn}" -print 2>/dev/null | head -1)"
+          [ -n "$_hit" ] && [ -f "$_hit" ] && found=1
+        fi
+        if [ "$found" -eq 0 ]; then
           report_missing_idx="${report_missing_idx}${idx},"
         fi
         ;;

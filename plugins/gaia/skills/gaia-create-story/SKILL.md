@@ -32,6 +32,14 @@ The four artifact placeholders resolve at skill-load via `!scripts/resolve-confi
 
 Native Claude Code conversion of the legacy create-story workflow (Cluster 7, E28-S52).
 
+### `--for-sprint <id>` batch mode (E107-S3 / ADR-128, FR-559)
+
+`/gaia-create-story --for-sprint <id> [--refresh]` materializes ONLY the stories a sprint selected (E107-S2 backlog selection), in one invocation — so an operator does not run `/gaia-create-story` per story (fixes Test02 F-9 / Test01 E2; consolidates the prior `--bulk` + `--materialize` proposals). It is **create-if-missing and idempotent**: a key that already has a file is skipped; `--refresh` re-elaborates a rolled-over story BUT never clobbers an in-progress/review/done one (status-guarded).
+
+The deterministic half runs `${CLAUDE_PLUGIN_ROOT}/scripts/materialize-sprint-stories.sh --keys "<selected keys>" --epics <epics-and-stories.md> --impl-root <implementation-artifacts> --project-config <yaml> [--refresh] --manifest <path>`: it scaffolds each missing story as a skeleton (priority_flag: null per `feedback_priority_flag_never_auto_set`) into the E105-S1 per-story layout (`epic-{slug}/{key}-{slug}/story.md` via `resolve-epic-slug.sh`), and writes an **elaboration manifest** of the newly-scaffolded keys.
+
+Story ELABORATION — filling the `{CONTENT_PLACEHOLDER}` bodies (real ACs/tasks/test-scenarios) — is NOT scriptable: it is the LLM-driven Step 3/Step 4 work below. So `--for-sprint` is a **main-turn loop** (ADR-093): for each key in the manifest, run the per-story elaboration (Steps 3–6), then transition the story to `ready-for-dev` via `transition-story-status.sh` (NOT a direct `status:` edit, per ADR-095). The sprint that selected these stories commits as `status: planned` (E107-S1); E107-S4's readiness gate activates it after materialization + ATDD.
+
 ## Critical Rules
 
 - An epics-and-stories document MUST exist at `{planning_artifacts}/epics-and-stories.md` before starting (path resolved via `!scripts/resolve-config.sh planning_artifacts`). If missing, fail fast with "epics-and-stories.md not found at {planning_artifacts}/epics-and-stories.md -- run /gaia-create-epics first."
@@ -315,13 +323,25 @@ FRONTMATTER_YAML=$(!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/gener
 #
 # AF-2026-05-22-8 Bug-18 canonical-naming contract:
 #   - Use the resolver output VERBATIM as the per-epic directory name.
-#   - Path: ${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/{story_key}-{slug}.md
 #   - Do NOT write to `epic-{N}/stories/...` (numeric-only, no slug) — that
 #     bypasses resolve-epic-slug.sh and produces split state with
 #     transition-story-status.sh which uses the resolver path directly.
 #     Per Bug-18 from the YARA test report, mixing the two produces split
 #     state across TWO directories per epic: story .md files in one,
 #     story-index.yaml in the other.
+#
+# E105-S1 / ADR-127 — NEW per-story nested write target (drops the `stories/`
+# middle level so a story's location encodes its key as a single moveable unit):
+#   - Path: ${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/{story_key}-{slug}/story.md
+#   - A sibling `reviews/` subdir under {story_key}-{slug}/ holds the FR-402
+#     type-FIRST review reports (code-review-{key}.md, qa-tests-{key}.md, …) —
+#     never the reversed {key}-<type>.md form (check-deps.sh glob collision).
+#   - NEW writes always use this nested per-story form. Legacy
+#     `${EPIC_DIR}/stories/{story_key}-{slug}.md` and flat layouts remain
+#     READ-ONLY fallback via resolve-story-file.sh's three-tier resolver — this
+#     story does NOT migrate existing files (read-compat only).
+#   - validate-canonical-filename.sh validates the key from the directory name
+#     `{story_key}-{slug}/` (location encodes key) when the basename is story.md.
 EPIC_DIR=$(!scripts/lib/resolve-epic-slug.sh \
   --epic-key "<epic_key>" \
   --epics-file "$(!scripts/resolve-config.sh planning_artifacts)/epics-and-stories.md")
@@ -343,23 +363,27 @@ fi
 
 # 4. Scaffold the deterministic skeleton — delegated to scaffold-story.sh (E63-S9).
 #    Forces status: backlog per ADR-074 C3; emits seven content section names
-#    on stdout in declaration order. Output lands at the canonical per-epic
-#    nested path (E79-S2 / AC1) — never at the legacy flat path. The mkdir -p
-#    of the per-epic stories/ directory is idempotent under POSIX semantics
-#    so concurrent /gaia-create-story invocations under the same epic do not
-#    race on directory creation (E79-S2 / AC2, AC5 / TC-CSP-2).
-mkdir -p "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories"
+#    on stdout in declaration order. Output lands at the NEW per-story nested
+#    path (E105-S1 / ADR-127): ${EPIC_DIR}/<story_key>-${SLUG}/story.md — the
+#    `stories/` middle level is dropped so the story's directory carries its key
+#    and a sibling `reviews/` subdir holds the FR-402 type-first review reports.
+#    Never the legacy flat or epic-*/stories/ path. The mkdir -p of the per-story
+#    directory (and its reviews/ subdir) is idempotent under POSIX semantics so
+#    concurrent /gaia-create-story invocations do not race (AC1 / AC2 / AC5).
+STORY_DIR="${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/<story_key>-${SLUG}"
+mkdir -p "${STORY_DIR}/reviews"
 SECTIONS=$(!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/scaffold-story.sh \
   --template ${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/story-template.md \
-  --output "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/<story_key>-${SLUG}.md" \
+  --output "${STORY_DIR}/story.md" \
   --frontmatter "${FRONTMATTER_YAML}")
 
 # 5. Post-write validation — delegated to validate-canonical-filename.sh (E63-S4 / S5)
 #    and validate-frontmatter.sh (E63-S5). Both HALT on non-zero with stderr passthrough.
-#    The validators inspect basename only, so the canonical nested path is accepted
-#    unchanged (E79-S2 / AC7).
-!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/validate-canonical-filename.sh --file "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/<story_key>-${SLUG}.md"
-!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/validate-frontmatter.sh         --file "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/<story_key>-${SLUG}.md"
+#    For the new per-story layout (E105-S1) validate-canonical-filename.sh validates
+#    the key from the DIRECTORY name (basename is story.md); the legacy basename
+#    contract still applies to legacy-layout files (read-compat).
+!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/validate-canonical-filename.sh --file "${STORY_DIR}/story.md"
+!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/validate-frontmatter.sh         --file "${STORY_DIR}/story.md"
 ```
 
 After the scaffold returns the seven content section names (`User Story`, `Acceptance Criteria`, `Tasks / Subtasks`, `Dev Notes`, `Technical Notes`, `Dependencies`, `Test Scenarios`), fill each `{CONTENT_PLACEHOLDER}` with judgment-bearing content via Edit calls. ACs use Given/When/Then format (validated post-fill by `validate-ac-format.sh`, E63-S6).

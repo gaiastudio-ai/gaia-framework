@@ -166,7 +166,11 @@ For each short_name in run:
 
 #### Per-reviewer skill-dispatch reference table
 
-This table replaces the legacy "inline LLM judgment blocks". Each row names the canonical short-name, the skill to dispatch, the canonical gate name written to the Review Gate, the expected report file path, and whether `--execution-evidence` is required.
+**This table is THE single source of truth for review-report paths (E105-S4 / ADR-127 §7.4 / Test02 #2).** `review-summary-gen.sh` (proof-of-execution), `review-skip-check.sh`, `review-gate.sh`, and the six per-review skills all resolve report paths from this table — there is NO divergent per-skill hardcoded path. The path column gives the read-side resolution contract.
+
+**Per-story `reviews/` home (E105-S1 layout).** The NEW canonical home for each review report is the per-story `reviews/` subdir: `…/epic-E{N}-{slug}/E{N}-S{M}-{slug}/reviews/<type>-{key}.md` (FR-402 type-FIRST basenames, identical to the flat form). The flat `implementation-artifacts/<type>-{key}.md` path shown in the table below is the read-side fallback during the migration window — `review-summary-gen.sh`'s proof-of-execution check accepts a report at EITHER home (it greps `*/{key}-*/reviews/<basename>` when the flat path is absent), so a report written to the per-story `reviews/` dir is never flagged MISSING.
+
+Each row names the canonical short-name, the skill to dispatch, the canonical gate name written to the Review Gate, the expected report file path, and whether `--execution-evidence` is required.
 
 | Short-name        | Dispatch                       | Gate name             | Report path                                                        | Execution evidence? |
 |-------------------|--------------------------------|-----------------------|--------------------------------------------------------------------|---------------------|

@@ -76,11 +76,19 @@ fi
 # strategy/test-strategy.md) caused a false-halt with "exists but empty"
 # even though the artifact existed under a different accepted path.
 TEST_PLAN_PATH=""
+# E105-S2 / ADR-127 §7.2: the test-plan/test-strategy now live under
+# planning-artifacts/ (docs-about-testing moved out of test-artifacts/). The
+# planning-artifacts/ candidates are highest precedence; the test-artifacts/
+# (strategy/) candidates remain for the migration read-compat window.
 for candidate in \
+  "${PLANNING_ARTIFACTS:-}/test-plan.md" \
+  "${PLANNING_ARTIFACTS:-}/test-strategy.md" \
   "$TEST_ARTIFACTS/test-plan.md" \
   "$TEST_ARTIFACTS/strategy/test-plan.md" \
   "$TEST_ARTIFACTS/strategy/test-strategy.md" \
   "$TEST_ARTIFACTS/test-plan/index.md"; do
+  [ "$candidate" = "/test-plan.md" ] && continue        # guard: empty PLANNING_ARTIFACTS
+  [ "$candidate" = "/test-strategy.md" ] && continue
   if [ -s "$candidate" ]; then
     TEST_PLAN_PATH="$candidate"
     break
@@ -99,7 +107,7 @@ fi
 # validate-gate.sh checks non-empty too, but emit a clearer error if the
 # resolver chose a path that turned out empty (race or odd FS state).
 if [ -z "$TEST_PLAN_PATH" ] || [ ! -s "$TEST_PLAN_PATH" ]; then
-  die "HALT: no non-empty test-plan artifact found under $TEST_ARTIFACTS/ (checked test-plan.md, strategy/test-plan.md, strategy/test-strategy.md, test-plan/index.md) — run /gaia-test-strategy --plan to populate it (ADR-042 enforced gate)"
+  die "HALT: no non-empty test-plan artifact found (checked ${PLANNING_ARTIFACTS:-<planning-artifacts>}/test-plan.md, ${PLANNING_ARTIFACTS:-<planning-artifacts>}/test-strategy.md, $TEST_ARTIFACTS/test-plan.md, strategy/test-plan.md, strategy/test-strategy.md, test-plan/index.md) — run /gaia-test-strategy --plan to populate it (ADR-042 enforced gate)"
 fi
 
 # ---------- 3. Load checkpoint state ----------

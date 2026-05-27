@@ -1,0 +1,14 @@
+sprint_id: "sprint-899"
+total_points: 45
+started: "2026-04-20"
+end_date: "2026-04-27"
+status: closed
+closed_at: "2026-04-27T12:00:00Z"
+goals:
+  - "Trend fixture sprint 899"
+stories:
+  - key: "E899-S1"
+    title: "story b"
+    status: "done"
+    points: 45
+    updated: "2026-04-27"
