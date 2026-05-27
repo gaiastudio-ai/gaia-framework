@@ -87,3 +87,56 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
   ! echo "$output" | grep -q '\[update\]'
 }
+
+# ---------------------------------------------------------------------------
+# AF-2026-05-27-5: the update arrow must clear the moment the installed version
+# catches up to (or passes) the cached latest_tag — not linger until the 24h
+# fetcher TTL refreshes the cache. The gate is strict semver "latest > installed",
+# not a bare "latest != installed". Installed version is the 1.0.0 fixture.
+# ---------------------------------------------------------------------------
+
+@test "AF-27-5: installed == cached latest_tag -> no arrow (just-updated, stale cache)" {
+  [ -f "$RUNTIME" ]
+  ts_recent="$(date -u -v-1H +%FT%TZ 2>/dev/null || date -u -d '1 hour ago' +%FT%TZ)"
+  # Cache still says update_available=true with latest_tag=1.0.0 (the value the
+  # fetcher saw BEFORE the user updated), but installed is now also 1.0.0.
+  printf '%s' '{"checked_at_iso":"'"$ts_recent"'","latest_tag":"1.0.0","current_tag":"0.9.0","update_available":true}' > "$CACHE"
+  run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  ! echo "$output" | grep -q '\[update\]'
+}
+
+@test "AF-27-5: installed NEWER than cached latest_tag -> no arrow (the reported bug)" {
+  [ -f "$RUNTIME" ]
+  ts_recent="$(date -u -v-1H +%FT%TZ 2>/dev/null || date -u -d '1 hour ago' +%FT%TZ)"
+  # Stale cache from before the update: latest_tag=0.9.0 < installed 1.0.0, yet
+  # update_available=true. The old `latest != installed` gate lit the arrow here.
+  printf '%s' '{"checked_at_iso":"'"$ts_recent"'","latest_tag":"0.9.0","current_tag":"0.9.0","update_available":true}' > "$CACHE"
+  run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  ! echo "$output" | grep -q '\[update\]'
+}
+
+@test "AF-27-5: cached latest_tag strictly NEWER than installed -> arrow shows" {
+  [ -f "$RUNTIME" ]
+  ts_recent="$(date -u -v-1H +%FT%TZ 2>/dev/null || date -u -d '1 hour ago' +%FT%TZ)"
+  # A genuine newer release (1.1.0 > installed 1.0.0) — arrow MUST appear.
+  printf '%s' '{"checked_at_iso":"'"$ts_recent"'","latest_tag":"1.1.0","current_tag":"1.0.0","update_available":true}' > "$CACHE"
+  run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q '\[update\]'
+}
+
+@test "AF-27-5: semver-aware — 1.10.0 installed, latest 1.9.0 -> no arrow" {
+  [ -f "$RUNTIME" ]
+  # Re-pin the in-tree fixture to 1.10.0 for this case.
+  cat > "$TEST_TMP/gaia-public/plugins/gaia/.claude-plugin/plugin.json" <<'PJ'
+{ "name": "gaia", "version": "1.10.0" }
+PJ
+  ts_recent="$(date -u -v-1H +%FT%TZ 2>/dev/null || date -u -d '1 hour ago' +%FT%TZ)"
+  printf '%s' '{"checked_at_iso":"'"$ts_recent"'","latest_tag":"1.9.0","current_tag":"1.9.0","update_available":true}' > "$CACHE"
+  run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  # 1.9.0 is NOT > 1.10.0 under semver -> no arrow (a string '>' would wrongly fire).
+  ! echo "$output" | grep -q '\[update\]'
+}

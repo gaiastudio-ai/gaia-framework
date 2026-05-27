@@ -312,13 +312,36 @@ BRAND_CHUNK="${OSC8_OPEN}${COLOR_BRAND}${COLOR_BOLD}${BRAND_TEXT}${COLOR_RESET}$
 
 # Update indicator (D10: glyph + bold + colour + ASCII prefix in ASCII theme).
 # Suppressed when (a) cache absent or unparseable, (b) cached latest_tag is
-# missing, (c) cached latest_tag equals the live installed GAIA_VERSION
-# (sprint-43: recompute on every render so the indicator clears immediately
-# after the user runs /plugin marketplace update, without waiting for the
-# fetcher's 24h TTL to expire), or (d) the 7-day stale-fence has tripped
-# — see E82-S2 / TC-STATUSLINE-7 / AT-4 above.
+# missing, (c) the cached latest_tag is NOT strictly newer than the live
+# installed GAIA_VERSION, or (d) the 7-day stale-fence has tripped (see
+# E82-S2 / TC-STATUSLINE-7 / AT-4 above).
+#
+# AF-2026-05-27-5 fix: the gate compares with a strict semver "latest > installed"
+# test, NOT a bare `latest != installed`. After the user runs /plugin update, the
+# installed version becomes >= the cached latest_tag; a `!=` check still fired
+# (installed now DIFFERS from the stale cached latest) so the arrow lingered until
+# the 24h fetcher TTL refreshed the cache. The strict-greater test clears the
+# arrow on the very next render once installed catches up to (or passes) the
+# cached latest — and a downgrade likewise shows no false "update".
+#
+# _semver_gt <a> <b> — return 0 (true) iff a is strictly greater than b under
+# `sort -V`. Non-numeric/dev versions: any non-strict-semver value is treated as
+# "not greater" so a "dev" install never shows a spurious update arrow.
+_semver_gt() {
+  _sg_a="$1"; _sg_b="$2"
+  # Equal -> not greater. (Also the fast path for the common "already current".)
+  [ "$_sg_a" = "$_sg_b" ] && return 1
+  # A non-numeric installed version (e.g. "dev") must never show an update
+  # arrow — treat it as already-current so a dev/in-tree run stays quiet.
+  case "$_sg_b" in ''|*[!0-9.]*) return 1 ;; esac
+  # Likewise a non-numeric latest_tag is not a real, comparable release.
+  case "$_sg_a" in ''|*[!0-9.]*) return 1 ;; esac
+  # a is greater iff it sorts LAST under version-sort and differs from b.
+  _sg_hi="$(printf '%s\n%s\n' "$_sg_a" "$_sg_b" | sort -V | tail -1)"
+  [ "$_sg_hi" = "$_sg_a" ]
+}
 UPDATE_CHUNK=""
-if [ "$CACHE_FRESH" -eq 1 ] && [ -n "$LATEST_VERSION" ] && [ "$LATEST_VERSION" != "$GAIA_VERSION" ]; then
+if [ "$CACHE_FRESH" -eq 1 ] && [ -n "$LATEST_VERSION" ] && _semver_gt "$LATEST_VERSION" "$GAIA_VERSION"; then
   if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
     UPDATE_CHUNK="[update] ${GLYPH_UPDATE:-^}"
   else
