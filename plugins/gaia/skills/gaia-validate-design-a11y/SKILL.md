@@ -37,8 +37,26 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 ### Phase 1 — Setup
 
-<!-- Guard added by AF-2026-05-17-9 -->
-- Resolve `compliance.ui_present` via `resolve-config.sh`. If the value is not `true`, exit early with `SKIPPED — compliance.ui_present is not true` (the orchestrator at `/gaia-review-all` performs this check via `--skip-a11y`; this guard is defense-in-depth). Mirrors `/gaia-review-a11y` L29 for three-phase a11y family gating consistency (FR-RSV2-44, E69-S2).
+<!-- Guard added by AF-2026-05-17-9; F-012 (Test04) actionability + UX auto-detect -->
+- Resolve `compliance.ui_present` via `resolve-config.sh`.
+  - If the value is `true`: proceed.
+  - **If the value is unset/missing (F-012 auto-detect):** the project may still
+    be a UI project whose `ui_present` answer predates the persistence fix. Before
+    skipping, probe for UX evidence: if `.gaia/artifacts/planning-artifacts/ux-design.md`
+    exists (resolve via the three-tier idiom — flat / `ux-design/index.md`), treat
+    UI as present and PROCEED, emitting a NOTICE:
+    `NOTICE: compliance.ui_present unset; UI presence inferred from ux-design.md — run /gaia-config-compliance to set ui_present: true explicitly`.
+    If no UX artifact exists, skip (see below).
+  - **If the value is explicitly `false`, OR unset with no UX evidence:** exit
+    early — but with an ACTIONABLE message, not a bare skip:
+    `SKIPPED — a11y review not run: compliance.ui_present is not true (no UI declared and no ux-design.md found). If this project HAS a UI, run /gaia-config-compliance to set compliance.ui_present: true, then re-run /gaia-validate-design-a11y.`
+  - This closes F-012 (Test04): with F-002 fixed (`/gaia-init` now persists
+    `ui_present`), the common path is `true`; the auto-detect + actionable message
+    rescue projects whose answer predates the fix instead of silently skipping a
+    documented planning-phase gate. The orchestrator at `/gaia-review-all` still
+    performs the `--skip-a11y` check (this guard is defense-in-depth). Mirrors
+    `/gaia-review-a11y` L29 for three-phase a11y family gating consistency
+    (FR-RSV2-44, E69-S2).
 - Resolve the design target from `$ARGUMENTS` or prompt the user inline.
 - Load the layered rubric:
 
@@ -89,6 +107,13 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 ### Phase 6 — Report
 
 - Write the report to `.gaia/artifacts/test-artifacts/design-a11y-review-{date}.md`.
+  > **Output-location note (F-013, Test04).** The a11y review report lands under
+  > `test-artifacts/` (not a separate `review-artifacts/`/`validation-artifacts/`
+  > tree) **by design**: it is the validation evidence consumed by the test/QA
+  > and readiness gates, so it is grouped with the other test artifacts per
+  > ADR-119. The `test-artifacts/` directory is created on first write (`mkdir -p`)
+  > if `/gaia-init` did not pre-create it. This location is intentional and stable;
+  > consumers (`/gaia-readiness-check`, the a11y pre-merge gate) resolve it here.
 - The report includes the verdict, the findings table, the rubric source (path of merged rubric), and the design target reference.
 
 ### Phase 7 — Exit

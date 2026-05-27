@@ -474,10 +474,20 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
 
 ### Step 7 -- Write Approved Findings
 
+> **Writer is the orchestrator, NOT Val (F-007, Test04 / ADR-105).** Post-ADR-105
+> Val's `allowed-tools` is `[Read, Grep, Glob, Bash]` — Val is read-only on the
+> filesystem and MUST NOT write the artifact. The `## Validation Findings`
+> section below is written by the **consumer/orchestrator skill** that dispatched
+> Val, from the approved findings carried in Val's returned ADR-037 envelope. If
+> Val is invoked as a subagent, expect it to report "Write/Task tools are not in
+> scope for this Val pass" and to decline the append — that is correct behavior;
+> the orchestrator performs the write. (Self-dispatch / main-turn invocations
+> where the caller already holds Write may perform the append inline.)
+
 - Collect only the APPROVED findings (exclude dismissed ones).
 - Check if the target artifact already contains a "## Validation Findings" section.
 - If an existing section is found: replace it entirely with the new findings.
-- Write the approved findings to the target artifact:
+- The orchestrator writes the approved findings to the target artifact:
 
   ## Validation Findings
 

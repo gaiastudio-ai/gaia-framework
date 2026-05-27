@@ -146,7 +146,7 @@ Write the epics and stories document to `.gaia/artifacts/planning-artifacts/epic
 
 ```
 ### Story {epic-N}-{story-N}: {Title}
-- Epic: {epic name}
+- Epic: {epic KEY, e.g. E1 — NOT the epic name}
 - Priority: {P0/P1/P2}
 - Size: {S/M/L/XL}
 - Risk: {high/medium/low}
@@ -155,6 +155,13 @@ Write the epics and stories document to `.gaia/artifacts/planning-artifacts/epic
 - Acceptance Criteria:
   - AC1: {criteria}
 ```
+
+> **Field-format contract (F-017/F-018, Test04).** Author bullets as plain
+> `- Label: value` (the consumer `generate-frontmatter.sh` also tolerates the
+> bold `- **Label:** value` form). The `Epic:` value MUST be the epic KEY
+> (`E1`), not the epic name — `transition-story-status.sh` resolves it via
+> `resolve-epic-slug.sh --epic-key`. The `Risk:` value drives `/gaia-atdd`
+> batch discovery, which reads this exact `### Story` + `- Risk:` block shape.
 
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/epics-and-stories.md`

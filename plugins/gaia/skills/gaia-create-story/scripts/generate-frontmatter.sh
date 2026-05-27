@@ -179,14 +179,19 @@ esac
 
 # ---------- Field extraction helpers ----------
 
-# extract_bullet <label>: emit the trimmed value of `- **<label>:** <value>`.
-# Empty when not present.
+# extract_bullet <label>: emit the trimmed value of a story-detail bullet,
+# accepting BOTH authored forms (F-017, Test04):
+#   - **<label>:** <value>   (bold — the legacy/manually-authored form)
+#   - <label>: <value>       (plain — the form gaia-create-epics SKILL.md
+#                             instructs Theo/Derek to author, line 148-152)
+# The bold markers are optional so the consumer no longer disagrees with the
+# producer on basic field-extraction format. Empty when not present.
 extract_bullet() {
   local label="$1"
   printf '%s\n' "$block" | awk -v lab="$label" '
     {
-      # Match `- **<label>:** <value>` with optional surrounding whitespace.
-      pat = "^[[:space:]]*-[[:space:]]+\\*\\*" lab ":\\*\\*[[:space:]]*"
+      # Optional `**` around the label and after the colon (\\*\\*)? on each side.
+      pat = "^[[:space:]]*-[[:space:]]+(\\*\\*)?" lab ":(\\*\\*)?[[:space:]]*"
       if (match($0, pat)) {
         v = substr($0, RSTART + RLENGTH)
         # Trim trailing whitespace.

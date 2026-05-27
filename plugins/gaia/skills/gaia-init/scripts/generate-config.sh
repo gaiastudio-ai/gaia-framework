@@ -254,6 +254,16 @@ if phase == "full":
     # are required by allOf[2] (ci_cd:{} is already emitted above).
     if phase == "full" and not envs:
         envs = {"local": {"url": "http://localhost"}}
+        # F-001 (Test04): the inject is intentional (allOf[2] needs a populated
+        # environments block), but the operator declared no environments — so
+        # surface a NOTICE instead of silently overriding their input. They can
+        # remove/edit it via /gaia-config-env.
+        sys.stderr.write(
+            "generate-config.sh: NOTICE — no environments were declared, but "
+            "config_phase=full requires a populated environments block; seeded a "
+            "default 'local' (http://localhost) on your behalf. Edit or remove it "
+            "via /gaia-config-env.\n"
+        )
     if envs:
         lines.append("")
         lines.append("environments:")
