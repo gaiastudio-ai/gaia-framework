@@ -182,18 +182,32 @@ mkdir -p "$CACHE_DIR" 2>/dev/null || exit 0
 CHECKED_AT_ISO="$(date -u +%FT%TZ)"
 
 # ---- installed_version_stale computation (E82-S6 / ADR-094 Component 3) --
-# Rule: stale=true IFF marker file exists AND its trimmed content !=
-# `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` `.version`.
-# Missing marker => false. Missing CLAUDE_PLUGIN_ROOT => false.
+# Rule: stale=true when the installed runtime is NOT in lockstep with the active
+# plugin version. Two sub-cases:
+#   1. Marker present + differs from the active plugin version  -> stale.
+#   2. Marker ABSENT but an installed runtime exists AND the active plugin
+#      version resolves -> stale (AF-2026-05-27-7). The original rule returned
+#      false on a missing marker, so every install that predates the marker
+#      (E82-S6) silently rotted across plugin updates with no [stale] nudge —
+#      the exact "fixes don't appear after update" class. A missing marker on a
+#      real install now correctly reads as "unknown/old -> needs re-install".
+# Missing CLAUDE_PLUGIN_ROOT (dev/test) => false. No installed runtime => false.
 INSTALLED_VERSION_STALE="false"
-MARKER_FILE="$HOME/.claude/gaia-statusline/.installed-version"
-if [ -r "$MARKER_FILE" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] \
-   && [ -r "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; then
-  MARKER_VERSION="$(head -1 "$MARKER_FILE" 2>/dev/null | tr -d '[:space:]')"
+INSTALL_DIR="$HOME/.claude/gaia-statusline"
+MARKER_FILE="$INSTALL_DIR/.installed-version"
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -r "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; then
   ACTIVE_VERSION="$(jq -r '.version // ""' "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" 2>/dev/null | tr -d '[:space:]')"
-  if [ -n "$MARKER_VERSION" ] && [ -n "$ACTIVE_VERSION" ] \
-     && [ "$MARKER_VERSION" != "$ACTIVE_VERSION" ]; then
-    INSTALLED_VERSION_STALE="true"
+  if [ -n "$ACTIVE_VERSION" ]; then
+    if [ -r "$MARKER_FILE" ]; then
+      MARKER_VERSION="$(head -1 "$MARKER_FILE" 2>/dev/null | tr -d '[:space:]')"
+      if [ -n "$MARKER_VERSION" ] && [ "$MARKER_VERSION" != "$ACTIVE_VERSION" ]; then
+        INSTALLED_VERSION_STALE="true"
+      fi
+    elif [ -f "$INSTALL_DIR/statusline.sh" ]; then
+      # Marker absent but a real installed runtime exists -> pre-marker install,
+      # version unknown, treat as stale so the re-install nudge surfaces.
+      INSTALLED_VERSION_STALE="true"
+    fi
   fi
 fi
 

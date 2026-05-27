@@ -370,6 +370,26 @@ PJ
   [ "$output" = "false" ]
 }
 
+@test "AF-27-7 / TC-d2: marker ABSENT but a real installed runtime exists -> stale=true" {
+  # The reported bug class: a pre-marker install (runtime present, no
+  # .installed-version) silently rotted across plugin updates because the old
+  # rule read marker-absent as 'bootstrap -> false'. Now a real-but-unmarked
+  # install reads as stale so the re-install nudge surfaces.
+  local proot
+  proot="$(_make_plugin_root 1.142.0)"
+  rm -f "$HOME/.claude/gaia-statusline/.installed-version"
+  # Distinguish from a true bootstrap: an installed runtime file IS present.
+  mkdir -p "$HOME/.claude/gaia-statusline"
+  printf '#!/usr/bin/env bash\n' > "$HOME/.claude/gaia-statusline/statusline.sh"
+  _make_stub gh ok-equal
+  _make_stub curl ok-equal
+  _with_stubs
+  run env PATH="$STUBS_PATH" HOME="$HOME" PROJECT_PATH="$PROJECT_PATH" CLAUDE_PLUGIN_ROOT="$proot" "$FETCHER"
+  [ "$status" -eq 0 ]
+  run jq -r '.installed_version_stale' "$CACHE"
+  [ "$output" = "true" ]
+}
+
 @test "E82-S6 / TC-g: cache field is always populated (writers contract)" {
   local proot
   proot="$(_make_plugin_root 1.142.0)"
