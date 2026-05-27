@@ -3,6 +3,48 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.180.0] — 2026-05-27
+
+### Added
+
+- (E107-S4) planned→active readiness gate (#977)
+- (E107-S3) /gaia-create-story --for-sprint batch materializer (#976)
+- (E107-S2) sprint-plan selects from backlog (column-sourced dependency lint) (#975)
+- (E107-S1) add the planned sprint state to sprint-state.sh (#974)
+- (E105-S4) single-source review-report paths + AI-99 verdict-line parser (#973)
+- (E105-S3) formalize the date-suffix convention + latest-by-date resolver (#972)
+- (E105-S2) planning-vs-test artifact taxonomy migration + consumer repoint (#971)
+- (E105-S1) per-epic story nesting + three-tier resolver fallback (#969)
+- (E106-S3) redefine SM capacity check on agent-native measures (#968)
+- (E106-S2) dual-track estimation — points + agent-wall-clock (#967)
+- (E106-S1) throughput-telemetry derivation layer + /gaia-history skill (#966)
+- (E104-S2) phase 4b reconciliation pass — demote reachable file-only findings (#957)
+- (E104-S5) phase 4b cross-stack warning emission + scope respect (#956)
+- (E70-S8) per-stack dead-code adapters (go deadcode + python vulture + jvm spotbugs) (#955)
+- (E104-S3) sbom completeness assertion with per-ecosystem carve-outs (#954)
+- (E70-S11) detect-signals stacks[].path proposal/audit mode (opt-in) (#953)
+- (E70-S10) orchestrator per-stack file-list intersection (path x paths x excludes) (#952)
+- (E70-S9) grype DB trust-boundary enforcement (max-age + checksum + drift reject) (#951)
+- (E104-S4) wire sarif_merge telemetry via shared writer (#950)
+- (E70-S7) wire pre_warm telemetry via shared writer + harden telemetry writer (#949)
+- (E104-S1) cross-tool finding dedup contract (dual dedup keys) + telemetry writer (#948)
+- (E104-S4) sarif Multitool merge as Phase 7 pre-processor — core (#947)
+- (E70-S7) brownfield Phase 3 pre-warm script (cdxgen + Grype DB) — core (#946)
+- (E85-S14) stacks[] 4-field schema delta + /gaia-init questionnaire + /gaia-config-stack editor (#945)
+
+### Changed
+
+- (AF-2026-05-27-3) retire legacy _memory/ support — .gaia/ is the only tree (ADR-111) (#983)
+
+### Fixed
+
+- (AF-2026-05-27-2) val-sidecar routes on .gaia layout, not memory-subdir existence (#982)
+- (AF-2026-05-27-1) resolve 21 live Test04 findings across format/contract/a11y/housekeeping (#980)
+- (E105-S1) scaffold writes the nested per-story path (close AC1 gap) (#970)
+- (AF-2026-05-26-9) sprint-setup lifecycle gates honor strategy/+sharded placements (#964)
+- (AF-2026-05-26) test03 framework findings — 26 live bugs across 5 bundles (#961)
+- (E104-S2) reconcile reachable-set via slurpfile + union multi-callgraph entry_points (#958)
+
 ## [1.179.0] — 2026-05-27
 
 ## [1.178.0] — 2026-05-26
