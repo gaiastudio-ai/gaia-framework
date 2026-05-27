@@ -142,6 +142,16 @@ mkdir -p "$checkpoint_path" 2>/dev/null || {
   :
 }
 
+# F-006 (Test04): GC stale orchestration-warning sentinels. These per-session
+# (or per-PID fallback) marker/sentinel files were never swept, so they
+# accumulated one-per-invocation in the checkpoints dir. Sweep any
+# orchestration-warning-{shown,pending}.* older than 1 day (1440 min) on each
+# run — best-effort, never fatal. Today's markers (incl. this session's) are
+# younger than the threshold and are preserved, so the one-shot dedupe below
+# still holds within a session.
+find "$checkpoint_path" -maxdepth 1 -type f \
+  -name 'orchestration-warning-*' -mmin +1440 -delete 2>/dev/null || true
+
 marker="${checkpoint_path}/orchestration-warning-shown.${session_id}"
 if [ -e "$marker" ]; then
   # One-shot honored — silent exit.
@@ -189,7 +199,9 @@ For the full-fidelity experience, enable Mode B (Agent Teams):
 Mode B uses persistent teammates that preserve in-conversation state
 across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
 
-This warning is shown once per session.
+This warning is shown once per session when a stable session id is available
+(CLAUDE_SESSION_ID); if the host does not propagate one, dedupe falls back to
+the orchestrator PID and the warning may re-fire across sub-process boundaries.
 ────────────────────────────────────────────────────────────────────────────
 
 WARN

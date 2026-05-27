@@ -59,6 +59,18 @@ if [ -n "${GAIA_FINALIZE_SENTINEL_REQUIRED:-}" ]; then
   if [ ! -f "$CHECKPOINT_MARKER" ]; then
     die "Val sidecar write missing — Step 7 must be invoked before finalize (no run checkpoint at $CHECKPOINT_MARKER)"
   fi
+  # F-026 (Test04) — KNOWN FRAGILITY of the mtime-based sentinel.
+  # This `-ot` check asserts the sidecar decision-log was touched AFTER the run
+  # checkpoint, as a proxy for "Step 7 (Val sidecar write) actually ran this
+  # invocation". It is intentionally lightweight but NOT tamper-proof: any
+  # unrelated process that touches decision-log.md refreshes its mtime and can
+  # satisfy this check without a real Val write; conversely a fast re-finalize
+  # can race the mtime granularity. A robust replacement is an explicit
+  # (workflow, run_id) -> decision_id ledger keyed to THIS run, rather than a
+  # filesystem-mtime comparison — tracked as a future hardening (do not rely on
+  # this guard for adversarial tamper-resistance; it is a sequencing sanity
+  # check, not a security control). The same caveat applies to the sibling
+  # gaia-tech-debt-review and gaia-triage-findings finalize.sh guards.
   if [ "$SIDECAR_LOG" -ot "$CHECKPOINT_MARKER" ]; then
     die "Val sidecar write missing — Step 7 must be invoked before finalize (decision-log older than run checkpoint)"
   fi

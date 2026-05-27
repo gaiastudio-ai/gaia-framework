@@ -60,12 +60,26 @@ _gaia_session_load_sentinel_check() {
   local manifest="${MEMORY_PATH}/.migration-manifest"
   if [ ! -f "$manifest" ]; then
     # Case (A): manifest absent. If the legacy path is in use, this is normal.
-    # If we're already on .gaia/memory/, this signals an incomplete migration.
+    # If we're already on .gaia/memory/, this *could* signal an incomplete
+    # migration — OR it's a greenfield project that never had anything to
+    # migrate (F-005, Test04). Distinguish the two by probing for a legacy
+    # `_memory/` tree at the project root: a manifest is only expected when a
+    # legacy tree exists (or existed) to migrate FROM. No legacy tree ⇒
+    # greenfield ⇒ the absent manifest is normal, not an incomplete migration,
+    # so stay quiet and do NOT force read-only.
     case "$MEMORY_PATH" in
       *"/.gaia/memory"|".gaia/memory")
-        printf 'session-load: .migration-manifest missing — operating read-only until migration completes\n' >&2
-        _GAIA_SESSION_LOAD_READ_ONLY=1
-        export _GAIA_SESSION_LOAD_READ_ONLY
+        local _legacy_root
+        # MEMORY_PATH ends in /.gaia/memory or is the bare ".gaia/memory";
+        # the project root is its grandparent.
+        _legacy_root="$(cd "${MEMORY_PATH%/.gaia/memory}" 2>/dev/null && pwd || true)"
+        if [ -n "$_legacy_root" ] && [ -d "${_legacy_root}/_memory" ]; then
+          # Legacy tree present but no manifest → genuine incomplete migration.
+          printf 'session-load: .migration-manifest missing but legacy _memory/ present — operating read-only until migration completes\n' >&2
+          _GAIA_SESSION_LOAD_READ_ONLY=1
+          export _GAIA_SESSION_LOAD_READ_ONLY
+        fi
+        # else: greenfield (no legacy tree) → silent, writable.
         ;;
     esac
     return 0

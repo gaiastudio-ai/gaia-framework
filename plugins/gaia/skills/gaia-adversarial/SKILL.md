@@ -116,6 +116,28 @@ Step 4 (Incorporate Findings) is **opt-in on a per-caller basis** — the closed
 
 This step is **only** executed when the caller explicitly requests incorporation. Per the critical rule above, adversarial review itself does not suggest or apply fixes — this optional follow-on is a controlled handoff to the target document owner.
 
+### Gating posture — adversarial is advisory, NOT a forge-resistant gate (F-010, Test04)
+
+Adversarial review is an **advisory / incorporation** reviewer, not a
+forge-resistant verdict gate. The orchestrator's only verification is that the
+report file exists on disk (Step 3 write) — there is deliberately **no**
+`persona_sig` envelope-sentinel + `assert_agent_envelope` contract analogous to
+Val's (ADR-104 / ADR-105). Val is the single forge-resistant **gating** reviewer
+in the lifecycle; its PASS/CRITICAL verdict is load-bearing and therefore
+hardened against a fabricated/forged sub-agent return. Adversarial output, by
+contrast, is incorporated into a human-owned planning document (Step 4) and is
+not load-bearing for an automated halt — so the lighter "report exists" check is
+intentional, mirroring the same planning-artifact-vs-verdict reasoning applied to
+`/gaia-threat-model` (Test02 F-40 carve-out).
+
+Implication for callers and operators: where a lifecycle diagram labels
+adversarial review a "REQUIRED GATE," read that as *"this step is required to be
+run and its findings incorporated,"* NOT *"its output is cryptographically
+verified the way Val's is."* If a future requirement needs forge-resistance for
+adversarial (e.g. unattended CI that auto-merges on an adversarial PASS), promote
+it to the Val-style envelope-sentinel contract via a dedicated ADR — do not
+assume the current report-exists check provides that guarantee.
+
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-adversarial 4 target_artifact_path="$TARGET_ARTIFACT_PATH" adversarial_angle=incorporate target_label="$TARGET_LABEL"`
 
 ## References

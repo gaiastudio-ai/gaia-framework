@@ -107,6 +107,18 @@ Delegate to the **security** subagent (Zara) via `agents/security` to extract re
 
 - Record key decisions in security-sidecar memory.
 - Write the threat model document to `.gaia/artifacts/planning-artifacts/threat-model.md` with: assets table, STRIDE analysis per component, DREAD scores, risk levels, mitigation strategies, and security requirements list.
+- **Durable dispatch provenance (F-016, Test04).** The single-line dispatch
+  note from the Critical Rules carve-out is emitted to stdout, which Claude Code
+  collapses — so it is NOT a durable audit record on its own. Additionally write
+  the provenance into the artifact's YAML frontmatter so it survives the run:
+  `dispatch_provenance: "synthesized-inline"` when the host LLM single-turn-
+  synthesized Zara, or `dispatch_provenance: "security-subagent"` when a real
+  `Agent`-tool dispatch occurred. A downstream reviewer (or `/gaia-readiness-check`)
+  can then see at-rest whether the threat-model was produced by the real persona
+  or inline-synthesized, without relying on transient stdout. This does NOT
+  change the carve-out (inline synthesis remains permitted for this planning
+  artifact) — it makes the existing audit note durable, which was F-016's actual
+  complaint.
 
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/threat-model.md`

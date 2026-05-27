@@ -259,7 +259,13 @@ if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
     grep -qE "^test_execution:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} test_execution"
     grep -qE "^test_execution_bridge:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} test_execution_bridge"
     grep -qE "^environments:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} environments"
-    if [ -n "$missing_sections" ]; then
+    if [ -n "$missing_sections" ] && [ "${GAIA_TEST_STRATEGY_NO_AUTOSTUB:-0}" = "1" ]; then
+      # F-027 (Test04): opt-out — the operator owns project-config.yaml and may
+      # not want it mutated. With GAIA_TEST_STRATEGY_NO_AUTOSTUB=1, skip the
+      # hydration and instead tell them exactly which sections to add by hand.
+      _ms="$(printf '%s' "$missing_sections" | sed 's/^[[:space:]]*//')"
+      log "NOTICE: project-config.yaml is missing section(s) [${_ms}] but auto-stub is DISABLED (GAIA_TEST_STRATEGY_NO_AUTOSTUB=1). Add them manually via /gaia-config-test, /gaia-bridge-enable, /gaia-config-env before invoking downstream skills."
+    elif [ -n "$missing_sections" ]; then
       # AF-2026-05-24-14 / Test02 F-6: upgraded from warn-only to
       # auto-stub-hydrate. Previously this block only emitted a WARNING
       # and asked the operator to manually invoke config_hydrate_section
@@ -312,6 +318,11 @@ environments: {}
 STUB
           ;;
       esac
+      # F-027 (Test04): make the config mutation transparent — the operator
+      # owns this file, so emit an explicit summary naming exactly which
+      # sections were appended and how to revert, not just a generic "complete".
+      _stubbed="$(printf '%s' "$missing_sections" | sed 's/^[[:space:]]*//')"
+      log "NOTICE: auto-stub-hydration MUTATED $CONFIG_PATH — appended empty stub section(s): [${_stubbed}]. Each block is tagged with an 'AF-2026-05-24-14 F-6 auto-stub' comment marker. To revert: delete those marked blocks. To populate: /gaia-config-test, /gaia-bridge-enable, /gaia-config-env. Set GAIA_TEST_STRATEGY_NO_AUTOSTUB=1 to skip this hydration entirely."
       log "auto-stub-hydration complete; review $CONFIG_PATH and populate the stubs before invoking downstream skills"
     fi
   fi

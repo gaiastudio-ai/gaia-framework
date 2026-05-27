@@ -61,35 +61,75 @@ if [ ! -f "$_EPICS" ] || [ ! -r "$_EPICS" ]; then
   exit 1
 fi
 
-# ---------- Parse high-risk stories from the epics-and-stories.md table ----------
+# ---------- Parse high-risk stories from epics-and-stories.md ----------
 #
-# Expected row shape (whitespace tolerant):
-#   | E{n}-S{m} | Title | Size | Priority | Risk |
+# F-014 (Test04): two authored formats are accepted.
 #
-# We only emit rows whose final pipe-separated cell is exactly "high" (per the
-# Dev Notes: "Filter on exact risk: high value"). Header rows (containing
-# "---" or "Risk") are skipped.
+# (1) Pipe-table (legacy / some authors):
+#       | E{n}-S{m} | Title | Size | Priority | Risk |
+#
+# (2) Bullet-block — the CANONICAL form gaia-create-epics SKILL.md instructs
+#     Theo/Derek to author (SKILL.md lines 148-152):
+#       ### Story E{n}-S{m}: Title
+#       - Epic: ...
+#       - Priority: ...
+#       - Size: ...
+#       - Risk: high            (bold `**Risk:**` also tolerated)
+#
+# Both emit `key \t title \t risk` for rows whose risk is exactly "high".
+# discover-stories previously parsed ONLY format (1), so a file authored in the
+# documented format (2) yielded "No high-risk stories found" (the Test04 F-014
+# false negative). The block parser tracks the current story from its
+# `### Story` heading and reads that block's `- Risk:` bullet.
 
 _parse_high_risk() {
-  awk -F'|' '
-    {
-      # Strip leading/trailing whitespace from each cell
-      for (i = 1; i <= NF; i++) {
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", $i)
+  awk '
+    # --- Format 2: bullet-block ( ### Story E{n}-S{m}: Title ... - Risk: high ) ---
+    /^###[[:space:]]+Story[[:space:]]+E[0-9]+-/ {
+      # Flush any prior block that was high-risk before starting the new one.
+      if (cur_key != "" && cur_risk == "high") print cur_key "\t" cur_title "\t" cur_risk
+      line = $0
+      sub(/^###[[:space:]]+Story[[:space:]]+/, "", line)   # -> "E{n}-S{m}: Title"
+      idx = index(line, ":")
+      if (idx > 0) {
+        cur_key = substr(line, 1, idx - 1)
+        cur_title = substr(line, idx + 1)
+      } else {
+        cur_key = line; cur_title = ""
       }
-      # A valid story row has at least: empty | key | title | size | priority | risk | empty
-      if (NF < 6) next
-      key   = $2
-      title = $3
-      risk  = $(NF - 1)
-      # Skip headers and divider rows
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", cur_key)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", cur_title)
+      cur_risk = ""
+      next
+    }
+    # A new H2/H3 (epic heading or next section) ends the current story block.
+    /^##[[:space:]]/ {
+      if (cur_key != "" && cur_risk == "high") print cur_key "\t" cur_title "\t" cur_risk
+      cur_key = ""; cur_title = ""; cur_risk = ""
+    }
+    # Risk bullet inside the current block ( - Risk: high  or  - **Risk:** high )
+    cur_key != "" && /^[[:space:]]*-[[:space:]]+(\*\*)?[Rr]isk:(\*\*)?[[:space:]]*/ {
+      r = $0
+      sub(/^[[:space:]]*-[[:space:]]+(\*\*)?[Rr]isk:(\*\*)?[[:space:]]*/, "", r)
+      sub(/[[:space:]]+$/, "", r)
+      cur_risk = tolower(r)
+    }
+    # --- Format 1: pipe-table row ---
+    /\|/ {
+      n = split($0, cell, "|")
+      for (i = 1; i <= n; i++) gsub(/^[[:space:]]+|[[:space:]]+$/, "", cell[i])
+      if (n < 6) next
+      key = cell[2]; title = cell[3]; risk = cell[n - 1]
       if (key == "" || key == "Key" || key ~ /^-+$/) next
       if (risk != "high") next
-      # Story key must look like E{n}-S{m} (or E{n}-Anything — keep flexible)
       if (key !~ /^E[0-9]+-/) next
       print key "\t" title "\t" risk
     }
-  ' "$_EPICS"
+    END {
+      # Flush a trailing high-risk block at EOF.
+      if (cur_key != "" && cur_risk == "high") print cur_key "\t" cur_title "\t" cur_risk
+    }
+  ' "$_EPICS" | awk -F'\t' '!seen[$1]++'   # dedup by key (a story matched by both formats counts once)
 }
 
 # Collect into parallel arrays (POSIX-portable: macOS bash 3.2 has no
