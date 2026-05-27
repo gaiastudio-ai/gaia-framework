@@ -35,22 +35,15 @@ die() { log "$*"; exit 1; }
 # behavior (backward-compat).
 if [ -n "${GAIA_FINALIZE_SENTINEL_REQUIRED:-}" ]; then
   PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
-  # E96-S7 partial-4c: smart-fallback for sidecar + checkpoint paths
-  if [ -d "$PROJECT_ROOT/.gaia/memory/validator-sidecar" ]; then
-    SIDECAR_LOG="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
-  else
-    SIDECAR_LOG="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
-  fi
+  # AF-2026-05-27-3 (ADR-111): canonical .gaia/ paths only; legacy _memory
+  # fallbacks removed with the consolidation migration.
+  SIDECAR_LOG="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   # F-21 (AF-2026-05-26-1): checkpoint.sh write emits "$workflow.yaml"
-  # (i.e. retrospective.yaml), NOT .json. The prior .json marker could never
-  # be found, so this sentinel guard falsely refused whenever
-  # GAIA_FINALIZE_SENTINEL_REQUIRED was set. Align the extension to .yaml.
+  # (i.e. retrospective.yaml), NOT .json. Env CHECKPOINT_PATH override wins.
   if [ -n "${CHECKPOINT_PATH:-}" ]; then
     CHECKPOINT_MARKER="$CHECKPOINT_PATH/retrospective.yaml"
-  elif [ -d "$PROJECT_ROOT/.gaia/memory/checkpoints" ]; then
-    CHECKPOINT_MARKER="$PROJECT_ROOT/.gaia/memory/checkpoints/retrospective.yaml"
   else
-    CHECKPOINT_MARKER="$PROJECT_ROOT/_memory/checkpoints/retrospective.yaml"
+    CHECKPOINT_MARKER="$PROJECT_ROOT/.gaia/memory/checkpoints/retrospective.yaml"
   fi
 
   if [ ! -f "$SIDECAR_LOG" ]; then

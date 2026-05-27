@@ -322,7 +322,7 @@ tmp="$(mktemp)"
   echo ""
   while IFS= read -r ag; do
     [[ -z "$ag" ]] && continue
-    echo "- _memory/${ag}-sidecar/decisions/${DATE}-${SLUG}.md"
+    echo "- .gaia/memory/${ag}-sidecar/decisions/${DATE}-${SLUG}.md"
   done <<< "$MEM_WT_LIST"
   echo ""
 } > "$tmp"

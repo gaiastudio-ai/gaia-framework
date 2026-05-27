@@ -53,14 +53,10 @@ die() { log "$*"; exit 1; }
 if [ -z "${CHECKPOINT_PATH:-}" ]; then
   cwd="$(pwd)"
   while [ "$cwd" != "/" ]; do
-    # E96-S8 partial-fix: prefer .gaia/memory/checkpoints/ when present
-    # (post-migration canonical) else legacy _memory/checkpoints/.
+    # AF-2026-05-27-3 (ADR-111): canonical .gaia/memory/checkpoints only; the
+    # legacy _memory probe was removed with the consolidation migration.
     if [ -d "$cwd/.gaia/memory/checkpoints" ] || [ -d "$cwd/.gaia/memory" ]; then
       CHECKPOINT_PATH="$cwd/.gaia/memory/checkpoints"
-      break
-    fi
-    if [ -d "$cwd/_memory/checkpoints" ] || [ -d "$cwd/_memory" ]; then
-      CHECKPOINT_PATH="$cwd/_memory/checkpoints"
       break
     fi
     cwd="$(dirname "$cwd")"

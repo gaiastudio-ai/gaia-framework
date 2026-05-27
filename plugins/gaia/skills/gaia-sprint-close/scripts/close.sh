@@ -30,13 +30,10 @@ LIFECYCLE_EVENT_SH="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 # PROJECT_PATH defaults to CWD; honor a pre-exported value (used by bats).
 PROJECT_PATH="${PROJECT_PATH:-$PWD}"
 
-# E96-S8: smart-fallback for MEMORY_PATH
+# AF-2026-05-27-3 (ADR-111): .gaia/memory is the only memory tree; legacy
+# _memory fallback removed. Env override wins.
 if [ -z "${MEMORY_PATH:-}" ]; then
-  if [ -d "$PROJECT_PATH/.gaia/memory" ]; then
-    MEMORY_PATH="$PROJECT_PATH/.gaia/memory"
-  else
-    MEMORY_PATH="$PROJECT_PATH/_memory"
-  fi
+  MEMORY_PATH="$PROJECT_PATH/.gaia/memory"
 fi
 export PROJECT_PATH MEMORY_PATH
 
@@ -178,7 +175,7 @@ Usage:
 
 Closes the active sprint: writes status:closed + closed_at to sprint-status.yaml,
 archives the yaml under docs/implementation-artifacts/sprint-archive/, and emits
-a sprint_closed lifecycle event to _memory/lifecycle-events.jsonl.
+a sprint_closed lifecycle event to .gaia/memory/lifecycle-events.jsonl.
 
 Pre-conditions:
   - A retro doc must exist at docs/implementation-artifacts/retrospective-{sprint_id}-*.md
