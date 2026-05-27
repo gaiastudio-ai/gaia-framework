@@ -155,9 +155,16 @@ treehash() { find "$1" -type f -exec shasum -a 256 {} \; | sort | shasum -a 256 
   [ -n "$resolved" ] || { echo "create-epics resolver found no test-plan post-migration" >&2; false; }
   echo "$resolved" | grep -Eq 'planning-artifacts/(test-plan|test-strategy)\.md$' \
     || { echo "create-epics must resolve test-plan at planning-artifacts/, got: $resolved" >&2; false; }
-  # the setup.sh script must actually carry the planning-artifacts/ candidate
-  grep -Eq '\$\{PLANNING_ARTIFACTS:-\}/test-plan\.md' "$REPO_ROOT/plugins/gaia/skills/gaia-create-epics/scripts/setup.sh" \
-    || { echo "create-epics setup.sh missing the planning-artifacts/ test-plan candidate" >&2; false; }
+  # AF-2026-05-27-8 / Test06 F-007: create-epics setup.sh no longer carries an
+  # inline ${PLANNING_ARTIFACTS}/test-plan.md candidate — it delegates to the
+  # shared scripts/lib/resolve-artifact-path.sh, whose test_plan candidate list
+  # carries the planning-artifacts/ rungs (the canonical `${PA}/...` home). The
+  # behavioral probe above (mirroring the resolver's planning-first precedence)
+  # still holds; assert the delegation + the resolver's planning-artifacts rung.
+  grep -qF 'resolve-artifact-path.sh' "$REPO_ROOT/plugins/gaia/skills/gaia-create-epics/scripts/setup.sh" \
+    || { echo "create-epics setup.sh must delegate to resolve-artifact-path.sh" >&2; false; }
+  grep -qF '${PA}/test-plan.md' "$REPO_ROOT/plugins/gaia/scripts/lib/resolve-artifact-path.sh" \
+    || { echo "resolver test_plan candidates missing the planning-artifacts/ rung" >&2; false; }
 }
 
 @test "AC-INT1/TS6: gaia-trace finalize TM_PATHS resolves traceability at planning-artifacts/ post-migration" {
