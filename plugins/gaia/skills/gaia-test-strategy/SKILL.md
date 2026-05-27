@@ -20,7 +20,7 @@ orchestration_class: light-procedural
 
 You are the unified entry point for test strategy and test framework setup. Per FR-RSV2-24 and source-report §9.4, the previous two skills `/gaia-test-design` (test-plan design by Sable) and `/gaia-test-framework` (procedural scaffolding) are collapsed into a single skill with mode selection. This skill owns:
 
-- `--plan` mode: delegate to **Sable** (test-architect subagent) to author or update a `test-strategy.md` document under `.gaia/artifacts/test-artifacts/strategy/` covering test types, risk-based prioritization, and per-service test sections.
+- `--plan` mode: delegate to **Sable** (test-architect subagent) to author or update a `test-strategy.md` document under `.gaia/artifacts/planning-artifacts/` (E105-S2 / ADR-127 §7.2 canonical home; legacy `test-artifacts/strategy/` is honored read-only for pre-migration projects) covering test types, risk-based prioritization, and per-service test sections. **F-048:** `--plan` produces `test-strategy.md`; the companion `test-plan.md` (the per-FR test-case catalogue) is produced by `/gaia-trace` and the `--plan` test-design lineage — both now share the `planning-artifacts/` home, so the two docs sit side-by-side rather than split across trees.
 - `--scaffold` mode: procedurally generate test directories, framework configuration files (`vitest.config`, `jest.config`, `pytest.ini`, etc.), tagging conventions, and sample tests for the detected or specified stack. Multi-service support via `--service <path>`, `--service all`, `--service root`, or `--cross-service`.
 - No-arg interactive mode: present a four-option menu and route to the corresponding `--plan` or `--scaffold` logic.
 
@@ -85,7 +85,7 @@ Route the selected choice:
 - Option 1 → invoke `--plan` mode (Step 1).
 - Option 2 → invoke `--scaffold` mode (Step 5). If multiple services declared in `stacks[]`, present the service picker; if single-stack, scaffold directly.
 - Option 3 → prompt for the service (skip picker for single-stack projects), prompt for the test type, then run `--scaffold --service <path> --add <test-type>`.
-- Option 4 → read `test_execution` from `project-config.yaml`, list scaffolded services and test types, list existing files under `.gaia/artifacts/test-artifacts/strategy/` and `tests/`, and exit cleanly without writes.
+- Option 4 → read `test_execution` from `project-config.yaml`, list scaffolded services and test types, list existing files under `.gaia/artifacts/planning-artifacts/` (test-strategy.md / test-plan.md canonical home, E105-S2) plus the legacy `.gaia/artifacts/test-artifacts/strategy/` and `tests/`, and exit cleanly without writes.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 0a stage=interactive-route`
 
@@ -99,7 +99,7 @@ Read upstream context (gracefully degrade on missing files):
 - PRD — extract requirements (functional and non-functional). Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists: log WARNING, reduced scope.
 - `.gaia/artifacts/planning-artifacts/project-context.md` — extract project-level context.
 
-Detect subsequent-invocation: if `.gaia/artifacts/test-artifacts/strategy/test-strategy.md` already exists, read it and prepare the incremental-update flow — ask the user what to add (new test type, new perf scenarios, new contract suite) and only generate the incremental pieces.
+Detect subsequent-invocation: if `.gaia/artifacts/planning-artifacts/test-strategy.md` (canonical, E105-S2) OR the legacy `.gaia/artifacts/test-artifacts/strategy/test-strategy.md` already exists, read it and prepare the incremental-update flow — ask the user what to add (new test type, new perf scenarios, new contract suite) and only generate the incremental pieces.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 1 mode=plan stage=context-loaded`
 
@@ -128,11 +128,11 @@ Delegate to Sable for test strategy and plan authoring.
 
 ### Step 4 — Plan Mode: Generate Output
 
-- Write the compiled test strategy to `.gaia/artifacts/test-artifacts/strategy/test-strategy.md`.
+- Write the compiled test strategy to the canonical home `.gaia/artifacts/planning-artifacts/test-strategy.md` (E105-S2 / ADR-127 §7.2 — docs-ABOUT-testing live in `planning-artifacts/`, not `test-artifacts/`). For back-compat: if a legacy `.gaia/artifacts/test-artifacts/strategy/test-strategy.md` already exists (pre-migration project), write to that existing location to preserve placement and surface a one-line advisory recommending `migrate-planning-vs-test.sh`; otherwise NEW writes go to `planning-artifacts/`.
 - For subsequent invocations: append the incremental update section, do not overwrite earlier sections.
 - Offer a follow-up scaffolding prompt: "Set up scaffolding now? [y/n]". On y, route to Step 5.
 
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 4 mode=plan stage=output-generated --paths .gaia/artifacts/test-artifacts/strategy/test-strategy.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 4 mode=plan stage=output-generated --paths .gaia/artifacts/planning-artifacts/test-strategy.md`
 
 ### Step 5 — Scaffold Mode: Detect Stack(s)
 
