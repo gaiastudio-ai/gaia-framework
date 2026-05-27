@@ -14,8 +14,8 @@ setup() {
   FINALIZE="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts" && pwd)/finalize.sh"
   export FINALIZE
 
-  # Isolated _memory tree per test
-  MEM_ROOT="$TEST_TMP/_memory"
+  # Isolated .gaia/memory tree per test
+  MEM_ROOT="$TEST_TMP/.gaia/memory"
   mkdir -p "$MEM_ROOT/validator-sidecar" "$MEM_ROOT/checkpoints"
   export MEM_ROOT
   export CHECKPOINT_PATH="$MEM_ROOT/checkpoints"

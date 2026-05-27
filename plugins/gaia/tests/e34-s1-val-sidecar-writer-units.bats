@@ -59,19 +59,19 @@ _load_helpers() {
 @test "allowlist_match: accepts validator-sidecar/decision-log.md" {
   _load_helpers
   local root="/tmp/gaia-vs-root"
-  allowlist_match "$root" "$root/_memory/validator-sidecar/decision-log.md"
+  allowlist_match "$root" "$root/.gaia/memory/validator-sidecar/decision-log.md"
 }
 
 @test "allowlist_match: accepts validator-sidecar/conversation-context.md" {
   _load_helpers
   local root="/tmp/gaia-vs-root"
-  allowlist_match "$root" "$root/_memory/validator-sidecar/conversation-context.md"
+  allowlist_match "$root" "$root/.gaia/memory/validator-sidecar/conversation-context.md"
 }
 
 @test "allowlist_match: rejects other sidecar directories" {
   _load_helpers
   local root="/tmp/gaia-vs-root"
-  run allowlist_match "$root" "$root/_memory/sm-sidecar/decision-log.md"
+  run allowlist_match "$root" "$root/.gaia/memory/sm-sidecar/decision-log.md"
   [ "$status" -ne 0 ]
 }
 
@@ -85,7 +85,7 @@ _load_helpers() {
 @test "allowlist_match: rejects other filename under validator-sidecar" {
   _load_helpers
   local root="/tmp/gaia-vs-root"
-  run allowlist_match "$root" "$root/_memory/validator-sidecar/ground-truth.md"
+  run allowlist_match "$root" "$root/.gaia/memory/validator-sidecar/ground-truth.md"
   [ "$status" -ne 0 ]
 }
 
@@ -166,7 +166,7 @@ _load_helpers() {
 
 @test "ensure_header: seeds decision-log header when file missing" {
   _load_helpers
-  local tgt="$TEST_TMP/_memory/validator-sidecar/decision-log.md"
+  local tgt="$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md"
   mkdir -p "$(dirname "$tgt")"
   ensure_header "$tgt"
   [ -f "$tgt" ]
@@ -175,7 +175,7 @@ _load_helpers() {
 
 @test "ensure_header: seeds conversation-context header when file missing" {
   _load_helpers
-  local tgt="$TEST_TMP/_memory/validator-sidecar/conversation-context.md"
+  local tgt="$TEST_TMP/.gaia/memory/validator-sidecar/conversation-context.md"
   mkdir -p "$(dirname "$tgt")"
   ensure_header "$tgt"
   [ -f "$tgt" ]
@@ -184,7 +184,7 @@ _load_helpers() {
 
 @test "ensure_header: leaves existing file untouched" {
   _load_helpers
-  local tgt="$TEST_TMP/_memory/validator-sidecar/decision-log.md"
+  local tgt="$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md"
   mkdir -p "$(dirname "$tgt")"
   printf 'PRESERVED\n' > "$tgt"
   ensure_header "$tgt"
