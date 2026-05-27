@@ -476,13 +476,22 @@ read_frontmatter_field() {
 }
 
 # E79-S3 — Resolve the canonical per-epic story-index.yaml path.
+# E105-S1 / ADR-127 — layout-aware: the index co-locates with the story-file tree.
 #
 # Inputs:
 #   $1  story file path (used as the basename source for relative file:)
 #   $2  epic_key from the story frontmatter (e.g., "E79")
 #
-# Output (stdout): the absolute path to the per-epic
-#   `${IMPLEMENTATION_ARTIFACTS}/epic-{epic_key}-{slug}/stories/story-index.yaml`
+# Output (stdout): the absolute path to the per-epic story-index.yaml. The
+# subtree depends on the story-file layout so the index always sits at the
+# COMMON PARENT of the per-epic story files (closing the F-050 split-state gap
+# where the index landed under `stories/` but new story files live one level
+# up at `epic-{slug}/{key}-{slug}/story.md`):
+#   - NEW per-story layout (epic-{slug}/{key}-{slug}/story.md, no `/stories/`
+#     segment): `${IMPLEMENTATION_ARTIFACTS}/epic-{epic_key}-{slug}/story-index.yaml`
+#     (epic root — a sibling of the per-story dirs it indexes).
+#   - Legacy nested / flat: `${IMPLEMENTATION_ARTIFACTS}/epic-{epic_key}-{slug}/stories/story-index.yaml`
+#     (unchanged — back-compat for projects already on the `stories/` layout).
 #
 # Honors the env override: if STORY_INDEX_YAML is pre-set by the caller,
 # that wins unconditionally — preserves existing test fixtures and
@@ -515,19 +524,56 @@ resolve_story_index_path() {
     exit 1
   fi
 
-  printf '%s' "${IMPLEMENTATION_ARTIFACTS}/${epic_slug}/stories/story-index.yaml"
+  # Layout discriminator: a story file whose basename is `story.md` and whose
+  # path has NO `/stories/` segment is the NEW E105-S1 per-story layout; its
+  # index belongs at the epic root. Everything else keeps the legacy `stories/`
+  # index location. If an existing legacy index is already on disk for this
+  # epic, prefer it (avoid stranding the prior index when a single epic mixes
+  # layouts mid-migration).
+  local epic_root="${IMPLEMENTATION_ARTIFACTS}/${epic_slug}"
+  local legacy_index="${epic_root}/stories/story-index.yaml"
+  local new_index="${epic_root}/story-index.yaml"
+
+  if [ -f "$legacy_index" ]; then
+    printf '%s' "$legacy_index"
+    return 0
+  fi
+
+  case "$story_file" in
+    */stories/*)
+      printf '%s' "$legacy_index" ;;
+    */story.md)
+      printf '%s' "$new_index" ;;
+    *)
+      # Legacy flat `{key}-{slug}.md` (no epic subtree) — keep legacy location.
+      printf '%s' "$legacy_index" ;;
+  esac
 }
 
 # E79-S3 — Compute the canonical `file:` pointer for a story entry.
+# E105-S1 / ADR-127 — layout-aware pointer.
 #
-# Per AC2, the pointer is RELATIVE to the per-epic stories/ directory:
-# the bare basename of the story file (e.g., "E79-S3-foo.md"). This holds
-# whether the story file lives at the canonical nested path or — during
-# mid-migration — still at the flat path. Only the basename is recorded
-# so the pointer stays stable across either layout.
+# The pointer is RELATIVE to the directory holding story-index.yaml so a reader
+# can resolve the story file from the index location:
+#   - Legacy nested/flat: the bare basename (e.g. "E79-S3-foo.md"). The index
+#     lives in `stories/` alongside the story files, so the basename suffices.
+#   - NEW per-story layout (basename `story.md`, no `/stories/` segment): the
+#     index lives at the epic root, one level ABOVE the per-story dirs, so the
+#     pointer must include the per-story dir: "{key}-{slug}/story.md". A bare
+#     "story.md" would be ambiguous (every story shares that basename).
 compute_story_index_file_pointer() {
   local story_file="$1"
-  basename "$story_file"
+  local base
+  base="$(basename "$story_file")"
+  case "$story_file" in
+    */stories/*)
+      printf '%s' "$base" ;;
+    */story.md)
+      # Include the per-story directory name so the pointer is unambiguous.
+      printf '%s/%s' "$(basename "$(dirname "$story_file")")" "$base" ;;
+    *)
+      printf '%s' "$base" ;;
+  esac
 }
 
 # E79-S3 — Read-only legacy-flat fallback lookup.

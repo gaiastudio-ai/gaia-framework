@@ -333,6 +333,8 @@ locate_story_file() {
   fi
   local pattern="${impl_artifacts}/${key}-*.md"
   local epic_pattern="${impl_artifacts}/epic-*/stories/${key}-*.md"
+  # NEW per-story layout (E105-S1 / ADR-127): epic-{slug}/{key}-{slug}/story.md.
+  local perstory_pattern="${impl_artifacts}/epic-*/${key}-*/story.md"
 
   # shopt -s nullglob so zero-match produces an empty array rather than the
   # literal pattern string.
@@ -341,11 +343,22 @@ locate_story_file() {
   # leak to the rest of the script.
   shopt -s nullglob
   # shellcheck disable=SC2206
-  matches=( $pattern $epic_pattern )
+  matches=( $pattern $epic_pattern $perstory_pattern )
   shopt -u nullglob
 
+  # Drop per-story evidence dirs under a legacy `stories/` segment — tier-1, not
+  # the new tier-0 layout (the `*` in perstory_pattern would otherwise let them in).
+  if [ "${#matches[@]}" -gt 0 ]; then
+    local _filtered=() _mm
+    for _mm in "${matches[@]}"; do
+      case "$_mm" in */stories/*/story.md) continue ;; esac
+      _filtered+=( "$_mm" )
+    done
+    matches=( "${_filtered[@]}" )
+  fi
+
   if [ "${#matches[@]}" -eq 0 ]; then
-    die "no story file found for key '$key' (glob: $pattern)"
+    die "no story file found for key '$key' (globs: $pattern | $epic_pattern | $perstory_pattern)"
   fi
 
   # Filter glob matches: keep only files whose frontmatter declares template: 'story'

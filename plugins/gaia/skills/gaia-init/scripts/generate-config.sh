@@ -378,4 +378,33 @@ EOF
 
 emit_yaml
 mv -f -- "$yaml_path" "$cfg_path"
+
+# ---------- .gitignore seed (Test05 F-055) ----------
+# A fresh project has no .gitignore, so the first `git add -A` pulls in macOS
+# .DS_Store, editor swap files, and the .gaia/ runtime tree. Seed a sensible
+# default. Non-destructive: create only when absent; if one already exists,
+# append a GAIA block ONCE (idempotent — keyed on the marker line). The .gaia/
+# runtime tree is NOT committed (it is local runtime state per ADR-111); the
+# product source lives under gaia-public/ and is tracked separately.
+gitignore_path="$target/.gitignore"
+gaia_marker="# --- GAIA (added by /gaia-init) ---"
+gaia_block="$gaia_marker
+.DS_Store
+**/.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+# GAIA runtime tree is local state, not source — do not commit.
+.gaia/memory/
+.gaia/state/"
+if [ ! -e "$gitignore_path" ]; then
+  printf '%s\n' "$gaia_block" > "$gitignore_path"
+  printf '%s: seeded %s (.DS_Store, editor junk, .gaia/ runtime state)\n' "$SCRIPT_NAME" "$gitignore_path" >&2
+elif ! grep -qF "$gaia_marker" "$gitignore_path" 2>/dev/null; then
+  printf '\n%s\n' "$gaia_block" >> "$gitignore_path"
+  printf '%s: appended GAIA block to existing %s\n' "$SCRIPT_NAME" "$gitignore_path" >&2
+fi
+
 exit 0

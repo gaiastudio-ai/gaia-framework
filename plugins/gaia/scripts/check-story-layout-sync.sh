@@ -113,10 +113,12 @@ check_legacy_flat_path() {
 #
 # Emits exactly ONE line if both
 #   .gaia/artifacts/implementation-artifacts/story-index.yaml
-# AND any
-#   .gaia/artifacts/implementation-artifacts/epic-E*/stories/story-index.yaml
-# are present. The detail line names the flat-index path and the
-# lexicographically first per-epic match.
+# AND any per-epic story-index.yaml are present. Per-epic indexes are detected
+# at BOTH layout locations (E105-S1 / ADR-127):
+#   - legacy: epic-E*/stories/story-index.yaml  (depth 3)
+#   - new:    epic-E*/story-index.yaml          (depth 2, epic root)
+# The detail line names the flat-index path and the lexicographically first
+# per-epic match across both locations.
 # ---------------------------------------------------------------------------
 
 check_heterogeneous_story_index() {
@@ -127,11 +129,20 @@ check_heterogeneous_story_index() {
 
   local first_per_epic
   first_per_epic="$(
-    find "$IMPL_DIR_ABS" \
-      -mindepth 3 -maxdepth 3 \
-      -type f -name 'story-index.yaml' \
-      -path "$IMPL_DIR_ABS/epic-E*/stories/story-index.yaml" \
-      2>/dev/null \
+    {
+      # Legacy per-epic index under stories/ (depth 3).
+      find "$IMPL_DIR_ABS" \
+        -mindepth 3 -maxdepth 3 \
+        -type f -name 'story-index.yaml' \
+        -path "$IMPL_DIR_ABS/epic-E*/stories/story-index.yaml" \
+        2>/dev/null
+      # New per-epic index at the epic root (depth 2, E105-S1 / ADR-127).
+      find "$IMPL_DIR_ABS" \
+        -mindepth 2 -maxdepth 2 \
+        -type f -name 'story-index.yaml' \
+        -path "$IMPL_DIR_ABS/epic-E*/story-index.yaml" \
+        2>/dev/null
+    } \
       | LC_ALL=C sort \
       | head -n1
   )"

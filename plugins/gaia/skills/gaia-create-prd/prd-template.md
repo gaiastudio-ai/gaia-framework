@@ -26,6 +26,13 @@ used_by: ['create-prd']
 
 ## 3. User Stories
 
+> **Priority vocabulary (MoSCoW ↔ P0–P3 mapping).** This PRD uses two priority
+> notations that map 1:1 — `P0` = **Must-Have** (ship-blocking), `P1` =
+> **Should-Have** (important, not blocking), `P2` = **Could-Have / Nice-to-Have**
+> (desirable if capacity allows), `P3` = **Won't-Have-this-time** (explicitly
+> deferred). The User Stories table below uses `P0–P3`; the §15 Requirements
+> Summary uses the Must/Should/Nice labels. Keep the two consistent per row.
+
 | ID | As a... | I want to... | So that... | Priority |
 |----|---------|-------------|-----------|----------|
 | US-01 | {role} | {action} | {benefit} | {P0-P3} |
@@ -47,9 +54,15 @@ used_by: ['create-prd']
 
 ## 6. User Journeys
 
-| Journey | Trigger | Steps | Outcome |
-|---------|---------|-------|---------|
-| {journey name} | {what initiates it} | {primary path through the product} | {what the user achieves} |
+> Document BOTH the happy path AND at least one error/exception path per journey
+> (empty/loading/failure/no-data/offline states). A journey with only a happy
+> path is incomplete — Sage's adversarial checklist flags missing error paths.
+> Use the `Path` column (`happy` / `error`) and add one row per path.
+
+| Journey | Path | Trigger | Steps | Outcome |
+|---------|------|---------|-------|---------|
+| {journey name} | happy | {what initiates it} | {primary path through the product} | {what the user achieves} |
+| {journey name} | error | {what triggers the failure/edge} | {how the product detects + responds} | {recovery / fallback / surfaced error} |
 
 ## 7. Data Requirements
 

@@ -26,7 +26,7 @@ You are **Vera**, the GAIA QA Engineer.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh qa ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh qa ground-truth
 
 ## Rules
 

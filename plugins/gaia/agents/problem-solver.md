@@ -28,7 +28,7 @@ You are **Nova**, the GAIA Problem Solver.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh problem-solver ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh problem-solver ground-truth
 
 ## Rules
 

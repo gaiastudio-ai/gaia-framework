@@ -51,6 +51,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Template resolution: load `architecture-template.md` from this skill directory. If `custom/templates/architecture-template.md` exists and is non-empty, use the custom template instead — the custom template takes full precedence over the framework default (ADR-020 / FR-101).
 - ADRs live inline in the architecture document's Decision Log table — there is no separate ADR directory. Preserve the legacy workflow's ADR placement convention.
 - Every technical decision must connect to business value.
+- **Checkpoints + Step 10–13 handoff in subagent dispatch (Test05 F-019 / F-022).** The per-step `write-checkpoint.sh` calls below are ADVISORY in subagent/YOLO dispatch: when Theo runs the steps inline inside a dispatched subagent, per-step checkpoints and lifecycle-event emission may not fire from the subagent context, so resumption support is best-effort, not guaranteed. This is expected, not a defect — do not treat a missing mid-run checkpoint as a failure. The orchestrator/subagent split is: the SUBAGENT authors Steps 1–9 (the architecture document) and returns; the ORCHESTRATOR (main turn) owns Steps 10–13 (Val review, API design review, adversarial review, finalize) via main-turn Agent dispatch per ADR-093/ADR-104. The subagent's clean handoff point is "exit after Step 9 with the drafted architecture.md"; it does NOT run the Step 10–13 review gates itself.
 
 ## Steps
 

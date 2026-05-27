@@ -103,12 +103,6 @@ You are performing a **WCAG 2.1 accessibility review** on the target the user su
 
 This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/review-accessibility.xml` task (47 lines). Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model. Deterministic report-header generation is delegated to the shared foundation script `template-header.sh` (E28-S16) rather than re-prosed per skill.
 
-## Mission
-
-You are performing a **WCAG 2.1 accessibility review** on the target the user supplies (a file, directory, or named component). You evaluate the target across four categories — semantic HTML + ARIA, keyboard + focus, visual + screen reader — and produce a markdown findings report where every finding cites the specific WCAG 2.1 success criterion ID, its conformance level, a severity rating, and concrete remediation guidance.
-
-This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/review-accessibility.xml` task (47 lines). Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model. Deterministic report-header generation is delegated to the shared foundation script `template-header.sh` (E28-S16) rather than re-prosed per skill.
-
 ## Critical Rules
 
 - **Check ARIA attributes and roles.** Every interactive component must declare a role, label, and state appropriate to its behavior.
@@ -176,6 +170,8 @@ Write the report to the following path (preserved verbatim from the legacy task 
 ```
 
 If the file already exists for the same day (AC-EC3), write to a suffix-incremented filename (`accessibility-review-{date}-2.md`, `-3.md`, ...) to match the legacy task's safe behavior and avoid clobbering a prior same-day run.
+
+**Output override (Test05 F-017).** The default path above is preserved for downstream aggregation. To redirect the report (e.g. into a per-story `reviews/` dir, or a CI-scoped location), pass `--output <path>` in `$ARGUMENTS` or set `GAIA_A11Y_REPORT_PATH`; an explicit override wins over the default and skips the same-day suffix logic (the caller owns collision handling). Document the resolution precedence: `--output` arg > `GAIA_A11Y_REPORT_PATH` env > the default `{test_artifacts}/accessibility-review-{date}.md`.
 
 The report is organised by category (semantic HTML, ARIA, keyboard, focus, visual, screen reader). Every finding row uses this exact schema:
 

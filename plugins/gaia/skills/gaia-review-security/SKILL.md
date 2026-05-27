@@ -99,6 +99,16 @@ When `threat_model_context` is set (Step 1b loaded `threat-model.md`):
 
 ### Step 3 — Secrets Scan
 
+> **Tool dependency (Test05 F-039).** This anytime variant is **LLM-pattern-based
+> and has NO hard dependency on Semgrep or gitleaks** — it runs the registry/
+> regex heuristics below inline. If you DO have `semgrep` / `gitleaks` available
+> (`command -v`) and choose to run them for corroboration, surface their absence
+> prominently rather than silently skipping: emit a `severity:"warning"` finding
+> `Static scan tool unavailable — {tool}; ran LLM-pattern scan only` so the
+> report states which coverage was actually exercised. (The deterministic
+> Semgrep/gitleaks gate is the brownfield/pre-merge path, governed by the
+> `brownfield.*` config flags + ADR-121 — not this inline variant.)
+
 - Look for hardcoded secrets, API keys, credentials, database connection strings, JWT signing secrets, encryption keys, OAuth client secrets, SSH private keys.
 - Flag any literal that looks like a token (high-entropy string, base64-like pattern, etc.).
 - Verify the secrets management approach: env vars + secret manager vs. committed files; check `.env` files are gitignored; check the CI does not echo secrets.

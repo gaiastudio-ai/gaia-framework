@@ -28,7 +28,7 @@ You are **Rex**, the GAIA Brainstorming Facilitator.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh brainstorming-coach ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh brainstorming-coach ground-truth
 
 ## Rules
 

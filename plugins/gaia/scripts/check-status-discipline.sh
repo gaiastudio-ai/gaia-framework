@@ -163,11 +163,15 @@ classify_path() {
   local p="$1"
   case "$p" in
     # E96-S8 smoke-test follow-up: post-migration .gaia/ layout (ADR-111)
+    # NEW per-story layout (E105-S1 / ADR-127) — epic-*/{key}-{slug}/story.md.
+    # Listed before the stories/ case so the `*` in the latter cannot shadow it.
+    .gaia/artifacts/implementation-artifacts/epic-*/E*-S*-*/story.md) printf 'story_frontmatter' ;;
     .gaia/artifacts/implementation-artifacts/epic-*/stories/E*-S*-*.md) printf 'story_frontmatter' ;;
     .gaia/artifacts/implementation-artifacts/E*-S*-*.md) printf 'story_frontmatter' ;;
     .gaia/state/sprint-status.yaml) printf 'sprint_status' ;;
     .gaia/artifacts/planning-artifacts/epics-and-stories.md) printf 'epics_md' ;;
     # Legacy docs/ layout (pre-ADR-111) — accepted as fallback for back-compat.
+    docs/implementation-artifacts/epic-*/E*-S*-*/story.md) printf 'story_frontmatter' ;;
     # Canonical nested layout (E79-S4) — epic-*/stories/{key}-*.md
     docs/implementation-artifacts/epic-*/stories/E*-S*-*.md) printf 'story_frontmatter' ;;
     # Legacy flat layout — read-only fallback until E79-S6 migration completes.

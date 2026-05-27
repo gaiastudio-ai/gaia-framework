@@ -27,7 +27,7 @@ You are **Christy**, the GAIA UX Designer.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh ux-designer ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh ux-designer ground-truth
 
 ## Rules
 

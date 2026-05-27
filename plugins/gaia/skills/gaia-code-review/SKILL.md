@@ -269,7 +269,13 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 
 **Malformed-payload handling (EC-9).** On any of the above checks failing, the parent persists what it received with an explicit `[INCOMPLETE]` marker prepended to the report, and emits `verdict=BLOCKED` to `review-gate.sh`. Fork output untrustworthy → BLOCKED. The bats fixture covers this case explicitly.
 
-**Parent write to FR-402 locked path.** The parent context writes the rendered report to `.gaia/artifacts/implementation-artifacts/code-review-E<NN>-S<NNN>.md` per FR-402 naming convention. The path is **locked**: `code-review-{story_key}.md` — no slug, no date suffix.
+**Parent write — resolve the path via the single-source resolver (E105-S4 / Test05 F-046).** The basename is the FR-402 locked form `code-review-{story_key}.md` — no slug, no date suffix. The DIRECTORY is resolved by the shared helper so all six review skills agree without re-implementing path logic:
+
+```bash
+REPORT_PATH="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-review-report-path.sh --key {story_key} --type code-review)"
+```
+
+This returns the NEW canonical per-story home `…/epic-{slug}/{story_key}-{slug}/reviews/code-review-{story_key}.md` (E105-S1 layout; the `reviews/` dir is created) when the story is in the per-story layout, else the legacy flat `.gaia/artifacts/implementation-artifacts/code-review-{story_key}.md` (read-compat during migration). `review-summary-gen.sh`'s proof-of-execution accepts EITHER home. Write the rendered report to `$REPORT_PATH`.
 
 **Re-run handling (EC-8).** Parent **overwrites** the existing review file on re-run (latest verdict wins). No append, no version-suffix. The `review-gate.sh` row update is the source of truth for verdict history if needed.
 

@@ -145,6 +145,8 @@ After the plan is rendered, the planning gate halts the workflow. YOLO mode dete
 
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo` to detect YOLO mode. The exit status is the verdict (0 = YOLO active, non-zero = interactive).
 
+> **Subagent YOLO inheritance (Test05 F-035).** `is_yolo` reads `GAIA_YOLO_FLAG` / `GAIA_YOLO_MODE` from the environment (see `yolo-mode.sh` §Precedence). When this skill — or any step — is dispatched as a SUBAGENT, that subagent does NOT automatically inherit the parent's YOLO intent: a child process only sees env vars the parent exported into the dispatch. So when the orchestrator is in YOLO mode and dispatches a subagent, it MUST `export GAIA_YOLO_MODE=1` into that dispatch's environment, otherwise the child's `is_yolo` returns non-zero and silently takes the interactive branch (the F-035 symptom). Do NOT rely on implicit inheritance; set it explicitly per dispatch (and per `feedback_yolo_session_env_export`, export per-subshell or session-wide and verify `yolo-mode.sh is_yolo` exits 0 before each gated step).
+
 If `is_yolo` returns non-zero (non-YOLO branch -- default):
   - The next tool invocation MUST be `AskUserQuestion`. Do NOT invoke any other tool first. In particular, do NOT issue any `Edit` or `Write` tool call to a test file or implementation file between the plan render and the user's response -- the plan the user sees is the plan that gets implemented.
   <!-- E55-S3: three-option prompt body (labels: approve, revise, validate) -->

@@ -166,7 +166,13 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
 
 ### Step 4 -- Update Story Files
 
-- For each selected story with an individual file: update the `sprint_id` field to `sprint-{N}`.
+- For each selected story with an individual file, set the `sprint_id` field to `sprint-{N}` via the **sanctioned helper** (Test05 F-034 — do NOT hand-edit the frontmatter):
+
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/scripts/set-story-sprint.sh {story_key} --sprint sprint-{N}
+  ```
+
+  `set-story-sprint.sh` rewrites only the `sprint_id:` scalar under the shared story-status flock (atomic tmp+mv; inserts the field if absent). This is the field `sprint-state.sh inject`'s drift guard reads, so it MUST be set before the inject/commit step. Clear it with `--sprint null` when rolling a story back to the backlog.
 - Stories remain `ready-for-dev` -- do NOT change their status. `/gaia-dev-story` transitions them to `in-progress` when work begins.
 
 ### Step 5 -- Sprint Plan Generation

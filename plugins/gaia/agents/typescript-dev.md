@@ -40,7 +40,7 @@ Inherit all shared dev persona, mission, and protocols from `_base-dev.md` (TDD 
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh typescript-dev ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh typescript-dev ground-truth
 
 ## Rules
 
