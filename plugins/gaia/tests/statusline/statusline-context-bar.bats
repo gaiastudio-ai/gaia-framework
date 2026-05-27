@@ -108,58 +108,74 @@ _stdin_with_context() {
   echo "$stripped" | grep -q "####------"
 }
 
-# ---------- AC2/AC3/AC4: color bands --------------------------------------
+# ---------- TRUE gradient (green -> amber -> red), not 3 discrete bands ----
+# The context-% number and bar cells are colored by gradient_color() (E82
+# follow-up). These tests assert the gradient endpoints + monotonic sweep
+# rather than the old 3-band step colors.
 
-@test "E82-S9 / AC2: <50% uses COLOR_OK (green truecolor)" {
+@test "gradient: low pct (10%) number is green-dominant (G > R)" {
   [ -f "$RUNTIME" ]
   cd "$TEST_TMP"
-  stdin="$(_stdin_with_context 30 1000)"
-  # Use truecolor by setting COLORTERM=truecolor.
+  stdin="$(_stdin_with_context 10 1000)"
   run bash -c "COLUMNS=200 COLORTERM=truecolor printf '%s' '$stdin' | env COLUMNS=200 COLORTERM=truecolor '$RUNTIME'"
   [ "$status" -eq 0 ]
-  # COLOR_OK is `[38;2;46;204;113m` per statusline-colors.sh.
+  # The number sits near the green end: the 10%-cell + number use a
+  # green-dominant RGB. Endpoint at 0% is the exact green token.
+  echo "$output" | LC_ALL=C grep -qE $'\033\[38;2;[0-9]+;[12][0-9][0-9];[0-9]+m'   # G channel in 100s (green-dominant)
+}
+
+@test "gradient: 0% number is the exact green endpoint (46,204,113)" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  stdin="$(_stdin_with_context 0 1000)"
+  run bash -c "COLUMNS=200 COLORTERM=truecolor printf '%s' '$stdin' | env COLUMNS=200 COLORTERM=truecolor '$RUNTIME'"
+  [ "$status" -eq 0 ]
   echo "$output" | LC_ALL=C grep -q $'\033\[38;2;46;204;113m'
 }
 
-@test "E82-S9 / AC3: 50..<80% uses COLOR_WARN (amber truecolor)" {
+@test "gradient: 50% number is the amber midpoint (~255,176/177,0/1)" {
   [ -f "$RUNTIME" ]
   cd "$TEST_TMP"
-  stdin="$(_stdin_with_context 65 1000)"
+  stdin="$(_stdin_with_context 50 1000)"
   run bash -c "COLUMNS=200 COLORTERM=truecolor printf '%s' '$stdin' | env COLUMNS=200 COLORTERM=truecolor '$RUNTIME'"
   [ "$status" -eq 0 ]
-  # COLOR_WARN truecolor `[38;2;255;176;0m`.
-  echo "$output" | LC_ALL=C grep -q $'\033\[38;2;255;176;0m'
+  # Amber midpoint: R=255, G≈176-177, B≈0-1 (integer-rounding tolerant).
+  echo "$output" | LC_ALL=C grep -qE $'\033\[38;2;255;17[67];[01]m'
 }
 
-@test "E82-S9 / AC4: >=80% uses COLOR_DIRTY (orange truecolor)" {
+@test "gradient: 100% number is the red endpoint (~231/232,76/77,60)" {
   [ -f "$RUNTIME" ]
   cd "$TEST_TMP"
-  stdin="$(_stdin_with_context 85 1000)"
+  stdin="$(_stdin_with_context 100 5000)"
   run bash -c "COLUMNS=200 COLORTERM=truecolor printf '%s' '$stdin' | env COLUMNS=200 COLORTERM=truecolor '$RUNTIME'"
   [ "$status" -eq 0 ]
-  # COLOR_DIRTY truecolor `[38;2;255;120;0m`.
-  echo "$output" | LC_ALL=C grep -q $'\033\[38;2;255;120;0m'
+  echo "$output" | LC_ALL=C grep -qE $'\033\[38;2;23[12];7[67];60m'
 }
 
-# ---------- Boundary tests at color-band edges ----------------------------
-
-@test "E82-S9 / band boundary: pct=49 is OK (not WARN)" {
+@test "gradient: NOT a 3-band step — a mid pct (35%) yields an interpolated hue (not the exact green/amber tokens)" {
   [ -f "$RUNTIME" ]
   cd "$TEST_TMP"
-  stdin="$(_stdin_with_context 49 1000)"
+  stdin="$(_stdin_with_context 35 1000)"
   run bash -c "COLUMNS=200 COLORTERM=truecolor printf '%s' '$stdin' | env COLUMNS=200 COLORTERM=truecolor '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | LC_ALL=C grep -q $'\033\[38;2;46;204;113m'    # OK green
-  ! echo "$output" | LC_ALL=C grep -q $'\033\[38;2;255;176;0m'   # not WARN amber
+  # The 35% number must NOT be the old discrete green or amber band token —
+  # it is an interpolated value between them (proves true gradient).
+  ! echo "$output" | LC_ALL=C grep -q $'\033\[38;2;46;204;113m'    # not pure green
+  ! echo "$output" | LC_ALL=C grep -q $'\033\[38;2;255;176;0m'     # not pure amber
+  # And it carries a truecolor fg escape (gradient emitted).
+  echo "$output" | LC_ALL=C grep -qE $'\033\[38;2;[0-9]+;[0-9]+;[0-9]+m'
 }
 
-@test "E82-S9 / band boundary: pct=80 is DIRTY (not WARN)" {
+@test "gradient: 256-color terminals get an interpolated cube color (not the 3 band tokens)" {
   [ -f "$RUNTIME" ]
   cd "$TEST_TMP"
-  stdin="$(_stdin_with_context 80 1000)"
-  run bash -c "COLUMNS=200 COLORTERM=truecolor printf '%s' '$stdin' | env COLUMNS=200 COLORTERM=truecolor '$RUNTIME'"
+  # Explicitly UNSET COLORTERM so the runtime takes the 256-color fallback path
+  # (a truecolor COLORTERM in the outer shell would otherwise leak through).
+  stdin="$(_stdin_with_context 35 1000)"
+  run bash -c "printf '%s' '$stdin' | env -u COLORTERM COLUMNS=200 '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | LC_ALL=C grep -q $'\033\[38;2;255;120;0m'    # DIRTY orange
+  # A 38;5;N foreground escape is present (gradient mapped to the 6x6x6 cube).
+  echo "$output" | LC_ALL=C grep -qE $'\033\[38;5;[0-9]+m'
 }
 
 # ---------- AC11: NO_COLOR suppresses SGR escapes -------------------------

@@ -104,6 +104,16 @@ fi
 # ---- Read model from stdin -------------------------------------------------
 MODEL_NAME="$(printf '%s' "$INPUT" | jq -r '.model.display_name // .model.id // "claude"' 2>/dev/null)"
 [ -n "$MODEL_NAME" ] || MODEL_NAME="claude"
+# Strip a trailing context-window parenthetical from the display name so the
+# statusline shows just the model (e.g. "Opus 4.7 (1M context)" -> "Opus 4.7").
+# Only drops a final "( ... )" group whose contents mention context / a token
+# window (1M / 200K / "context") — other parentheticals are left intact.
+case "$MODEL_NAME" in
+  *\(*context*\)|*\(*[0-9][MmKk]\))
+    MODEL_NAME="$(printf '%s' "$MODEL_NAME" | sed -E 's/[[:space:]]*\([^)]*([Cc]ontext|[0-9]+[MmKk])[^)]*\)[[:space:]]*$//')"
+    ;;
+esac
+[ -n "$MODEL_NAME" ] || MODEL_NAME="claude"
 
 # ---- Project name ----------------------------------------------------------
 PROJECT_NAME="$(basename "$PROJECT_PATH" 2>/dev/null || printf 'project')"
@@ -157,6 +167,11 @@ if [ -r "$CACHE_FILE" ]; then
     UPDATE_AVAILABLE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.update_available // false' 2>/dev/null)"
     INSTALLED_VERSION_STALE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.installed_version_stale // false' 2>/dev/null)"
     GIT_DIRTY_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.git_dirty // false' 2>/dev/null)"
+    # AF-2026-05-27-5: per-class line-change counts (default 0 when absent).
+    GIT_STAGED_ADDED="$(printf '%s' "$CACHE_JSON" | jq -r '.staged_added // 0' 2>/dev/null)"
+    GIT_STAGED_REMOVED="$(printf '%s' "$CACHE_JSON" | jq -r '.staged_removed // 0' 2>/dev/null)"
+    GIT_UNSTAGED_ADDED="$(printf '%s' "$CACHE_JSON" | jq -r '.unstaged_added // 0' 2>/dev/null)"
+    GIT_UNSTAGED_REMOVED="$(printf '%s' "$CACHE_JSON" | jq -r '.unstaged_removed // 0' 2>/dev/null)"
     CACHE_TS="$(printf '%s' "$CACHE_JSON" | jq -r '.checked_at_iso // ""' 2>/dev/null)"
     if [ -n "$CACHE_TS" ]; then
       # Portable ISO-8601 -> epoch (try BSD then GNU date).
@@ -342,11 +357,18 @@ DIRTY_CHUNK=""
 if [ -n "$BRANCH" ]; then
   BRANCH_CHUNK="${GLYPH_BRANCH} ${BRANCH}"
   if [ "$GIT_DIRTY_RAW" = "true" ]; then
-    if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
-      DIRTY_CHUNK="${COLOR_DIRTY:-}*${COLOR_RESET}"
-    else
-      DIRTY_CHUNK="${COLOR_DIRTY:-}${GLYPH_DIRTY:-*}${COLOR_RESET}"
-    fi
+    # AF-2026-05-27-5: render per-class line-change counts instead of a bare
+    # dirty glyph — "S +30 -4  U +12 -3" (S=staged, U=unstaged; +added green,
+    # -removed red; muted labels). Both sides always shown when dirty, incl.
+    # "+0 -0" for an untracked-only tree (git counts no line diff for those).
+    # Integer-cast each count defensively (cache could be stale/garbage).
+    for _v in GIT_STAGED_ADDED GIT_STAGED_REMOVED GIT_UNSTAGED_ADDED GIT_UNSTAGED_REMOVED; do
+      eval "_cv=\${$_v:-0}"
+      case "$_cv" in ''|*[!0-9]*) eval "$_v=0" ;; esac
+    done
+    _DIRTY_S="${COLOR_MUTED}S${COLOR_RESET} ${COLOR_OK}+${GIT_STAGED_ADDED:-0}${COLOR_RESET} ${COLOR_DIRTY}-${GIT_STAGED_REMOVED:-0}${COLOR_RESET}"
+    _DIRTY_U="${COLOR_MUTED}U${COLOR_RESET} ${COLOR_OK}+${GIT_UNSTAGED_ADDED:-0}${COLOR_RESET} ${COLOR_DIRTY}-${GIT_UNSTAGED_REMOVED:-0}${COLOR_RESET}"
+    DIRTY_CHUNK="${_DIRTY_S}  ${_DIRTY_U}"
   fi
 fi
 SPRINT_CHUNK=""
@@ -354,53 +376,85 @@ if [ -n "$SPRINT_ID" ]; then
   SPRINT_CHUNK="${COLOR_MUTED}${SPRINT_ID}${COLOR_RESET}"
 fi
 
-# ---- Rate-limits chunk (E82-S10 / FR-451) ---------------------------------
-# Rich-theme-only. Reads `.rate_limits.five_hour.used_percentage` and
-# `.rate_limits.seven_day.used_percentage` from stdin. Renders as
-# `RL: <5h>%/<7d>%` colored by the MAX of the two (band: <50 OK, 50..<80
-# WARN, >=80 DIRTY). Defensive: when only one window is present, render
-# only that window. When both absent or theme != rich, chunk is empty.
+# ---- Rate-limits chunk (E82-S10 / FR-451; redesigned per user req) ---------
+# Rich-theme-only. Reads `.rate_limits.{five_hour,seven_day}.{used_percentage,
+# resets_at}` from stdin (resets_at = Unix epoch seconds; per the Claude Code
+# statusline schema). Renders ONE gradient-colored segment PER PRESENT WINDOW:
+#
+#   5h:23% (2h13m)   7d:63% (4d2h)
+#
+# - Each segment's % is gradient-colored by its OWN value (green->amber->red),
+#   reusing gradient_color() — no shared "max" band.
+# - The parenthetical is the adaptive countdown until that window resets
+#   (resets_at - now): <1h "47m", 1-24h "2h13m", >24h "4d2h", <=0 "now".
+# - resets_at absent on a present window -> show just "5h:23%" (no parens).
+# - A window entirely absent is omitted; rate_limits entirely absent ->
+#   empty chunk (graceful, matches the prior behavior for non-Pro/Max).
+#
+# used_percentage may be a float (e.g. 23.5); truncate to int for both display
+# and the gradient. _RL_NOW is captured once so both windows share a clock.
+
+# _rl_reltime <resets_at_epoch> -> adaptive "Nh Nm" / "Nm" / "NdNh" / "now".
+# Empty string when the epoch is missing/non-numeric. Uses _RL_NOW.
+_rl_reltime() {
+  _rt="$1"
+  case "$_rt" in ''|null|*[!0-9]*) printf ''; return 0 ;; esac
+  _delta=$(( _rt - _RL_NOW ))
+  if [ "$_delta" -le 0 ]; then printf 'now'; return 0; fi
+  _d=$(( _delta / 86400 ))
+  _h=$(( (_delta % 86400) / 3600 ))
+  _m=$(( (_delta % 3600) / 60 ))
+  if [ "$_d" -gt 0 ]; then
+    printf '%dd%dh' "$_d" "$_h"
+  elif [ "$_h" -gt 0 ]; then
+    printf '%dh%dm' "$_h" "$_m"
+  else
+    # under an hour — show whole minutes, minimum 1m so a >0 delta never shows 0m.
+    [ "$_m" -lt 1 ] && _m=1
+    printf '%dm' "$_m"
+  fi
+}
+
+# _rl_segment <label> <pct> <resets_at> -> gradient-colored "label:PCT% (reset)".
+# Assigns the rendered segment to _RL_SEG (no fork). Empty when pct is null.
+_rl_segment() {
+  _seg_label="$1"; _seg_pct="$2"; _seg_reset="$3"
+  _RL_SEG=""
+  [ "$_seg_pct" = "null" ] && return 0
+  # Truncate a possible float (23.5 -> 23) then clamp 0..100.
+  _seg_pct="${_seg_pct%%.*}"
+  case "$_seg_pct" in ''|*[!0-9]*) _seg_pct=0 ;; esac
+  [ "$_seg_pct" -gt 100 ] && _seg_pct=100
+  [ "$_seg_pct" -lt 0 ] && _seg_pct=0
+  # gradient_color assigns _seg_color via `printf -v` (out-var form, no fork).
+  # Pre-declare so static analysis sees the assignment (SC2154).
+  _seg_color=""
+  gradient_color "$_seg_pct" _seg_color
+  _seg_rel="$(_rl_reltime "$_seg_reset")"
+  if [ -n "$_seg_rel" ]; then
+    _RL_SEG="${_seg_color}${_seg_label}:${_seg_pct}% (${_seg_rel})${COLOR_RESET}"
+  else
+    _RL_SEG="${_seg_color}${_seg_label}:${_seg_pct}%${COLOR_RESET}"
+  fi
+}
+
 RLIMIT_CHUNK=""
 if [ "$GAIA_RICH" = "1" ]; then
   _RL_5H="$(printf '%s' "$INPUT" | jq -r '.rate_limits.five_hour.used_percentage // "null"' 2>/dev/null || printf 'null')"
+  _RL_5H_RESET="$(printf '%s' "$INPUT" | jq -r '.rate_limits.five_hour.resets_at // "null"' 2>/dev/null || printf 'null')"
   _RL_7D="$(printf '%s' "$INPUT" | jq -r '.rate_limits.seven_day.used_percentage // "null"' 2>/dev/null || printf 'null')"
-  _RL_HAS_5H=0
-  _RL_HAS_7D=0
-  [ "$_RL_5H" != "null" ] && _RL_HAS_5H=1
-  [ "$_RL_7D" != "null" ] && _RL_HAS_7D=1
-  if [ "$_RL_HAS_5H" -eq 1 ] || [ "$_RL_HAS_7D" -eq 1 ]; then
-    # Clamp + integer-cast each present value.
-    if [ "$_RL_HAS_5H" -eq 1 ]; then
-      case "$_RL_5H" in ''|*[!0-9]*) _RL_5H=0 ;; esac
-      [ "$_RL_5H" -gt 100 ] && _RL_5H=100
-      [ "$_RL_5H" -lt 0 ] && _RL_5H=0
-    fi
-    if [ "$_RL_HAS_7D" -eq 1 ]; then
-      case "$_RL_7D" in ''|*[!0-9]*) _RL_7D=0 ;; esac
-      [ "$_RL_7D" -gt 100 ] && _RL_7D=100
-      [ "$_RL_7D" -lt 0 ] && _RL_7D=0
-    fi
-    # Compute the dominant percentage for color band.
-    _RL_MAX=0
-    if [ "$_RL_HAS_5H" -eq 1 ] && [ "$_RL_5H" -gt "$_RL_MAX" ]; then _RL_MAX="$_RL_5H"; fi
-    if [ "$_RL_HAS_7D" -eq 1 ] && [ "$_RL_7D" -gt "$_RL_MAX" ]; then _RL_MAX="$_RL_7D"; fi
-    # Color band.
-    if [ "$_RL_MAX" -lt 50 ]; then
-      _RL_COLOR="${COLOR_OK:-}"
-    elif [ "$_RL_MAX" -lt 80 ]; then
-      _RL_COLOR="${COLOR_WARN:-}"
+  _RL_7D_RESET="$(printf '%s' "$INPUT" | jq -r '.rate_limits.seven_day.resets_at // "null"' 2>/dev/null || printf 'null')"
+  if [ "$_RL_5H" != "null" ] || [ "$_RL_7D" != "null" ]; then
+    _RL_NOW="$(date +%s 2>/dev/null || printf '0')"
+    case "$_RL_NOW" in ''|*[!0-9]*) _RL_NOW=0 ;; esac
+    _rl_segment "5h" "$_RL_5H" "$_RL_5H_RESET"; _RL_SEG_5H="$_RL_SEG"
+    _rl_segment "7d" "$_RL_7D" "$_RL_7D_RESET"; _RL_SEG_7D="$_RL_SEG"
+    # Join present segments with a single space (both -> "5h:.. 7d:..").
+    if [ -n "$_RL_SEG_5H" ] && [ -n "$_RL_SEG_7D" ]; then
+      RLIMIT_CHUNK="${_RL_SEG_5H} ${_RL_SEG_7D}"
     else
-      _RL_COLOR="${COLOR_DIRTY:-}"
+      RLIMIT_CHUNK="${_RL_SEG_5H}${_RL_SEG_7D}"
     fi
-    # Build the body. Single-window vs both-windows.
-    if [ "$_RL_HAS_5H" -eq 1 ] && [ "$_RL_HAS_7D" -eq 1 ]; then
-      _RL_BODY="RL: ${_RL_5H}%/${_RL_7D}%"
-    elif [ "$_RL_HAS_5H" -eq 1 ]; then
-      _RL_BODY="RL: ${_RL_5H}%"
-    else
-      _RL_BODY="RL: ${_RL_7D}%"
-    fi
-    RLIMIT_CHUNK="${_RL_COLOR}${_RL_BODY}${COLOR_RESET}"
   fi
 fi
 
@@ -442,20 +496,19 @@ if [ "$_CTX_PCT" != "null" ]; then
     _CTX_FILLED_GLYPH="${GLYPH_BAR_FILLED:-█}"
     _CTX_EMPTY_GLYPH="${GLYPH_BAR_EMPTY:-░}"
   fi
-  # Per-cell gradient fill: cell index 0..9 maps to OK (green) for cells
-  # 0-4, WARN (yellow) for cells 5-7, DIRTY (red) for cells 8-9. The
-  # transitions match the band thresholds (<50 / 50..<80 / >=80) at the
-  # per-cell boundary so a 70% bar renders 5 green + 2 yellow filled.
+  # Per-cell TRUE gradient fill: each filled cell is colored by its own
+  # position along the green -> amber -> red gradient (cell i represents the
+  # ~i*10..(i+1)*10% band; we color it at its midpoint i*10+5 so the 10 cells
+  # sweep smoothly from green at the left to red at the right). Replaces the
+  # former 3-discrete-band scheme (green 0-4 / yellow 5-7 / red 8-9) per the
+  # gradient requirement. `gradient_color` handles truecolor / nearest-256 /
+  # NO_COLOR emission internally.
   _FILLED_STR=""
   i=0
   while [ "$i" -lt "$_CTX_FILLED" ]; do
-    if [ "$i" -lt 5 ]; then
-      _CELL_COLOR="${COLOR_OK:-}"
-    elif [ "$i" -lt 8 ]; then
-      _CELL_COLOR="${COLOR_WARN:-}"
-    else
-      _CELL_COLOR="${COLOR_DIRTY:-}"
-    fi
+    _CELL_PCT=$(( i * 10 + 5 ))
+    # Fork-free: gradient_color writes into _CELL_COLOR via printf -v.
+    gradient_color "$_CELL_PCT" _CELL_COLOR
     _FILLED_STR="${_FILLED_STR}${_CELL_COLOR}${_CTX_FILLED_GLYPH}${COLOR_RESET}"
     i=$((i + 1))
   done
@@ -465,14 +518,11 @@ if [ "$_CTX_PCT" != "null" ]; then
     _EMPTY_STR="${_EMPTY_STR}${_CTX_EMPTY_GLYPH}"
     i=$((i + 1))
   done
-  # Inline percentage colored by the dominant band.
-  if [ "$_CTX_PCT" -lt 50 ]; then
-    _PCT_COLOR="${COLOR_OK:-}"
-  elif [ "$_CTX_PCT" -lt 80 ]; then
-    _PCT_COLOR="${COLOR_WARN:-}"
-  else
-    _PCT_COLOR="${COLOR_DIRTY:-}"
-  fi
+  # Inline percentage colored by the SAME green -> amber -> red gradient,
+  # evaluated at the actual percentage (so the number's hue matches the
+  # right-most filled cell's neighbourhood). True gradient, not a 3-band step.
+  # Fork-free out-var form.
+  gradient_color "$_CTX_PCT" _PCT_COLOR
   _PCT_TEXT="${_PCT_COLOR}${_CTX_PCT}%${COLOR_RESET}"
   # Size hint: Claude Code sends `context_window.context_window_size` as an
   # integer (e.g. 1000000 for 1M, 200000 for 200K). Round to the stock label.

@@ -104,13 +104,16 @@ _render() {
   stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"}}'
   run _render "$stdin"
   [ "$status" -eq 0 ]
-  # Line 2 should have three " | " separators: branch | dirty | project.
+  # Line 2 should have at least two " | " separators: branch | dirty | project.
   line2="$(echo "$output" | tail -1)"
-  # Count separators on line 2 — expect at least 2 (branch|dirty|project).
   sep_count=$(echo "$line2" | grep -o " | " | wc -l | tr -d ' ')
   [ "$sep_count" -ge 2 ]
-  # Dirty glyph "*" should appear between branch and project tokens.
-  echo "$line2" | grep -qE 'main.*\*.*'
+  # AF-2026-05-27-5: dirty chunk shows per-class line counts (the cache here has
+  # no count fields, so they default to +0 -0). Marker is the S/U counts, not "*".
+  stripped="$(echo "$line2" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
+  echo "$stripped" | grep -q "S +0 -0"
+  echo "$stripped" | grep -q "U +0 -0"
+  ! echo "$stripped" | grep -qE '\| \* \|'
 }
 
 @test "dirty: marker suppressed when git_dirty=false" {
@@ -119,8 +122,9 @@ _render() {
   run _render "$stdin"
   [ "$status" -eq 0 ]
   line2="$(echo "$output" | tail -1)"
-  # No standalone "*" chunk — line 2 should only have branch | project.
-  ! echo "$line2" | grep -qE '\| \*'
+  stripped="$(echo "$line2" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
+  # No dirty chunk at all on a clean tree — no S/U counts.
+  ! echo "$stripped" | grep -qE 'S \+|U \+'
 }
 
 # ---- Context-bar gradient + percentage + size hint ----------------------
