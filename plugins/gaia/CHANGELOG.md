@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.180.1] — 2026-05-27
+
+### Fixed
+
+- (E105) single-source review-report path resolver + per-story reviews/ producer migration
+- (docs) test05 doc-clarity + skill fixes (F-018/024/017/021/019/022/039/044/035/001)
+- (planning) complete prd/ux templates + init developer-experience gaps
+- (sprint) unblock next-sprint init after close + add sanctioned sprint_id setter
+- (reviews) close api-review + infra-design rubric gaps
+- (agents) use the canonical plugin-root var in agent memory-loader headers
+- (E105) point taxonomy producers at the planning-artifacts canonical home
+- (E105) wire per-story layout into un-migrated story-file consumers
+
 ## [1.180.0] — 2026-05-27
 
 ### Added
