@@ -194,12 +194,12 @@ EOF
 @test "wip-checkpoint-resolve.sh: matching checksums return exit 0 MATCH" {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  mkdir -p "$tmpdir/_memory/checkpoints"
+  mkdir -p "$tmpdir/.gaia/memory/checkpoints"
   mkdir -p "$tmpdir/src"
   echo "hello" > "$tmpdir/src/a.txt"
   local sum
   sum=$(shasum -a 256 "$tmpdir/src/a.txt" | awk '{print $1}')
-  cat > "$tmpdir/_memory/checkpoints/quick-dev-bar.yaml" <<EOF
+  cat > "$tmpdir/.gaia/memory/checkpoints/quick-dev-bar.yaml" <<EOF
 workflow: quick-dev
 files_touched:
   - path: src/a.txt
@@ -216,10 +216,10 @@ EOF
 @test "wip-checkpoint-resolve.sh: mismatched checksum returns exit 1 MODIFIED (EC-5)" {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  mkdir -p "$tmpdir/_memory/checkpoints"
+  mkdir -p "$tmpdir/.gaia/memory/checkpoints"
   mkdir -p "$tmpdir/src"
   echo "hello" > "$tmpdir/src/a.txt"
-  cat > "$tmpdir/_memory/checkpoints/quick-dev-baz.yaml" <<EOF
+  cat > "$tmpdir/.gaia/memory/checkpoints/quick-dev-baz.yaml" <<EOF
 workflow: quick-dev
 files_touched:
   - path: src/a.txt
@@ -236,8 +236,8 @@ EOF
 @test "wip-checkpoint-resolve.sh: deleted file returns exit 1 DELETED (EC-5)" {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  mkdir -p "$tmpdir/_memory/checkpoints"
-  cat > "$tmpdir/_memory/checkpoints/quick-dev-qux.yaml" <<EOF
+  mkdir -p "$tmpdir/.gaia/memory/checkpoints"
+  cat > "$tmpdir/.gaia/memory/checkpoints/quick-dev-qux.yaml" <<EOF
 workflow: quick-dev
 files_touched:
   - path: src/gone.txt
@@ -343,13 +343,13 @@ EOF
 @test "checkpoint-archive.sh: archives active checkpoint to completed/" {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  mkdir -p "$tmpdir/_memory/checkpoints"
-  echo 'phase: complete' > "$tmpdir/_memory/checkpoints/quick-dev-arc.yaml"
+  mkdir -p "$tmpdir/.gaia/memory/checkpoints"
+  echo 'phase: complete' > "$tmpdir/.gaia/memory/checkpoints/quick-dev-arc.yaml"
   cd "$tmpdir"
   run "$QD_SCRIPTS/checkpoint-archive.sh" arc
   [ "$status" -eq 0 ]
-  [ -f "$tmpdir/_memory/checkpoints/completed/quick-dev-arc.yaml" ]
-  [ ! -f "$tmpdir/_memory/checkpoints/quick-dev-arc.yaml" ]
+  [ -f "$tmpdir/.gaia/memory/checkpoints/completed/quick-dev-arc.yaml" ]
+  [ ! -f "$tmpdir/.gaia/memory/checkpoints/quick-dev-arc.yaml" ]
   rm -rf "$tmpdir"
 }
 

@@ -269,11 +269,9 @@ if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
   fi
 fi
 if [ -z "${MEMORY_PATH:-}" ]; then
-  if [ -d "${PROJECT_PATH}/.gaia/memory" ]; then
-    MEMORY_PATH="${PROJECT_PATH}/.gaia/memory"
-  else
-    MEMORY_PATH="${PROJECT_PATH}/_memory"
-  fi
+  # AF-2026-05-27-3 (ADR-111): .gaia/memory is the only memory tree; legacy
+  # _memory fallback removed with the consolidation migration.
+  MEMORY_PATH="${PROJECT_PATH}/.gaia/memory"
 fi
 
 # E64-S4 — Resolve EPICS_AND_STORIES across the dual-layout invariant

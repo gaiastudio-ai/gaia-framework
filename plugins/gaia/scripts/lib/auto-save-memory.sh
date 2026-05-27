@@ -260,14 +260,12 @@ _auto_save_memory() {
     # keeps test harnesses that exercise finalize.sh in isolation
     # cheap — they pay no fork/exec/sleep cost. The fast path runs
     # BEFORE we spawn the background writer.
-    # AF-2026-05-21-7: canonical-first lookup with legacy fallback only on
-    # positive pre-ADR-111 evidence. Read-only path — no mkdir, so the bug
-    # was lower-priority, but pattern-aligned with the rest of the sweep.
+    # AF-2026-05-27-3 (ADR-111): .gaia/memory is the only memory tree — the
+    # legacy _memory fallback was removed with the consolidation migration.
+    # Env MEMORY_PATH override still wins.
     local memdir
     if [ -n "${MEMORY_PATH:-}" ]; then
         memdir="$MEMORY_PATH"
-    elif [ -d "_memory" ] && [ ! -d ".gaia/memory" ]; then
-        memdir="_memory"
     else
         memdir=".gaia/memory"
     fi

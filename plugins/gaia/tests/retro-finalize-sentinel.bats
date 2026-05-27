@@ -10,7 +10,7 @@ setup() {
   FINALIZE="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-retro/scripts" && pwd)/finalize.sh"
   export FINALIZE
 
-  MEM_ROOT="$TEST_TMP/_memory"
+  MEM_ROOT="$TEST_TMP/.gaia/memory"
   mkdir -p "$MEM_ROOT/validator-sidecar" "$MEM_ROOT/checkpoints"
   export MEM_ROOT
   export CHECKPOINT_PATH="$MEM_ROOT/checkpoints"

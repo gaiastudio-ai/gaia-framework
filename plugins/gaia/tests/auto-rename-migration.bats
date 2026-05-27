@@ -9,7 +9,7 @@ setup() {
   MIGRATE="$PLUGIN_DIR/scripts/lib/auto-rename-migration.sh"
   PROJECT_ROOT="$TEST_TMP/project"
   WORKDIR="$PROJECT_ROOT/.github/workflows"
-  MEMORY="$PROJECT_ROOT/_memory"
+  MEMORY="$PROJECT_ROOT/.gaia/memory"
   mkdir -p "$WORKDIR" "$MEMORY"
 }
 
@@ -49,7 +49,7 @@ teardown() { common_teardown; }
 
 # ---------- TC-ARM-3: S-branch (skip-all + .config-stale) ----------
 
-@test "TC-ARM-3: S-branch leaves file unchanged + writes _memory/.config-stale" {
+@test "TC-ARM-3: S-branch leaves file unchanged + writes .gaia/memory/.config-stale" {
   printf 'name: ci\non: [push]\n' > "$WORKDIR/ci.yml"
   pre_sha=$(shasum -a 256 "$WORKDIR/ci.yml" | awk '{print $1}')
   run env GAIA_MIGRATE_DECISION_ci_yml=s bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration 2>&1"

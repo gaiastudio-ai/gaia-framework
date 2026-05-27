@@ -27,7 +27,7 @@ WRITER="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/retro-sidecar-write.sh"
 # layouts matching the real repo. The writer uses --root to pin its allowlist.
 mk_memory_root() {
   local root="$1"
-  mkdir -p "$root/_memory" \
+  mkdir -p "$root/.gaia/memory" \
            "$root/docs/implementation-artifacts" \
            "$root/docs/planning-artifacts" \
            "$root/gaia-public/plugins/gaia/skills" \
@@ -42,7 +42,7 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  local target="$root/_memory/architect-sidecar/decision-log.md"
+  local target="$root/.gaia/memory/architect-sidecar/decision-log.md"
   mkdir -p "$(dirname "$target")"
 
   run "$WRITER" --root "$root" --sprint-id "sprint-10" \
@@ -62,17 +62,17 @@ mk_memory_root() {
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
   local agents=(architect test-architect security devops sm pm)
   for a in "${agents[@]}"; do
-    mkdir -p "$root/_memory/${a}-sidecar"
+    mkdir -p "$root/.gaia/memory/${a}-sidecar"
     run "$WRITER" --root "$root" --sprint-id "sprint-11" \
-      --target "$root/_memory/${a}-sidecar/decision-log.md" \
+      --target "$root/.gaia/memory/${a}-sidecar/decision-log.md" \
       --payload "lesson for ${a}"
     [ "$status" -eq 0 ]
   done
 
   for a in "${agents[@]}"; do
-    [ -f "$root/_memory/${a}-sidecar/decision-log.md" ]
-    grep -q "sprint-11" "$root/_memory/${a}-sidecar/decision-log.md"
-    grep -q "lesson for ${a}" "$root/_memory/${a}-sidecar/decision-log.md"
+    [ -f "$root/.gaia/memory/${a}-sidecar/decision-log.md" ]
+    grep -q "sprint-11" "$root/.gaia/memory/${a}-sidecar/decision-log.md"
+    grep -q "lesson for ${a}" "$root/.gaia/memory/${a}-sidecar/decision-log.md"
   done
 }
 
@@ -84,7 +84,7 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  local target="$root/_memory/sm-sidecar/decision-log.md"
+  local target="$root/.gaia/memory/sm-sidecar/decision-log.md"
   mkdir -p "$(dirname "$target")"
 
   "$WRITER" --root "$root" --sprint-id "sprint-12" \
@@ -130,7 +130,7 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  local target="$root/_memory/architect-sidecar/decision-log.md"
+  local target="$root/.gaia/memory/architect-sidecar/decision-log.md"
   mkdir -p "$(dirname "$target")"
 
   # Launch 4 writers concurrently with the same (sprint_id, payload).
@@ -155,7 +155,7 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  local target="$root/_memory/test-architect-sidecar/decision-log.md"
+  local target="$root/.gaia/memory/test-architect-sidecar/decision-log.md"
   [ ! -e "$target" ]
 
   run "$WRITER" --root "$root" --sprint-id "sprint-21" \
@@ -193,7 +193,7 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  local target="$root/_memory/architect-sidecar/decision-log.md"
+  local target="$root/.gaia/memory/architect-sidecar/decision-log.md"
 
   run "$WRITER" --root "$root" --sprint-id "" \
     --target "$target" --payload "x"
@@ -211,13 +211,13 @@ mk_memory_root() {
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
   # A sidecar-looking path but actually a symlink into gaia-public/plugins/.
-  mkdir -p "$root/_memory/architect-sidecar"
+  mkdir -p "$root/.gaia/memory/architect-sidecar"
   local forbidden="$root/gaia-public/plugins/gaia/skills/evil.md"
   mkdir -p "$(dirname "$forbidden")"
   echo "original" > "$forbidden"
   local before; before="$(shasum -a 256 "$forbidden" | awk '{print $1}')"
 
-  local link="$root/_memory/architect-sidecar/decision-log.md"
+  local link="$root/.gaia/memory/architect-sidecar/decision-log.md"
   ln -s "$forbidden" "$link"
 
   run "$WRITER" --root "$root" --sprint-id "sprint-23" \
@@ -237,7 +237,7 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  local target="$root/_memory/security-sidecar/decision-log.md"
+  local target="$root/.gaia/memory/security-sidecar/decision-log.md"
   mkdir -p "$(dirname "$target")"
 
   "$WRITER" --root "$root" --sprint-id "sprint-24" \
@@ -260,7 +260,7 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  local target="$root/_memory/devops-sidecar/decision-log.md"
+  local target="$root/.gaia/memory/devops-sidecar/decision-log.md"
   mkdir -p "$(dirname "$target")"
   printf "# Decision Log\n\noriginal content\n" > "$target"
   local before; before="$(shasum -a 256 "$target" | awk '{print $1}')"
@@ -314,9 +314,9 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  [ ! -d "$root/_memory/validator-sidecar" ]
+  [ ! -d "$root/.gaia/memory/validator-sidecar" ]
 
-  local target="$root/_memory/validator-sidecar/decision-log.md"
+  local target="$root/.gaia/memory/validator-sidecar/decision-log.md"
   run "$WRITER" --root "$root" --sprint-id "sprint-27" \
     --target "$target" --payload "val retro decision"
   [ "$status" -eq 0 ]
@@ -332,7 +332,7 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  local target="$root/_memory/pm-sidecar/decision-log.md"
+  local target="$root/.gaia/memory/pm-sidecar/decision-log.md"
   mkdir -p "$(dirname "$target")"
 
   # 120KB payload
@@ -355,7 +355,7 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  local target="$root/_memory/architect-sidecar/decision-log.md"
+  local target="$root/.gaia/memory/architect-sidecar/decision-log.md"
   mkdir -p "$(dirname "$target")"
 
   # Prepend BOM to a freshly seeded file then write the same logical entry.
@@ -383,7 +383,7 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  local target="$root/_memory/sm-sidecar/velocity-data.md"
+  local target="$root/.gaia/memory/sm-sidecar/velocity-data.md"
   mkdir -p "$(dirname "$target")"
 
   run "$WRITER" --root "$root" --sprint-id "sprint-30" \

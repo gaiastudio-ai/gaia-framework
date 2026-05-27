@@ -124,15 +124,12 @@ if [ "$mode" = "team" ]; then
   exit 0
 fi
 
-# ---- Resolve checkpoint_path (AF-2026-05-21-7 inverted precedence) ----
-# Canonical .gaia/memory/checkpoints is the default for greenfield AND
-# post-ADR-111 projects. Legacy _memory/checkpoints fires ONLY when there's
-# positive pre-migration evidence: legacy dir exists AND canonical doesn't.
+# ---- Resolve checkpoint_path (ADR-111: .gaia/ canonical) ----
+# AF-2026-05-27-3: legacy _memory/checkpoints fallback removed. CHECKPOINT_PATH
+# env override still wins; otherwise .gaia/memory/checkpoints.
 if [ -z "$checkpoint_path" ]; then
   if [ -n "${CHECKPOINT_PATH:-}" ]; then
     checkpoint_path="$CHECKPOINT_PATH"
-  elif [ -d "./_memory/checkpoints" ] && [ ! -d "./.gaia/memory" ]; then
-    checkpoint_path="./_memory/checkpoints"
   else
     checkpoint_path="./.gaia/memory/checkpoints"
   fi

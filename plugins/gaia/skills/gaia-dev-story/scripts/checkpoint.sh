@@ -74,16 +74,10 @@ if [ -z "${CHECKPOINT_PATH:-}" ]; then
 fi
 
 if [ -z "${CHECKPOINT_PATH:-}" ]; then
-  # AF-2026-05-21-7 inverted precedence: canonical default, legacy fallback
-  # only on positive pre-ADR-111 evidence (legacy dir exists AND canonical
-  # doesn't). Prevents rogue _memory/ creation on greenfield projects.
-  if [ -d "_memory/checkpoints" ] && [ ! -d ".gaia/memory" ]; then
-    log "WARNING: CHECKPOINT_PATH not set — using default _memory/checkpoints"
-    export CHECKPOINT_PATH="_memory/checkpoints"
-  else
-    log "WARNING: CHECKPOINT_PATH not set — using default .gaia/memory/checkpoints"
-    export CHECKPOINT_PATH=".gaia/memory/checkpoints"
-  fi
+  # AF-2026-05-27-3 (ADR-111): .gaia/memory/checkpoints is the only location —
+  # the legacy _memory/checkpoints fallback was removed with the migration.
+  log "WARNING: CHECKPOINT_PATH not set — using default .gaia/memory/checkpoints"
+  export CHECKPOINT_PATH=".gaia/memory/checkpoints"
 fi
 
 mkdir -p "$CHECKPOINT_PATH"

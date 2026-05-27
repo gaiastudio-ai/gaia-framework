@@ -65,9 +65,10 @@ reads the resulting `$PROJECT_STATE` value):
 # First-match-wins. Bounded I/O: 4 stat + 1 readdir, zero file reads.
 #
 # E97-S1 / ADR-111: prefer canonical `.gaia/{config,artifacts,memory}/` paths
-# first; fall back to legacy `config/`, `docs/`, and `_memory/` on pre-migration
-# installs. The first present path of each pair wins; absent canonical AND
-# absent legacy means "missing".
+# first; fall back to legacy `config/` and `docs/` on pre-migration installs.
+# The legacy `_memory/` fallback was removed in AF-2026-05-27-3 — `.gaia/memory/`
+# is the only memory tree. The first present path of each pair wins; absent
+# canonical AND absent legacy means "missing".
 
 PROJECT_STATE="healthy"  # default fall-through
 
@@ -87,14 +88,14 @@ elif { [ ! -d ".gaia/artifacts/planning-artifacts" ] || [ -z "$(ls -A .gaia/arti
   done
   # If no build-system file matched, fall through to post-update / healthy below
   if [ "$PROJECT_STATE" != "brownfield" ]; then
-    if [ -f ".gaia/memory/.framework-version-stale" ] || [ -f "_memory/.framework-version-stale" ]; then
+    if [ -f ".gaia/memory/.framework-version-stale" ]; then
       PROJECT_STATE="post-update"
     fi
     # else: healthy (default already set)
   fi
 
 # (3) Post-update: config present, planning-artifacts non-empty, drift marker present
-elif [ -f ".gaia/memory/.framework-version-stale" ] || [ -f "_memory/.framework-version-stale" ]; then
+elif [ -f ".gaia/memory/.framework-version-stale" ]; then
   PROJECT_STATE="post-update"
 fi
 # else: healthy (default)

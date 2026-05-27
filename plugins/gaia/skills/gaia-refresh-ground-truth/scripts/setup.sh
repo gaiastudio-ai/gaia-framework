@@ -48,7 +48,8 @@ done <<<"$config_output"
 # but that gate type is not in validate-gate.sh's registry (which scopes to
 # artifact-existence gates only), so the call silently fell through and the
 # writability precondition was skipped on every refresh.
-SIDECAR_DIR="${memory_path:-./_memory}/validator-sidecar"
+# AF-2026-05-27-3 (ADR-111): default to canonical .gaia/memory (legacy _memory removed).
+SIDECAR_DIR="${memory_path:-./.gaia/memory}/validator-sidecar"
 if [ -d "$SIDECAR_DIR" ] && [ ! -w "$SIDECAR_DIR" ]; then
   log "warning: sidecar directory may not be writable: $SIDECAR_DIR (non-fatal)"
 fi

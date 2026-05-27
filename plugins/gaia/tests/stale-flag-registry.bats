@@ -3,7 +3,7 @@
 # stale-flag-registry.bats — E86-S6 / AC6.
 #
 # Covers `check-stale-flag-registry.sh`: static check that every
-# `_memory/.*-stale` marker on disk is registered in the ADR-102
+# `.gaia/memory/.*-stale` marker on disk is registered in the ADR-102
 # registry table in the architecture document.
 #
 # Scenarios (per AC6 + Test Scenarios TS-4..TS-8):
@@ -17,7 +17,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   FIXTURE_DIR="$BATS_TEST_TMPDIR/fixture"
-  mkdir -p "$FIXTURE_DIR/_memory" "$FIXTURE_DIR/docs/planning-artifacts/architecture"
+  mkdir -p "$FIXTURE_DIR/.gaia/memory" "$FIXTURE_DIR/docs/planning-artifacts/architecture"
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/check-stale-flag-registry.sh"
   REGISTRY="$FIXTURE_DIR/docs/planning-artifacts/architecture/12-12-adr-detail-records.md"
   write_registry_canonical
@@ -33,24 +33,24 @@ write_registry_canonical() {
 
 | Marker | Owner | Purpose | Cleared By |
 |--------|-------|---------|------------|
-| `_memory/.config-stale` | `ci-regen-stale-flag.sh` | CI workflow regeneration needed | `/gaia-config-ci --regenerate` |
-| `_memory/.framework-version-stale` | drift detector | Run `/gaia-migrate` to reconcile | `/gaia-migrate` successful reconciliation |
+| `.gaia/memory/.config-stale` | `ci-regen-stale-flag.sh` | CI workflow regeneration needed | `/gaia-config-ci --regenerate` |
+| `.gaia/memory/.framework-version-stale` | drift detector | Run `/gaia-migrate` to reconcile | `/gaia-migrate` successful reconciliation |
 MD
 }
 
 run_check() {
   run --separate-stderr env \
     CLAUDE_PROJECT_ROOT="$FIXTURE_DIR" \
-    GAIA_MEMORY_PATH="$FIXTURE_DIR/_memory" \
+    GAIA_MEMORY_PATH="$FIXTURE_DIR/.gaia/memory" \
     GAIA_REGISTRY_PATH="$REGISTRY" \
     bash "$SCRIPT"
 }
 
 # ===== TS-4 — Registered marker only → exit 0 =========================
 
-@test "AC4 / TS-4: only registered markers in _memory/ → exit 0, no output" {
-  : > "$FIXTURE_DIR/_memory/.config-stale"
-  : > "$FIXTURE_DIR/_memory/.framework-version-stale"
+@test "AC4 / TS-4: only registered markers in .gaia/memory/ → exit 0, no output" {
+  : > "$FIXTURE_DIR/.gaia/memory/.config-stale"
+  : > "$FIXTURE_DIR/.gaia/memory/.framework-version-stale"
   run_check
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -59,16 +59,16 @@ run_check() {
 # ===== TS-5 — Unregistered marker → CRITICAL ==========================
 
 @test "AC4 / TS-5: unregistered marker emits CRITICAL and exits non-zero" {
-  : > "$FIXTURE_DIR/_memory/.bogus-stale"
+  : > "$FIXTURE_DIR/.gaia/memory/.bogus-stale"
   run_check
   [ "$status" -ne 0 ]
-  [[ "$output" == *"CRITICAL: Unregistered stale-flag marker: _memory/.bogus-stale"* ]]
+  [[ "$output" == *"CRITICAL: Unregistered stale-flag marker: .gaia/memory/.bogus-stale"* ]]
   [[ "$output" == *"Register in ADR-102 or remove"* ]]
 }
 
 # ===== TS-6 — No markers → exit 0 =====================================
 
-@test "AC4 / TS-6: no .*-stale files in _memory/ → exit 0, no output" {
+@test "AC4 / TS-6: no .*-stale files in .gaia/memory/ → exit 0, no output" {
   run_check
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -77,14 +77,14 @@ run_check() {
 # ===== TS-7 — Mixed registered + unregistered =========================
 
 @test "AC4 / TS-7: mixed markers — CRITICAL fires only for unregistered" {
-  : > "$FIXTURE_DIR/_memory/.config-stale"        # registered
-  : > "$FIXTURE_DIR/_memory/.framework-version-stale"  # registered
-  : > "$FIXTURE_DIR/_memory/.rogue-stale"         # unregistered
-  : > "$FIXTURE_DIR/_memory/.other-stale"         # unregistered
+  : > "$FIXTURE_DIR/.gaia/memory/.config-stale"        # registered
+  : > "$FIXTURE_DIR/.gaia/memory/.framework-version-stale"  # registered
+  : > "$FIXTURE_DIR/.gaia/memory/.rogue-stale"         # unregistered
+  : > "$FIXTURE_DIR/.gaia/memory/.other-stale"         # unregistered
   run_check
   [ "$status" -ne 0 ]
-  [[ "$output" == *"_memory/.rogue-stale"* ]]
-  [[ "$output" == *"_memory/.other-stale"* ]]
+  [[ "$output" == *".gaia/memory/.rogue-stale"* ]]
+  [[ "$output" == *".gaia/memory/.other-stale"* ]]
   # Registered markers MUST NOT appear in the CRITICAL list.
   ! [[ "$output" == *".config-stale. Register"* ]]
   ! [[ "$output" == *".framework-version-stale. Register"* ]]
@@ -99,20 +99,20 @@ run_check() {
 
 (Additional commentary that is not a registry row.)
 MD
-  : > "$FIXTURE_DIR/_memory/.config-stale"
+  : > "$FIXTURE_DIR/.gaia/memory/.config-stale"
   run_check
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
-# ===== Defensive: nested markers under _memory/checkpoints/ ===========
-# Per ADR-102 marker contract clause 3, markers MUST live at _memory/
-# top level (-maxdepth 1). Nested markers under _memory/checkpoints/
+# ===== Defensive: nested markers under .gaia/memory/checkpoints/ ===========
+# Per ADR-102 marker contract clause 3, markers MUST live at .gaia/memory/
+# top level (-maxdepth 1). Nested markers under .gaia/memory/checkpoints/
 # are deliberately out of scope for this check.
 
-@test "AC4 / scope: nested markers under _memory/checkpoints/ are ignored" {
-  mkdir -p "$FIXTURE_DIR/_memory/checkpoints"
-  : > "$FIXTURE_DIR/_memory/checkpoints/.deep-stale"
+@test "AC4 / scope: nested markers under .gaia/memory/checkpoints/ are ignored" {
+  mkdir -p "$FIXTURE_DIR/.gaia/memory/checkpoints"
+  : > "$FIXTURE_DIR/.gaia/memory/checkpoints/.deep-stale"
   run_check
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -121,7 +121,7 @@ MD
 # ===== Defensive: missing registry file is a CRITICAL =================
 
 @test "AC4 / missing-registry: absent registry file → CRITICAL, exit non-zero" {
-  : > "$FIXTURE_DIR/_memory/.config-stale"
+  : > "$FIXTURE_DIR/.gaia/memory/.config-stale"
   rm "$REGISTRY"
   run_check
   [ "$status" -ne 0 ]

@@ -42,10 +42,10 @@ teardown() {
 
 @test "ci-regen-post-edit-prompt.sh handle_answer n writes stale flag" {
   cd "$TEST_TMPDIR"
-  mkdir -p _memory
+  mkdir -p .gaia/memory
   run bash "$SCRIPTS_DIR/ci-regen-post-edit-prompt.sh" handle n
   [ "$status" -eq 0 ]
-  [ -f _memory/.config-stale ]
+  [ -f .gaia/memory/.config-stale ]
 }
 
 @test "ci-regen-post-edit-prompt.sh handle_answer d emits diff hint" {
@@ -57,27 +57,27 @@ teardown() {
 
 @test "ci-regen-stale-flag.sh write_flag creates the marker via flag_path" {
   cd "$TEST_TMPDIR"
-  mkdir -p _memory
+  mkdir -p .gaia/memory
   run bash "$SCRIPTS_DIR/ci-regen-stale-flag.sh" write
   [ "$status" -eq 0 ]
-  [ -f _memory/.config-stale ]
+  [ -f .gaia/memory/.config-stale ]
 }
 
 @test "ci-regen-stale-flag.sh check_flag returns 0 + warns when flag present" {
   cd "$TEST_TMPDIR"
-  mkdir -p _memory
-  : > _memory/.config-stale
+  mkdir -p .gaia/memory
+  : > .gaia/memory/.config-stale
   run bash "$SCRIPTS_DIR/ci-regen-stale-flag.sh" check
   [ "$status" -eq 0 ]
 }
 
 @test "ci-regen-stale-flag.sh clear_flag removes the marker (idempotent)" {
   cd "$TEST_TMPDIR"
-  mkdir -p _memory
-  : > _memory/.config-stale
+  mkdir -p .gaia/memory
+  : > .gaia/memory/.config-stale
   run bash "$SCRIPTS_DIR/ci-regen-stale-flag.sh" clear
   [ "$status" -eq 0 ]
-  [ ! -e _memory/.config-stale ]
+  [ ! -e .gaia/memory/.config-stale ]
   # Idempotent re-run.
   run bash "$SCRIPTS_DIR/ci-regen-stale-flag.sh" clear
   [ "$status" -eq 0 ]

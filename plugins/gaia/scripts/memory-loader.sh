@@ -42,75 +42,49 @@ _gaia_resolve_memory_path() {
     printf '%s' "$MEMORY_PATH"
     return 0
   fi
-  local root="${PROJECT_PATH:-.}"
-  if [ -d "$root/.gaia/memory" ]; then
-    printf '%s' "$root/.gaia/memory"
-  else
-    printf '%s' "$root/_memory"
-  fi
+  # AF-2026-05-27-3: `.gaia/memory/` is the canonical (and only) memory tree
+  # post-ADR-111 — the legacy `_memory/` fallback was removed with the
+  # consolidation migration. Resolve to `.gaia/memory/` unconditionally.
+  printf '%s' "${PROJECT_PATH:-.}/.gaia/memory"
 }
 MEMORY_PATH="$(_gaia_resolve_memory_path)"
 CONFIG="${MEMORY_PATH}/config.yaml"
 
-# E96-S4 / AC6: session-load 4-case migration-manifest sentinel check.
-# Emits a single-line WARN to stderr in cases (A) and (D); HALT in case (B).
-# Sets _GAIA_SESSION_LOAD_READ_ONLY=1 to signal downstream writers to refuse
-# in cases (A) and (D). Case (C) (clean match) is silent.
-_gaia_session_load_sentinel_check() {
-  local manifest="${MEMORY_PATH}/.migration-manifest"
-  if [ ! -f "$manifest" ]; then
-    # Case (A): manifest absent. If the legacy path is in use, this is normal.
-    # If we're already on .gaia/memory/, this *could* signal an incomplete
-    # migration — OR it's a greenfield project that never had anything to
-    # migrate (F-005, Test04). Distinguish the two by probing for a legacy
-    # `_memory/` tree at the project root: a manifest is only expected when a
-    # legacy tree exists (or existed) to migrate FROM. No legacy tree ⇒
-    # greenfield ⇒ the absent manifest is normal, not an incomplete migration,
-    # so stay quiet and do NOT force read-only.
-    case "$MEMORY_PATH" in
-      *"/.gaia/memory"|".gaia/memory")
-        local _legacy_root
-        # MEMORY_PATH ends in /.gaia/memory or is the bare ".gaia/memory";
-        # the project root is its grandparent.
-        _legacy_root="$(cd "${MEMORY_PATH%/.gaia/memory}" 2>/dev/null && pwd || true)"
-        if [ -n "$_legacy_root" ] && [ -d "${_legacy_root}/_memory" ]; then
-          # Legacy tree present but no manifest → genuine incomplete migration.
-          printf 'session-load: .migration-manifest missing but legacy _memory/ present — operating read-only until migration completes\n' >&2
-          _GAIA_SESSION_LOAD_READ_ONLY=1
-          export _GAIA_SESSION_LOAD_READ_ONLY
-        fi
-        # else: greenfield (no legacy tree) → silent, writable.
-        ;;
-    esac
-    return 0
-  fi
-  # Manifest present. Verify known schema fields.
-  # Case (D): unknown fields → WARN + read-only.
-  if awk -F'"' '
-    BEGIN { unknown = 0 }
-    /"phase":/ {
-      # Allowed phases 1-4
-      match($0, /"phase":[[:space:]]*[0-9]+/)
-      val = substr($0, RSTART+8, RLENGTH-8)
-      gsub(/[[:space:]]/, "", val)
-      if (val+0 > 4 || val+0 < 1) unknown = 1
-    }
-    /"schema_version":/ { unknown = 1 }
-    END { exit(unknown ? 0 : 1) }
-  ' "$manifest" 2>/dev/null; then
-    printf 'session-load: unknown manifest record fields — operating read-only for forward-compat safety\n' >&2
-    _GAIA_SESSION_LOAD_READ_ONLY=1
-    export _GAIA_SESSION_LOAD_READ_ONLY
-    return 0
-  fi
-  # Case (B) per-file sha256 mismatch is checked at write-time per file by
-  # consumers; the loader itself does not spot-check every recorded file
-  # (would blow NFR-048's 50ms budget). The downstream writers (write-checkpoint.sh,
-  # action-items-write.sh, retro-sidecar-write.sh) verify per their own contracts.
-  # Case (C): silent success.
+# AF-2026-05-27-3: the `.migration-manifest` / read-only-until-migration
+# sentinel check was removed with the legacy `_memory/`→`.gaia/memory/`
+# consolidation migration (ADR-111 Family A). The framework now runs on the
+# `.gaia/` tree exclusively, so there is no migration to gate on and no
+# `_GAIA_SESSION_LOAD_READ_ONLY` state to set — session load is always
+# read-write against `.gaia/memory/`. The only retained signal is the
+# cross-writer stray-`_memory/` hygiene warning below, which flags a leaked
+# legacy tree without forcing read-only.
+
+# Stray-legacy-memory hygiene warning (Test04 _memory leak follow-up).
+# A .gaia/-layout project should have NO project-root _memory/ tree — but a
+# buggy writer that resolved its path on a racy "does .gaia/memory exist yet"
+# probe could leak a sidecar/checkpoint into _memory/ (the val-sidecar-write.sh
+# bug fixed in AF-2026-05-27-2). This is a cross-writer detector: warn (once,
+# non-fatal, never read-only) whenever _memory/ coexists with .gaia/memory/, so
+# ANY future stray-tree leak is surfaced at session load rather than silently
+# accumulating. It does NOT delete anything — cleanup is an explicit operator
+# action (/gaia-memory-hygiene).
+_gaia_stray_legacy_memory_warn() {
+  case "$MEMORY_PATH" in
+    *"/.gaia/memory"|".gaia/memory")
+      local _root
+      _root="$(cd "${MEMORY_PATH%/.gaia/memory}" 2>/dev/null && pwd || true)"
+      [ -n "$_root" ] || return 0
+      # Only warn when BOTH the canonical .gaia/memory/ AND a stray _memory/
+      # exist — i.e. a real coexistence leak, not a mid-migration project (which
+      # the sentinel check above already handles via the manifest contract).
+      if [ -d "${_root}/.gaia/memory" ] && [ -d "${_root}/_memory" ]; then
+        printf 'session-load: WARNING — a project-root _memory/ tree coexists with the canonical .gaia/memory/ (ADR-111). This usually means a writer leaked a sidecar/checkpoint outside .gaia/. Review %s and run /gaia-memory-hygiene to reconcile.\n' "${_root}/_memory" >&2
+      fi
+      ;;
+  esac
   return 0
 }
-_gaia_session_load_sentinel_check || true
+_gaia_stray_legacy_memory_warn || true
 
 usage() {
   cat <<'EOF'

@@ -179,8 +179,6 @@ resolve_real() {
 allowlist_match() {
   local real_root="$1" real_target="$2"
   case "$real_target" in
-    "$real_root"/_memory/validator-sidecar/decision-log.md)         return 0 ;;
-    "$real_root"/_memory/validator-sidecar/conversation-context.md) return 0 ;;
     "$real_root"/.gaia/memory/validator-sidecar/decision-log.md)         return 0 ;;
     "$real_root"/.gaia/memory/validator-sidecar/conversation-context.md) return 0 ;;
     *) return 1 ;;
@@ -316,17 +314,16 @@ EOF
 REAL_ROOT="$(resolve_real "$ROOT")"
 [ -z "$REAL_ROOT" ] && REAL_ROOT="$ROOT"
 
-# E96-S8 partial-fix: smart-fallback for validator-sidecar location.
-# Prefer .gaia/memory/validator-sidecar/ when the .gaia/ tree is present;
-# fall back to legacy _memory/validator-sidecar/ for in-deprecation-window
-# consumers and bats fixtures.
-if [ -d "$REAL_ROOT/.gaia/memory" ]; then
-  DECISION_LOG="$REAL_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
-  CONTEXT_FILE="$REAL_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
-else
-  DECISION_LOG="$REAL_ROOT/_memory/validator-sidecar/decision-log.md"
-  CONTEXT_FILE="$REAL_ROOT/_memory/validator-sidecar/conversation-context.md"
-fi
+# Validator-sidecar location routing.
+#
+# AF-2026-05-27-3 (ADR-111): the validator sidecar lives at
+# `.gaia/memory/validator-sidecar/` exclusively. The legacy `_memory/` arm was
+# removed with the consolidation migration — `.gaia/memory/` is the only target.
+# `ensure_header` mkdir's the parent below, so the subdir need not pre-exist.
+# (This supersedes the AF-2026-05-27-2 layout-probe fix, which kept a transitional
+# `_memory/` arm for genuine pre-ADR-111 projects; that arm is now gone.)
+DECISION_LOG="$REAL_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
+CONTEXT_FILE="$REAL_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
 
 # --target overrides only the primary write path — it must still pass the
 # allowlist. This exists so the allowlist guard itself can be exercised

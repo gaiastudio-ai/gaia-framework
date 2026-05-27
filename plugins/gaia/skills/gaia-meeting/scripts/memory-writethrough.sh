@@ -102,12 +102,9 @@ fi
 for draft in "${drafts[@]}"; do
   agent="$(basename "$draft" .md)"
 
-  # ADR-111 smart-fallback: .gaia/memory/ first, legacy _memory/ second
-  if [ -d "$ROOT/.gaia/memory" ]; then
-    out_dir="$ROOT/.gaia/memory/${agent}-sidecar/decisions"
-  else
-    out_dir="$ROOT/_memory/${agent}-sidecar/decisions"
-  fi
+  # AF-2026-05-27-3 (ADR-111): .gaia/memory is the only sidecar tree; legacy
+  # _memory fallback removed with the consolidation migration.
+  out_dir="$ROOT/.gaia/memory/${agent}-sidecar/decisions"
   out="$out_dir/${DATE}-${SLUG}.md"
   mkdir -p "$out_dir"
 

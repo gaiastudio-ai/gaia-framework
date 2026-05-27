@@ -23,10 +23,10 @@ teardown() {
   type assert_gitignored >/dev/null 2>&1
 }
 
-@test "TC-TW-3: transcript_path_for emits canonical path under _memory/checkpoints/" {
+@test "TC-TW-3: transcript_path_for emits canonical path under .gaia/memory/checkpoints/" {
   source "$HELPER"
   out=$(transcript_path_for "sprint-47" "node")
-  echo "$out" | grep -q "_memory/checkpoints/sprint-review-sprint-47/node.log"
+  echo "$out" | grep -q ".gaia/memory/checkpoints/sprint-review-sprint-47/node.log"
 }
 
 @test "TC-TW-4: write_transcript creates file with mode 0600" {
@@ -55,16 +55,16 @@ teardown() {
   source "$HELPER"
   cd "$TMPDIR_TEST"
   cat >.gitignore <<'EOF'
-_memory/checkpoints/sprint-review-*
+.gaia/memory/checkpoints/sprint-review-*
 EOF
-  assert_gitignored "_memory/checkpoints/sprint-review-"
+  assert_gitignored ".gaia/memory/checkpoints/sprint-review-"
 }
 
 @test "TC-TW-7: assert_gitignored HALTs when pattern is missing" {
   source "$HELPER"
   cd "$TMPDIR_TEST"
   echo "# empty" >.gitignore
-  run assert_gitignored "_memory/checkpoints/sprint-review-"
+  run assert_gitignored ".gaia/memory/checkpoints/sprint-review-"
   [ "$status" -ne 0 ]
   echo "$output" | grep -qi "HALT" || echo "$output" | grep -qi "gitignore"
 }
@@ -73,6 +73,6 @@ EOF
   source "$HELPER"
   cd "$TMPDIR_TEST"
   echo "" >.gitignore
-  run assert_gitignored "_memory/checkpoints/sprint-review-"
-  echo "$output" | grep -q "_memory/checkpoints/sprint-review"
+  run assert_gitignored ".gaia/memory/checkpoints/sprint-review-"
+  echo "$output" | grep -q ".gaia/memory/checkpoints/sprint-review"
 }
