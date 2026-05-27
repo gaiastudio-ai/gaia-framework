@@ -193,7 +193,7 @@ For each sidecar, compose a payload in ADR-016 decision-log format tagged with t
 ${CLAUDE_PLUGIN_ROOT}/../../scripts/retro-sidecar-write.sh \
   --root       "${CLAUDE_PROJECT_ROOT}" \
   --sprint-id  "${sprint_id}" \
-  --target     "${CLAUDE_PROJECT_ROOT}/_memory/${agent}-sidecar/decision-log.md" \
+  --target     "${CLAUDE_PROJECT_ROOT}/.gaia/memory/${agent}-sidecar/decision-log.md" \
   --payload    "$(emit_adr016_lesson ${agent})"
 ```
 
