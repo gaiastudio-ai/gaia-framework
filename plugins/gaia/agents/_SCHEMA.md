@@ -75,11 +75,18 @@ include a `## Memory` section that invokes the memory loader as inline bash:
 ```markdown
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh <agent-name> ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh <agent-name> ground-truth
 ```
 
-- `${PLUGIN_DIR}` is resolved by Claude Code at subagent spawn time to the
-  plugin's installed directory.
+- `${CLAUDE_PLUGIN_ROOT}` is the canonical Claude Code substrate variable
+  resolved at subagent spawn time to the plugin's installed directory (per the
+  Claude Code Plugins reference — path variables are substituted inline in
+  agent content, skill content, and hook commands). **Do NOT use `${PLUGIN_DIR}`
+  in a `!`-prefixed header line** — it is NOT a substrate variable, so it
+  expands to empty and the memory-loader silently no-ops (Test05 F-010). The
+  only legitimate `$PLUGIN_DIR` is a self-defined bash-block local with a
+  `${PLUGIN_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}` fallback
+  (see `validator.md` §Sentinel-Write Contract).
 - The first argument is the agent name (matching the `name:` field).
 - The second argument is the memory scope. Per ADR-046 (Hybrid Memory
   Loading) and FR-331, every subagent MUST call with `ground-truth` — this is

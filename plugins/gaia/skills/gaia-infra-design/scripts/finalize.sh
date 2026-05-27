@@ -169,8 +169,12 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   # Deployment (SV-06..SV-08)
   item_check "SV-06" "Deployment section present (## Deployment heading)" \
     "$(heading_present "$ARTIFACT" "Deployment")"
+  # F-027 (Test05 / AF-2026-05-27-4): the scaling allowlist was cloud-biased.
+  # Local/on-prem single-host topologies scale via process supervisors
+  # (systemd, supervisor, pm2), worker/replica counts, or document an explicit
+  # single-instance/vertical-only posture. Accept those idioms too.
   item_check "SV-07" "Load balancing and scaling approach specified (scaling keyword present)" \
-    "$(pattern_present "$ARTIFACT" '(auto-?scal(e|ing)|horizontal[[:space:]]+scal|vertical[[:space:]]+scal|load[[:space:]]+balanc)')"
+    "$(pattern_present "$ARTIFACT" '(auto-?scal(e|ing)|horizontal[[:space:]]+scal|vertical[[:space:]]+scal|load[[:space:]]+balanc|\bsystemd\b|\bsupervisor\b|\bpm2\b|process[[:space:]]+manager|worker[[:space:]]+(count|pool)|\breplicas?\b|single[[:space:]-]instance)')"
   # F-18 (AF-2026-05-26-4): the networking allowlist was cloud-biased. Single-host
   # topologies document firewall / loopback / localhost rather than VPC/subnet/CDN.
   item_check "SV-08" "Networking design documented (VPC/subnet/CDN/security-group/firewall/loopback/localhost keyword present)" \
@@ -186,8 +190,12 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   # rather than Terraform/Pulumi/etc. Word-anchored to match the existing style.
   item_check "SV-10" "IaC tool named (Terraform/Pulumi/CloudFormation/CDK/Bicep/OpenTofu/Ansible/Chef/Puppet)" \
     "$(pattern_present "$ARTIFACT" '(\bTerraform\b|\bPulumi\b|\bCloudFormation\b|\bCDK\b|\bBicep\b|\bOpenTofu\b|\bAnsible\b|\bChef\b|\bPuppet\b)')"
+  # F-027 (Test05 / AF-2026-05-27-4): the state allowlist was Terraform-centric.
+  # Local/on-prem config-management projects (Ansible/Docker Compose) have no
+  # remote state — they document a local state file, a stateless posture, or
+  # idempotent/declarative convergence. Accept those idioms too.
   item_check "SV-11" "State management strategy specified (state keyword present)" \
-    "$(pattern_present "$ARTIFACT" '(state[[:space:]]+(management|backend|locking|storage)|remote[[:space:]]+state|terraform[[:space:]]+state)')"
+    "$(pattern_present "$ARTIFACT" '(state[[:space:]]+(management|backend|locking|storage|file)|remote[[:space:]]+state|terraform[[:space:]]+state|local[[:space:]]+state|\bstateless\b|idempotent[[:space:]]+(converg|appl)|declarative[[:space:]]+converg)')"
 
   # Observability (SV-12..SV-14)
   item_check "SV-12" "Observability section present (## Observability heading)" \

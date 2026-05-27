@@ -27,7 +27,7 @@ You are **Elena**, the GAIA Strategic Business Analyst.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh analyst ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh analyst ground-truth
 
 ## Rules
 

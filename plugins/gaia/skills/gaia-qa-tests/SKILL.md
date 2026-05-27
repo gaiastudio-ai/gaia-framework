@@ -333,7 +333,13 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 
 **Malformed-payload handling.** On any of the above checks failing, the parent persists what it received with an explicit `[INCOMPLETE]` marker prepended to the report, and emits `verdict=BLOCKED` to `review-gate.sh`. Fork output untrustworthy → BLOCKED. The bats fixture covers this case explicitly (mirrors E65-S2 EC-9).
 
-**Parent write to FR-402 locked path.** The parent context writes the rendered report to `.gaia/artifacts/implementation-artifacts/qa-tests-E<NN>-S<NNN>.md` per FR-402 naming convention (post-ADR-111). The path is **locked**: `qa-tests-{story_key}.md` — no slug, no date suffix. Per F-12 on Test02: do NOT write to the pre-ADR-111 `docs/implementation-artifacts/` path — that violates the `.gaia/` consolidation contract.
+**Parent write — single-source path resolver (E105-S4 / Test05 F-046).** The basename is the FR-402 locked form `qa-tests-{story_key}.md` (no slug, no date suffix). Resolve the directory via the shared helper:
+
+```bash
+REPORT_PATH="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-review-report-path.sh --key {story_key} --type qa-tests)"
+```
+
+Returns the per-story `…/epic-{slug}/{story_key}-{slug}/reviews/qa-tests-{story_key}.md` (E105-S1, `reviews/` created) when the story is in the new layout, else the legacy flat `.gaia/artifacts/implementation-artifacts/qa-tests-{story_key}.md`. Per F-12 on Test02: never the pre-ADR-111 `docs/implementation-artifacts/` path. (The machine-readable `execution-evidence.json` is a SEPARATE artifact written by `qa-test-runner.sh` to `.gaia/state/review/qa-tests/{story_key}/` per Phase 3A.1 — unchanged, F-047.)
 
 **Phase 3C TC artifact persistence.** When Phase 3C produced uncovered-AC TCs, the parent ALSO writes the rendered TC array to `.gaia/state/review/qa-tests/{story_key}/qa-test-cases-{story_key}.json` (validating against `plugins/gaia/schemas/qa-test-cases.schema.json`). Empty arrays are omitted. The TC file is consumed downstream by `/gaia-test-automate`.
 

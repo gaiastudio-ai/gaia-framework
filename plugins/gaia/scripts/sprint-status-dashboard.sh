@@ -157,9 +157,22 @@ story_risk() {
   local key="$1"
   local matches=()
   shopt -s nullglob nocaseglob
+  # Tiers (E105-S1 / ADR-127): flat, legacy-nested, and the NEW per-story layout
+  # epic-{slug}/{key}-{slug}/story.md. Risk lookup is advisory (display colour
+  # only), so first match wins; the legacy `stories/` evidence-dir case is
+  # excluded below to keep tier-0 strictly the new layout.
   # shellcheck disable=SC2206
-  matches=( "${IMPLEMENTATION_ARTIFACTS}/${key}-"*.md "${IMPLEMENTATION_ARTIFACTS}"/epic-*/stories/"${key}-"*.md )
+  matches=( "${IMPLEMENTATION_ARTIFACTS}/${key}-"*.md \
+            "${IMPLEMENTATION_ARTIFACTS}"/epic-*/stories/"${key}-"*.md \
+            "${IMPLEMENTATION_ARTIFACTS}"/epic-*/"${key}-"*/story.md )
   shopt -u nullglob nocaseglob
+  # Drop per-story evidence dirs nested under a legacy `stories/` segment.
+  local _filtered=() _mm
+  for _mm in "${matches[@]}"; do
+    case "$_mm" in */stories/*/story.md) continue ;; esac
+    _filtered+=( "$_mm" )
+  done
+  matches=( "${_filtered[@]}" )
   [[ ${#matches[@]} -eq 0 ]] && return 0
   local story_file="${matches[0]}"
   [[ -r "$story_file" ]] || return 0
@@ -236,14 +249,18 @@ if [[ -n "$auto_close_json" ]]; then
   if [[ "$auto_close_json" =~ \"end_date\":\"([^\"]*)\" ]]; then
     ac_end_date="${BASH_REMATCH[1]}"
   fi
-  printf '  [SPRINT AUTO-CLOSE] %s — %s/%s stories done (end_date: %s)\n' \
+  printf '  [SPRINT READY-TO-REVIEW] %s — %s/%s stories done (end_date: %s)\n' \
     "${ac_sprint_id:-?}" "${ac_done:-?}" "${ac_total:-?}" "${ac_end_date:-(unset)}"
-  printf '    Every story under this sprint is done, but sprint-status.yaml\n'
-  printf '    still reads status: active. Boundary write is overdue.\n'
-  printf '    Remediation (manual operator action — never auto-flipped):\n'
-  printf '      yq -i %s.status = \"closed\"%s .gaia/state/sprint-status.yaml\n' "'" "'"
-  printf '      (or, on a pre-migration install: docs/implementation-artifacts/sprint-status.yaml)\n'
-  printf '    Then seed the next sprint per feedback_sprint_boundary_yaml_write.md.\n'
+  printf '    Advisory hint only — this banner does NOT mean the sprint is closed.\n'
+  printf '    Every story is done, but the sprint is still status: active and the\n'
+  printf '    end-of-sprint CEREMONY has not run yet (Test05 F-44).\n'
+  printf '    Next step — run the ceremony, do NOT hand-edit sprint-status.yaml:\n'
+  printf '      /gaia-sprint-review   (Val + per-stack verdict; gates the close)\n'
+  printf '      then /gaia-sprint-close on a PASSED verdict (writes status: closed,\n'
+  printf '      archives the yaml, emits the lifecycle event — the sanctioned\n'
+  printf '      boundary write per ADR-095). After close, /gaia-sprint-plan + \n'
+  printf '      sprint-state.sh init seed the next sprint (re-seeds over the closed\n'
+  printf '      predecessor — no manual rm needed).\n'
   printf -- '-%.0s' {1..72}; printf '\n'
 fi
 

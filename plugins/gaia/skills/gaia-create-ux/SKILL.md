@@ -40,7 +40,10 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Every design decision must trace to a user need from the PRD.
 - UX design authoring is delegated to the `ux-designer` subagent (Christy) via native Claude Code subagent invocation — do NOT inline Christy's persona into this skill body. If the ux-designer subagent (E28-S21) is not available, fail with "ux-designer subagent not available — install E28-S21" error.
 - If `.gaia/artifacts/planning-artifacts/ux-design.md` already exists, warn the user: "An existing UX design was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
-- Template resolution: load `ux-design-assessment-template.md` from this skill directory for brownfield UX assessments. If `custom/templates/ux-design-assessment-template.md` exists and is non-empty, use the custom template instead — the custom template takes full precedence over the framework default (ADR-020 / FR-101).
+- Template resolution (Test05 F-013): pick the template by mode.
+  - **Greenfield** (designing from the PRD, no existing UI to assess): load `ux-design-template.md` from this skill directory — the structural template covering personas, information architecture, user flows (happy + error paths), wireframe descriptions, interaction patterns, accessibility, design-system reuse, and Figma integration.
+  - **Brownfield** (assessing an existing codebase's UI): load `ux-design-assessment-template.md`.
+  - For either mode, a non-empty `custom/templates/{same-filename}` overrides the framework default (ADR-020 / FR-101).
 
 ## Steps
 
@@ -105,7 +108,14 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to d
 
 - Probe for available Figma MCP server.
 - If Figma MCP available: present mode selection — [Generate] Create Figma frames alongside ux-design.md | [Import] Import existing Figma designs (read-only) | [Skip] Text-only UX spec, no Figma integration.
-- If not available: skip Figma integration — proceed with text-only UX design output. Log: "No Figma MCP server detected. Generating markdown-only ux-design.md."
+- If not available: skip Figma integration — proceed with text-only UX design output. Log: "No Figma MCP server detected. Generating markdown-only ux-design.md." **(Test05 F-014)** Do NOT leave the ux-design.md "Figma Integration" section empty: write the no-Figma placeholder so downstream stories are not blocked on a missing visual source. The canonical placeholder is —
+
+  > **No Figma source — text-only UX design.** This document's wireframe
+  > descriptions (§5) and interaction patterns (§6) are the single source of
+  > truth for visual intent. When a Figma MCP server becomes available, re-run
+  > `/gaia-create-ux` in `[Generate]` or `[Import]` mode to attach frames.
+
+  This matches §9 of `ux-design-template.md`; emit it verbatim into the Figma section on the no-MCP path.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 7 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 

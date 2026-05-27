@@ -54,16 +54,21 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Resolve artifact path (three-tier idiom) ----------
+# ---------- 0. Resolve artifact path (E105-S2 / ADR-127 §7.2 + three-tier) ----------
 # Tier 1 — TEST_STRATEGY_ARTIFACT env-var override wins.
-# Tier 2 — positive pre-ADR-111 evidence: legacy strategy/test-strategy.md
+# Tier 2 — NEW canonical home: .gaia/artifacts/planning-artifacts/test-strategy.md
+#          (E105-S2: docs-about-testing moved out of test-artifacts/).
+# Tier 3 — positive pre-ADR-111 evidence: legacy strategy/test-strategy.md
 #          under docs/test-artifacts/ exists AND canonical .gaia/ dir does NOT.
-# Tier 3 — canonical default: .gaia/artifacts/test-artifacts/strategy/test-strategy.md.
+# Tier 4 — legacy E53 placement: .gaia/artifacts/test-artifacts/strategy/test-strategy.md
+#          (read-compat for pre-migration projects).
 ARTIFACT=""
 ARTIFACT_REQUESTED=0
 if [ -n "${TEST_STRATEGY_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$TEST_STRATEGY_ARTIFACT"
+elif [ -f ".gaia/artifacts/planning-artifacts/test-strategy.md" ]; then
+  ARTIFACT=".gaia/artifacts/planning-artifacts/test-strategy.md"
 elif [ -f "docs/test-artifacts/strategy/test-strategy.md" ] && [ ! -d ".gaia/artifacts/test-artifacts" ]; then
   ARTIFACT="docs/test-artifacts/strategy/test-strategy.md"
 elif [ -f ".gaia/artifacts/test-artifacts/strategy/test-strategy.md" ]; then

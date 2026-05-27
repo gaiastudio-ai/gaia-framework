@@ -41,13 +41,18 @@ teardown() {
   [ "$gaia_line" -lt "$legacy_line" ]
 }
 
-@test "sprint-status-dashboard.sh — remediation hint mentions .gaia/state/ canonical first" {
-  # Class B: the user-visible remediation hint at the sprint-overdue branch
-  # should reference .gaia/state/sprint-status.yaml as the primary path.
-  run grep -nE 'yq -i.*sprint-status\.yaml' "$PLUGIN_SCRIPTS/sprint-status-dashboard.sh"
+@test "sprint-status-dashboard.sh — sprint-done banner routes through the close ceremony (not a raw yq edit)" {
+  # Test05 F-044 / AF-2026-05-27-4: the banner was reworded AUTO-CLOSE →
+  # READY-TO-REVIEW. The user-visible remediation MUST route through the
+  # sanctioned end-of-sprint ceremony (/gaia-sprint-review then
+  # /gaia-sprint-close, the ADR-095 boundary write) — NOT instruct the operator
+  # to hand-edit sprint-status.yaml with a raw `yq -i`. This supersedes the
+  # E97-S3 assertion that enshrined the raw-yq hint.
+  run grep -nE '/gaia-sprint-review|/gaia-sprint-close' "$PLUGIN_SCRIPTS/sprint-status-dashboard.sh"
   [ "$status" -eq 0 ]
-  # The first remediation line must mention .gaia/state/ (canonical).
-  [[ "$output" == *".gaia/state/sprint-status.yaml"* ]]
+  # And the banner must NOT instruct a raw yq edit of sprint-status.yaml.
+  run grep -nE 'yq -i.*sprint-status\.yaml' "$PLUGIN_SCRIPTS/sprint-status-dashboard.sh"
+  [ "$status" -ne 0 ]
 }
 
 # ---------- check-status-discipline.sh ----------

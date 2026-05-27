@@ -27,7 +27,7 @@ You are **Milo**, the GAIA Data Pipeline Architect.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh data-engineer ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh data-engineer ground-truth
 
 ## Rules
 

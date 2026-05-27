@@ -46,29 +46,32 @@ snapshot() {
   load_fixture "all-done-active.yaml"
   run "$DASHBOARD"
   [ "$status" -eq 0 ]
-  # Canonical banner markers
-  [[ "$output" =~ AUTO-CLOSE ]] || [[ "$output" =~ auto-close ]]
+  # Canonical banner marker — Test05 F-44 reworded AUTO-CLOSE → READY-TO-REVIEW
+  # (advisory hint; the close runs through the sprint-review→sprint-close
+  # ceremony, not a raw yq edit).
+  [[ "$output" =~ READY-TO-REVIEW ]]
   [[ "$output" =~ sprint-N ]]
   [[ "$output" =~ 3/3 ]] || [[ "$output" =~ "3 of 3" ]]
   [[ "$output" =~ 2026-05-14 ]]
-  # Remediation hint MUST reference yq -i (per AC2)
-  [[ "$output" =~ "yq -i" ]]
+  # Remediation routes through the ceremony (NOT a hand-edit of the yaml).
+  [[ "$output" =~ "/gaia-sprint-review" ]]
+  [[ "$output" =~ "/gaia-sprint-close" ]]
+  # Must explicitly say it is advisory-only and the sprint is not yet closed.
+  [[ "$output" =~ "Advisory hint" ]]
 }
 
 @test "banner suppressed when partial done" {
   load_fixture "partial-done-active.yaml"
   run "$DASHBOARD"
   [ "$status" -eq 0 ]
-  ! [[ "$output" =~ AUTO-CLOSE ]]
-  ! [[ "$output" =~ auto-close ]]
+  ! [[ "$output" =~ READY-TO-REVIEW ]]
 }
 
 @test "banner suppressed when sprint already closed" {
   load_fixture "all-done-closed.yaml"
   run "$DASHBOARD"
   [ "$status" -eq 0 ]
-  ! [[ "$output" =~ AUTO-CLOSE ]]
-  ! [[ "$output" =~ auto-close ]]
+  ! [[ "$output" =~ READY-TO-REVIEW ]]
 }
 
 @test "dashboard does NOT mutate sprint-status.yaml (all-done-active)" {
@@ -94,7 +97,7 @@ snapshot() {
   run "$DASHBOARD"
   [ "$status" -eq 0 ]
   # Find line numbers of key markers; banner must appear before "Story" header row
-  banner_line=$(printf '%s\n' "$output" | grep -nE 'AUTO-CLOSE|auto-close' | head -1 | cut -d: -f1)
+  banner_line=$(printf '%s\n' "$output" | grep -nE 'READY-TO-REVIEW' | head -1 | cut -d: -f1)
   stories_header_line=$(printf '%s\n' "$output" | grep -nE '^  Story ' | head -1 | cut -d: -f1)
   [ -n "$banner_line" ]
   [ -n "$stories_header_line" ]

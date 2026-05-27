@@ -51,6 +51,8 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - PRD authoring prompts are delegated to the `pm` subagent (Derek) via native Claude Code subagent invocation — do NOT inline Derek's persona into this skill body. If the pm subagent (E28-S21) is not available, fail with "pm subagent not available — install E28-S21" error.
 - If `.gaia/artifacts/planning-artifacts/prd.md` already exists, warn the user: "An existing PRD was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
 - Template resolution: load `prd-template.md` from this skill directory. If `custom/templates/prd-template.md` exists and is non-empty, use the custom template instead — the custom template takes full precedence over the framework default (ADR-020 / FR-101).
+- Calibration reference (Test05 F-008): a worked example PRD ships at `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/prd-example.md` ("Focus Timer"). It is NOT consumed by the skill — use it to calibrate expected depth/shape for a small-but-complete greenfield PRD. Do NOT copy it verbatim.
+- Greenfield brownfield-block strip (Test05 F-007): `prd-template.md` carries a `<!-- BROWNFIELD-ONLY-START -->…END` block relevant only to brownfield PRDs. On a GREENFIELD authoring flow, after writing the PRD strip the block deterministically via `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/scripts/strip-brownfield-block.sh <prd-path>` (idempotent; no-op if absent). Brownfield flows keep the block.
 
 ## Steps
 

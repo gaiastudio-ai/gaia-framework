@@ -64,6 +64,35 @@ This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-review-api 4 api_spec_path="$API_SPEC_PATH" review_scope="$REVIEW_SCOPE" review_stage=errors-versioning`
 
+### Step 4b — Cross-Cutting REST Concerns (Test05 F-020)
+
+Beyond naming/methods/errors/versioning, review the cross-cutting concerns that
+distinguish a production-grade REST API. Each is flagged with severity when
+absent or incorrect (skip a concern with an INFO note when it is genuinely
+inapplicable to the API's domain — e.g. rate limiting on a purely internal
+service):
+
+- **Idempotency.** `GET`/`PUT`/`DELETE` must be idempotent; non-idempotent
+  `POST` create endpoints that can be safely retried should accept an
+  `Idempotency-Key` request header. Flag retry-unsafe mutating endpoints.
+- **Pagination.** Collection endpoints must declare a pagination strategy —
+  cursor-based (`?cursor=…&limit=…`, preferred for large/changing sets) or
+  offset/limit (`?offset=…&limit=…`). Verify a documented default + maximum
+  `limit`, and a stable ordering. Unbounded list endpoints are a finding.
+- **Content negotiation.** Verify `Accept` / `Content-Type` handling, the
+  documented default media type, `406 Not Acceptable` / `415 Unsupported Media
+  Type` on mismatch, and (where applicable) compression (`Accept-Encoding`).
+- **Rate limiting.** Verify a documented rate-limit policy and the standard
+  response surface — `429 Too Many Requests` with `Retry-After` and
+  `RateLimit-Limit` / `RateLimit-Remaining` / `RateLimit-Reset` headers.
+- **Auth scheme.** Verify the authentication scheme is declared and consistent
+  (OAuth2 / OIDC bearer, API key, mTLS), that `401` vs `403` are used correctly
+  (unauthenticated vs unauthorized), and that scopes/permissions are documented
+  per endpoint. Endpoints with no declared auth on a non-public API are a
+  critical finding.
+
+These cross-cutting concerns are part of the Step 4 review pass — they do NOT add a separate numbered step or checkpoint (the canonical step count + per-step checkpoint contract is preserved; their findings fold into the Step 4 → Step 5 report flow).
+
 ### Step 5 — Report
 
 Invoke the shared foundation script to emit the deterministic artifact header (ADR-042):
@@ -82,7 +111,9 @@ Write the report to the following path (preserved verbatim from the legacy task 
 
 If the file already exists for the same day (AC-EC3), write to a suffix-incremented filename (`api-design-review-{date}-2.md`, ...).
 
-The report is organised by category (naming, HTTP methods, status codes, error format, versioning). Each finding row includes: category, severity (critical / high / medium / low), endpoint or location, finding description, recommendation.
+**Output override + location note (Test05 F-021).** The default lives under `planning-artifacts/` because the API DESIGN review is a planning-phase artifact (it reviews the API contract before implementation), aggregated alongside the other design reviews. To redirect it, pass `--output <path>` in `$ARGUMENTS` or set `GAIA_API_REVIEW_REPORT_PATH`. Resolution precedence: `--output` arg > `GAIA_API_REVIEW_REPORT_PATH` env > the default `{planning_artifacts}/api-design-review-{date}.md`. An explicit override skips the same-day suffix logic (the caller owns collision handling). The eventual single-source review-path consolidation is tracked by E105-S4.
+
+The report is organised by category (naming, HTTP methods, status codes, error format, versioning, idempotency, pagination, content negotiation, rate limiting, auth scheme). Each finding row includes: category, severity (critical / high / medium / low), endpoint or location, finding description, recommendation.
 
 If the target is empty or resolves to no API definitions (AC-EC6), exit with `No review target resolved` and do NOT write an empty report.
 

@@ -28,7 +28,7 @@ You are **Elara**, the GAIA Storyteller.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh storyteller ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh storyteller ground-truth
 
 ## Rules
 

@@ -107,7 +107,13 @@ Invoke the Juno performance subagent to perform deep performance analysis on all
   - Caching and complexity review results
   - Findings organized by severity (Critical, High, Medium, Low)
   - Machine-readable verdict line: `**Verdict: PASSED**` or `**Verdict: FAILED**`
-- Save the report to `.gaia/artifacts/implementation-artifacts/performance-review-{story_key}.md` (FR-402 locked naming: `{review-type}-{story_key}.md` — type FIRST, no slug, no date suffix; post-ADR-111 canonical path). Per F-12 on Test02: do NOT write to the pre-ADR-111 `docs/implementation-artifacts/` location AND do NOT use the legacy `{story_key}-performance-review.md` ordering (that violates FR-402 and matches user memory `feedback_review_report_filename_collision`).
+- Save the report at the path resolved by the single-source helper (E105-S4 / Test05 F-046) — basename is the FR-402 locked form `performance-review-{story_key}.md` (type FIRST, no slug, no date suffix); the directory is the per-story `reviews/` home (E105-S1) when present, else flat:
+
+  ```bash
+  REPORT_PATH="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-review-report-path.sh --key {story_key} --type performance-review)"
+  ```
+
+  This returns `…/epic-{slug}/{story_key}-{slug}/reviews/performance-review-{story_key}.md` (new layout, `reviews/` created) or the legacy flat `.gaia/artifacts/implementation-artifacts/performance-review-{story_key}.md`. Per F-12 on Test02: never the pre-ADR-111 `docs/implementation-artifacts/` location and never the legacy `{story_key}-performance-review.md` ordering (violates FR-402 / `feedback_review_report_filename_collision`).
 
 ### Step 7 -- Update Review Gate
 

@@ -28,7 +28,7 @@ You are **Orion**, the GAIA Innovation Strategist.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh innovation-strategist ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh innovation-strategist ground-truth
 
 ## Rules
 

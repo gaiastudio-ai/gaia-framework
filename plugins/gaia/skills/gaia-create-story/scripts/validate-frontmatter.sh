@@ -442,7 +442,29 @@ if [ -n "$key_trim" ] && [ -n "$title_trim" ] && [ "$key_trim" != "null" ] && [ 
   fi
   expected_basename="${key_trim}-${slug}.md"
   actual_basename="$(basename "$file")"
-  if [ "$expected_basename" != "$actual_basename" ]; then
+  # E105-S1 / ADR-127 — layout-aware canonical check. The new per-story layout
+  # places the file at `epic-{slug}/{key}-{slug}/story.md`: the basename is the
+  # literal `story.md` and the KEY+SLUG identity is carried by the parent
+  # directory name. In that layout, validate the parent dir against
+  # `{key}-{slug}` instead of the basename (mirrors validate-canonical-filename.sh
+  # which already accepts this form). Legacy flat / `stories/` layouts keep the
+  # basename invariant. This closes the F-032 false-positive CRITICAL.
+  if [ "$actual_basename" = "story.md" ]; then
+    case "$file" in
+      */stories/*)
+        # A `story.md` under a legacy `stories/` segment is NOT the new
+        # per-story layout — flag it (basename should encode key+slug there).
+        append_finding "CRITICAL" "filename" "expected '${expected_basename}', got 'story.md' under a legacy stories/ path"
+        ;;
+      *)
+        actual_dirname="$(basename "$(dirname "$file")")"
+        expected_dirname="${key_trim}-${slug}"
+        if [ "$expected_dirname" != "$actual_dirname" ]; then
+          append_finding "CRITICAL" "filename" "per-story dir expected '${expected_dirname}/', got '${actual_dirname}/' (story.md layout)"
+        fi
+        ;;
+    esac
+  elif [ "$expected_basename" != "$actual_basename" ]; then
     append_finding "CRITICAL" "filename" "expected '${expected_basename}', got '${actual_basename}'"
   fi
 fi
