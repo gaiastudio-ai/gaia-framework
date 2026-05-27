@@ -499,12 +499,15 @@ if [ -z "$SHARED_PATH" ] && [ -n "${GAIA_SHARED_CONFIG:-}" ]; then
 fi
 # E96-S1 (ADR-111): prefer `.gaia/config/project-config.yaml` over legacy
 # `config/project-config.yaml`. When the legacy path is the only one present,
-# we still resolve to it (transition window) but emit a one-time deprecation
-# WARNING on stderr suggesting the migration command.
+# we still resolve to it (read-only back-compat) but emit a one-time
+# deprecation WARNING on stderr. The automated relocation tooling
+# (migrate-phase-1.sh) was retired with the legacy `_memory/`/`docs/`/`config/`
+# migration (AF-2026-05-27-3) — the framework now runs on the `.gaia/` tree
+# exclusively — so the remediation is a manual move.
 _gaia_legacy_warn() {
   if [ -z "${_GAIA_LEGACY_CONFIG_WARNED:-}" ]; then
     printf 'resolve-config: DEPRECATION WARNING: %s\n' \
-      "legacy config/project-config.yaml in use — run plugins/gaia/scripts/migrate/migrate-phase-1.sh to relocate to .gaia/config/ (ADR-111)" >&2
+      "legacy config/project-config.yaml in use — move it to .gaia/config/project-config.yaml (ADR-111; the .gaia/ tree is canonical)" >&2
     _GAIA_LEGACY_CONFIG_WARNED=1
     export _GAIA_LEGACY_CONFIG_WARNED
   fi
