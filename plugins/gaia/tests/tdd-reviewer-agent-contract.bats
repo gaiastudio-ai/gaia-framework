@@ -150,8 +150,8 @@ teardown() { common_teardown; }
   # Halt clause spanning both modes (case-insensitive on YOLO/non-YOLO so
   # the clause can phrase it either way).
   grep -iE "halt.*both|both.*halt|regardless of yolo|yolo.*non-yolo" "$AGENT_FILE"
-  # Audit file path is the canonical checkpoint location.
-  grep -F "_memory/checkpoints/" "$AGENT_FILE"
+  # Audit file path is the canonical checkpoint location (AF-2026-05-27-3: .gaia/memory).
+  grep -F ".gaia/memory/checkpoints/" "$AGENT_FILE"
   grep -F "tdd-review-findings.md" "$AGENT_FILE"
 }
 

@@ -31,7 +31,7 @@ load 'test_helper.bash'
 setup() {
   common_setup
   PROJECT_ROOT="$TEST_TMP/proj"
-  mkdir -p "$PROJECT_ROOT/_memory/validator-sidecar"
+  mkdir -p "$PROJECT_ROOT/.gaia/memory/validator-sidecar"
   export PROJECT_ROOT
 }
 
@@ -129,7 +129,7 @@ _run_consumer() {
   run _run_consumer "/gaia-create-story" "E99-S1" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
-  local log="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
+  local log="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   grep -q 'command: /gaia-create-story' "$log"
   grep -q 'input_id: E99-S1' "$log"
 }
@@ -138,7 +138,7 @@ _run_consumer() {
   run _run_consumer "/gaia-validate-story" "E99-S2" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
-  local log="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
+  local log="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   grep -q 'command: /gaia-validate-story' "$log"
   grep -q 'input_id: E99-S2' "$log"
 }
@@ -147,7 +147,7 @@ _run_consumer() {
   run _run_consumer "/gaia-sprint-plan" "sprint-26" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
-  local log="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
+  local log="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   grep -q 'command: /gaia-sprint-plan' "$log"
   grep -q 'input_id: sprint-26' "$log"
 }
@@ -156,7 +156,7 @@ _run_consumer() {
   run _run_consumer "/gaia-triage-findings" "triage-2026-04-22-001" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
-  local log="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
+  local log="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   grep -q 'command: /gaia-triage-findings' "$log"
   grep -q 'input_id: triage-2026-04-22-001' "$log"
 }
@@ -165,7 +165,7 @@ _run_consumer() {
   run _run_consumer "/gaia-retro" "sprint-26" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
-  local log="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
+  local log="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   grep -q 'command: /gaia-retro' "$log"
   grep -q 'input_id: sprint-26' "$log"
 }
@@ -176,7 +176,7 @@ _run_consumer() {
   _run_consumer "/gaia-sprint-plan"     "sprint-26"               "sprint-26"
   _run_consumer "/gaia-triage-findings" "triage-2026-04-22-001"   "sprint-26"
   _run_consumer "/gaia-retro"           "sprint-26"               "sprint-26"
-  local log="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
+  local log="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   # Five distinct command tags must appear.
   [ "$(grep -c 'command: /gaia-create-story'    "$log")" -eq 1 ]
   [ "$(grep -c 'command: /gaia-validate-story'  "$log")" -eq 1 ]
@@ -212,8 +212,8 @@ _run_consumer() {
 # ---------------------------------------------------------------------------
 
 @test "TC-VSP-6: upstream failure before helper invocation leaves sidecar byte-identical" {
-  local log="$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md"
-  local ctx="$PROJECT_ROOT/_memory/validator-sidecar/conversation-context.md"
+  local log="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
+  local ctx="$PROJECT_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
   # Seed both files with known content via a dry prior-run.
   _run_consumer "/gaia-create-story" "E99-PRIOR" "sprint-26"
   local before_log; before_log=$(shasum -a 256 "$log" | awk '{print $1}')
@@ -235,11 +235,11 @@ _run_consumer() {
   run _run_consumer "/gaia-create-story" "E99-S1" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
-  local before; before=$(wc -c <"$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md")
+  local before; before=$(wc -c <"$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md")
   run _run_consumer "/gaia-create-story" "E99-S1" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=skipped_duplicate"* ]]
-  local after; after=$(wc -c <"$PROJECT_ROOT/_memory/validator-sidecar/decision-log.md")
+  local after; after=$(wc -c <"$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md")
   [ "$before" -eq "$after" ]
 }
 

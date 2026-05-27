@@ -78,11 +78,13 @@ teardown() {
   [[ "$output" == *"docs/implementation-artifacts/retrospective"* ]]
 }
 
-@test "retro-sidecar-write.sh — allowlist accepts both _memory/ and .gaia/memory/ sidecars" {
-  run grep -E '(\.gaia/memory|_memory)/\*-sidecar' "$PLUGIN_SCRIPTS/retro-sidecar-write.sh"
+@test "retro-sidecar-write.sh — allowlist accepts .gaia/memory/ sidecars only (AF-2026-05-27-3)" {
+  # AF-2026-05-27-3 (ADR-111): the legacy _memory/ allowlist arm was removed.
+  run grep -E '\.gaia/memory/\*-sidecar' "$PLUGIN_SCRIPTS/retro-sidecar-write.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *".gaia/memory/"* ]]
-  [[ "$output" == *"_memory/"* ]]
+  # legacy _memory/*-sidecar arm must be gone
+  ! grep -qE '"\$real_root"/_memory/\*-sidecar' "$PLUGIN_SCRIPTS/retro-sidecar-write.sh"
 }
 
 @test "retro-sidecar-write.sh — allowlist accepts both action-items.yaml locations" {

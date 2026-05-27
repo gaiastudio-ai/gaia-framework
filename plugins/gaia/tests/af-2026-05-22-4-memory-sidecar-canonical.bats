@@ -53,11 +53,14 @@ teardown() { common_teardown; }
   grep -qF '.gaia/memory/validator-sidecar/decision-log.md' "$PLUGIN_ROOT/skills/gaia-sprint-status/SKILL.md"
 }
 
-@test "AF-22-4: .sh scripts untouched (canonical-first resolvers preserved)" {
-  # The sweep reverted all .sh changes. Verify a representative resolver
-  # still has the smart-fallback pattern.
-  grep -qF '[ -d "_memory" ] && [ ! -d ".gaia/memory" ]' "$PLUGIN_ROOT/scripts/lib/auto-save-memory.sh"
-  grep -qF '[ -d "_memory" ] && [ ! -d ".gaia/memory" ]' "$PLUGIN_ROOT/scripts/memory-writer.sh"
+@test "AF-22-4: .sh resolvers use canonical .gaia/memory only (AF-2026-05-27-3 — legacy fallback removed)" {
+  # AF-2026-05-27-3 (ADR-111): the `[ -d _memory ] && [ ! -d .gaia/memory ]`
+  # smart-fallback idiom was REMOVED from the resolvers. Verify it is gone and
+  # the canonical .gaia/memory resolution is present.
+  ! grep -qF '[ -d "_memory" ] && [ ! -d ".gaia/memory" ]' "$PLUGIN_ROOT/scripts/lib/auto-save-memory.sh"
+  ! grep -qF '[ -d "_memory" ] && [ ! -d ".gaia/memory" ]' "$PLUGIN_ROOT/scripts/memory-writer.sh"
+  grep -qF '.gaia/memory' "$PLUGIN_ROOT/scripts/lib/auto-save-memory.sh"
+  grep -qF '.gaia/memory' "$PLUGIN_ROOT/scripts/memory-writer.sh"
 }
 
 @test "AF-22-4: dual-layout caveats preserved (lines mentioning both legacy + canonical)" {
