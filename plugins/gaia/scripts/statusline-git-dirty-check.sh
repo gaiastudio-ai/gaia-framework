@@ -227,6 +227,44 @@ if [ "${_NO_REPO:-0}" != "1" ]; then
   ACTIVE_BRANCH="$(git -C "$PROBE_DIR" symbolic-ref --short HEAD 2>/dev/null || printf '')"
 fi
 
+# ---- Line-change counts (staged + unstaged), AF-2026-05-27-5 --------------
+# The statusline shows per-class +added / -removed line counts instead of a
+# bare dirty glyph. Capture them here (this is the cache writer; the runtime
+# only reads). `git diff --shortstat` prints e.g.
+#   " 3 files changed, 30 insertions(+), 4 deletions(-)"
+# Either insertions or deletions may be absent. Untracked files contribute no
+# line diff (git does not count them) — git_dirty still flips true via the
+# porcelain probe above, but the counts stay 0/0 for an untracked-only tree.
+# All four owned counts default to 0 and stay 0 on any failure (best-effort).
+STAGED_ADDED=0; STAGED_REMOVED=0; UNSTAGED_ADDED=0; UNSTAGED_REMOVED=0
+
+# _parse_shortstat <var_add> <var_rem> <shortstat-line> — set the two named
+# vars from a `--shortstat` line. Missing side stays 0. Integer-only.
+_parse_shortstat() {
+  _ps_va="$1"; _ps_vr="$2"; _ps_line="$3"
+  _ps_a=0; _ps_r=0
+  case "$_ps_line" in
+    *insertion*) _ps_a="$(printf '%s' "$_ps_line" | sed -nE 's/.* ([0-9]+) insertion.*/\1/p')" ;;
+  esac
+  case "$_ps_line" in
+    *deletion*)  _ps_r="$(printf '%s' "$_ps_line" | sed -nE 's/.* ([0-9]+) deletion.*/\1/p')" ;;
+  esac
+  case "$_ps_a" in ''|*[!0-9]*) _ps_a=0 ;; esac
+  case "$_ps_r" in ''|*[!0-9]*) _ps_r=0 ;; esac
+  eval "$_ps_va=$_ps_a"
+  eval "$_ps_vr=$_ps_r"
+}
+
+if [ "${_NO_REPO:-0}" != "1" ] && [ "$GIT_DIRTY" = "true" ]; then
+  # Staged vs HEAD (--cached) and unstaged (working tree vs index). Wrapped in
+  # the same defensive `|| printf ''` idiom; no timeout needed (diff --shortstat
+  # is cheap and the repo was already probed above).
+  _SS_STAGED="$(git -C "$PROBE_DIR" diff --cached --shortstat 2>/dev/null || printf '')"
+  _SS_UNSTAGED="$(git -C "$PROBE_DIR" diff --shortstat 2>/dev/null || printf '')"
+  _parse_shortstat STAGED_ADDED STAGED_REMOVED "$_SS_STAGED"
+  _parse_shortstat UNSTAGED_ADDED UNSTAGED_REMOVED "$_SS_UNSTAGED"
+fi
+
 # ---- Read-modify-write cache (ADR-091 amendment) --------------------------
 mkdir -p "$CACHE_DIR" 2>/dev/null || exit 0
 
@@ -244,8 +282,17 @@ else
   AB_ARG="null"
 fi
 
-# Merge `git_dirty` and `active_branch` — preserve every other field verbatim.
-MERGED="$(printf '%s' "$EXISTING" | jq --argjson gd "$GIT_DIRTY" --argjson ab "$AB_ARG" '. + {git_dirty: $gd, active_branch: $ab}' 2>/dev/null)"
+# Merge owned fields — preserve every other field (e.g. the release-check
+# fetcher's keys) verbatim. Owned: git_dirty, active_branch, and the four
+# line-change counts (AF-2026-05-27-5).
+MERGED="$(printf '%s' "$EXISTING" | jq \
+  --argjson gd "$GIT_DIRTY" \
+  --argjson ab "$AB_ARG" \
+  --argjson sa "$STAGED_ADDED" \
+  --argjson sr "$STAGED_REMOVED" \
+  --argjson ua "$UNSTAGED_ADDED" \
+  --argjson ur "$UNSTAGED_REMOVED" \
+  '. + {git_dirty: $gd, active_branch: $ab, staged_added: $sa, staged_removed: $sr, unstaged_added: $ua, unstaged_removed: $ur}' 2>/dev/null)"
 if [ -z "$MERGED" ]; then
   exit 0
 fi

@@ -167,6 +167,11 @@ if [ -r "$CACHE_FILE" ]; then
     UPDATE_AVAILABLE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.update_available // false' 2>/dev/null)"
     INSTALLED_VERSION_STALE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.installed_version_stale // false' 2>/dev/null)"
     GIT_DIRTY_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.git_dirty // false' 2>/dev/null)"
+    # AF-2026-05-27-5: per-class line-change counts (default 0 when absent).
+    GIT_STAGED_ADDED="$(printf '%s' "$CACHE_JSON" | jq -r '.staged_added // 0' 2>/dev/null)"
+    GIT_STAGED_REMOVED="$(printf '%s' "$CACHE_JSON" | jq -r '.staged_removed // 0' 2>/dev/null)"
+    GIT_UNSTAGED_ADDED="$(printf '%s' "$CACHE_JSON" | jq -r '.unstaged_added // 0' 2>/dev/null)"
+    GIT_UNSTAGED_REMOVED="$(printf '%s' "$CACHE_JSON" | jq -r '.unstaged_removed // 0' 2>/dev/null)"
     CACHE_TS="$(printf '%s' "$CACHE_JSON" | jq -r '.checked_at_iso // ""' 2>/dev/null)"
     if [ -n "$CACHE_TS" ]; then
       # Portable ISO-8601 -> epoch (try BSD then GNU date).
@@ -352,11 +357,18 @@ DIRTY_CHUNK=""
 if [ -n "$BRANCH" ]; then
   BRANCH_CHUNK="${GLYPH_BRANCH} ${BRANCH}"
   if [ "$GIT_DIRTY_RAW" = "true" ]; then
-    if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
-      DIRTY_CHUNK="${COLOR_DIRTY:-}*${COLOR_RESET}"
-    else
-      DIRTY_CHUNK="${COLOR_DIRTY:-}${GLYPH_DIRTY:-*}${COLOR_RESET}"
-    fi
+    # AF-2026-05-27-5: render per-class line-change counts instead of a bare
+    # dirty glyph — "S +30 -4  U +12 -3" (S=staged, U=unstaged; +added green,
+    # -removed red; muted labels). Both sides always shown when dirty, incl.
+    # "+0 -0" for an untracked-only tree (git counts no line diff for those).
+    # Integer-cast each count defensively (cache could be stale/garbage).
+    for _v in GIT_STAGED_ADDED GIT_STAGED_REMOVED GIT_UNSTAGED_ADDED GIT_UNSTAGED_REMOVED; do
+      eval "_cv=\${$_v:-0}"
+      case "$_cv" in ''|*[!0-9]*) eval "$_v=0" ;; esac
+    done
+    _DIRTY_S="${COLOR_MUTED}S${COLOR_RESET} ${COLOR_OK}+${GIT_STAGED_ADDED:-0}${COLOR_RESET} ${COLOR_DIRTY}-${GIT_STAGED_REMOVED:-0}${COLOR_RESET}"
+    _DIRTY_U="${COLOR_MUTED}U${COLOR_RESET} ${COLOR_OK}+${GIT_UNSTAGED_ADDED:-0}${COLOR_RESET} ${COLOR_DIRTY}-${GIT_UNSTAGED_REMOVED:-0}${COLOR_RESET}"
+    DIRTY_CHUNK="${_DIRTY_S}  ${_DIRTY_U}"
   fi
 fi
 SPRINT_CHUNK=""

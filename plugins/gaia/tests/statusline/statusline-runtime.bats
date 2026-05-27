@@ -413,26 +413,57 @@ JSON
 # E82-S8 — Dirty glyph appended to BRANCH chunk when git_dirty=true.
 # ===========================================================================
 
-@test "E82-S8 / AC3: ASCII theme emits dirty '*' chunk on line 2 when git_dirty=true" {
-  # sprint-43 update: the dirty marker is now a separate chunk on line 2,
-  # not a suffix concatenated to the branch token. Layout: branch | * | project.
+@test "E82-S8 / AC3 (AF-27-5): dirty chunk shows S/U +added/-removed line counts on line 2" {
+  # AF-2026-05-27-5: the dirty marker is no longer a bare "*" — it shows per-class
+  # line-change counts "S +<staged_add> -<staged_rem>  U +<unstaged_add> -<unstaged_rem>"
+  # read from the cache fields written by statusline-git-dirty-check.sh.
   [ -f "$RUNTIME" ]
   cd "$TEST_TMP"
   mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
+  cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
+{"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.142.0","update_available":false,"installed_version_stale":false,"git_dirty":true,"staged_added":30,"staged_removed":4,"unstaged_added":12,"unstaged_removed":3}
+JSON
+  run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  line2="$(echo "$output" | tail -1)"
+  echo "$line2" | grep -q "feature/x"
+  # branch | dirty-counts | project = two separators.
+  sep_count=$(echo "$line2" | grep -o " | " | wc -l | tr -d ' ')
+  [ "$sep_count" -ge 2 ]
+  stripped="$(echo "$line2" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
+  echo "$stripped" | grep -q "S +30 -4"
+  echo "$stripped" | grep -q "U +12 -3"
+  # The legacy standalone "*" chunk is gone.
+  ! echo "$stripped" | grep -qE '\| \* \|'
+}
+
+@test "AF-27-5: dirty tree with no line diff (untracked-only) still shows +0 -0" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
+  cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
+{"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.142.0","update_available":false,"installed_version_stale":false,"git_dirty":true,"staged_added":0,"staged_removed":0,"unstaged_added":0,"unstaged_removed":0}
+JSON
+  run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
+  [ "$status" -eq 0 ]
+  stripped="$(echo "$output" | tail -1 | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
+  echo "$stripped" | grep -q "S +0 -0"
+  echo "$stripped" | grep -q "U +0 -0"
+}
+
+@test "AF-27-5: counts absent from cache (legacy dirty=true) default to +0 -0" {
+  [ -f "$RUNTIME" ]
+  cd "$TEST_TMP"
+  mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
+  # No staged_*/unstaged_* keys — backward-compat with an old cache.
   cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
 {"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.142.0","update_available":false,"installed_version_stale":false,"git_dirty":true}
 JSON
   run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
   [ "$status" -eq 0 ]
-  # Line 2 should contain branch, a standalone dirty "*" chunk, and project.
-  line2="$(echo "$output" | tail -1)"
-  echo "$line2" | grep -q "feature/x"
-  # Two " | " separators on line 2 = branch | dirty | project.
-  sep_count=$(echo "$line2" | grep -o " | " | wc -l | tr -d ' ')
-  [ "$sep_count" -ge 2 ]
-  # Strip ANSI escape sequences before matching the literal "* " chunk.
-  stripped="$(echo "$line2" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
-  echo "$stripped" | grep -qE '\| \* \|'
+  stripped="$(echo "$output" | tail -1 | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
+  echo "$stripped" | grep -q "S +0 -0"
+  echo "$stripped" | grep -q "U +0 -0"
 }
 
 @test "E82-S8 / AC3: git_dirty=false leaves BRANCH chunk clean" {
