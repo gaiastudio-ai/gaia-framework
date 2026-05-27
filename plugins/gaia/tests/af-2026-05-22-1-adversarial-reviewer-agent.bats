@@ -43,7 +43,11 @@ teardown() { common_teardown; }
 }
 
 @test "AF-2026-05-22-1: persona Memory section invokes memory-loader.sh with ground-truth scope" {
-  grep -qF '${PLUGIN_DIR}/scripts/memory-loader.sh adversarial-reviewer ground-truth' "$PLUGIN_ROOT/agents/adversarial-reviewer.md"
+  # Test05 F-010 / AF-2026-05-27-4: the header MUST use ${CLAUDE_PLUGIN_ROOT}
+  # (the documented Claude Code substrate var), NOT ${PLUGIN_DIR} (which is not
+  # a substrate var and expands to empty, silently no-op'ing the memory load).
+  grep -qF '${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh adversarial-reviewer ground-truth' "$PLUGIN_ROOT/agents/adversarial-reviewer.md"
+  ! grep -qF '${PLUGIN_DIR}/scripts/memory-loader.sh adversarial-reviewer ground-truth' "$PLUGIN_ROOT/agents/adversarial-reviewer.md"
 }
 
 @test "AF-2026-05-22-1: persona declares ADR-037 envelope output contract" {

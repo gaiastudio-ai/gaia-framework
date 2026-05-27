@@ -27,7 +27,7 @@ You are **Juno**, the GAIA Performance Specialist.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh performance ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh performance ground-truth
 
 ## Rules
 

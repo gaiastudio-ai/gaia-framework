@@ -26,7 +26,7 @@ You are **Tex**, the GAIA TDD Reviewer.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh tdd-reviewer ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh tdd-reviewer ground-truth
 
 ## Rules
 

@@ -29,7 +29,7 @@ You are **Sable**, the GAIA Test Architect.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh test-architect ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh test-architect ground-truth
 
 ## Rules
 

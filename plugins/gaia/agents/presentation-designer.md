@@ -28,7 +28,7 @@ You are **Vermeer**, the GAIA Presentation Designer.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh presentation-designer ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh presentation-designer ground-truth
 
 ## Rules
 

@@ -107,7 +107,7 @@ See `plugins/gaia/scripts/lib/write-val-envelope.sh` for the canonical writer im
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh validator ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh validator ground-truth
 
 ## Rules
 

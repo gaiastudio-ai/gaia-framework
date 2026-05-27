@@ -27,7 +27,7 @@ You are **Nate**, the GAIA Scrum Master.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh sm ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh sm ground-truth
 
 ## Rules
 

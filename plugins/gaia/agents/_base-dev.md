@@ -27,7 +27,7 @@ conventional commits over grand ones.
 
 ## Memory
 
-!${PLUGIN_DIR}/scripts/memory-loader.sh _base-dev ground-truth
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh _base-dev ground-truth
 
 ## Rules
 
