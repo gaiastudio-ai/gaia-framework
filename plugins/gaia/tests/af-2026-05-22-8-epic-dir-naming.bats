@@ -50,10 +50,16 @@ teardown() { common_teardown; }
 
 # --- transition-story-status.sh uses resolver output verbatim (no redundant prefix) ---
 
-@test "AF-22-8 Bug-18: transition-story-status.sh uses \${epic_slug}/stories/ (no extra epic- prefix)" {
-  grep -qF '${IMPLEMENTATION_ARTIFACTS}/${epic_slug}/stories/story-index.yaml' "$PLUGIN_ROOT/scripts/transition-story-status.sh"
-  # Negative: ensure the buggy double-prefix form isn't present.
+@test "AF-22-8 Bug-18: transition-story-status.sh uses \${epic_slug} verbatim (no extra epic- prefix)" {
+  # E105-S1 / ADR-127 made resolve_story_index_path layout-aware: the single
+  # printf line was replaced by epic_root + legacy_index/new_index variables.
+  # The Bug-18 invariant is unchanged — the epic dir is ${IMPLEMENTATION_ARTIFACTS}/${epic_slug}
+  # with NO redundant epic- prefix (resolver output already carries it).
+  grep -qF 'epic_root="${IMPLEMENTATION_ARTIFACTS}/${epic_slug}"' "$PLUGIN_ROOT/scripts/transition-story-status.sh"
+  grep -qF 'legacy_index="${epic_root}/stories/story-index.yaml"' "$PLUGIN_ROOT/scripts/transition-story-status.sh"
+  # Negative: ensure the buggy double-prefix form isn't present in either variant.
   ! grep -qF 'epic-${epic_slug}/stories/story-index' "$PLUGIN_ROOT/scripts/transition-story-status.sh"
+  ! grep -qF 'epic-${epic_slug}/story-index' "$PLUGIN_ROOT/scripts/transition-story-status.sh"
 }
 
 # --- resolve-epic-slug.sh outputs the COMPLETE directory name (includes epic- prefix) ---

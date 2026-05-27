@@ -157,9 +157,22 @@ story_risk() {
   local key="$1"
   local matches=()
   shopt -s nullglob nocaseglob
+  # Tiers (E105-S1 / ADR-127): flat, legacy-nested, and the NEW per-story layout
+  # epic-{slug}/{key}-{slug}/story.md. Risk lookup is advisory (display colour
+  # only), so first match wins; the legacy `stories/` evidence-dir case is
+  # excluded below to keep tier-0 strictly the new layout.
   # shellcheck disable=SC2206
-  matches=( "${IMPLEMENTATION_ARTIFACTS}/${key}-"*.md "${IMPLEMENTATION_ARTIFACTS}"/epic-*/stories/"${key}-"*.md )
+  matches=( "${IMPLEMENTATION_ARTIFACTS}/${key}-"*.md \
+            "${IMPLEMENTATION_ARTIFACTS}"/epic-*/stories/"${key}-"*.md \
+            "${IMPLEMENTATION_ARTIFACTS}"/epic-*/"${key}-"*/story.md )
   shopt -u nullglob nocaseglob
+  # Drop per-story evidence dirs nested under a legacy `stories/` segment.
+  local _filtered=() _mm
+  for _mm in "${matches[@]}"; do
+    case "$_mm" in */stories/*/story.md) continue ;; esac
+    _filtered+=( "$_mm" )
+  done
+  matches=( "${_filtered[@]}" )
   [[ ${#matches[@]} -eq 0 ]] && return 0
   local story_file="${matches[0]}"
   [[ -r "$story_file" ]] || return 0

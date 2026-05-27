@@ -362,24 +362,51 @@ _is_story_file() {
   ' "$f"
 }
 
-# Locate the story file via glob `{story_key}-*.md` under IMPLEMENTATION_ARTIFACTS,
-# then filter candidates by frontmatter `template: 'story'` to exclude review
-# sibling files (-review.md, -qa-tests.md, -security-review.md, etc.).
-# Returns via the STORY_FILE global. Exits 1 on zero or multiple canonical matches.
+# Locate the story file under IMPLEMENTATION_ARTIFACTS across all three layout
+# tiers (E105-S1 / ADR-127), then filter candidates by frontmatter
+# `template: 'story'` to exclude review sibling files (-review.md, -qa-tests.md,
+# -security-review.md, etc.). Returns via the STORY_FILE global. Exits 1 on zero
+# or multiple canonical matches.
+#
+# Layout tiers globbed (precedence handled downstream by the template filter +
+# realpath dedup, mirroring resolve-story-file.sh):
+#   0. NEW per-story nested:  epic-{slug}/{key}-{slug}/story.md  (E105-S1/ADR-127)
+#   1. Legacy nested:         epic-{slug}/stories/{key}-{slug}.md
+#   2. Legacy flat:           {key}-{slug}.md
 STORY_FILE=""
 locate_story_file() {
   local key="$1"
   local pattern="${IMPLEMENTATION_ARTIFACTS}/${key}-*.md"
   local epic_pattern="${IMPLEMENTATION_ARTIFACTS}/epic-*/stories/${key}-*.md"
+  # NEW per-story layout: the story's own directory carries the key; basename is
+  # literally story.md. The `/stories/` segment (legacy tier-1) is excluded below
+  # so a bare-glob `epic-*/${key}-*/story.md` cannot also pick up the tier-1 tree.
+  local perstory_pattern="${IMPLEMENTATION_ARTIFACTS}/epic-*/${key}-*/story.md"
 
   local matches=()
   shopt -s nullglob
   # shellcheck disable=SC2206
-  matches=( $pattern $epic_pattern )
+  matches=( $pattern $epic_pattern $perstory_pattern )
   shopt -u nullglob
 
+  # Drop any perstory_pattern hit that actually lives under a legacy `stories/`
+  # segment — that path belongs to the tier-1 epic_pattern, not tier-0, and the
+  # `*` in the glob would otherwise let `epic-*/stories/{key}-*/story.md`
+  # (per-story evidence dirs) leak in (mirrors resolve-story-file.sh guard (a)).
+  if [ "${#matches[@]}" -gt 0 ]; then
+    local _filtered=()
+    local _mm
+    for _mm in "${matches[@]}"; do
+      case "$_mm" in
+        */stories/*/story.md) continue ;;
+      esac
+      _filtered+=( "$_mm" )
+    done
+    matches=( "${_filtered[@]}" )
+  fi
+
   if [ "${#matches[@]}" -eq 0 ]; then
-    die "no story file found for key '$key' (glob: $pattern)"
+    die "no story file found for key '$key' (globs: $pattern | $epic_pattern | $perstory_pattern)"
   fi
 
   # Filter glob matches: keep only files whose frontmatter declares template: 'story'
@@ -1235,8 +1262,12 @@ reconcile_locate_story_file() {
   local key="$1"
   local matches=()
   shopt -s nullglob nocaseglob
+  # Tiers globbed (E105-S1 / ADR-127): flat, legacy-nested, and the NEW
+  # per-story layout epic-{slug}/{key}-{slug}/story.md (basename story.md).
   # shellcheck disable=SC2206
-  matches=( "${IMPLEMENTATION_ARTIFACTS}/${key}-"*.md "${IMPLEMENTATION_ARTIFACTS}"/epic-*/stories/"${key}-"*.md )
+  matches=( "${IMPLEMENTATION_ARTIFACTS}/${key}-"*.md \
+            "${IMPLEMENTATION_ARTIFACTS}"/epic-*/stories/"${key}-"*.md \
+            "${IMPLEMENTATION_ARTIFACTS}"/epic-*/"${key}-"*/story.md )
   shopt -u nullglob nocaseglob
 
   if [ "${#matches[@]}" -eq 0 ]; then
@@ -1245,6 +1276,11 @@ reconcile_locate_story_file() {
 
   local m
   for m in "${matches[@]}"; do
+    # Exclude per-story evidence dirs that live under a legacy `stories/`
+    # segment — those belong to the tier-1 layer, not the new tier-0 layout.
+    case "$m" in
+      */stories/*/story.md) continue ;;
+    esac
     if _is_story_file "$m"; then
       printf '%s' "$m"
       return 0

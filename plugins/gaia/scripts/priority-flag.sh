@@ -60,20 +60,26 @@ pflag_read() {
 # ---------------------------------------------------------------------------
 # _pflag_scan_by_flag — shared internal helper for status+flag scans (E40-S3)
 # ---------------------------------------------------------------------------
-# Walks both canonical-nested (epic-*/stories/) and legacy-flat layouts,
-# emitting story keys for files where:
+# Walks all three story layouts and emits story keys for files where:
 #   - frontmatter status matches $status_filter (empty = any status); AND
 #   - priority_flag matches $flag_value.
+# Layouts (E105-S1 / ADR-127):
+#   - legacy-nested: epic-*/stories/{key}-{slug}.md
+#   - NEW per-story: epic-*/{key}-{slug}/story.md
+#   - legacy-flat:   {key}-{slug}.md
 #
 # Used by both pflag_scan_backlog (E38-S4 next-sprint pre-fill) and
 # pflag_scan_active_hotfix (E40-S3 hotfix active-sprint inject). Single
-# source of truth for the dual-layout scan idiom; callers are 1-line
-# delegating wrappers.
+# source of truth for the multi-layout scan idiom; callers are 1-line
+# delegating wrappers. Non-story files lack the status/key/flag frontmatter
+# and are filtered out by the field reads, so a broad `*.md` find is safe.
 # ---------------------------------------------------------------------------
 _pflag_scan_by_flag() {
   local dir="$1" status_filter="$2" flag_value="$3"
   local f status_val flag_val key_val
-  # Canonical nested layout — recursive walk under any epic-*/stories/ subtree.
+  # Nested layouts — recursive walk over BOTH legacy `epic-*/stories/*.md` and
+  # the new per-story `epic-*/{key}-{slug}/story.md`. The two -path tests cover
+  # both; the new layout's `story.md` basename is matched explicitly.
   while IFS= read -r -d '' f; do
     [ -f "$f" ] || continue
     if [ -n "$status_filter" ]; then
@@ -85,7 +91,7 @@ _pflag_scan_by_flag() {
     key_val="$(_pflag_fm_field "key" "$f" 2>/dev/null || true)"
     [ -n "$key_val" ] || continue
     printf '%s\n' "$key_val"
-  done < <(find "$dir" -path '*/stories/*.md' -type f -print0 2>/dev/null)
+  done < <(find "$dir" \( -path '*/stories/*.md' -o -path '*/epic-*/*/story.md' \) -type f -print0 2>/dev/null)
   # Legacy flat layout — read-only fallback until E79-S6 migration completes.
   for f in "$dir"/*.md; do
     [ -f "$f" ] || continue

@@ -110,23 +110,28 @@ for key in "${DEP_KEYS[@]}"; do
   [ -z "$key" ] && continue
 
   # Locate "<KEY>-*.md" under IMPL_DIR. Prefer first lexicographic match.
-  # Searches both flat layout and epic-grouped layout (epic-*/stories/).
+  # Searches all three layout tiers (E105-S1 / ADR-127).
   #
   # Filter: skip "*-review-summary.md" siblings. These are review-output
   # artifacts emitted by /gaia-run-all-reviews; they share the "{KEY}-*"
   # prefix with story files but carry no story frontmatter, which makes
   # story-parse.sh return `<unparseable>` on them — surfacing as a false
-  # dependency-not-done HALT. Story files live either flat as
-  # "{KEY}-<slug>.md" (legacy) OR nested as
-  # "epic-<key>-<slug>/stories/{KEY}-<slug>.md" (E53-S225 / ADR-070
-  # epic-grouped layout). Review-summary files only ever sit flat under
-  # IMPL_DIR.
+  # dependency-not-done HALT. Story files live as:
+  #   - "{KEY}-<slug>.md" (legacy flat), OR
+  #   - "epic-<key>-<slug>/stories/{KEY}-<slug>.md" (legacy nested, ADR-070), OR
+  #   - "epic-<key>-<slug>/{KEY}-<slug>/story.md" (NEW per-story, E105-S1/ADR-127).
+  # Review-summary files only ever sit flat under IMPL_DIR.
   match=""
   if [ -d "$IMPL_DIR" ]; then
-    for cand in "$IMPL_DIR/${key}-"*.md "$IMPL_DIR"/epic-*/stories/"${key}-"*.md; do
+    for cand in "$IMPL_DIR/${key}-"*.md \
+                "$IMPL_DIR"/epic-*/stories/"${key}-"*.md \
+                "$IMPL_DIR"/epic-*/"${key}-"*/story.md; do
       if [ -f "$cand" ]; then
         case "$cand" in
           *-review-summary.md) continue ;;
+          # A story.md under a legacy stories/ segment is an evidence dir, not
+          # the new per-story layout — skip it (keeps tier-0 strictly new layout).
+          */stories/*/story.md) continue ;;
         esac
         match="$cand"
         break
