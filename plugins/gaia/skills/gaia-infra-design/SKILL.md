@@ -64,10 +64,24 @@ Delegate to the **devops** subagent (Soren) via `agents/devops` to design enviro
 
 Delegate to the **devops** subagent (Soren) via `agents/devops` to design the deployment topology.
 
-- Define container orchestration strategy (Kubernetes, ECS, serverless, etc.).
-- Design service mesh and load balancing approach.
-- Specify scaling strategy: horizontal, vertical, auto-scaling triggers.
-- Define networking: VPC, subnets, security groups, CDN.
+**Topology-aware (Test05 F-027).** First read `project-config.yaml` (and the
+architecture doc) to determine whether the target is cloud, on-prem/local, or
+hybrid. Design to the ACTUAL topology — do NOT force cloud concepts onto a
+local/on-prem project just to satisfy the checklist. The SV-07/08/10/11 gates in
+`finalize.sh` accept on-prem-appropriate idioms (firewall/loopback/localhost for
+networking; systemd/supervisor/pm2/replicas for scaling; Ansible/Chef/Puppet for
+IaC; local-state/stateless/idempotent-convergence for state).
+
+- Define the orchestration / process model appropriate to the topology:
+  - **cloud:** Kubernetes, ECS, serverless, etc.
+  - **on-prem / local:** systemd units, a process supervisor (supervisor/pm2),
+    Docker Compose, or a documented single-instance posture.
+- Design the load-balancing / request-routing approach (cloud LB + service mesh,
+  or an on-prem reverse proxy / nginx / HAProxy, or single-host direct binding).
+- Specify scaling strategy: horizontal, vertical, auto-scaling triggers (cloud)
+  OR worker/replica counts, vertical-only, or single-instance (on-prem/local).
+- Define networking to the topology: VPC / subnets / security groups / CDN
+  (cloud) OR firewall rules / loopback / localhost binding (on-prem/local).
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-infra-design 3 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=topology`
 
