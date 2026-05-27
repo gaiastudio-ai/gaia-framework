@@ -442,20 +442,19 @@ if [ "$_CTX_PCT" != "null" ]; then
     _CTX_FILLED_GLYPH="${GLYPH_BAR_FILLED:-█}"
     _CTX_EMPTY_GLYPH="${GLYPH_BAR_EMPTY:-░}"
   fi
-  # Per-cell gradient fill: cell index 0..9 maps to OK (green) for cells
-  # 0-4, WARN (yellow) for cells 5-7, DIRTY (red) for cells 8-9. The
-  # transitions match the band thresholds (<50 / 50..<80 / >=80) at the
-  # per-cell boundary so a 70% bar renders 5 green + 2 yellow filled.
+  # Per-cell TRUE gradient fill: each filled cell is colored by its own
+  # position along the green -> amber -> red gradient (cell i represents the
+  # ~i*10..(i+1)*10% band; we color it at its midpoint i*10+5 so the 10 cells
+  # sweep smoothly from green at the left to red at the right). Replaces the
+  # former 3-discrete-band scheme (green 0-4 / yellow 5-7 / red 8-9) per the
+  # gradient requirement. `gradient_color` handles truecolor / nearest-256 /
+  # NO_COLOR emission internally.
   _FILLED_STR=""
   i=0
   while [ "$i" -lt "$_CTX_FILLED" ]; do
-    if [ "$i" -lt 5 ]; then
-      _CELL_COLOR="${COLOR_OK:-}"
-    elif [ "$i" -lt 8 ]; then
-      _CELL_COLOR="${COLOR_WARN:-}"
-    else
-      _CELL_COLOR="${COLOR_DIRTY:-}"
-    fi
+    _CELL_PCT=$(( i * 10 + 5 ))
+    # Fork-free: gradient_color writes into _CELL_COLOR via printf -v.
+    gradient_color "$_CELL_PCT" _CELL_COLOR
     _FILLED_STR="${_FILLED_STR}${_CELL_COLOR}${_CTX_FILLED_GLYPH}${COLOR_RESET}"
     i=$((i + 1))
   done
@@ -465,14 +464,11 @@ if [ "$_CTX_PCT" != "null" ]; then
     _EMPTY_STR="${_EMPTY_STR}${_CTX_EMPTY_GLYPH}"
     i=$((i + 1))
   done
-  # Inline percentage colored by the dominant band.
-  if [ "$_CTX_PCT" -lt 50 ]; then
-    _PCT_COLOR="${COLOR_OK:-}"
-  elif [ "$_CTX_PCT" -lt 80 ]; then
-    _PCT_COLOR="${COLOR_WARN:-}"
-  else
-    _PCT_COLOR="${COLOR_DIRTY:-}"
-  fi
+  # Inline percentage colored by the SAME green -> amber -> red gradient,
+  # evaluated at the actual percentage (so the number's hue matches the
+  # right-most filled cell's neighbourhood). True gradient, not a 3-band step.
+  # Fork-free out-var form.
+  gradient_color "$_CTX_PCT" _PCT_COLOR
   _PCT_TEXT="${_PCT_COLOR}${_CTX_PCT}%${COLOR_RESET}"
   # Size hint: Claude Code sends `context_window.context_window_size` as an
   # integer (e.g. 1000000 for 1M, 200000 for 200K). Round to the stock label.
