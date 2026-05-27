@@ -316,16 +316,31 @@ EOF
 REAL_ROOT="$(resolve_real "$ROOT")"
 [ -z "$REAL_ROOT" ] && REAL_ROOT="$ROOT"
 
-# E96-S8 partial-fix: smart-fallback for validator-sidecar location.
-# Prefer .gaia/memory/validator-sidecar/ when the .gaia/ tree is present;
-# fall back to legacy _memory/validator-sidecar/ for in-deprecation-window
-# consumers and bats fixtures.
-if [ -d "$REAL_ROOT/.gaia/memory" ]; then
+# Validator-sidecar location routing.
+#
+# Test04 (project-root _memory/ leak) — the prior probe keyed on whether the
+# `.gaia/memory/` SUBDIR already existed. That is racy: the first sidecar write
+# of a run can fire BEFORE `.gaia/memory/` has been mkdir'd, so on a project that
+# IS a .gaia/-layout project the write leaked to legacy `_memory/` and was never
+# migrated (the canonical file then appeared once the subdir existed, leaving a
+# stray orphan at `_memory/validator-sidecar/decision-log.md`).
+#
+# Fix: route on the PROJECT LAYOUT, not on subdir existence. A project is a
+# .gaia/-layout project when the `.gaia/` tree exists at all (ADR-111 canonical),
+# regardless of whether the memory subdir has been created yet — we mkdir it
+# below. Only fall back to legacy `_memory/` for a genuine pre-ADR-111 project:
+# no `.gaia/` tree AND an existing legacy `_memory/` to append to.
+if [ -d "$REAL_ROOT/.gaia" ]; then
   DECISION_LOG="$REAL_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   CONTEXT_FILE="$REAL_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
-else
+elif [ -d "$REAL_ROOT/_memory" ]; then
   DECISION_LOG="$REAL_ROOT/_memory/validator-sidecar/decision-log.md"
   CONTEXT_FILE="$REAL_ROOT/_memory/validator-sidecar/conversation-context.md"
+else
+  # No layout signal at all (fresh/bare root): default to the ADR-111 canonical
+  # `.gaia/` location rather than seeding a legacy `_memory/` tree.
+  DECISION_LOG="$REAL_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
+  CONTEXT_FILE="$REAL_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
 fi
 
 # --target overrides only the primary write path — it must still pass the

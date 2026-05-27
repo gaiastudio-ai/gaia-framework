@@ -112,6 +112,33 @@ _gaia_session_load_sentinel_check() {
 }
 _gaia_session_load_sentinel_check || true
 
+# Stray-legacy-memory hygiene warning (Test04 _memory leak follow-up).
+# A .gaia/-layout project should have NO project-root _memory/ tree — but a
+# buggy writer that resolved its path on a racy "does .gaia/memory exist yet"
+# probe could leak a sidecar/checkpoint into _memory/ (the val-sidecar-write.sh
+# bug fixed in AF-2026-05-27-2). This is a cross-writer detector: warn (once,
+# non-fatal, never read-only) whenever _memory/ coexists with .gaia/memory/, so
+# ANY future stray-tree leak is surfaced at session load rather than silently
+# accumulating. It does NOT delete anything — cleanup is an explicit operator
+# action (/gaia-memory-hygiene).
+_gaia_stray_legacy_memory_warn() {
+  case "$MEMORY_PATH" in
+    *"/.gaia/memory"|".gaia/memory")
+      local _root
+      _root="$(cd "${MEMORY_PATH%/.gaia/memory}" 2>/dev/null && pwd || true)"
+      [ -n "$_root" ] || return 0
+      # Only warn when BOTH the canonical .gaia/memory/ AND a stray _memory/
+      # exist — i.e. a real coexistence leak, not a mid-migration project (which
+      # the sentinel check above already handles via the manifest contract).
+      if [ -d "${_root}/.gaia/memory" ] && [ -d "${_root}/_memory" ]; then
+        printf 'session-load: WARNING — a project-root _memory/ tree coexists with the canonical .gaia/memory/ (ADR-111). This usually means a writer leaked a sidecar/checkpoint outside .gaia/. Review %s and run /gaia-memory-hygiene to reconcile.\n' "${_root}/_memory" >&2
+      fi
+      ;;
+  esac
+  return 0
+}
+_gaia_stray_legacy_memory_warn || true
+
 usage() {
   cat <<'EOF'
 Usage: memory-loader.sh <agent_name> <tier> [--max-tokens <n>] [--format inline] [--help]
