@@ -70,17 +70,18 @@ YAML
 }
 
 @test "rate-limits chunk renders by default with rich theme + rate_limits stdin" {
+  # AF-27-5: the rate-limits chunk is now per-window "5h:<pct>%" (no "RL:" prefix).
   stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"rate_limits":{"five_hour":{"used_percentage":42}}}'
   run bash -c "COLUMNS=200 GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$TEST_TMP' printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$TEST_TMP' '$RUNTIME'"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"RL:"* ]]
+  [[ "$output" == *"5h:42%"* ]]
 }
 
 @test "rate-limits chunk suppressed under minimal theme" {
   stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"rate_limits":{"five_hour":{"used_percentage":42}}}'
   run bash -c "COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_THEME=minimal HOME='$HOME' PROJECT_PATH='$TEST_TMP' printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_THEME=minimal HOME='$HOME' PROJECT_PATH='$TEST_TMP' '$RUNTIME'"
   [ "$status" -eq 0 ]
-  [[ "$output" != *"RL:"* ]]
+  [[ "$output" != *"5h:"* ]]
 }
 
 # ---- Sprint-status walk-up resolution ------------------------------------
