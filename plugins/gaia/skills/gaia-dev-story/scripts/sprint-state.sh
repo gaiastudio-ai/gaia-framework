@@ -2415,7 +2415,22 @@ cmd_init() {
   local yaml
   yaml="$(_resolve_active_yaml)"
   if [ -e "$yaml" ]; then
-    die "init: $yaml already exists — refusing to overwrite (use sprint-status.yaml directly or transition)"
+    # Test05 F-033: after /gaia-sprint-close the live yaml persists with
+    # `status: closed` (the close ceremony archives a COPY, it does not remove
+    # the live file). The next sprint's `init` previously hard-refused on that
+    # residual, forcing a manual `rm sprint-status.yaml` between sprints. A
+    # CLOSED predecessor is a sanctioned hand-off point: re-seed over it (the
+    # closed state is already preserved in sprint-archive/). Any OTHER existing
+    # status (planned/active/review) is still refused — overwriting a live
+    # sprint would lose in-flight state.
+    local existing_status
+    existing_status="$(_yaml_sprint_status "$yaml" 2>/dev/null || true)"
+    if [ "$existing_status" = "closed" ]; then
+      printf '%s: init: re-seeding over closed predecessor sprint (%s, status=closed) — prior state preserved in sprint-archive/\n' \
+        "$SCRIPT_NAME" "$yaml" >&2
+    else
+      die "init: $yaml already exists (status=${existing_status:-unknown}) — refusing to overwrite a non-closed sprint (close it first via /gaia-sprint-close, or edit sprint-status.yaml / transition directly)"
+    fi
   fi
   mkdir -p "$(dirname "$yaml")"
   # No flock here: the init path is the FIRST writer (it refuses to overwrite
