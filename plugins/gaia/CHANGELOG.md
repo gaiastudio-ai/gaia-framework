@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.180.2] — 2026-05-27
+
+### Fixed
+
+- (statusline) show staged/unstaged line-change counts instead of a dirty '*'
+- (statusline) split rate-limit windows + per-window reset countdown
+- (statusline) show bare model name, strip the context-window suffix
+- (statusline) true green→amber→red gradient for the context-% bar + number
+
 ## [1.180.1] — 2026-05-27
 
 ### Fixed
