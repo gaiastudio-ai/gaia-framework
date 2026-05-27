@@ -17,6 +17,15 @@
 #   suppresses repeat warnings within the same session. The marker is
 #   keyed on session_id, so a new session re-emits the warning once.
 #
+# Test05 F-001 (once-per-session is by design, not per-invocation):
+#   The warning fires AT MOST once per session — not on every skill call. A
+#   fresh session legitimately needs the Mode-A-lossiness notice because the
+#   trade-off applies to that session's dispatches. Suppressing it further
+#   (once-per-host / opt-in only) would hide a real fidelity trade-off from a
+#   user who has not seen it this session. The session-keyed marker is the
+#   intended noise floor; the GC below reaps stale per-session markers so they
+#   do not accumulate.
+#
 # When NO warning is emitted (silent exit 0):
 #   - skill class is `light-procedural` (cheap; no continuity benefit)
 #   - skill class is `reviewer` (one-shot fork by design; NFR-060)

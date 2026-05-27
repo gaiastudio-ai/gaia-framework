@@ -8,6 +8,14 @@ replaced_by: gaia-test-strategy
 orchestration_class: light-procedural
 ---
 
+## Deprecation Notice (Test05 F-024)
+
+This skill is a DEPRECATED alias. On invocation, emit this canonical one-line
+warning VERBATIM as the FIRST line of output, then redirect to the canonical
+skill:
+
+> `[deprecated] /gaia-test-framework is retired — use /gaia-test-strategy --scaffold (alias preserved one sprint per E69-S3 / FR-RSV2-24).`
+
 ## Setup
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-test-framework/scripts/setup.sh

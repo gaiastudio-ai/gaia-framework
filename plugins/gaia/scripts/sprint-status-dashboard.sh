@@ -249,14 +249,18 @@ if [[ -n "$auto_close_json" ]]; then
   if [[ "$auto_close_json" =~ \"end_date\":\"([^\"]*)\" ]]; then
     ac_end_date="${BASH_REMATCH[1]}"
   fi
-  printf '  [SPRINT AUTO-CLOSE] %s — %s/%s stories done (end_date: %s)\n' \
+  printf '  [SPRINT READY-TO-REVIEW] %s — %s/%s stories done (end_date: %s)\n' \
     "${ac_sprint_id:-?}" "${ac_done:-?}" "${ac_total:-?}" "${ac_end_date:-(unset)}"
-  printf '    Every story under this sprint is done, but sprint-status.yaml\n'
-  printf '    still reads status: active. Boundary write is overdue.\n'
-  printf '    Remediation (manual operator action — never auto-flipped):\n'
-  printf '      yq -i %s.status = \"closed\"%s .gaia/state/sprint-status.yaml\n' "'" "'"
-  printf '      (or, on a pre-migration install: docs/implementation-artifacts/sprint-status.yaml)\n'
-  printf '    Then seed the next sprint per feedback_sprint_boundary_yaml_write.md.\n'
+  printf '    Advisory hint only — this banner does NOT mean the sprint is closed.\n'
+  printf '    Every story is done, but the sprint is still status: active and the\n'
+  printf '    end-of-sprint CEREMONY has not run yet (Test05 F-44).\n'
+  printf '    Next step — run the ceremony, do NOT hand-edit sprint-status.yaml:\n'
+  printf '      /gaia-sprint-review   (Val + per-stack verdict; gates the close)\n'
+  printf '      then /gaia-sprint-close on a PASSED verdict (writes status: closed,\n'
+  printf '      archives the yaml, emits the lifecycle event — the sanctioned\n'
+  printf '      boundary write per ADR-095). After close, /gaia-sprint-plan + \n'
+  printf '      sprint-state.sh init seed the next sprint (re-seeds over the closed\n'
+  printf '      predecessor — no manual rm needed).\n'
   printf -- '-%.0s' {1..72}; printf '\n'
 fi
 

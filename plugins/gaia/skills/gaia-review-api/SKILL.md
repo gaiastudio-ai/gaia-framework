@@ -111,6 +111,8 @@ Write the report to the following path (preserved verbatim from the legacy task 
 
 If the file already exists for the same day (AC-EC3), write to a suffix-incremented filename (`api-design-review-{date}-2.md`, ...).
 
+**Output override + location note (Test05 F-021).** The default lives under `planning-artifacts/` because the API DESIGN review is a planning-phase artifact (it reviews the API contract before implementation), aggregated alongside the other design reviews. To redirect it, pass `--output <path>` in `$ARGUMENTS` or set `GAIA_API_REVIEW_REPORT_PATH`. Resolution precedence: `--output` arg > `GAIA_API_REVIEW_REPORT_PATH` env > the default `{planning_artifacts}/api-design-review-{date}.md`. An explicit override skips the same-day suffix logic (the caller owns collision handling). The eventual single-source review-path consolidation is tracked by E105-S4.
+
 The report is organised by category (naming, HTTP methods, status codes, error format, versioning, idempotency, pagination, content negotiation, rate limiting, auth scheme). Each finding row includes: category, severity (critical / high / medium / low), endpoint or location, finding description, recommendation.
 
 If the target is empty or resolves to no API definitions (AC-EC6), exit with `No review target resolved` and do NOT write an empty report.
