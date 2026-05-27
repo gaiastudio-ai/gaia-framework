@@ -6,12 +6,12 @@
 #   - write_transcript(path)                  — write stdin to path at mode 0600
 #   - assert_gitignored(pattern)              — HALT if pattern not in .gitignore
 #
-# Transcript file convention:
-#   _memory/checkpoints/sprint-review-{sprint_id}/{stack}.log
+# Transcript file convention (AF-2026-05-27-3 / ADR-111 — .gaia/ canonical):
+#   .gaia/memory/checkpoints/sprint-review-{sprint_id}/{stack}.log
 #   mode 0600 (umask 077 before creation)
 #
-# The path lives under `_memory/checkpoints/` per the framework precedent for
-# ephemeral verification artifacts (matches Val envelope sentinel placement).
+# The path lives under `.gaia/memory/checkpoints/` per the framework precedent
+# for ephemeral verification artifacts (matches Val envelope sentinel placement).
 # Existing `checkpoint-reaper.sh` retention policy applies.
 #
 # Traces to: AC5 of E93-S4, T-SGR-7, SR-65, SR-67.
@@ -27,7 +27,7 @@ transcript_path_for() {
     printf 'transcript_path_for: usage: transcript_path_for <sprint_id> <stack>\n' >&2
     return 2
   fi
-  printf '%s\n' "_memory/checkpoints/sprint-review-${sprint_id}/${stack}.log"
+  printf '%s\n' ".gaia/memory/checkpoints/sprint-review-${sprint_id}/${stack}.log"
 }
 
 # write_transcript <path>

@@ -11,7 +11,7 @@
 #     three branches:
 #       (y) rename to gaia-{base}.yml + scaffold overlay stubs
 #       (n) rename to user-{base}.yml (no overlays, byte-identical content)
-#       (s) skip-all — write ${PROJECT_ROOT}/_memory/.config-stale
+#       (s) skip-all — write ${PROJECT_ROOT}/.gaia/memory/.config-stale
 #
 # Non-interactive (GAIA_NONINTERACTIVE=1) flow gated by SR-84:
 #   BOTH --force CLI arg AND GAIA_MIGRATE_ALLOW_FORCE=1 env-var required;
@@ -53,7 +53,7 @@ _gaia_arm_decision_env_key() {
   printf 'GAIA_MIGRATE_DECISION_%s' "$(printf '%s' "$base" | tr '.' '_' | tr '-' '_')"
 }
 
-# Internal: write the `_memory/.config-stale` marker with the ADR-102 shape.
+# Internal: write the `.gaia/memory/.config-stale` marker with the ADR-102 shape.
 _gaia_arm_write_stale_flag() {
   local memory_dir="$1"
   local reason="${2:-deferred-migration}"
@@ -170,7 +170,9 @@ gaia_auto_rename_migration() {
 
   local project_root="${PROJECT_ROOT:-$(pwd)}"
   local workflows_dir="$project_root/.github/workflows"
-  local memory_dir="$project_root/_memory"
+  # AF-2026-05-27-3 (ADR-111): the .config-stale marker lives under the canonical
+  # .gaia/memory tree (legacy _memory removed with the consolidation migration).
+  local memory_dir="$project_root/.gaia/memory"
 
   if [ ! -d "$workflows_dir" ]; then
     return 0
@@ -236,7 +238,7 @@ gaia_auto_rename_migration() {
         ;;
       s|S)
         _gaia_arm_write_stale_flag "$memory_dir" "skip-all on $full_base — deferred FR-519 migration"
-        printf 'auto-rename-migration.sh: WARNING: deferred migration for %s — _memory/.config-stale written (stale per FR-528)\n' \
+        printf 'auto-rename-migration.sh: WARNING: deferred migration for %s — .gaia/memory/.config-stale written (stale per FR-528)\n' \
           "$full_base" >&2
         ;;
       *)

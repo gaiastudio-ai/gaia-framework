@@ -10,10 +10,10 @@ setup() {
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."
   HELPER="${PLUGIN_ROOT}/gaia/scripts/migrate-test-environment-path.sh"
   TARGET_DIR="$(mktemp -d -t e17s32-bats-XXXXXX)"
-  mkdir -p "${TARGET_DIR}/docs/test-artifacts" "${TARGET_DIR}/config" "${TARGET_DIR}/_memory"
+  mkdir -p "${TARGET_DIR}/docs/test-artifacts" "${TARGET_DIR}/config" "${TARGET_DIR}/.gaia/memory"
   LEGACY="${TARGET_DIR}/docs/test-artifacts/test-environment.yaml"
   CANONICAL="${TARGET_DIR}/config/test-environment.yaml"
-  SENTINEL="${TARGET_DIR}/_memory/.test-environment-path-migrated"
+  SENTINEL="${TARGET_DIR}/.gaia/memory/.test-environment-path-migrated"
 }
 
 teardown() {
@@ -49,7 +49,7 @@ teardown() {
   [[ "${output}" == *"ADR-110"* ]]
 }
 
-@test "AC4: post-move, sentinel file is created at _memory/.test-environment-path-migrated" {
+@test "AC4: post-move, sentinel file is created at .gaia/memory/.test-environment-path-migrated" {
   echo "version: 2" > "${LEGACY}"
   echo "runners: []" >> "${LEGACY}"
 
