@@ -119,10 +119,14 @@ MD
   [ "$(printf '%s\n' "$output" | grep -cE '^E1-S1')" -eq 1 ]
 }
 
-# --- F-011: create-ux heading_present tolerates numbered + plain H2s ---
+# --- F-011: heading_present tolerates numbered + plain H2s ---
+# AF-2026-05-27-8 / Test06 F-009: heading_present() is now ONE shared lib
+# (scripts/lib/heading-present.sh) sourced by every finalize.sh, not an inline
+# per-skill copy. These tests source the shared lib directly rather than
+# awk-extracting an inline definition that no longer exists.
 
-@test "F-011: create-ux heading_present passes a numbered H2 (## 1. Personas)" {
-  eval "$(awk '/^heading_present\(\) \{/,/^\}/' "$UXF")"
+@test "F-011: heading_present passes a numbered H2 (## 1. Personas)" {
+  . "$PLUGIN_ROOT/scripts/lib/heading-present.sh"
   cat > "$TEST_TMP/ux.md" <<'MD'
 ## 1. Personas
 content
@@ -133,8 +137,8 @@ MD
   [ "$(heading_present "$TEST_TMP/ux.md" 'Information Architecture')" = "pass" ]
 }
 
-@test "F-011: create-ux heading_present still passes a plain H2 (## Personas)" {
-  eval "$(awk '/^heading_present\(\) \{/,/^\}/' "$UXF")"
+@test "F-011: heading_present still passes a plain H2 (## Personas)" {
+  . "$PLUGIN_ROOT/scripts/lib/heading-present.sh"
   cat > "$TEST_TMP/ux.md" <<'MD'
 ## Personas
 content
@@ -142,8 +146,8 @@ MD
   [ "$(heading_present "$TEST_TMP/ux.md" Personas)" = "pass" ]
 }
 
-@test "F-011: create-ux heading_present fails for an absent heading" {
-  eval "$(awk '/^heading_present\(\) \{/,/^\}/' "$UXF")"
+@test "F-011: heading_present fails for an absent heading" {
+  . "$PLUGIN_ROOT/scripts/lib/heading-present.sh"
   cat > "$TEST_TMP/ux.md" <<'MD'
 ## Personas
 content
@@ -151,10 +155,11 @@ MD
   [ "$(heading_present "$TEST_TMP/ux.md" 'Nonexistent Section')" = "fail" ]
 }
 
-@test "F-011: create-ux regex matches the sibling create-prd numbered-prefix pattern" {
-  # Both finalize scripts must carry the same numeric-outline tolerance.
-  grep -qF '([0-9]+(\.[0-9]+)*\.?[[:space:]]+)?' "$UXF"
-  grep -qF '([0-9]+(\.[0-9]+)*\.?[[:space:]]+)?' "$PLUGIN_ROOT/skills/gaia-create-prd/scripts/finalize.sh"
+@test "F-011: create-ux and create-prd both source the shared heading lib" {
+  # Post-AF-2026-05-27-8 both finalize scripts share ONE heading_present impl,
+  # so the numeric-outline tolerance is guaranteed identical by construction.
+  grep -qF 'scripts/lib/heading-present.sh' "$UXF"
+  grep -qF 'scripts/lib/heading-present.sh' "$PLUGIN_ROOT/skills/gaia-create-prd/scripts/finalize.sh"
 }
 
 # --- F-018 producer side: create-epics SKILL.md template instructs the epic KEY ---

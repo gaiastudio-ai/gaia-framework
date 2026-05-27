@@ -68,10 +68,19 @@ _artifact_default_probe() {
 }
 
 @test "AF-26-4 F-17: flat path is still tried before strategy/ (ADR-072 order)" {
-  local f="$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
+  # AF-2026-05-27-8 / Test06 F-008: create-epics finalize.sh no longer carries an
+  # inline TEST_PLAN precedence list — it delegates to the shared
+  # scripts/lib/resolve-artifact-path.sh. The ADR-072 flat-before-strategy order
+  # now lives in (and is asserted against) the resolver's test_plan candidates.
+  local r="$PLUGIN_ROOT/scripts/lib/resolve-artifact-path.sh"
+  [ -x "$r" ]
+  # finalize.sh must route through the resolver (not an inline list).
+  grep -qF 'resolve-artifact-path.sh' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
+  # In the resolver's test_plan candidate list, the flat test-artifacts rung
+  # precedes the strategy/ rung.
   local flat strat
-  flat=$(grep -n 'test-artifacts/test-plan.md"' "$f" | head -1 | cut -d: -f1)
-  strat=$(grep -n 'test-artifacts/strategy/test-plan.md"' "$f" | head -1 | cut -d: -f1)
+  flat=$(grep -n '\${TA}/test-plan.md"' "$r" | head -1 | cut -d: -f1)
+  strat=$(grep -n '\${TA}/strategy/test-plan.md"' "$r" | head -1 | cut -d: -f1)
   [ -n "$flat" ] && [ -n "$strat" ] && [ "$flat" -lt "$strat" ]
 }
 
