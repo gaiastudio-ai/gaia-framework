@@ -89,6 +89,19 @@ teardown() { common_teardown; }
   [ "$status" -ne 0 ]
 }
 
+@test "AF-27-8: project root resolves via PROJECT_ROOT/GAIA_PROJECT_ROOT env (cluster-6 fixture pattern)" {
+  # The cluster-6 e2e fixture runs from the repo root while exporting
+  # PROJECT_ROOT/GAIA_PROJECT_ROOT to a temp workspace + seeding the test-plan
+  # under that workspace's legacy docs/test-artifacts/. The resolver must honor
+  # those env-vars (not just CLAUDE_PROJECT_ROOT/PWD) and find the legacy rung.
+  mkdir -p "$TEST_TMP/docs/test-artifacts"
+  printf '# tp\nbody\n' > "$TEST_TMP/docs/test-artifacts/test-plan.md"
+  run env -u CLAUDE_PROJECT_ROOT PROJECT_ROOT="$TEST_TMP" GAIA_PROJECT_ROOT="$TEST_TMP" \
+    bash -c "cd / && '$RESOLVER' test_plan --existing-only"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$TEST_TMP/docs/test-artifacts/test-plan.md" ]]
+}
+
 # ===========================================================================
 # F-014: sprint-state.sh init writes .gaia/state/; dashboard reads it
 # ===========================================================================
