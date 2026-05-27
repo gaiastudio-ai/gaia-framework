@@ -416,7 +416,13 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 
 **Malformed-payload handling.** On any of the above checks failing, the parent persists what it received with an explicit `[INCOMPLETE]` marker prepended to the report, sets the plan file's frontmatter `verdict: BLOCKED`, and short-circuits — the ADR-051 Approval Gate is NOT entered. Fork output untrustworthy → BLOCKED.
 
-**Parent write — review report (FR-402).** The parent writes the rendered report to `.gaia/artifacts/implementation-artifacts/test-automate-review-{story_key}.md` per FR-402 naming convention. The path is **locked**: `test-automate-review-{story_key}.md` — no slug, no date suffix. Written REGARDLESS of approval outcome (AC-EC14).
+**Parent write — review report (FR-402), single-source path resolver (E105-S4 / Test05 F-046).** The basename is the FR-402 locked form `test-automate-review-{story_key}.md` (no slug, no date suffix). Resolve the directory via the shared helper:
+
+```bash
+REPORT_PATH="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-review-report-path.sh --key {story_key} --type test-automate-review)"
+```
+
+Returns the per-story `…/epic-{slug}/{story_key}-{slug}/reviews/test-automate-review-{story_key}.md` (E105-S1, `reviews/` created) when the story is in the new layout, else the legacy flat `.gaia/artifacts/implementation-artifacts/test-automate-review-{story_key}.md`. Written REGARDLESS of approval outcome (AC-EC14).
 
 **Parent write — ADR-051 plan file.** The parent writes the structured plan-content payload atomically (per-PID temp file + `mv` rename) to `.gaia/artifacts/test-artifacts/test-automate-plan-{story_key}.md` per ADR-051 §10.27.3. Written REGARDLESS of approval outcome (AC-EC14). The plan file frontmatter contains `plan_id`, `analyzed_sources[]` (referencing the SAME `file_hashes` from `analysis-results.json` — AC-EC6), and an empty `approval` block awaiting the Approval Gate.
 
