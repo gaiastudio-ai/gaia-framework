@@ -58,7 +58,12 @@ USAGE
 [ $# -ge 1 ] || usage
 KIND="$1"; shift
 
-PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PWD}}"
+# Project-root precedence mirrors the framework's other root-resolvers so a
+# caller that exports any of the canonical root env-vars (or runs from a
+# different CWD than the project, as the cluster-6 e2e fixture does) resolves
+# correctly: CLAUDE_PROJECT_ROOT → GAIA_PROJECT_ROOT → PROJECT_ROOT →
+# PROJECT_PATH → PWD. An explicit --project-root flag overrides all of these.
+PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-${PROJECT_ROOT:-${PROJECT_PATH:-${PWD}}}}}"
 EXISTING_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
