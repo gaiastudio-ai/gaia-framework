@@ -54,6 +54,55 @@ teardown() { common_teardown; }
   [ "$output" = "true" ]
 }
 
+# ---------- AF-2026-05-27-5: per-class line-change counts ------------------
+
+@test "AF-27-5: fetcher writes staged_added/removed from git diff --cached --shortstat" {
+  # Commit a base file, then stage edits that add 2 + remove 1 line.
+  printf 'a\nb\nc\n' > "$REPO/f.txt"
+  git -C "$REPO" -c user.email=t@t -c user.name=t add f.txt
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q -m base
+  printf 'a\nB1\nB2\n' > "$REPO/f.txt"   # 'b','c' -> 'B1','B2' : git shortstat = 2 ins, 2 del
+  git -C "$REPO" -c user.email=t@t -c user.name=t add f.txt
+  run env HOME="$HOME" PROJECT_PATH="$REPO" "$FETCHER"
+  [ "$status" -eq 0 ]
+  run jq -r '.git_dirty' "$CACHE"; [ "$output" = "true" ]
+  run jq -r '.staged_added' "$CACHE";   [ "$output" = "2" ]
+  run jq -r '.staged_removed' "$CACHE"; [ "$output" = "2" ]
+  # Nothing unstaged.
+  run jq -r '.unstaged_added' "$CACHE";   [ "$output" = "0" ]
+  run jq -r '.unstaged_removed' "$CACHE"; [ "$output" = "0" ]
+}
+
+@test "AF-27-5: fetcher writes unstaged_added/removed from git diff --shortstat" {
+  printf 'x\ny\n' > "$REPO/g.txt"
+  git -C "$REPO" -c user.email=t@t -c user.name=t add g.txt
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q -m base2
+  printf 'x\ny\nz\n' >> "$REPO/g.txt" 2>/dev/null; printf 'x\ny\nz\n' > "$REPO/g.txt"  # +1 line, unstaged
+  run env HOME="$HOME" PROJECT_PATH="$REPO" "$FETCHER"
+  [ "$status" -eq 0 ]
+  run jq -r '.unstaged_added' "$CACHE";   [ "$output" = "1" ]
+  run jq -r '.unstaged_removed' "$CACHE"; [ "$output" = "0" ]
+  run jq -r '.staged_added' "$CACHE";     [ "$output" = "0" ]
+}
+
+@test "AF-27-5: untracked-only tree is dirty with all counts 0 (git counts no line diff)" {
+  printf 'untracked\n' > "$REPO/u.txt"
+  run env HOME="$HOME" PROJECT_PATH="$REPO" "$FETCHER"
+  [ "$status" -eq 0 ]
+  run jq -r '.git_dirty' "$CACHE"; [ "$output" = "true" ]
+  for f in staged_added staged_removed unstaged_added unstaged_removed; do
+    run jq -r ".$f" "$CACHE"; [ "$output" = "0" ]
+  done
+}
+
+@test "AF-27-5: clean tree writes all counts 0" {
+  run env HOME="$HOME" PROJECT_PATH="$REPO" "$FETCHER"
+  [ "$status" -eq 0 ]
+  for f in staged_added staged_removed unstaged_added unstaged_removed; do
+    run jq -r ".$f // 0" "$CACHE"; [ "$output" = "0" ]
+  done
+}
+
 @test "AC2: untracked file writes git_dirty=true (porcelain reports untracked)" {
   printf 'untracked\n' > "$REPO/untracked.txt"
   run env HOME="$HOME" PROJECT_PATH="$REPO" "$FETCHER"
