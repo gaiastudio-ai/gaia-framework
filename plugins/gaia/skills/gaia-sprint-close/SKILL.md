@@ -92,7 +92,7 @@ Traceability: FR-492, AC3 of E93-S5, ADR-108 §D1.
 - Positional argument: none.
 - Optional flag: `--force-with-rollover <key1,key2,...>` — comma-separated story keys to roll over.
 - Optional env: `GAIA_SPRINT_CLOSE_DATE` — override the close-date stamp used in the archive filename (default: today UTC).
-- Optional env: `SPRINT_STATUS_YAML` — override the yaml lookup (default: `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` with fallback to `<project-root>/sprint-status.yaml`).
+- Optional env: `SPRINT_STATUS_YAML` — override the yaml lookup (default: `.gaia/state/sprint-status.yaml` with fallback to `<project-root>/sprint-status.yaml`).
 
 ## Outputs
 

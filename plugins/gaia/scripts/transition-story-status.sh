@@ -738,8 +738,25 @@ rewrite_frontmatter() {
 update_sprint_status_yaml() {
   local key="$1" new_status="$2"
 
-  local yaml="${SPRINT_STATUS_YAML:-${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml}"
-  if [ -z "${SPRINT_STATUS_YAML:-}" ]; then
+  # AF-2026-05-28-1 / Test07 H-4: route sprint-status.yaml resolution through the
+  # shared resolver so the canonical .gaia/state/ home is rung 1 (ADR-111) and
+  # the legacy .gaia/artifacts/implementation-artifacts/ home is a read-compat
+  # fallback. The previous default (${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml)
+  # never matched what sprint-state.sh writes on a fresh project — every
+  # transition WARNED "sprint-status.yaml is missing" and the yaml surface was
+  # silently NOT updated, requiring a manual `sprint-state.sh reconcile` to fix.
+  local yaml="${SPRINT_STATUS_YAML:-}"
+  if [ -z "$yaml" ]; then
+    local _resolver="$LIB_DIR/resolve-artifact-path.sh"
+    if [ -x "$_resolver" ]; then
+      yaml="$("$_resolver" sprint_status --project-root "${PROJECT_PATH:-.}" --existing-only 2>/dev/null || true)"
+      # No existing rung — fall back to the canonical default (the resolver's
+      # rung-1 path) so the not-found / backlog-skip diagnostics below name the
+      # canonical location, not a legacy one.
+      [ -z "$yaml" ] && yaml="$("$_resolver" sprint_status --project-root "${PROJECT_PATH:-.}" 2>/dev/null)"
+    fi
+    # Last-resort defaults if the resolver is unavailable.
+    [ -z "$yaml" ] && yaml="${PROJECT_PATH:-.}/.gaia/state/sprint-status.yaml"
     if [ ! -e "$yaml" ] && [ -e "${PROJECT_PATH}/sprint-status.yaml" ]; then
       yaml="${PROJECT_PATH}/sprint-status.yaml"
     fi
@@ -1374,7 +1391,18 @@ if [ -n "$SHARD_PATH" ] && [ -e "$SHARD_PATH" ]; then
   SNAP_SHARD="$(snapshot_for_rollback "$SHARD_PATH")"
 fi
 
-YAML_PATH_FOR_SNAP="${SPRINT_STATUS_YAML:-${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml}"
+# AF-2026-05-28-1 / Test07 H-4: route the rollback-snapshot yaml resolution
+# through the same shared resolver as update_sprint_status_yaml() so the
+# snapshot and the writer can't disagree on canonical location.
+YAML_PATH_FOR_SNAP="${SPRINT_STATUS_YAML:-}"
+if [ -z "$YAML_PATH_FOR_SNAP" ]; then
+  _resolver_snap="$LIB_DIR/resolve-artifact-path.sh"
+  if [ -x "$_resolver_snap" ]; then
+    YAML_PATH_FOR_SNAP="$("$_resolver_snap" sprint_status --project-root "${PROJECT_PATH:-.}" --existing-only 2>/dev/null || true)"
+    [ -z "$YAML_PATH_FOR_SNAP" ] && YAML_PATH_FOR_SNAP="$("$_resolver_snap" sprint_status --project-root "${PROJECT_PATH:-.}" 2>/dev/null)"
+  fi
+  [ -z "$YAML_PATH_FOR_SNAP" ] && YAML_PATH_FOR_SNAP="${PROJECT_PATH:-.}/.gaia/state/sprint-status.yaml"
+fi
 if [ -e "$YAML_PATH_FOR_SNAP" ]; then
   SNAP_YAML="$(snapshot_for_rollback "$YAML_PATH_FOR_SNAP")"
 fi

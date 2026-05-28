@@ -19,7 +19,8 @@
 #   - ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json                     (D5: version, active plugin)
 #     Falls back to $PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json (in-tree dev)
 #   - $HOME/.claude/gaia-statusline/cache/latest-release.json             (silent on miss)
-#   - $PROJECT_PATH/.gaia/artifacts/implementation-artifacts/sprint-status.yaml      (rich theme only, D11)
+#   - $PROJECT_PATH/.gaia/state/sprint-status.yaml                         (rich theme only, D11 — canonical post-ADR-111)
+#     Falls back to $PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml  (legacy read-compat)
 #
 # POSIX discipline: bash 3.2 compatible (macOS default).
 

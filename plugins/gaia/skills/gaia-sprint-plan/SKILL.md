@@ -52,7 +52,7 @@ The `priority_flag` field is set only by humans (via frontmatter edit in triage,
 
 Before sprint scoping begins, verify the previous sprint has been closed via `/gaia-sprint-close` (E81-S5). This prevents planning a new sprint while the prior sprint's `sprint-status.yaml` still shows `status: active` — which would orphan in-flight work and bypass the close ceremony.
 
-- Resolve the previous sprint's yaml: search `.gaia/artifacts/implementation-artifacts/sprint-archive/` for the most recent `*-closed-*.yaml`, OR check the current `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` for `status: active` (= prior sprint not yet closed).
+- Resolve the previous sprint's yaml: search `.gaia/artifacts/implementation-artifacts/sprint-archive/` for the most recent `*-closed-*.yaml`, OR check the current `.gaia/state/sprint-status.yaml` for `status: active` (= prior sprint not yet closed).
 - If `status: active` (or `status:` field absent on a non-fresh tree), refuse with `error: previous sprint {id} not closed; run /gaia-sprint-close first` and exit non-zero.
 - If user passes `--allow-stale-prior`, skip the guard with a warning: `warning: proceeding despite prior sprint {id} not closed (--allow-stale-prior)`.
 - If `status: closed`, proceed to Step 1.
@@ -61,7 +61,7 @@ Before sprint scoping begins, verify the previous sprint has been closed via `/g
 Reference shell idiom (the SKILL.md should invoke this check via a small helper or inline grep; both are acceptable):
 
 ```bash
-SS_YAML=".gaia/artifacts/implementation-artifacts/sprint-status.yaml"
+SS_YAML=".gaia/state/sprint-status.yaml"
 if [ -r "$SS_YAML" ]; then
   prior_status="$(grep '^status:' "$SS_YAML" | head -1 | sed 's/^status:[[:space:]]*//' | tr -d '"' || true)"
   if [ "$prior_status" != "closed" ]; then
@@ -101,7 +101,7 @@ Before proceeding to sprint scoping, halt if any HIGH-priority action item has b
 bash -c "source ${CLAUDE_PLUGIN_ROOT}/scripts/escalation-halt.sh && \
   esch_check_blocking \
     '${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml' \
-    '${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-status.yaml'"
+    '${CLAUDE_PROJECT_ROOT}/.gaia/state/sprint-status.yaml'"
 ```
 
 **Contract:**
@@ -201,7 +201,7 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
       blocked_by: null
       updated: "{date}"
   ```
-- Write `sprint-status.yaml` to `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` EXCLUSIVELY via `sprint-state.sh`:
+- Write `sprint-status.yaml` to `.gaia/state/sprint-status.yaml` EXCLUSIVELY via `sprint-state.sh`:
   ```bash
   # F-7 (AF-2026-05-26-3): for the FIRST-EVER sprint on a fresh project there
   # is no sprint-status.yaml yet, and `inject` halts with "sprint-status.yaml
@@ -209,7 +209,7 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
   # yaml is absent: `init` refuses to overwrite an existing yaml (exits
   # non-zero), so guard the call on absence rather than swallowing its error
   # (swallowing would violate the "abort on non-zero" contract below).
-  SPRINT_YAML=".gaia/artifacts/implementation-artifacts/sprint-status.yaml"
+  SPRINT_YAML=".gaia/state/sprint-status.yaml"
   [ -e "$SPRINT_YAML" ] || \
     ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh init --sprint-id "{sprint_id}"
 
