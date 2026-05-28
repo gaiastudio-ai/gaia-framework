@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en" class="lifecycle-page">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lifecycle Activity Diagram - GAIA Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="lifecycle-diagram.html" class="active">Lifecycle Diagram</a></li>
+          <li><a href="glossary.html">Glossary</a></li>
+          <li><a href="recipes.html">Recipes</a></li>
+          <li><a href="tutorials/first-30-minutes.html">First 30 Minutes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="categories/getting-started.html">Getting Started</a></li>
+          <li><a href="categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="categories/planning.html">Planning</a></li>
+          <li><a href="categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="categories/development.html">Development</a></li>
+          <li><a href="categories/testing.html">Testing</a></li>
+          <li><a href="categories/reviews.html">Reviews</a></li>
+          <li><a href="categories/validation.html">Validation</a></li>
+          <li><a href="categories/deployment.html">Deployment</a></li>
+          <li><a href="categories/configuration.html">Configuration</a></li>
+          <li><a href="categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="categories/internal.html">Internal Skills</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+      <nav class="breadcrumb">
+        <a href="index.html">Home</a>
+        <span class="separator">/</span>
+        Lifecycle Diagram
+      </nav>
+
+      <header>
+        <h1>GAIA Lifecycle -- Activity Diagram</h1>
+        <p>
+          This diagram shows the full end-to-end command flow across all five
+          GAIA lifecycle phases. Every box is a clickable link to that
+          command's documentation page. Gates are highlighted in orange.
+          Optional steps have dashed borders.
+        </p>
+      </header>
+
+      <!-- Legend -->
+      <div class="ld-legend">
+        <div class="ld-legend-item">
+          <span class="ld-legend-swatch ld-legend-swatch--required"></span>
+          Required step
+        </div>
+        <div class="ld-legend-item">
+          <span class="ld-legend-swatch ld-legend-swatch--optional"></span>
+          Optional step
+        </div>
+        <div class="ld-legend-item">
+          <span class="ld-legend-swatch ld-legend-swatch--gate"></span>
+          Quality gate
+        </div>
+        <div class="ld-legend-item">
+          <span class="ld-legend-swatch ld-legend-swatch--agent">A</span>
+          Agent badge
+        </div>
+      </div>
+
+      <!-- Entry Points -->
+      <div class="ld-entry-bar">
+        <span class="ld-entry-start">START</span>
+        <div class="ld-entry-path">
+          <span class="ld-entry-path-label">New Project</span>
+          <a href="commands/gaia-init.html" class="ld-entry-path-cmd">/gaia-init</a>
+          then Phase 1
+        </div>
+        <div class="ld-entry-path">
+          <span class="ld-entry-path-label">Existing Project</span>
+          <a href="commands/gaia-brownfield.html" class="ld-entry-path-cmd">/gaia-brownfield</a>
+        </div>
+        <div class="ld-entry-path">
+          <span class="ld-entry-path-label">Add Feature</span>
+          <a href="commands/gaia-add-feature.html" class="ld-entry-path-cmd">/gaia-add-feature</a>
+        </div>
+        <div class="ld-entry-path">
+          <span class="ld-entry-path-label">Small Change</span>
+          <a href="commands/gaia-quick-spec.html" class="ld-entry-path-cmd">/gaia-quick-spec</a>
+        </div>
+        <div class="ld-entry-path">
+          <span class="ld-entry-path-label">Resume</span>
+          <a href="commands/gaia-resume.html" class="ld-entry-path-cmd">/gaia-resume</a>
+        </div>
+      </div>
+
+      <!-- Val Cross-Phase Banner -->
+      <div class="ld-val-banner">
+        <strong>Val -- Cross-Phase Validator</strong>
+        <span>Available in all phases:</span>
+        <a href="commands/gaia-val-validate.html"><code>/gaia-val-validate</code></a>
+        <a href="commands/gaia-val-validate-plan.html"><code>/gaia-val-validate-plan</code></a>
+        <a href="commands/gaia-val-save.html"><code>/gaia-val-save</code></a>
+        <a href="commands/gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- MAIN 5-PHASE DIAGRAM                                         -->
+      <!-- ============================================================ -->
+      <div class="ld-scroll">
+        <div class="ld-grid">
+
+          <!-- ═══ PHASE 1: ANALYSIS ═══ -->
+          <div class="ld-phase ld-phase--1">
+            <div class="ld-phase-header">
+              <span class="ld-phase-num">1</span><span class="ld-phase-name">Analysis</span>
+              <span class="ld-phase-agents">Elena (Analyst)</span>
+            </div>
+
+            <a href="commands/gaia-brainstorm.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-brainstorm</span>
+              <span class="ld-node-desc">Brainstorm a project idea</span>
+              <span class="ld-node-agent">Elena</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-market-research.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-market-research</span>
+              <span class="ld-node-desc">Competitive and market analysis</span>
+              <span class="ld-node-agent">Elena</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-domain-research.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-domain-research</span>
+              <span class="ld-node-desc">Industry and regulatory research</span>
+              <span class="ld-node-agent">Elena</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-tech-research.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-tech-research</span>
+              <span class="ld-node-desc">Technology evaluation</span>
+              <span class="ld-node-agent">Elena</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-advanced-elicitation.html" class="ld-node ld-node--optional">
+              <span class="ld-node-cmd">/gaia-advanced-elicitation</span>
+              <span class="ld-node-desc">Deep requirements elicitation</span>
+              <span class="ld-node-agent">Elena</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-product-brief.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-product-brief</span>
+              <span class="ld-node-desc">Create product brief</span>
+              <span class="ld-node-agent">Elena</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+          </div>
+
+          <!-- ═══ PHASE 2: PLANNING ═══ -->
+          <div class="ld-phase ld-phase--2">
+            <div class="ld-phase-header">
+              <span class="ld-phase-num">2</span><span class="ld-phase-name">Planning</span>
+              <span class="ld-phase-agents">Derek (PM) + Christy (UX)</span>
+            </div>
+
+            <a href="commands/gaia-create-prd.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-create-prd</span>
+              <span class="ld-node-desc">Create Product Requirements Document</span>
+              <span class="ld-node-agent">Derek</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-adversarial.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-adversarial</span>
+              <span class="ld-node-desc">Cynical review of PRD</span>
+              <span class="ld-node-gate-tag">REQUIRED GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-val-validate.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-val-validate</span>
+              <span class="ld-node-desc">Validate PRD quality</span>
+              <span class="ld-node-agent">Val</span>
+              <span class="ld-node-gate-tag">GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <div class="ld-decision ld-decision--gate">PASS / FAIL?</div>
+            <div class="ld-decision-paths">
+              <span class="ld-decision-fail">FAIL: /gaia-edit-prd</span>
+              <span class="ld-decision-pass">PASS</span>
+            </div>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-edit-prd.html" class="ld-node ld-node--optional">
+              <span class="ld-node-cmd">/gaia-edit-prd</span>
+              <span class="ld-node-desc">Edit PRD, re-validate</span>
+              <span class="ld-node-agent">Derek</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-create-ux.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-create-ux</span>
+              <span class="ld-node-desc">UX patterns and design specs</span>
+              <span class="ld-node-agent">Christy</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-validate-design-a11y.html" class="ld-node ld-node--optional">
+              <span class="ld-node-cmd">/gaia-validate-design-a11y</span>
+              <span class="ld-node-desc">Planning-phase a11y design review</span>
+              <span class="ld-node-agent">Christy</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+          </div>
+
+          <!-- ═══ PHASE 3: SOLUTIONING ═══ -->
+          <div class="ld-phase ld-phase--3">
+            <div class="ld-phase-header">
+              <span class="ld-phase-num">3</span><span class="ld-phase-name">Solutioning</span>
+              <span class="ld-phase-agents">Theo + Zara + Soren + Derek + Sable</span>
+            </div>
+
+            <a href="commands/gaia-create-arch.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-create-arch</span>
+              <span class="ld-node-desc">Design system architecture</span>
+              <span class="ld-node-agent">Theo</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-review-api.html" class="ld-node ld-node--optional">
+              <span class="ld-node-cmd">/gaia-review-api</span>
+              <span class="ld-node-desc">REST API standards check</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-adversarial.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-adversarial</span>
+              <span class="ld-node-desc">Architecture review</span>
+              <span class="ld-node-gate-tag">REQUIRED GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-edit-arch.html" class="ld-node ld-node--optional">
+              <span class="ld-node-cmd">/gaia-edit-arch</span>
+              <span class="ld-node-desc">Edit architecture document</span>
+              <span class="ld-node-agent">Theo</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-test-strategy.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-test-strategy</span>
+              <span class="ld-node-desc">Create test plan and framework</span>
+              <span class="ld-node-agent">Sable</span>
+              <span class="ld-node-gate-tag">REQUIRED GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-create-epics.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-create-epics</span>
+              <span class="ld-node-desc">Break requirements into epics and stories</span>
+              <span class="ld-node-agent">Derek</span>
+              <span class="ld-node-gate-tag">REQUIRED GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-atdd.html" class="ld-node ld-node--optional">
+              <span class="ld-node-cmd">/gaia-atdd</span>
+              <span class="ld-node-desc">Acceptance tests for high-risk stories. Per-story mode runs here; argumentless <em>batch</em> mode needs materialized story files, so run it in Phase&nbsp;4 (Story Prep) after <code>/gaia-create-story</code>.</span>
+              <span class="ld-node-agent">Sable</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <div class="ld-fork"></div>
+
+            <a href="commands/gaia-threat-model.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-threat-model</span>
+              <span class="ld-node-desc">STRIDE/DREAD threat analysis</span>
+              <span class="ld-node-agent">Zara</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <a href="commands/gaia-infra-design.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-infra-design</span>
+              <span class="ld-node-desc">Infrastructure and IaC design</span>
+              <span class="ld-node-agent">Soren</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <div class="ld-join"></div>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <div class="ld-fork"></div>
+
+            <a href="commands/gaia-trace.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-trace</span>
+              <span class="ld-node-desc">Traceability matrix</span>
+              <span class="ld-node-agent">Sable</span>
+              <span class="ld-node-gate-tag">GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <a href="commands/gaia-ci-setup.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-ci-setup</span>
+              <span class="ld-node-desc">CI pipeline configuration</span>
+              <span class="ld-node-agent">Sable</span>
+              <span class="ld-node-gate-tag">GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <div class="ld-join"></div>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-readiness-check.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-readiness-check</span>
+              <span class="ld-node-desc">Validate all artifacts, check readiness</span>
+              <span class="ld-node-agent">Theo</span>
+              <span class="ld-node-gate-tag">REQUIRED GATE -- must PASS</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+          </div>
+
+          <!-- ═══ PHASE 4: IMPLEMENTATION ═══ -->
+          <div class="ld-phase ld-phase--4">
+            <div class="ld-phase-header">
+              <span class="ld-phase-num">4</span><span class="ld-phase-name">Implementation</span>
+              <span class="ld-phase-agents">Nate (SM) + Dev Agents + Val + Zara + Sable</span>
+            </div>
+
+            <!-- Sprint state strip -->
+            <div class="ld-sprint-strip">
+              <div class="ld-sprint-state ld-sprint-state--backlog">BACKLOG</div>
+              <div class="ld-sprint-state ld-sprint-state--ready">READY</div>
+              <div class="ld-sprint-state ld-sprint-state--wip">IN-PROGRESS</div>
+              <div class="ld-sprint-state ld-sprint-state--review">REVIEW</div>
+              <div class="ld-sprint-state ld-sprint-state--done">DONE</div>
+            </div>
+
+            <!-- Story Prep -->
+            <div class="ld-group-label">Story Prep</div>
+
+            <a href="commands/gaia-create-story.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-create-story</span>
+              <span class="ld-node-desc">Elaborate story from epics-and-stories.md</span>
+              <span class="ld-node-agent">Nate</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-validate-story.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-validate-story</span>
+              <span class="ld-node-desc">Validate story completeness</span>
+              <span class="ld-node-agent">Val</span>
+              <span class="ld-node-gate-tag">GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <div class="ld-decision ld-decision--gate">PASS / FAIL?</div>
+            <div class="ld-decision-paths">
+              <span class="ld-decision-fail">FAIL: /gaia-fix-story</span>
+              <span class="ld-decision-pass">PASS: ready-for-dev</span>
+            </div>
+
+            <a href="commands/gaia-fix-story.html" class="ld-node ld-node--optional">
+              <span class="ld-node-cmd">/gaia-fix-story</span>
+              <span class="ld-node-desc">Fix story issues, re-validate</span>
+              <span class="ld-node-agent">Nate</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <!-- Sprint Planning -->
+            <div class="ld-group-label">Sprint Planning</div>
+
+            <a href="commands/gaia-sprint-plan.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-sprint-plan</span>
+              <span class="ld-node-desc">Select stories, set velocity, commit sprint</span>
+              <span class="ld-node-agent">Nate</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <!-- Development -->
+            <div class="ld-group-label">Development (TDD)</div>
+
+            <a href="commands/gaia-dev-story.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-dev-story</span>
+              <span class="ld-node-desc">Implement story: Red, Green, Refactor</span>
+              <span class="ld-node-agent">Dev Agent</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-check-dod.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-check-dod</span>
+              <span class="ld-node-desc">Check Definition of Done</span>
+              <span class="ld-node-agent">Nate</span>
+              <span class="ld-node-gate-tag">GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <!-- 6-Gate Review -->
+            <div class="ld-review-box">
+              <div class="ld-review-title">6-Gate Review</div>
+              <p style="text-align:center; font-size:0.8rem; color:var(--color-text-muted); margin-bottom:var(--space-sm);">
+                <a href="commands/gaia-review-all.html">/gaia-review-all</a> runs all six sequentially.
+                All must PASS for the story to reach DONE.
+              </p>
+              <div class="ld-review-grid">
+                <a href="commands/gaia-review-code.html" class="ld-review-item" style="--ri-color: var(--phase-1-color)">
+                  <span class="ld-review-item-name">1. Code Review</span>
+                  <span class="ld-review-item-cmd">/gaia-review-code</span>
+                  <span class="ld-review-item-agent">Dev Agent</span>
+                </a>
+                <a href="commands/gaia-review-qa.html" class="ld-review-item" style="--ri-color: var(--phase-3-color)">
+                  <span class="ld-review-item-name">2. QA Tests</span>
+                  <span class="ld-review-item-cmd">/gaia-review-qa</span>
+                  <span class="ld-review-item-agent">Vera (QA)</span>
+                </a>
+                <a href="commands/gaia-review-security.html" class="ld-review-item" style="--ri-color: #dc2626">
+                  <span class="ld-review-item-name">3. Security Review</span>
+                  <span class="ld-review-item-cmd">/gaia-review-security</span>
+                  <span class="ld-review-item-agent">Zara (Security)</span>
+                </a>
+                <a href="commands/gaia-test-automate.html" class="ld-review-item" style="--ri-color: var(--phase-4-color)">
+                  <span class="ld-review-item-name">4. Test Automation</span>
+                  <span class="ld-review-item-cmd">/gaia-test-automate</span>
+                  <span class="ld-review-item-agent">Sable (Test Architect)</span>
+                </a>
+                <a href="commands/gaia-review-test.html" class="ld-review-item" style="--ri-color: var(--phase-2-color)">
+                  <span class="ld-review-item-name">5. Test Review</span>
+                  <span class="ld-review-item-cmd">/gaia-review-test</span>
+                  <span class="ld-review-item-agent">Sable (Test Architect)</span>
+                </a>
+                <a href="commands/gaia-review-perf.html" class="ld-review-item" style="--ri-color: var(--phase-5-color)">
+                  <span class="ld-review-item-name">6. Performance</span>
+                  <span class="ld-review-item-cmd">/gaia-review-perf</span>
+                  <span class="ld-review-item-agent">Juno (Performance)</span>
+                </a>
+              </div>
+              <div class="ld-review-note">ALL 6 PASS + DoD verified = DONE | ANY FAIL = back to IN-PROGRESS</div>
+            </div>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-check-review-gate.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-check-review-gate</span>
+              <span class="ld-node-desc">Check composite gate, transition story to done</span>
+              <span class="ld-node-agent">Nate</span>
+              <span class="ld-node-gate-tag">GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <!-- Sprint Ops -->
+            <div class="ld-group-label">Sprint Operations</div>
+
+            <a href="commands/gaia-sprint-status.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-sprint-status</span>
+              <span class="ld-node-desc">Sprint progress dashboard</span>
+              <span class="ld-node-agent">Nate</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <a href="commands/gaia-epic-status.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-epic-status</span>
+              <span class="ld-node-desc">Epic completion dashboard</span>
+              <span class="ld-node-agent">Nate</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <a href="commands/gaia-correct-course.html" class="ld-node ld-node--optional">
+              <span class="ld-node-cmd">/gaia-correct-course</span>
+              <span class="ld-node-desc">Mid-sprint scope changes</span>
+              <span class="ld-node-agent">Nate</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <a href="commands/gaia-add-stories.html" class="ld-node ld-node--optional">
+              <span class="ld-node-cmd">/gaia-add-stories</span>
+              <span class="ld-node-desc">Add stories to existing epics</span>
+              <span class="ld-node-agent">Derek</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <!-- Sprint Closure -->
+            <div class="ld-group-label">Sprint Closure</div>
+
+            <a href="commands/gaia-triage-findings.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-triage-findings</span>
+              <span class="ld-node-desc">Scan stories, triage findings into backlog</span>
+              <span class="ld-node-agent">Nate</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-tech-debt-review.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-tech-debt-review</span>
+              <span class="ld-node-desc">Classify and prioritize tech debt</span>
+              <span class="ld-node-agent">Nate</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-retro.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-retro</span>
+              <span class="ld-node-desc">Post-sprint retrospective</span>
+              <span class="ld-node-agent">Nate</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-action-items.html" class="ld-node ld-node--optional">
+              <span class="ld-node-cmd">/gaia-action-items</span>
+              <span class="ld-node-desc">Process action items from retro and triage</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <div class="ld-decision">More sprints? Loop to Story Prep</div>
+          </div>
+
+          <!-- ═══ PHASE 5: DEPLOYMENT ═══ -->
+          <div class="ld-phase ld-phase--5">
+            <div class="ld-phase-header">
+              <span class="ld-phase-num">5</span><span class="ld-phase-name">Deployment</span>
+              <span class="ld-phase-agents">Soren (DevOps)</span>
+            </div>
+
+            <a href="commands/gaia-release-plan.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-release-plan</span>
+              <span class="ld-node-desc">Staged rollout strategy</span>
+              <span class="ld-node-agent">Soren</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-rollback-plan.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-rollback-plan</span>
+              <span class="ld-node-desc">Rollback criteria and procedures</span>
+              <span class="ld-node-agent">Soren</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-deploy-checklist.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-deploy-checklist</span>
+              <span class="ld-node-desc">Pre-deployment verification</span>
+              <span class="ld-node-agent">Soren</span>
+              <span class="ld-node-gate-tag">REQUIRED GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <div class="ld-decision ld-decision--gate">Go / No-Go?</div>
+            <div class="ld-decision-paths">
+              <span class="ld-decision-fail">No-Go: fix, re-check</span>
+              <span class="ld-decision-pass">Go</span>
+            </div>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-deploy.html" class="ld-node" style="border-left-color: var(--sprint-done); background-color: #ecfdf5;">
+              <span class="ld-node-cmd" style="color: var(--sprint-done);">/gaia-deploy</span>
+              <span class="ld-node-desc">Deploy to environment</span>
+              <span class="ld-node-agent">Soren</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-post-deploy.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-post-deploy</span>
+              <span class="ld-node-desc">Health and metric validation</span>
+              <span class="ld-node-agent">Soren</span>
+              <span class="ld-node-gate-tag">GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+
+            <div class="ld-decision ld-decision--gate">Health checks pass?</div>
+            <div class="ld-decision-paths">
+              <span class="ld-decision-fail">FAIL: rollback</span>
+              <span class="ld-decision-pass">PASS: done</span>
+            </div>
+
+            <!-- Quick Flow box -->
+            <div style="flex: 1;"></div>
+            <div style="border: 1px solid var(--color-border-light); border-radius: var(--border-radius); padding: var(--space-sm) var(--space-md); margin-top: var(--space-md); background-color: var(--color-bg-alt);">
+              <div style="font-weight: 700; font-size: var(--font-size-sm); color: var(--phase-1-color); margin-bottom: var(--space-xs);">Quick Flow</div>
+              <a href="commands/gaia-quick-spec.html" class="ld-node" style="margin-bottom: var(--space-xs);">
+                <span class="ld-node-cmd">/gaia-quick-spec</span>
+                <span class="ld-node-desc">Lightweight spec</span>
+                <span class="ld-node-cue">Open docs</span>
+              </a>
+              <div class="ld-flow-arrow">&#9662;</div>
+              <a href="commands/gaia-quick-dev.html" class="ld-node">
+                <span class="ld-node-cmd">/gaia-quick-dev</span>
+                <span class="ld-node-desc">Implement quick spec</span>
+                <span class="ld-node-cue">Open docs</span>
+              </a>
+            </div>
+          </div>
+
+        </div><!-- /.ld-grid -->
+      </div><!-- /.ld-scroll -->
+
+
+      <!-- ============================================================ -->
+      <!-- ALTERNATE PATHS                                               -->
+      <!-- ============================================================ -->
+      <section>
+        <h2>Alternate Entry Paths</h2>
+
+        <!-- Brownfield -->
+        <div class="ld-alt-path ld-alt-path--brownfield" style="margin-bottom: var(--space-lg);">
+          <div class="ld-alt-title">Brownfield Onboarding</div>
+          <div class="ld-alt-desc">
+            Onboard an existing codebase to GAIA. Runs deep discovery, multi-scan gap
+            analysis, and NFR assessment, then produces a gap-focused PRD. Feeds into
+            Phase 3 (Solutioning) at <code>/gaia-create-arch</code>.
+          </div>
+          <div class="ld-alt-flow">
+            <a href="commands/gaia-brownfield.html" class="ld-node" style="border-left-color: var(--gate-color);">
+              <span class="ld-node-cmd">/gaia-brownfield</span>
+              <span class="ld-node-desc">Deep discovery + gap analysis + PRD generation</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow" style="padding: 0 var(--space-sm);">&#9654;</div>
+            <a href="commands/gaia-adversarial.html" class="ld-node ld-node--gate" style="border-left-color: var(--gate-color);">
+              <span class="ld-node-cmd">/gaia-adversarial</span>
+              <span class="ld-node-desc">PRD review (required)</span>
+              <span class="ld-node-gate-tag">GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow" style="padding: 0 var(--space-sm);">&#9654;</div>
+            <a href="commands/gaia-nfr.html" class="ld-node" style="border-left-color: var(--gate-color);">
+              <span class="ld-node-cmd">/gaia-nfr</span>
+              <span class="ld-node-desc">NFR assessment</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow" style="padding: 0 var(--space-sm);">&#9654;</div>
+            <span style="font-size: var(--font-size-sm); color: var(--color-text-muted);">
+              Continues at Phase 3: <a href="commands/gaia-create-arch.html"><code>/gaia-create-arch</code></a>
+            </span>
+          </div>
+        </div>
+
+        <!-- Add Feature -->
+        <div class="ld-alt-path ld-alt-path--add-feature">
+          <div class="ld-alt-title">Add Feature (Mid-Lifecycle)</div>
+          <div class="ld-alt-desc">
+            Triage and route a fix, enhancement, or feature through only the affected
+            artifacts. Cascades through PRD, architecture, test plan, epics, traceability,
+            and readiness as needed.
+          </div>
+          <div class="ld-alt-flow">
+            <a href="commands/gaia-add-feature.html" class="ld-node" style="border-left-color: var(--phase-2-color);">
+              <span class="ld-node-cmd">/gaia-add-feature</span>
+              <span class="ld-node-desc">Classify change, cascade through artifacts</span>
+              <span class="ld-node-agent">Derek</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow" style="padding: 0 var(--space-sm);">&#9654;</div>
+            <a href="commands/gaia-add-stories.html" class="ld-node" style="border-left-color: var(--phase-2-color);">
+              <span class="ld-node-cmd">/gaia-add-stories</span>
+              <span class="ld-node-desc">Create stories from cascade</span>
+              <span class="ld-node-agent">Derek</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow" style="padding: 0 var(--space-sm);">&#9654;</div>
+            <span style="font-size: var(--font-size-sm); color: var(--color-text-muted);">
+              Continues at Phase 4: <a href="commands/gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a>
+            </span>
+          </div>
+        </div>
+      </section>
+
+
+      <!-- ============================================================ -->
+      <!-- ANYTIME COMMANDS                                              -->
+      <!-- ============================================================ -->
+      <section>
+        <h2>Anytime Commands</h2>
+        <p>
+          These commands can be run at any point in the lifecycle. They are not tied
+          to a specific phase.
+        </p>
+
+        <div class="ld-anytime-grid">
+
+          <div class="ld-anytime-group">
+            <h3>Configuration</h3>
+            <ul class="ld-anytime-list">
+              <li><a href="commands/gaia-init.html">/gaia-init</a></li>
+              <li><a href="commands/gaia-config-show.html">/gaia-config-show</a></li>
+              <li><a href="commands/gaia-config-validate.html">/gaia-config-validate</a></li>
+              <li><a href="commands/gaia-config-env.html">/gaia-config-env</a></li>
+              <li><a href="commands/gaia-config-stack.html">/gaia-config-stack</a></li>
+              <li><a href="commands/gaia-config-test.html">/gaia-config-test</a></li>
+              <li><a href="commands/gaia-config-tool.html">/gaia-config-tool</a></li>
+              <li><a href="commands/gaia-config-compliance.html">/gaia-config-compliance</a></li>
+              <li><a href="commands/gaia-config-rubric.html">/gaia-config-rubric</a></li>
+              <li><a href="commands/gaia-config-platform.html">/gaia-config-platform</a></li>
+              <li><a href="commands/gaia-config-device-target.html">/gaia-config-device-target</a></li>
+              <li><a href="commands/gaia-config-ci.html">/gaia-config-ci</a></li>
+              <li><a href="commands/gaia-ci-edit.html">/gaia-ci-edit</a></li>
+              <li><a href="commands/gaia-bridge-enable.html">/gaia-bridge-enable</a></li>
+              <li><a href="commands/gaia-bridge-disable.html">/gaia-bridge-disable</a></li>
+            </ul>
+          </div>
+
+          <div class="ld-anytime-group">
+            <h3>Testing</h3>
+            <ul class="ld-anytime-list">
+              <li><a href="commands/gaia-test-strategy.html">/gaia-test-strategy</a></li>
+              <li><a href="commands/gaia-edit-test-plan.html">/gaia-edit-test-plan</a></li>
+              <li><a href="commands/gaia-test-automate.html">/gaia-test-automate</a></li>
+              <li><a href="commands/gaia-review-test.html">/gaia-review-test</a></li>
+              <li><a href="commands/gaia-test-gap-analysis.html">/gaia-test-gap-analysis</a></li>
+              <li><a href="commands/gaia-fill-test-gaps.html">/gaia-fill-test-gaps</a></li>
+              <li><a href="commands/gaia-nfr.html">/gaia-nfr</a></li>
+              <li><a href="commands/gaia-test-run.html">/gaia-test-run</a></li>
+              <li><a href="commands/gaia-test-a11y.html">/gaia-test-a11y</a></li>
+              <li><a href="commands/gaia-test-e2e.html">/gaia-test-e2e</a></li>
+              <li><a href="commands/gaia-test-perf.html">/gaia-test-perf</a></li>
+              <li><a href="commands/gaia-test-dast.html">/gaia-test-dast</a></li>
+              <li><a href="commands/gaia-test-mobile-e2e.html">/gaia-test-mobile-e2e</a></li>
+              <li><a href="commands/gaia-test-device-matrix.html">/gaia-test-device-matrix</a></li>
+              <li><a href="commands/gaia-mobile-testing.html">/gaia-mobile-testing</a></li>
+              <li><a href="commands/gaia-perf-testing.html">/gaia-perf-testing</a></li>
+              <li><a href="commands/gaia-teach-testing.html">/gaia-teach-testing</a></li>
+            </ul>
+          </div>
+
+          <div class="ld-anytime-group">
+            <h3>Validation and Memory</h3>
+            <ul class="ld-anytime-list">
+              <li><a href="commands/gaia-val-validate.html">/gaia-val-validate</a></li>
+              <li><a href="commands/gaia-val-validate-plan.html">/gaia-val-validate-plan</a></li>
+              <li><a href="commands/gaia-validate-story.html">/gaia-validate-story</a></li>
+              <li><a href="commands/gaia-validate-rubric.html">/gaia-validate-rubric</a></li>
+              <li><a href="commands/gaia-validate-framework.html">/gaia-validate-framework</a></li>
+              <li><a href="commands/gaia-refresh-ground-truth.html">/gaia-refresh-ground-truth</a></li>
+              <li><a href="commands/gaia-val-save.html">/gaia-val-save</a></li>
+              <li><a href="commands/gaia-resume.html">/gaia-resume</a></li>
+              <li><a href="commands/gaia-memory-hygiene.html">/gaia-memory-hygiene</a></li>
+            </ul>
+          </div>
+
+          <div class="ld-anytime-group">
+            <h3>Status and Monitoring</h3>
+            <ul class="ld-anytime-list">
+              <li><a href="commands/gaia-sprint-status.html">/gaia-sprint-status</a></li>
+              <li><a href="commands/gaia-epic-status.html">/gaia-epic-status</a></li>
+              <li><a href="commands/gaia-perf-deepdive.html">/gaia-perf-deepdive</a></li>
+              <li><a href="commands/gaia-list-tools.html">/gaia-list-tools</a></li>
+              <li><a href="commands/gaia-tool-info.html">/gaia-tool-info</a></li>
+            </ul>
+          </div>
+
+          <div class="ld-anytime-group">
+            <h3>Documentation</h3>
+            <ul class="ld-anytime-list">
+              <li><a href="commands/gaia-document-project.html">/gaia-document-project</a></li>
+              <li><a href="commands/gaia-project-context.html">/gaia-project-context</a></li>
+              <li><a href="commands/gaia-shard-doc.html">/gaia-shard-doc</a></li>
+              <li><a href="commands/gaia-summarize.html">/gaia-summarize</a></li>
+              <li><a href="commands/gaia-editorial-prose.html">/gaia-editorial-prose</a></li>
+              <li><a href="commands/gaia-editorial-structure.html">/gaia-editorial-structure</a></li>
+              <li><a href="commands/gaia-changelog.html">/gaia-changelog</a></li>
+            </ul>
+          </div>
+
+          <div class="ld-anytime-group">
+            <h3>Creative and Collaboration</h3>
+            <ul class="ld-anytime-list">
+              <li><a href="commands/gaia-help.html">/gaia-help</a></li>
+              <li><a href="commands/gaia-brainstorming.html">/gaia-brainstorming</a></li>
+              <li><a href="commands/gaia-party.html">/gaia-party</a></li>
+              <li><a href="commands/gaia-meeting.html">/gaia-meeting</a></li>
+              <li><a href="commands/gaia-create-stakeholder.html">/gaia-create-stakeholder</a></li>
+              <li><a href="commands/gaia-design-thinking.html">/gaia-design-thinking</a></li>
+              <li><a href="commands/gaia-innovation.html">/gaia-innovation</a></li>
+              <li><a href="commands/gaia-problem-solving.html">/gaia-problem-solving</a></li>
+              <li><a href="commands/gaia-storytelling.html">/gaia-storytelling</a></li>
+              <li><a href="commands/gaia-slide-deck.html">/gaia-slide-deck</a></li>
+              <li><a href="commands/gaia-pitch-deck.html">/gaia-pitch-deck</a></li>
+              <li><a href="commands/gaia-creative-sprint.html">/gaia-creative-sprint</a></li>
+            </ul>
+          </div>
+
+        </div>
+      </section>
+
+
+      <!-- ============================================================ -->
+      <!-- GATES SUMMARY TABLE                                           -->
+      <!-- ============================================================ -->
+      <section>
+        <h2>Gates Summary</h2>
+        <p>
+          Gates are quality checkpoints that must pass before the workflow proceeds.
+          A failed gate loops back to the producing command for remediation.
+        </p>
+        <table class="ld-gate-table">
+          <thead>
+            <tr>
+              <th>Gate</th>
+              <th>Command</th>
+              <th>What It Checks</th>
+              <th>On Failure</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>PRD Adversarial</td>
+              <td><a href="commands/gaia-adversarial.html">/gaia-adversarial</a></td>
+              <td>Critical/high findings in PRD must be addressed</td>
+              <td>Incorporate findings into prd.md, re-run</td>
+            </tr>
+            <tr>
+              <td>PRD Validation</td>
+              <td><a href="commands/gaia-val-validate.html">/gaia-val-validate</a></td>
+              <td>PRD quality and completeness</td>
+              <td>Run <a href="commands/gaia-edit-prd.html">/gaia-edit-prd</a>, re-validate</td>
+            </tr>
+            <tr>
+              <td>Arch Adversarial</td>
+              <td><a href="commands/gaia-adversarial.html">/gaia-adversarial</a></td>
+              <td>Architecture "Review Findings" section present</td>
+              <td>Incorporate findings into architecture.md</td>
+            </tr>
+            <tr>
+              <td>Test Plan</td>
+              <td><a href="commands/gaia-test-strategy.html">/gaia-test-strategy</a></td>
+              <td>test-plan.md must exist before epics</td>
+              <td>Run /gaia-test-strategy to create plan</td>
+            </tr>
+            <tr>
+              <td>Traceability</td>
+              <td><a href="commands/gaia-trace.html">/gaia-trace</a></td>
+              <td>traceability-matrix.md exists and maps all requirements</td>
+              <td>Run /gaia-trace to generate matrix</td>
+            </tr>
+            <tr>
+              <td>CI Setup</td>
+              <td><a href="commands/gaia-ci-setup.html">/gaia-ci-setup</a></td>
+              <td>ci-setup.md must exist</td>
+              <td>Run /gaia-ci-setup to scaffold CI pipeline</td>
+            </tr>
+            <tr>
+              <td>Readiness</td>
+              <td><a href="commands/gaia-readiness-check.html">/gaia-readiness-check</a></td>
+              <td>All planning artifacts complete, no blocking contradictions</td>
+              <td>Resolve contradictions, fill missing artifacts</td>
+            </tr>
+            <tr>
+              <td>Story Validation</td>
+              <td><a href="commands/gaia-validate-story.html">/gaia-validate-story</a></td>
+              <td>Story completeness and factual accuracy</td>
+              <td>Run <a href="commands/gaia-fix-story.html">/gaia-fix-story</a>, re-validate</td>
+            </tr>
+            <tr>
+              <td>Definition of Done</td>
+              <td><a href="commands/gaia-check-dod.html">/gaia-check-dod</a></td>
+              <td>All DoD checklist items checked</td>
+              <td>Address unchecked items, re-run</td>
+            </tr>
+            <tr>
+              <td>6-Gate Review</td>
+              <td><a href="commands/gaia-review-all.html">/gaia-review-all</a></td>
+              <td>Code, QA, Security, Test Auto, Test Review, Performance all PASS</td>
+              <td>Fix issues, run <a href="commands/gaia-dev-story.html">/gaia-dev-story</a> to address, re-review</td>
+            </tr>
+            <tr>
+              <td>Review Gate</td>
+              <td><a href="commands/gaia-check-review-gate.html">/gaia-check-review-gate</a></td>
+              <td>Composite gate: all 6 reviews passed</td>
+              <td>Return to IN-PROGRESS, fix remaining failures</td>
+            </tr>
+            <tr>
+              <td>Deploy Checklist</td>
+              <td><a href="commands/gaia-deploy-checklist.html">/gaia-deploy-checklist</a></td>
+              <td>Pre-deployment verification passes</td>
+              <td>Fix blockers, re-check</td>
+            </tr>
+            <tr>
+              <td>Post-Deploy</td>
+              <td><a href="commands/gaia-post-deploy.html">/gaia-post-deploy</a></td>
+              <td>Health checks and metrics within thresholds</td>
+              <td>Execute rollback plan</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+
+      <footer class="page-footer">
+        <p>
+          <a href="index.html">Back to index</a> |
+          <a href="recipes.html">Common Workflows</a> |
+          <a href="tutorials/first-30-minutes.html">First 30 Minutes</a>
+        </p>
+        <p>GAIA Framework Documentation</p>
+      </footer>
+
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-domain-research - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#orchestration-mode">Orchestration mode</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li>
+          <li><a href="#output-schema">Output schema</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/discovery-research.html">Discovery &amp; Research</a><span class="separator">/</span>/gaia-domain-research</nav>
+
+      <header class="command-header">
+        <div class="command-title"><h1>/gaia-domain-research</h1><span class="tag tag-user">user-facing</span></div>
+        <dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/discovery-research.html">Discovery &amp; Research</a></dd><dt>Lifecycle phase:</dt><dd>1 -- Analysis</dd><dt>Arguments:</dt><dd><code>[domain or industry focus]</code></dd></dl>
+      </header>
+
+      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-domain-research</code> maps a domain landscape -- key players, regulations, industry trends, terminology, and domain-specific risks. It produces a structured report that informs product definition and technical decisions.</p></section>
+
+      <section id="when-to-use"><h2>When to use it</h2><ul><li>You are entering an unfamiliar domain and need to understand regulations, compliance requirements, and industry conventions.</li><li>You want to identify domain-specific risks before writing a product brief or making architecture decisions.</li></ul></section>
+
+      <section id="prerequisites"><h2>Prerequisites</h2><p>None required. Web access (MCP tools) enhances results but is not mandatory.</p></section>
+      <section id="orchestration-mode">
+        <h2>Orchestration mode</h2>
+        <p>When <code>/gaia-domain-research</code> starts in <strong>subagent mode (Mode A -- the default)</strong>, the framework emits a one-shot warning to your conversation. The warning text:</p>
+        <pre><code>
+────────────────────────────────────────────────────────────────────────────
+GAIA orchestration: running in subagent mode (Mode A)
+
+The skill you're invoking belongs to a class (heavy-procedural or
+conversational) whose output benefits from cross-step context. Mode A
+dispatches each sub-agent in its own forked context, so context may
+be lossy between steps — sub-agents return summaries, not full reasoning.
+
+For the full-fidelity experience, enable Mode B (Agent Teams):
+  1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
+  2. Add orchestration.mode: team to config/project-config.yaml.
+
+Mode B uses persistent teammates that preserve in-conversation state
+across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+
+This warning is shown once per session.
+────────────────────────────────────────────────────────────────────────────
+</code></pre>
+
+        <h3>Why Mode B is better for this command</h3>
+        <p>The <code>/gaia-domain-research</code> skill declares <code>orchestration_class: heavy-procedural</code> in its SKILL.md frontmatter. Heavy-procedural skills produce output that benefits from cross-step context -- under Mode A every sub-agent dispatch runs in its own forked context and can only return a summary back to the orchestrator, losing the full reasoning trace of every prior step. Mode B uses persistent teammates that retain in-conversation state across dispatches, so each agent's contribution can build on what was said before instead of receiving only a summary.</p>
+
+        <h3>How to enable Mode B</h3>
+        <p>Both steps are required. If either is missing, the framework falls back silently to Mode A and the warning fires again on the next session.</p>
+        <p><strong>Step 1 -- set the environment variable:</strong></p>
+        <pre><code>export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code></pre>
+        <p>Add this to your shell rc file to persist across sessions, or set it in Claude Code's <code>settings.json</code>.</p>
+        <p><strong>Step 2 -- add the YAML block to <code>config/project-config.yaml</code>:</strong></p>
+        <pre><code>orchestration:
+  mode: team</code></pre>
+        <h3>One-shot semantics</h3>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+      </section>
+
+
+      <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-domain-research</code></pre><pre><code>/gaia-domain-research healthcare data management</code></pre></section>
+
+      <section id="step-by-step"><h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Domain scoping</span> Asks: what domain or industry, and specific aspects to focus on.</li>
+          <li><span class="step-title">Web access check</span> Tests MCP web tool availability. Notes limitations if unavailable.</li>
+          <li><span class="step-title">Domain landscape</span> Identifies key players and organizations, documents regulations and compliance requirements, maps industry trends and emerging patterns, and defines domain-specific terminology.</li>
+          <li><span class="step-title">Domain-specific risks</span> Identifies regulatory/compliance risks, technical risks specific to the domain, and market/competitive risks.</li>
+          <li><span class="step-title">Generate output</span> Writes the domain research report: overview, key players, regulatory landscape, trends, terminology glossary, risk assessment, and recommendations.</li>
+        </ol>
+      </section>
+
+      <section id="inputs"><h2>Inputs</h2><table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>focus</code></td><td>Command argument (optional)</td><td>Domain or industry to research.</td></tr></tbody></table></section>
+
+      <section id="outputs"><h2>Outputs</h2><table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Domain research report</td><td><code>.gaia/artifacts/planning-artifacts/domain-research.md</code></td><td>Key players, regulations, trends, glossary, risks, and recommendations.</td></tr></tbody></table></section>
+
+      <section id="output-schema">
+        <h2>Output schema</h2>
+        <p>The <code>finalize.sh</code> checklist enforces the following H2 section names verbatim against the produced artifact at <code>.gaia/artifacts/planning-artifacts/domain-research.md</code>. Authors (human or sub-agent) must reproduce these headings exactly — the optional numbered/lettered outline prefix is accepted (e.g. <code>## 1. Domain Overview</code>, <code>## 1b. Domain Overview</code>, <code>## 1.2 Domain Overview</code>), but the section name itself must match.</p>
+        <ul class="output-schema">
+          <li><code>## Domain Overview</code></li>
+          <li><code>## Terminology Glossary</code></li>
+          <li><code>## Key Players</code></li>
+          <li><code>## Regulatory Landscape</code></li>
+          <li><code>## Trends</code></li>
+          <li><code>## Risk Assessment</code></li>
+          <li><code>## Recommendations</code></li>
+        </ul>
+        <p>A missing required section causes the matching <code>SV-NN</code> check to FAIL with the heading name in the violation line. The <code>heading_present()</code> helper (shared at <code>plugins/gaia/scripts/lib/heading-present.sh</code> as of AF-2026-05-27-8) accepts every variant listed above — so do not editorialize the section name to satisfy the gate, just use one of the documented heading forms.</p>
+      </section>
+
+
+      <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-domain-research healthcare data management
+
+What domain or industry?
+&gt; Healthcare data management and interoperability
+
+Specific aspects to focus on?
+&gt; HIPAA compliance, HL7 FHIR standards, patient data portability
+
+Web access: available.
+
+Domain Landscape:
+  Key Players: Epic Systems, Cerner (Oracle Health), Allscripts...
+  Regulations: HIPAA, HITECH Act, 21st Century Cures Act...
+  Trends: FHIR adoption, patient-mediated exchange, AI diagnostics...
+
+Terminology Glossary:
+  PHI, ePHI, BAA, Covered Entity, FHIR, HL7v2, CDA... (12 terms)
+
+Risk Assessment:
+  Regulatory: HIPAA violation penalties ($100-$50K per record)
+  Technical: HL7v2-to-FHIR migration complexity
+  Market: EHR vendor lock-in risk
+
+Report written to:
+  .gaia/artifacts/planning-artifacts/domain-research.md</code></pre></section>
+
+      <section id="what-next"><h2>What to run next</h2><ul>
+        <li><a href="gaia-product-brief.html"><code>/gaia-product-brief</code></a> -- consolidate domain findings into a brief.</li>
+        <li><a href="gaia-tech-research.html"><code>/gaia-tech-research</code></a> -- evaluate domain-specific technologies.</li>
+      </ul></section>
+
+      <section id="troubleshooting"><h2>Troubleshooting</h2>
+        <h3>Terminology glossary has fewer than 3 terms</h3><p>Provide more specific domain aspects when prompted. The validation requires at least 3 glossary entries.</p>
+      
+        <h3>I keep seeing the GAIA orchestration warning every time I start this command</h3>
+        <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
+        <ul>
+          <li><code>echo $CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> returns <code>1</code> (not empty)</li>
+          <li><code>config/project-config.yaml</code> contains:
+            <pre><code>orchestration:
+  mode: team</code></pre>
+          </li>
+        </ul>
+        <p>If either is missing the framework silently uses Mode A and re-emits the warning each session.</p>
+</section>
+
+      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
+        <tr><td><a href="gaia-market-research.html"><code>/gaia-market-research</code></a></td><td>Complementary -- market research covers competition and sizing; domain research covers regulations and trends.</td></tr>
+        <tr><td><a href="gaia-tech-research.html"><code>/gaia-tech-research</code></a></td><td>Often follows domain research to evaluate domain-specific technology choices.</td></tr>
+        <tr><td><a href="gaia-product-brief.html"><code>/gaia-product-brief</code></a></td><td>Consumes domain research to inform the product brief.</td></tr>
+      </tbody></table></section>
+
+      <footer class="page-footer"><p><a href="../categories/discovery-research.html">Back to Discovery &amp; Research</a></p></footer>
+    </main>
+  </div>
+</body>
+</html>

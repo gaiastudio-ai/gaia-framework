@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configuring CI Pipelines - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html" class="active">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#why">Why CI configuration matters</a></li>
+          <li><a href="#promotion-chain">The promotion chain</a></li>
+          <li><a href="#presets">Built-in presets</a></li>
+          <li><a href="#generating-workflows">Generating workflows</a></li>
+          <li><a href="#custom-steps">Adding custom steps</a></li>
+          <li><a href="#triggers">Trigger best practices</a></li>
+          <li><a href="#concurrency">Concurrency groups</a></li>
+          <li><a href="#path-filters">Path-based filters</a></li>
+          <li><a href="#common-mistakes">Common mistakes</a></li>
+          <li><a href="#whats-next">What to read next</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        Configuring CI Pipelines
+      </nav>
+
+      <h1>Configuring CI Pipelines</h1>
+      <p>
+        This tutorial explains how to set up continuous integration and delivery
+        in GAIA. You will learn how the promotion chain works, which preset fits
+        your team, how to generate workflow files, and how to avoid the most
+        common configuration mistakes -- including running your test suite four
+        times per change when once or twice would suffice.
+      </p>
+
+      <section id="why">
+        <h2>Why CI configuration matters</h2>
+        <p>
+          A well-configured CI pipeline gives you fast feedback without waste.
+          A poorly configured one runs the same tests on push, on PR open, on
+          merge to staging, and again on merge to main -- burning 50+ minutes
+          of compute per change. GAIA's CI configuration is designed to prevent
+          that by making trigger strategy and test tiering explicit choices
+          rather than afterthoughts.
+        </p>
+        <p>
+          All CI configuration lives in the <code>ci_cd</code> section of
+          <code>.gaia/config/project-config.yaml</code>. This is the single source of
+          truth that
+          <a href="../commands/gaia-ci-setup.html"><code>/gaia-ci-setup</code></a>
+          reads when it generates your workflow files.
+        </p>
+      </section>
+
+      <section id="promotion-chain">
+        <h2>The promotion chain</h2>
+        <p>
+          The <strong>promotion chain</strong> defines how code moves from
+          development to production. It is a list of environments that a change
+          must pass through, in order, before it reaches end users.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+ci_cd:
+  platform: github-actions
+  promotion_chain:
+    - staging
+    - production</code></pre>
+        <p>
+          This two-stage chain means: merge to <code>staging</code> first, run
+          smoke tests, then promote to <code>production</code>. A three-stage
+          chain adds a <code>dev</code> environment before staging.
+        </p>
+        <p>
+          The promotion chain is what
+          <a href="../commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a>
+          uses to decide where to push, whether to create a PR, and which
+          environments to deploy to. If you skip configuring it, the dev-story
+          workflow cannot complete its push/PR/CI/merge steps.
+        </p>
+      </section>
+
+      <section id="presets">
+        <h2>Built-in presets</h2>
+        <p>
+          GAIA offers four CI presets. Each preset pre-fills the promotion
+          chain, trigger rules, and check configuration with sensible defaults
+          for a given team shape. You choose a preset during
+          <a href="../commands/gaia-init.html"><code>/gaia-init</code></a> or
+          change it later with
+          <a href="../commands/gaia-ci-edit.html"><code>/gaia-ci-edit</code></a>.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Preset</th>
+              <th>Promotion chain</th>
+              <th>Triggers</th>
+              <th>Best for</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>solo</code></td>
+              <td>main</td>
+              <td>Push to main</td>
+              <td>Single developer, no staging env</td>
+            </tr>
+            <tr>
+              <td><code>small-team</code></td>
+              <td>staging &rarr; production</td>
+              <td>PR to staging, merge to staging</td>
+              <td>2--5 developers, one staging env</td>
+            </tr>
+            <tr>
+              <td><code>standard</code></td>
+              <td>dev &rarr; staging &rarr; production</td>
+              <td>PR to dev, merge to staging</td>
+              <td>5--20 developers, code review required</td>
+            </tr>
+            <tr>
+              <td><code>enterprise</code></td>
+              <td>dev &rarr; staging &rarr; pre-prod &rarr; production</td>
+              <td>PR, merge, promotion gates</td>
+              <td>Large teams, compliance requirements</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          You can customize any preset after selection. The preset is a starting
+          point, not a constraint.
+        </p>
+      </section>
+
+      <section id="generating-workflows">
+        <h2>Generating workflow files</h2>
+        <p>
+          Once your <code>ci_cd</code> section is configured, run:
+        </p>
+        <pre><code>/gaia-ci-setup</code></pre>
+        <p>
+          This reads your <code>project-config.yaml</code> and generates
+          platform-specific workflow files. For GitHub Actions, it writes files
+          under <code>.github/workflows/</code>. For GitLab CI, it writes
+          <code>.gitlab-ci.yml</code>. The generated files include the trigger
+          rules, test commands, and deployment steps that match your
+          configuration.
+        </p>
+        <p>
+          If you already have workflow files and want to regenerate them after
+          changing your config, use the <code>--regenerate</code> flag:
+        </p>
+        <pre><code>/gaia-ci-setup --regenerate</code></pre>
+        <p>
+          This backs up your existing files before overwriting, so you can diff
+          the changes.
+        </p>
+      </section>
+
+      <section id="custom-steps">
+        <h2>Adding custom steps</h2>
+        <p>
+          Generated workflow files are overwritten on regeneration. To add
+          custom steps that survive regeneration, place them in
+          <code>*.user-steps.yml</code> files alongside the generated workflows.
+          GAIA's templates include these files via an include mechanism so your
+          custom build steps, notifications, or deployment hooks persist across
+          regenerations.
+        </p>
+        <pre><code># .github/workflows/ci.user-steps.yml
+# These steps are included automatically by the generated workflow.
+- name: Notify Slack on failure
+  if: failure()
+  uses: slackapi/slack-github-action@v1
+  with:
+    channel-id: 'C01234ABCDE'
+    slack-message: 'CI failed on ${{ github.ref }}'</code></pre>
+        <p>
+          Keep custom steps focused on side effects (notifications, artifact
+          uploads, cache management). Core test and deploy steps belong in your
+          <code>project-config.yaml</code> so GAIA can reason about them.
+        </p>
+      </section>
+
+      <section id="triggers">
+        <h2>Trigger best practices</h2>
+        <p>
+          The single most impactful CI decision is <strong>when</strong> to run
+          tests. The goal: run the full suite exactly once per logical change,
+          at the point where it provides the most value.
+        </p>
+        <h3>Recommended: test on PR, smoke on merge</h3>
+        <p>
+          Run the full test suite when a PR is opened or updated. On merge to
+          the target branch, run only a fast smoke test (or skip tests entirely
+          if the PR passed). This avoids the duplicate-test problem.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+ci_cd:
+  triggers:
+    pull_request:
+      checks:
+        - lint
+        - unit-tests
+        - integration-tests
+        - security-scan
+    push_to_staging:
+      checks:
+        - smoke-test
+    push_to_production:
+      checks:
+        - smoke-test
+        - deploy</code></pre>
+
+        <h3>Alternative: test on push, skip PR checks</h3>
+        <p>
+          For solo developers or trunk-based development, test on every push
+          to main. There is no PR step to duplicate.
+        </p>
+
+        <h3>What NOT to do</h3>
+        <p>
+          Do not run the full suite on push AND on PR open AND on merge to
+          staging AND on merge to main. This runs your tests four times per
+          change. If your suite takes 15 minutes, that is 60 minutes of CI
+          time for a single change.
+        </p>
+      </section>
+
+      <section id="concurrency">
+        <h2>Concurrency groups</h2>
+        <p>
+          When a developer pushes multiple commits to a PR branch in quick
+          succession, each push triggers a new CI run. Without concurrency
+          groups, all those runs execute to completion -- wasting time and
+          compute.
+        </p>
+        <p>
+          Configure concurrency groups to cancel in-progress runs when a new
+          commit arrives on the same branch:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+ci_cd:
+  concurrency:
+    group: ci-${{ github.ref }}
+    cancel_in_progress: true</code></pre>
+        <p>
+          GAIA includes this in the generated workflow files when you use the
+          <code>small-team</code>, <code>standard</code>, or
+          <code>enterprise</code> presets.
+        </p>
+      </section>
+
+      <section id="path-filters">
+        <h2>Path-based filters</h2>
+        <p>
+          If your repository contains multiple stacks (for example, a frontend
+          and a backend in the same repo), use path filters to run only the
+          relevant tests when a change touches only one stack.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+stacks:
+  - name: frontend
+    path: packages/web
+    test_command: npm test
+  - name: backend
+    path: packages/api
+    test_command: pytest
+
+ci_cd:
+  path_filters:
+    enabled: true</code></pre>
+        <p>
+          When path filters are enabled,
+          <a href="../commands/gaia-ci-setup.html"><code>/gaia-ci-setup</code></a>
+          generates workflow triggers that match the <code>path</code> of each
+          stack. A change to <code>packages/web/</code> triggers only the
+          frontend test job; a change to <code>packages/api/</code> triggers
+          only the backend test job. Changes to shared configuration files
+          (like the project root) trigger both.
+        </p>
+        <p>
+          See <a href="shape-fullstack.html">Shape: Full-Stack</a> for a
+          complete example of path filters in a multi-stack repo.
+        </p>
+      </section>
+
+      <section id="common-mistakes">
+        <h2>Common mistakes</h2>
+        <div class="callout callout-warning">
+          <p class="callout-title">Avoid these CI anti-patterns</p>
+          <ul>
+            <li>
+              <strong>The 4x test run.</strong> Running the full suite on push,
+              PR open, merge to staging, and merge to main. Pick one primary
+              trigger (PR is best for teams) and use smoke tests for the rest.
+            </li>
+            <li>
+              <strong>Missing concurrency cancellation.</strong> Without
+              <code>cancel_in_progress: true</code>, rapid pushes to a PR
+              branch queue up redundant CI runs. The last push is the only one
+              that matters.
+            </li>
+            <li>
+              <strong>Re-running tests on merge.</strong> If the PR passed all
+              checks and the merge is a fast-forward (or the base branch has
+              not changed), the merge commit will pass too. A fast smoke test
+              confirms the deploy artifact is healthy.
+            </li>
+            <li>
+              <strong>No path filters in a multi-stack repo.</strong> Every
+              change triggers every test suite, even when only one stack was
+              touched. This is the most common source of unnecessary CI time
+              in full-stack repositories.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="layered-model">
+        <h2>The CI customization layered model (E98 / ADR-114)</h2>
+        <p>
+          Since the E98 cascade, GAIA exposes a layered model for customizing CI without forking the
+          framework templates. The model is built on a filename-prefix contract (FR-516) that splits
+          every <code>.github/workflows/*.yml</code> file into one of four classes:
+        </p>
+        <ul>
+          <li><strong><code>gaia-*.yml</code></strong> -- generated by <code>/gaia-config-ci --regenerate</code>; rewritten on every regen.</li>
+          <li><strong><code>gaia-*.user-jobs.yml</code></strong> or <strong><code>gaia-*.user-steps.yml</code></strong> -- overlay files YOU author; stitched into the managed workflow but never overwritten.</li>
+          <li><strong><code>user-*.yml</code></strong> -- entirely user-authored; GAIA NEVER touches.</li>
+          <li><strong>no prefix</strong> -- migration-eligible; the auto-rename flow (FR-519) prompts you to pick.</li>
+        </ul>
+
+        <h3>FR-517 four-phase stitching order</h3>
+        <p>
+          When <code>/gaia-config-ci --regenerate</code> runs, the stitcher composes the workflow in
+          this fixed order:
+        </p>
+        <ol>
+          <li>GAIA template scaffold (the body generated from <code>project-config.yaml</code>).</li>
+          <li><code>user-steps.steps_before_gaia</code> -- spliced BEFORE the managed steps block.</li>
+          <li>GAIA-generated jobs unioned with <code>user-jobs.yml</code> entries (YAML merge into <code>jobs:</code>).</li>
+          <li><code>user-steps.steps_after_gaia</code> -- spliced AFTER the managed steps block.</li>
+        </ol>
+        <p>
+          Block-level edges only -- there are no per-step <code>insert_after</code> / <code>insert_before</code>
+          markers. If you need finer-grained control, that's a fork.
+        </p>
+
+        <h3>FR-518 <code>template_overrides:</code> declarative section</h3>
+        <p>
+          For simple modifications (disable a job, bump a timeout, pin an adapter version), use the
+          declarative <code>ci_cd.template_overrides:</code> block in <code>project-config.yaml</code>:
+        </p>
+        <pre><code>ci_cd:
+  template_overrides:
+    disable: [shellcheck]                  # remove from generated jobs:
+    timeout_overrides:
+      bats-tests: 15                       # override timeout-minutes
+    adapter_versions:
+      markdownlint: "0.41.0"               # pin adapter version</code></pre>
+        <p>
+          Five security-critical jobs are protected from <code>disable:</code> -- per SR-78, you
+          cannot disable <code>commitlint</code>, <code>adr-048-guard</code>,
+          <code>no-claude-attribution</code>, <code>secrets-scan</code>, or
+          <code>nfr-082-credential-audit</code>.
+        </p>
+
+        <h3>FR-519 auto-rename migration flow</h3>
+        <p>
+          On a pre-ADR-114 project whose <code>.github/workflows/</code> contains files without the
+          <code>gaia-*</code> / <code>user-*</code> prefix, the first
+          <code>/gaia-config-ci --regenerate</code> prompts you per-file: rename to
+          <code>gaia-{base}.yml</code> + scaffold overlay stubs, rename to <code>user-{base}.yml</code>,
+          or skip and defer. The flow is backup-first -- a sha256-verified copy lives at
+          <code>.gaia-backup/ci-regen-{timestamp}/</code> before any rename.
+        </p>
+      </section>
+
+      <section id="whats-next">
+        <h2>What to read next</h2>
+        <ul>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a> -- concrete configurations for solo, small-team, standard, and enterprise setups.</li>
+          <li><a href="environments-and-promotion.html">Environments and Promotion</a> -- how environments, secrets, and the promotion chain work together.</li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a> -- how to configure which tests run and when.</li>
+          <li><a href="../commands/gaia-ci-setup.html"><code>/gaia-ci-setup</code></a> -- full command reference.</li>
+          <li><a href="../commands/gaia-ci-edit.html"><code>/gaia-ci-edit</code></a> -- editing the promotion chain after initial setup.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

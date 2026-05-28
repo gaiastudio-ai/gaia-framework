@@ -1,0 +1,49 @@
+name: pages
+
+# Build + deploy the GAIA static HTML documentation site at `documentation/`
+# to GitHub Pages on every push to main. The pages source must be set to
+# "GitHub Actions" in the repository Settings → Pages UI (one-time admin step).
+#
+# AF-2026-05-28-2 / Test07 D-* findings — the user-facing doc site was
+# previously authored at project-root `documentation/` (a non-git workspace),
+# so improvements never reached users. Moving it into gaia-public and
+# publishing via this workflow gives it a real ship-path tied to the same
+# PR/CI/promotion cycle as the plugin itself.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'documentation/**'
+      - '.github/workflows/pages.yml'
+  # Manual re-deploy hatch.
+  workflow_dispatch: {}
+
+# Single concurrent deploy per environment — superseded runs are cancelled.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    name: deploy-pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+      - name: Configure Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b  # v5.0.0
+      - name: Upload documentation/ as artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa  # v3.0.1
+        with:
+          path: documentation
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@d6db90ba4e36e23d76b0f0d7d2c43cf73beac0fd  # v4.0.5

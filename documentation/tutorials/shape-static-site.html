@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shape: Static Site - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+          <li><a href="shape-plugin.html">Shape: Plugin</a></li>
+          <li><a href="shape-library.html">Shape: Library</a></li>
+          <li><a href="shape-cli.html">Shape: CLI</a></li>
+          <li><a href="shape-mobile-app.html">Shape: Mobile App</a></li>
+          <li><a href="shape-container-image.html">Shape: Container Image</a></li>
+          <li><a href="shape-static-site.html" class="active">Shape: Static Site</a></li>
+          <li><a href="phase-5-for-non-deployable-projects.html">Phase 5 for Non-Deployable Projects</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#when">When this shape applies</a></li>
+          <li><a href="#adr-115">Why distribution-only, not deployable (ADR-115)</a></li>
+          <li><a href="#config">project-config.yaml</a></li>
+          <li><a href="#providers">Provider matrix</a></li>
+          <li><a href="#publish">Publish to your provider</a></li>
+          <li><a href="#worked-when">You'll know it worked when</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        <a href="project-shapes-overview.html">Project Shapes</a>
+        <span class="separator">/</span>
+        Static Site
+      </nav>
+
+      <h1>Shape: Static Site</h1>
+      <p>
+        A static site (Hugo, Jekyll, Astro, Eleventy, Next.js static export, etc.) ships as a directory
+        of built HTML / CSS / JS to a static-hosting provider -- Cloudflare Pages, Netlify, Vercel, S3 +
+        CloudFront, GitHub Pages. The release surface is the provider's deployment API; there is no
+        long-running server to deploy.
+      </p>
+
+      <section id="adr-115">
+        <h2>Why distribution-only, not deployable (ADR-115)</h2>
+        <p>
+          Per ADR-115, static-site is modeled as a <code>distribution-only</code> environment kind,
+          not as a <code>deployable</code> sub-kind. The rationale: although the deployment goes to
+          a hosted URL (which feels deployable), the workflow shape matches publish -- you push an
+          artifact, the provider serves it, there is no server-side state, no rollback orchestration,
+          no smoke endpoints to verify against. <code>/gaia-publish</code> is the right command;
+          <code>/gaia-deploy</code> would HALT (and rightly so).
+        </p>
+        <p>
+          Pairing a static-site channel with <code>kind: deployable</code> is rejected by
+          <code>/gaia-config-validate</code> per ADR-115 cross-section coupling enforcement.
+        </p>
+      </section>
+
+      <section id="config">
+        <h2>project-config.yaml</h2>
+        <pre><code>environments:
+  - id: cdn
+    kind: distribution-only
+
+distribution:
+  channel: static-site
+  registry: https://example.com
+  manifest: site.config.json
+  release_workflow: gaia-release.yml
+  provider: cloudflare-pages
+  domain: example.com</code></pre>
+        <p>
+          The <code>static-site</code> channel requires <code>provider</code> and <code>domain</code>
+          as per-channel sub-fields. Missing either is rejected by <code>/gaia-config-validate</code>.
+        </p>
+      </section>
+
+      <section id="providers">
+        <h2>Provider matrix</h2>
+        <ul>
+          <li><strong><code>cloudflare-pages</code></strong> -- git-integrated build + edge deploy; the deploy is triggered by the push, no separate run.sh needed.</li>
+          <li><strong><code>netlify</code></strong> -- git-integrated build + CDN; the <code>release_workflow</code> handles the netlify-cli invocation.</li>
+          <li><strong><code>vercel</code></strong> -- git-integrated; can be set to deploy on every commit or only on tag.</li>
+          <li><strong><code>s3</code></strong> -- the workflow runs <code>aws s3 sync</code> + <code>aws cloudfront create-invalidation</code>. Credentials via OIDC role.</li>
+          <li><strong><code>github-pages</code></strong> -- the workflow uses <code>actions/deploy-pages</code>. Fastest path for project documentation.</li>
+          <li><strong><code>custom</code></strong> -- point at a custom adapter for any other provider (Surge, Render, Fly.io static, etc.).</li>
+        </ul>
+      </section>
+
+      <section id="publish">
+        <h2>Publish to your provider</h2>
+        <pre><code>/gaia-publish</code></pre>
+        <p>
+          The orchestrator dispatches <code>publish-static-site</code>, which invokes the configured
+          <code>release_workflow</code>. The workflow reads <code>provider</code> +
+          <code>domain</code> from the config and runs the appropriate publish command:
+        </p>
+        <ul>
+          <li><code>cloudflare-pages</code>: triggered by git push to the connected branch.</li>
+          <li><code>netlify</code>: <code>netlify deploy --prod --dir=dist</code>.</li>
+          <li><code>s3</code>: <code>aws s3 sync dist/ s3://${DOMAIN_BUCKET} --delete</code> + invalidate the matching CloudFront distribution.</li>
+          <li><code>github-pages</code>: <code>actions/upload-pages-artifact</code> + <code>actions/deploy-pages</code>.</li>
+        </ul>
+      </section>
+
+      <section id="worked-when">
+        <h2>You'll know it worked when</h2>
+        <ul>
+          <li><code>/gaia-config-validate</code> exits 0 with <code>provider</code> + <code>domain</code> both present and the env <code>kind: distribution-only</code> (NOT <code>deployable</code> -- ADR-115).</li>
+          <li><code>/gaia-help</code> suggests <code>/gaia-publish</code> on the Phase 5 row.</li>
+          <li><code>/gaia-deploy --env cdn</code> HALTs with the canonical <code>use /gaia-publish instead</code> guidance.</li>
+          <li>A <code>/gaia-publish</code> run completes; <code>curl https://${DOMAIN}/</code> returns the new build's content.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

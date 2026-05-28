@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-migrate - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/getting-started.html">Getting Started</a>
+        <span class="separator">/</span>
+        /gaia-migrate
+      </nav>
+
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-migrate</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/getting-started.html">Getting Started</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>Any (one-time migration)</dd>
+          <dt>Arguments:</dt>
+          <dd><code>dry-run</code> or <code>apply</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-migrate</code> automates the upgrade from GAIA v1
+          (workflow engine) to GAIA v2 (Claude Code native plugin). It backs
+          up v1 directories, migrates templates, memory, and configuration
+          to the v2 layout, validates the result, and cleans up the v1
+          directories.
+        </p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>
+            You have an existing GAIA v1 installation (identified by the
+            presence of <code>_gaia/</code>, <code>_memory/</code>, and
+            <code>custom/</code> directories) and want to move to the v2
+            plugin.
+          </li>
+          <li>
+            You have already installed the v2 plugin via
+            <code>/plugin marketplace add</code>.
+          </li>
+        </ul>
+        <p>
+          Always run with <code>dry-run</code> first to preview the plan
+          before applying.
+        </p>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>
+            <strong>v2 plugin installed.</strong> Run
+            <code>/plugin marketplace add gaia-public</code> first. The
+            migration cannot install plugins.
+          </li>
+          <li>
+            <strong>v1 markers present.</strong> The project root must
+            contain <code>_gaia/</code>, <code>_memory/</code>, and
+            <code>custom/</code> directories.
+          </li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-migrate dry-run</code></pre>
+        <p>Preview the migration plan without making changes.</p>
+
+        <pre><code>/gaia-migrate apply</code></pre>
+        <p>Execute the migration (backs up first, then migrates).</p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Confirm intent</span>
+            Asks whether to run a dry-run preview or apply directly.
+            Defaults to dry-run.
+          </li>
+          <li>
+            <span class="step-title">Dry-run preview</span>
+            Shows the planned operations: which files will be backed up,
+            migrated, and removed. Highlights any conditions that would
+            halt the migration.
+          </li>
+          <li>
+            <span class="step-title">Apply migration</span>
+            If you approve the dry-run, the migration runs: backup, config
+            split, template migration, memory migration, validation, and
+            v1 directory removal. A full backup is stored at
+            <code>.gaia-migrate-backup/{timestamp}/</code>.
+          </li>
+          <li>
+            <span class="step-title">Report result</span>
+            Shows a SUCCESS or FAILED banner. On failure, prints the exact
+            restore command. On success, lists any manual follow-up items.
+          </li>
+          <li>
+            <span class="step-title">Post-migration smoke test</span>
+            Instructs you to run <code>/gaia-help</code> to confirm that
+            the v2 plugin is fully operational and that no legacy stubs
+            are interfering.
+          </li>
+        </ol>
+
+        <div class="callout">
+          <p class="callout-title">Safety</p>
+          <p>
+            A full backup is created before any write operation. Both SUCCESS
+            and FAILED results include the exact restore command. The
+            migration does not auto-restore on failure -- you decide when
+            and whether to roll back.
+          </p>
+        </div>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Source</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>mode</code></td>
+              <td>Command argument</td>
+              <td><code>dry-run</code> (preview) or <code>apply</code> (execute).</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Output</th>
+              <th>Location</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Backup</td>
+              <td><code>.gaia-migrate-backup/{timestamp}/</code></td>
+              <td>Full backup of v1 directories before migration.</td>
+            </tr>
+            <tr>
+              <td>Migrated config</td>
+              <td><code>config/project-config.yaml</code></td>
+              <td>v1 config fields split into the v2 config location.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>&gt; /gaia-migrate dry-run
+
+DRY-RUN: Migration plan for ./
+  Backup destination: .gaia-migrate-backup/2026-05-07T10-30-00/
+  Steps:
+    1. Backup _gaia/, _memory/, custom/ (87 MB)
+    2. Split _gaia/_config/global.yaml into config/project-config.yaml
+    3. Migrate custom templates to custom/templates/
+    4. Migrate memory sidecars to _memory/ (v2 layout)
+    5. Validate config against schema
+    6. Remove v1 directories (_gaia/, _memory/v1, custom/v1)
+
+  No HALT conditions detected.
+
+Apply this migration? (y/n)
+&gt; y
+
+Backing up... done.
+Migrating config... done.
+Migrating templates... done.
+Migrating memory... done.
+Validating... PASS.
+Removing v1 directories... done.
+
+SUCCESS -- Migration complete.
+  Backup: .gaia-migrate-backup/2026-05-07T10-30-00/
+  Restore: cp -a ".gaia-migrate-backup/2026-05-07T10-30-00/" "./"
+
+Next: run /gaia-help to confirm the v2 plugin is working.</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>
+            <a href="gaia-help.html"><code>/gaia-help</code></a>
+            -- smoke-test that the v2 plugin is operational.
+          </li>
+          <li>
+            <a href="gaia-config-show.html"><code>/gaia-config-show</code></a>
+            -- verify the migrated configuration.
+          </li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>"Nothing to migrate -- already on v2"</h3>
+        <p>
+          The project has no v1 directories and already has a v2 config.
+          No action needed.
+        </p>
+
+        <h3>Migration FAILED</h3>
+        <p>
+          The migration printed a restore command. Run it to revert to the
+          pre-migration state, inspect the error, and re-try after fixing
+          the issue.
+        </p>
+
+        <h3>Duplicate /gaia-help entries in the command palette</h3>
+        <p>
+          Legacy <code>.claude/commands/gaia-*.md</code> stubs were not
+          removed. Delete them manually with
+          <code>rm .claude/commands/gaia-*.md</code>. If the stubs are in
+          your global config (<code>~/.claude/commands/</code>), remove
+          them there as well.
+        </p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia-init.html"><code>/gaia-init</code></a></td>
+              <td>For new projects that never had GAIA v1.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a></td>
+              <td>Validate the migrated config against the schema.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/getting-started.html">Back to Getting Started</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

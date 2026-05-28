@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Planning - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="getting-started.html">Getting Started</a></li>
+          <li><a href="discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="planning.html" class="active">Planning</a></li>
+          <li><a href="sprint-management.html">Sprint Management</a></li>
+          <li><a href="development.html">Development</a></li>
+          <li><a href="testing.html">Testing</a></li>
+          <li><a href="reviews.html">Reviews</a></li>
+          <li><a href="validation.html">Validation</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="configuration.html">Configuration</a></li>
+          <li><a href="documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="internal.html">Internal Skills</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        Planning
+      </nav>
+
+      <h1>Planning</h1>
+      <p>
+        Planning commands produce the core documents that define what you are
+        building and how. They cover Phases 2 (Planning) and 3 (Solutioning)
+        of the GAIA lifecycle: PRDs, architecture documents, UX designs,
+        threat models, infrastructure plans, and the epic/story breakdown.
+      </p>
+
+      <h2>Product requirements</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-create-prd.html">/gaia-create-prd</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Create a Product Requirements Document through collaborative discovery.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-edit-prd.html">/gaia-edit-prd</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit an existing PRD while preserving downstream consistency.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-validate-prd.html">/gaia-validate-prd</a></span>
+          <span class="tag tag-deprecated">deprecated</span>
+          <span class="command-summary">Redirects to <code>/gaia-val-validate</code>. Kept for backward compatibility.</span>
+        </li>
+      </ul>
+
+      <h2>Architecture</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-create-arch.html">/gaia-create-arch</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Design system architecture covering technology selection, components, data layer, APIs, and security.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-edit-arch.html">/gaia-edit-arch</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit an existing architecture document with cascade-aware downstream detection.</span>
+        </li>
+      </ul>
+
+      <h2>UX design</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-create-ux.html">/gaia-create-ux</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Plan UX patterns, wireframes, interaction design, and accessibility specs.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-edit-ux.html">/gaia-edit-ux</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit an existing UX design while maintaining consistency with downstream artifacts.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-validate-design-a11y.html">/gaia-validate-design-a11y</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Planning-phase accessibility review of design artifacts against WCAG 2.1 criteria.</span>
+        </li>
+      </ul>
+
+      <h2>Security and infrastructure</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-threat-model.html">/gaia-threat-model</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Create a STRIDE/DREAD threat model with asset identification, threat analysis, and mitigation strategies.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-infra-design.html">/gaia-infra-design</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Design deployment topology, environment layout, infrastructure-as-code structure, and observability plan.</span>
+        </li>
+      </ul>
+
+      <h2>Work breakdown</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-create-epics.html">/gaia-create-epics</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Break requirements into epics and stories from your PRD and architecture documents.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-readiness-check.html">/gaia-readiness-check</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Validate that all planning artifacts are complete and consistent before starting implementation.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-edit-test-plan.html">/gaia-edit-test-plan</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Add new test cases to an existing test plan without regenerating it.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-add-stories.html">/gaia-add-stories</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Add new stories to existing epics or create new epics with stories.</span>
+        </li>
+      </ul>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

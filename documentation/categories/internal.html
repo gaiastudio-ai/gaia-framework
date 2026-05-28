@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Internal Skills - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="getting-started.html">Getting Started</a></li>
+          <li><a href="discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="planning.html">Planning</a></li>
+          <li><a href="sprint-management.html">Sprint Management</a></li>
+          <li><a href="development.html">Development</a></li>
+          <li><a href="testing.html">Testing</a></li>
+          <li><a href="reviews.html">Reviews</a></li>
+          <li><a href="validation.html">Validation</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="configuration.html">Configuration</a></li>
+          <li><a href="documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="internal.html" class="active">Internal Skills</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        Internal Skills
+      </nav>
+
+      <h1>Internal Skills</h1>
+
+      <div class="callout callout-internal">
+        <p class="callout-title">These skills are not user-invocable</p>
+        <p>
+          Internal skills are loaded automatically (just-in-time) by
+          user-facing commands when needed. You do not type these as slash
+          commands. They are documented here for transparency and
+          troubleshooting -- understanding what happens behind the scenes
+          (like how <a href="../glossary.html#sidecar">memory sidecars</a>, <a href="../glossary.html#ground-truth">ground truth</a>, and <a href="../glossary.html#rubric">rubrics</a> work) can
+          help when you encounter unexpected behavior.
+        </p>
+      </div>
+
+      <h2>Memory and state management</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-memory-management.html">gaia-memory-management</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Core memory operations: session load/save, decision-log formatting, context summarization, stale detection, and budget monitoring.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-memory-management-cross-agent.html">gaia-memory-management-cross-agent</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Cross-agent memory extensions: cross-reference loading and shared budget monitoring.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-ground-truth-management.html">gaia-ground-truth-management</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Ground truth operations for the validator: entry structure, refresh strategies, conflict resolution, and archival.</span>
+        </li>
+      </ul>
+
+      <h2>Validation internals</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-validation-patterns.html">gaia-validation-patterns</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Reusable validation patterns: factual claim extraction, filesystem verification, cross-referencing, and severity classification.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-document-rulesets.html">gaia-document-rulesets</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Document-specific validation rulesets for artifact type detection and structural quality checks.</span>
+        </li>
+      </ul>
+
+      <h2>Development knowledge</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-code-review-standards.html">gaia-code-review-standards</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Universal review checklist, SOLID violation detection, complexity thresholds, and review gate completion rules.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-testing-patterns.html">gaia-testing-patterns</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Red-Green-Refactor TDD cycle, Arrange-Act-Assert patterns, integration test isolation, and test doubles.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-documentation-standards.html">gaia-documentation-standards</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">README structure, ADR format, inline code comments (JSDoc/docstrings), and API documentation conventions.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-api-design.html">gaia-api-design</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">REST conventions, GraphQL schema patterns, OpenAPI specs, API versioning, and error standards.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-database-design.html">gaia-database-design</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Schema design conventions, forward-only migrations, index optimization, and N+1 prevention.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-docker-workflow.html">gaia-docker-workflow</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Multi-stage Dockerfile patterns, Docker Compose for local development, and image security scanning.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-git-workflow.html">gaia-git-workflow</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Git branching strategy, commit conventions, merge/rebase policies, and conflict resolution patterns.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-security-basics.html">gaia-security-basics</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Foundational security knowledge: input validation, output encoding, auth patterns, secrets handling.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-shell-idioms.html">gaia-shell-idioms</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Reusable shell and awk idioms for scripts and tests, including canonical anti-pattern fixes.</span>
+        </li>
+      </ul>
+
+      <h2>Analysis helpers</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-edge-cases.html">gaia-edge-cases</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Structured edge-case analysis loaded by /gaia-create-story to enumerate boundary, error, and timing scenarios.</span>
+        </li>
+      </ul>
+
+      <h2>Deprecated aliases</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-test-design.html">gaia-test-design</a></span>
+          <span class="tag tag-deprecated">deprecated</span>
+          <span class="command-summary">Retired. Use <code>/gaia-test-strategy --plan</code> instead.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-test-framework.html">gaia-test-framework</a></span>
+          <span class="tag tag-deprecated">deprecated</span>
+          <span class="command-summary">Retired. Use <code>/gaia-test-strategy --scaffold</code> instead.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-security-review.html">gaia-security-review</a></span>
+          <span class="tag tag-deprecated">deprecated</span>
+          <span class="command-summary">Retired alias. Use <code>/gaia-review-security</code> instead.</span>
+        </li>
+      </ul>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-epic-status - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/sprint-management.html">Sprint Management</a>
+        <span class="separator">/</span>
+        /gaia-epic-status
+      </nav>
+
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-epic-status</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/sprint-management.html">Sprint Management</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt>
+          <dd><code>[epic-key?]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-epic-status</code> displays a completion dashboard
+          across all epics -- showing how many stories in each epic are done,
+          in progress, in review, or still in the backlog. Optionally
+          filters to a single epic when you pass an epic key.
+        </p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You want a bird's-eye view of project progress across all epics.</li>
+          <li>You need to identify which epics are close to completion and which are lagging.</li>
+          <li>A stakeholder asks for a progress report.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li><strong>Epics and stories must exist.</strong> <code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code> is required.</li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-epic-status</code></pre>
+        <p>Shows all epics.</p>
+        <pre><code>/gaia-epic-status E3</code></pre>
+        <p>Filters to Epic 3 only.</p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Parse epics</span>
+            Reads the epics-and-stories document and extracts every epic with its story list.
+          </li>
+          <li>
+            <span class="step-title">Resolve story statuses</span>
+            Reads story statuses from the sprint tracking file. If it is
+            missing, falls back to scanning individual story files directly.
+          </li>
+          <li>
+            <span class="step-title">Compute metrics</span>
+            For each epic: total stories, done count, completion percentage,
+            and per-status counts (backlog, ready, in-progress, review, done, blocked).
+          </li>
+          <li>
+            <span class="step-title">Render dashboard</span>
+            Displays a table sorted by epic number with an overall summary line.
+          </li>
+          <li>
+            <span class="step-title">Suggest next actions</span>
+            Recommends the most relevant command based on the data.
+          </li>
+        </ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td>Epics and stories</td><td><code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code></td><td>Epic overview and story lists.</td></tr>
+            <tr><td>Sprint tracking</td><td><code>.gaia/state/sprint-status.yaml</code></td><td>Per-story status (primary source).</td></tr>
+            <tr><td>Story files</td><td><code>.gaia/artifacts/implementation-artifacts/</code></td><td>Fallback source when sprint tracking is unavailable.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <p>Text output only. This command does not create or modify any files.</p>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>&gt; /gaia-epic-status
+
+| Epic | Name                | Done | Total | %   | Backlog | Ready | In-Prog | Review | Done | Blocked |
+|------|---------------------|------|-------|-----|---------|-------|---------|--------|------|---------|
+| E1   | User Management     | 4    | 5     | 80  | 0       | 0     | 0       | 1      | 4    | 0       |
+| E2   | Notifications       | 1    | 4     | 25  | 2       | 1     | 0       | 0      | 1    | 0       |
+| E3   | Dashboard           | 2    | 6     | 33  | 1       | 2     | 1       | 0      | 2    | 0       |
+
+Overall: 7 / 15 stories done (46%)</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-sprint-status.html"><code>/gaia-sprint-status</code></a> -- detailed view of the current sprint.</li>
+          <li><a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a> -- implement a ready story from a lagging epic.</li>
+          <li><a href="gaia-retro.html"><code>/gaia-retro</code></a> -- when all stories are done.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>"sprint-status.yaml not found -- deriving status from story files"</h3>
+        <p>This is normal before the first sprint is planned. The dashboard still works by reading each story file directly.</p>
+
+        <h3>Epic key not found</h3>
+        <p>If you pass an epic key that does not exist in epics-and-stories.md, the command lists available epic keys so you can correct the input.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead><tr><th>Command</th><th>Relationship</th></tr></thead>
+          <tbody>
+            <tr><td><a href="gaia-sprint-status.html"><code>/gaia-sprint-status</code></a></td><td>Sprint-scoped dashboard (current sprint only).</td></tr>
+            <tr><td><a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a></td><td>Plans the next sprint from the backlog.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

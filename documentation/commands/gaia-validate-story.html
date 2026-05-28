@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-validate-story - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/validation.html">Validation</a><span class="separator">/</span>
+        /gaia-validate-story
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-validate-story</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/validation.html">Validation</a></dd>
+          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt><dd><code>[story-key]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-validate-story</code> performs a full validation of a story file against the codebase and ground truth. It checks that frontmatter fields are complete, acceptance criteria follow the expected format, file references are valid, and dependencies are accurate. The validator runs in an isolated context and records a PASSED, FAILED, or UNVERIFIED verdict.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You created or edited a story file and want to verify it is complete and accurate before implementation.</li>
+          <li>A story failed review and you want to confirm the fix addressed the validation findings.</li>
+          <li>You want to check whether a story is ready for the <code>ready-for-dev</code> status transition.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li><strong>A story file must exist</strong> at <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code>.</li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-validate-story E3-S7</code></pre>
+        <p>The argument is the story key in <code>E{n}-S{n}</code> format.</p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Resolve story file</span> Locates the story file using the story key. Fails if the file is not found or if multiple files match.</li>
+          <li><span class="step-title">Run validation</span> Invokes the validator in an isolated context. The validator checks frontmatter completeness (15 required fields), acceptance criteria format, file path references, dependency accuracy, and structural conformance.</li>
+          <li><span class="step-title">Fix loop (up to 3 attempts)</span> If the validator reports CRITICAL or WARNING findings, the command automatically attempts to fix them (adding missing frontmatter fields, correcting AC format, updating references). After each fix, it re-validates. The loop runs up to 3 attempts.</li>
+          <li><span class="step-title">Record verdict</span> Records the terminal verdict (PASSED, FAILED, or UNVERIFIED) in the story's validation ledger. This verdict is separate from the six Review Gate rows used by review commands.</li>
+          <li><span class="step-title">Report results</span> Displays the verdict and lists any remaining findings.</li>
+        </ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>story-key</code></td><td>Command argument</td><td>The story to validate, in <code>E{n}-S{n}</code> format.</td></tr>
+            <tr><td>Story file</td><td><code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code></td><td>The story file containing frontmatter, acceptance criteria, and subtasks.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td>Validation verdict</td><td>Story validation ledger</td><td>PASSED, FAILED, or UNVERIFIED recorded for downstream consumers.</td></tr>
+            <tr><td>Updated story file</td><td>Story file path</td><td>Auto-fixes applied during the fix loop (if any).</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>&gt; /gaia-validate-story E5-S12
+
+Resolving story file...
+  Found: .gaia/artifacts/implementation-artifacts/epic-E5-api-layer/stories/E5-S12-pagination.md
+
+Running validation (attempt 1 of 3)...
+  2 findings: 1 WARNING (missing depends_on field), 1 INFO.
+
+Applying fix: adding depends_on: [] to frontmatter...
+Re-validating (attempt 2 of 3)...
+  0 CRITICAL/WARNING findings.
+
+Story E5-S12 validation PASSED.</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a> -- implement the story now that it passes validation.</li>
+          <li><a href="gaia-fix-story.html"><code>/gaia-fix-story</code></a> -- if the story FAILED and needs manual intervention.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>"Story file not found"</h3>
+        <p>The story key did not match any file under <code>.gaia/artifacts/implementation-artifacts/</code>. Run <a href="gaia-create-story.html"><code>/gaia-create-story</code></a> first.</p>
+        <h3>Verdict is UNVERIFIED</h3>
+        <p>The validator could not complete its run (timeout or unavailable). Try again. If the issue persists, check your project configuration.</p>
+        <h3>Verdict is FAILED after 3 attempts</h3>
+        <p>Some findings could not be auto-fixed. Use <a href="gaia-fix-story.html"><code>/gaia-fix-story</code></a> to address them manually.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead><tr><th>Command</th><th>Relationship</th></tr></thead>
+          <tbody>
+            <tr><td><a href="gaia-fix-story.html"><code>/gaia-fix-story</code></a></td><td>Manually fixes validation findings that the auto-fix loop could not resolve.</td></tr>
+            <tr><td><a href="gaia-val-validate.html"><code>/gaia-val-validate</code></a></td><td>General-purpose artifact validator. This command wraps it with story-specific logic.</td></tr>
+            <tr><td><a href="gaia-create-story.html"><code>/gaia-create-story</code></a></td><td>Creates the story file that this command validates.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/validation.html">Back to Validation</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

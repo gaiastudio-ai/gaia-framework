@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-memory-hygiene - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/getting-started.html">Getting Started</a>
+        <span class="separator">/</span>
+        /gaia-memory-hygiene
+      </nav>
+
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-memory-hygiene</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/getting-started.html">Getting Started</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>Any</dd>
+          <dt>Arguments:</dt>
+          <dd><code>[--dry-run]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-memory-hygiene</code> scans GAIA's internal agent
+          memory files for stale, contradicted, and orphaned decisions.
+          It cross-references each decision against current project
+          artifacts, classifies each entry, reports token budget usage
+          per agent, recommends archival actions, and -- with your
+          explicit confirmation per entry -- archives or removes
+          outdated content.
+        </p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>
+            After several sprints, when agent memory may contain decisions
+            that no longer reflect the current architecture or PRD.
+          </li>
+          <li>
+            When agents seem to reference outdated information during
+            workflows.
+          </li>
+          <li>
+            As periodic maintenance -- once per sprint is a good cadence.
+          </li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>
+            <strong>Memory directory must exist.</strong> The
+            <code>_memory/</code> directory must be present. If it does
+            not exist, the command exits with "no sidecars discovered."
+          </li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-memory-hygiene</code></pre>
+        <p>Full scan with interactive archival prompts.</p>
+
+        <pre><code>/gaia-memory-hygiene --dry-run</code></pre>
+        <p>Scan and report only -- no files are modified.</p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Discover sidecars</span>
+            Finds all agent memory directories under
+            <code>_memory/*-sidecar/</code>, classifies each by tier
+            (Tier 1/2/3), and identifies empty or legacy-format sidecars.
+          </li>
+          <li>
+            <span class="step-title">Scan each sidecar</span>
+            Reads decision logs, ground truth, and context files. Builds
+            a content inventory with file sizes for budget calculations.
+          </li>
+          <li>
+            <span class="step-title">Load reference artifacts</span>
+            Reads current versions of the PRD, architecture, epics, test
+            plan, and sprint status to use as comparison baselines.
+          </li>
+          <li>
+            <span class="step-title">Cross-reference validation</span>
+            Checks each decision's references against other agents'
+            decisions and against the filesystem. Identifies orphaned
+            references and superseded cross-agent pointers.
+          </li>
+          <li>
+            <span class="step-title">Classify entries</span>
+            Assigns each entry one of five statuses: ACTIVE (consistent),
+            STALE (referenced artifact changed), CONTRADICTED (current
+            artifact says the opposite), ORPHANED (referenced entity
+            removed), or UNVERIFIABLE-FORMAT (cannot parse).
+          </li>
+          <li>
+            <span class="step-title">Token budget reporting</span>
+            Calculates token usage per agent and flags agents that are
+            near or over their memory budget.
+          </li>
+          <li>
+            <span class="step-title">Generate recommendations</span>
+            Recommends archival for entries under budget pressure, with
+            stale status, or older than 3 sprints. Each recommendation
+            includes the estimated token recovery.
+          </li>
+          <li>
+            <span class="step-title">Present report</span>
+            Writes a hygiene report with summary, token budget table,
+            detailed findings, archival recommendations, and ground-truth
+            refresh suggestions.
+          </li>
+          <li>
+            <span class="step-title">User action (interactive mode only)</span>
+            For each flagged entry, asks you to choose: Keep, Archive, or
+            Delete. No changes are made without your per-entry confirmation.
+          </li>
+          <li>
+            <span class="step-title">Optional checkpoint pruning</span>
+            Offers to clean up old completed checkpoints from
+            <code>_memory/checkpoints/completed/</code>.
+          </li>
+        </ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Source</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>--dry-run</code></td>
+              <td>Command argument (optional)</td>
+              <td>Run the scan and report without modifying any files.</td>
+            </tr>
+            <tr>
+              <td>Agent sidecar files</td>
+              <td><code>_memory/*-sidecar/</code></td>
+              <td>Decision logs, ground truth, and context files for each agent.</td>
+            </tr>
+            <tr>
+              <td>Reference artifacts</td>
+              <td><code>docs/</code> directories</td>
+              <td>Current PRD, architecture, epics, test plan, sprint status.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Output</th>
+              <th>Location</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Hygiene report</td>
+              <td><code>.gaia/artifacts/implementation-artifacts/memory-hygiene-report-{date}.md</code></td>
+              <td>Full findings report with seven sections: summary, token budget, findings, archival recommendations, ground-truth refresh, untiered agents, and skipped sidecars.</td>
+            </tr>
+            <tr>
+              <td>Modified sidecars</td>
+              <td><code>_memory/*-sidecar/</code></td>
+              <td>Only if you confirm per-entry actions in interactive mode.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>&gt; /gaia-memory-hygiene --dry-run
+
+6 sidecars discovered (2 Tier 1, 2 Tier 2, 1 Tier 3, 1 untiered).
+0 empty. 1 legacy filename detected.
+
+Token Budget Table:
+| Agent     | Tier | Token Usage | Budget  | % Used | Status  |
+|-----------|------|-------------|---------|--------|---------|
+| architect | T1   | 12,400      | 150,000 | 8%     | OK      |
+| pm        | T1   | 8,200       | 100,000 | 8%     | OK      |
+| security  | T2   | 45,000      | 50,000  | 90%    | warning |
+| devops    | T2   | 3,100       | 50,000  | 6%     | OK      |
+| sm        | T3   | 1,200       | --      | --     | OK      |
+
+Findings:
+  3 STALE (referenced artifacts changed)
+  1 CONTRADICTED (architecture decision superseded)
+  2 ORPHANED (story keys removed from epics)
+  1 UNVERIFIABLE-FORMAT
+
+Archival Recommendations:
+  1. security / 2026-03-15 auth decision -- STALE (~800 tokens)
+  2. security / 2026-02-28 api key rotation -- STALE (~600 tokens)
+
+Ground Truth Refresh:
+  architect -- last refresh: Sprint 8, current: Sprint 11 (3 behind)
+    Recommended: /gaia-refresh-ground-truth --agent architect
+
+Report written to:
+  .gaia/artifacts/implementation-artifacts/memory-hygiene-report-2026-05-07.md
+
+(Dry-run mode -- no files were modified.)</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>
+            Run again without <code>--dry-run</code> to act on the
+            recommendations.
+          </li>
+          <li>
+            <a href="gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a>
+            -- if the report flagged stale ground truth for any agent.
+          </li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>"No sidecars discovered"</h3>
+        <p>
+          The <code>_memory/</code> directory does not exist. This is
+          normal for new projects that have not yet run workflows that
+          produce agent memory.
+        </p>
+
+        <h3>"All sidecars are empty"</h3>
+        <p>
+          Sidecar directories exist but contain no decision content yet.
+          Run a few GAIA workflows first -- agents write decisions as
+          they work.
+        </p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a></td>
+              <td>Refreshes the ground-truth file for a specific agent when flagged as stale.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-retro.html"><code>/gaia-retro</code></a></td>
+              <td>Retrospective -- a good time to also run memory hygiene.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/getting-started.html">Back to Getting Started</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

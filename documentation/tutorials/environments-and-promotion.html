@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Environments and Promotion - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html" class="active">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#why">Why environments matter</a></li>
+          <li><a href="#environments-section">The environments section</a></li>
+          <li><a href="#three-env">Three-environment chain</a></li>
+          <li><a href="#two-env">Two-environment chain</a></li>
+          <li><a href="#secrets">Per-environment secrets</a></li>
+          <li><a href="#deploy-command">What /gaia-deploy does</a></li>
+          <li><a href="#pre-deploy-gates">Pre-deploy gates</a></li>
+          <li><a href="#post-deploy-smoke">Post-deploy smoke tests</a></li>
+          <li><a href="#rollback">Rollback planning</a></li>
+          <li><a href="#whats-next">What to read next</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        Environments and Promotion
+      </nav>
+
+      <h1>Environments and Promotion</h1>
+      <p>
+        This tutorial explains how to configure environments in GAIA, how the
+        promotion chain moves code from development to production, how to
+        manage per-environment secrets, and what happens when you run
+        <a href="../commands/gaia-deploy.html"><code>/gaia-deploy</code></a>.
+      </p>
+
+      <section id="why">
+        <h2>Why environments matter</h2>
+        <p>
+          Environments are isolated copies of your application at different
+          stages of readiness. A typical setup has three: <strong>dev</strong>
+          (for integration testing), <strong>staging</strong> (for
+          pre-production validation), and <strong>production</strong> (for
+          end users). Each environment can have its own database, secrets,
+          and infrastructure configuration.
+        </p>
+        <p>
+          Without explicit environment configuration, GAIA cannot deploy your
+          application, run post-deploy smoke tests, or enforce promotion gates.
+          The <code>environments</code> section in
+          <code>project-config.yaml</code> makes your deployment pipeline
+          explicit and repeatable.
+        </p>
+      </section>
+
+      <section id="environments-section">
+        <h2>The environments section</h2>
+        <p>
+          Each environment is defined as a named entry under
+          <code>environments</code>:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+environments:
+  dev:
+    url: https://dev.example.com
+    auto_deploy: true
+    requires_approval: false
+  staging:
+    url: https://staging.example.com
+    auto_deploy: true
+    requires_approval: false
+  production:
+    url: https://example.com
+    auto_deploy: false
+    requires_approval: true</code></pre>
+        <p>
+          <code>auto_deploy</code> controls whether merges to the environment's
+          branch trigger an automatic deployment. <code>requires_approval</code>
+          controls whether a human must approve the deployment before it
+          proceeds.
+        </p>
+        <p>
+          Edit this section with
+          <a href="../commands/gaia-config-env.html"><code>/gaia-config-env</code></a>,
+          which preserves comments and formatting in your YAML files.
+        </p>
+      </section>
+
+      <section id="three-env">
+        <h2>Three-environment chain (dev, staging, production)</h2>
+        <p>
+          This is the most common setup for teams of 5 or more developers. Code
+          flows through three stages:
+        </p>
+        <ol>
+          <li>
+            <strong>Dev:</strong> Feature branches are merged here. Auto-deploy
+            is on. Integration tests run against a shared database. Failures
+            here are expected and cheap.
+          </li>
+          <li>
+            <strong>Staging:</strong> Code that passes dev is promoted to
+            staging. This environment mirrors production as closely as
+            possible -- same infrastructure, same data shape, same secrets
+            format (with test values). QA and stakeholder review happens here.
+          </li>
+          <li>
+            <strong>Production:</strong> Code that passes staging is promoted
+            to production. Auto-deploy is off. A human approves the deployment
+            after reviewing the
+            <a href="../commands/gaia-deploy-checklist.html">deploy checklist</a>.
+          </li>
+        </ol>
+        <pre><code># .gaia/config/project-config.yaml
+ci_cd:
+  promotion_chain:
+    - dev
+    - staging
+    - production</code></pre>
+        <div class="callout">
+          <p class="callout-title">Branch mapping</p>
+          <p>
+            The promotion chain implies branch mapping:
+            <code>dev</code> &rarr; <code>develop</code> branch,
+            <code>staging</code> &rarr; <code>staging</code> branch,
+            <code>production</code> &rarr; <code>main</code> branch. You can
+            override these mappings in the environment configuration if your
+            branch names differ.
+          </p>
+        </div>
+      </section>
+
+      <section id="two-env">
+        <h2>Two-environment chain (staging, production)</h2>
+        <p>
+          For smaller teams (2--5 developers), a two-stage chain is simpler and
+          sufficient. Feature branches merge directly to <code>staging</code>,
+          then promote to <code>production</code>.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+ci_cd:
+  promotion_chain:
+    - staging
+    - production
+
+environments:
+  staging:
+    url: https://staging.example.com
+    auto_deploy: true
+    requires_approval: false
+  production:
+    url: https://example.com
+    auto_deploy: false
+    requires_approval: true</code></pre>
+        <p>
+          The trade-off: without a dev environment, staging is where integration
+          issues surface. If you have flaky integration tests or external
+          dependencies that fail intermittently, staging becomes noisy. In that
+          case, add a dev environment.
+        </p>
+      </section>
+
+      <section id="secrets">
+        <h2>Per-environment secrets</h2>
+        <p>
+          Each environment needs its own set of secrets (API keys, database
+          credentials, third-party tokens). GAIA does not store secrets. It
+          expects your CI platform to provide them.
+        </p>
+        <h3>GitHub Actions</h3>
+        <p>
+          Use GitHub Environments to scope secrets:
+        </p>
+        <ul>
+          <li>Create environments named <code>dev</code>, <code>staging</code>, <code>production</code> in your repository settings.</li>
+          <li>Add secrets to each environment. A <code>DATABASE_URL</code> secret in the <code>staging</code> environment is only available to jobs that reference <code>environment: staging</code>.</li>
+          <li>Add environment protection rules (required reviewers, wait timers) to the <code>production</code> environment.</li>
+        </ul>
+        <h3>GitLab CI</h3>
+        <p>
+          Use CI/CD variable scopes:
+        </p>
+        <ul>
+          <li>Define variables with the "Environment scope" set to <code>dev</code>, <code>staging</code>, or <code>production</code>.</li>
+          <li>Use protected variables for production secrets.</li>
+        </ul>
+        <div class="callout callout-warning">
+          <p class="callout-title">Never commit secrets</p>
+          <p>
+            Do not put secrets in <code>project-config.yaml</code>,
+            <code>.env</code> files, or any file that is committed to version
+            control. Use your CI platform's secret management or an external
+            secrets manager (AWS Secrets Manager, HashiCorp Vault, etc.).
+          </p>
+        </div>
+      </section>
+
+      <section id="deploy-command">
+        <h2>What /gaia-deploy does</h2>
+        <p>
+          <a href="../commands/gaia-deploy.html"><code>/gaia-deploy</code></a>
+          orchestrates a deployment through a fixed sequence:
+        </p>
+        <ol>
+          <li><strong>Pre-deploy gate:</strong> Runs a composite gate check to verify all prerequisites are met (tests passed, reviews approved, checklist complete).</li>
+          <li><strong>Deploy:</strong> Invokes the configured deploy adapter (e.g., Vercel, AWS, GCP, custom script) for the target environment.</li>
+          <li><strong>Health check:</strong> Waits for the deployment to be healthy (HTTP 200 on the environment URL).</li>
+          <li><strong>Post-deploy smoke:</strong> Runs a smoke test suite against the deployed environment.</li>
+          <li><strong>Verdict:</strong> Reports PASSED or FAILED based on the smoke test results.</li>
+        </ol>
+        <p>
+          The deploy is sequential and transparent. There is no auto-retry and
+          no auto-rollback. If the deployment fails, you investigate and decide
+          whether to re-deploy or roll back.
+        </p>
+      </section>
+
+      <section id="pre-deploy-gates">
+        <h2>Pre-deploy gates</h2>
+        <p>
+          Before deploying, GAIA checks that all required gates have passed.
+          Use
+          <a href="../commands/gaia-deploy-checklist.html"><code>/gaia-deploy-checklist</code></a>
+          to generate a pre-deployment verification checklist:
+        </p>
+        <pre><code>/gaia-deploy-checklist</code></pre>
+        <p>
+          The checklist includes items like:
+        </p>
+        <ul>
+          <li>All CI checks passed on the deployment branch.</li>
+          <li>Required code reviews are approved.</li>
+          <li>No open blockers in the current sprint.</li>
+          <li>Database migrations are reviewed and tested.</li>
+          <li>Rollback plan is documented.</li>
+        </ul>
+        <p>
+          For the <code>enterprise</code> CI preset, the checklist is a hard
+          gate -- deployment cannot proceed until all items are checked.
+        </p>
+      </section>
+
+      <section id="post-deploy-smoke">
+        <h2>Post-deploy smoke tests</h2>
+        <p>
+          After a deployment, GAIA runs a smoke test to verify the deployment
+          is healthy. Smoke tests are fast (under 60 seconds) and test only
+          critical paths -- login, main page load, API health endpoint.
+        </p>
+        <p>
+          Configure smoke tests in the <code>test_execution</code> section:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+test_execution:
+  smoke:
+    command: npm run test:smoke
+    timeout_seconds: 60</code></pre>
+        <p>
+          The
+          <a href="../commands/gaia-post-deploy.html"><code>/gaia-post-deploy</code></a>
+          command runs after deployment and includes the smoke test, plus any
+          additional post-deployment checks you configure (performance baselines,
+          error rate monitoring).
+        </p>
+      </section>
+
+      <section id="rollback">
+        <h2>Rollback planning</h2>
+        <p>
+          Every deployment should have a rollback plan. Use
+          <a href="../commands/gaia-rollback-plan.html"><code>/gaia-rollback-plan</code></a>
+          to generate one before deploying.
+        </p>
+        <p>
+          A rollback plan answers:
+        </p>
+        <ul>
+          <li><strong>What triggers a rollback?</strong> (e.g., error rate above 1%, P95 latency above 500ms, smoke test failure)</li>
+          <li><strong>How do you roll back?</strong> (e.g., revert the merge, redeploy the previous version, toggle a feature flag)</li>
+          <li><strong>Who decides?</strong> (e.g., on-call engineer, team lead, automated based on metrics)</li>
+          <li><strong>What about database changes?</strong> (e.g., migrations are backward-compatible, or a down migration is tested)</li>
+        </ul>
+        <div class="callout">
+          <p class="callout-title">Backward-compatible migrations</p>
+          <p>
+            The safest rollback strategy is to ensure every database migration
+            is backward-compatible. The new code works with the new schema, and
+            the old code also works with the new schema. This means you can
+            roll back code without rolling back the database.
+          </p>
+        </div>
+      </section>
+
+      <section id="whats-next">
+        <h2>What to read next</h2>
+        <ul>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a> -- how environments fit into the CI configuration.</li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a> -- which environment setup fits your team.</li>
+          <li><a href="../commands/gaia-deploy.html"><code>/gaia-deploy</code></a> -- full command reference.</li>
+          <li><a href="../commands/gaia-config-env.html"><code>/gaia-config-env</code></a> -- editing environment configuration.</li>
+          <li><a href="../commands/gaia-deploy-checklist.html"><code>/gaia-deploy-checklist</code></a> -- generating a pre-deploy checklist.</li>
+          <li><a href="../commands/gaia-rollback-plan.html"><code>/gaia-rollback-plan</code></a> -- generating a rollback plan.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

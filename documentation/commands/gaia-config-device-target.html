@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-config-device-target - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/configuration.html">Configuration</a><span class="separator">/</span>
+        /gaia-config-device-target
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-config-device-target</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
+          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt><dd><code>&lt;set|show|clear&gt; &lt;platform&gt; [--os-versions ...] [--form-factors ...] [--screen-sizes WxH@D,...]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-config-device-target</code> edits the <code>device_targets</code> section of <code>config/project-config.yaml</code>. The device_targets section defines per-platform device matrices with OS versions, form factors, and screen sizes for mobile testing. The editor preserves all YAML comments and formatting outside the edited section. Every edit goes through a diff preview and confirmation gate before writing.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul><li>You need to add, remove, or modify entries in the <code>device_targets</code> configuration section.</li><li>You set up a new project and need to configure the <code>device_targets</code> section.</li></ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>project-config.yaml must exist.</strong> Run <a href="gaia-init.html"><code>/gaia-init</code></a> to create one if missing.</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-config-device-target show ios
+/gaia-config-device-target set ios --os-versions "16.0,17.0" --form-factors "phone,tablet" --screen-sizes "390x844@3.0"
+/gaia-config-device-target clear android</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the device_targets section</span> Reads the current device_targets block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Present edit menu</span> Shows the current device_targets configuration and an operation menu (add, remove, edit, view, exit).</li><li><span class="step-title">Apply operation</span> Collects the new values and validates them. Screen sizes use the WxH@D format (e.g., 390x844@3.0). The platform must exist in the platforms list.</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th><th>Example</th></tr></thead><tbody><tr><td><code>set|show|clear</code></td><td>Positional argument (required)</td><td>The subcommand to execute.</td><td><code>/gaia-config-device-target show ios</code></td></tr><tr><td><code>platform</code></td><td>Positional argument (required)</td><td>Platform identifier (must exist in <code>platforms[]</code>).</td><td><code>/gaia-config-device-target set ios ...</code></td></tr><tr><td><code>--os-versions</code></td><td>Argument (optional, set only)</td><td>Comma-separated OS version strings.</td><td><code>/gaia-config-device-target set ios --os-versions "16.0,17.0"</code></td></tr><tr><td><code>--form-factors</code></td><td>Argument (optional, set only)</td><td>Comma-separated form factors (phone, tablet, foldable, watch, tv).</td><td><code>/gaia-config-device-target set ios --form-factors "phone,tablet"</code></td></tr><tr><td><code>--screen-sizes</code></td><td>Argument (optional, set only)</td><td>Comma-separated WxH@D values.</td><td><code>/gaia-config-device-target set ios --screen-sizes "390x844@3.0"</code></td></tr></tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Updated device_targets section</td><td><code>config/project-config.yaml</code></td><td>The modified device_targets configuration.</td></tr></tbody></table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-config-device-target
+
+Current device_targets configuration:
+  ios:
+    os_versions: ["17", "18"]
+    form_factors: ["phone", "tablet"]
+
+Operations: [s] set key  [r] remove key  [v] view  [x] exit
+> s
+
+Key: android.os_versions
+Value: ["13", "14", "15"]
+
+Diff preview:
+  device_targets:
+    ios:
+      os_versions: ["17", "18"]
+      form_factors: ["phone", "tablet"]
+  + android:
+  +   os_versions: ["13", "14", "15"]
+
+Apply this edit? [y/n]
+> y
+
+Device_targets section updated. Run /gaia-config-validate to verify.</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul><li><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a> -- validate the modified configuration file.</li><li><a href="gaia-config-show.html"><code>/gaia-config-show device_targets</code></a> -- view the section after editing.</li></ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>device_targets section not found</h3><p>The section does not exist in your config file. The command offers to scaffold a default: <pre><code>device_targets:
+  ios:
+    os_versions: ["16.0", "17.0"]
+    form_factors: [phone, tablet]
+    screen_sizes:
+      - {width: 390, height: 844, density: 3.0}</code></pre></p><h3>Edit cancelled</h3><p>You chose not to apply the edit. The file remains unchanged.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-config-show.html"><code>/gaia-config-show</code></a></td><td>View the configuration file or a specific section.</td></tr><tr><td><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a></td><td>Validate the configuration against the schema.</td></tr></tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/configuration.html">Back to Configuration</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

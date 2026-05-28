@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Development - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="getting-started.html">Getting Started</a></li>
+          <li><a href="discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="planning.html">Planning</a></li>
+          <li><a href="sprint-management.html">Sprint Management</a></li>
+          <li><a href="development.html" class="active">Development</a></li>
+          <li><a href="testing.html">Testing</a></li>
+          <li><a href="reviews.html">Reviews</a></li>
+          <li><a href="validation.html">Validation</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="configuration.html">Configuration</a></li>
+          <li><a href="documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="internal.html">Internal Skills</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        Development
+      </nav>
+
+      <h1>Development</h1>
+      <p>
+        Development commands handle the actual coding work. The flagship
+        command, <code>/gaia-dev-story</code>, implements a complete
+        <a href="../glossary.html#red-green-refactor">TDD</a>-driven development workflow from <a href="../glossary.html#story">story</a> loading through code
+        review and merge. Quick-flow variants handle smaller changes that
+        do not need the full story lifecycle.
+      </p>
+
+      <h2>Commands in this category</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-dev-story.html">/gaia-dev-story</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Implement a user story end-to-end with TDD: plan, write failing tests, implement, refactor, commit, push, PR, and merge.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-quick-spec.html">/gaia-quick-spec</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Create a quick technical spec for a small change that does not need a full PRD or story.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-quick-dev.html">/gaia-quick-dev</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Implement a quick spec by loading it and delegating to the appropriate stack developer.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-fix-story.html">/gaia-fix-story</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Apply validation findings to a story file and re-validate to move it back to ready-for-dev.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-add-feature.html">/gaia-add-feature</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Triage and route a fix, enhancement, or feature through only the affected artifacts.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-triage-findings.html">/gaia-triage-findings</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Scan story files for development findings and triage each into a new backlog story, existing story, or dismiss.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-change-request.html">/gaia-change-request</a></span>
+          <span class="tag tag-deprecated">deprecated</span>
+          <span class="command-summary">Redirects to <code>/gaia-add-feature</code>. Kept for backward compatibility.</span>
+        </li>
+      </ul>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

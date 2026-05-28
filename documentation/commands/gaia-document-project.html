@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-document-project - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/documentation.html">Documentation &amp; Editorial</a><span class="separator">/</span>
+        /gaia-document-project
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-document-project</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/documentation.html">Documentation &amp; Editorial</a></dd>
+          <dt>Lifecycle phase:</dt><dd>Any</dd>
+          
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-document-project</code> scans an existing project's filesystem, detects its technology stack, maps its directory structure, and produces a comprehensive <code>project-documentation.md</code> artifact optimized for onboarding humans and AI agents.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul><li>You want to document an existing project for team onboarding.</li><li>You want to generate a project overview for AI agents to understand your codebase.</li></ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>No prerequisites.</strong> Works on any project with source files.</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-document-project</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list"><li><span class="step-title">Scan project</span> Discovers source files, config files, and existing documentation using Glob patterns (capped at 500 files per pattern).</li><li><span class="step-title">Detect technology</span> Reads manifest files (package.json, pubspec.yaml, etc.) to identify languages, frameworks, dependencies, and test frameworks.</li><li><span class="step-title">Map structure</span> Produces a directory overview focused on the top-level layout with entry point detection from manifest fields.</li><li><span class="step-title">Generate artifact</span> Writes the project documentation to <code>.gaia/artifacts/planning-artifacts/project-documentation.md</code>.</li></ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody></tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Project documentation</td><td><code>.gaia/artifacts/planning-artifacts/project-documentation.md</code></td><td>Comprehensive project overview with stack, structure, and conventions.</td></tr></tbody></table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-document-project
+
+Scanning project...
+  156 source files across 12 directories.
+  4 config files, 1 package manifest.
+
+Technology detected:
+  Language: TypeScript
+  Framework: Express.js
+  Test: Jest
+
+Written to .gaia/artifacts/planning-artifacts/project-documentation.md</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul><li><a href="gaia-project-context.html"><code>/gaia-project-context</code></a> -- generate a compact AI-optimized context file.</li></ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>No source files detected</h3><p>The project directory is empty or all files matched the exclusion list. An empty documentation artifact is still created.</p><h3>Scan truncated at 500 files</h3><p>Large projects cap scanning to protect performance. Results may be incomplete.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-project-context.html"><code>/gaia-project-context</code></a></td><td>Compact AI-optimized context. This command produces the comprehensive version.</td></tr><tr><td><a href="gaia-brownfield.html"><code>/gaia-brownfield</code></a></td><td>Full onboarding of an existing project including gap analysis.</td></tr></tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/documentation.html">Back to Documentation &amp; Editorial</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

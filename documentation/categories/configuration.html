@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configuration - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="getting-started.html">Getting Started</a></li>
+          <li><a href="discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="planning.html">Planning</a></li>
+          <li><a href="sprint-management.html">Sprint Management</a></li>
+          <li><a href="development.html">Development</a></li>
+          <li><a href="testing.html">Testing</a></li>
+          <li><a href="reviews.html">Reviews</a></li>
+          <li><a href="validation.html">Validation</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="configuration.html" class="active">Configuration</a></li>
+          <li><a href="documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="internal.html">Internal Skills</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        Configuration
+      </nav>
+
+      <h1>Configuration</h1>
+      <p>
+        Configuration commands let you view and edit your project's
+        <code>config/project-config.yaml</code> file section by section,
+        manage CI/CD pipelines (<a href="../glossary.html#promotion-chain">promotion chain</a>), configure tool <a href="../glossary.html#adapter">adapters</a>, and toggle
+        the <a href="../glossary.html#test-execution-bridge">Test Execution Bridge</a>. Each section editor preserves YAML comments and formatting.
+      </p>
+
+      <h2>View configuration</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-show.html">/gaia-config-show</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Display the project configuration (entire file or a single named section). Read-only.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-validate.html">/gaia-config-validate</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Validate project-config.yaml against its JSON schema and report violations.</span>
+        </li>
+      </ul>
+
+      <h2>Section editors</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-stack.html">/gaia-config-stack</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit the stacks section (languages, paths, frameworks per service).</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-env.html">/gaia-config-env</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit the environments section (names, URLs, auth types, credential references).</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-test.html">/gaia-config-test</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit the test_execution section (tiers, placement, adapters).</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-rubric.html">/gaia-config-rubric</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit the rubrics section (review criteria and thresholds).</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-compliance.html">/gaia-config-compliance</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit the compliance section (GDPR, HIPAA, PCI-DSS, SOC2, WCAG, etc.).</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-tool.html">/gaia-config-tool</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit the tool_adapters section (custom adapter configuration).</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-platform.html">/gaia-config-platform</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit the platforms section (add, remove, or list platform identifiers).</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-device-target.html">/gaia-config-device-target</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit device_targets per platform (OS versions, form factors, screen sizes).</span>
+        </li>
+      </ul>
+
+      <h2>CI/CD</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-ci-setup.html">/gaia-ci-setup</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Scaffold a CI/CD quality pipeline for your chosen CI platform.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-ci-edit.html">/gaia-ci-edit</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit the promotion chain in global.yaml (add, remove, edit, or reorder environments).</span>
+        </li>
+      </ul>
+
+      <h2>Tool adapters</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-list-tools.html">/gaia-list-tools</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">List all available tool adapters grouped by category with availability status.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-tool-info.html">/gaia-tool-info</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Show full metadata and availability for one named tool adapter.</span>
+        </li>
+      </ul>
+
+      <h2>Test execution bridge</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-bridge-enable.html">/gaia-bridge-enable</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Enable the Test Execution Bridge in your project configuration.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-bridge-disable.html">/gaia-bridge-disable</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Disable the Test Execution Bridge in your project configuration.</span>
+        </li>
+      </ul>
+
+      <h2>Statusline</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-statusline-enable.html">/gaia-statusline-enable</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Enable the GAIA statusline in Claude Code settings.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-statusline-disable.html">/gaia-statusline-disable</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Disable the GAIA statusline without removing the runtime files.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-statusline.html">Statusline Reference</a></span>
+          <span class="tag tag-internal">internal</span>
+          <span class="command-summary">Reference documentation for statusline themes, glyphs, width ladder, and environment variables.</span>
+        </li>
+      </ul>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

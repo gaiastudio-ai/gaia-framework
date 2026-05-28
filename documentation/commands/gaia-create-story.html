@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-create-story - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#arguments">Arguments</a></li><li><a href="#orchestration-mode">Orchestration mode</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#examples">Examples</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/sprint-management.html">Sprint Management</a><span class="separator">/</span>/gaia-create-story</nav>
+      <header class="command-header">
+        <div class="command-title"><h1>/gaia-create-story</h1><span class="tag tag-user">user-facing</span></div>
+        <dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/sprint-management.html">Sprint Management</a></dd><dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd><dt>Arguments:</dt><dd><code>[story-key]</code></dd></dl>
+      </header>
+
+      <section id="arguments"><h2>Arguments</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>story-key</code></td>
+              <td>String (<code>E{n}-S{n}</code>)</td>
+              <td>No</td>
+              <td>Interactive selection</td>
+              <td>The story to create, in <code>E{n}-S{n}</code> format (e.g., <code>E3-S7</code>). The key must already exist in <code>epics-and-stories.md</code>. When omitted, the command lists all stories without files and prompts for selection.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>The story file is written to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code> with the 15 required frontmatter fields. The <code>priority_flag</code> field accepts <code>null</code> (default), <code>"next-sprint"</code>, or <code>"hotfix"</code> (E40-S3, PR #772, ADR-109 &sect;D3). The <code>"hotfix"</code> value is human-set only and causes <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> to auto-inject the story into the active sprint.</p>
+      </section>
+
+      <section id="what-it-does"><h2>What it does</h2>
+        <p><code>/gaia-create-story</code> creates a detailed story file from the epics-and-stories breakdown. It elaborates the story with acceptance criteria in Given/When/Then format, tasks and subtasks, test scenarios, and dependencies. The story is written to its epic directory and registered in the backlog.</p>
+      </section>
+
+      <section id="when-to-use"><h2>When to use it</h2>
+        <ul>
+          <li>You have an epic with stories listed in <code>epics-and-stories.md</code> and need to create the detailed story file before development can begin.</li>
+          <li>Sprint planning flagged a story as "no individual file" -- this command creates it.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites"><h2>Prerequisites</h2>
+        <ul>
+          <li><strong>Epics and stories must exist.</strong> The story key must appear in <code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code>. Run <a href="gaia-create-epics.html"><code>/gaia-create-epics</code></a> first.</li>
+          <li><strong>No existing story in a non-backlog status.</strong> If a story file already exists and is past <code>backlog</code> status, the command halts and directs you to <a href="gaia-fix-story.html"><code>/gaia-fix-story</code></a>.</li>
+        </ul>
+      </section>
+      <section id="orchestration-mode">
+        <h2>Orchestration mode</h2>
+        <p>When <code>/gaia-create-story</code> starts in <strong>subagent mode (Mode A -- the default)</strong>, the framework emits a one-shot warning to your conversation. The warning text:</p>
+        <pre><code>
+────────────────────────────────────────────────────────────────────────────
+GAIA orchestration: running in subagent mode (Mode A)
+
+The skill you're invoking belongs to a class (heavy-procedural or
+conversational) whose output benefits from cross-step context. Mode A
+dispatches each sub-agent in its own forked context, so context may
+be lossy between steps — sub-agents return summaries, not full reasoning.
+
+For the full-fidelity experience, enable Mode B (Agent Teams):
+  1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
+  2. Add orchestration.mode: team to config/project-config.yaml.
+
+Mode B uses persistent teammates that preserve in-conversation state
+across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+
+This warning is shown once per session.
+────────────────────────────────────────────────────────────────────────────
+</code></pre>
+
+        <h3>Why Mode B is better for this command</h3>
+        <p>The <code>/gaia-create-story</code> skill declares <code>orchestration_class: heavy-procedural</code> in its SKILL.md frontmatter. Heavy-procedural skills produce output that benefits from cross-step context -- under Mode A every sub-agent dispatch runs in its own forked context and can only return a summary back to the orchestrator, losing the full reasoning trace of every prior step. Mode B uses persistent teammates that retain in-conversation state across dispatches, so each agent's contribution can build on what was said before instead of receiving only a summary.</p>
+
+        <h3>How to enable Mode B</h3>
+        <p>Both steps are required. If either is missing, the framework falls back silently to Mode A and the warning fires again on the next session.</p>
+        <p><strong>Step 1 -- set the environment variable:</strong></p>
+        <pre><code>export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code></pre>
+        <p>Add this to your shell rc file to persist across sessions, or set it in Claude Code's <code>settings.json</code>.</p>
+        <p><strong>Step 2 -- add the YAML block to <code>config/project-config.yaml</code>:</strong></p>
+        <pre><code>orchestration:
+  mode: team</code></pre>
+        <h3>One-shot semantics</h3>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+      </section>
+
+
+      <section id="how-to-invoke"><h2>How to invoke</h2>
+        <pre><code>/gaia-create-story E3-S7</code></pre>
+        <p>Pass the story key. If omitted, the command displays stories without files and asks you to select one.</p>
+      </section>
+
+      <section id="step-by-step"><h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Select story</span> Locates the story in epics-and-stories.md and checks whether a file already exists.</li>
+          <li><span class="step-title">Load context</span> Reads the architecture, UX design, and PRD for elaboration context.</li>
+          <li><span class="step-title">Elaborate story</span> Offers two paths: answer elaboration questions yourself, or auto-delegate to PM and Architect agents (and UX Designer if the story has UI scope). For medium and larger stories, edge-case analysis runs automatically.</li>
+          <li><span class="step-title">Generate story file</span> Writes the story file with complete frontmatter (15 required fields), acceptance criteria, tasks, test scenarios, and dependencies to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code>.</li>
+          <li><span class="step-title">Register in backlog</span> Registers the story with <code>status: backlog</code> across all tracking surfaces.</li>
+          <li><span class="step-title">Validate</span> Runs validation against the story file. If critical issues are found, attempts auto-fix (up to 3 attempts). On pass, transitions the story to <code>ready-for-dev</code>.</li>
+        </ol>
+      </section>
+
+      <section id="inputs"><h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>story-key</code></td><td>Command argument</td><td>The story to create, in <code>E{n}-S{n}</code> format.</td></tr>
+            <tr><td>Epics and stories</td><td><code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code></td><td>Story summary and epic context.</td></tr>
+            <tr><td>Architecture</td><td><code>.gaia/artifacts/planning-artifacts/architecture.md</code></td><td>Technical context for elaboration.</td></tr>
+            <tr><td>UX design</td><td><code>.gaia/artifacts/planning-artifacts/ux-design.md</code></td><td>UI context (when applicable).</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs"><h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td>Story file</td><td><code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code></td><td>Complete story with frontmatter, ACs, tasks, and test scenarios.</td></tr>
+            <tr><td>Updated tracking</td><td>Multiple surfaces</td><td>Story registered with <code>backlog</code> (or <code>ready-for-dev</code> after validation).</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="examples"><h2>Examples</h2>
+
+        <h3>1. Happy path with story key</h3>
+        <pre><code>&gt; /gaia-create-story E3-S7
+
+Loading story E3-S7 from epics-and-stories.md...
+  Title: User authentication
+  Epic: E3 -- Security
+
+How would you like to elaborate this story?
+[u] I'll answer the elaboration questions myself
+[a] Auto-delegate to PM (Derek) and Architect (Theo)   -- recommended
+&gt; a
+
+Delegating to PM and Architect...
+
+  PM (Derek): 3 edge cases identified, AC prioritization complete.
+  Architect (Theo): 2 implementation constraints from ADR-012.
+
+Edge case analysis: 6 scenarios generated (boundary, error, security).
+Appending edge-case ACs to story...
+
+Writing story file to .gaia/artifacts/implementation-artifacts/epic-E3-security/stories/E3-S7-user-authentication.md...
+  Frontmatter: 15/15 required fields populated.
+  ACs: 5 primary + 3 edge-case (Given/When/Then format).
+  Tasks: 8 subtasks.
+  Test scenarios: 6 rows.
+
+Registering E3-S7 as backlog...
+
+Validation: PASSED (0 critical, 0 warning).
+Transitioning E3-S7 to ready-for-dev.
+
+Story E3-S7 created and ready for development.</code></pre>
+
+        <h3>2. Interactive selection (no key)</h3>
+        <pre><code>&gt; /gaia-create-story
+
+Loading epics-and-stories.md...
+
+Stories without individual files:
+  [1] E5-S12  Add webhook retry logic          (M, P0)
+  [2] E5-S14  Improve error messages            (S, P1)
+  [3] E8-S3   Config validation UI               (L, P2)
+
+Select a story number: 1
+
+Loading story E5-S12 from epics-and-stories.md...
+  Title: Add webhook retry logic
+  Epic: E5 -- Integrations
+
+How would you like to elaborate this story?
+...</code></pre>
+
+        <h3>3. Hotfix priority_flag workflow (E40-S3, ADR-109 &sect;D3)</h3>
+        <p>When a story's frontmatter has <code>priority_flag: "hotfix"</code> (human-set), the story file is created normally. The <code>"hotfix"</code> value is preserved in the frontmatter. When <code>/gaia-sprint-plan</code> runs next, it auto-injects the story into the active sprint via <code>sprint-state.sh inject</code>.</p>
+        <pre><code>&gt; /gaia-create-story E12-S4
+
+Loading story E12-S4 from epics-and-stories.md...
+  Title: Fix payment webhook timeout
+  Epic: E12 -- Hotfix queue
+
+[gaia-create-story] Canonical basename preview: E12-S4-fix-payment-webhook-timeout.md
+
+Writing story file...
+  Frontmatter: 15/15 required fields populated.
+  priority_flag: "hotfix"
+
+Registering E12-S4 as backlog...
+Validation: PASSED (0 critical, 0 warning).
+Transitioning E12-S4 to ready-for-dev.
+
+Story E12-S4 created. priority_flag: "hotfix" preserved.
+Next: /gaia-sprint-plan will auto-inject this story into the active sprint.</code></pre>
+
+        <h3>4. Regenerating an existing backlog story</h3>
+        <p>When a story file already exists with <code>status: backlog</code>, the command warns before overwriting. If the status is anything past <code>backlog</code>, the command halts.</p>
+        <pre><code>&gt; /gaia-create-story E5-S12
+
+Loading story E5-S12 from epics-and-stories.md...
+
+WARNING: Story file exists with status backlog. Proceeding will regenerate it.
+Continue? y
+
+Writing story file to .gaia/artifacts/implementation-artifacts/epic-E5-integrations/stories/E5-S12-add-webhook-retry-logic.md...
+...</code></pre>
+
+        <h3>5. Validation failure -- recovery via /gaia-fix-story</h3>
+        <p>If validation fails after the 3-attempt auto-fix cap, the story remains in <code>validating</code> status. Use <code>/gaia-fix-story</code> to resolve the remaining findings manually.</p>
+        <pre><code>&gt; /gaia-create-story E6-S9
+
+...
+Writing story file...
+Registering E6-S9 as backlog...
+
+Validation attempt 1/3: 1 CRITICAL (missing traces_to field).
+  Auto-fix: added traces_to: [FR-042].
+
+Validation attempt 2/3: 1 WARNING (AC-3 missing Given/When/Then format).
+  Auto-fix: reformatted AC-3.
+
+Validation attempt 3/3: 1 WARNING (dependency E6-S8 not in done status).
+  Cannot auto-fix: dependency state is external.
+
+Terminal verdict: FAILED (review-gate.sh updated).
+Story E6-S9 remains in validating status.
+
+Run /gaia-fix-story E6-S9 to resolve the remaining findings.</code></pre>
+      </section>
+
+      <section id="what-next"><h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> -- include the new story in a sprint.</li>
+          <li><a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a> -- implement the story immediately if it is in a sprint.</li>
+          <li><a href="gaia-atdd.html"><code>/gaia-atdd</code></a> -- generate acceptance test skeletons for high-risk stories.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting"><h2>Troubleshooting</h2>
+        <h3>"Story is in 'in-progress' status"</h3>
+        <p>A story file already exists and is past backlog. Use <a href="gaia-fix-story.html"><code>/gaia-fix-story</code></a> to edit it.</p>
+        <h3>"epics-and-stories.md not found"</h3>
+        <p>Run <a href="gaia-create-epics.html"><code>/gaia-create-epics</code></a> to create the breakdown first.</p>
+        <h3>Validation fails after 3 attempts</h3>
+        <p>The story remains in <code>validating</code> status. Run <a href="gaia-fix-story.html"><code>/gaia-fix-story</code></a> to manually resolve the remaining findings.</p>
+      
+        <h3>I keep seeing the GAIA orchestration warning every time I start this command</h3>
+        <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
+        <ul>
+          <li><code>echo $CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> returns <code>1</code> (not empty)</li>
+          <li><code>config/project-config.yaml</code> contains:
+            <pre><code>orchestration:
+  mode: team</code></pre>
+          </li>
+        </ul>
+        <p>If either is missing the framework silently uses Mode A and re-emits the warning each session.</p>
+</section>
+
+      <section id="related"><h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead>
+          <tbody>
+            <tr><td><a href="gaia-create-epics.html"><code>/gaia-create-epics</code></a></td><td>Creates the epics-and-stories breakdown that this command reads.</td></tr>
+            <tr><td><a href="gaia-fix-story.html"><code>/gaia-fix-story</code></a></td><td>Fixes validation findings on an existing story.</td></tr>
+            <tr><td><a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a></td><td>Implements the story after it reaches ready-for-dev.</td></tr>
+            <tr><td><a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a></td><td>Includes the story in a sprint.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer"><p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p></footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CI Scenarios by Team Size - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html" class="active">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#solo">Solo developer</a></li>
+          <li><a href="#small-team">Small team (2--5 devs)</a></li>
+          <li><a href="#standard">Standard team (5--20 devs)</a></li>
+          <li><a href="#enterprise">Enterprise (20+ devs)</a></li>
+          <li><a href="#choosing">Choosing the right scenario</a></li>
+          <li><a href="#whats-next">What to read next</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        CI Scenarios by Team Size
+      </nav>
+
+      <h1>CI Scenarios by Team Size</h1>
+      <p>
+        Different team sizes need different CI configurations. A solo developer
+        does not need the same promotion gates as a 50-person engineering org.
+        This tutorial shows concrete <code>project-config.yaml</code> excerpts
+        for four common scenarios, with guidance on which checks to enable,
+        which branch protections to set up, and what local hooks help.
+      </p>
+
+      <div class="callout">
+        <p class="callout-title">Prerequisites</p>
+        <p>
+          Read <a href="configuring-ci-pipelines.html">Configuring CI
+          Pipelines</a> first for an overview of promotion chains, presets,
+          triggers, and concurrency groups. This tutorial builds on those
+          concepts.
+        </p>
+      </div>
+
+      <section id="overview">
+        <h2>Overview</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Scenario</th>
+              <th>Preset</th>
+              <th>Environments</th>
+              <th>Code review</th>
+              <th>CI time goal</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Solo</td>
+              <td><code>solo</code></td>
+              <td>main only</td>
+              <td>None</td>
+              <td>&lt; 3 min</td>
+            </tr>
+            <tr>
+              <td>Small team</td>
+              <td><code>small-team</code></td>
+              <td>staging &rarr; prod</td>
+              <td>1 approval</td>
+              <td>&lt; 8 min</td>
+            </tr>
+            <tr>
+              <td>Standard</td>
+              <td><code>standard</code></td>
+              <td>dev &rarr; staging &rarr; prod</td>
+              <td>2 approvals</td>
+              <td>&lt; 12 min</td>
+            </tr>
+            <tr>
+              <td>Enterprise</td>
+              <td><code>enterprise</code></td>
+              <td>dev &rarr; staging &rarr; pre-prod &rarr; prod</td>
+              <td>2 approvals + CODEOWNERS</td>
+              <td>&lt; 20 min</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="solo">
+        <h2>Solo developer</h2>
+        <h3>Why this setup</h3>
+        <p>
+          You are the only contributor. There is no one to review PRs, and you
+          deploy directly from <code>main</code>. You want fast feedback on
+          every push, with no ceremony.
+        </p>
+
+        <h3>Configuration</h3>
+        <pre><code># .gaia/config/project-config.yaml
+ci_cd:
+  platform: github-actions
+  preset: solo
+  promotion_chain:
+    - main
+  triggers:
+    push_to_main:
+      checks:
+        - lint
+        - unit-tests
+        - build</code></pre>
+
+        <h3>Branch protection</h3>
+        <p>
+          None required. You push directly to <code>main</code>. If you want a
+          safety net, enable "require status checks to pass before merging" but
+          skip the approval requirement.
+        </p>
+
+        <h3>Suggested local hooks</h3>
+        <p>
+          Set up a pre-push hook that runs lint and unit tests locally. This
+          catches failures before the push reaches CI, keeping your feedback
+          loop under 30 seconds.
+        </p>
+        <pre><code># .husky/pre-push (or equivalent for your stack)
+npm run lint
+npm test</code></pre>
+
+        <h3>What to skip</h3>
+        <p>
+          Skip integration tests in CI if they take more than 2 minutes. Run
+          them locally or in a nightly job instead. Skip security scans on
+          every push -- run them weekly.
+        </p>
+      </section>
+
+      <section id="small-team">
+        <h2>Small team (2--5 developers)</h2>
+        <h3>Why this setup</h3>
+        <p>
+          You have a handful of contributors who need to review each other's
+          work. A single staging environment is enough for pre-production
+          testing. PRs are your integration point.
+        </p>
+
+        <h3>Configuration</h3>
+        <pre><code># .gaia/config/project-config.yaml
+ci_cd:
+  platform: github-actions
+  preset: small-team
+  promotion_chain:
+    - staging
+    - production
+  concurrency:
+    group: ci-${{ github.ref }}
+    cancel_in_progress: true
+  triggers:
+    pull_request:
+      checks:
+        - lint
+        - unit-tests
+        - integration-tests
+        - security-scan
+    push_to_staging:
+      checks:
+        - smoke-test
+    push_to_production:
+      checks:
+        - smoke-test
+        - deploy</code></pre>
+
+        <h3>Branch protection</h3>
+        <ul>
+          <li>Require 1 approval before merging to <code>staging</code>.</li>
+          <li>Require status checks (<code>lint</code>, <code>unit-tests</code>, <code>integration-tests</code>) to pass.</li>
+          <li>Enable "dismiss stale reviews" so approvals expire when new commits are pushed.</li>
+        </ul>
+
+        <h3>Suggested local hooks</h3>
+        <pre><code># .husky/pre-commit
+npm run lint --fix
+
+# .husky/pre-push
+npm test</code></pre>
+        <p>
+          Lint on commit so formatting issues never reach the PR. Test on push
+          so CI failures are rare.
+        </p>
+
+        <h3>Key principle: test on PR, smoke on merge</h3>
+        <p>
+          The full test suite runs when the PR is opened or updated. When the
+          PR is merged to <code>staging</code>, a fast smoke test confirms the
+          deploy artifact is healthy. This avoids running the full suite twice.
+        </p>
+      </section>
+
+      <section id="standard">
+        <h2>Standard team (5--20 developers)</h2>
+        <h3>Why this setup</h3>
+        <p>
+          Multiple developers are landing changes daily. You need a dev
+          environment for integration testing before staging, and stricter
+          review requirements to catch issues before they reach production.
+        </p>
+
+        <h3>Configuration</h3>
+        <pre><code># .gaia/config/project-config.yaml
+ci_cd:
+  platform: github-actions
+  preset: standard
+  promotion_chain:
+    - dev
+    - staging
+    - production
+  concurrency:
+    group: ci-${{ github.ref }}
+    cancel_in_progress: true
+  triggers:
+    pull_request:
+      checks:
+        - lint
+        - unit-tests
+        - integration-tests
+        - security-scan
+    push_to_dev:
+      checks:
+        - smoke-test
+        - deploy-dev
+    push_to_staging:
+      checks:
+        - smoke-test
+        - deploy-staging
+    push_to_production:
+      checks:
+        - smoke-test
+        - deploy-production
+
+environments:
+  dev:
+    auto_deploy: true
+  staging:
+    auto_deploy: true
+    requires_approval: false
+  production:
+    auto_deploy: false
+    requires_approval: true</code></pre>
+
+        <h3>Branch protection</h3>
+        <ul>
+          <li>Require 2 approvals before merging to <code>dev</code>.</li>
+          <li>Require all status checks to pass.</li>
+          <li>Require branches to be up-to-date before merging (linear history).</li>
+          <li>Protect <code>staging</code> and <code>main</code> branches -- merges only via automation or admin.</li>
+        </ul>
+
+        <h3>Suggested local hooks</h3>
+        <pre><code># .husky/pre-commit
+npx lint-staged
+
+# .husky/pre-push
+npm test -- --bail</code></pre>
+        <p>
+          Use <code>lint-staged</code> to lint only changed files on commit.
+          Use <code>--bail</code> on pre-push to fail fast on the first broken
+          test.
+        </p>
+
+        <h3>Test tiering</h3>
+        <p>
+          With a larger team, test suites grow. Split tests into tiers:
+        </p>
+        <ul>
+          <li><strong>PR tier:</strong> unit tests + fast integration tests (&lt; 5 min).</li>
+          <li><strong>Merge tier:</strong> smoke tests only (&lt; 1 min).</li>
+          <li><strong>Nightly tier:</strong> full E2E suite, security scans, performance tests.</li>
+        </ul>
+        <p>
+          See <a href="test-strategy-configuration.html">Test Strategy
+          Configuration</a> for details on configuring test tiers.
+        </p>
+      </section>
+
+      <section id="enterprise">
+        <h2>Enterprise (20+ developers)</h2>
+        <h3>Why this setup</h3>
+        <p>
+          You have compliance requirements (SOC 2, HIPAA, PCI-DSS), multiple
+          teams contributing to the same codebase, and a pre-production
+          environment for final validation before production rollout.
+        </p>
+
+        <h3>Configuration</h3>
+        <pre><code># .gaia/config/project-config.yaml
+ci_cd:
+  platform: github-actions
+  preset: enterprise
+  promotion_chain:
+    - dev
+    - staging
+    - pre-prod
+    - production
+  concurrency:
+    group: ci-${{ github.ref }}
+    cancel_in_progress: true
+  triggers:
+    pull_request:
+      checks:
+        - lint
+        - unit-tests
+        - integration-tests
+        - security-scan
+        - license-check
+    push_to_dev:
+      checks:
+        - smoke-test
+        - deploy-dev
+    push_to_staging:
+      checks:
+        - smoke-test
+        - deploy-staging
+        - regression-tests
+    push_to_pre_prod:
+      checks:
+        - smoke-test
+        - deploy-pre-prod
+        - performance-tests
+        - accessibility-tests
+    push_to_production:
+      checks:
+        - deploy-production
+        - post-deploy-smoke
+
+environments:
+  dev:
+    auto_deploy: true
+  staging:
+    auto_deploy: true
+  pre-prod:
+    auto_deploy: false
+    requires_approval: true
+  production:
+    auto_deploy: false
+    requires_approval: true
+
+compliance:
+  regimes:
+    - soc2
+  audit_log: true</code></pre>
+
+        <h3>Branch protection</h3>
+        <ul>
+          <li>Require 2 approvals, with CODEOWNERS rules for critical paths.</li>
+          <li>Require all status checks to pass.</li>
+          <li>Require signed commits.</li>
+          <li>Restrict who can merge to <code>staging</code> and <code>main</code>.</li>
+          <li>Enable audit logging for all merges.</li>
+        </ul>
+
+        <h3>Promotion gates</h3>
+        <p>
+          The enterprise preset adds explicit gates between environments. The
+          pre-prod &rarr; production promotion requires a manual approval step.
+          Use
+          <a href="../commands/gaia-deploy-checklist.html"><code>/gaia-deploy-checklist</code></a>
+          to generate a pre-deployment verification checklist before approving.
+        </p>
+
+        <h3>Compliance considerations</h3>
+        <p>
+          Enable the <code>compliance.regimes</code> setting to tell GAIA
+          which compliance frameworks apply. This affects which checks are
+          required at each gate and which audit artifacts are generated. Use
+          <a href="../commands/gaia-config-compliance.html"><code>/gaia-config-compliance</code></a>
+          to configure regimes after initial setup.
+        </p>
+      </section>
+
+      <section id="choosing">
+        <h2>Choosing the right scenario</h2>
+        <p>
+          Ask yourself these questions:
+        </p>
+        <ul>
+          <li><strong>How many people merge code weekly?</strong> Solo = 1, small = 2--5, standard = 5--20, enterprise = 20+.</li>
+          <li><strong>Do you need pre-production validation?</strong> If yes, standard or enterprise.</li>
+          <li><strong>Do you have compliance requirements?</strong> If yes, enterprise.</li>
+          <li><strong>Is CI time a problem?</strong> Start with the simplest preset that meets your needs and upgrade later. Overengineering CI is as costly as underengineering it.</li>
+        </ul>
+        <p>
+          You can change presets at any time with
+          <a href="../commands/gaia-ci-edit.html"><code>/gaia-ci-edit</code></a>
+          and regenerate your workflows with
+          <a href="../commands/gaia-ci-setup.html"><code>/gaia-ci-setup --regenerate</code></a>.
+        </p>
+      </section>
+
+      <section id="layered-model-by-size">
+        <h2>The layered model across team sizes (E98 / ADR-114)</h2>
+        <p>
+          The four-class prefix contract (FR-516: <code>gaia-*.yml</code> generated, overlays,
+          <code>user-*.yml</code> user-owned, no-prefix migration-eligible) and the four-phase
+          stitching order (FR-517) scale across all team sizes -- but you'll use them differently:
+        </p>
+        <ul>
+          <li><strong>Solo + small-team</strong> -- you'll mostly rely on the
+            <code>ci_cd.template_overrides:</code> declarative section (FR-518) to disable a job, bump
+            a timeout, or pin an adapter version. Overlay files are reserved for the one or two
+            project-specific jobs you really need (coverage upload, notification, deploy hook).</li>
+          <li><strong>Standard</strong> -- you'll author <code>gaia-ci.user-jobs.yml</code> for the
+            project-specific quality gates your domain demands (PII scanner, accessibility audit,
+            performance budget) plus a <code>gaia-ci.user-steps.yml</code> for the per-job setup steps
+            shared across runs.</li>
+          <li><strong>Enterprise</strong> -- you'll typically have a separate
+            <code>user-compliance-audit.yml</code> (entirely user-authored, GAIA never touches) for
+            the compliance team's evidence collection, alongside the GAIA-generated
+            <code>gaia-pre-merge.yml</code> for the standard gates. The
+            <code>template_overrides.disable:</code> list cannot remove the five SR-78 security gates
+            (commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit),
+            which is a security feature -- it prevents accidental override at scale.</li>
+        </ul>
+        <p>
+          On a pre-ADR-114 project, the FR-519 auto-rename migration flow runs once on the first
+          <code>/gaia-config-ci --regenerate</code> after upgrade. You'll be prompted per-file:
+          rename to <code>gaia-{base}.yml</code> + scaffold overlays, rename to
+          <code>user-{base}.yml</code>, or skip and defer. The flow is backup-first -- a sha256-verified
+          copy lives at <code>.gaia-backup/ci-regen-{timestamp}/</code> before any rename.
+        </p>
+      </section>
+
+      <section id="whats-next">
+        <h2>What to read next</h2>
+        <ul>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a> -- the concepts behind these scenarios.</li>
+          <li><a href="environments-and-promotion.html">Environments and Promotion</a> -- deep dive on per-environment configuration.</li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a> -- how to configure test tiers and execution.</li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a> -- how project structure affects CI configuration.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

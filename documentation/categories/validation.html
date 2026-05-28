@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Validation - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="getting-started.html">Getting Started</a></li>
+          <li><a href="discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="planning.html">Planning</a></li>
+          <li><a href="sprint-management.html">Sprint Management</a></li>
+          <li><a href="development.html">Development</a></li>
+          <li><a href="testing.html">Testing</a></li>
+          <li><a href="reviews.html">Reviews</a></li>
+          <li><a href="validation.html" class="active">Validation</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="configuration.html">Configuration</a></li>
+          <li><a href="documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="internal.html">Internal Skills</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        Validation
+      </nav>
+
+      <h1>Validation</h1>
+      <p>
+        Validation commands verify that your project artifacts are accurate,
+        complete, and internally consistent. They compare claims in your
+        documents against the actual codebase and ground truth, flag
+        discrepancies, and help you fix them before they become bugs.
+      </p>
+
+      <h2>Commands in this category</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-val-validate.html">/gaia-val-validate</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Validate an artifact against your codebase and ground truth -- scans file paths, verifies claims, reports findings.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-val-validate-plan.html">/gaia-val-validate-plan</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Validate an implementation plan before execution -- catches incorrect file targets and scope issues.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-validate-story.html">/gaia-validate-story</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Full story validation with factual verification, recording the outcome as PASSED, FAILED, or UNVERIFIED.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-validate-rubric.html">/gaia-validate-rubric</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Validate a rubric file (JSON or YAML) against the rubric schema.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-validate-framework.html">/gaia-validate-framework</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Scan the GAIA framework tree for consistency, broken references, and missing components.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-refresh-ground-truth.html">/gaia-refresh-ground-truth</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Rescan the filesystem and update the ground-truth file used by the validator.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-val-save.html">/gaia-val-save</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Persist validation session decisions and findings to memory files.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-check-dod.html">/gaia-check-dod</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Check the Definition of Done checklist for a story, reporting per-item checked/unchecked state.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-check-review-gate.html">/gaia-check-review-gate</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Check the composite Review Gate status and transition story to done if all reviews pass.</span>
+        </li>
+      </ul>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

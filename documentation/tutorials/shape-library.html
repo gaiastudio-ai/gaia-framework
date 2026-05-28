@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shape: Library - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+          <li><a href="shape-plugin.html">Shape: Plugin</a></li>
+          <li><a href="shape-library.html" class="active">Shape: Library</a></li>
+          <li><a href="shape-cli.html">Shape: CLI</a></li>
+          <li><a href="shape-mobile-app.html">Shape: Mobile App</a></li>
+          <li><a href="shape-container-image.html">Shape: Container Image</a></li>
+          <li><a href="shape-static-site.html">Shape: Static Site</a></li>
+          <li><a href="phase-5-for-non-deployable-projects.html">Phase 5 for Non-Deployable Projects</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#when">When this shape applies</a></li>
+          <li><a href="#config">project-config.yaml</a></li>
+          <li><a href="#routing">Phase 5 routing</a></li>
+          <li><a href="#overlays">CI overlays</a></li>
+          <li><a href="#publish">Publish to npm / pypi / maven</a></li>
+          <li><a href="#worked-when">You'll know it worked when</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        <a href="project-shapes-overview.html">Project Shapes</a>
+        <span class="separator">/</span>
+        Library
+      </nav>
+
+      <h1>Shape: Library</h1>
+      <p>
+        A package library ships as a versioned artifact to a public registry --
+        <strong>npm</strong> for JavaScript / TypeScript, <strong>PyPI</strong> for Python,
+        <strong>Maven Central</strong> for Java / Kotlin / Scala. Like the plugin shape, you don't
+        deploy a library to a running server; the registry distributes it for downstream consumers.
+      </p>
+
+      <section id="when">
+        <h2>When this shape applies</h2>
+        <ul>
+          <li>You author a reusable package others consume (not an application).</li>
+          <li>Your release surface is a registry version bump (e.g., <code>npm publish</code>, <code>twine upload</code>, <code>mvn deploy</code>).</li>
+          <li>There is no deployable URL -- the registry IS the deployment target.</li>
+        </ul>
+      </section>
+
+      <section id="config">
+        <h2>project-config.yaml</h2>
+        <p>Pick the channel that matches your registry. Three examples:</p>
+        <pre><code># npm
+environments:
+  - id: registry
+    kind: distribution-only
+
+distribution:
+  channel: npm
+  registry: https://registry.npmjs.org
+  manifest: package.json
+  release_workflow: gaia-release.yml</code></pre>
+
+        <pre><code># pypi
+distribution:
+  channel: pypi
+  registry: https://pypi.org/simple
+  manifest: pyproject.toml
+  release_workflow: gaia-release.yml</code></pre>
+
+        <pre><code># maven (group_id + artifact_id required per ADR-112 §(d))
+distribution:
+  channel: maven
+  registry: https://oss.sonatype.org/service/local/staging/deploy/maven2
+  manifest: pom.xml
+  release_workflow: gaia-release.yml
+  group_id: com.example
+  artifact_id: my-library</code></pre>
+        <p>
+          <code>manifest</code> points at the file that carries the version (<code>package.json</code>
+          <code>version</code> field, <code>pyproject.toml</code> <code>[project] version</code>,
+          <code>pom.xml</code> <code>&lt;version&gt;</code>). The <code>maven</code> channel requires
+          <code>group_id</code> + <code>artifact_id</code> as per-channel sub-fields; missing either
+          one is rejected by <code>/gaia-config-validate</code>.
+        </p>
+      </section>
+
+      <section id="routing">
+        <h2>Phase 5 routing</h2>
+        <p>
+          With <code>kind: distribution-only</code> + a <code>distribution:</code> block, the Phase 5
+          router resolves to <code>publish-primary</code> and suggests <code>/gaia-publish</code>.
+          <code>/gaia-post-deploy</code> HALTs with the symmetric <code>use /gaia-publish instead</code>
+          message -- there is no deployed URL to post-deploy verify against.
+        </p>
+      </section>
+
+      <section id="overlays">
+        <h2>CI overlays</h2>
+        <p>
+          Library CI typically wants extra steps before the canonical test run -- coverage upload,
+          lint, doc generation. Add them via <code>gaia-ci.user-steps.yml</code>:
+        </p>
+        <pre><code>steps_before_gaia:
+  - name: install dependencies
+    run: npm ci
+steps_after_gaia:
+  - name: upload coverage
+    uses: codecov/codecov-action@v4</code></pre>
+        <p>
+          The stitcher (E98-S2) splices <code>steps_before_gaia</code> ahead of the GAIA-generated
+          steps and <code>steps_after_gaia</code> after them. The managed steps are never reordered.
+        </p>
+      </section>
+
+      <section id="publish">
+        <h2>Publish to npm / pypi / maven</h2>
+        <pre><code>/gaia-publish</code></pre>
+        <p>
+          The orchestrator dispatches the channel-matching adapter
+          (<code>publish-npm</code>, <code>publish-pypi</code>, <code>publish-maven</code>). Each
+          adapter reads the version from the <code>manifest</code> field and invokes the configured
+          <code>release_workflow</code> with the appropriate credentials.
+        </p>
+        <p>
+          For ecosystems not first-class in this iteration -- <code>cargo</code> (Rust),
+          <code>nuget</code> (.NET), <code>rubygems</code> (Ruby), <code>hex</code> (Elixir),
+          <code>cran</code> (R), <code>helm-chart</code> (Kubernetes) -- use the
+          <code>custom</code> channel and point at a custom adapter under
+          <code>.gaia/custom/adapters/publish-{adapter_name}/</code>. See
+          <a href="shape-cli.html">Shape: CLI</a> for an example.
+        </p>
+      </section>
+
+      <section id="worked-when">
+        <h2>You'll know it worked when</h2>
+        <ul>
+          <li><code>/gaia-config-validate</code> exits 0; ajv accepts the per-channel sub-fields (maven's <code>group_id</code> + <code>artifact_id</code> if applicable).</li>
+          <li><code>/gaia-help</code> suggests <code>/gaia-publish</code> on the Phase 5 row.</li>
+          <li>A <code>/gaia-publish</code> run posts the version from <code>manifest</code> to the registry, and the registry-side version matches the local <code>manifest</code>.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

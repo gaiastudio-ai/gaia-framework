@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-help - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/getting-started.html">Getting Started</a>
+        <span class="separator">/</span>
+        /gaia-help
+      </nav>
+
+      <!-- Header -->
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-help</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/getting-started.html">Getting Started</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>Any</dd>
+          <dt>Arguments:</dt>
+          <dd><code>[optional free-text description]</code></dd>
+        </dl>
+      </header>
+
+      <!-- 1. What it does -->
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-help</code> is GAIA's context-sensitive help system.
+          It looks at what you want to do, examines which artifacts already
+          exist in your project (PRD, architecture, sprint plan, etc.), and
+          suggests the three to five most relevant commands to run next.
+          Every suggestion is verified against the real list of available
+          commands, so it will never suggest a command that does not exist.
+        </p>
+      </section>
+
+      <!-- 2. When to use it -->
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>
+            You are new to GAIA and want to know where to start.
+          </li>
+          <li>
+            You just finished a step (for example, created a PRD) and want
+            to know what comes next in the lifecycle.
+          </li>
+          <li>
+            You have a task in mind ("I need to write code", "review my
+            security") but are not sure which GAIA command handles it.
+          </li>
+          <li>
+            You want a quick orientation on which lifecycle phase your
+            project is currently in.
+          </li>
+        </ul>
+      </section>
+
+      <!-- 3. Prerequisites -->
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <p>
+          None. This command works on any project at any stage, including
+          projects with no GAIA artifacts yet. The suggestions improve as
+          more artifacts exist, because GAIA can better determine your
+          lifecycle phase.
+        </p>
+      </section>
+
+      <!-- 4. How to invoke -->
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-help</code></pre>
+        <p>With no argument, shows categories and a lifecycle phase summary.</p>
+
+        <pre><code>/gaia-help I need to write code for a story</code></pre>
+        <p>With a description, suggests commands that match your intent.</p>
+      </section>
+
+      <!-- 5. Step by step -->
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Load the command map</span>
+            Reads the intent-to-command map that associates natural-language
+            intents ("I want to start a new project") with specific slash
+            commands (<code>/gaia-brainstorm</code>). Also loads the
+            authoritative list of valid commands.
+          </li>
+          <li>
+            <span class="step-title">Parse your query</span>
+            If you provided a description, it matches your text against
+            known intents. If you typed plain <code>/gaia-help</code> with
+            no argument, it shows the top-level categories and lifecycle
+            phase guide.
+          </li>
+          <li>
+            <span class="step-title">Detect lifecycle phase</span>
+            Scans your <code>docs/</code> directory to see which artifacts
+            exist:
+            <ul>
+              <li>No artifacts -- you are in Phase 1 (Analysis).</li>
+              <li>PRD exists but no architecture -- Phase 2/3 (Planning).</li>
+              <li>Architecture exists but no sprint plan -- Phase 3/4 (Solutioning).</li>
+              <li>Sprint plan and stories exist -- Phase 4 (Implementation).</li>
+              <li>Test plans and release material exist -- Phase 5 (Deployment).</li>
+            </ul>
+            This phase detection helps rank which commands are most relevant
+            right now.
+          </li>
+          <li>
+            <span class="step-title">Cross-check suggestions</span>
+            Every candidate command is verified against the master command
+            list. Any command that does not exist is silently dropped. This
+            guarantees you are never pointed to a nonexistent command.
+          </li>
+          <li>
+            <span class="step-title">Present suggestions</span>
+            Shows the top 3-5 commands with a one-line description and a
+            brief rationale explaining why each is relevant given your
+            project's current state.
+          </li>
+          <li>
+            <span class="step-title">Offer to activate</span>
+            Asks if you want to run one of the suggested commands right
+            away. Reply with the command name to launch it, or say "no"
+            to exit.
+          </li>
+        </ol>
+      </section>
+
+      <!-- 6. Inputs -->
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Source</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>description</code></td>
+              <td>Command argument (optional)</td>
+              <td>Free-text description of what you want to do.</td>
+            </tr>
+            <tr>
+              <td>Artifact tree</td>
+              <td><code>docs/</code> directories</td>
+              <td>Scanned to detect which lifecycle phase the project is in.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 7. Outputs -->
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <p>
+          This command produces text output only -- it does not create or
+          modify any files. It displays:
+        </p>
+        <ul>
+          <li>Your detected lifecycle phase.</li>
+          <li>3-5 suggested commands with descriptions and rationales.</li>
+          <li>An offer to run one of the suggestions immediately.</li>
+        </ul>
+      </section>
+
+      <!-- 8. Example session -->
+      <section id="example">
+        <h2>Example session</h2>
+
+        <h3>With no argument (new project)</h3>
+        <pre><code>&gt; /gaia-help
+
+Your project appears to be in Phase 1 (Analysis) -- no planning
+artifacts found yet.
+
+Suggested next command(s):
+
+1. /gaia-brainstorm -- Brainstorm a new project idea.
+   Why: No product brief exists yet. Start here to explore the idea.
+
+2. /gaia-product-brief -- Create a product brief.
+   Why: If you already know what you want to build, skip brainstorming
+   and go straight to the brief.
+
+3. /gaia-brownfield -- Onboard an existing codebase.
+   Why: If you have existing code, this scans it and generates GAIA
+   artifacts from the current state.
+
+Run one of these now? Reply with the command name, or say "no" to exit.</code></pre>
+
+        <h3>With a description (mid-project)</h3>
+        <pre><code>&gt; /gaia-help I need to review my code before merging
+
+Your project is in Phase 4 (Implementation) -- sprint plan and stories
+are present.
+
+Suggested next command(s):
+
+1. /gaia-review-code -- Pre-merge code review.
+   Why: You asked about code review. This checks code quality, SOLID
+   principles, and complexity.
+
+2. /gaia-review-all -- Run all six reviews at once.
+   Why: If the story is ready for full review, this runs code, QA,
+   security, test, performance, and accessibility reviews together.
+
+3. /gaia-review-security -- OWASP security review.
+   Why: Security review is often paired with code review for sensitive
+   changes.
+
+Run one of these now? Reply with the command name, or say "no" to exit.</code></pre>
+      </section>
+
+      <!-- 9. What to run next -->
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <p>
+          Whatever <code>/gaia-help</code> suggests. The whole point of this
+          command is to tell you what to run next. Common paths:
+        </p>
+        <ul>
+          <li>New project: <a href="gaia-brainstorm.html"><code>/gaia-brainstorm</code></a> or <a href="gaia-init.html"><code>/gaia-init</code></a>.</li>
+          <li>After PRD: <a href="gaia-create-arch.html"><code>/gaia-create-arch</code></a>.</li>
+          <li>After architecture: <a href="gaia-create-epics.html"><code>/gaia-create-epics</code></a>.</li>
+          <li>Ready to code: <a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a>.</li>
+          <li>After implementation: <a href="gaia-review-all.html"><code>/gaia-review-all</code></a>.</li>
+        </ul>
+      </section>
+
+      <!-- 10. Troubleshooting -->
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>Suggestions seem off for my project's state</h3>
+        <p>
+          Phase detection relies on the presence of specific artifacts in
+          <code>.gaia/artifacts/planning-artifacts/</code>,
+          <code>.gaia/artifacts/implementation-artifacts/</code>, and
+          <code>.gaia/artifacts/test-artifacts/</code>. If you moved or renamed
+          artifacts, the detection may misjudge your phase. Run
+          <a href="gaia-help.html"><code>/gaia-help</code></a> with an
+          explicit description to bypass phase-based ranking.
+        </p>
+
+        <h3>Only /gaia is suggested</h3>
+        <p>
+          This happens when the command map file could not be loaded (rare).
+          <code>/gaia</code> is the safe fallback -- it is the main
+          orchestrator and can route you to any workflow.
+        </p>
+      </section>
+
+      <!-- 11. Related commands -->
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia.html"><code>/gaia</code></a></td>
+              <td>The main orchestrator. If <code>/gaia-help</code> is "which command should I run?", <code>/gaia</code> is "just do the right thing."</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-init.html"><code>/gaia-init</code></a></td>
+              <td>Often the first command suggested for new projects.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-resume.html"><code>/gaia-resume</code></a></td>
+              <td>If you were in the middle of something, <code>/gaia-resume</code> continues from the last checkpoint rather than starting fresh.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/getting-started.html">Back to Getting Started</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

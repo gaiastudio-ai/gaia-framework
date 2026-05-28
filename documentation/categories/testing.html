@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Testing - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="getting-started.html">Getting Started</a></li>
+          <li><a href="discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="planning.html">Planning</a></li>
+          <li><a href="sprint-management.html">Sprint Management</a></li>
+          <li><a href="development.html">Development</a></li>
+          <li><a href="testing.html" class="active">Testing</a></li>
+          <li><a href="reviews.html">Reviews</a></li>
+          <li><a href="validation.html">Validation</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="configuration.html">Configuration</a></li>
+          <li><a href="documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="internal.html">Internal Skills</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        Testing
+      </nav>
+
+      <h1>Testing</h1>
+      <p>
+        Testing commands cover the full quality spectrum: from test strategy
+        design and <a href="../glossary.html#atdd">acceptance-test generation</a>, through automated test
+        expansion, to execution across environments (e2e, performance,
+        accessibility, security, mobile) via <a href="../glossary.html#test-execution-bridge">Test Execution Bridge</a>
+        <a href="../glossary.html#adapter">adapters</a>. They also include gap analysis
+        and traceability to ensure nothing falls through the cracks.
+      </p>
+
+      <h2>Strategy and planning</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-test-strategy.html">/gaia-test-strategy</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Unified test-strategy and test-framework setup. Produces the test plan and scaffolds your test harness.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-atdd.html">/gaia-atdd</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Generate failing acceptance tests (Given/When/Then) from a story's acceptance criteria. Supports single-story and batch mode.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-teach-testing.html">/gaia-teach-testing</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Teach testing progressively through structured sessions based on your skill level.</span>
+        </li>
+      </ul>
+
+      <h2>Test automation and coverage</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-test-automate.html">/gaia-test-automate</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Expand automated test coverage for a story.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-test-gap-analysis.html">/gaia-test-gap-analysis</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Scan the test suite against requirements to identify coverage gaps.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-fill-test-gaps.html">/gaia-fill-test-gaps</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">End-to-end remediation for gaps found by test-gap-analysis.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-trace.html">/gaia-trace</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Generate a requirements-to-tests traceability matrix.</span>
+        </li>
+      </ul>
+
+      <h2>Test execution</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-test-run.html">/gaia-test-run</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Run tests in any environment with tag, story, or file targeting.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-test-e2e.html">/gaia-test-e2e</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Execute end-to-end tests via Playwright or Cypress adapters.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-test-a11y.html">/gaia-test-a11y</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Post-deploy accessibility smoke tests via axe-core, pa11y, or Lighthouse.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-test-perf.html">/gaia-test-perf</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Post-deploy performance tests via k6 and Lighthouse, with SLO and baseline-regression checks.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-test-dast.html">/gaia-test-dast</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Post-deploy dynamic application security tests via OWASP ZAP.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-test-mobile-e2e.html">/gaia-test-mobile-e2e</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Execute mobile end-to-end tests via a configured device-farm adapter.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-test-device-matrix.html">/gaia-test-device-matrix</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Expand and dispatch a device-target matrix to the configured device-farm adapter.</span>
+        </li>
+      </ul>
+
+      <h2>Test planning variants</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-perf-testing.html">/gaia-perf-testing</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Create a performance test plan with load testing scenarios and CI gates.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-mobile-testing.html">/gaia-mobile-testing</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Create a mobile test plan covering device matrices, Appium configuration, and responsive testing.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-nfr.html">/gaia-nfr</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Assess non-functional requirements covering performance, scalability, reliability, and security.</span>
+        </li>
+      </ul>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

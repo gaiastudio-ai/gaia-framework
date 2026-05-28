@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>/gaia-fill-test-gaps - GAIA Documentation</title><link rel="stylesheet" href="../styles.css"></head>
+<body><div class="page-wrapper">
+<aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/testing.html">Testing</a><span class="separator">/</span>/gaia-fill-test-gaps</nav>
+      <header class="command-header"><div class="command-title"><h1>/gaia-fill-test-gaps</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/testing.html">Testing</a></dd><dt>Lifecycle phase:</dt><dd>Anytime</dd><dt>Arguments:</dt><dd><code>[--severity critical|high|medium|all]</code></dd></dl></header>
+
+      <section id="what-it-does"><h2>What it does</h2>
+        <p><code>/gaia-fill-test-gaps</code> reads the latest gap analysis report, triages each gap by severity and story status, proposes a remediation action for each, presents a triage table for your approval, and then dispatches approved actions to the appropriate sub-workflows (<code>/gaia-add-stories</code>, <code>/gaia-triage-findings</code>, or <code>/gaia-test-automate</code>).</p>
+      </section>
+
+      <section id="when-to-use"><h2>When to use it</h2>
+        <ul>
+          <li>A gap analysis report exists and you want to systematically fill the identified coverage gaps.</li>
+          <li>You want GAIA to propose the right remediation action for each gap (add test, create story, expand automation) based on the story's current status.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites"><h2>Prerequisites</h2>
+        <ul>
+          <li><strong>A gap analysis report must exist</strong> at <code>.gaia/artifacts/test-artifacts/test-gap-analysis-*.md</code>. Run <a href="gaia-test-gap-analysis.html"><code>/gaia-test-gap-analysis</code></a> first.</li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke"><h2>How to invoke</h2>
+        <pre><code>/gaia-fill-test-gaps
+/gaia-fill-test-gaps --severity critical
+/gaia-fill-test-gaps --severity high
+/gaia-fill-test-gaps --severity medium
+/gaia-fill-test-gaps --severity all</code></pre>
+      </section>
+
+      <section id="step-by-step"><h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Load gap report</span> Finds the most recent gap analysis report by date and parses its gap table.</li>
+          <li><span class="step-title">Severity filter</span> Applies the severity filter (default: critical+high). Prompts for your preference unless a <code>--severity</code> argument was provided or <a href="../glossary.html#yolo-mode">YOLO mode</a> is active.</li>
+          <li><span class="step-title">Group by story</span> Builds a triage map keyed by story key. Skips rows that succeeded in a prior remediation run (retry-only-failed semantics).</li>
+          <li><span class="step-title">Propose actions</span> For each gap, resolves the story's current status and proposes an action: append AC (backlog stories), create new story (done stories), expand automation (any status), or skip (in-progress/review stories).</li>
+          <li><span class="step-title">Triage table</span> Renders the triage map as a markdown table and saves it.</li>
+          <li><span class="step-title">Execute approved actions</span> Dispatches each approved action to its sub-workflow. A single failure does not halt the remaining actions.</li>
+          <li><span class="step-title">Remediation report</span> Writes a report with per-action results (succeeded, failed, skipped).</li>
+        </ol>
+      </section>
+
+      <section id="inputs"><h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th><th>Example</th></tr></thead><tbody>
+          <tr><td><code>--severity</code></td><td>Argument (optional, default: critical+high)</td><td>Filter gaps by severity level: critical, high, medium, or all.</td><td><code>/gaia-fill-test-gaps --severity critical</code></td></tr>
+          <tr><td>Gap report</td><td><code>.gaia/artifacts/test-artifacts/test-gap-analysis-*.md</code></td><td>The most recent gap analysis output.</td><td>--</td></tr>
+          <tr><td>Story files</td><td><code>.gaia/artifacts/implementation-artifacts/</code></td><td>Used to resolve story status for action proposals.</td><td>--</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="outputs"><h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody>
+          <tr><td>Triage table</td><td><code>.gaia/artifacts/test-artifacts/fill-test-gaps-triage-{date}.md</code></td><td>Per-gap triage decisions with proposed actions.</td></tr>
+          <tr><td>Remediation report</td><td><code>.gaia/artifacts/test-artifacts/gap-remediation-report-{date}.md</code></td><td>Execution results for each dispatched action.</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="example"><h2>Example session</h2>
+        <pre><code>&gt; /gaia-fill-test-gaps --severity high
+
+Loading gap report: test-gap-analysis-2026-05-07.md
+Severity filter: critical+high (6 gaps match)
+
+Triage Table:
+  E1-S3  2 gaps  uncovered-ac   append_ac      /gaia-add-stories  pending
+  E3-S1  3 gaps  missing-test   new_story      /gaia-triage-findings  pending
+  E3-S4  1 gap   unexecuted     expand_auto    /gaia-test-automate  pending
+
+Triage saved to .gaia/artifacts/test-artifacts/fill-test-gaps-triage-2026-05-07.md
+
+Executing 3 actions...
+  E1-S3: succeeded
+  E3-S1: succeeded
+  E3-S4: succeeded
+
+3 succeeded, 0 failed, 0 skipped.
+Report: .gaia/artifacts/test-artifacts/gap-remediation-report-2026-05-07.md</code></pre>
+      </section>
+
+      <section id="what-next"><h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-test-gap-analysis.html"><code>/gaia-test-gap-analysis</code></a> -- re-run gap analysis to verify gaps are closed.</li>
+          <li><a href="gaia-trace.html"><code>/gaia-trace</code></a> -- update the traceability matrix with new coverage.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting"><h2>Troubleshooting</h2>
+        <h3>"No gap analysis report found"</h3><p>Run <a href="gaia-test-gap-analysis.html"><code>/gaia-test-gap-analysis</code></a> first to produce a report.</p>
+        <h3>"Parse error in gap report"</h3><p>The report has malformed YAML frontmatter. Regenerate it with <code>/gaia-test-gap-analysis</code>.</p>
+        <h3>A sub-workflow failed</h3><p>The failed action is logged in the remediation report. Fix the underlying issue and re-run -- previously succeeded actions are skipped automatically.</p>
+      </section>
+
+      <section id="related"><h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
+          <tr><td><a href="gaia-test-gap-analysis.html"><code>/gaia-test-gap-analysis</code></a></td><td>Produces the gap report that this command consumes.</td></tr>
+          <tr><td><a href="gaia-trace.html"><code>/gaia-trace</code></a></td><td>Requirement-level traceability matrix.</td></tr>
+          <tr><td><a href="gaia-test-automate.html"><code>/gaia-test-automate</code></a></td><td>One of the sub-workflows dispatched for automation gaps.</td></tr>
+        </tbody></table>
+      </section>
+      <footer class="page-footer"><p><a href="../categories/testing.html">Back to Testing</a></p></footer>
+    </main></div></body></html>
