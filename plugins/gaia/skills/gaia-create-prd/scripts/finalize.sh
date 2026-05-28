@@ -105,14 +105,29 @@ item_check() {
 # AF-2026-05-22-3 Bug-3 — the framework's own prd-template.md uses numeric
 # outline prefixes (`## 1. Overview`, `## 2. Goals and Non-Goals`, etc.) so
 # the regex MUST accept the prefix or the template fails its own checklist.
-heading_present() {
-  local f="$1" text="$2"
-  if grep -Ei "^##[[:space:]]+([0-9]+(\.[0-9]+)*\.?[[:space:]]+)?${text}([[:space:]]|\$|[[:punct:]])" "$f" >/dev/null 2>&1; then
-    echo "pass"
-  else
-    echo "fail"
-  fi
-}
+# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
+# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
+# uniform, permissive regex accepting optional numbered+lettered outline
+# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
+# divergent inline copies, so the same heading passed one skill's check and
+# failed another's. Sourced via a $0-relative path so it works whether or not
+# this script defines PLUGIN_SCRIPTS_DIR.
+_GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
+if [ -r "$_GAIA_HEADING_LIB" ]; then
+  # shellcheck source=/dev/null
+  . "$_GAIA_HEADING_LIB"
+else
+  # Fallback inline definition (kept byte-equivalent to the shared lib) so the
+  # checklist still runs if the lib is somehow unreadable.
+  heading_present() {
+    local f="$1" text="$2"
+    if grep -Ei "^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?${text}([[:space:]]|\$|[[:punct:]])" "$f" >/dev/null 2>&1; then
+      echo "pass"
+    else
+      echo "fail"
+    fi
+  }
+fi
 
 # file_nonempty <file>
 file_nonempty() {

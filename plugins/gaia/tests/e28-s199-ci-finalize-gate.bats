@@ -82,7 +82,32 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 @test "gaia-ci-setup/finalize.sh: successful run with produced file exits 0" {
   mkdir -p "$FIXTURE/docs/test-artifacts"
-  printf 'placeholder\n' > "$FIXTURE/docs/test-artifacts/ci-setup.md"
+  # AF-2026-05-27-8 / Test06 F-010: finalize.sh now defaults CI_SETUP_ARTIFACT to
+  # the resolved ci-setup.md and RUNS its SV-01..06 checklist when the env var is
+  # unset (previously it skipped, so a stub `placeholder` sufficed for exit 0).
+  # A "successful run" produces a COMPLETE ci-setup.md — seed one so the checklist
+  # passes and finalize exits 0, preserving the AC2 "successful run exits 0" intent.
+  cat > "$FIXTURE/docs/test-artifacts/ci-setup.md" <<'CISETUP'
+# CI Setup
+
+## Pipeline Stages
+build, lint, test, coverage stages defined.
+
+## Quality Gates
+Coverage target 80%; pass rate threshold enforced.
+
+## Secrets Management
+Required secrets and per-environment separation documented.
+
+## Deployment Strategy
+staging then production, with rollback on failure.
+
+## Monitoring and Notifications
+Failure alerts via webhook/slack and a status badge.
+
+## Pipeline Config
+Generated pipeline config committed.
+CISETUP
   cd "$FIXTURE"
   run bash "$CI_SETUP_FINALIZE"
   [ "$status" -eq 0 ]

@@ -98,19 +98,29 @@ item_check() {
 # heading_present <file> <heading-text>
 # Pass when an H2 heading whose body begins with the given text
 # (case-insensitive; trailing content tolerated) is present.
-heading_present() {
-  local f="$1" text="$2"
-  # F-011 (Test04): tolerate optional numeric outline prefixes on H2 headings
-  # (`## 1. Personas`, `## 10.1 Flows`) — back-ported from the sibling
-  # gaia-create-prd/finalize.sh (patched under AF-2026-05-22-3 Bug-3). The
-  # ux-designer subagent authors numbered headings as a natural document
-  # convention; without this the checklist fails even when all sections exist.
-  if grep -Ei "^##[[:space:]]+([0-9]+(\.[0-9]+)*\.?[[:space:]]+)?${text}([[:space:]]|\$|[[:punct:]])" "$f" >/dev/null 2>&1; then
-    echo "pass"
-  else
-    echo "fail"
-  fi
-}
+# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
+# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
+# uniform, permissive regex accepting optional numbered+lettered outline
+# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
+# divergent inline copies, so the same heading passed one skill's check and
+# failed another's. Sourced via a $0-relative path so it works whether or not
+# this script defines PLUGIN_SCRIPTS_DIR.
+_GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
+if [ -r "$_GAIA_HEADING_LIB" ]; then
+  # shellcheck source=/dev/null
+  . "$_GAIA_HEADING_LIB"
+else
+  # Fallback inline definition (kept byte-equivalent to the shared lib) so the
+  # checklist still runs if the lib is somehow unreadable.
+  heading_present() {
+    local f="$1" text="$2"
+    if grep -Ei "^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?${text}([[:space:]]|\$|[[:punct:]])" "$f" >/dev/null 2>&1; then
+      echo "pass"
+    else
+      echo "fail"
+    fi
+  }
+fi
 
 # file_nonempty <file>
 file_nonempty() {
@@ -125,7 +135,7 @@ section_body_nonempty() {
   awk -v pat="$pattern" '
     BEGIN { in_section = 0; found = 0 }
     {
-      if ($0 ~ "^##[[:space:]]+([0-9]+(\\.[0-9]+)*\\.?[[:space:]]+)?" pat "([[:space:]]|$|[[:punct:]])") {
+      if ($0 ~ "^##[[:space:]]+([0-9]+[a-z]?(\\.[0-9]+[a-z]?)*\\.?[[:space:]]+)?" pat "[[:alpha:]]*([[:space:]]|$|[[:punct:]])") {
         in_section = 1; next
       }
       if (in_section && /^##[[:space:]]/) { in_section = 0 }
@@ -190,7 +200,12 @@ fr_id_present() {
 # Section-body helpers — bind the heading pattern for each required body
 personas_body_nonempty()           { section_body_nonempty "$1" "[Pp]ersonas"; }
 ia_body_nonempty()                 { section_body_nonempty "$1" "[Ii]nformation[[:space:]]+[Aa]rchitecture"; }
-wireframes_body_nonempty()         { section_body_nonempty "$1" "[Ww]ireframes"; }
+# AF-2026-05-27-8 / Test06 F-004: match the singular stem "Wireframe" so the
+# check accepts both the canonical "## Wireframes" and the template/agent-natural
+# "## 5. Wireframe Descriptions". Anchoring on "Wireframes" (plural) forced an
+# editorial rename. The trailing-context boundary is supplied by the heading/body
+# helpers, so "Wireframe" still won't match an unrelated word.
+wireframes_body_nonempty()         { section_body_nonempty "$1" "[Ww]ireframe"; }
 interaction_body_nonempty()        { section_body_nonempty "$1" "[Ii]nteraction[[:space:]]+[Pp]atterns"; }
 accessibility_body_nonempty()      { section_body_nonempty "$1" "[Aa]ccessibility"; }
 
@@ -225,7 +240,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   item_check "SV-05" "Information Architecture section present (sitemap)" \
     "$(heading_present "$ARTIFACT" "Information Architecture")"
   item_check "SV-06" "Wireframes section present" \
-    "$(heading_present "$ARTIFACT" "Wireframes")"
+    "$(heading_present "$ARTIFACT" "Wireframe")"
   item_check "SV-07" "Interaction Patterns section present" \
     "$(heading_present "$ARTIFACT" "Interaction Patterns")"
   item_check "SV-08" "Accessibility section present" \

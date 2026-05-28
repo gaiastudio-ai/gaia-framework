@@ -62,12 +62,29 @@ die() { log "$*"; exit 1; }
 
 # ---------- 0. Resolve artifact paths ----------
 # CI_SETUP_ARTIFACT wins when set (test fixtures + explicit invocation).
-# The checklist only runs when it is EXPLICITLY set.
+# AF-2026-05-27-8 / Test06 F-010: when the env var is UNSET, default to the
+# canonical .gaia/artifacts/test-artifacts/ci-setup.md (via the shared
+# resolve-artifact-path.sh helper) IF that artifact exists, so /gaia-ci-setup's
+# own SV-01..SV-06 checklist actually runs. Previously an unset env var made the
+# checklist silently skip (exit 0) — the skill never validated its own output
+# unless the caller manually exported the well-known path. When NO artifact
+# exists at any rung, ARTIFACT_REQUESTED stays 0 and the classic "skip" path is
+# preserved (a fresh project with no ci-setup.md yet is not an error here).
 ARTIFACT=""
 ARTIFACT_REQUESTED=0
 if [ -n "${CI_SETUP_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$CI_SETUP_ARTIFACT"
+else
+  RESOLVE_ARTIFACT_PATH="$PLUGIN_SCRIPTS_DIR/lib/resolve-artifact-path.sh"
+  if [ -x "$RESOLVE_ARTIFACT_PATH" ]; then
+    _resolved_ci="$("$RESOLVE_ARTIFACT_PATH" ci_setup --existing-only 2>/dev/null || true)"
+    if [ -n "$_resolved_ci" ]; then
+      ARTIFACT_REQUESTED=1
+      ARTIFACT="$_resolved_ci"
+      log "CI_SETUP_ARTIFACT unset — defaulting to resolved artifact: $ARTIFACT (F-010)"
+    fi
+  fi
 fi
 
 # ---------- 1. Run the 8-item checklist ----------
@@ -89,14 +106,29 @@ item_check() {
   fi
 }
 
-heading_present() {
-  local f="$1" text="$2"
-  if grep -Eiq "^##[[:space:]]+${text}([[:space:]]|\$|[[:punct:]])" "$f" 2>/dev/null; then
-    echo "pass"
-  else
-    echo "fail"
-  fi
-}
+# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
+# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
+# uniform, permissive regex accepting optional numbered+lettered outline
+# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
+# divergent inline copies, so the same heading passed one skill's check and
+# failed another's. Sourced via a $0-relative path so it works whether or not
+# this script defines PLUGIN_SCRIPTS_DIR.
+_GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
+if [ -r "$_GAIA_HEADING_LIB" ]; then
+  # shellcheck source=/dev/null
+  . "$_GAIA_HEADING_LIB"
+else
+  # Fallback inline definition (kept byte-equivalent to the shared lib) so the
+  # checklist still runs if the lib is somehow unreadable.
+  heading_present() {
+    local f="$1" text="$2"
+    if grep -Ei "^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?${text}([[:space:]]|\$|[[:punct:]])" "$f" >/dev/null 2>&1; then
+      echo "pass"
+    else
+      echo "fail"
+    fi
+  }
+fi
 
 pattern_present() {
   local f="$1" pattern="$2"

@@ -200,8 +200,25 @@ else
         bp_reason="$(printf '%s' "$bp_json" | jq -r '[.bypasses[] | select(.skill == "gaia-threat-model" or .skill == "/gaia-threat-model")][0].reason')"
       fi
     fi
+    # AF-2026-05-27-8 / Test06 F-005 + F-006: pre-sprint-phase detection.
+    # /gaia-create-arch runs in Phase 3 (Solutioning), BEFORE the first
+    # /gaia-sprint-plan creates .gaia/state/sprint-status.yaml. In that phase
+    # threat-model.md legitimately does NOT exist yet (the lifecycle diagram runs
+    # /gaia-threat-model AFTER create-arch), and the advertised --bypass cannot be
+    # recorded because lifecycle_append_bypass requires a sprint-NN id that does
+    # not exist yet — a chicken-and-egg hard block for every greenfield UI
+    # project. Detect "no active sprint" and degrade the hard die to a WARNING:
+    # the threat-model gate is genuinely premature in Phase 3. Once a sprint is
+    # active (sprint-status.yaml present), the hard gate is restored — at that
+    # point a missing threat-model IS a real omission and --bypass IS recordable.
+    pre_sprint=0
+    if [ ! -f ".gaia/state/sprint-status.yaml" ] && [ -z "${SPRINT_ID:-}" ]; then
+      pre_sprint=1
+    fi
     if [ "$has_tm_bypass" -eq 1 ]; then
       log "threat-model gate bypassed: ${bp_reason}"
+    elif [ "$pre_sprint" -eq 1 ]; then
+      log "WARNING: compliance.ui_present=true but no threat-model.md found — proceeding because no active sprint exists yet (Phase 3 / pre-sprint-plan). The lifecycle runs /gaia-threat-model after /gaia-create-arch; the threat-model gate is re-enforced once a sprint is active. Run /gaia-threat-model before your first /gaia-sprint-plan to satisfy it."
     elif [ "$strict_on" -eq 0 ]; then
       log "WARNING: compliance.ui_present=true but no threat-model.md found — would block in strict mode; consider --bypass gaia-threat-model --reason \"<text>\""
     else
