@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-ci-edit - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/configuration.html">Configuration</a><span class="separator">/</span>
+        /gaia-ci-edit
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-ci-edit</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
+          <dt>Lifecycle phase:</dt><dd>Any</dd>
+          <dt>Arguments:</dt><dd><code>[--add|--remove|--edit|--order] [env-id]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-ci-edit</code> edits the CI/CD promotion chain -- add, remove, edit, or reorder environments. Each environment has an id, name, branch, CI provider, merge strategy, and CI checks. Changes cascade to workflow files and <a href="../test-environment-yaml.html">test-environment</a> mappings.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul><li>You need to add a new environment to the promotion chain (e.g., a QA stage).</li><li>You want to reorder environments or change which branch an environment targets.</li><li>You need to remove an environment that is no longer used.</li></ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>A promotion chain must already exist.</strong> Run <a href="gaia-config-ci.html"><code>/gaia-config-ci</code></a> first.</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-ci-edit
+/gaia-ci-edit --add
+/gaia-ci-edit --remove staging
+/gaia-ci-edit --edit prod
+/gaia-ci-edit --order</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list"><li><span class="step-title">Load current chain</span> Reads the promotion chain from the configuration. Displays a formatted table of all environments.</li><li><span class="step-title">Present operation menu</span> Shows options: add, remove, edit, reorder, view, exit.</li><li><span class="step-title">Apply operation</span> Collects input for the chosen operation. The environment id is immutable. Removing the last environment is blocked.</li><li><span class="step-title">Validate and list cascade targets</span> Validates the modified chain and lists all files that will be affected (workflow files, test-environment tiers, ci-setup.md).</li><li><span class="step-title">Confirm and write</span> Shows the cascade targets and asks for confirmation. On confirm, writes the chain and cascades updates to affected files.</li><li><span class="step-title">Summary</span> Displays what changed, which files were updated, and any warnings.</li></ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th><th>Example</th></tr></thead><tbody><tr><td><code>--add</code></td><td>Argument (optional)</td><td>Insert a new environment into the chain.</td><td><code>/gaia-ci-edit --add</code></td></tr><tr><td><code>--remove</code></td><td>Argument (optional)</td><td>Delete an existing environment (with safety scan).</td><td><code>/gaia-ci-edit --remove staging</code></td></tr><tr><td><code>--edit</code></td><td>Argument (optional)</td><td>Modify fields of an existing environment.</td><td><code>/gaia-ci-edit --edit prod</code></td></tr><tr><td><code>--order</code></td><td>Argument (optional)</td><td>Reorder the promotion chain.</td><td><code>/gaia-ci-edit --order</code></td></tr><tr><td><code>env-id</code></td><td>Positional argument (optional)</td><td>The environment id to operate on.</td><td><code>/gaia-ci-edit --remove staging</code></td></tr></tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Updated promotion chain</td><td>CI configuration</td><td>The modified promotion chain.</td></tr><tr><td>Cascaded files</td><td>Workflow files, test-environment.yaml</td><td>Updated trigger branches and tier mappings.</td></tr></tbody></table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-ci-edit
+
+Current promotion chain:
+| Pos | ID      | Branch  | Environment | Merge Strategy |
+|-----|---------|---------|-------------|----------------|
+| 0   | staging | staging | Staging     | squash         |
+| 1   | prod    | main    | Production  | merge          |
+
+Operations: [a] add  [r] remove  [e] edit  [o] order  [v] view  [x] exit
+> a
+
+New environment ID: qa
+Name: QA
+Branch: qa
+CI Provider: github_actions
+Merge Strategy: squash
+Insert at position: 0
+
+Cascade targets:
+  Workflows: .github/workflows/gaia-pre-merge.yml (branch: qa)
+  test-environment.yaml tiers: (none affected)
+  ci-setup.md (will be regenerated)
+
+Apply this edit and cascade to the listed targets? [y/n]
+> y
+
+Environment added. Position 0 changed (PR target for feature branches).</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul><li><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a> -- validate the configuration after edits.</li></ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>Cannot remove the last environment</h3><p>The promotion chain must have at least one environment. Add a replacement first.</p><h3>Field id is immutable</h3><p>To rename an environment, remove the old one and add a new one.</p><h3>Cascade failure</h3><p>A downstream file could not be updated. The error reports the failing file and reason. The promotion chain itself was written successfully.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-config-ci.html"><code>/gaia-config-ci</code></a></td><td>Initial CI setup that creates the promotion chain this command edits.</td></tr><tr><td><a href="gaia-config-show.html"><code>/gaia-config-show ci_cd</code></a></td><td>View the current CI configuration.</td></tr></tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/configuration.html">Back to Configuration</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

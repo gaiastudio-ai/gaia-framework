@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>/gaia-create-epics - GAIA Documentation</title><link rel="stylesheet" href="../styles.css"></head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar"><a href="../index.html" class="sidebar-logo">GAIA Docs</a><nav><ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul><p class="sidebar-section-title">Categories</p><ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul><p class="sidebar-section-title">On this page</p><ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#orchestration-mode">Orchestration mode</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul></nav></aside>
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/planning.html">Planning</a><span class="separator">/</span>/gaia-create-epics</nav>
+      <header class="command-header"><div class="command-title"><h1>/gaia-create-epics</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/planning.html">Planning</a></dd><dt>Lifecycle phase:</dt><dd>3 -- Solutioning</dd><dt>Arguments:</dt><dd>None</dd></dl></header>
+      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-create-epics</code> decomposes your PRD and architecture into implementation-ready epics and user stories. Each story includes acceptance criteria, size estimate, priority, risk level (from the test plan), and dependency declarations. Stories are ordered by dependency topology first, then business priority.</p></section>
+      <section id="when-to-use"><h2>When to use it</h2><ul><li>Your PRD, architecture, and test plan are complete, and you are ready to break the work into implementable units.</li></ul></section>
+      <section id="prerequisites"><h2>Prerequisites</h2><ul>
+        <li><strong>PRD must exist</strong> at <code>.gaia/artifacts/planning-artifacts/prd.md</code> with "Review Findings Incorporated" section.</li>
+        <li><strong>Architecture must exist</strong> at <code>.gaia/artifacts/planning-artifacts/architecture.md</code> with "Review Findings Incorporated" section.</li>
+        <li><strong>Test plan must exist</strong> at <code>.gaia/artifacts/test-artifacts/test-plan.md</code> (mandatory gate).</li>
+        <li>UX design is optional but improves story quality for UI work.</li>
+      </ul></section>
+      <section id="orchestration-mode">
+        <h2>Orchestration mode</h2>
+        <p>When <code>/gaia-create-epics</code> starts in <strong>subagent mode (Mode A -- the default)</strong>, the framework emits a one-shot warning to your conversation. The warning text:</p>
+        <pre><code>
+────────────────────────────────────────────────────────────────────────────
+GAIA orchestration: running in subagent mode (Mode A)
+
+The skill you're invoking belongs to a class (heavy-procedural or
+conversational) whose output benefits from cross-step context. Mode A
+dispatches each sub-agent in its own forked context, so context may
+be lossy between steps — sub-agents return summaries, not full reasoning.
+
+For the full-fidelity experience, enable Mode B (Agent Teams):
+  1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
+  2. Add orchestration.mode: team to config/project-config.yaml.
+
+Mode B uses persistent teammates that preserve in-conversation state
+across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+
+This warning is shown once per session.
+────────────────────────────────────────────────────────────────────────────
+</code></pre>
+
+        <h3>Why Mode B is better for this command</h3>
+        <p>The <code>/gaia-create-epics</code> skill declares <code>orchestration_class: heavy-procedural</code> in its SKILL.md frontmatter. Heavy-procedural skills produce output that benefits from cross-step context -- under Mode A every sub-agent dispatch runs in its own forked context and can only return a summary back to the orchestrator, losing the full reasoning trace of every prior step. Mode B uses persistent teammates that retain in-conversation state across dispatches, so each agent's contribution can build on what was said before instead of receiving only a summary.</p>
+
+        <h3>How to enable Mode B</h3>
+        <p>Both steps are required. If either is missing, the framework falls back silently to Mode A and the warning fires again on the next session.</p>
+        <p><strong>Step 1 -- set the environment variable:</strong></p>
+        <pre><code>export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code></pre>
+        <p>Add this to your shell rc file to persist across sessions, or set it in Claude Code's <code>settings.json</code>.</p>
+        <p><strong>Step 2 -- add the YAML block to <code>config/project-config.yaml</code>:</strong></p>
+        <pre><code>orchestration:
+  mode: team</code></pre>
+        <h3>One-shot semantics</h3>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+      </section>
+
+      <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-create-epics</code></pre></section>
+      <section id="step-by-step"><h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Load upstream artifacts</span> Indexes the PRD (requirements), architecture (components), test plan (risk areas), and UX design (if available).</li>
+          <li><span class="step-title">Detect mode</span> Brownfield mode creates stories for gaps only. Greenfield mode creates stories for all features.</li>
+          <li><span class="step-title">Define epics</span> Groups related features into logical epics with name, description, goal, and success criteria.</li>
+          <li><span class="step-title">Break down stories</span> For each epic, creates user stories with: title (user story format), description, acceptance criteria, size (S/M/L/XL), priority (P0/P1/P2), risk level, and dependency declarations (<code>depends_on</code> / <code>blocks</code>).</li>
+          <li><span class="step-title">Dependency topology</span> Validates no circular dependencies exist. Orders stories by dependency topology, then by business priority within each tier.</li>
+          <li><span class="step-title">Generate output</span> Writes the epics-and-stories document.</li>
+          <li><span class="step-title">Validation</span> Quality checks and auto-fixes.</li>
+        </ol>
+      </section>
+      <section id="inputs"><h2>Inputs</h2><table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody>
+        <tr><td>PRD</td><td><code>.gaia/artifacts/planning-artifacts/prd.md</code></td><td>Functional and non-functional requirements (required).</td></tr>
+        <tr><td>Architecture</td><td><code>.gaia/artifacts/planning-artifacts/architecture.md</code></td><td>Technical components and decisions (required).</td></tr>
+        <tr><td>Test plan</td><td><code>.gaia/artifacts/test-artifacts/test-plan.md</code></td><td>Risk assessment for story risk levels (required).</td></tr>
+      </tbody></table></section>
+      <section id="outputs"><h2>Outputs</h2><table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Epics and stories</td><td><code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code></td><td>All epics with their stories, acceptance criteria, sizes, priorities, and dependencies.</td></tr></tbody></table></section>
+      <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-create-epics
+
+Loading PRD (22 FRs, 8 NFRs), architecture (7 ADRs), test plan...
+Mode: greenfield.
+
+Epics defined:
+  E1: User Authentication (4 stories)
+  E2: Task Management (6 stories)
+  E3: Team Collaboration (5 stories)
+  E4: Reporting and Analytics (3 stories)
+
+18 stories total, dependency topology validated (no circular deps).
+
+Written to: .gaia/artifacts/planning-artifacts/epics-and-stories.md</code></pre></section>
+      <section id="what-next"><h2>What to run next</h2><ul>
+        <li><a href="gaia-readiness-check.html"><code>/gaia-readiness-check</code></a> -- validate all artifacts are ready for implementation.</li>
+        <li><a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> -- plan the first sprint from the stories.</li>
+      </ul></section>
+      <section id="troubleshooting"><h2>Troubleshooting</h2>
+        <h3>"test-plan.md not found"</h3><p>The test plan is a mandatory gate. Run <code>/gaia-test-strategy</code> to create it.</p>
+        <h3>"Architecture review findings not found"</h3><p>The architecture needs a "Review Findings Incorporated" section from its adversarial review. Re-run <a href="gaia-create-arch.html"><code>/gaia-create-arch</code></a>.</p>
+      
+        <h3>I keep seeing the GAIA orchestration warning every time I start this command</h3>
+        <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
+        <ul>
+          <li><code>echo $CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> returns <code>1</code> (not empty)</li>
+          <li><code>config/project-config.yaml</code> contains:
+            <pre><code>orchestration:
+  mode: team</code></pre>
+          </li>
+        </ul>
+        <p>If either is missing the framework silently uses Mode A and re-emits the warning each session.</p>
+</section>
+      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
+        <tr><td><a href="gaia-add-stories.html"><code>/gaia-add-stories</code></a></td><td>Adds new stories to existing epics later.</td></tr>
+        <tr><td><a href="gaia-readiness-check.html"><code>/gaia-readiness-check</code></a></td><td>Validates completeness before implementation.</td></tr>
+        <tr><td><a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a></td><td>Plans sprints from the stories this command creates.</td></tr>
+      </tbody></table></section>
+      <footer class="page-footer"><p><a href="../categories/planning.html">Back to Planning</a></p></footer>
+    </main>
+  </div>
+</body>
+</html>

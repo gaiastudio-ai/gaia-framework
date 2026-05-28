@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-release - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#scope-clarification">Scope clarification</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#arguments">Arguments</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#examples">Examples</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/deployment.html">Deployment</a><span class="separator">/</span>
+        /gaia-release
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-release</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/deployment.html">Deployment</a></dd>
+          <dt>Lifecycle phase:</dt><dd>5 -- Deployment</dd>
+          <dt>Arguments:</dt><dd><code>[patch|minor|major|none|X.Y.Z] [--prerelease rc] [--strip-prerelease] [<del>--modules mod1,mod2</del>]<sup>*</sup> [--dry-run]</code></dd>
+        </dl>
+        <p><small>* <code>--modules</code> is documented in SKILL.md but not yet implemented in <code>scripts/version-bump.js</code> — see <a href="#arguments">Arguments</a> section.</small></p>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-release</code> executes the GAIA framework release procedure: version bump, commit, tag, push, and GitHub Release creation. It wraps the version-bump script and enforces the main-only release branch policy. Always run with <code>--dry-run</code> first to preview changes.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You are explicitly cutting a manual release after merging a sprint PR to main.</li>
+          <li>You are performing a hotfix release via the <code>hotfix/{ticket-id}</code> branch convention (ADR-109 &sect;D3) and need the tag+publish ceremony.</li>
+          <li>You need to promote a release candidate to its final stable version (<code>--strip-prerelease</code>).</li>
+        </ul>
+      </section>
+
+      <section id="scope-clarification">
+        <h2>Scope clarification (ADR-109 &sect;D2)</h2>
+        <p>The primary release path is automated via <code>release.yml</code> (GitHub Actions). When code merges to <code>main</code>, the workflow detects qualifying commits under <code>plugins/gaia/</code>, computes the semver bump, opens a release PR, and -- on merge of that PR -- creates the tag and GitHub Release automatically. As of E40-S2 (PR #771), the commit-classification range uses a tag-based anchor (<code>git describe --tags --abbrev=0 --match 'v*'</code>) instead of the previous <code>github.event.before</code> SHA, which resolves the symptom where the version-bump PR sometimes never opened after squash-merge.</p>
+        <p><code>/gaia-release</code> remains in the Phase-5 deployment catalog for <strong>explicit manual invocation only</strong> (ADR-109 &sect;D2). Typical uses: hotfix releases, RC promotions, and resolving version drift between <code>package.json</code> and the config. The framework does not auto-suggest <code>/gaia-release</code> after staging-to-main merges.</p>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>You must be on the main branch</strong> with a clean working tree.</li><li><strong>The sprint PR must already be merged.</strong> Releases happen only after sprint merge.</li></ul>
+      </section>
+
+      <section id="arguments">
+        <h2>Arguments</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Bump specifier</td>
+              <td><code>patch</code> | <code>minor</code> | <code>major</code> | <code>none</code> | <code>X.Y.Z</code></td>
+              <td>Yes</td>
+              <td>--</td>
+              <td>Standard semver bump, or <code>none</code> to increment only the RC counter (requires existing <code>-rc.N</code> suffix), or an explicit version string.</td>
+            </tr>
+            <tr>
+              <td><code>--prerelease rc</code></td>
+              <td>Flag</td>
+              <td>No</td>
+              <td>Off</td>
+              <td>Turn the bump into an RC prerelease (e.g., <code>1.127.2</code> becomes <code>1.128.0-rc.1</code> for a minor bump).</td>
+            </tr>
+            <tr>
+              <td><code>--strip-prerelease</code></td>
+              <td>Flag</td>
+              <td>No</td>
+              <td>Off</td>
+              <td>Drop the <code>-rc.N</code> suffix without changing version numbers. Promotes an RC to its final stable cut.</td>
+            </tr>
+            <tr>
+              <td><code>--modules mod1,mod2</code></td>
+              <td>Comma-separated list</td>
+              <td>No</td>
+              <td>--</td>
+              <td>Also bump per-module <code>config.yaml</code> and manifest entries. Valid modules: <code>core</code>, <code>lifecycle</code>, <code>dev</code>, <code>creative</code>, <code>testing</code>, or <code>all</code>.</td>
+            </tr>
+            <tr>
+              <td colspan="5">
+                <div class="callout callout-warning">
+                  <p><strong>Implementation note:</strong> Currently documented in SKILL.md but <strong>not implemented</strong> in <code>scripts/version-bump.js</code>. Passing <code>--modules</code> has no effect on the bump. Tracked as upstream SKILL.md drift; will be removed from docs once either implementation lands or SKILL.md is corrected.</p>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><code>--dry-run</code></td>
+              <td>Flag</td>
+              <td>No</td>
+              <td>Off</td>
+              <td>Print the planned changes and exit without writing. Use this first on every release.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-release patch --dry-run
+/gaia-release minor --prerelease rc
+/gaia-release --strip-prerelease</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list"><li><span class="step-title">Verify main branch</span> Confirms you are on main with a clean working tree. Halts if not.</li><li><span class="step-title">Dry-run the bump</span> Runs the version bump in preview mode showing the current version, new version, and files that would change.</li><li><span class="step-title">Execute the bump</span> Updates package.json and the framework version config key.</li><li><span class="step-title">Commit</span> Creates a conventional commit with the version bump.</li><li><span class="step-title">Tag</span> Creates an annotated git tag for the new version.</li><li><span class="step-title">Push</span> Pushes the commit and tag to the remote.</li><li><span class="step-title">Create GitHub Release</span> Creates a GitHub Release from the changelog, flagging RC builds as prerelease.</li><li><span class="step-title">Post-release verification</span> Confirms the release is published and the tag is visible.</li></ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Bump specifier</td><td>Command argument</td><td><code>patch</code>, <code>minor</code>, <code>major</code>, <code>none</code> (RC increment only), or an explicit version.</td></tr><tr><td><code>--prerelease rc</code></td><td>Command argument (optional)</td><td>Create an RC prerelease version.</td></tr><tr><td><code>--strip-prerelease</code></td><td>Command argument (optional)</td><td>Promote an RC to its final release.</td></tr><tr><td><code>--modules mod1,mod2</code></td><td>Command argument (optional)</td><td>Also bump per-module config and manifest entries. Valid: <code>core</code>, <code>lifecycle</code>, <code>dev</code>, <code>creative</code>, <code>testing</code>, <code>all</code>. <strong>Implementation note:</strong> Currently documented in SKILL.md but <strong>not implemented</strong> in <code>scripts/version-bump.js</code>. Passing <code>--modules</code> has no effect on the bump.</td></tr><tr><td><code>--dry-run</code></td><td>Command argument (optional)</td><td>Preview changes without writing.</td></tr></tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Version bump</td><td><code>package.json</code> + config</td><td>Updated version number in both locations.</td></tr><tr><td>Git tag</td><td>Git</td><td>Annotated tag for the release version.</td></tr><tr><td>GitHub Release</td><td>GitHub</td><td>Published release with changelog notes.</td></tr></tbody></table>
+      </section>
+
+      <section id="examples">
+        <h2>Examples</h2>
+        <p><strong>Note:</strong> No example demonstrates <code>--modules</code> because the flag is currently a no-op — see <a href="#arguments">Arguments</a> section for context.</p>
+
+        <h3>1. Explicit manual patch release</h3>
+        <pre><code>&gt; /gaia-release patch --dry-run
+
+Current version: 1.127.1
+New version:     1.127.2
+Files to update:
+  - package.json
+  - config/project-config.yaml (framework_version)
+
+Dry run complete. No files changed.
+
+&gt; /gaia-release patch
+
+Bumping version to 1.127.2...
+Committing: chore(release): bump version to v1.127.2
+Tagging: v1.127.2
+Pushing to origin/main...
+Creating GitHub Release v1.127.2...
+
+Release v1.127.2 published.</code></pre>
+
+        <h3>2. Minor release with --dry-run preview</h3>
+        <pre><code>&gt; /gaia-release minor --dry-run
+
+Current version: 1.127.2
+New version:     1.128.0
+Files to update:
+  - package.json
+  - config/project-config.yaml (framework_version)
+
+Dry run complete. No files changed.
+
+&gt; /gaia-release minor
+
+Bumping version to 1.128.0...
+Committing: chore(release): bump version to v1.128.0
+Tagging: v1.128.0
+Pushing to origin/main...
+Creating GitHub Release v1.128.0...
+
+Release v1.128.0 published.</code></pre>
+
+        <h3>3. RC prerelease workflow</h3>
+        <p>Create a release candidate, then increment the RC counter with <code>none</code>.</p>
+        <pre><code>&gt; /gaia-release minor --prerelease rc
+
+Current version: 1.128.0
+New version:     1.129.0-rc.1
+
+Bumping version to 1.129.0-rc.1...
+Committing: chore(release): bump version to v1.129.0-rc.1
+Tagging: v1.129.0-rc.1
+Creating GitHub Release v1.129.0-rc.1 (prerelease)...
+
+Release v1.129.0-rc.1 published (marked prerelease).
+
+&gt; /gaia-release none
+
+Current version: 1.129.0-rc.1
+New version:     1.129.0-rc.2
+
+Bumping version to 1.129.0-rc.2...
+Tagging: v1.129.0-rc.2
+Creating GitHub Release v1.129.0-rc.2 (prerelease)...
+
+Release v1.129.0-rc.2 published (marked prerelease).</code></pre>
+
+        <h3>4. Hotfix release lane (ADR-109 &sect;D3)</h3>
+        <p>After a hotfix is developed on a <code>hotfix/{ticket-id}</code> branch targeting main, the release ceremony composes <code>/gaia-deploy</code> and <code>/gaia-release</code>:</p>
+        <pre><code># Development (on hotfix/E12-S4 branch targeting main):
+&gt; /gaia-dev-story E12-S4
+&gt; /gaia-run-all-reviews   # full reviews including NFR-073 wire-verification
+
+# Release ceremony (on main after PR merge):
+&gt; /gaia-release patch
+
+Current version: 1.128.0
+New version:     1.128.1
+
+Bumping version to 1.128.1...
+Committing: chore(release): bump version to v1.128.1
+Tagging: v1.128.1
+Creating GitHub Release v1.128.1...
+
+Release v1.128.1 published.
+
+# Deploy:
+&gt; /gaia-deploy --env production
+&gt; /gaia-post-deploy</code></pre>
+
+        <h3>5. Promote an RC to stable with --strip-prerelease</h3>
+        <pre><code>&gt; /gaia-release --strip-prerelease
+
+Current version: 1.129.0-rc.2
+New version:     1.129.0
+
+Bumping version to 1.129.0...
+Committing: chore(release): bump version to v1.129.0
+Tagging: v1.129.0
+Pushing to origin/main...
+Creating GitHub Release v1.129.0...
+
+Release v1.129.0 published (stable).</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul><li>Verify the release on GitHub with <code>gh release view v1.127.2</code>.</li></ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>Not on main branch</h3><p>Releases can only be cut from main. Merge your sprint PR first.</p><h3>Working tree is dirty</h3><p>Commit or stash your changes before releasing.</p><h3>Version targets disagree</h3><p>The script detected version drift between package.json and the config. Supply an explicit version to resolve: <code>/gaia-release 1.127.2</code>.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
+          <tr><td><a href="gaia-changelog.html"><code>/gaia-changelog</code></a></td><td>Generates the changelog entry used in the GitHub Release notes.</td></tr>
+          <tr><td><a href="gaia-deploy.html"><code>/gaia-deploy</code></a></td><td>Adapter-mediated deploy orchestrator. Composes with <code>/gaia-release</code> in the hotfix flow (ADR-109 &sect;D3).</td></tr>
+          <tr><td><a href="gaia-post-deploy.html"><code>/gaia-post-deploy</code></a></td><td>Post-deployment verification and smoke tests.</td></tr>
+          <tr><td><a href="gaia-rollback-plan.html"><code>/gaia-rollback-plan</code></a></td><td>Rollback criteria and procedures. On standby during hotfix deploys.</td></tr>
+        </tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/deployment.html">Back to Deployment</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

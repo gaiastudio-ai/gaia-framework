@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shape: CLI - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+          <li><a href="shape-plugin.html">Shape: Plugin</a></li>
+          <li><a href="shape-library.html">Shape: Library</a></li>
+          <li><a href="shape-cli.html" class="active">Shape: CLI</a></li>
+          <li><a href="shape-mobile-app.html">Shape: Mobile App</a></li>
+          <li><a href="shape-container-image.html">Shape: Container Image</a></li>
+          <li><a href="shape-static-site.html">Shape: Static Site</a></li>
+          <li><a href="phase-5-for-non-deployable-projects.html">Phase 5 for Non-Deployable Projects</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#when">When this shape applies</a></li>
+          <li><a href="#config">project-config.yaml</a></li>
+          <li><a href="#routing">Phase 5 routing</a></li>
+          <li><a href="#overlays">CI overlays</a></li>
+          <li><a href="#publish">Publish to homebrew + github-releases</a></li>
+          <li><a href="#custom">Other ecosystems (the custom channel)</a></li>
+          <li><a href="#worked-when">You'll know it worked when</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        <a href="project-shapes-overview.html">Project Shapes</a>
+        <span class="separator">/</span>
+        CLI
+      </nav>
+
+      <h1>Shape: CLI</h1>
+      <p>
+        A CLI tool typically ships TWO ways at once: a tarball on GitHub Releases (with platform-specific
+        binaries) AND a package on a system package manager (Homebrew for macOS, with extension points
+        for Cargo / Scoop / Snap / etc.). The release surface is a tag push -- the GitHub Releases page
+        + the Homebrew tap update happen on the same trigger.
+      </p>
+
+      <section id="when">
+        <h2>When this shape applies</h2>
+        <ul>
+          <li>You author a command-line tool that users install rather than visit.</li>
+          <li>You want a GitHub Release with cross-platform binaries AND a Homebrew tap update on the same tag push.</li>
+          <li>Optionally, you also publish to other ecosystems (cargo, nuget, rubygems) via the <code>custom</code> adapter pattern.</li>
+        </ul>
+      </section>
+
+      <section id="config">
+        <h2>project-config.yaml</h2>
+        <p>
+          For the primary channels (Homebrew + GitHub Releases), pick one as the canonical
+          <code>distribution.channel</code> and use the GitHub Releases workflow to drive both.
+          Homebrew first since it's the user-facing install vector for the macOS audience:
+        </p>
+        <pre><code>environments:
+  - id: release
+    kind: branch-only
+    branch: main
+
+distribution:
+  channel: homebrew
+  registry: https://github.com/myorg/homebrew-tap
+  manifest: Formula/mytool.rb
+  release_workflow: gaia-release.yml
+  tap: myorg/homebrew-tap</code></pre>
+        <p>
+          The <code>homebrew</code> channel requires the <code>tap</code> sub-field per ADR-112 §(d).
+          For a tool that publishes to GitHub Releases AND tap, the GitHub Releases publish runs first
+          inside <code>release_workflow</code>; the Homebrew tap update is a downstream job that runs
+          after the release exists.
+        </p>
+        <p>
+          Alternatively, if GitHub Releases IS the primary surface:
+        </p>
+        <pre><code>distribution:
+  channel: github-releases
+  registry: https://github.com/myorg/mytool
+  manifest: Cargo.toml
+  release_workflow: gaia-release.yml
+  repo: myorg/mytool</code></pre>
+        <p>
+          The <code>github-releases</code> channel requires the <code>repo</code> sub-field.
+        </p>
+      </section>
+
+      <section id="routing">
+        <h2>Phase 5 routing</h2>
+        <p>
+          With <code>kind: branch-only</code> + <code>distribution:</code>, the Phase 5 router emits
+          <code>publish-primary</code> and suggests <code>/gaia-publish</code>. <code>/gaia-deploy</code>
+          and <code>/gaia-post-deploy</code> both refuse (the tool ships as an artifact, not as a
+          deployed service).
+        </p>
+      </section>
+
+      <section id="overlays">
+        <h2>CI overlays</h2>
+        <p>
+          CLI projects often need a matrix build (Linux + macOS + Windows). Add the matrix job via
+          <code>gaia-ci.user-jobs.yml</code>:
+        </p>
+        <pre><code>jobs:
+  build-matrix:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo build --release</code></pre>
+      </section>
+
+      <section id="publish">
+        <h2>Publish to homebrew + github-releases</h2>
+        <pre><code>/gaia-publish</code></pre>
+        <p>
+          The orchestrator dispatches the channel-matching adapter
+          (<code>publish-homebrew</code> or <code>publish-github-releases</code>), which invokes the
+          configured <code>release_workflow</code>. For the combined homebrew + GitHub Releases case,
+          structure your workflow as a sequence:
+        </p>
+        <ul>
+          <li>Build cross-platform binaries -> upload as GitHub Release assets.</li>
+          <li>Compute SHA-256 hashes of the binaries.</li>
+          <li>Update the Homebrew Formula in the tap repo with the new version + hashes.</li>
+        </ul>
+      </section>
+
+      <section id="custom">
+        <h2>Other ecosystems (the custom channel)</h2>
+        <p>
+          Ecosystems not first-class in this iteration -- <code>cargo</code> (Rust),
+          <code>nuget</code> (.NET), <code>cran</code> (R), <code>rubygems</code> (Ruby),
+          <code>hex</code> (Elixir), <code>helm-chart</code> (Kubernetes) -- use the
+          <code>custom</code> channel and point at a custom adapter:
+        </p>
+        <pre><code>distribution:
+  channel: custom
+  registry: https://crates.io
+  manifest: Cargo.toml
+  release_workflow: gaia-release.yml
+  adapter_name: cargo-publish</code></pre>
+        <p>
+          Then create <code>.gaia/custom/adapters/publish-cargo-publish/</code> with an
+          <code>adapter-manifest.yaml</code> + a <code>run.sh</code> that drives <code>cargo publish</code>.
+          See ADR-113 §6 for the extension contract.
+        </p>
+      </section>
+
+      <section id="worked-when">
+        <h2>You'll know it worked when</h2>
+        <ul>
+          <li><code>/gaia-config-validate</code> exits 0; the channel-specific sub-field (<code>tap</code> for homebrew, <code>repo</code> for github-releases) is present.</li>
+          <li><code>/gaia-help</code> suggests <code>/gaia-publish</code> on the Phase 5 row.</li>
+          <li>A <code>/gaia-publish</code> run creates a GitHub Release at the version in <code>manifest</code> and updates the Homebrew tap (or runs the custom adapter for non-first-class channels).</li>
+          <li>End users can install via <code>brew install myorg/tap/mytool</code> (homebrew) or download the release tarball directly.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

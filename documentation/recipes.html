@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Common Workflows - GAIA Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="glossary.html">Glossary</a></li>
+          <li><a href="lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="recipes.html" class="active">Recipes</a></li>
+          <li><a href="tutorials/first-30-minutes.html">First 30 Minutes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Recipes</p>
+        <ul>
+          <li><a href="#greenfield">1. Greenfield bootstrap</a></li>
+          <li><a href="#brownfield">2. Existing codebase</a></li>
+          <li><a href="#add-feature">3. Add a feature</a></li>
+          <li><a href="#story-full-review">4. Story with full review</a></li>
+          <li><a href="#quick-fix">5. Quick fix</a></li>
+          <li><a href="#deploy">6. Deploy a release</a></li>
+          <li><a href="#recover">7. Recover from interruption</a></li>
+          <li><a href="#test-audit">8. Audit test coverage</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="index.html">Home</a>
+        <span class="separator">/</span>
+        Common Workflows
+      </nav>
+
+      <h1>Common Workflows</h1>
+      <p>
+        Each recipe is a multi-command workflow for a specific scenario. Commands
+        are listed in order; run them sequentially. Branching notes describe
+        common variations.
+      </p>
+
+      <!-- Recipe 1 -->
+      <section id="greenfield">
+        <h2>1. Greenfield project -- bootstrap to first sprint</h2>
+        <p>Start from an empty directory and reach a running sprint.</p>
+        <ol>
+          <li><a href="commands/gaia-init.html"><code>/gaia-init</code></a> -- bootstrap <code>config/project-config.yaml</code> with your stack, platforms, and CI settings.</li>
+          <li><a href="commands/gaia-brainstorm.html"><code>/gaia-brainstorm</code></a> -- explore the problem space and capture initial ideas.</li>
+          <li><a href="commands/gaia-product-brief.html"><code>/gaia-product-brief</code></a> -- synthesize ideas into a structured product brief.</li>
+          <li><a href="commands/gaia-create-prd.html"><code>/gaia-create-prd</code></a> -- produce a full PRD with functional and non-functional requirements.</li>
+          <li><a href="commands/gaia-create-arch.html"><code>/gaia-create-arch</code></a> -- design the system architecture from the PRD.</li>
+          <li><a href="commands/gaia-create-epics.html"><code>/gaia-create-epics</code></a> -- break the architecture into epics and stories.</li>
+          <li><a href="commands/gaia-create-story.html"><code>/gaia-create-story</code></a> -- create detailed story files for priority stories.</li>
+          <li><a href="commands/gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> -- select stories for the first sprint.</li>
+          <li><a href="commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a> -- implement the first story end-to-end.</li>
+        </ol>
+        <div class="callout">
+          <p class="callout-title">Branching</p>
+          <p>
+            Skip steps 2--3 if you already have a clear product vision and
+            can write the PRD directly. Add
+            <a href="commands/gaia-threat-model.html"><code>/gaia-threat-model</code></a>
+            and <a href="commands/gaia-infra-design.html"><code>/gaia-infra-design</code></a>
+            between steps 5 and 6 for security-sensitive projects.
+          </p>
+        </div>
+      </section>
+
+      <!-- Recipe 2 -->
+      <section id="brownfield">
+        <h2>2. Existing codebase -- onboard with GAIA</h2>
+        <p>Apply GAIA to a project that already has code but no GAIA artifacts.</p>
+        <ol>
+          <li><a href="commands/gaia-init.html"><code>/gaia-init</code></a> -- create the project configuration.</li>
+          <li><a href="commands/gaia-brownfield.html"><code>/gaia-brownfield</code></a> -- deep discovery: scans the codebase, detects the stack, maps the directory structure, runs multi-scan gap analysis, and generates starter artifacts.</li>
+          <li><a href="commands/gaia-document-project.html"><code>/gaia-document-project</code></a> -- produce a comprehensive project-documentation.md for AI context.</li>
+          <li><a href="commands/gaia-create-arch.html"><code>/gaia-create-arch</code></a> -- formalize the discovered architecture into a GAIA architecture document.</li>
+          <li><a href="commands/gaia-test-gap-analysis.html"><code>/gaia-test-gap-analysis</code></a> -- scan existing tests against requirements to find coverage gaps.</li>
+        </ol>
+        <div class="callout">
+          <p class="callout-title">Branching</p>
+          <p>
+            If the existing project has no tests, run
+            <a href="commands/gaia-atdd.html"><code>/gaia-atdd</code></a>
+            after creating stories to generate acceptance test skeletons. If
+            the project has a Figma design, run
+            <a href="commands/gaia-create-ux.html"><code>/gaia-create-ux</code></a>
+            to capture UX specs.
+          </p>
+        </div>
+      </section>
+
+      <!-- Recipe 3 -->
+      <section id="add-feature">
+        <h2>3. Add a feature to an in-progress project</h2>
+        <p>Triage and route a new feature, enhancement, or fix through only the affected artifacts.</p>
+        <ol>
+          <li><a href="commands/gaia-add-feature.html"><code>/gaia-add-feature</code></a> -- describe the change. GAIA classifies it as patch, enhancement, or feature, then cascades updates through the PRD, architecture, epics, test plan, threat model, and traceability matrix as needed.</li>
+          <li><a href="commands/gaia-create-story.html"><code>/gaia-create-story</code></a> -- create story files for any new stories the cascade produced.</li>
+          <li><a href="commands/gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> -- plan the new stories into the next sprint, or use <a href="commands/gaia-correct-course.html"><code>/gaia-correct-course</code></a> to inject them into the current sprint.</li>
+          <li><a href="commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a> -- implement each new story.</li>
+        </ol>
+        <div class="callout">
+          <p class="callout-title">Branching</p>
+          <p>
+            For urgent hotfixes that cannot wait for sprint planning, use
+            <code>/gaia-correct-course</code> to inject the story into the
+            current sprint. For minor changes under a day of work, consider
+            the <a href="#quick-fix">Quick Fix</a> recipe instead.
+          </p>
+        </div>
+      </section>
+
+      <!-- Recipe 4 -->
+      <section id="story-full-review">
+        <h2>4. Implement a story end-to-end with full review</h2>
+        <p>The standard implementation-to-done flow for a single story.</p>
+        <ol>
+          <li><a href="commands/gaia-dev-story.html"><code>/gaia-dev-story E3-S7</code></a> -- implement the story with <a href="glossary.html#red-green-refactor">TDD</a>, commit, push, create PR, wait for CI, merge.</li>
+          <li><a href="commands/gaia-review-all.html"><code>/gaia-review-all E3-S7</code></a> -- run all six reviews (code, QA, security, test automation, test review, performance). Each review updates the story's <a href="glossary.html#review-gate">Review Gate</a> table.</li>
+          <li><a href="commands/gaia-check-review-gate.html"><code>/gaia-check-review-gate E3-S7</code></a> -- verify all six gates are PASSED. If any failed, fix the issues and re-run the failing review.</li>
+        </ol>
+        <div class="callout">
+          <p class="callout-title">Branching</p>
+          <p>
+            If a review fails, fix the code and re-run only the failing
+            review command (e.g., <code>/gaia-review-security E3-S7</code>),
+            or re-run all reviews with <code>/gaia-review-all E3-S7 --force</code>
+            to re-evaluate everything.
+          </p>
+        </div>
+      </section>
+
+      <!-- Recipe 5 -->
+      <section id="quick-fix">
+        <h2>5. Run a quick fix without full lifecycle</h2>
+        <p>For changes under a day that touch fewer than five files.</p>
+        <ol>
+          <li><a href="commands/gaia-quick-spec.html"><code>/gaia-quick-spec fix-login-redirect</code></a> -- answer two questions (what changed, which files) and get a lightweight five-section spec.</li>
+          <li><a href="commands/gaia-quick-dev.html"><code>/gaia-quick-dev fix-login-redirect</code></a> -- implement the spec with auto-detected stack developer, commit, push, and PR.</li>
+        </ol>
+        <div class="callout">
+          <p class="callout-title">Branching</p>
+          <p>
+            If the quick-spec escape hatch fires (more than 5 files or 1 day),
+            the command offers to escalate to the full lifecycle via
+            <code>/gaia-create-prd</code>. Follow its suggestion.
+          </p>
+        </div>
+      </section>
+
+      <!-- Recipe 6 -->
+      <section id="deploy">
+        <h2>6. Deploy a release with full pre-deploy checklist</h2>
+        <p>The full deployment pipeline from release planning to post-deploy verification.</p>
+        <ol>
+          <li><a href="commands/gaia-release-plan.html"><code>/gaia-release-plan</code></a> -- create a staged rollout strategy with environment progression and success metrics.</li>
+          <li><a href="commands/gaia-rollback-plan.html"><code>/gaia-rollback-plan</code></a> -- define rollback criteria and procedures for each environment.</li>
+          <li><a href="commands/gaia-deploy-checklist.html"><code>/gaia-deploy-checklist</code></a> -- verify all pre-deployment quality gates.</li>
+          <li><a href="commands/gaia-deploy.html"><code>/gaia-deploy</code></a> -- execute the deployment through the <a href="glossary.html#promotion-chain">promotion chain</a>: pre-deploy gate, adapter-mediated deploy, health check, and post-deploy smoke test.</li>
+          <li><a href="commands/gaia-post-deploy.html"><code>/gaia-post-deploy</code></a> -- verify post-deployment health and metrics.</li>
+        </ol>
+        <div class="callout">
+          <p class="callout-title">Branching</p>
+          <p>
+            If post-deploy verification fails, consult the rollback plan
+            produced in step 2. For hotfix deployments, skip steps 1--2
+            and go directly to the deploy checklist.
+          </p>
+        </div>
+      </section>
+
+      <!-- Recipe 7 -->
+      <section id="recover">
+        <h2>7. Recover from interruption</h2>
+        <p>Resume work after a session break, context loss, or crash.</p>
+        <ol>
+          <li><a href="commands/gaia-resume.html"><code>/gaia-resume</code></a> -- lists active checkpoints, reads the selected one, validates it against current file state, and surfaces a Proceed / Start fresh / Review prompt if drift is detected.</li>
+          <li>If the checkpoint is valid, GAIA resumes the interrupted command from the last completed step.</li>
+          <li>If drift is detected (files changed since the checkpoint), review the differences and decide whether to proceed or start fresh.</li>
+        </ol>
+        <div class="callout">
+          <p class="callout-title">Branching</p>
+          <p>
+            If no checkpoint exists, GAIA cannot resume. Run
+            <a href="commands/gaia-help.html"><code>/gaia-help</code></a>
+            to get a context-sensitive suggestion for the best next command
+            based on which artifacts already exist.
+          </p>
+        </div>
+      </section>
+
+      <!-- Recipe 8 -->
+      <section id="test-audit">
+        <h2>8. Audit existing test coverage</h2>
+        <p>Find and fill gaps in your test suite.</p>
+        <ol>
+          <li><a href="commands/gaia-test-gap-analysis.html"><code>/gaia-test-gap-analysis</code></a> -- scan test suite against requirements to identify which acceptance criteria lack test coverage. Produces a gap report.</li>
+          <li><a href="commands/gaia-fill-test-gaps.html"><code>/gaia-fill-test-gaps</code></a> -- triage gaps by severity, propose remediation actions, and execute approved remediations.</li>
+          <li><a href="commands/gaia-trace.html"><code>/gaia-trace</code></a> -- regenerate the traceability matrix to verify that all requirements now have test coverage.</li>
+        </ol>
+        <div class="callout">
+          <p class="callout-title">Branching</p>
+          <p>
+            Run <code>/gaia-test-gap-analysis --mode verification</code> to
+            cross-reference generated test cases against actual execution
+            results (JUnit XML, LCOV) instead of just planned coverage.
+          </p>
+        </div>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

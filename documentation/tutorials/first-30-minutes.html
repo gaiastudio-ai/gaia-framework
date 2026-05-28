@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>First 30 Minutes with GAIA - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#step-1">1. Install</a></li>
+          <li><a href="#step-2">2. /gaia-init</a></li>
+          <li><a href="#step-3">3. /gaia-brainstorm</a></li>
+          <li><a href="#step-4">4. /gaia-product-brief</a></li>
+          <li><a href="#step-5">5. /gaia-create-prd</a></li>
+          <li><a href="#step-6">6. /gaia-create-arch</a></li>
+          <li><a href="#step-7">7. /gaia-create-epics</a></li>
+          <li><a href="#step-8">8. /gaia-create-story</a></li>
+          <li><a href="#step-9">9. /gaia-sprint-plan</a></li>
+          <li><a href="#step-10">10. /gaia-dev-story</a></li>
+          <li><a href="#whats-next">What to read next</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        First 30 Minutes
+      </nav>
+
+      <h1>First 30 Minutes with GAIA</h1>
+      <p>
+        This walkthrough takes you from a blank directory to a running sprint.
+        Each step builds on the previous one, producing an
+        <a href="../glossary.html#artifact">artifact</a> that feeds the next
+        command. By the end, you will have a product brief, a PRD, an
+        architecture document, a backlog of stories, a planned sprint, and
+        your first story implemented with tests.
+      </p>
+
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>
+          The walkthrough follows GAIA's five
+          <a href="../glossary.html#lifecycle-phase">lifecycle phases</a>:
+          Analysis (steps 1--4), Planning (step 5), Solutioning (steps 6--7),
+          and Implementation (steps 8--10). Deployment is covered separately
+          in the <a href="../recipes.html">Recipes</a> page.
+        </p>
+      </section>
+
+      <section id="step-1">
+        <h2>Step 1 -- Install the plugin</h2>
+        <p>
+          Install the GAIA plugin into your Claude Code environment. Refer to
+          the GAIA repository README for platform-specific installation
+          instructions. Once installed, all <code>/gaia-*</code> commands
+          become available in any Claude Code session.
+        </p>
+        <p><em>Expected duration: 2 minutes.</em></p>
+      </section>
+
+      <section id="step-2">
+        <h2>Step 2 -- Bootstrap your project</h2>
+        <pre><code>/gaia-init</code></pre>
+        <p>
+          GAIA asks a series of discovery questions -- project name, tech
+          stack, platforms, compliance regimes, environments, and CI platform.
+          Your answers are saved to <code>.gaia/config/project-config.yaml</code>,
+          the single configuration file that every other GAIA command reads.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/config/project-config.yaml</code></p>
+        <p><em>Expected duration: 3 minutes.</em></p>
+      </section>
+
+      <section id="step-3">
+        <h2>Step 3 -- Explore the problem</h2>
+        <pre><code>/gaia-brainstorm</code></pre>
+        <p>
+          Describe what you want to build. GAIA facilitates a structured
+          brainstorming session, helping you explore the problem space, user
+          needs, and potential solutions. The output captures your ideas in a
+          format that the next commands can consume.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/creative-artifacts/brainstorm-{slug}.md</code></p>
+        <p><em>Expected duration: 5 minutes.</em></p>
+      </section>
+
+      <section id="step-4">
+        <h2>Step 4 -- Capture the vision</h2>
+        <pre><code>/gaia-product-brief</code></pre>
+        <p>
+          Synthesize the brainstorm into a structured product brief covering
+          vision, target users, the core problem, proposed solution, scope
+          boundaries, risks, competitive landscape, and success metrics.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/product-brief.md</code></p>
+        <p><em>Expected duration: 5 minutes.</em></p>
+      </section>
+
+      <section id="step-5">
+        <h2>Step 5 -- Produce requirements</h2>
+        <pre><code>/gaia-create-prd</code></pre>
+        <p>
+          The PM agent (Derek) transforms your product brief into a full
+          Product Requirements Document. The PRD contains functional
+          requirements (FRs), non-functional requirements (NFRs), user
+          journeys, data requirements, integrations, and success criteria.
+          Every FR gets a unique identifier (e.g., <code>FR-001</code>) that
+          flows through the rest of the lifecycle.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/prd.md</code></p>
+        <p><em>Expected duration: 5 minutes.</em></p>
+      </section>
+
+      <section id="step-6">
+        <h2>Step 6 -- Design the system</h2>
+        <pre><code>/gaia-create-arch</code></pre>
+        <p>
+          The architect agent (Theo) reads the PRD and produces an
+          architecture document covering technology selection, system
+          components, data architecture, API design, infrastructure,
+          security architecture, and ADRs. Each architecture decision
+          traces back to a PRD requirement.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/architecture.md</code></p>
+        <p><em>Expected duration: 5 minutes.</em></p>
+      </section>
+
+      <section id="step-7">
+        <h2>Step 7 -- Break into deliverable units</h2>
+        <pre><code>/gaia-create-epics</code></pre>
+        <p>
+          GAIA breaks the architecture into epics and stories. Each epic
+          groups related stories that together deliver a significant
+          capability. Each story gets acceptance criteria, a risk rating,
+          and dependency links.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code></p>
+        <p><em>Expected duration: 3 minutes.</em></p>
+      </section>
+
+      <section id="step-8">
+        <h2>Step 8 -- Prepare individual stories</h2>
+        <pre><code>/gaia-create-story E1-S1</code></pre>
+        <p>
+          Creates a detailed story file for a specific story from the
+          epics-and-stories document. The file includes YAML frontmatter
+          (status, risk, dependencies), acceptance criteria, subtasks,
+          a Definition of Done checklist, and a Review Gate table. Repeat
+          for each story you want to work on.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/implementation-artifacts/epic-E1-*/stories/E1-S1-*.md</code></p>
+        <p><em>Expected duration: 2 minutes per story.</em></p>
+      </section>
+
+      <section id="step-9">
+        <h2>Step 9 -- Pick what to work on</h2>
+        <pre><code>/gaia-sprint-plan</code></pre>
+        <p>
+          The sprint manager agent (Nate) selects stories from the backlog
+          based on priority, dependencies, and velocity. The sprint is
+          committed atomically to <code>sprint-status.yaml</code>, which
+          becomes your source of truth for the iteration.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>sprint-status.yaml</code></p>
+        <p><em>Expected duration: 2 minutes.</em></p>
+      </section>
+
+      <section id="step-10">
+        <h2>Step 10 -- Implement your first story</h2>
+        <pre><code>/gaia-dev-story E1-S1</code></pre>
+        <p>
+          The full implementation workflow: plan approval, TDD
+          (<a href="../glossary.html#red-green-refactor">red/green/refactor</a>),
+          code writing, test execution, commit, push, PR creation, CI wait,
+          and merge. GAIA selects the right stack developer agent based on
+          your project's tech stack and walks through each step with you.
+        </p>
+        <p><strong>Artifacts produced:</strong> source code, test files, PR, review reports</p>
+        <p><em>Expected duration: varies by story complexity.</em></p>
+      </section>
+
+      <section id="whats-next">
+        <h2>What to read next</h2>
+        <ul>
+          <li><a href="../index.html#lifecycle">The GAIA Lifecycle</a> -- the five-phase diagram showing how all commands connect.</li>
+          <li><a href="../recipes.html">Common Workflows</a> -- multi-command recipes for brownfield onboarding, quick fixes, deployments, and more.</li>
+          <li><a href="../commands/gaia-help.html"><code>/gaia-help</code></a> -- context-sensitive help that suggests the best next command based on your project's current state.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>/gaia-triage-findings - GAIA Documentation</title><link rel="stylesheet" href="../styles.css"></head>
+<body><div class="page-wrapper">
+<aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/development.html">Development</a><span class="separator">/</span>/gaia-triage-findings</nav>
+      <header class="command-header"><div class="command-title"><h1>/gaia-triage-findings</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/development.html">Development</a></dd><dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd><dt>Arguments:</dt><dd><code>[story-key?]</code></dd></dl></header>
+      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-triage-findings</code> scans story files for development findings and triages each into a new backlog story, an existing story, or dismisses it. New stories are created with complete frontmatter and registered in the backlog. Source story findings tables are preserved for idempotent re-triage.</p></section>
+      <section id="when-to-use"><h2>When to use it</h2><ul><li>After implementing stories, findings may have accumulated in the Findings tables. This command triages them into actionable work.</li><li>The tech debt review flagged items with stale or missing targets that need re-triage.</li></ul></section>
+      <section id="prerequisites"><h2>Prerequisites</h2><ul><li><strong>Story files with findings.</strong> At least some stories must have populated Findings tables.</li></ul></section>
+      <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-triage-findings</code></pre><p>Scans all stories. Or target a single story:</p><pre><code>/gaia-triage-findings E3-S7</code></pre></section>
+      <section id="step-by-step"><h2>What it does step by step</h2><ol class="step-list"><li><span class="step-title">Scan for findings</span> Reads all story files and extracts untriaged findings from their Findings tables.</li><li><span class="step-title">Present findings</span> Groups findings by severity (critical first) and shows type, severity, description, and suggested action.</li><li><span class="step-title">Triage each finding</span> For each finding, recommends CREATE STORY, ADD TO EXISTING, or DISMISS. Requires a reproduction command for actionable findings. Protects done stories from mutation.</li><li><span class="step-title">Create backlog stories</span> For CREATE STORY decisions, delegates to <code>/gaia-create-story</code> with provenance tracking.</li><li><span class="step-title">Mark findings</span> Appends <code>[TRIAGED]</code> or <code>[DISMISSED]</code> markers to processed findings.</li><li><span class="step-title">Summary</span> Reports totals and suggests next actions for urgent findings.</li></ol></section>
+      <section id="inputs"><h2>Inputs</h2><table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Story files</td><td><code>.gaia/artifacts/implementation-artifacts/</code></td><td>Files with populated Findings tables.</td></tr><tr><td>Epics and stories</td><td><code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code></td><td>For determining epic context and next story keys.</td></tr></tbody></table></section>
+      <section id="outputs"><h2>Outputs</h2><table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>New backlog stories</td><td><code>.gaia/artifacts/implementation-artifacts/</code></td><td>Stories created from findings.</td></tr><tr><td>Updated source stories</td><td><code>.gaia/artifacts/implementation-artifacts/</code></td><td>Findings marked as triaged or dismissed.</td></tr><tr><td>Updated epics-and-stories</td><td><code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code></td><td>New stories appended under the correct epic.</td></tr></tbody></table></section>
+      <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-triage-findings
+
+Scanning story files... 12 untriaged findings across 5 stories.
+
+Finding 1 (CRITICAL, bug): E3-S7 -- Auth token not invalidated on logout.
+  Reproduction: curl -X POST /logout; curl -H "Authorization: Bearer $TOKEN" /me  # expect 401, got 200
+  Recommendation: CREATE STORY (NOW -- inject into current sprint)
+  Confirm? yes
+  Creating E3-S15 via /gaia-create-story...
+
+Finding 2 (MEDIUM, tech-debt): E5-S12 -- Hardcoded retry delay.
+  Recommendation: CREATE STORY (BACKLOG)
+  Confirm? yes
+
+Summary: 12 findings processed. 4 stories created, 3 added to existing, 5 dismissed.
+2 stories marked as NOW -- run /gaia-correct-course to inject them.</code></pre></section>
+      <section id="what-next"><h2>What to run next</h2><ul><li><a href="gaia-correct-course.html"><code>/gaia-correct-course</code></a> -- inject NOW-priority stories into the sprint.</li><li><a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> -- NEXT SPRINT stories will be prioritized.</li></ul></section>
+      <section id="troubleshooting"><h2>Troubleshooting</h2><h3>"No findings to triage"</h3><p>No story files have untriaged entries in their Findings tables.</p><h3>"reproduction required"</h3><p>A finding cannot be promoted to a story without a runnable reproduction command. Supply one at the prompt or dismiss the finding.</p></section>
+      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-tech-debt-review.html"><code>/gaia-tech-debt-review</code></a></td><td>Identifies stale targets that need re-triage here.</td></tr><tr><td><a href="gaia-correct-course.html"><code>/gaia-correct-course</code></a></td><td>Injects urgent findings into the current sprint.</td></tr><tr><td><a href="gaia-create-story.html"><code>/gaia-create-story</code></a></td><td>Called by this command to create new stories.</td></tr></tbody></table></section>
+      <footer class="page-footer"><p><a href="../categories/development.html">Back to Development</a></p></footer>
+    </main></div></body></html>

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-validate-framework - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/validation.html">Validation</a><span class="separator">/</span>
+        /gaia-validate-framework
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-validate-framework</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/validation.html">Validation</a></dd>
+          <dt>Lifecycle phase:</dt><dd>Any</dd>
+          <dt>Arguments:</dt><dd><code>[--report-path]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-validate-framework</code> scans the GAIA plugin installation for consistency, broken references, and missing components. It compares the on-disk file inventory against the shipped manifest, verifies that workflows, agents, skills, and knowledge entries all resolve, and checks that configuration resolution works correctly. The output is a severity-grouped findings report.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>After installing or upgrading the GAIA plugin, to verify the installation is complete.</li>
+          <li>When a command fails unexpectedly and you suspect a missing or broken framework file.</li>
+          <li>As part of a periodic health check on your GAIA setup.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li><strong>The GAIA plugin must be installed.</strong> The framework manifest file must be present.</li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-validate-framework</code></pre>
+        <p>Optionally provide <code>--report-path</code> to write the report to a specific file.</p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">File inventory</span> Scans the plugin directory tree and compares file counts by type against the manifest.</li>
+          <li><span class="step-title">Workflow integrity</span> Verifies every workflow YAML has its companion instruction and validation files.</li>
+          <li><span class="step-title">Agent integrity</span> Checks that agent definition files are well-formed and reference real files.</li>
+          <li><span class="step-title">Manifest integrity</span> Verifies the agent manifest matches the on-disk agent files.</li>
+          <li><span class="step-title">Config resolution</span> Verifies the configuration resolver produces parseable output.</li>
+          <li><span class="step-title">Skill and knowledge index integrity</span> Checks that skill index entries and knowledge fragments point to real files.</li>
+          <li><span class="step-title">Report</span> Emits a PASS/FAIL overall verdict with itemized findings grouped by severity (CRITICAL first).</li>
+        </ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>--report-path</code></td><td>Command argument (optional)</td><td>Where to write the report. Defaults to <code>.gaia/artifacts/implementation-artifacts/framework-validation-{date}.md</code>.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td>Validation report</td><td>Report path (see above)</td><td>Severity-grouped findings with suggested fixes.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>&gt; /gaia-validate-framework
+
+Scanning plugin tree...
+  127 files found (expected 125 from manifest).
+
+Checking workflows... 32/32 OK.
+Checking agents... 18/18 OK.
+Checking config resolution... OK.
+Checking skill index... 1 WARNING.
+Checking knowledge index... OK.
+
+Overall Status: PASS
+
+| Severity | Section         | Finding                                  |
+|----------|-----------------|------------------------------------------|
+| WARNING  | Skill Index     | Line range [45,92] exceeds file bounds   |
+| INFO     | File Inventory  | 2 extra files not in manifest            |
+
+Report written to .gaia/artifacts/implementation-artifacts/framework-validation-2026-05-07.md</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>Fix any CRITICAL findings before using other GAIA commands.</li>
+          <li>WARNING and INFO findings do not block usage but should be addressed when convenient.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>"manifest.yaml missing"</h3>
+        <p>The framework manifest could not be found. This usually means the GAIA plugin is not installed or was installed incorrectly. Reinstall the plugin.</p>
+        <h3>Overall status is FAIL</h3>
+        <p>One or more CRITICAL findings were detected. The report lists each finding with a suggested fix. Address them before relying on the affected commands.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead><tr><th>Command</th><th>Relationship</th></tr></thead>
+          <tbody>
+            <tr><td><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a></td><td>Validates your project configuration file, not the framework installation.</td></tr>
+            <tr><td><a href="gaia-val-validate.html"><code>/gaia-val-validate</code></a></td><td>Validates project artifacts, not the framework itself.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/validation.html">Back to Validation</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

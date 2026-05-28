@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>/gaia-fix-story - GAIA Documentation</title><link rel="stylesheet" href="../styles.css"></head>
+<body><div class="page-wrapper">
+<aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/development.html">Development</a><span class="separator">/</span>/gaia-fix-story</nav>
+      <header class="command-header"><div class="command-title"><h1>/gaia-fix-story</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/development.html">Development</a></dd><dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd><dt>Arguments:</dt><dd><code>[story-key]</code></dd></dl></header>
+      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-fix-story</code> applies validation findings to a story file and re-validates to transition it from <code>validating</code> back to <code>ready-for-dev</code>. It reads the findings, fixes affected sections (frontmatter, acceptance criteria, test scenarios, Definition of Done), and confirms the story is clean.</p></section>
+      <section id="when-to-use"><h2>When to use it</h2><ul><li>A story is in <code>validating</code> status because <code>/gaia-create-story</code> or <code>/gaia-validate-story</code> found issues that could not be auto-fixed.</li></ul></section>
+      <section id="prerequisites"><h2>Prerequisites</h2><ul><li><strong>Story must be in <code>validating</code> status.</strong> Stories in other statuses are rejected.</li><li><strong>Validation findings must exist.</strong> Either in the story file's Validation Findings section or in the validator memory.</li></ul></section>
+      <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-fix-story E3-S7</code></pre></section>
+      <section id="step-by-step"><h2>What it does step by step</h2><ol class="step-list"><li><span class="step-title">Resolve story file</span> Locates the story file by key.</li><li><span class="step-title">Status gate</span> Confirms the story is in <code>validating</code> status.</li><li><span class="step-title">Load findings</span> Reads validation findings from the story file and validator memory.</li><li><span class="step-title">Apply fixes</span> Fixes frontmatter drift, missing sections, unclear ACs, empty test scenarios, and other issues. Preserves all existing valid content.</li><li><span class="step-title">Re-validate</span> Runs validation again. If clean, transitions to <code>ready-for-dev</code>. If findings remain, exits with a summary.</li></ol></section>
+      <section id="inputs"><h2>Inputs</h2><table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>story-key</code></td><td>Command argument (required)</td><td>The story to fix.</td></tr></tbody></table></section>
+      <section id="outputs"><h2>Outputs</h2><table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Fixed story file</td><td><code>.gaia/artifacts/implementation-artifacts/{key}-*.md</code></td><td>Updated sections, status transitioned to <code>ready-for-dev</code> on success.</td></tr></tbody></table></section>
+      <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-fix-story E3-S7
+
+Story E3-S7: validating status confirmed.
+3 findings loaded (1 WARNING, 2 INFO).
+
+Fixing:
+  - WARNING: AC2 not in Given/When/Then format. Rewriting...
+  - INFO: Missing test scenario for AC3. Adding...
+  - INFO: DoD item "No lint warnings" missing. Adding...
+
+Re-validating... 0 critical, 0 warning.
+
+Story E3-S7 fixed and transitioned to ready-for-dev.</code></pre></section>
+      <section id="what-next"><h2>What to run next</h2><ul><li><a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a> -- implement the now-ready story.</li><li><a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> -- include it in the next sprint.</li></ul></section>
+      <section id="troubleshooting"><h2>Troubleshooting</h2><h3>"Story not in validating state"</h3><p>Run <a href="gaia-validate-story.html"><code>/gaia-validate-story</code></a> first to produce findings.</p><h3>Findings remain after fixes</h3><p>The command exits with a summary of unresolved findings. Review them manually and re-run.</p></section>
+      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-create-story.html"><code>/gaia-create-story</code></a></td><td>Creates the story; validation failures there lead to this command.</td></tr><tr><td><a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a></td><td>Implements the story once it reaches ready-for-dev.</td></tr></tbody></table></section>
+      <footer class="page-footer"><p><a href="../categories/development.html">Back to Development</a></p></footer>
+    </main></div></body></html>

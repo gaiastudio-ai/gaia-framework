@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-config-show - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/configuration.html">Configuration</a><span class="separator">/</span>
+        /gaia-config-show
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-config-show</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
+          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt><dd><code>[section-name]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-config-show</code> displays your <code>config/project-config.yaml</code> file in read-only mode. With no argument, it shows the entire file. With a section name argument (e.g., <code>environments</code>, <code>stacks</code>), it shows only that section. Output is byte-verbatim -- comments and formatting are preserved exactly.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul><li>You want to check the current configuration before or after making edits.</li><li>You want to view a specific section without opening the file manually.</li></ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>project-config.yaml must exist.</strong> Run <a href="gaia-init.html"><code>/gaia-init</code></a> to create one.</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-config-show
+/gaia-config-show environments</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Render the file or section</span> Outputs the entire file or the named section verbatim. Uses syntax highlighting when available.</li></ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>section-name</code></td><td>Command argument (optional)</td><td>A top-level section name: project, stacks, platforms, regimes, ci_cd, environments, test_execution, tool_adapters, rubrics, compliance, deployment.</td></tr></tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Console output</td><td>Terminal</td><td>The configuration content displayed verbatim.</td></tr></tbody></table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-config-show environments
+
+environments:
+  staging:
+    url: https://staging.example.com
+    credentials:
+      db_password: STAGING_DB_PASSWORD_VAR
+  production:
+    url: https://app.example.com
+    credentials:
+      db_password: PROD_DB_PASSWORD_VAR</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul><li>Use the corresponding <code>/gaia-config-*</code> editor to modify a section.</li><li><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a> -- validate the configuration.</li></ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>Section not found</h3><p>The section name you provided does not exist in the config file. Check the available section names (project, stacks, platforms, etc.).</p><h3>project-config.yaml not found</h3><p>No configuration file exists. Run <a href="gaia-init.html"><code>/gaia-init</code></a> to create one.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a></td><td>Validates the configuration against the schema.</td></tr><tr><td><a href="gaia-config-env.html"><code>/gaia-config-env</code></a></td><td>Edits the environments section.</td></tr><tr><td><a href="gaia-config-stack.html"><code>/gaia-config-stack</code></a></td><td>Edits the stacks section.</td></tr></tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/configuration.html">Back to Configuration</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

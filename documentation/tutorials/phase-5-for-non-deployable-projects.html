@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phase 5 for Non-Deployable Projects - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+          <li><a href="shape-plugin.html">Shape: Plugin</a></li>
+          <li><a href="shape-library.html">Shape: Library</a></li>
+          <li><a href="shape-cli.html">Shape: CLI</a></li>
+          <li><a href="shape-mobile-app.html">Shape: Mobile App</a></li>
+          <li><a href="shape-container-image.html">Shape: Container Image</a></li>
+          <li><a href="shape-static-site.html">Shape: Static Site</a></li>
+          <li><a href="phase-5-for-non-deployable-projects.html" class="active">Phase 5 for Non-Deployable Projects</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what">What Phase 5 used to mean</a></li>
+          <li><a href="#decision-table">The 5-case decision table</a></li>
+          <li><a href="#walkthrough">Walkthrough</a></li>
+          <li><a href="#publish-readiness">Publish-readiness mode</a></li>
+          <li><a href="#worked-when">You'll know it worked when</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        Phase 5 for Non-Deployable Projects
+      </nav>
+
+      <h1>Phase 5 for Non-Deployable Projects</h1>
+      <p>
+        Phase 5 is the deployment phase of the GAIA lifecycle. Before the multi-shape model
+        (ADR-112), Phase 5 always meant <code>/gaia-deploy</code> + <code>/gaia-post-deploy</code>.
+        That assumption breaks for plugins, libraries, CLIs, mobile apps, container images, and
+        static sites -- none of which have a deployable URL to push to. This tutorial covers the
+        FR-524 routing extension that lets <code>/gaia-help</code> recommend the right command
+        based on YOUR project's shape, not the historical default.
+      </p>
+
+      <section id="what">
+        <h2>What Phase 5 used to mean</h2>
+        <p>
+          The original Phase 5 contract: you have a staging URL and a production URL, you run
+          <code>/gaia-deploy --env staging</code>, then <code>/gaia-post-deploy --env staging</code>
+          to verify, then promote to production via the promotion chain. That's still the correct
+          flow when you HAVE deployable environments. The problem is GAIA assumed everyone did.
+        </p>
+        <p>
+          Under the multi-shape model, Phase 5 reads two config-side signals:
+        </p>
+        <ul>
+          <li><code>environments[*].kind</code> -- per-env, the closed enum <code>deployable | branch-only | distribution-only</code> (FR-520).</li>
+          <li><code>distribution:</code> -- presence vs absence of the top-level publish block (FR-521 / FR-522).</li>
+        </ul>
+        <p>
+          The detector at <code>scripts/lib/config-shape-detect.sh</code> reads both and emits one of
+          four tokens; <code>/gaia-help</code> routes Phase 5 from the token.
+        </p>
+      </section>
+
+      <section id="decision-table">
+        <h2>The 5-case decision table (ADR-112 §(f))</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Case</th>
+              <th>environments[*].kind</th>
+              <th>distribution:</th>
+              <th>Detector token</th>
+              <th><code>/gaia-help</code> Phase 5 suggestion</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>(i)</td>
+              <td>all <code>deployable</code></td>
+              <td>absent</td>
+              <td><code>deploy-only</code></td>
+              <td><code>/gaia-deploy</code> (NFR-080 baseline)</td>
+            </tr>
+            <tr>
+              <td>(ii)</td>
+              <td>all <code>deployable</code></td>
+              <td>present</td>
+              <td><code>deploy-and-publish</code></td>
+              <td>BOTH <code>/gaia-deploy</code> AND <code>/gaia-publish</code> (rare hybrid)</td>
+            </tr>
+            <tr>
+              <td>(iii)</td>
+              <td>all <code>branch-only</code></td>
+              <td>present</td>
+              <td><code>publish-primary</code></td>
+              <td><code>/gaia-publish</code> only</td>
+            </tr>
+            <tr>
+              <td>(iv)</td>
+              <td>all <code>distribution-only</code></td>
+              <td>present</td>
+              <td><code>publish-primary</code></td>
+              <td><code>/gaia-publish</code> only</td>
+            </tr>
+            <tr>
+              <td>(v)</td>
+              <td>mixed (>=1 deployable + >=1 non-deployable)</td>
+              <td>present</td>
+              <td><code>deploy-and-publish</code></td>
+              <td>BOTH (with per-env clarification)</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Case (i) is the historical baseline -- byte-identical to pre-cascade behavior per NFR-080.
+          Cases (iii) and (iv) are publish-primary; <code>/gaia-deploy</code> is intentionally absent
+          from the suggestions (the command would HALT per the E99-S1 kind gate). Cases (ii) and (v)
+          are mixed-shape; both commands are surfaced and the body distinguishes which envs are
+          reachable via which.
+        </p>
+      </section>
+
+      <section id="walkthrough">
+        <h2>Walkthrough</h2>
+        <p>
+          For a Claude plugin (case iii):
+        </p>
+        <pre><code>$ /gaia-help
+
+[Phase 5: Deployment]
+This project is publish-primary -- no environment is marked deployable.
+
+Recommended command:
+  /gaia-publish              # ships to claude-marketplace via your release_workflow
+
+Not recommended:
+  /gaia-deploy               # HALTs on kind: branch-only per FR-520</code></pre>
+        <p>
+          For a microservice with staging + production deployable envs AND a library exported on the
+          side (case v -- mixed shape):
+        </p>
+        <pre><code>$ /gaia-help
+
+[Phase 5: Deployment]
+Mixed shape -- one or more deployable envs AND a distribution: block.
+
+Recommended commands:
+  /gaia-deploy --env staging       # service-side rollout
+  /gaia-deploy --env production    # service-side rollout
+  /gaia-publish                    # publishes the library export per distribution.channel</code></pre>
+      </section>
+
+      <section id="publish-readiness">
+        <h2>Publish-readiness mode</h2>
+        <p>
+          <code>/gaia-deploy-checklist</code> also reads the detector token. For publish-primary
+          projects, the checklist swaps to publish-readiness mode (FR-524 / TC-PR5-4): the gate
+          items are publish-oriented (manifest version matches, release workflow exists, credentials
+          env vars set, adapter sub-fields satisfy per-channel schema) instead of the deploy-oriented
+          gate items (rollback plan, smoke endpoints, etc.). The switch is automatic -- you do NOT
+          need to pass a flag.
+        </p>
+      </section>
+
+      <section id="worked-when">
+        <h2>You'll know it worked when</h2>
+        <ul>
+          <li><code>/gaia-help</code> on a plugin / library / CLI / mobile-app / container-image / static-site project recommends <code>/gaia-publish</code> and does NOT recommend <code>/gaia-deploy</code>.</li>
+          <li><code>/gaia-help</code> on a historical all-deployable project recommends <code>/gaia-deploy</code> unchanged -- byte-identical to the pre-cascade baseline.</li>
+          <li><code>/gaia-deploy-checklist</code> on a publish-primary project renders publish-oriented gate items instead of deploy-oriented ones.</li>
+          <li><code>/gaia-deploy --env &lt;branch-only-or-distribution-only&gt;</code> HALTs with <code>use /gaia-publish instead</code>.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

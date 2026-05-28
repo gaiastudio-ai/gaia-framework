@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-meeting - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#interactivity-model">Interactivity model</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#orchestration-mode">Orchestration mode</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#how-you-participate">How you participate</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/creative.html">Creative &amp; Collaboration</a><span class="separator">/</span>
+        /gaia-meeting
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-meeting</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/creative.html">Creative &amp; Collaboration</a></dd>
+          <dt>Lifecycle phase:</dt><dd>Any</dd>
+          <dt>Arguments:</dt><dd><code>--charter "&lt;charter text&gt;" [--mode &lt;mode&gt;] [--invitees &lt;P1,P2,...&gt;] [--skip-research] [--no-web]</code> or <code>--resume &lt;session-id&gt; [--continue | --interject "&lt;msg&gt;" | --wrap-up] [--invitees-override &lt;P1,P2,...&gt;]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-meeting</code> runs a structured peer-to-peer multi-agent meeting with a seven-phase lifecycle: Invite, Charter, Research, Discuss, Close, Review, and Save. Unlike Party Mode, meetings require a charter that defines the decision to be made. The default mode is "decide" -- the meeting drives toward a concrete decision.</p>
+      </section>
+
+      <section id="interactivity-model">
+        <h2>Interactivity model</h2>
+        <p>A meeting is interactive <strong>across top-level user turns</strong>, not within a single turn. The skill pauses at five fixed yield boundaries and waits for your next message before continuing. At each boundary you see this prompt:</p>
+        <pre><code>[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort</code></pre>
+        <p>The five yield boundaries are:</p>
+        <ol>
+          <li><strong>Post-CHARTER</strong> -- after the charter is validated and invitees are resolved.</li>
+          <li><strong>Post-RESEARCH</strong> -- after participants share their cited findings.</li>
+          <li><strong>Every N DISCUSS turns</strong> -- default every 4 rounds; configurable via <code>meeting.checkpoint_every_n_turns</code> (clamped to 1--10).</li>
+          <li><strong>Pre-CLOSE</strong> -- before the decision is recorded.</li>
+          <li><strong>Pre-SAVE</strong> -- before decisions and action items are persisted to memory.</li>
+        </ol>
+        <p>If you supply <code>--charter</code> with no other input and never respond to yields, the meeting runs end-to-end in a single turn with no user participation. This is almost never what you want -- see <a href="#troubleshooting">Troubleshooting</a>.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul><li>You need a structured discussion that drives to a decision, not just exploration.</li><li>You want meeting notes with action items and decision records automatically captured.</li></ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>No strict prerequisites.</strong> Works best when planning artifacts exist for context.</li></ul>
+      </section>
+
+      <section id="orchestration-mode">
+        <h2>Orchestration mode</h2>
+        <p>When <code>/gaia-meeting</code> starts in <strong>subagent mode (Mode A -- the default)</strong>, the framework emits a one-shot warning to stdout:</p>
+        <pre><code>────────────────────────────────────────────────────────────────────────────
+GAIA orchestration: running in subagent mode (Mode A)
+
+The skill you're invoking belongs to a class (heavy-procedural or
+conversational) whose output benefits from cross-step context. Mode A
+dispatches each sub-agent in its own forked context, so context may
+be lossy between steps — sub-agents return summaries, not full reasoning.
+
+For the full-fidelity experience, enable Mode B (Agent Teams):
+  1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
+  2. Add orchestration.mode: team to config/project-config.yaml.
+
+Mode B uses persistent teammates that preserve in-conversation state
+across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+
+This warning is shown once per session.
+────────────────────────────────────────────────────────────────────────────</code></pre>
+
+        <h3>Why Mode B matters for meetings</h3>
+        <p>The <code>/gaia-meeting</code> skill declares <code>orchestration_class: conversational</code> in its SKILL.md frontmatter. Conversational skills produce output that benefits from cross-step context -- every per-turn agent dispatch in the DISCUSS and RESEARCH phases would lose the live reasoning trace of every prior turn when forked in Mode A. Mode B uses persistent teammates that retain in-conversation state across dispatches, so each agent's turn can build on what was said before instead of receiving only a summary.</p>
+
+        <h3>How to enable Mode B</h3>
+        <p>Both steps are required. If either is missing, the framework falls back silently to Mode A and the warning fires again on the next session.</p>
+        <p><strong>Step 1 -- set the environment variable:</strong></p>
+        <pre><code>export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code></pre>
+        <p>Add this to your shell rc file to persist across sessions, or set it in Claude Code's <code>settings.json</code>.</p>
+        <p><strong>Step 2 -- add the YAML block to <code>config/project-config.yaml</code>:</strong></p>
+        <pre><code>orchestration:
+  mode: team</code></pre>
+        <h3>One-shot semantics</h3>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-meeting --charter "Decide the database technology for the user service" --invitees Theo,Soren</code></pre>
+        <h3>Resuming a paused session</h3>
+        <p>If you chose <code>[p]ause</code> at a yield boundary, the session is persisted to <code>_memory/meeting-sessions/{date}-{slug}.yaml</code>. Resume it with one of the following:</p>
+        <pre><code>/gaia-meeting --resume &lt;session-id&gt; --continue
+/gaia-meeting --resume &lt;session-id&gt; --interject "I want to revisit the caching concern"
+/gaia-meeting --resume &lt;session-id&gt; --wrap-up</code></pre>
+      </section>
+
+      <section id="how-you-participate">
+        <h2>How you participate</h2>
+        <p><strong>You are NOT auto-added as an attendee.</strong> By default, the user is an <em>interjector</em> -- you observe the meeting and can speak at yield boundaries, but agents do not address you as a participant.</p>
+        <p>There are two ways to participate:</p>
+        <table><thead><tr><th>Surface</th><th>How</th><th>Effect</th></tr></thead><tbody><tr><td>Attendee</td><td>Include yourself in <code>--invitees</code> (e.g., <code>--invitees Theo,Julien</code>). Requires a stakeholder file -- create one first via <a href="gaia-create-stakeholder.html"><code>/gaia-create-stakeholder</code></a>, since <code>--invitees</code> takes agent or stakeholder identifiers, not free-form names.</td><td>Agents address you by name, wait for your contributions during discussion rounds, and treat your input as first-class.</td></tr><tr><td>Interjector</td><td>Type <code>i "your message"</code> at any yield boundary.</td><td>Your message is injected into the transcript. Agents respond to it in the next phase, but you are not a named participant.</td></tr></tbody></table>
+        <p>If you use <code>--mode decide</code> (the default) with no <code>--invitees</code>, the resolved attendee set is empty. The meeting will narrate around your absence. Always specify <code>--invitees</code> in decide mode.</p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list"><li><span class="step-title">Charter gate</span> Validates that a charter was provided. The meeting cannot start without one.</li><li><span class="step-title">Invite participants</span> Selects relevant agents based on the charter topic.</li><li><span class="step-title">Research phase</span> Participants load relevant context from project artifacts and share cited findings.</li><li><span class="step-title">Discussion rounds</span> Sequential turns with cite-or-flag enforcement -- every claim must cite a source or be flagged as unverified.</li><li><span class="step-title">Close phase</span> Records the decision, captures action items, and writes meeting notes to <code>.gaia/artifacts/creative-artifacts/meeting-{date}.md</code>.</li><li><span class="step-title">Save to memory</span> Persists decisions and action items to agent memory sidecars.</li></ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Source</th>
+              <th>Required</th>
+              <th>Description</th>
+              <th>Example</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>--charter</code></td>
+              <td>Command argument</td>
+              <td>Yes (new session)</td>
+              <td>A one-to-three-sentence framing for the meeting that defines the decision to be made.</td>
+              <td><code>--charter "Decide the database technology for the user service."</code></td>
+            </tr>
+            <tr>
+              <td><code>--mode</code></td>
+              <td>Command argument</td>
+              <td>No (defaults to <code>decide</code>)</td>
+              <td>Meeting mode. Each mode biases the closing artifact differently. See the <a href="#mode-reference">mode reference</a> below this table.</td>
+              <td><code>--mode decide</code>, <code>--mode explore</code>, <code>--mode red-team</code></td>
+            </tr>
+            <tr>
+              <td><code>--invitees</code></td>
+              <td>Command argument</td>
+              <td>No</td>
+              <td>Comma-separated list of agent or stakeholder identifiers to invite. In <code>decide</code> mode with no invitees, the attendee set is empty. To participate as an attendee, include your own stakeholder identifier here.</td>
+              <td><code>--invitees Theo,Soren</code></td>
+            </tr>
+            <tr>
+              <td><code>--invitees-override</code></td>
+              <td>Command argument</td>
+              <td>No (use with <code>--invitees</code>)</td>
+              <td>When set alongside <code>--invitees</code>, the user-specified CSV is authoritative -- mode-default invitees are NOT auto-added. The saved frontmatter records <code>invitees_override: true</code>.</td>
+              <td><code>--invitees "Derek,Nate" --invitees-override</code></td>
+            </tr>
+            <tr>
+              <td><code>--skip-research</code></td>
+              <td>Command argument</td>
+              <td>No</td>
+              <td>Omit the RESEARCH phase entirely. The SAVE phase writes <code>research_phase: skipped</code> into the meeting-notes frontmatter.</td>
+              <td><code>--skip-research</code></td>
+            </tr>
+            <tr>
+              <td><code>--no-web</code></td>
+              <td>Command argument</td>
+              <td>No</td>
+              <td>Exclude <code>WebSearch</code> and <code>WebFetch</code> from the RESEARCH phase tool allowlist. The SAVE phase writes <code>web_search: disabled</code> into the meeting-notes frontmatter. Recommended for sensitive charters.</td>
+              <td><code>--no-web</code></td>
+            </tr>
+            <tr>
+              <td><code>--resume</code></td>
+              <td>Command argument</td>
+              <td>Yes (resuming)</td>
+              <td>Session ID of a paused meeting to resume. Sessions are stored under <code>_memory/meeting-sessions/{date}-{slug}.yaml</code>.</td>
+              <td><code>--resume 2026-05-18-database-decision</code></td>
+            </tr>
+            <tr>
+              <td><code>--continue</code></td>
+              <td>Command argument</td>
+              <td>No (resume only)</td>
+              <td>Used with <code>--resume</code>. Continue the meeting from where it was paused. Mutually exclusive with <code>--interject</code> and <code>--wrap-up</code>.</td>
+              <td><code>--resume &lt;id&gt; --continue</code></td>
+            </tr>
+            <tr>
+              <td><code>--interject</code></td>
+              <td>Command argument</td>
+              <td>No (resume only)</td>
+              <td>Used with <code>--resume</code>. Inject a message into the transcript before continuing. Mutually exclusive with <code>--continue</code> and <code>--wrap-up</code>.</td>
+              <td><code>--resume &lt;id&gt; --interject "Revisit the caching concern"</code></td>
+            </tr>
+            <tr>
+              <td><code>--wrap-up</code></td>
+              <td>Command argument</td>
+              <td>No (resume only)</td>
+              <td>Used with <code>--resume</code>. Skip remaining discussion and move directly to the Close phase. Mutually exclusive with <code>--continue</code> and <code>--interject</code>.</td>
+              <td><code>--resume &lt;id&gt; --wrap-up</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 id="mode-reference">Mode reference</h3>
+        <p>Nine canonical modes are available. Each biases the closing artifact differently. Unless <code>--invitees-override</code> is set, each mode auto-injects its default invitees into the resolved attendee list.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Mode</th>
+              <th>Alias</th>
+              <th>Default invitees</th>
+              <th>Closing-artifact bias</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>decide</code> (default)</td><td></td><td>(none)</td><td>decision-record</td></tr>
+            <tr><td><code>explore</code></td><td></td><td>(none)</td><td>opportunity-map</td></tr>
+            <tr><td><code>align</code></td><td></td><td>Derek, Nate</td><td>alignment-summary</td></tr>
+            <tr><td><code>red-team</code></td><td></td><td>Zara, Sable, Nova</td><td>risk-register</td></tr>
+            <tr><td><code>ac</code></td><td></td><td>Vera, Sable</td><td>machine-readable-ac-list</td></tr>
+            <tr><td><code>brainstorm</code></td><td></td><td>Rex, Orion, Lyra, Elara, Vermeer</td><td>brainstorming-document</td></tr>
+            <tr><td><code>design</code></td><td><code>ux</code></td><td>Christy, Suki, Layla, Talia, Tariq, Lena, Cleo, Freya</td><td>ux-design-notes</td></tr>
+            <tr><td><code>architecture</code></td><td></td><td>Theo, Soren, Milo, Juno, Omar, Priya</td><td>architecture-decisions</td></tr>
+            <tr><td><code>sprint</code></td><td></td><td>Nate, Derek, Rafael</td><td>sprint-adjustments</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Creative artifact</td><td><code>.gaia/artifacts/creative-artifacts/</code></td><td>The session output document.</td></tr></tbody></table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-meeting --charter "Decide the database for user service" --invitees Theo,Soren
+
+Charter accepted.
+Inviting: Theo (Architect), Soren (DevOps)
+
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+
+> c
+
+Research phase...
+  [Theo] PostgreSQL aligns with our stack (source: architecture.md S5)
+  [Soren] Redis caching layer needed regardless (source: infra-design.md S3)
+
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+
+> i "What about DynamoDB? We have AWS credits expiring Q3."
+
+Discussion:
+  Round 1: [Theo] DynamoDB would require a new data access layer...
+  [Soren] Operational cost is lower but lock-in risk is high...
+  Round 2-4: ...
+
+[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort
+
+> p
+
+Session paused. ID: 2026-05-07-database-decision
+Resume with: /gaia-meeting --resume 2026-05-07-database-decision --continue</code></pre>
+
+        <h3>Resuming</h3>
+        <pre><code>> /gaia-meeting --resume 2026-05-07-database-decision --continue
+
+Resuming session 2026-05-07-database-decision at pre-CLOSE...
+
+Decision: PostgreSQL with Redis caching layer.
+Action items: Theo to update architecture.md.
+
+Written to .gaia/artifacts/creative-artifacts/meeting-2026-05-07.md</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-action-items.html"><code>/gaia-action-items</code></a> -- extract and track the meeting's action items and decisions.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>My meeting ran end-to-end without me -- I never got to participate</h3>
+        <p>Two root causes:</p>
+        <ol>
+          <li><strong>No invitees in decide mode.</strong> With <code>--mode decide</code> (the default) and no <code>--invitees</code>, the resolved attendee set is empty. The skill has no participants to yield to, so it narrates the entire meeting in one pass. <strong>Fix:</strong> always pass <code>--invitees</code> in decide mode.</li>
+          <li><strong>You are not on the invitee list.</strong> The user is not auto-added as an attendee. Without your name in <code>--invitees</code>, agents treat you as absent. <strong>Fix:</strong> create a stakeholder for yourself via <a href="gaia-create-stakeholder.html"><code>/gaia-create-stakeholder</code></a>, then include your identifier in <code>--invitees</code>. Alternatively, use <code>[i]nterject "..."</code> at each yield boundary to participate without being a named attendee.</li>
+        </ol>
+        <h3>I keep seeing the GAIA orchestration warning every time I start this command</h3>
+        <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
+        <ul>
+          <li><code>echo $CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> returns <code>1</code> (not empty)</li>
+          <li><code>config/project-config.yaml</code> contains:
+            <pre><code>orchestration:
+  mode: team</code></pre>
+          </li>
+        </ul>
+        <p>If either is missing the framework silently uses Mode A and re-emits the warning each session.</p>
+
+        <h3>Charter not provided</h3><p>The meeting will HALT with status BLOCKED before invitees are notified. Supply <code>--charter "..."</code> to define the decision to be made.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-party.html"><code>/gaia-party</code></a></td><td>Lighter-weight group discussion without charter or decision requirements.</td></tr><tr><td><a href="gaia-create-stakeholder.html"><code>/gaia-create-stakeholder</code></a></td><td>Create custom personas for meetings.</td></tr></tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/creative.html">Back to Creative &amp; Collaboration</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

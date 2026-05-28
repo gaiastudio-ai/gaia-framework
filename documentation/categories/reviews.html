@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reviews - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="getting-started.html">Getting Started</a></li>
+          <li><a href="discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="planning.html">Planning</a></li>
+          <li><a href="sprint-management.html">Sprint Management</a></li>
+          <li><a href="development.html">Development</a></li>
+          <li><a href="testing.html">Testing</a></li>
+          <li><a href="reviews.html" class="active">Reviews</a></li>
+          <li><a href="validation.html">Validation</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="configuration.html">Configuration</a></li>
+          <li><a href="documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="internal.html">Internal Skills</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        Reviews
+      </nav>
+
+      <h1>Reviews (Pre-merge Gates)</h1>
+      <p>
+        Review commands form the quality <a href="../glossary.html#gate">gates</a> that a <a href="../glossary.html#story">story</a> must pass before
+        it can move to "done" status. Each review targets a specific concern
+        (code quality, security, performance, accessibility, etc.) and writes
+        a PASSED or FAILED verdict into the story's <a href="../glossary.html#review-gate">Review Gate</a> table. Verdicts
+        are evaluated against the project's <a href="../glossary.html#rubric">rubric</a> configuration. You
+        can run reviews individually or all at once with
+        <code>/gaia-review-all</code>.
+      </p>
+
+      <h2>Aggregate review</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-review-all.html">/gaia-review-all</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Run all review workflows sequentially and populate the entire Review Gate table.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-check-review-gate.html">/gaia-check-review-gate</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Check the composite Review Gate status and transition the story to done if all reviews pass.</span>
+        </li>
+      </ul>
+
+      <h2>Individual reviews</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-review-code.html">/gaia-review-code</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Pre-merge code review checking code quality, SOLID principles, and complexity.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-review-qa.html">/gaia-review-qa</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Generate and review QA test cases for automated test coverage.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-review-test.html">/gaia-review-test</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Review test quality and identify flakiness or coverage issues.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-review-security.html">/gaia-review-security</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">OWASP-focused security review: Top 10 scan, hardcoded secrets detection, auth pattern analysis.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-review-perf.html">/gaia-review-perf</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Review code for performance issues including N+1 queries, memory impact, and algorithmic complexity.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-review-a11y.html">/gaia-review-a11y</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Pre-merge accessibility gate for WCAG 2.1 compliance (semantic HTML, ARIA, keyboard, contrast).</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-review-mobile.html">/gaia-review-mobile</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Mobile review gate: manifest, entitlements, signing, store metadata, privacy manifest, and deep links.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-review-api.html">/gaia-review-api</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Review REST API design against naming conventions, HTTP methods, status codes, and error format standards.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-review-deps.html">/gaia-review-deps</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Audit dependencies for known CVEs, outdated versions, and license conflicts.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-perf-deepdive.html">/gaia-perf-deepdive</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Anytime performance bottleneck analysis: N+1 queries, memory, bundle impact, caching, complexity.</span>
+        </li>
+      </ul>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

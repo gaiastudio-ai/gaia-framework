@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test Strategy Configuration - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html" class="active">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#why">Why test configuration matters</a></li>
+          <li><a href="#test-execution">The test_execution section</a></li>
+          <li><a href="#pyramid">The test pyramid</a></li>
+          <li><a href="#per-stack">Per-stack test commands</a></li>
+          <li><a href="#bridge">The Test Execution Bridge</a></li>
+          <li><a href="#scaffolding">Scaffolding with /gaia-test-strategy</a></li>
+          <li><a href="#tagging">Tagging slow tests</a></li>
+          <li><a href="#tiering">Nightly vs PR-tier strategy</a></li>
+          <li><a href="#diagnostic">Diagnostic questions</a></li>
+          <li><a href="#whats-next">What to read next</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        Test Strategy Configuration
+      </nav>
+
+      <h1>Test Strategy Configuration</h1>
+      <p>
+        This tutorial covers how to configure the <code>test_execution</code>
+        section of <code>project-config.yaml</code>, how to structure your
+        test suite using the test pyramid, when to enable the Test Execution
+        Bridge, and how to split tests into tiers so your CI stays fast.
+      </p>
+
+      <section id="why">
+        <h2>Why test configuration matters</h2>
+        <p>
+          Without explicit test configuration, GAIA cannot run your tests, and
+          <a href="../commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a>
+          cannot verify that implementations pass before committing. The
+          <code>test_execution</code> section tells GAIA what commands to run,
+          where to run them, and what "passing" looks like.
+        </p>
+      </section>
+
+      <section id="test-execution">
+        <h2>The test_execution section</h2>
+        <p>
+          The <code>test_execution</code> block in
+          <code>.gaia/config/project-config.yaml</code> defines how tests are
+          discovered and executed for each stack in your project.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+test_execution:
+  default_command: npm test
+  timeout_seconds: 300
+  coverage:
+    enabled: true
+    threshold: 80</code></pre>
+        <p>
+          <code>default_command</code> is the fallback test command. If a stack
+          does not specify its own test command, this one is used.
+          <code>timeout_seconds</code> kills tests that hang.
+          <code>coverage.threshold</code> sets the minimum coverage percentage
+          for a pass.
+        </p>
+        <p>
+          Edit this section directly or use
+          <a href="../commands/gaia-config-test.html"><code>/gaia-config-test</code></a>,
+          which preserves comments and formatting in your YAML files.
+        </p>
+      </section>
+
+      <section id="pyramid">
+        <h2>The test pyramid</h2>
+        <p>
+          The test pyramid is a guideline for how many tests of each type to
+          write. More tests at the bottom (fast, cheap) and fewer at the top
+          (slow, expensive).
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Level</th>
+              <th>What it tests</th>
+              <th>Speed</th>
+              <th>Typical ratio</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Unit</strong></td>
+              <td>Individual functions and classes in isolation</td>
+              <td>Milliseconds</td>
+              <td>70%</td>
+            </tr>
+            <tr>
+              <td><strong>Integration</strong></td>
+              <td>Interactions between components, database queries, API calls</td>
+              <td>Seconds</td>
+              <td>20%</td>
+            </tr>
+            <tr>
+              <td><strong>End-to-end</strong></td>
+              <td>Full user workflows through the real system</td>
+              <td>Minutes</td>
+              <td>10%</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          These ratios are guidelines, not rules. A CLI tool might have 90%
+          unit tests and 10% integration tests with no E2E. A web application
+          might shift more weight toward integration and E2E. The goal is to
+          keep your fast tests catching most bugs and your slow tests catching
+          only what fast tests cannot.
+        </p>
+        <div class="callout">
+          <p class="callout-title">Pyramid health check</p>
+          <p>
+            If your E2E tests take longer than your unit + integration tests
+            combined, your pyramid is inverted. This slows CI and makes failures
+            harder to diagnose. Consider converting some E2E tests to
+            integration tests with mocked external dependencies.
+          </p>
+        </div>
+      </section>
+
+      <section id="per-stack">
+        <h2>Per-stack test commands</h2>
+        <p>
+          In a multi-stack project, each stack likely uses a different test
+          runner. Specify the test command per stack:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+stacks:
+  - name: frontend
+    path: packages/web
+    language: typescript
+    test_command: npm test
+  - name: backend
+    path: packages/api
+    language: python
+    test_command: pytest --cov=src --cov-report=term-missing
+  - name: mobile
+    path: packages/mobile
+    language: dart
+    test_command: flutter test</code></pre>
+        <p>
+          When
+          <a href="../commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a>
+          runs tests, it uses the <code>test_command</code> for the stack
+          relevant to the current story. If a story touches multiple stacks,
+          all relevant test commands run.
+        </p>
+        <p>
+          Edit stack configuration with
+          <a href="../commands/gaia-config-stack.html"><code>/gaia-config-stack</code></a>.
+        </p>
+      </section>
+
+      <section id="bridge">
+        <h2>The Test Execution Bridge</h2>
+        <p>
+          The Test Execution Bridge lets GAIA execute your test suite and
+          interpret the results programmatically. When enabled, GAIA can parse
+          test output, identify which tests failed and why, and use that
+          information to suggest fixes during
+          <a href="../commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a>.
+        </p>
+
+        <h3>When to enable it</h3>
+        <ul>
+          <li>You want GAIA to run tests automatically during story implementation.</li>
+          <li>You want GAIA to interpret test failures and suggest code fixes.</li>
+          <li>You have a <code>test-environment.yaml</code> file defining your test setup.</li>
+        </ul>
+
+        <h3>When to leave it disabled</h3>
+        <ul>
+          <li>You run tests manually or through a separate CI system.</li>
+          <li>Your test suite requires specific hardware or network access that GAIA cannot provide.</li>
+          <li>You are in early planning phases and have no tests yet.</li>
+        </ul>
+
+        <h3>Enabling the bridge</h3>
+        <pre><code>/gaia-bridge-enable</code></pre>
+        <p>
+          This sets <code>test_execution_bridge.bridge_enabled: true</code> in
+          your <code>project-config.yaml</code>. The change takes effect
+          immediately -- no restart or rebuild is needed. Disable it with
+          <a href="../commands/gaia-bridge-disable.html"><code>/gaia-bridge-disable</code></a>.
+        </p>
+        <p>
+          See the
+          <a href="../test-environment-yaml.html">test-environment.yaml Reference</a>
+          for the full schema of the bridge manifest file.
+        </p>
+      </section>
+
+      <section id="scaffolding">
+        <h2>Scaffolding with /gaia-test-strategy</h2>
+        <p>
+          If you are starting a new project or adding tests to an existing one,
+          use
+          <a href="../commands/gaia-test-strategy.html"><code>/gaia-test-strategy</code></a>
+          to generate a test plan and scaffold your test framework.
+        </p>
+        <pre><code># Design a test plan (analyzes your project and proposes test coverage)
+/gaia-test-strategy --plan
+
+# Scaffold the test framework (creates config files, directories, example tests)
+/gaia-test-strategy --scaffold</code></pre>
+        <p>
+          The <code>--plan</code> mode reads your architecture and stories,
+          then proposes which tests to write and where. The
+          <code>--scaffold</code> mode creates the actual test framework
+          configuration -- <code>jest.config.js</code>,
+          <code>pytest.ini</code>, <code>playwright.config.ts</code>, or
+          whatever your stack needs.
+        </p>
+      </section>
+
+      <section id="tagging">
+        <h2>Tagging slow tests</h2>
+        <p>
+          Not all tests should run on every PR. Tag slow tests so they can be
+          excluded from the fast PR tier and included in nightly runs.
+        </p>
+        <pre><code># Jest example: tag with .slow.test.ts suffix
+# jest.config.js (PR tier)
+testPathIgnorePatterns: ['.*\\.slow\\.test\\.ts$']
+
+# Pytest example: use markers
+# pytest.ini
+[pytest]
+markers =
+    slow: marks tests as slow (deselect with '-m "not slow"')</code></pre>
+        <p>
+          Then configure your CI to use different commands per tier:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+test_execution:
+  tiers:
+    pr:
+      command: pytest -m "not slow"
+      timeout_seconds: 120
+    nightly:
+      command: pytest
+      timeout_seconds: 600</code></pre>
+      </section>
+
+      <section id="tiering">
+        <h2>Nightly vs PR-tier strategy</h2>
+        <p>
+          Split your test suite into two tiers based on speed and value:
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th>Runs when</th>
+              <th>Includes</th>
+              <th>Time budget</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>PR tier</strong></td>
+              <td>Every PR and push to a PR branch</td>
+              <td>Lint, unit tests, fast integration tests</td>
+              <td>&lt; 5 minutes</td>
+            </tr>
+            <tr>
+              <td><strong>Nightly tier</strong></td>
+              <td>Once per night on the main branch</td>
+              <td>All tests: E2E, performance, security, slow integration</td>
+              <td>&lt; 30 minutes</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          The PR tier gives developers fast feedback on every change. The
+          nightly tier catches regressions that fast tests miss. If the nightly
+          run fails, the team investigates first thing in the morning.
+        </p>
+        <p>
+          For the nightly tier, use a scheduled trigger in your CI platform
+          rather than GAIA's trigger configuration. GAIA generates the workflow;
+          the schedule is a CI platform concern.
+        </p>
+      </section>
+
+      <section id="diagnostic">
+        <h2>Diagnostic questions</h2>
+        <p>
+          Use these questions to evaluate your current test strategy:
+        </p>
+        <ul>
+          <li><strong>How long does your PR CI take?</strong> If more than 10 minutes, you need test tiering.</li>
+          <li><strong>What percentage of CI failures are flaky?</strong> If more than 5%, you have test isolation problems. Consider quarantining flaky tests and fixing them separately.</li>
+          <li><strong>Do you have more E2E tests than unit tests?</strong> If yes, your pyramid is inverted.</li>
+          <li><strong>Can you run tests locally?</strong> If not, your feedback loop is too slow. Every test that runs in CI should also run locally.</li>
+          <li><strong>Do test failures tell you what broke?</strong> If you need to read the full output to understand a failure, your test names and assertions need work.</li>
+          <li><strong>When did you last add a test?</strong> If you only add tests when GAIA tells you to, consider integrating TDD into your development practice.</li>
+        </ul>
+      </section>
+
+      <section id="layered-test-jobs">
+        <h2>Test jobs under the layered CI model (E98 / ADR-114)</h2>
+        <p>
+          Under the FR-516 prefix contract, the canonical test jobs (<code>bats-tests</code>,
+          <code>skills-bats-tests</code>, the per-cluster e2e suites) live in
+          <code>.github/workflows/gaia-*.yml</code> as generated jobs -- rewritten on every
+          <code>/gaia-config-ci --regenerate</code>. Adding a project-specific test job (coverage
+          upload, custom suite, contract test) goes into <code>gaia-ci.user-jobs.yml</code> via the
+          FR-517 stitching engine:
+        </p>
+        <pre><code># .github/workflows/gaia-ci.user-jobs.yml
+jobs:
+  coverage-upload:
+    runs-on: ubuntu-latest
+    needs: [bats-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: codecov/codecov-action@v4</code></pre>
+        <p>
+          Per-job setup steps (e.g., language toolchain install) shared across managed test runs go
+          into <code>gaia-ci.user-steps.yml</code>:
+        </p>
+        <pre><code>steps_before_gaia:
+  - uses: actions/setup-node@v4
+    with: { node-version: '22' }
+steps_after_gaia:
+  - run: echo "all managed test steps complete"</code></pre>
+
+        <h3>SR-78 protected test jobs (cannot disable)</h3>
+        <p>
+          Five test-adjacent jobs are protected from the FR-518
+          <code>ci_cd.template_overrides.disable:</code> list per SR-78:
+          <code>commitlint</code>, <code>adr-048-guard</code>,
+          <code>no-claude-attribution</code>, <code>secrets-scan</code>,
+          <code>nfr-082-credential-audit</code>. The schema rejects any attempt to disable them,
+          AND the regen-time helper rejects hyphen+case-canonicalized bypass attempts
+          (<code>commit-lint</code>, <code>Commit-Lint</code>) as defense in depth.
+        </p>
+
+        <h3>Migration from a pre-ADR-114 test surface</h3>
+        <p>
+          If your <code>.github/workflows/</code> currently has unprefixed test-running files (e.g.,
+          <code>ci.yml</code>, <code>test.yml</code>), the first
+          <code>/gaia-config-ci --regenerate</code> after upgrade fires the FR-519 auto-rename flow:
+          per-file, you choose to rename to <code>gaia-{base}.yml</code> + scaffold overlays, rename
+          to <code>user-{base}.yml</code>, or skip and defer. Backup-first
+          (<code>.gaia-backup/ci-regen-{ts}/</code> with a sha256 manifest) so a misclassification
+          is recoverable.
+        </p>
+      </section>
+
+      <section id="whats-next">
+        <h2>What to read next</h2>
+        <ul>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a> -- how test execution fits into the broader CI configuration.</li>
+          <li><a href="../commands/gaia-test-strategy.html"><code>/gaia-test-strategy</code></a> -- full command reference for test plan design and framework scaffolding.</li>
+          <li><a href="../commands/gaia-bridge-enable.html"><code>/gaia-bridge-enable</code></a> -- enabling the Test Execution Bridge.</li>
+          <li><a href="../commands/gaia-config-test.html"><code>/gaia-config-test</code></a> -- editing test configuration.</li>
+          <li><a href="../test-environment-yaml.html">test-environment.yaml Reference</a> -- the bridge manifest file schema.</li>
+          <li><a href="../commands/gaia-test-gap-analysis.html"><code>/gaia-test-gap-analysis</code></a> -- finding gaps in your test coverage.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

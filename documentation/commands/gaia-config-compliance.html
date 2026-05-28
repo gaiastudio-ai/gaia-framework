@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-config-compliance - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/configuration.html">Configuration</a><span class="separator">/</span>
+        /gaia-config-compliance
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-config-compliance</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
+          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-config-compliance</code> edits the <code>compliance</code> section of <code>config/project-config.yaml</code>. The compliance section selects opt-in regulatory regimes (GDPR, HIPAA, PCI-DSS, SOX, CCPA, SOC2, ISO-27001, WCAG 2.1 AA/AAA) that add extra review criteria layers, and configures domain and UI-presence flags. The editor preserves all YAML comments and formatting outside the edited section. Every edit goes through a diff preview and confirmation gate before writing.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul><li>You need to add, remove, or modify entries in the <code>compliance</code> configuration section.</li><li>You set up a new project and need to configure the <code>compliance</code> section.</li></ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>project-config.yaml must exist.</strong> Run <a href="gaia-init.html"><code>/gaia-init</code></a> to create one if missing.</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-config-compliance</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the compliance section</span> Reads the current compliance block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Present edit menu</span> Shows the current compliance configuration and an operation menu (add, remove, edit, view, exit).</li><li><span class="step-title">Apply operation</span> Collects the new values and validates them. Regime values must be from the canonical set. Regime declaration order is significant -- it drives the rubric merge order.</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Project configuration</td><td><code>config/project-config.yaml</code></td><td>The file containing the compliance section.</td></tr></tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Updated compliance section</td><td><code>config/project-config.yaml</code></td><td>The modified compliance configuration.</td></tr></tbody></table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-config-compliance
+
+Current compliance configuration:
+  regimes:
+    - hipaa
+  ui_present: true
+
+Operations: [s] set key  [r] remove key  [v] view  [x] exit
+> s
+
+Key: regimes
+Value: [hipaa, soc2]
+
+Diff preview:
+  compliance:
+  - regimes:
+  -   - hipaa
+  + regimes:
+  +   - hipaa
+  +   - soc2
+    ui_present: true
+
+Apply this edit? [y/n]
+> y
+
+Compliance section updated. Run /gaia-config-validate to verify.</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul><li><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a> -- validate the modified configuration file.</li><li><a href="gaia-config-show.html"><code>/gaia-config-show compliance</code></a> -- view the section after editing.</li></ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>compliance section not found</h3><p>The section does not exist in your config file. The command offers to scaffold a default: <pre><code>compliance:
+  regimes: []
+  domain: null
+  ui_present: false</code></pre></p><h3>Edit cancelled</h3><p>You chose not to apply the edit. The file remains unchanged.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-config-show.html"><code>/gaia-config-show</code></a></td><td>View the configuration file or a specific section.</td></tr><tr><td><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a></td><td>Validate the configuration against the schema.</td></tr></tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/configuration.html">Back to Configuration</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

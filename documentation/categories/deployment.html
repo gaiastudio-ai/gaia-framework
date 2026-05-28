@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deployment - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="getting-started.html">Getting Started</a></li>
+          <li><a href="discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="planning.html">Planning</a></li>
+          <li><a href="sprint-management.html">Sprint Management</a></li>
+          <li><a href="development.html">Development</a></li>
+          <li><a href="testing.html">Testing</a></li>
+          <li><a href="reviews.html">Reviews</a></li>
+          <li><a href="validation.html">Validation</a></li>
+          <li><a href="deployment.html" class="active">Deployment</a></li>
+          <li><a href="configuration.html">Configuration</a></li>
+          <li><a href="documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="internal.html">Internal Skills</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        Deployment
+      </nav>
+
+      <h1>Deployment</h1>
+      <p>
+        Deployment commands handle the final stages of the delivery
+        <a href="../glossary.html#lifecycle-phase">lifecycle</a>:
+        pre-deployment checklists, the deploy itself (through the
+        <a href="../glossary.html#promotion-chain">promotion chain</a>), post-deployment
+        verification, rollback planning, release cutting, and changelog
+        generation. They correspond to Phase 5 of the GAIA lifecycle.
+      </p>
+
+      <h2>Commands in this category</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name"><a href="../commands/gaia-deploy.html">/gaia-deploy</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Deploy to an environment with pre-deploy gate, adapter-mediated deploy, health-check, and post-deploy smoke.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-deploy-checklist.html">/gaia-deploy-checklist</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Pre-deployment verification checklist with quality gates.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-post-deploy.html">/gaia-post-deploy</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Post-deployment health and metric validation with a structured pass/fail report.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-rollback-plan.html">/gaia-rollback-plan</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Define rollback trigger criteria and recovery procedures for each environment.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-release-plan.html">/gaia-release-plan</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Create a staged rollout and release strategy with environment progression and success metrics.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-release.html">/gaia-release</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Execute the release procedure: version bump, commit, tag, push, and GitHub Release.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-changelog.html">/gaia-changelog</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Generate a changelog from git history grouped by Keep a Changelog categories.</span>
+        </li>
+      </ul>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-sprint-plan - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#arguments">Arguments</a></li>
+          <li><a href="#orchestration-mode">Orchestration mode</a></li>
+          <li><a href="#hotfix-injection">Hotfix auto-injection</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#examples">Examples</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/sprint-management.html">Sprint Management</a>
+        <span class="separator">/</span>
+        /gaia-sprint-plan
+      </nav>
+
+      <!-- Header -->
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-sprint-plan</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/sprint-management.html">Sprint Management</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt>
+          <dd><code>[sprint-scope]</code></dd>
+        </dl>
+      </header>
+
+      <section id="arguments"><h2>Arguments</h2>
+        <p>This command takes no required arguments. All sprint parameters are gathered interactively.</p>
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>--allow-stale-prior</code></td>
+              <td>Flag</td>
+              <td>No</td>
+              <td>Off</td>
+              <td>Skip the prior-close guard (Step 0) even if the previous sprint has not been closed via <a href="gaia-sprint-close.html"><code>/gaia-sprint-close</code></a>. A warning is emitted when used.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 1. What it does -->
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-sprint-plan</code> builds a <a href="../glossary.html#sprint">sprint</a> by selecting <a href="../glossary.html#story">stories</a>
+          from the backlog, applying sizing and priority rules, and committing
+          the sprint atomically to the sprint tracking file. It reads the
+          epics-and-stories breakdown, classifies each story by readiness,
+          checks dependencies, enforces velocity limits, and produces a sprint
+          plan document with a burndown estimate.
+        </p>
+      </section>
+
+      <!-- 2. When to use it -->
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>
+            You have stories in <code>ready-for-dev</code> status and want
+            to assemble the next sprint.
+          </li>
+          <li>
+            You completed a sprint and need to plan the follow-up sprint
+            using stories remaining in the backlog.
+          </li>
+          <li>
+            Action items from a retrospective recommend pulling specific
+            stories into the next sprint -- the priority-flag system
+            auto-includes flagged stories.
+          </li>
+        </ul>
+      </section>
+
+      <!-- 3. Prerequisites -->
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>
+            <strong>Epics and stories must exist.</strong>
+            <code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code> must
+            be present. Run
+            <a href="gaia-create-epics.html"><code>/gaia-create-epics</code></a>
+            first if it does not exist.
+          </li>
+          <li>
+            <strong>Stories must have individual files.</strong> Only stories
+            with a file under
+            <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-*/</code>
+            and status <code>ready-for-dev</code> are selectable. Run
+            <a href="gaia-create-story.html"><code>/gaia-create-story</code></a>
+            for any story that lacks a file.
+          </li>
+          <li>
+            <strong>Open action items should be resolved.</strong> If any
+            HIGH-priority action item has been open for two or more sprints,
+            the command halts until you resolve it via
+            <a href="gaia-action-items.html"><code>/gaia-action-items</code></a>
+            or explicitly override.
+          </li>
+        </ul>
+      </section>
+      <section id="orchestration-mode">
+        <h2>Orchestration mode</h2>
+        <p>When <code>/gaia-sprint-plan</code> starts in <strong>subagent mode (Mode A -- the default)</strong>, the framework emits a one-shot warning to your conversation. The warning text:</p>
+        <pre><code>
+────────────────────────────────────────────────────────────────────────────
+GAIA orchestration: running in subagent mode (Mode A)
+
+The skill you're invoking belongs to a class (heavy-procedural or
+conversational) whose output benefits from cross-step context. Mode A
+dispatches each sub-agent in its own forked context, so context may
+be lossy between steps — sub-agents return summaries, not full reasoning.
+
+For the full-fidelity experience, enable Mode B (Agent Teams):
+  1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
+  2. Add orchestration.mode: team to config/project-config.yaml.
+
+Mode B uses persistent teammates that preserve in-conversation state
+across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+
+This warning is shown once per session.
+────────────────────────────────────────────────────────────────────────────
+</code></pre>
+
+        <h3>Why Mode B is better for this command</h3>
+        <p>The <code>/gaia-sprint-plan</code> skill declares <code>orchestration_class: heavy-procedural</code> in its SKILL.md frontmatter. Heavy-procedural skills produce output that benefits from cross-step context -- under Mode A every sub-agent dispatch runs in its own forked context and can only return a summary back to the orchestrator, losing the full reasoning trace of every prior step. Mode B uses persistent teammates that retain in-conversation state across dispatches, so each agent's contribution can build on what was said before instead of receiving only a summary.</p>
+
+        <h3>How to enable Mode B</h3>
+        <p>Both steps are required. If either is missing, the framework falls back silently to Mode A and the warning fires again on the next session.</p>
+        <p><strong>Step 1 -- set the environment variable:</strong></p>
+        <pre><code>export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code></pre>
+        <p>Add this to your shell rc file to persist across sessions, or set it in Claude Code's <code>settings.json</code>.</p>
+        <p><strong>Step 2 -- add the YAML block to <code>config/project-config.yaml</code>:</strong></p>
+        <pre><code>orchestration:
+  mode: team</code></pre>
+        <h3>One-shot semantics</h3>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+      </section>
+
+
+      <section id="hotfix-injection">
+        <h2>Hotfix auto-injection (E40-S3, ADR-109 &sect;D3)</h2>
+        <p>Stories with <code>priority_flag: "hotfix"</code> in their frontmatter are auto-injected into the <strong>active</strong> sprint at Step 1, before the interactive selection ceremony begins. This differs from the <code>"next-sprint"</code> flag, which pre-fills the candidate set for user confirmation.</p>
+        <p>Key behaviors (PR #772, ADR-109 &sect;D3/&sect;D4):</p>
+        <ul>
+          <li>Injection uses <code>sprint-state.sh inject</code> (ADR-095 sanctioned boundary writer). The call is idempotent -- re-runs are no-ops.</li>
+          <li>Capacity-exceeded does <strong>not</strong> block hotfix injection. A hotfix is a sanctioned bypass of normal sprint capacity.</li>
+          <li>Multiple hotfix stories in a single run are all injected; each emits a <code>WARNING</code> log line.</li>
+          <li>Hotfix stories <strong>must still pass the full <code>/gaia-run-all-reviews</code></strong> including the NFR-073 wire-verification gate. A hotfix is faster to PLAN, not faster to TEST.</li>
+          <li>The <code>"hotfix"</code> value is human-set only. Neither <code>/gaia-add-feature</code> nor triage may auto-set it.</li>
+        </ul>
+      </section>
+
+      <!-- 4. How to invoke -->
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-sprint-plan</code></pre>
+        <p>No arguments are required. The command walks you through sprint scoping interactively.</p>
+      </section>
+
+      <!-- 5. Step by step -->
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Load backlog</span>
+            Reads the epics-and-stories document and scans individual story
+            files. Classifies stories into selectable (have a file,
+            <code>ready-for-dev</code>) and non-selectable (missing file or
+            wrong status). Stories flagged with
+            <code>priority_flag: "next-sprint"</code> are auto-included in
+            the candidate set. Stories with <code>priority_flag: "hotfix"</code>
+            are auto-injected into the active sprint via
+            <code>sprint-state.sh inject</code> before selection begins
+            (E40-S3, ADR-109 &sect;D3).
+          </li>
+          <li>
+            <span class="step-title">Check for blocking action items</span>
+            Scans the action-items tracker. If any HIGH-priority item has been
+            open for two or more sprints, the command halts and directs you to
+            resolve it first.
+          </li>
+          <li>
+            <span class="step-title">Sprint scoping</span>
+            Asks for the sprint duration (1 week, 2 weeks, or custom), the
+            team velocity estimate in story points, and the sprint number.
+            Displays the point values for each story size (S/M/L/XL).
+          </li>
+          <li>
+            <span class="step-title">Story selection</span>
+            Selects stories by priority (P0 first), checks that dependencies
+            are met, and verifies the total points fit within the velocity
+            estimate. Warns if P0 stories are excluded. For high-risk
+            stories, checks that ATDD scenarios exist.
+          </li>
+          <li>
+            <span class="step-title">Commit sprint</span>
+            Registers each selected story in the sprint tracking file. Runs
+            a dependency-inversion lint to detect ordering issues, and clears
+            the <code>priority_flag</code> on included stories.
+          </li>
+          <li>
+            <span class="step-title">Write sprint plan</span>
+            Saves the sprint plan document with story assignments, execution
+            order, burndown estimate, and testing readiness.
+          </li>
+          <li>
+            <span class="step-title">Validate (optional)</span>
+            If available, runs a validation pass to verify story keys exist,
+            dependency ordering is correct, and point totals are accurate.
+          </li>
+          <li>
+            <span class="step-title">Report</span>
+            Displays the finalized sprint summary and suggests running
+            <code>/gaia-dev-story</code> on the first story.
+          </li>
+        </ol>
+      </section>
+
+      <!-- 6. Inputs -->
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Source</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Epics and stories</td>
+              <td><code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code></td>
+              <td>The backlog of all epics and stories with priorities and sizes.</td>
+            </tr>
+            <tr>
+              <td>Story files</td>
+              <td><code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-*/</code></td>
+              <td>Individual story files with frontmatter (status, risk, dependencies).</td>
+            </tr>
+            <tr>
+              <td>Action items</td>
+              <td><code>.gaia/artifacts/planning-artifacts/action-items.yaml</code></td>
+              <td>Checked for blocking escalations before planning begins.</td>
+            </tr>
+            <tr>
+              <td>Previous retrospective</td>
+              <td><code>.gaia/artifacts/implementation-artifacts/retro-*.md</code></td>
+              <td>If available, open action items are surfaced as sprint constraints.</td>
+            </tr>
+            <tr>
+              <td>Project configuration</td>
+              <td><code>config/project-config.yaml</code></td>
+              <td>Sizing map (S/M/L/XL point values) and velocity defaults.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 7. Outputs -->
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Output</th>
+              <th>Location</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Sprint plan document</td>
+              <td><code>.gaia/artifacts/implementation-artifacts/{sprint_id}-plan.md</code></td>
+              <td>Sprint goals, selected stories, velocity target, burndown estimate.</td>
+            </tr>
+            <tr>
+              <td>Updated sprint tracking</td>
+              <td><code>.gaia/state/sprint-status.yaml</code></td>
+              <td>Each selected story registered with status, points, and risk level.</td>
+            </tr>
+            <tr>
+              <td>Updated story files</td>
+              <td>Individual story files</td>
+              <td>The <code>sprint_id</code> field is set; <code>priority_flag</code> is cleared on included stories.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="examples">
+        <h2>Examples</h2>
+
+        <h3>1. Happy path -- interactive planning</h3>
+        <pre><code>&gt; /gaia-sprint-plan
+
+Loading backlog from epics-and-stories.md...
+  15 stories total, 8 selectable (ready-for-dev with files).
+  3 not selectable (no file), 4 not selectable (wrong status).
+
+  Auto-included by priority_flag: E5-S12, E5-S14
+
+Escalation halt check: no blocking action items. Proceeding.
+
+Sprint scoping:
+  Duration? 2 weeks
+  Velocity estimate? 21 points
+  Sprint number? sprint-4
+
+Sizing map: S=2, M=3, L=5, XL=8
+
+Story selection:
+  E5-S12  Add webhook retry logic       M (3)  [priority_flag: next-sprint]
+  E5-S14  Improve error messages         S (2)  [priority_flag: next-sprint]
+  E3-S9   Dashboard search               L (5)
+  E3-S10  Export CSV                      M (3)
+  E4-S6   Rate limiting middleware        L (5)
+  E4-S7   API key rotation               M (3)
+  Total: 21 / 21 points (100% capacity)
+
+Committing sprint-4...
+  Dependency lint: clean, no inversions.
+  Priority flags cleared on E5-S12, E5-S14.
+
+Sprint plan written to .gaia/artifacts/implementation-artifacts/sprint-4-plan.md.
+
+Sprint-4 summary:
+  Duration: 2 weeks | Velocity: 21 | Stories: 6 | Utilization: 100%
+
+Next: run /gaia-dev-story E5-S12 to begin the first story.</code></pre>
+
+        <h3>2. Hotfix auto-injection (E40-S3, ADR-109 &sect;D3)</h3>
+        <p>Stories with <code>priority_flag: "hotfix"</code> are injected into the active sprint automatically via <code>sprint-state.sh inject</code> before the interactive selection ceremony.</p>
+        <pre><code>&gt; /gaia-sprint-plan
+
+Loading backlog from epics-and-stories.md...
+  12 stories total, 6 selectable.
+
+Hotfix injection:
+  WARNING: hotfix story E12-S4 injected into active sprint via
+           priority_flag: "hotfix" (ADR-109 &sect;D3)
+  WARNING: hotfix story E12-S5 injected into active sprint via
+           priority_flag: "hotfix" (ADR-109 &sect;D3)
+
+  Auto-included by priority_flag: E5-S18
+
+Sprint scoping:
+  Duration? 2 weeks
+  Velocity estimate? 21 points
+  Sprint number? sprint-5
+
+Story selection (hotfix stories already injected):
+  E12-S4  Fix payment webhook timeout    S (2)  [hotfix -- already injected]
+  E12-S5  Patch auth token expiry        S (2)  [hotfix -- already injected]
+  E5-S18  Webhook retry backoff          M (3)  [priority_flag: next-sprint]
+  E3-S11  Dashboard filtering            L (5)
+  Total: 12 / 21 points (57% capacity)
+
+Committing sprint-5...
+Sprint-5 summary:
+  Duration: 2 weeks | Velocity: 21 | Stories: 4 | Utilization: 57%</code></pre>
+
+        <h3>3. Capacity exceeded with hotfix still injected</h3>
+        <p>Hotfix injection is a sanctioned capacity bypass. Even when the sprint is at or over capacity, hotfix stories are injected.</p>
+        <pre><code>&gt; /gaia-sprint-plan
+
+Loading backlog...
+  8 selectable stories.
+
+Hotfix injection:
+  WARNING: hotfix story E12-S4 injected into active sprint via
+           priority_flag: "hotfix" (ADR-109 &sect;D3)
+
+Sprint scoping:
+  Velocity estimate? 13 points
+
+Story selection:
+  E12-S4  Fix payment webhook timeout    S (2)  [hotfix -- already injected]
+  E3-S9   Dashboard search               L (5)
+  E4-S6   Rate limiting middleware        L (5)
+  E3-S10  Export CSV                      M (3)
+  Total: 15 / 13 points (115% capacity)
+
+  WARNING: Sprint is 2 points over velocity estimate.
+  Hotfix stories cannot be removed. Deselect a non-hotfix story? y
+  Deselecting E3-S10 (M, 3 pts).
+  Total: 12 / 13 points (92% capacity)
+
+Committing sprint-6...</code></pre>
+
+        <h3>4. Escalation halt -- blocking action item</h3>
+        <pre><code>&gt; /gaia-sprint-plan
+
+Escalation halt check:
+
+  HALT: HIGH-priority action item open for 2+ sprints:
+    AI-42  "Standardize error response format"  escalation_count: 3  priority: HIGH
+    AI-77  "Migrate legacy auth tokens"          escalation_count: 2  priority: HIGH
+
+  Resolve these items before planning a new sprint:
+    - Run /gaia-action-items to resolve
+    - Or re-invoke with explicit override to acknowledge</code></pre>
+
+        <h3>5. Dependency-blocked story excluded</h3>
+        <pre><code>&gt; /gaia-sprint-plan
+
+Loading backlog...
+
+Story selection:
+  BLOCKED: Story E4-S7 depends on E4-S5 (status: in-progress).
+  E4-S7 removed from candidates.
+
+  E3-S9   Dashboard search               L (5)
+  E4-S6   Rate limiting middleware        L (5)
+  E5-S14  Improve error messages          S (2)
+  Total: 12 / 13 points (92% capacity)
+
+Committing sprint-7...
+  Dependency lint: clean, no inversions.</code></pre>
+      </section>
+
+      <!-- 9. What to run next -->
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>
+            <a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a>
+            -- implement the first story in the sprint.
+          </li>
+          <li>
+            <a href="gaia-sprint-status.html"><code>/gaia-sprint-status</code></a>
+            -- view the sprint dashboard at any time during the sprint.
+          </li>
+          <li>
+            <a href="gaia-correct-course.html"><code>/gaia-correct-course</code></a>
+            -- if scope needs to change mid-sprint.
+          </li>
+        </ul>
+      </section>
+
+      <!-- 10. Troubleshooting -->
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>"Escalation halt: HIGH-priority action item open for 2+ sprints"</h3>
+        <p>
+          A recurring issue must be resolved before new sprint commitments
+          are made. Run
+          <a href="gaia-action-items.html"><code>/gaia-action-items</code></a>
+          to resolve the blocking item, or re-invoke with an explicit
+          override if you have acknowledged the item.
+        </p>
+
+        <h3>"Story has no individual file"</h3>
+        <p>
+          The story exists in epics-and-stories.md but has no detailed file.
+          Run
+          <a href="gaia-create-story.html"><code>/gaia-create-story {key}</code></a>
+          to generate it.
+        </p>
+
+        <h3>"Dependency not done"</h3>
+        <p>
+          A selected story depends on another story that is not yet
+          <code>done</code>. Either include the dependency in this sprint
+          (ordered before the dependent), or remove the dependent story.
+        </p>
+
+        <h3>"Dependency inversion detected"</h3>
+        <p>
+          A story appears before its dependency in the sprint order. You can
+          accept the suggested reorder or override and keep the original
+          order.
+        </p>
+      
+        <h3>I keep seeing the GAIA orchestration warning every time I start this command</h3>
+        <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
+        <ul>
+          <li><code>echo $CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> returns <code>1</code> (not empty)</li>
+          <li><code>config/project-config.yaml</code> contains:
+            <pre><code>orchestration:
+  mode: team</code></pre>
+          </li>
+        </ul>
+        <p>If either is missing the framework silently uses Mode A and re-emits the warning each session.</p>
+</section>
+
+      <!-- 11. Related commands -->
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia-create-story.html"><code>/gaia-create-story</code></a></td>
+              <td>Creates the story files that this command selects from.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-action-items.html"><code>/gaia-action-items</code></a></td>
+              <td>Resolves action items that may block sprint planning.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-correct-course.html"><code>/gaia-correct-course</code></a></td>
+              <td>Manages scope changes after a sprint has been committed.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-sprint-status.html"><code>/gaia-sprint-status</code></a></td>
+              <td>Displays the sprint dashboard during an active sprint.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-retro.html"><code>/gaia-retro</code></a></td>
+              <td>Produces the retrospective whose action items feed the next planning cycle.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a></td>
+              <td>Implements a story selected in the sprint plan.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

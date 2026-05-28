@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shape: Full-Stack - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html" class="active">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#when">When this shape applies</a></li>
+          <li><a href="#folder-layout">Folder layout</a></li>
+          <li><a href="#config">Configuration</a></li>
+          <li><a href="#path-filters">Path-based CI filters</a></li>
+          <li><a href="#per-stack-tests">Per-stack test execution</a></li>
+          <li><a href="#shared-code">Handling shared code</a></li>
+          <li><a href="#deploy">Deployment considerations</a></li>
+          <li><a href="#example">Complete example</a></li>
+          <li><a href="#whats-next">What to read next</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        <a href="project-shapes-overview.html">Project Shapes</a>
+        <span class="separator">/</span>
+        Full-Stack
+      </nav>
+
+      <h1>Shape: Full-Stack</h1>
+      <p>
+        A full-stack project has two stacks -- a frontend and a backend -- in
+        the same repository. Each stack has its own language, test runner, build
+        process, and deployment target. The main configuration challenge is
+        making CI smart enough to test only the stack that changed.
+      </p>
+
+      <section id="when">
+        <h2>When this shape applies</h2>
+        <p>
+          Use the full-stack shape when your project has:
+        </p>
+        <ul>
+          <li>A frontend (React, Vue, Angular, Svelte) and a backend (Express, Django, Rails, Spring Boot) in the same repository.</li>
+          <li>Two distinct build and test processes.</li>
+          <li>Two deployment targets (e.g., a static site host for the frontend and a container platform for the backend).</li>
+        </ul>
+        <p>
+          If you have three or more deployable services, see
+          <a href="shape-microservices.html">Shape: Microservices</a>. If your
+          application is a single server-rendered framework (Rails with embedded
+          views, Django with templates), see
+          <a href="shape-single-repo.html">Shape: Single Repo</a>.
+        </p>
+      </section>
+
+      <section id="folder-layout">
+        <h2>Folder layout</h2>
+        <p>
+          The recommended layout puts each stack in its own top-level directory:
+        </p>
+        <pre><code>my-project/
+  .gaia/
+    config/
+      project-config.yaml
+  docs/
+    planning-artifacts/
+    implementation-artifacts/
+  packages/
+    web/              # Frontend stack
+      src/
+      tests/
+      package.json
+    api/              # Backend stack
+      src/
+      tests/
+      requirements.txt  # (or package.json, go.mod, etc.)
+  README.md</code></pre>
+        <p>
+          Alternative layout names are fine (<code>frontend/</code> and
+          <code>backend/</code>, <code>client/</code> and <code>server/</code>,
+          <code>apps/web/</code> and <code>apps/api/</code>). What matters is
+          that each stack has a distinct path that GAIA can use for path-based
+          CI filtering.
+        </p>
+      </section>
+
+      <section id="config">
+        <h2>Configuration</h2>
+        <p>
+          The <code>stacks</code> section has two entries, each with its own
+          <code>path</code>:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+project:
+  name: my-fullstack-app
+  description: A task management application
+
+stacks:
+  - name: frontend
+    language: typescript
+    framework: react
+    path: packages/web
+    test_command: npm test
+    build_command: npm run build
+    lint_command: npm run lint
+  - name: backend
+    language: python
+    framework: fastapi
+    path: packages/api
+    test_command: pytest
+    build_command: docker build -t my-api .
+    lint_command: ruff check src/
+
+platforms:
+  - web</code></pre>
+        <p>
+          The <code>path</code> field is what makes path-based CI filtering
+          work. When a PR changes only files under <code>packages/web/</code>,
+          GAIA's generated CI workflow runs only the frontend test job.
+        </p>
+      </section>
+
+      <section id="path-filters">
+        <h2>Path-based CI filters</h2>
+        <p>
+          Path filters prevent unnecessary test runs. Without them, every
+          change triggers both frontend and backend tests, doubling your CI
+          time.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+ci_cd:
+  platform: github-actions
+  preset: small-team
+  promotion_chain:
+    - staging
+    - production
+  path_filters:
+    enabled: true
+  concurrency:
+    group: ci-${{ github.ref }}
+    cancel_in_progress: true</code></pre>
+        <p>
+          With <code>path_filters.enabled: true</code>, running
+          <a href="../commands/gaia-ci-setup.html"><code>/gaia-ci-setup</code></a>
+          generates workflow triggers that match each stack's <code>path</code>:
+        </p>
+        <ul>
+          <li>Changes to <code>packages/web/**</code> trigger the frontend job.</li>
+          <li>Changes to <code>packages/api/**</code> trigger the backend job.</li>
+          <li>Changes to root-level files (<code>project-config.yaml</code>, <code>README.md</code>) trigger both jobs.</li>
+        </ul>
+        <div class="callout">
+          <p class="callout-title">Shared dependencies</p>
+          <p>
+            If both stacks depend on a shared library (e.g.,
+            <code>packages/shared/</code>), changes to the shared directory
+            should trigger both test suites. Path filters include root-level
+            and shared paths in the trigger for both stacks by default.
+          </p>
+        </div>
+      </section>
+
+      <section id="per-stack-tests">
+        <h2>Per-stack test execution</h2>
+        <p>
+          When
+          <a href="../commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a>
+          implements a story, it determines which stack the story belongs to
+          (based on the files being changed) and runs only that stack's test
+          command.
+        </p>
+        <p>
+          If a story touches both stacks (e.g., adding a new API endpoint and
+          the frontend component that calls it), both test commands run. This
+          is the expected behavior for cross-stack stories.
+        </p>
+        <p>
+          Configure per-stack test settings in the <code>test_execution</code>
+          section:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+test_execution:
+  default_command: npm test
+  timeout_seconds: 300
+  coverage:
+    enabled: true
+    threshold: 80</code></pre>
+        <p>
+          The <code>default_command</code> is a fallback. Each stack's
+          <code>test_command</code> takes precedence when GAIA knows which
+          stack to test.
+        </p>
+      </section>
+
+      <section id="shared-code">
+        <h2>Handling shared code</h2>
+        <p>
+          Full-stack projects often have shared code -- TypeScript types used
+          by both frontend and backend, validation schemas, or utility
+          functions. Common patterns:
+        </p>
+        <ul>
+          <li>
+            <strong>Shared package:</strong> A third directory
+            (<code>packages/shared/</code>) that both stacks depend on.
+            Not a separate stack in GAIA terms -- it does not have its own
+            deployment. Its tests run as part of whichever stack imports it.
+          </li>
+          <li>
+            <strong>API contract:</strong> An OpenAPI spec or GraphQL schema
+            that the backend generates and the frontend consumes. Use
+            <a href="../commands/gaia-api-design.html"><code>/gaia-api-design</code></a>
+            to manage the contract.
+          </li>
+          <li>
+            <strong>Monorepo tooling:</strong> Tools like npm workspaces, Yarn
+            workspaces, or Turborepo manage dependencies between packages.
+            GAIA's path-based filtering works with all of these.
+          </li>
+        </ul>
+      </section>
+
+      <section id="deploy">
+        <h2>Deployment considerations</h2>
+        <p>
+          In a full-stack project, the frontend and backend typically deploy
+          to different targets:
+        </p>
+        <ul>
+          <li><strong>Frontend:</strong> Static hosting (Vercel, Netlify, S3 + CloudFront, GitHub Pages).</li>
+          <li><strong>Backend:</strong> Container platform (AWS ECS, Google Cloud Run, Kubernetes) or serverless (AWS Lambda, Cloud Functions).</li>
+        </ul>
+        <p>
+          Each stack can have its own deployment configuration in the
+          <code>environments</code> section:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+environments:
+  staging:
+    frontend_url: https://staging.example.com
+    backend_url: https://api.staging.example.com
+    auto_deploy: true
+  production:
+    frontend_url: https://example.com
+    backend_url: https://api.example.com
+    auto_deploy: false
+    requires_approval: true</code></pre>
+        <p>
+          When deploying, consider whether the frontend and backend need to be
+          deployed together (because of breaking API changes) or can be deployed
+          independently. Independent deploys are faster and safer but require
+          backward-compatible APIs.
+        </p>
+      </section>
+
+      <section id="example">
+        <h2>Complete example</h2>
+        <p>
+          Here is a full <code>project-config.yaml</code> for a React +
+          FastAPI application:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+project:
+  name: taskmaster
+  description: A task management application with React frontend and FastAPI backend
+
+stacks:
+  - name: frontend
+    language: typescript
+    framework: react
+    path: packages/web
+    test_command: npm test -- --coverage
+    build_command: npm run build
+    lint_command: npm run lint
+  - name: backend
+    language: python
+    framework: fastapi
+    path: packages/api
+    test_command: pytest --cov=src --cov-report=term-missing
+    build_command: docker build -t taskmaster-api packages/api
+    lint_command: ruff check packages/api/src/
+
+platforms:
+  - web
+
+ci_cd:
+  platform: github-actions
+  preset: small-team
+  promotion_chain:
+    - staging
+    - production
+  path_filters:
+    enabled: true
+  concurrency:
+    group: ci-${{ github.ref }}
+    cancel_in_progress: true
+  triggers:
+    pull_request:
+      checks:
+        - lint
+        - unit-tests
+        - integration-tests
+    push_to_staging:
+      checks:
+        - smoke-test
+    push_to_production:
+      checks:
+        - smoke-test
+        - deploy
+
+environments:
+  staging:
+    frontend_url: https://staging.taskmaster.example.com
+    backend_url: https://api.staging.taskmaster.example.com
+    auto_deploy: true
+  production:
+    frontend_url: https://taskmaster.example.com
+    backend_url: https://api.taskmaster.example.com
+    auto_deploy: false
+    requires_approval: true
+
+test_execution:
+  default_command: npm test
+  timeout_seconds: 300
+  coverage:
+    enabled: true
+    threshold: 80
+  smoke:
+    command: npm run test:smoke
+    timeout_seconds: 60</code></pre>
+      </section>
+
+      <section id="whats-next">
+        <h2>What to read next</h2>
+        <ul>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a> -- trigger strategy and path filters in detail.</li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a> -- per-stack test commands and the Test Execution Bridge.</li>
+          <li><a href="environments-and-promotion.html">Environments and Promotion</a> -- deploying frontend and backend to different targets.</li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a> -- when your project grows beyond two stacks.</li>
+          <li><a href="../commands/gaia-config-stack.html"><code>/gaia-config-stack</code></a> -- editing stack configuration.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

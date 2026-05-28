@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>/gaia-perf-deepdive - GAIA Documentation</title><link rel="stylesheet" href="../styles.css"></head>
+<body><div class="page-wrapper">
+<aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/reviews.html">Reviews</a><span class="separator">/</span>/gaia-perf-deepdive</nav>
+      <header class="command-header"><div class="command-title"><h1>/gaia-perf-deepdive</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/reviews.html">Reviews</a></dd><dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd><dt>Arguments:</dt><dd><code>[story-key]</code></dd></dl></header>
+      <section id="what-it-does"><h2>What it does</h2><p>Deep performance bottleneck analysis: N+1 query detection, memory and bundle impact assessment, caching gap analysis, and algorithmic complexity review. More thorough than /gaia-review-perf -- runs per-stack ORM pattern detection, complexity analysis, and static budget checks.</p></section>
+      <section id="when-to-use"><h2>When to use it</h2><ul><li>You want a deep-dive performance analysis beyond the standard review gate.</li></ul></section>
+      <section id="prerequisites"><h2>Prerequisites</h2><ul><li><strong>Story must be in <code>review</code> status</strong> (for story-based reviews). The story file must exist under <code>.gaia/artifacts/implementation-artifacts/</code>.</li></ul></section>
+      <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-perf-deepdive E3-S7</code></pre></section>
+      <section id="step-by-step"><h2>What it does step by step</h2><ol class="step-list"><li><span class="step-title">Resolve target</span> Locates the story file or review target.</li><li><span class="step-title">Run deterministic analysis</span> Executes per-stack tooling to collect evidence.</li><li><span class="step-title">Apply LLM judgment</span> Performs semantic review on top of the deterministic evidence.</li><li><span class="step-title">Compute verdict</span> The verdict (APPROVE, REQUEST_CHANGES, or BLOCKED) is computed by the verdict resolver -- the LLM does not determine the verdict.</li><li><span class="step-title">Update Review Gate</span> Records the verdict in the story's Review Gate table.</li></ol></section>
+      <section id="inputs"><h2>Inputs</h2><p>Story file, associated source files, and project configuration are read automatically.</p></section>
+      <section id="outputs"><h2>Outputs</h2><p>A review report is written to <code>.gaia/artifacts/implementation-artifacts/</code>. The story's Review Gate row is updated with PASSED or FAILED.</p></section>
+      <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-perf-deepdive E3-S7
+
+Resolving story E3-S7...
+Running deterministic analysis...
+Applying semantic review...
+
+Verdict: APPROVE
+Review Gate updated: PASSED
+
+0 critical, 1 warning, 2 suggestions.</code></pre></section>
+      <section id="what-next"><h2>What to run next</h2><ul><li><a href="gaia-review-all.html"><code>/gaia-review-all</code></a> -- run all remaining reviews.</li><li><a href="gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a> -- check if all reviews pass.</li></ul></section>
+      <section id="troubleshooting"><h2>Troubleshooting</h2><h3>"Story must be in review status"</h3><p>Run <a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a> to implement and transition the story first.</p><h3>"Story file not found"</h3><p>Verify the story key and check that the file exists under <code>.gaia/artifacts/implementation-artifacts/</code>.</p></section>
+      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-review-all.html"><code>/gaia-review-all</code></a></td><td>Runs all six reviews in one pass.</td></tr><tr><td><a href="gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a></td><td>Checks the composite gate after reviews.</td></tr></tbody></table></section>
+      <footer class="page-footer"><p><a href="../categories/reviews.html">Back to Reviews</a></p></footer>
+    </main></div></body></html>

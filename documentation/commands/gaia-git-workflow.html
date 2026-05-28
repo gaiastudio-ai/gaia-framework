@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/git-workflow - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-is">What it is</a></li>
+          <li><a href="#called-by">Called by</a></li>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-visible">When you will see it</a></li>
+          <li><a href="#technical-notes">Technical notes</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/internal.html">Internal Skills</a><span class="separator">/</span>
+        /git-workflow
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/git-workflow</h1>
+          <span class="tag tag-internal">internal</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/internal.html">Internal Skills</a></dd>
+          
+          
+        </dl>
+      </header>
+
+      <section id="what-it-is">
+        <h2>What it is</h2>
+        <p>Trunk-based development, Conventional Commits, PR template and review checklist, merge strategies, and conflict resolution.</p>
+      </section>
+
+      <section id="called-by">
+        <h2>Called by</h2>
+        <ul><li><a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a> (branching, commits, PR creation)</li><li>All stack dev agents</li></ul>
+      </section>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>Defines the branching strategy: trunk-based development with short-lived feature branches (max 2-3 days).</p><p>Documents Conventional Commits format: type(scope): description.</p><p>Provides PR template and review checklist structure.</p><p>Covers merge strategies (squash, merge, rebase) and conflict resolution approaches.</p>
+      </section>
+
+      <section id="when-visible">
+        <h2>When you will see it surface</h2>
+        <ul><li>When <code>/gaia-dev-story</code> creates branches, commits, and PRs, it follows these conventions.</li></ul>
+      </section>
+
+      <section id="technical-notes">
+        <h2>Technical notes</h2>
+        <ul><li>Never commit directly to main. Delete branches after merge.</li><li>Branch naming: {type}/{ticket-key}-{short-description}.</li><li>Conventional commit types: feat, fix, refactor, chore, perf, docs, style, test.</li></ul>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/internal.html">Back to Internal Skills</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

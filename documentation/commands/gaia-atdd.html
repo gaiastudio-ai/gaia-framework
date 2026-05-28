@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-atdd - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#orchestration-mode">Orchestration mode</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/testing.html">Testing</a>
+        <span class="separator">/</span>
+        /gaia-atdd
+      </nav>
+
+      <!-- Header -->
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-atdd</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/testing.html">Testing</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>4 -- Implementation (pre-development)</dd>
+          <dt>Arguments:</dt>
+          <dd><code>[story-key]</code> &mdash; omit for batch mode</dd>
+        </dl>
+      </header>
+
+      <!-- 1. What it does -->
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-atdd</code> generates Acceptance Test-Driven Development
+          (ATDD) artifacts from a story's acceptance criteria. Each AC is
+          transformed into a failing test skeleton in
+          <strong>Given/When/Then</strong> format -- the red phase of TDD. The
+          tests describe expected behavior that must fail because the
+          implementation does not exist yet. No implementation code is written.
+        </p>
+        <p>
+          The command supports two invocation modes:
+        </p>
+        <ul>
+          <li>
+            <strong>Single-story mode</strong> -- pass a story key
+            (e.g., <code>/gaia-atdd E3-S7</code>) to generate ATDD for one
+            specific story.
+          </li>
+          <li>
+            <strong>Batch mode</strong> -- invoke without arguments
+            (<code>/gaia-atdd</code>) to scan
+            <code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code> for all
+            high-risk stories, then choose which ones to process via an
+            interactive menu.
+          </li>
+        </ul>
+        <p>
+          After generation, the command optionally offers to execute the
+          generated tests to confirm they fail (red-phase verification).
+        </p>
+      </section>
+
+      <!-- 2. When to use it -->
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>
+            A high-risk story is about to enter development and needs
+            acceptance test coverage before implementation begins.
+            <a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a>
+            enforces an ATDD gate for high-risk stories -- run this command
+            first to satisfy it.
+          </li>
+          <li>
+            Sprint planning identified multiple high-risk stories and you want
+            to seed failing tests across the entire high-risk scope in one
+            pass instead of running the command story by story.
+          </li>
+          <li>
+            You want to verify that acceptance criteria are testable before
+            committing to development -- writing Given/When/Then skeletons
+            surfaces ambiguous or untestable ACs early.
+          </li>
+        </ul>
+        <p>
+          For stories with <code>risk: medium</code> or <code>risk: low</code>,
+          ATDD is optional. If you invoke the command for a non-high-risk story,
+          it proceeds normally but notes in the output header that ATDD was
+          invoked explicitly.
+        </p>
+      </section>
+
+      <!-- 3. Prerequisites -->
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>
+            <strong>A story file must exist.</strong> The file lives inside
+            its epic directory at
+            <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code>
+            (epic-grouped layout). If it does not exist, the command stops
+            with "Story file not found for {story_key}". Create it first with
+            <a href="gaia-create-story.html"><code>/gaia-create-story</code></a>.
+          </li>
+          <li>
+            <strong>The story file must have acceptance criteria.</strong> The
+            file must contain an <code>## Acceptance Criteria</code> section
+            with at least one AC entry. If the section is missing or empty,
+            the command exits with "No acceptance criteria found for
+            {story_key}".
+          </li>
+          <li>
+            <strong>For batch mode: epics-and-stories.md must exist.</strong>
+            Batch discovery reads
+            <code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code>. If the
+            file is missing or unreadable, the command halts with an error.
+            Run
+            <a href="gaia-create-epics.html"><code>/gaia-create-epics</code></a>
+            to create it.
+          </li>
+          <li>
+            <strong>For red-phase execution (optional): a test runner must be
+            configured.</strong> Step 5b reads
+            <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
+            and the Test Execution Bridge configuration. If no runner is
+            configured, red-phase execution is skipped with a warning -- it
+            does not fail the overall invocation.
+          </li>
+        </ul>
+      </section>
+      <section id="orchestration-mode">
+        <h2>Orchestration mode</h2>
+        <p>When <code>/gaia-atdd</code> starts in <strong>subagent mode (Mode A -- the default)</strong>, the framework emits a one-shot warning to your conversation. The warning text:</p>
+        <pre><code>
+────────────────────────────────────────────────────────────────────────────
+GAIA orchestration: running in subagent mode (Mode A)
+
+The skill you're invoking belongs to a class (heavy-procedural or
+conversational) whose output benefits from cross-step context. Mode A
+dispatches each sub-agent in its own forked context, so context may
+be lossy between steps — sub-agents return summaries, not full reasoning.
+
+For the full-fidelity experience, enable Mode B (Agent Teams):
+  1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
+  2. Add orchestration.mode: team to config/project-config.yaml.
+
+Mode B uses persistent teammates that preserve in-conversation state
+across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+
+This warning is shown once per session.
+────────────────────────────────────────────────────────────────────────────
+</code></pre>
+
+        <h3>Why Mode B is better for this command</h3>
+        <p>The <code>/gaia-atdd</code> skill declares <code>orchestration_class: heavy-procedural</code> in its SKILL.md frontmatter. Heavy-procedural skills produce output that benefits from cross-step context -- under Mode A every sub-agent dispatch runs in its own forked context and can only return a summary back to the orchestrator, losing the full reasoning trace of every prior step. Mode B uses persistent teammates that retain in-conversation state across dispatches, so each agent's contribution can build on what was said before instead of receiving only a summary.</p>
+
+        <h3>How to enable Mode B</h3>
+        <p>Both steps are required. If either is missing, the framework falls back silently to Mode A and the warning fires again on the next session.</p>
+        <p><strong>Step 1 -- set the environment variable:</strong></p>
+        <pre><code>export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code></pre>
+        <p>Add this to your shell rc file to persist across sessions, or set it in Claude Code's <code>settings.json</code>.</p>
+        <p><strong>Step 2 -- add the YAML block to <code>config/project-config.yaml</code>:</strong></p>
+        <pre><code>orchestration:
+  mode: team</code></pre>
+        <h3>One-shot semantics</h3>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+      </section>
+
+
+      <!-- 4. How to invoke -->
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <h3>Single-story mode</h3>
+        <pre><code>/gaia-atdd E3-S7</code></pre>
+        <p>
+          Pass a story key in <code>E{n}-S{n}</code> format. The command
+          generates ATDD for that one story.
+        </p>
+
+        <h3>Batch mode</h3>
+        <pre><code>/gaia-atdd</code></pre>
+        <p>
+          Invoke without arguments. The command discovers all high-risk stories
+          from <code>epics-and-stories.md</code> and presents a menu to choose
+          which ones to process.
+        </p>
+      </section>
+
+      <!-- 5. Step by step -->
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Validate input</span>
+            If a story key was provided, validates it matches the
+            <code>E{n}-S{n}</code> format and confirms the key exists in
+            <code>epics-and-stories.md</code>. If the format is wrong, exits
+            with "Invalid story key format". If the key is not found, exits
+            with "Story {key} not found in epics-and-stories.md" -- it does
+            NOT fall back to batch mode.
+          </li>
+          <li>
+            <span class="step-title">Batch discovery (argumentless only)</span>
+            When invoked without a story key, scans
+            <code>epics-and-stories.md</code> for stories whose risk column
+            is exactly <code>high</code> (medium and low are excluded).
+            Presents a selection menu:
+            <ul>
+              <li>
+                <strong>all</strong> -- generate ATDD for every discovered
+                high-risk story.
+              </li>
+              <li>
+                <strong>select</strong> -- pick specific stories by number
+                (e.g., <code>1,3</code>). Invalid selections re-prompt the
+                menu.
+              </li>
+              <li>
+                <strong>skip</strong> -- exit without generating anything.
+              </li>
+            </ul>
+            <p>
+              When exactly one high-risk story is found, the menu collapses to
+              <code>[all / skip]</code> (no <code>select</code> option). When
+              zero high-risk stories are found, the command exits gracefully
+              with "No high-risk stories found -- nothing to generate".
+            </p>
+          </li>
+          <li>
+            <span class="step-title">Load story file</span>
+            Searches
+            <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code>
+            for the story file. Reads the story title, risk level, and every
+            entry in the <code>## Acceptance Criteria</code> section. Stories
+            with zero ACs are skipped with a warning.
+          </li>
+          <li>
+            <span class="step-title">Generate AC-to-test mapping</span>
+            For each acceptance criterion (AC1, AC2, AC-EC1, etc.):
+            <ul>
+              <li>Extracts the AC identifier and description.</li>
+              <li>
+                Transforms the AC into a Given/When/Then test skeleton with a
+                descriptive test name.
+              </li>
+              <li>
+                Maintains a strict 1:1 mapping -- each AC produces exactly one
+                test.
+              </li>
+            </ul>
+            Builds a traceability table linking every AC to its corresponding
+            test.
+          </li>
+          <li>
+            <span class="step-title">Write ATDD artifact</span>
+            Writes the artifact to
+            <code>.gaia/artifacts/test-artifacts/atdd-{story_key}.md</code> using an
+            atomic write (temp file then rename) to prevent corruption if
+            interrupted. The artifact contains:
+            <ul>
+              <li>Header with story key, title, risk level, and generation date.</li>
+              <li>AC-to-test mapping table (AC ID, description, test name).</li>
+              <li>Test skeletons in Given/When/Then format.</li>
+              <li>
+                Summary confirming total ACs, total tests, and that all tests
+                are in failing/red state.
+              </li>
+            </ul>
+            <p>
+              If the artifact already exists from a prior run, it is
+              overwritten with a logged warning. If the output exceeds 10KB,
+              a size warning is displayed.
+            </p>
+          </li>
+          <li>
+            <span class="step-title">Validation</span>
+            Verifies: every AC has exactly one test, no test references a
+            nonexistent AC, all tests use Given/When/Then format, and the
+            output file was written successfully.
+          </li>
+          <li>
+            <span class="step-title">Red-phase execution (optional)</span>
+            Prompts: "Run generated tests now to confirm red phase? [y/N]".
+            On <code>y</code>, executes the tests via the configured Test
+            Execution Bridge runner. Each test has a per-test timeout
+            (default 30s). All tests are expected to fail -- if any
+            unexpectedly pass, a warning is logged. On <code>n</code>
+            (default), this step is skipped entirely.
+          </li>
+        </ol>
+
+        <div class="callout">
+          <p class="callout-title">Batch mode iteration</p>
+          <p>
+            In batch mode, Steps 3 through 7 run as a self-contained
+            sub-invocation for each selected story. A failure on one story
+            (missing file, empty ACs) emits a warning and continues to the
+            next -- it does not abort the batch. At the end, a summary
+            distinguishes stories that were <strong>generated</strong> (new
+            artifact) from those that were <strong>overwritten</strong>
+            (prior artifact existed).
+          </p>
+        </div>
+      </section>
+
+      <!-- 6. Inputs -->
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Source</th>
+              <th>Description</th>
+              <th>Example</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>story-key</code></td>
+              <td>Command argument (optional)</td>
+              <td>
+                The story to generate ATDD for, in <code>E{n}-S{n}</code>
+                format. Omit to enter batch mode.
+              </td>
+              <td><code>/gaia-atdd E3-S7</code></td>
+            </tr>
+            <tr>
+              <td>Story file</td>
+              <td><code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code></td>
+              <td>
+                Contains the acceptance criteria that are transformed into
+                test skeletons. Also provides story title and risk level.
+              </td>
+              <td>--</td>
+            </tr>
+            <tr>
+              <td>Epics and stories</td>
+              <td><code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code></td>
+              <td>
+                Used in both modes: single-story mode verifies the key exists;
+                batch mode filters for high-risk entries.
+              </td>
+              <td>--</td>
+            </tr>
+            <tr>
+              <td>Test environment config</td>
+              <td><code>config/test-environment.yaml</code></td>
+              <td>
+                Read during optional Step 5b (red-phase execution) to locate
+                the configured test runner. Not required if you skip
+                red-phase execution.
+              </td>
+              <td>--</td>
+            </tr>
+            <tr>
+              <td>API testing patterns</td>
+              <td>Skill knowledge fragment</td>
+              <td>
+                Schema validation and contract test patterns loaded during
+                AC-to-test transformation for API-related acceptance criteria.
+              </td>
+              <td>--</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 7. Outputs -->
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Output</th>
+              <th>Location</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>ATDD artifact</td>
+              <td><code>.gaia/artifacts/test-artifacts/atdd-{story_key}.md</code></td>
+              <td>
+                Given/When/Then test skeletons for every AC in the story,
+                plus the AC-to-test traceability table. One file per story.
+              </td>
+            </tr>
+            <tr>
+              <td>Red-phase results (optional)</td>
+              <td>Console output</td>
+              <td>
+                Pass/fail counts from executing the generated tests. All
+                tests are expected to fail (red phase).
+              </td>
+            </tr>
+            <tr>
+              <td>Checkpoint files</td>
+              <td><code>_memory/checkpoints/</code></td>
+              <td>
+                Written after each step to enable
+                <a href="gaia-resume.html"><code>/gaia-resume</code></a> if
+                the session is interrupted.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 8. Example session -->
+      <section id="example">
+        <h2>Example session</h2>
+
+        <h3>Single-story mode</h3>
+        <p>
+          Suppose story E3-S7 has the following acceptance criteria in its
+          story file:
+        </p>
+        <pre><code>## Acceptance Criteria
+
+- [ ] **AC1:** Given a user submits valid registration credentials,
+      when the registration endpoint is called, then a new user
+      account is created and a 201 response is returned.
+- [ ] **AC2:** Given a user submits an email that is already registered,
+      when the registration endpoint is called, then a 409 Conflict
+      response is returned with a descriptive error message.
+- [ ] **AC-EC1:** Given the database is unreachable, when the
+      registration endpoint is called, then a 503 Service Unavailable
+      response is returned and the error is logged.</code></pre>
+
+        <p>Running <code>/gaia-atdd E3-S7</code> produces:</p>
+        <pre><code>&gt; /gaia-atdd E3-S7
+
+Validating story key E3-S7...
+  Format: valid (E{n}-S{n}).
+  Lookup: found in epics-and-stories.md.
+
+Loading story file...
+  Path: .gaia/artifacts/implementation-artifacts/epic-E3-security/stories/E3-S7-user-registration.md
+  Title: User registration
+  Risk: high
+  Acceptance criteria: 3 (AC1, AC2, AC-EC1)
+
+Generating AC-to-test mapping...
+
+  | AC     | Description                          | Test Name                             |
+  |--------|--------------------------------------|---------------------------------------|
+  | AC1    | Valid registration creates account   | test_valid_registration_creates_user  |
+  | AC2    | Duplicate email returns 409          | test_duplicate_email_returns_conflict |
+  | AC-EC1 | Database unreachable returns 503     | test_db_unreachable_returns_503       |
+
+Writing test skeletons...
+
+  ## Test: test_valid_registration_creates_user (AC1)
+  **Given** a user submits valid registration credentials
+    - email: "newuser@example.com"
+    - password: meets minimum complexity requirements
+  **When** the registration endpoint POST /api/register is called
+  **Then** a new user account is created in the database
+    - AND a 201 Created response is returned
+    - AND the response body contains the new user ID
+  **Status:** FAILING (red phase -- implementation does not exist)
+
+  ## Test: test_duplicate_email_returns_conflict (AC2)
+  **Given** a user submits an email that is already registered
+    - existing user with email "existing@example.com" in database
+  **When** the registration endpoint POST /api/register is called
+    with email "existing@example.com"
+  **Then** a 409 Conflict response is returned
+    - AND the response body contains a descriptive error message
+    - AND no duplicate account is created
+  **Status:** FAILING (red phase -- implementation does not exist)
+
+  ## Test: test_db_unreachable_returns_503 (AC-EC1)
+  **Given** the database is unreachable
+    - database connection pool returns connection timeout
+  **When** the registration endpoint POST /api/register is called
+  **Then** a 503 Service Unavailable response is returned
+    - AND the error is logged with severity ERROR
+    - AND no partial user record is created
+  **Status:** FAILING (red phase -- implementation does not exist)
+
+Artifact written to: .gaia/artifacts/test-artifacts/atdd-E3-S7.md
+  3 ACs mapped to 3 tests. All tests in red (failing) state.
+
+Validation: PASSED
+  - Every AC has exactly one test: YES
+  - No orphan tests: YES
+  - All tests use Given/When/Then: YES
+
+Run generated tests now to confirm red phase? [y/N]
+&gt; n
+
+Done. ATDD artifact ready at .gaia/artifacts/test-artifacts/atdd-E3-S7.md</code></pre>
+
+        <h3>Batch mode</h3>
+        <pre><code>&gt; /gaia-atdd
+
+Scanning epics-and-stories.md for high-risk stories...
+
+  Found 3 high-risk stories:
+    1. E3-S7   User registration            (risk: high, 3 ACs)
+    2. E3-S12  Password reset flow           (risk: high, 5 ACs)
+    3. E5-S3   Payment processing webhook    (risk: high, 7 ACs)
+
+[all / select / skip]
+&gt; select
+Enter story numbers (comma-separated): 1,3
+
+Processing E3-S7 (1/2)...
+  Loaded 3 ACs. Generating test skeletons...
+  Artifact written to: .gaia/artifacts/test-artifacts/atdd-E3-S7.md (generated)
+
+Processing E5-S3 (2/2)...
+  Loaded 7 ACs. Generating test skeletons...
+  Overwriting existing ATDD artifact at .gaia/artifacts/test-artifacts/atdd-E5-S3.md
+  Artifact written to: .gaia/artifacts/test-artifacts/atdd-E5-S3.md (overwritten)
+
+Batch summary:
+  Generated:   1 (E3-S7)
+  Overwritten: 1 (E5-S3)
+  Skipped:     1 (E3-S12 -- not selected)
+
+Run generated tests now to confirm red phase? [y/N]
+&gt; n
+
+Done.</code></pre>
+      </section>
+
+      <!-- 9. What to run next -->
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>
+            <a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a>
+            -- implement the story. For high-risk stories, the ATDD gate
+            is now satisfied and development can begin.
+          </li>
+          <li>
+            <a href="gaia-edit-test-plan.html"><code>/gaia-edit-test-plan</code></a>
+            -- add the generated acceptance tests to the project test plan
+            if your project maintains one.
+          </li>
+          <li>
+            <a href="gaia-test-strategy.html"><code>/gaia-test-strategy</code></a>
+            -- review or create the overall test strategy if one does not
+            exist yet.
+          </li>
+        </ul>
+      </section>
+
+      <!-- 10. Troubleshooting -->
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>"Invalid story key format"</h3>
+        <p>
+          The story key must match the <code>E{n}-S{n}</code> pattern (for
+          example, <code>E3-S7</code>). Keys like <code>S7</code> or
+          <code>E3S7</code> are rejected. Include the full epic prefix.
+        </p>
+
+        <h3>"Story {key} not found in epics-and-stories.md"</h3>
+        <p>
+          The key you provided does not appear in
+          <code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code>. Verify
+          the key is correct. The command does not fall back to batch mode
+          when a specific key is given -- if you intended batch discovery,
+          invoke <code>/gaia-atdd</code> without arguments.
+        </p>
+
+        <h3>"Story file not found for {story_key}"</h3>
+        <p>
+          The story key exists in <code>epics-and-stories.md</code> but no
+          corresponding file was found under
+          <code>.gaia/artifacts/implementation-artifacts/</code>. Run
+          <a href="gaia-create-story.html"><code>/gaia-create-story {key}</code></a>
+          to create the story file first.
+        </p>
+
+        <h3>"No acceptance criteria found for {story_key}"</h3>
+        <p>
+          The story file exists but its <code>## Acceptance Criteria</code>
+          section is missing or empty. Edit the story file to add ACs before
+          running ATDD, or use
+          <a href="gaia-fix-story.html"><code>/gaia-fix-story</code></a>
+          to address validation findings.
+        </p>
+
+        <h3>"No high-risk stories found -- nothing to generate"</h3>
+        <p>
+          Batch mode found no stories with <code>risk: high</code> in
+          <code>epics-and-stories.md</code>. If you want to generate ATDD
+          for a specific medium- or low-risk story, use single-story mode:
+          <code>/gaia-atdd E3-S7</code>.
+        </p>
+
+        <h3>"Cannot read .gaia/artifacts/planning-artifacts/epics-and-stories.md"</h3>
+        <p>
+          The epics file is missing or unreadable. Run
+          <a href="gaia-create-epics.html"><code>/gaia-create-epics</code></a>
+          to create the breakdown first.
+        </p>
+
+        <h3>"Test runner not configured -- skipping red-phase execution"</h3>
+        <p>
+          You opted to run red-phase tests, but no test runner is configured
+          in <code>config/test-environment.yaml</code> or the
+          Test Execution Bridge is disabled. The ATDD artifact is still
+          written -- only the optional execution step is skipped. Configure
+          a test runner or enable the bridge to use this feature.
+        </p>
+
+        <h3>"ATDD output exceeds 10KB"</h3>
+        <p>
+          The story has many acceptance criteria (typically 20+) and the
+          generated artifact is large. This is a warning only -- no content
+          is truncated. Review the artifact for completeness and consider
+          whether the story should be split into smaller stories.
+        </p>
+      
+        <h3>I keep seeing the GAIA orchestration warning every time I start this command</h3>
+        <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
+        <ul>
+          <li><code>echo $CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> returns <code>1</code> (not empty)</li>
+          <li><code>config/project-config.yaml</code> contains:
+            <pre><code>orchestration:
+  mode: team</code></pre>
+          </li>
+        </ul>
+        <p>If either is missing the framework silently uses Mode A and re-emits the warning each session.</p>
+</section>
+
+      <!-- 11. Related commands -->
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia-create-story.html"><code>/gaia-create-story</code></a></td>
+              <td>Creates the story file (with acceptance criteria) that this command consumes.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a></td>
+              <td>Implements the story. Enforces an ATDD gate for high-risk stories -- run <code>/gaia-atdd</code> first to satisfy it.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-test-strategy.html"><code>/gaia-test-strategy</code></a></td>
+              <td>Creates or reviews the overall test strategy; ATDD artifacts feed into it.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-edit-test-plan.html"><code>/gaia-edit-test-plan</code></a></td>
+              <td>Adds generated acceptance tests to the project test plan.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-fix-story.html"><code>/gaia-fix-story</code></a></td>
+              <td>Fixes validation findings on a story file -- useful when ACs need rework before ATDD generation.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-resume.html"><code>/gaia-resume</code></a></td>
+              <td>Resumes from a checkpoint if the session is interrupted mid-batch.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/testing.html">Back to Testing</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

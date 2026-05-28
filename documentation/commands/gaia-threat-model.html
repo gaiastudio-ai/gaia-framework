@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>/gaia-threat-model - GAIA Documentation</title><link rel="stylesheet" href="../styles.css"></head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar"><a href="../index.html" class="sidebar-logo">GAIA Docs</a><nav><ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul><p class="sidebar-section-title">Categories</p><ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul><p class="sidebar-section-title">On this page</p><ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul></nav></aside>
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/planning.html">Planning</a><span class="separator">/</span>/gaia-threat-model</nav>
+      <header class="command-header"><div class="command-title"><h1>/gaia-threat-model</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/planning.html">Planning</a></dd><dt>Lifecycle phase:</dt><dd>3 -- Solutioning</dd><dt>Arguments:</dt><dd>None</dd></dl></header>
+      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-threat-model</code> creates a security threat model using STRIDE methodology for threat identification and DREAD scoring for risk prioritization. It analyzes each system component and data flow for all six STRIDE threat categories, scores every threat, and produces mitigation strategies and security requirements.</p></section>
+      <section id="when-to-use"><h2>When to use it</h2><ul><li>After creating the architecture, before implementation begins.</li><li>When you want a systematic security analysis of your system design.</li></ul></section>
+      <section id="prerequisites"><h2>Prerequisites</h2><ul><li><strong>Architecture must exist</strong> at <code>.gaia/artifacts/planning-artifacts/architecture.md</code>.</li></ul></section>
+      <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-threat-model</code></pre></section>
+      <section id="step-by-step"><h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Load architecture</span> Extracts system components, data flows, trust boundaries, external interfaces, and APIs.</li>
+          <li><span class="step-title">Identify assets</span> Catalogs valuable data and systems (credentials, PII, financial data, API keys). Classifies sensitivity: critical, high, medium, low.</li>
+          <li><span class="step-title">STRIDE analysis</span> For each component and data flow, evaluates: Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege.</li>
+          <li><span class="step-title">DREAD scoring</span> Rates each threat 1-10 on: Damage potential, Reproducibility, Exploitability, Affected users, Discoverability. Calculates risk level: Critical (8-10), High (6-8), Medium (4-6), Low (1-4).</li>
+          <li><span class="step-title">Mitigation strategies</span> Proposes mitigations for each identified threat, prioritized by DREAD score.</li>
+          <li><span class="step-title">Generate output</span> Writes the threat model document with all assets, threats, scores, mitigations, and security requirements.</li>
+        </ol>
+      </section>
+      <section id="inputs"><h2>Inputs</h2><table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Architecture</td><td><code>.gaia/artifacts/planning-artifacts/architecture.md</code></td><td>System components and data flows to analyze (required).</td></tr></tbody></table></section>
+      <section id="outputs"><h2>Outputs</h2><table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Threat model</td><td><code>.gaia/artifacts/planning-artifacts/threat-model.md</code></td><td>STRIDE analysis, DREAD scores, mitigations, and security requirements.</td></tr></tbody></table></section>
+      <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-threat-model
+
+Loading architecture... 8 components, 12 data flows, 3 trust boundaries.
+
+Assets identified: 6 (2 critical, 2 high, 2 medium)
+
+STRIDE Analysis: 18 threats identified
+DREAD Scoring:
+  Critical: 2 threats (auth bypass, SQL injection)
+  High: 5 threats
+  Medium: 8 threats
+  Low: 3 threats
+
+Mitigations proposed for all 18 threats.
+
+Threat model written to: .gaia/artifacts/planning-artifacts/threat-model.md</code></pre></section>
+      <section id="what-next"><h2>What to run next</h2><ul>
+        <li><a href="gaia-infra-design.html"><code>/gaia-infra-design</code></a> -- infrastructure design incorporating threat mitigations.</li>
+        <li><a href="gaia-create-epics.html"><code>/gaia-create-epics</code></a> -- break down into implementation work.</li>
+      </ul></section>
+      <section id="troubleshooting"><h2>Troubleshooting</h2><h3>"Architecture doc not found"</h3><p>Run <a href="gaia-create-arch.html"><code>/gaia-create-arch</code></a> first.</p></section>
+      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
+        <tr><td><a href="gaia-create-arch.html"><code>/gaia-create-arch</code></a></td><td>Creates the architecture this command analyzes.</td></tr>
+        <tr><td><a href="gaia-review-security.html"><code>/gaia-review-security</code></a></td><td>Code-level security review during implementation.</td></tr>
+        <tr><td><a href="gaia-infra-design.html"><code>/gaia-infra-design</code></a></td><td>Infrastructure design informed by threat mitigations.</td></tr>
+      </tbody></table></section>
+      <footer class="page-footer"><p><a href="../categories/planning.html">Back to Planning</a></p></footer>
+    </main>
+  </div>
+</body>
+</html>

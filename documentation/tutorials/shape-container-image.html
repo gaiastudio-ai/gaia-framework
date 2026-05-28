@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shape: Container Image - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+          <li><a href="shape-plugin.html">Shape: Plugin</a></li>
+          <li><a href="shape-library.html">Shape: Library</a></li>
+          <li><a href="shape-cli.html">Shape: CLI</a></li>
+          <li><a href="shape-mobile-app.html">Shape: Mobile App</a></li>
+          <li><a href="shape-container-image.html" class="active">Shape: Container Image</a></li>
+          <li><a href="shape-static-site.html">Shape: Static Site</a></li>
+          <li><a href="phase-5-for-non-deployable-projects.html">Phase 5 for Non-Deployable Projects</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#when">When this shape applies</a></li>
+          <li><a href="#config">project-config.yaml</a></li>
+          <li><a href="#tag-strategy">Tag strategy</a></li>
+          <li><a href="#routing">Phase 5 routing</a></li>
+          <li><a href="#publish">Publish to Docker Hub / GHCR</a></li>
+          <li><a href="#worked-when">You'll know it worked when</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        <a href="project-shapes-overview.html">Project Shapes</a>
+        <span class="separator">/</span>
+        Container Image
+      </nav>
+
+      <h1>Shape: Container Image</h1>
+      <p>
+        A container image ships as a versioned OCI artifact to a registry -- Docker Hub, GHCR
+        (GitHub Container Registry), Amazon ECR, Google Artifact Registry, Azure Container
+        Registry. Downstream consumers pull by tag. The release surface is a tag push to the
+        registry.
+      </p>
+
+      <section id="when">
+        <h2>When this shape applies</h2>
+        <ul>
+          <li>You build a Docker / OCI image others run (not a service you deploy yourself).</li>
+          <li>You want a versioned tag pushed to a registry on every release.</li>
+          <li>Optionally, the same image is later deployed by a consumer's <code>/gaia-deploy</code> -- but THIS project's release is the registry push, not the deployment.</li>
+        </ul>
+      </section>
+
+      <section id="config">
+        <h2>project-config.yaml</h2>
+        <pre><code>environments:
+  - id: registry
+    kind: distribution-only
+
+distribution:
+  channel: container-registry
+  registry: ghcr.io/myorg
+  manifest: Dockerfile
+  release_workflow: gaia-release.yml
+  image_name: myorg/myapp
+  tag_strategy: semver</code></pre>
+        <p>
+          The <code>container-registry</code> channel requires <code>image_name</code> and
+          <code>tag_strategy</code> as per-channel sub-fields (per ADR-112 §(d)). Missing either is
+          rejected by <code>/gaia-config-validate</code>.
+        </p>
+        <p>
+          For Docker Hub, swap the registry: <code>registry: docker.io/myorg</code>. For
+          ECR / GAR / ACR, swap to the cloud's registry hostname.
+        </p>
+      </section>
+
+      <section id="tag-strategy">
+        <h2>Tag strategy</h2>
+        <ul>
+          <li><strong><code>semver</code></strong> -- the tag matches the SemVer in your release pipeline (e.g., <code>1.4.2</code>). Most common; clean rollback story.</li>
+          <li><strong><code>sha</code></strong> -- the tag matches the git commit SHA (e.g., <code>abc1234</code>). Useful when every build is an artifact; pairs well with GitOps consumers.</li>
+          <li><strong><code>latest</code></strong> -- the tag is the literal string <code>latest</code>, updated on every release. Discouraged for production but common for development streams.</li>
+        </ul>
+      </section>
+
+      <section id="routing">
+        <h2>Phase 5 routing</h2>
+        <p>
+          With <code>kind: distribution-only</code> + <code>distribution:</code>, the Phase 5 router
+          emits <code>publish-primary</code> and suggests <code>/gaia-publish</code>.
+          <code>/gaia-deploy</code> refuses (a container image is not a deployed service from THIS
+          project's perspective; consumers deploy it themselves).
+        </p>
+      </section>
+
+      <section id="publish">
+        <h2>Publish to Docker Hub / GHCR</h2>
+        <pre><code>/gaia-publish</code></pre>
+        <p>
+          The orchestrator dispatches <code>publish-container-registry</code>, which invokes the
+          configured <code>release_workflow</code> (typically a workflow that runs
+          <code>docker buildx build --push -t $REGISTRY/$IMAGE_NAME:$TAG</code>). The adapter
+          resolves the tag from <code>tag_strategy</code>:
+        </p>
+        <ul>
+          <li><code>semver</code> -> reads from your manifest (e.g., <code>VERSION</code> file or <code>package.json</code> <code>version</code>) and pushes that exact tag.</li>
+          <li><code>sha</code> -> uses <code>${GITHUB_SHA:0:7}</code> for short SHA or the full hash.</li>
+          <li><code>latest</code> -> pushes the literal <code>latest</code> tag.</li>
+        </ul>
+        <p>
+          Credentials are read from the environment (<code>REGISTRY_USER</code> +
+          <code>REGISTRY_PASSWORD</code> for Docker Hub, <code>GITHUB_TOKEN</code> for GHCR). See
+          the per-channel adapter schema at
+          <code>plugins/gaia/scripts/adapters/publish-container-registry/schema.yaml</code> for the
+          full sub-field contract.
+        </p>
+      </section>
+
+      <section id="worked-when">
+        <h2>You'll know it worked when</h2>
+        <ul>
+          <li><code>/gaia-config-validate</code> exits 0 with <code>image_name</code> + <code>tag_strategy</code> both present.</li>
+          <li><code>/gaia-help</code> suggests <code>/gaia-publish</code> on the Phase 5 row.</li>
+          <li>A <code>/gaia-publish</code> run pushes the image; <code>docker pull $REGISTRY/$IMAGE_NAME:$TAG</code> succeeds from a clean machine.</li>
+          <li>The registry web UI shows the new tag with the expected manifest digest.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

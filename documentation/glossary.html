@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Glossary - GAIA Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="glossary.html" class="active">Glossary</a></li>
+          <li><a href="lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="categories/getting-started.html">Getting Started</a></li>
+          <li><a href="categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="categories/planning.html">Planning</a></li>
+          <li><a href="categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="categories/development.html">Development</a></li>
+          <li><a href="categories/testing.html">Testing</a></li>
+          <li><a href="categories/reviews.html">Reviews</a></li>
+          <li><a href="categories/validation.html">Validation</a></li>
+          <li><a href="categories/deployment.html">Deployment</a></li>
+          <li><a href="categories/configuration.html">Configuration</a></li>
+          <li><a href="categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="categories/internal.html">Internal Skills</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="index.html">Home</a>
+        <span class="separator">/</span>
+        Glossary
+      </nav>
+
+      <h1>Glossary</h1>
+      <p>
+        GAIA uses terms from agile development, testing, and its own
+        framework conventions. This glossary defines the most common terms
+        you will encounter in this documentation and in GAIA's output.
+      </p>
+
+      <dl class="glossary-list">
+
+        <dt id="adr">ADR (Architecture Decision Record)</dt>
+        <dd>
+          A short document that captures one architecture decision, its
+          context, the options considered, and the rationale for the chosen
+          option. GAIA records ADRs in the architecture document and
+          references them by number (e.g., <code>ADR-044</code>) throughout
+          planning and implementation artifacts.
+        </dd>
+
+        <dt id="adapter">Adapter (tool adapter)</dt>
+        <dd>
+          A small plugin module that connects GAIA to a specific external
+          tool. Examples include the Playwright adapter for E2E tests, the k6
+          adapter for load tests, the OWASP ZAP adapter for DAST scans, and
+          the Firebase Test Lab adapter for mobile device testing. Built-in
+          adapters live under <code>plugins/gaia/scripts/adapters/</code>;
+          project-local adapters go in <code>custom/adapters/</code> (which
+          take precedence over built-in adapters of the same name). View
+          available adapters with
+          <a href="commands/gaia-list-tools.html"><code>/gaia-list-tools</code></a>
+          and inspect a specific adapter with
+          <a href="commands/gaia-tool-info.html"><code>/gaia-tool-info</code></a>.
+        </dd>
+
+        <dt id="atdd">ATDD (Acceptance Test-Driven Development)</dt>
+        <dd>
+          A testing methodology where acceptance tests are written before
+          implementation, directly from a story's acceptance criteria. In
+          GAIA, <a href="commands/gaia-atdd.html"><code>/gaia-atdd</code></a>
+          generates failing Given/When/Then test skeletons that the
+          developer makes pass during implementation. High-risk stories
+          require ATDD before <code>/gaia-dev-story</code> can proceed.
+        </dd>
+
+        <dt id="artifact">Artifact</dt>
+        <dd>
+          A document that GAIA creates or reads during a workflow. Artifacts
+          are stored in subdirectories of <code>docs/</code>: planning
+          artifacts (PRD, architecture, UX design) go in
+          <code>.gaia/artifacts/planning-artifacts/</code>, implementation artifacts
+          (sprint plans, story files) in
+          <code>.gaia/artifacts/implementation-artifacts/</code>, test artifacts
+          (test plans, ATDD scenarios, traceability matrices) in
+          <code>.gaia/artifacts/test-artifacts/</code>, and creative artifacts
+          (brainstorms, design thinking outputs) in
+          <code>.gaia/artifacts/creative-artifacts/</code>.
+        </dd>
+
+        <dt id="epic">Epic</dt>
+        <dd>
+          A large body of work that can be broken down into multiple
+          stories. Epics are defined in
+          <code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code> and
+          identified by keys like <code>E3</code>, <code>E15</code>.
+          An epic groups related stories that together deliver a significant
+          capability.
+        </dd>
+
+        <dt id="fork-context">Fork Context</dt>
+        <dd>
+          An isolated execution environment used by some GAIA commands
+          (particularly reviews and validations). When a command runs in
+          fork context, it cannot modify files in the main workspace -- it
+          can only read and report. This prevents review commands from
+          accidentally changing your code.
+        </dd>
+
+        <dt id="fr">FR (Functional Requirement)</dt>
+        <dd>
+          A requirement that describes specific behavior or functionality
+          the system must support. FRs are defined in the PRD and traced
+          through architecture, stories, and tests. Referenced in GAIA
+          artifacts by identifiers like <code>FR-323</code>.
+        </dd>
+
+        <dt id="gate">Gate</dt>
+        <dd>
+          A checkpoint in a workflow where progress is blocked until a
+          condition is met. GAIA uses gates at several points: the planning
+          gate pauses <code>/gaia-dev-story</code> for plan approval, the
+          ATDD gate blocks high-risk stories without acceptance tests, and
+          the Review Gate blocks the done transition until all reviews pass.
+          See also <a href="#review-gate">Review Gate</a>.
+        </dd>
+
+        <dt id="lifecycle-phase">Lifecycle Phase</dt>
+        <dd>
+          One of the five ordered stages of GAIA's delivery process:
+          (1) Analysis, (2) Planning, (3) Solutioning, (4) Implementation,
+          (5) Deployment. Each phase has its own set of commands and
+          artifacts. See the <a href="index.html#lifecycle">lifecycle
+          diagram</a> on the home page.
+        </dd>
+
+        <dt id="ground-truth">Ground Truth</dt>
+        <dd>
+          A snapshot of your project's actual filesystem state -- which
+          files exist, their locations, and key metadata. The validator
+          compares claims in your artifacts against ground truth to detect
+          stale references, missing files, or incorrect paths. Refreshed
+          by <a href="commands/gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a>.
+        </dd>
+
+        <dt id="nfr">NFR (Non-Functional Requirement)</dt>
+        <dd>
+          A requirement that describes quality attributes rather than
+          specific behavior: performance targets, scalability limits,
+          reliability SLAs, security standards. NFRs are assessed by
+          <a href="commands/gaia-nfr.html"><code>/gaia-nfr</code></a>.
+        </dd>
+
+        <dt id="promotion-chain">Promotion chain</dt>
+        <dd>
+          An ordered list of branches or environments that a change moves
+          through before reaching production -- for example,
+          <code>feature -> develop -> staging -> main</code>. Configured
+          under <code>ci_cd.promotion_chain</code> in
+          <code>config/project-config.yaml</code>. Used by
+          <a href="commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a>
+          (to decide which branch a PR targets),
+          <a href="commands/gaia-deploy.html"><code>/gaia-deploy</code></a>
+          (to determine deployment order), and CI gates (to enforce that
+          changes pass checks at each stage before advancing).
+        </dd>
+
+        <dt id="red-green-refactor">Red / Green / Refactor (TDD)</dt>
+        <dd>
+          The three phases of Test-Driven Development (TDD) used by
+          <a href="commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a>.
+          <strong>Red:</strong> write tests that fail because the
+          implementation does not exist yet. <strong>Green:</strong> write
+          the minimum code to make those tests pass.
+          <strong>Refactor:</strong> improve the code quality while keeping
+          all tests green.
+        </dd>
+
+        <dt id="review-gate">Review Gate</dt>
+        <dd>
+          A table in a story file that tracks the status of six review
+          types: code, QA, security, test, performance, and accessibility.
+          Each row starts as UNVERIFIED and is updated to PASSED or FAILED
+          when the corresponding review command runs. A story cannot
+          transition to <code>done</code> status until all Review Gate rows
+          are PASSED. Checked by
+          <a href="commands/gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a>.
+        </dd>
+
+        <dt id="rubric">Rubric</dt>
+        <dd>
+          A JSON or YAML file that defines the criteria and thresholds used
+          by review commands to evaluate code, tests, or artifacts. GAIA
+          uses a four-layer rubric pipeline (base, compliance, project,
+          custom) that merges into a single effective rubric at runtime.
+          Configured in <code>config/project-config.yaml</code> under the
+          <code>rubrics</code> section.
+        </dd>
+
+        <dt id="sidecar">Sidecar (Memory Sidecar)</dt>
+        <dd>
+          A per-agent memory file stored in <code>_memory/</code> that
+          persists decisions, context, and session state across
+          conversations. Each GAIA agent (pm, architect, dev, test-architect,
+          validator, etc.) has its own sidecar. The
+          <a href="commands/gaia-memory-hygiene.html"><code>/gaia-memory-hygiene</code></a>
+          command detects stale or contradicted entries in sidecars.
+        </dd>
+
+        <dt id="sprint">Sprint</dt>
+        <dd>
+          A time-boxed work iteration containing a set of stories selected
+          from the backlog. Sprints are planned with
+          <a href="commands/gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a>
+          and tracked in <code>sprint-status.yaml</code>. Each sprint has
+          an ID (e.g., <code>sprint-3</code>), a velocity target, and a
+          set of committed stories.
+        </dd>
+
+        <dt id="sprint-status">sprint-status.yaml</dt>
+        <dd>
+          The file that records the current sprint's state: which stories
+          are committed, their statuses, and aggregate metrics. This file
+          is managed exclusively through GAIA commands (never edited by
+          hand). Viewed with
+          <a href="commands/gaia-sprint-status.html"><code>/gaia-sprint-status</code></a>.
+        </dd>
+
+        <dt id="story">Story</dt>
+        <dd>
+          A unit of work small enough to complete in a single sprint. Each
+          story has its own Markdown file under
+          <code>.gaia/artifacts/implementation-artifacts/</code> with YAML frontmatter
+          (status, risk, dependencies, etc.) and sections for acceptance
+          criteria, subtasks, Definition of Done, and findings. Identified
+          by keys like <code>E3-S7</code> (Epic 3, Story 7).
+        </dd>
+
+        <dt id="story-status">Story Status</dt>
+        <dd>
+          The lifecycle state of a story. The progression is:
+          <code>backlog</code> (not yet planned) ->
+          <code>ready-for-dev</code> (planned into a sprint, story file
+          created) ->
+          <code>in-progress</code> (being implemented) ->
+          <code>review</code> (implementation done, reviews pending) ->
+          <code>done</code> (all reviews passed).
+          Additional states: <code>validating</code> (being validated by
+          Val) and <code>blocked</code>.
+          Status changes are managed by GAIA commands and should never be
+          edited by hand.
+        </dd>
+
+        <dt id="test-execution-bridge">Test Execution Bridge</dt>
+        <dd>
+          The integration layer that lets GAIA dispatch test suites to
+          external test runners such as Playwright, k6, or OWASP ZAP. When
+          enabled, GAIA executes real tests through
+          <a href="#adapter">adapters</a> and reports pass/fail verdicts.
+          When disabled, GAIA produces test plans and acceptance criteria
+          but does not execute tests against your code. Toggle the bridge
+          with
+          <a href="commands/gaia-bridge-enable.html"><code>/gaia-bridge-enable</code></a>
+          and
+          <a href="commands/gaia-bridge-disable.html"><code>/gaia-bridge-disable</code></a>.
+          Configured in <code>config/project-config.yaml</code> under
+          <code>test_execution_bridge.bridge_enabled</code>.
+        </dd>
+
+        <dt id="yolo-mode">YOLO Mode</dt>
+        <dd>
+          An optional mode that automatically confirms prompts and runs
+          validation loops without pausing for user approval. When YOLO
+          mode is active, commands like <code>/gaia-dev-story</code>
+          auto-approve the implementation plan, auto-run validation loops,
+          and auto-fire all reviews after implementation. YOLO mode never
+          auto-answers genuine open questions or skips critical safety
+          halts.
+        </dd>
+
+      </dl>
+
+      <footer class="page-footer">
+        <p><a href="index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

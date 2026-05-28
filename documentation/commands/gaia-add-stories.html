@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>/gaia-add-stories - GAIA Documentation</title><link rel="stylesheet" href="../styles.css"></head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar"><a href="../index.html" class="sidebar-logo">GAIA Docs</a><nav><ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul><p class="sidebar-section-title">Categories</p><ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul><p class="sidebar-section-title">On this page</p><ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul></nav></aside>
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/planning.html">Planning</a><span class="separator">/</span>/gaia-add-stories</nav>
+      <header class="command-header"><div class="command-title"><h1>/gaia-add-stories</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/planning.html">Planning</a></dd><dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd><dt>Arguments:</dt><dd>None</dd></dl></header>
+      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-add-stories</code> adds new stories to existing epics or creates new epics with stories. It appends to the existing document without modifying stories already in progress, in review, or done. Story and epic IDs are auto-incremented from the highest existing ID.</p></section>
+      <section id="when-to-use"><h2>When to use it</h2><ul><li>You need to add new stories after initial planning -- for example, after a PRD or architecture change.</li><li>A new feature request needs to be decomposed into stories.</li></ul></section>
+      <section id="prerequisites"><h2>Prerequisites</h2><ul><li><strong>Epics-and-stories must exist</strong> at <code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code>.</li></ul></section>
+      <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-add-stories</code></pre></section>
+      <section id="step-by-step"><h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Load existing state</span> Reads epics-and-stories and sprint status. Builds a protection map: stories in progress/review/done are locked (read-only), backlog stories require confirmation to modify.</li>
+          <li><span class="step-title">Identify requirements</span> Asks what new stories are needed, whether they belong to existing or new epics, and whether linked to a change request. Reads PRD and architecture for context.</li>
+          <li><span class="step-title">Epic decision</span> Analyzes fit against existing epics. Recommends: extend existing epic, create new epic, or mixed.</li>
+          <li><span class="step-title">Create new epic (if needed)</span> Auto-increments epic ID. Defines name, description, goal, and success criteria.</li>
+          <li><span class="step-title">Define stories</span> For each new story: title (user story format), acceptance criteria, size, priority, risk level, dependencies, and epic assignment.</li>
+          <li><span class="step-title">Validate and append</span> Validates no ID collisions or circular dependencies, then appends to the document.</li>
+        </ol>
+        <div class="callout"><p class="callout-title">Story protection</p><p>Stories with status in-progress, review, ready-for-dev, or done are strictly read-only. This command never modifies them.</p></div>
+      </section>
+      <section id="inputs"><h2>Inputs</h2><table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Existing epics and stories</td><td><code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code></td><td>Current epic/story document (required).</td></tr></tbody></table></section>
+      <section id="outputs"><h2>Outputs</h2><table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Updated epics and stories</td><td><code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code></td><td>Document with new stories appended.</td></tr></tbody></table></section>
+      <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-add-stories
+
+Existing: 4 epics, 18 stories (3 locked, 15 open).
+
+What new stories are needed?
+&gt; API rate limiting and abuse detection
+
+Epic decision: extends E1 (User Authentication).
+
+New stories:
+  E1-S19: API rate limiting (M, P1, medium risk)
+  E1-S20: Abuse detection and blocking (L, P1, high risk)
+
+Appended to: .gaia/artifacts/planning-artifacts/epics-and-stories.md</code></pre></section>
+      <section id="what-next"><h2>What to run next</h2><ul>
+        <li><a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> -- plan the new stories into a sprint.</li>
+        <li><a href="gaia-readiness-check.html"><code>/gaia-readiness-check</code></a> -- verify completeness with the new stories.</li>
+      </ul></section>
+      <section id="troubleshooting"><h2>Troubleshooting</h2><h3>"epics-and-stories.md not found"</h3><p>Run <a href="gaia-create-epics.html"><code>/gaia-create-epics</code></a> first.</p></section>
+      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
+        <tr><td><a href="gaia-create-epics.html"><code>/gaia-create-epics</code></a></td><td>Creates the initial epics and stories. This command adds to them.</td></tr>
+        <tr><td><a href="gaia-add-feature.html"><code>/gaia-add-feature</code></a></td><td>Higher-level command that triages a feature and may invoke this command as part of its cascade.</td></tr>
+      </tbody></table></section>
+      <footer class="page-footer"><p><a href="../categories/planning.html">Back to Planning</a></p></footer>
+    </main>
+  </div>
+</body>
+</html>

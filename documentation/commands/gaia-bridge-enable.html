@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-bridge-enable - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../test-environment-yaml.html">test-environment.yaml Reference</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#manifest-options">Manifest options</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/configuration.html">Configuration</a><span class="separator">/</span>
+        /gaia-bridge-enable
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-bridge-enable</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
+          <dt>Lifecycle phase:</dt><dd>Any</dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-bridge-enable</code> turns on the Test Execution
+          Bridge by setting
+          <code>test_execution_bridge.bridge_enabled = true</code> in
+          <code>config/project-config.yaml</code>. With the bridge enabled,
+          downstream test commands dispatch real test execution to the
+          runners declared in
+          <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
+          instead of returning advisory placeholders.
+        </p>
+        <p>
+          The command is idempotent: invoking it when the bridge is already
+          enabled reports the state and exits without writing. It also
+          performs three side effects that the previous version did not:
+        </p>
+        <ul>
+          <li>
+            <strong>Migrates the legacy manifest path.</strong> If a file
+            exists at the pre-v1.157.0 location
+            <code>.gaia/artifacts/test-artifacts/test-environment.yaml</code>, it is
+            moved to the canonical
+            <code>config/test-environment.yaml</code> per ADR-110. The move
+            is idempotent and emits a one-time deprecation warning.
+          </li>
+          <li>
+            <strong>Auto-generates the manifest when absent.</strong> If
+            no manifest exists at the canonical path, Step 4 offers to
+            generate a stack-specific one inline. No separate
+            <code>/gaia-brownfield</code> invocation is required.
+          </li>
+          <li>
+            <strong>Surfaces the manifest summary.</strong> On a successful
+            enable, Step 5 prints the canonical path, the generated
+            runners, and (when the manifest was just generated) an
+            &ldquo;edit to fine-tune for your project&rdquo; nudge.
+          </li>
+        </ul>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You want to enable real test execution during development workflows.</li>
+          <li>You set up a test runner and want to connect it to GAIA.</li>
+          <li>You are onboarding an existing project and want to enable the bridge without running the full <a href="gaia-brownfield.html"><code>/gaia-brownfield</code></a> flow.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li><strong>The test_execution_bridge configuration block must exist.</strong> Run <a href="gaia-config-ci.html"><code>/gaia-config-ci</code></a> first if it does not.</li>
+          <li><strong>A project root.</strong> The command operates on the directory containing <code>config/project-config.yaml</code>.</li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-bridge-enable</code></pre>
+        <p>
+          No arguments. State is read from
+          <code>config/project-config.yaml</code> and behaviour adapts to
+          the current presence or absence of
+          <code>config/test-environment.yaml</code>.
+        </p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <div class="callout">
+          <p class="callout-title">Pre-step: legacy path migration</p>
+          <p>
+            Before the numbered steps run, the command checks for a file
+            at the pre-v1.157.0 location
+            <code>.gaia/artifacts/test-artifacts/test-environment.yaml</code>. If
+            found, it is moved to <code>config/test-environment.yaml</code>
+            with a one-time deprecation warning. This migration is
+            idempotent and non-fatal on failure.
+          </p>
+        </div>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Read current state</span>
+            Reads the <code>bridge_enabled</code> flag from
+            <code>config/project-config.yaml</code>.
+          </li>
+          <li>
+            <span class="step-title">Check idempotency</span>
+            If already enabled, reports the state and exits without
+            writing.
+          </li>
+          <li>
+            <span class="step-title">Flip the flag</span>
+            Sets <code>bridge_enabled</code> from <code>false</code> to
+            <code>true</code>, preserving all comments and formatting
+            per ADR-044.
+          </li>
+          <li>
+            <span class="step-title">Post-flip checks (resolve the manifest)</span>
+            Stats <code>config/test-environment.yaml</code>. Three
+            outcomes drive the next behaviour: <em>present and valid</em>
+            (proceed), <em>present but invalid</em> (surface schema
+            errors as warnings; do not roll back the enable flag), or
+            <em>absent</em> (offer the manifest options below).
+          </li>
+          <li>
+            <span class="step-title">Report</span>
+            Prints a summary including the canonical manifest path, the
+            detected runners (when present), and an
+            &ldquo;edit <code>config/test-environment.yaml</code> to
+            fine-tune for your project&rdquo; nudge when the manifest
+            was just generated in this invocation.
+          </li>
+        </ol>
+      </section>
+
+      <section id="manifest-options">
+        <h2>Manifest options (Step 4)</h2>
+        <p>
+          When the manifest is absent, the command presents two options:
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Option</th>
+              <th>Behaviour</th>
+              <th>Recommended for</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>[a] Auto-generate a stack-specific manifest</strong></td>
+              <td>
+                Invokes
+                <code>scripts/lib/test-environment-manifest.sh --target
+                &lt;project-root&gt; --write</code>, which detects your
+                stack and emits populated runners (node, python, go, java,
+                flutter, bash, rust). When a stack is detected, the
+                resulting file is sentinel-free and Layer 0 passes
+                immediately.
+              </td>
+              <td>Almost everyone. Default choice.</td>
+            </tr>
+            <tr>
+              <td><strong>[b] Copy the schema example template</strong></td>
+              <td>
+                Copies the canonical
+                <code>config/test-environment.yaml.example</code> verbatim.
+                The result includes the
+                <code>GAIA-MANIFEST-TEMPLATE</code> sentinel and a full
+                set of inline comments documenting every field. Useful as
+                a reference while authoring by hand.
+              </td>
+              <td>Advanced users who want a fully-commented starter and don't mind removing the sentinel afterward.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Under YOLO mode the command auto-selects option [a]. If the
+          auto-generator helper itself exits non-zero (a defensive
+          fallback case), Step 4 falls back to option [b]'s template-copy
+          behaviour and emits a warning rather than crashing.
+        </p>
+        <div class="callout">
+          <p class="callout-title">No-stack-detected case</p>
+          <p>
+            If the auto-generator cannot identify a stack, it emits a
+            generic <code>make test</code> placeholder
+            <strong>with</strong> the <code>GAIA-MANIFEST-TEMPLATE</code>
+            sentinel. This is intentional: Layer 0 will refuse to run
+            until you customise the runners and remove the sentinel.
+            See
+            <a href="../test-environment-yaml.html#stack-examples">stack-specific examples</a>
+            for copy-ready manifests covering the seven supported stacks.
+          </p>
+        </div>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <p>
+          This command takes no arguments. State is read from:
+        </p>
+        <ul>
+          <li><code>config/project-config.yaml</code> (the bridge_enabled flag and CI block)</li>
+          <li><code>config/test-environment.yaml</code> (presence, schema, sentinel state)</li>
+          <li><code>.gaia/artifacts/test-artifacts/test-environment.yaml</code> (legacy path; migrated if present)</li>
+          <li>Project tree (consulted by the auto-generator to detect the stack)</li>
+        </ul>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Output</th>
+              <th>Location</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Updated configuration</td>
+              <td><code>config/project-config.yaml</code></td>
+              <td>The <code>bridge_enabled</code> flag set to <code>true</code>.</td>
+            </tr>
+            <tr>
+              <td>Manifest (when generated)</td>
+              <td><code>config/test-environment.yaml</code></td>
+              <td>A stack-specific manifest from option [a], a schema-doc copy from option [b], or unchanged when the file was already present.</td>
+            </tr>
+            <tr>
+              <td>Migrated manifest (when applicable)</td>
+              <td><code>config/test-environment.yaml</code></td>
+              <td>Pre-v1.157.0 file moved from <code>.gaia/artifacts/test-artifacts/</code> on first invocation.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <p>
+          First invocation on a Python project with no manifest:
+        </p>
+        <pre><code>&gt; /gaia-bridge-enable
+
+Bridge enabled. Test execution bridge is now active.
+
+Manifest: config/test-environment.yaml does not exist.
+
+  [a] Auto-generate a stack-specific manifest (recommended)
+  [b] Copy the schema example template
+
+Choice: a
+
+Auto-generated config/test-environment.yaml for detected stack: python.
+
+  Path:    config/test-environment.yaml
+  Runners: unit (tier 1), integration (tier 2)
+
+edit config/test-environment.yaml to fine-tune for your project</code></pre>
+        <p>Idempotent re-invocation:</p>
+        <pre><code>&gt; /gaia-bridge-enable
+
+Bridge already enabled.</code></pre>
+        <p>Invocation that migrates a legacy manifest:</p>
+        <pre><code>&gt; /gaia-bridge-enable
+
+Detected legacy manifest at .gaia/artifacts/test-artifacts/test-environment.yaml.
+Moved to config/test-environment.yaml (ADR-110).
+DEPRECATION: the legacy path will be removed in a future release.
+
+Bridge enabled. Test execution bridge is now active.
+
+  Path:    config/test-environment.yaml
+  Runners: unit (tier 1), e2e (tier 3)</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>
+            <strong>Review and edit the manifest.</strong> Open
+            <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
+            and verify the runners and timeouts match your project. The
+            full schema reference, every field, and copy-ready examples
+            for all seven supported stacks live on
+            <a href="../test-environment-yaml.html">the dedicated reference page</a>.
+          </li>
+          <li>
+            <strong>Link runners to promotion-chain environments</strong>
+            (optional, schema v2). Add
+            <code>promotion_chain_env_id</code> to each runner to inherit
+            CI provider and branch context from
+            <code>ci_cd.promotion_chain</code>. Edit the chain itself
+            with <a href="gaia-ci-edit.html"><code>/gaia-ci-edit</code></a>.
+          </li>
+          <li>
+            <strong>Run a development workflow.</strong> Tests will now
+            be dispatched to the configured runners. Start with
+            <a href="gaia-atdd.html"><code>/gaia-atdd</code></a> or any
+            review command (<a href="gaia-review-all.html"><code>/gaia-review-all</code></a>).
+          </li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>test_execution_bridge block missing</h3>
+        <p>
+          The configuration block does not exist. Run
+          <a href="gaia-config-ci.html"><code>/gaia-config-ci</code></a>
+          to set up CI, which creates this block.
+        </p>
+
+        <h3>Sentinel still present after generation</h3>
+        <p>
+          The manifest contains the
+          <code># GAIA-MANIFEST-TEMPLATE: &hellip;</code> line and Layer 0
+          refuses to run tests. The literal output from
+          <code>check-manifest-sentinel.sh</code> is:
+        </p>
+        <pre><code>Layer 0 readiness FAILED: config/test-environment.yaml contains the unmodified-template sentinel (GAIA-MANIFEST-TEMPLATE). Either run /gaia-bridge-enable to regenerate against current detection signals, or edit config/test-environment.yaml directly to populate stack-specific runners.
+bridge_status: manifest_unmodified_template</code></pre>
+        <p>
+          This happens when no stack was detected (generic
+          <code>make test</code> placeholder was emitted) or when you
+          selected option [b]. Customise the runners using a
+          <a href="../test-environment-yaml.html#stack-examples">stack-specific example</a>,
+          then delete the sentinel line. Re-run
+          <code>/gaia-bridge-enable</code> to re-evaluate. The
+          <code>bridge_status: manifest_unmodified_template</code> line
+          is a stable machine-readable key you can grep for in CI logs.
+        </p>
+
+        <h3>Schema validation failed</h3>
+        <p>
+          The manifest exists but does not parse against the schema. The
+          command surfaces the validation errors and prints the canonical
+          path so you know where to look. The
+          <code>bridge_enabled</code> flag is <strong>not</strong> rolled
+          back &mdash; fix the file and re-evaluate. See
+          <a href="../test-environment-yaml.html#troubleshooting">manifest troubleshooting</a>
+          for common schema mistakes.
+        </p>
+
+        <h3>Generator failed, fell back to template-copy</h3>
+        <p>
+          The auto-generator helper exited non-zero (most commonly:
+          <code>jq</code> not installed, or
+          <code>detect-signals.sh</code> missing). The command falls back
+          to option [b]'s template-copy and emits a warning. Install the
+          missing prerequisite, delete the fallback manifest, and re-run
+          to get a stack-specific manifest.
+        </p>
+
+        <h3>Legacy manifest at .gaia/artifacts/test-artifacts/</h3>
+        <p>
+          You should not see this as a problem &mdash; the migration is
+          automatic on first invocation. If the move appeared to fail,
+          inspect the stderr output of the migration helper and move the
+          file by hand: <code>mv .gaia/artifacts/test-artifacts/test-environment.yaml
+          config/test-environment.yaml</code>.
+        </p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="../test-environment-yaml.html">test-environment.yaml Reference</a></td>
+              <td>Full schema, every field, and copy-ready examples for all seven supported stacks.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-bridge-disable.html"><code>/gaia-bridge-disable</code></a></td>
+              <td>Disables the test execution bridge. The manifest file is preserved.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-config-ci.html"><code>/gaia-config-ci</code></a></td>
+              <td>Creates the test_execution_bridge configuration block.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-brownfield.html"><code>/gaia-brownfield</code></a></td>
+              <td>Phase 5 invokes the same manifest generator during onboarding of an existing project.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-ci-edit.html"><code>/gaia-ci-edit</code></a></td>
+              <td>Edits the promotion chain whose entry IDs you can reference via <code>promotion_chain_env_id</code>.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-atdd.html"><code>/gaia-atdd</code></a></td>
+              <td>Generates ATDD scaffolds dispatched through the bridge once enabled.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/configuration.html">Back to Configuration</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

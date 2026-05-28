@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-dev-story - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#orchestration-mode">Orchestration mode</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/development.html">Development</a>
+        <span class="separator">/</span>
+        /gaia-dev-story
+      </nav>
+
+      <!-- Header -->
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-dev-story</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/development.html">Development</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt>
+          <dd><code>[story-key]</code></dd>
+        </dl>
+      </header>
+
+      <!-- 1. What it does -->
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-dev-story</code> is GAIA's most comprehensive
+          development command. It implements a single user story end-to-end
+          using a strict <a href="../glossary.html#red-green-refactor">Test-Driven Development (TDD)</a> cycle: it loads the
+          story specification, plans the implementation, writes failing tests,
+          implements code to make them pass, refactors, verifies the
+          Definition of Done checklist, commits, pushes to a feature branch,
+          creates a pull request, waits for CI to pass, and merges. When
+          finished, the story's <a href="../glossary.html#review-gate">Review Gate</a> is initialized for the review
+          phase.
+        </p>
+      </section>
+
+      <!-- 2. When to use it -->
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>
+            You have a story in <code>ready-for-dev</code> status and want
+            GAIA to implement it using TDD.
+          </li>
+          <li>
+            A story previously failed review and you want to rework it --
+            GAIA detects the <code>in-progress</code> status and enters
+            rework mode, focusing on the review issues.
+          </li>
+          <li>
+            A session was interrupted mid-implementation -- GAIA detects the
+            checkpoint and enters resume mode, continuing from where it
+            stopped.
+          </li>
+        </ul>
+        <p>
+          For smaller changes that do not warrant a full story lifecycle, use
+          <a href="gaia-quick-spec.html"><code>/gaia-quick-spec</code></a>
+          followed by
+          <a href="gaia-quick-dev.html"><code>/gaia-quick-dev</code></a>
+          instead.
+        </p>
+      </section>
+
+      <!-- 3. Prerequisites -->
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>
+            <strong>A story file must exist.</strong> The file lives inside
+            its epic directory at
+            <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code>
+            (epic-grouped layout). If it does not exist, the command will
+            stop and tell you to run
+            <a href="gaia-create-story.html"><code>/gaia-create-story</code></a>
+            first.
+          </li>
+          <li>
+            <strong>Story status must be <code>ready-for-dev</code> or
+            <code>in-progress</code>.</strong> Stories in any other status
+            (backlog, review, done) cannot be implemented.
+          </li>
+          <li>
+            <strong>All dependency stories must be done.</strong> If the
+            story's <code>depends_on</code> list includes stories that are
+            not yet in <code>done</code> status, the command will stop and
+            list the blocking dependencies.
+          </li>
+          <li>
+            <strong>High-risk stories need <a href="../glossary.html#atdd">ATDD</a> scenarios.</strong> If the
+            story's risk level is <code>high</code>, an ATDD scenarios file
+            must exist under <code>.gaia/artifacts/test-artifacts/</code>. If missing,
+            you will be directed to run
+            <a href="gaia-atdd.html"><code>/gaia-atdd</code></a> first.
+          </li>
+          <li>
+            <strong>Architecture and planning artifacts should exist.</strong>
+            The command reads <code>architecture.md</code> and
+            <code>ux-design.md</code> for implementation context. They are
+            not strictly required, but their absence reduces plan quality.
+          </li>
+        </ul>
+      </section>
+      <section id="orchestration-mode">
+        <h2>Orchestration mode</h2>
+        <p>When <code>/gaia-dev-story</code> starts in <strong>subagent mode (Mode A -- the default)</strong>, the framework emits a one-shot warning to your conversation. The warning text:</p>
+        <pre><code>
+────────────────────────────────────────────────────────────────────────────
+GAIA orchestration: running in subagent mode (Mode A)
+
+The skill you're invoking belongs to a class (heavy-procedural or
+conversational) whose output benefits from cross-step context. Mode A
+dispatches each sub-agent in its own forked context, so context may
+be lossy between steps — sub-agents return summaries, not full reasoning.
+
+For the full-fidelity experience, enable Mode B (Agent Teams):
+  1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
+  2. Add orchestration.mode: team to config/project-config.yaml.
+
+Mode B uses persistent teammates that preserve in-conversation state
+across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+
+This warning is shown once per session.
+────────────────────────────────────────────────────────────────────────────
+</code></pre>
+
+        <h3>Why Mode B is better for this command</h3>
+        <p>The <code>/gaia-dev-story</code> skill declares <code>orchestration_class: heavy-procedural</code> in its SKILL.md frontmatter. Heavy-procedural skills produce output that benefits from cross-step context -- under Mode A every sub-agent dispatch runs in its own forked context and can only return a summary back to the orchestrator, losing the full reasoning trace of every prior step. Mode B uses persistent teammates that retain in-conversation state across dispatches, so each agent's contribution can build on what was said before instead of receiving only a summary.</p>
+
+        <h3>How to enable Mode B</h3>
+        <p>Both steps are required. If either is missing, the framework falls back silently to Mode A and the warning fires again on the next session.</p>
+        <p><strong>Step 1 -- set the environment variable:</strong></p>
+        <pre><code>export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code></pre>
+        <p>Add this to your shell rc file to persist across sessions, or set it in Claude Code's <code>settings.json</code>.</p>
+        <p><strong>Step 2 -- add the YAML block to <code>config/project-config.yaml</code>:</strong></p>
+        <pre><code>orchestration:
+  mode: team</code></pre>
+        <h3>One-shot semantics</h3>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+      </section>
+
+
+      <!-- 4. How to invoke -->
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-dev-story E3-S7</code></pre>
+        <p>
+          The argument is the story key in <code>E{n}-S{n}</code> format
+          (for example, <code>E3-S7</code> means Epic 3, Story 7).
+        </p>
+      </section>
+
+      <!-- 5. Step by step -->
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Load story</span>
+            Locates your story file, reads its frontmatter (status, risk
+            level, dependencies, acceptance criteria), and determines the
+            execution mode:
+            <strong>fresh</strong> (new implementation),
+            <strong>rework</strong> (fixing review failures), or
+            <strong>resume</strong> (continuing from a checkpoint).
+          </li>
+          <li>
+            <span class="step-title">Update status</span>
+            For fresh stories, transitions the status from
+            <code>ready-for-dev</code> to <code>in-progress</code>. Rework
+            and resume stories are already in-progress.
+          </li>
+          <li>
+            <span class="step-title">ATDD gate (high-risk only)</span>
+            For stories with <code>risk: high</code>, verifies that
+            acceptance test scenarios exist. If missing, the command stops
+            and directs you to <code>/gaia-atdd</code>.
+          </li>
+          <li>
+            <span class="step-title">Create feature branch</span>
+            Creates a git feature branch named after the story key. If the
+            branch already exists (from a prior attempt), offers to resume
+            on it.
+          </li>
+          <li>
+            <span class="step-title">Plan implementation</span>
+            Reads the architecture, UX design, and story acceptance criteria.
+            Generates a detailed implementation plan covering: context,
+            steps, files to modify, testing strategy, and risks.
+            <br><br>
+            You are then asked to <strong>approve</strong>, <strong>revise</strong>,
+            or <strong>validate</strong> the plan:
+            <ul>
+              <li><strong>approve</strong> -- proceed to coding.</li>
+              <li><strong>revise</strong> -- provide feedback; GAIA regenerates the plan.</li>
+              <li><strong>validate</strong> -- GAIA runs the validator against the plan and shows findings.</li>
+            </ul>
+            <p>
+              If you have YOLO mode enabled, the plan is automatically
+              validated and auto-fixed (up to 3 iterations) without prompting.
+            </p>
+          </li>
+          <li>
+            <span class="step-title">TDD Red phase -- write failing tests</span>
+            For each acceptance criterion, GAIA writes test(s) that define
+            the expected behavior. It runs the test suite to confirm all new
+            tests <em>fail</em> (because the implementation does not exist
+            yet). No implementation code is written in this phase.
+          </li>
+          <li>
+            <span class="step-title">TDD Green phase -- implement to pass</span>
+            GAIA writes the minimum code needed to make all failing tests
+            pass. It runs the test suite after each change to confirm tests
+            are turning green. Each completed acceptance criterion is checked
+            off in the story file.
+          </li>
+          <li>
+            <span class="step-title">Advisory checks</span>
+            After all tests pass, GAIA scans the staged changes for patterns
+            that commonly carry hidden risk: API route changes (may need
+            contract tests), schema/migration changes (may need migration
+            verification), and large blast radius (many files changed -- may
+            warrant a feature flag). These are advisory only and never block
+            progress.
+          </li>
+          <li>
+            <span class="step-title">TDD Refactor phase</span>
+            Improves code quality while keeping all tests green: extracts
+            shared utilities, decomposes large functions, improves naming,
+            removes duplication. The test suite is re-run to confirm nothing
+            broke.
+          </li>
+          <li>
+            <span class="step-title">Post-refactor validation</span>
+            Runs a single validation pass over all code written during the
+            TDD cycle to catch cross-cutting issues. Automatically fixes
+            critical and warning-level findings (up to 3 iterations).
+          </li>
+          <li>
+            <span class="step-title">Capture findings</span>
+            Any out-of-scope issues discovered during implementation are
+            recorded in the story file's Findings table for later triage.
+          </li>
+          <li>
+            <span class="step-title">Definition of Done</span>
+            Runs the DoD checklist: build passes, tests pass, no lint
+            warnings, no staged secrets, all subtasks checked, acceptance
+            criteria met. If any check fails, GAIA attempts to fix it
+            automatically (up to 3 attempts).
+          </li>
+          <li>
+            <span class="step-title">Commit and push</span>
+            Stages all changes, creates a commit with a conventional commit
+            message derived from the story, and pushes the feature branch to
+            the remote. The push is blocked if you are on a protected branch
+            (main or staging).
+          </li>
+          <li>
+            <span class="step-title">Create pull request</span>
+            Creates a PR targeting the first environment in your CI promotion
+            chain. The PR body includes the acceptance criteria, Definition
+            of Done, and a diff summary.
+          </li>
+          <li>
+            <span class="step-title">Wait for CI</span>
+            Polls CI status until all checks pass. Reports failures with
+            details if CI does not pass.
+          </li>
+          <li>
+            <span class="step-title">Merge PR</span>
+            Merges the PR using the repository's configured merge strategy.
+            Handles conflicts and branch protection rules.
+          </li>
+          <li>
+            <span class="step-title">Post-completion verification</span>
+            Verifies that the merge commit containing the story key actually
+            exists on the target branch. If the merge failed silently,
+            re-runs the push/PR/CI/merge sequence.
+          </li>
+          <li>
+            <span class="step-title">Initialize Review Gate</span>
+            Seeds the story's Review Gate table with six review rows (code,
+            QA, security, test, performance, accessibility) all set to
+            UNVERIFIED, and transitions the story to <code>review</code>
+            status.
+          </li>
+          <li>
+            <span class="step-title">Auto-reviews (YOLO mode only)</span>
+            In YOLO mode, automatically runs all six reviews to populate the
+            Review Gate. In normal mode, this step is skipped -- you run
+            reviews manually or via
+            <a href="gaia-review-all.html"><code>/gaia-review-all</code></a>.
+          </li>
+        </ol>
+
+        <div class="callout">
+          <p class="callout-title">About the CI steps</p>
+          <p>
+            Steps 13-16 (commit, push, PR, CI, merge) only run if your
+            project has a CI promotion chain configured in
+            <code>config/project-config.yaml</code> under
+            <code>ci_cd.promotion_chain</code>. If no promotion chain is
+            set, the story completes locally and these steps are skipped.
+            You can configure a promotion chain with
+            <a href="gaia-ci-edit.html"><code>/gaia-ci-edit</code></a>.
+          </p>
+        </div>
+      </section>
+
+      <!-- 6. Inputs -->
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Source</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>story-key</code></td>
+              <td>Command argument</td>
+              <td>The story to implement, in <code>E{n}-S{n}</code> format.</td>
+            </tr>
+            <tr>
+              <td>Story file</td>
+              <td><code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code></td>
+              <td>Contains acceptance criteria, subtasks, risk level, and dependencies.</td>
+            </tr>
+            <tr>
+              <td>Architecture document</td>
+              <td><code>.gaia/artifacts/planning-artifacts/architecture.md</code></td>
+              <td>Read for implementation context (technology choices, component structure).</td>
+            </tr>
+            <tr>
+              <td>UX design document</td>
+              <td><code>.gaia/artifacts/planning-artifacts/ux-design.md</code></td>
+              <td>Read for UI implementation context (if applicable).</td>
+            </tr>
+            <tr>
+              <td>ATDD scenarios</td>
+              <td><code>.gaia/artifacts/test-artifacts/atdd-{key}.md</code></td>
+              <td>Required for high-risk stories. Provides Given/When/Then test skeletons.</td>
+            </tr>
+            <tr>
+              <td>Project configuration</td>
+              <td><code>config/project-config.yaml</code></td>
+              <td>Stack definitions, CI settings, test execution configuration.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 7. Outputs -->
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Output</th>
+              <th>Location</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Implementation code</td>
+              <td>Your project source directory</td>
+              <td>The actual feature implementation, written using TDD.</td>
+            </tr>
+            <tr>
+              <td>Test files</td>
+              <td>Your project test directory</td>
+              <td>Unit and integration tests written during the Red phase.</td>
+            </tr>
+            <tr>
+              <td>Updated story file</td>
+              <td><code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code></td>
+              <td>Subtasks checked off, findings table populated, status updated to <code>review</code>.</td>
+            </tr>
+            <tr>
+              <td>Git feature branch</td>
+              <td>Git</td>
+              <td>A branch named after the story key containing all commits.</td>
+            </tr>
+            <tr>
+              <td>Pull request</td>
+              <td>GitHub (or your Git host)</td>
+              <td>A PR targeting your first promotion-chain environment.</td>
+            </tr>
+            <tr>
+              <td>Checkpoint files</td>
+              <td><code>_memory/checkpoints/</code></td>
+              <td>Automatic checkpoints written after every file edit, enabling <code>/gaia-resume</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 8. Example session -->
+      <section id="example">
+        <h2>Example session</h2>
+        <p>Below is a condensed example of what a typical session looks like.</p>
+        <pre><code>&gt; /gaia-dev-story E3-S7
+
+Loading story E3-S7...
+  Story file: .gaia/artifacts/implementation-artifacts/epic-E3-security/stories/E3-S7-user-authentication.md
+  Status: ready-for-dev
+  Risk: medium
+  Mode: FRESH
+  Dependencies: E3-S5 (done), E3-S6 (done) -- all clear.
+
+Transitioning E3-S7 to in-progress...
+
+Creating feature branch feat/E3-S7-user-authentication...
+  Branch created.
+
+Planning implementation...
+
+  ## Implementation Plan
+
+  ### Context
+  E3-S7 adds email/password authentication to the Express API using
+  bcrypt for password hashing and JWT for session tokens.
+
+  ### Steps
+  1. Create auth middleware (src/middleware/auth.ts)
+  2. Add user model with password hash field (src/models/user.ts)
+  3. Implement login endpoint (src/routes/auth.ts)
+  4. Implement registration endpoint (src/routes/auth.ts)
+  5. Add token refresh endpoint (src/routes/auth.ts)
+
+  ### Testing Strategy
+  - Unit tests for password hashing and token generation
+  - Integration tests for each endpoint
+  - Edge cases: expired tokens, invalid credentials, duplicate emails
+
+  ### Risks
+  - Timing attack on password comparison (mitigated by bcrypt)
+
+Do you want to: [approve] [revise] [validate]
+&gt; approve
+
+--- TDD Red Phase ---
+Writing failing tests for AC1 (user can register with email/password)...
+Writing failing tests for AC2 (user can log in with valid credentials)...
+Writing failing tests for AC3 (expired tokens are rejected)...
+Running test suite: 8 new tests, 8 FAILING (expected).
+
+--- TDD Green Phase ---
+Implementing src/middleware/auth.ts...
+Implementing src/models/user.ts...
+Implementing src/routes/auth.ts...
+Running test suite: 8 new tests, 8 PASSING.
+
+--- Advisory Checks ---
+  API route changes detected in src/routes/auth.ts
+    Consider adding contract tests for the new endpoints.
+  (advisory only -- continuing)
+
+--- TDD Refactor Phase ---
+Extracting token utilities to src/utils/jwt.ts...
+Running test suite: 8 tests, 8 PASSING.
+
+--- Definition of Done ---
+  Build: PASSED
+  Tests: PASSED (47 total, 8 new)
+  Lint: PASSED
+  Secrets scan: PASSED
+  Subtasks: 5/5 checked
+  All checks passed.
+
+Committing: feat(E3-S7): add email/password authentication
+Pushing to origin/feat/E3-S7-user-authentication...
+Creating PR #42 targeting staging...
+Waiting for CI... all checks passed.
+Merging PR #42...
+
+Story E3-S7 transitioned to review.
+Review Gate initialized with 6 UNVERIFIED rows.
+
+Done. Run /gaia-review-all E3-S7 to populate the Review Gate,
+or run individual reviews.</code></pre>
+      </section>
+
+      <!-- 9. What to run next -->
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>
+            <a href="gaia-review-all.html"><code>/gaia-review-all</code></a>
+            -- run all six reviews to populate the Review Gate.
+          </li>
+          <li>
+            Or run individual reviews:
+            <a href="gaia-review-code.html"><code>/gaia-review-code</code></a>,
+            <a href="gaia-review-security.html"><code>/gaia-review-security</code></a>,
+            <a href="gaia-review-qa.html"><code>/gaia-review-qa</code></a>,
+            <a href="gaia-review-test.html"><code>/gaia-review-test</code></a>,
+            <a href="gaia-review-perf.html"><code>/gaia-review-perf</code></a>,
+            <a href="gaia-review-a11y.html"><code>/gaia-review-a11y</code></a>.
+          </li>
+          <li>
+            <a href="gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a>
+            -- once all reviews pass, transitions the story to done.
+          </li>
+          <li>
+            <a href="gaia-triage-findings.html"><code>/gaia-triage-findings</code></a>
+            -- if the story captured findings during implementation, triage
+            them into backlog stories.
+          </li>
+        </ul>
+      </section>
+
+      <!-- 10. Troubleshooting -->
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>"Story file not found"</h3>
+        <p>
+          The command expects a story file at
+          <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code>. Run
+          <a href="gaia-create-story.html"><code>/gaia-create-story {key}</code></a>
+          to create it from the epics-and-stories breakdown.
+        </p>
+
+        <h3>"Story status must be ready-for-dev or in-progress"</h3>
+        <p>
+          Stories in <code>backlog</code> status need to be planned into a
+          sprint first (<a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a>).
+          Stories in <code>review</code> or <code>done</code> status have
+          already been implemented.
+        </p>
+
+        <h3>"Dependency not done"</h3>
+        <p>
+          One or more stories listed in the <code>depends_on</code>
+          frontmatter field are not yet in <code>done</code> status.
+          Implement the blocking stories first, or use
+          <a href="gaia-correct-course.html"><code>/gaia-correct-course</code></a>
+          to remove or change the dependency if it is no longer needed.
+        </p>
+
+        <h3>"ATDD scenarios required for high-risk story"</h3>
+        <p>
+          Stories with <code>risk: high</code> must have acceptance test
+          scenarios before implementation begins. Run
+          <a href="gaia-atdd.html"><code>/gaia-atdd {key}</code></a>
+          to generate them.
+        </p>
+
+        <h3>The command stopped at the planning gate</h3>
+        <p>
+          In normal mode, the command pauses after generating the
+          implementation plan and asks you to approve, revise, or validate.
+          Type <code>approve</code> to proceed. If you enable YOLO mode,
+          this gate is passed automatically.
+        </p>
+
+        <h3>CI steps were skipped</h3>
+        <p>
+          If your project does not have a CI promotion chain configured, the
+          commit/push/PR/CI/merge steps are skipped. The story still
+          completes locally. Configure a promotion chain with
+          <a href="gaia-ci-edit.html"><code>/gaia-ci-edit</code></a> if you
+          want automated CI integration.
+        </p>
+
+        <h3>Session interrupted mid-implementation</h3>
+        <p>
+          The command writes checkpoints after every file edit. Run
+          <a href="gaia-resume.html"><code>/gaia-resume</code></a> to pick
+          up where you left off. GAIA will detect the checkpoint and enter
+          resume mode.
+        </p>
+      
+        <h3>I keep seeing the GAIA orchestration warning every time I start this command</h3>
+        <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
+        <ul>
+          <li><code>echo $CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> returns <code>1</code> (not empty)</li>
+          <li><code>config/project-config.yaml</code> contains:
+            <pre><code>orchestration:
+  mode: team</code></pre>
+          </li>
+        </ul>
+        <p>If either is missing the framework silently uses Mode A and re-emits the warning each session.</p>
+</section>
+
+      <!-- 11. Related commands -->
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia-create-story.html"><code>/gaia-create-story</code></a></td>
+              <td>Creates the story file that this command implements.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-atdd.html"><code>/gaia-atdd</code></a></td>
+              <td>Generates acceptance test scenarios required for high-risk stories.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-quick-dev.html"><code>/gaia-quick-dev</code></a></td>
+              <td>Lighter-weight alternative for small changes without the full story lifecycle.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-fix-story.html"><code>/gaia-fix-story</code></a></td>
+              <td>Fixes validation findings that block a story from reaching ready-for-dev.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-review-all.html"><code>/gaia-review-all</code></a></td>
+              <td>Runs the six reviews that populate the Review Gate after implementation.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-resume.html"><code>/gaia-resume</code></a></td>
+              <td>Resumes this command from a checkpoint after a session interruption.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/development.html">Back to Development</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
