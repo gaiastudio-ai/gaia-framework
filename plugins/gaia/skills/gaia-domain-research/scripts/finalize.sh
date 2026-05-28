@@ -55,13 +55,25 @@ die() { log "$*"; exit 1; }
 # directory. A missing artifact is NOT fatal to the observability side
 # effects — the checklist run is simply skipped.
 ARTIFACT=""
-# AF-2026-05-21-25 three-tier idiom: env-var → positive-evidence legacy → canonical default.
+# AF-2026-05-21-25 three-tier idiom + AF-2026-05-28-1 / Test07 M-5 slug freedom:
+# also accept `domain-research-<slug>.md` the same way brainstorm/product-brief
+# accept `<name>-*.md`. Newest-mtime entry wins via `ls -1t`.
+_pick_domain() {
+  local dir="$1" hit
+  [ -d "$dir" ] || return 1
+  if [ -f "$dir/domain-research.md" ]; then
+    printf '%s\n' "$dir/domain-research.md"; return 0
+  fi
+  hit=$(ls -1t "$dir"/domain-research-*.md 2>/dev/null | head -1)
+  [ -n "$hit" ] && { printf '%s\n' "$hit"; return 0; }
+  return 1
+}
 if [ -n "${DOMAIN_RESEARCH_ARTIFACT:-}" ]; then
   ARTIFACT="$DOMAIN_RESEARCH_ARTIFACT"
-elif [ -f "docs/planning-artifacts/domain-research.md" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
-  ARTIFACT="docs/planning-artifacts/domain-research.md"
-elif [ -f ".gaia/artifacts/planning-artifacts/domain-research.md" ]; then
-  ARTIFACT=".gaia/artifacts/planning-artifacts/domain-research.md"
+elif [ -d "docs/planning-artifacts" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
+  ARTIFACT="$(_pick_domain docs/planning-artifacts)" || ARTIFACT=""
+elif [ -d ".gaia/artifacts/planning-artifacts" ]; then
+  ARTIFACT="$(_pick_domain .gaia/artifacts/planning-artifacts)" || ARTIFACT=""
 fi
 
 # ---------- 1. Run the 22-item checklist ----------

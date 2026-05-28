@@ -216,20 +216,36 @@ scope_has_in_and_out() {
 }
 
 # persona_count <file>
-# Counts persona-ish entries under Target Users. Recognises either
-# bold "**Persona X" markers or "Role:" lines.
+# Counts persona-ish entries under Target Users. Accepts the conventional
+# markdown variants for persona blocks:
+#   - **Persona <N>** ...                        (bold span — original)
+#   - ### Persona: <Name>                        (H3 heading — AF-2026-05-28-1 / Test07 M-2)
+#   - ### Persona <N>: <Name>                    (H3 with number)
+#   - - role: <text>                             (plain bullet — original)
+#   - - **Role:** <text>                         (bold-bulleted role — AF-2026-05-28-1 / Test07 M-2)
+# Test07 M-2: the original recognized ONLY `**Persona` (bold span) or plain
+# `- role:` (no bold). The natural ux-designer-authored block of
+# `### Persona: <Name>` + `- **Role:** ...` matched neither arm and SV-14 falsely
+# reported 0 personas. Authors were forced to know the exact regex to satisfy
+# the gate. Broadened to also accept H3 heading + bold-bulleted role.
 persona_count() {
   local f="$1"
+  # Section entry accepts the canonical "## Target Users" AND the numbered
+  # variants the pm/analyst commonly produces ("## 2. Target Users", "## 2.1
+  # Target Users"). The optional numbered-prefix sub-pattern mirrors the shared
+  # heading-present.sh idiom (AF-2026-05-27-8 / F-001/F-009).
   awk '
     BEGIN { in_section = 0; count = 0 }
     {
-      if ($0 ~ /^##[[:space:]]+[Tt]arget[[:space:]]+[Uu]sers/) {
+      if ($0 ~ /^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?[Tt]arget[[:space:]]+[Uu]sers/) {
         in_section = 1; next
       }
       if (in_section && /^##[[:space:]]/) { in_section = 0 }
       if (in_section) {
         if ($0 ~ /\*\*[Pp]ersona/) { count++ }
+        else if ($0 ~ /^###[[:space:]]+[Pp]ersona([[:space:]]|:)/) { count++ }
         else if (tolower($0) ~ /^[[:space:]]*-[[:space:]]+role:/) { count++ }
+        else if (tolower($0) ~ /^[[:space:]]*-[[:space:]]+\*\*role\*\*:/) { count++ }
       }
     }
     END { print count + 0 }
