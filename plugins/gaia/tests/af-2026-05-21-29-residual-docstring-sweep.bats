@@ -48,9 +48,16 @@ teardown() { common_teardown; }
 
 @test "AF-21-29: control-flow / smart-fallback branches preserved (gaia-create-epics)" {
   # The else-branch in smart-fallback retains legacy docs/ — sweep must NOT
-  # mangle this.
+  # mangle this. ARCHITECTURE/PRD keep their inline docs/ fallbacks.
   grep -qE 'else\s*$' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
-  grep -qF 'TEST_PLAN="docs/test-artifacts/test-plan.md"' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
+  grep -qF 'ARCHITECTURE="docs/planning-artifacts/architecture.md"' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
+  # AF-2026-05-27-8 / Test06 F-008: the TEST_PLAN legacy docs/ rung moved into
+  # the shared resolver (finalize.sh delegates to resolve-artifact-path.sh); the
+  # legacy fallback is preserved there, not inline.
+  grep -qF 'resolve-artifact-path.sh' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
+  # The legacy docs/test-artifacts rung is built from LEGACY_TA in the resolver.
+  grep -qF 'docs/test-artifacts' "$PLUGIN_ROOT/scripts/lib/resolve-artifact-path.sh"
+  grep -qF '${LEGACY_TA}/test-plan.md' "$PLUGIN_ROOT/scripts/lib/resolve-artifact-path.sh"
 }
 
 @test "AF-21-29: control-flow / smart-fallback branches preserved (sprint-close)" {

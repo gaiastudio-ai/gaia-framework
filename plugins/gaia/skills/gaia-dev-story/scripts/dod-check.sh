@@ -225,6 +225,83 @@ _check_tests() {
   return 1
 }
 
+# --- Build / lint command resolution (AF-2026-05-27-8 / Test06 F-013) -------
+#
+# Previously build + lint resolved ONLY via `type -P <name>` (a PATH binary
+# literally named "build" / "lint"), while tests used the rich _resolve_test_cmd
+# precedence. The split meant a project with `npm run build` + `npm run lint`
+# scripts (the overwhelmingly common case) reported build/lint as SKIPPED while
+# tests PASSED — an inconsistent, confusing DoD result. _resolve_script_cmd
+# brings build + lint to parity with tests:
+#   1. .gaia/config/project-config.yaml `<name>_cmd:` (then legacy config/)
+#   2. package.json `scripts.<name>` → `npm run <name>`
+#   3. a PATH binary literally named <name>
+# Returns the resolved command on stdout (exit 0), or non-zero when nothing
+# resolves (caller emits SKIPPED).
+_resolve_script_cmd() {
+  local name="$1"
+  # 1. project-config.yaml <name>_cmd
+  local _cfg=""
+  if [ -f ".gaia/config/project-config.yaml" ]; then
+    _cfg=".gaia/config/project-config.yaml"
+  elif [ -f "config/project-config.yaml" ]; then
+    _cfg="config/project-config.yaml"
+  fi
+  if [ -n "$_cfg" ]; then
+    local cmd
+    cmd="$(awk -v key="${name}_cmd" '
+      $0 ~ "^[[:space:]]*" key "[[:space:]]*:" {
+        sub(/^[^:]*:[[:space:]]*/, "")
+        sub(/[[:space:]]+#.*$/, "")
+        sub(/[[:space:]]+$/, "")
+        n = length($0)
+        if (n >= 2 && substr($0,1,1) == "\"" && substr($0,n,1) == "\"") { print substr($0,2,n-2); exit }
+        if (n >= 2 && substr($0,1,1) == "'"'"'" && substr($0,n,1) == "'"'"'") { print substr($0,2,n-2); exit }
+        print; exit
+      }
+    ' "$_cfg")"
+    if [ -n "$cmd" ]; then
+      printf '%s\n' "$cmd"
+      return 0
+    fi
+  fi
+  # 2. package.json scripts.<name> (only if npm on PATH)
+  if [ -f "package.json" ] && command -v npm >/dev/null 2>&1; then
+    if grep -Eq "\"${name}\"[[:space:]]*:" package.json; then
+      printf 'npm run %s\n' "$name"
+      return 0
+    fi
+  fi
+  # 3. a PATH binary literally named <name>
+  local cmd_path
+  cmd_path="$(type -P "$name" 2>/dev/null || true)"
+  if [ -n "$cmd_path" ] && [ -x "$cmd_path" ]; then
+    printf '%s\n' "$cmd_path"
+    return 0
+  fi
+  return 1
+}
+
+# _check_script <item> <name> — run the resolved build/lint command, emit a row.
+# Mirrors _check_tests so build / lint / tests now share one resolution model.
+_check_script() {
+  local item="$1" name="$2" cmd out rc
+  if ! cmd="$(_resolve_script_cmd "$name")"; then
+    _emit_row "$item" "SKIPPED" "no '$name' command (project-config ${name}_cmd, package.json scripts.${name}, or PATH binary)"
+    return 0
+  fi
+  set +e
+  out="$(bash -c "$cmd" 2>&1)"
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    _emit_row "$item" "PASSED" "$out"
+    return 0
+  fi
+  _emit_row "$item" "FAILED" "$out"
+  return 1
+}
+
 # Inline secrets scan fallback (when the lib is not available).
 _inline_secrets_scan() {
   local files diff base pat patterns
@@ -324,9 +401,13 @@ _check_subtasks() {
 
 # ---------- Main ----------
 overall=0
-_check_command "build" "build" || overall=1
-_check_tests                   || overall=1
-_check_command "lint"  "lint"  || overall=1
+# AF-2026-05-27-8 / Test06 F-013: build + lint now use _check_script (same
+# config → package.json scripts → PATH precedence as tests) instead of the
+# PATH-binary-only _check_command, so `npm run build` / `npm run lint` projects
+# no longer get a spurious SKIPPED while tests PASS.
+_check_script "build" "build" || overall=1
+_check_tests                  || overall=1
+_check_script "lint"  "lint"  || overall=1
 _check_secrets                 || overall=1
 _check_subtasks                || overall=1
 

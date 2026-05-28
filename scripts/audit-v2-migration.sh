@@ -250,12 +250,43 @@ prepare_enriched_fixture() {
   local f
   for f in "$planning_dir/prd.md" "$planning_dir/epics-and-stories.md" \
            "$planning_dir/readiness-report.md" \
-           "$test_dir/test-plan.md" "$test_dir/traceability-matrix.md" \
-           "$test_dir/ci-setup.md"; do
+           "$test_dir/test-plan.md" "$test_dir/traceability-matrix.md"; do
     if [ ! -s "$f" ]; then
       printf '# placeholder — audit-v2-migration.sh --fixture-mode enriched\n' > "$f"
     fi
   done
+
+  # AF-2026-05-27-8 / Test06 F-010: gaia-ci-setup/finalize.sh now defaults
+  # CI_SETUP_ARTIFACT to the canonical ci-setup.md and RUNS its SV-01..06
+  # checklist when the env var is unset (previously it silently skipped). The
+  # enriched fixture must therefore seed a ci-setup.md that satisfies SV-01..06,
+  # the same way it seeds complete-enough prereqs for the other content-checked
+  # skills — otherwise a healthy ci-setup skill is mis-classified as a B5
+  # regression. A bare `# placeholder` line is no longer sufficient for THIS
+  # artifact (it is the only seeded prereq whose finalize content-checks it).
+  if [ ! -s "$test_dir/ci-setup.md" ]; then
+    cat > "$test_dir/ci-setup.md" <<'CISETUP'
+# CI Setup — audit-v2-migration.sh --fixture-mode enriched placeholder
+
+## Pipeline Stages
+build, lint, test, coverage stages defined.
+
+## Quality Gates
+Coverage target 80%; pass rate threshold enforced.
+
+## Secrets Management
+Required secrets and per-environment separation documented.
+
+## Deployment Strategy
+staging then production, with rollback on failure.
+
+## Monitoring and Notifications
+Failure alerts via webhook/slack and a status badge.
+
+## Pipeline Config
+Generated pipeline config committed.
+CISETUP
+  fi
 
   # E28-S213 — Seed config/project-config.yaml so resolve-config.sh's
   # priority ladder ($CLAUDE_PROJECT_ROOT/config/project-config.yaml) resolves

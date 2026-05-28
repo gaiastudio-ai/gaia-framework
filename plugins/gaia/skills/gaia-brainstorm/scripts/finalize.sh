@@ -87,18 +87,29 @@ item_check() {
 # Returns "pass" when an H2 heading with the given text (case-insensitive,
 # literal match; trailing content after the text is tolerated, e.g.
 # "## Opportunity Areas (ranked)") is present anywhere in the file.
-heading_present() {
-  local f="$1" text="$2"
-  # grep -F would match literally but lacks case-insensitive anchoring, so
-  # we use -Ei with a pattern that escapes regex metacharacters in $text
-  # back to literal. In practice the heading names we pass here contain
-  # only letters and spaces.
-  if grep -Ei "^##[[:space:]]+${text}([[:space:]]|\$|[[:punct:]])" "$f" >/dev/null 2>&1; then
-    echo "pass"
-  else
-    echo "fail"
-  fi
-}
+# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
+# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
+# uniform, permissive regex accepting optional numbered+lettered outline
+# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
+# divergent inline copies, so the same heading passed one skill's check and
+# failed another's. Sourced via a $0-relative path so it works whether or not
+# this script defines PLUGIN_SCRIPTS_DIR.
+_GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
+if [ -r "$_GAIA_HEADING_LIB" ]; then
+  # shellcheck source=/dev/null
+  . "$_GAIA_HEADING_LIB"
+else
+  # Fallback inline definition (kept byte-equivalent to the shared lib) so the
+  # checklist still runs if the lib is somehow unreadable.
+  heading_present() {
+    local f="$1" text="$2"
+    if grep -Ei "^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?${text}([[:space:]]|\$|[[:punct:]])" "$f" >/dev/null 2>&1; then
+      echo "pass"
+    else
+      echo "fail"
+    fi
+  }
+fi
 
 # opportunity_count <file>
 # Counts list items (- or N.) under the ## Opportunity Areas heading,
