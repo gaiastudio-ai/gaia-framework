@@ -83,6 +83,16 @@
         <pre><code>/gaia-config-ci
 /gaia-config-ci --preset standard
 /gaia-config-ci --regenerate</code></pre>
+
+        <h3>Non-interactive / YOLO entry</h3>
+        <p>To run without conversational prompts (CI drivers, automated runs, headless agent dispatch), use one of these mechanisms:</p>
+        <ul>
+          <li><strong>YOLO via argument:</strong> pass the literal token <code>yolo</code> at the end of the slash command, e.g. <code>/gaia-config-ci yolo</code>. The skill auto-selects the <code>standard</code> preset and auto-continues every interactive prompt that has a documented default.</li>
+          <li><strong>YOLO via env var:</strong> export <code>GAIA_YOLO_FLAG=1</code> before invocation. Equivalent to the argument form; useful in scripted contexts that can't easily edit the slash-command line.</li>
+          <li><strong>Preset bypass:</strong> pass <code>--preset &lt;solo|small-team|standard|enterprise|custom&gt;</code> to skip the preset prompt while still walking the rest of the flow. Pair with <code>GAIA_YOLO_FLAG=1</code> for a fully unattended run.</li>
+          <li><strong>Non-interactive guard (auto-rename only):</strong> <code>auto-rename-migration.sh</code> requires <strong>both</strong> <code>--force</code> <strong>and</strong> <code>GAIA_MIGRATE_ALLOW_FORCE=1</code> under <code>GAIA_NONINTERACTIVE=1</code> per SR-84 (T-ARM-1 mitigation). This is a security control on the rename pass — the main config-ci flow is unaffected.</li>
+        </ul>
+        <p><strong>What YOLO does NOT bypass:</strong> open-question retry prompts in the schema-violation loop. Genuine schema violations still require human input — the engine treats them as <code>open-question</code> indicators per SKILL.md §126. YOLO never auto-resolves schema errors blindly.</p>
       </section>
 
       <section id="step-by-step">

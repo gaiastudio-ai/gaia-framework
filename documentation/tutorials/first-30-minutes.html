@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>First 30 Minutes with GAIA - GAIA Documentation</title>
+  <title>First 30 Minutes — Full GAIA Lifecycle End-to-End - GAIA Documentation</title>
   <link rel="stylesheet" href="../styles.css">
 </head>
 <body>
@@ -30,6 +30,14 @@
           <li><a href="#step-8">8. /gaia-create-story</a></li>
           <li><a href="#step-9">9. /gaia-sprint-plan</a></li>
           <li><a href="#step-10">10. /gaia-dev-story</a></li>
+          <li><a href="#step-11">11. /gaia-check-dod</a></li>
+          <li><a href="#step-12">12. /gaia-run-all-reviews</a></li>
+          <li><a href="#step-13">13. transition to done</a></li>
+          <li><a href="#step-14">14. repeat for the sprint</a></li>
+          <li><a href="#step-15">15. /gaia-sprint-review</a></li>
+          <li><a href="#step-16">16. /gaia-retro</a></li>
+          <li><a href="#step-17">17. /gaia-sprint-close</a></li>
+          <li><a href="#step-18">18. plan next sprint</a></li>
           <li><a href="#whats-next">What to read next</a></li>
         </ul>
       </nav>
@@ -41,7 +49,12 @@
         First 30 Minutes
       </nav>
 
-      <h1>First 30 Minutes with GAIA</h1>
+      <h1>First 30 Minutes with GAIA — Full Lifecycle End-to-End</h1>
+        <p>This tutorial walks the entire GAIA lifecycle from a fresh project to a closed sprint:
+        bootstrap → discovery → planning → solutioning → first sprint (implement, review, transition,
+        close) → planning the next sprint. The first ten steps get you to your first story being
+        implemented; Steps 11-18 take that story through reviews, mark it done, run the sprint
+        review and retro, close the sprint, and plan the next one.</p>
       <p>
         This walkthrough takes you from a blank directory to a running sprint.
         Each step builds on the previous one, producing an
@@ -192,6 +205,151 @@
         </p>
         <p><strong>Artifacts produced:</strong> source code, test files, PR, review reports</p>
         <p><em>Expected duration: varies by story complexity.</em></p>
+      </section>
+
+      <section id="step-11">
+        <h2>Step 11 -- Verify Definition of Done</h2>
+        <pre><code>/gaia-check-dod E1-S1</code></pre>
+        <p>
+          Parses the story's DoD checklist and reports which items are checked vs unchecked.
+          A green DoD is a precondition for the next step (running the full review battery).
+        </p>
+        <p><strong>Artifacts produced:</strong> none (read-only check; updates the story's DoD section indirectly via the upstream gates).</p>
+        <p><em>Expected duration: under 1 minute.</em></p>
+      </section>
+
+      <section id="step-12">
+        <h2>Step 12 -- Run all 6 reviews</h2>
+        <pre><code>/gaia-run-all-reviews E1-S1</code></pre>
+        <p>
+          Dispatches six review sub-agents in parallel against the just-implemented story:
+          code review, security review, QA tests, test automation, test review, and performance review.
+          Each writes a review report and updates the corresponding row of the story's Review Gate
+          table to <code>PASSED</code>, <code>FAILED</code>, or <code>UNVERIFIED</code> via
+          <code>review-gate.sh</code>. Reviews that require execution evidence (QA tests, test
+          automation, test review) cite the runner exit code as <code>--execution-evidence</code> JSON
+          when the <a href="../commands/gaia-bridge-enable.html">Test Execution Bridge</a> is enabled.
+        </p>
+        <p><strong>Artifacts produced:</strong>
+          <code>code-review-{key}.md</code>,
+          <code>security-review-{key}.md</code>,
+          <code>qa-tests-{key}.md</code>,
+          <code>test-automate-review-{key}.md</code>,
+          <code>test-review-{key}.md</code>,
+          <code>performance-review-{key}.md</code> in <code>.gaia/artifacts/implementation-artifacts/</code>
+          (per-story <code>reviews/</code> subdir on the post-E105-S1 layout) plus optional
+          <code>evidence/*.json</code> when the bridge is on.
+        </p>
+        <p><em>Expected duration: 5-10 minutes for the parallel battery.</em></p>
+      </section>
+
+      <section id="step-13">
+        <h2>Step 13 -- Transition the story to done</h2>
+        <pre><code>/gaia-check-review-gate E1-S1
+# (all 6 PASSED → COMPLETE)
+${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to review
+# (verify the review gate one more time)
+${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to done</code></pre>
+        <p>
+          <code>review-gate-check</code> reads each Review Gate row and exits
+          <code>0</code> for COMPLETE, <code>1</code> for BLOCKED, <code>2</code> for PENDING
+          (per ADR-054). The story transitions through <code>in-progress &rarr; review &rarr; done</code> —
+          each transition is the boundary writer that atomically updates the story file frontmatter,
+          <code>.gaia/state/sprint-status.yaml</code>, the per-epic shard, and <code>story-index.yaml</code>.
+        </p>
+        <p><strong>Artifacts updated (4-surface atomic write):</strong>
+          story file frontmatter, <code>.gaia/state/sprint-status.yaml</code>,
+          per-epic shard at <code>.gaia/artifacts/planning-artifacts/epics/epic-{slug}.md</code>,
+          and <code>.gaia/state/story-index.yaml</code>.
+        </p>
+        <p><em>Expected duration: under 1 minute.</em></p>
+      </section>
+
+      <section id="step-14">
+        <h2>Step 14 -- Repeat for the rest of the sprint</h2>
+        <p>
+          Loop Steps 10-13 for every other story in the sprint. The bridge runs unit/integration
+          tests across all stories as you go, and each story's reviews accumulate evidence the
+          sprint review will consult. Use <code>/gaia-sprint-status</code> at any time to see the
+          dashboard (sprint id, done/total counts, points burned, risk-flagged stories).
+        </p>
+        <p><em>Expected duration: 1-3 days for a typical 5-story sprint.</em></p>
+      </section>
+
+      <section id="step-15">
+        <h2>Step 15 -- Run the end-of-sprint review</h2>
+        <pre><code>/gaia-sprint-review</code></pre>
+        <p>
+          Two parallel tracks: <strong>Track A</strong> dispatches Val to text-validate every story
+          and review against the sprint's goals using the per-goal rubric;
+          <strong>Track B</strong> re-runs the configured per-stack execution review
+          (the foreground runner replacing the E93-S3 stub in E93-S4). The composite verdict
+          (PASSED / FAILED / UNVERIFIED) is reduced by <code>compose-verdict.sh</code>:
+          PASSED routes to <code>/gaia-sprint-close</code>; FAILED transitions the sprint to
+          <code>correction</code> and emits action items routed to <code>/gaia-correct-course</code>.
+        </p>
+        <p><strong>Artifacts produced:</strong>
+          <code>.gaia/artifacts/implementation-artifacts/sprint-review/sprint-review-{sprint_id}-{date}.md</code>
+          plus the Val dispatch sentinel at <code>.gaia/memory/checkpoints/sprint-review-{sprint_id}-val-dispatched.json</code>.
+        </p>
+        <p><em>Expected duration: 5-15 minutes (most time is in the Val dispatch).</em></p>
+      </section>
+
+      <section id="step-16">
+        <h2>Step 16 -- Write the retrospective</h2>
+        <pre><code>/gaia-retro</code></pre>
+        <p>
+          Walks went-well, didn't-go-well, and action items. <strong>Step 7 (Val sidecar
+          write) is REQUIRED before finalize</strong> under
+          <code>GAIA_FINALIZE_SENTINEL_REQUIRED=1</code> — see the
+          <a href="../commands/gaia-retro.html#step-7-val-sidecar-write">retro Step 7 note</a>.
+          Action items land in <code>.gaia/state/action-items.yaml</code> for the next planner to consume.
+        </p>
+        <p><strong>Artifacts produced:</strong>
+          <code>.gaia/artifacts/implementation-artifacts/retrospective/retrospective-{sprint_id}-{date}.md</code>,
+          updated <code>.gaia/state/action-items.yaml</code>,
+          appended <code>.gaia/memory/sm-sidecar/velocity-data.md</code>.
+        </p>
+        <p><em>Expected duration: 10-15 minutes (mostly facilitation).</em></p>
+      </section>
+
+      <section id="step-17">
+        <h2>Step 17 -- Close the sprint</h2>
+        <pre><code>/gaia-sprint-close</code></pre>
+        <p>
+          Atomically writes <code>status: closed</code> + <code>closed_at</code> to
+          <code>.gaia/state/sprint-status.yaml</code>, archives a copy under
+          <code>.gaia/artifacts/implementation-artifacts/sprint-archive/sprint-{N}-closed-{date}.yaml</code>,
+          and emits a <code>sprint_closed</code> lifecycle event to
+          <code>.gaia/memory/lifecycle-events.jsonl</code>. This is the sanctioned boundary-write
+          replacement for any manual <code>yq -i</code> edits on <code>sprint-status.yaml</code> (per ADR-095).
+        </p>
+        <p><strong>Artifacts produced:</strong>
+          updated <code>.gaia/state/sprint-status.yaml</code>,
+          <code>.gaia/artifacts/implementation-artifacts/sprint-archive/sprint-{N}-closed-{date}.yaml</code>,
+          appended <code>.gaia/memory/lifecycle-events.jsonl</code>.
+        </p>
+        <p><em>Expected duration: under 1 minute.</em></p>
+      </section>
+
+      <section id="step-18">
+        <h2>Step 18 -- Plan the next sprint</h2>
+        <pre><code>/gaia-action-items
+/gaia-sprint-plan</code></pre>
+        <p>
+          <code>/gaia-action-items</code> resolves open action items from the retro (route each item
+          by type: clarification, implementation, process, automation). Items routed to
+          <code>/gaia-create-story</code> become new backlog stories.
+          <code>/gaia-sprint-plan</code> then selects from the (now-updated) backlog for the next
+          sprint, applying sizing and priority rules.
+        </p>
+        <p><strong>Artifacts produced:</strong>
+          new backlog stories under
+          <code>.gaia/artifacts/implementation-artifacts/epic-{slug}/{key}-{slug}/story.md</code> (post-E105-S1 layout),
+          seeded next-sprint <code>.gaia/state/sprint-status.yaml</code>.
+        </p>
+        <p><em>Expected duration: 15-30 minutes for action-items + planning combined.</em></p>
+        <p>You are now back at <a href="#step-10">Step 10</a> for the next sprint. Welcome to the loop.</p>
       </section>
 
       <section id="whats-next">

@@ -43,6 +43,7 @@
           <li><a href="#step-by-step">Step by step</a></li>
           <li><a href="#inputs">Inputs</a></li>
           <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#output-schema">Output schema</a></li>
           <li><a href="#example">Example session</a></li>
           <li><a href="#what-next">What to run next</a></li>
           <li><a href="#troubleshooting">Troubleshooting</a></li>
@@ -182,6 +183,24 @@ This warning is shown once per session.
           </tbody>
         </table>
       </section>
+
+      <section id="output-schema">
+        <h2>Output schema</h2>
+        <p>The <code>finalize.sh</code> checklist enforces the following H2 section names verbatim against the produced artifact at <code>.gaia/artifacts/creative-artifacts/product-brief-{slug}.md</code>. Authors (human or sub-agent) must reproduce these headings exactly — the optional numbered/lettered outline prefix is accepted (e.g. <code>## 1. Vision Statement</code>, <code>## 1b. Vision Statement</code>, <code>## 1.2 Vision Statement</code>), but the section name itself must match.</p>
+        <ul class="output-schema">
+          <li><code>## Vision Statement</code></li>
+          <li><code>## Problem Statement</code></li>
+          <li><code>## Proposed Solution</code></li>
+          <li><code>## Target Users</code></li>
+          <li><code>## Key Features</code></li>
+          <li><code>## Success Metrics</code></li>
+          <li><code>## Scope and Boundaries</code></li>
+          <li><code>## Competitive Landscape</code></li>
+          <li><code>## Risks and Assumptions</code></li>
+        </ul>
+        <p>A missing required section causes the matching <code>SV-NN</code> check to FAIL with the heading name in the violation line. The <code>heading_present()</code> helper (shared at <code>plugins/gaia/scripts/lib/heading-present.sh</code> as of AF-2026-05-27-8) accepts every variant listed above — so do not editorialize the section name to satisfy the gate, just use one of the documented heading forms.</p>
+      </section>
+
 
       <section id="example">
         <h2>Example session</h2>

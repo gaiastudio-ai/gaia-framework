@@ -61,8 +61,14 @@
         <ul>
           <li><strong>A PRD must exist</strong> at <code>.gaia/artifacts/planning-artifacts/prd.md</code> with FR/NFR requirements. Run <a href="gaia-create-prd.html"><code>/gaia-create-prd</code></a> first if missing.</li>
           <li><strong>Epics and stories should exist</strong> at <code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code> for the requirement-to-story mapping.</li>
-          <li><strong>A test plan is recommended</strong> at <code>.gaia/artifacts/test-artifacts/test-plan.md</code> for the story-to-test mapping.</li>
+          <li><strong>A test plan is recommended</strong> at <code>.gaia/artifacts/planning-artifacts/test-plan.md</code> (canonical post-E105-S2 / ADR-127 §7.2 location) for the story-to-test mapping. Legacy <code>.gaia/artifacts/test-artifacts/test-plan.md</code> is read-compat for pre-migration projects.</li>
         </ul>
+        <aside class="callout"><strong>test-plan.md ≠ test-strategy.md.</strong> The two docs are different and live side-by-side under <code>.gaia/artifacts/planning-artifacts/</code>:
+          <ul>
+            <li><code>test-plan.md</code> — the per-FR <strong>test-case catalogue</strong> (one row per FR/NFR, mapped to story + test cases). This skill produces it.</li>
+            <li><code>test-strategy.md</code> — the high-level <strong>strategy doc</strong> (risk assessment, test levels, pyramid ratios, coverage targets, quality gates). Produced by <a href="gaia-test-strategy.html"><code>/gaia-test-strategy --plan</code></a>.</li>
+          </ul>
+        </aside>
       </section>
 
       <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-trace</code></pre></section>
@@ -85,13 +91,13 @@
         <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody>
           <tr><td>PRD</td><td><code>.gaia/artifacts/planning-artifacts/prd.md</code></td><td>Source of FR and NFR requirements (matrix rows).</td></tr>
           <tr><td>Epics and stories</td><td><code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code></td><td>Requirement-to-story mapping.</td></tr>
-          <tr><td>Test plan</td><td><code>.gaia/artifacts/test-artifacts/test-plan.md</code></td><td>Test case IDs and their requirement/story links.</td></tr>
+          <tr><td>Test plan</td><td><code>.gaia/artifacts/planning-artifacts/test-plan.md</code> (canonical) with <code>.gaia/artifacts/test-artifacts/test-plan.md</code> read-compat fallback</td><td>Test case IDs and their requirement/story links.</td></tr>
         </tbody></table>
       </section>
 
       <section id="outputs"><h2>Outputs</h2>
         <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody>
-          <tr><td>Traceability matrix</td><td><code>.gaia/artifacts/test-artifacts/traceability-matrix.md</code></td><td>Full FR/NFR-to-test mapping with gap analysis and coverage statistics.</td></tr>
+          <tr><td>Traceability matrix</td><td><code>.gaia/artifacts/planning-artifacts/traceability-matrix.md</code> (canonical post-E105-S2 / ADR-127 §7.2)</td><td>Full FR/NFR-to-test mapping with gap analysis and coverage statistics. On greenfield projects writes here; on pre-migration projects writes to the legacy <code>.gaia/artifacts/test-artifacts/{,strategy/}traceability-matrix.md</code> location it finds, and recommends <code>migrate-planning-vs-test.sh</code>.</td></tr>
         </tbody></table>
       </section>
 

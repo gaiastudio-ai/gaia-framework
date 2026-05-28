@@ -276,6 +276,7 @@ This warning is shown once per session.
       <!-- 7. Outputs -->
       <section id="outputs">
         <h2>Outputs</h2>
+        <p>A successful <code>/gaia-init</code> run writes the following files. Most live under <code>.gaia/</code> (the canonical GAIA runtime tree per ADR-111). Three files live at the repository root because their consumers (GitHub Actions, git) read from fixed locations.</p>
         <table>
           <thead>
             <tr>
@@ -287,21 +288,32 @@ This warning is shown once per session.
           <tbody>
             <tr>
               <td>Project configuration</td>
-              <td><code>config/project-config.yaml</code></td>
-              <td>The main GAIA configuration file for your project.</td>
+              <td><code>.gaia/config/project-config.yaml</code></td>
+              <td>The main GAIA configuration file for your project (canonical location per ADR-111).</td>
+            </tr>
+            <tr>
+              <td>Test-environment manifest template</td>
+              <td><code>.gaia/config/test-environment.yaml.example</code></td>
+              <td>Template you copy + edit to <code>test-environment.yaml</code> when you enable the Test Execution Bridge via <code>/gaia-bridge-enable</code>.</td>
             </tr>
             <tr>
               <td>CI workflow</td>
-              <td>CI-provider-specific path (e.g., <code>.github/workflows/ci.yml</code>)</td>
-              <td>Starter CI pipeline matching your selected platform.</td>
+              <td><code>.github/workflows/&lt;name&gt;.yml</code> at <strong>repo root</strong></td>
+              <td>Starter CI pipeline matching your selected platform. Lives at repo root because GitHub Actions reads from <code>.github/</code> only.</td>
             </tr>
             <tr>
               <td>CI user-steps companion</td>
-              <td>Same directory as CI workflow, <code>*.user-steps.yml</code></td>
-              <td>A file for your custom CI steps, preserved across regeneration.</td>
+              <td>Same directory as CI workflow, <code>&lt;name&gt;.user-steps.yml</code></td>
+              <td>A file for your custom CI steps, preserved across <code>/gaia-config-ci --regenerate</code> runs.</td>
+            </tr>
+            <tr>
+              <td>Git ignore seed</td>
+              <td><code>.gitignore</code> at <strong>repo root</strong></td>
+              <td>Seeds a default <code>.gitignore</code> (macOS <code>.DS_Store</code>, editor temp files, IDE config, build outputs) on a fresh project that doesn't have one. Lives at repo root because git reads from there only. Skipped if a <code>.gitignore</code> already exists.</td>
             </tr>
           </tbody>
         </table>
+        <p><strong>Carve-out (files written outside <code>.gaia/</code>):</strong> <code>.github/workflows/*.yml</code>, <code>.github/workflows/*.user-steps.yml</code>, and <code>.gitignore</code>. These three are <em>required</em> at the repo root by GitHub Actions and git respectively — there is no way to relocate them under <code>.gaia/</code>. Every other GAIA artifact stays inside <code>.gaia/</code>.</p>
       </section>
 
       <!-- 8. Example session -->

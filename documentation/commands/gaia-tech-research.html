@@ -17,7 +17,8 @@
         <p class="sidebar-section-title">Categories</p>
         <ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul>
         <p class="sidebar-section-title">On this page</p>
-        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#orchestration-mode">Orchestration mode</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
+        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#orchestration-mode">Orchestration mode</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li>
+          <li><a href="#output-schema">Output schema</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
       </nav>
     </aside>
 
@@ -88,6 +89,20 @@ This warning is shown once per session.
       <section id="inputs"><h2>Inputs</h2><table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>technology</code></td><td>Command argument (optional)</td><td>Technology or tech stack to evaluate.</td></tr></tbody></table></section>
 
       <section id="outputs"><h2>Outputs</h2><table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Technical research report</td><td><code>.gaia/artifacts/planning-artifacts/technical-research.md</code></td><td>Evaluation matrix, trade-off analysis, recommendation, and adoption plan.</td></tr></tbody></table></section>
+
+      <section id="output-schema">
+        <h2>Output schema</h2>
+        <p>The <code>finalize.sh</code> checklist enforces the following H2 section names verbatim against the produced artifact at <code>.gaia/artifacts/planning-artifacts/tech-research.md</code>. Authors (human or sub-agent) must reproduce these headings exactly — the optional numbered/lettered outline prefix is accepted (e.g. <code>## 1. Technology Overview</code>, <code>## 1b. Technology Overview</code>, <code>## 1.2 Technology Overview</code>), but the section name itself must match.</p>
+        <ul class="output-schema">
+          <li><code>## Technology Overview</code></li>
+          <li><code>## Evaluation Matrix</code></li>
+          <li><code>## Trade-off Analysis</code></li>
+          <li><code>## Migration</code></li>
+          <li><code>## Recommendation</code></li>
+        </ul>
+        <p>A missing required section causes the matching <code>SV-NN</code> check to FAIL with the heading name in the violation line. The <code>heading_present()</code> helper (shared at <code>plugins/gaia/scripts/lib/heading-present.sh</code> as of AF-2026-05-27-8) accepts every variant listed above — so do not editorialize the section name to satisfy the gate, just use one of the documented heading forms.</p>
+      </section>
+
 
       <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-tech-research React vs Vue vs Svelte
 
