@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.180.7] — 2026-05-28
+
+### Changed
+
+- (test07) d-6 troubleshooting/FAQ page + bats sweep-discipline guard
+
 ## [1.180.6] — 2026-05-28
 
 ### Changed
