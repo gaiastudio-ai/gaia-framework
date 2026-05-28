@@ -101,7 +101,12 @@ ES
   run "$SCRIPTS_DIR/validate-gate.sh" traceability_exists
   [ "$status" -eq 1 ]
   [[ "$output" == *"traceability_exists failed"* ]]
-  [[ "$output" == *"expected:"* ]]
+  # AF-2026-05-28-1 / Test07 D-6: error message now lists all 4 accepted paths
+  # under "expected one of:" rather than the singular "expected:" form so users
+  # see the canonical planning-artifacts/ home first plus 3 legacy fallbacks.
+  [[ "$output" == *"expected one of:"* ]]
+  [[ "$output" == *"planning-artifacts/traceability-matrix.md"* ]]
+  [[ "$output" == *"(canonical)"* ]]
 }
 
 # ================================================================
