@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>test-environment.yaml Reference - GAIA Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="glossary.html">Glossary</a></li>
+          <li><a href="lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="test-environment-yaml.html" class="active">test-environment.yaml Reference</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="categories/getting-started.html">Getting Started</a></li>
+          <li><a href="categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="categories/planning.html">Planning</a></li>
+          <li><a href="categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="categories/development.html">Development</a></li>
+          <li><a href="categories/testing.html">Testing</a></li>
+          <li><a href="categories/reviews.html">Reviews</a></li>
+          <li><a href="categories/validation.html">Validation</a></li>
+          <li><a href="categories/deployment.html">Deployment</a></li>
+          <li><a href="categories/configuration.html">Configuration</a></li>
+          <li><a href="categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#file-location">File location</a></li>
+          <li><a href="#sentinel">The template sentinel</a></li>
+          <li><a href="#schema">Schema reference</a></li>
+          <li><a href="#layer-0">Layer 0 readiness gates</a></li>
+          <li><a href="#how-its-created">How the file is created</a></li>
+          <li><a href="#stack-examples">Stack-specific examples</a></li>
+          <li><a href="#promotion-chain">Linking runners to environments</a></li>
+          <li><a href="#stack-hints">Stack hints</a></li>
+          <li><a href="#editing-workflow">Editing workflow</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="index.html">Home</a>
+        <span class="separator">/</span>
+        test-environment.yaml Reference
+      </nav>
+
+      <header>
+        <h1>test-environment.yaml Reference</h1>
+        <p>
+          <code>test-environment.yaml</code> is the manifest that tells the
+          GAIA <strong>Test Execution Bridge</strong> how to run your project's
+          tests. It declares one or more <em>runners</em> (test commands),
+          assigns each runner to a <em>tier</em> (unit, integration, or
+          end-to-end), and maps tiers to review gates. When the bridge is
+          enabled, every test-execution step in the GAIA lifecycle consults
+          this file to decide what command to invoke, what environment is
+          required, and which gate to credit on success.
+        </p>
+        <p>
+          This page is the complete reference for the file: where it lives,
+          every field in the schema, the template sentinel, the Layer 0
+          readiness gates, and copy-ready examples for the seven supported
+          stacks.
+        </p>
+      </header>
+
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>
+          A minimal valid manifest declares a schema version and at least one
+          runner. Everything else is optional. Here is the smallest file the
+          bridge will accept:
+        </p>
+        <pre><code>version: 2
+
+runners:
+  - name: unit
+    command: "npm test"
+    tier: 1</code></pre>
+        <p>
+          A real-world manifest typically adds a primary runner, a
+          tier-to-gate map, environment requirements, and a CI workflow
+          reference. The full template &mdash; with every field, default
+          value, and inline comment &mdash; ships with the plugin at
+          <code>plugins/gaia/templates/test-environment.yaml.example</code>
+          and is the source of truth for the schema.
+        </p>
+      </section>
+
+      <section id="file-location">
+        <h2>File location</h2>
+        <p>
+          The canonical path is:
+        </p>
+        <pre><code>config/test-environment.yaml</code></pre>
+        <p>
+          This sits next to <code>config/project-config.yaml</code> under the
+          project root. The location is set by ADR-110 (which amends ADR-028)
+          and follows the ADR-044 convention that all runtime configuration
+          lives under <code>config/</code>.
+        </p>
+
+        <div class="callout">
+          <p class="callout-title">Legacy path migration</p>
+          <p>
+            Prior to v1.157.0 the manifest lived at
+            <code>.gaia/artifacts/test-artifacts/test-environment.yaml</code>. If your
+            project still has a file at that legacy path, the next invocation
+            of <a href="commands/gaia-bridge-enable.html"><code>/gaia-bridge-enable</code></a>
+            detects it and moves it to the canonical location automatically.
+            The move is idempotent and emits a one-time deprecation warning.
+            No manual action is required &mdash; but you should update any
+            project-local scripts or documentation that referenced the legacy
+            path.
+          </p>
+        </div>
+      </section>
+
+      <section id="sentinel">
+        <h2>The template sentinel</h2>
+        <p>
+          A freshly-generated manifest may contain a single comment line that
+          acts as a tripwire:
+        </p>
+        <pre><code># GAIA-MANIFEST-TEMPLATE: edit this file before enabling the bridge -- bridge will fail Layer 0 readiness check until this line is removed</code></pre>
+        <p>
+          This is the <strong>GAIA-MANIFEST-TEMPLATE sentinel</strong>. Its
+          presence is a contract between the generator and the bridge: as long
+          as the sentinel is in the file, the bridge refuses to run tests
+          against the manifest, because the runners are known to be
+          placeholders that have not been reviewed by a human.
+        </p>
+        <p>
+          The sentinel is added in two specific cases:
+        </p>
+        <ul>
+          <li>
+            <strong>No stack was detected.</strong> The auto-generator could
+            not infer a language or build tool from your project, so it
+            emitted a generic <code>make test</code> placeholder. Customise
+            the runners, then delete the sentinel line.
+          </li>
+          <li>
+            <strong>You used option [b]</strong> (&ldquo;copy the schema
+            example template&rdquo;) at the
+            <a href="commands/gaia-bridge-enable.html"><code>/gaia-bridge-enable</code></a>
+            prompt. The shipped <code>.example</code> file carries the
+            sentinel because its sample runners are illustrative, not
+            project-specific.
+          </li>
+        </ul>
+        <p>
+          When the generator detects a stack and emits stack-specific runners,
+          <strong>the sentinel is not included</strong> &mdash; the manifest
+          is treated as presumed-customised for that stack and Layer 0 passes
+          immediately.
+        </p>
+        <p>
+          To remove the sentinel, open <code>config/test-environment.yaml</code>,
+          customise the runners for your project, and delete the entire
+          <code># GAIA-MANIFEST-TEMPLATE: &hellip;</code> line. Save and re-run
+          <code>/gaia-bridge-enable</code> (or any downstream test command) to
+          re-evaluate the readiness gate.
+        </p>
+      </section>
+
+      <section id="schema">
+        <h2>Schema reference</h2>
+        <p>
+          The schema is versioned via the top-level <code>version</code>
+          integer. <code>version: 2</code> is current; <code>version: 1</code>
+          is still accepted but lacks the per-runner
+          <code>promotion_chain_env_id</code> field.
+        </p>
+
+        <h3>Top-level fields</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>Required</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>version</code></td>
+              <td>integer</td>
+              <td>yes</td>
+              <td>
+                Schema version. Use <code>2</code> for new manifests.
+                <code>1</code> is accepted for backward compatibility but
+                cannot use the per-runner <code>promotion_chain_env_id</code>
+                field.
+              </td>
+            </tr>
+            <tr>
+              <td><code>runners</code></td>
+              <td>list</td>
+              <td>yes</td>
+              <td>
+                One or more runner objects (see below). At least one runner
+                must be present.
+              </td>
+            </tr>
+            <tr>
+              <td><code>primary_runner</code></td>
+              <td>string</td>
+              <td>no</td>
+              <td>
+                Name of the default runner. Must match one of the
+                <code>runners[].name</code> values. Used when a test step
+                does not specify a tier.
+              </td>
+            </tr>
+            <tr>
+              <td><code>tiers</code></td>
+              <td>map</td>
+              <td>no</td>
+              <td>
+                Maps tier numbers (<code>1</code>, <code>2</code>,
+                <code>3</code>) to a list of review gates that require
+                execution evidence from that tier. See
+                <a href="#tiers-block">Tiers block</a>.
+              </td>
+            </tr>
+            <tr>
+              <td><code>stack_hints</code></td>
+              <td>map</td>
+              <td>no</td>
+              <td>
+                Per-stack tier hints consumed by stack adapters
+                (<code>pytest_markers</code>, <code>gradle_tasks</code>,
+                <code>go_build_tags</code>, <code>flutter_suites</code>).
+                See <a href="#stack-hints">Stack hints</a>.
+              </td>
+            </tr>
+            <tr>
+              <td><code>env_requirements</code></td>
+              <td>list of strings</td>
+              <td>no</td>
+              <td>
+                Free-form system-level prerequisites. Each entry is human
+                documentation (e.g.
+                <code>"node &gt;= 20"</code>,
+                <code>"docker &gt;= 24 (for tier 2+)"</code>). The bridge
+                does not enforce these &mdash; they are advisory.
+              </td>
+            </tr>
+            <tr>
+              <td><code>ci_workflow</code></td>
+              <td>string</td>
+              <td>no</td>
+              <td>
+                Filename of the GitHub Actions workflow the bridge should
+                trigger in CI mode (e.g. <code>"ci.yml"</code>). Resolved
+                against <code>.github/workflows/</code>.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 id="runner-fields">Runner fields</h3>
+        <p>
+          Each entry under <code>runners</code> is an object with the
+          following fields:
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>Required</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>name</code></td>
+              <td>string</td>
+              <td>yes</td>
+              <td>
+                Unique identifier for the runner. Conventionally
+                <code>unit</code>, <code>integration</code>, or
+                <code>e2e</code>, but any string is valid.
+              </td>
+            </tr>
+            <tr>
+              <td><code>command</code></td>
+              <td>string</td>
+              <td>yes</td>
+              <td>
+                Shell command the bridge will execute. Quote the string;
+                pipes and redirects are allowed.
+              </td>
+            </tr>
+            <tr>
+              <td><code>tier</code></td>
+              <td>integer</td>
+              <td>yes</td>
+              <td>
+                <code>1</code> = unit (no environment required),
+                <code>2</code> = integration (service containers required),
+                <code>3</code> = end-to-end (deployed application required).
+              </td>
+            </tr>
+            <tr>
+              <td><code>test_pattern</code></td>
+              <td>string</td>
+              <td>no</td>
+              <td>
+                Glob pattern locating the test files this runner owns. Used
+                for change-impact analysis and traceability.
+              </td>
+            </tr>
+            <tr>
+              <td><code>timeout_seconds</code></td>
+              <td>integer</td>
+              <td>no</td>
+              <td>
+                Maximum execution time in seconds. Default <code>300</code>.
+              </td>
+            </tr>
+            <tr>
+              <td><code>promotion_chain_env_id</code></td>
+              <td>string (v2 only)</td>
+              <td>no</td>
+              <td>
+                Optional cross-reference to a
+                <code>ci_cd.promotion_chain[].id</code> entry in
+                <code>config/global.yaml</code>. When set, the bridge
+                enriches its context with the linked environment's CI
+                provider, branch, and ci_checks. See
+                <a href="#promotion-chain">Linking runners to environments</a>.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 id="tiers-block">Tiers block</h3>
+        <p>
+          The <code>tiers</code> map declares which review gates require
+          execution evidence from each tier. The default mapping is:
+        </p>
+        <pre><code>tiers:
+  1:
+    gates: [qa-tests, test-automate, test-review]
+  2:
+    gates: [review-perf]
+  3:
+    gates: []</code></pre>
+        <p>
+          Read this as: &ldquo;Before any of <code>qa-tests</code>,
+          <code>test-automate</code>, or <code>test-review</code> can pass,
+          the bridge must have a green run from a tier-1 runner.&rdquo; If
+          your project does not run integration tests, leave
+          <code>tier 2</code> with an empty gate list rather than removing it.
+        </p>
+      </section>
+
+      <section id="layer-0">
+        <h2>Layer 0 readiness gates</h2>
+        <p>
+          Before the bridge will dispatch any test, it runs a three-step
+          readiness check. All three gates must pass.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Gate</th>
+              <th>Failure mode</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td><strong>File exists</strong> at <code>config/test-environment.yaml</code></td>
+              <td>
+                The bridge halts and instructs the user to run
+                <a href="commands/gaia-bridge-enable.html"><code>/gaia-bridge-enable</code></a>
+                or
+                <a href="commands/gaia-brownfield.html"><code>/gaia-brownfield</code></a>
+                to generate the manifest.
+              </td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td><strong>Schema valid</strong> &mdash; parses as YAML, has
+                <code>version</code>, has a non-empty <code>runners</code>
+                list, every runner has <code>name</code>,
+                <code>command</code>, and <code>tier</code></td>
+              <td>
+                Bridge surfaces the schema validation errors. The
+                <code>bridge_enabled</code> flag is not rolled back &mdash;
+                you fix the file and re-evaluate.
+              </td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td><strong>Sentinel absent</strong> &mdash; the
+                <code># GAIA-MANIFEST-TEMPLATE: &hellip;</code> line is not
+                in the file</td>
+              <td>
+                Bridge halts with a message pointing at the sentinel line
+                and the line number. Customise the runners and delete the
+                sentinel line, then re-evaluate.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          The sentinel-absent check is implemented by
+          <code>scripts/lib/check-manifest-sentinel.sh</code> and runs on
+          every bridge invocation, not just the first one. This means an
+          accidentally re-introduced sentinel (e.g. by reverting a commit)
+          will block test execution until removed.
+        </p>
+      </section>
+
+      <section id="how-its-created">
+        <h2>How the file is created</h2>
+        <p>
+          You almost never create this file by hand. There are three
+          sanctioned paths:
+        </p>
+        <ol>
+          <li>
+            <strong>Auto-generate via
+            <a href="commands/gaia-bridge-enable.html"><code>/gaia-bridge-enable</code></a>
+            Step 4 (recommended).</strong>
+            When you enable the bridge and the manifest is absent, the
+            command offers option [a]: auto-generate a stack-specific
+            manifest. Under the hood it invokes
+            <code>scripts/lib/test-environment-manifest.sh --target
+            &lt;project-root&gt; --write</code>, which calls
+            <code>detect-signals.sh</code> to identify your stack and emits
+            populated runners for it. If a stack is detected, the resulting
+            file is sentinel-free and Layer 0 passes immediately.
+          </li>
+          <li>
+            <strong>Schema-doc starter via Step 4 option [b]
+            (advanced).</strong>
+            Copies the canonical
+            <code>config/test-environment.yaml.example</code> template
+            verbatim. The template carries the sentinel and a full set of
+            inline comments &mdash; useful as a reference while authoring,
+            but it requires you to remove the sentinel before the bridge
+            will run.
+          </li>
+          <li>
+            <strong>Auto-generate during
+            <a href="commands/gaia-brownfield.html"><code>/gaia-brownfield</code></a>
+            Phase 5.</strong>
+            When onboarding an existing project, brownfield delegates to
+            the same generator helper. The behaviour is identical to
+            option [a] above. If a manifest is already present, brownfield
+            preserves it byte-identical.
+          </li>
+        </ol>
+        <div class="callout">
+          <p class="callout-title">Copy-if-absent semantics</p>
+          <p>
+            Both auto-generate paths use copy-if-absent semantics: if
+            <code>config/test-environment.yaml</code> already exists, the
+            generator exits successfully without overwriting. Your edits
+            are safe across repeated invocations of
+            <code>/gaia-bridge-enable</code> and
+            <code>/gaia-brownfield</code>.
+          </p>
+        </div>
+      </section>
+
+      <section id="stack-examples">
+        <h2>Stack-specific examples</h2>
+        <p>
+          The auto-generator recognises seven stacks. Each example below is
+          a complete, valid manifest you can copy verbatim and adapt. The
+          auto-generator emits only the <code>version</code>,
+          <code>runners</code>, <code>primary_runner</code>, and
+          <code>tiers</code> blocks; the <code>env_requirements</code>,
+          <code>stack_hints</code>, and <code>ci_workflow</code> fields
+          shown here are recommended hand-edit additions.
+        </p>
+
+        <h3 id="example-node">Node.js / TypeScript</h3>
+        <p>
+          Detection triggers on <code>package.json</code> presence and
+          dependency signals for React, Vue, Angular, Svelte, plain Node,
+          or TypeScript. Tier 2 is included when an
+          <code>integration</code> npm script is conventional.
+        </p>
+        <pre><code># test-environment.yaml — Test Execution Bridge Manifest
+# detected-stack: node
+# Reference: architecture.md Section 10.20.5
+
+version: 2
+
+runners:
+  - name: unit
+    command: "npm test"
+    tier: 1
+    test_pattern: "test/unit/**/*.test.js"
+    timeout_seconds: 120
+  - name: integration
+    command: "npm run test:integration"
+    tier: 2
+    test_pattern: "test/integration/**/*.test.js"
+    timeout_seconds: 300
+
+primary_runner: unit
+
+tiers:
+  1:
+    gates: [qa-tests, test-automate, test-review]
+  2:
+    gates: [review-perf]
+  3:
+    gates: []
+
+env_requirements:
+  - "node &gt;= 20"
+  - "docker &gt;= 24 (for tier 2+)"
+
+ci_workflow: "ci.yml"</code></pre>
+
+        <h3 id="example-python">Python (pytest)</h3>
+        <p>
+          Detection triggers on <code>pyproject.toml</code>,
+          <code>setup.py</code>, <code>requirements.txt</code>, or
+          <code>pytest.ini</code>.
+        </p>
+        <pre><code># test-environment.yaml — Test Execution Bridge Manifest
+# detected-stack: python
+# Reference: architecture.md Section 10.20.5
+
+version: 2
+
+runners:
+  - name: unit
+    command: "pytest tests/unit"
+    tier: 1
+    test_pattern: "tests/unit/**/test_*.py"
+    timeout_seconds: 120
+  - name: integration
+    command: "pytest tests/integration"
+    tier: 2
+    test_pattern: "tests/integration/**/test_*.py"
+    timeout_seconds: 300
+
+primary_runner: unit
+
+tiers:
+  1:
+    gates: [qa-tests, test-automate, test-review]
+  2:
+    gates: [review-perf]
+  3:
+    gates: []
+
+stack_hints:
+  pytest_markers: ["slow", "integration"]
+
+env_requirements:
+  - "python &gt;= 3.11"</code></pre>
+
+        <h3 id="example-go">Go</h3>
+        <p>
+          Detection triggers on a <code>go.mod</code> file at the project
+          root. The generator emits a single recursive runner because
+          <code>go test ./...</code> traverses the whole module tree.
+        </p>
+        <pre><code># test-environment.yaml — Test Execution Bridge Manifest
+# detected-stack: go
+# Reference: architecture.md Section 10.20.5
+
+version: 2
+
+runners:
+  - name: unit
+    command: "go test ./..."
+    tier: 1
+    test_pattern: "**/*_test.go"
+    timeout_seconds: 120
+
+primary_runner: unit
+
+tiers:
+  1:
+    gates: [qa-tests, test-automate, test-review]
+  2:
+    gates: [review-perf]
+  3:
+    gates: []
+
+stack_hints:
+  go_build_tags: ["integration", "e2e"]
+
+env_requirements:
+  - "go &gt;= 1.22"</code></pre>
+
+        <h3 id="example-java">Java (Maven)</h3>
+        <p>
+          Detection triggers on <code>pom.xml</code> (Maven) or
+          <code>build.gradle</code> / <code>build.gradle.kts</code>
+          (Gradle). Kotlin projects are detected as <code>java</code>. The
+          example below is Maven; the Gradle variant is shown after it.
+        </p>
+        <pre><code># test-environment.yaml — Test Execution Bridge Manifest
+# detected-stack: java
+# Reference: architecture.md Section 10.20.5
+
+version: 2
+
+runners:
+  - name: unit
+    command: "mvn test"
+    tier: 1
+    test_pattern: "src/test/java/**/*Test.java"
+    timeout_seconds: 300
+
+primary_runner: unit
+
+tiers:
+  1:
+    gates: [qa-tests, test-automate, test-review]
+  2:
+    gates: [review-perf]
+  3:
+    gates: []
+
+env_requirements:
+  - "java &gt;= 17"
+  - "maven &gt;= 3.9"</code></pre>
+
+        <h4>Java (Gradle) variant</h4>
+        <p>
+          For Gradle, replace the runners block and add
+          <code>gradle_tasks</code> under <code>stack_hints</code> so the
+          Gradle stack adapter knows how to map tiers to tasks:
+        </p>
+        <pre><code>version: 2
+
+runners:
+  - name: unit
+    command: "./gradlew test"
+    tier: 1
+    test_pattern: "src/test/**/*Test.{java,kt}"
+    timeout_seconds: 300
+  - name: integration
+    command: "./gradlew integrationTest"
+    tier: 2
+    test_pattern: "src/integrationTest/**/*Test.{java,kt}"
+    timeout_seconds: 600
+
+primary_runner: unit
+
+tiers:
+  1:
+    gates: [qa-tests, test-automate, test-review]
+  2:
+    gates: [review-perf]
+  3:
+    gates: []
+
+stack_hints:
+  gradle_tasks:
+    unit: test
+    integration: integrationTest
+    e2e: e2eTest
+
+env_requirements:
+  - "java &gt;= 17"
+  - "gradle wrapper present"</code></pre>
+
+        <h3 id="example-flutter">Flutter / Dart</h3>
+        <p>
+          Detection triggers on <code>pubspec.yaml</code>. Flutter projects
+          get both a unit runner (<code>flutter test</code>) and an
+          integration runner (<code>flutter test integration_test</code>).
+        </p>
+        <pre><code># test-environment.yaml — Test Execution Bridge Manifest
+# detected-stack: flutter
+# Reference: architecture.md Section 10.20.5
+
+version: 2
+
+runners:
+  - name: unit
+    command: "flutter test"
+    tier: 1
+    test_pattern: "test/**/*_test.dart"
+    timeout_seconds: 300
+  - name: integration
+    command: "flutter test integration_test"
+    tier: 2
+    test_pattern: "integration_test/**/*_test.dart"
+    timeout_seconds: 600
+
+primary_runner: unit
+
+tiers:
+  1:
+    gates: [qa-tests, test-automate, test-review]
+  2:
+    gates: [review-perf]
+  3:
+    gates: []
+
+stack_hints:
+  flutter_suites:
+    unit: test/
+    integration: integration_test/
+    e2e: integration_test/e2e/
+
+env_requirements:
+  - "flutter &gt;= 3.22"
+  - "dart &gt;= 3.4"</code></pre>
+
+        <h3 id="example-bash">Bash / bats</h3>
+        <p>
+          Detection triggers when no <code>package.json</code> is present
+          but the project contains <code>*.bats</code> test files within
+          three directory levels of the root. Bridge timeout is generous
+          because bats suites often shell out to slow tools.
+        </p>
+        <pre><code># test-environment.yaml — Test Execution Bridge Manifest
+# detected-stack: bash
+# Reference: architecture.md Section 10.20.5
+
+version: 2
+
+runners:
+  - name: unit
+    command: "bats tests/"
+    tier: 1
+    test_pattern: "tests/**/*.bats"
+    timeout_seconds: 600
+
+primary_runner: unit
+
+tiers:
+  1:
+    gates: [qa-tests, test-automate, test-review]
+  2:
+    gates: [review-perf]
+  3:
+    gates: []
+
+env_requirements:
+  - "bats-core &gt;= 1.10"
+  - "bash &gt;= 5"</code></pre>
+
+        <h3 id="example-rust">Rust (cargo)</h3>
+        <p>
+          Detection triggers on <code>Cargo.toml</code>. The generator
+          emits a single <code>cargo test</code> runner; add integration
+          and e2e runners manually if your project separates them
+          (e.g. <code>cargo test --test integration</code>).
+        </p>
+        <pre><code># test-environment.yaml — Test Execution Bridge Manifest
+# detected-stack: rust
+# Reference: architecture.md Section 10.20.5
+
+version: 2
+
+runners:
+  - name: unit
+    command: "cargo test"
+    tier: 1
+    test_pattern: "src/**/*.rs"
+    timeout_seconds: 300
+
+primary_runner: unit
+
+tiers:
+  1:
+    gates: [qa-tests, test-automate, test-review]
+  2:
+    gates: [review-perf]
+  3:
+    gates: []
+
+env_requirements:
+  - "rust &gt;= 1.78 (stable channel)"</code></pre>
+
+        <h3 id="example-generic">Generic placeholder (no stack detected)</h3>
+        <p>
+          If the auto-generator cannot identify a stack, it emits this
+          file. <strong>Note the sentinel line</strong> &mdash; Layer 0
+          will refuse to run until you customise the runners and remove
+          it.
+        </p>
+        <pre><code># test-environment.yaml — Test Execution Bridge Manifest
+# Auto-generated by /gaia-bridge-enable (E17-S33 helper).
+# No stack detected — generic placeholder runners. CUSTOMIZE for your project.
+#
+# detected-stack: generic
+# Reference: architecture.md Section 10.20.5
+
+# GAIA-MANIFEST-TEMPLATE: edit this file before enabling the bridge -- bridge will fail Layer 0 readiness check until this line is removed
+
+version: 2
+
+runners:
+  - name: unit
+    command: "make test"
+    tier: 1
+    test_pattern: ""
+    timeout_seconds: 120
+
+primary_runner: unit
+
+tiers:
+  1:
+    gates: [qa-tests, test-automate, test-review]
+  2:
+    gates: [review-perf]
+  3:
+    gates: []</code></pre>
+      </section>
+
+      <section id="promotion-chain">
+        <h2>Linking runners to environments</h2>
+        <p>
+          Schema version <code>2</code> introduced an optional per-runner
+          field, <code>promotion_chain_env_id</code>, that links a runner
+          to a specific entry in the
+          <code>ci_cd.promotion_chain</code> block of
+          <code>config/global.yaml</code>. When set, the bridge enriches
+          the runner's execution context with the linked environment's
+          CI provider, target branch, and required ci_checks. This is
+          how a tier-2 integration runner gets pointed at the staging
+          environment, and a tier-3 e2e runner at production.
+        </p>
+        <pre><code>runners:
+  - name: unit
+    command: "npm test"
+    tier: 1
+    # No promotion_chain_env_id: tier-local config only
+
+  - name: integration
+    command: "npm run test:integration"
+    tier: 2
+    promotion_chain_env_id: "staging"   # links to ci_cd.promotion_chain[id=staging]
+
+  - name: e2e
+    command: "npm run test:e2e"
+    tier: 3
+    promotion_chain_env_id: "prod"      # links to ci_cd.promotion_chain[id=prod]</code></pre>
+        <p>
+          The field is silently ignored when <code>config/global.yaml</code>
+          has no <code>ci_cd</code> block, preserving backward compatibility
+          for projects that have not yet adopted promotion chains. Run
+          <a href="commands/gaia-ci-edit.html"><code>/gaia-ci-edit</code></a>
+          to inspect or modify the promotion chain itself.
+        </p>
+      </section>
+
+      <section id="stack-hints">
+        <h2>Stack hints</h2>
+        <p>
+          The optional <code>stack_hints</code> block lets you fine-tune
+          how a stack adapter resolves tiers when the default mapping is
+          insufficient. Each key under <code>stack_hints</code> is
+          consumed by exactly one adapter, and an unknown adapter's hints
+          are silently ignored &mdash; so a multi-stack monorepo can
+          include hints for every stack without conflict.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Hint key</th>
+              <th>Adapter</th>
+              <th>Value shape</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>pytest_markers</code></td>
+              <td>python</td>
+              <td>list of strings</td>
+              <td>
+                Marker names that classify tests into integration / slow
+                tiers. The python adapter uses
+                <code>pytest -m</code> to select them.
+              </td>
+            </tr>
+            <tr>
+              <td><code>gradle_tasks</code></td>
+              <td>java (Gradle)</td>
+              <td>map: tier &rarr; task name</td>
+              <td>
+                Maps tier numbers to Gradle task names. Required when your
+                build defines non-default integration or e2e tasks.
+              </td>
+            </tr>
+            <tr>
+              <td><code>go_build_tags</code></td>
+              <td>go</td>
+              <td>list of strings</td>
+              <td>
+                Build-tag names that gate integration / e2e tests
+                (<code>go test -tags ...</code>).
+              </td>
+            </tr>
+            <tr>
+              <td><code>flutter_suites</code></td>
+              <td>flutter</td>
+              <td>map: tier &rarr; directory</td>
+              <td>
+                Maps tier numbers to test directories. Useful when e2e
+                tests live in a sub-directory of
+                <code>integration_test/</code>.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Unknown keys at the top of <code>stack_hints</code> are rejected
+          by the schema validator with a loud error listing the accepted
+          keys. Partial blocks are valid &mdash; any tier you leave unset
+          falls back to the adapter's built-in default.
+        </p>
+      </section>
+
+      <section id="editing-workflow">
+        <h2>Editing workflow</h2>
+        <p>
+          The recommended workflow when you need to change the manifest:
+        </p>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Open</span>
+            <code>config/test-environment.yaml</code> in your editor.
+          </li>
+          <li>
+            <span class="step-title">Edit</span>
+            Adjust runner commands, timeouts, tier assignments, or
+            promotion-chain links. Keep the structure compliant with the
+            <a href="#schema">schema reference</a> above.
+          </li>
+          <li>
+            <span class="step-title">Remove the sentinel</span>
+            If the
+            <code># GAIA-MANIFEST-TEMPLATE: &hellip;</code> line is still
+            present, delete it.
+          </li>
+          <li>
+            <span class="step-title">Validate</span>
+            Re-run
+            <a href="commands/gaia-bridge-enable.html"><code>/gaia-bridge-enable</code></a>
+            (idempotent; reports the bridge state and re-evaluates Layer
+            0) or
+            <a href="commands/gaia-config-validate.html"><code>/gaia-config-validate</code></a>
+            for a standalone schema check.
+          </li>
+          <li>
+            <span class="step-title">Run tests</span>
+            With Layer 0 green, downstream test commands &mdash;
+            <a href="commands/gaia-atdd.html"><code>/gaia-atdd</code></a>,
+            <a href="commands/gaia-test-run.html"><code>/gaia-test-run</code></a>,
+            review gates &mdash; will dispatch through the bridge using
+            your runners.
+          </li>
+        </ol>
+        <p>
+          The file is intended to be version-controlled alongside your
+          source code. Treat changes to it as you would any other
+          configuration change: PR review, CI green, merge.
+        </p>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>Manifest still at the legacy path</h3>
+        <p>
+          <strong>Symptom:</strong> The file exists at
+          <code>.gaia/artifacts/test-artifacts/test-environment.yaml</code> but
+          downstream commands report it as missing.
+        </p>
+        <p>
+          <strong>Cause:</strong> The canonical path moved to
+          <code>config/test-environment.yaml</code> in v1.157.0
+          (ADR-110).
+        </p>
+        <p>
+          <strong>Fix:</strong> Run
+          <a href="commands/gaia-bridge-enable.html"><code>/gaia-bridge-enable</code></a>;
+          its first step invokes a one-shot migration helper that moves
+          the legacy file to the canonical path. The move is idempotent
+          and emits a one-time deprecation warning. If you prefer to
+          move it by hand, simply
+          <code>mv .gaia/artifacts/test-artifacts/test-environment.yaml
+          config/test-environment.yaml</code> and commit the change.
+        </p>
+
+        <h3>Sentinel still present</h3>
+        <p>
+          <strong>Symptom:</strong> The bridge halts with
+          <code>Layer 0 readiness check failed: GAIA-MANIFEST-TEMPLATE
+          sentinel is still in the manifest</code>.
+        </p>
+        <p>
+          <strong>Cause:</strong> The auto-generator either could not
+          detect your stack and emitted a generic placeholder, or you
+          chose option [b] (schema-doc starter) when prompted. Either
+          way, the sentinel is the file's own &ldquo;please review
+          me&rdquo; flag.
+        </p>
+        <p>
+          <strong>Fix:</strong> Open
+          <code>config/test-environment.yaml</code>, replace the
+          placeholder runner(s) with your project's real test commands
+          (use the
+          <a href="#stack-examples">stack-specific examples</a> above as
+          a template), and delete the entire
+          <code># GAIA-MANIFEST-TEMPLATE: &hellip;</code> line. Save and
+          re-run the bridge command.
+        </p>
+
+        <h3>No stack detected &mdash; generic placeholder shipped</h3>
+        <p>
+          <strong>Symptom:</strong> The auto-generator log says
+          <code>detected-stack=generic</code> and the file contains a
+          single <code>make test</code> runner with the sentinel.
+        </p>
+        <p>
+          <strong>Cause:</strong> Your project does not have any of the
+          marker files the
+          <a href="commands/gaia-brownfield.html">brownfield</a>
+          detection-signals registry looks for &mdash; no
+          <code>package.json</code>, <code>pyproject.toml</code>,
+          <code>go.mod</code>, <code>pom.xml</code>,
+          <code>build.gradle*</code>, <code>pubspec.yaml</code>,
+          <code>Cargo.toml</code>, or <code>*.bats</code> files in the
+          top three directory levels.
+        </p>
+        <p>
+          <strong>Fix:</strong> Find the closest match in
+          <a href="#stack-examples">stack-specific examples</a> and copy
+          its runners block over the placeholder. If your stack genuinely
+          is not on the list, write runners by hand using the
+          <a href="#runner-fields">runner-fields reference</a>. Remove
+          the sentinel when done.
+        </p>
+
+        <h3>Schema validation failed</h3>
+        <p>
+          <strong>Symptom:</strong> Bridge surfaces messages like
+          <code>runners[0].tier: expected integer, got string</code> or
+          <code>missing required field: runners</code>.
+        </p>
+        <p>
+          <strong>Cause:</strong> The file does not conform to the schema
+          described in <a href="#schema">Schema reference</a> above.
+          Common causes: a tier quoted as a string
+          (<code>tier: "1"</code> instead of <code>tier: 1</code>), a
+          runner without a <code>command</code>, or YAML indentation
+          that nested fields under the wrong parent.
+        </p>
+        <p>
+          <strong>Fix:</strong> Compare your file to the closest
+          <a href="#stack-examples">stack example</a>. Pay particular
+          attention to: <code>version</code> is an integer (not a
+          string), each runner's <code>tier</code> is an integer 1, 2,
+          or 3, and <code>tiers:</code> top-level keys are unquoted
+          integers. The bridge does <strong>not</strong> roll back the
+          <code>bridge_enabled</code> flag on schema failure &mdash; you
+          can re-edit and re-validate as many times as you need.
+        </p>
+
+        <h3>Generator failed and the bridge fell back to template-copy</h3>
+        <p>
+          <strong>Symptom:</strong> The bridge log contains
+          <code>generator failed, falling back to schema-doc
+          template-copy</code> and the resulting manifest is the
+          shipped <code>.example</code> file with the sentinel.
+        </p>
+        <p>
+          <strong>Cause:</strong> The auto-generator helper exited
+          non-zero (most commonly:
+          <code>detect-signals.sh</code> is missing or <code>jq</code> is
+          not installed). The bridge protects you by falling back to a
+          known-good schema-doc copy.
+        </p>
+        <p>
+          <strong>Fix:</strong> Install the missing prerequisite
+          (<code>jq</code> for the detector) or run
+          <a href="commands/gaia-init.html"><code>/gaia-init</code></a>
+          to materialise the <code>.example</code> source if you got an
+          &ldquo;.example missing&rdquo; error. Then delete the
+          generated manifest and re-run
+          <code>/gaia-bridge-enable</code> &mdash; with copy-if-absent
+          semantics the generator will only act when the file is absent,
+          so you must remove the fallback file to retry.
+        </p>
+      </section>
+
+      <section id="related">
+        <h2>Related</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Page</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="commands/gaia-bridge-enable.html"><code>/gaia-bridge-enable</code></a></td>
+              <td>Enables the bridge; auto-generates this manifest on Step 4 when absent.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-bridge-disable.html"><code>/gaia-bridge-disable</code></a></td>
+              <td>Disables the bridge. The manifest file is preserved.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-brownfield.html"><code>/gaia-brownfield</code></a></td>
+              <td>Phase 5 invokes the same generator helper during onboarding of an existing project.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-ci-edit.html"><code>/gaia-ci-edit</code></a></td>
+              <td>Edits <code>ci_cd.promotion_chain</code>, the source of the env IDs you can reference via <code>promotion_chain_env_id</code>.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-atdd.html"><code>/gaia-atdd</code></a></td>
+              <td>Generates ATDD scaffolds whose execution is dispatched through the bridge using this manifest.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-config-validate.html"><code>/gaia-config-validate</code></a></td>
+              <td>Standalone schema validation for project configuration files.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-init.html"><code>/gaia-init</code></a></td>
+              <td>Materialises the <code>.example</code> template alongside other config scaffolding.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="index.html">Back to Home</a></p>
+      </footer>
+
+    </main>
+  </div>
+</body>
+</html>

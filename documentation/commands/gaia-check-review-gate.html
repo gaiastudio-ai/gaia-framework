@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>/gaia-check-review-gate - GAIA Documentation</title><link rel="stylesheet" href="../styles.css"></head>
+<body><div class="page-wrapper">
+<aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/reviews.html">Reviews</a><span class="separator">/</span>/gaia-check-review-gate</nav>
+      <header class="command-header"><div class="command-title"><h1>/gaia-check-review-gate</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/reviews.html">Reviews</a></dd><dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd><dt>Arguments:</dt><dd><code>[story-key]</code></dd></dl></header>
+      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-check-review-gate</code> checks the composite Review Gate status for a story. It reads all six review rows (Code Review, QA Tests, Security Review, Test Automation, Test Review, Performance Review) and reports each as PASSED, FAILED, or UNVERIFIED. When all six pass, the story is ready to transition to done.</p></section>
+      <section id="when-to-use"><h2>When to use it</h2><ul><li>After running reviews (individually or via <code>/gaia-review-all</code>), you want to check whether the story is ready to transition to done.</li></ul></section>
+      <section id="prerequisites"><h2>Prerequisites</h2><ul><li><strong>Story file must exist</strong> with a Review Gate section.</li></ul></section>
+      <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-check-review-gate E3-S7</code></pre></section>
+      <section id="step-by-step"><h2>What it does step by step</h2><ol class="step-list"><li><span class="step-title">Resolve story</span> Locates the story file by key.</li><li><span class="step-title">Read gate statuses</span> Reads all six review rows from the story's Review Gate table.</li><li><span class="step-title">Compute composite verdict</span> READY (all passed), BLOCKED (any failed), PENDING (none run), or IN_PROGRESS (mixed).</li><li><span class="step-title">Report</span> Displays the per-review table and composite verdict.</li></ol></section>
+      <section id="inputs"><h2>Inputs</h2><p>The command reads the story file, its associated source files (from the Dev Agent Record file list), and project configuration automatically.</p></section>
+      <section id="outputs"><h2>Outputs</h2><p>Text output only. This command does not modify any files.</p></section>
+      <section id="example"><h2>Example session</h2><pre><code>> /gaia-check-review-gate E3-S7
+
+Review Gate Check: E3-S7
+
+Composite Verdict: READY
+Reviews: 6/6 passed, 0 failed, 0 unverified
+
+| Review             | Status   |
+|--------------------|----------|
+| Code Review        | PASSED   |
+| QA Tests           | PASSED   |
+| Security Review    | PASSED   |
+| Test Automation    | PASSED   |
+| Test Review        | PASSED   |
+| Performance Review | PASSED   |
+
+All reviews passed. Story is ready to transition to done.</code></pre></section>
+      <section id="what-next"><h2>What to run next</h2><p>After all reviews pass, run <a href="gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a> to verify the composite gate status and transition the story to done.</p></section>
+      <section id="troubleshooting"><h2>Troubleshooting</h2><h3>"Story file not found"</h3><p>Verify the story key and check that the file exists under <code>.gaia/artifacts/implementation-artifacts/</code>.</p></section>
+      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-review-all.html"><code>/gaia-review-all</code></a></td><td>Runs all reviews that populate the gate this command checks.</td></tr><tr><td><a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a></td><td>Initializes the Review Gate after implementation.</td></tr></tbody></table></section>
+      <footer class="page-footer"><p><a href="../categories/reviews.html">Back to Reviews</a></p></footer>
+    </main></div></body></html>

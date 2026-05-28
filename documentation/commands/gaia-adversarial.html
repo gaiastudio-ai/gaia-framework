@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-adversarial - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/creative.html">Creative &amp; Collaboration</a><span class="separator">/</span>
+        /gaia-adversarial
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-adversarial</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/creative.html">Creative &amp; Collaboration</a></dd>
+          <dt>Lifecycle phase:</dt><dd>Any</dd>
+          <dt>Arguments:</dt><dd><code>[topic or challenge]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-adversarial</code> performs a cynical, skeptical adversarial review to surface flaws, gaps, and weaknesses in any document, design, or code. It assumes nothing works as claimed and attacks from multiple angles -- technical, business, user, security, and scale. Findings include severity and confidence levels but no fixes -- identifying problems is the sole purpose.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You have a PRD, architecture document, or design that has not been stress-tested and you want a ruthless critique before committing to implementation.</li>
+          <li>You want to find the weaknesses in your plan -- gaps, unstated assumptions, scaling risks, security holes -- before your users or competitors find them.</li>
+          <li>You need a second opinion that deliberately assumes the worst case.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>No strict prerequisites.</strong> Works best when planning artifacts exist for context.</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-adversarial .gaia/artifacts/planning-artifacts/prd.md</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list"><li><span class="step-title">Load target</span> Reads the target document, design, or code.</li><li><span class="step-title">Adversarial analysis</span> Attacks from ten perspectives: feasibility, completeness, contradictions, assumptions, scale, failure modes, dependencies, security, user impact, and business risk.</li><li><span class="step-title">Generate report</span> Produces a ranked findings report with severity and confidence levels. Writes to <code>.gaia/artifacts/creative-artifacts/adversarial-review-{target}-{date}.md</code>.</li></ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>topic</code></td><td>Command argument (optional)</td><td>The topic or challenge. If omitted, the command asks.</td></tr></tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Creative artifact</td><td><code>.gaia/artifacts/creative-artifacts/</code></td><td>The session output document.</td></tr></tbody></table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-adversarial .gaia/artifacts/planning-artifacts/prd.md
+
+10 findings:
+| Severity | Confidence | Finding |
+|----------|------------|--------|
+| critical | high | Auth token refresh not specified -- session loss risk |
+| high | medium | Scale: no pagination on user listing |
+| medium | high | Assumption: third-party API SLA not verified |
+
+Written to .gaia/artifacts/creative-artifacts/adversarial-review-prd-2026-05-07.md</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>Address the highest-severity findings, then run the adversarial review again to check your fixes.</li>
+          <li>Feed findings into <a href="gaia-add-feature.html"><code>/gaia-add-feature</code></a> or <a href="gaia-edit-prd.html"><code>/gaia-edit-prd</code></a> to update the affected artifacts.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>Topic not provided</h3><p>The command asks for your topic interactively if no argument is given.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-edge-cases.html"><code>edge-cases (internal)</code></a></td><td>Method-driven boundary tracing -- complementary to this attitude-driven review.</td></tr><tr><td><a href="gaia-val-validate.html"><code>/gaia-val-validate</code></a></td><td>Factual validation against the codebase (different from adversarial review).</td></tr></tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/creative.html">Back to Creative &amp; Collaboration</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

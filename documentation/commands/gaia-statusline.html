@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Statusline Reference - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#themes">Themes</a></li>
+          <li><a href="#glyph-palette">Glyph palette</a></li>
+          <li><a href="#color-tokens">Color tokens</a></li>
+          <li><a href="#width-ladder">Width ladder</a></li>
+          <li><a href="#osc8-hyperlinks">OSC-8 hyperlinks</a></li>
+          <li><a href="#environment-variables">Environment variables</a></li>
+          <li><a href="#source-of-truth">Source of truth</a></li>
+          <li><a href="#update-check">Update check</a></li>
+          <li><a href="#performance">Performance</a></li>
+          <li><a href="#enable-disable">Enable / disable</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/configuration.html">Configuration</a><span class="separator">/</span>
+        Statusline Reference
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>Statusline Reference</h1>
+          <span class="tag tag-internal">internal</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
+          <dt>Type:</dt><dd>Reference documentation (not a runnable slash command)</dd>
+        </dl>
+      </header>
+
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>The GAIA statusline renders a single line of project context on every Claude Code prompt cycle. In the default theme it looks like this:</p>
+        <pre><code>&#9670; GAIA 1.127.2 | claude-opus-4-6 | my-project/feat-login | 42%</code></pre>
+        <p>The statusline is driven by <code>~/.claude/gaia-statusline/statusline.sh</code> and configured via <code>~/.claude/settings.json</code>. It runs on Claude Code's built-in <code>refreshInterval</code> (default: 1 hour for background update checks; prompt rendering is synchronous on every cycle).</p>
+      </section>
+
+      <section id="themes">
+        <h2>Themes</h2>
+        <p>Set the theme with the <code>GAIA_STATUSLINE_THEME</code> environment variable. Three themes are available:</p>
+
+        <h3><code>minimal</code></h3>
+        <p>Model and context percentage only.</p>
+        <pre><code>&#9670; claude-opus-4-6 | 42%</code></pre>
+
+        <h3><code>default</code></h3>
+        <p>Version, model, project/branch, and context percentage.</p>
+        <pre><code>&#9670; GAIA 1.127.2 | claude-opus-4-6 | my-project/feat-login | 42%</code></pre>
+
+        <h3><code>rich</code></h3>
+        <p>Adds a second line with sprint, story, and active agent.</p>
+        <pre><code>&#9670; GAIA 1.127.2 | claude-opus-4-6 | my-project/feat-login | 42%
+  &#9655; sprint-12 &#183; E28-S177 &#183; dev-fullstack</code></pre>
+
+        <h3>Width behavior across terminal sizes</h3>
+        <p>Examples at progressively narrower terminal widths (default theme):</p>
+        <pre><code># 80 cols (full)
+&#9670; GAIA 1.127.2 | claude-opus-4-6 | my-project/feat-login | 42%
+
+# 60 cols (dirty marker dropped)
+&#9670; GAIA 1.127.2 | claude-opus-4-6 | my-project/feat-login | 42%
+
+# 50 cols (branch dropped BEFORE project)
+&#9670; GAIA 1.127.2 | claude-opus-4-6 | my-project | 42%
+
+# 40 cols (bare model only)
+&#9670; claude-opus-4-6</code></pre>
+        <p>See <a href="#width-ladder">Width ladder</a> for the full drop order.</p>
+      </section>
+
+      <section id="glyph-palette">
+        <h2>Glyph palette</h2>
+        <p>The statusline uses a fixed set of glyphs. Two alternate rendering modes are available for terminals that lack Unicode support or have Nerd Font installed.</p>
+        <table>
+          <thead><tr><th>Purpose</th><th>Unicode</th><th>Nerd Font</th><th>ASCII</th></tr></thead>
+          <tbody>
+            <tr><td>Brand</td><td><code>&#9670;</code></td><td><code>&#9670;</code></td><td><code>*</code></td></tr>
+            <tr><td>Branch</td><td><code>&#9095;</code></td><td>Nerd Font branch glyph</td><td><code>@</code></td></tr>
+            <tr><td>Dirty marker</td><td><code>*</code></td><td><code>*</code></td><td><code>*</code></td></tr>
+            <tr><td>Context bar</td><td><code>&#9719;</code></td><td>Nerd Font clock glyph</td><td><code>%</code></td></tr>
+            <tr><td>Update available</td><td><code>&#8593;</code></td><td>Nerd Font arrow-up glyph</td><td><code>[update]</code></td></tr>
+            <tr><td>Rich-line separator</td><td><code>&#9657;</code></td><td><code>&#9657;</code></td><td><code>></code></td></tr>
+            <tr><td>Rich-line item separator</td><td><code>&#183;</code></td><td><code>&#183;</code></td><td><code>.</code></td></tr>
+          </tbody>
+        </table>
+        <p>Select a rendering mode with <code>GAIA_STATUSLINE_NERDFONT=1</code> or <code>GAIA_STATUSLINE_ASCII=1</code>.</p>
+      </section>
+
+      <section id="color-tokens">
+        <h2>Color tokens</h2>
+        <p>Colors are applied via ANSI escape sequences. The brand color is <code>#7B61FF</code> (GAIA purple). Color output is suppressed when <code>NO_COLOR</code> is set. True-color rendering requires <code>COLORTERM=truecolor</code>.</p>
+        <table>
+          <thead><tr><th>Token</th><th>Value</th><th>Usage</th></tr></thead>
+          <tbody>
+            <tr><td>Brand</td><td><code>#7B61FF</code></td><td>The <code>&#9670; GAIA</code> prefix</td></tr>
+            <tr><td>Version (normal)</td><td>Default foreground</td><td>Version string when up to date</td></tr>
+            <tr><td>Version (update)</td><td>Bold</td><td>Version string when an update is available</td></tr>
+            <tr><td>Separator</td><td>Dim</td><td>The <code>|</code> pipe characters</td></tr>
+            <tr><td>Context (low)</td><td>Green</td><td>Context usage below 60%</td></tr>
+            <tr><td>Context (medium)</td><td>Yellow</td><td>Context usage 60--80%</td></tr>
+            <tr><td>Context (high)</td><td>Red</td><td>Context usage above 80%</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="width-ladder">
+        <h2>Width ladder</h2>
+        <p>When the terminal is too narrow to fit the full statusline, segments are dropped right-to-left in this order:</p>
+        <ol>
+          <li>Rich-line 2 (the <code>rich</code> theme's second line)</li>
+          <li>Dirty marker (<code>*</code>)</li>
+          <li>Branch name</li>
+          <li>Project name</li>
+          <li>Version string</li>
+          <li>Context bar</li>
+          <li>Bare model (last segment standing)</li>
+        </ol>
+        <p><strong>Key rule:</strong> at terminal widths below 50 columns, the branch is dropped <em>before</em> the project name. This preserves project identity at narrow widths where branch detail would be truncated anyway.</p>
+      </section>
+
+      <section id="osc8-hyperlinks">
+        <h2>OSC-8 hyperlinks</h2>
+        <p>The brand chunk (<code>&#9670; GAIA</code>) is wrapped in an <a href="https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda">OSC-8 hyperlink</a> that opens the GAIA documentation. This is only enabled on terminals known to support OSC-8:</p>
+        <ul>
+          <li><code>iTerm.app</code></li>
+          <li><code>Kitty</code></li>
+          <li><code>WezTerm</code></li>
+        </ul>
+        <p>All other terminals receive the plain text -- no broken escape sequences.</p>
+      </section>
+
+      <section id="environment-variables">
+        <h2>Environment variables</h2>
+        <table>
+          <thead><tr><th>Variable</th><th>Values</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><code>GAIA_STATUSLINE_THEME</code></td><td><code>minimal</code>, <code>default</code>, <code>rich</code></td><td>Selects the theme. Default: <code>default</code>.</td></tr>
+            <tr><td><code>GAIA_STATUSLINE_NERDFONT</code></td><td><code>1</code></td><td>Uses Nerd Font glyphs for branch, context, and update indicators.</td></tr>
+            <tr><td><code>GAIA_STATUSLINE_ASCII</code></td><td><code>1</code></td><td>Falls back to pure ASCII glyphs. Takes precedence over Nerd Font.</td></tr>
+            <tr><td><code>NO_COLOR</code></td><td>(any value)</td><td>Suppresses all ANSI color output.</td></tr>
+            <tr><td><code>COLORTERM</code></td><td><code>truecolor</code></td><td>Enables 24-bit true-color rendering for the brand color.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="source-of-truth">
+        <h2>Source of truth</h2>
+        <p>The version number displayed in the statusline is read from <code>gaia-public/plugins/gaia/.claude-plugin/plugin.json</code> (the <code>.version</code> field). It is <strong>not</strong> read from <code>CLAUDE.md</code>. This ensures the statusline always reflects the installed plugin version.</p>
+      </section>
+
+      <section id="update-check">
+        <h2>Update check</h2>
+        <p>The statusline includes a background update check that runs on Claude Code's <code>refreshInterval</code> (default: 1 hour). The check works as follows:</p>
+        <ol>
+          <li>The fetcher writes the latest release metadata to <code>~/.claude/gaia-statusline/cache/latest-release.json</code>.</li>
+          <li>The cache file has a 24-hour TTL (writer-side). The fetcher skips the network call if the cache is fresh.</li>
+          <li>The reader applies a 7-day stale fence. If the cache is older than 7 days, the update indicator is suppressed rather than showing stale data.</li>
+          <li>The hot path (prompt rendering) performs <strong>zero network calls</strong>. It reads only the local cache file.</li>
+        </ol>
+        <p>When an update is available, three signals appear simultaneously:</p>
+        <ul>
+          <li>The <code>&#8593;</code> glyph (or <code>[update]</code> in ASCII mode) is appended.</li>
+          <li>The version string is rendered in <strong>bold</strong>.</li>
+          <li>In ASCII mode, a <code>[update]</code> prefix appears.</li>
+        </ul>
+      </section>
+
+      <section id="performance">
+        <h2>Performance</h2>
+        <p>The statusline has a strict performance budget:</p>
+        <ul>
+          <li><strong>p95:</strong> under 100 ms</li>
+          <li><strong>Ceiling:</strong> 300 ms (hard maximum)</li>
+        </ul>
+        <p>These targets are met by reading only local files on the hot path and deferring network activity to the background refresh interval.</p>
+      </section>
+
+      <section id="enable-disable">
+        <h2>Enable / disable</h2>
+        <p>Three surfaces control the statusline:</p>
+        <table>
+          <thead><tr><th>Surface</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td>Claude Code built-in <code>/statusline</code></td><td>Native toggle for Claude Code's statusline feature.</td></tr>
+            <tr><td><code>install-statusline.sh</code></td><td>One-shot installer. Copies the runtime to <code>~/.claude/gaia-statusline/</code> and enables the statusline in <code>settings.json</code>.</td></tr>
+            <tr><td><a href="gaia-statusline-enable.html"><code>/gaia-statusline-enable</code></a> / <a href="gaia-statusline-disable.html"><code>/gaia-statusline-disable</code></a></td><td>GAIA slash skills that add or remove the <code>statusLine</code> block in <code>settings.json</code>. Idempotent.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>Statusline not appearing</h3>
+        <p>Check that <code>~/.claude/gaia-statusline/statusline.sh</code> exists and that <code>~/.claude/settings.json</code> contains a <code>statusLine</code> block. Run <code>/gaia-statusline-enable</code> to add it.</p>
+
+        <h3>Garbled glyphs</h3>
+        <p>Your terminal may not support Unicode. Set <code>GAIA_STATUSLINE_ASCII=1</code> to fall back to plain ASCII characters.</p>
+
+        <h3>No colors</h3>
+        <p>Check that <code>NO_COLOR</code> is not set in your environment. For true-color brand rendering, ensure <code>COLORTERM=truecolor</code> is set.</p>
+
+        <h3>Update indicator stuck</h3>
+        <p>Delete <code>~/.claude/gaia-statusline/cache/latest-release.json</code> to force a fresh check on the next refresh interval.</p>
+
+        <h3>Slow prompt rendering</h3>
+        <p>The statusline's hot path reads only local files and should complete in under 100 ms. If you observe delays, check disk I/O. The statusline performs zero network calls on the hot path.</p>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/configuration.html">Back to Configuration</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

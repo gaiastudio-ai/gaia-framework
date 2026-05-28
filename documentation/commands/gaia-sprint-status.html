@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-sprint-status - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/sprint-management.html">Sprint Management</a>
+        <span class="separator">/</span>
+        /gaia-sprint-status
+      </nav>
+
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-sprint-status</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/sprint-management.html">Sprint Management</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt>
+          <dd>None</dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-sprint-status</code> displays the current sprint
+          dashboard -- a read-only summary of every story in the active
+          sprint with its status, points, risk level, and assignee. After
+          rendering the dashboard, it reconciles any drift between story
+          files and the sprint tracking file to keep them in sync.
+        </p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You want a quick overview of sprint progress during a standup or check-in.</li>
+          <li>You need to see which stories are ready for development, in review, or blocked.</li>
+          <li>You suspect the sprint tracking file has drifted from the actual story file statuses.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>
+            <strong>A sprint must be active.</strong>
+            <code>.gaia/state/sprint-status.yaml</code>
+            must exist. Run
+            <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a>
+            first to create it.
+          </li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-sprint-status</code></pre>
+        <p>No arguments needed.</p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Render dashboard</span>
+            Reads the sprint tracking file and produces a formatted dashboard
+            showing each story's key, title, status, points, risk, and
+            assignee. If any story has <code>risk: HIGH</code>, appends
+            recommended mitigations.
+          </li>
+          <li>
+            <span class="step-title">Reconcile drift</span>
+            Compares each story file's frontmatter against the sprint
+            tracking cache. If any story's status has changed (for example,
+            moved from <code>in-progress</code> to <code>review</code> by
+            <code>/gaia-dev-story</code>), auto-corrects the tracking file
+            and shows the corrections.
+          </li>
+          <li>
+            <span class="step-title">Suggest next actions</span>
+            Based on the dashboard state, suggests the most relevant next
+            command -- such as implementing a ready story, running reviews,
+            or starting a retrospective.
+          </li>
+        </ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr><th>Input</th><th>Source</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Sprint tracking</td>
+              <td><code>.gaia/state/sprint-status.yaml</code></td>
+              <td>Contains the sprint metadata and story list.</td>
+            </tr>
+            <tr>
+              <td>Story files</td>
+              <td><code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-*/</code></td>
+              <td>Read for reconciliation -- frontmatter status is the source of truth.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <p>
+          This command produces text output only. If reconciliation detects
+          drift, it updates <code>sprint-status.yaml</code> to match the
+          story files.
+        </p>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>&gt; /gaia-sprint-status
+
+Sprint-4 Dashboard (2 weeks, 21 points)
+
+| Key     | Title                    | Status       | Points | Risk   |
+|---------|--------------------------|--------------|--------|--------|
+| E5-S12  | Add webhook retry logic  | in-progress  | 3      | medium |
+| E5-S14  | Improve error messages   | done         | 2      | low    |
+| E3-S9   | Dashboard search         | ready-for-dev| 5      | high   |
+| E3-S10  | Export CSV               | review       | 3      | low    |
+| E4-S6   | Rate limiting middleware | ready-for-dev| 5      | medium |
+| E4-S7   | API key rotation         | ready-for-dev| 3      | high   |
+
+Progress: 2/21 points done (9%) | 1 in-progress | 1 in review
+
+Reconcile: E5-S14 status corrected (was ready-for-dev, now done).
+
+Suggested:
+  /gaia-dev-story E3-S9   -- highest-priority ready story
+  /gaia-review-all E3-S10 -- story awaiting review</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a> -- implement the next ready story.</li>
+          <li><a href="gaia-review-all.html"><code>/gaia-review-all</code></a> -- run reviews on stories in review status.</li>
+          <li><a href="gaia-correct-course.html"><code>/gaia-correct-course</code></a> -- adjust scope if stories are blocked.</li>
+          <li><a href="gaia-retro.html"><code>/gaia-retro</code></a> -- when all stories are done, run the retrospective.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>"sprint-status.yaml not found"</h3>
+        <p>No sprint has been planned yet. Run <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> first.</p>
+
+        <h3>"sprint-status.yaml is malformed"</h3>
+        <p>The YAML file may have been manually edited incorrectly. Check for syntax errors (indentation, unclosed quotes) and fix them before re-running.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead><tr><th>Command</th><th>Relationship</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a></td>
+              <td>Creates the sprint that this command displays.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-epic-status.html"><code>/gaia-epic-status</code></a></td>
+              <td>Shows completion across all epics, not just the current sprint.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-correct-course.html"><code>/gaia-correct-course</code></a></td>
+              <td>Changes sprint scope when the dashboard reveals blockers.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

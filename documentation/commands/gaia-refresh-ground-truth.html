@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-refresh-ground-truth - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/validation.html">Validation</a><span class="separator">/</span>
+        /gaia-refresh-ground-truth
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-refresh-ground-truth</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/validation.html">Validation</a></dd>
+          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt><dd><code>[--agent val|theo|derek|nate|all] [--incremental]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-refresh-ground-truth</code> rescans the project filesystem and updates the ground-truth snapshot used by the validator. It discovers project structure, file inventory, and key metadata, compares against the previous snapshot, and writes a diff report of what changed. This keeps the validator's knowledge of your project current.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul><li>You notice validation findings about outdated file references and want to refresh the validator's knowledge.</li><li>You added or reorganized files and want the validator to know about the changes before the next validation run.</li><li>You want to refresh ground truth for a specific agent (validator, architect, PM, or scrum master).</li></ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>No strict prerequisites.</strong> If the memory sidecar directory does not exist, it is created automatically.</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-refresh-ground-truth
+/gaia-refresh-ground-truth --agent all --incremental</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list"><li><span class="step-title">Resolve agent target</span> Determines which agent's ground truth to refresh (defaults to the validator). Supports val, theo, derek, nate, or all.</li><li><span class="step-title">Initialize sidecar directory</span> Creates the memory sidecar directory and files if they do not exist.</li><li><span class="step-title">Parse previous state</span> Reads the existing ground-truth file and extracts the last-refresh timestamp and all entries.</li><li><span class="step-title">Scan project</span> Scans source files, config files, package manifests, planning artifacts, implementation artifacts, and test artifacts. Caps at 500 files per scan pattern.</li><li><span class="step-title">Compare and detect changes</span> Classifies each entry as ADDED, UPDATED, or REMOVED compared to the previous state.</li><li><span class="step-title">Write ground truth</span> Writes the updated ground-truth file with a new timestamp, mode, and entry count.</li><li><span class="step-title">Generate diff report</span> Summarizes what changed: counts of added, removed, and updated entries.</li><li><span class="step-title">Budget check</span> Checks the ground-truth file size against the configured token budget and surfaces archival guidance if usage exceeds the warning threshold.</li></ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>--agent</code></td><td>Command argument (optional)</td><td>Which agent's ground truth to refresh. Default: val.</td></tr><tr><td><code>--incremental</code></td><td>Command argument (optional)</td><td>Only scan files modified since the last refresh.</td></tr></tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Updated ground truth</td><td><code>_memory/{agent}-sidecar/ground-truth.md</code></td><td>The refreshed ground-truth snapshot.</td></tr><tr><td>Diff report</td><td>Console output + decision log</td><td>Summary of additions, removals, and updates.</td></tr></tbody></table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-refresh-ground-truth
+
+Scanning project source files... found 156 files across 12 directories.
+Scanning project config files... found 4 config files.
+Scanning package manifests... found 1 manifest.
+Scanning planning artifacts... found 6 artifacts.
+Scanning implementation artifacts... found 23 artifacts.
+Scanning test artifacts... found 4 artifacts.
+
+Diff report:
+  Added: 8 new entries.
+  Removed: 2 entries.
+  Updated: 3 entries.
+  Total entries: 194.
+
+val: 4,850/200,000 tokens (2%)
+Ground truth refreshed.</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul><li><a href="gaia-val-validate.html"><code>/gaia-val-validate</code></a> -- run a validation with the freshly updated ground truth.</li><li><a href="gaia-memory-hygiene.html"><code>/gaia-memory-hygiene</code></a> -- if the budget check flagged high usage, review and archive stale entries.</li></ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>No changes detected</h3><p>The project has not changed since the last refresh. The timestamp is updated but content remains the same.</p><h3>Scan truncated at 500 files</h3><p>A glob pattern returned more than 500 results. The scan is capped to protect performance. Results may be incomplete for very large projects.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-val-validate.html"><code>/gaia-val-validate</code></a></td><td>Uses the ground truth refreshed by this command.</td></tr><tr><td><a href="gaia-memory-hygiene.html"><code>/gaia-memory-hygiene</code></a></td><td>Reviews and archives stale memory entries, including ground truth.</td></tr></tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/validation.html">Back to Validation</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

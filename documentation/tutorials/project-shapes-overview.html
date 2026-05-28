@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project Shapes Overview - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html" class="active">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-is-a-shape">What is a project shape?</a></li>
+          <li><a href="#decision-tree">Decision tree</a></li>
+          <li><a href="#comparison">Comparison table</a></li>
+          <li><a href="#shapes">The three shapes</a></li>
+          <li><a href="#whats-next">What to read next</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        Project Shapes Overview
+      </nav>
+
+      <h1>Project Shapes Overview</h1>
+      <p>
+        The <code>stacks</code> and <code>platforms</code> sections of
+        <code>project-config.yaml</code> differ depending on what you are
+        building. A Python CLI tool, a React + Express web application, and
+        a microservices platform each need different configurations. This
+        tutorial helps you identify your project shape and links you to the
+        right shape-specific guide.
+      </p>
+
+      <section id="what-is-a-shape">
+        <h2>What is a project shape?</h2>
+        <p>
+          A <strong>project shape</strong> describes the structure of your
+          codebase: how many deployable units it contains, which languages and
+          frameworks it uses, and how those units relate to each other.
+        </p>
+        <p>
+          GAIA uses the <code>stacks</code> configuration to understand your
+          project shape. Each stack entry represents a distinct part of your
+          codebase with its own language, test command, and (optionally) its
+          own path within the repository. The number of stacks and their
+          relationship determines your shape.
+        </p>
+      </section>
+
+      <section id="decision-tree">
+        <h2>Decision tree</h2>
+        <p>
+          Answer these questions to find your shape:
+        </p>
+        <ol>
+          <li>
+            <strong>How many languages or frameworks does your project use?</strong>
+            <ul>
+              <li>One &rarr; probably <a href="shape-single-repo.html">Single Repo</a>.</li>
+              <li>Two (frontend + backend) &rarr; probably <a href="shape-fullstack.html">Full-Stack</a>.</li>
+              <li>Three or more &rarr; probably <a href="shape-microservices.html">Microservices</a>.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>How many independently deployable units do you have?</strong>
+            <ul>
+              <li>One &rarr; <a href="shape-single-repo.html">Single Repo</a>.</li>
+              <li>Two (frontend deployed separately from backend) &rarr; <a href="shape-fullstack.html">Full-Stack</a>.</li>
+              <li>Three or more &rarr; <a href="shape-microservices.html">Microservices</a>.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Are all your services in one repository or separate repositories?</strong>
+            <ul>
+              <li>One repo with one service &rarr; <a href="shape-single-repo.html">Single Repo</a>.</li>
+              <li>One repo with multiple services &rarr; <a href="shape-fullstack.html">Full-Stack</a> or <a href="shape-microservices.html">Microservices (monorepo)</a>.</li>
+              <li>Multiple repos &rarr; <a href="shape-microservices.html">Microservices (polyrepo)</a>.</li>
+            </ul>
+          </li>
+        </ol>
+      </section>
+
+      <section id="comparison">
+        <h2>Comparison table</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Project shape</th>
+              <th>Stacks</th>
+              <th>Platforms</th>
+              <th>Promotion chain depth</th>
+              <th>Recommended CI preset</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="shape-single-repo.html">Single Repo</a></td>
+              <td>1</td>
+              <td>1 (web, CLI, or mobile)</td>
+              <td>1--2 environments</td>
+              <td><code>solo</code> or <code>small-team</code></td>
+            </tr>
+            <tr>
+              <td><a href="shape-fullstack.html">Full-Stack</a></td>
+              <td>2</td>
+              <td>1--2 (web + API)</td>
+              <td>2--3 environments</td>
+              <td><code>small-team</code> or <code>standard</code></td>
+            </tr>
+            <tr>
+              <td><a href="shape-microservices.html">Microservices (monorepo)</a></td>
+              <td>3+</td>
+              <td>1+ (web, mobile, API)</td>
+              <td>3 environments</td>
+              <td><code>standard</code> or <code>enterprise</code></td>
+            </tr>
+            <tr>
+              <td><a href="shape-microservices.html">Microservices (polyrepo)</a></td>
+              <td>1 per repo</td>
+              <td>1+ per repo</td>
+              <td>3+ environments</td>
+              <td><code>standard</code> or <code>enterprise</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="shapes">
+        <h2>The three shapes</h2>
+
+        <h3><a href="shape-single-repo.html">Single Repo</a></h3>
+        <p>
+          One language, one deployable unit, one directory. Examples: a Python
+          microservice, a Go CLI tool, a Rails web application. This is the
+          simplest shape and needs minimal configuration.
+        </p>
+
+        <h3><a href="shape-fullstack.html">Full-Stack</a></h3>
+        <p>
+          Two stacks in one repository: a frontend (React, Vue, Angular) and
+          a backend (Express, Django, Rails). Each has its own test runner,
+          build step, and deployment target. The key configuration challenge
+          is path-based CI filters so changes to one stack do not trigger
+          tests for the other.
+        </p>
+
+        <h3><a href="shape-microservices.html">Microservices</a></h3>
+        <p>
+          Three or more independently deployable services. Can be organized as
+          a monorepo (all services in one repository) or a polyrepo (each
+          service in its own repository). The key challenges are contract
+          testing between services and coordinated deployments.
+        </p>
+      </section>
+
+      <section id="whats-next">
+        <h2>What to read next</h2>
+        <p>
+          Pick the shape-specific tutorial that matches your project, then
+          return to the CI and test tutorials to fine-tune your configuration:
+        </p>
+        <ul>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

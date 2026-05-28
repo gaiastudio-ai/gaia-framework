@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-resume - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/getting-started.html">Getting Started</a>
+        <span class="separator">/</span>
+        /gaia-resume
+      </nav>
+
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-resume</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/getting-started.html">Getting Started</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>Any</dd>
+          <dt>Arguments:</dt>
+          <dd><code>[workflow-name]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-resume</code> reconnects you with an interrupted
+          workflow. GAIA automatically saves checkpoints as you work -- if
+          a session is interrupted (network drop, timeout, or you simply close
+          the terminal), this command finds the checkpoint, verifies file
+          integrity, and hands you back to the workflow where it left off.
+        </p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>
+            A session was interrupted mid-workflow (for example, halfway
+            through <code>/gaia-dev-story</code> or
+            <code>/gaia-create-prd</code>).
+          </li>
+          <li>
+            You want to see which workflows have active checkpoints before
+            deciding whether to resume or start fresh.
+          </li>
+        </ul>
+        <p>
+          Do not use this command to start a new workflow -- invoke the
+          specific command directly instead.
+        </p>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>
+            <strong>At least one checkpoint must exist.</strong> Checkpoints
+            are stored under <code>_memory/checkpoints/</code>. If no
+            checkpoints exist, the command reports "No active workflows to
+            resume" and exits.
+          </li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-resume</code></pre>
+        <p>Lists all active checkpoints and lets you pick one.</p>
+
+        <pre><code>/gaia-resume dev-story-E3-S7</code></pre>
+        <p>Jumps directly to the named checkpoint without listing.</p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">List active checkpoints</span>
+            Scans <code>_memory/checkpoints/</code> for checkpoint files.
+            Archived checkpoints (under <code>completed/</code>) are excluded.
+            Shows each checkpoint's workflow name, step number, and timestamp.
+          </li>
+          <li>
+            <span class="step-title">Select a checkpoint</span>
+            If only one exists, asks you to confirm. If multiple exist, asks
+            you to pick by number. If you provided a workflow name as an
+            argument, skips to that checkpoint directly.
+          </li>
+          <li>
+            <span class="step-title">Read the checkpoint</span>
+            Loads the checkpoint data: which workflow was running, which step
+            it reached, what variables were set, and which files were
+            produced.
+          </li>
+          <li>
+            <span class="step-title">Validate file integrity</span>
+            Checks that all files recorded in the checkpoint still exist on
+            disk and have not been modified since the checkpoint was written
+            (using SHA-256 checksums). Three outcomes:
+            <ul>
+              <li><strong>Clean</strong> -- all files match. Proceeds
+                automatically.</li>
+              <li><strong>Drift</strong> -- one or more files changed since
+                the checkpoint. Shows you the affected files and asks:
+                Proceed, Start fresh, or Review the changes.</li>
+              <li><strong>Missing</strong> -- one or more files were deleted.
+                Same three-option prompt.</li>
+            </ul>
+          </li>
+          <li>
+            <span class="step-title">Hand off to the workflow</span>
+            Restores all saved variables and tells you to re-invoke the
+            original command. The workflow picks up at the next step after
+            the checkpoint -- completed work is not re-run.
+          </li>
+        </ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Source</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>workflow-name</code></td>
+              <td>Command argument (optional)</td>
+              <td>The name of the checkpoint to resume (e.g., <code>dev-story-E3-S7</code>). If omitted, lists all active checkpoints.</td>
+            </tr>
+            <tr>
+              <td>Checkpoint files</td>
+              <td><code>_memory/checkpoints/</code></td>
+              <td>Automatically written by GAIA workflows during execution.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <p>
+          This command does not create files. It reads existing checkpoints
+          and hands you back to the interrupted workflow, which produces its
+          own outputs.
+        </p>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>&gt; /gaia-resume
+
+Active checkpoints:
+
+1. dev-story-E3-S7 -- step 7 (green_complete) at 2026-05-06T13:45:22Z
+2. create-prd -- step 4 at 2026-05-06T09:12:05Z
+
+Which checkpoint to resume? (1-2)
+&gt; 1
+
+Reading checkpoint dev-story-E3-S7...
+Validating file integrity...
+  All file checksums match -- safe to resume.
+
+Resuming dev-story at step 8.
+
+Re-invoke: /gaia-dev-story E3-S7
+  (The workflow will skip to step 8 automatically.)</code></pre>
+
+        <h3>With file drift</h3>
+        <pre><code>&gt; /gaia-resume dev-story-E3-S7
+
+Reading checkpoint dev-story-E3-S7...
+Validating file integrity...
+
+  1 changed file since checkpoint:
+  - src/routes/auth.ts -- DRIFT (sha256 does not match)
+
+Choose how to recover:
+  [Proceed]      Resume anyway -- changed files will be re-processed.
+  [Start fresh]  Discard and re-run /gaia-dev-story from the beginning.
+  [Review]       Show the diff for each changed file.
+
+&gt; review
+
+  src/routes/auth.ts:
+    + import { validateToken } from './utils/jwt';
+    (3 lines added, 1 removed)
+
+  [Proceed] [Start fresh] [Review]
+&gt; proceed
+
+Resuming dev-story at step 8.</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <p>
+          Re-invoke the command that was interrupted. <code>/gaia-resume</code>
+          tells you the exact command to run (for example,
+          <code>/gaia-dev-story E3-S7</code>).
+        </p>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>"No active workflows to resume"</h3>
+        <p>
+          No checkpoint files were found under
+          <code>_memory/checkpoints/</code>. Either no workflow has been
+          interrupted, or the checkpoint files were deleted. Start a new
+          workflow with the appropriate command.
+        </p>
+
+        <h3>"Corrupted checkpoint"</h3>
+        <p>
+          The checkpoint file could not be parsed. This can happen if a
+          crash occurred during the checkpoint write. Re-run the original
+          workflow from the beginning, or select an earlier checkpoint if
+          one is available.
+        </p>
+
+        <h3>Files changed since the checkpoint</h3>
+        <p>
+          Someone (or another process) modified files that the workflow
+          had already produced. Choose <strong>Review</strong> to see
+          exactly what changed, then decide whether to proceed or start
+          fresh.
+        </p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a></td>
+              <td>The most common workflow to resume after an interruption.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia.html"><code>/gaia</code></a></td>
+              <td>If no checkpoint exists, use the orchestrator to start a new workflow.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-help.html"><code>/gaia-help</code></a></td>
+              <td>Context-sensitive help if you are unsure what to do next.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/getting-started.html">Back to Getting Started</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

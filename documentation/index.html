@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GAIA Framework Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="index.html" class="active">Home</a></li>
+          <li><a href="index.html#common-pitfalls">Common Pitfalls</a></li>
+          <li><a href="glossary.html">Glossary</a></li>
+          <li><a href="lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="troubleshooting.html">Troubleshooting</a></li>
+          <li><a href="test-environment-yaml.html">test-environment.yaml Reference</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="tutorials/first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="tutorials/configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="tutorials/ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="tutorials/test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="tutorials/environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="tutorials/phase-5-for-non-deployable-projects.html">Phase 5 for Non-Deployable Projects</a></li>
+          <li><a href="tutorials/project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="tutorials/shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="tutorials/shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="tutorials/shape-microservices.html">Shape: Microservices</a></li>
+          <li><a href="tutorials/shape-library.html">Shape: Library</a></li>
+          <li><a href="tutorials/shape-cli.html">Shape: CLI</a></li>
+          <li><a href="tutorials/shape-mobile-app.html">Shape: Mobile App</a></li>
+          <li><a href="tutorials/shape-plugin.html">Shape: Plugin</a></li>
+          <li><a href="tutorials/shape-static-site.html">Shape: Static Site</a></li>
+          <li><a href="tutorials/shape-container-image.html">Shape: Container Image</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="categories/getting-started.html">Getting Started</a></li>
+          <li><a href="categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="categories/planning.html">Planning</a></li>
+          <li><a href="categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="categories/development.html">Development</a></li>
+          <li><a href="categories/testing.html">Testing</a></li>
+          <li><a href="categories/reviews.html">Reviews</a></li>
+          <li><a href="categories/validation.html">Validation</a></li>
+          <li><a href="categories/deployment.html">Deployment</a></li>
+          <li><a href="categories/configuration.html">Configuration</a></li>
+          <li><a href="categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="categories/internal.html">Internal Skills</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+      <header>
+        <h1>GAIA Framework Documentation</h1>
+        <p>
+          GAIA (Generative Agile Intelligence Architecture) is a plugin for
+          Claude Code that brings a full software-delivery lifecycle to your
+          terminal. It provides slash commands for every phase of a project --
+          from brainstorming a product idea, through planning, architecture,
+          sprint management, implementation, testing, code review, and
+          deployment.
+        </p>
+        <p>
+          Each command is a self-contained workflow that reads your project
+          artifacts, performs its task, and writes its outputs back into
+          well-defined locations under your <code>.gaia/artifacts/</code> and
+          <code>.gaia/config/</code> directories (canonical post-ADR-111;
+          pre-ADR-111 projects under <code>docs/</code> and <code>config/</code>
+          continue to work via the framework's three-tier path resolver).
+          Commands are composable: the
+          output of one is the input of the next, forming a coherent chain
+          from idea to production.
+        </p>
+        <p>
+          This documentation covers every command available in the GAIA
+          plugin -- both the user-invocable slash commands you type directly
+          and the internal skills that GAIA calls behind the scenes.
+        </p>
+      </header>
+
+      <!-- First-time callout -->
+      <div class="callout">
+        <p class="callout-title">First time using GAIA?</p>
+        <p>
+          Read the <a href="tutorials/first-30-minutes.html">First 30 Minutes
+          with GAIA</a> walkthrough to go from zero to your first sprint.
+          Or jump straight in: run <code>/gaia-init</code> to bootstrap your
+          project configuration, then <code>/gaia-help</code> to see what to
+          do next based on your project's current state.
+        </p>
+      </div>
+
+      <!-- Lifecycle Diagram -->
+      <section id="lifecycle">
+        <h2>The GAIA Lifecycle</h2>
+        <p>
+          Every GAIA project flows through five phases. Each phase has its own
+          commands and produces specific <a href="glossary.html#artifact">artifacts</a>.
+          You do not need to run every command in every phase -- GAIA adapts
+          to your project's needs.
+        </p>
+        <table class="lifecycle-table">
+          <thead>
+            <tr>
+              <th style="width:5%">#</th>
+              <th style="width:20%">Phase</th>
+              <th style="width:40%">Key Commands</th>
+              <th style="width:35%">Artifacts Produced</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="phase-num">1</span></td>
+              <td><strong>Analysis</strong></td>
+              <td>
+                <a href="commands/gaia-brainstorm.html"><code>/gaia-brainstorm</code></a>,
+                <a href="commands/gaia-market-research.html"><code>/gaia-market-research</code></a>,
+                <a href="commands/gaia-domain-research.html"><code>/gaia-domain-research</code></a>,
+                <a href="commands/gaia-tech-research.html"><code>/gaia-tech-research</code></a>,
+                <a href="commands/gaia-product-brief.html"><code>/gaia-product-brief</code></a>
+              </td>
+              <td>
+                <code>brainstorm-{slug}.md</code>,
+                <code>market-research.md</code>,
+                <code>product-brief.md</code>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="phase-num">2</span></td>
+              <td><strong>Planning</strong></td>
+              <td>
+                <a href="commands/gaia-create-prd.html"><code>/gaia-create-prd</code></a>,
+                <a href="commands/gaia-create-ux.html"><code>/gaia-create-ux</code></a>,
+                <a href="commands/gaia-val-validate.html"><code>/gaia-val-validate</code></a>
+              </td>
+              <td>
+                <code>prd.md</code>,
+                <code>ux-design.md</code>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="phase-num">3</span></td>
+              <td><strong>Solutioning</strong></td>
+              <td>
+                <a href="commands/gaia-create-arch.html"><code>/gaia-create-arch</code></a>,
+                <a href="commands/gaia-create-epics.html"><code>/gaia-create-epics</code></a>,
+                <a href="commands/gaia-threat-model.html"><code>/gaia-threat-model</code></a>,
+                <a href="commands/gaia-infra-design.html"><code>/gaia-infra-design</code></a>,
+                <a href="commands/gaia-trace.html"><code>/gaia-trace</code></a>
+              </td>
+              <td>
+                <code>architecture.md</code>,
+                <code>epics-and-stories.md</code>,
+                <code>threat-model.md</code>,
+                <code>traceability-matrix.md</code>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="phase-num">4</span></td>
+              <td><strong>Implementation</strong></td>
+              <td>
+                <a href="commands/gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a>,
+                <a href="commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a>,
+                <a href="commands/gaia-review-all.html"><code>/gaia-review-all</code></a>,
+                <a href="commands/gaia-atdd.html"><code>/gaia-atdd</code></a>
+              </td>
+              <td>
+                <code>sprint-status.yaml</code>,
+                story files under <code>.gaia/artifacts/implementation-artifacts/</code>,
+                review reports
+              </td>
+            </tr>
+            <tr>
+              <td><span class="phase-num">5</span></td>
+              <td><strong>Deployment</strong></td>
+              <td>
+                <a href="commands/gaia-release-plan.html"><code>/gaia-release-plan</code></a>,
+                <a href="commands/gaia-deploy-checklist.html"><code>/gaia-deploy-checklist</code></a>,
+                <a href="commands/gaia-deploy.html"><code>/gaia-deploy</code></a>,
+                <a href="commands/gaia-post-deploy.html"><code>/gaia-post-deploy</code></a>
+              </td>
+              <td>
+                <code>release-plan.md</code>,
+                <code>deploy-checklist.md</code>,
+                post-deploy health report
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          For a hands-on walkthrough of Phases 1--4, see the
+          <a href="tutorials/first-30-minutes.html">First 30 Minutes</a>
+          tutorial. For multi-command recipes, see
+          <a href="recipes.html">Common Workflows</a>.
+        </p>
+        <p>
+          <strong><a href="lifecycle-diagram.html">See the full activity
+          diagram</a></strong> -- an interactive one-page view of every command,
+          gate, and decision point across all five phases. Every box links to
+          that command's documentation.
+        </p>
+      </section>
+
+      <!-- How to use this documentation -->
+      <section>
+        <h2>How to use this documentation</h2>
+        <p>
+          Commands are organized into <strong>13 categories</strong> that
+          mirror the phases of a typical project. Each category page lists
+          every command in that group with a one-line summary. Click through
+          to a command's detail page for full documentation: what it does,
+          when to use it, prerequisites, step-by-step workflow, inputs,
+          outputs, examples, and troubleshooting.
+        </p>
+        <p>
+          Commands labeled <span class="tag tag-user">user-facing</span> are
+          ones you invoke directly by typing the slash command in Claude Code.
+          Commands labeled <span class="tag tag-internal">internal</span> are
+          called automatically by other commands -- you will never need to
+          type them, but understanding what they do can help when debugging or
+          customizing workflows.
+          Commands labeled <span class="tag tag-deprecated">deprecated</span>
+          still work but redirect to a newer replacement.
+        </p>
+        <p>
+          If you encounter GAIA-specific terminology -- terms like
+          <em>story</em>, <em>sprint</em>, <em>artifact</em>, or
+          <em>gate</em> -- see the <a href="glossary.html">Glossary</a>.
+        </p>
+      </section>
+
+      <!-- Common Pitfalls (AF-2026-05-24-14 / Test02 F-19) -->
+      <section id="common-pitfalls">
+        <h2>Common pitfalls</h2>
+        <p>
+          These are the highest-impact friction points dogfood-testing
+          surfaced. Each one has a documented workaround or escape hatch.
+        </p>
+        <ul>
+          <li>
+            <strong>Strict-mode lifecycle gates have an escape hatch.</strong>
+            When <code>/gaia-create-arch</code>, <code>/gaia-dev-story</code>,
+            or <code>/gaia-sprint-plan</code> halts on a missing prerequisite
+            (e.g., no threat model, no traceability matrix), you can either
+            run the missing skill OR record a bypass via
+            <code>--bypass &lt;skill&gt; --reason "&lt;text&gt;"</code>.
+            For a temporary OFF-switch on a single invocation, set the
+            <code>GAIA_STRICT_LIFECYCLE=0</code> env var.
+          </li>
+          <li>
+            <strong>test-strategy vs test-plan filename naming.</strong>
+            <code>/gaia-test-strategy --plan</code> writes
+            <code>test-strategy.md</code>, but downstream gates (especially
+            <code>/gaia-create-epics</code>) require <code>test-plan.md</code>.
+            The finalize step now writes a sibling <code>test-plan.md</code>
+            alias automatically so the naming mismatch is resolved at the
+            producer side. Pre-fix projects may have a manual
+            <code>cp test-strategy.md test-plan.md</code> in their workflow
+            &mdash; you can remove it.
+          </li>
+          <li>
+            <strong><code>/gaia-sprint-review</code> is NOT YOLO-able by design.</strong>
+            The skill declares <code>yolo_steps: []</code> because its three
+            stakeholder-confirmation boundaries (Steps 3a, 4a, 8) require
+            human judgment. For unattended pipelines, script the boundary
+            writes directly: <code>sprint-state.sh transition --sprint &lt;id&gt; --to review</code>,
+            write the sprint-review artifact + Val sentinel, then invoke
+            <code>finalize.sh</code>.
+          </li>
+          <li>
+            <strong>Greenfield bootstrap: <code>/gaia-sprint-plan</code> needs per-story files first.</strong>
+            On a fresh project, <code>/gaia-sprint-plan</code> requires
+            individual story files under
+            <code>.gaia/artifacts/implementation-artifacts/epic-*/stories/</code>.
+            The intended bootstrap flow is to run <code>/gaia-create-story
+            E1-S1</code> for each story you want to sprint, then invoke
+            <code>/gaia-sprint-plan</code>. A future <code>/gaia-create-story --bulk</code>
+            mode will let you materialize all stories from
+            <code>epics-and-stories.md</code> in one call.
+          </li>
+          <li>
+            <strong>Default artifact paths are <code>.gaia/</code>, not <code>docs/</code>.</strong>
+            Post-ADR-111 the canonical layout is
+            <code>.gaia/artifacts/&lt;phase&gt;-artifacts/</code> and
+            <code>.gaia/config/project-config.yaml</code>. Pre-ADR-111
+            projects under <code>docs/</code> continue to work via the
+            three-tier path resolver, but any new project should expect
+            the <code>.gaia/</code> layout.
+          </li>
+        </ul>
+      </section>
+
+      <!-- Category Grid -->
+      <section>
+        <h2>Command categories</h2>
+        <div class="card-grid">
+
+          <article class="card">
+            <h3><a href="categories/getting-started.html">Getting Started</a></h3>
+            <p>Bootstrap a new project, get context-sensitive help, onboard an existing codebase, or resume a previous session.</p>
+            <span class="card-count">7 commands</span>
+          </article>
+
+          <article class="card">
+            <h3><a href="categories/discovery-research.html">Discovery &amp; Research</a></h3>
+            <p>Brainstorm product ideas, conduct market and domain research, evaluate technologies, and produce a product brief.</p>
+            <span class="card-count">6 commands</span>
+          </article>
+
+          <article class="card">
+            <h3><a href="categories/planning.html">Planning</a></h3>
+            <p>Create and edit PRDs, architecture docs, UX designs, threat models, infrastructure plans, and break work into epics and stories.</p>
+            <span class="card-count">14 commands</span>
+          </article>
+
+          <article class="card">
+            <h3><a href="categories/sprint-management.html">Sprint Management</a></h3>
+            <p>Plan sprints, track status, manage scope changes, run retrospectives, and review technical debt.</p>
+            <span class="card-count">8 commands</span>
+          </article>
+
+          <article class="card">
+            <h3><a href="categories/development.html">Development</a></h3>
+            <p>Implement user stories with TDD, create quick specs, fix validation issues, and triage findings.</p>
+            <span class="card-count">7 commands</span>
+          </article>
+
+          <article class="card">
+            <h3><a href="categories/testing.html">Testing</a></h3>
+            <p>Design test strategies, generate acceptance tests, automate test coverage, run tests across environments, and analyze gaps.</p>
+            <span class="card-count">17 commands</span>
+          </article>
+
+          <article class="card">
+            <h3><a href="categories/reviews.html">Reviews</a></h3>
+            <p>Pre-merge quality gates: code, security, performance, accessibility, mobile, API, and dependency reviews.</p>
+            <span class="card-count">12 commands</span>
+          </article>
+
+          <article class="card">
+            <h3><a href="categories/validation.html">Validation</a></h3>
+            <p>Validate artifacts against your codebase, check story completeness, verify framework consistency, and manage ground truth.</p>
+            <span class="card-count">9 commands</span>
+          </article>
+
+          <article class="card">
+            <h3><a href="categories/deployment.html">Deployment</a></h3>
+            <p>Deploy to environments, verify post-deployment health, plan rollbacks, cut releases, and generate changelogs.</p>
+            <span class="card-count">7 commands</span>
+          </article>
+
+          <article class="card">
+            <h3><a href="categories/configuration.html">Configuration</a></h3>
+            <p>View and edit project configuration, manage CI pipelines, configure tool adapters, and set compliance regimes.</p>
+            <span class="card-count">16 commands</span>
+          </article>
+
+          <article class="card">
+            <h3><a href="categories/documentation.html">Documentation &amp; Editorial</a></h3>
+            <p>Generate project documentation, split and merge large documents, summarize content, and get editorial reviews.</p>
+            <span class="card-count">9 commands</span>
+          </article>
+
+          <article class="card">
+            <h3><a href="categories/creative.html">Creative &amp; Collaboration</a></h3>
+            <p>Run design thinking sessions, brainstorming, multi-agent discussions, pitch decks, and storytelling workshops.</p>
+            <span class="card-count">11 commands</span>
+          </article>
+
+          <article class="card">
+            <h3><a href="categories/internal.html">Internal Skills</a></h3>
+            <p>Behind-the-scenes skills loaded automatically by other commands. Not invoked directly, but documented for reference.</p>
+            <span class="card-count">16 skills</span>
+          </article>
+
+          <article class="card" style="border-color: var(--color-accent); border-width: 2px;">
+            <h3><a href="recipes.html">Common Workflows</a></h3>
+            <p>Step-by-step recipes for frequent multi-command workflows: greenfield bootstrap, brownfield onboard, quick fixes, full deploy, and more.</p>
+            <span class="card-count">8 recipes</span>
+          </article>
+
+          <article class="card" style="border-color: var(--color-accent); border-width: 2px;">
+            <h3><a href="tutorials/first-30-minutes.html">First 30 Minutes</a></h3>
+            <p>A narrative walkthrough taking you from zero to your first sprint, touching every major phase of the GAIA lifecycle.</p>
+            <span class="card-count">tutorial</span>
+          </article>
+
+          <article class="card" style="border-color: var(--color-accent); border-width: 2px;">
+            <h3><a href="test-environment-yaml.html">test-environment.yaml Reference</a></h3>
+            <p>Full schema reference for the Test Execution Bridge manifest -- canonical path, every field, copy-ready examples for Node, Python, Go, Java, Flutter, Bash, and Rust.</p>
+            <span class="card-count">reference</span>
+          </article>
+
+        </div>
+      </section>
+
+      <footer class="page-footer">
+        <p>GAIA Framework Documentation</p>
+      </footer>
+
+    </main>
+  </div>
+</body>
+</html>

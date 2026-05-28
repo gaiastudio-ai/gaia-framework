@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-changelog - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/deployment.html">Deployment</a><span class="separator">/</span>
+        /gaia-changelog
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-changelog</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/deployment.html">Deployment</a></dd>
+          <dt>Lifecycle phase:</dt><dd>5 -- Deployment</dd>
+          <dt>Arguments:</dt><dd><code>[version]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-changelog</code> generates a changelog entry from git history. It gathers commits since the last release tag, groups them by <a href="https://keepachangelog.com/">Keep a Changelog</a> category (Added, Changed, Fixed, Deprecated, Removed, Security), cross-references story keys back to story files, and writes or appends to CHANGELOG.md.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul><li>You are preparing a release and need a changelog entry.</li><li>You want to document what changed since the last tagged version.</li></ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>Git history must be available.</strong> The command reads commits since the last release tag.</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-changelog
+/gaia-changelog 1.3.0</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list"><li><span class="step-title">Gather sources</span> Reads git commits since the last release tag. If no tags exist, reads the entire history.</li><li><span class="step-title">Validate version</span> If a version argument is provided, validates it as a valid semver string or the literal &quot;Unreleased&quot;.</li><li><span class="step-title">Categorize changes</span> Groups each commit into Added (feat:), Changed (refactor:, chore:), Fixed (fix:), Deprecated, Removed (BREAKING CHANGE), or Security. Commits without a conventional-commit prefix go into an Uncategorized group.</li><li><span class="step-title">Format entry</span> Renders the entry in Keep a Changelog format with story-key cross-references linking back to story files.</li><li><span class="step-title">Write to CHANGELOG.md</span> Appends the new entry to the repository root CHANGELOG.md, inserting it above the previous top entry.</li></ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>version</code></td><td>Command argument (optional)</td><td>The version number (semver) or &quot;Unreleased&quot;. Defaults to Unreleased if omitted.</td></tr></tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Changelog entry</td><td><code>CHANGELOG.md</code></td><td>New entry appended to the changelog file.</td></tr></tbody></table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-changelog 1.3.0
+
+Gathering commits since v1.2.0...
+  42 commits found, 3 merges excluded.
+
+## [1.3.0] -- 2026-05-07
+
+### Added
+- User authentication with email/password -- E3-S7
+- Token refresh endpoint -- E3-S8
+
+### Fixed
+- Login redirect on expired session -- E3-S9
+
+Written to CHANGELOG.md</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul><li><a href="gaia-release.html"><code>/gaia-release</code></a> -- uses the changelog entry in the GitHub Release notes.</li></ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>No commits since last tag</h3><p>The changelog entry will show a note that no changes occurred since the previous version.</p><h3>Expected semver or Unreleased</h3><p>The version argument must be a valid semver string (e.g., 1.3.0) or the literal &quot;Unreleased&quot;.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-release.html"><code>/gaia-release</code></a></td><td>Creates the GitHub Release using this changelog entry.</td></tr><tr><td><a href="gaia-release-plan.html"><code>/gaia-release-plan</code></a></td><td>The release plan references the changelog for communication.</td></tr></tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/deployment.html">Back to Deployment</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-create-stakeholder - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/creative.html">Creative &amp; Collaboration</a><span class="separator">/</span>
+        /gaia-create-stakeholder
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-create-stakeholder</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/creative.html">Creative &amp; Collaboration</a></dd>
+          <dt>Lifecycle phase:</dt><dd>Any</dd>
+          <dt>Arguments:</dt><dd><code>[name]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-create-stakeholder</code> creates a new stakeholder persona file for use in Party Mode and meetings. Each stakeholder has a name, role, expertise, personality, and optional perspective/tags. The file is saved to <code>custom/stakeholders/</code> where Party Mode discovers it.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You are preparing for a <a href="gaia-party.html"><code>/gaia-party</code></a> discussion and want a specific domain expert, decision-maker, or end-user voice in the room.</li>
+          <li>You want to capture a recurring persona (e.g., a regulatory officer, a power user, an operations manager) so you can reuse it across multiple Party Mode sessions without re-entering details each time.</li>
+          <li>You are running design discussions and need user archetypes that represent different viewpoints, priorities, or constraints.</li>
+          <li>You want to model a stakeholder who is unavailable for live sessions but whose perspective should influence decisions.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>No strict prerequisites.</strong> Works best when planning artifacts exist for context.</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-create-stakeholder Maria Santos</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list"><li><span class="step-title">Ensure directory exists</span> Creates <code>custom/stakeholders/</code> if it does not exist.</li><li><span class="step-title">Collect inputs</span> Prompts for name, role, expertise, personality (required) and perspective, tags (optional).</li><li><span class="step-title">Validate</span> Checks the 50-file cap and case-insensitive duplicate name detection.</li><li><span class="step-title">Write file</span> Generates the stakeholder file with YAML frontmatter and a Background section at <code>custom/stakeholders/{slug}.md</code>.</li></ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>name</code></td><td>Command argument (optional)</td><td>The stakeholder's display name. If omitted, the command prompts for it.</td></tr></tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Stakeholder file</td><td><code>custom/stakeholders/{slug}.md</code></td><td>Markdown file with YAML frontmatter (name, role, expertise, personality, optional perspective/tags) and a Background section.</td></tr></tbody></table>
+        <div class="callout">
+          <p class="callout-title">Hard limits</p>
+          <p>The <code>custom/stakeholders/</code> directory enforces a <strong>50-file cap</strong> and a <strong>100-line per-file limit</strong> (FR-164). The command will refuse to create a new stakeholder if either limit would be exceeded.</p>
+        </div>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-create-stakeholder
+
+Name: Maria Santos
+Role: Housekeeper Manager
+Expertise: Room turnover logistics
+Personality: Pragmatic, detail-oriented
+Perspective (optional): Operations-first
+Tags (optional): operations, hospitality
+
+Created custom/stakeholders/maria-santos.md</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>Create additional stakeholders to assemble a diverse discussion panel, then run <a href="gaia-party.html"><code>/gaia-party</code></a> to start a multi-agent discussion with them.</li>
+          <li>Use <a href="gaia-meeting.html"><code>/gaia-meeting</code></a> for a more structured facilitated session with the new stakeholder.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>Name not provided</h3><p>The command prompts for the stakeholder name interactively if no argument is given.</p>
+        <h3>"50-file cap reached"</h3><p>Delete unused stakeholder files from <code>custom/stakeholders/</code> before creating a new one.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-party.html"><code>/gaia-party</code></a></td><td>Uses stakeholder personas in group discussions.</td></tr><tr><td><a href="gaia-meeting.html"><code>/gaia-meeting</code></a></td><td>Uses stakeholder personas in structured meetings.</td></tr></tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/creative.html">Back to Creative &amp; Collaboration</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shape: Mobile App - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+          <li><a href="shape-plugin.html">Shape: Plugin</a></li>
+          <li><a href="shape-library.html">Shape: Library</a></li>
+          <li><a href="shape-cli.html">Shape: CLI</a></li>
+          <li><a href="shape-mobile-app.html" class="active">Shape: Mobile App</a></li>
+          <li><a href="shape-container-image.html">Shape: Container Image</a></li>
+          <li><a href="shape-static-site.html">Shape: Static Site</a></li>
+          <li><a href="phase-5-for-non-deployable-projects.html">Phase 5 for Non-Deployable Projects</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#when">When this shape applies</a></li>
+          <li><a href="#stub">STUB caveat (FR-527)</a></li>
+          <li><a href="#config">project-config.yaml</a></li>
+          <li><a href="#routing">Phase 5 routing</a></li>
+          <li><a href="#publish">Publish to the app stores</a></li>
+          <li><a href="#worked-when">You'll know it worked when</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        <a href="project-shapes-overview.html">Project Shapes</a>
+        <span class="separator">/</span>
+        Mobile App
+      </nav>
+
+      <h1>Shape: Mobile App</h1>
+      <p>
+        A mobile app ships to the App Store (iOS), the Play Store (Android), or both. The release
+        surface is store-side review followed by phased rollout -- not a deploy you trigger from CI.
+        GAIA models this with <code>kind: distribution-only</code> + <code>channel: mobile-app</code>
+        + three required sub-fields: <code>platform</code>, <code>store_id</code>,
+        <code>review_required</code>.
+      </p>
+
+      <section id="stub">
+        <h2>STUB caveat (FR-527)</h2>
+        <p>
+          The <code>publish-mobile-app</code> adapter ships as a STUB in this iteration. The
+          adapter validates the configuration and emits the App Store Connect / Play Console
+          submission payload, but the actual API integration (TestFlight upload, Google Play Internal
+          Track, screenshot metadata propagation) is deferred to a follow-up cascade per FR-527.
+        </p>
+        <p>
+          What works today: schema validation, <code>/gaia-publish</code> dispatch, the channel
+          appears in <code>/gaia-help</code> Phase 5 routing as a publish-primary suggestion. What
+          requires manual follow-up: actually pushing the binary to the store after the
+          <code>release_workflow</code> CI run completes.
+        </p>
+      </section>
+
+      <section id="config">
+        <h2>project-config.yaml</h2>
+        <pre><code>environments:
+  - id: appstore
+    kind: distribution-only
+
+distribution:
+  channel: mobile-app
+  registry: https://itunesconnect.apple.com   # or play.google.com/console
+  manifest: ios/MyApp.xcodeproj/project.pbxproj
+  release_workflow: gaia-release.yml
+  platform: ios            # ios | android | both
+  store_id: com.example.myapp
+  review_required: true</code></pre>
+        <p>
+          All three sub-fields (<code>platform</code>, <code>store_id</code>,
+          <code>review_required</code>) are required by the <code>mobile-app</code> if/then
+          allOf branch in <code>project-config.schema.json</code>. Missing any one is rejected by
+          <code>/gaia-config-validate</code>. For a dual-platform release, set <code>platform: both</code>;
+          provide a <code>store_id</code> that resolves on both stores (bundle identifier).
+        </p>
+      </section>
+
+      <section id="routing">
+        <h2>Phase 5 routing</h2>
+        <p>
+          With <code>kind: distribution-only</code> + a <code>distribution:</code> block, the
+          Phase 5 router emits <code>publish-primary</code> and suggests <code>/gaia-publish</code>.
+          Mobile-app deploys don't have a staging URL, so <code>/gaia-deploy</code> and
+          <code>/gaia-post-deploy</code> both refuse with the canonical
+          <code>use /gaia-publish instead</code> guidance.
+        </p>
+      </section>
+
+      <section id="publish">
+        <h2>Publish to the app stores</h2>
+        <pre><code>/gaia-publish</code></pre>
+        <p>
+          The orchestrator dispatches <code>publish-mobile-app</code> (the STUB adapter), which
+          validates the per-channel sub-fields and emits the submission payload. The
+          <code>release_workflow</code> handles the actual store-side push -- typically a CI
+          workflow that runs <code>fastlane</code> against App Store Connect + Play Console.
+          <code>review_required: true</code> blocks the release on store review approval; set
+          <code>false</code> only if you're targeting internal-track / TestFlight beta groups.
+        </p>
+      </section>
+
+      <section id="worked-when">
+        <h2>You'll know it worked when</h2>
+        <ul>
+          <li><code>/gaia-config-validate</code> exits 0 with all three mobile-app sub-fields present.</li>
+          <li><code>/gaia-help</code> suggests <code>/gaia-publish</code> on the Phase 5 row.</li>
+          <li>A <code>/gaia-publish</code> run validates the schema and writes the submission payload (STUB phase of FR-527 -- store-side integration deferred).</li>
+          <li>Your CI workflow at <code>release_workflow</code> picks up the payload and posts to the App Store / Play Console via fastlane (or your store-side tool of choice).</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

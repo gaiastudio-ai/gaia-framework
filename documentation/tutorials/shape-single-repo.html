@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shape: Single Repo - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html" class="active">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#when">When this shape applies</a></li>
+          <li><a href="#folder-layout">Folder layout</a></li>
+          <li><a href="#config">Configuration</a></li>
+          <li><a href="#ci">CI setup</a></li>
+          <li><a href="#examples">Language-specific examples</a></li>
+          <li><a href="#whats-next">What to read next</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        <a href="project-shapes-overview.html">Project Shapes</a>
+        <span class="separator">/</span>
+        Single Repo
+      </nav>
+
+      <h1>Shape: Single Repo</h1>
+      <p>
+        A single-repo project has one language, one deployable unit, and one
+        directory of source code. This is the simplest project shape and needs
+        the least configuration.
+      </p>
+
+      <section id="when">
+        <h2>When this shape applies</h2>
+        <p>
+          Use the single-repo shape when your project is:
+        </p>
+        <ul>
+          <li>A backend service in one language (Python, Go, Java, Rust, etc.).</li>
+          <li>A command-line tool.</li>
+          <li>A library or SDK published to a package registry.</li>
+          <li>A web application built with a server-rendered framework (Rails, Django, Laravel, Phoenix).</li>
+          <li>A mobile app in a single framework (Flutter, React Native, SwiftUI, Kotlin).</li>
+        </ul>
+        <p>
+          If your project has a separate frontend and backend, see
+          <a href="shape-fullstack.html">Shape: Full-Stack</a> instead.
+        </p>
+      </section>
+
+      <section id="folder-layout">
+        <h2>Folder layout</h2>
+        <p>
+          A typical single-repo project looks like this:
+        </p>
+        <pre><code>my-project/
+  .gaia/
+    config/
+      project-config.yaml
+  docs/
+    planning-artifacts/
+    implementation-artifacts/
+  src/           # (or lib/, app/, cmd/ -- depends on the language)
+  tests/         # (or test/, spec/, __tests__/)
+  package.json   # (or pyproject.toml, go.mod, Cargo.toml, etc.)
+  README.md</code></pre>
+        <p>
+          The key point: there is one source directory and one test directory.
+          GAIA's <code>stacks</code> configuration has a single entry.
+        </p>
+      </section>
+
+      <section id="config">
+        <h2>Configuration</h2>
+        <p>
+          Here is a complete <code>project-config.yaml</code> for a single-repo
+          project. This example uses a Node.js service, but the structure is
+          the same for any language.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+project:
+  name: my-service
+  description: A REST API for managing widgets
+
+stacks:
+  - name: api
+    language: typescript
+    framework: express
+    path: .
+    test_command: npm test
+    build_command: npm run build
+    lint_command: npm run lint
+
+platforms:
+  - web
+
+ci_cd:
+  platform: github-actions
+  preset: small-team
+  promotion_chain:
+    - staging
+    - production
+
+environments:
+  staging:
+    url: https://staging.my-service.example.com
+    auto_deploy: true
+  production:
+    url: https://my-service.example.com
+    auto_deploy: false
+    requires_approval: true
+
+test_execution:
+  default_command: npm test
+  timeout_seconds: 120
+  coverage:
+    enabled: true
+    threshold: 80</code></pre>
+        <p>
+          Key points:
+        </p>
+        <ul>
+          <li><code>stacks</code> has exactly one entry.</li>
+          <li><code>path: .</code> means the stack lives at the repository root. No path-based CI filters needed.</li>
+          <li><code>platforms</code> has one entry. For a CLI tool, use <code>cli</code>. For a mobile app, use <code>ios</code>, <code>android</code>, or <code>mobile</code>.</li>
+        </ul>
+        <p>
+          Edit the stacks section with
+          <a href="../commands/gaia-config-stack.html"><code>/gaia-config-stack</code></a>
+          and the platforms section with
+          <a href="../commands/gaia-config-platform.html"><code>/gaia-config-platform</code></a>.
+        </p>
+      </section>
+
+      <section id="ci">
+        <h2>CI setup</h2>
+        <p>
+          With a single stack and no path filters, CI is straightforward. Every
+          change triggers the same test suite.
+        </p>
+        <pre><code>/gaia-ci-setup</code></pre>
+        <p>
+          For a solo developer, the <code>solo</code> preset generates a single
+          workflow that runs on push to <code>main</code>. For a small team,
+          the <code>small-team</code> preset generates a PR-triggered workflow
+          with concurrency cancellation.
+        </p>
+        <p>
+          Because there is only one stack, you do not need path filters,
+          parallel jobs, or matrix builds. One job runs lint, tests, and build
+          in sequence.
+        </p>
+      </section>
+
+      <section id="examples">
+        <h2>Language-specific examples</h2>
+
+        <h3>Python service</h3>
+        <pre><code>stacks:
+  - name: api
+    language: python
+    framework: fastapi
+    path: .
+    test_command: pytest --cov=src --cov-report=term-missing
+    build_command: docker build -t my-service .
+    lint_command: ruff check src/</code></pre>
+
+        <h3>Go CLI tool</h3>
+        <pre><code>stacks:
+  - name: cli
+    language: go
+    path: .
+    test_command: go test ./...
+    build_command: go build -o bin/mytool cmd/mytool/main.go
+    lint_command: golangci-lint run</code></pre>
+
+        <h3>Rails web application</h3>
+        <pre><code>stacks:
+  - name: web
+    language: ruby
+    framework: rails
+    path: .
+    test_command: bundle exec rspec
+    build_command: bundle exec rails assets:precompile
+    lint_command: bundle exec rubocop</code></pre>
+
+        <h3>Flutter mobile app</h3>
+        <pre><code>stacks:
+  - name: mobile
+    language: dart
+    framework: flutter
+    path: .
+    test_command: flutter test
+    build_command: flutter build apk
+    lint_command: flutter analyze
+
+platforms:
+  - android
+  - ios</code></pre>
+        <p>
+          For mobile apps, list each target platform separately. This tells
+          GAIA to include platform-specific testing (device matrix, responsive
+          testing) in your test strategy. See
+          <a href="../commands/gaia-config-device-target.html"><code>/gaia-config-device-target</code></a>
+          for device matrix configuration.
+        </p>
+      </section>
+
+      <section id="whats-next">
+        <h2>What to read next</h2>
+        <ul>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a> -- setting up triggers and concurrency for your single-stack CI.</li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a> -- configuring test execution and the Test Execution Bridge.</li>
+          <li><a href="environments-and-promotion.html">Environments and Promotion</a> -- setting up dev, staging, and production.</li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a> -- comparing all shapes.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

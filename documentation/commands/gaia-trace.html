@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>/gaia-trace - GAIA Documentation</title><link rel="stylesheet" href="../styles.css"></head>
+<body><div class="page-wrapper">
+<aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#arguments">Arguments</a></li><li><a href="#wire-verification">Wire-verification gate</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#examples">Examples</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/testing.html">Testing</a><span class="separator">/</span>/gaia-trace</nav>
+      <header class="command-header"><div class="command-title"><h1>/gaia-trace</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/testing.html">Testing</a></dd><dt>Lifecycle phase:</dt><dd>3 -- Solutioning</dd><dt>Arguments:</dt><dd><code>None</code></dd></dl></header>
+
+      <section id="arguments"><h2>Arguments</h2>
+        <p>This command takes no arguments. All inputs are discovered from the project file layout: the PRD, epics-and-stories, and test plan are resolved via path-fallback rules (flat and strategy/ placements per ADR-072).</p>
+      </section>
+
+      <section id="wire-verification">
+        <h2>Wire-verification gate (E95-S1, NFR-073)</h2>
+        <p>As of PR #773 (E95-S1), the traceability matrix includes a <code>surface_type</code> column in both the FR and NFR tables. This column classifies each requirement's user-visible delivery surface using the NFR-073 taxonomy:</p>
+        <table>
+          <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>none</code></td><td>Pure infrastructure, refactoring, or documentation. Exempt from wire-verification.</td></tr>
+            <tr><td><code>command</code></td><td>Delivered as a slash command or CLI invocation.</td></tr>
+            <tr><td><code>warning</code></td><td>Delivered as a user-visible warning or advisory message.</td></tr>
+            <tr><td><code>output</code></td><td>Delivered as generated output (files, reports, artifacts).</td></tr>
+            <tr><td><code>config</code></td><td>Delivered as a configuration change.</td></tr>
+            <tr><td><code>ui</code></td><td>Delivered as a user interface element.</td></tr>
+          </tbody>
+        </table>
+        <p><strong>Enforcement (Step 6c):</strong> when any FR/NFR has <code>surface_type != none</code> AND zero linked integration-test rows, the <code>wire-verification-emit.sh</code> helper:</p>
+        <ol>
+          <li>Emits a BLOCKED-severity finding to stderr listing all violating FR/NFR IDs.</li>
+          <li>Writes <code>FAILED</code> into the canonical "Test Review" row of the story's Review Gate table via <code>review-gate.sh update</code> (pathway-i).</li>
+          <li>ADR-054's existing dominance rule (any FAILED = composite BLOCKED) automatically refuses the <code>review</code> to <code>done</code> transition.</li>
+        </ol>
+        <p><strong>Forward-only adoption:</strong> stories without a <code>surface_type:</code> frontmatter field are treated as <code>surface_type: none</code> and produce no findings. Existing stories are tolerated without backfill.</p>
+        <p><strong>FAILED does not auto-flip:</strong> a clean re-run of <code>/gaia-trace</code> does not reset a FAILED Test Review verdict to PASSED. The operator must re-run <code>/gaia-run-all-reviews</code> to restore the gate.</p>
+      </section>
+
+      <section id="what-it-does"><h2>What it does</h2>
+        <p><code>/gaia-trace</code> generates a traceability matrix that maps every PRD requirement (FR and NFR) to its implementing <a href="../glossary.html#story">story</a> and covering test cases. It identifies gaps where requirements lack test coverage, flags orphan tests without requirement mappings, and computes an implementation-readiness gate decision.</p>
+      </section>
+
+      <section id="when-to-use"><h2>When to use it</h2>
+        <ul>
+          <li>You need to verify that all PRD requirements have at least one test covering them.</li>
+          <li>You want a single document showing the requirement-to-story-to-test chain for audit or review.</li>
+          <li>You are preparing for sprint planning and want to confirm implementation readiness.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites"><h2>Prerequisites</h2>
+        <ul>
+          <li><strong>A PRD must exist</strong> at <code>.gaia/artifacts/planning-artifacts/prd.md</code> with FR/NFR requirements. Run <a href="gaia-create-prd.html"><code>/gaia-create-prd</code></a> first if missing.</li>
+          <li><strong>Epics and stories should exist</strong> at <code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code> for the requirement-to-story mapping.</li>
+          <li><strong>A test plan is recommended</strong> at <code>.gaia/artifacts/planning-artifacts/test-plan.md</code> (canonical post-E105-S2 / ADR-127 §7.2 location) for the story-to-test mapping. Legacy <code>.gaia/artifacts/test-artifacts/test-plan.md</code> is read-compat for pre-migration projects.</li>
+        </ul>
+        <aside class="callout"><strong>test-plan.md ≠ test-strategy.md.</strong> The two docs are different and live side-by-side under <code>.gaia/artifacts/planning-artifacts/</code>:
+          <ul>
+            <li><code>test-plan.md</code> — the per-FR <strong>test-case catalogue</strong> (one row per FR/NFR, mapped to story + test cases). This skill produces it.</li>
+            <li><code>test-strategy.md</code> — the high-level <strong>strategy doc</strong> (risk assessment, test levels, pyramid ratios, coverage targets, quality gates). Produced by <a href="gaia-test-strategy.html"><code>/gaia-test-strategy --plan</code></a>.</li>
+          </ul>
+        </aside>
+      </section>
+
+      <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-trace</code></pre></section>
+
+      <section id="step-by-step"><h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Load requirements</span> Reads the PRD and extracts all FR-xxx and NFR-xxx identifiers as matrix rows. Reads epics-and-stories.md to build the FR/NFR-to-story mapping.</li>
+          <li><span class="step-title">Load test inventory</span> Scans test-plan.md for test case IDs and their story/requirement mappings. Records test type (Unit, Integration, E2E, Manual, Performance, Security, Accessibility).</li>
+          <li><span class="step-title">Build matrix</span> Constructs the FR requirements matrix (FR ID, Description, <strong>surface_type</strong>, Stories, test coverage per type, coverage percentage) and the NFR requirements matrix (NFR ID, Description, <strong>surface_type</strong>, Category, Target, Tests, Status). The <code>surface_type</code> column (E95-S1, NFR-073) is read from each linked story's frontmatter; stories without the field default to <code>none</code>.</li>
+          <li><span class="step-title">Gap analysis</span> Identifies requirements with no implementing story, requirements with stories but no tests, orphan tests with no requirement mapping, and high-risk stories without <a href="../glossary.html#atdd">ATDD</a> scenarios.</li>
+          <li><span class="step-title">Generate matrix</span> Writes the compiled traceability matrix with FR table, NFR table, story-to-AC detail, gap summary, and coverage statistics.</li>
+          <li><span class="step-title">Gate verification</span> Invokes the validate-gate script to confirm the matrix was written successfully. Reports PASS, BLOCKED, or CONDITIONAL based on coverage of high-risk requirements.</li>
+          <li><span class="step-title">Dispatch-verb enforcement (Step 6b)</span> For each story walked, runs <code>trace-dispatch-verb-enforcement.sh</code> to verify that dispatch-verb ACs in medium/high-risk stories have at least one integration-test row in the matrix.</li>
+          <li><span class="step-title">Wire-verification enforcement (Step 6c, E95-S1)</span> For each story walked, runs <code>wire-verification-emit.sh</code>. When any FR/NFR has <code>surface_type != none</code> and zero linked integration rows, emits a BLOCKED finding and writes FAILED into the story's Test Review gate. See the <a href="#wire-verification">Wire-verification gate</a> section for details.</li>
+        </ol>
+      </section>
+
+      <section id="inputs"><h2>Inputs</h2>
+        <p>This command takes no arguments. All inputs are discovered from the project file layout.</p>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody>
+          <tr><td>PRD</td><td><code>.gaia/artifacts/planning-artifacts/prd.md</code></td><td>Source of FR and NFR requirements (matrix rows).</td></tr>
+          <tr><td>Epics and stories</td><td><code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code></td><td>Requirement-to-story mapping.</td></tr>
+          <tr><td>Test plan</td><td><code>.gaia/artifacts/planning-artifacts/test-plan.md</code> (canonical) with <code>.gaia/artifacts/test-artifacts/test-plan.md</code> read-compat fallback</td><td>Test case IDs and their requirement/story links.</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="outputs"><h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody>
+          <tr><td>Traceability matrix</td><td><code>.gaia/artifacts/planning-artifacts/traceability-matrix.md</code> (canonical post-E105-S2 / ADR-127 §7.2)</td><td>Full FR/NFR-to-test mapping with gap analysis and coverage statistics. On greenfield projects writes here; on pre-migration projects writes to the legacy <code>.gaia/artifacts/test-artifacts/{,strategy/}traceability-matrix.md</code> location it finds, and recommends <code>migrate-planning-vs-test.sh</code>.</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="examples"><h2>Examples</h2>
+
+        <h3>1. Happy path -- full matrix generation</h3>
+        <pre><code>&gt; /gaia-trace
+
+Loading requirements from prd.md... 12 FRs, 5 NFRs found.
+Loading test inventory from test-plan.md... 38 test cases found.
+Building matrix...
+
+Functional Requirements:
+  FR-001  User login       command  E1-S1    Unit: 2, E2E: 1, Int: 1   100%
+  FR-002  Password reset   command  E1-S3    Unit: 1, Int: 1            75%
+  FR-003  Role management  none     --       --                          0%  [GAP]
+
+NFR Coverage: 4/5 covered (80%)
+
+Gaps found:
+  - FR-003: No implementing story
+
+Gate: CONDITIONAL (1 FR without implementing story)
+Step 6b: dispatch-verb enforcement: clean.
+Step 6c: wire-verification: clean.
+
+Written to .gaia/artifacts/test-artifacts/traceability-matrix.md</code></pre>
+
+        <h3>2. surface_type column rendering (E95-S1, NFR-073)</h3>
+        <p>The matrix now includes a <code>surface_type</code> column read from each linked story's frontmatter. Stories without the field show <code>none</code> (forward-only adoption).</p>
+        <pre><code>Functional Requirements:
+  FR ID    | Description         | surface_type | Story(s) | Unit | Int | E2E | Coverage
+  FR-001   | User login          | command      | E1-S1    | 2    | 1   | 1   | 100%
+  FR-008   | Config validation   | config       | E8-S3    | 1    | 0   | 0   | 33%
+  FR-010   | Audit log export    | output       | E9-S2    | 1    | 1   | 0   | 66%
+  FR-012   | Legacy migration    | none         | E10-S1   | 2    | 0   | 0   | 50%</code></pre>
+
+        <h3>3. BLOCKED finding -- missing integration row for a wired surface</h3>
+        <p>When <code>surface_type != none</code> and zero integration-test rows link to the FR, Step 6c emits a BLOCKED finding and writes FAILED to the story's Test Review gate.</p>
+        <pre><code>&gt; /gaia-trace
+
+...
+Step 6c: wire-verification enforcement:
+
+HALT: wire-verification gate failed for E8-S3:
+  FR-008 (surface_type: config) -- 0 integration-test rows.
+  FR-009 (surface_type: warning) -- 0 integration-test rows.
+
+  review-gate.sh update --story E8-S3 --gate "Test Review" --verdict FAILED
+
+  The story cannot transition from review to done until integration
+  tests covering these surfaces are added and /gaia-run-all-reviews
+  restores the Test Review gate to PASSED.</code></pre>
+
+        <h3>4. Clean re-run after gap fixed (no auto-flip)</h3>
+        <p>After adding the missing integration tests, re-running <code>/gaia-trace</code> produces a clean Step 6c. However, the Test Review gate does <strong>not</strong> auto-flip from FAILED to PASSED. The operator must run <code>/gaia-run-all-reviews</code> to restore the gate.</p>
+        <pre><code>&gt; /gaia-trace
+
+...
+Step 6c: wire-verification: clean (0 violations).
+
+NOTE: Test Review gate for E8-S3 is still FAILED from a prior run.
+      Run /gaia-run-all-reviews to restore the gate to PASSED.
+
+Written to .gaia/artifacts/test-artifacts/traceability-matrix.md</code></pre>
+
+        <h3>5. Forward-only adoption -- existing stories without surface_type</h3>
+        <p>Stories created before E95-S1 lack the <code>surface_type:</code> frontmatter field. These are treated as <code>surface_type: none</code> and produce no wire-verification findings.</p>
+        <pre><code>&gt; /gaia-trace
+
+Loading requirements from prd.md... 20 FRs, 8 NFRs found.
+Building matrix...
+
+  FR-015  User preferences   none     E14-S2   Unit: 3, E2E: 1   100%
+  (surface_type field absent in E14-S2 frontmatter -- defaulting to none)
+
+Step 6c: wire-verification: clean (0 violations).
+  18 stories scanned, 12 with surface_type field, 6 defaulted to none.
+
+Written to .gaia/artifacts/test-artifacts/traceability-matrix.md</code></pre>
+      </section>
+
+      <section id="what-next"><h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-ci-setup.html"><code>/gaia-ci-setup</code></a> -- scaffold the CI pipeline once traceability is green.</li>
+          <li><a href="gaia-readiness-check.html"><code>/gaia-readiness-check</code></a> -- confirm implementation readiness when CI is already in place.</li>
+          <li><a href="gaia-fill-test-gaps.html"><code>/gaia-fill-test-gaps</code></a> -- remediate coverage gaps identified by the matrix.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting"><h2>Troubleshooting</h2>
+        <h3>"PRD not found"</h3><p>The PRD must exist at <code>.gaia/artifacts/planning-artifacts/prd.md</code>. Run <a href="gaia-create-prd.html"><code>/gaia-create-prd</code></a> first.</p>
+        <h3>"No FR/NFR requirements found"</h3><p>The PRD exists but contains no requirements in FR-xxx or NFR-xxx format. The command generates an empty matrix with headers only.</p>
+        <h3>Gate shows BLOCKED</h3><p>A high-risk functional requirement has zero test coverage. Add tests for the flagged requirements before proceeding.</p>
+
+        <h3>Wire-verification HALT (E95-S1)</h3>
+        <p>Step 6c found FR/NFR rows with <code>surface_type != none</code> and zero integration-test coverage. Add integration tests covering the listed surfaces, then re-run <code>/gaia-trace</code> to clear the HALT. After a clean run, invoke <code>/gaia-run-all-reviews</code> to restore the Test Review gate from FAILED to PASSED -- the gate does not auto-flip.</p>
+
+        <h3>Test Review stuck at FAILED after clean re-run</h3>
+        <p>This is expected behavior. <code>/gaia-trace</code> writes FAILED but does not write PASSED. Run <code>/gaia-run-all-reviews</code> to re-evaluate and restore the gate.</p>
+      </section>
+
+      <section id="related"><h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
+          <tr><td><a href="gaia-test-gap-analysis.html"><code>/gaia-test-gap-analysis</code></a></td><td>Detailed per-story gap analysis (complementary to the requirement-level view).</td></tr>
+          <tr><td><a href="gaia-fill-test-gaps.html"><code>/gaia-fill-test-gaps</code></a></td><td>Remediate gaps found by the traceability matrix or gap analysis.</td></tr>
+          <tr><td><a href="gaia-readiness-check.html"><code>/gaia-readiness-check</code></a></td><td>Checks implementation readiness including traceability gate.</td></tr>
+        </tbody></table>
+      </section>
+      <footer class="page-footer"><p><a href="../categories/testing.html">Back to Testing</a></p></footer>
+    </main></div></body></html>

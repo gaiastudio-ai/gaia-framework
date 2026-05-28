@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-val-validate - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/validation.html">Validation</a>
+        <span class="separator">/</span>
+        /gaia-val-validate
+      </nav>
+
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-val-validate</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/validation.html">Validation</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt>
+          <dd><code>[artifact-path]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-val-validate</code> validates any GAIA artifact
+          (PRD, architecture, UX design, test plan, story, etc.) against the
+          actual codebase and the validator's ground-truth knowledge. It
+          scans file paths referenced in the artifact, verifies factual
+          claims against the filesystem, cross-references against ground
+          truth when available, and reports findings classified by severity:
+          CRITICAL, WARNING, or INFO.
+        </p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>
+            You just updated a planning artifact (PRD, architecture, epics)
+            and want to verify that all file references and factual claims
+            are accurate.
+          </li>
+          <li>
+            A review or triage flagged potential inaccuracies in an artifact
+            and you want a systematic verification.
+          </li>
+          <li>
+            You want to check an artifact before sharing it with
+            stakeholders to ensure all technical references are current.
+          </li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>
+            <strong>An artifact file must exist.</strong> Provide the path
+            to the file you want to validate as the command argument.
+          </li>
+          <li>
+            <strong>Ground truth improves accuracy.</strong> If you have run
+            <a href="gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a>
+            recently, the validator cross-references claims against the
+            ground-truth snapshot. Without it, validation still runs using
+            filesystem checks only.
+          </li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-val-validate .gaia/artifacts/planning-artifacts/architecture.md</code></pre>
+        <p>
+          The argument is the path to the artifact you want to validate.
+        </p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Load and parse artifact</span>
+            Reads the target artifact and maps its heading structure. For
+            large files, it splits the document into chunks for more
+            granular validation.
+          </li>
+          <li>
+            <span class="step-title">Detect artifact type</span>
+            Determines whether this is a PRD, architecture doc, UX design,
+            test plan, or another artifact type. Each type has its own
+            structural validation rules (required sections, expected
+            format). Unknown types skip structural validation but still
+            run factual checks.
+          </li>
+          <li>
+            <span class="step-title">Extract verifiable claims</span>
+            Scans the artifact for file paths, component counts, version
+            numbers, agent/workflow references, and other factual
+            assertions that can be checked against the filesystem.
+          </li>
+          <li>
+            <span class="step-title">Verify against the codebase</span>
+            For each file-path claim, checks whether the file actually
+            exists on disk. For content claims, reads the referenced file
+            and compares against what the artifact states. Caps scanning
+            at 40 files per run to keep validation fast.
+          </li>
+          <li>
+            <span class="step-title">Cross-reference ground truth</span>
+            If ground-truth data is available, cross-references claims
+            against it to catch discrepancies the filesystem check alone
+            might miss.
+          </li>
+          <li>
+            <span class="step-title">Classify and present findings</span>
+            Compiles all findings into a severity-sorted table (CRITICAL
+            first, then WARNING, then INFO). You can approve, dismiss, or
+            discuss each finding.
+          </li>
+          <li>
+            <span class="step-title">Write approved findings</span>
+            Appends the approved findings to the artifact under a
+            "Validation Findings" section so the next editor can see
+            what was flagged.
+          </li>
+          <li>
+            <span class="step-title">Save to validator memory</span>
+            Records the validation session in the validator's memory
+            sidecar for future reference.
+          </li>
+        </ol>
+
+        <div class="callout">
+          <p class="callout-title">Auto-fix loop</p>
+          <p>
+            When invoked by other commands (like
+            <code>/gaia-create-prd</code> or
+            <code>/gaia-create-arch</code>), this validator runs inside a
+            3-iteration auto-fix loop. The upstream command writes the
+            artifact, validates it, fixes any CRITICAL or WARNING findings,
+            and re-validates -- up to 3 times. If findings persist after 3
+            iterations, you are prompted to continue, accept as-is, or
+            abort.
+          </p>
+        </div>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Source</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>artifact-path</code></td>
+              <td>Command argument</td>
+              <td>Path to the artifact file to validate.</td>
+            </tr>
+            <tr>
+              <td>Ground truth</td>
+              <td><code>_memory/validator-sidecar/ground-truth.md</code></td>
+              <td>Optional. Provides cached project metadata for cross-referencing.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Output</th>
+              <th>Location</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Validation findings</td>
+              <td>Appended to the artifact</td>
+              <td>A "Validation Findings" section with severity, finding, and reference columns.</td>
+            </tr>
+            <tr>
+              <td>Validator decision log</td>
+              <td><code>_memory/validator-sidecar/decision-log.md</code></td>
+              <td>Session record appended to the validator's memory.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>&gt; /gaia-val-validate .gaia/artifacts/planning-artifacts/architecture.md
+
+Loading artifact...
+  Path: .gaia/artifacts/planning-artifacts/architecture.md
+  Type: Architecture document
+  12 sections identified, 4 chunks for validation.
+
+Extracting verifiable claims...
+  Found 23 file-path claims, 5 component-count claims.
+
+Verifying against codebase...
+  Scanning 28 files... done.
+
+Cross-referencing ground truth...
+
+Findings:
+
+| # | Severity | Section           | Finding                                         |
+|---|----------|-------------------|-------------------------------------------------|
+| 1 | CRITICAL | System Components | Referenced file not found: src/services/auth.ts |
+| 2 | WARNING  | Data Architecture | Stated 8 models but filesystem shows 7          |
+| 3 | INFO     | Security          | Ground truth entry slightly outdated             |
+
+Summary: 3 findings -- 1 CRITICAL, 1 WARNING, 1 INFO
+
+Review each finding: [approve] [dismiss] [discuss]
+&gt; approve all
+
+Writing approved findings to architecture.md...
+Saving to validator memory...
+Done.</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>
+            <a href="gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a>
+            -- if ground truth was missing or outdated during validation.
+          </li>
+          <li>
+            <a href="gaia-val-save.html"><code>/gaia-val-save</code></a>
+            -- to persist specific validation decisions to the validator's
+            memory.
+          </li>
+          <li>
+            Fix the issues in the artifact, then re-run
+            <code>/gaia-val-validate</code> to confirm fixes.
+          </li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>"Artifact not found"</h3>
+        <p>
+          The file path you provided does not exist. Double-check the path
+          and ensure the artifact has been created.
+        </p>
+
+        <h3>"Ground truth not available"</h3>
+        <p>
+          This is an INFO-level note, not an error. Validation proceeds
+          with filesystem verification only. Run
+          <a href="gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a>
+          to improve validation accuracy.
+        </p>
+
+        <h3>Too many findings</h3>
+        <p>
+          If the artifact has not been updated in a while, it may have
+          drifted from the codebase. Fix the highest-severity findings
+          first, then re-validate.
+        </p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia-val-validate-plan.html"><code>/gaia-val-validate-plan</code></a></td>
+              <td>Validates an implementation plan (file targets, version bumps) rather than a document artifact.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-validate-story.html"><code>/gaia-validate-story</code></a></td>
+              <td>Validates a story file specifically, with fix-loop and Review Gate integration.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a></td>
+              <td>Refreshes the ground-truth snapshot that improves validation accuracy.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-validate-framework.html"><code>/gaia-validate-framework</code></a></td>
+              <td>Validates the GAIA framework installation itself, not a project artifact.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/validation.html">Back to Validation</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

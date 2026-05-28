@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-brownfield - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#orchestration-mode">Orchestration mode</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/getting-started.html">Getting Started</a>
+        <span class="separator">/</span>
+        /gaia-brownfield
+      </nav>
+
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-brownfield</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/getting-started.html">Getting Started</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>Any (onboarding)</dd>
+          <dt>Arguments:</dt>
+          <dd><code>[project-path]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-brownfield</code> onboards an existing codebase into
+          GAIA. It performs deep project discovery, runs multiple automated
+          scans (documentation gaps, hardcoded values, security posture,
+          integration seams, dead code, and more), assesses non-functional
+          requirements, consolidates all findings into a gap-focused PRD,
+          and generates an architecture document -- giving you a complete
+          GAIA <a href="../glossary.html#artifact">artifact</a> set ready for sprint planning.
+        </p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>
+            You have an existing project with code and want GAIA to
+            understand it and identify gaps.
+          </li>
+          <li>
+            You want GAIA-managed artifacts (PRD, architecture, epics)
+            generated from your current codebase rather than from scratch.
+          </li>
+        </ul>
+        <p>
+          For brand-new projects with no code, use
+          <a href="gaia-init.html"><code>/gaia-init</code></a> instead.
+        </p>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>
+            <strong>An existing codebase.</strong> The target directory should
+            contain source code files for meaningful results.
+          </li>
+          <li>
+            <strong>GAIA plugin installed.</strong> The GAIA plugin must be
+            registered in your Claude Code environment.
+          </li>
+        </ul>
+      </section>
+      <section id="orchestration-mode">
+        <h2>Orchestration mode</h2>
+        <p>When <code>/gaia-brownfield</code> starts in <strong>subagent mode (Mode A -- the default)</strong>, the framework emits a one-shot warning to your conversation. The warning text:</p>
+        <pre><code>
+────────────────────────────────────────────────────────────────────────────
+GAIA orchestration: running in subagent mode (Mode A)
+
+The skill you're invoking belongs to a class (heavy-procedural or
+conversational) whose output benefits from cross-step context. Mode A
+dispatches each sub-agent in its own forked context, so context may
+be lossy between steps — sub-agents return summaries, not full reasoning.
+
+For the full-fidelity experience, enable Mode B (Agent Teams):
+  1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
+  2. Add orchestration.mode: team to config/project-config.yaml.
+
+Mode B uses persistent teammates that preserve in-conversation state
+across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+
+This warning is shown once per session.
+────────────────────────────────────────────────────────────────────────────
+</code></pre>
+
+        <h3>Why Mode B is better for this command</h3>
+        <p>The <code>/gaia-brownfield</code> skill declares <code>orchestration_class: heavy-procedural</code> in its SKILL.md frontmatter. Heavy-procedural skills produce output that benefits from cross-step context -- under Mode A every sub-agent dispatch runs in its own forked context and can only return a summary back to the orchestrator, losing the full reasoning trace of every prior step. Mode B uses persistent teammates that retain in-conversation state across dispatches, so each agent's contribution can build on what was said before instead of receiving only a summary.</p>
+
+        <h3>How to enable Mode B</h3>
+        <p>Both steps are required. If either is missing, the framework falls back silently to Mode A and the warning fires again on the next session.</p>
+        <p><strong>Step 1 -- set the environment variable:</strong></p>
+        <pre><code>export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code></pre>
+        <p>Add this to your shell rc file to persist across sessions, or set it in Claude Code's <code>settings.json</code>.</p>
+        <p><strong>Step 2 -- add the YAML block to <code>config/project-config.yaml</code>:</strong></p>
+        <pre><code>orchestration:
+  mode: team</code></pre>
+        <h3>One-shot semantics</h3>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+      </section>
+
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-brownfield</code></pre>
+        <p>Scans the current directory.</p>
+
+        <pre><code>/gaia-brownfield ./my-existing-project</code></pre>
+        <p>Scans a specific project path.</p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Deep project discovery</span>
+            Scans the codebase to detect the tech stack, frameworks,
+            capability flags (APIs, events, frontend, infrastructure),
+            and classifies the project type (application, infrastructure,
+            or platform). Also auto-detects configuration signals and
+            drafts a <code>config/project-config.yaml</code> if one does
+            not exist. Writes a brownfield assessment and project
+            documentation artifact.
+          </li>
+          <li>
+            <span class="step-title">Documentation scans</span>
+            Runs parallel scans based on detected capabilities: API
+            documentation, UX assessment, event catalog, and dependency
+            mapping. Each scan produces its own artifact.
+          </li>
+          <li>
+            <span class="step-title">Deep analysis scans</span>
+            Runs seven parallel scans for gaps the structural analysis
+            misses: doc-code mismatches, hardcoded values, integration
+            seams, runtime behavior, security posture, config
+            contradictions, and dead code. Each produces a gap report.
+          </li>
+          <li>
+            <span class="step-title">Test execution</span>
+            Runs your existing test suite (auto-detected) and converts
+            failing tests into gap entries. Non-blocking -- test failures
+            do not halt the workflow.
+          </li>
+          <li>
+            <span class="step-title">Test environment generation</span>
+            If test infrastructure is detected (test runners, CI config,
+            Docker test config, browser matrix), generates a
+            <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
+            via the shared manifest generator. If the file already
+            exists, copy-if-absent semantics preserve it byte-identical;
+            the legacy <code>merge / skip / overwrite</code> prompt is
+            no longer surfaced because the canonical generator is
+            non-destructive.
+          </li>
+          <li>
+            <span class="step-title">NFR assessment</span>
+            Analyzes the codebase for non-functional requirements: code
+            quality, security posture, performance, accessibility, test
+            coverage, and CI/CD maturity. Also generates a performance
+            test plan.
+          </li>
+          <li>
+            <span class="step-title">Gap consolidation</span>
+            Merges all gap entries from every scan, deduplicates by
+            evidence location, ranks by severity, and produces a single
+            consolidated gap report.
+          </li>
+          <li>
+            <span class="step-title">PRD generation and review</span>
+            Creates a gap-focused PRD (covering only what needs to be
+            built or fixed, not existing features), runs an adversarial
+            review, and verifies all gap claims against the actual
+            codebase.
+          </li>
+          <li>
+            <span class="step-title">Architecture and ground-truth bootstrap</span>
+            Generates an architecture document in brownfield mode.
+            Optionally seeds GAIA's internal knowledge base with facts
+            from the assessment.
+          </li>
+        </ol>
+
+        <div class="callout">
+          <p class="callout-title">Normal vs YOLO mode</p>
+          <p>
+            In normal mode, the command pauses for your review after each
+            major phase. In YOLO mode, it auto-advances through review
+            pauses (but still halts on critical findings).
+          </p>
+        </div>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Source</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>project-path</code></td>
+              <td>Command argument (optional)</td>
+              <td>Path to the target codebase. Defaults to the current working directory.</td>
+            </tr>
+            <tr>
+              <td>Execution mode</td>
+              <td>Interactive prompt</td>
+              <td><code>normal</code> (pause for review) or <code>yolo</code> (auto-advance).</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Output</th>
+              <th>Location</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Brownfield onboarding report</td>
+              <td><code>.gaia/artifacts/planning-artifacts/brownfield-onboarding.md</code></td>
+              <td>Primary summary of all findings, links, and next steps.</td>
+            </tr>
+            <tr>
+              <td>Project documentation</td>
+              <td><code>.gaia/artifacts/planning-artifacts/project-documentation.md</code></td>
+              <td>Detected tech stack, capabilities, and project structure.</td>
+            </tr>
+            <tr>
+              <td>Gap-focused PRD</td>
+              <td><code>.gaia/artifacts/planning-artifacts/prd.md</code></td>
+              <td>Requirements for gaps only -- existing features are not re-documented.</td>
+            </tr>
+            <tr>
+              <td>Architecture document</td>
+              <td><code>.gaia/artifacts/planning-artifacts/architecture.md</code></td>
+              <td>System architecture in brownfield mode.</td>
+            </tr>
+            <tr>
+              <td>Consolidated gap report</td>
+              <td><code>.gaia/artifacts/planning-artifacts/consolidated-gaps.md</code></td>
+              <td>Deduplicated, ranked gap entries from all scans.</td>
+            </tr>
+            <tr>
+              <td>NFR assessment</td>
+              <td><code>.gaia/artifacts/test-artifacts/nfr-assessment.md</code></td>
+              <td>Non-functional requirements baseline with current values.</td>
+            </tr>
+            <tr>
+              <td>Scan reports (7+)</td>
+              <td><code>.gaia/artifacts/planning-artifacts/brownfield-scan-*.md</code></td>
+              <td>Individual reports from each analysis scan.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>&gt; /gaia-brownfield ./my-api
+
+Phase 1 -- Deep Project Discovery
+  Tech stack: Node.js 20, Express 4, PostgreSQL 15
+  Capabilities: APIs (yes), Events (no), Frontend (no)
+  Project type: application
+  Config signals detected: node stack, github-actions CI
+    Verdict: PASS -- merged into project-config.yaml
+
+Phase 2 -- Documentation Scans
+  API Documenter: 14 endpoints documented, 3 undocumented
+  Dependency Mapper: 42 dependencies, 2 critical CVEs
+
+Phase 3 -- Deep Analysis (7 scans)
+  | Scan              | Status  | Duration |
+  |-------------------|---------|----------|
+  | doc-code          | success | 12s      |
+  | hardcoded         | success | 9s       |
+  | integration-seam  | success | 14s      |
+  | runtime-behavior  | success | 11s      |
+  | security          | success | 8s       |
+  | config-contradict | success | 4s       |
+  | dead-code         | success | 11s      |
+
+Phase 7 -- Gap Consolidation
+  Raw gaps: 47 | Duplicates removed: 12 | Final: 35
+  By severity: 3 critical, 8 high, 14 medium, 10 low
+
+Phase 8 -- PRD generated (brownfield mode, gap-focused)
+Phase 9 -- Architecture generated
+
+Done. Run /gaia-create-epics to break the gaps into stories.</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>
+            <a href="gaia-create-epics.html"><code>/gaia-create-epics</code></a>
+            -- break the gap-focused PRD into epics and stories.
+          </li>
+          <li>
+            <a href="gaia-edit-prd.html"><code>/gaia-edit-prd</code></a>
+            -- refine the generated PRD before creating epics.
+          </li>
+          <li>
+            <a href="gaia-threat-model.html"><code>/gaia-threat-model</code></a>
+            -- create a security threat model from the architecture.
+          </li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>A scanner timed out or errored</h3>
+        <p>
+          Individual scan failures do not halt the overall workflow. The
+          scan diagnostic table shows which scans succeeded and which
+          failed. Failed scans produce a partial gap row tagged with the
+          failure reason. Re-run the command to retry, or inspect the
+          specific scan report for details.
+        </p>
+
+        <h3>"NFR assessment not found" or "Performance test plan not found"</h3>
+        <p>
+          Both artifacts are required. If the test-architect agent was
+          unavailable, stub files are written. Run
+          <a href="gaia-nfr.html"><code>/gaia-nfr</code></a> or
+          <a href="gaia-perf-testing.html"><code>/gaia-perf-testing</code></a>
+          to generate the real content.
+        </p>
+
+        <h3>test-environment.yaml already present</h3>
+        <p>
+          Phase 5 uses copy-if-absent semantics: if
+          <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
+          already exists, it is preserved byte-identical and the review
+          pause is skipped. To regenerate from scratch, move the
+          existing file aside before re-running brownfield.
+        </p>
+      
+        <h3>I keep seeing the GAIA orchestration warning every time I start this command</h3>
+        <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
+        <ul>
+          <li><code>echo $CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> returns <code>1</code> (not empty)</li>
+          <li><code>config/project-config.yaml</code> contains:
+            <pre><code>orchestration:
+  mode: team</code></pre>
+          </li>
+        </ul>
+        <p>If either is missing the framework silently uses Mode A and re-emits the warning each session.</p>
+</section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia-init.html"><code>/gaia-init</code></a></td>
+              <td>Alternative for greenfield projects with no existing code.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-create-epics.html"><code>/gaia-create-epics</code></a></td>
+              <td>Typical next step -- breaks brownfield gaps into epics and stories.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-nfr.html"><code>/gaia-nfr</code></a></td>
+              <td>Standalone NFR assessment if the brownfield run's assessment was incomplete.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/getting-started.html">Back to Getting Started</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

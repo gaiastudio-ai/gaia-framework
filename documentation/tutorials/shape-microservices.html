@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shape: Microservices - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html" class="active">Shape: Microservices</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#when">When this shape applies</a></li>
+          <li><a href="#monorepo-vs-polyrepo">Monorepo vs polyrepo</a></li>
+          <li><a href="#monorepo-config">Monorepo configuration</a></li>
+          <li><a href="#polyrepo-config">Polyrepo configuration</a></li>
+          <li><a href="#contract-testing">Contract testing</a></li>
+          <li><a href="#coordinated-deploys">Coordinated deploys</a></li>
+          <li><a href="#shared-platforms">Shared platforms and infra</a></li>
+          <li><a href="#ci-for-microservices">CI for microservices</a></li>
+          <li><a href="#monorepo-example">Complete monorepo example</a></li>
+          <li><a href="#polyrepo-example">Complete polyrepo example</a></li>
+          <li><a href="#when-to-split">When to split or merge</a></li>
+          <li><a href="#whats-next">What to read next</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        <a href="project-shapes-overview.html">Project Shapes</a>
+        <span class="separator">/</span>
+        Microservices
+      </nav>
+
+      <h1>Shape: Microservices</h1>
+      <p>
+        A microservices project has three or more independently deployable
+        services. This is the most complex project shape, and the configuration
+        depends heavily on whether your services live in one repository
+        (monorepo) or separate repositories (polyrepo). This tutorial covers
+        both variants.
+      </p>
+
+      <section id="when">
+        <h2>When this shape applies</h2>
+        <p>
+          Use the microservices shape when your system has:
+        </p>
+        <ul>
+          <li>Three or more services that are developed and deployed independently.</li>
+          <li>Services that communicate over HTTP, gRPC, message queues, or event streams.</li>
+          <li>Services potentially written in different languages.</li>
+          <li>Independent scaling requirements per service.</li>
+        </ul>
+        <p>
+          If you have exactly two deployable units (frontend + backend), see
+          <a href="shape-fullstack.html">Shape: Full-Stack</a>. If everything
+          deploys as one unit, see
+          <a href="shape-single-repo.html">Shape: Single Repo</a>.
+        </p>
+      </section>
+
+      <section id="monorepo-vs-polyrepo">
+        <h2>Monorepo vs polyrepo</h2>
+        <p>
+          The first decision is how to organize your repositories:
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Monorepo</th>
+              <th>Polyrepo</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>All services in...</strong></td>
+              <td>One repository</td>
+              <td>Separate repositories</td>
+            </tr>
+            <tr>
+              <td><strong>Shared code</strong></td>
+              <td>Easy -- import from a shared package</td>
+              <td>Harder -- publish as a library, version independently</td>
+            </tr>
+            <tr>
+              <td><strong>Atomic changes</strong></td>
+              <td>One PR can change multiple services</td>
+              <td>Coordinated PRs across repos</td>
+            </tr>
+            <tr>
+              <td><strong>CI complexity</strong></td>
+              <td>Higher -- path filters required</td>
+              <td>Lower -- each repo has its own CI</td>
+            </tr>
+            <tr>
+              <td><strong>Team autonomy</strong></td>
+              <td>Lower -- shared branch protection rules</td>
+              <td>Higher -- each team owns their repo</td>
+            </tr>
+            <tr>
+              <td><strong>GAIA config</strong></td>
+              <td>One <code>project-config.yaml</code> with multiple stacks</td>
+              <td>One <code>project-config.yaml</code> per repo, each with one stack</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout">
+          <p class="callout-title">Choosing between them</p>
+          <p>
+            Start with a monorepo if your services are tightly coupled, share
+            types or schemas, or are maintained by the same team. Switch to
+            polyrepo when team autonomy becomes more important than
+            code-sharing convenience -- typically when you have 3+ teams
+            working on different services.
+          </p>
+        </div>
+      </section>
+
+      <section id="monorepo-config">
+        <h2>Monorepo configuration</h2>
+        <p>
+          In a monorepo, all services live under a shared directory structure
+          and share a single <code>project-config.yaml</code>. Each service
+          is a separate stack with its own <code>path</code>.
+        </p>
+        <h3>Folder layout</h3>
+        <pre><code>my-platform/
+  .gaia/
+    config/
+      project-config.yaml
+  docs/
+    planning-artifacts/
+    implementation-artifacts/
+  services/
+    user-service/
+      src/
+      tests/
+      Dockerfile
+    order-service/
+      src/
+      tests/
+      Dockerfile
+    notification-service/
+      src/
+      tests/
+      Dockerfile
+  packages/
+    shared-types/      # Shared code, not a deployable service
+      src/
+      tests/
+  infrastructure/
+    terraform/
+    k8s/
+  README.md</code></pre>
+
+        <h3>Stacks configuration</h3>
+        <pre><code># .gaia/config/project-config.yaml
+stacks:
+  - name: user-service
+    language: go
+    path: services/user-service
+    test_command: go test ./...
+    build_command: docker build -t user-service .
+    lint_command: golangci-lint run
+  - name: order-service
+    language: typescript
+    framework: nestjs
+    path: services/order-service
+    test_command: npm test
+    build_command: docker build -t order-service .
+    lint_command: npm run lint
+  - name: notification-service
+    language: python
+    framework: fastapi
+    path: services/notification-service
+    test_command: pytest
+    build_command: docker build -t notification-service .
+    lint_command: ruff check src/</code></pre>
+        <p>
+          Each stack has its own language, framework, and commands. GAIA uses
+          the <code>path</code> field to determine which stack a story belongs
+          to and which tests to run.
+        </p>
+      </section>
+
+      <section id="polyrepo-config">
+        <h2>Polyrepo configuration</h2>
+        <p>
+          In a polyrepo, each service has its own repository and its own
+          <code>project-config.yaml</code>. Each config has a single stack.
+        </p>
+        <h3>Per-repo configuration</h3>
+        <pre><code># user-service/.gaia/config/project-config.yaml
+project:
+  name: user-service
+  description: User authentication and profile management
+
+stacks:
+  - name: api
+    language: go
+    path: .
+    test_command: go test ./...
+    build_command: docker build -t user-service .
+    lint_command: golangci-lint run
+
+platforms:
+  - web
+
+ci_cd:
+  platform: github-actions
+  preset: standard
+  promotion_chain:
+    - dev
+    - staging
+    - production</code></pre>
+        <p>
+          This looks identical to a
+          <a href="shape-single-repo.html">single-repo</a> configuration --
+          because each repository IS a single-repo project from GAIA's
+          perspective. The microservices complexity lives in the interactions
+          between services, not in the per-service configuration.
+        </p>
+
+        <h3>Coordinating across repos</h3>
+        <p>
+          The challenge with polyrepo is coordination. When a change in the
+          user-service requires a corresponding change in the order-service,
+          you need to:
+        </p>
+        <ol>
+          <li>Deploy the backward-compatible version of user-service first.</li>
+          <li>Deploy the order-service change that depends on the new user-service API.</li>
+          <li>Optionally, deploy a cleanup version of user-service that removes the old API.</li>
+        </ol>
+        <p>
+          This is the "expand and contract" pattern. GAIA supports it through
+          coordinated deployment plans generated by
+          <a href="../commands/gaia-release-plan.html"><code>/gaia-release-plan</code></a>.
+        </p>
+      </section>
+
+      <section id="contract-testing">
+        <h2>Contract testing</h2>
+        <p>
+          In a microservices architecture, the most common source of production
+          failures is a service changing its API in a way that breaks a
+          consumer. Contract tests catch this before deployment.
+        </p>
+        <h3>What contract testing checks</h3>
+        <ul>
+          <li>The provider (the service exposing the API) still returns the fields that consumers expect.</li>
+          <li>The consumer (the service calling the API) still sends requests that the provider can handle.</li>
+          <li>Data formats, field names, and types have not changed in breaking ways.</li>
+        </ul>
+        <h3>Where contract tests live</h3>
+        <p>
+          In a <strong>monorepo</strong>, contract tests live alongside
+          integration tests. Each service's test suite includes tests that
+          verify its contracts with other services.
+        </p>
+        <p>
+          In a <strong>polyrepo</strong>, contract tests typically use a
+          broker (like Pact Broker) where providers publish their contracts
+          and consumers verify against them.
+        </p>
+        <h3>Configuring contract tests</h3>
+        <pre><code># .gaia/config/project-config.yaml (monorepo)
+test_execution:
+  tiers:
+    pr:
+      command: npm test -- --exclude=contract
+      timeout_seconds: 120
+    contract:
+      command: npm run test:contract
+      timeout_seconds: 180
+    nightly:
+      command: npm test
+      timeout_seconds: 600</code></pre>
+        <p>
+          Contract tests are slower than unit tests but faster than E2E tests.
+          Run them on PR (if fast enough) or in a separate CI job that runs
+          after both provider and consumer PRs are merged.
+        </p>
+      </section>
+
+      <section id="coordinated-deploys">
+        <h2>Coordinated deploys</h2>
+        <p>
+          When multiple services need to be deployed together (e.g., a new
+          feature that spans user-service and order-service), coordinate the
+          deployment to avoid downtime:
+        </p>
+        <ol>
+          <li><strong>Feature flags:</strong> Deploy all services with the new code behind a feature flag. Enable the flag once all services are deployed. This is the safest approach.</li>
+          <li><strong>Backward-compatible APIs:</strong> Deploy the provider first with a new API version that supports both old and new formats. Deploy the consumer next. Clean up the old API version later.</li>
+          <li><strong>Blue-green deployment:</strong> Deploy all services to a new environment (green), switch traffic from old (blue) to green once all health checks pass.</li>
+        </ol>
+        <p>
+          Use
+          <a href="../commands/gaia-release-plan.html"><code>/gaia-release-plan</code></a>
+          to generate a deployment plan that accounts for service dependencies
+          and ordering.
+        </p>
+      </section>
+
+      <section id="shared-platforms">
+        <h2>Shared platforms and infrastructure</h2>
+        <p>
+          Microservices often share infrastructure: a message broker, a service
+          mesh, a shared database cluster, or a Kubernetes namespace. Configure
+          shared platforms in the <code>platforms</code> section:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml (monorepo)
+platforms:
+  - web
+  - api
+
+# Infrastructure shared across all services
+# (not GAIA config -- just for reference in your infra code)
+# - PostgreSQL cluster (shared)
+# - Redis (shared cache)
+# - RabbitMQ (message broker)
+# - Kubernetes namespace per environment</code></pre>
+        <p>
+          GAIA's platform configuration tells the framework which types of
+          tests and reviews to include. Listing <code>web</code> enables
+          accessibility and responsive testing. Listing <code>api</code>
+          enables API contract validation and performance testing.
+        </p>
+        <p>
+          For infrastructure design, use
+          <a href="../commands/gaia-infra-design.html"><code>/gaia-infra-design</code></a>
+          to generate a topology document covering deployment targets,
+          environment design, and observability.
+        </p>
+      </section>
+
+      <section id="ci-for-microservices">
+        <h2>CI for microservices</h2>
+
+        <h3>Monorepo CI</h3>
+        <p>
+          In a monorepo, enable path filters so each service's tests run only
+          when that service's code changes:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+ci_cd:
+  platform: github-actions
+  preset: standard
+  promotion_chain:
+    - dev
+    - staging
+    - production
+  path_filters:
+    enabled: true
+  concurrency:
+    group: ci-${{ github.ref }}
+    cancel_in_progress: true</code></pre>
+        <p>
+          Running
+          <a href="../commands/gaia-ci-setup.html"><code>/gaia-ci-setup</code></a>
+          generates one workflow per stack, each triggered by changes to
+          that stack's path. A change to <code>services/user-service/</code>
+          triggers only the user-service CI job.
+        </p>
+
+        <h3>Polyrepo CI</h3>
+        <p>
+          In a polyrepo, each repository has its own CI workflow. No path
+          filters needed -- the entire repository is one stack. Run
+          <code>/gaia-ci-setup</code> in each repository independently.
+        </p>
+
+        <h3>Cross-service integration tests</h3>
+        <p>
+          For both variants, cross-service integration tests (tests that
+          verify interactions between services) should run in a dedicated
+          CI job that is triggered after individual service CIs pass. This
+          is typically a nightly job or a post-merge job on the main branch.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+test_execution:
+  tiers:
+    pr:
+      command: npm test -- --exclude=integration
+      timeout_seconds: 120
+    integration:
+      command: docker-compose up -d && npm run test:integration
+      timeout_seconds: 300
+    nightly:
+      command: npm run test:all
+      timeout_seconds: 900</code></pre>
+      </section>
+
+      <section id="monorepo-example">
+        <h2>Complete monorepo example</h2>
+        <pre><code># .gaia/config/project-config.yaml
+project:
+  name: ecommerce-platform
+  description: E-commerce platform with user, order, and notification services
+
+stacks:
+  - name: user-service
+    language: go
+    path: services/user-service
+    test_command: go test ./...
+    build_command: docker build -t user-service services/user-service
+    lint_command: cd services/user-service && golangci-lint run
+  - name: order-service
+    language: typescript
+    framework: nestjs
+    path: services/order-service
+    test_command: cd services/order-service && npm test
+    build_command: docker build -t order-service services/order-service
+    lint_command: cd services/order-service && npm run lint
+  - name: notification-service
+    language: python
+    framework: fastapi
+    path: services/notification-service
+    test_command: cd services/notification-service && pytest
+    build_command: docker build -t notification-service services/notification-service
+    lint_command: cd services/notification-service && ruff check src/
+  - name: web-frontend
+    language: typescript
+    framework: react
+    path: packages/web
+    test_command: cd packages/web && npm test
+    build_command: cd packages/web && npm run build
+    lint_command: cd packages/web && npm run lint
+
+platforms:
+  - web
+  - api
+
+ci_cd:
+  platform: github-actions
+  preset: standard
+  promotion_chain:
+    - dev
+    - staging
+    - production
+  path_filters:
+    enabled: true
+  concurrency:
+    group: ci-${{ github.ref }}
+    cancel_in_progress: true
+  triggers:
+    pull_request:
+      checks:
+        - lint
+        - unit-tests
+    push_to_dev:
+      checks:
+        - smoke-test
+        - deploy-dev
+    push_to_staging:
+      checks:
+        - smoke-test
+        - integration-tests
+        - deploy-staging
+    push_to_production:
+      checks:
+        - smoke-test
+        - deploy-production
+
+environments:
+  dev:
+    url: https://dev.ecommerce.example.com
+    auto_deploy: true
+  staging:
+    url: https://staging.ecommerce.example.com
+    auto_deploy: true
+  production:
+    url: https://ecommerce.example.com
+    auto_deploy: false
+    requires_approval: true
+
+test_execution:
+  timeout_seconds: 300
+  coverage:
+    enabled: true
+    threshold: 75
+  tiers:
+    pr:
+      timeout_seconds: 120
+    nightly:
+      timeout_seconds: 900
+  smoke:
+    command: npm run test:smoke
+    timeout_seconds: 60</code></pre>
+      </section>
+
+      <section id="polyrepo-example">
+        <h2>Complete polyrepo example</h2>
+        <p>
+          In a polyrepo setup, each service repository has a simple config:
+        </p>
+        <pre><code># order-service/.gaia/config/project-config.yaml
+project:
+  name: order-service
+  description: Order processing and fulfillment
+
+stacks:
+  - name: api
+    language: typescript
+    framework: nestjs
+    path: .
+    test_command: npm test
+    build_command: docker build -t order-service .
+    lint_command: npm run lint
+
+platforms:
+  - api
+
+ci_cd:
+  platform: github-actions
+  preset: standard
+  promotion_chain:
+    - dev
+    - staging
+    - production
+  concurrency:
+    group: ci-${{ github.ref }}
+    cancel_in_progress: true
+
+environments:
+  dev:
+    url: https://order-service.dev.example.com
+    auto_deploy: true
+  staging:
+    url: https://order-service.staging.example.com
+    auto_deploy: true
+  production:
+    url: https://order-service.example.com
+    auto_deploy: false
+    requires_approval: true
+
+test_execution:
+  default_command: npm test
+  timeout_seconds: 300
+  coverage:
+    enabled: true
+    threshold: 80</code></pre>
+        <p>
+          Each service is configured independently. The microservices
+          complexity -- contract testing, coordinated deploys, shared
+          infrastructure -- is handled through your deployment process
+          and tooling, not through GAIA configuration.
+        </p>
+      </section>
+
+      <section id="when-to-split">
+        <h2>When to split or merge repositories</h2>
+        <p>
+          Signs you should split a monorepo into polyrepos:
+        </p>
+        <ul>
+          <li>Different teams own different services and want independent release cycles.</li>
+          <li>CI takes too long because all services' tests run on every change (and path filters are not sufficient).</li>
+          <li>Access control is needed -- some teams should not be able to modify other teams' services.</li>
+        </ul>
+        <p>
+          Signs you should merge polyrepos into a monorepo:
+        </p>
+        <ul>
+          <li>Cross-service changes are frequent and coordinating PRs across repos is painful.</li>
+          <li>Shared code duplication is growing.</li>
+          <li>You spend more time on release coordination than on feature development.</li>
+        </ul>
+        <div class="callout">
+          <p class="callout-title">Changing repo structure</p>
+          <p>
+            Switching between monorepo and polyrepo is a significant
+            undertaking. Make the choice early based on your team structure and
+            expected growth. If in doubt, start with a monorepo -- it is
+            easier to split later than to merge.
+          </p>
+        </div>
+      </section>
+
+      <section id="whats-next">
+        <h2>What to read next</h2>
+        <ul>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a> -- path filters, concurrency, and trigger strategy.</li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a> -- test tiering and the test pyramid for microservices.</li>
+          <li><a href="environments-and-promotion.html">Environments and Promotion</a> -- coordinating deployments across environments.</li>
+          <li><a href="../commands/gaia-infra-design.html"><code>/gaia-infra-design</code></a> -- designing infrastructure for microservices.</li>
+          <li><a href="../commands/gaia-release-plan.html"><code>/gaia-release-plan</code></a> -- planning coordinated releases.</li>
+          <li><a href="../commands/gaia-config-stack.html"><code>/gaia-config-stack</code></a> -- editing stack configuration.</li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a> -- comparing all shapes.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

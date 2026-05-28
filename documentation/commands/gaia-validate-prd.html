@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>/gaia-validate-prd - GAIA Documentation</title><link rel="stylesheet" href="../styles.css"></head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar"><a href="../index.html" class="sidebar-logo">GAIA Docs</a><nav><ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul><p class="sidebar-section-title">Categories</p><ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul><p class="sidebar-section-title">On this page</p><ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#related">Related commands</a></li></ul></nav></aside>
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/planning.html">Planning</a><span class="separator">/</span>/gaia-validate-prd</nav>
+      <header class="command-header"><div class="command-title"><h1>/gaia-validate-prd</h1><span class="tag tag-deprecated">deprecated</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/planning.html">Planning</a></dd><dt>Lifecycle phase:</dt><dd>2 -- Planning</dd><dt>Arguments:</dt><dd>None</dd></dl></header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <div class="callout">
+          <p class="callout-title">Deprecated</p>
+          <p>
+            This command is deprecated. It redirects to
+            <a href="gaia-val-validate.html"><code>/gaia-val-validate</code></a>,
+            which handles all artifact validation. Use
+            <code>/gaia-val-validate .gaia/artifacts/planning-artifacts/prd.md</code>
+            directly.
+          </p>
+        </div>
+        <p>
+          <code>/gaia-validate-prd</code> was the original PRD validation
+          command. Its validation logic has been consolidated into the
+          general-purpose <code>/gaia-val-validate</code> command. This
+          entry point is preserved for backward compatibility -- invoking
+          it silently redirects to the canonical validator.
+        </p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <p>Use <a href="gaia-val-validate.html"><code>/gaia-val-validate</code></a> instead.</p>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-validate-prd</code></pre>
+        <p>Redirects to: <code>/gaia-val-validate .gaia/artifacts/planning-artifacts/prd.md</code></p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead><tr><th>Command</th><th>Relationship</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia-val-validate.html"><code>/gaia-val-validate</code></a></td>
+              <td>The canonical replacement. Validates any artifact, including PRDs.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-create-prd.html"><code>/gaia-create-prd</code></a></td>
+              <td>Creates the PRD. Includes built-in validation.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-edit-prd.html"><code>/gaia-edit-prd</code></a></td>
+              <td>If validation fails, edit the PRD to address findings.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer"><p><a href="../categories/planning.html">Back to Planning</a></p></footer>
+    </main>
+  </div>
+</body>
+</html>
