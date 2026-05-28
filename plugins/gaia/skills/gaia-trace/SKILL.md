@@ -107,9 +107,9 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
   4. Gap analysis summary
   5. Coverage statistics
   6. Implementation-readiness gate decision: if all High-risk FR/NFRs have at least one planned test AND implementation rate > 50%, declare PASS. If any High-risk FR/NFR has zero test coverage, declare BLOCKED. Otherwise declare CONDITIONAL.
-- Resolve the output path via the strategy-fallback rule (Critical Rules above): if `.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md` already exists, write the compiled matrix to that path; otherwise write to flat `.gaia/artifacts/test-artifacts/traceability-matrix.md`.
+- Resolve the output path via the E105-S2 / ADR-127 §7.2 producer rule (matches Step 1 and the Critical Rules above): if a legacy matrix already exists at `.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md` OR flat `.gaia/artifacts/test-artifacts/traceability-matrix.md` (pre-migration project), write to that existing location to preserve placement and recommend `migrate-planning-vs-test.sh`; otherwise NEW (greenfield) writes default to the canonical `.gaia/artifacts/planning-artifacts/traceability-matrix.md`.
 
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-trace 5 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" stage=matrix-generated --paths .gaia/artifacts/test-artifacts/traceability-matrix.md`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-trace 5 trace_matrix_path=".gaia/artifacts/planning-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" stage=matrix-generated --paths .gaia/artifacts/planning-artifacts/traceability-matrix.md`
 
 ### Step 6 -- Gate Verification
 

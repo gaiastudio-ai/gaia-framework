@@ -31,7 +31,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 Read the current sprint context:
 
-1. Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-status.yaml` to understand current sprint state.
+1. Read `${CLAUDE_PROJECT_ROOT}/.gaia/state/sprint-status.yaml` to understand current sprint state.
 2. Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/epics-and-stories.md` to identify stories not yet in any sprint (candidates for injection).
 3. Scan `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/retro-*.md` files if available -- check if the current issue matches a known pattern from past retrospectives. If a match is found, note it: "This issue was flagged in retro-{sprint_id}: {finding}. Previous recommendation: {recommendation}."
 

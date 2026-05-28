@@ -80,7 +80,7 @@ Preserve all existing valid content -- only modify sections flagged by findings.
 - On clean re-validation only:
   - Update the story file frontmatter `status` from `validating` to `ready-for-dev`.
   - Update the body `**Status:**` line to match.
-  - Re-read `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` immediately before writing (Sprint-Status Write Safety).
+  - Re-read `.gaia/state/sprint-status.yaml` immediately before writing (Sprint-Status Write Safety).
   - Call `scripts/load-story.sh {story_key}` to verify the story is registered.
   - Report: "Story {story_key} fixed and transitioned to ready-for-dev."
 

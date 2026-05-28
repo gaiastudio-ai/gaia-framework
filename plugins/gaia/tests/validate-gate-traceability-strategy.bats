@@ -69,16 +69,21 @@ teardown() { common_teardown; }
 # Negative case — none-present
 # ---------------------------------------------------------------------------
 
-@test "TC-DRO-21: no layout present fails with FLAT-path error (AC5)" {
+@test "TC-DRO-21: no layout present fails with all-paths error (AC5, AF-2026-05-28-1 D-6)" {
   run "$SCRIPT" traceability_exists
   [ "$status" -eq 1 ]
   [[ "$output" == *"validate-gate: traceability_exists failed"* ]]
-  [[ "$output" == *"expected:"* ]]
-  # Error names the flat path (log-parser contract).
+  # AF-2026-05-28-1 / Test07 D-6: the error message used to name ONLY the legacy
+  # flat path (the "FLAT-path log-parser contract"). That misled users into
+  # thinking the producer wrote elsewhere when the actual issue was a missing
+  # file at ANY accepted location. The contract is now "expected one of: ..."
+  # listing the canonical planning-artifacts home first plus the 3 legacy
+  # fallbacks (flat, strategy/, sharded index.md).
+  [[ "$output" == *"expected one of:"* ]]
+  [[ "$output" == *"planning-artifacts/traceability-matrix.md"* ]]
+  [[ "$output" == *"(canonical)"* ]]
   [[ "$output" == *"traceability-matrix.md"* ]]
-  # Error MUST NOT name the strategy/ path (that path is reachable via the
-  # alias arm, not the documented canonical location).
-  [[ "$output" != *"strategy/traceability-matrix.md"* ]]
+  [[ "$output" == *"strategy/traceability-matrix.md"* ]]
 }
 
 # ---------------------------------------------------------------------------

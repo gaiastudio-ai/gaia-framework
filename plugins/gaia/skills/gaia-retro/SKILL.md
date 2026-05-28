@@ -26,7 +26,7 @@ fi
 
 ## Mission
 
-Facilitate a structured post-sprint retrospective by collecting team feedback across three sections (went well, what could improve, action items) and writing the resulting retro artifact to `.gaia/artifacts/implementation-artifacts/`. When an optional sprint-id argument is provided (e.g., `sprint-42`), use that sprint. Otherwise, resolve the current sprint from `.gaia/artifacts/implementation-artifacts/sprint-status.yaml`.
+Facilitate a structured post-sprint retrospective by collecting team feedback across three sections (went well, what could improve, action items) and writing the resulting retro artifact to `.gaia/artifacts/implementation-artifacts/`. When an optional sprint-id argument is provided (e.g., `sprint-42`), use that sprint. Otherwise, resolve the current sprint from `.gaia/state/sprint-status.yaml`.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/retrospective/` XML engine workflow (brief Cluster 8, story E28-S64). Follows ADR-041 and the canonical SKILL.md shape from E28-S19 and E28-S53.
 
@@ -44,7 +44,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 If a sprint-id argument was provided, use it directly.
 
-Otherwise, read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-status.yaml` and extract the current `sprint_id` from the top-level metadata.
+Otherwise, read `${CLAUDE_PROJECT_ROOT}/.gaia/state/sprint-status.yaml` and extract the current `sprint_id` from the top-level metadata.
 
 If sprint-status.yaml is missing or unreadable, ask the user for the sprint ID.
 
@@ -66,7 +66,7 @@ Hold the scanner output in session memory — do NOT copy it verbatim into the f
 
 ### Step 2 --- Load Sprint Data
 
-Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-status.yaml` to extract:
+Read `${CLAUDE_PROJECT_ROOT}/.gaia/state/sprint-status.yaml` to extract:
 - All story keys for the resolved sprint
 - Planned points and completed points
 - Story statuses (done, in-progress, review, blocked, carried over)

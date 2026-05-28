@@ -116,7 +116,7 @@ Attempt to read each reference artifact (record which exist and which are missin
 - `.gaia/artifacts/planning-artifacts/prd.md` — for product decision validation (per ADR-069 / FR-396..402, fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` if the flat path is absent)
 - `.gaia/artifacts/planning-artifacts/infrastructure-design.md` — for infrastructure validation
 - `.gaia/artifacts/test-artifacts/test-plan.md` — for test strategy validation (per ADR-072 / AF-2026-05-08-5, fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` if the flat path is absent)
-- `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` — for sprint references and current sprint ID
+- `.gaia/state/sprint-status.yaml` — for sprint references and current sprint ID
 - `.gaia/artifacts/planning-artifacts/epics-and-stories.md` — for story / epic key validation
 
 For each artifact that exists: retain key sections for comparison in Steps 4, 5, 6, and 8.
