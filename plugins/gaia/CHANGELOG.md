@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.180.5] — 2026-05-28
+
+### Changed
+
+- (test06) align ci-finalize-gate + planning-vs-test taxonomy with the new contracts
+- (test06) update tests that asserted the pre-refactor inline impls
+- (test06) cover resolver project-root env precedence (cluster-6 fixture pattern)
+
+### Fixed
+
+- (AF-2026-05-27-8) test06 findings — shared artifact-path resolver + heading lib + gate
+- (test06) broaden resolve-artifact-path project-root resolution
+- (test06) ci-setup checklist default, delivered default, dod build/lint parity
+- (test06) unblock create-arch threat-model gate in the pre-sprint phase
+- (test06) centralize heading_present into one shared lib
+- (test06) route artifact-path consumers through a shared resolver
+
 ## [1.180.4] — 2026-05-27
 
 ### Fixed
