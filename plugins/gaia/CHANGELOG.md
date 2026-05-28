@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.180.6] — 2026-05-28
+
+### Changed
+
+- (test07) update TC-DRO-21 no-layout assertion for D-6 expanded format
+- (test07) update gaia-trace error-message assertion for the D-6 expanded format
+- (test07) cover each fix + add SKILL.md path-drift sweep-discipline guard
+
+### Fixed
+
+- (test07) heading placeholder, brittle regexes, slug freedom, error messages
+- (test07) sweep stale artifact-path references across SKILL.md + agents docs
+
 ## [1.180.5] — 2026-05-28
 
 ### Changed
