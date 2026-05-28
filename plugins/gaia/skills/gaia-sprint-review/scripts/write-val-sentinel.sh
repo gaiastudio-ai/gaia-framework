@@ -133,8 +133,13 @@ case "$status" in
 esac
 
 # Validate agent value.
+# AF-2026-05-28-1 / Test07 M-3: the agent field MUST be the literal string "val"
+# (the persona identifier carried in the ADR-037 envelope), NOT the subagent
+# registration name (`gaia:validator`). The orchestrator MUST set `.agent = "val"`
+# in the payload regardless of how Val was dispatched. Common surprise on first
+# sprint-review run; surface the expected literal in the error.
 agent=$(echo "$payload" | jq -r '.agent')
-[ "$agent" = "val" ] || die "payload agent '$agent' must be 'val'"
+[ "$agent" = "val" ] || die "payload agent '$agent' must be 'val' (the literal persona identifier per ADR-037, NOT the subagent registration name 'gaia:validator')"
 
 # ---------- Construct sentinel + atomic write ----------
 

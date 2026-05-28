@@ -398,7 +398,17 @@ check_file_nonempty() {
   case "$gate" in
     test_plan_exists)
       dir="${filepath%/*}"
-      warn "$gate failed — expected one of: $abs OR $(abs_path "$dir/strategy/test-plan.md") OR $(abs_path "$dir/strategy/test-strategy.md") OR $(abs_path "${filepath%.md}/index.md")"
+      warn "$gate failed — expected one of: $abs OR $(abs_path "$dir/strategy/test-plan.md") OR $(abs_path "$dir/strategy/test-strategy.md") OR $(abs_path "${filepath%.md}/index.md") OR $(abs_path "${PLANNING_ARTIFACTS:-./.gaia/artifacts/planning-artifacts}/test-plan.md") OR $(abs_path "${PLANNING_ARTIFACTS:-./.gaia/artifacts/planning-artifacts}/test-strategy.md")"
+      ;;
+    traceability_exists)
+      # AF-2026-05-28-1 / Test07 D-6: the gate accepts FOUR locations (canonical
+      # planning-artifacts/ post-E105-S2 / ADR-127 §7.2 PLUS three legacy
+      # test-artifacts/ placements per ADR-070 / ADR-072). The prior error
+      # message named ONLY the flat legacy test-artifacts path, misleading
+      # users into thinking the producer wrote to the wrong place when the
+      # actual issue was a missing file at any accepted location.
+      dir="${filepath%/*}"
+      warn "$gate failed — expected one of: $(abs_path "${PLANNING_ARTIFACTS:-./.gaia/artifacts/planning-artifacts}/traceability-matrix.md") (canonical) OR $abs OR $(abs_path "$dir/strategy/traceability-matrix.md") OR $(abs_path "${filepath%.md}/index.md")"
       ;;
     *)
       warn "$gate failed — expected: $abs"

@@ -43,7 +43,7 @@ The `<50` cols branch-before-project rule is critical: when space is tight, the 
 
 ## rich
 
-`GAIA_STATUSLINE_THEME=rich` adds a second line `sprint | story | agent`. Sprint is read directly from `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` with a tiny `grep` (NOT routed through `scripts/sprint-status-dashboard.sh` — that would over-budget the hot path per FR-436).
+`GAIA_STATUSLINE_THEME=rich` adds a second line `sprint | story | agent`. Sprint is read directly from `.gaia/state/sprint-status.yaml` with a tiny `grep` (NOT routed through `scripts/sprint-status-dashboard.sh` — that would over-budget the hot path per FR-436).
 
 ```
 ◆ GAIA 1.139.0 | claude-opus | gaia-framework/feat/E82-S4 | 42%

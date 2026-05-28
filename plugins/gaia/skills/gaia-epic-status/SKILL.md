@@ -13,7 +13,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-Display an epic completion dashboard by reading `.gaia/artifacts/planning-artifacts/epics-and-stories.md` and `.gaia/artifacts/implementation-artifacts/sprint-status.yaml`. When an optional epic key argument is provided (e.g., `E28`), filter the dashboard to show only that epic. This skill is read-only — it NEVER writes to any artifact file.
+Display an epic completion dashboard by reading `.gaia/artifacts/planning-artifacts/epics-and-stories.md` and `.gaia/state/sprint-status.yaml`. When an optional epic key argument is provided (e.g., `E28`), filter the dashboard to show only that epic. This skill is read-only — it NEVER writes to any artifact file.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/epic-status/` XML engine workflow (brief Cluster 8, story E28-S62). Follows ADR-042 (scripts-over-LLM) where applicable, but dashboard rendering uses LLM-layer markdown table output per the story's technical notes.
 
@@ -40,7 +40,7 @@ Then scan the document body for each epic's story list. For each epic section (h
 
 ### Step 2 --- Resolve Per-Story Status
 
-**Primary path:** Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-status.yaml`.
+**Primary path:** Read `${CLAUDE_PROJECT_ROOT}/.gaia/state/sprint-status.yaml`.
 - Parse the `stories:` array
 - Map each story key to its `status` field
 

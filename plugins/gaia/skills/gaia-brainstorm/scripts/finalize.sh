@@ -168,8 +168,15 @@ if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
 
   # Creative-artifacts/ was checked before the session started — verified by
   # the artifact living in that directory or being pointed-at explicitly.
+  # AF-2026-05-28-1 / Test07 M-1: accept BARE relative paths too. The original
+  # arms all required a `/` somewhere before the directory name (the `*/dir/*`
+  # form), so a project-root relative path like `.gaia/artifacts/creative-artifacts/
+  # brainstorm-yara.md` (no leading slash, no parent component) matched none of
+  # them and SV-13 falsely FAILed despite the artifact being in the correct
+  # canonical directory.
   case "$ARTIFACT" in
     */.gaia/artifacts/creative-artifacts/*|*/docs/creative-artifacts/*|*/fixtures/*|/*) item_check "SV-13" "Creative-artifacts/ checked for prior outputs" pass ;;
+    .gaia/artifacts/creative-artifacts/*|docs/creative-artifacts/*|fixtures/*)         item_check "SV-13" "Creative-artifacts/ checked for prior outputs" pass ;;
     *)                                            item_check "SV-13" "Creative-artifacts/ checked for prior outputs" fail ;;
   esac
 

@@ -145,16 +145,38 @@ Delegate to the **pm** subagent (Derek) via `agents/pm` to set business priority
 Write the epics and stories document to `.gaia/artifacts/planning-artifacts/epics-and-stories.md`. Each story formatted as:
 
 ```
-### Story {epic-N}-{story-N}: {Title}
+### Story E{N}-S{N}: {Title}
 - Epic: {epic KEY, e.g. E1 — NOT the epic name}
 - Priority: {P0/P1/P2}
 - Size: {S/M/L/XL}
 - Risk: {high/medium/low}
-- Depends on: [{story-ids}]
+- Depends on: [E{N}-S{N}, E{N}-S{N}, ...]   # story keys in the same E{N}-S{N} form, NOT plain numbers
 - Blocks: [{story-ids}]
 - Acceptance Criteria:
   - AC1: {criteria}
 ```
+
+Concrete example (this is what the finalize.sh gate regex `^### Story E[0-9]+-S[0-9]+` will match):
+
+```
+### Story E1-S1: Vault folder creation and git initialization
+- Epic: E1
+- Priority: P0
+- Size: M
+- Risk: high
+- Depends on: []
+- Blocks: [E1-S2]
+- Acceptance Criteria:
+  - AC1: Given a fresh project dir, when `gaia-init` runs, then `.gaia/` is created and committed.
+```
+
+> **Heading-format contract (H-1, Test07).** The story heading is literally
+> `### Story E{N}-S{N}: {Title}` — note the literal letter `S` between the epic
+> and story numbers (e.g. `### Story E1-S1:`, NOT `### Story E1-1:`). The
+> finalize.sh SV-04..SV-10 gate regex `^### Story E[0-9]+-S[0-9]+` enforces
+> this verbatim — a heading without the `S` reports as "no story headings found"
+> and collapses every per-story check to FAIL. Same `E{N}-S{N}` form applies to
+> story keys inside `Depends on:` and `Blocks:` lists.
 
 > **Field-format contract (F-017/F-018, Test04).** Author bullets as plain
 > `- Label: value` (the consumer `generate-frontmatter.sh` also tolerates the

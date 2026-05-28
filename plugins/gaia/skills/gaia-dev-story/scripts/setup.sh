@@ -99,17 +99,32 @@ fi
 if [ -z "$F33_SPRINT_ID" ]; then
   log "F-33 traceability gate skipped (no SPRINT_ID resolved — fixture/setup-smoke context)"
 else
-  # AF-2026-05-26-9 (F-17 class / F2): resolve the traceability matrix across
-  # ALL THREE accepted placements — flat, ADR-072 strategy/, and ADR-070 sharded
-  # index.md. The prior chain checked strategy/ then flat but MISSED the sharded
-  # form, so a sharded-layout project hard-died at the F-33 gate below.
+  # AF-2026-05-28-1 / Test07 H-3: route the traceability-matrix lookup through
+  # the shared resolver so the canonical .gaia/artifacts/planning-artifacts/
+  # home is rung 1 (E105-S2 / ADR-127 §7.2 — where /gaia-trace now writes), with
+  # the legacy .gaia/artifacts/test-artifacts/{,strategy/,sharded} placements as
+  # read-compat fallbacks. Previously this block initialized TM_ART to the legacy
+  # strategy/ path and never looked at planning-artifacts/ — so dev-story HALTed
+  # with "traceability-matrix.md not found" on every greenfield project using the
+  # post-ADR-127 layout, requiring a manual copy to the legacy path.
+  # AF-2026-05-26-9 (F-17 class / F2): the legacy probe also covers the flat,
+  # ADR-072 strategy/, and ADR-070 sharded index.md placements.
   _ta="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts"
-  TM_ART="$_ta/strategy/traceability-matrix.md"
-  if [ ! -f "$TM_ART" ]; then
-    if [ -f "$_ta/traceability-matrix.md" ]; then
-      TM_ART="$_ta/traceability-matrix.md"
-    elif [ -f "$_ta/traceability-matrix/index.md" ]; then
-      TM_ART="$_ta/traceability-matrix/index.md"
+  _resolver_h3="$PLUGIN_SCRIPTS_DIR/lib/resolve-artifact-path.sh"
+  TM_ART=""
+  if [ -x "$_resolver_h3" ]; then
+    TM_ART="$("$_resolver_h3" traceability --project-root "${PROJECT_PATH:-.}" --existing-only 2>/dev/null || true)"
+  fi
+  if [ -z "$TM_ART" ]; then
+    # Resolver returned nothing — fall back to the legacy local probe so the
+    # downstream "gate failed" error names the legacy paths it expected.
+    TM_ART="$_ta/strategy/traceability-matrix.md"
+    if [ ! -f "$TM_ART" ]; then
+      if [ -f "$_ta/traceability-matrix.md" ]; then
+        TM_ART="$_ta/traceability-matrix.md"
+      elif [ -f "$_ta/traceability-matrix/index.md" ]; then
+        TM_ART="$_ta/traceability-matrix/index.md"
+      fi
     fi
   fi
 

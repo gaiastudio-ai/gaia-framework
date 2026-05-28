@@ -54,13 +54,27 @@ die() { log "$*"; exit 1; }
 # directory. A missing artifact is NOT fatal to the observability side
 # effects — the checklist run is simply skipped.
 ARTIFACT=""
-# AF-2026-05-21-25 three-tier idiom.
+# AF-2026-05-21-25 three-tier idiom + AF-2026-05-28-1 / Test07 M-5 slug freedom:
+# also accept `market-research-<slug>.md` (e.g. market-research-yara.md) the same
+# way brainstorm/product-brief accept `<name>-*.md`. The exact-filename check
+# previously caused finalize to silently skip when the analyst named the file
+# with a project slug. Newest-mtime entry wins via `ls -1t`.
+_pick_market() {
+  local dir="$1" hit
+  [ -d "$dir" ] || return 1
+  if [ -f "$dir/market-research.md" ]; then
+    printf '%s\n' "$dir/market-research.md"; return 0
+  fi
+  hit=$(ls -1t "$dir"/market-research-*.md 2>/dev/null | head -1)
+  [ -n "$hit" ] && { printf '%s\n' "$hit"; return 0; }
+  return 1
+}
 if [ -n "${MARKET_RESEARCH_ARTIFACT:-}" ]; then
   ARTIFACT="$MARKET_RESEARCH_ARTIFACT"
-elif [ -f "docs/planning-artifacts/market-research.md" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
-  ARTIFACT="docs/planning-artifacts/market-research.md"
-elif [ -f ".gaia/artifacts/planning-artifacts/market-research.md" ]; then
-  ARTIFACT=".gaia/artifacts/planning-artifacts/market-research.md"
+elif [ -d "docs/planning-artifacts" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
+  ARTIFACT="$(_pick_market docs/planning-artifacts)" || ARTIFACT=""
+elif [ -d ".gaia/artifacts/planning-artifacts" ]; then
+  ARTIFACT="$(_pick_market .gaia/artifacts/planning-artifacts)" || ARTIFACT=""
 fi
 
 # ---------- 1. Run the 28-item checklist ----------

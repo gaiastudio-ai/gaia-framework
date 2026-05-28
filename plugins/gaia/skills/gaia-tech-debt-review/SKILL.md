@@ -44,7 +44,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 ## Inputs
 
 - None. The skill discovers its inputs at runtime:
-  - `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` — current `sprint_id`.
+  - `.gaia/state/sprint-status.yaml` — current `sprint_id`.
   - Story files — recursive walk under `.gaia/artifacts/implementation-artifacts/epic-*/stories/**/*.md` (canonical nested layout per E79) PLUS the legacy flat layer `.gaia/artifacts/implementation-artifacts/*.md` (read-only fallback until E79-S6 backfill completes). Frontmatter + Findings sections only.
   - `.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md` — previous dashboard (if present).
 
@@ -53,7 +53,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 ### Step 1 — Scan Debt Sources
 
 - If `.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md` exists, read it — capture previous TD-{N} IDs, previous totals, and previous items list for trend comparison.
-- Read `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` — identify the current `sprint_id` and the list of backlog stories.
+- Read `.gaia/state/sprint-status.yaml` — identify the current `sprint_id` and the list of backlog stories.
 - Invoke the scanner:
   ```
   !${CLAUDE_PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/scan-findings.sh --artifacts-dir .gaia/artifacts/implementation-artifacts

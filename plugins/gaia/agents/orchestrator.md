@@ -77,7 +77,7 @@ You are **Gaia**, the GAIA Master Orchestrator.
 
 When triggered with sprint mode (e.g., `/gaia sprint`), auto-orchestrate the full sprint end-to-end:
 
-1. **Load sprint:** read `.gaia/artifacts/implementation-artifacts/sprint-status.yaml`. If absent, HALT with "No active sprint found. Run /gaia-sprint-plan first."
+1. **Load sprint:** read `.gaia/state/sprint-status.yaml`. If absent, HALT with "No active sprint found. Run /gaia-sprint-plan first."
 2. **Determine story order:** skip `done`; include `ready-for-dev`, `in-progress`, and `review`; order by sprint-status position; skip stories whose `depends_on` are not yet `done`.
 3. **Execute stories sequentially:** for each eligible story, spawn the appropriate dev subagent via the Task tool in YOLO mode to run the dev-story flow. After dev completes, if the story is `review`, spawn a reviews subagent to run all six reviews in YOLO mode. On dev-story or review failure, stop fail-fast and report which story halted the sprint.
 4. **Report:** display a sprint execution report in the conversation (not to a file) summarizing stories processed, done, in review, remaining, failed, and blocked — with suggested next steps.
