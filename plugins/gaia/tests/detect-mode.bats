@@ -102,11 +102,15 @@ EOF
   [ "$output" = "RESUME" ]
 }
 
-@test "detect-mode: status=backlog returns RESUME" {
+@test "detect-mode: status=backlog returns FRESH (Test08 F-14)" {
+  # AF-2026-05-29-1 / Test08 F-14: backlog is a canonically-FRESH state — no
+  # implementation, no checkpoint, no commits. The prior RESUME classification
+  # (fallthrough to the `*)` catchall) steered /gaia-dev-story Step 1 into the
+  # resume-an-in-flight-implementation branch for a never-started story.
   _write_story_with_gate "E10-S6" "backlog"
   run "$DETECT_MODE" "docs/implementation-artifacts/E10-S6-test.md"
   [ "$status" -eq 0 ]
-  [ "$output" = "RESUME" ]
+  [ "$output" = "FRESH" ]
 }
 
 # ---------------------------------------------------------------------------
