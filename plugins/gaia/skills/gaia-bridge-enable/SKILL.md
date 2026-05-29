@@ -35,7 +35,7 @@ Follow the full `gaia-bridge-toggle` skill body with `mode = enable`:
    > two-write sequence is safe and re-runnable.
 3. If already `true`, report `Bridge already enabled` and exit without writing.
 4. Otherwise, perform the regex-based in-place edit to `config/project-config.yaml` to flip `bridge_enabled: false` → `bridge_enabled: true`, preserving all comments and formatting.
-5. Run the Post-Flip Checks (enable-only — stat `.gaia/artifacts/test-artifacts/test-environment.yaml`; for absent in YOLO, auto-skip with a warning).
+5. Run the Post-Flip Checks (enable-only — stat the manifest at the canonical post-ADR-110 location `.gaia/config/test-environment.yaml`. AF-2026-05-29-2 / Test09 F-27: the previous reference to `.gaia/artifacts/test-artifacts/test-environment.yaml` was the legacy location — the producer (`test-environment-manifest.sh`) writes to `.gaia/config/` per ADR-110, so stating the legacy path produced a false "manifest absent" verdict even when a valid manifest existed at the canonical location. For pre-ADR-110 projects whose manifest still lives at the legacy `.gaia/artifacts/test-artifacts/test-environment.yaml`, the `migrate-test-environment-path.sh` helper invoked in Step 4 of `/gaia-bridge-toggle` has already moved it; if it hasn't been invoked, also accept the legacy path as a fallback. For absent in YOLO, auto-skip with a warning).
 6. Emit the summary. Under the native plugin (ADR-044/ADR-048) the flag change takes effect immediately — no config rebuild is required.
 
 The full step-by-step procedure is documented in `plugins/gaia/skills/gaia-bridge-toggle/SKILL.md`. This wrapper inherits all behavior from that skill.

@@ -99,6 +99,8 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 - For FRESH mode: run `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to in-progress`.
 - For REWORK/RESUME: skip -- story is already in-progress.
 
+**Step 2a — Auto-activate sprint if planned (AF-2026-05-29-2 / Test09 F-32).** After the story transition completes, read `.gaia/state/sprint-status.yaml` (the canonical sprint-status home per ADR-111). If the sprint's `status:` is `planned` AND the just-transitioned story belongs to that sprint (its `sprint_id:` matches), invoke `${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh transition --sprint {sprint_id} --to active` to flip the sprint to `active`. Log: `auto-activated sprint {sprint_id}: planned → active (first dev-story transition)`. Skip silently when the sprint is already `active` or when the story has no sprint binding (sprint_id: null / unset — a backlog dev). The E107-S4 planned→active readiness gate was specced as a separate skill but never wired into the actual create-story → sprint-plan → dev-story chain; without this auto-activation step the sprint stays `planned` for the entire lifecycle and `/gaia-sprint-review` Step 1 then refuses to open because it expects `active`. Operators previously had to manually `sprint-state.sh transition --to active` between stories. Auto-activation on the first dev-story transition closes the gap with no operator burden.
+
 <!-- E55-S5: step 2b atdd gate begin -->
 ### Step 2b -- ATDD Gate (high-risk stories only)
 
