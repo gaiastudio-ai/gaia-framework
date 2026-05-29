@@ -191,6 +191,17 @@ if phase == "full":
             lines.append("    paths:")
             for p in s.get("paths", []) or []:
                 lines.append(f"      - {yaml_quote(p)}")
+            # AF-2026-05-29-1 / Test08 F-4: preserve per-stack `excludes` so the
+            # SR-87 default-exclude patterns documented in SKILL.md Step 2.3
+            # (.env, secrets/, build/, dist/, node_modules/, .venv/, target/,
+            # etc.) actually reach the generated config. Previously the script
+            # iterated only name/language/paths and dropped excludes silently —
+            # downstream brownfield + scan tooling missed the operator's intent.
+            excludes = s.get("excludes") or []
+            if excludes:
+                lines.append("    excludes:")
+                for ex in excludes:
+                    lines.append(f"      - {yaml_quote(ex)}")
 
     # E77-S9 / FR-411 — plugin-specific tool_adapters defaults.
     # shellcheck: shell-script linting under plugins/gaia/scripts/.
@@ -240,12 +251,46 @@ if phase == "full":
         if not envs:
             envs = {}
         else:
-            sys.stderr.write(
-                "generate-config.sh: environments must be a mapping of "
-                "{env_name: {url, credentials}}, not a list — got a non-empty "
-                "list; omitting. Re-run with the object form.\n"
-            )
-            envs = {}
+            # AF-2026-05-29-1 / Test08 F-1: SKILL.md Step 2.6 documents the
+            # environments answer-bundle as an iterative list of objects
+            # `[{name, url, auth_type}, ...]` (matching how the questionnaire
+            # collects them per-environment). Previously the script rejected
+            # that documented form and silently dropped the operator's input.
+            # Transparently transform it into the canonical mapping shape
+            # `{name: {url, credentials: {token: auth_type}}}` so the
+            # documented SKILL.md form actually round-trips through the
+            # generator. A list entry without a `name` is the only true
+            # error — those are skipped with a NOTICE.
+            transformed = {}
+            for entry in envs:
+                if not isinstance(entry, dict):
+                    sys.stderr.write(
+                        f"generate-config.sh: environments[] entry is not an object "
+                        f"({type(entry).__name__}); skipping.\n"
+                    )
+                    continue
+                env_name = entry.get("name")
+                if not env_name:
+                    sys.stderr.write(
+                        "generate-config.sh: environments[] entry has no `name`; "
+                        "skipping.\n"
+                    )
+                    continue
+                body = {}
+                if entry.get("url"):
+                    body["url"] = entry["url"]
+                # auth_type → credentials.token mapping (env-var NAME, not
+                # literal credential, per SKILL.md Step 2.6 contract).
+                if entry.get("auth_type"):
+                    body["credentials"] = {"token": entry["auth_type"]}
+                # Pass through any other recognised fields (forward-compat).
+                for k, v in entry.items():
+                    if k not in ("name", "url", "auth_type", "credentials"):
+                        body[k] = v
+                if entry.get("credentials"):
+                    body["credentials"] = entry["credentials"]
+                transformed[env_name] = body
+            envs = transformed
     # F-4 (AF-2026-05-26-2): schema allOf[2] (config_phase=full) requires a
     # populated `environments` block, but the questionnaire permits "no
     # environments". Seed a minimal `local` map-shape entry so a full-phase
