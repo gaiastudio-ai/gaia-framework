@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>First 30 Minutes (Brownfield) — Onboarding an Existing Codebase - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+          <li><a href="first-30-minutes.html">First 30 Minutes (Greenfield)</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#step-0">0. Install</a></li>
+          <li><a href="#step-1">1. /gaia-brownfield</a></li>
+          <li><a href="#step-2">2. Reconcile stack vs config</a></li>
+          <li><a href="#step-3">3. Phase 2 -- codebase scan</a></li>
+          <li><a href="#step-4">4. Phase 3 -- PRD synthesis</a></li>
+          <li><a href="#step-5">5. Phase 4 -- gap analysis</a></li>
+          <li><a href="#step-6">6. Phase 5 -- epics + stories</a></li>
+          <li><a href="#step-7">7. Phase 6 -- assessment</a></li>
+          <li><a href="#step-8">8. Re-run brownfield-arch through /gaia-create-arch</a></li>
+          <li><a href="#step-9">9. Phase 7 -- doc-site scaffold</a></li>
+          <li><a href="#step-10">10. Phase 8 -- adversarial + code-verified gates</a></li>
+          <li><a href="#step-11">11. Phase 9 -- handoff to greenfield lifecycle</a></li>
+          <li><a href="#caveats">Caveats</a></li>
+          <li><a href="#whats-next">What to read next</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        First 30 Minutes (Brownfield)
+      </nav>
+
+      <h1>First 30 Minutes with GAIA (Brownfield) — Onboarding an Existing Codebase</h1>
+      <p>
+        This walkthrough is the brownfield companion to the
+        <a href="first-30-minutes.html">greenfield First 30 Minutes</a>. Use it
+        when you have an existing codebase you want to bring under GAIA
+        management. Brownfield onboarding inspects what is already there,
+        synthesizes a PRD from observed behavior, runs gap analysis against
+        the synthesized PRD, and produces a backlog you can plan a sprint
+        from.
+      </p>
+
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>
+          The brownfield path collapses Steps 2--7 of the greenfield tutorial
+          (init &rarr; brainstorm &rarr; product brief &rarr; PRD &rarr;
+          architecture &rarr; epics) into a single
+          <code>/gaia-brownfield</code> invocation with nine phases. The
+          output feeds back into the greenfield lifecycle at
+          <code>/gaia-create-story</code> &rarr;
+          <code>/gaia-sprint-plan</code> &rarr;
+          <code>/gaia-dev-story</code>, so once Steps 1--11 below complete,
+          you re-join the greenfield walkthrough at its
+          <a href="first-30-minutes.html#step-8">Step 8</a>.
+        </p>
+      </section>
+
+      <section id="step-0">
+        <h2>Step 0 -- Install the plugin</h2>
+        <p>
+          Install the GAIA plugin into your Claude Code environment. Refer
+          to the GAIA repository README for platform-specific installation
+          instructions. Once installed, all <code>/gaia-*</code> commands
+          become available in any Claude Code session.
+        </p>
+        <p><em>Expected duration: 2 minutes.</em></p>
+      </section>
+
+      <section id="step-1">
+        <h2>Step 1 -- Run <code>/gaia-brownfield</code> on the existing repo</h2>
+        <pre><code>/gaia-brownfield ./my-existing-project</code></pre>
+        <p>
+          Phase 1 attempts to read
+          <code>.gaia/config/project-config.yaml</code>. If it is absent, the
+          skill now degrades gracefully -- it seeds safe defaults,
+          <code>mkdir -p</code>'s the artifact tree, and continues. Users
+          coming from the pre-fix behaviour would have hit a HALT here with
+          <code>resolve-config.sh failed: no config path</code>; on the
+          current build the skill no longer requires a pre-existing config to
+          start.
+        </p>
+        <p>
+          If you do want better results, supply a minimal
+          <code>.gaia/config/project-config.yaml</code> ahead of time -- the
+          manifest detector uses any declared stack/compliance hints to
+          improve its codebase classification.
+        </p>
+        <p><em>Expected duration: 1 minute (skill prelude only).</em></p>
+      </section>
+
+      <section id="step-2">
+        <h2>Step 2 -- Reconcile detected stack vs config</h2>
+        <p>
+          Phase 1 of brownfield runs the manifest detector. The detector
+          first scans the file system for signal files
+          (<code>package.json</code>, <code>requirements.txt</code>,
+          <code>go.mod</code>, etc.). When the canonical signal files are
+          absent -- common for repos that mix multiple stacks, vendored
+          dependencies, or non-standard layouts -- the detector falls back
+          to <code>stacks[].language</code> from
+          <code>.gaia/config/project-config.yaml</code> as the config-fallback
+          source.
+        </p>
+        <p>
+          Inspect the detected stacks at this step. If the detector misclassified
+          your project, edit <code>project-config.yaml</code> via
+          <a href="../commands/gaia-config-stack.html"><code>/gaia-config-stack</code></a>
+          and re-invoke brownfield; the detector picks up the corrected
+          config on the next run.
+        </p>
+        <p><em>Expected duration: 2 minutes (inspection + optional config edit).</em></p>
+      </section>
+
+      <section id="step-3">
+        <h2>Step 3 -- Phase 2: codebase scan and brownfield-arch</h2>
+        <p>
+          Phase 2 walks the source tree and auto-generates a
+          brownfield architecture document covering technology selection,
+          components, data architecture, API design, infrastructure, and
+          security posture -- all reverse-engineered from the codebase. No
+          PRD exists yet; the architecture is descriptive, not prescriptive.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/architecture.md</code> (brownfield mode, descriptive).</p>
+        <p><em>Expected duration: 3--5 minutes for a typical repo.</em></p>
+      </section>
+
+      <section id="step-4">
+        <h2>Step 4 -- Phase 3: PRD synthesis from observed behavior</h2>
+        <p>
+          Phase 3 synthesizes a Product Requirements Document by inferring
+          functional requirements from observed behaviour: endpoint surfaces,
+          test fixtures, configuration switches, and feature flags become
+          candidate FRs; non-functional requirements come from the NFR
+          assessment that runs in parallel.
+        </p>
+        <p>
+          The synthesized PRD is a starting point, not ground truth. Review
+          it and run
+          <a href="../commands/gaia-edit-prd.html"><code>/gaia-edit-prd</code></a>
+          to refine wording, merge duplicates, or split overloaded FRs before
+          gap analysis consumes it.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/prd.md</code> (synthesized from observed behaviour).</p>
+        <p><em>Expected duration: 3 minutes.</em></p>
+      </section>
+
+      <section id="step-5">
+        <h2>Step 5 -- Phase 4: gap analysis</h2>
+        <p>
+          Phase 4 runs seven parallel scans (doc-code mismatches, hardcoded
+          values, integration seams, runtime behaviour, security posture,
+          config contradictions, dead code) plus an execution pass against
+          the existing test suite. Each scan emits gap entries; Phase 4's
+          consolidator deduplicates by evidence location, ranks by severity,
+          and produces a single gap report.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/consolidated-gaps.md</code>.</p>
+        <p><em>Expected duration: 5--10 minutes for the parallel scan battery.</em></p>
+      </section>
+
+      <section id="step-6">
+        <h2>Step 6 -- Phase 5: epics + stories rooted in the gap analysis</h2>
+        <p>
+          Phase 5 breaks the consolidated gap report into epics and stories.
+          Unlike the greenfield path -- where epics derive from PRD scope --
+          brownfield epics are gap-rooted: each epic groups related gap
+          entries into a deliverable unit. Stories carry acceptance
+          criteria, risk ratings, and dependency links exactly as they do in
+          greenfield.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/epics-and-stories.md</code>.</p>
+        <p><em>Expected duration: 3 minutes.</em></p>
+      </section>
+
+      <section id="step-7">
+        <h2>Step 7 -- Phase 6: brownfield assessment</h2>
+        <p>
+          Phase 6 emits the user-facing brownfield assessment: detected
+          tech stack, capabilities, classification (application /
+          infrastructure / platform), compliance posture, and a top-level
+          summary of what brownfield found. The assessment header carries
+          <code>schema_version: 2.0.0</code> -- this is the wire version the
+          downstream consumers expect. If you see anything else, run
+          <a href="../commands/gaia-migrate.html"><code>/gaia-migrate v1 v2</code></a>
+          to align the schema.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/brownfield-assessment.md</code> (<code>schema_version: 2.0.0</code>).</p>
+        <p><em>Expected duration: 1 minute.</em></p>
+      </section>
+
+      <section id="step-8">
+        <h2>Step 8 -- Re-run brownfield-arch through <code>/gaia-create-arch</code></h2>
+        <p>
+          The Phase 2 brownfield architecture is descriptive -- it documents
+          what exists. To get the Review-Findings section (the adversarial
+          review pass that produces actionable architecture-level findings),
+          re-run the brownfield architecture through
+          <a href="../commands/gaia-create-arch.html"><code>/gaia-create-arch</code></a>:
+        </p>
+        <pre><code>/gaia-create-arch --from-brownfield</code></pre>
+        <p>
+          This is the F21 caveat documented in Test09: brownfield's Phase 2
+          stops at the descriptive architecture; the Review-Findings layer
+          only writes when <code>/gaia-create-arch</code> ingests the
+          brownfield draft as input.
+        </p>
+        <p><em>Expected duration: 3 minutes.</em></p>
+      </section>
+
+      <section id="step-9">
+        <h2>Step 9 -- Phase 7: documentation-site scaffold</h2>
+        <p>
+          Phase 7 scaffolds the local <code>documentation/</code> directory
+          with the same HTML doc-site shape this site uses: command pages
+          keyed off detected stacks, category pages, a glossary stub, and a
+          lifecycle diagram. The scaffold is a starting point you can edit;
+          regeneration is non-destructive (copy-if-absent semantics).
+        </p>
+        <p><strong>Artifact produced:</strong> <code>documentation/</code> directory at the project root.</p>
+        <p><em>Expected duration: 2 minutes.</em></p>
+      </section>
+
+      <section id="step-10">
+        <h2>Step 10 -- Phase 8: adversarial review + code-verified gates</h2>
+        <p>
+          Phase 8 runs three sub-gates:
+        </p>
+        <ul>
+          <li>
+            <strong>8a -- consolidator quality gate.</strong> Verifies the
+            consolidated gap report meets schema and rank consistency.
+          </li>
+          <li>
+            <strong>8b -- adversarial review.</strong> Critical findings from
+            the adversarial pass <strong>downgrade to WARNING under YOLO</strong>.
+            The downgrade is intentional -- it keeps the YOLO pipeline
+            forward-moving when an adversarial reviewer is being overcautious
+            -- but you still see the WARNING in the run summary.
+          </li>
+          <li>
+            <strong>8c -- code-verified findings.</strong> Findings here are
+            grounded in actual code inspection (not heuristics) and
+            <strong>halt unconditionally</strong> regardless of YOLO mode.
+            Resolve every 8c finding before continuing.
+          </li>
+        </ul>
+        <p><em>Expected duration: 5--8 minutes.</em></p>
+      </section>
+
+      <section id="step-11">
+        <h2>Step 11 -- Phase 9: handoff to greenfield lifecycle</h2>
+        <p>
+          Phase 9 emits the handoff message pointing you at the greenfield
+          path. From here you re-join the greenfield walkthrough at
+          <a href="first-30-minutes.html#step-8">Step 8</a>:
+        </p>
+        <ol>
+          <li>
+            <a href="../commands/gaia-create-story.html"><code>/gaia-create-story</code></a>
+            for each story in the brownfield-generated backlog.
+          </li>
+          <li>
+            <a href="../commands/gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a>
+            to plan the first brownfield sprint.
+          </li>
+          <li>
+            <a href="../commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a>
+            to implement the first gap-driven story.
+          </li>
+          <li>
+            <a href="../commands/gaia-review-all.html"><code>/gaia-review-all</code></a>
+            to run the six-review battery on the implemented story.
+          </li>
+        </ol>
+        <p>
+          The brownfield-specific phases are now behind you; the rest of the
+          loop is identical to the greenfield walkthrough.
+        </p>
+      </section>
+
+      <section id="caveats">
+        <h2>Caveats</h2>
+        <ul>
+          <li>
+            <strong>Zero-config brownfield works, but produces best results
+            with a minimal config.</strong> The skill can run on a fresh
+            repo with no <code>.gaia/config/project-config.yaml</code> --
+            the prelude seeds defaults and continues. However, supplying a
+            minimal config (project shape, declared stacks, compliance
+            regime) before invoking brownfield significantly improves stack
+            detection, suppresses spurious defaults, and produces a more
+            accurate PRD.
+          </li>
+          <li>
+            <strong><code>compliance.ui_present: false</code> suppresses the
+            <code>[web]</code> platforms default.</strong> A headless backend
+            project should set <code>compliance.ui_present: false</code> in
+            its config. The same flag suppresses
+            <code>/gaia-create-ux</code> prerequisites (no UX design needed
+            for a headless service) and excludes the E2E tier from the
+            coverage formula (no browser-driven E2E is meaningful without a
+            UI).
+          </li>
+          <li>
+            <strong>Detected <code>schema_version</code> must be
+            <code>2.0.0</code>.</strong> The brownfield assessment header
+            carries the schema version; downstream consumers (PRD, epics,
+            test-plan generators) hard-require 2.0.0. Older schemas migrate
+            via
+            <a href="../commands/gaia-migrate.html"><code>/gaia-migrate v1 v2</code></a>.
+          </li>
+          <li>
+            <strong>brownfield-arch is descriptive only.</strong> The Phase 2
+            architecture documents what exists; it does not include the
+            Review-Findings adversarial section. Re-run the brownfield draft
+            through
+            <a href="../commands/gaia-create-arch.html"><code>/gaia-create-arch --from-brownfield</code></a>
+            (Step 8 above) to get the Review-Findings layer.
+          </li>
+          <li>
+            <strong>Phase 8b downgrades CRITICAL to WARNING under YOLO; 8c
+            does not.</strong> YOLO mode is a "keep moving" lever for
+            adversarial heuristics, not for code-verified findings. If 8c
+            halts, the finding is grounded in actual code -- resolve it.
+          </li>
+        </ul>
+      </section>
+
+      <section id="whats-next">
+        <h2>What to read next</h2>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes (Greenfield)</a> -- the canonical walkthrough you re-join at Step 8 above.</li>
+          <li><a href="../commands/gaia-brownfield.html"><code>/gaia-brownfield</code></a> -- full command reference with all phases and flags.</li>
+          <li><a href="../index.html#lifecycle">The GAIA Lifecycle</a> -- the five-phase diagram showing how all commands connect.</li>
+          <li><a href="../recipes.html">Common Workflows</a> -- multi-command recipes for brownfield onboarding, quick fixes, deployments, and more.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -36,6 +36,34 @@ You are implementing a user story end-to-end: loading the story spec, planning t
 
 This skill is the native Claude Code conversion of the legacy dev-story workflow (brief Cluster 7, story E28-S53). The playbook contains all LLM reasoning guidance. The scripts directory contains all mechanical operations. The PostToolUse hook automatically writes a checkpoint after every Edit or Write tool invocation.
 
+## Operator Quickstart
+
+Implementing a story end-to-end. Load the story, plan with you, write failing tests (red), implement code (green), refactor, verify the Definition of Done, commit, push, open a PR, wait for CI to go green, then merge. The skill drives every step; you confirm choices and approve transitions.
+
+**First-time invocation.**
+
+```
+/gaia-dev-story E1-S1
+```
+
+This loads `.gaia/artifacts/implementation-artifacts/.../E1-S1-*.md`, walks you through the TDD cycle on a feature branch, and lands a merged PR on staging (or your configured promotion target) once all checks pass.
+
+**When to use which option.**
+
+| You want to                                   | Run                                |
+|-----------------------------------------------|------------------------------------|
+| Implement a single story end-to-end           | `/gaia-dev-story <key>`            |
+| Resume after the harness restarted mid-story  | `/gaia-dev-story <key>` (re-runs idempotently from the latest checkpoint) |
+| Skip the PR + merge tail (push only)          | Set `ci_cd.promotion_chain: null` in `project-config.yaml` |
+| Auto-advance past confirmation gates          | Pass `yolo` as the second argument |
+| Implement a quick fix that doesn't need a story | `/gaia-quick-spec` then `/gaia-quick-dev` |
+
+**Common gotchas.**
+
+- The story file MUST exist and be `status: ready-for-dev` or `in-progress` -- any other status HALTS at Step 1.
+- The PostToolUse hook checkpoints after every Edit/Write -- do not manually call `checkpoint.sh`.
+- Steps 13-16 (push / PR / CI / merge) are mandatory when `ci_cd.promotion_chain` is set -- never skip them or ask "should I create the PR".
+
 ## Critical Rules
 
 - A story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` before starting. If missing, fail fast with "Story file not found -- run /gaia-create-story first."

@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-sprint-review - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#arguments">Arguments</a></li>
+          <li><a href="#orchestration-mode">Orchestration mode</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#examples">Examples</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/sprint-management.html">Sprint Management</a>
+        <span class="separator">/</span>
+        /gaia-sprint-review
+      </nav>
+
+      <!-- Header -->
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-sprint-review</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/sprint-management.html">Sprint Management</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>4 -- Implementation (end-of-sprint ceremony)</dd>
+          <dt>Arguments:</dt>
+          <dd><code>&lt;sprint-id&gt;</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-sprint-review</code> runs the end-of-sprint review
+          ceremony. It composes two parallel tracks into a single composite
+          verdict:
+        </p>
+        <ul>
+          <li>
+            <strong>Track A -- Val text-validation.</strong> A Val sub-agent
+            reads <code>sprint-status.yaml</code>, the sprint's story files,
+            and the rubric at <code>rubrics/base/sprint-review.json</code>,
+            then emits a per-goal verdict (PASSED / FAILED / PARTIAL) across
+            three rubric dimensions: story-to-goal traceability,
+            velocity-vs-capacity fit, and PRD priority coverage.
+          </li>
+          <li>
+            <strong>Track B -- per-stack execution review.</strong> Re-runs
+            the configured per-stack test matrix in the foreground and
+            reports a per-stack PASSED / FAILED / UNVERIFIED verdict. Track B
+            is a stub on the current build; the real runner ships with E93-S4.
+          </li>
+        </ul>
+        <p>
+          The two tracks reduce through <code>compose-verdict.sh</code> into a
+          single composite verdict that routes the sprint:
+        </p>
+        <ul>
+          <li>
+            <strong>PASSED</strong> -- handoff to
+            <a href="gaia-sprint-close.html"><code>/gaia-sprint-close</code></a>
+            to finalize.
+          </li>
+          <li>
+            <strong>FAILED</strong> -- transition the sprint to
+            <code>correction</code>, emit per-failed-goal action items via the
+            <code>sprint-correction</code> resolver, hand off to
+            <a href="gaia-correct-course.html"><code>/gaia-correct-course story_injection</code></a>.
+          </li>
+          <li>
+            <strong>UNVERIFIED</strong> -- the bypass path: collect mechanical
+            signals (infra-only, docs-only, or deferred-implementation),
+            request a PM explanation, then dispatch a second Val pass that
+            validates the bypass justification. If that pass PASSES, the
+            sprint may still close with an UNVERIFIED-bypass marker.
+          </li>
+        </ul>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>
+            All stories in the sprint are <code>status: done</code> and you
+            are ready to close out the iteration.
+          </li>
+          <li>
+            The sprint's <code>goals:</code> field has been populated (via
+            <code>/gaia-sprint-plan</code> or
+            <code>sprint-state.sh set-goals</code>) -- the review rubric is
+            evaluated per-goal, so an empty <code>goals[]</code> array is a
+            hard refuse.
+          </li>
+          <li>
+            The sprint is currently <code>status: active</code>. The skill
+            transitions it to <code>review</code> as Step 2 and routes onward
+            from there.
+          </li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>
+            <strong>Sprint must be <code>active</code>.</strong> The Step 1
+            pre-condition gate verifies the current sprint status before
+            firing the <code>active &rarr; review</code> transition.
+          </li>
+          <li>
+            <strong>All stories must be <code>done</code>.</strong> Any story
+            with a non-<code>done</code> status REFUSES the run with the
+            canonical stderr listing the offending keys. Complete the
+            remaining work or roll it over via
+            <a href="gaia-correct-course.html"><code>/gaia-correct-course</code></a>
+            before re-invoking.
+          </li>
+          <li>
+            <strong><code>goals[]</code> must be non-empty.</strong> The
+            rubric is per-goal; a sprint with no goals cannot be reviewed.
+            Use <code>sprint-state.sh set-goals --sprint &lt;id&gt; --file goals.yaml</code>
+            to populate it.
+          </li>
+        </ul>
+      </section>
+
+      <section id="arguments">
+        <h2>Arguments</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>sprint-id</code></td>
+              <td>Positional</td>
+              <td>Yes</td>
+              <td>--</td>
+              <td>The sprint identifier (e.g., <code>sprint-12</code>) whose review is being run. Must match a sprint in <code>.gaia/state/sprint-status.yaml</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="orchestration-mode">
+        <h2>Orchestration mode</h2>
+        <p>
+          <code>/gaia-sprint-review</code> declares
+          <code>orchestration_class: heavy-procedural</code> and runs as a
+          main-turn Mode A ceremony. It is <strong>not YOLO-able</strong> by
+          design: <code>yolo_steps: []</code>. Three
+          <code>AskUserQuestion</code> boundaries require human judgment that
+          cannot be safely auto-answered:
+        </p>
+        <ol>
+          <li>
+            <strong>Step 3 pre-Val dispatch confirmation</strong> -- the
+            stakeholder reviews the sprint goals and rubric path before Val
+            fires.
+          </li>
+          <li>
+            <strong>Step 4 per-goal Track B stakeholder confirmation</strong>
+            -- the stakeholder records, for each goal, one of
+            <code>works-as-expected</code>, <code>fails-goal</code>,
+            <code>needs-rework</code>, or <code>delegate-to-val</code>.
+          </li>
+          <li>
+            <strong>Step 8 UNVERIFIED bypass PM explanation</strong> -- the
+            PM provides a 200--1000 character justification for the bypass.
+          </li>
+        </ol>
+        <p>
+          CI or unattended pipelines that need sprint-review automation
+          should script the boundary writes directly via
+          <code>sprint-state.sh transition --sprint &lt;id&gt; --to review</code>
+          and emit the sprint-review artifact + Val sentinel manually,
+          matching the documented YARA-2 manual workaround pattern.
+        </p>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-sprint-review sprint-12</code></pre>
+        <p>
+          Replace <code>sprint-12</code> with the active sprint identifier.
+        </p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Pre-condition gate</span>
+            Reads <code>sprint-status.yaml</code> for the given sprint id.
+            REFUSES if any story is non-<code>done</code> (canonical stderr
+            lists the offending keys); REFUSES if <code>goals:</code> is
+            empty or missing. Exits non-zero on either condition.
+          </li>
+          <li>
+            <span class="step-title">Transition active &rarr; review</span>
+            Invokes <code>sprint-state.sh transition --sprint &lt;id&gt; --to review</code>.
+            Atomically updates <code>sprint-status.yaml</code> (mktemp + mv).
+            Exports <code>SPRINT_ID</code> so the finalize hook can locate
+            the dispatch sentinel later.
+          </li>
+          <li>
+            <span class="step-title">Track A Val dispatch (dual-sentinel)</span>
+            Emits an <code>AskUserQuestion</code> presenting sprint goals +
+            rubric path (the substrate halt is the auto-mode bypass
+            mitigation). On user acknowledgement, dispatches Val via the
+            main-turn Agent tool with the
+            <code>rubrics/base/sprint-review.json</code> rubric, the sprint
+            yaml, and the story files. The orchestrator writes the E87
+            envelope sentinel via <code>lib/write-val-envelope.sh</code>,
+            asserts it via <code>assert-agent-envelope.sh</code>, and writes
+            the E83 dispatch sentinel via <code>write-val-sentinel.sh</code>.
+            CRITICAL findings HALT before Track B fires.
+          </li>
+          <li>
+            <span class="step-title">Track B execution dispatch</span>
+            Invokes <code>track-b-dispatch.sh --sprint &lt;id&gt;</code>. The
+            stub reads <code>sprint_review:</code> from
+            <code>config/project-config.yaml</code>, iterates the per-stack
+            matrix, and emits a JSON array. On the current build every entry
+            is <code>verdict: SKIPPED</code>; the E93-S4 runner replaces this
+            stub with a real foreground per-stack execution review.
+          </li>
+          <li>
+            <span class="step-title">Per-goal stakeholder confirmation</span>
+            For each sprint goal, fires <code>AskUserQuestion</code> with the
+            4-option set: <code>works-as-expected</code> /
+            <code>fails-goal</code> / <code>needs-rework</code> /
+            <code>delegate-to-val</code>. The
+            <code>delegate-to-val</code> option records
+            <code>delegate-to-val:&lt;val-verdict&gt;</code> so the audit trail
+            preserves the delegation chain.
+          </li>
+          <li>
+            <span class="step-title">Compose composite verdict</span>
+            Invokes <code>compose-verdict.sh --track-a &lt;a&gt; --track-b &lt;b&gt;</code>.
+            PASSED iff both tracks PASSED (SKIPPED on Track B counts as
+            PASSED-equivalent on the current stub; PARTIAL on Track A does
+            not block). FAILED if either track FAILED. UNVERIFIED if either
+            track UNVERIFIED and neither FAILED.
+          </li>
+          <li>
+            <span class="step-title">Route to PASSED / FAILED / UNVERIFIED</span>
+            Writes the sprint-review artifact under
+            <code>.gaia/artifacts/implementation-artifacts/sprint-review/sprint-review-&lt;sprint_id&gt;-&lt;date&gt;.md</code>.
+            On PASSED, emits the handoff message pointing the user at
+            <code>/gaia-sprint-close</code>. On FAILED, transitions to
+            <code>correction</code> via <code>sprint-state.sh transition</code>
+            and emits one action item per failed goal through the
+            <code>sprint-correction</code> resolver in
+            <code>type-target-resolver.sh</code>.
+          </li>
+          <li>
+            <span class="step-title">UNVERIFIED bypass (when applicable)</span>
+            Collects mechanical signals per the AI-2026-05-16-5 spec
+            (primary criterion, qualifying ratio &ge; 0.80, qualifying
+            stories), fires <code>AskUserQuestion</code> to PM (Derek) for
+            the explanation, persists the <code>review_justification:</code>
+            block via <code>sprint-state.sh set-review-justification</code>,
+            then dispatches a second Val pass that validates the
+            justification against ground truth. On Val PASSED, emits the
+            handoff to <code>/gaia-sprint-close</code> with the
+            UNVERIFIED-bypass marker; on Val FAILED, reverts to the FAILED
+            path.
+          </li>
+        </ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Source</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Sprint tracking file</td>
+              <td><code>.gaia/state/sprint-status.yaml</code></td>
+              <td>The sprint under review. <code>status:</code> must be <code>active</code>; all <code>stories[].status</code> must be <code>done</code>; <code>goals:</code> must be non-empty.</td>
+            </tr>
+            <tr>
+              <td>Story files</td>
+              <td><code>.gaia/artifacts/implementation-artifacts/epic-{slug}/{key}-{slug}/story.md</code></td>
+              <td>The completed stories that the per-goal rubric evaluates against.</td>
+            </tr>
+            <tr>
+              <td>Sprint-review rubric</td>
+              <td><code>${CLAUDE_PLUGIN_ROOT}/rubrics/base/sprint-review.json</code></td>
+              <td>The AI-2026-05-16-1 rubric Val reads to produce per-goal verdicts across the three rubric dimensions.</td>
+            </tr>
+            <tr>
+              <td>Sprint-review config</td>
+              <td><code>.gaia/config/project-config.yaml</code> (key <code>sprint_review:</code>)</td>
+              <td>Per-stack matrix consumed by Track B's <code>track-b-dispatch.sh</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Output</th>
+              <th>Location</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Sprint-review artifact</td>
+              <td><code>.gaia/artifacts/implementation-artifacts/sprint-review/sprint-review-&lt;sprint_id&gt;-&lt;date&gt;.md</code></td>
+              <td>Charter + goals + Track A Val verdict + Track B per-stack output + per-goal stakeholder confirmations + composite verdict + routing decision.</td>
+            </tr>
+            <tr>
+              <td>Val dispatch sentinel</td>
+              <td><code>.gaia/memory/checkpoints/sprint-review-&lt;sprint_id&gt;-val-dispatched.json</code></td>
+              <td>The E83 dispatch sentinel <code>/gaia-sprint-close</code> verifies before accepting the <code>review &rarr; closed</code> edge.</td>
+            </tr>
+            <tr>
+              <td>Val envelope sentinel</td>
+              <td><code>.gaia/memory/checkpoints/val-envelope-&lt;sha256(sprint_id):0:16&gt;.json</code></td>
+              <td>The E87 envelope sentinel (forgery-resistant) for the Val verdict.</td>
+            </tr>
+            <tr>
+              <td>Sprint state transition</td>
+              <td><code>.gaia/state/sprint-status.yaml</code></td>
+              <td>On PASSED: stays at <code>review</code> awaiting <code>/gaia-sprint-close</code>. On FAILED: transitions to <code>correction</code>.</td>
+            </tr>
+            <tr>
+              <td>Action items (FAILED only)</td>
+              <td><code>.gaia/state/action-items.yaml</code></td>
+              <td>One <code>sprint-correction</code> entry per failed goal, routed to <code>/gaia-correct-course</code> via the 11-type resolver.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="examples">
+        <h2>Examples</h2>
+
+        <h3>1. PASSED path</h3>
+        <pre><code>&gt; /gaia-sprint-review sprint-12
+
+Pre-condition gate:
+  6 stories, all status: done.
+  goals[]: 3 entries.
+  Proceeding.
+
+Transition: active -> review (atomic write via sprint-state.sh).
+
+Track A -- Val dispatch:
+  AskUserQuestion: confirm sprint goals + rubric path? [yes]
+  Val (claude-opus-4-7) reading sprint-status.yaml + 6 story files + rubric.
+  Verdict: PASSED
+    Goal G1 (auth-flow):    PASSED
+    Goal G2 (audit-log):    PASSED
+    Goal G3 (rate-limit):   PASSED
+
+Track B -- execution review:
+  track-b-dispatch.sh: 2 stacks configured (python, node).
+    python: SKIPPED (E93-S4 not yet shipped)
+    node:   SKIPPED (E93-S4 not yet shipped)
+
+Per-goal stakeholder confirmation:
+  Goal G1: works-as-expected
+  Goal G2: works-as-expected
+  Goal G3: works-as-expected
+
+Compose verdict: PASSED (Track A=PASSED, Track B=SKIPPED).
+
+Artifact written: .gaia/artifacts/implementation-artifacts/sprint-review/sprint-review-sprint-12-2026-05-29.md
+
+/gaia-sprint-review: composite verdict PASSED -- sprint sprint-12 ready to close;
+  invoke /gaia-sprint-close to finalize.</code></pre>
+
+        <h3>2. FAILED path with composite reasoning</h3>
+        <pre><code>&gt; /gaia-sprint-review sprint-13
+
+Track A -- Val verdict: FAILED
+  Goal G1 (payment-flow):  PASSED
+  Goal G2 (refund-flow):   FAILED -- 2 stories missing acceptance evidence
+
+Track B: SKIPPED (stub).
+
+Per-goal stakeholder confirmation:
+  Goal G1: works-as-expected
+  Goal G2: fails-goal
+
+Compose verdict: FAILED (Track A=FAILED).
+
+Transition: review -> correction (sprint-state.sh).
+
+Action items emitted via sprint-correction resolver:
+  AI-101 "Refund-flow goal G2 missing acceptance evidence" -> /gaia-correct-course
+
+Artifact written: sprint-review-sprint-13-2026-05-29.md (composite verdict FAILED).
+
+/gaia-sprint-review: composite verdict FAILED -- sprint sprint-13 transitioned to correction;
+  invoke /gaia-correct-course story_injection to inject rework stories,
+  then re-run /gaia-sprint-review after the injected stories reach done.</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>
+            <a href="gaia-sprint-close.html"><code>/gaia-sprint-close</code></a>
+            -- on a PASSED (or UNVERIFIED-bypass) verdict, finalizes the
+            sprint.
+          </li>
+          <li>
+            <a href="gaia-correct-course.html"><code>/gaia-correct-course story_injection</code></a>
+            -- on a FAILED verdict, injects rework stories before re-running
+            <code>/gaia-sprint-review</code>.
+          </li>
+          <li>
+            <a href="gaia-retro.html"><code>/gaia-retro</code></a>
+            -- typically run before <code>/gaia-sprint-close</code> to
+            capture went-well, didn't-go-well, and action items.
+          </li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>"refuse -- N sprint stories are non-done"</h3>
+        <p>
+          The Step 1 pre-condition gate enforces that every story in the
+          sprint is <code>status: done</code> before the
+          <code>active &rarr; review</code> transition fires. Either drive
+          the listed stories to <code>done</code> (run
+          <a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a>
+          +
+          <a href="gaia-review-all.html"><code>/gaia-review-all</code></a>
+          on each) or roll them over via
+          <a href="gaia-correct-course.html"><code>/gaia-correct-course</code></a>.
+        </p>
+
+        <h3>"refuse -- no sprint goals defined"</h3>
+        <p>
+          The rubric is per-goal; an empty <code>goals[]</code> array makes
+          the review meaningless. Populate goals via
+          <code>sprint-state.sh set-goals --sprint &lt;id&gt; --file goals.yaml</code>
+          (or supply goals during
+          <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a>)
+          and re-invoke.
+        </p>
+
+        <h3>"HALT: Val agent envelope assertion failed"</h3>
+        <p>
+          The orchestrator could not verify the E87 envelope sentinel
+          (sentinel absent, malformed, or forged). Inspect
+          <code>.gaia/memory/checkpoints/val-envelope-*.json</code> and the
+          Val sub-agent return. Re-running the skill from Step 3 re-dispatches
+          Val with a fresh envelope.
+        </p>
+
+        <h3>Track B reports SKIPPED for every stack</h3>
+        <p>
+          The current build ships an E93-S3 stub for Track B
+          (<code>delivered: false</code>). The composite reducer treats
+          SKIPPED as PASSED-equivalent so the composite verdict still
+          composes cleanly. The real per-stack runner ships with E93-S4 --
+          until then, the per-goal stakeholder confirmation in Step 5 is the
+          only Track B signal that influences the composite.
+        </p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a></td>
+              <td>Commits the sprint and populates <code>goals[]</code> that this skill reviews against.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-sprint-close.html"><code>/gaia-sprint-close</code></a></td>
+              <td>Finalizes the sprint after a PASSED (or UNVERIFIED-bypass) verdict; validates the dispatch sentinel this skill writes.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-correct-course.html"><code>/gaia-correct-course</code></a></td>
+              <td>Injects rework stories on a FAILED verdict, before re-running this skill.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-retro.html"><code>/gaia-retro</code></a></td>
+              <td>Captures the retrospective typically run between sprint-review and sprint-close.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

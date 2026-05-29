@@ -24,6 +24,7 @@
         <p class="sidebar-section-title">Tutorials</p>
         <ul>
           <li><a href="tutorials/first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="tutorials/first-30-minutes-brownfield.html">First 30 Minutes (Brownfield)</a></li>
           <li><a href="tutorials/configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
           <li><a href="tutorials/ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
           <li><a href="tutorials/test-strategy-configuration.html">Test Strategy Configuration</a></li>
@@ -174,7 +175,9 @@
                 <a href="commands/gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a>,
                 <a href="commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a>,
                 <a href="commands/gaia-review-all.html"><code>/gaia-review-all</code></a>,
-                <a href="commands/gaia-atdd.html"><code>/gaia-atdd</code></a>
+                <a href="commands/gaia-atdd.html"><code>/gaia-atdd</code></a>,
+                <a href="commands/gaia-sprint-review.html"><code>/gaia-sprint-review</code></a>,
+                <a href="commands/gaia-sprint-close.html"><code>/gaia-sprint-close</code></a>
               </td>
               <td>
                 <code>sprint-status.yaml</code>,
@@ -271,7 +274,7 @@
             &mdash; you can remove it.
           </li>
           <li>
-            <strong><code>/gaia-sprint-review</code> is NOT YOLO-able by design.</strong>
+            <strong><a href="commands/gaia-sprint-review.html"><code>/gaia-sprint-review</code></a> is NOT YOLO-able by design.</strong>
             The skill declares <code>yolo_steps: []</code> because its three
             stakeholder-confirmation boundaries (Steps 3a, 4a, 8) require
             human judgment. For unattended pipelines, script the boundary
@@ -393,7 +396,7 @@
 
           <article class="card" style="border-color: var(--color-accent); border-width: 2px;">
             <h3><a href="tutorials/first-30-minutes.html">First 30 Minutes</a></h3>
-            <p>A narrative walkthrough taking you from zero to your first sprint, touching every major phase of the GAIA lifecycle.</p>
+            <p>A narrative walkthrough taking you from zero to your first sprint, touching every major phase of the GAIA lifecycle. A <a href="tutorials/first-30-minutes-brownfield.html">brownfield companion</a> covers onboarding an existing codebase.</p>
             <span class="card-count">tutorial</span>
           </article>
 
