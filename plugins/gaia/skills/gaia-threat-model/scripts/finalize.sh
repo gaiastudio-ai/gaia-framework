@@ -188,16 +188,25 @@ stride_six_categories_per_component() {
         }
       }
     }
-    # Enter STRIDE section.
-    /^##[[:space:]]+STRIDE[[:space:]]+Analysis/ {
+    # Enter STRIDE section. AF-2026-05-29-1 / Test08 F-5: accept optional
+    # numbered+lettered outline prefix (3., 3.1, 11b., etc.) so an authored
+    # `## 3. STRIDE Analysis` is recognised — matches the shared
+    # heading_present lib semantics used by SV-06 (the prefix WAS accepted
+    # there). Mirrors the change to the DREAD section anchor below.
+    /^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?STRIDE[[:space:]]+Analysis/ {
       in_stride = 1
       finalize_component()
       in_component = 0
       reset_flags()
       next
     }
-    # Exit STRIDE section on next H2.
-    /^##[[:space:]]+[A-Za-z]/ {
+    # Exit STRIDE section on next H2. AF-2026-05-29-1 / Test08 F-5: accept the
+    # same optional numbered+lettered outline prefix as the entry regex so the
+    # next H2 (e.g. `## 4. DREAD Scoring`) is recognised as a real section
+    # boundary. Previously the strict `[A-Za-z]` lookahead meant any numbered
+    # H2 was NOT seen as an exit — STRIDE stayed open through subsequent
+    # sections and their tables were misclassified as STRIDE component rows.
+    /^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?[A-Za-z]/ {
       if (in_stride) {
         finalize_component()
         in_component = 0
@@ -298,12 +307,12 @@ dread_five_dimensions_per_threat() {
       rows = 0
       missing = 0
     }
-    /^##[[:space:]]+DREAD[[:space:]]+Scoring/ {
+    /^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?DREAD[[:space:]]+Scoring/ {
       in_dread = 1
       header_seen = 0
       next
     }
-    /^##[[:space:]]+[A-Za-z]/ {
+    /^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?[A-Za-z]/ {
       if (in_dread) {
         # leaving section
       }
@@ -358,9 +367,9 @@ high_critical_threats_have_mitigations() {
       missing = 0
       threat_count = 0
     }
-    /^##[[:space:]]+DREAD[[:space:]]+Scoring/    { section = "dread"; next }
+    /^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?DREAD[[:space:]]+Scoring/    { section = "dread"; next }
     /^##[[:space:]]+Mitigations/                 { section = "mit"; next }
-    /^##[[:space:]]+[A-Za-z]/                    { section = ""; next }
+    /^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?[A-Za-z]/                    { section = ""; next }
     section == "dread" && /^[[:space:]]*\|/ {
       if ($0 ~ /\|[[:space:]]*-+[[:space:]]*\|/) next
       lc = tolower($0)
@@ -452,7 +461,7 @@ sr_identifiers_with_acceptance() {
       sr_count = 0
     }
     /^##[[:space:]]+Security[[:space:]]+Requirements/ { in_sr = 1; next }
-    /^##[[:space:]]+[A-Za-z]/                         {
+    /^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?[A-Za-z]/                         {
       if (in_sr && cur != "" && ac[cur] == 0) { missing = 1 }
       in_sr = 0; cur = ""
       next

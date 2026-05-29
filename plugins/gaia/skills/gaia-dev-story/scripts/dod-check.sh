@@ -121,6 +121,16 @@ _check_command() {
 # --- Test-command resolution (E64-S1 AC1 / AC-EC1 / AC-EC2) ---------------
 #
 # Determine the project test command using a deterministic precedence:
+#   0. Test Execution Bridge tier-1 runner — when
+#      test_execution_bridge.bridge_enabled: true is set in project-config.yaml
+#      AND .gaia/artifacts/test-artifacts/test-environment.yaml has a tier-1
+#      runner. AF-2026-05-29-1 / Test08 F-12 (HIGH): previously skipped this
+#      tier entirely; even with the bridge enabled the dev-story DoD gate
+#      reported "tests: SKIPPED — no test runner detected" and let stories
+#      transition to review with zero test execution. The bridge tier is now
+#      rung 0 (canonical: when the operator declared the bridge, that IS the
+#      project's test runner). Falls through to the legacy tiers when the
+#      bridge isn't enabled or has no tier-1 runner.
 #   1. .gaia/config/project-config.yaml `test_cmd:`   (explicit user choice;
 #      legacy config/project-config.yaml is also accepted as fallback)
 #   2. package.json `scripts.test`                    (resolved via `npm test`)
@@ -130,6 +140,38 @@ _check_command() {
 # Outputs the resolved command on stdout (single token or quoted argv string)
 # in a form that survives `bash -c "$cmd"`.
 _resolve_test_cmd() {
+  # 0. Test Execution Bridge tier-1 runner (AF-2026-05-29-1 / Test08 F-12).
+  # The bridge is rung 0 — when the operator enabled it, the declared runner
+  # IS the project's test command. Skip silently when bridge_enabled is false,
+  # the manifest is absent, or the manifest carries no tier-1 runner.
+  local _cfg_bridge=""
+  if [ -f ".gaia/config/project-config.yaml" ]; then
+    _cfg_bridge=".gaia/config/project-config.yaml"
+  elif [ -f "config/project-config.yaml" ]; then
+    _cfg_bridge="config/project-config.yaml"
+  fi
+  if [ -n "$_cfg_bridge" ] && command -v yq >/dev/null 2>&1; then
+    local bridge_enabled
+    bridge_enabled="$(yq eval '.test_execution_bridge.bridge_enabled // false' "$_cfg_bridge" 2>/dev/null || echo false)"
+    if [ "$bridge_enabled" = "true" ]; then
+      # Find the manifest. Canonical: .gaia/artifacts/test-artifacts/test-environment.yaml.
+      # Honors a project-root copy too (some pre-AF-29-1 fixtures put it there).
+      local _manifest=""
+      if [ -f ".gaia/artifacts/test-artifacts/test-environment.yaml" ]; then
+        _manifest=".gaia/artifacts/test-artifacts/test-environment.yaml"
+      elif [ -f "test-environment.yaml" ]; then
+        _manifest="test-environment.yaml"
+      fi
+      if [ -n "$_manifest" ]; then
+        local bridge_cmd
+        bridge_cmd="$(yq eval '[.runners[] | select(.tier == 1)] | .[0].command // ""' "$_manifest" 2>/dev/null || echo "")"
+        if [ -n "$bridge_cmd" ] && [ "$bridge_cmd" != "null" ]; then
+          printf '%s\n' "$bridge_cmd"
+          return 0
+        fi
+      fi
+    fi
+  fi
   # 1. project-config.yaml test_cmd — E96-S1 / ADR-111: prefer .gaia/config/,
   # fall back to legacy config/.
   local _cfg=""

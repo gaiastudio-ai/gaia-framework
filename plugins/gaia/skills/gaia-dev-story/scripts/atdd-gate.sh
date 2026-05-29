@@ -136,9 +136,21 @@ if [ "${#ATDD_MATCHES[@]}" -gt 0 ]; then
   exit 0
 fi
 
+# AF-2026-05-29-1 / Test08 F-15: explicit escape hatch for operators who
+# consciously accept the risk and want to proceed without ATDD. Mirrors the
+# GAIA_SKIP_BRAINSTORM=1 pattern used by /gaia-product-brief (Test05 F-16).
+# WARN — never pass silently — so the deferred work surfaces in the run log
+# and downstream review gates have a chance to catch up.
+if [ "${GAIA_SKIP_ATDD:-0}" = "1" ]; then
+  log "risk=high; ATDD gate skipped via GAIA_SKIP_ATDD=1 — proceeding WITHOUT atdd scenarios."
+  log "      run /gaia-atdd $STORY_KEY before merging to satisfy the deferred coverage gap."
+  exit 0
+fi
+
 log "HALT: high-risk story $STORY_KEY has no ATDD file."
 log "      expected one of:"
 log "        $TEST_DIR/atdd-${EPIC_KEY}*.md"
 log "        $TEST_DIR/atdd-${STORY_KEY}*.md"
 log "      run /gaia-atdd $STORY_KEY to generate the scenarios file before /gaia-dev-story."
+log "      or, if you consciously accept the risk: GAIA_SKIP_ATDD=1 /gaia-dev-story $STORY_KEY"
 exit 1

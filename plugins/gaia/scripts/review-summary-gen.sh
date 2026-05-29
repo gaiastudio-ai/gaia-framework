@@ -598,10 +598,17 @@ _render_summary() {
 
 # ---------- Locate the story file (for mtime + default output dir) ----------
 #
-# Reuses review-gate.sh's locate semantics by calling it once with `status`
-# already done above; here we replicate the glob logic to fetch the absolute
-# story file path. Single-source-of-truth would have us shell out, but
-# re-globbing is simpler and matches review-gate.sh's logic exactly.
+# Replicates `resolve-story-file.sh`'s three-tier glob precedence (E105-S1 /
+# ADR-127 §7.1):
+#   0. NEW per-story layout: epic-{slug}/{key}-{slug}/story.md
+#   1. Legacy nested:        epic-{slug}/stories/{key}-{slug}.md
+#   2. Legacy flat:          {key}-{slug}.md
+# Single-source-of-truth would have us shell out to resolve-story-file.sh, but
+# re-globbing here keeps the script self-contained for the review-gate context.
+# The boundary guard at the bottom of the per-story glob ensures
+# `epic-*/E1-S2-*/story.md` cannot accidentally match `epic-*/E1-S21-*/story.md`.
+# AF-2026-05-29-1 / Test08 F-16: prior implementation omitted tier 0; every
+# story created on a current-framework project failed with "story not found".
 
 STORY_FILE=""
 
@@ -609,13 +616,44 @@ _locate_story_file() {
   local key="$1"
   local project_path="${PROJECT_PATH:-.}"
   local impl_artifacts; if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then impl_artifacts="$IMPLEMENTATION_ARTIFACTS"; elif [ -d "${project_path}/.gaia/artifacts/implementation-artifacts" ]; then impl_artifacts="${project_path}/.gaia/artifacts/implementation-artifacts"; else impl_artifacts="${project_path}/docs/implementation-artifacts"; fi
-  local pattern="${impl_artifacts}/${key}-*.md"
+  # E105-S1 per-story layout (tier 0) is rung 1; legacy nested + flat follow.
+  # The `/stories/` exclusion in the tier-0 filter below prevents a bare glob
+  # `epic-*/${key}-*/story.md` from also matching the tier-1 `epic-*/stories/…`
+  # tree (which lives inside an `epic-*/stories/…/stories/{key}-…` shape after
+  # a partial E105-S1 migration).
+  local perstory_pattern="${impl_artifacts}/epic-*/${key}-*/story.md"
   local epic_pattern="${impl_artifacts}/epic-*/stories/${key}-*.md"
+  local pattern="${impl_artifacts}/${key}-*.md"
 
   shopt -s nullglob
   # shellcheck disable=SC2206
-  local matches=( $pattern $epic_pattern )
+  local raw_matches=( $perstory_pattern $epic_pattern $pattern )
   shopt -u nullglob
+
+  # Filter the per-story tier so a key prefix collision (E1-S2 vs E1-S21) does
+  # NOT pick up the wrong directory. Match only paths whose containing dir's
+  # basename starts with `${key}-`.
+  local matches=()
+  local m base
+  for m in "${raw_matches[@]}"; do
+    case "$m" in
+      */stories/*)
+        # Legacy nested — keep as-is.
+        matches+=( "$m" )
+        ;;
+      */story.md)
+        # Per-story tier — boundary-check the parent dir basename.
+        base="${m%/story.md}"; base="${base##*/}"
+        case "$base" in
+          "${key}-"*) matches+=( "$m" ) ;;
+        esac
+        ;;
+      *)
+        # Legacy flat.
+        matches+=( "$m" )
+        ;;
+    esac
+  done
 
   if [ ${#matches[@]} -eq 0 ]; then
     _die_not_found "story not found: $key"
