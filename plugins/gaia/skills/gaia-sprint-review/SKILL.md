@@ -38,6 +38,33 @@ The verdict is **composite**: Track A (Val text-validation per the AI-2026-05-16
 
 **Track B is a stub in E93-S3 (`delivered: false` per E88-S2 / FR-DPD-2).** The per-stack runner replacing the stub lands in E93-S4.
 
+## Operator Quickstart
+
+Run the end-of-sprint review ceremony. Track A dispatches Val with the per-goal rubric; Track B re-runs the configured per-stack execution review (stub today, real runner soon). The two compose into a single verdict that routes the sprint to close (PASSED), correction (FAILED), or the bypass path (UNVERIFIED).
+
+**First-time invocation.**
+
+```
+/gaia-sprint-review sprint-12
+```
+
+This validates the pre-conditions (all stories done, goals non-empty), transitions the sprint from `active` to `review`, dispatches Val + Track B, asks you for per-goal stakeholder confirmation, composes the composite verdict, and emits the routing handoff. The sprint-review artifact lands at `.gaia/artifacts/implementation-artifacts/sprint-review/sprint-review-<sprint_id>-<date>.md`.
+
+**When to use which option.**
+
+| Composite verdict you receive | Run next                                          |
+|-------------------------------|---------------------------------------------------|
+| PASSED                        | `/gaia-sprint-close <sprint-id>`                  |
+| FAILED                        | `/gaia-correct-course story_injection` then re-run sprint-review |
+| UNVERIFIED (bypass approved)  | `/gaia-sprint-close <sprint-id>` (carries the UNVERIFIED-bypass marker) |
+| UNVERIFIED (bypass rejected)  | Same as FAILED path                               |
+
+**Common gotchas.**
+
+- Not all stories `done` -- the Step 1 gate REFUSES with the canonical "N sprint stories are non-done" stderr; complete the work or roll it over first.
+- `goals[]` empty -- the rubric is per-goal; run `sprint-state.sh set-goals` before invoking.
+- NOT YOLO-able by design -- the three `AskUserQuestion` boundaries (Steps 3a, 4a, 8) are deliberate human-judgment gates; for unattended pipelines, script the boundary writes directly.
+
 ## Critical Rules
 
 - A sprint's `goals:` field (added by E93-S1 to `sprint-status.yaml`) MUST be non-empty before Step 3 dispatches Val.
