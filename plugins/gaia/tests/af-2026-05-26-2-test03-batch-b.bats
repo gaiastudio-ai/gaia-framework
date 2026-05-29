@@ -31,12 +31,20 @@ teardown() { common_teardown; }
   [[ "$output" != *"AttributeError"* ]]
 }
 
-@test "AF-26-2 F-2: non-empty list-form environments warns and omits (no crash)" {
+@test "AF-26-2 F-2: non-empty list-form environments — non-object entries warn and skip (no crash)" {
   local out="$BATS_TEST_TMPDIR/p"
   mkdir -p "$out"
+  # AF-2026-05-29-1 / Test08 F-1: generate-config.sh now transparently
+  # transforms list-of-OBJECTS environments (`[{name, url, auth_type}, ...]`)
+  # into the canonical mapping shape (the SKILL.md Step 2.6 documented form),
+  # so the prior "environments must be a mapping" rejection no longer fires
+  # for that case. List-of-STRINGS entries (`["prod"]` — neither documented
+  # nor a valid environment object) are still rejected per-entry with a clear
+  # "is not an object" NOTICE; the script does not crash and falls through to
+  # the AF-26-2 F-4 default-local seed.
   run bash -c "echo '{\"project_name\":\"X\",\"project_shape\":\"web-app\",\"project_kind\":\"web-app\",\"environments\":[\"prod\"],\"stacks\":[{\"name\":\"b\",\"language\":\"python\",\"paths\":[\"b/\"]}]}' | bash '$GEN' --path '$out' --name X --phase full"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"environments must be a mapping"* ]]
+  [[ "$output" == *"is not an object"* ]]
 }
 
 # --- F-3 + F-4: full-phase web-app gets defaults that validate ---

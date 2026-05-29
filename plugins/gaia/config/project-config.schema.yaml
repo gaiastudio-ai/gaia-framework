@@ -38,9 +38,55 @@
 # This is NOT JSON Schema. A minimal validator walks top-level keys and checks
 # each field descriptor against the loaded project-config.yaml.
 
-schema_version: "1.1.0"
+# AF-2026-05-29-2 / Test09 F-3: bumped to v2.0.0 to align with the JSON schema
+# at plugins/gaia/schemas/project-config.schema.json (v2.0.0). The two schemas
+# now declare the same v2 surface — `schema_version` + `config_phase` per
+# ADR-096/097. Without the alignment, `/gaia-init` (which validates against the
+# JSON schema and writes both fields) produces a config that
+# `resolve-config.sh --schema` and `detect-signals.sh --schema` (which both
+# validate against THIS yaml schema) reject as having unknown fields, blocking
+# the documented init → brownfield chain at Phase 1 step 5a per ADR-063/067.
+schema_version: "2.0.0"
 
 fields:
+
+  schema_version:
+    type: string
+    required: false
+    default: null
+    description: "Schema version string per ADR-096 §D4. /gaia-init writes \"2.0.0\". Optional in v1.x configs for forward-compat read-side."
+
+  config_phase:
+    type: string
+    required: false
+    default: "full"
+    description: "Config-phase state machine value per ADR-096 (one of: minimal | partial | full). /gaia-init writes the operator-selected phase here; the resolver enforces phase-gated allOf branches against this value."
+
+  # AF-2026-05-29-2 / Test09 F-3 follow-up: the JSON schema declares
+  # project_name, project_kind, and version at the root level (lines 175-200 of
+  # plugins/gaia/schemas/project-config.schema.json) — these are part of every
+  # /gaia-init output. The YAML schema was missing them, which made
+  # detect-signals.sh --schema fall over with "unknown field" errors on a
+  # perfectly valid init output. Add them here so the two schemas declare the
+  # same v2 surface.
+
+  project_name:
+    type: string
+    required: false
+    default: null
+    description: "Display name of the project (operator-supplied at /gaia-init). Used by the statusline, lifecycle events, and a few SKILL.md prose blocks."
+
+  project_kind:
+    type: string
+    required: false
+    default: null
+    description: "Operator-classified project category (e.g. service, library, cli, mobile, fullstack). Drives shape-specific defaults in generate-config.sh and validate-platform-stack.sh."
+
+  version:
+    type: string
+    required: false
+    default: "0.1.0"
+    description: "Project's own version string (NOT the GAIA framework version — that's framework_version)."
 
   project_root:
     type: path

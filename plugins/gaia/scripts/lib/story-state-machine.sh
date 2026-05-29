@@ -45,6 +45,16 @@ STORY_ALLOWED_EDGES=(
   "backlog|ready-for-dev"
   "backlog|validating"
   "backlog|blocked"
+  # AF-2026-05-29-1 / Test08 F-13: /gaia-dev-story Step 2 transitions a fresh
+  # story `to in-progress` directly per SKILL.md when invoked from FRESH mode.
+  # Previously this required an intermediate `ready-for-dev` hop that the
+  # documented happy-path did NOT mention — operators had to do the two-step
+  # transition manually or hit an adjacency-rejection error mid-dev-story. The
+  # backlog → in-progress edge is sanctioned; the JIT materialization path
+  # (E107-S3, --for-sprint backlog row → file) lands a story directly in a
+  # backlog state on a sprint that's already active, and dev-story has to
+  # pick it up.
+  "backlog|in-progress"
   # validating (recovery + happy-path forward)
   "validating|ready-for-dev"
   "validating|backlog"

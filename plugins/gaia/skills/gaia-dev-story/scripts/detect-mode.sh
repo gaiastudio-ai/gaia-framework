@@ -70,7 +70,14 @@ fi
 # --- Decision tree --------------------------------------------------------
 
 case "$STATUS_VAL" in
-  ready-for-dev)
+  backlog|ready-for-dev)
+    # AF-2026-05-29-1 / Test08 F-14: a backlog story (no implementation, no
+    # checkpoint, no commits) is canonically FRESH — same classification as
+    # ready-for-dev. Previously fell through to the `*)` catchall and was
+    # misclassified as RESUME, which steered /gaia-dev-story Step 1 into the
+    # resume-an-in-flight-implementation branch for a never-started story.
+    # The two backlog/ready-for-dev states cover "haven't started yet" — both
+    # are FRESH; in-progress is the only state that can be REWORK or RESUME.
     printf 'FRESH\n'
     exit 0
     ;;

@@ -86,6 +86,7 @@ STACK=""
 PROJECT_ROOT=""
 AGENTS_DIR=""
 MEMORY_DIR=""
+STORY_FILE=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -93,10 +94,53 @@ while [ "$#" -gt 0 ]; do
     --project-root)  [ "$#" -ge 2 ] || die 1 "--project-root requires a dir";  PROJECT_ROOT="$2";  shift 2 ;;
     --agents-dir)    [ "$#" -ge 2 ] || die 1 "--agents-dir requires a dir";    AGENTS_DIR="$2";    shift 2 ;;
     --memory-dir)    [ "$#" -ge 2 ] || die 1 "--memory-dir requires a dir";    MEMORY_DIR="$2";    shift 2 ;;
+    # AF-2026-05-29-1 / Test08 F-17: SKILL.md (gaia-test-automate Phase 1 §280)
+    # documents `--story-file <path>` as the canonical invocation form so the
+    # persona resolution can key off the story's frontmatter (e.g. `stack:`
+    # field) before falling back to project-root-based detection. Previously
+    # the script rejected this flag with "unknown argument".
+    --story-file)    [ "$#" -ge 2 ] || die 1 "--story-file requires a path";   STORY_FILE="$2";    shift 2 ;;
     -h|--help)       usage; exit 0 ;;
     *)               die 1 "unknown argument: $1" ;;
   esac
 done
+
+# AF-2026-05-29-1 / Test08 F-17: if --story-file was passed and --stack was NOT,
+# try to derive the stack from the story's `stack:` frontmatter field. Falls
+# through to project-root-based file-marker detection (the legacy path) when
+# the story lacks a stack field or the file is unreadable — preserves
+# backward-compat for callers that pass only --project-root.
+if [ -n "$STORY_FILE" ] && [ -z "$STACK" ] && [ -r "$STORY_FILE" ]; then
+  _story_stack="$(awk '
+    /^---[[:space:]]*$/ { n++; if (n == 2) exit }
+    n == 1 && /^stack:[[:space:]]*/ {
+      val = $0
+      sub(/^stack:[[:space:]]*/, "", val)
+      gsub(/^["\x27]|["\x27]$/, "", val)
+      sub(/[[:space:]]+$/, "", val)
+      if (length(val) > 0) { print val; exit }
+    }
+  ' "$STORY_FILE" 2>/dev/null || true)"
+  if [ -n "$_story_stack" ]; then
+    STACK="$_story_stack"
+  fi
+  # When --project-root wasn't set explicitly, default to the story file's
+  # nearest project root: walk up from its dir until we find an artifact-bearing
+  # marker (a .gaia/ tree). Keeps the persona/memory dirs anchored consistently.
+  if [ -z "$PROJECT_ROOT" ]; then
+    _story_dir="$(cd "$(dirname "$STORY_FILE")" 2>/dev/null && pwd || true)"
+    _walk="$_story_dir"
+    while [ -n "$_walk" ] && [ "$_walk" != "/" ]; do
+      if [ -d "$_walk/.gaia" ]; then
+        PROJECT_ROOT="$_walk"
+        break
+      fi
+      _parent="$(dirname "$_walk" 2>/dev/null || printf '/')"
+      [ "$_parent" = "$_walk" ] && break
+      _walk="$_parent"
+    done
+  fi
+fi
 
 PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
 
