@@ -64,6 +64,16 @@
           <span class="command-summary">Display the current sprint status dashboard with per-story progress.</span>
         </li>
         <li>
+          <span class="command-name"><a href="../commands/gaia-sprint-review.html">/gaia-sprint-review</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Run the end-of-sprint review ceremony -- Track A Val rubric + Track B per-stack execution, composite verdict, routing to close / correct-course / UNVERIFIED-bypass.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-sprint-close.html">/gaia-sprint-close</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Close the active sprint -- atomic <code>status: closed</code> write, archive the yaml, emit a <code>sprint_closed</code> lifecycle event.</span>
+        </li>
+        <li>
           <span class="command-name"><a href="../commands/gaia-epic-status.html">/gaia-epic-status</a></span>
           <span class="tag tag-user">user-facing</span>
           <span class="command-summary">Show an epic completion dashboard with per-epic percentages and story counts by status.</span>

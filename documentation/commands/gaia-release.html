@@ -239,7 +239,7 @@ Release v1.129.0-rc.2 published (marked prerelease).</code></pre>
         <p>After a hotfix is developed on a <code>hotfix/{ticket-id}</code> branch targeting main, the release ceremony composes <code>/gaia-deploy</code> and <code>/gaia-release</code>:</p>
         <pre><code># Development (on hotfix/E12-S4 branch targeting main):
 &gt; /gaia-dev-story E12-S4
-&gt; /gaia-run-all-reviews   # full reviews including NFR-073 wire-verification
+&gt; /gaia-review-all   # full reviews including NFR-073 wire-verification
 
 # Release ceremony (on main after PR merge):
 &gt; /gaia-release patch

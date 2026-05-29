@@ -61,6 +61,33 @@ A summary block with 5 SKIPPED + 1 ran reads (excerpt):
 - Performance Review PASSED — see report
 ```
 
+## Operator Quickstart
+
+Run the six review sub-agents (code, security, QA tests, test automation, test review, performance) against a story currently in `review` status. Each writes its report and updates the corresponding row of the story's Review Gate table. Already-PASSED reviews are skipped by default so re-runs are cheap; `--force` re-runs every reviewer.
+
+**First-time invocation.**
+
+```
+/gaia-review-all E1-S1
+```
+
+This loads the story file, walks all six reviewers in canonical order, writes one review report per reviewer under `.gaia/artifacts/implementation-artifacts/.../reviews/`, updates the Review Gate table, and emits a locked summary block plus the progressive nudge for the next action.
+
+**When to use which option.**
+
+| You want to                                       | Run                                       |
+|---------------------------------------------------|-------------------------------------------|
+| Run only the reviewers not yet PASSED             | `/gaia-review-all <key>`                  |
+| Re-run every reviewer regardless of prior verdict | `/gaia-review-all <key> --force`          |
+| Check which review rows are still BLOCKED         | `/gaia-check-review-gate <key>`           |
+| Run a single reviewer (e.g. security only)        | `/gaia-review-security <key>` directly    |
+
+**Common gotchas.**
+
+- The story MUST be in `review` status -- not `in-progress`, not `done`. Run `/gaia-dev-story` first to drive the story into `review`.
+- Reviews run sequentially by design (ADR-045) -- never reorder or parallelize the canonical order; the Review Gate table is a shared resource.
+- The user-facing command is `/gaia-review-all` (canonical) -- `gaia-run-all-reviews` is the deprecated alias from sprint-37 and still works for backward compatibility.
+
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-run-all-reviews [story-key] [--force]".

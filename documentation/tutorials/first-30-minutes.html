@@ -16,6 +16,7 @@
           <li><a href="../glossary.html">Glossary</a></li>
           <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
           <li><a href="../recipes.html">Recipes</a></li>
+          <li><a href="first-30-minutes-brownfield.html">First 30 Minutes (Brownfield)</a></li>
         </ul>
         <p class="sidebar-section-title">On this page</p>
         <ul>
@@ -31,7 +32,7 @@
           <li><a href="#step-9">9. /gaia-sprint-plan</a></li>
           <li><a href="#step-10">10. /gaia-dev-story</a></li>
           <li><a href="#step-11">11. /gaia-check-dod</a></li>
-          <li><a href="#step-12">12. /gaia-run-all-reviews</a></li>
+          <li><a href="#step-12">12. /gaia-review-all</a></li>
           <li><a href="#step-13">13. transition to done</a></li>
           <li><a href="#step-14">14. repeat for the sprint</a></li>
           <li><a href="#step-15">15. /gaia-sprint-review</a></li>
@@ -62,6 +63,14 @@
         command. By the end, you will have a product brief, a PRD, an
         architecture document, a backlog of stories, a planned sprint, and
         your first story implemented with tests.
+      </p>
+      <p>
+        Have an existing codebase? Use the
+        <a href="first-30-minutes-brownfield.html">First 30 Minutes (Brownfield)</a>
+        companion instead -- it collapses Steps 2--7 below into a single
+        <code>/gaia-brownfield</code> invocation that reverse-engineers the
+        PRD, architecture, and epics from your code, then re-joins this
+        walkthrough at Step 8.
       </p>
 
       <section id="overview">
@@ -220,7 +229,7 @@
 
       <section id="step-12">
         <h2>Step 12 -- Run all 6 reviews</h2>
-        <pre><code>/gaia-run-all-reviews E1-S1</code></pre>
+        <pre><code>/gaia-review-all E1-S1</code></pre>
         <p>
           Dispatches six review sub-agents in parallel against the just-implemented story:
           code review, security review, QA tests, test automation, test review, and performance review.

@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-sprint-close - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#arguments">Arguments</a></li>
+          <li><a href="#orchestration-mode">Orchestration mode</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#examples">Examples</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/sprint-management.html">Sprint Management</a>
+        <span class="separator">/</span>
+        /gaia-sprint-close
+      </nav>
+
+      <!-- Header -->
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-sprint-close</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/sprint-management.html">Sprint Management</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>4 -- Implementation (close ceremony, post sprint-review PASSED)</dd>
+          <dt>Arguments:</dt>
+          <dd><code>&lt;sprint-id&gt;</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-sprint-close</code> is the sanctioned boundary-write
+          replacement for any manual <code>yq -i</code> edits on
+          <code>sprint-status.yaml</code>. It accepts the
+          <code>review &rarr; closed</code> edge from a PASSED (or
+          UNVERIFIED-bypass) <code>/gaia-sprint-review</code> verdict and
+          finalizes the sprint with four ordered actions:
+        </p>
+        <ol>
+          <li>
+            Validate the dispatch sentinel written by
+            <code>/gaia-sprint-review</code> and verify the verdict is PASSED
+            (or UNVERIFIED with the bypass markers present).
+          </li>
+          <li>
+            Write <code>status: closed</code> + <code>closed_at: &lt;ISO&gt;</code>
+            atomically through <code>sprint-state.sh transition</code> (the
+            ADR-095 sanctioned writer).
+          </li>
+          <li>
+            Archive a snapshot of the closed yaml under
+            <code>.gaia/artifacts/implementation-artifacts/sprint-archive/</code>.
+          </li>
+          <li>
+            Append a <code>sprint_closed</code> lifecycle event to
+            <code>.gaia/memory/lifecycle-events.jsonl</code>.
+          </li>
+        </ol>
+        <p>
+          The skill is idempotent on already-closed sprints: re-running emits
+          a warning and exits 0 with no yaml mutation, no new archive copy,
+          and no new lifecycle event.
+        </p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>
+            <code>/gaia-sprint-review</code> returned a composite verdict of
+            <strong>PASSED</strong> and you are ready to finalize the sprint.
+          </li>
+          <li>
+            <code>/gaia-sprint-review</code> returned an
+            <strong>UNVERIFIED</strong> verdict, the PM signed off on the
+            bypass explanation, and the second Val pass PASSED -- the
+            UNVERIFIED-bypass marker is present in the sentinel.
+          </li>
+          <li>
+            You ran the retrospective (<code>/gaia-retro</code>) so the
+            close-time precondition has a retro doc to point at.
+          </li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>
+            <strong>Sprint must be <code>review</code>.</strong> The legacy
+            <code>active &rarr; closed</code> direct edge still works (Step 3a
+            skips when the current status is <code>active</code>), but the
+            canonical post-review path requires <code>status: review</code>.
+          </li>
+          <li>
+            <strong>Dispatch sentinel must be present.</strong> At least one
+            of:
+            <code>.gaia/memory/checkpoints/sprint-review-&lt;sprint_id&gt;-val-dispatched.json</code>
+            (E83) or
+            <code>.gaia/memory/checkpoints/val-envelope-&lt;sha256(&lt;sprint_id&gt;):0:16&gt;.json</code>
+            (E87).
+          </li>
+          <li>
+            <strong>Sprint-review verdict must be PASSED</strong> (or
+            UNVERIFIED with both <code>pm_signoff</code> and
+            <code>val_validation</code> blocks recorded in
+            <code>review_justification:</code>).
+          </li>
+          <li>
+            <strong>Retro doc must exist.</strong> The Step 1 precondition
+            globs
+            <code>.gaia/artifacts/implementation-artifacts/retrospective-&lt;sprint_id&gt;-*.md</code>
+            -- run
+            <a href="gaia-retro.html"><code>/gaia-retro</code></a>
+            first if absent.
+          </li>
+          <li>
+            <strong>All stories must be <code>done</code>.</strong> Override
+            with <code>--force-with-rollover &lt;key1,key2,...&gt;</code> if
+            specific stories are being rolled to the next sprint.
+          </li>
+          <li>
+            <code>yq</code> (mikefarah, Go v4) must be on PATH.
+          </li>
+        </ul>
+      </section>
+
+      <section id="arguments">
+        <h2>Arguments</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>sprint-id</code></td>
+              <td>Positional</td>
+              <td>Yes</td>
+              <td>--</td>
+              <td>The sprint identifier (e.g., <code>sprint-12</code>) to close.</td>
+            </tr>
+            <tr>
+              <td><code>--force-with-rollover</code></td>
+              <td>Flag (comma-separated keys)</td>
+              <td>No</td>
+              <td>--</td>
+              <td>Closes the sprint even though the listed story keys are not <code>done</code>. The list MUST exactly match the non-done set; mismatches are rejected with canonical stderr.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="orchestration-mode">
+        <h2>Orchestration mode</h2>
+        <p>
+          <code>/gaia-sprint-close</code> declares
+          <code>orchestration_class: light-procedural</code>. It is a thin
+          orchestrator over <code>sprint-state.sh transition</code>,
+          <code>lifecycle-event.sh</code>, and a copy-archive. No
+          <code>AskUserQuestion</code> boundaries fire; no Val dispatch
+          happens; the LLM does not classify the verdict. All decisions are
+          mechanical in <code>scripts/close.sh</code>.
+        </p>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-sprint-close sprint-12</code></pre>
+        <p>
+          Replace <code>sprint-12</code> with the sprint identifier returned
+          in the <code>/gaia-sprint-review</code> handoff message.
+        </p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li>
+            <span class="step-title">Pre-condition: retro exists</span>
+            Globs
+            <code>.gaia/artifacts/implementation-artifacts/retrospective-&lt;sprint_id&gt;-*.md</code>
+            (accepts both <code>-{date}.md</code> and
+            <code>-{date}-{HHMM}.md</code> clobber-avoidance variants). If
+            empty, refuses with
+            <code>error: retro doc not found for &lt;sprint_id&gt;; run /gaia-retro first</code>.
+          </li>
+          <li>
+            <span class="step-title">Pre-condition: idempotency</span>
+            Reads top-level <code>status:</code> from
+            <code>sprint-status.yaml</code>. If already <code>closed</code>,
+            emits <code>warning: sprint &lt;id&gt; already closed at &lt;iso&gt;</code>
+            to stderr and exits 0 with no further side effects.
+          </li>
+          <li>
+            <span class="step-title">Pre-condition: all-done or force</span>
+            Parses <code>stories[].status</code>. If any story is not
+            <code>done</code>: without <code>--force-with-rollover</code>,
+            refuse and exit non-zero; with the flag, validate the
+            comma-separated keys are exactly the non-done set (no extras,
+            no missing) and reject mismatches.
+          </li>
+          <li>
+            <span class="step-title">Pre-condition: review &rarr; closed sentinel verification</span>
+            When <code>status:</code> is <code>review</code>: reads the
+            sprint-review verdict via
+            <code>review-gate.sh status --sprint &lt;id&gt; --gate sprint-review</code>,
+            verifies the dispatch sentinel exists, and decides:
+            <ul>
+              <li><strong>PASSED</strong> -- permit transition via <code>sprint-state.sh transition --sprint &lt;id&gt; --to closed</code>.</li>
+              <li><strong>UNVERIFIED with bypass</strong> -- read <code>review_justification</code> from the sentinel; when <code>pm_signoff</code> and <code>val_validation</code> are both present, permit transition through the same writer.</li>
+              <li><strong>FAILED</strong> -- REFUSE with <code>HALT: sprint-close refused -- sprint-review verdict is FAILED; run /gaia-correct-course first</code>.</li>
+              <li><strong>Missing sentinel</strong> -- REFUSE with <code>HALT: sprint-close refused -- sprint-review verdict is MISSING; run /gaia-sprint-review first</code>.</li>
+            </ul>
+            When <code>status:</code> is <code>active</code>, this step is
+            SKIPPED entirely -- the legacy direct edge still works.
+          </li>
+          <li>
+            <span class="step-title">Yaml write</span>
+            On the legacy <code>active &rarr; closed</code> path only:
+            <code>yq -i '.status = "closed" | .closed_at = "&lt;ISO 8601 UTC&gt;"' sprint-status.yaml</code>.
+            On the new <code>review &rarr; closed</code> path, the equivalent
+            write happens inside <code>sprint-state.sh transition</code>.
+          </li>
+          <li>
+            <span class="step-title">Archive</span>
+            <code>mkdir -p .gaia/artifacts/implementation-artifacts/sprint-archive/</code>;
+            <code>cp sprint-status.yaml .gaia/artifacts/implementation-artifacts/sprint-archive/&lt;sprint_id&gt;-closed-&lt;YYYY-MM-DD&gt;.yaml</code>.
+            Date is today UTC; override via
+            <code>GAIA_SPRINT_CLOSE_DATE</code> for deterministic tests.
+          </li>
+          <li>
+            <span class="step-title">Lifecycle event</span>
+            Invokes
+            <code>lifecycle-event.sh --type sprint_closed --workflow gaia-sprint-close --data {...}</code>.
+            The JSONL line shape is
+            <code>{timestamp, event_type:"sprint_closed", workflow:"gaia-sprint-close", pid, data:{sprint_id, closed_at, total_points, stories_done, stories_rolled_over, rollover_target_sprint}}</code>.
+          </li>
+          <li>
+            <span class="step-title">Confirmation</span>
+            Emits a single-line confirmation to stdout:
+            <code>sprint &lt;id&gt; closed at &lt;iso&gt;; archive: &lt;path&gt;; lifecycle event recorded</code>.
+          </li>
+        </ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Source</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Sprint tracking file</td>
+              <td><code>.gaia/state/sprint-status.yaml</code></td>
+              <td>The sprint to close. Override the lookup with <code>SPRINT_STATUS_YAML</code> env if needed.</td>
+            </tr>
+            <tr>
+              <td>Sprint-review dispatch sentinel</td>
+              <td><code>.gaia/memory/checkpoints/sprint-review-&lt;sprint_id&gt;-val-dispatched.json</code> or <code>val-envelope-&lt;sha256&gt;.json</code></td>
+              <td>Written by <code>/gaia-sprint-review</code> Step 3 Track A; required when transitioning from <code>review</code>.</td>
+            </tr>
+            <tr>
+              <td>Retro artifact</td>
+              <td><code>.gaia/artifacts/implementation-artifacts/retrospective-&lt;sprint_id&gt;-*.md</code></td>
+              <td>Written by <code>/gaia-retro</code>; required by the Step 1 precondition.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Output</th>
+              <th>Location</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Updated sprint tracking file</td>
+              <td><code>.gaia/state/sprint-status.yaml</code></td>
+              <td><code>status: closed</code> + <code>closed_at: &lt;ISO&gt;</code> written atomically through the boundary writer.</td>
+            </tr>
+            <tr>
+              <td>Archived snapshot</td>
+              <td><code>.gaia/artifacts/implementation-artifacts/sprint-archive/&lt;sprint_id&gt;-closed-&lt;YYYY-MM-DD&gt;.yaml</code></td>
+              <td>Byte-for-byte copy of the yaml AFTER the close write -- the archived snapshot always reflects the closed state.</td>
+            </tr>
+            <tr>
+              <td>Lifecycle event</td>
+              <td><code>.gaia/memory/lifecycle-events.jsonl</code></td>
+              <td>Appended <code>sprint_closed</code> event with sprint id, close timestamp, total points, story counts, and rollover keys.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="examples">
+        <h2>Examples</h2>
+
+        <h3>1. Canonical sequence -- sprint-review PASSED &rarr; sprint-close</h3>
+        <pre><code>&gt; /gaia-sprint-review sprint-12
+...
+/gaia-sprint-review: composite verdict PASSED -- sprint sprint-12 ready to close;
+  invoke /gaia-sprint-close to finalize.
+
+&gt; /gaia-retro sprint-12
+...
+Retro artifact written: retrospective-sprint-12-2026-05-29.md
+
+&gt; /gaia-sprint-close sprint-12
+
+Pre-condition: retro doc found (retrospective-sprint-12-2026-05-29.md).
+Pre-condition: sprint not already closed.
+Pre-condition: 6 stories, all status: done.
+Pre-condition: review -> closed sentinel verification:
+  sprint-review verdict: PASSED
+  dispatch sentinel: sprint-review-sprint-12-val-dispatched.json (present)
+  permit transition.
+
+Transition: review -> closed (sprint-state.sh, atomic).
+Archive: .gaia/artifacts/implementation-artifacts/sprint-archive/sprint-12-closed-2026-05-29.yaml
+Lifecycle event: sprint_closed appended to lifecycle-events.jsonl.
+
+sprint sprint-12 closed at 2026-05-29T14:22:08Z;
+  archive: sprint-archive/sprint-12-closed-2026-05-29.yaml;
+  lifecycle event recorded</code></pre>
+
+        <h3>2. UNVERIFIED-bypass close</h3>
+        <pre><code>&gt; /gaia-sprint-close sprint-13
+
+Pre-condition: review -> closed sentinel verification:
+  sprint-review verdict: UNVERIFIED
+  review_justification.pm_signoff:   present (Derek, 2026-05-29T13:10:00Z)
+  review_justification.val_validation: present (status: PASSED)
+  bypass markers complete; permit transition.
+
+Transition: review -> closed (UNVERIFIED-bypass marker recorded).
+sprint sprint-13 closed at 2026-05-29T13:30:00Z; ...</code></pre>
+
+        <h3>3. Already closed (idempotent)</h3>
+        <pre><code>&gt; /gaia-sprint-close sprint-12
+
+warning: sprint sprint-12 already closed at 2026-05-29T14:22:08Z
+# exit 0; no yaml write, no archive copy, no new lifecycle event</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li>
+            <a href="gaia-retro.html"><code>/gaia-retro</code></a>
+            -- typically run BEFORE <code>/gaia-sprint-close</code> (the close
+            skill requires the retro artifact). If you skipped retro on the
+            previous sprint, run it now for retrospective continuity.
+          </li>
+          <li>
+            <a href="gaia-action-items.html"><code>/gaia-action-items</code></a>
+            -- resolve any open action items from the retro before planning
+            the next sprint.
+          </li>
+          <li>
+            <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a>
+            -- plan the next sprint. The prior-close guard in
+            <code>/gaia-sprint-plan</code> requires the prior sprint be
+            <code>closed</code> before a new sprint commits.
+          </li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>"HALT: sprint-close refused -- sprint-review verdict is MISSING"</h3>
+        <p>
+          The dispatch sentinel for the sprint-review run is absent. Either
+          you have not run
+          <a href="gaia-sprint-review.html"><code>/gaia-sprint-review</code></a>
+          for this sprint yet, or the sentinel files under
+          <code>.gaia/memory/checkpoints/</code> were deleted. Re-run
+          <code>/gaia-sprint-review &lt;sprint-id&gt;</code> to write a fresh
+          sentinel.
+        </p>
+
+        <h3>"HALT: sprint-close refused -- sprint-review verdict is FAILED"</h3>
+        <p>
+          The last sprint-review verdict was FAILED. Closing a FAILED sprint
+          is not permitted. Run
+          <a href="gaia-correct-course.html"><code>/gaia-correct-course story_injection</code></a>
+          to inject rework stories, drive them to <code>done</code>, then
+          re-run <code>/gaia-sprint-review</code>. Once the verdict turns
+          PASSED, <code>/gaia-sprint-close</code> accepts the edge.
+        </p>
+
+        <h3>"error: retro doc not found for &lt;sprint_id&gt;"</h3>
+        <p>
+          The Step 1 precondition could not glob the retrospective artifact.
+          Run <a href="gaia-retro.html"><code>/gaia-retro &lt;sprint-id&gt;</code></a>
+          first, then re-invoke <code>/gaia-sprint-close</code>.
+        </p>
+
+        <h3>"error: --force-with-rollover key mismatch"</h3>
+        <p>
+          The comma-separated keys supplied to
+          <code>--force-with-rollover</code> do not exactly match the
+          non-done story set in <code>sprint-status.yaml</code> (the error
+          message lists both the actual non-done keys and the keys you
+          supplied). Either correct the list to match, or drive the missing
+          stories to <code>done</code> before retrying.
+        </p>
+
+        <h3>Sprint stuck at <code>review</code> after an UNVERIFIED verdict</h3>
+        <p>
+          The transition guard refused because either <code>pm_signoff</code>
+          or <code>val_validation</code> is missing from the
+          <code>review_justification:</code> block. Re-run
+          <code>/gaia-sprint-review</code> Step 8 to collect the missing
+          justification + Val pass, then retry.
+        </p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="gaia-sprint-review.html"><code>/gaia-sprint-review</code></a></td>
+              <td>Writes the dispatch sentinel and produces the verdict this skill validates before closing.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-retro.html"><code>/gaia-retro</code></a></td>
+              <td>Writes the retro artifact this skill's Step 1 precondition requires.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a></td>
+              <td>Next-sprint planner; its prior-close guard requires the previous sprint be closed by this skill.</td>
+            </tr>
+            <tr>
+              <td><a href="gaia-correct-course.html"><code>/gaia-correct-course</code></a></td>
+              <td>Invoked on a FAILED sprint-review verdict to inject rework before re-running review then close.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
