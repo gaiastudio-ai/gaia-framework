@@ -42,7 +42,7 @@
           <li>ADR-054's existing dominance rule (any FAILED = composite BLOCKED) automatically refuses the <code>review</code> to <code>done</code> transition.</li>
         </ol>
         <p><strong>Forward-only adoption:</strong> stories without a <code>surface_type:</code> frontmatter field are treated as <code>surface_type: none</code> and produce no findings. Existing stories are tolerated without backfill.</p>
-        <p><strong>FAILED does not auto-flip:</strong> a clean re-run of <code>/gaia-trace</code> does not reset a FAILED Test Review verdict to PASSED. The operator must re-run <code>/gaia-run-all-reviews</code> to restore the gate.</p>
+        <p><strong>FAILED does not auto-flip:</strong> a clean re-run of <code>/gaia-trace</code> does not reset a FAILED Test Review verdict to PASSED. The operator must re-run <code>/gaia-review-all</code> to restore the gate.</p>
       </section>
 
       <section id="what-it-does"><h2>What it does</h2>
@@ -149,18 +149,18 @@ HALT: wire-verification gate failed for E8-S3:
   review-gate.sh update --story E8-S3 --gate "Test Review" --verdict FAILED
 
   The story cannot transition from review to done until integration
-  tests covering these surfaces are added and /gaia-run-all-reviews
+  tests covering these surfaces are added and /gaia-review-all
   restores the Test Review gate to PASSED.</code></pre>
 
         <h3>4. Clean re-run after gap fixed (no auto-flip)</h3>
-        <p>After adding the missing integration tests, re-running <code>/gaia-trace</code> produces a clean Step 6c. However, the Test Review gate does <strong>not</strong> auto-flip from FAILED to PASSED. The operator must run <code>/gaia-run-all-reviews</code> to restore the gate.</p>
+        <p>After adding the missing integration tests, re-running <code>/gaia-trace</code> produces a clean Step 6c. However, the Test Review gate does <strong>not</strong> auto-flip from FAILED to PASSED. The operator must run <code>/gaia-review-all</code> to restore the gate.</p>
         <pre><code>&gt; /gaia-trace
 
 ...
 Step 6c: wire-verification: clean (0 violations).
 
 NOTE: Test Review gate for E8-S3 is still FAILED from a prior run.
-      Run /gaia-run-all-reviews to restore the gate to PASSED.
+      Run /gaia-review-all to restore the gate to PASSED.
 
 Written to .gaia/artifacts/test-artifacts/traceability-matrix.md</code></pre>
 
@@ -194,10 +194,10 @@ Written to .gaia/artifacts/test-artifacts/traceability-matrix.md</code></pre>
         <h3>Gate shows BLOCKED</h3><p>A high-risk functional requirement has zero test coverage. Add tests for the flagged requirements before proceeding.</p>
 
         <h3>Wire-verification HALT (E95-S1)</h3>
-        <p>Step 6c found FR/NFR rows with <code>surface_type != none</code> and zero integration-test coverage. Add integration tests covering the listed surfaces, then re-run <code>/gaia-trace</code> to clear the HALT. After a clean run, invoke <code>/gaia-run-all-reviews</code> to restore the Test Review gate from FAILED to PASSED -- the gate does not auto-flip.</p>
+        <p>Step 6c found FR/NFR rows with <code>surface_type != none</code> and zero integration-test coverage. Add integration tests covering the listed surfaces, then re-run <code>/gaia-trace</code> to clear the HALT. After a clean run, invoke <code>/gaia-review-all</code> to restore the Test Review gate from FAILED to PASSED -- the gate does not auto-flip.</p>
 
         <h3>Test Review stuck at FAILED after clean re-run</h3>
-        <p>This is expected behavior. <code>/gaia-trace</code> writes FAILED but does not write PASSED. Run <code>/gaia-run-all-reviews</code> to re-evaluate and restore the gate.</p>
+        <p>This is expected behavior. <code>/gaia-trace</code> writes FAILED but does not write PASSED. Run <code>/gaia-review-all</code> to re-evaluate and restore the gate.</p>
       </section>
 
       <section id="related"><h2>Related commands</h2>

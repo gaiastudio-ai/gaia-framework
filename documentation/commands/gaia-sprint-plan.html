@@ -202,7 +202,7 @@ This warning is shown once per session.
           <li>Injection uses <code>sprint-state.sh inject</code> (ADR-095 sanctioned boundary writer). The call is idempotent -- re-runs are no-ops.</li>
           <li>Capacity-exceeded does <strong>not</strong> block hotfix injection. A hotfix is a sanctioned bypass of normal sprint capacity.</li>
           <li>Multiple hotfix stories in a single run are all injected; each emits a <code>WARNING</code> log line.</li>
-          <li>Hotfix stories <strong>must still pass the full <code>/gaia-run-all-reviews</code></strong> including the NFR-073 wire-verification gate. A hotfix is faster to PLAN, not faster to TEST.</li>
+          <li>Hotfix stories <strong>must still pass the full <code>/gaia-review-all</code></strong> including the NFR-073 wire-verification gate. A hotfix is faster to PLAN, not faster to TEST.</li>
           <li>The <code>"hotfix"</code> value is human-set only. Neither <code>/gaia-add-feature</code> nor triage may auto-set it.</li>
         </ul>
       </section>
