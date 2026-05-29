@@ -65,7 +65,16 @@ fi
 
 # ---------- 2b. Guard: architecture.md must already exist ----------
 # AF-2026-05-21-25 three-tier idiom (mirrors AF-21-12 gaia-edit-prd/setup.sh).
-PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}"
+# AF-2026-05-29-2 / Test09 F-20: prefer CLAUDE_PROJECT_ROOT (the framework-
+# standard harness var) and GAIA_PROJECT_ROOT (project-specific) BEFORE the
+# $SKILL_DIR/../../../../.. walk-up. On a marketplace/cache-installed plugin
+# (~/.claude/plugins/cache/<mp>/gaia/<ver>/skills/<skill>/scripts/), walking
+# 5 levels up lands in `~/.claude/plugins/cache` — NOT the user's project —
+# and every subsequent .gaia/ artifact lookup misses. Honoring the harness-
+# provided env vars first restores the project anchor that callers actually
+# rely on. The walk-up remains as the final fallback for in-source-tree dev
+# (gaia-public/ checkout) where neither env var is set.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}}}"
 if [ -z "${ARCH_PATH:-}" ]; then
   if [ -f "$PROJECT_ROOT/docs/planning-artifacts/architecture.md" ] && [ ! -d "$PROJECT_ROOT/.gaia/artifacts/planning-artifacts" ]; then
     ARCH_PATH="$PROJECT_ROOT/docs/planning-artifacts/architecture.md"
