@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.180.8] — 2026-05-29
+
+### Changed
+
+- (af-29-2) 32 bats covering Test09 fixes (AF-29-2)
+- (test08) update 2 tests that asserted the pre-fix behavior
+- (test08) cover each fix + add SKILL.md↔script contract-drift sweep guard
+
+### Fixed
+
+- (trace) keep F-38 anchor literal in coverage formula (AF-29-2)
+- (skills,agents) ui-present + stack-detect + pytest + trace + sprint-activate (AF-29-2)
+- (skills) brownfield gates + envelope hash + project-root + create-story reg (AF-29-2)
+- (brownfield,schema) brownfield setup greenfield-degrade + schema.yaml v2.0 (AF-29-2 F1, F3)
+- (test08) contract-mismatch sweep across 7 SKILL.md ↔ script pairs
+- (test08) integrate the Test Execution Bridge into dod-check + locate E105-S1 stories
+
 ## [1.180.7] — 2026-05-28
 
 ### Changed
