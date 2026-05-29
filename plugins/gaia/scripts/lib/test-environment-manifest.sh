@@ -92,24 +92,22 @@ fi
 
 # Detect stack
 detect_stack() {
-  if [ ! -x "${DETECT_SIGNALS}" ]; then
-    echo ""
-    return 0
-  fi
   local detection stacks
-  detection=$("${DETECT_SIGNALS}" --project-root "${target}" --format json 2>/dev/null || echo '{}')
-  stacks=$(echo "${detection}" | jq -r '.stacks[]?.name // empty' 2>/dev/null | sort -u || echo "")
+  if [ -x "${DETECT_SIGNALS}" ]; then
+    detection=$("${DETECT_SIGNALS}" --project-root "${target}" --format json 2>/dev/null || echo '{}')
+    stacks=$(echo "${detection}" | jq -r '.stacks[]?.name // empty' 2>/dev/null | sort -u || echo "")
 
-  while IFS= read -r s; do
-    case "$s" in
-      react|vue|angular|svelte|node|typescript) echo "node"; return 0 ;;
-      python) echo "python"; return 0 ;;
-      go) echo "go"; return 0 ;;
-      java|kotlin) echo "java"; return 0 ;;
-      flutter|dart) echo "flutter"; return 0 ;;
-      rust) echo "rust"; return 0 ;;
-    esac
-  done <<< "${stacks}"
+    while IFS= read -r s; do
+      case "$s" in
+        react|vue|angular|svelte|node|typescript) echo "node"; return 0 ;;
+        python) echo "python"; return 0 ;;
+        go) echo "go"; return 0 ;;
+        java|kotlin) echo "java"; return 0 ;;
+        flutter|dart) echo "flutter"; return 0 ;;
+        rust) echo "rust"; return 0 ;;
+      esac
+    done <<< "${stacks}"
+  fi
 
   # Bash/bats detection: presence of *.bats files when no package.json
   if [ ! -f "${target}/package.json" ]; then
@@ -117,6 +115,45 @@ detect_stack() {
       echo "bash"
       return 0
     fi
+  fi
+
+  # AF-2026-05-29-2 / Test09 F-4 + F-15: config fallback. detect-signals.sh
+  # only detects Python (and other stacks) from ROOT-level manifests
+  # (pyproject.toml, requirements.txt, etc.). On projects where those files
+  # live in a subdir (e.g. `core/pyproject.toml`) detect-signals returns []
+  # and the manifest generator falls through to the `generic` template with a
+  # nonsensical `make test` runner. When the operator has already declared the
+  # stack via `/gaia-init` (project-config.yaml stacks[].language: python), we
+  # should TRUST that declaration rather than mis-tag a real Python project as
+  # `generic`. Read declared stacks from project-config and return the first
+  # supported language. Honors both .gaia/config/ (canonical post-ADR-111) and
+  # legacy config/ for in-migration projects.
+  local _cfg=""
+  if [ -f "${target}/.gaia/config/project-config.yaml" ]; then
+    _cfg="${target}/.gaia/config/project-config.yaml"
+  elif [ -f "${target}/config/project-config.yaml" ]; then
+    _cfg="${target}/config/project-config.yaml"
+  fi
+  if [ -n "$_cfg" ] && command -v yq >/dev/null 2>&1; then
+    local _declared
+    _declared="$(yq eval '.stacks[]?.language // ""' "$_cfg" 2>/dev/null | grep -v '^$' | head -1 || true)"
+    case "$_declared" in
+      python)        echo "python";  return 0 ;;
+      typescript|js|javascript|node) echo "node"; return 0 ;;
+      go|golang)     echo "go";      return 0 ;;
+      java|kotlin)   echo "java";    return 0 ;;
+      dart|flutter)  echo "flutter"; return 0 ;;
+      rust)          echo "rust";    return 0 ;;
+    esac
+  fi
+
+  # AF-2026-05-29-2 / Test09 F-4 fallback #2: scan for *.py files in
+  # subdirectories when no config declaration is available. Catches the common
+  # case of a project under active brownfield onboarding (no config yet) that
+  # has its Python sources in a subdir (`core/`, `src/`, etc.).
+  if find "${target}" -maxdepth 4 -type f -name '*.py' -not -path '*/.gaia/*' -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/.venv/*' -print -quit 2>/dev/null | grep -q .; then
+    echo "python"
+    return 0
   fi
 
   echo ""
@@ -143,15 +180,22 @@ runners:
 EOF
       ;;
     python)
+      # AF-2026-05-29-2 / Test09 F-7: use `python3 -m pytest` (the canonical
+      # module-invocation form) instead of bare `pytest`. On many environments
+      # (some CI runners, Python installations without `--user` shims) bare
+      # `pytest` is not on PATH but `python3 -m pytest` works. Module form is
+      # also the recommended invocation per the pytest project docs because it
+      # adds the current directory to sys.path, matching the import semantics
+      # users typically expect.
       cat <<'EOF'
 runners:
   - name: unit
-    command: "pytest tests/unit"
+    command: "python3 -m pytest tests/unit"
     tier: 1
     test_pattern: "tests/unit/**/test_*.py"
     timeout_seconds: 120
   - name: integration
-    command: "pytest tests/integration"
+    command: "python3 -m pytest tests/integration"
     tier: 2
     test_pattern: "tests/integration/**/test_*.py"
     timeout_seconds: 300

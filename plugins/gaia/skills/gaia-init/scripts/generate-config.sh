@@ -347,10 +347,30 @@ if phase == "full":
     # shapes that don't gather a platform list, default to [web] — `web` is in
     # the platformId enum and validate-platform-stack.sh returns 0 for web
     # unconditionally, so this default never trips the platform/stack gate.
+    # AF-2026-05-29-2 / Test09 F-2: SKIP the [web] default when the operator
+    # explicitly declared `ui_present: false` (headless backend, CLI, library,
+    # service-only project). Defaulting headless projects to platforms:[web] is
+    # actively misleading — it makes downstream platform-aware gates (a11y,
+    # ux-design) treat the project as having a web UI when it doesn't. The
+    # AF-26-2 F-3 default is preserved for actually-web-oriented shapes.
     if phase == "full" and not platforms:
         _shape = (data.get("project_shape") or "").strip().lower()
-        if _shape in ("web-app", "fullstack", "single backend", "microservices", "application", ""):
+        _compliance = data.get("compliance") or {}
+        if isinstance(_compliance, list):
+            _compliance = {"regimes": _compliance} if _compliance else {}
+        _ui_present_explicit_false = _compliance.get("ui_present") is False
+        if _ui_present_explicit_false:
+            # Operator explicitly declared no UI. Leave platforms empty — schema
+            # validation will surface that as a missing field they need to
+            # address (via /gaia-config-platform), not silently mis-tag as web.
+            pass
+        elif _shape in ("web-app", "fullstack", "microservices", "application", ""):
             platforms = ["web"]
+        elif _shape in ("single backend",):
+            # "Single backend" is canonically headless even without an explicit
+            # ui_present:false declaration. The operator picked a non-UI shape;
+            # do NOT auto-attach a web platform to it.
+            pass
     if platforms:
         lines.append("")
         lines.append("platforms:")

@@ -143,6 +143,53 @@ fi
 
 # ---------- Compute sentinel path ----------
 ARTIFACT_PATH=$(printf '%s' "$ENVELOPE" | jq -r '.artifact_path')
+
+# AF-2026-05-29-2 / Test09 F-17: resolve project_root FIRST (the canonical
+# anchor for project-relative paths) so we can normalize artifact_path before
+# hashing. Without the normalization the hash is non-deterministic across
+# caller conventions — a Val agent that writes an absolute path
+# (`/Users/.../prd.md`) hashes differently from a consumer that asserts on a
+# relative path (`.gaia/artifacts/planning-artifacts/prd.md`), and the
+# security gate falsely HALTs on a perfectly valid Val run. The convention is
+# "project-relative-from-project-root, never absolute"; the writer enforces it
+# below by stripping any leading project_root prefix and any leading "./".
+# Non-path artifact_path values (e.g. a literal feature_id like
+# "AF-2026-05-29-1") have no leading "/" or "./", so they pass through unchanged.
+_PROJECT_ROOT_FOR_HASH=""
+if [ -n "${PROJECT_ROOT:-}" ]; then
+  _PROJECT_ROOT_FOR_HASH="$PROJECT_ROOT"
+elif [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
+  _PROJECT_ROOT_FOR_HASH="$CLAUDE_PROJECT_ROOT"
+elif [ -n "${GAIA_PROJECT_ROOT:-}" ]; then
+  _PROJECT_ROOT_FOR_HASH="$GAIA_PROJECT_ROOT"
+else
+  # Last resort — resolve from resolve-config.sh. Cheap one-shot read just for
+  # the project_root field; we read it again below for the CHECKPOINT_DIR path
+  # but the duplicate read is intentional (the hash MUST happen before that
+  # block to keep the writer/asserter contract honest).
+  _own_dir_h="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  _resolver_h="$_own_dir_h/../resolve-config.sh"
+  if [ -x "$_resolver_h" ]; then
+    _PROJECT_ROOT_FOR_HASH="$("$_resolver_h" project_root 2>/dev/null || true)"
+    _PROJECT_ROOT_FOR_HASH="${_PROJECT_ROOT_FOR_HASH#\'}"
+    _PROJECT_ROOT_FOR_HASH="${_PROJECT_ROOT_FOR_HASH%\'}"
+  fi
+  unset _own_dir_h _resolver_h
+fi
+case "$ARTIFACT_PATH" in
+  /*)
+    if [ -n "$_PROJECT_ROOT_FOR_HASH" ]; then
+      case "$ARTIFACT_PATH" in
+        "$_PROJECT_ROOT_FOR_HASH"/*) ARTIFACT_PATH="${ARTIFACT_PATH#"$_PROJECT_ROOT_FOR_HASH"/}" ;;
+        "$_PROJECT_ROOT_FOR_HASH")   ARTIFACT_PATH="." ;;
+      esac
+    fi
+    ;;
+  ./*)
+    ARTIFACT_PATH="${ARTIFACT_PATH#./}"
+    ;;
+esac
+unset _PROJECT_ROOT_FOR_HASH
 HASH=$(printf '%s' "$ARTIFACT_PATH" | shasum -a 256 | cut -c1-16)
 
 # E55-S13 D4 — when CHECKPOINT_PATH env-var is unset, resolve the canonical

@@ -41,17 +41,48 @@ log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
 # ---------- 1. Resolve config ----------
+# AF-2026-05-29-2 / Test09 F-1: brownfield is THE onboarding command for projects
+# with NO .gaia/config/project-config.yaml yet — Phase 1 step 5a auto-drafts the
+# config via detect-signals.sh. Previously the resolve-config.sh non-zero exit
+# was treated as fatal, so the command that should CREATE the config refused to
+# start without one (chicken-and-egg, the user has no way to bootstrap a
+# greenfield project that doesn't already have a config). Detect the
+# "no config path" condition specifically and degrade to a fresh-project mode —
+# the skill body's Phase 1 will auto-draft a config before any downstream gate
+# fires. Other resolve-config failures (malformed yaml, schema rejection on an
+# EXISTING config) still die.
 [ -x "$RESOLVE_CONFIG" ] || die "resolve-config.sh not found or not executable at $RESOLVE_CONFIG"
 if ! config_output=$("$RESOLVE_CONFIG" 2>&1); then
-  log "resolve-config.sh failed:"
-  printf '%s\n' "$config_output" >&2
-  exit 1
+  if printf '%s' "$config_output" | grep -q 'no config path'; then
+    log "no project-config.yaml found — entering fresh-project onboarding mode (Phase 1 will auto-draft via detect-signals.sh)"
+    log "this is the documented entry point for brownfield; no config is required before Phase 1"
+    export GAIA_BROWNFIELD_FRESH_PROJECT=1
+    # Seed safe defaults the skill body needs before Phase 1 produces the real config.
+    PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-${PROJECT_ROOT:-$PWD}}}"
+    PROJECT_PATH="$PROJECT_ROOT"
+    PLANNING_ARTIFACTS="$PROJECT_ROOT/.gaia/artifacts/planning-artifacts"
+    TEST_ARTIFACTS="$PROJECT_ROOT/.gaia/artifacts/test-artifacts"
+    IMPLEMENTATION_ARTIFACTS="$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts"
+    CREATIVE_ARTIFACTS="$PROJECT_ROOT/.gaia/artifacts/creative-artifacts"
+    MEMORY_PATH="$PROJECT_ROOT/.gaia/memory"
+    CHECKPOINT_PATH="$MEMORY_PATH/checkpoints"
+    export PROJECT_ROOT PROJECT_PATH PLANNING_ARTIFACTS TEST_ARTIFACTS IMPLEMENTATION_ARTIFACTS CREATIVE_ARTIFACTS MEMORY_PATH CHECKPOINT_PATH
+    # AF-2026-05-29-2 / Test09 F-6: also seed the artifact tree (mkdir -p is
+    # idempotent) so phase-1+ subagents can write without hitting "no such
+    # directory" — brownfield's artifact-write contract assumes the tree exists.
+    mkdir -p "$PLANNING_ARTIFACTS" "$TEST_ARTIFACTS" "$IMPLEMENTATION_ARTIFACTS" "$CREATIVE_ARTIFACTS" "$CHECKPOINT_PATH" "$MEMORY_PATH"
+  else
+    log "resolve-config.sh failed:"
+    printf '%s\n' "$config_output" >&2
+    exit 1
+  fi
+else
+  while IFS= read -r line; do
+    case "$line" in
+      [A-Z_]*=*) eval "export $line" ;;
+    esac
+  done <<<"$config_output"
 fi
-while IFS= read -r line; do
-  case "$line" in
-    [A-Z_]*=*) eval "export $line" ;;
-  esac
-done <<<"$config_output"
 
 # ---------- 2. Validate gate ----------
 # No specific prereq gate for brownfield onboarding. The three post-complete
