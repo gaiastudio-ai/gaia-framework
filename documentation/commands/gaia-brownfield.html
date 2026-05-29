@@ -110,12 +110,35 @@
         <h2>Prerequisites</h2>
         <ul>
           <li>
-            <strong>An existing codebase.</strong> The target directory should
-            contain source code files for meaningful results.
+            <strong>Existing codebase (any size, any stack).</strong> The
+            target directory should contain source code files for meaningful
+            scan results.
           </li>
           <li>
             <strong>GAIA plugin installed.</strong> The GAIA plugin must be
             registered in your Claude Code environment.
+          </li>
+          <li>
+            <strong>Optional: a minimal
+            <code>.gaia/config/project-config.yaml</code>.</strong> As of
+            AF-2026-05-29-2 (<code>/gaia-brownfield</code> setup.sh
+            greenfield-degrade), the skill detects a missing config and seeds
+            safe defaults, <code>mkdir -p</code>'s the artifact tree, and
+            continues. Prior to this fix, the skill exited 1 at Phase 1 entry
+            on zero-config repos with
+            <code>resolve-config.sh failed: no config path</code>; the
+            documented workaround was to run
+            <a href="gaia-init.html"><code>/gaia-init</code></a> first to
+            bootstrap a config, then re-invoke brownfield. That workaround is
+            no longer required on the current build.
+          </li>
+          <li>
+            <strong>If a <code>project-config.yaml</code> is present, its
+            <code>schema_version</code> must be <code>2.0.0</code></strong>
+            (per AF-2026-05-29-2 F3 --
+            <code>project-config.schema.yaml</code> is now in sync with the
+            JSON schema). Older schemas migrate via
+            <a href="gaia-migrate.html"><code>/gaia-migrate v1 v2</code></a>.
           </li>
         </ul>
       </section>
@@ -396,6 +419,26 @@ Done. Run /gaia-create-epics to break the gaps into stories.</code></pre>
           <a href="gaia-nfr.html"><code>/gaia-nfr</code></a> or
           <a href="gaia-perf-testing.html"><code>/gaia-perf-testing</code></a>
           to generate the real content.
+        </p>
+
+        <h3>Detected config drift -- stack detector falls back to project-config.yaml</h3>
+        <p>
+          Phase 1's manifest detector first scans the file system for signal
+          files (<code>package.json</code>, <code>requirements.txt</code>,
+          <code>go.mod</code>, <code>Cargo.toml</code>, etc.). When the
+          canonical signal files are absent -- common for repos that vendor
+          dependencies, mix multiple stacks under a non-standard layout, or
+          ship only compiled binaries -- the detector falls back to
+          <code>stacks[].language</code> from
+          <code>.gaia/config/project-config.yaml</code> as the config-fallback
+          source (per AF-2026-05-29-2 F4 / F15).
+        </p>
+        <p>
+          If the detector still misclassifies your project, override by
+          editing the config explicitly via
+          <a href="gaia-config-stack.html"><code>/gaia-config-stack</code></a>
+          and re-running brownfield. The detector picks up the corrected
+          stacks on the next invocation.
         </p>
 
         <h3>test-environment.yaml already present</h3>
