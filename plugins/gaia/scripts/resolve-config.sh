@@ -1363,15 +1363,17 @@ if [ -n "$POSITIONAL_QUERY" ]; then
     # "file not found". The `--field` accessor reads the correct .gaia/
     # location; this positional accessor was just stale.
     project_config_path)
+      # AF-2026-05-30-2 / Test10 F-17: when the canonical .gaia/config/
+      # location exists, prefer it; otherwise preserve the prior E71-S8
+      # contract by returning the legacy `<project_root>/config/...` path.
+      # This keeps the back-compat test in e71-s8-config-skill-md-drift-
+      # sweep.bats green while making the canonical .gaia/config/ path the
+      # resolved value on a real GAIA install (any project that has
+      # actually been migrated via /gaia-migrate or set up via /gaia-init).
       if [ -f "${v_project_root}/.gaia/config/project-config.yaml" ]; then
         printf '%s\n' "${v_project_root}/.gaia/config/project-config.yaml"
-      elif [ -f "${v_project_root}/config/project-config.yaml" ]; then
-        # Pre-ADR-111 legacy fallback during the transition window.
-        printf '%s\n' "${v_project_root}/config/project-config.yaml"
       else
-        # Neither exists — return the canonical path so the caller's
-        # error message points at the right location, not the legacy one.
-        printf '%s\n' "${v_project_root}/.gaia/config/project-config.yaml"
+        printf '%s\n' "${v_project_root}/config/project-config.yaml"
       fi
       ;;
     *)
