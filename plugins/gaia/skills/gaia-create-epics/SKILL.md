@@ -117,7 +117,7 @@ Delegate to the **pm** subagent (Derek) via `agents/pm` to author user stories.
 ### Step 5 — Apply Test-Plan Risk Levels
 
 - Read risk assessment from the test plan loaded in Step 1.
-- For each story: if it touches a high-risk component, set risk_level: high. Otherwise medium or low.
+- For each story: if it touches a high-risk component, set the story's `Risk:` bullet to `high`. Otherwise `medium` or `low`. **AF-2026-05-30-4 / Test11 F-12+F-13**: the OUTPUT TEMPLATE in this SKILL uses the Title-case label `Risk:` (which `create-story/generate-frontmatter.sh` extracts via `extract_bullet "Risk"`). Earlier revisions of this prose said `risk_level:` (snake_case), which broke story materialization — the generator couldn't find the field and exited with `missing field 'risk'`. Use `Risk:` here to match the template. The generator now also accepts the snake_case form as a fallback (belt-and-braces).
 - High-risk stories: add to Dev Notes: "Risk: HIGH — run /gaia-atdd before /gaia-dev-story".
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-epics 5 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" story_count="$STORY_COUNT" high_risk_count="$HIGH_RISK_COUNT"`
@@ -126,7 +126,7 @@ Delegate to the **pm** subagent (Derek) via `agents/pm` to author user stories.
 
 Delegate to the **architect** subagent (Theo) via `agents/architect` to determine dependency topology.
 
-- For each story, declare depends_on: [story-ids] and blocks: [story-ids].
+- For each story, declare `Depends on: [story-ids]` and `Blocks: [story-ids]` bullets. **AF-2026-05-30-4 / Test11 F-12+F-13**: same labeling note as Step 5 — the OUTPUT TEMPLATE uses Title-case `Depends on:` / `Blocks:`, which is what `create-story/generate-frontmatter.sh` extracts. Earlier revisions of this prose said `depends_on:` / `blocks:` (snake_case); that drift made the SV-07 finalize-check fail and broke generate-frontmatter's depends-on extraction. The generator now accepts both forms as a fallback.
 - Ensure no circular dependencies.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-epics 6 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" story_count="$STORY_COUNT" deps_declared="$DEPS_DECLARED"`

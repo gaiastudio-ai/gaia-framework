@@ -74,7 +74,21 @@ fi
 # provided env vars first restores the project anchor that callers actually
 # rely on. The walk-up remains as the final fallback for in-source-tree dev
 # (gaia-public/ checkout) where neither env var is set.
-PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}}}"
+# AF-2026-05-30-4 F-11 extension: when none of the env-var anchors are set,
+# try `resolve-config.sh --field project_root` BEFORE the walk-up fallback.
+# resolve-config locates the canonical .gaia/config/project-config.yaml (it
+# searches upward from $PWD), so when the user is inside their project and
+# the harness has not exported CLAUDE_PROJECT_ROOT, the resolver still anchors
+# to the right tree. Walk-up only fires when resolve-config also fails.
+_resolved_root=""
+if [ -z "${PROJECT_ROOT:-}" ] && [ -z "${CLAUDE_PROJECT_ROOT:-}" ] && [ -z "${GAIA_PROJECT_ROOT:-}" ]; then
+  _RESOLVE_CONFIG="$SKILL_DIR/../../../scripts/resolve-config.sh"
+  if [ -x "$_RESOLVE_CONFIG" ]; then
+    _resolved_root="$("$_RESOLVE_CONFIG" --field project_root 2>/dev/null || true)"
+  fi
+fi
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-${_resolved_root:-$(cd "$SKILL_DIR/../../../../.." && pwd)}}}}"
+unset _resolved_root
 if [ -z "${ARCH_PATH:-}" ]; then
   if [ -f "$PROJECT_ROOT/docs/planning-artifacts/architecture.md" ] && [ ! -d "$PROJECT_ROOT/.gaia/artifacts/planning-artifacts" ]; then
     ARCH_PATH="$PROJECT_ROOT/docs/planning-artifacts/architecture.md"

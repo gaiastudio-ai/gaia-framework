@@ -61,13 +61,25 @@ if ! command -v yq >/dev/null 2>&1; then
   exit 2
 fi
 
-# Map runner.tier (integer) → tier_N block. Default placement guesses by name.
-_placement_for_runner_name() {
+# Map runner.tier (integer) → tier_N block's `placement` field.
+#
+# AF-2026-05-30-4 / Test11 F-16: the prior implementation wrote the runner's
+# NAME (`unit` / `integration` / `e2e`) into `placement`, but `placement` is
+# an execution-CONTEXT enum: `local | ci_pre_merge | ci_post_merge | deployment`.
+# With `placement: unit`, run-tests.sh refused (`all configured tier
+# placements are non-local`), so tests STILL didn't run even after AF-30-2
+# F-27's command-population fix. Net: tier 1 runs always under the `local`
+# context (dev-loop + the bridge's review consumption), tier 2 maps to
+# ci_pre_merge (typical wall-clock integration band), tier 3 to ci_post_merge.
+# Operators that need a different context can edit project-config.yaml
+# directly; this default puts every runner in the canonical context-band
+# the consumer expects.
+_placement_for_tier() {
   case "${1:-}" in
-    unit)         echo "unit" ;;
-    integration)  echo "integration" ;;
-    e2e|end-to-end) echo "e2e" ;;
-    *)            echo "unit" ;;
+    1) echo "local" ;;
+    2) echo "ci_pre_merge" ;;
+    3) echo "ci_post_merge" ;;
+    *) echo "local" ;;
   esac
 }
 
@@ -106,7 +118,7 @@ for i in $(seq 0 $((RUNNERS_COUNT - 1))); do
     continue
   fi
 
-  placement=$(_placement_for_runner_name "$name")
+  placement=$(_placement_for_tier "$tier")
 
   if [ "$DRY_RUN" -eq 1 ]; then
     echo "  would write: test_execution.${tier_key} = { placement: $placement, command: '$cmd', required: true, timeout_seconds: $timeout_s }"
@@ -128,4 +140,32 @@ done
 if [ "$WROTE_ANY" -eq 0 ]; then
   echo "bridge-populate-test-execution: nothing to populate (all tiers already set or no eligible runners)" >&2
 fi
+
+# AF-2026-05-30-4 F-17 — wire test_execution_bridge.run_tests_path.
+#
+# Even with bridge_enabled:true + tiers populated, qa-test-runner.sh's
+# bridge-delegation branch needs a non-empty `run_tests_path` (BRIDGE_PATH);
+# when unset it falls through to the direct tier-execution path and the
+# emitted `execution-evidence.json` records `bridge_used:false` — a
+# misleading signal for a fully "enabled" bridge.
+#
+# Wire the canonical bridge entry point at
+# `${CLAUDE_PLUGIN_ROOT}/scripts/run-tests.sh`. We write the literal token
+# `${CLAUDE_PLUGIN_ROOT}/scripts/run-tests.sh` so downstream readers expand
+# it against their own plugin root at use time (the path is portable across
+# plugin-cache reinstalls / version bumps). Operator-set values win — only
+# wire when the key is absent or empty.
+_canonical_run_tests_token='${CLAUDE_PLUGIN_ROOT}/scripts/run-tests.sh'
+_existing_rtp=$(yq -r '.test_execution_bridge.run_tests_path // ""' "$CONFIG" 2>/dev/null || echo "")
+if [ -z "$_existing_rtp" ] || [ "$_existing_rtp" = "null" ]; then
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "  would write: test_execution_bridge.run_tests_path = '${_canonical_run_tests_token}'"
+  else
+    yq -i ".test_execution_bridge.run_tests_path = \"${_canonical_run_tests_token}\"" "$CONFIG"
+    echo "  wrote: test_execution_bridge.run_tests_path = '${_canonical_run_tests_token}'" >&2
+  fi
+else
+  echo "  keep: test_execution_bridge.run_tests_path already set ('${_existing_rtp}')" >&2
+fi
+
 exit 0

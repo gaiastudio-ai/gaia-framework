@@ -207,7 +207,7 @@ be lossy between steps — sub-agents return summaries, not full reasoning.
 
 For the full-fidelity experience, enable Mode B (Agent Teams):
   1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
-  2. Add orchestration.mode: team to config/project-config.yaml.
+  2. Add orchestration.mode: team to .gaia/config/project-config.yaml.
 
 Mode B uses persistent teammates that preserve in-conversation state
 across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.

@@ -143,6 +143,21 @@ PROJECT_ROOT="$(cd "$PROJECT_ROOT" && pwd)"
 # Nested manifests (a manifest with a strict-ancestor manifest) scope to the
 # ancestor stack — `ignore_nested_manifests: true` default per E85-S14 / FR-546.
 if [ -n "$STACKS_PATH_MODE" ]; then
+  # AF-2026-05-30-4 / Test11 F-05: bash 4+ required for mapfile + declare -A
+  # used downstream. macOS ships /bin/bash 3.2; without this guard the script
+  # dies `mapfile: command not found` on a stock-Mac brownfield run.
+  # Test10 F-09 closed the same class for the brownfield orchestrator.sh
+  # globstar walk; this guard closes it for the multi-stack proposal/audit
+  # branch. Single-stack repos are unaffected (this whole branch is opt-in
+  # via --stacks-path-mode).
+  if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]:-0}" -lt 4 ]; then
+    err "stacks-path-mode requires bash 4.0+ (mapfile + declare -A)."
+    err "  Detected: bash ${BASH_VERSION:-unknown}."
+    err "  macOS ships bash 3.2 by default — install a newer bash via: brew install bash"
+    err "  Skipping multi-stack proposal/audit. Single-stack root detection unaffected."
+    exit 0
+  fi
+
   # Canonical ecosystem manifest filenames (explicit -name; not regex — faster).
   _MANIFESTS=(go.mod package.json pyproject.toml pom.xml build.gradle build.gradle.kts \
               Cargo.toml Gemfile composer.json Pipfile requirements.txt env.yml environment.yml)
@@ -686,15 +701,32 @@ if [ -n "$MERGE_INTO" ] && [ -n "$OUTPUT" ]; then
     # full questionnaire.
     err "merge-into target absent — seeding zero-config base at: $MERGE_INTO"
     mkdir -p "$(dirname "$MERGE_INTO")"
-    cat > "$MERGE_INTO" <<'SEED'
-# Auto-seeded by detect-signals.sh (AF-2026-05-30-2 / Test10 F-01 zero-config draft path).
-# Minimal placeholder created because brownfield Phase 1 found no existing
-# project-config.yaml. Detection-driven fields will be merged in below.
-# Run /gaia-init to populate the full questionnaire when ready.
+    # AF-2026-05-30-4 / Test11 F-02: previous seed (AF-30-2 / Test10 F-01)
+    # was minimal but missing checkpoint_path + memory_path + project_root +
+    # project_path + installed_path — all required by project-config.schema.yaml
+    # under the canonical minimal-phase contract. Without them, the
+    # post-merge schema validation in step 5a returns CRITICAL ("missing
+    # required field: checkpoint_path") and detect-signals exits 2 — the
+    # SKILL contract then HALTs and a pure zero-config brownfield run
+    # cannot self-complete. The seeded paths are project-root-relative
+    # so the same config works on any clone (Test11 F-06 also flagged
+    # absolute paths as a portability defect — this seed avoids both).
+    _seed_root="$(cd "$(dirname "$MERGE_INTO")/../.." && pwd)"
+    cat > "$MERGE_INTO" <<SEED
+# Auto-seeded by detect-signals.sh (AF-2026-05-30-4 / Test11 F-02 — supersedes
+# AF-2026-05-30-2 / Test10 F-01 minimal seed). Created because brownfield
+# Phase 1 found no existing project-config.yaml. Detection-driven fields
+# (stacks, ci_platform, platforms) will be merged in below. Run /gaia-init
+# to populate the full questionnaire when ready.
 schema_version: "2.0.0"
 config_phase: minimal
 project_name: ""
 project_kind: ""
+project_root: "${_seed_root}"
+project_path: "${_seed_root}"
+memory_path: "${_seed_root}/.gaia/memory"
+checkpoint_path: "${_seed_root}/.gaia/memory/checkpoints"
+installed_path: "${_seed_root}"
 SEED
   fi
   python3 - "$MERGE_INTO" "$OUTPUT" "$DETECTION_JSON" <<'PY'
