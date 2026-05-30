@@ -562,6 +562,24 @@ Emit a single-line gate log to stderr: `step14b_gate: advisories={count}` where 
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh {story_file}` to seed (or replace) the Review Gate table with the canonical 6-row UNVERIFIED block. The helper is idempotent — re-running on a story file that already has the block yields a byte-identical result.
 - Update story status to `review` via `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to review`.
+
+> **Grace window note (NFR-RSV2-6 / ADR-082, AF-2026-05-30-4 F-18).** Within
+> the **7-day post-flip grace window** after `/gaia-bridge-enable` flips
+> `test_execution_bridge.bridge_enabled: true`, a review→done transition is
+> permitted even when the composite `review-gate-check` returns PENDING
+> (i.e. one or more of the six Review Gate rows is still UNVERIFIED) —
+> the transition emits a WARNING rather than BLOCKING. This is the
+> documented graceful-onboarding behavior for projects that just turned
+> the bridge on: it gives operators a week to backfill the three
+> test-execution gates (qa-tests, test-review, test-automate-review) on
+> stories that completed dev BEFORE the bridge was wired. After 7 days
+> the same composite PENDING verdict is BLOCKING: review→done is refused
+> until every row is PASSED. To verify the active mode at any moment,
+> run `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/gating-flip-guard.sh
+> --scan --impl-dir <impl-artifacts-dir>` — it enumerates status:review
+> stories whose Review Gate still has non-PASSED rows. Mid-window
+> approval is correct-by-spec but worth flagging in retro: a not-all-
+> PASSED composite does NOT block done within the grace window.
 <!-- E55-S8: step 15 init-review-gate wire end -->
 
 <!-- E55-S8: step 16 begin -->

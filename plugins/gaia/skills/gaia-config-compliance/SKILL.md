@@ -58,7 +58,9 @@ Editing is comment-preserving per ADR-044: pre-existing comments and formatting 
 
 ### Step 5 — Write Back
 
-- On `y`: write the new section to a temp file and invoke `config-yaml-editor.sh replace <path> compliance <temp-file>`.
+- On `y`:
+  - **If the `compliance:` section already exists** (Step 2 extract returned exit 0): write the edited section to a temp file and invoke `config-yaml-editor.sh replace <path> compliance <temp-file>`.
+  - **If the `compliance:` section is absent** and the user opted into the Step 2 scaffold path: write the scaffold to a temp file and invoke `config-yaml-editor.sh insert <path> compliance <temp-file>`. The `insert` verb appends a brand-new section before EOF and refuses (exit 1) if the section already exists — use it whenever the prior `extract` exited 2 (section not found). Do NOT use `replace` against an absent section — `replace` exits 2 (`section not found`), which is the AF-2026-05-30-4 F-10 footgun.
 
 ### Step 6 — Optional Validation Pass
 

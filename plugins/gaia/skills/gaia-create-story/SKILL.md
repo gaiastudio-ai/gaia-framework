@@ -392,6 +392,14 @@ SECTIONS=$(!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/scaffold-stor
 #    For the new per-story layout (E105-S1) validate-canonical-filename.sh validates
 #    the key from the DIRECTORY name (basename is story.md); the legacy basename
 #    contract still applies to legacy-layout files (read-compat).
+#
+# Validator CLI form (AF-2026-05-30-4 D-05) — the three story validators
+# (validate-frontmatter.sh, validate-ac-format.sh, validate-canonical-filename.sh)
+# accept TWO call forms:
+#   --file <path>     canonical, recommended for all scripted callers (used below)
+#   <path>            deprecated positional form; emits a NOTICE line and proceeds.
+# Always prefer the `--file` form in new code; the positional form exists for
+# hand-driven invocations and one-off scripts during the D-05 retrofit window.
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/validate-canonical-filename.sh --file "${STORY_DIR}/story.md"
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/validate-frontmatter.sh         --file "${STORY_DIR}/story.md"
 ```

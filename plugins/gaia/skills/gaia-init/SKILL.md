@@ -214,6 +214,16 @@ Ask the user the following question set, in order. Capture answers into a JSON a
 6. **Environments (iterative).** For each environment: `name` (e.g., `staging`, `production`), `url`, `auth_type`, and the **NAME** of the env var holding the credential (e.g., `STAGING_TOKEN`). Never accept or echo a literal secret. **Environment count by config_phase (Test05 F-002):** in `config_phase=full` the schema REQUIRES a non-empty `environments` block — declare **at least one** environment. Declining all in full mode causes `generate-config.sh` to seed a default `local` (`http://localhost`) on your behalf and emit a NOTICE; that auto-seed is a safety fallback, not the intended path. For `minimal`/`partial` phases, zero environments is fine. Prompt accordingly — only say "none is OK" when NOT in full mode.
 7. **CI/CD platform.** Single-select from: `github-actions`, `gitlab-ci`, `circleci`, `jenkins`, `azure-pipelines`, `bitbucket-pipelines`, `none`.
 
+   **Answer-bundle shape (AF-2026-05-30-4 D-01).** The answer-bundle MUST encode this answer as an **object** keyed `ci_platform: {"provider": "<value>"}` — NOT as a scalar string. `generate-config.sh` expects `ci_platform.get('provider')`; a bare scalar (`ci_platform: "github-actions"`) crashes the embedded Python with `'str' object has no attribute 'get'`. Canonical bundle entry for the GitHub Actions selection:
+
+   ```json
+   {
+     "ci_platform": { "provider": "github-actions" }
+   }
+   ```
+
+   For `none`, omit the key entirely OR emit `{"provider": "none"}` — both forms cause the CI-scaffold step to skip cleanly. The object shape is the same convention used by the `environments` block.
+
 **Step 2a — Mobile-specific follow-ups (conditional).** Trigger only when project shape is one of `mobile-only`, `mobile+backend`, `microservices+mobile`. The trigger predicate is unchanged by E71-S6 — `web-app` and `fullstack` do NOT auto-trigger Step 2a in this story; that decision is deferred to `AI-2026-05-08-3`. Per E74-S11 / ADR-081 the `device_targets[<platform>]` block is canonical and MUST contain `os_versions`, `form_factors`, and `screen_sizes` — collect each field explicitly:
 
 - iOS: ship to iOS y/n. If yes, ask:

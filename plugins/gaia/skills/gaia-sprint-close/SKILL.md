@@ -21,6 +21,65 @@ Mark the active sprint as closed and emit the close lifecycle artifacts. The ski
 
 This skill is the GAIA-native replacement for manual sprint-boundary writes (per ADR-095, AF-2026-05-11-7). The historical restriction on direct `yq -i` against `sprint-status.yaml` (per `feedback_sprint_boundary_yaml_write.md`) is lifted **only** inside this skill's `close.sh` — that helper IS the sanctioned boundary-write path going forward.
 
+## Prerequisites (AF-2026-05-30-4 D-06)
+
+The close ceremony's hard pre-conditions are non-obvious — driving the
+deterministic helpers without these in place hits cryptic gates. Surface
+them explicitly here so they are auditable at a glance:
+
+1. **A retrospective document at the EXACT path.** The skill globs
+   `.gaia/artifacts/implementation-artifacts/retrospective-{sprint_id}-*.md`
+   (both `retrospective-{id}-{date}.md` and the
+   `retrospective-{id}-{date}-{HHMM}.md` clobber-avoidance variant emitted by
+   `/gaia-retro` are accepted). When the glob is empty the skill refuses with
+   `error: retro doc not found for {sprint_id}; run /gaia-retro first`.
+   Some projects also use the per-sprint subdir layout
+   `…/retrospective/retrospective-{sprint_id}-*.md` — keep the file in one of
+   the two locations the close.sh scanner walks.
+
+2. **A Val-dispatch sentinel with the canonical payload schema.** When the
+   sprint is in `status: review`, Step 3a requires sentinel-verified evidence
+   that `/gaia-sprint-review` ran and produced a verdict. The sentinel MUST
+   exist at one of:
+   - `.gaia/memory/checkpoints/sprint-review-{sprint_id}-val-dispatched.json`
+     (E83-style dispatch checkpoint, written by `/gaia-sprint-review`
+     Step 3 Track A Val dispatch); OR
+   - `.gaia/memory/checkpoints/val-envelope-<sha256(sprint_id):0:16>.json`
+     (E87-style envelope sentinel, written by the orchestrator-side writer
+     per ADR-105).
+
+   Payload schema (REQUIRED fields — strict; the close ceremony refuses on
+   missing fields and on a wrong `agent` value):
+
+   ```json
+   {
+     "agent": "val",
+     "status": "PASSED",
+     "summary": "<short prose>",
+     "findings": []
+   }
+   ```
+
+   The `agent` field MUST be the literal string `"val"` (lowercase). The
+   `status` enum is `PASSED | FAILED | UNVERIFIED`. On `PASSED` the
+   transition proceeds; on `UNVERIFIED` the skill reads the
+   `review_justification` block (requires both `pm_signoff` and
+   `val_validation`); on `FAILED` the skill refuses and routes the operator
+   to `/gaia-correct-course`; on missing sentinel the skill refuses and
+   routes to `/gaia-sprint-review`.
+
+3. **All stories at `status: done`** (or the operator explicitly opts into
+   `--force-with-rollover <key1,key2,...>` listing exactly the non-done
+   stories — no extras, no missing).
+
+4. **The sprint is not already closed.** Step 2 is idempotent: re-running
+   on an already-closed sprint emits a warning and exits 0 with no yaml
+   mutation, no new archive copy, and no new lifecycle event.
+
+The orchestrated `/gaia-sprint-review` + `/gaia-retro` skills set these
+prerequisites up automatically — the explicit list above is for operators
+hand-driving the deterministic scripts.
+
 ## Critical Rules
 
 - The skill MUST be idempotent on already-closed sprints — re-running emits a warning and exits 0 with no yaml mutation, no new archive copy, and no new lifecycle event.

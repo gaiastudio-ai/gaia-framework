@@ -185,6 +185,28 @@ Delegate operational readiness assessment to the **devops** subagent (Soren) via
 
 Write the readiness report to `.gaia/artifacts/planning-artifacts/readiness-report.md` with YAML frontmatter containing machine-readable PASS/FAIL status for each check area.
 
+#### Required frontmatter fields and report sections (AF-2026-05-30-4 D-04)
+
+`finalize.sh` enforces these fields and sections via SV-21/22/23/25. They are non-obvious from the report body alone; emit them explicitly so a hand-authored READY report does NOT fail the gate purely on frontmatter shape:
+
+```yaml
+---
+date: 2026-MM-DD               # SV-19 (required)
+status: PASS                   # SV-20 — one of PASS | FAIL | CONDITIONAL
+checks_passed: 47              # SV-21 — aggregate count of SV checks that passed
+critical_blockers: 0           # SV-22 — count of blocking findings; 0 on PASS
+contradictions_found: 0        # SV-23 — count of cross-artifact contradictions; mirrors self_contradictions_count
+# (Subtask 4.1 fields from the Self-Contradiction Sweep section above)
+priority_schedule_conflicts_count: 0
+compliance_timeline_present: false
+self_contradictions_count: 0
+---
+```
+
+The report body MUST include an `## Output Verification` section (SV-25) — a short sub-section confirming which artifacts the gate inspected, which mandatory gates were invoked, and which deterministic helpers produced the counts above. Without that heading SV-25 fails even when every other check passes.
+
+Operators who hand-author a readiness report (e.g. for a brownfield re-baseline) MUST seed all five fields above plus the `## Output Verification` heading; a missing field is a brittle gate failure, not a content failure.
+
 #### Self-Contradiction Sweep (FR-352 / E46-S4)
 
 After all preceding sections (Completeness, Consistency, Cross-Artifact Contradictions, TEA, Test Infrastructure, Security with the Step 7 sub-sections, Operational, Brownfield) have been written into the in-memory report and BEFORE the file is flushed to disk, run an inline self-contradiction sweep over the assembled body. The sweep is an ACTIVE inline step — the Critical Rules bullet at the top of this skill remains as reinforcement, but the authoritative enforcement lives in this Step 10 action list. A reviewer who reads only the Critical Rules and skips the steps must still land on a passing gate only when this inline check has run.

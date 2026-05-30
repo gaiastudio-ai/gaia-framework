@@ -75,6 +75,7 @@ SCRIPT_NAME="validate-ac-format.sh"
 usage() {
   cat >&2 <<'USAGE'
 Usage: validate-ac-format.sh --file <story-file>
+       validate-ac-format.sh <story-file>          (deprecated positional form — emits NOTICE)
 
   --file <path>  Path to a story file. Required.
 
@@ -103,12 +104,20 @@ while [ $# -gt 0 ]; do
       file="$2"; shift 2 ;;
     -h|--help)
       usage; exit 0 ;;
-    *)
+    --*)
       die_usage "unknown argument: $1" ;;
+    *)
+      # AF-2026-05-30-4 D-05 — positional path form is accepted with a
+      # deprecation NOTICE. Canonical form is `--file <path>`.
+      if [ -n "$file" ]; then
+        die_usage "positional path '$1' supplied after --file '$file' — use only one form"
+      fi
+      log "NOTICE: positional path is deprecated; prefer '--file $1' (AF-2026-05-30-4 D-05)"
+      file="$1"; shift ;;
   esac
 done
 
-[ -n "$file" ] || die_usage "--file is required"
+[ -n "$file" ] || die_usage "--file is required (or pass a positional path; --file is canonical)"
 if [ ! -r "$file" ]; then
   die_input "file not found: $file"
 fi
