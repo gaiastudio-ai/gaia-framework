@@ -37,6 +37,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - The skill is conversational: prompt the facilitator for each section rather than auto-generating content from sprint state. Sprint data is used to seed the discussion, not replace it.
 - Read sprint-status.yaml and story files as read-only context. NEVER modify sprint-status.yaml or story files during a retro.
 - Action items MUST be concrete and actionable with assigned ownership — no vague aspirations.
+- **YOLO posture (AF-2026-05-30-2 / Test10 F-32).** `/gaia-retro` is a conversational ceremony; under YOLO it is NOT auto-completable because the went-well / could-improve / action-items inputs MUST come from the facilitator, not from the LLM (Critical Rule above). Unattended pipelines that need to close a sprint without retro discussion can pass `--yolo-defaults seed-from-metrics` to auto-populate the three sections from sprint-status.yaml metrics (velocity actual vs planned, blocked stories, carryover) — but the result is a SKELETON retro, not a substitute for the team discussion. The artifact is stamped with `auto_generated: true` in its frontmatter and the operator MUST flag the retro for the next live retro to revisit. This fallback exists only to unblock the close-the-sprint chain (sprint-close requires the retro doc); operators should treat the skeleton as a placeholder, not a record of decisions made.
 
 ## Steps
 
@@ -126,7 +127,7 @@ Prompt the facilitator:
 
 > Review the proposed action items. Add, remove, or modify items. Each action item needs an owner and target sprint.
 
-Collect the facilitator's input and compile the final action items list, then persist each item to `${CLAUDE_PROJECT_ROOT}/.gaia/state/action-items.yaml` using the shared retro writer helper (ADR-052). The YAML schema is authoritative — see architecture §10.28.6.
+Collect the facilitator's input and compile the final action items list, then persist each item to `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml` using the shared retro writer helper (ADR-052). The YAML schema is authoritative — see architecture §10.28.6. **AF-2026-05-30-2 / Test10 F-31**: this path is the canonical action-items.yaml home per ADR-052 §10.28.6 — previously this skill wrote to `.gaia/state/action-items.yaml` while `/gaia-action-items` read from `.gaia/artifacts/planning-artifacts/action-items.yaml`, so retro-emitted items vanished from the next pre-sprint triage pass. Both producer and consumer now agree on the planning-artifacts location.
 
 Per-item payload (one YAML list element per action, FR-RIM-5):
 
@@ -147,7 +148,7 @@ Invoke the shared writer once per action item:
 ${CLAUDE_PLUGIN_ROOT}/../../scripts/retro-sidecar-write.sh \
   --root       "${CLAUDE_PROJECT_ROOT}" \
   --sprint-id  "${sprint_id}" \
-  --target     "${CLAUDE_PROJECT_ROOT}/.gaia/state/action-items.yaml" \
+  --target     "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
   --payload    "$(emit_action_item_yaml)"
 ```
 
@@ -269,7 +270,7 @@ Invoke:
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/gaia-retro/scripts/cross-retro-detect.sh \
   --retros-dir     "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts" \
-  --action-items   "${CLAUDE_PROJECT_ROOT}/.gaia/state/action-items.yaml" \
+  --action-items   "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
   --current-sprint "${sprint_id}"
 ```
 

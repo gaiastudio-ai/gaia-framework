@@ -44,7 +44,7 @@ This skill is a deployment-phase action skill (ADR-080) and a peer of `/gaia-tes
 
 **Fork context semantics (NFR-RSV2-5):** Phase 3B LLM judgment runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). Phase 3A is deterministic shell. Phase 4 verdict resolution and Review Gate update happen in the parent context via `verdict.sh` + `finalize.sh`.
 
-**Adapter swappability:** Resolved by `select-adapter.sh` with first-match-wins precedence: `--adapter <name>` CLI flag → `test_execution.perf.adapter` from `config/project-config.yaml` → default `k6`.
+**Adapter swappability:** Resolved by `select-adapter.sh` with first-match-wins precedence: `--adapter <name>` CLI flag → `test_execution.perf.adapter` from `.gaia/config/project-config.yaml` → default `k6`.
 
 **Graceful degradation:** When `tool-availability-probe.sh` returns `expected_and_missing`, Phase 3A emits a `checks[].status: errored` row with a diagnostic `error_reason` naming the missing tool and installation hint. `verdict-resolver.sh` maps this to BLOCKED — never to a false APPROVE.
 
@@ -72,7 +72,7 @@ prompt_hash: sha256:<hex>     # recorded in analysis-results.json
 
 ## Configuration Schema
 
-Project-config block consumed by this skill (`config/project-config.yaml`):
+Project-config block consumed by this skill (`.gaia/config/project-config.yaml`):
 
 ```yaml
 test_execution:

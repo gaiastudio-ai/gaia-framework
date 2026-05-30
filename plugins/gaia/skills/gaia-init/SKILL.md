@@ -294,6 +294,7 @@ Render the following to the user, replacing the placeholder with the concrete fi
   - <CI workflow path>
   - <CI user-steps companion path>
   - .gaia/config/test-environment.yaml.example
+  - .gitignore (project-root; seeded or GAIA block appended — Test05 F-055)
 
 Reminders:
   - Set the credential env vars referenced in `environments.*.credentials.*`

@@ -829,6 +829,59 @@ do_transition_locked() {
   # Review Gate enforcement for -> done (AC6, AC-EC7).
   if [ "$to_state" = "done" ]; then
     check_review_gate_all_passed "$story_key"
+
+    # AF-2026-05-30-2 / Test10 F-29: DoD completeness gate.
+    # Prior behavior allowed `review -> done` when the Review Gate was
+    # all-PASSED even if the story's Definition of Done section was 0/N
+    # checked. Test10 surfaced an E5-S4 case that reached `done` with
+    # 0/9 DoD items checked. Block the transition when any DoD checkbox
+    # is unchecked.
+    if [ -n "${STORY_FILE:-}" ] && [ -f "$STORY_FILE" ]; then
+      _dod_unchecked=$(awk '
+        BEGIN { in_section=0; unchecked=0 }
+        /^## Definition of Done[[:space:]]*$/ { in_section=1; next }
+        in_section && /^## / { in_section=0 }
+        in_section && /^[[:space:]]*-[[:space:]]*\[[[:space:]]\][[:space:]]/ { unchecked++ }
+        END { print unchecked }
+      ' "$STORY_FILE")
+      if [ -n "$_dod_unchecked" ] && [ "$_dod_unchecked" -gt 0 ]; then
+        die "story $story_key: refuse review -> done — $_dod_unchecked DoD item(s) unchecked (run /gaia-check-dod and tick each box before transitioning to done)"
+      fi
+
+      # AF-2026-05-30-2 / Test10 F-33: dependency gate on done.
+      # Prior behavior: backlog-select-lint enforced deps at sprint
+      # selection time, but the done transition ignored deps entirely
+      # — so E5-S4 reached done while its hard dep E3-S6 was never even
+      # developed. Block done when any depends_on key is non-done.
+      _fm_deps=$(awk '
+        BEGIN { in_fm=0; in_deps=0 }
+        /^---[[:space:]]*$/ { if (in_fm==0) { in_fm=1; next } else { exit } }
+        !in_fm { next }
+        /^depends_on:[[:space:]]*\[/ {
+          line=$0; sub(/^depends_on:[[:space:]]*\[/, "", line); sub(/\].*$/, "", line)
+          n=split(line, parts, ",")
+          for (i=1;i<=n;i++) { gsub(/[[:space:]"]/, "", parts[i]); if (parts[i] ~ /^E[0-9]+-S[0-9]+$/) print parts[i] }
+          next
+        }
+        /^depends_on:[[:space:]]*$/ { in_deps=1; next }
+        in_deps && /^[[:space:]]*-[[:space:]]*[Ee][0-9]+-[Ss][0-9]+/ {
+          t=$0; gsub(/[[:space:]"-]/, "", t); if (t ~ /^E[0-9]+-S[0-9]+$/) print t
+        }
+        in_deps && /^[^[:space:]-]/ { in_deps=0 }
+      ' "$STORY_FILE")
+      if [ -n "$_fm_deps" ]; then
+        _unmet=""
+        for _dep in $_fm_deps; do
+          _dep_status=$(yq -r ".sprints[].stories[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:-.}/.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
+          if [ "$_dep_status" != "done" ]; then
+            _unmet="${_unmet} ${_dep}(${_dep_status:-unknown})"
+          fi
+        done
+        if [ -n "$_unmet" ]; then
+          die "story $story_key: refuse review -> done — unmet hard dependencies:${_unmet} (complete those stories first, or remove the depends_on entry if the dependency no longer applies)"
+        fi
+      fi
+    fi
   fi
 
   # (b, c) Atomic updates: story file first (source of truth), then yaml.

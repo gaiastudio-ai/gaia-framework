@@ -103,8 +103,8 @@ if [ -z "$ADAPTER" ]; then
   # AF-2026-05-17-10: honest diagnostic. /gaia-config-device-target only edits
   # the device_targets section (per ADR-044) — NOT device_farm.adapter. No
   # /gaia-config-* skill currently edits this key, so the user must edit
-  # config/project-config.yaml directly.
-  printf '%s\n' '{"skill":"gaia-test-mobile-e2e","verdict":"ERROR","reason":"no_device_farm_adapter","diagnostic":"No device-farm adapter configured. Set device_farm.adapter in config/project-config.yaml to one of: firebase-test-lab | browserstack | sauce-labs. No section-scoped editor skill currently exists for this key (AF-2026-05-17-10) — edit the YAML directly. The Test Execution Bridge must also be enabled (/gaia-bridge-enable)."}'
+  # .gaia/config/project-config.yaml directly.
+  printf '%s\n' '{"skill":"gaia-test-mobile-e2e","verdict":"ERROR","reason":"no_device_farm_adapter","diagnostic":"No device-farm adapter configured. Set device_farm.adapter in .gaia/config/project-config.yaml to one of: firebase-test-lab | browserstack | sauce-labs. No section-scoped editor skill currently exists for this key (AF-2026-05-17-10) — edit the YAML directly. The Test Execution Bridge must also be enabled (/gaia-bridge-enable)."}'
   exit 2
 fi
 

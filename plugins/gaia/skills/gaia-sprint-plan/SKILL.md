@@ -151,7 +151,7 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
 - Ask: Sprint duration (1 week / 2 weeks / custom)?
 - Ask: Team velocity estimate (story points)?
 - Ask: Sprint number (for multi-sprint tracking)?
-- Resolve the `sizing_map` key via `!scripts/resolve-config.sh sizing_map` (ADR-044 §10.26.3 — the resolver transparently merges the team-shared and machine-local layers, applying the "local overrides shared" precedence). Display the canonical point values (S/M/L/XL) before selection. <!-- Shared layer: config/project-config.yaml. Local layer: global.yaml. -->
+- Resolve the `sizing_map` key via `!scripts/resolve-config.sh sizing_map` (ADR-044 §10.26.3 — the resolver transparently merges the team-shared and machine-local layers, applying the "local overrides shared" precedence). Display the canonical point values (S/M/L/XL) before selection. <!-- Shared layer: .gaia/config/project-config.yaml. Local layer: global.yaml. -->
 
 ### Step 3 -- Story Selection
 
@@ -189,8 +189,13 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
   duration: "{duration}"
   velocity_capacity: {velocity}
   total_points: {sum}
+  # Test10 F-30 — start_date / end_date / capacity_points are REQUIRED for the
+  # dashboard (otherwise it renders N/A). Seed them at sprint-plan time;
+  # sprint-state.sh `init` preserves them.
+  start_date: "{start_date YYYY-MM-DD}"
+  end_date: "{end_date YYYY-MM-DD}"
+  capacity_points: {capacity_points integer — usually equal to velocity_capacity}
   started: "{date}"
-  end_date: "{end_date}"
   stories:
     - key: "{story-key}"
       title: "{title}"

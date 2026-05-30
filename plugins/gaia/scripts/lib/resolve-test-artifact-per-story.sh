@@ -33,7 +33,7 @@
 # Usage:
 #   resolve-test-artifact-per-story.sh <type> <story_key> [--write] [--existing-only]
 #
-#   <type>             one of: atdd | test-automate-plan
+#   <type>             one of: atdd | test-automate-plan | qa-tests | test-review
 #   <story_key>        e.g. E105-S1
 #   --write            print the rung-0 (new canonical) path even if it does
 #                      not exist on disk; create parent dirs.
@@ -51,7 +51,7 @@ set -euo pipefail
 usage() {
   cat >&2 <<EOF
 usage: resolve-test-artifact-per-story.sh <type> <story_key> [--write] [--existing-only]
-  <type>            atdd | test-automate-plan
+  <type>            atdd | test-automate-plan | qa-tests | test-review
   <story_key>       e.g. E105-S1
   --write           print/prepare the rung-0 (new canonical) write path
   --existing-only   print the first existing rung; exit 1 if none
@@ -75,9 +75,12 @@ while [ $# -gt 0 ]; do
 done
 
 case "$TYPE" in
-  atdd|test-automate-plan) ;;
+  # Test10 F-38 extends the resolver to two more per-story review-output types
+  # so /gaia-qa-tests and /gaia-test-review can mirror under the same per-story
+  # directory as atdd + test-automate-plan.
+  atdd|test-automate-plan|qa-tests|test-review) ;;
   *)
-    echo "resolve-test-artifact-per-story: unknown type '$TYPE' (expected: atdd | test-automate-plan)" >&2
+    echo "resolve-test-artifact-per-story: unknown type '$TYPE' (expected: atdd | test-automate-plan | qa-tests | test-review | qa-tests | test-review)" >&2
     exit 1
     ;;
 esac

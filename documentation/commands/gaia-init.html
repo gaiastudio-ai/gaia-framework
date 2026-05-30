@@ -84,7 +84,7 @@
           It walks you through a guided questionnaire -- project name, shape
           (single backend, microservices, mobile, etc.), tech stacks, compliance
           regimes, environments, and CI platform -- then generates a
-          <code>config/project-config.yaml</code> and a starter CI workflow
+          <code>.gaia/config/project-config.yaml</code> and a starter CI workflow
           file. No manual YAML authoring required.
         </p>
       </section>
@@ -103,7 +103,7 @@
           </li>
         </ul>
         <p>
-          If your project already has a <code>config/project-config.yaml</code>,
+          If your project already has a <code>.gaia/config/project-config.yaml</code>,
           this command will refuse to run. Use
           <a href="gaia-config-show.html"><code>/gaia-config-show</code></a> to
           inspect the existing config, or
@@ -118,7 +118,7 @@
         <ul>
           <li>
             <strong>No existing config.</strong> The project directory must not
-            already contain <code>config/project-config.yaml</code>. If it
+            already contain <code>.gaia/config/project-config.yaml</code>. If it
             does, the command stops and directs you to the appropriate
             alternative.
           </li>
@@ -142,7 +142,7 @@ be lossy between steps — sub-agents return summaries, not full reasoning.
 
 For the full-fidelity experience, enable Mode B (Agent Teams):
   1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
-  2. Add orchestration.mode: team to config/project-config.yaml.
+  2. Add orchestration.mode: team to .gaia/config/project-config.yaml.
 
 Mode B uses persistent teammates that preserve in-conversation state
 across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
@@ -159,11 +159,12 @@ This warning is shown once per session.
         <p><strong>Step 1 -- set the environment variable:</strong></p>
         <pre><code>export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code></pre>
         <p>Add this to your shell rc file to persist across sessions, or set it in Claude Code's <code>settings.json</code>.</p>
-        <p><strong>Step 2 -- add the YAML block to <code>config/project-config.yaml</code>:</strong></p>
+        <p><strong>Step 2 -- add the YAML block to <code>.gaia/config/project-config.yaml</code>:</strong></p>
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
         <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p><strong>Caveat (Test10 F-03 — AF-2026-05-30-2).</strong> The one-shot contract depends on <code>CLAUDE_SESSION_ID</code> being exported. Without it, the marker falls back to the orchestrator PID, so each fresh shell becomes a new "session" from the dedupe's point of view and the warning re-fires on every command invocation. Operators who see repeat warnings on every command should export <code>CLAUDE_SESSION_ID</code> (any stable per-session value).</p>
       </section>
 
 
@@ -183,7 +184,7 @@ This warning is shown once per session.
         <ol class="step-list">
           <li>
             <span class="step-title">Greenfield guard</span>
-            Checks that no <code>config/project-config.yaml</code> exists. If
+            Checks that no <code>.gaia/config/project-config.yaml</code> exists. If
             it does, the command stops immediately and suggests
             <code>/gaia-config-show</code> or <code>/gaia-brownfield</code>.
           </li>
@@ -218,7 +219,7 @@ This warning is shown once per session.
           </li>
           <li>
             <span class="step-title">Generate config</span>
-            Writes <code>config/project-config.yaml</code> from your answers.
+            Writes <code>.gaia/config/project-config.yaml</code> from your answers.
             The file is validated against the configuration schema immediately
             after creation.
           </li>
@@ -360,7 +361,7 @@ Checking for existing configuration... none found. Proceeding.
 Validating configuration... PASS.
 
 Generated:
-  - config/project-config.yaml
+  - .gaia/config/project-config.yaml
   - .github/workflows/ci.yml
   - .github/workflows/ci.user-steps.yml
 
@@ -397,7 +398,7 @@ Next steps:
       <section id="troubleshooting">
         <h2>Troubleshooting</h2>
 
-        <h3>"config/project-config.yaml already exists"</h3>
+        <h3>".gaia/config/project-config.yaml already exists"</h3>
         <p>
           This command only runs on directories with no existing config. Use
           <a href="gaia-config-show.html"><code>/gaia-config-show</code></a>
@@ -424,7 +425,7 @@ Next steps:
         <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
         <ul>
           <li><code>echo $CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> returns <code>1</code> (not empty)</li>
-          <li><code>config/project-config.yaml</code> contains:
+          <li><code>.gaia/config/project-config.yaml</code> contains:
             <pre><code>orchestration:
   mode: team</code></pre>
           </li>

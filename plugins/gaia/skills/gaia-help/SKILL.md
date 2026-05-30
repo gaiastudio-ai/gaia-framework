@@ -73,7 +73,7 @@ reads the resulting `$PROJECT_STATE` value):
 PROJECT_STATE="healthy"  # default fall-through
 
 # (1) Greenfield: config absent in BOTH canonical and legacy locations — short-circuit
-if [ ! -f ".gaia/config/project-config.yaml" ] && [ ! -f "config/project-config.yaml" ]; then
+if [ ! -f ".gaia/config/project-config.yaml" ] && [ ! -f ".gaia/config/project-config.yaml" ]; then
   PROJECT_STATE="greenfield"
 
 # (2) Brownfield: config present AND planning-artifacts missing-or-empty AND a build-system file exists

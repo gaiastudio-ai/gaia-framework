@@ -23,13 +23,13 @@
       <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-test-mobile-e2e
 /gaia-test-mobile-e2e --suite ./tests/e2e
 /gaia-test-mobile-e2e --device pixel-7
-/gaia-test-mobile-e2e --config config/project-config.yaml</code></pre></section>
+/gaia-test-mobile-e2e --config .gaia/config/project-config.yaml</code></pre></section>
       <section id="step-by-step"><h2>What it does step by step</h2><p>See the <a href="#what-it-does">description above</a> for the high-level flow. The command handles all steps automatically.</p></section>
       <section id="inputs"><h2>Inputs</h2>
         <table><thead><tr><th>Input</th><th>Source</th><th>Description</th><th>Example</th></tr></thead><tbody>
           <tr><td><code>--suite</code></td><td>Argument (optional, default: ./tests/e2e)</td><td>Path to the test suite directory.</td><td><code>/gaia-test-mobile-e2e --suite ./tests/e2e</code></td></tr>
           <tr><td><code>--device</code></td><td>Argument (optional)</td><td>Target a specific device by id (forward-compat).</td><td><code>/gaia-test-mobile-e2e --device pixel-7</code></td></tr>
-          <tr><td><code>--config</code></td><td>Argument (optional)</td><td>Path to project-config.yaml (auto-resolved by default).</td><td><code>/gaia-test-mobile-e2e --config config/project-config.yaml</code></td></tr>
+          <tr><td><code>--config</code></td><td>Argument (optional)</td><td>Path to project-config.yaml (auto-resolved by default).</td><td><code>/gaia-test-mobile-e2e --config .gaia/config/project-config.yaml</code></td></tr>
         </tbody></table>
       </section>
       <section id="outputs"><h2>Outputs</h2><p>Per-device verdicts and a composite verdict (PASSED/FAILED/ERROR/TIMEOUT/SKIPPED).</p></section>

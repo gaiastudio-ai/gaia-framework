@@ -39,7 +39,16 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 <!-- Guard added by AF-2026-05-17-9; F-012 (Test04) actionability + UX auto-detect -->
 - Resolve `compliance.ui_present` via `resolve-config.sh`.
-  - If the value is `true`: proceed.
+  - If the value is `true`: proceed — but ALSO run the headless-surface sanity
+    check (Test10 F-18). Probe for UI signal in the project tree: any of
+    (a) `.figma` blob / Figma frame URL in `ux-design.md`, (b) design-token
+    file (`tokens.json`, `design-tokens.yaml`), or (c) any `*.css`, `*.scss`,
+    `*.jsx`, `*.tsx`, `*.vue`, `*.svelte` source under the configured stack
+    paths. If ZERO UI signal is detected despite `ui_present: true`, emit a
+    NOTICE-tier finding (do NOT block — still proceed with the review):
+    `NOTICE: compliance.ui_present is true but no UI artifacts found (no figma block, no design tokens, no UI source files) — verify project-config or remove ui_present:true.`
+    Surface the NOTICE alongside the verdict in Phase 5 — this prevents a
+    vacuous APPROVE on a headless project misconfigured with `ui_present: true`.
   - **If the value is unset/missing (F-012 auto-detect):** the project may still
     be a UI project whose `ui_present` answer predates the persistence fix. Before
     skipping, probe for UX evidence: if `.gaia/artifacts/planning-artifacts/ux-design.md`

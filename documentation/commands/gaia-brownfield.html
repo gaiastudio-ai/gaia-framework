@@ -131,6 +131,17 @@
             <a href="gaia-init.html"><code>/gaia-init</code></a> first to
             bootstrap a config, then re-invoke brownfield. That workaround is
             no longer required on the current build.
+            <p><strong>Caveat (Test10 F-01 — AF-2026-05-30-2).</strong>
+            Zero-config is supported (AF-2026-05-29-2 F1 degrade), but the
+            seeded defaults are minimal — they cover only the bare keys the
+            scan loop needs. For full deterministic-tools support (Tier 2
+            scanners, grype, runner selection) run
+            <a href="gaia-init.html"><code>/gaia-init</code></a> first so the
+            <code>brownfield.*</code> block is populated, then re-invoke
+            <code>/gaia-brownfield</code>. The
+            <a href="gaia-config-brownfield.html"><code>/gaia-config-brownfield</code></a>
+            command lets you flip those knobs post-init without re-running the
+            questionnaire.</p>
           </li>
           <li>
             <strong>If a <code>project-config.yaml</code> is present, its
@@ -156,7 +167,7 @@ be lossy between steps — sub-agents return summaries, not full reasoning.
 
 For the full-fidelity experience, enable Mode B (Agent Teams):
   1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
-  2. Add orchestration.mode: team to config/project-config.yaml.
+  2. Add orchestration.mode: team to .gaia/config/project-config.yaml.
 
 Mode B uses persistent teammates that preserve in-conversation state
 across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
@@ -173,11 +184,12 @@ This warning is shown once per session.
         <p><strong>Step 1 -- set the environment variable:</strong></p>
         <pre><code>export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code></pre>
         <p>Add this to your shell rc file to persist across sessions, or set it in Claude Code's <code>settings.json</code>.</p>
-        <p><strong>Step 2 -- add the YAML block to <code>config/project-config.yaml</code>:</strong></p>
+        <p><strong>Step 2 -- add the YAML block to <code>.gaia/config/project-config.yaml</code>:</strong></p>
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
         <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p><strong>Caveat (Test10 F-03 — AF-2026-05-30-2).</strong> The one-shot contract depends on <code>CLAUDE_SESSION_ID</code> being exported. Without it, the marker falls back to the orchestrator PID, so each fresh shell becomes a new "session" from the dedupe's point of view and the warning re-fires on every command invocation. Operators who see repeat warnings on every command should export <code>CLAUDE_SESSION_ID</code> (any stable per-session value).</p>
       </section>
 
 
@@ -199,7 +211,7 @@ This warning is shown once per session.
             capability flags (APIs, events, frontend, infrastructure),
             and classifies the project type (application, infrastructure,
             or platform). Also auto-detects configuration signals and
-            drafts a <code>config/project-config.yaml</code> if one does
+            drafts a <code>.gaia/config/project-config.yaml</code> if one does
             not exist. Writes a brownfield assessment and project
             documentation artifact.
           </li>
@@ -454,7 +466,7 @@ Done. Run /gaia-create-epics to break the gaps into stories.</code></pre>
         <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
         <ul>
           <li><code>echo $CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> returns <code>1</code> (not empty)</li>
-          <li><code>config/project-config.yaml</code> contains:
+          <li><code>.gaia/config/project-config.yaml</code> contains:
             <pre><code>orchestration:
   mode: team</code></pre>
           </li>

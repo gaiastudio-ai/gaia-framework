@@ -84,6 +84,7 @@
           <li><span class="step-title">Dispatch-verb enforcement (Step 6b)</span> For each story walked, runs <code>trace-dispatch-verb-enforcement.sh</code> to verify that dispatch-verb ACs in medium/high-risk stories have at least one integration-test row in the matrix.</li>
           <li><span class="step-title">Wire-verification enforcement (Step 6c, E95-S1)</span> For each story walked, runs <code>wire-verification-emit.sh</code>. When any FR/NFR has <code>surface_type != none</code> and zero linked integration rows, emits a BLOCKED finding and writes FAILED into the story's Test Review gate. See the <a href="#wire-verification">Wire-verification gate</a> section for details.</li>
         </ol>
+        <p><strong>Pre-create-story caveat (Test10 F-23 — AF-2026-05-30-2).</strong> Steps 6b and 6c walk story files. If <code>/gaia-trace</code> is invoked <em>before</em> <a href="gaia-create-story.html"><code>/gaia-create-story</code></a> has produced any story files (for example immediately after PRD + epics authoring), there are no stories to walk — both steps emit <code>[NOTICE] skipped — no story files to trace (run /gaia-create-story first)</code> and exit 0, NOT a vacuous PASS. Treat zero-stories as "deferred until story-creation phase", not as "no violations found".</p>
       </section>
 
       <section id="inputs"><h2>Inputs</h2>

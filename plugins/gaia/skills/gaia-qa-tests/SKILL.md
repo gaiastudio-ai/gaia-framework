@@ -199,7 +199,7 @@ After the test-discovery / AC-coverage analyzer completes, the skill MAY run the
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-test-runner.sh \
   --story-key {story_key} \
   --workdir .gaia/state/review/qa-tests/{story_key} \
-  --config config/project-config.yaml
+  --config .gaia/config/project-config.yaml
 ```
 
 The runner emits `.gaia/state/review/qa-tests/{story_key}/execution-evidence.json` validating against `plugins/gaia/schemas/execution-evidence.schema.json`.
@@ -340,6 +340,8 @@ REPORT_PATH="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-review-report-path.sh --key
 ```
 
 Returns the per-story `…/epic-{slug}/{story_key}-{slug}/reviews/qa-tests-{story_key}.md` (E105-S1, `reviews/` created) when the story is in the new layout, else the legacy flat `.gaia/artifacts/implementation-artifacts/qa-tests-{story_key}.md`. Per F-12 on Test02: never the pre-ADR-111 `docs/implementation-artifacts/` path. (The machine-readable `execution-evidence.json` is a SEPARATE artifact written by `qa-test-runner.sh` to `.gaia/state/review/qa-tests/{story_key}/` per Phase 3A.1 — unchanged, F-047.)
+
+**Per-story test-artifacts mirror (Test10 F-38).** In addition to the canonical implementation-artifacts review path above, the parent also writes a mirror under `.gaia/artifacts/test-artifacts/epic-{slug}/stories/{key}-{slug}/qa-tests.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-test-artifact-per-story.sh qa-tests {story_key} --write`. This is the §7.3 mirror-symmetry layout extension (sister to atdd + test-automate-plan, already mirrored by AF-30-1). The implementation-artifacts copy remains canonical for `review-gate.sh`; the test-artifacts mirror lets test-focused consumers find all per-story test outputs in ONE place. Execution-evidence under `.gaia/state/review-work/<KEY>/` is NOT migrated here — that runtime-state split is documented in Test03 §7.3 and deferred to a follow-up AF.
 
 **Phase 3C TC artifact persistence.** When Phase 3C produced uncovered-AC TCs, the parent ALSO writes the rendered TC array to `.gaia/state/review/qa-tests/{story_key}/qa-test-cases-{story_key}.json` (validating against `plugins/gaia/schemas/qa-test-cases.schema.json`). Empty arrays are omitted. The TC file is consumed downstream by `/gaia-test-automate`.
 

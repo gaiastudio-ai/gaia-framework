@@ -105,6 +105,16 @@ verdict inline (per ADR-057, ADR-073, AF-2026-04-28-6).
   not done (stderr lists `<KEY>: <STATUS>`); exit 2 = at least one dep file is missing
   on disk. HALT on exit 1 or 2 — surface stderr to the user before proceeding.
 
+  **`--bypass-deps` flag (Test10 F-34).** When the operator passes `--bypass-deps`
+  to `/gaia-dev-story`, skip the `check-deps.sh` HALT and proceed with a single
+  `[BYPASS] dependency check bypassed for {story_key} — depends_on entries not
+  validated` line on stderr. Record the bypass in `.gaia/state/sprint-status.yaml`
+  under the per-story `overrides:` block (`overrides.{story_key}.bypassed_checks:
+  ["check-deps"]`) via `sprint-state.sh override --story {story_key} --add-check
+  check-deps --reason "operator --bypass-deps at dev-story launch"` so retro
+  reviewers see the bypass count and reason. Bypass MUST NOT be the default —
+  the flag has to be explicit on the command line.
+
 **Narrative Fallback (deprecated v1.131.x → v1.132.0):**
 For brownfield projects on a stale plugin where these scripts are not yet present,
 fall back to the legacy LLM narrative path. Each fallback is gated on the absence
@@ -373,6 +383,21 @@ else:
 ### Step 9 -- Definition of Done
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/dod-check.sh` (export `STORY_FILE` to the absolute story path so the subtask check fires). The script runs build / tests / lint / secrets / subtask checks and emits one YAML row per check: `- { item: <name>, status: PASSED|FAILED, output: <captured output> }`. Exit 0 = all PASSED; non-zero = at least one FAILED.
+- **Tool-presence guards (Test10 F-34).** Any optional tool invoked from
+  `dod-check.sh` (coverage, mypy, ruff, black, eslint, etc.) MUST be wrapped
+  with a presence guard before invocation. Pattern:
+  ```bash
+  if command -v coverage >/dev/null 2>&1; then
+    coverage report || true
+  else
+    echo "[WARN] coverage not installed; skipping coverage report" >&2
+  fi
+  ```
+  Without the guard, a missing tool produces a fatal `command not found`
+  that the DoD loop counts as a FAILED row and burns an auto-fix iteration
+  on a non-actionable error. Guard each optional tool individually — do
+  not stack them under one umbrella `command -v` because partial chains
+  (coverage installed, mypy missing) still need to run coverage.
 - Parse the YAML output and render a human-readable summary; per FR-DSH-10 the helper script holds the deterministic mechanics — DO NOT re-implement build/test/lint/secrets/subtask checks inline in this skill.
 - On any FAILED row: auto-fix the underlying issue (test failure, lint warning, staged secret, unchecked subtask) and re-run `dod-check.sh`. Cap at 3 auto-fix iterations; on cap exhaustion, HALT with the failing rows and direct the user to intervene.
 - ACs met / docs updated remain LLM-evaluated since they are intent-level checks, not script-checkable.
@@ -396,6 +421,13 @@ AF-2026-04-28-6, FR-DSS-3).
   On `ABSENT` or non-git skip, Steps 10–13 (push, PR, CI, merge) MUST be skipped —
   the story can still complete locally but the promotion gates do not fire. On
   `PRESENT`, capture the branch as `$PR_BASE` for use by `pr-create.sh --base`.
+
+  **Non-git skip surface (Test10 F-34).** When the guard emits the `skipped
+  (non-git CWD)` stderr line, the orchestrator MUST mirror it as a top-level
+  `[NOTICE] non-git workspace — promotion gates skipped (CWD outside any git
+  tree)` operator surface line before continuing. Otherwise the skip is
+  invisible in the run log and operators only discover Steps 10–13 didn't
+  fire after the fact.
 - For commit-message construction, run
   `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/commit-msg.sh {story_path}`
   and feed its stdout to `git commit -F -`. Do NOT compose Conventional Commit

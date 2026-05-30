@@ -73,7 +73,7 @@ Write the report to the dated-snapshot subdir (AF-2026-05-30-1 / Test03 §7.3 �
 
 Before writing, run `mkdir -p {planning_artifacts}/adversarial/` so the nested directory exists on first run (ADR-119). Legacy ungrouped `{planning_artifacts}/adversarial-review-{target}-{date}.md` remains a read-only fallback for projects whose history pre-dates this layout shift.
 
-If the file already exists for the same day (AC-EC3), write to a suffix-incremented filename (`adversarial/adversarial-review-{target}-{date}-2.md`, `-3.md`, ...).
+If the file already exists for the same day (AC-EC3), write to a suffix-incremented filename (`adversarial/adversarial-review-{target}-{date}-2.md`, `-3.md`, ...). **AF-2026-05-30-2 / Test10 F-16**: resolve the non-colliding write path deterministically by invoking `bash ${CLAUDE_PLUGIN_ROOT}/skills/gaia-adversarial/scripts/resolve-write-path.sh --target {target} --date {YYYY-MM-DD}` — the helper returns the next free `{base}-N.md` filename on stdout (and `mkdir -p`s the parent dir). Use the helper output as `$REPORT_PATH` rather than constructing the path by string concatenation in prose; this enforces collision avoidance at the script level instead of relying on the LLM caller to check first.
 
 The report contains, in order:
 

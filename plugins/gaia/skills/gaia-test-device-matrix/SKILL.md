@@ -28,7 +28,7 @@ This is the unifying principle of every GAIA review and action skill (FR-DEJ-1, 
 
 `/gaia-test-device-matrix` is the deployment-phase action skill that expands a configured device matrix and dispatches each entry to the configured device-farm adapter. The skill:
 
-1. Reads `device_targets` from `config/project-config.yaml` — `os_versions`, `form_factors`, `screen_sizes`.
+1. Reads `device_targets` from `.gaia/config/project-config.yaml` — `os_versions`, `form_factors`, `screen_sizes`.
 2. Computes the cartesian product of these axes via `scripts/expand-matrix.sh`.
 3. Filters the matrix by `--platform` (when provided) and `--filter` (regex).
 4. Dispatches each expanded entry through the device-farm adapter (sequential by default; parallel if the adapter advertises `parallel_dispatch: true`).

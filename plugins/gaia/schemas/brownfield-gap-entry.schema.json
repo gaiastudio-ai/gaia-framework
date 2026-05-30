@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gaia.studio/schemas/brownfield-gap-entry.schema.json",
+  "title": "Brownfield gap entry",
+  "description": "AF-2026-05-30-2 / Test10 F-11. Canonical gap-entry schema shipped for the 7 brownfield scanners (doc-code, hardcoded, integration-seam, runtime-behavior, security, sbom-completeness, call-graph) so Phase-7 dedup can match overlapping findings reliably. Prior to this schema each scanner invented its own field shape (e.g. SEC-001 vs GAP-ISEAM-001 for the same underlying issue); the dedup was forced to do best-effort substring matching and under-merged true overlaps. Adopters mint a stable `gap_id` per the convention below and dedup keys off (category, evidence.file, evidence.line_range).",
+  "type": "object",
+  "required": ["gap_id", "category", "severity", "title", "evidence"],
+  "additionalProperties": false,
+  "properties": {
+    "gap_id": {
+      "type": "string",
+      "description": "Stable identifier. Convention: `{SCANNER}-{NNN}` where SCANNER is the producing scanner short name (DC for doc-code, HC for hardcoded, ISEAM for integration-seam, RB for runtime-behavior, SEC for security, SBOM for sbom-completeness, CG for call-graph) and NNN is a 3-digit zero-padded sequence within that scanner's output. Phase-7 dedup MAY rewrite the gap_id when merging duplicates but MUST record the original ids in the merged entry's `aliases:` list.",
+      "pattern": "^[A-Z]+-[0-9]{3,}$"
+    },
+    "category": {
+      "type": "string",
+      "description": "Coarse classification used as a primary dedup key. Two entries that share `category` + `evidence.file` + overlapping `evidence.line_range` are presumed duplicates.",
+      "enum": [
+        "doc-code-drift",
+        "hardcoded-value",
+        "integration-seam",
+        "runtime-behavior",
+        "security",
+        "sbom-completeness",
+        "call-graph"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "description": "ADR-037 severity vocabulary. CRITICAL findings halt downstream gates under ADR-063/067 (with the YOLO downgrade documented on the consuming phase).",
+      "enum": ["CRITICAL", "WARNING", "INFO"]
+    },
+    "title": {
+      "type": "string",
+      "description": "One-line human-readable summary. Used in dedup display and the Phase-7 consolidated-gaps.md table.",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string",
+      "description": "Multi-line prose detail. Optional — many findings are self-explanatory from title + evidence."
+    },
+    "evidence": {
+      "type": "object",
+      "description": "The fact pattern that produced this finding. Required so the reader can verify against the codebase without re-running the scanner.",
+      "required": ["file"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Project-relative path to the evidence file (or the artifact the finding refers to, e.g. `prd.md` for a doc-code-drift finding)."
+        },
+        "line_range": {
+          "type": "string",
+          "description": "Line range in the file the evidence covers, e.g. `42-58` or `12` for a single line. Used by Phase-7 dedup overlap detection.",
+          "pattern": "^[0-9]+(-[0-9]+)?$"
+        },
+        "snippet": {
+          "type": "string",
+          "description": "Optional excerpt of the offending content (max ~2KB). Helpful for fast review without round-tripping to the file."
+        },
+        "tool": {
+          "type": "string",
+          "description": "Tool/adapter that produced the finding (e.g. `grype`, `semgrep`, `gaia-doc-code-scanner`). Used for provenance + scan-fidelity attribution per Test10 §7 C3 banner."
+        }
+      }
+    },
+    "suggested_action": {
+      "type": "string",
+      "description": "Optional remediation hint. Triage and tech-debt-review may promote this into a story Origin section."
+    },
+    "stack": {
+      "type": "string",
+      "description": "Detected stack the finding belongs to (e.g. `python`, `node`, `java`, `bash`). Helps Phase-7 dedup avoid cross-stack false-merges and lets the consolidated-gaps banner attribute findings per-stack."
+    },
+    "aliases": {
+      "type": "array",
+      "description": "Phase-7 dedup output. When two scanners produced equivalent findings (e.g. SEC-001 ≡ GAP-ISEAM-001), the merged entry records both original ids here so a triage reviewer can trace back to either scanner.",
+      "items": { "type": "string", "pattern": "^[A-Z]+-[0-9]{3,}$" }
+    },
+    "confidence": {
+      "type": "string",
+      "description": "Optional confidence assessment from the producing scanner. Helps dedup tie-break when two findings share the same evidence overlap.",
+      "enum": ["high", "medium", "low"]
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Scanner-specific metadata pass-through. Phase-7 dedup MUST NOT key off this field — it is informational only.",
+      "additionalProperties": true
+    }
+  }
+}
