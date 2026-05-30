@@ -256,8 +256,8 @@ if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
   CONFIG_PATH=""
   if [ -f ".gaia/config/project-config.yaml" ]; then
     CONFIG_PATH=".gaia/config/project-config.yaml"
-  elif [ -f ".gaia/config/project-config.yaml" ]; then
-    CONFIG_PATH=".gaia/config/project-config.yaml"
+  elif [ -f "config/project-config.yaml" ]; then
+    CONFIG_PATH="config/project-config.yaml"
   fi
   if [ -n "$CONFIG_PATH" ]; then
     missing_sections=""

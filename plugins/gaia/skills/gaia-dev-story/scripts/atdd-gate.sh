@@ -134,13 +134,23 @@ fi
 # so the epic glob matches `atdd-E1-...md` exclusively (or the exact
 # `atdd-E1.md` no-suffix form via a second glob entry).
 shopt -s nullglob
-ATDD_MATCHES=(
+# Bare literals like `atdd-${EPIC_KEY}.md` survive nullglob (no glob
+# metacharacter to expand), so post-filter the array with a `-f` existence
+# test to weed them out when the file is absent. Without this filter,
+# `${#ATDD_MATCHES[@]} -gt 0` would always be true and the high-risk gate
+# would NEVER halt.
+ATDD_CANDIDATES=(
   "$TEST_DIR/atdd-${EPIC_KEY}.md"
   "$TEST_DIR/atdd-${EPIC_KEY}-"*.md
   "$TEST_DIR/atdd-${STORY_KEY}.md"
   "$TEST_DIR/atdd-${STORY_KEY}-"*.md
 )
 shopt -u nullglob
+
+ATDD_MATCHES=()
+for _c in "${ATDD_CANDIDATES[@]}"; do
+  [ -f "$_c" ] && ATDD_MATCHES+=("$_c")
+done
 
 if [ "${#ATDD_MATCHES[@]}" -gt 0 ]; then
   log "risk=high; ATDD file present (${ATDD_MATCHES[0]}) — pass"

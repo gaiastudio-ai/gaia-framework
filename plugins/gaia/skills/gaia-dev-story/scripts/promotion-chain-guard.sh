@@ -78,8 +78,8 @@ discover_config() {
       printf '%s\n' "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"
       return 0
     fi
-    if [ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
-      printf '%s\n' "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"
+    if [ -f "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml" ]; then
+      printf '%s\n' "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
       return 0
     fi
   fi
@@ -94,8 +94,8 @@ discover_config() {
       printf '%s\n' "${dir}/.gaia/config/project-config.yaml"
       return 0
     fi
-    if [ -f "${dir}/.gaia/config/project-config.yaml" ]; then
-      printf '%s\n' "${dir}/.gaia/config/project-config.yaml"
+    if [ -f "${dir}/config/project-config.yaml" ]; then
+      printf '%s\n' "${dir}/config/project-config.yaml"
       return 0
     fi
     # Stop at filesystem root.

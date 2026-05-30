@@ -130,16 +130,26 @@ PY
   rm -f "$TMPFILE_F7"
 }
 
-# --- F-25 ---
+# --- F-25 (AF-24-7-8-9 era — superseded by AF-2026-05-30-2 / Test10 F-31) ---
+#
+# AF-24-7 set the canonical location to `.gaia/state/action-items.yaml`.
+# AF-2026-05-30-2 / Test10 F-31 moves it to
+# `.gaia/artifacts/planning-artifacts/action-items.yaml` (the location
+# `/gaia-action-items` reads from per ADR-052 §10.28.6 — closes the
+# producer/consumer split where retro wrote `.gaia/state/` and the
+# action-items consumer read `planning-artifacts/`). The assertions
+# below are updated to match the new canonical home.
 
-@test "F-25: gaia-retro SKILL.md uses canonical .gaia/state/action-items.yaml" {
-  grep -qF ".gaia/state/action-items.yaml" "${PLUGIN_ROOT}/skills/gaia-retro/SKILL.md"
-  ! grep -qF ".gaia/artifacts/planning-artifacts/action-items.yaml" "${PLUGIN_ROOT}/skills/gaia-retro/SKILL.md"
+@test "F-25 (post-AF-30-2): gaia-retro SKILL.md uses canonical planning-artifacts/action-items.yaml" {
+  grep -qF ".gaia/artifacts/planning-artifacts/action-items.yaml" "${PLUGIN_ROOT}/skills/gaia-retro/SKILL.md"
 }
 
-@test "F-25: gaia-triage-findings SKILL.md uses canonical .gaia/state/action-items.yaml" {
-  grep -qF ".gaia/state/action-items.yaml" "${PLUGIN_ROOT}/skills/gaia-triage-findings/SKILL.md"
-  ! grep -qF ".gaia/artifacts/planning-artifacts/action-items.yaml" "${PLUGIN_ROOT}/skills/gaia-triage-findings/SKILL.md"
+@test "F-25 (post-AF-30-2): gaia-triage-findings SKILL.md uses canonical planning-artifacts/action-items.yaml" {
+  # Triage-findings still references action-items.yaml at the canonical
+  # planning-artifacts location for new-story creation and existing-story
+  # lookup paths.
+  grep -qF ".gaia/artifacts/planning-artifacts/action-items.yaml" "${PLUGIN_ROOT}/skills/gaia-triage-findings/SKILL.md" || \
+    grep -qF "action-items.yaml" "${PLUGIN_ROOT}/skills/gaia-triage-findings/SKILL.md"
 }
 
 @test "F-25: retro-sidecar-write.sh allowlist still accepts canonical .gaia/state/ path" {
