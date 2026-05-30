@@ -278,6 +278,20 @@ per_story_field_present() {
       # the label and around the colon are now tolerated.
       pat = "^[[:space:]]*[-*]?[[:space:]]*(\\*\\*)?" lab "(\\*\\*)?[[:space:]]*:"
       if (match(lower, pat)) { has_field = 1 }
+      # AF-2026-05-30-4 / Test11 F-12: also accept snake_case aliases for
+      # the canonical Title-case labels so a SKILL-prose-following author
+      # passes the check. Map "Depends on" -> "depends_on", "Risk" ->
+      # "risk_level" or "risk". The Title-case match above wins; snake_case
+      # is the fallback.
+      if (lab == "depends on") {
+        if (match(lower, "^[[:space:]]*[-*]?[[:space:]]*(\\*\\*)?depends_on(\\*\\*)?[[:space:]]*:")) { has_field = 1 }
+      } else if (lab == "risk") {
+        if (match(lower, "^[[:space:]]*[-*]?[[:space:]]*(\\*\\*)?risk_level(\\*\\*)?[[:space:]]*:")) { has_field = 1 }
+      } else if (lab == "blocks") {
+        if (match(lower, "^[[:space:]]*[-*]?[[:space:]]*(\\*\\*)?blocks(\\*\\*)?[[:space:]]*:")) { has_field = 1 }
+      } else if (lab == "traces to") {
+        if (match(lower, "^[[:space:]]*[-*]?[[:space:]]*(\\*\\*)?traces_to(\\*\\*)?[[:space:]]*:")) { has_field = 1 }
+      }
     }
     END {
       finalize_block()
