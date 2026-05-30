@@ -141,6 +141,58 @@
         </li>
       </ul>
 
+      <h2>Artifact layout &mdash; where planning outputs live</h2>
+      <p>
+        Planning outputs are intentionally dispersed across <strong>four</strong>
+        roots rather than consolidated under a single
+        <code>planning-artifacts/</code> tree. The dispersion is forced by the
+        framework's existing gate and writer contracts &mdash; relocating any
+        of these files would break the readiness and review gates until the
+        underlying resolvers are refactored. The four roots:
+      </p>
+      <ul>
+        <li>
+          <code>.gaia/artifacts/planning-artifacts/</code> &mdash; the bulk of
+          planning outputs: <code>prd.md</code>, <code>architecture.md</code>,
+          <code>ux-design.md</code>, <code>epics-and-stories.md</code>,
+          <code>readiness-report.md</code>, dated NFR and performance-test-plan
+          snapshots, adversarial reviews, brownfield scan reports.
+        </li>
+        <li>
+          <code>.gaia/artifacts/test-artifacts/</code> &mdash;
+          <code>test-plan.md</code>, <code>traceability-matrix.md</code>,
+          <code>ci-setup.md</code>, and <code>dependency-audit-{date}.md</code>.
+          Pinned here by <code>validate-gate.sh</code>'s
+          <code>test_plan_exists</code> / <code>traceability_exists</code> /
+          <code>ci_setup_exists</code> resolvers.
+        </li>
+        <li>
+          <code>.gaia/config/</code> &mdash;
+          <code>test-environment.yaml</code> and the
+          <code>.example</code> form (pinned by ADR-110).
+        </li>
+        <li>
+          <code>.gaia/state/</code> &mdash; <code>sprint-status.yaml</code>
+          (the live runtime state; pinned by <code>sprint-state.sh</code>'s
+          writer contract).
+        </li>
+      </ul>
+      <p>
+        <strong>Test-artifacts mirror absence (Test11 F-21).</strong> The
+        test-lens review reports (<code>qa-tests</code>,
+        <code>test-automate-review</code>, <code>test-review</code>) and the
+        per-tier <code>execution-evidence.json</code> are written ONLY under
+        <code>implementation-artifacts/epic-*/{key}-*/reviews/</code>,
+        co-located with the code / security / performance reviews. The
+        framework does not yet emit a symmetric
+        <code>test-artifacts/epic-*/{key}-*/</code> mirror, and execution
+        evidence is a single <code>execution-evidence.json</code> rather than
+        a per-tier split. AF-2026-05-30-1's per-story resolver supports the
+        mirror direction in code; consumers have not yet been retrofitted.
+        Until that refactor lands, expect every test-lens artifact at the
+        <code>implementation-artifacts/&hellip;/reviews/</code> path only.
+      </p>
+
       <footer class="page-footer">
         <p><a href="../index.html">Back to home</a></p>
       </footer>

@@ -362,6 +362,33 @@ This warning is shown once per session.
             <a href="gaia-ci-edit.html"><code>/gaia-ci-edit</code></a>.
           </p>
         </div>
+
+        <div class="callout">
+          <p class="callout-title">Review&rarr;done grace window (NFR-RSV2-6 / ADR-082)</p>
+          <p>
+            Within the <strong>7-day post-flip grace window</strong> after
+            <code>/gaia-bridge-enable</code> flips
+            <code>test_execution_bridge.bridge_enabled: true</code>, a
+            review&rarr;done transition is permitted even when the composite
+            Review Gate returns <code>PENDING</code> (one or more of the six
+            rows is still <code>UNVERIFIED</code>) &mdash; the transition emits
+            a <code>WARNING</code> rather than blocking. This is the documented
+            graceful-onboarding behavior for projects that just turned the
+            bridge on: it gives operators a week to backfill the three
+            test-execution gates (qa-tests, test-review, test-automate-review)
+            on stories that completed dev <em>before</em> the bridge was wired.
+            After 7 days the same composite <code>PENDING</code> verdict is
+            <code>BLOCKING</code>: review&rarr;done is refused until every row
+            is <code>PASSED</code>. To verify the active mode at any moment,
+            run
+            <code>${CLAUDE_PLUGIN_ROOT}/scripts/review-common/gating-flip-guard.sh --scan --impl-dir &lt;impl-artifacts-dir&gt;</code>
+            &mdash; it enumerates <code>status:review</code> stories whose
+            Review Gate still has non-<code>PASSED</code> rows. Mid-window
+            approval is correct-by-spec but worth flagging in retro: a not-all-
+            <code>PASSED</code> composite does NOT block <code>done</code>
+            within the grace window.
+          </p>
+        </div>
       </section>
 
       <!-- 6. Inputs -->
