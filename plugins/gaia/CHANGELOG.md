@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.180.10] — 2026-05-30
+
+### Changed
+
+- (af-30-1) 23 bats covering Test03 §7.3 drift closures (AF-30-1)
+
+### Fixed
+
+- (af-30-1) mark migrate helper internals private (NFR-052)
+- (test-artifacts) per-story mirror layout via shared resolver (AF-30-1 drift 2)
+- (adversarial) write to adversarial/ subdir per Test03 §7.3 (AF-30-1 drift 1)
+
 ## [1.180.9] — 2026-05-29
 
 ### Changed
