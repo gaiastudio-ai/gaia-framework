@@ -274,6 +274,59 @@ STUB
 }
 
 # ===========================================================================
+# Default-ON flag flip (deterministic_tools, prewarm, sarif_merge)
+# ===========================================================================
+
+@test "AF-30-3 defaults: brownfield SKILL.md Phase 3 prelude defaults deterministic_tools to true" {
+  run grep -F 'GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-true}"' \
+        "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
+  [ "$status" -eq 0 ]
+  # Confirm there's no remaining `:-false` form for the master flag
+  ! grep -qF 'GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-false}"' \
+        "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
+}
+
+@test "AF-30-3 defaults: brownfield SKILL.md prewarm_enabled defaults to true" {
+  run grep -F 'GAIA_BROWNFIELD_PREWARM_ENABLED="${PREWARM_ON:-true}"' \
+        "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "AF-30-3 defaults: brownfield SKILL.md sarif_merge_enabled defaults to true" {
+  run grep -F 'GAIA_BROWNFIELD_SARIF_MERGE_ENABLED="${SARIF_ON:-true}"' \
+        "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "AF-30-3 defaults: defectdojo_enabled remains opt-in (false default preserved)" {
+  # External integration — needs an API token the operator must configure.
+  # Defaulting on would either silently fail or leak findings to a third
+  # party. The bats checks the export line is unchanged from the AF-30-2
+  # shape.
+  run grep -F 'GAIA_BROWNFIELD_DEFECTDOJO_ENABLED="${DD_ON:-false}"' \
+        "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "AF-30-3 defaults: YAML schema descriptor documents the new default for deterministic_tools" {
+  run grep -F 'deterministic_tools (master flag, bool, default true' \
+        "$PLUGIN_ROOT/config/project-config.schema.yaml"
+  [ "$status" -eq 0 ]
+}
+
+@test "AF-30-3 defaults: every adapter master-flag fallback is :-true (consistent with prelude)" {
+  # Audit every brownfield adapter — they MUST default the master flag
+  # to true so a standalone invocation outside the Phase 3 prelude
+  # behaves consistently with /gaia-brownfield. The adapter-side default
+  # was already `:-true` before AF-30-3; AF-30-3 flipped the prelude
+  # default to match. This test is a regression guard against future
+  # drift in either direction.
+  bad=$(grep -rlE 'GAIA_BROWNFIELD_DETERMINISTIC_TOOLS:-false' \
+          "$PLUGIN_ROOT/scripts/adapters/" 2>/dev/null || true)
+  [ -z "$bad" ] || { echo "drift: $bad" >&2; return 1; }
+}
+
+# ===========================================================================
 # /gaia-config-brownfield runner doc
 # ===========================================================================
 

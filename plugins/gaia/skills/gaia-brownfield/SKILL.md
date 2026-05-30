@@ -158,10 +158,19 @@ Before the Phase 3 scan timer starts, run the deterministic-tools pre-flight. Th
 # them for the adapter scripts. resolve-config.sh is the single config source.
 DET_TOOLS="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.deterministic_tools 2>/dev/null)"
 PREWARM_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.prewarm_enabled 2>/dev/null)"
-# resolve-config emits empty when the key is unset; consumers treat empty as
-# false (ADR-078 / matches the test_execution_bridge.bridge_enabled idiom).
-export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-false}"
-export GAIA_BROWNFIELD_PREWARM_ENABLED="${PREWARM_ON:-false}"
+# resolve-config emits empty when the key is unset.
+# AF-2026-05-30-3: defaults flipped from `false` to `true` so a stock
+# /gaia-brownfield run actually engages the deterministic-tools battery.
+# Prior to this flip the layer was inert on every clean install (the
+# Test10 §7 finding) — operators had to discover + flip the master flag
+# by hand, which nobody did. Operators who want the layer OFF can
+# declare `brownfield.deterministic_tools: false` (or
+# `brownfield.prewarm_enabled: false`) explicitly in project-config.yaml;
+# absence now resolves to ON. External-integration flags
+# (defectdojo_enabled) remain opt-in because they require an API token
+# the operator must configure (avoids silent third-party exfil).
+export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-true}"
+export GAIA_BROWNFIELD_PREWARM_ENABLED="${PREWARM_ON:-true}"
 
 # Run pre-warm (it self-skips with an INFO line when either flag is off).
 prewarm_start=$(date +%s)
@@ -546,11 +555,14 @@ fi
 Before the 6-step gap-consolidation recipe runs, merge all scanner SARIF outputs into one merged SARIF. This gives the recipe (and downstream dedup E104-S1) a single uniform interchange format instead of bespoke per-tool JSON.
 
 ```bash
-# Flag resolution (ADR-078 master flag + per-tool override). Empty → treated false.
+# Flag resolution (ADR-078 master flag + per-tool override).
+# AF-2026-05-30-3: defaults flipped from `false` to `true` so a stock
+# /gaia-brownfield run merges SARIF by default. See the matching note on
+# the Phase 3 prelude flip earlier in this SKILL.
 DET_TOOLS="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.deterministic_tools 2>/dev/null)"
 SARIF_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.sarif_merge_enabled 2>/dev/null)"
-export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-false}"
-export GAIA_BROWNFIELD_SARIF_MERGE_ENABLED="${SARIF_ON:-false}"
+export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-true}"
+export GAIA_BROWNFIELD_SARIF_MERGE_ENABLED="${SARIF_ON:-true}"
 
 sarif_merge_start=$(date +%s)
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/sarif-merge.sh" || true
