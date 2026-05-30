@@ -65,7 +65,7 @@
 
       <section id="what-it-does">
         <h2>What it does</h2>
-        <p><code>/gaia-config-env</code> edits the <code>environments</code> section of <code>config/project-config.yaml</code>. The environments section defines your deployment environments (staging, production, etc.) with URLs and credential references. The editor preserves all YAML comments and formatting outside the edited section. Every edit goes through a diff preview and confirmation gate before writing.</p>
+        <p><code>/gaia-config-env</code> edits the <code>environments</code> section of <code>.gaia/config/project-config.yaml</code>. The environments section defines your deployment environments (staging, production, etc.) with URLs and credential references. The editor preserves all YAML comments and formatting outside the edited section. Every edit goes through a diff preview and confirmation gate before writing.</p>
       </section>
 
       <section id="when-to-use">
@@ -90,12 +90,12 @@
 
       <section id="inputs">
         <h2>Inputs</h2>
-        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Project configuration</td><td><code>config/project-config.yaml</code></td><td>The file containing the environments section.</td></tr></tbody></table>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Project configuration</td><td><code>.gaia/config/project-config.yaml</code></td><td>The file containing the environments section.</td></tr></tbody></table>
       </section>
 
       <section id="outputs">
         <h2>Outputs</h2>
-        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Updated environments section</td><td><code>config/project-config.yaml</code></td><td>The modified environments configuration.</td></tr></tbody></table>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Updated environments section</td><td><code>.gaia/config/project-config.yaml</code></td><td>The modified environments configuration.</td></tr></tbody></table>
       </section>
 
       <section id="example">

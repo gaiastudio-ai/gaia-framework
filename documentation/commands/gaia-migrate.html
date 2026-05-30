@@ -213,7 +213,7 @@
             </tr>
             <tr>
               <td>Migrated config</td>
-              <td><code>config/project-config.yaml</code></td>
+              <td><code>.gaia/config/project-config.yaml</code></td>
               <td>v1 config fields split into the v2 config location.</td>
             </tr>
           </tbody>
@@ -228,7 +228,7 @@ DRY-RUN: Migration plan for ./
   Backup destination: .gaia-migrate-backup/2026-05-07T10-30-00/
   Steps:
     1. Backup _gaia/, _memory/, custom/ (87 MB)
-    2. Split _gaia/_config/global.yaml into config/project-config.yaml
+    2. Split _gaia/_config/global.yaml into .gaia/config/project-config.yaml
     3. Migrate custom templates to custom/templates/
     4. Migrate memory sidecars to _memory/ (v2 layout)
     5. Validate config against schema

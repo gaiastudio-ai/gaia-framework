@@ -33,7 +33,7 @@ be lossy between steps — sub-agents return summaries, not full reasoning.
 
 For the full-fidelity experience, enable Mode B (Agent Teams):
   1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
-  2. Add orchestration.mode: team to config/project-config.yaml.
+  2. Add orchestration.mode: team to .gaia/config/project-config.yaml.
 
 Mode B uses persistent teammates that preserve in-conversation state
 across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
@@ -50,7 +50,7 @@ This warning is shown once per session.
         <p><strong>Step 1 -- set the environment variable:</strong></p>
         <pre><code>export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code></pre>
         <p>Add this to your shell rc file to persist across sessions, or set it in Claude Code's <code>settings.json</code>.</p>
-        <p><strong>Step 2 -- add the YAML block to <code>config/project-config.yaml</code>:</strong></p>
+        <p><strong>Step 2 -- add the YAML block to <code>.gaia/config/project-config.yaml</code>:</strong></p>
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
@@ -80,7 +80,7 @@ Run /gaia-quick-dev add-dark-mode-toggle to implement it.</code></pre></section>
         <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
         <ul>
           <li><code>echo $CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> returns <code>1</code> (not empty)</li>
-          <li><code>config/project-config.yaml</code> contains:
+          <li><code>.gaia/config/project-config.yaml</code> contains:
             <pre><code>orchestration:
   mode: team</code></pre>
           </li>

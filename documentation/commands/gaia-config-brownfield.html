@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-config-brownfield - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/configuration.html">Configuration</a><span class="separator">/</span>
+        /gaia-config-brownfield
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-config-brownfield</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
+          <dt>Lifecycle phase:</dt><dd>2 -- Discovery / Brownfield onboarding</dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-config-brownfield</code> edits the <code>brownfield</code> section of <code>.gaia/config/project-config.yaml</code>. This section carries the deterministic-tools knobs consumed by <a href="gaia-brownfield.html"><code>/gaia-brownfield</code></a> and <a href="gaia-doctor.html"><code>/gaia-doctor</code></a>: whether deterministic tools are enabled, the runner (docker vs native), grype on/off, and the scanner tier (0 / 1 / 2 / auto). The editor preserves all YAML comments and formatting outside the edited section per ADR-044.</p>
+        <p>Closes Test10 F-06 (AF-2026-05-30-2) — before this command landed, the deterministic-tools suite was hand-edit-only, contradicting the framework's "no manual YAML" rule.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You want to turn the deterministic-tools suite on or off without hand-editing YAML.</li>
+          <li>You need to switch the brownfield runner between <code>docker</code> and <code>native</code>.</li>
+          <li>You want to enable or disable grype dependency scanning.</li>
+          <li>You need to pin the scanner tier (0 = LLM-only, 1 = pure-pip, 2 = heavy/native, auto = host-detect).</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li><strong><code>.gaia/config/project-config.yaml</code> must exist.</strong> Run <a href="gaia-init.html"><code>/gaia-init</code></a> to create one if missing.</li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-config-brownfield                                 # show + menu
+/gaia-config-brownfield set deterministic_tools true
+/gaia-config-brownfield set tools.runner docker
+/gaia-config-brownfield set grype_enabled true
+/gaia-config-brownfield set scanner_tier auto
+/gaia-config-brownfield show
+/gaia-config-brownfield clear grype_enabled</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Locate project-config.yaml</span> Resolves the path via the canonical resolver.</li>
+          <li><span class="step-title">Print current state</span> Renders the <code>brownfield:</code> block (or <code>unset</code> per key when absent).</li>
+          <li><span class="step-title">Validate enums</span> Rejects out-of-enum values: <code>deterministic_tools</code> = bool, <code>tools.runner</code> = <code>docker | native</code>, <code>grype_enabled</code> = bool, <code>scanner_tier</code> = <code>0 | 1 | 2 | auto</code>.</li>
+          <li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li>
+          <li><span class="step-title">Comment-preserving write</span> Routes through <code>config-yaml-editor.sh</code> so only the <code>brownfield</code> section is touched.</li>
+          <li><span class="step-title">Post-write reminder</span> When you flip <code>deterministic_tools</code> to <code>true</code>, the command tells you to run <a href="gaia-doctor.html"><code>/gaia-doctor</code></a> next to verify the deterministic-tools chain is installed on the host.</li>
+        </ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody>
+          <tr><td>Project configuration</td><td><code>.gaia/config/project-config.yaml</code></td><td>The file containing the <code>brownfield</code> section.</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody>
+          <tr><td>Updated brownfield section</td><td><code>.gaia/config/project-config.yaml</code></td><td>The modified <code>brownfield</code> block (comment-preserving per ADR-044).</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-config-brownfield set deterministic_tools true
+
+current brownfield:
+  deterministic_tools: false
+  tools.runner:        docker
+  grype_enabled:       unset
+  scanner_tier:        auto
+
+Diff preview:
+    brownfield:
+  -   deterministic_tools: false
+  +   deterministic_tools: true
+      tools:
+        runner: docker
+
+Apply this edit? [y/n]
+> y
+
+brownfield section updated. deterministic_tools=true requires the deterministic-tools
+chain on $PATH. Run /gaia-doctor now to confirm Tier 2 readiness on this host.</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-doctor.html"><code>/gaia-doctor</code></a> -- verify the deterministic-tools chain is installed (immediately after enabling <code>deterministic_tools</code>).</li>
+          <li><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a> -- validate the modified configuration file.</li>
+          <li><a href="gaia-brownfield.html"><code>/gaia-brownfield</code></a> -- re-run the brownfield scanner with the new knobs.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>brownfield section not found</h3><p>The section does not exist in your config file. The command appends a fresh block via <code>config-yaml-editor.sh insert</code> on first <code>set</code>.</p>
+        <h3>Unknown key</h3><p>Supported keys are <code>deterministic_tools</code>, <code>tools.runner</code>, <code>grype_enabled</code>, <code>scanner_tier</code>. Anything else exits 1 with a clear error.</p>
+        <h3>Out-of-enum value</h3><p>The command rejects values outside the documented enum and lists the accepted set. No partial write occurs.</p>
+        <h3>/gaia-doctor reports missing tools</h3><p>You enabled <code>deterministic_tools</code> on a host that doesn't have the chain installed. Either install the missing binaries (the doctor output is copy-pasteable) or pin the <code>scanner_tier</code> to a tier your host supports.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
+          <tr><td><a href="gaia-brownfield.html"><code>/gaia-brownfield</code></a></td><td>Consumer — the knobs edited here control its scan behaviour.</td></tr>
+          <tr><td><a href="gaia-doctor.html"><code>/gaia-doctor</code></a></td><td>Verifies the deterministic-tools chain is installed on the host.</td></tr>
+          <tr><td><a href="gaia-config-show.html"><code>/gaia-config-show</code></a></td><td>Read-only inspection of any config section.</td></tr>
+          <tr><td><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a></td><td>Schema-validate the configuration after editing.</td></tr>
+        </tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/configuration.html">Back to Configuration</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
