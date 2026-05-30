@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.182.0] — 2026-05-30
+
+### Added
+
+- (brownfield) flip deterministic-tools defaults to on (AF-30-3)
+- (runner) docker dispatch for tier-2 adapters + doctor --docker (AF-30-3)
+- (tools) gaia-tools OCI image bundling tier-2 scanners (AF-30-3)
+
+### Changed
+
+- (af-30-4) 44 bats covering Test11 fixes (AF-30-4)
+- (af-30-3) 29 bats covering docker runner end-to-end (AF-30-3)
+
+### Fixed
+
+- (skills,scripts) med + low + d-gap batches (AF-30-4)
+- (high) zero-config seed + bash guard + labels + bridge (AF-30-4)
+- (doctor) stack parse + tier promotion + pip + sarif (AF-30-4 F-22..F-27)
+
 ## [1.181.0] — 2026-05-30
 
 ### Added
