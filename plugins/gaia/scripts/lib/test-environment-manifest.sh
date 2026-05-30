@@ -187,7 +187,39 @@ EOF
       # also the recommended invocation per the pytest project docs because it
       # adds the current directory to sys.path, matching the import semantics
       # users typically expect.
-      cat <<'EOF'
+      # AF-2026-05-30-2 / Test10 F-12: detect the project's real test paths
+      # from pyproject.toml [tool.pytest.ini_options].testpaths before
+      # defaulting to tests/unit + tests/integration. Many Python projects
+      # use core/tests, src/tests, or a single tests/ dir without unit/
+      # integration subdivision — hardcoding tests/unit then produced an
+      # empty runner ("no tests collected") and the bridge silently false-
+      # PASSed (F-27 caveat).
+      _detected_testpath=""
+      if [ -f "${PROJECT_ROOT:-.}/pyproject.toml" ]; then
+        _detected_testpath=$(awk '
+          /^\[tool\.pytest\.ini_options\]/ { in_section=1; next }
+          in_section && /^\[/ { in_section=0 }
+          in_section && /^testpaths[[:space:]]*=/ {
+            line=$0; sub(/^[^=]*=[[:space:]]*/, "", line)
+            gsub(/[\[\]"'\'']/, "", line); gsub(/,/, " ", line)
+            # Print the FIRST listed path (callers can hand-tune for multi-path projects).
+            split(line, parts, /[[:space:]]+/)
+            for (i=1;i<=length(parts);i++) if (parts[i] != "") { print parts[i]; exit }
+          }
+        ' "${PROJECT_ROOT:-.}/pyproject.toml" 2>/dev/null || true)
+      fi
+      if [ -n "$_detected_testpath" ]; then
+        # Single-path detected — emit one runner that exercises that path.
+        cat <<EOF
+runners:
+  - name: unit
+    command: "python3 -m pytest $_detected_testpath -q"
+    tier: 1
+    test_pattern: "${_detected_testpath}/**/test_*.py"
+    timeout_seconds: 300
+EOF
+      else
+        cat <<'EOF'
 runners:
   - name: unit
     command: "python3 -m pytest tests/unit"
@@ -200,6 +232,7 @@ runners:
     test_pattern: "tests/integration/**/test_*.py"
     timeout_seconds: 300
 EOF
+      fi
       ;;
     go)
       cat <<'EOF'

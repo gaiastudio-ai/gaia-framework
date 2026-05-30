@@ -25,6 +25,22 @@
 # in production; defends itself when invoked directly).
 
 set -euo pipefail
+
+# AF-2026-05-30-2 / Test10 F-09: guard on bash 4+ for globstar. macOS ships
+# bash 3.2 by default — `shopt -s globstar` is a no-op there and the `**`
+# expansion silently produces nothing, so every per-stack file-list comes
+# back empty and the orchestrator's intersection is degenerate. Without
+# this guard the bug was invisible: no error, no warning, just zero hits.
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]:-0}" -lt 4 ]; then
+  printf 'ERROR: %s: bash 4.0+ required for globstar (`**` glob expansion).\n' "adapters/brownfield/orchestrator.sh" >&2
+  printf '       Detected: bash %s (likely macOS default).\n' "${BASH_VERSION:-unknown}" >&2
+  printf '       Install a newer bash via:  brew install bash\n' >&2
+  printf '       Then ensure /opt/homebrew/bin (or /usr/local/bin) precedes /bin in PATH.\n' >&2
+  printf '       Skipping per-stack file-list intersection. Brownfield deterministic-tools layer\n' >&2
+  printf '       will fall back to LLM-only scanning (Tier 0; see /gaia-doctor for the readiness report).\n' >&2
+  exit 0
+fi
+
 shopt -s globstar nullglob dotglob
 LC_ALL=C
 export LC_ALL

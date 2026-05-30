@@ -256,14 +256,29 @@ if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
   CONFIG_PATH=""
   if [ -f ".gaia/config/project-config.yaml" ]; then
     CONFIG_PATH=".gaia/config/project-config.yaml"
-  elif [ -f "config/project-config.yaml" ]; then
-    CONFIG_PATH="config/project-config.yaml"
+  elif [ -f ".gaia/config/project-config.yaml" ]; then
+    CONFIG_PATH=".gaia/config/project-config.yaml"
   fi
   if [ -n "$CONFIG_PATH" ]; then
     missing_sections=""
     grep -qE "^test_execution:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} test_execution"
     grep -qE "^test_execution_bridge:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} test_execution_bridge"
     grep -qE "^environments:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} environments"
+    # AF-2026-05-30-2 / Test10 F-22: gate the auto-stub on whether the run
+    # was a docs-only run vs a real hydration run. Docs-only runs (no --plan
+    # or --scaffold mode flag, or the strategy artifact was authored without
+    # any new test_execution-relevant input) should NOT mutate
+    # project-config.yaml — the operator just wanted the doc. The
+    # GAIA_TEST_STRATEGY_DOCS_ONLY env signal (or no-mode-signal default for
+    # invocations that produce only the artifact) skips the auto-stub
+    # silently; the NOTICE path still surfaces missing sections.
+    if [ "${GAIA_TEST_STRATEGY_DOCS_ONLY:-0}" = "1" ]; then
+      if [ -n "$missing_sections" ]; then
+        _ms="$(printf '%s' "$missing_sections" | sed 's/^[[:space:]]*//')"
+        log "NOTICE (docs-only run): project-config.yaml is missing section(s) [${_ms}]. Auto-stub SKIPPED — run /gaia-test-strategy --plan to hydrate, or add manually via /gaia-config-test, /gaia-bridge-enable, /gaia-config-env."
+        missing_sections=""  # neutralize the downstream auto-stub branch
+      fi
+    fi
     if [ -n "$missing_sections" ] && [ "${GAIA_TEST_STRATEGY_NO_AUTOSTUB:-0}" = "1" ]; then
       # F-027 (Test04): opt-out — the operator owns project-config.yaml and may
       # not want it mutated. With GAIA_TEST_STRATEGY_NO_AUTOSTUB=1, skip the

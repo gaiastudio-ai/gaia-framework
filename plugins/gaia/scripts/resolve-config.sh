@@ -1353,10 +1353,27 @@ if [ -n "$POSITIONAL_QUERY" ]; then
     implementation_artifacts) printf '%s\n' "$v_implementation_artifacts" ;;
     test_artifacts)           printf '%s\n' "$v_test_artifacts" ;;
     creative_artifacts)       printf '%s\n' "$v_creative_artifacts" ;;
-    # E71-S8 (AC1) — synthetic key, no schema backing. Resolves to
-    # `<project_root>/config/project-config.yaml`. Backs the documented
-    # happy-path command in every /gaia-config-* SKILL.md Step 1.
-    project_config_path)      printf '%s\n' "${v_project_root}/config/project-config.yaml" ;;
+    # E71-S8 (AC1) — synthetic key, no schema backing. Resolves to the
+    # canonical post-ADR-111 path `<project_root>/.gaia/config/project-config.yaml`.
+    # AF-2026-05-30-2 / Test10 F-17: prior to this fix the accessor returned
+    # the legacy root path `<project_root>/config/project-config.yaml` (no
+    # `.gaia/` prefix) which doesn't exist on a real GAIA install — every
+    # /gaia-config-* SKILL.md Step 1 invocation of `project_config_path`
+    # received a phantom path and the downstream Edit operation HALTed with
+    # "file not found". The `--field` accessor reads the correct .gaia/
+    # location; this positional accessor was just stale.
+    project_config_path)
+      if [ -f "${v_project_root}/.gaia/config/project-config.yaml" ]; then
+        printf '%s\n' "${v_project_root}/.gaia/config/project-config.yaml"
+      elif [ -f "${v_project_root}/config/project-config.yaml" ]; then
+        # Pre-ADR-111 legacy fallback during the transition window.
+        printf '%s\n' "${v_project_root}/config/project-config.yaml"
+      else
+        # Neither exists — return the canonical path so the caller's
+        # error message points at the right location, not the legacy one.
+        printf '%s\n' "${v_project_root}/.gaia/config/project-config.yaml"
+      fi
+      ;;
     *)
       die "unknown positional query: '$POSITIONAL_QUERY'" ;;
   esac
@@ -1386,7 +1403,13 @@ emit_all_body() {
   # E71-S8 (AC1) — synthetic key, no schema backing. Resolves to
   # `<project_root>/config/project-config.yaml`. Backs the documented
   # happy-path command in every /gaia-config-* SKILL.md Step 1.
-  emit_pair_shell project_config_path      "${v_project_root}/config/project-config.yaml"
+  # AF-2026-05-30-2 / Test10 F-17 — emit the canonical .gaia/config/ path when present,
+  # else the legacy root path during the transition window.
+  if [ -f "${v_project_root}/.gaia/config/project-config.yaml" ]; then
+    emit_pair_shell project_config_path      "${v_project_root}/.gaia/config/project-config.yaml"
+  else
+    emit_pair_shell project_config_path      "${v_project_root}/config/project-config.yaml"
+  fi
   emit_pair_shell project_path             "$v_project_path"
   emit_pair_shell project_root             "$v_project_root"
   # --all always emits sizing_map.{S,M,L,XL} so downstream batch consumers
@@ -1469,7 +1492,13 @@ if [ "$FORMAT" = "shell" ]; then
   # E71-S8 (AC1) — synthetic key, no schema backing. Resolves to
   # `<project_root>/config/project-config.yaml`. Backs the documented
   # happy-path command in every /gaia-config-* SKILL.md Step 1.
-  emit_pair_shell project_config_path      "${v_project_root}/config/project-config.yaml"
+  # AF-2026-05-30-2 / Test10 F-17 — emit the canonical .gaia/config/ path when present,
+  # else the legacy root path during the transition window.
+  if [ -f "${v_project_root}/.gaia/config/project-config.yaml" ]; then
+    emit_pair_shell project_config_path      "${v_project_root}/.gaia/config/project-config.yaml"
+  else
+    emit_pair_shell project_config_path      "${v_project_root}/config/project-config.yaml"
+  fi
   emit_pair_shell project_path             "$v_project_path"
   emit_pair_shell project_root             "$v_project_root"
   # E61-S1 — sizing_map.{S,M,L,XL} emitted only when at least one sub-key

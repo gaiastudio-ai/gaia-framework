@@ -63,7 +63,7 @@ This validates the pre-conditions (all stories done, goals non-empty), transitio
 
 - Not all stories `done` -- the Step 1 gate REFUSES with the canonical "N sprint stories are non-done" stderr; complete the work or roll it over first.
 - `goals[]` empty -- the rubric is per-goal; run `sprint-state.sh set-goals` before invoking.
-- NOT YOLO-able by design -- the three `AskUserQuestion` boundaries (Steps 3a, 4a, 8) are deliberate human-judgment gates; for unattended pipelines, script the boundary writes directly.
+- NOT YOLO-able by design -- the three `AskUserQuestion` boundaries (Steps 3a, 4a, 8) are deliberate human-judgment gates. **AF-2026-05-30-2 / Test10 F-32 fallback:** unattended pipelines can pass `--yolo-defaults work-as-expected` to auto-answer Step 4a per-goal stakeholder confirmation with `work-as-expected` for every goal. Step 3a (pre-Val dispatch) still requires user acknowledgement under Auto Mode (the substrate-enforced halt cannot be bypassed via skill flag — see `feedback_askuserquestion_under_automode.md`). Step 8 (UNVERIFIED bypass PM explanation) likewise stays interactive; `--yolo-defaults` skips that branch by REFUSING the bypass and routing UNVERIFIED → FAILED. The fallback is documented but logged with a WARNING in the sprint-review artifact so operators see when stakeholder confirmation was elided. For full unattended automation, the recommended pattern remains: script `sprint-state.sh transition --sprint <id> --to review` + write the sprint-review artifact + dispatch sentinel directly, bypassing this skill (the YARA-2 manual workaround pattern).
 
 ## Critical Rules
 
@@ -138,7 +138,7 @@ Invoke the stub:
 ${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/track-b-dispatch.sh --sprint "$SPRINT_ID"
 ```
 
-The stub reads `sprint_review:` from `config/project-config.yaml` (E93-S2 deliverable), iterates the per-stack matrix, and emits a JSON array — one element per configured stack with `verdict: SKIPPED, reason: "E93-S4 not yet shipped"`. This is the E88-S2 / FR-DPD-2 deferred-wiring contract; the story's frontmatter carries `delivered: false`.
+The stub reads `sprint_review:` from `.gaia/config/project-config.yaml` (E93-S2 deliverable), iterates the per-stack matrix, and emits a JSON array — one element per configured stack with `verdict: SKIPPED, reason: "E93-S4 not yet shipped"`. This is the E88-S2 / FR-DPD-2 deferred-wiring contract; the story's frontmatter carries `delivered: false`.
 
 #### Step 4a — Per-goal stakeholder confirmation (AskUserQuestion)
 

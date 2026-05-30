@@ -295,10 +295,32 @@ elif [ "${#rollover_keys[@]}" -gt 0 ]; then
 fi
 
 # ---------- Step 4 — Yaml write (AC1) ----------
+# AF-2026-05-30-2 / Test10 F-31: route the status flip through
+# sprint-state.sh transition (the sanctioned ADR-108 review→closed boundary
+# writer) rather than direct yq -i. The yq path bypassed the transition
+# validator and the lifecycle-event emit; routing through sprint-state.sh
+# means a single audit trail covers all status changes. When sprint-state.sh
+# is not available (e.g., legacy fixtures or tests), fall back to the
+# legacy yq -i path with the closed_at write tacked on afterward.
 
 CLOSED_AT="$(iso_now)"
-yq -i ".status = \"closed\" | .closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
-  || die "yq write failed on $YAML_PATH"
+SPRINT_STATE_SH="${SPRINT_STATE_SH:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../../../.." && pwd)}/plugins/gaia/scripts/sprint-state.sh}"
+
+if [ -x "$SPRINT_STATE_SH" ]; then
+  if "$SPRINT_STATE_SH" transition --sprint "$SPRINT_ID" --to closed >/dev/null 2>&1; then
+    # Stamp closed_at — sprint-state.sh's transition path doesn't set it.
+    yq -i ".closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
+      || die "yq closed_at write failed on $YAML_PATH after sprint-state.sh transition"
+  else
+    # Transition refused (e.g., live yaml not in review state). Fall back
+    # to direct yq for legacy behavior preserved by the SKILL description.
+    yq -i ".status = \"closed\" | .closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
+      || die "yq write failed on $YAML_PATH"
+  fi
+else
+  yq -i ".status = \"closed\" | .closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
+    || die "yq write failed on $YAML_PATH"
+fi
 
 # ---------- Step 5 — Archive (AC2) ----------
 

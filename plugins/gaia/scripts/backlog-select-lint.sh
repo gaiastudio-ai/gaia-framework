@@ -142,8 +142,56 @@ blocked_json="[]"
 blocked_lines=""
 overall_blocked=0
 
+
+# AF-2026-05-30-2 / Test10 F-33: also read depends_on from the per-story
+# frontmatter as a fallback. The pipe-table roster parser misses the
+# dependency when the row's "Depends on" column is empty/None but the
+# individual story file declares `depends_on: [E3-S6]` in its frontmatter.
+# Test10 found E5-S4 had `depends_on: [E3-S6]` in its frontmatter but the
+# roster row left it blank, so backlog-select-lint reported false-pass.
+# This block resolves each candidate's story file and unions the
+# frontmatter depends_on list into the deps already gathered from the
+# roster — never trusts only one source.
+_frontmatter_deps_of() {
+  local key="$1"
+  local impl_root="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"
+  local story_file=""
+  # Prefer per-story layout (E105-S1).
+  story_file=$(find "$impl_root" -type f -path "*/epic-*/${key}-*/story.md" 2>/dev/null | head -1)
+  if [ -z "$story_file" ]; then
+    # Legacy nested.
+    story_file=$(find "$impl_root" -type f -path "*/epic-*/stories/${key}-*.md" 2>/dev/null | head -1)
+  fi
+  if [ -z "$story_file" ]; then
+    # Legacy flat.
+    story_file=$(find "$impl_root" -maxdepth 1 -type f -name "${key}-*.md" 2>/dev/null | head -1)
+  fi
+  [ -n "$story_file" ] && [ -f "$story_file" ] || return 0
+  # Extract depends_on YAML list values (one E#-S# token per line).
+  awk '
+    BEGIN { in_fm=0; in_deps=0 }
+    /^---[[:space:]]*$/ { if (in_fm==0) { in_fm=1; next } else { exit } }
+    !in_fm { next }
+    /^depends_on:[[:space:]]*\[/ {
+      # Inline list shape: depends_on: [E1-S1, E2-S3]
+      line=$0; sub(/^depends_on:[[:space:]]*\[/, "", line); sub(/\].*$/, "", line)
+      n=split(line, parts, ",")
+      for (i=1;i<=n;i++) { gsub(/[[:space:]"]/, "", parts[i]); if (parts[i] ~ /^E[0-9]+-S[0-9]+$/) print parts[i] }
+      in_deps=0; next
+    }
+    /^depends_on:[[:space:]]*$/ { in_deps=1; next }
+    in_deps && /^[[:space:]]*-[[:space:]]*[Ee][0-9]+-[Ss][0-9]+/ {
+      t=$0; gsub(/[[:space:]"-]/, "", t); if (t ~ /^E[0-9]+-S[0-9]+$/) print t
+    }
+    in_deps && /^[^[:space:]-]/ { in_deps=0 }
+  ' "$story_file"
+}
+
 for cand in $CAND_KEYS; do
-  deps="$(_hard_deps_of "$cand")"
+  roster_deps="$(_hard_deps_of "$cand")"
+  fm_deps="$(_frontmatter_deps_of "$cand")"
+  # Union the two sources, dedup.
+  deps="$(printf '%s\n%s\n' "$roster_deps" "$fm_deps" | awk 'NF && !seen[$0]++')"
   for d in $deps; do
     [ -n "$d" ] || continue
     if _in_set "$d" "$DONE_KEYS" || _in_set "$d" "$CAND_KEYS"; then
