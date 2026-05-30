@@ -77,6 +77,24 @@ After flipping `brownfield.deterministic_tools` to `true`, instruct the operator
 deterministic_tools=true requires the deterministic-tools chain on $PATH.
 Run /gaia-doctor now to confirm — Tier 0 (LLM-only) and Tier 1 (pure-pip)
 hosts will fail-fast on Tier 2 invocations otherwise.
+
+Alternative: set brownfield.tools.runner = docker to dispatch Tier 2
+tools through the bundled gaia-tools OCI image. Operators then need only
+Docker on the host (no brew/pip/npm/Go/Java toolchains). Pull the image
+once: `/gaia-doctor --install`. See AF-2026-05-30-3 / Test10 §7 C2.
+```
+
+After flipping `brownfield.tools.runner` to `docker`, render an additional reminder:
+
+```
+tools.runner=docker — Tier 2 adapters now dispatch through the bundled
+gaia-tools OCI image (AF-2026-05-30-3 / Test10 §7 Component 2).
+  Image:      ghcr.io/gaiastudio-ai/gaia-tools:<pinned>
+  Pull once:  /gaia-doctor --install
+The image bundles grype + syft + osv-scanner + spotbugs + vulture +
+pip-audit + cyclonedx-bom + cdxgen + yamllint + yq, all pinned. Findings
+become reproducible: identical image tag → identical scanner versions +
+vuln-DB snapshot across machines and CI.
 ```
 
 #### Step 2d — Dispatch to `show`
