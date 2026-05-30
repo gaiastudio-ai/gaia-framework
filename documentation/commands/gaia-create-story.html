@@ -16,7 +16,7 @@
         <p class="sidebar-section-title">Categories</p>
         <ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul>
         <p class="sidebar-section-title">On this page</p>
-        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#arguments">Arguments</a></li><li><a href="#orchestration-mode">Orchestration mode</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#examples">Examples</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
+        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#arguments">Arguments</a></li><li><a href="#orchestration-mode">Orchestration mode</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#story-validators">Story validator CLI shape</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#examples">Examples</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
       </nav>
     </aside>
     <main class="main-content">
@@ -113,6 +113,26 @@ This warning is shown once per session.
           <li><span class="step-title">Register in backlog</span> Registers the story with <code>status: backlog</code> across all tracking surfaces.</li>
           <li><span class="step-title">Validate</span> Runs validation against the story file. If critical issues are found, attempts auto-fix (up to 3 attempts). On pass, transitions the story to <code>ready-for-dev</code>.</li>
         </ol>
+      </section>
+
+      <section id="story-validators"><h2>Story validator CLI shape <span class="tag">AF-2026-05-30-4 / Test11 D-05</span></h2>
+        <p>The three structural validators that <code>/gaia-create-story</code> invokes during the post-write check (Step 5) accept the story file path in two forms:</p>
+        <ul>
+          <li><strong>Canonical:</strong> <code>--file &lt;path&gt;</code></li>
+          <li><strong>Deprecated (accepted with NOTICE):</strong> a single positional argument</li>
+        </ul>
+        <p>The validators:</p>
+        <ul>
+          <li><code>scripts/validate-frontmatter.sh</code> — checks the 17-field required-frontmatter contract.</li>
+          <li><code>scripts/validate-ac-format.sh</code> — checks the <code>- [ ] **AC{N}:** Given/When/Then</code> checkbox shape (AF-29-2 F-25).</li>
+          <li><code>scripts/validate-canonical-filename.sh</code> — checks E105-S1 / ADR-127 per-story layout.</li>
+        </ul>
+        <p>Operators driving the validators directly should prefer <code>--file &lt;path&gt;</code>. The positional form is preserved for back-compat with older invocations but emits a <code>NOTICE: positional path is deprecated</code> line on stderr. Supplying both forms in the same call is refused.</p>
+        <pre><code># Canonical
+scripts/validate-frontmatter.sh --file .gaia/artifacts/implementation-artifacts/epic-E1-core/E1-S1-vault-init/story.md
+
+# Deprecated (still works, emits NOTICE)
+scripts/validate-frontmatter.sh .gaia/artifacts/implementation-artifacts/epic-E1-core/E1-S1-vault-init/story.md</code></pre>
       </section>
 
       <section id="inputs"><h2>Inputs</h2>
