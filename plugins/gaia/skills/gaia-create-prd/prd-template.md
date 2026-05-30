@@ -1,7 +1,15 @@
 ---
 template: 'prd'
-version: 1.0.0
-used_by: ['create-prd']
+version: 1.1.0
+used_by: ['create-prd', 'brownfield']
+# Brownfield frontmatter keys (Test10 F-13). On a greenfield authoring flow these
+# remain as placeholders; the brownfield orchestrator (Phase 8a) overwrites them.
+project_type: '{application | infrastructure | platform}'  # default: application
+target_environment: '{e.g., production, staging — leave empty on greenfield}'
+infra_stack: '{e.g., kubernetes, ecs, lambda — empty on application-only}'
+mode: '{greenfield | brownfield}'                          # set by orchestrator
+baseline_version: '{version from package.json or inferred — brownfield only}'
+focus: '{full-spec | gap-filling}'                         # gap-filling = brownfield
 ---
 
 # Product Requirements Document: {product_name}
@@ -123,16 +131,22 @@ used_by: ['create-prd']
 
 ## Gap Analysis Summary
 
-| Category | Critical | High | Medium | Low | Total |
-|----------|----------|------|--------|-----|-------|
-| Config Contradictions | {count} | {count} | {count} | {count} | {count} |
-| Dead Code & Dead State | {count} | {count} | {count} | {count} | {count} |
-| Hard-Coded Business Logic | {count} | {count} | {count} | {count} | {count} |
-| Security Endpoints | {count} | {count} | {count} | {count} | {count} |
-| Runtime Behaviors | {count} | {count} | {count} | {count} | {count} |
-| Documentation Drift | {count} | {count} | {count} | {count} | {count} |
-| Integration Seams | {count} | {count} | {count} | {count} | {count} |
-| **Overall** | **{count}** | **{count}** | **{count}** | **{count}** | **{count}** |
+> **Severity vocabulary (Test10 F-13).** This PRD reports CRITICAL / WARNING / INFO
+> per the canonical 3-tier map (5-into-3, see `/gaia-config-severity`). The legacy
+> 5-tier (Critical / High / Medium / Low) is preserved here as the user-visible
+> bucket labels; the WARNING / INFO columns map to the Sage adversarial reviewer
+> output and the `info`-tier findings emitted by deterministic-tools scans.
+
+| Category | Critical | High | Medium | Low | Info | Total |
+|----------|----------|------|--------|-----|------|-------|
+| Config Contradictions | {count} | {count} | {count} | {count} | {count} | {count} |
+| Dead Code & Dead State | {count} | {count} | {count} | {count} | {count} | {count} |
+| Hard-Coded Business Logic | {count} | {count} | {count} | {count} | {count} | {count} |
+| Security Endpoints | {count} | {count} | {count} | {count} | {count} | {count} |
+| Runtime Behaviors | {count} | {count} | {count} | {count} | {count} | {count} |
+| Documentation Drift | {count} | {count} | {count} | {count} | {count} | {count} |
+| Integration Seams | {count} | {count} | {count} | {count} | {count} | {count} |
+| **Overall** | **{count}** | **{count}** | **{count}** | **{count}** | **{count}** | **{count}** |
 
 ## Gap Analysis by Category
 

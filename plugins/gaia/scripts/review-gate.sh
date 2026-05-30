@@ -113,7 +113,14 @@ PLAN_ID_REGEX='^[A-Za-z0-9._:+-]+$'
 # Ledger path: overridable via --ledger flag or $REVIEW_GATE_LEDGER env var.
 # E96-S3 / ADR-111: default prefers .gaia/state/.review-gate-ledger
 # (mutable-runtime-state tier) over the legacy <project-root>/.review-gate-ledger.
-# Legacy fallback retained during the 1-sprint transition window (removed in E96-S5).
+# AF-2026-05-30-2 / Test10 F-24: always prefer .gaia/state/ on a project root
+# that has a .gaia/ tree (greenfield-degrade per AF-29-2 F-1 guarantees this
+# exists). The prior conditional required EITHER an existing ledger OR a
+# pre-seeded .gaia/state/ dir — on a fresh project (where setup.sh seeded
+# .gaia/artifacts/ but not .gaia/state/) the resolver fell through to repo
+# root, scattering .review-gate-ledger outside the canonical .gaia/ tree.
+# This change mkdir -p's .gaia/state/ at the first write so the canonical
+# branch is always taken when .gaia/ exists on disk.
 resolve_ledger_path() {
   if [ -n "${LEDGER_FLAG:-}" ]; then
     printf '%s' "$LEDGER_FLAG"
@@ -121,9 +128,13 @@ resolve_ledger_path() {
     printf '%s' "$REVIEW_GATE_LEDGER"
   else
     local root="${PROJECT_PATH:-.}"
-    if [ -f "$root/.gaia/state/.review-gate-ledger" ] || [ -d "$root/.gaia/state" ]; then
+    if [ -d "$root/.gaia" ]; then
+      # Canonical post-ADR-111 path. Seed .gaia/state/ on first write so
+      # subsequent reads find it (closes the F-24 fall-through window).
+      mkdir -p "$root/.gaia/state" 2>/dev/null || true
       printf '%s' "$root/.gaia/state/.review-gate-ledger"
     else
+      # Pre-.gaia/ legacy project — fall back to repo root for back-compat.
       printf '%s' "$root/.review-gate-ledger"
     fi
   fi

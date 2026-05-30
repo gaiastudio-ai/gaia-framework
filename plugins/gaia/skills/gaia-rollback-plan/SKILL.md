@@ -43,7 +43,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 ### Step 1 -- Validate Project Config
 
 - Read `${PLANNING_ARTIFACTS}/architecture.md` for deployment-relevant architecture decisions (infrastructure topology, deployment strategy, rollback mechanisms).
-- Resolve project config via `!scripts/resolve-config.sh --format shell` (ADR-044 §10.26.3). Eval the output or parse the `KEY='VALUE'` pairs to determine deployment environment and CI/CD pipeline configuration. The resolver transparently merges the team-shared and machine-local layers; the skill never reads either file directly. <!-- Shared layer: config/project-config.yaml. Local layer: global.yaml. See ADR-044 §10.26.6. -->
+- Resolve project config via `!scripts/resolve-config.sh --format shell` (ADR-044 §10.26.3). Eval the output or parse the `KEY='VALUE'` pairs to determine deployment environment and CI/CD pipeline configuration. The resolver transparently merges the team-shared and machine-local layers; the skill never reads either file directly. <!-- Shared layer: .gaia/config/project-config.yaml. Local layer: global.yaml. See ADR-044 §10.26.6. -->
 - If config is empty or malformed, HALT with descriptive error (AC-EC6).
 
 ### Step 2 -- Define Trigger Criteria

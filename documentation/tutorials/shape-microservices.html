@@ -85,6 +85,43 @@
         </p>
       </section>
 
+      <section id="headless-service">
+        <h2>Headless service (backend-only)</h2>
+        <p>
+          A common shape is a pure backend service with no UI — an internal
+          API, a worker, a CLI binary, or a library exposed over RPC. Closes
+          Test10 F-05 (AF-2026-05-30-2) — the init questionnaire previously
+          treated this case as a configuration wall because the
+          <code>platforms[]</code> enum looked frontend-only.
+        </p>
+        <p>
+          Configure two fields explicitly when the service ships no UI:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+compliance:
+  ui_present: false       # disables UX, a11y, and design-token gates
+
+platforms:
+  - server                # canonical headless platform identifier</code></pre>
+        <p>
+          With <code>ui_present: false</code>, the framework correctly skips
+          <a href="../commands/gaia-create-ux.html"><code>/gaia-create-ux</code></a>,
+          <a href="../commands/gaia-validate-design-a11y.html"><code>/gaia-validate-design-a11y</code></a>,
+          and <a href="../commands/gaia-review-a11y.html"><code>/gaia-review-a11y</code></a>
+          with a neutral message instead of generating hollow UX artifacts.
+          With <code>platforms: [server]</code>, the
+          <a href="../commands/gaia-config-device-target.html"><code>/gaia-config-device-target</code></a>
+          gate is satisfied without a mobile / web matrix.
+        </p>
+        <p>
+          See
+          <a href="../commands/gaia-config-compliance.html"><code>/gaia-config-compliance</code></a>
+          and
+          <a href="../commands/gaia-config-platform.html"><code>/gaia-config-platform</code></a>
+          for the post-init editors.
+        </p>
+      </section>
+
       <section id="monorepo-vs-polyrepo">
         <h2>Monorepo vs polyrepo</h2>
         <p>

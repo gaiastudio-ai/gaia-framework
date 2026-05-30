@@ -169,7 +169,7 @@
           through before reaching production -- for example,
           <code>feature -> develop -> staging -> main</code>. Configured
           under <code>ci_cd.promotion_chain</code> in
-          <code>config/project-config.yaml</code>. Used by
+          <code>.gaia/config/project-config.yaml</code>. Used by
           <a href="commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a>
           (to decide which branch a PR targets),
           <a href="commands/gaia-deploy.html"><code>/gaia-deploy</code></a>
@@ -205,7 +205,7 @@
           by review commands to evaluate code, tests, or artifacts. GAIA
           uses a four-layer rubric pipeline (base, compliance, project,
           custom) that merges into a single effective rubric at runtime.
-          Configured in <code>config/project-config.yaml</code> under the
+          Configured in <code>.gaia/config/project-config.yaml</code> under the
           <code>rubrics</code> section.
         </dd>
 
@@ -275,7 +275,7 @@
           <a href="commands/gaia-bridge-enable.html"><code>/gaia-bridge-enable</code></a>
           and
           <a href="commands/gaia-bridge-disable.html"><code>/gaia-bridge-disable</code></a>.
-          Configured in <code>config/project-config.yaml</code> under
+          Configured in <code>.gaia/config/project-config.yaml</code> under
           <code>test_execution_bridge.bridge_enabled</code>.
         </dd>
 

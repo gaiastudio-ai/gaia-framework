@@ -73,11 +73,23 @@
           <code>/gaia-bridge-enable</code> turns on the Test Execution
           Bridge by setting
           <code>test_execution_bridge.bridge_enabled = true</code> in
-          <code>config/project-config.yaml</code>. With the bridge enabled,
-          downstream test commands dispatch real test execution to the
-          runners declared in
-          <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
-          instead of returning advisory placeholders.
+          <code>.gaia/config/project-config.yaml</code>.
+        </p>
+        <p>
+          <strong>Enabling the bridge is necessary but not sufficient
+          (Test10 F-27 — AF-2026-05-30-2).</strong> Tests run in reviews
+          only when <code>test_execution.tier_N.command</code> is also
+          populated (see
+          <a href="gaia-config-test.html"><code>/gaia-config-test</code></a>).
+          Without that wiring, <code>qa-test-runner.sh</code> skips with a
+          HARD-FAIL instead of false-green — the bridge flag alone does not
+          dispatch execution. Use, for example,
+          <code>/gaia-config-test set tier_1.command 'python3 -m pytest tests/ -q'</code>
+          to wire the command. The runners declared in
+          <a href="../test-environment-yaml.html"><code>.gaia/config/test-environment.yaml</code></a>
+          are the second half of the contract: they describe the runtime
+          surface (image / binary / port) that the configured command runs
+          against.
         </p>
         <p>
           The command is idempotent: invoking it when the bridge is already
@@ -121,7 +133,7 @@
         <h2>Prerequisites</h2>
         <ul>
           <li><strong>The test_execution_bridge configuration block must exist.</strong> Run <a href="gaia-config-ci.html"><code>/gaia-config-ci</code></a> first if it does not.</li>
-          <li><strong>A project root.</strong> The command operates on the directory containing <code>config/project-config.yaml</code>.</li>
+          <li><strong>A project root.</strong> The command operates on the directory containing <code>.gaia/config/project-config.yaml</code>.</li>
         </ul>
       </section>
 
@@ -130,7 +142,7 @@
         <pre><code>/gaia-bridge-enable</code></pre>
         <p>
           No arguments. State is read from
-          <code>config/project-config.yaml</code> and behaviour adapts to
+          <code>.gaia/config/project-config.yaml</code> and behaviour adapts to
           the current presence or absence of
           <code>config/test-environment.yaml</code>.
         </p>
@@ -153,7 +165,7 @@
           <li>
             <span class="step-title">Read current state</span>
             Reads the <code>bridge_enabled</code> flag from
-            <code>config/project-config.yaml</code>.
+            <code>.gaia/config/project-config.yaml</code>.
           </li>
           <li>
             <span class="step-title">Check idempotency</span>
@@ -253,7 +265,7 @@
           This command takes no arguments. State is read from:
         </p>
         <ul>
-          <li><code>config/project-config.yaml</code> (the bridge_enabled flag and CI block)</li>
+          <li><code>.gaia/config/project-config.yaml</code> (the bridge_enabled flag and CI block)</li>
           <li><code>config/test-environment.yaml</code> (presence, schema, sentinel state)</li>
           <li><code>.gaia/artifacts/test-artifacts/test-environment.yaml</code> (legacy path; migrated if present)</li>
           <li>Project tree (consulted by the auto-generator to detect the stack)</li>
@@ -273,7 +285,7 @@
           <tbody>
             <tr>
               <td>Updated configuration</td>
-              <td><code>config/project-config.yaml</code></td>
+              <td><code>.gaia/config/project-config.yaml</code></td>
               <td>The <code>bridge_enabled</code> flag set to <code>true</code>.</td>
             </tr>
             <tr>

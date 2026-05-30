@@ -35,6 +35,26 @@ Read the current sprint context:
 2. Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/epics-and-stories.md` to identify stories not yet in any sprint (candidates for injection).
 3. Scan `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/retro-*.md` files if available -- check if the current issue matches a known pattern from past retrospectives. If a match is found, note it: "This issue was flagged in retro-{sprint_id}: {finding}. Previous recommendation: {recommendation}."
 
+#### Step 1a --- On-track early-exit (Test10 F-30)
+
+After loading sprint context, evaluate whether the sprint is on-track. If ALL of the following hold:
+
+- No story is currently in `blocked` status
+- The reported `done` count divided by `total_points` is at or above the expected curve for the elapsed sprint duration (compare `started` / `end_date` against today)
+- No `--story` argument and no `--change-type` argument were supplied (interactive launch with no specific complaint)
+
+Then exit early with:
+
+```
+No correction needed — sprint appears on-track:
+  - 0 blocked stories
+  - <done_points>/<total_points> points complete on day <N>/<duration>
+  - run `/gaia-sprint-status` for the full dashboard.
+If you want to make a deliberate scope/priority change, re-invoke with --story <key>.
+```
+
+Exit 0 (not an error — success-with-no-action). This avoids forcing the operator through the full elicitation flow when nothing is actually wrong. The early-exit is skipped when a specific story key or change-type was passed on the command line.
+
 ### Step 2 --- Identify Change
 
 Ask the user: "What needs to change and why?"

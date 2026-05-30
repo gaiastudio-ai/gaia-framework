@@ -39,7 +39,8 @@
             </tr>
           </tbody>
         </table>
-        <p>The story file is written to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code> with the 15 required frontmatter fields. The <code>priority_flag</code> field accepts <code>null</code> (default), <code>"next-sprint"</code>, or <code>"hotfix"</code> (E40-S3, PR #772, ADR-109 &sect;D3). The <code>"hotfix"</code> value is human-set only and causes <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> to auto-inject the story into the active sprint.</p>
+        <p>The story file is written to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_slug}/{story_key}-{slug}/story.md</code> with the 15 required frontmatter fields. The <code>priority_flag</code> field accepts <code>null</code> (default), <code>"next-sprint"</code>, or <code>"hotfix"</code> (E40-S3, PR #772, ADR-109 &sect;D3). The <code>"hotfix"</code> value is human-set only and causes <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> to auto-inject the story into the active sprint.</p>
+        <p><strong>Layout note (Test10 F-28 — AF-2026-05-30-2).</strong> The canonical layout (E105-S1 / ADR-127) is the <strong>nested per-story directory</strong> shown above — the basename is always the literal <code>story.md</code> and the parent directory carries the story key + slug. Earlier doc revisions and pre-E105 SKILL.md text showed a flat <code>{key}-{slug}.md</code> shape; that legacy form remains read-only (consumers like <a href="gaia-check-dod.html"><code>/gaia-check-dod</code></a> and <a href="gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a> walk all three tiers: flat, legacy-nested-with-<code>stories/</code>, and the new per-story). New writes always use the per-story directory; a sibling <code>reviews/</code> subdir holds FR-402 review reports.</p>
       </section>
 
       <section id="what-it-does"><h2>What it does</h2>
@@ -73,7 +74,7 @@ be lossy between steps — sub-agents return summaries, not full reasoning.
 
 For the full-fidelity experience, enable Mode B (Agent Teams):
   1. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your environment.
-  2. Add orchestration.mode: team to config/project-config.yaml.
+  2. Add orchestration.mode: team to .gaia/config/project-config.yaml.
 
 Mode B uses persistent teammates that preserve in-conversation state
 across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
@@ -90,7 +91,7 @@ This warning is shown once per session.
         <p><strong>Step 1 -- set the environment variable:</strong></p>
         <pre><code>export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1</code></pre>
         <p>Add this to your shell rc file to persist across sessions, or set it in Claude Code's <code>settings.json</code>.</p>
-        <p><strong>Step 2 -- add the YAML block to <code>config/project-config.yaml</code>:</strong></p>
+        <p><strong>Step 2 -- add the YAML block to <code>.gaia/config/project-config.yaml</code>:</strong></p>
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
@@ -108,7 +109,7 @@ This warning is shown once per session.
           <li><span class="step-title">Select story</span> Locates the story in epics-and-stories.md and checks whether a file already exists.</li>
           <li><span class="step-title">Load context</span> Reads the architecture, UX design, and PRD for elaboration context.</li>
           <li><span class="step-title">Elaborate story</span> Offers two paths: answer elaboration questions yourself, or auto-delegate to PM and Architect agents (and UX Designer if the story has UI scope). For medium and larger stories, edge-case analysis runs automatically.</li>
-          <li><span class="step-title">Generate story file</span> Writes the story file with complete frontmatter (15 required fields), acceptance criteria, tasks, test scenarios, and dependencies to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code>.</li>
+          <li><span class="step-title">Generate story file</span> Writes the story file with complete frontmatter (15 required fields), acceptance criteria, tasks, test scenarios, and dependencies to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_slug}/{story_key}-{slug}/story.md</code>.</li>
           <li><span class="step-title">Register in backlog</span> Registers the story with <code>status: backlog</code> across all tracking surfaces.</li>
           <li><span class="step-title">Validate</span> Runs validation against the story file. If critical issues are found, attempts auto-fix (up to 3 attempts). On pass, transitions the story to <code>ready-for-dev</code>.</li>
         </ol>
@@ -128,7 +129,7 @@ This warning is shown once per session.
       <section id="outputs"><h2>Outputs</h2>
         <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead>
           <tbody>
-            <tr><td>Story file</td><td><code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code></td><td>Complete story with frontmatter, ACs, tasks, and test scenarios.</td></tr>
+            <tr><td>Story file</td><td><code>.gaia/artifacts/implementation-artifacts/epic-{epic_slug}/{story_key}-{slug}/story.md</code></td><td>Complete story with frontmatter, ACs, tasks, and test scenarios.</td></tr>
             <tr><td>Updated tracking</td><td>Multiple surfaces</td><td>Story registered with <code>backlog</code> (or <code>ready-for-dev</code> after validation).</td></tr>
           </tbody>
         </table>
@@ -156,7 +157,7 @@ Delegating to PM and Architect...
 Edge case analysis: 6 scenarios generated (boundary, error, security).
 Appending edge-case ACs to story...
 
-Writing story file to .gaia/artifacts/implementation-artifacts/epic-E3-security/stories/E3-S7-user-authentication.md...
+Writing story file to .gaia/artifacts/implementation-artifacts/epic-E3-security/E3-S7-user-authentication/story.md...
   Frontmatter: 15/15 required fields populated.
   ACs: 5 primary + 3 edge-case (Given/When/Then format).
   Tasks: 8 subtasks.
@@ -218,7 +219,7 @@ Loading story E5-S12 from epics-and-stories.md...
 WARNING: Story file exists with status backlog. Proceeding will regenerate it.
 Continue? y
 
-Writing story file to .gaia/artifacts/implementation-artifacts/epic-E5-integrations/stories/E5-S12-add-webhook-retry-logic.md...
+Writing story file to .gaia/artifacts/implementation-artifacts/epic-E5-integrations/E5-S12-add-webhook-retry-logic/story.md...
 ...</code></pre>
 
         <h3>5. Validation failure -- recovery via /gaia-fix-story</h3>
@@ -264,7 +265,7 @@ Run /gaia-fix-story E6-S9 to resolve the remaining findings.</code></pre>
         <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
         <ul>
           <li><code>echo $CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> returns <code>1</code> (not empty)</li>
-          <li><code>config/project-config.yaml</code> contains:
+          <li><code>.gaia/config/project-config.yaml</code> contains:
             <pre><code>orchestration:
   mode: team</code></pre>
           </li>

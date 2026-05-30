@@ -127,9 +127,30 @@ if [ "$RISK" != "high" ]; then
 fi
 
 # High risk → require at least one matching ATDD file.
+#
+# Test10 F-34 — epic-wide glob prefix-boundary guard. The earlier shape
+# `atdd-${EPIC_KEY}*.md` was too permissive: with EPIC_KEY=E1 it matched
+# `atdd-E10-*.md`, `atdd-E11-*.md`, etc. Tighten with a `{key}-` boundary
+# so the epic glob matches `atdd-E1-...md` exclusively (or the exact
+# `atdd-E1.md` no-suffix form via a second glob entry).
 shopt -s nullglob
-ATDD_MATCHES=( "$TEST_DIR/atdd-${EPIC_KEY}"*.md "$TEST_DIR/atdd-${STORY_KEY}"*.md )
+# Bare literals like `atdd-${EPIC_KEY}.md` survive nullglob (no glob
+# metacharacter to expand), so post-filter the array with a `-f` existence
+# test to weed them out when the file is absent. Without this filter,
+# `${#ATDD_MATCHES[@]} -gt 0` would always be true and the high-risk gate
+# would NEVER halt.
+ATDD_CANDIDATES=(
+  "$TEST_DIR/atdd-${EPIC_KEY}.md"
+  "$TEST_DIR/atdd-${EPIC_KEY}-"*.md
+  "$TEST_DIR/atdd-${STORY_KEY}.md"
+  "$TEST_DIR/atdd-${STORY_KEY}-"*.md
+)
 shopt -u nullglob
+
+ATDD_MATCHES=()
+for _c in "${ATDD_CANDIDATES[@]}"; do
+  [ -f "$_c" ] && ATDD_MATCHES+=("$_c")
+done
 
 if [ "${#ATDD_MATCHES[@]}" -gt 0 ]; then
   log "risk=high; ATDD file present (${ATDD_MATCHES[0]}) — pass"
@@ -148,9 +169,11 @@ if [ "${GAIA_SKIP_ATDD:-0}" = "1" ]; then
 fi
 
 log "HALT: high-risk story $STORY_KEY has no ATDD file."
-log "      expected one of:"
-log "        $TEST_DIR/atdd-${EPIC_KEY}*.md"
-log "        $TEST_DIR/atdd-${STORY_KEY}*.md"
+log "      expected one of (prefix-boundary guarded — Test10 F-34):"
+log "        $TEST_DIR/atdd-${EPIC_KEY}.md"
+log "        $TEST_DIR/atdd-${EPIC_KEY}-*.md"
+log "        $TEST_DIR/atdd-${STORY_KEY}.md"
+log "        $TEST_DIR/atdd-${STORY_KEY}-*.md"
 log "      run /gaia-atdd $STORY_KEY to generate the scenarios file before /gaia-dev-story."
 log "      or, if you consciously accept the risk: GAIA_SKIP_ATDD=1 /gaia-dev-story $STORY_KEY"
 exit 1

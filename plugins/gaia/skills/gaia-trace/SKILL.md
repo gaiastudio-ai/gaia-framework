@@ -90,7 +90,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Calculate implementation rate: count implemented tests vs total planned tests. Record as: Total planned: N, Implemented: M (percentage%).
 
 <!-- E77-S16: plugin-aware chain begin (FR-421) -->
-- **Plugin-aware chain (FR-421, AC5).** When `project_kind == claude-code-plugin` (resolved from `config/project-config.yaml` or `detect-signals.sh` output), additionally run `${CLAUDE_PLUGIN_ROOT}/scripts/plugin-trace-chain.sh --project-root <PROJECT_ROOT> --require-plugin` and append a "Plugin Chain" section to the traceability matrix. The chain entries map `manifest.yaml` / `.claude-plugin/plugin.json` -> `plugins/*/SKILL.md` -> bang-line `!scripts/*.sh` references -> `tests/*.bats` files. Surface each `gaps[]` entry as a matrix row:
+- **Plugin-aware chain (FR-421, AC5).** When `project_kind == claude-code-plugin` (resolved from `.gaia/config/project-config.yaml` or `detect-signals.sh` output), additionally run `${CLAUDE_PLUGIN_ROOT}/scripts/plugin-trace-chain.sh --project-root <PROJECT_ROOT> --require-plugin` and append a "Plugin Chain" section to the traceability matrix. The chain entries map `manifest.yaml` / `.claude-plugin/plugin.json` -> `plugins/*/SKILL.md` -> bang-line `!scripts/*.sh` references -> `tests/*.bats` files. Surface each `gaps[]` entry as a matrix row:
   - `gap_kind: missing_skill_md`   -> "Manifest lists skill but SKILL.md is absent" (BLOCKING).
   - `gap_kind: missing_script`     -> "SKILL.md references a script that does not exist on disk" (BLOCKING).
   - `gap_kind: no_bats_coverage`   -> "Script exists but has no bats coverage" (WARNING).
@@ -131,6 +131,14 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-trace 6 trace_matrix_path=".gaia/artifacts/test-artifacts/traceability-matrix.md" coverage_metrics="$COVERAGE_METRICS" gate_status="$GATE_STATUS" stage=gate-verified`
 
 ### Step 6b — Dispatch-verb integration-coverage enforcement (E88-S6, FR-DPD-6)
+
+> **Pre-create-story caveat (Test10 F-23).** Steps 6b and 6c walk story files and
+> enforce coverage rules against the matrix. If `/gaia-trace` is invoked BEFORE
+> `/gaia-create-story` has produced any story files (e.g., immediately after PRD
+> + epics authoring), there are no story files to walk — both steps SHOULD emit
+> `[NOTICE] skipped — no story files to trace (run /gaia-create-story first)`
+> and exit 0, NOT vacuously PASS. Treat zero-stories as "deferred until
+> story-creation phase", not as "no violations found".
 
 For every story walked, run `scripts/lib/trace-dispatch-verb-enforcement.sh --story-file <story> --matrix-file <traceability-matrix>`. The helper sources `dispatch-verb-match.sh` (E88-S1), walks ACs, and enforces that every dispatch-verb AC in a `risk: medium|high` story has >=1 `test_class: integration` row in the matrix referencing it. HALTs with the canonical message on a coverage gap.
 

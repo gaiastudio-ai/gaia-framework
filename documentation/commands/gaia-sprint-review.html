@@ -267,7 +267,7 @@
             <span class="step-title">Track B execution dispatch</span>
             Invokes <code>track-b-dispatch.sh --sprint &lt;id&gt;</code>. The
             stub reads <code>sprint_review:</code> from
-            <code>config/project-config.yaml</code>, iterates the per-stack
+            <code>.gaia/config/project-config.yaml</code>, iterates the per-stack
             matrix, and emits a JSON array. On the current build every entry
             is <code>verdict: SKIPPED</code>; the E93-S4 runner replaces this
             stub with a real foreground per-stack execution review.

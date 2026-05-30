@@ -65,6 +65,24 @@ else
   log "checkpoint.sh not found at $CHECKPOINT — skipping checkpoint load (non-fatal)"
 fi
 
+# ---------- 3b. Stamp the run-started checkpoint (AF-2026-05-30-2 / Test10 F-31) ----------
+# finalize.sh's GAIA_FINALIZE_SENTINEL_REQUIRED guard expects a
+# write-checkpoint.sh-produced JSON under
+# .gaia/memory/checkpoints/retrospective/*-step-*.json — finalize compares
+# the Val sidecar decision-log mtime against this checkpoint. Without the
+# stamp, finalize.sh self-HALTs even on a clean retro run because the SKILL
+# prose (Step 4..) never invokes write-checkpoint.sh. Stamp it here at
+# setup so the marker exists for finalize regardless of whether downstream
+# steps call write-checkpoint again later.
+WRITE_CHECKPOINT="$PLUGIN_SCRIPTS_DIR/write-checkpoint.sh"
+if [ -x "$WRITE_CHECKPOINT" ]; then
+  if ! "$WRITE_CHECKPOINT" "$WORKFLOW_NAME" 0 stage=setup-complete >/dev/null 2>&1; then
+    log "write-checkpoint.sh stamp failed at setup — finalize may self-HALT (non-fatal here)"
+  fi
+else
+  log "write-checkpoint.sh not found at $WRITE_CHECKPOINT — skipping setup-stage stamp (non-fatal)"
+fi
+
 # ---------- 4. Emit lifecycle event (skill_invocation) ----------
 if [ -x "$LIFECYCLE_EVENT" ]; then
   if ! "$LIFECYCLE_EVENT" --type skill_invocation --workflow "$WORKFLOW_NAME" >/dev/null 2>&1; then

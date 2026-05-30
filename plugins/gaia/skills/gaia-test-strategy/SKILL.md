@@ -181,7 +181,7 @@ After successful scaffolding:
 - Update the `test_execution` section of `project-config.yaml` with entries for the scaffolded test types and services.
 - Offer a CI regeneration prompt per source-report §9.6: "Regenerate CI config now? [y/n]". On y, route to `/gaia-config-ci`.
 
-> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 8 mode=scaffold stage=config-updated --paths config/project-config.yaml`
+> `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 8 mode=scaffold stage=config-updated --paths .gaia/config/project-config.yaml`
 
 ## Validation
 

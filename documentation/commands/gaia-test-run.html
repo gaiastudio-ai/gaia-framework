@@ -18,7 +18,7 @@
       <header class="command-header"><div class="command-title"><h1>/gaia-test-run</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/testing.html">Testing</a></dd><dt>Lifecycle phase:</dt><dd>Anytime</dd><dt>Arguments:</dt><dd><code>[--tier 1|2|3] [--tag NAME] [--story KEY] [--file PATH] [--json] [--no-execute]</code></dd></dl></header>
 
       <section id="what-it-does"><h2>What it does</h2>
-        <p><code>/gaia-test-run</code> runs your project's automated test suite against the environment configured for the requested tier. It resolves the tier-to-environment mapping from <code>config/project-config.yaml</code>, picks the right test runner (Vitest, pytest, bats, Go test), applies targeting filters, executes the tests, and emits a structured verdict with pass/fail counts and infrastructure-flake detection.</p>
+        <p><code>/gaia-test-run</code> runs your project's automated test suite against the environment configured for the requested tier. It resolves the tier-to-environment mapping from <code>.gaia/config/project-config.yaml</code>, picks the right test runner (Vitest, pytest, bats, Go test), applies targeting filters, executes the tests, and emits a structured verdict with pass/fail counts and infrastructure-flake detection.</p>
       </section>
 
       <section id="when-to-use"><h2>When to use it</h2>
@@ -31,7 +31,7 @@
 
       <section id="prerequisites"><h2>Prerequisites</h2>
         <ul>
-          <li><strong><code>test_execution</code> must be configured</strong> in <code>config/project-config.yaml</code> with at least one tier's placement setting.</li>
+          <li><strong><code>test_execution</code> must be configured</strong> in <code>.gaia/config/project-config.yaml</code> with at least one tier's placement setting.</li>
           <li><strong>A test runner must be detectable</strong> (Vitest, pytest, bats, or Go test).</li>
         </ul>
       </section>
@@ -103,7 +103,7 @@ Verdict: PASSED
       </section>
 
       <section id="troubleshooting"><h2>Troubleshooting</h2>
-        <h3>"test_execution section not configured"</h3><p>Add the <code>test_execution</code> section to <code>config/project-config.yaml</code> via <a href="gaia-config-test.html"><code>/gaia-config-test</code></a>.</p>
+        <h3>"test_execution section not configured"</h3><p>Add the <code>test_execution</code> section to <code>.gaia/config/project-config.yaml</code> via <a href="gaia-config-test.html"><code>/gaia-config-test</code></a>.</p>
         <h3>No runner detected</h3><p>The command could not find a test runner. Ensure a test framework config file exists (vitest.config.*, pyproject.toml, *.bats, or go.mod).</p>
         <h3>Flake suspected</h3><p>The failure output matches infrastructure-flake patterns. The verdict includes <code>flake_suspected: true</code> with a <code>flake_reason</code>. Re-run to confirm.</p>
       </section>

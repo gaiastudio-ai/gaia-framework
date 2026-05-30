@@ -159,6 +159,12 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   # opt in/out explicitly. The schema property also carries
   # `x-no-auto-hydration: true` as defense-in-depth documentation.
   lifecycle
+  # AF-2026-05-30-2 / Test10 F-06 (1): brownfield is operator-managed via
+  # /gaia-config-brownfield and feeds /gaia-doctor's tier classifier. Never
+  # auto-hydrated by the reconciler. The schema property carries
+  # `x-no-auto-hydration: true` as defense-in-depth documentation; this
+  # entry registers it for the reconciler's managed-elsewhere check.
+  brownfield
 )
 
 # ---- Logging helpers ------------------------------------------------------

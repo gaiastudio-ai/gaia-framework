@@ -67,9 +67,19 @@ done
 while IFS= read -r -d '' story_file; do
   base="${story_file##*/}"
   # Match story-key pattern E{digits}-S{digits} at the start of the filename
+  # OR (AF-2026-05-30-2 / Test10 F-28) at the start of the parent dir name
+  # for the E105-S1 per-story layout where files are named `story.md` and
+  # the key lives in the parent dir: epic-*/E{N}-S{M}-{slug}/story.md.
   story_key=""
   if [[ "$base" =~ ^(E[0-9]+-S[0-9]+) ]]; then
     story_key="${BASH_REMATCH[1]}"
+  elif [ "$base" = "story.md" ]; then
+    # Per-story layout — extract key from parent dir name.
+    parent_dir="$(dirname "$story_file")"
+    parent_base="${parent_dir##*/}"
+    if [[ "$parent_base" =~ ^(E[0-9]+-S[0-9]+) ]]; then
+      story_key="${BASH_REMATCH[1]}"
+    fi
   fi
   [ -n "$story_key" ] || continue
 

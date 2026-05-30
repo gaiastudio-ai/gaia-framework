@@ -97,9 +97,9 @@ Each phase is independent in its write targets but must run sequentially because
    - no `has_infra` → `application` (default)
 
 <!-- E71-S2: detection-driven config extension begin -->
-5a. **Detection-driven config draft (E71-S2 / FR-RSV2-35, FR-RSV2-36, AF-2026-05-04-1).** After the boolean capability flags are set, run `detect-signals.sh` to produce a structured signal inventory and (optionally) merge it into the project's `config/project-config.yaml`:
+5a. **Detection-driven config draft (E71-S2 / FR-RSV2-35, FR-RSV2-36, AF-2026-05-04-1).** After the boolean capability flags are set, run `detect-signals.sh` to produce a structured signal inventory and (optionally) merge it into the project's `.gaia/config/project-config.yaml`:
 
-   - Run `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-signals.sh --project-root <project> --merge-into <project>/config/project-config.yaml --output <project>/config/project-config.draft.yaml --schema ${CLAUDE_PLUGIN_ROOT}/config/project-config.schema.yaml --format json`.
+   - Run `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-signals.sh --project-root <project> --merge-into <project>/.gaia/config/project-config.yaml --output <project>/config/project-config.draft.yaml --schema ${CLAUDE_PLUGIN_ROOT}/config/project-config.schema.yaml --format json`.
    - The script emits a JSON document with five keys — `stacks`, `platforms`, `ci_platform`, `tool_providers`, `warnings` — plus a top-level `verdict` (PASS | WARNING | CRITICAL) per ADR-063.
    - Detected sections are merged into the existing `project-config.yaml` using **RFC 7396 JSON Merge Patch** semantics: existing user-edited values are preserved unchanged; only null or absent fields are filled. The merged draft is written to `project-config.draft.yaml` for user review before promotion to `project-config.yaml`.
    - When the `--schema` flag is provided, the script invokes `resolve-config.sh --shared <draft> --schema <schema>` to validate the merged draft. A schema rejection collapses the verdict to `CRITICAL` and exits non-zero.
@@ -474,9 +474,9 @@ Invoke the `test-architect` subagent (Sable) via the `Agent` tool:
 
 - Analyze the codebase for non-functional requirements across code quality (linting, complexity, duplication), security posture (dependency vulnerabilities, secrets handling, auth quality), performance (bundle size for frontend, query patterns, caching, resource management), accessibility (ARIA, semantic HTML, keyboard nav for frontend), test coverage (framework, count, coverage %, untested areas, quality), and CI/CD (pipeline, deploy strategy, environments, IaC).
 - Create an NFR Baseline Summary Table with measured values (not placeholders).
-- Output the NFR assessment to `.gaia/artifacts/test-artifacts/nfr-assessment.md`.
+- Output the NFR assessment to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{date}.md` (E105-S3 / ADR-127 Pillar 3 — dated-snapshot subdir under planning-artifacts; AF-29-2 / AF-30-1 moved this out of flat `test-artifacts/`). Legacy ungrouped `test-artifacts/nfr-assessment.md` remains read-only fallback for projects pre-migration (Test10 F-37).
 - Generate a performance test plan: load k6 patterns; if frontend, also load Lighthouse-CI patterns. Define performance budgets (P50/P95/P99), load test scenarios (gradual, spike, soak), backend profiling targets (slow queries, N+1, connection pools), CI performance gates. If frontend, define Core Web Vitals targets (LCP < 2.5s, INP < 200ms, CLS < 0.1).
-- Output the performance test plan to `.gaia/artifacts/test-artifacts/performance-test-plan-{date}.md`.
+- Output the performance test plan to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (E105-S3 / ADR-127 Pillar 3 — dated-snapshot subdir under planning-artifacts; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback for projects pre-migration; Test10 F-37).
 
 **AC-EC5 fallback — test-architect unavailable:** If the `test-architect` subagent is not installed or unreachable at runtime, log a non-blocking warning and write a stub `nfr-assessment.md` with a clear banner:
 
@@ -494,6 +494,52 @@ The post-complete gate then reports the gap rather than crashing. Also write a s
 **Gate check after Phase 6:** Invoke the shared validate-gate pathway inline — see the Post-Complete Gates section at the end of this skill for the three gates enforced via `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh`.
 
 ## Phase 7 — Gap Consolidation & Deduplication
+
+### Phase 7 PRE-step 0 — Scan-fidelity banner (AF-2026-05-30-2 / Test10 §7 C3)
+
+Before SARIF merge runs, invoke `/gaia-doctor` (via its check-tools.sh) to determine the achievable scan tier and stamp it into `consolidated-gaps.md`:
+
+```bash
+DOCTOR_JSON=$(bash ${CLAUDE_PLUGIN_ROOT}/skills/gaia-doctor/scripts/check-tools.sh --json 2>/dev/null || echo '{}')
+TIER=$(printf '%s' "$DOCTOR_JSON" | jq -r '.tier // "tier-0"')
+TIER_REASON=$(printf '%s' "$DOCTOR_JSON" | jq -r '.tier_reason // "LLM-only (deterministic tools missing — heuristic fidelity)"')
+MISSING_TOOLS=$(printf '%s' "$DOCTOR_JSON" | jq -r '[.tools[] | select(.state=="missing") | .name] | join(", ")')
+
+REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+# Prepend banner + frontmatter scan_fidelity field. If consolidated-gaps.md
+# already has frontmatter, splice scan_fidelity into it; else create one.
+if [ -f "$REPORT" ] && head -1 "$REPORT" | grep -q '^---$'; then
+  # Has frontmatter — splice scan_fidelity in.
+  awk -v tier="$TIER" -v reason="$TIER_REASON" '
+    NR==1 { print; print "scan_fidelity: " tier; print "scan_fidelity_reason: " reason; next }
+    /^---$/ && nseen<1 { nseen++; print; next }
+    { print }
+  ' "$REPORT" > "$REPORT.tmp" && mv "$REPORT.tmp" "$REPORT"
+else
+  # No frontmatter — create one.
+  {
+    echo "---"
+    echo "scan_fidelity: $TIER"
+    echo "scan_fidelity_reason: $TIER_REASON"
+    echo "---"
+    echo ""
+    [ -f "$REPORT" ] && cat "$REPORT"
+  } > "$REPORT.tmp" && mv "$REPORT.tmp" "$REPORT"
+fi
+
+# Banner block — visible in the rendered Markdown.
+{
+  echo ""
+  echo "> **Scan fidelity: ${TIER^^} (${TIER_REASON}).**"
+  if [ -n "$MISSING_TOOLS" ]; then
+    echo "> Deterministic CVE/SBOM/dead-code did not run (${MISSING_TOOLS} absent)."
+    echo "> This gap list is heuristic, not tool-verified. Re-run after \`gaia-doctor --install\` for tool-grade results."
+  fi
+  echo ""
+} >> "$REPORT"
+```
+
+**Why this exists (Test10 §7 C3 guiding principle):** "Never degrade silently." Before this banner, an LLM-only scan looked byte-identical to a clean full-tier scan — operators read PASS verdicts on gap reports where no actual tool had run. The banner makes the degradation transparent: every consolidated-gaps.md now declares its achievable tier in frontmatter (`scan_fidelity: tier-0|tier-1|tier-2`) and renders a human-readable degradation notice in the report body when applicable. The frontmatter field is also machine-readable so downstream consumers (review skills, dashboards) can refuse to grade a Tier 0 scan as equivalent to a Tier 2 scan.
 
 ### Phase 7 PRE-step — SARIF Multitool merge (E104-S4 / FR-544 / ADR-125)
 
@@ -752,8 +798,8 @@ The full artifact set emitted by this skill (preserved from the legacy `output.a
 - `.gaia/artifacts/planning-artifacts/brownfield-scan-dead-code.md` (Phase 3)
 - `.gaia/artifacts/planning-artifacts/brownfield-scan-test-execution.md` (Phase 4)
 - `.gaia/config/test-environment.yaml` (Phase 5, conditional)
-- `.gaia/artifacts/test-artifacts/nfr-assessment.md` (Phase 6 — gated)
-- `.gaia/artifacts/test-artifacts/performance-test-plan-{date}.md` (Phase 6 — gated)
+- `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{date}.md` (Phase 6 — gated; Test10 F-37 — dated-snapshot subdir under planning-artifacts per E105-S3 / ADR-127 Pillar 3; legacy flat `test-artifacts/nfr-assessment.md` remains read-only fallback)
+- `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (Phase 6 — gated; Test10 F-37 — dated-snapshot subdir under planning-artifacts per E105-S3 / ADR-127 Pillar 3; legacy flat `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback)
 - `.gaia/artifacts/planning-artifacts/consolidated-gaps.md` (Phase 7)
 - `.gaia/artifacts/planning-artifacts/prd.md` (Phase 8a)
 - `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-prd-{date}.md` (Phase 8b — AF-2026-05-30-1 / Test03 §7.3 grouping)
@@ -767,8 +813,8 @@ The `{date}` placeholder is substituted with the current date in `YYYY-MM-DD` fo
 
 Three gates enforced via `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh` after all phases complete. **AF-2026-05-29-2 / Test09 F-16:** the prior names (`nfr_assessment_exists`, `performance_test_plan_exists`, `test_environment_yaml_required_when_infra_detected`) were NOT registered in `validate-gate.sh`'s `SUPPORTED_GATES` constant — invoking them produced `unknown gate type` and silently no-op'd. The gates are now expressed via the supported `file_exists --file <path>` form so they actually execute:
 
-1. **NFR-assessment exists** — `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh file_exists --file .gaia/artifacts/test-artifacts/nfr-assessment.md`. On fail: `HALT: NFR assessment not found at .gaia/artifacts/test-artifacts/nfr-assessment.md.`
-2. **Performance test plan exists** — first resolve the dated filename (the producer writes `performance-test-plan-{date}.md`), then assert: `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh file_exists --file "$(ls -1t .gaia/artifacts/test-artifacts/performance-test-plan-*.md 2>/dev/null | head -1)"`. On fail (no match or empty file): `HALT: Performance test plan not found at .gaia/artifacts/test-artifacts/performance-test-plan-*.md. Run /gaia-perf-testing.`
+1. **NFR-assessment exists** — first resolve via the dated-subdir form (`.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-*.md`) then fall back to the legacy flat `.gaia/artifacts/test-artifacts/nfr-assessment.md`. Assert: `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh file_exists --file "$(ls -1t .gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-*.md 2>/dev/null | head -1 || echo .gaia/artifacts/test-artifacts/nfr-assessment.md)"`. On fail: `HALT: NFR assessment not found at .gaia/artifacts/planning-artifacts/nfr-assessment/.` (Test10 F-37 — moved out of flat test-artifacts/.)
+2. **Performance test plan exists** — first resolve via the dated-subdir form (`.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-*.md`) then fall back to the legacy flat `.gaia/artifacts/test-artifacts/performance-test-plan-*.md`. Assert: `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh file_exists --file "$(ls -1t .gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-*.md 2>/dev/null | head -1 || ls -1t .gaia/artifacts/test-artifacts/performance-test-plan-*.md 2>/dev/null | head -1)"`. On fail (no match or empty file): `HALT: Performance test plan not found at .gaia/artifacts/planning-artifacts/performance-test-plan/. Run /gaia-perf-testing.` (Test10 F-37 — moved out of flat test-artifacts/.)
 3. **test-environment.yaml when infra detected** (conditional) — if any of the four test-infrastructure detectors (E19-S12 / S13 / S14 / S15) fired during Phase 5, then `.gaia/config/test-environment.yaml` MUST exist: `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh file_exists --file .gaia/config/test-environment.yaml` (legacy `config/test-environment.yaml` is also accepted as read-compat per ADR-111). On fail: `HALT: Brownfield detected test infrastructure but test-environment.yaml was not generated. Re-run step 2.8 or run /gaia-brownfield again.` When zero test infrastructure was detected (AC-EC3), the orchestrator SKIPS this gate entirely.
 
 `validate-gate.sh` serves the role of the spec-level `file-gate.sh` in the deployed script set (see Reconciliation Note).
