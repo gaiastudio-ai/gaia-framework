@@ -34,10 +34,13 @@ _host_os() {
 }
 
 YES_FLAG="false"
+DOCKER_FLAG="auto"   # auto | force | off — AF-2026-05-30-3
 EXTRA_ARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --yes|-y) YES_FLAG="true"; shift ;;
+    --docker) DOCKER_FLAG="force"; shift ;;
+    --no-docker) DOCKER_FLAG="off"; shift ;;
     --stack)  EXTRA_ARGS+=("--stack" "${2:-}"); shift 2 ;;
     --project-root) EXTRA_ARGS+=("--project-root" "${2:-}"); shift 2 ;;
     -h|--help)
@@ -45,12 +48,18 @@ while [ $# -gt 0 ]; do
 gaia-doctor install-tools.sh — interactive install dispatcher
 
 Usage:
-  $0 [--yes] [--stack NAME] [--project-root DIR]
+  $0 [--yes] [--docker | --no-docker] [--stack NAME] [--project-root DIR]
 
 Flags:
-  --yes, -y      Non-interactive; auto-accept every prompt
-  --stack NAME   Limit to a single named stack
-  --project-root D Override project root
+  --yes, -y         Non-interactive; auto-accept every prompt
+  --docker          Pull the bundled gaia-tools OCI image instead of
+                    installing Tier 2 tools individually (AF-2026-05-30-3).
+                    Forces docker mode even if brownfield.tools.runner
+                    is unset.
+  --no-docker       Disable the docker path even if brownfield.tools.runner=docker.
+                    Forces per-tool host installs (the legacy AF-30-2 shape).
+  --stack NAME      Limit to a single named stack
+  --project-root D  Override project root
 EOF
       exit 0
       ;;
@@ -88,18 +97,100 @@ _run_install() {
   fi
 }
 
+_resolve_docker_mode() {
+  # AF-2026-05-30-3: explicit --docker / --no-docker beat config; otherwise
+  # consult brownfield.tools.runner via the docker-runner.sh helper.
+  case "$DOCKER_FLAG" in
+    force) printf 'docker\n' ;;
+    off)   printf 'native\n' ;;
+    *)
+      local helper="${SKILL_DIR}/../../scripts/lib/docker-runner.sh"
+      if [ -f "$helper" ]; then
+        bash "$helper" mode 2>/dev/null || printf 'native\n'
+      else
+        printf 'native\n'
+      fi
+      ;;
+  esac
+}
+
+_install_docker_image() {
+  # AF-2026-05-30-3: when runner=docker, replace the per-tool install
+  # cascade with a single `docker pull` of the bundled gaia-tools image.
+  # The pull pre-warms the local cache so the next /gaia-brownfield
+  # invocation sees `docker_runner_available` succeed and dispatches all
+  # Tier 2 adapters through the image.
+  local helper="${SKILL_DIR}/../../scripts/lib/docker-runner.sh"
+  if [ ! -f "$helper" ]; then
+    echo "gaia-doctor: docker-runner.sh helper not found at $helper" >&2
+    return 1
+  fi
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "gaia-doctor: docker not on PATH — install Docker Desktop / Engine first:" >&2
+    echo "  macOS:  brew install --cask docker" >&2
+    echo "  linux:  curl -fsSL https://get.docker.com | sh" >&2
+    return 1
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "gaia-doctor: docker daemon not reachable (try: docker ps)" >&2
+    return 1
+  fi
+  local image
+  image=$(bash "$helper" image 2>/dev/null || echo "ghcr.io/gaiastudio-ai/gaia-tools:latest")
+  echo "gaia-doctor: docker runner — pulling bundled tools image" >&2
+  echo "  image: $image" >&2
+  if ! _prompt_yn "Pull $image now?"; then
+    echo "– pull skipped by user" >&2
+    return 0
+  fi
+  if bash "$helper" pull; then
+    echo "✓ image pulled — Tier 2 adapters will now dispatch through gaia-tools" >&2
+    echo "" >&2
+    echo "gaia-doctor: verifying image bill-of-materials…" >&2
+    docker run --rm "$image" --bom 2>&1 | head -15 || true
+    return 0
+  fi
+  echo "✗ image pull failed" >&2
+  return 1
+}
+
 main() {
   local host
   host="$(_host_os)"
 
+  # AF-2026-05-30-3 — runner-aware dispatch.
+  local mode
+  mode="$(_resolve_docker_mode)"
+  if [ "$mode" = "docker" ]; then
+    echo "gaia-doctor: runner=docker (per --docker / brownfield.tools.runner)" >&2
+    if _install_docker_image; then
+      # Still re-probe so the operator sees the post-install readiness table.
+      echo "" >&2
+      echo "gaia-doctor: re-probing after image pull…" >&2
+      "$CHECK_TOOLS" "${EXTRA_ARGS[@]}"
+      exit 0
+    else
+      echo "" >&2
+      echo "gaia-doctor: docker-mode install failed — falling back to per-tool host install" >&2
+      echo "  (override with --no-docker to skip this fallback)" >&2
+      echo "" >&2
+    fi
+  fi
+
   local probe_json
   probe_json="$("$CHECK_TOOLS" --json "${EXTRA_ARGS[@]}")"
 
+  # AF-2026-05-30-4 / Test11 F-26: include "below-min-version" tools in
+  # the install candidates so a present-but-stale binary (e.g. macOS bash
+  # 3.2 below the 4.0 min_version) is offered an upgrade. Prior to this
+  # fix, --install only iterated state=="missing" tools; bash present-but-
+  # too-old fell through silently and the F-09 orchestrator.sh globstar
+  # guard remained tripped after a full install.
   local missing
-  missing="$(echo "$probe_json" | jq -r '.tools[] | select(.state == "missing") | .id')"
+  missing="$(echo "$probe_json" | jq -r '.tools[] | select(.state == "missing" or .state == "outdated") | .id')"
 
   if [ -z "$missing" ]; then
-    echo "gaia-doctor: no missing tools — nothing to install." >&2
+    echo "gaia-doctor: no missing or outdated tools — nothing to install." >&2
     exit 0
   fi
 

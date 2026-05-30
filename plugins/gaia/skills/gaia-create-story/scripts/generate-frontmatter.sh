@@ -267,17 +267,50 @@ epic="${epic_raw%% —*}"
 epic="${epic%% --*}"
 epic="$(printf '%s' "$epic" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
 
-priority="$(extract_bullet "Priority")"
+# AF-2026-05-30-4 / Test11 F-12+F-13: accept BOTH Title-case (the create-epics
+# OUTPUT TEMPLATE uses these — `Depends on:`, `Risk:`, `Size:`) AND snake_case
+# (the create-epics SKILL.md Step 5/6 PROSE instructs `risk_level:`,
+# `depends_on:` — an author following the prose produced epics whose stories
+# the generator couldn't parse, blocking create-story from materializing any
+# story at all). Each field tries the Title-case form first, then falls back
+# to snake_case. The SKILL prose is also fixed in the same AF; this fallback
+# is the read-side belt-and-braces.
+_extract_bullet_aliased() {
+  # $1 = primary Title-case label; $2..$N = fallback aliases
+  local val
+  for label in "$@"; do
+    val="$(extract_bullet "$label")"
+    if [ -n "$val" ]; then
+      printf '%s\n' "$val"
+      return 0
+    fi
+  done
+  printf '\n'
+}
+
+_extract_array_aliased() {
+  local val
+  for label in "$@"; do
+    val="$(extract_array "$label")"
+    if [ -n "$val" ] && [ "$val" != "[]" ]; then
+      printf '%s\n' "$val"
+      return 0
+    fi
+  done
+  printf '[]\n'
+}
+
+priority="$(_extract_bullet_aliased "Priority" "priority")"
 
 # Size: strip the parenthesized points hint (e.g., `M (3 pts)` -> `M`).
-size_raw="$(extract_bullet "Size")"
+size_raw="$(_extract_bullet_aliased "Size" "size")"
 size="${size_raw%% *}"
 
-risk="$(extract_bullet "Risk")"
+risk="$(_extract_bullet_aliased "Risk" "risk_level" "risk")"
 
-depends_on_yaml="$(extract_array "Depends on")"
-blocks_yaml="$(extract_array "Blocks")"
-traces_to_yaml="$(extract_array "Traces to")"
+depends_on_yaml="$(_extract_array_aliased "Depends on" "depends_on")"
+blocks_yaml="$(_extract_array_aliased "Blocks" "blocks")"
+traces_to_yaml="$(_extract_array_aliased "Traces to" "traces_to")"
 
 # ---------- Validate required fields ----------
 
@@ -370,6 +403,7 @@ risk: "$risk"
 sprint_id: null
 priority_flag: null
 delivered: false
+deferred_implementation: false
 origin: $origin_yaml
 origin_ref: $origin_ref_yaml
 depends_on: $depends_on_yaml

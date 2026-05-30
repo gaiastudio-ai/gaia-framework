@@ -166,13 +166,19 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
 
 ### Step 4 -- Update Story Files
 
-- For each selected story with an individual file, set the `sprint_id` field to `sprint-{N}` via the **sanctioned helper** (Test05 F-034 — do NOT hand-edit the frontmatter):
+- For each selected story with an individual file, set the `sprint_id` field to `sprint-{N}` via one of the **two sanctioned helpers** (Test05 F-034, AF-2026-05-30-4 F-15 — do NOT hand-edit the frontmatter):
 
   ```bash
+  # Standalone helper (Test05 F-034 vintage):
   ${CLAUDE_PLUGIN_ROOT}/scripts/set-story-sprint.sh {story_key} --sprint sprint-{N}
+
+  # Unified verb on sprint-state.sh (AF-2026-05-30-4 F-15 — closes the
+  # chicken-and-egg gap where `inject` refused a pre-materialized backlog
+  # story whose sprint_id was still `null`):
+  ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh set-story-sprint --story {story_key} --sprint sprint-{N}
   ```
 
-  `set-story-sprint.sh` rewrites only the `sprint_id:` scalar under the shared story-status flock (atomic tmp+mv; inserts the field if absent). This is the field `sprint-state.sh inject`'s drift guard reads, so it MUST be set before the inject/commit step. Clear it with `--sprint null` when rolling a story back to the backlog.
+  Both writers rewrite only the `sprint_id:` scalar under a per-story flock (atomic tmp+mv; insert when absent). They are functionally interchangeable — the `sprint-state.sh set-story-sprint` form is the canonical surface for new callers because it keeps every sprint-binding mutation inside the same script that owns `inject`, while the standalone `set-story-sprint.sh` remains as a stable lower-level primitive. Either form is the field that `sprint-state.sh inject`'s drift guard reads, so it MUST be set before the inject/commit step. Clear it with `--sprint null` (standalone) or use `sprint-state.sh rollover --from sprint-{N} --keys {story_key}` to move between sprints.
 - Stories remain `ready-for-dev` -- do NOT change their status. `/gaia-dev-story` transitions them to `in-progress` when work begins.
 
 ### Step 5 -- Sprint Plan Generation

@@ -124,13 +124,43 @@ emit_block() {
 
 # AC-EC5 (E55-S12) — defensive seed before nullglob expansion so set -u
 # survives empty matches without "artifacts[@]: unbound variable".
+#
+# AF-2026-05-30-4 F-19: the original glob set walked ONLY the flat
+# {IMPL_DIR}/<type>-<key>.md layer. The E105-S1 / AF-29-2 F-16 per-story
+# layout writes review reports to `epic-*/{key}-*/reviews/<type>-{key}.md`,
+# so a retro against a new-layout sprint reported "no review artifacts"
+# even when 18 reports were on disk. Union the flat layer with the
+# per-story `reviews/` layer so both layouts are scanned. Realpath dedup
+# at consumption time guards against double-counting on transition shims.
 declare -a artifacts=()
 shopt -s nullglob
 artifacts=("$IMPL_DIR"/code-review-*.md \
            "$IMPL_DIR"/security-review-*.md \
            "$IMPL_DIR"/qa-tests-*.md \
-           "$IMPL_DIR"/performance-review-*.md)
+           "$IMPL_DIR"/performance-review-*.md \
+           "$IMPL_DIR"/epic-*/*/reviews/code-review-*.md \
+           "$IMPL_DIR"/epic-*/*/reviews/security-review-*.md \
+           "$IMPL_DIR"/epic-*/*/reviews/qa-tests-*.md \
+           "$IMPL_DIR"/epic-*/*/reviews/performance-review-*.md \
+           "$IMPL_DIR"/epic-*/*/reviews/test-automate-review-*.md \
+           "$IMPL_DIR"/epic-*/*/reviews/test-review-*.md)
 shopt -u nullglob
+
+# Exclude per-story layout matches that sit under a legacy `stories/` segment
+# (the old tier-1 layout) — those would otherwise leak in via the `epic-*/*/`
+# wildcard. The canonical per-story layout uses `epic-{slug}/{key}-{slug}/`
+# as the second segment, never `stories/`. Mirrors the locate_story_file
+# guard in sprint-state.sh.
+if [ "${#artifacts[@]}" -gt 0 ]; then
+  _filtered=()
+  for _m in "${artifacts[@]}"; do
+    case "$_m" in
+      */stories/*/reviews/*) continue ;;
+    esac
+    _filtered+=( "$_m" )
+  done
+  artifacts=( "${_filtered[@]+"${_filtered[@]}"}" )
+fi
 
 declare -a matched=()
 # AC-EC5 (E55-S12) — guard the array expansion with `${arr[@]+"${arr[@]}"}`

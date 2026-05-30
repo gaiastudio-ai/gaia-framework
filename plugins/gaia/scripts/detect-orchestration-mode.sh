@@ -9,7 +9,7 @@
 #
 # Mode B requires BOTH:
 #   - CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 (env or settings.json)
-#   - orchestration.mode: team in config/project-config.yaml
+#   - orchestration.mode: team in .gaia/config/project-config.yaml
 #
 # If either is absent, falls back silently to Mode A per FR-445 AC.
 #

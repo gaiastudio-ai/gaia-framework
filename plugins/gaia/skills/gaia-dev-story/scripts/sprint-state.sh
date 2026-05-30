@@ -150,6 +150,7 @@ Usage:
   sprint-state.sh update-goals               --sprint <id> --goals "<g1|g2|..>"  (E93-S1)
   sprint-state.sh set-review-justification   --sprint <id> --file <path>    (E93-S1)
   sprint-state.sh set-shape                  --sprint <id> --shape <thrust|completion-pass>  (E93-S6)
+  sprint-state.sh set-story-sprint           --story <key> --sprint <id>     (AF-2026-05-30-4 F-15)
   sprint-state.sh reconcile                  [--sprint-id <id>] [--dry-run]
   sprint-state.sh lint-dependencies          [--sprint-id <id>] [--format json|text]
   sprint-state.sh record-escalation-override --item-ids <ids> --user <name> --reason <text>
@@ -2886,6 +2887,133 @@ with open(yaml_path, 'w') as f:
 PY
 }
 
+# ============================================================
+# AF-2026-05-30-4 F-15 — set-story-sprint
+# ============================================================
+#
+# Bind a pre-materialized backlog story's `sprint_id:` to a target sprint
+# when the story file frontmatter currently carries `sprint_id: null`.
+#
+# Closes the chicken-and-egg gap surfaced in Test11 F-15: a story
+# materialized via plain `/gaia-create-story` (not `--for-sprint`) lands with
+# `sprint_id: null`. The subsequent `sprint-state.sh inject` then refuses
+# with `sprint-id mismatch ... refusing to write` because no listed verb
+# binds sprint_id without going through the `--for-sprint` materialization
+# path. This verb is the sanctioned binder: it rewrites ONLY the
+# `sprint_id:` line in the story file's frontmatter (null → "<sprint>"),
+# atomically (mktemp + mv), under a per-story flock.
+#
+# Refuses (exit 1):
+#   - story file's current sprint_id is already a non-null value that
+#     disagrees with the requested target (operator must explicitly
+#     `sprint-state.sh rollover` between sprints).
+#   - target sprint does not match the active sprint-status.yaml
+#     sprint_id (we will not bind a story to an inactive sprint).
+#
+# Idempotent — re-running with a story already bound to the target sprint
+# is a no-op (exit 0).
+#
+# Leading-underscore name keeps this off the NFR-052 public-function map.
+_cmd_set_story_sprint() {
+  local story_key="$1" target_sprint="$2"
+  [ -n "$story_key" ] || die "set-story-sprint: --story is required"
+  [ -n "$target_sprint" ] || die "set-story-sprint: --sprint is required"
+
+  # Resolve the story file via the standard locator.
+  locate_story_file "$story_key"
+  [ -n "$STORY_FILE" ] && [ -f "$STORY_FILE" ] \
+    || die "set-story-sprint: no story file found for key '$story_key'"
+
+  # Verify target sprint matches the active sprint-status.yaml sprint_id.
+  # We will not bind to an inactive or absent sprint.
+  local yaml_sid
+  yaml_sid=$(read_yaml_sprint_id "$SPRINT_STATUS_YAML" 2>/dev/null || true)
+  if [ -z "$yaml_sid" ]; then
+    die "set-story-sprint: sprint-status.yaml at $SPRINT_STATUS_YAML missing top-level sprint_id — run 'sprint-state.sh init --sprint-id $target_sprint' first"
+  fi
+  if [ "$yaml_sid" != "$target_sprint" ]; then
+    die "set-story-sprint: target sprint '$target_sprint' does not match active sprint-status.yaml sprint_id '$yaml_sid'; refusing to bind"
+  fi
+
+  # Read current frontmatter sprint_id.
+  local current_sid
+  current_sid=$(read_story_frontmatter_field "$STORY_FILE" sprint_id 2>/dev/null || true)
+
+  # Idempotency: already bound to the right sprint.
+  if [ "$current_sid" = "$target_sprint" ]; then
+    printf '%s: %s already bound to sprint %s — no-op\n' \
+      "$SCRIPT_NAME" "$story_key" "$target_sprint"
+    return 0
+  fi
+
+  # Safety: refuse to silently retarget a story bound to a different sprint.
+  # The `rollover` verb is the sanctioned cross-sprint mover.
+  case "$current_sid" in
+    ""|"null")
+      : ;; # bindable
+    *)
+      die "set-story-sprint: $story_key already bound to sprint '$current_sid'; use 'sprint-state.sh rollover --from $current_sid --keys $story_key' to move between sprints"
+      ;;
+  esac
+
+  # Acquire a per-story flock and rewrite ONLY the sprint_id: line.
+  local lock_file="${STORY_FILE}.set-sprint.lock"
+  local flock_bin
+  flock_bin=$(command -v flock || true)
+
+  _rewrite_sprint_id() {
+    local tmp
+    tmp=$(mktemp "${STORY_FILE}.XXXXXX") || return 1
+    awk -v to="$target_sprint" '
+      BEGIN { in_fm = 0; rewritten = 0 }
+      /^---[[:space:]]*$/ {
+        if (in_fm == 0) { in_fm = 1; print; next }
+        else { in_fm = 2; print; next }
+      }
+      {
+        if (in_fm == 1 && rewritten == 0 && $0 ~ /^sprint_id:[[:space:]]*(null|"")?[[:space:]]*$/) {
+          print "sprint_id: \"" to "\""
+          rewritten = 1
+          next
+        }
+        print
+      }
+    ' "$STORY_FILE" > "$tmp" || { rm -f "$tmp"; return 1; }
+
+    # Sanity check: confirm rewrite landed.
+    if ! grep -q "^sprint_id:[[:space:]]*\"$target_sprint\"" "$tmp"; then
+      rm -f "$tmp"
+      return 1
+    fi
+
+    mv -f "$tmp" "$STORY_FILE" || { rm -f "$tmp"; return 1; }
+    return 0
+  }
+
+  local rc=0
+  if [ -n "$flock_bin" ]; then
+    (
+      exec 9>"$lock_file"
+      if ! "$flock_bin" -x -w 5 9; then
+        die "flock timeout acquiring $lock_file"
+      fi
+      _rewrite_sprint_id
+    )
+    rc=$?
+  else
+    _rewrite_sprint_id
+    rc=$?
+  fi
+
+  rm -f "$lock_file"
+  if [ "$rc" -ne 0 ]; then
+    die "set-story-sprint: failed to rewrite sprint_id in $STORY_FILE"
+  fi
+
+  printf '%s: %s sprint_id bound to %s\n' \
+    "$SCRIPT_NAME" "$story_key" "$target_sprint"
+}
+
 # ---------- Argument parsing ----------
 
 main() {
@@ -2901,7 +3029,7 @@ main() {
       usage
       exit 0
       ;;
-    init|transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape)
+    init|transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape|set-story-sprint)
       ;;
     *)
       printf '%s: error: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -3073,6 +3201,13 @@ main() {
     inject)
       [ -n "$story_key" ] || die "inject requires --story <key>"
       cmd_inject "$story_key" "${reconcile_sprint_id:-}" ;;
+    set-story-sprint)
+      # AF-2026-05-30-4 F-15 — bind a pre-materialized backlog story's
+      # sprint_id (currently null) to the active sprint without going
+      # through `/gaia-create-story --for-sprint` materialization.
+      [ -n "$story_key" ] || die "set-story-sprint requires --story <key>"
+      [ -n "$reconcile_sprint_id" ] || die "set-story-sprint requires --sprint <id>"
+      _cmd_set_story_sprint "$story_key" "$reconcile_sprint_id" ;;
     reconcile)
       # reconcile_sprint_id currently scopes to the active sprint implicitly
       # since the yaml holds one sprint at a time (ADR-055 §10.29.1 default).

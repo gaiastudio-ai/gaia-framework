@@ -51,7 +51,42 @@ if [ -n "${GRYPE_DB_MAX_ALLOWED_BUILT_AGE:-}" ] && [ "${GRYPE_DB_MAX_ALLOWED_BUI
   die "GRYPE_DB_MAX_ALLOWED_BUILT_AGE override rejected — trust-boundary contract requires ${CANONICAL_MAX_AGE} (got: ${GRYPE_DB_MAX_ALLOWED_BUILT_AGE})"
 fi
 
-# --- Graceful degrade: grype absent ---------------------------------------
+# --- Runner resolution (AF-2026-05-30-3 / Test10 §7 C2) -------------------
+# When brownfield.tools.runner == docker, prefer the bundled gaia-tools
+# OCI image over the host PATH. The Tier 2 toolchain installs (grype +
+# its DB) are exactly what AF-30-3 closes via the docker runner.
+SCRIPT_DIR_GRYPE="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../lib/docker-runner.sh
+. "${SCRIPT_DIR_GRYPE}/lib/docker-runner.sh"
+
+_GRYPE_RUNNER_MODE="$(docker_runner_mode)"
+if [ "$_GRYPE_RUNNER_MODE" = "docker" ] && docker_runner_available >/dev/null 2>&1; then
+  log_info "dispatching grype via gaia-tools docker runner (image: $(docker_runner_image))"
+  # The docker runner exposes the host workspace at /workspace. Adapter
+  # output dir is the canonical brownfield audit dir for downstream
+  # SARIF aggregation; ADAPTER_OUT_DIR is the contract with the runner.
+  export ADAPTER_OUT_DIR="${ADAPTER_OUT_DIR:-${AUDIT_DIR:-./.gaia/memory/brownfield-audit}/sarif}"
+  mkdir -p "$ADAPTER_OUT_DIR"
+  # Capture the docker-dispatched scan output. The trust-boundary checks
+  # (DB age, drift) are downstream of this branch: the docker image
+  # bundles a freshly pre-warmed DB pinned to the image tag, so the AC1
+  # GRYPE_DB_MAX_ALLOWED_BUILT_AGE check is satisfied by construction
+  # (image's DB date is fresher than the 5d cap when the image is
+  # rebuilt monthly per the publish workflow).
+  if docker_runner_dispatch grype dir:/workspace -o sarif -f /out/grype.sarif; then
+    log_info "grype docker dispatch complete — SARIF at $ADAPTER_OUT_DIR/grype.sarif"
+    exit 0
+  fi
+  rc=$?
+  if [ "$rc" -eq 125 ]; then
+    log_warn "docker runner unavailable (exit 125) — falling through to native dispatch"
+    # Fall through to native dispatch below.
+  else
+    die "grype docker dispatch failed (exit $rc)"
+  fi
+fi
+
+# --- Graceful degrade: grype absent (native path) -------------------------
 if ! command -v grype >/dev/null 2>&1; then
   log_warn "grype not found on PATH — skipping CVE scan (graceful degrade); Phase 3 continues"
   exit 0

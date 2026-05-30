@@ -218,6 +218,9 @@ nfr_id_present() {
 # deps_failure_modes_defined <file>
 # Pass when the Dependencies section documents BOTH failure-mode text
 # AND fallback-behavior text (case-insensitive, hyphen-flexible).
+# Accepts EITHER prose form (`failure mode` / `fallback behavior`) OR
+# table-column form (`Failure mode` / `Fallback` column header in a
+# markdown table row), per AF-2026-05-30-4 F-08.
 # This is the VCP-CHK-12 / AC-EC9 anchor check.
 deps_failure_modes_defined() {
   local f="$1"
@@ -230,8 +233,15 @@ deps_failure_modes_defined() {
       if (in_section && /^##[[:space:]]/) { in_section = 0 }
       if (in_section) {
         lower = tolower($0)
+        # Prose forms (original behavior).
         if (lower ~ /failure[- ]mode/) { has_fail = 1 }
         if (lower ~ /fallback[- ]behav/) { has_fallback = 1 }
+        # Table-header form — a markdown table row containing a Fallback
+        # or Failure(-mode) column header counts as documenting it.
+        if ($0 ~ /\|/) {
+          if (lower ~ /\|[[:space:]]*failure([[:space:]]+mode)?[[:space:]]*\|/) { has_fail = 1 }
+          if (lower ~ /\|[[:space:]]*fallback([[:space:]]+behav[a-z]*)?[[:space:]]*\|/) { has_fallback = 1 }
+        }
       }
     }
     END { exit ((has_fail && has_fallback) ? 0 : 1) }

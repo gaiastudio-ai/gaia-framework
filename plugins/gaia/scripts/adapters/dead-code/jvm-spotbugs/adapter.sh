@@ -48,6 +48,33 @@ default_out() {
 }
 OUT="${JVM_OUT_DIR:-$(default_out)}"
 
+# --- Runner resolution (AF-2026-05-30-3 / Test10 §7 C2) -------------------
+# When brownfield.tools.runner == docker, prefer the bundled gaia-tools
+# OCI image — operators no longer need a JVM + spotbugs JAR locally.
+_SB_SCRIPTS_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+# shellcheck source=../../../lib/docker-runner.sh
+. "${_SB_SCRIPTS_DIR}/lib/docker-runner.sh"
+
+_SB_RUNNER_MODE="$(docker_runner_mode)"
+if [ "$_SB_RUNNER_MODE" = "docker" ] && docker_runner_available >/dev/null 2>&1; then
+  log_info "dispatching spotbugs via gaia-tools docker runner (image: $(docker_runner_image))"
+  mkdir -p "$OUT/dead-code" "$OUT/sarif"
+  export ADAPTER_OUT_DIR="$OUT/sarif"
+  # The bundled spotbugs entrypoint in gaia-tools accepts -sarif and
+  # writes findings to /out/spotbugs.sarif inside the container, which
+  # surfaces at $ADAPTER_OUT_DIR/spotbugs.sarif on the host.
+  if docker_runner_dispatch spotbugs -textui -sarif -output /out/spotbugs.sarif /workspace; then
+    log_info "spotbugs docker dispatch complete — SARIF at $ADAPTER_OUT_DIR/spotbugs.sarif"
+    exit 0
+  fi
+  rc=$?
+  if [ "$rc" -eq 125 ]; then
+    log_warn "docker runner unavailable (exit 125) — falling through to native dispatch"
+  else
+    log_warn "spotbugs docker dispatch failed (exit $rc) — falling through to native dispatch"
+  fi
+fi
+
 if ! command -v spotbugs >/dev/null 2>&1; then
   log_warn "spotbugs toolchain absent — jvm-spotbugs skipped (graceful degrade); Phase 3 continues"
   exit 0

@@ -99,7 +99,7 @@ Each phase is independent in its write targets but must run sequentially because
 <!-- E71-S2: detection-driven config extension begin -->
 5a. **Detection-driven config draft (E71-S2 / FR-RSV2-35, FR-RSV2-36, AF-2026-05-04-1).** After the boolean capability flags are set, run `detect-signals.sh` to produce a structured signal inventory and (optionally) merge it into the project's `.gaia/config/project-config.yaml`:
 
-   - Run `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-signals.sh --project-root <project> --merge-into <project>/.gaia/config/project-config.yaml --output <project>/config/project-config.draft.yaml --schema ${CLAUDE_PLUGIN_ROOT}/config/project-config.schema.yaml --format json`.
+   - Run `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-signals.sh --project-root <project> --merge-into <project>/.gaia/config/project-config.yaml --output <project>/.gaia/config/project-config.draft.yaml --schema ${CLAUDE_PLUGIN_ROOT}/config/project-config.schema.yaml --format json`. **AF-2026-05-30-4 / Test11 F-01 + V-01**: the draft output path MUST live under `.gaia/config/` (canonical post-ADR-111), not at repo-root `config/`. Prior to this fix the prose said `<project>/config/project-config.draft.yaml` (outside `.gaia/`, contradicting both the .gaia/-only write contract AND the step 5b multi-stack draft path on line 122 which already used the canonical home). Worse, on any clean checkout `config/` doesn't exist and the script died with `FileNotFoundError`, exit 1 — Phase 1 step 5a was unreachable.
    - The script emits a JSON document with five keys — `stacks`, `platforms`, `ci_platform`, `tool_providers`, `warnings` — plus a top-level `verdict` (PASS | WARNING | CRITICAL) per ADR-063.
    - Detected sections are merged into the existing `project-config.yaml` using **RFC 7396 JSON Merge Patch** semantics: existing user-edited values are preserved unchanged; only null or absent fields are filled. The merged draft is written to `project-config.draft.yaml` for user review before promotion to `project-config.yaml`.
    - When the `--schema` flag is provided, the script invokes `resolve-config.sh --shared <draft> --schema <schema>` to validate the merged draft. A schema rejection collapses the verdict to `CRITICAL` and exits non-zero.
@@ -158,10 +158,19 @@ Before the Phase 3 scan timer starts, run the deterministic-tools pre-flight. Th
 # them for the adapter scripts. resolve-config.sh is the single config source.
 DET_TOOLS="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.deterministic_tools 2>/dev/null)"
 PREWARM_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.prewarm_enabled 2>/dev/null)"
-# resolve-config emits empty when the key is unset; consumers treat empty as
-# false (ADR-078 / matches the test_execution_bridge.bridge_enabled idiom).
-export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-false}"
-export GAIA_BROWNFIELD_PREWARM_ENABLED="${PREWARM_ON:-false}"
+# resolve-config emits empty when the key is unset.
+# AF-2026-05-30-3: defaults flipped from `false` to `true` so a stock
+# /gaia-brownfield run actually engages the deterministic-tools battery.
+# Prior to this flip the layer was inert on every clean install (the
+# Test10 §7 finding) — operators had to discover + flip the master flag
+# by hand, which nobody did. Operators who want the layer OFF can
+# declare `brownfield.deterministic_tools: false` (or
+# `brownfield.prewarm_enabled: false`) explicitly in project-config.yaml;
+# absence now resolves to ON. External-integration flags
+# (defectdojo_enabled) remain opt-in because they require an API token
+# the operator must configure (avoids silent third-party exfil).
+export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-true}"
+export GAIA_BROWNFIELD_PREWARM_ENABLED="${PREWARM_ON:-true}"
 
 # Run pre-warm (it self-skips with an INFO line when either flag is off).
 prewarm_start=$(date +%s)
@@ -220,6 +229,8 @@ Adapter dispatch then consumes each `<stack>.files` list via the existing `run.s
 ### Phase 3 SBOM completeness check (E104-S3 / FR-543)
 
 After the cdxgen SBOM is produced, run the completeness check: compare the declared dependency count (from lock files) against the SBOM component count, and WARN when `abs(divergence_pct)` exceeds 10% — or 15% when any of five per-ecosystem carve-outs auto-detects (Yarn Berry PnP, conda, Go vendor, Gradle no-lockfile, Gradle shadow/shade) — so real-dependency CVEs don't silently fail to surface from an incomplete SBOM. NEVER aborts (NFR-84). When the SBOM is absent (the cdxgen SBOM-persist producer is not yet wired — tracked Finding), the check INFO-skips.
+
+**SBOM-format note (AF-2026-05-30-4 / Test11 F-27).** cdxgen emits CycloneDX 1.7 (current spec); grype 0.112.0 rejects 1.7 input ("sbom format not recognized") because Anchore's parser tracks the CycloneDX spec a few revisions behind. When feeding an SBOM to grype (e.g. `grype sbom:<file>` for a re-scan without re-walking the project tree), prefer **syft** as the SBOM producer (`syft scan dir:. -o cyclonedx-json=<file>`) — the Anchore tools are version-matched and the handoff is reliable. cdxgen output remains the canonical source for the completeness check above (which doesn't pass through grype) and for any downstream consumer that accepts current CycloneDX. The brownfield Phase 3 pipeline therefore runs BOTH SBOMs: syft for the grype-feeding path, cdxgen for the broader-language-coverage path.
 
 ```bash
 SBOM_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.sbom_completeness_enabled 2>/dev/null)"
@@ -306,6 +317,17 @@ labeled per-stack sub-sections — never one flat list. Telemetry
 adapter through the single-author `brownfield-telemetry.sh`.
 
 **Partial-failure semantics (AC-EC8):** If a scanner crashes mid-run, the other scanners continue. The failed scan writes a gap row tagged `scan failed: {reason}`. The overall skill exits non-zero with a partial-result summary listing which scanners succeeded, which failed, and what recoverable evidence is available. The remaining scanners continue — one failure does not block the cohort.
+
+**Language-aware INFO degrade log (AF-2026-05-30-4 D-02).** When a stack signal is present but the matching deterministic dead-code adapter cannot run because its toolchain is absent, emit ONE INFO line per missing toolchain at Phase 3 scan time — do NOT wait for the Phase 7 banner to be the only fidelity disclosure. The emission rule, applied per detected stack:
+
+- Python signal present (e.g. `pyproject.toml`, `setup.py`, `requirements.txt`, or `.py` files under a configured stack path) AND `vulture` not on PATH:
+  `[INFO] python project detected — install vulture for tool-grade dead-code (gaia-doctor --install)`
+- Go signal present (`go.mod` or `.go` files) AND the `deadcode` tool (golang.org/x/tools/cmd/deadcode) not on PATH:
+  `[INFO] go project detected — install golang.org/x/tools/cmd/deadcode for tool-grade dead-code (gaia-doctor --install)`
+- JVM signal present (`pom.xml`, `build.gradle`, `build.gradle.kts`, or `.java`/`.kt` files) AND `spotbugs` not on PATH:
+  `[INFO] jvm project detected — install spotbugs for tool-grade dead-code (gaia-doctor --install)`
+
+Stack detection re-uses the signal set already computed by `detect-signals.sh` in Phase 1 — do NOT re-scan. The INFO lines are non-blocking and DO NOT change the Phase 3 verdict; they exist to make the toolchain-absence visible at the scan step rather than only at the Phase 7 banner.
 
 ### Per-Subagent Scan Diagnostic Table (E48-S4)
 
@@ -503,7 +525,7 @@ Before SARIF merge runs, invoke `/gaia-doctor` (via its check-tools.sh) to deter
 DOCTOR_JSON=$(bash ${CLAUDE_PLUGIN_ROOT}/skills/gaia-doctor/scripts/check-tools.sh --json 2>/dev/null || echo '{}')
 TIER=$(printf '%s' "$DOCTOR_JSON" | jq -r '.tier // "tier-0"')
 TIER_REASON=$(printf '%s' "$DOCTOR_JSON" | jq -r '.tier_reason // "LLM-only (deterministic tools missing — heuristic fidelity)"')
-MISSING_TOOLS=$(printf '%s' "$DOCTOR_JSON" | jq -r '[.tools[] | select(.state=="missing") | .name] | join(", ")')
+MISSING_TOOLS=$(printf '%s' "$DOCTOR_JSON" | jq -r '[.tools[] | select(.state=="missing") | .id] | join(", ")')
 
 REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
 # Prepend banner + frontmatter scan_fidelity field. If consolidated-gaps.md
@@ -546,11 +568,14 @@ fi
 Before the 6-step gap-consolidation recipe runs, merge all scanner SARIF outputs into one merged SARIF. This gives the recipe (and downstream dedup E104-S1) a single uniform interchange format instead of bespoke per-tool JSON.
 
 ```bash
-# Flag resolution (ADR-078 master flag + per-tool override). Empty → treated false.
+# Flag resolution (ADR-078 master flag + per-tool override).
+# AF-2026-05-30-3: defaults flipped from `false` to `true` so a stock
+# /gaia-brownfield run merges SARIF by default. See the matching note on
+# the Phase 3 prelude flip earlier in this SKILL.
 DET_TOOLS="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.deterministic_tools 2>/dev/null)"
 SARIF_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.sarif_merge_enabled 2>/dev/null)"
-export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-false}"
-export GAIA_BROWNFIELD_SARIF_MERGE_ENABLED="${SARIF_ON:-false}"
+export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-true}"
+export GAIA_BROWNFIELD_SARIF_MERGE_ENABLED="${SARIF_ON:-true}"
 
 sarif_merge_start=$(date +%s)
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/sarif-merge.sh" || true
@@ -806,6 +831,51 @@ The full artifact set emitted by this skill (preserved from the legacy `output.a
 - `.gaia/artifacts/planning-artifacts/architecture.md` (Phase 9a)
 - `.gaia/artifacts/planning-artifacts/epics-and-stories.md` (downstream, via next-step chain — see below)
 - `.gaia/artifacts/planning-artifacts/brownfield-onboarding.md` (primary)
+
+### Known constraint — artifact dispersion across four roots (AF-2026-05-30-4 F-20 / F-21)
+
+The artifact set above is intentionally dispersed across **four** roots
+rather than consolidated under a single `planning-artifacts/` tree. The
+dispersion is FORCED by the framework's existing gate / writer contracts
+in 1.181.0 — relocating any of these files would break the readiness and
+review gates until the underlying resolvers are refactored.
+
+The four roots and their pin points:
+
+1. `.gaia/artifacts/planning-artifacts/` — the bulk of brownfield outputs
+   (PRD, architecture, ux-design, epics-and-stories, the seven scan
+   reports, NFR-assessment + perf-test-plan dated snapshots,
+   adversarial reviews, etc.). The "natural" home.
+2. `.gaia/artifacts/test-artifacts/` — `test-plan.md`,
+   `traceability-matrix.md`, `ci-setup.md`, and
+   `dependency-audit-{date}.md`. Pinned here by the
+   `validate-gate.sh` resolvers `test_plan_exists` /
+   `traceability_exists` / `ci_setup_exists` which look at
+   `${TEST_ARTIFACTS}/…`. Moving these into `planning-artifacts/`
+   without changing the resolvers first breaks the readiness gates.
+3. `.gaia/config/` — `test-environment.yaml(.example)`, pinned by
+   ADR-110.
+4. `.gaia/state/` — `sprint-status.yaml` (the live runtime state),
+   pinned by `sprint-state.sh`'s writer contract.
+
+Per-story `reviews/` (Test-artifacts mirror absence, F-21):
+The test-lens review reports (`qa-tests`, `test-automate-review`,
+`test-review`) and the per-tier `execution-evidence.json` are written
+ONLY under `implementation-artifacts/epic-*/{key}-*/reviews/`, co-located
+with the code / security / performance reviews. The framework does NOT
+emit a symmetric `test-artifacts/epic-*/{key}-*/` mirror, and execution
+evidence is a single `execution-evidence.json` rather than a per-tier
+`execution-evidence/{qa-tests,test-automation,test-review}.json` set.
+AF-2026-05-30-1's per-story resolver already supports the mirror
+direction in code; consumers (the three test reviewers + the bridge)
+have not yet been retrofitted to write or read the mirror. Until that
+retrofit lands, expect every test-lens artifact at the
+`implementation-artifacts/…/reviews/` path only.
+
+A consolidation refactor (moving test-plan/traceability/ci-setup into
+`planning-artifacts/`, mirroring the test-lens artifacts under
+`test-artifacts/`) is a multi-skill change tracked separately — out of
+scope for the brownfield skill itself.
 
 The `{date}` placeholder is substituted with the current date in `YYYY-MM-DD` form at write time, preserving the legacy substitution pattern.
 

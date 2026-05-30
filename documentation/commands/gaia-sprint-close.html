@@ -150,6 +150,31 @@
             (E83) or
             <code>.gaia/memory/checkpoints/val-envelope-&lt;sha256(&lt;sprint_id&gt;):0:16&gt;.json</code>
             (E87).
+            <br />
+            <strong>Sentinel payload schema (AF-2026-05-30-4 D-06).</strong>
+            The sentinel JSON MUST carry the canonical Val-envelope shape:
+            <code>agent: "val"</code> (literal lowercase string),
+            <code>status: "PASSED" | "FAILED" | "UNVERIFIED"</code>,
+            <code>summary: "&lt;short prose&gt;"</code>, and
+            <code>findings: [&hellip;]</code>. A sentinel that exists on disk
+            but is missing any of these fields, or that has
+            <code>agent</code> set to anything other than the literal string
+            <code>"val"</code>, is treated as
+            <strong>MISSING</strong> and the skill refuses with the same
+            <code>HALT: sprint-close refused &mdash; sprint-review verdict is
+            MISSING; run /gaia-sprint-review first</code> error.
+          </li>
+          <li>
+            <strong>Retro doc path (AF-2026-05-30-4 D-06).</strong> The retro
+            file MUST live at the EXACT path the close ceremony's glob
+            walks:
+            <code>.gaia/artifacts/implementation-artifacts/retrospective-&lt;sprint_id&gt;-*.md</code>
+            (or the per-sprint subdir layout
+            <code>&hellip;/retrospective/retrospective-&lt;sprint_id&gt;-*.md</code>).
+            Both the date-only form <code>retrospective-&lt;id&gt;-&lt;date&gt;.md</code>
+            and the clobber-avoidance form
+            <code>retrospective-&lt;id&gt;-&lt;date&gt;-&lt;HHMM&gt;.md</code>
+            emitted by <code>/gaia-retro</code> are accepted.
           </li>
           <li>
             <strong>Sprint-review verdict must be PASSED</strong> (or
