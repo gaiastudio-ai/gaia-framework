@@ -28,7 +28,7 @@ This is the unifying principle of every GAIA review and action skill (FR-DEJ-1, 
 
 `/gaia-test-mobile-e2e` is the deployment-phase action skill that runs a mobile end-to-end test suite against a real-device cloud (Firebase Test Lab, BrowserStack, or Sauce Labs). The skill:
 
-1. Resolves the configured device-farm adapter from `device_farm.adapter` in `config/project-config.yaml`.
+1. Resolves the configured device-farm adapter from `device_farm.adapter` in `.gaia/config/project-config.yaml`.
 2. Validates the bridge toggle (`test_execution_bridge.bridge_enabled`) — short-circuits with `verdict: SKIPPED` if the bridge is disabled.
 3. Dispatches the suite via `plugins/gaia/scripts/dispatch-device-farm.sh` (E74-S9), which honours `runtime-profile: network` and validates the adapter's `auth_env_var`.
 4. Normalizes the adapter output into the canonical per-device schema (`device_id`, `os_version`, `form_factor`, `verdict`, `duration_ms`, `artifacts`).

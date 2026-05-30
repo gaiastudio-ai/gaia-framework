@@ -32,7 +32,7 @@ Resolve via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh project_config_path
 
 #### Step 2a — Print current state first (every invocation)
 
-The first user-visible line of output for every invocation MUST surface the **current state** of `platforms[]` resolved from `config/project-config.yaml` (per AF-2026-05-08-2 / TC-RSV2-EDITOR-5). Read the array using the same `yq` path the helper uses for `list`, and render it as:
+The first user-visible line of output for every invocation MUST surface the **current state** of `platforms[]` resolved from `.gaia/config/project-config.yaml` (per AF-2026-05-08-2 / TC-RSV2-EDITOR-5). Read the array using the same `yq` path the helper uses for `list`, and render it as:
 
 ```
 current platforms[]: [<comma-separated-or-empty>]

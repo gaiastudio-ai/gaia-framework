@@ -147,8 +147,8 @@ _resolve_test_cmd() {
   local _cfg_bridge=""
   if [ -f ".gaia/config/project-config.yaml" ]; then
     _cfg_bridge=".gaia/config/project-config.yaml"
-  elif [ -f "config/project-config.yaml" ]; then
-    _cfg_bridge="config/project-config.yaml"
+  elif [ -f ".gaia/config/project-config.yaml" ]; then
+    _cfg_bridge=".gaia/config/project-config.yaml"
   fi
   if [ -n "$_cfg_bridge" ] && command -v yq >/dev/null 2>&1; then
     local bridge_enabled
@@ -177,8 +177,8 @@ _resolve_test_cmd() {
   local _cfg=""
   if [ -f ".gaia/config/project-config.yaml" ]; then
     _cfg=".gaia/config/project-config.yaml"
-  elif [ -f "config/project-config.yaml" ]; then
-    _cfg="config/project-config.yaml"
+  elif [ -f ".gaia/config/project-config.yaml" ]; then
+    _cfg=".gaia/config/project-config.yaml"
   fi
   if [ -n "$_cfg" ]; then
     local cmd
@@ -286,8 +286,8 @@ _resolve_script_cmd() {
   local _cfg=""
   if [ -f ".gaia/config/project-config.yaml" ]; then
     _cfg=".gaia/config/project-config.yaml"
-  elif [ -f "config/project-config.yaml" ]; then
-    _cfg="config/project-config.yaml"
+  elif [ -f ".gaia/config/project-config.yaml" ]; then
+    _cfg=".gaia/config/project-config.yaml"
   fi
   if [ -n "$_cfg" ]; then
     local cmd

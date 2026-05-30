@@ -11,7 +11,7 @@
 #     notes_template_ref: <relative-path-from-this-knowledge-dir>
 #
 # The registry is read-only knowledge under the skill's plugin tree. Project-
-# level `config/project-config.yaml` does NOT override modes — every install
+# level `.gaia/config/project-config.yaml` does NOT override modes — every install
 # gets the same defaults.
 
 modes:

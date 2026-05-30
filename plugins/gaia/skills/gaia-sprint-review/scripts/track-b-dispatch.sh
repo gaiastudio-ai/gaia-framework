@@ -84,8 +84,8 @@ sprint_id=""
 config_path=""
 if [ -f ".gaia/config/project-config.yaml" ]; then
   config_path=".gaia/config/project-config.yaml"
-elif [ -f "config/project-config.yaml" ]; then
-  config_path="config/project-config.yaml"
+elif [ -f ".gaia/config/project-config.yaml" ]; then
+  config_path=".gaia/config/project-config.yaml"
 else
   config_path=".gaia/config/project-config.yaml"  # canonical default for the missing-file diagnostic
 fi

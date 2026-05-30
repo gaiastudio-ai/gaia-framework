@@ -27,7 +27,7 @@ This skill is the **reference implementation** for the deployment-phase action s
 
 **Fork context semantics (NFR-RSV2-5):** Phase 3B LLM judgment runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). The fork CANNOT modify files. Phase 3A is deterministic shell — no LLM involvement, no fork required. Phase 4 verdict resolution and Review Gate update happen in the parent context via `finalize.sh`.
 
-**Adapter swappability (AC9):** The configured adapter is resolved by `select-adapter.sh` with first-match-wins precedence: `--adapter <name>` CLI flag → `test_execution.e2e.adapter` from `config/project-config.yaml` → default `playwright-e2e`.
+**Adapter swappability (AC9):** The configured adapter is resolved by `select-adapter.sh` with first-match-wins precedence: `--adapter <name>` CLI flag → `test_execution.e2e.adapter` from `.gaia/config/project-config.yaml` → default `playwright-e2e`.
 
 **Graceful degradation (AC10):** When `tool-availability-probe.sh` returns `expected_and_missing` (the underlying tool is not installed), Phase 3A emits a `checks[].status: errored` row with a diagnostic `error_reason` naming the missing tool and installation hint. `verdict-resolver.sh` then maps this to BLOCKED — never to a false APPROVE.
 

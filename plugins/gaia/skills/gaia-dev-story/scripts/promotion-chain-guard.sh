@@ -11,7 +11,7 @@
 #                 exit 1.
 #
 # No positional args. Reads from $PROJECT_CONFIG (default:
-# config/project-config.yaml relative to CWD).
+# .gaia/config/project-config.yaml relative to CWD).
 #
 # YAML parsing strategy (mirrors gaia-public/plugins/gaia/scripts/lib/
 # dev-story-security-invariants.sh::assert_pr_target_from_chain): prefer
@@ -52,7 +52,7 @@ emit_absent() {
 #
 # E55-S9 / sprint-37 false-flag fix (E53-S244, E69-S4): the original
 # implementation defaulted $PROJECT_CONFIG to a CWD-relative path
-# `config/project-config.yaml`. When /gaia-dev-story runs from a working
+# `.gaia/config/project-config.yaml`. When /gaia-dev-story runs from a working
 # directory whose parent (not itself) holds the team-shared config — the
 # canonical layout for `{project-root}/gaia-public/` — that relative path
 # resolved to a non-existent file and the guard returned ABSENT, silently
@@ -60,9 +60,9 @@ emit_absent() {
 #
 # Discovery ladder (mirrors scripts/resolve-config.sh, E28-S191 / AC1):
 #   1. $PROJECT_CONFIG                                     (explicit env override)
-#   2. $CLAUDE_PROJECT_ROOT/config/project-config.yaml     (if file exists)
-#   3. $PWD/config/project-config.yaml                     (if file exists)
-#   4. Upward walk from $PWD looking for config/project-config.yaml,
+#   2. $CLAUDE_PROJECT_ROOT/.gaia/config/project-config.yaml     (if file exists)
+#   3. $PWD/.gaia/config/project-config.yaml                     (if file exists)
+#   4. Upward walk from $PWD looking for .gaia/config/project-config.yaml,
 #      capped at 8 levels and stopping at the filesystem root.
 #
 # Echoes the resolved absolute path on stdout, or empty if no config found.
@@ -78,8 +78,8 @@ discover_config() {
       printf '%s\n' "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"
       return 0
     fi
-    if [ -f "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml" ]; then
-      printf '%s\n' "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
+    if [ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
+      printf '%s\n' "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"
       return 0
     fi
   fi
@@ -94,8 +94,8 @@ discover_config() {
       printf '%s\n' "${dir}/.gaia/config/project-config.yaml"
       return 0
     fi
-    if [ -f "${dir}/config/project-config.yaml" ]; then
-      printf '%s\n' "${dir}/config/project-config.yaml"
+    if [ -f "${dir}/.gaia/config/project-config.yaml" ]; then
+      printf '%s\n' "${dir}/.gaia/config/project-config.yaml"
       return 0
     fi
     # Stop at filesystem root.

@@ -272,8 +272,8 @@ if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
   CONFIG_PATH=""
   if [ -f ".gaia/config/project-config.yaml" ]; then
     CONFIG_PATH=".gaia/config/project-config.yaml"
-  elif [ -f "config/project-config.yaml" ]; then
-    CONFIG_PATH="config/project-config.yaml"
+  elif [ -f ".gaia/config/project-config.yaml" ]; then
+    CONFIG_PATH=".gaia/config/project-config.yaml"
   fi
   if [ -n "$CONFIG_PATH" ] && ! grep -qE "^ci_cd:" "$CONFIG_PATH" 2>/dev/null; then
     log "WARNING: ci-setup.md was written but project-config.yaml hydration was SKIPPED."

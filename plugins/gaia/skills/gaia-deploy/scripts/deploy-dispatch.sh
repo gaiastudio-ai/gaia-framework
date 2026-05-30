@@ -39,7 +39,7 @@
 #                              scripts/adapters/<name>/. Defaults to the
 #                              dispatch script's own plugin root.
 #   GAIA_DEPLOY_CONFIG       — path to project-config.yaml. Default search:
-#                              config/project-config.yaml then
+#                              .gaia/config/project-config.yaml then
 #                              project-config.yaml (CWD).
 #
 # Refs: ADR-078, ADR-080, FR-426, AC3/11/12/13.
@@ -138,8 +138,8 @@ resolve_config_path() {
     printf '%s' ".gaia/config/project-config.yaml"
     return 0
   fi
-  if [ -f "config/project-config.yaml" ]; then
-    printf '%s' "config/project-config.yaml"
+  if [ -f ".gaia/config/project-config.yaml" ]; then
+    printf '%s' ".gaia/config/project-config.yaml"
     return 0
   fi
   if [ -f "project-config.yaml" ]; then

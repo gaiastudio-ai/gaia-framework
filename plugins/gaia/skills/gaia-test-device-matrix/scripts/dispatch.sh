@@ -81,7 +81,7 @@ fi
 
 if [ -z "$ADAPTER" ]; then
   # AF-2026-05-17-10: honest diagnostic — see mobile-e2e dispatch.sh for rationale.
-  printf '%s\n' '{"skill":"gaia-test-device-matrix","verdict":"ERROR","reason":"no_device_farm_adapter","diagnostic":"No device-farm adapter configured. Set device_farm.adapter in config/project-config.yaml to one of: firebase-test-lab | browserstack | sauce-labs. No section-scoped editor skill currently exists for this key (AF-2026-05-17-10) — edit the YAML directly. The Test Execution Bridge must also be enabled (/gaia-bridge-enable)."}'
+  printf '%s\n' '{"skill":"gaia-test-device-matrix","verdict":"ERROR","reason":"no_device_farm_adapter","diagnostic":"No device-farm adapter configured. Set device_farm.adapter in .gaia/config/project-config.yaml to one of: firebase-test-lab | browserstack | sauce-labs. No section-scoped editor skill currently exists for this key (AF-2026-05-17-10) — edit the YAML directly. The Test Execution Bridge must also be enabled (/gaia-bridge-enable)."}'
   exit 2
 fi
 

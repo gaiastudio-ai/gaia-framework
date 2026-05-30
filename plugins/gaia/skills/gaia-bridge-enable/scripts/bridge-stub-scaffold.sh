@@ -45,8 +45,8 @@ fi
 if [ -z "$target" ]; then
   if [ -f ".gaia/config/project-config.yaml" ]; then
     target=".gaia/config/project-config.yaml"
-  elif [ -f "config/project-config.yaml" ]; then
-    target="config/project-config.yaml"
+  elif [ -f ".gaia/config/project-config.yaml" ]; then
+    target=".gaia/config/project-config.yaml"
   else
     log "no project-config.yaml found at .gaia/config/ or config/"
     exit 1
