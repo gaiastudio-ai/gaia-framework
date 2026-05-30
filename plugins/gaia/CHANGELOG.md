@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.180.9] — 2026-05-29
+
+### Changed
+
+- (skills) add Operator Quickstart to dev-story + review-all + sprint-review (AF-29-3 D6)
+
 ## [1.180.8] — 2026-05-29
 
 ### Changed
