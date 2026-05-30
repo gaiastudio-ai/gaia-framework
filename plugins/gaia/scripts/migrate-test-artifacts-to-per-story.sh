@@ -59,10 +59,10 @@ if [ ! -d "$IMPL_ROOT" ]; then
   exit 1
 fi
 
-# resolve_story_target <type> <story_key>
+# _resolve_story_target <type> <story_key>
 # Echoes the new canonical target path, or exits 1 if the story dir doesn't
 # exist (cannot resolve {epic_slug} + {story_slug}).
-resolve_story_target() {
+_resolve_story_target() {
   local type="$1"
   local key="$2"
   local match
@@ -85,7 +85,7 @@ moved=0
 skipped=0
 stragglers=()
 
-migrate_type() {
+_migrate_type() {
   local type="$1"
   local f
   # Match the flat form {type}-{key}.md at the test-artifacts top level
@@ -104,7 +104,7 @@ migrate_type() {
         continue
         ;;
     esac
-    if ! target=$(resolve_story_target "$type" "$key"); then
+    if ! target=$(_resolve_story_target "$type" "$key"); then
       stragglers+=("$f")
       skipped=$((skipped+1))
       continue
@@ -127,9 +127,9 @@ migrate_type() {
 
 echo "migrate-test-artifacts-to-per-story: ${TEST_ROOT}"
 echo "== atdd =="
-migrate_type atdd
+_migrate_type atdd
 echo "== test-automate-plan =="
-migrate_type test-automate-plan
+_migrate_type test-automate-plan
 
 # Prune emptied directories (per CLAUDE.md mass-move policy). Only touches
 # truly empty dirs, so the new per-epic tree and any non-empty legacy
