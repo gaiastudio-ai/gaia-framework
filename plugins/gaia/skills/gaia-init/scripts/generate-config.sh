@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # generate-config.sh — convert a JSON answer-bundle (stdin) into a complete
-# config/project-config.yaml at the target project root.
+# .gaia/config/project-config.yaml at the target project root.
 # Story: E71-S1 (FR-RSV2-34, AC2). Deterministic per ADR-042.
 #
 # Atomic write: serialize to <target>.tmp first, then rename. Refuses to
@@ -21,7 +21,7 @@
 #   generate-config.sh --path <project-root> --name <project-name> < answers.json
 #
 # Exit codes:
-#   0  Wrote config/project-config.yaml.
+#   0  Wrote .gaia/config/project-config.yaml.
 #   1  Refused to clobber existing config (greenfield invariant).
 #   2  Usage error / malformed input.
 
@@ -360,17 +360,22 @@ if phase == "full":
             _compliance = {"regimes": _compliance} if _compliance else {}
         _ui_present_explicit_false = _compliance.get("ui_present") is False
         if _ui_present_explicit_false:
-            # Operator explicitly declared no UI. Leave platforms empty — schema
-            # validation will surface that as a missing field they need to
-            # address (via /gaia-config-platform), not silently mis-tag as web.
-            pass
+            # AF-2026-05-30-2 / Test10 F-05: emit platforms:[server] for
+            # explicit headless declarations. Prior to F-05 the headless
+            # branch left platforms empty, but the JSON schema's full-phase
+            # `platforms` minItems:1 constraint then rejected the config —
+            # meaning a headless service (the shape the brownfield tutorial
+            # tells users to declare) was unrepresentable in a valid full
+            # config. The `server` platformId was added to the enum to fill
+            # this gap (Test10 F-05 fix).
+            platforms = ["server"]
         elif _shape in ("web-app", "fullstack", "microservices", "application", ""):
             platforms = ["web"]
         elif _shape in ("single backend",):
             # "Single backend" is canonically headless even without an explicit
-            # ui_present:false declaration. The operator picked a non-UI shape;
-            # do NOT auto-attach a web platform to it.
-            pass
+            # ui_present:false declaration. Same F-05 fix: emit ["server"]
+            # so the full-phase config validates.
+            platforms = ["server"]
     if platforms:
         lines.append("")
         lines.append("platforms:")

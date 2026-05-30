@@ -673,8 +673,29 @@ DETECTION_JSON="$(jq -nc \
 
 if [ -n "$MERGE_INTO" ] && [ -n "$OUTPUT" ]; then
   if [ ! -f "$MERGE_INTO" ]; then
-    err "merge-into file not found: $MERGE_INTO"
-    exit 1
+    # AF-2026-05-30-2 / Test10 F-01 zero-config draft path:
+    # When --merge-into points at a non-existent file, treat it as an empty
+    # base (zero-config seed). Prior to this fix, brownfield Phase 1 on a
+    # fresh repo HALTed here because setup.sh's greenfield-degrade seeded
+    # the artifact tree but NOT a starter project-config.yaml — so
+    # `--merge-into .gaia/config/project-config.yaml` errored even though
+    # the greenfield-degrade was the canonical entry path.
+    # Seeded base: minimal valid project-config.yaml scaffolding. The
+    # downstream RFC 7396 merge then fills in stacks/platforms/ci_platform
+    # from detection; the operator runs /gaia-init later to populate the
+    # full questionnaire.
+    err "merge-into target absent — seeding zero-config base at: $MERGE_INTO"
+    mkdir -p "$(dirname "$MERGE_INTO")"
+    cat > "$MERGE_INTO" <<'SEED'
+# Auto-seeded by detect-signals.sh (AF-2026-05-30-2 / Test10 F-01 zero-config draft path).
+# Minimal placeholder created because brownfield Phase 1 found no existing
+# project-config.yaml. Detection-driven fields will be merged in below.
+# Run /gaia-init to populate the full questionnaire when ready.
+schema_version: "2.0.0"
+config_phase: minimal
+project_name: ""
+project_kind: ""
+SEED
   fi
   python3 - "$MERGE_INTO" "$OUTPUT" "$DETECTION_JSON" <<'PY'
 import json, sys, os

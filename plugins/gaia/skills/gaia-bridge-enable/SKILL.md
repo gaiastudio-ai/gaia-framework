@@ -1,6 +1,6 @@
 ---
 name: gaia-bridge-enable
-description: Enable the Test Execution Bridge by delegating to gaia-bridge-toggle with mode=enable. Thin wrapper that preserves the user-visible /gaia-bridge-enable slash command (AC11, FR-323). Edits test_execution_bridge.bridge_enabled = true in config/project-config.yaml (per ADR-044). Flag takes effect immediately under the native plugin. Idempotent — no write when already enabled.
+description: Enable the Test Execution Bridge by delegating to gaia-bridge-toggle with mode=enable. Thin wrapper that preserves the user-visible /gaia-bridge-enable slash command (AC11, FR-323). Edits test_execution_bridge.bridge_enabled = true in .gaia/config/project-config.yaml (per ADR-044). Flag takes effect immediately under the native plugin. Idempotent — no write when already enabled.
 allowed-tools: [Read, Edit, Bash]
 orchestration_class: light-procedural
 ---
@@ -34,9 +34,10 @@ Follow the full `gaia-bridge-toggle` skill body with `mode = enable`:
    > Test02 F-2 fixed. Both steps are deterministic and idempotent, so the
    > two-write sequence is safe and re-runnable.
 3. If already `true`, report `Bridge already enabled` and exit without writing.
-4. Otherwise, perform the regex-based in-place edit to `config/project-config.yaml` to flip `bridge_enabled: false` → `bridge_enabled: true`, preserving all comments and formatting.
+4. Otherwise, perform the regex-based in-place edit to `.gaia/config/project-config.yaml` to flip `bridge_enabled: false` → `bridge_enabled: true`, preserving all comments and formatting.
 5. Run the Post-Flip Checks (enable-only — stat the manifest at the canonical post-ADR-110 location `.gaia/config/test-environment.yaml`. AF-2026-05-29-2 / Test09 F-27: the previous reference to `.gaia/artifacts/test-artifacts/test-environment.yaml` was the legacy location — the producer (`test-environment-manifest.sh`) writes to `.gaia/config/` per ADR-110, so stating the legacy path produced a false "manifest absent" verdict even when a valid manifest existed at the canonical location. For pre-ADR-110 projects whose manifest still lives at the legacy `.gaia/artifacts/test-artifacts/test-environment.yaml`, the `migrate-test-environment-path.sh` helper invoked in Step 4 of `/gaia-bridge-toggle` has already moved it; if it hasn't been invoked, also accept the legacy path as a fallback. For absent in YOLO, auto-skip with a warning).
-6. Emit the summary. Under the native plugin (ADR-044/ADR-048) the flag change takes effect immediately — no config rebuild is required.
+5b. **Auto-populate `test_execution` tiers (AF-2026-05-30-2 / Test10 F-27).** Invoke `bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/bridge-populate-test-execution.sh` after the flag flip. The helper reads `runners[]` from `.gaia/config/test-environment.yaml` and writes the corresponding `test_execution.tier_N.{placement,command,required,timeout_seconds}` entries to `.gaia/config/project-config.yaml`. Idempotent — leaves explicitly-set tiers alone. This closes the silent-skip bug: prior to this step the bridge flag flipped but `test_execution: {}` stayed empty, so `qa-test-runner.sh` skipped with a false-PASS verdict in every code review. Post-step, the runner can resolve a real tier command for every story. The helper exits 1 if the manifest is absent (advise the operator to run the manifest generator); the wrapper continues but logs the gap so the operator can wire `test_execution` manually via `/gaia-config-test`.
+6. Emit the summary. Under the native plugin (ADR-044/ADR-048) the flag change takes effect immediately — no config rebuild is required. **Confirm `test_execution` is populated** — invoke `/gaia-doctor` or directly inspect `.gaia/config/project-config.yaml`'s `test_execution:` block. If any tier the operator expects to run is missing a `command`, wire it via `/gaia-config-test set tier_N.command '...'`.
 
 The full step-by-step procedure is documented in `plugins/gaia/skills/gaia-bridge-toggle/SKILL.md`. This wrapper inherits all behavior from that skill.
 
@@ -44,6 +45,6 @@ The full step-by-step procedure is documented in `plugins/gaia/skills/gaia-bridg
 
 - Delegate: `plugins/gaia/skills/gaia-bridge-toggle/SKILL.md` (full five-step procedure).
 - ADR-041 — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-044 — Two-file config split (`config/project-config.yaml` shared + `config/global.yaml` machine-local).
+- ADR-044 — Two-file config split (`.gaia/config/project-config.yaml` shared + `config/global.yaml` machine-local).
 - FR-323 — Native Skill Format Compliance (slash-command continuity).
 - E28-S111 AC11 — wrapper pattern for one-to-many slash-command mappings.

@@ -320,8 +320,23 @@ emit_skipped_evidence() {
 EOF
 }
 
-# Test execution absent? — AC7 graceful skip.
+# Test execution absent — split path (AF-2026-05-30-2 / Test10 F-27):
+#   - bridge_enabled=true + no tier configured → HARD FAIL with actionable
+#     error. The prior behavior emitted skip-green evidence even though the
+#     operator had explicitly enabled the bridge — producing false-PASS test
+#     reviews where tests never ran. This is the "silently defeats the gate"
+#     defect Test10 §2 HIGH F-27 surfaces.
+#   - bridge_enabled=false (or unset) + no tier configured → AC7 graceful
+#     skip preserved (test execution is genuinely opt-in for this project).
 if [ -z "$TIER1_PLACEMENT" ] && [ -z "$TIER2_PLACEMENT" ] && [ -z "$TIER3_PLACEMENT" ]; then
+  if [ "$BRIDGE_ENABLED" = "true" ]; then
+    err "Test Execution Bridge is ENABLED but test_execution tier_N.{placement,command} is not configured."
+    err "  → Run: /gaia-config-test set tier_1.placement unit  &&  /gaia-config-test set tier_1.command 'python3 -m pytest tests/ -q'"
+    err "  → Or:  /gaia-bridge-disable  (if you didn't mean to enable the bridge)"
+    err "  → See: documentation/commands/gaia-bridge-enable.html (gap #3 — bridge wiring requirement)"
+    emit_skipped_evidence "AF-30-2 F-27 HARD FAIL: bridge enabled but no test_execution tier resolves"
+    exit 1
+  fi
   info "test_execution not configured; skipping test execution"
   emit_skipped_evidence "test_execution not configured; skipping test execution"
   exit 0
@@ -393,14 +408,44 @@ for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
     continue
   fi
   run_with_timeout "$cmd" "$to"
-  rm -f "$RT_OUTPUT_FILE" || true
+  # Best-effort case-count parse from runner stdout/stderr before deleting
+  # the output buffer (AF-2026-05-30-2 / Test10 F-27 caveat: prior behavior
+  # recorded 1-per-suite counts even when the real suite was 83 cases —
+  # producing misleading evidence in code reviews). Common shapes:
+  #   pytest:        "83 passed, 0 failed in 1.20s"
+  #   jest/vitest:   "Tests: 1 failed, 12 passed, 13 total"
+  #   bats:          "ok 12 ..." / "not ok 3 ..." (per-line)
+  #   go test:       "PASS / FAIL" lines (suite-level — fall through to 1)
+  # Failures to parse fall back to the legacy 1-per-suite shape.
   pass_count=0
   fail_count=0
-  if [ "$RT_EXIT" -ne 0 ] && [ "$RT_TIMEOUT" = "false" ]; then
-    fail_count=1
-  elif [ "$RT_EXIT" -eq 0 ]; then
-    pass_count=1
+  _case_parse_out=""
+  if [ -f "$RT_OUTPUT_FILE" ]; then
+    _case_parse_out=$(tail -200 "$RT_OUTPUT_FILE" 2>/dev/null || true)
   fi
+  # pytest: "<N> passed" / "<N> failed"
+  _pytest_pass=$(printf '%s' "$_case_parse_out" | sed -nE 's/.*[^[:digit:]]([[:digit:]]+) passed.*/\1/p' | tail -1)
+  _pytest_fail=$(printf '%s' "$_case_parse_out" | sed -nE 's/.*[^[:digit:]]([[:digit:]]+) failed.*/\1/p' | tail -1)
+  if [ -n "$_pytest_pass" ] || [ -n "$_pytest_fail" ]; then
+    pass_count=${_pytest_pass:-0}
+    fail_count=${_pytest_fail:-0}
+  else
+    # bats per-line tally
+    _bats_pass=$(printf '%s' "$_case_parse_out" | grep -cE '^ok [0-9]+' || true)
+    _bats_fail=$(printf '%s' "$_case_parse_out" | grep -cE '^not ok [0-9]+' || true)
+    if [ "${_bats_pass:-0}" -gt 0 ] || [ "${_bats_fail:-0}" -gt 0 ]; then
+      pass_count=${_bats_pass:-0}
+      fail_count=${_bats_fail:-0}
+    else
+      # Final fallback — suite-level 1-per-suite (legacy shape).
+      if [ "$RT_EXIT" -ne 0 ] && [ "$RT_TIMEOUT" = "false" ]; then
+        fail_count=1
+      elif [ "$RT_EXIT" -eq 0 ]; then
+        pass_count=1
+      fi
+    fi
+  fi
+  rm -f "$RT_OUTPUT_FILE" || true
   suite_json="$(printf '{"name":%s,"command":%s,"exit_code":%s,"duration_seconds":%s,"pass_count":%s,"fail_count":%s,"timeout":%s,"required":%s}' \
     "$(json_str "$tier")" \
     "$(json_str "$cmd")" \
