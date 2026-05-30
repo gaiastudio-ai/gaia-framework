@@ -1,7 +1,7 @@
 ---
 name: gaia-doctor
 description: Preflight readiness scan — checks deterministic-tools availability per detected stack, reports the achievable scan tier (Tier 0 LLM-only / Tier 1 pure-pip / Tier 2 heavy/native or containerized), and emits an actionable install plan. Use when "check tool readiness", "what tools do I need", "doctor", or /gaia-doctor.
-argument-hint: "[--install] [--json] [--stack <name>]"
+argument-hint: "[--install [--docker|--no-docker]] [--json] [--stack <name>]"
 allowed-tools: [Read, Grep, Glob, Bash]
 orchestration_class: light-procedural
 ---
@@ -36,6 +36,8 @@ The skill is read-only by default. The optional `--install` flag dispatches per-
 ## Arguments
 
 - `--install` — interactive install dispatcher; prompts before each missing tool, runs `install.macos` or `install.linux` from the registry per host OS.
+- `--install --docker` — **AF-2026-05-30-3 / Test10 §7 Component 2.** Pull the bundled `gaia-tools` OCI image (`ghcr.io/gaiastudio-ai/gaia-tools:<pinned>`) instead of installing Tier 2 tools individually. Operator needs only Docker on the host — no brew + pip + npm + Go + Java + .NET. Forces docker mode even if `brownfield.tools.runner` is unset. After the pull, Tier 2 brownfield adapters (grype, syft, spotbugs, mobsf) dispatch through the image automatically via `scripts/lib/docker-runner.sh`. `--install` without `--docker` consults `brownfield.tools.runner`: when set to `docker` (via `/gaia-config-brownfield`), the docker path is used automatically; otherwise the per-tool path is used.
+- `--install --no-docker` — disable the docker path even if `brownfield.tools.runner` is `docker`. Forces per-tool host installs (the legacy AF-30-2 shape).
 - `--json` — emit machine-readable JSON (for CI integration / `consolidated-gaps.md` frontmatter stamping per Component 3).
 - `--stack <name>` — limit probe to a single named stack rather than auto-detect from `project-config.yaml`.
 

@@ -268,6 +268,22 @@ _compute_tier() {
     echo "2|all heavy/native tools present"
     return
   fi
+
+  # AF-2026-05-30-3 / Test10 §7 C2 — docker runner promotion.
+  # When brownfield.tools.runner == docker AND the gaia-tools image is
+  # available locally, all Tier 2 tools are achievable via the bundled
+  # image regardless of host-PATH presence. Promote the verdict so the
+  # consolidated-gaps banner reflects the achievable fidelity.
+  local _runner_helper="${SKILL_DIR}/../../scripts/lib/docker-runner.sh"
+  if [ -f "$_runner_helper" ]; then
+    local _runner_mode
+    _runner_mode=$(bash "$_runner_helper" mode 2>/dev/null || echo native)
+    if [ "$_runner_mode" = "docker" ] && bash "$_runner_helper" available >/dev/null 2>&1; then
+      echo "2|via docker runner (gaia-tools image cached)"
+      return
+    fi
+  fi
+
   if [ "$tier1_total" -gt 0 ] && [ "$tier1_present" -eq "$tier1_total" ] && [ "$tier0_ok" = "1" ]; then
     echo "1|all pure-pip tools present; heavy/native partial"
     return
