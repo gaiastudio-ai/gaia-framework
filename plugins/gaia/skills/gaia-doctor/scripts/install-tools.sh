@@ -180,11 +180,17 @@ main() {
   local probe_json
   probe_json="$("$CHECK_TOOLS" --json "${EXTRA_ARGS[@]}")"
 
+  # AF-2026-05-30-4 / Test11 F-26: include "below-min-version" tools in
+  # the install candidates so a present-but-stale binary (e.g. macOS bash
+  # 3.2 below the 4.0 min_version) is offered an upgrade. Prior to this
+  # fix, --install only iterated state=="missing" tools; bash present-but-
+  # too-old fell through silently and the F-09 orchestrator.sh globstar
+  # guard remained tripped after a full install.
   local missing
-  missing="$(echo "$probe_json" | jq -r '.tools[] | select(.state == "missing") | .id')"
+  missing="$(echo "$probe_json" | jq -r '.tools[] | select(.state == "missing" or .state == "outdated") | .id')"
 
   if [ -z "$missing" ]; then
-    echo "gaia-doctor: no missing tools — nothing to install." >&2
+    echo "gaia-doctor: no missing or outdated tools — nothing to install." >&2
     exit 0
   fi
 

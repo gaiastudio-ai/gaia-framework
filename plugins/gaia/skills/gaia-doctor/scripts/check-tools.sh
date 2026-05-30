@@ -42,7 +42,7 @@ _host_os() {
 # Default flags
 JSON_OUT="false"
 STACK_OVERRIDE=""
-PROJECT_ROOT_ARG="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}}}"
+PROJECT_ROOT_ARG="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -84,7 +84,16 @@ _detect_stacks() {
 
   if [ -r "$cfg" ] && _have yq; then
     # Best-effort yq read; tolerate missing stacks block.
-    stacks="$(yq eval '.stacks[].language // ""' "$cfg" 2>/dev/null | sed '/^$/d' | sort -u | tr '\n' ' ')"
+    # AF-2026-05-30-4 / Test11 F-23: also accept `.name` and `.id` as the
+    # stack identifier so config shapes like `{name: python, test_runner: pytest}`
+    # (the Test11 repro) resolve correctly. Prior to this fix the reader
+    # only looked at `.language`; the falsey fallthrough sent the resolver
+    # to detect-signals, which on a Python-only repo returned [] and
+    # check-tools then marked vulture/pip-audit/cyclonedx-bom as 'no
+    # matching stack' even on Python projects. The accumulator unions
+    # the three sources; downstream consumers see one canonical
+    # whitespace-separated list.
+    stacks="$(yq eval '.stacks[] | (.language // .name // .id // "")' "$cfg" 2>/dev/null | sed '/^$/d' | sort -u | tr '\n' ' ')"
   fi
 
   if [ -z "${stacks// /}" ]; then
@@ -162,7 +171,10 @@ _probe_one() {
     local major
     major="${ver%%.*}"
     if [ -n "$major" ] && [ "$major" -lt 4 ] 2>/dev/null; then
-      echo "warning|$ver"
+      # AF-2026-05-30-4 / Test11 F-26: report as `outdated` (not just
+      # `warning`) so install-tools.sh's missing-OR-outdated filter
+      # picks it up and offers the upgrade command.
+      echo "outdated|$ver"
       return
     fi
   fi
@@ -212,7 +224,11 @@ _render_block() {
       missing)
         printf "  ✗ %-14s %-40s →  %s\n" "$tid" "$desc" "${install_cmd:-#}"
         ;;
-      warning)
+      warning|outdated)
+        # AF-2026-05-30-4 / Test11 F-26: `outdated` rendered with the same
+        # ⚠ glyph + environment-warning text as `warning`. The install-
+        # tools.sh missing-OR-outdated filter picks `outdated` up while
+        # check-tools.sh continues to display the row identically.
         local env_warn
         env_warn="$(jq -r --arg t "$tid" '.tools[$t].environment_warning // .tools[$t].description' "$REGISTRY")"
         printf "  ⚠ %-14s %-40s →  %s\n" "$tid" "$env_warn" "${install_cmd:-#}"
@@ -264,8 +280,24 @@ _compute_tier() {
     esac
   done
 
-  if [ "$tier2_total" -gt 0 ] && [ "$tier2_present" -eq "$tier2_total" ] && [ "$tier1_present" -eq "$tier1_total" ] && [ "$tier0_ok" = "1" ]; then
-    echo "2|all heavy/native tools present"
+  # AF-2026-05-30-4 / Test11 F-24: the prior gate required ALL tier-2 AND
+  # ALL tier-1 tools present. On a real Python project that meant
+  # installing grype + syft did not credit the tier even though the
+  # operative tier-2 scanners were fully covered (sarif-multitool is
+  # opt-in, pip tools are tier 1). The verdict dropped to TIER 0 —
+  # defeating the whole point of --install. Promote when MAJORITY of
+  # tier-2 scanners are present AND tier 0 core is intact; tier-1
+  # coverage is reported in the reason but doesn't block the verdict.
+  # Operators who want strict full-tier verdict can read .tier_reason in
+  # --json and gate on it; the human-facing tier promotes once the
+  # heavyweight scanners are actually invocable.
+  if [ "$tier2_total" -gt 0 ] && [ "$tier2_present" -gt 0 ] && [ "$((tier2_present * 2))" -ge "$tier2_total" ] && [ "$tier0_ok" = "1" ]; then
+    if [ "$tier2_present" -eq "$tier2_total" ] && [ "$tier1_present" -eq "$tier1_total" ]; then
+      echo "2|all heavy/native tools present + all pure-pip tools present"
+    else
+      printf '2|%d/%d heavy/native tools present (%d/%d tier-1 tools also installed)\n' \
+        "$tier2_present" "$tier2_total" "$tier1_present" "$tier1_total"
+    fi
     return
   fi
 
@@ -284,8 +316,19 @@ _compute_tier() {
     fi
   fi
 
+  # AF-2026-05-30-4 / Test11 F-24: also promote to TIER 1 when MOST
+  # (>= half of applicable) tier-1 tools are present and tier 0 is intact.
+  # Pure-strict ("all tier-1 present") was leaving operators at TIER 0 when
+  # one pip install failed on a stock host (the F-22 macOS-pip class). Half-
+  # majority captures "deterministic scanners are mostly working" without
+  # over-promoting to "tier 1 = clean".
   if [ "$tier1_total" -gt 0 ] && [ "$tier1_present" -eq "$tier1_total" ] && [ "$tier0_ok" = "1" ]; then
     echo "1|all pure-pip tools present; heavy/native partial"
+    return
+  fi
+  if [ "$tier1_total" -gt 0 ] && [ "$tier1_present" -gt 0 ] && [ "$((tier1_present * 2))" -ge "$tier1_total" ] && [ "$tier0_ok" = "1" ]; then
+    printf '1|majority pure-pip tools present (%d/%d); heavy/native partial\n' \
+      "$tier1_present" "$tier1_total"
     return
   fi
   echo "0|LLM-only (deterministic tools missing — heuristic fidelity)"
