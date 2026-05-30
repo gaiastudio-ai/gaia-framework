@@ -325,7 +325,8 @@
     "brownfield": {
       "description": "AF-2026-05-30-2 / Test10 F-06 — brownfield deterministic-tools configuration. Edited via /gaia-config-brownfield. The YAML descriptor schema at plugins/gaia/config/project-config.schema.yaml declares the same section with the full nested-key catalog (deterministic_tools, prewarm_enabled, sarif_merge_enabled, dedup_enabled, grype_enabled, sbom_completeness_enabled, detect_signals_enabled, deadcode_go_enabled, deadcode_python_enabled, deadcode_jvm_enabled, phase_4b_cross_stack_enabled, phase_4b_enabled, defectdojo_enabled, tools.runner, scanner_tier). This JSON-schema entry permits the section's presence; the YAML schema is the source of truth for inner key validation.",
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "x-no-auto-hydration": true
     },
     "tools": {
       "description": "Provider/config selection per category (FR-RSV2-10).",
