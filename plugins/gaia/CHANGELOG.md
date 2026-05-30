@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.181.0] — 2026-05-30
+
+### Added
+
+- (doctor) /gaia-doctor preflight tool readiness scan (AF-30-2)
+
+### Changed
+
+- (af-30-2) 32 bats covering Test10 fixes (AF-30-2)
+
+### Fixed
+
+- (af-30-2) register brownfield as managed-elsewhere + x-no-auto-hydration (AF-30-2)
+- (af-30-2) ci regressions round 2 (AF-30-2)
+- (af-30-2) ci regressions from sweep over-correction (AF-30-2)
+- (skills) canonical config-path sweep across skill md + scripts (AF-30-2 F-02)
+- (low) /gaia-config-brownfield + templates + dev/sprint/trace polish (AF-30-2 LOW batch)
+- (med) bash 3.2 + ledger + DoD + dep-gate + retro paths + resolver + schemas (AF-30-2)
+- (high) bridge + zero-config + headless platform + tier (AF-30-2)
+
 ## [1.180.10] — 2026-05-30
 
 ### Changed
