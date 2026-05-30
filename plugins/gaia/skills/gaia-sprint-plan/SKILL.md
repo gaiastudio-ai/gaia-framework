@@ -161,7 +161,7 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
 - **Dependency blocking:** for each candidate, check its `depends_on` list. If any dependency is NOT `done`, the story CANNOT be included. Display: "BLOCKED: Story {key} depends on {dep_key} (status: {dep_status})."
 - **Priority surfacing:** after selection, check for P0 stories that are `ready-for-dev` but NOT selected. If any found, warn: "WARNING: P0 stories ready but not selected:" and ask user to confirm the exclusion.
 - Resolve the test-plan via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `.gaia/artifacts/test-artifacts/test-plan.md` (flat); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement). If the resolved file exists: apply risk levels -- buffer 20% for high-risk stories.
-- **ATDD check (high-risk only):** for each high-risk story, check if `.gaia/artifacts/test-artifacts/atdd-{story_key}.md` exists. If missing: "HIGH-RISK story {key} has no ATDD file -- run `/gaia-atdd {key}` before development."
+- **ATDD check (high-risk only):** for each high-risk story, check if an ATDD file exists at the resolver-returned path (`bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-test-artifact-per-story.sh atdd {story_key} --existing-only` — accepts the new per-story `test-artifacts/epic-{epic_slug}/stories/{key}-{slug}/atdd.md` home and the legacy flat `test-artifacts/atdd-{story_key}.md` fallback per AF-2026-05-30-1 / Test03 §7.3). If the resolver exits 1 (no rung exists): "HIGH-RISK story {key} has no ATDD file -- run `/gaia-atdd {key}` before development."
 - Present the candidate sprint to the user and capture confirmation.
 
 ### Step 4 -- Update Story Files

@@ -25,7 +25,7 @@ fi
 
 ## Mission
 
-You are generating Acceptance Test-Driven Development (ATDD) artifacts for the specified story key. Each acceptance criterion from the story file is transformed into a failing test skeleton using Given/When/Then format. The output is saved to `.gaia/artifacts/test-artifacts/atdd-{story_key}.md`.
+You are generating Acceptance Test-Driven Development (ATDD) artifacts for the specified story key. Each acceptance criterion from the story file is transformed into a failing test skeleton using Given/When/Then format. The output is saved to the per-story mirror path under `test-artifacts/` (AF-2026-05-30-1 / Test03 §7.3): `.gaia/artifacts/test-artifacts/epic-{epic_slug}/stories/{story_key}-{story_slug}/atdd.md`. Path resolution is delegated to `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-test-artifact-per-story.sh` (the new home matches implementation-artifacts mirror symmetry). Legacy flat `.gaia/artifacts/test-artifacts/atdd-{story_key}.md` remains a read-only fallback during the migration window.
 
 The skill supports two invocation modes:
 
@@ -45,7 +45,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Each acceptance criterion maps to exactly one failing test skeleton — maintain a strict 1:1 AC-to-test mapping.
 - All generated tests MUST use **Given/When/Then** format for behavior specification.
 - Tests are in the **red phase of TDD** — they describe expected behavior and must fail because the implementation does not exist yet. Do NOT write implementation code.
-- Output MUST be written to `.gaia/artifacts/test-artifacts/atdd-{story_key}.md`. If the file already exists from a prior run, overwrite it idempotently — no duplicate content or stale remnants should remain.
+- Output MUST be written to the resolver-returned path. Resolve the write path via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-test-artifact-per-story.sh atdd {story_key} --write` (returns `.gaia/artifacts/test-artifacts/epic-{epic_slug}/stories/{story_key}-{story_slug}/atdd.md`; the helper mkdir -p's the parent dir). On pre-AF-30-1 projects, the legacy flat `.gaia/artifacts/test-artifacts/atdd-{story_key}.md` form remains a read-only fallback. If the file already exists from a prior run, overwrite it idempotently — no duplicate content or stale remnants should remain. Existing flat artifacts are NEVER migrated implicitly; the migration helper `scripts/migrate-test-artifacts-to-per-story.sh` moves them once when invoked explicitly.
 - If the generated ATDD output exceeds 10KB (e.g., a story with 20+ ACs), the size advisory fires from `finalize.sh`. The level is risk-aware (E80-S1 AC9): for `risk: high` stories the advisory logs at `[INFO]` (high-risk stories legitimately produce more content); for `medium` / `low` / unset risk it logs at `[WARNING]`. Output must remain complete with no truncation regardless of size.
 - Only high-risk stories typically require ATDD. If the story risk level is not "high", proceed anyway but note in the output header that ATDD was invoked explicitly.
 
