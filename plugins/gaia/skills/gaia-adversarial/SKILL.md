@@ -65,13 +65,15 @@ Invoke the shared foundation script to emit the deterministic artifact header (A
 
 If `template-header.sh` is missing or non-executable (AC-EC7), degrade gracefully to an inline prose header (`# Adversarial Review — {target} — {date}`), log a warning, and still write a valid report.
 
-Write the report to the following path (preserved verbatim from the legacy task — AC4):
+Write the report to the dated-snapshot subdir (AF-2026-05-30-1 / Test03 §7.3 — adversarial joins the dated-snapshot pattern already used by `nfr-assessment/` and `performance-test-plan/`; grouping prevents top-level clutter when many dated reviews accumulate over the life of the project):
 
 ```
-{planning_artifacts}/adversarial-review-{target}-{date}.md
+{planning_artifacts}/adversarial/adversarial-review-{target}-{date}.md
 ```
 
-If the file already exists for the same day (AC-EC3), write to a suffix-incremented filename (`adversarial-review-{target}-{date}-2.md`, `-3.md`, ...).
+Before writing, run `mkdir -p {planning_artifacts}/adversarial/` so the nested directory exists on first run (ADR-119). Legacy ungrouped `{planning_artifacts}/adversarial-review-{target}-{date}.md` remains a read-only fallback for projects whose history pre-dates this layout shift.
+
+If the file already exists for the same day (AC-EC3), write to a suffix-incremented filename (`adversarial/adversarial-review-{target}-{date}-2.md`, `-3.md`, ...).
 
 The report contains, in order:
 
@@ -109,7 +111,7 @@ Step 4 (Incorporate Findings) is **opt-in on a per-caller basis** — the closed
 
 ### Step 4 — Incorporate Findings (optional, only when the caller requested it)
 
-- Read the adversarial review report just generated at `{planning_artifacts}/adversarial-review-{target}-{date}.md`.
+- Read the adversarial review report just generated at `{planning_artifacts}/adversarial/adversarial-review-{target}-{date}.md` (or the legacy ungrouped `{planning_artifacts}/adversarial-review-{target}-{date}.md` on pre-AF-30-1 projects — accept either home).
 - Extract critical and high severity findings.
 - For each critical/high finding: update the target document — add missing sections, revise decisions, strengthen weak areas, address gaps.
 - Add a `## Review Findings Incorporated` section to the target document listing each finding, its severity, and how it was addressed (revised / added / acknowledged as risk).
