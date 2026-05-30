@@ -17,6 +17,13 @@
 #   suppresses repeat warnings within the same session. The marker is
 #   keyed on session_id, so a new session re-emits the warning once.
 #
+#   CAVEAT (Test10 F-03): Without `CLAUDE_SESSION_ID` exported, the marker
+#   falls back to the PID of the orchestrator process. Each fresh shell PID
+#   becomes a new "session" from the dedupe's point of view, so the warning
+#   re-fires on every command invocation rather than once. Operators who
+#   see repeat warnings should export `CLAUDE_SESSION_ID` (any stable value
+#   per real session) so the one-shot contract holds.
+#
 # Test05 F-001 (once-per-session is by design, not per-invocation):
 #   The warning fires AT MOST once per session — not on every skill call. A
 #   fresh session legitimately needs the Mode-A-lossiness notice because the

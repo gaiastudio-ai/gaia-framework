@@ -160,7 +160,7 @@ Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `
 | `flutter-dev`    | `@Tags(['…'])` annotation                                        |
 | `mobile-dev`     | Maestro front-matter `tags:` (YAML) or `@Tag("…")` (Kotlin/Java) |
 
-**Severity mode.** Findings emit at `info` (Suggestion) by default — they surface in `analysis-results.json` but DO NOT escalate Phase 3A verdicts. Strict mode upgrades severity to `warning` (factored into the LLM Phase 3B judgment but still non-blocking). Strict-mode resolution precedence (highest first): CLI `--strict` flag → `GAIA_TEST_TAGGING_STRICT=1` env override → `test_tagging.strict: true` in `config/project-config.yaml` → default false. `phase3a-test-review.sh` propagates `GAIA_TEST_TAGGING_STRICT` to `tag-conformance-detector.sh` so a single env toggle flips the project-wide tagging regime.
+**Severity mode.** Findings emit at `info` (Suggestion) by default — they surface in `analysis-results.json` but DO NOT escalate Phase 3A verdicts. Strict mode upgrades severity to `warning` (factored into the LLM Phase 3B judgment but still non-blocking). Strict-mode resolution precedence (highest first): CLI `--strict` flag → `GAIA_TEST_TAGGING_STRICT=1` env override → `test_tagging.strict: true` in `.gaia/config/project-config.yaml` → default false. `phase3a-test-review.sh` propagates `GAIA_TEST_TAGGING_STRICT` to `tag-conformance-detector.sh` so a single env toggle flips the project-wide tagging regime.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/phase3a-test-review.sh \
@@ -317,6 +317,8 @@ REPORT_PATH="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-review-report-path.sh --key
 ```
 
 Returns the per-story `…/epic-{slug}/{story_key}-{slug}/reviews/test-review-{story_key}.md` (E105-S1, `reviews/` created) when the story is in the new layout, else the legacy flat `.gaia/artifacts/implementation-artifacts/test-review-{story_key}.md`. Per F-12 on Test02: never the pre-ADR-111 `docs/implementation-artifacts/` path.
+
+**Per-story test-artifacts mirror (Test10 F-38).** In addition to the canonical implementation-artifacts review path above, the parent also writes a mirror under `.gaia/artifacts/test-artifacts/epic-{slug}/stories/{key}-{slug}/test-review.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-test-artifact-per-story.sh test-review {story_key} --write`. This is the §7.3 mirror-symmetry layout extension (sister to atdd + test-automate-plan + qa-tests). The implementation-artifacts copy remains canonical for `review-gate.sh`; the test-artifacts mirror lets test-focused consumers find all per-story test outputs in ONE place. Execution-evidence under `.gaia/state/review-work/<KEY>/` is NOT migrated here — that runtime-state split is documented in Test03 §7.3 and deferred to a follow-up AF.
 
 **Re-run handling.** Parent **overwrites** the existing review file on re-run (latest verdict wins). No append, no version-suffix. The `review-gate.sh` row update is the source of truth for verdict history if needed.
 
