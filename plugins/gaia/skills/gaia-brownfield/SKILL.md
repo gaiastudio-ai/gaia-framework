@@ -37,7 +37,11 @@ This skill is the native Claude Code conversion of the legacy `brownfield-onboar
 
 **Main context semantics (ADR-041):** This skill runs under `context: main` with full tool access. It orchestrates a large discovery pipeline that reads the target project and produces a canonical artifact set under `.gaia/artifacts/planning-artifacts/` and `.gaia/artifacts/test-artifacts/`.
 
-**Path resolution (AF-2026-05-21-17).** All Phase 2 brownfield artifact paths in this SKILL.md use the canonical post-ADR-111 locations under `.gaia/artifacts/planning-artifacts/` and `.gaia/artifacts/test-artifacts/`. The ~10 produced artifacts (brownfield-assessment.md, project-documentation.md, api-documentation.md, ux-design.md, event-catalog.md, dependency-map.md, dependency-audit-{date}.md, brownfield-subagent-summary.md, brownfield-scan-*.md, brownfield-onboarding.md) all target canonical destinations.
+**Path resolution (AF-2026-05-21-17 + AF-2026-05-31-3 / Test14 D-01).** All Phase 2 brownfield artifact paths in this SKILL.md use the canonical post-ADR-111 locations under `.gaia/artifacts/planning-artifacts/` and `.gaia/artifacts/test-artifacts/`. The ~10 produced artifacts (brownfield-assessment.md, project-documentation.md, api-documentation.md, ux-design.md, event-catalog.md, dependency-map.md, dependency-audit-{date}.md, brownfield-subagent-summary.md, brownfield-scan-*.md, brownfield-onboarding.md) all target canonical destinations.
+
+**Per-artifact destination split (Test14 D-01 — was previously inferred from the artifact-dispersion note far from the per-subagent instructions):**
+- `planning-artifacts/`: brownfield-assessment.md, project-documentation.md, api-documentation.md, ux-design.md, event-catalog.md, dependency-map.md, brownfield-subagent-summary.md, brownfield-scan-*.md, brownfield-onboarding.md (the "what is this project" lens).
+- `test-artifacts/`: `dependency-audit-{date}.md` (the "what's risky about its dependencies" lens — the only Phase-2 artifact that lives under test-artifacts/ because dependency audit IS a test-lens activity per the cluster-7 contract). Spelled out here so subagents don't have to scroll up to the dispersion note + correctly route the dependency-audit write.
 
 **Scripts-over-LLM (ADR-042 / FR-325):** Deterministic operations (config resolution, checkpoint writes, gate validation, lifecycle events) are delegated to the shared foundation scripts under `plugins/gaia/scripts/` via inline `!scripts/*.sh` calls. The canonical foundation set includes: `resolve-config.sh`, `checkpoint.sh` (with `write` / `read` / `validate` subcommands — the consolidated checkpoint surface per architecture §10.26.3), `validate-gate.sh` (deployed equivalent for spec's `file-gate.sh`), `template-header.sh`, `memory-loader.sh`, `lifecycle-event.sh`. See the Reconciliation Note under Critical Rules for the one remaining spec-vs-deployed name mapping.
 
@@ -584,6 +588,7 @@ Invoke the `test-architect` subagent (Sable) via the `Agent` tool:
 - Create an NFR Baseline Summary Table with measured values (not placeholders).
 - Output the NFR assessment to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{date}.md` (E105-S3 / ADR-127 Pillar 3 — dated-snapshot subdir under planning-artifacts; AF-29-2 / AF-30-1 moved this out of flat `test-artifacts/`). Legacy ungrouped `test-artifacts/nfr-assessment.md` remains read-only fallback for projects pre-migration (Test10 F-37).
 - Generate a performance test plan: load k6 patterns; if frontend, also load Lighthouse-CI patterns. Define performance budgets (P50/P95/P99), load test scenarios (gradual, spike, soak), backend profiling targets (slow queries, N+1, connection pools), CI performance gates. If frontend, define Core Web Vitals targets (LCP < 2.5s, INP < 200ms, CLS < 0.1).
+- **AF-2026-05-31-3 / Test14 D-02 — non-deployable project routing.** For a HEADLESS project (`compliance.ui_present: false` AND no `server` / `web` platform AND no HTTP/RPC surface — e.g. a CLI, library, build tool), the k6 + Lighthouse defaults do not fit. The performance test plan in this case MUST follow the canonical non-deployable shape documented at `${CLAUDE_PLUGIN_ROOT}/skills/gaia-brownfield/tutorials/phase-5-for-non-deployable-projects.md` rather than the k6/Lighthouse defaults. Replace load-testing scenarios with micro-benchmark targets (pytest-benchmark / Go's `testing.B` / criterion.rs / JMH, as appropriate to the stack); replace Core Web Vitals with cold-import / single-invocation / memory-peak budgets; replace CI performance gates with regression-threshold gates on the same benchmark suite. The deterministic test-architect (Sable) is told this from the subagent dispatch prompt; the dispatch prompt MUST include the `non-deployable: true` flag derived from the headless detection so Sable doesn't author a server-shape plan for a CLI.
 - Output the performance test plan to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (E105-S3 / ADR-127 Pillar 3 — dated-snapshot subdir under planning-artifacts; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback for projects pre-migration; Test10 F-37).
 
 **AC-EC5 fallback — test-architect unavailable:** If the `test-architect` subagent is not installed or unreachable at runtime, log a non-blocking warning and write a stub `nfr-assessment.md` with a clear banner:
@@ -602,6 +607,13 @@ The post-complete gate then reports the gap rather than crashing. Also write a s
 **Gate check after Phase 6:** Invoke the shared validate-gate pathway inline — see the Post-Complete Gates section at the end of this skill for the three gates enforced via `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh`.
 
 ## Phase 7 — Gap Consolidation & Deduplication
+
+### Phase 7 grading rules (AF-2026-05-31-3 / Test14 D-03)
+
+The deterministic-scan grading + gap-entry id convention used by the consolidation subagent:
+
+- **Empty-but-UNVERIFIED scan = WARNING, not PASS.** When grype produces an empty `reconciled-findings.json` AND the trust-boundary checksum is `"unavailable"` (the docker-runner case before AF-31-3 F-07 fixed the under-runner checksum capture), the consolidation MUST grade this as WARNING with the explanation "deterministic scan completed but DB trust-boundary unverifiable — re-run after refreshing the grype-db cache". A bare empty result alone (with a fresh, attributable DB) IS PASS. The distinction matters: an empty result from a deterministic scanner running against an up-to-date DB is a real signal; an empty result from a scanner whose DB age cannot be vouched for is not.
+- **Scan gap-entry id-prefix convention.** Each Phase-3 scan subagent OWNS its prefix to avoid cross-file id collisions. The canonical prefix set: `DCD-` (doc-code drift), `HCV-` (hardcoded values), `ISEAM-` (integration seam), `RTB-` (runtime behavior), `SEC-` (security), `CFGC-` (config contradiction), `DC-` (dead code), `CVE-` (grype CVE), `SBM-` (sbom-completeness). The consolidation subagent verifies prefix uniqueness when merging into `consolidated-gaps.md`; on collision it suffixes a stable `-{counter}` and logs a NOTICE.
 
 ### Phase 7 PRE-step 0 — Scan-fidelity banner (AF-2026-05-30-2 / Test10 §7 C3)
 
@@ -786,6 +798,20 @@ Spawn a Gap Consolidation subagent:
 
 ### 8a — Create PRD for Gaps
 
+**AF-2026-05-31-3 / Test14 D-04 — PRD template plugin-relative location.** The template files named below all live under `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/`. Reference `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/prd-template.md`, `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/infra-prd-template.md`, `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/platform-prd-template.md`. The consolidation subagent previously had to `find` them; spelling out the location closes Test14 D-04.
+
+**5-tier (scan severity) ↔ 3-tier (config-severity) mapping.** Deterministic scans use a 5-tier severity scale (Critical / High / Medium / Low / Info) per ADR-037; the operator's `config-severity` knob is a 3-tier scale (high / medium / low). When the consolidation subagent reconciles scan findings into the PRD's gap list, apply this canonical mapping:
+
+| Scan severity | config-severity bucket |
+| ------------- | ---------------------- |
+| Critical      | high                   |
+| High          | high                   |
+| Medium        | medium                 |
+| Low           | low                    |
+| Info          | (dropped from PRD; logged in scan-fidelity banner only) |
+
+Apply the bucket as the gap row's priority — so a Critical CVE and a High dead-code finding both land in the `high` bucket without losing the original scan-tier in the source-of-truth scan report.
+
 Select the PRD template based on `{project_type}`:
 
 | project_type     | Template File              | Requirement ID Scheme                        |
@@ -886,6 +912,20 @@ The architecture is generated by invoking the shared `create-architecture` pipel
 If `architecture.md` already exists, warn the user: `An architecture document already exists. Continuing will overwrite it with the brownfield version. Choose: (a) overwrite, (b) save as architecture-brownfield.md instead.` If the user chooses (b), instruct the subagent to output to `architecture-brownfield.md`.
 
 After architecture is generated, verify it has YAML frontmatter with `mode: brownfield`, `baseline_version: {version}`, and `update_scope: [list of components being modified]`. If missing, append them.
+
+### 9b — Architecture Adversarial Review (AF-2026-05-31-3 / Test14 F-20)
+
+After architecture is generated, dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique `.gaia/artifacts/planning-artifacts/architecture.md` — mirroring the Phase 8b PRD adversarial. Target output: `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-architecture-{YYYY-MM-DD}.md` (use today's UTC date). Run `mkdir -p .gaia/artifacts/planning-artifacts/adversarial/` first so the directory exists on first run (ADR-119).
+
+This closes the asymmetry Test14 F-20 surfaced: the PRD adversarial pass produces a standalone dated `adversarial-review-prd-{date}.md`, but the architecture adversarial pass was previously INLINED into `architecture.md` as the `## Review Findings Incorporated` section — making the architecture's review trail harder to audit and breaking the target layout's symmetric `adversarial/` convention.
+
+Per ADR-063 (Mandatory Verdict Surfacing), display the returned ADR-037 envelope to the user. Extract critical and high severity findings. For each critical/high finding, refine architecture.md AND record the same finding in the standalone `adversarial-review-architecture-{date}.md` so the architecture document's `## Review Findings Incorporated` section is a SUMMARY of what was incorporated (rather than the sole record).
+
+The Phase 8b YOLO carve-out (CRITICAL findings ABOUT the codebase auto-downgrade to WARNING) applies here too — the architecture adversarial flags real codebase facts in brownfield mode by design.
+
+### 9c — Architecture-Specific Migration Path
+
+Continued below as the original 9b (renumbered) — Bootstrap Val Ground Truth — and 9c (renumbered) — Tier 1 Agent Ground Truth — etc.
 
 ### 9b — Bootstrap Val Ground Truth (optional)
 

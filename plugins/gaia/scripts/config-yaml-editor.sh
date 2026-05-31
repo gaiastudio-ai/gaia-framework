@@ -143,6 +143,25 @@ case "$CMD" in
     fi
     read -r START END <<<"$range"
 
+    # AF-2026-05-31-3 / Test14 F-04 — same wrapper/section-name match check
+    # as `insert`. Replacing a section with content whose top-level key
+    # doesn't match the requested SECTION corrupts the file just as badly.
+    _first_key="$(awk '
+      /^[[:space:]]*#/ { next }
+      /^[[:space:]]*$/ { next }
+      /^[a-zA-Z0-9_]+:/ { sub(/:.*/,""); print; exit }
+    ' "$NEW_FILE")"
+    if [ -z "$_first_key" ]; then
+      err "new section file is empty or has no top-level key: $NEW_FILE"
+      err "expected the file to start with '$SECTION:' followed by the section body"
+      exit 1
+    fi
+    if [ "$_first_key" != "$SECTION" ]; then
+      err "wrapper mismatch: $NEW_FILE starts with '${_first_key}:' but the requested section is '$SECTION:'"
+      err "wrap the contents under '$SECTION:' (matching the extract output shape), or invoke with the correct --section name"
+      exit 1
+    fi
+
     # Construct the new file: lines 1..(START-1) + new_section + lines (END+1)..EOF
     TMP="$(mktemp)"
     trap 'rm -f "$TMP"' EXIT
@@ -188,6 +207,32 @@ case "$CMD" in
 
     if find_range "$SECTION" >/dev/null 2>&1; then
       err "section already exists: $SECTION"
+      exit 1
+    fi
+
+    # AF-2026-05-31-3 / Test14 F-04 — wrapper/section-name match check.
+    # The prior implementation appended NEW_FILE verbatim to EOF without
+    # checking that NEW_FILE's top-level YAML key actually matched the
+    # requested SECTION. An operator passing unwrapped (inner-only)
+    # content silently wrote those keys at the FILE's ROOT level and the
+    # script returned exit 0 — corrupting project-config.yaml in a way
+    # the schema validator only caught much later. Skip blank lines and
+    # comments to find the first non-comment top-level key (a left-anchored
+    # `[a-z_]+:` line); if it isn't `<SECTION>:`, refuse with a clear
+    # message naming the expected wrapper form.
+    _first_key="$(awk '
+      /^[[:space:]]*#/ { next }
+      /^[[:space:]]*$/ { next }
+      /^[a-zA-Z0-9_]+:/ { sub(/:.*/,""); print; exit }
+    ' "$NEW_FILE")"
+    if [ -z "$_first_key" ]; then
+      err "new section file is empty or has no top-level key: $NEW_FILE"
+      err "expected the file to start with '$SECTION:' followed by the section body"
+      exit 1
+    fi
+    if [ "$_first_key" != "$SECTION" ]; then
+      err "wrapper mismatch: $NEW_FILE starts with '${_first_key}:' but the requested section is '$SECTION:'"
+      err "wrap the contents under '$SECTION:' (matching the extract output shape), or invoke with the correct --section name"
       exit 1
     fi
 
