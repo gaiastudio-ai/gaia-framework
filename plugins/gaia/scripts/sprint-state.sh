@@ -119,10 +119,21 @@ CANONICAL_STATES=(
 )
 
 # Allowed adjacency encoded as "from|to" strings (CLAUDE.md verbatim).
+# AF-2026-05-31-1 / Test12 F-19 + D-03: the `ready-for-dev|backlog` defer
+# edge restores the path documented by /gaia-correct-course Step 5 ("removed
+# stories transition --to backlog"). Prior to this fix the state machine
+# rejected the edge with `invalid transition: ready-for-dev -> backlog is
+# not in the allowed adjacency list`, leaving correct-course's documented
+# defer path unusable — operators had to fall back to sprint-close
+# `--force-with-rollover` to drop a ready-for-dev story from a sprint. The
+# edge is semantically clean: a story selected for development but not yet
+# in-progress can be returned to the backlog without traversing the full
+# `in-progress → review → done` arc.
 ALLOWED_EDGES=(
   "backlog|validating"
   "validating|ready-for-dev"
   "ready-for-dev|in-progress"
+  "ready-for-dev|backlog"
   "in-progress|blocked"
   "in-progress|review"
   "blocked|in-progress"
@@ -2484,6 +2495,28 @@ _resolve_active_yaml() {
 cmd_init() {
   local sprint_id="$1"
   [ -n "$sprint_id" ] || die "init: --sprint-id is required"
+  # AF-2026-05-31-1 / Test12 F-15: optional `--start-date`, `--end-date`,
+  # `--capacity-points` flags. Prior to this fix the seed only carried
+  # sprint_id / status / total_points / goals / items, so the burndown
+  # dashboard rendered `Duration: N/A`, `Dates: N/A → N/A`, `capacity: N/A`
+  # on every sprint — useless on a real sprint with a known cadence. When
+  # any of these three flags is provided, the seed includes the field. When
+  # all three are absent the seed is byte-identical to the pre-AF-31-1 shape
+  # (zero-regression on tests that scrape exact yaml). `/gaia-sprint-plan`
+  # passes them through from the operator's planning answers; sprint-state
+  # forwarding callers can omit them and the dashboard still renders the
+  # legacy `N/A` rows. The end-date can also be derived from start + length.
+  local start_date="" end_date="" capacity_points="" sprint_length=""
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --start-date)      start_date="${2:-}"; shift 2 ;;
+      --end-date)        end_date="${2:-}"; shift 2 ;;
+      --capacity-points) capacity_points="${2:-}"; shift 2 ;;
+      --sprint-length-days) sprint_length="${2:-}"; shift 2 ;;
+      *) die "init: unknown flag: $1" ;;
+    esac
+  done
   local yaml
   yaml="$(_resolve_active_yaml)"
   if [ -e "$yaml" ]; then
@@ -2511,6 +2544,13 @@ cmd_init() {
   # already acquire the canonical sprint-status.yaml.lock under flock.
   local tmp
   tmp="$(mktemp "${yaml}.XXXXXX")"
+  # Derive end_date from start + length when end-date wasn't passed but length was.
+  if [ -n "$start_date" ] && [ -z "$end_date" ] && [ -n "$sprint_length" ]; then
+    # Try gnu-date first (Linux), fall back to BSD-date (macOS).
+    end_date="$(date -u -d "$start_date + $sprint_length days" +%Y-%m-%d 2>/dev/null || \
+                date -u -j -f '%Y-%m-%d' -v +"${sprint_length}d" "$start_date" +%Y-%m-%d 2>/dev/null || \
+                printf '')"
+  fi
   # E107-S1 / ADR-108: seed the canonical top-level `status:` field (read by
   # _yaml_sprint_status + the transition writer + the dashboard). A fresh sprint
   # starts in the new `planned` state (planned → active → review → closed); the
@@ -2518,13 +2558,16 @@ cmd_init() {
   # NB: the prior `state: active` line was a dead orphan that no consumer read —
   # seeding `status: planned` is what actually makes the sprint planned AND
   # transitionable (a status:-less seed could not be transitioned at all).
-  cat >"$tmp" <<EOF
-sprint_id: "${sprint_id}"
-status: planned
-total_points: 0
-goals: []
-items: []
-EOF
+  {
+    printf 'sprint_id: "%s"\n' "$sprint_id"
+    printf 'status: planned\n'
+    [ -n "$start_date" ]      && printf 'start_date: "%s"\n' "$start_date"
+    [ -n "$end_date" ]        && printf 'end_date: "%s"\n' "$end_date"
+    [ -n "$capacity_points" ] && printf 'capacity_points: %s\n' "$capacity_points"
+    printf 'total_points: 0\n'
+    printf 'goals: []\n'
+    printf 'items: []\n'
+  } > "$tmp"
   mv "$tmp" "$yaml"
   printf 'init: seeded %s for sprint %s\n' "$yaml" "$sprint_id"
 }
@@ -3047,6 +3090,8 @@ main() {
   # set-review-justification + transition --sprint).
   # E93-S6: set-shape subcommand for sprint_shape modifier (thrust | completion-pass).
   local goals_arg="" justification_file="" shape_arg=""
+  # AF-2026-05-31-1 / Test12 F-15: optional init-only fields.
+  local init_start_date="" init_end_date="" init_capacity_points="" init_sprint_length=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --story)
@@ -3123,6 +3168,27 @@ main() {
         shape_arg="$2"; shift 2 ;;
       --shape=*)
         shape_arg="${1#--shape=}"; shift ;;
+      --start-date)
+        # AF-2026-05-31-1 / Test12 F-15: optional sprint metadata.
+        [ $# -ge 2 ] || die "--start-date requires a value"
+        init_start_date="$2"; shift 2 ;;
+      --start-date=*)
+        init_start_date="${1#--start-date=}"; shift ;;
+      --end-date)
+        [ $# -ge 2 ] || die "--end-date requires a value"
+        init_end_date="$2"; shift 2 ;;
+      --end-date=*)
+        init_end_date="${1#--end-date=}"; shift ;;
+      --capacity-points)
+        [ $# -ge 2 ] || die "--capacity-points requires a value"
+        init_capacity_points="$2"; shift 2 ;;
+      --capacity-points=*)
+        init_capacity_points="${1#--capacity-points=}"; shift ;;
+      --sprint-length-days)
+        [ $# -ge 2 ] || die "--sprint-length-days requires a value"
+        init_sprint_length="$2"; shift 2 ;;
+      --sprint-length-days=*)
+        init_sprint_length="${1#--sprint-length-days=}"; shift ;;
       --help|-h)
         usage
         exit 0 ;;
@@ -3161,7 +3227,16 @@ main() {
     init)
       # AF-2026-05-22-9 Bug-8 — bootstrap a fresh sprint-status.yaml.
       [ -n "$reconcile_sprint_id" ] || die "init requires --sprint-id <id>"
-      cmd_init "$reconcile_sprint_id" ;;
+      # AF-2026-05-31-1 / Test12 F-15 — forward optional date / capacity
+      # / length flags. Each is only forwarded when non-empty so the
+      # pre-AF-31-1 seed shape is preserved on zero-flag invocations
+      # (tests scrape the yaml verbatim).
+      _init_args=()
+      [ -n "$init_start_date" ]      && _init_args+=(--start-date "$init_start_date")
+      [ -n "$init_end_date" ]        && _init_args+=(--end-date "$init_end_date")
+      [ -n "$init_capacity_points" ] && _init_args+=(--capacity-points "$init_capacity_points")
+      [ -n "$init_sprint_length" ]   && _init_args+=(--sprint-length-days "$init_sprint_length")
+      cmd_init "$reconcile_sprint_id" "${_init_args[@]}" ;;
     get)
       [ -n "$story_key" ] || die "get requires --story <key>"
       cmd_get "$story_key" ;;

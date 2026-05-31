@@ -1026,12 +1026,20 @@ main() {
       ;;
   esac
 
-  local story_key="" gate_name="" verdict="" plan_id=""
+  local story_key="" gate_name="" verdict="" plan_id="" sprint_id=""
   # AF-2026-05-20-1 proof-of-execution flags:
   # --report <path> — path to the per-review report file written by the dispatched skill.
   # --execution-evidence <path> — path to execution-evidence.json (required for test-execution gates).
   # --report-missing-reason <reason> — explicit escape hatch for cases where no report exists
   #   (e.g. UNVERIFIED seed rows, FAILED verdicts with no salvageable report).
+  # AF-2026-05-31-1 / Test12 F-17 — `--sprint` flag closes the
+  # documentation/script gap for sprint-scoped gates (sprint-review,
+  # sprint-close handoffs). When `--sprint` is set and `--story` is not,
+  # the helper treats the invocation as sprint-scoped: it reads/writes a
+  # ledger entry keyed by `sprint-${id}-${gate}` rather than locating a
+  # story file. The plan-id-by-default fallback keeps the entry uniquely
+  # addressable per sprint so the dispatcher (gaia-sprint-close Step 3a)
+  # can query the sentinel without referencing a story key.
   local report_path="" execution_evidence="" report_missing_reason=""
   LEDGER_FLAG=""
   while [ $# -gt 0 ]; do
@@ -1039,6 +1047,10 @@ main() {
       --story)
         [ $# -ge 2 ] || die "--story requires a value"
         story_key="$2"; shift 2
+        ;;
+      --sprint)
+        [ $# -ge 2 ] || die "--sprint requires a value"
+        sprint_id="$2"; shift 2
         ;;
       --gate)
         [ $# -ge 2 ] || die "--gate requires a value"
@@ -1086,17 +1098,44 @@ main() {
     validate_plan_id "$plan_id"
   fi
 
-  [ -n "$story_key" ] || die "$subcmd requires --story <key>"
+  # AF-2026-05-31-1 / Test12 F-17 — sprint-scoped invocation short-circuit.
+  # When `--sprint` is provided WITHOUT `--story`, this is a sprint-level
+  # gate (sprint-review, sprint-close handoff). Synthesize a story-key
+  # sentinel of the form `sprint:<sprint-id>` so the downstream ledger
+  # path keys the entry stably, default the plan-id to
+  # `<gate>-<sprint-id>` when one isn't given, and skip locate_story_file
+  # (there's no per-story file to find). Forward to the ledger path the
+  # same way story-keyed gates do.
+  if [ -z "$story_key" ] && [ -n "$sprint_id" ]; then
+    story_key="sprint:${sprint_id}"
+    if [ -z "$plan_id" ] && [ -n "$gate_name" ]; then
+      plan_id="${gate_name}-${sprint_id}"
+    fi
+    # Ledger path is the only valid sink for sprint-scoped gates — they do
+    # NOT touch a per-story Review Gate table. Force the ledger flag on.
+    LEDGER_FLAG="story-validation"
+    # Skip locate_story_file (no story file exists for a sprint sentinel).
+  else
+    [ -n "$story_key" ] || die "$subcmd requires --story <key> or --sprint <id>"
 
-  # For plan-id-only gates (ledger path), locate_story_file is still required
-  # to ensure the story exists before recording any verdict.
-  locate_story_file "$story_key"
+    # For plan-id-only gates (ledger path), locate_story_file is still required
+    # to ensure the story exists before recording any verdict.
+    locate_story_file "$story_key"
+  fi
 
   case "$subcmd" in
     check)
+      # AF-2026-05-31-1 / Test12 F-17: sprint-scoped invocations are ledger-
+      # only by contract — there's no per-sprint Review Gate table to scan.
+      if [ -n "$sprint_id" ] && [ -z "$STORY_FILE" ]; then
+        die "check subcommand requires a story file; --sprint-scoped checks should query the ledger via status"
+      fi
       cmd_check "$STORY_FILE"
       ;;
     review-gate-check)
+      if [ -n "$sprint_id" ] && [ -z "$STORY_FILE" ]; then
+        die "review-gate-check requires a story file; --sprint-scoped composite checks are not defined"
+      fi
       cmd_review_gate_check "$STORY_FILE"
       ;;
     status)
