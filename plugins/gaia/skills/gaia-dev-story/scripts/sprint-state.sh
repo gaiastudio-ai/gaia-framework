@@ -2791,6 +2791,47 @@ cmd_transition_sprint() {
     return 1
   fi
 
+  # Gate: review → closed requires a Val sentinel proving /gaia-sprint-review ran
+  # AF-2026-05-31-3 / Test14 F-13 — the /gaia-sprint-close SKILL.md Step 3a
+  # documents that closing a `review`-status sprint MUST verify the sprint-
+  # review Val sentinel (either the E83 dispatch sentinel
+  # `sprint-review-{id}-val-dispatched.json` OR the E87 envelope sentinel
+  # `val-envelope-<sha>.json` keyed off the sprint id), and REFUSE on a
+  # missing sentinel with "run /gaia-sprint-review first". The SKILL.md
+  # documented the gate but the edge here had no enforcement — so a
+  # `review`-status sprint with NO sprint-review ever run closed cleanly.
+  # Fold the check directly into the transition primitive so any caller
+  # (close.sh, direct CLI, ad-hoc scripts) is refused uniformly. Escape
+  # hatch: `GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL=1` for the
+  # documented /gaia-correct-course bypass + the UNVERIFIED-bypass path
+  # in /gaia-sprint-review Step 8 (which writes its own justification
+  # block; the operator sets the env var when invoking close).
+  if [ "$current" = "review" ] && [ "$target" = "closed" ] \
+     && [ "${GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL:-0}" != "1" ]; then
+    local _ckpt_dir="${CLAUDE_PROJECT_ROOT:-.}/.gaia/memory/checkpoints"
+    local _dispatch_sentinel="${_ckpt_dir}/sprint-review-${sprint_id}-val-dispatched.json"
+    local _envelope_glob="${_ckpt_dir}/val-envelope-*.json"
+    local _found=0
+    if [ -f "$_dispatch_sentinel" ]; then
+      _found=1
+    else
+      # E87 envelope sentinel: any val-envelope-<hash>.json whose
+      # artifact_path matches the sprint id satisfies the gate.
+      for _env in $_envelope_glob; do
+        [ -f "$_env" ] || continue
+        if grep -F "\"artifact_path\":\"${sprint_id}\"" "$_env" >/dev/null 2>&1; then
+          _found=1
+          break
+        fi
+      done
+    fi
+    if [ "$_found" -ne 1 ]; then
+      printf '%s: refuse review→closed for sprint %s: no Val sentinel at %s (run /gaia-sprint-review first, OR set GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL=1 for the documented bypass)\n' \
+        "$SCRIPT_NAME" "$sprint_id" "$_dispatch_sentinel" >&2
+      return 1
+    fi
+  fi
+
   # Gate: active → review requires ALL stories done
   if [ "$current" = "active" ] && [ "$target" = "review" ]; then
     local non_done_keys=""
@@ -3308,6 +3349,29 @@ main() {
       cmd_detect_auto_close ;;
     rollover)
       cmd_rollover "$rollover_from" "$to_state" "$rollover_keys" ;;
+  esac
+
+  # AF-2026-05-31-3 / Test14 F-16 — implementation-artifacts/ mirror.
+  # Target layout co-locates sprint-status.yaml with sprint-plan/,
+  # sprint-archive/, retrospective/ under implementation-artifacts/. The
+  # canonical write home stays at .gaia/state/ (ADR-095 boundary writer
+  # contract); after every successful mutation we additionally mirror
+  # the file to implementation-artifacts/sprint-status.yaml so the
+  # target layout has it too. The mirror is best-effort (copy errors
+  # are non-fatal): the canonical write is the source of truth. Readers
+  # that want layout-conformance can read from the mirror; everything
+  # else keeps reading the canonical path.
+  case "$subcmd" in
+    init|transition|inject|reconcile|rollover|set-story-sprint|set-goals|update-goals|set-review-justification|set-shape|record-escalation-override)
+      _canonical_yaml="$(_resolve_active_yaml)"
+      _proj_root="${PROJECT_PATH:-${CLAUDE_PROJECT_ROOT:-.}}"
+      _mirror_yaml="$_proj_root/.gaia/artifacts/implementation-artifacts/sprint-status.yaml"
+      if [ -f "$_canonical_yaml" ] && [ "$_canonical_yaml" != "$_mirror_yaml" ]; then
+        if mkdir -p "$(dirname "$_mirror_yaml")" 2>/dev/null; then
+          cp "$_canonical_yaml" "$_mirror_yaml" 2>/dev/null || true
+        fi
+      fi
+      ;;
   esac
 }
 
