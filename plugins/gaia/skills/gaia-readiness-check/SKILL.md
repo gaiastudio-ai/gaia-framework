@@ -185,6 +185,16 @@ Delegate operational readiness assessment to the **devops** subagent (Soren) via
 
 Write the readiness report to `.gaia/artifacts/planning-artifacts/readiness-report.md` with YAML frontmatter containing machine-readable PASS/FAIL status for each check area.
 
+**AF-2026-05-31-3 / Test14 F-21 — deterministic stub emitter.** Before the LLM authoring path runs, invoke the deterministic stub generator so headless YOLO runs (where no LLM authors the body) still produce a canonical-shape report file. The generator is idempotent: it refuses to overwrite a non-stub report, so the LLM authoring path below can safely enrich the body without contention.
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/generate-readiness-report.sh" \
+  --status "$GATE_STATUS" \
+  --project-root "${CLAUDE_PROJECT_ROOT:-.}"
+```
+
+The generator writes a minimal report (frontmatter + the two ADR-042 mandatory gate rows + a generated-by attribution). The LLM then ENRICHES the body with project-specific narrative below the frontmatter; the YAML `status:` field remains the authoritative machine-readable signal.
+
 #### Required frontmatter fields and report sections (AF-2026-05-30-4 D-04)
 
 `finalize.sh` enforces these fields and sections via SV-21/22/23/25. They are non-obvious from the report body alone; emit them explicitly so a hand-authored READY report does NOT fail the gate purely on frontmatter shape:

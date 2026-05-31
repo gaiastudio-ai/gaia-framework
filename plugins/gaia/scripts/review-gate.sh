@@ -1201,6 +1201,33 @@ main() {
         # Pre-E35 path: update the story file's Review Gate table (byte-identical).
         cmd_update "$STORY_FILE" "$gate_name" "$verdict"
       fi
+
+      # AF-2026-05-31-3 / Test14 F-15 — test-artifacts/ mirror hook.
+      # When the gate update carries a `--report <path>` AND the gate is
+      # one of the three test-lens reviewers (QA Tests / Test Automation
+      # / Test Review), mirror the report + execution-evidence under
+      # .gaia/artifacts/test-artifacts/{epic}/{key}/ so the target layout's
+      # symmetric test-lens mirror exists. The implementation-artifacts/
+      # copy is unaffected — this hook is purely additive.
+      if [ -n "$report_path" ] && [ -f "$report_path" ]; then
+        _mirror_lib="$(cd "$(dirname "$0")" && pwd)/lib/test-artifacts-mirror.sh"
+        if [ -f "$_mirror_lib" ]; then
+          _mirror_type=""
+          case "$gate_name" in
+            "QA Tests")           _mirror_type="qa-tests" ;;
+            "Test Automation")    _mirror_type="test-automation" ;;
+            "Test Review")        _mirror_type="test-review" ;;
+          esac
+          if [ -n "$_mirror_type" ]; then
+            # shellcheck source=/dev/null
+            . "$_mirror_lib"
+            test_artifacts_mirror_report "$story_key" "$report_path" "$_mirror_type" || true
+            if [ -n "$execution_evidence" ] && [ -f "$execution_evidence" ]; then
+              test_artifacts_mirror_evidence "$story_key" "$execution_evidence" "$_mirror_type" || true
+            fi
+          fi
+        fi
+      fi
       ;;
   esac
 }

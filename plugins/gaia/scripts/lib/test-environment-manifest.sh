@@ -356,6 +356,19 @@ if [ "${write_mode}" -eq 1 ]; then
   mkdir -p "$(dirname "${manifest_path}")"
   printf '%s\n' "${manifest}" > "${manifest_path}"
   printf '%s: installed %s (detected-stack=%s)\n' "$SCRIPT_NAME" "${MANIFEST_REL}" "${stack:-generic}" >&2
+  # AF-2026-05-31-3 / Test14 F-17 — test-artifacts/ mirror.
+  # The target layout places test-environment.yaml under test-artifacts/.
+  # ADR-110 pins the canonical write home at .gaia/config/; mirror to
+  # .gaia/artifacts/test-artifacts/ so the target layout has it too.
+  # Best-effort — copy failure is non-fatal.
+  _mirror_path="${target}/.gaia/artifacts/test-artifacts/test-environment.yaml"
+  if [ "${manifest_path}" != "${_mirror_path}" ]; then
+    if mkdir -p "$(dirname "${_mirror_path}")" 2>/dev/null; then
+      cp "${manifest_path}" "${_mirror_path}" 2>/dev/null \
+        && printf '%s: F-17 mirror: %s\n' "$SCRIPT_NAME" "${_mirror_path}" >&2 \
+        || true
+    fi
+  fi
   exit 0
 fi
 
