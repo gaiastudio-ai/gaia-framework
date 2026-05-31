@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.182.2] — 2026-05-31
+
+### Changed
+
+- cross-platform portability matrix + 59 bats covering AF-31-1 test12 fixes
+
+### Fixed
+
+- (ci) two test fallout fixes from AF-31-1 (dispatches verb + AF-30-4 F-05)
+- (ci) collapse sprint-plan init to single line for AF-26-3 F-7 regex match
+- (high) doctor ANSI + bridge counts + sprint dates + state-machine + sprint flag (AF-31-1)
+- (high) brownfield wire-up — grype/syft dispatch + yolo carve-out + template + V-01 (AF-31-1)
+- (med) init platform vocab adds server/backend + gitignore back-fill (AF-31-1 F-02/03/09)
+- (high) bash 3.2 portability across deterministic-tools chain (AF-31-1 F-01/04/06)
+
 ## [1.182.1] — 2026-05-30
 
 ### Changed
