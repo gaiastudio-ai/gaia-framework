@@ -3358,18 +3358,25 @@ main() {
   # contract); after every successful mutation we additionally mirror
   # the file to implementation-artifacts/sprint-status.yaml so the
   # target layout has it too. The mirror is best-effort (copy errors
-  # are non-fatal): the canonical write is the source of truth. Readers
-  # that want layout-conformance can read from the mirror; everything
-  # else keeps reading the canonical path.
+  # are non-fatal): the canonical write is the source of truth.
+  #
+  # IMPORTANT — non-creating mirror semantics: we only copy when the
+  # implementation-artifacts/ dir ALREADY exists. Creating it on every
+  # state mutation would shadow legacy fixtures (e.g. tests that seed
+  # under `docs/implementation-artifacts/`) and confuse validate-locate
+  # glob resolution in any project that hasn't migrated to the canonical
+  # tree. Projects on the canonical layout already have the directory;
+  # legacy / test projects don't, and the mirror cleanly no-ops for them.
   case "$subcmd" in
     init|transition|inject|reconcile|rollover|set-story-sprint|set-goals|update-goals|set-review-justification|set-shape|record-escalation-override)
       _canonical_yaml="$(_resolve_active_yaml)"
       _proj_root="${PROJECT_PATH:-${CLAUDE_PROJECT_ROOT:-.}}"
-      _mirror_yaml="$_proj_root/.gaia/artifacts/implementation-artifacts/sprint-status.yaml"
-      if [ -f "$_canonical_yaml" ] && [ "$_canonical_yaml" != "$_mirror_yaml" ]; then
-        if mkdir -p "$(dirname "$_mirror_yaml")" 2>/dev/null; then
-          cp "$_canonical_yaml" "$_mirror_yaml" 2>/dev/null || true
-        fi
+      _mirror_dir="$_proj_root/.gaia/artifacts/implementation-artifacts"
+      _mirror_yaml="$_mirror_dir/sprint-status.yaml"
+      if [ -f "$_canonical_yaml" ] \
+         && [ "$_canonical_yaml" != "$_mirror_yaml" ] \
+         && [ -d "$_mirror_dir" ]; then
+        cp "$_canonical_yaml" "$_mirror_yaml" 2>/dev/null || true
       fi
       ;;
   esac

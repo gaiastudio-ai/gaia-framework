@@ -97,8 +97,14 @@ EOF
 }
 
 @test "AC2/TS4: review -> closed still accepted (existing edge unchanged)" {
+  # AF-2026-05-31-3 / Test14 F-13: the review→closed edge now requires a
+  # Val sentinel by default. This test asserts the EDGE itself remains
+  # legal (ADR-108 D1 + FR-452); the sentinel gate is a separate guard
+  # tested in af-2026-05-31-3-test14-findings.bats. Bypass it here with
+  # the documented escape-hatch env var.
   seed_yaml review
-  run bash "$SS" transition --sprint sprint-900 --to closed
+  run env GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL=1 \
+    bash "$SS" transition --sprint sprint-900 --to closed
   [ "$status" -eq 0 ]
   grep -Eq '^status:[[:space:]]*closed' "$SPRINT_STATUS_YAML"
 }

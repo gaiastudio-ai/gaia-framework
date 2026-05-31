@@ -245,6 +245,24 @@ EOF
   diff -q "$src" "$dst"
 }
 
+@test "AF-31-3 F-16: end-to-end mirror writes when target dir exists" {
+  # Pre-create the impl-artifacts dir so the non-creating mirror engages.
+  mkdir -p "$TEST_TMP/.gaia/state" "$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  run bash -c "cd '$TEST_TMP' && PROJECT_PATH='$TEST_TMP' bash '$PLUGIN_ROOT/scripts/sprint-state.sh' init --sprint-id sprint-1"
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_TMP/.gaia/state/sprint-status.yaml" ]
+  [ -f "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml" ]
+}
+
+@test "AF-31-3 F-16: end-to-end mirror NO-OPS when target dir absent (legacy projects)" {
+  # Don't create the impl-artifacts dir; mirror must NOT auto-create it.
+  mkdir -p "$TEST_TMP/.gaia/state"
+  run bash -c "cd '$TEST_TMP' && PROJECT_PATH='$TEST_TMP' bash '$PLUGIN_ROOT/scripts/sprint-state.sh' init --sprint-id sprint-1"
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_TMP/.gaia/state/sprint-status.yaml" ]
+  [ ! -d "$TEST_TMP/.gaia/artifacts/implementation-artifacts" ]
+}
+
 # ===========================================================================
 # F-17 — test-environment-manifest.sh test-artifacts/ mirror
 # ===========================================================================

@@ -176,9 +176,15 @@ EOF
 }
 
 @test "TC-SGR-15: sprint-state.sh transition --sprint review→closed accepts (FR-452 contract preserved)" {
+  # AF-2026-05-31-3 / Test14 F-13: review→closed now requires a Val sentinel
+  # by default. This test targets the state-machine edge itself (FR-452 +
+  # ADR-108 D1), not the sentinel guard — set the escape-hatch env var
+  # so the edge accepts without a fixture sentinel. The sentinel guard
+  # has its own dedicated bats coverage in af-2026-05-31-3-test14-findings.bats.
   seed_yaml_with_goals sprint-1 S1 done review "Goal A"
   seed_story S1 done
-  run "$SCRIPT" transition --sprint sprint-1 --to closed
+  run env GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL=1 \
+    "$SCRIPT" transition --sprint sprint-1 --to closed
   [ "$status" -eq 0 ]
   grep -q '^status: closed' "$YAML"
 }

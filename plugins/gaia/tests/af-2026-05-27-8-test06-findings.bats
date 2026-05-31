@@ -110,6 +110,12 @@ teardown() { common_teardown; }
   run env PROJECT_PATH="$TEST_TMP" bash "$PLUGIN_ROOT/scripts/sprint-state.sh" init --sprint-id sprint-1
   [ "$status" -eq 0 ]
   [ -f "$TEST_TMP/.gaia/state/sprint-status.yaml" ]
+  # AF-2026-05-31-3 / Test14 F-16: sprint-state.sh mirrors the canonical yaml
+  # to implementation-artifacts/sprint-status.yaml ONLY when the target dir
+  # ALREADY EXISTS (the mirror is non-creating to avoid shadowing legacy
+  # fixtures). On a fresh project the dir doesn't exist yet, so the mirror
+  # cleanly no-ops here. The F-16 mirror has its own dedicated coverage in
+  # af-2026-05-31-3-test14-findings.bats that creates the dir first.
   [ ! -f "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml" ]
 }
 
