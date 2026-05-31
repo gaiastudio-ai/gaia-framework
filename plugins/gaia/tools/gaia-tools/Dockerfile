@@ -127,7 +127,7 @@ RUN curl -fsSL "https://github.com/spotbugs/spotbugs/releases/download/${SPOTBUG
 # ---------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 
-ARG GAIA_TOOLS_VERSION=0.1.1
+ARG GAIA_TOOLS_VERSION=0.1.2
 ARG GAIA_TOOLS_DB_DATE=2026-05-31
 
 ENV GAIA_TOOLS_VERSION=${GAIA_TOOLS_VERSION} \
@@ -201,21 +201,31 @@ RUN pip install --break-system-packages \
       'cyclonedx-bom==4.4.3' \
       'yamllint==1.35.1'
 
-# AF-2026-05-31-2 / Test13 F-22: bundle Microsoft's Sarif.Multitool so the
-# Phase-7 sarif-merge.sh step actually runs under docker-runner. Without
-# this, the prior pipeline (grype SARIF → sarif merge → dedup → reconcile)
-# fell over at the merge step — the `sarif` CLI was on no host PATH
-# (dotnet tool install requires .NET SDK, off-policy for the gaia-doctor
-# Tier-2 install profile) AND not in the image. With it bundled,
-# docker_runner_dispatch sarif ... works the same as grype/syft.
+# AF-2026-05-31-3 / Test14 F-02 + F-06: bundle Microsoft's Sarif.Multitool
+# so the Phase-7 sarif-merge.sh step actually runs under docker-runner.
+#
+# The prior AF-31-2 attempt (Test13 F-22) used `dotnet-install.sh --runtime
+# dotnet` (RUNTIME only) — but `dotnet tool install` REQUIRES the .NET SDK,
+# so the next RUN failed with "No .NET SDKs were found". The `|| echo
+# WARNING` swallowed the error, the image built successfully, AND every
+# downstream invocation of `sarif merge ...` from inside the container
+# resolved to "command not found". Documented as "bundled" while silently
+# absent — exactly the regression Test14 F-02 caught.
+#
+# Fix: install the .NET SDK (channel 8.0 LTS — current; covers
+# Sarif.Multitool's TFM requirements). The SDK includes the runtime.
+# Then `dotnet tool install` actually succeeds and `sarif` lands on PATH.
+# `--no-cache` cleans the NuGet package cache afterward so the image
+# doesn't bloat by ~200MB for a build artifact we never re-use.
 RUN curl -fsSL "https://dot.net/v1/dotnet-install.sh" -o /tmp/dotnet-install.sh && \
     chmod +x /tmp/dotnet-install.sh && \
-    /tmp/dotnet-install.sh --runtime dotnet --version latest --install-dir /opt/dotnet && \
+    /tmp/dotnet-install.sh --channel 8.0 --install-dir /opt/dotnet && \
     rm -f /tmp/dotnet-install.sh && \
     ln -s /opt/dotnet/dotnet /usr/local/bin/dotnet && \
-    dotnet --info >/dev/null 2>&1 || true
-RUN /opt/dotnet/dotnet tool install --tool-path /usr/local/bin Microsoft.Sarif.Multitool \
-    || echo "WARNING: sarif-multitool install failed — Phase-7 SARIF merge will degrade"
+    dotnet --info >/dev/null 2>&1 && \
+    dotnet tool install --tool-path /usr/local/bin Microsoft.Sarif.Multitool && \
+    /usr/local/bin/sarif --version && \
+    rm -rf /root/.nuget /tmp/NuGetScratch
 
 # Pure-npm Tier 1 tools.
 # AF-2026-05-31-2 / Test13 F-04: pin to a real published version
