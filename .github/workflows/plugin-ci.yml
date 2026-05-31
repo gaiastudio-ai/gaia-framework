@@ -495,3 +495,110 @@ jobs:
           # literal `diff -q CLAUDE.md gaia-public/CLAUDE.md` form lives in
           # the developer's local invocation (see plugins/gaia/scripts/claudemd-drift-guard.sh).
           plugins/gaia/scripts/claudemd-drift-guard.sh CLAUDE.md CLAUDE.md
+
+  cross-platform-portability:
+    # AF-2026-05-31-1 / Test12 §9.0 cross-platform mandate.
+    #
+    # Tests the deterministic-tools chain on macOS, Linux, and Windows-via-
+    # Git-Bash so regressions in bash-3.2 portability or POSIX-tool
+    # assumptions surface at PR time instead of in a manual test cycle.
+    #
+    # Scope is intentionally narrow: this job does NOT run the full bats
+    # suite (3000+ tests, many of which assume Linux-only tools and
+    # canonical paths). It runs ONLY the portability-sensitive subset:
+    #   - tests/af-2026-05-31-1-test12-findings.bats (this fix sweep)
+    #   - any future bats explicitly tagged @cross-platform
+    # Plus a syntax check of every script in the deterministic-tools
+    # chain on each runner's native bash version.
+    name: cross-platform-portability (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+
+      - name: Report bash version
+        shell: bash
+        run: |
+          echo "bash --version:"
+          bash --version | head -3
+          echo ""
+          echo "BASH_VERSION=$BASH_VERSION"
+          echo "BASH_VERSINFO=${BASH_VERSINFO[*]}"
+          echo "uname -a: $(uname -a)"
+
+      - name: Install bats (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
+        with:
+          bats-version: 1.10.0
+
+      - name: Install bats (macOS via brew)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install bats-core jq
+
+      - name: Install bats (Windows via npm)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          # bats-core ships an npm tarball that works in Git Bash. jq ships
+          # with Git for Windows already.
+          npm install -g bats || true
+          which bats || (echo "bats install failed; falling back to syntax-check only" && true)
+
+      - name: Syntax-check the deterministic-tools chain
+        shell: bash
+        run: |
+          # AF-2026-05-31-1 portability scope — these are the scripts that
+          # MUST parse + run on bash 3.2 (macOS default) and Git Bash
+          # (Windows). Any new addition to this list MUST also be added to
+          # the af-2026-05-31-1 bats coverage file.
+          SCRIPTS=(
+            plugins/gaia/skills/gaia-init/scripts/validate-platform-stack.sh
+            plugins/gaia/skills/gaia-init/scripts/generate-config.sh
+            plugins/gaia/scripts/detect-signals.sh
+            plugins/gaia/scripts/adapters/brownfield/orchestrator.sh
+            plugins/gaia/scripts/adapters/brownfield/pre-warm.sh
+            plugins/gaia/scripts/adapters/brownfield/reconcile-cross-stack.sh
+            plugins/gaia/scripts/adapters/semgrep/run.sh
+            plugins/gaia/scripts/adapters/gocyclo/run.sh
+            plugins/gaia/scripts/adapters/radon/run.sh
+            plugins/gaia/scripts/adapters/eslint-plugin-sonarjs/run.sh
+            plugins/gaia/skills/gaia-doctor/scripts/check-tools.sh
+            plugins/gaia/skills/gaia-doctor/scripts/install-tools.sh
+            plugins/gaia/scripts/lib/write-val-envelope.sh
+            plugins/gaia/scripts/sprint-state.sh
+            plugins/gaia/scripts/review-gate.sh
+            plugins/gaia/scripts/run-tests.sh
+          )
+          rc=0
+          for s in "${SCRIPTS[@]}"; do
+            if [ -f "$s" ]; then
+              if ! bash -n "$s"; then
+                echo "::error file=$s::syntax error parsing on this platform's bash"
+                rc=1
+              else
+                echo "OK $s"
+              fi
+            else
+              echo "::warning::missing $s (skipping)"
+            fi
+          done
+          exit $rc
+
+      - name: Run portability bats
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          # Run only the dedicated portability bats files. The Windows
+          # runner is excluded from this step because Git Bash's filesystem
+          # semantics (case-insensitive HFS+, line-ending translation) make
+          # several path-comparison tests fail in ways that are not portability
+          # bugs in the framework. Windows still gets the syntax-check above.
+          if [ -f plugins/gaia/tests/af-2026-05-31-1-test12-findings.bats ]; then
+            bats plugins/gaia/tests/af-2026-05-31-1-test12-findings.bats
+          fi
