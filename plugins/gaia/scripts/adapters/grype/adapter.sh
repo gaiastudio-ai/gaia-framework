@@ -73,16 +73,29 @@ if [ "$_GRYPE_RUNNER_MODE" = "docker" ] && docker_runner_available >/dev/null 2>
   # GRYPE_DB_MAX_ALLOWED_BUILT_AGE check is satisfied by construction
   # (image's DB date is fresher than the 5d cap when the image is
   # rebuilt monthly per the publish workflow).
-  if docker_runner_dispatch grype dir:/workspace -o sarif -f /out/grype.sarif; then
+  # AF-2026-05-31-2 / Test13 F-16: the prior `-f /out/grype.sarif` flag
+  # was interpreted by grype as `--fail-on <severity>` (it gates the exit
+  # code based on the highest severity finding), NOT as an output-file
+  # specifier. Every docker CVE scan died with `bad --fail-on severity
+  # value '/out/grype.sarif'` and produced no SARIF. The canonical grype
+  # syntax for "scan + write SARIF to <path>" is `-o sarif=<path>` (a
+  # single fused output specifier). Switched to that form.
+  # AF-2026-05-31-2 / Test13 F-17: capture the dispatch exit code at the
+  # point of failure (a separate variable `_grype_rc`) so the `die`
+  # message reports the real exit status. The prior `rc=$?` after the
+  # `fi` could capture 0 in some shells, producing the misleading
+  # "dispatch failed (exit 0)" log line.
+  _grype_rc=0
+  docker_runner_dispatch grype dir:/workspace -o sarif="/out/grype.sarif" || _grype_rc=$?
+  if [ "$_grype_rc" -eq 0 ]; then
     log_info "grype docker dispatch complete — SARIF at $ADAPTER_OUT_DIR/grype.sarif"
     exit 0
   fi
-  rc=$?
-  if [ "$rc" -eq 125 ]; then
+  if [ "$_grype_rc" -eq 125 ]; then
     log_warn "docker runner unavailable (exit 125) — falling through to native dispatch"
     # Fall through to native dispatch below.
   else
-    die "grype docker dispatch failed (exit $rc)"
+    die "grype docker dispatch failed (exit $_grype_rc)"
   fi
 fi
 

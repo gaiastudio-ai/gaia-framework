@@ -64,8 +64,24 @@ if [ "${#inputs[@]}" -eq 0 ]; then
 fi
 
 # --- Graceful degrade: sarif CLI absent ----------------------------------
-if ! command -v sarif >/dev/null 2>&1; then
-  log_warn "Sarif.Multitool 'sarif' CLI not found on PATH; skipping merge (graceful degrade) — 6-step recipe falls back to per-tool JSON"
+# AF-2026-05-31-2 / Test13 F-22: probe the docker runner as a fallback when
+# the host PATH doesn't carry `sarif`. The gaia-tools image bundles
+# Microsoft.Sarif.Multitool — so when `brownfield.tools.runner: docker` is
+# set the merge step now runs via `docker_runner_dispatch sarif merge ...`
+# instead of degrading. Without this fix the Phase-7 E104 pipeline (grype
+# SARIF → merge → dedup → reconcile) was inert on docker-runner hosts —
+# the grype SARIF was never merged so dedup got an empty stream.
+_SARIF_DOCKER_RUNNER=""
+_SARIF_DOCKER_RUNNER_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/docker-runner.sh"
+if [ -f "$_SARIF_DOCKER_RUNNER_LIB" ]; then
+  . "$_SARIF_DOCKER_RUNNER_LIB"
+  if [ "$(docker_runner_mode 2>/dev/null)" = "docker" ] && docker_runner_available >/dev/null 2>&1; then
+    _SARIF_DOCKER_RUNNER="docker"
+  fi
+fi
+
+if [ -z "$_SARIF_DOCKER_RUNNER" ] && ! command -v sarif >/dev/null 2>&1; then
+  log_warn "Sarif.Multitool 'sarif' CLI not found on PATH and runner != docker; skipping merge (graceful degrade) — 6-step recipe falls back to per-tool JSON"
   exit 0
 fi
 
@@ -76,7 +92,17 @@ mkdir -p "$out_dir"
 
 # `sarif merge` concatenates one `run` per input (preserving tool.driver.name).
 # Propagate a non-zero exit (e.g. malformed input -> schema-validation error).
-if ! sarif merge --output-directory "$out_dir" --output-file "$out_file" "${inputs[@]}"; then
+if [ "$_SARIF_DOCKER_RUNNER" = "docker" ]; then
+  # docker-runner mount layout: project at /workspace (read-only), output at
+  # /out. The merge inputs and output must both resolve inside one of the
+  # mounted dirs — typically /workspace for inputs (under .gaia/) and /out
+  # for the merged result. Translate the host paths into /workspace and /out
+  # relative form via the runner's known mount semantics.
+  ADAPTER_OUT_DIR="$out_dir" \
+    docker_runner_dispatch sarif merge --output-directory "/out" --output-file "$out_file" \
+      "${inputs[@]}" \
+    || die "sarif merge (docker) failed (non-conformant input or CLI error)"
+elif ! sarif merge --output-directory "$out_dir" --output-file "$out_file" "${inputs[@]}"; then
   die "sarif merge failed (non-conformant input or CLI error)"
 fi
 

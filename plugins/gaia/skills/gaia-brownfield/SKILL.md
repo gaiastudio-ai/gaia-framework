@@ -132,17 +132,18 @@ Each phase is independent in its write targets but must run sequentially because
 6. Generate the brownfield assessment artifact. AF-2026-05-31-1 / Test12 F-05 — the canonical template lives at `${CLAUDE_PLUGIN_ROOT}/templates/brownfield-assessment-template.md` and ships with the plugin. Read it as the starting shape (mode/schema_version/generated_by frontmatter + the seven section headers: Project Overview, Repository Layout, Existing Documentation Surface, Stack Signals, Known Gaps, Scan-readiness checklist, Continuation pointer). Fill the placeholder fields with concrete project data: component inventory, technical debt, migration constraints, coexistence strategy, and adoption path. Include `{project_type}` in the output. Write to `.gaia/artifacts/planning-artifacts/brownfield-assessment.md`.
 7. Write the enhanced project documentation — all standard sections plus detected capability flags, `{project_type}`, testing infrastructure summary, and CI/CD pipeline summary. Write to `.gaia/artifacts/planning-artifacts/project-documentation.md`.
 
-Checkpoint after Phase 1 via the canonical `checkpoint.sh write` subcommand. AF-2026-05-31-1 / Test12 F-08 — the prior prose was a bare invocation with no flag set documented; reasonable guesses like `--phase` / `--status` both error with `unknown flag to write`. The actual accepted flags are `--workflow <name>`, `--step <name>`, `--var <key=value>` (repeatable), and `--file <path>` (repeatable). Brownfield's Phase 1 checkpoint:
+Checkpoint after Phase 1 via the canonical `checkpoint.sh write` subcommand. AF-2026-05-31-1 / Test12 F-08 documented the accepted flag set; AF-2026-05-31-2 / Test13 F-13 corrects the `--step` VALUE TYPE — it MUST be a non-negative integer (the script's case-validator at `plugins/gaia/scripts/checkpoint.sh:226-227` enforces this). Use the bare phase number; the named-phase string from the Test12 prose was rejected. Brownfield's Phase 1 checkpoint:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh write \
   --workflow brownfield \
-  --step phase-1-discovery \
+  --step 1 \
   --var status=complete \
+  --var phase_name=discovery \
   --file ".gaia/artifacts/planning-artifacts/brownfield-assessment.md"
 ```
 
-Per phase, the `--step` value advances: `phase-1-discovery`, `phase-2-documentation`, `phase-3-scans`, `phase-4-tests`, `phase-5-env`, `phase-6-nfr`, `phase-7-consolidation`, `phase-8-prd`, `phase-9-architecture`. The non-gating contract of brownfield checkpoints means an unknown-flag error from a stale invocation is informational, not blocking — but the canonical form above is what the helper recognizes.
+Per phase, `--step` advances `1` → `2` → `3` → `4` → `5` → `6` → `7` → `8` → `9`. The phase NAME (`discovery`, `documentation`, `scans`, `tests`, `env`, `nfr`, `consolidation`, `prd`, `architecture`) is carried as a `--var phase_name=...` since the `--step` value is an integer. The non-gating contract of brownfield checkpoints means an unknown-flag error from a stale invocation is informational, not blocking — but the canonical form above is what the helper recognizes.
 
 ## Phase 2 — Parallel Documentation Subagents
 
@@ -342,22 +343,38 @@ tools default-on" contract that AF-2026-05-30-3 established.
 AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
 mkdir -p "$AUDIT/sarif"
 
+# AF-2026-05-31-2 / Test13 F-15: source the docker-runner helper so the
+# syft and grype steps below transparently dispatch through the bundled
+# gaia-tools image when `brownfield.tools.runner: docker` is set. Without
+# this probe the steps gated on host `command -v syft` / `command -v
+# grype` and SKIPPED on docker-runner hosts — even though both tools were
+# in the image. Mirrors the grype + python-vulture adapter wiring.
+. "$GAIA_PLUGIN_ROOT/scripts/lib/docker-runner.sh"
+_BROWNFIELD_RUNNER="$(docker_runner_mode 2>/dev/null || echo native)"
+_BROWNFIELD_DOCKER_READY=0
+if [ "$_BROWNFIELD_RUNNER" = "docker" ] && docker_runner_available >/dev/null 2>&1; then
+  _BROWNFIELD_DOCKER_READY=1
+fi
+
 # syft SBOM (CycloneDX 1.4-compatible — the grype-feeding path documented in
 # the AF-2026-05-30-4 / Test11 F-27 note above). The completeness check below
 # already references this path; producing it makes the check non-INFO-skip.
 SBOM_FILE="$AUDIT/sbom-syft.json"
-if command -v syft >/dev/null 2>&1; then
+if [ "$_BROWNFIELD_DOCKER_READY" = "1" ]; then
+  ADAPTER_OUT_DIR="$AUDIT" docker_runner_dispatch syft scan dir:/workspace -o "cyclonedx-json=/out/sbom-syft.json" 2>/dev/null \
+    || printf 'INFO: syft (docker) returned non-zero — SBOM unavailable (graceful degrade)\n' >&2
+elif command -v syft >/dev/null 2>&1; then
   syft scan dir:"$PROJECT_PATH" -o cyclonedx-json="$SBOM_FILE" 2>/dev/null \
     || printf 'INFO: syft returned non-zero — SBOM unavailable (graceful degrade)\n' >&2
 else
-  printf 'INFO: syft not on PATH — SBOM step skipped (run gaia-doctor --install to add)\n' >&2
+  printf 'INFO: syft not on PATH and runner != docker — SBOM step skipped (run gaia-doctor --install or set brownfield.tools.runner: docker)\n' >&2
 fi
 
 # grype CVE scan — prefer SBOM input when syft produced one (faster + no
 # re-walk), fall back to directory scan otherwise. Both forms write SARIF
 # into $AUDIT/sarif/ so the Phase 7 E104-S1 dedup ladder picks up the
 # findings via .properties.symbol.
-if command -v grype >/dev/null 2>&1; then
+if [ "$_BROWNFIELD_DOCKER_READY" = "1" ] || command -v grype >/dev/null 2>&1; then
   if [ -s "$SBOM_FILE" ]; then
     GRYPE_INPUT="sbom:$SBOM_FILE"
   else
@@ -369,7 +386,7 @@ if command -v grype >/dev/null 2>&1; then
     bash "$GAIA_PLUGIN_ROOT/scripts/adapters/grype/adapter.sh" \
     || printf 'INFO: grype adapter exited non-zero — CVE scan absent (graceful degrade)\n' >&2
 else
-  printf 'INFO: grype not on PATH — CVE scan skipped (run gaia-doctor --install to add)\n' >&2
+  printf 'INFO: grype not on PATH and runner != docker — CVE scan skipped (run gaia-doctor --install or set brownfield.tools.runner: docker)\n' >&2
 fi
 ```
 
