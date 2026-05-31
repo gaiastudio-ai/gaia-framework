@@ -65,12 +65,35 @@ mkdir -p "$OUT/dead-code" "$OUT/sarif"
 # module-aware mode. We resolve posn -> repo-root-relative file_path below.
 start=$(date +%s)
 raw=""
+# AF-2026-05-31-2 / Test13 F-18: probe the docker runner alongside the
+# host-PATH check. The go-deadcode (golang.org/x/tools/cmd/deadcode)
+# binary is NOT bundled in the gaia-tools image yet — Go's toolchain is
+# heavier than the image's mission allows. When runner=docker we still
+# fall through to host-PATH so a developer with Go installed can run
+# the scan; when neither is present we INFO-degrade with a clear message
+# pointing at the remediation. Mirrors the python-vulture wiring.
+_DEADCODE_DOCKER_RUNNER=""
+_DEADCODE_DOCKER_RUNNER_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../" && pwd)/lib/docker-runner.sh"
+if [ -f "$_DEADCODE_DOCKER_RUNNER_LIB" ]; then
+  . "$_DEADCODE_DOCKER_RUNNER_LIB"
+  if [ "$(docker_runner_mode 2>/dev/null)" = "docker" ] && docker_runner_available >/dev/null 2>&1; then
+    _DEADCODE_DOCKER_RUNNER="docker"
+  fi
+fi
+
 if [ -n "${DEADCODE_JSON_FIXTURE:-}" ] && [ -f "$DEADCODE_JSON_FIXTURE" ]; then
   raw="$(cat "$DEADCODE_JSON_FIXTURE")"
+elif [ "$_DEADCODE_DOCKER_RUNNER" = "docker" ] && docker_runner_dispatch deadcode -h >/dev/null 2>&1; then
+  # The image bundles deadcode (added in a later cycle); dispatch through it.
+  raw="$( docker_runner_dispatch deadcode -json ./... 2>/dev/null || printf '[]' )"
 elif command -v deadcode >/dev/null 2>&1; then
   raw="$( cd "$ROOT" && GO111MODULE=on deadcode -json ./... 2>/dev/null || printf '[]' )"
 else
-  log_warn "deadcode binary absent — go-deadcode skipped (graceful degrade)"
+  if [ "$_DEADCODE_DOCKER_RUNNER" = "docker" ]; then
+    log_warn "deadcode binary absent (runner=docker; gaia-tools image does not yet bundle deadcode) — go-deadcode skipped (graceful degrade); install via 'go install golang.org/x/tools/cmd/deadcode@latest'"
+  else
+    log_warn "deadcode binary absent — go-deadcode skipped (graceful degrade)"
+  fi
   exit 0
 fi
 [ -n "$raw" ] || raw='[]'

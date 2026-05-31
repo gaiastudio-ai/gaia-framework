@@ -19,7 +19,7 @@ When `brownfield.tools.runner: docker` is set in `project-config.yaml`, the brow
 | `vulture`     | 1    | 2.13       | python (dead-code) |
 | `pip-audit`   | 1    | 2.7.3      | python (CVE)       |
 | `cyclonedx-bom` | 1  | 4.4.3      | python (SBOM)      |
-| `cdxgen`      | 1    | 10.6.4     | any (Node SBOM)    |
+| `cdxgen`      | 1    | 10.11.0    | any (Node SBOM)    |
 | `yamllint`    | 1    | 1.35.1     | yaml workflows     |
 | `yq` (Mike Farah) | — | 4.44.1   | core               |
 
@@ -35,6 +35,16 @@ docker buildx build \
 ```
 
 CI publishes on push to `main` and on a monthly cron for vuln-DB freshness — see `.github/workflows/gaia-tools-image.yml`.
+
+### Self-build when the published image lags (AF-2026-05-31-2 / Test13 F-02)
+
+If `docker pull ghcr.io/gaiastudio-ai/gaia-tools:latest` fails with `denied` (registry visibility) or the pulled image is older than the Dockerfile in this branch (the monthly cron has not yet republished), build locally:
+
+```
+docker build -t ghcr.io/gaiastudio-ai/gaia-tools:latest plugins/gaia/tools/gaia-tools/
+```
+
+That tag matches the default `docker-runner.sh` resolves when `brownfield.tools.image` isn't set, so the brownfield adapters route through the local image without further config. The AF-2026-05-31-2 cycle fixed 5 build-blockers in the Dockerfile (F-01..F-05, F-07) and runtime image-policy (F-10), so a fresh build from this branch will succeed where prior tags failed.
 
 ## Use
 

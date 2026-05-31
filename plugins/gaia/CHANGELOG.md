@@ -29,7 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - (brownfield) flip deterministic-tools defaults to on (AF-30-3)
-- (runner) docker dispatch for tier-2 adapters + doctor --docker (AF-30-3)
+- (runner) docker dispatch for tier-2 adapters + `/gaia-doctor --install --docker` (AF-30-3; the docker mode for the READ-ONLY check is config-driven via `brownfield.tools.runner: docker`, NOT a `check-tools.sh --docker` flag — per AF-31-2 / Test13 F-11)
 - (tools) gaia-tools OCI image bundling tier-2 scanners (AF-30-3)
 
 ### Changed

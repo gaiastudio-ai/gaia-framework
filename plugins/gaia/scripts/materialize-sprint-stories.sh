@@ -177,8 +177,31 @@ while IFS= read -r key; do
   priority="$(_epics_field "$key" "Priority")"; [ -n "$priority" ] || priority="P2"
   size="$(_epics_field "$key" "Size")"; size="${size%% *}"; [ -n "$size" ] || size="M"
   risk="$(_epics_field "$key" "Risk")"; [ -n "$risk" ] || risk="medium"
-  fm="$(printf 'key: "%s"\ntitle: "%s"\nepic: "%s"\nstatus: backlog\npriority: "%s"\nsize: "%s"\nrisk: "%s"\nsprint_id: null\npriority_flag: null\n' \
-    "$key" "$title" "$epic_num" "$priority" "$size" "$risk")"
+  # AF-2026-05-31-2 / Test13 F-26: derive `points` from `size` so a
+  # downstream `sprint-state.sh inject` doesn't refuse the materialized
+  # story with `missing required frontmatter field(s): points`. The
+  # mapping mirrors generate-frontmatter.sh's sizing_map resolution but
+  # falls back to a deterministic default table when the resolver helper
+  # is unavailable (the canonical default — S=1, M=3, L=5, XL=8 — is the
+  # legacy gaia-framework convention; per-project sizing maps override
+  # via /gaia-create-story's interactive path).
+  points=""
+  _resolver="$(cd "$(dirname "$0")" && pwd)/resolve-config.sh"
+  if [ -x "$_resolver" ]; then
+    _sizing_map="$("$_resolver" sizing_map 2>/dev/null || true)"
+    points="$(printf '%s\n' "$_sizing_map" | awk -F= -v k="$size" '$1==k{print $2; exit}' || true)"
+  fi
+  if [ -z "$points" ]; then
+    case "$size" in
+      S|s)  points=1 ;;
+      M|m)  points=3 ;;
+      L|l)  points=5 ;;
+      XL|xl|XXL|xxl) points=8 ;;
+      *)    points=3 ;;
+    esac
+  fi
+  fm="$(printf 'key: "%s"\ntitle: "%s"\nepic: "%s"\nstatus: backlog\npriority: "%s"\nsize: "%s"\npoints: %s\nrisk: "%s"\nsprint_id: null\npriority_flag: null\n' \
+    "$key" "$title" "$epic_num" "$priority" "$size" "$points" "$risk")"
 
   mkdir -p "${story_dir}/reviews"
   printf '%s' "$fm" | bash "$SCAFFOLD" --template "$TEMPLATE" --output "$story_file" --frontmatter - >/dev/null 2>&1 \

@@ -458,25 +458,33 @@ for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
   # so the AC1 evidence contract stays intact. Run twice — once to count
   # individual `not ok` / `--- FAIL:` lines, once to read pytest's
   # summary line — whichever yields a non-zero count wins.
+  # AF-2026-05-31-2 / Test13 F-28 — every framework-output grep below MUST
+  # be terminated with `|| true` to survive the no-match case under `set -e`
+  # + pipefail. A fully-GREEN suite produces `100 passed in 0.18s` but
+  # NO `N failed` line at all: `grep -Eo '[0-9]+ failed' | tail | awk` then
+  # exits non-zero, pipefail propagates, set -e aborts the assignment
+  # BEFORE the `${var:-0}` default applies — so run-tests.sh crashed on
+  # exactly the suite state a review gate needs (all-PASS) and could not
+  # emit execution-evidence. Same applies to bats / go-test paths below.
   pass_count=0; fail_count=0
   if [ -f "$RT_OUTPUT_FILE" ]; then
     # pytest: "===== 100 passed, 2 failed in 0.18s ====="  (also handles xfailed/skipped suffixes)
-    _pytest_pass="$(grep -Eo '[0-9]+ passed' "$RT_OUTPUT_FILE" 2>/dev/null | tail -n1 | awk '{print $1}')"
-    _pytest_fail="$(grep -Eo '[0-9]+ failed' "$RT_OUTPUT_FILE" 2>/dev/null | tail -n1 | awk '{print $1}')"
+    _pytest_pass="$(grep -Eo '[0-9]+ passed' "$RT_OUTPUT_FILE" 2>/dev/null | tail -n1 | awk '{print $1}' || true)"
+    _pytest_fail="$(grep -Eo '[0-9]+ failed' "$RT_OUTPUT_FILE" 2>/dev/null | tail -n1 | awk '{print $1}' || true)"
     if [ -n "$_pytest_pass" ] || [ -n "$_pytest_fail" ]; then
       pass_count="${_pytest_pass:-0}"
       fail_count="${_pytest_fail:-0}"
     else
       # bats TAP: "ok 7 desc" / "not ok 3 desc"
-      _bats_pass="$(grep -cE '^ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1)"
-      _bats_fail="$(grep -cE '^not ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1)"
+      _bats_pass="$(grep -cE '^ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1 || true)"
+      _bats_fail="$(grep -cE '^not ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1 || true)"
       if [ "${_bats_pass:-0}" -gt 0 ] || [ "${_bats_fail:-0}" -gt 0 ]; then
         pass_count="$_bats_pass"
         fail_count="$_bats_fail"
       else
         # go test: "--- PASS:" / "--- FAIL:"
-        _go_pass="$(grep -cE '^--- PASS:' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1)"
-        _go_fail="$(grep -cE '^--- FAIL:' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1)"
+        _go_pass="$(grep -cE '^--- PASS:' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1 || true)"
+        _go_fail="$(grep -cE '^--- FAIL:' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1 || true)"
         if [ "${_go_pass:-0}" -gt 0 ] || [ "${_go_fail:-0}" -gt 0 ]; then
           pass_count="$_go_pass"
           fail_count="$_go_fail"

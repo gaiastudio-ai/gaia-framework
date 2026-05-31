@@ -129,41 +129,76 @@ epic_list=$(awk '
 
 # ---------- Story-status resolver ----------
 # Returns one `KEY=STATUS` line per known story.
+#
+# AF-2026-05-31-2 / Test13 F-29: when a sprint is closed + archived, its
+# stories are removed from the LIVE `sprint-status.yaml` (the file is
+# re-seeded for the next sprint). The dashboard then misreported all
+# closed-sprint stories as `backlog` because the live yaml-only scan
+# couldn't find them. We now run TWO passes:
+#   1. parse the live `sprint-status.yaml` (current sprint)
+#   2. parse every `sprint-status.yaml` under `sprint-archive/` (closed
+#      sprints), taking the FIRST status seen per key (live wins; archive
+#      only fills in stories the live sprint doesn't reference)
+#   3. fall back to story-file frontmatter for any key still unresolved
+# The story-file fallback is the authoritative source — its `status: done`
+# survives sprint closure — so it's the right tie-breaker for archived
+# stories whose archive yaml might predate a later transition.
+_parse_sprint_yaml() {
+  awk '
+    /^stories:/ { in_stories = 1; next }
+    in_stories && /^[a-z_]+:/ { in_stories = 0 }
+    in_stories && /^[[:space:]]+- key:/ {
+      v = $0
+      sub(/^[[:space:]]+- key:[[:space:]]*/, "", v)
+      gsub(/["'\''[:space:]]/, "", v)
+      key = v
+    }
+    in_stories && /^[[:space:]]+status:/ {
+      v = $0
+      sub(/^[[:space:]]+status:[[:space:]]*/, "", v)
+      gsub(/["'\''[:space:]]/, "", v)
+      if (key) { print key "=" v; key = "" }
+    }
+  ' "$1"
+}
+
 _resolve_statuses() {
+  # Pass 1: live sprint
   if [ -f "$SPRINT_STATUS_YAML" ]; then
-    awk '
-      /^stories:/ { in_stories = 1; next }
-      in_stories && /^[a-z_]+:/ { in_stories = 0 }
-      in_stories && /^[[:space:]]+- key:/ {
-        v = $0
-        sub(/^[[:space:]]+- key:[[:space:]]*/, "", v)
-        gsub(/["'\''[:space:]]/, "", v)
-        key = v
-      }
-      in_stories && /^[[:space:]]+status:/ {
-        v = $0
-        sub(/^[[:space:]]+status:[[:space:]]*/, "", v)
-        gsub(/["'\''[:space:]]/, "", v)
-        if (key) { print key "=" v; key = "" }
-      }
-    ' "$SPRINT_STATUS_YAML"
-  else
-    _log "NOTICE: sprint-status.yaml not found — deriving status from individual story files"
-    if [ -d "$IMPLEMENTATION_ARTIFACTS" ]; then
-      find "$IMPLEMENTATION_ARTIFACTS" -type f -name '*.md' 2>/dev/null | while read -r f; do
-        key=$(awk '
-          /^---[[:space:]]*$/ { c++; if (c == 2) exit; next }
-          c == 1 && /^key:/ { v=$0; sub(/^key:[[:space:]]*/, "", v); gsub(/["'\''[:space:]]/, "", v); print v; exit }
-        ' "$f")
-        status=$(awk '
-          /^---[[:space:]]*$/ { c++; if (c == 2) exit; next }
-          c == 1 && /^status:/ { v=$0; sub(/^status:[[:space:]]*/, "", v); gsub(/["'\''[:space:]]/, "", v); print v; exit }
-        ' "$f")
-        [ -n "$key" ] && [ -n "$status" ] && printf '%s=%s\n' "$key" "$status"
-      done
-    fi
+    _parse_sprint_yaml "$SPRINT_STATUS_YAML"
+  fi
+  # Pass 2: archived sprints. The archive dir is conventionally under
+  # ${IMPLEMENTATION_ARTIFACTS}/sprint-archive/ (sprint-state.sh archive
+  # writes there at close). Each subdir has its own sprint-status.yaml
+  # snapshot.
+  _archive_root="${IMPLEMENTATION_ARTIFACTS}/sprint-archive"
+  if [ -d "$_archive_root" ]; then
+    find "$_archive_root" -type f -name 'sprint-status.yaml' 2>/dev/null | while read -r _ar; do
+      _parse_sprint_yaml "$_ar"
+    done
+  fi
+  # Pass 3: story-file frontmatter fallback (always run — its `status: done`
+  # for a closed-sprint story is the authoritative record). It also catches
+  # backlog stories that have no sprint yaml at all.
+  if [ -d "$IMPLEMENTATION_ARTIFACTS" ]; then
+    find "$IMPLEMENTATION_ARTIFACTS" -type f -name '*.md' 2>/dev/null | while read -r f; do
+      key=$(awk '
+        /^---[[:space:]]*$/ { c++; if (c == 2) exit; next }
+        c == 1 && /^key:/ { v=$0; sub(/^key:[[:space:]]*/, "", v); gsub(/["'\''[:space:]]/, "", v); print v; exit }
+      ' "$f")
+      status=$(awk '
+        /^---[[:space:]]*$/ { c++; if (c == 2) exit; next }
+        c == 1 && /^status:/ { v=$0; sub(/^status:[[:space:]]*/, "", v); gsub(/["'\''[:space:]]/, "", v); print v; exit }
+      ' "$f")
+      [ -n "$key" ] && [ -n "$status" ] && printf '%s=%s\n' "$key" "$status"
+    done
   fi
 }
+
+# `statuses` is the union of all 3 passes. Downstream consumers use
+# `awk -F= 'BEGIN{...} $1==key{print $2; exit}'` to take the FIRST match
+# per key — pass-1 (live) wins over pass-2 (archive) wins over pass-3
+# (story file). The exit-on-first-match contract is preserved here.
 
 statuses=$(_resolve_statuses || true)
 

@@ -3231,12 +3231,22 @@ main() {
       # / length flags. Each is only forwarded when non-empty so the
       # pre-AF-31-1 seed shape is preserved on zero-flag invocations
       # (tests scrape the yaml verbatim).
+      # AF-2026-05-31-2 / Test13 F-24 — bash 3.2 + `set -u` rejects the
+      # `"${_init_args[@]}"` expansion when the array is empty (it treats
+      # the deref as an unbound variable). My AF-31-1 F-15 implementation
+      # tripped that wall: `sprint-state.sh init --sprint-id X` with zero
+      # optional flags crashed at this line. Branch on length so the empty-
+      # array case calls cmd_init without trailing args at all.
       _init_args=()
       [ -n "$init_start_date" ]      && _init_args+=(--start-date "$init_start_date")
       [ -n "$init_end_date" ]        && _init_args+=(--end-date "$init_end_date")
       [ -n "$init_capacity_points" ] && _init_args+=(--capacity-points "$init_capacity_points")
       [ -n "$init_sprint_length" ]   && _init_args+=(--sprint-length-days "$init_sprint_length")
-      cmd_init "$reconcile_sprint_id" "${_init_args[@]}" ;;
+      if [ "${#_init_args[@]}" -gt 0 ]; then
+        cmd_init "$reconcile_sprint_id" "${_init_args[@]}"
+      else
+        cmd_init "$reconcile_sprint_id"
+      fi ;;
     get)
       [ -n "$story_key" ] || die "get requires --story <key>"
       cmd_get "$story_key" ;;
