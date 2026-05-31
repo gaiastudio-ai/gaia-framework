@@ -866,7 +866,7 @@ v_brownfield_defectdojo_engagement_id=$(merge_nested_key brownfield defectdojo_e
 # a same-precedence inline merge against parse_yaml_3deep so the --field
 # interface can introspect the docker-runner config the same way it
 # already exposes brownfield.deterministic_tools etc.
-merge_3deep() {
+_merge_3deep() {
   local a="$1" b="$2" c="$3" v=""
   if [ "$SHARED_EXISTS" -eq 1 ]; then
     v=$(parse_yaml_3deep "$SHARED_PATH" "$a" "$b" "$c")
@@ -878,8 +878,8 @@ merge_3deep() {
   fi
   printf '%s' "$v"
 }
-v_brownfield_tools_runner=$(merge_3deep brownfield tools runner)
-v_brownfield_tools_image=$(merge_3deep brownfield tools image)
+v_brownfield_tools_runner=$(_merge_3deep brownfield tools runner)
+v_brownfield_tools_image=$(_merge_3deep brownfield tools image)
 
 # Defaults (applied when no layer set a value).
 [ -z "$v_dev_story_tdd_review_threshold" ]          && v_dev_story_tdd_review_threshold="medium"
