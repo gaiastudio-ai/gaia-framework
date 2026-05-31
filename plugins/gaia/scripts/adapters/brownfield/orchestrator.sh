@@ -26,22 +26,37 @@
 
 set -euo pipefail
 
-# AF-2026-05-30-2 / Test10 F-09: guard on bash 4+ for globstar. macOS ships
-# bash 3.2 by default — `shopt -s globstar` is a no-op there and the `**`
-# expansion silently produces nothing, so every per-stack file-list comes
-# back empty and the orchestrator's intersection is degenerate. Without
-# this guard the bug was invisible: no error, no warning, just zero hits.
-if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]:-0}" -lt 4 ]; then
-  printf 'ERROR: %s: bash 4.0+ required for globstar (`**` glob expansion).\n' "adapters/brownfield/orchestrator.sh" >&2
-  printf '       Detected: bash %s (likely macOS default).\n' "${BASH_VERSION:-unknown}" >&2
-  printf '       Install a newer bash via:  brew install bash\n' >&2
-  printf '       Then ensure /opt/homebrew/bin (or /usr/local/bin) precedes /bin in PATH.\n' >&2
-  printf '       Skipping per-stack file-list intersection. Brownfield deterministic-tools layer\n' >&2
-  printf '       will fall back to LLM-only scanning (Tier 0; see /gaia-doctor for the readiness report).\n' >&2
-  exit 0
-fi
+# AF-2026-05-31-1 / Test12 F-06 — bash 3.2 portability rewrite.
+#
+# Prior implementation (AF-2026-05-30-2 / Test10 F-09) guarded `shopt -s globstar`
+# on `BASH_VERSINFO >= 4` and short-circuited to a stderr "skip" on macOS-
+# default bash 3.2 — silently disabling the entire deterministic-tools layer
+# on a stock Mac. Test12 §9.0 cross-platform mandate: every script must run
+# on macOS bash 3.2, Linux bash 4+, and bash via Git Bash / WSL2 on Windows.
+#
+# Three bash-4-only features were in use and have been removed:
+#
+#   1. `shopt -s globstar` — needed only for `**` in raw shell-glob expansion.
+#      The file enumeration here is a plain `find` walk (line ~148); globstar
+#      was never actually exercised on the discovery side. The `**` patterns
+#      that DO appear (in `matches_glob`) are matched against `case` patterns,
+#      where they behave the same in bash 3.2 — with the same author-intent
+#      "any depth including zero" handled by the existing alternate-collapse
+#      in `matches_glob`. globstar therefore added no semantic value here.
+#
+#   2. `mapfile -t arr < <(cmd)` — rewritten as the bash-3.2-compatible
+#      `while IFS= read -r line; do arr+=("$line"); done < <(cmd)` idiom.
+#
+#   3. `declare -A seen=()` — used purely as a presence set for per-file
+#      dedup. Rewritten as a sorted-unique newline-delimited string that the
+#      output collation already produces via the downstream `| sort` (and
+#      verified at the loop boundary). The dedup invariant is preserved.
+#
+# Closes the F-06 portability wall: the brownfield deterministic-tools layer
+# now functions on the macOS-default shell, removing the silent Tier-0
+# degradation that defeated the "never degrade silently" goal.
 
-shopt -s globstar nullglob dotglob
+shopt -s nullglob dotglob
 LC_ALL=C
 export LC_ALL
 
@@ -99,15 +114,22 @@ matches_glob() {
   return 1
 }
 
-declare -a count_pairs=()
+count_pairs=()
 
 i=0
 while [ "$i" -lt "$stack_count" ]; do
   name="$(yq eval ".stacks[$i].name" "$CONFIG")"
   path_root="$(yq eval ".stacks[$i].path // \".\"" "$CONFIG")"
   [ "$path_root" = "null" ] && path_root="."
-  mapfile -t paths < <(yq eval ".stacks[$i].paths[]" "$CONFIG" 2>/dev/null || true)
-  mapfile -t excludes < <(yq eval ".stacks[$i].excludes[]" "$CONFIG" 2>/dev/null || true)
+  # AF-2026-05-31-1 / Test12 F-06: bash 3.2-compat `mapfile` replacement.
+  paths=()
+  while IFS= read -r _line; do
+    [ -n "$_line" ] && paths+=("$_line")
+  done < <(yq eval ".stacks[$i].paths[]" "$CONFIG" 2>/dev/null || true)
+  excludes=()
+  while IFS= read -r _line; do
+    [ -n "$_line" ] && excludes+=("$_line")
+  done < <(yq eval ".stacks[$i].excludes[]" "$CONFIG" 2>/dev/null || true)
 
   # The directory the globs are resolved against: ROOT/path_root (path_root '.' = ROOT).
   base="$ROOT"
@@ -118,7 +140,10 @@ while [ "$i" -lt "$stack_count" ]; do
 
   # Enumerate candidate files under base, compute their repo-root-relative path,
   # and the path RELATIVE TO path_root (which the stack globs are written against).
-  declare -A seen=()
+  # AF-2026-05-31-1 / Test12 F-06: the dedup invariant previously held by a
+  # `declare -A seen=()` presence set is preserved by passing the per-loop
+  # output through `sort -u` at the boundary. Within the loop we just emit
+  # every match; dedup happens once at the sink.
   if [ -d "$base" ]; then
     while IFS= read -r abs; do
       [ -f "$abs" ] || continue
@@ -140,17 +165,12 @@ while [ "$i" -lt "$stack_count" ]; do
         if matches_glob "$rel_stack" "$g" || matches_glob "$rel_root" "$g"; then excluded=1; break; fi
       done
       [ "$excluded" -eq 0 ] || continue
-      # De-dup (a nested manifest must not cause a file to be listed twice).
-      if [ -z "${seen[$rel_root]:-}" ]; then
-        seen["$rel_root"]=1
-        printf '%s\n' "$rel_root"
-      fi
-    done < <(find "$base" -type f 2>/dev/null) | sort > "$out_file"
+      printf '%s\n' "$rel_root"
+    done < <(find "$base" -type f 2>/dev/null) | sort -u > "$out_file"
   fi
 
   cnt="$(wc -l < "$out_file" | tr -d ' ')"
   count_pairs+=("$name=$cnt")
-  unset seen
   i=$((i+1))
 done
 

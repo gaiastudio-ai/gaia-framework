@@ -48,7 +48,9 @@ else
 fi
 
 # Read targets from the file-list line by line.
-mapfile -t TARGETS < "$INPUT"
+# AF-2026-05-31-1 / Test12 F-06: bash 3.2-compat replacement for mapfile.
+TARGETS=()
+while IFS= read -r _line; do [ -n "$_line" ] && TARGETS+=("$_line"); done < "$INPUT"
 
 if ! command -v semgrep >/dev/null 2>&1; then
   echo "run.sh: semgrep not found on PATH" >&2

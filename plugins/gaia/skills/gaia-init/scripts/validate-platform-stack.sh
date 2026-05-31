@@ -63,27 +63,49 @@ languages="$(extract_stack_languages || true)"
 normalize() { tr '[:upper:]' '[:lower:]' | sed 's/_/-/g'; }
 normalized_langs="$(printf '%s\n' "$languages" | normalize)"
 
+# AF-2026-05-31-1 / Test12 F-02 + F-03: add `server` and its alias `backend` to
+# the recognized platform vocabulary so single-backend projects (CLI, library,
+# headless service) can declare `platforms: [server]` (the canonical token that
+# generate-config.sh already seeds) or `platforms: [backend]` (the natural-
+# language alias users reach for) without tripping the "unknown platform"
+# branch. Both are trivially satisfied — they require no specific stack
+# language, only that AT LEAST one stack is declared.
 stack_supports() {
   # $1 = platform; returns 0 if any language in $normalized_langs supports it.
   local platform="$1" wanted
   case "$platform" in
-    ios)     wanted="swift|objective-c|react-native|flutter" ;;
-    android) wanted="kotlin|java|react-native|flutter" ;;
-    web)     return 0 ;;
-    *)       printf '%s: unknown platform: %s\n' "$SCRIPT_NAME" "$platform" >&2; return 1 ;;
+    ios)            wanted="swift|objective-c|react-native|flutter" ;;
+    android)        wanted="kotlin|java|react-native|flutter" ;;
+    web)            return 0 ;;
+    server|backend) return 0 ;;
+    *)              printf '%s: unknown platform: %s\n' "$SCRIPT_NAME" "$platform" >&2; return 1 ;;
   esac
   printf '%s\n' "$normalized_langs" | grep -Eq "^($wanted)$"
+}
+
+# AF-2026-05-31-1 / Test12 F-01: the prior error-message construction used a
+# `case … esac` inside `$( … )` command substitution which bash 3.2.57 (the
+# macOS default) cannot parse — it crashed mid-message with "syntax error near
+# unexpected token 'newline'" and leaked the literal printf strings into the
+# user-facing output. Replaced with a plain shell function so the helper runs
+# unchanged on bash 3.2 and bash 4+. The vocabulary itself is fixed at the
+# point of error (Test11 audit confirmed the matrix has not changed since
+# E71-S1) and is mirrored verbatim in the printf strings below.
+_capable_langs_for() {
+  case "$1" in
+    ios)     printf 'swift, objective-c, react-native, flutter' ;;
+    android) printf 'kotlin, java, react-native, flutter' ;;
+    *)       printf '(none required — any stack satisfies %s)' "$1" ;;
+  esac
 }
 
 while IFS= read -r p; do
   [ -z "$p" ] && continue
   if ! stack_supports "$p"; then
+    _capable="$(_capable_langs_for "$p")"
     cat <<MSG >&2
 $SCRIPT_NAME: platform '$p' declared but no stack language supports it.
-  Capable languages for $p: $(case "$p" in
-    ios) printf "swift, objective-c, react-native, flutter" ;;
-    android) printf "kotlin, java, react-native, flutter" ;;
-  esac)
+  Capable languages for $p: $_capable
   Add a stack with one of those languages, or remove '$p' from platforms.
 MSG
     exit 1

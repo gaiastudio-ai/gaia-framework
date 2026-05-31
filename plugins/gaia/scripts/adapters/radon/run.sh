@@ -26,7 +26,9 @@ if ! command -v radon >/dev/null 2>&1; then
   exit 127
 fi
 
-mapfile -t TARGETS < "$INPUT"
+# AF-2026-05-31-1 / Test12 F-06: bash 3.2-compat replacement for mapfile.
+TARGETS=()
+while IFS= read -r _line; do [ -n "$_line" ] && TARGETS+=("$_line"); done < "$INPUT"
 raw="$(radon cc -j "${TARGETS[@]}" 2>&1)" || rc=$? || true
 rc="${rc:-0}"
 
