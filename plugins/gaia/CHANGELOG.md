@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.182.1] — 2026-05-30
+
+### Changed
+
+- (af-30-5) close test11 D-04 + D-05 html doc gaps (AF-30-5)
+
 ## [1.182.0] — 2026-05-30
 
 ### Added
