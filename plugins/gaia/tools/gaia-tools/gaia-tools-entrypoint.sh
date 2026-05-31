@@ -32,15 +32,22 @@
 set -euo pipefail
 
 _BOM() {
+  # AF-2026-05-31-2 / Test13 F-09: grype 0.79.5's `grype version` output
+  # uses the format `Application: grype\nVersion: 0.79.5\n...`. The prior
+  # awk that extracted `Application:` (field 2) returned the literal
+  # string `grype`, not the version. Switched to the `Version:` row.
+  # AF-2026-05-31-2 / Test13 F-08: cyclonedx-bom 4.x renamed its CLI
+  # binary to `cyclonedx-py`. The prior `cyclonedx-bom --version` call
+  # produced "unknown" because the binary no longer exists by that name.
   cat <<EOF
 gaia-tools $GAIA_TOOLS_VERSION (db: $GAIA_TOOLS_DB_DATE)
-  grype       $(grype version 2>/dev/null | awk -F: '/Application:/ {print $2; exit}' | tr -d ' ' || echo unknown)
+  grype       $(grype version 2>/dev/null | awk -F: '/^Version:/ {print $2; exit}' | tr -d ' ' || echo unknown)
   syft        $(syft version 2>/dev/null | awk '/Version:/ {print $2; exit}' || echo unknown)
   osv-scanner $(osv-scanner --version 2>/dev/null | awk '{print $NF; exit}' || echo unknown)
   spotbugs    $(spotbugs -version 2>&1 | head -1 || echo unknown)
   vulture     $(vulture --version 2>/dev/null || echo unknown)
   pip-audit   $(pip-audit --version 2>/dev/null || echo unknown)
-  cyclonedx   $(cyclonedx-bom --version 2>/dev/null | head -1 || echo unknown)
+  cyclonedx   $(cyclonedx-py --version 2>/dev/null | head -1 || echo unknown)
   cdxgen      $(cdxgen --version 2>/dev/null | head -1 || echo unknown)
   yamllint    $(yamllint --version 2>/dev/null || echo unknown)
   yq          $(yq --version 2>/dev/null || echo unknown)
