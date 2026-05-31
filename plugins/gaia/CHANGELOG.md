@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.182.3] — 2026-05-31
+
+### Changed
+
+- (med) gaia-tools image docs + 48 bats for AF-31-2 test13 fixes
+
+### Fixed
+
+- (ci) orchestration-warning regression test guards against the F-12 fix-class
+- (med) pipeline + dashboard + init cleanup (AF-31-2 F-06/13/19/20/23/26/27/29 + LOW)
+- (high) brownfield runner-aware dispatch (AF-31-2 F-15/16/17/18 + sarif-merge)
+- (high) docker image rebuild — 6 build-blockers + sarif-multitool (AF-31-2)
+- (high) three bash 3.2 regressions from AF-31-1 (AF-31-2 F-14/24/28)
+
 ## [1.182.2] — 2026-05-31
 
 ### Changed
