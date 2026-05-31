@@ -1376,6 +1376,36 @@ if [ "$RECONCILE_ONLY" != "1" ] && ! validate_story_transition "$CURRENT_STATUS"
   exit 7
 fi
 
+# AF-2026-05-31-2 / Test13 F-27 — composite review-gate enforcement on
+# review → done. Prior to this guard the raw `transition-story-status.sh
+# --to done` succeeded even when all 6 Review Gate rows were UNVERIFIED,
+# because the composite-gate check lived only inside `/gaia-dev-story`
+# Step 16 + `/gaia-check-review-gate`. Folding the gate directly into
+# the transition primitive closes the bypass: any caller (including
+# direct CLI invocation, ad-hoc scripts, or a buggy skill) reaching for
+# review → done is now refused unless the composite is COMPLETE. The
+# escape hatch `GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE=1` (operator-set,
+# audit-trail discoverable) preserves the documented `/gaia-correct-course`
+# composite-verdict escape path for genuine edge cases (third-party
+# block, infra outage) so the guard doesn't strand legitimate recovery.
+if [ "$RECONCILE_ONLY" != "1" ] \
+   && [ "$CURRENT_STATUS" = "review" ] \
+   && [ "$NEW_STATUS" = "done" ] \
+   && [ "${GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE:-0}" != "1" ]; then
+  _review_gate_script="$(cd "$(dirname "$0")" && pwd)/review-gate.sh"
+  if [ -x "$_review_gate_script" ]; then
+    _composite_rc=0
+    bash "$_review_gate_script" review-gate-check --story "$STORY_KEY" >/dev/null 2>&1 || _composite_rc=$?
+    if [ "$_composite_rc" -ne 0 ]; then
+      log "ERROR: review → done refused — composite Review Gate is not COMPLETE (exit $_composite_rc from review-gate.sh review-gate-check)."
+      log "       Run /gaia-check-review-gate for the per-gate breakdown, OR set"
+      log "       GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE=1 only when escorting a"
+      log "       documented /gaia-correct-course composite-verdict escape hatch."
+      exit 8
+    fi
+  fi
+fi
+
 # Snapshot every file we may touch so we can roll back on partial failure.
 SNAP_STORY="$(snapshot_for_rollback "$STORY_FILE")"
 SNAP_YAML=""
