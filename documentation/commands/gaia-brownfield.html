@@ -119,6 +119,29 @@
             registered in your Claude Code environment.
           </li>
           <li>
+            <strong>Platform support (AF-2026-05-31-1 / Test12 D-02).</strong>
+            The GAIA orchestration scripts run on macOS, Linux, and Windows
+            (via WSL2 or Git Bash). As of AF-2026-05-31-1 the
+            deterministic-tools chain
+            (<code>detect-signals.sh</code>, brownfield
+            <code>orchestrator.sh</code>, <code>validate-platform-stack.sh</code>,
+            the dead-code adapters) is bash-3.2 compatible — macOS users on
+            the system-default <code>/bin/bash 3.2.57</code> no longer hit
+            the prior silent Tier-0 degradation. Bash 4.0+ is still
+            <em>recommended</em> (longer-form scripts under
+            <code>plugins/gaia/scripts/lib/</code> still benefit from
+            <code>declare -A</code> / <code>mapfile</code> performance) but
+            is no longer required for the headline Tier-2 scan to function.
+            On macOS, <code>brew install bash</code> brings in a current
+            release; on Windows, prefer WSL2 with the Ubuntu image or Git
+            Bash (which ships bash 4+). The <em>tools</em> the scanners
+            consume (grype, syft, cdxgen, vulture, semgrep) are independent
+            of bash version and can be supplied either via host PATH or via
+            the bundled <code>gaia-tools</code> Docker image
+            (<code>/gaia-config-brownfield</code> →
+            <code>brownfield.tools.runner: docker</code>).
+          </li>
+          <li>
             <strong>Optional: a minimal
             <code>.gaia/config/project-config.yaml</code>.</strong> As of
             AF-2026-05-29-2 (<code>/gaia-brownfield</code> setup.sh
@@ -131,17 +154,20 @@
             <a href="gaia-init.html"><code>/gaia-init</code></a> first to
             bootstrap a config, then re-invoke brownfield. That workaround is
             no longer required on the current build.
-            <p><strong>Caveat (Test10 F-01 — AF-2026-05-30-2).</strong>
+            <p><strong>Caveat (Test10 F-01 — AF-2026-05-30-2 /
+            AF-2026-05-31-1 / Test12 D-01).</strong>
             Zero-config is supported (AF-2026-05-29-2 F1 degrade), but the
             seeded defaults are minimal — they cover only the bare keys the
             scan loop needs. For full deterministic-tools support (Tier 2
-            scanners, grype, runner selection) run
-            <a href="gaia-init.html"><code>/gaia-init</code></a> first so the
-            <code>brownfield.*</code> block is populated, then re-invoke
-            <code>/gaia-brownfield</code>. The
-            <a href="gaia-config-brownfield.html"><code>/gaia-config-brownfield</code></a>
-            command lets you flip those knobs post-init without re-running the
-            questionnaire.</p>
+            scanners, grype, runner selection) the
+            <code>brownfield.*</code> block is populated by
+            <a href="gaia-config-brownfield.html"><code>/gaia-config-brownfield</code></a>,
+            NOT by <a href="gaia-init.html"><code>/gaia-init</code></a> —
+            <code>/gaia-init</code>'s full-phase config does not emit a
+            <code>brownfield</code> top-level section. Recommended sequence on
+            an existing codebase: <code>/gaia-init</code> for the base config,
+            then <code>/gaia-config-brownfield</code> to add the brownfield
+            block, then <code>/gaia-brownfield</code> for the scan loop.</p>
           </li>
           <li>
             <strong>If a <code>project-config.yaml</code> is present, its
