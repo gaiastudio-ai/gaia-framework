@@ -230,11 +230,7 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
   # SAME values the SKILL.md yaml stub above documents, so the dashboard
   # and the sprint yaml never disagree.
   [ -e "$SPRINT_YAML" ] || \
-    ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh init \
-      --sprint-id "{sprint_id}" \
-      --start-date "{start_date YYYY-MM-DD}" \
-      --end-date "{end_date YYYY-MM-DD}" \
-      --capacity-points "{capacity_points integer}"
+    ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh init --sprint-id "{sprint_id}" --start-date "{start_date YYYY-MM-DD}" --end-date "{end_date YYYY-MM-DD}" --capacity-points "{capacity_points integer}"
 
   ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh inject \
     --story "{story_key}" [--sprint-id "{sprint_id}"]
