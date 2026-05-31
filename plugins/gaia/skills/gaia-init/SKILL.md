@@ -239,6 +239,8 @@ Ask the user the following question set, in order. Capture answers into a JSON a
 
 The mobile answers populate the canonical `device_targets` block. When the user declines mobile entirely, omit `platforms` and `device_targets` from the answer-bundle (and from the generated config).
 
+**Step 2b — Headless / web platform vocabulary (informational).** The platform vocabulary the schema recognizes is broader than just `ios` / `android` / `web`: a single-backend, microservices, CLI, library, or any other headless project shape canonically uses **`server`** (the `backend` token is accepted as an alias by `validate-platform-stack.sh` per AF-2026-05-31-1 / Test12 F-02 + F-03). Step 2a only collects iOS/Android explicitly because those carry device-target side-data; `web` and `server`/`backend` are auto-derived from the project_shape + `ui_present` answers by `generate-config.sh` and do NOT require their own follow-up questions. The full enum recognized by the schema and the validator is therefore: `ios | android | web | server` (with `backend` accepted as a `server` alias on the input side).
+
 ### Step 3 — Validate the answer-bundle
 
 Render the assembled JSON bundle to the user for review. Then run the platform-stack consistency check:
