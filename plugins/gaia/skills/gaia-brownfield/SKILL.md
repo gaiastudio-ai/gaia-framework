@@ -328,7 +328,7 @@ adapter through the single-author `brownfield-telemetry.sh`.
 
 #### CVE + SBOM adapters (AF-2026-05-31-1 / Test12 F-07 — wire-up closure)
 
-When `brownfield.deterministic_tools: true`, Phase 3 ALSO dispatches the
+When `brownfield.deterministic_tools: true`, Phase 3 ALSO runs the
 deterministic CVE-scan and SBOM-producer adapters that the dead-code block
 above doesn't cover. Prior to AF-2026-05-31-1 the brownfield SKILL.md
 referenced `phase_runtime_seconds.grype` + an `E70-S9 Grype adapter` in the
