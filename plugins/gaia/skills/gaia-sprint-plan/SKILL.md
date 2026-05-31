@@ -221,8 +221,16 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
   # non-zero), so guard the call on absence rather than swallowing its error
   # (swallowing would violate the "abort on non-zero" contract below).
   SPRINT_YAML=".gaia/state/sprint-status.yaml"
+  # AF-2026-05-31-1 / Test12 F-15: forward the planning-time date + capacity
+  # values to `init` so the burndown dashboard renders concrete Duration /
+  # Dates / Capacity rows instead of `N/A`. Each flag is optional — when an
+  # operator omits a value the `init` shape stays byte-identical to the
+  # pre-AF-31-1 seed (zero-regression on existing bats fixtures). The
+  # `{start_date}`, `{end_date}`, `{capacity_points}` placeholders are the
+  # SAME values the SKILL.md yaml stub above documents, so the dashboard
+  # and the sprint yaml never disagree.
   [ -e "$SPRINT_YAML" ] || \
-    ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh init --sprint-id "{sprint_id}"
+    ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh init --sprint-id "{sprint_id}" --start-date "{start_date YYYY-MM-DD}" --end-date "{end_date YYYY-MM-DD}" --capacity-points "{capacity_points integer}"
 
   ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh inject \
     --story "{story_key}" [--sprint-id "{sprint_id}"]

@@ -143,20 +143,20 @@ PROJECT_ROOT="$(cd "$PROJECT_ROOT" && pwd)"
 # Nested manifests (a manifest with a strict-ancestor manifest) scope to the
 # ancestor stack — `ignore_nested_manifests: true` default per E85-S14 / FR-546.
 if [ -n "$STACKS_PATH_MODE" ]; then
-  # AF-2026-05-30-4 / Test11 F-05: bash 4+ required for mapfile + declare -A
-  # used downstream. macOS ships /bin/bash 3.2; without this guard the script
-  # dies `mapfile: command not found` on a stock-Mac brownfield run.
-  # Test10 F-09 closed the same class for the brownfield orchestrator.sh
-  # globstar walk; this guard closes it for the multi-stack proposal/audit
-  # branch. Single-stack repos are unaffected (this whole branch is opt-in
-  # via --stacks-path-mode).
-  if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]:-0}" -lt 4 ]; then
-    err "stacks-path-mode requires bash 4.0+ (mapfile + declare -A)."
-    err "  Detected: bash ${BASH_VERSION:-unknown}."
-    err "  macOS ships bash 3.2 by default — install a newer bash via: brew install bash"
-    err "  Skipping multi-stack proposal/audit. Single-stack root detection unaffected."
-    exit 0
-  fi
+  # AF-2026-05-31-1 / Test12 F-04: rewritten to be bash 3.2-compatible.
+  # The prior implementation guarded on `BASH_VERSINFO >= 4` and short-circuited
+  # to a stderr "skip" on macOS-default bash 3.2 — silently disabling the entire
+  # multi-stack proposal/audit feature for stock-Mac users. The two bash-4-only
+  # features in use were:
+  #   1. `mapfile -t arr < <(cmd)` — rewritten as `while IFS= read -r line; do
+  #      arr+=("$line"); done < <(cmd)`.
+  #   2. `declare -A _cand=()` (associative array, used as a presence set) —
+  #      rewritten as a sorted-unique newline-delimited string `_cand_nl`. The
+  #      "is this key in the set?" check becomes `printf '%s\n' "$_cand_nl"
+  #      | grep -Fxq "$key"`. Order is deterministic via `sort -u`.
+  # Test12 §9.0 cross-platform mandate: deterministic-tools chain must run
+  # unchanged on bash 3.2 (macOS), bash 4+ (Linux), and bash via WSL/Git Bash
+  # on Windows. Closes the F-04 portability wall.
 
   # Canonical ecosystem manifest filenames (explicit -name; not regex — faster).
   _MANIFESTS=(go.mod package.json pyproject.toml pom.xml build.gradle build.gradle.kts \
@@ -166,33 +166,50 @@ if [ -n "$STACKS_PATH_MODE" ]; then
   _find_args=()
   for m in "${_MANIFESTS[@]}"; do _find_args+=(-name "$m" -o); done
   unset '_find_args[${#_find_args[@]}-1]'   # drop trailing -o
-  mapfile -t _hits < <(cd "$PROJECT_ROOT" && find . -type f \( "${_find_args[@]}" \) 2>/dev/null \
+  _hits=()
+  while IFS= read -r _line; do
+    [ -n "$_line" ] && _hits+=("$_line")
+  done < <(cd "$PROJECT_ROOT" && find . -type f \( "${_find_args[@]}" \) 2>/dev/null \
                          | sed 's#^\./##' | sort)
 
   # Candidate path = parent dir of each manifest ('.' for a root manifest).
-  declare -A _cand=()
+  # bash 3.2-compat: sorted-unique newline-delimited string in lieu of `declare -A`.
+  _cand_nl=""
   for f in "${_hits[@]}"; do
     d="$(dirname "$f")"
-    _cand["$d"]=1
+    _cand_nl="${_cand_nl}${d}
+"
   done
+  if [ -n "$_cand_nl" ]; then
+    _cand_nl="$(printf '%s' "$_cand_nl" | sed '/^$/d' | sort -u)"
+  fi
 
   # Nested-manifest scoping: drop a candidate dir if a STRICT-ANCESTOR dir is
   # also a candidate (the nested manifest is tooling inside the parent stack).
-  declare -a _paths=()
-  for d in "${!_cand[@]}"; do
-    nested=0
-    for a in "${!_cand[@]}"; do
-      [ "$a" = "$d" ] && continue
-      case "$d/" in "$a/"*) nested=1; break ;; esac
-    done
-    [ "$nested" -eq 0 ] && _paths+=("$d")
-  done
+  _paths=()
+  if [ -n "$_cand_nl" ]; then
+    while IFS= read -r d; do
+      [ -z "$d" ] && continue
+      nested=0
+      while IFS= read -r a; do
+        [ -z "$a" ] && continue
+        [ "$a" = "$d" ] && continue
+        case "$d/" in "$a/"*) nested=1; break ;; esac
+      done <<< "$_cand_nl"
+      [ "$nested" -eq 0 ] && _paths+=("$d")
+    done <<< "$_cand_nl"
+  fi
   # Sort the partitions — but guard the empty case: a bare
   # `printf '%s\n' "${_paths[@]}"` on an empty array emits one blank line, which
-  # mapfile would turn into a 1-element empty-string array and defeat the
-  # zero-partition degenerate guard below (Val F1). Only re-sort when non-empty.
+  # the array-rebuild would turn into a 1-element empty-string array and
+  # defeat the zero-partition degenerate guard below (Val F1). Only re-sort
+  # when non-empty.
   if [ "${#_paths[@]}" -gt 0 ]; then
-    mapfile -t _paths < <(printf '%s\n' "${_paths[@]}" | sort)
+    _sorted=()
+    while IFS= read -r _line; do
+      [ -n "$_line" ] && _sorted+=("$_line")
+    done < <(printf '%s\n' "${_paths[@]}" | sort)
+    _paths=("${_sorted[@]}")
   fi
 
   # Mode resolution + ecosystem inference for the draft.

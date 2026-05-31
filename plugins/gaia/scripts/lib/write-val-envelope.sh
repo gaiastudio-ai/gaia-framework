@@ -40,8 +40,14 @@
 #     ${CHECKPOINT_PATH}/val-envelope-${HASH}.json
 #   where HASH is the first 16 hex characters of sha256(artifact_path).
 #
-#   CHECKPOINT_PATH defaults to "_memory/checkpoints" (resolved relative to
-#   $PWD) when not set. Tests may override via the environment.
+#   CHECKPOINT_PATH defaults to ".gaia/memory/checkpoints" (resolved
+#   relative to the resolver-discovered project_root, or to $PWD when the
+#   resolver helper is absent) per ADR-111. The legacy `_memory/checkpoints`
+#   path was retired with the consolidation migration; AF-2026-05-31-1 /
+#   Test12 F-12 fixed the docstring and usage prose that still referenced
+#   the legacy location even though the code path has used the canonical
+#   `.gaia/memory/checkpoints` default since AF-2026-05-27-3. Tests may
+#   override via the CHECKPOINT_PATH env var.
 #
 # Exit codes:
 #   0 — sentinel written; path printed to stdout
@@ -73,7 +79,8 @@ The envelope JSON MUST contain all five keys:
   agent (== "val"), persona_sig, timestamp, artifact_path, verdict.
 
 CHECKPOINT_PATH env var sets the checkpoint directory (default:
-_memory/checkpoints relative to PWD).
+.gaia/memory/checkpoints relative to the resolved project_root, per
+ADR-111 / AF-2026-05-31-1 Test12 F-12).
 USAGE
 }
 

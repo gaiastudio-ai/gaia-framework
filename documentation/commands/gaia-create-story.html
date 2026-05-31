@@ -133,6 +133,16 @@ scripts/validate-frontmatter.sh --file .gaia/artifacts/implementation-artifacts/
 
 # Deprecated (still works, emits NOTICE)
 scripts/validate-frontmatter.sh .gaia/artifacts/implementation-artifacts/epic-E1-core/E1-S1-vault-init/story.md</code></pre>
+
+        <h3 id="ac-checkbox-shape">Acceptance-criteria shape <span class="tag">AF-2026-05-31-1 / Test12 D-04</span></h3>
+        <p><code>validate-ac-format.sh</code> is strict — every acceptance criterion in the story body MUST begin with the markdown checkbox prefix <code>- [ ]</code> followed by a bold <code>**AC{N}:**</code> label and a Given/When/Then triple. Bold-bullet variants without the leading checkbox (<code>- **AC1:** Given …</code>), unnumbered bullets, or free-prose acceptance lines all fail the validator with a CRITICAL verdict — even when the content is semantically correct. This shape is enforced because the dev-story and review-qa skills parse the AC list line-by-line off the checkbox prefix; loosening the regex breaks downstream automation.</p>
+        <p>The required shape, with a worked example block hand-authors can copy directly:</p>
+        <pre><code>## Acceptance Criteria
+
+- [ ] **AC1:** Given a vault file at <code>~/.kee/vault.kee</code>, When the user runs <code>kee open vault</code>, Then the CLI prompts for the master password and unlocks the vault on success.
+- [ ] **AC2:** Given an incorrect master password, When the user submits it, Then the CLI prints <code>error: invalid password</code> and exits non-zero without revealing whether the path exists.
+- [ ] **AC3:** Given a missing vault file, When the user runs the open command, Then the CLI prints <code>error: vault not found at &lt;path&gt;</code> and exits with code 2.</code></pre>
+        <p>Edge-case ACs follow the same shape; the validator does not distinguish primary from edge-case rows. The story-template ships pre-populated with this idiom — operators amending an existing story should mirror the template's row shape exactly.</p>
       </section>
 
       <section id="inputs"><h2>Inputs</h2>

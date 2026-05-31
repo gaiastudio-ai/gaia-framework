@@ -23,6 +23,7 @@
           <li><a href="#common-halts">Common HALTs</a></li>
           <li><a href="#env-overrides">Environment variable overrides</a></li>
           <li><a href="#path-canonicals">Canonical path cheat-sheet</a></li>
+          <li><a href="#platform-requirements">Platform requirements</a></li>
           <li><a href="#statusline">Statusline issues</a></li>
           <li><a href="#bridge">Test Execution Bridge issues</a></li>
         </ul>
@@ -168,6 +169,37 @@ ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/ | sort -V | tail -
             <tr><td><code>config/</code></td><td><code>.gaia/config/</code></td><td><code>project-config.yaml</code>, <code>test-environment.yaml</code>, <code>test-environment.yaml.example</code>.</td></tr>
           </tbody>
         </table>
+      </section>
+
+      <section id="platform-requirements">
+        <h2>Platform requirements <span class="tag">AF-2026-05-31-1 / Test12 D-02</span></h2>
+
+        <p>GAIA's orchestration + adapter scripts run on <strong>macOS, Linux, and Windows</strong>. The portability matrix below documents what each platform needs for a clean lifecycle run.</p>
+
+        <h3>macOS</h3>
+        <ul>
+          <li><strong>Bash:</strong> macOS ships <code>/bin/bash 3.2.57</code> as the system default. The deterministic-tools chain (<code>detect-signals.sh</code>, brownfield <code>orchestrator.sh</code>, <code>validate-platform-stack.sh</code>, the dead-code + grype/syft adapters) is bash-3.2 compatible as of AF-2026-05-31-1 / Test12 F-01 + F-04 + F-06. Bash 4.0+ is recommended for performance (longer-form scripts under <code>plugins/gaia/scripts/lib/</code> still benefit from <code>declare -A</code> + <code>mapfile</code>) but no longer required for Tier-2 scanning to function. To upgrade: <code>brew install bash</code> and ensure <code>/opt/homebrew/bin</code> (Apple Silicon) or <code>/usr/local/bin</code> (Intel) precedes <code>/bin</code> in <code>PATH</code>.</li>
+          <li><strong>Scanner tools:</strong> install <code>grype</code> + <code>syft</code> + <code>cdxgen</code> + <code>vulture</code> + <code>semgrep</code> via Homebrew / pip, OR opt into the Docker runner cascade (<code>brownfield.tools.runner: docker</code>) so the bundled <code>gaia-tools</code> image supplies them.</li>
+          <li><strong>Diagnostic:</strong> <code>gaia-doctor</code> probes installation state and prints the achievable scan tier with concrete remediation commands.</li>
+        </ul>
+
+        <h3>Linux</h3>
+        <ul>
+          <li><strong>Bash:</strong> distros ship bash 4+ or 5+; no special configuration required.</li>
+          <li><strong>Scanner tools:</strong> same options as macOS — host PATH install, or the Docker runner cascade.</li>
+          <li><strong>CI:</strong> the canonical CI matrix is Ubuntu LTS; the bats suite under <code>plugins/gaia/tests/</code> assumes bash 4+ by default on Linux runners.</li>
+        </ul>
+
+        <h3>Windows</h3>
+        <ul>
+          <li><strong>Recommended path: WSL2 + Ubuntu.</strong> Install WSL2 (<code>wsl --install</code>), then a current Ubuntu image. GAIA runs natively in the WSL2 shell — same behavior as Linux.</li>
+          <li><strong>Alternative path: Git Bash.</strong> Git for Windows ships a recent bash that runs the deterministic-tools chain. Some adapter scripts assume POSIX tools (<code>find</code>, <code>sed -E</code>, <code>awk</code>) — Git Bash provides all of these.</li>
+          <li><strong>Not supported:</strong> raw Windows cmd.exe / PowerShell. The orchestration scripts are bash-only by design. A future port may add a PowerShell entrypoint, but the current product surface assumes a POSIX shell.</li>
+          <li><strong>Scanner tools:</strong> the Docker runner cascade is the cleanest path on Windows — the bundled <code>gaia-tools</code> image supplies grype/syft/cdxgen/vulture/semgrep without needing each one installed on the host. Enable via <code>/gaia-config-brownfield</code> (<code>brownfield.tools.runner: docker</code>) after Docker Desktop is running.</li>
+        </ul>
+
+        <h3>Cross-platform CI</h3>
+        <p>The plugin's CI matrix (AF-2026-05-31-1 / Test12 §9.0 mandate) runs the bats suite on <code>ubuntu-latest</code>, <code>macos-latest</code>, and <code>windows-latest</code> (Git Bash). Regressions in bash 3.2 portability or POSIX-tool assumptions fail the macOS / Windows jobs before merge.</p>
       </section>
 
       <section id="statusline">

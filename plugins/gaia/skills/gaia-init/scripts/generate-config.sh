@@ -355,6 +355,14 @@ if phase == "full":
         lines.append("ci_cd: {}")
 
     platforms = data.get("platforms") or []
+    # AF-2026-05-31-1 / Test12 F-02 + F-03: normalize the `backend` alias to
+    # the canonical schema enum token `server`. The questionnaire SKILL.md
+    # documents both as accepted vocabulary (Step 2b) — `backend` reads more
+    # naturally in conversation, but the schema's platformId enum only knows
+    # `server`. Normalize on the write side so users who type either spelling
+    # produce a schema-valid config without the validator having to either
+    # widen the enum or fail with "unknown platform".
+    platforms = ["server" if (isinstance(p, str) and p.lower() == "backend") else p for p in platforms]
     # F-3 (AF-2026-05-26-2): schema allOf[2] (config_phase=full) requires a
     # non-empty `platforms` array. gaia-init never emits config_phase=partial
     # (only minimal|full), so the gap is full-phase only. For web-oriented
@@ -507,6 +515,22 @@ if [ ! -e "$gitignore_path" ]; then
 elif ! grep -qF "$gaia_marker" "$gitignore_path" 2>/dev/null; then
   printf '\n%s\n' "$gaia_block" >> "$gitignore_path"
   printf '%s: appended GAIA block to existing %s\n' "$SCRIPT_NAME" "$gitignore_path" >&2
+else
+  # AF-2026-05-31-1 / Test12 F-09 — back-fill missing .gaia/ entries on an
+  # already-marked block. Older GAIA versions (pre-AF-2026-05-30-4) seeded a
+  # block that listed only `.gaia/memory/` + `.gaia/state/` — the host-
+  # anchored absolute paths in project-config.yaml then leaked into commits
+  # because `.gaia/config/` was not ignored, contradicting the header comment
+  # the config file itself emits. The marker-only idempotency check above
+  # would otherwise leave that older block in place untouched. Append the
+  # missing entries (each guarded by an exact-line `grep -Fxq`) so a re-run
+  # of /gaia-init back-fills the gap without rewriting the whole block.
+  for _line in '.gaia/config/' '.gaia/memory/' '.gaia/state/'; do
+    if ! grep -Fxq "$_line" "$gitignore_path"; then
+      printf '%s\n' "$_line" >> "$gitignore_path"
+      printf '%s: back-filled %s entry in %s\n' "$SCRIPT_NAME" "$_line" "$gitignore_path" >&2
+    fi
+  done
 fi
 
 exit 0

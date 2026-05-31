@@ -296,6 +296,16 @@ if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
       # can either proceed with defaults OR emit a more-specific
       # "section present but empty" error pointing at the right skill
       # to populate them.
+      # AF-2026-05-31-1 / Test12 F-13: surface the side-effect explicitly
+      # BEFORE the mutation lands, not only in the post-mutation summary.
+      # A `--plan` operator running what looks like a doc-authoring command
+      # has no expectation that project-config.yaml will be touched; the
+      # quiet auto-stub left a "wait, why did my config change?" trail.
+      # The pre-mutation banner names the file, the sections that will be
+      # appended, and the opt-out env var IN THE SAME LINE — so a single
+      # scroll-back surfaces the contract.
+      _ms_pre="$(printf '%s' "$missing_sections" | sed 's/^[[:space:]]*//')"
+      log "NOTICE — test-strategy --plan will APPEND empty stubs to project-config.yaml for sections [${_ms_pre}] so downstream skills (gaia-bridge-enable, gaia-test-automate, gaia-deploy) can resolve the keys. Set GAIA_TEST_STRATEGY_NO_AUTOSTUB=1 to skip this auto-stub and receive a manual-add NOTICE instead."
       log "test-strategy.md was written; project-config.yaml is missing sections:${missing_sections}"
       log "F-6 auto-stub-hydration: writing empty stubs for each missing section so downstream skills can resolve the keys"
       log "Downstream skills affected: /gaia-bridge-enable (test_execution_bridge), /gaia-test-automate (test_execution.tier_N.command), /gaia-deploy (environments). Populate the stubs via /gaia-config-test, /gaia-bridge-enable scaffold, /gaia-config-env before invoking those."
