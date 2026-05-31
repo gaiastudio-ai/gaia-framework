@@ -205,6 +205,50 @@ parse_yaml_nested_key() {
   ' "$file"
 }
 
+# AF-2026-05-31-3 / Test14 F-08 — 3-deep YAML key parser.
+# parse_yaml_3deep <file> <a> <b> <c> — print the value of `a.b.c` where the
+# YAML looks like:
+#   a:
+#     b:
+#       c: value
+# Prints empty if absent. Mirrors parse_yaml_nested_key's idioms but tracks
+# both the outer and middle indentation so the inner `c:` resolves cleanly.
+parse_yaml_3deep() {
+  local file="$1" a="$2" b="$3" c="$4"
+  [ -f "$file" ] || return 0
+  awk -v A="$a" -v B="$b" -v C="$c" '
+    BEGIN { in_a=0; in_b=0; a_indent=0; b_indent=0 }
+    /^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:/ {
+      if (in_a) { in_a=0; in_b=0 }
+    }
+    $0 ~ "^"A"[[:space:]]*:[[:space:]]*$" { in_a=1; in_b=0; next }
+    in_a {
+      match($0, /^[[:space:]]+/)
+      indent = RLENGTH
+      if (in_b && indent <= b_indent && $0 ~ /^[[:space:]]+[A-Za-z_]/) {
+        in_b=0
+      }
+      if (!in_b && $0 ~ "^[[:space:]]+"B"[[:space:]]*:[[:space:]]*$") {
+        in_b=1; b_indent=indent; next
+      }
+      if (in_b && $0 ~ "^[[:space:]]+"C"[[:space:]]*:") {
+        match($0, /^[[:space:]]+/)
+        c_indent = RLENGTH
+        if (c_indent > b_indent) {
+          line=$0
+          sub(/^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:[[:space:]]*/, "", line)
+          sub(/[[:space:]]+$/, "", line)
+          sub(/[[:space:]]+#.*$/, "", line)
+          if (line ~ /^".*"$/) { line=substr(line, 2, length(line)-2) }
+          else if (line ~ /^\x27.*\x27$/) { line=substr(line, 2, length(line)-2) }
+          print line
+          exit
+        }
+      }
+    }
+  ' "$file"
+}
+
 parse_yaml_inline_list() {
   # parse_yaml_inline_list <file> <key> — print a top-level inline-list value
   # (e.g., `key: [a, b, c]`) as a comma-separated string with no brackets.
@@ -817,6 +861,26 @@ v_brownfield_defectdojo_api_url=$(merge_nested_key brownfield defectdojo_api_url
 v_brownfield_defectdojo_api_token=$(merge_nested_key brownfield defectdojo_api_token)
 v_brownfield_defectdojo_engagement_id=$(merge_nested_key brownfield defectdojo_engagement_id)
 
+# AF-2026-05-31-3 / Test14 F-08 — brownfield.tools.{runner,image} are
+# 3-deep keys; the existing 2-deep merge_nested_key can't reach them. Use
+# a same-precedence inline merge against parse_yaml_3deep so the --field
+# interface can introspect the docker-runner config the same way it
+# already exposes brownfield.deterministic_tools etc.
+merge_3deep() {
+  local a="$1" b="$2" c="$3" v=""
+  if [ "$SHARED_EXISTS" -eq 1 ]; then
+    v=$(parse_yaml_3deep "$SHARED_PATH" "$a" "$b" "$c")
+  fi
+  if [ "$LOCAL_EXISTS" -eq 1 ]; then
+    local lv
+    lv=$(parse_yaml_3deep "$LOCAL_PATH" "$a" "$b" "$c")
+    [ -n "$lv" ] && v="$lv"
+  fi
+  printf '%s' "$v"
+}
+v_brownfield_tools_runner=$(merge_3deep brownfield tools runner)
+v_brownfield_tools_image=$(merge_3deep brownfield tools image)
+
 # Defaults (applied when no layer set a value).
 [ -z "$v_dev_story_tdd_review_threshold" ]          && v_dev_story_tdd_review_threshold="medium"
 [ -z "$v_dev_story_tdd_review_phases" ]             && v_dev_story_tdd_review_phases="[red]"
@@ -1298,6 +1362,11 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_brownfield_defectdojo_api_token" ;;
     brownfield.defectdojo_engagement_id)
       printf '%s\n' "$v_brownfield_defectdojo_engagement_id" ;;
+    # AF-2026-05-31-3 / Test14 F-08 — 3-deep docker-runner config keys.
+    brownfield.tools.runner)
+      printf '%s\n' "$v_brownfield_tools_runner" ;;
+    brownfield.tools.image)
+      printf '%s\n' "$v_brownfield_tools_image" ;;
     severity.Critical)
       printf '%s\n' "$v_severity_Critical" ;;
     severity.High)
