@@ -233,10 +233,18 @@ STUB
 # F-05: detect-signals --stacks-path-mode bash 4 guard
 # ===========================================================================
 
-@test "AF-30-4 F-05: detect-signals.sh guards mapfile branch on BASH_VERSINFO" {
+@test "AF-30-4 F-05: detect-signals.sh stacks-path-mode runs (no bash-4 hard gate)" {
+  # AF-2026-05-31-1 / Test12 F-04 update: the original AF-30-4 F-05 fix
+  # ADDED a bash-4+ hard guard that short-circuited the multi-stack branch
+  # on macOS-default bash 3.2. Test12 §9.0 cross-platform mandate flipped
+  # the design: detect-signals.sh is now bash-3.2 compatible end-to-end
+  # (the mapfile + declare -A usages were rewritten as while-read +
+  # sorted-unique strings). The hard guard is GONE — asserting its absence
+  # protects against a regression that would re-introduce the macOS
+  # Tier-0 silent degrade.
   run grep -F 'stacks-path-mode requires bash 4.0+' \
         "$PLUGIN_ROOT/scripts/detect-signals.sh"
-  [ "$status" -eq 0 ]
+  [ "$status" -ne 0 ]
 }
 
 # ===========================================================================

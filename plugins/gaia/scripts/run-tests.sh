@@ -253,6 +253,42 @@ yaml_get_tier_field() {
   ' "$CONFIG"
 }
 
+# AF-2026-05-31-1 / Test12 F-18 — read a top-level test_execution_bridge.<field>
+# value from $CONFIG. Mirrors yaml_get_tier_field's awk shape so we don't
+# pull in a yq runtime dependency for the bridge_used telemetry probe.
+yaml_get_bridge_field() {
+  local field="$1"
+  awk -v F="$field" '
+    BEGIN { in_teb=0 }
+    function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+    function strip_quotes(s) {
+      if (length(s) >= 2) {
+        first=substr(s,1,1); last=substr(s,length(s),1)
+        if ((first=="\"" && last=="\"") || (first=="'\''" && last=="'\''")) {
+          return substr(s, 2, length(s)-2)
+        }
+      }
+      return s
+    }
+    /^[^[:space:]#]/ {
+      if ($0 ~ /^test_execution_bridge[[:space:]]*:/) { in_teb=1; next }
+      in_teb=0; next
+    }
+    in_teb && /^[[:space:]]+[A-Za-z0-9_]+:/ {
+      line=$0
+      sub(/^[[:space:]]+/, "", line)
+      key=line; sub(/:.*$/, "", key)
+      val=line; sub(/^[^:]*:[[:space:]]*/, "", val)
+      if (key == F) {
+        val=trim(val)
+        val=strip_quotes(val)
+        print val
+        exit
+      }
+    }
+  ' "$CONFIG"
+}
+
 # Map placement (config dialect "ci-pre-merge") to context (env dialect
 # "ci_pre_merge"). Done so a single equality check decides if a tier runs.
 placement_matches_context() {
@@ -410,13 +446,55 @@ for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
     continue
   fi
   run_with_timeout "$cmd" "$to"
-  rm -f "$RT_OUTPUT_FILE" || true
+  # AF-2026-05-31-1 / Test12 F-16 — parse the framework output for real
+  # per-test pass/fail counts before discarding the file. The prior
+  # implementation set `pass_count = (RT_EXIT == 0 ? 1 : 0)` and
+  # `fail_count = (RT_EXIT != 0 && !timeout ? 1 : 0)`, which made the
+  # execution-evidence telemetry report `pass_count: 1` for a 100-test
+  # pytest run — useless for any consumer trying to confirm test volume.
+  # The supported regex families cover pytest ("100 passed, 2 failed in
+  # 0.18s"), bats ("ok 7" / "not ok 3"), and go-test ("--- PASS:" /
+  # "--- FAIL:"); other frameworks fall back to the exit-code heuristic
+  # so the AC1 evidence contract stays intact. Run twice — once to count
+  # individual `not ok` / `--- FAIL:` lines, once to read pytest's
+  # summary line — whichever yields a non-zero count wins.
   pass_count=0; fail_count=0
-  if [ "$RT_EXIT" -ne 0 ] && [ "$RT_TIMEOUT" = "false" ]; then
-    fail_count=1
-  elif [ "$RT_EXIT" -eq 0 ]; then
-    pass_count=1
+  if [ -f "$RT_OUTPUT_FILE" ]; then
+    # pytest: "===== 100 passed, 2 failed in 0.18s ====="  (also handles xfailed/skipped suffixes)
+    _pytest_pass="$(grep -Eo '[0-9]+ passed' "$RT_OUTPUT_FILE" 2>/dev/null | tail -n1 | awk '{print $1}')"
+    _pytest_fail="$(grep -Eo '[0-9]+ failed' "$RT_OUTPUT_FILE" 2>/dev/null | tail -n1 | awk '{print $1}')"
+    if [ -n "$_pytest_pass" ] || [ -n "$_pytest_fail" ]; then
+      pass_count="${_pytest_pass:-0}"
+      fail_count="${_pytest_fail:-0}"
+    else
+      # bats TAP: "ok 7 desc" / "not ok 3 desc"
+      _bats_pass="$(grep -cE '^ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1)"
+      _bats_fail="$(grep -cE '^not ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1)"
+      if [ "${_bats_pass:-0}" -gt 0 ] || [ "${_bats_fail:-0}" -gt 0 ]; then
+        pass_count="$_bats_pass"
+        fail_count="$_bats_fail"
+      else
+        # go test: "--- PASS:" / "--- FAIL:"
+        _go_pass="$(grep -cE '^--- PASS:' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1)"
+        _go_fail="$(grep -cE '^--- FAIL:' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1)"
+        if [ "${_go_pass:-0}" -gt 0 ] || [ "${_go_fail:-0}" -gt 0 ]; then
+          pass_count="$_go_pass"
+          fail_count="$_go_fail"
+        fi
+      fi
+    fi
   fi
+  # Exit-code fallback when no framework pattern matched (preserves the
+  # legacy "did the suite pass at all" signal so unknown-framework callers
+  # still see meaningful pass_count/fail_count).
+  if [ "$pass_count" = "0" ] && [ "$fail_count" = "0" ]; then
+    if [ "$RT_EXIT" -ne 0 ] && [ "$RT_TIMEOUT" = "false" ]; then
+      fail_count=1
+    elif [ "$RT_EXIT" -eq 0 ]; then
+      pass_count=1
+    fi
+  fi
+  rm -f "$RT_OUTPUT_FILE" || true
   suite="$(printf '{"name":%s,"command":%s,"exit_code":%s,"duration_seconds":%s,"pass_count":%s,"fail_count":%s,"timeout":%s}' \
     "$(json_str "$tier")" \
     "$(json_str "$cmd")" \
@@ -449,8 +527,35 @@ printf '{"tier":'
 json_str "$TIER_LABEL"
 printf ',"context":'
 json_str "$CONTEXT"
-printf ',"wall_clock_seconds":%s,"skipped":false,"bridge_used":false,"suites":%s,"diagnostics":[],"story_key":' \
-  "$WALL" "$suites_json"
+# AF-2026-05-31-1 / Test12 F-18 — `bridge_used` reflects whether the
+# Test Execution Bridge indirection was actually taken on this invocation.
+# Truth conditions (any of):
+#   (a) the script was reached through `test_execution_bridge.run_tests_path`
+#       (callers like /gaia-review-qa Phase 3C set GAIA_BRIDGE_INVOKE=1 to
+#        signal this before exec'ing the configured run_tests_path),
+#   (b) the script's resolved path matches the run_tests_path value declared
+#       in the active project-config.yaml — i.e. THIS file IS the bridge.
+# Prior to this fix `bridge_used` was hard-coded `false` in the JSON literal,
+# so the telemetry never flipped even when the bridge was correctly wired
+# (run_tests_path populated + the gate-bearing review skills dispatching
+# through it). Without the flip, downstream consumers (FR-EXBR-3 audits)
+# could not tell a bridge-mediated run from a direct invocation.
+_bridge_used="false"
+if [ "${GAIA_BRIDGE_INVOKE:-}" = "1" ]; then
+  _bridge_used="true"
+else
+  _self_path="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+  _wired_path="$(yaml_get_bridge_field 'run_tests_path' 2>/dev/null || true)"
+  if [ -n "$_wired_path" ]; then
+    # Expand any ${CLAUDE_PLUGIN_ROOT} reference before comparing.
+    _expanded="$(printf '%s' "$_wired_path" | sed "s|\${CLAUDE_PLUGIN_ROOT}|${CLAUDE_PLUGIN_ROOT:-}|g")"
+    if [ "$_expanded" = "$_self_path" ]; then
+      _bridge_used="true"
+    fi
+  fi
+fi
+printf ',"wall_clock_seconds":%s,"skipped":false,"bridge_used":%s,"suites":%s,"diagnostics":[],"story_key":' \
+  "$WALL" "$_bridge_used" "$suites_json"
 json_str "$STORY_KEY"
 printf '}\n'
 

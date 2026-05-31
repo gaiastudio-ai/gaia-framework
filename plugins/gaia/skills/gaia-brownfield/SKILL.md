@@ -129,10 +129,20 @@ Each phase is independent in its write targets but must run sequentially because
    - **Audit mode** (`stacks[].path` IS declared): compares declared vs auto-detected and logs disagreement to `.gaia/memory/brownfield-audit/partitioning-audit.json` (`{auto_detected_partitioning, declared_partitioning, disagreement_count}`); it does NOT regenerate the draft (auto-detection vs explicit precedence, TC-MSP-3). Never overrides the declared config.
    - Telemetry (E104-S1 `brownfield-telemetry.sh`; detect_signals owns its fields, single-author): populate `phase_runtime_seconds.detect_signals` / `deterministic_tool_seconds.detect_signals` / `llm_token_count:0` / `detect_signals_mode: proposal|audit|skipped` (skipped when the flags are off). Advisory, never gating — runs in ≤2s on a 10-manifest fixture (NFR-88).
 
-6. Generate the brownfield assessment artifact by reading the assessment template, capturing component inventory, technical debt, migration constraints, coexistence strategy, and adoption path. Include `{project_type}` in the output. Write to `.gaia/artifacts/planning-artifacts/brownfield-assessment.md`.
+6. Generate the brownfield assessment artifact. AF-2026-05-31-1 / Test12 F-05 — the canonical template lives at `${CLAUDE_PLUGIN_ROOT}/templates/brownfield-assessment-template.md` and ships with the plugin. Read it as the starting shape (mode/schema_version/generated_by frontmatter + the seven section headers: Project Overview, Repository Layout, Existing Documentation Surface, Stack Signals, Known Gaps, Scan-readiness checklist, Continuation pointer). Fill the placeholder fields with concrete project data: component inventory, technical debt, migration constraints, coexistence strategy, and adoption path. Include `{project_type}` in the output. Write to `.gaia/artifacts/planning-artifacts/brownfield-assessment.md`.
 7. Write the enhanced project documentation — all standard sections plus detected capability flags, `{project_type}`, testing infrastructure summary, and CI/CD pipeline summary. Write to `.gaia/artifacts/planning-artifacts/project-documentation.md`.
 
-Checkpoint after Phase 1 via `!${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh`.
+Checkpoint after Phase 1 via the canonical `checkpoint.sh write` subcommand. AF-2026-05-31-1 / Test12 F-08 — the prior prose was a bare invocation with no flag set documented; reasonable guesses like `--phase` / `--status` both error with `unknown flag to write`. The actual accepted flags are `--workflow <name>`, `--step <name>`, `--var <key=value>` (repeatable), and `--file <path>` (repeatable). Brownfield's Phase 1 checkpoint:
+
+```bash
+!${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh write \
+  --workflow brownfield \
+  --step phase-1-discovery \
+  --var status=complete \
+  --file ".gaia/artifacts/planning-artifacts/brownfield-assessment.md"
+```
+
+Per phase, the `--step` value advances: `phase-1-discovery`, `phase-2-documentation`, `phase-3-scans`, `phase-4-tests`, `phase-5-env`, `phase-6-nfr`, `phase-7-consolidation`, `phase-8-prd`, `phase-9-architecture`. The non-gating contract of brownfield checkpoints means an unknown-flag error from a stale invocation is informational, not blocking — but the canonical form above is what the helper recognizes.
 
 ## Phase 2 — Parallel Documentation Subagents
 
@@ -315,6 +325,65 @@ report section is rendered in Phase 7 (see the Phase 7 render sub-step) as THREE
 labeled per-stack sub-sections — never one flat list. Telemetry
 (`phase_runtime_seconds.deadcode_{go,python,jvm}` etc.) is written by each
 adapter through the single-author `brownfield-telemetry.sh`.
+
+#### CVE + SBOM adapters (AF-2026-05-31-1 / Test12 F-07 — wire-up closure)
+
+When `brownfield.deterministic_tools: true`, Phase 3 ALSO runs the
+deterministic CVE-scan and SBOM-producer adapters that the dead-code block
+above doesn't cover. Prior to AF-2026-05-31-1 the brownfield SKILL.md
+referenced `phase_runtime_seconds.grype` + an `E70-S9 Grype adapter` in the
+Phase-3 telemetry but never actually invoked them — the grype adapter at
+`scripts/adapters/grype/adapter.sh` and a syft SBOM-producer path both
+existed only as docker-dispatched leaves with no caller. On a stock run the
+CVE scan and SBOM-persist were never produced, defeating the "deterministic
+tools default-on" contract that AF-2026-05-30-3 established.
+
+```bash
+AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
+mkdir -p "$AUDIT/sarif"
+
+# syft SBOM (CycloneDX 1.4-compatible — the grype-feeding path documented in
+# the AF-2026-05-30-4 / Test11 F-27 note above). The completeness check below
+# already references this path; producing it makes the check non-INFO-skip.
+SBOM_FILE="$AUDIT/sbom-syft.json"
+if command -v syft >/dev/null 2>&1; then
+  syft scan dir:"$PROJECT_PATH" -o cyclonedx-json="$SBOM_FILE" 2>/dev/null \
+    || printf 'INFO: syft returned non-zero — SBOM unavailable (graceful degrade)\n' >&2
+else
+  printf 'INFO: syft not on PATH — SBOM step skipped (run gaia-doctor --install to add)\n' >&2
+fi
+
+# grype CVE scan — prefer SBOM input when syft produced one (faster + no
+# re-walk), fall back to directory scan otherwise. Both forms write SARIF
+# into $AUDIT/sarif/ so the Phase 7 E104-S1 dedup ladder picks up the
+# findings via .properties.symbol.
+if command -v grype >/dev/null 2>&1; then
+  if [ -s "$SBOM_FILE" ]; then
+    GRYPE_INPUT="sbom:$SBOM_FILE"
+  else
+    GRYPE_INPUT="dir:$PROJECT_PATH"
+  fi
+  GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true \
+    ADAPTER_OUT_DIR="$AUDIT" \
+    GRYPE_INPUT="$GRYPE_INPUT" \
+    bash "$GAIA_PLUGIN_ROOT/scripts/adapters/grype/adapter.sh" \
+    || printf 'INFO: grype adapter exited non-zero — CVE scan absent (graceful degrade)\n' >&2
+else
+  printf 'INFO: grype not on PATH — CVE scan skipped (run gaia-doctor --install to add)\n' >&2
+fi
+```
+
+Both invocations follow the same graceful-degrade contract as the dead-code
+adapters: when a toolchain is absent the step emits ONE INFO line pointing
+at the remediation command (`gaia-doctor --install`) and continues. The
+Phase 3 verdict is unchanged by their absence — they enrich the gap report
+when present, they don't block when missing. The runner cascade
+(`brownfield.tools.runner = docker`, AF-2026-05-30-3) still applies: when
+the docker runner is selected, the same invocations transparently dispatch
+through `scripts/lib/docker-runner.sh` via the per-adapter helper and the
+host doesn't need grype/syft on PATH. This closes the Test12 F-07 wire-up
+gap — the adapters are now actually called by the orchestrator that the
+telemetry already credited.
 
 **Partial-failure semantics (AC-EC8):** If a scanner crashes mid-run, the other scanners continue. The failed scan writes a gap row tagged `scan failed: {reason}`. The overall skill exits non-zero with a partial-result summary listing which scanners succeeded, which failed, and what recoverable evidence is available. The remaining scanners continue — one failure does not block the cohort.
 
@@ -732,7 +801,41 @@ Write to `.gaia/artifacts/planning-artifacts/prd.md`.
 
 Dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique the PRD. Target `.gaia/artifacts/planning-artifacts/prd.md`; **before dispatching, run `mkdir -p .gaia/artifacts/planning-artifacts/adversarial/`** so the nested directory exists on first run (ADR-119). Report output path `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-prd-{YYYY-MM-DD}.md` (use today's UTC date; AF-2026-05-30-1 / Test03 §7.3 — adversarial joins the dated-snapshot pattern). Sage's persona at `plugins/gaia/agents/adversarial-reviewer.md` defines the review structure, severity vocabulary (CRITICAL/WARNING/INFO per ADR-037), and brownfield-relevant lenses (documented-vs-actual drift, hidden coupling, known-knowns vs known-unknowns). When the subagent returns, verify `adversarial-review-prd-{date}.md` exists in `.gaia/artifacts/planning-artifacts/adversarial/` (legacy ungrouped `.gaia/artifacts/planning-artifacts/adversarial-review-prd-{date}.md` is accepted as a read-only fallback on pre-AF-30-1 projects). Per ADR-063 (Mandatory Verdict Surfacing), display the returned ADR-037 envelope to the user. Extract critical and high severity findings. For each critical/high finding, add a new requirement or refine an existing requirement in the PRD. Add a `## Review Findings Incorporated` section to the PRD listing each finding, its severity, and how it was addressed.
 
-**YOLO mode contract (AF-2026-05-29-2 / Test09 F-11).** Under YOLO, content-level CRITICAL findings from Sage are auto-downgraded to WARNING-equivalent for the purposes of the halt-check, **but only at Phase 8b's adversarial review**. The downgrade applies to PRD-content findings (untestable acceptance criteria, ambiguous scope, missing edge cases) — the kind Sage routinely flags on any non-trivial PRD draft. Brownfield's Phase 8c "Code-Verified Review" sub-agent (next phase) then verifies every factual claim against the actual codebase, providing a stronger anti-fabrication check than the content-level adversarial pass. **The downgrade does NOT apply to:** Phase 3 scan-subagent CRITICALs (which signal real defects in the scanned code), Phase 4 test-execution CRITICALs (which signal test infrastructure problems), or Phase 8c code-verified CRITICALs (which signal verified contradictions between PRD claims and code). Those still halt under YOLO per ADR-063/067. The 8b-specific downgrade unblocks the brownfield onboarding loop from the routine "Sage flags content quality, you halt, you incorporate the findings, re-run, Sage flags new things, halt again" cycle that made `gaia-brownfield yolo` effectively non-autonomous on any real-world PRD. The original CRITICAL findings are still recorded verbatim in `adversarial-review-prd-{date}.md` and incorporated into the PRD's `## Review Findings Incorporated` section — nothing is lost; only the halt-on-CRITICAL semantic is downgraded for this specific phase under YOLO.
+**YOLO mode contract (AF-2026-05-29-2 / Test09 F-11; extended by
+AF-2026-05-31-1 / Test12 F-11).** Under YOLO, brownfield CRITICAL findings
+that describe **the scanned codebase itself** are auto-downgraded to
+WARNING-equivalent for the purposes of the halt-check across THREE phases:
+
+- **Phase 3** scan subagents (doc-code drift, hardcoded values, integration
+  seams, runtime behavior, security, config contradictions, dead code) —
+  every CRITICAL these subagents return is, by definition, a real defect
+  in the target codebase. Halting on them defeats brownfield's
+  gap-discovery mission. Subagent errors of the form "scanner crashed" /
+  "tool not available" are still halts; finding-content CRITICALs about
+  the scanned code are downgraded.
+- **Phase 6** test-architect (Sable) NFR assessment — Sable routinely
+  returns CRITICAL findings like "CI pre-merge gate is a no-op stub; tests
+  never run" or "no test coverage measurement". These are baseline-state
+  facts about the project, not scanner failures. Same downgrade rule as
+  Phase 3.
+- **Phase 8b** adversarial review (Sage) on the synthesized PRD —
+  content-quality CRITICALs like untestable acceptance criteria, ambiguous
+  scope, or missing edge cases. Phase 8c's code-verified review provides
+  the anti-fabrication backstop.
+
+**The downgrade does NOT apply to:** Phase 4 test-execution CRITICALs
+(which signal test-infrastructure problems, not target-code gaps), Phase 8c
+code-verified CRITICALs (which signal verified contradictions between PRD
+claims and code — these MUST halt to avoid shipping factually-wrong PRDs),
+or any subagent error CRITICAL of the "tool crashed / pipeline broken"
+shape. Those still halt under YOLO per ADR-063/067. The original CRITICAL
+findings are still recorded verbatim in the artifact each phase produces
+(scan reports for Phase 3, NFR assessment for Phase 6,
+`adversarial-review-prd-{date}.md` for Phase 8b) and roll into the Phase 7
+consolidated gap list — nothing is lost; only the halt-on-CRITICAL
+semantic is downgraded for these three phases under YOLO so the brownfield
+onboarding loop can actually complete on any real-world project (which by
+definition has critical gaps — that's why brownfield is being run on it).
 
 ### 8c — Code-Verified Review
 
@@ -895,7 +998,7 @@ Every subagent dispatched by this skill — Phase 2 documenters, Phase 3 scan su
 
 - `status: PASS` — log the subagent name, the artifacts it produced, and continue to the next phase.
 - `status: WARNING` — display the `findings` block to the user before continuing. The user remains in control: in normal mode they may approve or revise; in YOLO mode the workflow auto-continues after displaying the warning (per ADR-067).
-- `status: CRITICAL` — HALT. The skill MUST NOT advance to the next phase until the user resolves the critical finding. This rule applies in both normal and YOLO mode (CRITICAL still halts under YOLO — see YOLO Behavior below).
+- `status: CRITICAL` — HALT. The skill MUST NOT advance to the next phase until the user resolves the critical finding. This rule applies in both normal and YOLO mode (CRITICAL still halts under YOLO — see YOLO Behavior below) **with the documented per-phase carve-outs**: under YOLO, finding-content CRITICALs (CRITICALs that describe the SCANNED CODEBASE) are auto-downgraded to WARNING-equivalent at **Phase 3** (scan subagents), **Phase 6** (NFR assessment), and **Phase 8b** (PRD adversarial review) per the YOLO mode contract above. Subagent error CRITICALs (scanner crashed, tool unavailable, pipeline broken) still halt unconditionally. The carve-out is justified by brownfield's gap-discovery purpose: every Phase 3/6 CRITICAL is, by construction, a real defect in the project being onboarded — halting on each one defeats the autonomous-run promise of YOLO mode (`gaia-brownfield yolo`). See AF-2026-05-31-1 / Test12 F-11 for the precedent + AF-2026-05-29-2 / Test09 F-11 for the Phase 8b precursor.
 
 The Phase 3 per-subagent scan diagnostic table (above) is the surfacing channel for the seven scan subagents — its `Status` and `Reason` columns are the user-visible projection of each scan subagent's structured return. A subagent that crashes mid-run is treated as `CRITICAL` for the orchestrator (skill exits non-zero with a partial-result summary per AC-EC8), but the cohort's surviving scanners still appear in the diagnostic table with their own statuses. This is the canonical pattern for the six-command remediation cohort identified in **ADR-063** (add-feature, security-review, brownfield, test-gap-analysis, fill-test-gaps, problem-solving).
 

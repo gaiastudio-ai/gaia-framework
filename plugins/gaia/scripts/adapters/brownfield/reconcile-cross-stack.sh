@@ -98,8 +98,15 @@ start=$(date +%s%N)
 stack_count="$(yq eval '.stacks | length' "$CONFIG" 2>/dev/null || printf '0')"
 [ "$stack_count" -gt 0 ] 2>/dev/null || { log_info "no stacks[] declared — no cross-stack edges to check"; exit 0; }
 
-declare -a STACK_NAMES=() STACK_PREFIXES=()
-declare -A CROSS_REFS=()   # name -> space-delimited allowlist
+# AF-2026-05-31-1 / Test12 F-06: bash 3.2-compat. The prior `declare -A
+# CROSS_REFS=()` associative array (name -> allowlist) is replaced by a
+# parallel indexed array `STACK_CROSS_REFS[]` aligned with `STACK_NAMES[]`.
+# The lookup `${CROSS_REFS[$src]}` becomes a linear scan via the new helper
+# `_cross_refs_for()`. The stack count in practice is small (single-digit),
+# so O(N) is fine.
+STACK_NAMES=()
+STACK_PREFIXES=()
+STACK_CROSS_REFS=()
 i=0
 while [ "$i" -lt "$stack_count" ]; do
   name="$(yq eval ".stacks[$i].name" "$CONFIG")"
@@ -108,9 +115,22 @@ while [ "$i" -lt "$stack_count" ]; do
   refs="$(yq eval ".stacks[$i].cross_refs[]?" "$CONFIG" 2>/dev/null | tr '\n' ' ')"
   STACK_NAMES+=("$name")
   STACK_PREFIXES+=("$path_root")
-  CROSS_REFS["$name"]="$refs"
+  STACK_CROSS_REFS+=("$refs")
   i=$((i+1))
 done
+
+# bash 3.2-compat replacement for `${CROSS_REFS[$name]:-}`.
+_cross_refs_for() {
+  local _want="$1" _k=0
+  while [ "$_k" -lt "${#STACK_NAMES[@]}" ]; do
+    if [ "${STACK_NAMES[$_k]}" = "$_want" ]; then
+      printf '%s' "${STACK_CROSS_REFS[$_k]}"
+      return 0
+    fi
+    _k=$((_k+1))
+  done
+  return 0
+}
 
 # file_to_stack <path> -> stack name (longest matching prefix; "." matches all).
 file_to_stack() {
@@ -129,9 +149,12 @@ file_to_stack() {
 }
 
 # ref_allowed <src_stack> <tgt_stack> -> 0 if tgt in src.cross_refs[] else 1.
+# AF-2026-05-31-1 / Test12 F-06: routed through _cross_refs_for() (bash 3.2
+# parallel-array replacement for the prior CROSS_REFS assoc-array lookup).
 ref_allowed() {
-  local src="$1" tgt="$2" r
-  for r in ${CROSS_REFS[$src]:-}; do
+  local src="$1" tgt="$2" r refs
+  refs="$(_cross_refs_for "$src")"
+  for r in $refs; do
     [ "$r" = "$tgt" ] && return 0
   done
   return 1

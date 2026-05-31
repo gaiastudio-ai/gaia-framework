@@ -158,18 +158,31 @@ CHECKED=0
 PASSED=0
 CHECKLIST_STATUS=0
 
-# item_check <id> <description> <boolean-result>
-# boolean-result: "pass" or "fail".
+# item_check <id> <description> <verdict>
+# verdict: "pass" | "fail" | "notice".
+# AF-2026-05-31-1 / Test12 F-14: "notice" verdict is informational — counted
+# as PASSED for the verdict cohort (it does not block the gate) but rendered
+# as [INFO] in the operator-facing log so the deviation from a hard pass is
+# still visible. Used by SV-20 to relax the Review-Findings-Incorporated
+# gate for brownfield-mode architecture documents while preserving the hard
+# gate for greenfield arch.
 item_check() {
   local id="$1" desc="$2" result="$3"
   CHECKED=$((CHECKED + 1))
-  if [ "$result" = "pass" ]; then
-    printf '  [PASS] %s — %s\n' "$id" "$desc" >&2
-    PASSED=$((PASSED + 1))
-  else
-    printf '  [FAIL] %s — %s\n' "$id" "$desc" >&2
-    VIOLATIONS+=("$id — $desc")
-  fi
+  case "$result" in
+    pass)
+      printf '  [PASS] %s — %s\n' "$id" "$desc" >&2
+      PASSED=$((PASSED + 1))
+      ;;
+    notice)
+      printf '  [INFO] %s — %s (advisory; not blocking)\n' "$id" "$desc" >&2
+      PASSED=$((PASSED + 1))
+      ;;
+    *)
+      printf '  [FAIL] %s — %s\n' "$id" "$desc" >&2
+      VIOLATIONS+=("$id — $desc")
+      ;;
+  esac
 }
 
 # file_nonempty <file>
@@ -477,8 +490,26 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
     "$(file_exists "$PRD")"
   item_check "SV-19" "Architecture consumed (architecture.md exists upstream)" \
     "$(file_exists "$ARCHITECTURE")"
-  item_check "SV-20" "Review Findings Incorporated section present in architecture" \
-    "$(if [ -f "$ARCHITECTURE" ]; then heading_present "$ARCHITECTURE" "Review[[:space:]]+Findings[[:space:]]+Incorporated"; else echo "fail"; fi)"
+  # AF-2026-05-31-1 / Test12 F-14: brownfield-mode architecture documents
+  # are exempt from the Review Findings Incorporated gate. The brownfield
+  # Phase 9a pipeline generates arch.md from gap consolidation (not from
+  # an adversarial+incorporate loop), so requiring the section would break
+  # the brownfield→epics handoff that Test12 reproduced. We probe the
+  # arch.md frontmatter for `mode: brownfield`; when set, downgrade the
+  # gate to a `notice` verdict (item_check renders it as INFO without
+  # failing the cohort). The greenfield path (mode: greenfield, or no
+  # mode declared) keeps the hard `fail` semantics.
+  _rfi_verdict="fail"
+  if [ -f "$ARCHITECTURE" ]; then
+    _arch_mode="$(awk '/^---$/{c++; next} c==1 && /^mode:[[:space:]]/{sub(/^mode:[[:space:]]*/,""); print; exit}' "$ARCHITECTURE" 2>/dev/null | tr -d '"' | tr -d "'" | tr -d ' ')"
+    if [ "$_arch_mode" = "brownfield" ]; then
+      _rfi_verdict="notice"
+    else
+      _rfi_verdict="$(heading_present "$ARCHITECTURE" "Review[[:space:]]+Findings[[:space:]]+Incorporated")"
+    fi
+  fi
+  item_check "SV-20" "Review Findings Incorporated section present in architecture (advisory for brownfield-mode arch)" \
+    "$_rfi_verdict"
 
   # Traceability (SV-21)
   item_check "SV-21" "Traceability referenced (Traces to / FR-### identifier present)" \

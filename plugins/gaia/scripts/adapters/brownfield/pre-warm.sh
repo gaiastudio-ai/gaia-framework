@@ -124,8 +124,18 @@ append_checksum_row() {
 cdxgen_warm() {
   command -v cdxgen >/dev/null 2>&1 || { log_warn "cdxgen not found on PATH — skipping registry warm-up (graceful degrade)"; return 0; }
   mkdir -p "$CACHE_DIR"
-  # Prime package-registry caches; discard the SBOM (we only want the warm-up).
-  cdxgen --no-recurse --print >/dev/null 2>&1 || log_warn "cdxgen warm-up returned non-zero — continuing (graceful degrade)"
+  # AF-2026-05-31-1 / Test12 V-01: redirect cdxgen's SBOM output explicitly
+  # to the cache directory. Without `-o`, cdxgen writes `./bom.json` to the
+  # caller's CWD (== the project root, in the brownfield invocation) as a
+  # side effect even when `--print` is set — leaving a CycloneDX SBOM at the
+  # repo root on every brownfield run. This violated the .gaia/-only write
+  # contract documented in the brownfield SKILL.md and the project-root
+  # containment guarantee Test12 P-18 audited. Passing `-o <path>` keeps
+  # the warm-up byte-stable (the SBOM is still discarded — we only need the
+  # registry caches it primes) AND keeps the SBOM inside .gaia/memory/. The
+  # `2>/dev/null` is preserved so cdxgen's stderr stays out of the log.
+  cdxgen --no-recurse --print -o "$CACHE_DIR/warm-bom.json" >/dev/null 2>&1 \
+    || log_warn "cdxgen warm-up returned non-zero — continuing (graceful degrade)"
   : > "$CACHE_DIR/cdxgen-warm.marker"
 }
 

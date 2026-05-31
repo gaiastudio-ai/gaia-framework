@@ -163,7 +163,27 @@ _probe_one() {
 
   local ver=""
   if [ -n "$ver_cmd" ]; then
-    ver="$(bash -c "$ver_cmd" 2>/dev/null | head -n1 | tr -d '\r' || true)"
+    # AF-2026-05-31-1 / Test12 F-10: strip ANSI / control sequences from the
+    # version banner before embedding it in the JSON payload. The prior
+    # implementation passed the raw `--version` stdout through, which for
+    # tools like `cdxgen` includes ANSI color codes (e.g.
+    # "\x1b[1mCycloneDX Generator 12.5.0\x1b[0m"). The resulting JSON had
+    # unescaped C0 control bytes (U+001B), so `jq` rejected the whole
+    # document at consumption time — Phase 7's `TIER=$(... | jq -r '.tier // "tier-0"')`
+    # silently fell back to tier-0 even when the deterministic-tools layer
+    # was fully installed and the brownfield "never degrade silently" goal
+    # was defeated by a silent mis-detection. Belt-and-braces:
+    #   1. Export NO_COLOR=1 + TERM=dumb so well-behaved tools skip color.
+    #   2. Pipe through a sed filter that strips CSI escapes
+    #      (ESC '[' params 'm', and the broader '[?A-Z]' final-byte class)
+    #      AND a final tr that removes any remaining C0 control chars
+    #      EXCEPT \t / \n (jq's encoder handles those safely).
+    ver="$(NO_COLOR=1 TERM=dumb bash -c "$ver_cmd" 2>/dev/null \
+            | sed -E $'s/\x1b\\[[0-9;?]*[A-Za-z]//g' \
+            | tr -d '\001-\010\013\014\016-\037' \
+            | head -n1 \
+            | tr -d '\r' \
+            || true)"
   fi
 
   # Bash environment-warning special case
