@@ -160,10 +160,17 @@ while [ "$i" -lt "$stack_count" ]; do
       fi
       [ "$included" -eq 1 ] || continue
       # Exclude iff matched by ANY excludes[] glob (excludes ALWAYS win).
+      # AF-2026-05-31-2 / Test13 F-14 — bash 3.2 + `set -u` rejects the
+      # `"${excludes[@]}"` deref when the array is empty (a stack without
+      # an `excludes:` block). Length-guard the iteration so the empty case
+      # is a clean no-op. Same regression class as F-24 (sprint-state.sh
+      # _init_args[@]); both fall out of the AF-31-1 portability rewrite.
       excluded=0
-      for g in "${excludes[@]}"; do
-        if matches_glob "$rel_stack" "$g" || matches_glob "$rel_root" "$g"; then excluded=1; break; fi
-      done
+      if [ "${#excludes[@]}" -gt 0 ]; then
+        for g in "${excludes[@]}"; do
+          if matches_glob "$rel_stack" "$g" || matches_glob "$rel_root" "$g"; then excluded=1; break; fi
+        done
+      fi
       [ "$excluded" -eq 0 ] || continue
       printf '%s\n' "$rel_root"
     done < <(find "$base" -type f 2>/dev/null) | sort -u > "$out_file"
@@ -175,6 +182,11 @@ while [ "$i" -lt "$stack_count" ]; do
 done
 
 # --- Emit per-stack counts (AC-X3 — consumed for per_stack_file_counts) ----
-log_info "per_stack_file_counts: ${count_pairs[*]}"
+# AF-2026-05-31-2 / Test13 F-14 — guard the count_pairs[@] expansion: when
+# stack_count was zero (nothing to iterate), count_pairs is empty and
+# `"${count_pairs[*]}"` under `set -u` would crash on bash 3.2.
+if [ "${#count_pairs[@]}" -gt 0 ]; then
+  log_info "per_stack_file_counts: ${count_pairs[*]}"
+fi
 
 exit 0
