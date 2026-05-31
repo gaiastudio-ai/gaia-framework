@@ -109,7 +109,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run GAIA pre-merge gates
-        run: echo "TODO — wire up /gaia-ci-setup pre-merge gate runner"
+        run: echo "GAIA pre-merge gate is not yet configured for this project. Run /gaia-ci-setup to wire the runner, then commit the generated workflow. See plugins/gaia/skills/gaia-init/docs/ci-scaffold-stub.html for the rationale (AF-2026-05-31-2 / Test13 F-19)." >&2 && exit 1
 YAML
       ;;
     gitlab-ci)
@@ -121,7 +121,7 @@ stages:
 gaia-pre-merge:
   stage: gaia-gates
   script:
-    - echo "TODO — wire up /gaia-ci-setup pre-merge gate runner"
+    - echo "GAIA pre-merge gate is not yet configured for this project. Run /gaia-ci-setup to wire the runner, then commit the generated workflow. See plugins/gaia/skills/gaia-init/docs/ci-scaffold-stub.html for the rationale (AF-2026-05-31-2 / Test13 F-19)." >&2 && exit 1
 YAML
       ;;
     circleci)
@@ -135,7 +135,7 @@ jobs:
       - image: cimg/base:stable
     steps:
       - checkout
-      - run: echo "TODO — wire up /gaia-ci-setup pre-merge gate runner"
+      - run: echo "GAIA pre-merge gate is not yet configured for this project. Run /gaia-ci-setup to wire the runner, then commit the generated workflow. See plugins/gaia/skills/gaia-init/docs/ci-scaffold-stub.html for the rationale (AF-2026-05-31-2 / Test13 F-19)." >&2 && exit 1
 workflows:
   default:
     jobs: [gaia-pre-merge]
@@ -150,7 +150,7 @@ pipeline {
   stages {
     stage('GAIA Pre-Merge') {
       steps {
-        sh 'echo "TODO — wire up /gaia-ci-setup pre-merge gate runner"'
+        sh 'echo "GAIA pre-merge gate is not yet configured for this project. Run /gaia-ci-setup to wire the runner, then commit the generated workflow. See plugins/gaia/skills/gaia-init/docs/ci-scaffold-stub.html for the rationale (AF-2026-05-31-2 / Test13 F-19)." >&2 && exit 1'
       }
     }
   }
@@ -167,7 +167,7 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 steps:
-  - script: echo "TODO — wire up /gaia-ci-setup pre-merge gate runner"
+  - script: echo "GAIA pre-merge gate is not yet configured for this project. Run /gaia-ci-setup to wire the runner, then commit the generated workflow. See plugins/gaia/skills/gaia-init/docs/ci-scaffold-stub.html for the rationale (AF-2026-05-31-2 / Test13 F-19)." >&2 && exit 1
     displayName: GAIA pre-merge gates
 YAML
       ;;
@@ -181,7 +181,7 @@ pipelines:
       - step:
           name: GAIA pre-merge gates
           script:
-            - echo "TODO — wire up /gaia-ci-setup pre-merge gate runner"
+            - echo "GAIA pre-merge gate is not yet configured for this project. Run /gaia-ci-setup to wire the runner, then commit the generated workflow. See plugins/gaia/skills/gaia-init/docs/ci-scaffold-stub.html for the rationale (AF-2026-05-31-2 / Test13 F-19)." >&2 && exit 1
 YAML
       ;;
   esac

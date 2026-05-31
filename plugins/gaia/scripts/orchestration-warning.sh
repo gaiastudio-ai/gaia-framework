@@ -112,13 +112,39 @@ case "$mode" in
 esac
 
 # ---- Resolve session_id ----
+# AF-2026-05-31-2 / Test13 F-12: when CLAUDE_SESSION_ID is unset, derive a
+# stable per-real-session id instead of the prior `pid-${PPID}` form. PPID
+# changes every time a NEW bash is spawned to run a different skill — so
+# the prior fallback produced a fresh session_id per skill invocation and
+# the warning re-fired every time, contradicting the once-per-session
+# contract. Persist a session cookie under a host-unique path so all
+# child invocations within the same login shell see the same id.
 if [ -z "$session_id" ]; then
   if [ -n "${CLAUDE_SESSION_ID:-}" ]; then
     session_id="$CLAUDE_SESSION_ID"
   else
-    # Fallback: parent process id of this script (the orchestrator's PID
-    # in practice). Stable for the lifetime of the parent shell.
-    session_id="pid-${PPID:-0}"
+    # Derive a cookie path keyed off the login shell's PID (its $$ is
+    # constant for the session) AND the user uid for safety against
+    # multi-tenant /tmp. The cookie holds a random-ish token written on
+    # first miss; subsequent reads inside the same login shell pick up
+    # the same token regardless of PPID drift.
+    _cookie_dir="${TMPDIR:-/tmp}/gaia-session-${UID:-$(id -u 2>/dev/null || echo 0)}"
+    mkdir -p "$_cookie_dir" 2>/dev/null || true
+    # `who am i` reports the controlling tty's login time; `ps -o ppid=`
+    # walks up to the login shell. Try `who` first (cheaper); fall back
+    # to PPID-of-PPID-of-PPID to get a stable-ish ancestor pid.
+    _login_anchor="$(who am i 2>/dev/null | awk '{print $1"-"$3"-"$4}' || true)"
+    if [ -z "$_login_anchor" ]; then
+      _login_anchor="ppid-$(ps -o ppid= -p "${PPID:-0}" 2>/dev/null | tr -d ' ' || echo 0)"
+    fi
+    _cookie_file="$_cookie_dir/$(printf '%s' "$_login_anchor" | tr -c 'a-zA-Z0-9._-' '_').session"
+    if [ -f "$_cookie_file" ]; then
+      session_id="$(head -c 64 "$_cookie_file" 2>/dev/null || true)"
+    fi
+    if [ -z "$session_id" ]; then
+      session_id="sess-$(date +%s)-$$"
+      printf '%s' "$session_id" > "$_cookie_file" 2>/dev/null || true
+    fi
   fi
 fi
 

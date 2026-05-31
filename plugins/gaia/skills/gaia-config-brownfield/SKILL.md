@@ -18,6 +18,7 @@ Editing is comment-preserving per ADR-044: pre-existing comments and formatting 
 - Supported keys (enums enforced):
   - `brownfield.deterministic_tools` — `true` | `false`
   - `brownfield.tools.runner` — `docker` | `native`
+  - `brownfield.tools.image` — OCI image reference (string), e.g. `ghcr.io/gaiastudio-ai/gaia-tools:0.1.1-2026-05-31` (AF-2026-05-31-2 / Test13 F-06)
   - `brownfield.grype_enabled` — `true` | `false`
   - `brownfield.scanner_tier` — `0` | `1` | `2` | `auto`
 - Reject unknown keys and out-of-enum values with exit 1.
@@ -42,6 +43,7 @@ The first user-visible line of output for every invocation MUST surface the **cu
 current brownfield:
   deterministic_tools: <true|false|unset>
   tools.runner:        <docker|native|unset>
+  tools.image:         <image-ref|unset>
   grype_enabled:       <true|false|unset>
   scanner_tier:        <0|1|2|auto|unset>
 ```

@@ -56,36 +56,50 @@ WORKDIR /opt/fetch
 
 # Map docker buildx TARGETARCH (amd64|arm64) to the upstream release
 # nomenclature each tool uses.
+# AF-2026-05-31-2 / Test13 F-03: osv-scanner v1.7.4 asset is
+# `osv-scanner_linux_amd64` (underscore), NOT `osv-scanner_linux-amd64`
+# (dash). The prior dash form produced a 404 on fetch. Switched both
+# arches to the canonical underscore form so the fetch step succeeds.
 RUN case "${TARGETARCH}" in \
       amd64) echo "linux_amd64" > /opt/fetch/.arch_anchore ; \
-             echo "linux-amd64" > /opt/fetch/.arch_osv ; ;; \
+             echo "linux_amd64" > /opt/fetch/.arch_osv ; ;; \
       arm64) echo "linux_arm64" > /opt/fetch/.arch_anchore ; \
-             echo "linux-arm64" > /opt/fetch/.arch_osv ; ;; \
+             echo "linux_arm64" > /opt/fetch/.arch_osv ; ;; \
       *)     echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
     esac
 
 # Grype — vulnerability scanner (Anchore). The official installer is
 # distributed as a shell script; we pin the version explicitly so
 # `:latest` drift can't change the bundled scanner shape between builds.
+# AF-2026-05-31-2 / Test13 F-01: extract grype into /opt/fetch directly
+# (`-C /opt/fetch`) instead of the prior `tar -xzf … grype && mv grype
+# /opt/fetch/grype` two-step. The prior form failed because tar's CWD was
+# already /opt/fetch (per the WORKDIR above) — so the `mv grype
+# /opt/fetch/grype` was a no-op AND the second `mv` invocation in a
+# rebuild step would error `'grype' and '/opt/fetch/grype' are the same
+# file`. The `-C` form is single-step, clear, and idempotent.
 RUN ARCH=$(cat /opt/fetch/.arch_anchore) && \
     curl -fsSL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_${ARCH}.tar.gz" \
       -o grype.tar.gz && \
-    tar -xzf grype.tar.gz grype && \
-    mv grype /opt/fetch/grype && \
+    tar -xzf grype.tar.gz -C /opt/fetch grype && \
     chmod +x /opt/fetch/grype && \
+    rm -f grype.tar.gz && \
     /opt/fetch/grype version
 
 # Syft — SBOM generator (Anchore).
+# AF-2026-05-31-2 / Test13 F-01: same fix as grype above — extract via
+# `-C /opt/fetch` instead of the same-file mv pattern.
 RUN ARCH=$(cat /opt/fetch/.arch_anchore) && \
     curl -fsSL "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_${ARCH}.tar.gz" \
       -o syft.tar.gz && \
-    tar -xzf syft.tar.gz syft && \
-    mv syft /opt/fetch/syft && \
+    tar -xzf syft.tar.gz -C /opt/fetch syft && \
     chmod +x /opt/fetch/syft && \
+    rm -f syft.tar.gz && \
     /opt/fetch/syft version
 
 # osv-scanner — Google OSV.dev CVE scanner, single static binary.
-# Upstream tarball layout: osv-scanner_<version>_linux_<arch>.tar.gz
+# Upstream asset layout: osv-scanner_linux_<arch>.tar.gz → resolved by
+# the underscore-form `.arch_osv` (Test13 F-03 fix above).
 RUN ARCH=$(cat /opt/fetch/.arch_osv) && \
     curl -fsSL "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_${ARCH}" \
       -o /opt/fetch/osv-scanner && \
@@ -95,10 +109,16 @@ RUN ARCH=$(cat /opt/fetch/.arch_osv) && \
 # SpotBugs — JVM bytecode static analyzer. Java archive; runs via
 # java -jar inside the runtime stage. Note: SpotBugs distributes a
 # single multi-platform .tgz, no arch split.
+# AF-2026-05-31-2 / Test13 F-07: the upstream tarball does NOT preserve
+# the +x bit on bin/spotbugs (the launcher script). chmod the bin/
+# subtree so the symlink at /usr/local/bin/spotbugs in the runtime stage
+# resolves to an executable file.
 RUN curl -fsSL "https://github.com/spotbugs/spotbugs/releases/download/${SPOTBUGS_VERSION}/spotbugs-${SPOTBUGS_VERSION}.tgz" \
       -o spotbugs.tgz && \
     tar -xzf spotbugs.tgz && \
-    mv "spotbugs-${SPOTBUGS_VERSION}" /opt/fetch/spotbugs
+    chmod -R +x "spotbugs-${SPOTBUGS_VERSION}/bin/" && \
+    mv "spotbugs-${SPOTBUGS_VERSION}" /opt/fetch/spotbugs && \
+    rm -f spotbugs.tgz
 
 # ---------------------------------------------------------------------------
 # Stage 2 — Runtime. Lean Debian + the Python and Node runtimes the
@@ -107,8 +127,8 @@ RUN curl -fsSL "https://github.com/spotbugs/spotbugs/releases/download/${SPOTBUG
 # ---------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 
-ARG GAIA_TOOLS_VERSION=0.1.0
-ARG GAIA_TOOLS_DB_DATE=2026-05-30
+ARG GAIA_TOOLS_VERSION=0.1.1
+ARG GAIA_TOOLS_DB_DATE=2026-05-31
 
 ENV GAIA_TOOLS_VERSION=${GAIA_TOOLS_VERSION} \
     GAIA_TOOLS_DB_DATE=${GAIA_TOOLS_DB_DATE} \
@@ -121,20 +141,31 @@ ENV GAIA_TOOLS_VERSION=${GAIA_TOOLS_VERSION} \
     DEBIAN_FRONTEND=noninteractive
 
 # Runtime dependencies. Keep this list tight — every line is image bloat.
+# AF-2026-05-31-2 / Test13 F-04: Debian bookworm ships Node 18.20, but
+# cdxgen 10.x requires Node 20+ (EBADENGINE on install). Skip the apt
+# nodejs/npm and install Node 20 from NodeSource instead. The runtime is
+# multi-arch (NodeSource supports amd64 + arm64 from the same repo URL).
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
+      gnupg \
       jq \
       git \
       python3 \
       python3-pip \
       python3-venv \
-      nodejs \
-      npm \
       default-jre-headless \
       && \
+    mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+      | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+      > /etc/apt/sources.list.d/nodesource.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/* && \
+    node --version && npm --version && \
     # yq via the static binary (Mike Farah's yq, not Python yq) — gaia
     # scripts assume the Go yq's --tojson / dot-path semantics. The apt
     # package on Debian ships the Python yq with different CLI shape, so
@@ -170,15 +201,53 @@ RUN pip install --break-system-packages \
       'cyclonedx-bom==4.4.3' \
       'yamllint==1.35.1'
 
+# AF-2026-05-31-2 / Test13 F-22: bundle Microsoft's Sarif.Multitool so the
+# Phase-7 sarif-merge.sh step actually runs under docker-runner. Without
+# this, the prior pipeline (grype SARIF → sarif merge → dedup → reconcile)
+# fell over at the merge step — the `sarif` CLI was on no host PATH
+# (dotnet tool install requires .NET SDK, off-policy for the gaia-doctor
+# Tier-2 install profile) AND not in the image. With it bundled,
+# docker_runner_dispatch sarif ... works the same as grype/syft.
+RUN curl -fsSL "https://dot.net/v1/dotnet-install.sh" -o /tmp/dotnet-install.sh && \
+    chmod +x /tmp/dotnet-install.sh && \
+    /tmp/dotnet-install.sh --runtime dotnet --version latest --install-dir /opt/dotnet && \
+    rm -f /tmp/dotnet-install.sh && \
+    ln -s /opt/dotnet/dotnet /usr/local/bin/dotnet && \
+    dotnet --info >/dev/null 2>&1 || true
+RUN /opt/dotnet/dotnet tool install --tool-path /usr/local/bin Microsoft.Sarif.Multitool \
+    || echo "WARNING: sarif-multitool install failed — Phase-7 SARIF merge will degrade"
+
 # Pure-npm Tier 1 tools.
+# AF-2026-05-31-2 / Test13 F-04: pin to a real published version
+# (10.11.0; 10.6.4 was never released on npm) and keep the install
+# non-fatal so a transient npm error during build doesn't kill the
+# whole image. The Tier-2 grype/syft scanners are the load-bearing
+# tools; cdxgen's SBOM is supplementary and degrades gracefully
+# downstream if absent.
 RUN npm install -g --silent --no-audit --no-fund \
-      '@cyclonedx/cdxgen@10.6.4'
+      '@cyclonedx/cdxgen@10.11.0' \
+    || echo "WARNING: cdxgen install failed — SBOM completeness check will INFO-skip"
+
+# AF-2026-05-31-2 / Test13 F-10: bake GRYPE_DB_VALIDATE_AGE=false into
+# the runtime so the bundled scanner can run against a DB that's older
+# than grype's 5-day default freshness threshold. The docker-runner
+# dispatches with `--network=none` (security policy) so the in-container
+# grype CANNOT refresh on demand — without this env, every scan would
+# refuse to start with "the vulnerability database was built N weeks
+# ago". Operators who want strict freshness can rebuild the image with
+# a current DB or override the env on dispatch.
+ENV GRYPE_DB_VALIDATE_AGE=false
 
 # Pre-warm the Grype DB so the first user invocation doesn't pay the
 # database-sync round-trip. The DB date is stamped into the image tag
 # (GAIA_TOOLS_DB_DATE) so operators can pin reproducible scans.
-RUN grype db update && \
-    grype db status
+# AF-2026-05-31-2 / Test13 F-05: `grype db status` exits non-zero past
+# the 5-day max-age threshold (Anchore froze schema 5 — the newest DB
+# is already weeks old). Tolerate the non-zero so the image still
+# builds; runtime scanning is gated by F-10's GRYPE_DB_VALIDATE_AGE=false
+# above.
+RUN grype db update || true
+RUN grype db status || true
 
 # Drop network capability at runtime via a wrapper if the host opts in —
 # the default container has full network so the operator can grype-DB
