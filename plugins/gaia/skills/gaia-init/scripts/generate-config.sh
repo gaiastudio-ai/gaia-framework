@@ -516,10 +516,9 @@ gaia_block="$gaia_marker
 .idea/
 .vscode/
 # AF-2026-06-02-1 / Test16 F-L04 — Python test-runner artifacts.
-# /gaia-bridge-enable + /gaia-run-tests dispatch pytest, which writes
-# .coverage / .pytest_cache/ / __pycache__/ at the project root. Without
-# these lines a fresh project's first `git add -A` after a bridge run
-# pulls them in by accident.
+# pytest writes .coverage / .pytest_cache/ / __pycache__/ at the
+# project root after /gaia-bridge-enable + /gaia-run-tests; ignore
+# them so a fresh project does not commit them by accident.
 .coverage
 .coverage.*
 .pytest_cache/
