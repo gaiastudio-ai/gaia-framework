@@ -138,9 +138,14 @@ block="$(awk -v key="$story_key" '
   BEGIN { in_block = 0; matched = 0 }
   {
     line = $0
-    # Heading detection: `### Story <key>:` exactly, with the boundary being
-    # either end-of-line or whitespace.
-    if (match(line, "^### Story " key ":($|[[:space:]])")) {
+    # AF-2026-06-02-1 / Test16 F-M04 — accept BOTH heading forms:
+    #   colon:   `### Story <key>: <title>`
+    #   em-dash: `### Story <key> — <title>`  (Unicode U+2014)
+    #   ascii:   `### Story <key> - <title>`  (hyphen-minus, defensive)
+    # The pre-fix awk pattern was `^### Story <key>:(EOL|space)` which
+    # rejected the em-dash form that /gaia-create-epics SV-04 accepts
+    # and that the create-epics template/prose leans toward.
+    if (match(line, "^### Story " key "[[:space:]]*(:|—|-)")) {
       if (in_block) {
         # We were already inside a different block of the same key — multi-
         # match condition. Flag it and bail.
@@ -246,11 +251,14 @@ extract_array() {
   '
 }
 
-# Title: from `### Story <key>: <title>` heading. Empty when truncated.
+# Title: from `### Story <key>: <title>` OR `### Story <key> — <title>` heading.
+# AF-2026-06-02-1 / Test16 F-M04 — accept both separators after the key
+# (colon, em-dash, hyphen-minus) so the title extracts from either the
+# create-story-shaped or the create-epics-shaped heading.
 title=""
 title="$(printf '%s\n' "$block" | awk -v key="$story_key" '
   {
-    pat = "^### Story " key ":[[:space:]]*"
+    pat = "^### Story " key "[[:space:]]*(:|—|-)[[:space:]]*"
     if (match($0, pat)) {
       t = substr($0, RSTART + RLENGTH)
       sub(/[[:space:]]+$/, "", t)
@@ -262,10 +270,20 @@ title="$(printf '%s\n' "$block" | awk -v key="$story_key" '
 
 # Epic: from `**Epic:**` bullet — strip everything after the em-dash to keep
 # only the key portion (e.g., `E99 — Frontmatter generation fixtures` -> `E99`).
+# AF-2026-06-02-1 / Test16 F-M04 — when the create-epics output omits the
+# per-story `Epic:` bullet entirely (the SKILL prose neither emits nor
+# requires it; the epic key is only on the `## EN —` parent heading),
+# derive the epic from the story-key prefix as a non-blocking fallback.
+# Story keys are <epic-key>-S<story-num> by convention (validate-canonical-
+# filename.sh enforces this), so the prefix is unambiguous.
 epic_raw="$(extract_bullet "Epic")"
 epic="${epic_raw%% —*}"
 epic="${epic%% --*}"
 epic="$(printf '%s' "$epic" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+if [ -z "$epic" ]; then
+  # Derive from story-key prefix: E1-S2 -> E1, E10-S3 -> E10, etc.
+  epic="${story_key%%-S*}"
+fi
 
 # AF-2026-05-30-4 / Test11 F-12+F-13: accept BOTH Title-case (the create-epics
 # OUTPUT TEMPLATE uses these — `Depends on:`, `Risk:`, `Size:`) AND snake_case

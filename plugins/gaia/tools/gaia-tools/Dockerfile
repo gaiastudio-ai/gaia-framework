@@ -127,11 +127,19 @@ RUN curl -fsSL "https://github.com/spotbugs/spotbugs/releases/download/${SPOTBUG
 # ---------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 
-ARG GAIA_TOOLS_VERSION=0.1.3
-ARG GAIA_TOOLS_DB_DATE=2026-06-01
+ARG GAIA_TOOLS_VERSION=0.1.4
+ARG GAIA_TOOLS_DB_DATE=2026-06-02
+# AF-2026-06-02-1 / Test16 F-L01 — re-declare SPOTBUGS_VERSION in the
+# runtime stage (multi-stage ARGs do not cross stage boundaries) so we
+# can bake the version into an ENV the BOM banner reads. The launcher's
+# `-version` probe emits nothing on stdout AND nothing on stderr on the
+# 4.8.4 launcher under non-interactive shells, leaving the BOM row blank
+# since Test14. The version is canonical from the fetcher ARG.
+ARG SPOTBUGS_VERSION=4.8.4
 
 ENV GAIA_TOOLS_VERSION=${GAIA_TOOLS_VERSION} \
     GAIA_TOOLS_DB_DATE=${GAIA_TOOLS_DB_DATE} \
+    GAIA_SPOTBUGS_VERSION=${SPOTBUGS_VERSION} \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONDONTWRITEBYTECODE=1 \
