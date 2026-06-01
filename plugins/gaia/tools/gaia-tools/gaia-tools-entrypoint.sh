@@ -47,19 +47,32 @@ _BOM() {
   # (Microsoft.Sarif.Multitool) so the BOM table reflects whether the
   # tool is actually present. The prior row had no probe at all, which
   # let the silent install failure persist invisibly.
+  # AF-2026-06-01-1 / Test15 L-02 — spotbugs + sarif version probes need
+  # to grab BOTH stdout and stderr:
+  #   spotbugs's bash launcher (`bin/spotbugs -version`) prints
+  #     `SpotBugs 4.8.4` to STDERR, not stdout. The prior `2>/dev/null`
+  #     stripped the only output that carried the version, leaving the
+  #     BOM banner blank. Now `2>&1` merges stderr → stdout so awk sees
+  #     the version line.
+  #   sarif (Sarif.Multitool 5.0.2) emits `Sarif.Multitool 5.0.2.0` on
+  #     stdout for `sarif --version`, but the legacy `--version` flag is
+  #     not always present in older bundled versions; fall back to the
+  #     binary's `help` first-line which includes the version banner
+  #     (`Sarif.Multitool 5.0.2.0 — …`). The combined probe
+  #     `(--version 2>&1 || --help 2>&1)` covers both shapes.
   cat <<EOF
 gaia-tools $GAIA_TOOLS_VERSION (db: $GAIA_TOOLS_DB_DATE)
   grype       $(grype version 2>/dev/null | awk -F: '/^Version:/ {print $2; exit}' | tr -d ' ' || echo unknown)
   syft        $(syft version 2>/dev/null | awk '/Version:/ {print $2; exit}' || echo unknown)
   osv-scanner $(osv-scanner --version 2>/dev/null | awk '{print $NF; exit}' || echo unknown)
-  spotbugs    $(spotbugs -version 2>&1 | awk '/SpotBugs/ {print $2; exit}' || echo unknown)
+  spotbugs    $(spotbugs -version 2>&1 | awk '/SpotBugs/ {print $NF; exit}' || echo unknown)
   vulture     $(vulture --version 2>/dev/null || echo unknown)
   pip-audit   $(pip-audit --version 2>/dev/null || echo unknown)
   cyclonedx   $(cyclonedx-py --version 2>/dev/null | head -1 || echo unknown)
   cdxgen      $(cdxgen --version 2>/dev/null | head -1 || echo unknown)
   yamllint    $(yamllint --version 2>/dev/null || echo unknown)
   yq          $(yq --version 2>/dev/null || echo unknown)
-  sarif       $(sarif --version 2>/dev/null | awk 'NR==1 {print $NF; exit}' || echo unknown)
+  sarif       $(( sarif --version 2>&1 || sarif --help 2>&1 ) | awk 'tolower($0) ~ /sarif/ && /[0-9]\.[0-9]/ {for (i=1; i<=NF; i++) if ($i ~ /^[0-9]+\.[0-9]+/) {print $i; exit}}' || echo unknown)
 EOF
 }
 

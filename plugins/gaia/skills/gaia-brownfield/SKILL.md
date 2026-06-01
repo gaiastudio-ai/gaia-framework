@@ -384,8 +384,16 @@ if [ "$_BROWNFIELD_DOCKER_READY" = "1" ] || command -v grype >/dev/null 2>&1; th
   else
     GRYPE_INPUT="dir:$PROJECT_PATH"
   fi
+  # AF-2026-06-01-1 / Test15 F-05 — grype.sarif MUST land at $AUDIT/sarif/
+  # so the downstream sarif-merge.sh step picks it up (it globs $AUDIT/sarif/
+  # *.sarif). The prior `ADAPTER_OUT_DIR="$AUDIT"` form orphaned grype.sarif
+  # at $AUDIT/grype.sarif while python-vulture correctly wrote into
+  # $AUDIT/sarif/, so the merge consumed 0 grype inputs and the CVE findings
+  # never reached consolidated-gaps.md. The grype adapter writes a flat
+  # JSON report alongside the SARIF; pointing ADAPTER_OUT_DIR at $AUDIT/sarif
+  # keeps both in the canonical SARIF input dir.
   GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true \
-    ADAPTER_OUT_DIR="$AUDIT" \
+    ADAPTER_OUT_DIR="$AUDIT/sarif" \
     GRYPE_INPUT="$GRYPE_INPUT" \
     bash "$GAIA_PLUGIN_ROOT/scripts/adapters/grype/adapter.sh" \
     || printf 'INFO: grype adapter exited non-zero — CVE scan absent (graceful degrade)\n' >&2
@@ -1006,17 +1014,34 @@ The four roots and their pin points:
    (PRD, architecture, ux-design, epics-and-stories, the seven scan
    reports, NFR-assessment + perf-test-plan dated snapshots,
    adversarial reviews, etc.). The "natural" home.
-2. `.gaia/artifacts/test-artifacts/` — `test-plan.md`,
-   `traceability-matrix.md`, `ci-setup.md`, and
+2. `.gaia/artifacts/test-artifacts/` — `ci-setup.md`, and
    `dependency-audit-{date}.md`. Pinned here by the
-   `validate-gate.sh` resolvers `test_plan_exists` /
-   `traceability_exists` / `ci_setup_exists` which look at
+   `validate-gate.sh` resolvers `ci_setup_exists` which look at
    `${TEST_ARTIFACTS}/…`. Moving these into `planning-artifacts/`
    without changing the resolvers first breaks the readiness gates.
+   AF-2026-06-01-1 / Test15 F-09: `test-plan.md` and
+   `traceability-matrix.md` are CANONICALLY under
+   `.gaia/artifacts/planning-artifacts/` per E105-S2 / ADR-127 §7.2
+   (Pillar 2: docs-about-testing co-located with the testing-strategy
+   doc, not under test-artifacts/). The legacy `test-artifacts/`
+   placement is honored as a read-compat fallback by `validate-gate.sh
+   test_plan_exists` / `traceability_exists` (ADR-072) but NEW writes
+   land at the planning-artifacts home. Two SKILL.md sections in this
+   file previously contradicted that (a Test14 F-19 holdover); they
+   have been reconciled to the planning-artifacts canonical home.
 3. `.gaia/config/` — `test-environment.yaml(.example)`, pinned by
    ADR-110.
 4. `.gaia/state/` — `sprint-status.yaml` (the live runtime state),
-   pinned by `sprint-state.sh`'s writer contract.
+   pinned by `sprint-state.sh`'s writer contract (ADR-095).
+   AF-2026-06-01-1 / Test15 F-17-L: the canonical LIVE yaml home is
+   `.gaia/state/` per ADR-095 (boundary-write discipline) — this is a
+   deliberate design choice, not a layout-conformance bug. The
+   `implementation-artifacts/sprint-status.yaml` mirror written by
+   `sprint-state.sh` (AF-31-3 F-16) is the layout-conformance accommodation
+   so the target layout has the file too; readers should treat the
+   `.gaia/state/` copy as authoritative. Relocating the live yaml to
+   `implementation-artifacts/` would require deprecating the ADR-095
+   contract — out of scope for this cycle.
 
 Per-story `reviews/` (Test-artifacts mirror absence, F-21):
 The test-lens review reports (`qa-tests`, `test-automate-review`,

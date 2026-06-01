@@ -92,18 +92,58 @@ mkdir -p "$out_dir"
 
 # `sarif merge` concatenates one `run` per input (preserving tool.driver.name).
 # Propagate a non-zero exit (e.g. malformed input -> schema-validation error).
+#
+# AF-2026-06-01-1 / Test15 F-05 — properly stage inputs into the mounted
+# /out before calling `sarif merge` so the container actually sees them.
+# The AF-31-3 docker branch passed host `${inputs[@]}` straight through to
+# `sarif merge` inside the container; the container has /workspace
+# (PROJECT_ROOT:ro) and /out (ADAPTER_OUT_DIR) mounted, but the host paths
+# (typically `.gaia/memory/brownfield-audit/sarif/*.sarif`) are not at
+# either mount, so the merge silently saw 0 inputs and wrote `runs: []`.
+# Stage each host input as `/out/.merge-in/<basename>` so the merge sees
+# real files at container-visible paths, then clean up the staging dir
+# after the merge completes. The output still lands at /out/<out_file>.
+#
+# AF-2026-06-01-1 / Test15 F-06 — `--force` flag so a re-run overwrites
+# an existing merged file. `sarif merge` defaults to refuse-on-exist;
+# brownfield Phase 7 can re-run (resume, retries), so non-idempotent
+# behaviour breaks the workflow.
 if [ "$_SARIF_DOCKER_RUNNER" = "docker" ]; then
-  # docker-runner mount layout: project at /workspace (read-only), output at
-  # /out. The merge inputs and output must both resolve inside one of the
-  # mounted dirs — typically /workspace for inputs (under .gaia/) and /out
-  # for the merged result. Translate the host paths into /workspace and /out
-  # relative form via the runner's known mount semantics.
-  ADAPTER_OUT_DIR="$out_dir" \
-    docker_runner_dispatch sarif merge --output-directory "/out" --output-file "$out_file" \
-      "${inputs[@]}" \
-    || die "sarif merge (docker) failed (non-conformant input or CLI error)"
-elif ! sarif merge --output-directory "$out_dir" --output-file "$out_file" "${inputs[@]}"; then
-  die "sarif merge failed (non-conformant input or CLI error)"
+  _stage_dir="$out_dir/.merge-in-$$"
+  mkdir -p "$_stage_dir" 2>/dev/null || true
+  _container_inputs=()
+  _stage_idx=0
+  for _src in "${inputs[@]}"; do
+    [ -f "$_src" ] || continue
+    _stage_idx=$((_stage_idx + 1))
+    _staged="$_stage_dir/$(printf '%04d-%s' "$_stage_idx" "$(basename "$_src")")"
+    cp "$_src" "$_staged" 2>/dev/null || continue
+    # docker-runner mounts ADAPTER_OUT_DIR (= $out_dir) at /out, so the
+    # container path is /out/.merge-in-$$/<file>.
+    _container_inputs+=("/out/.merge-in-$$/$(basename "$_staged")")
+  done
+  if [ "${#_container_inputs[@]}" -eq 0 ]; then
+    log_warn "sarif merge: no readable inputs to stage; merged output will be empty"
+    rm -rf "$_stage_dir" 2>/dev/null || true
+  else
+    # Pre-clean the output file so --force isn't strictly required, but pass
+    # --force as well so a future Sarif.Multitool version that changes the
+    # default doesn't break us.
+    rm -f "$out_dir/$out_file" 2>/dev/null || true
+    if ! ADAPTER_OUT_DIR="$out_dir" \
+        docker_runner_dispatch sarif merge --output-directory "/out" --output-file "$out_file" --force \
+          "${_container_inputs[@]}"; then
+      rm -rf "$_stage_dir" 2>/dev/null || true
+      die "sarif merge (docker) failed (non-conformant input or CLI error)"
+    fi
+    rm -rf "$_stage_dir" 2>/dev/null || true
+  fi
+else
+  # Native dispatch: --force keeps re-runs idempotent (Test15 F-06).
+  rm -f "$out_dir/$out_file" 2>/dev/null || true
+  if ! sarif merge --output-directory "$out_dir" --output-file "$out_file" --force "${inputs[@]}"; then
+    die "sarif merge failed (non-conformant input or CLI error)"
+  fi
 fi
 
 # --- Path canonicalization (repo-root-relative URIs) ----------------------
