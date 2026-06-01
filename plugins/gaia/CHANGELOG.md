@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.182.7] — 2026-06-01
+
+### Fixed
+
+- (#1047) add sprint_review.frontend_commands map (AF-2026-06-01-4) (#1049)
+
 ## [1.182.6] — 2026-06-01
 
 ### Changed
