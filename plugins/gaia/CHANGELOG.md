@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.182.9] — 2026-06-01
+
+### Changed
+
+- (CLAUDE.md) consult framework docs first + file framework bugs upstream (#1060)
+
+### Fixed
+
+- (AF-32-4) add SKILL.md backing bare /gaia slash command (#1061)
+
 ## [1.182.8] — 2026-06-01
 
 ### Fixed
