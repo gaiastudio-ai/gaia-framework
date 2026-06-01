@@ -140,7 +140,9 @@ YAML
 
   run "$VALIDATOR" "$fixture"
   [ "$status" -eq 1 ]                          # rejects, not PASS
-  [[ "$output$stderr" == *FAIL* ]]            # surfaces the violations
+  # bats merges stdout+stderr into $output by default; ${stderr:-} guards
+  # against `set -u` strict mode when --separate-stderr is not used.
+  [[ "${output}${stderr:-}" == *FAIL* ]]
   rm -f "$fixture"
 }
 
@@ -163,8 +165,6 @@ YAML
   local fixture
   fixture="$(mktemp -t af325-compound.XXXXXX).yaml"
   cat > "$fixture" <<'YAML'
-$schema_version: "2.0.0"
-config_phase: ready
 project_root: "/tmp"
 project_path: "."
 memory_path: "_memory"

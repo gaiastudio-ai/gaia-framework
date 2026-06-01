@@ -127,7 +127,18 @@ errors = list(validator.iter_errors(data))
 if not errors:
     sys.exit(0)
 for e in errors:
-    loc = "$." + ".".join(map(str, e.absolute_path)) if e.absolute_path else "$"
+    # Build a JSONPath-style location. For root-level violations (e.g. a
+    # missing required property at the top), the absolute_path is empty —
+    # surface the missing-property name in the path so downstream consumers
+    # (and the AC5 JSONPath-presence grep at
+    # tests/skills/gaia-config-validate-schema.bats) can locate it without
+    # parsing the prose message body.
+    path_parts = list(map(str, e.absolute_path))
+    if e.validator == "required":
+        missing = e.message.split("'")[1] if "'" in e.message else ""
+        if missing:
+            path_parts.append(missing)
+    loc = "$." + ".".join(path_parts) if path_parts else "$."
     sys.stderr.write("FAIL: {} — {}\n".format(loc, e.message))
 sys.exit(1)
 PY
