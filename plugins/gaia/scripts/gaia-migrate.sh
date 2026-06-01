@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # gaia-migrate.sh — GAIA foundation script (E28-S131)
 #
-# Automate the v1 → v2 migration described in gaia-public/docs/migration-guide-v2.md.
-# Per ADR-042 (scripts-over-LLM), the SKILL.md drives the user-facing flow and
-# delegates filesystem operations to this script.
+# Automate the v1 → v2 migration. Per ADR-042 (scripts-over-LLM), the SKILL.md
+# drives the user-facing flow and delegates filesystem operations to this
+# script — this script and the SKILL.md are the authoritative source post
+# AF-2026-06-01-3 (the former `gaia-public/docs/migration-guide-v2.md` was
+# retired with the V1 sunset under ADR-049).
 #
 # Refs: FR-326 (config split), FR-328 (engine deletion), NFR-050 (zero engine files), ADR-048
 # Story: E28-S131
@@ -107,7 +109,8 @@ Usage: $0 (apply|dry-run) --project-root PATH
 apply    — perform the v1 to v2 migration (creates backup first)
 dry-run  — print the planned operations without writing anything
 
-See gaia-public/docs/migration-guide-v2.md for the manual walkthrough.
+Run dry-run first to preview the planned operations. The summary lines
+emitted by both modes are the authoritative source of truth.
 EOF
       exit 0
       ;;
