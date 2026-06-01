@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.182.5] — 2026-06-01
+
+### Changed
+
+- promote staging to main — AF-32-1 Test15 sweep
+
+### Fixed
+
+- (AF-32-1) test15 (v1.182.4) framework findings sweep — 22 F + 3 D (#1039)
+
+## [1.182.4] — 2026-06-01
+
+### Changed
+
+- (af-31-3) 44 bats covering test14 findings + 5 doc gaps
+
+### Fixed
+
+- (ci) mark merge_3deep as private (_merge_3deep) for NFR-052
+- (ci) bats regression fallout from AF-31-3 F-13/F-16 + fixture (F-12)
+- (low) init/yaml-editor/canonical-filename + SKILL prose (AF-31-3 F-01/04/12/14 + D-01..D-05)
+- (med) full layout retrofit + readiness-report generator (AF-31-3 F-15..F-21)
+- (med) brownfield doctor/grype/resolve/render + ci-setup generator (AF-31-3 F-05/07/08/09/10/11)
+- (high) sprint-state.sh review→closed requires Val sentinel (AF-31-3 F-13)
+- (high) bundle Sarif.Multitool via .NET SDK + sarif entrypoint (AF-31-3 F-02/06)
+
 ## [1.182.3] — 2026-05-31
 
 ### Changed
