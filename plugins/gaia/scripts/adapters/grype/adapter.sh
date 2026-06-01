@@ -89,6 +89,40 @@ if [ "$_GRYPE_RUNNER_MODE" = "docker" ] && docker_runner_available >/dev/null 2>
   docker_runner_dispatch grype dir:/workspace -o sarif="/out/grype.sarif" || _grype_rc=$?
   if [ "$_grype_rc" -eq 0 ]; then
     log_info "grype docker dispatch complete — SARIF at $ADAPTER_OUT_DIR/grype.sarif"
+    # AF-2026-05-31-3 / Test14 F-07: capture the bundled-image's
+    # grype-DB SHA-256 + built timestamp from INSIDE the container and
+    # write them into grype-db-checksum.log so the ADR-122 trust-boundary
+    # field reflects the image's pinned DB snapshot. The prior docker
+    # branch returned early with checksum="unavailable" because the host
+    # had no view of the container's DB file. We resolve the DB path
+    # from `grype db status` inside the image, then sha256sum it inline.
+    _docker_audit="${ADAPTER_OUT_DIR:-${AUDIT_DIR:-./.gaia/memory/brownfield-audit}}"
+    mkdir -p "$_docker_audit" 2>/dev/null || true
+    _docker_chkpath="$_docker_audit/grype-db-checksum.log"
+    # The runner's `--network=none` mount layout means we can re-dispatch
+    # through it for the checksum probe at near-zero cost. Image is hot.
+    _docker_db_meta="$(docker_runner_dispatch grype db status --output json 2>/dev/null \
+      | jq -c '{path: (.path // ""), built: (.built // "")}' 2>/dev/null \
+      || printf '{"path":"","built":""}')"
+    _docker_db_path="$(printf '%s' "$_docker_db_meta" | jq -r '.path' 2>/dev/null)"
+    _docker_db_built="$(printf '%s' "$_docker_db_meta" | jq -r '.built' 2>/dev/null)"
+    _docker_sha="unavailable"
+    if [ -n "$_docker_db_path" ]; then
+      _docker_sha="$(docker_runner_dispatch sha256sum "$_docker_db_path" 2>/dev/null \
+        | awk '{print $1; exit}' || printf 'unavailable')"
+      [ -z "$_docker_sha" ] && _docker_sha="unavailable"
+    fi
+    _now_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '')"
+    _ssid_docker="${GAIA_SESSION_ID:-$PPID}"
+    jq -nc \
+      --arg ts "$_now_iso" \
+      --arg sid "$_ssid_docker" \
+      --arg ck "$_docker_sha" \
+      --arg dispatch "docker" \
+      --arg built "$_docker_db_built" \
+      '{ts:$ts, session_id:$sid, checksum:$ck, dispatch:$dispatch, db_built:$built}' \
+      >> "$_docker_chkpath" 2>/dev/null || true
+    log_info "grype_db_checksum=$_docker_sha grype_db_built=$_docker_db_built dispatch=docker"
     exit 0
   fi
   if [ "$_grype_rc" -eq 125 ]; then

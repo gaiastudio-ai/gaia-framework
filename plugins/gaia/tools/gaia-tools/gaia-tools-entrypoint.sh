@@ -39,18 +39,27 @@ _BOM() {
   # AF-2026-05-31-2 / Test13 F-08: cyclonedx-bom 4.x renamed its CLI
   # binary to `cyclonedx-py`. The prior `cyclonedx-bom --version` call
   # produced "unknown" because the binary no longer exists by that name.
+  # AF-2026-05-31-3 / Test14 F-03: spotbugs's launcher emits its version
+  # on stderr in the form "SpotBugs <ver>"; redirect stderr→stdout and
+  # awk the second token rather than `head -1` (which produced a blank
+  # field in the BOM banner row).
+  # AF-2026-05-31-3 / Test14 F-02 + F-06: probe the `sarif` binary
+  # (Microsoft.Sarif.Multitool) so the BOM table reflects whether the
+  # tool is actually present. The prior row had no probe at all, which
+  # let the silent install failure persist invisibly.
   cat <<EOF
 gaia-tools $GAIA_TOOLS_VERSION (db: $GAIA_TOOLS_DB_DATE)
   grype       $(grype version 2>/dev/null | awk -F: '/^Version:/ {print $2; exit}' | tr -d ' ' || echo unknown)
   syft        $(syft version 2>/dev/null | awk '/Version:/ {print $2; exit}' || echo unknown)
   osv-scanner $(osv-scanner --version 2>/dev/null | awk '{print $NF; exit}' || echo unknown)
-  spotbugs    $(spotbugs -version 2>&1 | head -1 || echo unknown)
+  spotbugs    $(spotbugs -version 2>&1 | awk '/SpotBugs/ {print $2; exit}' || echo unknown)
   vulture     $(vulture --version 2>/dev/null || echo unknown)
   pip-audit   $(pip-audit --version 2>/dev/null || echo unknown)
   cyclonedx   $(cyclonedx-py --version 2>/dev/null | head -1 || echo unknown)
   cdxgen      $(cdxgen --version 2>/dev/null | head -1 || echo unknown)
   yamllint    $(yamllint --version 2>/dev/null || echo unknown)
   yq          $(yq --version 2>/dev/null || echo unknown)
+  sarif       $(sarif --version 2>/dev/null | awk 'NR==1 {print $NF; exit}' || echo unknown)
 EOF
 }
 
@@ -69,18 +78,30 @@ case "${1}" in
     echo "       gaia-tools --version | --bom"
     echo ""
     echo "Subcommands dispatch to bundled binaries: grype, syft, osv-scanner,"
-    echo "spotbugs, vulture, pip-audit, cyclonedx-bom, cdxgen, yamllint, yq."
+    echo "spotbugs, vulture, pip-audit, cyclonedx-py, cdxgen, yamllint, yq, sarif."
     exit 0
     ;;
 esac
 
 # Verify the subcommand resolves to a known binary before exec'ing.
+# AF-2026-05-31-3 / Test14 F-02 + F-06: `sarif` (Microsoft.Sarif.Multitool)
+# is now in the documented dispatch set + the error-message vocabulary so
+# `docker_runner_dispatch sarif merge ...` lands on a real binary rather
+# than the prior "unknown subcommand 'sarif'" path that silently dropped
+# every Phase-7 grype SARIF (Test14 F-06). The binary itself is bundled
+# by the Dockerfile's Sarif.Multitool install step; the entrypoint just
+# needs to advertise it in the help text and error vocabulary so callers
+# (and docs) don't claim it isn't supported.
+# AF-2026-05-31-3 / Test14 F-08: `cyclonedx-bom` (the legacy alias from
+# the cyclonedx-bom 3.x days) is dropped from both vocabularies — the
+# binary is `cyclonedx-py` post-4.x; advertising both forms misled
+# operators into invoking a binary that doesn't exist in the image.
 _subcmd="$1"
 shift
 if ! command -v "$_subcmd" >/dev/null 2>&1; then
   echo "gaia-tools: unknown subcommand '$_subcmd'" >&2
   echo "  valid: grype | syft | osv-scanner | spotbugs | vulture | pip-audit |" >&2
-  echo "         cyclonedx-bom | cdxgen | yamllint | yq | --version | --bom" >&2
+  echo "         cyclonedx-py | cdxgen | yamllint | yq | sarif | --version | --bom" >&2
   exit 127
 fi
 

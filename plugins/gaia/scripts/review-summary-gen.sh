@@ -735,6 +735,24 @@ main() {
   # Render + atomic write.
   _render_summary "$STORY_KEY" "$stamp" "$overall" "$out_path"
 
+  # AF-2026-05-31-3 / Test14 F-18 — per-story reviews/ aggregator mirror.
+  # In addition to the legacy flat `{IMPLEMENTATION_ARTIFACTS}/{key}-review-
+  # summary.md` path, ALSO emit a copy at the per-story reviews/ directory
+  # as `review-summary.md` (no key suffix). The target layout expects an
+  # aggregator at this nested location alongside the per-gate review files;
+  # Test14 F-18 caught that no such file existed despite the docs claiming
+  # one. The flat copy remains for backward compatibility with downstream
+  # consumers (E58-S6 etc.) that read from the flat path.
+  if [ -n "$STORY_FILE" ]; then
+    _story_dir="$(dirname "$STORY_FILE")"
+    _mirror_path="$_story_dir/reviews/review-summary.md"
+    if mkdir -p "$_story_dir/reviews" 2>/dev/null && [ -w "$_story_dir/reviews" ]; then
+      cp "$out_path" "$_mirror_path" 2>/dev/null \
+        && _log "F-18 mirror: review-summary.md aggregator at $_mirror_path" \
+        || _log "WARNING: F-18 mirror failed at $_mirror_path (continuing — flat output preserved)"
+    fi
+  fi
+
   # Stdout: absolute path.
   printf '%s\n' "$out_path"
 

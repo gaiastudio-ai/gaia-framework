@@ -32,7 +32,9 @@ You are running the canonical end-of-sprint review ceremony introduced by E93. T
 - **FAILED** → transition to `correction`, record findings as action-items, hand off to `/gaia-correct-course story_injection` for rework.
 - **UNVERIFIED** → AI-2026-05-16-5 criteria bypass path (PM `AskUserQuestion` for explanation + second Val pass for justification-validation).
 
-The verdict is **composite**: Track A (Val text-validation per the AI-2026-05-16-1 rubric) + Track B (per-stack foreground execution review) reduced via `scripts/compose-verdict.sh` per NFR-070 and ADR-108 D2.
+The verdict is **composite**: Track A (Val text-validation per the AI-2026-05-16-1 rubric) + Track B (per-stack foreground execution review) reduced via `${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/compose-verdict.sh` per NFR-070 and ADR-108 D2.
+
+> **AF-2026-05-31-3 / Test14 F-14 — path disambiguation.** Throughout this SKILL.md, bare `scripts/...` references resolve to the **skill-relative** path `${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/`, NOT the shared plugin root `${CLAUDE_PLUGIN_ROOT}/scripts/`. Operators hand-driving the unattended-mode pattern who resolve `scripts/` to the shared root will hit "No such file or directory" on `compose-verdict.sh`, `write-val-sentinel.sh`, and `finalize.sh` — all of which live ONLY at the skill-relative location. Every reference below uses the fully-qualified form; treat the convention as binding when authoring follow-ups.
 
 **This skill MUST run as main-turn Mode A orchestration (NFR-067, T-SGR-6 mitigation, ADR-108 D3).** `AskUserQuestion` is invoked at three boundaries: Step 3 pre-Val dispatch confirmation, Step 4 per-goal Track B stakeholder confirmation, Step 8 PM explanation for UNVERIFIED bypass. Forked execution silently strips `AskUserQuestion`; the anti-pattern bats at `gaia-public/plugins/gaia/tests/gaia-sprint-review-mode-a-anti-pattern.bats` FAILs CI on any `context: fork` directive or stdout-sentinel token (`<<YIELD-STOP`, `<<TURN-END`) regression.
 
@@ -72,10 +74,10 @@ This validates the pre-conditions (all stories done, goals non-empty), transitio
 - Story-level state machine is UNCHANGED — `done` remains terminal. Sprint-level transitions (`active → review → {closed, correction}`, `correction → active`) ride E93-S1's new edges.
 - All `sprint-status.yaml` mutations route through `sprint-state.sh` subcommands (`set-goals`, `update-goals`, `set-review-justification`, transition). NO direct `yq -i` against `sprint-status.yaml` per NFR-071 / ADR-095 boundary-write discipline.
 - Val is dispatched via the **main-turn Agent tool** (ADR-093 / ADR-104). The orchestrator writes the E87 envelope sentinel via `${CLAUDE_PLUGIN_ROOT}/scripts/lib/write-val-envelope.sh` (orchestrator-side writer per ADR-105 / AI-2026-05-13-13), then asserts via `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` before consuming the verdict.
-- The E83 dispatch sentinel is written via `scripts/write-val-sentinel.sh` (mirrors `/gaia-add-feature/scripts/write-val-sentinel.sh` shape). `scripts/finalize.sh` validates the sentinel before allowing the skill to complete.
-- `SPRINT_ID` MUST be exported before invoking `scripts/finalize.sh` so the sentinel guard can locate the dispatch sentinel.
+- The E83 dispatch sentinel is written via `${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/write-val-sentinel.sh` (mirrors `${CLAUDE_PLUGIN_ROOT}/skills/gaia-add-feature/scripts/write-val-sentinel.sh` shape). `${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/finalize.sh` validates the sentinel before allowing the skill to complete.
+- `SPRINT_ID` MUST be exported before invoking `${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/finalize.sh` so the sentinel guard can locate the dispatch sentinel.
 - Action-items emitted on Step 7 FAILED path MUST use the canonical `sprint-correction` type (target_command: `/gaia-correct-course`) via the 11-type resolver at `${CLAUDE_PLUGIN_ROOT}/skills/gaia-meeting/scripts/lib/type-target-resolver.sh`. Do NOT append YAML directly to `action-items.yaml` — that's the bypass anti-pattern documented in memory rule `feedback_action_items_writer_resolver_bypass.md`.
-- The composite verdict reducer at `scripts/compose-verdict.sh` is the SINGLE source of truth for verdict-pair → composite mapping (NFR-070). Do not duplicate the logic in SKILL.md prose.
+- The composite verdict reducer at `${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/compose-verdict.sh` is the SINGLE source of truth for verdict-pair → composite mapping (NFR-070). Do not duplicate the logic in SKILL.md prose.
 
 ## Steps
 

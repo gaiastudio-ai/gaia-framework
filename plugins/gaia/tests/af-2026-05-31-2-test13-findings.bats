@@ -90,8 +90,11 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-2 F-01..F-11: GAIA_TOOLS_VERSION bumped to 0.1.1" {
-  run grep -F 'ARG GAIA_TOOLS_VERSION=0.1.1' "$PLUGIN_ROOT/tools/gaia-tools/Dockerfile"
+@test "AF-31-2 F-01..F-11: GAIA_TOOLS_VERSION at or beyond 0.1.1 (AF-31-3 bumped to 0.1.2)" {
+  # AF-2026-05-31-3 / Test14 F-02 bumped the version from 0.1.1 → 0.1.2 to
+  # mark the image rebuild that actually bundles Sarif.Multitool. Accept
+  # any 0.1.X ≥ 1 so future bumps don't require touching this test.
+  run grep -E '^ARG GAIA_TOOLS_VERSION=0\.1\.[1-9][0-9]*' "$PLUGIN_ROOT/tools/gaia-tools/Dockerfile"
   [ "$status" -eq 0 ]
 }
 

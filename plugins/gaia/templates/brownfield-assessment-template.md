@@ -13,7 +13,11 @@
 # This frontmatter MUST be present on the rendered artifact. The brownfield
 # orchestrator stamps it; the Phase 7 consolidator scrapes it.
 mode: brownfield
-schema_version: "1.0"
+# AF-2026-05-31-3 / Test14 F-10: schema_version 2.0.0 is the canonical
+# value documented by the first-30-minutes-brownfield tutorial Step 7
+# ("If you see anything else, run /gaia-migrate v1 v2"). The prior
+# "1.0" template-default contradicted the downstream contract.
+schema_version: "2.0.0"
 generated_by: /gaia-brownfield
 generated_at: "{YYYY-MM-DDTHH:MM:SSZ}"
 project_path: "{absolute path to scanned codebase}"
