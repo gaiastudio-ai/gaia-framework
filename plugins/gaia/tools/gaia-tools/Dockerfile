@@ -127,8 +127,8 @@ RUN curl -fsSL "https://github.com/spotbugs/spotbugs/releases/download/${SPOTBUG
 # ---------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 
-ARG GAIA_TOOLS_VERSION=0.1.2
-ARG GAIA_TOOLS_DB_DATE=2026-05-31
+ARG GAIA_TOOLS_VERSION=0.1.3
+ARG GAIA_TOOLS_DB_DATE=2026-06-01
 
 ENV GAIA_TOOLS_VERSION=${GAIA_TOOLS_VERSION} \
     GAIA_TOOLS_DB_DATE=${GAIA_TOOLS_DB_DATE} \
@@ -156,6 +156,7 @@ RUN apt-get update && \
       python3-pip \
       python3-venv \
       default-jre-headless \
+      libicu72 \
       && \
     mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
@@ -201,29 +202,49 @@ RUN pip install --break-system-packages \
       'cyclonedx-bom==4.4.3' \
       'yamllint==1.35.1'
 
-# AF-2026-05-31-3 / Test14 F-02 + F-06: bundle Microsoft's Sarif.Multitool
-# so the Phase-7 sarif-merge.sh step actually runs under docker-runner.
+# AF-2026-05-31-3 / Test14 F-02 + F-06 + AF-2026-06-01-1 / Test15 F-01/02/03:
+# bundle Sarif.Multitool so the Phase-7 sarif-merge.sh step actually runs
+# under docker-runner.
 #
-# The prior AF-31-2 attempt (Test13 F-22) used `dotnet-install.sh --runtime
-# dotnet` (RUNTIME only) — but `dotnet tool install` REQUIRES the .NET SDK,
-# so the next RUN failed with "No .NET SDKs were found". The `|| echo
-# WARNING` swallowed the error, the image built successfully, AND every
-# downstream invocation of `sarif merge ...` from inside the container
-# resolved to "command not found". Documented as "bundled" while silently
-# absent — exactly the regression Test14 F-02 caught.
+# History of compounding bugs in this layer:
+#   AF-31-2 used `--runtime dotnet` (runtime only) — `dotnet tool install`
+#       silently failed because it needs the SDK.
+#   AF-31-3 switched to `--channel 8.0` (SDK) but never validated against a
+#       real `docker build`. Test15 found THREE blockers that AF-31-3
+#       introduced on top:
 #
-# Fix: install the .NET SDK (channel 8.0 LTS — current; covers
-# Sarif.Multitool's TFM requirements). The SDK includes the runtime.
-# Then `dotnet tool install` actually succeeds and `sarif` lands on PATH.
-# `--no-cache` cleans the NuGet package cache afterward so the image
-# doesn't bloat by ~200MB for a build artifact we never re-use.
+#   F-01 (Test15) — `libicu72` was not apt-installed in the runtime stage.
+#       .NET aborts with SIGABRT 134 on globalization init without ICU. The
+#       dotnet-install.sh script itself prints "Note that the script does
+#       not resolve dependencies during installation." Added to the apt
+#       install above.
+#
+#   F-02 (Test15) — the .NET TOOL package is published as `Sarif.Multitool`
+#       (not `Microsoft.Sarif.Multitool` — that's the LIBRARY package and
+#       can NOT be `dotnet tool install`'d). The prior `Microsoft.` prefix
+#       errored `NU1101 microsoft.sarif.multitool not found in NuGet feeds`.
+#       Fixed below by dropping the prefix. The CLI binary the tool
+#       installs is still `sarif`, so the entrypoint route + BOM probe are
+#       unchanged. Verified against nuget.org — Sarif.Multitool 5.0.2
+#       published 2026-05-28.
+#
+#   F-03 (Test15) — the dotnet-tool apphost (the `sarif` native launcher
+#       at /usr/local/bin/sarif) resolves the runtime via DOTNET_ROOT OR
+#       by sitting next to `dotnet`. The SDK lives at /opt/dotnet and the
+#       tool shim lands at /usr/local/bin/sarif, so without DOTNET_ROOT
+#       the apphost dies "Failed to resolve libhostfxr.so". `ENV
+#       DOTNET_ROOT=/opt/dotnet` is set BEFORE the dotnet-install layer
+#       so it persists into the image AND covers the post-install verify
+#       `sarif --version` call. PATH includes /opt/dotnet for robustness.
+ENV DOTNET_ROOT=/opt/dotnet \
+    PATH=/opt/dotnet:${PATH}
 RUN curl -fsSL "https://dot.net/v1/dotnet-install.sh" -o /tmp/dotnet-install.sh && \
     chmod +x /tmp/dotnet-install.sh && \
     /tmp/dotnet-install.sh --channel 8.0 --install-dir /opt/dotnet && \
     rm -f /tmp/dotnet-install.sh && \
     ln -s /opt/dotnet/dotnet /usr/local/bin/dotnet && \
     dotnet --info >/dev/null 2>&1 && \
-    dotnet tool install --tool-path /usr/local/bin Microsoft.Sarif.Multitool && \
+    dotnet tool install --tool-path /usr/local/bin Sarif.Multitool && \
     /usr/local/bin/sarif --version && \
     rm -rf /root/.nuget /tmp/NuGetScratch
 

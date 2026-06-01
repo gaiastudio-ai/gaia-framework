@@ -107,7 +107,7 @@ Invoke the Juno performance subagent to perform deep performance analysis on all
   - Caching and complexity review results
   - Findings organized by severity (Critical, High, Medium, Low)
   - Machine-readable verdict line: `**Verdict: PASSED**` or `**Verdict: FAILED**`
-- Save the report at the path resolved by the single-source helper (E105-S4 / Test05 F-046) — basename is the FR-402 locked form `performance-review-{story_key}.md` (type FIRST, no slug, no date suffix); the directory is the per-story `reviews/` home (E105-S1) when present, else flat:
+- Save the report at the path resolved by the single-source helper (E105-S4 / Test05 F-046) — basename is the FR-402 locked form `performance-review-{story_key}.md` (type FIRST, no slug, no date suffix); the directory is the per-story `reviews/` home (E105-S1) when present, else flat. **AF-2026-06-01-1 / Test15 F-18-L:** the file is `performance-review-{story_key}.md`, NOT `review-perf-{story_key}.md`. The SKILL slug `gaia-review-perf` is the COMMAND name; the REPORT FILENAME follows the FR-402 type-first locked form `performance-review-`. Orchestrators (run-all-reviews, retro review-extract) refer to the SKILL by its `review-perf` slug but read/write the FILE by its `performance-review-` name. Do NOT propagate the SKILL slug into the report basename — it breaks the retro consumer's glob `performance-review-*.md`.
 
   ```bash
   REPORT_PATH="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-review-report-path.sh --key {story_key} --type performance-review)"

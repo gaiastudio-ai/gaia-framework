@@ -46,7 +46,15 @@ jobs:
     # (~30 new bats files across 6 stories). The 240s soft budget enforced
     # by bats-budget-watch.sh remains the actionable signal for fixture
     # authors. Revisit at ~9m raw bats.
-    timeout-minutes: 12
+    #
+    # **AF-2026-06-01-1 (2026-06-01):** suite is now consistently hitting
+    # the 12m hard cap (PR #1039 bats-tests cancelled at 12m10s + 12m8s on
+    # consecutive attempts after sprint-54 + AF-31-3 + AF-32-1 cascades
+    # grew the suite to ~7670 tests). Peak progress before timeout was
+    # test 6816 of 7671. Bumping to 15 minutes to absorb the same growth
+    # pattern that drove the 8→12 jump. The 240s soft budget remains the
+    # actionable signal. Revisit at ~12m raw bats.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
