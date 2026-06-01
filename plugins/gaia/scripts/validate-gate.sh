@@ -65,7 +65,48 @@ export LC_ALL
 # E96-S7 AC3: smart-fallback — env-var > .gaia/artifacts/<type>-artifacts/ (when
 # present on disk, post-migration canonical) > legacy docs/<type>-artifacts/
 # (in-deprecation-window consumers + bats fixtures). Env-var overrides win.
-PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
+#
+# AF-2026-06-01-7 / issue #1064 — `PROJECT_ROOT` resolution precedence is
+# now (1) the env-var if set, (2) `resolve-config.sh project_root` if the
+# helper is reachable and returns a non-empty value, (3) a walk-up from
+# $PWD looking for the canonical `.gaia/config/project-config.yaml`
+# anchor, and ONLY as a last resort (4) $PWD. The pre-fix behaviour fell
+# directly from (1) to (4), which produced false "missing artifact"
+# HALTs when a gate was invoked from a working directory other than the
+# project root with PROJECT_ROOT unset (the legacy `docs/<type>` fallback
+# kicked in even though the canonical `.gaia/artifacts/<type>` existed at
+# the real project root).
+_vg_resolve_project_root() {
+  # (1) env-var wins, unchanged.
+  if [ -n "${PROJECT_ROOT:-}" ]; then
+    printf '%s\n' "$PROJECT_ROOT"; return 0
+  fi
+  # (2) ask resolve-config.sh — co-located in the same scripts/ dir.
+  local _self_dir _rc_helper _rc_out
+  _self_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd 2>/dev/null || printf '')"
+  _rc_helper="${_self_dir}/resolve-config.sh"
+  if [ -x "$_rc_helper" ]; then
+    # Suppress drift warnings + stderr; the helper's own stale-config
+    # output is not actionable from inside validate-gate.
+    _rc_out="$("$_rc_helper" project_root 2>/dev/null || printf '')"
+    if [ -n "$_rc_out" ] && [ "$_rc_out" != "." ]; then
+      printf '%s\n' "$_rc_out"; return 0
+    fi
+  fi
+  # (3) walk up from $PWD looking for the canonical anchor.
+  local _walk
+  _walk="$PWD"
+  while [ -n "$_walk" ] && [ "$_walk" != "/" ] && [ "$_walk" != "$HOME" ]; do
+    if [ -f "${_walk}/.gaia/config/project-config.yaml" ]; then
+      printf '%s\n' "$_walk"; return 0
+    fi
+    _walk="$(dirname "$_walk")"
+  done
+  # (4) last resort — $PWD, preserving the pre-fix behaviour for
+  # callers that legitimately operate without a project config.
+  printf '%s\n' "$PWD"
+}
+PROJECT_ROOT="$(_vg_resolve_project_root)"
 
 if [ -z "${TEST_ARTIFACTS:-}" ]; then
   if [ -d "${PROJECT_ROOT}/.gaia/artifacts/test-artifacts" ]; then

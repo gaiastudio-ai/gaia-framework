@@ -449,7 +449,7 @@ while [ $# -gt 0 ]; do
       # for the resolved sizing_map block (project > global precedence per
       # ADR-074 contract C1 / ADR-044 §10.26.3).
       POSITIONAL_QUERY="sizing_map"; shift ;;
-    planning_artifacts|implementation_artifacts|test_artifacts|creative_artifacts|project_config_path)
+    project_root|planning_artifacts|implementation_artifacts|test_artifacts|creative_artifacts|project_config_path)
       # E60-S2 — positional flat-key query for the four artifact-path
       # keys added by E60-S1. Emits ONLY the resolved scalar to stdout
       # with exit 0 (per Work Item 2 AC2 / story Test Scenarios #1–#5).
@@ -464,6 +464,13 @@ while [ $# -gt 0 ]; do
       # `memory_path` / `checkpoint_path` synthetic-key convention emitted
       # under --all. The synthetic-key value backs the documented happy-path
       # command in every /gaia-config-* SKILL.md Step 1.
+      #
+      # AF-2026-06-01-7 / issue #1064 (this commit) extends the positional
+      # set with `project_root` so downstream foundation scripts (notably
+      # validate-gate.sh) can resolve the canonical project root without
+      # falling back to $PWD when PROJECT_ROOT is unset in the env. The
+      # value already exists internally as $v_project_root; this just
+      # exposes it on the CLI surface.
       POSITIONAL_QUERY="$1"; shift ;;
     *)
       die "unknown argument: $1" ;;
@@ -1417,6 +1424,10 @@ if [ -n "$POSITIONAL_QUERY" ]; then
       ;;
     # E60-S2 — flat artifact-path keys emit ONLY the resolved scalar
     # (single line, trailing newline). Order matches the canonical
+    # AF-2026-06-01-7 / issue #1064 — surface the resolved project_root
+    # so validate-gate.sh and any other foundation script can query it
+    # via the positional CLI without re-implementing the precedence walk.
+    project_root)            printf '%s\n' "$v_project_root" ;;
     # E60-S1 schema block: planning, implementation, test, creative.
     planning_artifacts)       printf '%s\n' "$v_planning_artifacts" ;;
     implementation_artifacts) printf '%s\n' "$v_implementation_artifacts" ;;
