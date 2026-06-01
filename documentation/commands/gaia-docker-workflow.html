@@ -101,7 +101,7 @@
             <tr><td><code>cdxgen</code></td><td>1</td><td>10.11.0</td><td>Node SBOM</td></tr>
             <tr><td><code>yamllint</code></td><td>1</td><td>1.35.1</td><td>YAML workflow lint</td></tr>
             <tr><td><code>yq</code> (Mike Farah)</td><td>—</td><td>4.44.1</td><td>YAML query</td></tr>
-            <tr><td><code>Sarif.Multitool</code></td><td>—</td><td>latest</td><td>Phase-7 SARIF merge (AF-31-2 F-22)</td></tr>
+            <tr><td><code>Sarif.Multitool</code></td><td>—</td><td>5.0.2</td><td>Phase-7 SARIF merge (AF-31-2 F-22; AF-32-1 F-02/F-05 fixed package-name + input-path mapping so merged output now contains real findings)</td></tr>
           </tbody>
         </table>
 
@@ -122,7 +122,11 @@
         <pre><code>/gaia-doctor --install --docker</code></pre>
         <p>If <code>docker pull</code> fails with <code>denied</code> (registry visibility issue) or the published image lags the in-tree <code>Dockerfile</code> (the monthly cron has not yet republished), self-build locally:</p>
         <pre><code>docker build -t ghcr.io/gaiastudio-ai/gaia-tools:latest plugins/gaia/tools/gaia-tools/</code></pre>
-        <p>That tag matches the default <code>docker-runner.sh</code> resolves when <code>brownfield.tools.image</code> isn't set, so the brownfield adapters route through the local image without further config. AF-2026-05-31-2 fixed 5 build-blockers in the Dockerfile (F-01..F-05, F-07) and bakes in <code>GRYPE_DB_VALIDATE_AGE=false</code> (F-10) so the bundled grype scans against any DB age — a fresh build from the current branch succeeds where prior tags failed.</p>
+        <p>That tag matches the default <code>docker-runner.sh</code> resolves when <code>brownfield.tools.image</code> isn't set, so the brownfield adapters route through the local image without further config.</p>
+
+        <p><strong>Build prerequisites (AF-2026-06-01-1 / Test15 D-1):</strong> the Dockerfile itself installs everything it needs; the HOST building the image needs ONLY Docker (with buildkit if you want multi-arch via <code>docker buildx</code>). The image's runtime stage bundles the .NET 8 SDK (for Microsoft.Sarif.Multitool) and the native runtime dependency <code>libicu72</code> — both are installed inside the image, not on the host. Multi-arch builds (<code>linux/amd64</code> + <code>linux/arm64</code>) work from any Docker host with QEMU emulation enabled (Docker Desktop ships this on by default; on a bare Linux host run <code>docker run --privileged --rm tonistiigi/binfmt --install all</code> once).</p>
+
+        <p><strong>History of build-blocker classes:</strong> AF-31-2 fixed 5 Dockerfile blockers (F-01..F-05, F-07) and baked in <code>GRYPE_DB_VALIDATE_AGE=false</code> (F-10). AF-31-3 added the .NET SDK layer for Sarif.Multitool but introduced 3 new blockers (Test15 F-01: missing libicu72; F-02: wrong NuGet package name <code>Microsoft.Sarif.Multitool</code> — the tool package is <code>Sarif.Multitool</code>; F-03: no <code>DOTNET_ROOT</code>). AF-32-1 fixed all three. A fresh build from the current branch (post AF-32-1) succeeds end-to-end and the <code>sarif --version</code> probe at the end of the .NET layer verifies the install before the build accepts the image.</p>
 
         <h3>What runs through the runner (AF-31-2 / Test13 F-15 + F-18 + F-22)</h3>
         <p>As of AF-31-2, every Tier-2 + applicable Tier-1 brownfield step now routes through the docker runner when <code>tools.runner=docker</code>:</p>

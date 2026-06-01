@@ -48,8 +48,13 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-3 F-02 + F-06: image version bumped to 0.1.2" {
-  run grep -F 'ARG GAIA_TOOLS_VERSION=0.1.2' "$PLUGIN_ROOT/tools/gaia-tools/Dockerfile"
+@test "AF-31-3 F-02 + F-06: image version bumped (0.1.2+; AF-32-1 bumped to 0.1.3 for F-01/02/03/F-05/F-06)" {
+  # The 0.1.2 bump was the AF-31-3 deliverable; AF-32-1 bumped to 0.1.3 again
+  # because its F-01/02/03/F-05/F-06 fixes change image contents. Either is
+  # acceptable evidence that the F-02 + F-06 bundling change went through a
+  # versioned rebuild — assert the floor (>=0.1.2).
+  run grep -E '^ARG GAIA_TOOLS_VERSION=0\.1\.(2|3|4|5|6|7|8|9|[1-9][0-9])' \
+    "$PLUGIN_ROOT/tools/gaia-tools/Dockerfile"
   [ "$status" -eq 0 ]
 }
 
@@ -153,7 +158,12 @@ EOF
 # ===========================================================================
 
 @test "AF-31-3 F-07: grype adapter captures DB checksum from inside the container" {
-  run grep -F '_docker_db_meta' "$PLUGIN_ROOT/scripts/adapters/grype/adapter.sh"
+  # AF-31-3 captured checksum via a _docker_db_meta JSON ladder that called
+  # `grype db status --output json`. AF-32-1 F-04 replaced that with a
+  # plain-text parse (`_docker_db_text` + `awk '/^Checksum:/'`) because
+  # bundled grype 0.79.5 rejects --output. Either implementation satisfies
+  # the F-07 contract: a docker-side checksum is captured.
+  run grep -E '_docker_db_(meta|text|sha)' "$PLUGIN_ROOT/scripts/adapters/grype/adapter.sh"
   [ "$status" -eq 0 ]
 }
 

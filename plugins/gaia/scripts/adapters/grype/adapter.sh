@@ -101,13 +101,32 @@ if [ "$_GRYPE_RUNNER_MODE" = "docker" ] && docker_runner_available >/dev/null 2>
     _docker_chkpath="$_docker_audit/grype-db-checksum.log"
     # The runner's `--network=none` mount layout means we can re-dispatch
     # through it for the checksum probe at near-zero cost. Image is hot.
-    _docker_db_meta="$(docker_runner_dispatch grype db status --output json 2>/dev/null \
-      | jq -c '{path: (.path // ""), built: (.built // "")}' 2>/dev/null \
-      || printf '{"path":"","built":""}')"
-    _docker_db_path="$(printf '%s' "$_docker_db_meta" | jq -r '.path' 2>/dev/null)"
-    _docker_db_built="$(printf '%s' "$_docker_db_meta" | jq -r '.built' 2>/dev/null)"
-    _docker_sha="unavailable"
-    if [ -n "$_docker_db_path" ]; then
+    #
+    # AF-2026-06-01-1 / Test15 F-04 — grype 0.79.5 doesn't accept `--output
+    # json` on `db status` (that flag landed in a later release). The
+    # AF-31-3 attempt used `--output json` and silently fell into the
+    # checksum="unavailable" path on every docker scan, so the SKILL's
+    # OWN Phase-7 D-03 grading rule then auto-graded every clean scan as
+    # WARNING (the rule was meant for the OPPOSITE — to catch *real*
+    # trust-boundary problems). Parse the plain-text `grype db status`
+    # output instead — it always prints `Checksum: sha256:…` and
+    # `Location: …`. The `Checksum:` field is canonical, so we don't even
+    # need to sha256sum the file ourselves.
+    _docker_db_text="$(docker_runner_dispatch grype db status 2>/dev/null \
+      || printf '')"
+    _docker_sha="$(printf '%s' "$_docker_db_text" \
+      | awk -F'[: ]+' '/^Checksum:/ {print $NF; exit}' || printf '')"
+    [ -z "$_docker_sha" ] && _docker_sha="unavailable"
+    _docker_db_built="$(printf '%s' "$_docker_db_text" \
+      | awk -F': ' '/^Built:/ {sub(/[[:space:]]+$/,"",$2); print $2; exit}' || printf '')"
+    _docker_db_path="$(printf '%s' "$_docker_db_text" \
+      | awk -F': ' '/^Location:/ {sub(/[[:space:]]+$/,"",$2); print $2; exit}' || printf '')"
+    # Fallback: if plain-text didn't yield a checksum, sha256sum the
+    # Location: path inside the container as a backstop. Preserves the
+    # prior `sha256_of(path)` behaviour as a degrade rather than the
+    # default path (the plain-text Checksum: field is the canonical
+    # value grype itself computed).
+    if [ "$_docker_sha" = "unavailable" ] && [ -n "$_docker_db_path" ]; then
       _docker_sha="$(docker_runner_dispatch sha256sum "$_docker_db_path" 2>/dev/null \
         | awk '{print $1; exit}' || printf 'unavailable')"
       [ -z "$_docker_sha" ] && _docker_sha="unavailable"

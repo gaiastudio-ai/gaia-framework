@@ -103,4 +103,19 @@ fi
 
 cp "${TEMPLATE_PATH}" "${target_file}"
 printf '%s: installed test-environment.yaml.example -> %s\n' "$SCRIPT_NAME" "${target_file}"
+
+# AF-2026-06-01-1 / Test15 F-19-L — also mirror the .example under
+# test-artifacts/ so the target layout has it alongside the live
+# test-environment.yaml mirror (Test14 F-17 already mirrors the live
+# file). Same non-creating semantics as the Test14 F-16 sprint-state
+# mirror: only copy when the test-artifacts dir ALREADY exists, so legacy
+# / test projects aren't churned with a new dir.
+_mirror_test_artifacts="${target}/.gaia/artifacts/test-artifacts"
+_mirror_path="$_mirror_test_artifacts/test-environment.yaml.example"
+if [ -d "$_mirror_test_artifacts" ] && [ "${target_file}" != "$_mirror_path" ]; then
+  cp "${TEMPLATE_PATH}" "${_mirror_path}" 2>/dev/null \
+    && printf '%s: F-19-L mirror: %s\n' "$SCRIPT_NAME" "${_mirror_path}" \
+    || true
+fi
+
 exit 0

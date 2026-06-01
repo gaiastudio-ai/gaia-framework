@@ -1,6 +1,6 @@
 ---
 template: 'prd'
-version: 1.1.0
+version: 1.2.0
 used_by: ['create-prd', 'brownfield']
 # Brownfield frontmatter keys (Test10 F-13). On a greenfield authoring flow these
 # remain as placeholders; the brownfield orchestrator (Phase 8a) overwrites them.
@@ -10,7 +10,60 @@ infra_stack: '{e.g., kubernetes, ecs, lambda — empty on application-only}'
 mode: '{greenfield | brownfield}'                          # set by orchestrator
 baseline_version: '{version from package.json or inferred — brownfield only}'
 focus: '{full-spec | gap-filling}'                         # gap-filling = brownfield
+# AF-2026-06-01-1 / Test15 F-PRD-3: explicit output_path hint so the
+# brownfield consolidator + downstream consumers don't have to infer the
+# canonical destination from prose. The PRD always lands at
+# planning-artifacts/prd.md per ADR-127 §7.2.
+output_path: '.gaia/artifacts/planning-artifacts/prd.md'
 ---
+
+<!--
+AF-2026-06-01-1 / Test15 F-PRD-1 — Scan-prefix → heading legend.
+
+When the brownfield orchestrator merges Phase-3 scan findings into this
+PRD's gap list, each gap row carries an `id` whose prefix tags the
+source scanner. The legend below defines the canonical set so a reader
+of this PRD can decode an id without grepping the consolidation script:
+
+| Prefix    | Source scanner            | Phase |
+| --------- | ------------------------- | ----- |
+| DCD-      | doc-code drift            | 3     |
+| HCV-      | hardcoded values          | 3     |
+| ISEAM-    | integration seam          | 3     |
+| RTB-      | runtime behavior          | 3     |
+| SEC-      | security                  | 3     |
+| CFGC-     | config contradiction      | 3     |
+| DC-       | dead code                 | 3     |
+| CVE-      | grype CVE                 | 3     |
+| SBM-      | sbom completeness         | 3     |
+
+(Updated by AF-31-2 / Test12 D-03; pinned here in the template so it
+travels with every generated PRD.)
+-->
+
+<!--
+AF-2026-06-01-1 / Test15 F-PRD-2 — Severity vocabulary anchor.
+
+This PRD uses the **3-tier** operator-facing severity vocabulary —
+`high` / `medium` / `low` — as the priority on each requirement and
+gap row. Phase-3 deterministic scans produce 5-tier scan severities
+(Critical / High / Medium / Low / Info) per ADR-037; those are
+reconciled into the 3-tier bucket at consolidation time per the
+canonical mapping:
+
+| Scan severity | This PRD's priority |
+| ------------- | ------------------- |
+| Critical      | high                |
+| High          | high                |
+| Medium        | medium              |
+| Low           | low                 |
+| Info          | (dropped — logged in scan-fidelity banner only) |
+
+Authors of this PRD should use the 3-tier vocabulary only; the 5-tier
+input vocabulary belongs in the source-of-truth scan reports under
+`.gaia/memory/brownfield-audit/`. Pinned here per AF-31-2 / Test12 D-04.
+-->
+
 
 # Product Requirements Document: {product_name}
 
