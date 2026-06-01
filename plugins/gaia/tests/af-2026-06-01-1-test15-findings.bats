@@ -246,7 +246,10 @@ teardown() { common_teardown; }
 # ===========================================================================
 
 @test "AF-32-1 F-19-L: install-test-environment-example.sh mirrors into test-artifacts/" {
-  run grep -F 'F-19-L mirror' "$PLUGIN_ROOT/scripts/install-test-environment-example.sh"
+  # AF-2026-06-02-1 / Test16 F-L08 broadened the log marker to
+  # `F-19-L/F-L08 mirror` to cover the unconditional-mkdir case. Match
+  # either form so the contract stays asserted across the AF history.
+  run grep -E 'F-19-L( mirror|/F-L08 mirror)' "$PLUGIN_ROOT/scripts/install-test-environment-example.sh"
   [ "$status" -eq 0 ]
 }
 

@@ -299,6 +299,22 @@
         <h2>Caveats</h2>
         <ul>
           <li>
+            <strong><code>/gaia-init</code>'s CI workflow scaffold is a
+            deliberate <code>exit 1</code> stub until
+            <code>/gaia-ci-setup</code> runs (AF-2026-06-02-1 / Test16
+            D-2).</strong> On a brownfield repo that already has tests
+            asserting CI shape (e.g., a pytest test that checks for
+            <code>actions/setup-python@v5</code> in the workflow), the
+            stub <strong>fails those pre-existing assertions</strong>
+            until <code>/gaia-ci-setup</code> replaces the stub with a
+            real workflow. This is intentional fail-loud behaviour
+            documented at
+            <a href="../../plugins/gaia/skills/gaia-init/docs/ci-scaffold-stub.html">ci-scaffold-stub</a>,
+            but expect a brief red window between
+            <code>/gaia-init</code> and <code>/gaia-ci-setup</code> on
+            any repo with CI-shape tests.
+          </li>
+          <li>
             <strong>Zero-config brownfield works, but produces best results
             with a minimal config.</strong> The skill can run on a fresh
             repo with no <code>.gaia/config/project-config.yaml</code> --

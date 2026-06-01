@@ -158,7 +158,7 @@ chain on $PATH. Run /gaia-doctor now to confirm Tier 2 readiness on this host.</
       <section id="troubleshooting">
         <h2>Troubleshooting</h2>
         <h3>brownfield section not found</h3><p>The section does not exist in your config file. The command appends a fresh block via <code>config-yaml-editor.sh insert</code> on first <code>set</code>.</p>
-        <h3>Unknown key</h3><p>Supported keys are <code>deterministic_tools</code>, <code>tools.runner</code>, <code>grype_enabled</code>, <code>scanner_tier</code>. Anything else exits 1 with a clear error.</p>
+        <h3>Unknown key</h3><p>Supported keys are <code>deterministic_tools</code>, <code>tools.runner</code>, <code>tools.image</code> (the docker-runner image reference — see the <a href="./gaia-docker-workflow.html">docker workflow</a> page), <code>grype_enabled</code>, <code>scanner_tier</code>. Anything else exits 1 with a clear error. (AF-2026-06-02-1 / Test16 D-1 added <code>tools.image</code> to this list — it was already supported by the SKILL but missing from this troubleshooting row.)</p>
         <h3>Out-of-enum value</h3><p>The command rejects values outside the documented enum and lists the accepted set. No partial write occurs.</p>
         <h3>/gaia-doctor reports missing tools</h3><p>You enabled <code>deterministic_tools</code> on a host that doesn't have the chain installed. Either install the missing binaries (the doctor output is copy-pasteable) or pin the <code>scanner_tier</code> to a tier your host supports.</p>
       </section>

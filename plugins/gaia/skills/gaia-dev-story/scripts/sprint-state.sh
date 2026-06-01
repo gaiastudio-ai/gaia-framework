@@ -884,7 +884,46 @@ do_transition_locked() {
       if [ -n "$_fm_deps" ]; then
         _unmet=""
         for _dep in $_fm_deps; do
+          # AF-2026-06-02-1 / Test16 F-M05 — cross-sprint dep resolution.
+          # Pre-fix: the dep status was read ONLY from the LIVE
+          # sprint-status.yaml. After Sprint 1 closes and `init` re-seeds
+          # the yaml for Sprint 2, predecessor stories (status:done in
+          # their files AND in the sprint-N-closed-*.yaml archive) drop
+          # out of the live yaml → yq returns nothing → status reports as
+          # `(unknown)` → review→done REFUSED. That contradicts the
+          # framework's own invariant ("the story file is the source of
+          # truth — sprint-status.yaml is a derived cached view"). Fix:
+          # consult three sources in order — (1) live yaml, (2) the
+          # depended story's file frontmatter, (3) the most-recent
+          # sprint-archive entry — and accept the first non-empty answer.
           _dep_status=$(yq -r ".sprints[].stories[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:-.}/.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
+          if [ -z "$_dep_status" ] || [ "$_dep_status" = "null" ]; then
+            # Tier 2: the depended story's file frontmatter (source of truth).
+            # Mirror the same `epic-*/stories/<key>-*.md` glob used elsewhere
+            # in this script (line ~406, ~1348).
+            for _dep_sf in "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/stories/"${_dep}-"*.md "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/"${_dep}-"*.md; do
+              if [ -f "$_dep_sf" ]; then
+                _dep_status=$(awk '
+                  BEGIN { in_fm=0 }
+                  /^---[[:space:]]*$/ { if (in_fm==0) { in_fm=1; next } else { exit } }
+                  !in_fm { next }
+                  /^status:[[:space:]]*/ { sub(/^status:[[:space:]]*/, ""); gsub(/[[:space:]"]/, ""); print; exit }
+                ' "$_dep_sf")
+                [ -n "$_dep_status" ] && break
+              fi
+            done
+          fi
+          if [ -z "$_dep_status" ] || [ "$_dep_status" = "null" ]; then
+            # Tier 3: scan sprint-archive/. Pick the most-recent archive that
+            # mentions the dep key. Archives are named sprint-N-closed-<ts>.yaml.
+            for _archive in $(ls -1t "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/sprint-archive/sprint-*-closed-*.yaml 2>/dev/null); do
+              _arch_status=$(yq -r ".sprints[].stories[]? | select(.key == \"${_dep}\") | .status" "$_archive" 2>/dev/null | head -1 || true)
+              if [ -n "$_arch_status" ] && [ "$_arch_status" != "null" ]; then
+                _dep_status="$_arch_status"
+                break
+              fi
+            done
+          fi
           if [ "$_dep_status" != "done" ]; then
             _unmet="${_unmet} ${_dep}(${_dep_status:-unknown})"
           fi
@@ -2570,6 +2609,42 @@ cmd_init() {
   } > "$tmp"
   mv "$tmp" "$yaml"
   printf 'init: seeded %s for sprint %s\n' "$yaml" "$sprint_id"
+
+  # AF-2026-06-02-1 / Test16 F-L07 — emit a sprint-plan/{id}-plan.md stub
+  # so the documented sprint-plan layout (target:
+  # implementation-artifacts/sprint-plan/{id}-plan.md) is non-empty even when
+  # the operator drove sprint commit via direct `sprint-state.sh init`/`inject`
+  # rather than the /gaia-sprint-plan SKILL Step 7 LLM-write path. The stub
+  # carries the canonical frontmatter + a planning-intent body the LLM
+  # authoring path can overwrite with the richer narrative on the next
+  # /gaia-sprint-plan invocation. Idempotent: skip when the file already
+  # exists (preserves any LLM-enrichment work that has already happened).
+  _plan_dir="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}/sprint-plan"
+  _plan_file="${_plan_dir}/${sprint_id}-plan.md"
+  if [ ! -e "$_plan_file" ]; then
+    mkdir -p "$_plan_dir" 2>/dev/null || true
+    {
+      printf -- '---\n'
+      printf 'artifact_type: sprint-plan\n'
+      printf 'sprint_id: "%s"\n' "$sprint_id"
+      printf 'generated_by: sprint-state.sh init\n'
+      printf 'generated_at: "%s"\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      [ -n "$start_date" ]      && printf 'start_date: "%s"\n' "$start_date"
+      [ -n "$end_date" ]        && printf 'end_date: "%s"\n' "$end_date"
+      [ -n "$capacity_points" ] && printf 'capacity_points: %s\n' "$capacity_points"
+      printf -- '---\n\n'
+      printf '# Sprint plan: %s\n\n' "$sprint_id"
+      printf 'This stub was emitted by `sprint-state.sh init` so the sprint-plan/\n'
+      printf 'directory has a non-empty entry per the canonical layout. The\n'
+      printf '`/gaia-sprint-plan` SKILL.md Step 7 LLM-write path enriches this\n'
+      printf 'file with the goals, selected stories, dependency notes, and\n'
+      printf 'capacity calculation on the next invocation.\n\n'
+      printf '## Goals\n\n_(populated by /gaia-sprint-plan Step 4)_\n\n'
+      printf '## Selected stories\n\n_(populated by /gaia-sprint-plan Step 5)_\n\n'
+      printf '## Notes\n\n_(populated by /gaia-sprint-plan Step 6)_\n'
+    } > "$_plan_file" 2>/dev/null || true
+    printf 'init: emitted sprint-plan stub at %s\n' "$_plan_file" >&2
+  fi
 }
 
 # cmd_get_goals — read goals[] from sprint-status.yaml and emit verbatim.

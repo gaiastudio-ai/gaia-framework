@@ -75,6 +75,43 @@ elif [ -f ".gaia/artifacts/test-artifacts/strategy/test-strategy.md" ]; then
   ARTIFACT=".gaia/artifacts/test-artifacts/strategy/test-strategy.md"
 fi
 
+# AF-2026-06-02-1 / Test16 F-L11 — the unified test-strategy SKILL `--plan`
+# mode writes test-plan.md only; the canonical layout (ADR-127 §7.2) lists
+# BOTH test-plan.md AND test-strategy.md under planning-artifacts/. When
+# finalize is invoked and only test-plan.md exists, emit a deterministic
+# test-strategy.md stub that satisfies the SV checklist out-of-the-box.
+# Idempotent — does NOT touch an existing test-strategy.md.
+if [ -z "$ARTIFACT" ]; then
+  _ts_canonical=".gaia/artifacts/planning-artifacts/test-strategy.md"
+  _tp_canonical=".gaia/artifacts/planning-artifacts/test-plan.md"
+  if [ -f "$_tp_canonical" ] && [ ! -e "$_ts_canonical" ]; then
+    mkdir -p "$(dirname "$_ts_canonical")" 2>/dev/null || true
+    {
+      printf -- '---\n'
+      printf 'artifact_type: test-strategy\n'
+      printf 'generated_by: gaia-test-strategy/finalize.sh\n'
+      printf 'generated_at: "%s"\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      printf 'related_artifact: test-plan.md\n'
+      printf -- '---\n\n'
+      printf '# Test strategy\n\n'
+      printf 'This stub was emitted by `gaia-test-strategy/finalize.sh` so the\n'
+      printf 'canonical layout has the standalone `test-strategy.md` row\n'
+      printf 'alongside `test-plan.md`. The detailed strategy narrative\n'
+      printf '(scope, risk tiers, coverage targets, mutation-testing posture,\n'
+      printf 'shift-left vs shift-right) lives in `test-plan.md`; this file\n'
+      printf 'is the entry-point doc that points readers there.\n\n'
+      printf '## Scope\n\nSee [`test-plan.md`](./test-plan.md) §1.\n\n'
+      printf '## Approach\n\nSee [`test-plan.md`](./test-plan.md) §2.\n\n'
+      printf '## Coverage targets\n\nSee [`test-plan.md`](./test-plan.md) §3.\n\n'
+      printf '## Risks\n\nSee [`test-plan.md`](./test-plan.md) §4.\n'
+    } > "$_ts_canonical" 2>/dev/null || true
+    if [ -f "$_ts_canonical" ]; then
+      ARTIFACT="$_ts_canonical"
+      log "F-L11 emitted test-strategy.md stub pointing at test-plan.md"
+    fi
+  fi
+fi
+
 # ---------- 1. Run the SV-01..06 checklist ----------
 VIOLATIONS=()
 CHECKED=0

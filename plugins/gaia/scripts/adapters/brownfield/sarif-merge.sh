@@ -126,22 +126,40 @@ if [ "$_SARIF_DOCKER_RUNNER" = "docker" ]; then
     log_warn "sarif merge: no readable inputs to stage; merged output will be empty"
     rm -rf "$_stage_dir" 2>/dev/null || true
   else
-    # Pre-clean the output file so --force isn't strictly required, but pass
-    # --force as well so a future Sarif.Multitool version that changes the
-    # default doesn't break us.
+    # AF-2026-06-02-1 / Test16 F-H01 + F-M01 — Sarif.Multitool 5.0.2 has
+    # NO `--force` flag (the Test15 F-06 attempt failed live: CLI parser
+    # printed help + exit 1, so the merge silently died and downstream
+    # `consolidated-gaps.md` saw 0 deterministic findings for the 4th
+    # run in a row). Verified-working invocation form:
+    #   sarif merge <inputs...> --output-directory ... --output-file ... \
+    #       --log ForceOverwrite --merge-empty-logs
+    # Three changes vs the broken Test15 form:
+    #   1. Inputs go FIRST (positional argument; options-before-positionals
+    #      mis-binds the <files> positional on the Sarif.Multitool parser).
+    #   2. `--force` → `--log ForceOverwrite` (canonical Sarif.Multitool
+    #      overwrite knob; preserves the Test15 F-06 idempotency intent).
+    #   3. `--merge-empty-logs` so a zero-finding clean scan still emits a
+    #      per-tool `run` (tool.driver.name attribution + scan-ran
+    #      provenance survives). Without it, a passing deterministic scan
+    #      is indistinguishable from one that never ran (F-M01).
     rm -f "$out_dir/$out_file" 2>/dev/null || true
     if ! ADAPTER_OUT_DIR="$out_dir" \
-        docker_runner_dispatch sarif merge --output-directory "/out" --output-file "$out_file" --force \
-          "${_container_inputs[@]}"; then
+        docker_runner_dispatch sarif merge \
+          "${_container_inputs[@]}" \
+          --output-directory "/out" --output-file "$out_file" \
+          --log ForceOverwrite --merge-empty-logs; then
       rm -rf "$_stage_dir" 2>/dev/null || true
       die "sarif merge (docker) failed (non-conformant input or CLI error)"
     fi
     rm -rf "$_stage_dir" 2>/dev/null || true
   fi
 else
-  # Native dispatch: --force keeps re-runs idempotent (Test15 F-06).
+  # AF-2026-06-02-1 / Test16 F-H01 + F-M01 — same fix applied to the
+  # native branch (line ~144 had the identical `--force` regression).
   rm -f "$out_dir/$out_file" 2>/dev/null || true
-  if ! sarif merge --output-directory "$out_dir" --output-file "$out_file" --force "${inputs[@]}"; then
+  if ! sarif merge "${inputs[@]}" \
+        --output-directory "$out_dir" --output-file "$out_file" \
+        --log ForceOverwrite --merge-empty-logs; then
     die "sarif merge failed (non-conformant input or CLI error)"
   fi
 fi
