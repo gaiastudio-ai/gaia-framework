@@ -10,21 +10,24 @@
 #   across per-type subdirs. Pre-AF-30-1 the producers wrote flat:
 #     .gaia/artifacts/test-artifacts/atdd-{story_key}.md
 #     .gaia/artifacts/test-artifacts/test-automate-plan-{story_key}.md
-#   AF-30-1 adds the canonical mirror home:
-#     .gaia/artifacts/test-artifacts/epic-{epic_slug}/stories/{key}-{slug}/{type}.md
-#
-# This script mirrors plugins/gaia/scripts/resolve-story-file.sh — same
-# directory-naming convention (epic-{slug}/stories/{key}-{slug}/) and same
-# read-side dual-path precedence so existing flat artifacts keep resolving
-# until /gaia-migrate v1 v2 (or the AF-30-1 migration helper) ports them.
+#   AF-30-1 added the canonical mirror home; AF-2026-06-01-1 / Test15
+#   F-20-L flattened the layout to match the review-gate mirror shape:
+#     .gaia/artifacts/test-artifacts/epic-{epic_slug}/{key}-{slug}/{type}.md
 #
 # Resolution order (read side):
-#   0. New per-story mirror:
+#   0. New per-story mirror (canonical, post-Test15 F-20-L):
+#        .gaia/artifacts/test-artifacts/epic-{epic_slug}/{key}-{slug}/{type}.md
+#      Highest precedence. New writes go here. Matches the review-gate
+#      test-artifacts mirror (Test14 F-15) so the test-artifacts tree
+#      has a consistent shape across atdd / test-automate / qa-tests /
+#      test-review / execution-evidence.
+#   0b. Legacy stories/-bearing path (read-compat fallback):
 #        .gaia/artifacts/test-artifacts/epic-{epic_slug}/stories/{key}-{slug}/{type}.md
-#      Highest precedence. New writes go here.
+#      Existing artifacts written before Test15 F-20-L continue to
+#      resolve; no implicit migration.
 #   1. Legacy flat (read-only fallback):
 #        .gaia/artifacts/test-artifacts/{type}-{key}.md
-#      Existing artifacts continue to resolve; never migrated implicitly.
+#      Pre-AF-30-1 flat layout; never migrated implicitly.
 #
 # Write-path resolution: callers ask for the NEW canonical write path via
 # `--write` (returns rung 0). Without `--write`, read-side precedence applies
@@ -126,8 +129,20 @@ if [ -z "$STORY_DIR_NAME" ]; then
   STORY_DIR_NAME="$STORY_KEY"
 fi
 
-NEW_DIR="${TEST_ARTIFACTS_DIR}/${EPIC_DIR}/stories/${STORY_DIR_NAME}"
+# AF-2026-06-01-1 / Test15 F-20-L — drop the `stories/` middle level for
+# symmetry with the review-gate test-artifacts mirror (Test14 F-15), which
+# already writes to test-artifacts/epic-{slug}/{key}-{slug}/. The prior
+# `epic-{slug}/stories/{key}-{slug}/{type}.md` shape produced an
+# INCONSISTENT mirror tree within one project: atdd.md / qa-tests.md
+# under .../stories/{key}-{slug}/ but the review-gate mirror's reports +
+# execution-evidence under .../{key}-{slug}/ directly. Both writers now
+# converge on `epic-{slug}/{key}-{slug}/{type}.md`. The legacy
+# `stories/`-bearing path is honored as a read-compat fallback so
+# existing artifacts continue to resolve.
+NEW_DIR="${TEST_ARTIFACTS_DIR}/${EPIC_DIR}/${STORY_DIR_NAME}"
 NEW_PATH="${NEW_DIR}/${TYPE}.md"
+LEGACY_STORIES_DIR="${TEST_ARTIFACTS_DIR}/${EPIC_DIR}/stories/${STORY_DIR_NAME}"
+LEGACY_STORIES_PATH="${LEGACY_STORIES_DIR}/${TYPE}.md"
 LEGACY_PATH="${TEST_ARTIFACTS_DIR}/${TYPE}-${STORY_KEY}.md"
 
 if [ "$WRITE" -eq 1 ]; then
@@ -136,9 +151,13 @@ if [ "$WRITE" -eq 1 ]; then
   exit 0
 fi
 
-# Read-side precedence: rung 0 first, then rung 1.
+# Read-side precedence: rung 0 (new flat) → rung 0b (legacy stories/) → rung 1 (legacy flat).
 if [ -f "$NEW_PATH" ]; then
   printf '%s\n' "$NEW_PATH"
+  exit 0
+fi
+if [ -f "$LEGACY_STORIES_PATH" ]; then
+  printf '%s\n' "$LEGACY_STORIES_PATH"
   exit 0
 fi
 if [ -f "$LEGACY_PATH" ]; then

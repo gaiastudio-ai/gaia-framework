@@ -18,6 +18,16 @@ mode: brownfield
 # ("If you see anything else, run /gaia-migrate v1 v2"). The prior
 # "1.0" template-default contradicted the downstream contract.
 schema_version: "2.0.0"
+# AF-2026-06-01-1 / Test15 F-07: project_type drives Phase-8a PRD
+# template selection (application | infrastructure | platform — see
+# the brownfield SKILL Phase 8a table) and Phase-7 consolidation. The
+# Phase-1 SKILL prose says "Include {project_type} in the output" but
+# the shipped template never carried the placeholder, so the Phase-2
+# subagent had to hand-inject it. Default is `application` since most
+# greenfield → brownfield transitions are application repos; override
+# in the discovery questionnaire when the target is infrastructure
+# (Terraform/Pulumi) or a platform (multi-tenant control plane).
+project_type: "{application|infrastructure|platform}"
 generated_by: /gaia-brownfield
 generated_at: "{YYYY-MM-DDTHH:MM:SSZ}"
 project_path: "{absolute path to scanned codebase}"
