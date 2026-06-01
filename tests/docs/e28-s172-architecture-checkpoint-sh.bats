@@ -14,8 +14,10 @@ setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   PROJECT_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
 
-  ARCH="$PROJECT_ROOT/docs/planning-artifacts/architecture.md"
-  MIGRATION="$REPO_ROOT/docs/migration-guide-v2.md"
+  # AF-2026-06-01-3: docs/ retired from gaia-public; architecture.md is project-root
+  # canonical post-ADR-111. The MIGRATION constant was removed with the AC2 tests
+  # (the former gaia-public/docs/migration-guide-v2.md was retired).
+  ARCH="$PROJECT_ROOT/.gaia/artifacts/planning-artifacts/architecture.md"
   BROWNFIELD="$REPO_ROOT/plugins/gaia/skills/gaia-brownfield/SKILL.md"
 }
 
@@ -91,31 +93,14 @@ count_script_rows() {
   [ "$output" -ge 1 ]
 }
 
-# ---------- AC2: migration guide has a redirection note ----------
-
-@test "AC2 — migration guide contains a legacy-name redirection section" {
-  run grep -cE 'Legacy script names|legacy script names|consolidated into `checkpoint\.sh`' "$MIGRATION"
-  [ "$status" -eq 0 ]
-  [ "$output" -ge 1 ]
-}
-
-@test "AC2 — migration guide maps checkpoint-write.sh to checkpoint.sh write" {
-  run grep -cE 'checkpoint-write\.sh.*checkpoint\.sh write' "$MIGRATION"
-  [ "$status" -eq 0 ]
-  [ "$output" -ge 1 ]
-}
-
-@test "AC2 — migration guide maps checkpoint-verify.sh to checkpoint.sh validate" {
-  run grep -cE 'checkpoint-verify\.sh.*checkpoint\.sh validate' "$MIGRATION"
-  [ "$status" -eq 0 ]
-  [ "$output" -ge 1 ]
-}
-
-@test "AC2 — migration guide mentions sha256-verify.sh in the redirection block" {
-  run grep -c 'sha256-verify\.sh' "$MIGRATION"
-  [ "$status" -eq 0 ]
-  [ "$output" -ge 1 ]
-}
+# ---------- AC2 (RETIRED): migration guide redirection note ----------
+#
+# The four AC2 tests were retired by AF-2026-06-01-3 along with the
+# gaia-public/docs/migration-guide-v2.md they pinned. The legacy-name
+# redirection block is no longer required as a documentation surface —
+# the V1 sunset under ADR-049 removed the need for a migration guide,
+# and the live SKILL.md / script files referenced by AC1 + AC3 carry
+# the post-consolidation naming directly.
 
 # ---------- AC3: live skills no longer frame checkpoint.sh as a "deployed equivalent" ----------
 
