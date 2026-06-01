@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.182.5] — 2026-06-01
+
+### Changed
+
+- promote staging to main — AF-32-1 Test15 sweep
+
+### Fixed
+
+- (AF-32-1) test15 (v1.182.4) framework findings sweep — 22 F + 3 D (#1039)
+
 ## [1.182.4] — 2026-06-01
 
 ### Changed
