@@ -189,7 +189,12 @@ docker_runner_mode() {
 # ---------------------------------------------------------------------------
 # CLI entry — sourced consumers skip this; direct invocation dispatches.
 # ---------------------------------------------------------------------------
-if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+# AF-2026-06-01-1 / Test15 L-01: `${BASH_SOURCE[0]:-}` so a `set -u`
+# caller that sources this lib doesn't crash with "BASH_SOURCE[0]:
+# unbound variable" on bash 3.2 (macOS default). The check semantics
+# are unchanged — when sourced, BASH_SOURCE[0] is still set to this
+# file's path; when run directly, it equals $0.
+if [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
   case "${1:-}" in
     image)       shift; docker_runner_image ;;
     available)   shift; docker_runner_available ;;

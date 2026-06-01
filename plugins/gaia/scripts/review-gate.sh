@@ -1188,6 +1188,43 @@ main() {
                 if [ -n "$execution_evidence" ] && [ ! -f "$execution_evidence" ]; then
                   die "proof-of-execution: --execution-evidence '$execution_evidence' does not exist on disk — refusing $verdict verdict for gate '$gate_name'"
                 fi
+                # AF-2026-06-01-1 / Test15 F-10 — content check on the
+                # execution-evidence JSON. The prior implementation
+                # verified the file EXISTED but never inspected its
+                # contents, so a PASSED verdict against evidence with
+                # `exit_code: 1` + `fail_count: N` was accepted and the
+                # review-gate-check composite returned COMPLETE. A story
+                # with a RED suite reached `done` with all six gates
+                # "PASSED" — exactly the gate-integrity hole this proof-
+                # of-execution rule was added to prevent. Refuse PASSED
+                # when the evidence shows a failed suite.
+                #
+                # Triggers (any of these → refuse PASSED):
+                #   exit_code != 0
+                #   fail_count > 0 (when present)
+                #   skipped == true AND the tier is required (the bridge
+                #   stamps skipped:false for a real run; skipped:true is
+                #   "tier not exercised", which is not a PASSED signal)
+                #
+                # FAILED verdict is ALLOWED against red evidence — the
+                # operator is correctly recording that the gate failed.
+                if [ "$verdict" = "PASSED" ] \
+                   && [ -n "$execution_evidence" ] \
+                   && [ -f "$execution_evidence" ] \
+                   && command -v jq >/dev/null 2>&1; then
+                  _ev_exit="$(jq -r '.exit_code // 0' "$execution_evidence" 2>/dev/null || printf '0')"
+                  _ev_fails="$(jq -r '[.suites[]?.fail_count // 0] | add // 0' "$execution_evidence" 2>/dev/null || printf '0')"
+                  _ev_skipped="$(jq -r '.skipped // false' "$execution_evidence" 2>/dev/null || printf 'false')"
+                  if [ "${_ev_exit:-0}" != "0" ]; then
+                    die "proof-of-execution: refusing PASSED verdict for '$gate_name' — execution-evidence reports exit_code=${_ev_exit} (red suite). Either fix the failing tests and re-capture evidence, or record verdict=FAILED."
+                  fi
+                  if [ "${_ev_fails:-0}" != "0" ] && [ "${_ev_fails:-0}" != "null" ]; then
+                    die "proof-of-execution: refusing PASSED verdict for '$gate_name' — execution-evidence reports fail_count=${_ev_fails} across suites. Either fix the failing tests and re-capture evidence, or record verdict=FAILED."
+                  fi
+                  if [ "$_ev_skipped" = "true" ]; then
+                    die "proof-of-execution: refusing PASSED verdict for '$gate_name' — execution-evidence reports skipped:true (suite did not run). Either run the suite and re-capture evidence, or record verdict=UNVERIFIED."
+                  fi
+                fi
                 ;;
             esac
             ;;
@@ -1226,6 +1263,30 @@ main() {
               test_artifacts_mirror_evidence "$story_key" "$execution_evidence" "$_mirror_type" || true
             fi
           fi
+        fi
+      fi
+
+      # AF-2026-06-01-1 / Test15 F-16-L — auto-emit review-summary.md.
+      # AF-31-3 F-18 added the per-story aggregator in review-summary-gen.sh
+      # but never wired its invocation; an operator had to drive it
+      # manually, so Test15 found no `reviews/review-summary.md` on disk
+      # after a full run-all-reviews battery. Hook it here so EVERY gate
+      # update (regardless of which review skill dispatched it)
+      # refreshes the aggregator. The generator is idempotent (it's a
+      # render off the current Review Gate table state) and treats a
+      # missing dispatched skill stack as best-effort — failures don't
+      # break the gate write.
+      if [ -z "$plan_id" ] && [ -n "$STORY_FILE" ]; then
+        _summary_gen="$(cd "$(dirname "$0")" && pwd)/review-summary-gen.sh"
+        if [ -x "$_summary_gen" ]; then
+          # Default --output to the per-story reviews/ aggregator path so
+          # the layout-conformance file lands where Test15 expects it.
+          _story_dir="$(dirname "$STORY_FILE")"
+          _summary_out="$_story_dir/reviews/review-summary.md"
+          mkdir -p "$_story_dir/reviews" 2>/dev/null || true
+          STORY_FILE="$STORY_FILE" bash "$_summary_gen" \
+            --story "$story_key" --output "$_summary_out" \
+            >/dev/null 2>&1 || true
         fi
       fi
       ;;

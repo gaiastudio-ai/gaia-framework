@@ -88,22 +88,26 @@ teardown() { common_teardown; }
         bash "$PLUGIN_ROOT/scripts/lib/resolve-test-artifact-per-story.sh" \
           atdd E1-S1 --write
   [ "$status" -eq 0 ]
-  [[ "$output" =~ test-artifacts/epic-E1-some-epic/stories/E1-S1-some-story/atdd\.md$ ]]
+  # AF-32-1 / Test15 F-20-L: the new write path drops the `stories/` middle
+  # level so the test-artifacts mirror is symmetric with the review-gate
+  # mirror (Test14 F-15: epic-{slug}/{key}-{slug}/, no stories/ level).
+  [[ "$output" =~ test-artifacts/epic-E1-some-epic/E1-S1-some-story/atdd\.md$ ]]
   # Parent dir should have been created
-  [ -d "$TEST_TMP/.gaia/artifacts/test-artifacts/epic-E1-some-epic/stories/E1-S1-some-story" ]
+  [ -d "$TEST_TMP/.gaia/artifacts/test-artifacts/epic-E1-some-epic/E1-S1-some-story" ]
 }
 
 @test "AF-30-1 resolver: read precedence — new per-story wins over legacy flat" {
   cd "$TEST_TMP"
   mkdir -p .gaia/artifacts/implementation-artifacts/epic-E1-some-epic/stories/E1-S1-some-story
-  mkdir -p .gaia/artifacts/test-artifacts/epic-E1-some-epic/stories/E1-S1-some-story
-  echo "new" > .gaia/artifacts/test-artifacts/epic-E1-some-epic/stories/E1-S1-some-story/atdd.md
+  mkdir -p .gaia/artifacts/test-artifacts/epic-E1-some-epic/E1-S1-some-story
+  echo "new" > .gaia/artifacts/test-artifacts/epic-E1-some-epic/E1-S1-some-story/atdd.md
   echo "old" > .gaia/artifacts/test-artifacts/atdd-E1-S1.md
   run env PROJECT_ROOT="$TEST_TMP" \
         bash "$PLUGIN_ROOT/scripts/lib/resolve-test-artifact-per-story.sh" \
           atdd E1-S1
   [ "$status" -eq 0 ]
-  [[ "$output" =~ test-artifacts/epic-E1-some-epic/stories/E1-S1-some-story/atdd\.md$ ]]
+  # AF-32-1 F-20-L: new canonical home is epic-{slug}/{key}-{slug}/ (no stories/).
+  [[ "$output" =~ test-artifacts/epic-E1-some-epic/E1-S1-some-story/atdd\.md$ ]]
 }
 
 @test "AF-30-1 resolver: read falls back to legacy flat when new home absent" {
@@ -133,8 +137,11 @@ teardown() { common_teardown; }
         bash "$PLUGIN_ROOT/scripts/lib/resolve-test-artifact-per-story.sh" \
           atdd E1-S1 --write
   [ "$status" -eq 0 ]
-  # Should fall back to {epic-EID}/stories/{key}/ since no E1-S1-* dir exists
-  [[ "$output" =~ /epic-E1/stories/E1-S1/atdd\.md$ ]]
+  # AF-32-1 F-20-L: when no per-story dir exists yet, the resolver synthesises
+  # `epic-{EID}/{key}/{type}.md` from the bare story key (no `stories/` level
+  # post-F-20-L; the canonical write path is symmetric with the review-gate
+  # mirror).
+  [[ "$output" =~ /epic-E1/E1-S1/atdd\.md$ ]]
 }
 
 @test "AF-30-1 resolver: rejects unknown type" {

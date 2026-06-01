@@ -389,12 +389,27 @@ _render_json() {
       '. + [{id: $id, state: $state, version: $ver, registry: $reg}]')"
   done
 
+  # AF-2026-06-01-1 / Test15 L-03 — populate `runner` from docker-runner.sh
+  # so CI consumers can read the resolved runner mode from the JSON
+  # directly. The prior shape left the field absent (rendering as `null`
+  # in some JSON parsers) even when tier_reason said "via docker runner",
+  # forcing consumers to substring-match tier_reason. With docker-runner.sh
+  # consulted here, the JSON carries `runner: "docker"|"native"` as a
+  # first-class field; tier_reason remains the human-readable explanation.
+  local _runner_helper_json="${SKILL_DIR}/../../scripts/lib/docker-runner.sh"
+  local _runner_mode_json="native"
+  if [ -f "$_runner_helper_json" ]; then
+    _runner_mode_json="$(bash "$_runner_helper_json" mode 2>/dev/null || echo native)"
+    [ -z "$_runner_mode_json" ] && _runner_mode_json="native"
+  fi
+
   jq -n \
     --arg tier "$tier" \
     --arg reason "$reason" \
+    --arg runner "$_runner_mode_json" \
     --argjson stacks "$stacks_json" \
     --argjson tools "$tools_json" \
-    '{stacks: $stacks, tier: ("tier-" + $tier), tier_reason: $reason, tools: $tools}'
+    '{stacks: $stacks, tier: ("tier-" + $tier), tier_reason: $reason, runner: $runner, tools: $tools}'
 }
 
 #
