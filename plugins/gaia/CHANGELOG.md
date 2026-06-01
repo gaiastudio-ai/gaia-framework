@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.182.10] — 2026-06-01
+
+### Fixed
+
+- (#1064) validate-gate.sh PROJECT_ROOT four-tier resolution (#1065)
+
 ## [1.182.9] — 2026-06-01
 
 ### Changed

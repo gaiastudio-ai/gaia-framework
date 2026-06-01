@@ -87,7 +87,7 @@
 
         <p>GAIA ships a single OCI image (<code>ghcr.io/gaiastudio-ai/gaia-tools</code>) that bundles every Tier-2 brownfield scanner with pinned versions and a freshly-warmed Grype vuln-DB. When <code>brownfield.tools.runner: docker</code> is set in <code>.gaia/config/project-config.yaml</code>, the brownfield Phase-3 adapters dispatch through this image instead of resolving binaries from <code>$PATH</code> — so operators on a stock machine need only Docker, not <code>brew + pip + npm + Go SDK + Java SDK + .NET Sarif.Multitool</code>.</p>
 
-        <h3>Bundled tools (v0.1.1 / 2026-05-31)</h3>
+        <h3>Bundled tools (v0.1.4 / 2026-06-02)</h3>
         <table>
           <thead><tr><th>Tool</th><th>Tier</th><th>Version</th><th>Purpose</th></tr></thead>
           <tbody>
@@ -108,13 +108,13 @@
         <h3>Enabling the docker runner</h3>
         <p>Set the runner switch via the canonical config editor:</p>
         <pre><code>/gaia-config-brownfield set tools.runner docker
-/gaia-config-brownfield set tools.image ghcr.io/gaiastudio-ai/gaia-tools:0.1.1-2026-05-31</code></pre>
+/gaia-config-brownfield set tools.image ghcr.io/gaiastudio-ai/gaia-tools:0.1.4-2026-06-02</code></pre>
         <p>Or hand-edit <code>.gaia/config/project-config.yaml</code>:</p>
         <pre><code>brownfield:
   deterministic_tools: true
   tools:
     runner: docker          # default: native
-    image:  ghcr.io/gaiastudio-ai/gaia-tools:0.1.1-2026-05-31</code></pre>
+    image:  ghcr.io/gaiastudio-ai/gaia-tools:0.1.4-2026-06-02</code></pre>
         <p><strong>Image override env var (AF-2026-05-31-2 / Test13 D-02):</strong> for one-off scans against a non-default image without touching config, export <code>GAIA_TOOLS_IMAGE</code> before invoking the brownfield run. The env-var beats the config key. Useful for testing a not-yet-published image tag.</p>
 
         <h3>Pulling / building the image</h3>

@@ -1043,19 +1043,33 @@ The four roots and their pin points:
    `implementation-artifacts/` would require deprecating the ADR-095
    contract — out of scope for this cycle.
 
-Per-story `reviews/` (Test-artifacts mirror absence, F-21):
-The test-lens review reports (`qa-tests`, `test-automate-review`,
-`test-review`) and the per-tier `execution-evidence.json` are written
-ONLY under `implementation-artifacts/epic-*/{key}-*/reviews/`, co-located
-with the code / security / performance reviews. The framework does NOT
-emit a symmetric `test-artifacts/epic-*/{key}-*/` mirror, and execution
-evidence is a single `execution-evidence.json` rather than a per-tier
-`execution-evidence/{qa-tests,test-automation,test-review}.json` set.
-AF-2026-05-30-1's per-story resolver already supports the mirror
-direction in code; consumers (the three test reviewers + the bridge)
-have not yet been retrofitted to write or read the mirror. Until that
-retrofit lands, expect every test-lens artifact at the
-`implementation-artifacts/…/reviews/` path only.
+Per-story `reviews/` — test-lens artifacts live in TWO places by design
+(post Test14 F-15 + Test16 F-L09/F-L10 reconciliation):
+
+- **Canonical primary** — `test-artifacts/epic-*/{key}-*/{qa-tests,
+  test-automation,test-review}.md` plus `execution-evidence/{qa-tests,
+  test-automation,test-review}.json` (the per-tier split). Test consumers
+  (the three test reviewers + the bridge) should READ from here.
+- **Convenience mirror** — `implementation-artifacts/epic-*/{key}-*/reviews/`
+  carries the same `.md` files alongside `code-review.md`, `security-review.md`,
+  `performance-review.md`, and `review-summary.md`. It also carries a single
+  aggregate `execution-evidence.json` covering the merged run. The mirror
+  exists so a reader who is looking at the story's `reviews/` directory
+  for the code/security/performance reports sees the test-lens reports
+  too — without having to cross-reference the test-artifacts/ tree. The
+  aggregate `execution-evidence.json` is the merged signal review-gate
+  validates against (proof-of-execution path post Test15 F-10).
+
+The two locations are NOT a duplication bug — they are a sanctioned mirror,
+analogous to the `sprint-status.yaml` live-vs-mirror split documented at
+root #4 above (Test15 F-17-L). Writers MUST update both; readers SHOULD
+prefer the canonical test-artifacts/ primary.
+
+The pre-Test16 SKILL.md text incorrectly claimed the test-lens artifacts
+were written ONLY under `implementation-artifacts/.../reviews/`; that was
+true only in 1.181.0 and has been wrong since the AF-31-3 F-15 mirror
+landed. The text above reflects the actual writer behaviour as of
+plugin v1.182.10 (AF-2026-06-02-1).
 
 A consolidation refactor (moving test-plan/traceability/ci-setup into
 `planning-artifacts/`, mirroring the test-lens artifacts under
