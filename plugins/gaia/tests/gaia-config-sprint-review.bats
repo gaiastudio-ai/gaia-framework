@@ -222,6 +222,45 @@ YAML
   ! echo "${output}${stderr:-}" | grep -qE 'sprint_review'
 }
 
+# ---------- TC-SGR-37(f): frontend_commands map (issue #1047 / AF-2026-06-01-4) ----------
+
+@test "TC-SGR-37(f): two-web-stack frontend_commands map validates clean (exit 0)" {
+  local fixture="$TMPDIR_TEST/project-config.yaml"
+  {
+    _min_required_yaml
+    cat <<'YAML'
+sprint_review:
+  frontend_commands:
+    frontend: "npx playwright test"
+    website:  "cd website && pnpm test:e2e"
+  playwright_headed: true
+  timeout_per_stack: 300
+  human_confirm: required
+  screen_recording_fallback: true
+YAML
+  } > "$fixture"
+  run "$SCRIPT" "$fixture"
+  [ "$status" -eq 0 ]
+}
+
+@test "TC-SGR-37(f): legacy frontend_command scalar + frontend_commands map co-exist (exit 0)" {
+  # Backward-compat: existing configs that still set the scalar keep working
+  # even when the new map is also present. The map wins on key collision.
+  local fixture="$TMPDIR_TEST/project-config.yaml"
+  {
+    _min_required_yaml
+    cat <<'YAML'
+sprint_review:
+  frontend_command: "npx playwright test"
+  frontend_commands:
+    website: "cd website && pnpm test:e2e"
+  playwright_headed: true
+YAML
+  } > "$fixture"
+  run "$SCRIPT" "$fixture"
+  [ "$status" -eq 0 ]
+}
+
 # ---------- AC3: unknown stack identifiers in *_commands maps validate at schema level ----------
 
 @test "AC3: unknown backend-stack identifier in backend_commands validates at schema (WARN is /gaia-config-validate concern)" {
