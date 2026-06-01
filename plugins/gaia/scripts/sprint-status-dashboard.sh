@@ -129,10 +129,28 @@ yaml_val() {
 
 sprint_id=$(yaml_val sprint_id)
 duration=$(yaml_val duration)
-velocity=$(yaml_val velocity_capacity)
+# AF-2026-06-02-1 / Test16 F-L05 — the canonical yaml seed (cmd_init in
+# sprint-state.sh) writes `capacity_points:` and `start_date:`, but the
+# dashboard previously read `velocity_capacity:` and `started:` — so a
+# sprint initialised with --capacity-points / --start-date rendered
+# `capacity: N/A`, `Dates: N/A → ...`. Read both pairs and prefer the
+# canonical one; the legacy keys remain as a read-compat fallback for
+# pre-AF-31-1 yamls already in flight.
+velocity=$(yaml_val capacity_points)
+[ -z "$velocity" ] && velocity=$(yaml_val velocity_capacity)
 total_points=$(yaml_val total_points)
-started=$(yaml_val started)
+started=$(yaml_val start_date)
+[ -z "$started" ] && started=$(yaml_val started)
 end_date=$(yaml_val end_date)
+# Derive duration from start_date + end_date when not explicitly set.
+if [ -z "$duration" ] && [ -n "$started" ] && [ -n "$end_date" ]; then
+  _start_epoch=$(date -u -d "$started" +%s 2>/dev/null || date -u -j -f '%Y-%m-%d' "$started" +%s 2>/dev/null || printf '')
+  _end_epoch=$(date -u -d "$end_date" +%s 2>/dev/null || date -u -j -f '%Y-%m-%d' "$end_date" +%s 2>/dev/null || printf '')
+  if [ -n "$_start_epoch" ] && [ -n "$_end_epoch" ]; then
+    duration=$(( (_end_epoch - _start_epoch) / 86400 ))
+    duration="${duration} days"
+  fi
+fi
 capacity_util=$(yaml_val capacity_utilization)
 epic_focus=$(yaml_val epic_focus)
 

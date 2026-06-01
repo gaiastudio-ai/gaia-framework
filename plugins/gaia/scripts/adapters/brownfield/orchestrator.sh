@@ -92,6 +92,20 @@ stack_count="$(yq eval '.stacks | length' "$CONFIG" 2>/dev/null || printf '0')"
 # that matches files directly under the base. Both forms are tried.
 matches_glob() {
   local path="$1" glob="$2"
+  # AF-2026-06-02-1 / Test16 F-M02 — bare-dir / trailing-slash expansion.
+  # A path of `core/` (the form /gaia-init persists when the user answers
+  # `core/` to the path question) only matches the literal string `core/`
+  # under bash `case`, never `core/vault/x.py`. The author intent for a
+  # bare-dir path is "every file under this directory at any depth", so
+  # rewrite a trailing `/` or a glob with no wildcard to `<dir>/**` before
+  # running the standard match. This closes the per-stack file-count-of-0
+  # symptom Test16 reproduced live (`paths:[core/]` → 0 files vs
+  # `paths:[core/**]` → 37). The pre-existing /**/ collapse + leading-**/
+  # strip still handle the `**/*.go` / `src/**/*.go` cases.
+  if [ "${glob%/}" != "$glob" ] || ! printf '%s' "$glob" | grep -q '[*?[]'; then
+    # Trailing slash OR no wildcard chars at all → treat as a dir prefix.
+    glob="${glob%/}/**"
+  fi
   # 1. Direct match (bash `**` spans >=1 directory here).
   # $glob is INTENTIONALLY unquoted — it IS the glob pattern (not a literal).
   # shellcheck disable=SC2254

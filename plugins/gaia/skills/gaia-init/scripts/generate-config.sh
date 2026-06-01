@@ -204,7 +204,22 @@ if phase == "full":
             lines.append(f"    language: {yaml_quote(s.get('language', ''))}")
             lines.append("    paths:")
             for p in s.get("paths", []) or []:
-                lines.append(f"      - {yaml_quote(p)}")
+                # AF-2026-06-02-1 / Test16 F-M02 — normalize a bare dir
+                # or trailing-slash path to `<dir>/**` so the brownfield
+                # orchestrator's matches_glob() picks up every file under
+                # the directory. The pre-fix form persisted the user's
+                # `core/` answer verbatim, and the orchestrator's
+                # per-stack file-list intersection then yielded 0 files
+                # (matches_glob has the same bare-dir handling now, but
+                # writing the canonical form here keeps the YAML
+                # operator-readable and avoids relying on the consumer's
+                # smart-match for the common case).
+                norm = p
+                if isinstance(norm, str) and norm:
+                    has_glob = any(c in norm for c in "*?[")
+                    if norm.endswith("/") or not has_glob:
+                        norm = norm.rstrip("/") + "/**"
+                lines.append(f"      - {yaml_quote(norm)}")
             # AF-2026-05-29-1 / Test08 F-4: preserve per-stack `excludes` so the
             # SR-87 default-exclude patterns documented in SKILL.md Step 2.3
             # (.env, secrets/, build/, dist/, node_modules/, .venv/, target/,
@@ -500,6 +515,16 @@ gaia_block="$gaia_marker
 *~
 .idea/
 .vscode/
+# AF-2026-06-02-1 / Test16 F-L04 — Python test-runner artifacts.
+# /gaia-bridge-enable + /gaia-run-tests dispatch pytest, which writes
+# .coverage / .pytest_cache/ / __pycache__/ at the project root. Without
+# these lines a fresh project's first `git add -A` after a bridge run
+# pulls them in by accident.
+.coverage
+.coverage.*
+.pytest_cache/
+__pycache__/
+*.py[cod]
 # GAIA runtime tree is local state, not source — do not commit.
 # AF-2026-05-30-4 F-06: .gaia/config/ is also ignored because the
 # /gaia-init-generated project-config.yaml carries host-anchored absolute
@@ -525,7 +550,10 @@ else
   # would otherwise leave that older block in place untouched. Append the
   # missing entries (each guarded by an exact-line `grep -Fxq`) so a re-run
   # of /gaia-init back-fills the gap without rewriting the whole block.
-  for _line in '.gaia/config/' '.gaia/memory/' '.gaia/state/'; do
+  # AF-2026-06-02-1 / Test16 F-L04 — the pytest ignores are also
+  # back-filled on the marker-only idempotency path so an older
+  # gaia-init that pre-dates the F-L04 fix back-fills the gap.
+  for _line in '.gaia/config/' '.gaia/memory/' '.gaia/state/' '.coverage' '.coverage.*' '.pytest_cache/' '__pycache__/' '*.py[cod]'; do
     if ! grep -Fxq "$_line" "$gitignore_path"; then
       printf '%s\n' "$_line" >> "$gitignore_path"
       printf '%s: back-filled %s entry in %s\n' "$SCRIPT_NAME" "$_line" "$gitignore_path" >&2

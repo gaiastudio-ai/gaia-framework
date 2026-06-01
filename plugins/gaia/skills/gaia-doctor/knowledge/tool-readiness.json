@@ -215,7 +215,7 @@
         "any"
       ],
       "probe_cmd": "command -v grype",
-      "version_cmd": "grype version --output json | jq -r .application",
+      "version_cmd": "grype version -o json 2>/dev/null | jq -r .application 2>/dev/null || grype version 2>/dev/null | awk -F'[: ]+' '/^Version/ {print $2; exit}' || echo unknown",
       "min_version": null,
       "install": {
         "macos": "brew install grype",
