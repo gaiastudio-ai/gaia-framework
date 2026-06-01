@@ -386,9 +386,14 @@
           "additionalProperties": { "type": "string", "minLength": 1 }
         },
         "frontend_command": {
-          "description": "Single command-string for the frontend Playwright execution-review run.",
+          "description": "DEPRECATED (issue #1047, AF-2026-06-01-4) — single command-string for the frontend Playwright execution-review run. Kept as a backward-compatible alias for single-web-stack projects. Prefer `frontend_commands` (map) for projects with more than one web/front-end stack. When both are set, `frontend_commands` entries take precedence; the scalar is merged in as the synthetic stack-id `frontend` only when that key is absent from the map.",
           "type": "string",
           "minLength": 1
+        },
+        "frontend_commands": {
+          "description": "Map: frontend / web stack identifier (e.g., frontend, website, marketing-site) → command-string. Mirrors backend_commands / mobile_commands / desktop_commands / plugin_commands. Unknown identifiers WARN (ADR-081 §4.2). Added by AF-2026-06-01-4 (issue #1047) to lift the single-web-stack cap baked into the legacy `frontend_command` scalar.",
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
         },
         "mobile_commands": {
           "description": "Map: mobile stack identifier (e.g., mobile-react-native, mobile-flutter) → command-string. Unknown identifiers WARN.",

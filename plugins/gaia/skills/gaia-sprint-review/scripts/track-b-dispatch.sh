@@ -144,17 +144,33 @@ case "$timeout_per_stack" in
   ''|*[!0-9]*) timeout_per_stack=300 ;;
 esac
 
-# Collect stack list from backend_commands, frontend_command, mobile_commands,
+# Collect stack list from backend_commands, frontend_commands (map, post
+# AF-2026-06-01-4 / issue #1047) AND the legacy frontend_command scalar
+# (backward-compat alias for single-web-stack projects), mobile_commands,
 # desktop_commands, plugin_commands. yq emits one stack name per line.
 stacks_backend=$(yq eval '.sprint_review.backend_commands // {} | keys | .[]' "$config_path" 2>/dev/null || true)
+stacks_frontend=$(yq eval '.sprint_review.frontend_commands // {} | keys | .[]' "$config_path" 2>/dev/null || true)
 stacks_mobile=$(yq eval '.sprint_review.mobile_commands // {} | keys | .[]' "$config_path" 2>/dev/null || true)
 stacks_desktop=$(yq eval '.sprint_review.desktop_commands // {} | keys | .[]' "$config_path" 2>/dev/null || true)
 stacks_plugin=$(yq eval '.sprint_review.plugin_commands // {} | keys | .[]' "$config_path" 2>/dev/null || true)
-has_frontend=$(yq eval '.sprint_review.frontend_command // "" | length > 0' "$config_path" 2>/dev/null || echo false)
+
+# Legacy scalar: merge in as the synthetic stack-id `frontend` only when that
+# key is NOT already in frontend_commands (so the map wins on collision,
+# matching the schema's documented precedence). Surfaced as a DEPRECATED-USE
+# advisory so operators get a nudge toward the canonical map form without a
+# hard failure.
+has_frontend_scalar=$(yq eval '.sprint_review.frontend_command // "" | length > 0' "$config_path" 2>/dev/null || echo false)
+frontend_map_has_frontend_key=$(yq eval '.sprint_review.frontend_commands.frontend // "" | length > 0' "$config_path" 2>/dev/null || echo false)
+merge_legacy_frontend_scalar=false
+if [ "$has_frontend_scalar" = "true" ] && [ "$frontend_map_has_frontend_key" != "true" ]; then
+  merge_legacy_frontend_scalar=true
+  log "DEPRECATED: sprint_review.frontend_command (scalar) is set; merging as synthetic stack-id 'frontend'. Prefer sprint_review.frontend_commands map (issue #1047 / AF-2026-06-01-4)."
+fi
 
 all_stacks=""
 for s in $stacks_backend; do all_stacks="$all_stacks $s"; done
-[ "$has_frontend" = "true" ] && all_stacks="$all_stacks frontend"
+for s in $stacks_frontend; do all_stacks="$all_stacks $s"; done
+[ "$merge_legacy_frontend_scalar" = "true" ] && all_stacks="$all_stacks frontend"
 for s in $stacks_mobile; do all_stacks="$all_stacks $s"; done
 for s in $stacks_desktop; do all_stacks="$all_stacks $s"; done
 for s in $stacks_plugin; do all_stacks="$all_stacks $s"; done
@@ -187,7 +203,13 @@ stack_command_for() {
   local cmd
   cmd=$(yq eval ".sprint_review.backend_commands[\"$stack\"] // \"\"" "$config_path" 2>/dev/null)
   if [ -n "$cmd" ] && [ "$cmd" != "null" ]; then printf '%s' "$cmd"; return; fi
+  # frontend_commands (map, post-AF-2026-06-01-4 / issue #1047) takes
+  # precedence over the legacy frontend_command scalar on key collision.
+  cmd=$(yq eval ".sprint_review.frontend_commands[\"$stack\"] // \"\"" "$config_path" 2>/dev/null)
+  if [ -n "$cmd" ] && [ "$cmd" != "null" ]; then printf '%s' "$cmd"; return; fi
   if [ "$stack" = "frontend" ]; then
+    # Legacy scalar — synthetic stack-id `frontend` only when the map has no
+    # `frontend` entry (precedence rule enforced by the lookup above).
     cmd=$(yq eval '.sprint_review.frontend_command // ""' "$config_path" 2>/dev/null)
     printf '%s' "$cmd"; return
   fi
