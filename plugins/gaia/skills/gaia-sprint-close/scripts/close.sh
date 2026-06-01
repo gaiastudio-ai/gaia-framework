@@ -307,13 +307,35 @@ CLOSED_AT="$(iso_now)"
 SPRINT_STATE_SH="${SPRINT_STATE_SH:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../../../.." && pwd)}/plugins/gaia/scripts/sprint-state.sh}"
 
 if [ -x "$SPRINT_STATE_SH" ]; then
-  if "$SPRINT_STATE_SH" transition --sprint "$SPRINT_ID" --to closed >/dev/null 2>&1; then
+  # AF-2026-06-01-1 / Test15 F-11 — capture stderr from sprint-state.sh so
+  # we can tell "refused because review→closed needs a Val sentinel"
+  # apart from "refused because the live yaml is not in review state"
+  # (the legitimate active→closed legacy path). The prior implementation
+  # swallowed BOTH refusals into the same `else` branch and then wrote
+  # status=closed directly via yq -i — defeating the AF-31-3 F-13 Val
+  # sentinel guard in sprint-state.sh entirely. Sprint-1 (status: review,
+  # no /gaia-sprint-review ever run, no Val sentinel) closed cleanly via
+  # this path. Now the fallback path is restricted to NON-review states
+  # (e.g. active→closed); a review→closed refusal is FATAL with the
+  # canonical "run /gaia-sprint-review first" guidance.
+  _ss_stderr="$("$SPRINT_STATE_SH" transition --sprint "$SPRINT_ID" --to closed 2>&1 >/dev/null)"
+  _ss_rc=$?
+  if [ "$_ss_rc" -eq 0 ]; then
     # Stamp closed_at — sprint-state.sh's transition path doesn't set it.
     yq -i ".closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
       || die "yq closed_at write failed on $YAML_PATH after sprint-state.sh transition"
   else
-    # Transition refused (e.g., live yaml not in review state). Fall back
-    # to direct yq for legacy behavior preserved by the SKILL description.
+    # Detect the sentinel-refusal case via the canonical stderr substring
+    # from the sprint-state.sh F-13 guard. When matched, REFUSE here too —
+    # the close ceremony cannot proceed past the sentinel gate.
+    case "$_ss_stderr" in
+      *"refuse review→closed for sprint"*|*"run /gaia-sprint-review first"*)
+        die "sprint-close refused: review→closed requires a Val sentinel. Run /gaia-sprint-review for sprint ${SPRINT_ID} first, OR set GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL=1 for the documented correct-course bypass. (sprint-state.sh stderr: ${_ss_stderr})"
+        ;;
+    esac
+    # Refusal was NOT about the Val sentinel — fall back to direct yq for
+    # the legacy non-review active→closed path the SKILL description
+    # documents.
     yq -i ".status = \"closed\" | .closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
       || die "yq write failed on $YAML_PATH"
   fi
