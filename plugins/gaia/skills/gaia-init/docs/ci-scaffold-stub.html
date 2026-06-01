@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CI Scaffold Stub — Rationale + Next Steps</title>
+</head>
+<body>
+  <h1>GAIA pre-merge gate scaffold — the <code>exit 1</code> stub</h1>
+
+  <p><em>Origin: AF-2026-05-31-2 / Test13 F-19 (rationale); AF-2026-06-01-1 / Test15 D-3 (this onboarding doc).</em></p>
+
+  <h2>What the stub is</h2>
+
+  <p><code>/gaia-init</code> writes a starter CI workflow at the provider-canonical path
+  (<code>.github/workflows/gaia-pre-merge.yml</code> for GitHub Actions,
+  <code>.gitlab-ci.yml</code> for GitLab, <code>bitbucket-pipelines.yml</code> for Bitbucket).
+  The single job in that scaffold is a deliberate fail-loud stub:</p>
+
+  <pre><code>echo "GAIA pre-merge gate is not yet configured for this project. Run /gaia-ci-setup to wire the runner, then commit the generated workflow." &gt;&amp;2 &amp;&amp; exit 1</code></pre>
+
+  <p>It exits 1 on purpose. Any PR opened against the project will fail this check until the operator runs
+  <code>/gaia-ci-setup</code> to replace the stub with the real GAIA pre-merge runner.</p>
+
+  <h2>Why fail-loud instead of skip-or-warn</h2>
+
+  <ul>
+    <li><strong>Silent green is the worst posture.</strong> A green pipeline that runs zero
+    checks teaches the team "CI passed" means "code is fine" — but it actually means
+    "we never asked the question". The first time a real defect lands, the team has lost
+    weeks of false confidence. Fail-loud means the gap is visible on PR #1 of the project.</li>
+
+    <li><strong>The scaffold is a placeholder, not a default.</strong> GAIA cannot guess the
+    project's stack (Node vs Java vs Python vs polyglot) at <code>/gaia-init</code> time —
+    that's <code>/gaia-ci-setup</code>'s job once <code>brownfield.platform_stack</code> is
+    resolved. Failing loud forces the wiring step to actually happen.</li>
+
+    <li><strong>The error text is self-describing.</strong> The stderr line names the next
+    command (<code>/gaia-ci-setup</code>) and links here for rationale. A new contributor who
+    opens their first PR and sees the red check knows exactly what to do.</li>
+  </ul>
+
+  <h2>How to clear the stub</h2>
+
+  <ol>
+    <li>Run <code>/gaia-ci-setup</code> in the project root.</li>
+    <li>The skill resolves <code>brownfield.platform_stack</code> from
+    <code>.gaia/config/project-config.yaml</code>, picks the matching pre-merge template,
+    and overwrites the stub workflow file in place.</li>
+    <li>Commit the resulting workflow file. Push.</li>
+    <li>The next PR runs the real GAIA pre-merge gate (lint + tests + brownfield Phase-3
+    scan as configured) instead of the stub.</li>
+  </ol>
+
+  <h2>Why this doc exists</h2>
+
+  <p>The stub error message references this page so a contributor hitting the red check
+  has a single click to the rationale and the fix command. Without this page, the
+  <code>exit 1</code> looks like a misconfiguration; with it, the design intent is
+  on the record.</p>
+
+  <h2>Companion file <code>*.user-steps.yml</code></h2>
+
+  <p>Alongside the stub workflow, <code>generate-ci-scaffold.sh</code> writes a
+  <code>gaia-pre-merge.user-steps.yml</code> (or equivalent for the chosen provider).
+  This companion is the operator's append-only space for project-specific CI steps that
+  GAIA's standard runner cannot guess (custom secrets injection, deploy preview, project
+  smoke tests). It is preserved byte-for-byte across <code>/gaia-init</code> regenerations
+  (FR-RSV2-38) — once you've authored steps there, regeneration cannot clobber them.</p>
+
+  <h2>References</h2>
+
+  <ul>
+    <li><code>plugins/gaia/skills/gaia-init/scripts/generate-ci-scaffold.sh</code> — the writer.</li>
+    <li><code>plugins/gaia/skills/gaia-ci-setup/SKILL.md</code> — the skill that replaces the stub.</li>
+    <li>AF-2026-05-31-2 / Test13 F-19 — defect that established the stub design.</li>
+    <li>AF-2026-06-01-1 / Test15 D-3 — defect that authored this onboarding doc.</li>
+    <li>FR-RSV2-38 — <code>*.user-steps.yml</code> never-clobber contract.</li>
+  </ul>
+</body>
+</html>
