@@ -7,12 +7,23 @@
 #
 # Behavior:
 #   - Converts the YAML input to JSON via `yq` (preferred) or python3+PyYAML.
-#   - If `ajv` (ajv-cli) is on PATH, delegates to ajv against
-#     plugins/gaia/schemas/project-config.schema.json (canonical engine).
-#   - Falls back to a structural jq-based validator that enforces the
-#     schema's `required` keys and credential-pattern deny-list when ajv
-#     is absent.
-#   - On success: prints `PASS: <path>` and exits 0.
+#   - Backend selection (AF-2026-06-01-5 / issue #1051 — replaces the old
+#     "PASS+silent" fallback that the issue surfaced):
+#       1. `ajv` / `ajv-cli` on PATH                — canonical full-schema engine.
+#       2. python3 + `jsonschema` module available  — canonical fallback engine
+#          (covers enum / additionalProperties / type / pattern equivalently
+#          to ajv; preferred over the jq-structural path when present).
+#       3. `jq`-only structural check               — degraded mode. Validates
+#          required-keys + credential deny-list + compliance.regimes enum.
+#          CANNOT validate enum / additionalProperties / type / pattern.
+#          When this path runs, the script prints a prominent stderr WARNING
+#          and emits `PASS (DEGRADED): <path>` on success (still exit 0 — the
+#          structural checks really did pass; downstream gates that need full
+#          coverage should look for the DEGRADED marker).
+#   - On full-engine success: prints `PASS: <path>` and exits 0.
+#   - On structural-only success: prints `PASS (DEGRADED): <path>` and exits 0,
+#     having already printed a stderr WARNING naming exactly which checks
+#     were skipped + recommending `ajv-cli` or `pip install jsonschema`.
 #   - On failure: prints one or more violation lines on stderr, each
 #     including a JSONPath-style location and a human-readable message,
 #     then exits 1.
@@ -81,7 +92,7 @@ else
 fi
 
 # ----------------------------------------------------------------------------
-# Path A — ajv-cli (canonical)
+# Path A — ajv-cli (canonical full-schema engine)
 # ----------------------------------------------------------------------------
 if command -v ajv >/dev/null 2>&1; then
   if ajv_out="$(ajv validate -s "$SCHEMA" -d "$TMP_JSON" 2>&1)"; then
@@ -94,9 +105,65 @@ if command -v ajv >/dev/null 2>&1; then
 fi
 
 # ----------------------------------------------------------------------------
-# Path B — jq-based fallback
+# Path A2 — python3 + jsonschema (canonical fallback engine, AF-2026-06-01-5 / #1051)
+#
+# Equivalent coverage to ajv for the checks the structural fallback misses:
+# enum, additionalProperties, type, pattern. Preferred over the jq path
+# when present — closes the silent false-PASS surfaced by issue #1051.
 # ----------------------------------------------------------------------------
-command -v jq >/dev/null 2>&1 || { err "neither ajv nor jq available; cannot validate"; exit 2; }
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import jsonschema' >/dev/null 2>&1; then
+  if py_out="$(python3 - "$SCHEMA" "$TMP_JSON" 2>&1 <<'PY'
+import json, sys
+import jsonschema
+schema_path, data_path = sys.argv[1], sys.argv[2]
+with open(schema_path) as f:
+    schema = json.load(f)
+with open(data_path) as f:
+    data = json.load(f)
+cls = jsonschema.validators.validator_for(schema)
+cls.check_schema(schema)
+validator = cls(schema)
+errors = list(validator.iter_errors(data))
+if not errors:
+    sys.exit(0)
+for e in errors:
+    # Build a JSONPath-style location. For root-level violations (e.g. a
+    # missing required property at the top), the absolute_path is empty —
+    # surface the missing-property name in the path so downstream consumers
+    # (and the AC5 JSONPath-presence grep at
+    # tests/skills/gaia-config-validate-schema.bats) can locate it without
+    # parsing the prose message body.
+    path_parts = list(map(str, e.absolute_path))
+    if e.validator == "required":
+        missing = e.message.split("'")[1] if "'" in e.message else ""
+        if missing:
+            path_parts.append(missing)
+    loc = "$." + ".".join(path_parts) if path_parts else "$."
+    sys.stderr.write("FAIL: {} — {}\n".format(loc, e.message))
+sys.exit(1)
+PY
+)"; then
+    printf 'PASS: %s\n' "$INPUT"
+    exit 0
+  else
+    # Stderr already carries the FAIL: lines from the python block.
+    [ -n "$py_out" ] && printf '%s\n' "$py_out" >&2
+    exit 1
+  fi
+fi
+
+# ----------------------------------------------------------------------------
+# Path B — jq-based degraded fallback (AF-2026-06-01-5 / #1051)
+#
+# Last-resort structural check. Cannot validate enum / additionalProperties
+# / type / pattern. Emits a prominent WARNING + `PASS (DEGRADED):` marker
+# so downstream consumers can detect the reduced coverage.
+# ----------------------------------------------------------------------------
+command -v jq >/dev/null 2>&1 || { err "neither ajv, python3+jsonschema, nor jq available; cannot validate"; exit 2; }
+
+err "WARNING: neither ajv nor python3+jsonschema available — running DEGRADED structural validation only."
+err "WARNING: the following schema checks are SKIPPED in this mode: enum, additionalProperties, type, pattern."
+err "WARNING: install one of: 'npm i -g ajv-cli' or 'pip install jsonschema' to get full-schema validation."
 
 violations=0
 
@@ -154,5 +221,8 @@ if [ "$violations" -gt 0 ]; then
   exit 1
 fi
 
-printf 'PASS: %s\n' "$INPUT"
+# AF-2026-06-01-5 / issue #1051 — emit the DEGRADED marker so downstream
+# consumers (CI, /gaia-config-validate skill) can distinguish a full
+# schema-engine PASS from a structural-only PASS.
+printf 'PASS (DEGRADED): %s\n' "$INPUT"
 exit 0

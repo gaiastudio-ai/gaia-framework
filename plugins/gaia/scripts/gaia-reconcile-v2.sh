@@ -388,10 +388,16 @@ DRY
   for s in $missing_sections; do
     [ -z "$s" ] && continue
     frag="$(mktemp)"
-    {
-      printf '%s:\n' "$s"
-      printf '  # reconciled by gaia-reconcile-v2 at %s\n' "$(_grv2_iso8601)"
-    } > "$frag"
+    # AF-2026-06-01-5 / issue #1052 — emit an empty object (`section: {}`)
+    # instead of a bare `section:` placeholder. The bare form parses as YAML
+    # null, which fails the schema's `type: object` constraint for every
+    # hydrated section. `section: {}` parses as an empty object (!!map),
+    # is schema-valid as soon as it is written, and remains semantically
+    # equivalent to "section present with no entries — defaults apply".
+    # The audit-trail comment is attached later by
+    # `_ch_insert_audit_comment` (config-hydration.sh); the fragment no
+    # longer carries an inline comment-only body that confused YAML.
+    printf '%s: {}\n' "$s" > "$frag"
 
     if _grv2_contains_secret "$frag"; then
       _grv2_err "Potential secret detected in section '$s' -- reconciliation aborted"
