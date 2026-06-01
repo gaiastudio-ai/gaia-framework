@@ -1,7 +1,7 @@
 ---
 template: 'story'
 key: "E900-S1"
-title: "Alpha story"
+title: "Alpha"
 status: ready-for-dev
 sprint_id: null
 ---

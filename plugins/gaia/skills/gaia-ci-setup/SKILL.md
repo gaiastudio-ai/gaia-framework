@@ -95,7 +95,41 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ### Step 8 -- Generate Pipeline Config
 
-- Generate the CI config file (e.g., `.github/workflows/ci.yml`) for the selected platform.
+- **AF-2026-05-31-3 / Test14 F-11 — deterministic generator.** Before
+  invoking the LLM authoring path, run the deterministic generator. It
+  reads the project's stack from `.gaia/config/test-environment.yaml`
+  (auto-detected by `/gaia-bridge-enable` / `/gaia-init`) and emits a
+  runnable `gaia-pre-merge.yml` for the supported (provider, stack)
+  matrix. This closes the gap that Test14 F-11 surfaced: prior to AF-31-3
+  a headless YOLO `/gaia-ci-setup` invocation produced no workflow at
+  all because there was no script to author one (only LLM authoring),
+  leaving the init-generated `exit 1` stub in place forever.
+
+  ```bash
+  # Detect the stack from test-environment.yaml (Phase-5 / bridge-enable
+  # already wrote one; otherwise fall back to the project-config detect).
+  _stack="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field stacks.0.language 2>/dev/null || true)"
+  [ -n "$_stack" ] || _stack="$(awk '/^detected-stack:/{print $2; exit}' .gaia/config/test-environment.yaml 2>/dev/null || true)"
+  _provider="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field ci_platform.provider 2>/dev/null || echo github-actions)"
+
+  # Deterministic generator — supports github-actions + python/node/go/jvm.
+  # Other (provider, stack) combos fall through cleanly; the LLM authoring
+  # path below handles them. The generator REFUSES to overwrite a workflow
+  # the operator hand-edited (it checks for the init-stub marker line).
+  bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-ci-setup/scripts/generate-pipeline.sh" \
+    --provider "$_provider" \
+    --stack "$_stack" \
+    --project-root "${CLAUDE_PROJECT_ROOT:-.}" \
+    || true   # non-zero is "unsupported combo" — LLM authoring picks up below
+  ```
+
+- After the deterministic generator runs (succeeds for supported combos,
+  no-ops for unsupported ones), if the generated workflow still carries
+  the init-stub marker line `GAIA pre-merge gate is not yet configured`,
+  the orchestrating LLM authors the pipeline by hand for the unsupported
+  (provider, stack) combo. The LLM authoring step is REQUIRED when the
+  generator returned non-zero; for supported combos the generator's
+  output is canonical.
 - Validate the generated config syntax. The validation step is wrapped in the retry loop documented below under [Schema Validation Retry Loop](#schema-validation-retry-loop) -- see that subsection for entry, body, exit, and abort semantics. The loop wraps `validate-gate.sh` (do not duplicate its logic inline).
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-ci-setup 8 ci_provider="$CI_PROVIDER" ci_config_path="$CI_CONFIG_PATH" schema_retry_count="$SCHEMA_RETRY_COUNT" stage=pipeline-config-generated --paths "$CI_CONFIG_PATH"`

@@ -243,10 +243,23 @@ The mobile answers populate the canonical `device_targets` block. When the user 
 
 ### Step 3 — Validate the answer-bundle
 
-Render the assembled JSON bundle to the user for review. Then run the platform-stack consistency check:
+Render the assembled JSON bundle to the user for review. Then run the platform-stack consistency check.
 
-```
-${CLAUDE_PLUGIN_ROOT}/skills/gaia-init/scripts/validate-platform-stack.sh <bundle-as-yaml>
+**AF-2026-05-31-3 / Test14 F-01:** the validator takes a YAML FILE PATH, not inline YAML content. Write the answer-bundle to a tempfile first, then pass the path:
+
+```bash
+# Materialise the answer bundle as YAML at a tempfile path.
+_bundle_path="$(mktemp -t gaia-init-bundle.XXXXXX.yaml)"
+printf '%s\n' "$bundle_yaml" > "$_bundle_path"
+
+# The validator wants `<config.yaml>` (a path), NOT the YAML text itself.
+# Passing inline content fails with exit 2 "cannot read".
+${CLAUDE_PLUGIN_ROOT}/skills/gaia-init/scripts/validate-platform-stack.sh "$_bundle_path"
+_rc=$?
+
+rm -f "$_bundle_path"
+# (the validator is read-only; we delete after the check to avoid leaking
+# the temp file when the validation later loops)
 ```
 
 If it returns non-zero, surface the error message and re-prompt the user to either remove the offending platform OR add a capable stack — do NOT proceed to file write until the bundle validates.

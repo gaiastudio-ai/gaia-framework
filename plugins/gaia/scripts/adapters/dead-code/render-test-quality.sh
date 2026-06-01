@@ -35,7 +35,18 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$OUT_DIR" ] || die "--out-dir required"
 [ -n "$REPORT" ] || die "--report required"
-[ -f "$REPORT" ] || die "report not found: $REPORT"
+# AF-2026-05-31-3 / Test14 F-09 — degrade gracefully when the
+# consolidated-gaps.md report doesn't exist yet. The prior `die "report
+# not found"` made this script ordering-sensitive against the LLM
+# consolidation step that creates the report — Phase-3 / Phase-7
+# orderings that ran render-test-quality before consolidation died with
+# a confusing error instead of just skipping the render. INFO-skip
+# preserves the graceful-degrade contract every other brownfield
+# adapter follows (NFR-84 "never aborts").
+if [ ! -f "$REPORT" ]; then
+  printf 'INFO: %s: report %s does not exist yet — skipping Test Quality render (re-invoke after consolidated-gaps.md is written)\n' "$SCRIPT_NAME" "$REPORT" >&2
+  exit 0
+fi
 command -v jq >/dev/null 2>&1 || die "jq not found"
 
 DC="$OUT_DIR/dead-code"

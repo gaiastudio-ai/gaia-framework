@@ -196,18 +196,34 @@ title="$(extract_field "title")"
 
 # ---------- E105-S1 / ADR-127 — new per-story nested layout ----------
 # In the new layout the file is `story.md` and the PARENT DIRECTORY carries the
-# key: `epic-{slug}/{key}-{story-slug}/story.md`. Here "location encodes key" —
-# validate the key from the directory name (boundary `{key}-`) rather than the
-# basename. This branch is purely additive: legacy `{key}-{slug}.md` files fall
-# through to the existing basename-drift check below, unchanged (Val W2).
+# key + slug: `epic-{slug}/{key}-{story-slug}/story.md`.
+#
+# AF-2026-05-31-3 / Test14 F-12 — strict slug check.
+#
+# The prior implementation accepted ANY directory beginning with `${key}-`
+# (case `"${key}-"*)`). That was looser than validate-frontmatter.sh, which
+# CRITICAL-rejects unless the dir slug equals `slugify(title)`. The split
+# was a latent footgun: a directory that passed validate-canonical-filename
+# could still fail validate-frontmatter, surfacing as confusing CRITICAL
+# verdicts deep in the review pipeline rather than as an actionable error
+# at story-creation time. Compute slugify(title) HERE and require the dir
+# to be exactly `${key}-${slug}` so both validators agree (closes the
+# latent-footgun bug class documented in Test14 F-12).
 actual_basename="$(basename "$file")"
 if [ "$actual_basename" = "story.md" ]; then
   parent_dir="$(basename "$(dirname "$file")")"
+  _expected_slug=""
+  if ! _expected_slug="$("$SLUGIFY" --title "$title" 2>/dev/null)"; then
+    die_input "slugify.sh failed for title: $title"
+  fi
+  _expected_dir="${key}-${_expected_slug}"
+  if [ "$parent_dir" = "$_expected_dir" ]; then
+    log "new per-story layout accepted — dir '${parent_dir}' matches slugify(title)"
+    exit 0
+  fi
   case "$parent_dir" in
     "${key}-"*)
-      # directory name begins with the frontmatter key + boundary — accept.
-      log "new per-story layout accepted — key '${key}' validated from directory '${parent_dir}'"
-      exit 0
+      die_drift "new-layout slug drift -- expected dir '${_expected_dir}/' (key + slugify(title)), got '${parent_dir}/' — title='${title}'"
       ;;
     *)
       die_drift "new-layout key drift -- frontmatter key '${key}' does not match parent directory '${parent_dir}'"

@@ -103,7 +103,21 @@ _detect_stacks() {
       local sig_json
       sig_json="$(PROJECT_ROOT="$PROJECT_ROOT_ARG" "$detect" --project-root "$PROJECT_ROOT_ARG" --format json 2>/dev/null || true)"
       if [ -n "$sig_json" ]; then
-        stacks="$(printf '%s' "$sig_json" | jq -r '.stacks[]?' 2>/dev/null | sort -u | tr '\n' ' ')"
+        # AF-2026-05-31-3 / Test14 F-05: `.stacks[]` is an OBJECT (e.g.
+        # `{"name":"python","test_runner":"pytest"}`), not a plain string.
+        # The prior `jq -r '.stacks[]?'` printed the object's JSON text,
+        # which the downstream `sort | tr '\n' ' '` flattened into a
+        # whitespace-tokenized soup like `\"name\": \"python\", { }`.
+        # Downstream the python-tagged tools (vulture, pip-audit) then
+        # never matched the stack list and were filtered OUT of the
+        # readiness probe entirely on minimal-config repos. Project the
+        # canonical name field (with the same .language // .name // .id
+        # precedence the yq path uses above) so the fallback list is
+        # byte-identical-shape with the yq path: a sorted whitespace-
+        # separated list of bare stack names.
+        stacks="$(printf '%s' "$sig_json" \
+          | jq -r '.stacks[]? | (.language // .name // .id // "") | select(. != "")' 2>/dev/null \
+          | sort -u | tr '\n' ' ')"
       fi
     fi
   fi
