@@ -4,7 +4,8 @@
 # Idempotent migration CLI that removes the legacy GAIA workflow engine and its
 # support artifacts from the local runtime tree at {project-root}/_gaia/.
 # This script is NOT invoked by the PR that ships it — end users run it
-# post-install during manual cutover per migration-guide-v2.md.
+# post-install during manual cutover (see also `/gaia-migrate` for the
+# fully-automated v1→v2 path; this script is the engine-deletion subset).
 #
 # Refs: FR-328, NFR-050, ADR-048 (engine deletion as program-closing action)
 # Story: E28-S126 Task 5 / AC1..AC5 / AC-EC1..EC8
@@ -48,7 +49,9 @@ while [[ $# -gt 0 ]]; do
 Usage: $0 --project-root PATH [--dry-run] [--force-dirty]
 
 Removes legacy GAIA workflow engine and support artifacts from {PATH}/_gaia/.
-See docs/migration-guide-v2.md "Legacy engine cleanup" for when to run this.
+Run after /gaia-migrate apply has succeeded and you have verified the v2
+plugin is functional in the project; this script removes the v1 engine
+files that /gaia-migrate already backed up under .gaia-migrate-backup/.
 EOF
       exit 0
       ;;

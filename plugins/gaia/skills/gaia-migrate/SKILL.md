@@ -8,15 +8,15 @@ orchestration_class: light-procedural
 
 ## Mission
 
-Automate the v1 → v2 migration documented in `gaia-public/docs/migration-guide-v2.md`. Per ADR-042 (scripts-over-LLM), filesystem operations delegate to `plugins/gaia/scripts/gaia-migrate.sh`. This SKILL.md drives the user-facing flow: confirm the user wants to migrate, run dry-run first, then apply, then surface the script's structured summary.
+Automate the v1 → v2 migration. Per ADR-042 (scripts-over-LLM), filesystem operations delegate to `plugins/gaia/scripts/gaia-migrate.sh`. This SKILL.md drives the user-facing flow: confirm the user wants to migrate, run dry-run first, then apply, then surface the script's structured summary. The backing script and this SKILL.md are the authoritative source post AF-2026-06-01-3 (the former separate migration guide at `gaia-public/docs/migration-guide-v2.md` was retired with the V1 sunset under ADR-049 — see `project_v1_sunset_sweep_complete.md`).
 
 ## When to use
 
 - The user has run `/plugin marketplace add gaia-public` (and `gaia-enterprise` if licensed) and confirmed `/plugin list` shows them.
 - The user's project root contains v1 markers: `_gaia/`, `_memory/`, `custom/`, and `_gaia/_config/global.yaml`.
-- The user has read `gaia-public/docs/migration-guide-v2.md` (or wants the automated path).
+- The user has installed the v2 plugin(s) and wants the automated migration path.
 
-If the user has NOT installed the v2 plugins yet, point them to §1 Prerequisites of the migration guide first — `/gaia-migrate` cannot install plugins.
+If the user has NOT installed the v2 plugins yet, instruct them to run `/plugin marketplace add gaiastudio-ai/gaia-public` then `/plugin install gaia` first — `/gaia-migrate` cannot install plugins.
 
 ## Step 0 — v2-to-v2 branch (reconciliation path)
 
@@ -93,13 +93,13 @@ against the installed schema:
 
    The `gaia:` prefix ensures the plugin's `gaia-help` skill is invoked, not any legacy `.claude/commands/gaia-help.md` stub that might still be present on older installs. Telling the user to run the unnamespaced form is ambiguous — it can be intercepted by a legacy stub, and the user cannot tell whether "plugin loaded correctly" or "legacy stub still working" from the output.
 
-   Two `/gaia:gaia-help` entries mean legacy `.claude/commands/gaia-*.md` stubs were not removed by Step 4.4 of the migration script — either the user ran an older `gaia-migrate.sh` (pre-E28-S186) or has GAIA v1 installed globally at `~/.claude/commands/` which the project-local script cannot reach. For the global case, instruct the user to run `rm ~/.claude/commands/gaia-*.md` manually (the migration summary prints this reminder automatically). If `/gaia:gaia-help` does not respond at all, direct the user to §Troubleshooting of the migration guide.
+   Two `/gaia:gaia-help` entries mean legacy `.claude/commands/gaia-*.md` stubs were not removed by Step 4.4 of the migration script — either the user ran an older `gaia-migrate.sh` (pre-E28-S186) or has GAIA v1 installed globally at `~/.claude/commands/` which the project-local script cannot reach. For the global case, instruct the user to run `rm ~/.claude/commands/gaia-*.md` manually (the migration summary prints this reminder automatically). If `/gaia:gaia-help` does not respond at all, instruct the user to re-run the migration with `--verbose` and surface the printed restore command before investigating further.
 
    The script's filesystem-only validation cannot exercise skill invocation, so only a live `/gaia:gaia-help` run proves slash-command routing, plugin discovery, and skill loading survived the migration — and only a live palette inspection proves there is no dual registration.
 
 ## Authoritative source
 
-The mechanical migration steps are documented in `gaia-public/docs/migration-guide-v2.md` (E28-S130). This skill automates that walkthrough; the guide remains the human-readable reference. If the script detects a state the guide doesn't cover (e.g., a corrupt v1 file), surface it as a `manual follow-up:` line and direct the user to the guide.
+The mechanical migration steps are owned by `plugins/gaia/scripts/gaia-migrate.sh`; this SKILL.md drives the user-facing flow. The former separate migration guide at `gaia-public/docs/migration-guide-v2.md` was retired with the V1 sunset under ADR-049 (project memory `project_v1_sunset_sweep_complete.md`) and removed by AF-2026-06-01-3. If the script detects a state it does not cover (e.g., a corrupt v1 file), surface it as a `manual follow-up:` line.
 
 ## Safety
 
@@ -113,8 +113,7 @@ The mechanical migration steps are documented in `gaia-public/docs/migration-gui
 
 ## References
 
-- Migration guide (authoritative manual-steps source): `gaia-public/docs/migration-guide-v2.md` (E28-S130)
-- Backing script: `plugins/gaia/scripts/gaia-migrate.sh`
+- Backing script (authoritative source): `plugins/gaia/scripts/gaia-migrate.sh`
 - Manual integration-test plan (edge cases AC-EC2/3/5/7): `.gaia/artifacts/test-artifacts/E28-S170-gaia-migrate-edge-cases-test-plan.md` (E28-S170) — reproducible steps, expected behavior, and environment setup for edge cases that are not bats-testable without dedicated scaffolding (tmpfs size caps, corrupt-byte fixtures, signal-interrupt timing)
 - ADR-042: Scripts-over-LLM for Deterministic Operations
 - ADR-048: Engine Deletion as Program-Closing Action

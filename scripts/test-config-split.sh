@@ -5,7 +5,9 @@
 # structure fixtures defined in tests/fixtures/config-split/ and against
 # the live repository (Fixture C), compares resolved values against an
 # expected oracle per fixture, and writes an authoritative test report
-# to docs/migration/config-split-test-report.md.
+# to tests/fixtures/config-split/_report/config-split-test-report.md (the
+# former `docs/migration/config-split-test-report.md` home was retired
+# with `docs/` under AF-2026-06-01-3).
 #
 # Fixtures:
 #   A — root-project         (project_path: ".")
@@ -29,7 +31,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_PATH="$(cd "${SCRIPT_DIR}/.." && pwd)"          # gaia-public/
 RESOLVER="${PROJECT_PATH}/plugins/gaia/scripts/resolve-config.sh"
 FIXTURES_DIR="${PROJECT_PATH}/tests/fixtures/config-split"
-REPORT="${PROJECT_PATH}/docs/migration/config-split-test-report.md"
+REPORT="${PROJECT_PATH}/tests/fixtures/config-split/_report/config-split-test-report.md"
+mkdir -p "$(dirname "$REPORT")"
 
 [ -x "$RESOLVER" ] || { echo "resolver not found or not executable: $RESOLVER" >&2; exit 2; }
 [ -d "$FIXTURES_DIR" ] || { echo "fixtures dir missing: $FIXTURES_DIR" >&2; exit 2; }
@@ -361,10 +364,10 @@ STATUS="PASS"
   echo
   echo "## See also"
   echo
-  echo "- \`docs/migration/config-split.md\` — landing page for the ADR-044 split."
+  echo "- ADR-044 — config split (local \`global.yaml\` vs team-shared \`config/project-config.yaml\`)."
   echo "- \`plugins/gaia/scripts/resolve-config.sh\` — unit under test."
   echo "- \`plugins/gaia/config/project-config.schema.yaml\` — shared-file schema."
-  echo "- Story: \`docs/implementation-artifacts/E28-S145-*.md\`"
+  echo "- Story: \`.gaia/artifacts/implementation-artifacts/E28-S145-*.md\` (project-root layout post-ADR-111)."
 } > "$REPORT"
 
 rm -f "$REPORT.partial"
