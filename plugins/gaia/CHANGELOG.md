@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.185.0] — 2026-06-02
+
+### Added
+
+- (AF-2026-06-02-4) /gaia-statusline-refresh slash command (#1077)
+
 ## [1.184.0] — 2026-06-02
 
 ### Added
