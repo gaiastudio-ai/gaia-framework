@@ -89,11 +89,24 @@ is_canonical() {
 if [ "$track_a" = "WARNING" ]; then track_a="PASSED"; fi
 if [ "$track_b" = "WARNING" ]; then track_b="PASSED"; fi
 
+# Test17 F-M05 / AF-2026-06-02-6: accept ADR-037 envelope verdicts as
+# synonyms for the gate vocabulary. The Val ADR-037 status enum is
+# {PASS|WARNING|CRITICAL}; `write-val-sentinel.sh` already accepts both
+# {PASS,PASSED} forms, but compose-verdict.sh previously rejected `PASS`
+# as non-canonical, forcing operators to hand-translate PASS→PASSED
+# between two steps of the same /gaia-sprint-review. Map PASS→PASSED and
+# CRITICAL→FAILED at this boundary so the two scripts in the same skill
+# share one vocabulary.
+if [ "$track_a" = "PASS" ]; then track_a="PASSED"; fi
+if [ "$track_b" = "PASS" ]; then track_b="PASSED"; fi
+if [ "$track_a" = "CRITICAL" ]; then track_a="FAILED"; fi
+if [ "$track_b" = "CRITICAL" ]; then track_b="FAILED"; fi
+
 if ! is_canonical "$track_a"; then
-  die "non-canonical track-a verdict: '$track_a' (expected one of: PASSED, FAILED, UNVERIFIED, PARTIAL, SKIPPED, WARNING)"
+  die "non-canonical track-a verdict: '$track_a' (expected one of: PASS, PASSED, FAILED, UNVERIFIED, PARTIAL, SKIPPED, WARNING, CRITICAL)"
 fi
 if ! is_canonical "$track_b"; then
-  die "non-canonical track-b verdict: '$track_b' (expected one of: PASSED, FAILED, UNVERIFIED, PARTIAL, SKIPPED, WARNING)"
+  die "non-canonical track-b verdict: '$track_b' (expected one of: PASS, PASSED, FAILED, UNVERIFIED, PARTIAL, SKIPPED, WARNING, CRITICAL)"
 fi
 
 # ---------- Reduction ----------

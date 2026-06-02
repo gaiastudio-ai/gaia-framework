@@ -80,12 +80,14 @@ resolve_epic_slug() {
   fi
 
   # Step 1+2 — locate the epic heading and capture the trailing title.
-  # AF-2026-05-22-6 Bug-5: accept BOTH heading forms:
-  #   (a) `## E{N} — Title` — canonical em-dash form (U+2014, UTF-8 0xE2 0x80 0x94)
-  #   (b) `## Epic {N}: Title` — the natural form Derek (pm subagent) produces
-  #       when authoring epics-and-stories.md. Previously rejected, forcing
-  #       operators to sed-rewrite every heading before any /gaia-dev-story
-  #       transition could resolve the slug.
+  # AF-2026-05-22-6 Bug-5: accept BOTH heading forms (a)+(b).
+  # Test17 L-07 / AF-2026-06-02-6: extend to accept forms (c)+(d) — the
+  # natural shapes /gaia-create-epics emits in practice (verified live):
+  #   (a) `## E{N} — Title`         — canonical em-dash form (U+2014)
+  #   (b) `## Epic {N}: Title`      — Derek (pm)'s natural colon form
+  #   (c) `## Epic E{N} -- Title`   — ASCII double-hyphen with Epic prefix
+  #                                   (the form /gaia-create-epics actually emits)
+  #   (d) `## Epic E{N} — Title`    — em-dash with Epic prefix variant
   # Derive the numeric suffix N from the canonical epic_key (e.g., "E1" → "1").
   local epic_num="${epic_key#E}"
   local heading title
@@ -96,12 +98,24 @@ resolve_epic_slug() {
   else
     # Form (b): natural `## Epic N: Title` form.
     heading="$(LC_ALL=C grep -m1 "^## Epic ${epic_num}: " "$epics_file" || true)"
-    if [ -z "$heading" ]; then
-      printf 'resolve_epic_slug: epic key %s not found in %s (accepted heading forms: "## %s — Title" or "## Epic %s: Title")\n' \
-        "$epic_key" "$epics_file" "$epic_key" "$epic_num" >&2
-      return 1
+    if [ -n "$heading" ]; then
+      title="$(printf '%s' "$heading" | LC_ALL=C sed "s/^## Epic ${epic_num}: //")"
+    else
+      # Form (c): ASCII double-hyphen with `Epic E{N}` prefix.
+      heading="$(LC_ALL=C grep -m1 "^## Epic ${epic_key} -- " "$epics_file" || true)"
+      if [ -n "$heading" ]; then
+        title="$(printf '%s' "$heading" | LC_ALL=C sed "s/^## Epic ${epic_key} -- //")"
+      else
+        # Form (d): em-dash with `Epic E{N}` prefix.
+        heading="$(LC_ALL=C grep -m1 "^## Epic ${epic_key} — " "$epics_file" || true)"
+        if [ -z "$heading" ]; then
+          printf 'resolve_epic_slug: epic key %s not found in %s (accepted heading forms: "## %s — Title", "## Epic %s: Title", "## Epic %s -- Title", "## Epic %s — Title")\n' \
+            "$epic_key" "$epics_file" "$epic_key" "$epic_num" "$epic_key" "$epic_key" >&2
+          return 1
+        fi
+        title="$(printf '%s' "$heading" | LC_ALL=C sed "s/^## Epic ${epic_key} — //")"
+      fi
     fi
-    title="$(printf '%s' "$heading" | LC_ALL=C sed "s/^## Epic ${epic_num}: //")"
   fi
 
   # Step 3 — drop trailing parenthetical clause(s). The live tree treats

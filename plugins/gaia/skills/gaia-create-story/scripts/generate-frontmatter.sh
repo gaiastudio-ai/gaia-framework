@@ -325,6 +325,12 @@ size_raw="$(_extract_bullet_aliased "Size" "size")"
 size="${size_raw%% *}"
 
 risk="$(_extract_bullet_aliased "Risk" "risk_level" "risk")"
+# Test17 F-M03 / AF-2026-06-02-6: normalize risk to lowercase so the producer
+# satisfies its own validate-frontmatter.sh enum check (high|medium|low). The
+# upstream /gaia-create-epics emits Title-case `- **Risk:** Low` per
+# create-epics convention; passing it through unchanged tripped CRITICAL
+# `value 'Low' not in {high medium low}` in the validator.
+risk="$(printf '%s' "$risk" | tr '[:upper:]' '[:lower:]')"
 
 depends_on_yaml="$(_extract_array_aliased "Depends on" "depends_on")"
 blocks_yaml="$(_extract_array_aliased "Blocks" "blocks")"

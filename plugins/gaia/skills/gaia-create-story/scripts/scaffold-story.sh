@@ -380,6 +380,22 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
     if (line == "## Test Scenarios")        return 1
     return 0
   }
+  # Test17 L-05 / AF-2026-06-02-6: section-distinct placeholder tokens.
+  # Returns the per-section placeholder string for a content heading; the
+  # prior implementation emitted the same `{CONTENT_PLACEHOLDER}` token for
+  # all 7 content sections, which let a single Edit-step elaboration fill
+  # them all identically. Distinct tokens let the LLM differentiate
+  # per-section content (User Story vs Acceptance Criteria vs Tasks, etc.).
+  function placeholder_for(line) {
+    if (line == "## User Story")            return "{USER_STORY_PLACEHOLDER}"
+    if (line == "## Acceptance Criteria")   return "{ACCEPTANCE_CRITERIA_PLACEHOLDER}"
+    if (line == "## Tasks / Subtasks")      return "{TASKS_PLACEHOLDER}"
+    if (line == "## Dev Notes")             return "{DEV_NOTES_PLACEHOLDER}"
+    if (line == "## Technical Notes")       return "{TECHNICAL_NOTES_PLACEHOLDER}"
+    if (line == "## Dependencies")          return "{DEPENDENCIES_PLACEHOLDER}"
+    if (line == "## Test Scenarios")        return "{TEST_SCENARIOS_PLACEHOLDER}"
+    return "{CONTENT_PLACEHOLDER}"
+  }
   function is_section_heading(line) {
     # Any `## ` heading terminates the prior content section.
     return (substr(line, 1, 3) == "## ")
@@ -425,13 +441,12 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
       in_content = is_content_heading(line) ? 1 : 0
       print line
       if (in_content) {
-        # Emit the placeholder and then suppress until the next `## `
-        # heading. We emit a leading blank line to mirror the template
-        # rhythm? — NO: the spec requires the placeholder line immediately
-        # under the heading. We keep a blank line above the placeholder
-        # for readability and a blank line below to match section spacing.
+        # Emit a section-distinct placeholder (Test17 L-05). Blank line
+        # above for readability and a blank line below to match section
+        # spacing. The per-section token lets the LLM differentiate which
+        # content goes where rather than repeating the same body 7×.
         print ""
-        print "{CONTENT_PLACEHOLDER}"
+        print placeholder_for(line)
         print ""
       }
       next

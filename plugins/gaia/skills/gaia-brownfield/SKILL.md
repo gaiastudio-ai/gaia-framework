@@ -269,6 +269,22 @@ fi
 
 Spawn seven scan subagents in parallel. These run alongside Phase 2 documentation to detect gaps that structural analysis misses. Each scanner receives `{tech_stack}`, `{project-path}`, and `{project_type}` as context. When `{project_type}` is `infrastructure` or `platform`, infra-specific detection patterns are applied alongside application patterns; for `application`, only application patterns run.
 
+**Standardized gap-entry schema (Test17 D-1 / AF-2026-06-02-6).** Every scan subagent MUST emit gap entries conforming to the canonical schema at `${CLAUDE_PLUGIN_ROOT}/schemas/brownfield-gap-entry.schema.json`. The schema defines required fields (`gap_id`, `category`, `severity`, `title`, `evidence`) and authoritative enums (`category`, `severity`, `claim_type`, `confidence`). When dispatching each subagent, the parent skill MUST include this fragment in the subagent prompt so the scanner can self-validate before emission:
+
+```
+<gap-entry-schema-ref>
+  path: ${CLAUDE_PLUGIN_ROOT}/schemas/brownfield-gap-entry.schema.json
+  required: [gap_id, category, severity, title, evidence]
+  category-enum: [doc-code-drift, hardcoded-value, integration-seam, runtime-behavior, security, sbom-completeness, call-graph, stale-claim]
+  severity-enum: [CRITICAL, WARNING, INFO]
+  claim_type-enum: [positive, negative, contradiction]   # positive default; negative for absence claims like "no __main__"; contradiction for two-sided doc↔code mismatch
+  evidence-required: [file]; evidence-optional: [line_range, snippet, tool]
+  id-prefix-convention: see Phase 7 §621 (DCD- HCV- ISEAM- RTB- SEC- CFGC- DC- CVE- SBM-)
+</gap-entry-schema-ref>
+```
+
+This schema fixture closes the cross-scanner drift Test17 D-1 identified: 5–6 scanners independently hit the same ambiguities (slash-field `description/evidence`, single `evidence_line` can't express two-sided contradictions, no `category` enum, mixed-case severity vocab, no `claim_type` marker for negative claims). The schema is the single source of truth; the consolidation subagent rejects entries that don't conform.
+
 ### Doc-Code Scan
 
 Read the doc-vs-code scan prompt template from the bundled knowledge. Scan the project for mismatches between documentation and code — stale claims, missing endpoints in docs, config values that differ from the documented defaults. Output gap entries to `.gaia/artifacts/planning-artifacts/brownfield-scan-doc-code.md` using the standardized gap-entry schema. Contradictory signals between docs and code produce gap rows tagged with evidence_file and evidence_line.
