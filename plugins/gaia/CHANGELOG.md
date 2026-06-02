@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.184.0] — 2026-06-02
+
+### Added
+
+- (AF-2026-06-02-3) consent-gated self-heal of stale statusline runtime (#1074)
+
 ## [1.183.0] — 2026-06-02
 
 ### Added
