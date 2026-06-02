@@ -138,10 +138,19 @@ if [ "$_SARIF_DOCKER_RUNNER" = "docker" ]; then
     #      mis-binds the <files> positional on the Sarif.Multitool parser).
     #   2. `--force` → `--log ForceOverwrite` (canonical Sarif.Multitool
     #      overwrite knob; preserves the Test15 F-06 idempotency intent).
-    #   3. `--merge-empty-logs` so a zero-finding clean scan still emits a
-    #      per-tool `run` (tool.driver.name attribution + scan-ran
-    #      provenance survives). Without it, a passing deterministic scan
-    #      is indistinguishable from one that never ran (F-M01).
+    #   3. `--merge-empty-logs` is passed but Sarif.Multitool 5.0.2 drops
+    #      runs whose results[] is empty regardless of this flag (Test17
+    #      F-M01 / AF-2026-06-02-6 verified live). The flag is retained for
+    #      forward-compatibility with future Sarif.Multitool versions that
+    #      may honor it, but callers MUST NOT rely on clean-scan tool
+    #      provenance reaching the merged SARIF — a passing deterministic
+    #      scan currently merges as `runs:[]` (zero runs). REAL findings
+    #      survive merge (a run with results[] non-empty IS preserved —
+    #      verified Test17 P-06: synthetic SARIF with one finding survived).
+    #      Phase-7 grading uses the `grype_db_checksum` provenance field
+    #      (independent of merged runs[]) so the practical impact on
+    #      consolidated-gaps grading is bounded to clean-scan tool
+    #      attribution loss, not real-finding loss.
     rm -f "$out_dir/$out_file" 2>/dev/null || true
     if ! ADAPTER_OUT_DIR="$out_dir" \
         docker_runner_dispatch sarif merge \

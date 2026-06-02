@@ -184,22 +184,41 @@ input vocabulary belongs in the source-of-truth scan reports under
 
 ## Gap Analysis Summary
 
-> **Severity vocabulary (Test10 F-13).** This PRD reports CRITICAL / WARNING / INFO
-> per the canonical 3-tier map (5-into-3, see `/gaia-config-severity`). The legacy
-> 5-tier (Critical / High / Medium / Low) is preserved here as the user-visible
-> bucket labels; the WARNING / INFO columns map to the Sage adversarial reviewer
-> output and the `info`-tier findings emitted by deterministic-tools scans.
+> **Severity vocabulary (Test17 D-4 / AF-2026-06-02-6 — vocab reconciled).** This
+> PRD reports CRITICAL / WARNING / INFO per the canonical **3-tier** map. Prior
+> revisions of this template carried a 5-tier Critical / High / Medium / Low / Info
+> column header which contradicted the 3-tier note in this paragraph — both the
+> note and the table now agree on the 3-tier form. The 5-into-3 mapping for
+> Phase-3 deterministic scans is at `/gaia-config-severity`:
+> Critical/High → CRITICAL, Medium → WARNING, Low → WARNING, Info → INFO.
 
-| Category | Critical | High | Medium | Low | Info | Total |
-|----------|----------|------|--------|-----|------|-------|
-| Config Contradictions | {count} | {count} | {count} | {count} | {count} | {count} |
-| Dead Code & Dead State | {count} | {count} | {count} | {count} | {count} | {count} |
-| Hard-Coded Business Logic | {count} | {count} | {count} | {count} | {count} | {count} |
-| Security Endpoints | {count} | {count} | {count} | {count} | {count} | {count} |
-| Runtime Behaviors | {count} | {count} | {count} | {count} | {count} | {count} |
-| Documentation Drift | {count} | {count} | {count} | {count} | {count} | {count} |
-| Integration Seams | {count} | {count} | {count} | {count} | {count} | {count} |
-| **Overall** | **{count}** | **{count}** | **{count}** | **{count}** | **{count}** | **{count}** |
+| Category | CRITICAL | WARNING | INFO | Total |
+|----------|----------|---------|------|-------|
+| Config Contradictions | {count} | {count} | {count} | {count} |
+| Dead Code & Dead State | {count} | {count} | {count} | {count} |
+| Hard-Coded Business Logic | {count} | {count} | {count} | {count} |
+| Security Endpoints | {count} | {count} | {count} | {count} |
+| Runtime Behaviors | {count} | {count} | {count} | {count} |
+| Documentation Drift | {count} | {count} | {count} | {count} |
+| Integration Seams | {count} | {count} | {count} | {count} |
+| Stale Claims | {count} | {count} | {count} | {count} |
+| **Overall** | **{count}** | **{count}** | **{count}** | **{count}** |
+
+## Priority Matrix (brownfield)
+
+> **Test17 D-4 / AF-2026-06-02-6.** The orchestrator's gap-priority synthesis lands
+> here. Authors fill the four-quadrant matrix with the top 6-10 brownfield gaps
+> ranked by impact × effort. CRITICAL gaps SHOULD appear in the High-Impact /
+> Low-Effort or High-Impact / High-Effort quadrants. WARNING gaps SHOULD appear
+> in the Low-Impact / Low-Effort quadrant (quick wins) or be acknowledged in the
+> deferred section. INFO gaps are auxiliary — list them in the prose only.
+
+| Quadrant | Gaps (IDs) | Action |
+|----------|------------|--------|
+| High Impact / Low Effort | {gap-ids — quick wins, top of backlog} | {sprint-1 candidates} |
+| High Impact / High Effort | {gap-ids — strategic, scope to epic} | {epic-level scoping} |
+| Low Impact / Low Effort | {gap-ids — opportunistic} | {batch later} |
+| Low Impact / High Effort | {gap-ids — deferred} | {skip unless triggered} |
 
 ## Gap Analysis by Category
 
@@ -244,6 +263,14 @@ input vocabulary belongs in the source-of-truth scan reports under
 | ID | Severity | Title | Description | Evidence | Recommendation | Verified By | Confidence |
 |----|----------|-------|-------------|----------|----------------|-------------|------------|
 | — | — | No gaps detected in this category. | — | — | — | — | — |
+
+### Stale Claims (`stale-claim`)
+
+Gaps the consolidation surfaced from a baseline scan that a later orchestrator step (e.g. `/gaia-ci-setup`, a follow-up code-verified review, or a freshness re-check per Test17 D-7) has since closed. Each row records the original gap-id, the surfacing scan, AND the closing action so the audit trail shows the gap was real at baseline time.
+
+| ID | Severity | Title | Description | Evidence | Recommendation | Closed By | Confidence |
+|----|----------|-------|-------------|----------|----------------|-----------|------------|
+| — | — | No stale claims detected. | — | — | — | — | — |
 
 ### Verified By Legend
 

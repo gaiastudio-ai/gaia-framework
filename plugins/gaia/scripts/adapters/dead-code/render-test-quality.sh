@@ -92,6 +92,11 @@ awk '
 printf '\n' >> "$body_tmp"
 cat "$section_tmp" >> "$body_tmp"
 mv "$body_tmp" "$REPORT"
+# Test17 L-02 / AF-2026-06-02-6: mktemp defaults to 0600 perms and `mv`
+# preserves the source file's perms when crossing into the target. Force
+# 0644 so consolidated-gaps.md matches the LLM-scan artifact convention
+# (uniform-read across the brownfield-audit tree).
+chmod 644 "$REPORT" 2>/dev/null || true
 
 printf 'INFO: %s: rendered Test Quality section (3 per-stack sub-sections) into %s\n' "$SCRIPT_NAME" "$REPORT"
 exit 0

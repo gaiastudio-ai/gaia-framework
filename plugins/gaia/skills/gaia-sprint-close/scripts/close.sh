@@ -174,11 +174,11 @@ Usage:
   finalize.sh [--force-with-rollover <key1,key2,...>] [--help]
 
 Closes the active sprint: writes status:closed + closed_at to sprint-status.yaml,
-archives the yaml under docs/implementation-artifacts/sprint-archive/, and emits
-a sprint_closed lifecycle event to .gaia/memory/lifecycle-events.jsonl.
+archives the yaml under .gaia/artifacts/implementation-artifacts/sprint-archive/,
+and emits a sprint_closed lifecycle event to .gaia/memory/lifecycle-events.jsonl.
 
 Pre-conditions:
-  - A retro doc must exist at docs/implementation-artifacts/retrospective-{sprint_id}-*.md
+  - A retro doc must exist at .gaia/artifacts/implementation-artifacts/retrospective/retrospective-{sprint_id}-*.md
   - All stories must be `done`, OR --force-with-rollover must list exactly the non-done keys.
   - Sprint must not already be closed (idempotent re-close exits 0 with warning).
 
