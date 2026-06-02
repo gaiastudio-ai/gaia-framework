@@ -35,6 +35,12 @@ teardown() { common_teardown; }
   # statusLine.command points at the runtime path.
   grep -q '"statusLine"' "$HOME/.claude/settings.json"
   grep -q 'gaia-statusline/statusline.sh' "$HOME/.claude/settings.json"
+  # AF-2026-06-02-5 / Val F-06: marker MUST be present and non-empty after
+  # a successful in-tree install. The prior `../../` path-depth bug let the
+  # marker write silently skip — this assertion catches a re-introduction
+  # of issue #1080 even outside the staged-sandbox regression below.
+  [ -f "$HOME/.claude/gaia-statusline/.installed-version" ]
+  [ -s "$HOME/.claude/gaia-statusline/.installed-version" ]
 }
 
 @test "TC-11: install is byte-idempotent on second run" {
@@ -146,4 +152,102 @@ JSON
   [ -f "$INSTALL" ]
   bash "$INSTALL"
   [ -x "$HOME/.claude/gaia-statusline/statusline-git-dirty-check.sh" ]
+}
+
+# ---------------------------------------------------------------------------
+# AF-2026-06-02-5 — issue #1080 regression: PLUGIN_JSON_SRC path-depth fix
+# ---------------------------------------------------------------------------
+# The prior `$SCRIPT_DIR/../../.claude-plugin/plugin.json` resolution was
+# wrong in BOTH the source-repo layout AND the deployed marketplace cache
+# layout (both nest `install-statusline.sh` at `<plugin-root>/scripts/`, so
+# the canonical sibling-of-scripts is one `..`, not two). The fix lands at
+# `$SCRIPT_DIR/../.claude-plugin/plugin.json` with a `../../` fallback for
+# vestigial layouts.
+#
+# The tests below stage a deployed-shaped sandbox under $TEST_TMP/fake-plugin
+# (the marketplace-cache shape: $sandbox/scripts/install-statusline.sh +
+# $sandbox/.claude-plugin/plugin.json), copy the six bash sources the
+# installer references (5 SRC_* files + 1 lib/statusline-cache-reset.sh
+# sourced at install-statusline.sh:155), and assert the marker writes with
+# the cached plugin's version string.
+#
+# Val F-04: 6 sources, not 5 — the sourced lib/statusline-cache-reset.sh
+# would hard-fail the install if not staged.
+
+_stage_fake_plugin() {
+  local sandbox="$1" ver="$2"
+  mkdir -p "$sandbox/scripts/lib" "$sandbox/.claude-plugin"
+  cp "$PLUGIN_ROOT/scripts/install-statusline.sh"          "$sandbox/scripts/install-statusline.sh"
+  cp "$PLUGIN_ROOT/scripts/statusline.sh"                   "$sandbox/scripts/statusline.sh"
+  cp "$PLUGIN_ROOT/scripts/statusline-update-check.sh"      "$sandbox/scripts/statusline-update-check.sh"
+  cp "$PLUGIN_ROOT/scripts/statusline-git-dirty-check.sh"   "$sandbox/scripts/statusline-git-dirty-check.sh"
+  cp "$PLUGIN_ROOT/scripts/lib/statusline-glyphs.sh"        "$sandbox/scripts/lib/statusline-glyphs.sh"
+  cp "$PLUGIN_ROOT/scripts/lib/statusline-colors.sh"        "$sandbox/scripts/lib/statusline-colors.sh"
+  cp "$PLUGIN_ROOT/scripts/lib/statusline-cache-reset.sh"   "$sandbox/scripts/lib/statusline-cache-reset.sh"
+  chmod +x "$sandbox/scripts/install-statusline.sh"
+  printf '{"version":"%s"}\n' "$ver" > "$sandbox/.claude-plugin/plugin.json"
+}
+
+@test "AF-33-5 / #1080: marker written with cached plugin version under deployed-shaped layout" {
+  # Deployed-cache shape: $sandbox/scripts/install-statusline.sh +
+  # $sandbox/.claude-plugin/plugin.json (plugin.json is ONE level up from
+  # scripts/). The pre-fix code looked at TWO levels up — this test would
+  # have caught the bug at write-time and would catch any future
+  # re-introduction of the same path-depth class.
+  local sandbox="$TEST_TMP/fake-plugin"
+  _stage_fake_plugin "$sandbox" "9.9.9-regression"
+  run bash "$sandbox/scripts/install-statusline.sh"
+  [ "$status" -eq 0 ]
+  [ -f "$HOME/.claude/gaia-statusline/.installed-version" ]
+  [ "$(cat "$HOME/.claude/gaia-statusline/.installed-version")" = "9.9.9-regression" ]
+}
+
+@test "AF-33-5 / #1080: vestigial two-level layout still resolves via the fallback" {
+  # Stage plugin.json at $sandbox/.claude-plugin (one level up) — the
+  # canonical path — AND ALSO at $sandbox/../.claude-plugin/plugin.json
+  # so the fallback IS reachable when we strip the canonical site.
+  # Then delete the canonical site and verify the fallback fires.
+  local sandbox="$TEST_TMP/fake-plugin-vestigial/inner"
+  mkdir -p "$sandbox/scripts/lib" "$sandbox/../.claude-plugin"
+  cp "$PLUGIN_ROOT/scripts/install-statusline.sh"          "$sandbox/scripts/install-statusline.sh"
+  cp "$PLUGIN_ROOT/scripts/statusline.sh"                   "$sandbox/scripts/statusline.sh"
+  cp "$PLUGIN_ROOT/scripts/statusline-update-check.sh"      "$sandbox/scripts/statusline-update-check.sh"
+  cp "$PLUGIN_ROOT/scripts/statusline-git-dirty-check.sh"   "$sandbox/scripts/statusline-git-dirty-check.sh"
+  cp "$PLUGIN_ROOT/scripts/lib/statusline-glyphs.sh"        "$sandbox/scripts/lib/statusline-glyphs.sh"
+  cp "$PLUGIN_ROOT/scripts/lib/statusline-colors.sh"        "$sandbox/scripts/lib/statusline-colors.sh"
+  cp "$PLUGIN_ROOT/scripts/lib/statusline-cache-reset.sh"   "$sandbox/scripts/lib/statusline-cache-reset.sh"
+  chmod +x "$sandbox/scripts/install-statusline.sh"
+  printf '{"version":"%s"}\n' "vestigial-9.9.9" > "$sandbox/../.claude-plugin/plugin.json"
+  # No canonical site — only the two-level vestigial site exists.
+  run bash "$sandbox/scripts/install-statusline.sh"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$HOME/.claude/gaia-statusline/.installed-version")" = "vestigial-9.9.9" ]
+}
+
+@test "AF-33-5 / #1080: marker is empty-resilient when BOTH paths miss (no plugin.json anywhere)" {
+  # Defense in depth: when neither the canonical nor the fallback path
+  # resolves, INSTALLED_VERSION stays empty and the marker-write guard
+  # gracefully skips. This is the AC5 'marker-absent → silent no-op'
+  # behavior at install time. The install MUST still complete (exit 0,
+  # all five runtime files copied, settings.json merged); only the
+  # marker write is skipped.
+  local sandbox="$TEST_TMP/fake-plugin-nojson"
+  mkdir -p "$sandbox/scripts/lib"
+  cp "$PLUGIN_ROOT/scripts/install-statusline.sh"          "$sandbox/scripts/install-statusline.sh"
+  cp "$PLUGIN_ROOT/scripts/statusline.sh"                   "$sandbox/scripts/statusline.sh"
+  cp "$PLUGIN_ROOT/scripts/statusline-update-check.sh"      "$sandbox/scripts/statusline-update-check.sh"
+  cp "$PLUGIN_ROOT/scripts/statusline-git-dirty-check.sh"   "$sandbox/scripts/statusline-git-dirty-check.sh"
+  cp "$PLUGIN_ROOT/scripts/lib/statusline-glyphs.sh"        "$sandbox/scripts/lib/statusline-glyphs.sh"
+  cp "$PLUGIN_ROOT/scripts/lib/statusline-colors.sh"        "$sandbox/scripts/lib/statusline-colors.sh"
+  cp "$PLUGIN_ROOT/scripts/lib/statusline-cache-reset.sh"   "$sandbox/scripts/lib/statusline-cache-reset.sh"
+  chmod +x "$sandbox/scripts/install-statusline.sh"
+  # Ensure no plugin.json at either depth.
+  [ ! -e "$sandbox/.claude-plugin/plugin.json" ]
+  [ ! -e "$sandbox/../.claude-plugin/plugin.json" ]
+  run bash "$sandbox/scripts/install-statusline.sh"
+  [ "$status" -eq 0 ]
+  [ -x "$HOME/.claude/gaia-statusline/statusline.sh" ]
+  # Marker not written — that's the documented AC5 shape when no source
+  # of truth resolved.
+  [ ! -e "$HOME/.claude/gaia-statusline/.installed-version" ]
 }

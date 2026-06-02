@@ -130,9 +130,24 @@ fi
 # ---- .installed-version marker (E82-S6 / ADR-094 Component 1) -------------
 # Atomic sibling-tempfile + mv. Written as the LAST action so a successful
 # install is the only thing that produces the marker. Source of truth for
-# the plugin version: the in-tree .claude-plugin/plugin.json (the script's
-# own plugin tree — three levels up from plugins/gaia/scripts/).
-PLUGIN_JSON_SRC="$SCRIPT_DIR/../../.claude-plugin/plugin.json"
+# the plugin version: the sibling .claude-plugin/plugin.json — one level up
+# from scripts/ in BOTH the source-repo `plugins/gaia/` layout AND the
+# deployed cache `~/.claude/plugins/cache/<owner>-<repo>/gaia/<version>/`
+# layout. Fallback to two-levels-up for any vestigial layouts where the
+# canonical sibling path does not resolve.
+#
+# Issue #1080 / AF-2026-06-02-5: the prior `../../` resolution was wrong in
+# BOTH layouts — INSTALLED_VERSION resolved empty on every install, the
+# marker guard below skipped, and `.installed-version` was never updated.
+# That broke the FR-448 AC1 marker write, AC5 marker-absent semantics, AC8
+# consent-prompt staleness comparison (AF-2026-06-02-3), and AC9 no-op
+# detection (AF-2026-06-02-4). The fallback is consulted only when the
+# canonical sibling path doesn't resolve, so well-formed layouts never
+# touch it.
+PLUGIN_JSON_SRC="$SCRIPT_DIR/../.claude-plugin/plugin.json"
+if [ ! -r "$PLUGIN_JSON_SRC" ]; then
+  PLUGIN_JSON_SRC="$SCRIPT_DIR/../../.claude-plugin/plugin.json"
+fi
 INSTALLED_VERSION=""
 if [ -r "$PLUGIN_JSON_SRC" ]; then
   INSTALLED_VERSION="$(jq -r '.version // ""' "$PLUGIN_JSON_SRC" 2>/dev/null || printf '')"
