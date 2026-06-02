@@ -8,9 +8,9 @@ load 'test_helper.bash'
 setup() {
   common_setup
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
-  LIB="$REPO_ROOT/gaia-framework/plugins/gaia/scripts/lib/lifecycle-overrides.sh"
-  SCHEMA="$REPO_ROOT/gaia-framework/plugins/gaia/schemas/lifecycle-overrides.schema.json"
-  PARSER="$REPO_ROOT/gaia-framework/plugins/gaia/scripts/lib/parse-bypass-flag.sh"
+  LIB="$REPO_ROOT/gaia-public/plugins/gaia/scripts/lib/lifecycle-overrides.sh"
+  SCHEMA="$REPO_ROOT/gaia-public/plugins/gaia/schemas/lifecycle-overrides.schema.json"
+  PARSER="$REPO_ROOT/gaia-public/plugins/gaia/scripts/lib/parse-bypass-flag.sh"
   TMP_ROOT="$(mktemp -d)"
   export LIFECYCLE_OVERRIDES_FILE="$TMP_ROOT/.gaia/state/lifecycle-overrides.yaml"
   export LIFECYCLE_OVERRIDES_LOCK="$TMP_ROOT/.gaia/state/lifecycle-overrides.yaml.lock"

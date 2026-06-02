@@ -8,9 +8,9 @@ load 'test_helper.bash'
 setup() {
   common_setup
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
-  STRICT_HELPER="$REPO_ROOT/gaia-framework/plugins/gaia/scripts/lib/lifecycle-strict-mode.sh"
-  SCHEMA="$REPO_ROOT/gaia-framework/plugins/gaia/schemas/project-config.schema.json"
-  RETRO_SKILL="$REPO_ROOT/gaia-framework/plugins/gaia/skills/gaia-retro/SKILL.md"
+  STRICT_HELPER="$REPO_ROOT/gaia-public/plugins/gaia/scripts/lib/lifecycle-strict-mode.sh"
+  SCHEMA="$REPO_ROOT/gaia-public/plugins/gaia/schemas/project-config.schema.json"
+  RETRO_SKILL="$REPO_ROOT/gaia-public/plugins/gaia/skills/gaia-retro/SKILL.md"
   COVERAGE="$REPO_ROOT/.gaia/state/lifecycle-gate-coverage.json"
 }
 

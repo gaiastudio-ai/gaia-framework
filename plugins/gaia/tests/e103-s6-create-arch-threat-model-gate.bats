@@ -8,7 +8,7 @@ load 'test_helper.bash'
 setup() {
   common_setup
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
-  SETUP_SH="$REPO_ROOT/gaia-framework/plugins/gaia/skills/gaia-create-arch/scripts/setup.sh"
+  SETUP_SH="$REPO_ROOT/gaia-public/plugins/gaia/skills/gaia-create-arch/scripts/setup.sh"
 }
 
 teardown() { common_teardown; }

@@ -11,8 +11,8 @@ load 'test_helper.bash'
 setup() {
   common_setup
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
-  RESOLVER="$REPO_ROOT/gaia-framework/plugins/gaia/scripts/lib/artifact-three-tier-resolve.sh"
-  CLOSE_SH="$REPO_ROOT/gaia-framework/plugins/gaia/skills/gaia-sprint-close/scripts/close.sh"
+  RESOLVER="$REPO_ROOT/gaia-public/plugins/gaia/scripts/lib/artifact-three-tier-resolve.sh"
+  CLOSE_SH="$REPO_ROOT/gaia-public/plugins/gaia/skills/gaia-sprint-close/scripts/close.sh"
   # Per-test temp project root so the matrix can stage isolated layouts.
   TMP_ROOT="$(mktemp -d 2>/dev/null || mktemp -d -t e102s6)"
 }

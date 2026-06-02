@@ -16,7 +16,7 @@ setup() {
     skip "project-root .gaia/artifacts/README.md not present — skipping story-evidence fixture"
   fi
   README="$REPO_ROOT/.gaia/artifacts/README.md"
-  PLUGIN_ROOT="$REPO_ROOT/gaia-framework/plugins/gaia"
+  PLUGIN_ROOT="$REPO_ROOT/gaia-public/plugins/gaia"
 }
 
 teardown() { common_teardown; }

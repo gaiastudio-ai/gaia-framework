@@ -7,8 +7,8 @@ load 'test_helper.bash'
 setup() {
   common_setup
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
-  SKILL="$REPO_ROOT/gaia-framework/plugins/gaia/skills/gaia-sprint-review/SKILL.md"
-  SCRIPTS_DIR="$REPO_ROOT/gaia-framework/plugins/gaia/skills/gaia-sprint-review/scripts"
+  SKILL="$REPO_ROOT/gaia-public/plugins/gaia/skills/gaia-sprint-review/SKILL.md"
+  SCRIPTS_DIR="$REPO_ROOT/gaia-public/plugins/gaia/skills/gaia-sprint-review/scripts"
 }
 
 teardown() { common_teardown; }
