@@ -34,6 +34,25 @@ Invoke the toggle script directly. The script handles:
 !bash gaia-framework/plugins/gaia/scripts/gaia-statusline-toggle.sh --enable
 ```
 
+## Self-heal at toggle time (FR-448 AC8 / E82-S11 / AF-2026-06-02-3)
+
+After the executable-bit pre-flight (AC7) and before the AC2 settings.json idempotency check, the toggle script compares the installed runtime's `.installed-version` marker (written by `install-statusline.sh` per E82-S6) against the cached plugin.json `.version` under the highest-semver dir of `~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia` (resolved via the shared `lib/statusline-plugin-cache-dir.sh` helper). The cache-dir literal is sourced from the same helper that `statusline-update-check.sh` uses — single source of truth.
+
+When the marker disagrees with the cached version AND both stdin and stdout are TTYs AND `GAIA_YOLO_FLAG != 1`, the toggle script surfaces a one-shot consent prompt:
+
+```
+gaia-statusline-enable: installed runtime is <X>, cached plugin is <Y>. Re-install runtime? [y/N]
+```
+
+- **Default is decline.** Empty answer, `N`, or any non-`y` response → no install runs, no cache mutation occurs. The existing FR-448 AC3 hot-path daily WARN segment continues to fire on the next render so the staleness signal is not lost.
+- **On `y` (case-insensitive)** the cached `install-statusline.sh` is re-run AND the update-check-owned keys (`checked_at_iso`, `latest_tag`, `current_tag`, `update_available`, `installed_version_stale`) are surgically deleted from `~/.claude/gaia-statusline/cache/latest-release.json` via `jq del(...)` written atomically. The `git_dirty` field is preserved per ADR-091. A one-line note `gaia-statusline-enable: refreshed runtime from cached <version> (was stale).` is emitted before the settings.json merge fires.
+
+**FR-448 AC6 contract preserved.** Non-TTY invocations (bats tests, CI, the substrate-toggle path, piped stdin) suppress the prompt entirely; `GAIA_YOLO_FLAG=1` also suppresses it. The runtime is overwritten only on explicit user consent — a user with hand-edits to `~/.claude/gaia-statusline/statusline.sh` must answer `y` to lose them.
+
+**Marker-absent silent no-op.** First-install fixtures (no `.installed-version` marker file) skip the staleness check entirely, matching FR-448 AC5.
+
+**Defense in depth.** `install-statusline.sh` itself also performs the same surgical cache reset on every successful install, so manual re-installs invoked outside the toggle path get the same fresh-render guarantee.
+
 ## Round-trip caveat
 
 The canonical write format is `jq -S` (sorted keys, 2-space indent). For `enable` followed by `disable` to produce a byte-identical result against the original `settings.json`, the original must already be in canonical jq format. If the original was hand-edited with comments, custom whitespace, or unsorted keys, the round-trip will normalize it on first write. This caveat mirrors the install-script behavior (E82-S1) and is by design — `jq` does not preserve comments or arbitrary whitespace.
@@ -45,5 +64,9 @@ The canonical write format is `jq -S` (sorted keys, 2-space indent). For `enable
 - Pattern: `gaia-framework/plugins/gaia/skills/gaia-bridge-enable/SKILL.md` (semantic precedent — thin wrapper around a shared toggle).
 - Runtime installer: `gaia-framework/plugins/gaia/scripts/install-statusline.sh` (E82-S1).
 - FR-439 — Statusline toggle slash commands.
+- FR-448 AC8 — Consent-gated self-heal at toggle time (E82-S11 / AF-2026-06-02-3).
 - TC-STATUSLINE-13 — Idempotent enable/disable.
 - TC-STATUSLINE-14 — Round-trip enable + disable preserves byte-identity.
+- TC-STATUSLINE-17 — `install-statusline.sh` surgical cache reset preserves `git_dirty`.
+- TC-STATUSLINE-18 — Consent-prompt three-branch coverage (marker-matches no-op / 'y' refresh / 'N' warn-only).
+- T-STATUSLINE-1 addendum — two new authorized writers to `~/.claude/gaia-statusline/cache/latest-release.json` documented.
