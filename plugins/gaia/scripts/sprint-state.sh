@@ -896,12 +896,24 @@ do_transition_locked() {
           # consult three sources in order — (1) live yaml, (2) the
           # depended story's file frontmatter, (3) the most-recent
           # sprint-archive entry — and accept the first non-empty answer.
-          _dep_status=$(yq -r ".sprints[].stories[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:-.}/.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
+          # Test17 F-H02 / AF-2026-06-02-6: try BOTH yaml shapes — sprint-state.sh
+          # init/inject seeds a top-level `.stories[]` shape (no `.sprints[]`
+          # wrapper), so the prior `.sprints[].stories[]` query returned empty
+          # on every live sprint-status.yaml. Try the canonical top-level shape
+          # first, then fall back to the legacy `.sprints[].stories[]` shape
+          # for any vestigial multi-sprint roll-ups.
+          _dep_status=$(yq -r ".stories[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:-.}/.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
+          if [ -z "$_dep_status" ] || [ "$_dep_status" = "null" ]; then
+            _dep_status=$(yq -r ".sprints[].stories[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:-.}/.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
+          fi
           if [ -z "$_dep_status" ] || [ "$_dep_status" = "null" ]; then
             # Tier 2: the depended story's file frontmatter (source of truth).
-            # Mirror the same `epic-*/stories/<key>-*.md` glob used elsewhere
-            # in this script (line ~406, ~1348).
-            for _dep_sf in "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/stories/"${_dep}-"*.md "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/"${_dep}-"*.md; do
+            # Test17 F-H02 / AF-2026-06-02-6: try BOTH layouts (canonical first,
+            # legacy as fallback per ADR-070 three-tier read-side idiom). The
+            # canonical E105-S1 / ADR-127 layout is `epic-*/{key}-*/story.md`
+            # (per-story directory); legacy ADR-119 layout was
+            # `epic-*/stories/{key}-*.md` (per-story file under stories/).
+            for _dep_sf in "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/"${_dep}-"*/story.md "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/stories/"${_dep}-"*.md "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/"${_dep}-"*.md; do
               if [ -f "$_dep_sf" ]; then
                 _dep_status=$(awk '
                   BEGIN { in_fm=0 }
@@ -917,7 +929,13 @@ do_transition_locked() {
             # Tier 3: scan sprint-archive/. Pick the most-recent archive that
             # mentions the dep key. Archives are named sprint-N-closed-<ts>.yaml.
             for _archive in $(ls -1t "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/sprint-archive/sprint-*-closed-*.yaml 2>/dev/null); do
-              _arch_status=$(yq -r ".sprints[].stories[]? | select(.key == \"${_dep}\") | .status" "$_archive" 2>/dev/null | head -1 || true)
+              # Test17 F-H02 / AF-2026-06-02-6: try both yaml shapes — sprint
+              # archives may be either top-level `.stories[]` (canonical) or
+              # rolled-up `.sprints[].stories[]` (legacy).
+              _arch_status=$(yq -r ".stories[]? | select(.key == \"${_dep}\") | .status" "$_archive" 2>/dev/null | head -1 || true)
+              if [ -z "$_arch_status" ] || [ "$_arch_status" = "null" ]; then
+                _arch_status=$(yq -r ".sprints[].stories[]? | select(.key == \"${_dep}\") | .status" "$_archive" 2>/dev/null | head -1 || true)
+              fi
               if [ -n "$_arch_status" ] && [ "$_arch_status" != "null" ]; then
                 _dep_status="$_arch_status"
                 break
