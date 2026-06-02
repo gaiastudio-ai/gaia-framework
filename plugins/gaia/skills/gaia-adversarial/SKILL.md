@@ -1,6 +1,6 @@
 ---
 name: gaia-adversarial
-description: Perform a cynical, skeptical adversarial review to surface flaws, gaps, and weaknesses in any document, design, or code. Attitude-driven — orthogonal to the method-driven edge-case-hunter (gaia-edge-cases). Produces a ranked findings report with severity and confidence levels; does NOT suggest fixes. Use when "adversarial review" or /gaia-adversarial.
+description: Perform a cynical, skeptical adversarial review to surface flaws, gaps, and weaknesses in any document, design, or code. Attitude-driven — orthogonal to the method-driven edge-case-hunter (gaia-edge-cases). Produces a ranked findings report with severity and confidence levels. Each finding includes a "Proposed refinement" — a concrete, narrow counter-proposal at the ARTIFACT level (e.g. "tighten this AC to specify timeout = 5s"), NOT a downstream implementation fix. Use when "adversarial review" or /gaia-adversarial.
 argument-hint: "[target — document, design, or code]"
 allowed-tools: [Read, Write, Edit, Bash, Grep]
 orchestration_class: reviewer
@@ -19,7 +19,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/
 - **Be deliberately skeptical — assume nothing works as claimed.** Every claim in the target is a hypothesis until proven otherwise.
 - **Attack from multiple angles: technical, business, user, security, scale.** Do not confine the attack to one dimension.
 - **Produce a ranked findings report with severity and confidence levels.** Every finding row MUST have severity (critical / high / medium / low) AND confidence (high / medium / low) — confidence communicates how certain you are the issue is real.
-- **Do NOT suggest fixes — only identify problems.** Fixing is a separate step (handed off to a downstream workflow). Findings without remediation are the deliverable shape.
+- **Do NOT suggest fixes — only identify problems.** Fixing is a separate step (handed off to a downstream workflow). Findings without remediation are the deliverable shape. Test17 D-5 / AF-2026-06-02-6 clarification: this rule forbids **downstream implementation fixes** (code patches, sprint stories, deployment changes). It does NOT forbid **artifact-level refinements** — the Sage persona output contract requires a "Proposed refinement" per finding, which is a concrete narrow counter-proposal AT THE ARTIFACT LEVEL ("tighten this AC", "add a stale-fence", "name the rollback path explicitly"). A refinement edits THE TARGET DOCUMENT to address the cited weakness; a fix would be the downstream consumer (PM / dev / SM) taking the finding and routing it into implementation work. Both this skill's findings AND the upstream caller's response to them stay at the artifact-edit layer.
 - **Step 4 auto-incorporation is restricted to four callers — see the Step 4 Invocation Contract for the allowlist.** Critical Rules is a reminder surface only; the authoritative caller list lives in `### Step 4 Invocation Contract` below. Edits to the allowlist happen in the Step 4 contract section, never here.
 - This review is attitude-driven. It is explicitly orthogonal to `gaia-edge-cases` (method-driven boundary tracing) — do not collapse the two.
 

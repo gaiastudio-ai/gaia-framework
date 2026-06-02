@@ -14,7 +14,7 @@
     },
     "category": {
       "type": "string",
-      "description": "Coarse classification used as a primary dedup key. Two entries that share `category` + `evidence.file` + overlapping `evidence.line_range` are presumed duplicates.",
+      "description": "Coarse classification used as a primary dedup key. Two entries that share `category` + `evidence.file` + overlapping `evidence.line_range` are presumed duplicates. `stale-claim` (Test17 D-4 / AF-2026-06-02-6) covers post-baseline assertions in PRD or architecture that the consolidation surfaced but a later /gaia-create-prd or /gaia-ci-setup invocation has closed; the consolidation subagent should re-stat the evidence_file mtime against consolidated-gaps.md before treating a `stale-claim` row as live.",
       "enum": [
         "doc-code-drift",
         "hardcoded-value",
@@ -22,8 +22,19 @@
         "runtime-behavior",
         "security",
         "sbom-completeness",
-        "call-graph"
+        "call-graph",
+        "stale-claim"
       ]
+    },
+    "claim_type": {
+      "type": "string",
+      "description": "Test17 D-1 / AF-2026-06-02-6: explicit marker for positive vs negative claims. Negative claims (e.g. `no __main__`, `no scheduler`) point at a representative line that proves the absence, but the anchor is weak — the dedup engine and the consolidation prose-grader need to know whether the evidence.line_range is the FACT itself (positive) or merely a WITNESS to a missing pattern (negative). Defaults to `positive` when omitted for backward compatibility with pre-AF-2026-06-02-6 scan outputs.",
+      "enum": [
+        "positive",
+        "negative",
+        "contradiction"
+      ],
+      "default": "positive"
     },
     "severity": {
       "type": "string",

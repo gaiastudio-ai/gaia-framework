@@ -177,6 +177,10 @@ while IFS= read -r key; do
   priority="$(_epics_field "$key" "Priority")"; [ -n "$priority" ] || priority="P2"
   size="$(_epics_field "$key" "Size")"; size="${size%% *}"; [ -n "$size" ] || size="M"
   risk="$(_epics_field "$key" "Risk")"; [ -n "$risk" ] || risk="medium"
+  # Test17 F-M03 / AF-2026-06-02-6: normalize risk to lowercase per the
+  # validate-frontmatter enum {high|medium|low}; create-epics emits
+  # Title-case `- **Risk:** Low` upstream.
+  risk="$(printf '%s' "$risk" | tr '[:upper:]' '[:lower:]')"
   # AF-2026-05-31-2 / Test13 F-26: derive `points` from `size` so a
   # downstream `sprint-state.sh inject` doesn't refuse the materialized
   # story with `missing required frontmatter field(s): points`. The
@@ -200,8 +204,16 @@ while IFS= read -r key; do
       *)    points=3 ;;
     esac
   fi
-  fm="$(printf 'key: "%s"\ntitle: "%s"\nepic: "%s"\nstatus: backlog\npriority: "%s"\nsize: "%s"\npoints: %s\nrisk: "%s"\nsprint_id: null\npriority_flag: null\n' \
-    "$key" "$title" "$epic_num" "$priority" "$size" "$points" "$risk")"
+  # Test17 F-M04 / AF-2026-06-02-6: bulk-path frontmatter MUST populate
+  # every required field that validate-frontmatter.sh enforces — date,
+  # author, depends_on/blocks/traces_to (empty arrays, NOT empty strings),
+  # delivered (E88-S2/FR-DPD-2 16-field schema), deferred_implementation —
+  # so the materialized story passes the create-story validator without
+  # hand-elaboration. The single-story generate-frontmatter.sh path already
+  # populates these; this aligns the bulk path with the same contract.
+  _today="$(date -u +%Y-%m-%d)"
+  fm="$(printf 'key: "%s"\ntitle: "%s"\nepic: "%s"\nstatus: backlog\npriority: "%s"\nsize: "%s"\npoints: %s\nrisk: "%s"\nsprint_id: null\npriority_flag: null\ndelivered: false\ndeferred_implementation: false\ndepends_on: []\nblocks: []\ntraces_to: []\ndate: "%s"\nauthor: "gaia-create-story"\n' \
+    "$key" "$title" "$epic_num" "$priority" "$size" "$points" "$risk" "$_today")"
 
   mkdir -p "${story_dir}/reviews"
   printf '%s' "$fm" | bash "$SCAFFOLD" --template "$TEMPLATE" --output "$story_file" --frontmatter - >/dev/null 2>&1 \
@@ -218,5 +230,18 @@ printf '\nsummary: materialized=%d skipped=%d refreshed=%d guarded=%d\n' \
   "$materialized" "$skipped" "$refreshed" "$guarded"
 if [ -n "$MANIFEST" ] && [ -s "$MANIFEST" ]; then
   printf 'elaboration manifest written to %s — fill {CONTENT_PLACEHOLDER} bodies then transition each to ready-for-dev via transition-story-status.sh\n' "$MANIFEST"
+fi
+
+# Test17 L-08 / AF-2026-06-02-6: backfill per-epic story-index.yaml so
+# every materialized epic carries the canonical index even when no
+# transition-story-status.sh call has yet run on the stories. The
+# backfill helper (E105-S1 / AF-2026-06-02-1 / Test16 F-L06) walks
+# epic-* dirs and reconciles missing indexes via
+# `transition-story-status.sh --reconcile-only`. Idempotent: no-op for
+# epics that already have story-index.yaml. Best-effort: failures here
+# do NOT block the materialize summary the caller depends on.
+_backfill_script="$(cd "$(dirname "$0")" && pwd)/backfill-story-index.sh"
+if [ -x "$_backfill_script" ] && [ "$materialized" -gt 0 ]; then
+  bash "$_backfill_script" --implementation-artifacts "${IMPL_ROOT}" >/dev/null 2>&1 || true
 fi
 exit 0

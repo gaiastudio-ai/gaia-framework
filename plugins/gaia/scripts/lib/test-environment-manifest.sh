@@ -369,6 +369,16 @@ if [ "${write_mode}" -eq 1 ]; then
         || true
     fi
   fi
+  # Test17 L-09 / AF-2026-06-02-6: also drop a `.example` companion at the
+  # canonical config home so brownfield-onboarded projects mirror the
+  # init-onboarded layout. `install-test-environment-example.sh` is the
+  # canonical writer; reuse it (copy-if-absent, returns 0 either way) so
+  # we don't drift on the example contents. Best-effort: failure to write
+  # the .example does NOT block the manifest write the caller depends on.
+  _example_installer="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)/install-test-environment-example.sh"
+  if [ -x "${_example_installer}" ]; then
+    bash "${_example_installer}" --target "${target}" >/dev/null 2>&1 || true
+  fi
   exit 0
 fi
 
