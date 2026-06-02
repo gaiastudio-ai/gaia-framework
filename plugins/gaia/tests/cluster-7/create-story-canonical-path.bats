@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # create-story-canonical-path.bats — E79-S2
 #
-# Verifies that gaia-public/plugins/gaia/skills/gaia-create-story/SKILL.md
+# Verifies that gaia-framework/plugins/gaia/skills/gaia-create-story/SKILL.md
 # Step 4 has been updated to:
 #   - delegate epic-slug derivation to scripts/lib/resolve-epic-slug.sh
 #     (no inline awk/sed for epic-slug derivation),

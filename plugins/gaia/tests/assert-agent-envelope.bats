@@ -14,7 +14,7 @@
 #
 # The helper file under test is intentionally not yet present during the Red
 # phase. All six tests should fail until /gaia-dev-story Step 6 Green
-# authors gaia-public/plugins/gaia/scripts/lib/assert-agent-envelope.sh.
+# authors gaia-framework/plugins/gaia/scripts/lib/assert-agent-envelope.sh.
 
 load 'test_helper.bash'
 

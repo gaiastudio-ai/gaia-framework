@@ -2,7 +2,7 @@
 # validate-frontmatter.bats — E63-S5 / Work Item 6.5 (folds 6.10)
 #
 # Verifies the deterministic contract of
-# gaia-public/plugins/gaia/skills/gaia-create-story/scripts/validate-frontmatter.sh.
+# gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/validate-frontmatter.sh.
 # This script consumes the schema produced by E63-S3 (generate-frontmatter.sh)
 # and folds in E63-S4 (validate-canonical-filename.sh) per the source spec
 # §6.10 integration note.
@@ -249,7 +249,7 @@ EOF
 
 @test "live-tree: E63-S3 story file is well-formed (exit 0, empty stdout)" {
   # Locate the project-root docs/implementation-artifacts/ via the test dir.
-  # tests/cluster-7 -> tests -> plugins/gaia -> plugins -> gaia-public -> project-root
+  # tests/cluster-7 -> tests -> plugins/gaia -> plugins -> gaia-framework -> project-root
   local project_root
   project_root="$(cd "${BATS_TEST_DIRNAME}/../../../../.." && pwd)"
   local story="$project_root/docs/implementation-artifacts/E63-S3-generate-frontmatter-sh-bats-work-item-6-1.md"

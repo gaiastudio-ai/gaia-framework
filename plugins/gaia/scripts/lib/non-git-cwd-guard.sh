@@ -54,7 +54,7 @@ non_git_cwd_skip() {
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return 0
   fi
-  printf '%s: skipped (non-git CWD) — git ops require an in-tree repo (gaia-public/, gaia-enterprise/, Gaia-framework/). See ADR-070/ADR-072 non-git workspace subsection.\n' \
+  printf '%s: skipped (non-git CWD) — git ops require an in-tree repo (gaia-framework/, gaia-enterprise/, Gaia-framework/). See ADR-070/ADR-072 non-git workspace subsection.\n' \
     "$prefix" >&2
   return 1
 }

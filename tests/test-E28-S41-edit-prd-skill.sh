@@ -10,7 +10,7 @@
 #   AC4: Subagent routing to pm (Derek) — no inline persona content
 #   AC5: Frontmatter linter passes with zero errors
 #
-# Usage: bash gaia-public/tests/test-E28-S41-edit-prd-skill.sh
+# Usage: bash gaia-framework/tests/test-E28-S41-edit-prd-skill.sh
 # Exit 0 when all assertions pass, 1 on any failure.
 
 set -uo pipefail

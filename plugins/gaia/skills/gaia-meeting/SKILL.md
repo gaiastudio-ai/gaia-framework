@@ -183,7 +183,7 @@ without halting the meeting.
 - **ADR-045 family** — sequential-fork subagent pattern. Turns are sequential.
   Never parallel.
 - **FR-329** — the `/gaia-meeting` slash command resolves via this SKILL.md
-  only. **Never** repopulate `gaia-public/plugins/gaia/commands/`.
+  only. **Never** repopulate `gaia-framework/plugins/gaia/commands/`.
 
 ## Seven-Phase Lifecycle
 
@@ -589,7 +589,7 @@ The RESEARCH phase implements the four-step contract from ADR-084:
    invited agent reads the project files relevant to the charter — typically
    architecture shards under `.gaia/artifacts/planning-artifacts/architecture/`, ADRs in
    `12-12-adr-detail-records.md`, SKILL.md files under
-   `gaia-public/plugins/gaia/skills/`, and other planning artifacts. Every
+   `gaia-framework/plugins/gaia/skills/`, and other planning artifacts. Every
    path the agent reads MUST appear under `Sources consulted:` in the prelude.
 3. **Web search (FR-MTG-4 step 3, FR-MTG-6, T-MTG-1).** When `--no-web` is NOT
    set, the research fork MAY invoke `WebSearch` and `WebFetch`. Each web

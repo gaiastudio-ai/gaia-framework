@@ -185,7 +185,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 
 @test "AC5: zero new architecture WARNINGs beyond pre-existing 2/12/13/16/10" {
-  local script="$PROJECT_ROOT/gaia-public/plugins/gaia/scripts/check-monolith-shard-sync.sh"
+  local script="$PROJECT_ROOT/gaia-framework/plugins/gaia/scripts/check-monolith-shard-sync.sh"
   [ -x "$script" ] || skip "check-monolith-shard-sync.sh not present"
   cd "$PROJECT_ROOT"
   run "$script"
@@ -208,7 +208,7 @@ teardown() { common_teardown; }
 }
 
 @test "AC5: zero NEW WARNINGs naming epics-and-stories.md" {
-  local script="$PROJECT_ROOT/gaia-public/plugins/gaia/scripts/check-monolith-shard-sync.sh"
+  local script="$PROJECT_ROOT/gaia-framework/plugins/gaia/scripts/check-monolith-shard-sync.sh"
   [ -x "$script" ] || skip "check-monolith-shard-sync.sh not present"
   cd "$PROJECT_ROOT"
   run "$script"

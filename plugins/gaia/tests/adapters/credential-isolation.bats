@@ -2,7 +2,7 @@
 # credential-isolation.bats — E100-S9 / SR-76 + NFR-081
 #
 # Three-dimension audit of publish-* adapters under
-# gaia-public/plugins/gaia/scripts/adapters/publish-*/:
+# gaia-framework/plugins/gaia/scripts/adapters/publish-*/:
 #   Dim 1: each manifest declares non-empty credential_env_vars (TC-NFR-081-1)
 #   Dim 2: grep hardcoded-credential patterns in source (TC-PUB-11 + TC-NFR-081-2)
 #   Dim 3: runtime no-implicit-credential-reads (TC-NFR-081-3)

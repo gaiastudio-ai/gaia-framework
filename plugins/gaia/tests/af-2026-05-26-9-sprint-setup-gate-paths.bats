@@ -19,7 +19,7 @@ load 'test_helper.bash'
 setup() {
   common_setup
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
-  PLUGIN="$REPO_ROOT/gaia-public/plugins/gaia"
+  PLUGIN="$REPO_ROOT/gaia-framework/plugins/gaia"
   SP_SETUP="$PLUGIN/skills/gaia-sprint-plan/scripts/setup.sh"
   DS_SETUP="$PLUGIN/skills/gaia-dev-story/scripts/setup.sh"
   RC_SETUP="$PLUGIN/skills/gaia-readiness-check/scripts/setup.sh"

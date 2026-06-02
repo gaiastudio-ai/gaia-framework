@@ -33,7 +33,7 @@
 #   AC-EC10 — atomic rename prevents truncated reads
 #
 # Test framework: bats-core 1.x
-# Run: bats gaia-public/plugins/gaia/tests/test-test-automate-phase-1.bats
+# Run: bats gaia-framework/plugins/gaia/tests/test-test-automate-phase-1.bats
 
 load 'test_helper.bash'
 

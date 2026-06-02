@@ -2,7 +2,7 @@
 # vcp-adv-02-adversarial-step4-contract.bats — E46-S8 / FR-356.
 #
 # Script-verifiable contract checks on
-# gaia-public/plugins/gaia/skills/gaia-adversarial/SKILL.md guaranteeing
+# gaia-framework/plugins/gaia/skills/gaia-adversarial/SKILL.md guaranteeing
 # that the Step 4 invocation contract documents the four auto-incorporation
 # callers in a single contiguous bulleted list, plus the standalone-default
 # rule, the opt-in signal rule, and a Critical Rules pointer.

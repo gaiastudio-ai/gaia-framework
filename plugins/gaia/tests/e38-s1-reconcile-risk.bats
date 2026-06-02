@@ -8,10 +8,10 @@
 # the "reconcile" subcommand (see Task 1 in E38-S1 story file).
 #
 # Refs: FR-SPQG-4, FR-SPQG-5, NFR-SPQG-1, NFR-SPQG-2, ADR-055 §10.29.1
-# Script (canonical):  gaia-public/plugins/gaia/scripts/sprint-state.sh
-# Script (secondary):  gaia-public/plugins/gaia/skills/gaia-dev-story/scripts/sprint-state.sh
-# Dashboard:           gaia-public/plugins/gaia/scripts/sprint-status-dashboard.sh
-# Catalog (new file):  gaia-public/plugins/gaia/skills/gaia-sprint-status/mitigation-catalog.yaml
+# Script (canonical):  gaia-framework/plugins/gaia/scripts/sprint-state.sh
+# Script (secondary):  gaia-framework/plugins/gaia/skills/gaia-dev-story/scripts/sprint-state.sh
+# Dashboard:           gaia-framework/plugins/gaia/scripts/sprint-status-dashboard.sh
+# Catalog (new file):  gaia-framework/plugins/gaia/skills/gaia-sprint-status/mitigation-catalog.yaml
 #
 # Exit-code contract (ADR-055 §10.29.1):
 #   0 — no drift detected, or drift was corrected

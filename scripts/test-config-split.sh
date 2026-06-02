@@ -12,7 +12,7 @@
 # Fixtures:
 #   A — root-project         (project_path: ".")
 #   B — subdir-project       (project_path: "my-app")
-#   C — live repo            (project_path: "gaia-public", current GAIA setup)
+#   C — live repo            (project_path: "gaia-framework", current GAIA setup)
 #   D — no-shared-config     (global.yaml only, no project-config.yaml)
 #   overlap — overlap-precedence (local overrides shared per ADR-044 §10.26.3)
 #
@@ -28,7 +28,7 @@ export LC_ALL
 # ---------- Locate project root & resolver ----------
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_PATH="$(cd "${SCRIPT_DIR}/.." && pwd)"          # gaia-public/
+PROJECT_PATH="$(cd "${SCRIPT_DIR}/.." && pwd)"          # gaia-framework/
 RESOLVER="${PROJECT_PATH}/plugins/gaia/scripts/resolve-config.sh"
 FIXTURES_DIR="${PROJECT_PATH}/tests/fixtures/config-split"
 REPORT="${PROJECT_PATH}/tests/fixtures/config-split/_report/config-split-test-report.md"
@@ -231,7 +231,7 @@ run_fixture_matrix "B (subdir-project, project_path=\"my-app\")" \
   "$B_PROJECT_ROOT" "$B_PROJECT_PATH" "$B_MEMORY_PATH" "$B_CHECKPOINT_PATH" \
   "$B_INSTALLED_PATH" "$B_FRAMEWORK_VERSION" "$B_DATE"
 
-run_fixture_matrix "C (live repo, project_path=\"gaia-public\")" \
+run_fixture_matrix "C (live repo, project_path=\"gaia-framework\")" \
   "$FIX_C_SHARED" "$FIX_C_LOCAL" \
   "$C_PROJECT_ROOT" "$C_PROJECT_PATH" "$C_MEMORY_PATH" "$C_CHECKPOINT_PATH" \
   "$C_INSTALLED_PATH" "$C_FRAMEWORK_VERSION" "$C_DATE"
@@ -323,7 +323,7 @@ STATUS="PASS"
   echo "|----|-----------|--------------|--------------|"
   echo "| A  | root-project (project_path=\".\") | \`tests/fixtures/config-split/root-project/\` | \`/fixture/root-project\` |"
   echo "| B  | subdir-project (project_path=\"my-app\") | \`tests/fixtures/config-split/subdir-project/\` | \`/fixture/subdir-project/my-app\` |"
-  echo "| C  | live repo (project_path=\"gaia-public\") | \`plugins/gaia/config/project-config.yaml\` | \`$C_PROJECT_PATH\` |"
+  echo "| C  | live repo (project_path=\"gaia-framework\") | \`plugins/gaia/config/project-config.yaml\` | \`$C_PROJECT_PATH\` |"
   echo "| D  | no-shared-config (backward-compat fallback) | \`tests/fixtures/config-split/no-shared-config/\` | \`/fixture/no-shared-config\` |"
   echo "| Overlap | overlap-precedence (local overrides shared) | \`tests/fixtures/config-split/overlap-precedence/\` | \`/fixture/local-wins\` |"
   echo

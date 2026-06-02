@@ -10,10 +10,10 @@
 # Generated: 2026-04-22 by Sable (Master Test Architect)
 #
 # All tests FAIL in the red phase because Phase 2 does not yet exist
-# in gaia-public/plugins/gaia/skills/gaia-test-automate/SKILL.md.
+# in gaia-framework/plugins/gaia/skills/gaia-test-automate/SKILL.md.
 #
 # Test framework: bats-core (https://github.com/bats-core/bats-core)
-# Run: bats gaia-public/plugins/gaia/tests/test-automate-phase2.bats
+# Run: bats gaia-framework/plugins/gaia/tests/test-automate-phase2.bats
 #
 # AC coverage:
 #   AC1  TC-TAF-7  FR-TAF-4  — triple-source verdict agree
@@ -177,7 +177,7 @@ STORY
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local allowlist_dir="$TEST_TMP/gaia-public/plugins/gaia/tests"
+  local allowlist_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests"
 
   mkdir -p "$allowlist_dir"
   make_plan_file "$plan_path" "$story_key" "$plan_id" "PASSED" "$plan_id" "[]" "[]"
@@ -211,7 +211,7 @@ STORY
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local allowlist_dir="$TEST_TMP/gaia-public/plugins/gaia/tests"
+  local allowlist_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests"
 
   mkdir -p "$allowlist_dir"
   make_plan_file "$plan_path" "$story_key" "$plan_id_disk" "PASSED" "$plan_id_disk" "[]" "[]"
@@ -244,7 +244,7 @@ STORY
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local allowlist_dir="$TEST_TMP/gaia-public/plugins/gaia/tests"
+  local allowlist_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests"
 
   mkdir -p "$allowlist_dir"
   # plan_id matches ledger, but verdict_plan_id was tampered to a different value.
@@ -276,7 +276,7 @@ STORY
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local allowlist_dir="$TEST_TMP/gaia-public/plugins/gaia/tests"
+  local allowlist_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests"
   local source_file="$TEST_TMP/src/target.sh"
 
   mkdir -p "$allowlist_dir" "$(dirname "$source_file")"
@@ -358,7 +358,7 @@ STORY
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local allowlist_dir="$TEST_TMP/gaia-public/plugins/gaia/tests/fixtures/test-automate-phase2/happy-path"
+  local allowlist_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests/fixtures/test-automate-phase2/happy-path"
   local source_file="$TEST_TMP/src/widget.sh"
   local test_file="$allowlist_dir/widget.test.bats"
   local evidence_path="$TEST_TMP/docs/test-artifacts/test-results/${story_key}-execution.json"
@@ -404,7 +404,7 @@ STORY
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local allowlist_dir="$TEST_TMP/gaia-public/plugins/gaia/tests/fixtures/test-automate-phase2/main-ctx"
+  local allowlist_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests/fixtures/test-automate-phase2/main-ctx"
   local source_file="$TEST_TMP/src/ctx-widget.sh"
   local test_file="$allowlist_dir/ctx-widget.test.bats"
 
@@ -446,7 +446,7 @@ STORY
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local allowlist_dir="$TEST_TMP/gaia-public/plugins/gaia/tests/fixtures/test-automate-phase2/ac8"
+  local allowlist_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests/fixtures/test-automate-phase2/ac8"
   local source_file="$TEST_TMP/src/ac8-widget.sh"
   local test_file="$allowlist_dir/ac8-widget.test.bats"
   local story_artifact="$TEST_TMP/docs/implementation-artifacts/${story_key}-fake.md"
@@ -495,7 +495,7 @@ STORY
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local fixture_dir="$TEST_TMP/gaia-public/plugins/gaia/tests/fixtures/test-automate-phase2/v1-parity"
+  local fixture_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests/fixtures/test-automate-phase2/v1-parity"
   local source_file="$fixture_dir/legacy-feature.sh"
   local test_file="$fixture_dir/legacy-feature.test.bats"
   local evidence_path="$TEST_TMP/docs/test-artifacts/test-results/${story_key}-execution.json"
@@ -543,7 +543,7 @@ SHELL
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local allowlist_dir="$TEST_TMP/gaia-public/plugins/gaia/tests/fixtures/test-automate-phase2/ec1"
+  local allowlist_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests/fixtures/test-automate-phase2/ec1"
   local test_file="$allowlist_dir/ec1.test.bats"
 
   mkdir -p "$allowlist_dir"
@@ -578,7 +578,7 @@ SHELL
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local allowlist_dir="$TEST_TMP/gaia-public/plugins/gaia/tests/fixtures/test-automate-phase2/ec2"
+  local allowlist_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests/fixtures/test-automate-phase2/ec2"
   local evidence_path="$TEST_TMP/docs/test-artifacts/test-results/${story_key}-execution.json"
 
   mkdir -p "$allowlist_dir" "$(dirname "$evidence_path")"
@@ -689,7 +689,7 @@ BROKEN
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local allowlist_dir="$TEST_TMP/gaia-public/plugins/gaia/tests"
+  local allowlist_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests"
 
   mkdir -p "$allowlist_dir"
 
@@ -779,7 +779,7 @@ BROKEN
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local allowlist_dir="$TEST_TMP/gaia-public/plugins/gaia/tests/fixtures/test-automate-phase2/ec8"
+  local allowlist_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests/fixtures/test-automate-phase2/ec8"
   local source_file="$TEST_TMP/src/ec8-widget.sh"
   local test_file="$allowlist_dir/ec8-widget.test.bats"
   local evidence_path="$TEST_TMP/docs/test-artifacts/test-results/${story_key}-execution.json"
@@ -863,7 +863,7 @@ BROKEN
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
   local test_env_path="$TEST_TMP/test-environment.yaml"
-  local allowlist_dir="$TEST_TMP/gaia-public/plugins/gaia/tests/fixtures/test-automate-phase2/ec10"
+  local allowlist_dir="$TEST_TMP/gaia-framework/plugins/gaia/tests/fixtures/test-automate-phase2/ec10"
   local test_file="$allowlist_dir/existing.test.bats"
 
   mkdir -p "$allowlist_dir"

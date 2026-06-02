@@ -28,12 +28,12 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC1 — promotion chain configured at an ancestor: PRESENT, exit 0
 # Reproduces the sprint-37 layout: project-root/config/project-config.yaml
-# with a sub-tree (gaia-public/) that has no config/ of its own. The guard
+# with a sub-tree (gaia-framework/) that has no config/ of its own. The guard
 # MUST walk upward from $PWD to find the team-shared config.
 # ---------------------------------------------------------------------------
 
 @test "promotion-chain-detect: PRESENT detected via upward walk from sub-tree" {
-  mkdir -p "$TEST_TMP/config" "$TEST_TMP/sub/gaia-public"
+  mkdir -p "$TEST_TMP/config" "$TEST_TMP/sub/gaia-framework"
   cat > "$TEST_TMP/config/project-config.yaml" <<'EOF'
 ci_cd:
   promotion_chain:
@@ -42,11 +42,11 @@ ci_cd:
       branch: staging
       ci_provider: github_actions
 EOF
-  # A sub-tree with no config/ of its own — this is the gaia-public/ shape.
-  ( cd "$TEST_TMP/sub/gaia-public" && git init -q . 2>/dev/null || true )
+  # A sub-tree with no config/ of its own — this is the gaia-framework/ shape.
+  ( cd "$TEST_TMP/sub/gaia-framework" && git init -q . 2>/dev/null || true )
   # Invoke from the sub-tree; PROJECT_CONFIG is intentionally unset so the
   # discovery ladder fires.
-  cd "$TEST_TMP/sub/gaia-public"
+  cd "$TEST_TMP/sub/gaia-framework"
   unset PROJECT_CONFIG
   run "$GUARD"
   [ "$status" -eq 0 ]
@@ -71,16 +71,16 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# AC4 — sprint-37 regression case: layout mirrors GAIA-Framework/gaia-public/
+# AC4 — sprint-37 regression case: layout mirrors GAIA-Framework/gaia-framework/
 # ---------------------------------------------------------------------------
 
-@test "promotion-chain-detect: sprint-37 regression — gaia-public CWD with parent config" {
+@test "promotion-chain-detect: sprint-37 regression — gaia-framework CWD with parent config" {
   # Mirror the real GAIA-Framework layout:
   #   $TEST_TMP/                       <- "GAIA-Framework"
   #     config/project-config.yaml     <- team-shared with promotion_chain
-  #     gaia-public/                   <- where /gaia-dev-story runs from
+  #     gaia-framework/                   <- where /gaia-dev-story runs from
   #       plugins/gaia/...
-  mkdir -p "$TEST_TMP/config" "$TEST_TMP/gaia-public/plugins/gaia"
+  mkdir -p "$TEST_TMP/config" "$TEST_TMP/gaia-framework/plugins/gaia"
   cat > "$TEST_TMP/config/project-config.yaml" <<'EOF'
 ci_cd:
   promotion_chain:
@@ -89,8 +89,8 @@ ci_cd:
     - id: main
       branch: main
 EOF
-  ( cd "$TEST_TMP/gaia-public" && git init -q . 2>/dev/null || true )
-  cd "$TEST_TMP/gaia-public"
+  ( cd "$TEST_TMP/gaia-framework" && git init -q . 2>/dev/null || true )
+  cd "$TEST_TMP/gaia-framework"
   unset PROJECT_CONFIG
   run --separate-stderr "$GUARD"
   [ "$status" -eq 0 ]

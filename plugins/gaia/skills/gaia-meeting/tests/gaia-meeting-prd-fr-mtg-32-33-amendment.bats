@@ -9,8 +9,8 @@
 #
 # This bats file exercises the verification script
 # `verify-fr-mtg-32-33-amendment.sh` against bundled fixtures so the
-# gate is hermetic and runnable from gaia-public/ alone (project-root
-# `docs/` lives outside the gaia-public git tree).
+# gate is hermetic and runnable from gaia-framework/ alone (project-root
+# `docs/` lives outside the gaia-framework git tree).
 #
 # Test cases (AC mapping per E76-S16 §Test Scenarios):
 #   TC-MTG-AMD-1 — fixture with both amendment markers + 5-option mapping +
@@ -34,10 +34,10 @@ setup() {
 
   export LC_ALL=C
 
-  # Project-root PRD shard (outside gaia-public/) — used by the
+  # Project-root PRD shard (outside gaia-framework/) — used by the
   # canonical-shard test only when the running tree is the live
   # GAIA-Framework workspace. Skipped otherwise so CI runs against
-  # gaia-public/ in isolation stay green.
+  # gaia-framework/ in isolation stay green.
   PROJECT_ROOT_DOCS="$(cd "$REPO_ROOT/.." 2>/dev/null && pwd)"
   CANONICAL_SHARD="$PROJECT_ROOT_DOCS/docs/planning-artifacts/prd/04-functional-requirements/40-4-39-gaia-meeting-peer-to-peer-multi-agent-discussion-skill-af-2026-05-05-1.md"
   PRD_MONOLITH="$PROJECT_ROOT_DOCS/docs/planning-artifacts/prd/prd.md"
@@ -110,7 +110,7 @@ setup() {
 
 @test "TC-MTG-AMD-8: project-root PRD shard contains all amendment markers" {
   if [ ! -f "$CANONICAL_SHARD" ]; then
-    skip "project-root PRD shard not present (gaia-public/-only checkout)"
+    skip "project-root PRD shard not present (gaia-framework/-only checkout)"
   fi
   run "$SCRIPT" "$CANONICAL_SHARD"
   [ "$status" -eq 0 ]
@@ -120,7 +120,7 @@ setup() {
 
 @test "TC-MTG-AMD-9: project-root PRD monolith contains zero FR-MTG-32/33 references" {
   if [ ! -f "$PRD_MONOLITH" ]; then
-    skip "project-root PRD monolith not present (gaia-public/-only checkout)"
+    skip "project-root PRD monolith not present (gaia-framework/-only checkout)"
   fi
   # AC #5 — PRD is sharded-only; monolith MUST NOT carry FR-MTG-32/33.
   run grep -cE "FR-MTG-32|FR-MTG-33|yield-gate|YIELD-STOP" "$PRD_MONOLITH"

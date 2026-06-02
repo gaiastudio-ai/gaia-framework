@@ -11,7 +11,7 @@
 #   - EC1: Missing tech-debt-dashboard.md
 #   - EC5: No skill match
 #   - EC7: Missing .customize.yaml seed on first approval
-#   - EC8: Allowlist blocks gaia-public/plugins/gaia/skills/ path
+#   - EC8: Allowlist blocks gaia-framework/plugins/gaia/skills/ path
 #   - EC11: Oversized diff rejection
 #
 # NFR-052: every new public shell function has a direct unit test.
@@ -83,10 +83,10 @@ _load_proposal_helpers() {
   allowlist_match "$root" "$root/custom/skills/gaia-retro.md"
 }
 
-@test "allowlist_match still rejects gaia-public/plugins/gaia/skills/ path (EC8)" {
+@test "allowlist_match still rejects gaia-framework/plugins/gaia/skills/ path (EC8)" {
   _load_writer_helpers
   local root="/tmp/gaia-al-root"
-  run allowlist_match "$root" "$root/gaia-public/plugins/gaia/skills/foo.md"
+  run allowlist_match "$root" "$root/gaia-framework/plugins/gaia/skills/foo.md"
   [ "$status" -ne 0 ]
 }
 
@@ -295,10 +295,10 @@ DASH
   # Post-write: custom/skills/gaia-retro.md must exist
   [ -f "$TEST_TMP/custom/skills/gaia-retro.md" ]
 
-  # Snapshot diff: no writes under gaia-public/plugins/gaia/skills/
-  mkdir -p "$TEST_TMP/gaia-public/plugins/gaia/skills"
+  # Snapshot diff: no writes under gaia-framework/plugins/gaia/skills/
+  mkdir -p "$TEST_TMP/gaia-framework/plugins/gaia/skills"
   local post_plugin_files
-  post_plugin_files="$(find "$TEST_TMP/gaia-public/plugins/gaia/skills" -type f 2>/dev/null | wc -l)"
+  post_plugin_files="$(find "$TEST_TMP/gaia-framework/plugins/gaia/skills" -type f 2>/dev/null | wc -l)"
   [ "$post_plugin_files" -eq 0 ]
 }
 
@@ -376,18 +376,18 @@ DASH
 # EC8: Proposal targeting plugins/ path — allowlist blocks it
 # ===========================================================================
 
-@test "retro-sidecar-write.sh rejects write to gaia-public/plugins/gaia/skills/ (EC8)" {
-  mkdir -p "$TEST_TMP/gaia-public/plugins/gaia/skills"
+@test "retro-sidecar-write.sh rejects write to gaia-framework/plugins/gaia/skills/ (EC8)" {
+  mkdir -p "$TEST_TMP/gaia-framework/plugins/gaia/skills"
   run "$WRITER" \
     --root "$TEST_TMP" \
     --sprint-id "sprint-26" \
-    --target "$TEST_TMP/gaia-public/plugins/gaia/skills/foo.md" \
+    --target "$TEST_TMP/gaia-framework/plugins/gaia/skills/foo.md" \
     --payload "malicious content"
   [ "$status" -ne 0 ]
   [[ "$output" == *"unauthorized"* ]]
 
   # Verify zero bytes written
-  [ ! -f "$TEST_TMP/gaia-public/plugins/gaia/skills/foo.md" ]
+  [ ! -f "$TEST_TMP/gaia-framework/plugins/gaia/skills/foo.md" ]
 }
 
 # ===========================================================================
@@ -396,11 +396,11 @@ DASH
 
 @test "TC-RIM-9 filesystem snapshot diff: zero writes under plugins/gaia/skills/ (EC8)" {
   # Pre-capture: create the plugins dir with a known marker file
-  mkdir -p "$TEST_TMP/gaia-public/plugins/gaia/skills"
-  echo "original" > "$TEST_TMP/gaia-public/plugins/gaia/skills/existing-skill.md"
+  mkdir -p "$TEST_TMP/gaia-framework/plugins/gaia/skills"
+  echo "original" > "$TEST_TMP/gaia-framework/plugins/gaia/skills/existing-skill.md"
 
   local pre_checksum
-  pre_checksum="$(find "$TEST_TMP/gaia-public/plugins/gaia/skills" -type f -exec shasum -a 256 {} \; | sort)"
+  pre_checksum="$(find "$TEST_TMP/gaia-framework/plugins/gaia/skills" -type f -exec shasum -a 256 {} \; | sort)"
 
   # Run a valid approved proposal write (to custom/skills/)
   mkdir -p "$TEST_TMP/custom/skills"
@@ -416,7 +416,7 @@ DASH
 
   # Post-capture
   local post_checksum
-  post_checksum="$(find "$TEST_TMP/gaia-public/plugins/gaia/skills" -type f -exec shasum -a 256 {} \; | sort)"
+  post_checksum="$(find "$TEST_TMP/gaia-framework/plugins/gaia/skills" -type f -exec shasum -a 256 {} \; | sort)"
 
   # Checksums must be identical — zero writes to plugins/
   [ "$pre_checksum" = "$post_checksum" ]

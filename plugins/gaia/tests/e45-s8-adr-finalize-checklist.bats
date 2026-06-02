@@ -9,10 +9,10 @@
 # tests/fixtures/e45-s8-adr-068/. The canonical (living) ADR resides in
 # the user's project tree at
 # docs/planning-artifacts/adr-068-finalize-checklist-canonical.md
-# (which is outside this marketplace repo per gaia-public/docs/INDEX.md;
+# (which is outside this marketplace repo per gaia-framework/docs/INDEX.md;
 # project planning artifacts are not vendored here). When the project-tree
 # ADR is available — i.e., when this test is run from inside a checked-out
-# GAIA-Framework workspace alongside the gaia-public repo — the
+# GAIA-Framework workspace alongside the gaia-framework repo — the
 # corresponding @tests also assert against the live file.
 #
 # E45-S8 Acceptance Criteria covered:
@@ -40,8 +40,8 @@ teardown() { common_teardown; }
 ADR_FIXTURE="$BATS_TEST_DIRNAME/fixtures/e45-s8-adr-068/adr-068-finalize-checklist-canonical.md"
 
 # Workspace-only paths — present when the test is run inside a GAIA-Framework
-# workspace alongside the gaia-public repo. Resolved by walking up from
-# tests/ -> plugins/gaia/ -> plugins/ -> gaia-public/ -> GAIA-Framework/.
+# workspace alongside the gaia-framework repo. Resolved by walking up from
+# tests/ -> plugins/gaia/ -> plugins/ -> gaia-framework/ -> GAIA-Framework/.
 WORKSPACE_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
 WORKSPACE_ADR="$WORKSPACE_ROOT/docs/planning-artifacts/adr-068-finalize-checklist-canonical.md"
 WORKSPACE_ARCH="$WORKSPACE_ROOT/docs/planning-artifacts/architecture.md"
@@ -182,7 +182,7 @@ _have_workspace_global_yaml() {
 }
 
 # ---------------------------------------------------------------------------
-# AC5 — Workspace-only @tests. Skip cleanly when the gaia-public repo is
+# AC5 — Workspace-only @tests. Skip cleanly when the gaia-framework repo is
 # not running inside a full GAIA-Framework workspace (e.g., on CI for the
 # marketplace publish, where only the plugin tree is checked out).
 # ---------------------------------------------------------------------------

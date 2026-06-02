@@ -84,18 +84,18 @@ run 1 "double-dot rejected" -- "$PCR" --slug ".." --cache-root "$CACHE"
 run 1 "space rejected" -- "$PCR" --slug "has space" --cache-root "$CACHE"
 
 # Absent entry → clear is a no-op, exit 0.
-run 0 "clear on absent entry exits 0" -- "$PCR" --slug "gaiastudio-ai-gaia-public" --cache-root "$CACHE" --quiet
+run 0 "clear on absent entry exits 0" -- "$PCR" --slug "gaiastudio-ai-gaia-framework" --cache-root "$CACHE" --quiet
 
 # Absent entry → detect exits 0.
-run 0 "detect on absent entry exits 0" -- "$PCR" --detect --slug "gaiastudio-ai-gaia-public" --cache-root "$CACHE" --quiet
+run 0 "detect on absent entry exits 0" -- "$PCR" --detect --slug "gaiastudio-ai-gaia-framework" --cache-root "$CACHE" --quiet
 
 # Polluted entry: empty dir.
-make_empty "gaiastudio-ai-gaia-public"
-run 2 "detect empty dir → polluted (exit 2)" -- "$PCR" --detect --slug "gaiastudio-ai-gaia-public" --cache-root "$CACHE" --quiet
+make_empty "gaiastudio-ai-gaia-framework"
+run 2 "detect empty dir → polluted (exit 2)" -- "$PCR" --detect --slug "gaiastudio-ai-gaia-framework" --cache-root "$CACHE" --quiet
 
 # Clear removes the polluted empty dir.
-run 0 "clear polluted empty dir exits 0" -- "$PCR" --slug "gaiastudio-ai-gaia-public" --cache-root "$CACHE" --quiet
-[ ! -e "$CACHE/gaiastudio-ai-gaia-public" ] && ok "empty dir removed" || bad "empty dir removed" "still present"
+run 0 "clear polluted empty dir exits 0" -- "$PCR" --slug "gaiastudio-ai-gaia-framework" --cache-root "$CACHE" --quiet
+[ ! -e "$CACHE/gaiastudio-ai-gaia-framework" ] && ok "empty dir removed" || bad "empty dir removed" "still present"
 
 # Polluted entry: non-git files.
 make_polluted "gaiastudio-ai-gaia-enterprise"
@@ -110,30 +110,30 @@ run 0 "clear polluted non-git dir" -- "$PCR" --slug "gaiastudio-ai-gaia-enterpri
 [ ! -e "$CACHE/gaiastudio-ai-gaia-enterprise" ] && ok "non-git dir removed" || bad "non-git dir removed" "still present"
 
 # Healthy entry: detect exits 0, clear refuses without --force.
-make_healthy "gaiastudio-ai-gaia-public"
-run 0 "detect healthy exits 0" -- "$PCR" --detect --slug "gaiastudio-ai-gaia-public" --cache-root "$CACHE" --quiet
-run 1 "clear healthy without --force exits 1" -- "$PCR" --slug "gaiastudio-ai-gaia-public" --cache-root "$CACHE" --quiet
-[ -e "$CACHE/gaiastudio-ai-gaia-public/.git/HEAD" ] && ok "healthy entry preserved without --force" || bad "healthy preserved" "removed anyway"
+make_healthy "gaiastudio-ai-gaia-framework"
+run 0 "detect healthy exits 0" -- "$PCR" --detect --slug "gaiastudio-ai-gaia-framework" --cache-root "$CACHE" --quiet
+run 1 "clear healthy without --force exits 1" -- "$PCR" --slug "gaiastudio-ai-gaia-framework" --cache-root "$CACHE" --quiet
+[ -e "$CACHE/gaiastudio-ai-gaia-framework/.git/HEAD" ] && ok "healthy entry preserved without --force" || bad "healthy preserved" "removed anyway"
 
 # With --force, healthy entry is removed.
-run 0 "clear healthy with --force exits 0" -- "$PCR" --slug "gaiastudio-ai-gaia-public" --cache-root "$CACHE" --force --quiet
-[ ! -e "$CACHE/gaiastudio-ai-gaia-public" ] && ok "healthy entry removed with --force" || bad "healthy removed" "still present"
+run 0 "clear healthy with --force exits 0" -- "$PCR" --slug "gaiastudio-ai-gaia-framework" --cache-root "$CACHE" --force --quiet
+[ ! -e "$CACHE/gaiastudio-ai-gaia-framework" ] && ok "healthy entry removed with --force" || bad "healthy removed" "still present"
 
 # --list when cache root absent.
 run 0 "--list on absent cache root exits 0" -- "$PCR" --list --cache-root "$TMP/does-not-exist" --quiet
 
 # --list on populated cache root prints one line per entry.
-make_polluted "gaiastudio-ai-gaia-public"
+make_polluted "gaiastudio-ai-gaia-framework"
 make_healthy  "gaiastudio-ai-other"
 out="$("$PCR" --list --cache-root "$CACHE" 2>/dev/null || true)"
 count="$(printf '%s\n' "$out" | grep -c 'gaiastudio-ai-' || true)"
 [ "$count" -ge 2 ] && ok "--list reports both entries" || bad "--list reports both" "got: $out"
 
 # Cache root under HOME override.
-HOME="$TMP/fakehome" run 0 "HOME override treated as absent" -- "$PCR" --slug "gaiastudio-ai-gaia-public" --quiet
+HOME="$TMP/fakehome" run 0 "HOME override treated as absent" -- "$PCR" --slug "gaiastudio-ai-gaia-framework" --quiet
 
 # Unknown flag rejected.
-run 1 "unknown flag rejected" -- "$PCR" --slug "gaiastudio-ai-gaia-public" --cache-root "$CACHE" --banana
+run 1 "unknown flag rejected" -- "$PCR" --slug "gaiastudio-ai-gaia-framework" --cache-root "$CACHE" --banana
 
 echo
 echo "Summary: $PASS passed, $FAIL failed"

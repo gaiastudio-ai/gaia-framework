@@ -347,7 +347,7 @@ esac
 # ---------- Resolve points via resolve-config.sh sizing_map ----------
 
 resolver=""
-# Prefer co-located shared scripts dir (gaia-public/plugins/gaia/scripts/) by
+# Prefer co-located shared scripts dir (gaia-framework/plugins/gaia/scripts/) by
 # walking up from this script's directory.
 candidate="$(cd "$SCRIPT_DIR/../../../scripts" 2>/dev/null && pwd || true)/resolve-config.sh"
 if [ -x "$candidate" ]; then

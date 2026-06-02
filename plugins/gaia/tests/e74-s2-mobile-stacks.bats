@@ -3,7 +3,7 @@
 #
 # Verifies the four mobile-stack definition files (swift.yaml, kotlin.yaml,
 # react-native.yaml, flutter.yaml) shipped under
-# gaia-public/plugins/gaia/config/stacks/ per ADR-081.
+# gaia-framework/plugins/gaia/config/stacks/ per ADR-081.
 #
 # Acceptance criteria covered:
 #   AC1 — swift.yaml exists with required fields           (TC-RSV2-MOBILE-STACK-01)

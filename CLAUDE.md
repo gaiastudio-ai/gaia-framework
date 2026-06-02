@@ -4,7 +4,7 @@ This project uses the **GAIA** (Generative Agile Intelligence Architecture) fram
 
 ## Environment
 
-- **Project root:** the directory containing `.gaia/` (the GAIA runtime tree) and this `CLAUDE.md`. The project root is wherever the user works from; do not assume it is named `gaia-public/` or anything else specific.
+- **Project root:** the directory containing `.gaia/` (the GAIA runtime tree) and this `CLAUDE.md`. The project root is wherever the user works from; do not assume it is named `gaia-framework/` or anything else specific.
 - **Runtime tree:** `.gaia/` carries five canonical subdirectories (resolved by the GAIA paths helper):
   - `.gaia/config/` — project configuration
   - `.gaia/artifacts/` — planning / implementation / test / creative / research artifacts
@@ -23,7 +23,7 @@ All other framework behavior is documented in the corresponding plugin `SKILL.md
 
 ## Framework documentation — consult first, guess never
 
-The published GAIA Framework documentation is at **<https://gaiastudio-ai.github.io/gaia-public/>**. When you are using the framework and you are not certain how a command, skill, agent, configuration field, or workflow step is supposed to behave — **do not improvise**. Open the docs and read the relevant page before acting.
+The published GAIA Framework documentation is at **<https://gaiastudio-ai.github.io/gaia-framework/>**. When you are using the framework and you are not certain how a command, skill, agent, configuration field, or workflow step is supposed to behave — **do not improvise**. Open the docs and read the relevant page before acting.
 
 Concretely:
 
@@ -34,17 +34,17 @@ Concretely:
 
 ## Bug reports — file upstream, with reproduction evidence
 
-Bugs found in the GAIA Framework itself (a `/gaia-*` command, a skill, a script under the plugin's `scripts/` tree, the schema, an adapter, an agent persona, the statusline runtime, the deterministic-tools docker image, etc.) **MUST be filed as an issue on the upstream repository** at <https://github.com/gaiastudio-ai/gaia-public/issues> — **not** on this project's own issue tracker. This is how a defect found by any user reaches every other user.
+Bugs found in the GAIA Framework itself (a `/gaia-*` command, a skill, a script under the plugin's `scripts/` tree, the schema, an adapter, an agent persona, the statusline runtime, the deterministic-tools docker image, etc.) **MUST be filed as an issue on the upstream repository** at <https://github.com/gaiastudio-ai/gaia-framework/issues> — **not** on this project's own issue tracker. This is how a defect found by any user reaches every other user.
 
 When filing a framework bug, the issue body MUST include:
 
 1. **A clear summary** in the issue title — short, names the affected file or surface, and states the failure mode in one line.
 2. **Reproduction steps** — the exact commands run, the configuration that triggered the bug, and the observed-vs-expected behaviour. If the bug is config-driven, paste the minimal YAML fragment that reproduces. If it is script-driven, paste the exact `/gaia-*` invocation.
-3. **The plugin version**, formatted as `gaia/<version>` (e.g., `gaia/1.182.5`). Find it via `cat ~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/*/.plugin-version 2>/dev/null | sort -V | tail -1` (newest installed cache), or read `.plugin-version` inside the plugin checkout if you have one.
+3. **The plugin version**, formatted as `gaia/<version>` (e.g., `gaia/1.182.5`). Find it via `cat ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/*/.plugin-version 2>/dev/null | sort -V | tail -1` (newest installed cache), or read `.plugin-version` inside the plugin checkout if you have one.
 4. **Supporting evidence** — schema excerpts, script output (stderr + exit code), validator findings, or a minimal `yq` probe that demonstrates the bug class.
 5. **Environment** — OS, shell, Docker version if the bug touches the deterministic-tools image, and the names of any validators / tools present on the host (`ajv`, `python3 + jsonschema`, `jq`, `yq` flavor, etc.).
 
-Use the GitHub standard labels where they fit (`bug`, `documentation`, `enhancement`, `question`) and mention any related issues. Bugs in the GAIA Framework are PR-fixed against the upstream repo; the upstream fix then lands in the next published plugin version that every user installs via `/plugin marketplace add gaiastudio-ai/gaia-public`.
+Use the GitHub standard labels where they fit (`bug`, `documentation`, `enhancement`, `question`) and mention any related issues. Bugs in the GAIA Framework are PR-fixed against the upstream repo; the upstream fix then lands in the next published plugin version that every user installs via `/plugin marketplace add gaiastudio-ai/gaia-framework`.
 
 If you are uncertain whether a behaviour is a bug or by design, **read the docs first** (preceding section) — many "bugs" turn out to be documented constraints. If the behaviour still appears wrong after consulting the docs, file the upstream issue.
 

@@ -17,7 +17,7 @@
 #
 # File reads:
 #   - ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json                     (D5: version, active plugin)
-#     Falls back to $PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json (in-tree dev)
+#     Falls back to $PROJECT_PATH/gaia-framework/plugins/gaia/.claude-plugin/plugin.json (in-tree dev)
 #   - $HOME/.claude/gaia-statusline/cache/latest-release.json             (silent on miss)
 #   - $PROJECT_PATH/.gaia/state/sprint-status.yaml                         (rich theme only, D11 — canonical post-ADR-111)
 #     Falls back to $PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml  (legacy read-compat)
@@ -65,7 +65,7 @@ fi
 
 # ---- Read GAIA version from plugin.json -----------------------------------
 # Three-tier resolution:
-#   Tier 1 (production): scan ~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/
+#   Tier 1 (production): scan ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/
 #     for the highest semver directory and read its plugin.json. This is the
 #     canonical install location — Claude Code itself loads the latest cached
 #     version on /reload-plugins, so the statusline matching it is correct.
@@ -77,7 +77,7 @@ fi
 # envvar Claude Code sets only inside Skill() dispatches; the statusLine
 # command runs outside that context, so the env var is always empty and a
 # plugin.json lookup keyed on it always misses (the original "GAIA dev" bug).
-PLUGIN_CACHE_DIR="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia"
+PLUGIN_CACHE_DIR="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia"
 PLUGIN_JSON=""
 GAIA_VERSION=""
 
@@ -90,8 +90,8 @@ if [ -d "$PLUGIN_CACHE_DIR" ]; then
 fi
 
 # Tier 2: in-tree repo for dev/test runs.
-if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json" ]; then
-  PLUGIN_JSON="$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
+if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/gaia-framework/plugins/gaia/.claude-plugin/plugin.json" ]; then
+  PLUGIN_JSON="$PROJECT_PATH/gaia-framework/plugins/gaia/.claude-plugin/plugin.json"
 fi
 
 # Read the version from whichever tier resolved.
@@ -290,7 +290,7 @@ fi
 # ---- Rich-theme sprint status read (D11, TC-6) -----------------------------
 # Walks UP from PROJECT_PATH looking for .gaia/artifacts/implementation-artifacts/
 # sprint-status.yaml. This handles the common layout where the terminal cwd
-# is inside a subproject (e.g., $PROJECT_ROOT/gaia-public/) but the sprint
+# is inside a subproject (e.g., $PROJECT_ROOT/gaia-framework/) but the sprint
 # artifacts live at the project root. Capped at 5 levels to bound stat-call
 # cost.
 SPRINT_ID=""
@@ -346,7 +346,7 @@ esac
 TP="${TERM_PROGRAM:-}"
 case "$TP" in
   iTerm.app|Kitty|WezTerm)
-    OSC8_OPEN=$'\033]8;;https://github.com/gaiastudio-ai/gaia-public/releases/tag/v'"$GAIA_VERSION"$'\033\\'
+    OSC8_OPEN=$'\033]8;;https://github.com/gaiastudio-ai/gaia-framework/releases/tag/v'"$GAIA_VERSION"$'\033\\'
     OSC8_CLOSE=$'\033]8;;\033\\'
     ;;
   *)

@@ -26,10 +26,10 @@ setup() {
   FIXTURES_DIR="$SKILL_DIR/tests/fixtures"
 
   # The actual assessment-AF-*.md corpus sits at project-root, OUTSIDE the
-  # in-tree gaia-public/ checkout. CI workflows that only check out
-  # gaia-public/ cannot reach it; tests that depend on the live corpus must
+  # in-tree gaia-framework/ checkout. CI workflows that only check out
+  # gaia-framework/ cannot reach it; tests that depend on the live corpus must
   # be guarded by GAIA_PROJECT_ROOT_DOCS, which the developer/CI sets when
-  # the project-root docs/ tree is mounted alongside the gaia-public/
+  # the project-root docs/ tree is mounted alongside the gaia-framework/
   # checkout. Tests that work without it use synthetic fixtures in
   # `tests/fixtures/`.
   PROJECT_DOCS="${GAIA_PROJECT_ROOT_DOCS:-}"
@@ -111,7 +111,7 @@ teardown() {
 
 # AC #1 — TC-VFC-10 — corpus run with allowlist applied
 # Skipped when GAIA_PROJECT_ROOT_DOCS is not set (CI plugin-ci.yml only
-# checks out gaia-public/, not the project-root docs/ corpus).
+# checks out gaia-framework/, not the project-root docs/ corpus).
 @test "TC-VFC-10: corpus run with allowlist reports exactly 3 violations" {
   [ -n "$PROJECT_DOCS" ] || skip "GAIA_PROJECT_ROOT_DOCS not set; skipping live-corpus test"
   [ -d "$PROJECT_DOCS/planning-artifacts" ] || skip "project-root planning-artifacts not present"

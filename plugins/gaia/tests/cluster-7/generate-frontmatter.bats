@@ -2,7 +2,7 @@
 # generate-frontmatter.bats — E63-S3 / Work Item 6.1
 #
 # Verifies the deterministic contract of
-# gaia-public/plugins/gaia/skills/gaia-create-story/scripts/generate-frontmatter.sh.
+# gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/generate-frontmatter.sh.
 #
 # Test scenarios trace back to the story Test Scenarios table:
 #   #1 Happy path — 15 fields populated         (AC1)

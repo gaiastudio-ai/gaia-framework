@@ -9,7 +9,7 @@
 # ancestor, via the walk-up step at L4b) contains config/project-config.yaml
 # silently substitutes the real project config for the fixture and breaks
 # all fixture-based assertions — 16 of 76 tests fail when bats runs from
-# the project root instead of from gaia-public/.
+# the project root instead of from gaia-framework/.
 #
 # This regression test does NOT modify the script's documented precedence
 # ladder ($PWD > CLAUDE_SKILL_DIR per L5/L6); it only verifies that the
@@ -38,9 +38,9 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "resolve-config.bats runs green from a parent-of-gaia-public CWD" {
+@test "resolve-config.bats runs green from a parent-of-gaia-framework CWD" {
   # The whole point of AF-2026-05-17-2 — bats invocation from project root
-  # (one dir up from gaia-public/) must succeed end-to-end.
+  # (one dir up from gaia-framework/) must succeed end-to-end.
   cd "$REPO_ROOT/.."
   run bats "$BATS_FILE"
   [ "$status" -eq 0 ]

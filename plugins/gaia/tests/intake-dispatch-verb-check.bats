@@ -6,7 +6,7 @@
 # inline the taxonomy entries).
 #
 # The helper under test:
-#   gaia-public/plugins/gaia/scripts/lib/intake-dispatch-verb-check.sh
+#   gaia-framework/plugins/gaia/scripts/lib/intake-dispatch-verb-check.sh
 #
 # Invocation contract:
 #   intake-dispatch-verb-check.sh --story-file <path>

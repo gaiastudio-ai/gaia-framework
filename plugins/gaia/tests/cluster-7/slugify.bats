@@ -2,7 +2,7 @@
 # slugify.bats — E63-S1 / Work Item 6.3
 #
 # Verifies the byte-deterministic contract of
-# gaia-public/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh.
+# gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh.
 # This script is the dependency root for E63-S3 (generate-frontmatter.sh),
 # E63-S4 (validate-canonical-filename.sh), and E63-S9 (scaffold-story.sh) —
 # any change here must be coordinated with their fixtures.
@@ -178,7 +178,7 @@ teardown() { common_teardown; }
 }
 
 @test "E63-S12 AC4: --help merged stderr contains literal 'Usage' (defect-surface guard)" {
-  # Mirrors gaia-public/plugins/gaia/tests/cluster-7/create-story-e2e.bats AC2
+  # Mirrors gaia-framework/plugins/gaia/tests/cluster-7/create-story-e2e.bats AC2
   # defect-surface check: \`script --help 2>&1 | grep -i 'usage'\`. Once this
   # passes, slugify.sh is no longer enumerated in that test's stderr defect list.
   run bash -c "'$SCRIPT' --help 2>&1 | grep -i 'usage'"

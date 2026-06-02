@@ -77,7 +77,7 @@ fi
 # and every subsequent .gaia/ artifact lookup misses. Honoring the harness-
 # provided env vars first restores the project anchor that callers actually
 # rely on. The walk-up remains as the final fallback for in-source-tree dev
-# (gaia-public/ checkout) where neither env var is set.
+# (gaia-framework/ checkout) where neither env var is set.
 # AF-2026-05-30-4 F-11 extension: when none of the env-var anchors are set,
 # try `resolve-config.sh --field project_root` BEFORE the walk-up fallback.
 # resolve-config locates the canonical .gaia/config/project-config.yaml (it

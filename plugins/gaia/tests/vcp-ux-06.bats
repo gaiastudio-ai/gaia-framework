@@ -7,7 +7,7 @@
 # string when present, and the file is JSON parseable.
 #
 # Tests run against a fixture under
-#   gaia-public/plugins/gaia/tests/fixtures/figma-import/design-tokens.json
+#   gaia-framework/plugins/gaia/tests/fixtures/figma-import/design-tokens.json
 # captured from a reference Import run. The fixture is the contract: if
 # Import mode regresses on the DTCG envelope, this bats file fails.
 #

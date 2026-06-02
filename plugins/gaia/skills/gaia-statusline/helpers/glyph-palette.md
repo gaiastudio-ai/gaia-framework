@@ -1,6 +1,6 @@
 # gaia-statusline — Glyph Palette (JIT helper)
 
-Extended glyph palette with rationale for each Unicode choice. The single source of truth is `gaia-public/plugins/gaia/scripts/lib/statusline-glyphs.sh` — drift between this helper and the runtime helper is a bug.
+Extended glyph palette with rationale for each Unicode choice. The single source of truth is `gaia-framework/plugins/gaia/scripts/lib/statusline-glyphs.sh` — drift between this helper and the runtime helper is a bug.
 
 ## Full palette
 

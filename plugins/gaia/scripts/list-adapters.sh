@@ -44,7 +44,7 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 BUILTIN_ROOT="${BUILTIN_ADAPTERS_DIR:-$PLUGIN_DIR/scripts/adapters}"
 # Default custom root: project-root is two levels above the plugin dir
-# (gaia-public/plugins/gaia → gaia-public). For native installs this resolves
+# (gaia-framework/plugins/gaia → gaia-framework). For native installs this resolves
 # correctly; consumers override via CUSTOM_ADAPTERS_DIR when needed.
 # E96-S3 / ADR-111 (supersedes ADR-020): prefer .gaia/custom/adapters/ over the
 # legacy custom/adapters/ when both exist. Legacy fallback retained during the

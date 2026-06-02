@@ -9,10 +9,10 @@
 # tests/fixtures/e29-s7-deletion-plan/. The canonical (living) plan resides
 # in the user's project tree at
 # docs/planning-artifacts/v1-checkpoint-deletion-plan.md
-# (which is outside this marketplace repo per gaia-public/docs/INDEX.md;
+# (which is outside this marketplace repo per gaia-framework/docs/INDEX.md;
 # project planning artifacts are not vendored here). When the project-tree
 # plan is available — i.e., when this test is run from inside a checked-out
-# GAIA-Framework workspace alongside the gaia-public repo — the
+# GAIA-Framework workspace alongside the gaia-framework repo — the
 # corresponding @tests also assert against the live file.
 #
 # E29-S7 Acceptance Criteria covered:
@@ -40,8 +40,8 @@ teardown() { common_teardown; }
 PLAN_FIXTURE="$BATS_TEST_DIRNAME/fixtures/e29-s7-deletion-plan/v1-checkpoint-deletion-plan.md"
 
 # Workspace-only paths — present when the test is run inside a GAIA-Framework
-# workspace alongside the gaia-public repo. Resolved by walking up from
-# tests/ -> plugins/gaia/ -> plugins/ -> gaia-public/ -> GAIA-Framework/.
+# workspace alongside the gaia-framework repo. Resolved by walking up from
+# tests/ -> plugins/gaia/ -> plugins/ -> gaia-framework/ -> GAIA-Framework/.
 WORKSPACE_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
 WORKSPACE_PLAN="$WORKSPACE_ROOT/docs/planning-artifacts/v1-checkpoint-deletion-plan.md"
 

@@ -2,8 +2,8 @@
 # vcp-ux-import.bats — E46-S2 / FR-350 / FR-140.
 #
 # Script-verifiable contract checks on
-#   gaia-public/plugins/gaia/skills/gaia-create-ux/SKILL.md
-#   gaia-public/plugins/gaia/skills/figma-integration/SKILL.md
+#   gaia-framework/plugins/gaia/skills/gaia-create-ux/SKILL.md
+#   gaia-framework/plugins/gaia/skills/figma-integration/SKILL.md
 # guaranteeing that the Import-mode parity restoration documented by
 # E46-S2 (file-key validation, depth-1 metadata check, viewport
 # classification, W3C DTCG token format, component-specs.yaml emission,

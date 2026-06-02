@@ -2,7 +2,7 @@
 # resolve-epic-slug.bats — E79-S1 / TC-CSP-4 + TC-CSP-5
 #
 # Verifies the byte-deterministic contract of
-# gaia-public/plugins/gaia/scripts/lib/resolve-epic-slug.sh — the shared
+# gaia-framework/plugins/gaia/scripts/lib/resolve-epic-slug.sh — the shared
 # helper that derives the canonical per-epic directory name
 # (`epic-{epic-slug}/`) byte-identically from `epics-and-stories.md`.
 #
@@ -30,7 +30,7 @@ setup() {
 teardown() { common_teardown; }
 
 # Resolve the project-root (the dir containing docs/, _gaia/, _memory/).
-# tests/ live under gaia-public/plugins/gaia/tests/lib/, so project-root
+# tests/ live under gaia-framework/plugins/gaia/tests/lib/, so project-root
 # is five levels up.
 _project_root() {
   cd "${BATS_TEST_DIRNAME}/../../../../.." && pwd
@@ -256,7 +256,7 @@ _drifted_dirs() {
 
 @test "resolve-epic-slug: AC8 no premature consumer rewiring outside script + bats test" {
   local root; root="$(_project_root)"
-  local plugin_root="$root/gaia-public/plugins/gaia"
+  local plugin_root="$root/gaia-framework/plugins/gaia"
   # Search for resolve-epic-slug references in skills/ and scripts/
   # (excluding the new script itself + bats test directory).
   local hits

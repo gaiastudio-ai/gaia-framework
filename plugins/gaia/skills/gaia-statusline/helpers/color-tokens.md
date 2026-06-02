@@ -1,6 +1,6 @@
 # gaia-statusline — Color Tokens (JIT helper)
 
-Color science notes, contrast ratios, and the `NO_COLOR` / `COLORTERM` behaviour matrix. The single source of truth for emitted SGR sequences is `gaia-public/plugins/gaia/scripts/lib/statusline-colors.sh`.
+Color science notes, contrast ratios, and the `NO_COLOR` / `COLORTERM` behaviour matrix. The single source of truth for emitted SGR sequences is `gaia-framework/plugins/gaia/scripts/lib/statusline-colors.sh`.
 
 ## Token table
 

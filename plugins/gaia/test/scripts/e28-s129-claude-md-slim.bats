@@ -1,18 +1,18 @@
 #!/usr/bin/env bats
 # e28-s129-claude-md-slim.bats — bats tests for the slim CLAUDE.md (E28-S129)
 #
-# Asserts NFR-049 size cap + FR-327 content scope against gaia-public/CLAUDE.md.
+# Asserts NFR-049 size cap + FR-327 content scope against gaia-framework/CLAUDE.md.
 # The file is the single source of truth for the slim content; the project-root
 # CLAUDE.md (NFR-049 normative target) is synced from this copy byte-identically.
 #
-# RED phase: gaia-public/CLAUDE.md does not yet exist — tests fail until Green
+# RED phase: gaia-framework/CLAUDE.md does not yet exist — tests fail until Green
 # writes the file.
 
 PLUGIN_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
 GAIA_PUBLIC="$(cd "$PLUGIN_DIR/../.." && pwd)"
 CLAUDE_MD="$GAIA_PUBLIC/CLAUDE.md"
 
-@test "E28-S129: gaia-public/CLAUDE.md exists" {
+@test "E28-S129: gaia-framework/CLAUDE.md exists" {
   [ -f "$CLAUDE_MD" ]
 }
 

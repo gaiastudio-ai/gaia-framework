@@ -14,9 +14,9 @@ setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   PROJECT_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
 
-  # AF-2026-06-01-3: docs/ retired from gaia-public; architecture.md is project-root
+  # AF-2026-06-01-3: docs/ retired from gaia-framework; architecture.md is project-root
   # canonical post-ADR-111. The MIGRATION constant was removed with the AC2 tests
-  # (the former gaia-public/docs/migration-guide-v2.md was retired).
+  # (the former gaia-framework/docs/migration-guide-v2.md was retired).
   ARCH="$PROJECT_ROOT/.gaia/artifacts/planning-artifacts/architecture.md"
   BROWNFIELD="$REPO_ROOT/plugins/gaia/skills/gaia-brownfield/SKILL.md"
 }
@@ -96,7 +96,7 @@ count_script_rows() {
 # ---------- AC2 (RETIRED): migration guide redirection note ----------
 #
 # The four AC2 tests were retired by AF-2026-06-01-3 along with the
-# gaia-public/docs/migration-guide-v2.md they pinned. The legacy-name
+# gaia-framework/docs/migration-guide-v2.md they pinned. The legacy-name
 # redirection block is no longer required as a documentation surface —
 # the V1 sunset under ADR-049 removed the need for a migration guide,
 # and the live SKILL.md / script files referenced by AC1 + AC3 carry

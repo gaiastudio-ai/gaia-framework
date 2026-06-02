@@ -31,7 +31,7 @@ every Status cell and failing hard on any non-canonical value.
 ## How to Run
 
 ```bash
-# From the gaia-public/ root:
+# From the gaia-framework/ root:
 bats plugins/gaia/tests/cluster-9/run-all-reviews.bats
 ```
 

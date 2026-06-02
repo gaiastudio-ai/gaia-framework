@@ -243,7 +243,7 @@ fi
 #   Stage 1: CLAUDE_PROJECT_ROOT — supplied by Claude Code when invoked from the
 #            non-git project-root workspace (per CLAUDE.md §"Non-git project-root
 #            workspace (supported mode)").
-#   Stage 2: PROJECT_PATH — legacy in-tree gaia-public invocation override.
+#   Stage 2: PROJECT_PATH — legacy in-tree gaia-framework invocation override.
 #   Stage 3: '.' fallback — preserves the legacy CWD-relative behavior.
 #
 # Sibling fix: AI-2026-05-13-12 applied the same walk-up at the

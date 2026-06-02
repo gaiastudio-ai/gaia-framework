@@ -17,7 +17,7 @@
 # schema validator).
 
 setup() {
-  # Tests at plugins/gaia/tests/ — REPO_ROOT is three levels up (gaia-public/).
+  # Tests at plugins/gaia/tests/ — REPO_ROOT is three levels up (gaia-framework/).
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPT="$REPO_ROOT/plugins/gaia/scripts/validate-project-config.sh"
   SCHEMA="$REPO_ROOT/plugins/gaia/schemas/project-config.schema.json"

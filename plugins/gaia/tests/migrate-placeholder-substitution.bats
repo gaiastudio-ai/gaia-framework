@@ -5,7 +5,7 @@
 # the literal {project-root} placeholder with the absolute --project-root path
 # before required fields are copied into the v2 config/project-config.yaml.
 #
-# Background: PR #387 swept a literal `gaia-public/{project-root}/_memory/...`
+# Background: PR #387 swept a literal `gaia-framework/{project-root}/_memory/...`
 # directory into commit 767b29e because checkpoint.sh ran `mkdir -p` against
 # an unsubstituted placeholder path. PR #404 cleaned up the local artifacts;
 # this story closes the underlying migration bug at its source.
@@ -120,7 +120,7 @@ document_output_language: "English"
 user_skill_level: "intermediate"
 project_name: "test-project"
 project_root: "$PROJECT"
-project_path: "$PROJECT/gaia-public"
+project_path: "$PROJECT/gaia-framework"
 output_folder: "$PROJECT/docs"
 planning_artifacts: "$PROJECT/docs/planning-artifacts"
 implementation_artifacts: "$PROJECT/docs/implementation-artifacts"

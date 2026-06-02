@@ -40,9 +40,9 @@
 #                    the rm -rf inside --cache-root.
 #
 # Examples:
-#   plugin-cache-recovery.sh --slug gaiastudio-ai-gaia-public
+#   plugin-cache-recovery.sh --slug gaiastudio-ai-gaia-framework
 #   plugin-cache-recovery.sh --slug gaiastudio-ai-gaia-enterprise --dry-run
-#   plugin-cache-recovery.sh --detect --slug gaiastudio-ai-gaia-public
+#   plugin-cache-recovery.sh --detect --slug gaiastudio-ai-gaia-framework
 #
 # Exit codes:
 #   0 — cache entry cleared, already absent, or detect reports clean

@@ -99,7 +99,7 @@ giving high confidence the bucket is dormant.
 ## Inventory Script (Recommendation)
 
 To be added by the execution story under
-`gaia-public/plugins/gaia/scripts/v1-checkpoint-inventory.sh`. Contract:
+`gaia-framework/plugins/gaia/scripts/v1-checkpoint-inventory.sh`. Contract:
 
 ```
 v1-checkpoint-inventory.sh [--format text|json] [--output PATH]

@@ -11,7 +11,7 @@
 #   AC5: No duplicated validation logic — redirect only
 #   AC6: Frontmatter linter passes with zero errors
 #
-# Usage: bash gaia-public/tests/test-E28-S42-validate-prd-skill.sh
+# Usage: bash gaia-framework/tests/test-E28-S42-validate-prd-skill.sh
 # Exit 0 when all assertions pass, 1 on any failure.
 
 set -uo pipefail

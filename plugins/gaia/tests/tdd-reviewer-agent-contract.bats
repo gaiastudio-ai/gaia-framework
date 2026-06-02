@@ -36,14 +36,14 @@ load 'test_helper.bash'
 
 setup() {
   common_setup
-  # PUBLIC_ROOT (gaia-public) — owns plugins/gaia/agents/. Walks up
-  # tests/ -> plugins/gaia/ -> plugins/ -> gaia-public/.
+  # PUBLIC_ROOT (gaia-framework) — owns plugins/gaia/agents/. Walks up
+  # tests/ -> plugins/gaia/ -> plugins/ -> gaia-framework/.
   PUBLIC_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   AGENT_FILE="$PUBLIC_ROOT/plugins/gaia/agents/tdd-reviewer.md"
 
   # ADR memo locations — the canonical authored location is the workspace
   # path docs/planning-artifacts/adr-memo-tdd-reviewer-subagent.md (one
-  # level above gaia-public/). On CI the workspace tree is not present;
+  # level above gaia-framework/). On CI the workspace tree is not present;
   # the fixture under tests/fixtures/ is the CI-stable mirror so the same
   # content checks run in both environments. Resolution order:
   #   1. Workspace path (when running inside GAIA-Framework/).

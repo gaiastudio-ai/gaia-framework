@@ -2,7 +2,7 @@
 # e74-s4-apple-app-store-rubric.bats — E74-S4 Apple App Store regime rubric.
 #
 # Asserts that `apple-app-store.json` shipped under
-# `gaia-public/plugins/gaia/rubrics/regimes/` conforms to `rubric.schema.json`
+# `gaia-framework/plugins/gaia/rubrics/regimes/` conforms to `rubric.schema.json`
 # (E68-S2) and meets the story-level acceptance criteria E74-S4 AC1..AC10.
 #
 #   AC1   Rubric file ships at canonical regimes path and is gaia/rubric/v1

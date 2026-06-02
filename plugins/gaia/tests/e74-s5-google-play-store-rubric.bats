@@ -2,7 +2,7 @@
 # e74-s5-google-play-store-rubric.bats — E74-S5 Google Play Store regime rubric.
 #
 # Asserts that `google-play-store.json` shipped under
-# `gaia-public/plugins/gaia/rubrics/regimes/` conforms to `rubric.schema.json`
+# `gaia-framework/plugins/gaia/rubrics/regimes/` conforms to `rubric.schema.json`
 # (E68-S2) and meets the story-level acceptance criteria E74-S5 AC1..AC7.
 #
 #   AC1   Rubric file exists at canonical regimes path and passes schema

@@ -2,7 +2,7 @@
 # validate-canonical-filename.bats — E63-S4 / Work Item 6.10
 #
 # Verifies the deterministic contract of
-# gaia-public/plugins/gaia/skills/gaia-create-story/scripts/validate-canonical-filename.sh.
+# gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/validate-canonical-filename.sh.
 # This script consumes the slug contract from E63-S1 (slugify.sh) and is folded
 # into E63-S5 (validate-frontmatter.sh) as one of its sub-checks.
 #

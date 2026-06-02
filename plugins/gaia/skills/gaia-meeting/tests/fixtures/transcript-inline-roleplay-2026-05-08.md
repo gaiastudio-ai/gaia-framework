@@ -24,8 +24,8 @@ Turn: r1
 
 [Prelude] Christy (Product Strategist) — 120 tokens
 Sources consulted:
-  gaia-public/plugins/gaia/skills/gaia-init/SKILL.md
-  gaia-public/plugins/gaia/skills/gaia-config-platform/SKILL.md
+  gaia-framework/plugins/gaia/skills/gaia-init/SKILL.md
+  gaia-framework/plugins/gaia/skills/gaia-config-platform/SKILL.md
 What I know:
   - The init taxonomy mixes topology and platform.
 

@@ -9,7 +9,7 @@ orchestration_class: light-procedural
 
 You are the `/gaia-statusline-disable` wrapper. This skill flips the GAIA statusline off by removing the `statusLine` block from `~/.claude/settings.json`. The runtime files under `~/.claude/gaia-statusline/` are left in place — disable is a switch, not an uninstall. To fully uninstall, the user removes `~/.claude/gaia-statusline/` directly.
 
-This wrapper preserves the user-visible `/gaia-statusline-disable` slash command while delegating the actual file edit to the shared toggle script `gaia-public/plugins/gaia/scripts/gaia-statusline-toggle.sh`.
+This wrapper preserves the user-visible `/gaia-statusline-disable` slash command while delegating the actual file edit to the shared toggle script `gaia-framework/plugins/gaia/scripts/gaia-statusline-toggle.sh`.
 
 This skill is part of the E82 statusline epic. The shape mirrors the `/gaia-bridge-disable` precedent (thin wrapper + shared toggle) but the implementation language differs because settings.json is JSON, not YAML — see the toggle script for `jq` + atomic-rename idioms.
 
@@ -30,7 +30,7 @@ Invoke the toggle script directly. The script handles:
 4. Atomic write: sibling-tempfile under `~/.claude/` + `mv -f`. NEVER `/tmp/`.
 
 ```bash
-!bash gaia-public/plugins/gaia/scripts/gaia-statusline-toggle.sh --disable
+!bash gaia-framework/plugins/gaia/scripts/gaia-statusline-toggle.sh --disable
 ```
 
 ## Round-trip caveat
@@ -39,10 +39,10 @@ The canonical write format is `jq -S` (sorted keys, 2-space indent). For `enable
 
 ## References
 
-- Delegate: `gaia-public/plugins/gaia/scripts/gaia-statusline-toggle.sh` (full enable + disable procedure).
-- Sibling: `gaia-public/plugins/gaia/skills/gaia-statusline-enable/SKILL.md` (`--enable` wrapper).
-- Pattern: `gaia-public/plugins/gaia/skills/gaia-bridge-disable/SKILL.md` (semantic precedent — thin wrapper around a shared toggle).
-- Runtime installer: `gaia-public/plugins/gaia/scripts/install-statusline.sh` (E82-S1).
+- Delegate: `gaia-framework/plugins/gaia/scripts/gaia-statusline-toggle.sh` (full enable + disable procedure).
+- Sibling: `gaia-framework/plugins/gaia/skills/gaia-statusline-enable/SKILL.md` (`--enable` wrapper).
+- Pattern: `gaia-framework/plugins/gaia/skills/gaia-bridge-disable/SKILL.md` (semantic precedent — thin wrapper around a shared toggle).
+- Runtime installer: `gaia-framework/plugins/gaia/scripts/install-statusline.sh` (E82-S1).
 - FR-439 — Statusline toggle slash commands.
 - TC-STATUSLINE-13 — Idempotent enable/disable.
 - TC-STATUSLINE-14 — Round-trip enable + disable preserves byte-identity.

@@ -77,7 +77,7 @@ fi
 # and every subsequent .gaia/ artifact lookup misses. Honoring the harness-
 # provided env vars first restores the project anchor that callers actually
 # rely on. The walk-up remains as the final fallback for in-source-tree dev
-# (gaia-public/ checkout) where neither env var is set.
+# (gaia-framework/ checkout) where neither env var is set.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}}}"
 if [ -z "${UX_DESIGN_PATH:-}" ]; then
   if [ -f "$PROJECT_ROOT/docs/planning-artifacts/ux-design.md" ] && [ ! -d "$PROJECT_ROOT/.gaia/artifacts/planning-artifacts" ]; then

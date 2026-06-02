@@ -21,7 +21,7 @@ This memo records the decision and rationale before the contract surface ships.
 
 ## Option A — New dedicated `tdd-reviewer.md`
 
-Author a new file at `gaia-public/plugins/gaia/agents/tdd-reviewer.md`. Frontmatter is `context: fork`, `allowed-tools: [Read, Grep, Glob, Bash]`, model `claude-opus-4-6`. The persona owns the 14-item checklist and the verdict-emission contract. `qa.md` (Vera) is left untouched.
+Author a new file at `gaia-framework/plugins/gaia/agents/tdd-reviewer.md`. Frontmatter is `context: fork`, `allowed-tools: [Read, Grep, Glob, Bash]`, model `claude-opus-4-6`. The persona owns the 14-item checklist and the verdict-emission contract. `qa.md` (Vera) is left untouched.
 
 **Pros:**
 
@@ -54,7 +54,7 @@ Keep Vera as `qa.md` for test generation, and add a sibling file `qa-tdd-review.
 
 ## Chosen: Option A
 
-This memo records **Option A** as the chosen path. The TDD-reviewer ships as a new dedicated agent at `gaia-public/plugins/gaia/agents/tdd-reviewer.md`. `qa.md` (Vera) is not modified.
+This memo records **Option A** as the chosen path. The TDD-reviewer ships as a new dedicated agent at `gaia-framework/plugins/gaia/agents/tdd-reviewer.md`. `qa.md` (Vera) is not modified.
 
 ### Rationale
 
@@ -75,16 +75,16 @@ The chosen agent file uses `name: tdd-reviewer` and persona name **Tex** (TDD re
 
 ## Consequences
 
-- A new file ships at `gaia-public/plugins/gaia/agents/tdd-reviewer.md`.
+- A new file ships at `gaia-framework/plugins/gaia/agents/tdd-reviewer.md`.
 - `qa.md` is unchanged; Vera continues to own test generation in main context.
 - E57-S4 (SKILL.md gate wiring) dispatches by agent name `tdd-reviewer`.
-- Bats coverage at `gaia-public/plugins/gaia/tests/tdd-reviewer-agent-contract.bats` pins the contract: frontmatter shape, 14-item checklist, ADR-037/063/067 references, audit-file path, and `qa_timeout_seconds` consumption.
+- Bats coverage at `gaia-framework/plugins/gaia/tests/tdd-reviewer-agent-contract.bats` pins the contract: frontmatter shape, 14-item checklist, ADR-037/063/067 references, audit-file path, and `qa_timeout_seconds` consumption.
 
 ## References
 
-- `gaia-public/plugins/gaia/agents/_SCHEMA.md` — frontmatter schema (`name`, `context`, `allowed-tools`).
-- `gaia-public/plugins/gaia/agents/validator.md` — reference fork-context, read-only review agent.
-- `gaia-public/plugins/gaia/agents/qa.md` — Vera, test-generation persona left intact under Option A.
+- `gaia-framework/plugins/gaia/agents/_SCHEMA.md` — frontmatter schema (`name`, `context`, `allowed-tools`).
+- `gaia-framework/plugins/gaia/agents/validator.md` — reference fork-context, read-only review agent.
+- `gaia-framework/plugins/gaia/agents/qa.md` — Vera, test-generation persona left intact under Option A.
 - `docs/planning-artifacts/architecture.md` §Decision Log — ADR-037, ADR-063, ADR-067.
 - `docs/test-artifacts/test-plan.md` §11.51 — TC-TDR-05/06/07/08.
 - `docs/test-artifacts/atdd-E57-S3.md` — failing test scenarios for this story.

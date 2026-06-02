@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # AF-2026-05-28-2: Test07 documentation gaps + HTML path-sweep guard.
 #
-# - Moved the project-root documentation/ tree into gaia-public/documentation/
+# - Moved the project-root documentation/ tree into gaia-framework/documentation/
 #   and added .github/workflows/pages.yml so push-to-main builds + deploys it
 #   via GitHub Pages (real ship-path for the user-facing doc site).
 # - 91 HTML files / 355 path-literal swaps from legacy docs/<X>-artifacts/ to
@@ -27,9 +27,9 @@ load 'test_helper.bash'
 setup() {
   common_setup
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
-  # The HTML doc site lives under gaia-public/documentation/ (post-AF-2026-05-28-2
-  # move). CI checks out only gaia-public, so all assertions MUST anchor to a
-  # path INSIDE gaia-public — never the non-git project-root documentation/.
+  # The HTML doc site lives under gaia-framework/documentation/ (post-AF-2026-05-28-2
+  # move). CI checks out only gaia-framework, so all assertions MUST anchor to a
+  # path INSIDE gaia-framework — never the non-git project-root documentation/.
   # See memory rule: feedback_no_project_root_artifact_assert_in_gaia_public_bats.
   GAIA_PUBLIC_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   DOCS_DIR="$GAIA_PUBLIC_ROOT/documentation"
@@ -42,7 +42,7 @@ teardown() { common_teardown; }
 # Move + Pages publish workflow
 # ===========================================================================
 
-@test "AF-28-2: documentation/ is now tracked in gaia-public" {
+@test "AF-28-2: documentation/ is now tracked in gaia-framework" {
   [ -d "$DOCS_DIR" ]
   [ -f "$DOCS_DIR/index.html" ]
   [ -f "$DOCS_DIR/glossary.html" ]

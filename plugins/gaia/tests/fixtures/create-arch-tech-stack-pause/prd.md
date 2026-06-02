@@ -9,7 +9,7 @@ date: 2026-04-25
 # Product Requirements Document — Tech-Stack Pause Fixture
 
 > **Fixture-only.** This PRD exists solely to drive `/gaia-create-arch` through Step 1 (PRD-existence GATE) and Step 3 (Theo tech-stack recommendation). It is NOT a real product spec.
-> See: `gaia-public/plugins/gaia/tests/fixtures/create-arch-tech-stack-pause/README.md`.
+> See: `gaia-framework/plugins/gaia/tests/fixtures/create-arch-tech-stack-pause/README.md`.
 
 ## 1. Overview
 

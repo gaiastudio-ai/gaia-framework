@@ -62,14 +62,14 @@ setup() {
   # AC1 — the live `check-monolith-shard-sync.sh` from project root must
   # emit exactly the 9 WARNINGs captured in the post-fix fixture.
   # Skip cleanly when running outside the live project-root checkout
-  # (CI runs against gaia-public/ alone, where the docs/planning-artifacts/
+  # (CI runs against gaia-framework/ alone, where the docs/planning-artifacts/
   # monolith+shard tree doesn't exist; in that environment the script
   # emits 0 WARNINGs and the AC1 assertion does not apply).
-  cd "$BATS_TEST_DIRNAME/../../../.."  # land at gaia-public/ in CI, project-root locally
-  if [ ! -f "docs/planning-artifacts/prd/prd.md" ] || [ ! -f "gaia-public/plugins/gaia/scripts/check-monolith-shard-sync.sh" ]; then
+  cd "$BATS_TEST_DIRNAME/../../../.."  # land at gaia-framework/ in CI, project-root locally
+  if [ ! -f "docs/planning-artifacts/prd/prd.md" ] || [ ! -f "gaia-framework/plugins/gaia/scripts/check-monolith-shard-sync.sh" ]; then
     skip "not running from project root (no docs/planning-artifacts tree) — fixture-only mode"
   fi
-  live=$(bash gaia-public/plugins/gaia/scripts/check-monolith-shard-sync.sh 2>&1 | grep '^WARNING' || true)
+  live=$(bash gaia-framework/plugins/gaia/scripts/check-monolith-shard-sync.sh 2>&1 | grep '^WARNING' || true)
   live_count=$(printf '%s\n' "$live" | grep -c '^WARNING' || true)
   [ "$live_count" -eq 9 ]
 }

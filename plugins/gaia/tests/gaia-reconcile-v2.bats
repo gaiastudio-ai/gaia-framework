@@ -96,7 +96,7 @@ write_minimal_config() {
     printf 'config_phase: minimal\n'
     printf 'project_name: test-project\n'
     printf 'project_root: /tmp/test\n'
-    printf 'project_path: gaia-public\n'
+    printf 'project_path: gaia-framework\n'
     printf 'memory_path: _memory\n'
     printf 'checkpoint_path: _memory/checkpoints\n'
     printf 'installed_path: ~/.claude/plugins/cache/gaia\n'

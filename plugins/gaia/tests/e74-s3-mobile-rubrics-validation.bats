@@ -2,7 +2,7 @@
 # e74-s3-mobile-rubrics-validation.bats — E74-S3 mobile rubric file coverage.
 #
 # Asserts that the five mobile rubric files shipped under
-# `gaia-public/plugins/gaia/rubrics/base/` (mobile, mobile-code, mobile-perf,
+# `gaia-framework/plugins/gaia/rubrics/base/` (mobile, mobile-code, mobile-perf,
 # mobile-security, mobile-a11y) conform to `rubric.schema.json` (E68-S2) and
 # meet the story-level acceptance criteria E74-S3 AC1..AC8.
 #

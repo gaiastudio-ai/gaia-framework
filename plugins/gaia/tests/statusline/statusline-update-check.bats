@@ -14,8 +14,8 @@ setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   FETCHER="$PLUGIN_ROOT/scripts/statusline-update-check.sh"
   cd "$TEST_TMP"
-  mkdir -p gaia-public/plugins/gaia/.claude-plugin
-  cat > gaia-public/plugins/gaia/.claude-plugin/plugin.json <<'PJ'
+  mkdir -p gaia-framework/plugins/gaia/.claude-plugin
+  cat > gaia-framework/plugins/gaia/.claude-plugin/plugin.json <<'PJ'
 { "name": "gaia", "version": "1.0.0" }
 PJ
   # Per-test HOME so we never touch the real ~/.claude.
@@ -169,7 +169,7 @@ _with_stubs() {
   _make_stub gh ok-newer
   _make_stub curl ok-newer
   _with_stubs
-  rm -f gaia-public/plugins/gaia/.claude-plugin/plugin.json
+  rm -f gaia-framework/plugins/gaia/.claude-plugin/plugin.json
   run env PATH="$STUBS_PATH" HOME="$HOME" PROJECT_PATH="$PROJECT_PATH" "$FETCHER"
   [ "$status" -eq 0 ]
   [ ! -e "$CACHE" ]
@@ -179,7 +179,7 @@ _with_stubs() {
   _make_stub gh ok-newer
   _make_stub curl ok-newer
   _with_stubs
-  printf 'not json' > gaia-public/plugins/gaia/.claude-plugin/plugin.json
+  printf 'not json' > gaia-framework/plugins/gaia/.claude-plugin/plugin.json
   run env PATH="$STUBS_PATH" HOME="$HOME" PROJECT_PATH="$PROJECT_PATH" "$FETCHER"
   [ "$status" -eq 0 ]
   [ ! -e "$CACHE" ]
