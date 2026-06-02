@@ -103,7 +103,7 @@ Write a structured market research report to `.gaia/artifacts/planning-artifacts
 
 ### Step 7 — Val Auto-Fix Loop (E44-S2 / ADR-058)
 
-> Reuses the canonical pattern at `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md`
+> Reuses the canonical pattern at `gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
 
 **Guards (run before invocation):**

@@ -69,10 +69,10 @@ CACHE_FILE="${CACHE_DIR}/latest-release.json"
 # (sprint-43 update). CLAUDE_PLUGIN_ROOT is intentionally NOT consulted —
 # it's a per-skill envvar Claude Code never sets when this fetcher is run
 # from a hook or refresh cycle. The original CLAUDE_PLUGIN_ROOT-keyed
-# fallback to $PROJECT_PATH/gaia-public/... double-stacked when cwd was
-# already inside gaia-public/ (e.g. agent operating in that subdir).
+# fallback to $PROJECT_PATH/gaia-framework/... double-stacked when cwd was
+# already inside gaia-framework/ (e.g. agent operating in that subdir).
 PROJECT_PATH="${PROJECT_PATH:-$PWD}"
-PLUGIN_CACHE_DIR="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia"
+PLUGIN_CACHE_DIR="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia"
 PLUGIN_JSON=""
 
 # Tier 1: scan plugin cache for highest semver subdirectory.
@@ -83,12 +83,12 @@ if [ -d "$PLUGIN_CACHE_DIR" ]; then
   fi
 fi
 
-# Tier 2: in-tree repo at PROJECT_PATH/gaia-public/... AND at
+# Tier 2: in-tree repo at PROJECT_PATH/gaia-framework/... AND at
 # PROJECT_PATH/plugins/... — the second form catches cwd that's already
-# inside the gaia-public subtree (the doubled-gaia-public bug from the
+# inside the gaia-framework subtree (the doubled-gaia-framework bug from the
 # original code).
-if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json" ]; then
-  PLUGIN_JSON="$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
+if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/gaia-framework/plugins/gaia/.claude-plugin/plugin.json" ]; then
+  PLUGIN_JSON="$PROJECT_PATH/gaia-framework/plugins/gaia/.claude-plugin/plugin.json"
 fi
 if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/plugins/gaia/.claude-plugin/plugin.json" ]; then
   PLUGIN_JSON="$PROJECT_PATH/plugins/gaia/.claude-plugin/plugin.json"
@@ -144,11 +144,11 @@ fi
 # Both are wrapped to swallow failures.
 LATEST_RAW=""
 if command -v gh >/dev/null 2>&1; then
-  LATEST_RAW="$(gh api repos/gaiastudio-ai/gaia-public/releases/latest 2>/dev/null || printf '')"
+  LATEST_RAW="$(gh api repos/gaiastudio-ai/gaia-framework/releases/latest 2>/dev/null || printf '')"
 fi
 if [ -z "$LATEST_RAW" ] && command -v curl >/dev/null 2>&1; then
   LATEST_RAW="$(curl -sSL --max-time "$HTTP_TIMEOUT" \
-    https://api.github.com/repos/gaiastudio-ai/gaia-public/releases/latest 2>/dev/null || printf '')"
+    https://api.github.com/repos/gaiastudio-ai/gaia-framework/releases/latest 2>/dev/null || printf '')"
 fi
 
 # AC1, AC2: empty response -> exit 0 silently, cache untouched.

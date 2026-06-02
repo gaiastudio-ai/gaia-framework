@@ -16,7 +16,7 @@
 #
 # Traces to: AC4 of E93-S4, T-SGR-2, SR-66, NFR-072.
 #
-# Precedent: gaia-public/plugins/gaia/scripts/run-tests.sh lines 257-291 ships
+# Precedent: gaia-framework/plugins/gaia/scripts/run-tests.sh lines 257-291 ships
 # a two-tier cascade without the process-group kill addition. This helper adds
 # tier-2 (gtimeout) + setsid + process-group kill semantics.
 #

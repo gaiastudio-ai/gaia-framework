@@ -80,8 +80,8 @@ export LC_ALL
 # overlay happens at the flattened-key level. No structural deep-merge.
 #
 # See:
-#   - gaia-public/plugins/gaia/config/project-config.schema.yaml (schema)
-#   - gaia-public/plugins/gaia/config/MIGRATION-from-global-yaml.md
+#   - gaia-framework/plugins/gaia/config/project-config.schema.yaml (schema)
+#   - gaia-framework/plugins/gaia/config/MIGRATION-from-global-yaml.md
 #   - architecture.md §10.26.6 (Config Split Diagram), §Decision Log ADR-044
 # =============================================================================
 #

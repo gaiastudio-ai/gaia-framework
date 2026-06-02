@@ -291,7 +291,7 @@ All edge paths are non-blocking (per the story's "Failure posture"):
 - Mixed-case or whitespace variants → normalize to the same hash (AC-EC10).
 - 100+ prior retros → bounded per-file read (`MAX_BYTES=65536`) caps token usage (NFR-RIM-1).
 
-> **Note (ADR-052 delegation):** `action-items-increment.sh` sources the canonical shared retro writer (`gaia-public/plugins/gaia/scripts/retro-sidecar-write.sh`) for allowlist enforcement and path resolution (E36-S5 swap-in). The CLI contract is unchanged — callers in this skill do not need to be updated.
+> **Note (ADR-052 delegation):** `action-items-increment.sh` sources the canonical shared retro writer (`gaia-framework/plugins/gaia/scripts/retro-sidecar-write.sh`) for allowlist enforcement and path resolution (E36-S5 swap-in). The CLI contract is unchanged — callers in this skill do not need to be updated.
 
 ### Step 5f --- Skill Improvement Proposals (FR-RIM-6, ADR-053, architecture §10.28.7)
 
@@ -349,7 +349,7 @@ Failure posture:
 - Finding maps to NO existing skill → Step 5f yields zero proposals for that finding; retro Dev Notes record "no skill match for finding #{n}"; no error (AC-EC5).
 - Pre-write validation rejects proposals whose diff is non-UTF-8 or > 100 KB with an explicit error; proposal remains in session for editing (AC-EC11).
 - Missing `.customize.yaml` → writer seeds the file with canonical header before registering the `skill_overrides` entry; no error (AC-EC7).
-- Proposal write path attempts `gaia-public/plugins/gaia/skills/` bypass → shared retro writer rejects via NFR-RIM-2 allowlist; retro halts with authorization error; `plugins/gaia/skills/` byte-identical (AC-EC8).
+- Proposal write path attempts `gaia-framework/plugins/gaia/skills/` bypass → shared retro writer rejects via NFR-RIM-2 allowlist; retro halts with authorization error; `plugins/gaia/skills/` byte-identical (AC-EC8).
 - User rejects a proposal → clear session cache; zero filesystem writes; rejection logged in retro artifact's "Proposals" section as `{finding_ref}: REJECTED` (AC4, AC-EC9).
 - Concurrent retro invocations each approve targeting same file → `flock` serializes; second writer re-presents a fresh merge preview (AC-EC12).
 

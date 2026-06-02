@@ -13,7 +13,7 @@
 #   bats tests/cluster-19-e2e/token-reduction.bats
 
 setup() {
-  REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"   # .../gaia-public
+  REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"   # .../gaia-framework
   GAIA_ROOT="$(cd "$REPO_ROOT/.." && pwd)"               # .../GAIA-Framework
   DRIVER_DIR="$REPO_ROOT/plugins/gaia/test/scripts/token-reduction"
   TOKENIZER_PIN="$DRIVER_DIR/tokenizer.version"

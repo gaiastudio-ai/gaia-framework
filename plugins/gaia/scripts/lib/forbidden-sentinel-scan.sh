@@ -12,7 +12,7 @@
 #   override gated on a story-ID or AI-ID prefix.
 #
 # Production-path filter (EXEMPT subtrees per AC6):
-#   - gaia-public/plugins/gaia/tests/**
+#   - gaia-framework/plugins/gaia/tests/**
 #   - **/tests/fixtures/**
 #   - _memory/**
 #   - docs/**
@@ -88,7 +88,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # git diff --name-only against the base ref. Filter to production paths.
 PROD_PATHS="$(git diff --name-only "${BASE_REF}..HEAD" 2>/dev/null \
-  | grep -vE '^(gaia-public/plugins/gaia/tests/|.*/tests/fixtures/|_memory/|docs/|\.github/)' \
+  | grep -vE '^(gaia-framework/plugins/gaia/tests/|.*/tests/fixtures/|_memory/|docs/|\.github/)' \
   | grep -vE '\.bats$' || true)"
 
 if [[ -z "$PROD_PATHS" ]]; then

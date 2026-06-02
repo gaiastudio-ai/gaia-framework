@@ -75,7 +75,7 @@
       "description": "Optional. Names a plugin/extension consumed by the provider binary (e.g. eslint adapter declares plugin=eslint-plugin-sonarjs)."
     }
   },
-  "$comment": "Finding object schema is NOT redefined here. Adapters emit analysis-results fragments per gaia-public/plugins/gaia/schemas/analysis-results.schema.json — specifically checks[].findings[] with fields: file, line (>=0), severity, rule, message, blocking. Optional finding fields per the canonical schema: column, end_line, snippet, cwe, fix_suggestion. See _schema/run-contract.md for the cross-reference.",
+  "$comment": "Finding object schema is NOT redefined here. Adapters emit analysis-results fragments per gaia-framework/plugins/gaia/schemas/analysis-results.schema.json — specifically checks[].findings[] with fields: file, line (>=0), severity, rule, message, blocking. Optional finding fields per the canonical schema: column, end_line, snippet, cwe, fix_suggestion. See _schema/run-contract.md for the cross-reference.",
   "definitions": {
     "finding": {
       "$comment": "Indirection target documenting where adapter run.sh stdout findings are formally specified. Adapter.json metadata does not embed findings; this $ref pins the canonical schema location so static tools can resolve the cross-reference required by AC4 / FR-RSV2-17.",

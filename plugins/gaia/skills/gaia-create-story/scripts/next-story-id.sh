@@ -32,8 +32,8 @@
 # Spec references:
 #   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.2
 #   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-074
-#   - gaia-public/plugins/gaia/skills/gaia-shell-idioms/SKILL.md
-#   - Sibling: gaia-public/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh
+#   - gaia-framework/plugins/gaia/skills/gaia-shell-idioms/SKILL.md
+#   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh
 
 set -euo pipefail
 LC_ALL=C

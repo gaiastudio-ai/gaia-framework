@@ -2,7 +2,7 @@
 "use strict";
 
 /**
- * version-bump.js — Bump the version in plugin.json for gaia-public releases.
+ * version-bump.js — Bump the version in plugin.json for gaia-framework releases.
  *
  * Usage:
  *   node scripts/version-bump.js <patch|minor|major> [--dry-run]
@@ -11,7 +11,7 @@
  * Prints the touched file path to stdout so release.yml can parse and stage it.
  *
  * Zero runtime dependencies (ADR-005). Ported from Gaia-framework/scripts/version-bump.js.
- * Adapted for gaia-public context per E40-S1 / ADR-056.
+ * Adapted for gaia-framework context per E40-S1 / ADR-056.
  */
 
 const fs = require("node:fs");

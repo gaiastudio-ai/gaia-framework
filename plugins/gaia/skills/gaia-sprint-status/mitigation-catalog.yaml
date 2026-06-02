@@ -2,7 +2,7 @@
 #
 # Canonical list of mitigation strategies surfaced by the dashboard next to
 # HIGH-risk stories per FR-SPQG-5. Consumed by
-# gaia-public/plugins/gaia/scripts/sprint-status-dashboard.sh.
+# gaia-framework/plugins/gaia/scripts/sprint-status-dashboard.sh.
 #
 # Format (ADR-055 FR-SPQG-5):
 #   mitigations:

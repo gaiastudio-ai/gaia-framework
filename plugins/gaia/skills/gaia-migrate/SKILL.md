@@ -8,15 +8,15 @@ orchestration_class: light-procedural
 
 ## Mission
 
-Automate the v1 → v2 migration. Per ADR-042 (scripts-over-LLM), filesystem operations delegate to `plugins/gaia/scripts/gaia-migrate.sh`. This SKILL.md drives the user-facing flow: confirm the user wants to migrate, run dry-run first, then apply, then surface the script's structured summary. The backing script and this SKILL.md are the authoritative source post AF-2026-06-01-3 (the former separate migration guide at `gaia-public/docs/migration-guide-v2.md` was retired with the V1 sunset under ADR-049 — see `project_v1_sunset_sweep_complete.md`).
+Automate the v1 → v2 migration. Per ADR-042 (scripts-over-LLM), filesystem operations delegate to `plugins/gaia/scripts/gaia-migrate.sh`. This SKILL.md drives the user-facing flow: confirm the user wants to migrate, run dry-run first, then apply, then surface the script's structured summary. The backing script and this SKILL.md are the authoritative source post AF-2026-06-01-3 (the former separate migration guide at `gaia-framework/docs/migration-guide-v2.md` was retired with the V1 sunset under ADR-049 — see `project_v1_sunset_sweep_complete.md`).
 
 ## When to use
 
-- The user has run `/plugin marketplace add gaia-public` (and `gaia-enterprise` if licensed) and confirmed `/plugin list` shows them.
+- The user has run `/plugin marketplace add gaia-framework` (and `gaia-enterprise` if licensed) and confirmed `/plugin list` shows them.
 - The user's project root contains v1 markers: `_gaia/`, `_memory/`, `custom/`, and `_gaia/_config/global.yaml`.
 - The user has installed the v2 plugin(s) and wants the automated migration path.
 
-If the user has NOT installed the v2 plugins yet, instruct them to run `/plugin marketplace add gaiastudio-ai/gaia-public` then `/plugin install gaia` first — `/gaia-migrate` cannot install plugins.
+If the user has NOT installed the v2 plugins yet, instruct them to run `/plugin marketplace add gaiastudio-ai/gaia-framework` then `/plugin install gaia` first — `/gaia-migrate` cannot install plugins.
 
 ## Step 0 — v2-to-v2 branch (reconciliation path)
 
@@ -99,7 +99,7 @@ against the installed schema:
 
 ## Authoritative source
 
-The mechanical migration steps are owned by `plugins/gaia/scripts/gaia-migrate.sh`; this SKILL.md drives the user-facing flow. The former separate migration guide at `gaia-public/docs/migration-guide-v2.md` was retired with the V1 sunset under ADR-049 (project memory `project_v1_sunset_sweep_complete.md`) and removed by AF-2026-06-01-3. If the script detects a state it does not cover (e.g., a corrupt v1 file), surface it as a `manual follow-up:` line.
+The mechanical migration steps are owned by `plugins/gaia/scripts/gaia-migrate.sh`; this SKILL.md drives the user-facing flow. The former separate migration guide at `gaia-framework/docs/migration-guide-v2.md` was retired with the V1 sunset under ADR-049 (project memory `project_v1_sunset_sweep_complete.md`) and removed by AF-2026-06-01-3. If the script detects a state it does not cover (e.g., a corrupt v1 file), surface it as a `manual follow-up:` line.
 
 ## Safety
 

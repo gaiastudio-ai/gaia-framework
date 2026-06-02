@@ -36,7 +36,7 @@
         "device-farm",
         "deploy"
       ],
-      "source": "gaia-public/plugins/gaia/scripts/adapters/_schema/adapter.schema.json#/properties/category/enum"
+      "source": "gaia-framework/plugins/gaia/scripts/adapters/_schema/adapter.schema.json#/properties/category/enum"
     }
   },
   "severity_rules": [

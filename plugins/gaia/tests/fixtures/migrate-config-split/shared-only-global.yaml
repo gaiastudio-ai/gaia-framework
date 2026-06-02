@@ -5,5 +5,5 @@
 framework_version: "1.127.2-rc.1"
 user_name: "jlouage"
 communication_language: "English"
-project_path: "/srv/ci/gaia-framework/gaia-public"
+project_path: "/srv/ci/gaia-public/gaia-public"
 date: "2026-04-17"

@@ -62,10 +62,10 @@ classify_line() {
   if printf '%s' "$trimmed" | grep -Eq '(^|[[:space:]/(])\.gaia/memory/[A-Za-z0-9._/-]+'; then
     has_citation=1
   fi
-  # Project-relative file path matching docs/ or gaia-public/ or _gaia/ prefix
+  # Project-relative file path matching docs/ or gaia-framework/ or _gaia/ prefix
   # with a recognized extension (.md, .yaml, .yml, .json, .sh, .ts, .js, .py).
   if printf '%s' "$trimmed" \
-      | grep -Eq '(^|[[:space:](`])(docs|gaia-public|gaia-enterprise|Gaia-framework|_gaia|plugins|scripts|tests)/[A-Za-z0-9._/-]+\.(md|yaml|yml|json|sh|ts|js|py|bats|csv|sql)\b'; then
+      | grep -Eq '(^|[[:space:](`])(docs|gaia-framework|gaia-enterprise|Gaia-framework|_gaia|plugins|scripts|tests)/[A-Za-z0-9._/-]+\.(md|yaml|yml|json|sh|ts|js|py|bats|csv|sql)\b'; then
     has_citation=1
   fi
 

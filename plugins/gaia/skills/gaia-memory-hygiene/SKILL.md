@@ -352,7 +352,7 @@ No post-complete gate is enforced. The skill's output is advisory: the user deci
 - **AC-EC6 — decision-log exceeds token budget:** JIT release between sidecars prevents accumulation. The Token Budget Table flags the agent as over-budget. The per-sidecar scan still completes.
 - **AC-EC7 — circular Related-field references between agents:** cross-reference scan terminates after one full pass (the cross-reference cap enforces this). No infinite loop.
 - **AC-EC8 — Unicode / special characters in agent sidecar names:** path resolution preserves the original encoding. Scan completes without re-encoding errors.
-- **AC-EC9 — parity harness diff between legacy and converted skill:** the Cluster 14 parity harness at `gaia-public/tests/cluster-14-parity/memory-hygiene-parity.bats` acts as the automated regression gate for NFR-053. Any behavioral drift surfaces as a failing test.
+- **AC-EC9 — parity harness diff between legacy and converted skill:** the Cluster 14 parity harness at `gaia-framework/tests/cluster-14-parity/memory-hygiene-parity.bats` acts as the automated regression gate for NFR-053. Any behavioral drift surfaces as a failing test.
 - **AC-EC10 — project with no .gaia/memory/ directory at all:** Step 1 exits gracefully with "no sidecars discovered — `.gaia/memory/` directory not present". No files are created.
 
 ## Frontmatter Linter Compliance

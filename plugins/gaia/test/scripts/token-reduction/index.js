@@ -45,7 +45,7 @@ import { fileURLToPath } from "node:url";
 import { tokenize } from "./tokenize.mjs";
 
 const DRIVER_DIR = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(DRIVER_DIR, "..", "..", "..", "..", ".."); // .../gaia-public
+const REPO_ROOT = resolve(DRIVER_DIR, "..", "..", "..", "..", ".."); // .../gaia-framework
 const GAIA_ROOT = resolve(REPO_ROOT, "..");                           // .../GAIA-Framework
 const TOKENIZER_PIN_FILE = join(DRIVER_DIR, "tokenizer.version");
 const FIXTURES_DIR = join(REPO_ROOT, "plugins", "gaia", "test", "fixtures", "parity-baseline", "token-budget");

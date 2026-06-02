@@ -6,7 +6,7 @@
 # carries two CLAUDE.md identities:
 #   1. {project-root}/CLAUDE.md — the NFR-049 normative target, read by Claude
 #      Code when a developer runs the framework locally.
-#   2. {project-path}/CLAUDE.md == gaia-public/CLAUDE.md — the distributable
+#   2. {project-path}/CLAUDE.md == gaia-framework/CLAUDE.md — the distributable
 #      product copy shipped via the plugin marketplace. This is the source of
 #      truth; the project-root copy is a byte-identical mirror.
 #
@@ -19,12 +19,12 @@
 #
 #   B. CI use (plugin-ci.yml):
 #        claudemd-drift-guard.sh CLAUDE.md CLAUDE.md
-#      Only gaia-public/CLAUDE.md is present inside the gaia-public git repo;
+#      Only gaia-framework/CLAUDE.md is present inside the gaia-framework git repo;
 #      the project-root copy is a dev-workspace-only mirror. The CI invocation
 #      therefore diffs the single in-repo copy against itself, which always
 #      passes. The CI job's value is that it WILL catch any drift introduced
 #      locally and committed accidentally (e.g., a developer edits only the
-#      gaia-public copy and forgets to update the root mirror — the next PR
+#      gaia-framework copy and forgets to update the root mirror — the next PR
 #      that changes either file forces the developer to reconcile both
 #      because the diff is run locally via the bats suite / pre-commit).
 #
@@ -52,7 +52,7 @@ Exit codes:
   64  usage error
 
 Typical invocations:
-  claudemd-drift-guard.sh CLAUDE.md gaia-public/CLAUDE.md
+  claudemd-drift-guard.sh CLAUDE.md gaia-framework/CLAUDE.md
   claudemd-drift-guard.sh /path/to/root/CLAUDE.md /path/to/plugin/CLAUDE.md
 EOF
 }
@@ -81,7 +81,7 @@ PATH_B="$2"
 for p in "$PATH_A" "$PATH_B"; do
   if [[ ! -f "$p" ]]; then
     echo "ERROR: CLAUDE.md not found: $p" >&2
-    echo "       Both project-root and gaia-public/CLAUDE.md must exist before the drift guard can run." >&2
+    echo "       Both project-root and gaia-framework/CLAUDE.md must exist before the drift guard can run." >&2
     exit 2
   fi
 done
@@ -99,7 +99,7 @@ ERROR: CLAUDE.md drift detected between:
        B: $PATH_B
 
        Files differ. Reconcile by choosing the authoritative copy and
-       mirroring it to the other path (per E28-S129: gaia-public/CLAUDE.md
+       mirroring it to the other path (per E28-S129: gaia-framework/CLAUDE.md
        is the source of truth; the project-root copy is the mirror).
 
        First differing hunk:

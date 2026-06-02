@@ -61,10 +61,10 @@
 #     (Scripts-over-LLM precedent)
 #   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-050
 #     (Shared Val + SM Fix-Loop Dispatch Pattern)
-#   - gaia-public/plugins/gaia/skills/gaia-shell-idioms/SKILL.md
-#   - Sibling: gaia-public/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh (E63-S1)
-#   - Sibling: gaia-public/plugins/gaia/skills/gaia-create-story/scripts/next-story-id.sh (E63-S2)
-#   - Sibling: gaia-public/plugins/gaia/skills/gaia-create-story/scripts/validate-canonical-filename.sh (E63-S4)
+#   - gaia-framework/plugins/gaia/skills/gaia-shell-idioms/SKILL.md
+#   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh (E63-S1)
+#   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/next-story-id.sh (E63-S2)
+#   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/validate-canonical-filename.sh (E63-S4)
 
 set -euo pipefail
 LC_ALL=C

@@ -2,7 +2,7 @@
 # commands-guard.sh — GAIA foundation script (E28-S127)
 #
 # FR-329 regression guard. Fails the build if any gaia-*.md file reappears
-# under gaia-public/plugins/gaia/commands/. The commands/ surface was retired
+# under gaia-framework/plugins/gaia/commands/. The commands/ surface was retired
 # as part of Cluster 18 (Cleanup & Migration) and MUST NOT be repopulated —
 # skills under plugins/gaia/skills/ are the sole user-invocation surface.
 #
