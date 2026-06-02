@@ -8,7 +8,7 @@
 #   AC3: Shared setup.sh / finalize.sh pattern applied
 #   AC4: Frontmatter linter compatibility (structural check — deferred to E28-S59)
 #
-# Usage: bash gaia-public/tests/test-E28-S57-add-stories-add-feature-skills.sh
+# Usage: bash gaia-framework/tests/test-E28-S57-add-stories-add-feature-skills.sh
 # Exit 0 when all assertions pass, 1 on any failure.
 
 set -uo pipefail

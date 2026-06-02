@@ -8,7 +8,7 @@
 # Fields are documented in plugins/gaia/scripts/resolve-config.sh header.
 
 project_root: /Users/jlouage/Dev/GAIA-Framework
-project_path: /Users/jlouage/Dev/GAIA-Framework/gaia-public
+project_path: /Users/jlouage/Dev/GAIA-Framework/gaia-framework
 memory_path: /Users/jlouage/Dev/GAIA-Framework/_memory
 checkpoint_path: /Users/jlouage/Dev/GAIA-Framework/_memory/checkpoints
 installed_path: /Users/jlouage/Dev/GAIA-Framework/_gaia

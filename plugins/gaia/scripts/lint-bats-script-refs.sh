@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lint-bats-script-refs.sh — sweep linter for stale script references
-# in bats test files across BOTH gaia-public/tests/ and
-# gaia-public/plugins/gaia/tests/ trees.
+# in bats test files across BOTH gaia-framework/tests/ and
+# gaia-framework/plugins/gaia/tests/ trees.
 #
 # Story: E28-S221 — addresses E59-S3 finding #1 (cross-tree discoverability:
 # when a script under plugins/gaia/scripts/ or plugins/gaia/skills/*/scripts/

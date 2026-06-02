@@ -5,7 +5,7 @@
 # (temp MEMORY_PATH + temp agents dir) to assert AC1..AC6 without mutating
 # the real _memory/ or plugins/gaia/agents/ trees.
 #
-# Usage: bash gaia-public/tests/test-validate-subagents.sh
+# Usage: bash gaia-framework/tests/test-validate-subagents.sh
 # Exit 0 when all assertions pass, 1 on any failure.
 
 set -uo pipefail

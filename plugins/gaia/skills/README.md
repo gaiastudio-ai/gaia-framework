@@ -19,7 +19,7 @@ orchestration_class: reviewer | light-procedural | heavy-procedural | conversati
 ```
 
 - **Type:** enum (string), one of the four values below
-- **Required:** yes, for every SKILL.md under `gaia-public/plugins/gaia/skills/*/`
+- **Required:** yes, for every SKILL.md under `gaia-framework/plugins/gaia/skills/*/`
 - **Default:** none — the field MUST be set explicitly; absence is a `/gaia-validate-framework` CRITICAL finding
 - **Source of truth:** ADR-093 §"Decision — Per-Skill Classification Taxonomy"
 

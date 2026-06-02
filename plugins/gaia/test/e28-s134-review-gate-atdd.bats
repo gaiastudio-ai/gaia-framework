@@ -6,16 +6,16 @@
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
-  RUNNER="$REPO_ROOT/gaia-public/plugins/gaia/test/runners/review-gate.sh"
-  RESET="$REPO_ROOT/gaia-public/plugins/gaia/test/runners/reset-fixtures.sh"
-  FIXTURE_DIR="$REPO_ROOT/gaia-public/plugins/gaia/test/fixtures/cluster-19/stories"
+  RUNNER="$REPO_ROOT/gaia-framework/plugins/gaia/test/runners/review-gate.sh"
+  RESET="$REPO_ROOT/gaia-framework/plugins/gaia/test/runners/reset-fixtures.sh"
+  FIXTURE_DIR="$REPO_ROOT/gaia-framework/plugins/gaia/test/fixtures/cluster-19/stories"
   CLEAN_DIR="$FIXTURE_DIR/clean"
   CR_DEFECT_DIR="$FIXTURE_DIR/code-review-defect"
   SEC_DEFECT_DIR="$FIXTURE_DIR/security-finding"
-  BASELINE_TRACE="$REPO_ROOT/gaia-public/plugins/gaia/test/fixtures/parity-baseline/traces/run-all-reviews.jsonl"
+  BASELINE_TRACE="$REPO_ROOT/gaia-framework/plugins/gaia/test/fixtures/parity-baseline/traces/run-all-reviews.jsonl"
   NATIVE_TRACE="$REPO_ROOT/docs/test-artifacts/traces/native-run-all-reviews.jsonl"
   AUDIT="$REPO_ROOT/docs/test-artifacts/traces/native-review-gate-mtime-audit.log"
-  NORM="$REPO_ROOT/gaia-public/plugins/gaia/scripts/lib/verdict-normalizer.sh"
+  NORM="$REPO_ROOT/gaia-framework/plugins/gaia/scripts/lib/verdict-normalizer.sh"
   # Reset fixtures to review state before each test so AC1, EC1, EC7 (which mutate state) are repeatable.
   [ -x "$RESET" ] && "$RESET" >/dev/null 2>&1 || true
 }

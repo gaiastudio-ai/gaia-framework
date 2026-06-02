@@ -13,7 +13,7 @@
 # No positional args. Reads from $PROJECT_CONFIG (default:
 # .gaia/config/project-config.yaml relative to CWD).
 #
-# YAML parsing strategy (mirrors gaia-public/plugins/gaia/scripts/lib/
+# YAML parsing strategy (mirrors gaia-framework/plugins/gaia/scripts/lib/
 # dev-story-security-invariants.sh::assert_pr_target_from_chain): prefer
 # `yq -r .ci_cd.promotion_chain[0].branch` when available; otherwise fall
 # back to a small awk state machine that locates the first `branch:` line
@@ -54,7 +54,7 @@ emit_absent() {
 # implementation defaulted $PROJECT_CONFIG to a CWD-relative path
 # `.gaia/config/project-config.yaml`. When /gaia-dev-story runs from a working
 # directory whose parent (not itself) holds the team-shared config — the
-# canonical layout for `{project-root}/gaia-public/` — that relative path
+# canonical layout for `{project-root}/gaia-framework/` — that relative path
 # resolved to a non-existent file and the guard returned ABSENT, silently
 # skipping Steps 13-16 (push/PR/CI/merge).
 #

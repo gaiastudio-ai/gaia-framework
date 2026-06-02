@@ -8,7 +8,7 @@
 #   AC3: SKILL.md body contains legacy workflow content (objective, steps)
 #   AC4: Frontmatter linter passes with zero errors
 #
-# Usage: bash gaia-public/tests/test-E28-S38-cluster4-skills.sh
+# Usage: bash gaia-framework/tests/test-E28-S38-cluster4-skills.sh
 # Exit 0 when all assertions pass, 1 on any failure.
 
 set -uo pipefail

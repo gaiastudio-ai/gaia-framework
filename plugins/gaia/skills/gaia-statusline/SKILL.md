@@ -1,13 +1,13 @@
 ---
 name: gaia-statusline
-description: Reference documentation for the GAIA Claude Code statusline runtime — themes, glyph palette, color tokens, width ladder, OSC-8 allowlist, environment variables, and source-of-truth bindings. Documentation-only skill; the runtime ships under `gaia-public/plugins/gaia/scripts/`. Authored by E82-S4; describes the runtime authored by E82-S1.
+description: Reference documentation for the GAIA Claude Code statusline runtime — themes, glyph palette, color tokens, width ladder, OSC-8 allowlist, environment variables, and source-of-truth bindings. Documentation-only skill; the runtime ships under `gaia-framework/plugins/gaia/scripts/`. Authored by E82-S4; describes the runtime authored by E82-S1.
 allowed-tools: [Read]
 orchestration_class: light-procedural
 ---
 
 ## Overview
 
-The GAIA statusline is a Claude Code `statusLine` script rendered on every prompt cycle. The runtime lives at `gaia-public/plugins/gaia/scripts/statusline.sh` and is installed per-user at `~/.claude/gaia-statusline/statusline.sh` by `install-statusline.sh`. Toggle it via `/gaia-statusline-enable` and `/gaia-statusline-disable`. This SKILL.md is the authored reference; helper docs under `helpers/` carry extended detail and are JIT-loaded.
+The GAIA statusline is a Claude Code `statusLine` script rendered on every prompt cycle. The runtime lives at `gaia-framework/plugins/gaia/scripts/statusline.sh` and is installed per-user at `~/.claude/gaia-statusline/statusline.sh` by `install-statusline.sh`. Toggle it via `/gaia-statusline-enable` and `/gaia-statusline-disable`. This SKILL.md is the authored reference; helper docs under `helpers/` carry extended detail and are JIT-loaded.
 
 ## Themes
 
@@ -37,11 +37,11 @@ Three columns: Unicode (default), Nerdfont (opt-in via `GAIA_STATUSLINE_NERDFONT
 | Segment chevron | `▸` | `nf-fa-chevron_right` | `>` |
 | Middle dot | `·` | `nf-md-circle_small` | `-` |
 
-The single source of truth is `gaia-public/plugins/gaia/scripts/lib/statusline-glyphs.sh`. See `helpers/glyph-palette.md` for codepoint rationale.
+The single source of truth is `gaia-framework/plugins/gaia/scripts/lib/statusline-glyphs.sh`. See `helpers/glyph-palette.md` for codepoint rationale.
 
 ## Color Tokens
 
-Six tokens emitted by `gaia-public/plugins/gaia/scripts/lib/statusline-colors.sh`:
+Six tokens emitted by `gaia-framework/plugins/gaia/scripts/lib/statusline-colors.sh`:
 
 | Token | Role | Default |
 |---|---|---|
@@ -99,7 +99,7 @@ Every rendered field has exactly one authoritative source:
 
 | Field | Source |
 |---|---|
-| `version` | `plugin.json` `.version` (read via `jq` from `gaia-public/plugins/gaia/.claude-plugin/plugin.json`) |
+| `version` | `plugin.json` `.version` (read via `jq` from `gaia-framework/plugins/gaia/.claude-plugin/plugin.json`) |
 | `model` | stdin JSON `model.display_name` (fallback `model.id`) |
 | `project` | stdin JSON `cwd` basename (final fallback: `$PWD` basename) |
 | `branch` | `git symbolic-ref --short HEAD` |
@@ -113,8 +113,8 @@ CLAUDE.md is **NOT** a source of truth for the rendered version — `plugin.json
 
 ## Cross-References
 
-- **Install / uninstall:** `gaia-public/plugins/gaia/scripts/install-statusline.sh` (E82-S1).
+- **Install / uninstall:** `gaia-framework/plugins/gaia/scripts/install-statusline.sh` (E82-S1).
 - **Toggle on/off:** `/gaia-statusline-enable` and `/gaia-statusline-disable` (E82-S3) — thin wrappers over `gaia-statusline-toggle.sh`.
-- **Background update fetcher:** `gaia-public/plugins/gaia/scripts/statusline-update-check.sh` (E82-S2). Writes the canonical `~/.claude/gaia-statusline/cache/latest-release.json` schema `{checked_at_iso, latest_tag, current_tag, update_available, installed_version_stale}` (ADR-091 + ADR-094 amendment).
+- **Background update fetcher:** `gaia-framework/plugins/gaia/scripts/statusline-update-check.sh` (E82-S2). Writes the canonical `~/.claude/gaia-statusline/cache/latest-release.json` schema `{checked_at_iso, latest_tag, current_tag, update_available, installed_version_stale}` (ADR-091 + ADR-094 amendment).
 - **Staleness detection (E82-S6 / ADR-094):** the fetcher computes `installed_version_stale` by comparing `~/.claude/gaia-statusline/.installed-version` (written atomically by `install-statusline.sh` as the last action of a successful install) against `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. The renderer surfaces a one-shot daily WARN segment `[stale: rerun install-statusline]` when stale, gated by a per-UTC-day marker at `~/.claude/gaia-statusline/cache/staleness-warning-shown.<YYYY-MM-DD>`. Zero new hot-path I/O — the boolean is read from the existing cache JSON.
 - **Helpers (JIT):** `helpers/themes.md`, `helpers/glyph-palette.md`, `helpers/color-tokens.md`.

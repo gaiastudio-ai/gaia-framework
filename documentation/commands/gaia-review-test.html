@@ -26,7 +26,7 @@
         <table><thead><tr><th>Input</th><th>Source</th><th>Description</th><th>Example</th></tr></thead><tbody>
           <tr><td><code>story-key</code></td><td>Positional argument (optional)</td><td>Story to review test quality for.</td><td><code>/gaia-review-test E3-S7</code></td></tr>
         </tbody></table>
-        <aside class="note">Note: The on-disk skill directory is <code>gaia-public/plugins/gaia/skills/gaia-test-review/</code> (not <code>gaia-review-test/</code>). The skill's <code>name:</code> field declares the canonical command as <code>/gaia-review-test</code>.</aside>
+        <aside class="note">Note: The on-disk skill directory is <code>gaia-framework/plugins/gaia/skills/gaia-test-review/</code> (not <code>gaia-review-test/</code>). The skill's <code>name:</code> field declares the canonical command as <code>/gaia-review-test</code>.</aside>
       </section>
       <section id="outputs"><h2>Outputs</h2><p>A review report is written to <code>.gaia/artifacts/implementation-artifacts/</code>. The story's Review Gate row is updated with PASSED or FAILED.</p></section>
       <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-review-test E3-S7

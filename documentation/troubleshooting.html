@@ -81,10 +81,10 @@
 
         <h3 id="halt-statusline-not-updating">Statusline doesn't reflect my plugin update</h3>
         <p><strong>Surface:</strong> after running <code>/plugin update</code>, the statusline keeps showing old behavior (no gradient, missing rate-limit countdown, missing dirty-file counts, etc.).</p>
-        <p><strong>Cause:</strong> Plugin updates refresh the cache at <code>~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/&lt;version&gt;/</code>, not the standalone runtime install at <code>~/.claude/gaia-statusline/</code>. The self-heal block (AF-2026-05-27-7) lets the install re-copy itself from cache on each render — but the FIRST upgrade onto a pre-self-heal runtime has to be bootstrapped manually.</p>
+        <p><strong>Cause:</strong> Plugin updates refresh the cache at <code>~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/&lt;version&gt;/</code>, not the standalone runtime install at <code>~/.claude/gaia-statusline/</code>. The self-heal block (AF-2026-05-27-7) lets the install re-copy itself from cache on each render — but the FIRST upgrade onto a pre-self-heal runtime has to be bootstrapped manually.</p>
         <p><strong>Fix (one-time per machine):</strong></p>
-        <pre><code>bash "$(ls -td ~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/*/scripts/install-statusline.sh | head -1)"
-ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/ | sort -V | tail -1 \
+        <pre><code>bash "$(ls -td ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/*/scripts/install-statusline.sh | head -1)"
+ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tail -1 \
   &gt; ~/.claude/gaia-statusline/.installed-version</code></pre>
         <p>After this single run, every future <code>/plugin update</code> self-heals automatically.</p>
       </section>

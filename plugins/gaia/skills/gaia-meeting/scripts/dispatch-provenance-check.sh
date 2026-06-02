@@ -3,7 +3,7 @@
 #
 # ## Production callsites
 #
-# - `gaia-public/plugins/gaia/skills/gaia-meeting/SKILL.md` Phase 7 SAVE
+# - `gaia-framework/plugins/gaia/skills/gaia-meeting/SKILL.md` Phase 7 SAVE
 #   (L789-870 region) — wired pre-disk via E76-S22 / ADR-106. The SAVE
 #   pipes the in-memory transcript into this script via `--stdin` immediately
 #   after the AskUserQuestion pre-SAVE yield and BEFORE the three

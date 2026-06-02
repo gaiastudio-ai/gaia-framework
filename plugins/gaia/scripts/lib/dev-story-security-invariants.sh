@@ -124,7 +124,7 @@ assert_pr_target_from_chain() {
   #   4. Upward walk from $PWD looking for config/project-config.yaml,
   #      capped at 8 levels and stopping at the filesystem root.
   # Without this ladder, /gaia-dev-story Step 13 merges fail the security
-  # invariant when CWD is a sub-tree (e.g., gaia-public/) of a project whose
+  # invariant when CWD is a sub-tree (e.g., gaia-framework/) of a project whose
   # config/ lives at an ancestor — the sprint-37 false-flag (E53-S244, E69-S4).
   local cfg=""
   if [[ -n "${PROJECT_CONFIG:-}" ]]; then

@@ -8,7 +8,7 @@
 # Sprint: sprint-41
 #
 # Validates:
-#   AC1 — `grep -rl '_gaia/_config/.*\.csv' gaia-public/plugins/gaia/skills/`
+#   AC1 — `grep -rl '_gaia/_config/.*\.csv' gaia-framework/plugins/gaia/skills/`
 #         returns 0 lines (exit 1). Prior to this story it returned the
 #         gaia-party/SKILL.md path.
 #

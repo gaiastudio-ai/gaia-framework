@@ -9,7 +9,7 @@ orchestration_class: light-procedural
 
 Project convention doc for small shell and awk idioms that have bitten the codebase more than once. Each idiom is presented as a pair: the broken form (and why it fails) followed by the state-machine fix (and a short runnable example).
 
-This skill is prose-only — it documents conventions but does not execute anything. Authors reading this skill should apply the idiom directly in scripts under `gaia-public/plugins/gaia/scripts/` and in bats tests under `gaia-public/tests/`.
+This skill is prose-only — it documents conventions but does not execute anything. Authors reading this skill should apply the idiom directly in scripts under `gaia-framework/plugins/gaia/scripts/` and in bats tests under `gaia-framework/tests/`.
 
 - ADR-041 — Native execution model; this skill is consumed directly by the Skills runtime.
 - ADR-042 — Scripts-over-LLM for deterministic operations; the idioms here are the canonical shell-side implementations.

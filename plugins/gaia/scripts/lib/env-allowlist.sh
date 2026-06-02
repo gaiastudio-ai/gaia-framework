@@ -8,7 +8,7 @@
 #
 # Traces to: AC3 of E93-S4, T-SGR-1, SR-63, NFR-072.
 #
-# Precedent: gaia-public/plugins/gaia/scripts/adapters/owasp-zap/run.sh lines 98-146
+# Precedent: gaia-framework/plugins/gaia/scripts/adapters/owasp-zap/run.sh lines 98-146
 # uses the same env-allowlist pattern; this helper extracts it into a shared
 # library so the ZAP adapter can retrofit onto the same primitive (per the
 # threat-model cross-reference note at threat-model.md line 537).

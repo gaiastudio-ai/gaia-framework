@@ -5,8 +5,8 @@
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  # In the repo layout, tests live under gaia-public/plugins/gaia/test/ and the
-  # repo root is the gaia-public/ directory itself.
+  # In the repo layout, tests live under gaia-framework/plugins/gaia/test/ and the
+  # repo root is the gaia-framework/ directory itself.
   RUNNER="$REPO_ROOT/plugins/gaia/test/runners/full-lifecycle.sh"
   FIXTURE_DIR="$REPO_ROOT/plugins/gaia/test/fixtures/cluster-19"
   RUNS_ROOT="$REPO_ROOT/plugins/gaia/test/runs"
@@ -124,7 +124,7 @@ teardown() {
   run grep -cE '^\| (brainstorm|product-brief|prd|ux|architecture|epics-stories|sprint-plan|dev-story|all-reviews|deploy-checklist) \|' "$RESULTS_FILE"
   [ "$output" -eq 10 ]
 
-  # gaia-public HEAD SHA and baseline tag SHA both recorded.
+  # gaia-framework HEAD SHA and baseline tag SHA both recorded.
   grep -qE 'gaia_public_head_sha: [0-9a-f]{40}' "$RESULTS_FILE"
   grep -qE 'parity_baseline_sha: [0-9a-f]{40}' "$RESULTS_FILE"
   grep -qE 'baseline_tag: v-parity-baseline' "$RESULTS_FILE"

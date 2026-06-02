@@ -25,7 +25,7 @@ dispatched_via: subagent
 
 [Prelude] Christy (Product Designer) — 320 tokens
 Sources consulted:
-  gaia-public/plugins/gaia/skills/gaia-config-platform/SKILL.md
+  gaia-framework/plugins/gaia/skills/gaia-config-platform/SKILL.md
 What I know:
   - The `add` subcommand never enumerates baseline platforms.
 
@@ -37,7 +37,7 @@ dispatched_via: subagent
 
 [Prelude] Theo (Architect) — 250 tokens
 Sources consulted:
-  gaia-public/plugins/gaia/skills/gaia-init/SKILL.md
+  gaia-framework/plugins/gaia/skills/gaia-init/SKILL.md
 What I know:
   - Step 2.2 mixes topology and platform.
 
@@ -68,7 +68,7 @@ dispatched_via: subagent
 
 `claude-code-plugin` is a `project_kind`, not a platform — promoting it would
 either be a no-op warn or require schema-wide changes. Cited:
-`gaia-public/plugins/gaia/skills/gaia-init/SKILL.md` Step 2.2 option 6.
+`gaia-framework/plugins/gaia/skills/gaia-init/SKILL.md` Step 2.2 option 6.
 
 ## Phase: CLOSE
 

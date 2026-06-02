@@ -195,7 +195,7 @@ jobs:
         # strings (with backtick-tolerant regex). The bats file uses
         # synthetic fixtures under tests/fixtures/ and skips the
         # live-corpus tests (TC-VFC-10 / 6b) when GAIA_PROJECT_ROOT_DOCS
-        # is unset — CI only checks out gaia-public/ and the live
+        # is unset — CI only checks out gaia-framework/ and the live
         # assessment-AF-*.md corpus sits at project-root, OUTSIDE this
         # checkout (per CLAUDE.md "Non-git project-root workspace").
         # Step MUST FAIL the build on non-zero exit (TC-VFC-12).
@@ -245,8 +245,8 @@ jobs:
     # E28-S221 — sweep linter that catches bats files referencing scripts
     # that have been deleted from plugins/gaia/scripts/ or
     # plugins/gaia/skills/*/scripts/. Closes the cross-tree discoverability
-    # gap surfaced by E59-S3 finding #1: the gaia-public/tests/ and
-    # gaia-public/plugins/gaia/tests/ trees are disjoint (zero overlap)
+    # gap surfaced by E59-S3 finding #1: the gaia-framework/tests/ and
+    # gaia-framework/plugins/gaia/tests/ trees are disjoint (zero overlap)
     # but both ship and run in CI, so a script deletion under the
     # canonical scripts roots can leave dangling .bats references in
     # either tree. The linter is pure bash + awk, sub-second runtime.
@@ -480,10 +480,10 @@ jobs:
     name: claudemd-drift-guard
     runs-on: ubuntu-latest
     timeout-minutes: 2  # trivial diff check — keep the budget tight
-    # E28-S165 — fails CI if gaia-public/CLAUDE.md drifts from its mirror.
-    # Only gaia-public/CLAUDE.md is git-tracked in this repo; the project-root
+    # E28-S165 — fails CI if gaia-framework/CLAUDE.md drifts from its mirror.
+    # Only gaia-framework/CLAUDE.md is git-tracked in this repo; the project-root
     # mirror lives in each developer's workspace and is kept in sync manually
-    # (per E28-S129 — gaia-public/CLAUDE.md is the source of truth). This CI
+    # (per E28-S129 — gaia-framework/CLAUDE.md is the source of truth). This CI
     # job runs the canonical guard script against the in-repo copy as a
     # self-diff: it protects against future changes that introduce a second
     # tracked CLAUDE.md and ensures the guard script itself never regresses.
@@ -493,14 +493,14 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - name: Ensure drift-guard script is executable
         run: chmod +x plugins/gaia/scripts/claudemd-drift-guard.sh
-      - name: Run CLAUDE.md drift guard (diff -q CLAUDE.md gaia-public/CLAUDE.md)
+      - name: Run CLAUDE.md drift guard (diff -q CLAUDE.md gaia-framework/CLAUDE.md)
         run: |
-          # Inside the gaia-public repo only ONE CLAUDE.md is tracked (at the
+          # Inside the gaia-framework repo only ONE CLAUDE.md is tracked (at the
           # repo root). The project-root mirror sits outside this checkout.
           # The guard script invokes `diff -q CLAUDE.md CLAUDE.md` — a
           # self-diff that always passes — but still runs the full guard
           # code path so any regression in the script surfaces here. The
-          # literal `diff -q CLAUDE.md gaia-public/CLAUDE.md` form lives in
+          # literal `diff -q CLAUDE.md gaia-framework/CLAUDE.md` form lives in
           # the developer's local invocation (see plugins/gaia/scripts/claudemd-drift-guard.sh).
           plugins/gaia/scripts/claudemd-drift-guard.sh CLAUDE.md CLAUDE.md
 

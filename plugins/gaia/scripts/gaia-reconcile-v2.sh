@@ -181,7 +181,7 @@ _grv2_discover_schema() {
   fi
   local dir="$PROJECT_ROOT"
   while [ "$dir" != "/" ] && [ -n "$dir" ]; do
-    local candidate="$dir/gaia-public/plugins/gaia/schemas/project-config.schema.json"
+    local candidate="$dir/gaia-framework/plugins/gaia/schemas/project-config.schema.json"
     if [ -f "$candidate" ]; then
       printf '%s\n' "$candidate"
       return 0
@@ -278,7 +278,7 @@ _grv2_main() {
 
   local schema_path
   if ! schema_path="$(_grv2_discover_schema)"; then
-    _grv2_err "Schema not found. Expected at \${CLAUDE_PLUGIN_ROOT}/schemas/project-config.schema.json or in-tree at gaia-public/plugins/gaia/schemas/project-config.schema.json. Is the GAIA plugin installed?"
+    _grv2_err "Schema not found. Expected at \${CLAUDE_PLUGIN_ROOT}/schemas/project-config.schema.json or in-tree at gaia-framework/plugins/gaia/schemas/project-config.schema.json. Is the GAIA plugin installed?"
     exit 1
   fi
   if [ ! -r "$schema_path" ]; then

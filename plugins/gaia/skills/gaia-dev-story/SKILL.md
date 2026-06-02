@@ -254,7 +254,7 @@ This gate sits OUTSIDE the Step 5 TDD body so the pause-free TDD invariant (E55-
 - **`SKIP`:** Continue silently to Step 6. NO `AskUserQuestion` is presented. Emit a single-line gate log to stderr (NFR-DSH-5): `step5_tdd_gate: phase=red verdict=skip`.
 - **`PROMPT`:** The next tool invocation MUST be `AskUserQuestion`. The prompt body offers exactly three labeled options — verbatim labels `review-myself`, `route-to-qa`, `proceed-anyway` (case-sensitive, hyphen-sensitive, in that exact order, no synonyms, no fourth option). The question stem names the gate trigger (story risk, configured threshold, current phase = `red`).
   - On `review-myself`: HALT for user-driven review. Resume via `/gaia-resume` re-enters at this same gate point.
-  - On `route-to-qa`: dispatch the `tdd-reviewer` subagent (`gaia-public/plugins/gaia/agents/tdd-reviewer.md`, persona "Tex") in fork context with the Red-phase diff. Surface the verdict per ADR-063 (PASSED / FAILED / UNVERIFIED + ADR-037 findings line-by-line for WARNING-only). HALT on any `severity: CRITICAL` finding per ADR-067 — YOLO MUST NOT auto-resolve CRITICAL findings; the halt fires in BOTH YOLO and non-YOLO. Findings persist to `.gaia/memory/checkpoints/{story_key}-tdd-review-findings.md` (append-only).
+  - On `route-to-qa`: dispatch the `tdd-reviewer` subagent (`gaia-framework/plugins/gaia/agents/tdd-reviewer.md`, persona "Tex") in fork context with the Red-phase diff. Surface the verdict per ADR-063 (PASSED / FAILED / UNVERIFIED + ADR-037 findings line-by-line for WARNING-only). HALT on any `severity: CRITICAL` finding per ADR-067 — YOLO MUST NOT auto-resolve CRITICAL findings; the halt fires in BOTH YOLO and non-YOLO. Findings persist to `.gaia/memory/checkpoints/{story_key}-tdd-review-findings.md` (append-only).
   - On `proceed-anyway`: record a timestamped decision in the dev-story checkpoint via the PostToolUse `checkpoint.sh` write hook — the entry MUST include the timestamp (UTC ISO-8601), the phase (`red`), and the free-form reason captured from the user. Continue to Step 6.
   - Emit `step5_tdd_gate: phase=red verdict=prompt choice={review-myself|route-to-qa|proceed-anyway}` to stderr.
 - **`QA_AUTO`:** YOLO + `qa_auto_in_yolo=true` branch. Dispatch the `tdd-reviewer` subagent with the same payload as `route-to-qa` (the only difference is the user did not explicitly choose). Surface the verdict per ADR-063; HALT on CRITICAL per ADR-067 in BOTH modes. Emit `step5_tdd_gate: phase=red verdict=qa_auto`.
@@ -480,7 +480,7 @@ ALLOW_STUB_REASON="$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/forbidden-sentinel-s
 - exits 1 with canonical stderr `HALT: forbidden sentinel <S> in <path>:<line> — add a Finding row or pass --allow-stub=<reason> to /gaia-dev-story` on a production-path match.
 - exits 1 with `--allow-stub reason must cite a story ID (Ex-Sx) or AI ID (AI-YYYY-MM-DD-N) — got: <reason>` on a malformed `--allow-stub` value.
 
-**Production-path filter (AC6):** the scan EXEMPTS `gaia-public/plugins/gaia/tests/**`, any `**/tests/fixtures/**` subtree, `.gaia/memory/**`, `docs/**`, `.github/**`, and any `*.bats` file (defense-in-depth).
+**Production-path filter (AC6):** the scan EXEMPTS `gaia-framework/plugins/gaia/tests/**`, any `**/tests/fixtures/**` subtree, `.gaia/memory/**`, `docs/**`, `.github/**`, and any `*.bats` file (defense-in-depth).
 
 **`--allow-stub` reason regex (AC4):** `^(E[0-9]+-S[0-9]+|AI-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]+):` — must end with a colon so the reason is at minimum `<id>: <prose>`. Bare prose is rejected.
 
@@ -552,7 +552,7 @@ After Step 14's post-completion gate confirms the merge commit landed, surface a
 - Build the touched-files list from the merged feature branch: `git diff --name-only "$PROMOTION_BASE..HEAD"` (or the squash-commit's name-only listing on the target branch).
 - Pipe the list through `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/cache-refresh-advisory.sh --diff-files <path>` (or via stdin). The helper applies the deterministic filter and emits AT MOST one `step14b_advisory: plugin-cache refresh recommended — touched files: <list>` line to stderr.
 - Exit code is ALWAYS 0 — the advisory never blocks Step 15. The reminder points the operator at the README's "Plugin cache refresh after merge" section.
-- Why this matters: the Claude Code substrate caches plugin SKILL.md / scripts at `~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/<version>/` at session start. Without a refresh, the same-session re-invocation of a changed skill runs the PRE-merge code (dogfooding-loop-specific friction). See E92-S4 + the README's playbook section.
+- Why this matters: the Claude Code substrate caches plugin SKILL.md / scripts at `~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/<version>/` at session start. Without a refresh, the same-session re-invocation of a changed skill runs the PRE-merge code (dogfooding-loop-specific friction). See E92-S4 + the README's playbook section.
 
 Emit a single-line gate log to stderr: `step14b_gate: advisories={count}` where `count` is 0 or 1.
 <!-- E92-S4: step 14b cache-refresh advisory end -->

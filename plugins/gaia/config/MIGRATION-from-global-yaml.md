@@ -6,7 +6,7 @@
 
 This document enumerates every field currently declared in `_gaia/_config/global.yaml` and assigns each a migration disposition:
 
-- **moved-to-project-config** — relocates to `gaia-public/plugins/gaia/config/project-config.yaml`. Per-project, team-shared, committed to git.
+- **moved-to-project-config** — relocates to `gaia-framework/plugins/gaia/config/project-config.yaml`. Per-project, team-shared, committed to git.
 - **stays-in-global** — remains in `_gaia/_config/global.yaml` as a machine-local or user-scoped setting. Gitignored under the new plugin layout.
 - **deprecated** — no longer used by GAIA Native; scheduled for removal in the Cluster 18 cleanup pass.
 
@@ -20,11 +20,11 @@ This sentence appears verbatim in `project-config.schema.yaml` — identical wor
 
 ### Worked example — shared default with local override
 
-A team commits `gaia-public/plugins/gaia/config/project-config.yaml` so every developer on the project inherits the same default `project_path`:
+A team commits `gaia-framework/plugins/gaia/config/project-config.yaml` so every developer on the project inherits the same default `project_path`:
 
 ```yaml
-# gaia-public/plugins/gaia/config/project-config.yaml (team-shared, committed)
-project_path: /srv/ci/gaia-framework/gaia-public
+# gaia-framework/plugins/gaia/config/project-config.yaml (team-shared, committed)
+project_path: /srv/ci/gaia-framework/gaia-framework
 framework_version: 1.127.2-rc.1
 date: 2026-04-17
 ```
@@ -105,7 +105,7 @@ The four artifact-path keys — `planning_artifacts`, `implementation_artifacts`
 
 ### Defaults
 
-Each key's default resolves relative to `project_root` and matches the live values in `gaia-public/plugins/gaia/config/project-config.yaml`:
+Each key's default resolves relative to `project_root` and matches the live values in `gaia-framework/plugins/gaia/config/project-config.yaml`:
 
 | Key                         | Default                        | Description                                                                |
 |-----------------------------|--------------------------------|----------------------------------------------------------------------------|
@@ -125,7 +125,7 @@ The resolver emits the merged value verbatim. An override of `planning_artifacts
 A project that wants planning artifacts at the repo root under `planning/` instead of the default `.gaia/artifacts/planning-artifacts/` adds the override to its team-shared config:
 
 ```yaml
-# gaia-public/plugins/gaia/config/project-config.yaml (team-shared, committed)
+# gaia-framework/plugins/gaia/config/project-config.yaml (team-shared, committed)
 planning_artifacts: planning/
 ```
 

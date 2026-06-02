@@ -18,7 +18,7 @@
 #             referencing E83-S6.
 #
 # These checks are guarded by GAIA_PROJECT_ROOT_DOCS — when the project-root
-# docs/ tree is not mounted (CI plugin-ci.yml only checks out gaia-public/),
+# docs/ tree is not mounted (CI plugin-ci.yml only checks out gaia-framework/),
 # the tests skip cleanly. Local dev / project-root contexts run them live.
 
 setup() {

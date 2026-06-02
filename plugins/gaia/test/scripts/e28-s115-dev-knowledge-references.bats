@@ -5,7 +5,7 @@
 #
 # Validates:
 #   - Every `plugins/gaia/knowledge/{stack}/{filename}.md` path declared by a
-#     stack dev subagent under `gaia-public/plugins/gaia/agents/*-dev.md`
+#     stack dev subagent under `gaia-framework/plugins/gaia/agents/*-dev.md`
 #     resolves to an existing, non-empty file (AC3, AC6).
 #   - sha256 of every copied target matches the sha256 of its legacy source (AC2).
 #   - Zero matches of the legacy path string "_gaia/dev/knowledge/" inside the
@@ -19,7 +19,7 @@ PLUGIN_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
 REPO_ROOT="$(cd "$PLUGIN_DIR/../.." && pwd)"
 AGENTS_DIR="$PLUGIN_DIR/agents"
 KNOWLEDGE_DIR="$PLUGIN_DIR/knowledge"
-# Legacy source tree lives outside the gaia-public repo at the framework root.
+# Legacy source tree lives outside the gaia-framework repo at the framework root.
 LEGACY_KNOWLEDGE_DIR="$REPO_ROOT/../_gaia/dev/knowledge"
 
 # ---------- AC3 / AC6: Every declared knowledge path resolves ----------

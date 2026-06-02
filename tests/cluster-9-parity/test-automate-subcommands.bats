@@ -16,7 +16,7 @@
 # Refs: E72-S2, FR-RSV2-40, source-report §5.8 / §11.1 / §11.2
 #
 # Usage:
-#   bats gaia-public/tests/cluster-9-parity/test-automate-subcommands.bats
+#   bats gaia-framework/tests/cluster-9-parity/test-automate-subcommands.bats
 #
 # Dependencies: bats-core 1.10+
 

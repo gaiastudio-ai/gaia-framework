@@ -75,8 +75,8 @@ jobs:
           # rebase-merge, force-push, and first-release scenarios).
           # First-release fallback: root commit when no v* tag exists yet.
           # Helper extracted for bats unit testability — see E40-S2.
-          # CWD is gaia-public/ (per actions/checkout@v4 default), so the
-          # invocation path is relative to gaia-public/, NOT the repo root.
+          # CWD is gaia-framework/ (per actions/checkout@v4 default), so the
+          # invocation path is relative to gaia-framework/, NOT the repo root.
           BEFORE="$(./plugins/gaia/scripts/lib/resolve-release-anchor.sh)"
           AFTER="${{ github.sha }}"
 
