@@ -9,9 +9,9 @@
 #
 # Refs: FR-RIM-1, FR-RIM-2, GR-RT-1, GR-RT-7, ADR-052, TC-RIM-1, TC-RIM-2
 # Scripts under test (to be created in GREEN):
-#   gaia-framework/plugins/gaia/skills/gaia-retro/scripts/review-extract.sh
-#   gaia-framework/plugins/gaia/skills/gaia-retro/scripts/cross-retro-detect.sh
-#   gaia-framework/plugins/gaia/skills/gaia-retro/scripts/action-items-increment.sh
+#   gaia-public/plugins/gaia/skills/gaia-retro/scripts/review-extract.sh
+#   gaia-public/plugins/gaia/skills/gaia-retro/scripts/cross-retro-detect.sh
+#   gaia-public/plugins/gaia/skills/gaia-retro/scripts/action-items-increment.sh
 
 load 'test_helper.bash'
 

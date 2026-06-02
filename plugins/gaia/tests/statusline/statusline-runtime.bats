@@ -14,8 +14,8 @@ setup() {
   cd "$TEST_TMP"
   # Build a minimal fake project layout so the runtime can read plugin.json
   # and (rich theme) sprint-status.yaml without touching the real repo.
-  mkdir -p gaia-framework/plugins/gaia/.claude-plugin
-  cat > gaia-framework/plugins/gaia/.claude-plugin/plugin.json <<'PJ'
+  mkdir -p gaia-public/plugins/gaia/.claude-plugin
+  cat > gaia-public/plugins/gaia/.claude-plugin/plugin.json <<'PJ'
 { "name": "gaia", "version": "9.9.9-test" }
 PJ
   mkdir -p docs/implementation-artifacts
@@ -109,7 +109,7 @@ STUB
   # win. CLAUDE_PLUGIN_ROOT is left unset — the runtime no longer consults
   # it (Claude Code does not set it for the statusLine command, which was
   # the original "GAIA dev" production bug).
-  CACHE_DIR="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/1.141.0-active/.claude-plugin"
+  CACHE_DIR="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/1.141.0-active/.claude-plugin"
   mkdir -p "$CACHE_DIR"
   cat > "$CACHE_DIR/plugin.json" <<'PJ'
 { "name": "gaia", "version": "1.141.0-active" }
@@ -289,8 +289,8 @@ assert_no_orphans() {
   # recognizable markers. We override PROJECT_PATH to a fresh empty tmp dir
   # that has only the plugin.json (no docs/, no .git, no package.json).
   EMPTY_PROJ="$TEST_TMP/empty-proj"
-  mkdir -p "$EMPTY_PROJ/gaia-framework/plugins/gaia/.claude-plugin"
-  cp gaia-framework/plugins/gaia/.claude-plugin/plugin.json "$EMPTY_PROJ/gaia-framework/plugins/gaia/.claude-plugin/plugin.json"
+  mkdir -p "$EMPTY_PROJ/gaia-public/plugins/gaia/.claude-plugin"
+  cp gaia-public/plugins/gaia/.claude-plugin/plugin.json "$EMPTY_PROJ/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
   STDIN_EMPTY='{"model":{"id":"claude-opus-4-7","display_name":"Opus 4.7"},"workspace":{"current_dir":"'"$EMPTY_PROJ"'"}}'
   run bash -c "PROJECT_PATH='$EMPTY_PROJ' printf '%s' '$STDIN_EMPTY' | env PROJECT_PATH='$EMPTY_PROJ' '$RUNTIME'"
   [ "$status" -eq 0 ]
@@ -557,10 +557,10 @@ _model_line() { # $1 = display_name ; prints stripped line 1 (no color)
 @test "AF-27-7: installed runtime re-copies a newer cache runtime + stamps marker" {
   [ -f "$RUNTIME" ]
   local install_dir="$HOME/.claude/gaia-statusline"
-  local cache_scripts="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/1.180.3/scripts"
+  local cache_scripts="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/1.180.3/scripts"
   mkdir -p "$install_dir/lib" "$cache_scripts/lib" \
-           "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/1.180.3/.claude-plugin"
-  printf '{ "name":"gaia","version":"1.180.3" }' > "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/1.180.3/.claude-plugin/plugin.json"
+           "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/1.180.3/.claude-plugin"
+  printf '{ "name":"gaia","version":"1.180.3" }' > "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/1.180.3/.claude-plugin/plugin.json"
   # CACHE = real current runtime + helpers, with a trailing byte so it DIFFERS
   # from the installed copy (forces the self-heal trigger).
   cp "$RUNTIME" "$cache_scripts/statusline.sh"; printf '\n# newer\n' >> "$cache_scripts/statusline.sh"

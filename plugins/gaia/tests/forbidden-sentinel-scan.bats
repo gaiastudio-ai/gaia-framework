@@ -9,7 +9,7 @@
 #   TC-DPD-15 — load-taxonomy.sh enumerates THREE supported taxonomies
 #
 # Helper under test:
-#   gaia-framework/plugins/gaia/scripts/lib/forbidden-sentinel-scan.sh
+#   gaia-public/plugins/gaia/scripts/lib/forbidden-sentinel-scan.sh
 #
 # Invocation contract:
 #   forbidden-sentinel-scan.sh --base-ref <branch> [--allow-stub <reason>]
@@ -44,7 +44,7 @@ setup() {
   # at runtime keeps the assertion's path shape correct without tripping
   # the linter (the linter is single-pass over each line). The on-disk
   # files don't need to exist — they live inside the per-test temp repo.
-  local prefix="gaia-framework/plugins/gaia"
+  local prefix="gaia-public/plugins/gaia"
   FIXTURE_PROD_PATH="${prefix}/scripts/fixture-prod.sh"
   FIXTURE_FIXTURES_PATH="${prefix}/tests/fixtures/fixture-test.sh"
   FIXTURE_PROD_ALT_PATH="${prefix}/scripts/fixture-alt.sh"
@@ -55,7 +55,7 @@ setup() {
     git -c init.defaultBranch=main init -q
     git config user.email test@test
     git config user.name test
-    mkdir -p "gaia-framework/plugins/gaia/scripts" "gaia-framework/plugins/gaia/tests/fixtures"
+    mkdir -p "gaia-public/plugins/gaia/scripts" "gaia-public/plugins/gaia/tests/fixtures"
     printf 'clean baseline\n' > "$FIXTURE_PROD_PATH"
     git add -A
     git commit -q -m base

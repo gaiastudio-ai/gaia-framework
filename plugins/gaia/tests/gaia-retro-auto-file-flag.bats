@@ -27,9 +27,9 @@ bats_require_minimum_version 1.5.0
 SKILL_MD="$BATS_TEST_DIRNAME/../skills/gaia-retro/SKILL.md"
 # The design note lives under the consumer project's docs/planning-artifacts/
 # tree (per E92-S5 AC1) — NOT inside the plugin source. CI checks out only
-# `gaia-framework/` so the design note path is not visible to plugin-ci.bats-tests.
+# `gaia-public/` so the design note path is not visible to plugin-ci.bats-tests.
 # In a local dev shell with the parent project checked out (project root
-# containing both `gaia-framework/` and `docs/`), the relative path resolves; in
+# containing both `gaia-public/` and `docs/`), the relative path resolves; in
 # CI it does not. The AC1 design-note assertions skip-with-a-note when the
 # file is absent.
 DESIGN_NOTE="$BATS_TEST_DIRNAME/../../../../docs/planning-artifacts/retro-auto-file-design.md"

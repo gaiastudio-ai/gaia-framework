@@ -2,7 +2,7 @@
 # e68-s5-regime-rubrics-cohort-uniformity.bats — E68-S5 reconciliation coverage.
 #
 # Asserts that the nine regime rubric files shipped under
-# `gaia-framework/plugins/gaia/rubrics/regimes/` share a byte-identical
+# `gaia-public/plugins/gaia/rubrics/regimes/` share a byte-identical
 # top-level shape and use canonical schema field names (per E68-S4 F1+F2
 # triage findings reconciled by E68-S5).
 #

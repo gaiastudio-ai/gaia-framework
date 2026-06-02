@@ -113,8 +113,8 @@ EOF
 
 @test "AC4: the ADR-108 vocabulary shard enumerates the planned sprint state" {
   ADR="$REPO_ROOT/../.gaia/artifacts/planning-artifacts/architecture/12-12-adr-detail-records.md"
-  # project-root artifact, not in the gaia-framework CI checkout -> skip when absent
-  [ -f "$ADR" ] || skip "ADR shard is a project-root artifact not present in the gaia-framework checkout"
+  # project-root artifact, not in the gaia-public CI checkout -> skip when absent
+  [ -f "$ADR" ] || skip "ADR shard is a project-root artifact not present in the gaia-public checkout"
   grep -Eiq 'planned' "$ADR" \
     || { echo "ADR-108 detail shard should enumerate the planned sprint state" >&2; false; }
 }

@@ -177,7 +177,7 @@ EOF
 }
 
 # E55-S9 — discovery ladder: when CWD is a sub-tree of a project whose
-# config/ lives at an ancestor (the gaia-framework/ shape), assert_pr_target_-
+# config/ lives at an ancestor (the gaia-public/ shape), assert_pr_target_-
 # from_chain MUST walk upward to find the config rather than false-flagging.
 @test "assert_pr_target_from_chain: discovers config via upward walk (E55-S9)" {
   mkdir -p "$TEST_TMP/anc/config" "$TEST_TMP/anc/sub"

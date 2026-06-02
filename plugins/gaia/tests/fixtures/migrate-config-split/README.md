@@ -12,8 +12,8 @@ one input shape to the migration script (Task 6 of E28-S143):
   team-shared keys; the rewritten `global.yaml` should be minimal after migration.
 
 The classification table lives in
-`gaia-framework/plugins/gaia/config/MIGRATION-from-global-yaml.md` and the schema in
-`gaia-framework/plugins/gaia/config/project-config.schema.yaml`. Fixture values are
+`gaia-public/plugins/gaia/config/MIGRATION-from-global-yaml.md` and the schema in
+`gaia-public/plugins/gaia/config/project-config.schema.yaml`. Fixture values are
 chosen to exercise the local-overrides-shared precedence rule (ADR-044).
 
 These fixtures are consumed by `tests/migrate-config-split.bats`.

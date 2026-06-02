@@ -111,7 +111,7 @@ _load_helpers() {
 @test "allowlist_match rejects arbitrary paths outside the allowlist" {
   _load_helpers
   local root="/tmp/gaia-al-root"
-  run allowlist_match "$root" "$root/gaia-framework/plugins/gaia/skills/foo.md"
+  run allowlist_match "$root" "$root/gaia-public/plugins/gaia/skills/foo.md"
   [ "$status" -ne 0 ]
 }
 

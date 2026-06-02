@@ -99,8 +99,11 @@ teardown() { common_teardown; }
 @test "AF-33-2 F-05: no active operational reference to gaiastudio-ai/gaia-public outside CHANGELOGs" {
   # The CHANGELOG files intentionally preserve historical URLs. The
   # AF-33-2 bats file itself names the old token in its anti-regression
-  # grep patterns by necessity; exclude it. Every other tracked file MUST
-  # point at gaia-framework.
+  # grep patterns by necessity; exclude it. Test fixtures (under
+  # plugins/gaia/tests/) sometimes synthesize substrate cache-path strings
+  # using the on-disk directory name (gaia-public/ on CI until the
+  # GitHub-side rename); the sweep targets operational code only.
+  # Every other tracked file MUST point at gaia-framework.
   run bash -c "
     grep -rln 'gaiastudio-ai/gaia-public' '$REPO_ROOT' \
       --include='*.sh' --include='*.json' --include='*.yaml' --include='*.yml' \
@@ -108,6 +111,7 @@ teardown() { common_teardown; }
       --include='*.py' --include='*.csv' --include='*.bats' --include='*.md' \
       2>/dev/null \
       | grep -v 'CHANGELOG\\.md$' \
+      | grep -v '/plugins/gaia/tests/' \
       | grep -v 'af-2026-06-02-2-rename-gaia-public-to-gaia-framework\\.bats$' \
       | head -5
   "
@@ -122,6 +126,7 @@ teardown() { common_teardown; }
       --include='*.py' --include='*.csv' --include='*.bats' --include='*.md' \
       2>/dev/null \
       | grep -v 'CHANGELOG\\.md$' \
+      | grep -v '/plugins/gaia/tests/' \
       | grep -v 'af-2026-06-02-2-rename-gaia-public-to-gaia-framework\\.bats$' \
       | head -5
   "

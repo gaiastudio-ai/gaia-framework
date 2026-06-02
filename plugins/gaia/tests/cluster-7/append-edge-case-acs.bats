@@ -2,7 +2,7 @@
 # append-edge-case-acs.bats — E63-S7 / Work Items 6.7 + 4
 #
 # Verifies the deterministic contract of
-# gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/append-edge-case-acs.sh.
+# gaia-public/plugins/gaia/skills/gaia-create-story/scripts/append-edge-case-acs.sh.
 #
 # Test scenarios trace 1:1 to the story Test Scenarios table:
 #   #1  Clean append, hashes preserved              (AC1)

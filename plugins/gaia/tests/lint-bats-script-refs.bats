@@ -2,8 +2,8 @@
 # lint-bats-script-refs.bats — unit tests for plugins/gaia/scripts/lint-bats-script-refs.sh
 #
 # Story: E28-S221 — sweep linter that flags any bats test referencing a
-# deleted/deprecated script across BOTH gaia-framework/tests/ and
-# gaia-framework/plugins/gaia/tests/ trees.
+# deleted/deprecated script across BOTH gaia-public/tests/ and
+# gaia-public/plugins/gaia/tests/ trees.
 #
 # Public functions covered: extract_script_refs, lint_one_bats, is_ignored,
 # main.

@@ -2,7 +2,7 @@
 # next-story-id.bats — E63-S2 / Work Item 6.2
 #
 # Verifies the deterministic contract of
-# gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/next-story-id.sh.
+# gaia-public/plugins/gaia/skills/gaia-create-story/scripts/next-story-id.sh.
 # This script is the auto-allocation source for E63-S3
 # (generate-frontmatter.sh) — any change here must be coordinated with that
 # downstream consumer.

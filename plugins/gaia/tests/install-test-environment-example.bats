@@ -41,7 +41,7 @@ teardown() {
   # The canonical template MUST be byte-identical to the V1 source at
   # Gaia-framework/docs/test-artifacts/test-environment.yaml.example
   # so the schema captured by E17-S7/S25 is preserved verbatim.
-  # V1 source lives at project-root level, sibling to gaia-framework/.
+  # V1 source lives at project-root level, sibling to gaia-public/.
   V1_SOURCE="${BATS_TEST_DIRNAME}/../../../../Gaia-framework/docs/test-artifacts/test-environment.yaml.example"
   if [ ! -f "${V1_SOURCE}" ]; then
     skip "V1 source-of-truth missing (e.g., CI runner without project-root); template content is still validated by AC1 above"

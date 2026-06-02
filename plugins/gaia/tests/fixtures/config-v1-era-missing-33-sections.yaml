@@ -36,7 +36,7 @@ problem_solving:
 # _derive_required_fields helper now writes them on new migrations; this file
 # predates that fix. See docs/implementation-artifacts/E28-S200-resolver-emit-surface-and-harness-fixture-mode.md.
 project_root: "."
-project_path: "gaia-framework"
+project_path: "gaia-public"
 memory_path: "./_memory"
 checkpoint_path: "./_memory/checkpoints"
 installed_path: "./_gaia"

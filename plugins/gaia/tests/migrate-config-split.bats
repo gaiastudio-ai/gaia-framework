@@ -207,14 +207,14 @@ _has_yq() { command -v yq >/dev/null 2>&1; }
   cp "$FIX/mixed-global.yaml" "$PRESPLIT_SKILL/config/project-config.yaml"
   # Add project_root (required field — fixture doesn't need to carry it by
   # default, this aligns resolve-config.sh required-field check).
-  printf 'project_root: "/srv/ci/gaia-framework"\n' >> "$PRESPLIT_SKILL/config/project-config.yaml"
+  printf 'project_root: "/srv/ci/gaia-public"\n' >> "$PRESPLIT_SKILL/config/project-config.yaml"
   cp "$SCHEMA" "$PRESPLIT_SKILL/config/project-config.schema.yaml"
   run env CLAUDE_SKILL_DIR="$PRESPLIT_SKILL" "$SCRIPTS_DIR/resolve-config.sh"
   [ "$status" -eq 0 ]
   pre_output="$output"
 
   # Run the migration — need the same extra project_root in the input.
-  printf 'project_root: "/srv/ci/gaia-framework"\n' >> "$GLOBAL_PATH"
+  printf 'project_root: "/srv/ci/gaia-public"\n' >> "$GLOBAL_PATH"
   run "$SCRIPT" --global-yaml "$GLOBAL_PATH" --out-shared "$SHARED_PATH"
   [ "$status" -eq 0 ]
 

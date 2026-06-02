@@ -9,7 +9,7 @@
 #       GR-RT-3, GR-RT-5, GR-RT-6, ADR-052.
 # Test cases: TC-RIM-3, TC-RIM-4, TC-RIM-5, TC-RIM-6, TC-RIM-7, TC-RIM-12.
 # Scripts under test (created in GREEN):
-#   gaia-framework/plugins/gaia/scripts/retro-sidecar-write.sh
+#   gaia-public/plugins/gaia/scripts/retro-sidecar-write.sh
 
 load 'test_helper.bash'
 
@@ -30,7 +30,7 @@ mk_memory_root() {
   mkdir -p "$root/.gaia/memory" \
            "$root/docs/implementation-artifacts" \
            "$root/docs/planning-artifacts" \
-           "$root/gaia-framework/plugins/gaia/skills" \
+           "$root/gaia-public/plugins/gaia/skills" \
            "$root/custom/skills"
 }
 
@@ -108,7 +108,7 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  local target="$root/gaia-framework/plugins/gaia/skills/foo.md"
+  local target="$root/gaia-public/plugins/gaia/skills/foo.md"
   mkdir -p "$(dirname "$target")"
   echo "original" > "$target"
   local before_hash; before_hash="$(shasum -a 256 "$target" | awk '{print $1}')"
@@ -210,9 +210,9 @@ mk_memory_root() {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
-  # A sidecar-looking path but actually a symlink into gaia-framework/plugins/.
+  # A sidecar-looking path but actually a symlink into gaia-public/plugins/.
   mkdir -p "$root/.gaia/memory/architect-sidecar"
-  local forbidden="$root/gaia-framework/plugins/gaia/skills/evil.md"
+  local forbidden="$root/gaia-public/plugins/gaia/skills/evil.md"
   mkdir -p "$(dirname "$forbidden")"
   echo "original" > "$forbidden"
   local before; before="$(shasum -a 256 "$forbidden" | awk '{print $1}')"

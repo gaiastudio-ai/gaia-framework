@@ -14,8 +14,8 @@ setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   RUNTIME="$PLUGIN_ROOT/scripts/statusline.sh"
   cd "$TEST_TMP"
-  mkdir -p gaia-framework/plugins/gaia/.claude-plugin
-  cat > gaia-framework/plugins/gaia/.claude-plugin/plugin.json <<'PJ'
+  mkdir -p gaia-public/plugins/gaia/.claude-plugin
+  cat > gaia-public/plugins/gaia/.claude-plugin/plugin.json <<'PJ'
 { "name": "gaia", "version": "1.0.0" }
 PJ
   export HOME="$TEST_TMP/home"
@@ -130,7 +130,7 @@ teardown() { common_teardown; }
 @test "AF-27-5: semver-aware — 1.10.0 installed, latest 1.9.0 -> no arrow" {
   [ -f "$RUNTIME" ]
   # Re-pin the in-tree fixture to 1.10.0 for this case.
-  cat > "$TEST_TMP/gaia-framework/plugins/gaia/.claude-plugin/plugin.json" <<'PJ'
+  cat > "$TEST_TMP/gaia-public/plugins/gaia/.claude-plugin/plugin.json" <<'PJ'
 { "name": "gaia", "version": "1.10.0" }
 PJ
   ts_recent="$(date -u -v-1H +%FT%TZ 2>/dev/null || date -u -d '1 hour ago' +%FT%TZ)"

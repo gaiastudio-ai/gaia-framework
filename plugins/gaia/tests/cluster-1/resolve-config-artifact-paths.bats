@@ -41,7 +41,7 @@ mk_shared_with_artifact_defaults() {
   # Writes a synthetic shared project-config.yaml with the four
   # canonical artifact-path defaults (E60-S1 contract). Each key carries
   # the documented `docs/<dir>` value, mirroring the real
-  # gaia-framework/plugins/gaia/config/project-config.yaml.
+  # gaia-public/plugins/gaia/config/project-config.yaml.
   local dir="$1"
   mkdir -p "$dir/config"
   {

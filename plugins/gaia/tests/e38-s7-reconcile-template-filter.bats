@@ -10,8 +10,8 @@
 #
 # Refs: FR-SPQG-4, NFR-SPQG-1, ADR-055
 # Origin: sprint-27 development finding E42-S10 / F1
-# Script (canonical): gaia-framework/plugins/gaia/scripts/sprint-state.sh
-# Script (wrapper):   gaia-framework/plugins/gaia/skills/gaia-dev-story/scripts/sprint-state.sh
+# Script (canonical): gaia-public/plugins/gaia/scripts/sprint-state.sh
+# Script (wrapper):   gaia-public/plugins/gaia/skills/gaia-dev-story/scripts/sprint-state.sh
 
 load 'test_helper.bash'
 

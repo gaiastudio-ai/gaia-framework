@@ -2,6 +2,6 @@
 # Contains only machine-local keys. After migration the shared output must be
 # minimal — only the generated header comment, no team-shared values.
 
-installed_path: "/srv/ci/gaia-framework/_gaia"
-memory_path: "/srv/ci/gaia-framework/_memory"
-checkpoint_path: "/srv/ci/gaia-framework/_memory/checkpoints"
+installed_path: "/srv/ci/gaia-public/_gaia"
+memory_path: "/srv/ci/gaia-public/_memory"
+checkpoint_path: "/srv/ci/gaia-public/_memory/checkpoints"

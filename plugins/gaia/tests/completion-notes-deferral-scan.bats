@@ -4,7 +4,7 @@
 # Covers TC-DPD-15..18.
 #
 # Helper under test:
-#   gaia-framework/plugins/gaia/scripts/lib/completion-notes-deferral-scan.sh
+#   gaia-public/plugins/gaia/scripts/lib/completion-notes-deferral-scan.sh
 #
 # Invocation contract:
 #   completion-notes-deferral-scan.sh --story-file <path>

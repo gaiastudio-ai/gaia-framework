@@ -14,8 +14,8 @@ setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   RUNTIME="$PLUGIN_ROOT/scripts/statusline.sh"
   cd "$TEST_TMP"
-  mkdir -p gaia-framework/plugins/gaia/.claude-plugin
-  cat > gaia-framework/plugins/gaia/.claude-plugin/plugin.json <<'PJ'
+  mkdir -p gaia-public/plugins/gaia/.claude-plugin
+  cat > gaia-public/plugins/gaia/.claude-plugin/plugin.json <<'PJ'
 { "name": "gaia", "version": "9.9.9-test" }
 PJ
   mkdir -p docs/implementation-artifacts

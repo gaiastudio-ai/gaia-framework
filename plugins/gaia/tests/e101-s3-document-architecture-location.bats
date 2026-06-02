@@ -68,12 +68,12 @@ teardown() { common_teardown; }
 @test "TC-AAT-3e: plugin grep sweep for architecture-artifacts has only allowlisted hits" {
   cd "$REPO_ROOT"
   # Get all hits, then exclude allowlisted paths.
-  hits="$(grep -rln "architecture-artifacts" gaia-framework/plugins/gaia/ 2>/dev/null || true)"
+  hits="$(grep -rln "architecture-artifacts" gaia-public/plugins/gaia/ 2>/dev/null || true)"
   if [ -z "$hits" ]; then
     return 0
   fi
   # Filter: drop files under tests/ (allowlisted).
-  unexpected="$(printf '%s\n' "$hits" | grep -v "^gaia-framework/plugins/gaia/tests/" || true)"
+  unexpected="$(printf '%s\n' "$hits" | grep -v "^gaia-public/plugins/gaia/tests/" || true)"
   if [ -n "$unexpected" ]; then
     echo "Unexpected architecture-artifacts hits outside the test allowlist:" >&2
     printf '%s\n' "$unexpected" >&2

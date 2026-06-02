@@ -208,8 +208,8 @@ YAML
 
 # --- Hygiene ------------------------------------------------------------------
 # NOTE: the ADR-124 shard lives at project-root .gaia/ (a planning artifact, NOT in
-# the gaia-framework git repo), so it is intentionally NOT asserted here — CI checks out
-# only gaia-framework. Shard existence is verified by Val at review time.
+# the gaia-public git repo), so it is intentionally NOT asserted here — CI checks out
+# only gaia-public. Shard existence is verified by Val at review time.
 @test "E104-S2: reconcile.sh exists, executable, bash -n clean" {
   [ -x "$ADAPTER" ]
   run bash -n "$ADAPTER"

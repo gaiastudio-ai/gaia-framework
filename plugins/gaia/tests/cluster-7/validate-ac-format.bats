@@ -2,7 +2,7 @@
 # validate-ac-format.bats — E63-S6 / Work Item 6.6
 #
 # Verifies the deterministic contract of
-# gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/validate-ac-format.sh.
+# gaia-public/plugins/gaia/skills/gaia-create-story/scripts/validate-ac-format.sh.
 #
 # Test scenarios trace back to the story Test Scenarios table:
 #   #1  All-good ACs exit 0 silent                      (AC4)
@@ -124,8 +124,8 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 
 @test "Scenario 7: known-good real story -> exit 0 silent" {
-  # SKILLS_DIR = gaia-framework/plugins/gaia/skills. The docs/ tree lives at the
-  # project root (the parent of gaia-framework/). Walk up four levels.
+  # SKILLS_DIR = gaia-public/plugins/gaia/skills. The docs/ tree lives at the
+  # project root (the parent of gaia-public/). Walk up four levels.
   local project_root
   project_root="$(cd "$SKILLS_DIR/../../../.." && pwd)"
   local story="$project_root/docs/implementation-artifacts/E63-S2-next-story-id-sh-bats-work-item-6-2.md"

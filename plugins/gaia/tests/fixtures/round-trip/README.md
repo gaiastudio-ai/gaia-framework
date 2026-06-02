@@ -6,7 +6,7 @@ Fixtures that exercise the ADR-044 config-split contract end to end.
 
 | File | Role |
 |------|------|
-| `shared-project-config.yaml` | Team-shared side — represents `gaia-framework/plugins/gaia/config/project-config.yaml` that every teammate inherits. |
+| `shared-project-config.yaml` | Team-shared side — represents `gaia-public/plugins/gaia/config/project-config.yaml` that every teammate inherits. |
 | `local-global.yaml` | Machine-local side — represents `_gaia/_config/global.yaml` with a per-operator override. |
 | `expected-resolved.yaml` | Expected merged output — what `resolve-config.sh` should emit when given the pair, with the local value winning on `project_path`. |
 
@@ -14,7 +14,7 @@ Fixtures that exercise the ADR-044 config-split contract end to end.
 
 When the same key appears in both `global.yaml` (local) and `config/project-config.yaml` (shared), the local value wins.
 
-In this fixture, `project_path` is declared in both files. The shared file uses the team default (`/srv/ci/gaia-framework/gaia-framework`); the local file overrides to an individual operator's clone (`/Users/alex/Dev/gaia-enterprise`). The expected-resolved output carries the local value — shared defaults pass through for every other key because the local file did not override them.
+In this fixture, `project_path` is declared in both files. The shared file uses the team default (`/srv/ci/gaia-public/gaia-public`); the local file overrides to an individual operator's clone (`/Users/alex/Dev/gaia-enterprise`). The expected-resolved output carries the local value — shared defaults pass through for every other key because the local file did not override them.
 
 ## How tests consume these fixtures
 

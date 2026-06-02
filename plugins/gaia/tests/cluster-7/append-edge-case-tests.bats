@@ -2,7 +2,7 @@
 # append-edge-case-tests.bats — E63-S8 / Work Item 6.8
 #
 # Verifies the deterministic contract of
-# gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/append-edge-case-tests.sh.
+# gaia-public/plugins/gaia/skills/gaia-create-story/scripts/append-edge-case-tests.sh.
 #
 # Test scenarios trace 1:1 to the story Test Scenarios table:
 #   #1  Within-batch dedup on identical scenario        (AC1)

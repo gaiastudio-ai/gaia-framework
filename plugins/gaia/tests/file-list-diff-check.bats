@@ -22,8 +22,8 @@ key: E65-S1
 
 ## File List
 
-- `gaia-framework/plugins/gaia/scripts/a.ts`
-- `gaia-framework/plugins/gaia/scripts/c.ts`
+- `gaia-public/plugins/gaia/scripts/a.ts`
+- `gaia-public/plugins/gaia/scripts/c.ts`
 
 ## Other
 EOF
@@ -60,14 +60,14 @@ init_git_repo() {
   git init -q .
   git config user.email test@example.com
   git config user.name test
-  mkdir -p gaia-framework/plugins/gaia/scripts
-  echo orig > gaia-framework/plugins/gaia/scripts/a.ts
-  echo orig > gaia-framework/plugins/gaia/scripts/b.ts
+  mkdir -p gaia-public/plugins/gaia/scripts
+  echo orig > gaia-public/plugins/gaia/scripts/a.ts
+  echo orig > gaia-public/plugins/gaia/scripts/b.ts
   git add -A
   git commit -q -m "init"
   git checkout -q -b feat/E65-S1
-  echo changed > gaia-framework/plugins/gaia/scripts/a.ts
-  echo new > gaia-framework/plugins/gaia/scripts/b.ts
+  echo changed > gaia-public/plugins/gaia/scripts/a.ts
+  echo new > gaia-public/plugins/gaia/scripts/b.ts
   git commit -aq -m "feat: changes"
 }
 

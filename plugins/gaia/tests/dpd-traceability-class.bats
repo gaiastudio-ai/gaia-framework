@@ -6,7 +6,7 @@
 # schema validation) and the test_class column itself.
 #
 # Helper under test:
-#   gaia-framework/plugins/gaia/scripts/lib/trace-dispatch-verb-enforcement.sh
+#   gaia-public/plugins/gaia/scripts/lib/trace-dispatch-verb-enforcement.sh
 #
 # Invocation contract:
 #   trace-dispatch-verb-enforcement.sh --story-file <path> --matrix-file <path>
@@ -99,7 +99,7 @@ EOF
 @test "TC-DPD-24: synthetic E76-S10-shaped fixture passes delivered:false + status:done coexistence" {
   # Run against a synthetic fixture rather than the project-root E76-S10
   # story file. The real E76-S10 lives at project-root docs/ (outside the
-  # gaia-framework/ repo CI sees), so a project-root lookup would always
+  # gaia-public/ repo CI sees), so a project-root lookup would always
   # skip on CI. The synthetic fixture proves the assertion shape; the
   # real E76-S10 edit is verified manually post-merge.
   local synthetic="$TEST_TMP/e76-s10-fixture.md"

@@ -11,7 +11,7 @@
 #         naming the offending key and the allowed enum values
 #   AC4 — schema's dev_story.tdd_review.phases default is [red] and
 #         the field type is array
-#   AC5 — gaia-framework/CHANGELOG.md contains the
+#   AC5 — gaia-public/CHANGELOG.md contains the
 #         "v1.131.x — TDD Review Gate Default" migration entry
 #         naming threshold: medium, phases: [red], the user-visible
 #         effect, and the threshold: off opt-out

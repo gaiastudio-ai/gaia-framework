@@ -10,7 +10,7 @@
 #   AC9 — `--fixture-mode enriched` returns 0 failing rows on a /tmp fixture
 #   AC10 — default minimal mode continues to surface FixtureGap residuals
 #
-# The audit harness lives at gaia-framework/scripts/audit-v2-migration.sh — one
+# The audit harness lives at gaia-public/scripts/audit-v2-migration.sh — one
 # level above plugins/gaia/. SCRIPTS_DIR (test_helper.bash) points at
 # plugins/gaia/scripts; we resolve the harness path from BATS_TEST_DIRNAME.
 

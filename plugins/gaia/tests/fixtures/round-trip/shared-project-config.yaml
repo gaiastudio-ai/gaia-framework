@@ -1,14 +1,14 @@
 # shared-project-config.yaml — E28-S141 round-trip fixture (team-shared side)
 #
-# Represents the committed gaia-framework/plugins/gaia/config/project-config.yaml
+# Represents the committed gaia-public/plugins/gaia/config/project-config.yaml
 # that every teammate inherits. Declares a shared default for project_path.
 # The paired local-global.yaml overrides project_path to prove the
 # local-overrides-shared precedence rule from ADR-044 / AC4.
 
-project_root: /srv/ci/gaia-framework
-project_path: /srv/ci/gaia-framework/gaia-framework
-memory_path: /srv/ci/gaia-framework/_memory
-checkpoint_path: /srv/ci/gaia-framework/_memory/checkpoints
-installed_path: /srv/ci/gaia-framework/_gaia
+project_root: /srv/ci/gaia-public
+project_path: /srv/ci/gaia-public/gaia-public
+memory_path: /srv/ci/gaia-public/_memory
+checkpoint_path: /srv/ci/gaia-public/_memory/checkpoints
+installed_path: /srv/ci/gaia-public/_gaia
 framework_version: 1.127.2-rc.1
 date: 2026-04-17

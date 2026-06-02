@@ -193,7 +193,7 @@ EOF
 @test "AC6: lint-skill-frontmatter.sh accepts allowed-tools and rejects tools:" {
   local framework_root
   framework_root="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
-  local repo_root="$framework_root/gaia-framework"
+  local repo_root="$framework_root/gaia-public"
   local lint="$repo_root/.github/scripts/lint-skill-frontmatter.sh"
   [ -f "$lint" ]
   # The lint script must treat allowed-tools as the canonical key and

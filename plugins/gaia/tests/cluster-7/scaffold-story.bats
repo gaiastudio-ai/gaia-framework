@@ -2,7 +2,7 @@
 # scaffold-story.bats — E63-S9 / Work Item 6.4
 #
 # Verifies the deterministic contract of
-# gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/scaffold-story.sh.
+# gaia-public/plugins/gaia/skills/gaia-create-story/scripts/scaffold-story.sh.
 #
 # Test scenarios trace back to the story Test Scenarios table:
 #   #1  Clean scaffold                    (AC1)

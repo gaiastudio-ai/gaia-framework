@@ -11,7 +11,7 @@
 #
 #   2. sprint-status.yaml is now resolved by walking UP from PROJECT_PATH
 #      up to 5 levels, so terminals whose cwd is inside a subproject
-#      (e.g., $PROJECT_ROOT/gaia-framework/) still find the artifact at the
+#      (e.g., $PROJECT_ROOT/gaia-public/) still find the artifact at the
 #      true project root.
 
 load '../test_helper.bash'
@@ -21,8 +21,8 @@ setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   RUNTIME="$PLUGIN_ROOT/scripts/statusline.sh"
   cd "$TEST_TMP"
-  mkdir -p gaia-framework/plugins/gaia/.claude-plugin
-  cat > gaia-framework/plugins/gaia/.claude-plugin/plugin.json <<'PJ'
+  mkdir -p gaia-public/plugins/gaia/.claude-plugin
+  cat > gaia-public/plugins/gaia/.claude-plugin/plugin.json <<'PJ'
 { "name": "gaia", "version": "9.9.9-test" }
 PJ
   export HOME="$TEST_TMP/home"
@@ -88,15 +88,15 @@ YAML
 
 @test "walk-up: sprint-status.yaml at project root resolves from subdir cwd" {
   # docs/implementation-artifacts/sprint-status.yaml lives at $TEST_TMP root.
-  # PROJECT_PATH is $TEST_TMP/gaia-framework — one level deeper. The walk-up
+  # PROJECT_PATH is $TEST_TMP/gaia-public — one level deeper. The walk-up
   # should find it.
   mkdir -p docs/implementation-artifacts
   cat > docs/implementation-artifacts/sprint-status.yaml <<'YAML'
 sprint_id: sprint-77
 status: active
 YAML
-  stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP/gaia-framework"'"}}'
-  run bash -c "COLUMNS=200 GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$TEST_TMP/gaia-framework' printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$TEST_TMP/gaia-framework' '$RUNTIME'"
+  stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP/gaia-public"'"}}'
+  run bash -c "COLUMNS=200 GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$TEST_TMP/gaia-public' printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$TEST_TMP/gaia-public' '$RUNTIME'"
   [ "$status" -eq 0 ]
   [[ "$output" == *"sprint-77"* ]]
 }

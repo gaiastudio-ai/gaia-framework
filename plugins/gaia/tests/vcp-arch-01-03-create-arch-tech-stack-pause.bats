@@ -2,7 +2,7 @@
 # vcp-arch-01-03-create-arch-tech-stack-pause.bats — E46-S6 / FR-354.
 #
 # Script-verifiable contract checks on
-# gaia-framework/plugins/gaia/skills/gaia-create-arch/SKILL.md guaranteeing
+# gaia-public/plugins/gaia/skills/gaia-create-arch/SKILL.md guaranteeing
 # that the two load-bearing parity behaviors restored by E46-S6 are
 # present in the SKILL.md prose:
 #

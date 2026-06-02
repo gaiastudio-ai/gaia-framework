@@ -8,7 +8,7 @@
 #   TC-DPD-21 — retroactive E76-S10 AC2 fixture
 #
 # Helper under test:
-#   gaia-framework/plugins/gaia/scripts/lib/atdd-anti-stub-emit.sh
+#   gaia-public/plugins/gaia/scripts/lib/atdd-anti-stub-emit.sh
 #
 # Invocation contract:
 #   atdd-anti-stub-emit.sh --ac-text "<ac body>"

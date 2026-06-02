@@ -2,7 +2,7 @@
 # e68-s4-regime-rubrics-validation.bats — E68-S4 regime rubric file coverage.
 #
 # Asserts that the nine regime rubric files shipped under
-# `gaia-framework/plugins/gaia/rubrics/regimes/` (gdpr, hipaa, pci-dss, sox, ccpa,
+# `gaia-public/plugins/gaia/rubrics/regimes/` (gdpr, hipaa, pci-dss, sox, ccpa,
 # soc2, iso-27001, wcag-2.1-aa, wcag-2.1-aaa) conform to `rubric.schema.json`
 # (delivered by E68-S2) and meet the story-level acceptance criteria:
 #

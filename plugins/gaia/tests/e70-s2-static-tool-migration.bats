@@ -131,13 +131,13 @@ _assert_fragment_shape_in_source() {
 @test "AC8: story Dev Notes documents one-sprint deprecation window + out-of-scope removal" {
   local story_file
   story_file="$(ls $STORY_FILE_GLOB 2>/dev/null | head -n1)"
-  # The story file lives outside the gaia-framework/ git tree (in the parent
-  # project's docs/). When CI runs against an isolated gaia-framework/ checkout
+  # The story file lives outside the gaia-public/ git tree (in the parent
+  # project's docs/). When CI runs against an isolated gaia-public/ checkout
   # the file is absent — skip in that case (mirrors the convention used by
   # in-tree story-file tests). When the parent project tree is present
   # (developer workstation), the assertions run unmodified.
   if [ -z "$story_file" ] || [ ! -f "$story_file" ]; then
-    skip "story file not present in this checkout (expected outside gaia-framework/)"
+    skip "story file not present in this checkout (expected outside gaia-public/)"
   fi
 
   # Dev Notes block from the story file

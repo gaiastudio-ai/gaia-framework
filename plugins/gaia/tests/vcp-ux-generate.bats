@@ -2,8 +2,8 @@
 # vcp-ux-generate.bats — E46-S1 / FR-350 / FR-140.
 #
 # Script-verifiable contract checks on
-#   gaia-framework/plugins/gaia/skills/gaia-create-ux/SKILL.md
-#   gaia-framework/plugins/gaia/skills/figma-integration/SKILL.md
+#   gaia-public/plugins/gaia/skills/gaia-create-ux/SKILL.md
+#   gaia-public/plugins/gaia/skills/figma-integration/SKILL.md
 # guaranteeing that the Generate-mode parity restoration documented by
 # E46-S1 (6 viewports, 6 state variants, 429 backoff schedule, prototype
 # flows, asset export catalogs, FR-140 compliance audit) is wired into

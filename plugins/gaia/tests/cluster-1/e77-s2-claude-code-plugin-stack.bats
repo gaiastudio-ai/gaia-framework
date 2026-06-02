@@ -2,7 +2,7 @@
 # e77-s2-claude-code-plugin-stack.bats — E77-S2: claude-code-plugin stack file
 #
 # Verifies the claude-code-plugin.yaml stack-definition file shipped under
-# gaia-framework/plugins/gaia/config/stacks/ per FR-404 / ADR-087.
+# gaia-public/plugins/gaia/config/stacks/ per FR-404 / ADR-087.
 #
 # Acceptance criteria covered:
 #   AC1 — file_extensions array lists canonical Claude Code plugin file types

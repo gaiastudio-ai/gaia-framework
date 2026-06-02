@@ -129,13 +129,13 @@ overrun).
 
 ```bash
 # Run only hardware-dependent tests
-bats --filter-tags hardware-dependent gaia-framework/plugins/gaia/tests/
+bats --filter-tags hardware-dependent gaia-public/plugins/gaia/tests/
 
 # Run a specific tagged file
-bats --filter-tags hardware-dependent gaia-framework/plugins/gaia/tests/drift-detection-ci-suppression.bats
+bats --filter-tags hardware-dependent gaia-public/plugins/gaia/tests/drift-detection-ci-suppression.bats
 
 # Run via the coverage wrapper with tag opt-in
-BATS_FILTER_TAGS=hardware-dependent bash gaia-framework/plugins/gaia/tests/run-with-coverage.sh
+BATS_FILTER_TAGS=hardware-dependent bash gaia-public/plugins/gaia/tests/run-with-coverage.sh
 ```
 
 Developers MUST run the hardware-dependent subset locally before merging

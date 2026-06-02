@@ -23,7 +23,7 @@
 setup() {
   # Resolve the project root by walking up from the test file until we find
   # docs/planning-artifacts/. The test file lives at
-  # {project_root}/gaia-framework/plugins/gaia/tests/*.bats, so the project root
+  # {project_root}/gaia-public/plugins/gaia/tests/*.bats, so the project root
   # is four levels up. If docs/planning-artifacts/ is not present (e.g., when
   # the plugin is consumed standalone outside a project), the test self-skips.
   PROJECT_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.." && pwd)"

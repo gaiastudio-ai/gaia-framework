@@ -2,7 +2,7 @@
 # e68-s3-base-rubrics-validation.bats — E68-S3 base rubric file coverage.
 #
 # Asserts that the six base rubric files shipped under
-# `gaia-framework/plugins/gaia/rubrics/base/` (code, qa, test, security, perf,
+# `gaia-public/plugins/gaia/rubrics/base/` (code, qa, test, security, perf,
 # a11y) conform to `rubric.schema.json` (delivered by E68-S2) and meet the
 # story-level acceptance criteria:
 #

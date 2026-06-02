@@ -69,7 +69,7 @@ scan_pattern() {
   # Run from REPO_ROOT so relative paths in allowlist match cleanly.
   local repo_root
   repo_root="$( cd "$PLUGIN_DIR/../.." && pwd )"
-  hits=$(cd "$repo_root" && grep -rnE "$regex" gaia-framework/plugins/gaia/ 2>/dev/null | head -1000 || true)
+  hits=$(cd "$repo_root" && grep -rnE "$regex" gaia-public/plugins/gaia/ 2>/dev/null | head -1000 || true)
   if [ -z "$hits" ]; then
     return 0
   fi

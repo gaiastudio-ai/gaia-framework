@@ -40,7 +40,7 @@ and currently does two things:
    agent.
 
 The 69 finalize.sh files live under
-`gaia-framework/plugins/gaia/skills/*/scripts/finalize.sh` and are
+`gaia-public/plugins/gaia/skills/*/scripts/finalize.sh` and are
 byte-identical except for `WORKFLOW_NAME` and `SCRIPT_NAME`. The
 "canonical part" of finalize is well-factored.
 
@@ -77,7 +77,7 @@ E45-S6's budget-watch warning has had a sprint of operational data.**
 
 ## Decision
 
-The canonical helper is **`gaia-framework/scripts/lib/finalize-checklist.sh`**
+The canonical helper is **`gaia-public/scripts/lib/finalize-checklist.sh`**
 (shared, single source of truth — not a copy-per-skill). It is invoked
 from each skill's `finalize.sh` via an explicit shell-out, not sourced.
 Its contract is pinned below.
@@ -234,7 +234,7 @@ edits between finalize and review-gate evaluation.
 
 ### Where it lives
 
-Canonical path: `gaia-framework/scripts/lib/finalize-checklist.sh`. **Not**
+Canonical path: `gaia-public/scripts/lib/finalize-checklist.sh`. **Not**
 under each skill — that defeats the "single source of truth" goal. Each
 skill's `finalize.sh` shells out via:
 
@@ -354,7 +354,7 @@ seven-way divergence we're trying to delete.
 
 ## Out of scope (deferred to sprint-29+)
 
-- The actual implementation of `gaia-framework/scripts/lib/finalize-checklist.sh`.
+- The actual implementation of `gaia-public/scripts/lib/finalize-checklist.sh`.
 - Migration of the eleven existing inline-parser skills.
 - The `validate-gate.sh` `finalize_checklist_passed` predicate handler.
 - The CI wiring that surfaces JSON failures into PR comments.
