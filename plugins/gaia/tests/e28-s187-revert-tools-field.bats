@@ -191,9 +191,11 @@ EOF
 # ---------- AC6: CI lint flipped ----------
 
 @test "AC6: lint-skill-frontmatter.sh accepts allowed-tools and rejects tools:" {
-  local framework_root
-  framework_root="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
-  local repo_root="$framework_root/gaia-public"
+  # AF-2026-06-02-3: derive repo_root from $BATS_TEST_DIRNAME so the test
+  # is dir-rename-resilient. $BATS_TEST_DIRNAME is
+  # <checkout>/plugins/gaia/tests; the checkout root is three levels up.
+  local repo_root
+  repo_root="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   local lint="$repo_root/.github/scripts/lint-skill-frontmatter.sh"
   [ -f "$lint" ]
   # The lint script must treat allowed-tools as the canonical key and
