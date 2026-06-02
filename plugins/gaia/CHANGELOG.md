@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.182.11] — 2026-06-01
+
+### Fixed
+
+- (AF-33-1) test16 (v1.182.5) framework findings sweep — 19 F + 3 D (#1068)
+
 ## [1.182.10] — 2026-06-01
 
 ### Fixed
