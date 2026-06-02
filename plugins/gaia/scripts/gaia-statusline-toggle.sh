@@ -20,6 +20,18 @@
 #        is missing or non-executable; settings.json unmodified; the error
 #        names install-statusline.sh.
 #   AC8  malformed JSON in settings.json → exit non-zero, file unmodified.
+#   AC9  consent-gated self-heal (FR-448 AC8 / E82-S11 / AF-2026-06-02-3):
+#        before the AC2 idempotency check, compare the installed runtime
+#        version (~/.claude/gaia-statusline/.installed-version marker) to
+#        the cached plugin.json version under the highest-semver dir of
+#        ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia. When
+#        the marker differs from the cached version AND stdout/stdin are
+#        both TTYs AND GAIA_YOLO_FLAG != 1, surface a one-shot consent
+#        prompt with default decline. On 'y' (case-insensitive), re-run
+#        the cached install-statusline.sh and reset the update-check
+#        cache (preserving git_dirty per ADR-091). On 'N' or non-TTY or
+#        YOLO, no install runs (preserves FR-448 AC6 hand-edit consent).
+#        Marker-absent is a silent no-op (mirrors FR-448 AC5).
 #
 # Pattern reference: gaia-framework/plugins/gaia/scripts/install-statusline.sh
 # (atomic merge idiom) and the gaia-bridge-toggle precedent (semantic
@@ -35,6 +47,15 @@ export LC_ALL
 SETTINGS="$HOME/.claude/settings.json"
 RUNTIME="$HOME/.claude/gaia-statusline/statusline.sh"
 REFRESH_MS=10000
+
+# Source the colocated lib/ helpers (E82-S11). Resolved relative to this
+# script's directory so the toggle works both from the in-tree plugin
+# checkout AND from the substrate plugin cache.
+_TOGGLE_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/statusline-plugin-cache-dir.sh
+. "$_TOGGLE_SCRIPT_DIR/lib/statusline-plugin-cache-dir.sh"
+# shellcheck source=lib/statusline-cache-reset.sh
+. "$_TOGGLE_SCRIPT_DIR/lib/statusline-cache-reset.sh"
 
 usage() {
   cat <<USAGE >&2
@@ -110,6 +131,67 @@ case "$MODE" in
       printf 'gaia-statusline-enable: runtime not installed at %s\n' "$RUNTIME" >&2
       printf 'gaia-statusline-enable: run install-statusline.sh first (gaia-framework/plugins/gaia/scripts/install-statusline.sh)\n' >&2
       exit 1
+    fi
+
+    # AC9 — Consent-gated self-heal (FR-448 AC8 / E82-S11 / AF-2026-06-02-3).
+    # Compare the installed .installed-version marker to the cached
+    # plugin.json version. When they differ AND we are interactive AND
+    # YOLO is not active, prompt the user to re-install. On 'y' (case-
+    # insensitive), re-run the cached install-statusline.sh AND reset the
+    # update-check cache (preserving git_dirty). On any other answer, on
+    # non-TTY, or with YOLO active, take no action — the existing AC3
+    # hot-path WARN segment continues to fire on stale runtimes
+    # (FR-448 AC6 consent contract preserved).
+    #
+    # Marker absent → silent no-op (mirrors FR-448 AC5).
+    _marker_file="$HOME/.claude/gaia-statusline/.installed-version"
+    if [ -r "$_marker_file" ]; then
+      _installed_version="$(head -n1 "$_marker_file" 2>/dev/null | tr -d '[:space:]' || printf '')"
+      _cached_plugin_json="$(_statusline_resolve_cached_plugin_json)"
+      _cached_install_sh="$(_statusline_resolve_cached_install_script)"
+      _cached_version=""
+      if [ -n "$_cached_plugin_json" ]; then
+        _cached_version="$(jq -r '.version // ""' "$_cached_plugin_json" 2>/dev/null || printf '')"
+      fi
+      # Both endpoints resolved AND they disagree → consider prompting.
+      if [ -n "$_installed_version" ] && [ -n "$_cached_version" ] \
+         && [ "$_installed_version" != "$_cached_version" ] \
+         && [ -n "$_cached_install_sh" ]; then
+        # Stricter TTY gate: BOTH stdin AND stdout must be a terminal.
+        # bats (the test harness) attaches neither by default, so this
+        # gate keeps TC-STATUSLINE-13 intact under bats.
+        if [ -t 0 ] && [ -t 1 ] && [ "${GAIA_YOLO_FLAG:-0}" != "1" ]; then
+          printf 'gaia-statusline-enable: installed runtime is %s, cached plugin is %s. Re-install runtime? [y/N] ' \
+            "$_installed_version" "$_cached_version"
+          # Read a single line from stdin. IFS= preserves leading/trailing
+          # whitespace; -r treats backslashes literally.
+          _answer=""
+          IFS= read -r _answer || _answer=""
+          case "$_answer" in
+            y|Y|yes|YES|Yes)
+              # Run the cached installer in a subshell so a non-zero exit
+              # does not abort the toggle. install-statusline.sh is
+              # idempotent (cmp-only-if-different copies); re-running
+              # touches at most five script files + the marker + the
+              # cache reset.
+              if bash "$_cached_install_sh" >/dev/null 2>&1; then
+                printf 'gaia-statusline-enable: refreshed runtime from cached %s (was stale).\n' "$_cached_version"
+              else
+                printf 'gaia-statusline-enable: WARNING — refresh attempted but install-statusline.sh exited non-zero; runtime may be partially updated\n' >&2
+              fi
+              # Defense in depth: even if install-statusline.sh's own
+              # cache reset call failed for any reason, we reset here.
+              _statusline_cache_reset
+              ;;
+            *)
+              # 'N', empty, or any non-affirmative answer → no install,
+              # no cache mutation. Existing AC3 hot-path WARN keeps
+              # firing on the next render so the signal is not lost.
+              :
+              ;;
+          esac
+        fi
+      fi
     fi
 
     # Read settings (or {} if absent). AC8 — exit non-zero on malformed.
