@@ -144,6 +144,17 @@ if [ -n "$INSTALLED_VERSION" ]; then
   mv -f "$MARKER_TMP" "$MARKER"
 fi
 
+# ---- Cache reset (E82-S11 / FR-448 AC8 defense-in-depth) ------------------
+# Surgically reset the update-check-owned keys (checked_at_iso, latest_tag,
+# current_tag, update_available, installed_version_stale) in
+# ~/.claude/gaia-statusline/cache/latest-release.json so the next render
+# recomputes against the just-installed runtime instead of whatever values
+# the prior install left behind. Preserves git_dirty (ADR-091). Idempotent:
+# cache-absent is a no-op; all-fields-already-absent is a byte-identical
+# write. Source from the colocated lib/ helper (same script tree).
+. "$SCRIPT_DIR/lib/statusline-cache-reset.sh"
+_statusline_cache_reset
+
 printf 'install-statusline.sh: installed runtime at %s\n' "$DEST_RUNTIME"
 printf 'install-statusline.sh: settings.json updated at %s\n' "$SETTINGS"
 exit 0

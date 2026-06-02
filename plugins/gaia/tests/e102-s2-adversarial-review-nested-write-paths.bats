@@ -11,8 +11,9 @@ load 'test_helper.bash'
 setup() {
   common_setup
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
-  PRD_SKILL="$REPO_ROOT/gaia-public/plugins/gaia/skills/gaia-create-prd/SKILL.md"
-  ARCH_SKILL="$REPO_ROOT/gaia-public/plugins/gaia/skills/gaia-create-arch/SKILL.md"
+  PLUGIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  PRD_SKILL="$PLUGIN/skills/gaia-create-prd/SKILL.md"
+  ARCH_SKILL="$PLUGIN/skills/gaia-create-arch/SKILL.md"
 }
 
 teardown() { common_teardown; }
