@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.185.1] — 2026-06-02
+
+### Fixed
+
+- (install-statusline) correct plugin.json path depth (#1080) (#1081)
+
 ## [1.185.0] — 2026-06-02
 
 ### Added
