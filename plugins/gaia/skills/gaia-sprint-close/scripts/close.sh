@@ -231,7 +231,7 @@ fi
 # Glob accepts both `retrospective-{id}-{date}.md` and
 # `retrospective-{id}-{date}-{HHMM}.md` clobber-avoidance variants.
 # E102-S6 / ADR-119: route through the shared three-tier resolver at
-# `gaia-public/plugins/gaia/scripts/lib/artifact-three-tier-resolve.sh`
+# `gaia-framework/plugins/gaia/scripts/lib/artifact-three-tier-resolve.sh`
 # (env-var → legacy-flat-positive-evidence → canonical-nested-default)
 # so both legacy `implementation-artifacts/retrospective-*.md` AND the new
 # `implementation-artifacts/retrospective/retrospective-*.md` resolve.

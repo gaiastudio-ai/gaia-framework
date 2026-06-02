@@ -57,7 +57,7 @@ The report is the only output artifact. It is displayed to the user. If the user
 
 ## Output Behaviour
 
-- **Default: display-only.** Running `/gaia-editorial-prose` produces a markdown findings report rendered inline in the conversation. The skill does **not** write the report to disk by default. Nothing under `docs/`, `gaia-public/`, or `_memory/` is created or modified by a default invocation.
+- **Default: display-only.** Running `/gaia-editorial-prose` produces a markdown findings report rendered inline in the conversation. The skill does **not** write the report to disk by default. Nothing under `docs/`, `gaia-framework/`, or `_memory/` is created or modified by a default invocation.
 - **Save on explicit request.** If the user asks for a persisted artifact ("save this report to `docs/…`", "write the findings to a file"), the skill saves the report to the path the user specifies. Saving is opt-in, never automatic.
 - **Rationale.** Editorial review output is **feedback, not an artifact replacement**. The author owns the source document and decides which findings to apply; persisting the review by default would imply the report is itself an artifact of record, which it is not. The display-only default keeps the review lightweight and aligns with the editorial review-feedback convention shared with `/gaia-editorial-structure`.
 

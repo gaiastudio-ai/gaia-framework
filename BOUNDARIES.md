@@ -94,7 +94,7 @@ for the gate-execution timeline diagram.
 ## Rubric Layers
 
 > **Source:** ADR-079 (Layered Rubric Loading) §Decision.
-> Merge engine: `gaia-public/plugins/gaia/scripts/rubric-merger.sh` (deterministic
+> Merge engine: `gaia-framework/plugins/gaia/scripts/rubric-merger.sh` (deterministic
 > shell + jq pipeline; byte-identical output for identical inputs per NFR-RSV2-10).
 
 **Four-layer precedence, lowest to highest (later layers override earlier):**
@@ -161,7 +161,7 @@ validates a single file; `/gaia-config-validate` validates the merged result.
 > **Source:** ADR-078 (Tool Adapter Framework) §Decision, FR-RSV2-18
 > (three-state availability probe), shared helper `tool-availability-probe.sh`.
 
-Adapters live under `gaia-public/plugins/gaia/scripts/adapters/{tool}/`
+Adapters live under `gaia-framework/plugins/gaia/scripts/adapters/{tool}/`
 (framework built-ins) or `custom/adapters/{tool}/` (project-local; honoured
 ahead of built-ins per FR-RSV2-10 tool-selection precedence).
 

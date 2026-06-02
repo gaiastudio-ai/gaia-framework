@@ -1,4 +1,4 @@
-# gaia-public
+# gaia-framework
 
 GAIA Framework — Generative Agile Intelligence Architecture. Public Claude Code marketplace distributing the `gaia` plugin: 25 specialized agents, 62 workflows, and 8 shared skills.
 
@@ -31,8 +31,8 @@ We will remove this notice once the v2 migration regression gate is green and th
 ## Install
 
 ```
-/plugin marketplace add gaiastudio-ai/gaia-public
-/plugin install gaia@gaiastudio-ai-gaia-public
+/plugin marketplace add gaiastudio-ai/gaia-framework
+/plugin install gaia@gaiastudio-ai-gaia-framework
 /reload-plugins
 ```
 
@@ -43,13 +43,13 @@ The `/reload-plugins` step is **required** after `/plugin install` — without i
 If the initial `/plugin marketplace add` fails (for example, a transient network error or an earlier broken clone cached under `~/.claude/plugins/marketplaces/`), the failure can leave a polluted cache entry that causes every subsequent retry to fail with the same error. Clear the cache and retry:
 
 ```
-rm -rf ~/.claude/plugins/marketplaces/gaiastudio-ai-gaia-public/
-/plugin marketplace add gaiastudio-ai/gaia-public
+rm -rf ~/.claude/plugins/marketplaces/gaiastudio-ai-gaia-framework/
+/plugin marketplace add gaiastudio-ai/gaia-framework
 ```
 
-The same pattern applies to the enterprise marketplace — replace `gaia-public` with `gaia-enterprise` in both the directory path and the `marketplace add` command.
+The same pattern applies to the enterprise marketplace — replace `gaia-framework` with `gaia-enterprise` in both the directory path and the `marketplace add` command.
 
-This cache-pollution behaviour is tracked upstream at [anthropics/claude-code#48736](https://github.com/anthropics/claude-code/issues/48736) — we have requested that `/plugin marketplace add` either re-fetch on a failed parse or clean up the cache entry on clone failure so this recovery recipe becomes unnecessary. Until that lands, you can also run the automated helper `plugins/gaia/scripts/plugin-cache-recovery.sh --slug gaiastudio-ai-gaia-public` which encodes the same fix non-interactively.
+This cache-pollution behaviour is tracked upstream at [anthropics/claude-code#48736](https://github.com/anthropics/claude-code/issues/48736) — we have requested that `/plugin marketplace add` either re-fetch on a failed parse or clean up the cache entry on clone failure so this recovery recipe becomes unnecessary. Until that lands, you can also run the automated helper `plugins/gaia/scripts/plugin-cache-recovery.sh --slug gaiastudio-ai-gaia-framework` which encodes the same fix non-interactively.
 
 ### Private marketplace authentication
 
@@ -58,9 +58,9 @@ The enterprise marketplace lives in a private GitHub repo (`gaiastudio-ai/gaia-e
 If you prefer a guarded, scriptable alternative to the raw `rm -rf`, the plugin ships `plugins/gaia/scripts/plugin-cache-recovery.sh`. It validates the slug, classifies the cache entry as `absent` / `healthy` / `polluted`, and refuses to remove a healthy clone unless `--force` is passed:
 
 ```
-plugins/gaia/scripts/plugin-cache-recovery.sh --detect --slug gaiastudio-ai-gaia-public
-plugins/gaia/scripts/plugin-cache-recovery.sh --slug gaiastudio-ai-gaia-public --dry-run
-plugins/gaia/scripts/plugin-cache-recovery.sh --slug gaiastudio-ai-gaia-public
+plugins/gaia/scripts/plugin-cache-recovery.sh --detect --slug gaiastudio-ai-gaia-framework
+plugins/gaia/scripts/plugin-cache-recovery.sh --slug gaiastudio-ai-gaia-framework --dry-run
+plugins/gaia/scripts/plugin-cache-recovery.sh --slug gaiastudio-ai-gaia-framework
 ```
 
 `--detect` exits `2` on a polluted entry so CI and workflow steps can branch on it without parsing text; `--dry-run` prints the intended target without touching the filesystem. See the script header for the full exit-code table and slug-validation rules.
@@ -173,7 +173,7 @@ GAIA updates are delivered automatically. When Claude Code starts a new session,
 **Force refresh (if auto-update seems stuck):**
 
 ```
-/plugin marketplace update gaiastudio-ai-gaia-public
+/plugin marketplace update gaiastudio-ai-gaia-framework
 ```
 
 Then restart Claude Code. After restart, `/plugin` should report the new version.
@@ -292,7 +292,7 @@ the role of each, see [docs/INDEX.md](./docs/INDEX.md).
 ## Plugin cache refresh after merge
 
 The Claude Code substrate caches plugin SKILL.md frontmatter and scripts
-under `~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/<version>/`
+under `~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/<version>/`
 at session start. After merging a SKILL.md, `scripts/*.sh`, `agents/*.md`,
 or `hooks/*.json` change on `staging` or `main`, the running session
 still executes the pre-merge cached copy. Re-invoking the changed skill
@@ -306,7 +306,7 @@ they never see the gap.
 
 ```bash
 # Replace <version> with the value currently under the cache path:
-rm -rf ~/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/<version>
+rm -rf ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/<version>
 
 # Re-invoke any GAIA slash command — Claude Code repopulates the cache
 # from the published plugin source on next use.

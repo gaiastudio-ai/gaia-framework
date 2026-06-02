@@ -2,12 +2,12 @@
 # e28-s165-claudemd-drift-guard.bats — bats tests for the CLAUDE.md drift guard (E28-S165)
 #
 # Validates that the guard script and CI job correctly detect drift between the
-# project-root CLAUDE.md and the plugin copy (gaia-public/CLAUDE.md).
+# project-root CLAUDE.md and the plugin copy (gaia-framework/CLAUDE.md).
 #
 # Design note: the project-root CLAUDE.md normally lives in the dev workspace
-# above gaia-public/ and is NOT git-tracked inside gaia-public. The guard script
+# above gaia-framework/ and is NOT git-tracked inside gaia-framework. The guard script
 # accepts explicit paths so it can be exercised locally (dev workspace has both
-# files) and in CI (self-diff against gaia-public/CLAUDE.md). The tests below
+# files) and in CI (self-diff against gaia-framework/CLAUDE.md). The tests below
 # construct temp fixtures so pass and fail scenarios can be exercised regardless
 # of the ambient filesystem layout.
 
@@ -59,7 +59,7 @@ teardown() {
 }
 
 @test "E28-S165 AC2: the in-repo CLAUDE.md self-diff passes (CI invariant)" {
-  # The CI-invariant: in gaia-public, the only CLAUDE.md at the repo root
+  # The CI-invariant: in gaia-framework, the only CLAUDE.md at the repo root
   # must pass a self-diff. This is what plugin-ci.yml runs.
   run "$GUARD" "$GAIA_PUBLIC/CLAUDE.md" "$GAIA_PUBLIC/CLAUDE.md"
   [ "$status" -eq 0 ]

@@ -35,7 +35,7 @@ setup() {
 
   # Project-root E76-S8 story path — used by the supersedure tests when the
   # running tree is the live GAIA-Framework workspace. Skipped otherwise so
-  # CI runs against gaia-public/ in isolation stay green.
+  # CI runs against gaia-framework/ in isolation stay green.
   PROJECT_ROOT_DOCS="$REPO_ROOT/../docs"
   E76_S8_STORY=""
   if [ -d "$PROJECT_ROOT_DOCS" ]; then
@@ -123,7 +123,7 @@ setup() {
 
 @test "AC5 / Scenario 6: E76-S8 story file status: done preserved (Option-A supersedure)" {
   if [ -z "$E76_S8_STORY" ]; then
-    skip "E76-S8 story file not reachable from this checkout (gaia-public/ standalone CI run)"
+    skip "E76-S8 story file not reachable from this checkout (gaia-framework/ standalone CI run)"
   fi
   run grep -E '^status: done$' "$E76_S8_STORY"
   [ "$status" -eq 0 ]
@@ -131,7 +131,7 @@ setup() {
 
 @test "AC5 / Scenario 7: E76-S8 AC1 character-frozen prose preserved (regardless-of qualifier untouched)" {
   if [ -z "$E76_S8_STORY" ]; then
-    skip "E76-S8 story file not reachable from this checkout (gaia-public/ standalone CI run)"
+    skip "E76-S8 story file not reachable from this checkout (gaia-framework/ standalone CI run)"
   fi
   run grep -F 'regardless of whether' "$E76_S8_STORY"
   [ "$status" -eq 0 ]

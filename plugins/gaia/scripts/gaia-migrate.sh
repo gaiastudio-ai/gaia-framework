@@ -4,7 +4,7 @@
 # Automate the v1 → v2 migration. Per ADR-042 (scripts-over-LLM), the SKILL.md
 # drives the user-facing flow and delegates filesystem operations to this
 # script — this script and the SKILL.md are the authoritative source post
-# AF-2026-06-01-3 (the former `gaia-public/docs/migration-guide-v2.md` was
+# AF-2026-06-01-3 (the former `gaia-framework/docs/migration-guide-v2.md` was
 # retired with the V1 sunset under ADR-049).
 #
 # Refs: FR-326 (config split), FR-328 (engine deletion), NFR-050 (zero engine files), ADR-048
@@ -474,10 +474,10 @@ _migrate_sidecars() {
 # runtime substitution. Without explicit substitution here, the literal
 # string `{project-root}` would propagate forward into project-config.yaml
 # and break every downstream v2 script:
-#   * PR #387 swept a literal `gaia-public/{project-root}/_memory/...`
+#   * PR #387 swept a literal `gaia-framework/{project-root}/_memory/...`
 #     directory into commit 767b29e because checkpoint.sh ran `mkdir -p`
 #     against an unsubstituted path.
-#   * 14 story files were misfiled into `gaia-public/docs/...-artifacts/`
+#   * 14 story files were misfiled into `gaia-framework/docs/...-artifacts/`
 #     because `implementation_artifacts: "{project-root}/docs/..."`
 #     resolved as a relative path from the working directory.
 # This helper now substitutes the literal token `{project-root}` with the
@@ -991,7 +991,7 @@ _run_validate() {
   local fail=0
 
   # 1. Plugin discoverable (best-effort under bats — the .claude/plugins/ dir may not exist locally)
-  if [[ -d "$PROJECT_ROOT/.claude/plugins/gaia-public" ]] || command -v claude >/dev/null 2>&1; then
+  if [[ -d "$PROJECT_ROOT/.claude/plugins/gaia-framework" ]] || command -v claude >/dev/null 2>&1; then
     echo "  plugin: discoverable"
   else
     echo "  plugin: validation skipped (claude CLI not available — manual follow-up: confirm /plugin list shows gaia)"

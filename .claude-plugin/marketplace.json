@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "gaiastudio-ai-gaia-public",
+  "name": "gaiastudio-ai-gaia-framework",
   "description": "GAIA public marketplace — GAIA Framework agents, skills, hooks, and scripts for Claude Code.",
   "owner": {
     "name": "gaiastudio.ai",
@@ -12,7 +12,7 @@
       "description": "GAIA Framework — Generative Agile Intelligence Architecture. 25 specialized agents, 62 workflows, 8 shared skills for Claude Code.",
       "source": "./plugins/gaia",
       "category": "development",
-      "homepage": "https://github.com/gaiastudio-ai/gaia-public",
+      "homepage": "https://github.com/gaiastudio-ai/gaia-framework",
       "license": "AGPL-3.0"
     }
   ]

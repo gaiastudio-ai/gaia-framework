@@ -100,7 +100,7 @@ YOLO_MODE="$SHARED_SCRIPTS/yolo-mode.sh"
 # (E91-S3 / FR-SRF-3 / AI-2026-05-13-17):
 #   Stage 1: CLAUDE_PROJECT_ROOT — non-git project-root workspace mode
 #            (per CLAUDE.md §"Non-git project-root workspace (supported mode)").
-#   Stage 2: PROJECT_PATH — legacy in-tree gaia-public invocation override.
+#   Stage 2: PROJECT_PATH — legacy in-tree gaia-framework invocation override.
 #   Stage 3: $(pwd) fallback.
 # Sibling: AI-2026-05-13-12 walked up at the config-resolution layer
 # (resolve-config.sh); E91-S3 mirrors it at the story-state layer.

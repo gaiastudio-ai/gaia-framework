@@ -8,7 +8,7 @@
 # results artifact plus per-stage parity metadata.
 #
 # Contract surface is defined by .gaia/artifacts/test-artifacts/atdd-E28-S133.md and
-# gaia-public/plugins/gaia/test/e28-s133-full-lifecycle-atdd.bats.
+# gaia-framework/plugins/gaia/test/e28-s133-full-lifecycle-atdd.bats.
 #
 # Usage:
 #   full-lifecycle.sh --run-id <id> --fixture <path> --baseline-tag <tag>
@@ -27,8 +27,8 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Resolve the gaia-public repo root from this script's location.
-# This runner lives at gaia-public/plugins/gaia/test/runners/full-lifecycle.sh
+# Resolve the gaia-framework repo root from this script's location.
+# This runner lives at gaia-framework/plugins/gaia/test/runners/full-lifecycle.sh
 # so the repo root is four directories up.
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the `gaia-public` marketplace and the `gaia` plugin are recorded here.
+All notable changes to the `gaia-framework` marketplace (renamed from `gaia-public` on 2026-06-02 per AF-2026-06-02-2) and the `gaia` plugin are recorded here. Historical entries below preserve the pre-rename `gaia-public` paths exactly as they were when shipped; the GitHub redirect from `gaiastudio-ai/gaia-public` → `gaiastudio-ai/gaia-framework` keeps clones and web traffic working.
 This file tracks sprint-level resolutions and decisions — for commit-level history, see `git log`.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely, and the
@@ -8,6 +8,13 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 (tracked in `plugins/gaia/.claude-plugin/plugin.json`).
 
 ## [Unreleased]
+
+### Repo rename — `gaia-public` → `gaia-framework` (AF-2026-06-02-2)
+
+- The GitHub repo previously published at `https://github.com/gaiastudio-ai/gaia-public` is now `https://github.com/gaiastudio-ai/gaia-framework`. GitHub serves a permanent 301 redirect from the old URL so existing clones, web links, and `git fetch` calls continue to work for an extended window (~6 months by GitHub policy).
+- **For end users:** if you already installed the marketplace via `/plugin marketplace add gaiastudio-ai/gaia-public`, the redirect keeps it operational. To clean up the old slug, run `/plugin marketplace remove gaiastudio-ai/gaia-public` then `/plugin marketplace add gaiastudio-ai/gaia-framework`. The plugin-cache directory at `~/.claude/plugins/cache/gaiastudio-ai-gaia-public/` is left behind by the substrate; you can `rm -rf` it once the new `~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/` is populated.
+- **For documentation:** the published docs site moved from `https://gaiastudio-ai.github.io/gaia-public/` to `https://gaiastudio-ai.github.io/gaia-framework/`. Pages publishes under the new repo slug; the old URL becomes a dead link (GitHub Pages does not redirect renamed projects automatically).
+- **For in-tree references:** every operational reference (plugin.json `homepage`, statusline `repos/.../releases/latest` API call, statusline OSC8 release-link, cache-recovery script slug, install instructions in `README.md` + `CLAUDE.md` + `gaia-migrate` SKILL) plus every prose path-prefix in `documentation/` and `plugins/gaia/skills/**/SKILL.md` was rewritten to `gaia-framework`. 234 files / 539 line edits in a single sweep. Historical CHANGELOG entries preserve the pre-rename `gaia-public` URL verbatim — those describe what was true at ship time and the GitHub redirect keeps them clickable.
 
 ### Sub-rubric loader pipeline migration (E77-S4)
 

@@ -91,7 +91,7 @@ than on the PR.
 ## Related artifacts
 
 - `.gaia/artifacts/planning-artifacts/E45-S6-adr-memo-bats-scaling.md` — ADR-062.
-- `gaia-public/.github/workflows/plugin-ci.yml` — the wired-in
+- `gaia-framework/.github/workflows/plugin-ci.yml` — the wired-in
   `bats-tests` job (lines around the "Run bats suite with coverage
   wrapper (budget-watched)" step).
 - `plugins/gaia/scripts/bats-budget-watch.sh` — the wrapper script.
@@ -119,7 +119,7 @@ When a script is deleted from `plugins/gaia/scripts/` or
 `plugins/gaia/skills/*/scripts/`, an engineer can easily miss a stale
 reference in the other tree. E59-S3 finding #1 surfaced this exact
 gap: E59-S2 updated only `plugins/gaia/tests/` and missed two
-references under `gaia-public/tests/`. The sweep linter catches that
+references under `gaia-framework/tests/`. The sweep linter catches that
 class of regression at PR time.
 
 ### What it checks
@@ -162,7 +162,7 @@ plugins/gaia/scripts/lint-bats-script-refs.sh --root . \
 
 - `plugins/gaia/scripts/lint-bats-script-refs.sh` — the linter.
 - `plugins/gaia/tests/lint-bats-script-refs.bats` — the bats suite.
-- `gaia-public/.github/workflows/plugin-ci.yml` — the
+- `gaia-framework/.github/workflows/plugin-ci.yml` — the
   `bats-script-refs-lint` job.
 
 ## Release pipeline — promote-PR merge strategy

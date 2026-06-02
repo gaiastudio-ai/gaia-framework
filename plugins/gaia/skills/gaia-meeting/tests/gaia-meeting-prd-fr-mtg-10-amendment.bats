@@ -11,8 +11,8 @@
 #
 # This bats file exercises the verification script
 # `verify-fr-mtg-10-amendment.sh` against bundled fixtures so the gate is
-# hermetic and runnable from gaia-public/ alone (project-root `docs/`
-# lives outside the gaia-public git tree).
+# hermetic and runnable from gaia-framework/ alone (project-root `docs/`
+# lives outside the gaia-framework git tree).
 #
 # Test cases (AC mapping per E76-S19 §Test Scenarios):
 #   TC-MTG-AMD10-1 — canonical fixture (amendment marker + body language +
@@ -38,9 +38,9 @@ setup() {
 
   export LC_ALL=C
 
-  # Project-root artifacts (outside gaia-public/) — used by the canonical
+  # Project-root artifacts (outside gaia-framework/) — used by the canonical
   # tests only when the running tree is the live GAIA-Framework workspace.
-  # Skipped otherwise so CI runs against gaia-public/ in isolation stay
+  # Skipped otherwise so CI runs against gaia-framework/ in isolation stay
   # green.
   PROJECT_ROOT_DOCS="$(cd "$REPO_ROOT/.." 2>/dev/null && pwd)"
   CANONICAL_SHARD="$PROJECT_ROOT_DOCS/docs/planning-artifacts/prd/04-functional-requirements/40-4-39-gaia-meeting-peer-to-peer-multi-agent-discussion-skill-af-2026-05-05-1.md"
@@ -114,7 +114,7 @@ setup() {
 
 @test "TC-MTG-AMD10-8: project-root PRD shard + threat-model contain all amendment markers" {
   if [ ! -f "$CANONICAL_SHARD" ] || [ ! -f "$CANONICAL_THREAT_MODEL" ]; then
-    skip "project-root PRD shard / threat-model not present (gaia-public/-only checkout)"
+    skip "project-root PRD shard / threat-model not present (gaia-framework/-only checkout)"
   fi
   run "$SCRIPT" "$CANONICAL_SHARD" "$CANONICAL_THREAT_MODEL"
   [ "$status" -eq 0 ]
@@ -124,7 +124,7 @@ setup() {
 
 @test "TC-MTG-AMD10-9: project-root PRD monolith contains zero FR-MTG-10 references" {
   if [ ! -f "$PRD_MONOLITH" ]; then
-    skip "project-root PRD monolith not present (gaia-public/-only checkout)"
+    skip "project-root PRD monolith not present (gaia-framework/-only checkout)"
   fi
   # AC #6 — PRD is sharded-only; monolith MUST NOT carry FR-MTG-10.
   run grep -cF "FR-MTG-10" "$PRD_MONOLITH"

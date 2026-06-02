@@ -18,7 +18,7 @@
 #   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.10
 #   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-074
 #     (deterministic-script lift)
-#   - Sibling: gaia-public/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh
+#   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh
 #
 # Algorithm (in order):
 #   1. Parse CLI: `--file <path>` (single required flag).

@@ -1,5 +1,5 @@
 /**
- * commitlint configuration for gaia-public.
+ * commitlint configuration for gaia-framework.
  *
  * Enforces Conventional Commits on PR titles targeting staging and main.
  * Used by .github/workflows/commitlint.yml via wagoid/commitlint-github-action.

@@ -103,7 +103,7 @@ EXEMPT_FILES=(
   "tests/skills/e28-s114-lifecycle-skills-conversion.bats"           # SECTION-marker count drift in document-rulesets SKILL.md
   "tests/skills/e28-s116-quick-spec-conversion.bats"                 # asserts retired _gaia/lifecycle/ XML source still exists
   "tests/skills/e59-s1-skill-readme-call-site-migration.bats"        # README.md drift in gaia-dev-story
-  "tests/skills/e60-s1-flat-artifact-path-keys.bats"                 # asserts ${PROJECT_ROOT}/config/project-config.yaml — that file lives outside gaia-public/ checkout (project-root non-git workspace per CLAUDE.md); passes locally, fails in CI
+  "tests/skills/e60-s1-flat-artifact-path-keys.bats"                 # asserts ${PROJECT_ROOT}/config/project-config.yaml — that file lives outside gaia-framework/ checkout (project-root non-git workspace per CLAUDE.md); passes locally, fails in CI
   "tests/skills/gaia-config-skills-exist.bats"                       # AC10 asserts gaia-config-platform / -device-target NOT present; both shipped (E74-S11)
   "tests/skills/gaia-performance-review-hints.bats"                  # 10 failures — significant skill drift since fixture authored
 )

@@ -17,7 +17,7 @@
 #
 # Refs: E72-S3, FR-RSV2-41, source-report §11.3, TC-RSV2-AUTOMATE-2
 #
-# Usage: bats gaia-public/tests/cluster-9-parity/test-automate-e72-s3-cs-tracking.bats
+# Usage: bats gaia-framework/tests/cluster-9-parity/test-automate-e72-s3-cs-tracking.bats
 #
 # Dependencies: bats-core 1.10+
 
@@ -85,7 +85,7 @@ sha256_of() {
 # AC1: index.yaml seed exists at project root with scenarios list
 # ============================================================================
 
-@test "E72-S3 AC1: gaia-public/custom/test-scenarios/index.yaml seed exists in repo" {
+@test "E72-S3 AC1: gaia-framework/custom/test-scenarios/index.yaml seed exists in repo" {
   [ -f "$REPO_ROOT/custom/test-scenarios/index.yaml" ]
 }
 

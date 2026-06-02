@@ -18,8 +18,12 @@ load 'test_helper.bash'
 
 setup() {
   common_setup
-  REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
-  PLUGIN="$REPO_ROOT/gaia-public/plugins/gaia"
+  # AF-2026-06-02-2: derive PLUGIN from $BATS_TEST_DIRNAME directly so the
+  # tests don't break under the gaia-public → gaia-framework dir rename
+  # (and survive any future working-tree dir rename equally well).
+  # $BATS_TEST_DIRNAME is .../plugins/gaia/tests; PLUGIN is one level up.
+  PLUGIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  REPO_ROOT="$(cd "$PLUGIN/../.." && pwd)"
   SP_SETUP="$PLUGIN/skills/gaia-sprint-plan/scripts/setup.sh"
   DS_SETUP="$PLUGIN/skills/gaia-dev-story/scripts/setup.sh"
   RC_SETUP="$PLUGIN/skills/gaia-readiness-check/scripts/setup.sh"

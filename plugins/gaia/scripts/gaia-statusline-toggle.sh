@@ -21,7 +21,7 @@
 #        names install-statusline.sh.
 #   AC8  malformed JSON in settings.json → exit non-zero, file unmodified.
 #
-# Pattern reference: gaia-public/plugins/gaia/scripts/install-statusline.sh
+# Pattern reference: gaia-framework/plugins/gaia/scripts/install-statusline.sh
 # (atomic merge idiom) and the gaia-bridge-toggle precedent (semantic
 # contract: thin enable/disable wrappers + idempotency + canonical no-op
 # messages).
@@ -108,7 +108,7 @@ case "$MODE" in
     # AC7 — pre-flight: runtime must exist and be executable.
     if [ ! -x "$RUNTIME" ]; then
       printf 'gaia-statusline-enable: runtime not installed at %s\n' "$RUNTIME" >&2
-      printf 'gaia-statusline-enable: run install-statusline.sh first (gaia-public/plugins/gaia/scripts/install-statusline.sh)\n' >&2
+      printf 'gaia-statusline-enable: run install-statusline.sh first (gaia-framework/plugins/gaia/scripts/install-statusline.sh)\n' >&2
       exit 1
     fi
 

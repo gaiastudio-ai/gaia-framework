@@ -10,11 +10,11 @@
 #   AC1 — Active config/project-config.yaml contains the four flat top-level
 #         artifact-path keys.
 #   AC2 — yq parses each surface with no errors and no duplicate keys.
-#   AC3 — Canonical template gaia-public/plugins/gaia/config/project-config.yaml
+#   AC3 — Canonical template gaia-framework/plugins/gaia/config/project-config.yaml
 #         contains the four keys with the listed `docs/*` defaults.
 #   AC4 — Existing keys/comments are preserved (smoke: project_root + framework_version
 #         still resolve from active file).
-#   AC5 — Schema gaia-public/plugins/gaia/config/project-config.schema.yaml
+#   AC5 — Schema gaia-framework/plugins/gaia/config/project-config.schema.yaml
 #         declares all four keys with type `path`.
 #
 # Negative invariants:
@@ -23,9 +23,9 @@
 # Usage:
 #   bats tests/skills/e60-s1-flat-artifact-path-keys.bats
 
-# Repo layout: this file lives at gaia-public/tests/skills/. The active project
-# config lives at the project root (one level above gaia-public/).
-REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"   # -> .../gaia-public
+# Repo layout: this file lives at gaia-framework/tests/skills/. The active project
+# config lives at the project root (one level above gaia-framework/).
+REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"   # -> .../gaia-framework
 PROJECT_ROOT="$(cd "${REPO_ROOT}/.." && pwd)"            # -> .../GAIA-Framework
 ACTIVE_CONFIG="${PROJECT_ROOT}/config/project-config.yaml"
 TEMPLATE_CONFIG="${REPO_ROOT}/plugins/gaia/config/project-config.yaml"

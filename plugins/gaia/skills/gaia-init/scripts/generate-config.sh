@@ -504,7 +504,7 @@ mv -f -- "$yaml_path" "$cfg_path"
 # default. Non-destructive: create only when absent; if one already exists,
 # append a GAIA block ONCE (idempotent — keyed on the marker line). The .gaia/
 # runtime tree is NOT committed (it is local runtime state per ADR-111); the
-# product source lives under gaia-public/ and is tracked separately.
+# product source lives under gaia-framework/ and is tracked separately.
 gitignore_path="$target/.gitignore"
 gaia_marker="# --- GAIA (added by /gaia-init) ---"
 gaia_block="$gaia_marker
