@@ -3,6 +3,36 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.186.0] — 2026-06-02
+
+### Added
+
+- (AF-2026-06-02-6) test17 brownfield sweep — 18 fixes (#1084)
+
+## [1.185.1] — 2026-06-02
+
+### Fixed
+
+- (install-statusline) correct plugin.json path depth (#1080) (#1081)
+
+## [1.185.0] — 2026-06-02
+
+### Added
+
+- (AF-2026-06-02-4) /gaia-statusline-refresh slash command (#1077)
+
+## [1.184.0] — 2026-06-02
+
+### Added
+
+- (AF-2026-06-02-3) consent-gated self-heal of stale statusline runtime (#1074)
+
+## [1.183.0] — 2026-06-02
+
+### Added
+
+- (AF-2026-06-02-2) rename gaia-public to gaia-framework across in-tree refs (#1071)
+
 ## [1.182.11] — 2026-06-01
 
 ### Fixed
