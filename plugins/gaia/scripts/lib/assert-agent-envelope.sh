@@ -90,6 +90,18 @@
 #   sha256 of the validator agent template) is intentionally deferred to
 #   E87-S2 — this helper only enforces field presence.
 #
+# OPTIONAL `original_status` field (ADR-130 / E87-S8 / AF-2026-06-03-2):
+#   The Val sub-agent envelope MAY carry an OPTIONAL `original_status` field
+#   (the pre-coercion OUTER envelope status, ∈ {PASS,WARNING,CRITICAL},
+#   present only when a downstream closed-enum reduction coerced the status —
+#   see validator.md §Sentinel-Write Contract). This asserter ACCEPTS the
+#   field as OPTIONAL: the four ordered checks below (file-exists, valid-JSON,
+#   agent, persona_sig) are agnostic to its presence. Per the NFR-95 golden
+#   invariant, `original_status` MUST NOT be added to any required-field set —
+#   assertion passes (exit 0) identically whether the field is present or
+#   absent. Back-compat: every existing sentinel without `original_status`
+#   asserts exactly as before. Do NOT add an `original_status` check here.
+#
 # Source guard (idempotent re-source):
 #   The standard GAIA `_${NAME}_SH_SOURCED` guard short-circuits the
 #   second `source` invocation. Matches the convention in

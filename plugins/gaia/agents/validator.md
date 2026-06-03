@@ -61,12 +61,17 @@ Val embeds this object as the `sentinel_envelope` field inside the ADR-037 envel
     "persona_sig": "val-<version>-<digest>",
     "timestamp": "<ISO-8601 UTC>",
     "artifact_path": "<as passed to Val>",
-    "verdict": "<derived from status>"
+    "verdict": "<derived from status>",
+    "original_status": "<OPTIONAL — pre-coercion outer status; absent when no coercion>"
   }
 }
 ```
 
+`original_status` is the OPTIONAL additive field (ADR-130 / E87-S8); see the "OPTIONAL `original_status` field" paragraph below for full semantics. It is OMITTED from this sentinel unless a downstream closed-enum reduction coerced the outer `status`.
+
 The `persona_sig` field is the forgery-resistance anchor (NFR-064, preserved under ADR-105). Its value is `val-<version>-<digest>` where `<version>` is the framework version from `gaia-framework/plugins/gaia/.plugin-version` (or `dev` if absent) and `<digest>` is the sha256 of the running `validator.md` file (first 16 hex chars). This binds the sentinel to the agent template that produced it — the orchestrator is a write-through; it cannot fabricate a valid `persona_sig` without reading `validator.md` at the same revision Val read. `assert_agent_envelope` rejects any sentinel missing the field.
+
+**OPTIONAL `original_status` field (ADR-130 / E87-S8 / AF-2026-06-03-2 — additive).** The `sentinel_envelope` MAY carry an OPTIONAL `original_status` field. Its semantics: **the pre-coercion value of the outer `status` field, preserved across any downstream `WARNING → PASSED` or `PASS → PASSED` closed-enum reduction performed by `compose-verdict.sh` or equivalent.** The field is OPTIONAL and is **absent when there was no coercion** — a Val run whose outer `status` was already the terminal value emits no `original_status`. When present, its value is the pre-coercion OUTER envelope `status` ∈ `{PASS, WARNING, CRITICAL}` — it is NOT a finding-level `severity`. Per-finding `severity` ∈ `{CRITICAL, WARNING, INFO}` is a separate axis preserved verbatim in `findings[]` and is unaffected by this field. This field exists ONLY on the Val sub-agent return envelope documented here; it MUST NOT leak into the ADR-113 publish-adapter envelope (`{verdict, evidence, summary, adapter_metadata}`) or its `validate-adr037-envelope.sh` required-field set. Because the field is OPTIONAL, it is **NOT added to any required-field set** in `write-val-envelope.sh` or `assert-agent-envelope.sh` (NFR-95) — every existing envelope without `original_status` validates and asserts exactly as before. `write-val-envelope.sh` preserves the field via verbatim envelope serialization when present; `assert_agent_envelope` ignores it (it is not one of the four ordered checks). E87-S8 lands this documentation + the additive-transparent writer/asserter contract; E87-S9 wires `compose-verdict.sh` to actually emit the field on the coercion path.
 
 **`.plugin-version` population (E89-S4, AI-2026-05-13-22, Val F8 scope-correction on AF-2026-05-14-7):** `.plugin-version` is expected to be populated post-release (committed alongside source — bumped by `scripts/version-bump.js` or written by the release workflow). The `dev` fallback remains the defensive default for in-tree development. The semver-tagged persona_sig (`val-<semver>-<digest>`) enables sentinel forensics across released plugin versions; the `dev`-tagged form (`val-dev-<digest>`) is the in-tree development signature. Effect is framework-wide — all 5 Val-consuming skills (`/gaia-val-validate`, `/gaia-validate-story`, `/gaia-fix-story`, `/gaia-dev-story`, `/gaia-add-feature`) inherit the semver tag.
 
