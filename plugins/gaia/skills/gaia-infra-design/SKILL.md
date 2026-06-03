@@ -263,3 +263,11 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 ## Next Steps
 
 - **Primary:** `/gaia-trace` — regenerate the requirements-to-tests traceability matrix once infra is designed.
+
+## References
+
+- Schema: `gaia-public/plugins/gaia/schemas/infrastructure-design.schema.json` (JSON Schema draft-2020-12) — the structural contract for the `infrastructure-design` artifact this skill produces. Validated by `/gaia-val-validate` (artifact_type `infrastructure-design`) via the shared `scripts/lib/validate-artifact-schema.sh` helper (E108-S5).
+- Corpus instance: `.gaia/artifacts/planning-artifacts/assessments/infrastructure-design.md` — the on-disk exemplar the schema is grounded in (eleven canonical H2 sections + YAML frontmatter).
+- Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum now carries `infrastructure-design` (E108-S4, enum 18→19).
+- Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` (E108-S5) — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).
+- Traceability: FR-564, NFR-93, ADR-129 (E108 artifact-type schema registry completion).
