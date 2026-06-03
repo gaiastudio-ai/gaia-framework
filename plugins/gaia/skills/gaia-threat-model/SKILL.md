@@ -233,3 +233,14 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 ## Next Steps
 
 - **Primary:** `/gaia-infra-design` — design the infrastructure topology and IaC with the threat model in scope.
+
+## References
+
+- Schema: `gaia-public/plugins/gaia/schemas/threat-model.schema.json` (JSON Schema draft-2020-12) — the structural contract for the `threat-model` artifact this skill produces. Validated by `/gaia-val-validate` (artifact_type `threat-model`) via the shared `scripts/lib/validate-artifact-schema.sh` helper (E108-S5).
+- Corpus instance: `.gaia/artifacts/planning-artifacts/threat-model.md` — the on-disk exemplar the schema is grounded in (nine canonical H2 sections + STRIDE/DREAD methodology).
+- Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum already carries `threat-model` at position 5; E108-S3 adds the backing schema with NO enum change.
+- Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` (E108-S5) — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).
+- FR-563 — threat-model schema + `/gaia-threat-model` References (no enum change) (E108-S3).
+- NFR-93 — schema-validator parity across the artifact-type schemas.
+- ADR-129 — artifact-type schema registry completion.
+- Epic: `.gaia/artifacts/planning-artifacts/epics/96-e108-artifact-type-schema-registry-completion.md` (E108).
