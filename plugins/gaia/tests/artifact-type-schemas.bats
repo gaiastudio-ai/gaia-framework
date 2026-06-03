@@ -35,6 +35,9 @@ setup() {
   # Repo paths used by the E108-S3 threat-model coverage.
   TM_SCHEMA="$SCHEMAS_DIR/threat-model.schema.json"
   TM_FIXTURE="$FIX/threat-model-valid.md"
+  # Repo paths used by the E108-S4 infrastructure-design coverage.
+  INFRA_SCHEMA="$SCHEMAS_DIR/infrastructure-design.schema.json"
+  INFRA_FIXTURE="$FIX/infrastructure-design-valid.md"
 }
 
 teardown() { common_teardown; }
@@ -381,4 +384,103 @@ _has_backend() {
   grep -Eq '^## References[[:space:]]*$' "$skill"
   # The References section names the new schema.
   grep -q 'threat-model.schema.json' "$skill"
+}
+
+# ===========================================================================
+# E108-S4 — infrastructure-design schema + /gaia-infra-design References + enum 18→19
+# ===========================================================================
+
+# TS1/AC1 — schema file exists and is valid JSON.
+@test "E108-S4 TS1/AC1: infrastructure-design.schema.json exists and is valid JSON" {
+  [ -f "$INFRA_SCHEMA" ]
+  # Validate JSON well-formedness without depending on jq (not guaranteed on
+  # the bare host). python3 is present even when jsonschema is not; fall back
+  # to a portable brace sanity check if python3 is absent too.
+  if command -v python3 >/dev/null 2>&1; then
+    run python3 -c "import json,sys; json.load(open('$INFRA_SCHEMA'))"
+    [ "$status" -eq 0 ]
+  else
+    run head -c1 "$INFRA_SCHEMA"
+    [ "$output" = "{" ]
+  fi
+}
+
+# TS2/AC1 — draft-2020-12 + non-strategy-scoped $id.
+@test "E108-S4 TS2/AC1: schema declares draft-2020-12 and a non-strategy-scoped \$id" {
+  grep -q 'json-schema.org/draft/2020-12/schema' "$INFRA_SCHEMA"
+  grep -q '"\$id"' "$INFRA_SCHEMA"
+  # The $id MUST NOT be scoped to test-artifacts/strategy/ (E105-S2 coordination).
+  # Check the $id LINE specifically — the corpus-instance path may legitimately
+  # appear in a `description`/annotation elsewhere in the schema.
+  run grep '"\$id"' "$INFRA_SCHEMA"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"test-artifacts/strategy"* ]]
+  [[ "$output" != *"strategy"* ]]
+}
+
+# TS3/AC2 — required frontmatter fields + template const.
+@test "E108-S4 TS3/AC2: schema requires template/version/date/project and pins template const" {
+  grep -q '"template"' "$INFRA_SCHEMA"
+  grep -q '"version"' "$INFRA_SCHEMA"
+  grep -q '"date"' "$INFRA_SCHEMA"
+  grep -q '"project"' "$INFRA_SCHEMA"
+  grep -q 'infrastructure-design' "$INFRA_SCHEMA"
+}
+
+# AC3 — eleven-section annotation present.
+@test "E108-S4 AC3: schema documents the eleven canonical H2 sections" {
+  grep -q 'Infrastructure Context' "$INFRA_SCHEMA"
+  grep -q 'Environment Design' "$INFRA_SCHEMA"
+  grep -q 'Deployment Topology' "$INFRA_SCHEMA"
+  grep -q 'CI/CD Pipeline Design' "$INFRA_SCHEMA"
+  grep -q 'State Management' "$INFRA_SCHEMA"
+  grep -q 'Observability Plan' "$INFRA_SCHEMA"
+  grep -q 'Rollback Strategies' "$INFRA_SCHEMA"
+  grep -q 'Security Hardening' "$INFRA_SCHEMA"
+  grep -q 'Dependency Management' "$INFRA_SCHEMA"
+  grep -q 'Implementation Milestones' "$INFRA_SCHEMA"
+  grep -q 'Decision Rationale Summary' "$INFRA_SCHEMA"
+}
+
+# TS4/AC2/AC6 — (backend-guarded) known-good fixture validates → exit 0.
+@test "E108-S4 TS4/AC6: known-good infrastructure-design fixture validates (exit 0)" {
+  [ -f "$INFRA_FIXTURE" ]
+  if ! _has_backend; then
+    skip "no JSON-schema validator backend on host"
+  fi
+  run bash "$SCRIPT" "$INFRA_SCHEMA" "$INFRA_FIXTURE"
+  [ "$status" -eq 0 ]
+}
+
+# TS5/AC5 — enum extended 18→19 contains infrastructure-design.
+@test "E108-S4 TS5/AC5: val-validate artifact_type enum contains infrastructure-design" {
+  local skill="$SKILLS_DIR/gaia-val-validate/SKILL.md"
+  [ -f "$skill" ]
+  # The enum line carries 'artifact_type' + the backticked value.
+  grep -q '`infrastructure-design`' "$skill"
+}
+
+# TS5b/AC5 — enum now totals 19 backticked values on the artifact_type enum line.
+@test "E108-S4 TS5b/AC5: val-validate artifact_type enum totals 19 values" {
+  local skill="$SKILLS_DIR/gaia-val-validate/SKILL.md"
+  [ -f "$skill" ]
+  # The enum is on the single 'One of:' table row. Extract the segment from
+  # 'One of:' up to the first '. ' that ends the enum list, then count the
+  # backticked tokens within ONLY that segment (the row carries other backticked
+  # tokens — e.g. `gaia-document-rulesets`, schema filenames — outside the list).
+  local line seg count
+  line="$(grep -E 'artifact_type.*One of:' "$skill" | head -n1)"
+  [ -n "$line" ]
+  seg="$(printf '%s\n' "$line" | sed 's/.*One of://; s/\. .*//')"
+  count="$(printf '%s\n' "$seg" | grep -o '`[a-z0-9-]*`' | wc -l | tr -d ' ')"
+  [ "$count" -eq 19 ]
+}
+
+# TS6/AC4 — /gaia-infra-design SKILL.md has a ## References section.
+@test "E108-S4 TS6/AC4: gaia-infra-design SKILL.md has a ## References section" {
+  local skill="$SKILLS_DIR/gaia-infra-design/SKILL.md"
+  [ -f "$skill" ]
+  grep -Eq '^## References[[:space:]]*$' "$skill"
+  # The References section names the new schema.
+  grep -q 'infrastructure-design.schema.json' "$skill"
 }
