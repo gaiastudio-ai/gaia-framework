@@ -180,3 +180,53 @@ YAML
   expected_hash=$(printf '%s' "$artifact" | shasum -a 256 | cut -c1-16)
   [ -f "$override_dir/val-envelope-${expected_hash}.json" ]
 }
+
+# ============================================================================
+# E87-S8 / AF-2026-06-03-2 / ADR-130 — TC-OSV-1, TC-OSV-2, TC-OSV-5:
+# OPTIONAL `original_status` envelope field (additive). NFR-95 golden
+# invariant: original_status MUST NOT be added to any required-field set;
+# every existing envelope without it MUST write exactly as before.
+# ============================================================================
+
+# TC-OSV-1: writer preserves `original_status` when present (pass-through).
+@test "TC-OSV-1: writer preserves original_status field when present" {
+  local artifact="/tmp/osv1-artifact"
+  local envelope='{"agent":"val","persona_sig":"val-dev-osv1","timestamp":"2026-06-03T12:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED","original_status":"WARNING"}'
+  CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$envelope"
+  [ "$status" -eq 0 ]
+  local expected_hash
+  expected_hash=$(printf '%s' "$artifact" | shasum -a 256 | cut -c1-16)
+  local sentinel="$CHECKPOINT_DIR/val-envelope-${expected_hash}.json"
+  [ -f "$sentinel" ]
+  # The written sentinel must carry original_status verbatim.
+  run jq -r '.original_status' "$sentinel"
+  [ "$status" -eq 0 ]
+  [ "$output" = "WARNING" ]
+}
+
+# TC-OSV-2: writer output unchanged when original_status absent (back-compat).
+@test "TC-OSV-2: writer output has no original_status key when input lacks it" {
+  local artifact="/tmp/osv2-artifact"
+  local envelope='{"agent":"val","persona_sig":"val-dev-osv2","timestamp":"2026-06-03T12:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}'
+  CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$envelope"
+  [ "$status" -eq 0 ]
+  local expected_hash
+  expected_hash=$(printf '%s' "$artifact" | shasum -a 256 | cut -c1-16)
+  local sentinel="$CHECKPOINT_DIR/val-envelope-${expected_hash}.json"
+  [ -f "$sentinel" ]
+  # original_status must be ABSENT (jq `has` returns false).
+  run jq -e 'has("original_status")' "$sentinel"
+  [ "$status" -ne 0 ]
+}
+
+# TC-OSV-5 (writer half): NFR-95 — original_status is NOT a required field.
+# An envelope MISSING it still writes fine (exit 0). This pins the invariant
+# against any future strict-schema regression in the required-key loop.
+@test "TC-OSV-5w: NFR-95 — envelope without original_status writes successfully (not required)" {
+  local artifact="/tmp/osv5w-artifact"
+  local envelope='{"agent":"val","persona_sig":"val-dev-osv5w","timestamp":"2026-06-03T12:00:00Z","artifact_path":"'"$artifact"'","verdict":"FAILED"}'
+  CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$envelope"
+  [ "$status" -eq 0 ]
+  # Error stream must NOT complain about a missing original_status field.
+  [[ "$output" != *"original_status"* ]]
+}
