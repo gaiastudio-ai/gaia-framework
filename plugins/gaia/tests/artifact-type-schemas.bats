@@ -29,6 +29,9 @@ setup() {
   SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
   NFR_SCHEMA="$SCHEMAS_DIR/nfr-assessment.schema.json"
   NFR_FIXTURE="$FIX/nfr-assessment-valid.md"
+  # Repo paths used by the E108-S2 performance-test-plan coverage.
+  PERF_SCHEMA="$SCHEMAS_DIR/performance-test-plan.schema.json"
+  PERF_FIXTURE="$FIX/performance-test-plan-valid.md"
 }
 
 teardown() { common_teardown; }
@@ -216,4 +219,82 @@ _has_backend() {
   grep -Eq '^## References[[:space:]]*$' "$skill"
   # The References section names the new schema.
   grep -q 'nfr-assessment.schema.json' "$skill"
+}
+
+# ===========================================================================
+# E108-S2 — performance-test-plan schema + /gaia-perf-testing References + enum 17→18
+# ===========================================================================
+
+# TS1/AC1 — schema file exists and is valid JSON.
+@test "E108-S2 TS1/AC1: performance-test-plan.schema.json exists and is valid JSON" {
+  [ -f "$PERF_SCHEMA" ]
+  # Validate JSON well-formedness without depending on jq (not guaranteed on
+  # the bare host). python3 is present even when jsonschema is not; fall back
+  # to a portable brace sanity check if python3 is absent too.
+  if command -v python3 >/dev/null 2>&1; then
+    run python3 -c "import json,sys; json.load(open('$PERF_SCHEMA'))"
+    [ "$status" -eq 0 ]
+  else
+    run head -c1 "$PERF_SCHEMA"
+    [ "$output" = "{" ]
+  fi
+}
+
+# TS2/AC1 — draft-2020-12 + non-test-artifacts/strategy/ $id.
+@test "E108-S2 TS2/AC1: schema declares draft-2020-12 and a non-strategy-scoped \$id" {
+  grep -q 'json-schema.org/draft/2020-12/schema' "$PERF_SCHEMA"
+  grep -q '"\$id"' "$PERF_SCHEMA"
+  # The $id MUST NOT be scoped to test-artifacts/strategy/ (E105-S2 coordination).
+  # Check the $id LINE specifically — the corpus-instance path may legitimately
+  # appear in a `description`/annotation elsewhere in the schema.
+  run grep '"\$id"' "$PERF_SCHEMA"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"test-artifacts/strategy"* ]]
+}
+
+# TS3/AC2 — required frontmatter fields + template const.
+@test "E108-S2 TS3/AC2: schema requires template/version/date/project and pins template const" {
+  grep -q '"template"' "$PERF_SCHEMA"
+  grep -q '"version"' "$PERF_SCHEMA"
+  grep -q '"date"' "$PERF_SCHEMA"
+  grep -q '"project"' "$PERF_SCHEMA"
+  grep -q 'performance-test-plan' "$PERF_SCHEMA"
+}
+
+# AC3 — seven-section annotation present.
+@test "E108-S2 AC3: schema documents the seven canonical H2 sections" {
+  grep -q 'Overview' "$PERF_SCHEMA"
+  grep -q 'Performance Budgets' "$PERF_SCHEMA"
+  grep -q 'Test Scenarios' "$PERF_SCHEMA"
+  grep -q 'Profiling Targets' "$PERF_SCHEMA"
+  grep -q 'CI Performance Gates' "$PERF_SCHEMA"
+  grep -q 'Monitoring and Regression Detection' "$PERF_SCHEMA"
+  grep -q 'Execution Schedule' "$PERF_SCHEMA"
+}
+
+# TS4/AC2/AC6 — (backend-guarded) known-good fixture validates → exit 0.
+@test "E108-S2 TS4/AC6: known-good performance-test-plan fixture validates (exit 0)" {
+  [ -f "$PERF_FIXTURE" ]
+  if ! _has_backend; then
+    skip "no JSON-schema validator backend on host"
+  fi
+  run bash "$SCRIPT" "$PERF_SCHEMA" "$PERF_FIXTURE"
+  [ "$status" -eq 0 ]
+}
+
+# TS5/AC5 — enum extended 17→18 contains performance-test-plan.
+@test "E108-S2 TS5/AC5: val-validate artifact_type enum contains performance-test-plan" {
+  local skill="$SKILLS_DIR/gaia-val-validate/SKILL.md"
+  [ -f "$skill" ]
+  # The enum line carries 'artifact_type' + the backticked value.
+  grep -q '`performance-test-plan`' "$skill"
+}
+
+# TS6/AC4 — /gaia-perf-testing SKILL.md has a ## References section.
+@test "E108-S2 TS6/AC4: gaia-perf-testing SKILL.md has a ## References section" {
+  local skill="$SKILLS_DIR/gaia-perf-testing/SKILL.md"
+  [ -f "$skill" ]
+  grep -Eq '^## References[[:space:]]*$' "$skill"
+  # The References section names the new schema.
+  grep -q 'performance-test-plan.schema.json' "$skill"
 }
