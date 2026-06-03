@@ -157,11 +157,16 @@ Track B's composite verdict for E93-S3 is `SKIPPED` (the stub returns SKIPPED pe
 
 ### Step 5 — Compose Composite Verdict
 
-Invoke the reducer:
+Invoke the reducer with `--with-provenance` so that any `WARNING`/`PASS`/`CRITICAL` track verdict the reducer downcasts surfaces its pre-coercion value, then capture both lines:
 
 ```bash
-COMPOSITE=$(bash ${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/compose-verdict.sh \
-  --track-a "$TRACK_A_VERDICT" --track-b "$TRACK_B_VERDICT")
+REDUCER_OUT=$(bash ${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/compose-verdict.sh \
+  --track-a "$TRACK_A_VERDICT" --track-b "$TRACK_B_VERDICT" --with-provenance)
+COMPOSITE=$(printf '%s\n' "$REDUCER_OUT" | head -n1)
+# original_status provenance (E87-S9 / ADR-130 / NFR-95): present ONLY when a
+# track verdict was a coercible synonym; absent otherwise. Propagate it into
+# the sprint-review artifact — do NOT strip it.
+ORIGINAL_STATUS=$(printf '%s\n' "$REDUCER_OUT" | sed -n 's/^original_status=//p')
 ```
 
 The reducer enforces NFR-070 / ADR-108 D2 rules:
@@ -171,6 +176,8 @@ The reducer enforces NFR-070 / ADR-108 D2 rules:
 - **UNVERIFIED** if either track is UNVERIFIED and neither is FAILED.
 
 Non-canonical inputs (e.g., a typo) are rejected at the script boundary with canonical stderr per ADR-074 C3.
+
+**`original_status` provenance (E87-S9 / AF-2026-06-03-2 / ADR-130 / NFR-95).** When Track A or Track B emits a coercible synonym (`WARNING`, `PASS`, or `CRITICAL`), the reducer downcasts it (`WARNING`/`PASS → PASSED`, `CRITICAL → FAILED`) per the AF-2026-05-22-9 / AF-2026-06-02-6 synonym-mapping path. The composite verdict is unaffected, but the pre-coercion value is telemetry-relevant — a composite `PASSED` collapses identically whether Val emitted `PASS` directly or `WARNING` with non-blocking findings. The `--with-provenance` flag appends an additive `original_status=track_a=<raw>[,track_b=<raw>]` line capturing the pre-coercion value(s); it is **absent** when no track was coerced (`original_status` is OPTIONAL per NFR-95, never required). When `$ORIGINAL_STATUS` is non-empty, record it in the composite-verdict section of the sprint-review artifact written in Steps 6–8 (e.g. `Composite verdict: PASSED (original_status: track_a=WARNING)`) so downstream consumers and retros can recover the pre-coercion provenance.
 
 ### Step 6 — PASSED Path: Handoff to /gaia-sprint-close
 
