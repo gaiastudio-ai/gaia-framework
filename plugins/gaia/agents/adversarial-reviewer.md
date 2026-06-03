@@ -147,3 +147,51 @@ For each artifact type, apply these adversarial lenses (use as a prompt, not a c
 ## Sentinel-Write Contract
 
 `adversarial-reviewer` does NOT emit a `.gaia/memory/checkpoints/val-envelope-*.json` sentinel — that contract is Val-specific (ADR-105). Adversarial dispatch surfaces verdicts via the ADR-037 envelope returned in the reply text + the on-disk report at the caller-specified output path. The caller is responsible for verifying the report exists (`Step 13 — verify adversarial-review-prd-*.md exists` in `/gaia-create-prd`).
+
+## Sidecar-Write Contract (ADR-131 / E87-S11 — AF-2026-06-03-3)
+
+Alongside the Markdown report, the adversarial review emits a structured `.json` **sidecar** so downstream consumers (`test-architect` risk-tier mapping, `sprint-review` aggregator, `retro` pattern-detector, `/gaia-action-items` auto-file router) read machine-parseable findings instead of regex-parsing the prose. The sidecar is the structural sibling of the `.md` report and is written to `{planning_artifacts}/adversarial/adversarial-review-<target>-<date>[-N].json` — the same directory and the **same collision index** as the `.md` (atomic pairing; see `resolve-write-path.sh --paired`).
+
+This contract mirrors `validator.md` §Sentinel-Write Contract STRUCTURALLY (the agent returns content; the orchestrator main turn writes it — the ADR-105 writer-shift pattern), but differs deliberately on five axes:
+
+1. **No `persona_sig`.** The adversarial review is critique, NOT a gate — there is no decision the framework enforces on its verdict, so there is no forgery surface to anchor. The Val sentinel's `persona_sig` forgery anchor is intentionally OMITTED.
+2. **Writes to `{planning_artifacts}/adversarial/`, NOT `.gaia/memory/checkpoints/`.** The sidecar is a published planning artifact, co-located with the `.md` it accompanies — not a checkpoint/gate sentinel.
+3. **Orchestrator-side writer-shift (ADR-105 pattern).** Sage RETURNS the ADR-037 envelope in its reply; the orchestrator's MAIN TURN writes the sidecar by invoking `plugins/gaia/skills/gaia-adversarial/scripts/write-adversarial-sidecar.sh`. Sage does NOT write the sidecar from the sub-agent context (the Claude Code substrate content-integrity guard false-fires on sub-agent writes).
+4. **Verdict vocab INHERITS ADR-037 `{PASS, WARNING, CRITICAL}` verbatim.** The sidecar `status` is identical to the report's `## Verdict` line and the envelope `status`. A `{STRONG, WEAK, MIXED}` divergence is REJECTED — it would double the downstream parser surface (defeating NFR-96) and contradict this persona's existing envelope. The "critique not gate" semantics are encoded by the top-level `review_type: "adversarial"` discriminator + the ABSENCE of any `sentinel_envelope` field (NOT by a divergent verdict vocab).
+5. **No `timestamp` (NFR-96 byte-identical determinism).** The sidecar OMITS `timestamp` entirely so the same envelope produces a byte-identical sidecar on repeated runs. Provenance (when the review ran) is recovered from the sibling `.md` frontmatter's `**Review date:**` / `review_date` field.
+
+**Sidecar JSON shape** (the persona envelope MINUS `timestamp`, `persona_sig`, `sentinel_envelope`):
+
+```json
+{
+  "review_type": "adversarial",
+  "status": "<PASS|WARNING|CRITICAL>",
+  "target": "<.md basename, .md extension stripped>",
+  "summary": "<1-2 sentences mirroring the report Summary>",
+  "findings": [
+    {"severity": "<CRITICAL|WARNING|INFO>", "id": "F-C1", "title": "<short>", "location": "<section/line>"}
+  ],
+  "next": "<what the caller should do next>"
+}
+```
+
+**Determinism controls (NFR-96):**
+
+- `jq -S` key ordering (top-level keys lexicographically sorted on disk).
+- Deterministic finding IDs derived from the envelope's emission order (the `id` field Sage assigns: `F-C1`, `F-W1`, …).
+- `findings[]` sorted by `(severity_rank, id)` where rank is `CRITICAL=0, WARNING=1, INFO=2` (highest severity first; ties break on `id` ascending).
+- LF line endings, UTF-8 encoding, a single pinned trailing newline.
+- Atomic write (sibling tempfile + `mv`) — no partial sidecar ever lands.
+
+**Reference write idiom (orchestrator side, main turn):**
+
+```sh
+# After Sage returns the ADR-037 envelope as $ADV_RETURN_JSON, and the .md path
+# was resolved via `resolve-write-path.sh --paired` (line 1 = .md, line 2 = .json):
+MD_PATH="$(printf '%s\n' "$RESOLVED" | sed -n '1p')"
+SIDECAR_PATH=$(printf '%s' "$ADV_RETURN_JSON" \
+  | "$PLUGIN_DIR/skills/gaia-adversarial/scripts/write-adversarial-sidecar.sh" \
+      --md-path "$MD_PATH" --envelope-stdin)
+```
+
+See `plugins/gaia/skills/gaia-adversarial/scripts/write-adversarial-sidecar.sh` for the canonical writer, `resolve-write-path.sh --paired` for atomic `.md`+`.json` path pairing, and `plugins/gaia/tests/af-2026-06-03-3-adversarial-sidecar.bats` for coverage.
