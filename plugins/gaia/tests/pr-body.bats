@@ -163,3 +163,28 @@ EOF
 @test "pr-body: source contains no bare 'eval'" {
   ! grep -nE "\beval\b" "$PR_BODY"
 }
+
+# ---------------------------------------------------------------------------
+# Issue #1091 — story_key: alias tolerance
+# ---------------------------------------------------------------------------
+
+@test "pr-body: resolves story_key: alias into the story-link line (issue #1091)" {
+  cat > "docs/implementation-artifacts/E0-S103-alias.md" <<'EOF'
+---
+template: 'story'
+story_key: E0-S103
+epic_key: E0
+title: "Alias story"
+status: review
+---
+
+# Story
+## Acceptance Criteria
+- [ ] AC1
+## Tasks / Subtasks
+- [x] T1
+EOF
+  run "$PR_BODY" docs/implementation-artifacts/E0-S103-alias.md
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -F "E0-S103"
+}

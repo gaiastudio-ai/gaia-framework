@@ -79,6 +79,20 @@ get_field() {
   printf '%s\n' "$FRONTMATTER" | fm_get_field "$key"
 }
 
+# get_field_aliased CANONICAL ALIAS — return the canonical frontmatter field
+# if present, otherwise fall back to the alias. Tolerates the `story_key:` /
+# `epic_key:` convention every other story-consuming skill already accepts,
+# closing the dev-story-only contract mismatch (issue #1091). Backward- and
+# forward-compatible: canonical `key:` / `epic:` continue to take precedence.
+get_field_aliased() {
+  local canonical="$1" alias="$2" val
+  val="$(get_field "$canonical")"
+  if [ -z "$val" ]; then
+    val="$(get_field "$alias")"
+  fi
+  printf '%s' "$val"
+}
+
 # Special handling for depends_on: emit comma-joined list. Supports the
 # common YAML inline form `depends_on: ["E1-S1", "E1-S2"]` and the empty
 # form `depends_on: []`.
@@ -113,17 +127,17 @@ get_depends_on() {
   '
 }
 
-STORY_KEY_VAL="$(get_field key)"
+STORY_KEY_VAL="$(get_field_aliased key story_key)"
 STATUS_VAL="$(get_field status)"
 RISK_VAL="$(get_field risk)"
-EPIC_KEY_VAL="$(get_field epic)"
+EPIC_KEY_VAL="$(get_field_aliased epic epic_key)"
 TYPE_VAL="$(get_field template)"
 DEPENDS_ON_VAL="$(get_depends_on)"
 STORY_PATH_VAL="$STORY_PATH_INPUT"
 
 # Validate required fields
 if [ -z "$STORY_KEY_VAL" ]; then
-  die_parse "missing required frontmatter field: key"
+  die_parse "missing required frontmatter field: key (or alias story_key)"
 fi
 if [ -z "$STATUS_VAL" ]; then
   die_parse "missing required frontmatter field: status"
