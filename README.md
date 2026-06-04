@@ -2,9 +2,9 @@
 
 <a href="https://gaiastudio-ai.github.io/gaia-framework/">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./assets/Logo.png">
-    <source media="(prefers-color-scheme: light)" srcset="./assets/Logo-light.png">
-    <img alt="GAIA Framework" src="./assets/Logo-light.png" width="440">
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/Logo-light.png">
+    <source media="(prefers-color-scheme: light)" srcset="./assets/Logo.png">
+    <img alt="GAIA Framework" src="./assets/Logo.png" width="440">
   </picture>
 </a>
 
