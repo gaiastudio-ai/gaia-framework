@@ -95,7 +95,11 @@ verdict inline (per ADR-057, ADR-073, AF-2026-04-28-6).
   and `eval` its stdout to populate the canonical 10-variable env-var contract
   (`STORY_KEY`, `STATUS`, `RISK`, `EPIC_KEY`, `TYPE`, `DEPENDS_ON`, `SUBTASK_COUNT`,
   `SUBTASK_CHECKED`, `AC_COUNT`, `STORY_PATH`). Exit 2 = malformed frontmatter; HALT
-  with the script's stderr.
+  with the script's stderr. The parser reads canonical `key:` / `epic:` frontmatter
+  and falls back to the `story_key:` / `epic_key:` alias convention when canonical
+  fields are absent (canonical takes precedence; issue #1091) — so story files
+  authored under either convention dev-story cleanly. `pr-body.sh` and `commit-msg.sh`
+  honour the same alias.
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/detect-mode.sh {story_path}`.
   Stdout is exactly one of `FRESH | REWORK | RESUME` — capture it as the execution
   mode. Do NOT re-derive the mode from `$STATUS` inline; the script is the single

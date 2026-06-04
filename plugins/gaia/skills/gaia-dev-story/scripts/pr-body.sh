@@ -92,11 +92,22 @@ get_field() {
   printf '%s\n' "$FRONTMATTER" | fm_get_field "$key"
 }
 
-STORY_KEY_VAL="$(get_field key)"
+# Tolerate the `story_key:` convention every other story-consuming skill
+# accepts; canonical `key:` takes precedence (issue #1091).
+get_field_aliased() {
+  local canonical="$1" alias="$2" val
+  val="$(get_field "$canonical")"
+  if [ -z "$val" ]; then
+    val="$(get_field "$alias")"
+  fi
+  printf '%s' "$val"
+}
+
+STORY_KEY_VAL="$(get_field_aliased key story_key)"
 TITLE_VAL="$(get_field title)"
 
 if [ -z "$STORY_KEY_VAL" ]; then
-  die_parse "missing required frontmatter field: key"
+  die_parse "missing required frontmatter field: key (or alias story_key)"
 fi
 
 # --- Acceptance Criteria extraction ---------------------------------------
