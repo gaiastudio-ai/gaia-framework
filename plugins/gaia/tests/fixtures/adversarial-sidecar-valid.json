@@ -1,0 +1,21 @@
+{
+  "findings": [
+    {
+      "id": "ADV-001",
+      "location": "prd/04-functional-requirements/55-4-54.md:FR-568",
+      "severity": "WARNING",
+      "title": "Concurrent write collision underspecified"
+    },
+    {
+      "id": "ADV-002",
+      "location": "architecture/31-adr-131.md:Decision",
+      "severity": "INFO",
+      "title": "Determinism rationale could cite NFR-96 explicitly"
+    }
+  ],
+  "next": "Tighten the AC to specify an atomic temp+mv write with a collision-increment.",
+  "review_type": "adversarial",
+  "status": "WARNING",
+  "summary": "The PRD shard underspecifies the failure-mode for concurrent sidecar writes.",
+  "target": "adversarial-review-prd-2026-06-03"
+}

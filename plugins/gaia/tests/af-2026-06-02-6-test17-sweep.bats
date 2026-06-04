@@ -277,3 +277,132 @@ EOF
   grep -qF 'Brownfield freshness re-check' "$PLUGIN/skills/gaia-create-prd/SKILL.md"
   grep -qF 're-stat the `evidence_file`' "$PLUGIN/skills/gaia-create-prd/SKILL.md"
 }
+
+# ===========================================================================
+# E87-S9 / AF-2026-06-03-2 — compose-verdict.sh downcast bookkeeping:
+#   emit `original_status` provenance (pre-coercion track value) when the
+#   synonym-mapping path coerces WARNING/PASS/CRITICAL, WITHOUT changing the
+#   reduced composite verdict. Default stdout (no flag) is byte-identical to
+#   the pre-S9 single-line contract; provenance is surfaced opt-in via
+#   `--with-provenance`. NFR-95: provenance is additive and absent when no
+#   coercion occurred.
+# ===========================================================================
+
+CV() { echo "$PLUGIN/skills/gaia-sprint-review/scripts/compose-verdict.sh"; }
+
+# --- (a) coercion emits original_status with the pre-coercion value ---
+
+@test "E87-S9: --with-provenance emits original_status=track_a=WARNING on coerced WARNING" {
+  run bash "$(CV)" --track-a WARNING --track-b PASSED --with-provenance
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "PASSED" ]
+  [ "${lines[1]}" = "original_status=track_a=WARNING" ]
+}
+
+@test "E87-S9: --with-provenance emits original_status=track_a=PASS on coerced PASS" {
+  run bash "$(CV)" --track-a PASS --track-b PASSED --with-provenance
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "PASSED" ]
+  [ "${lines[1]}" = "original_status=track_a=PASS" ]
+}
+
+@test "E87-S9: --with-provenance emits original_status=track_a=CRITICAL on coerced CRITICAL" {
+  run bash "$(CV)" --track-a CRITICAL --track-b PASSED --with-provenance
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "FAILED" ]
+  [ "${lines[1]}" = "original_status=track_a=CRITICAL" ]
+}
+
+@test "E87-S9: --with-provenance emits original_status for track_b coercion" {
+  run bash "$(CV)" --track-a PASSED --track-b WARNING --with-provenance
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "PASSED" ]
+  [ "${lines[1]}" = "original_status=track_b=WARNING" ]
+}
+
+@test "E87-S9: --with-provenance records BOTH tracks when both are coerced" {
+  run bash "$(CV)" --track-a PASS --track-b CRITICAL --with-provenance
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "FAILED" ]
+  [ "${lines[1]}" = "original_status=track_a=PASS,track_b=CRITICAL" ]
+}
+
+# --- (b) no coercion → no original_status line (absent-when-not-coerced) ---
+
+@test "E87-S9: --with-provenance emits NO original_status line when neither track coerced" {
+  run bash "$(CV)" --track-a PASSED --track-b SKIPPED --with-provenance
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "PASSED" ]
+  [ "${#lines[@]}" -eq 1 ]
+  ! printf '%s\n' "${lines[@]}" | grep -q 'original_status'
+}
+
+@test "E87-S9: --with-provenance emits NO original_status line for FAILED/UNVERIFIED canonical inputs" {
+  run bash "$(CV)" --track-a FAILED --track-b UNVERIFIED --with-provenance
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "FAILED" ]
+  [ "${#lines[@]}" -eq 1 ]
+}
+
+# --- (c) default (no flag): single-line verdict contract preserved ---
+
+@test "E87-S9: default invocation (no --with-provenance) emits ONLY the verdict line for coerced input" {
+  run bash "$(CV)" --track-a WARNING --track-b PASSED
+  [ "$status" -eq 0 ]
+  [ "$output" = "PASSED" ]
+  ! echo "$output" | grep -q 'original_status'
+}
+
+@test "E87-S9: default invocation never leaks original_status even when both tracks coerced" {
+  run bash "$(CV)" --track-a PASS --track-b CRITICAL
+  [ "$status" -eq 0 ]
+  [ "$output" = "FAILED" ]
+  ! echo "$output" | grep -q 'original_status'
+}
+
+# --- (c) regression: composite verdict UNCHANGED across all existing cases ---
+
+@test "E87-S9 regression: composite verdict unchanged for the canonical reduction matrix" {
+  # Each row: track-a track-b expected-composite. Provenance bookkeeping must
+  # NOT alter any of these — they are the pre-S9 contract.
+  while read -r a b expected; do
+    [ -z "$a" ] && continue
+    run bash "$(CV)" --track-a "$a" --track-b "$b"
+    [ "$status" -eq 0 ] || { echo "exit!=0 for $a/$b"; false; }
+    [ "$output" = "$expected" ] || { echo "GOT '$output' WANT '$expected' for $a/$b"; false; }
+  done <<'MATRIX'
+PASSED PASSED PASSED
+PASSED SKIPPED PASSED
+PASSED PARTIAL PASSED
+PARTIAL PASSED PASSED
+PASSED FAILED FAILED
+FAILED PASSED FAILED
+PASSED UNVERIFIED UNVERIFIED
+UNVERIFIED PASSED UNVERIFIED
+WARNING PASSED PASSED
+WARNING SKIPPED PASSED
+PASSED WARNING PASSED
+PASS PASSED PASSED
+CRITICAL PASSED FAILED
+PASS CRITICAL FAILED
+FAILED UNVERIFIED FAILED
+MATRIX
+}
+
+@test "E87-S9 regression: --with-provenance verdict line matches the no-flag verdict for coerced input" {
+  run bash "$(CV)" --track-a WARNING --track-b PASSED
+  noflag="$output"
+  run bash "$(CV)" --track-a WARNING --track-b PASSED --with-provenance
+  [ "${lines[0]}" = "$noflag" ]
+}
+
+# --- consumer propagation: SKILL.md Step 5 captures + propagates original_status ---
+
+@test "E87-S9: sprint-review SKILL.md Step 5 invokes the reducer with --with-provenance" {
+  grep -qF -- '--with-provenance' "$PLUGIN/skills/gaia-sprint-review/SKILL.md"
+}
+
+@test "E87-S9: sprint-review SKILL.md Step 5 captures + propagates original_status (does not strip)" {
+  grep -qF 'ORIGINAL_STATUS=' "$PLUGIN/skills/gaia-sprint-review/SKILL.md"
+  grep -qF 'do NOT strip it' "$PLUGIN/skills/gaia-sprint-review/SKILL.md"
+}

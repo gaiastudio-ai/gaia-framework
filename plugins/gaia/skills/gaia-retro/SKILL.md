@@ -293,6 +293,15 @@ All edge paths are non-blocking (per the story's "Failure posture"):
 
 > **Note (ADR-052 delegation):** `action-items-increment.sh` sources the canonical shared retro writer (`gaia-framework/plugins/gaia/scripts/retro-sidecar-write.sh`) for allowlist enforcement and path resolution (E36-S5 swap-in). The CLI contract is unchanged — callers in this skill do not need to be updated.
 
+> **Adversarial-findings input (E87-S12 / AF-2026-06-03-3 — ADR-131):** when adversarial reviews (`/gaia-adversarial`, Sage) ran during the sprint, their findings are eligible pattern-detection input — a finding title recurring across 2+ sprints is a systemic theme. **Read the structured `.json` sidecar, not the prose.** For each `adversarial-review-<target>-<date>[-N].md` under `.gaia/artifacts/planning-artifacts/adversarial/`, resolve the structured fields through the shared reader helper — never re-inline a `.md` regex-parse:
+>
+> ```bash
+> ${CLAUDE_PLUGIN_ROOT}/scripts/lib/read-adversarial-sidecar.sh \
+>   --md-path "<.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-*.md>"
+> ```
+>
+> The helper **prefers** the `.json` sidecar (jq-extracted `findings[].title`, prefix `source=json`) and **falls back** to a `.md` regex-parse when the sidecar is absent (pre-E87-S11 reports, prefix `source=md`) — additive, back-compatible. Normalize each `finding=` title into the same `lowercase(trim)` + `SHA-256` theme key the scanner uses, so an adversarial finding and a manually-written retro item describing the same theme collapse to one systemic theme.
+
 ### Step 5f --- Skill Improvement Proposals (FR-RIM-6, ADR-053, architecture §10.28.7)
 
 Map each retro finding from Steps 3-4 to existing shared skills by scanning `${CLAUDE_PLUGIN_ROOT}/skills/` and `${CLAUDE_PROJECT_ROOT}/custom/skills/` registries. For each matched finding, build a structured proposal object per architecture §10.28.7 schema.
