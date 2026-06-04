@@ -77,7 +77,18 @@ trap _cleanup EXIT INT TERM
 GIT_TIMEOUT_SECONDS=2
 
 CACHE_DIR="${HOME}/.claude/gaia-statusline/cache"
-CACHE_FILE="${CACHE_DIR}/latest-release.json"
+
+# Per-project git-state cache (cross-project branch-leak fix). The git-state
+# fields (active_branch, git_dirty, line-change counts) are keyed by the
+# session's workspace root so concurrent sessions in different repos never
+# clobber each other's branch. CACHE_FILE is resolved below (Resolve session
+# root) once the workspace root is known. The shared key helper lives under lib/.
+_GDC_SELF_DIR="$(cd "$(dirname "$0")" && pwd 2>/dev/null || printf '')"
+if [ -r "${_GDC_SELF_DIR}/lib/statusline-project-cache-key.sh" ]; then
+  . "${_GDC_SELF_DIR}/lib/statusline-project-cache-key.sh"
+elif [ -r "${_GDC_SELF_DIR}/../scripts/lib/statusline-project-cache-key.sh" ]; then
+  . "${_GDC_SELF_DIR}/../scripts/lib/statusline-project-cache-key.sh"
+fi
 
 # Resolve PROJECT_PATH (caller / hook injection / CWD).
 PROJECT_PATH="${PROJECT_PATH:-$PWD}"
@@ -95,6 +106,27 @@ if [ ! -t 0 ]; then
   # Stdin is attached (hook context). Drain it with a 1s read timeout so we
   # never block the tool call.
   HOOK_INPUT="$(timeout 1s cat 2>/dev/null || cat 2>/dev/null)"
+fi
+
+# ---- Resolve the session workspace root for the per-project cache key -------
+# This is the STABLE per-session identity (the terminal's pinned root), NOT the
+# probe dir — so the cache file is keyed by which project this session belongs
+# to, and concurrent sessions in different repos never share a git-state file.
+# Order: payload top-level .cwd -> workspace.current_dir -> PROJECT_PATH.
+SESSION_ROOT=""
+if [ -n "$HOOK_INPUT" ]; then
+  SESSION_ROOT="$(printf '%s' "$HOOK_INPUT" | jq -r '.cwd // .workspace.current_dir // ""' 2>/dev/null)"
+fi
+[ -n "$SESSION_ROOT" ] || SESSION_ROOT="$PROJECT_PATH"
+
+if command -v _statusline_git_state_cache_file >/dev/null 2>&1; then
+  CACHE_FILE="$(_statusline_git_state_cache_file "$CACHE_DIR" "$SESSION_ROOT")"
+else
+  # Helper unavailable (e.g. partial install) — fall back to a session-keyed
+  # filename inline so we still never write to the shared global file.
+  _CK="$(printf '%s' "$SESSION_ROOT" | cksum 2>/dev/null | awk '{print $1}')"
+  [ -n "$_CK" ] || _CK="global"
+  CACHE_FILE="${CACHE_DIR}/git-state-${_CK}.json"
 fi
 
 if [ -n "$HOOK_INPUT" ]; then
