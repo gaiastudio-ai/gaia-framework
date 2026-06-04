@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.187.2] — 2026-06-04
+
+### Changed
+
+- promote staging to main — fixes #1108 + #1109
+
+### Fixed
+
+- (dev-story,sprint-state) atdd-gate nested path + stale sprint-status warning (#1108, #1109) (#1110)
+
 ## [1.187.1] — 2026-06-04
 
 ### Changed
