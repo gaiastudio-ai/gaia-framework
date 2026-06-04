@@ -35,10 +35,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_RUNTIME="$SCRIPT_DIR/statusline.sh"
 SRC_GLYPHS="$SCRIPT_DIR/lib/statusline-glyphs.sh"
 SRC_COLORS="$SCRIPT_DIR/lib/statusline-colors.sh"
+SRC_PROJECT_KEY="$SCRIPT_DIR/lib/statusline-project-cache-key.sh"
 SRC_FETCHER="$SCRIPT_DIR/statusline-update-check.sh"
 SRC_DIRTY_FETCHER="$SCRIPT_DIR/statusline-git-dirty-check.sh"
 
-for f in "$SRC_RUNTIME" "$SRC_GLYPHS" "$SRC_COLORS" "$SRC_FETCHER" "$SRC_DIRTY_FETCHER"; do
+for f in "$SRC_RUNTIME" "$SRC_GLYPHS" "$SRC_COLORS" "$SRC_PROJECT_KEY" "$SRC_FETCHER" "$SRC_DIRTY_FETCHER"; do
   if [ ! -r "$f" ]; then
     printf 'install-statusline.sh: missing source file: %s\n' "$f" >&2
     exit 1
@@ -52,6 +53,7 @@ DEST_CACHE="$DEST_BASE/cache"
 DEST_RUNTIME="$DEST_BASE/statusline.sh"
 DEST_GLYPHS="$DEST_LIB/statusline-glyphs.sh"
 DEST_COLORS="$DEST_LIB/statusline-colors.sh"
+DEST_PROJECT_KEY="$DEST_LIB/statusline-project-cache-key.sh"
 DEST_FETCHER="$DEST_BASE/statusline-update-check.sh"
 DEST_DIRTY_FETCHER="$DEST_BASE/statusline-git-dirty-check.sh"
 
@@ -70,6 +72,7 @@ _copy_if_different() {
 _copy_if_different "$SRC_RUNTIME" "$DEST_RUNTIME"
 _copy_if_different "$SRC_GLYPHS"  "$DEST_GLYPHS"
 _copy_if_different "$SRC_COLORS"  "$DEST_COLORS"
+_copy_if_different "$SRC_PROJECT_KEY" "$DEST_PROJECT_KEY"
 _copy_if_different "$SRC_FETCHER" "$DEST_FETCHER"
 _copy_if_different "$SRC_DIRTY_FETCHER" "$DEST_DIRTY_FETCHER"
 
