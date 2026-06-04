@@ -53,6 +53,21 @@ fi
 [ -r "$LIB_DIR/statusline-glyphs.sh" ] && . "$LIB_DIR/statusline-glyphs.sh"
 # shellcheck source=/dev/null
 [ -r "$LIB_DIR/statusline-colors.sh" ] && . "$LIB_DIR/statusline-colors.sh"
+# shellcheck source=/dev/null
+[ -r "$LIB_DIR/statusline-project-cache-key.sh" ] && . "$LIB_DIR/statusline-project-cache-key.sh"
+
+# Per-project git-state cache file, keyed by this session's workspace root
+# (PROJECT_PATH == workspace.current_dir). Concurrent sessions in different
+# repos each read their OWN active_branch / git_dirty — fixes the cross-project
+# branch leak. Version-check fields stay in the shared latest-release.json.
+_GAIA_CACHE_DIR="$HOME/.claude/gaia-statusline/cache"
+if command -v _statusline_git_state_cache_file >/dev/null 2>&1; then
+  GIT_STATE_CACHE_FILE="$(_statusline_git_state_cache_file "$_GAIA_CACHE_DIR" "$PROJECT_PATH")"
+else
+  _GAIA_CK="$(printf '%s' "$PROJECT_PATH" | cksum 2>/dev/null | awk '{print $1}')"
+  [ -n "$_GAIA_CK" ] || _GAIA_CK="global"
+  GIT_STATE_CACHE_FILE="${_GAIA_CACHE_DIR}/git-state-${_GAIA_CK}.json"
+fi
 
 # Defaults if the lib helpers are absent (graceful degrade).
 : "${GLYPH_BRAND:=*}"
@@ -135,6 +150,7 @@ case "$_GAIA_SELF" in
             "statusline.sh:$_GAIA_INSTALL_DIR/statusline.sh" \
             "lib/statusline-glyphs.sh:$_GAIA_INSTALL_DIR/lib/statusline-glyphs.sh" \
             "lib/statusline-colors.sh:$_GAIA_INSTALL_DIR/lib/statusline-colors.sh" \
+            "lib/statusline-project-cache-key.sh:$_GAIA_INSTALL_DIR/lib/statusline-project-cache-key.sh" \
             "statusline-update-check.sh:$_GAIA_INSTALL_DIR/statusline-update-check.sh" \
             "statusline-git-dirty-check.sh:$_GAIA_INSTALL_DIR/statusline-git-dirty-check.sh"; do
             _gp_src="$_GAIA_CACHE_SCRIPTS/${_gp%%:*}"
@@ -177,12 +193,11 @@ BRANCH=""
 if [ -n "${GAIA_STATUSLINE_BRANCH_OVERRIDE:-}" ]; then
   BRANCH="$GAIA_STATUSLINE_BRANCH_OVERRIDE"
 else
-  # Cache read happens further down (line ~134) but we need active_branch
-  # before the assembly block. Do a tiny early read here; the main cache
-  # block re-reads from the same file shortly so no extra round-trip risk.
-  _CACHE_EARLY="$HOME/.claude/gaia-statusline/cache/latest-release.json"
-  if [ -r "$_CACHE_EARLY" ]; then
-    BRANCH="$(jq -r '.active_branch // ""' "$_CACHE_EARLY" 2>/dev/null || printf '')"
+  # Read active_branch from the PER-PROJECT git-state cache (keyed by this
+  # session's workspace root), not the shared latest-release.json — otherwise a
+  # concurrent session in another repo would leak its branch into this one.
+  if [ -r "$GIT_STATE_CACHE_FILE" ]; then
+    BRANCH="$(jq -r '.active_branch // ""' "$GIT_STATE_CACHE_FILE" 2>/dev/null || printf '')"
     # jq prints the literal "null" when the field is JSON null — normalise.
     [ "$BRANCH" = "null" ] && BRANCH=""
   fi
@@ -210,18 +225,32 @@ GIT_DIRTY_RAW="false"
 CACHE_FRESH=0
 CACHE_TS=""
 AGE=0
+# Git-state fields (git_dirty + per-class line counts) come from the
+# PER-PROJECT cache, written by statusline-git-dirty-check.sh keyed to this
+# session's workspace root — never the shared latest-release.json. Defaults to
+# 0/false on miss (e.g. before the first PreToolUse fires this session).
+GIT_STAGED_ADDED=0
+GIT_STAGED_REMOVED=0
+GIT_UNSTAGED_ADDED=0
+GIT_UNSTAGED_REMOVED=0
+if [ -r "$GIT_STATE_CACHE_FILE" ]; then
+  GIT_STATE_JSON="$(cat "$GIT_STATE_CACHE_FILE" 2>/dev/null || printf '')"
+  if [ -n "$GIT_STATE_JSON" ]; then
+    GIT_DIRTY_RAW="$(printf '%s' "$GIT_STATE_JSON" | jq -r '.git_dirty // false' 2>/dev/null)"
+    # AF-2026-05-27-5: per-class line-change counts (default 0 when absent).
+    GIT_STAGED_ADDED="$(printf '%s' "$GIT_STATE_JSON" | jq -r '.staged_added // 0' 2>/dev/null)"
+    GIT_STAGED_REMOVED="$(printf '%s' "$GIT_STATE_JSON" | jq -r '.staged_removed // 0' 2>/dev/null)"
+    GIT_UNSTAGED_ADDED="$(printf '%s' "$GIT_STATE_JSON" | jq -r '.unstaged_added // 0' 2>/dev/null)"
+    GIT_UNSTAGED_REMOVED="$(printf '%s' "$GIT_STATE_JSON" | jq -r '.unstaged_removed // 0' 2>/dev/null)"
+  fi
+fi
+
 if [ -r "$CACHE_FILE" ]; then
   CACHE_JSON="$(cat "$CACHE_FILE" 2>/dev/null || printf '')"
   if [ -n "$CACHE_JSON" ]; then
     LATEST_VERSION="$(printf '%s' "$CACHE_JSON" | jq -r '.latest_tag // ""' 2>/dev/null)"
     UPDATE_AVAILABLE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.update_available // false' 2>/dev/null)"
     INSTALLED_VERSION_STALE_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.installed_version_stale // false' 2>/dev/null)"
-    GIT_DIRTY_RAW="$(printf '%s' "$CACHE_JSON" | jq -r '.git_dirty // false' 2>/dev/null)"
-    # AF-2026-05-27-5: per-class line-change counts (default 0 when absent).
-    GIT_STAGED_ADDED="$(printf '%s' "$CACHE_JSON" | jq -r '.staged_added // 0' 2>/dev/null)"
-    GIT_STAGED_REMOVED="$(printf '%s' "$CACHE_JSON" | jq -r '.staged_removed // 0' 2>/dev/null)"
-    GIT_UNSTAGED_ADDED="$(printf '%s' "$CACHE_JSON" | jq -r '.unstaged_added // 0' 2>/dev/null)"
-    GIT_UNSTAGED_REMOVED="$(printf '%s' "$CACHE_JSON" | jq -r '.unstaged_removed // 0' 2>/dev/null)"
     CACHE_TS="$(printf '%s' "$CACHE_JSON" | jq -r '.checked_at_iso // ""' 2>/dev/null)"
     if [ -n "$CACHE_TS" ]; then
       # Portable ISO-8601 -> epoch (try BSD then GNU date).
