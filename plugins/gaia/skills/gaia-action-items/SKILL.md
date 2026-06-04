@@ -152,6 +152,15 @@ For each open item (highest priority first, then oldest first):
    - In `normal` mode: ask the user `[apply | defer | dismiss]`. In `yolo` mode: auto-apply EXCEPT when `target_command == /gaia-create-story` (the AC-EC7 gate fires unconditionally).
    - On `apply`: invoke the `target_command` slash skill with the entry's `context_for_target` as input. On `defer`: leave the entry `open` and re-process at the next sprint boundary. On `dismiss`: set `status: dismissed` with a `resolution:` reasoning string.
 
+5. **Adversarial-finding auto-file router (E87-S12 / AF-2026-06-03-3 — ADR-131).** When an action item's source is an adversarial review (`/gaia-adversarial`, Sage) — i.e. the entry's `source_ref` / `context_for_target` points at an `adversarial-review-<target>-<date>[-N].md` under `.gaia/artifacts/planning-artifacts/adversarial/` — resolve the finding's `severity` / `id` / `title` / `location` from the structured **`.json` sidecar, not the prose**, via the shared reader helper (never re-inline a `.md` regex-parse):
+
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/scripts/lib/read-adversarial-sidecar.sh \
+     --md-path "<.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-*.md>"
+   ```
+
+   The helper **prefers** the `.json` sidecar (jq-extracted `status` + `findings[].{severity,id,title,location}`, prefix `source=json`) and **falls back** to a `.md` regex-parse when the sidecar is absent (pre-E87-S11 reports, prefix `source=md`) — additive, back-compatible. Route the extracted finding to its `target_command` per the v2 table above (a `CRITICAL` finding routes to `new-story` → `/gaia-create-story` and the AC-EC7 classification gate fires; `WARNING`/`INFO` findings surface as manual follow-ups).
+
 ## Step 3 — Update Tracker
 
 - For each processed item, update `.gaia/artifacts/planning-artifacts/action-items.yaml`:
