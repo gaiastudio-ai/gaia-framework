@@ -196,6 +196,53 @@ teardown() {
   [ "$(grep -c 'expected-agent' "$HELPER")" -ge 3 ]
 }
 
+# ============================================================================
+# E87-S8 / AF-2026-06-03-2 / ADR-130 — TC-OSV-3, TC-OSV-4, TC-OSV-5 (assert
+# half): OPTIONAL `original_status` field. NFR-95 golden invariant —
+# original_status MUST NOT be added to any required set; assertion passes
+# (exit 0) whether the field is present or absent.
+# ============================================================================
+
+# TC-OSV-3: asserter passes when sentinel carries original_status (optional).
+@test "TC-OSV-3: asserter passes with original_status present (exit 0)" {
+  source "$HELPER"
+  local sentinel="$TEST_TMP/osv3-sentinel.json"
+  printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-osv3", "original_status": "WARNING"}' > "$sentinel"
+  run assert_agent_envelope "$sentinel"
+  [ "$status" -eq 0 ]
+}
+
+# TC-OSV-4: asserter passes when sentinel lacks original_status (back-compat).
+@test "TC-OSV-4: asserter passes without original_status (exit 0, back-compat)" {
+  source "$HELPER"
+  local sentinel="$TEST_TMP/osv4-sentinel.json"
+  printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-osv4"}' > "$sentinel"
+  run assert_agent_envelope "$sentinel"
+  [ "$status" -eq 0 ]
+}
+
+# TC-OSV-5 (assert half): NFR-95 — original_status is NOT required. A sentinel
+# missing it asserts identically to one carrying it; both exit 0. Pins the
+# invariant against a future strict-required-set regression.
+@test "TC-OSV-5a: NFR-95 — with and without original_status both assert exit 0" {
+  source "$HELPER"
+  local with="$TEST_TMP/osv5-with.json"
+  local without="$TEST_TMP/osv5-without.json"
+  printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-osv5", "original_status": "PASS"}' > "$with"
+  printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-osv5"}' > "$without"
+  run assert_agent_envelope "$with"
+  [ "$status" -eq 0 ]
+  run assert_agent_envelope "$without"
+  [ "$status" -eq 0 ]
+}
+
+# TC-OSV-6: helper header documents original_status as an OPTIONAL field
+# (NFR-95) so the additive contract is locked against future regression.
+@test "TC-OSV-6: helper header documents original_status as optional (NFR-95)" {
+  grep -q 'original_status' "$HELPER"
+  grep -q 'NFR-95' "$HELPER"
+}
+
 # ---------------- TC-MVB-8: validator.md + ADR-104 shard cross-refs ----------------
 @test "TC-MVB-8: validator.md and ADR-104 shard reference expected-agent generalization" {
   # validator.md cross-reference required.

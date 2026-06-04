@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gaia.studio/schemas/infrastructure-design.schema.json",
+  "title": "Infrastructure design",
+  "description": "E108-S4 / AF-2026-06-03-1 / Test17 D-2/D-6. Backing JSON Schema for the `infrastructure-design` artifact type so /gaia-val-validate can enforce structural invariants, not merely route the type. The infrastructure-design artifact is a prose-markdown document with a YAML frontmatter metadata block (grounded in the on-disk corpus instance `.gaia/artifacts/planning-artifacts/assessments/infrastructure-design.md` plus the /gaia-infra-design SKILL Step structure). The shared validate-artifact-schema.sh helper (E108-S5) extracts the frontmatter for *.md instances and validates it against THIS schema; the prose body is not machine-validated by a frontmatter schema, so the eleven canonical H2 sections it MUST carry are documented in `x-required-sections` below for the document-ruleset and reviewer. Pragmatic, grounded shape — required metadata is pinned, but additional frontmatter keys (e.g. `framework_version`) are permitted. This is the last of the four un-backed artifact types in E108.",
+  "type": "object",
+  "required": ["template", "version", "date", "project"],
+  "additionalProperties": true,
+  "properties": {
+    "template": {
+      "type": "string",
+      "description": "Template identifier. MUST be `infrastructure-design` — the slug that selects the document-specific ruleset and aligns with the on-disk artifact filename per the /gaia-val-validate artifact_type enum.",
+      "const": "infrastructure-design"
+    },
+    "version": {
+      "type": "string",
+      "description": "Template/document version (semver-shaped, e.g. `1.0.0`). Bumped when the design is re-run under a newer template. Note: quote in YAML frontmatter so a value like `1.0` is not parsed as a float by the validate-artifact-schema.sh YAML->JSON bridge.",
+      "minLength": 1
+    },
+    "date": {
+      "type": "string",
+      "description": "Design date. ISO-8601 `YYYY-MM-DD`. Quote in YAML frontmatter (`date: \"2026-03-14\"`) so the validate-artifact-schema.sh YAML->JSON bridge does not load it as a non-serializable date object (E108-S5 F-1).",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "project": {
+      "type": "string",
+      "description": "Human-readable project name the design covers (e.g. `GAIA Framework`).",
+      "minLength": 1
+    },
+    "framework_version": {
+      "type": "string",
+      "description": "Optional. The GAIA framework version at design time, when recorded. Informational provenance."
+    }
+  },
+  "x-required-sections": {
+    "description": "The eleven canonical H2 (`##`) sections the prose body MUST carry, grounded in the corpus instance `.gaia/artifacts/planning-artifacts/assessments/infrastructure-design.md` + /gaia-infra-design Step structure. In the corpus instance these H2 headings are numbered (e.g. `## 1. Infrastructure Context`); the section list below is the unnumbered canonical name. Validated by the document-ruleset / reviewer, not by this frontmatter schema.",
+    "sections": [
+      "Infrastructure Context",
+      "Environment Design",
+      "Deployment Topology",
+      "CI/CD Pipeline Design",
+      "State Management",
+      "Observability Plan",
+      "Rollback Strategies",
+      "Security Hardening",
+      "Dependency Management",
+      "Implementation Milestones",
+      "Decision Rationale Summary"
+    ]
+  }
+}

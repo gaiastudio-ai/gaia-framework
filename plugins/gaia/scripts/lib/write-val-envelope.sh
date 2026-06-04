@@ -36,6 +36,16 @@
 #     artifact_path  — string; used to compute sentinel path
 #     verdict        — one of PASSED|FAILED|UNVERIFIED
 #
+#   OPTIONAL keys (additive — NOT required; NFR-95 / ADR-130 / E87-S8):
+#     original_status — pre-coercion OUTER envelope status (∈ {PASS,WARNING,
+#                       CRITICAL}); present only when a downstream closed-enum
+#                       reduction coerced the outer status. The writer is
+#                       additive-transparent: it serializes the whole input
+#                       envelope verbatim, so any optional field present in the
+#                       input is preserved on disk pass-through. It MUST NOT be
+#                       added to the required-key loop. Absent original_status
+#                       => sentinel byte-identical to today's output.
+#
 #   The sentinel path is computed as
 #     ${CHECKPOINT_PATH}/val-envelope-${HASH}.json
 #   where HASH is the first 16 hex characters of sha256(artifact_path).
@@ -128,7 +138,18 @@ if ! printf '%s' "$ENVELOPE" | jq -e . >/dev/null 2>&1; then
   die "envelope is not valid JSON"
 fi
 
-# Check required keys exist
+# Check required keys exist.
+#
+# NFR-95 (ADR-130 / E87-S8 / AF-2026-06-03-2): the OPTIONAL `original_status`
+# field is INTENTIONALLY NOT in this loop — it MUST NOT be added to any
+# required-field set. Every existing envelope without `original_status` writes
+# exactly as before. The writer is additive-transparent: the whole input
+# envelope object is serialized verbatim below (`printf '%s\n' "$ENVELOPE"`),
+# so when `original_status` is present it is preserved on disk pass-through with
+# no special-casing, and when absent the sentinel is byte-identical to today's
+# output for the same input. `original_status` carries the pre-coercion OUTER
+# envelope `status` (∈ {PASS,WARNING,CRITICAL}); see validator.md
+# §Sentinel-Write Contract. Do NOT add it here.
 for key in agent persona_sig timestamp artifact_path verdict; do
   value=$(printf '%s' "$ENVELOPE" | jq -r --arg k "$key" '.[$k] // empty')
   if [ -z "$value" ]; then

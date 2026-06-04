@@ -114,3 +114,15 @@ Rate each migration risk dimension (high/medium/low). The justification for each
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-nfr/scripts/finalize.sh
+
+## References
+
+- Schema: `gaia-public/plugins/gaia/schemas/nfr-assessment.schema.json` (JSON Schema draft-2020-12) — the structural contract for the `nfr-assessment` artifact this skill produces. Validated by `/gaia-val-validate` (artifact_type `nfr-assessment`) via the shared `scripts/lib/validate-artifact-schema.sh` helper (E108-S5).
+- Corpus instance: `.gaia/artifacts/test-artifacts/strategy/nfr-assessment.md` — the on-disk exemplar the schema is grounded in (eight canonical H2 sections + YAML frontmatter).
+- Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum now carries `nfr-assessment` (E108-S1, enum 16→17).
+- Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` (E108-S5) — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).
+- Knowledge: `knowledge/risk-governance.md` — risk-based assessment methodology (Step 1).
+- FR-561 — nfr-assessment schema + `/gaia-nfr` References + enum extension (E108-S1).
+- NFR-93 — schema-validator parity across the artifact-type schemas.
+- ADR-129 — artifact-type schema registry completion.
+- Epic: `.gaia/artifacts/planning-artifacts/epics/96-e108-artifact-type-schema-registry-completion.md` (E108).

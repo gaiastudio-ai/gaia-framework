@@ -103,3 +103,15 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-perf-testing/scripts/finalize.sh
+
+## References
+
+- Schema: `gaia-public/plugins/gaia/schemas/performance-test-plan.schema.json` (JSON Schema draft-2020-12) — the structural contract for the `performance-test-plan` artifact this skill produces. Validated by `/gaia-val-validate` (artifact_type `performance-test-plan`) via the shared `scripts/lib/validate-artifact-schema.sh` helper (E108-S5).
+- Corpus instance: `.gaia/artifacts/test-artifacts/strategy/performance-test-plan-2026-03-13.md` — the on-disk exemplar the schema is grounded in (seven canonical H2 sections + YAML frontmatter).
+- Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum now carries `performance-test-plan` (E108-S2, enum 17→18).
+- Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` (E108-S5) — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).
+- Knowledge: `knowledge/k6-patterns.md` (Step 2 load-test design), `knowledge/lighthouse-ci.md` (Step 3 frontend performance).
+- FR-562 — performance-test-plan schema + `/gaia-perf-testing` References + enum extension (E108-S2).
+- NFR-93 — schema-validator parity across the artifact-type schemas.
+- ADR-129 — artifact-type schema registry completion.
+- Epic: `.gaia/artifacts/planning-artifacts/epics/96-e108-artifact-type-schema-registry-completion.md` (E108).
