@@ -290,3 +290,29 @@ EOF
   subject="$("$COMMIT_MSG" "$path")"
   echo "$subject" | commitlint --extends @commitlint/config-conventional
 }
+
+# ---------------------------------------------------------------------------
+# Issue #1091 — story_key: alias tolerance
+# ---------------------------------------------------------------------------
+
+@test "commit-msg: resolves story_key: alias into the subject scope (issue #1091)" {
+  cat > "docs/implementation-artifacts/E0-S103-alias.md" <<'EOF'
+---
+template: 'story'
+story_key: E0-S103
+epic_key: E0
+title: "Alias story"
+type: feature
+status: in-progress
+---
+
+# Story
+## Acceptance Criteria
+- [ ] AC1
+## Tasks / Subtasks
+- [x] T1
+EOF
+  run "$COMMIT_MSG" docs/implementation-artifacts/E0-S103-alias.md
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -F "(E0-S103):"
+}

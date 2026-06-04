@@ -229,6 +229,74 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Issue #1091 — story_key:/epic_key: alias tolerance
+# ---------------------------------------------------------------------------
+
+@test "story-parse: resolves story_key:/epic_key: alias frontmatter (issue #1091)" {
+  cat > "docs/implementation-artifacts/E0-S103-alias.md" <<'EOF'
+---
+template: 'story'
+story_key: E0-S103
+epic_key: E0
+title: "Alias story"
+status: backlog
+risk: low
+---
+
+# Story
+## Acceptance Criteria
+- [ ] AC1
+
+## Tasks / Subtasks
+- [ ] T1
+EOF
+  run "$STORY_PARSE" docs/implementation-artifacts/E0-S103-alias.md
+  [ "$status" -eq 0 ]
+  eval "$("$STORY_PARSE" docs/implementation-artifacts/E0-S103-alias.md)"
+  [ "$STORY_KEY" = "E0-S103" ]
+  [ "$EPIC_KEY" = "E0" ]
+}
+
+@test "story-parse: canonical key:/epic: take precedence over alias when both present (issue #1091)" {
+  cat > "docs/implementation-artifacts/E2-S2-both.md" <<'EOF'
+---
+template: 'story'
+key: E2-S2
+story_key: WRONG-KEY
+epic: E2
+epic_key: WRONG-EPIC
+title: "Precedence story"
+status: backlog
+---
+
+# Story
+## Acceptance Criteria
+- [ ] AC1
+
+## Tasks / Subtasks
+- [ ] T1
+EOF
+  eval "$("$STORY_PARSE" docs/implementation-artifacts/E2-S2-both.md)"
+  [ "$STORY_KEY" = "E2-S2" ]
+  [ "$EPIC_KEY" = "E2" ]
+}
+
+@test "story-parse: missing both key and story_key names the alias in the error (issue #1091)" {
+  cat > "docs/implementation-artifacts/E10-S1-nokey2.md" <<'EOF'
+---
+template: 'story'
+status: ready-for-dev
+risk: low
+---
+
+# Story
+EOF
+  run "$STORY_PARSE" docs/implementation-artifacts/E10-S1-nokey2.md
+  [ "$status" -eq 2 ]
+  echo "$output" | grep -F "story_key"
+}
+
+# ---------------------------------------------------------------------------
 # Usage
 # ---------------------------------------------------------------------------
 

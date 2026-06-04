@@ -16,14 +16,18 @@ setup() {
   FETCHER="$PLUGIN_ROOT/scripts/statusline-git-dirty-check.sh"
   export HOME="$TEST_TMP/home"
   mkdir -p "$HOME/.claude/gaia-statusline/cache"
-  CACHE="$HOME/.claude/gaia-statusline/cache/latest-release.json"
-  export CACHE
   # Build a real git repo under TEST_TMP so the fetcher has something to probe.
   REPO="$TEST_TMP/repo"
   mkdir -p "$REPO"
   git -C "$REPO" init -q -b main
   git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m initial
   export PROJECT_PATH="$REPO"
+  # The fetcher writes git-state to a PER-PROJECT cache file keyed by the
+  # session workspace root (cross-project branch-leak fix). With no stdin
+  # payload the session root is PROJECT_PATH, so the key is cksum("$REPO").
+  CACHE_KEY="$(printf '%s' "$REPO" | cksum | awk '{print $1}')"
+  CACHE="$HOME/.claude/gaia-statusline/cache/git-state-${CACHE_KEY}.json"
+  export CACHE
 }
 teardown() { common_teardown; }
 
@@ -120,13 +124,17 @@ teardown() { common_teardown; }
   # "non-git probe dir writes git_dirty=false + active_branch=null" so the
   # statusline correctly reflects "no active repo right now".
   mkdir -p "$TEST_TMP/not-a-repo"
-  rm -f "$CACHE"
+  # The per-project cache key is derived from the session root, which is this
+  # invocation's PROJECT_PATH (no stdin payload) — the non-git dir here.
+  ng_key="$(printf '%s' "$TEST_TMP/not-a-repo" | cksum | awk '{print $1}')"
+  ng_cache="$HOME/.claude/gaia-statusline/cache/git-state-${ng_key}.json"
+  rm -f "$ng_cache"
   run env HOME="$HOME" PROJECT_PATH="$TEST_TMP/not-a-repo" "$FETCHER"
   [ "$status" -eq 0 ]
-  [ -f "$CACHE" ]
-  run jq -r '.git_dirty' "$CACHE"
+  [ -f "$ng_cache" ]
+  run jq -r '.git_dirty' "$ng_cache"
   [ "$output" = "false" ]
-  run jq -r '.active_branch' "$CACHE"
+  run jq -r '.active_branch' "$ng_cache"
   [ "$output" = "null" ]
 }
 
