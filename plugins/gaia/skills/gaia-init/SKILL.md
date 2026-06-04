@@ -309,6 +309,20 @@ Exit codes:
 
 This step is the V2 plugin port of the legacy V1 install path (`Gaia-framework/gaia-install.sh` `cmd_init` / `cmd_update`) retired by ADR-049. Traces: E17-S30, FR-201, ADR-028.
 
+### Step 5c — Install project CLAUDE.md
+
+Materialize the project-root `CLAUDE.md` from the plugin template. This is the file that tells Claude Code the project is a GAIA project — the runtime tree (`.gaia/`), how to start (`/gaia`, `/gaia-help`, `/gaia-dev-story`), the hard rules, and the upstream bug-report policy. Without it, a freshly-initialized project has no GAIA context loaded into Claude Code sessions. The helper preserves a user's existing `CLAUDE.md` byte-identical on re-run (copy-if-absent — never clobber).
+
+```
+${CLAUDE_PLUGIN_ROOT}/scripts/install-claude-md.sh \
+  --target "$PROJECT_PATH"
+```
+
+Exit codes:
+- `0` — success (copied on fresh install, or target `CLAUDE.md` preserved on re-run)
+- `1` — plugin source template missing (plugin corruption; reinstall via marketplace)
+- `2` — usage error
+
 ### Step 6 — Render Next Steps
 
 Render the following to the user, replacing the placeholder with the concrete file list:
@@ -319,6 +333,7 @@ Render the following to the user, replacing the placeholder with the concrete fi
   - <CI workflow path>
   - <CI user-steps companion path>
   - .gaia/config/test-environment.yaml.example
+  - CLAUDE.md (project-root; copied from template or preserved if present)
   - .gitignore (project-root; seeded or GAIA block appended — Test05 F-055)
 
 Reminders:
