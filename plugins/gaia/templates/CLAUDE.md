@@ -1,3 +1,4 @@
+<!-- >>> GAIA (managed by /gaia-init · /gaia-brownfield) -->
 # GAIA Framework
 
 This project uses the **GAIA** (Generative Agile Intelligence Architecture) framework for Claude Code. Framework knowledge lives in the plugin's `SKILL.md` files — not in this file.
@@ -57,3 +58,5 @@ If you are uncertain whether a behaviour is a bug or by design, **read the docs 
 - Story file is the source of truth for sprint state; never write to `.gaia/state/sprint-status.yaml` directly. Use the `/gaia-sprint-status` and `/gaia-sprint-*` skills instead.
 - Story status MUST only be changed through the framework's transition tooling. Direct edits to `status:` fields in story frontmatter, `.gaia/state/sprint-status.yaml`, `epics-and-stories.md`, `story-index.yaml`, or per-epic shards under `.gaia/artifacts/planning-artifacts/epics/` are FORBIDDEN.
 - All runtime paths route through the framework's path helper — never hard-code `docs/`, `_memory/`, `config/`, or `custom/` literals in new scripts.
+<!-- <<< GAIA -->
+

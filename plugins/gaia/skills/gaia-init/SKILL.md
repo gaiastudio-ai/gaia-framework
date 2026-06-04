@@ -311,7 +311,7 @@ This step is the V2 plugin port of the legacy V1 install path (`Gaia-framework/g
 
 ### Step 5c — Install project CLAUDE.md
 
-Materialize the project-root `CLAUDE.md` from the plugin template. This is the file that tells Claude Code the project is a GAIA project — the runtime tree (`.gaia/`), how to start (`/gaia`, `/gaia-help`, `/gaia-dev-story`), the hard rules, and the upstream bug-report policy. Without it, a freshly-initialized project has no GAIA context loaded into Claude Code sessions. The helper preserves a user's existing `CLAUDE.md` byte-identical on re-run (copy-if-absent — never clobber).
+Materialize the project-root `CLAUDE.md` from the plugin template. This is the file that tells Claude Code the project is a GAIA project — the runtime tree (`.gaia/`), how to start (`/gaia`, `/gaia-help`, `/gaia-dev-story`), the hard rules, and the upstream bug-report policy. Without it, a freshly-initialized project has no GAIA context loaded into Claude Code sessions. The helper is idempotent and three-mode: on a greenfield project (no `CLAUDE.md`) it seeds the template; on a project that already has a `CLAUDE.md` it APPENDS a marker-delimited GAIA block, preserving the user's content verbatim above it (never clobber); on re-run it is a no-op (the marker is the idempotency sentinel).
 
 ```
 ${CLAUDE_PLUGIN_ROOT}/scripts/install-claude-md.sh \
@@ -319,7 +319,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/install-claude-md.sh \
 ```
 
 Exit codes:
-- `0` — success (copied on fresh install, or target `CLAUDE.md` preserved on re-run)
+- `0` — success (seeded, appended, or already-present no-op)
 - `1` — plugin source template missing (plugin corruption; reinstall via marketplace)
 - `2` — usage error
 

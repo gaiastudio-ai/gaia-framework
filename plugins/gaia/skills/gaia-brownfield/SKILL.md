@@ -135,13 +135,13 @@ Each phase is independent in its write targets but must run sequentially because
 
 6. Generate the brownfield assessment artifact. AF-2026-05-31-1 / Test12 F-05 — the canonical template lives at `${CLAUDE_PLUGIN_ROOT}/templates/brownfield-assessment-template.md` and ships with the plugin. Read it as the starting shape (mode/schema_version/generated_by frontmatter + the seven section headers: Project Overview, Repository Layout, Existing Documentation Surface, Stack Signals, Known Gaps, Scan-readiness checklist, Continuation pointer). Fill the placeholder fields with concrete project data: component inventory, technical debt, migration constraints, coexistence strategy, and adoption path. Include `{project_type}` in the output. Write to `.gaia/artifacts/planning-artifacts/brownfield-assessment.md`.
 7. Write the enhanced project documentation — all standard sections plus detected capability flags, `{project_type}`, testing infrastructure summary, and CI/CD pipeline summary. Write to `.gaia/artifacts/planning-artifacts/project-documentation.md`.
-8. Install the project-root `CLAUDE.md` from the plugin template so the onboarded project has GAIA context loaded into Claude Code sessions (runtime tree, how-to-start, hard rules, upstream bug-report policy). The helper preserves a user's existing `CLAUDE.md` byte-identical (copy-if-absent — never clobber an existing one):
+8. Install the project-root `CLAUDE.md` so the onboarded project has GAIA context loaded into Claude Code sessions (runtime tree, how-to-start, hard rules, upstream bug-report policy). A brownfield project very often ALREADY has its own `CLAUDE.md` with the team's project-specific instructions — the helper handles that: it APPENDS a marker-delimited GAIA block to the existing file, preserving the user's content verbatim above it (never clobbers). On a project with no `CLAUDE.md` it seeds the template; on re-run it is a no-op (marker-sentinel idempotency):
 
    ```bash
    !${CLAUDE_PLUGIN_ROOT}/scripts/install-claude-md.sh --target "${PROJECT_PATH}"
    ```
 
-   Exit codes: `0` success (copied or preserved), `1` plugin source template missing (reinstall via marketplace), `2` usage error.
+   Exit codes: `0` success (seeded, appended, or no-op), `1` plugin source template missing (reinstall via marketplace), `2` usage error.
 
 Checkpoint after Phase 1 via the canonical `checkpoint.sh write` subcommand. AF-2026-05-31-1 / Test12 F-08 documented the accepted flag set; AF-2026-05-31-2 / Test13 F-13 corrects the `--step` VALUE TYPE — it MUST be a non-negative integer (the script's case-validator at `plugins/gaia/scripts/checkpoint.sh:226-227` enforces this). Use the bare phase number; the named-phase string from the Test12 prose was rejected. Brownfield's Phase 1 checkpoint:
 

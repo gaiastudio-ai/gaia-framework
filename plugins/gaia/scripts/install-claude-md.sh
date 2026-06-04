@@ -1,26 +1,39 @@
 #!/usr/bin/env bash
-# install-claude-md.sh — materialize the project CLAUDE.md from the plugin
-# template into a target project root.
+# install-claude-md.sh — materialize / merge the GAIA CLAUDE.md block into a
+# target project's root CLAUDE.md.
 #
-# Background (issue: CLAUDE.md not copied on init):
+# Background (issue #1113):
 #   /gaia-init (greenfield) and /gaia-brownfield (existing codebase) generated
 #   .gaia/config/project-config.yaml + a CI scaffold, but never wrote a
 #   project-root CLAUDE.md — the file that tells Claude Code this is a GAIA
 #   project (runtime tree, how-to-start, hard rules, upstream-bug-report
 #   policy). Without it a freshly-initialized project has no GAIA context.
 #
-# Semantics (mirrors install-test-environment-example.sh):
-#   - Unconditional copy when target is ABSENT (fresh-install path).
-#   - Byte-identical preserve when target EXISTS (copy-if-absent — NEVER
-#     clobber a project that already has its own CLAUDE.md).
-#   - Fail-fast non-zero when the plugin source template is missing.
+#   A brownfield project frequently ALREADY has its own CLAUDE.md carrying the
+#   user's project-specific instructions. Blindly copying would clobber it;
+#   skipping would leave the project with no GAIA context. So the GAIA content
+#   is a MARKER-DELIMITED block that is APPENDED to an existing CLAUDE.md,
+#   preserving the user's content verbatim above it. Mirrors the .gitignore
+#   "seed-or-append-GAIA-block" idiom in generate-config.sh.
+#
+# Three modes (idempotent):
+#   1. No CLAUDE.md            -> seed: copy the template verbatim (greenfield).
+#   2. CLAUDE.md, no GAIA block -> append the GAIA block, preserving the user's
+#                                  existing content above it (brownfield).
+#   3. CLAUDE.md WITH the block -> no-op (already managed; safe re-run).
+#
+# The GAIA block is bounded by the markers:
+#   <!-- >>> GAIA (managed by /gaia-init · /gaia-brownfield) -->
+#   ... block ...
+#   <!-- <<< GAIA -->
+# Presence of the open marker is the idempotency sentinel.
 #
 # Usage:
 #   install-claude-md.sh --target <project-root>
 #   install-claude-md.sh --help
 #
 # Exit codes:
-#   0  success (copied on fresh install, or target already present + preserved)
+#   0  success (seeded, appended, or already-present no-op)
 #   1  plugin source template is missing (plugin corruption; reinstall)
 #   2  usage error
 
@@ -29,6 +42,10 @@ LC_ALL=C
 export LC_ALL
 
 SCRIPT_NAME="install-claude-md.sh"
+
+# The open marker — also the idempotency sentinel. Kept in sync with the
+# template's first line.
+GAIA_MARKER="<!-- >>> GAIA (managed by /gaia-init · /gaia-brownfield) -->"
 
 # Resolve plugin root from this script's location:
 #   <plugin-root>/scripts/install-claude-md.sh
@@ -42,13 +59,14 @@ usage() {
   cat <<'USAGE'
 Usage: install-claude-md.sh --target <project-root>
 
-Materialize plugins/gaia/templates/CLAUDE.md into the target project root as
+Materialize / merge the GAIA CLAUDE.md block into the target project's root
 CLAUDE.md.
 
-Behavior:
-  - Target absent: copy template (fresh-install path).
-  - Target present: preserve byte-identical (copy-if-absent — never clobber
-    a user's existing CLAUDE.md).
+Behavior (idempotent):
+  - No CLAUDE.md: seed it from the template (greenfield).
+  - CLAUDE.md present, no GAIA block: append the GAIA block, preserving the
+    user's existing content above it (brownfield — never clobber).
+  - CLAUDE.md already carries the GAIA block: no-op.
   - Plugin source missing: exit 1 with a clear error.
 
 Exit codes:
@@ -79,12 +97,32 @@ fi
 
 target_file="${target}/CLAUDE.md"
 
-if [ -f "${target_file}" ]; then
-  printf '%s: target already exists at %s — preserving byte-identical (copy-if-absent semantics)\n' "$SCRIPT_NAME" "${target_file}"
+# Mode 1 — fresh seed.
+if [ ! -f "${target_file}" ]; then
+  cp "${TEMPLATE_PATH}" "${target_file}"
+  printf '%s: seeded CLAUDE.md -> %s\n' "$SCRIPT_NAME" "${target_file}"
   exit 0
 fi
 
-cp "${TEMPLATE_PATH}" "${target_file}"
-printf '%s: installed CLAUDE.md -> %s\n' "$SCRIPT_NAME" "${target_file}"
+# Mode 3 — already managed (GAIA block present): no-op.
+if grep -qF "${GAIA_MARKER}" "${target_file}" 2>/dev/null; then
+  printf '%s: CLAUDE.md already carries the GAIA block at %s — no-op\n' "$SCRIPT_NAME" "${target_file}"
+  exit 0
+fi
 
+# Mode 2 — existing CLAUDE.md without a GAIA block: append it, preserving the
+# user's content. Ensure exactly one blank line separates the user's content
+# from the appended block. Atomic write (temp + mv).
+tmp="$(mktemp "${target_file}.XXXXXX")"
+trap 'rm -f "${tmp}"' EXIT
+{
+  cat "${target_file}"
+  # Guarantee a separating blank line regardless of the user's trailing
+  # newline state.
+  printf '\n'
+  cat "${TEMPLATE_PATH}"
+} > "${tmp}"
+mv -f "${tmp}" "${target_file}"
+trap - EXIT
+printf '%s: appended GAIA block to existing CLAUDE.md at %s (user content preserved)\n' "$SCRIPT_NAME" "${target_file}"
 exit 0
