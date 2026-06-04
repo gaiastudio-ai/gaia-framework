@@ -89,6 +89,34 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# High risk — present at the canonical NESTED per-story home (issue #1108)
+# /gaia-atdd writes test-artifacts/epic-{slug}/{key}-{slug}/atdd.md via the
+# resolver; the gate must accept it, not only the legacy flat globs.
+# ---------------------------------------------------------------------------
+
+@test "atdd-gate: high risk passes when nested per-story atdd.md is present (issue #1108)" {
+  _write_story "E20-S7" "high"
+  # The resolver's nested home for a story with no per-story dir is
+  # test-artifacts/epic-{EPIC}/{KEY}/atdd.md (stories/ level dropped per
+  # AF-2026-06-01-1). Create it where /gaia-atdd would write.
+  mkdir -p "docs/test-artifacts/epic-E20/E20-S7"
+  : > "docs/test-artifacts/epic-E20/E20-S7/atdd.md"
+  # No flat atdd-E20-S7*.md exists — only the nested file.
+  run "$ATDD_GATE" "E20-S7"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -F "epic-E20/E20-S7/atdd.md"
+}
+
+@test "atdd-gate: high risk passes when nested atdd.md under stories/ legacy level is present (issue #1108)" {
+  _write_story "E20-S8" "high"
+  # Legacy nested form with the stories/ middle level (read-compat fallback).
+  mkdir -p "docs/test-artifacts/epic-E20/stories/E20-S8"
+  : > "docs/test-artifacts/epic-E20/stories/E20-S8/atdd.md"
+  run "$ATDD_GATE" "E20-S8"
+  [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
 # High risk — missing -> HALT
 # ---------------------------------------------------------------------------
 

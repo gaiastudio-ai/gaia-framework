@@ -364,6 +364,17 @@ resolve_paths() {
     # the writer with the canonical reader.
     if [ -e "$gaia_state" ]; then
       SPRINT_STATUS_YAML="$gaia_state"
+      # Issue #1109: when the canonical .gaia/state/ copy wins but a LEGACY
+      # impl-artifacts copy is also present, the two can silently diverge (the
+      # legacy one freezes at its pre-migration state because every writer now
+      # targets .gaia/state/). Surface it loudly so the operator can remove the
+      # stale shadow — and so a later transient absence of .gaia/state/ cannot
+      # fall through to rung 2 (the stale copy) unnoticed. Non-fatal: the
+      # canonical copy is still used; we only warn.
+      if [ -e "$canonical" ] && [ "$canonical" != "$gaia_state" ]; then
+        printf '%s: WARNING: stale legacy sprint-status.yaml at %s shadows the canonical .gaia/state/ copy — remove it to avoid divergence (issue #1109)\n' \
+          "${SCRIPT_NAME:-sprint-state.sh}" "$canonical" >&2
+      fi
     elif [ -e "$canonical" ]; then
       SPRINT_STATUS_YAML="$canonical"
     elif [ -e "$fallback" ]; then
