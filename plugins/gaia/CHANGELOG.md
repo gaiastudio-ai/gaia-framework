@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.187.0] — 2026-06-04
+
+### Added
+
+- (E87-S13) adversarial sidecar schema + adr-131 formalization (#1098)
+- (E87-S12) adversarial sidecar consumer migration (#1097)
+- (E87-S11) adversarial json sidecar emitter + paired paths (#1096)
+- (E87-S10) wire tc-osv traceability bats for envelope original_status field (#1095)
+- (E87-S9) compose-verdict original_status bookkeeping (#1094)
+- (E87-S8) wire ADR-130 envelope original_status field — persona Se (#1093)
+- (E108-S4) infrastructure-design schema + enum 18 to 19 (#1092)
+- (E108-S3) threat-model schema + /gaia-threat-model References (veri (#1090)
+- (E108-S2) performance-test-plan schema + enum 17 to 18 (#1089)
+- (E108-S1) nfr-assessment schema + enum 16→17 (#1088)
+- (E108-S5) validate-artifact-schema.sh shared lib (#1087)
+
+### Changed
+
+- retire README command-reference contract test (#1101)
+
 ## [1.186.0] — 2026-06-02
 
 ### Added
