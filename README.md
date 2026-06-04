@@ -8,6 +8,8 @@
   </picture>
 </a>
 
+# gaia-framework
+
 ### Your AI software team, inside Claude Code.
 
 GAIA turns Claude Code into a full agile delivery team — 25 specialist agents that take you from a raw idea to merged, reviewed, tested code, with the rigor of a real engineering org and the speed of one operator.
