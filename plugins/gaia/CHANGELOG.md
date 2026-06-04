@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.187.1] — 2026-06-04
+
+### Changed
+
+- promote staging to main — fixes #1091 + statusline leak
+
+### Fixed
+
+- (statusline) isolate git-branch cache per project to stop cross-session leak (#1105)
+- (dev-story) tolerate story_key:/epic_key: frontmatter alias (#1091) (#1104)
+
 ## [1.187.0] — 2026-06-04
 
 ### Added
