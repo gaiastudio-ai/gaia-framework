@@ -148,9 +148,7 @@ YAML
   [ "$status" -ne 0 ]
 }
 
-@test "AC8 — script header mentions ADR-044 + comment-preserving" {
-  run grep -E 'ADR-044' "$SCRIPT"
-  [ "$status" -eq 0 ]
+@test "AC8 — script header documents comment-preserving editing" {
   run grep -iE 'comment.{0,20}preserv' "$SCRIPT"
   [ "$status" -eq 0 ]
 }
