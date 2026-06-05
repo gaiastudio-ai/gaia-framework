@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.187.5] — 2026-06-05
+
+### Fixed
+
+- (test-strategy) hydrate runnable test_execution from detected runner
+
 ## [Unreleased]
 
 ### Fixed
