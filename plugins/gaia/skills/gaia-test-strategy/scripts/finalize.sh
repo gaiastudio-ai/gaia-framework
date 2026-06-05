@@ -348,11 +348,50 @@ if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
 
       case " $missing_sections " in
         *" test_execution "*)
-          cat >> "$CONFIG_PATH" <<'STUB'
+          # Real-value hydration (issue-1249). Empty `test_execution: {}`
+          # stubs left the downstream runner with the key present but no
+          # `tier_1.command` to execute, so the operator still had to
+          # hand-edit project-config.yaml. Instead, derive a runnable tier_1
+          # block from the framework's own stack-runner detector
+          # (run-tests.sh --detect-runner) and map the detected token to a
+          # canonical command. Fall back to the empty-map stub ONLY when no
+          # runner can be detected (genuinely unknown stack) — that path
+          # preserves the prior "key present, populate manually" behaviour.
+          _rt="$(cd "$(dirname "$0")/../../.." && pwd)/scripts/run-tests.sh"
+          _proj_root="${PROJECT_PATH:-.}"
+          _runner=""
+          if [ -x "$_rt" ]; then
+            _runner="$("$_rt" --detect-runner "$_proj_root" 2>/dev/null || true)"
+          fi
+          # Map the detector token to a canonical, runnable command. The
+          # tokens mirror run-tests.sh's own detect_runner output
+          # (vitest|junit|pytest|go|maestro).
+          _te_cmd=""
+          case "$_runner" in
+            pytest)  _te_cmd='pytest' ;;
+            vitest)  _te_cmd='npx vitest run' ;;
+            junit)   _te_cmd='mvn test' ;;
+            go)      _te_cmd='go test ./...' ;;
+            maestro) _te_cmd='maestro test .maestro/' ;;
+          esac
+          if [ -n "$_te_cmd" ]; then
+            log "auto-stub-hydration: detected runner '${_runner}' — writing a runnable test_execution.tier_1 block (command: ${_te_cmd}) instead of an empty stub"
+            {
+              printf '\n# auto-stub — tier_1 derived from detected runner (%s); review via /gaia-config-test\n' "$_runner"
+              printf 'test_execution:\n'
+              printf '  tier_1:\n'
+              printf '    placement: pre-merge\n'
+              printf '    command: %s\n' "$_te_cmd"
+              printf '    timeout_seconds: 600\n'
+            } >> "$CONFIG_PATH"
+          else
+            log "auto-stub-hydration: no runner detected for ${_proj_root} — writing empty test_execution stub (populate via /gaia-config-test)"
+            cat >> "$CONFIG_PATH" <<'STUB'
 
 # auto-stub — populate via /gaia-config-test
 test_execution: {}
 STUB
+          fi
           ;;
       esac
       case " $missing_sections " in
