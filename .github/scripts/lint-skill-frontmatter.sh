@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lint-skill-frontmatter.sh
 # Lints YAML frontmatter of every plugins/gaia/skills/**/SKILL.md file.
-# Required fields: name, description (per E28-S7 AC2).
+# Required fields: name, description.
 # Empty tree is a valid, passing state.
 #
 # Pure bash — no yq/jq dependency. Extracts frontmatter between the leading
@@ -11,7 +11,7 @@ set -euo pipefail
 
 REQUIRED_FIELDS=("name" "description")
 
-# Canonical tool set — the single source of truth for allowed-tools validation (E28-S96 AC5).
+# Canonical tool set — the single source of truth for allowed-tools validation.
 # To add a new tool, update this array only — no other code changes required.
 CANONICAL_TOOLS=("Read" "Write" "Edit" "Bash" "Grep" "Glob" "WebFetch" "WebSearch" "Task" "Agent" "Skill")
 
@@ -64,7 +64,7 @@ while IFS= read -r -d '' file; do
     fi
   done
 
-  # Validate allowed-tools field if present (E28-S96).
+  # Validate allowed-tools field if present.
   # Extract the allowed-tools line from frontmatter.
   allowed_tools_line=$(echo "$frontmatter" | awk '/^allowed-tools[[:space:]]*:/ { sub(/^allowed-tools[[:space:]]*:[[:space:]]*/, ""); print; found=1 } END { if (!found) exit 1 }') || true
 
@@ -82,12 +82,12 @@ while IFS= read -r -d '' file; do
     fi
   fi
 
-  # E28-S187: the E28-S185 `tools:` top-level key is retired. The canonical
+  # The `tools:` top-level key is retired. The canonical
   # Claude Code skills field is `allowed-tools:` (see
   # https://code.claude.com/docs/en/skills). Fail loudly if a skill
   # regresses to the `tools:` key.
   if echo "$frontmatter" | grep -qE '^tools[[:space:]]*:'; then
-    echo "ERROR: $file uses retired frontmatter key 'tools:' — rename to 'allowed-tools:' (E28-S187)"
+    echo "ERROR: $file uses retired frontmatter key 'tools:' — rename to 'allowed-tools:'"
     errors=$((errors + 1))
   fi
 

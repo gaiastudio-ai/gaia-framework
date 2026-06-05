@@ -1,6 +1,6 @@
 ---
 name: gaia-triage-findings
-description: "Scan in-progress and completed story files for development findings and triage each into a new backlog story, an existing story, or dismiss. Produces new story files with complete frontmatter (15 required fields, status: backlog, sprint_id: null). Source story findings tables stay intact for idempotent re-triage. Done-story guard (FR-FITP-1) blocks ADD TO EXISTING mutations against status: done targets with an explicit override path recorded for retrospective review. GAIA-native replacement for the legacy triage-findings XML engine workflow."
+description: "Scan in-progress and completed story files for development findings and triage each into a new backlog story, an existing story, or dismiss. Produces new story files with complete frontmatter (15 required fields, status: backlog, sprint_id: null). Source story findings tables stay intact for idempotent re-triage. Done-story guard blocks ADD TO EXISTING mutations against status: done targets with an explicit override path recorded for retrospective review. GAIA-native replacement for the legacy triage-findings XML engine workflow."
 argument-hint: "[story-key?] [--override-done-story --user <u> --date <d> --finding <fid> --reason <r>]"
 allowed-tools: [Read, Write, Bash]
 version: "1.3.0"
@@ -16,7 +16,7 @@ yolo_steps: [3]
 
 Scan story files in `.gaia/artifacts/implementation-artifacts/` for populated Findings tables and triage each finding into actionable backlog stories. New story files are created with complete frontmatter (all 15 required fields populated, `status: backlog`, `sprint_id: null`). The source story's findings table stays intact so re-triage is idempotent-friendly (dedup by source story key + finding text if re-run).
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/triage-findings/` XML engine workflow (brief Cluster 8, story E28-S63). Follows ADR-042 (scripts-over-LLM) where applicable.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/triage-findings/` XML engine workflow. Follows the scripts-over-LLM principle where applicable.
 
 ## Critical Rules
 
@@ -29,8 +29,8 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - New stories MUST be appended to `epics-and-stories.md` under the correct epic.
 - New backlog story files MUST use the canonical filename format `{story_key}-{story_title_slug}.md`.
 - All 15 required frontmatter fields must be populated: `template`, `version`, `used_by`, `key`, `title`, `epic`, `status`, `priority`, `size`, `points`, `risk`, `sprint_id`, `date`, `author`, and at minimum one of `depends_on`/`blocks`/`traces_to` (can be empty arrays).
-- **Done-Story Immutability Guard (FR-FITP-1):** Before any ADD TO EXISTING mutation, MUST invoke `scripts/triage-guard.sh check <target_story>`. If the target story has `status: done`, the guard halts with guidance to route through `/gaia-create-story` (new story) or `/gaia-add-feature` (change request) — zero writes to the done story. An explicit override path exists (`--override-done-story` with user, date, finding ID, reason) that records the override in the triage report with `retro_flag: true` so `/gaia-retro` surfaces it. Done stories are immutable institutional artifacts; silent mutation merges retro-blind regressions back into closed work.
-- **Reproduction Required (E28-S223):** Every finding suggesting a fix MUST carry a reproduction command (a runnable command + the expected failure) in its suggested-action column before it can be promoted via CREATE STORY or ADD TO EXISTING. Findings that lack a reproduction snippet MUST be classified as **DISMISS pending reproduction** with a clear "reproduction required" warning surfaced to the user. This rule traces back to the saved memory `feedback_reproduce_before_fix_stories.md` — stale triage findings have shaped fix-stories for non-existent failures (E28-S211 finding F2, attempted fix in E28-S214). The reproduction snippet, when present, MUST be embedded into the new story's Origin section by the `/gaia-create-story` spawn (see Step 4) so future readers can re-verify the failure before re-touching the code.
+- **Done-Story Immutability Guard:** Before any ADD TO EXISTING mutation, MUST invoke `scripts/triage-guard.sh check <target_story>`. If the target story has `status: done`, the guard halts with guidance to route through `/gaia-create-story` (new story) or `/gaia-add-feature` (change request) — zero writes to the done story. An explicit override path exists (`--override-done-story` with user, date, finding ID, reason) that records the override in the triage report with `retro_flag: true` so `/gaia-retro` surfaces it. Done stories are immutable institutional artifacts; silent mutation merges retro-blind regressions back into closed work.
+- **Reproduction Required:** Every finding suggesting a fix MUST carry a reproduction command (a runnable command + the expected failure) in its suggested-action column before it can be promoted via CREATE STORY or ADD TO EXISTING. Findings that lack a reproduction snippet MUST be classified as **DISMISS pending reproduction** with a clear "reproduction required" warning surfaced to the user. This rule traces back to the saved memory `feedback_reproduce_before_fix_stories.md` — stale triage findings have shaped fix-stories for non-existent failures. The reproduction snippet, when present, MUST be embedded into the new story's Origin section by the `/gaia-create-story` spawn (see Step 4) so future readers can re-verify the failure before re-touching the code.
 
 ## Steps
 
@@ -46,11 +46,9 @@ Scan story files in `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artif
 
 Collect all findings from ALL story files regardless of status -- scan every `.md` file that has a non-empty Findings table. This ensures triage catches findings from stories in any status.
 
-### Step 1b --- Scan Completion Notes for Deferral Drift (E88-S4, FR-DPD-4)
+### Step 1b --- Scan Completion Notes for Deferral Drift
 
-Refs: ADR-107 (closed-list taxonomies SSOT), AI-2026-05-13-6.
-
-In addition to the Findings-table scan above, walk the `### Completion Notes List` subsection of each story file looking for deferral phrases (per E88-S1 taxonomy SSOT) that lack a paired Finding row. Use the canonical helper — do NOT inline the taxonomy:
+In addition to the Findings-table scan above, walk the `### Completion Notes List` subsection of each story file looking for deferral phrases (per the taxonomy SSOT) that lack a paired Finding row. Use the canonical helper — do NOT inline the taxonomy:
 
 ```bash
 for story_file in $story_files; do
@@ -86,9 +84,9 @@ For each finding, show:
 ### Step 3 --- Triage Each Finding
 
 > [!yolo]
-> Step 3 honors the declarative `yolo_steps: [3]` frontmatter declaration per ADR-057 §10.30.2 (wire-up table §10.30.6 row E41-S5). Under YOLO, the recommended disposition (DEFER / ADD TO EXISTING / NEW STORY / NOW) is auto-applied per finding without the per-finding `confirm or override` prompt. Subagent inheritance: `GAIA_YOLO_MODE=1` propagates to delegated `/gaia-create-story` spawns per §10.30.5. Hard gates remain enforced in BOTH modes: Step 3a (Reproduction Required, E28-S223), Step 3b (Done-Story Guard, FR-FITP-1), and Step 3c (action-items persistence, FR-FITP-3) are NEVER bypassed — `yolo_steps` covers only Step 3 itself, never 3a/3b/3c. Data-sufficiency interactive fallback per ECI-505: if a finding lacks fields required by its recommendation (missing epic key, unresolvable target story, missing sprint ID for NOW), the auto-apply pauses for that finding only and surfaces the per-finding interactive fallback — no silent default. Ctrl-C recovery per ECI-508: the existing `[TRIAGED]` / `[DISMISSED]` markers + `(finding_id, sprint_id)` dedup key on `.gaia/state/action-items.yaml` guarantee re-run idempotency.
+> Step 3 honors the declarative `yolo_steps: [3]` frontmatter declaration. Under YOLO, the recommended disposition (DEFER / ADD TO EXISTING / NEW STORY / NOW) is auto-applied per finding without the per-finding `confirm or override` prompt. Subagent inheritance: `GAIA_YOLO_MODE=1` propagates to delegated `/gaia-create-story` spawns. Hard gates remain enforced in BOTH modes: Step 3a (Reproduction Required), Step 3b (Done-Story Guard), and Step 3c (action-items persistence) are NEVER bypassed — `yolo_steps` covers only Step 3 itself, never 3a/3b/3c. Data-sufficiency interactive fallback: if a finding lacks fields required by its recommendation (missing epic key, unresolvable target story, missing sprint ID for NOW), the auto-apply pauses for that finding only and surfaces the per-finding interactive fallback — no silent default. Ctrl-C recovery: the existing `[TRIAGED]` / `[DISMISSED]` markers + `(finding_id, sprint_id)` dedup key on `.gaia/state/action-items.yaml` guarantee re-run idempotency.
 
-Detect YOLO via the canonical helper (do NOT re-implement detection inline per §10.30.8 anti-patterns):
+Detect YOLO via the canonical helper (do NOT re-implement detection inline):
 
 ```bash
 if ${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo; then
@@ -120,7 +118,7 @@ Present recommendations and let the user confirm or override each decision:
 - **ADD TO EXISTING** -- append finding to an existing story's tasks
 - **DISMISS** -- finding is not actionable or already resolved
 
-### Step 3a --- Reproduction Required Gate (E28-S223)
+### Step 3a --- Reproduction Required Gate
 
 Before any CREATE STORY or ADD TO EXISTING recommendation is finalized, the parser MUST inspect the finding's suggested-action column for a **reproduction command** — a runnable command (or short command sequence) that produces the failure described in the finding, plus the expected failure output.
 
@@ -129,9 +127,9 @@ Decision matrix:
 - **Reproduction command present** in the suggested-action column: proceed with the recommendation (CREATE STORY or ADD TO EXISTING). Capture the reproduction snippet verbatim and pass it to Step 4 so the `/gaia-create-story` spawn embeds it in the new story's `## Origin` section. For ADD TO EXISTING, append the snippet to the target story's tasks alongside the finding text.
 - **Reproduction command absent**: reclassify the finding as **DISMISS pending reproduction**. Surface a clear `reproduction required: finding {finding_id} cannot be promoted without a runnable reproduction snippet` warning to the user. The user MAY override interactively by supplying a snippet on the spot — that snippet is then captured and the finding routes back through the normal CREATE STORY / ADD TO EXISTING path.
 
-Rationale: stale triage findings have repeatedly shaped fix-stories for failures that no longer reproduce (E28-S211 finding F2, attempted fix in E28-S214). The saved memory `feedback_reproduce_before_fix_stories.md` records this anti-pattern. The Reproduction Required gate is the structural fix — triage cannot encode hallucinated failures because every promoted finding carries a reproduction snippet that the next developer can run before re-touching the code.
+Rationale: stale triage findings have repeatedly shaped fix-stories for failures that no longer reproduce. The saved memory `feedback_reproduce_before_fix_stories.md` records this anti-pattern. The Reproduction Required gate is the structural fix — triage cannot encode hallucinated failures because every promoted finding carries a reproduction snippet that the next developer can run before re-touching the code.
 
-### Step 3b --- Done-Story Guard (ADD TO EXISTING only, FR-FITP-1)
+### Step 3b --- Done-Story Guard (ADD TO EXISTING only)
 
 For every finding classified as **ADD TO EXISTING**, BEFORE any mutation of the target story, invoke the done-story guard:
 
@@ -175,9 +173,9 @@ The guard exits 0 and appends an override record to the triage report under a `#
 
 **Non-mutation invariant:** on the guard-fired path (no override), zero writes to the target story file, zero writes to `sprint-status.yaml`, zero writes to `.gaia/state/action-items.yaml` (action-items writes land in Step 3c below).
 
-### Step 3c --- Record Action Items for NOW Classifications (E39-S3, FR-FITP-3)
+### Step 3c --- Record Action Items for NOW Classifications
 
-For every finding classified as **NOW** (inject into current sprint), persist a structured action-items entry so retrospectives, `/gaia-action-items` resolution, and `/gaia-sprint-plan` escalation halts (E38-S2) have a complete record. This write is independent of the CREATE STORY / ADD TO EXISTING routing -- a finding classified NOW always produces exactly one action-items entry.
+For every finding classified as **NOW** (inject into current sprint), persist a structured action-items entry so retrospectives, `/gaia-action-items` resolution, and `/gaia-sprint-plan` escalation halts have a complete record. This write is independent of the CREATE STORY / ADD TO EXISTING routing -- a finding classified NOW always produces exactly one action-items entry.
 
 1. Source the action-items writer:
 ```bash
@@ -207,7 +205,7 @@ The writer handles:
 - **Idempotency:** dedup key is `(finding_id, sprint_id)` -- re-running the same triage does not duplicate.
 - **Schema compliance:** entry fields match architecture §10.28.6 exactly (`id`, `sprint_id`, `text`, `classification`, `status: open`, `escalation_count: 0`, `created_at`, `theme_hash`, `finding_id`).
 
-### Step 4 --- Create Backlog Stories (Skill-to-Skill Delegation, FR-FITP-2)
+### Step 4 --- Create Backlog Stories (Skill-to-Skill Delegation)
 
 Story creation is delegated to `/gaia-create-story` via subagent spawn. This replaces all inline story-creation logic -- delegation is authoritative. The spawned `/gaia-create-story` produces the full elaboration (AC, tasks, test scenarios) and records provenance in the frontmatter.
 
@@ -240,7 +238,7 @@ The spawned `/gaia-create-story` populates the story frontmatter with `origin: "
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-guard.sh" verify "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/${new_story_key}-*.md" "triage-findings" "${finding_id}"
 ```
-If verification fails (schema drift in `origin`/`origin_ref`), halt with actionable guidance referencing NFR-FITP-1.
+If verification fails (schema drift in `origin`/`origin_ref`), halt with actionable guidance.
 
 9. **On subagent failure** (timeout, context overflow, crash): halt with actionable guidance (failure reason, retry instructions). Clean up any partial file:
 ```bash
@@ -248,7 +246,7 @@ If verification fails (schema drift in `origin`/`origin_ref`), halt with actiona
 ```
 No partial story stubs may persist on disk after a failed spawn.
 
-#### Main-turn direct-write fallback (E92-S1 / FR-OEXP-1)
+#### Main-turn direct-write fallback
 
 The spawn pathway above (steps 5-9) is the **default**, and **spawn is still the default** — DO NOT route around it preemptively. Use the fallback ONLY when one of two trigger conditions holds:
 
@@ -318,11 +316,11 @@ If any stories were marked as NOW (inject into current sprint):
 If any stories were marked as NEXT SPRINT (P0):
 - Note they will be prioritized in `/gaia-sprint-plan`.
 
-### Step 7 — Persist to Val Sidecar (E34-S2)
+### Step 7 — Persist to Val Sidecar
 
-Final step. Delegates Val-decision persistence to the shared Val sidecar writer helper (`val-sidecar-write.sh`, E34-S1, architecture §10.10). Placing this last satisfies AC3 atomicity — any upstream failure (spawn-guard rejection, `/gaia-create-story` subagent failure, findings-table write error) short-circuits before the helper runs, so no partial sidecar entry can appear.
+Final step. Delegates Val-decision persistence to the shared Val sidecar writer helper (`val-sidecar-write.sh`, architecture §10.10). Placing this last satisfies atomicity — any upstream failure (spawn-guard rejection, `/gaia-create-story` subagent failure, findings-table write error) short-circuits before the helper runs, so no partial sidecar entry can appear.
 
-**Fail-closed enforcement (E92-S2 / FR-OEXP-2).** This skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`. The finalize script asserts that `.gaia/memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker; if not, it exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize`. This mirrors the `gaia-add-feature/scripts/finalize.sh:51-82` E83-S1 fail-closed pattern — operators who skip Step 7 under heavy substrate load now see a hard halt at finalize instead of a silent skip.
+**Fail-closed enforcement.** This skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`. The finalize script asserts that `.gaia/memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker; if not, it exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize`. This mirrors the `gaia-add-feature/scripts/finalize.sh:51-82` fail-closed pattern — operators who skip Step 7 under heavy substrate load now see a hard halt at finalize instead of a silent skip.
 
 Derive a deterministic `triage_session_id` of the form `triage-YYYY-MM-DD-<seq>`. The `<seq>` counter is a zero-padded monotonic index per day, computed by scanning existing triage markers in the current session's source stories:
 
@@ -350,17 +348,17 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/val-sidecar-write.sh \
     '{verdict: $verdict, findings: $findings, artifact_path: $artifact_path}')"
 ```
 
-The helper enforces the two-file allowlist (NFR-VSP-2) and idempotency by composite `(command_name, input_id, decision_hash)` key (FR-VSP-2) — re-runs with identical payload yield `status=skipped_duplicate` and must be treated as success.
+The helper enforces the two-file allowlist and idempotency by composite `(command_name, input_id, decision_hash)` key — re-runs with identical payload yield `status=skipped_duplicate` and must be treated as success.
 
 Failure posture: if the helper rejects or errors, log a warning and continue — memory persistence is best-effort and MUST NOT fail the skill.
 
 ## Changelog
 
-- **2026-05-15 — E92-S2 — Fail-closed Val-sidecar sentinel in finalize.sh (FR-OEXP-2).** Step 7 prose updated to note that the skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`; the script asserts `_memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker, and exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize` when the assertion fails. Mirrors `gaia-add-feature/scripts/finalize.sh:51-82` E83-S1 fail-closed pattern. Sibling fix mirrored in `/gaia-retro` per AC2. Backward-compat preserved: legacy fixtures without the env var get the prior unconditional behavior.
+- **2026-05-15 — Fail-closed Val-sidecar sentinel in finalize.sh.** Step 7 prose updated to note that the skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`; the script asserts `_memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker, and exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize` when the assertion fails. Mirrors `gaia-add-feature/scripts/finalize.sh:51-82` fail-closed pattern. Sibling fix mirrored in `/gaia-retro`. Backward-compat preserved: legacy fixtures without the env var get the prior unconditional behavior.
 
-- **2026-05-15 — E92-S1 — Main-turn direct-write fallback (FR-OEXP-1).** Added the "Main-turn direct-write fallback" subsection inside Step 4 documenting the sanctioned escape hatch when `/gaia-create-story` spawn fails due to the broken `context:fork` substrate issue (Claude Code #49559 + saved-memory rule `feedback_plugin_context_fork_broken.md`). The subsection specifies three inline validation-equivalent checks (canonical-filename regex `^E[0-9]+-S[0-9]+-[a-z0-9-]+\.md$`, frontmatter required-fields enumeration, dedup grep against `epics-and-stories.md`) that stand in for the unrunnable `spawn-guard.sh verify/cleanup`, and mandates two audit-trail frontmatter fields (`spawn_fallback: "direct-write"` + `spawn_fallback_reason: "<trigger>"`) so post-hoc inspection can trace which stories bypassed the spawn-guard. The fallback subsection is also mirrored in `gaia-correct-course/SKILL.md` per AC5. Spawn is still the default — fallback is gated on explicit trigger conditions, not preemptive use.
+- **2026-05-15 — Main-turn direct-write fallback.** Added the "Main-turn direct-write fallback" subsection inside Step 4 documenting the sanctioned escape hatch when `/gaia-create-story` spawn fails due to the broken `context:fork` substrate issue (Claude Code #49559 + saved-memory rule `feedback_plugin_context_fork_broken.md`). The subsection specifies three inline validation-equivalent checks (canonical-filename regex `^E[0-9]+-S[0-9]+-[a-z0-9-]+\.md$`, frontmatter required-fields enumeration, dedup grep against `epics-and-stories.md`) that stand in for the unrunnable `spawn-guard.sh verify/cleanup`, and mandates two audit-trail frontmatter fields (`spawn_fallback: "direct-write"` + `spawn_fallback_reason: "<trigger>"`) so post-hoc inspection can trace which stories bypassed the spawn-guard. The fallback subsection is also mirrored in `gaia-correct-course/SKILL.md`. Spawn is still the default — fallback is gated on explicit trigger conditions, not preemptive use.
 
-- **2026-05-14 — E88-S4 — Completion Notes deferral-drift scanner (FR-DPD-4, ADR-107, AI-2026-05-13-6).** Added Step 1b that walks each story's `### Completion Notes List` via `lib/completion-notes-deferral-scan.sh` (which wraps `lib/deferral-phrase-match.sh` per E88-S1) and emits unmatched-deferral records as triage candidates. Triage output schema gains a new `source` column with values `findings-table` (the Step 1 default) or `completion-notes-deferral-scan` (Step 1b). Purely additive — existing consumers parsing by row/column ignore extra columns. Closes the drift class from AI-2026-05-13-6 at the triage end (the Val end is covered by gaia-validation-patterns' new pattern).
+- **2026-05-14 — Completion Notes deferral-drift scanner.** Added Step 1b that walks each story's `### Completion Notes List` via `lib/completion-notes-deferral-scan.sh` (which wraps `lib/deferral-phrase-match.sh`) and emits unmatched-deferral records as triage candidates. Triage output schema gains a new `source` column with values `findings-table` (the Step 1 default) or `completion-notes-deferral-scan` (Step 1b). Purely additive — existing consumers parsing by row/column ignore extra columns. Closes the deferral-drift class at the triage end (the Val end is covered by gaia-validation-patterns' new pattern).
 
 ## Finalize
 

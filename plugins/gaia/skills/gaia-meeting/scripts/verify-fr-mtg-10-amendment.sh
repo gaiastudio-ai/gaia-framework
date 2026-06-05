@@ -1,33 +1,31 @@
 #!/usr/bin/env bash
-# verify-fr-mtg-10-amendment.sh — E76-S19 verification gate
+# verify-fr-mtg-10-amendment.sh — verification gate
 #
 # Verifies that the FR-MTG-10 user-as-attendee ADD prose AND the
-# threat-model T-MTG-5 row landed by the AF-2026-05-10-2 cascade are
-# present in the supplied PRD shard and threat-model file. The
-# canonical sources are:
+# threat-model T-MTG-5 row are present in the supplied PRD shard and
+# threat-model file. The canonical sources are:
 #
 #   .gaia/artifacts/planning-artifacts/prd/04-functional-requirements/
 #     40-4-39-gaia-meeting-peer-to-peer-multi-agent-discussion-skill-af-2026-05-05-1.md
 #   .gaia/artifacts/planning-artifacts/threat-model.md
 #
-# Per the story's Technical Notes (ADR-042 scripts-over-LLM): pure
-# deterministic `grep` assertions, no LLM judgment.
+# Pure deterministic `grep` assertions, no LLM judgment.
 #
-# Checks (one per AC in E76-S19 §Acceptance Criteria):
-#   1. FR-MTG-10 carries the "amended AF-2026-05-10-2" marker.
+# Checks:
+#   1. FR-MTG-10 carries the amendment marker.
 #   2. FR-MTG-10 body documents the user-as-attendee path — must contain
 #      `user-as-first-class-attendee`, `user_attendance`, `AskUserQuestion`,
-#      and FR-MTG-32 cross-reference (or E76-S18) AND the
+#      and the FR-MTG-32 cross-reference AND the
 #      "NEVER auto-included" round-robin invariant.
-#   3. No new FR-MTG-3[4-9] / FR-MTG-4[0-9]+ IDs were allocated by
-#      AF-2026-05-10-2 (in-place ADD invariant — pre-existing FR-MTG-4 is
+#   3. No new FR-MTG-3[4-9] / FR-MTG-4[0-9]+ IDs were allocated
+#      (in-place ADD invariant — pre-existing FR-MTG-4 is
 #      NOT a new ID and must not be flagged; the regex is anchored on
 #      ID values >= 34).
 #   4. Threat-model contains a T-MTG-5 row in the canonical 5-col format
 #      `STRIDE | Threat ID | Threat | Applicable? | Details`.
 #   5. T-MTG-5 Details cell contains positive-verification language —
 #      "no new threat surface" + all 4 verification dimensions
-#      (non-LLM, AskUserQuestion, write boundary, NFR-048). Matching is
+#      (non-LLM, AskUserQuestion, write boundary, fork-allowlist check). Matching is
 #      case-insensitive (the canonical row uses lowercase
 #      "no new threat surface" and capitalized "Write boundary").
 #
@@ -89,7 +87,7 @@ fail() {
 }
 
 # --- Check 1 — FR-MTG-10 amendment marker ----------------------------------
-# Match the FR-MTG-10 definition row and confirm "amended AF-2026-05-10-2"
+# Match the FR-MTG-10 definition row and confirm the amendment marker
 # appears within the same line (the amendment marker convention used
 # across all FR-MTG-* definition headings).
 
@@ -119,19 +117,19 @@ else
   fi
 
   # 2c. AskUserQuestion composition (any reference is sufficient — the
-  # FR-MTG-32 / E76-S18 cross-reference may sit in a sibling sentence).
+  # cross-reference may sit in a sibling sentence).
   if ! printf '%s' "$fr10_body" | grep -qF "AskUserQuestion"; then
     fail "$SHARD" "FR-MTG-10 user-as-attendee body" "missing 'AskUserQuestion' composition reference"
   fi
 
-  # 2d. FR-MTG-32 OR E76-S18 cross-reference (the AC body language allows
-  # either disjunct — the canonical PRD prose cites FR-MTG-32 amendment).
+  # 2d. FR-MTG-32 cross-reference (either this or the companion story reference
+  # is accepted — the canonical PRD prose cites the FR-MTG-32 amendment).
   if ! printf '%s' "$fr10_body" | grep -qE "FR-MTG-32|E76-S18"; then
-    fail "$SHARD" "FR-MTG-10 user-as-attendee body" "missing 'FR-MTG-32' or 'E76-S18' cross-reference"
+    fail "$SHARD" "FR-MTG-10 user-as-attendee body" "missing required cross-reference"
   fi
 
   # 2e. NEVER auto-included round-robin invariant (no-fabricated-user-turns
-  # carve-out per E76-S20 / E76-S8).
+  # carve-out).
   if ! printf '%s' "$fr10_body" | grep -qF "NEVER auto-included"; then
     fail "$SHARD" "FR-MTG-10 user-as-attendee body" "missing 'NEVER auto-included' round-robin invariant"
   fi
@@ -143,9 +141,9 @@ else
 fi
 
 # --- Check 3 — no new FR-MTG-3[4-9] / FR-MTG-4[0-9]+ IDs allocated --------
-# AC #3: AF-2026-05-10-2 is in-place ADD only — no new FR IDs >= 34.
+# In-place ADD only — no new FR IDs >= 34.
 # Pre-existing FR-MTG-4 is intentionally excluded (it is the
-# Research-phase FR present long before AF-2026-05-10-2).
+# Research-phase FR present before this amendment).
 # Word-boundary match on `FR-MTG-` followed by an integer >= 34. We use
 # explicit alternation rather than {n,} numerics for portability across
 # BSD/GNU grep.
@@ -183,10 +181,10 @@ if [ -n "$t5_line" ]; then
 fi
 
 # --- Check 6 — T-MTG-5 verification-dimension language ---------------------
-# AC #5: Details cell must contain "no new threat surface" + 4
+# Details cell must contain "no new threat surface" + 4
 # verification dimensions (non-LLM, AskUserQuestion, write boundary,
-# NFR-048). Match case-insensitively — the canonical row uses lowercase
-# "no new threat surface" and capitalized "Write boundary".
+# fork-allowlist check). Match case-insensitively — the canonical row uses
+# lowercase "no new threat surface" and capitalized "Write boundary".
 
 if [ -n "$t5_line" ]; then
   if ! printf '%s' "$t5_line" | grep -qiF "no new threat surface"; then
@@ -202,7 +200,7 @@ if [ -n "$t5_line" ]; then
     fail "$THREAT_MODEL" "T-MTG-5 verification dimension (c)" "missing 'write boundary' (unchanged)"
   fi
   if ! printf '%s' "$t5_line" | grep -qF "NFR-048"; then
-    fail "$THREAT_MODEL" "T-MTG-5 verification dimension (d)" "missing 'NFR-048' (fork allowlist preserved)"
+    fail "$THREAT_MODEL" "T-MTG-5 verification dimension (d)" "missing fork-allowlist preservation check"
   fi
 fi
 

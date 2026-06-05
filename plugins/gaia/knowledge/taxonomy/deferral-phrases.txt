@@ -1,11 +1,10 @@
 # deferral-phrases.txt — Closed-list deferral-phrase taxonomy (v1, frozen)
-# Refs: ADR-107, AF-2026-05-14-6
 #
-# Status: v1-frozen. Amendments MUST follow the ADR-107 amendment process
-# (PRD record + ADR cross-reference + bumped version + downstream review).
+# Status: v1-frozen. Amendments MUST follow the amendment process
+# (PRD record + cross-reference + bumped version + downstream review).
 #
 # Consuming skills (3, as of v1):
-#   - gaia-dev-story Step 12.5 (deferral scan; landed via AI-2026-05-13-1)
+#   - gaia-dev-story Step 12.5 (deferral scan)
 #   - gaia-fix-story (deferral classification when re-validating)
 #   - gaia-val-validate (drift-prevention scan of plan and diff text)
 #

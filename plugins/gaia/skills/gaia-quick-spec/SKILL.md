@@ -1,6 +1,6 @@
 ---
 name: gaia-quick-spec
-description: Create a quick implementation spec for small changes. Use when "create a quick spec" or /gaia-quick-spec. Runs a lightweight five-step flow (Scope → Quick Analysis → Escape Hatch Check → Generate Quick Spec → Generate Output) and writes the spec to .gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md. Native Claude Code conversion of the legacy quick-spec workflow (E28-S116, Cluster 16).
+description: Create a quick implementation spec for small changes. Use when "create a quick spec" or /gaia-quick-spec. Runs a lightweight five-step flow (Scope → Quick Analysis → Escape Hatch Check → Generate Quick Spec → Generate Output) and writes the spec to .gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md. Native Claude Code conversion of the legacy quick-spec workflow.
 argument-hint: "[spec-name]"
 allowed-tools: [Read, Write, Edit, Bash]
 orchestration_class: heavy-procedural
@@ -17,25 +17,25 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 <!--
   Source: _gaia/lifecycle/workflows/quick-flow/quick-spec/ (workflow.yaml + instructions.xml)
-  ADR-041 — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks
-  ADR-048 — Program-close deletion policy for legacy engine/workflows/tasks
-  FR-323 — Native Skill Format Compliance
-  NFR-048 — 40–55% activation-budget reduction vs legacy workflow engine
-  NFR-053 — Functional parity with the legacy workflow
+  Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
+  Program-close deletion policy for legacy engine/workflows/tasks.
+  Native Skill Format Compliance.
+  40–55% activation-budget reduction vs legacy workflow engine.
+  Functional parity with the legacy workflow.
 
-  Cluster 16 — Quick Flow (first delivery). Pairs with E28-S117 (quick-dev).
-  Unblocks E28-S118 (end-to-end Quick Flow test gate).
+  Quick Flow (first delivery). Pairs with quick-dev.
+  Unblocks the end-to-end Quick Flow test gate.
 -->
 
 ## Mission
 
 You are creating a lightweight implementation spec for a small change or feature — the quick-flow entry point. This skill intentionally skips the full lifecycle (PRD → architecture → epics/stories → story); use it when scope is well under a day and touches a handful of files. The output is a single markdown file at `.gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md` with five fixed sections (summary, files to change, implementation steps, acceptance criteria, risks) that a developer can hand straight to `/gaia-quick-dev`.
 
-This skill is the native Claude Code conversion of the legacy quick-spec workflow at `_gaia/lifecycle/workflows/quick-flow/quick-spec/` (`workflow.yaml` + `instructions.xml`; no checklist, no template, no stack binding beyond `dev-*`). The step order, both Scope prompts, the escape-hatch threshold, and the output path are preserved verbatim per ADR-041 and NFR-053.
+This skill is the native Claude Code conversion of the legacy quick-spec workflow at `_gaia/lifecycle/workflows/quick-flow/quick-spec/` (`workflow.yaml` + `instructions.xml`; no checklist, no template, no stack binding beyond `dev-*`). The step order, both Scope prompts, the escape-hatch threshold, and the output path are preserved verbatim.
 
 ## Critical Rules
 
@@ -44,7 +44,7 @@ This skill is the native Claude Code conversion of the legacy quick-spec workflo
 - **The output path is fixed:** `.gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md`. Do not invent a different folder or filename convention.
 - **If `{spec_name}` is not supplied on invocation, prompt for it at Step 5** before writing the file. This matches the legacy `{spec_name}` placeholder resolution.
 - **The five output sections are fixed and ordered:** (1) Summary, (2) Files to change, (3) Implementation steps, (4) Acceptance criteria, (5) Risks. Do not add sections, do not drop sections, do not reorder them.
-- **Do not dispatch to a stack-specific developer agent here.** The legacy workflow has `agent: dev-*` with no auto-detect — the quick-spec step itself is stack-agnostic. The stack is selected downstream by `/gaia-quick-dev` (story E28-S117).
+- **Do not dispatch to a stack-specific developer agent here.** The legacy workflow has `agent: dev-*` with no auto-detect — the quick-spec step itself is stack-agnostic. The stack is selected downstream by `/gaia-quick-dev`.
 - **Do not read agent memory sidecars.** The legacy workflow does not load memory at any step; `dev-*` agents are Tier 3 (decision-log only) and this skill preserves that behavior.
 
 ## Inputs
@@ -158,12 +158,12 @@ Confirm the file was written and report the path back to the user. Suggest the n
 
 ## References
 
-- Legacy source: `_gaia/lifecycle/workflows/quick-flow/quick-spec/workflow.yaml` + `instructions.xml` — parity reference for NFR-053.
-- Canonical SKILL.md shape: `plugins/gaia/skills/gaia-create-story/SKILL.md` (Cluster 7).
-- Sibling story: `E28-S117` — converts `/gaia-quick-dev` to consume the spec produced here.
-- Downstream gate: `E28-S118` — Cluster 16 end-to-end quick-spec → quick-dev test.
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-048 — Program-close deletion policy for legacy engine/workflows/tasks.
-- FR-323 — Native Skill Format Compliance.
-- NFR-048 — 40–55% activation-budget reduction vs legacy workflow engine.
-- NFR-053 — Functional parity with the legacy workflow.
+- Legacy source: `_gaia/lifecycle/workflows/quick-flow/quick-spec/workflow.yaml` + `instructions.xml` — parity reference.
+- Canonical SKILL.md shape: `plugins/gaia/skills/gaia-create-story/SKILL.md`.
+- Sibling skill: `/gaia-quick-dev` — consumes the spec produced here.
+- Downstream gate: the end-to-end quick-spec → quick-dev test.
+- Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
+- Program-close deletion policy for legacy engine/workflows/tasks.
+- Native Skill Format Compliance.
+- 40–55% activation-budget reduction vs legacy workflow engine.
+- Functional parity with the legacy workflow.

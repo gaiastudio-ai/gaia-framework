@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# td-id-assign.sh — stable TD-{N} ID assignment (E28-S108)
+# td-id-assign.sh — stable TD-{N} ID assignment
 #
 # Scans the previous tech-debt-dashboard.md for existing TD-{N} identifiers and
 # emits either:

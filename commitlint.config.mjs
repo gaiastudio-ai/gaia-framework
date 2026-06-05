@@ -35,6 +35,21 @@ export default {
     // exempting it from commitlint avoids blocking staging→main release
     // PRs on historical subjects that pre-date this allowlist.
     (commit) => /^E\d+-S\d+:\s/.test(commit),
+    // Already-merged squash commits carry GitHub's `(#NNNN)` PR-number suffix
+    // that the squash UI appends to the subject. On a staging→main promotion
+    // PR the action walks into the range and re-lints these subjects — and
+    // the appended ` (#NNNN)` can push an otherwise-valid, already-linted
+    // subject past the 100-char limit (e.g. a 95-char `fix(...)` subject
+    // becomes 103 after ` (#1110)`). They were already linted when their own
+    // PR merged, so skip any subject ending in a GitHub PR-number suffix.
+    // The promotion PR's OWN head commit (`chore: promote …`) has no such
+    // suffix and is still linted normally.
+    //
+    // NOTE: the `ignores` predicate receives the FULL raw commit message
+    // (header + body), so test the FIRST LINE (the subject/header) rather
+    // than the end of the whole message — a `$` anchor on the raw commit
+    // would test the end of the body and never match.
+    (commit) => /\(#\d+\)$/.test((commit.split("\n")[0] || "").trim()),
   ],
   rules: {
     "type-enum": [

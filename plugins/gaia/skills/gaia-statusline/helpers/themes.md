@@ -17,10 +17,10 @@ Use case: very narrow terminals; users who explicitly want only the version + br
 `GAIA_STATUSLINE_THEME=default` (or unset) selects the default theme. Canonical one-liner:
 
 ```
-◆ GAIA 1.139.0 | claude-opus | gaia-framework/feat/E82-S4 | 42%
+◆ GAIA 1.139.0 | claude-opus | gaia-framework/feat/new-login | 42%
 ```
 
-The format is fixed by FR-430:
+The format is fixed:
 
 ```
 ◆ GAIA <version> | <model> | <project>/<branch> | <context-%>
@@ -28,12 +28,12 @@ The format is fixed by FR-430:
 
 ### Width-ladder worked examples (default theme)
 
-Assuming version=`1.139.0`, model=`claude-opus`, project=`gaia-framework`, branch=`feat/E82-S4`, context=`42%`:
+Assuming version=`1.139.0`, model=`claude-opus`, project=`gaia-framework`, branch=`feat/new-login`, context=`42%`:
 
 | Cols | Output |
 |---|---|
-| `>= 80` | `◆ GAIA 1.139.0 | claude-opus | gaia-framework/feat/E82-S4 | 42%` |
-| `60..79` | `◆ GAIA 1.139.0 | claude-opus | gaia-framework | feat/E82-S4` (sprint dropped) |
+| `>= 80` | `◆ GAIA 1.139.0 | claude-opus | gaia-framework/feat/new-login | 42%` |
+| `60..79` | `◆ GAIA 1.139.0 | claude-opus | gaia-framework | feat/new-login` (sprint dropped) |
 | `50..59` | `◆ GAIA 1.139.0 | claude-opus | gaia-framework` (branch dropped) |
 | `40..49` | `◆ GAIA 1.139.0 | claude-opus` (project dropped — branch was already dropped at 50–59) |
 | `32..39` | `◆ GAIA 1.139.0 | claude-opus` |
@@ -43,11 +43,11 @@ The `<50` cols branch-before-project rule is critical: when space is tight, the 
 
 ## rich
 
-`GAIA_STATUSLINE_THEME=rich` adds a second line `sprint | story | agent`. Sprint is read directly from `.gaia/state/sprint-status.yaml` with a tiny `grep` (NOT routed through `scripts/sprint-status-dashboard.sh` — that would over-budget the hot path per FR-436).
+`GAIA_STATUSLINE_THEME=rich` adds a second line `sprint | story | agent`. Sprint is read directly from `.gaia/state/sprint-status.yaml` with a tiny `grep` (NOT routed through `scripts/sprint-status-dashboard.sh` — that would over-budget the hot path).
 
 ```
-◆ GAIA 1.139.0 | claude-opus | gaia-framework/feat/E82-S4 | 42%
-sprint-40 | E82-S4 | dev-story
+◆ GAIA 1.139.0 | claude-opus | gaia-framework/feat/new-login | 42%
+sprint-40 | new-login | dev-story
 ```
 
 The rich line drops first under width pressure (it is at the top of the drop order). When sprint-status.yaml is missing the second line collapses to empty without error.
@@ -62,7 +62,7 @@ GAIA_STATUSLINE_THEME=rich   → rich
 GAIA_STATUSLINE_THEME=<other> → default (silent)
 ```
 
-Unknown theme values are treated as `default` with no warning — the runtime never emits diagnostics on the hot path (NFR-STATUSLINE-1).
+Unknown theme values are treated as `default` with no warning — the runtime never emits diagnostics on the hot path.
 
 ## Adding a fourth theme
 

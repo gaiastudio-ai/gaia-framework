@@ -1,35 +1,35 @@
 #!/usr/bin/env bash
-# verdict-resolver.sh — GAIA shared review-skill script (E65-S1, ADR-075)
+# verdict-resolver.sh — GAIA shared review-skill script
 #
 # Computes the review verdict by strict first-match-wins precedence over the
 # deterministic Phase 3A artifact (analysis-results.json) and the LLM Phase 3B
 # findings JSON. The LLM CANNOT override a deterministic tool failure — this is
-# the ADR-075 LLM-cannot-override invariant (FR-DEJ-6).
+# the LLM-cannot-override invariant.
 #
 # Precedence (first match wins):
 #   1. Any check.status == "errored"                       -> BLOCKED
 #   2. Any check.status == "failed" with blocking finding  -> REQUEST_CHANGES
 #   3. Any LLM finding severity == "Critical"              -> REQUEST_CHANGES
-#   3b. coverage_delta <= 0 (E67-S3, --coverage-delta only) -> REQUEST_CHANGES
+#   3b. coverage_delta <= 0 (--coverage-delta only)        -> REQUEST_CHANGES
 #   4. Otherwise                                           -> APPROVE
 #
 # Malformed analysis-results.json (invalid JSON, missing schema_version,
-# unreadable file) -> BLOCKED with stderr error. Verdict is data, not exit code
-# (per ADR-042 pattern); the script exits 0 except on caller errors.
+# unreadable file) -> BLOCKED with stderr error. Verdict is data, not exit code;
+# the script exits 0 except on caller errors.
 #
 # Invocation:
 #   verdict-resolver.sh [--skill <skill-name>] --analysis-results <path> --llm-findings <path>
 #   verdict-resolver.sh --help
 #
-# The optional --skill <name> flag (added by E66-S1, ADR-077) is the
-# generalization hook: it accepts any of the twelve verdict-producing skills'
-# `analysis-results.json` inputs (gaia-code-review, gaia-review-qa,
-# gaia-review-test, gaia-test-automate, gaia-review-security, gaia-review-perf,
-# gaia-review-mobile, gaia-validate-design-a11y, gaia-test-{e2e,perf,dast,a11y},
+# The optional --skill <name> flag is the generalization hook: it accepts any
+# of the twelve verdict-producing skills' `analysis-results.json` inputs
+# (gaia-code-review, gaia-review-qa, gaia-review-test, gaia-test-automate,
+# gaia-review-security, gaia-review-perf, gaia-review-mobile,
+# gaia-validate-design-a11y, gaia-test-{e2e,perf,dast,a11y},
 # gaia-test-mobile-e2e, gaia-test-device-matrix, gaia-deploy). The skill name
 # is logged in stderr provenance but does NOT alter the four-rule precedence
-# logic — strict first-match-wins is preserved per ADR-075. Omitting --skill
-# preserves the legacy gaia-code-review-only behavior (backward compat).
+# logic — strict first-match-wins is preserved. Omitting --skill preserves the
+# legacy gaia-code-review-only behavior (backward compat).
 #
 # Exit codes:
 #   0  — success (verdict on stdout)
@@ -39,7 +39,6 @@
 #         trailing variations beyond a single \n).
 # Stderr: diagnostic messages only.
 #
-# Refs: ADR-075, FR-DEJ-6, AC3 of E65-S1, EC-1, EC-2, EC-3, EC-10.
 
 set -euo pipefail
 LC_ALL=C
@@ -56,7 +55,7 @@ die() {
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — verdict resolver for GAIA review skills (ADR-075, ADR-077)
+$SCRIPT_NAME — verdict resolver for GAIA review skills
 
 Usage:
   $SCRIPT_NAME [--skill <name>] --analysis-results <path> --llm-findings <path>
@@ -65,32 +64,31 @@ Usage:
 
 Options:
   --skill <name>             Optional. Identifies the producing skill (any of
-                             the twelve verdict-producing skills per ADR-077).
+                             the twelve verdict-producing skills).
                              Logged in provenance; does not alter precedence.
                              --analysis is accepted as an alias for
                              --analysis-results.
-  --action-mode              E67-S2 action-skill semantics for
-                             /gaia-test-automate. Reads action-skill outcome
-                             flags (placeholders, mocks_sut, breaks_suite,
-                             blocking_failure) from the analysis document and
-                             emits APPROVE | REQUEST_CHANGES | BLOCKED per the
-                             AC7 verdict table. --llm-findings is NOT required
-                             in action-mode.
+  --action-mode              Action-skill semantics for /gaia-test-automate.
+                             Reads action-skill outcome flags (placeholders,
+                             mocks_sut, breaks_suite, blocking_failure) from
+                             the analysis document and emits
+                             APPROVE | REQUEST_CHANGES | BLOCKED per the
+                             action-skill verdict table. --llm-findings is NOT
+                             required in action-mode.
   --analysis-results <path>  Path to Phase 3A analysis-results.json (required)
   --llm-findings <path>      Path to Phase 3B LLM findings JSON (required;
                              ignored under --action-mode)
-  --coverage-delta <path>    Optional (E67-S3). Path to coverage-delta.sh JSON
-                             output. When present, a coverage_delta <= 0 yields
+  --coverage-delta <path>    Optional. Path to coverage-delta.sh JSON output.
+                             When present, a coverage_delta <= 0 yields
                              REQUEST_CHANGES — inserted between the LLM-Critical
                              rule and the default APPROVE branch. Omitting this
                              flag preserves the original four-rule behavior.
-  --execution-evidence <p>   Optional (E67-S4). Path to execution-evidence.json
-                             produced by review-common/qa-test-runner.sh. When
-                             present, required-tier timeouts yield BLOCKED and
+  --execution-evidence <p>   Optional. Path to execution-evidence.json produced
+                             by review-common/qa-test-runner.sh. When present,
+                             required-tier timeouts yield BLOCKED and
                              required-tier non-zero exits yield REQUEST_CHANGES,
                              alongside the existing errored / failed-blocking
-                             gates. Omitting this flag preserves the pre-S4
-                             behavior.
+                             gates. Omitting this flag preserves prior behavior.
   --help                     Show this help and exit 0
 
 Verdicts (stdout):
@@ -112,11 +110,11 @@ EXECUTION_EVIDENCE=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --skill)
-      # Optional, ADR-077 generalization. Accepted but does not alter precedence.
+      # Optional generalization hook. Accepted but does not alter precedence.
       [ "$#" -ge 2 ] || die 1 "--skill requires a name"
       SKILL="$2"; shift 2 ;;
     --action-mode)
-      # E67-S2: action-skill verdict semantics for /gaia-test-automate.
+      # Action-skill verdict semantics for /gaia-test-automate.
       # Consumes a flat JSON document with action-skill outcome flags
       # (placeholders, mocks_sut, breaks_suite, blocking_failure) and maps
       # them to the canonical APPROVE | REQUEST_CHANGES | BLOCKED verdict.
@@ -128,18 +126,18 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] || die 1 "--llm-findings requires a path"
       LLM="$2"; shift 2 ;;
     --coverage-delta)
-      # E67-S3 (optional). Path to coverage-delta.sh JSON output. When
-      # present, a coverage_delta <= 0 inserts REQUEST_CHANGES between the
-      # LLM-Critical rule and the default APPROVE branch. Backward-compatible
-      # when omitted (pre-S3 four-rule behavior preserved).
+      # Optional. Path to coverage-delta.sh JSON output. When present, a
+      # coverage_delta <= 0 inserts REQUEST_CHANGES between the LLM-Critical
+      # rule and the default APPROVE branch. Backward-compatible when omitted
+      # (four-rule behavior preserved).
       [ "$#" -ge 2 ] || die 1 "--coverage-delta requires a path"
       COVERAGE_DELTA="$2"; shift 2 ;;
     --execution-evidence)
-      # E67-S4 (optional). Path to execution-evidence.json produced by
+      # Optional. Path to execution-evidence.json produced by
       # review-common/qa-test-runner.sh. When present, contributes to
-      # precedence per AC9: any required-tier timeout -> BLOCKED (rule 1
-      # equivalent); any required-tier failure -> REQUEST_CHANGES (rule 2
-      # equivalent). Backward-compatible when omitted (pre-S4 behavior).
+      # precedence: any required-tier timeout -> BLOCKED (rule 1 equivalent);
+      # any required-tier failure -> REQUEST_CHANGES (rule 2 equivalent).
+      # Backward-compatible when omitted.
       [ "$#" -ge 2 ] || die 1 "--execution-evidence requires a path"
       EXECUTION_EVIDENCE="$2"; shift 2 ;;
     -h|--help)
@@ -157,7 +155,7 @@ if [ "$ACTION_MODE" -eq 0 ]; then
 fi
 
 # Provenance: log --skill if provided. Stderr is informational; does not alter
-# the verdict (ADR-075 precedence is unchanged).
+# the verdict (precedence is unchanged).
 if [ -n "$SKILL" ]; then
   printf '%s: skill=%s\n' "$SCRIPT_NAME" "$SKILL" >&2
 fi
@@ -169,7 +167,7 @@ emit() {
   exit 0
 }
 
-# --- 0. Malformed-input gate (ADR-075 EC-2) ---
+# --- 0. Malformed-input gate ---
 if [ ! -r "$ANALYSIS" ]; then
   printf '%s: malformed analysis-results.json: file not found or unreadable: %s\n' "$SCRIPT_NAME" "$ANALYSIS" >&2
   emit "BLOCKED"
@@ -181,7 +179,7 @@ if ! jq -e . "$ANALYSIS" >/dev/null 2>&1; then
   emit "BLOCKED"
 fi
 
-# --- Action-skill mode (E67-S2, AC7) ---
+# --- Action-skill mode ---
 #
 # /gaia-test-automate is an action skill, not a review skill. Its outcome
 # flags live as top-level booleans / strings on the analysis document
@@ -194,8 +192,6 @@ fi
 #   4. breaks_suite == true                                   -> REQUEST_CHANGES
 #   5. plan == "missing" || execution != "success"            -> BLOCKED (no plan / no run)
 #   6. otherwise                                              -> APPROVE
-#
-# Source: AC7 of E67-S2; source-report SS 11.4.
 if [ "$ACTION_MODE" -eq 1 ]; then
   blocking_failure="$(jq -r '.blocking_failure // ""' "$ANALYSIS" 2>/dev/null || echo "")"
   case "$blocking_failure" in
@@ -233,7 +229,7 @@ else
   LLM_OK=0
 fi
 
-# --- Execution-evidence pre-check (E67-S4, AC9) ---
+# --- Execution-evidence pre-check ---
 # When --execution-evidence is provided, parse the document up front so the
 # timeout / required-failure precedence rules can be applied alongside the
 # existing errored / failed-blocking rules.
@@ -255,7 +251,7 @@ if jq -e '[.checks[]? | select(.status == "errored")] | length > 0' "$ANALYSIS" 
   emit "BLOCKED"
 fi
 
-# --- 1b. execution-evidence: required-tier timeout -> BLOCKED (E67-S4 AC6/AC9) ---
+# --- 1b. execution-evidence: required-tier timeout -> BLOCKED ---
 if [ "$EE_OK" = "1" ]; then
   if jq -e '
     (.skipped // false) | not
@@ -272,7 +268,7 @@ if [ "$EE_OK" = "1" ]; then
   fi
 fi
 
-# --- 2a. execution-evidence: required-tier failure -> REQUEST_CHANGES (E67-S4 AC5/AC9) ---
+# --- 2a. execution-evidence: required-tier failure -> REQUEST_CHANGES ---
 if [ "$EE_OK" = "1" ]; then
   if jq -e '
     (.skipped // false) | not
@@ -295,13 +291,12 @@ fi
 # findings is still treated as blocking (the tool itself signaled failure).
 # When findings exist we additionally honor an explicit blocking=true marker.
 #
-# AF-2026-05-24-10 / Test02 F-13: the original idiom `(.blocking // true)`
-# was buggy — jq's `//` operator returns the RHS when the LHS is `null` OR
-# `false`. So explicit `"blocking": false` findings were being inflated to
-# blocking, and the resolver returned REQUEST_CHANGES even for purely
-# advisory results. The corrected form distinguishes null (use default
-# true) from false (use false): `if .blocking == null then true else
-# .blocking end`.
+# Note: the original idiom `(.blocking // true)` was buggy — jq's `//`
+# operator returns the RHS when the LHS is `null` OR `false`. So explicit
+# `"blocking": false` findings were being inflated to blocking, and the
+# resolver returned REQUEST_CHANGES even for purely advisory results. The
+# corrected form distinguishes null (use default true) from false (use
+# false): `if .blocking == null then true else .blocking end`.
 if jq -e '
   [.checks[]?
     | select(.status == "failed")
@@ -323,8 +318,8 @@ if [ "$LLM_OK" = "1" ]; then
   fi
 fi
 
-# --- 3b. coverage-delta gate (E67-S3) -> REQUEST_CHANGES on zero/negative ---
-# Inserted between LLM-Critical and the default APPROVE branch per AC6.
+# --- 3b. coverage-delta gate -> REQUEST_CHANGES on zero/negative ---
+# Inserted between LLM-Critical and the default APPROVE branch.
 # Skipped entirely when --coverage-delta is omitted (backward compat).
 if [ -n "$COVERAGE_DELTA" ]; then
   if [ ! -r "$COVERAGE_DELTA" ]; then

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # probe-state-to-check-status.sh — single-source-of-truth mapping from probe
-# state to analysis-results.json check.status enum (E70-S6, ADR-077, ADR-078).
+# state to analysis-results.json check.status enum.
 #
 # Purpose
 # -------
-# `tool-availability-probe.sh` (E66-S2) emits one of four states:
+# `tool-availability-probe.sh` emits one of four states:
 #   - available
 #   - expected_and_missing
 #   - ran_and_errored
@@ -46,7 +46,6 @@
 # byte-identical output for identical inputs across every invocation. No
 # environment reads beyond LC_ALL pinning. No external commands.
 #
-# Refs: ADR-077, ADR-078, FR-RSV2-3, FR-RSV2-18.
 
 set -euo pipefail
 LC_ALL=C
@@ -56,7 +55,7 @@ SCRIPT_NAME="probe-state-to-check-status.sh"
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — map a tool-availability-probe state to an analysis-results.json check.status enum (E70-S6).
+$SCRIPT_NAME — map a tool-availability-probe state to an analysis-results.json check.status enum.
 
 Usage:
   $SCRIPT_NAME --probe-state <state>

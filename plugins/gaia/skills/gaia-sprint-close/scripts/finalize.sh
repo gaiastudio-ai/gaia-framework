@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-sprint-close generic lifecycle hook (E81-S5).
+# finalize.sh — gaia-sprint-close generic lifecycle hook.
 #
 # Mirrors the gaia-deploy / gaia-sprint-status pattern: writes the workflow
 # checkpoint and emits a `workflow_complete` lifecycle event. The actual

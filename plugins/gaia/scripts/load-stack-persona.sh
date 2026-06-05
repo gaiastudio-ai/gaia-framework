@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# load-stack-persona.sh — GAIA shared review-skill script (E65-S1, ADR-075)
+# load-stack-persona.sh — GAIA shared review-skill script
 #
 # Resolves the project's primary stack and lazy-loads the matching reviewer
 # persona file (from plugins/gaia/agents/) plus the matching memory sidecar.
 # Runs in the parent context BEFORE fork dispatch — the fork tool allowlist
-# stays `[Read, Grep, Glob, Bash]` (NFR-DEJ-4 / NFR-048 preserved).
+# stays `[Read, Grep, Glob, Bash]`.
 #
 # Stack resolution order:
 #   1. Explicit --stack <name> flag
@@ -42,7 +42,6 @@
 #   1  — caller error (missing/unknown flag)
 #   2  — missing resource: unsupported stack OR persona file not found
 #
-# Refs: ADR-075, FR-DEJ-12, NFR-DEJ-4, AC5 of E65-S1, EC-4, EC-5.
 
 set -euo pipefail
 LC_ALL=C
@@ -58,7 +57,7 @@ die() {
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — load reviewer persona + sidecar for the project stack (ADR-075)
+$SCRIPT_NAME — load reviewer persona + sidecar for the project stack
 
 Usage:
   $SCRIPT_NAME [--stack <name>] [--project-root <dir>]
@@ -94,22 +93,20 @@ while [ "$#" -gt 0 ]; do
     --project-root)  [ "$#" -ge 2 ] || die 1 "--project-root requires a dir";  PROJECT_ROOT="$2";  shift 2 ;;
     --agents-dir)    [ "$#" -ge 2 ] || die 1 "--agents-dir requires a dir";    AGENTS_DIR="$2";    shift 2 ;;
     --memory-dir)    [ "$#" -ge 2 ] || die 1 "--memory-dir requires a dir";    MEMORY_DIR="$2";    shift 2 ;;
-    # AF-2026-05-29-1 / Test08 F-17: SKILL.md (gaia-test-automate Phase 1 §280)
-    # documents `--story-file <path>` as the canonical invocation form so the
-    # persona resolution can key off the story's frontmatter (e.g. `stack:`
-    # field) before falling back to project-root-based detection. Previously
-    # the script rejected this flag with "unknown argument".
+    # --story-file <path>: canonical invocation form so the persona resolution
+    # can key off the story's frontmatter (e.g. `stack:` field) before falling
+    # back to project-root-based detection.
     --story-file)    [ "$#" -ge 2 ] || die 1 "--story-file requires a path";   STORY_FILE="$2";    shift 2 ;;
     -h|--help)       usage; exit 0 ;;
     *)               die 1 "unknown argument: $1" ;;
   esac
 done
 
-# AF-2026-05-29-1 / Test08 F-17: if --story-file was passed and --stack was NOT,
-# try to derive the stack from the story's `stack:` frontmatter field. Falls
-# through to project-root-based file-marker detection (the legacy path) when
-# the story lacks a stack field or the file is unreadable — preserves
-# backward-compat for callers that pass only --project-root.
+# If --story-file was passed and --stack was NOT, try to derive the stack from
+# the story's `stack:` frontmatter field. Falls through to project-root-based
+# file-marker detection (the legacy path) when the story lacks a stack field or
+# the file is unreadable — preserves backward-compat for callers that pass only
+# --project-root.
 if [ -n "$STORY_FILE" ] && [ -z "$STACK" ] && [ -r "$STORY_FILE" ]; then
   _story_stack="$(awk '
     /^---[[:space:]]*$/ { n++; if (n == 2) exit }

@@ -154,11 +154,10 @@ _load_helpers() {
 # canonical_header — per-target canonical seed
 # ---------------------------------------------------------------------------
 
-@test "canonical_header for decision-log.md emits ADR-016 Decision Log header" {
+@test "canonical_header for decision-log.md emits Decision Log header" {
   _load_helpers
   local got; got="$(canonical_header "/x/_memory/sm-sidecar/decision-log.md")"
   [[ "$got" == *"Decision Log"* ]]
-  [[ "$got" == *"ADR-016"* ]]
 }
 
 @test "canonical_header for velocity-data.md emits SM Velocity Data header" {

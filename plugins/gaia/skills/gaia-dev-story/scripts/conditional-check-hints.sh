@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# conditional-check-hints.sh — gaia-dev-story Step 6b advisory hints (E55-S7)
+# conditional-check-hints.sh — gaia-dev-story Step 6b advisory hints
 #
 # Purpose:
 #   After Step 6 TDD Green, scan the staged file list for change patterns that
@@ -8,7 +8,7 @@
 #   is always 0. The agent reads the advisories and decides whether to address
 #   them in the current story or capture them as Findings.
 #
-# Patterns (FR-DSH-9 / ADR-073):
+# Patterns:
 #   1. API route changes — any path matching `*/routes/*.{ts,py,go}` OR
 #      `*/api/*.{ts,py,go}`. Emits:
 #        advisory: api-route changes detected — verify contract tests cover
@@ -34,15 +34,14 @@
 # Environment:
 #   BLAST_RADIUS_THRESHOLD — integer file-count threshold for the blast-radius
 #                            advisory (default 10). Tunable for calibration
-#                            without re-shipping; documented in the story
-#                            E55-S7 Dev Notes.
+#                            without re-shipping.
 #
 # Outputs:
 #   stdout — zero or more advisory lines (one per matched category) of the
 #            form `advisory: ...`.
 #   stderr — exactly one gate log line per invocation, of the form
 #            `step6b_gate: advisories={count}` where {count} is 0..3
-#            (NFR-DSH-5: single-line gate logs). Always emitted, even when
+#            (single-line gate logs). Always emitted, even when
 #            no advisories fire, so the absence of advisories is observable.
 #
 # Exit codes:
@@ -131,7 +130,7 @@ if (( "${#files[@]}" >= THRESHOLD )); then
   advisory_count=$(( advisory_count + 1 ))
 fi
 
-# ---------- Gate log (NFR-DSH-5) ----------
+# ---------- Gate log ----------
 #
 # Single-line, machine-grep-able gate log on stderr. Stdout carries the
 # advisories the agent surfaces to the user; stderr carries operational

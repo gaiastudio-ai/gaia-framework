@@ -486,13 +486,13 @@ YAML
 
 # ---------- TC-GPO-6: --skip-verify NFR-082 opt-out ----------
 
-@test "TC-GPO-6: --skip-verify emits NFR-082 WARNING + verify-skipped audit flag" {
+@test "TC-GPO-6: --skip-verify emits WARNING + verify-skipped audit flag" {
   _write_config
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0 --skip-verify
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'step 4/5 (post-publish-verify): SKIPPED'
-  echo "$output" | grep -q 'NFR-082'
+  echo "$output" | grep -qi 'skip-verify opt-out\|MANDATORY post-publish registry probe bypassed'
   echo "$output" | grep -qi 'WARNING'
   # Audit trail records verify-skipped flag.
   local doc
@@ -527,7 +527,7 @@ YAML
   _install_adapter_shim claude-marketplace
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_VERIFY_OUTCOME=PASSED bash "$ORCH" --version 1.0.0
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi 'SR-83'
+  echo "$output" | grep -qi 'exceeds.*cap\|clamping to 3600\|clamp'
   echo "$output" | grep -qi '3600'
 }
 

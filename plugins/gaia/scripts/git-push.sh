@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# git-push.sh — shared push helper for V2 GAIA dev/automation skills (E55-S8).
+# git-push.sh — shared push helper for V2 GAIA dev/automation skills.
 #
 # Purpose:
 #   Push the current branch to `origin` with a single retry on transient
@@ -49,8 +49,8 @@ BACKOFF="${GAIA_GIT_PUSH_BACKOFF:-5}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INVARIANTS_LIB="$SCRIPT_DIR/lib/dev-story-security-invariants.sh"
 
-# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
-# work tree, so /gaia-dev-story Steps 10-13 degrade gracefully instead of HALT.
+# Non-git CWD guard: skip-with-warning when CWD is outside any git
+# work tree, so /gaia-dev-story steps degrade gracefully instead of HALT.
 # shellcheck source=lib/non-git-cwd-guard.sh
 . "$SCRIPT_DIR/lib/non-git-cwd-guard.sh"
 non_git_cwd_skip "$SCRIPT_NAME" || exit 0

@@ -16,7 +16,7 @@ jobs:
           # Validate PR title (squash-merge normalizes individual commits)
           # The action validates the PR title as the commit message
           failOnWarnings: false
-          # E57-S13 / TD-152: commitDepth: 0 scans only the PR HEAD
+          # commitDepth: 0 scans only the PR HEAD
           # commit. The prior `commitDepth: 1` value caused wagoid to
           # walk merge commits and re-lint the previous staging→main
           # merge subject — flaking PRs whose own HEAD was perfectly

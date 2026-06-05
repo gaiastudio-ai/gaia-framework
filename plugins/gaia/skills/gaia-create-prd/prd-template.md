@@ -2,7 +2,7 @@
 template: 'prd'
 version: 1.2.0
 used_by: ['create-prd', 'brownfield']
-# Brownfield frontmatter keys (Test10 F-13). On a greenfield authoring flow these
+# Brownfield frontmatter keys. On a greenfield authoring flow these
 # remain as placeholders; the brownfield orchestrator (Phase 8a) overwrites them.
 project_type: '{application | infrastructure | platform}'  # default: application
 target_environment: '{e.g., production, staging — leave empty on greenfield}'
@@ -10,15 +10,15 @@ infra_stack: '{e.g., kubernetes, ecs, lambda — empty on application-only}'
 mode: '{greenfield | brownfield}'                          # set by orchestrator
 baseline_version: '{version from package.json or inferred — brownfield only}'
 focus: '{full-spec | gap-filling}'                         # gap-filling = brownfield
-# AF-2026-06-01-1 / Test15 F-PRD-3: explicit output_path hint so the
+# Explicit output_path hint so the
 # brownfield consolidator + downstream consumers don't have to infer the
 # canonical destination from prose. The PRD always lands at
-# planning-artifacts/prd.md per ADR-127 §7.2.
+# planning-artifacts/prd.md.
 output_path: '.gaia/artifacts/planning-artifacts/prd.md'
 ---
 
 <!--
-AF-2026-06-01-1 / Test15 F-PRD-1 — Scan-prefix → heading legend.
+Scan-prefix → heading legend.
 
 When the brownfield orchestrator merges Phase-3 scan findings into this
 PRD's gap list, each gap row carries an `id` whose prefix tags the
@@ -37,17 +37,17 @@ of this PRD can decode an id without grepping the consolidation script:
 | CVE-      | grype CVE                 | 3     |
 | SBM-      | sbom completeness         | 3     |
 
-(Updated by AF-31-2 / Test12 D-03; pinned here in the template so it
+(Pinned here in the template so it
 travels with every generated PRD.)
 -->
 
 <!--
-AF-2026-06-01-1 / Test15 F-PRD-2 — Severity vocabulary anchor.
+Severity vocabulary anchor.
 
 This PRD uses the **3-tier** operator-facing severity vocabulary —
 `high` / `medium` / `low` — as the priority on each requirement and
 gap row. Phase-3 deterministic scans produce 5-tier scan severities
-(Critical / High / Medium / Low / Info) per ADR-037; those are
+(Critical / High / Medium / Low / Info); those are
 reconciled into the 3-tier bucket at consolidation time per the
 canonical mapping:
 
@@ -61,7 +61,7 @@ canonical mapping:
 
 Authors of this PRD should use the 3-tier vocabulary only; the 5-tier
 input vocabulary belongs in the source-of-truth scan reports under
-`.gaia/memory/brownfield-audit/`. Pinned here per AF-31-2 / Test12 D-04.
+`.gaia/memory/brownfield-audit/`.
 -->
 
 
@@ -184,7 +184,7 @@ input vocabulary belongs in the source-of-truth scan reports under
 
 ## Gap Analysis Summary
 
-> **Severity vocabulary (Test17 D-4 / AF-2026-06-02-6 — vocab reconciled).** This
+> **Severity vocabulary (vocab reconciled).** This
 > PRD reports CRITICAL / WARNING / INFO per the canonical **3-tier** map. Prior
 > revisions of this template carried a 5-tier Critical / High / Medium / Low / Info
 > column header which contradicted the 3-tier note in this paragraph — both the
@@ -206,7 +206,7 @@ input vocabulary belongs in the source-of-truth scan reports under
 
 ## Priority Matrix (brownfield)
 
-> **Test17 D-4 / AF-2026-06-02-6.** The orchestrator's gap-priority synthesis lands
+> The orchestrator's gap-priority synthesis lands
 > here. Authors fill the four-quadrant matrix with the top 6-10 brownfield gaps
 > ranked by impact × effort. CRITICAL gaps SHOULD appear in the High-Impact /
 > Low-Effort or High-Impact / High-Effort quadrants. WARNING gaps SHOULD appear
@@ -266,7 +266,7 @@ input vocabulary belongs in the source-of-truth scan reports under
 
 ### Stale Claims (`stale-claim`)
 
-Gaps the consolidation surfaced from a baseline scan that a later orchestrator step (e.g. `/gaia-ci-setup`, a follow-up code-verified review, or a freshness re-check per Test17 D-7) has since closed. Each row records the original gap-id, the surfacing scan, AND the closing action so the audit trail shows the gap was real at baseline time.
+Gaps the consolidation surfaced from a baseline scan that a later orchestrator step (e.g. `/gaia-ci-setup`, a follow-up code-verified review, or a freshness re-check) has since closed. Each row records the original gap-id, the surfacing scan, AND the closing action so the audit trail shows the gap was real at baseline time.
 
 | ID | Severity | Title | Description | Evidence | Recommendation | Closed By | Confidence |
 |----|----------|-------|-------------|----------|----------------|-----------|------------|

@@ -7,7 +7,7 @@ allowed-tools: [Read, Grep, Glob, Bash]
 orchestration_class: reviewer
 ---
 
-> **Premium upgrade available.** The `gaia-enterprise` marketplace ships a `performance-review-advanced` SKILL.md (E28-S124) that layers real profiling-tool integration (py-spy, `node --prof`, jfr, pprof) and hot-path summaries on top of this OSS heuristic skill, gated behind the `perf-advanced` feature flag. Install via `/plugin marketplace add gaiastudio-ai/gaia-enterprise` and `/plugin install gaia-enterprise`. Without the enterprise plugin, this OSS skill serves unaffected.
+> **Premium upgrade available.** The `gaia-enterprise` marketplace ships a `performance-review-advanced` SKILL.md that layers real profiling-tool integration (py-spy, `node --prof`, jfr, pprof) and hot-path summaries on top of this OSS heuristic skill, gated behind the `perf-advanced` feature flag. Install via `/plugin marketplace add gaiastudio-ai/gaia-enterprise` and `/plugin install gaia-enterprise`. Without the enterprise plugin, this OSS skill serves unaffected.
 
 ## Setup
 
@@ -15,18 +15,18 @@ orchestration_class: reviewer
 
 ## Mission
 
-You are performing a performance review for a story. The story is resolved by `{story_key}` via the canonical glob `{story_key}-*.md` in `.gaia/artifacts/implementation-artifacts/` (post-ADR-111; with legacy `docs/implementation-artifacts/` fallback for pre-ADR-111 projects). You analyze each changed file for performance bottlenecks -- N+1 queries, memory leaks, algorithmic complexity, bundle size, caching gaps -- and produce a machine-readable verdict (PASSED or FAILED) written to the story's Review Gate "Performance Review" row via `review-gate.sh`.
+You are performing a performance review for a story. The story is resolved by `{story_key}` via the canonical glob `{story_key}-*.md` in `.gaia/artifacts/implementation-artifacts/` (with legacy `docs/implementation-artifacts/` fallback for older projects). You analyze each changed file for performance bottlenecks -- N+1 queries, memory leaks, algorithmic complexity, bundle size, caching gaps -- and produce a machine-readable verdict (PASSED or FAILED) written to the story's Review Gate "Performance Review" row via `review-gate.sh`.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/anytime/performance-review` workflow (brief Cluster 9, story E28-S71, ADR-042). It follows the canonical reviewer skill pattern established by E28-S66 (code-review).
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/anytime/performance-review` workflow. It follows the canonical reviewer skill pattern established by the code-review skill.
 
-**Fork context semantics (ADR-041, ADR-045):** This skill runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). It CANNOT modify files -- the tool allowlist enforces NFR-048 (no-write isolation). Do NOT attempt to call Write or Edit.
+**Fork context semantics:** This skill runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). It CANNOT modify files -- the tool allowlist enforces no-write isolation. Do NOT attempt to call Write or Edit.
 
-**Subagent dispatch:** Performance bottleneck analysis and optimization recommendations are dispatched to the Juno performance subagent (E28-S21). The fork context invokes Juno for deep performance assessment; Juno's verdict is returned across the fork boundary.
+**Subagent dispatch:** Performance bottleneck analysis and optimization recommendations are dispatched to the Juno performance subagent. The fork context invokes Juno for deep performance assessment; Juno's verdict is returned across the fork boundary.
 
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-review-perf [story-key]".
-- The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper (E79-S7 / FR-476) which honors the ADR-111 canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then legacy `docs/implementation-artifacts/{story_key}-*.md` as fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob — that breaks on `.gaia/`-canonical projects (AF-2026-05-21-4 Finding 1).
+- The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper which honors the canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then legacy `docs/implementation-artifacts/{story_key}-*.md` as fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob — that breaks on `.gaia/`-canonical projects.
 - The story MUST be in `review` status. If not, fail with "story must be in review status before performance review".
 - This skill is READ-ONLY. Do NOT attempt to call Write or Edit tools -- the fork context allowlist enforces this.
 - Performance analysis MUST be dispatched to the Juno performance subagent -- do NOT perform inline analysis in the fork context.
@@ -41,7 +41,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 ### Step 1 -- Resolve Story File
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-review-perf [story-key]"
-- Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper (E79-S7 / FR-476). It honors the ADR-111 canonical-first contract: searches `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then falls back to legacy `docs/implementation-artifacts/{story_key}-*.md`.
+- Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper. It honors the canonical-first contract: searches `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then falls back to legacy `docs/implementation-artifacts/{story_key}-*.md`.
 - If the helper exits 1 (zero matches): fail with "story file not found for key {story_key}".
 - If the helper exits 2 (multiple matches): fail with "multiple story files matched key {story_key} -- resolve ambiguity".
 - Read the resolved story file.
@@ -107,13 +107,13 @@ Invoke the Juno performance subagent to perform deep performance analysis on all
   - Caching and complexity review results
   - Findings organized by severity (Critical, High, Medium, Low)
   - Machine-readable verdict line: `**Verdict: PASSED**` or `**Verdict: FAILED**`
-- Save the report at the path resolved by the single-source helper (E105-S4 / Test05 F-046) — basename is the FR-402 locked form `performance-review-{story_key}.md` (type FIRST, no slug, no date suffix); the directory is the per-story `reviews/` home (E105-S1) when present, else flat. **AF-2026-06-01-1 / Test15 F-18-L:** the file is `performance-review-{story_key}.md`, NOT `review-perf-{story_key}.md`. The SKILL slug `gaia-review-perf` is the COMMAND name; the REPORT FILENAME follows the FR-402 type-first locked form `performance-review-`. Orchestrators (run-all-reviews, retro review-extract) refer to the SKILL by its `review-perf` slug but read/write the FILE by its `performance-review-` name. Do NOT propagate the SKILL slug into the report basename — it breaks the retro consumer's glob `performance-review-*.md`.
+- Save the report at the path resolved by the single-source helper — basename is the locked form `performance-review-{story_key}.md` (type FIRST, no slug, no date suffix); the directory is the per-story `reviews/` home when present, else flat. The file is `performance-review-{story_key}.md`, NOT `review-perf-{story_key}.md`. The SKILL slug `gaia-review-perf` is the COMMAND name; the REPORT FILENAME follows the type-first locked form `performance-review-`. Orchestrators (run-all-reviews, retro review-extract) refer to the SKILL by its `review-perf` slug but read/write the FILE by its `performance-review-` name. Do NOT propagate the SKILL slug into the report basename — it breaks the retro consumer's glob `performance-review-*.md`.
 
   ```bash
   REPORT_PATH="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-review-report-path.sh --key {story_key} --type performance-review)"
   ```
 
-  This returns `…/epic-{slug}/{story_key}-{slug}/reviews/performance-review-{story_key}.md` (new layout, `reviews/` created) or the legacy flat `.gaia/artifacts/implementation-artifacts/performance-review-{story_key}.md`. Per F-12 on Test02: never the pre-ADR-111 `docs/implementation-artifacts/` location and never the legacy `{story_key}-performance-review.md` ordering (violates FR-402 / `feedback_review_report_filename_collision`).
+  This returns `…/epic-{slug}/{story_key}-{slug}/reviews/performance-review-{story_key}.md` (new layout, `reviews/` created) or the legacy flat `.gaia/artifacts/implementation-artifacts/performance-review-{story_key}.md`. Never the legacy `docs/implementation-artifacts/` location and never the legacy `{story_key}-performance-review.md` ordering (violates `feedback_review_report_filename_collision`).
 
 ### Step 7 -- Update Review Gate
 
@@ -135,7 +135,7 @@ Invoke the Juno performance subagent to perform deep performance analysis on all
   ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh review-gate-check --story "{story_key}"
   ```
 - Capture stdout and include the Review Gate table and summary line (`Review Gate: COMPLETE|PENDING|BLOCKED`) in the command's output.
-- This check is informational only -- do not halt on non-zero exit codes. Exit codes 0/1/2 correspond to COMPLETE/BLOCKED/PENDING per ADR-054. Log the result and continue regardless of exit code.
+- This check is informational only -- do not halt on non-zero exit codes. Exit codes 0/1/2 correspond to COMPLETE/BLOCKED/PENDING. Log the result and continue regardless of exit code.
 
 ## Finalize
 

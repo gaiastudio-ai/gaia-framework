@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-deploy action skill setup (E73-S5).
+# setup.sh — gaia-deploy action skill setup.
 #
-# Mirrors the Cluster 9 reference (gaia-test-e2e/scripts/setup.sh):
+# Mirrors the reference pattern (gaia-test-e2e/scripts/setup.sh):
 #   1. Resolve config via resolve-config.sh
 #   2. Load checkpoint state for the deploy workflow
 #

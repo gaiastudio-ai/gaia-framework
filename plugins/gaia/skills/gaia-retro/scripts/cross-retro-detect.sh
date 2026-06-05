@@ -6,14 +6,14 @@
 # Usage:
 #   cross-retro-detect.sh --retros-dir <dir> --action-items <path> --current-sprint <id>
 #
-# Behavior (FR-RIM-1, architecture §10.28.3):
+# Behavior (architecture §10.28.3):
 #   1. Glob retrospective-*.md under the given directory.
 #   2. Extract action items from each retro's "## Action Items" section.
 #   3. Normalize each line (lowercase + trim) and compute SHA-256(norm).
 #   4. Flag any theme seen in 2+ distinct sprint_ids as systemic.
 #   5. For each systemic theme: delegate to action-items-increment.sh using
 #      (sprint_id=current_sprint, theme_hash) so a given current-sprint run is
-#      idempotent per (sprint_id, theme_hash) (NFR-RIM-3).
+#      idempotent per (sprint_id, theme_hash).
 #
 # Failure posture (per story: NON-BLOCKING):
 #   * Missing action-items.yaml → warn and continue, no escalation.
@@ -27,7 +27,7 @@ set -euo pipefail
 RETROS_DIR=""
 AI_FILE=""
 CURRENT_SPRINT=""
-MAX_BYTES=65536    # NFR-RIM-1 bounded per-file read
+MAX_BYTES=65536    # bounded per-file read
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -89,7 +89,7 @@ retros=("$RETROS_DIR"/retrospective-*.md)
 shopt -u nullglob
 
 if [ "${#retros[@]}" -eq 0 ]; then
-  # AC3 / EC-9 — no prior retros, success with zero escalations.
+  # No prior retros — success with zero escalations.
   rm -rf "$WORK"
   exit 0
 fi
@@ -98,7 +98,7 @@ for retro in "${retros[@]}"; do
   sprint_id="$(extract_sprint_id "$retro")"
   while IFS= read -r line; do
     [ -n "$line" ] || continue
-    # AC-EC6: silently tolerate AI-{n} references; log orphans to stderr.
+    # Silently tolerate AI-{n} references; log orphans to stderr.
     if printf '%s' "$line" | grep -qE '^AI-[0-9]+'; then
       ai_id="$(printf '%s' "$line" | awk '{print $1}' | sed 's/:.*//')"
       if [ -n "$AI_FILE" ] && [ -f "$AI_FILE" ]; then

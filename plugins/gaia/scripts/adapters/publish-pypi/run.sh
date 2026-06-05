@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# publish-pypi/run.sh — FR-526 + ADR-113 + ADR-037 envelope.
-# Wraps `twine upload` with faithful exit-code propagation per AC3.
-# NFR-081: PYPI_API_TOKEN ONLY from env — never ~/.pypirc.
+# publish-pypi/run.sh — deploy-adapter contract for PyPI publish.
+# Wraps `twine upload` with faithful exit-code propagation.
+# PYPI_API_TOKEN ONLY from env — never ~/.pypirc.
 
 # shellcheck source=../_publish-common.bash
 source "$(dirname "$0")/../_publish-common.bash"
@@ -15,7 +15,7 @@ case "$ACTION" in
   trigger)
     if [ -z "$PYPI_API_TOKEN" ] && [ -z "${TWINE_MOCK_EXIT:-}" ]; then
       publish_write_envelope "FAILED" "pypi" "trigger" \
-        "PYPI_API_TOKEN missing — adapter refuses to fall back to ~/.pypirc per NFR-081." \
+        "PYPI_API_TOKEN missing — adapter refuses to fall back to ~/.pypirc." \
         "$(publish_evidence_log_excerpt "missing PYPI_API_TOKEN" "env")"
       exit 0
     fi
@@ -26,7 +26,7 @@ case "$ACTION" in
       exit 0
     fi
 
-    # Faithful exit-code propagation per AC3.
+    # Faithful exit-code propagation.
     # Mock path: TWINE_MOCK_EXIT controls behavior {0,1,2}; TWINE_MOCK_STDERR carries error text.
     local_exit=0
     local_stderr=""
@@ -35,7 +35,7 @@ case "$ACTION" in
       local_stderr="${TWINE_MOCK_STDERR:-twine mock stderr}"
     else
       # Real path placeholder: would invoke `twine upload --username __token__ --password "$PYPI_API_TOKEN" dist/*`
-      # For this story we emit PASSED on the real path stub (E100-S5 scope: contract + dry-run + mock matrix).
+      # For the real path stub we emit PASSED (scope: contract + dry-run + mock matrix).
       local_exit=0
     fi
 

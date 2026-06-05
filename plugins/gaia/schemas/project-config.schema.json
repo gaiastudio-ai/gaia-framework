@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gaiastudio.ai/schemas/project-config.schema.json",
-  "title": "GAIA project-config.yaml — full structural schema v2.0.0 (E85-S2)",
-  "description": "JSON Schema (draft-07) for the canonical project-config.yaml surface. v2.0.0 introduces the `config_phase` state machine (minimal -> partial -> full) and `schema_version` field per ADR-096/ADR-097. Conditional section requirements via `allOf`+`if/then` blocks: `minimal` requires only project_name + project_kind; `partial` adds stacks + platforms; `full` adds environments + ci_cd. The absence of `config_phase` (legacy configs) is treated as `full` by gate-side code per NFR-062 (backward compatibility) — the schema enforces this by NOT placing `config_phase` in `required` and by guarding every `if` with `required:[config_phase]` so absence skips all conditional blocks. Covers the eleven new top-level sections from E68-S1 (FR-RSV2-5..22) plus the existing surface. Designed for offline validation via `npx ajv-cli validate -s project-config.schema.json -d project-config.json`. NFR-RSV2-4 / ADR-079 require schema-validation discipline; this file extends the same load-time-validation pattern used by analysis-results.schema.json. Credential values literally embedded in environments.*.credentials.* are rejected via a pattern-based deny-list per AC11 / FR-RSV2-9.",
+  "title": "GAIA project-config.yaml — full structural schema v2.0.0",
+  "description": "JSON Schema (draft-07) for the canonical project-config.yaml surface. v2.0.0 introduces the `config_phase` state machine (minimal -> partial -> full) and `schema_version` field. Conditional section requirements via `allOf`+`if/then` blocks: `minimal` requires only project_name + project_kind; `partial` adds stacks + platforms; `full` adds environments + ci_cd. The absence of `config_phase` (legacy configs) is treated as `full` by gate-side code for backward compatibility — the schema enforces this by NOT placing `config_phase` in `required` and by guarding every `if` with `required:[config_phase]` so absence skips all conditional blocks. Covers the eleven new top-level sections plus the existing surface. Designed for offline validation via `npx ajv-cli validate -s project-config.schema.json -d project-config.json`. Schema-validation discipline is required; this file extends the same load-time-validation pattern used by analysis-results.schema.json. Credential values literally embedded in environments.*.credentials.* are rejected via a pattern-based deny-list.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -16,7 +16,7 @@
   ],
   "definitions": {
     "credentialEnvVarRef": {
-      "description": "An environment variable reference holding a credential. MUST be the NAME of an env var (e.g., DB_PASSWORD_VAR) and MUST NOT be a literal credential. Common-secret patterns (sk-, ghp_, AKIA, xox, glpat-) and credential-style key=value strings are rejected so a project-config.yaml accidentally committed with a literal secret fails validation per FR-RSV2-9 / AC11.",
+      "description": "An environment variable reference holding a credential. MUST be the NAME of an env var (e.g., DB_PASSWORD_VAR) and MUST NOT be a literal credential. Common-secret patterns (sk-, ghp_, AKIA, xox, glpat-) and credential-style key=value strings are rejected so a project-config.yaml accidentally committed with a literal secret fails validation.",
       "type": "string",
       "minLength": 1,
       "not": {
@@ -83,7 +83,7 @@
       ]
     },
     "platformId": {
-      "description": "Platform identifier. Documented values are `web`, `ios`, `android`, `server` (E68-S1 baseline + AF-2026-05-30-2 / Test10 F-05 headless). `server` represents headless backend services with no UI surface — its presence in a full-mode config satisfies the platforms minItems:1 constraint for backend-only projects (the shape the brownfield tutorial tells users to declare). The schema enforces this strict enum so typos and out-of-domain identifiers (e.g., `windows`, `linux`) are rejected at validation time. Per ADR-081 §4.2 the surface is EXTENSIBLE at the resolver layer — `resolve-config.sh` emits a stderr warning (rather than aborting) for unknown identifiers that match the kebab-case pattern, so a project on a stale schema-version that adds a future identifier (e.g., `harmonyos`) is not blocked. Schema changes are still REQUIRED to formally document a new platform, but downstream consumers degrade gracefully in the meantime.",
+      "description": "Platform identifier. Documented values are `web`, `ios`, `android`, `server`. `server` represents headless backend services with no UI surface — its presence in a full-mode config satisfies the platforms minItems:1 constraint for backend-only projects. The schema enforces this strict enum so typos and out-of-domain identifiers (e.g., `windows`, `linux`) are rejected at validation time. The surface is EXTENSIBLE at the resolver layer — `resolve-config.sh` emits a stderr warning (rather than aborting) for unknown identifiers that match the kebab-case pattern, so a project on a stale schema-version that adds a future identifier (e.g., `harmonyos`) is not blocked. Schema changes are still REQUIRED to formally document a new platform, but downstream consumers degrade gracefully in the meantime.",
       "type": "string",
       "enum": ["web", "ios", "android", "server"]
     },
@@ -128,7 +128,7 @@
       }
     },
     "healthCheck": {
-      "description": "Post-deploy health-check phase configuration (FR-425, E78-S3). Drives the `/gaia-deploy` Phase 3 behavior. Optional — backward compatibility is preserved when the key is omitted (resolver defaults to mode=poll, which matches pre-FR-425 behavior). The `skip` mode is intended for projects that have no reachable health-check endpoint (e.g., marketplace-published plugins) — when set, the deploy skill bypasses the poll loop and writes an audit-trail evidence entry recording the configured skip.",
+      "description": "Post-deploy health-check phase configuration. Drives the `/gaia-deploy` Phase 3 behavior. Optional — backward compatibility is preserved when the key is omitted (resolver defaults to mode=poll). The `skip` mode is intended for projects that have no reachable health-check endpoint (e.g., marketplace-published plugins) — when set, the deploy skill bypasses the poll loop and writes an audit-trail evidence entry recording the configured skip.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -141,7 +141,7 @@
       }
     },
     "distributionChannel": {
-      "description": "A single distribution channel entry (FR-424, E78-S2). Declarative configuration for marketplace publishing — `type` is intentionally generic (e.g., `marketplace` rather than `github` or `npm`) so future channel types (`registry`, `cdn`, etc.) can be added to the enum without breaking existing configs. `version_file` is a flat filesystem path (NOT a JSON Pointer); the resolved deploy_adapter is responsible for reading the file and extracting `version_key` from it. `additionalProperties: false` prevents typo'd field names from silently passing validation.",
+      "description": "A single distribution channel entry. Declarative configuration for marketplace publishing — `type` is intentionally generic (e.g., `marketplace` rather than `github` or `npm`) so future channel types (`registry`, `cdn`, etc.) can be added to the enum without breaking existing configs. `version_file` is a flat filesystem path (NOT a JSON Pointer); the resolved deploy_adapter is responsible for reading the file and extracting `version_key` from it. `additionalProperties: false` prevents typo'd field names from silently passing validation.",
       "type": "object",
       "additionalProperties": false,
       "required": ["type"],
@@ -157,7 +157,7 @@
           "minLength": 1
         },
         "deploy_adapter": {
-          "description": "Adapter name resolved by /gaia-deploy under plugins/gaia/scripts/adapters/<deploy_adapter>/. Documented value: `marketplace-publish` (E78-S1).",
+          "description": "Adapter name resolved by /gaia-deploy under plugins/gaia/scripts/adapters/<deploy_adapter>/. Documented value: `marketplace-publish`.",
           "type": "string",
           "minLength": 1
         },
@@ -186,7 +186,7 @@
           "default": "CHANGELOG.md"
         },
         "smoke_test": {
-          "description": "Post-deploy smoke verification mode for this channel. `manual-checklist` signals that smoke is a manual approval step rather than automated — coordinates with E78-S5 (empty `smoke_suites` handling).",
+          "description": "Post-deploy smoke verification mode for this channel. `manual-checklist` signals that smoke is a manual approval step rather than automated — coordinates with empty `smoke_suites` handling.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
@@ -201,7 +201,7 @@
   },
   "properties": {
     "lifecycle": {
-      "description": "ADR-120 lifecycle-ordering enforcement settings. Currently exposes `strict_mode` only; future fields land in this object so the top-level surface stays minimal. `strict_mode: true` (default per ADR-120) causes E103-S3/S4/S6 gates to hard-error on missing MANDATORY upstream artifacts unless a `--bypass <skill> --reason \"<text>\"` record exists in `.gaia/state/lifecycle-overrides.yaml`. `strict_mode: false` downgrades the gates to advisory warnings. Opted out of config-hydration auto-allowlist (operator-managed only).",
+      "description": "Lifecycle-ordering enforcement settings. Currently exposes `strict_mode` only; future fields land in this object so the top-level surface stays minimal. `strict_mode: true` (default) causes lifecycle gates to hard-error on missing MANDATORY upstream artifacts unless a `--bypass <skill> --reason \"<text>\"` record exists in `.gaia/state/lifecycle-overrides.yaml`. `strict_mode: false` downgrades the gates to advisory warnings. Opted out of config-hydration auto-allowlist (operator-managed only).",
       "type": "object",
       "additionalProperties": false,
       "x-no-auto-hydration": true,
@@ -209,18 +209,18 @@
         "strict_mode": {
           "type": "boolean",
           "default": true,
-          "description": "When true (default), E103 gates hard-error on missing MANDATORY upstream artifacts. When false, gates downgrade to WARNING logs."
+          "description": "When true (default), lifecycle gates hard-error on missing MANDATORY upstream artifacts. When false, gates downgrade to WARNING logs."
         }
       }
     },
     "config_phase": {
-      "description": "Config-phase state machine value per ADR-096. Enum: minimal | partial | full. `default: \"full\"` is a documentation hint — gate-side code treats absence as `full` per ADR-097 (absence-over-sentinel) and NFR-062 (backward compatibility). The conditional `required` blocks in `allOf` are guarded by `required:[config_phase]` so legacy configs without this field skip all phase-conditional requirements.",
+      "description": "Config-phase state machine value. Enum: minimal | partial | full. `default: \"full\"` is a documentation hint — gate-side code treats absence as `full` (absence-over-sentinel, backward compatibility). The conditional `required` blocks in `allOf` are guarded by `required:[config_phase]` so legacy configs without this field skip all phase-conditional requirements.",
       "type": "string",
       "enum": ["minimal", "partial", "full"],
       "default": "full"
     },
     "schema_version": {
-      "description": "Schema version string per ADR-096 D4 (semver format, e.g., \"2.0.0\"). Optional for backward compatibility but SHOULD be present in all new configs. Top-level `string` property — distinct from JSON Schema's `$schema` / `$id` metadata fields.",
+      "description": "Schema version string (semver format, e.g., \"2.0.0\"). Optional for backward compatibility but SHOULD be present in all new configs. Top-level `string` property — distinct from JSON Schema's `$schema` / `$id` metadata fields.",
       "type": "string",
       "minLength": 1
     },
@@ -248,7 +248,7 @@
       "properties": {
         "template_overrides": {
           "type": "object",
-          "description": "Declarative overrides applied to generated workflows during /gaia-config-ci --regenerate (FR-518, ADR-114 §(e), E98-S4). Three fields: disable (array of job names), timeout_overrides (map of job-name → integer minutes), adapter_versions (map of adapter-name → semver). The disable: array is gated by the SR-78 closed-enum of security-critical job names — see plugins/gaia/scripts/lib/template-overrides.sh for the canonical list.",
+          "description": "Declarative overrides applied to generated workflows during /gaia-config-ci --regenerate. Three fields: disable (array of job names), timeout_overrides (map of job-name → integer minutes), adapter_versions (map of adapter-name → semver). The disable: array is gated by a closed-enum of security-critical job names — see plugins/gaia/scripts/lib/template-overrides.sh for the canonical list.",
           "properties": {
             "disable": {
               "type": "array",
@@ -257,9 +257,9 @@
                 "not": {
                   "enum": ["commitlint", "adr-048-guard", "no-claude-attribution", "secrets-scan", "nfr-082-credential-audit"]
                 },
-                "description": "Job name to remove. The five SR-78 security-critical names (commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit) are REJECTED at /gaia-config-validate time per threat T-TOV-1. Note: the schema enforces the LITERAL form only — hyphen+case canonicalization (e.g. `commit-lint` → `commitlint`) happens at regen time in template-overrides.sh as a defense-in-depth layer."
+                "description": "Job name to remove. The five security-critical names (commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit) are REJECTED at /gaia-config-validate time. Note: the schema enforces the LITERAL form only — hyphen+case canonicalization (e.g. `commit-lint` → `commitlint`) happens at regen time in template-overrides.sh as a defense-in-depth layer."
               },
-              "description": "Job names to remove from the generated workflow's jobs: map. Names in the SR-78 closed enum (commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit) are REJECTED both at /gaia-config-validate time (schema-level not.enum) and at regen time (template-overrides.sh, with hyphen+case canonicalization for defense in depth) per threat T-TOV-1."
+              "description": "Job names to remove from the generated workflow's jobs: map. Security-critical names (commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit) are REJECTED both at /gaia-config-validate time (schema-level not.enum) and at regen time (template-overrides.sh, with hyphen+case canonicalization for defense in depth)."
             },
             "timeout_overrides": {
               "type": "object",
@@ -309,7 +309,7 @@
       "additionalProperties": false
     },
     "compliance": {
-      "description": "Opt-in regulatory regime selection (FR-RSV2-5, FR-RSV2-7). The compliance section itself is optional at the top-level; an absent section is treated semantically as `regimes: [], ui_present: false` (E71-S9 AC4). An explicit empty `regimes: []` is also accepted.",
+      "description": "Opt-in regulatory regime selection. The compliance section itself is optional at the top-level; an absent section is treated semantically as `regimes: [], ui_present: false`. An explicit empty `regimes: []` is also accepted.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -323,13 +323,13 @@
       }
     },
     "brownfield": {
-      "description": "AF-2026-05-30-2 / Test10 F-06 — brownfield deterministic-tools configuration. Edited via /gaia-config-brownfield. The YAML descriptor schema at plugins/gaia/config/project-config.schema.yaml declares the same section with the full nested-key catalog (deterministic_tools, prewarm_enabled, sarif_merge_enabled, dedup_enabled, grype_enabled, sbom_completeness_enabled, detect_signals_enabled, deadcode_go_enabled, deadcode_python_enabled, deadcode_jvm_enabled, phase_4b_cross_stack_enabled, phase_4b_enabled, defectdojo_enabled, tools.runner, scanner_tier). This JSON-schema entry permits the section's presence; the YAML schema is the source of truth for inner key validation.",
+      "description": "Brownfield deterministic-tools configuration. Edited via /gaia-config-brownfield. The YAML descriptor schema at plugins/gaia/config/project-config.schema.yaml declares the same section with the full nested-key catalog (deterministic_tools, prewarm_enabled, sarif_merge_enabled, dedup_enabled, grype_enabled, sbom_completeness_enabled, detect_signals_enabled, deadcode_go_enabled, deadcode_python_enabled, deadcode_jvm_enabled, phase_4b_cross_stack_enabled, phase_4b_enabled, defectdojo_enabled, tools.runner, scanner_tier). This JSON-schema entry permits the section's presence; the YAML schema is the source of truth for inner key validation.",
       "type": "object",
       "additionalProperties": true,
       "x-no-auto-hydration": true
     },
     "tools": {
-      "description": "Provider/config selection per category (FR-RSV2-10).",
+      "description": "Provider/config selection per category.",
       "type": "object",
       "additionalProperties": {
         "type": "object",
@@ -342,7 +342,7 @@
       }
     },
     "test_execution": {
-      "description": "Pipeline-tier placement + runner command for the three test tiers (FR-RSV2-11, AF-2026-05-22-6). Each tier MAY carry: `placement` (which pipeline stage runs the tier), `command` (the runner command-string the bridge dispatcher executes), and `timeout_seconds` (per-tier execution budget). The bridge dispatcher (`scripts/run-tests.sh`) reads `command` and `timeout_seconds` — without these the bridge emits a `no command declared` skip-evidence and the run never drives the test runner. Pre-AF-22-6 the schema disallowed `command`/`timeout_seconds`, so the dispatcher could only ever skip.",
+      "description": "Pipeline-tier placement + runner command for the three test tiers. Each tier MAY carry: `placement` (which pipeline stage runs the tier), `command` (the runner command-string the bridge dispatcher executes), and `timeout_seconds` (per-tier execution budget). The bridge dispatcher (`scripts/run-tests.sh`) reads `command` and `timeout_seconds` — without these the bridge emits a `no command declared` skip-evidence and the run never drives the test runner.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -376,7 +376,7 @@
       }
     },
     "sprint_review": {
-      "description": "Per-stack execution-review configuration consumed by /gaia-sprint-review Track B (E93-S2 / E93-S4). The playwright_headed key is constrained to `true` at schema level (NFR-069 / T-SGR-2 — foreground-mode enforcement is unbypassable). Unknown stack identifiers in the *_commands maps emit a WARNING from /gaia-config-validate but do NOT fail schema validation (ADR-081 §4.2 forward-compatibility precedent). Section is classified in _CONFIG_HYDRATION_MANAGED_ELSEWHERE (config-hydration.sh) — human-managed via /gaia-config-sprint-review only; never written by the auto-hydration reconciler.",
+      "description": "Per-stack execution-review configuration consumed by /gaia-sprint-review Track B. The playwright_headed key is constrained to `true` at schema level (foreground-mode enforcement is unbypassable). Unknown stack identifiers in the *_commands maps emit a WARNING from /gaia-config-validate but do NOT fail schema validation (forward-compatibility precedent). Section is classified in _CONFIG_HYDRATION_MANAGED_ELSEWHERE (config-hydration.sh) — human-managed via /gaia-config-sprint-review only; never written by the auto-hydration reconciler.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -386,12 +386,12 @@
           "additionalProperties": { "type": "string", "minLength": 1 }
         },
         "frontend_command": {
-          "description": "DEPRECATED (issue #1047, AF-2026-06-01-4) — single command-string for the frontend Playwright execution-review run. Kept as a backward-compatible alias for single-web-stack projects. Prefer `frontend_commands` (map) for projects with more than one web/front-end stack. When both are set, `frontend_commands` entries take precedence; the scalar is merged in as the synthetic stack-id `frontend` only when that key is absent from the map.",
+          "description": "DEPRECATED — single command-string for the frontend Playwright execution-review run. Kept as a backward-compatible alias for single-web-stack projects. Prefer `frontend_commands` (map) for projects with more than one web/front-end stack. When both are set, `frontend_commands` entries take precedence; the scalar is merged in as the synthetic stack-id `frontend` only when that key is absent from the map.",
           "type": "string",
           "minLength": 1
         },
         "frontend_commands": {
-          "description": "Map: frontend / web stack identifier (e.g., frontend, website, marketing-site) → command-string. Mirrors backend_commands / mobile_commands / desktop_commands / plugin_commands. Unknown identifiers WARN (ADR-081 §4.2). Added by AF-2026-06-01-4 (issue #1047) to lift the single-web-stack cap baked into the legacy `frontend_command` scalar.",
+          "description": "Map: frontend / web stack identifier (e.g., frontend, website, marketing-site) → command-string. Mirrors backend_commands / mobile_commands / desktop_commands / plugin_commands. Unknown identifiers WARN. Lifts the single-web-stack cap baked into the legacy `frontend_command` scalar.",
           "type": "object",
           "additionalProperties": { "type": "string", "minLength": 1 }
         },
@@ -411,7 +411,7 @@
           "additionalProperties": { "type": "string", "minLength": 1 }
         },
         "playwright_headed": {
-          "description": "Foreground-mode enforcement (NFR-069 / T-SGR-2). MUST be true. The schema-level `const: true` ensures /gaia-config-validate REJECTS — not just warns — on `playwright_headed: false`, closing the silent-bypass attack vector.",
+          "description": "Foreground-mode enforcement. MUST be true. The schema-level `const: true` ensures /gaia-config-validate REJECTS — not just warns — on `playwright_headed: false`, closing the silent-bypass attack vector.",
           "type": "boolean",
           "const": true,
           "default": true
@@ -437,11 +437,11 @@
       }
     },
     "severity": {
-      "description": "Five-internal-to-three-gate severity mapping (FR-RSV2-22).",
+      "description": "Five-internal-to-three-gate severity mapping.",
       "$ref": "#/definitions/severityMap"
     },
     "gates": {
-      "description": "Per-gate severity overrides (FR-RSV2-12). Each gate may override the global severity mapping.",
+      "description": "Per-gate severity overrides. Each gate may override the global severity mapping.",
       "type": "object",
       "additionalProperties": {
         "type": "object",
@@ -452,7 +452,7 @@
       }
     },
     "stacks": {
-      "description": "Ordered list of stack-path rules for multi-service repos (FR-RSV2-6). The four additive properties `path`, `excludes`, `cross_refs`, and `ignore_nested_manifests` (FR-546 / ADR-126) extend each entry for multi-stack monorepo path partitioning; all four are OPTIONAL with safe defaults so pre-deploy entries validate byte-compatible (zero-regression invariant for the single-stack majority).",
+      "description": "Ordered list of stack-path rules for multi-service repos. The four additive properties `path`, `excludes`, `cross_refs`, and `ignore_nested_manifests` extend each entry for multi-stack monorepo path partitioning; all four are OPTIONAL with safe defaults so pre-deploy entries validate byte-compatible (zero-regression invariant for the single-stack majority).",
       "type": "array",
       "items": {
         "type": "object",
@@ -467,25 +467,25 @@
             "minItems": 1
           },
           "path": {
-            "description": "Stack ROOT directory — a coarse-grained partitioning anchor (FR-546 / ADR-126). Distinct from `paths` (the in-stack glob list): the deterministic-tools orchestrator scopes adapter dispatch to this subtree BEFORE applying `paths` glob matching. Default null (unset) — single-stack repos omit it entirely.",
+            "description": "Stack ROOT directory — a coarse-grained partitioning anchor. Distinct from `paths` (the in-stack glob list): the deterministic-tools orchestrator scopes adapter dispatch to this subtree BEFORE applying `paths` glob matching. Default null (unset) — single-stack repos omit it entirely.",
             "type": "string",
             "minLength": 1,
             "default": null
           },
           "excludes": {
-            "description": "Glob patterns excluded from this stack's file set (ADR-126). Defaults to the SR-87 secret-file patterns (`.env`, `.env.*`, `secrets/`, `*.pem`, `*.key`) when seeded by /gaia-init, reducing the chance of credentials leaking into deterministic-tool scans.",
+            "description": "Glob patterns excluded from this stack's file set. Defaults to secret-file patterns (`.env`, `.env.*`, `secrets/`, `*.pem`, `*.key`) when seeded by /gaia-init, reducing the chance of credentials leaking into deterministic-tool scans.",
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
             "default": []
           },
           "cross_refs": {
-            "description": "Allowed cross-stack references — each entry MUST name another stack in this `stacks[]` list (ADR-126 / E104-S5 Phase 4b cross-stack WARNING allowlist). Referential integrity (entry names an existing stack) is enforced as a post-validation pass in /gaia-config-stack and /gaia-config-validate, NOT in this schema (JSON Schema cannot express cross-property validation).",
+            "description": "Allowed cross-stack references — each entry MUST name another stack in this `stacks[]` list. Referential integrity (entry names an existing stack) is enforced as a post-validation pass in /gaia-config-stack and /gaia-config-validate, NOT in this schema (JSON Schema cannot express cross-property validation).",
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
             "default": []
           },
           "ignore_nested_manifests": {
-            "description": "When true (default), ecosystem-manifest auto-detection ignores manifests nested under this stack's `path` so a monorepo subtree is not double-counted as its own stack (ADR-126 / E70-S11).",
+            "description": "When true (default), ecosystem-manifest auto-detection ignores manifests nested under this stack's `path` so a monorepo subtree is not double-counted as its own stack.",
             "type": "boolean",
             "default": true
           }
@@ -514,7 +514,7 @@
       }
     },
     "environments": {
-      "description": "Environment list with env-var-only credential references (FR-RSV2-9, NFR-RSV2-7) and a 3-value kind discriminator per FR-520 / ADR-112 §(a). Two shapes accepted: (a) the legacy map-of-entries (`environments: {staging: {...}, prod: {...}}`) preserved for back-compat; (b) the FR-520 array-of-entries with `id` + closed-enum `kind` per E99-S1.",
+      "description": "Environment list with env-var-only credential references and a 3-value kind discriminator. Two shapes accepted: (a) the legacy map-of-entries (`environments: {staging: {...}, prod: {...}}`) preserved for back-compat; (b) the array-of-entries with `id` + closed-enum `kind`.",
       "oneOf": [
         {
           "type": "object",
@@ -540,7 +540,7 @@
               "name":   { "type": "string" },
               "branch": { "type": "string" },
               "kind": {
-                "description": "FR-520 / ADR-112 §(a) closed 3-value discriminator. Field is optional — read-time default is `deployable` per NFR-080 silent back-compat (resolved by scripts/lib/resolve-env-kind.sh). Unknown values are rejected at schema-validation time (E99-S1 AC6 / TC-EKD-6).",
+                "description": "Closed 3-value discriminator. Field is optional — read-time default is `deployable` for silent back-compat (resolved by scripts/lib/resolve-env-kind.sh). Unknown values are rejected at schema-validation time.",
                 "type": "string",
                 "enum": ["deployable", "branch-only", "distribution-only"]
               },
@@ -565,24 +565,24 @@
       }
     },
     "platforms": {
-      "description": "List of platform identifiers. Presence of ios or android triggers mobile gates downstream (FR-RSV2-26).",
+      "description": "List of platform identifiers. Presence of ios or android triggers mobile gates downstream.",
       "type": "array",
       "items":     { "$ref": "#/definitions/platformId" },
       "minItems":  1,
       "uniqueItems": true
     },
     "project_kind": {
-      "description": "Project shape identifier (FR-403, ADR-087). Foundational axis for the review / test / CI / deploy pipeline to branch behavior by project type. Documented values: claude-code-plugin, web-app, mobile-app, api, library — but the schema deliberately omits an enum constraint so the field is open-vocabulary. resolve-config.sh emits a stderr WARNING for unrecognized values (advisory, non-blocking) per ADR-087's unknown-value advisory pattern. Optional — backward compatibility is preserved when the field is omitted (no warning, no functional regression).",
+      "description": "Project shape identifier. Foundational axis for the review / test / CI / deploy pipeline to branch behavior by project type. Documented values: claude-code-plugin, web-app, mobile-app, api, library — but the schema deliberately omits an enum constraint so the field is open-vocabulary. resolve-config.sh emits a stderr WARNING for unrecognized values (advisory, non-blocking). Optional — backward compatibility is preserved when the field is omitted (no warning, no functional regression).",
       "type": "string",
       "minLength": 1
     },
     "device_targets": {
-      "description": "Device/OS matrix for mobile platforms (FR-RSV2-27). Keyed by platform identifier — keys SHOULD match entries in `platforms[]`; orphan keys (e.g., `device_targets.ios` when `platforms: [android]`) are flagged at the resolver layer, not the schema (open `additionalProperties` mirrors the extensibility principle on `platforms`). Each value is a `deviceTargetEntry` requiring `os_versions`, `screen_sizes`, and `form_factors` per ADR-081.",
+      "description": "Device/OS matrix for mobile platforms. Keyed by platform identifier — keys SHOULD match entries in `platforms[]`; orphan keys (e.g., `device_targets.ios` when `platforms: [android]`) are flagged at the resolver layer, not the schema (open `additionalProperties` mirrors the extensibility principle on `platforms`). Each value is a `deviceTargetEntry` requiring `os_versions`, `screen_sizes`, and `form_factors`.",
       "type": "object",
       "additionalProperties": { "$ref": "#/definitions/deviceTargetEntry" }
     },
     "distribution": {
-      "description": "Distribution / publish configuration. Two shapes accepted via oneOf: (a) legacy `channels[]` array per E78-S2 / FR-424; (b) FR-521 / ADR-112 §(b) single-channel shape with 4 required common fields (channel, registry, manifest, release_workflow) plus per-channel sub-fields. The new (b) shape is the canonical surface for /gaia-publish (E100); the (a) shape is preserved for back-compat. Optional — backward compatibility is preserved when the key is omitted (no functional regression).",
+      "description": "Distribution / publish configuration. Two shapes accepted via oneOf: (a) legacy `channels[]` array; (b) single-channel shape with 4 required common fields (channel, registry, manifest, release_workflow) plus per-channel sub-fields. The new (b) shape is the canonical surface for /gaia-publish; the (a) shape is preserved for back-compat. Optional — backward compatibility is preserved when the key is omitted (no functional regression).",
       "oneOf": [
         {
           "type": "object",
@@ -600,7 +600,7 @@
           "required": ["channel", "registry", "manifest", "release_workflow"],
           "properties": {
             "channel": {
-              "description": "FR-522 / ADR-112 §(c) closed 10-channel enum. Adding a named channel is a future ADR amendment + schema bump; do NOT extend this list inline.",
+              "description": "Closed 10-channel enum. Adding a named channel requires a schema bump; do NOT extend this list inline.",
               "type": "string",
               "enum": [
                 "claude-marketplace",
@@ -629,7 +629,7 @@
             "artifact_id":      { "type": "string", "description": "maven required sub-field" },
             "tap":              { "type": "string", "description": "homebrew required sub-field" },
             "repo":             { "type": "string", "description": "github-releases required sub-field" },
-            "adapter_name":     { "type": "string", "pattern": "^[a-z0-9-]{1,64}$", "description": "custom required sub-field — names the directory under .gaia/custom/adapters/publish-<adapter_name>/. SR-81: regex bars slashes / dots / uppercase to prevent path-traversal (T-DCH-3)." }
+            "adapter_name":     { "type": "string", "pattern": "^[a-z0-9-]{1,64}$", "description": "custom required sub-field — names the directory under .gaia/custom/adapters/publish-<adapter_name>/. Regex bars slashes / dots / uppercase to prevent path-traversal." }
           },
           "allOf": [
             {
@@ -688,7 +688,7 @@
       }
     },
     {
-      "description": "config_phase=full — infrastructure-phase hydration complete. Adds environments + ci_cd to the required set. Legacy configs without config_phase are NOT routed through this branch (the `required:[config_phase]` guard ensures absence skips); gate-side code treats absence-means-full per NFR-062.",
+      "description": "config_phase=full — infrastructure-phase hydration complete. Adds environments + ci_cd to the required set. Legacy configs without config_phase are NOT routed through this branch (the `required:[config_phase]` guard ensures absence skips); gate-side code treats absence-means-full for backward compatibility.",
       "if": {
         "properties": { "config_phase": { "const": "full" } },
         "required": ["config_phase"]

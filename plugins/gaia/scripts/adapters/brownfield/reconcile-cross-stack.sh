@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# adapters/brownfield/reconcile-cross-stack.sh — E104-S5 Phase 4b cross-stack
+# adapters/brownfield/reconcile-cross-stack.sh — Phase 4b cross-stack
 # WARNING emission + scope respect.
 #
-# A Phase 4b sub-step (sibling to E104-S2 reconcile.sh — composition, not a hard
+# A Phase 4b sub-step (sibling to reconcile.sh — composition, not a hard
 # dep). It (a) partitions reconciliation scope by stacks[].path, and (b) inspects
 # the dependency-graph for edges that cross a stack boundary. An edge from stack A
 # to stack B where B is NOT in A's cross_refs[] allowlist surfaces the canonical
-# ADR-063 WARNING:
+# WARNING:
 #   unsanctioned-cross-stack-reference: <src_stack>:<file> -> <tgt_stack>:<file>
 #
-# `--bypass cross-stack-refs --reason "<text>"` (ADR-120; the parser is reused from
-# E85-S14's scripts/lib/parse-bypass-flag.sh) suppresses the WARNINGs for the run
-# and appends an audit row to the bypass-log. SR-86: the reason must match the
+# `--bypass cross-stack-refs --reason "<text>"` (the parser is reused from
+# scripts/lib/parse-bypass-flag.sh) suppresses the WARNINGs for the run
+# and appends an audit row to the bypass-log. The reason must match the
 # allowlist ^[A-Za-z0-9 ._-]+$ (alphanumerics + space + . _ -) — shell metacharacters
-# are REJECTED (the shared helper only length-validates; this is the SR-86 regex
-# enforcement point — see story Finding #2 re: the helper gap).
+# are REJECTED (the shared helper only length-validates; this script enforces the
+# regex restriction).
 #
-# NEVER aborts the Phase 4b scan (NFR-84). Pure bash + jq + yq; offline; deterministic.
+# NEVER aborts the Phase 4b scan. Pure bash + jq + yq; offline; deterministic.
 #
-# Performance (NFR-89): a {file->stack} reverse-index (one path-prefix pass over the
+# Performance: a {file->stack} reverse-index (one path-prefix pass over the
 # stack table) makes each edge an O(1) stack lookup — no per-edge graph walk.
 #
 # Env seams (tests/phase-4b-cross-stack.bats):
 #   XSTACK_CONFIG     project-config.yaml (stacks[].path + cross_refs[])
-#   XSTACK_DEPGRAPH   dep-graph JSON {edges:[{source,target}]} (producer is E104-S2; degrade if absent)
+#   XSTACK_DEPGRAPH   dep-graph JSON {edges:[{source,target}]} (producer is reconcile.sh; degrade if absent)
 #   XSTACK_REPORT     telemetry report frontmatter (optional)
 #   XSTACK_BYPASS_LOG bypass-log JSONL (default .gaia/memory/brownfield-audit/bypass-log.json)
 
@@ -38,7 +38,7 @@ die()      { printf 'ERROR: %s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 
-# --- Bypass parse (reuse E85-S14 helper: required-reason + length 10-500) ----
+# --- Bypass parse (reuse parse-bypass-flag.sh helper: required-reason + length 10-500) ----
 BYPASS_SKILL="" BYPASS_REASON=""
 PARSE="$(cd "$HERE/../../lib" 2>/dev/null && pwd)/parse-bypass-flag.sh"
 if [ -x "$PARSE" ]; then
@@ -53,17 +53,17 @@ if [ -x "$PARSE" ]; then
   eval "$_parse_out"
 fi
 
-# --- SR-86 reason allowlist (regex half — shell metachars REJECTED) ----------
-# threat-model SR-86: reason must be a benign label. The shared helper covers
-# length only; enforce the positive char-class here. Allows the story's
+# --- Reason allowlist (regex half — shell metachars REJECTED) ----------
+# Security: reason must be a benign label. The shared helper covers
+# length only; enforce the positive char-class here. Allows
 # space-bearing reasons ("needed for migration step"); rejects "; rm -rf /".
 if [ -n "$BYPASS_SKILL" ] && [ "$BYPASS_SKILL" = "cross-stack-refs" ]; then
   if ! printf '%s' "$BYPASS_REASON" | grep -Eq '^[A-Za-z0-9 ._-]+$'; then
-    die "SR-86: --reason contains disallowed characters (allowlist: A-Za-z0-9, space, . _ -); bypass REJECTED"
+    die "--reason contains disallowed characters (allowlist: A-Za-z0-9, space, . _ -); bypass REJECTED"
   fi
 fi
 
-# --- Flag gate (ADR-078 / AC-X1) ------------------------------------------
+# --- Flag gate -----------------------------------------------------------
 MASTER="${GAIA_BROWNFIELD_DETERMINISTIC_TOOLS:-true}"
 PER_TOOL="${GAIA_BROWNFIELD_PHASE_4B_CROSS_STACK_ENABLED:-true}"
 if [ "$MASTER" != "true" ] || [ "$PER_TOOL" != "true" ]; then
@@ -82,9 +82,9 @@ default_depgraph() {
 }
 DEPGRAPH="${XSTACK_DEPGRAPH:-$(default_depgraph)}"
 
-# --- Missing dep-graph guard (producer is E104-S2; degrade, never abort) -----
+# --- Missing dep-graph guard (degrade, never abort) --------------------------
 if [ ! -f "$DEPGRAPH" ]; then
-  log_info "dep-graph not found at $DEPGRAPH — cross-stack analysis skipped (producer wired by E104-S2; never aborts)"
+  log_info "dep-graph not found at $DEPGRAPH — cross-stack analysis skipped"
   exit 0
 fi
 
@@ -94,11 +94,11 @@ start=$(date +%s%N)
 # Stacks are read once. file_to_stack resolves a file path to its owning stack by
 # LONGEST path-prefix match (so nested stack paths bind to the most-specific stack).
 # Single-stack path:null => path_root "." => one stack owns every file (zero cross
-# edges; byte-identical to E104-S2 baseline — ADR-126 zero-regression).
+# edges; zero-regression baseline).
 stack_count="$(yq eval '.stacks | length' "$CONFIG" 2>/dev/null || printf '0')"
 [ "$stack_count" -gt 0 ] 2>/dev/null || { log_info "no stacks[] declared — no cross-stack edges to check"; exit 0; }
 
-# AF-2026-05-31-1 / Test12 F-06: bash 3.2-compat. The prior `declare -A
+# bash 3.2-compat: The prior `declare -A
 # CROSS_REFS=()` associative array (name -> allowlist) is replaced by a
 # parallel indexed array `STACK_CROSS_REFS[]` aligned with `STACK_NAMES[]`.
 # The lookup `${CROSS_REFS[$src]}` becomes a linear scan via the new helper
@@ -119,7 +119,7 @@ while [ "$i" -lt "$stack_count" ]; do
   i=$((i+1))
 done
 
-# bash 3.2-compat replacement for `${CROSS_REFS[$name]:-}`.
+# bash 3.2-compat replacement for `${CROSS_REFS[$name]:-}` (parallel-array lookup).
 _cross_refs_for() {
   local _want="$1" _k=0
   while [ "$_k" -lt "${#STACK_NAMES[@]}" ]; do
@@ -149,8 +149,8 @@ file_to_stack() {
 }
 
 # ref_allowed <src_stack> <tgt_stack> -> 0 if tgt in src.cross_refs[] else 1.
-# AF-2026-05-31-1 / Test12 F-06: routed through _cross_refs_for() (bash 3.2
-# parallel-array replacement for the prior CROSS_REFS assoc-array lookup).
+# Routed through _cross_refs_for() (bash 3.2 parallel-array replacement for the
+# prior CROSS_REFS assoc-array lookup).
 ref_allowed() {
   local src="$1" tgt="$2" r refs
   refs="$(_cross_refs_for "$src")"

@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-# commands-guard.sh — GAIA foundation script (E28-S127)
+# commands-guard.sh — GAIA foundation script
 #
-# FR-329 regression guard. Fails the build if any gaia-*.md file reappears
+# Regression guard. Fails the build if any gaia-*.md file reappears
 # under gaia-framework/plugins/gaia/commands/. The commands/ surface was retired
-# as part of Cluster 18 (Cleanup & Migration) and MUST NOT be repopulated —
-# skills under plugins/gaia/skills/ are the sole user-invocation surface.
-#
-# Refs: FR-329, NFR-050, ADR-048
-# Story: E28-S127 Task 6 / AC5
+# and MUST NOT be repopulated — skills under plugins/gaia/skills/ are the sole
+# user-invocation surface.
 #
 # This is a NARROW-SCOPE guard: directory-emptiness check only. Broader
 # active-code scanning for legacy file-path references is handled by
@@ -49,7 +46,7 @@ COMMANDS_DIR="$PROJECT_ROOT/plugins/gaia/commands"
 
 # Clean path: the retired directory does not exist at all.
 if [[ ! -d "$COMMANDS_DIR" ]]; then
-  echo "commands-guard: CLEAN — plugins/gaia/commands/ does not exist (FR-329 satisfied)"
+  echo "commands-guard: CLEAN — plugins/gaia/commands/ does not exist"
   exit 0
 fi
 
@@ -62,18 +59,17 @@ done < <(find "$COMMANDS_DIR" -maxdepth 1 -type f -name 'gaia-*.md' -print0 2>/d
 offenders=$(printf '%s' "$offenders" | sed '/^$/d')
 
 if [[ -z "$offenders" ]]; then
-  echo "commands-guard: CLEAN — plugins/gaia/commands/ exists but contains no gaia-*.md files (FR-329 satisfied)"
+  echo "commands-guard: CLEAN — plugins/gaia/commands/ exists but contains no gaia-*.md files"
   exit 0
 fi
 
-echo "commands-guard: FAILED — FR-329 regression detected"
+echo "commands-guard: FAILED — commands/ regression detected"
 echo
-echo "The plugins/gaia/commands/ directory was retired under FR-329 (Slash Command"
-echo "Retirement) and MUST NOT be repopulated. The following file(s) were found:"
+echo "The plugins/gaia/commands/ directory was retired (Slash Command Retirement)"
+echo "and MUST NOT be repopulated. The following file(s) were found:"
 echo
 printf '%s\n' "$offenders"
 echo
 echo "Move each file's functionality to a SKILL.md under plugins/gaia/skills/{name}/"
-echo "and remove the file from plugins/gaia/commands/. See FR-329 in prd.md and"
-echo "ADR-048 in architecture.md for the retirement rationale."
+echo "and remove the file from plugins/gaia/commands/."
 exit 1

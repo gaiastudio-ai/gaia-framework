@@ -41,7 +41,7 @@ The brand mark `◆` is rendered at ~14pt in most terminal configurations, which
 
 ## Update-signal triple
 
-FR-435 mandates that `update_available: true` from the cache file triggers **three** signals simultaneously:
+The statusline mandates that `update_available: true` from the cache file triggers **three** signals simultaneously:
 
 1. **Glyph** — `↑` (or `^` in ASCII mode).
 2. **Bold + color** — `COLOR_UPDATE` (bold + amber).

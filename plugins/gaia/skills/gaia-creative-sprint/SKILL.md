@@ -17,7 +17,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Memory
 
@@ -31,14 +31,14 @@ Multi-agent creative pipeline that runs a three-phase sprint: **empathize →
 solve → innovate → synthesize**. Each phase delegates to a converted
 subagent (Lyra, Nova, Orion) via sequential `context: fork` invocations, then
 Gaia merges the three phase outputs into a unified creative brief.
-Converted from the legacy `creative-sprint` workflow under ADR-041 (native
-execution model) and ADR-045 (sequential fork-subagent pattern) with full
-functional parity against the legacy workflow (NFR-053). The legacy-source
-path is intentionally omitted from the body per E28-S102 parity check; see
+Converted from the legacy `creative-sprint` workflow under the native
+execution model and sequential fork-subagent pattern with full
+functional parity against the legacy workflow. The legacy-source
+path is intentionally omitted from the body per the parity check; see
 the References section for the parity source pointer.
 
-**Architectural parallel with `gaia-party` (E28-S101) and
-`gaia-run-all-reviews` (E28-S72):** all three skills are sequential
+**Architectural parallel with `gaia-party` and
+`gaia-run-all-reviews`:** all three skills are sequential
 fork-subagent orchestrators. `gaia-run-all-reviews` is the fixed-sequence
 reviewer chain; `gaia-party` is the dynamic-participant roundtable;
 `gaia-creative-sprint` is the fixed three-phase creative pipeline. The
@@ -47,17 +47,16 @@ reordered); only the participant set and per-step output contract differ.
 
 ## Critical Rules
 
-- **Sequential only (ADR-045, AC-EC3):** Each phase builds on the previous
+- **Sequential only (AC-EC3):** Each phase builds on the previous
   phase's output. Phase 2 (Solve) refuses to start before Phase 1
   (Empathize) output is captured. Phase 3 (Innovate) refuses to start before
   Phase 2 output is captured. Never parallelize phases; never reorder. Refuse
   any `--parallel` flag or equivalent parallel-invocation request with the
   error `Parallel orchestration refused — gaia-creative-sprint is
-  sequential-only per ADR-045.`
-- **Fork-within-fork (ADR-041):** This skill runs under `context: fork`, and
+  sequential-only.`
+- **Fork-within-fork:** This skill runs under `context: fork`, and
   each phase's subagent invocation within the pipeline is **also** its own
-  sequential `context: fork` subagent call — matching the E28-S72 /
-  E28-S101 topology.
+  sequential `context: fork` subagent call — matching the same topology.
 - **Halt-on-failure semantics (AC-EC1):** If a phase's subagent fails
   (crash, non-zero exit, timeout, or returns a malformed output), the
   pipeline halts. The skill MUST NOT emit a partial unified creative brief.
@@ -76,7 +75,7 @@ reordered); only the participant set and per-step output contract differ.
   frontmatter, or touch the state machine. It writes ONLY to
   `.gaia/artifacts/creative-artifacts/creative-sprint-{date}.md` (and optional
   scratch-state files for partial phase outputs).
-- **Output contract preserved (NFR-053):** The unified brief path template
+- **Output contract preserved:** The unified brief path template
   `.gaia/artifacts/creative-artifacts/creative-sprint-{date}.md` is preserved verbatim
   from the legacy `workflow.yaml:output.primary`. Do not rename.
 
@@ -202,7 +201,7 @@ merging with attribution.
 Write the unified creative brief to
 `.gaia/artifacts/creative-artifacts/creative-sprint-{date}.md` where `{date}` is the
 current date in `YYYY-MM-DD` form. This path is verbatim from the legacy
-workflow's `output.primary` contract (NFR-053 — functional parity).
+workflow's `output.primary` contract (functional parity).
 
 ### Same-day overwrite handling (AC-EC5)
 
@@ -249,9 +248,9 @@ output):
 
 ## Frontmatter linter compliance (AC4, AC-EC4)
 
-This SKILL.md passes the E28-S7 frontmatter linter
+This SKILL.md passes the frontmatter linter
 (`.github/scripts/lint-skill-frontmatter.sh`) with zero errors. The
-required fields per E28-S19 schema are present: `name` (matches directory
+required fields per the schema are present: `name` (matches directory
 slug) and `description` (trigger-signature with concrete action phrase).
 `allowed-tools` is validated against the canonical tool set (Agent is
 required because the three phase subagents are invoked via the Agent tool).
@@ -267,7 +266,7 @@ phases:
 | Legacy step | Native phase | Notes |
 |-------------|--------------|-------|
 | Step 1 — Sprint Briefing | `## Inputs` | Identical inputs (challenge, constraints, success criteria, audience) |
-| Step 2 — Empathize | Phase 1 — Empathize | Same subagent role (Lyra); delegation via the `Agent` tool per ADR-041 |
+| Step 2 — Empathize | Phase 1 — Empathize | Same subagent role (Lyra); delegation via the `Agent` tool |
 | Step 3 — Solve | Phase 2 — Solve | Same subagent role (Nova); sequential gate now explicit |
 | Step 4 — Innovate | Phase 3 — Innovate | Same subagent role (Orion); sequential gate now explicit |
 | Step 5 — Synthesize | `## Synthesize` | Deterministic merge by Gaia — no subagent call |
@@ -280,22 +279,22 @@ chaining. See the References section for the legacy parity source paths.
 
 ## References
 
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents +
+- Native Execution Model via Claude Code Skills + Subagents +
   Plugins + Hooks (replaces the legacy workflow engine)
-- ADR-045 — Review Gate via Sequential `context: fork` Subagents (same
+- Review Gate via Sequential `context: fork` Subagents (same
   sequential-fork-subagent pattern used here for the three-phase pipeline)
-- FR-323 — Skill-to-workflow conversion mapping
-- NFR-048 — Conversion token-reduction target
-- NFR-053 — Functional parity with legacy workflow
+- Skill-to-workflow conversion mapping
+- Conversion token-reduction target
+- Functional parity with legacy workflow
 - Reference implementations:
-  - `plugins/gaia/skills/gaia-run-all-reviews/SKILL.md` (E28-S72 —
-    fixed-sequence variant of the same pattern)
-  - `plugins/gaia/skills/gaia-party/SKILL.md` (E28-S101 —
-    dynamic-participant variant of the same pattern)
-- Converted subagents (E28-S22):
+  - `plugins/gaia/skills/gaia-run-all-reviews/SKILL.md` (fixed-sequence
+    variant of the same pattern)
+  - `plugins/gaia/skills/gaia-party/SKILL.md` (dynamic-participant
+    variant of the same pattern)
+- Converted subagents:
   - `plugins/gaia/agents/design-thinking-coach.md` — Lyra
   - `plugins/gaia/agents/problem-solver.md` — Nova
   - `plugins/gaia/agents/innovation-strategist.md` — Orion
 - Legacy parity source (for reference only; not invoked from this skill;
   legacy path intentionally omitted from the body to satisfy the
-  "zero legacy references" parity check — see E28-S102 test scenario 8).
+  "zero legacy references" parity check).

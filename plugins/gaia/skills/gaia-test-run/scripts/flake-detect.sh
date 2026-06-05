@@ -12,7 +12,7 @@
 #   - Network error / network is unreachable / Connection refused / DNS lookup
 #   - Could not resolve host
 #
-# Story: E72-S1 (AC8, ADR-077 Phase 3B)
+
 
 set -euo pipefail
 LC_ALL=C

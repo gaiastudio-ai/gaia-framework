@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# run-tests.sh — gaia-test-run main runner (E72-S1)
+# run-tests.sh — gaia-test-run main runner
 #
 # Resolves test_execution.{tier}.placement, dispatches to the configured
 # runner (local) or emits a dry-run line (any non-local placement), and
 # emits a structured verdict.
-#
-# Story: E72-S1 (FR-RSV2-39, FR-RSV2-40, ADR-077)
 
 set -euo pipefail
 LC_ALL=C
@@ -41,7 +39,7 @@ TAG=""
 STORY=""
 FILE=""
 JSON_OUT=0
-NO_EXECUTE=0   # internal flag for AC6 default-tier check without invoking a runner
+NO_EXECUTE=0   # internal flag for default-tier check without invoking a runner
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -65,7 +63,7 @@ case "$TIER" in
   *) log "invalid tier '$TIER' (must be 1, 2, or 3)"; exit 64;;
 esac
 
-# ---- Resolve placement (AC9) --------------------------------------------
+# ---- Resolve placement --------------------------------------------------
 PLACEMENT="$(resolve_field "test_execution.tier_${TIER}.placement")"
 PLACEMENT="${PLACEMENT//\"/}"   # strip quotes if any
 PLACEMENT="${PLACEMENT## }"
@@ -76,7 +74,7 @@ if [ -z "$PLACEMENT" ]; then
   exit 2
 fi
 
-# ---- AC6: short-circuit no-execute path for default-tier verification ---
+# ---- Short-circuit no-execute path for default-tier verification --------
 if [ "$NO_EXECUTE" -eq 1 ]; then
   echo "tier=${TIER}"
   echo "environment=${PLACEMENT}"
@@ -89,7 +87,7 @@ PROVIDER="${PROVIDER//\"/}"
 PROVIDER="${PROVIDER## }"
 PROVIDER="${PROVIDER%% }"
 
-# ---- Compose targeting args (per-PROVIDER mapping — AF-2026-05-17-4) ----
+# ---- Compose targeting args (per-PROVIDER mapping) ----------------------
 # Targeting flags get composed AFTER PROVIDER is resolved (see compose_target_args
 # below) so the --tag / --story / --file forwarding can use the correct
 # runner-native syntax. The TARGET_ARGS array is populated by compose_target_args()
@@ -117,9 +115,8 @@ compose_target_args() {
   fi
 
   if [ -n "$STORY" ]; then
-    # Expand --story KEY → filename matches via maxdepth-4 find. Mirror the
-    # AF-2026-05-17-3 detection convention so callers get consistent search
-    # depth regardless of CWD.
+    # Expand --story KEY → filename matches via maxdepth-4 find. Uses consistent
+    # search depth regardless of CWD.
     local matches
     matches=$(find . -maxdepth 4 -type f -name "*${STORY}*" 2>/dev/null \
               | grep -E '\.(bats|test\.(js|ts|tsx)|test\.py|_test\.go)$' \
@@ -159,8 +156,7 @@ compose_target_args() {
   if [ "$has_positional" -eq 0 ]; then
     case "$PROVIDER" in
       bats)
-        # Default to the highest-density bats directory under maxdepth 4
-        # (mirrors the AF-2026-05-17-3 recursive detection logic).
+        # Default to the highest-density bats directory under maxdepth 4.
         local bats_dir
         bats_dir=$(find . -maxdepth 4 -type f -name '*.bats' 2>/dev/null \
                    | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -1 \
@@ -216,7 +212,7 @@ if [ "$PLACEMENT" != "local" ]; then
     for arg in "${TARGET_ARGS[@]}"; do CMD="$CMD $arg"; done
   fi
   echo "dry-run: tier ${TIER} maps to environment '${PLACEMENT}' — would execute: ${CMD}"
-  echo "(remote execution for non-local placements lands in E73 deployment-phase skills)"
+  echo "(remote execution for non-local placements is handled by deployment-phase skills)"
   emit_verdict "DRY_RUN" 0 0 0 0 0 "flake_suspected=false" ""
   exit 0
 fi
@@ -225,10 +221,10 @@ fi
 if [ -z "$PROVIDER" ]; then
   # Fall back: detect by file presence at top of CWD, then by shallow
   # recursive scan (maxdepth 4) for projects whose test files live under
-  # nested directories like plugins/<x>/tests/ or src/<x>/__tests__/
-  # (AF-2026-05-17-3). The 4-level bound is wide enough to catch the
-  # GAIA plugin layout (plugins/gaia/tests/*.bats = 3 levels) and typical
-  # monorepo conventions, but tight enough to avoid scanning huge trees.
+  # nested directories like plugins/<x>/tests/ or src/<x>/__tests__/.
+  # The 4-level bound is wide enough to catch the GAIA plugin layout
+  # (plugins/gaia/tests/*.bats = 3 levels) and typical monorepo conventions,
+  # but tight enough to avoid scanning huge trees.
   if [ -f vitest.config.ts ] || [ -f vitest.config.js ]; then
     PROVIDER="vitest"
   elif [ -f pyproject.toml ] || [ -f pytest.ini ]; then
@@ -252,7 +248,7 @@ if [ -z "$PROVIDER" ]; then
   fi
 fi
 
-# Compose targeting args now that PROVIDER is resolved (AF-2026-05-17-4).
+# Compose targeting args now that PROVIDER is resolved.
 compose_target_args
 
 START_NS="$(date +%s%N 2>/dev/null || echo 0)"

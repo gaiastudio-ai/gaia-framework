@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# plugin-cache-recovery.sh — GAIA foundation script (E28-S25)
+# plugin-cache-recovery.sh — GAIA foundation script
 #
 # Detects and recovers from a polluted Claude Code plugin marketplace cache.
 # Automates the manual recipe documented in README.md so users (and support
@@ -51,7 +51,7 @@
 #   2 — detect reports a polluted or stale entry (detect mode only)
 #   3 — filesystem error during removal
 #
-# Contract for CI / bats-core (E28-S17):
+# Contract for CI / bats-core:
 #   - --cache-root overrides $HOME/.claude/plugins/marketplaces so tests
 #     never touch a real home directory.
 #   - --dry-run prints the intended rm target to stdout and exits 0 without
@@ -59,11 +59,6 @@
 #   - stderr is reserved for errors and warnings; stdout is reserved for
 #     machine-parseable status lines prefixed `plugin-cache-recovery:`.
 #
-# Refs:
-#   - README.md "Recovery from a polluted marketplace cache" (E28-S24)
-#   - FR-325 (foundation scripts unlock token reduction)
-#   - ADR-042 §10.26.x (foundation scripts catalog)
-
 set -uo pipefail
 LC_ALL=C
 

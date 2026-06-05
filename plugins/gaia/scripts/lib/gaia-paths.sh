@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# gaia-paths.sh — canonical-path-constants helper for the .gaia/ consolidation
-# (E96-S1, ADR-111). Sourceable, NOT executable.
+# gaia-paths.sh — canonical-path-constants helper for the .gaia/ consolidation.
+# Sourceable, NOT executable.
 #
 # Exports the five canonical GAIA path constants:
 #   GAIA_CONFIG_DIR     = ${project_root}/.gaia/config
@@ -9,7 +9,7 @@
 #   GAIA_MEMORY_DIR     = ${project_root}/.gaia/memory
 #   GAIA_CUSTOM_DIR     = ${project_root}/.gaia/custom
 #
-# Plus (E96-S7 AC4) one derived constant + two backward-compat env-var aliases:
+# Plus one derived constant + two backward-compat env-var aliases:
 #   GAIA_CHECKPOINT_DIR = ${GAIA_MEMORY_DIR}/checkpoints
 #   MEMORY_PATH         = ${GAIA_MEMORY_DIR}      (alias for scripts that default to ./_memory)
 #   CHECKPOINT_PATH     = ${GAIA_CHECKPOINT_DIR}  (alias for scripts that default to ./_memory/checkpoints)
@@ -18,7 +18,7 @@
 #   1. ${CLAUDE_PROJECT_ROOT} if set
 #   2. ${PWD} as fallback
 #
-# Env-var overrides (T-GLM-5 / SR-75 — allowlist + shell-metachar rejection):
+# Env-var overrides (allowlist + shell-metachar rejection):
 #   GAIA_CONFIG_PATH, GAIA_ARTIFACTS_PATH, GAIA_STATE_PATH,
 #   GAIA_MEMORY_PATH, GAIA_CUSTOM_PATH
 #
@@ -31,11 +31,6 @@
 #   This is what lets multiple downstream scripts re-source the helper without
 #   the override allowlist firing twice on the same env.
 #
-# References:
-#   - ADR-111  (Decision Log entry, supersedes ADR-020/044/046)
-#   - T-GLM-5  (threat — Elevation of Privilege via env-var injection)
-#   - SR-75    (security requirement — env-var override allowlist)
-#   - TC-GLM-10 (test plan — bats coverage in plugins/gaia/tests/gaia-paths.bats)
 
 # Idempotent source guard. If already loaded, do not re-evaluate overrides.
 if [ "${_GAIA_PATHS_LOADED:-0}" = "1" ]; then
@@ -179,7 +174,7 @@ _gaia_paths_resolve_override \
   "$_GAIA_ROOT_CANON" \
   GAIA_CUSTOM_DIR || return 1
 
-# E96-S7 AC4: derived checkpoint-dir constant + backward-compat env-var aliases.
+# Derived checkpoint-dir constant + backward-compat env-var aliases.
 # The checkpoint dir nests under the memory dir; downstream scripts that
 # currently consume `${CHECKPOINT_PATH:-./_memory/checkpoints}` defaults pick
 # up the canonical `.gaia/memory/checkpoints/` path automatically when this

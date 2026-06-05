@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# setup.sh — shared Cluster 4 skill setup (E28-S35, brief §Cluster 4)
+# setup.sh — shared analysis skill setup
 #
-# Reference implementation for the Cluster 4 analysis skills (brainstorm-project,
+# Reference implementation for the analysis skills (brainstorm-project,
 # create-product-brief, market-research, domain-research, technical-research,
-# advanced-elicitation). The sibling stories E28-S36/S37/S38 mechanically copy
-# this script and update WORKFLOW_NAME.
+# advanced-elicitation). Sibling skills mechanically copy this script and update
+# WORKFLOW_NAME.
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (none required by brainstorm — it is
 #      the first workflow in the analysis lifecycle)
@@ -57,8 +57,8 @@ done <<<"$config_output"
 # brainstorm-project has no mandatory prereq artifacts — it is the first
 # workflow in the analysis lifecycle. Run the no-op file_exists gate with
 # zero --file arguments; validate-gate.sh treats this as a passing no-op
-# and exits 0. This establishes the shared call pattern Cluster 4 stories
-# E28-S36/S37/S38 will extend with their own prereqs.
+# and exits 0. This establishes the shared call pattern that sibling skills
+# will extend with their own prereqs.
 if [ -x "$VALIDATE_GATE" ]; then
   if ! "$VALIDATE_GATE" file_exists >/dev/null 2>&1; then
     die "validate-gate.sh pre-start gate failed for $WORKFLOW_NAME"

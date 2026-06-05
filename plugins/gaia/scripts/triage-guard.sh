@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# triage-guard.sh — done-story immutability guard for /gaia-triage-findings (E39-S1)
+# triage-guard.sh — done-story immutability guard for /gaia-triage-findings
 #
-# Implements FR-FITP-1 (Done-Story Immutability Guard):
+# Done-Story Immutability Guard:
 #   /gaia-triage-findings MUST halt on ADD TO EXISTING classifications that
 #   target a story with `status: done`, with an explicit override flag that
 #   records the override in the triage report for retrospective review.
@@ -22,8 +22,8 @@
 # the triage report (passed via --report) is written on the override path.
 #
 # Shared with gaia-triage-findings/SKILL.md Step 3 (ADD TO EXISTING branch).
-# Follows ADR-042 (scripts-over-LLM): deterministic guard logic lives in a
-# testable shell script rather than SKILL.md prose.
+# Deterministic guard logic lives in a testable shell script rather than
+# SKILL.md prose.
 
 set -euo pipefail
 LC_ALL=C

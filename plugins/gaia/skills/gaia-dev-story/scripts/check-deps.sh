@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-deps.sh — gaia-dev-story Step 1 dependency check (E57-S6, P1-1)
+# check-deps.sh — gaia-dev-story Step 1 dependency check
 #
 # Validates that every story listed in the input story's `depends_on:`
 # frontmatter is in `status: done`. Three deterministic exit codes:
@@ -16,15 +16,12 @@
 # Usage:
 #   check-deps.sh <story_path>
 #
-# Consumes the canonical env-var contract from story-parse.sh (E57-S5):
+# Consumes the canonical env-var contract from story-parse.sh:
 # the input story's `DEPENDS_ON` and `STORY_PATH` come from a forked
 # story-parse evaluation. For each dep KEY we then locate its story file
 # under "${IMPLEMENTATION_ARTIFACTS_DIR:-.gaia/artifacts/implementation-artifacts}"
 # matching the glob "<KEY>-*.md".
 #
-# Refs: FR-DSS-4, AF-2026-04-28-6, TC-DSS-05
-# Story: E57-S6
-
 set -euo pipefail
 LC_ALL=C
 export LC_ALL
@@ -56,11 +53,11 @@ fi
 
 # Implementation-artifacts directory.
 #
-# E57-S14 / AI-RETRO-S45-3 / AC1-AC3: when no explicit env-var is set, walk
-# UP from the input story path to find the parent `.gaia/artifacts/implementation-artifacts/`
-# directory and use that as the search root. This lets `check-deps.sh` see
-# stories across other epics (nested layout: `epic-*/stories/`) — not just the
-# one epic the input story happens to live in.
+# When no explicit env-var is set, walk UP from the input story path to find
+# the parent `.gaia/artifacts/implementation-artifacts/` directory and use that
+# as the search root. This lets `check-deps.sh` see stories across other epics
+# (nested layout: `epic-*/stories/`) — not just the one epic the input story
+# happens to live in.
 #
 # Backward-compat: when `IMPLEMENTATION_ARTIFACTS_DIR` is set explicitly,
 # use it verbatim — no walk-up, no recursion. Preserves test fixtures and
@@ -110,7 +107,7 @@ for key in "${DEP_KEYS[@]}"; do
   [ -z "$key" ] && continue
 
   # Locate "<KEY>-*.md" under IMPL_DIR. Prefer first lexicographic match.
-  # Searches all three layout tiers (E105-S1 / ADR-127).
+  # Searches all three layout tiers.
   #
   # Filter: skip "*-review-summary.md" siblings. These are review-output
   # artifacts emitted by /gaia-run-all-reviews; they share the "{KEY}-*"
@@ -118,8 +115,8 @@ for key in "${DEP_KEYS[@]}"; do
   # story-parse.sh return `<unparseable>` on them — surfacing as a false
   # dependency-not-done HALT. Story files live as:
   #   - "{KEY}-<slug>.md" (legacy flat), OR
-  #   - "epic-<key>-<slug>/stories/{KEY}-<slug>.md" (legacy nested, ADR-070), OR
-  #   - "epic-<key>-<slug>/{KEY}-<slug>/story.md" (NEW per-story, E105-S1/ADR-127).
+  #   - "epic-<key>-<slug>/stories/{KEY}-<slug>.md" (legacy nested), OR
+  #   - "epic-<key>-<slug>/{KEY}-<slug>/story.md" (new per-story layout).
   # Review-summary files only ever sit flat under IMPL_DIR.
   match=""
   if [ -d "$IMPL_DIR" ]; then

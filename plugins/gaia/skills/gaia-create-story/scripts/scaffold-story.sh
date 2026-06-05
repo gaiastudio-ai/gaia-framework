@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scaffold-story.sh — gaia-create-story Step 4 deterministic story-skeleton
-#                     emitter (E63-S9 / Work Item 6.4)
+#                     emitter
 #
 # Purpose:
 #   Render a story file from a template by populating the deterministic
@@ -12,20 +12,18 @@
 #   section heading. The downstream LLM Edit step fills the placeholders.
 #
 # Consumers:
-#   - E63-S11 SKILL.md thin-orchestrator rewrite — invokes this script inline
-#     after slug derivation (E63-S1) and frontmatter generation (E63-S3).
+#   - SKILL.md thin-orchestrator — invokes this script inline after slug
+#     derivation and frontmatter generation.
 #
 # Upstream dependencies:
-#   - E63-S1 slugify.sh             (caller-side slug derivation)
-#   - E63-S3 generate-frontmatter.sh (produces the YAML block this script
-#                                     consumes via --frontmatter)
+#   - slugify.sh             (caller-side slug derivation)
+#   - generate-frontmatter.sh (produces the YAML block this script
+#                              consumes via --frontmatter)
 #
 # Contract source:
-#   - ADR-074 contract C3 — status-edit discipline (force `status: backlog`,
-#     never write to sprint-status.yaml, epics-and-stories.md,
-#     story-index.yaml, or test-plan.md)
-#   - ADR-042            — Scripts-over-LLM rationale
-#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.4
+#   - Status-edit discipline: force `status: backlog`, never write to
+#     sprint-status.yaml, epics-and-stories.md, story-index.yaml,
+#     or test-plan.md.
 #
 # Algorithm (in order):
 #   1. Parse CLI flags: --template, --output, --frontmatter (string or `-`
@@ -79,8 +77,7 @@ Usage: scaffold-story.sh \
 Behavior:
   - Frontmatter `{placeholder}` tokens are replaced with caller-supplied
     values from the YAML block.
-  - `status:` is FORCED to `backlog` regardless of caller input
-    (ADR-074 contract C3).
+  - `status:` is FORCED to `backlog` regardless of caller input.
   - Deterministic body sections (Findings, Review Gate, Estimate,
     Definition of Done, Dev Agent Record skeleton) are emitted verbatim
     with token substitution applied.
@@ -258,7 +255,7 @@ extract_value() {
   printf '%s' "$v"
 }
 
-# E80-S1: extract a YAML value verbatim — no quote stripping. Used for
+# Extract a YAML value verbatim — no quote stripping. Used for
 # fields whose template tokens have no surrounding quotes (origin,
 # origin_ref, depends_on, blocks, traces_to). Preserves the upstream YAML
 # shape: bare `null`, quoted `"…"`, or flow array `["a","b"]`.
@@ -278,7 +275,7 @@ points_v="$(extract_value points)"
 risk_v="$(extract_value risk)"
 date_v="$(extract_value date)"
 author_v="$(extract_value author)"
-# E80-S1: also extract the five fields the template now exposes as tokens.
+# Also extract the five fields the template now exposes as tokens.
 # Use the RAW extractor so the upstream YAML shape is preserved verbatim —
 # bare `null`, quoted `"…"`, or flow array `["a","b"]`. The corresponding
 # template tokens have NO surrounding quotes (e.g., `origin: {origin}`), so
@@ -360,7 +357,7 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
     # Estimate body uses spaced forms.
     gsub(/\{story points\}/,      points_v,   out)
     gsub(/\{assigned agent\}/,    author_v,   out)
-    # E80-S1: substitute the five frontmatter tokens that previously
+    # Substitute the five frontmatter tokens that previously
     # remained as template defaults (origin: null, depends_on: [], ...).
     gsub(/\{origin\}/,            origin_v,     out)
     gsub(/\{origin_ref\}/,        origin_ref_v, out)
@@ -380,7 +377,7 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
     if (line == "## Test Scenarios")        return 1
     return 0
   }
-  # Test17 L-05 / AF-2026-06-02-6: section-distinct placeholder tokens.
+  # Section-distinct placeholder tokens.
   # Returns the per-section placeholder string for a content heading; the
   # prior implementation emitted the same `{CONTENT_PLACEHOLDER}` token for
   # all 7 content sections, which let a single Edit-step elaboration fill
@@ -441,10 +438,10 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
       in_content = is_content_heading(line) ? 1 : 0
       print line
       if (in_content) {
-        # Emit a section-distinct placeholder (Test17 L-05). Blank line
-        # above for readability and a blank line below to match section
-        # spacing. The per-section token lets the LLM differentiate which
-        # content goes where rather than repeating the same body 7×.
+        # Emit a section-distinct placeholder. Blank line above for
+        # readability and a blank line below to match section spacing.
+        # The per-section token lets the LLM differentiate which content
+        # goes where rather than repeating the same body 7×.
         print ""
         print placeholder_for(line)
         print ""

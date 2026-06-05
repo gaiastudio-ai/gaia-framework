@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-init checkpoint write. Foundation script per ADR-042.
-# Story: E71-S1.
+# finalize.sh — gaia-init checkpoint write.
 set -euo pipefail
 LC_ALL=C
 export LC_ALL

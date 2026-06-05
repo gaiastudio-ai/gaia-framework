@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# resolve-latest-dated.sh — latest-by-date artifact resolver (E105-S3)
+# resolve-latest-dated.sh — latest-by-date artifact resolver
 #
 # Resolves a dated-artifact family to its newest on-disk instance, with a
 # read-side fallback to a legacy undated file. Formalizes the date-suffix
-# convention (ADR-127 Pillar 3): periodically-reassessed plans
+# convention: periodically-reassessed plans
 # (nfr-assessment, performance-test-plan) and per-event reports (adversarial,
 # retrospective, anytime security-review) carry a `-{YYYY-MM-DD}` suffix and
 # group under a named subdir; living docs carry no date.
@@ -17,8 +17,8 @@
 #
 # READ-ONLY — emits the resolved path on stdout, nothing else.
 #
-# Refs: ADR-127 Pillar 3, ADR-119, ADR-070, ADR-042, FR-555
 #
+
 # Invocation:
 #   resolve-latest-dated.sh --dir <dir> --base <base-name-without-date-or-ext>
 #   resolve-latest-dated.sh --help

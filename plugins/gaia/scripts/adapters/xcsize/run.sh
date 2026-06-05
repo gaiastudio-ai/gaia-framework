@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/xcsize/run.sh — ADR-078 adapter contract for xcsize (E74-S7).
+# adapters/xcsize/run.sh — adapter contract for xcsize.
 # Uses xcrun tooling for iOS app thinning size analysis. The provider binary is
 # `xcrun` (Xcode command-line tools); the actual size sub-tool is invoked via
 # `xcrun size <target>` for static binary size and (optionally) app-thinning

@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# story-parse.sh — gaia-dev-story Step 1 frontmatter parser (E57-S5, P0-1)
+# story-parse.sh — gaia-dev-story Step 1 frontmatter parser
 #
 # Parses a story file's YAML frontmatter and Tasks/AC sections, then emits the
 # canonical 10-variable env-var dump on stdout. Designed for `eval "$(...)"`
 # consumption — every value is single-quoted and shell-metachar safe.
-#
-# Refs: FR-DSS-1, FR-DSS-2, AF-2026-04-28-6
-# Story: E57-S5
 #
 # Usage:
 #   story-parse.sh <story_path>
@@ -46,7 +43,7 @@ fi
 
 STORY_PATH_INPUT="$1"
 
-# Path traversal rejection — defense in depth (AC6). Reject ANY '..' in the
+# Path traversal rejection — defense in depth. Reject ANY '..' in the
 # path before any filesystem access.
 case "$STORY_PATH_INPUT" in
   *..*)
@@ -64,7 +61,7 @@ fi
 #
 # Frontmatter lives between the first two `---` lines. If the second `---` is
 # absent we exit 2 (malformed). The shared frontmatter-lib.sh provides the
-# slicing and field-reading primitives — see AC3, AC-EC3 (E64-S1).
+# slicing and field-reading primitives.
 
 # shellcheck source=./frontmatter-lib.sh
 SCRIPT_DIR_FOR_LIB="$(cd "$(dirname "$0")" && pwd)"
@@ -81,9 +78,9 @@ get_field() {
 
 # get_field_aliased CANONICAL ALIAS — return the canonical frontmatter field
 # if present, otherwise fall back to the alias. Tolerates the `story_key:` /
-# `epic_key:` convention every other story-consuming skill already accepts,
-# closing the dev-story-only contract mismatch (issue #1091). Backward- and
-# forward-compatible: canonical `key:` / `epic:` continue to take precedence.
+# `epic_key:` convention every other story-consuming skill already accepts.
+# Backward- and forward-compatible: canonical `key:` / `epic:` continue to
+# take precedence.
 get_field_aliased() {
   local canonical="$1" alias="$2" val
   val="$(get_field "$canonical")"

@@ -235,8 +235,8 @@ EOF
 # D-8 — test-architect persona splits planning vs test-tier routing
 # ===========================================================================
 
-@test "AF-33-6 D-8: test-architect persona references ADR-127 + splits routing" {
-  grep -qF 'ADR-127' "$PLUGIN/agents/test-architect.md"
+@test "AF-33-6 D-8: test-architect persona references planning-tier homogeneity contract + splits routing" {
+  grep -qF 'planning-tier homogeneity contract' "$PLUGIN/agents/test-architect.md"
   grep -qF 'Planning-tier artifacts' "$PLUGIN/agents/test-architect.md"
   grep -qF 'Test-tier artifacts' "$PLUGIN/agents/test-architect.md"
 }

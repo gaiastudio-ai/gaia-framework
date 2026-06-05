@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 11 gaia-edit-test-plan skill setup (E28-S87)
+# setup.sh — gaia-edit-test-plan skill setup
 #
-# Mechanical extension of the Cluster 9 reference implementation authored
-# under E28-S66 (gaia-code-review/scripts/setup.sh). Adds edit-test-plan-
-# specific prereq gates:
+# Mechanical extension of the gaia-code-review/scripts/setup.sh reference
+# implementation. Adds edit-test-plan-specific prereq gates:
 #   - test-plan.md must exist in test-artifacts (validate-gate file_exists)
 #
-# Responsibilities (per brief Cluster 11):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (test-plan.md existence)
 #   3. Load the checkpoint state for this workflow
@@ -63,14 +62,14 @@ else
 fi
 
 # ---------- 2b. Guard: test-plan.md must already exist ----------
-# AF-2026-05-21-19 three-tier path resolution (mirrors AF-21-12/-14 flat elif chain):
+# Three-tier path resolution:
 #   Tier 1 — TEST_PLAN_PATH env-var override wins when set.
-#   Tier 2 — positive pre-ADR-111 evidence (legacy file exists AND canonical
+#   Tier 2 — positive legacy evidence (legacy file exists AND canonical
 #            dir does NOT) → use legacy docs/test-artifacts/test-plan.md.
-#   Tier 3 — canonical default: .gaia/artifacts/test-artifacts/test-plan.md per ADR-111.
-# AF-2026-05-29-2 / Test09 F-20: prefer CLAUDE_PROJECT_ROOT (the framework-
-# standard harness var) and GAIA_PROJECT_ROOT (project-specific) BEFORE the
-# $SKILL_DIR/../../../../.. walk-up. On a marketplace/cache-installed plugin
+#   Tier 3 — canonical default: .gaia/artifacts/test-artifacts/test-plan.md.
+# Prefer CLAUDE_PROJECT_ROOT (the framework-standard harness var) and
+# GAIA_PROJECT_ROOT (project-specific) BEFORE the $SKILL_DIR/../../../../..
+# walk-up. On a marketplace/cache-installed plugin
 # (~/.claude/plugins/cache/<mp>/gaia/<ver>/skills/<skill>/scripts/), walking
 # 5 levels up lands in `~/.claude/plugins/cache` — NOT the user's project —
 # and every subsequent .gaia/ artifact lookup misses. Honoring the harness-

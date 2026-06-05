@@ -1,26 +1,25 @@
 #!/usr/bin/env bash
-# adapters/brownfield/dedup.sh — E104-S1 cross-tool finding dedup (dual keys).
+# adapters/brownfield/dedup.sh — cross-tool finding dedup (dual keys).
 #
-# Reads the merged SARIF (E104-S4 output) and emits a deduplicated finding
-# stream so downstream consumers (E104-S2 Phase 4b reconciliation) see one
-# finding per real issue instead of 2-4x inflated counts (FR-541 / ADR-123).
+# Reads the merged SARIF and emits a deduplicated finding stream so downstream
+# consumers see one finding per real issue instead of 2-4x inflated counts.
 #
-# Dual dedup keys (AC1):
+# Dual dedup keys:
 #   CVE class (ruleId ~ ^CVE-\d{4}-\d{4,}$):
 #     group (CVE-ID, file_path, severity); winner = lowest source_tool ordinal
 #     (grype=0, osv-scanner=1, owasp-depcheck=2 — Grype canonical).
 #   Non-CVE class:
 #     group (file_path, symbol-qualifier); winner = highest precision per the
 #     ladder (deadcode-go=0 > spotbugs=1 > vulture=2 > lint=3 > unknown=99).
-#     NOTE: AC1's literal key is (tool, file, qualifier), but tool-inclusive
-#     grouping makes the precision ladder unreachable — implemented per INTENT
-#     (group file+qualifier, tool drives precision). Deviation = story Finding.
+#     NOTE: The literal key is (tool, file, qualifier), but tool-inclusive
+#     grouping makes the precision ladder unreachable — implemented per intent
+#     (group file+qualifier, tool drives precision).
 #
-# Pure bash + jq (no external binary; AC-X4 vacuous). Exit 0 on the happy and
-# degrade paths; the deduped array (possibly empty) is always written.
+# Pure bash + jq (no external binary). Exit 0 on the happy and degrade paths;
+# the deduped array (possibly empty) is always written.
 #
 # Test seams (tests/dedup-contract.bats):
-#   DEDUP_INPUT   merged-SARIF path  (default: E104-S4 output under GAIA_ARTIFACTS_DIR)
+#   DEDUP_INPUT   merged-SARIF path  (default: brownfield-sarif-merged.json under GAIA_ARTIFACTS_DIR)
 #   DEDUP_OUTPUT  deduped-stream path(default: GAIA_MEMORY_DIR/brownfield-audit/deduped-findings.json)
 
 set -euo pipefail
@@ -33,13 +32,11 @@ log_warn() { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 
 # --- Flag gate ------------------------------------------------------------
 MASTER="${GAIA_BROWNFIELD_DETERMINISTIC_TOOLS:-true}"
-# Per-tool override defaults to true (story Task 5: dedup is on by default).
+# Per-tool override defaults to true (dedup is on by default).
 PER_TOOL="${GAIA_BROWNFIELD_DEDUP_ENABLED:-true}"
 
 # --- Resolve paths --------------------------------------------------------
 default_input() {
-  # E104-S4's actual merged-SARIF output path (story's .gaia/memory/... path is
-  # stale — see Finding; we read S4's real path).
   if [ -n "${GAIA_ARTIFACTS_DIR:-}" ]; then printf '%s/planning-artifacts/brownfield-sarif-merged.json' "$GAIA_ARTIFACTS_DIR"
   else printf '%s' "./.gaia/artifacts/planning-artifacts/brownfield-sarif-merged.json"; fi
 }
@@ -96,7 +93,7 @@ deduped="$(printf '%s' "$findings" | jq '
   # Non-CVE grouping key: (file_path, qualifier) when a symbol is present;
   # when the qualifier is empty (line-located lint/complexity findings with no
   # symbol), fall back to (file_path, ruleId, start_line) so two genuinely
-  # distinct symbol-less findings in the same file do NOT over-dedup (Val F1).
+  # distinct symbol-less findings in the same file do NOT over-dedup.
   ( [ .[] | select(is_cve | not) ]
     | group_by(
         if (.qualifier // "") == ""

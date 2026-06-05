@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://gaia.studio/schemas/adversarial-sidecar.schema.json",
   "title": "Adversarial review JSON sidecar",
-  "description": "AF-2026-06-03-3 / E87-S13 / ADR-131. Canonical shape of the structured `.json` sidecar the adversarial-reviewer (Sage) emits as a sibling of its Markdown report at `{planning_artifacts}/adversarial/adversarial-review-{target}-{date}[-N].json`. The sidecar is written by the orchestrator's main turn (writer-shift, ADR-105 pattern) from the ADR-037 envelope Sage returns — NOT by Sage from the sub-agent context — via `skills/gaia-adversarial/scripts/write-adversarial-sidecar.sh` (E87-S11). Downstream consumers (test-architect risk-tier mapping, sprint-review aggregator, retro pattern-detector, /gaia-action-items auto-file router) read this machine-parseable form via `scripts/lib/read-adversarial-sidecar.sh` (E87-S12) instead of regex-parsing the prose. The verdict vocabulary is inherited verbatim from ADR-037 `{PASS, WARNING, CRITICAL}` (Val F2); the `review_type: \"adversarial\"` discriminator plus the ABSENCE of any `sentinel_envelope` encode that this is critique, not a gate. Per NFR-96 (byte-identical determinism) and the no-forgery-anchor design, the sidecar OMITS `timestamp` (provenance recovered from the sibling `.md` frontmatter `review_date`), `persona_sig` (adversarial is not a gate; no forgery surface), and `sentinel_envelope` (not a gate). `additionalProperties: false` enforces those omissions structurally.",
+  "description": "Canonical shape of the structured `.json` sidecar the adversarial-reviewer (Sage) emits as a sibling of its Markdown report at `{planning_artifacts}/adversarial/adversarial-review-{target}-{date}[-N].json`. The sidecar is written by the orchestrator's main turn (writer-shift pattern) from the envelope Sage returns — NOT by Sage from the sub-agent context — via `skills/gaia-adversarial/scripts/write-adversarial-sidecar.sh`. Downstream consumers (test-architect risk-tier mapping, sprint-review aggregator, retro pattern-detector, /gaia-action-items auto-file router) read this machine-parseable form via `scripts/lib/read-adversarial-sidecar.sh` instead of regex-parsing the prose. The verdict vocabulary is inherited verbatim from the canonical verdict vocabulary `{PASS, WARNING, CRITICAL}`; the `review_type: \"adversarial\"` discriminator plus the ABSENCE of any `sentinel_envelope` encode that this is critique, not a gate. For byte-identical determinism and the no-forgery-anchor design, the sidecar OMITS `timestamp` (provenance recovered from the sibling `.md` frontmatter `review_date`), `persona_sig` (adversarial is not a gate; no forgery surface), and `sentinel_envelope` (not a gate). `additionalProperties: false` enforces those omissions structurally.",
   "type": "object",
   "required": ["review_type", "status", "target", "findings"],
   "additionalProperties": false,
@@ -14,7 +14,7 @@
     },
     "status": {
       "type": "string",
-      "description": "The adversarial verdict, inherited verbatim from the ADR-037 verdict vocabulary `{PASS, WARNING, CRITICAL}` (Val F2). Identical to the sibling `.md` report's Verdict line. The proposed `{STRONG, WEAK, MIXED}` divergence is rejected — reusing the ADR-037 vocab keeps the parser surface single for every downstream consumer (NFR-96 motivation) and matches the on-disk adversarial-reviewer.md persona.",
+      "description": "The adversarial verdict, inherited verbatim from the canonical verdict vocabulary `{PASS, WARNING, CRITICAL}`. Identical to the sibling `.md` report's Verdict line. The proposed `{STRONG, WEAK, MIXED}` divergence is rejected — reusing the canonical vocab keeps the parser surface single for every downstream consumer and matches the on-disk adversarial-reviewer.md persona.",
       "enum": ["PASS", "WARNING", "CRITICAL"]
     },
     "target": {
@@ -24,11 +24,11 @@
     },
     "summary": {
       "type": "string",
-      "description": "One-paragraph human-readable summary of the critique, carried verbatim from the adversarial ADR-037 envelope `summary` field."
+      "description": "One-paragraph human-readable summary of the critique, carried verbatim from the adversarial envelope `summary` field."
     },
     "findings": {
       "type": "array",
-      "description": "Ranked adversarial findings, sorted deterministically by `(severity_rank, id)` where rank CRITICAL=0, WARNING=1, INFO=2 (NFR-96). Each entry carries ONLY the four sidecar finding keys; the emitter drops any other per-finding fields. MAY be empty (a PASS verdict with no findings).",
+      "description": "Ranked adversarial findings, sorted deterministically by `(severity_rank, id)` where rank CRITICAL=0, WARNING=1, INFO=2. Each entry carries ONLY the four sidecar finding keys; the emitter drops any other per-finding fields. MAY be empty (a PASS verdict with no findings).",
       "items": {
         "type": "object",
         "required": ["severity", "id", "title", "location"],
@@ -36,12 +36,12 @@
         "properties": {
           "severity": {
             "type": "string",
-            "description": "Per-finding severity on the ADR-037 finding-level axis `{CRITICAL, WARNING, INFO}`. This is a separate axis from the outer envelope `status` — an adversarial review can carry INFO advisories while still emitting a top-level PASS.",
+            "description": "Per-finding severity on the finding-level axis `{CRITICAL, WARNING, INFO}`. This is a separate axis from the outer envelope `status` — an adversarial review can carry INFO advisories while still emitting a top-level PASS.",
             "enum": ["CRITICAL", "WARNING", "INFO"]
           },
           "id": {
             "type": "string",
-            "description": "Stable finding identifier, derived deterministically from the finding's emission order (NFR-96). Used by consumers to dedup and cross-reference findings against the prose report.",
+            "description": "Stable finding identifier, derived deterministically from the finding's emission order. Used by consumers to dedup and cross-reference findings against the prose report.",
             "minLength": 1
           },
           "title": {
@@ -58,7 +58,7 @@
     },
     "next": {
       "type": "string",
-      "description": "Suggested next action carried verbatim from the adversarial ADR-037 envelope `next` field."
+      "description": "Suggested next action carried verbatim from the adversarial envelope `next` field."
     }
   }
 }

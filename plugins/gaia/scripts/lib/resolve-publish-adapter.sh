@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # resolve-publish-adapter.sh — resolve a publish adapter directory path.
 #
-# Per ADR-113 §clause (e) + ADR-020 precedence + SR-81 + SR-82:
+# Adapter resolution rules:
 #   1. Custom adapters at <project-root>/.gaia/custom/adapters/publish-<adapter_name>/
 #      SHADOW built-in adapters at <plugin-root>/scripts/adapters/publish-<channel>/.
-#   2. SR-81: adapter_name MUST match ^[a-z0-9-]{1,64}$ (no slashes, no traversal).
-#   3. SR-82: --strict-builtin refuses custom shadow on sensitive channels.
+#   2. adapter_name MUST match ^[a-z0-9-]{1,64}$ (no slashes, no traversal).
+#   3. --strict-builtin refuses custom shadow on sensitive channels.
 #   4. When a custom shadow exists, emit canonical WARN to stderr.
 #
 # Usage:
@@ -26,7 +26,7 @@ export LC_ALL
 prog="$(basename "$0")"
 err() { printf '%s: %s\n' "$prog" "$*" >&2; }
 
-# Default sensitive channels per SR-82 (story AC6 5-channel list).
+# Default sensitive channels.
 # `marketplace` covers the broader marketplace family including claude-marketplace;
 # operators can pin a project-specific list via publish.strict_builtin_channels in
 # project-config.yaml (--strict-sensitive flag forwards that override).
@@ -51,9 +51,9 @@ done
 
 [ -n "$ADAPTER" ] || { err "usage: $prog --adapter <name> [--strict-builtin]"; exit 2; }
 
-# SR-81: regex validation. Also enforced schema-side via adapter_name pattern.
+# Regex validation — adapter_name pattern enforced schema-side as well.
 if ! printf '%s' "$ADAPTER" | grep -Eq '^[a-z0-9-]{1,64}$'; then
-  err "HALT: adapter_name '$ADAPTER' violates SR-81 regex ^[a-z0-9-]{1,64}\$"
+  err "HALT: adapter_name '$ADAPTER' violates regex ^[a-z0-9-]{1,64}\$"
   exit 2
 fi
 
@@ -70,37 +70,37 @@ builtin_exists=0
 [ -d "$CUSTOM_DIR" ] && [ -x "$CUSTOM_DIR/run.sh" ] && custom_exists=1
 [ -d "$BUILTIN_DIR" ] && [ -x "$BUILTIN_DIR/run.sh" ] && builtin_exists=1
 
-# AC1 + ADR-113 §clause (d) custom-channel 6-requirement contract validation.
+# Custom-channel adapter contract validation.
 # Custom adapters MUST ship a well-formed adapter-manifest.yaml declaring the
 # canonical fields. Built-in adapters are validated at PR-review time by the
 # framework's own bats suite; the runtime check fires only on custom shadows
-# to mitigate T-CUS-1 (malformed manifest from an untrusted source).
+# to guard against a malformed manifest from an untrusted source.
 _validate_custom_manifest() {
   local dir="$1"
   local manifest="$dir/adapter-manifest.yaml"
   [ -f "$manifest" ] || {
-    err "HALT: custom adapter missing adapter-manifest.yaml at $dir (ADR-113 §clause (d) requirement 1)"
+    err "HALT: custom adapter missing adapter-manifest.yaml at $dir"
     return 1
   }
   command -v yq >/dev/null 2>&1 || {
     err "WARN: yq not on PATH — cannot validate custom adapter manifest shape"
     return 0
   }
-  # Required ADR-113 §clause (d) fields:
+  # Required adapter-manifest fields:
   #   (1) adapter_name, (2) adapter_version, (3) channel,
-  #   (4) credential_env_vars (NFR-081), (5) verify_retry_window_seconds (NFR-082),
+  #   (4) credential_env_vars, (5) verify_retry_window_seconds,
   #   (6) description.
   local field val
   for field in adapter_name adapter_version channel credential_env_vars description; do
     val=$(yq eval ".$field" "$manifest" 2>/dev/null)
     if [ -z "$val" ] || [ "$val" = "null" ]; then
-      err "HALT: custom adapter manifest missing required field '.$field' (ADR-113 §clause (d))"
+      err "HALT: custom adapter manifest missing required field '.$field'"
       return 1
     fi
   done
   # verify_retry_window_seconds: integer or null (mobile-app sentinel).
   if ! yq eval 'has("verify_retry_window_seconds")' "$manifest" 2>/dev/null | grep -q '^true$'; then
-    err "HALT: custom adapter manifest missing required field '.verify_retry_window_seconds' (NFR-082)"
+    err "HALT: custom adapter manifest missing required field '.verify_retry_window_seconds'"
     return 1
   fi
   return 0
@@ -117,11 +117,11 @@ _is_sensitive() {
 }
 
 if [ "$custom_exists" = "1" ]; then
-  # Post-resolution containment via physical-path resolution (SR-81 mitigates
-  # T-DCH-3). MUST use `pwd -P` (or realpath when available) — the default
-  # `cd && pwd` returns the LOGICAL path (Bash `pwd -L` default) which a
-  # symlink under .gaia/custom/adapters/ pointing outside the tree would
-  # successfully spoof, bypassing the containment check.
+  # Post-resolution containment via physical-path resolution. MUST use `pwd -P`
+  # (or realpath when available) — the default `cd && pwd` returns the LOGICAL
+  # path (Bash `pwd -L` default) which a symlink under .gaia/custom/adapters/
+  # pointing outside the tree would successfully spoof, bypassing the
+  # containment check.
   if command -v realpath >/dev/null 2>&1; then
     resolved="$(realpath "$CUSTOM_DIR" 2>/dev/null)"
     custom_root="$(realpath "$PROJECT_ROOT/.gaia/custom/adapters" 2>/dev/null)"
@@ -137,16 +137,16 @@ if [ "$custom_exists" = "1" ]; then
       ;;
   esac
 
-  # AC1: validate custom adapter manifest shape (ADR-113 §clause (d) 6-requirement).
+  # Validate custom adapter manifest shape.
   _validate_custom_manifest "$resolved" || exit 2
 
-  # SR-82 strict-builtin gate (when shadow + sensitive).
+  # Strict-builtin gate (when shadow + sensitive).
   if [ "$builtin_exists" = "1" ] && [ "$STRICT_BUILTIN" = "1" ] && _is_sensitive "$ADAPTER"; then
     err "HALT: --strict-builtin refuses custom shadow for sensitive channel"
     exit 3
   fi
 
-  # SR-82 shadow warning (only when shadow exists).
+  # Shadow warning (only when shadow exists).
   if [ "$builtin_exists" = "1" ]; then
     err "WARN: custom adapter at .gaia/custom/adapters/publish-$ADAPTER/ shadows built-in adapter"
   fi

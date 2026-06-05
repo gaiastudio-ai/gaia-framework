@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# _contract-helper.bash — shared bats helpers for per-adapter contract.bats (E66-S2, ADR-078).
+# _contract-helper.bash — shared bats helpers for per-adapter contract.bats.
 #
 # Each built-in adapter under plugins/gaia/scripts/adapters/{tool}/test/contract.bats sources
 # this helper and calls `assert_contract <tool-name> <category-extension> <non-matching-extension>`
@@ -61,7 +61,7 @@ _contract_provider() {
   jq -r '.provider // ""' "$ADAPTER_DIR/adapter.json"
 }
 
-# assert_files_exist — verify the canonical adapter file layout (ADR-078).
+# assert_files_exist — verify the canonical adapter file layout.
 assert_files_exist() {
   [ -f "$ADAPTER_DIR/adapter.json" ] || { echo "missing adapter.json" >&2; return 1; }
   [ -x "$ADAPTER_DIR/run.sh" ]       || { echo "run.sh missing or not executable" >&2; return 1; }
@@ -118,7 +118,7 @@ EOF
 }
 
 # assert_fragment_shape — assert the probe stdout JSON has the canonical keys.
-# E66-S6: schema is now four keys -- failure_kind is additive.
+# Schema is four keys -- failure_kind is additive.
 assert_fragment_shape() {
   echo "$output" | jq -e '(keys | sort) == (["error_detail","failure_kind","skip_reason","state"])' >/dev/null
 }

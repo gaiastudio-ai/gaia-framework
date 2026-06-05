@@ -1,19 +1,14 @@
 #!/usr/bin/env bash
 # yolo-lint.sh — Framework lint for SKILL.md `yolo_steps:` declarations.
 #
-# Story: E41-S1 (YOLO Mode Contract + Helper)
-# ADR: ADR-057 (YOLO Mode Contract for V2 Phase 4 Commands)
-# Architecture: .gaia/artifacts/planning-artifacts/architecture.md §10.30.3 + §10.30.8
-#
 # Purpose
 # -------
-# Per FR-YOLO-2 the framework MUST reject at load time any SKILL.md whose
-# `yolo_steps:` frontmatter declaration covers a hard-gate step. Hard gates
-# are invariants V1 enforced through engine-level wiring; in V2 they live
-# inside individual SKILL.md files, so a misdeclared `yolo_steps:` would
+# The framework MUST reject at load time any SKILL.md whose `yolo_steps:`
+# frontmatter declaration covers a hard-gate step. Hard gates are invariants
+# enforced through engine-level wiring; a misdeclared `yolo_steps:` would
 # silently bypass them.
 #
-# Hard-gate categories (architecture §10.30.3):
+# Hard-gate categories:
 #   (a) Pre-start quality gates    — frontmatter `quality_gates.pre_start`
 #                                    OR step title matching pre-start patterns
 #   (b) Status guards              — step body containing "HALT unless status"
@@ -24,12 +19,12 @@
 #                                    custom/skills/, plugins/gaia/skills/
 #   (e) Validation-failure cap     — step title/body referencing the
 #                                    3-attempt cap on Val auto-fix loop
-#   (f) Memory-save prompts        — E9-S8 sidecar write [y]/[n]/[e] prompt
+#   (f) Memory-save prompts        — sidecar write [y]/[n]/[e] prompt
 #
 # Behavior:
 #   - Hard-gate violation                 -> stdout FAIL line, exit non-zero
-#   - Out-of-range step number (ECI-499)  -> stdout WARN line, exit 0
-#   - Empty `yolo_steps: []` (ECI-498)    -> silent no-op, exit 0
+#   - Out-of-range step number            -> stdout WARN line, exit 0
+#   - Empty `yolo_steps: []`              -> silent no-op, exit 0
 #   - Missing `yolo_steps:` key           -> silent no-op, exit 0
 #
 # Usage:
@@ -215,7 +210,7 @@ _lint_skill() {
     fm=$(_extract_frontmatter "$f")
     steps_csv=$(_extract_yolo_steps "$fm")
 
-    # Empty/missing yolo_steps -> silent no-op (ECI-498).
+    # Empty/missing yolo_steps -> silent no-op.
     if [ -z "$steps_csv" ]; then
         return 0
     fi
@@ -234,7 +229,7 @@ _lint_skill() {
         s="${s// /}"
         [ -z "$s" ] && continue
 
-        # ECI-499 — out-of-range step number.
+        # Out-of-range step number.
         if [ "$max_step" -gt 0 ] && [ "$s" -gt "$max_step" ]; then
             echo "WARN  $skill_id  yolo_steps step $s is out of range (skill has $max_step steps)"
             continue

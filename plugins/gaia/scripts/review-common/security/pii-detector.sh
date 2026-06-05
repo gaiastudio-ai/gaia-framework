@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pii-detector.sh — GAIA review-common Phase 3C PII detector (E67-S5, ADR-077).
+# pii-detector.sh — GAIA review-common Phase 3C PII detector.
 #
 # Purpose
 # -------
@@ -14,12 +14,12 @@
 #   - ip-address      : IPv4 / IPv6 literals in string contexts
 #   - iban            : IBAN (regime-loaded — only active when GDPR declared)
 #
-# Severity policy (FR-RSV2-22, AC8):
+# Severity policy:
 #   - Critical : PII pattern in non-test source file
 #   - Medium   : PII pattern in a test file (path matches /test/, /tests/,
 #                /__tests__/, .test., .spec.)
 #
-# Regime-aware loading (AC4):
+# Regime-aware loading:
 #   The script reads `GAIA_COMPLIANCE_REGIMES` (comma-separated regime keys),
 #   then for each key looks up `<plugin_root>/rubrics/regimes/<regime>.json`.
 #   When the rubric file exists and contains `"privacy.patterns": [...]`,
@@ -44,8 +44,6 @@
 # POSIX discipline: bash + set -euo pipefail + LC_ALL=C; macOS bash 3.2 + BSD
 # awk compatible (no associative arrays, no 3-arg match); no jq dependency.
 #
-# Refs: AC1, AC4, AC6, AC7, AC8, FR-RSV2-1, FR-RSV2-2, NFR-RSV2-1, ADR-075,
-# ADR-077, TC-RSV2-PRIVACY-1.
 
 set -euo pipefail
 LC_ALL=C
@@ -57,7 +55,7 @@ die() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — Phase 3C PII detector (ADR-077).
+$SCRIPT_NAME — Phase 3C PII detector.
 
 Usage:
   $SCRIPT_NAME <path>...

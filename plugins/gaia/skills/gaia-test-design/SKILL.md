@@ -1,6 +1,6 @@
 ---
 name: deprecated-gaia-test-design
-description: DEPRECATED — This skill has been retired. Use /gaia-test-strategy --plan (canonical, see gaia-test-strategy/SKILL.md). This file remains only to expose the deprecated alias for one sprint per E69-S3 / FR-RSV2-24.
+description: DEPRECATED — This skill has been retired. Use /gaia-test-strategy --plan (canonical, see gaia-test-strategy/SKILL.md). This file remains only to expose the deprecated alias for one sprint.
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 deprecated_aliases: [gaia-test-design]
 deprecated_since: sprint-37
@@ -8,13 +8,13 @@ replaced_by: gaia-test-strategy
 orchestration_class: light-procedural
 ---
 
-## Deprecation Notice (Test05 F-024)
+## Deprecation Notice
 
 This skill is a DEPRECATED alias. On invocation, emit this canonical one-line
 warning VERBATIM as the FIRST line of output, then redirect to the canonical
 skill:
 
-> `[deprecated] /gaia-test-design is retired — use /gaia-test-strategy --plan (alias preserved one sprint per E69-S3 / FR-RSV2-24).`
+> `[deprecated] /gaia-test-design is retired — use /gaia-test-strategy --plan (alias preserved one sprint).`
 
 ## Setup
 
@@ -28,7 +28,7 @@ skill:
 
 You are orchestrating the creation of a risk-based Test Plan. The test planning is delegated to the **test-architect** subagent (Sable), who conducts risk assessment, designs test strategy, and produces the final artifact. You load upstream artifacts (architecture, PRD, project context), validate inputs, coordinate the multi-step flow, and write the output to `.gaia/artifacts/test-artifacts/test-plan.md` using the bundled `test-plan-template.md` template structure.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/test-design` workflow (E28-S82, Cluster 11). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` -- do not restructure, re-prompt, or reorder.
+This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/test-design` workflow. The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` -- do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 
@@ -37,11 +37,11 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Define quality gates for the CI pipeline.
 - The test plan template MUST exist at `${CLAUDE_PLUGIN_ROOT}/skills/gaia-test-design/test-plan-template.md` and be non-empty. If the template file is empty (0 bytes) or missing, halt with: "Test plan template not found or empty -- cannot produce test plan without template."
 - If architecture.md is missing at `.gaia/artifacts/planning-artifacts/architecture.md`: proceed with reduced risk context, log a WARNING ("Architecture document not found -- producing test plan with generic risk ratings"), and use generic risk ratings instead of architecture-informed ones.
-- Resolve the PRD via the sharded-fallback rule (ADR-069 / FR-396..402): try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, proceed with reduced context and log a WARNING ("PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md -- test plan scope may be incomplete").
-- Test planning is delegated to the test-architect subagent (Sable) via native Claude Code subagent invocation -- do NOT inline Sable's persona into this skill body. If the test-architect subagent is not available or not registered, halt with: "test-architect subagent not available -- ensure E28-S21 agents are installed."
-- Template resolution: load `test-plan-template.md` from this skill directory. If `custom/templates/test-plan-template.md` exists and is non-empty, use the custom template instead -- the custom template takes full precedence over the bundled default (ADR-020 / FR-101).
+- Resolve the PRD via the sharded-fallback rule: try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, proceed with reduced context and log a WARNING ("PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md -- test plan scope may be incomplete").
+- Test planning is delegated to the test-architect subagent (Sable) via native Claude Code subagent invocation -- do NOT inline Sable's persona into this skill body. If the test-architect subagent is not available or not registered, halt with: "test-architect subagent not available -- ensure agents are installed."
+- Template resolution: load `test-plan-template.md` from this skill directory. If `custom/templates/test-plan-template.md` exists and is non-empty, use the custom template instead -- the custom template takes full precedence over the bundled default.
 - Output ALL artifacts to `.gaia/artifacts/test-artifacts/`.
-- Val auto-review runs unconditionally via the direct-call contract from E44-S1 -- the deprecated frontmatter flag is superseded by the Step 8 auto-fix loop wired in by E44-S6 (see Step 8 below; ADR-058 / architecture.md §10.31.2).
+- Val auto-review runs unconditionally via the direct-call contract -- the deprecated frontmatter flag is superseded by the Step 8 auto-fix loop (see Step 8 below; architecture.md §10.31.2).
 
 ## Steps
 
@@ -131,15 +131,15 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-design 7 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=output-generated --paths .gaia/artifacts/test-artifacts/test-plan.md`
 
-### Step 8 -- Val Auto-Fix Loop (E44-S2 / ADR-058)
+### Step 8 -- Val Auto-Fix Loop
 
 > Reuses the canonical pattern at `gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
 
 **Guards (run before invocation):**
 
-- Artifact-existence guard (AC-EC3): if not exists `.gaia/artifacts/test-artifacts/test-plan.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
-- Val-skill-availability guard (AC-EC6): if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
+- Artifact-existence guard: if not exists `.gaia/artifacts/test-artifacts/test-plan.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
+- Val-skill-availability guard: if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
 
 **Loop:**
 
@@ -154,11 +154,9 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
      d. If iteration <= 3: go to step 2.
      e. Else: present the iteration-3 prompt verbatim (centralized in `gaia-val-validate` SKILL.md § "Auto-Fix Loop Pattern") and dispatch.
 
-YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See ADR-057 FR-YOLO-2(e) and ADR-058 for the hard-gate contract.
+YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See the hard-gate contract for details.
 
-> Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation runs against the Step 7 artifact write.
-
-> Test Notes: VCP-VAL-04 (`.gaia/artifacts/test-artifacts/test-plan.md §11.46.3`) covers this wire-in.
+> Val auto-review (architecture.md §10.31.2). Validation runs against the Step 7 artifact write.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-design 8 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=val-auto-review --paths .gaia/artifacts/test-artifacts/test-plan.md`
 
@@ -174,7 +172,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 ## Validation
 
 <!--
-  E42-S14 — V1→V2 8-item checklist port (FR-341, FR-359, VCP-CHK-27, VCP-CHK-28).
+  V1→V2 8-item checklist port.
   Classification (8 items total):
     - Script-verifiable: 6 (SV-01..SV-06) — enforced by finalize.sh.
     - LLM-checkable:     2 (LLM-01..LLM-02) — evaluated by the host LLM
@@ -199,9 +197,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
   Invoked by `finalize.sh` at post-complete (per architecture §10.31.1).
   Validation runs BEFORE the checkpoint and lifecycle-event writes
-  (observability is never suppressed by checklist outcome — story AC5).
-
-  See .gaia/artifacts/implementation-artifacts/E42-S14-port-gaia-edit-test-plan-and-gaia-test-design-checklists-to-v2.md.
+  (observability is never suppressed by checklist outcome).
 -->
 
 - [script-verifiable] SV-01 — Output file saved to .gaia/artifacts/test-artifacts/test-plan.md

@@ -9,11 +9,7 @@ orchestration_class: light-procedural
 
 Native Claude Code conversion of the legacy `_gaia/dev/skills/code-review-standards.md` skill. Preserves the four sectioned-loading IDs (`review-checklist`, `solid-principles`, `complexity-metrics`, `review-gate-completion`) verbatim. The `review-gate-completion` section documents the hard gate enforced by the `review-gate-check` protocol before a story transitions from `review` to `done`.
 
-- ADR-041 — Native execution model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042 — Scripts-over-LLM. Prose and pattern guidance only.
-- ADR-046 — Hybrid memory. Shared content skill; no sidecar loading.
-
-> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile) and the code-review skill. The legacy `applicable_agents` frontmatter field is dropped per the E28-S19 schema.
+> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile) and the code-review skill. The legacy `applicable_agents` frontmatter field is dropped per the current schema.
 
 <!-- SECTION: review-checklist -->
 ## Review Checklist
@@ -230,7 +226,7 @@ function validate(input) {
 | Class methods | > 10 public | Suggest decomposition |
 
 <!-- SECTION: severity-rubric-format -->
-## Severity Rubric Format (FR-DEJ-7)
+## Severity Rubric Format
 
 This section defines the canonical severity rubric format inherited by the six review skills (`gaia-code-review`, `gaia-security-review`, `gaia-qa-tests`, `gaia-test-automate`, `gaia-test-review`, `gaia-performance-review`). Each consumer skill provides per-domain examples that conform to the shape defined here.
 
@@ -242,7 +238,7 @@ This section defines the canonical severity rubric format inherited by the six r
 
 ### Tier shape (5 tiers)
 
-The rubric has five tiers organized along two axes — severity (Critical / Warning / Suggestion) and category (correctness / readability). The Critical-readability tier is intentionally empty per FR-DEJ-7.
+The rubric has five tiers organized along two axes — severity (Critical / Warning / Suggestion) and category (correctness / readability). The Critical-readability tier is intentionally empty.
 
 #### Critical-correctness
 
@@ -255,7 +251,7 @@ Examples:
 
 #### Critical-readability
 
-<!-- WHY: FR-DEJ-7 deliberately mandates that readability never blocks. The maximum severity for any readability-class finding is Warning. A future maintainer adding a concrete example here would violate the architectural decision; bats `code-review-standards-rubric.bats` greps for the verbatim "None" string and fails CI on drift. -->
+<!-- WHY: the rubric deliberately mandates that readability never blocks. The maximum severity for any readability-class finding is Warning. A future maintainer adding a concrete example here would violate the architectural decision; bats `code-review-standards-rubric.bats` greps for the verbatim "None" string and fails CI on drift. -->
 
 None — readability never blocks (max severity is Warning).
 
@@ -292,11 +288,11 @@ Any change to the rubric tier shape (adding a tier, renaming a tier, changing th
 1. The six review consumer SKILL.md files (`gaia-code-review`, `gaia-security-review`, `gaia-qa-tests`, `gaia-test-automate`, `gaia-test-review`, `gaia-performance-review`) — each must update its per-skill examples to match the new shape.
 2. `evidence-judgment-parity.bats` MUST be re-run to confirm the canonical cross-link is present and the per-skill examples still conform.
 3. Backward-compatibility check against existing review reports — old reports use the prior tier names; document the migration path before merging.
-4. ADR amendment required if the new shape diverges from FR-DEJ-7 (e.g., introducing a Critical-readability tier).
+4. An architectural-decision amendment is required if the new shape diverges from the canonical rubric (e.g., introducing a Critical-readability tier).
 
 ### Scope boundary
 
-This rubric format is the standard for the six current review skills. A future review skill (e.g., a hypothetical `gaia-accessibility-review` with a 4-tier Blocker / Major / Minor / Info shape) requires an explicit ADR amendment and its own rubric section — divergence from this rubric is out of scope for the current six skills.
+This rubric format is the standard for the six current review skills. A future review skill (e.g., a hypothetical `gaia-accessibility-review` with a 4-tier Blocker / Major / Minor / Info shape) requires an explicit architectural-decision amendment and its own rubric section — divergence from this rubric is out of scope for the current six skills.
 
 <!-- SECTION: review-gate-completion -->
 ## Review Gate Completion Requirements
@@ -317,7 +313,7 @@ Before a story transitions from `review` to `done`, all 6 individual review repo
 
 ### Enforcement Mechanism (Live)
 
-The hard gate is enforced by `plugins/gaia/scripts/review-gate.sh` (foundation script, ADR-042/ADR-048). Before invoking `status-sync` to move a story from `review` to `done`, the script:
+The hard gate is enforced by `plugins/gaia/scripts/review-gate.sh` (foundation script). Before invoking `status-sync` to move a story from `review` to `done`, the script:
 
 1. Builds the summary file path `{implementation_artifacts}/{story_key}-review-summary.md`
 2. Checks whether the file exists
@@ -350,7 +346,7 @@ Followed by 6 sections (one per review) with verdict + report link + one-line sy
 
 ## Test Scenarios
 
-Migrated from the legacy `test_scenarios` frontmatter array (per E28-S19 schema).
+Migrated from the legacy `test_scenarios` frontmatter array.
 
 | Scenario | Expected |
 |----------|----------|

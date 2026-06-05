@@ -10,7 +10,7 @@ orchestration_class: reviewer
 
 You are performing a **dependency audit** on the target project — scanning manifest files for known CVEs, deprecated or abandoned packages, and license conflicts. You produce a risk-ranked markdown report prioritised by exploitability and impact, with CVE IDs, outdated package list, license conflict summary, and remediation recommendations.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/review-dependency-audit.xml` task (38 lines). Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model. Deterministic report-header generation is delegated to the shared foundation script `template-header.sh` (E28-S16) rather than re-prosed per skill.
+This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/review-dependency-audit.xml` task (38 lines). The legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model. Deterministic report-header generation is delegated to the shared foundation script `template-header.sh` rather than re-prosed per skill.
 
 ## Critical Rules
 
@@ -49,7 +49,7 @@ Read all found dependency files. If none are found (AC-EC6), exit with `No revie
 
 - Flag dependencies that are significantly outdated (one or more major versions behind the latest release).
 - Identify dependencies with no recent releases or maintenance signal — a stale repository, an archived package, or a maintainer-abandoned advisory.
-- Produce an outdated list ordered by dependency tier — **prioritise runtime dependencies first, then dev dependencies, then transitive dependencies** (FR-389). Within each tier, sort by severity (critical → high → medium → low) and then by package name. The tiered ordering surfaces the highest-blast-radius upgrades at the top so triage proceeds from runtime downward without manual re-sorting.
+- Produce an outdated list ordered by dependency tier — **prioritise runtime dependencies first, then dev dependencies, then transitive dependencies**. Within each tier, sort by severity (critical → high → medium → low) and then by package name. The tiered ordering surfaces the highest-blast-radius upgrades at the top so triage proceeds from runtime downward without manual re-sorting.
 - Detect the tier of every dependency from its manifest. Use these canonical inputs:
   - **runtime** — top-level `dependencies` in `package.json`; `[project.dependencies]` in `pyproject.toml`; `<dependency>` entries without `<scope>test</scope>` in `pom.xml`.
   - **dev** — `devDependencies` in `package.json`; `[project.optional-dependencies.dev]` (or equivalent dev extras) in `pyproject.toml`; test-scoped Maven dependencies (`<scope>test</scope>`) in `pom.xml`.
@@ -65,7 +65,7 @@ Read all found dependency files. If none are found (AC-EC6), exit with `No revie
 
 ### Step 5 — Report
 
-Invoke the shared foundation script to emit the deterministic artifact header (ADR-042):
+Invoke the shared foundation script to emit the deterministic artifact header:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/template-header.sh --template dependency-audit --workflow gaia-review-deps
@@ -90,9 +90,4 @@ The report includes:
 
 ## References
 
-- Source: `_gaia/core/tasks/review-dependency-audit.xml` (legacy 38-line task body — ported per ADR-041 + ADR-042).
-- ADR-041: Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042: Scripts-over-LLM for Deterministic Operations.
-- ADR-048: Engine Deletion as Program-Closing Action — legacy task coexists until program close.
-- FR-323: Skill Conversion — slash-command identity preserved.
-- NFR-053: Full v1.127.2-rc.1 Feature Parity.
+- Source: `_gaia/core/tasks/review-dependency-audit.xml` (legacy 38-line task body).

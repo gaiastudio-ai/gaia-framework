@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# adapters/brownfield/sbom-completeness-check.sh — E104-S3 SBOM completeness check.
+# adapters/brownfield/sbom-completeness-check.sh — SBOM completeness check.
 #
 # Compares the declared dependency count (parsed from lock files) against the
 # cdxgen SBOM component count, and emits a WARNING when abs(divergence_pct)
-# exceeds 10% — or 15% when any of five per-ecosystem carve-outs auto-detects
-# (FR-543). NEVER aborts the Phase 3 scan (NFR-84 no-hard-ceiling). Records the
+# exceeds 10% — or 15% when any of five per-ecosystem carve-outs auto-detects.
+# NEVER aborts the Phase 3 scan. Records the
 # WARNING + divergence + applied-threshold + detected-carve-outs in the report
 # frontmatter via brownfield-telemetry.sh.
 #
@@ -15,8 +15,8 @@
 # Carve-outs (ANY match -> 15% threshold): Yarn Berry PnP, conda, Go vendor,
 # Gradle no-lockfile, Gradle shadow/shade.
 #
-# Pure bash + jq (grep/awk for TOML/XML — tomlq/xmlstarlet not assumed; AC-X4
-# binary-pinning is vacuous: only jq/yq, foundational). Exit code ALWAYS 0.
+# Pure bash + jq (grep/awk for TOML/XML — tomlq/xmlstarlet not assumed).
+# Exit code ALWAYS 0.
 #
 # Env seams (tests/sbom-completeness-check.bats):
 #   SBOM_PROJECT_ROOT  repo to scan for lock files + carve-outs (default .)
@@ -46,12 +46,11 @@ default_sbom() {
 }
 SBOM_FILE="${SBOM_FILE:-$(default_sbom)}"
 
-# --- Missing-SBOM guard (Val F1 — E70-S7 does not yet persist an SBOM) -----
-# The cdxgen SBOM producer is unbuilt today (E70-S7 pre-warm discards the SBOM;
-# see story Finding). With no SBOM there is nothing to compare — INFO-skip and
+# --- Missing-SBOM guard -----
+# When no SBOM is present there is nothing to compare — INFO-skip and
 # exit 0 (never abort), rather than crash or emit a false WARNING.
 if [ ! -f "$SBOM_FILE" ]; then
-  log_info "SBOM not found at $SBOM_FILE — completeness check skipped (cdxgen SBOM producer not yet wired; never aborts)"
+  log_info "SBOM not found at $SBOM_FILE — completeness check skipped (never aborts)"
   exit 0
 fi
 

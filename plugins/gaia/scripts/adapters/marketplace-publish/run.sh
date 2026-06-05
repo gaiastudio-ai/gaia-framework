@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# adapters/marketplace-publish/run.sh — ADR-078 deploy-adapter contract for the
-# marketplace-publish adapter (E78-S1, FR-423).
+# adapters/marketplace-publish/run.sh — deploy-adapter contract for the
+# marketplace-publish adapter.
 #
 # Contract:
 #   run.sh --env <env> --version <ver> --output-dir <dir> [--repository <owner/repo>] [--draft]
@@ -22,7 +22,6 @@
 #   2   — usage / missing flag / version_file mismatch
 #   127 — gh CLI not on PATH (probe should have caught this)
 #
-# Refs: ADR-078 §4 (run.sh contract), story AC3-AC6, PRD FR-423.
 
 set -u
 LC_ALL=C
@@ -36,7 +35,7 @@ DRAFT=0
 
 usage() {
   cat <<EOF
-adapters/marketplace-publish/run.sh — Publish plugin release to GitHub Releases (E78-S1).
+adapters/marketplace-publish/run.sh — Publish plugin release to GitHub Releases.
 Usage:
   run.sh --env <env> --version <ver> --output-dir <dir> [--repository <owner/repo>] [--draft]
 
@@ -69,7 +68,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# --- Required-flag validation (AC3) ----------------------------------------
+# --- Required-flag validation ----------------------------------------
 MISSING=""
 [ -z "$ENV_NAME" ]   && MISSING="$MISSING --env"
 [ -z "$VERSION" ]    && MISSING="$MISSING --version"
@@ -94,7 +93,7 @@ esac
 
 mkdir -p "$OUTPUT_DIR" || { echo "run.sh: cannot create output-dir: $OUTPUT_DIR" >&2; exit 2; }
 
-# --- version_file validation (AC5) -----------------------------------------
+# --- version_file validation -----------------------------------------
 if [ "${MARKETPLACE_PUBLISH_SKIP_VERSION_FILE:-0}" != "1" ]; then
   VFILE="${MARKETPLACE_PUBLISH_VERSION_FILE:-}"
   VKEY="${MARKETPLACE_PUBLISH_VERSION_KEY:-}"
@@ -129,7 +128,7 @@ if ! command -v git >/dev/null 2>&1; then
   exit 127
 fi
 
-# --- Tag + push (AC6) ------------------------------------------------------
+# --- Tag + push ------------------------------------------------------
 REMOTE="origin"
 GH_REPO_ARGS=()
 if [ -n "$REPOSITORY" ]; then
@@ -140,7 +139,7 @@ fi
 { git tag "$VERSION" 2>"$OUTPUT_DIR/tag.stderr" || true; } >"$OUTPUT_DIR/tag.stdout"
 { git push "$REMOTE" "refs/tags/${VERSION}" 2>"$OUTPUT_DIR/push.stderr" || true; } >"$OUTPUT_DIR/push.stdout"
 
-# --- gh release create (AC4, AC6) ------------------------------------------
+# --- gh release create ------------------------------------------
 GH_ARGS=(release create "$VERSION")
 [ "$DRAFT" -eq 1 ] && GH_ARGS+=(--draft)
 [ "${#GH_REPO_ARGS[@]}" -gt 0 ] && GH_ARGS+=("${GH_REPO_ARGS[@]}")

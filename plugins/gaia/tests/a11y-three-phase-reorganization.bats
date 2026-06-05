@@ -73,8 +73,11 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AC3: gaia-test-a11y has TODO E73-S4 placeholder for adapter call sites" {
-  run grep -F "TODO: E73-S4" "$SKILLS_DIR/gaia-a11y-testing/SKILL.md"
+@test "AC3: gaia-test-a11y has TODO placeholder for deferred adapter call sites" {
+  # The adapter call sites (axe-core / pa11y / Lighthouse) are deferred scope;
+  # the SKILL.md documents them as TODO placeholders rather than citing an
+  # internal story key. Assert the durable behavioral anchor instead.
+  run grep -F "call sites below remain" "$SKILLS_DIR/gaia-a11y-testing/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
@@ -247,9 +250,3 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AF-2026-05-17-9: lineage tag present in both newly patched files" {
-  for skill in gaia-validate-design-a11y gaia-test-a11y; do
-    run grep -F 'AF-2026-05-17-9' "$SKILLS_DIR/$skill/SKILL.md"
-    [ "$status" -eq 0 ] || { echo "FAIL: $skill SKILL.md missing AF-2026-05-17-9 lineage tag"; return 1; }
-  done
-}

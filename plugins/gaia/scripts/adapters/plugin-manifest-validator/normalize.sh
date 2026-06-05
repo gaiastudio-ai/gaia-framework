@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/plugin-manifest-validator/normalize.sh — FR-410 + ADR-078 (AC6).
+# adapters/plugin-manifest-validator/normalize.sh — canonical adapter normalizer for plugin-manifest-validator.
 #
 # Reads the raw run.sh fragment on stdin (an analysis-results object with
 # `findings: [{rule, severity, file, line, message, blocking}, ...]`) and

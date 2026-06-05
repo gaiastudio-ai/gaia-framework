@@ -1,6 +1,6 @@
 ---
 name: deprecated-gaia-test-framework
-description: DEPRECATED — This skill has been retired. Use /gaia-test-strategy --scaffold (canonical, see gaia-test-strategy/SKILL.md). This file remains only to expose the deprecated alias for one sprint per E69-S3 / FR-RSV2-24.
+description: DEPRECATED — This skill has been retired. Use /gaia-test-strategy --scaffold (canonical, see gaia-test-strategy/SKILL.md). This file remains only to expose the deprecated alias for one sprint.
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
 deprecated_aliases: [gaia-test-framework]
 deprecated_since: sprint-37
@@ -8,13 +8,13 @@ replaced_by: gaia-test-strategy
 orchestration_class: light-procedural
 ---
 
-## Deprecation Notice (Test05 F-024)
+## Deprecation Notice
 
 This skill is a DEPRECATED alias. On invocation, emit this canonical one-line
 warning VERBATIM as the FIRST line of output, then redirect to the canonical
 skill:
 
-> `[deprecated] /gaia-test-framework is retired — use /gaia-test-strategy --scaffold (alias preserved one sprint per E69-S3 / FR-RSV2-24).`
+> `[deprecated] /gaia-test-framework is retired — use /gaia-test-strategy --scaffold (alias preserved one sprint).`
 
 ## Setup
 
@@ -24,7 +24,7 @@ skill:
 
 Initialize a test framework for the current project by detecting the project stack, selecting the appropriate test framework, scaffolding configuration files and folder structure, and designing fixture/factory patterns. The output is a test framework setup document written to `.gaia/artifacts/test-artifacts/test-framework-setup.md`.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/test-framework` workflow (E28-S87, Cluster 11). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
+This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/test-framework` workflow. The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 
@@ -101,7 +101,7 @@ Write the test framework setup document to `.gaia/artifacts/test-artifacts/test-
 ## Validation
 
 <!--
-  E42-S15 — V1→V2 7-item checklist port (FR-341, FR-359, VCP-CHK-31, VCP-CHK-32).
+  V1→V2 7-item checklist port.
   Classification (7 items total — V1 verbatim, no extras):
     - Script-verifiable: 4 (SV-01..SV-04) — enforced by finalize.sh.
     - LLM-checkable:     3 (LLM-01..LLM-03) — evaluated by the host LLM
@@ -120,9 +120,7 @@ Write the test framework setup document to `.gaia/artifacts/test-artifacts/test-
 
   Invoked by `finalize.sh` at post-complete (per architecture §10.31.1).
   Validation runs BEFORE the checkpoint and lifecycle-event writes
-  (observability is never suppressed by checklist outcome — story AC6).
-
-  See .gaia/artifacts/implementation-artifacts/E42-S15-port-gaia-test-framework-atdd-ci-setup-checklists-to-v2.md.
+  (observability is never suppressed by checklist outcome).
 -->
 
 - [script-verifiable] SV-01 — Config files generated

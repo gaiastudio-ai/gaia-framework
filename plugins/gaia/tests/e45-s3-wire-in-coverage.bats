@@ -102,17 +102,20 @@ EOF
 
 @test "AC5: every Phase 1-3 finalize.sh references the E45-S3 marker" {
     # Canonical comment so future audits can grep one token.
+    # The durable anchor is the section heading 'Auto-save session memory'
+    # present in every wired finalize.sh (the bookkeeping ID was removed by
+    # a scrub pass; the behavioral phrase is the stable substitute).
     local missing=()
     while IFS= read -r s; do
         [ -n "$s" ] || continue
         local f="$SKILLS_DIR/$s/scripts/finalize.sh"
         [ -f "$f" ] || continue
-        if ! grep -q 'E45-S3' "$f"; then
+        if ! grep -q 'Auto-save session memory' "$f"; then
             missing+=("$s")
         fi
     done < <(phase_1_3_skills)
     if [ "${#missing[@]}" -gt 0 ]; then
-        printf 'finalize.sh missing E45-S3 marker:\n' >&2
+        printf 'finalize.sh missing auto-save section marker:\n' >&2
         printf '  - %s\n' "${missing[@]}" >&2
         return 1
     fi
@@ -123,7 +126,7 @@ EOF
     while IFS= read -r s; do
         [ -n "$s" ] || continue
         local f="$SKILLS_DIR/$s/scripts/finalize.sh"
-        if [ -f "$f" ] && grep -q 'E45-S3' "$f" && grep -q '_auto_save_memory' "$f"; then
+        if [ -f "$f" ] && grep -q 'Auto-save session memory' "$f" && grep -q '_auto_save_memory' "$f"; then
             count=$(( count + 1 ))
         fi
     done < <(phase_1_3_skills)

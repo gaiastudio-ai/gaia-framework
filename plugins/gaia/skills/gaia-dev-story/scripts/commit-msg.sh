@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# commit-msg.sh — gaia-dev-story Step 10 commit-message helper (E57-S7, P1-3)
+# commit-msg.sh — gaia-dev-story Step 10 commit-message helper
 #
 # Reads a story file's YAML frontmatter (key, title, type) and emits a
 # Conventional Commit message on stdout. The output is safe to feed to
 # `git commit -F -`.
-#
-# Refs: FR-DSS-5, FR-DSS-6, NFR-DSS-1, AF-2026-04-28-6
-# Story: E57-S7
 #
 # Usage:
 #   commit-msg.sh <story_path>
@@ -62,7 +59,7 @@ if [ ! -f "$STORY_PATH_INPUT" ]; then
   die_usage "story file not found: $STORY_PATH_INPUT"
 fi
 
-# --- Frontmatter extraction (shared via frontmatter-lib.sh, E64-S1 AC3) --
+# --- Frontmatter extraction (shared via frontmatter-lib.sh) --
 
 SCRIPT_DIR_FOR_LIB="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=./frontmatter-lib.sh
@@ -77,7 +74,7 @@ get_field() {
 }
 
 # Tolerate the `story_key:` convention every other story-consuming skill
-# accepts; canonical `key:` takes precedence (issue #1091).
+# accepts; canonical `key:` takes precedence.
 get_field_aliased() {
   local canonical="$1" alias="$2" val
   val="$(get_field "$canonical")"
@@ -104,7 +101,7 @@ fi
 # leading word prepended to the subject body so commitlint's subject-case
 # rule (which rejects start-case / pascal-case / upper-case) accepts ALL-CAPS
 # story titles like "SKILL.md gate wiring" without manual `gh pr edit`
-# intervention. (E64-S1 AC4, AC5)
+# intervention.
 
 case "$TYPE_VAL" in
   feature)  PREFIX="feat";     VERB="wire" ;;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# gaia-test-device-matrix/expand-matrix.sh — E74-S10 / AC2.
+# gaia-test-device-matrix/expand-matrix.sh — device matrix expansion.
 #
 # Reads device_targets from project-config.yaml and emits a JSON array
 # representing the cartesian product of os_versions × form_factors × screen_sizes.

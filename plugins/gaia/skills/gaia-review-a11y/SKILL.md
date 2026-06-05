@@ -1,6 +1,6 @@
 ---
 name: gaia-review-a11y
-description: Pre-merge accessibility gate — reviews code and UI for WCAG 2.1 compliance (semantic HTML, ARIA, keyboard navigation, color contrast, screen reader support). Conditional gate that fires only when compliance.ui_present is true; skipped neutrally otherwise. Produces a verdict via verdict-resolver.sh per ADR-077 seven-phase structure. Use when "review accessibility" or /gaia-review-a11y.
+description: Pre-merge accessibility gate — reviews code and UI for WCAG 2.1 compliance (semantic HTML, ARIA, keyboard navigation, color contrast, screen reader support). Conditional gate that fires only when compliance.ui_present is true; skipped neutrally otherwise. Produces a verdict via verdict-resolver.sh per the seven-phase structure. Use when "review accessibility" or /gaia-review-a11y.
 argument-hint: "[target — file, directory, or component name]"
 command: /gaia-review-a11y
 phase: implementation
@@ -12,17 +12,17 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 orchestration_class: reviewer
 ---
 
-## ADR-077 Mission (E69-S2)
+## Mission
 
-You are the **pre-merge a11y gate** for UI-bearing projects. The gate is conditional — `/gaia-review-all` includes this gate only when `compliance.ui_present: true` is resolved from the project's `project-config.yaml` (FR-RSV2-44). When `compliance.ui_present` is `false` or absent, the composite-verdict aggregator is invoked with `--skip-a11y "compliance.ui_present: false"` and this skill is not executed.
+You are the **pre-merge a11y gate** for UI-bearing projects. The gate is conditional — `/gaia-review-all` includes this gate only when `compliance.ui_present: true` is resolved from the project's `project-config.yaml`. When `compliance.ui_present` is `false` or absent, the composite-verdict aggregator is invoked with `--skip-a11y "compliance.ui_present: false"` and this skill is not executed.
 
-This skill is the **implementation-phase** sibling of the three-phase a11y skill family (FR-RSV2-25):
+This skill is the **implementation-phase** sibling of the three-phase a11y skill family:
 
 - `/gaia-validate-design-a11y` — planning (agent: Christy)
 - `/gaia-review-a11y` — pre-merge gate (this skill, conditional, agent: Christy)
 - `/gaia-test-a11y` — post-deploy smoke (agent: Sable)
 
-All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the layered rubric loader (E68-S2 / ADR-079). This skill is verdict-producing and follows the seven-phase structure mandated by ADR-077.
+All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the layered rubric loader. This skill is verdict-producing and follows the seven-phase structure.
 
 ### Phase 1 — Setup
 
@@ -62,7 +62,7 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
   !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh --findings <findings.json>
   ```
 
-- The resolver emits `APPROVE | REQUEST_CHANGES | BLOCKED`. The skill MUST NOT recompute the verdict by hand (ADR-077, ADR-042).
+- The resolver emits `APPROVE | REQUEST_CHANGES | BLOCKED`. The skill MUST NOT recompute the verdict by hand.
 
 ### Phase 6 — Report
 
@@ -75,7 +75,7 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 ## Agent Wiring
 
-Per the E69-S2 wiring-table delta (added to ADR-077 wiring table), this skill resolves to **Christy (UX Designer)** via:
+Per the wiring-table delta, this skill resolves to **Christy (UX Designer)** via:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-review-a11y
@@ -89,19 +89,19 @@ Pre-merge a11y review is a UX-design concern, consistent with `gaia-validate-des
 - The orchestrator `/gaia-review-all` reads `compliance.ui_present` via `resolve-config.sh` and:
   - includes this gate (calls the verdict-resolver path) when `compliance.ui_present: true`;
   - invokes the composite aggregator with `--skip-a11y "compliance.ui_present: false"` (or `--skip-a11y "compliance section absent"` per AC-EC2) when the value is false / absent.
-- A skipped gate contributes neutrally to the composite verdict per ADR-082; it does NOT fail the composite (FR-RSV2-44).
+- A skipped gate contributes neutrally to the composite verdict; it does NOT fail the composite.
 
 ---
 
 ## Legacy Task Body (preserved for backward compatibility)
 
-The original task body (pre-ADR-077) is preserved below verbatim so existing consumers and runbooks still work. New invocations follow the seven-phase structure above; both paths converge on the same `rubrics/base/a11y.json` rubric and emit the same verdict via `verdict-resolver.sh`.
+The original task body is preserved below verbatim so existing consumers and runbooks still work. New invocations follow the seven-phase structure above; both paths converge on the same `rubrics/base/a11y.json` rubric and emit the same verdict via `verdict-resolver.sh`.
 
-## Mission
+### Legacy Mission
 
 You are performing a **WCAG 2.1 accessibility review** on the target the user supplies (a file, directory, or named component). You evaluate the target across four categories — semantic HTML + ARIA, keyboard + focus, visual + screen reader — and produce a markdown findings report where every finding cites the specific WCAG 2.1 success criterion ID, its conformance level, a severity rating, and concrete remediation guidance.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/review-accessibility.xml` task (47 lines). Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model. Deterministic report-header generation is delegated to the shared foundation script `template-header.sh` (E28-S16) rather than re-prosed per skill.
+This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/review-accessibility.xml` task (47 lines). The legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model. Deterministic report-header generation is delegated to the shared foundation script `template-header.sh` rather than re-prosed per skill.
 
 ## Critical Rules
 
@@ -155,7 +155,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/
 
 ### Step 5 — Generate Report
 
-Invoke the shared foundation script to emit the deterministic artifact header (ADR-042):
+Invoke the shared foundation script to emit the deterministic artifact header:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/template-header.sh --template accessibility-review --workflow gaia-review-a11y
@@ -171,7 +171,7 @@ Write the report to the following path (preserved verbatim from the legacy task 
 
 If the file already exists for the same day (AC-EC3), write to a suffix-incremented filename (`accessibility-review-{date}-2.md`, `-3.md`, ...) to match the legacy task's safe behavior and avoid clobbering a prior same-day run.
 
-**Output override (Test05 F-017).** The default path above is preserved for downstream aggregation. To redirect the report (e.g. into a per-story `reviews/` dir, or a CI-scoped location), pass `--output <path>` in `$ARGUMENTS` or set `GAIA_A11Y_REPORT_PATH`; an explicit override wins over the default and skips the same-day suffix logic (the caller owns collision handling). Document the resolution precedence: `--output` arg > `GAIA_A11Y_REPORT_PATH` env > the default `{test_artifacts}/accessibility-review-{date}.md`.
+**Output override.** The default path above is preserved for downstream aggregation. To redirect the report (e.g. into a per-story `reviews/` dir, or a CI-scoped location), pass `--output <path>` in `$ARGUMENTS` or set `GAIA_A11Y_REPORT_PATH`; an explicit override wins over the default and skips the same-day suffix logic (the caller owns collision handling). Document the resolution precedence: `--output` arg > `GAIA_A11Y_REPORT_PATH` env > the default `{test_artifacts}/accessibility-review-{date}.md`.
 
 The report is organised by category (semantic HTML, ARIA, keyboard, focus, visual, screen reader). Every finding row uses this exact schema:
 
@@ -183,12 +183,7 @@ If the target directory is empty or the target resolves to no files (AC-EC6), ex
 
 ## References
 
-- Source: `_gaia/core/tasks/review-accessibility.xml` (legacy 47-line task body — ported per ADR-041 + ADR-042).
-- ADR-041: Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042: Scripts-over-LLM for Deterministic Operations.
-- ADR-048: Engine Deletion as Program-Closing Action — legacy task coexists with this skill until program close.
-- FR-323: Skill Conversion — slash-command identity preserved.
-- NFR-053: Full v1.127.2-rc.1 Feature Parity.
+- Source: `_gaia/core/tasks/review-accessibility.xml` (legacy 47-line task body — ported to the native execution model).
 
 ## Next Step
 

@@ -139,15 +139,15 @@ teardown() { common_teardown; }
 # AC4 — Provenance and 3-iteration cap referenced in each wire-in
 # ---------------------------------------------------------------------------
 
-@test "AC4: each Phase 3 Testing skill references E44-S2 (pattern provenance)" {
+@test "AC4: each Phase 3 Testing skill references the canonical pattern (pattern provenance)" {
   for skill in $PHASE3_TEST_SKILLS_LIST; do
-    grep -q 'E44-S2' "$SKILLS_DIR/$skill/SKILL.md"
+    grep -q 'Reuses the canonical pattern' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC4: each Phase 3 Testing skill references ADR-058 (decision provenance)" {
+@test "AC4: each Phase 3 Testing skill defers to the canonical spec rather than duplicating it (decision provenance)" {
   for skill in $PHASE3_TEST_SKILLS_LIST; do
-    grep -q 'ADR-058' "$SKILLS_DIR/$skill/SKILL.md"
+    grep -q 'cite this anchor' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 

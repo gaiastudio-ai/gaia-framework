@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# subcmd-scaffold.sh — /gaia-test-automate --scaffold sub-command (E72-S2)
+# subcmd-scaffold.sh — /gaia-test-automate --scaffold sub-command
 #
 # Generates SCAFFOLD-ONLY test skeletons for unmapped acceptance criteria
 # in a story. The skeletons intentionally contain placeholder patterns
 # (test.skip / expect(true) / assert True) so the deterministic
 # placeholder-test-detector.sh treats them as low_quality_test_generated.
 #
-# Hard invariant (E72-S2 AC5, AC6):
+# Hard invariant:
 #   This script MUST NEVER update the Review Gate Test Automation row to
 #   PASSED. It explicitly logs "review gate not updated" on stdout so the
 #   /gaia-test-automate skill body can observe the contract.
@@ -23,8 +23,6 @@
 #   0 — skeletons generated successfully
 #   1 — story file missing / unreadable
 #   2 — caller error (missing required flag)
-#
-# Refs: E72-S2 AC5, AC6; FR-RSV2-40; source-report §5.8.
 
 set -euo pipefail
 LC_ALL=C
@@ -36,7 +34,7 @@ err() { printf '%s: error: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — /gaia-test-automate --scaffold sub-command (E72-S2).
+$SCRIPT_NAME — /gaia-test-automate --scaffold sub-command.
 
 Usage:
   $SCRIPT_NAME \\

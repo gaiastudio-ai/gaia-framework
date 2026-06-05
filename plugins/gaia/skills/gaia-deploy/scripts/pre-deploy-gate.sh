@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# pre-deploy-gate.sh — /gaia-deploy Pattern A pre-deploy gate (E73-S5, AC2).
+# pre-deploy-gate.sh — /gaia-deploy Pattern A pre-deploy gate.
 #
-# Reads the composite verdict (ADR-082 aggregator output) from
-# `${GAIA_DEPLOY_COMPOSITE_FILE}` if set, otherwise invokes
-# `composite-verdict-aggregator.sh --story-key <key>` and treats the JSON
-# stdout as the composite verdict. Proceeds (exit 0) only when
-# `composite == "APPROVE"`. Otherwise emits a `BLOCKED` diagnostic naming the
-# failing reviews and exits non-zero.
-#
-# Refs: ADR-080, ADR-082, FR-RSV2-31.
+# Reads the composite verdict from `${GAIA_DEPLOY_COMPOSITE_FILE}` if set,
+# otherwise invokes `composite-verdict-aggregator.sh --story-key <key>` and
+# treats the JSON stdout as the composite verdict. Proceeds (exit 0) only
+# when `composite == "APPROVE"`. Otherwise emits a `BLOCKED` diagnostic
+# naming the failing reviews and exits non-zero.
 
 set -euo pipefail
 LC_ALL=C
@@ -23,7 +20,7 @@ while [ "$#" -gt 0 ]; do
     --story-key) STORY_KEY="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-$SCRIPT_NAME — pre-deploy composite-verdict gate (E73-S5, AC2).
+$SCRIPT_NAME — pre-deploy composite-verdict gate.
 Usage: $SCRIPT_NAME --story-key <key>
 Honours GAIA_DEPLOY_COMPOSITE_FILE for fixture-driven testing.
 EOF
@@ -58,7 +55,7 @@ else
   PLUGIN_SCRIPTS="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
   AGGREGATOR="$PLUGIN_SCRIPTS/review-common/composite-verdict-aggregator.sh"
   if [ ! -x "$AGGREGATOR" ]; then
-    log "BLOCKED: composite-verdict-aggregator.sh not found at $AGGREGATOR (E66-S3 not deployed)"
+    log "BLOCKED: composite-verdict-aggregator.sh not found at $AGGREGATOR"
     exit 1
   fi
   if ! composite_json="$("$AGGREGATOR" --story-key "$STORY_KEY" 2>&1)"; then

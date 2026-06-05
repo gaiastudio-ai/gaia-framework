@@ -1,48 +1,43 @@
 #!/usr/bin/env bash
 # config-hydration.sh — shared library for hydrating sections of project-config.yaml.
 #
-# Story: E85-S1 — Shared config-hydration.sh helper.
-# ADRs:  ADR-098 (Helper Contract), ADR-096 (config_phase state machine),
-#        ADR-097 (Absence-over-sentinel), ADR-044 (Section-scoped editors),
-#        ADR-042 (Scripts-over-LLM).
-#
 # Usage (sourced library):
 #   source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-hydration.sh"
 #   config_hydrate_section <section_path> <yaml_fragment_file>
 #
 # The function:
-#   - Validates the section against a hardcoded allowlist (SR-47 / T-INIT-6).
+#   - Validates the section against a hardcoded allowlist.
 #   - Acquires an exclusive lock on `config/.config-hydration.lock` with a
 #     30-second timeout, using flock when available and falling back to
 #     mkdir-based mutex on systems without flock (e.g., stock macOS).
-#   - Reads the current `config_phase` (treats absent as `full` per ADR-097).
+#   - Reads the current `config_phase` (treats absent as `full`).
 #   - Detects existing section presence and delegates the YAML write to
-#     `config-yaml-editor.sh insert|replace`, preserving comments (ADR-044).
+#     `config-yaml-editor.sh insert|replace`, preserving comments.
 #   - Appends `# hydrated by <caller> at <ISO-8601>` above the hydrated section.
 #   - Advances `config_phase` monotonically forward (minimal -> partial only).
 #     Never writes `config_phase: full` — that transition belongs to
-#     `validate-project-config.sh` (E85-S4).
+#     `validate-project-config.sh`.
 #   - Logs sha256 of project-config.yaml before/after the write.
 #
 # Environment overrides (mostly for tests):
 #   CONFIG_HYDRATION_TARGET       — path to project-config.yaml. Canonical
-#                                   default: ${project_root}/.gaia/config/project-config.yaml
-#                                   (ADR-111). Legacy fallback: ${project_root}/config/project-config.yaml
+#                                   default: ${project_root}/.gaia/config/project-config.yaml.
+#                                   Legacy fallback: ${project_root}/config/project-config.yaml
 #                                   when only the legacy tree exists (pre-migration installs).
 #   CONFIG_HYDRATION_LOCK_PATH    — path to lock file. Resolved as dirname($target)/.config-hydration.lock,
 #                                   so it follows the same canonical-first resolution as the target.
 #   CONFIG_HYDRATION_LOCK_TIMEOUT — seconds (default 30)
 #   CLAUDE_PLUGIN_ROOT            — plugin root (used to resolve config-yaml-editor.sh)
 
-# Library guard — prevent double-sourcing side effects (AC1, Task 1.2).
+# Library guard — prevent double-sourcing side effects.
 if [ "${_CONFIG_HYDRATION_LOADED:-}" = "1" ]; then
   return 0 2>/dev/null || true
 fi
 _CONFIG_HYDRATION_LOADED=1
 
-# E97-S1 / ADR-111: source lib/gaia-paths.sh so $GAIA_CONFIG_DIR is available
-# for canonical-first target resolution. The helper is idempotent via its own
-# source guard (_GAIA_PATHS_LOADED), so re-sourcing is a no-op.
+# Source lib/gaia-paths.sh so $GAIA_CONFIG_DIR is available for canonical-first
+# target resolution. The helper is idempotent via its own source guard
+# (_GAIA_PATHS_LOADED), so re-sourcing is a no-op.
 # Resolve relative to this script's location; gaia-paths.sh lives in the same
 # scripts/lib/ directory.
 _CH_LIB_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" 2>/dev/null && pwd )"
@@ -53,29 +48,22 @@ fi
 
 # ---- Constants -------------------------------------------------------------
 
-# Curated section allowlist + managed-elsewhere classification (E85-S11 / AF-2026-05-13-2).
+# Curated section allowlist + managed-elsewhere classification.
 #
-# Background:
-#   Original E85-S1 allowlist contained 7 entries; reconciler at gaia-reconcile-v2.sh:307-316
-#   downgraded "not in allowlist" rc=2 to WARN+continue+exit-0, silently skipping 33 of 40
-#   schema sections on v2-to-v2 reconciliation. Reproduced 2026-05-13 on plugin 1.150.0;
-#   AF-2026-05-13-2 is the cascade. Pattern is "skill claims success while critical step
-#   was silently skipped" — sibling defect to AI-2026-05-09-12.
-#
-# Contract (ADR-098 + ADR-101 §6 + ADR-096):
+# Contract:
 #   - Every schema property MUST be in exactly one of:
 #       (i)  _CONFIG_HYDRATION_ALLOWLIST       — auto-hydratable; reconciler invokes
 #                                                config_hydrate_section to add an empty stub.
 #       (ii) _CONFIG_HYDRATION_MANAGED_ELSEWHERE — known to be written by /gaia-init,
 #                                                  schema discovery, or another helper; the
 #                                                  reconciler MUST skip them WITHOUT raising
-#                                                  the AC5 hard-error (exit 5).
+#                                                  the hard-error (exit 5).
 #       (iii) `x-no-auto-hydration: true` in the schema property — optional escape hatch
 #                                                                  for future schema additions.
 #   - Forward + reverse invariants are pinned by bats tests in
-#     tests/config-hydration-allowlist-invariant.bats (TC-RV2-45, TC-RV2-46).
-#   - `project_shape` (legacy E85-S1 entry) was in the allowlist but NOT in schema v2.0.0
-#     (Val F4 dead-code drift on 2026-05-13). Removed in this story.
+#     tests/config-hydration-allowlist-invariant.bats.
+#   - `project_shape` was in the allowlist but NOT in schema v2.0.0 (dead-code drift).
+#     Removed from allowlist.
 _CONFIG_HYDRATION_ALLOWLIST=(
   # Configuration sections (auto-hydratable as empty stubs).
   project_name
@@ -105,23 +93,19 @@ _CONFIG_HYDRATION_ALLOWLIST=(
 )
 
 # Sections that are intentionally NOT auto-hydrated. The reconciler MUST recognize these
-# and skip them without triggering the AC5 hard-error path. Forward + reverse invariants:
+# and skip them without triggering the hard-error path. Forward + reverse invariants:
 # every schema property is in EXACTLY ONE of allowlist, managed-elsewhere, or x-no-auto-hydration.
 #
 #   - Computed path/identity (5):        written by resolve-config.sh at runtime.
 #   - framework_version (1):             written by gaia-reconcile-v2.sh apply at
-#                                        end of successful reconciliation
-#                                        (E85-S13 / D8 / AF-2026-05-14-3). Per Val F-2
-#                                        on 2026-05-14, resolve-config.sh ONLY READS
-#                                        this value at lines ~988-1007 for drift
-#                                        detection; it does not write.
+#                                        end of successful reconciliation.
+#                                        resolve-config.sh ONLY READS this value for
+#                                        drift detection; it does not write.
 #   - date (1):                          written by resolve-config.sh at runtime.
 #   - State-machine (2):                 written by config-hydration.sh advance-phase
 #                                        and schema discovery.
 #   - User-identity (3):                 written by /gaia-init Phase 0 / --full.
 #   - Artifact-bucket paths (4):         written by resolve-config.sh and /gaia-init.
-#                                        Val F2 on 2026-05-13 surfaced these as a
-#                                        reverse-invariant gap.
 _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   # Computed path/identity (5).
   project_root
@@ -129,7 +113,7 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   memory_path
   checkpoint_path
   installed_path
-  # framework_version (1) — written by gaia-reconcile-v2.sh apply (E85-S13).
+  # framework_version (1) — written by gaia-reconcile-v2.sh apply.
   framework_version
   # date (1) — written by resolve-config.sh at runtime.
   date
@@ -147,23 +131,22 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   creative_artifacts
   # Legacy / back-compat (1): retained in managed-elsewhere so reconciler
   # tests that still declare `project_shape` in the schema fixture don't
-  # trip the AC5 hard-error path. Removed from allowlist (Val F4) but
-  # classified here for forward-compat with any caller that still
-  # references it.
+  # trip the hard-error path. Removed from allowlist but classified here
+  # for forward-compat with any caller that still references it.
   project_shape
-  # E93-S2 (1): sprint_review is human-managed exclusively via
-  # /gaia-config-sprint-review; never auto-hydrated by the reconciler.
+  # sprint_review (1): human-managed exclusively via /gaia-config-sprint-review;
+  # never auto-hydrated by the reconciler.
   sprint_review
-  # E103-S5 (ADR-120, 1): lifecycle is operator-managed (lifecycle.strict_mode
-  # default-ON per ADR-120). Never auto-hydrated by the reconciler — operators
-  # opt in/out explicitly. The schema property also carries
-  # `x-no-auto-hydration: true` as defense-in-depth documentation.
+  # lifecycle (1): operator-managed (lifecycle.strict_mode default-ON).
+  # Never auto-hydrated by the reconciler — operators opt in/out explicitly.
+  # The schema property also carries `x-no-auto-hydration: true` as
+  # defense-in-depth documentation.
   lifecycle
-  # AF-2026-05-30-2 / Test10 F-06 (1): brownfield is operator-managed via
-  # /gaia-config-brownfield and feeds /gaia-doctor's tier classifier. Never
-  # auto-hydrated by the reconciler. The schema property carries
-  # `x-no-auto-hydration: true` as defense-in-depth documentation; this
-  # entry registers it for the reconciler's managed-elsewhere check.
+  # brownfield (1): operator-managed via /gaia-config-brownfield and feeds
+  # /gaia-doctor's tier classifier. Never auto-hydrated by the reconciler.
+  # The schema property carries `x-no-auto-hydration: true` as
+  # defense-in-depth documentation; this entry registers it for the
+  # reconciler's managed-elsewhere check.
   brownfield
 )
 
@@ -223,7 +206,7 @@ _ch_caller() {
   basename "${0:-bash}"
 }
 
-# Resolve the path to config-yaml-editor.sh (ADR-044 delegation target).
+# Resolve the path to config-yaml-editor.sh (section-scoped editor delegation target).
 _ch_editor() {
   local editor=""
   if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -x "${CLAUDE_PLUGIN_ROOT}/scripts/config-yaml-editor.sh" ]; then
@@ -238,7 +221,7 @@ _ch_editor() {
 }
 
 # Read the current config_phase from a config file. Echoes the phase string;
-# echoes the literal "ABSENT" when the field is missing entirely (ADR-097).
+# echoes the literal "ABSENT" when the field is missing entirely.
 _ch_read_phase() {
   local file="$1"
   local line
@@ -377,25 +360,24 @@ _ch_insert_audit_comment() {
 #   1  generic failure (missing file, IO error, etc.)
 #   2  section not in allowlist
 #   3  lock timeout
-# config_hydration_resolve_target — E97-S1 / ADR-111 / FR-511.
-# Return the resolved project-config.yaml target path on stdout. Same
-# resolution order as the in-function target lookup: CONFIG_HYDRATION_TARGET
-# override > $GAIA_CONFIG_DIR/project-config.yaml > $CLAUDE_PLUGIN_ROOT-derived
-# legacy > "config/project-config.yaml" relative fallback. Exposed so callers
-# and tests can inspect resolution without invoking the full hydrate pipeline.
+# config_hydration_resolve_target — return the resolved project-config.yaml target
+# path on stdout. Same resolution order as the in-function target lookup:
+# CONFIG_HYDRATION_TARGET override > $GAIA_CONFIG_DIR/project-config.yaml >
+# $CLAUDE_PLUGIN_ROOT-derived legacy > "config/project-config.yaml" relative
+# fallback. Exposed so callers and tests can inspect resolution without invoking
+# the full hydrate pipeline.
 config_hydration_resolve_target() {
   local target="${CONFIG_HYDRATION_TARGET:-}"
   if [ -z "$target" ]; then
-    # Tier 1: GAIA_CONFIG_DIR override (E97-S1).
+    # Tier 1: GAIA_CONFIG_DIR override.
     if [ -n "${GAIA_CONFIG_DIR:-}" ] && [ -f "${GAIA_CONFIG_DIR}/project-config.yaml" ]; then
       target="${GAIA_CONFIG_DIR}/project-config.yaml"
     fi
-    # Tier 2 (AF-2026-05-22-5): CLAUDE_PROJECT_ROOT canonical .gaia/config/ —
-    # this is where /gaia-init actually writes post-ADR-111. Previously the
-    # resolver fell straight through to the legacy config/ path, causing
-    # /gaia-create-arch's hydrate-config step to skip with "no
-    # config/project-config.yaml found" even on greenfield projects that
-    # had a properly initialized .gaia/config/project-config.yaml.
+    # Tier 2: CLAUDE_PROJECT_ROOT canonical .gaia/config/ — this is where
+    # /gaia-init actually writes. Previously the resolver fell straight through
+    # to the legacy config/ path, causing /gaia-create-arch's hydrate-config
+    # step to skip with "no config/project-config.yaml found" even on
+    # greenfield projects with a properly initialized .gaia/config/project-config.yaml.
     if [ -z "$target" ] && [ -n "${CLAUDE_PROJECT_ROOT:-}" ] \
        && [ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
       target="${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"
@@ -414,7 +396,7 @@ config_hydration_resolve_target() {
     if [ -z "$target" ] && [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
       target="${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
     fi
-    # Tier 5: relative-canonical (post-ADR-111 default for CWD-rooted runs).
+    # Tier 5: relative-canonical (default for CWD-rooted runs).
     if [ -z "$target" ] && [ -f ".gaia/config/project-config.yaml" ]; then
       target=".gaia/config/project-config.yaml"
     fi
@@ -434,7 +416,7 @@ config_hydrate_section() {
   local fragment_file="$2"
   local section_root="${section_path%%.*}"
 
-  # Allowlist check (AC4 / SR-47 / T-INIT-6).
+  # Allowlist check.
   if ! _ch_in_allowlist "$section_root"; then
     _ch_critical "section '$section_root' not in allowlist; caller=$(_ch_caller)"
     return 2
@@ -450,10 +432,10 @@ config_hydrate_section() {
     return 1
   fi
 
-  # Target config path. E97-S1 / ADR-111: prefer .gaia/config/ (canonical)
-  # over legacy config/ (pre-migration fallback). The lib/gaia-paths.sh helper
-  # sourced at the top sets GAIA_CONFIG_DIR; if that directory contains
-  # project-config.yaml, use it. Otherwise fall through to the legacy lookup.
+  # Target config path: prefer .gaia/config/ (canonical) over legacy config/
+  # (pre-migration fallback). The lib/gaia-paths.sh helper sourced at the top
+  # sets GAIA_CONFIG_DIR; if that directory contains project-config.yaml, use it.
+  # Otherwise fall through to the legacy lookup.
   local target="${CONFIG_HYDRATION_TARGET:-}"
   if [ -z "$target" ]; then
     # Canonical-first: .gaia/config/project-config.yaml.
@@ -484,7 +466,7 @@ config_hydrate_section() {
 
   local timeout="${CONFIG_HYDRATION_LOCK_TIMEOUT:-30}"
 
-  # Acquire lock (AC3 / AC11 / SR-43).
+  # Acquire lock.
   if ! _ch_acquire_lock "$lock_path" "$timeout"; then
     local holder
     holder="$(_ch_lock_holder "$lock_path")"
@@ -509,14 +491,14 @@ _config_hydrate_section_locked() {
   local target="$3"
   local fragment_file="$4"
 
-  # Compute sha256 before (AC5).
+  # Compute sha256 before write.
   local sha_before; sha_before="$(_ch_sha256 "$target")"
 
-  # Read current phase (AC6/AC7/AC8).
+  # Read current phase.
   local current_phase
   current_phase="$(_ch_read_phase "$target")"
 
-  # Detect existing section to choose insert vs replace (AC10).
+  # Detect existing section to choose insert vs replace.
   local editor; editor="$(_ch_editor)"
   local section_present=0
   if "$editor" extract "$target" "$section_root" >/dev/null 2>&1; then
@@ -536,7 +518,7 @@ _config_hydrate_section_locked() {
     } > "$payload"
   fi
 
-  # Perform the write (AC9 — delegated to ADR-044 editor).
+  # Perform the write (delegated to section-scoped editor).
   if [ "$section_present" -eq 1 ]; then
     _ch_notice "section '$section_root' already present — overwriting"
     if ! "$editor" replace "$target" "$section_root" "$payload" >/dev/null; then
@@ -553,12 +535,12 @@ _config_hydrate_section_locked() {
   fi
   [ -n "$synthesized_payload" ] && rm -f "$synthesized_payload"
 
-  # Insert audit comment (AC5).
+  # Insert audit comment.
   local caller; caller="$(_ch_caller)"
   local ts; ts="$(_ch_iso8601)"
   _ch_insert_audit_comment "$target" "$section_root" "$caller" "$ts"
 
-  # Apply config_phase state machine (AC6/AC7/AC8).
+  # Apply config_phase state machine.
   case "$current_phase" in
     minimal)
       _ch_write_phase "$target" partial
@@ -575,22 +557,21 @@ _config_hydrate_section_locked() {
       ;;
   esac
 
-  # Compute sha256 after, log audit trail (AC5).
+  # Compute sha256 after, log audit trail.
   local sha_after; sha_after="$(_ch_sha256 "$target")"
   _ch_log "sha256_before=${sha_before} sha256_after=${sha_after} section=${section_path} caller=${caller}"
 
   return 0
 }
 
-# ---- advance-phase sub-command (E85-S11 / AF-2026-05-13-2 sub-fix c) -----
+# ---- advance-phase sub-command -----
 #
 # Adds a small CLI dispatch for the partial→full transition that the reconciler
 # (gaia-reconcile-v2.sh) invokes after a successful section-hydration pass.
-# Preserves ADR-101 §6: the reconciler dispatches to this helper; the helper
-# is the sole writer of `config_phase`. ADR-096 monotonicity is enforced —
-# backward transitions return rc=3.
+# The reconciler dispatches to this helper; the helper is the sole writer of
+# `config_phase`. Monotonicity is enforced — backward transitions return rc=3.
 #
-# Usage (direct invocation, AF-2026-05-13-2):
+# Usage (direct invocation):
 #   bash config-hydration.sh advance-phase --to <minimal|partial|full> [--config <path>]
 #
 # Exit codes:
@@ -622,7 +603,7 @@ _ch_advance_phase() {
     return 2
   fi
 
-  # Read current phase (absence-means-full per ADR-097).
+  # Read current phase (absence-means-full).
   local current_phase
   current_phase="$(grep -E '^config_phase:[[:space:]]*' "$config_path" 2>/dev/null | awk '{print $2}' | tr -d '"' | head -1)"
   [ -z "$current_phase" ] && current_phase="full"
@@ -642,7 +623,7 @@ _ch_advance_phase() {
   esac
 
   if [ "$target_ord" -lt "$current_ord" ]; then
-    printf 'config-hydration.sh advance-phase: error: backward config_phase transition (%s→%s) forbidden per ADR-096 monotonicity\n' \
+    printf 'config-hydration.sh advance-phase: error: backward config_phase transition (%s→%s) forbidden by monotonicity constraint\n' \
       "$current_phase" "$target_phase" >&2
     return 3
   fi
@@ -656,16 +637,16 @@ _ch_advance_phase() {
   return 0
 }
 
-# ---- Dual-mode dispatch (E85-S11 / Val F1) -------------------------------
+# ---- Dual-mode dispatch --------------------------------------------------
 #
-# The original E85-S1 guard at this position exited 1 on direct invocation,
-# preserving the "sourced library only" contract. AF-2026-05-13-2 sub-fix (c)
-# adds a small CLI surface (`advance-phase`) that needs direct invocation.
+# The original guard at this position exited 1 on direct invocation, preserving
+# the "sourced library only" contract. A small CLI surface (`advance-phase`) was
+# later added that needs direct invocation.
 #
 # Dual-mode dispatch:
 #   - Sourced (BASH_SOURCE[0] != $0): no-op return; library is available.
 #   - Direct invocation with NO args: refuse with usage message (preserves the
-#     original library-only invariant for accidental `bash config-hydration.sh`).
+#     library-only invariant for accidental `bash config-hydration.sh`).
 #   - Direct invocation with args:    route to sub-command handler.
 if [ "${BASH_SOURCE[0]:-}" = "${0:-}" ]; then
   if [ $# -eq 0 ]; then

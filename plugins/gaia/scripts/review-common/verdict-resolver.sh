@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# review-common/verdict-resolver.sh — re-export entry point (E66-S1, ADR-077)
+# review-common/verdict-resolver.sh — re-export entry point
 #
 # Thin wrapper around plugins/gaia/scripts/verdict-resolver.sh that exposes the
 # parameterized verdict resolver under the review-common/ public-API surface.
@@ -11,8 +11,6 @@
 #   review-common/verdict-resolver.sh --help
 #
 # Exit codes and stdout/stderr semantics: see ../verdict-resolver.sh.
-#
-# Refs: ADR-077, ADR-075, FR-RSV2-3.
 
 set -euo pipefail
 LC_ALL=C

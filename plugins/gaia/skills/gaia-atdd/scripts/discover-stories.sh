@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# discover-stories.sh — /gaia-atdd batch discovery (E46-S3)
+# discover-stories.sh — /gaia-atdd batch discovery
 #
 # Scans .gaia/artifacts/planning-artifacts/epics-and-stories.md for high-risk stories
 # and emits either the keys list or a [all / select / skip] menu. Powers
-# the argumentless invocation branch of /gaia-atdd (FR-351, VCP-ATDD-01..05).
+# the argumentless invocation branch of /gaia-atdd.
 #
 # Usage:
 #   discover-stories.sh --epics <path> --format=keys[,menu] [--select=N,M,...]
@@ -13,14 +13,14 @@
 #   --format=keys       Emit one story key per line, in declared order
 #   --format=menu       Emit a numbered menu with key, title, risk + selection
 #                       options ([all / select / skip], or [all / skip] for
-#                       a single story per AC-EC7).
+#                       a single story).
 #   --select=N,M,...    Restrict the keys output to the chosen 1-based indices
-#                       (used by the 'select' branch — AC3 / VCP-ATDD-03).
+#                       (used by the 'select' branch).
 #                       Invalid (out-of-range or non-numeric) entries cause a
-#                       non-zero exit with "Invalid selection" (AC-EC6).
+#                       non-zero exit with "Invalid selection".
 #
 # Exit codes:
-#   0  success (including the empty-list graceful exit, AC5 / VCP-ATDD-05)
+#   0  success (including the empty-list graceful exit)
 #   1  unrecoverable error (missing epics file, invalid selection, etc.)
 #
 # POSIX discipline: bash with [[ ]] only; macOS /bin/bash 3.2 compatible.
@@ -63,13 +63,13 @@ fi
 
 # ---------- Parse high-risk stories from epics-and-stories.md ----------
 #
-# F-014 (Test04): two authored formats are accepted.
+# Two authored formats are accepted.
 #
 # (1) Pipe-table (legacy / some authors):
 #       | E{n}-S{m} | Title | Size | Priority | Risk |
 #
 # (2) Bullet-block — the CANONICAL form gaia-create-epics SKILL.md instructs
-#     Theo/Derek to author (SKILL.md lines 148-152):
+#     authors to write:
 #       ### Story E{n}-S{m}: Title
 #       - Epic: ...
 #       - Priority: ...
@@ -78,8 +78,7 @@ fi
 #
 # Both emit `key \t title \t risk` for rows whose risk is exactly "high".
 # discover-stories previously parsed ONLY format (1), so a file authored in the
-# documented format (2) yielded "No high-risk stories found" (the Test04 F-014
-# false negative). The block parser tracks the current story from its
+# documented format (2) yielded "No high-risk stories found". The block parser tracks the current story from its
 # `### Story` heading and reads that block's `- Risk:` bullet.
 
 _parse_high_risk() {
@@ -147,14 +146,14 @@ done < <(_parse_high_risk)
 
 _count="${#_KEYS[@]}"
 
-# ---------- Graceful empty-list exit (AC5 / VCP-ATDD-05) ----------
+# ---------- Graceful empty-list exit ----------
 
 if [ "$_count" -eq 0 ]; then
   printf 'No high-risk stories found — nothing to generate\n'
   exit 0
 fi
 
-# ---------- Resolve --select indices (AC3 / VCP-ATDD-03, AC-EC6) ----------
+# ---------- Resolve --select indices ----------
 
 _SELECTED_INDICES=()
 if [ -n "$_SELECT" ]; then
@@ -200,7 +199,7 @@ case "$_FORMAT" in
       _i=$((_i + 1))
     done
     printf '\n'
-    # AC-EC7: collapse to [all / skip] for a single story (no select).
+    # Collapse to [all / skip] for a single story (no select).
     if [ "$_count" -eq 1 ]; then
       printf 'Choose: [all / skip]\n'
     else

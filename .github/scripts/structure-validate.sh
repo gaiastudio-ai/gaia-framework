@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # structure-validate.sh
-# Validates the gaia-framework plugin directory skeleton (E28-S7 AC4).
+# Validates the gaia-framework plugin directory skeleton.
 # Asserts required dirs exist, required JSON files exist and parse cleanly.
 # Fails loudly on the first offending path.
 

@@ -38,7 +38,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/agents/orchestrator.md`. Adopt the persona, identity
 
 ### Step 3 — Dispatch on user selection
 
-When the user picks a destination, spawn the corresponding subagent or skill via the Agent tool (per ADR-093 main-turn orchestration). Do NOT execute the destination's work here; that work belongs to the destination skill or subagent. After dispatch, hand the conversation back to the user.
+When the user picks a destination, spawn the corresponding subagent or skill via the Agent tool (main-turn orchestration). Do NOT execute the destination's work here; that work belongs to the destination skill or subagent. After dispatch, hand the conversation back to the user.
 
 ### Step 4 — Honour `dismiss`
 

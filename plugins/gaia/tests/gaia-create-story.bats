@@ -198,8 +198,8 @@ EOF
 # ADR cross-reference
 # ---------------------------------------------------------------------------
 
-@test "Step 6 references ADR-050 (canonical pattern origin)" {
-  run grep -q "ADR-050" "$SKILL_DIR/SKILL.md"
+@test "Step 6 references the canonical Val + SM Fix-Loop Dispatch Pattern" {
+  run grep -qiE "Shared Val.*SM Fix-Loop Dispatch Pattern|Inline SM is the canonical pattern" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 

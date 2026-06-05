@@ -143,14 +143,14 @@ teardown() { common_teardown; }
 @test "AC4: agent documents ADR-067 hard-CRITICAL halt clause for both YOLO modes" {
   [ -f "$AGENT_FILE" ]
 
-  # ADR-067 reference present.
-  grep -F "ADR-067" "$AGENT_FILE"
+  # Hard-CRITICAL halt contract — behavioral phrase must name the halt clause.
+  grep -iE "hard.CRITICAL halt|YOLO MUST NOT auto.resolve CRITICAL" "$AGENT_FILE"
   # CRITICAL severity vocabulary present.
   grep -F "CRITICAL" "$AGENT_FILE"
   # Halt clause spanning both modes (case-insensitive on YOLO/non-YOLO so
   # the clause can phrase it either way).
   grep -iE "halt.*both|both.*halt|regardless of yolo|yolo.*non-yolo" "$AGENT_FILE"
-  # Audit file path is the canonical checkpoint location (AF-2026-05-27-3: .gaia/memory).
+  # Audit file path is the canonical checkpoint location (.gaia/memory).
   grep -F ".gaia/memory/checkpoints/" "$AGENT_FILE"
   grep -F "tdd-review-findings.md" "$AGENT_FILE"
 }
@@ -167,8 +167,8 @@ teardown() { common_teardown; }
   grep -iE "line.by.line|one line per finding|per.finding" "$AGENT_FILE"
   # Continue-after-WARNING semantics.
   grep -iE "continue|proceed" "$AGENT_FILE"
-  # ADR-063 verdict surfacing reference.
-  grep -F "ADR-063" "$AGENT_FILE"
+  # Verdict surfacing contract — parent skill renders findings to the user.
+  grep -iE "verdict surfacing|parent skill renders findings|renders findings to the user" "$AGENT_FILE"
 }
 
 # ---------------------------------------------------------------------------
@@ -181,8 +181,8 @@ teardown() { common_teardown; }
   grep -F "INFO" "$AGENT_FILE"
   # Suppression vocabulary — INFO findings go to the audit log, not stdout.
   grep -iE "suppress|not surface|audit.*not|silent" "$AGENT_FILE"
-  # ADR-037 finding-shape reference (severity vocabulary lives there).
-  grep -F "ADR-037" "$AGENT_FILE"
+  # Severity vocabulary declaration — canonical finding-shape contract.
+  grep -iE "Severity vocabulary|No other severities are emitted" "$AGENT_FILE"
 }
 
 # ---------------------------------------------------------------------------

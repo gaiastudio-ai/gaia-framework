@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# stdout-sentinel-scan.sh — E76-S15 anti-pattern scanner
+# stdout-sentinel-scan.sh — anti-pattern scanner
 #
 # Scans `/gaia-meeting` SKILL.md yield-boundary procedure sections for two
 # stdout-sentinel patterns that were empirically defeated by harness Auto Mode
 # on 2026-05-09 (memory rule `feedback_askuserquestion_under_automode.md`):
 #
 #   1. literal: "<<YIELD-STOP"   (script-side turn-terminal sentinel emitted by yield-gate.sh)
-#   2. literal: "<<TURN-END"     (alternate sentinel form used in early E76-S7 drafts)
+#   2. literal: "<<TURN-END"     (alternate sentinel form used in early drafts)
 #
 # Both patterns are forbidden inside SKILL.md yield-boundary procedure sections
 # because they fail under harness Auto Mode — the harness does not stop on
@@ -23,10 +23,10 @@
 # Output format (one line per (pattern, file, line) tuple):
 #   {file}:{line}:{matched-pattern}
 #
-# Scope-limit rationale (Dev Notes / story §Why the scope-limit matters):
+# Scope-limit rationale:
 # A naive `grep <<YIELD-STOP SKILL.md` would trip on documentation references
-# (§Critical Rules prohibition prose, §References ADR-083 detail records,
-# change-log entries discussing the deprecated mechanism). The scanner MUST
+# (§Critical Rules prohibition prose, §References detail records, change-log
+# entries discussing the deprecated mechanism). The scanner MUST
 # limit its scope to yield-boundary procedure sections inside SKILL.md so
 # legitimate documentation references stay un-flagged.
 #
@@ -43,7 +43,7 @@
 # Anchors`) are out-of-scope so legitimate documentation references that
 # discuss the deprecated mechanism do not trip the check.
 #
-# Per ADR-042 (scripts-over-LLM): pure deterministic scan; no LLM judgment.
+# Pure deterministic scan; no LLM judgment.
 # `awk` for state machine + `grep -F` for literal pattern match.
 
 set -euo pipefail

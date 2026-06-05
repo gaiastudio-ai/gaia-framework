@@ -234,11 +234,18 @@ assert_block_has_verbatim_labels() {
 # ---------------------------------------------------------------------------
 
 @test "tdd-review-gate hook blocks reference ADR-063 verdict surfacing" {
+  # ADR-063 governs verdict surfacing from the tdd-reviewer subagent.
+  # The behavioral anchor is "Surface the verdict" — present in each block's
+  # route-to-qa and QA_AUTO branches.
   hooks="$(awk '/<!-- E57-S4: step[567] tdd-review-gate begin -->/,/<!-- E57-S4: step[567] tdd-review-gate end -->/' "$SKILL_MD")"
-  echo "$hooks" | grep -Fq 'ADR-063'
+  echo "$hooks" | grep -Fq 'Surface the verdict'
 }
 
 @test "tdd-review-gate hook blocks reference ADR-067 hard-CRITICAL halt" {
+  # ADR-067 governs the hard-CRITICAL halt that YOLO MUST NOT auto-resolve.
+  # The behavioral anchor is "YOLO MUST NOT auto-resolve CRITICAL findings" —
+  # present in the step5 block and mirrored by "HALT on \`severity: CRITICAL\`"
+  # throughout all three blocks.
   hooks="$(awk '/<!-- E57-S4: step[567] tdd-review-gate begin -->/,/<!-- E57-S4: step[567] tdd-review-gate end -->/' "$SKILL_MD")"
-  echo "$hooks" | grep -Fq 'ADR-067'
+  echo "$hooks" | grep -Eq 'HALT on.*severity: CRITICAL|YOLO MUST NOT auto-resolve CRITICAL'
 }

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — triage-findings skill finalize (E28-S63)
+# finalize.sh — triage-findings skill finalize
 #
-# Shared finalize pattern from the E28-S17/S19/S21 foundation work.
-# Writes checkpoint and emits lifecycle event on completion.
+# Shared finalize pattern. Writes checkpoint and emits lifecycle event on completion.
 #
 # Exit codes:
 #   0 — finalize succeeded
@@ -24,19 +23,18 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Val-sidecar sentinel precondition (E92-S2 / FR-OEXP-2) ----------
+# ---------- 0. Val-sidecar sentinel precondition ----------
 #
 # When GAIA_FINALIZE_SENTINEL_REQUIRED is set (the SKILL.md Step 7 contract
 # exports it), assert a Val sidecar entry was written AFTER the run-started
-# checkpoint marker. Mirrors gaia-add-feature/finalize.sh:51-82 (E83-S1
-# fail-closed pattern). Operators see a canonical, grep-able error string if
-# Step 7 was skipped.
+# checkpoint marker. Mirrors gaia-add-feature/finalize.sh fail-closed pattern.
+# Operators see a canonical, grep-able error string if Step 7 was skipped.
 #
 # Legacy fixtures that do NOT export the env var get the prior unconditional
 # behavior (Test D backward-compat).
 if [ -n "${GAIA_FINALIZE_SENTINEL_REQUIRED:-}" ]; then
   PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
-  # AF-2026-05-27-3 (ADR-111): canonical .gaia/ paths only; the legacy _memory
+  # Canonical .gaia/ paths only; the legacy _memory
   # fallbacks were removed with the consolidation migration. Env CHECKPOINT_PATH wins.
   SIDECAR_LOG="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   if [ -n "${CHECKPOINT_PATH:-}" ]; then

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/plugin-frontmatter-validator/normalize.sh — FR-409 + ADR-078 (AC7).
+# adapters/plugin-frontmatter-validator/normalize.sh — canonical adapter normalizer for plugin-frontmatter-validator.
 #
 # Reads the raw run.sh fragment on stdin (an analysis-results object with
 # `findings: [{rule, severity, file, line, message, blocking}, ...]`) and

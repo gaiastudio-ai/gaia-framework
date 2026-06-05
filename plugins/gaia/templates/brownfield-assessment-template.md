@@ -1,5 +1,5 @@
 ---
-# AF-2026-05-31-1 / Test12 F-05 — brownfield-assessment template.
+# brownfield-assessment template.
 #
 # The brownfield SKILL.md Phase 1 prose used to say "read the assessment
 # template" without shipping one. This template fills that gap so the Phase 1
@@ -13,12 +13,12 @@
 # This frontmatter MUST be present on the rendered artifact. The brownfield
 # orchestrator stamps it; the Phase 7 consolidator scrapes it.
 mode: brownfield
-# AF-2026-05-31-3 / Test14 F-10: schema_version 2.0.0 is the canonical
+# schema_version 2.0.0 is the canonical
 # value documented by the first-30-minutes-brownfield tutorial Step 7
 # ("If you see anything else, run /gaia-migrate v1 v2"). The prior
 # "1.0" template-default contradicted the downstream contract.
 schema_version: "2.0.0"
-# AF-2026-06-01-1 / Test15 F-07: project_type drives Phase-8a PRD
+# project_type drives Phase-8a PRD
 # template selection (application | infrastructure | platform — see
 # the brownfield SKILL Phase 8a table) and Phase-7 consolidation. The
 # Phase-1 SKILL prose says "Include {project_type} in the output" but
@@ -117,4 +117,4 @@ After this assessment is signed off, the brownfield orchestrator moves to:
   code) consuming this assessment + Phase 2 output.
 
 Frontmatter `mode: brownfield` is what flips downstream gates (e.g.
-create-epics SV-20 advisory mode per AF-2026-05-31-1 / Test12 F-14).
+create-epics SV-20 advisory mode).

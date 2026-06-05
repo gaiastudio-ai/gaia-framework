@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ci-regen-header.sh — header emit/parse/hash helper for /gaia-config-ci --regenerate (E71-S4).
+# ci-regen-header.sh — header emit/parse/hash helper for /gaia-config-ci --regenerate.
 #
 # Subcommands:
 #   emit <hash>   Emit the four-line YAML-comment header on stdout.
@@ -12,7 +12,6 @@
 #   parse <file>  Extract the Source hash from the file's header. Exits 2 if
 #                 the file has no Source-hash line.
 #
-# Refs: AC1 (TS-01), FR-RSV2-37, FR-RSV2-38.
 
 set -euo pipefail
 LC_ALL=C

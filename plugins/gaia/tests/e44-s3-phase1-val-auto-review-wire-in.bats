@@ -134,14 +134,18 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 
 @test "AC5: each Phase 1 skill references E44-S2 (pattern provenance)" {
+  # The pattern is centralized in gaia-val-validate/SKILL.md; each skill
+  # cites this path as its provenance anchor instead of an internal story ID.
   for skill in $PHASE1_SKILLS_LIST; do
-    grep -q 'E44-S2' "$SKILLS_DIR/$skill/SKILL.md"
+    grep -q 'gaia-val-validate/SKILL.md' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
 @test "AC5: each Phase 1 skill references ADR-058 (decision provenance)" {
+  # The decision to centralize the loop spec is expressed by the canonical
+  # "cite this anchor" instruction present in every wired-in skill.
   for skill in $PHASE1_SKILLS_LIST; do
-    grep -q 'ADR-058' "$SKILLS_DIR/$skill/SKILL.md"
+    grep -q 'Do not duplicate the spec here; cite this anchor' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 

@@ -25,8 +25,8 @@ PLUGIN_ROOT="${BATS_TEST_DIRNAME}/.."
 # --- F-8 ---
 
 @test "F-8: epic_headings_present accepts em-dash heading form" {
-  grep -qF 'AF-2026-05-24-14 / Test02 F-8' "${PLUGIN_ROOT}/skills/gaia-create-epics/scripts/finalize.sh"
-  grep -qF 'Epic[[:space:]]+[0-9]+|E[0-9]+' "${PLUGIN_ROOT}/skills/gaia-create-epics/scripts/finalize.sh"
+  grep -qF 'Em-dash heading normalization' "${PLUGIN_ROOT}/skills/gaia-create-epics/scripts/finalize.sh"
+  grep -qF "epic_headings_present" "${PLUGIN_ROOT}/skills/gaia-create-epics/scripts/finalize.sh"
 }
 
 @test "F-8: end-to-end — em-dash heading is recognized as canonical" {
@@ -46,7 +46,6 @@ EOF
 # --- F-11 ---
 
 @test "F-11: gaia-qa-tests SKILL.md documents placement schema" {
-  grep -qF "AF-2026-05-24-14 / Test02 F-11" "${PLUGIN_ROOT}/skills/gaia-qa-tests/SKILL.md"
   grep -qF "Required \`placement\` schema" "${PLUGIN_ROOT}/skills/gaia-qa-tests/SKILL.md"
 }
 
@@ -74,14 +73,14 @@ EOF
 # --- F-30 ---
 
 @test "F-30: tech-debt-review finalize.sh documents the no-Val-sentinel carve-out" {
-  grep -qF "AF-2026-05-24-14 / Test02 F-30" "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/finalize.sh"
+  grep -qF "GAIA_FINALIZE_SENTINEL_REQUIRED" "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/finalize.sh"
   grep -qF "fail-closed-on-Val applies" "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/finalize.sh"
 }
 
 # --- F-31 ---
 
 @test "F-31: track-b-dispatch.sh defers TTY warning to after stacks-empty check" {
-  grep -qF "AF-2026-05-24-14 / Test02 F-31" "${PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/track-b-dispatch.sh"
+  grep -qF "TTY check moved here from the top" "${PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/track-b-dispatch.sh"
   # The TTY warning text should appear AFTER the empty-stacks early-exit
   local tty_line empty_exit_line
   tty_line=$(grep -n "stdout is not a TTY" "${PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/track-b-dispatch.sh" | head -1 | cut -d: -f1)
@@ -92,7 +91,7 @@ EOF
 # --- F-32 ---
 
 @test "F-32: skill-proposal.sh header documents output format + failure modes" {
-  grep -qF "AF-2026-05-24-14 / Test02 F-32" "${PLUGIN_ROOT}/skills/gaia-retro/scripts/skill-proposal.sh"
+  grep -qF "expanded with output format + failure modes" "${PLUGIN_ROOT}/skills/gaia-retro/scripts/skill-proposal.sh"
   grep -qF "Failure mode:" "${PLUGIN_ROOT}/skills/gaia-retro/scripts/skill-proposal.sh"
   grep -qF "Stdout:" "${PLUGIN_ROOT}/skills/gaia-retro/scripts/skill-proposal.sh"
 }
@@ -100,14 +99,13 @@ EOF
 # --- F-34 ---
 
 @test "F-34: readiness-check setup.sh defaults TEST_ARTIFACTS to canonical path" {
-  grep -qF "AF-2026-05-24-14 / Test02 F-34" "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh"
+  grep -qF 'Default it to the canonical .gaia/artifacts/test-artifacts/' "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh"
   grep -qF 'TEST_ARTIFACTS="${TEST_ARTIFACTS:-.gaia/artifacts/test-artifacts}"' "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh"
 }
 
 # --- F-37 ---
 
 @test "F-37: gaia-trace SKILL.md prescribes multi-gate summary line" {
-  grep -qF "AF-2026-05-24-14 / Test02 F-37" "${PLUGIN_ROOT}/skills/gaia-trace/SKILL.md"
   grep -qF 'WARNING: N of M gates failed' "${PLUGIN_ROOT}/skills/gaia-trace/SKILL.md"
 }
 

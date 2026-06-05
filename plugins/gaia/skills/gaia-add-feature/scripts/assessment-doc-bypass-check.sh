@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# assessment-doc-bypass-check.sh — E83-S3 anti-pattern scanner
+# assessment-doc-bypass-check.sh — anti-pattern scanner for Val-gate bypass indicators
 #
 # Scans `/gaia-add-feature` assessment-doc emissions for three Val-gate bypass
 # smoking-gun strings:
-#   1. literal: "auto-judged in patch mode"                                  (AF-3 pattern)
-#   2. literal: "inline, read-only verification"                             (AF-4 pattern)
-#   3. regex:   /Agent.{0,2}tool subagent dispatch primitive not surfaced/   (AF-4 rationalization; backtick-tolerant)
+#   1. literal: "auto-judged in patch mode"
+#   2. literal: "inline, read-only verification"
+#   3. regex:   /Agent.{0,2}tool subagent dispatch primitive not surfaced/   (backtick-tolerant)
 #
 # Backtick-tolerance is load-bearing — three of four historical occurrences of
 # string 3 are backtick variants (`Agent`-tool …); a literal-string grep would
-# miss them. See E83-S3 Dev Notes "Why backtick-tolerance is load-bearing".
+# miss them.
 #
 # Usage:
 #   assessment-doc-bypass-check.sh [--allowlist FILE] [--no-allowlist] FILE [FILE ...]
@@ -26,9 +26,8 @@
 # literal form; string 3 normalized to its plain-text canonical form regardless
 # of backtick / hyphen variant) so output stays readable and stable.
 #
-# Conventions per ADR-042 (scripts-over-LLM): pure deterministic scan; no LLM
-# judgment. `grep -nE` (not Perl regex / not awk) for portability across CI
-# runners.
+# Pure deterministic scan; no LLM judgment. `grep -nE` (not Perl regex / not
+# awk) for portability across CI runners.
 
 set -euo pipefail
 

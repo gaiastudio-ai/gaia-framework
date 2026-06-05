@@ -44,7 +44,10 @@ teardown() { common_teardown; }
 }
 
 @test "AF-22-8 Bug-18: gaia-create-epics SKILL.md Critical Rules document the naming contract" {
-  grep -qF 'AF-2026-05-22-8 Bug-18' "$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
+  # The internal tracking ID was removed from the published file; assert the durable
+  # behavioral contract instead: the prose must name the SPLIT STATE failure mode and
+  # prohibit the numeric-only epic-{N}/stories/... path.
+  grep -qiE 'SPLIT STATE|split state' "$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
   grep -qF 'epic-{N}/stories/' "$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
 }
 

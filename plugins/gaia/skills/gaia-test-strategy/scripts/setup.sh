@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-test-strategy skill setup (AF-2026-05-22-5)
+# setup.sh — gaia-test-strategy skill setup
 #
-# Adapted from the Cluster 11 gaia-test-design/scripts/setup.sh reference
+# Adapted from the gaia-test-design/scripts/setup.sh reference
 # implementation. The /gaia-test-strategy skill is the successor to
 # /gaia-test-design but had no scripts/ directory — its SKILL.md called
 # !${CLAUDE_PLUGIN_ROOT}/skills/gaia-test-strategy/scripts/setup.sh which

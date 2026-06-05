@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-test-a11y action skill setup (E73-S4).
+# setup.sh — gaia-test-a11y action skill setup.
 #
 # Mirrors gaia-test-perf/setup.sh:
 #   1. Resolve config via resolve-config.sh

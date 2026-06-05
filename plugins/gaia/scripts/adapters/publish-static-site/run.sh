@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# publish-static-site/run.sh — FR-526 + ADR-113 + ADR-037 + ADR-115.
-# Outer case-dispatch to per-provider sub-handlers under providers/.
+# publish-static-site/run.sh — Outer case-dispatch to per-provider sub-handlers under providers/.
 
 # shellcheck source=../_publish-common.bash
 source "$(dirname "$0")/../_publish-common.bash"
@@ -27,7 +26,7 @@ case "$ACTION" in trigger|verify) ;; *) printf 'publish-static-site: --action mu
 [ -n "$OUTPUT" ] || { printf 'publish-static-site: --output required\n' >&2; exit 2; }
 [ -n "$VERSION" ] || { printf 'publish-static-site: --version required\n' >&2; exit 2; }
 
-# Closed-enum rejection (AC8).
+# Closed-enum rejection.
 case "$PROVIDER" in
   cloudflare-pages|s3|netlify|vercel|github-pages|custom) ;;
   *)

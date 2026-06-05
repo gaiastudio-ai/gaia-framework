@@ -1,10 +1,9 @@
-# WorkerSpawn skill manifest (E28-S211)
+# WorkerSpawn skill manifest
 #
-# Enumerates the 20 Bucket 3 WorkerSpawn skills identified by the E28-S206
+# Enumerates the 20 Bucket 3 WorkerSpawn skills identified by the
 # subagent-invocation audit. The `validate-workerspawn-memory.sh` script
 # consumes this manifest to assert every skill's SKILL.md body embeds a
-# canonical `memory-loader.sh {agent-id} {tier}` invocation (ADR-046 Path 2,
-# FR-331).
+# canonical `memory-loader.sh {agent-id} {tier}` invocation.
 #
 # Per-skill fields:
 #   name:       skill directory name under plugins/gaia/skills/
@@ -29,7 +28,7 @@ skills:
     personas:
       - agent_id: pm
         tier: decision-log
-    notes: "Orchestrator — dispatches to downstream skills. Tier 1 pm persona used for triage helper, but tier forced to decision-log per story Task 3.1 (orchestrator-level triage doesn't need full ground-truth)."
+    notes: "Orchestrator — dispatches to downstream skills. Tier 1 pm persona used for triage helper, but tier forced to decision-log (orchestrator-level triage doesn't need full ground-truth)."
   - name: gaia-add-stories
     personas:
       - agent_id: pm
@@ -97,7 +96,7 @@ skills:
         tier: all
       - agent_id: devops
         tier: decision-log
-    notes: "Skill delegates to architect (contradiction checks, TEA readiness) and devops (operational readiness). Story Task 3.15 shorthand 'pm x 2' was superseded by the actual skill code which uses architect + devops."
+    notes: "Skill delegates to architect (contradiction checks, TEA readiness) and devops (operational readiness). The 'pm x 2' shorthand was superseded by the actual skill code which uses architect + devops."
   - name: gaia-slide-deck
     personas:
       - agent_id: presentation-designer
@@ -110,7 +109,7 @@ skills:
     personas:
       - agent_id: test-architect
         tier: all
-    notes: "Already compliant pre-E28-S211 — reference pattern source."
+    notes: "Already compliant — reference pattern source."
   - name: gaia-threat-model
     personas:
       - agent_id: security

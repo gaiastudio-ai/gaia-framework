@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/yamllint/normalize.sh — FR-415 + ADR-078.
+# adapters/yamllint/normalize.sh — canonical adapter normalizer for yamllint.
 #
 # Reads the raw run.sh fragment on stdin (an analysis-results object with
 # `findings: [{rule, severity, file, line, message, blocking}, ...]`) and

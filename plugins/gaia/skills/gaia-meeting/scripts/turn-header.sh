@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-# turn-header.sh — gaia-meeting per-turn header renderer (E76-S1, E76-S10, FR-MTG-10, NFR-MTG-1)
+# turn-header.sh — gaia-meeting per-turn header renderer
 #
 # Emits a deterministic single-line header for every emitted turn — including
-# user interjections, raise-hand insertions (E76-S2), and research-interrupt
-# insertions (E76-S2). The cadence counter (10-turn cost-check cadence) is
+# user interjections, raise-hand insertions, and research-interrupt
+# insertions. The cadence counter (10-turn cost-check cadence) is
 # advanced PER EMITTED TURN, not per round-robin slot — this matters once
-# E76-S2's insertions arrive, since the determinism required by NFR-MTG-1
+# insertions arrive, since the determinism of the header format
 # depends on the per-emitted-turn count.
 #
-# Header format (single line, bracketed, no `>` prefix per FR-MTG-10):
+# Header format (single line, bracketed, no `>` prefix):
 #   [round R / turn T / Speaker (Role) / per-turn-cost N tokens / running-total M tokens]
 #
-# When --phase and --dispatched-via are supplied (E76-S10), the renderer also
+# When --phase and --dispatched-via are supplied, the renderer also
 # emits the multiline provenance footer:
 #   Phase: <PHASE>
 #   Turn: <ID>             (only when --turn-id provided)
 #   dispatched_via: <subagent|interject|charter>
 #
-# E76-S10 / AC3 — phase-conditional requirement:
+# Phase-conditional requirement:
 #   For --phase RESEARCH or --phase DISCUSS, --dispatched-via is REQUIRED;
 #   missing -> exit 2.
 #   For --phase CHARTER / INVITE / CLOSE / SAVE (or absent --phase), missing
@@ -98,7 +98,7 @@ for numeric in ROUND TURN TURN_COST RUNNING_TOTAL; do
   fi
 done
 
-# E76-S10 / AC3 — --dispatched-via enum validation + phase-conditional requirement.
+# --dispatched-via enum validation + phase-conditional requirement.
 PHASE_UPPER=""
 if [[ -n "$PHASE" ]]; then
   # Normalize for matching; emit verbatim original below.
@@ -122,21 +122,21 @@ if [[ "$PHASE_UPPER" == "RESEARCH" || "$PHASE_UPPER" == "DISCUSS" ]]; then
   fi
 elif [[ -n "$PHASE_UPPER" ]]; then
   # Backward-compat: phase is set to CHARTER/INVITE/CLOSE/SAVE, missing
-  # --dispatched-via gets a one-sprint grace WARNING and we proceed (ADR-067).
+  # --dispatched-via gets a one-sprint grace WARNING and we proceed.
   if [[ -z "$DISPATCHED_VIA" ]]; then
     echo "WARNING: turn-header.sh called without --dispatched-via — required from sprint-41" >&2
   fi
 fi
 # Legacy invocations with NO --phase argument proceed silently — those call
-# sites pre-date E76-S10 and the migration of existing CHARTER/INVITE/CLOSE/
-# SAVE call sites (T3.4) is responsible for adding both --phase and
-# --dispatched-via together.
+# sites pre-date provenance tracking and the migration of existing
+# CHARTER/INVITE/CLOSE/SAVE call sites is responsible for adding both
+# --phase and --dispatched-via together.
 
-# Render the canonical bracketed header line first (NFR-MTG-1 stable contract).
+# Render the canonical bracketed header line first (stable contract).
 printf '[round %s / turn %s / %s (%s) / per-turn-cost %s tokens / running-total %s tokens]\n' \
   "$ROUND" "$TURN" "$SPEAKER" "$ROLE" "$TURN_COST" "$RUNNING_TOTAL"
 
-# E76-S10 — provenance footer when phase / turn-id / dispatched_via are present.
+# Provenance footer when phase / turn-id / dispatched_via are present.
 if [[ -n "$PHASE" ]]; then
   printf 'Phase: %s\n' "$PHASE_UPPER"
 fi

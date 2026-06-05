@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# escalation-halt.sh — Action-item escalation halt predicate (E38-S2, FR-SPQG-1)
+# escalation-halt.sh — Action-item escalation halt predicate
 #
 # Read-only library. Used by the gaia-sprint-plan SKILL Step 1.5 to detect
 # HIGH-priority action items that have been open for two or more sprints
 # (escalation_count >= 2) and halt sprint planning before any sprint-status
 # mutation or story-selection prompt occurs. Writes (override recording)
-# go through sprint-state.sh per ADR-042.
+# go through sprint-state.sh.
 #
 # Public functions:
 #   esch_scan                    <action_items_yaml>
@@ -21,7 +21,7 @@
 # Record shape: pipe-delimited text, one item per line:
 #   <id>|<title>|<priority>|<status>|<escalation_count>
 #
-# Schema contract (consumed, defined by E36-S2 / FR-RIM-5):
+# Schema contract (action_items block):
 #   action_items:
 #     - id: AI-42
 #       title: "Long-running action item"
@@ -33,8 +33,7 @@
 # Filter predicate: priority == "HIGH" AND escalation_count >= 2 AND status == "open"
 # (case-sensitive per story §Technical Notes).
 #
-# Refs: FR-SPQG-1, ADR-042, ADR-055, NFR-052.
-# Sibling of: priority-flag.sh (E38-S4), sprint-state.sh (E28-S11).
+# Sibling of: priority-flag.sh, sprint-state.sh.
 
 set -euo pipefail
 SCRIPT_NAME="${SCRIPT_NAME:-escalation-halt.sh}"
@@ -43,7 +42,7 @@ SCRIPT_NAME="${SCRIPT_NAME:-escalation-halt.sh}"
 # esch_scan — read action-items.yaml and emit pipe-delimited records
 # $1 = path to action-items.yaml
 # On missing/unreadable/empty file: emit single-line warning to stderr,
-# print nothing to stdout, exit 0 (non-blocking by design per AC4).
+# print nothing to stdout, exit 0 (non-blocking by design).
 # ---------------------------------------------------------------------------
 esch_scan() {
   local file="$1"
@@ -53,7 +52,7 @@ esch_scan() {
     return 0
   fi
   if [ ! -s "$file" ]; then
-    # Empty file is treated identically to missing file per AC4 §Technical Notes.
+    # Empty file is treated identically to missing file.
     return 0
   fi
 
@@ -318,7 +317,7 @@ esch_check_blocking() {
   ids="$(printf '%s\n' "$blocking" | awk -F'|' '{ print $1 }' | paste -sd',' -)"
 
   if [ -n "$ids" ] && esch_check_override_recorded "$ss" "$ids"; then
-    # Override already recorded — idempotent proceed per AC3
+    # Override already recorded — idempotent proceed
     return 0
   fi
 

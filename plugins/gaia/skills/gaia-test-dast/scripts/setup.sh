@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-test-dast action skill setup (E73-S3).
+# setup.sh — gaia-test-dast action skill setup.
 #
 # Mirrors gaia-test-perf/setup.sh:
 #   1. Resolve config via resolve-config.sh

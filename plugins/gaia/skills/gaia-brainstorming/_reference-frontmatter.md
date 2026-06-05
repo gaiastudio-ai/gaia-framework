@@ -1,8 +1,7 @@
 # Reference Frontmatter — gaia-brainstorming
 
-> Verbatim copy of the canonical frontmatter for the `gaia-brainstorming` skill
-> (E28-S100, Cluster 13 — Creative). This file exists for future contributor
-> reference. Do not modify.
+> Verbatim copy of the canonical frontmatter for the `gaia-brainstorming` skill.
+> This file exists for future contributor reference. Do not modify.
 
 ```yaml
 ---

@@ -45,8 +45,8 @@ setup() {
   grep -qiE "user.*final.accept|user.*accept|PM.*cannot.*self.approve|not.*the.*PM" "$SPRINT_PLAN_SKILL"
 }
 
-@test "TC-SGR-41.8: sprint-plan SKILL.md references FR-486 or AC1 traceability" {
-  grep -qE "FR-486|E93-S5|AC1" "$SPRINT_PLAN_SKILL"
+@test "TC-SGR-41.8: sprint-plan SKILL.md documents the 3-lane goal router contract" {
+  grep -q "goal router" "$SPRINT_PLAN_SKILL"
 }
 
 # ============================================================================
@@ -73,8 +73,8 @@ setup() {
   grep -qE "review.*correction|correction.*active" "$CORRECT_COURSE_SKILL"
 }
 
-@test "TC-SGR-42.6: correct-course SKILL.md references FR-487 or AC2 traceability" {
-  grep -qE "FR-487|E93-S5|FR-492|AC2" "$CORRECT_COURSE_SKILL"
+@test "TC-SGR-42.6: correct-course SKILL.md documents the review→correction sprint-state transition" {
+  grep -q "update-goals" "$CORRECT_COURSE_SKILL"
 }
 
 # ============================================================================
@@ -101,6 +101,6 @@ setup() {
   grep -qE "UNVERIFIED|review_justification" "$SPRINT_CLOSE_SKILL"
 }
 
-@test "TC-SGR-43.6: sprint-close SKILL.md references FR-492 or AC3 traceability" {
-  grep -qE "FR-492|E93-S5|AC3" "$SPRINT_CLOSE_SKILL"
+@test "TC-SGR-43.6: sprint-close SKILL.md documents sentinel-verified evidence requirement for review→closed edge" {
+  grep -q "sentinel-verified" "$SPRINT_CLOSE_SKILL"
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ci-regen-post-edit-prompt.sh — three-option post-edit prompt for /gaia-config-* editors (E71-S4).
+# ci-regen-post-edit-prompt.sh — three-option post-edit prompt for /gaia-config-* editors.
 #
 # After a config-mutating /gaia-config-* command (env, stack, ci, etc.) writes a
 # CI-relevant section, the editor invokes this helper to render and resolve the
@@ -15,7 +15,6 @@
 #                    d — emit a hint pointing the caller at the diff command.
 #                  Any other answer exits non-zero (caller re-asks).
 #
-# Refs: AC9 (TS-10), AC10 (TS-12), FR-RSV2-37.
 
 set -euo pipefail
 LC_ALL=C

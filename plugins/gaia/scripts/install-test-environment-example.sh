@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# install-test-environment-example.sh — E17-S30 (V2 plugin port of E17-S25)
+# install-test-environment-example.sh — install the test-environment.yaml.example template
 #
 # Materialize the canonical test-environment.yaml.example template into a
 # target project at .gaia/config/test-environment.yaml.example (canonical
-# post-ADR-111) or config/test-environment.yaml.example (legacy pre-ADR-111).
+# layout) or config/test-environment.yaml.example (legacy layout).
 #
 # Semantics:
-#   - Unconditional copy when target is ABSENT (fresh-install path, AC2).
-#   - Byte-identical preserve when target EXISTS (copy-if-absent, AC3).
-#   - Fail-fast non-zero when plugin source template is missing (AC4).
+#   - Unconditional copy when target is ABSENT (fresh-install path).
+#   - Byte-identical preserve when target EXISTS (copy-if-absent).
+#   - Fail-fast non-zero when plugin source template is missing.
 #
 # Mirrors the V1 install pattern from Gaia-framework/gaia-install.sh
 # (cmd_init unconditional copy + cmd_update copy-if-absent at L640-663).
@@ -19,10 +19,8 @@
 #
 # Exit codes:
 #   0  success (copy performed, or target already present and preserved)
-#   1  plugin source template is missing (AC4 fail-fast)
+#   1  plugin source template is missing
 #   2  usage error
-#
-# Traces: E17-S30, FR-201, ADR-028.
 
 set -euo pipefail
 LC_ALL=C
@@ -35,8 +33,8 @@ SCRIPT_NAME="install-test-environment-example.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TEMPLATE_PATH="${PLUGIN_ROOT}/templates/test-environment.yaml.example"
-# AF-2026-05-21-7/8 inverted precedence: canonical .gaia/config/ default,
-# legacy config/ fallback only on positive pre-ADR-111 evidence (legacy
+# Inverted precedence: canonical .gaia/config/ default,
+# legacy config/ fallback only on positive legacy-layout evidence (legacy
 # config/ exists AND canonical .gaia/config/ does NOT).
 # Resolved later — after $target is validated — in the resolution block.
 TARGET_REL=""
@@ -49,7 +47,7 @@ Usage: install-test-environment-example.sh --target <project-root>
 
 Materialize plugins/gaia/templates/test-environment.yaml.example into the
 target project at .gaia/config/test-environment.yaml.example (canonical
-post-ADR-111) or config/test-environment.yaml.example (legacy pre-ADR-111).
+layout) or config/test-environment.yaml.example (legacy layout).
 
 Behavior:
   - Target absent: copy template (fresh-install path).
@@ -78,13 +76,13 @@ done
 
 if [ ! -f "${TEMPLATE_PATH}" ]; then
   printf '%s: ERROR: plugin source template is missing at %s\n' "$SCRIPT_NAME" "${TEMPLATE_PATH}" >&2
-  printf '%s: cannot install test-environment.yaml.example without source. Plugin may be corrupted; reinstall via /plugin marketplace add.\n' "$SCRIPT_NAME" >&2
+  printf '%s: cannot install test-environment.yaml.example without source — plugin may be corrupted; reinstall via /plugin marketplace add.\n' "$SCRIPT_NAME" >&2
   exit 1
 fi
 
-# AF-2026-05-21-7/8: resolve TARGET_REL with canonical-default + positive-
-# evidence-legacy guard. Canonical wins on greenfield + post-ADR-111;
-# legacy fires only when pre-ADR-111 evidence is present.
+# Resolve TARGET_REL with canonical-default + positive-evidence-legacy guard.
+# Canonical wins on greenfield; legacy fires only when legacy-layout evidence
+# is present.
 if [ -d "${target}/config" ] && [ ! -d "${target}/.gaia/config" ]; then
   TARGET_REL="config/test-environment.yaml.example"
 else
@@ -104,24 +102,17 @@ fi
 cp "${TEMPLATE_PATH}" "${target_file}"
 printf '%s: installed test-environment.yaml.example -> %s\n' "$SCRIPT_NAME" "${target_file}"
 
-# AF-2026-06-01-1 / Test15 F-19-L — mirror the .example under
-# test-artifacts/ so the target layout has it alongside the live
-# test-environment.yaml mirror (Test14 F-17 already mirrors the live
-# file).
-# AF-2026-06-02-1 / Test16 F-L08 — the Test15 fix only copied when the
-# test-artifacts dir ALREADY existed. On a fresh project where the
-# user runs /gaia-init then /gaia-config-* before driving the
-# brownfield/dev phases that would create test-artifacts/, the
-# mirror never happens and the canonical layout misses the
-# `.example` row. Make the mirror non-conditional — create the
-# test-artifacts/ dir if absent (this is the documented canonical
-# layout, so creating it on the install-example path is in scope).
+# Mirror the .example under test-artifacts/ so the target layout has it
+# alongside the live test-environment.yaml mirror.
+# The mirror is non-conditional — create the test-artifacts/ dir if absent
+# (documented canonical layout; creating it on the install-example path is
+# in scope).
 _mirror_test_artifacts="${target}/.gaia/artifacts/test-artifacts"
 _mirror_path="$_mirror_test_artifacts/test-environment.yaml.example"
 mkdir -p "$_mirror_test_artifacts" 2>/dev/null || true
 if [ "${target_file}" != "$_mirror_path" ]; then
   cp "${TEMPLATE_PATH}" "${_mirror_path}" 2>/dev/null \
-    && printf '%s: F-19-L/F-L08 mirror: %s\n' "$SCRIPT_NAME" "${_mirror_path}" \
+    && printf '%s: mirror: %s\n' "$SCRIPT_NAME" "${_mirror_path}" \
     || true
 fi
 

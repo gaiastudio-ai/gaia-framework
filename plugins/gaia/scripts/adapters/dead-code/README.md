@@ -1,4 +1,4 @@
-# Per-stack dead-code adapters (E70-S8 / FR-545 / NFR-87)
+# Per-stack dead-code adapters
 
 Three deterministic per-stack dead-code adapters that replace the LLM dead-code
 heuristic in `/gaia-brownfield` Phase 3. Each adapter wraps a sound, stack-native
@@ -17,8 +17,7 @@ Each tool reports deadness at a fundamentally different granularity. A Go functi
 is either reachable or not (RTA proves it); a Python symbol carries a heuristic
 confidence; a SpotBugs finding carries a priority/rank ordinal. **Collapsing these
 onto one synthesized "confidence" scale would fabricate precision the tools never
-claimed** — the exact failure mode this story exists to prevent
-(meeting-2026-05-23, Sable turn 12; AI-2026-05-23-3). The unified "Test Quality"
+claimed** — the exact failure mode this design exists to prevent. The unified "Test Quality"
 report section therefore renders **three labeled per-stack sub-sections**, each
 showing its own qualifier verbatim — never one flat list with a cross-stack score.
 
@@ -26,7 +25,7 @@ showing its own qualifier verbatim — never one flat list with a cross-stack sc
 
 `file_path` is the single cross-stack normalization point — repo-root-relative for
 every adapter. Stack-native `qualifier` is preserved verbatim in the detail column.
-E104-S2 Phase 4b reconciliation reads this contract.
+Phase 4b reconciliation reads this contract.
 
 ## Two outputs per adapter
 
@@ -34,16 +33,16 @@ Each adapter writes BOTH:
 
 1. **Flat normalized JSON** → `<audit>/dead-code/<tool>.json`
    (`{file_path, qualifier, severity, source_tool}`) — consumed by the Phase 7
-   `render-test-quality.sh` writer (report rendering, AC4).
+   `render-test-quality.sh` writer (report rendering).
 2. **SARIF run** → `<audit>/sarif/<tool>.sarif` with `qualifier` in
    `.properties.symbol` and `file_path` in the location `artifactLocation.uri` —
-   so the finding flows into the E104-S1 cross-tool dedup precision ladder
+   so the finding flows into the cross-tool dedup precision ladder
    (`deadcode-go > spotbugs > vulture`, grouped on `(file_path, qualifier)`).
 
 `render-test-quality.sh --out-dir <audit> --report <md>` splices the unified
 section (idempotently) into `consolidated-gaps.md`.
 
-## Flag gating (ADR-078)
+## Flag gating
 
 Master flag `brownfield.deterministic_tools: true` AND the per-tool override gate
 each adapter:
@@ -62,15 +61,15 @@ field absent in report frontmatter). Enabled but toolchain absent → adapter ru
 degrades gracefully (WARN + exit 0; field present with `0` + an absent-toolchain
 annotation). Master flag off → all three skipped regardless of per-tool overrides.
 
-## Telemetry (NFR-85, single-author per field)
+## Telemetry (single-author per field)
 
 Via the shared `../brownfield/brownfield-telemetry.sh`. Each adapter owns ONLY its
 own sibling fields — `phase_runtime_seconds.deadcode_{go,python,jvm}`,
 `deterministic_tool_seconds.deadcode_{go,python,jvm}`, `llm_token_count: 0`
 (deterministic). The `gap_count_before_dedup` / `gap_count_after_dedup` fields are
-E104-S1-owned and are NOT touched here.
+owned by the cross-tool dedup layer and are NOT touched here.
 
-## Binary supply-chain pinning (AC-X4 / NFR-86) — DEFERRED
+## Binary supply-chain pinning — DEFERRED
 
 Per the Trivy March 2026 supply-chain compromise precedent (Microsoft IR + Aqua
 Security + CrowdStrike triple-source), the `deadcode`, `vulture`, and `spotbugs`
@@ -78,11 +77,11 @@ binaries SHOULD be version-pinned via checksum verification in the CI image.
 
 **Status: deferred.** This repo has no CI-image build / dependency-pinning workflow
 to pin against today (`gaia-framework/.github/workflows/` carries only `adr-048-guard`,
-`commitlint`, `plugin-ci`, `release`). The pinning is a shared infra gap also
-tracked by E70-S7 (grype/cdxgen) and E104-S4 (SARIF Multitool) — see those stories'
-Findings. It lands when the brownfield CI-image build step is built as a dedicated
-infra story. The adapters themselves are toolchain-agnostic and degrade gracefully
-when a binary is absent, so the deferral does not block the verifiable adapter core.
+`commitlint`, `plugin-ci`, `release`). The pinning is a shared infra gap that also
+affects the grype/cdxgen and SARIF Multitool adapters. It lands when the brownfield
+CI-image build step is built as a dedicated infra story. The adapters themselves are
+toolchain-agnostic and degrade gracefully when a binary is absent, so the deferral
+does not block the verifiable adapter core.
 
 ## Tests
 

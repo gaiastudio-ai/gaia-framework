@@ -1,22 +1,20 @@
 #!/usr/bin/env bash
-# adapters/brownfield/brownfield-telemetry.sh — E104-S1 shared brownfield-report
-# frontmatter telemetry writer (NFR-85).
+# adapters/brownfield/brownfield-telemetry.sh — shared brownfield-report
+# frontmatter telemetry writer.
 #
 # A single, field-parametrized writer for the brownfield gap-consolidation
-# report frontmatter. Built by E104-S1 and REUSED by E70-S7 (pre_warm fields)
-# and E104-S4 (sarif_merge fields) — those stories deferred their telemetry
-# population precisely because this writer did not exist yet.
-#
-# Single-author-per-field contract (SKILL.md / AF-2026-05-09-12): each field is
-# written by exactly ONE owning phase. This script is the mechanism; callers
-# must not fan out the same field from multiple phases. Supported fields:
-#   gap_count_before_dedup, gap_count_after_dedup   (E104-S1 dedup phase)
+# report frontmatter. Supported fields:
+#   gap_count_before_dedup, gap_count_after_dedup   (dedup phase)
 #   phase_runtime_seconds.<phase>                   (each phase, its own key)
 #   deterministic_tool_seconds.<phase>              (each phase, its own key)
 #   llm_token_count                                 (deterministic phases set 0)
-#   cross_stack_warnings (array), cross_stack_bypass_applied (bool)  (E104-S5)
-#   (array + bool value-typing added by E104-S3; phase keys incl. deadcode_{go,
-#    python,jvm} from E70-S8 and phase_4b_cross_stack from E104-S5)
+#   cross_stack_warnings (array), cross_stack_bypass_applied (bool)
+#   (array + bool value-typing; phase keys incl. deadcode_{go,
+#    python,jvm} and phase_4b_cross_stack)
+#
+# Single-author-per-field contract (SKILL.md): each field is written by exactly
+# ONE owning phase. This script is the mechanism; callers must not fan out the
+# same field from multiple phases.
 #
 # Operates ONLY on the YAML frontmatter block (between the leading `---`
 # fences); the markdown body is preserved byte-for-byte. yq v4 drives the edit.

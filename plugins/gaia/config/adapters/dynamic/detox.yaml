@@ -1,4 +1,4 @@
-# Detox dynamic test adapter (E74-S9)
+# Detox dynamic test adapter
 # Cross-platform React Native end-to-end test framework.
 name: detox
 type: dynamic

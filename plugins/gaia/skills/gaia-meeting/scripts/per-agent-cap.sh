@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# per-agent-cap.sh — gaia-meeting per-agent token cap accountant (E76-S6, AC5)
+# per-agent-cap.sh — gaia-meeting per-agent token cap accountant
 #
-# FR-MTG-29 / TC-MTG-GUARD-3: default per-agent cap = 25 000 tokens, cumulative
-# across research, discussion, raise-hand, and research interrupts. On cap
-# cross, the agent is muted (one-way — no unmute path within a single meeting),
-# a single MUTED event is emitted, and the orchestrator continues with the
-# remaining non-muted agents.
+# Default per-agent cap = 25 000 tokens, cumulative across research,
+# discussion, raise-hand, and research interrupts. On cap cross, the agent is
+# muted (one-way — no unmute path within a single meeting), a single MUTED
+# event is emitted, and the orchestrator continues with the remaining
+# non-muted agents.
 #
 # State file format (one record per agent, two lines per record):
 #   agent=<id>|tokens=<N>|muted=<0|1>
@@ -64,7 +64,7 @@ fi
 
 # Muting is one-way — refuse --unmute outright (rationale: cap exists to bound spend).
 if [[ "$UNMUTE" -eq 1 ]]; then
-  echo "per-agent-cap.sh: --unmute is forbidden — muting is one-way per AC5 (FR-MTG-29)" >&2
+  echo "per-agent-cap.sh: --unmute is forbidden — muting is one-way" >&2
   exit 3
 fi
 

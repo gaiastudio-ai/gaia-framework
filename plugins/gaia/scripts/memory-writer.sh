@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-# memory-writer.sh — GAIA foundation script (E28-S146)
+# memory-writer.sh — GAIA foundation script
 #
 # Writes an agent's sidecar memory: appends decision-log entries and
 # overwrites (or creates) named sections of ground-truth. This is the
-# write-side counterpart to memory-loader.sh (E28-S13); together they
-# close the two-path hybrid memory model (ADR-046).
-#
-# Refs: FR-331, NFR-048, ADR-042, ADR-046, ADR-048, ADR-014
-# Brief: P21-S1 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
+# write-side counterpart to memory-loader.sh; together they
+# close the two-path hybrid memory model.
 #
 # Invocation contract:
 #
@@ -41,7 +38,7 @@ readonly EX_IOERR=74
 readonly EX_TEMPFAIL=75
 readonly DEFAULT_LOCK_TIMEOUT=10
 
-# E64-S5 — script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
+# Script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
 # Every tempfile-creating call site appends the resulting path to
 # _GAIA_TMP_PATHS and captures its index. After a successful rename or rm
 # the slot is cleared so cleanup is idempotent. Covers SIGINT, SIGTERM, OOM,
@@ -59,18 +56,18 @@ _cleanup_tmps() {
 }
 trap '_cleanup_tmps' EXIT INT TERM
 
-# AF-2026-05-27-3 (ADR-111): .gaia/memory is the only memory tree — the legacy
+# .gaia/memory is the only memory tree — the legacy
 # _memory fallback was removed with the consolidation migration. Env override wins.
 if [ -z "${MEMORY_PATH:-}" ]; then
   MEMORY_PATH=".gaia/memory"
 fi
 CONFIG="${MEMORY_PATH}/config.yaml"
 
-# ---------- Startup orphan-tmp sweep (E64-S6) ----------
+# ---------- Startup orphan-tmp sweep ----------
 #
 # Garbage-collect *.tmp.?????? files older than 60 minutes under
 # ${MEMORY_PATH}. Catches orphans left by kill -9 / OOM / power loss
-# (which bypass E64-S5's EXIT/INT/TERM trap). Bounded to the documented
+# (which bypass the EXIT/INT/TERM trap). Bounded to the documented
 # allowlist (memory tree). Never /tmp, never $HOME, never ${PROJECT_PATH}
 # root. Set GAIA_SKIP_ORPHAN_SWEEP=1 to disable. Errors swallowed;
 # zero stdout (silent GC).
@@ -119,7 +116,6 @@ Exit codes:
   74  write failure (disk full, read-only, permission denied)
   75  lock held — timeout waiting for advisory lock
 
-Refs: FR-331, NFR-048, ADR-042, ADR-046 (brief P21-S1)
 EOF
 }
 
@@ -327,13 +323,13 @@ atomic_replace() {
   local dest="$1" payload="$2"
   local tmp
   tmp="$(mktemp "${dest}.tmp.XXXXXX")" || die "$EX_IOERR" "failed to create temp file near $dest"
-  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  # Register tmp for script-level EXIT/INT/TERM cleanup.
   local _tmp_idx
   _GAIA_TMP_PATHS+=("$tmp")
   _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
   printf '%s' "$payload" > "$tmp" || { rm -f "$tmp"; die "$EX_IOERR" "failed to write temp file $tmp"; }
   mv "$tmp" "$dest" || { rm -f "$tmp"; die "$EX_IOERR" "failed to move temp file into place: $dest"; }
-  # E64-S5: mv succeeded — clear the slot.
+  # mv succeeded — clear the slot.
   _GAIA_TMP_PATHS[$_tmp_idx]=""
 }
 
@@ -376,7 +372,7 @@ write_ground_truth() {
     local new_section_file rewritten
     new_section_file="$(mktemp "${target_file}.newsec.XXXXXX")" \
       || die "$EX_IOERR" "failed to create temp file near $target_file"
-    # E64-S5: register newsec tmp for script-level EXIT/INT/TERM cleanup.
+    # Register newsec tmp for script-level EXIT/INT/TERM cleanup.
     local _newsec_idx
     _GAIA_TMP_PATHS+=("$new_section_file")
     _newsec_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
@@ -426,7 +422,7 @@ write_ground_truth() {
       }
     ')"
     rm -f "$new_section_file"
-    # E64-S5: rm succeeded — clear the slot.
+    # rm succeeded — clear the slot.
     _GAIA_TMP_PATHS[$_newsec_idx]=""
     # Ensure trailing newline for consistency.
     case "$rewritten" in

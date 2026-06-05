@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# deferral-phrase-match.sh — Deferral-phrase taxonomy matcher per ADR-107.
-#
-# Refs:  ADR-107 (loading contract + SSOT), AF-2026-05-14-6.
-# Story: E88-S1.
+# deferral-phrase-match.sh — Deferral-phrase taxonomy matcher.
 #
 # Provides:
 #   - Sourceable function: match_deferral_phrase_in_text "<text>"

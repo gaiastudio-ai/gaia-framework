@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # validate-against-schema.sh — validate a generated project-config.yaml
-# against project-config.schema.json (E68-S1, ADR-079).
-# Story: E71-S1 (FR-RSV2-34, AC2). Deterministic per ADR-042.
+# against project-config.schema.json. Deterministic.
 #
 # Validators tried, in order:
 #   1. ajv-cli (npx ajv-cli or system ajv)
@@ -48,14 +47,14 @@ done
 
 # Convert YAML → JSON for ajv. Use python3.
 #
-# AF-2026-05-21-3 fix: pass `default=str` to json.dumps so PyYAML-parsed
-# datetime.date / datetime.datetime objects (e.g. an unquoted top-level
-# `date: 2026-05-21` line emitted by generate-config.sh) are serialized
-# as ISO-8601 strings instead of crashing the whole validator with
-# `TypeError: Object of type date is not JSON serializable`. Before this
-# fix, every freshly /gaia-init'd config tripped this and the SKILL.md
-# delete-on-validation-failure contract would have erased real configs
-# on tooling crashes — not actual schema violations.
+# Pass `default=str` to json.dumps so PyYAML-parsed datetime.date /
+# datetime.datetime objects (e.g. an unquoted top-level `date: 2026-05-21`
+# line emitted by generate-config.sh) are serialized as ISO-8601 strings
+# instead of crashing the whole validator with
+# `TypeError: Object of type date is not JSON serializable`. Without this,
+# every freshly /gaia-init'd config with a bare date value would trip the
+# error and the SKILL.md delete-on-validation-failure contract would erase
+# real configs on tooling crashes — not actual schema violations.
 yaml_to_json() {
   python3 -c '
 import sys, json
@@ -91,12 +90,11 @@ PYEOF
   fi
 
   # Fall back to ajv-cli.
-  # AF-2026-05-24-7 / Test02 F-1: pass --strict=false so ajv accepts the
-  # framework's custom x-no-auto-hydration annotation (declared on schema
-  # properties that opt out of E85 auto-hydration). Without this flag, ajv
-  # strict mode fails the whole schema with "unknown keyword: x-no-auto-
-  # hydration" — and per SKILL.md the failure handler would delete a valid
-  # config. The Python `jsonschema` validator (line 79) does not have an
+  # Pass --strict=false so ajv accepts the framework's custom
+  # x-no-auto-hydration annotation declared on schema properties. Without
+  # this flag, ajv strict mode fails the whole schema with "unknown keyword:
+  # x-no-auto-hydration" — and per SKILL.md the failure handler would delete
+  # a valid config. The Python `jsonschema` validator does not have an
   # equivalent strict mode and accepts the annotation natively.
   if command -v ajv >/dev/null 2>&1; then
     ajv validate -s "$schema" -d "$json_tmp" --strict=false >/dev/null

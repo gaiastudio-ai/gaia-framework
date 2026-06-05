@@ -92,8 +92,8 @@ setup() {
 
 # ---------- AC3: Stub body points to enterprise plugin, no premium logic ----------
 
-@test "AC3: figma-integration stub references E28-S122 or Cluster 17" {
-  grep -qE 'E28-S122|Cluster 17' "$FIGMA_SKILL"
+@test "AC3: figma-integration stub documents the enterprise-plugin boundary" {
+  grep -qiE "enterprise plugin|figma-premium|premium" "$FIGMA_SKILL"
 }
 
 @test "AC3: figma-integration stub does NOT contain premium extraction logic — no figma/get_styles" {

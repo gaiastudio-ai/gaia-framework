@@ -166,7 +166,8 @@ YAML
   echo "$output" | grep -Fq '"verdict":"ERROR"'
   echo "$output" | grep -Fq '"reason":"no_device_farm_adapter"'
   echo "$output" | grep -Fq 'firebase-test-lab'
-  echo "$output" | grep -Fq 'AF-2026-05-17-10'
+  echo "$output" | grep -Fq 'browserstack'
+  echo "$output" | grep -Fq 'sauce-labs'
 }
 
 @test "AF-2026-05-17-10: dispatch.sh contains the platforms-mobile gate logic" {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# retention-policy-check.sh — GAIA review-common Phase 3C retention check (E67-S5, ADR-077).
+# retention-policy-check.sh — GAIA review-common Phase 3C retention check.
 #
 # Purpose
 # -------
@@ -17,16 +17,13 @@
 #                                     YAML/JSON/.env exceeding --max-retention-days
 #                                     (default 365).
 #
-# All findings carry severity Medium (FR-RSV2-22, AC8) and category
-# `privacy-retention`.
+# All findings carry severity Medium and category `privacy-retention`.
 #
 # Exit 0 on successful scan (incl. with non-empty findings). Caller error -> 1.
 #
 # POSIX discipline: bash + set -euo pipefail + LC_ALL=C; macOS bash 3.2 + BSD
 # awk compatible; no jq dependency.
 #
-# Refs: AC3, AC6, AC7, AC8, FR-RSV2-1, FR-RSV2-2, NFR-RSV2-1, ADR-075, ADR-077,
-# TC-RSV2-PRIVACY-2.
 
 set -euo pipefail
 LC_ALL=C
@@ -38,7 +35,7 @@ die() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — Phase 3C retention-policy check (ADR-077).
+$SCRIPT_NAME — Phase 3C retention-policy check.
 
 Usage:
   $SCRIPT_NAME [--max-retention-days N] <path>...

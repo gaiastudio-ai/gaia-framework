@@ -6,5 +6,5 @@
   "default-timeout-seconds": 300,
   "file-extensions": [],
   "scope": "project",
-  "description": "k6 load and performance testing — invokes `k6 run --quiet --summary-export=-` against a target URL, emitting a JSON summary fragment for SLO and baseline-regression checks (E73-S2)."
+  "description": "k6 load and performance testing — invokes `k6 run --quiet --summary-export=-` against a target URL, emitting a JSON summary fragment for SLO and baseline-regression checks."
 }

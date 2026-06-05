@@ -10,7 +10,7 @@ export LC_ALL
 # shellcheck source=../../_publish-common.bash
 source "$(dirname "$0")/../../_publish-common.bash"
 
-# Emit an ADR-037 envelope for static-site adapter.
+# Emit a canonical envelope for static-site adapter.
 # Args: verdict, summary, [evidence-json-array]
 ss_emit() {
   local verdict="$1" summary="$2" evidence="${3:-[]}"
@@ -25,7 +25,7 @@ ss_emit() {
     > "$OUTPUT"
 }
 
-# Check credential env vars; FAIL if missing (NFR-081).
+# Check credential env vars; FAIL if missing.
 # Args: pass each required env var name as positional arg.
 ss_require_creds() {
   local missing=""
@@ -37,7 +37,7 @@ ss_require_creds() {
   done
   if [ -n "$missing" ]; then
     ss_emit "FAILED" \
-      "static-site/$PROVIDER: credential(s) missing per NFR-081: ${missing% }" \
+      "static-site/$PROVIDER: credential(s) missing: ${missing% }" \
       "$(publish_evidence_log_excerpt "missing env: ${missing% }" "env")"
     exit 0
   fi

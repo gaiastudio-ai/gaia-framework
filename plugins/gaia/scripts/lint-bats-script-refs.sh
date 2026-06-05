@@ -3,9 +3,9 @@
 # in bats test files across BOTH gaia-framework/tests/ and
 # gaia-framework/plugins/gaia/tests/ trees.
 #
-# Story: E28-S221 — addresses E59-S3 finding #1 (cross-tree discoverability:
-# when a script under plugins/gaia/scripts/ or plugins/gaia/skills/*/scripts/
-# is deleted, dangling .bats references in either tree should fail CI).
+# Cross-tree discoverability: when a script under plugins/gaia/scripts/ or
+# plugins/gaia/skills/*/scripts/ is deleted, dangling .bats references in
+# either tree should fail CI.
 #
 # Behaviour:
 #   - Scans every *.bats under {root}/tests/ and {root}/plugins/gaia/tests/.

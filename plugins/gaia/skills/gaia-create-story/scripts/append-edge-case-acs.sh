@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # append-edge-case-acs.sh — gaia-create-story Step 3c deterministic
-#                          edge-case-AC appender (E63-S7 / Work Items 6.7 + 4)
+#                          edge-case-AC appender
 #
 # Purpose:
 #   Append edge-case acceptance criteria (AC-EC entries) to a story file
@@ -14,17 +14,10 @@
 #     single `!scripts/append-edge-case-acs.sh ...` invocation.
 #
 # Upstream dependency:
-#   - E63-S6 validate-ac-format.sh — establishes the AC-section extraction
-#     pattern (`## Acceptance Criteria` → next `## ` heading; lines
-#     matching `- [ ]`). This script extends that pattern with primary-vs-
-#     AC-EC partitioning and SHA-256 hash verification.
-#
-# Contract source:
-#   - ADR-074 contract C2 — AC immutability hash check (the contractual
-#     home for the SHA-256 mechanism replacing the count-drift check).
-#   - ADR-042            — Scripts-over-LLM rationale.
-#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md — Work
-#     Item 4 (hash check) + Work Item 6.7 (script migration).
+#   - validate-ac-format.sh — establishes the AC-section extraction pattern
+#     (`## Acceptance Criteria` → next `## ` heading; lines matching `- [ ]`).
+#     This script extends that pattern with primary-vs-AC-EC partitioning and
+#     SHA-256 hash verification.
 #
 # Algorithm (in order):
 #   1. Parse CLI: --file <path> (required), --edge-cases <json-array>
@@ -132,7 +125,7 @@ done
 [ -n "$file" ] || die_usage "--file is required"
 [ "$have_edge_cases" -eq 1 ] || die_usage "--edge-cases is required"
 
-# ---------- Missing-target file (non-blocking branch, AC4) ----------
+# ---------- Missing-target file (non-blocking branch) ----------
 
 if [ ! -f "$file" ]; then
   log "WARNING file not found: $file"

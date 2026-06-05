@@ -113,19 +113,19 @@ SHIM
 @test "SR-81: traversal payload (../../bin/sh) rejected by regex" {
   run "$RESOLVER" --adapter "../../bin/sh" --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qF "violates SR-81 regex"
+  echo "$output" | grep -qF "violates regex"
 }
 
 @test "SR-81: uppercase in adapter_name rejected" {
   run "$RESOLVER" --adapter "MyAdapter" --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qF "violates SR-81 regex"
+  echo "$output" | grep -qF "violates regex"
 }
 
 @test "SR-81: underscore in adapter_name rejected" {
   run "$RESOLVER" --adapter "my_adapter" --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qF "violates SR-81 regex"
+  echo "$output" | grep -qF "violates regex"
 }
 
 @test "SR-81: 65-char name rejected (exceeds 64-char limit)" {

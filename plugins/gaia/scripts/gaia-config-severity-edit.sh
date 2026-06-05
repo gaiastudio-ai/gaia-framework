@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# gaia-config-severity-edit.sh — E71-S7
+# gaia-config-severity-edit.sh — comment-preserving editor for the `severity:` map
 #
-# Comment-preserving editor for the top-level `severity:` map in
-# project-config.yaml. Implements FR-RSV2-22's 5-into-3 severity map:
+# Edits the top-level `severity:` map in project-config.yaml, supporting
+# 5-into-3 severity mapping:
 #
 #   Critical | High | Medium | Low | Info
 #       ↓        ↓       ↓      ↓     ↓

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# load-spec.sh — gaia-quick-dev quick-spec loader (E28-S117)
+# load-spec.sh — gaia-quick-dev quick-spec loader
 #
 # Reads the quick spec at .gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md
 # and emits its body on stdout. Fails fast with exit code 2 when the spec is
-# missing (AC-EC4 — matches the legacy on_error.missing_file: ask_user contract).
+# missing (matches the legacy on_error.missing_file: ask_user contract).
 #
 # Usage:
 #   load-spec.sh <spec_name>
 #
 # Exit codes:
 #   0 — spec body emitted on stdout
-#   2 — spec file not found (AC-EC4)
+#   2 — spec file not found
 #   1 — usage or unexpected error
 
 set -euo pipefail
@@ -31,7 +31,7 @@ SPEC_NAME="$1"
 # Resolve the project root — prefer $PROJECT_PATH, fall back to cwd (matches
 # the legacy resolve-config.sh contract and the brownfield/native split).
 WORK_DIR="${PROJECT_PATH:-$PWD}"
-# AF-2026-05-21-25: canonical-first spec lookup, legacy fallback.
+# Canonical-first spec lookup, legacy fallback.
 if [ -f "$WORK_DIR/.gaia/artifacts/implementation-artifacts/quick-spec-${SPEC_NAME}.md" ]; then
   SPEC_PATH="$WORK_DIR/.gaia/artifacts/implementation-artifacts/quick-spec-${SPEC_NAME}.md"
 else

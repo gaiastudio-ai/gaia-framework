@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # statusline-glyphs.sh — canonical glyph palette for the GAIA Claude Code statusline.
 #
-# Story: E82-S1 — Statusline runtime + glyph helper + color helper + install script.
 #
+
 # This file is sourced by ~/.claude/gaia-statusline/statusline.sh after the
 # install script copies it to ~/.claude/gaia-statusline/lib/. It exports
 # variables, never executes side effects.
@@ -15,7 +15,7 @@
 #   GLYPH_UPDATE  = ↑   update available (D10 — paired with bold + colour + ASCII prefix)
 #   GLYPH_CHEVRON = ▸   segment chevron
 #   GLYPH_DOT     = ·   middle dot, separator
-#   GLYPH_DIRTY   = *   git-dirty marker (E82-S8 / FR-449), suffixed to BRANCH
+#   GLYPH_DIRTY   = *   git-dirty marker, suffixed to BRANCH
 #
 # Env-flag gates (exclusive, ASCII wins):
 #   GAIA_STATUSLINE_ASCII=1     → swap each glyph for an ASCII fallback.
@@ -33,11 +33,11 @@ GLYPH_CLOCK="◷"
 GLYPH_UPDATE="↑"
 GLYPH_CHEVRON="▸"
 GLYPH_DOT="·"
-GLYPH_DIRTY="*"  # E82-S8: appended to BRANCH chunk when working tree is dirty
-GLYPH_BAR_FILLED="█"  # E82-S9: context-bar filled block
-GLYPH_BAR_EMPTY="░"   # E82-S9: context-bar empty block
+GLYPH_DIRTY="*"  # appended to BRANCH chunk when working tree is dirty
+GLYPH_BAR_FILLED="█"  # context-bar filled block
+GLYPH_BAR_EMPTY="░"   # context-bar empty block
 
-# ASCII fallback table (gated on GAIA_STATUSLINE_ASCII=1, AT-3).
+# ASCII fallback table (gated on GAIA_STATUSLINE_ASCII=1).
 # Each fallback is a printable 7-bit ASCII string of <= 2 chars.
 if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
   GLYPH_BRAND="*"

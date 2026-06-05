@@ -1,6 +1,6 @@
 ---
 name: gaia-advanced-elicitation
-description: Deep requirements elicitation using structured questioning techniques — Cluster 4 analysis skill. Use when the user wants to explore requirements gaps, validate assumptions, and discover unstated needs using methods like 5 Whys, Socratic Method, User Story Mapping, MoSCoW, Kano Model, Jobs-to-be-Done, Assumption Mapping, and Stakeholder Mapping.
+description: Deep requirements elicitation using structured questioning techniques. Use when the user wants to explore requirements gaps, validate assumptions, and discover unstated needs using methods like 5 Whys, Socratic Method, User Story Mapping, MoSCoW, Kano Model, Jobs-to-be-Done, Assumption Mapping, and Stakeholder Mapping.
 argument-hint: "[product or feature area to explore]"
 allowed-tools: [Read, Write, Glob, Grep, Bash]
 orchestration_class: heavy-procedural
@@ -17,7 +17,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -27,7 +27,7 @@ fi
 
 You are facilitating a deep requirements elicitation session. Guide the user through context gathering, method selection, structured elicitation execution, and requirements synthesis, then emit a structured elicitation report at `.gaia/artifacts/planning-artifacts/elicitation-report-{date}.md` for downstream consumers (e.g., `/gaia-create-prd`).
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/1-analysis/advanced-elicitation` workflow (brief §Cluster 4, story P4-S4). The step ordering, prompts, and output location follow the legacy `instructions.xml` mechanically — do not restructure, re-prompt, or reorder sections.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/1-analysis/advanced-elicitation` workflow. The step ordering, prompts, and output location follow the legacy `instructions.xml` mechanically — do not restructure, re-prompt, or reorder sections.
 
 ## Critical Rules
 

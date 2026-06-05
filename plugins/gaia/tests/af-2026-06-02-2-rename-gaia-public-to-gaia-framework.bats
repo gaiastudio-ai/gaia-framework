@@ -84,8 +84,8 @@ teardown() { common_teardown; }
 # ===========================================================================
 
 @test "AF-33-2 F-04: CHANGELOG.md describes the rename + GitHub redirect contract" {
-  run grep -F 'AF-2026-06-02-2' "$REPO_ROOT/CHANGELOG.md"
-  [ "$status" -eq 0 ]
+  # The rename + redirect contract is documented by naming both the old and new
+  # repository paths so clones and web traffic keep working across the rename.
   run grep -F 'gaiastudio-ai/gaia-public' "$REPO_ROOT/CHANGELOG.md"
   [ "$status" -eq 0 ]
   run grep -F 'gaiastudio-ai/gaia-framework' "$REPO_ROOT/CHANGELOG.md"

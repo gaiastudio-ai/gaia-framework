@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # statusline-colors.sh — color tokens for the GAIA Claude Code statusline.
 #
-# Story: E82-S1 — Statusline runtime + glyph helper + color helper + install script.
-#
 # Sourced by the runtime. Exports six SGR-tagged variables plus a RESET. Honours
 # NO_COLOR (suppresses all SGR) and COLORTERM=truecolor (24-bit fg sequences).
 #
@@ -58,9 +56,7 @@ export COLOR_BRAND COLOR_WARN COLOR_OK COLOR_MUTED COLOR_UPDATE COLOR_DIRTY COLO
 
 # ---------------------------------------------------------------------------
 # gradient_color <pct> — emit an SGR foreground escape for a smooth
-# green -> amber -> red gradient mapped to <pct> in 0..100 (E82 follow-up:
-# replaces the 3-discrete-band coloring of the context-% bar + number with a
-# true gradient, per user requirement).
+# green -> amber -> red gradient mapped to <pct> in 0..100.
 #
 # Two-segment linear interpolation in RGB:
 #   0   -> green  (46, 204, 113)

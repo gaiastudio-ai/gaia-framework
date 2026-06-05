@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# validate-plan-structure.sh — gaia-dev-story Step 4 plan-structure gate (E55-S5)
+# validate-plan-structure.sh — gaia-dev-story Step 4 plan-structure gate
 #
 # Purpose:
 #   Reject any /gaia-dev-story Step 4 plan that is missing a required
-#   section. The canonical 9-section list is sourced from FR-DSH-4
-#   (.gaia/artifacts/planning-artifacts/prd.md §4.36) and ADR-073
-#   (.gaia/artifacts/planning-artifacts/architecture.md Decision Log).
+#   section. The canonical 9-section list is sourced from the PRD
+#   (.gaia/artifacts/planning-artifacts/prd.md) and the architecture
+#   Decision Log (.gaia/artifacts/planning-artifacts/architecture.md).
 #
 # Canonical sections (top-to-bottom; first miss wins):
 #   1. Context
@@ -18,7 +18,7 @@
 #   8. Risks
 #   9. Verification Plan
 #
-# T-38 mitigation:
+# Unicode-homoglyph mitigation:
 #   The threat is Unicode-homoglyph spoofing of section headers (e.g.,
 #   Cyrillic `С` U+0421 vs ASCII `C` U+0043). We use `grep -F` with literal
 #   ASCII strings — Cyrillic `Сontext` will NOT match `Context`. No regex
@@ -110,10 +110,10 @@ for entry in "${SECTIONS[@]}"; do
     continue
   fi
 
-  # T-38 mitigation: literal ASCII match via grep -F. Cyrillic homoglyphs
-  # cannot satisfy this match. We pass the section name with no anchors —
-  # the literal substring `Context` (8 chars in this case) will not match
-  # `Сontext` because the Cyrillic С is a different byte sequence.
+  # Unicode-homoglyph mitigation: literal ASCII match via grep -F. Cyrillic
+  # homoglyphs cannot satisfy this match. We pass the section name with no
+  # anchors — the literal substring `Context` (8 chars in this case) will
+  # not match `Сontext` because the Cyrillic С is a different byte sequence.
   if ! printf '%s' "$CONTENT" | grep -F -q "$section"; then
     log "MISSING section '$section'"
     exit 1

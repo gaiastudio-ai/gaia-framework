@@ -27,7 +27,7 @@ teardown() { common_teardown; }
 # --- gaia-create-arch: fail-safe detects missing stacks / platforms ---
 
 @test "AF-22-7 Bug-21: gaia-create-arch finalize.sh has the hydration fail-safe block" {
-  grep -qF "Config hydration fail-safe (AF-2026-05-22-7 Bug-21)" "$PLUGIN_ROOT/skills/gaia-create-arch/scripts/finalize.sh"
+  grep -qF "Config hydration fail-safe" "$PLUGIN_ROOT/skills/gaia-create-arch/scripts/finalize.sh"
 }
 
 @test "AF-22-7 Bug-21: gaia-create-arch fail-safe greps for stacks: + platforms: in project-config.yaml" {
@@ -50,7 +50,7 @@ teardown() { common_teardown; }
 # --- gaia-test-strategy: fail-safe detects missing test_execution / test_execution_bridge / environments ---
 
 @test "AF-22-7 Bug-21: gaia-test-strategy finalize.sh has the hydration fail-safe block" {
-  grep -qF "Config hydration fail-safe (AF-2026-05-22-7 Bug-21)" "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
+  grep -qF "Config hydration fail-safe" "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
 }
 
 @test "AF-22-7 Bug-21: gaia-test-strategy fail-safe greps for test_execution + test_execution_bridge + environments" {
@@ -67,7 +67,7 @@ teardown() { common_teardown; }
 # --- gaia-ci-setup: fail-safe detects missing ci_cd ---
 
 @test "AF-22-7 Bug-21: gaia-ci-setup finalize.sh has the hydration fail-safe block" {
-  grep -qF "Config hydration fail-safe (AF-2026-05-22-7 Bug-21)" "$PLUGIN_ROOT/skills/gaia-ci-setup/scripts/finalize.sh"
+  grep -qF "Config hydration fail-safe" "$PLUGIN_ROOT/skills/gaia-ci-setup/scripts/finalize.sh"
 }
 
 @test "AF-22-7 Bug-21: gaia-ci-setup fail-safe greps for ci_cd: in project-config.yaml" {

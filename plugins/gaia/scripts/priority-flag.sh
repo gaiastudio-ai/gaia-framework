@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # priority-flag.sh — priority_flag read, scan, and clear operations.
 #
-# E38-S4: Provides public functions for reading and clearing the
+# Provides public functions for reading and clearing the
 # priority_flag frontmatter field on story files. Used by
 # gaia-sprint-plan SKILL.md to auto-include flagged backlog stories
 # and clear the flag after sprint finalization.
@@ -49,27 +49,27 @@ pflag_read() {
 # ---------------------------------------------------------------------------
 # pflag_scan_backlog — scan impl dir for backlog stories with next-sprint flag
 #
-# E79-S4: walks the canonical nested layout
+# Walks the canonical nested layout
 #   .gaia/artifacts/implementation-artifacts/epic-*/stories/**/*.md
 # recursively, AND keeps a parallel non-recursive pass over the legacy flat
-# layout so flat-path stories remain surfaced during the migration window
-# (until E79-S6 backfill completes). Frontmatter parse failures are tolerated
-# (best-effort, no exit-non-zero) so non-story .md files (e.g. README.md
-# accidentally placed under stories/) are skipped silently.
+# layout so flat-path stories remain surfaced during the migration window.
+# Frontmatter parse failures are tolerated (best-effort, no exit-non-zero)
+# so non-story .md files (e.g. README.md accidentally placed under stories/)
+# are skipped silently.
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# _pflag_scan_by_flag — shared internal helper for status+flag scans (E40-S3)
+# _pflag_scan_by_flag — shared internal helper for status+flag scans
 # ---------------------------------------------------------------------------
 # Walks all three story layouts and emits story keys for files where:
 #   - frontmatter status matches $status_filter (empty = any status); AND
 #   - priority_flag matches $flag_value.
-# Layouts (E105-S1 / ADR-127):
+# Layouts:
 #   - legacy-nested: epic-*/stories/{key}-{slug}.md
 #   - NEW per-story: epic-*/{key}-{slug}/story.md
 #   - legacy-flat:   {key}-{slug}.md
 #
-# Used by both pflag_scan_backlog (E38-S4 next-sprint pre-fill) and
-# pflag_scan_active_hotfix (E40-S3 hotfix active-sprint inject). Single
+# Used by both pflag_scan_backlog (next-sprint pre-fill) and
+# pflag_scan_active_hotfix (hotfix active-sprint inject). Single
 # source of truth for the multi-layout scan idiom; callers are 1-line
 # delegating wrappers. Non-story files lack the status/key/flag frontmatter
 # and are filtered out by the field reads, so a broad `*.md` find is safe.
@@ -92,7 +92,7 @@ _pflag_scan_by_flag() {
     [ -n "$key_val" ] || continue
     printf '%s\n' "$key_val"
   done < <(find "$dir" \( -path '*/stories/*.md' -o -path '*/epic-*/*/story.md' \) -type f -print0 2>/dev/null)
-  # Legacy flat layout — read-only fallback until E79-S6 migration completes.
+  # Legacy flat layout — read-only fallback until migration completes.
   for f in "$dir"/*.md; do
     [ -f "$f" ] || continue
     if [ -n "$status_filter" ]; then
@@ -107,14 +107,14 @@ _pflag_scan_by_flag() {
   done
 }
 
-# Public delegates — externally-visible behavior preserved bit-identical (AC5).
+# Public delegates — externally-visible behavior preserved bit-identical.
 pflag_scan_backlog() {
   _pflag_scan_by_flag "$1" "backlog" "next-sprint"
 }
 
-# E40-S3 — Scan for hotfix stories regardless of current status, for active-
-# sprint injection via sprint-state.sh inject (per ADR-109 §D3). Empty
-# status_filter means "any status" (backlog | in-progress | ready-for-dev).
+# Scan for hotfix stories regardless of current status, for active-sprint
+# injection via sprint-state.sh inject. Empty status_filter means "any
+# status" (backlog | in-progress | ready-for-dev).
 pflag_scan_active_hotfix() {
   _pflag_scan_by_flag "$1" "" "hotfix"
 }

@@ -1,11 +1,11 @@
 # test-environment.yaml — Test Execution Bridge Manifest
 # Declares test tiers, runner commands, environment requirements,
-# and tier-to-gate mappings for the GAIA Test Execution Bridge (ADR-028).
+# and tier-to-gate mappings for the GAIA Test Execution Bridge.
 #
 # Place this file at {project-path}/test-environment.yaml.
-# When absent, the bridge falls back to auto-discovery (FR-196).
+# When absent, the bridge falls back to auto-discovery.
 #
-# Schema version: 2  (bumped from 1 for promotion_chain_env_id support — E20-S10)
+# Schema version: 2  (bumped from 1 for promotion_chain_env_id support)
 # Reference: architecture.md Section 10.20.5, 10.24.3
 
 # GAIA-MANIFEST-TEMPLATE: edit this file before enabling the bridge -- bridge will fail Layer 0 readiness check until this line is removed
@@ -13,8 +13,8 @@
 # ─── Required Fields ───────────────────────────────────────────────
 
 # Schema version (required, integer). Allows forward-compatible evolution.
-# v1: base schema (E17-S7)
-# v2: adds optional per-runner `promotion_chain_env_id` field (E20-S10)
+# v1: base schema
+# v2: adds optional per-runner `promotion_chain_env_id` field
 version: 2
 
 # Runner definitions (required, list). Each entry declares a named test runner
@@ -29,8 +29,8 @@ runners:
     # Optional cross-reference to `ci_cd.promotion_chain[].id` in global.yaml.
     # When set, the Test Execution Bridge enriches its context with the linked
     # environment's CI provider, branch, and ci_checks. Omit or set to null to
-    # use tier-local config only (pre-E20 behavior). Silently ignored when
-    # global.yaml has no `ci_cd` block (NFR-045 backward compat).
+    # use tier-local config only. Silently ignored when
+    # global.yaml has no `ci_cd` block (backward compat).
     # promotion_chain_env_id: "dev"
 
   # Tier 2 — Integration tests: service containers required
@@ -65,7 +65,7 @@ tiers:
   3:
     gates: []
 
-  # Per-stack tier hints (optional, map). E25-S6 / FR-312 / ADR-038 §10.20.11.
+  # Per-stack tier hints (optional, map).
   # Each key is OPTIONAL and consumed by the matching StackAdapter's
   # `resolveTierMapping()`. Absent block → every adapter falls back to its
   # built-in defaults with no behavioural drift. Unknown keys under

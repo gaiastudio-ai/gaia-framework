@@ -1,8 +1,8 @@
-# flutter.yaml — Flutter cross-platform stack definition (E74-S2, ADR-081)
+# flutter.yaml — Flutter cross-platform stack definition
 #
 # Mobile platforms: iOS + Android. Targets the Flutter SDK with Dart as the
 # implementation language. Demonstrates the "last extended" inheritance
-# pattern documented in ADR-081 — flutter.yaml `extends: dart`, inheriting
+# pattern — flutter.yaml `extends: dart`, inheriting
 # base linting / formatting rules from the Dart language stack and adding
 # Flutter-specific tooling on top.
 #
@@ -21,7 +21,7 @@ platform: [ios, android]
 build_tool: flutter
 package_manager: pub
 
-# extends — last-extended inheritance pattern (ADR-081). Inherits the base
+# extends — last-extended inheritance pattern. Inherits the base
 # Dart language stack and layers Flutter-specific lints / test frameworks /
 # adapters on top.
 extends: dart

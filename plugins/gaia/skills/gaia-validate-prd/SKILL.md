@@ -1,6 +1,6 @@
 ---
 name: gaia-validate-prd
-description: "DEPRECATED — Thin redirect to gaia-val-validate. Preserved for backward compatibility per ADR-045 / FR-330. Use /gaia-val-validate directly for PRD validation."
+description: "DEPRECATED — Thin redirect to gaia-val-validate. Preserved for backward compatibility. Use /gaia-val-validate directly for PRD validation."
 context: fork
 allowed-tools: [Read, Glob, Bash, Agent]
 orchestration_class: reviewer
@@ -14,11 +14,11 @@ orchestration_class: reviewer
 
 !${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh validator all
 
-## Deprecation Notice (ADR-045 / FR-330)
+## Deprecation Notice
 
 > **This skill is deprecated.** `validate-prd` is the legacy entry point for PRD validation. All validation logic now lives in the `gaia-val-validate` skill. Callers should prefer `/gaia-val-validate` directly going forward.
 >
-> This thin redirect is preserved per ADR-045 (deprecated-but-routed commands remain callable for backward compatibility) and FR-330 (deprecated-but-routed entry-point semantics). No validation logic is implemented here — the skill exists solely to forward invocations to the canonical validator.
+> This thin redirect is preserved so deprecated-but-routed commands remain callable for backward compatibility. No validation logic is implemented here — the skill exists solely to forward invocations to the canonical validator.
 
 ## Mission
 
@@ -30,7 +30,7 @@ This skill acts as a backward-compatible redirect: it accepts the same invocatio
 
 ### Step 1 — Resolve PRD Artifact Path
 
-- Resolve the PRD path via the sharded-fallback rule (ADR-069 / FR-396..402): first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, use `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout).
+- Resolve the PRD path via the sharded-fallback rule: first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, use `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout).
 - If neither path exists, fail fast: "No PRD found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - Pass the resolved PRD path through to the redirect target.
 
@@ -42,7 +42,7 @@ Invoke the `gaia-val-validate` skill, forwarding the PRD artifact path unchanged
 /gaia-val-validate .gaia/artifacts/planning-artifacts/prd.md
 ```
 
-All validation logic — completeness checks, structural validation, quality checks, consistency checks, and report generation — is handled by `gaia-val-validate` via the validator subagent (Val, scaffolded by E28-S21). No validation steps are duplicated here.
+All validation logic — completeness checks, structural validation, quality checks, consistency checks, and report generation — is handled by `gaia-val-validate` via the validator subagent (Val). No validation steps are duplicated here.
 
 ### Step 3 — Report Result
 

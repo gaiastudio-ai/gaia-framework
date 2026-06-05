@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 # completion-notes-deferral-scan.sh — Scan a story file's
-# `### Completion Notes List` for deferral phrases (per the E88-S1 taxonomy
-# SSOT) and pair-check each match against the story's `## Findings` table
-# (E88-S4, FR-DPD-4, ADR-107).
-#
-# Refs:  ADR-107 (closed-list taxonomies SSOT), FR-DPD-4, AI-2026-05-13-6.
-# Story: E88-S4.
+# `### Completion Notes List` for deferral phrases (per the taxonomy SSOT)
+# and pair-check each match against the story's `## Findings` table.
 #
 # Consumers
 #   - The Val `completion-notes-deferral-scan` pattern (gaia-validation-patterns).
@@ -27,8 +23,8 @@
 #       means no deferral phrases were matched in Completion Notes.
 #   1 — usage error (missing flag, missing file).
 #
-# The helper sources `lib/deferral-phrase-match.sh` (E88-S1) — it MUST NOT
-# inline the taxonomy. ADR-107 SSOT.
+# The helper sources `lib/deferral-phrase-match.sh` — it MUST NOT
+# inline the taxonomy (SSOT).
 
 set -euo pipefail
 LC_ALL=C

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gaiastudio.ai/schemas/adapter.schema.json",
   "title": "GAIA Tool Adapter — adapter.json",
-  "description": "Canonical metadata schema for tool adapters under plugins/gaia/scripts/adapters/{tool}/adapter.json. Formalizes the implicit pattern shipped by E66-S2 adapters (semgrep, gitleaks, radon, gocyclo, eslint-plugin-sonarjs) per ADR-078 / FR-RSV2-17. Finding fields are NOT redefined here — the run-contract documents the cross-reference to checks[].findings[] in analysis-results.schema.json.",
+  "description": "Canonical metadata schema for tool adapters under plugins/gaia/scripts/adapters/{tool}/adapter.json. Formalizes the implicit pattern shipped by adapters (semgrep, gitleaks, radon, gocyclo, eslint-plugin-sonarjs). Finding fields are NOT redefined here — the run-contract documents the cross-reference to checks[].findings[] in analysis-results.schema.json.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -38,7 +38,7 @@
         "device-farm",
         "deploy"
       ],
-      "description": "Tool category. Drives tool-selection precedence (tools.{category}.provider) per ADR-078."
+      "description": "Tool category. Drives tool-selection precedence (tools.{category}.provider)."
     },
     "runtime-profile": {
       "type": "string",
@@ -78,7 +78,7 @@
   "$comment": "Finding object schema is NOT redefined here. Adapters emit analysis-results fragments per gaia-framework/plugins/gaia/schemas/analysis-results.schema.json — specifically checks[].findings[] with fields: file, line (>=0), severity, rule, message, blocking. Optional finding fields per the canonical schema: column, end_line, snippet, cwe, fix_suggestion. See _schema/run-contract.md for the cross-reference.",
   "definitions": {
     "finding": {
-      "$comment": "Indirection target documenting where adapter run.sh stdout findings are formally specified. Adapter.json metadata does not embed findings; this $ref pins the canonical schema location so static tools can resolve the cross-reference required by AC4 / FR-RSV2-17.",
+      "$comment": "Indirection target documenting where adapter run.sh stdout findings are formally specified. Adapter.json metadata does not embed findings; this $ref pins the canonical schema location so static tools can resolve the cross-reference.",
       "$ref": "../../../schemas/analysis-results.schema.json#/properties/checks/items/properties/findings/items"
     }
   }

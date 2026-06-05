@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# adapters/k6/run.sh — ADR-078 adapter contract for k6 load/perf tool.
+# adapters/k6/run.sh — adapter contract for k6 load/perf tool.
 #
-# Contract (ADR-078 / BOUNDARIES.md):
+# Contract (BOUNDARIES.md):
 #   run.sh --input <file-list> [--config <path>] [--output <path>]
 #          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
 #          [--target-url <url>] [--script <k6-script-path>]
 #
-# Story E73-S2 augments the canonical contract with two additive flags:
+# Two additive flags beyond the base contract:
 #   --target-url <url>          BASE URL for the test (exported as K6_TARGET_URL)
 #   --script <path>             path to the k6 script (default: $K6_SCRIPT or
 #                               .gaia/perf-scripts/default.js)
@@ -22,8 +22,6 @@
 #       failures still propagate via $rc when configured in the script)
 #   1   k6 errored (script syntax, network failure, timeout)
 #   127 k6 not found on PATH (probe interprets as expected_and_missing)
-#
-# Refs: ADR-078 §1, FR-RSV2-32, NFR-RSV2-7, story E73-S2.
 
 set -euo pipefail
 LC_ALL=C
@@ -48,7 +46,7 @@ while [ "$#" -gt 0 ]; do
     --script) SCRIPT_PATH="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/k6/run.sh — ADR-078 contract entry for k6.
+adapters/k6/run.sh — adapter contract entry for k6.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]

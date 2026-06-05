@@ -1,4 +1,4 @@
-# BrowserStack device-farm adapter (E74-S9)
+# BrowserStack device-farm adapter
 # BrowserStack App Automate. Webhook-based result notification.
 name: browserstack
 type: device-farm

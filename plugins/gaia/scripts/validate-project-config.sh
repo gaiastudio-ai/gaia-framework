@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
 # validate-project-config.sh — JSON Schema validation for project-config.yaml
 #
-# Story: E71-S3 (/gaia-config-validate AC5).
-# ADR:   ADR-079 (schema discipline), ADR-042 (Scripts-over-LLM), E68-S1
-#        (project-config.schema.json).
-#
 # Behavior:
 #   - Converts the YAML input to JSON via `yq` (preferred) or python3+PyYAML.
-#   - Backend selection (AF-2026-06-01-5 / issue #1051 — replaces the old
-#     "PASS+silent" fallback that the issue surfaced):
+#   - Backend selection (replaces the old "PASS+silent" fallback):
 #       1. `ajv` / `ajv-cli` on PATH                — canonical full-schema engine.
 #       2. python3 + `jsonschema` module available  — canonical fallback engine
 #          (covers enum / additionalProperties / type / pattern equivalently
@@ -105,11 +100,11 @@ if command -v ajv >/dev/null 2>&1; then
 fi
 
 # ----------------------------------------------------------------------------
-# Path A2 — python3 + jsonschema (canonical fallback engine, AF-2026-06-01-5 / #1051)
+# Path A2 — python3 + jsonschema (canonical fallback engine)
 #
 # Equivalent coverage to ajv for the checks the structural fallback misses:
 # enum, additionalProperties, type, pattern. Preferred over the jq path
-# when present — closes the silent false-PASS surfaced by issue #1051.
+# when present — closes the silent false-PASS surfaced by the fallback engine.
 # ----------------------------------------------------------------------------
 if command -v python3 >/dev/null 2>&1 && python3 -c 'import jsonschema' >/dev/null 2>&1; then
   if py_out="$(python3 - "$SCHEMA" "$TMP_JSON" 2>&1 <<'PY'
@@ -130,9 +125,8 @@ for e in errors:
     # Build a JSONPath-style location. For root-level violations (e.g. a
     # missing required property at the top), the absolute_path is empty —
     # surface the missing-property name in the path so downstream consumers
-    # (and the AC5 JSONPath-presence grep at
-    # tests/skills/gaia-config-validate-schema.bats) can locate it without
-    # parsing the prose message body.
+    # (the JSONPath-presence grep at tests/skills/gaia-config-validate-schema.bats)
+    # can locate it without parsing the prose message body.
     path_parts = list(map(str, e.absolute_path))
     if e.validator == "required":
         missing = e.message.split("'")[1] if "'" in e.message else ""
@@ -153,7 +147,7 @@ PY
 fi
 
 # ----------------------------------------------------------------------------
-# Path B — jq-based degraded fallback (AF-2026-06-01-5 / #1051)
+# Path B — jq-based degraded fallback
 #
 # Last-resort structural check. Cannot validate enum / additionalProperties
 # / type / pattern. Emits a prominent WARNING + `PASS (DEGRADED):` marker
@@ -221,8 +215,7 @@ if [ "$violations" -gt 0 ]; then
   exit 1
 fi
 
-# AF-2026-06-01-5 / issue #1051 — emit the DEGRADED marker so downstream
-# consumers (CI, /gaia-config-validate skill) can distinguish a full
-# schema-engine PASS from a structural-only PASS.
+# Emit the DEGRADED marker so downstream consumers (CI, /gaia-config-validate
+# skill) can distinguish a full schema-engine PASS from a structural-only PASS.
 printf 'PASS (DEGRADED): %s\n' "$INPUT"
 exit 0

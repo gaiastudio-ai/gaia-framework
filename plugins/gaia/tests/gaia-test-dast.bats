@@ -103,10 +103,10 @@ teardown() {
   grep -E '^## Secret Handling' "$f"
 }
 
-@test "E73-S3 AC5: Secret Handling references env-allowlist + T-RSV2-1" {
+@test "E73-S3 AC5: Secret Handling references env-allowlist + credential-leakage mitigation" {
   local f="$SKILL_DIR/SKILL.md"
   grep -F 'env-allowlist' "$f"
-  grep -F 'T-RSV2-1' "$f"
+  grep -E -i 'credential.leakage|credential leakage|DAST tooling surface' "$f"
 }
 
 @test "E73-S3 AC5: Secret Handling enumerates permitted env vars (ZAP_API_KEY, TARGET_URL)" {
@@ -148,10 +148,10 @@ teardown() {
 
 # --- AC10: PRD/threat-model traceability -----------------------------------
 
-@test "E73-S3 AC10: SKILL.md references FR-RSV2-31 and T-RSV2-1" {
+@test "E73-S3 AC10: SKILL.md documents env-allowlist contract and DAST tooling surface threat" {
   local f="$SKILL_DIR/SKILL.md"
-  grep -F 'FR-RSV2-31' "$f"
-  grep -F 'T-RSV2-1' "$f"
+  grep -E 'Per-adapter env-allowlist contract|env-allowlist contract' "$f"
+  grep -E 'DAST tooling surface|deployment-phase.*DAST|Deployment-phase DAST' "$f"
 }
 
 # --- Skill scripts exist ---------------------------------------------------

@@ -8,7 +8,7 @@ used_by: ['calibration-reference']
 
 > **This is a calibration reference, not a real PRD.** It shows the expected
 > depth and shape for a small-but-complete greenfield PRD authored from
-> `prd-template.md` (Test05 F-008). Trim or expand per project size. It is NOT
+> `prd-template.md`. Trim or expand per project size. It is NOT
 > consumed by any skill — it exists so first-time authors can see "done".
 
 ## 1. Overview

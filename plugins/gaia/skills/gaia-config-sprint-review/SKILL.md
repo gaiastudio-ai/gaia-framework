@@ -1,6 +1,6 @@
 ---
 name: gaia-config-sprint-review
-description: Edit the sprint_review section of project-config.yaml — section-scoped editor that preserves YAML comments and formatting per ADR-044. Configures Track B per-stack execution-review commands consumed by /gaia-sprint-review (E93-S4). Schema rejects `playwright_headed: false` at validation time (NFR-069 / T-SGR-2). Use when "edit sprint_review config" or /gaia-config-sprint-review.
+description: Edit the sprint_review section of project-config.yaml — section-scoped editor that preserves YAML comments and formatting. Configures Track B per-stack execution-review commands consumed by /gaia-sprint-review. Schema rejects `playwright_headed: false` at validation time. Use when "edit sprint_review config" or /gaia-config-sprint-review.
 argument-hint: "[get|set|show|clear] [--key <dotted-path>] [--value <v>]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
 orchestration_class: light-procedural
@@ -12,19 +12,19 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are editing the `sprint_review` top-level section of `project-config.yaml`. The skill is one of the `/gaia-config-*` editors shipped by E71-S3 (and extended by E93-S2), each scoped to a single declared section of `schemas/project-config.schema.json`. The `sprint_review` section maps per-stack execution-review commands consumed by the Track B runner that `/gaia-sprint-review` (E93-S4) invokes.
+You are editing the `sprint_review` top-level section of `project-config.yaml`. The skill is one of the `/gaia-config-*` editors, each scoped to a single declared section of `schemas/project-config.schema.json`. The `sprint_review` section maps per-stack execution-review commands consumed by the Track B runner that `/gaia-sprint-review` invokes.
 
-Editing is comment-preserving per ADR-044: pre-existing comments and formatting OUTSIDE the edited section are preserved byte-for-byte; the edited section's content follows the existing indentation style detected from the file.
+Editing is comment-preserving: pre-existing comments and formatting OUTSIDE the edited section are preserved byte-for-byte; the edited section's content follows the existing indentation style detected from the file.
 
 ## Critical Rules
 
 - Only the `sprint_review` section may be modified. All other sections, all comments, and all formatting outside the edited section MUST be preserved byte-for-byte.
-- The comment-preserving YAML editor lives in `plugins/gaia/scripts/config-yaml-editor.sh` per ADR-042 / ADR-044. Do NOT round-trip the file through a generic YAML serializer.
-- `playwright_headed` MUST be `true` (NFR-069 / T-SGR-2 foreground-mode enforcement). The schema constrains this with `const: true`; this skill MUST NOT offer to set it to `false`. Any user-attempt to set `playwright_headed: false` is rejected with the canonical error `sprint_review.playwright_headed must be true (NFR-069 foreground-mode enforcement)`.
+- The comment-preserving YAML editor lives in `plugins/gaia/scripts/config-yaml-editor.sh`. Do NOT round-trip the file through a generic YAML serializer.
+- `playwright_headed` MUST be `true` (foreground-mode enforcement). The schema constrains this with `const: true`; this skill MUST NOT offer to set it to `false`. Any user-attempt to set `playwright_headed: false` is rejected with the canonical error `sprint_review.playwright_headed must be true (foreground-mode enforcement)`.
 - `human_confirm` MUST be one of: `required`, `optional`. Reject any other value.
 - `timeout_per_stack` MUST be an integer in [30, 3600]. Reject any other value.
 - Edits MUST go through the diff-preview confirmation gate — never write without an explicit user confirm response.
-- If the `sprint_review` section is missing (absent from the file), the skill MUST inform the user and offer to scaffold a default section per the E93-S2 schema, OR abort.
+- If the `sprint_review` section is missing (absent from the file), the skill MUST inform the user and offer to scaffold a default section per the schema, OR abort.
 
 ## Subcommands
 
@@ -61,11 +61,11 @@ This skill supports four subcommands:
 > **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
 
 - For `set`:
-  - Resolve `--key` against the schema (`playwright_headed`, `timeout_per_stack`, `human_confirm`, `screen_recording_fallback`, `backend_commands.<stack-id>`, `frontend_commands.<stack-id>` (canonical map; post-AF-2026-06-01-4 / issue #1047 — preferred over the legacy `frontend_command` scalar when a project has more than one web/front-end stack), `frontend_command` (deprecated scalar; backward-compat alias for single-web-stack projects), `mobile_commands.<stack-id>`, `desktop_commands.<stack-id>`, `plugin_commands.<stack-id>`).
-  - **Hard-rejection on `playwright_headed: false`** (NFR-069 / T-SGR-2). Print the canonical error and HALT.
+  - Resolve `--key` against the schema (`playwright_headed`, `timeout_per_stack`, `human_confirm`, `screen_recording_fallback`, `backend_commands.<stack-id>`, `frontend_commands.<stack-id>` (canonical map — preferred over the legacy `frontend_command` scalar when a project has more than one web/front-end stack), `frontend_command` (deprecated scalar; backward-compat alias for single-web-stack projects), `mobile_commands.<stack-id>`, `desktop_commands.<stack-id>`, `plugin_commands.<stack-id>`).
+  - **Hard-rejection on `playwright_headed: false`**. Print the canonical error and HALT.
   - Reject out-of-range `timeout_per_stack` (< 30 or > 3600).
   - Reject `human_confirm` values outside `{required, optional}`.
-  - For `*_commands.<stack-id>` keys with unknown stack identifiers: WARN but accept (forward-compat per ADR-081 §4.2). Surface the warning before the diff preview so the user can confirm intent.
+  - For `*_commands.<stack-id>` keys with unknown stack identifiers: WARN but accept (forward-compat). Surface the warning before the diff preview so the user can confirm intent.
 
 ### Step 4 — Diff Preview + Confirmation Gate
 
@@ -83,5 +83,5 @@ This skill supports four subcommands:
 ## Notes
 
 - See `schemas/project-config.schema.json` `.properties.sprint_review` for the full schema. This skill ONLY edits `sprint_review`.
-- Consumed by `/gaia-sprint-review` (E93-S4) Track B runner — the per-stack command map is the canonical lookup at execution-review time.
-- Schema enforcement of `playwright_headed: true` is intentional: NFR-069's foreground invariant is the entire reason Track B exists; defeating it via config silently is exactly the attack T-SGR-2 calls out.
+- Consumed by `/gaia-sprint-review` Track B runner — the per-stack command map is the canonical lookup at execution-review time.
+- Schema enforcement of `playwright_headed: true` is intentional: the foreground invariant is the entire reason Track B exists; defeating it via config silently is exactly the attack it guards against.

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# schema-lookup.sh — Schema-awareness lookup primitive (E91-S2, FR-SRF-2,
-# AI-2026-05-13-16).
+# schema-lookup.sh — Schema-awareness lookup primitive.
 #
 # Input
 #   --target <file-path>    Required. .csv or .md (SKILL.md frontmatter).

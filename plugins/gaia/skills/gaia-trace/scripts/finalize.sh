@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# finalize.sh — Cluster 11 gaia-trace skill finalize (E28-S85)
+# finalize.sh — gaia-trace skill finalize
 #
-# Mechanical copy of the Cluster 9 reference implementation authored under
-# E28-S66 (gaia-code-review/scripts/finalize.sh). Only WORKFLOW_NAME and
+# Mechanical copy of the reference implementation in
+# gaia-code-review/scripts/finalize.sh. Only WORKFLOW_NAME and
 # SCRIPT_NAME differ — the body is byte-identical to the reference.
 #
-# Responsibilities (per brief Cluster 11):
+# Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script
 #   2. Emit a lifecycle event via lifecycle-event.sh for the tailing sync agent
 #
@@ -49,11 +49,10 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
+# circuit to a no-op so the interactive prompt is preserved. Failure is non-blocking — the auto-save
 # helper itself logs warnings to stderr but never affects this script's
 # exit code. SKILL_NAME is resolved from the parent directory name so
 # the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
@@ -72,20 +71,19 @@ else
   log "auto-save-memory.sh not found at $AUTOSAVE_LIB — skipping auto-save (non-fatal)"
 fi
 
-# ---------- 5. Matrix-verdict gate (AF-2026-05-24-13 / Test02 F-39) ----------
-# Test02 F-39: validate-gate.sh traceability_exists returned exit 0 against
-# matrices that declared their OWN verdict as BLOCKED — the check is
-# path-based, not semantic. Per the /gaia-readiness-check Critical Rules,
-# if the matrix's gate verdict is BLOCKED, downstream must not declare
-# traceability_complete: true. F-39 fix: trace finalize surfaces a
-# WARNING when its generated matrix declares BLOCKED or FAIL so the
-# caller has an explicit signal rather than burying it inside the
-# artifact body.
+# ---------- 5. Matrix-verdict gate ----------
+# validate-gate.sh traceability_exists can return exit 0 against matrices
+# that declared their OWN verdict as BLOCKED — the check is path-based,
+# not semantic. Per the /gaia-readiness-check Critical Rules, if the
+# matrix's gate verdict is BLOCKED, downstream must not declare
+# traceability_complete: true. This block surfaces a WARNING when the
+# generated matrix declares BLOCKED or FAIL so the caller has an explicit
+# signal rather than burying it inside the artifact body.
 #
 # Idempotent: when no matrix is present (skill ran in --dry-run or the
 # write was skipped), this block is a silent no-op.
-# E105-S2 / ADR-127 §7.2: the traceability-matrix now lives under
-# planning-artifacts/ (docs-about-testing moved out of test-artifacts/). The
+# The traceability-matrix now lives under planning-artifacts/
+# (docs-about-testing moved out of test-artifacts/). The
 # planning-artifacts/ home is highest precedence; the legacy test-artifacts/
 # (strategy/) paths remain for the migration read-compat window.
 TM_PATHS="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/traceability-matrix.md ${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/strategy/traceability-matrix.md ${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/traceability-matrix.md"
@@ -94,7 +92,7 @@ for tm in $TM_PATHS; do
     # Look for the matrix's self-declared verdict in the first ~200 lines.
     # Canonical form: a line like "Verdict: BLOCKED" or "**Gate verdict:** BLOCKED"
     if head -200 "$tm" 2>/dev/null | grep -qiE '(verdict|gate.*verdict)[^a-zA-Z]+(BLOCKED|FAILED|FAIL)'; then
-      log "WARNING: traceability matrix at $tm declares its own verdict as BLOCKED/FAIL — downstream /gaia-readiness-check should NOT mark traceability_complete: true (F-39 mitigation; path-based gates pass but semantic gate fails)"
+      log "WARNING: traceability matrix at $tm declares its own verdict as BLOCKED/FAIL — downstream /gaia-readiness-check should NOT mark traceability_complete: true (path-based gates pass but semantic gate fails)"
     fi
     break
   fi

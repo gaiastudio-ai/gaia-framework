@@ -1,7 +1,7 @@
 # Perf Quality Rubric — `/gaia-test-perf` Phase 3B
 
 > JIT-loaded by Phase 3B LLM judgment. Categories and severity tiers conform
-> to ADR-075 (LLM-cannot-override invariant). The LLM applies this rubric on
+> to the LLM-cannot-override invariant. The LLM applies this rubric on
 > top of the deterministic Phase 3A `analysis-results.json` artifact and the
 > SLO/baseline overlays — it CANNOT override an `errored` toolkit check or a
 > deterministic SLO breach.
@@ -88,7 +88,4 @@ The fork emits `llm-findings.json` with:
 
 ## Cross-References
 
-- ADR-075 — LLM-cannot-override invariant.
-- ADR-077 — Three-tier review pipeline.
-- ADR-080 — Deployment-phase action skill pattern.
-- E73-S1 — `/gaia-test-e2e` reference rubric (`knowledge/e2e-rubric.md`).
+- `/gaia-test-e2e` reference rubric (`knowledge/e2e-rubric.md`).

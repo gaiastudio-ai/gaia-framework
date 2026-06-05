@@ -1,7 +1,7 @@
-# gaia-meeting mode registry — E76-S5 (FR-MTG-17)
+# gaia-meeting mode registry
 #
-# One entry per supported `--mode` value. The `decide` default ships from
-# E76-S1; the eight other entries are the E76-S5 additions per PRD §4.39.5.
+# One entry per supported `--mode` value. The `decide` default and the eight
+# other entries cover all supported meeting modes.
 #
 # Schema:
 #   - name: <canonical-mode-name>

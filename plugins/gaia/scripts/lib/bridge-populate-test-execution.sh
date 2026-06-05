@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# bridge-populate-test-execution.sh — AF-2026-05-30-2 / Test10 F-27 fix.
+# bridge-populate-test-execution.sh — populate test_execution tiers on bridge enable.
 #
 # When `/gaia-bridge-enable` flips bridge_enabled:true on a project, populate
 # the `test_execution.tier_N.{command,placement,required,timeout_seconds}`
 # block in project-config.yaml from the runners declared in
 # `.gaia/config/test-environment.yaml`. Prior to this helper, bridge-enable
 # only flipped the flag; the `test_execution` block stayed empty, so
-# `qa-test-runner.sh` skipped (false-PASS in code reviews) per Test10 F-27.
+# `qa-test-runner.sh` skipped (false-PASS in code reviews).
 #
 # Idempotent: if `test_execution.tier_N.command` is ALREADY set in
 # project-config.yaml, leaves it alone (the operator's explicit value wins).
@@ -63,17 +63,16 @@ fi
 
 # Map runner.tier (integer) → tier_N block's `placement` field.
 #
-# AF-2026-05-30-4 / Test11 F-16: the prior implementation wrote the runner's
-# NAME (`unit` / `integration` / `e2e`) into `placement`, but `placement` is
-# an execution-CONTEXT enum: `local | ci_pre_merge | ci_post_merge | deployment`.
-# With `placement: unit`, run-tests.sh refused (`all configured tier
-# placements are non-local`), so tests STILL didn't run even after AF-30-2
-# F-27's command-population fix. Net: tier 1 runs always under the `local`
-# context (dev-loop + the bridge's review consumption), tier 2 maps to
-# ci_pre_merge (typical wall-clock integration band), tier 3 to ci_post_merge.
-# Operators that need a different context can edit project-config.yaml
-# directly; this default puts every runner in the canonical context-band
-# the consumer expects.
+# The prior implementation wrote the runner's NAME (`unit` / `integration` /
+# `e2e`) into `placement`, but `placement` is an execution-CONTEXT enum:
+# `local | ci_pre_merge | ci_post_merge | deployment`. With `placement: unit`,
+# run-tests.sh refused (`all configured tier placements are non-local`), so
+# tests did not run even after the command-population fix. Net: tier 1 runs
+# always under the `local` context (dev-loop + the bridge's review
+# consumption), tier 2 maps to ci_pre_merge (typical wall-clock integration
+# band), tier 3 to ci_post_merge. Operators that need a different context can
+# edit project-config.yaml directly; this default puts every runner in the
+# canonical context-band the consumer expects.
 _placement_for_tier() {
   case "${1:-}" in
     1) echo "local" ;;
@@ -141,7 +140,7 @@ if [ "$WROTE_ANY" -eq 0 ]; then
   echo "bridge-populate-test-execution: nothing to populate (all tiers already set or no eligible runners)" >&2
 fi
 
-# AF-2026-05-30-4 F-17 — wire test_execution_bridge.run_tests_path.
+# Wire test_execution_bridge.run_tests_path.
 #
 # Even with bridge_enabled:true + tiers populated, qa-test-runner.sh's
 # bridge-delegation branch needs a non-empty `run_tests_path` (BRIDGE_PATH);

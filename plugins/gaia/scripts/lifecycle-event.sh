@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# lifecycle-event.sh — GAIA foundation script (E28-S12)
+# lifecycle-event.sh — GAIA foundation script
 #
 # Append a JSONL lifecycle event to ${MEMORY_PATH}/lifecycle-events.jsonl under
 # an advisory lock, for consumption by a tailing sync agent. Produces events
 # only — the consumer side is out of scope and lands in a follow-up cascade.
 #
-# Refs: FR-325, FR-328, NFR-048, ADR-042, ADR-048
-# Brief: P2-S4 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
-#
-# Invocation contract (stable for E28-S17 bats-core authors):
+# Invocation contract (stable for bats-core authors):
 #
 #   lifecycle-event.sh --type <event_type> --workflow <name>
 #                      [--story <story_key>] [--step <n>] [--data '<json>']
@@ -19,7 +16,7 @@
 #   1 — usage error, unknown event type (strict mode), malformed --data,
 #       missing required flag, or lock acquisition failure
 #
-# Performance budget (NFR-048): < 50ms wall-clock on a developer workstation.
+# Performance budget: < 50ms wall-clock on a developer workstation.
 # Measure with: time ./plugins/gaia/scripts/lifecycle-event.sh \
 #                   --type test --workflow noop
 # The script forks at most two subshells per invocation (jq + the lock wrapper)
@@ -39,7 +36,7 @@
 #   `flock -x` serializes concurrent writers. On macOS /bin/bash 3.2 where
 #   util-linux `flock(1)` is not installed, the script degrades to a
 #   mv-based advisory lockfile with a bounded spin-loop (same pattern used by
-#   checkpoint.sh §E28-S10). `printf '%s\n'` inside the lock is a single
+#   checkpoint.sh). `printf '%s\n'` inside the lock is a single
 #   write(2) for lines under PIPE_BUF (4KB Linux, 512B macOS) — callers SHOULD
 #   keep --data payloads under ~2KB on macOS to preserve write atomicity.
 #
@@ -97,11 +94,11 @@ USAGE
 #   1. GNU `date -u +%3N` — near-zero (shell builtin date on Linux)
 #   2. `gdate -u +%3N` — GNU coreutils on macOS via Homebrew
 #   3. `perl -MTime::HiRes` — universally installed on macOS (~37ms cold),
-#      chosen as the single documented fallback (story spec §Technical Notes).
+#      chosen as the single documented fallback.
 # Pure-shell `date +%s` cannot provide sub-second precision portably, so a
 # helper fork is unavoidable on BSD/macOS. perl is ~3x faster than python3
-# cold-start, keeping total invocation wall-clock under the NFR-048 50ms
-# budget for the happy path.
+# cold-start, keeping total invocation wall-clock under the 50ms budget for
+# the happy path.
 iso_utc_now_ms() {
   local ts
   ts=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ" 2>/dev/null || true)
@@ -192,7 +189,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Required flags (AC1, S8)
+# Required flags
 [ -n "$event_type" ] || { printf '%s: --type is required\n' "$SCRIPT_NAME" >&2; usage >&2; exit 1; }
 [ -n "$workflow" ]   || { printf '%s: --workflow is required\n' "$SCRIPT_NAME" >&2; usage >&2; exit 1; }
 
@@ -203,7 +200,7 @@ if [ -n "$step" ]; then
   esac
 fi
 
-# Event-type validation (AC4) — only when a types file is supplied.
+# Event-type validation — only when a types file is supplied.
 if [ -n "$types_file" ]; then
   [ -f "$types_file" ] || die "--event-types-file not found: $types_file"
   if ! event_type_allowed "$event_type" "$types_file"; then
@@ -213,7 +210,7 @@ if [ -n "$types_file" ]; then
   fi
 fi
 
-# --data must be parseable JSON if supplied (AC7)
+# --data must be parseable JSON if supplied
 if [ -n "$data" ]; then
   if ! printf '%s' "$data" | jq empty >/dev/null 2>&1; then
     printf '%s: --data is not valid JSON: %s\n' "$SCRIPT_NAME" "$data" >&2
@@ -221,9 +218,9 @@ if [ -n "$data" ]; then
   fi
 fi
 
-# ---------- MEMORY_PATH resolution (ADR-111: .gaia/ canonical) ----------
+# ---------- MEMORY_PATH resolution (.gaia/ canonical) ----------
 
-# AF-2026-05-27-3: .gaia/memory is the only memory tree — the legacy _memory
+# .gaia/memory is the only memory tree — the legacy _memory
 # fallback was removed with the consolidation migration. Env override wins.
 if [ -z "${MEMORY_PATH:-}" ]; then
   MEMORY_PATH=".gaia/memory"
@@ -236,7 +233,7 @@ if [ ! -f "$JSONL" ]; then
   chmod 0644 "$JSONL"
 fi
 
-# ---------- Build the JSON line (AC2) ----------
+# ---------- Build the JSON line ----------
 
 ts=$(iso_utc_now_ms)
 data_argjson="${data:-null}"
@@ -254,7 +251,7 @@ line=$(jq -nc \
    + (if $stepv != ""  then {step: ($stepv|tonumber)} else {} end)
    + (if $data  != null then {data: $data}         else {} end)')
 
-# ---------- Atomic append under lock (AC3, AC6) ----------
+# ---------- Atomic append under lock ----------
 
 lockfile="${JSONL}.lock"
 flock_bin=$(command -v flock || true)
@@ -273,7 +270,7 @@ if [ -n "$flock_bin" ]; then
     append_line
   )
 else
-  # mv-based spin-loop fallback (same pattern as checkpoint.sh §E28-S10).
+  # mv-based spin-loop fallback (same pattern as checkpoint.sh).
   # `set -C` + `: > file` is an atomic exclusive-create on POSIX filesystems.
   tries=0
   while ! ( set -C; : > "$lockfile" ) 2>/dev/null; do

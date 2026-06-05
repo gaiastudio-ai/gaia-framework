@@ -287,8 +287,8 @@ YAML
   grep -qE '^- `clear --key' "$SKILL_FILE"
 }
 
-@test "TC-SGR-37(e): SKILL.md declares the canonical ADR-044 comment-preserving editor rule" {
-  grep -qE 'ADR-044' "$SKILL_FILE"
+@test "TC-SGR-37(e): SKILL.md declares the canonical comment-preserving editor rule" {
+  grep -qE 'comment-preserving' "$SKILL_FILE"
   grep -qE 'config-yaml-editor\.sh' "$SKILL_FILE"
 }
 

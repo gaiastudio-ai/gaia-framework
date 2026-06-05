@@ -3,11 +3,9 @@
   "skill": "security",
   "name": "ccpa",
   "applies_to_skills": ["review-code", "review-security"],
-  "description": "CCPA / CPRA rules for code paths handling California consumer personal information (PI). Layer 2 of the four-layer rubric composition per ADR-079.",
+  "description": "CCPA / CPRA rules for code paths handling California consumer personal information (PI). Layer 2 of the four-layer rubric composition.",
   "metadata": {
     "title": "CCPA regime rubric",
-    "story": "E68-S4",
-    "adr": "ADR-079",
     "regime_id": "ccpa",
     "references": ["CCPA-1798.100", "CCPA-1798.105", "CCPA-1798.120", "CCPA-1798.125", "CCPA-1798.135"]
   },

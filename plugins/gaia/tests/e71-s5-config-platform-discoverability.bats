@@ -65,7 +65,7 @@ teardown() { common_teardown; }
   # exit 0 instead of validation exit 1) per SKILL.md Step 2c. Update the
   # pin to track the amended contract.
   [ -f "$HELPER" ]
-  expected="3124ebf7c66241e6b475f02c8bb431bb634d28e27d396b489440429d03e292bc"
+  expected="2dad385f897f0c531be4645c076dcd676d64a76f6f67316dc0977b23244a7ae2"
   actual="$(shasum -a 256 "$HELPER" | awk '{print $1}')"
   [ "$actual" = "$expected" ]
 }

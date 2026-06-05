@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# audit-publish-adapter-credentials.sh — pre-flight credential audit per SR-76 + NFR-081.
+# audit-publish-adapter-credentials.sh — pre-flight credential audit for publish adapters.
 #
-# Runs the SR-76 deny-list scan against a resolved publish-adapter directory.
+# Runs a deny-list scan against a resolved publish-adapter directory.
 # Used by /gaia-publish Step 1 to refuse to invoke run.sh on audit FAIL.
 #
 # Usage: audit-publish-adapter-credentials.sh <adapter-dir>
@@ -20,10 +20,10 @@ err() { printf '%s: %s\n' "$prog" "$*" >&2; }
 ADAPTER_DIR="$1"
 [ -d "$ADAPTER_DIR" ] || { err "adapter dir not found: $ADAPTER_DIR"; exit 2; }
 
-# SR-76 deny-list — ambient credential reads adapters MUST NOT perform.
+# Deny-list — ambient credential reads adapters MUST NOT perform.
 # Each pattern requires CONSUMING context (read|cat|source|.|stat|test/-f|etc.)
 # OR is a CLI-tool invocation that reads ambient creds. Mere mention of a path
-# in an error-message string ("refuses to fall back to ~/.npmrc per NFR-081")
+# in an error-message string ("refuses to fall back to ~/.npmrc")
 # is INTENTIONAL refusal language and MUST NOT trip the audit.
 DENY_PATTERNS=(
   # File reads via shell operators: cat <path>, source <path>, . <path>,

@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-review-api skill finalize (E45-S3 wire-in)
-#
-# Story: E45-S3 (Auto-save session memory at finalize for 24 Phase 1-3 skills)
-# ADRs:  ADR-061 (scope-bounded auto-save), ADR-057 (Phase 4 boundary)
+# finalize.sh — gaia-review-api skill finalize
 #
 # This skill did not previously have a finalize.sh shim; it is added here
-# solely to provide a wire-in point for the ADR-061 auto-save helper. The
+# solely to provide a wire-in point for the auto-save helper. The
 # skill body itself does not write artifacts that need post_complete
 # checklist enforcement, so this finalize stays minimal: emit observability
 # (checkpoint, lifecycle event) and call the auto-save helper.
 #
 # Exit codes:
-#   0  always (auto-save failures are non-blocking per AC-EC4)
+#   0  always (auto-save failures are non-blocking)
 
 set -euo pipefail
 LC_ALL=C
@@ -40,14 +37,14 @@ if [ -x "$LIFECYCLE_EVENT" ]; then
     log "lifecycle-event.sh emit failed for $WORKFLOW_NAME (non-fatal)"
 fi
 
-# ---------- 3. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 3. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
-# helper itself logs warnings to stderr but never affects this script's
-# exit code. SKILL_NAME is resolved from the parent directory name so
-# the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
+# circuit to a no-op so the interactive prompt is preserved. Failure is
+# non-blocking — the auto-save helper itself logs warnings to stderr but
+# never affects this script's exit code. SKILL_NAME is resolved from the
+# parent directory name so the wire-in is identical across all Phase 1-3
+# finalize.sh files.
 AUTOSAVE_LIB="$PLUGIN_SCRIPTS_DIR/lib/auto-save-memory.sh"
 SKILL_NAME="$(basename "$(cd "$SCRIPT_DIR/.." && pwd)")"
 if [ -f "$AUTOSAVE_LIB" ]; then

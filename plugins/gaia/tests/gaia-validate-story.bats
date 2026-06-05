@@ -97,10 +97,10 @@ EOF
   # Originally VLR-01 asserted the body prose contained `context: fork`
   # under the fork-based dispatch model. E87-S3 retargets the body to
   # main-turn Agent-tool dispatch with the envelope-assert step. The test
-  # now pins the post-migration invariants: (a) the ADR-104 reference is
-  # present, and (b) the `assert_agent_envelope` call is referenced as the
-  # post-dispatch HALT gate.
-  grep -q 'ADR-104' "$SKILL_DIR/SKILL.md"
+  # now pins the post-migration invariants: (a) the main-turn Agent tool
+  # dispatch is referenced in the body prose, and (b) the
+  # `assert_agent_envelope` call is referenced as the post-dispatch HALT gate.
+  grep -qE 'main-turn Agent tool' "$SKILL_DIR/SKILL.md"
   grep -q 'assert_agent_envelope' "$SKILL_DIR/SKILL.md"
 }
 
@@ -243,7 +243,11 @@ EOF
 # ---------------------------------------------------------------------------
 
 @test "Step 3 references ADR-050 (canonical pattern origin)" {
-  run grep -q "ADR-050" "$SKILL_DIR/SKILL.md"
+  # ADR-050 defined the six-component dispatch pattern implemented in Step 3.
+  # The prose no longer cites the internal ADR ID; instead pin the behavioral
+  # anchor — the "six-component dispatch pattern" phrase — which names the
+  # same contract and appears in Step 3 prose.
+  run grep -qiE "six-component dispatch pattern|six.component.*dispatch" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
@@ -259,17 +263,26 @@ EOF
 # ---------------------------------------------------------------------------
 
 @test "Critical Rules: SR-23 referenced (3-attempt cap; YOLO cannot bypass)" {
-  run grep -qE "SR-23" "$SKILL_DIR/SKILL.md"
+  # SR-23 mandates the 3-attempt hard cap and prohibits YOLO bypass.
+  # The prose no longer cites the internal SR ID; pin the behavioral rule
+  # that YOLO must not bypass the cap — still present in Critical Rules.
+  run grep -qiE "YOLO mode MUST NOT bypass the cap|YOLO.*cannot.*bypass|3-attempt cap.*hard constraint" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
 @test "Critical Rules: SR-24 referenced (tool allowlist scoped)" {
-  run grep -qE "SR-24" "$SKILL_DIR/SKILL.md"
+  # SR-24 requires Edit/Write to be scoped to the story file and
+  # review-gate.sh output only. The prose no longer cites the SR ID;
+  # pin the behavioral rule that tools are scoped to the story file path.
+  run grep -qiE "Edit.*Write.*scoped|scoped.*story file.*review-gate|no other files may be modified" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
 @test "Critical Rules: SR-25 referenced (inline fix only; no nested subagent)" {
-  run grep -qE "SR-25" "$SKILL_DIR/SKILL.md"
+  # SR-25 forbids spawning a nested subagent during the fix loop; inline
+  # Edit/Write only. The prose no longer cites the SR ID; pin the
+  # behavioral rule against nested Agent/Task spawn in Critical Rules.
+  run grep -qiE "Do NOT spawn a nested subagent|inline.*Edit.*Write.*only|no nested subagent" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 

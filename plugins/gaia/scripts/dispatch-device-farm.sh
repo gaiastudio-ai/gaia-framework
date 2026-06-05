@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dispatch-device-farm.sh — E74-S9 / AC4, AC5, AC6, AC8
+# dispatch-device-farm.sh — device-farm adapter dispatcher
 #
 # Resolves a device-farm adapter manifest, validates runtime profile and auth,
 # constructs the device-matrix API call, and reports per-device results plus a
@@ -34,7 +34,7 @@ SCRIPT_NAME="dispatch-device-farm.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Internal helpers — leading underscore prefix excludes them from the
-# NFR-052 public-function coverage gate. They are exercised end-to-end
+# public-function coverage gate. They are exercised end-to-end
 # via the public dispatch entry point in tests/E74-S9-mobile-dynamic-adapters.bats.
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 _echo_err() { printf '%s\n' "$*" >&2; printf '%s\n' "$*"; }
@@ -95,21 +95,21 @@ POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-10}"
 WEBHOOK_TIMEOUT_SECONDS="${ARG_WEBHOOK_TIMEOUT:-$(yaml_get "$MANIFEST" "webhook_timeout_seconds")}"
 WEBHOOK_TIMEOUT_SECONDS="${WEBHOOK_TIMEOUT_SECONDS:-300}"
 
-# AC5 — runtime-profile: network enforcement.
+# Runtime-profile: network enforcement.
 # Order matters: offline check fires BEFORE auth check so that offline mode is
 # the dominant signal (no network = nothing else matters).
 if [ "$RUNTIME_PROFILE" = "network" ] && [ "${GAIA_OFFLINE:-false}" = "true" ]; then
   die "Device-farm adapter requires network access (runtime-profile: network)" 2
 fi
 
-# AC6 — missing auth credential detection.
+# Missing auth credential detection.
 [ -n "$AUTH_ENV_VAR" ] || die "manifest missing auth_env_var: $MANIFEST" 1
 AUTH_VALUE="${!AUTH_ENV_VAR:-}"
 if [ -z "$AUTH_VALUE" ]; then
   die "auth env var $AUTH_ENV_VAR is unset or empty" 3
 fi
 
-# AC4 / AC8 — dispatch + result strategy.
+# Dispatch + result strategy.
 MOCK="${GAIA_DEVICE_FARM_MOCK:-}"
 
 _emit_report() {

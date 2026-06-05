@@ -1,24 +1,22 @@
 # project-config.schema.yaml — GAIA Native per-project config schema
 #
-# Realizes ADR-044 (config split) — the single per-project config surface.
-# Referenced by feature brief P2-S10 / P20-S1 in:
+# The single per-project config surface (config split).
+# Referenced by feature briefs in:
 #   .gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md
 #
-# Finalized under E28-S141 (extends the initial draft from E28-S18).
-#
 # =============================================================================
-# Precedence (ADR-044 invariant)
+# Precedence
 # =============================================================================
 # When the same key appears in both `global.yaml` (local) and `config/project-config.yaml` (shared), the local value wins.
 #
 # This sentence appears verbatim in `MIGRATION-from-global-yaml.md` — identical
 # wording across both artifacts prevents drift. The rule is enforced by
-# `resolve-config.sh` (E28-S9 / E28-S142) as a generic two-file merge: the
+# `resolve-config.sh` as a generic two-file merge: the
 # resolver reads the shared file first, then overlays the machine-local file.
 # No schema-specific code is required in the resolver.
 #
 # =============================================================================
-# Contract with resolve-config.sh (E28-S9 / E28-S142)
+# Contract with resolve-config.sh
 # =============================================================================
 # - This file is the authoritative declaration of permitted top-level keys.
 # - resolve-config.sh rejects any field in project-config.yaml that is not
@@ -38,14 +36,14 @@
 # This is NOT JSON Schema. A minimal validator walks top-level keys and checks
 # each field descriptor against the loaded project-config.yaml.
 
-# AF-2026-05-29-2 / Test09 F-3: bumped to v2.0.0 to align with the JSON schema
-# at plugins/gaia/schemas/project-config.schema.json (v2.0.0). The two schemas
-# now declare the same v2 surface — `schema_version` + `config_phase` per
-# ADR-096/097. Without the alignment, `/gaia-init` (which validates against the
+# Bumped to v2.0.0 to align with the JSON schema at
+# plugins/gaia/schemas/project-config.schema.json (v2.0.0). The two schemas
+# now declare the same v2 surface — `schema_version` + `config_phase`.
+# Without the alignment, `/gaia-init` (which validates against the
 # JSON schema and writes both fields) produces a config that
 # `resolve-config.sh --schema` and `detect-signals.sh --schema` (which both
 # validate against THIS yaml schema) reject as having unknown fields, blocking
-# the documented init → brownfield chain at Phase 1 step 5a per ADR-063/067.
+# the documented init → brownfield chain at Phase 1 step 5a.
 schema_version: "2.0.0"
 
 fields:
@@ -54,21 +52,19 @@ fields:
     type: string
     required: false
     default: null
-    description: "Schema version string per ADR-096 §D4. /gaia-init writes \"2.0.0\". Optional in v1.x configs for forward-compat read-side."
+    description: "Schema version string. /gaia-init writes \"2.0.0\". Optional in v1.x configs for forward-compat read-side."
 
   config_phase:
     type: string
     required: false
     default: "full"
-    description: "Config-phase state machine value per ADR-096 (one of: minimal | partial | full). /gaia-init writes the operator-selected phase here; the resolver enforces phase-gated allOf branches against this value."
+    description: "Config-phase state machine value (one of: minimal | partial | full). /gaia-init writes the operator-selected phase here; the resolver enforces phase-gated allOf branches against this value."
 
-  # AF-2026-05-29-2 / Test09 F-3 follow-up: the JSON schema declares
-  # project_name, project_kind, and version at the root level (lines 175-200 of
-  # plugins/gaia/schemas/project-config.schema.json) — these are part of every
-  # /gaia-init output. The YAML schema was missing them, which made
-  # detect-signals.sh --schema fall over with "unknown field" errors on a
-  # perfectly valid init output. Add them here so the two schemas declare the
-  # same v2 surface.
+  # The JSON schema declares project_name, project_kind, and version at the
+  # root level — these are part of every /gaia-init output. The YAML schema
+  # was missing them, which made detect-signals.sh --schema fall over with
+  # "unknown field" errors on a perfectly valid init output. Add them here so
+  # the two schemas declare the same v2 surface.
 
   project_name:
     type: string
@@ -98,19 +94,19 @@ fields:
     type: path
     required: true
     default: null
-    description: "Absolute path to the application source tree. Non-'.' value makes the framework/project split visible. See ADR-044. Shared default; machine-local override in global.yaml wins per precedence rule."
+    description: "Absolute path to the application source tree. Non-'.' value makes the framework/project split visible. Shared default; machine-local override in global.yaml wins per precedence rule."
 
   user_name:
     type: string
     required: false
     default: null
-    description: "Team display name for this project (shared). User-scoped preferences remain in machine-local global.yaml under the same key, which overrides this shared default per the precedence rule. Shared per feature brief P20-S1."
+    description: "Team display name for this project (shared). User-scoped preferences remain in machine-local global.yaml under the same key, which overrides this shared default per the precedence rule."
 
   communication_language:
     type: string
     required: false
     default: "English"
-    description: "Team default language for agent prose output (shared). Shared per feature brief P20-S1."
+    description: "Team default language for agent prose output (shared)."
 
   memory_path:
     type: path
@@ -146,37 +142,37 @@ fields:
     type: path
     required: false
     default: null
-    description: "Absolute (or project-root-relative) path to the .gaia/artifacts/test-artifacts directory (canonical post-ADR-111, with legacy docs/test-artifacts fallback). Defaults to {project_root}/.gaia/artifacts/test-artifacts when absent. Added under E28-S200 so skill setup.sh scripts no longer fall back to PWD-relative resolution when the audit harness runs from /tmp. See ADR-044."
+    description: "Absolute (or project-root-relative) path to the .gaia/artifacts/test-artifacts directory (with legacy docs/test-artifacts fallback). Defaults to {project_root}/.gaia/artifacts/test-artifacts when absent. Added so skill setup.sh scripts no longer fall back to PWD-relative resolution when the audit harness runs from /tmp."
 
   planning_artifacts:
     type: path
     required: false
     default: null
-    description: "Absolute (or project-root-relative) path to the .gaia/artifacts/planning-artifacts directory (canonical post-ADR-111, with legacy docs/planning-artifacts fallback). Defaults to {project_root}/.gaia/artifacts/planning-artifacts when absent. Added under E28-S200 (see test_artifacts)."
+    description: "Absolute (or project-root-relative) path to the .gaia/artifacts/planning-artifacts directory (with legacy docs/planning-artifacts fallback). Defaults to {project_root}/.gaia/artifacts/planning-artifacts when absent. Added for consistent artifact path resolution (see test_artifacts)."
 
   implementation_artifacts:
     type: path
     required: false
     default: null
-    description: "Absolute (or project-root-relative) path to the .gaia/artifacts/implementation-artifacts directory (canonical post-ADR-111, with legacy docs/implementation-artifacts fallback). Defaults to {project_root}/.gaia/artifacts/implementation-artifacts when absent. Added under E28-S200 (see test_artifacts)."
+    description: "Absolute (or project-root-relative) path to the .gaia/artifacts/implementation-artifacts directory (with legacy docs/implementation-artifacts fallback). Defaults to {project_root}/.gaia/artifacts/implementation-artifacts when absent. Added for consistent artifact path resolution (see test_artifacts)."
 
   creative_artifacts:
     type: path
     required: false
     default: null
-    description: "Absolute (or project-root-relative) path to the .gaia/artifacts/creative-artifacts directory (canonical post-ADR-111, with legacy docs/creative-artifacts fallback). Defaults to {project_root}/.gaia/artifacts/creative-artifacts when absent. Added under E60-S1 / ADR-074 contract C1 (mirrors test_artifacts/planning_artifacts/implementation_artifacts pattern)."
+    description: "Absolute (or project-root-relative) path to the .gaia/artifacts/creative-artifacts directory (with legacy docs/creative-artifacts fallback). Defaults to {project_root}/.gaia/artifacts/creative-artifacts when absent. Mirrors the test_artifacts/planning_artifacts/implementation_artifacts pattern."
 
   val_integration:
     type: map
     required: false
     default: { template_output_review: true }
-    description: "Val agent integration knobs. See ADR-042."
+    description: "Val agent integration knobs."
 
   ci_cd:
     type: map
     required: false
     default: null
-    description: "CI/CD promotion chain — list of environments with branch, provider, and checks. Written by /gaia-ci-setup. See ADR-048."
+    description: "CI/CD promotion chain — list of environments with branch, provider, and checks. Written by /gaia-ci-setup."
 
   testing:
     type: map
@@ -188,43 +184,43 @@ fields:
     type: map
     required: false
     default: null
-    description: "Test Execution Bridge configuration. Enables real-runner integration with evidence files (FR-194, FR-197, NFR-034, ADR-028)."
+    description: "Test Execution Bridge configuration. Enables real-runner integration with evidence files."
 
   brownfield:
     type: map
     required: false
     default: null
-    description: "Brownfield deterministic-tools configuration (E70-S7/E104-S4/E104-S1/E70-S9/E70-S11/E104-S3/E70-S8 / FR-539,FR-544,FR-541,FR-542,FR-548,FR-543,FR-545 / ADR-121,ADR-125,ADR-123,ADR-122,ADR-126,NFR-87). Nested keys (resolved via resolve-config.sh --field brownfield.<key>): deterministic_tools (master flag, bool, default true as of AF-2026-05-30-3 — operators who want the layer OFF declare it explicitly as `false`); tools.runner (AF-2026-05-30-3 / Test10 §7 C2 — enum 'native' | 'docker', default 'native'; when 'docker', Tier 2 adapters dispatch through the bundled gaia-tools OCI image at ghcr.io/gaiastudio-ai/gaia-tools instead of resolving binaries from $PATH; the operator only needs Docker on the host); scanner_tier (enum '0'|'1'|'2'|'auto', default 'auto' — caps the deterministic-tools tier the brownfield Phase 3 battery will attempt regardless of what /gaia-doctor reports as achievable); prewarm_enabled (Phase 3 cdxgen+Grype pre-warm pre-flight override, bool, default true as of AF-2026-05-30-3); sarif_merge_enabled (Phase 7 SARIF Multitool merge override, bool, default true as of AF-2026-05-30-3); dedup_enabled (Phase 7 cross-tool dedup override, bool, default true); grype_enabled (Phase 3 Grype CVE-scan adapter override, bool, default true); sbom_completeness_enabled (Phase 3 SBOM completeness check override, bool, default true); detect_signals_enabled (Phase 1 stacks[].path proposal/audit override, bool, default true); deadcode_go_enabled / deadcode_python_enabled / deadcode_jvm_enabled (Phase 3 per-stack dead-code adapter overrides — Go deadcode / Python vulture / JVM SpotBugs; bool, default true; flat spelling of the hyphenated brownfield.tools.deadcode-{go,python,jvm}.enabled per ADR-078); phase_4b_cross_stack_enabled (Phase 4b cross-stack WARNING-emission + scope-respect override, bool, default true; flat spelling of brownfield.tools.phase-4b-cross-stack.enabled; E104-S5 / FR-547 / NFR-89 / ADR-063,ADR-120,ADR-126); phase_4b_enabled (Phase 4b reconciliation pass override — demote file-only findings reachable from entry points; bool, default true; flat spelling of brownfield.tools.phase-4b.enabled; E104-S2 / FR-540 / ADR-124); defectdojo_enabled (opt-in DefectDojo export, bool, default false; companion keys defectdojo_api_url/_api_token/_engagement_id). ADR-078 master-flag + per-tool-override pattern."
+    description: "Brownfield deterministic-tools configuration. Nested keys (resolved via resolve-config.sh --field brownfield.<key>): deterministic_tools (master flag, bool, default true — operators who want the layer OFF declare it explicitly as `false`); tools.runner (enum 'native' | 'docker', default 'native'; when 'docker', Tier 2 adapters dispatch through the bundled gaia-tools OCI image at ghcr.io/gaiastudio-ai/gaia-tools instead of resolving binaries from $PATH; the operator only needs Docker on the host); scanner_tier (enum '0'|'1'|'2'|'auto', default 'auto' — caps the deterministic-tools tier the brownfield Phase 3 battery will attempt regardless of what /gaia-doctor reports as achievable); prewarm_enabled (Phase 3 cdxgen+Grype pre-warm pre-flight override, bool, default true); sarif_merge_enabled (Phase 7 SARIF Multitool merge override, bool, default true); dedup_enabled (Phase 7 cross-tool dedup override, bool, default true); grype_enabled (Phase 3 Grype CVE-scan adapter override, bool, default true); sbom_completeness_enabled (Phase 3 SBOM completeness check override, bool, default true); detect_signals_enabled (Phase 1 stacks[].path proposal/audit override, bool, default true); deadcode_go_enabled / deadcode_python_enabled / deadcode_jvm_enabled (Phase 3 per-stack dead-code adapter overrides — Go deadcode / Python vulture / JVM SpotBugs; bool, default true; flat spelling of the hyphenated brownfield.tools.deadcode-{go,python,jvm}.enabled); phase_4b_cross_stack_enabled (Phase 4b cross-stack WARNING-emission + scope-respect override, bool, default true; flat spelling of brownfield.tools.phase-4b-cross-stack.enabled); phase_4b_enabled (Phase 4b reconciliation pass override — demote file-only findings reachable from entry points; bool, default true; flat spelling of brownfield.tools.phase-4b.enabled); defectdojo_enabled (opt-in DefectDojo export, bool, default false; companion keys defectdojo_api_url/_api_token/_engagement_id). Master-flag + per-tool-override pattern."
 
   sprint:
     type: map
     required: false
     default: null
-    description: "Sprint configuration — active sprint id, sizing overrides, per-sprint conventions. Shared team config per feature brief P20-S1."
+    description: "Sprint configuration — active sprint id, sizing overrides, per-sprint conventions. Shared team config."
 
   review_gate:
     type: map
     required: false
     default: null
-    description: "Review Gate configuration — required review types and gate ordering before a story transitions to done. Shared team config per feature brief P20-S1."
+    description: "Review Gate configuration — required review types and gate ordering before a story transitions to done. Shared team config."
 
   team_conventions:
     type: map
     required: false
     default: null
-    description: "Team-wide naming, commit style, and code-style conventions enforced by review workflows. Shared team config per feature brief P20-S1."
+    description: "Team-wide naming, commit style, and code-style conventions enforced by review workflows. Shared team config."
 
   agent_customizations:
     type: map
     required: false
     default: null
-    description: "Project-wide agent .customize.yaml overrides aggregated by agent id. Shared team config per feature brief P20-S1."
+    description: "Project-wide agent .customize.yaml overrides aggregated by agent id. Shared team config."
 
   dev_story:
     type: map
     required: false
     default: null
-    description: "Dev-Story workflow knobs. Holds the nested tdd_review block consumed by /gaia-dev-story (E57-S1). Schema for the nested block (resolved via resolve-config.sh --field dev_story.tdd_review.<key>):
+    description: "Dev-Story workflow knobs. Holds the nested tdd_review block consumed by /gaia-dev-story. Schema for the nested block (resolved via resolve-config.sh --field dev_story.tdd_review.<key>):
       - threshold (enum): off | low | medium | high — default medium. Risk threshold at which the post-Red TDD review gate prompt fires. 'off' opts out entirely.
       - phases (array): default [red]. TDD phase(s) at which the review fires. type=array.
       - qa_auto_in_yolo (bool): default true. Whether YOLO auto-runs the QA review after the gate.
@@ -234,52 +230,52 @@ fields:
     type: map
     required: false
     default: null
-    description: "Story-size to points mapping (T-shirt → Fibonacci scale). Optional project-overridable block per ADR-074 contract C1 / ADR-044 §10.26.3. When set, project values override the framework defaults (S=2, M=5, L=8, XL=13); when absent, the resolver falls back to those defaults so absence is the documented new-project behavior. Resolved via `resolve-config.sh sizing_map`, which emits four canonical key=value lines (S=…, M=…, L=…, XL=…). Consumers: gaia-sprint-plan (today) and gaia-create-story Step 4 (E61-S2)."
+    description: "Story-size to points mapping (T-shirt → Fibonacci scale). Optional project-overridable block. When set, project values override the framework defaults (S=2, M=5, L=8, XL=13); when absent, the resolver falls back to those defaults so absence is the documented new-project behavior. Resolved via `resolve-config.sh sizing_map`, which emits four canonical key=value lines (S=…, M=…, L=…, XL=…). Consumers: gaia-sprint-plan and gaia-create-story."
 
   # =============================================================================
-  # Review System v2 configuration surface — E68-S1 / FR-RSV2-5..22
+  # Review System v2 configuration surface
   # =============================================================================
-  # Eleven new top-level sections consumed by the layered rubric loader
-  # (E68-S2) and the review-system-v2 skill family. ADR-079 (rubric layering)
-  # and ADR-044 (config split) govern resolution. Each new key is declared as
-  # required: false with default: null so the resolver schema validator
-  # accepts (or rejects) presence without forcing every project to opt in.
+  # Eleven top-level sections consumed by the layered rubric loader and the
+  # review-system-v2 skill family. Rubric layering and config split governance
+  # govern resolution. Each new key is declared as required: false with
+  # default: null so the resolver schema validator accepts (or rejects) presence
+  # without forcing every project to opt in.
 
   compliance:
     type: map
     required: false
     default: null
-    description: "Opt-in regulatory regime selection (FR-RSV2-5, FR-RSV2-7). Sub-keys: regimes (list of canonical regime ids: gdpr, hipaa, pci-dss, sox, ccpa, soc2, iso-27001, wcag-2.1-aa, wcag-2.1-aaa); domain (optional string naming a domain rubric file); ui_present (boolean, default false — triggers the conditional a11y gate). Each declared regime composes a layer onto the rubric stack (base > regimes-in-order > domain > project) per ADR-079."
+    description: "Opt-in regulatory regime selection. Sub-keys: regimes (list of canonical regime ids: gdpr, hipaa, pci-dss, sox, ccpa, soc2, iso-27001, wcag-2.1-aa, wcag-2.1-aaa); domain (optional string naming a domain rubric file); ui_present (boolean, default false — triggers the conditional a11y gate). Each declared regime composes a layer onto the rubric stack (base > regimes-in-order > domain > project)."
 
   tools:
     type: map
     required: false
     default: null
-    description: "Provider/config selection per category (FR-RSV2-10). Category-keyed entries (e.g., tools.sast.provider: semgrep, tools.secrets.provider: gitleaks). Each entry has provider (string) and optional config (free-form map). Tool selection precedence: project tools.{category}.provider > regime-suggested > base default."
+    description: "Provider/config selection per category. Category-keyed entries (e.g., tools.sast.provider: semgrep, tools.secrets.provider: gitleaks). Each entry has provider (string) and optional config (free-form map). Tool selection precedence: project tools.{category}.provider > regime-suggested > base default."
 
   test_execution:
     type: map
     required: false
     default: null
-    description: "Pipeline-tier placement + runner command for the three test tiers (FR-RSV2-11, AF-2026-05-22-6). Sub-keys: tier_1, tier_2, tier_3. Each tier MAY carry: placement (canonical set local | ci-pre-merge | ci-post-merge | deployment | post-deploy), command (string — runner command-string the bridge dispatcher scripts/run-tests.sh executes), and timeout_seconds (positive integer — per-tier execution budget). Pre-AF-22-6 the schema only declared placement; the dispatcher read command but the schema rejected it, so the bridge could never drive tests."
+    description: "Pipeline-tier placement + runner command for the three test tiers. Sub-keys: tier_1, tier_2, tier_3. Each tier MAY carry: placement (canonical set local | ci-pre-merge | ci-post-merge | deployment | post-deploy), command (string — runner command-string the bridge dispatcher scripts/run-tests.sh executes), and timeout_seconds (positive integer — per-tier execution budget). Previously the schema only declared placement; the dispatcher read command but the schema rejected it, so the bridge could never drive tests."
 
   severity:
     type: map
     required: false
     default: null
-    description: "Five-internal-to-three-gate severity mapping (FR-RSV2-22). The five internal severities (Critical, High, Medium, Low, Info) collapse to three gate verdicts (BLOCKED, REQUEST_CHANGES, APPROVE). Defaults: Critical -> BLOCKED, High -> REQUEST_CHANGES, Medium -> REQUEST_CHANGES (configurable), Low -> APPROVE (configurable), Info -> APPROVE."
+    description: "Five-internal-to-three-gate severity mapping. The five internal severities (Critical, High, Medium, Low, Info) collapse to three gate verdicts (BLOCKED, REQUEST_CHANGES, APPROVE). Defaults: Critical -> BLOCKED, High -> REQUEST_CHANGES, Medium -> REQUEST_CHANGES (configurable), Low -> APPROVE (configurable), Info -> APPROVE."
 
   gates:
     type: map
     required: false
     default: null
-    description: "Per-gate severity overrides (FR-RSV2-12). Gate-keyed entries (e.g., gates.code.severity, gates.security.severity) where each gate can override the global severity mapping declared in the severity block."
+    description: "Per-gate severity overrides. Gate-keyed entries (e.g., gates.code.severity, gates.security.severity) where each gate can override the global severity mapping declared in the severity block."
 
   stacks:
     type: map
     required: false
     default: null
-    description: "Ordered list of stack-path rules for multi-service repos (FR-RSV2-6). Each entry has name (string), language (string), and paths (list of glob patterns). Review skills resolve the active stack by walking entries in declaration order against the changed-file list. (The descriptor type is map for the resolver's purposes; the canonical YAML shape is a list — see project-config.schema.json for the structural schema.)"
+    description: "Ordered list of stack-path rules for multi-service repos. Each entry has name (string), language (string), and paths (list of glob patterns). Review skills resolve the active stack by walking entries in declaration order against the changed-file list. (The descriptor type is map for the resolver's purposes; the canonical YAML shape is a list — see project-config.schema.json for the structural schema.)"
 
   cross_service_tests:
     type: map
@@ -291,7 +287,7 @@ fields:
     type: map
     required: false
     default: null
-    description: "Environment list with env-var-only credential references (FR-RSV2-9, NFR-RSV2-7). Each environment entry accepts name (the map key), optional url, and credentials as a map of CREDENTIAL_NAME -> ENV_VAR_NAME. Literal credential values are rejected by project-config.schema.json validation."
+    description: "Environment list with env-var-only credential references. Each environment entry accepts name (the map key), optional url, and credentials as a map of CREDENTIAL_NAME -> ENV_VAR_NAME. Literal credential values are rejected by project-config.schema.json validation."
 
   ci_platform:
     type: map
@@ -303,16 +299,16 @@ fields:
     type: map
     required: false
     default: null
-    description: "List of platform identifiers (web, ios, android, server). AF-2026-05-30-2 / Test10 F-05 added `server` for headless backend services (no UI surface). Presence of ios or android triggers mobile gates downstream (FR-RSV2-26, extended by E74-S1). Descriptor type is map for the resolver's purposes; the canonical YAML shape is a list — see project-config.schema.json for the structural schema."
+    description: "List of platform identifiers (web, ios, android, server). The `server` value covers headless backend services (no UI surface). Presence of ios or android triggers mobile gates downstream. Descriptor type is map for the resolver's purposes; the canonical YAML shape is a list — see project-config.schema.json for the structural schema."
 
   primary_platform:
     type: string
     required: false
     default: null
-    description: "Optional primary platform identifier (one of: web, ios, android, server). AF-2026-05-30-2 / Test10 F-07 added this field to the YAML descriptor schema to mirror the JSON schema's existing acceptance — prior to this fix, /gaia-init wrote primary_platform (accepted by JSON validator) but detect-signals.sh / resolve-config.sh --schema rejected it as an unknown field, emitting CRITICAL and HALTing brownfield Phase 1 on the canonical /gaia-init → /gaia-brownfield handoff. The two schemas now agree on this field."
+    description: "Optional primary platform identifier (one of: web, ios, android, server). Added to the YAML descriptor schema to mirror the JSON schema's existing acceptance — previously, /gaia-init wrote primary_platform (accepted by JSON validator) but detect-signals.sh / resolve-config.sh --schema rejected it as an unknown field, emitting CRITICAL and HALTing brownfield Phase 1 on the canonical /gaia-init → /gaia-brownfield handoff. The two schemas now agree on this field."
 
   device_targets:
     type: map
     required: false
     default: null
-    description: "Device/OS matrix for mobile platforms. Stub section in E68-S1; full mobile semantics land in E74-S1. Sub-keys: ios (list of device identifiers), android (list of device identifiers)."
+    description: "Device/OS matrix for mobile platforms. Sub-keys: ios (list of device identifiers), android (list of device identifiers). Full mobile semantics are available via /gaia-config-device-target."

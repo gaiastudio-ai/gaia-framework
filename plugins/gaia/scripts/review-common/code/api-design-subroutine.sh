@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# api-design-subroutine.sh — GAIA review-common API-design sub-routine (E69-S4).
+# api-design-subroutine.sh — GAIA review-common API-design sub-routine.
 #
 # Purpose
 # -------
@@ -48,7 +48,6 @@
 #   0  detection paths (skip, pass, isolated failure)
 #   1  caller error (missing --target, unknown flag)
 #
-# Refs: E69-S4, FR-RSV2-23, ADR-077, ADR-082, source-report §2.2.
 
 set -euo pipefail
 LC_ALL=C
@@ -60,7 +59,7 @@ die() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — API-design sub-routine (E69-S4, ADR-082)
+$SCRIPT_NAME — API-design sub-routine
 
 Usage:
   $SCRIPT_NAME --target <project-root>

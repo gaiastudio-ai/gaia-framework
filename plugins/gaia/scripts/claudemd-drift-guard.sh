@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# claudemd-drift-guard.sh — CLAUDE.md drift guard (E28-S165)
+# claudemd-drift-guard.sh — CLAUDE.md drift guard
 #
-# Complements E28-S129's bats size-cap tests by enforcing byte-equality between
-# two CLAUDE.md copies. E28-S129 established that the GAIA-Framework workspace
-# carries two CLAUDE.md identities:
-#   1. {project-root}/CLAUDE.md — the NFR-049 normative target, read by Claude
-#      Code when a developer runs the framework locally.
+# Enforces byte-equality between two CLAUDE.md copies. The GAIA-Framework
+# workspace carries two CLAUDE.md identities:
+#   1. {project-root}/CLAUDE.md — the normative target, read by Claude Code
+#      when a developer runs the framework locally.
 #   2. {project-path}/CLAUDE.md == gaia-framework/CLAUDE.md — the distributable
 #      product copy shipped via the plugin marketplace. This is the source of
 #      truth; the project-root copy is a byte-identical mirror.
@@ -99,8 +98,8 @@ ERROR: CLAUDE.md drift detected between:
        B: $PATH_B
 
        Files differ. Reconcile by choosing the authoritative copy and
-       mirroring it to the other path (per E28-S129: gaia-framework/CLAUDE.md
-       is the source of truth; the project-root copy is the mirror).
+       mirroring it to the other path (gaia-framework/CLAUDE.md is the source
+       of truth; the project-root copy is the mirror).
 
        First differing hunk:
 EOF

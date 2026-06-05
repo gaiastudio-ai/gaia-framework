@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# git-branch.sh — gaia-dev-story feature branch creation (E28-S53)
+# git-branch.sh — gaia-dev-story feature branch creation
 #
 # Creates a feature branch following the git-workflow skill convention:
 #   feat/{story_key}-{slug}
@@ -26,8 +26,8 @@ SCRIPT_NAME="gaia-dev-story/git-branch.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
-# work tree. Replaces the prior `die "not a git repository"` so Steps 10-13
+# Non-git CWD guard: skip-with-warning when CWD is outside any git
+# work tree. Replaces the prior `die "not a git repository"` so steps
 # degrade gracefully when project-root has no .git.
 # shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
 GUARD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

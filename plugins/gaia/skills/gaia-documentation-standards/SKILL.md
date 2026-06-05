@@ -9,11 +9,11 @@ orchestration_class: light-procedural
 
 Native Claude Code conversion of the legacy `_gaia/dev/skills/documentation-standards.md` skill. Preserves the four sectioned-loading IDs (`readme-template`, `adr-format`, `inline-comments`, `api-docs`) verbatim.
 
-- ADR-041 — Native execution model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042 — Scripts-over-LLM. Prose and pattern guidance only.
-- ADR-046 — Hybrid memory. Shared content skill; no sidecar loading.
+- Native execution model via Claude Code Skills + Subagents + Plugins + Hooks.
+- Scripts-over-LLM. Prose and pattern guidance only.
+- Hybrid memory. Shared content skill; no sidecar loading.
 
-> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile), the tech-writer, analyst, and pm agents. The legacy `applicable_agents` frontmatter field is dropped per the E28-S19 schema.
+> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile), the tech-writer, analyst, and pm agents. The legacy `applicable_agents` frontmatter field is dropped per the current schema.
 
 <!-- SECTION: readme-template -->
 ## README Template
@@ -261,7 +261,7 @@ Creates a new user account.
 
 ## Test Scenarios
 
-Migrated from the legacy `test_scenarios` frontmatter array (per E28-S19 schema).
+Migrated from the legacy `test_scenarios` frontmatter array.
 
 | Scenario | Expected |
 |----------|----------|

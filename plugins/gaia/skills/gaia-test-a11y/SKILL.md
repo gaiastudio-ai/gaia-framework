@@ -1,6 +1,6 @@
 ---
 name: gaia-test-a11y
-description: Execute post-deploy accessibility smoke tests via axe-core, pa11y, or Lighthouse adapters under the ADR-078 contract. Phase 3A toolkit + Phase 3B LLM judgment + verdict resolver. Shares the WCAG-aligned a11y rubric (rubrics/base/a11y.json) with the planning-phase /gaia-validate-design-a11y and pre-merge /gaia-review-a11y skills (E69-S2). Use when "run a11y tests" or /gaia-test-a11y.
+description: Execute post-deploy accessibility smoke tests via axe-core, pa11y, or Lighthouse adapters under the tool adapter contract. Phase 3A toolkit + Phase 3B LLM judgment + verdict resolver. Shares the WCAG-aligned a11y rubric (rubrics/base/a11y.json) with the planning-phase /gaia-validate-design-a11y and pre-merge /gaia-review-a11y skills. Use when "run a11y tests" or /gaia-test-a11y.
 argument-hint: "[story-key] [--adapter <name>] [--target-url <url>] [--wcag-level <A|AA|AAA>]"
 allowed-tools: [Read, Grep, Glob, Bash]
 type: action
@@ -26,7 +26,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -36,11 +36,11 @@ fi
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
-This is the unifying principle of every GAIA review and action skill (FR-DEJ-1, ADR-075). For `/gaia-test-a11y` it means: the configured a11y adapter (axe-core, pa11y, or Lighthouse, swappable via `test_execution.a11y.adapter` config or `--adapter` CLI flag) runs in Phase 3A and emits a structured `analysis-results.json` artifact. The LLM then performs an a11y severity-triage semantic judgment in Phase 3B — applying the shared WCAG rubric — but cannot override a deterministic adapter failure or Critical-tier WCAG violation. The verdict is computed by `verdict-resolver.sh`; the LLM never computes the verdict in natural language.
+This is the unifying principle of every GAIA review and action skill. For `/gaia-test-a11y` it means: the configured a11y adapter (axe-core, pa11y, or Lighthouse, swappable via `test_execution.a11y.adapter` config or `--adapter` CLI flag) runs in Phase 3A and emits a structured `analysis-results.json` artifact. The LLM then performs an a11y severity-triage semantic judgment in Phase 3B — applying the shared WCAG rubric — but cannot override a deterministic adapter failure or Critical-tier WCAG violation. The verdict is computed by `verdict-resolver.sh`; the LLM never computes the verdict in natural language.
 
-This skill is a deployment-phase action skill (ADR-080) and a peer of `/gaia-test-e2e` (E73-S1), `/gaia-test-perf` (E73-S2), and `/gaia-test-dast` (E73-S3) — same Phase 3A/3B/3C plumbing, a11y-specific rubric.
+This skill is a deployment-phase action skill and a peer of `/gaia-test-e2e`, `/gaia-test-perf`, and `/gaia-test-dast` — same Phase 3A/3B/3C plumbing, a11y-specific rubric.
 
-**Three-phase a11y family (E69-S2 — shared rubric):** This skill is the post-deploy member of the three-phase a11y family. All three phases load the **same** rubric layer at `rubrics/base/a11y.json` so a contrast violation flagged at planning is the same severity tier as the same violation flagged at deployment:
+**Three-phase a11y family (shared rubric):** This skill is the post-deploy member of the three-phase a11y family. All three phases load the **same** rubric layer at `rubrics/base/a11y.json` so a contrast violation flagged at planning is the same severity tier as the same violation flagged at deployment:
 
 - `/gaia-validate-design-a11y` — planning (agent: Christy)
 - `/gaia-review-a11y` — pre-merge gate (conditional, agent: Christy)
@@ -48,7 +48,7 @@ This skill is a deployment-phase action skill (ADR-080) and a peer of `/gaia-tes
 
 **Static vs dynamic distinction:** `/gaia-review-a11y` (pre-merge, static) reads code and finds WCAG violations in markup, ARIA usage, focus management, and CSS contrast tokens. `/gaia-test-a11y` (this skill, deployment-phase, dynamic) runs an a11y scanner against a live deployed page and reports rendered violations. They are complementary, not alternatives — both consume the same rubric so severity classification is consistent across phases.
 
-**Fork context semantics (NFR-RSV2-5):** Phase 3B LLM judgment runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). Phase 3A is deterministic shell. Phase 4 verdict resolution and Review Gate update happen in the parent context via `verdict.sh` + `finalize.sh`.
+**Fork context semantics:** Phase 3B LLM judgment runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). Phase 3A is deterministic shell. Phase 4 verdict resolution and Review Gate update happen in the parent context via `verdict.sh` + `finalize.sh`.
 
 **Adapter swappability:** Resolved by `select-adapter.sh` with first-match-wins precedence: `--adapter <name>` CLI flag → `test_execution.a11y.adapter` from `.gaia/config/project-config.yaml` → default `axe-core-a11y`.
 
@@ -57,14 +57,14 @@ This skill is a deployment-phase action skill (ADR-080) and a peer of `/gaia-tes
 ## Critical Rules
 
 - A story key argument MAY be provided. If absent, the deployment-phase invocation runs in story-less mode and skips the Review Gate update step.
-- The `tool-availability-probe.sh` foundation script (E66-S2) MUST be present at `plugins/gaia/scripts/tool-availability-probe.sh`.
-- The `verdict-resolver.sh` foundation script (E66-S1) MUST be present at `plugins/gaia/scripts/verdict-resolver.sh`.
+- The `tool-availability-probe.sh` foundation script MUST be present at `plugins/gaia/scripts/tool-availability-probe.sh`.
+- The `verdict-resolver.sh` foundation script MUST be present at `plugins/gaia/scripts/verdict-resolver.sh`.
 - This skill is READ-ONLY in the fork (Phase 3B). Phase 4 `verdict.sh` runs in main context with Bash + the explicit narrow tool set required by `review-gate.sh`.
 - The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
-- Mapping to Review Gate canonical vocabulary (per FR-RSV2-3): APPROVE → PASSED; REQUEST_CHANGES → FAILED; BLOCKED → FAILED.
+- Mapping to Review Gate canonical vocabulary: APPROVE → PASSED; REQUEST_CHANGES → FAILED; BLOCKED → FAILED.
 - Adapter `run.sh` invocation MUST go through `tool-availability-probe.sh` first — the probe's three-state classification is the authoritative gate.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
-- The shared rubric at `rubrics/base/a11y.json` (E68-S3) is the single source of truth for severity classification across all three a11y phases. WCAG level escalation (A → AA → AAA) is layered via `rubrics/regimes/wcag-2.1-aa.json` and `rubrics/regimes/wcag-2.1-aaa.json`.
+- The shared rubric at `rubrics/base/a11y.json` is the single source of truth for severity classification across all three a11y phases. WCAG level escalation (A → AA → AAA) is layered via `rubrics/regimes/wcag-2.1-aa.json` and `rubrics/regimes/wcag-2.1-aaa.json`.
 
 ## Determinism Settings
 
@@ -74,7 +74,7 @@ model: claude-opus-4-7        # per ADR-074, frontmatter-pinned at fork dispatch
 prompt_hash: sha256:<hex>     # recorded in analysis-results.json
 ```
 
-`prompt_hash` is the sha256 of (system prompt || `analysis-results.json` content). Two runs against unchanged inputs MUST produce LLM findings that match by `{category, severity}` (NFR-DEJ-2). Textual message variation is allowed.
+`prompt_hash` is the sha256 of (system prompt || `analysis-results.json` content). Two runs against unchanged inputs MUST produce LLM findings that match by `{category, severity}`. Textual message variation is allowed.
 
 ## Configuration Schema
 
@@ -103,8 +103,7 @@ CLI override: `--wcag-level <A|AA|AAA>` beats the project-config value at the pe
 
 ### Phase 1 — Resolve adapter (config)
 
-<!-- Guard added by AF-2026-05-17-9 -->
-- Resolve `compliance.ui_present` via `resolve-config.sh`. If the value is not `true`, exit early with `SKIPPED — compliance.ui_present is not true` (the orchestrator at `/gaia-review-all` performs this check via `--skip-a11y`; this guard is defense-in-depth). Mirrors `/gaia-review-a11y` L29 for three-phase a11y family gating consistency (FR-RSV2-44, E69-S2).
+- Resolve `compliance.ui_present` via `resolve-config.sh`. If the value is not `true`, exit early with `SKIPPED — compliance.ui_present is not true` (the orchestrator at `/gaia-review-all` performs this check via `--skip-a11y`; this guard is defense-in-depth). Mirrors `/gaia-review-a11y` L29 for three-phase a11y family gating consistency.
 
 Invoke `scripts/select-adapter.sh [--adapter <name>] [--config <project-config-yaml>]`. The script emits the absolute adapter directory path on stdout. Abort the run with an actionable diagnostic if the resolved adapter directory is missing.
 
@@ -141,7 +140,7 @@ The fork is read-only; the parent context writes `llm-findings.json` to the outp
 
 Invoke `scripts/verdict.sh --analysis-results <path> --llm-findings <path> [--story-key <key>] [--gate "Accessibility Review"]`. The script:
 
-1. Calls `verdict-resolver.sh --skill gaia-test-a11y` to compute the verdict (precedence per ADR-075: errored > tool-failed-blocking > LLM-Critical > APPROVE).
+1. Calls `verdict-resolver.sh --skill gaia-test-a11y` to compute the verdict (precedence: errored > tool-failed-blocking > LLM-Critical > APPROVE).
 2. When `--story-key` and `--gate` are provided, invokes `review-gate.sh update` to update the matching Review Gate row to PASSED (APPROVE) or FAILED (REQUEST_CHANGES, BLOCKED). Deployment-phase invocations without an associated story skip this step.
 3. Echoes the verdict on stdout for downstream chaining.
 
@@ -161,7 +160,7 @@ This skill ships with three a11y adapters under `plugins/gaia/scripts/adapters/`
 - **`pa11y-a11y/`** — invokes `pa11y --reporter json --standard <std> <url>`. Standard resolves from `--wcag-level` (A → `WCAG2A`; AA → `WCAG2AA`; AAA → `WCAG2AAA`). pa11y exit 2 (audit completed with findings) is normalized to a successful run.
 - **`lighthouse-a11y/`** — invokes `lighthouse <url> --output=json --quiet --only-categories=accessibility`. The full a11y category is captured; the rubric loader filters by `--wcag-level` at judgment time.
 
-All three adapters honour the canonical ADR-078 contract (`adapter.json`, `run.sh`, `test/contract.bats`) PLUS the deployment-phase additive flags `--target-url <url>` and `--wcag-level <A|AA|AAA>`.
+All three adapters honour the canonical tool adapter contract (`adapter.json`, `run.sh`, `test/contract.bats`) PLUS the deployment-phase additive flags `--target-url <url>` and `--wcag-level <A|AA|AAA>`.
 
 ## Output Contract
 
@@ -172,15 +171,14 @@ The skill emits two JSON files in the configured output directory:
 
 The verdict (APPROVE | REQUEST_CHANGES | BLOCKED) is emitted on stdout by `verdict.sh`.
 
-## Refs
+## Design Notes
 
-- ADR-075 — Review skill evidence/judgment split.
-- ADR-077 — Three-tier review pipeline (seven-phase structure).
-- ADR-078 — Tool adapter framework (`adapter.json` schema, `run.sh` contract, four-state probe).
-- ADR-079 — Layered rubric loading (base + regime composition).
-- ADR-080 — Deployment-phase action skill pattern.
-- FR-RSV2-31 — Deployment-phase a11y execution.
-- NFR-RSV2-7 — Env-var-only credentials.
-- E66-S1, E66-S2, E70-S1 — upstream foundations.
-- E69-S2 — three-phase a11y reorganization (planning + pre-merge sibling phases share this rubric).
-- E73-S1, E73-S2, E73-S3 — peer deployment-phase action skills.
+- Review skill evidence/judgment split.
+- Three-tier review pipeline (seven-phase structure).
+- Tool adapter framework (`adapter.json` schema, `run.sh` contract, four-state probe).
+- Layered rubric loading (base + regime composition).
+- Deployment-phase action skill pattern.
+- Deployment-phase a11y execution.
+- Env-var-only credentials.
+- Three-phase a11y reorganization (planning + pre-merge sibling phases share this rubric).
+- Peer deployment-phase action skills.

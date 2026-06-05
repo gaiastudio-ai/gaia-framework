@@ -45,7 +45,7 @@ YAML
 # TC-CFGD-1
 @test "AC1 (TC-CFGD-1): resolve-config.sh project_config_path returns <project_root>/config/project-config.yaml" {
   mk_project "$TEST_TMP/skill"
-  CLAUDE_SKILL_DIR="$TEST_TMP/skill" run "$RESOLVE" project_config_path
+  run "$RESOLVE" --config "$TEST_TMP/skill/config/project-config.yaml" project_config_path
   [ "$status" -eq 0 ]
   [ "$output" = "/tmp/gaia-e71s8/config/project-config.yaml" ]
 }
@@ -53,14 +53,14 @@ YAML
 # TC-CFGD-6 (mirror existing memory_path/checkpoint_path coverage)
 @test "AC1 (TC-CFGD-6): resolve-config.sh --field project_config_path emits the resolved scalar" {
   mk_project "$TEST_TMP/skill"
-  CLAUDE_SKILL_DIR="$TEST_TMP/skill" run "$RESOLVE" --field project_config_path
+  run "$RESOLVE" --config "$TEST_TMP/skill/config/project-config.yaml" --field project_config_path
   [ "$status" -eq 0 ]
   [ "$output" = "/tmp/gaia-e71s8/config/project-config.yaml" ]
 }
 
 @test "AC1: resolve-config.sh --all emits project_config_path key" {
   mk_project "$TEST_TMP/skill"
-  CLAUDE_SKILL_DIR="$TEST_TMP/skill" run "$RESOLVE" --all
+  run "$RESOLVE" --config "$TEST_TMP/skill/config/project-config.yaml" --all
   [ "$status" -eq 0 ]
   [[ "$output" == *"project_config_path='/tmp/gaia-e71s8/config/project-config.yaml'"* ]]
 }
@@ -152,14 +152,17 @@ YAML
   }
 }
 
-@test "AC3: disclaimer references ADR-093" {
-  local f
+@test "AC3: disclaimer identifies the LLM orchestrator as the menu executor" {
+  local f missing=()
   for f in "$SKILLS"/gaia-config-{compliance,env,platform,show,stack,test,tool,validate}/SKILL.md; do
-    grep -qE 'ADR-093' "$f" || {
-      echo "missing ADR-093 reference in $f" >&2
-      return 1
-    }
+    if ! grep -qF 'the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI' "$f"; then
+      missing+=("$f")
+    fi
   done
+  [ "${#missing[@]}" -eq 0 ] || {
+    printf 'MISSING ORCHESTRATOR ATTRIBUTION: %s\n' "${missing[@]}" >&2
+    return 1
+  }
 }
 
 # ───────────────────────── AC5 — test plan + traceability cascade ─────────────────────────

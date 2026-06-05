@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# file-list-diff-check.sh — GAIA shared review-skill script (E65-S1, ADR-075)
+# file-list-diff-check.sh — GAIA shared review-skill script
 #
 # Compares the story `## File List` section against `git diff --name-only`
 # (against the configured base branch) and emits a divergence Warning in
 # machine-parseable form when files differ. The check is non-blocking: if
 # the workspace is not a git repository, or if HEAD is detached, the script
-# emits a stderr warning and exits 0 (per FR-DEJ-2 Story Gate semantics).
+# emits a stderr warning and exits 0.
 #
 # Output (stdout) — single-line JSON when divergence is observed, empty
 # otherwise:
@@ -26,7 +26,6 @@
 #   0  — success (warning may have been emitted to stdout)
 #   1  — caller error (missing/unknown flag, missing required arg)
 #
-# Refs: ADR-075, FR-DEJ-2, AC4 of E65-S1, EC-8, EC-9.
 
 set -euo pipefail
 LC_ALL=C
@@ -42,7 +41,7 @@ die() {
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — File List vs git-diff divergence check (ADR-075)
+$SCRIPT_NAME — File List vs git-diff divergence check
 
 Usage:
   $SCRIPT_NAME --story-file <path> [--base <branch>] [--repo <dir>]

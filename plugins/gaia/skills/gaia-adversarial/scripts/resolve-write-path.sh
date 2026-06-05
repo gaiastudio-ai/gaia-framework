@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# resolve-write-path.sh — AF-2026-05-30-2 / Test10 F-16: script-enforced
-# same-day adversarial-review filename collision avoidance.
+# resolve-write-path.sh — script-enforced same-day adversarial-review filename collision avoidance.
 #
 # Prior to this helper the SKILL.md prose said "if the file exists for the
 # same day, write to a suffix-incremented filename (...-2.md, -3.md, ...)"
@@ -15,22 +14,22 @@
 #   --date     YYYY-MM-DD stamp
 #   --root     planning_artifacts root (default: .gaia/artifacts/planning-artifacts)
 #   --paired   emit BOTH the .md and the .json sidecar path for the SAME
-#              collision index — atomic pairing (E87-S11 / AF-2026-06-03-3,
-#              Val F1). The .md path is printed on line 1, the .json sibling on
-#              line 2. Without --paired the legacy .md-only behavior is
-#              preserved verbatim (single .md path on stdout).
+#              collision index — atomic pairing. The .md path is printed on
+#              line 1, the .json sibling on line 2. Without --paired the
+#              legacy .md-only behavior is preserved verbatim (single .md
+#              path on stdout).
 #
 # Exit codes:
 #   0 — path(s) printed on stdout (mkdir -p of parent done)
 #   1 — bad args
 #
-# Output path shape (AF-30-1 / Test03 §7.3 adversarial/ subdir):
+# Output path shape (adversarial/ subdir):
 #   <root>/adversarial/adversarial-review-<target>-<date>.md          (first)
 #   <root>/adversarial/adversarial-review-<target>-<date>-2.md        (collision 1)
 #   <root>/adversarial/adversarial-review-<target>-<date>-3.md        (collision 2)
 #   ...
 #
-# Paired collision rule (--paired, E87-S11): the .md and .json share one index.
+# Paired collision rule (--paired): the .md and .json share one index.
 # The next free index is the smallest N for which NEITHER <base>[-N].md NOR
 # <base>[-N].json exists, so a consumer that finds <base>-2.md can always
 # locate the matching <base>-2.json.
@@ -73,7 +72,7 @@ BASE="adversarial-review-${TARGET}-${DATE_STAMP}"
 if [ "$PAIRED" -eq 1 ]; then
   # Paired mode — the .md and .json share one collision index. The next free
   # index is the smallest N for which NEITHER sibling exists, so the pair is
-  # always co-located at the same suffix (atomic pairing, Val F1).
+  # always co-located at the same suffix (atomic pairing).
   if [ ! -e "${DIR}/${BASE}.md" ] && [ ! -e "${DIR}/${BASE}.json" ]; then
     printf '%s\n' "${DIR}/${BASE}.md"
     printf '%s\n' "${DIR}/${BASE}.json"

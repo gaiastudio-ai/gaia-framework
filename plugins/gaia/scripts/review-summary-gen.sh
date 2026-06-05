@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# review-summary-gen.sh — Deterministic V1-locked review-summary writer (E58-S2)
+# review-summary-gen.sh — Deterministic V1-locked review-summary writer
 #
 # Reads the current Review Gate table for a story (via review-gate.sh status)
 # and writes the V1 V1 reference schema schema (lines 80-135) to
@@ -8,11 +8,9 @@
 # in canonical order + final aggregate Gate Status table — and re-runs are
 # byte-identical when gate state is unchanged.
 #
-# Refs: FR-RAR-2, AF-2026-04-28-7, NFR-RAR-1
-# Brief: .gaia/artifacts/planning-artifacts/epics-and-stories.md §E58
 # Schema source: V1 V1 reference schema lines 80-135 (immutable).
 #
-# Invocation contract (stable for E58-S5 / E58-S6 wiring):
+# Invocation contract:
 #
 #   review-summary-gen.sh --story <key> [--output <path>] [--synopsis-file <path>]
 #   review-summary-gen.sh --help
@@ -43,7 +41,7 @@
 #       or any other rewrite failure. Atomic temp+rename ensures no half-
 #       written file is ever observable.
 #
-# Determinism contract (AC3, TC-RAR-17):
+# Determinism contract:
 #   The `date` field in YAML frontmatter is derived from the story file's
 #   mtime (the gate state lives inside that file). NEVER from `date +%s`.
 #   This guarantees re-runs with unchanged gate state produce byte-identical
@@ -85,22 +83,17 @@ CANONICAL_SHORT_NAMES=(
 # Per-reviewer report relpath template (V1 V1 reference schema lines 73-78).
 # Index-aligned with CANONICAL_GATES / CANONICAL_SHORT_NAMES.
 #
-# E97-S4 / ADR-111: paths use `{impl_artifacts}` and `{test_artifacts}`
-# placeholders resolved at call site by `_resolve_artifact_dirs` below. The
-# placeholders expand to the canonical `.gaia/artifacts/...` tree when present
-# on disk, or fall back to the legacy `docs/...` tree on pre-migration
-# installs. The hardcoded `docs/`-prefix was retired here so the proof-of-
-# execution check at line ~387 (and the output-path resolution at line ~598)
-# read from the same root the reports were actually written to.
-# F-28 (AF-2026-05-26-6): corrected to the FR-402 type-prefix-FIRST convention
+# Paths use `{impl_artifacts}` and `{test_artifacts}` placeholders resolved at
+# call site by `_resolve_artifact_dirs` below. The placeholders expand to the
+# canonical `.gaia/artifacts/...` tree when present on disk, or fall back to
+# the legacy `docs/...` tree on pre-migration installs. The hardcoded
+# `docs/`-prefix was retired here so the proof-of-execution check (and the
+# output-path resolution) read from the same root the reports were actually
+# written to. Paths use the type-prefix-FIRST convention
 # (`<type>-{key}.md` under implementation-artifacts/) that the six per-review
-# skills actually write to. The prior reversed `{key}-<type>.md` form and the
-# stray `test_artifacts/` dir on the test-aligned rows made the proof-of-execution
-# check below flag every report MISSING (reviewers never wrote to those paths),
-# and the reversed `{key}-*.md` form risked the check-deps.sh glob collision
-# documented in feedback_review_report_filename_collision. All six reviewers
-# write to implementation-artifacts/; the test-automate REVIEW report is
-# `test-automate-review-{key}.md` (distinct from the test-artifacts/ plan file).
+# skills actually write to. All six reviewers write to implementation-artifacts/;
+# the test-automate REVIEW report is `test-automate-review-{key}.md` (distinct
+# from the test-artifacts/ plan file).
 CANONICAL_REPORT_RELPATHS=(
   "{impl_artifacts}/code-review-{key}.md"
   "{impl_artifacts}/qa-tests-{key}.md"
@@ -110,13 +103,13 @@ CANONICAL_REPORT_RELPATHS=(
   "{impl_artifacts}/performance-review-{key}.md"
 )
 
-# E105-S4 / ADR-127 §7.4 / E105-S1: the per-story `reviews/` subdir is the NEW
-# canonical home for review reports — epic-*/{key}-{slug}/reviews/<type>-{key}.md
-# (FR-402 type-first names, identical to the flat form's basenames). The flat
-# {impl_artifacts}/<type>-{key}.md form above is the read-side fallback during
-# the migration window. The proof-of-execution check (below) accepts a report at
-# EITHER home so a report written to the per-story reviews/ dir is not flagged
-# MISSING. The basenames are the single source — only the directory differs.
+# The per-story `reviews/` subdir is the canonical home for review reports —
+# epic-*/{key}-{slug}/reviews/<type>-{key}.md (type-first names, identical to
+# the flat form's basenames). The flat {impl_artifacts}/<type>-{key}.md form
+# above is the read-side fallback during the migration window. The
+# proof-of-execution check (below) accepts a report at EITHER home so a report
+# written to the per-story reviews/ dir is not flagged MISSING. The basenames
+# are the single source — only the directory differs.
 CANONICAL_REPORT_BASENAMES=(
   "code-review-{key}.md"
   "qa-tests-{key}.md"
@@ -127,8 +120,8 @@ CANONICAL_REPORT_BASENAMES=(
 )
 
 # _resolve_artifact_dirs — set `__impl_artifacts` and `__test_artifacts` in the
-# caller's scope, using the same canonical-first + legacy-fallback resolution
-# pattern as lines 539/598 (E96-S7 partial-4b). Idempotent.
+# caller's scope, using the canonical-first + legacy-fallback resolution
+# pattern. Idempotent.
 _resolve_artifact_dirs() {
   local project_path="${PROJECT_PATH:-.}"
   if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
@@ -174,11 +167,11 @@ Exit codes:
   0 — success; absolute path of written file emitted to stdout
   1 — story not found
   2 — write failure: gate table empty/malformed, non-writable output dir, etc.
-  3 — proof-of-execution failure (AF-2026-05-20-1): summary written but at
-      least one PASSED/FAILED verdict references a missing report file.
+  3 — proof-of-execution failure: summary written but at least one
+      PASSED/FAILED verdict references a missing report file.
       Only emitted when REVIEW_SUMMARY_REQUIRE_REPORTS=on.
 
-Environment variables (AF-2026-05-20-1):
+Environment variables:
   REVIEW_SUMMARY_REQUIRE_REPORTS=on
       When set, exit non-zero (3) if any PASSED/FAILED verdict row references
       a report file that does not exist on disk. The summary file is still
@@ -435,10 +428,10 @@ _render_summary() {
 
   local tmp="${out}.tmp.$$"
 
-  # E97-S4 / ADR-111: substitute {impl_artifacts} + {test_artifacts} + {key}
-  # into report relpaths. The two artifact-dir placeholders resolve canonical-
-  # first via _resolve_artifact_dirs (line ~106), with legacy `docs/` fallback
-  # on pre-migration installs. {key} is the story key.
+  # Substitute {impl_artifacts} + {test_artifacts} + {key} into report
+  # relpaths. The two artifact-dir placeholders resolve canonical-first via
+  # _resolve_artifact_dirs, with legacy `docs/` fallback on pre-migration
+  # installs. {key} is the story key.
   local __impl_artifacts __test_artifacts
   _resolve_artifact_dirs
   local relpaths=()
@@ -450,9 +443,9 @@ _render_summary() {
     relpaths+=("$expanded")
   done
 
-  # AF-2026-05-20-1 proof-of-execution: verify each PASSED/FAILED verdict
-  # has a corresponding report file on disk. Missing reports are flagged
-  # MISSING in the summary body and counted for the exit-status decision.
+  # Proof-of-execution: verify each PASSED/FAILED verdict has a corresponding
+  # report file on disk. Missing reports are flagged MISSING in the summary
+  # body and counted for the exit-status decision.
   local _project_path="${PROJECT_PATH:-.}"
   local report_missing_idx=""
   local idx=0
@@ -468,7 +461,7 @@ _render_summary() {
       PASSED|FAILED)
         local found=0
         [ -f "$abs_rp" ] && found=1
-        # E105-S4: accept the report at the per-story reviews/ home too
+        # Accept the report at the per-story reviews/ home too
         # (epic-*/{key}-{slug}/reviews/<basename>), the new canonical location.
         if [ "$found" -eq 0 ]; then
           local _bn="${CANONICAL_REPORT_BASENAMES[$idx]//\{key\}/$key}"
@@ -529,7 +522,7 @@ _render_summary() {
 
       printf '## %s\n' "$heading"
       printf '**Verdict:** %s\n' "$verdict"
-      # AF-2026-05-20-1: mark MISSING when the report file is not on disk.
+      # Mark MISSING when the report file is not on disk.
       if _is_idx_missing "$i"; then
         printf '**Report:** MISSING — `%s` not on disk (verdict %s written without evidence)\n' \
           "$relpath" "$verdict"
@@ -541,11 +534,11 @@ _render_summary() {
       i=$((i + 1))
     done
 
-    # AF-2026-05-20-1: enumerate missing reports in a Findings section.
+    # Enumerate missing reports in a Findings section.
     if [ -n "$report_missing_idx" ]; then
       printf '## Proof-of-Execution Findings\n'
       printf '\n'
-      printf '> The following per-review report files were referenced by the Review Gate but do not exist on disk. The verdicts were recorded without corresponding evidence — investigate whether the review skills were actually dispatched (see AF-2026-05-20-1).\n'
+      printf '> The following per-review report files were referenced by the Review Gate but do not exist on disk. The verdicts were recorded without corresponding evidence — investigate whether the review skills were actually dispatched.\n'
       printf '\n'
       i=0
       while [ $i -lt 6 ]; do
@@ -580,14 +573,14 @@ _render_summary() {
   }
 
   # Atomic rename. Same filesystem (tempfile is sibling of $out) so mv is
-  # rename(2). Guarantees AC-EC3 (concurrent writers) via last-writer-wins.
+  # rename(2). Last-writer-wins for concurrent callers.
   if ! mv -f "$tmp" "$out" 2>/dev/null; then
     rm -f "$tmp" 2>/dev/null || true
     _die_write "write failure: $out"
   fi
 
-  # AF-2026-05-20-1: export count of missing reports so main() can decide
-  # exit status (non-zero on missing PASSED/FAILED reports, gated by
+  # Export count of missing reports so main() can decide exit status
+  # (non-zero on missing PASSED/FAILED reports, gated by
   # REVIEW_SUMMARY_REQUIRE_REPORTS env).
   local _miss_count=0
   if [ -n "$report_missing_idx" ]; then
@@ -598,17 +591,14 @@ _render_summary() {
 
 # ---------- Locate the story file (for mtime + default output dir) ----------
 #
-# Replicates `resolve-story-file.sh`'s three-tier glob precedence (E105-S1 /
-# ADR-127 §7.1):
+# Replicates `resolve-story-file.sh`'s three-tier glob precedence:
 #   0. NEW per-story layout: epic-{slug}/{key}-{slug}/story.md
 #   1. Legacy nested:        epic-{slug}/stories/{key}-{slug}.md
 #   2. Legacy flat:          {key}-{slug}.md
 # Single-source-of-truth would have us shell out to resolve-story-file.sh, but
 # re-globbing here keeps the script self-contained for the review-gate context.
-# The boundary guard at the bottom of the per-story glob ensures
-# `epic-*/E1-S2-*/story.md` cannot accidentally match `epic-*/E1-S21-*/story.md`.
-# AF-2026-05-29-1 / Test08 F-16: prior implementation omitted tier 0; every
-# story created on a current-framework project failed with "story not found".
+# The boundary guard at the bottom of the per-story glob ensures a short key
+# prefix cannot accidentally match a longer key with the same prefix.
 
 STORY_FILE=""
 
@@ -616,11 +606,11 @@ _locate_story_file() {
   local key="$1"
   local project_path="${PROJECT_PATH:-.}"
   local impl_artifacts; if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then impl_artifacts="$IMPLEMENTATION_ARTIFACTS"; elif [ -d "${project_path}/.gaia/artifacts/implementation-artifacts" ]; then impl_artifacts="${project_path}/.gaia/artifacts/implementation-artifacts"; else impl_artifacts="${project_path}/docs/implementation-artifacts"; fi
-  # E105-S1 per-story layout (tier 0) is rung 1; legacy nested + flat follow.
+  # Per-story layout (tier 0) is rung 1; legacy nested + flat follow.
   # The `/stories/` exclusion in the tier-0 filter below prevents a bare glob
   # `epic-*/${key}-*/story.md` from also matching the tier-1 `epic-*/stories/…`
   # tree (which lives inside an `epic-*/stories/…/stories/{key}-…` shape after
-  # a partial E105-S1 migration).
+  # a partial migration).
   local perstory_pattern="${impl_artifacts}/epic-*/${key}-*/story.md"
   local epic_pattern="${impl_artifacts}/epic-*/stories/${key}-*.md"
   local pattern="${impl_artifacts}/${key}-*.md"
@@ -630,9 +620,10 @@ _locate_story_file() {
   local raw_matches=( $perstory_pattern $epic_pattern $pattern )
   shopt -u nullglob
 
-  # Filter the per-story tier so a key prefix collision (E1-S2 vs E1-S21) does
-  # NOT pick up the wrong directory. Match only paths whose containing dir's
-  # basename starts with `${key}-`.
+  # Filter the per-story tier so a key prefix collision (e.g. a short key
+  # matching a longer key with the same prefix) does NOT pick up the wrong
+  # directory. Match only paths whose containing dir's basename starts with
+  # `${key}-`.
   local matches=()
   local m base
   for m in "${raw_matches[@]}"; do
@@ -674,7 +665,7 @@ _locate_story_file() {
   if [ ${#canonical[@]} -eq 0 ]; then
     _die_not_found "story not found: $key"
   fi
-  # Prefer non-symlink when multiple match (post-E53-S225 transition shims).
+  # Prefer non-symlink when multiple match (symlinks may be legacy transition shims).
   for m in "${canonical[@]}"; do
     if [ ! -L "$m" ]; then
       STORY_FILE="$m"
@@ -711,7 +702,7 @@ main() {
   out_path="$(_abspath "$out_path")"
 
   # Verify the parent directory is writable BEFORE building the tempfile,
-  # so AC-EC5 (non-writable output dir) yields exit 2 with no partial file.
+  # so a non-writable output dir yields exit 2 with no partial file.
   local out_dir
   out_dir="$(dirname "$out_path")"
   if [ ! -d "$out_dir" ]; then
@@ -735,28 +726,27 @@ main() {
   # Render + atomic write.
   _render_summary "$STORY_KEY" "$stamp" "$overall" "$out_path"
 
-  # AF-2026-05-31-3 / Test14 F-18 — per-story reviews/ aggregator mirror.
+  # Per-story reviews/ aggregator mirror.
   # In addition to the legacy flat `{IMPLEMENTATION_ARTIFACTS}/{key}-review-
   # summary.md` path, ALSO emit a copy at the per-story reviews/ directory
   # as `review-summary.md` (no key suffix). The target layout expects an
-  # aggregator at this nested location alongside the per-gate review files;
-  # Test14 F-18 caught that no such file existed despite the docs claiming
-  # one. The flat copy remains for backward compatibility with downstream
-  # consumers (E58-S6 etc.) that read from the flat path.
+  # aggregator at this nested location alongside the per-gate review files.
+  # The flat copy remains for backward compatibility with downstream
+  # consumers that read from the flat path.
   if [ -n "$STORY_FILE" ]; then
     _story_dir="$(dirname "$STORY_FILE")"
     _mirror_path="$_story_dir/reviews/review-summary.md"
     if mkdir -p "$_story_dir/reviews" 2>/dev/null && [ -w "$_story_dir/reviews" ]; then
       cp "$out_path" "$_mirror_path" 2>/dev/null \
-        && _log "F-18 mirror: review-summary.md aggregator at $_mirror_path" \
-        || _log "WARNING: F-18 mirror failed at $_mirror_path (continuing — flat output preserved)"
+        && _log "mirror: review-summary.md aggregator at $_mirror_path" \
+        || _log "WARNING: mirror failed at $_mirror_path (continuing — flat output preserved)"
     fi
   fi
 
   # Stdout: absolute path.
   printf '%s\n' "$out_path"
 
-  # AF-2026-05-20-1: exit non-zero when reports are missing, gated by
+  # Exit non-zero when reports are missing, gated by
   # REVIEW_SUMMARY_REQUIRE_REPORTS=on (default off — backward-compatible).
   # Operators / CI can flip on to fail-closed when verdicts were written
   # without on-disk evidence.

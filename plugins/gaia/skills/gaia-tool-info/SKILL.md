@@ -12,7 +12,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are surfacing the full metadata block for one tool adapter. The script `tool-info.sh` is the single source of truth (per ADR-042, ADR-078) — it resolves the adapter directory, validates the JSON, renders every top-level key/value pair from `adapter.json`, and runs the availability probe.
+You are surfacing the full metadata block for one tool adapter. The script `tool-info.sh` is the single source of truth — it resolves the adapter directory, validates the JSON, renders every top-level key/value pair from `adapter.json`, and runs the availability probe.
 
 ## Critical Rules
 
@@ -42,6 +42,6 @@ You are surfacing the full metadata block for one tool adapter. The script `tool
 
 ## Notes
 
-- Custom-over-built-in precedence (FR-RSV2-10): when both `custom/adapters/{name}/` and `scripts/adapters/{name}/` exist, the script resolves to the custom one. The output's `source:` line names which root won.
+- Custom-over-built-in precedence: when both `custom/adapters/{name}/` and `scripts/adapters/{name}/` exist, the script resolves to the custom one. The output's `source:` line names which root won.
 - Availability slot semantics: the slot uses the canonical four-state probe vocabulary — `available` / `expected_and_missing` (rendered as `unavailable` in the table) / `ran_and_errored` (rendered as `degraded`) / `not_applicable` / `unknown`. When `GAIA_TOOL_INFO_SKIP_PROBE=1` the slot reads `unknown (probe skipped)` — used by tests.
 - The script uses `jq` to enumerate every top-level key in `adapter.json` so optional fields (`scope`, `plugin`, etc.) appear without per-field hardcoding.

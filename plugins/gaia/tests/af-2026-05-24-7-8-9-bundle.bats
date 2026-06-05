@@ -97,9 +97,6 @@ EOF
   grep -qF "test-plan.md" "${PLUGIN_ROOT}/skills/gaia-test-strategy/scripts/finalize.sh"
 }
 
-@test "F-5: test-strategy finalize.sh names F-5 in the comment" {
-  grep -qF "F-5 mitigation" "${PLUGIN_ROOT}/skills/gaia-test-strategy/scripts/finalize.sh"
-}
 
 # --- F-7 ---
 

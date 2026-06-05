@@ -1,12 +1,12 @@
 # protected-jobs.txt — canonical list of GAIA-template CI job names
-# that the overlay stitching engine (E98-S2 / FR-517) refuses to allow
+# that the overlay stitching engine refuses to allow
 # user-jobs.yml overlays to overwrite.
 #
 # One job-name per line. Lines starting with `#` and blank lines are
 # ignored by assert-protected-jobs.sh.
 #
 # Why this list exists:
-#   ADR-114 §(d): if a user-job overlay declares a job-name that matches
+#   If a user-job overlay declares a job-name that matches
 #   a GAIA-template job-name, the stitcher MUST fail-close (no auto-rename,
 #   no auto-prefix, no silent overwrite). The user knows whether they
 #   meant to override or extend — collision resolution is user-driven.

@@ -12,14 +12,14 @@ You are performing a **cynical, attitude-driven adversarial review** on the targ
 
 **Scope note — two hunters.** This skill (`gaia-adversarial`) is the **attitude-driven hunter** — skepticism is the method. Its sibling `gaia-edge-cases` is the **method-driven hunter** that walks every branching path and boundary. Run both for the widest coverage.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/review-adversarial.xml` task (55 lines). Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model. Deterministic report-header generation is delegated to the shared foundation script `template-header.sh` (E28-S16) rather than re-prosed per skill.
+This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/review-adversarial.xml` task (55 lines). The legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model. Deterministic report-header generation is delegated to the shared foundation script `template-header.sh` rather than re-prosed per skill.
 
 ## Critical Rules
 
 - **Be deliberately skeptical — assume nothing works as claimed.** Every claim in the target is a hypothesis until proven otherwise.
 - **Attack from multiple angles: technical, business, user, security, scale.** Do not confine the attack to one dimension.
 - **Produce a ranked findings report with severity and confidence levels.** Every finding row MUST have severity (critical / high / medium / low) AND confidence (high / medium / low) — confidence communicates how certain you are the issue is real.
-- **Do NOT suggest fixes — only identify problems.** Fixing is a separate step (handed off to a downstream workflow). Findings without remediation are the deliverable shape. Test17 D-5 / AF-2026-06-02-6 clarification: this rule forbids **downstream implementation fixes** (code patches, sprint stories, deployment changes). It does NOT forbid **artifact-level refinements** — the Sage persona output contract requires a "Proposed refinement" per finding, which is a concrete narrow counter-proposal AT THE ARTIFACT LEVEL ("tighten this AC", "add a stale-fence", "name the rollback path explicitly"). A refinement edits THE TARGET DOCUMENT to address the cited weakness; a fix would be the downstream consumer (PM / dev / SM) taking the finding and routing it into implementation work. Both this skill's findings AND the upstream caller's response to them stay at the artifact-edit layer.
+- **Do NOT suggest fixes — only identify problems.** Fixing is a separate step (handed off to a downstream workflow). Findings without remediation are the deliverable shape. Clarification: this rule forbids **downstream implementation fixes** (code patches, sprint stories, deployment changes). It does NOT forbid **artifact-level refinements** — the Sage persona output contract requires a "Proposed refinement" per finding, which is a concrete narrow counter-proposal AT THE ARTIFACT LEVEL ("tighten this AC", "add a stale-fence", "name the rollback path explicitly"). A refinement edits THE TARGET DOCUMENT to address the cited weakness; a fix would be the downstream consumer (PM / dev / SM) taking the finding and routing it into implementation work. Both this skill's findings AND the upstream caller's response to them stay at the artifact-edit layer.
 - **Step 4 auto-incorporation is restricted to four callers — see the Step 4 Invocation Contract for the allowlist.** Critical Rules is a reminder surface only; the authoritative caller list lives in `### Step 4 Invocation Contract` below. Edits to the allowlist happen in the Step 4 contract section, never here.
 - This review is attitude-driven. It is explicitly orthogonal to `gaia-edge-cases` (method-driven boundary tracing) — do not collapse the two.
 
@@ -57,7 +57,7 @@ Attack the target from each of these perspectives:
 
 ### Step 3 — Generate Report
 
-Invoke the shared foundation script to emit the deterministic artifact header (ADR-042):
+Invoke the shared foundation script to emit the deterministic artifact header:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/template-header.sh --template adversarial-review --workflow gaia-adversarial --var target={target}
@@ -65,15 +65,15 @@ Invoke the shared foundation script to emit the deterministic artifact header (A
 
 If `template-header.sh` is missing or non-executable (AC-EC7), degrade gracefully to an inline prose header (`# Adversarial Review — {target} — {date}`), log a warning, and still write a valid report.
 
-Write the report to the dated-snapshot subdir (AF-2026-05-30-1 / Test03 §7.3 — adversarial joins the dated-snapshot pattern already used by `nfr-assessment/` and `performance-test-plan/`; grouping prevents top-level clutter when many dated reviews accumulate over the life of the project):
+Write the report to the dated-snapshot subdir (adversarial joins the dated-snapshot pattern already used by `nfr-assessment/` and `performance-test-plan/`; grouping prevents top-level clutter when many dated reviews accumulate over the life of the project):
 
 ```
 {planning_artifacts}/adversarial/adversarial-review-{target}-{date}.md
 ```
 
-Before writing, run `mkdir -p {planning_artifacts}/adversarial/` so the nested directory exists on first run (ADR-119). Legacy ungrouped `{planning_artifacts}/adversarial-review-{target}-{date}.md` remains a read-only fallback for projects whose history pre-dates this layout shift.
+Before writing, run `mkdir -p {planning_artifacts}/adversarial/` so the nested directory exists on first run. Legacy ungrouped `{planning_artifacts}/adversarial-review-{target}-{date}.md` remains a read-only fallback for projects whose history pre-dates this layout shift.
 
-If the file already exists for the same day (AC-EC3), write to a suffix-incremented filename (`adversarial/adversarial-review-{target}-{date}-2.md`, `-3.md`, ...). **AF-2026-05-30-2 / Test10 F-16**: resolve the non-colliding write path deterministically by invoking `bash ${CLAUDE_PLUGIN_ROOT}/skills/gaia-adversarial/scripts/resolve-write-path.sh --target {target} --date {YYYY-MM-DD}` — the helper returns the next free `{base}-N.md` filename on stdout (and `mkdir -p`s the parent dir). Use the helper output as `$REPORT_PATH` rather than constructing the path by string concatenation in prose; this enforces collision avoidance at the script level instead of relying on the LLM caller to check first.
+If the file already exists for the same day (AC-EC3), write to a suffix-incremented filename (`adversarial/adversarial-review-{target}-{date}-2.md`, `-3.md`, ...). Resolve the non-colliding write path deterministically by invoking `bash ${CLAUDE_PLUGIN_ROOT}/skills/gaia-adversarial/scripts/resolve-write-path.sh --target {target} --date {YYYY-MM-DD}` — the helper returns the next free `{base}-N.md` filename on stdout (and `mkdir -p`s the parent dir). Use the helper output as `$REPORT_PATH` rather than constructing the path by string concatenation in prose; this enforces collision avoidance at the script level instead of relying on the LLM caller to check first.
 
 The report contains, in order:
 
@@ -111,42 +111,37 @@ Step 4 (Incorporate Findings) is **opt-in on a per-caller basis** — the closed
 
 ### Step 4 — Incorporate Findings (optional, only when the caller requested it)
 
-- Read the adversarial review report just generated at `{planning_artifacts}/adversarial/adversarial-review-{target}-{date}.md` (or the legacy ungrouped `{planning_artifacts}/adversarial-review-{target}-{date}.md` on pre-AF-30-1 projects — accept either home).
+- Read the adversarial review report just generated at `{planning_artifacts}/adversarial/adversarial-review-{target}-{date}.md` (or the legacy ungrouped `{planning_artifacts}/adversarial-review-{target}-{date}.md` on older projects — accept either home).
 - Extract critical and high severity findings.
 - For each critical/high finding: update the target document — add missing sections, revise decisions, strengthen weak areas, address gaps.
 - Add a `## Review Findings Incorporated` section to the target document listing each finding, its severity, and how it was addressed (revised / added / acknowledged as risk).
 
 This step is **only** executed when the caller explicitly requests incorporation. Per the critical rule above, adversarial review itself does not suggest or apply fixes — this optional follow-on is a controlled handoff to the target document owner.
 
-### Gating posture — adversarial is advisory, NOT a forge-resistant gate (F-010, Test04)
+### Gating posture — adversarial is advisory, NOT a forge-resistant gate
 
 Adversarial review is an **advisory / incorporation** reviewer, not a
 forge-resistant verdict gate. The orchestrator's only verification is that the
 report file exists on disk (Step 3 write) — there is deliberately **no**
 `persona_sig` envelope-sentinel + `assert_agent_envelope` contract analogous to
-Val's (ADR-104 / ADR-105). Val is the single forge-resistant **gating** reviewer
+Val's. Val is the single forge-resistant **gating** reviewer
 in the lifecycle; its PASS/CRITICAL verdict is load-bearing and therefore
 hardened against a fabricated/forged sub-agent return. Adversarial output, by
 contrast, is incorporated into a human-owned planning document (Step 4) and is
 not load-bearing for an automated halt — so the lighter "report exists" check is
 intentional, mirroring the same planning-artifact-vs-verdict reasoning applied to
-`/gaia-threat-model` (Test02 F-40 carve-out).
+`/gaia-threat-model`.
 
 Implication for callers and operators: where a lifecycle diagram labels
 adversarial review a "REQUIRED GATE," read that as *"this step is required to be
 run and its findings incorporated,"* NOT *"its output is cryptographically
 verified the way Val's is."* If a future requirement needs forge-resistance for
 adversarial (e.g. unattended CI that auto-merges on an adversarial PASS), promote
-it to the Val-style envelope-sentinel contract via a dedicated ADR — do not
+it to the Val-style envelope-sentinel contract via a dedicated decision record — do not
 assume the current report-exists check provides that guarantee.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-adversarial 4 target_artifact_path="$TARGET_ARTIFACT_PATH" adversarial_angle=incorporate target_label="$TARGET_LABEL"`
 
 ## References
 
-- Source: `_gaia/core/tasks/review-adversarial.xml` (legacy 55-line task body — ported per ADR-041 + ADR-042).
-- ADR-041: Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042: Scripts-over-LLM for Deterministic Operations.
-- ADR-048: Engine Deletion as Program-Closing Action — legacy task coexists until program close.
-- FR-323: Skill Conversion — slash-command identity preserved.
-- NFR-053: Full v1.127.2-rc.1 Feature Parity.
+- Source: `_gaia/core/tasks/review-adversarial.xml` (legacy 55-line task body, since ported).

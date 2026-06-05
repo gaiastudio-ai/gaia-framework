@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# charter-gate.sh — gaia-meeting charter requirement guardrail (E76-S1, FR-MTG-2)
+# charter-gate.sh — gaia-meeting charter requirement guardrail
 #
 # Parses --charter "<inline>" and records the charter into MEETING_STATE_FILE.
 # Exits non-zero with an actionable BLOCKED error when --charter is absent or
 # empty. The skill orchestrator MUST invoke this script BEFORE any artifact
 # write — when the gate fires, no creative-artifacts / action-items /
-# sidecar-decisions write is permitted (FR-MTG-31, AC1).
+# sidecar-decisions write is permitted.
 #
 # Usage:
 #   charter-gate.sh --charter "Decide whether to adopt X for Y."
@@ -43,9 +43,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Reject whitespace-only charters (FR-MTG-2 spirit — a "one-to-three-sentence
-# charter" must contain non-blank content; the empty-string check above only
-# catches "" but not "   ").
+# Reject whitespace-only charters (a "one-to-three-sentence charter" must
+# contain non-blank content; the empty-string check above only catches ""
+# but not "   ").
 CHARTER_TRIMMED="${CHARTER#"${CHARTER%%[![:space:]]*}"}"
 CHARTER_TRIMMED="${CHARTER_TRIMMED%"${CHARTER_TRIMMED##*[![:space:]]}"}"
 
@@ -59,7 +59,7 @@ Example:
   /gaia-meeting --charter "Decide whether to adopt X for Y."
 
 No writes have been made to .gaia/artifacts/creative-artifacts/, .gaia/state/action-items.yaml,
-or .gaia/memory/{agent}-sidecar/decisions/ (FR-MTG-2, FR-MTG-31, AC1).
+or .gaia/memory/{agent}-sidecar/decisions/.
 EOF
   # Echo BLOCKED on stdout for bats matchers and test consumers
   echo "charter-gate.sh: BLOCKED — meeting charter is required (use --charter \"...\")."
@@ -70,8 +70,8 @@ STATE_FILE="${MEETING_STATE_FILE:-${TMPDIR:-/tmp}/gaia-meeting-state.env}"
 mkdir -p "$(dirname "$STATE_FILE")"
 
 # Escape the charter for safe env-file storage: quote and escape backslashes /
-# double quotes. This is a deterministic capture — full meeting frontmatter
-# persistence ships in E76-S3 (FR-MTG-27).
+# double quotes. This is a deterministic capture for meeting frontmatter
+# persistence.
 escaped="${CHARTER//\\/\\\\}"
 escaped="${escaped//\"/\\\"}"
 {

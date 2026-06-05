@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-review-mobile skill finalize (E74-S8)
+# finalize.sh — gaia-review-mobile skill finalize
 #
-# Mechanical copy of the Cluster 9 reference implementation authored under
-# E28-S66 (gaia-code-review/scripts/finalize.sh). Only WORKFLOW_NAME and
-# SCRIPT_NAME differ — the body follows the shared pattern (E28-S88, etc.).
+# Only WORKFLOW_NAME and SCRIPT_NAME differ from the shared finalize pattern.
 #
 # Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script

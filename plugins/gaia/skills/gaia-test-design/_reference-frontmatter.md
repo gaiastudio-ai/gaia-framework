@@ -1,6 +1,6 @@
 # Reference Frontmatter — gaia-test-design
 
-> Verbatim copy of the brief's `test-design` frontmatter example (E28-S82).
+> Verbatim copy of the brief's `test-design` frontmatter example.
 > This file exists for future contributor reference. Do not modify.
 
 ```yaml

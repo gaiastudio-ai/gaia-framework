@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
 # resolve-test-artifact-per-story.sh — resolve per-story test artifacts
-# (atdd, test-automate-plan) to the §7.3 / Test03 mirror-symmetry layout.
+# (atdd, test-automate-plan) to the mirror-symmetry layout.
 #
-# Background (AF-2026-05-30-1 / Test03 §7.3 second drift):
-#   The §7.3 consolidated layout mandates that test-artifacts mirror
+# Background:
+#   The consolidated layout mandates that test-artifacts mirror
 #   implementation-artifacts symmetrically — both grouped under
 #   per-epic/per-story directories so a story's atdd + qa-tests +
 #   test-automation + test-review live in ONE place, not scattered
-#   across per-type subdirs. Pre-AF-30-1 the producers wrote flat:
+#   across per-type subdirs. Previously the producers wrote flat:
 #     .gaia/artifacts/test-artifacts/atdd-{story_key}.md
 #     .gaia/artifacts/test-artifacts/test-automate-plan-{story_key}.md
-#   AF-30-1 added the canonical mirror home; AF-2026-06-01-1 / Test15
-#   F-20-L flattened the layout to match the review-gate mirror shape:
+#   The canonical mirror home was added; layout was later flattened to
+#   match the review-gate mirror shape:
 #     .gaia/artifacts/test-artifacts/epic-{epic_slug}/{key}-{slug}/{type}.md
 #
 # Resolution order (read side):
-#   0. New per-story mirror (canonical, post-Test15 F-20-L):
+#   0. New per-story mirror (canonical):
 #        .gaia/artifacts/test-artifacts/epic-{epic_slug}/{key}-{slug}/{type}.md
 #      Highest precedence. New writes go here. Matches the review-gate
-#      test-artifacts mirror (Test14 F-15) so the test-artifacts tree
+#      test-artifacts mirror so the test-artifacts tree
 #      has a consistent shape across atdd / test-automate / qa-tests /
 #      test-review / execution-evidence.
 #   0b. Legacy stories/-bearing path (read-compat fallback):
 #        .gaia/artifacts/test-artifacts/epic-{epic_slug}/stories/{key}-{slug}/{type}.md
-#      Existing artifacts written before Test15 F-20-L continue to
+#      Existing artifacts written before the layout change continue to
 #      resolve; no implicit migration.
 #   1. Legacy flat (read-only fallback):
 #        .gaia/artifacts/test-artifacts/{type}-{key}.md
-#      Pre-AF-30-1 flat layout; never migrated implicitly.
+#      Original flat layout; never migrated implicitly.
 #
 # Write-path resolution: callers ask for the NEW canonical write path via
 # `--write` (returns rung 0). Without `--write`, read-side precedence applies
@@ -78,7 +78,7 @@ while [ $# -gt 0 ]; do
 done
 
 case "$TYPE" in
-  # Test10 F-38 extends the resolver to two more per-story review-output types
+  # The resolver covers two additional per-story review-output types
   # so /gaia-qa-tests and /gaia-test-review can mirror under the same per-story
   # directory as atdd + test-automate-plan.
   atdd|test-automate-plan|qa-tests|test-review) ;;
@@ -106,7 +106,7 @@ if [ -d "$IMPL_ARTIFACTS_DIR" ]; then
   match=$(find "$IMPL_ARTIFACTS_DIR" -type d -path "*/epic-*/stories/${STORY_KEY}-*" 2>/dev/null | head -1 || true)
   if [ -n "$match" ]; then
     STORY_DIR_NAME=$(basename "$match")
-    # Validate STORY_KEY- prefix boundary (resolve-story-file.sh §Tier 0 idiom)
+    # Validate STORY_KEY- prefix boundary (strict prefix-boundary match)
     case "$STORY_DIR_NAME" in
       "${STORY_KEY}-"*)
         EPIC_DIR_PATH=$(dirname "$(dirname "$match")")
@@ -129,9 +129,9 @@ if [ -z "$STORY_DIR_NAME" ]; then
   STORY_DIR_NAME="$STORY_KEY"
 fi
 
-# AF-2026-06-01-1 / Test15 F-20-L — drop the `stories/` middle level for
-# symmetry with the review-gate test-artifacts mirror (Test14 F-15), which
-# already writes to test-artifacts/epic-{slug}/{key}-{slug}/. The prior
+# Drop the `stories/` middle level for symmetry with the review-gate
+# test-artifacts mirror, which already writes to
+# test-artifacts/epic-{slug}/{key}-{slug}/. The prior
 # `epic-{slug}/stories/{key}-{slug}/{type}.md` shape produced an
 # INCONSISTENT mirror tree within one project: atdd.md / qa-tests.md
 # under .../stories/{key}-{slug}/ but the review-gate mirror's reports +

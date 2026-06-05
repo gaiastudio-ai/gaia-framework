@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # validate-ac-format.sh — gaia-create-story Step 6 deterministic
-#                         AC-format validator (E63-S6 / Work Item 6.6)
+#                         AC-format validator
 #
 # Purpose:
 #   Verify every `- [ ]` line in a story's `## Acceptance Criteria` section
@@ -11,8 +11,8 @@
 #
 # Consumers:
 #   - /gaia-create-story Step 6 — pre-Val deterministic sweep, alongside
-#     E63-S5 validate-frontmatter.sh (parallel sibling validator).
-#   - The 3-attempt fix loop (ADR-050) consumes the findings emitted here
+#     validate-frontmatter.sh (parallel sibling validator).
+#   - The 3-attempt fix loop consumes the findings emitted here
 #     to re-prompt the SM auto-fixer with concrete line numbers.
 #
 # Algorithm (in order):
@@ -31,7 +31,7 @@
 #      next `## ` heading) emits a single CRITICAL finding and exits
 #      non-zero (AC3 path).
 #   7. All-pass exits 0 with empty stdout (AC4 path) — the validator-
-#      script convention used by E63-S4 (validate-canonical-filename.sh).
+#      script convention used by validate-canonical-filename.sh.
 #
 # Findings format:
 #   `<severity>\t<field>\t<message>` — tab-separated, one finding per line.
@@ -40,9 +40,9 @@
 #               the AC section)
 #   - message:  human-readable explanation; for line-level findings,
 #               includes the absolute line number and verbatim content.
-#   This format is parallel to E63-S5 (validate-frontmatter.sh) and will
-#   be harmonized with it in E63-S11 (the SKILL.md thin-orchestrator
-#   rewrite).
+#   This format is parallel to validate-frontmatter.sh and will
+#   be harmonized with it in a future SKILL.md thin-orchestrator
+#   rewrite.
 #
 # Exit codes:
 #   0 — every AC line matches the Given/When/Then ERE (silent success)
@@ -55,16 +55,13 @@
 #
 # Spec references:
 #   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.6
-#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-074
-#     (deterministic-script lift)
-#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-042
-#     (Scripts-over-LLM precedent)
-#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-050
-#     (Shared Val + SM Fix-Loop Dispatch Pattern)
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log (deterministic-script lift)
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log (Scripts-over-LLM precedent)
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log (Shared Val + SM Fix-Loop Dispatch Pattern)
 #   - gaia-framework/plugins/gaia/skills/gaia-shell-idioms/SKILL.md
-#   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh (E63-S1)
-#   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/next-story-id.sh (E63-S2)
-#   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/validate-canonical-filename.sh (E63-S4)
+#   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh
+#   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/next-story-id.sh
+#   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/validate-canonical-filename.sh
 
 set -euo pipefail
 LC_ALL=C
@@ -107,12 +104,12 @@ while [ $# -gt 0 ]; do
     --*)
       die_usage "unknown argument: $1" ;;
     *)
-      # AF-2026-05-30-4 D-05 — positional path form is accepted with a
-      # deprecation NOTICE. Canonical form is `--file <path>`.
+      # Positional path form is accepted with a deprecation NOTICE.
+      # Canonical form is `--file <path>`.
       if [ -n "$file" ]; then
         die_usage "positional path '$1' supplied after --file '$file' — use only one form"
       fi
-      log "NOTICE: positional path is deprecated; prefer '--file $1' (AF-2026-05-30-4 D-05)"
+      log "NOTICE: positional path is deprecated; prefer '--file $1'"
       file="$1"; shift ;;
   esac
 done

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-performance-review skill setup (E28-S108, Cluster 14)
+# setup.sh — gaia-performance-review skill setup
 #
-# Mirrors the Cluster 7 reference implementation (gaia-fix-story/setup.sh,
-# E28-S55). Only WORKFLOW_NAME and SCRIPT_NAME differ.
+# Only WORKFLOW_NAME and SCRIPT_NAME differ from the shared setup pattern.
 #
 # Responsibilities:
 #   1. Resolve config via resolve-config.sh foundation script

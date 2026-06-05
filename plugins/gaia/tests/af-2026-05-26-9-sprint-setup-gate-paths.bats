@@ -175,7 +175,7 @@ YAML
           IMPLEMENTATION_ARTIFACTS="$root/docs/implementation-artifacts" \
           bash "$SP_SETUP"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qF 'no SV-20 status: field'
+  printf '%s\n' "$output" | grep -qF 'no status: field'
 }
 
 @test "AF-26-9 follow-up: real readiness-report with status: FAIL still gates (strict)" {

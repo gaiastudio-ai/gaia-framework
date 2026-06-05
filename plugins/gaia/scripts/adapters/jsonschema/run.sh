@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# adapters/jsonschema/run.sh — FR-415 + ADR-078 contract entry.
+# adapters/jsonschema/run.sh — contract entry.
 #
 # Validates JSON instance documents against a JSON Schema using
-# `check-jsonschema`. Honours the ADR-078 run.sh flag-form interface:
+# `check-jsonschema`. Honours the run.sh flag-form interface:
 #
 #   run.sh --input <file-list> [--config <schema.json>] [--output <path>]
 #          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -44,7 +44,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/jsonschema/run.sh — FR-415 + ADR-078 contract.
+adapters/jsonschema/run.sh — contract.
 Usage:
   run.sh --input <file-list> [--config <schema.json>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]

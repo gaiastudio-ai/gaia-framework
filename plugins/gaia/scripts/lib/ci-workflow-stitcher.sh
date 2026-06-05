@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# ci-workflow-stitcher.sh — Four-phase CI workflow stitching engine
-# (E98-S2, FR-517, ADR-114 §Consequences).
+# ci-workflow-stitcher.sh — Four-phase CI workflow stitching engine.
 #
 # Sourceable, NOT executable. Exposes one function:
 #
@@ -11,19 +10,19 @@
 #                                     spliced around the managed steps block)
 #     Writes to <output-path> if given, else stdout.
 #
-# Four-phase stitching order (FR-517 / ADR-114 §(c) — non-negotiable):
+# Four-phase stitching order (non-negotiable):
 #   (1) GAIA template scaffold (managed file as-read)
 #   (2) user-steps.yml steps_before_gaia  → spliced BEFORE managed steps block
 #   (3) gaia jobs ∪ user-jobs.yml entries → YAML union into jobs: map
 #   (4) user-steps.yml steps_after_gaia   → spliced AFTER managed steps block
 #
-# Block-level insertion ONLY (per FR-517 / ADR-114 §Rationale): per-step
+# Block-level insertion ONLY: per-step
 # insert_after / insert_before markers in overlay files are NOT honored — the
 # stitcher splices the user-step entries verbatim at the block edges, even
 # if the entries carry per-step marker keys (those keys flow through to the
 # output as plain YAML, but the stitcher ignores them for placement).
 #
-# Determinism contract (TC-CCL-8 / ADR-114 §(c)):
+# Determinism contract:
 #   Same inputs → byte-identical output. Sort key: alphabetical by overlay
 #   filename, then declaration order within each overlay file. yq is invoked
 #   with a stable pretty-print profile (-P) and LC_ALL=C is exported.
@@ -42,8 +41,8 @@ _GAIA_CI_WORKFLOW_STITCHER_LOADED=1
 LC_ALL=C
 export LC_ALL
 
-# Internal: locate the prefix-detection helper (E98-S1) for overlay classification
-# and the protected-jobs assertion (E98-S3) for the FR-517 union-step guard.
+# Internal: locate the prefix-detection helper for overlay classification
+# and the protected-jobs assertion for the union-step guard.
 _GAIA_STITCHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck disable=SC1091
 . "$_GAIA_STITCHER_DIR/ci-prefix-detection.sh"
@@ -77,7 +76,7 @@ _gaia_stitcher_extract_steps_block() {
 #
 # Algorithm: find the first `steps:` key that opens a sequence (one
 # top-level steps block per job is the convention; multi-job stitching of
-# per-job step overlays is OUT OF SCOPE for FR-517 block-level edges —
+# per-job step overlays is OUT OF SCOPE for block-level edges —
 # splice into the first managed steps block of the file).
 _gaia_stitcher_splice_steps() {
   local before="$1"   # path to a file containing steps_before_gaia entries (may be empty)
@@ -180,7 +179,7 @@ _gaia_stitcher_splice_steps() {
 # Internal: emit YAML union of two `jobs:` maps. The managed workflow's
 # jobs: stays as-is; the user-jobs.yml's top-level jobs: is merged in via
 # yq eval-all '. as $i ireduce ({}; . * $i)' (last-writer-wins on key collision,
-# but per FR-517 collision detection is E98-S3's responsibility — this stitcher
+# but collision detection is the protected-jobs assertion's responsibility — this stitcher
 # does a straightforward union and trusts the validator).
 #
 # Input: managed-workflow path + user-jobs.yml path.
@@ -196,7 +195,7 @@ _gaia_stitcher_union_jobs() {
   # The union pulls overlay top-level keys into the managed doc — which
   # includes the overlay's `jobs:` map being unioned into the managed
   # workflow's `jobs:` map (last-writer-wins on key collision; collision
-  # detection is E98-S3's job per FR-517).
+  # detection is the protected-jobs assertion's job).
   #
   # File-based union (no shell-quoted YAML scalar round-trip — that was
   # version-fragile per pre-merge review): yq processes both files in one
@@ -225,7 +224,7 @@ gaia_ci_stitch() {
     return 2
   fi
 
-  # Phase 0: classify the managed file via the E98-S1 prefix-detection helper.
+  # Phase 0: classify the managed file via the prefix-detection helper.
   local cls
   cls="$(gaia_ci_classify "$managed")"
   case "$cls" in
@@ -244,7 +243,7 @@ gaia_ci_stitch() {
   esac
 
   # Phase 0b: enumerate overlay files via filename convention. Per the
-  # gaia_ci_classify contract (E98-S1), both shapes resolve to `overlay`;
+  # gaia_ci_classify contract, both shapes resolve to `overlay`;
   # we re-derive the path here from the managed-file basename so the
   # enumeration is deterministic.
   local dir base name
@@ -266,7 +265,7 @@ gaia_ci_stitch() {
     return 0
   fi
 
-  # Phase 3 pre-check: protected-jobs assertion (E98-S3 / FR-517 / ADR-114 §(d)).
+  # Phase 3 pre-check: protected-jobs assertion.
   # Runs BEFORE any temp-dir creation or YAML manipulation so the fail-closed
   # contract holds: no partial regeneration, no output file written when a
   # user-jobs overlay declares a protected GAIA-template job name.

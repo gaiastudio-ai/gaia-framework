@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# detect-mode.sh — gaia-dev-story Step 1 mode detector (E57-S5, P0-2)
+# detect-mode.sh — gaia-dev-story Step 1 mode detector
 #
 # Returns one of FRESH | REWORK | RESUME based on story status and the
 # Review Gate table contents. Replaces LLM-based mode detection in
 # /gaia-dev-story Step 1.
-#
-# Refs: FR-DSS-1, FR-DSS-2, AF-2026-04-28-6
-# Story: E57-S5
 #
 # Usage:
 #   detect-mode.sh <story_path>
@@ -71,10 +68,10 @@ fi
 
 case "$STATUS_VAL" in
   backlog|ready-for-dev)
-    # AF-2026-05-29-1 / Test08 F-14: a backlog story (no implementation, no
-    # checkpoint, no commits) is canonically FRESH — same classification as
-    # ready-for-dev. Previously fell through to the `*)` catchall and was
-    # misclassified as RESUME, which steered /gaia-dev-story Step 1 into the
+    # A backlog story (no implementation, no checkpoint, no commits) is
+    # canonically FRESH — same classification as ready-for-dev. Previously
+    # fell through to the `*)` catchall and was misclassified as RESUME,
+    # which steered /gaia-dev-story Step 1 into the
     # resume-an-in-flight-implementation branch for a never-started story.
     # The two backlog/ready-for-dev states cover "haven't started yet" — both
     # are FRESH; in-progress is the only state that can be REWORK or RESUME.

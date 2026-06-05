@@ -1,19 +1,19 @@
-# detection-signals.yaml — E71-S2
+# detection-signals.yaml
 #
 # Signal registry consumed by `plugins/gaia/scripts/detect-signals.sh`. Declares
 # the file-pattern matchers and config-section mappings used by the brownfield
 # Phase 1 auto-population pass.
 #
 # Categories:
-#   - stack            — language/framework + test_runner (FR-RSV2-35).
+#   - stack            — language/framework + test_runner.
 #   - platform         — deployment target (docker, kubernetes, terraform, ...).
-#   - ci_platform      — single CI provider per repo (FR-RSV2-36).
+#   - ci_platform      — single CI provider per repo.
 #   - tool_provider    — review-system tooling (sonarqube, eslint, ...).
 #
 # Mobile signals (Package.swift, Android build.gradle, react-native, Flutter
 # mobile, Xcode/Android Studio) are detected by `mobile-detection.sh` and
-# unioned into the `platforms[]` + `device_targets` outputs by detect-signals.sh
-# (E74-S11 / FR-RSV2-44). The mobile signal registry lives in that helper —
+# unioned into the `platforms[]` + `device_targets` outputs by detect-signals.sh.
+# The mobile signal registry lives in that helper —
 # this file documents the non-mobile signals scanned by the same pass.
 
 stack:
@@ -160,7 +160,7 @@ tool_provider:
   - name: "pytest"
     files: ["pytest.ini"]
 
-# Mobile signals (E74-S11 / FR-RSV2-44).
+# Mobile signals.
 #
 # Detected by `plugins/gaia/scripts/mobile-detection.sh`. Listed here for
 # discoverability — the helper is the source of truth for matcher logic.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# detect-signals.sh — E71-S2 brownfield detection-driven config extension
+# detect-signals.sh — brownfield detection-driven config extension
 #
 # Scans a target project root for stack, platform, ci_platform, and
 # tool-provider signals. Emits a structured JSON document with:
@@ -8,16 +8,12 @@
 #   - ci_platform    (object | null)
 #   - tool_providers (array)
 #   - warnings       (array of advisory strings)
-#   - verdict        (PASS | WARNING | CRITICAL)  — ADR-063
+#   - verdict        (PASS | WARNING | CRITICAL)
 #
 # When --merge-into and --output are provided, the detected sections are
 # merged into the existing project-config.yaml using RFC 7396 JSON Merge
 # Patch semantics — existing user values are preserved, only null/missing
 # fields are filled. The merged YAML is written to --output.
-#
-# Story:   E71-S2
-# Traces:  AF-2026-05-04-1, FR-RSV2-35, FR-RSV2-36, ADR-063, ADR-079, ADR-044
-# Depends: E68-S1 (project-config.yaml schema extension).
 #
 # Usage:
 #   detect-signals.sh --project-root <dir> [--format json]
@@ -46,8 +42,8 @@ FORMAT="json"
 MERGE_INTO=""
 OUTPUT=""
 SCHEMA=""
-# E70-S11 — opt-in stacks[].path proposal/audit mode (default OFF; the legacy
-# E71-S2 root-only detection path is byte-stable when this is unset).
+# Opt-in stacks[].path proposal/audit mode (default OFF; the legacy
+# root-only detection path is byte-stable when this is unset).
 STACKS_PATH_MODE=""
 DRAFT_OUT=""
 AUDIT_OUT=""
@@ -128,10 +124,10 @@ fi
 PROJECT_ROOT="$(cd "$PROJECT_ROOT" && pwd)"
 
 # ---------------------------------------------------------------------------
-# E70-S11 — stacks[].path proposal / audit mode (opt-in; FR-548 / NFR-88 / ADR-126)
+# stacks[].path proposal / audit mode (opt-in)
 # ---------------------------------------------------------------------------
 # When --stacks-path-mode is set, run the multi-stack path-partitioning logic
-# and EXIT before the legacy E71-S2 root-only detection. This keeps the legacy
+# and EXIT before the legacy root-only detection. This keeps the legacy
 # invocation (no flag) byte-identical (zero-regression).
 #
 #   proposal : no stack declares `path` -> scan ecosystem manifests, propose a
@@ -141,9 +137,9 @@ PROJECT_ROOT="$(cd "$PROJECT_ROOT" && pwd)"
 #   auto     : audit when --declared-paths non-empty, else proposal.
 #
 # Nested manifests (a manifest with a strict-ancestor manifest) scope to the
-# ancestor stack — `ignore_nested_manifests: true` default per E85-S14 / FR-546.
+# ancestor stack — `ignore_nested_manifests: true` default.
 if [ -n "$STACKS_PATH_MODE" ]; then
-  # AF-2026-05-31-1 / Test12 F-04: rewritten to be bash 3.2-compatible.
+  # Rewritten to be bash 3.2-compatible.
   # The prior implementation guarded on `BASH_VERSINFO >= 4` and short-circuited
   # to a stderr "skip" on macOS-default bash 3.2 — silently disabling the entire
   # multi-stack proposal/audit feature for stock-Mac users. The two bash-4-only
@@ -154,15 +150,15 @@ if [ -n "$STACKS_PATH_MODE" ]; then
   #      rewritten as a sorted-unique newline-delimited string `_cand_nl`. The
   #      "is this key in the set?" check becomes `printf '%s\n' "$_cand_nl"
   #      | grep -Fxq "$key"`. Order is deterministic via `sort -u`.
-  # Test12 §9.0 cross-platform mandate: deterministic-tools chain must run
+  # Cross-platform mandate: deterministic-tools chain must run
   # unchanged on bash 3.2 (macOS), bash 4+ (Linux), and bash via WSL/Git Bash
-  # on Windows. Closes the F-04 portability wall.
+  # on Windows.
 
   # Canonical ecosystem manifest filenames (explicit -name; not regex — faster).
   _MANIFESTS=(go.mod package.json pyproject.toml pom.xml build.gradle build.gradle.kts \
               Cargo.toml Gemfile composer.json Pipfile requirements.txt env.yml environment.yml)
 
-  # Single cached find pass over all manifest names (NFR-88: one traversal).
+  # Single cached find pass over all manifest names (one traversal).
   _find_args=()
   for m in "${_MANIFESTS[@]}"; do _find_args+=(-name "$m" -o); done
   unset '_find_args[${#_find_args[@]}-1]'   # drop trailing -o
@@ -202,7 +198,7 @@ if [ -n "$STACKS_PATH_MODE" ]; then
   # Sort the partitions — but guard the empty case: a bare
   # `printf '%s\n' "${_paths[@]}"` on an empty array emits one blank line, which
   # the array-rebuild would turn into a 1-element empty-string array and
-  # defeat the zero-partition degenerate guard below (Val F1). Only re-sort
+  # defeat the zero-partition degenerate guard below. Only re-sort
   # when non-empty.
   if [ "${#_paths[@]}" -gt 0 ]; then
     _sorted=()
@@ -264,7 +260,7 @@ if [ -n "$STACKS_PATH_MODE" ]; then
   # IS the repo root '.' (a flat single-stack repo with only a root manifest —
   # there is no path structure to propose). A single NON-root partition (e.g. a
   # Go stack at services/api with a nested manifest scoped into it) IS proposed,
-  # so AC4's nested-scoping case yields a 1-stack draft (proving no phantom stack).
+  # so the nested-scoping case yields a 1-stack draft (proving no phantom stack).
   if [ "${#_paths[@]}" -eq 0 ] || { [ "${#_paths[@]}" -eq 1 ] && [ "${_paths[0]}" = "." ]; }; then
     err "detect-signals: nothing to propose (single root-level stack) — no draft written"
     printf '{"detect_signals_mode":"proposal","stacks_proposed":%s}\n' "${#_paths[@]}"
@@ -273,7 +269,7 @@ if [ -n "$STACKS_PATH_MODE" ]; then
   [ -n "$DRAFT_OUT" ] || { err "--draft-out required in proposal mode"; exit 1; }
   mkdir -p "$(dirname "$DRAFT_OUT")"
   {
-    printf '# project-config.draft.yaml — E70-S11 auto-detected stacks[].path proposal.\n'
+    printf '# project-config.draft.yaml — auto-detected stacks[].path proposal.\n'
     printf '# Advisory only. To accept: rename to project-config.yaml OR merge the\n'
     printf '# stacks[].path entries via /gaia-config-stack. Declared truth always wins.\n'
     printf 'stacks:\n'
@@ -482,7 +478,7 @@ _push_platform() {
   fi
 }
 
-# E74-S11 — invoke the mobile-detection helper and union its findings into
+# Invoke the mobile-detection helper and union its findings into
 # the platform set + seed device_targets.
 _detect_mobile_signals() {
   local self_dir mobile
@@ -641,7 +637,7 @@ _detect_mobile_signals
 _detect_ci_platform
 _detect_tool_providers
 
-# E77-S16 / FR-420 — plugin signal detection. Defers to plugin-detection.sh
+# Plugin signal detection. Defers to plugin-detection.sh
 # (3+ co-occurring signals classifies the project as claude-code-plugin).
 PROJECT_KIND_JSON='null'
 _detect_plugin_project() {
@@ -705,33 +701,27 @@ DETECTION_JSON="$(jq -nc \
 
 if [ -n "$MERGE_INTO" ] && [ -n "$OUTPUT" ]; then
   if [ ! -f "$MERGE_INTO" ]; then
-    # AF-2026-05-30-2 / Test10 F-01 zero-config draft path:
+    # Zero-config draft path:
     # When --merge-into points at a non-existent file, treat it as an empty
-    # base (zero-config seed). Prior to this fix, brownfield Phase 1 on a
-    # fresh repo HALTed here because setup.sh's greenfield-degrade seeded
-    # the artifact tree but NOT a starter project-config.yaml — so
-    # `--merge-into .gaia/config/project-config.yaml` errored even though
-    # the greenfield-degrade was the canonical entry path.
+    # base (zero-config seed). This handles brownfield Phase 1 on a
+    # fresh repo where setup.sh's greenfield-degrade seeded the artifact
+    # tree but not a starter project-config.yaml.
     # Seeded base: minimal valid project-config.yaml scaffolding. The
     # downstream RFC 7396 merge then fills in stacks/platforms/ci_platform
     # from detection; the operator runs /gaia-init later to populate the
     # full questionnaire.
     err "merge-into target absent — seeding zero-config base at: $MERGE_INTO"
     mkdir -p "$(dirname "$MERGE_INTO")"
-    # AF-2026-05-30-4 / Test11 F-02: previous seed (AF-30-2 / Test10 F-01)
-    # was minimal but missing checkpoint_path + memory_path + project_root +
+    # The seed includes checkpoint_path + memory_path + project_root +
     # project_path + installed_path — all required by project-config.schema.yaml
     # under the canonical minimal-phase contract. Without them, the
-    # post-merge schema validation in step 5a returns CRITICAL ("missing
-    # required field: checkpoint_path") and detect-signals exits 2 — the
-    # SKILL contract then HALTs and a pure zero-config brownfield run
-    # cannot self-complete. The seeded paths are project-root-relative
-    # so the same config works on any clone (Test11 F-06 also flagged
-    # absolute paths as a portability defect — this seed avoids both).
+    # post-merge schema validation returns CRITICAL ("missing
+    # required field: checkpoint_path") and detect-signals exits 2. The
+    # seeded paths are project-root-relative so the same config works on
+    # any clone.
     _seed_root="$(cd "$(dirname "$MERGE_INTO")/../.." && pwd)"
     cat > "$MERGE_INTO" <<SEED
-# Auto-seeded by detect-signals.sh (AF-2026-05-30-4 / Test11 F-02 — supersedes
-# AF-2026-05-30-2 / Test10 F-01 minimal seed). Created because brownfield
+# Auto-seeded by detect-signals.sh. Created because brownfield
 # Phase 1 found no existing project-config.yaml. Detection-driven fields
 # (stacks, ci_platform, platforms) will be merged in below. Run /gaia-init
 # to populate the full questionnaire when ready.
@@ -811,12 +801,12 @@ fi
 
 if [ -n "$SCHEMA" ] && [ -n "$OUTPUT" ] && [ -f "$OUTPUT" ]; then
   # Use resolve-config.sh as the validator (its --shared + --schema entry path
-  # rejects unknown keys with exit code 2 per E28-S18 / ADR-044).
+  # rejects unknown keys with exit code 2).
   self_dir="$(cd "$(dirname "$0")" && pwd)"
   if "$self_dir/resolve-config.sh" --shared "$OUTPUT" --schema "$SCHEMA" >/dev/null 2>&1; then
     : # validation passed
   else
-    # Validation failure is CRITICAL per ADR-063.
+    # Validation failure is CRITICAL.
     DETECTION_JSON="$(jq -c '.verdict = "CRITICAL"' <<<"$DETECTION_JSON")"
     case "$FORMAT" in
       json) jq . <<<"$DETECTION_JSON" ;;

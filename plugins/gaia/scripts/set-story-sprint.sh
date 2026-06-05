@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # set-story-sprint.sh — sanctioned setter for a story's `sprint_id` frontmatter.
 #
-# Test05 F-034. Story `status` has a sanctioned writer (transition-story-status.sh),
+# Story `status` has a sanctioned writer (transition-story-status.sh),
 # but `sprint_id` did not — sprint planning had to hand-edit story frontmatter,
 # which conflicts with the "no direct frontmatter edits" hygiene rule and is the
 # field that `sprint-state.sh inject`'s drift guard READS (frontmatter sprint_id
@@ -63,8 +63,8 @@ done
 [ -n "$STORY_KEY" ] || die "usage: set-story-sprint.sh <story_key> --sprint <sprint-id|null>"
 [ "$SPRINT_ID" != "__UNSET__" ] || die "--sprint <sprint-id|null> is required"
 
-# Resolve the story file via the shared layout-aware resolver (E105-S1 tier-0
-# new layout, legacy nested, legacy flat).
+# Resolve the story file via the shared layout-aware resolver
+# (tier-0 new layout, legacy nested, legacy flat).
 RESOLVER="$SCRIPT_DIR/resolve-story-file.sh"
 [ -x "$RESOLVER" ] || die "resolver missing or non-executable: $RESOLVER"
 STORY_FILE="$("$RESOLVER" "$STORY_KEY")" || die "story file not found for key '$STORY_KEY'" 2

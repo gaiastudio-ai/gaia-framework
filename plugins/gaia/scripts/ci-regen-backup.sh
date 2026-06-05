@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ci-regen-backup.sh — copy a generated CI workflow file to .gaia-backup/ (E71-S4).
+# ci-regen-backup.sh — copy a generated CI workflow file to .gaia-backup/.
 #
 # Usage: ci-regen-backup.sh <ci-file-path>
 #
@@ -11,7 +11,6 @@
 # Stdout: relative path of the created backup directory.
 # Exit:   0 on success, non-zero on missing source / write failure.
 #
-# Refs: AC4 (TS-04), FR-RSV2-37.
 
 set -euo pipefail
 LC_ALL=C
@@ -29,8 +28,8 @@ fi
 
 base="$(basename "$src")"
 ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-# Filename-safe timestamp: keep colons (matches AC4 "ISO-8601 timestamp"). The
-# grep in tests permits both colons and bare digits.
+# Filename-safe timestamp: keep colons (ISO-8601 format). The grep in tests
+# permits both colons and bare digits.
 backup_dir=".gaia-backup/${base}-${ts}"
 
 mkdir -p "$backup_dir"

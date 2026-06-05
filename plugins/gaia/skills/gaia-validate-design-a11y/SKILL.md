@@ -1,6 +1,6 @@
 ---
 name: gaia-validate-design-a11y
-description: Planning-phase accessibility validation against design artifacts (Figma, wireframes, UX docs). Verifies WCAG 2.1 design-time concerns — color contrast, semantic structure, keyboard navigation design, ARIA landmark planning — before implementation begins. Produces a verdict via verdict-resolver.sh per ADR-077 seven-phase structure. Use when "design accessibility review" or /gaia-validate-design-a11y.
+description: Planning-phase accessibility validation against design artifacts (Figma, wireframes, UX docs). Verifies WCAG 2.1 design-time concerns — color contrast, semantic structure, keyboard navigation design, ARIA landmark planning — before implementation begins. Produces a verdict via verdict-resolver.sh per the seven-phase structure. Use when "design accessibility review" or /gaia-validate-design-a11y.
 argument-hint: "[design-target — Figma URL, design doc path, or component name]"
 command: /gaia-validate-design-a11y
 phase: planning
@@ -14,13 +14,13 @@ orchestration_class: reviewer
 
 You are performing a **planning-phase accessibility validation** on the supplied design target (Figma frame, wireframe, design doc, or named component). The review evaluates design-time WCAG 2.1 concerns — color contrast, semantic structure, keyboard navigation design, ARIA landmark planning — and produces a verdict (`APPROVE | REQUEST_CHANGES | BLOCKED`) via the deterministic resolver.
 
-This is the **planning** sibling of the three-phase a11y skill family (FR-RSV2-25):
+This is the **planning** sibling of the three-phase a11y skill family:
 
 - `/gaia-validate-design-a11y` — planning (this skill, agent: Christy)
 - `/gaia-review-a11y` — pre-merge gate (conditional on `compliance.ui_present: true`, agent: Christy)
 - `/gaia-test-a11y` — post-deploy smoke (agent: Sable)
 
-All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the layered rubric loader (E68-S2 / ADR-079). This skill is verdict-producing and follows the seven-phase structure mandated by ADR-077.
+All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the layered rubric loader. This skill is verdict-producing and follows the mandated seven-phase structure.
 
 ## Critical Rules
 
@@ -33,14 +33,14 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 - `$ARGUMENTS`: optional design target (Figma URL, design doc path, or component name). If omitted, ask the user inline: "Which design artifact should I validate for accessibility?"
 
-## Steps (ADR-077 seven-phase structure)
+## Steps (seven-phase structure)
 
 ### Phase 1 — Setup
 
-<!-- Guard added by AF-2026-05-17-9; F-012 (Test04) actionability + UX auto-detect -->
+<!-- Guard for actionability + UX auto-detect -->
 - Resolve `compliance.ui_present` via `resolve-config.sh`.
   - If the value is `true`: proceed — but ALSO run the headless-surface sanity
-    check (Test10 F-18). Probe for UI signal in the project tree: any of
+    check. Probe for UI signal in the project tree: any of
     (a) `.figma` blob / Figma frame URL in `ux-design.md`, (b) design-token
     file (`tokens.json`, `design-tokens.yaml`), or (c) any `*.css`, `*.scss`,
     `*.jsx`, `*.tsx`, `*.vue`, `*.svelte` source under the configured stack
@@ -49,7 +49,7 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
     `NOTICE: compliance.ui_present is true but no UI artifacts found (no figma block, no design tokens, no UI source files) — verify project-config or remove ui_present:true.`
     Surface the NOTICE alongside the verdict in Phase 5 — this prevents a
     vacuous APPROVE on a headless project misconfigured with `ui_present: true`.
-  - **If the value is unset/missing (F-012 auto-detect):** the project may still
+  - **If the value is unset/missing (auto-detect):** the project may still
     be a UI project whose `ui_present` answer predates the persistence fix. Before
     skipping, probe for UX evidence: if `.gaia/artifacts/planning-artifacts/ux-design.md`
     exists (resolve via the three-tier idiom — flat / `ux-design/index.md`), treat
@@ -59,13 +59,12 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
   - **If the value is explicitly `false`, OR unset with no UX evidence:** exit
     early — but with an ACTIONABLE message, not a bare skip:
     `SKIPPED — a11y review not run: compliance.ui_present is not true (no UI declared and no ux-design.md found). If this project HAS a UI, run /gaia-config-compliance to set compliance.ui_present: true, then re-run /gaia-validate-design-a11y.`
-  - This closes F-012 (Test04): with F-002 fixed (`/gaia-init` now persists
-    `ui_present`), the common path is `true`; the auto-detect + actionable message
+  - This closes the gap: with `/gaia-init` now persisting
+    `ui_present`, the common path is `true`; the auto-detect + actionable message
     rescue projects whose answer predates the fix instead of silently skipping a
     documented planning-phase gate. The orchestrator at `/gaia-review-all` still
     performs the `--skip-a11y` check (this guard is defense-in-depth). Mirrors
-    `/gaia-review-a11y` L29 for three-phase a11y family gating consistency
-    (FR-RSV2-44, E69-S2).
+    `/gaia-review-a11y` L29 for three-phase a11y family gating consistency.
 - Resolve the design target from `$ARGUMENTS` or prompt the user inline.
 - Load the layered rubric:
 
@@ -111,16 +110,16 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
   !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh --findings <findings.json>
   ```
 
-- The resolver emits `APPROVE | REQUEST_CHANGES | BLOCKED`. The skill MUST NOT recompute the verdict by hand — the resolver is the single source of truth (ADR-077, ADR-042).
+- The resolver emits `APPROVE | REQUEST_CHANGES | BLOCKED`. The skill MUST NOT recompute the verdict by hand — the resolver is the single source of truth.
 
 ### Phase 6 — Report
 
 - Write the report to `.gaia/artifacts/test-artifacts/design-a11y-review-{date}.md`.
-  > **Output-location note (F-013, Test04).** The a11y review report lands under
+  > **Output-location note.** The a11y review report lands under
   > `test-artifacts/` (not a separate `review-artifacts/`/`validation-artifacts/`
   > tree) **by design**: it is the validation evidence consumed by the test/QA
-  > and readiness gates, so it is grouped with the other test artifacts per
-  > ADR-119. The `test-artifacts/` directory is created on first write (`mkdir -p`)
+  > and readiness gates, so it is grouped with the other test artifacts.
+  > The `test-artifacts/` directory is created on first write (`mkdir -p`)
   > if `/gaia-init` did not pre-create it. This location is intentional and stable;
   > consumers (`/gaia-readiness-check`, the a11y pre-merge gate) resolve it here.
 - The report includes the verdict, the findings table, the rubric source (path of merged rubric), and the design target reference.
@@ -133,7 +132,7 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 ## Agent Wiring
 
-Per ADR-077 wiring table, this skill resolves to **Christy (UX Designer)** via:
+Per the wiring table, this skill resolves to **Christy (UX Designer)** via:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-validate-design-a11y
@@ -144,13 +143,13 @@ Design-time a11y is a UX-design concern; Christy owns the design fidelity review
 
 ## References
 
-- ADR-077 — Verdict-producing skill seven-phase structure + agent-overlay wiring table.
-- ADR-079 — Layered rubric loading (base + regimes + domain + project).
-- FR-RSV2-25 — "The three phases share rubrics but have distinct triggers and verdicts."
-- E68-S3 — Six base rubrics shipped under `rubrics/base/` (including `a11y.json`).
-- E69-S1 — Slash-command rename map (canonical `/gaia-validate-design-a11y`).
-- E66-S1 — `agent-overlay.sh` wiring resolver.
-- E66-S3 — Composite verdict aggregator (ADR-082) consumes this skill's verdict in the `/gaia-validate-design` composite (planning phase).
+- Verdict-producing skill seven-phase structure + agent-overlay wiring table.
+- Layered rubric loading (base + regimes + domain + project).
+- "The three phases share rubrics but have distinct triggers and verdicts."
+- Six base rubrics shipped under `rubrics/base/` (including `a11y.json`).
+- Slash-command rename map (canonical `/gaia-validate-design-a11y`).
+- `agent-overlay.sh` wiring resolver.
+- Composite verdict aggregator consumes this skill's verdict in the `/gaia-validate-design` composite (planning phase).
 
 ## Next Step
 

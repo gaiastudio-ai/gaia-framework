@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# coverage-delta.sh — E67-S3 deterministic coverage-delta computation
-# (FR-RSV2-2, ADR-042, ADR-077, TC-RSV2-TESTAUTOMATE-3).
+# coverage-delta.sh — deterministic coverage-delta computation.
 #
 # Computes the diff between a baseline and current coverage report and emits
 # the result as a JSON fragment for verdict-resolver.sh consumption. Used by
@@ -26,7 +25,6 @@
 # POSIX discipline: bash 3.2 (macOS), set -euo pipefail, LC_ALL=C, no jq for
 # the lcov path. jq is optional and used only for the JSON-format branch.
 #
-# Refs: AC1, AC5, AC7 of E67-S3.
 
 set -euo pipefail
 LC_ALL=C
@@ -55,7 +53,6 @@ Optional:
 Output (stdout, single-line JSON):
   {"coverage_delta": N, "baseline": N, "current": N}
 
-Refs: ADR-042, ADR-077, FR-RSV2-2, E67-S3.
 EOF
 }
 

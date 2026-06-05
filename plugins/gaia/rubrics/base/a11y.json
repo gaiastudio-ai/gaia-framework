@@ -3,8 +3,6 @@
   "skill": "a11y",
   "metadata": {
     "title": "Base accessibility review rubric",
-    "story": "E68-S3",
-    "adr": "ADR-079",
     "description": "Default severity rules for /gaia-review-a11y aligned with WCAG 2.1 Level A and AA. Layer 1 of the four-layer rubric composition; Level-A keyboard and contrast failures are Critical because they block conformance entirely.",
     "references": ["WCAG-2.1"]
   },

@@ -1,6 +1,6 @@
 # gaia-tools — bundled deterministic-tools image
 
-AF-2026-05-30-3 / Test10 §7 Component 2 — "Lower the install cost so enabling the suite actually yields something."
+"Lower the install cost so enabling the suite actually yields something."
 
 ## What this is
 
@@ -23,7 +23,7 @@ When `brownfield.tools.runner: docker` is set in `project-config.yaml`, the brow
 | `yamllint`    | 1    | 1.35.1     | yaml workflows     |
 | `yq` (Mike Farah) | — | 4.44.1   | core               |
 
-The image version (`0.1.0` for AF-30-3) and DB date (`2026-05-30`) are stamped into image labels and surfaced via `gaia-tools --bom`.
+The image version (`0.1.0`) and DB date (`2026-05-30`) are stamped into image labels and surfaced via `gaia-tools --bom`.
 
 ## Build
 
@@ -36,7 +36,7 @@ docker buildx build \
 
 CI publishes on push to `main` and on a monthly cron for vuln-DB freshness — see `.github/workflows/gaia-tools-image.yml`.
 
-### Self-build when the published image lags (AF-2026-05-31-2 / Test13 F-02)
+### Self-build when the published image lags
 
 If `docker pull ghcr.io/gaiastudio-ai/gaia-tools:latest` fails with `denied` (registry visibility) or the pulled image is older than the Dockerfile in this branch (the monthly cron has not yet republished), build locally:
 
@@ -44,7 +44,7 @@ If `docker pull ghcr.io/gaiastudio-ai/gaia-tools:latest` fails with `denied` (re
 docker build -t ghcr.io/gaiastudio-ai/gaia-tools:latest plugins/gaia/tools/gaia-tools/
 ```
 
-That tag matches the default `docker-runner.sh` resolves when `brownfield.tools.image` isn't set, so the brownfield adapters route through the local image without further config. The AF-2026-05-31-2 cycle fixed 5 build-blockers in the Dockerfile (F-01..F-05, F-07) and runtime image-policy (F-10), so a fresh build from this branch will succeed where prior tags failed.
+That tag matches the default `docker-runner.sh` resolves when `brownfield.tools.image` isn't set, so the brownfield adapters route through the local image without further config. A fresh build from this branch will succeed where prior tags failed.
 
 ## Use
 
@@ -87,7 +87,7 @@ After that, `/gaia-brownfield` Phase 3 adapter dispatch routes through `scripts/
 
 - **Tag shape:** `{version}-{db-date}` (e.g. `0.1.0-2026-05-30`).
 - **`:latest`** floats to the newest `{version}-{db-date}` — fine for dev / experimentation, **never pin in production**.
-- **Reproducibility:** to reproduce a finding from N months ago, pull the image whose `db-date` matches the date the scan ran. Vuln-DB freshness matters per ADR-122.
+- **Reproducibility:** to reproduce a finding from N months ago, pull the image whose `db-date` matches the date the scan ran. Vuln-DB freshness matters.
 - **Monthly DB refresh:** CI re-builds + re-publishes the image on the 1st of each month so adopters can pin to a rolling-recent DB snapshot.
 - **Patch releases:** when a bundled tool ships a security fix, bump the `GAIA_TOOLS_VERSION` ARG and re-publish off-cycle.
 
@@ -121,5 +121,5 @@ The brownfield adapter dispatch enforces its own wall-clock cap per adapter.
 
 ## Why we shipped this
 
-- AF-30-2 closed Test10's HIGH/MEDIUM bug class but left §7 Component 2 (the "containerized runner" half of the deterministic-tools tier-banner design) deferred because the work is multi-day.
-- AF-30-3 ships the missing half: bundle the toolchains operators were never going to install, surface them through the existing `/gaia-doctor` + brownfield adapter contracts, and make Tier 2 scans achievable with one command (`docker pull`).
+- An earlier cycle closed the HIGH/MEDIUM bug class but left the "containerized runner" half of the deterministic-tools tier-banner design deferred because the work is multi-day.
+- This image ships the missing half: bundle the toolchains operators were never going to install, surface them through the existing `/gaia-doctor` + brownfield adapter contracts, and make Tier 2 scans achievable with one command (`docker pull`).

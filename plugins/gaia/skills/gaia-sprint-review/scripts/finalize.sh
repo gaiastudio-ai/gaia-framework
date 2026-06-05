@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-sprint-review skill finalize (E93-S3)
+# finalize.sh — /gaia-sprint-review skill finalize
 #
-# Mechanical mirror of /gaia-add-feature/scripts/finalize.sh — same E83
+# Mechanical mirror of /gaia-add-feature/scripts/finalize.sh — same
 # sentinel-guard precondition + checkpoint write + lifecycle emit pattern.
 #
 # Responsibilities:
-#   1. Validate the E83 Val dispatch sentinel exists when SPRINT_ID is
+#   1. Validate the Val dispatch sentinel exists when SPRINT_ID is
 #      exported (set by the orchestrator at SKILL.md Step 3). The sentinel
 #      path is `_memory/checkpoints/sprint-review-${SPRINT_ID}-val-
 #      dispatched.json`. A missing or malformed sentinel HALTs with the
-#      canonical error string per FR-362 / ADR-063 amendment.
+#      canonical error string.
 #   2. Write the workflow completion checkpoint.
 #   3. Emit the lifecycle event.
 #
@@ -42,19 +42,18 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 1. E83 sentinel guard (FR-362, ADR-063 amendment) ----------
+# ---------- 1. Sentinel guard ----------
 
 # Resolve CHECKPOINT_PATH (CHECKPOINT_PATH env-var override first;
-# walk-up from CWD looking for the .gaia/memory/ or legacy _memory/
-# project-root marker per E96-S8 smart-fallback discipline).
+# walk-up from CWD looking for the .gaia/memory/ project-root marker).
 # Mirrors write-val-sentinel.sh's walk-up — kept inline rather than
 # extracted to lib/ because the duplication is bounded to 2 callers
 # and the walk-up is a 9-line idiom.
 if [ -z "${CHECKPOINT_PATH:-}" ]; then
   cwd="$(pwd)"
   while [ "$cwd" != "/" ]; do
-    # AF-2026-05-27-3 (ADR-111): canonical .gaia/memory/checkpoints only; the
-    # legacy _memory probe was removed with the consolidation migration.
+    # Canonical .gaia/memory/checkpoints only; the legacy _memory probe was
+    # removed with the consolidation migration.
     if [ -d "$cwd/.gaia/memory/checkpoints" ] || [ -d "$cwd/.gaia/memory" ]; then
       CHECKPOINT_PATH="$cwd/.gaia/memory/checkpoints"
       break
@@ -75,12 +74,11 @@ if [ -n "${SPRINT_ID:-}" ]; then
   fi
   log "Val gate sentinel validated: $SENTINEL"
 else
-  # AF-2026-05-22-9 Bug-12: previously this branch silently downgraded to
-  # "skipping sentinel guard" even in production cascades. The legitimate
-  # legacy-fixture path now MUST set GAIA_SPRINT_REVIEW_FIXTURE=1 to
-  # opt into the no-sentinel path; otherwise this is a hard error so
-  # production cascades that forgot to export SPRINT_ID fail loudly
-  # instead of bypassing the gate.
+  # Previously this branch silently downgraded to "skipping sentinel guard"
+  # even in production cascades. The legitimate legacy-fixture path now
+  # MUST set GAIA_SPRINT_REVIEW_FIXTURE=1 to opt into the no-sentinel path;
+  # otherwise this is a hard error so production cascades that forgot to
+  # export SPRINT_ID fail loudly instead of bypassing the gate.
   if [ "${GAIA_SPRINT_REVIEW_FIXTURE:-0}" = "1" ]; then
     log "SPRINT_ID unset and GAIA_SPRINT_REVIEW_FIXTURE=1 — skipping sentinel guard (legacy fixture path)"
   else

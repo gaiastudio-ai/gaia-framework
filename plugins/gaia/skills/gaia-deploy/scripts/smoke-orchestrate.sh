@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smoke-orchestrate.sh — /gaia-deploy Pattern A post-deploy smoke phase (E73-S5, AC5, AC14).
+# smoke-orchestrate.sh — /gaia-deploy Pattern A post-deploy smoke phase.
 #
 # Reads the deployment-phase smoke suites from a newline-delimited file
 # (--suites-file). For each suite, invokes a runner that returns the suite's
@@ -8,9 +8,9 @@
 # that takes <suite-name> <target-url> <output-dir> and prints
 # APPROVE / REQUEST_CHANGES / BLOCKED.
 #
-# --skip-smoke shortcut: emit a WARNING line and exit 0 (AC14).
+# --skip-smoke shortcut: emit a WARNING line and exit 0.
 #
-# Empty smoke_suites / manual-checklist mode (E78-S5, FR-427):
+# Empty smoke_suites / manual-checklist mode:
 #   When --mode manual-checklist is supplied, OR when --suites-file contains
 #   zero non-comment, non-blank lines, the script writes
 #   <output-dir>/manual-checklist.json with verdict APPROVE plus required
@@ -20,8 +20,6 @@
 #
 # Per-suite result is written to <output-dir>/<suite>.json.
 # Aggregate is left to verdict-aggregate.sh.
-#
-# Refs: ADR-080, AC5, AC14, FR-427, TC-PLUGIN-DEP-4.
 
 set -euo pipefail
 LC_ALL=C
@@ -47,7 +45,7 @@ while [ "$#" -gt 0 ]; do
     --checklist-source) CHECKLIST_SOURCE="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-$SCRIPT_NAME — post-deploy smoke orchestration (E73-S5, AC5, AC14; E78-S5, FR-427).
+$SCRIPT_NAME — post-deploy smoke orchestration.
 Usage:
   $SCRIPT_NAME --suites-file <path> --target-url <url> --output-dir <dir>
   $SCRIPT_NAME --skip-smoke --output-dir <dir>
@@ -72,7 +70,7 @@ case "$MODE" in
     exit 2 ;;
 esac
 
-# Manual-checklist evidence writer (FR-427).
+# Manual-checklist evidence writer.
 # Writes manual-checklist.json with APPROVE verdict + required metadata.
 write_manual_checklist_evidence() {
   local out="$OUTPUT_DIR/manual-checklist.json"
@@ -115,7 +113,7 @@ if [ -z "$SUITES_FILE" ] || [ ! -f "$SUITES_FILE" ]; then
   exit 2
 fi
 
-# Empty-suites detection (FR-427 implicit manual-checklist path):
+# Empty-suites detection (implicit manual-checklist path):
 # Count non-blank, non-comment lines. Zero ⇒ write manual-checklist evidence.
 non_empty_count="$(grep -cEv '^[[:space:]]*(#|$)' "$SUITES_FILE" || true)"
 if [ "${non_empty_count:-0}" -eq 0 ]; then
@@ -132,7 +130,7 @@ fi
 RUNNER="${GAIA_DEPLOY_SMOKE_RUNNER:-}"
 overall_rc=0
 
-# Read suites and execute sequentially in declared order (AC7).
+# Read suites and execute sequentially in declared order.
 while IFS= read -r suite; do
   [ -z "$suite" ] && continue
   case "$suite" in \#*) continue ;; esac

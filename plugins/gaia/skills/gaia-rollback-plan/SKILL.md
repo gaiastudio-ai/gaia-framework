@@ -20,11 +20,11 @@ orchestration_class: light-procedural
 
 You are generating a rollback plan for a release. Your output covers rollback trigger criteria (automated and manual), a step-by-step rollback procedure, a data rollback strategy, a communication plan, and post-rollback verification steps. The plan must be executable during an incident without additional approvals.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/rollback-plan` workflow (Cluster 12, story E28-S94, ADR-041). It follows the canonical skill pattern established by E28-S66 (code-review) and E28-S92 (deploy-checklist).
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/rollback-plan` workflow. It follows the canonical skill pattern established by the code-review and deploy-checklist skills.
 
 **Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the rollback plan artifact to `.gaia/artifacts/implementation-artifacts/`.
 
-**Foundation script integration (ADR-042):** Config validation and checkpoint management are deterministic operations -- they belong in bash scripts invoked inline via `!scripts/*.sh` calls, not in LLM prose.
+**Foundation script integration:** Config validation and checkpoint management are deterministic operations -- they belong in bash scripts invoked inline via `!scripts/*.sh` calls, not in LLM prose.
 
 ## Critical Rules
 
@@ -33,8 +33,8 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - A communication plan MUST be included covering engineering, stakeholders, and users.
 - The `resolve-config.sh` foundation script MUST be present and executable. If missing or not executable, HALT with: "resolve-config.sh not found at {path}. Ensure foundation scripts are deployed." (AC-EC3).
 - **Missing deployment state (AC-EC2):** If no prior deployment state exists (no deployment history, no checkpoint files, no previous version artifact), produce a partial rollback plan with a prominent warning: "No rollback target found -- no prior deployment state exists. This plan covers procedures but cannot specify a concrete rollback version." Do NOT halt -- produce what is possible and note the gap.
-- **Malformed config (AC-EC6):** If the project config resolved via `!scripts/resolve-config.sh` is empty, malformed, or unparseable (non-zero exit from the resolver, or the required `ci_cd.promotion_chain` keys are missing), HALT with a descriptive error: "Cannot generate rollback plan: project config is malformed or empty (resolver exited {N}). Fix the config before retrying." Do NOT produce a broken rollback plan from bad config. <!-- The resolver merges the split shared/local config files per ADR-044. -->
-<!-- INDIRECTION NOTE: This skill used to read `global.yaml` directly; after ADR-044 it consumes the resolver's merged output so it is transparent to the shared vs machine-local split. -->
+- **Malformed config (AC-EC6):** If the project config resolved via `!scripts/resolve-config.sh` is empty, malformed, or unparseable (non-zero exit from the resolver, or the required `ci_cd.promotion_chain` keys are missing), HALT with a descriptive error: "Cannot generate rollback plan: project config is malformed or empty (resolver exited {N}). Fix the config before retrying." Do NOT produce a broken rollback plan from bad config. <!-- The resolver merges the split shared/local config files. -->
+<!-- INDIRECTION NOTE: This skill used to read `global.yaml` directly; it now consumes the resolver's merged output so it is transparent to the shared vs machine-local split. -->
 
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
 
@@ -43,7 +43,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 ### Step 1 -- Validate Project Config
 
 - Read `${PLANNING_ARTIFACTS}/architecture.md` for deployment-relevant architecture decisions (infrastructure topology, deployment strategy, rollback mechanisms).
-- Resolve project config via `!scripts/resolve-config.sh --format shell` (ADR-044 §10.26.3). Eval the output or parse the `KEY='VALUE'` pairs to determine deployment environment and CI/CD pipeline configuration. The resolver transparently merges the team-shared and machine-local layers; the skill never reads either file directly. <!-- Shared layer: .gaia/config/project-config.yaml. Local layer: global.yaml. See ADR-044 §10.26.6. -->
+- Resolve project config via `!scripts/resolve-config.sh --format shell`. Eval the output or parse the `KEY='VALUE'` pairs to determine deployment environment and CI/CD pipeline configuration. The resolver transparently merges the team-shared and machine-local layers; the skill never reads either file directly. <!-- Shared layer: .gaia/config/project-config.yaml. Local layer: global.yaml. -->
 - If config is empty or malformed, HALT with descriptive error (AC-EC6).
 
 ### Step 2 -- Define Trigger Criteria

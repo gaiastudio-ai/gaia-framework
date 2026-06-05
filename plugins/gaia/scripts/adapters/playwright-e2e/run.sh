@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# adapters/playwright-e2e/run.sh — ADR-078 adapter contract for Playwright e2e runner.
+# adapters/playwright-e2e/run.sh — adapter contract for Playwright e2e runner.
 #
-# Contract (ADR-078 / BOUNDARIES.md):
+# Contract (BOUNDARIES.md):
 #   run.sh --input <file-list> [--config <path>] [--output <path>]
 #          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
 #          [--target-url <url>]
 #
-# Story E73-S1 augments the canonical contract with the optional --target-url
+# This adapter augments the canonical contract with the optional --target-url
 # flag (e2e-specific). When provided, it is exported as PLAYWRIGHT_BASE_URL so
 # that Playwright's `use: { baseURL: process.env.PLAYWRIGHT_BASE_URL }` config
 # pattern picks it up. Omission keeps the project's default config behaviour.
@@ -17,7 +17,6 @@
 # 1 = runner errored, 127 = npx/playwright not found on PATH. The probe
 # interprets exit-code semantics.
 #
-# Refs: ADR-078 §1, FR-RSV2-31, NFR-RSV2-7, story E73-S1.
 
 set -euo pipefail
 LC_ALL=C
@@ -40,7 +39,7 @@ while [ "$#" -gt 0 ]; do
     --target-url) TARGET_URL="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/playwright-e2e/run.sh — ADR-078 contract entry for Playwright e2e runner.
+adapters/playwright-e2e/run.sh — contract entry for Playwright e2e runner.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -83,7 +82,7 @@ results="$(npx "${PW_ARGS[@]}" 2>/tmp/playwright-e2e-stderr-$$)" || rc=$?
 err_raw="$(cat /tmp/playwright-e2e-stderr-$$ 2>/dev/null || true)"
 rm -f /tmp/playwright-e2e-stderr-$$ 2>/dev/null || true
 
-# Emit canonical analysis-results fragment shape per E70-S1 run-contract.md §2.1:
+# Emit canonical analysis-results fragment shape per run-contract.md §2.1:
 # {"name": <adapter>, "status": <passed|errored>, "findings": [...]}.
 # Findings shape conforms to checks[].findings[] in analysis-results.schema.json.
 fragment="$(jq -nc \

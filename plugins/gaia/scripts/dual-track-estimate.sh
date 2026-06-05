@@ -1,24 +1,22 @@
 #!/usr/bin/env bash
-# dual-track-estimate.sh — dual-track estimation: points + agent-wall-clock (E106-S2)
+# dual-track-estimate.sh — dual-track estimation: points + agent-wall-clock
 #
 # Keeps `points` as the RELATIVE complexity/risk signal (unchanged — every
-# existing consumer of points is untouched; AC1) and derives a PARALLEL
-# agent_wall_clock_estimate (~Xh) = E106-S1 measured median minutes/point ×
-# story points. Estimates render in agent-hours/days, NEVER calendar-months
-# (AC3). When no closed-sprint telemetry exists (cold start), the wall-clock
-# estimate renders as "uncalibrated (no closed-sprint telemetry)" rather than a
-# fabricated number (AC4 / NFR-90).
+# existing consumer of points is untouched) and derives a PARALLEL
+# agent_wall_clock_estimate (~Xh) = measured median minutes/point × story
+# points. Estimates render in agent-hours/days, NEVER calendar-months. When no
+# closed-sprint telemetry exists (cold start), the wall-clock estimate renders
+# as "uncalibrated (no closed-sprint telemetry)" rather than a fabricated
+# number.
 #
 # Cold-start detection keys on the telemetry layer's `stories_counted == 0`
 # (equivalently median_minutes_per_point == null), NOT on a 0 minutes/point
 # value — integer division in the telemetry layer can yield 0 for a fast,
-# genuinely-calibrated story (Val W2). A calibrated mpp of 0 is a sub-minute
-# rounding case, rendered as "<1h", not "uncalibrated".
+# genuinely-calibrated story. A calibrated mpp of 0 is a sub-minute rounding
+# case, rendered as "<1h", not "uncalibrated".
 #
 # Reuses throughput-telemetry.sh as the single source of measured throughput —
-# this script does NOT re-derive throughput (ADR-042 SSOT). READ-ONLY.
-#
-# Refs: AC1-AC5, TS1-TS4, ADR-128, ADR-042, NFR-90, FR-549, FR-550
+# this script does NOT re-derive throughput (SSOT). READ-ONLY.
 #
 # Invocation:
 #   dual-track-estimate.sh --points N [--events <jsonl>] [--sprint-yaml <yaml>]
@@ -77,7 +75,7 @@ done
 [ -n "$POINTS" ] || die "--points N is required (try --help)"
 printf '%s\n' "$POINTS" | grep -Eq '^[0-9]+$' || die "--points must be a non-negative integer, got: $POINTS"
 
-# ---------- Pull measured throughput from the SSOT (E106-S1) ----------
+# ---------- Pull measured throughput from the SSOT ----------
 # We invoke throughput-telemetry.sh --json and read median_minutes_per_point +
 # stories_counted. Cold start = stories_counted == 0 (no closed-sprint events).
 MPP="null"
@@ -93,7 +91,7 @@ if [ -n "$EVENTS" ] && [ -r "$EVENTS" ] && [ -x "$TELEMETRY" ]; then
   fi
 fi
 
-# ---------- Decide calibrated vs cold-start (Val W2) ----------
+# ---------- Decide calibrated vs cold-start ----------
 # Cold start strictly when no stories were counted (no telemetry) OR mpp is
 # null. A numeric mpp (including 0) means calibrated.
 CALIBRATED=false
@@ -103,7 +101,7 @@ if [ "$COUNTED" -gt 0 ] 2>/dev/null && [ "$MPP" != "null" ] && [ -n "$MPP" ]; th
   MINUTES=$(( MPP * POINTS ))
 fi
 
-# ---------- Render helper (inline; no public function for NFR-052) ----------
+# ---------- Render helper (inline; no exported public function) ----------
 # Convert minutes -> human agent-time string: <60 -> "<1h" or "Nm"; >=60 ->
 # "~X.Yh"; >=480 (8h agent-day) -> "~X.Yd". NEVER months.
 EST_STR=""

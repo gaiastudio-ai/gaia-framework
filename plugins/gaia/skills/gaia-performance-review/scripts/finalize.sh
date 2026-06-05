@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-performance-review skill finalize (E28-S108, Cluster 14)
+# finalize.sh — gaia-performance-review skill finalize
 #
 # Writes a checkpoint and emits a lifecycle event via the shared foundation
-# scripts. Mechanical copy of the Cluster 7 reference (gaia-fix-story).
+# scripts.
 #
 # Exit codes:
 #   0 — finalize succeeded

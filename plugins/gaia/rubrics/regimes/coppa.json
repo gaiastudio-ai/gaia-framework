@@ -3,11 +3,9 @@
   "skill": "security",
   "name": "coppa",
   "applies_to_skills": ["review-code", "review-security"],
-  "description": "COPPA rules for code paths handling personal information collected from children under 13. Cross-platform (web + mobile) — COPPA is jurisdiction-scoped, not platform-scoped. Layer 2 of the four-layer rubric composition (base + regimes + domain + project) per ADR-079. Opt-in via `compliance.regimes: [coppa]`.",
+  "description": "COPPA rules for code paths handling personal information collected from children under 13. Cross-platform (web + mobile) — COPPA is jurisdiction-scoped, not platform-scoped. Layer 2 of the four-layer rubric composition (base + regimes + domain + project). Opt-in via `compliance.regimes: [coppa]`.",
   "metadata": {
     "title": "COPPA regime rubric",
-    "story": "E74-S6",
-    "adr": "ADR-079",
     "regime_id": "coppa",
     "last_updated": "2026-05-05",
     "source_reference": "FTC COPPA Rule, 16 CFR Part 312 (effective 2013-07-01; amended 2025).",

@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # validate-rubric.sh — Validate a single rubric file against rubric.schema.json
 #
-# Story: E68-S2 — backs the /gaia-validate-rubric skill (AC6).
-# ADR:   ADR-079 (Layered Rubric Loading), ADR-042 (Scripts-over-LLM).
-#
 # Usage:
 #   validate-rubric.sh <rubric.json>
 #
@@ -15,7 +12,7 @@
 #   - On failure: prints one or more violation lines on stderr (each line
 #     names the offending field and the rule it violated) and exits non-zero.
 #
-# YAML support (E70-S5, AC7):
+# YAML support:
 #   Files with a .yaml or .yml extension are accepted. The script converts
 #   YAML -> JSON via `yq` (preferred) or `python3` + PyYAML (fallback)
 #   before delegating to the canonical JSON validation pipeline. Both
@@ -57,7 +54,7 @@ if [ ! -f "$SCHEMA" ]; then
   exit 5
 fi
 
-# --- Stage 0: YAML -> JSON conversion (E70-S5, AC7) -------------------------
+# --- Stage 0: YAML -> JSON conversion ----------------------------------------
 # Files with .yaml / .yml extensions are converted to a tempfile JSON before
 # the canonical pipeline runs. The original $RUBRIC path is preserved for
 # user-facing PASS/FAIL messages — only the schema-validation stages read

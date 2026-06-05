@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# finalize.sh — Cluster 11 gaia-ci-edit skill finalize (E28-S86, fixed E28-S199)
+# finalize.sh — gaia-ci-edit skill finalize
 #
-# Originally a mechanical copy of the Cluster 9 reference finalize.sh
-# (E28-S66 gaia-code-review). E28-S197 triage (F3 / ContractBug) identified
-# the unconditional `validate-gate.sh ci_setup_exists` invocation as
+# The unconditional `validate-gate.sh ci_setup_exists` invocation is
 # inappropriate for ci-edit: the skill only edits an existing setup file,
 # so on a fresh fixture (no prior setup) the gate fails tautologically and
-# masks the real error. E28-S199 replaces the unconditional call with a
+# masks the real error. This script replaces the unconditional call with a
 # conditional guard driven by a runtime marker written by setup.sh.
 #
 # Conditional-guard contract:
@@ -15,15 +13,15 @@
 #   as a marker. finalize.sh inspects the same marker:
 #     - marker absent  → no prior setup existed when the edit started;
 #                       skip the ci_setup_exists post-check entirely
-#                       (fresh-fixture runs exit 0 cleanly — AC5).
+#                       (fresh-fixture runs exit 0 cleanly).
 #     - marker present → a prior setup was observed by setup.sh;
 #                       the gate runs as a regression guard and will exit
-#                       non-zero if the edit body erased the file (AC6).
+#                       non-zero if the edit body erased the file.
 #   finalize.sh removes the marker on every exit path so the next edit
 #   run re-probes fresh — the marker is per-run, not sticky.
 #
 # Responsibilities:
-#   1. Conditional post-edit gate verification (marker-gated — E28-S199)
+#   1. Conditional post-edit gate verification (marker-gated)
 #   2. Write a checkpoint via the shared checkpoint.sh foundation script
 #   3. Emit a lifecycle event via lifecycle-event.sh for the tailing sync agent
 #
@@ -63,23 +61,23 @@ cleanup_marker() {
 }
 trap cleanup_marker EXIT
 
-# ---------- 1. Conditional post-edit gate verification (E28-S199) ----------
+# ---------- 1. Conditional post-edit gate verification ----------
 if [ -f "$HAD_PRIOR_SETUP_MARKER" ]; then
   # setup.sh observed a prior .gaia/artifacts/test-artifacts/ci-setup.md. The gate
   # runs as a regression guard — if the edit erased the setup file, the
-  # gate fails and we exit non-zero (AC6).
+  # gate fails and we exit non-zero.
   if [ -x "$VALIDATE_GATE" ]; then
     if ! "$VALIDATE_GATE" ci_setup_exists 2>&1; then
       die "validate-gate.sh: ci_setup_exists gate failed — CI setup output not found"
     fi
     log "validate-gate.sh: ci_setup_exists gate passed (regression guard — prior setup observed)"
   else
-    die "validate-gate.sh not found at $VALIDATE_GATE — cannot verify CI gate (E28-S15 dependency)"
+    die "validate-gate.sh not found at $VALIDATE_GATE — cannot verify CI gate"
   fi
 else
   # No prior setup was observed by setup.sh (fresh fixture, first run, or
   # nothing to guard against). Skip the gate entirely — a post-check here
-  # would be tautological and would mask real errors (AC5 / E28-S197 F3).
+  # would be tautological and would mask real errors.
   log "no had_prior_setup marker — skipping ci_setup_exists post-check (fresh-fixture path)"
 fi
 

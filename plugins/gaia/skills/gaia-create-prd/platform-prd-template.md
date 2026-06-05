@@ -2,7 +2,7 @@
 template: 'platform-prd'
 version: 1.0.0
 used_by: ['create-prd', 'brownfield']
-# Brownfield frontmatter keys (Test10 F-13). On a greenfield authoring flow these
+# Brownfield frontmatter keys. On a greenfield authoring flow these
 # remain as placeholders; the brownfield orchestrator (Phase 8a) overwrites them.
 project_type: 'platform'
 target_environment: '{e.g., production, staging, dev}'
@@ -18,7 +18,6 @@ focus: '{full-spec | gap-filling}'
 > **Date:** {date}
 > **Author:** {agent_name}
 > **Status:** Draft | In Review | Approved
-> **Closes:** Test10 F-08 — platform-prd-template.md HALT-if-missing referenced by `/gaia-brownfield` Phase 8a.
 
 ## 1. Overview
 
@@ -122,8 +121,8 @@ focus: '{full-spec | gap-filling}'
 
 ## Gap Analysis Summary
 
-> Severity columns include CRITICAL / WARNING / INFO per the canonical 3-tier map
-> (Test10 F-13). Legacy 5-tier (Critical / High / Medium / Low) is preserved as
+> Severity columns include CRITICAL / WARNING / INFO per the canonical 3-tier map.
+> Legacy 5-tier (Critical / High / Medium / Low) is preserved as
 > user-visible buckets.
 
 | Category | Critical | High | Medium | Low | Info | Total |

@@ -67,10 +67,11 @@ teardown() {
 }
 
 @test "AC2: validate-gate.sh already-canonical comments are unchanged (E96-S1 / ADR-111)" {
-  # AC2 scope exclusion: the canonical "# E96-S1 / ADR-111: prefer .gaia/config/..."
-  # comments above each `if [ -f .gaia/config/...` block MUST remain present.
+  # AC2 scope exclusion: the "prefer .gaia/config/ over legacy" comments above
+  # each `if [ -f .gaia/config/...` block MUST remain present (3 occurrences:
+  # read_config_phase, config_section_present, and the cross-reference block).
   # Content-based assertion (resilient to line-number shifts from the L410 edit).
-  run grep -cE '^[[:space:]]*# E96-S1 / ADR-111: prefer ' "$PLUGIN_SCRIPTS/validate-gate.sh"
+  run grep -c "Prefer \`.gaia/config/\` over legacy" "$PLUGIN_SCRIPTS/validate-gate.sh"
   [ "$output" -eq 3 ]
 }
 

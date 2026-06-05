@@ -1,21 +1,14 @@
 #!/usr/bin/env bash
-# validate-gate.sh — GAIA foundation script (E28-S15)
+# validate-gate.sh — GAIA foundation script
 #
 # Evaluates quality-gate preconditions deterministically so workflows can
 # enforce `quality_gates.pre_start` / `quality_gates.post_complete` blocks
 # without relying on LLM interpretation. Replaces the model's ad-hoc
 # "check if test-plan.md exists" prompts with a shell-callable contract.
 #
-# Refs: FR-325 (foundation scripts unlock token reduction),
-#       FR-328 (engine deletion prerequisite),
-#       NFR-048 (40–55% token reduction),
-#       ADR-042 (foundation scripts catalog, §10.26.3),
-#       ADR-048 (engine deletion as program-closing action).
-# Brief: P2-S7 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
-#
 # Consumers: every workflow declaring quality_gates.pre_start /
 # quality_gates.post_complete, the testing-integration gates enumerated in
-# CLAUDE.md, and the review-gate orchestrator (E28-S14).
+# CLAUDE.md, and the review-gate orchestrator.
 #
 # Usage:
 #   validate-gate.sh <gate_type> [--story <key>] [--file <path>...]
@@ -25,13 +18,13 @@
 #
 # Supported gate types:
 #   file_exists            — checks every --file <path> argument
-#   test_plan_exists       — ${TEST_ARTIFACTS}/test-plan.md (or strategy/test-plan.md per ADR-072, or test-plan/index.md sharded layout per ADR-070)
-#   traceability_exists    — ${TEST_ARTIFACTS}/traceability-matrix.md (or strategy/traceability-matrix.md per ADR-072, or traceability-matrix/index.md sharded layout per ADR-070)
+#   test_plan_exists       — ${TEST_ARTIFACTS}/test-plan.md (or strategy/test-plan.md, or test-plan/index.md sharded layout)
+#   traceability_exists    — ${TEST_ARTIFACTS}/traceability-matrix.md (or strategy/traceability-matrix.md, or traceability-matrix/index.md sharded layout)
 #   ci_setup_exists        — ${TEST_ARTIFACTS}/ci-setup.md
 #   atdd_exists            — ${TEST_ARTIFACTS}/atdd-<story>.md (requires --story)
-#   readiness_report_exists — ${PLANNING_ARTIFACTS}/readiness-report.md (or readiness-report/index.md sharded layout per ADR-070 / ADR-072)
-#   epics_and_stories_exists — ${PLANNING_ARTIFACTS}/epics-and-stories.md (or epics-and-stories/index.md sharded layout per ADR-070 / ADR-072)
-#   prd_exists              — ${PLANNING_ARTIFACTS}/prd.md (or prd/index.md sharded layout per ADR-070 / ADR-072)
+#   readiness_report_exists — ${PLANNING_ARTIFACTS}/readiness-report.md (or readiness-report/index.md sharded layout)
+#   epics_and_stories_exists — ${PLANNING_ARTIFACTS}/epics-and-stories.md (or epics-and-stories/index.md sharded layout)
+#   prd_exists              — ${PLANNING_ARTIFACTS}/prd.md (or prd/index.md sharded layout)
 #
 # Error format (stable for log parsers / tailing sync agent):
 #   validate-gate: <gate_type> failed — expected: <abs_path>
@@ -46,36 +39,34 @@
 #     intentionally append-only so new gates can be added without breaking
 #     the CLI contract.
 #   - --multi re-enters evaluate_gate() in the same process (no subshell,
-#     no re-exec) to keep a 6-gate chain comfortably under NFR-048's
+#     no re-exec) to keep a 6-gate chain comfortably within the
 #     foundation-script latency budget (~50ms wall clock).
 #   - resolve-config.sh is a soft dependency — this script degrades via
 #     ${VAR:-default} fallbacks so the two scripts can land in any order.
-#   - Dual-layout invariant (E53-S233): any gate whose pattern resolves to
+#   - Dual-layout invariant: any gate whose pattern resolves to
 #     `{dir}/{name}.md` ALSO accepts `{dir}/{name}/index.md`. The flat
 #     layout is checked first; the sharded layout is the additive fallback.
-#     Mirror of F-S225-PATH-RESOLVER (#400) and F-S231-DEDUP (#401) — same
-#     systemic class, gate-validation layer. Implemented generically via
-#     shell parameter expansion (${P%.md}/index.md), NOT per-gate `case`.
+#     Implemented generically via shell parameter expansion
+#     (${P%.md}/index.md), NOT per-gate `case`.
 
 set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
 # ---------- Fallback config resolution (parallel dev with resolve-config.sh) ----------
-# E96-S7 AC3: smart-fallback — env-var > .gaia/artifacts/<type>-artifacts/ (when
+# Smart-fallback — env-var > .gaia/artifacts/<type>-artifacts/ (when
 # present on disk, post-migration canonical) > legacy docs/<type>-artifacts/
 # (in-deprecation-window consumers + bats fixtures). Env-var overrides win.
 #
-# AF-2026-06-01-7 / issue #1064 — `PROJECT_ROOT` resolution precedence is
-# now (1) the env-var if set, (2) `resolve-config.sh project_root` if the
-# helper is reachable and returns a non-empty value, (3) a walk-up from
-# $PWD looking for the canonical `.gaia/config/project-config.yaml`
-# anchor, and ONLY as a last resort (4) $PWD. The pre-fix behaviour fell
-# directly from (1) to (4), which produced false "missing artifact"
-# HALTs when a gate was invoked from a working directory other than the
-# project root with PROJECT_ROOT unset (the legacy `docs/<type>` fallback
-# kicked in even though the canonical `.gaia/artifacts/<type>` existed at
-# the real project root).
+# `PROJECT_ROOT` resolution precedence is now (1) the env-var if set,
+# (2) `resolve-config.sh project_root` if the helper is reachable and
+# returns a non-empty value, (3) a walk-up from $PWD looking for the
+# canonical `.gaia/config/project-config.yaml` anchor, and ONLY as a last
+# resort (4) $PWD. The pre-fix behaviour fell directly from (1) to (4),
+# which produced false "missing artifact" HALTs when a gate was invoked
+# from a working directory other than the project root with PROJECT_ROOT
+# unset (the legacy `docs/<type>` fallback kicked in even though the
+# canonical `.gaia/artifacts/<type>` existed at the real project root).
 _vg_resolve_project_root() {
   # (1) env-var wins, unchanged.
   if [ -n "${PROJECT_ROOT:-}" ]; then
@@ -136,7 +127,7 @@ fi
 # Supported gate list — keep in sync with gate_path() case block below.
 SUPPORTED_GATES="file_exists test_plan_exists traceability_exists ci_setup_exists atdd_exists readiness_report_exists epics_and_stories_exists prd_exists config_phase_gate"
 
-# Supported artifact types for config_phase_gate (E85-S4 — keep in sync with
+# Supported artifact types for config_phase_gate (keep in sync with
 # required_phase_for_artifact() / remediation_for_artifact() case blocks below).
 SUPPORTED_ARTIFACT_TYPES="prd architecture infra-design test-plan epics"
 
@@ -163,7 +154,7 @@ Usage:
 Flags:
   --story <key>          Story key (required by atdd_exists), e.g. E1-S1
   --file <path>          File path for file_exists (repeatable)
-  --artifact-type <type> Artifact type for config_phase_gate (E85-S4):
+  --artifact-type <type> Artifact type for config_phase_gate:
                          prd | architecture | infra-design | test-plan | epics
   --multi <list>         Comma-separated list of gate types to evaluate in order
   --list                 Print every supported gate type and its path pattern
@@ -233,22 +224,21 @@ list_gates() {
     rc=$?
     set -e
     if [ $rc -eq 0 ]; then
-      # Dual-layout invariant (E53-S233): any gate whose pattern resolves to
+      # Dual-layout invariant: any gate whose pattern resolves to
       # `{dir}/{name}.md` ALSO accepts `{dir}/{name}/index.md`. Render both
       # paths in --list output. The atdd_exists pattern uses a `{story}`
       # template (not a fixed path) — keep it single-layout.
       #
-      # E53-S248: traceability_exists also accepts the post-E53 / ADR-072
-      # `strategy/traceability-matrix.md` placement; render the third path
-      # so the documented contract matches the implementation.
+      # traceability_exists also accepts the `strategy/traceability-matrix.md`
+      # placement; render the third path so the documented contract matches
+      # the implementation.
       #
-      # AI-2026-05-16-9: test_plan_exists also accepts the post-E53 / ADR-072
-      # `strategy/test-plan.md` placement, mirroring the traceability_exists
-      # treatment from E53-S248. The canonical test-plan in projects with
-      # an E53-style docs reorganization lives under strategy/.
+      # test_plan_exists also accepts the `strategy/test-plan.md` placement,
+      # mirroring the traceability_exists treatment. The canonical test-plan
+      # in projects with a docs reorganization lives under strategy/.
       case "$g" in
         test_plan_exists)
-          # AF-2026-05-22-5: also accept strategy/test-strategy.md (renamed by /gaia-test-strategy).
+          # Also accept strategy/test-strategy.md (renamed by /gaia-test-strategy).
           alt="${pattern%.md}/index.md"
           strategy_alt="${pattern%/*}/strategy/${pattern##*/}"
           strategy_named="${pattern%/*}/strategy/test-strategy.md"
@@ -281,11 +271,9 @@ list_gates() {
 # Check that a file exists and is non-empty. Returns 0 on pass, 1 on fail.
 # Args: gate_name file_path
 #
-# Dual-layout invariant (E53-S233): if `filepath` ends in `.md` and the flat
-# path does not exist, the resolver also accepts the sharded sibling
-# `${filepath%.md}/index.md` (per ADR-070 / ADR-072). Mirror of
-# F-S225-PATH-RESOLVER (#400) and F-S231-DEDUP (#401) — same systemic class,
-# gate-validation layer.
+# Dual-layout invariant: if `filepath` ends in `.md` and the flat path does
+# not exist, the resolver also accepts the sharded sibling
+# `${filepath%.md}/index.md`.
 #
 # Resolution order:
 #   1. Flat path `{dir}/{name}.md` (existence + non-empty)
@@ -293,7 +281,7 @@ list_gates() {
 #   3. Gate-specific legacy directory-name aliases (e.g. for
 #      `epics-and-stories.md` also accept the shortened sharded form
 #      `epics/index.md` — used by brownfield projects whose shard root was
-#      named `epics/` before ADR-070 fixed the canonical name to
+#      named `epics/` before the canonical name was fixed to
 #      `epics-and-stories/`).
 #
 # Failure modes:
@@ -307,7 +295,7 @@ list_gates() {
 # Any future `<artifact>_exists` gate whose pattern matches `{dir}/{name}.md`
 # inherits dual-layout acceptance with no further code change. Step 3
 # handles a small, documented set of legacy directory-name aliases so
-# brownfield projects with pre-ADR-070 shard roots keep working without
+# brownfield projects with pre-canonical shard roots keep working without
 # requiring a destructive directory rename.
 check_file_nonempty() {
   local gate="$1" filepath="$2" abs alt dir
@@ -335,9 +323,9 @@ check_file_nonempty() {
       ;;
   esac
   # Step 3: gate-specific legacy directory-name aliases. Brownfield projects
-  # migrated before ADR-070 fixed the canonical sharded directory name may
-  # ship `epics/index.md` instead of `epics-and-stories/index.md`. Accept
-  # that legacy form so the gate does not falsely halt the cascade.
+  # migrated before the canonical sharded directory name was fixed may ship
+  # `epics/index.md` instead of `epics-and-stories/index.md`. Accept that
+  # legacy form so the gate does not falsely halt the cascade.
   case "$filepath" in
     */epics-and-stories.md)
       dir="${filepath%/*}"
@@ -352,10 +340,10 @@ check_file_nonempty() {
       fi
       ;;
     */traceability-matrix.md)
-      # E105-S2 / ADR-127 §7.2: the NEW canonical home for docs-about-testing is
-      # planning-artifacts/ (traceability-matrix moved out of test-artifacts/).
-      # Highest-precedence read-side fallback; the legacy strategy/ + flat arms
-      # below remain for the migration read-compat window (ADR-070 three-tier).
+      # The canonical home for traceability-matrix is planning-artifacts/
+      # (moved out of test-artifacts/). Highest-precedence read-side fallback;
+      # the legacy strategy/ + flat arms below remain for the migration
+      # read-compat window.
       if [ -n "${PLANNING_ARTIFACTS:-}" ] && [ -f "${PLANNING_ARTIFACTS}/traceability-matrix.md" ]; then
         if [ ! -s "${PLANNING_ARTIFACTS}/traceability-matrix.md" ]; then
           abs=$(abs_path "${PLANNING_ARTIFACTS}/traceability-matrix.md")
@@ -364,13 +352,13 @@ check_file_nonempty() {
         fi
         return 0
       fi
-      # E53-S248: post-E53 / ADR-072 placement under strategy/. The
-      # canonical artifact ships at `${TEST_ARTIFACTS}/strategy/traceability-matrix.md`
-      # since the E53 docs reorganization. Accept it here as a third
-      # resolution arm so downstream consumers (readiness-check,
-      # dev-story planning gate) stop reporting false-negative BLOCKED on
-      # the live layout. Sibling pattern to the epics-and-stories alias
-      # above — same shape, gate-specific.
+      # Post-reorganization placement under strategy/. The canonical artifact
+      # ships at `${TEST_ARTIFACTS}/strategy/traceability-matrix.md` in
+      # projects with a docs reorganization. Accept it here as a third
+      # resolution arm so downstream consumers (readiness-check, dev-story
+      # planning gate) stop reporting false-negative BLOCKED on the live
+      # layout. Sibling pattern to the epics-and-stories alias above —
+      # same shape, gate-specific.
       dir="${filepath%/*}"
       alt="$dir/strategy/traceability-matrix.md"
       if [ -f "$alt" ]; then
@@ -383,11 +371,11 @@ check_file_nonempty() {
       fi
       ;;
     */test-plan.md)
-      # E105-S2 / ADR-127 §7.2: the NEW canonical home for docs-about-testing is
-      # planning-artifacts/ (test-plan moved out of test-artifacts/). Highest-
-      # precedence read-side fallback; the legacy strategy/ + test-strategy.md +
-      # flat arms below remain for the migration read-compat window. Also accept
-      # the renamed test-strategy.md at the new home.
+      # The canonical home for test-plan is planning-artifacts/ (moved out of
+      # test-artifacts/). Highest-precedence read-side fallback; the legacy
+      # strategy/ + test-strategy.md + flat arms below remain for the migration
+      # read-compat window. Also accept the renamed test-strategy.md at the
+      # new home.
       if [ -n "${PLANNING_ARTIFACTS:-}" ]; then
         for _pa in "${PLANNING_ARTIFACTS}/test-plan.md" "${PLANNING_ARTIFACTS}/test-strategy.md"; do
           if [ -f "$_pa" ]; then
@@ -400,11 +388,11 @@ check_file_nonempty() {
           fi
         done
       fi
-      # AI-2026-05-16-9: post-E53 / ADR-072 placement under strategy/. The
-      # canonical test plan ships at `${TEST_ARTIFACTS}/strategy/test-plan.md`
-      # since the E53 docs reorganization, mirroring traceability-matrix.md
-      # above. Without this resolution arm, /gaia-add-feature setup.sh HALTs
-      # every enhancement/feature classification with "test-plan.md is missing"
+      # Post-reorganization placement under strategy/. The canonical test plan
+      # ships at `${TEST_ARTIFACTS}/strategy/test-plan.md` in projects with a
+      # docs reorganization, mirroring traceability-matrix.md above. Without
+      # this resolution arm, /gaia-add-feature setup.sh HALTs every
+      # enhancement/feature classification with "test-plan.md is missing"
       # even when the strategy/ canonical exists.
       dir="${filepath%/*}"
       alt="$dir/strategy/test-plan.md"
@@ -416,11 +404,11 @@ check_file_nonempty() {
         fi
         return 0
       fi
-      # AF-2026-05-22-5: /gaia-test-strategy --plan renamed the artifact from
-      # test-plan.md to test-strategy.md (and ships under strategy/). Accept
-      # both filenames so the documented happy path /gaia-test-strategy --plan
-      # → /gaia-create-epics succeeds without a workaround. Sibling resolution
-      # arms above (strategy/test-plan.md, test-plan/index.md) remain unchanged.
+      # /gaia-test-strategy --plan renamed the artifact from test-plan.md to
+      # test-strategy.md (and ships under strategy/). Accept both filenames so
+      # the documented happy path /gaia-test-strategy --plan → /gaia-create-epics
+      # succeeds without a workaround. Sibling resolution arms above
+      # (strategy/test-plan.md, test-plan/index.md) remain unchanged.
       strategy_named="$dir/strategy/test-strategy.md"
       if [ -f "$strategy_named" ]; then
         if [ ! -s "$strategy_named" ]; then
@@ -433,8 +421,8 @@ check_file_nonempty() {
       ;;
   esac
   # No layout exists — report the flat path (log-parser contract).
-  # AF-2026-05-22-5: when the test_plan gate fails, also list the alternate
-  # canonical paths so users aren't pointed at the legacy/flat location only.
+  # When the test_plan gate fails, also list the alternate canonical paths
+  # so users aren't pointed at the legacy/flat location only.
   abs=$(abs_path "$filepath")
   case "$gate" in
     test_plan_exists)
@@ -442,9 +430,8 @@ check_file_nonempty() {
       warn "$gate failed — expected one of: $abs OR $(abs_path "$dir/strategy/test-plan.md") OR $(abs_path "$dir/strategy/test-strategy.md") OR $(abs_path "${filepath%.md}/index.md") OR $(abs_path "${PLANNING_ARTIFACTS:-./.gaia/artifacts/planning-artifacts}/test-plan.md") OR $(abs_path "${PLANNING_ARTIFACTS:-./.gaia/artifacts/planning-artifacts}/test-strategy.md")"
       ;;
     traceability_exists)
-      # AF-2026-05-28-1 / Test07 D-6: the gate accepts FOUR locations (canonical
-      # planning-artifacts/ post-E105-S2 / ADR-127 §7.2 PLUS three legacy
-      # test-artifacts/ placements per ADR-070 / ADR-072). The prior error
+      # The gate accepts FOUR locations: the canonical planning-artifacts/
+      # placement plus three legacy test-artifacts/ placements. The prior error
       # message named ONLY the flat legacy test-artifacts path, misleading
       # users into thinking the producer wrote to the wrong place when the
       # actual issue was a missing file at any accepted location.
@@ -458,11 +445,11 @@ check_file_nonempty() {
   return 1
 }
 
-# ---------- config_phase_gate helpers (E85-S4) ----------
+# ---------- config_phase_gate helpers ----------
 #
 # Phase ordinal: minimal=0, partial=1, full=2. Bash 3.2 portable case block —
 # no `declare -A`. Returns the integer on stdout or exit 1 for invalid input
-# (caller treats this as a separate failure mode per ADR-101 §6).
+# (caller treats this as a separate failure mode).
 phase_ordinal() {
   case "$1" in
     minimal) printf '0' ;;
@@ -483,7 +470,7 @@ required_phase_for_artifact() {
 }
 
 # Sections that an artifact type requires (used in the failure message and the
-# SR-44 content cross-reference). Space-separated on stdout for predictable
+# content cross-reference). Space-separated on stdout for predictable
 # tokenisation.
 required_sections_for_artifact() {
   case "$1" in
@@ -506,10 +493,10 @@ remediation_for_artifact() {
   esac
 }
 
-# Sections that must be present for a given phase (SR-44 content cross-reference).
+# Sections that must be present for a given phase (content cross-reference).
 # partial -> stacks + platforms; full -> stacks + platforms + environments + ci_cd.
-# minimal has no SR-44 content requirements beyond the base project_name /
-# project_kind (those are validated by the schema layer in E85-S2, not here).
+# minimal has no content requirements beyond the base project_name /
+# project_kind (those are validated by the schema layer).
 sections_for_phase() {
   case "$1" in
     minimal) printf '' ;;
@@ -520,14 +507,14 @@ sections_for_phase() {
 }
 
 # Read config_phase from ${PROJECT_ROOT}/.gaia/config/project-config.yaml
-# (canonical per ADR-111; legacy ${PROJECT_ROOT}/config/project-config.yaml
+# (canonical location; legacy ${PROJECT_ROOT}/config/project-config.yaml
 # retained as fallback on pre-migration installs — see the `if [ -f .gaia/...`
-# / `else cfg=...` branches below at lines 415-420, 444-449, 543-548).
-# Absence-means-full per NFR-062 / ADR-097: missing file OR missing field =>
-# "full". yq is a soft dependency — if absent, treat as "full".
+# / `else cfg=...` branches below).
+# Absence-means-full: missing file OR missing field => "full".
+# yq is a soft dependency — if absent, treat as "full".
 # Emits the raw value on stdout (caller validates the enum).
 read_config_phase() {
-  # E96-S1 / ADR-111: prefer `.gaia/config/` over legacy `config/` location.
+  # Prefer `.gaia/config/` over legacy `config/` location.
   local cfg
   if [ -f "${PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
     cfg="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
@@ -553,10 +540,10 @@ read_config_phase() {
 
 # Check whether a top-level section in project-config.yaml is "present and
 # non-empty". Returns 0 = present, 1 = missing/empty/yq-unavailable.
-# Used by SR-44 content cross-reference (AC7).
+# Used by the content cross-reference check.
 config_section_present() {
   local section="$1"
-  # E96-S1 / ADR-111: prefer `.gaia/config/` over legacy `config/` location.
+  # Prefer `.gaia/config/` over legacy `config/` location.
   local cfg
   if [ -f "${PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
     cfg="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
@@ -611,7 +598,7 @@ evaluate_config_phase_gate() {
     return 1
   fi
 
-  # AC8 — unknown artifact type rejection.
+  # Unknown artifact type rejection.
   local required
   set +e
   required=$(required_phase_for_artifact "$artifact")
@@ -622,11 +609,11 @@ evaluate_config_phase_gate() {
     return 1
   fi
 
-  # AC4 — read current phase (absence-means-full).
+  # Read current phase (absence-means-full).
   local current
   current=$(read_config_phase)
 
-  # AC6 — invalid enum rejection (defense-in-depth, ADR-101 §6).
+  # Invalid enum rejection (defense-in-depth).
   local cur_ord req_ord
   set +e
   cur_ord=$(phase_ordinal "$current")
@@ -638,7 +625,7 @@ evaluate_config_phase_gate() {
   fi
   req_ord=$(phase_ordinal "$required")
 
-  # AC3 — phase ordinal comparison.
+  # Phase ordinal comparison.
   if [ "$cur_ord" -lt "$req_ord" ]; then
     local sections command
     sections=$(required_sections_for_artifact "$artifact")
@@ -647,15 +634,15 @@ evaluate_config_phase_gate() {
     return 1
   fi
 
-  # AC7 — SR-44 phase-vs-content cross-reference. Only verify the sections
-  # claimed by the CURRENT phase (not the artifact's required phase) — if the
-  # config claims partial, partial-level sections must exist; if it claims full,
-  # full-level sections must exist. minimal has no SR-44 content claims.
+  # Phase-vs-content cross-reference. Only verify the sections claimed by the
+  # CURRENT phase (not the artifact's required phase) — if the config claims
+  # partial, partial-level sections must exist; if it claims full, full-level
+  # sections must exist. minimal has no content claims.
   #
-  # Skip SR-44 entirely when the config file is absent: NFR-062 / ADR-097
+  # Skip the cross-reference entirely when the config file is absent:
   # "absence-means-full" is a graceful-degradation default, not a content
   # claim — there is nothing to cross-reference, so the gate passes.
-  # E96-S1 / ADR-111: prefer `.gaia/config/` over legacy `config/` location.
+  # Prefer `.gaia/config/` over legacy `config/` location.
   local cfg
   if [ -f "${PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
     cfg="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
@@ -689,7 +676,7 @@ evaluate_gate() {
   case "$gate" in
     file_exists)
       if [ "${#FILE_ARGS[@]}" -eq 0 ]; then
-        # Zero --file args is a passing no-op (Cluster 4 setup.sh convention:
+        # Zero --file args is a passing no-op (setup.sh convention:
         # brainstorm-project has no prereq artifacts and passes an empty set).
         return 0
       fi

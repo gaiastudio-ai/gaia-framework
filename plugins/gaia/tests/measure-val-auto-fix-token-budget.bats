@@ -20,7 +20,7 @@ teardown() { common_teardown; }
   run "$SCRIPT" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage"* ]]
-  [[ "$output" == *"NFR-VCP-2"* ]]
+  [[ "$output" == *"token-budget"* || "$output" == *"token budget"* || "$output" == *"baseline"* ]]
 }
 
 @test "harness: missing required inputs exits non-zero with actionable error" {

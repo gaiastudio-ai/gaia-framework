@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# baseline-check.sh — gaia-test-perf baseline regression detection (E73-S2, AC5).
+# baseline-check.sh — gaia-test-perf baseline regression detection.
 #
 # Compares the current scenario p95 latency against the stored baseline at
 # {baseline-dir}/{scenario}.json. If the degradation exceeds --threshold

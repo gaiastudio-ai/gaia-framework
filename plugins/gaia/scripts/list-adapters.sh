@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # list-adapters.sh — backs the /gaia-list-tools query skill.
 #
-# Story: E70-S5  (FR-RSV2-21, FR-RSV2-10, NFR-RSV2-4)
-# Decisions: ADR-078 (Tool Adapter Framework), ADR-042 (Scripts-over-LLM).
-#
 # Purpose
 #   Enumerate every tool adapter discoverable under the built-in and
 #   project-local adapter roots, group rows by `category` (the canonical
@@ -46,9 +43,8 @@ BUILTIN_ROOT="${BUILTIN_ADAPTERS_DIR:-$PLUGIN_DIR/scripts/adapters}"
 # Default custom root: project-root is two levels above the plugin dir
 # (gaia-framework/plugins/gaia → gaia-framework). For native installs this resolves
 # correctly; consumers override via CUSTOM_ADAPTERS_DIR when needed.
-# E96-S3 / ADR-111 (supersedes ADR-020): prefer .gaia/custom/adapters/ over the
-# legacy custom/adapters/ when both exist. Legacy fallback retained during the
-# 1-sprint transition window.
+# Prefer .gaia/custom/adapters/ over the legacy custom/adapters/ when both
+# exist. Legacy fallback retained during the transition window.
 _PROJECT_ROOT_HERE="$(cd "$PLUGIN_DIR/../.." 2>/dev/null && pwd)"
 if [ -d "$_PROJECT_ROOT_HERE/.gaia/custom/adapters" ]; then
   DEFAULT_CUSTOM_ROOT="$_PROJECT_ROOT_HERE/.gaia/custom/adapters"

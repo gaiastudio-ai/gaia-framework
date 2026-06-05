@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 7 validate-story skill setup (E28-S54)
+# setup.sh — validate-story skill setup
 #
-# Mechanical extension of the Cluster 7 reference implementation authored
-# under E28-S52 (gaia-create-story/scripts/setup.sh). Adds validate-story-specific
+# Mechanical extension of the reference implementation authored for
+# gaia-create-story/scripts/setup.sh. Adds validate-story-specific
 # prereq gates:
 #   - story file must exist for the given story key
 #
-# Responsibilities (per brief Cluster 7):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (story file existence)
 #   3. Load the checkpoint state for this workflow

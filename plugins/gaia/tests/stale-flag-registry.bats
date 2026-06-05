@@ -63,7 +63,7 @@ run_check() {
   run_check
   [ "$status" -ne 0 ]
   [[ "$output" == *"CRITICAL: Unregistered stale-flag marker: .gaia/memory/.bogus-stale"* ]]
-  [[ "$output" == *"Register in ADR-102 or remove"* ]]
+  [[ "$output" == *"Register in the stale-flag registry or remove"* ]]
 }
 
 # ===== TS-6 — No markers → exit 0 =====================================
@@ -134,5 +134,5 @@ MD
   # Per Val plan-gate WARNING W1, the -maxdepth 1 scoping (ADR-102 clause 3)
   # must be documented inline so future maintainers don't widen the scope
   # accidentally.
-  grep -qE "maxdepth 1.*ADR-102" "$SCRIPT"
+  grep -qE "maxdepth 1.*marker contract clause 3" "$SCRIPT"
 }

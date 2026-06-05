@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# detect-ux-scope.sh — deterministic UX scope detection for /gaia-create-story (E54-S5)
+# detect-ux-scope.sh — deterministic UX scope detection for /gaia-create-story
 #
-# Hardens the four-rule UX detection from E54-S2 by:
+# Hardens the four-rule UX detection by:
 #   - extracting the rules into a script (so tests can validate behavior, not just
 #     SKILL.md content shape);
 #   - using word-boundary regex semantics on UI_TERMS to prevent substring matches
@@ -31,8 +31,6 @@
 #   rule2  UI_TERMS word-boundary match in body, with exclusion suppression
 #   rule3  Epic has UX classification in epics-and-stories.md
 #   rule4  ux-design.md exists AND mentions the story's epic key
-#
-# Traces to: E54-S5 AC1-AC6, TC-CSE-19..22, E54-S2 (parent rule semantics).
 
 set -euo pipefail
 
@@ -172,7 +170,7 @@ if printf '%s\n' "$sanitized_body" | grep -qiE "\\b(${ui_pipe})\\b"; then
 fi
 
 # ---------- Rule #3: epic UX classification ----------
-# E96-S7 partial-4b: smart-fallback for PLANNING_ARTIFACTS
+# Smart-fallback for PLANNING_ARTIFACTS
 if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
   if [ -d ".gaia/artifacts/planning-artifacts" ]; then
     PLANNING_ARTIFACTS=".gaia/artifacts/planning-artifacts"

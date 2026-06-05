@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-orchestration-warning-wired.sh — E84-S6 / ADR-093 / FR-446 static check.
+# check-orchestration-warning-wired.sh — static check for orchestration-warning wiring.
 #
 # Verifies that every SKILL.md under plugins/gaia/skills/*/SKILL.md whose
 # frontmatter declares orchestration_class ∈ {heavy-procedural, conversational}
@@ -10,8 +10,8 @@
 #
 # Out-of-scope classes (light-procedural, reviewer) are silently ignored —
 # no warnings, no findings, regardless of whether they invoke either helper.
-# Reviewers in particular are clean-room one-shot forks per NFR-060; the
-# warning is not applicable there.
+# Reviewers in particular are clean-room one-shot forks; the warning is not
+# applicable there.
 #
 # Output: one finding per line to stdout, prefixed with severity.
 #   CRITICAL: <file>: orchestration_class=<cls> missing invocation: <script>.sh
@@ -23,8 +23,8 @@
 #   2 — usage error (bad flag or skills-dir does not exist)
 #
 # Sibling of:
-#   check-orchestration-class.sh   (E84-S2 — Step 9c)
-#   check-fork-stripped.sh         (E84-S3 — Step 9d)
+#   check-orchestration-class.sh
+#   check-fork-stripped.sh
 #
 # POSIX discipline: bash 3.2 compatible (macOS default).
 
@@ -92,7 +92,7 @@ for d in "$skills_dir"/*/; do
 
   # Only heavy-procedural and conversational are in scope. Light-procedural
   # and reviewer are silently skipped — sibling scripts handle their own
-  # invariants (NFR-060 for reviewers).
+  # invariants.
   case "$cls" in
     heavy-procedural|conversational) ;;
     *) continue ;;

@@ -17,22 +17,22 @@ orchestration_class: reviewer
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
-This is the unifying principle of every GAIA review skill (FR-DEJ-1, ADR-075). For `gaia-qa-tests` it means: deterministic tools (test-discovery + AC-to-test coverage analyzer; optional branch-coverage cross-reference) run first and emit a structured `analysis-results.json` artifact. The LLM then performs a QA semantic review **on top of** that artifact — it cannot disregard a 0% AC-coverage finding, it cannot relabel a tool-failure as APPROVE, and it cannot promote a Suggestion-tier finding into a verdict-blocker. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language.
+This is the unifying principle of every GAIA review skill. For `gaia-qa-tests` it means: deterministic tools (test-discovery + AC-to-test coverage analyzer; optional branch-coverage cross-reference) run first and emit a structured `analysis-results.json` artifact. The LLM then performs a QA semantic review **on top of** that artifact — it cannot disregard a 0% AC-coverage finding, it cannot relabel a tool-failure as APPROVE, and it cannot promote a Suggestion-tier finding into a verdict-blocker. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language.
 
-This skill pattern-matches against `gaia-code-review` (E65-S2) as the canonical reference. Per-skill specialization here = (a) the QA toolkit (test-discovery + AC-coverage analyzer) and (b) the QA-aligned severity rubric examples (missing AC coverage, weak assertion, brittle selector, untested error path). Structural plumbing — fork dispatch, cache key, parent-mediated write — is identical to E65-S2.
+This skill pattern-matches against `gaia-code-review` as the canonical reference. Per-skill specialization here = (a) the QA toolkit (test-discovery + AC-coverage analyzer) and (b) the QA-aligned severity rubric examples (missing AC coverage, weak assertion, brittle selector, untested error path). Structural plumbing — fork dispatch, cache key, parent-mediated write — is identical to `gaia-code-review`.
 
-**Fork context semantics (ADR-041, ADR-045, NFR-DEJ-4):** This skill runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). It CANNOT modify files — the tool allowlist enforces no-write isolation. Persistence of the rendered review report is parent-mediated (Option A per ADR-075): the fork returns the rendered report payload to the parent context, and the parent writes the file. `Write` and `Edit` are NEVER added to the fork allowlist.
+**Fork context semantics:** This skill runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). It CANNOT modify files — the tool allowlist enforces no-write isolation. Persistence of the rendered review report is parent-mediated: the fork returns the rendered report payload to the parent context, and the parent writes the file. `Write` and `Edit` are NEVER added to the fork allowlist.
 
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-review-qa [story-key]".
-- The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper (E79-S7 / FR-476) which honors the ADR-111 canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then legacy `docs/implementation-artifacts/{story_key}-*.md` as fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob — that breaks on `.gaia/`-canonical projects (AF-2026-05-21-4 Finding 1).
+- The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper which honors the canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then legacy `docs/implementation-artifacts/{story_key}-*.md` as fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob — that breaks on `.gaia/`-canonical projects.
 - The story MUST be in `review` status. If not, fail with "story must be in review status before QA tests".
 - This skill is READ-ONLY in the fork. Do NOT attempt to call Write or Edit — the allowlist enforces this. Persistence is routed through the parent context.
 - Do NOT write executable test files to the source tree (`tests/`, `spec/`, `__tests__/`, `e2e/`). Document test cases in the QA report only — test-file authoring belongs to `/gaia-test-automate`.
 - The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
 - Mapping to Review Gate canonical vocabulary (inline, no separate script): APPROVE → PASSED; REQUEST_CHANGES → FAILED; BLOCKED → FAILED.
-- Determinism settings: `temperature: 0`, `model: claude-opus-4-7` (per ADR-074), `prompt_hash` recorded in the report header. Re-running with identical `analysis-results.json` MUST yield findings that match by category and severity (NFR-DEJ-2); textual variation is allowed.
+- Determinism settings: `temperature: 0`, `model: claude-opus-4-7`, `prompt_hash` recorded in the report header. Re-running with identical `analysis-results.json` MUST yield findings that match by category and severity; textual variation is allowed.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
 
 ## Determinism Settings
@@ -43,11 +43,11 @@ model: claude-opus-4-7        # per ADR-074, frontmatter-pinned at fork dispatch
 prompt_hash: sha256:<hex>     # recorded in report header at Phase 6
 ```
 
-`prompt_hash` is the sha256 of (system prompt || `analysis-results.json` content). Two runs against unchanged inputs MUST produce findings that match by `{category, severity}` (NFR-DEJ-2). Textual message variation is allowed; category+severity divergence is an escalation signal — investigate model pin, temperature, or prompt-hash mismatch.
+`prompt_hash` is the sha256 of (system prompt || `analysis-results.json` content). Two runs against unchanged inputs MUST produce findings that match by `{category, severity}`. Textual message variation is allowed; category+severity divergence is an escalation signal — investigate model pin, temperature, or prompt-hash mismatch.
 
 ## Stack Toolkit Table
 
-The toolkit invoked by Phase 3A is selected by the canonical stack name emitted by `load-stack-persona.sh`. Stack-key vocabulary is canonical across this skill and the script — they MUST match (EC-8). The AC-coverage analyzer is stack-agnostic; only the test-discovery globs vary per stack:
+The toolkit invoked by Phase 3A is selected by the canonical stack name emitted by `load-stack-persona.sh`. Stack-key vocabulary is canonical across this skill and the script — they MUST match. The AC-coverage analyzer is stack-agnostic; only the test-discovery globs vary per stack:
 
 | Stack key (canonical) | Test-discovery globs                                                                 | Optional branch-coverage tool         |
 |-----------------------|---------------------------------------------------------------------------------------|---------------------------------------|
@@ -59,17 +59,17 @@ The toolkit invoked by Phase 3A is selected by the canonical stack name emitted 
 | `mobile-dev`          | iOS `**/*Tests.swift`; Android `src/test/**/*Test.kt` + `src/androidTest/**/*Test.kt` | `xccov` / `jacoco` (optional)         |
 | `angular-dev`         | `**/*.{spec,test}.{ts,js}` (jest convention)                                          | `jest --coverage` (optional)          |
 
-Phase 3A scope per FR-DEJ-3 is **strict**: test-discovery + AC-to-test coverage analysis (+ optional branch-coverage cross-reference for untested-error-path findings). Phase 3A does NOT invoke linters, formatters, type checkers, or build verification — those belong to `gaia-code-review`. Phase 3A does NOT invoke Semgrep, secret scanners, or dep audits — those belong to `gaia-security-review`.
+Phase 3A scope is **strict**: test-discovery + AC-to-test coverage analysis (+ optional branch-coverage cross-reference for untested-error-path findings). Phase 3A does NOT invoke linters, formatters, type checkers, or build verification — those belong to `gaia-code-review`. Phase 3A does NOT invoke Semgrep, secret scanners, or dep audits — those belong to `gaia-security-review`.
 
-Mismatched stack name (vocabulary drift between `load-stack-persona.sh` output and the table key) → silent skip on test-discovery per FR-DEJ-4 case 3 with `skip_reason` populated.
+Mismatched stack name (vocabulary drift between `load-stack-persona.sh` output and the table key) → silent skip on test-discovery with `skip_reason` populated.
 
 ## Severity Rubric
 
 > Severity rubric format defined in shared skill `gaia-code-review-standards`. Per-skill examples below conform to this format.
 
-The LLM Phase 3B review applies the rubric below. Findings are organized by QA category. Coverage targets the four highest-frequency categories: **missing AC coverage**, **weak assertion**, **brittle selector**, **untested error path**. Other QA categories (over-coverage, FR-traceability gaps, malformed AC text) seed Suggestion-tier examples below.
+The LLM Phase 3B review applies the rubric below. Findings are organized by QA category. Coverage targets the four highest-frequency categories: **missing AC coverage**, **weak assertion**, **brittle selector**, **untested error path**. Other QA categories (over-coverage, requirement-traceability gaps, malformed AC text) seed Suggestion-tier examples below.
 
-The category+severity sets MUST match across two runs of identical inputs (NFR-DEJ-2 determinism contract); textual message variation is allowed. Category+severity divergence escalates as a model-pin or temperature regression.
+The category+severity sets MUST match across two runs of identical inputs (determinism contract); textual message variation is allowed. Category+severity divergence escalates as a model-pin or temperature regression.
 
 ### Critical
 
@@ -98,7 +98,7 @@ Examples:
 Examples:
 
 - **Redundant tests (over-coverage)** — Single AC has three tests that exercise the same path with cosmetic variation. Coverage analyzer reports `count=3` for that AC; coverage is per-AC (matched: yes/no, count: N) — coverage=100% means every AC has ≥1 test, NOT weighted by count. Over-coverage is a Suggestion-tier DRY opportunity (EC-11).
-- **Missing FR-traceability comment** — Story frontmatter `traces_to: [FR-DEJ-3, FR-DEJ-4]` is set but no test body references those FR IDs. Phase 3B treats FR-traceability as a SEPARATE concern from AC-coverage — surfaces as Suggestion when comments are absent (EC-10).
+- **Missing FR-traceability comment** — Story frontmatter `traces_to: [...]` is set but no test body references those FR IDs. Phase 3B treats FR-traceability as a SEPARATE concern from AC-coverage — surfaces as Suggestion when comments are absent (EC-10).
 - **Unparseable AC text** — Story AC reads "The system should be performant" — no Given/When/Then structure, no measurable threshold. AC parser reports `category: ac-quality` for that AC; the LLM may suggest a concrete rewording. Reported as "unparseable AC" rather than "uncovered AC" (EC-14).
 
 **Context-aware classification rules (rubric-driven):**
@@ -117,18 +117,18 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 ### Phase 1 — Setup
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-review-qa [story-key]"
-- Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper (E79-S7 / FR-476). It honors the ADR-111 canonical-first contract: searches `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then falls back to legacy `docs/implementation-artifacts/{story_key}-*.md`. Exit codes: 0 = single match (stdout = path); 1 = zero matches (fail with "story file not found for key {story_key}"); 2 = multiple matches (fail with "multiple story files matched key {story_key}"). Do NOT inline-hardcode the legacy `docs/` glob — see AF-2026-05-21-4 Finding 1.
+- Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper. It honors the canonical-first contract: searches `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then falls back to legacy `docs/implementation-artifacts/{story_key}-*.md`. Exit codes: 0 = single match (stdout = path); 1 = zero matches (fail with "story file not found for key {story_key}"); 2 = multiple matches (fail with "multiple story files matched key {story_key}"). Do NOT inline-hardcode the legacy `docs/` glob.
 - Read the resolved story file; parse YAML frontmatter to extract `status`, `traces_to`, and `figma:` block (if any).
-- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch (NFR-DEJ-4 preserved). Forward the persona payload + canonical stack name into the fork.
-- **Tool prereq probe.** For each tool used by the resolved stack: probe via `command -v <tool>` first; fall back to `node_modules/.bin/<tool> --version` (TS/Angular). NEVER use `npx <tool> --version` (triggers npm install and breaks the NFR-DEJ-1 60s P95 budget). Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
+- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
+- **Tool prereq probe.** For each tool used by the resolved stack: probe via `command -v <tool>` first; fall back to `node_modules/.bin/<tool> --version` (TS/Angular). NEVER use `npx <tool> --version` (triggers npm install and breaks the 60s P95 budget). Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
 - **Optional branch-coverage probe (EC-13).** Probe the stack's branch-coverage binary (`nyc`, `coverage.py`, `go test -cover`, `jacoco`, etc.). If absent, untested-error-path findings degrade from Critical-eligible to Suggestion-only — LLM cannot promote without deterministic evidence.
-- **Expected-missing-tool (FR-DEJ-4 case 1).** If the test runner is absent for a stack that requires it, emit Phase 1 BLOCKED with an actionable error message naming the missing tool and the install hint. Do NOT dispatch the fork.
+- **Expected-missing-tool.** If the test runner is absent for a stack that requires it, emit Phase 1 BLOCKED with an actionable error message naming the missing tool and the install hint. Do NOT dispatch the fork.
 
 ### Phase 2 — Story Gate
 
 - Status check: if `status` is not `review`, fail with "story {story_key} is in '{status}' status — must be in 'review' status for QA tests".
 - Extract the File List section under "Dev Agent Record".
-- Run `${CLAUDE_PLUGIN_ROOT}/scripts/file-list-diff-check.sh --story-file <path> --base <branch> --repo <repo>`. The script returns a JSON-shaped report; surface divergence as a Warning to the user. **Story Gate semantics are advisory per FR-DEJ-2 — divergence does NOT halt the review.** Honor `no-file-list`, `empty-file-list`, and `divergence` reasons.
+- Run `${CLAUDE_PLUGIN_ROOT}/scripts/file-list-diff-check.sh --story-file <path> --base <branch> --repo <repo>`. The script returns a JSON-shaped report; surface divergence as a Warning to the user. **Story Gate semantics are advisory — divergence does NOT halt the review.** Honor `no-file-list`, `empty-file-list`, and `divergence` reasons.
 - Record divergence findings in `gate_warnings[]` of the eventual `analysis-results.json`.
 - Missing-file handling: if a File List entry is absent from disk (renamed/deleted post-File-List-write), record it as a Warning finding under `category: integrity, severity: warning` in `analysis-results.json`. Do NOT crash; Phase 3A handles it gracefully.
 
@@ -153,15 +153,15 @@ Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `
 
 6. **Optional branch coverage (EC-13).** If the branch-coverage tool from Phase 1 is present, parse its output to identify uncovered catch blocks. Cross-reference with error-path ACs: error-path AC + uncovered catch + user-input boundary → Critical-eligible; else Warning.
 
-**Status taxonomy (FR-DEJ-4).** Each tool invocation produces exactly one of:
+**Status taxonomy.** Each tool invocation produces exactly one of:
 - `status: passed` — tool ran to completion, no findings, exit code zero.
 - `status: failed` — tool ran to completion AND emitted findings (e.g., AC-coverage analyzer found a P0 AC with zero matches; AC parser found zero ACs in the story file). Maps to REQUEST_CHANGES via verdict-resolver precedence rule 2 (LLM-cannot-override).
 - `status: errored` — tool crashed mid-run, returned an unclassified non-zero exit code, OR exceeded its wall-clock cap. Maps to BLOCKED via precedence rule 1.
 - `status: skipped` — tool not applicable; `skip_reason` populated verbatim.
 
-**Path normalization.** Tool outputs vary in path convention. Phase 3A normalizes all `findings[].file` to repo-relative before writing `analysis-results.json` (consistent with E65-S2 / E65-S3 pattern).
+**Path normalization.** Tool outputs vary in path convention. Phase 3A normalizes all `findings[].file` to repo-relative before writing `analysis-results.json` (consistent with the shared code-review pattern).
 
-**Cache plumbing (FR-DEJ-11).** Cache lives at `.gaia/state/review/qa-tests/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
+**Cache plumbing.** Cache lives at `.gaia/state/review/qa-tests/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
 
 Cache key:
 ```
@@ -189,7 +189,7 @@ Cache write (same-story parallel-invocation safety):
 
 Phase 3A also emits a rendered `.md` companion alongside `analysis-results.json` — a human-readable summary of per-AC coverage and discovered-tests count for log inspection.
 
-### Phase 3A.1 — Project-config-driven test execution (E67-S4)
+### Phase 3A.1 — Project-config-driven test execution
 
 After the test-discovery / AC-coverage analyzer completes, the skill MAY run the configured test suites and capture execution evidence. This step sits between Phase 3A and Phase 3B because the resulting `execution-evidence.json` feeds the verdict-resolver alongside `analysis-results.json` (per source-report section 5.2 ordering).
 
@@ -204,9 +204,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-test-runner.sh \
 
 The runner emits `.gaia/state/review/qa-tests/{story_key}/execution-evidence.json` validating against `plugins/gaia/schemas/execution-evidence.schema.json`.
 
-**Tier resolution.** The runner reads `test_execution.tier_{1,2,3}.placement` from `project-config.yaml` (per FR-RSV2-11, ADR-077) and matches each tier's placement against `GAIA_EXECUTION_CONTEXT` (`local | ci_pre_merge | ci_post_merge | deployment | post_deploy`). Only tiers whose placement matches the active context run; the rest are skipped.
+**Tier resolution.** The runner reads `test_execution.tier_{1,2,3}.placement` from `project-config.yaml` and matches each tier's placement against `GAIA_EXECUTION_CONTEXT` (`local | ci_pre_merge | ci_post_merge | deployment | post_deploy`). Only tiers whose placement matches the active context run; the rest are skipped.
 
-**Required `placement` schema (AF-2026-05-24-14 / Test02 F-11).** Each `tier_N` block in `project-config.yaml` MUST include a `placement` field — without it the runner silently skips that tier (defeating the "tests executed in reviews" contract). Canonical shape per tier:
+**Required `placement` schema.** Each `tier_N` block in `project-config.yaml` MUST include a `placement` field — without it the runner silently skips that tier (defeating the "tests executed in reviews" contract). Canonical shape per tier:
 
 ```yaml
 test_execution:
@@ -224,9 +224,9 @@ test_execution:
 
 **Per-tier execution.** Each active tier's `command` is invoked with `timeout_seconds` enforcement (POSIX-portable; `timeout` when present, `perl` alarm fallback for macOS bash 3.2). The runner captures `exit_code`, `duration_seconds`, `pass_count`, `fail_count`, and `timeout` per suite.
 
-**Test Execution Bridge integration (ADR-044, AC8).** When `test_execution_bridge.bridge_enabled: true`, the runner delegates execution to the configured `run_tests_path` (the bridge's `run-tests.sh` entry point) instead of invoking commands directly. The bridge's JSON response is normalized into the `suites[]` shape of `execution-evidence.json`, and `bridge_used: true` is recorded for the audit trail. When the bridge is disabled or the binary is absent, the runner falls back to direct execution.
+**Test Execution Bridge integration.** When `test_execution_bridge.bridge_enabled: true`, the runner delegates execution to the configured `run_tests_path` (the bridge's `run-tests.sh` entry point) instead of invoking commands directly. The bridge's JSON response is normalized into the `suites[]` shape of `execution-evidence.json`, and `bridge_used: true` is recorded for the audit trail. When the bridge is disabled or the binary is absent, the runner falls back to direct execution.
 
-**Graceful skip (AC7).** When `test_execution` is absent from `project-config.yaml`, the runner emits an `execution-evidence.json` with `skipped: true` and an INFO diagnostic; the verdict resolver then proceeds with AC coverage analysis only.
+**Graceful skip.** When `test_execution` is absent from `project-config.yaml`, the runner emits an `execution-evidence.json` with `skipped: true` and an INFO diagnostic; the verdict resolver then proceeds with AC coverage analysis only.
 
 ### Phase 3B — LLM Semantic Review
 
@@ -235,19 +235,19 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 **Fork dispatch contract.**
 - `context: fork`
 - `allowed-tools: [Read, Grep, Glob, Bash]` (frontmatter-enforced; no Write/Edit ever)
-- `model: claude-opus-4-7` (frontmatter-pinned per ADR-074)
+- `model: claude-opus-4-7` (frontmatter-pinned)
 - `temperature: 0`
 - Inputs forwarded into the fork: persona payload (from Phase 1), `analysis-results.json` content, story file path, severity rubric (this section), AC text (primary + edge-case).
 
 **Output contract.** Fork returns a structured findings JSON with shape `{ "findings": [{"category", "severity", "file", "line", "message", "ac_ref?", "fr_ref?"}, ...] }`. The fork ALSO returns the rendered report payload as its conversational output — the parent will validate the structure in Phase 6 before persisting.
 
-**Determinism contract (NFR-DEJ-2).** Two runs against unchanged `analysis-results.json` MUST produce findings that match by `{category, severity}`. Textual message variation is allowed. Category+severity divergence is an escalation signal — investigate model pin, temperature, or prompt-hash mismatch. The bats determinism regression test compares ONLY `{category, severity}` sets across two runs.
+**Determinism contract.** Two runs against unchanged `analysis-results.json` MUST produce findings that match by `{category, severity}`. Textual message variation is allowed. Category+severity divergence is an escalation signal — investigate model pin, temperature, or prompt-hash mismatch. The bats determinism regression test compares ONLY `{category, severity}` sets across two runs.
 
 **Prompt hash recording.** The fork records `prompt_hash` (sha256 of system prompt || `analysis-results.json` content) in the report header. This is the audit trail for determinism debugging.
 
 **LLM-cannot-override (rule 2 of verdict-resolver).** A deterministic finding from Phase 3A — e.g., zero-AC story (EC-3) → `status: failed` → REQUEST_CHANGES — wins over any LLM APPROVE judgment. The rubric downgrades above apply to LLM tier classification (Suggestion vs Warning vs Critical) — NOT to the resolver's blocking decision when the deterministic tool emits `status: failed` with a blocking finding.
 
-### Phase 3C — TC generation for uncovered ACs (E67-S4)
+### Phase 3C — TC generation for uncovered ACs
 
 Phase 3C runs after Phase 3B's semantic review and produces TC specifications for ACs flagged uncovered by Phase 3A's coverage analyzer. The output feeds `/gaia-test-automate` as the queue of new test cases to author.
 
@@ -265,12 +265,12 @@ Phase 3C runs after Phase 3B's semantic review and produces TC specifications fo
 | `priority`    | enum?    | Optional priority hint (`P0`/`P1`/`P2`/`P3`) inherited from the AC   |
 | `tags`        | array?   | Optional free-form tags                                              |
 
-**Determinism + traceability rules (AC1, AC2).**
+**Determinism + traceability rules.**
 - Every entry's `ac_ref` MUST reference a real AC identifier present in the story file. No orphan TC entries.
 - `tc_id` values within a single file MUST be unique (no duplicates).
 - When all ACs are covered, the file is an empty JSON array (`[]`) — Phase 3C does NOT emit superfluous TCs.
 
-**Deterministic boilerplate step (E67-S8).** Before LLM scenario authoring, the fork invokes `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-tc-generator.sh --story <path> --output .gaia/state/review/qa-tests/{story_key}/qa-test-cases-{story_key}.json` to produce deterministic TC scaffolds (one row per AC, schema-conformant, idempotent re-runs are no-ops). The generator is the boilerplate layer — it never invokes an LLM. Output rows have `type: "Unit"` and scaffold `given/when/then` text derived 1:1 from the AC body.
+**Deterministic boilerplate step.** Before LLM scenario authoring, the fork invokes `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-tc-generator.sh --story <path> --output .gaia/state/review/qa-tests/{story_key}/qa-test-cases-{story_key}.json` to produce deterministic TC scaffolds (one row per AC, schema-conformant, idempotent re-runs are no-ops). The generator is the boilerplate layer — it never invokes an LLM. Output rows have `type: "Unit"` and scaffold `given/when/then` text derived 1:1 from the AC body.
 
 **LLM-assisted scenario authoring.** After the deterministic boilerplate step, Phase 3C is LLM-assisted within the fork (Vera persona). The fork reads the uncovered-AC list from Phase 3A `analysis-results.json`, the boilerplate scaffolds emitted by `qa-tc-generator.sh`, and the story file's AC text, then refines the `given/when/then` text and may upgrade `type` to `Integration` or `E2E`. The deterministic part (schema, traceability, uniqueness, AC mapping) is enforced by `qa-tc-generator.sh` and the schema before the parent persists the file.
 
@@ -295,7 +295,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
   [--execution-evidence .gaia/state/review/qa-tests/{story_key}/execution-evidence.json]
 ```
 
-The resolver applies strict first-match-wins precedence (FR-DEJ-6, extended by E67-S4 AC9):
+The resolver applies strict first-match-wins precedence:
 1. Any check `status: errored` → **BLOCKED**.
 1b. Any required-tier suite with `timeout: true` in `execution-evidence.json` → **BLOCKED**.
 2a. Any required-tier suite with non-zero `exit_code` (and not a timeout) in `execution-evidence.json` → **REQUEST_CHANGES**.
@@ -303,7 +303,7 @@ The resolver applies strict first-match-wins precedence (FR-DEJ-6, extended by E
 3. Any LLM finding `severity: Critical` → **REQUEST_CHANGES**.
 4. Otherwise → **APPROVE**.
 
-When `--execution-evidence` is omitted, rules 1b and 2a are skipped and pre-S4 four-rule behavior is preserved (backward compat).
+When `--execution-evidence` is omitted, rules 1b and 2a are skipped and the four-rule behavior is preserved (backward compat).
 
 Stdout is exactly one of `APPROVE | REQUEST_CHANGES | BLOCKED`. **Mapping to Review Gate canonical vocabulary is inline (no separate `verdict-normalizer.sh`):**
 
@@ -313,11 +313,11 @@ Stdout is exactly one of `APPROVE | REQUEST_CHANGES | BLOCKED`. **Mapping to Rev
 | REQUEST_CHANGES  | FAILED              |
 | BLOCKED          | FAILED              |
 
-This three-line mapping is local to this section per PRD §4.37. If a future review skill diverges, extract to a shared script then (YAGNI).
+This three-line mapping is local to this section. If a future review skill diverges, extract to a shared script then (YAGNI).
 
 ### Phase 6 — Output + Gate Update
 
-Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is parent-mediated (Option A per ADR-075).
+Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is parent-mediated.
 
 **Fork output.** The fork returns a rendered report payload as its conversational output. The report MUST contain:
 
@@ -331,17 +331,17 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 - `## LLM Semantic Review` section present.
 - Final line matches regex `^\*\*Verdict: (APPROVE|REQUEST_CHANGES|BLOCKED)\*\*$`.
 
-**Malformed-payload handling.** On any of the above checks failing, the parent persists what it received with an explicit `[INCOMPLETE]` marker prepended to the report, and emits `verdict=BLOCKED` to `review-gate.sh`. Fork output untrustworthy → BLOCKED. The bats fixture covers this case explicitly (mirrors E65-S2 EC-9).
+**Malformed-payload handling.** On any of the above checks failing, the parent persists what it received with an explicit `[INCOMPLETE]` marker prepended to the report, and emits `verdict=BLOCKED` to `review-gate.sh`. Fork output untrustworthy → BLOCKED. The bats fixture covers this case explicitly.
 
-**Parent write — single-source path resolver (E105-S4 / Test05 F-046).** The basename is the FR-402 locked form `qa-tests-{story_key}.md` (no slug, no date suffix). Resolve the directory via the shared helper:
+**Parent write — single-source path resolver.** The basename is the locked form `qa-tests-{story_key}.md` (no slug, no date suffix). Resolve the directory via the shared helper:
 
 ```bash
 REPORT_PATH="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-review-report-path.sh --key {story_key} --type qa-tests)"
 ```
 
-Returns the per-story `…/epic-{slug}/{story_key}-{slug}/reviews/qa-tests-{story_key}.md` (E105-S1, `reviews/` created) when the story is in the new layout, else the legacy flat `.gaia/artifacts/implementation-artifacts/qa-tests-{story_key}.md`. Per F-12 on Test02: never the pre-ADR-111 `docs/implementation-artifacts/` path. (The machine-readable `execution-evidence.json` is a SEPARATE artifact written by `qa-test-runner.sh` to `.gaia/state/review/qa-tests/{story_key}/` per Phase 3A.1 — unchanged, F-047.)
+Returns the per-story `…/epic-{slug}/{story_key}-{slug}/reviews/qa-tests-{story_key}.md` (`reviews/` created) when the story is in the new layout, else the legacy flat `.gaia/artifacts/implementation-artifacts/qa-tests-{story_key}.md`. Never the legacy `docs/implementation-artifacts/` path. (The machine-readable `execution-evidence.json` is a SEPARATE artifact written by `qa-test-runner.sh` to `.gaia/state/review/qa-tests/{story_key}/` per Phase 3A.1 — unchanged.)
 
-**Per-story test-artifacts mirror (Test10 F-38).** In addition to the canonical implementation-artifacts review path above, the parent also writes a mirror under `.gaia/artifacts/test-artifacts/epic-{slug}/stories/{key}-{slug}/qa-tests.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-test-artifact-per-story.sh qa-tests {story_key} --write`. This is the §7.3 mirror-symmetry layout extension (sister to atdd + test-automate-plan, already mirrored by AF-30-1). The implementation-artifacts copy remains canonical for `review-gate.sh`; the test-artifacts mirror lets test-focused consumers find all per-story test outputs in ONE place. Execution-evidence under `.gaia/state/review-work/<KEY>/` is NOT migrated here — that runtime-state split is documented in Test03 §7.3 and deferred to a follow-up AF.
+**Per-story test-artifacts mirror.** In addition to the canonical implementation-artifacts review path above, the parent also writes a mirror under `.gaia/artifacts/test-artifacts/epic-{slug}/stories/{key}-{slug}/qa-tests.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-test-artifact-per-story.sh qa-tests {story_key} --write`. This is the mirror-symmetry layout extension (sister to atdd + test-automate-plan). The implementation-artifacts copy remains canonical for `review-gate.sh`; the test-artifacts mirror lets test-focused consumers find all per-story test outputs in ONE place. Execution-evidence under `.gaia/state/review-work/<KEY>/` is NOT migrated here — that runtime-state split is deferred to a follow-up.
 
 **Phase 3C TC artifact persistence.** When Phase 3C produced uncovered-AC TCs, the parent ALSO writes the rendered TC array to `.gaia/state/review/qa-tests/{story_key}/qa-test-cases-{story_key}.json` (validating against `plugins/gaia/schemas/qa-test-cases.schema.json`). Empty arrays are omitted. The TC file is consumed downstream by `/gaia-test-automate`.
 
@@ -366,29 +366,29 @@ Mapping per Phase 5 table. Confirm exit code 0.
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh review-gate-check --story "{story_key}"
 ```
 
-Capture stdout for the `Review Gate: COMPLETE|PENDING|BLOCKED` summary (per ADR-054). Do NOT halt on non-zero exit. Sprint-status.yaml may be out of sync — surface a hint to run `/gaia-sprint-status`.
+Capture stdout for the `Review Gate: COMPLETE|PENDING|BLOCKED` summary. Do NOT halt on non-zero exit. Sprint-status.yaml may be out of sync — surface a hint to run `/gaia-sprint-status`.
 
-**Fork allowlist sanity.** The frontmatter `allowed-tools` MUST remain exactly `[Read, Grep, Glob, Bash]`. The `evidence-judgment-parity.bats` AC1 assertion catches any post-merge regression that adds Write or Edit.
+**Fork allowlist sanity.** The frontmatter `allowed-tools` MUST remain exactly `[Read, Grep, Glob, Bash]`. The `evidence-judgment-parity.bats` assertion catches any post-merge regression that adds Write or Edit.
 
 ### Phase 7 — Finalize
 
-- Surface the verdict to the orchestrator per ADR-063 (mandatory verdict surfacing).
+- Surface the verdict to the orchestrator (mandatory verdict surfacing).
 - Persist findings to the per-skill checkpoint via `checkpoint.sh write` (already invoked in Phase 3A for the cache; final state recorded via the standard `finalize.sh` hook).
 - The Phase 3A artifact is cached for the next run by the `.cache/{cache_key}.json` write performed in Phase 3A.
 
-## References
+## Concepts
 
-- ADR-037 — Structured subagent return schema `{status, summary, artifacts, findings, next}`.
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042 — Scripts-over-LLM for Deterministic Operations.
-- ADR-045 — Review Gate via Sequential `context: fork` Subagents.
-- ADR-054 — Composite Review Gate.
-- ADR-063 — Subagent Dispatch Contract — Mandatory Verdict Surfacing.
-- ADR-067 — YOLO Mode Contract — Consistent Non-Interactive Behavior.
-- ADR-074 — Frontmatter Model Pin for Determinism.
-- ADR-075 — Review-Skill Evidence/Judgment Split.
-- FR-DEJ-1..12, NFR-DEJ-1..4 — Evidence/Judgment functional and non-functional requirements (PRD §4.37).
-- FR-402 — Locked review-file naming convention (`qa-tests-{story_key}.md`).
+- Structured subagent return schema `{status, summary, artifacts, findings, next}`.
+- Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
+- Scripts-over-LLM for Deterministic Operations.
+- Review Gate via Sequential `context: fork` Subagents.
+- Composite Review Gate.
+- Subagent Dispatch Contract — Mandatory Verdict Surfacing.
+- YOLO Mode Contract — Consistent Non-Interactive Behavior.
+- Frontmatter Model Pin for Determinism.
+- Review-Skill Evidence/Judgment Split.
+- Evidence/Judgment functional and non-functional requirements.
+- Locked review-file naming convention (`qa-tests-{story_key}.md`).
 
 ## Finalize
 

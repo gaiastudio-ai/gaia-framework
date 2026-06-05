@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# history-render.sh — read-only project-history renderer for /gaia-history (E106-S1)
+# history-render.sh — read-only project-history renderer for /gaia-history
 #
-# Surfaces three views (AC5), all read-only (AC6):
+# Surfaces three views, all read-only:
 #   1. Velocity trend across the last N closed sprints (from sprint-archive yamls).
 #   2. Estimate accuracy — estimated points vs. measured throughput
 #      (delegates to throughput-telemetry.sh for the measured median).
@@ -10,8 +10,6 @@
 #
 # READ-ONLY: writes nothing; output is produced exclusively on stdout. The skill
 # that invokes this (gaia-history) declares allowed-tools: [Read, Bash].
-#
-# Refs: AC5, AC6, AC-INT1, ADR-128, ADR-042, FR-549, FR-550
 #
 # Invocation:
 #   history-render.sh [--archive-dir <dir>] [--retros-dir <dir>]
@@ -104,7 +102,7 @@ if [ -n "$EVENTS" ] && [ -r "$EVENTS" ] && [ -x "$TELEMETRY" ]; then
   printf -- '- median minutes/point: %s\n' "${mpp:-(no data)}"
   printf '\nEstimate accuracy compares each sprint'\''s estimated points against this\n'
   printf 'measured minutes/point baseline — a stable minutes/point means estimates\n'
-  printf 'track measured agent throughput (ADR-128).\n\n'
+  printf 'track measured agent throughput.\n\n'
 else
   printf '_(no lifecycle-events log available — measured throughput unavailable)_\n\n'
 fi

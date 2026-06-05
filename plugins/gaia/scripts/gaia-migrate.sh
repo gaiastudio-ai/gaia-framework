@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-# gaia-migrate.sh — GAIA foundation script (E28-S131)
+# gaia-migrate.sh — GAIA v1 to v2 migration script
 #
-# Automate the v1 → v2 migration. Per ADR-042 (scripts-over-LLM), the SKILL.md
-# drives the user-facing flow and delegates filesystem operations to this
-# script — this script and the SKILL.md are the authoritative source post
-# AF-2026-06-01-3 (the former `gaia-framework/docs/migration-guide-v2.md` was
-# retired with the V1 sunset under ADR-049).
-#
-# Refs: FR-326 (config split), FR-328 (engine deletion), NFR-050 (zero engine files), ADR-048
-# Story: E28-S131
+# Automate the v1 → v2 migration. The SKILL.md drives the user-facing flow
+# and delegates filesystem operations to this script — this script and the
+# SKILL.md are the authoritative sources for the migration workflow.
 #
 # Usage:
 #   gaia-migrate.sh apply   --project-root PATH
@@ -20,27 +15,27 @@
 #   2 — backup failed (disk space, permission)
 #   3 — migration step failed (subtask 4.1, 4.2, or 4.3)
 #   4 — post-migration validation failed
-#   5 — safety gate failed (v2 marker missing/malformed at delete time) [E28-S188]
-#   6 — manifest mismatch between live source and backup [E28-S188]
-#   7 — user declined confirmation OR non-TTY without --yes/--force [E28-S188]
-#   11 — v2 with config + state dirs, needs reconciliation -> exec gaia-reconcile-v2.sh [E85-S9 / ADR-100]
+#   5 — safety gate failed (v2 marker missing/malformed at delete time)
+#   6 — manifest mismatch between live source and backup
+#   7 — user declined confirmation OR non-TTY without --yes/--force
+#   11 — v2 with config + state dirs, needs reconciliation -> exec gaia-reconcile-v2.sh
 #   64 — usage error
 
 set -euo pipefail
 
 # Resolve this script's own directory so sibling scripts (e.g. the
-# E85-S8 gaia-reconcile-v2.sh dispatch target) can be invoked by path
+# gaia-reconcile-v2.sh dispatch target) can be invoked by path
 # even when gaia-migrate.sh is run from an arbitrary cwd.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 MODE=""
 PROJECT_ROOT=""
 DRY_RUN=false
-ASSUME_YES=false      # --yes / --force bypasses the destructive confirmation prompt (E28-S188)
-BACKUP_DIR=""         # populated by _run_backup; printed by _on_interrupt (E28-S182)
+ASSUME_YES=false      # --yes / --force bypasses the destructive confirmation prompt
+BACKUP_DIR=""         # populated by _run_backup; printed by _on_interrupt
 
 # ---------------------------------------------------------------------------
-# E28-S182 — SIGINT / SIGTERM trap handler
+# SIGINT / SIGTERM trap handler
 #
 # When the operator hits Ctrl+C (or a supervisor sends SIGTERM) during a
 # migration, surface (a) a clear "partial migration" banner, (b) the absolute
@@ -50,8 +45,6 @@ BACKUP_DIR=""         # populated by _run_backup; printed by _on_interrupt (E28-
 # populated $BACKUP_DIR (e.g., during _detect_v1), the handler still prints a
 # safe banner explaining there is nothing yet to restore — backups are taken
 # before any destructive write, so v1 state on disk is intact.
-#
-# Refs: AC-EC7 (E28-S170 manual integration test plan, §6).
 # ---------------------------------------------------------------------------
 _on_interrupt() {
   local sig="${1:-INT}"
@@ -70,7 +63,7 @@ _on_interrupt() {
     # backup where the cp was mid-flight. The printed cp -a command is
     # safe to run because no destructive writes have happened yet (the
     # backup MUST complete in full BEFORE _migrate_config_split rewrites
-    # any v1 source — see backup-before-migration ordering, AC-EC7 §6.4).
+    # any v1 source — see backup-before-migration ordering).
     echo "Backup: $BACKUP_DIR"
     echo "Restore: cp -a \"$BACKUP_DIR/.\" \"$PROJECT_ROOT/\""
   else
@@ -147,7 +140,7 @@ fi
 # Central write helper — every cp/mv/rm/mkdir/write routes through here.
 # In dry-run mode, the helper logs the intended operation and returns 0
 # without touching the filesystem. This is the single safety mechanism for
-# AC5 (dry-run idempotency) and AC-EC6 (dry-run accidental write).
+# dry-run idempotency and accidental write prevention.
 # ---------------------------------------------------------------------------
 _safe_write() {
   local action="$1"
@@ -200,14 +193,12 @@ _detect_v1() {
   echo "  _gaia/_config/global.yaml           : $([ "$has_config" -eq 1 ] && echo present || echo MISSING)"
   echo "  config/project-config.yaml (v2)     : $([ "$has_v2" -eq 1 ] && echo present || echo MISSING)"
 
-  # E28-S188 check ordering (W1, W6): the v2-only idempotent success path
-  # MUST be evaluated BEFORE the partial-install HALT. E85-S9 (ADR-100 /
-  # ADR-101) extends this with sub-state distinction within the v2-only
-  # branch. Order is:
+  # Check ordering: the v2-only idempotent success path MUST be evaluated
+  # BEFORE the partial-install HALT. Order is:
   #   (1)  v2 marker present + no v1 dirs + state dirs present → return 11
   #        (reconciliation needed; caller exec's gaia-reconcile-v2.sh)
   #   (1b) v2 marker present + no v1 dirs + no state dirs       → return 10
-  #        (idempotent success — AC7)
+  #        (idempotent success)
   #   (2)  v2 marker present + v1 dirs                          → HALT (1)
   #   (3)  no v1 + no v2                                        → HALT (1)
   #   (4)  partial v1                                           → HALT (1)
@@ -219,9 +210,9 @@ _detect_v1() {
   #   11  → v2 with state dirs, needs reconciliation; caller exec's reconciler
   #   1   → HALT (all other error paths)
 
-  # Detect v2-era state directories (E85-S9 / ADR-100). The presence of
-  # `_memory/` OR `docs/planning-artifacts/` at the project root is the
-  # canonical "has framework-era artifacts" heuristic.
+  # Detect v2-era state directories. The presence of `_memory/` OR
+  # `docs/planning-artifacts/` at the project root is the canonical
+  # "has framework-era artifacts" heuristic.
   local has_state_dirs=0
   if [[ -d "$PROJECT_ROOT/_memory" ]] || [[ -d "$PROJECT_ROOT/docs/planning-artifacts" ]]; then
     has_state_dirs=1
@@ -229,12 +220,10 @@ _detect_v1() {
 
   # (1) v2 + no v1 dirs + state dirs present → return 11 (reconcile path)
   # The v1-marker absence test is `has_engine=0` alone. `_memory/` is v2-era
-  # state post-E85 (excluded from v1-marker test via has_state_dirs above).
-  # `custom/` is a canonical v2 surface per FR-RSV2-10 (custom-over-built-in
-  # precedence) and `scripts/adapters/BOUNDARIES.md` line 110 — its presence
-  # does NOT indicate v1. The previous `has_custom=0` condition produced a
-  # false-positive HALT on v2 projects with active custom adapters
-  # (AF-2026-05-13-3, sibling to AF-2026-05-13-2 / E85-S11 / AI-2026-05-09-12).
+  # state (excluded from v1-marker test via has_state_dirs above).
+  # `custom/` is a canonical v2 surface (custom-over-built-in precedence) —
+  # its presence does NOT indicate v1. The previous `has_custom=0` condition
+  # produced a false-positive HALT on v2 projects with active custom adapters.
   # If a future call site needs to disambiguate v1-legacy `custom/` from v2
   # `custom/`, check `[ -d "$PROJECT_ROOT/custom/agents" ]` — that subdir
   # was a v1-only layout.
@@ -244,7 +233,7 @@ _detect_v1() {
     return 11
   fi
 
-  # (1b) Already on v2 — idempotent success (AC7 / W1 / W6)
+  # (1b) Already on v2 — idempotent success
   if [[ "$has_v2" -eq 1 && "$has_engine" -eq 0 && "$has_memory" -eq 0 ]]; then
     echo
     echo "Nothing to migrate — already on v2."
@@ -265,7 +254,7 @@ _detect_v1() {
     return 1
   fi
 
-  # (4) Partial install (AC-EC1) — only reachable once v2 marker is absent
+  # (4) Partial install — only reachable once v2 marker is absent
   if [[ "$has_engine" -eq 0 || "$has_memory" -eq 0 || "$has_config" -eq 0 ]]; then
     echo
     echo "HALT: v1 installation is partial — required marker missing. Either repair the install or pass --force-partial (not yet supported)."
@@ -277,7 +266,7 @@ _detect_v1() {
 }
 
 # ---------------------------------------------------------------------------
-# Step: backup BEFORE any migration write (AC2, AC-EC3)
+# Step: backup BEFORE any migration write
 # ---------------------------------------------------------------------------
 _run_backup() {
   echo
@@ -287,7 +276,7 @@ _run_backup() {
   bdir="$PROJECT_ROOT/.gaia-migrate-backup/$ts"
   echo "  destination: $bdir"
 
-  # AC-EC3 — disk space check (best-effort: confirm /tmp + project-root have >100MB free)
+  # Disk space check (best-effort: confirm /tmp + project-root have >100MB free)
   local free_kb
   free_kb=$(df -k "$PROJECT_ROOT" 2>/dev/null | tail -1 | awk '{print $4}')
   if [[ -n "$free_kb" && "$free_kb" -lt 102400 ]]; then
@@ -297,12 +286,12 @@ _run_backup() {
 
   _safe_write mkdir "$bdir"
 
-  # E28-S182 — publish the backup destination as soon as it has been mkdir'd
-  # so that a SIGINT/SIGTERM arriving mid-backup can still print a useful
-  # restore command. The directory may be partially populated at signal time;
-  # the trap handler's printed `cp -a "$BACKUP_DIR/." "$PROJECT_ROOT/"` is
+  # Publish the backup destination as soon as it has been mkdir'd so that
+  # a SIGINT/SIGTERM arriving mid-backup can still print a useful restore
+  # command. The directory may be partially populated at signal time; the
+  # trap handler's printed `cp -a "$BACKUP_DIR/." "$PROJECT_ROOT/"` is
   # always safe (no destructive writes have run yet — see backup-before-
-  # migration ordering in §6.4 of E28-S170 test plan).
+  # migration ordering).
   BACKUP_DIR="$bdir"
 
   # Copy each source — silently skip if absent
@@ -319,8 +308,7 @@ _run_backup() {
   if [[ "$DRY_RUN" == "false" ]]; then
     local manifest="$bdir/backup-manifest.yaml"
     {
-      echo "# E28-S131 backup manifest"
-      echo "story: E28-S131"
+      echo "# gaia-migrate backup manifest"
       echo "timestamp: $ts"
       echo "project_root: $PROJECT_ROOT"
       echo "files:"
@@ -335,8 +323,7 @@ _run_backup() {
     if [[ ! -f "$manifest" ]]; then
       # fallback: write the file even if the find pipeline is empty
       cat > "$manifest" <<EOF
-# E28-S131 backup manifest
-story: E28-S131
+# gaia-migrate backup manifest
 timestamp: $ts
 project_root: $PROJECT_ROOT
 files: []
@@ -348,14 +335,14 @@ EOF
     echo "  [dry-run] would write manifest: $bdir/backup-manifest.yaml"
   fi
 
-  # BACKUP_DIR was already exported at the top of this function (E28-S182)
-  # so an interrupt during the cp -a phase can still print a meaningful
-  # restore path; no further assignment is needed here.
+  # BACKUP_DIR was already exported at the top of this function so an
+  # interrupt during the cp -a phase can still print a meaningful restore
+  # path; no further assignment is needed here.
   echo "  backup PASS"
 }
 
 # ---------------------------------------------------------------------------
-# Subtask 4.1 — templates (AC3)
+# Subtask 4.1 — templates
 # ---------------------------------------------------------------------------
 _migrate_templates() {
   echo
@@ -373,14 +360,14 @@ _migrate_templates() {
 }
 
 # ---------------------------------------------------------------------------
-# Subtask 4.2 — sidecars (AC3) + E28-S181 schema-drift detection
+# Subtask 4.2 — sidecars + schema-drift detection
 # ---------------------------------------------------------------------------
 # v2 canonical sidecar frontmatter key allowlist. v2 sidecars currently use
-# plain markdown bodies with no frontmatter (per the current ADR set), so the
+# plain markdown bodies with no frontmatter (per the current schema), so the
 # baseline is the empty list. Any frontmatter key found in a v1 sidecar that
 # is NOT in this allowlist is treated as schema drift and surfaces a
-# `manual follow-up: verify sidecar keys` note (E28-S181 / AC-EC5). Future
-# ADRs that ratchet a v2 sidecar schema MUST extend this list.
+# `manual follow-up: verify sidecar keys` note. Future schema versions that
+# ratchet a v2 sidecar schema MUST extend this list.
 V2_SIDECAR_CANONICAL_KEYS=()
 
 # _extract_frontmatter_keys <file>
@@ -426,8 +413,8 @@ _migrate_sidecars() {
       sidecar_count=$((sidecar_count + 1))
       while IFS= read -r -d '' file; do
         file_count=$((file_count + 1))
-        # E28-S181: extract top-level frontmatter keys and diff against
-        # the v2 canonical allowlist. Files without frontmatter are silent.
+        # Extract top-level frontmatter keys and diff against the v2
+        # canonical allowlist. Files without frontmatter are silent.
         local keys unknown_keys=() key
         keys="$(_extract_frontmatter_keys "$file")"
         [[ -z "$keys" ]] && continue
@@ -451,14 +438,14 @@ _migrate_sidecars() {
   if [[ $drift_count -gt 0 ]]; then
     echo "  $drift_count drifted sidecar file(s) — manual follow-up required (see lines above)"
   else
-    echo "  v1 and v2 sidecar layouts match (per current ADR set) — no transformation needed"
+    echo "  v1 and v2 sidecar layouts match (per current schema) — no transformation needed"
   fi
   echo "  sidecars PASS"
 }
 
 # ---------------------------------------------------------------------------
-# E28-S191 / B4 — required-field preservation
-# E29-S8        — placeholder substitution at the migration boundary
+# Required-field preservation and placeholder substitution at the migration
+# boundary
 # ---------------------------------------------------------------------------
 # The resolver validates 7 required fields: project_root, project_path,
 # memory_path, checkpoint_path, installed_path, framework_version, date.
@@ -467,32 +454,20 @@ _migrate_sidecars() {
 # file (config/project-config.yaml) BEFORE the destructive delete runs, so
 # resolve-config's required-field check keeps passing on v2 projects.
 #
-# Placeholder substitution (E29-S8 — post-mortem of PR #387 + cleanup PR #404):
-# v1 configs frequently used the literal token `{project-root}` in
-# path-bearing fields. The v1 XML engine substituted that token at runtime
-# using its template-resolution layer; the v2 native plugin has NO such
-# runtime substitution. Without explicit substitution here, the literal
-# string `{project-root}` would propagate forward into project-config.yaml
-# and break every downstream v2 script:
-#   * PR #387 swept a literal `gaia-framework/{project-root}/_memory/...`
-#     directory into commit 767b29e because checkpoint.sh ran `mkdir -p`
-#     against an unsubstituted path.
-#   * 14 story files were misfiled into `gaia-framework/docs/...-artifacts/`
-#     because `implementation_artifacts: "{project-root}/docs/..."`
-#     resolved as a relative path from the working directory.
-# This helper now substitutes the literal token `{project-root}` with the
-# absolute `$PROJECT_ROOT` before extracted values are appended to the v2
-# config. Substitution is exact-token (only literal `{project-root}` is
-# replaced); values that do not contain the placeholder pass through
-# byte-identical. See AC1, AC2, AC5 of E29-S8.
+# Placeholder substitution: v1 configs frequently used the literal token
+# `{project-root}` in path-bearing fields. The v1 XML engine substituted that
+# token at runtime using its template-resolution layer; the v2 native plugin
+# has NO such runtime substitution. Without explicit substitution here, the
+# literal string `{project-root}` would propagate forward into
+# project-config.yaml and break every downstream v2 script.
+# This helper substitutes the literal token `{project-root}` with the absolute
+# `$PROJECT_ROOT` before extracted values are appended to the v2 config.
+# Substitution is exact-token (only literal `{project-root}` is replaced);
+# values that do not contain the placeholder pass through byte-identical.
 #
-# $PROJECT_ROOT is required to be set AND absolute before substitution
-# runs. If unset or relative, this helper aborts non-zero so the
-# destructive `_gaia/` delete in subtask 4.5 cannot run on a half-migrated
-# config (AC6 of E29-S8).
-#
-# A complementary defense-in-depth guard at the resolver layer
-# (resolve-config.sh) is captured as the companion story E29-S9.
+# $PROJECT_ROOT is required to be set AND absolute before substitution runs.
+# If unset or relative, this helper aborts non-zero so the destructive
+# `_gaia/` delete in subtask 4.5 cannot run on a half-migrated config.
 #
 # If any required field is missing or unparseable from the v1 source, ABORT
 # before the destructive delete — the caller sees a clear "required field
@@ -505,28 +480,28 @@ _derive_required_fields() {
   [ -f "$v1" ] || { echo "ERROR: v1 source missing: $v1" >&2; return 1; }
   [ -f "$v2" ] || { echo "ERROR: v2 target missing: $v2" >&2; return 1; }
 
-  # E29-S8 — PROJECT_ROOT precondition guard. Substitution requires an
-  # absolute path; aborting here BEFORE any destructive write protects
-  # subtask 4.5's `_gaia/` delete from running on a half-migrated config.
+  # PROJECT_ROOT precondition guard. Substitution requires an absolute path;
+  # aborting here BEFORE any destructive write protects subtask 4.5's
+  # `_gaia/` delete from running on a half-migrated config.
   if [ -z "${PROJECT_ROOT:-}" ]; then
     echo "ERROR: PROJECT_ROOT is unset — cannot substitute {project-root} placeholder" >&2
-    echo "       _derive_required_fields requires an absolute --project-root (E29-S8 AC6)" >&2
+    echo "       _derive_required_fields requires an absolute --project-root" >&2
     return 1
   fi
   case "$PROJECT_ROOT" in
     /*) : ;;  # absolute, OK
     *)
       echo "ERROR: PROJECT_ROOT is relative ('$PROJECT_ROOT') — must be absolute" >&2
-      echo "       _derive_required_fields refuses to substitute relative paths (E29-S8 AC6)" >&2
+      echo "       _derive_required_fields refuses to substitute relative paths" >&2
       return 1
       ;;
   esac
 
-  # E28-S200 — artifact-dir keys joined the resolver's required-fields list.
-  # The 3 paths (test_artifacts, planning_artifacts, implementation_artifacts)
-  # must be preserved across migration alongside the original 7 required
-  # fields — otherwise the v2 project fails resolver's required-field check
-  # on first skill invocation after v1 deletion.
+  # Artifact-dir keys joined the resolver's required-fields list. The 3 paths
+  # (test_artifacts, planning_artifacts, implementation_artifacts) must be
+  # preserved across migration alongside the original 7 required fields —
+  # otherwise the v2 project fails resolver's required-field check on first
+  # skill invocation after v1 deletion.
   local required=(project_root project_path memory_path checkpoint_path
                   installed_path framework_version date
                   test_artifacts planning_artifacts implementation_artifacts)
@@ -548,12 +523,12 @@ _derive_required_fields() {
     printf '%s' "$v"
   }
 
-  # E29-S8 — substitute the literal token `{project-root}` with the absolute
+  # Substitute the literal token `{project-root}` with the absolute
   # $PROJECT_ROOT. Bash parameter expansion `${var//pattern/replacement}`
   # is an exact-string replacement (no regex) — values without the literal
-  # token pass through byte-identical (AC2). Substitution applies to BOTH
-  # the missing-field probe loop AND the write loop so the validation gate
-  # below sees the post-substitution value (AC1).
+  # token pass through byte-identical. Substitution applies to BOTH the
+  # missing-field probe loop AND the write loop so the validation gate below
+  # sees the post-substitution value.
   _substitute_placeholders() {
     local v="$1"
     printf '%s' "${v//\{project-root\}/$PROJECT_ROOT}"
@@ -581,7 +556,7 @@ _derive_required_fields() {
     echo ""
     echo "# Required fields preserved from v1 _gaia/_config/global.yaml"
     echo "# (resolver required-field list — see resolve-config.sh)"
-    echo "# {project-root} placeholders substituted with PROJECT_ROOT (E29-S8)"
+    echo "# {project-root} placeholders substituted with PROJECT_ROOT"
     for field in "${required[@]}"; do
       value=$(_extract_key "$v1" "$field")
       value=$(_substitute_placeholders "$value")
@@ -597,11 +572,11 @@ _derive_required_fields() {
 }
 
 # ---------------------------------------------------------------------------
-# Subtask 4.3 — config split (AC3, FR-326 partition)
+# Subtask 4.3 — config split
 # ---------------------------------------------------------------------------
 _migrate_config_split() {
   echo
-  echo "=== migrate 4.3: config split (FR-326) ==="
+  echo "=== migrate 4.3: config split ==="
   local v1_config="$PROJECT_ROOT/_gaia/_config/global.yaml"
   if [[ ! -f "$v1_config" ]]; then
     echo "  no _gaia/_config/global.yaml — nothing to split"
@@ -643,7 +618,7 @@ _migrate_config_split() {
   # Extract local keys to v2_global
   {
     echo "# GAIA v2 — local config (per-developer, machine-local)"
-    echo "# Migrated from v1 by /gaia-migrate (E28-S131)"
+    echo "# Migrated from v1 by /gaia-migrate"
     for k in "${local_keys[@]}"; do
       awk -v k="$k" '
         $0 ~ "^"k":" { in_block=1; print; next }
@@ -656,7 +631,7 @@ _migrate_config_split() {
   # Extract shared keys to project-config.yaml
   {
     echo "# GAIA v2 — team-shared config (cloud-synced)"
-    echo "# Migrated from v1 by /gaia-migrate (E28-S131)"
+    echo "# Migrated from v1 by /gaia-migrate"
     for k in "${shared_keys[@]}"; do
       awk -v k="$k" '
         $0 ~ "^"k":" { in_block=1; print; next }
@@ -666,13 +641,13 @@ _migrate_config_split() {
     done
   } > "$v2_shared"
 
-  # E28-S191 / B4 — Preserve resolver's 7 required fields in the v2 shared
-  # file BEFORE subtask 4.5 deletes _gaia/_config/global.yaml. Run the
-  # derivation against the pristine v1 config (still in place) BEFORE the
-  # `mv` that rewrites v1_config to the post-split local-keys-only copy —
-  # otherwise any required field the split dropped on the floor (e.g., the
-  # `date:` sentinel) would be lost forever. If any field is missing from
-  # v1 source, abort now (well before the delete step).
+  # Preserve resolver's 7 required fields in the v2 shared file BEFORE
+  # subtask 4.5 deletes _gaia/_config/global.yaml. Run the derivation against
+  # the pristine v1 config (still in place) BEFORE the `mv` that rewrites
+  # v1_config to the post-split local-keys-only copy — otherwise any required
+  # field the split dropped on the floor (e.g., the `date:` sentinel) would
+  # be lost forever. If any field is missing from v1 source, abort now (well
+  # before the delete step).
   if ! _derive_required_fields "$v1_config" "$v2_shared"; then
     echo "  config-split FAIL — required field missing; refusing to proceed" >&2
     return 1
@@ -683,21 +658,21 @@ _migrate_config_split() {
 
   echo "  local keys retained in: $v1_config"
   echo "  shared keys written to: $v2_shared"
-  echo "  required fields preserved in: $v2_shared (B4)"
+  echo "  required fields preserved in: $v2_shared"
   echo "  config-split PASS"
 }
 
 # ---------------------------------------------------------------------------
-# Subtask 4.4 — remove legacy .claude/commands/gaia-*.md stubs (E28-S186)
+# Subtask 4.4 — remove legacy .claude/commands/gaia-*.md stubs
 #
 # Claude Code registers slash commands from two places: the v2 plugin's
 # SKILL.md files AND the legacy `.claude/commands/*.md` stub files left over
 # from a v1 install. After `/gaia-migrate apply` installs the v2 plugin, the
 # legacy stubs still register the same commands — every /gaia-* appears twice
 # in the palette. This step removes the `.claude/commands/gaia-*.md` stubs
-# (AC1-AC7 of E28-S186) after a verbatim backup into the migration backup
-# tree. The glob is leading-anchored (gaia-*.md) so a user's own
-# `my-gaia-tool.md` is never touched.
+# after a verbatim backup into the migration backup tree. The glob is
+# leading-anchored (gaia-*.md) so a user's own `my-gaia-tool.md` is never
+# touched.
 # ---------------------------------------------------------------------------
 
 # Populated by _collect_legacy_command_stubs. Caller reads STUB_COUNT and
@@ -776,7 +751,7 @@ _migrate_legacy_command_stubs() {
 }
 
 # ---------------------------------------------------------------------------
-# Subtask 4.5 — back up + delete v1 directories after successful migration (E28-S188)
+# Subtask 4.5 — back up + delete v1 directories after successful migration
 #
 # Runs AFTER the config split has produced `config/project-config.yaml` (the
 # v2 marker). Safety rails:
@@ -794,7 +769,7 @@ _migrate_legacy_command_stubs() {
 #       must be inside $PROJECT_ROOT.
 #   (d) Destructive confirmation: interactive prompt unless --yes / --force.
 #       Non-TTY without --yes → exit 7 (bats-safe; no hang).
-#   (e) Each absent v1 dir is skipped silently (AC8).
+#   (e) Each absent v1 dir is skipped silently.
 # ---------------------------------------------------------------------------
 
 # _compute_live_manifest DIR MANIFEST — write sha256 + relative-path pairs for
@@ -814,9 +789,9 @@ _compute_live_manifest() {
 
 _migrate_v1_directories() {
   echo
-  echo "=== migrate 4.5: v1 directories cleanup (E28-S188) ==="
+  echo "=== migrate 4.5: v1 directories cleanup ==="
 
-  # Collect which v1 dirs are present (AC8 — skip absent silently).
+  # Collect which v1 dirs are present (skip absent silently).
   local present_dirs=()
   local d
   for d in _gaia _memory custom; do
@@ -831,10 +806,9 @@ _migrate_v1_directories() {
     return 0
   fi
 
-  # --- AC1: dry-run listing + size info ---
-  # Use du -sk for POSIX-portable KB output (I1 — macOS vs Linux du -sh
-  # formatting differs; sticking to -sk keeps the output deterministic for
-  # bats assertions).
+  # Dry-run listing + size info. Use du -sk for POSIX-portable KB output
+  # (macOS vs Linux du -sh formatting differs; sticking to -sk keeps the
+  # output deterministic for bats assertions).
   echo "Legacy v1 directories to remove (${#present_dirs[@]} dirs):"
   local total_kb=0
   for d in "${present_dirs[@]}"; do
@@ -855,24 +829,24 @@ _migrate_v1_directories() {
     return 0
   fi
 
-  # --- AC5 / CRITICAL-1: safety gate — v2 marker must exist and be non-empty ---
+  # Safety gate — v2 marker must exist and be non-empty.
+  # The config split places `framework_version:` in _gaia/_config/global.yaml
+  # (local keys) and only ci_cd/val_integration/sizing_map etc. in
+  # config/project-config.yaml (shared keys). So accept the v2 marker as
+  # valid if EITHER:
+  #   (a) project-config.yaml has a non-empty framework_version: or version:
+  #       field (preferred canonical check), OR
+  #   (b) project-config.yaml has at least one non-commented top-level key
+  #       (the post-split reality — the file exists and carries shared
+  #       config). This is the practical "v2 schema recognized" check.
+  # Anything else (missing file, zero top-level keys, only comments) →
+  # refuse the delete with exit 5.
   local v2_marker="$PROJECT_ROOT/config/project-config.yaml"
   if [[ ! -f "$v2_marker" ]]; then
     echo "ERROR: safety gate — v2 marker ($v2_marker) missing" >&2
     echo "       Refusing to delete v1 directories. v1 state left intact." >&2
     return 5
   fi
-  # CRITICAL-1 resolution: the real-world /gaia-migrate config split places
-  # `framework_version:` in _gaia/_config/global.yaml (local keys) and only
-  # ci_cd/val_integration/sizing_map etc. in config/project-config.yaml
-  # (shared keys). So accept the v2 marker as valid if EITHER:
-  #   (a) project-config.yaml has a non-empty framework_version: or version:
-  #       field (Val's preferred canonical check), OR
-  #   (b) project-config.yaml has at least one non-commented top-level key
-  #       (the post-split reality — the file exists and carries shared
-  #       config). This is the practical "v2 schema recognized" check.
-  # Anything else (missing file, zero top-level keys, only comments) →
-  # refuse the delete with exit 5.
   local marker_ok=0
   if grep -qE '^(framework_version|version):[[:space:]]*[^[:space:]]' "$v2_marker"; then
     marker_ok=1
@@ -887,7 +861,7 @@ _migrate_v1_directories() {
   fi
   echo "  safety gate: v2 marker OK ($v2_marker)"
 
-  # --- Paranoid guards (I2) ---
+  # --- Paranoid guards ---
   if [[ -z "${BACKUP_DIR:-}" || ! -d "$BACKUP_DIR" ]]; then
     echo "ERROR: BACKUP_DIR unset or missing — refusing rm -rf" >&2
     return 5
@@ -901,15 +875,15 @@ _migrate_v1_directories() {
     return 5
   fi
 
-  # --- CRITICAL-2: manifest verification (snapshot integrity) ---
-  # The invariant we actually want: "what I'm about to delete is byte-identical
-  # to what I preserved in the backup." We re-compute BOTH manifests at delete
-  # time and diff them. One path is intentionally excluded from the compare:
-  # _gaia/_config/global.yaml was rewritten in place by _migrate_config_split
-  # (see subtask 4.3 above — the line `_safe_write mv "$v2_global" "$v1_config"`
-  # rewrites the live source AFTER the backup snapshot was taken). The pre-
-  # split copy is preserved in $BACKUP_DIR/_gaia/_config/global.yaml, so the
-  # backup is whole; only the comparison would falsely mismatch on that file.
+  # Manifest verification (snapshot integrity). The invariant: "what I'm
+  # about to delete is byte-identical to what I preserved in the backup."
+  # We re-compute BOTH manifests at delete time and diff them. One path is
+  # intentionally excluded from the compare: _gaia/_config/global.yaml was
+  # rewritten in place by _migrate_config_split (the line
+  # `_safe_write mv "$v2_global" "$v1_config"` rewrites the live source AFTER
+  # the backup snapshot was taken). The pre-split copy is preserved in
+  # $BACKUP_DIR/_gaia/_config/global.yaml, so the backup is whole; only the
+  # comparison would falsely mismatch on that file.
   local live_manifest backup_manifest tmp
   live_manifest="$(mktemp -t gaia-migrate-live.XXXXXX)"
   backup_manifest="$(mktemp -t gaia-migrate-bkp.XXXXXX)"
@@ -926,9 +900,9 @@ _migrate_v1_directories() {
   rm -f "$tmp"
 
   # Apply the documented exclusion — _gaia/_config/global.yaml is intentionally
-  # rewritten in place by _migrate_config_split (see subtask 4.3 above), so its
-  # live sha256 does NOT match the pre-split sha256 in the backup. Both sides
-  # are filtered so the diff does not flag this intentional drift.
+  # rewritten in place by _migrate_config_split, so its live sha256 does NOT
+  # match the pre-split sha256 in the backup. Both sides are filtered so the
+  # diff does not flag this intentional drift.
   local live_filtered backup_filtered
   live_filtered="$(mktemp -t gaia-migrate-live-f.XXXXXX)"
   backup_filtered="$(mktemp -t gaia-migrate-bkp-f.XXXXXX)"
@@ -944,7 +918,7 @@ _migrate_v1_directories() {
   rm -f "$live_manifest" "$backup_manifest" "$live_filtered" "$backup_filtered"
   echo "  manifest match: live source == backup snapshot (excluding intentionally-rewritten _gaia/_config/global.yaml)"
 
-  # --- AC10 / W2: destructive confirmation with non-TTY guard ---
+  # Destructive confirmation with non-TTY guard.
   if [[ "$ASSUME_YES" != "true" ]]; then
     if [[ ! -t 0 ]]; then
       echo "ERROR: non-interactive context detected and --yes/--force not supplied." >&2
@@ -962,7 +936,7 @@ _migrate_v1_directories() {
     fi
   fi
 
-  # --- AC4: delete ---
+  # Delete v1 directories.
   for d in "${present_dirs[@]}"; do
     # Defensive: ensure target is inside PROJECT_ROOT.
     local target="$PROJECT_ROOT/$d"
@@ -983,7 +957,7 @@ _migrate_v1_directories() {
 }
 
 # ---------------------------------------------------------------------------
-# Step: validation (AC4)
+# Step: validation
 # ---------------------------------------------------------------------------
 _run_validate() {
   echo
@@ -1008,7 +982,7 @@ _run_validate() {
   fi
 
   # 3. global.yaml still has local keys (only if _gaia/ still exists — when
-  # E28-S188 cleanup ran, _gaia/ has been deleted and this check is N/A).
+  # the v1 cleanup ran, _gaia/ has been deleted and this check is N/A).
   if [[ -f "$PROJECT_ROOT/_gaia/_config/global.yaml" ]]; then
     if grep -qE '^project_path:' "$PROJECT_ROOT/_gaia/_config/global.yaml"; then
       echo "  global.yaml: project_path retained"
@@ -1017,7 +991,7 @@ _run_validate() {
       fail=1
     fi
   else
-    echo "  global.yaml: N/A (v1 directories removed by E28-S188 cleanup)"
+    echo "  global.yaml: N/A (v1 directories removed by cleanup)"
   fi
 
   return "$fail"
@@ -1031,10 +1005,10 @@ echo "gaia-migrate — v1 → v2 migration ($MODE mode)"
 echo "project-root: $PROJECT_ROOT"
 echo "==============================================================="
 
-# Detect (HALT-able). Return-code semantics per ADR-100:
+# Detect (HALT-able). Return-code semantics:
 #   0  → proceed with v1 → v2 migration (full v1 detected)
-#   10 → idempotent success (v2-only, no state dirs) — exit 0 with log (AC7)
-#   11 → v2 with state dirs — exec dispatch to gaia-reconcile-v2.sh (E85-S9)
+#   10 → idempotent success (v2-only, no state dirs) — exit 0 with log
+#   11 → v2 with state dirs — exec dispatch to gaia-reconcile-v2.sh
 #   *  → any other non-zero return is a HALT
 set +e
 _detect_v1
@@ -1047,7 +1021,7 @@ case "$detect_rc" in
     ;;
   11)
     echo "v2 install detected -- dispatching to gaia-reconcile-v2.sh"
-    # `exec` per ADR-101 §2 — the reconciler owns the process after dispatch.
+    # `exec` the reconciler, which owns the process after dispatch.
     # MODE, PROJECT_ROOT, DRY_RUN, ASSUME_YES are already in scope from
     # arg parsing and are forwarded via the environment.
     export MODE PROJECT_ROOT DRY_RUN ASSUME_YES
@@ -1083,14 +1057,14 @@ if ! _migrate_config_split; then
   exit 3
 fi
 if ! _migrate_legacy_command_stubs; then
-  echo "FAILED: legacy command stubs migration (E28-S186)"
+  echo "FAILED: legacy command stubs migration"
   echo "Restore: cp -a \"$BACKUP_DIR/.\" \"$PROJECT_ROOT/\""
   exit 3
 fi
 
-# Subtask 4.5 — back up + delete v1 directories (E28-S188). Runs after all
-# migrations succeed and before validation. Exit codes 5/6/7 are surfaced
-# directly to the caller so bats can assert them precisely.
+# Subtask 4.5 — back up + delete v1 directories. Runs after all migrations
+# succeed and before validation. Exit codes 5/6/7 are surfaced directly to
+# the caller so bats can assert them precisely.
 set +e
 V1_DIRS_DELETED=()
 _migrate_v1_directories
@@ -1100,14 +1074,14 @@ if [[ "$v1_rc" -ne 0 ]]; then
   case "$v1_rc" in
     5|6|7) exit "$v1_rc" ;;
     *)
-      echo "FAILED: v1 directories cleanup (E28-S188)"
+      echo "FAILED: v1 directories cleanup"
       echo "Restore: cp -a \"$BACKUP_DIR/.\" \"$PROJECT_ROOT/\""
       exit 3
       ;;
   esac
 fi
 
-# Validate (AC4)
+# Validate
 if [[ "$DRY_RUN" == "false" ]]; then
   if ! _run_validate; then
     echo
@@ -1130,15 +1104,15 @@ else
   echo "SUCCESS — v1 → v2 migration complete."
   echo "Backup: $BACKUP_DIR"
   echo "Restore command (if needed): cp -a \"$BACKUP_DIR/.\" \"$PROJECT_ROOT/\""
-  # E28-S189 — tell the user to smoke-test with the plugin-namespaced form.
-  # The unnamespaced /gaia-help can be intercepted by a legacy
+  # Tell the user to smoke-test with the plugin-namespaced form. The
+  # unnamespaced /gaia-help can be intercepted by a legacy
   # .claude/commands/gaia-help.md stub, so /gaia:gaia-help is the only form
   # that unambiguously exercises the plugin's gaia-help skill.
   echo
   echo "Next step: run /gaia:gaia-help in Claude Code to smoke-test the plugin install."
   echo "  (The gaia: prefix targets the plugin's gaia-help skill and avoids any legacy"
   echo "   .claude/commands/gaia-help.md stub that might still be registered.)"
-  # E28-S186 — legacy command stubs rollback path
+  # Legacy command stubs rollback path.
   if [[ -d "$BACKUP_DIR/.claude/commands" ]]; then
     echo
     echo "Legacy command stubs were backed up to: $BACKUP_DIR/.claude/commands/"
@@ -1149,7 +1123,7 @@ else
     echo "GAIA v1 globally, also run:"
     echo "  rm ~/.claude/commands/gaia-*.md"
   fi
-  # E28-S188 — v1 directories rollback path (AC6)
+  # v1 directories rollback path.
   if [[ "${#V1_DIRS_DELETED[@]}" -gt 0 ]]; then
     echo
     echo "Legacy v1 directories backed up to: $BACKUP_DIR/"

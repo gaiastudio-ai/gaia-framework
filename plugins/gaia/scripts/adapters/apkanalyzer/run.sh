@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/apkanalyzer/run.sh — ADR-078 adapter contract for apkanalyzer (E74-S7).
+# adapters/apkanalyzer/run.sh — adapter contract for apkanalyzer.
 # Invokes the Android SDK `apkanalyzer` CLI for APK / AAB file-size and DEX
 # reference analysis.
 

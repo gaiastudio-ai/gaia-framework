@@ -5,9 +5,7 @@
 #
 #   source "$(dirname "$0")/../../../scripts/lib/shell-idioms.sh"
 #
-# Story: E20-S20 — Extract safe_grep_log() shell helper for the
-#                  set -euo pipefail + grep-in-pipeline SIGPIPE pattern.
-# Refs:  AC1, AC4. Companion docs in skills/gaia-shell-idioms/SKILL.md.
+# Companion docs in skills/gaia-shell-idioms/SKILL.md.
 #
 # All helpers are written for POSIX-compatible bash (3.2+ for macOS) and
 # avoid GNU-only options.
@@ -40,11 +38,11 @@
 #   2 — usage error (missing pattern)
 #
 # Examples:
-#   # Was: git log --oneline main | grep -iqE "\bE20-S20\b"   (SIGPIPE-prone)
-#   # Now: safe_grep_log -i -E "\bE20-S20\b" --oneline main
+#   # Was: git log --oneline main | grep -iqE "\bSTORY-KEY\b"   (SIGPIPE-prone)
+#   # Now: safe_grep_log -i -E "\bSTORY-KEY\b" --oneline main
 #
 #   # Match against full commit bodies:
-#   safe_grep_log -i -E "Story:[[:space:]]*E20-S20" --format='%B' main
+#   safe_grep_log -i -E "Story:[[:space:]]*STORY-KEY" --format='%B' main
 #
 # Implementation note: we run `git log` inside a command substitution so its
 # stdout is captured fully BEFORE grep ever runs. That means grep can never
@@ -83,13 +81,12 @@ safe_grep_log() {
   # status becomes 141 (printf's signal exit code), even though grep's
   # actual exit was 0 (match).
   #
-  # The pre-E57-S10 implementation used `|| rc=$?` which captured pipeline
+  # The original implementation used `|| rc=$?` which captured pipeline
   # status — propagating the false 141 as a false-negative no-match. This
-  # surfaced across at least 7 stories (E78-S3, E78-S4, E76-S16/19/20,
-  # E83-S2/S6) and most recently broke /gaia-dev-story Step 14 (E87-S1
-  # Finding #3, 2026-05-12).
+  # surfaced across several stories and most recently broke /gaia-dev-story
+  # Step 14.
   #
-  # E57-S10 fix: capture grep's exit code via `${PIPESTATUS[1]}` directly,
+  # Fix: capture grep's exit code via `${PIPESTATUS[1]}` directly,
   # NOT via `|| rc=$?` on the pipeline. PIPESTATUS surfaces each pipeline
   # stage's actual exit code regardless of pipefail. Combined with `|| true`
   # so that `set -e` doesn't abort the function on grep's expected exit-1

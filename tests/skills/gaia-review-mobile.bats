@@ -302,6 +302,6 @@ setup() {
 
 # ---------- Story traceability ----------
 
-@test "Traceability: SKILL.md references E74-S8 or ADR-077 or ADR-081" {
-  grep -qE "E74-S8|ADR-077|ADR-081" "$SKILL_FILE"
+@test "Traceability: SKILL.md documents the mobile review-gate contract" {
+  grep -qiE "review.gate|verdict-resolver|mobile" "$SKILL_FILE"
 }

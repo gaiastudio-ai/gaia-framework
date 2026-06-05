@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/swiftlint/run.sh — ADR-078 adapter contract for SwiftLint (E74-S7).
+# adapters/swiftlint/run.sh — adapter contract for SwiftLint.
 #
 # Contract: run --input <file-list> [--config <path>] [--output <path>]
 #               [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -27,7 +27,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/swiftlint/run.sh — ADR-078 contract entry for SwiftLint.
+adapters/swiftlint/run.sh — contract entry for SwiftLint.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]

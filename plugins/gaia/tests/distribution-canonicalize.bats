@@ -71,19 +71,19 @@ teardown() { common_teardown; }
 @test "TC-DCH-10: registry with backtick refused" {
   run bash -c "source '$CANON' && gaia_distribution_validate_string 'https://evil.com\`whoami\`'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-80|T-DCH-2'
+  echo "$output" | grep -qE 'SR-80|T-DCH-2|shell'
 }
 
 @test "TC-DCH-10: registry with '&&' refused" {
   run bash -c "source '$CANON' && gaia_distribution_validate_string 'https://evil.com && rm'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-80|T-DCH-2'
+  echo "$output" | grep -qE 'SR-80|T-DCH-2|shell'
 }
 
 @test "TC-DCH-10: registry with '|' refused" {
   run bash -c "source '$CANON' && gaia_distribution_validate_string 'https://evil.com | nc attacker'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-80|T-DCH-2'
+  echo "$output" | grep -qE 'SR-80|T-DCH-2|shell'
 }
 
 @test "TC-DCH-10: clean registry value passes" {

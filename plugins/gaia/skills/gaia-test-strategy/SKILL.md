@@ -18,19 +18,19 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are the unified entry point for test strategy and test framework setup. Per FR-RSV2-24 and source-report §9.4, the previous two skills `/gaia-test-design` (test-plan design by Sable) and `/gaia-test-framework` (procedural scaffolding) are collapsed into a single skill with mode selection. This skill owns:
+You are the unified entry point for test strategy and test framework setup. Per source-report §9.4, the previous two skills `/gaia-test-design` (test-plan design by Sable) and `/gaia-test-framework` (procedural scaffolding) are collapsed into a single skill with mode selection. This skill owns:
 
-- `--plan` mode: delegate to **Sable** (test-architect subagent) to author or update a `test-strategy.md` document under `.gaia/artifacts/planning-artifacts/` (E105-S2 / ADR-127 §7.2 canonical home; legacy `test-artifacts/strategy/` is honored read-only for pre-migration projects) covering test types, risk-based prioritization, and per-service test sections. **F-048:** `--plan` produces `test-strategy.md`; the companion `test-plan.md` (the per-FR test-case catalogue) is produced by `/gaia-trace` and the `--plan` test-design lineage — both now share the `planning-artifacts/` home, so the two docs sit side-by-side rather than split across trees.
+- `--plan` mode: delegate to **Sable** (test-architect subagent) to author or update a `test-strategy.md` document under `.gaia/artifacts/planning-artifacts/` (canonical home; legacy `test-artifacts/strategy/` is honored read-only for pre-migration projects) covering test types, risk-based prioritization, and per-service test sections. `--plan` produces `test-strategy.md`; the companion `test-plan.md` (the per-FR test-case catalogue) is produced by `/gaia-trace` and the `--plan` test-design lineage — both now share the `planning-artifacts/` home, so the two docs sit side-by-side rather than split across trees.
 
-  **AF-2026-05-31-3 / Test14 D-05 — two-artifact expectation + frontmatter schema.** `--plan` produces TWO consumers-dependent artifacts: (1) `test-strategy.md` (prose strategy — consumed by `/gaia-create-epics` via `test_plan_exists` gate's strategy-fallback), and (2) `test-plan.md` (per-FR test-case catalogue — consumed by `/gaia-trace`). The finalize alias-copy `test-strategy.md` → `test-plan.md` is a BOOTSTRAP; operators are expected to enrich `test-plan.md` with the actual per-FR rows BEFORE invoking `/gaia-trace` for a real traceability run. Running `/gaia-trace` against the unenriched alias yields a low-coverage matrix. The required `test-strategy.md` frontmatter is `artifact_type: test-strategy`, `schema_version: "2.0.0"`, `generated_by: /gaia-test-strategy`, `date: YYYY-MM-DD`, `risk_levels: [high, medium, low]`.
+  **Two-artifact expectation + frontmatter schema.** `--plan` produces TWO consumers-dependent artifacts: (1) `test-strategy.md` (prose strategy — consumed by `/gaia-create-epics` via `test_plan_exists` gate's strategy-fallback), and (2) `test-plan.md` (per-FR test-case catalogue — consumed by `/gaia-trace`). The finalize alias-copy `test-strategy.md` → `test-plan.md` is a BOOTSTRAP; operators are expected to enrich `test-plan.md` with the actual per-FR rows BEFORE invoking `/gaia-trace` for a real traceability run. Running `/gaia-trace` against the unenriched alias yields a low-coverage matrix. The required `test-strategy.md` frontmatter is `artifact_type: test-strategy`, `schema_version: "2.0.0"`, `generated_by: /gaia-test-strategy`, `date: YYYY-MM-DD`, `risk_levels: [high, medium, low]`.
 - `--scaffold` mode: procedurally generate test directories, framework configuration files (`vitest.config`, `jest.config`, `pytest.ini`, etc.), tagging conventions, and sample tests for the detected or specified stack. Multi-service support via `--service <path>`, `--service all`, `--service root`, or `--cross-service`.
 - No-arg interactive mode: present a four-option menu and route to the corresponding `--plan` or `--scaffold` logic.
 
-Deprecation: the skill exposes `deprecated_aliases: [gaia-test-design, gaia-test-framework]`. Invocations of the old names route here per the E69-S1 deprecation alias mechanism. `/gaia-test-design` routes to `--plan` mode; `/gaia-test-framework` routes to `--scaffold` mode. Each routed invocation emits a one-line deprecation warning naming the new canonical command.
+Deprecation: the skill exposes `deprecated_aliases: [gaia-test-design, gaia-test-framework]`. Invocations of the old names route here per the deprecation alias mechanism. `/gaia-test-design` routes to `--plan` mode; `/gaia-test-framework` routes to `--scaffold` mode. Each routed invocation emits a one-line deprecation warning naming the new canonical command.
 
 ## Critical Rules
 
-- The two old skill directories (`gaia-test-design/`, `gaia-test-framework/`) remain on disk per FR-329 — only their `name:` and frontmatter are retired. Do NOT delete them.
+- The two old skill directories (`gaia-test-design/`, `gaia-test-framework/`) remain on disk — only their `name:` and frontmatter are retired. Do NOT delete them.
 - `--plan` and `--scaffold` are mutually exclusive. Invoking both flags together exits with code 1 and a clear message.
 - `project-config.yaml` MUST exist before this skill runs in any mode. If absent, exit with code 1 and direct the user to run `/gaia-init` or `/gaia-brownfield` first. The skill never creates a default config.
 - `--plan` mode delegates to the **test-architect** subagent (Sable) — do NOT inline Sable's persona into this skill body. If the subagent is not available, halt with: "test-architect subagent not available -- ensure agents are installed."
@@ -87,7 +87,7 @@ Route the selected choice:
 - Option 1 → invoke `--plan` mode (Step 1).
 - Option 2 → invoke `--scaffold` mode (Step 5). If multiple services declared in `stacks[]`, present the service picker; if single-stack, scaffold directly.
 - Option 3 → prompt for the service (skip picker for single-stack projects), prompt for the test type, then run `--scaffold --service <path> --add <test-type>`.
-- Option 4 → read `test_execution` from `project-config.yaml`, list scaffolded services and test types, list existing files under `.gaia/artifacts/planning-artifacts/` (test-strategy.md / test-plan.md canonical home, E105-S2) plus the legacy `.gaia/artifacts/test-artifacts/strategy/` and `tests/`, and exit cleanly without writes.
+- Option 4 → read `test_execution` from `project-config.yaml`, list scaffolded services and test types, list existing files under `.gaia/artifacts/planning-artifacts/` (test-strategy.md / test-plan.md canonical home) plus the legacy `.gaia/artifacts/test-artifacts/strategy/` and `tests/`, and exit cleanly without writes.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 0a stage=interactive-route`
 
@@ -98,10 +98,10 @@ Route the selected choice:
 Read upstream context (gracefully degrade on missing files):
 
 - `.gaia/artifacts/planning-artifacts/architecture.md` — extract system components, interactions, high-risk areas. If missing: log WARNING, use generic risk ratings.
-- PRD — extract requirements (functional and non-functional). Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists: log WARNING, reduced scope.
+- PRD — extract requirements (functional and non-functional). Resolve via the sharded-fallback rule: try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists: log WARNING, reduced scope.
 - `.gaia/artifacts/planning-artifacts/project-context.md` — extract project-level context.
 
-Detect subsequent-invocation: if `.gaia/artifacts/planning-artifacts/test-strategy.md` (canonical, E105-S2) OR the legacy `.gaia/artifacts/test-artifacts/strategy/test-strategy.md` already exists, read it and prepare the incremental-update flow — ask the user what to add (new test type, new perf scenarios, new contract suite) and only generate the incremental pieces.
+Detect subsequent-invocation: if `.gaia/artifacts/planning-artifacts/test-strategy.md` (canonical) OR the legacy `.gaia/artifacts/test-artifacts/strategy/test-strategy.md` already exists, read it and prepare the incremental-update flow — ask the user what to add (new test type, new perf scenarios, new contract suite) and only generate the incremental pieces.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-strategy 1 mode=plan stage=context-loaded`
 
@@ -130,7 +130,7 @@ Delegate to Sable for test strategy and plan authoring.
 
 ### Step 4 — Plan Mode: Generate Output
 
-- Write the compiled test strategy to the canonical home `.gaia/artifacts/planning-artifacts/test-strategy.md` (E105-S2 / ADR-127 §7.2 — docs-ABOUT-testing live in `planning-artifacts/`, not `test-artifacts/`). For back-compat: if a legacy `.gaia/artifacts/test-artifacts/strategy/test-strategy.md` already exists (pre-migration project), write to that existing location to preserve placement and surface a one-line advisory recommending `migrate-planning-vs-test.sh`; otherwise NEW writes go to `planning-artifacts/`.
+- Write the compiled test strategy to the canonical home `.gaia/artifacts/planning-artifacts/test-strategy.md` (docs-ABOUT-testing live in `planning-artifacts/`, not `test-artifacts/`). For back-compat: if a legacy `.gaia/artifacts/test-artifacts/strategy/test-strategy.md` already exists (pre-migration project), write to that existing location to preserve placement and surface a one-line advisory recommending `migrate-planning-vs-test.sh`; otherwise NEW writes go to `planning-artifacts/`.
 - For subsequent invocations: append the incremental update section, do not overwrite earlier sections.
 - Offer a follow-up scaffolding prompt: "Set up scaffolding now? [y/n]". On y, route to Step 5.
 

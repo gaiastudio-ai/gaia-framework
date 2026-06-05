@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# agent-overlay.sh — GAIA review-common entry point (E66-S1, ADR-077)
+# agent-overlay.sh — GAIA review-common entry point
 #
 # Resolves the (skill, stack) pair to the canonical (agent-id, sidecar-path)
-# wiring per the ADR-077 fixed wiring table. The resolver runs in the parent
-# context BEFORE fork dispatch — the fork tool allowlist `[Read, Grep, Glob,
-# Bash]` stays intact (NFR-RSV2-5 / NFR-048 preserved).
+# fixed wiring table. The resolver runs in the parent context BEFORE fork
+# dispatch — the fork tool allowlist `[Read, Grep, Glob, Bash]` stays intact.
 #
 # Public API (entry point):
 #   agent-overlay.sh --skill <skill-name> [--stack <canonical-stack>]
 #   agent-overlay.sh --help
 #
 # Arguments:
-#   --skill <name>          Required. One of the 15 ADR-077 wiring-table skill
+#   --skill <name>          Required. One of the supported wiring-table skill
 #                           variants (see WIRING TABLE below).
 #   --stack <stack>         Required only for --skill gaia-review-code (the
 #                           stack-conditional row). One of: ts-dev, java-dev,
@@ -27,7 +26,7 @@
 #   1  caller error — unknown skill, missing required flag, invalid stack,
 #                     or missing --stack for gaia-review-code
 #
-# WIRING TABLE (ADR-077 §7613–§7627):
+# WIRING TABLE:
 #   gaia-review-code               -> stack-specific reviewer (ts-dev, java-dev,
 #                                     python-dev, go-dev, flutter-dev,
 #                                     mobile-dev, angular-dev)
@@ -49,7 +48,6 @@
 #
 # Sidecar convention: `_memory/<agent-id>-sidecar.md`.
 #
-# Refs: ADR-077, FR-RSV2-1, FR-RSV2-4, NFR-RSV2-1, NFR-RSV2-5.
 
 set -euo pipefail
 LC_ALL=C
@@ -66,14 +64,14 @@ die() {
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — resolve (skill, stack) -> (agent-id, sidecar-path) per ADR-077
+$SCRIPT_NAME — resolve (skill, stack) -> (agent-id, sidecar-path)
 
 Usage:
   $SCRIPT_NAME --skill <skill-name> [--stack <stack>]
   $SCRIPT_NAME --help
 
 Options:
-  --skill <name>          Required. ADR-077 wiring-table skill variant.
+  --skill <name>          Required. Wiring-table skill variant.
   --stack <stack>         Required for gaia-review-code only. One of:
                           ts-dev, java-dev, python-dev, go-dev, flutter-dev,
                           mobile-dev, angular-dev.
@@ -120,7 +118,7 @@ done
 
 [ -n "$SKILL" ] || die 1 "missing required --skill <name>"
 
-# --- ADR-077 wiring table ---
+# --- wiring table ---
 case "$SKILL" in
   gaia-review-code)
     # Stack-conditional row: --stack required.
@@ -141,7 +139,7 @@ case "$SKILL" in
   gaia-review-mobile)
     emit "talia" "_memory/talia-sidecar.md" ;;
   gaia-review-a11y)
-    # Pre-merge a11y review is a UX-design concern (E69-S2 / ADR-077 wiring delta).
+    # Pre-merge a11y review is a UX-design concern.
     # Christy owns design-fidelity a11y review; Sable owns post-deploy a11y testing.
     emit "christy" "_memory/christy-sidecar.md" ;;
   gaia-validate-design-a11y)
@@ -154,6 +152,6 @@ case "$SKILL" in
   gaia-deploy)
     emit "soren" "_memory/soren-sidecar.md" ;;
   *)
-    die 1 "unknown skill: '$SKILL' (not in ADR-077 wiring table)"
+    die 1 "unknown skill: '$SKILL' (not in wiring table)"
     ;;
 esac

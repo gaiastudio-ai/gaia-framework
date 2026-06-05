@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# gate-predicates.sh — E45-S2 (FR-347, FR-358, ADR-060)
+# gate-predicates.sh — quality-gate predicate library
 #
 # Shared library sourced by setup.sh / finalize.sh of any V2 skill that
 # declares a `quality_gates` block in its SKILL.md frontmatter. Provides:
@@ -14,7 +14,7 @@
 #                                              — iterate post_complete
 #                                                 list, accumulate misses
 #
-# Predicate vocabulary (locked by Task 1.2):
+# Predicate vocabulary:
 #   file_exists:{glob}        — glob matches >= 1 file under PWD
 #   file_missing:{glob}       — inverse of file_exists
 #   section_present:{header}  — artifact contains "## {header}" (case-
@@ -23,8 +23,7 @@
 #   story_status:{key}:{state} — story file has the given status
 #   env_var_set:{var}         — env var is set and non-empty
 #
-# All functions are private (leading underscore) so the NFR-052 coverage
-# gate does not require dedicated bats tests for them — they are
+# All functions are private (leading underscore) — they are
 # exercised end-to-end via the public setup.sh / finalize.sh contracts.
 #
 # POSIX discipline: bash 3.2 compatible. No associative arrays, no
@@ -183,7 +182,7 @@ _gate_check_section_count() {
 # _gate_check_story_status <key> <state>
 _gate_check_story_status() {
   local key="$1" want="$2"
-  # E96-S7 partial-4b: smart-fallback for IMPLEMENTATION_ARTIFACTS
+  # Smart-fallback for IMPLEMENTATION_ARTIFACTS
   local impl_dir
   if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
     impl_dir="$IMPLEMENTATION_ARTIFACTS"

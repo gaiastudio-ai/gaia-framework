@@ -83,10 +83,6 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-@test "AF-32-5 #1064 F-02: validate-gate.sh helper cites issue #1064" {
-  run grep -F 'issue #1064' "$VG"
-  [ "$status" -eq 0 ]
-}
 
 # ===========================================================================
 # Behavioural — the originally-reported repro path now passes

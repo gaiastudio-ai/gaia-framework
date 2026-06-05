@@ -1,6 +1,6 @@
 ---
 name: gaia-config-distribution
-description: Section-scoped editor for the `distribution:` block of `project-config.yaml` per FR-523 / ADR-112. Use when "edit distribution config" or /gaia-config-distribution. Comment-preserving per ADR-044. Four operations — `add`, `show`, `clear`, `set` — mirror the /gaia-config-env pattern.
+description: Section-scoped editor for the `distribution:` block of `project-config.yaml`. Use when "edit distribution config" or /gaia-config-distribution. Comment-preserving. Four operations — `add`, `show`, `clear`, `set` — mirror the /gaia-config-env pattern.
 argument-hint: "add | show | clear | set [--channel <c>] [--registry <url>] [--manifest <path>] [--release-workflow <name>] [--force] [other --field <value>]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
 orchestration_class: light-procedural
@@ -12,40 +12,40 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are section-editing the top-level `distribution:` block of `project-config.yaml` per FR-523 + ADR-112 §(b). The skill is one of the `/gaia-config-*` family established by E71-S3 — comment-preserving per ADR-044, schema-validated against the E99-S2 closed 10-channel registry, path-canonicalized per E99-S3's SR-79 + SR-80, and gated against all-`deployable` projects per FR-523's `--force` rule.
+You are section-editing the top-level `distribution:` block of `project-config.yaml`. The skill is one of the `/gaia-config-*` family — comment-preserving, schema-validated against the closed 10-channel registry, path-canonicalized, and gated against all-`deployable` projects per the `--force` rule.
 
 This skill targets ONLY the `distribution:` section. Other top-level sections (`environments:`, `ci_cd:`, etc.) are invisible to the edit session and untouched.
 
 ## Critical Rules
 
 - Only the `distribution:` section may be modified. All other sections, comments, and formatting outside it MUST be preserved byte-for-byte.
-- The comment-preserving YAML editor at `${CLAUDE_PLUGIN_ROOT}/scripts/config-yaml-editor.sh` is the canonical mutation primitive per ADR-042 / ADR-044. NEVER round-trip the file through `yq -y` or `yaml.dump` — those strip comments.
+- The comment-preserving YAML editor at `${CLAUDE_PLUGIN_ROOT}/scripts/config-yaml-editor.sh` is the canonical mutation primitive. NEVER round-trip the file through `yq -y` or `yaml.dump` — those strip comments.
 - Pre-write validation gates (NON-NEGOTIABLE, in order):
-  1. **E99-S2 schema validation** — channel must be one of the closed 10-channel enum; the 4 required common fields must be present; per-channel `if/then` allOf sub-fields enforced (mobile-app requires platform+store_id+review_required; container-registry requires image_name+tag_strategy; etc.).
-  2. **E99-S3 path canonicalization (SR-79)** — `distribution.manifest` is realpath-canonicalized and string-prefix-checked against the project root; HALT on traversal.
-  3. **E99-S3 shell-metachar denylist (SR-80)** — `gaia_distribution_validate_string` rejects any value containing `;`, `&&`, `||`, `|`, backtick, `$(`, `>`, `<`, newline across ALL `distribution.*` string fields.
-  4. **E99-S3 URL-shape (SR-80)** — `distribution.registry` MUST match `^https://<host>[/<path>]$`.
-- **FR-523 `--force` gate**: when ALL environments[] entries resolve to `kind: deployable` (per E99-S1 resolver), `add` and `set` REFUSE the write without `--force`. The guidance: "distribution typically pairs with `branch-only` or `distribution-only` environments — set at least one environment to non-deployable first, or pass `--force` to override". With `--force`, the write proceeds.
+  1. **Schema validation** — channel must be one of the closed 10-channel enum; the 4 required common fields must be present; per-channel `if/then` allOf sub-fields enforced (mobile-app requires platform+store_id+review_required; container-registry requires image_name+tag_strategy; etc.).
+  2. **Path canonicalization** — `distribution.manifest` is realpath-canonicalized and string-prefix-checked against the project root; HALT on traversal.
+  3. **Shell-metachar denylist** — `gaia_distribution_validate_string` rejects any value containing `;`, `&&`, `||`, `|`, backtick, `$(`, `>`, `<`, newline across ALL `distribution.*` string fields.
+  4. **URL-shape** — `distribution.registry` MUST match `^https://<host>[/<path>]$`.
+- **`--force` gate**: when ALL environments[] entries resolve to `kind: deployable`, `add` and `set` REFUSE the write without `--force`. The guidance: "distribution typically pairs with `branch-only` or `distribution-only` environments — set at least one environment to non-deployable first, or pass `--force` to override". With `--force`, the write proceeds.
 - The `add` op REFUSES when a `distribution:` section already exists (use `set` instead).
 - The `set` op REFUSES when no `distribution:` section exists (use `add` instead).
 - The `clear` op removes the entire `distribution:` block; surrounding sections + comments preserved byte-identical.
-- Edits MUST go through a diff-preview confirmation gate — never write without an explicit user `y` response. In YOLO mode, auto-confirm per ADR-067.
+- Edits MUST go through a diff-preview confirmation gate — never write without an explicit user `y` response. In YOLO mode, auto-confirm.
 
-## Sub-commands (per FR-523)
+## Sub-commands
 
-> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration. The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
 
 ### `add`
 
 Add a fresh `distribution:` block. REFUSES when one already exists.
 
-Required flags (4 canonical common fields per FR-521):
+Required flags (4 canonical common fields):
 - `--channel <claude-marketplace|npm|pypi|maven|homebrew|github-releases|mobile-app|container-registry|static-site|custom>`
 - `--registry <https-url>`
 - `--manifest <relative-path>`
 - `--release-workflow <name-or-relpath>`
 
-Per-channel required sub-fields (validated by the E99-S2 if/then allOf):
+Per-channel required sub-fields (validated by the if/then allOf):
 - `mobile-app`: `--platform ios|android|both --store-id <id> --review-required <true|false>`
 - `container-registry`: `--image-name <name> --tag-strategy semver|sha|latest`
 - `static-site`: `--provider cloudflare-pages|s3|netlify|vercel|github-pages|custom --domain <host>`
@@ -92,13 +92,13 @@ For `add` and `set`:
    - `gaia_distribution_canonicalize_manifest <project-root> <manifest-value>` on the `manifest` field.
    - `gaia_distribution_validate_url <registry-value>` on the `registry` field.
    - `gaia_distribution_validate_string <value>` on EACH OTHER `distribution.*` string field (release_workflow, store_id, image_name, domain, group_id, artifact_id, tap, repo, adapter_name).
-3. Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-env-kind.sh` and probe each `environments[]` entry for `kind`; if ALL resolve to `deployable` AND `--force` is NOT set, REFUSE with the FR-523 guidance.
+3. Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-env-kind.sh` and probe each `environments[]` entry for `kind`; if ALL resolve to `deployable` AND `--force` is NOT set, REFUSE with the `--force` guidance.
 4. Run `${CLAUDE_PLUGIN_ROOT}/scripts/validate-project-config.sh <path>` against the prospective merged file in a temp location; on schema failure, REFUSE with ajv-cli's error block.
 5. ANY failure → REFUSE the write, exit non-zero, file is byte-identical to pre-invocation state.
 
 ### Step 5 — Diff-preview + confirm
 
-Render `diff -u <original> <prospective>` to the user. Prompt `[y]es / [n]o / [d]iff again / [a]bort`. In YOLO mode auto-confirm per ADR-067.
+Render `diff -u <original> <prospective>` to the user. Prompt `[y]es / [n]o / [d]iff again / [a]bort`. In YOLO mode auto-confirm.
 
 ### Step 6 — Atomic write
 
@@ -111,16 +111,16 @@ On confirmation:
 
 Re-extract and confirm the round-trip parses. Report success with the new section's line range. Note sprint-status.yaml may be out of sync — point the user at `/gaia-sprint-status`.
 
-## `/gaia-config-show` integration (AC9)
+## `/gaia-config-show` integration
 
-`/gaia-config-show` (TOC mode) lists `distribution` as a present section. `/gaia-config-show distribution` (single-section mode) dispatches via `config-yaml-editor.sh extract` and renders the section verbatim. The dotted-path drill-down convention (e.g., `/gaia-config-show distribution.channel`) is supported via `yq eval` per the E98-S4 pattern documented in the `/gaia-config-show` SKILL.md.
+`/gaia-config-show` (TOC mode) lists `distribution` as a present section. `/gaia-config-show distribution` (single-section mode) dispatches via `config-yaml-editor.sh extract` and renders the section verbatim. The dotted-path drill-down convention (e.g., `/gaia-config-show distribution.channel`) is supported via `yq eval` per the pattern documented in the `/gaia-config-show` SKILL.md.
 
 ## References
 
-- FR-523 — `/gaia-config-distribution` section editor.
-- FR-521 / FR-522 — 4 required common fields + closed 10-channel enum (E99-S2).
-- SR-79 / SR-80 — path canonicalization + shell-metachar denylist + URL-shape (E99-S3).
-- ADR-044 — comment-preserving section-scoped editors.
-- ADR-112 — project-shape config model.
-- ADR-067 — YOLO mode contract.
-- ADR-042 — Scripts-over-LLM.
+- `/gaia-config-distribution` section editor.
+- 4 required common fields + closed 10-channel enum.
+- Path canonicalization + shell-metachar denylist + URL-shape.
+- Comment-preserving section-scoped editors.
+- Project-shape config model.
+- YOLO mode contract.
+- Scripts-over-LLM.

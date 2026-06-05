@@ -1,4 +1,4 @@
-# Appium dynamic test adapter (E74-S9)
+# Appium dynamic test adapter
 # Cross-platform mobile/web automation via WebDriver.
 name: appium
 type: dynamic

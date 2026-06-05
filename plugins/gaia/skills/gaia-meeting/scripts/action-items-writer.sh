@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# action-items-writer.sh — gaia-meeting v2 action-items registry writer (E76-S3)
-#
-# AC2 / AC5 / FR-MTG-21 / ADR-086 / TC-MTG-AI-3 / TC-MTG-AI-4 / TC-MTG-AI-6
+# action-items-writer.sh — gaia-meeting v2 action-items registry writer
 #
 # Reads a drafted-items YAML payload (one entry per `- type: …` block), reads
 # the existing canonical registry at `.gaia/state/action-items.yaml`
@@ -171,7 +169,7 @@ if [[ -f "$REGISTRY" ]]; then
 else
   # Brand-new registry — minimal scaffold with header + items list.
   cat > "$new_registry" <<'YAML'
-# Action Items — canonical registry (architecture §10.28.6, ADR-052, ADR-086)
+# Action Items — canonical registry
 schema_version: 2
 items:
 YAML

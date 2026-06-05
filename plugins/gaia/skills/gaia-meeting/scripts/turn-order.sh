@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# turn-order.sh — gaia-meeting round-robin turn arbitration (E76-S1, FR-MTG-7)
+# turn-order.sh — gaia-meeting round-robin turn arbitration
 #
 # Emits a deterministic round-robin sequence of speaker labels matching the
-# invite order, one speaker per line. Drives the DISCUSS-phase turn loop. The
-# raise-hand and research-interrupt insertions land in E76-S2; this S1 helper
-# is the substrate they will compose against.
+# invite order, one speaker per line. Drives the DISCUSS-phase turn loop.
 #
 # Usage:
 #   turn-order.sh --invitees "P1,P2,P3" --turns 6
@@ -47,12 +45,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$INVITEES" ]]; then
-  echo "turn-order.sh: --invitees is required and must be non-empty (FR-MTG-7)." >&2
+  echo "turn-order.sh: --invitees is required and must be non-empty." >&2
   exit 2
 fi
 
 if ! [[ "$TURNS" =~ ^[1-9][0-9]*$ ]]; then
   echo "turn-order.sh: --turns must be a positive integer (got: '$TURNS')." >&2
+
   exit 3
 fi
 

@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-# intake-dispatch-verb-check.sh — Intake-time dispatch-verb enforcement (E88-S2).
-#
-# Refs:  ADR-107 (closed-list taxonomies SSOT), FR-DPD-2, AI-2026-05-13-4.
-# Story: E88-S2.
+# intake-dispatch-verb-check.sh — Intake-time dispatch-verb enforcement.
 #
 # Purpose
 #   Enforce at intake time (when a story file is being elaborated by
 #   `/gaia-create-story` or `/gaia-add-feature`) that any acceptance
-#   criterion mentioning a dispatch verb (per the E88-S1 taxonomy SSOT at
+#   criterion mentioning a dispatch verb (per the taxonomy SSOT at
 #   knowledge/taxonomy/dispatch-verbs.txt) is paired with a companion
 #   integration-test AC OR explicitly annotated with the override comment
 #   `<!-- gaia:contract-only: <reason> -->`.
@@ -32,7 +29,7 @@
 #
 # Implementation notes
 #   - Sources `lib/dispatch-verb-match.sh` for the matcher function so the
-#     closed-list taxonomy stays SSOT (ADR-107 contract).
+#     closed-list taxonomy stays SSOT.
 #   - AC extraction is shape-tolerant: ACs are scanned between the
 #     `## Acceptance Criteria` header and the next `## ` heading. Within
 #     that block, ACs are identified by lines starting with either

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# wip-checkpoint-resolve.sh — gaia-quick-dev WIP checkpoint validator (E28-S117)
+# wip-checkpoint-resolve.sh — gaia-quick-dev WIP checkpoint validator
 #
-# Reads _memory/checkpoints/quick-dev-{spec_name}.yaml and walks every entry
+# Reads the checkpoint file for quick-dev-{spec_name} and walks every entry
 # under `files_touched:` to verify the recorded sha256 checksum matches the
 # file on disk. Emits a table on stdout (path + status) and exits with:
 #   0 — no checkpoint, or all entries MATCH
-#   1 — one or more entries are MODIFIED or DELETED (AC-EC5)
+#   1 — one or more entries are MODIFIED or DELETED
 #
-# The sha256 check is deterministic and must never be done by the LLM
-# (ADR-042). Surface layer (skill prose) branches on exit code + stdout.
+# The sha256 check is deterministic and must never be done by the LLM.
+# Surface layer (skill prose) branches on exit code + stdout.
 #
 # Usage:
 #   wip-checkpoint-resolve.sh <spec_name>
@@ -29,8 +29,8 @@ fi
 SPEC_NAME="$1"
 
 WORK_DIR="${PROJECT_PATH:-$PWD}"
-# AF-2026-05-27-3 (ADR-111): canonical .gaia/memory/checkpoints only; legacy
-# _memory fallback removed. Env CHECKPOINT_PATH override wins.
+# Canonical .gaia/memory/checkpoints only; legacy _memory fallback removed.
+# Env CHECKPOINT_PATH override wins.
 if [ -n "${CHECKPOINT_PATH:-}" ]; then
   CHECKPOINT_DIR="$CHECKPOINT_PATH"
 else

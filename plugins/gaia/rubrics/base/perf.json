@@ -3,8 +3,6 @@
   "skill": "perf",
   "metadata": {
     "title": "Base performance review rubric",
-    "story": "E68-S3",
-    "adr": "ADR-079",
     "description": "Default severity rules for /gaia-performance-review covering N+1 queries, bundle size, caching, algorithmic complexity, and memory management. Layer 1 of the four-layer rubric composition."
   },
   "severity_rules": [
@@ -15,7 +13,7 @@
       "severity": "High",
       "description": "N+1 query patterns scale linearly with collection size and are the leading cause of latency regressions on real datasets.",
       "remediation": "Batch the queries via eager loading (`include`/`joinedload`/`Prefetch`) or fetch the related rows in a single bulk query.",
-      "references": ["FR-RSV2-15", "ORM-N+1"]
+      "references": ["ORM-N+1"]
     },
     {
       "id": "perf-n-plus-one-queries-002",

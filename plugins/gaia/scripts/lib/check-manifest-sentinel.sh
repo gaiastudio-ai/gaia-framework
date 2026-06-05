@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# check-manifest-sentinel.sh — E17-S35 (FR-499, ADR-110)
+# check-manifest-sentinel.sh — Layer 0 readiness guard
 #
-# Layer 0 readiness guard: inspect a .gaia/config/test-environment.yaml manifest
+# Inspect a .gaia/config/test-environment.yaml manifest
 # for the canonical GAIA-MANIFEST-TEMPLATE sentinel comment. Detection of the
 # sentinel means the user copied the .example template without customizing —
 # FAIL Layer 0 readiness with an actionable error and surface
-# `bridge_status: manifest_unmodified_template` per architecture §10.20.11.6.
+# `bridge_status: manifest_unmodified_template`.
 #
 # Sentinel match is a literal `grep -qF` against `# GAIA-MANIFEST-TEMPLATE`.
 # Robust against future punctuation drift in the trailing prose.
@@ -19,7 +19,6 @@
 #   1  manifest contains the sentinel (Layer 0 readiness FAILS)
 #   2  usage error / manifest file missing
 #
-# Traces: E17-S35, FR-499, ADR-110.
 
 set -euo pipefail
 LC_ALL=C

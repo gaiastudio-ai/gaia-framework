@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# verify-no-direct-config-reads.sh — E28-S144 CI guard (AC3, Task 3 / Task 5)
+# verify-no-direct-config-reads.sh — CI guard for direct config-file references
 #
 # Scans SKILL.md files for direct references to `global.yaml` or
 # `project-config.yaml` and exits non-zero when any non-comment, non-allowlisted
 # reference is found. Wire into CI to keep the invariant that all skill-level
-# config reads flow through `scripts/resolve-config.sh` (ADR-044 §10.26.3).
+# config reads flow through `scripts/resolve-config.sh`.
 #
 # Exclusions (comments / docstrings / metadata):
 #   - Lines inside HTML comments (`<!-- ... -->`).
@@ -22,7 +22,7 @@
 # These skills are architecturally unable to route through resolve-config.sh
 # because resolve-config.sh is read-only and returns flattened key-value
 # output, while the editors need to modify YAML in place preserving comments
-# and formatting. Allowlisting them is the pragmatic ADR-044-aligned choice.
+# and formatting. Allowlisting them is the pragmatic choice.
 #
 # Exit codes:
 #   0 — clean (no direct reads outside the allowlist)
@@ -101,7 +101,7 @@ done < <(find "$TARGET" -type f -name 'SKILL.md' -print0)
 if [ "$violations" -gt 0 ]; then
   {
     printf 'verify-no-direct-config-reads: FAIL (%d violation(s))\n' "$violations"
-    printf '%s\n' 'Skills must route config reads through scripts/resolve-config.sh (ADR-044 §10.26.3).'
+    printf '%s\n' 'Skills must route config reads through scripts/resolve-config.sh.'
     printf '%s\n' 'If a skill legitimately edits or validates the file directly, add it to the allowlist in'
     printf '%s\n' 'scripts/verify-no-direct-config-reads.sh with a rationale comment.'
     printf '\nViolations:\n%s' "$violation_lines"

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# audit-silent-val-bypass.sh — E84-S5 / ADR-093.
+# audit-silent-val-bypass.sh — audit for silently bypassed Val subagent checkpoints.
 #
 # Scans _memory/checkpoints/ for checkpoint files matching the empty-state
 # signature that indicates the Val subagent was silently bypassed under the
-# pre-ADR-093 plugin-fork model. The signature is a YAML checkpoint with:
+# legacy plugin-fork model. The signature is a YAML checkpoint with:
 #   - `variables: {}` (literal empty mapping)
 #   - `files_touched: []` (literal empty sequence)
 #   - NO `verdict:` field
@@ -46,7 +46,7 @@ Emits a Markdown table to stdout. One row per affected checkpoint file.
 USAGE
 }
 
-# AF-2026-05-27-3 (ADR-111): .gaia/memory/checkpoints is the only location;
+# .gaia/memory/checkpoints is the only location;
 # the legacy _memory/checkpoints fallback was removed with the migration.
 checkpoint_path="./.gaia/memory/checkpoints"
 days="90"
@@ -118,7 +118,7 @@ _file_mtime_iso() {
 }
 
 # ---- Emit Markdown table header ----
-printf '# Silent-Val-Bypass Audit Report — E84-S5\n\n'
+printf '# Silent-Val-Bypass Audit Report\n\n'
 printf 'Scan path: `%s`\n' "$checkpoint_path"
 printf 'Scan window: last %s days\n' "$days"
 printf 'Generated: %s\n\n' "$(TZ=UTC date -u +'%FT%TZ')"
@@ -148,6 +148,6 @@ EOF
 printf '\n## Summary\n\n'
 printf -- '- Files scanned: %s\n' "$scanned"
 printf -- '- Empty-state matches: %s\n' "$found"
-printf -- '- Source-of-truth: ADR-093 §"Empirical Evidence" + E84-S5\n'
+printf -- '- Source-of-truth: canonical Val dispatch contract\n'
 
 exit 0

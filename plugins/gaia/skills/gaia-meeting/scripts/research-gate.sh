@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# research-gate.sh — gaia-meeting research-phase completeness gate (E76-S6, AC2)
+# research-gate.sh — gaia-meeting research-phase completeness gate
 #
 # Phase-transition gate from RESEARCH to DISCUSS. Requires one structured
-# prelude per invited agent before discussion can begin (FR-MTG-28).
-# Bypasses only on --skip-research (explicit user opt-out under E76-S2 AC8).
+# prelude per invited agent before discussion can begin.
+# Bypasses only on --skip-research (explicit user opt-out).
 #
 # On halt, emits a single canonical HALT event via halt-event.sh and refuses
 # phase advancement — the persisted transcript MUST NOT contain any
@@ -45,7 +45,7 @@ if [[ -z "$INVITEES" ]]; then
   exit 3
 fi
 
-# --skip-research bypasses the gate entirely (E76-S2 AC8).
+# --skip-research bypasses the gate entirely (explicit user opt-out).
 if [[ "$SKIP_RESEARCH" -eq 1 ]]; then
   echo "research-gate.sh: --skip-research bypass — gate passed without prelude check"
   exit 0

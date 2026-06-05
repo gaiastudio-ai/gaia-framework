@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-dev-story skill finalize (E28-S53)
+# finalize.sh — gaia-dev-story skill finalize
 #
-# Mechanical copy of the Cluster 4 reference implementation.
+# Mechanical copy of the reference implementation.
 # Only WORKFLOW_NAME and SCRIPT_NAME differ.
 #
 # Responsibilities:
@@ -29,11 +29,10 @@ VERIFY_PUSH="$PLUGIN_SCRIPTS_DIR/verify-push.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Verify push (E55-S10) ----------
+# ---------- 0. Verify push ----------
 # Assert the feature branch is published on origin BEFORE we write the
 # checkpoint or emit the lifecycle event. A silent push failure must not be
 # allowed to leave the local branch unpublished while finalize claims success.
-# Sprint-37 incident reference: E53-S244 / E69-S4.
 if [ -x "$VERIFY_PUSH" ]; then
   if ! "$VERIFY_PUSH"; then
     die "push verification failed — refusing to finalize $WORKFLOW_NAME (see verify-push.sh output above)"

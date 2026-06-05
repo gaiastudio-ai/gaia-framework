@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
-# framework-version.sh — shared framework_version resolution library (E86-S1).
+# framework-version.sh — shared framework_version resolution library.
 #
-# Story: E86-S1 — Shared `lib/framework-version.sh` extraction from
-#                  `template-header.sh`.
-# Traces: FR-472, TC-FVD-41..TC-FVD-44, SR-60.
-# ADRs:   ADR-102 (Stale-Flag Marker Naming Convention — the version
-#                  string produced here is suitable for byte-stable string
-#                  comparison; no trailing newline).
-#
-# Trust Boundary (SR-60)
-# ----------------------
+# Trust Boundary
+# --------------
 # This library reads ONLY from `.claude-plugin/plugin.json` within the
 # plugin distribution AND from `resolve-config.sh` when available. It
 # does NOT read from user-controlled config files (e.g.,
@@ -34,10 +27,10 @@
 #   Side effects:
 #     - On success, exports `GAIA_FRAMEWORK_VERSION=<resolved-version>`
 #       as a convenience for callers that want the value as a shell
-#       variable (E86-S2 drift detection consumes this).
+#       variable (drift detection consumes this).
 #
 #   Stdout: the resolved version string (no trailing newline — required
-#           for ADR-102 byte-stable string comparison).
+#           for byte-stable string comparison).
 #   Stderr: a diagnostic message on failure.
 #
 #   Returns:
@@ -75,9 +68,9 @@ resolve_framework_version() {
   here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
   # Preferred: resolve-config.sh on PATH or co-located in scripts/.
-  # Recursion guard (E86-S2): when called from inside resolve-config.sh
-  # itself (drift-detection hook), $GAIA_FW_VER_IN_RESOLVER is set to "1"
-  # by the caller. Skip the preferred resolver entirely in that case —
+  # Recursion guard: when called from inside resolve-config.sh itself
+  # (drift-detection hook), $GAIA_FW_VER_IN_RESOLVER is set to "1" by
+  # the caller. Skip the preferred resolver entirely in that case —
   # otherwise resolve-config.sh would recursively invoke itself when the
   # drift hook calls resolve_framework_version.
   local resolver=""
@@ -138,10 +131,10 @@ resolve_framework_version() {
 
   # Export the resolved value as a convenience variable for callers that
   # want it as a shell var. The export is documented in the trust-boundary
-  # block above (SR-60).
+  # block above.
   export GAIA_FRAMEWORK_VERSION="$version"
 
-  # No-trailing-newline stdout contract per ADR-102 (byte-stable string
-  # comparison). Do NOT change to `printf '%s\n'`.
+  # No-trailing-newline stdout contract (byte-stable string comparison).
+  # Do NOT change to `printf '%s\n'`.
   printf "%s" "$version"
 }

@@ -72,8 +72,8 @@ setup() {
     grep -qiE "yolo.*auto|auto.*yolo|yolo mode.*default|yolo.*skip.*prompt"
 }
 
-@test "AC2: ADR-067 referenced for YOLO contract" {
-  grep -q "ADR-067" "$SKILL_FILE"
+@test "AC2: SKILL.md documents the severity-gated triage contract" {
+  grep -qiE "severity|CRITICAL|gate" "$SKILL_FILE"
 }
 
 # ---------- AC3: Inline rule table in Step 4 ----------
@@ -113,9 +113,9 @@ setup() {
     grep -qE "^[[:space:]]*\\|.*unknown.*\\|.*skip.*\\|"
 }
 
-@test "AC3: Step 4 references ADR-039 §10.22.8.2" {
+@test "AC3: Step 4 applies the remediation rule table" {
   awk '/^### Step 4/,/^### Step 5/' "$SKILL_FILE" | \
-    grep -qE "ADR-039|10\\.22\\.8\\.2"
+    grep -qiE "rule table|gap-triage-rules|remediation"
 }
 
 @test "AC3: Runtime gap-triage-rules.js retained as source of truth" {

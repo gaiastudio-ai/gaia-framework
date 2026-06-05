@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# qa-tc-generator.sh — E67-S8 deterministic TC-row generator for /gaia-review-qa Phase 3C.
+# qa-tc-generator.sh — deterministic TC-row generator for /gaia-review-qa Phase 3C.
 #
 # Reads a story file, extracts its `key:` frontmatter and `## Acceptance Criteria`
 # section, and emits a JSON array of TC-row scaffolds conforming to
@@ -23,7 +23,6 @@
 #   0  one valid TC array written / no-op
 #   2  caller error (missing flag, missing story file, malformed frontmatter)
 #
-# Refs: AC1, AC2, AC3 of E67-S8; ADR-075; FR-RSV2-2.
 
 set -euo pipefail
 LC_ALL=C

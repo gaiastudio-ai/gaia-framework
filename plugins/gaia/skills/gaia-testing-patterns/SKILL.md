@@ -9,11 +9,11 @@ orchestration_class: light-procedural
 
 Native Claude Code conversion of the legacy `_gaia/dev/skills/testing-patterns.md` skill. Preserves the four sectioned-loading IDs (`tdd-cycle`, `unit-testing`, `integration-testing`, `test-doubles`) verbatim. This skill is the primary source of the TDD cycle that `gaia-dev-story` JIT-loads during Steps 6-8.
 
-- ADR-041 — Native execution model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042 — Scripts-over-LLM. Prose and pattern guidance only.
-- ADR-046 — Hybrid memory. Shared content skill; no sidecar loading.
+- Native execution model via Claude Code Skills + Subagents + Plugins + Hooks.
+- Scripts-over-LLM. Prose and pattern guidance only.
+- Hybrid memory. Shared content skill; no sidecar loading.
 
-> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile). The legacy `applicable_agents` frontmatter field is dropped per the E28-S19 schema.
+> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile). The legacy `applicable_agents` frontmatter field is dropped per the current schema.
 
 <!-- SECTION: tdd-cycle -->
 ## TDD Cycle
@@ -237,7 +237,7 @@ class FakeUserRepository implements UserRepository {
 
 ## Test Scenarios
 
-Migrated from the legacy `test_scenarios` frontmatter array (per E28-S19 schema).
+Migrated from the legacy `test_scenarios` frontmatter array.
 
 | Scenario | Expected |
 |----------|----------|

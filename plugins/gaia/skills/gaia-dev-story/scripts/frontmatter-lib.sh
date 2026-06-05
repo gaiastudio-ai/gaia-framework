@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# frontmatter-lib.sh — shared YAML-frontmatter parser for gaia-dev-story (E64-S1)
+# frontmatter-lib.sh — shared YAML-frontmatter parser for gaia-dev-story
 #
 # Purpose:
 #   Three scripts in skills/gaia-dev-story/scripts/ each carry an identical
@@ -21,9 +21,6 @@
 #                              stdin and write its value to stdout. Strips
 #                              surrounding double or single quotes. Empty
 #                              output for missing keys (exit 0).
-#
-# Refs: AC3 (single shared parser), AC-EC3 (canonical error on malformed
-# frontmatter). Story: E64-S1.
 #
 # This file is sourced — not invoked directly. It MUST NOT call `set -e` or
 # similar global mode flags so callers retain their own shell state.

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# adapters/plugin-manifest-validator/run.sh — FR-410 + ADR-078 contract entry.
+# adapters/plugin-manifest-validator/run.sh — plugin manifest validation entry point.
 #
 # Validates Claude Code plugin manifest.yaml files against:
 #   1. The `frontmatter_requirements.required_fields` list defined in the
-#      claude-code-plugin stack file (E77-S2). Each missing required field
+#      claude-code-plugin stack file. Each missing required field
 #      becomes one `severity: high` finding.
 #   2. The `name == basename` byte-exact rule (LC_ALL=C). When the manifest
 #      `name:` value differs from the parent directory basename, emit a single
@@ -11,14 +11,14 @@
 #   3. Manifest drift against on-disk state — for now, missing manifest file
 #      surfaces as a high-severity finding (the broader drift surface — declared
 #      tools / commands / agents / skills referencing absent paths — is wired
-#      in tandem with FR-421 plugin-aware /gaia-trace; this adapter ships the
+#      in tandem with the plugin-aware trace adapter; this adapter ships the
 #      required-fields + name/basename core).
 #
 # Round 1+2 calibration: ALL drift findings emit `severity: "high"` — never
 # `"critical"`. Claude Code discovers components via filesystem walk rather
 # than the manifest, so drift is recoverable.
 #
-# Honours the ADR-078 run.sh flag-form interface:
+# Honours the run.sh flag-form interface:
 #
 #   run.sh --input <file-list> [--config <stack.yaml>] [--output <path>]
 #          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -31,11 +31,11 @@
 # Exit code:
 #   0  - run completed with zero findings.
 #   1  - adapter execution error (bad input, jq/awk missing).
-#   2  - run completed with one or more findings. Per ADR-078 §3 a tool with
-#        blocking findings could exit 0 and rely on findings[].blocking; the
-#        FR-409 sibling (plugin-frontmatter-validator) ships exit-2-on-findings
-#        to keep the AC language ("exits non-zero on findings") intact, and
-#        this adapter mirrors that contract for parity.
+#   2  - run completed with one or more findings. A tool with blocking findings
+#        could exit 0 and rely on findings[].blocking; the sibling
+#        plugin-frontmatter-validator ships exit-2-on-findings to keep the AC
+#        language ("exits non-zero on findings") intact, and this adapter
+#        mirrors that contract for parity.
 
 set -euo pipefail
 LC_ALL=C
@@ -60,7 +60,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/plugin-manifest-validator/run.sh — FR-410 + ADR-078 contract.
+adapters/plugin-manifest-validator/run.sh — plugin manifest validation.
 Usage:
   run.sh --input <file-list> [--config <stack.yaml>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -78,8 +78,8 @@ command -v awk >/dev/null 2>&1 || { echo "run.sh: awk is required but not on PAT
 
 # --- Resolve required-fields list from the stack file ---------------------
 # When --config is supplied, use it. Otherwise fall back to the in-tree
-# claude-code-plugin stack file (E77-S2). When neither is reachable, fall
-# back to the canonical FR-404 list of [name, description, version].
+# claude-code-plugin stack file. When neither is reachable, fall back to the
+# canonical default list of [name, description, version].
 
 DEFAULT_STACK="$SCRIPT_DIR/../../../config/stacks/claude-code-plugin.yaml"
 STACK_FILE=""
@@ -132,7 +132,7 @@ if [ -n "$STACK_FILE" ]; then
     [ -n "$f" ] && REQUIRED_FIELDS+=("$f")
   done < <(read_required_fields "$STACK_FILE")
 fi
-# Fallback to canonical FR-404 list when the stack file did not yield anything.
+# Fallback to the canonical default list when the stack file did not yield anything.
 if [ "${#REQUIRED_FIELDS[@]}" -eq 0 ]; then
   REQUIRED_FIELDS=(name description version)
 fi

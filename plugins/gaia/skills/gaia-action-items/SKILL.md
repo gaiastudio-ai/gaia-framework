@@ -1,6 +1,6 @@
 ---
 name: gaia-action-items
-description: Process and resolve open action items before sprint planning. Use when "resolve action items" or /gaia-action-items. Loads action-items.yaml, auto-escalates aged items, routes each item by type (clarification → assignee agent, implementation → SM, process → user, automation → SM), records reasoning on every resolution, and optionally creates stories. Preserves the classification-confirmation gate before any /gaia-create-story handoff. Native Claude Code conversion of the legacy action-items workflow (E28-S111, Cluster 14).
+description: Process and resolve open action items before sprint planning. Use when "resolve action items" or /gaia-action-items. Loads action-items.yaml, auto-escalates aged items, routes each item by type (clarification → assignee agent, implementation → SM, process → user, automation → SM), records reasoning on every resolution, and optionally creates stories. Preserves the classification-confirmation gate before any /gaia-create-story handoff. Native Claude Code conversion of the legacy action-items workflow.
 argument-hint: "[action-id | status]"
 allowed-tools: [Read, Write, Edit]
 orchestration_class: light-procedural
@@ -8,18 +8,18 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are processing open action items that accumulated since the last sprint — the pre-sprint triage pass. The tracker lives at `.gaia/artifacts/planning-artifacts/action-items.yaml` (canonical location per architecture §10.28.6 / ADR-052; reconciled in E36-S4) and is populated by `/gaia-retro`, `/gaia-triage-findings`, `/gaia-tech-debt-review`, `/gaia-correct-course`, and (E76-S3) `/gaia-meeting`. Your job is to walk through each open item, route it to the correct agent or ask the user directly, record the resolution with reasoning, and update the tracker.
+You are processing open action items that accumulated since the last sprint — the pre-sprint triage pass. The tracker lives at `.gaia/artifacts/planning-artifacts/action-items.yaml` (canonical location per architecture §10.28.6) and is populated by `/gaia-retro`, `/gaia-triage-findings`, `/gaia-tech-debt-review`, `/gaia-correct-course`, and `/gaia-meeting`. Your job is to walk through each open item, route it to the correct agent or ask the user directly, record the resolution with reasoning, and update the tracker.
 
-This skill is the native Claude Code conversion of the legacy action-items workflow at `_gaia/lifecycle/workflows/4-implementation/action-items/instructions.xml` (brief Cluster 14, story E28-S111). The legacy 131-line XML body is preserved here as explicit prose per ADR-041. No workflow engine, no engine-specific XML step tags.
+This skill is the native Claude Code conversion of the legacy action-items workflow at `_gaia/lifecycle/workflows/4-implementation/action-items/instructions.xml`. The legacy 131-line XML body is preserved here as explicit prose. No workflow engine, no engine-specific XML step tags.
 
-E76-S3 (per ADR-086) extends the registry shape with a `schema_version: 2` header and a v2 entry schema that mixes alongside legacy v1 entries in the same file. This skill MUST handle both shapes via the dual-schema routing branch documented in Step 2.
+The registry shape includes a `schema_version: 2` header and a v2 entry schema that mixes alongside legacy v1 entries in the same file. This skill MUST handle both shapes via the dual-schema routing branch documented in Step 2.
 
 ## Critical Rules
 
 - **Action items are pre-sprint work — resolve BEFORE sprint planning, not during sprints.** If `/gaia-sprint-plan` is pending, run this skill first.
-- **Dual-schema routing is mandatory (AC4 / E76-S3 / FR-MTG-22 / ADR-086).** Detect each entry's shape on iteration: v1 entries (with `text` + `classification`) route via the legacy `classification → assignee` path; v2 entries (with `type` + `target_command`) route via the `type → target_command` resolver. **Never auto-convert v1 entries to v2** — auto-conversion is explicitly rejected by ADR-086 D2 / FR-MTG-22 "no migration" stance. v1 entries remain byte-identical until manually re-authored.
+- **Dual-schema routing is mandatory.** Detect each entry's shape on iteration: v1 entries (with `text` + `classification`) route via the legacy `classification → assignee` path; v2 entries (with `type` + `target_command`) route via the `type → target_command` resolver. **Never auto-convert v1 entries to v2** — auto-conversion is explicitly rejected by the "no migration" stance. v1 entries remain byte-identical until manually re-authored.
 - **Route each v1 item by `classification`.** `clarification` → assignee agent. `implementation` → Scrum Master (Nate). `process` → user. `automation` → Scrum Master. Do NOT make triage decisions unilaterally.
-- **Route each v2 item by `type` to the resolver-bound `target_command`.** The eleven canonical types and their target_commands are: `feature → /gaia-add-feature`, `prd-edit → /gaia-edit-prd`, `ux-edit → /gaia-edit-ux`, `arch-edit → /gaia-edit-arch`, `test-edit → /gaia-edit-test-plan`, `new-story → /gaia-create-story`, `sprint-correction → /gaia-correct-course`, `sprint-plan → /gaia-sprint-plan`, `brainstorm-followup → /gaia-brainstorm`, `adr-draft → "no target — manual"`, `discussion-only → "no target — discussion-only"`. Reject any other `type` value with a clear error — never silently coerce. The lookup table is implemented at `gaia-framework/plugins/gaia/skills/gaia-meeting/scripts/lib/type-target-resolver.sh` (single source of truth per ADR-086).
+- **Route each v2 item by `type` to the resolver-bound `target_command`.** The eleven canonical types and their target_commands are: `feature → /gaia-add-feature`, `prd-edit → /gaia-edit-prd`, `ux-edit → /gaia-edit-ux`, `arch-edit → /gaia-edit-arch`, `test-edit → /gaia-edit-test-plan`, `new-story → /gaia-create-story`, `sprint-correction → /gaia-correct-course`, `sprint-plan → /gaia-sprint-plan`, `brainstorm-followup → /gaia-brainstorm`, `adr-draft → "no target — manual"`, `discussion-only → "no target — discussion-only"`. Reject any other `type` value with a clear error — never silently coerce. The lookup table is implemented at `gaia-framework/plugins/gaia/skills/gaia-meeting/scripts/lib/type-target-resolver.sh` (single source of truth).
 - **Every resolution must include reasoning — no silent closures.** Each updated `action-items.yaml` entry gets a `resolution:` field carrying the deciding agent's or user's reasoning. A closure with blank reasoning is invalid.
 - **Items open for 3+ sprints auto-escalate from MEDIUM → HIGH.** Items open for 5+ sprints are flagged for mandatory user review.
 - **NEVER silently hand off to /gaia-create-story (AC-EC7).** Triage-to-story handoff requires an explicit classification confirmation. Block the handoff and re-prompt until the bucket (backlog / story / NFR / out-of-scope) is confirmed. The classification-confirmation gate fires in BOTH the v1 `implementation`/`automation` paths AND the v2 `type: new-story` path — the gate is shape-agnostic.
@@ -83,10 +83,10 @@ For each open item (highest priority first, then oldest first):
 
 1. Display a per-item header: `Item {id}: {title-or-context}`. Show type/classification, priority, source, escalation_count, related_stories, and the original context.
 
-2. **Dual-schema detection (E76-S3 / AC4 / FR-MTG-22).** Branch on the entry's shape — detected on the entry itself (NOT the registry header alone, since mixed registries are normal during the transition window):
+2. **Dual-schema detection.** Branch on the entry's shape — detected on the entry itself (NOT the registry header alone, since mixed registries are normal during the transition window):
 
    - **v1 entry** (legacy shape): the entry has `text` + `classification` fields. Route via the legacy `classification → assignee` path documented below. Display the entry's `text` as the title. **Do NOT auto-convert to v2 — v1 entries are read-only by this skill.**
-   - **v2 entry** (E76-S3 shape per ADR-086): the entry has `type` + `target_command` fields. Display the entry's `context_for_target` as the title and route via the `type → target_command` resolver branch documented below.
+   - **v2 entry**: the entry has `type` + `target_command` fields. Display the entry's `context_for_target` as the title and route via the `type → target_command` resolver branch documented below.
 
    Both kinds MUST appear in the same per-item display loop without a routing collision. The user MUST be able to process v1 and v2 entries side-by-side.
 
@@ -126,7 +126,7 @@ For each open item (highest priority first, then oldest first):
 
 **YOLO mode:** auto-apply agent and SM recommendations without user confirmation — EXCEPT for the `/gaia-create-story` handoff under `implementation` / `automation` / `new-story`, which always requires explicit classification confirmation (AC-EC7 is non-optional).
 
-4. **v2 routing branch** — `type → target_command` (E76-S3 / FR-MTG-20 / AC3):
+4. **v2 routing branch** — `type → target_command`:
 
    The eleven canonical action-item types map to a target_command via the resolver at `gaia-framework/plugins/gaia/skills/gaia-meeting/scripts/lib/type-target-resolver.sh`:
 
@@ -152,14 +152,14 @@ For each open item (highest priority first, then oldest first):
    - In `normal` mode: ask the user `[apply | defer | dismiss]`. In `yolo` mode: auto-apply EXCEPT when `target_command == /gaia-create-story` (the AC-EC7 gate fires unconditionally).
    - On `apply`: invoke the `target_command` slash skill with the entry's `context_for_target` as input. On `defer`: leave the entry `open` and re-process at the next sprint boundary. On `dismiss`: set `status: dismissed` with a `resolution:` reasoning string.
 
-5. **Adversarial-finding auto-file router (E87-S12 / AF-2026-06-03-3 — ADR-131).** When an action item's source is an adversarial review (`/gaia-adversarial`, Sage) — i.e. the entry's `source_ref` / `context_for_target` points at an `adversarial-review-<target>-<date>[-N].md` under `.gaia/artifacts/planning-artifacts/adversarial/` — resolve the finding's `severity` / `id` / `title` / `location` from the structured **`.json` sidecar, not the prose**, via the shared reader helper (never re-inline a `.md` regex-parse):
+5. **Adversarial-finding auto-file router.** When an action item's source is an adversarial review (`/gaia-adversarial`, Sage) — i.e. the entry's `source_ref` / `context_for_target` points at an `adversarial-review-<target>-<date>[-N].md` under `.gaia/artifacts/planning-artifacts/adversarial/` — resolve the finding's `severity` / `id` / `title` / `location` from the structured **`.json` sidecar, not the prose**, via the shared reader helper (never re-inline a `.md` regex-parse):
 
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/lib/read-adversarial-sidecar.sh \
      --md-path "<.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-*.md>"
    ```
 
-   The helper **prefers** the `.json` sidecar (jq-extracted `status` + `findings[].{severity,id,title,location}`, prefix `source=json`) and **falls back** to a `.md` regex-parse when the sidecar is absent (pre-E87-S11 reports, prefix `source=md`) — additive, back-compatible. Route the extracted finding to its `target_command` per the v2 table above (a `CRITICAL` finding routes to `new-story` → `/gaia-create-story` and the AC-EC7 classification gate fires; `WARNING`/`INFO` findings surface as manual follow-ups).
+   The helper **prefers** the `.json` sidecar (jq-extracted `status` + `findings[].{severity,id,title,location}`, prefix `source=json`) and **falls back** to a `.md` regex-parse when the sidecar is absent (older reports, prefix `source=md`) — additive, back-compatible. Route the extracted finding to its `target_command` per the v2 table above (a `CRITICAL` finding routes to `new-story` → `/gaia-create-story` and the AC-EC7 classification gate fires; `WARNING`/`INFO` findings surface as manual follow-ups).
 
 ## Step 3 — Update Tracker
 
@@ -219,13 +219,8 @@ If all resolved:
 
 ## References
 
-- Legacy source: `_gaia/lifecycle/workflows/4-implementation/action-items/instructions.xml` (131 lines) — parity reference for NFR-053.
-- Tracker: `.gaia/artifacts/planning-artifacts/action-items.yaml` (canonical location per architecture §10.28.6 / ADR-052).
+- Legacy source: `_gaia/lifecycle/workflows/4-implementation/action-items/instructions.xml` (131 lines) — parity reference.
+- Tracker: `.gaia/artifacts/planning-artifacts/action-items.yaml` (canonical location per architecture §10.28.6).
 - Triggers (populate the tracker): `/gaia-retro`, `/gaia-triage-findings`, `/gaia-tech-debt-review`, `/gaia-correct-course`.
 - Downstream consumer: `/gaia-sprint-plan`.
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042 — Scripts-over-LLM for Deterministic Operations.
-- ADR-048 — Program-close deletion policy for legacy engine/workflows/tasks.
-- FR-323 — Native Skill Format Compliance.
-- NFR-053 — Functional parity with the legacy workflow.
 - Reference implementation: `plugins/gaia/skills/gaia-fix-story/SKILL.md`.

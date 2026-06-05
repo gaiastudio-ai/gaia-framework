@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# validate-adr037-envelope.sh — Validate an ADR-037 envelope JSON file.
+# validate-adr037-envelope.sh — Validate a GAIA publish-adapter envelope JSON file.
 #
-# Per ADR-113 §clause (b), publish adapters write a findings.json file whose
-# shape MUST match the canonical ADR-037 envelope:
+# Publish adapters write a findings.json file whose shape MUST match the
+# canonical envelope:
 #   { verdict, evidence, summary, adapter_metadata }
 # where:
 #   verdict           ∈ {PASSED, FAILED, UNVERIFIED}
@@ -26,11 +26,11 @@ err() { printf '%s: %s\n' "$prog" "$*" >&2; }
 [ $# -eq 1 ] || { err "usage: $prog <findings.json>"; exit 2; }
 findings="$1"
 
-[ -f "$findings" ] || { err "ADR-037 envelope file not found: $findings"; exit 2; }
-[ -s "$findings" ] || { err "ADR-037 envelope file empty: $findings"; exit 2; }
+[ -f "$findings" ] || { err "envelope file not found: $findings"; exit 2; }
+[ -s "$findings" ] || { err "envelope file empty: $findings"; exit 2; }
 
 if ! command -v jq >/dev/null 2>&1; then
-  err "jq required for ADR-037 envelope validation but not on PATH"
+  err "jq required for envelope validation but not on PATH"
   exit 2
 fi
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# adapters/brownfield/pre-warm.sh — E70-S7 brownfield Phase 3 adapter pre-flight.
+# adapters/brownfield/pre-warm.sh — brownfield Phase 3 adapter pre-flight.
 #
 # Runs `grype db check || grype db update` and primes cdxgen package-registry
 # caches BEFORE the /gaia-brownfield Phase 3 scan timer starts, so cold-runner
 # CI does not pay the 15-30s Grype DB cold-fetch + cdxgen warm-up against the
-# NFR-84 120s WARNING budget. Logs the Grype DB SHA-256 checksum (producer for
-# E70-S9's trust-boundary enforcement).
+# 120s WARNING budget. Logs the Grype DB SHA-256 checksum for trust-boundary
+# enforcement.
 #
-# Contract (ADR-078 / ADR-121):
+# Contract:
 #   - Gated behind the deterministic-tools master flag + per-tool override
 #     (resolved by /gaia-brownfield via resolve-config.sh and exported as
 #     GAIA_BROWNFIELD_DETERMINISTIC_TOOLS / GAIA_BROWNFIELD_PREWARM_ENABLED).
@@ -33,7 +33,7 @@ SCRIPT_NAME="adapters/brownfield/pre-warm.sh"
 log_info()  { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 log_warn()  { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 
-# --- Flag gate (ADR-121 master flag + ADR-078 per-tool override) ----------
+# --- Flag gate (master flag + per-tool override) --------------------------
 # /gaia-brownfield resolves these via resolve-config.sh and exports them.
 # Default-on when unset (the SKILL only invokes pre-warm when the gate is on,
 # but the script defends itself when invoked directly).
@@ -124,16 +124,15 @@ append_checksum_row() {
 cdxgen_warm() {
   command -v cdxgen >/dev/null 2>&1 || { log_warn "cdxgen not found on PATH — skipping registry warm-up (graceful degrade)"; return 0; }
   mkdir -p "$CACHE_DIR"
-  # AF-2026-05-31-1 / Test12 V-01: redirect cdxgen's SBOM output explicitly
-  # to the cache directory. Without `-o`, cdxgen writes `./bom.json` to the
-  # caller's CWD (== the project root, in the brownfield invocation) as a
-  # side effect even when `--print` is set — leaving a CycloneDX SBOM at the
-  # repo root on every brownfield run. This violated the .gaia/-only write
-  # contract documented in the brownfield SKILL.md and the project-root
-  # containment guarantee Test12 P-18 audited. Passing `-o <path>` keeps
-  # the warm-up byte-stable (the SBOM is still discarded — we only need the
-  # registry caches it primes) AND keeps the SBOM inside .gaia/memory/. The
-  # `2>/dev/null` is preserved so cdxgen's stderr stays out of the log.
+  # Redirect cdxgen's SBOM output explicitly to the cache directory. Without
+  # `-o`, cdxgen writes `./bom.json` to the caller's CWD (== the project root,
+  # in the brownfield invocation) as a side effect even when `--print` is set —
+  # leaving a CycloneDX SBOM at the repo root on every brownfield run. This
+  # violated the .gaia/-only write contract documented in the brownfield
+  # SKILL.md. Passing `-o <path>` keeps the warm-up byte-stable (the SBOM is
+  # still discarded — we only need the registry caches it primes) AND keeps the
+  # SBOM inside .gaia/memory/. The `2>/dev/null` is preserved so cdxgen's
+  # stderr stays out of the log.
   cdxgen --no-recurse --print -o "$CACHE_DIR/warm-bom.json" >/dev/null 2>&1 \
     || log_warn "cdxgen warm-up returned non-zero — continuing (graceful degrade)"
   : > "$CACHE_DIR/cdxgen-warm.marker"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-tech-debt-review skill finalize (E28-S108, Cluster 14)
+# finalize.sh — gaia-tech-debt-review skill finalize
 #
-# AF-2026-05-24-14 / Test02 F-30 (carve-out documentation):
+# Carve-out documentation:
 # This finalize.sh does NOT enforce GAIA_FINALIZE_SENTINEL_REQUIRED
 # (the fail-closed Val sentinel pattern shipped by /gaia-triage-findings
 # and /gaia-retro). The intentional carve-out: fail-closed-on-Val applies

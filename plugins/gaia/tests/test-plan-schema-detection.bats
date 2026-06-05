@@ -45,7 +45,3 @@ setup() {
   grep -q 'Executive Summary' "$SKILL_MD"
 }
 
-@test "AF-2026-05-17-1 lineage tag is present in the Pinned Schemas section" {
-  run grep -E 'AF-2026-05-17-1' "$SKILL_MD"
-  [ "$status" -eq 0 ]
-}

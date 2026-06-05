@@ -8,13 +8,13 @@ allowed-tools: [Read, Write, Edit, Grep]
 orchestration_class: light-procedural
 ---
 
-<!-- Converted under ADR-041 (Native Execution Model). Source: _gaia/lifecycle/skills/ground-truth-management.md. -->
+<!-- Converted under the Native Execution Model. Source: _gaia/lifecycle/skills/ground-truth-management.md. -->
 
 ## Mission
 
 Back Val's ground-truth rewrite path with deterministic operations over the per-agent `ground-truth.md` sidecar file. This skill is the body-of-knowledge reference used by every Val workflow that touches ground truth — `val-validate-artifact`, `val-validate-plan`, `val-refresh-ground-truth`, and brownfield seeding.
 
-Sections below are loaded JIT by callers under the ADR-041 native execution model: the Claude Code skill runtime scans for `<!-- SECTION: {id} -->` and `<!-- END SECTION -->` markers in this file and loads only the requested section body. Each section marker is part of the public contract — renaming or removing one is a breaking change against every caller that references it by ID.
+Sections below are loaded JIT by callers under the native execution model: the Claude Code skill runtime scans for `<!-- SECTION: {id} -->` and `<!-- END SECTION -->` markers in this file and loads only the requested section body. Each section marker is part of the public contract — renaming or removing one is a breaking change against every caller that references it by ID.
 
 ## Critical Rules
 
@@ -51,7 +51,7 @@ Source: `{source_path}` | Verified: {YYYY-MM-DD} | Count: {N}
 - `file-inventory` — file existence, location, count (e.g., "25 agent files in `_gaia/*/agents/`")
 - `structural-pattern` — architecture patterns, conventions, section structure (e.g., "workflow.yaml requires `name` field")
 - `variable-inventory` — config variables, resolved values, defaults (e.g., "`project_path` defaults to `.`")
-- `cross-reference` — links between artifacts, traceability entries (e.g., "ADR-012 referenced by E8-S1, E8-S9")
+- `cross-reference` — links between artifacts, traceability entries (e.g., "a decision record referenced by two stories")
 
 ### Example Entry
 
@@ -104,7 +104,7 @@ Complete scan of the framework and project to rebuild or reconcile the entire gr
 | Project config files | `{project-path}/*.{json,yaml,yml,toml,xml,env.example}` | Config keys, settings, dependencies |
 | Package manifests | `{project-path}/**/package.json`, `pubspec.yaml`, `pom.xml`, etc. | Dependencies, versions, scripts |
 | Planning artifacts | `.gaia/artifacts/planning-artifacts/*.md` | Artifact count, names, dates |
-| Implementation artifacts | `.gaia/artifacts/implementation-artifacts/epic-*/stories/**/*.md` (canonical, E79) + `.gaia/artifacts/implementation-artifacts/*.md` (legacy flat fallback) | Artifact count, story keys, types |
+| Implementation artifacts | `.gaia/artifacts/implementation-artifacts/epic-*/stories/**/*.md` (canonical) + `.gaia/artifacts/implementation-artifacts/*.md` (legacy flat fallback) | Artifact count, story keys, types |
 | Test artifacts | `.gaia/artifacts/test-artifacts/*.md` | Artifact count, coverage areas |
 
 ### Exclusions
@@ -129,11 +129,11 @@ When the framework and the project source are in separate directories (`project_
 | Location | Path (resolved) | Role | Content |
 |----------|-----------------|------|---------|
 | Runtime sidecar | `{project-root}/.gaia/memory/{agent}-sidecar/ground-truth.md` | Working copy used by the agent at runtime | Full runtime entries — `entry_count` and `estimated_tokens` reflect reality |
-| Committed seed | `{project-path}/.gaia/memory/{agent}-sidecar/ground-truth.md` | Shipping template committed to the framework repo and published to npm | **Empty template** — `entry_count: 0`, `estimated_tokens: 0` (per E28-S31 invariant) |
+| Committed seed | `{project-path}/.gaia/memory/{agent}-sidecar/ground-truth.md` | Shipping template committed to the framework repo and published to npm | **Empty template** — `entry_count: 0`, `estimated_tokens: 0` (empty-seed invariant) |
 
 ### Why both must refresh together
 
-Historically, only the runtime sidecar was refreshed; the committed seed was updated manually (see E28-S3 finding #4). This invited drift between the two files: the runtime copy gained entries while the committed template stayed frozen at an older timestamp, and operators had no reliable signal that the seed was stale. `val-refresh-ground-truth` now writes both by default so the two locations cannot drift independently.
+Historically, only the runtime sidecar was refreshed; the committed seed was updated manually. This invited drift between the two files: the runtime copy gained entries while the committed template stayed frozen at an older timestamp, and operators had no reliable signal that the seed was stale. `val-refresh-ground-truth` now writes both by default so the two locations cannot drift independently.
 
 ### Refresh rules
 
@@ -199,7 +199,7 @@ When incremental or full refresh encounters an entry with malformed structure (m
 <!-- SECTION: token-budget -->
 ## Token Budget Management
 
-Monitors ground-truth.md size against Val's Tier 1 200K token budget (per ADR-014).
+Monitors ground-truth.md size against Val's Tier 1 200K token budget.
 
 ### Token Estimation
 

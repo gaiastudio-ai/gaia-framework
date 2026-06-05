@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dispatch-dynamic-test.sh — E74-S9 / AC3, AC7
+# dispatch-dynamic-test.sh — mobile dynamic adapter test dispatcher
 #
 # Resolves a mobile dynamic adapter manifest, executes the underlying test
 # runner, then emits a structured JSON report on stdout containing:
@@ -44,7 +44,7 @@ MANIFEST="$MANIFEST_DIR/$ADAPTER.yaml"
 [ -f "$MANIFEST" ] || die "manifest not found: $MANIFEST" 2
 
 # Minimal POSIX-shell YAML reader: extract `key: value` pairs at top level.
-# Adequate for the flat manifest schema defined in E74-S9.
+# Adequate for the flat manifest schema.
 yaml_get() {
   local file="$1" key="$2"
   awk -v k="$key" '

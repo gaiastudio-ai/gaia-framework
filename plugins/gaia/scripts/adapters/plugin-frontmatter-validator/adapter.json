@@ -7,5 +7,5 @@
   "default-timeout-seconds": 60,
   "file-extensions": [".md"],
   "scope": "file",
-  "description": "Claude Code plugin SKILL.md frontmatter validator (FR-409). Verifies required-field presence and the byte-exact `name == basename` invariant against the claude-code-plugin stack file (E77-S2). Provider is shell-native (bash + awk + jq); no external binary beyond POSIX utilities. Five-file layout (adapter.json + probe.sh + run.sh + normalize.sh + test/contract.bats) per FR-409 extension of the ADR-078 three-file base."
+  "description": "Claude Code plugin SKILL.md frontmatter validator. Verifies required-field presence and the byte-exact `name == basename` invariant against the claude-code-plugin stack file. Provider is shell-native (bash + awk + jq); no external binary beyond POSIX utilities. Five-file layout (adapter.json + probe.sh + run.sh + normalize.sh + test/contract.bats)."
 }

@@ -1,8 +1,8 @@
 # project-config.yaml — GAIA-native plugin project configuration
 #
-# NOTE: This is a FIXTURE authored by E28-S9 so resolve-config.sh has a stable
-# input to parse during local smoke testing. E28-S18 (config split per ADR-044)
-# will replace this file with the canonical schema and real values.
+# NOTE: This is a FIXTURE so resolve-config.sh has a stable input to parse
+# during local smoke testing. It will be replaced with the canonical schema
+# and real values.
 #
 # Schema: flat top-level keys (no nesting) so POSIX shell parsers can read it.
 # Fields are documented in plugins/gaia/scripts/resolve-config.sh header.
@@ -15,14 +15,14 @@ installed_path: /Users/jlouage/Dev/GAIA-Framework/_gaia
 framework_version: 1.127.2-rc.1
 date: 2026-04-15
 
-# Artifact paths — relative to project_root (E60-S1 / ADR-074 contract C1).
+# Artifact paths — relative to project_root.
 # Resolver composes absolute paths at call time; do NOT prepend ${project_root}/.
 planning_artifacts: docs/planning-artifacts
 implementation_artifacts: docs/implementation-artifacts
 test_artifacts: docs/test-artifacts
 creative_artifacts: docs/creative-artifacts
 
-# Dev-Story workflow knobs (E57-S1). The nested tdd_review block configures
+# Dev-Story workflow knobs. The nested tdd_review block configures
 # the post-Red TDD review gate consumed by /gaia-dev-story. Defaults:
 #   threshold: medium       # off | low | medium | high — 'off' opts out
 #   phases: [red]
@@ -36,8 +36,8 @@ creative_artifacts: docs/creative-artifacts
 #     qa_auto_in_yolo: true
 #     qa_timeout_seconds: 600
 
-# Story-size to points mapping (E61-S1 / ADR-074 contract C1).
-# Project-overridable per ADR-044 §10.26.3 with `project > global` precedence:
+# Story-size to points mapping.
+# Project-overridable with `project > global` precedence:
 # the values below override the framework defaults (S=2, M=5, L=8, XL=13)
 # emitted by `resolve-config.sh sizing_map`. Leave the block commented out to
 # inherit the defaults; uncomment + edit to opt in to a project-specific scale.
@@ -48,16 +48,16 @@ creative_artifacts: docs/creative-artifacts
 #   XL: 13
 
 # =============================================================================
-# Review System v2 configuration surface (E68-S1 / FR-RSV2-5..22)
+# Review System v2 configuration surface
 # =============================================================================
-# Eleven new top-level sections consumed by the layered rubric loader (E68-S2)
-# and the review-system-v2 skill family. All sections below are commented out
-# by default — uncomment + edit to opt in. ADR-079 (rubric layering) and
-# ADR-044 (config split / merge precedence) govern resolution.
+# Top-level sections consumed by the layered rubric loader and the
+# review-system-v2 skill family. All sections below are commented out
+# by default — uncomment + edit to opt in. Rubric layering and config
+# split / merge precedence govern resolution.
 
-# compliance — opt-in regulatory regime selection (FR-RSV2-5, FR-RSV2-7).
+# compliance — opt-in regulatory regime selection.
 # Each declared regime composes a layer onto the rubric stack
-# (base > regimes-in-order > domain > project) per ADR-079.
+# (base > regimes-in-order > domain > project).
 # Canonical regime keys: gdpr, hipaa, pci-dss, sox, ccpa, soc2, iso-27001,
 # wcag-2.1-aa, wcag-2.1-aaa.
 # `domain` (optional) names a domain rubric file under rubrics/domains/.
@@ -67,7 +67,7 @@ creative_artifacts: docs/creative-artifacts
 #   domain: healthcare
 #   ui_present: true
 
-# tools — provider/config selection per category (FR-RSV2-10).
+# tools — provider/config selection per category.
 # Tool-selection precedence: project tools.{category}.provider > regime-
 # suggested > base default. Each category entry has `provider` (string) and
 # optional `config` (free-form map handed to the adapter).
@@ -79,8 +79,8 @@ creative_artifacts: docs/creative-artifacts
 #   sca:
 #     provider: trivy
 
-# test_execution — pipeline-tier placement for the three test tiers
-# (FR-RSV2-11). Each tier accepts a `placement` value from the canonical set:
+# test_execution — pipeline-tier placement for the three test tiers.
+# Each tier accepts a `placement` value from the canonical set:
 # local | ci-pre-merge | ci-post-merge | deployment | post-deploy.
 # test_execution:
 #   tier_1:
@@ -90,7 +90,7 @@ creative_artifacts: docs/creative-artifacts
 #   tier_3:
 #     placement: ci-post-merge
 
-# severity — five-internal-to-three-gate severity mapping (FR-RSV2-22).
+# severity — five-internal-to-three-gate severity mapping.
 # The five internal severities (Critical, High, Medium, Low, Info) collapse
 # to three gate verdicts (BLOCKED, REQUEST_CHANGES, APPROVE). Defaults shown
 # below; Medium and Low are configurable per project.
@@ -101,7 +101,7 @@ creative_artifacts: docs/creative-artifacts
 #   Low: APPROVE
 #   Info: APPROVE
 
-# gates — per-gate severity overrides (FR-RSV2-12). Each gate may override
+# gates — per-gate severity overrides. Each gate may override
 # any severity entry from the global `severity` block above.
 # gates:
 #   code:
@@ -111,8 +111,8 @@ creative_artifacts: docs/creative-artifacts
 #     severity:
 #       High: BLOCKED
 
-# stacks — ordered list of stack-path rules for multi-service repos
-# (FR-RSV2-6). Review skills resolve the active stack by walking entries in
+# stacks — ordered list of stack-path rules for multi-service repos.
+# Review skills resolve the active stack by walking entries in
 # declaration order and matching against the changed-file list. Each entry
 # has `name`, `language`, and `paths` (list of glob patterns).
 # stacks:
@@ -132,8 +132,8 @@ creative_artifacts: docs/creative-artifacts
 #     - producer: auth
 #       consumer: api
 
-# environments — environment list with env-var-only credential references
-# (FR-RSV2-9, NFR-RSV2-7). Each environment has `name` (the map key),
+# environments — environment list with env-var-only credential references.
+# Each environment has `name` (the map key),
 # optional `url`, and `credentials` as a map of CREDENTIAL_NAME ->
 # ENV_VAR_NAME. NEVER put literal credential values in this file — schema
 # validation rejects strings matching common-secret patterns (`sk-`, `ghp_`,
@@ -156,12 +156,11 @@ creative_artifacts: docs/creative-artifacts
 #   pipeline: .github/workflows/ci.yml
 
 # platforms — list of platform identifiers. Presence of `ios` or `android`
-# triggers mobile gates downstream (FR-RSV2-26, extended by E74-S1).
+# triggers mobile gates downstream.
 # platforms: [web]
 # platforms: [web, ios, android]
 
-# device_targets — device/OS matrix for mobile platforms. Stub section in
-# E68-S1; full mobile semantics land in E74-S1.
+# device_targets — device/OS matrix for mobile platforms.
 # device_targets:
 #   ios:
 #     - "iPhone 15"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # generate-frontmatter.sh — gaia-create-story Step 4 deterministic frontmatter
-#                          emitter (E63-S3 / Work Item 6.1)
+#                          emitter
 #
 # Purpose:
 #   Emit the canonical 15-field YAML frontmatter for a story by parsing
@@ -11,13 +11,10 @@
 #   `origin`/`origin_ref`, `date`, `author`).
 #
 # Consumers:
-#   - E63-S5  validate-frontmatter.sh  — validates this script's output schema
-#   - E63-S11 SKILL.md thin-orchestrator rewrite — invokes this script inline
+#   - validate-frontmatter.sh  — validates this script's output schema
+#   - SKILL.md thin-orchestrator rewrite — invokes this script inline
 #
 # Contract source:
-#   - ADR-074 contract C1 — project-overridable `sizing_map`
-#   - ADR-044 §10.26.3   — config-split precedence (project > global)
-#   - ADR-042            — Scripts-over-LLM rationale
 #   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.1
 #
 # Algorithm (in order):
@@ -39,7 +36,7 @@
 #   6. Resolve `author`: `git config user.name` -> `resolve-config.sh author`
 #      -> hard fallback `"gaia-create-story"`.
 #   7. Buffer the YAML output into a shell variable; flush only on success.
-#      This guarantees AC4 — no partial frontmatter on stderr exit.
+#      This guarantees no partial frontmatter on stderr exit.
 #
 # Exit codes:
 #   0 — success
@@ -138,12 +135,12 @@ block="$(awk -v key="$story_key" '
   BEGIN { in_block = 0; matched = 0 }
   {
     line = $0
-    # AF-2026-06-02-1 / Test16 F-M04 — accept BOTH heading forms:
+    # Accept BOTH heading forms:
     #   colon:   `### Story <key>: <title>`
     #   em-dash: `### Story <key> — <title>`  (Unicode U+2014)
     #   ascii:   `### Story <key> - <title>`  (hyphen-minus, defensive)
-    # The pre-fix awk pattern was `^### Story <key>:(EOL|space)` which
-    # rejected the em-dash form that /gaia-create-epics SV-04 accepts
+    # The original awk pattern was `^### Story <key>:(EOL|space)` which
+    # rejected the em-dash form that /gaia-create-epics accepts
     # and that the create-epics template/prose leans toward.
     if (match(line, "^### Story " key "[[:space:]]*(:|—|-)")) {
       if (in_block) {
@@ -185,10 +182,10 @@ esac
 # ---------- Field extraction helpers ----------
 
 # extract_bullet <label>: emit the trimmed value of a story-detail bullet,
-# accepting BOTH authored forms (F-017, Test04):
+# accepting BOTH authored forms:
 #   - **<label>:** <value>   (bold — the legacy/manually-authored form)
 #   - <label>: <value>       (plain — the form gaia-create-epics SKILL.md
-#                             instructs Theo/Derek to author, line 148-152)
+#                             instructs authors to use)
 # The bold markers are optional so the consumer no longer disagrees with the
 # producer on basic field-extraction format. Empty when not present.
 extract_bullet() {
@@ -217,13 +214,13 @@ extract_array() {
   val="${val%% (*}"
   # Trim whitespace.
   val="$(printf '%s' "$val" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-  # F-9 (AF-2026-05-26-3): the production epics-and-stories.md writes the
-  # bracketed YAML flow-sequence form (`[E1-S1, E1-S2]`, `[E9-S11]`, `[]`)
-  # almost exclusively. Without stripping the surrounding brackets the comma
-  # split embedded them in the first/last element (`["[E1-S1", "E1-S2]"]`) and
-  # an empty `[]` produced a phantom dependency `["[]"]`. Strip one leading `[`
-  # and one trailing `]`, then re-trim, so both bracketed and unbracketed
-  # forms parse identically. No-op on the unbracketed comma form.
+  # The production epics-and-stories.md writes the bracketed YAML flow-sequence
+  # form (`[E1-S1, E1-S2]`, `[E9-S11]`, `[]`) almost exclusively. Without
+  # stripping the surrounding brackets the comma split embedded them in the
+  # first/last element (`["[E1-S1", "E1-S2]"]`) and an empty `[]` produced a
+  # phantom dependency `["[]"]`. Strip one leading `[` and one trailing `]`,
+  # then re-trim, so both bracketed and unbracketed forms parse identically.
+  # No-op on the unbracketed comma form.
   val="${val#[}"
   val="${val%]}"
   val="$(printf '%s' "$val" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
@@ -252,9 +249,9 @@ extract_array() {
 }
 
 # Title: from `### Story <key>: <title>` OR `### Story <key> — <title>` heading.
-# AF-2026-06-02-1 / Test16 F-M04 — accept both separators after the key
-# (colon, em-dash, hyphen-minus) so the title extracts from either the
-# create-story-shaped or the create-epics-shaped heading.
+# Accept both separators after the key (colon, em-dash, hyphen-minus) so the
+# title extracts from either the create-story-shaped or the
+# create-epics-shaped heading.
 title=""
 title="$(printf '%s\n' "$block" | awk -v key="$story_key" '
   {
@@ -270,12 +267,11 @@ title="$(printf '%s\n' "$block" | awk -v key="$story_key" '
 
 # Epic: from `**Epic:**` bullet — strip everything after the em-dash to keep
 # only the key portion (e.g., `E99 — Frontmatter generation fixtures` -> `E99`).
-# AF-2026-06-02-1 / Test16 F-M04 — when the create-epics output omits the
-# per-story `Epic:` bullet entirely (the SKILL prose neither emits nor
-# requires it; the epic key is only on the `## EN —` parent heading),
-# derive the epic from the story-key prefix as a non-blocking fallback.
-# Story keys are <epic-key>-S<story-num> by convention (validate-canonical-
-# filename.sh enforces this), so the prefix is unambiguous.
+# When the create-epics output omits the per-story `Epic:` bullet entirely
+# (the SKILL prose neither emits nor requires it; the epic key is only on the
+# `## EN —` parent heading), derive the epic from the story-key prefix as a
+# non-blocking fallback. Story keys are <epic-key>-S<story-num> by convention
+# (validate-canonical-filename.sh enforces this), so the prefix is unambiguous.
 epic_raw="$(extract_bullet "Epic")"
 epic="${epic_raw%% —*}"
 epic="${epic%% --*}"
@@ -285,14 +281,13 @@ if [ -z "$epic" ]; then
   epic="${story_key%%-S*}"
 fi
 
-# AF-2026-05-30-4 / Test11 F-12+F-13: accept BOTH Title-case (the create-epics
-# OUTPUT TEMPLATE uses these — `Depends on:`, `Risk:`, `Size:`) AND snake_case
-# (the create-epics SKILL.md Step 5/6 PROSE instructs `risk_level:`,
-# `depends_on:` — an author following the prose produced epics whose stories
-# the generator couldn't parse, blocking create-story from materializing any
-# story at all). Each field tries the Title-case form first, then falls back
-# to snake_case. The SKILL prose is also fixed in the same AF; this fallback
-# is the read-side belt-and-braces.
+# Accept BOTH Title-case (the create-epics OUTPUT TEMPLATE uses these —
+# `Depends on:`, `Risk:`, `Size:`) AND snake_case (the create-epics SKILL.md
+# Step 5/6 PROSE instructs `risk_level:`, `depends_on:` — an author following
+# the prose produced epics whose stories the generator couldn't parse, blocking
+# create-story from materializing any story at all). Each field tries the
+# Title-case form first, then falls back to snake_case. The SKILL prose is
+# also fixed; this fallback is the read-side belt-and-braces.
 _extract_bullet_aliased() {
   # $1 = primary Title-case label; $2..$N = fallback aliases
   local val
@@ -325,10 +320,10 @@ size_raw="$(_extract_bullet_aliased "Size" "size")"
 size="${size_raw%% *}"
 
 risk="$(_extract_bullet_aliased "Risk" "risk_level" "risk")"
-# Test17 F-M03 / AF-2026-06-02-6: normalize risk to lowercase so the producer
-# satisfies its own validate-frontmatter.sh enum check (high|medium|low). The
-# upstream /gaia-create-epics emits Title-case `- **Risk:** Low` per
-# create-epics convention; passing it through unchanged tripped CRITICAL
+# Normalize risk to lowercase so the producer satisfies its own
+# validate-frontmatter.sh enum check (high|medium|low). The upstream
+# /gaia-create-epics emits Title-case `- **Risk:** Low` per create-epics
+# convention; passing it through unchanged trips CRITICAL
 # `value 'Low' not in {high medium low}` in the validator.
 risk="$(printf '%s' "$risk" | tr '[:upper:]' '[:lower:]')"
 

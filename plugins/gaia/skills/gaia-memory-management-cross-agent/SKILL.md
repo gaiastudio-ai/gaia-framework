@@ -1,6 +1,6 @@
 ---
 name: gaia-memory-management-cross-agent
-description: Cross-agent memory extensions — cross-reference loading (ADR-015) and shared budget monitoring (ADR-014). Split from memory-management to keep each skill under the 300-line limit. Companion to gaia-memory-management.
+description: Cross-agent memory extensions — cross-reference loading and shared budget monitoring. Split from memory-management to keep each skill under the 300-line limit. Companion to gaia-memory-management.
 version: '1.0'
 applicable_agents: [all]
 sections: [cross-reference-loading, budget-monitoring]
@@ -8,14 +8,14 @@ allowed-tools: [Read, Grep]
 orchestration_class: light-procedural
 ---
 
-<!-- Converted under ADR-041 (Native Execution Model). Source: _gaia/lifecycle/skills/memory-management-cross-agent.md. -->
+<!-- Converted under the Native Execution Model. Source: _gaia/lifecycle/skills/memory-management-cross-agent.md. -->
 
 ## Mission
 
 Provide the cross-agent memory operations that do not fit inside `gaia-memory-management` under the 300-line skill limit:
 
-1. **Cross-reference loading (ADR-015)** — read-only JIT access to another agent's sidecar (e.g., Val reading Theo's `decision-log.md`). Governed by the agent's `<memory-reads>` block and the `cross_references` matrix in `.gaia/memory/config.yaml`.
-2. **Budget monitoring (ADR-014)** — shared utility returning threshold status (`ok`, `warn`, `alert`, `archive_needed`, `no_budget`) used by session-save and any other memory-writing operation.
+1. **Cross-reference loading** — read-only JIT access to another agent's sidecar (e.g., Val reading Theo's `decision-log.md`). Governed by the agent's `<memory-reads>` block and the `cross_references` matrix in `.gaia/memory/config.yaml`.
+2. **Budget monitoring** — shared utility returning threshold status (`ok`, `warn`, `alert`, `archive_needed`, `no_budget`) used by session-save and any other memory-writing operation.
 
 > **Companion skill:** this skill is paired with `gaia-memory-management`. Callers that need `session-load`, `session-save`, `decision-formatting`, `context-summarization`, `stale-detection`, or `deduplication` should load those sections from the companion instead. The two skills split the memory-management body only because of the 300-line skill limit — their section IDs are unique across both files and callers reference them by name, not by file.
 
@@ -29,7 +29,7 @@ Provide the cross-agent memory operations that do not fit inside `gaia-memory-ma
 - **Budget thresholds come from config.** Read `.gaia/memory/config.yaml` `archival` block at runtime. Never hardcode `budget_warn_at`, `budget_alert_at`, `budget_archive_at`, `token_approximation`, or `archive_subdir`.
 
 <!-- SECTION: cross-reference-loading -->
-## Cross-Reference Loading (ADR-015)
+## Cross-Reference Loading
 
 Load another agent's sidecar files as read-only cross-references. All cross-ref loading is JIT (just-in-time) — never preloaded at session start.
 
@@ -73,7 +73,7 @@ Any attempt to write to a sidecar that is not the current agent's own sidecar MU
 ### Loading Modes
 
 **`recent` mode** — Load entries from the last 2 sprints only:
-- Parse decision-log entries using ADR-016 format
+- Parse decision-log entries using the canonical decision-log format
 - Filter by Sprint field: keep entries where sprint matches current sprint or previous sprint
 - If sprint metadata is absent from entries, fall back to date-based filtering (last 30 days)
 - Approximate token cost: character count / 4
@@ -163,7 +163,7 @@ This enables `/gaia-resume` to detect stale cross-references when resuming a ses
 <!-- END SECTION -->
 
 <!-- SECTION: budget-monitoring -->
-## Budget Monitoring (ADR-014)
+## Budget Monitoring
 
 Shared utility for checking token budget usage against tier-defined thresholds. Used by `session-save` and other memory operations to determine when archival is needed.
 
@@ -207,7 +207,7 @@ When status is `archive_needed`:
 
 ### Token Estimation
 
-Token count is approximated using the `token_approximation` value from `.gaia/memory/config.yaml` (default: 4 chars per token). No tokenizer library is used — this aligns with ADR-005 (zero runtime dependencies).
+Token count is approximated using the `token_approximation` value from `.gaia/memory/config.yaml` (default: 4 chars per token). No tokenizer library is used — this aligns with the zero-runtime-dependencies principle.
 
 Formula: `tokens = character_count / token_approximation`
 

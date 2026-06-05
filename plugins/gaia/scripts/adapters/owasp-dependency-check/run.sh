@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# adapters/owasp-dependency-check/run.sh — ADR-078 adapter contract for OWASP Dependency-Check.
+# adapters/owasp-dependency-check/run.sh — adapter contract for OWASP Dependency-Check.
 #
-# Story: E70-S4 — OWASP Dependency-Check adapter as alternative dep-audit under runtime-profile: container.
+# OWASP Dependency-Check adapter as alternative dep-audit under runtime-profile: container.
 #
 # Contract: run --input <file-list> [--config <adapter-config>] [--output <fragment.json>]
 #               [--runtime-profile {subprocess|container|network}] [--timeout <seconds>]
@@ -13,7 +13,7 @@
 # project-config.yaml -> tools.dep-audit.provider: owasp-dependency-check.
 #
 # Exit code 0 = ran cleanly, 1 = scanner errored, 124/143 = timeout, 127 = docker not on
-# PATH (mirrors the E70-S3 sonarqube precedent — distinct from generic error 1).
+# PATH (mirrors the sonarqube precedent — distinct from generic error 1).
 #
 # Image and configuration are sourced from the environment:
 #   ODC_IMAGE          — container image id (default: owasp/dependency-check:latest)
@@ -44,7 +44,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/owasp-dependency-check/run.sh — ADR-078 contract entry for OWASP Dependency-Check.
+adapters/owasp-dependency-check/run.sh — contract entry for OWASP Dependency-Check.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -62,7 +62,7 @@ done
 [ -n "$INPUT" ] || { echo "run.sh: --input required" >&2; exit 1; }
 [ -r "$INPUT" ] || { echo "run.sh: input file not readable: $INPUT" >&2; exit 1; }
 
-# Empty file list → exit 0 with empty findings (mirrors E70-S3 sonarqube precedent).
+# Empty file list → exit 0 with empty findings (mirrors sonarqube precedent).
 NONEMPTY_LINES="$(awk 'NF > 0 { c++ } END { print c+0 }' "$INPUT")"
 if [ "$NONEMPTY_LINES" = "0" ]; then
   fragment="$(jq -nc \
@@ -78,7 +78,7 @@ fi
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "run.sh: docker not found on PATH (required for runtime-profile: container)" >&2
-  # Exit 127 = unavailable per E70-S2 AC10 / E70-S3 precedent (distinct from generic error 1).
+  # Exit 127 = unavailable (distinct from generic error 1).
   exit 127
 fi
 
@@ -149,7 +149,7 @@ if [ "$rc" = "124" ] || [ "$rc" = "143" ]; then
   raw="timeout: docker run exceeded ${TIMEOUT}s (container killed)"
 fi
 
-# Parse the OWASP DC JSON report into the canonical fragment shape per E70-S1
+# Parse the OWASP DC JSON report into the canonical fragment shape per
 # run-contract.md §2.1: {"name": <adapter>, "status": <passed|errored>, "findings": [...]}.
 # Findings shape conforms to checks[].findings[] in analysis-results.schema.json.
 # Each OWASP DC dependency.vulnerabilities[] entry becomes one finding keyed on the

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — epic-status skill setup (E28-S62)
+# setup.sh — epic-status skill setup
 #
-# Shared setup pattern from the E28-S17/S19/S21 foundation work.
-# Resolves config, validates gates, loads checkpoint state.
+# Shared setup pattern: resolves config, validates gates, loads checkpoint state.
 #
 # Exit codes:
 #   0 — setup succeeded, skill body can run

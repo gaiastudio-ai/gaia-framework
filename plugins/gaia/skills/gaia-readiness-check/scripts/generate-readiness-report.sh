@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# generate-readiness-report.sh — AF-2026-05-31-3 / Test14 F-21
+# generate-readiness-report.sh — readiness-report.md emitter for /gaia-readiness-check
 #
 # Deterministic readiness-report.md emitter for /gaia-readiness-check.
-# Reads the two mandatory ADR-042 gates (traceability + ci-setup) plus
+# Reads the two mandatory gates (traceability + ci-setup) plus
 # the optional artifact presence inventory, and writes a minimal
 # `readiness-report.md` to the canonical planning-artifacts location.
 #
@@ -40,7 +40,7 @@ while [ $# -gt 0 ]; do
     --project-root) PROJECT_ROOT="${2:-}"; shift 2 ;;
     -h|--help)
       cat <<EOF
-$SCRIPT_NAME — readiness-report.md generator (AF-2026-05-31-3 / Test14 F-21)
+$SCRIPT_NAME — readiness-report.md generator
 
 Usage:
   $0 --status <PASS|FAIL> --project-root <dir>
@@ -68,14 +68,15 @@ OUT_FILE="$OUT_DIR/readiness-report.md"
 mkdir -p "$OUT_DIR"
 
 # Refuse to overwrite a non-stub report (operators / LLM may have enriched it).
-if [ -f "$OUT_FILE" ] && ! grep -qF 'AF-2026-05-31-3 / Test14 F-21' "$OUT_FILE" 2>/dev/null; then
+# The stub self-identifies via the marker line written into its footer below.
+if [ -f "$OUT_FILE" ] && ! grep -qF 'Delete this file to force a fresh stub' "$OUT_FILE" 2>/dev/null; then
   log "$OUT_FILE already exists and is not a stub — refusing to overwrite (delete it to regenerate)"
   exit 0
 fi
 
 _now_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# Probe the two ADR-042 mandatory gates so the report's body reflects
+# Probe the two mandatory gates so the report's body reflects
 # concrete on-disk state at the moment of write.
 _trace_path="$PROJECT_ROOT/.gaia/artifacts/planning-artifacts/traceability-matrix.md"
 _ci_path="$PROJECT_ROOT/.gaia/artifacts/test-artifacts/ci-setup.md"
@@ -91,27 +92,23 @@ generated_by: /gaia-readiness-check
 generated_at: "$_now_iso"
 status: $STATUS
 schema_version: "2.0.0"
-# AF-2026-05-31-3 / Test14 F-21: stub canonical-shape report emitted by
-# generate-readiness-report.sh. The LLM authoring path documented in the
-# /gaia-readiness-check SKILL.md Step 9 may overwrite this file with a
-# richer report; the script's check guards against blowing away that
-# enrichment on re-run.
-# AF-2026-06-01-1 / Test15 F-08: the readiness finalize.sh checklist
-# requires contradictions_found in YAML frontmatter (SV-23) and an
-# ## Output Verification section in the body (SV-25). The prior stub
-# omitted both, so the producer's output failed its own validator.
-# Default contradictions_found:0 (the stub didn't surface any); the
-# LLM authoring path can update either field as it enriches.
-# AF-2026-06-02-1 / Test16 F-M03: extend the stub to satisfy the
-# rest of the finalize.sh checklist out-of-the-box — SV-06
-# (## Completeness), SV-07 (## Consistency), SV-08
-# (## Cross-Artifact Contradictions), SV-09 (## Pending Cascades),
-# SV-11 (Contradictions table marker), SV-13 (traceability_complete
-# frontmatter field), SV-14 (test_implementation_rate marker), and
-# SV-15 (## TEA Readiness). The orchestrating LLM (SKILL.md Step 9)
-# may overwrite any of these sections with a richer narrative; the
-# stub headings exist so a script-only readiness check passes its
-# own gate end-to-end without LLM hand-authoring.
+# Stub canonical-shape report emitted by generate-readiness-report.sh.
+# The LLM authoring path documented in the /gaia-readiness-check SKILL.md
+# Step 9 may overwrite this file with a richer report; the script's check
+# guards against blowing away that enrichment on re-run.
+# The readiness finalize.sh checklist requires contradictions_found in YAML
+# frontmatter and an ## Output Verification section in the body. The prior
+# stub omitted both, so the producer's output failed its own validator.
+# Default contradictions_found:0 (the stub didn't surface any); the LLM
+# authoring path can update either field as it enriches.
+# The stub satisfies the full finalize.sh checklist out-of-the-box:
+# ## Completeness, ## Consistency, ## Cross-Artifact Contradictions,
+# ## Pending Cascades, Contradictions table marker, traceability_complete
+# frontmatter field, test_implementation_rate marker, and ## TEA Readiness.
+# The orchestrating LLM (SKILL.md Step 9) may overwrite any of these
+# sections with a richer narrative; the stub headings exist so a
+# script-only readiness check passes its own gate end-to-end without
+# LLM hand-authoring.
 checks_passed: 2
 critical_blockers: 0
 contradictions_found: 0
@@ -123,7 +120,7 @@ test_implementation_rate: 0
 
 **Status:** \`$STATUS\` — generated $_now_iso
 
-## Mandatory gates (ADR-042)
+## Mandatory gates
 
 | Gate | Status |
 | ---- | ------ |
@@ -135,7 +132,7 @@ test_implementation_rate: 0
 This stub records every mandatory artifact that contributes to
 readiness. The LLM authoring path documented in the
 \`/gaia-readiness-check\` SKILL.md Step 9 MAY replace this section
-with a richer per-artifact narrative; \`finalize.sh\` (SV-06) requires
+with a richer per-artifact narrative; \`finalize.sh\` requires
 only that a \`## Completeness\` heading exists.
 
 ## Consistency
@@ -143,7 +140,7 @@ only that a \`## Completeness\` heading exists.
 The mandatory gates above were verified against on-disk state at the
 moment of write. Cross-artifact consistency findings — wording
 mismatches, version drift, role-naming alignment — are tracked here.
-\`finalize.sh\` (SV-07) requires only that a \`## Consistency\`
+\`finalize.sh\` requires only that a \`## Consistency\`
 heading exists; the LLM authoring path enriches the body.
 
 ## Cross-Artifact Contradictions
@@ -152,8 +149,8 @@ heading exists; the LLM authoring path enriches the body.
 | ---------------- | ------ | -------- | -------- | -------- |
 | (none surfaced by the stub generator — \`contradictions_found: 0\`) | — | — | — | — |
 
-The Contradictions table marker is present so SV-08 + SV-11 pass on
-the bare stub. The LLM authoring path adds rows when contradictions
+The Contradictions table marker is present so the contradiction gates pass
+on the bare stub. The LLM authoring path adds rows when contradictions
 exist.
 
 ## Pending Cascades
@@ -162,15 +159,15 @@ exist.
 | ---------- | --------------- | --------------- | -------- |
 | (none surfaced — contradiction_check: clean) | — | — | yes |
 
-SV-09 requires a \`## Pending Cascades\` heading (or a
+The finalize.sh requires a \`## Pending Cascades\` heading (or a
 \`contradiction_check\` marker — both are present so the cascade-
 resolution gate passes on the bare stub).
 
 ## Traceability
 
-This stub names \`traceability-matrix.md\` so SV-12 finds it.
-\`traceability_complete\` (SV-13) is in YAML frontmatter as a
-machine-readable boolean. \`test_implementation_rate\` (SV-14) is
+This stub names \`traceability-matrix.md\` so the traceability gate finds it.
+\`traceability_complete\` is in YAML frontmatter as a
+machine-readable boolean. \`test_implementation_rate\` is
 emitted as 0 by the stub; the LLM authoring path updates it once
 the test inventory is reconciled.
 
@@ -180,18 +177,18 @@ the test inventory is reconciled.
 | ---------- | ------------ | --------- |
 | (sizing data not yet recorded by the stub) | — | — |
 
-SV-15 requires a \`## TEA Readiness\` heading and an estimation marker;
+The finalize.sh requires a \`## TEA Readiness\` heading and an estimation marker;
 the LLM authoring path enriches with story-level sizing once
 \`epics-and-stories.md\` is parsed.
 
 ## Output Verification
 
 This stub report was emitted by \`${SCRIPT_NAME}\` and verifies the two
-ADR-042 mandatory gates above against on-disk state at the moment of
+mandatory gates above against on-disk state at the moment of
 write. The LLM authoring path documented in the
 \`/gaia-readiness-check\` SKILL.md Step 9 MAY replace this section with
 a richer narrative — \`finalize.sh\` requires only that an
-\`## Output Verification\` heading exists (SV-25). The YAML frontmatter
+\`## Output Verification\` heading exists. The YAML frontmatter
 \`status\` field remains the authoritative machine-readable signal.
 
 ## Notes
@@ -200,9 +197,8 @@ a richer narrative — \`finalize.sh\` requires only that an
   outcomes. The orchestrating LLM may enrich the body with project-
   specific narrative; the YAML frontmatter \`status\` field is the
   authoritative machine-readable signal.
-- Generated by \`${SCRIPT_NAME}\` per Test14 F-21 + Test15 F-08. Delete
-  this file to force a fresh stub on the next \`/gaia-readiness-check\`
-  invocation.
+- Generated by \`${SCRIPT_NAME}\`. Delete this file to force a fresh stub
+  on the next \`/gaia-readiness-check\` invocation.
 EOF
 
 log "wrote $OUT_FILE (status=$STATUS, traceability=$_trace_status, ci_setup=$_ci_status)"

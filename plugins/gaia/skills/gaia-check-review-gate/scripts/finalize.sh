@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — Cluster 7 check-review-gate skill finalize (E28-S56)
+# finalize.sh — check-review-gate skill finalize
 #
-# Mechanical copy of the Cluster 7 reference implementation authored under
-# E28-S52 (gaia-create-story/scripts/finalize.sh). Only WORKFLOW_NAME and
-# SCRIPT_NAME differ — the body is byte-identical to the reference.
-#
-# Responsibilities (per brief Cluster 7):
+# Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script
 #   2. Emit a lifecycle event via lifecycle-event.sh for the tailing sync agent
 #

@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
 # atdd-anti-stub-emit.sh — Emit anti-stub Then-clauses for AC bodies that
-# contain dispatch verbs (E88-S5, FR-DPD-5).
-#
-# Refs:  ADR-107 (taxonomy consumed via E88-S1), FR-DPD-5, AI-2026-05-13-7.
-# Story: E88-S5.
+# contain dispatch verbs.
 #
 # Usage
 #   atdd-anti-stub-emit.sh --ac-text "<ac body>"
 #
 # Behaviour
-#   - Sources dispatch-verb-match.sh (E88-S1) to detect dispatch verbs.
+#   - Sources dispatch-verb-match.sh to detect dispatch verbs.
 #   - For each unique canonical primitive (via canonicalize-dispatch-verb.sh),
 #     emit one anti-stub Then-clause: 'Then: $*_STUB env vars are unset AND
 #     a real <primitive> was logged'.

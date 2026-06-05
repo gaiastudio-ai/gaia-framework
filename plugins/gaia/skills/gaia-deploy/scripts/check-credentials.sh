@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-credentials.sh — /gaia-deploy credential gate (E73-S5, AC10, NFR-RSV2-7).
+# check-credentials.sh — /gaia-deploy credential gate.
 #
 # Per the credential contract, /gaia-deploy receives credential ENV-VAR NAMES
 # (never values, never paths) and verifies that each named env-var is set in
@@ -7,8 +7,6 @@
 #
 # Usage:
 #   check-credentials.sh --env-var NAME [--env-var NAME ...]
-#
-# Refs: ADR-080, NFR-RSV2-7, AC10.
 
 set -euo pipefail
 LC_ALL=C
@@ -23,7 +21,7 @@ while [ "$#" -gt 0 ]; do
     --env-var) NAMES+=("$2"); shift 2 ;;
     -h|--help)
       cat <<EOF
-$SCRIPT_NAME — credential env-var presence check (E73-S5, AC10).
+$SCRIPT_NAME — credential env-var presence check.
 Usage: $SCRIPT_NAME --env-var NAME [--env-var NAME ...]
 EOF
       exit 0 ;;

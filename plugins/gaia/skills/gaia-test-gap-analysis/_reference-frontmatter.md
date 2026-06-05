@@ -1,6 +1,6 @@
 # Reference Frontmatter -- gaia-test-gap-analysis
 
-> Verbatim copy of the brief's `test-gap-analysis` frontmatter example (E28-S84).
+> Verbatim copy of the brief's `test-gap-analysis` frontmatter example.
 > This file exists for future contributor reference. Do not modify.
 
 ```yaml

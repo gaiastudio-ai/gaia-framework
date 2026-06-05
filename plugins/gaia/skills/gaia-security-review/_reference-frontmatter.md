@@ -1,6 +1,6 @@
 # Reference Frontmatter — gaia-security-review
 
-> Verbatim copy of the brief's `security-review` frontmatter example (E28-S67).
+> Verbatim copy of the brief's `security-review` frontmatter example.
 > This file exists for future contributor reference. Do not modify.
 
 ```yaml

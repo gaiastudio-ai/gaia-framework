@@ -18,7 +18,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -26,18 +26,18 @@ fi
 
 ## Mission
 
-You are creating a performance test plan covering performance budgets, load test scenarios (k6), frontend performance (Core Web Vitals via Lighthouse CI), backend profiling, and CI pipeline integration. The output is written to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (E105-S3 / ADR-127 Pillar 3 — grouped under a named subdir for the periodically-reassessed class; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback).
+You are creating a performance test plan covering performance budgets, load test scenarios (k6), frontend performance (Core Web Vitals via Lighthouse CI), backend profiling, and CI pipeline integration. The output is written to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (grouped under a named subdir for the periodically-reassessed class; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback).
 
-This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/performance-testing` workflow (E28-S88, Cluster 12, ADR-041). The step ordering, prompts, and output path are preserved from the legacy instructions.xml.
+This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/performance-testing` workflow. The step ordering, prompts, and output path are preserved from the legacy instructions.xml.
 
-**Main context semantics (ADR-041):** This skill runs under `context: main` with full tool access. It reads project state (architecture, test plan, story) and produces an output document.
+**Main context semantics:** This skill runs under `context: main` with full tool access. It reads project state (architecture, test plan, story) and produces an output document.
 
 ## Critical Rules
 
 - A story key or project context MUST be available. If no story key is provided as an argument and no project context can be loaded, prompt: "Provide a story key or confirm project-level assessment."
 - Performance budgets must be defined with measurable thresholds.
 - Load test scenarios must include realistic traffic patterns.
-- Output MUST be written to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (E105-S3 / ADR-127 Pillar 3 — grouped under a named subdir for the periodically-reassessed class; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback) where `{date}` is today's date in YYYY-MM-DD format.
+- Output MUST be written to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (grouped under a named subdir for the periodically-reassessed class; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback) where `{date}` is today's date in YYYY-MM-DD format.
 - Knowledge fragments are bundled in this skill's `knowledge/` directory -- load them JIT when referenced by a step.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
 
@@ -95,7 +95,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
   - Backend profiling checklist
   - CI gate configuration and pass/fail criteria
   - Bundle size budgets and enforcement
-- Write output to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (E105-S3 / ADR-127 Pillar 3 — grouped under a named subdir for the periodically-reassessed class; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback).
+- Write output to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (grouped under a named subdir for the periodically-reassessed class; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback).
 
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-${DATE}.md`
@@ -106,12 +106,8 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ## References
 
-- Schema: `gaia-public/plugins/gaia/schemas/performance-test-plan.schema.json` (JSON Schema draft-2020-12) — the structural contract for the `performance-test-plan` artifact this skill produces. Validated by `/gaia-val-validate` (artifact_type `performance-test-plan`) via the shared `scripts/lib/validate-artifact-schema.sh` helper (E108-S5).
+- Schema: `gaia-public/plugins/gaia/schemas/performance-test-plan.schema.json` (JSON Schema draft-2020-12) — the structural contract for the `performance-test-plan` artifact this skill produces. Validated by `/gaia-val-validate` (artifact_type `performance-test-plan`) via the shared `scripts/lib/validate-artifact-schema.sh` helper.
 - Corpus instance: `.gaia/artifacts/test-artifacts/strategy/performance-test-plan-2026-03-13.md` — the on-disk exemplar the schema is grounded in (seven canonical H2 sections + YAML frontmatter).
-- Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum now carries `performance-test-plan` (E108-S2, enum 17→18).
-- Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` (E108-S5) — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).
+- Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum now carries `performance-test-plan`.
+- Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).
 - Knowledge: `knowledge/k6-patterns.md` (Step 2 load-test design), `knowledge/lighthouse-ci.md` (Step 3 frontend performance).
-- FR-562 — performance-test-plan schema + `/gaia-perf-testing` References + enum extension (E108-S2).
-- NFR-93 — schema-validator parity across the artifact-type schemas.
-- ADR-129 — artifact-type schema registry completion.
-- Epic: `.gaia/artifacts/planning-artifacts/epics/96-e108-artifact-type-schema-registry-completion.md` (E108).

@@ -8,7 +8,7 @@ allowed-tools: [Read, Grep, Glob, Task]
 
 ## Mission
 
-Route users to the correct subagent or workflow efficiently, serving as the single entry point for all GAIA operations under native execution (ADR-041 / ADR-048).
+Route users to the correct subagent or workflow efficiently, serving as the single entry point for all GAIA operations under native execution.
 
 ## Persona
 
@@ -99,5 +99,5 @@ When triggered with story creation mode (e.g., `/gaia story [count] [parallel]`)
 ## Constraints
 
 - NEVER pre-load subagent files — spawn only when the user selects one.
-- NEVER execute workflow engine plumbing (`workflow.xml`, step sequencing, checkpoint writing) — under ADR-041 / ADR-048 workflows are native subagents, not engine-driven.
+- NEVER execute workflow engine plumbing (`workflow.xml`, step sequencing, checkpoint writing) — workflows are native subagents, not engine-driven.
 - NEVER guess routing — ask when unsure.

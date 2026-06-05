@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gaiastudio.ai/schemas/execution-evidence.schema.json",
-  "title": "GAIA execution-evidence.json — qa-review test execution evidence (E67-S4)",
-  "description": "Test execution evidence captured by /gaia-review-qa via review-common/qa-test-runner.sh and consumed by verdict-resolver.sh through --execution-evidence. Records per-suite outcome, timing, and the resolved tier/context so a downstream verdict can apply the AC9 precedence rules. Refs: AC4, AC5, AC6, AC7, FR-RSV2-2, FR-RSV2-11, ADR-044, ADR-075, ADR-077.",
+  "title": "GAIA execution-evidence.json — qa-review test execution evidence",
+  "description": "Test execution evidence captured by /gaia-review-qa via review-common/qa-test-runner.sh and consumed by verdict-resolver.sh through --execution-evidence. Records per-suite outcome, timing, and the resolved tier/context so a downstream verdict can apply the precedence rules.",
   "type": "object",
   "additionalProperties": false,
   "required": ["suites", "tier", "context", "wall_clock_seconds"],
@@ -48,7 +48,7 @@
             "type": "number"
           },
           "timeout": {
-            "description": "True when the suite was killed for exceeding timeout_seconds (AC6).",
+            "description": "True when the suite was killed for exceeding timeout_seconds.",
             "type": "boolean"
           },
           "required": {
@@ -78,11 +78,11 @@
       "minimum": 0
     },
     "skipped": {
-      "description": "True when test_execution was absent or no tier matched the active context (AC7).",
+      "description": "True when test_execution was absent or no tier matched the active context.",
       "type": "boolean"
     },
     "bridge_used": {
-      "description": "True when execution was delegated to the Test Execution Bridge (AC8).",
+      "description": "True when execution was delegated to the Test Execution Bridge.",
       "type": "boolean"
     },
     "diagnostics": {

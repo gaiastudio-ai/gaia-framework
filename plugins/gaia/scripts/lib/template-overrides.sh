@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
-# template-overrides.sh — ci_cd.template_overrides interpreter
-# (E98-S4, FR-518, ADR-114 §(e), SR-78 closed-enum disable allowlist).
+# template-overrides.sh — ci_cd.template_overrides interpreter.
 #
 # Sourceable, NOT executable. Exposes:
 #
 #   gaia_apply_template_overrides <managed-yml> <project-config-yaml>
 #     Reads ci_cd.template_overrides from <project-config-yaml> and applies
-#     the three FR-518 passes against <managed-yml>, emitting the resulting
+#     the three override passes against <managed-yml>, emitting the resulting
 #     workflow on stdout:
 #       (1) disable: [...]         — remove named jobs from jobs: map
 #       (2) timeout_overrides:{}   — rewrite timeout-minutes per job
 #       (3) adapter_versions:{}    — pin adapter version in job invocations
 #
-# SR-78 enforcement (T-TOV-1 mitigation): the canonical 5-name closed enum
+# Security-critical job enforcement: the canonical 5-name closed enum
 # of security-critical jobs is hard-coded below. Any disable: entry that
 # matches (after hyphen+case canonicalization) is REJECTED with a non-zero
-# exit and an actionable stderr message citing SR-78 and T-TOV-1.
+# exit and an actionable stderr message.
 #
-# Per-field validation (ADR-114 §(e)):
+# Per-field validation:
 #   - Unknown disable name              → WARNING (graceful)
 #   - timeout out of 1..360             → HARD ERROR
 #   - Unknown adapter_versions key      → HARD ERROR (typo guard)
@@ -33,20 +32,19 @@ _GAIA_TEMPLATE_OVERRIDES_LOADED=1
 LC_ALL=C
 export LC_ALL
 
-# SR-78 canonical closed enum (per threat-model.md:1473).
+# Canonical closed enum of security-critical job names (per threat-model.md:1473).
 # Stored as a string of space-separated names so we can iterate without
 # requiring bash arrays in callers.
 _GAIA_SR78_CRITICAL="commitlint adr-048-guard no-claude-attribution secrets-scan nfr-082-credential-audit"
 
-# Canonicalize a job name for SR-78 enum check: lowercase + strip hyphens.
+# Canonicalize a job name for security-critical enum check: lowercase + strip hyphens.
 # So `commit-lint`, `commitlint`, and `Commit-Lint` all collapse to the
-# same token. This is the canonicalization layer documented in the story's
-# Dev Notes ("refusal-bypass guard").
+# same token (refusal-bypass guard).
 _gaia_to_canonical() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '-'
 }
 
-# SR-78 check: is the given disable-entry security-critical?
+# Check: is the given disable-entry security-critical?
 # Exits 0 (true) on match, 1 (false) otherwise.
 _gaia_is_sr78_critical() {
   local input="$1"
@@ -66,8 +64,8 @@ _gaia_is_semver() {
     | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
 }
 
-# Internal: known adapter names. Closed list per AC6 "Unknown adapter name
-# → HARD ERROR (pinning to a non-existent adapter is always a typo)".
+# Internal: known adapter names. Closed list — unknown adapter name
+# → HARD ERROR (pinning to a non-existent adapter is always a typo).
 _GAIA_KNOWN_ADAPTERS="markdownlint shellcheck bats yq jq actionlint"
 
 _gaia_is_known_adapter() {
@@ -136,14 +134,14 @@ gaia_apply_template_overrides() {
     return 0
   fi
 
-  # ---- Phase B: SR-78 closed-enum check (BEFORE any mutation) ----
+  # ---- Phase B: security-critical closed-enum check (BEFORE any mutation) ----
   local disable_list
   disable_list=$(yq eval '.ci_cd.template_overrides.disable[]? // ""' "$config" 2>/dev/null)
   local entry
   while IFS= read -r entry; do
     [ -z "$entry" ] && continue
     if _gaia_is_sr78_critical "$entry"; then
-      printf 'template-overrides.sh: SR-78 refusal: cannot disable security-critical job "%s" — closed enum {commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit} per threat-model SR-78 / T-TOV-1.\n' \
+      printf 'template-overrides.sh: refusal: cannot disable security-critical job "%s" — closed enum {commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit}.\n' \
         "$entry" >&2
       return 1
     fi
@@ -199,7 +197,7 @@ gaia_apply_template_overrides() {
     local exists
     exists=$(printf '%s' "$current" | yq eval ".jobs | has(\"${entry}\")" - 2>/dev/null)
     if [ "$exists" != "true" ]; then
-      printf 'template-overrides.sh: WARNING: disable: unknown job name "%s" — skipping per ADR-114 §(e)\n' \
+      printf 'template-overrides.sh: WARNING: disable: unknown job name "%s" — skipping\n' \
         "$entry" >&2
       continue
     fi

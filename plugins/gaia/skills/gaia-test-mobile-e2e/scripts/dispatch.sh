@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# gaia-test-mobile-e2e/dispatch.sh — E74-S10 / AC1, AC3, AC5, AC6.
+# gaia-test-mobile-e2e/dispatch.sh — device-farm dispatch for mobile e2e tests.
 #
 # Resolves the configured device-farm adapter from project-config.yaml,
 # checks the test_execution_bridge toggle, dispatches via the upstream
 # dispatch-device-farm.sh helper, normalizes per-device output into the
-# canonical AC3 schema (via normalize-results.py), and emits a composite
+# canonical per-device schema (via normalize-results.py), and emits a composite
 # verdict (via composite-verdict.sh + compose-output.py).
 #
 # Usage:
@@ -51,8 +51,7 @@ done
 : "${DEVICE:=}"
 
 # yaml_get_nested — minimal nested-path reader for two-level keys, matching
-# the awk style used by E74-S9 dispatch-device-farm.sh and avoiding a yq
-# dependency (consistent with E74-S7 manifest tests).
+# the awk style used by dispatch-device-farm.sh and avoiding a yq dependency.
 yaml_get_nested() {
   local file="$1" outer="$2" inner="$3"
   awk -v o="$outer" -v i="$inner" '
@@ -72,11 +71,10 @@ yaml_get_nested() {
 ADAPTER="$(yaml_get_nested "$CONFIG" "device_farm" "adapter")"
 BRIDGE_ENABLED="$(yaml_get_nested "$CONFIG" "test_execution_bridge" "bridge_enabled")"
 
-# AF-2026-05-17-10: platforms-mobile gate. Defense-in-depth check — skip
-# neutrally when no mobile platform is declared in platforms[]. Mirrors
-# AF-2026-05-17-9 (compliance.ui_present guard on a11y family) for the
-# mobile family. Reads the platforms[] block from the YAML directly via
-# awk (parallel to yaml_get_nested but for the top-level list shape).
+# Platforms-mobile gate. Defense-in-depth check — skip neutrally when no
+# mobile platform is declared in platforms[]. Reads the platforms[] block
+# from the YAML directly via awk (parallel to yaml_get_nested but for the
+# top-level list shape).
 PLATFORMS_LIST=$(awk '
   /^platforms:[[:space:]]*$/ { flag=1; next }
   flag && /^[a-z][a-z_]*:/ { flag=0 }
@@ -92,19 +90,15 @@ if ! printf '%s' "$PLATFORMS_LIST" | grep -qE '(^|,)(ios|android)(,|$)'; then
   exit 0
 fi
 
-# AC5 — bridge_enabled=false short-circuits with SKIPPED.
+# bridge_enabled=false short-circuits with SKIPPED.
 if [ "$BRIDGE_ENABLED" = "false" ]; then
   printf '%s\n' '{"skill":"gaia-test-mobile-e2e","verdict":"SKIPPED","reason":"bridge_disabled","diagnostic":"Test Execution Bridge is disabled. Run /gaia-bridge-enable to allow dispatch."}'
   exit 0
 fi
 
-# AC6 — missing adapter fails gracefully with verdict=ERROR.
+# Missing adapter fails gracefully with verdict=ERROR.
 if [ -z "$ADAPTER" ]; then
-  # AF-2026-05-17-10: honest diagnostic. /gaia-config-device-target only edits
-  # the device_targets section (per ADR-044) — NOT device_farm.adapter. No
-  # /gaia-config-* skill currently edits this key, so the user must edit
-  # .gaia/config/project-config.yaml directly.
-  printf '%s\n' '{"skill":"gaia-test-mobile-e2e","verdict":"ERROR","reason":"no_device_farm_adapter","diagnostic":"No device-farm adapter configured. Set device_farm.adapter in .gaia/config/project-config.yaml to one of: firebase-test-lab | browserstack | sauce-labs. No section-scoped editor skill currently exists for this key (AF-2026-05-17-10) — edit the YAML directly. The Test Execution Bridge must also be enabled (/gaia-bridge-enable)."}'
+  printf '%s\n' '{"skill":"gaia-test-mobile-e2e","verdict":"ERROR","reason":"no_device_farm_adapter","diagnostic":"No device-farm adapter configured. Set device_farm.adapter in .gaia/config/project-config.yaml to one of: firebase-test-lab | browserstack | sauce-labs. No section-scoped editor skill currently exists for this key — edit the YAML directly. The Test Execution Bridge must also be enabled (/gaia-bridge-enable)."}'
   exit 2
 fi
 
@@ -133,7 +127,7 @@ if [ "$DF_EXIT" -eq 4 ]; then
   exit 4
 fi
 
-# Phase 4 — normalize upstream payload into AC3 canonical per-device schema.
+# Phase 4 — normalize upstream payload into canonical per-device schema.
 NORMALIZED="$(python3 "$NORMALIZE_PY" "$RAW_OUT")"
 
 # Phase 5 — composite verdict via shared helper.

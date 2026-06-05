@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # validate-platform-stack.sh — reject configs that declare a mobile platform
 # without any stack capable of building for it.
-# Story: E71-S1 (FR-RSV2-34, AC5). Deterministic per ADR-042.
+# Deterministic output.
 #
 # Capability matrix:
 #   ios:     swift, objective-c, objective_c, react-native, flutter
@@ -63,13 +63,13 @@ languages="$(extract_stack_languages || true)"
 normalize() { tr '[:upper:]' '[:lower:]' | sed 's/_/-/g'; }
 normalized_langs="$(printf '%s\n' "$languages" | normalize)"
 
-# AF-2026-05-31-1 / Test12 F-02 + F-03: add `server` and its alias `backend` to
-# the recognized platform vocabulary so single-backend projects (CLI, library,
-# headless service) can declare `platforms: [server]` (the canonical token that
-# generate-config.sh already seeds) or `platforms: [backend]` (the natural-
-# language alias users reach for) without tripping the "unknown platform"
-# branch. Both are trivially satisfied — they require no specific stack
-# language, only that AT LEAST one stack is declared.
+# Add `server` and its alias `backend` to the recognized platform vocabulary
+# so single-backend projects (CLI, library, headless service) can declare
+# `platforms: [server]` (the canonical token that generate-config.sh already
+# seeds) or `platforms: [backend]` (the natural-language alias users reach for)
+# without tripping the "unknown platform" branch. Both are trivially satisfied
+# — they require no specific stack language, only that AT LEAST one stack is
+# declared.
 stack_supports() {
   # $1 = platform; returns 0 if any language in $normalized_langs supports it.
   local platform="$1" wanted
@@ -83,14 +83,13 @@ stack_supports() {
   printf '%s\n' "$normalized_langs" | grep -Eq "^($wanted)$"
 }
 
-# AF-2026-05-31-1 / Test12 F-01: the prior error-message construction used a
-# `case … esac` inside `$( … )` command substitution which bash 3.2.57 (the
-# macOS default) cannot parse — it crashed mid-message with "syntax error near
-# unexpected token 'newline'" and leaked the literal printf strings into the
-# user-facing output. Replaced with a plain shell function so the helper runs
-# unchanged on bash 3.2 and bash 4+. The vocabulary itself is fixed at the
-# point of error (Test11 audit confirmed the matrix has not changed since
-# E71-S1) and is mirrored verbatim in the printf strings below.
+# The prior error-message construction used a `case … esac` inside `$( … )`
+# command substitution which bash 3.2.57 (the macOS default) cannot parse —
+# it crashed mid-message with "syntax error near unexpected token 'newline'"
+# and leaked the literal printf strings into the user-facing output. Replaced
+# with a plain shell function so the helper runs unchanged on bash 3.2 and
+# bash 4+. The vocabulary itself is fixed at the point of error and is
+# mirrored verbatim in the printf strings below.
 _capable_langs_for() {
   case "$1" in
     ios)     printf 'swift, objective-c, react-native, flutter' ;;

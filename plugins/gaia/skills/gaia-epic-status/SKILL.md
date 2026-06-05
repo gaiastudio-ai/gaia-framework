@@ -15,7 +15,7 @@ orchestration_class: light-procedural
 
 Display an epic completion dashboard by reading `.gaia/artifacts/planning-artifacts/epics-and-stories.md` and `.gaia/state/sprint-status.yaml`. When an optional epic key argument is provided (e.g., `E28`), filter the dashboard to show only that epic. This skill is read-only — it NEVER writes to any artifact file.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/epic-status/` XML engine workflow (brief Cluster 8, story E28-S62). Follows ADR-042 (scripts-over-LLM) where applicable, but dashboard rendering uses LLM-layer markdown table output per the story's technical notes.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/epic-status/` XML engine workflow. Follows the scripts-over-LLM principle where applicable, but dashboard rendering uses LLM-layer markdown table output per the story's technical notes.
 
 ## Critical Rules
 
@@ -27,9 +27,9 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ## Steps
 
-### Step 0 — Delegate rendering to the formatter (preferred, ADR-042)
+### Step 0 — Delegate rendering to the formatter (preferred)
 
-> **Test10 F-30:** This skill now has a deterministic formatter (`epic-status-dashboard.sh`), aligning with ADR-042 (scripts-over-LLM) — the same shape as `sprint-status-dashboard.sh`.
+> This skill now has a deterministic formatter (`epic-status-dashboard.sh`), aligning with the scripts-over-LLM principle — the same shape as `sprint-status-dashboard.sh`.
 
 Preferred invocation:
 
@@ -37,7 +37,7 @@ Preferred invocation:
 !${CLAUDE_PLUGIN_ROOT}/scripts/epic-status-dashboard.sh [--epic "$EPIC_KEY"]
 ```
 
-The formatter handles parsing (accepting `## E{N} — Title`, `## E{N} - Title`, and `## Epic {N}: Title` heading forms — Test10 F-30 em-dash drift fix), reads `sprint-status.yaml`, falls back to story-file scan, computes per-epic metrics, and renders the markdown dashboard to stdout. If the script exits non-zero, surface stderr verbatim — do NOT fall back to inline LLM rendering.
+The formatter handles parsing (accepting `## E{N} — Title`, `## E{N} - Title`, and `## Epic {N}: Title` heading forms — em-dash drift fix), reads `sprint-status.yaml`, falls back to story-file scan, computes per-epic metrics, and renders the markdown dashboard to stdout. If the script exits non-zero, surface stderr verbatim — do NOT fall back to inline LLM rendering.
 
 Steps 1–4 below remain documented for fallback use when the script is unavailable or for emergency manual inspection — they MUST NOT be the default path.
 

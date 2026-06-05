@@ -1,8 +1,8 @@
 ---
 name: gaia-create-epics
-description: Break requirements into epics and user stories through collaborative discovery with the architect (Theo) and pm (Derek) subagents — Cluster 6 architecture skill. Use when the user wants to decompose a PRD and architecture into implementation-ready epics and stories with dependency topology, risk levels from the test plan, and priority ordering.
+description: Break requirements into epics and user stories through collaborative discovery with the architect (Theo) and pm (Derek) subagents — architecture skill. Use when the user wants to decompose a PRD and architecture into implementation-ready epics and stories with dependency topology, risk levels from the test plan, and priority ordering.
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
-# Discover-Inputs Protocol (ADR-062 / FR-346 / E45-S4)
+# Discover-Inputs Protocol
 # Strategy: INDEX_GUIDED — three large upstream artifacts (PRD,
 # architecture, test plan) routinely total 50K+ tokens. Load each
 # artifact's index (heading scan) first; fetch named sections on demand in
@@ -24,7 +24,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -37,31 +37,31 @@ fi
 
 ## Mission
 
-You are orchestrating the creation of an Epics and Stories document. The epic definition and story breakdown are delegated to the **architect** subagent (Theo) for technical decomposition and the **pm** subagent (Derek) for business prioritization and user story authoring. You load the PRD, architecture, test plan, and optional UX design, validate inputs, coordinate the multi-step flow, and write the output to the canonical post-ADR-111 path `.gaia/artifacts/planning-artifacts/epics-and-stories.md`.
+You are orchestrating the creation of an Epics and Stories document. The epic definition and story breakdown are delegated to the **architect** subagent (Theo) for technical decomposition and the **pm** subagent (Derek) for business prioritization and user story authoring. You load the PRD, architecture, test plan, and optional UX design, validate inputs, coordinate the multi-step flow, and write the output to the canonical path `.gaia/artifacts/planning-artifacts/epics-and-stories.md`.
 
-**Path resolution (AF-2026-05-21-13).** All path references in this SKILL.md use the canonical post-ADR-111 locations under `.gaia/artifacts/planning-artifacts/` and `.gaia/artifacts/test-artifacts/`. Pre-ADR-111 projects continue to work via canonical-first two-tier resolution at the script layer (`scripts/finalize.sh` already implements the E96-S7 partial-4c smart-fallback: try `.gaia/artifacts/...` first, fall back to `docs/...` only when absent). When writing artifacts via the Write tool, target the canonical paths named in this SKILL.md; the pre-ADR-111 fallback is read-side only. AF-21-13 also establishes the canonical destination for `brownfield-onboarding.md` (line 188) at `.gaia/artifacts/planning-artifacts/brownfield-onboarding.md`.
+**Path resolution.** All path references in this SKILL.md use the canonical locations under `.gaia/artifacts/planning-artifacts/` and `.gaia/artifacts/test-artifacts/`. Older projects continue to work via canonical-first two-tier resolution at the script layer (`scripts/finalize.sh` already implements the smart-fallback: try `.gaia/artifacts/...` first, fall back to `docs/...` only when absent). When writing artifacts via the Write tool, target the canonical paths named in this SKILL.md; the older fallback is read-side only. The canonical destination for `brownfield-onboarding.md` (line 188) is `.gaia/artifacts/planning-artifacts/brownfield-onboarding.md`.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/3-solutioning/create-epics-stories` workflow (brief Cluster 6, story P6-S3 / E28-S47). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/3-solutioning/create-epics-stories` workflow. The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 
-- A PRD MUST exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
+- A PRD MUST exist before starting. Resolve via the sharded-fallback rule: first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - An architecture document MUST exist at `.gaia/artifacts/planning-artifacts/architecture.md` before starting. If missing, fail fast with "Architecture not found at .gaia/artifacts/planning-artifacts/architecture.md — run /gaia-create-arch first."
-- The architecture document MUST contain a "## Review Findings Incorporated" section, with **one carve-out** documented at AF-2026-05-31-1 / Test12 F-14: when the architecture YAML frontmatter declares `mode: brownfield`, the section is **advisory** (its absence emits a NOTICE but does not HALT). The brownfield Phase 9a architecture pipeline generates its arch.md from gap consolidation, NOT from an adversarial+incorporate loop, so requiring the section would break the brownfield→epics handoff (Test12 F-14: operators had to manually append a placeholder section to unblock create-epics). For greenfield (`mode: greenfield` / unset), the section remains a hard gate — its absence still fails with "Architecture review findings not found — run /gaia-create-arch first to complete adversarial review and architecture refinement."
-- A test plan MUST exist before starting. The gate `validate-gate.sh test_plan_exists` (ADR-072 / AF-2026-05-08-5) accepts three placements: flat `.gaia/artifacts/test-artifacts/test-plan.md`, strategy/ `.gaia/artifacts/test-artifacts/strategy/test-plan.md`, or sharded `.gaia/artifacts/test-artifacts/test-plan/index.md`. This is an **enforced** quality gate (ADR-042), not advisory. The gate is checked by `scripts/setup.sh` via `validate-gate.sh test_plan_exists`. If missing from ALL three placements, HALT with "test-plan.md not found at .gaia/artifacts/test-artifacts/test-plan.md, .gaia/artifacts/test-artifacts/strategy/test-plan.md, or .gaia/artifacts/test-artifacts/test-plan/index.md — run /gaia-test-design first." The file must be non-empty — a zero-byte file is treated as missing.
-- Epic definition and technical decomposition are delegated to the `architect` subagent (Theo) via native Claude Code subagent invocation — do NOT inline Theo's persona into this skill body. If the architect subagent (E28-S21) is not available, fail with "architect subagent not available — install E28-S21" error.
-- Story authoring and business prioritization are delegated to the `pm` subagent (Derek) via native Claude Code subagent invocation — do NOT inline Derek's persona into this skill body. If the pm subagent (E28-S21) is not available, fail with "pm subagent not available — install E28-S21" error.
+- The architecture document MUST contain a "## Review Findings Incorporated" section, with **one carve-out**: when the architecture YAML frontmatter declares `mode: brownfield`, the section is **advisory** (its absence emits a NOTICE but does not HALT). The brownfield Phase 9a architecture pipeline generates its arch.md from gap consolidation, NOT from an adversarial+incorporate loop, so requiring the section would break the brownfield→epics handoff (operators had to manually append a placeholder section to unblock create-epics). For greenfield (`mode: greenfield` / unset), the section remains a hard gate — its absence still fails with "Architecture review findings not found — run /gaia-create-arch first to complete adversarial review and architecture refinement."
+- A test plan MUST exist before starting. The gate `validate-gate.sh test_plan_exists` accepts three placements: flat `.gaia/artifacts/test-artifacts/test-plan.md`, strategy/ `.gaia/artifacts/test-artifacts/strategy/test-plan.md`, or sharded `.gaia/artifacts/test-artifacts/test-plan/index.md`. This is an **enforced** quality gate, not advisory. The gate is checked by `scripts/setup.sh` via `validate-gate.sh test_plan_exists`. If missing from ALL three placements, HALT with "test-plan.md not found at .gaia/artifacts/test-artifacts/test-plan.md, .gaia/artifacts/test-artifacts/strategy/test-plan.md, or .gaia/artifacts/test-artifacts/test-plan/index.md — run /gaia-test-design first." The file must be non-empty — a zero-byte file is treated as missing.
+- Epic definition and technical decomposition are delegated to the `architect` subagent (Theo) via native Claude Code subagent invocation — do NOT inline Theo's persona into this skill body. If the architect subagent is not available, fail with "architect subagent not available" error.
+- Story authoring and business prioritization are delegated to the `pm` subagent (Derek) via native Claude Code subagent invocation — do NOT inline Derek's persona into this skill body. If the pm subagent is not available, fail with "pm subagent not available" error.
 - If either the `architect` or `pm` subagent is not registered, surface a clear subagent-missing error rather than silently falling back to inline persona content.
 - If `.gaia/artifacts/planning-artifacts/epics-and-stories.md` already exists, warn the user: "An existing epics-and-stories document was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
 - Every story must have `depends_on` and `blocks` declarations — no circular dependencies.
 - Stories must be ordered by dependency topology first, then business priority.
-- **Per-epic directory naming (AF-2026-05-22-8 Bug-18)** — When Derek bulk-authors per-story `.md` files (Step 4), each story MUST land at `${implementation_artifacts}/{resolve_epic_slug output}/stories/{story_key}-{slug}.md`. The `{resolve_epic_slug output}` is computed by `scripts/lib/resolve-epic-slug.sh --epic-key E{N} --epics-file ...` and is e.g. `epic-E1-core-brain-vault`. Do NOT write to `epic-{N}/stories/...` (numeric-only, no slug) — `transition-story-status.sh` uses the resolver-output directory for `story-index.yaml`, so any other naming produces SPLIT STATE across two directories per epic. This is the recurring Bug-18 from the YARA test report — when create-epics bulk-writes stories without invoking the resolver, the result is `epic-1/stories/E1-S1-*.md` (story body) in one dir and `epic-E1-core-brain-vault/stories/story-index.yaml` (state) in another.
+- **Per-epic directory naming** — When Derek bulk-authors per-story `.md` files (Step 4), each story MUST land at `${implementation_artifacts}/{resolve_epic_slug output}/stories/{story_key}-{slug}.md`. The `{resolve_epic_slug output}` is computed by `scripts/lib/resolve-epic-slug.sh --epic-key E{N} --epics-file ...` and is e.g. `epic-E1-core-brain-vault`. Do NOT write to `epic-{N}/stories/...` (numeric-only, no slug) — `transition-story-status.sh` uses the resolver-output directory for `story-index.yaml`, so any other naming produces SPLIT STATE across two directories per epic. This is a recurring class of bug — when create-epics bulk-writes stories without invoking the resolver, the result is `epic-1/stories/E1-S1-*.md` (story body) in one dir and `epic-E1-core-brain-vault/stories/story-index.yaml` (state) in another.
 
 ## Steps
 
 ### Step 1 — Load Upstream Artifacts
 
-> **Loading strategy: INDEX_GUIDED per ADR-062.** Three large upstream
+> **Loading strategy: INDEX_GUIDED.** Three large upstream
 > artifacts (PRD, architecture, test plan) routinely total 50K+ tokens.
 > Heading-scan each artifact first to build a section index — do NOT read
 > the full bodies up front. Fetch named sections on demand in later steps
@@ -93,7 +93,7 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to define e
 - Each epic: name, description, goal, success criteria.
 - Brownfield: epics should focus on gap closure — not existing functionality.
 
-**Epic heading format (required for downstream resolver compatibility).** When Theo and Derek author `epics-and-stories.md` in Step 4, every epic MUST use ONE of the two accepted H2 heading forms (both are honored by `scripts/lib/resolve-epic-slug.sh` post-AF-22-6):
+**Epic heading format (required for downstream resolver compatibility).** When Theo and Derek author `epics-and-stories.md` in Step 4, every epic MUST use ONE of the two accepted H2 heading forms (both are honored by `scripts/lib/resolve-epic-slug.sh`):
 
 - Form (a) — canonical em-dash form: `## E{N} — {Epic Title}` (e.g., `## E1 — Core Brain Vault`)
 - Form (b) — natural-language form: `## Epic {N}: {Epic Title}` (e.g., `## Epic 1: Core Brain Vault`)
@@ -117,7 +117,7 @@ Delegate to the **pm** subagent (Derek) via `agents/pm` to author user stories.
 ### Step 5 — Apply Test-Plan Risk Levels
 
 - Read risk assessment from the test plan loaded in Step 1.
-- For each story: if it touches a high-risk component, set the story's `Risk:` bullet to `high`. Otherwise `medium` or `low`. **AF-2026-05-30-4 / Test11 F-12+F-13**: the OUTPUT TEMPLATE in this SKILL uses the Title-case label `Risk:` (which `create-story/generate-frontmatter.sh` extracts via `extract_bullet "Risk"`). Earlier revisions of this prose said `risk_level:` (snake_case), which broke story materialization — the generator couldn't find the field and exited with `missing field 'risk'`. Use `Risk:` here to match the template. The generator now also accepts the snake_case form as a fallback (belt-and-braces).
+- For each story: if it touches a high-risk component, set the story's `Risk:` bullet to `high`. Otherwise `medium` or `low`. The OUTPUT TEMPLATE in this SKILL uses the Title-case label `Risk:` (which `create-story/generate-frontmatter.sh` extracts via `extract_bullet "Risk"`). Earlier revisions of this prose said `risk_level:` (snake_case), which broke story materialization — the generator couldn't find the field and exited with `missing field 'risk'`. Use `Risk:` here to match the template. The generator now also accepts the snake_case form as a fallback (belt-and-braces).
 - High-risk stories: add to Dev Notes: "Risk: HIGH — run /gaia-atdd before /gaia-dev-story".
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-epics 5 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" story_count="$STORY_COUNT" high_risk_count="$HIGH_RISK_COUNT"`
@@ -126,7 +126,7 @@ Delegate to the **pm** subagent (Derek) via `agents/pm` to author user stories.
 
 Delegate to the **architect** subagent (Theo) via `agents/architect` to determine dependency topology.
 
-- For each story, declare `Depends on: [story-ids]` and `Blocks: [story-ids]` bullets. **AF-2026-05-30-4 / Test11 F-12+F-13**: same labeling note as Step 5 — the OUTPUT TEMPLATE uses Title-case `Depends on:` / `Blocks:`, which is what `create-story/generate-frontmatter.sh` extracts. Earlier revisions of this prose said `depends_on:` / `blocks:` (snake_case); that drift made the SV-07 finalize-check fail and broke generate-frontmatter's depends-on extraction. The generator now accepts both forms as a fallback.
+- For each story, declare `Depends on: [story-ids]` and `Blocks: [story-ids]` bullets. Same labeling note as Step 5 — the OUTPUT TEMPLATE uses Title-case `Depends on:` / `Blocks:`, which is what `create-story/generate-frontmatter.sh` extracts. Earlier revisions of this prose said `depends_on:` / `blocks:` (snake_case); that drift made the SV-07 finalize-check fail and broke generate-frontmatter's depends-on extraction. The generator now accepts both forms as a fallback.
 - Ensure no circular dependencies.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-epics 6 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" story_count="$STORY_COUNT" deps_declared="$DEPS_DECLARED"`
@@ -170,7 +170,7 @@ Concrete example (this is what the finalize.sh gate regex `^### Story E[0-9]+-S[
   - AC1: Given a fresh project dir, when `gaia-init` runs, then `.gaia/` is created and committed.
 ```
 
-> **Heading-format contract (H-1, Test07).** The story heading is literally
+> **Heading-format contract.** The story heading is literally
 > `### Story E{N}-S{N}: {Title}` — note the literal letter `S` between the epic
 > and story numbers (e.g. `### Story E1-S1:`, NOT `### Story E1-1:`). The
 > finalize.sh SV-04..SV-10 gate regex `^### Story E[0-9]+-S[0-9]+` enforces
@@ -178,7 +178,7 @@ Concrete example (this is what the finalize.sh gate regex `^### Story E[0-9]+-S[
 > and collapses every per-story check to FAIL. Same `E{N}-S{N}` form applies to
 > story keys inside `Depends on:` and `Blocks:` lists.
 
-> **Field-format contract (F-017/F-018, Test04).** Author bullets as plain
+> **Field-format contract.** Author bullets as plain
 > `- Label: value` (the consumer `generate-frontmatter.sh` also tolerates the
 > bold `- **Label:** value` form). The `Epic:` value MUST be the epic KEY
 > (`E1`), not the epic name — `transition-story-status.sh` resolves it via
@@ -190,7 +190,7 @@ Concrete example (this is what the finalize.sh gate regex `^### Story E[0-9]+-S[
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-epics 8 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" epic_count="$EPIC_COUNT" story_count="$STORY_COUNT" --paths .gaia/artifacts/planning-artifacts/epics-and-stories.md`
 
-### Step 9 — Val Auto-Fix Loop (E44-S2 / ADR-058)
+### Step 9 — Val Auto-Fix Loop
 
 > Reuses the canonical pattern at `gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
@@ -213,9 +213,9 @@ Concrete example (this is what the finalize.sh gate regex `^### Story E[0-9]+-S[
      d. If iteration <= 3: go to step 2.
      e. Else: present the iteration-3 prompt verbatim (centralized in `gaia-val-validate` SKILL.md § "Auto-Fix Loop Pattern") and dispatch.
 
-YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See ADR-057 FR-YOLO-2(e) and ADR-058 for the hard-gate contract.
+YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Concurrent invocations of this skill are safe per E44-S5 AC-EC5: each invocation has its own iteration counter (centralized in the canonical pattern), so loop state is per-invocation, not shared.
+> Val auto-review per the canonical pattern (architecture.md §10.31.2). Concurrent invocations of this skill are safe: each invocation has its own iteration counter (centralized in the canonical pattern), so loop state is per-invocation, not shared.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-epics 9 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/epics-and-stories.md`
 
@@ -247,7 +247,7 @@ Skip this step if mode is greenfield.
 ## Validation
 
 <!--
-  E42-S10 — V1→V2 31-item checklist port (FR-341, FR-359, VCP-CHK-19, VCP-CHK-20).
+  V1→V2 31-item checklist port.
   Classification (31 items total):
     - Script-verifiable: 21 (SV-01..SV-21) — enforced by finalize.sh.
     - LLM-checkable:     10 (LLM-01..LLM-10) — evaluated by the host LLM
@@ -286,16 +286,14 @@ Skip this step if mode is greenfield.
                            LLM-05, LLM-06, LLM-04                                (8)
     Total                                                                        31
 
-  The VCP-CHK-20 anchor is SV-14 — "No circular dependencies". This
+  The "No circular dependencies" check is SV-14. This
   is the V1 phrase verbatim and MUST appear in violation output
-  when a cycle is detected (AC2). The cycle path is surfaced via
+  when a cycle is detected. The cycle path is surfaced via
   the failing story keys drained by Kahn's algorithm.
 
   Invoked by `finalize.sh` at post-complete (per §10.31.1). Validation
   runs BEFORE the checkpoint and lifecycle-event writes (observability
   is never suppressed by checklist outcome — story AC5).
-
-  See .gaia/artifacts/implementation-artifacts/E42-S10-port-gaia-create-epics-31-item-checklist-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 — Output file saved to .gaia/artifacts/planning-artifacts/epics-and-stories.md

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# setup.sh — shared Cluster 4 skill setup (E28-S38, brief §Cluster 4 / P4-S4)
+# setup.sh — shared skill setup for technical-research
 #
-# Mechanical copy of the Cluster 4 reference implementation authored under
-# E28-S35 (gaia-brainstorm/scripts/setup.sh). Only WORKFLOW_NAME and
-# SCRIPT_NAME differ — the body is byte-identical to the reference.
+# Mechanical copy of the reference implementation (gaia-brainstorm/scripts/setup.sh).
+# Only WORKFLOW_NAME and SCRIPT_NAME differ — the body is byte-identical to the reference.
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs
 #   3. Load the checkpoint state for this workflow
@@ -53,7 +52,7 @@ done <<<"$config_output"
 
 # ---------- 2. Validate gate (prereqs) ----------
 # technical-research's legacy workflow had no hard prereqs — it is an
-# analysis workflow. Keep parity with the Cluster 4 reference — run the
+# analysis workflow. Keep parity with the reference — run the
 # file_exists gate with zero --file arguments (no-op).
 if [ -x "$VALIDATE_GATE" ]; then
   if ! "$VALIDATE_GATE" file_exists >/dev/null 2>&1; then

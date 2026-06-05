@@ -19,7 +19,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -33,17 +33,17 @@ fi
 
 You are applying the GAIA framework to an existing codebase. This skill runs **deep project discovery, parallel documentation subagents, multi-scan gap analysis, NFR assessment, gap consolidation, PRD/architecture generation, and optional ground-truth bootstrap**, then writes the canonical brownfield onboarding artifact set.
 
-This skill is the native Claude Code conversion of the legacy `brownfield-onboarding` workflow (E28-S105, Cluster 14). The step ordering, prompts, subagent delegation, template-driven output generation, and post-complete quality gates are preserved from the legacy `instructions.xml` — parity confirmed per NFR-053.
+This skill is the native Claude Code conversion of the legacy `brownfield-onboarding` workflow. The step ordering, prompts, subagent delegation, template-driven output generation, and post-complete quality gates are preserved from the legacy `instructions.xml` — parity confirmed.
 
-**Main context semantics (ADR-041):** This skill runs under `context: main` with full tool access. It orchestrates a large discovery pipeline that reads the target project and produces a canonical artifact set under `.gaia/artifacts/planning-artifacts/` and `.gaia/artifacts/test-artifacts/`.
+**Main context semantics:** This skill runs under `context: main` with full tool access. It orchestrates a large discovery pipeline that reads the target project and produces a canonical artifact set under `.gaia/artifacts/planning-artifacts/` and `.gaia/artifacts/test-artifacts/`.
 
-**Path resolution (AF-2026-05-21-17 + AF-2026-05-31-3 / Test14 D-01).** All Phase 2 brownfield artifact paths in this SKILL.md use the canonical post-ADR-111 locations under `.gaia/artifacts/planning-artifacts/` and `.gaia/artifacts/test-artifacts/`. The ~10 produced artifacts (brownfield-assessment.md, project-documentation.md, api-documentation.md, ux-design.md, event-catalog.md, dependency-map.md, dependency-audit-{date}.md, brownfield-subagent-summary.md, brownfield-scan-*.md, brownfield-onboarding.md) all target canonical destinations.
+**Path resolution.** All Phase 2 brownfield artifact paths in this SKILL.md use the canonical locations under `.gaia/artifacts/planning-artifacts/` and `.gaia/artifacts/test-artifacts/`. The ~10 produced artifacts (brownfield-assessment.md, project-documentation.md, api-documentation.md, ux-design.md, event-catalog.md, dependency-map.md, dependency-audit-{date}.md, brownfield-subagent-summary.md, brownfield-scan-*.md, brownfield-onboarding.md) all target canonical destinations.
 
-**Per-artifact destination split (Test14 D-01 — was previously inferred from the artifact-dispersion note far from the per-subagent instructions):**
+**Per-artifact destination split:**
 - `planning-artifacts/`: brownfield-assessment.md, project-documentation.md, api-documentation.md, ux-design.md, event-catalog.md, dependency-map.md, brownfield-subagent-summary.md, brownfield-scan-*.md, brownfield-onboarding.md (the "what is this project" lens).
 - `test-artifacts/`: `dependency-audit-{date}.md` (the "what's risky about its dependencies" lens — the only Phase-2 artifact that lives under test-artifacts/ because dependency audit IS a test-lens activity per the cluster-7 contract). Spelled out here so subagents don't have to scroll up to the dispersion note + correctly route the dependency-audit write.
 
-**Scripts-over-LLM (ADR-042 / FR-325):** Deterministic operations (config resolution, checkpoint writes, gate validation, lifecycle events) are delegated to the shared foundation scripts under `plugins/gaia/scripts/` via inline `!scripts/*.sh` calls. The canonical foundation set includes: `resolve-config.sh`, `checkpoint.sh` (with `write` / `read` / `validate` subcommands — the consolidated checkpoint surface per architecture §10.26.3), `validate-gate.sh` (deployed equivalent for spec's `file-gate.sh`), `template-header.sh`, `memory-loader.sh`, `lifecycle-event.sh`. See the Reconciliation Note under Critical Rules for the one remaining spec-vs-deployed name mapping.
+**Scripts-over-LLM:** Deterministic operations (config resolution, checkpoint writes, gate validation, lifecycle events) are delegated to the shared foundation scripts under `plugins/gaia/scripts/` via inline `!scripts/*.sh` calls. The canonical foundation set includes: `resolve-config.sh`, `checkpoint.sh` (with `write` / `read` / `validate` subcommands — the consolidated checkpoint surface per architecture §10.26.3), `validate-gate.sh` (deployed equivalent for spec's `file-gate.sh`), `template-header.sh`, `memory-loader.sh`, `lifecycle-event.sh`. See the Reconciliation Note under Critical Rules for the one remaining spec-vs-deployed name mapping.
 
 ## Critical Rules
 
@@ -55,12 +55,12 @@ This skill is the native Claude Code conversion of the legacy `brownfield-onboar
 - **Subagent completion MUST NOT auto-advance.** After parallel subagents return, pause for user review before proceeding to the next phase. Halt-on-failure is scoped per subagent — individual scanner failures do not block the overall workflow (see the Failure Semantics section), but the post-complete gates halt when their required files are absent.
 - **Sprint-status.yaml is NEVER written by this skill** (Sprint-Status Write Safety rule). This skill writes only planning and test artifacts.
 - **Parallel invocation isolation (AC-EC7):** Each invocation uses an isolated checkpoint path and independent `_resolved` config derived from `resolve-config.sh`. Two concurrent runs on different project roots never share mutable state or contaminate each other's artifacts.
-- **Token budget (NFR-048 / AC-EC1):** Keep the SKILL.md body under the activation budget. Scanners stream/chunk results and emit a "scan truncated — review manually" advisory rather than exceed the budget (AC-EC6).
+- **Token budget (AC-EC1):** Keep the SKILL.md body under the activation budget. Scanners stream/chunk results and emit a "scan truncated — review manually" advisory rather than exceed the budget (AC-EC6).
 - **Fail-fast on missing foundation scripts (AC-EC2):** `setup.sh` aborts with an actionable error identifying the missing / non-executable script path. No partial scan output is written if the setup step fails.
 
 ### Reconciliation Note — Architecture Spec vs Deployed Scripts
 
-Architecture §10.26.3 specifies the foundation-script surface. The live `plugins/gaia/scripts/` set exposes `checkpoint.sh` (with `write` / `read` / `validate` subcommands — same canonical name used by architecture §10.26.3 since E28-S172) alongside `validate-gate.sh`, which is the deployed equivalent for the spec's `file-gate.sh`. This skill calls the deployed names for parity with the live script set. If the `file-gate.sh` spec name is added later under a separate story (E28-S9..E28-S16), the inline calls in `setup.sh` / `finalize.sh` can be updated without touching the skill body. The checkpoint surface no longer requires reconciliation — `checkpoint.sh` is the canonical name in both the spec and the product.
+Architecture §10.26.3 specifies the foundation-script surface. The live `plugins/gaia/scripts/` set exposes `checkpoint.sh` (with `write` / `read` / `validate` subcommands — same canonical name used by architecture §10.26.3) alongside `validate-gate.sh`, which is the deployed equivalent for the spec's `file-gate.sh`. This skill calls the deployed names for parity with the live script set. If the `file-gate.sh` spec name is added later under a separate story, the inline calls in `setup.sh` / `finalize.sh` can be updated without touching the skill body. The checkpoint surface no longer requires reconciliation — `checkpoint.sh` is the canonical name in both the spec and the product.
 
 ## Inputs
 
@@ -100,20 +100,20 @@ Each phase is independent in its write targets but must run sequentially because
    - `has_infra` + no `has_app_code` → `infrastructure`
    - no `has_infra` → `application` (default)
 
-<!-- E71-S2: detection-driven config extension begin -->
-5a. **Detection-driven config draft (E71-S2 / FR-RSV2-35, FR-RSV2-36, AF-2026-05-04-1).** After the boolean capability flags are set, run `detect-signals.sh` to produce a structured signal inventory and (optionally) merge it into the project's `.gaia/config/project-config.yaml`:
+<!-- detection-driven config extension begin -->
+5a. **Detection-driven config draft.** After the boolean capability flags are set, run `detect-signals.sh` to produce a structured signal inventory and (optionally) merge it into the project's `.gaia/config/project-config.yaml`:
 
-   - Run `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-signals.sh --project-root <project> --merge-into <project>/.gaia/config/project-config.yaml --output <project>/.gaia/config/project-config.draft.yaml --schema ${CLAUDE_PLUGIN_ROOT}/config/project-config.schema.yaml --format json`. **AF-2026-05-30-4 / Test11 F-01 + V-01**: the draft output path MUST live under `.gaia/config/` (canonical post-ADR-111), not at repo-root `config/`. Prior to this fix the prose said `<project>/config/project-config.draft.yaml` (outside `.gaia/`, contradicting both the .gaia/-only write contract AND the step 5b multi-stack draft path on line 122 which already used the canonical home). Worse, on any clean checkout `config/` doesn't exist and the script died with `FileNotFoundError`, exit 1 — Phase 1 step 5a was unreachable.
-   - The script emits a JSON document with five keys — `stacks`, `platforms`, `ci_platform`, `tool_providers`, `warnings` — plus a top-level `verdict` (PASS | WARNING | CRITICAL) per ADR-063.
+   - Run `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-signals.sh --project-root <project> --merge-into <project>/.gaia/config/project-config.yaml --output <project>/.gaia/config/project-config.draft.yaml --schema ${CLAUDE_PLUGIN_ROOT}/config/project-config.schema.yaml --format json`. The draft output path MUST live under `.gaia/config/` (canonical), not at repo-root `config/`. On any clean checkout `config/` doesn't exist and the script would die with `FileNotFoundError`, exit 1, making this step unreachable.
+   - The script emits a JSON document with five keys — `stacks`, `platforms`, `ci_platform`, `tool_providers`, `warnings` — plus a top-level `verdict` (PASS | WARNING | CRITICAL).
    - Detected sections are merged into the existing `project-config.yaml` using **RFC 7396 JSON Merge Patch** semantics: existing user-edited values are preserved unchanged; only null or absent fields are filled. The merged draft is written to `project-config.draft.yaml` for user review before promotion to `project-config.yaml`.
    - When the `--schema` flag is provided, the script invokes `resolve-config.sh --shared <draft> --schema <schema>` to validate the merged draft. A schema rejection collapses the verdict to `CRITICAL` and exits non-zero.
-   - **Verdict surfacing (ADR-063 — mandatory):** the parent skill MUST surface the verdict to the user verbatim — no silent swallowing. PASS = all sections populated, no conflicts. WARNING = conflicts detected (e.g., multiple test runners) or partial signals (e.g., empty project). CRITICAL = post-merge schema validation failure; HALT until resolved.
+   - **Verdict surfacing — mandatory:** the parent skill MUST surface the verdict to the user verbatim — no silent swallowing. PASS = all sections populated, no conflicts. WARNING = conflicts detected (e.g., multiple test runners) or partial signals (e.g., empty project). CRITICAL = post-merge schema validation failure; HALT until resolved.
    - **Empty-project advisory:** when no signals are detected, the script emits a `warnings` entry directing the user to configure manually via `/gaia-config-stack`, `/gaia-config-platform`, `/gaia-config-ci`, `/gaia-config-tools`. Surface this advisory to the user.
-   - **Mobile signals out of scope (E74-S11):** Package.swift, Android Gradle, Flutter mobile, react-native, Xcode/Android Studio detection do NOT fire here — those land downstream.
-   - **Plugin-project classification (E77-S16 / FR-420).** `detect-signals.sh` ALSO invokes `plugin-detection.sh` and emits a top-level `project_kind` field. Three or more co-occurring signals from `{SKILL.md, adapter.json, plugin manifest, commands/, settings.json hooks, .claude/}` set `project_kind: claude-code-plugin`. Single-signal detection is rejected to avoid false positives on stray SKILL.md or manifest files in non-plugin repos. Surface `project_kind` to the user so the downstream `/gaia-trace` plugin chain (FR-421) can attach to it.
-<!-- E71-S2: detection-driven config extension end -->
+   - **Mobile signals out of scope:** Package.swift, Android Gradle, Flutter mobile, react-native, Xcode/Android Studio detection do NOT fire here — those land downstream.
+   - **Plugin-project classification.** `detect-signals.sh` ALSO invokes `plugin-detection.sh` and emits a top-level `project_kind` field. Three or more co-occurring signals from `{SKILL.md, adapter.json, plugin manifest, commands/, settings.json hooks, .claude/}` set `project_kind: claude-code-plugin`. Single-signal detection is rejected to avoid false positives on stray SKILL.md or manifest files in non-plugin repos. Surface `project_kind` to the user so the downstream `/gaia-trace` plugin chain can attach to it.
+<!-- detection-driven config extension end -->
 
-5b. **Multi-stack `stacks[].path` proposal / audit (E70-S11 / FR-548 / NFR-88 / ADR-126).** When the deterministic-tools master flag (`brownfield.deterministic_tools`) and per-tool override (`brownfield.detect_signals_enabled`, default true) are on, run `detect-signals.sh` in the OPT-IN stacks-path mode to give multi-stack monorepos advisory partitioning help. This is distinct from the E71-S2 root-only detection above (that path is unchanged):
+5b. **Multi-stack `stacks[].path` proposal / audit.** When the deterministic-tools master flag (`brownfield.deterministic_tools`) and per-tool override (`brownfield.detect_signals_enabled`, default true) are on, run `detect-signals.sh` in the OPT-IN stacks-path mode to give multi-stack monorepos advisory partitioning help. This is distinct from the root-only detection above (that path is unchanged):
 
    ```bash
    ds_start=$(date +%s)
@@ -129,11 +129,11 @@ Each phase is independent in its write targets but must run sequentially because
    ds_seconds=$(( $(date +%s) - ds_start ))
    ```
 
-   - **Proposal mode** (no `stacks[].path` declared): scans ecosystem manifests and writes a `stacks[].path` mapping to `project-config.draft.yaml` (advisory — the user accepts by renaming to `project-config.yaml` OR merging the entries via `/gaia-config-stack`; declared truth always wins). A single root-level stack emits "nothing to propose" and writes no draft. Nested manifests (a manifest inside another stack's path) scope to the parent — `ignore_nested_manifests: true` default per FR-546 / E85-S14; they do NOT spawn a phantom child stack.
-   - **Audit mode** (`stacks[].path` IS declared): compares declared vs auto-detected and logs disagreement to `.gaia/memory/brownfield-audit/partitioning-audit.json` (`{auto_detected_partitioning, declared_partitioning, disagreement_count}`); it does NOT regenerate the draft (auto-detection vs explicit precedence, TC-MSP-3). Never overrides the declared config.
-   - Telemetry (E104-S1 `brownfield-telemetry.sh`; detect_signals owns its fields, single-author): populate `phase_runtime_seconds.detect_signals` / `deterministic_tool_seconds.detect_signals` / `llm_token_count:0` / `detect_signals_mode: proposal|audit|skipped` (skipped when the flags are off). Advisory, never gating — runs in ≤2s on a 10-manifest fixture (NFR-88).
+   - **Proposal mode** (no `stacks[].path` declared): scans ecosystem manifests and writes a `stacks[].path` mapping to `project-config.draft.yaml` (advisory — the user accepts by renaming to `project-config.yaml` OR merging the entries via `/gaia-config-stack`; declared truth always wins). A single root-level stack emits "nothing to propose" and writes no draft. Nested manifests (a manifest inside another stack's path) scope to the parent — `ignore_nested_manifests: true` default; they do NOT spawn a phantom child stack.
+   - **Audit mode** (`stacks[].path` IS declared): compares declared vs auto-detected and logs disagreement to `.gaia/memory/brownfield-audit/partitioning-audit.json` (`{auto_detected_partitioning, declared_partitioning, disagreement_count}`); it does NOT regenerate the draft (auto-detection vs explicit precedence). Never overrides the declared config.
+   - Telemetry (`brownfield-telemetry.sh`; detect_signals owns its fields, single-author): populate `phase_runtime_seconds.detect_signals` / `deterministic_tool_seconds.detect_signals` / `llm_token_count:0` / `detect_signals_mode: proposal|audit|skipped` (skipped when the flags are off). Advisory, never gating — runs in ≤2s on a 10-manifest fixture.
 
-6. Generate the brownfield assessment artifact. AF-2026-05-31-1 / Test12 F-05 — the canonical template lives at `${CLAUDE_PLUGIN_ROOT}/templates/brownfield-assessment-template.md` and ships with the plugin. Read it as the starting shape (mode/schema_version/generated_by frontmatter + the seven section headers: Project Overview, Repository Layout, Existing Documentation Surface, Stack Signals, Known Gaps, Scan-readiness checklist, Continuation pointer). Fill the placeholder fields with concrete project data: component inventory, technical debt, migration constraints, coexistence strategy, and adoption path. Include `{project_type}` in the output. Write to `.gaia/artifacts/planning-artifacts/brownfield-assessment.md`.
+6. Generate the brownfield assessment artifact. The canonical template lives at `${CLAUDE_PLUGIN_ROOT}/templates/brownfield-assessment-template.md` and ships with the plugin. Read it as the starting shape (mode/schema_version/generated_by frontmatter + the seven section headers: Project Overview, Repository Layout, Existing Documentation Surface, Stack Signals, Known Gaps, Scan-readiness checklist, Continuation pointer). Fill the placeholder fields with concrete project data: component inventory, technical debt, migration constraints, coexistence strategy, and adoption path. Include `{project_type}` in the output. Write to `.gaia/artifacts/planning-artifacts/brownfield-assessment.md`.
 7. Write the enhanced project documentation — all standard sections plus detected capability flags, `{project_type}`, testing infrastructure summary, and CI/CD pipeline summary. Write to `.gaia/artifacts/planning-artifacts/project-documentation.md`.
 8. Install the project-root `CLAUDE.md` so the onboarded project has GAIA context loaded into Claude Code sessions (runtime tree, how-to-start, hard rules, upstream bug-report policy). A brownfield project very often ALREADY has its own `CLAUDE.md` with the team's project-specific instructions — the helper handles that: it APPENDS a marker-delimited GAIA block to the existing file, preserving the user's content verbatim above it (never clobbers). On a project with no `CLAUDE.md` it seeds the template; on re-run it is a no-op (marker-sentinel idempotency):
 
@@ -143,7 +143,7 @@ Each phase is independent in its write targets but must run sequentially because
 
    Exit codes: `0` success (seeded, appended, or no-op), `1` plugin source template missing (reinstall via marketplace), `2` usage error.
 
-Checkpoint after Phase 1 via the canonical `checkpoint.sh write` subcommand. AF-2026-05-31-1 / Test12 F-08 documented the accepted flag set; AF-2026-05-31-2 / Test13 F-13 corrects the `--step` VALUE TYPE — it MUST be a non-negative integer (the script's case-validator at `plugins/gaia/scripts/checkpoint.sh:226-227` enforces this). Use the bare phase number; the named-phase string from the Test12 prose was rejected. Brownfield's Phase 1 checkpoint:
+Checkpoint after Phase 1 via the canonical `checkpoint.sh write` subcommand. The `--step` VALUE TYPE MUST be a non-negative integer (the script's case-validator at `plugins/gaia/scripts/checkpoint.sh:226-227` enforces this). Use the bare phase number; a named-phase string is rejected. Brownfield's Phase 1 checkpoint:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh write \
@@ -171,9 +171,9 @@ After all subagents return, write a subagent summary at `.gaia/artifacts/plannin
 
 ## Phase 3 — Deep Analysis Multi-Scan Subagents (Infra-Aware)
 
-### Phase 3 pre-flight — deterministic-tools pre-warm (E70-S7 / FR-539 / ADR-121)
+### Phase 3 pre-flight — deterministic-tools pre-warm
 
-Before the Phase 3 scan timer starts, run the deterministic-tools pre-flight. This primes the Grype vulnerability DB and cdxgen package-registry caches so a cold runner does not pay the 15–30s cold-fetch against the NFR-84 120s WARNING budget.
+Before the Phase 3 scan timer starts, run the deterministic-tools pre-flight. This primes the Grype vulnerability DB and cdxgen package-registry caches so a cold runner does not pay the 15–30s cold-fetch against the 120s WARNING budget.
 
 ```bash
 # Resolve the master flag + per-tool override (ADR-121 / ADR-078) and export
@@ -213,11 +213,11 @@ fi
 start_ts=$(date +%s)
 ```
 
-`prewarm_seconds` feeds the `phase_runtime_seconds.pre_warm` / `deterministic_tool_seconds.pre_warm` telemetry fields, populated via `brownfield-telemetry.sh` (the shared writer landed by E104-S1). When the flags are off, `pre-warm.sh` emits an INFO skip line and contributes 0.
+`prewarm_seconds` feeds the `phase_runtime_seconds.pre_warm` / `deterministic_tool_seconds.pre_warm` telemetry fields, populated via `brownfield-telemetry.sh` (the shared writer). When the flags are off, `pre-warm.sh` emits an INFO skip line and contributes 0.
 
-### Phase 3 per-stack file-list intersection (E70-S10 / FR-546 / ADR-126)
+### Phase 3 per-stack file-list intersection
 
-When the master flag is on, the deterministic-tools orchestrator computes, for each `stacks[]` entry, the file-list passed to that stack's per-tool adapters as `(path_root ∩ paths[]) − excludes[]` (path_root = `stack.path || '.'`; excludes ALWAYS win on collision). The intersection is applied BEFORE adapter dispatch so per-stack adapters see only files within their declared stack scope — the ADR-078 `run.sh --input <file-list>` contract is byte-stable (adapters receive a flat file-list, never `path`/`paths`/`excludes` metadata). Single-stack repos (`stacks[].path: null`) collapse to `'.' ∩ paths − excludes`, byte-identical to pre-deploy (zero-regression invariant — the dominant deployment shape).
+When the master flag is on, the deterministic-tools orchestrator computes, for each `stacks[]` entry, the file-list passed to that stack's per-tool adapters as `(path_root ∩ paths[]) − excludes[]` (path_root = `stack.path || '.'`; excludes ALWAYS win on collision). The intersection is applied BEFORE adapter dispatch so per-stack adapters see only files within their declared stack scope — the `run.sh --input <file-list>` contract is byte-stable (adapters receive a flat file-list, never `path`/`paths`/`excludes` metadata). Single-stack repos (`stacks[].path: null`) collapse to `'.' ∩ paths − excludes`, byte-identical to pre-deploy (zero-regression invariant — the dominant deployment shape).
 
 ```bash
 orch_start=$(date +%s)
@@ -246,13 +246,13 @@ if [ -f "$REPORT" ]; then
 fi
 ```
 
-Adapter dispatch then consumes each `<stack>.files` list via the existing `run.sh --input` contract — no adapter change. (Detection of nested ecosystem manifests is E70-S11's responsibility; this orchestrator only respects the `path_root` boundary and does not double-count files under a nested manifest.)
+Adapter dispatch then consumes each `<stack>.files` list via the existing `run.sh --input` contract — no adapter change. (Detection of nested ecosystem manifests is handled separately; this orchestrator only respects the `path_root` boundary and does not double-count files under a nested manifest.)
 
-### Phase 3 SBOM completeness check (E104-S3 / FR-543)
+### Phase 3 SBOM completeness check
 
-After the cdxgen SBOM is produced, run the completeness check: compare the declared dependency count (from lock files) against the SBOM component count, and WARN when `abs(divergence_pct)` exceeds 10% — or 15% when any of five per-ecosystem carve-outs auto-detects (Yarn Berry PnP, conda, Go vendor, Gradle no-lockfile, Gradle shadow/shade) — so real-dependency CVEs don't silently fail to surface from an incomplete SBOM. NEVER aborts (NFR-84). When the SBOM is absent (the cdxgen SBOM-persist producer is not yet wired — tracked Finding), the check INFO-skips.
+After the cdxgen SBOM is produced, run the completeness check: compare the declared dependency count (from lock files) against the SBOM component count, and WARN when `abs(divergence_pct)` exceeds 10% — or 15% when any of five per-ecosystem carve-outs auto-detects (Yarn Berry PnP, conda, Go vendor, Gradle no-lockfile, Gradle shadow/shade) — so real-dependency CVEs don't silently fail to surface from an incomplete SBOM. NEVER aborts. When the SBOM is absent (the cdxgen SBOM-persist producer is not yet wired — tracked separately), the check INFO-skips.
 
-**SBOM-format note (AF-2026-05-30-4 / Test11 F-27).** cdxgen emits CycloneDX 1.7 (current spec); grype 0.112.0 rejects 1.7 input ("sbom format not recognized") because Anchore's parser tracks the CycloneDX spec a few revisions behind. When feeding an SBOM to grype (e.g. `grype sbom:<file>` for a re-scan without re-walking the project tree), prefer **syft** as the SBOM producer (`syft scan dir:. -o cyclonedx-json=<file>`) — the Anchore tools are version-matched and the handoff is reliable. cdxgen output remains the canonical source for the completeness check above (which doesn't pass through grype) and for any downstream consumer that accepts current CycloneDX. The brownfield Phase 3 pipeline therefore runs BOTH SBOMs: syft for the grype-feeding path, cdxgen for the broader-language-coverage path.
+**SBOM-format note.** cdxgen emits CycloneDX 1.7 (current spec); grype 0.112.0 rejects 1.7 input ("sbom format not recognized") because Anchore's parser tracks the CycloneDX spec a few revisions behind. When feeding an SBOM to grype (e.g. `grype sbom:<file>` for a re-scan without re-walking the project tree), prefer **syft** as the SBOM producer (`syft scan dir:. -o cyclonedx-json=<file>`) — the Anchore tools are version-matched and the handoff is reliable. cdxgen output remains the canonical source for the completeness check above (which doesn't pass through grype) and for any downstream consumer that accepts current CycloneDX. The brownfield Phase 3 pipeline therefore runs BOTH SBOMs: syft for the grype-feeding path, cdxgen for the broader-language-coverage path.
 
 ```bash
 SBOM_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.sbom_completeness_enabled 2>/dev/null)"
@@ -276,7 +276,7 @@ fi
 
 Spawn seven scan subagents in parallel. These run alongside Phase 2 documentation to detect gaps that structural analysis misses. Each scanner receives `{tech_stack}`, `{project-path}`, and `{project_type}` as context. When `{project_type}` is `infrastructure` or `platform`, infra-specific detection patterns are applied alongside application patterns; for `application`, only application patterns run.
 
-**Standardized gap-entry schema (Test17 D-1 / AF-2026-06-02-6).** Every scan subagent MUST emit gap entries conforming to the canonical schema at `${CLAUDE_PLUGIN_ROOT}/schemas/brownfield-gap-entry.schema.json`. The schema defines required fields (`gap_id`, `category`, `severity`, `title`, `evidence`) and authoritative enums (`category`, `severity`, `claim_type`, `confidence`). When dispatching each subagent, the parent skill MUST include this fragment in the subagent prompt so the scanner can self-validate before emission:
+**Standardized gap-entry schema.** Every scan subagent MUST emit gap entries conforming to the canonical schema at `${CLAUDE_PLUGIN_ROOT}/schemas/brownfield-gap-entry.schema.json`. The schema defines required fields (`gap_id`, `category`, `severity`, `title`, `evidence`) and authoritative enums (`category`, `severity`, `claim_type`, `confidence`). When dispatching each subagent, the parent skill MUST include this fragment in the subagent prompt so the scanner can self-validate before emission:
 
 ```
 <gap-entry-schema-ref>
@@ -290,7 +290,7 @@ Spawn seven scan subagents in parallel. These run alongside Phase 2 documentatio
 </gap-entry-schema-ref>
 ```
 
-This schema fixture closes the cross-scanner drift Test17 D-1 identified: 5–6 scanners independently hit the same ambiguities (slash-field `description/evidence`, single `evidence_line` can't express two-sided contradictions, no `category` enum, mixed-case severity vocab, no `claim_type` marker for negative claims). The schema is the single source of truth; the consolidation subagent rejects entries that don't conform.
+This schema fixture closes the cross-scanner drift identified across scanners: 5–6 scanners independently hit the same ambiguities (slash-field `description/evidence`, single `evidence_line` can't express two-sided contradictions, no `category` enum, mixed-case severity vocab, no `claim_type` marker for negative claims). The schema is the single source of truth; the consolidation subagent rejects entries that don't conform.
 
 ### Doc-Code Scan
 
@@ -320,14 +320,14 @@ Detect contradictions between configuration files (e.g., different service limit
 
 Identify unused modules, orphaned routes, dead migrations, unused feature flags. Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-dead-code.md`.
 
-#### Per-stack deterministic dead-code adapters (E70-S8 / FR-545 / NFR-87 / ADR-078)
+#### Per-stack deterministic dead-code adapters
 
 When `brownfield.deterministic_tools: true`, the LLM dead-code heuristic is
 **replaced** by three sound per-stack adapters under
 `scripts/adapters/dead-code/`. Each is independently gated by its per-tool
 override (`brownfield.deadcode_go_enabled` / `deadcode_python_enabled` /
 `deadcode_jvm_enabled`, default true) and degrades gracefully (WARN + exit 0)
-when its toolchain is absent — Phase 3 never aborts (NFR-84).
+when its toolchain is absent — Phase 3 never aborts.
 
 ```bash
 AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
@@ -343,7 +343,7 @@ GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true JVM_PROJECT_ROOT="$PROJECT_PATH" \
   JVM_OUT_DIR="$AUDIT" bash "$ADAPT/jvm-spotbugs/adapter.sh"
 ```
 
-**Per-stack precision is the contract, not a bug (NFR-87).** Go reports a
+**Per-stack precision is the contract, not a bug.** Go reports a
 whole-program reachability binary verdict (`<pkg>.<Function>`), Python a
 confidence percentage (`<line>:<symbol>@<conf>`), JVM a priority×rank ordinal
 (`<FQCN>.<method>(<sig>)`). The framework MUST NOT synthesize a unified
@@ -354,17 +354,15 @@ labeled per-stack sub-sections — never one flat list. Telemetry
 (`phase_runtime_seconds.deadcode_{go,python,jvm}` etc.) is written by each
 adapter through the single-author `brownfield-telemetry.sh`.
 
-#### CVE + SBOM adapters (AF-2026-05-31-1 / Test12 F-07 — wire-up closure)
+#### CVE + SBOM adapters
 
 When `brownfield.deterministic_tools: true`, Phase 3 ALSO runs the
 deterministic CVE-scan and SBOM-producer adapters that the dead-code block
-above doesn't cover. Prior to AF-2026-05-31-1 the brownfield SKILL.md
-referenced `phase_runtime_seconds.grype` + an `E70-S9 Grype adapter` in the
-Phase-3 telemetry but never actually invoked them — the grype adapter at
-`scripts/adapters/grype/adapter.sh` and a syft SBOM-producer path both
-existed only as docker-dispatched leaves with no caller. On a stock run the
-CVE scan and SBOM-persist were never produced, defeating the "deterministic
-tools default-on" contract that AF-2026-05-30-3 established.
+above doesn't cover. The grype adapter at
+`scripts/adapters/grype/adapter.sh` and the syft SBOM-producer path must
+both be actually invoked — if referenced in the Phase-3 telemetry but never
+called, on a stock run the CVE scan and SBOM-persist are never produced,
+defeating the "deterministic tools default-on" contract.
 
 ```bash
 AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
@@ -430,16 +428,16 @@ adapters: when a toolchain is absent the step emits ONE INFO line pointing
 at the remediation command (`gaia-doctor --install`) and continues. The
 Phase 3 verdict is unchanged by their absence — they enrich the gap report
 when present, they don't block when missing. The runner cascade
-(`brownfield.tools.runner = docker`, AF-2026-05-30-3) still applies: when
+(`brownfield.tools.runner = docker`) still applies: when
 the docker runner is selected, the same invocations transparently dispatch
 through `scripts/lib/docker-runner.sh` via the per-adapter helper and the
-host doesn't need grype/syft on PATH. This closes the Test12 F-07 wire-up
-gap — the adapters are now actually called by the orchestrator that the
-telemetry already credited.
+host doesn't need grype/syft on PATH. The adapters are
+actually called by the orchestrator that the
+telemetry credits.
 
 **Partial-failure semantics (AC-EC8):** If a scanner crashes mid-run, the other scanners continue. The failed scan writes a gap row tagged `scan failed: {reason}`. The overall skill exits non-zero with a partial-result summary listing which scanners succeeded, which failed, and what recoverable evidence is available. The remaining scanners continue — one failure does not block the cohort.
 
-**Language-aware INFO degrade log (AF-2026-05-30-4 D-02).** When a stack signal is present but the matching deterministic dead-code adapter cannot run because its toolchain is absent, emit ONE INFO line per missing toolchain at Phase 3 scan time — do NOT wait for the Phase 7 banner to be the only fidelity disclosure. The emission rule, applied per detected stack:
+**Language-aware INFO degrade log.** When a stack signal is present but the matching deterministic dead-code adapter cannot run because its toolchain is absent, emit ONE INFO line per missing toolchain at Phase 3 scan time — do NOT wait for the Phase 7 banner to be the only fidelity disclosure. The emission rule, applied per detected stack:
 
 - Python signal present (e.g. `pyproject.toml`, `setup.py`, `requirements.txt`, or `.py` files under a configured stack path) AND `vulture` not on PATH:
   `[INFO] python project detected — install vulture for tool-grade dead-code (gaia-doctor --install)`
@@ -450,9 +448,9 @@ telemetry already credited.
 
 Stack detection re-uses the signal set already computed by `detect-signals.sh` in Phase 1 — do NOT re-scan. The INFO lines are non-blocking and DO NOT change the Phase 3 verdict; they exist to make the toolchain-absence visible at the scan step rather than only at the Phase 7 banner.
 
-### Per-Subagent Scan Diagnostic Table (E48-S4)
+### Per-Subagent Scan Diagnostic Table
 
-After all seven Phase 3 scan subagents return (doc-code, hardcoded, integration-seam, runtime-behavior, security, config-contradiction, dead-code), collect exit status and timing metadata for each subagent and surface a structured diagnostic table to the user before the Phase 3 user-review pause point. The table is lightweight metadata (subagent name + status + duration + reason); it is not gated by the NFR-048 / NFR-024 token budget that applies to scanner output.
+After all seven Phase 3 scan subagents return (doc-code, hardcoded, integration-seam, runtime-behavior, security, config-contradiction, dead-code), collect exit status and timing metadata for each subagent and surface a structured diagnostic table to the user before the Phase 3 user-review pause point. The table is lightweight metadata (subagent name + status + duration + reason); it is not gated by the token budget that applies to scanner output.
 
 **Table format:**
 
@@ -462,7 +460,7 @@ After all seven Phase 3 scan subagents return (doc-code, hardcoded, integration-
 | hardcoded | success | 9s | — |
 | integration-seam | timeout | 300s | exceeded 5-minute scanner budget |
 | runtime-behavior | success | 14s | — |
-| security | resource-capped | 60s | scan output truncated per NFR-024 — review manually |
+| security | resource-capped | 60s | scan output truncated — review manually |
 | config-contradiction | errored | 4s | parser crash on unrecognized YAML anchor |
 | dead-code | success | 11s | — |
 
@@ -470,44 +468,44 @@ After all seven Phase 3 scan subagents return (doc-code, hardcoded, integration-
 
 - `success` — the scan completed and wrote its expected output file under `.gaia/artifacts/planning-artifacts/`.
 - `timeout` — the scan exceeded its time / token budget. The reason string MUST capture the budget threshold and the scanner identity (e.g., `exceeded 5-minute scanner budget`).
-- `resource-capped` — the scan output was truncated per NFR-024 / AC-EC6. The reason string MUST surface the truncation advisory (`scan truncated — review manually`) so the user knows the gap list is partial.
+- `resource-capped` — the scan output was truncated per AC-EC6. The reason string MUST surface the truncation advisory (`scan truncated — review manually`) so the user knows the gap list is partial.
 - `errored` — the scan crashed mid-run per AC-EC8 partial-failure semantics. The reason string MUST contain the underlying error (parser crash, file read failure, subagent unreachable) — do not silently omit failed scans from the diagnostic log.
 
 The table is rendered to the conversation after Phase 3 scans complete, before the Phase 3 user-review pause point. Timed-out and errored scans MUST appear with their canonical status and reason string — they are never silently omitted from the log even though their gap rows are also tagged `scan failed: {reason}` per AC-EC8.
 
-### Phase 3 deterministic-tools telemetry (E70-S7 / NFR-85)
+### Phase 3 deterministic-tools telemetry
 
 The brownfield report frontmatter records deterministic-tools telemetry so the
 gap-consolidation report (Phase 7) can attribute runtime and token cost:
 
 | Frontmatter field | Source | Notes |
 |-------------------|--------|-------|
-| `phase_runtime_seconds.pre_warm` | `prewarm_seconds` (pre-flight) | Wall-clock of the pre-warm pre-flight; tracked WARNING-only against the NFR-84 120s budget — no hard timeout abort (AC-X2). |
+| `phase_runtime_seconds.pre_warm` | `prewarm_seconds` (pre-flight) | Wall-clock of the pre-warm pre-flight; tracked WARNING-only against the 120s budget — no hard timeout abort. |
 | `deterministic_tool_seconds.pre_warm` | `prewarm_seconds` | Deterministic-tool runtime contribution (same value; separated so LLM vs deterministic cost is distinguishable). |
-| `llm_token_count` | `0` for pre-warm | Pre-warm is fully deterministic — zero LLM tokens (NFR-85). |
-| `gap_count_before_dedup` | gap-consolidation | Populated by Phase 7 / E104-S1 dedup; pre-warm contributes 0. |
-| `gap_count_after_dedup` | gap-consolidation | Populated by Phase 7 / E104-S2 reconciliation; pre-warm contributes 0. |
-| `phase_runtime_seconds.sarif_merge` / `deterministic_tool_seconds.sarif_merge` | SARIF merge pre-step (E104-S4) | Wall-clock of the SARIF Multitool merge; SARIF-merge-owned. |
-| `phase_runtime_seconds.dedup` / `deterministic_tool_seconds.dedup` | dedup sub-step (E104-S1) | Wall-clock of the cross-tool dedup; dedup-owned. |
-| `phase_runtime_seconds.grype` / `deterministic_tool_seconds.grype` | Grype adapter (E70-S9) | Wall-clock of the Grype CVE scan; Grype-owned. |
-| `grype_db_checksum` | Grype adapter (E70-S9) | SHA-256 of the resolved grype-db.sqlite at scan time (trust-boundary; ADR-122). Grype-owned. |
-| `grype_db_built_age` | Grype adapter (E70-S9) | Seconds since the Grype DB build timestamp. Grype-owned. |
-| `phase_runtime_seconds.orchestrator_intersection` / `deterministic_tool_seconds.orchestrator_intersection` | orchestrator (E70-S10) | Wall-clock of the per-stack file-list intersection; orchestrator-owned. |
-| `per_stack_file_counts.<stack>` | orchestrator (E70-S10) | Post-intersection file count per declared stack (explicit 0 for empty stacks). Orchestrator-owned. |
-| `phase_runtime_seconds.detect_signals` / `deterministic_tool_seconds.detect_signals` | detect-signals (E70-S11) | Wall-clock of the Phase 1 stacks[].path proposal/audit; detect-signals-owned. |
-| `detect_signals_mode` | detect-signals (E70-S11) | `proposal` \| `audit` \| `skipped` — the stacks-path mode taken. detect-signals-owned. |
-| `phase_runtime_seconds.sbom_completeness` / `deterministic_tool_seconds.sbom_completeness` | sbom-completeness (E104-S3) | Wall-clock of the SBOM completeness check; sbom-completeness-owned. |
-| `sbom_completeness_warning` / `divergence_pct` / `applied_threshold` / `detected_carve_outs` | sbom-completeness (E104-S3) | Lock-vs-SBOM divergence WARNING + the percentage, applied 10/15% threshold, and matched carve-outs. sbom-completeness-owned. |
-| `phase_runtime_seconds.deadcode_go` / `deterministic_tool_seconds.deadcode_go` | go-deadcode adapter (E70-S8) | Wall-clock of the Go deadcode scan; go-deadcode-owned. |
-| `phase_runtime_seconds.deadcode_python` / `deterministic_tool_seconds.deadcode_python` | python-vulture adapter (E70-S8) | Wall-clock of the Python vulture scan; python-vulture-owned. |
-| `phase_runtime_seconds.deadcode_jvm` / `deterministic_tool_seconds.deadcode_jvm` | jvm-spotbugs adapter (E70-S8) | Wall-clock of the JVM SpotBugs scan; jvm-spotbugs-owned. |
-| `phase_runtime_seconds.phase_4b` / `deterministic_tool_seconds.phase_4b` | reconciliation (E104-S2) | Wall-clock of the Phase 4b reconciliation JSON-join; reconciliation-owned. |
-| `findings_demoted_by_reconciliation` | reconciliation (E104-S2) | Count of file-only findings demoted to INFO (reachable from entry points); reconciliation-owned. `gap_count_*` stay dedup-owned (read-through). |
-| `phase_runtime_seconds.phase_4b_cross_stack` / `deterministic_tool_seconds.phase_4b_cross_stack` | cross-stack analysis (E104-S5) | Wall-clock of the Phase 4b cross-stack edge inspection; cross-stack-owned. |
-| `cross_stack_warnings` | cross-stack analysis (E104-S5) | Array of `{source_stack, source_file, target_stack, target_file}` detail rows (possibly empty); cross-stack-owned. |
-| `cross_stack_bypass_applied` | cross-stack analysis (E104-S5) | Bool — whether `--bypass cross-stack-refs` suppressed WARNINGs this run; cross-stack-owned. |
+| `llm_token_count` | `0` for pre-warm | Pre-warm is fully deterministic — zero LLM tokens. |
+| `gap_count_before_dedup` | gap-consolidation | Populated by Phase 7 dedup; pre-warm contributes 0. |
+| `gap_count_after_dedup` | gap-consolidation | Populated by Phase 7 reconciliation; pre-warm contributes 0. |
+| `phase_runtime_seconds.sarif_merge` / `deterministic_tool_seconds.sarif_merge` | SARIF merge pre-step | Wall-clock of the SARIF Multitool merge; SARIF-merge-owned. |
+| `phase_runtime_seconds.dedup` / `deterministic_tool_seconds.dedup` | dedup sub-step | Wall-clock of the cross-tool dedup; dedup-owned. |
+| `phase_runtime_seconds.grype` / `deterministic_tool_seconds.grype` | Grype adapter | Wall-clock of the Grype CVE scan; Grype-owned. |
+| `grype_db_checksum` | Grype adapter | SHA-256 of the resolved grype-db.sqlite at scan time (trust-boundary). Grype-owned. |
+| `grype_db_built_age` | Grype adapter | Seconds since the Grype DB build timestamp. Grype-owned. |
+| `phase_runtime_seconds.orchestrator_intersection` / `deterministic_tool_seconds.orchestrator_intersection` | orchestrator | Wall-clock of the per-stack file-list intersection; orchestrator-owned. |
+| `per_stack_file_counts.<stack>` | orchestrator | Post-intersection file count per declared stack (explicit 0 for empty stacks). Orchestrator-owned. |
+| `phase_runtime_seconds.detect_signals` / `deterministic_tool_seconds.detect_signals` | detect-signals | Wall-clock of the Phase 1 stacks[].path proposal/audit; detect-signals-owned. |
+| `detect_signals_mode` | detect-signals | `proposal` \| `audit` \| `skipped` — the stacks-path mode taken. detect-signals-owned. |
+| `phase_runtime_seconds.sbom_completeness` / `deterministic_tool_seconds.sbom_completeness` | sbom-completeness | Wall-clock of the SBOM completeness check; sbom-completeness-owned. |
+| `sbom_completeness_warning` / `divergence_pct` / `applied_threshold` / `detected_carve_outs` | sbom-completeness | Lock-vs-SBOM divergence WARNING + the percentage, applied 10/15% threshold, and matched carve-outs. sbom-completeness-owned. |
+| `phase_runtime_seconds.deadcode_go` / `deterministic_tool_seconds.deadcode_go` | go-deadcode adapter | Wall-clock of the Go deadcode scan; go-deadcode-owned. |
+| `phase_runtime_seconds.deadcode_python` / `deterministic_tool_seconds.deadcode_python` | python-vulture adapter | Wall-clock of the Python vulture scan; python-vulture-owned. |
+| `phase_runtime_seconds.deadcode_jvm` / `deterministic_tool_seconds.deadcode_jvm` | jvm-spotbugs adapter | Wall-clock of the JVM SpotBugs scan; jvm-spotbugs-owned. |
+| `phase_runtime_seconds.phase_4b` / `deterministic_tool_seconds.phase_4b` | reconciliation | Wall-clock of the Phase 4b reconciliation JSON-join; reconciliation-owned. |
+| `findings_demoted_by_reconciliation` | reconciliation | Count of file-only findings demoted to INFO (reachable from entry points); reconciliation-owned. `gap_count_*` stay dedup-owned (read-through). |
+| `phase_runtime_seconds.phase_4b_cross_stack` / `deterministic_tool_seconds.phase_4b_cross_stack` | cross-stack analysis | Wall-clock of the Phase 4b cross-stack edge inspection; cross-stack-owned. |
+| `cross_stack_warnings` | cross-stack analysis | Array of `{source_stack, source_file, target_stack, target_file}` detail rows (possibly empty); cross-stack-owned. |
+| `cross_stack_bypass_applied` | cross-stack analysis | Bool — whether `--bypass cross-stack-refs` suppressed WARNINGs this run; cross-stack-owned. |
 
-> **Single-author writer (AF-2026-05-09-12 sibling-defect guidance).** Each field
+> **Single-author writer.** Each field
 > is written by exactly ONE owning phase via `brownfield-telemetry.sh` — no fan-out.
 > Ownership: the pre-warm pre-flight owns `*.pre_warm`; the SARIF merge owns
 > `*.sarif_merge`; the dedup sub-step owns `*.dedup` + `gap_count_*` +
@@ -520,7 +518,7 @@ gap-consolidation report (Phase 7) can attribute runtime and token cost:
 > `*.deadcode_{go,python,jvm}`; the cross-stack analysis owns
 > `*.phase_4b_cross_stack` + `cross_stack_warnings` + `cross_stack_bypass_applied`.
 > The `gap_count_*` values are populated for real by
-> the dedup (E104-S1) / reconciliation (E104-S2) phases.
+> the dedup / reconciliation phases.
 
 ## Phase 4 — Test Execution During Discovery
 
@@ -534,16 +532,16 @@ Spawn a Test Execution Scanner subagent:
 - Convert failing tests to gap entries with severity mapped by test type (unit → medium, integration → high, e2e → critical).
 - Detect infrastructure errors (ECONNREFUSED, missing env vars) and log as warning gaps rather than test-failure gaps.
 - For monorepo / polyglot projects, execute all detected runners sequentially and aggregate results.
-- Truncate output per NFR-024 token budget if needed.
+- Truncate output per token budget if needed.
 - If no test suite is detected, log an info-level gap entry `GAP-TEST-INFO-001`.
 
 Output to `.gaia/artifacts/planning-artifacts/brownfield-scan-test-execution.md`. If the subagent fails to write its output file, log a warning and continue.
 
-## Phase 4b — Reconciliation (E104-S2 / FR-540 / ADR-124)
+## Phase 4b — Reconciliation
 
 Inserted between Phase 4 (test execution) and Phase 5 (test-environment.yaml). When `brownfield.deterministic_tools: true` AND `brownfield.phase_4b_enabled: true`, Phase 4b reconciles Phase 3 file-only findings against the dependency graph and **demotes** (never removes) findings whose file is reachable from an application entry point — the barrel-file / dynamic-import false-positive guard that keeps FP rates tolerable for the deterministic-tools rollout.
 
-It is a **pure JSON-join** — NO tool re-invocation — consuming already-computed outputs: the E104-S1 deduped finding stream + per-stack call-graphs (`callgraph-{js,go,python}.json`).
+It is a **pure JSON-join** — NO tool re-invocation — consuming already-computed outputs: the deduped finding stream + per-stack call-graphs (`callgraph-{js,go,python}.json`).
 
 ```bash
 AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
@@ -554,11 +552,11 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/reconcile.sh"
 # is absent (producer is Phase 4 supplementary tooling — not yet wired).
 ```
 
-**Demote, don't remove (audit integrity).** A reachable finding keeps every identity field (`file_path`, `qualifier`, `source_tool`, `ruleId`, `start_line` — UNCHANGED) and gains `severity: info`, `reconciled: true`, `original_severity`, `entry_points: [...]`, `reconciliation_reason`. Files not reachable retain their original severity. Single-level reachability suffices (the call-graphs already encode transitivity), so the join is O(n log n) build + O(n) lookup — < 5s on a 1M-line monorepo (AC5). Telemetry: `findings_demoted_by_reconciliation`, `phase_runtime_seconds.phase_4b` (single-author; `gap_count_*` stay dedup-owned). See `scripts/adapters/brownfield/reconcile.README.md`.
+**Demote, don't remove (audit integrity).** A reachable finding keeps every identity field (`file_path`, `qualifier`, `source_tool`, `ruleId`, `start_line` — UNCHANGED) and gains `severity: info`, `reconciled: true`, `original_severity`, `entry_points: [...]`, `reconciliation_reason`. Files not reachable retain their original severity. Single-level reachability suffices (the call-graphs already encode transitivity), so the join is O(n log n) build + O(n) lookup — < 5s on a 1M-line monorepo. Telemetry: `findings_demoted_by_reconciliation`, `phase_runtime_seconds.phase_4b` (single-author; `gap_count_*` stay dedup-owned). See `scripts/adapters/brownfield/reconcile.README.md`.
 
 The **Phase 4 → Phase 4b → Phase 5** ordering is preserved on every brownfield run. The cross-stack scope sub-step below composes WITHIN this Phase 4b body.
 
-### Phase 4b cross-stack scope + WARNING emission (E104-S5 / FR-547 / NFR-89 / ADR-063 / ADR-120 / ADR-126)
+### Phase 4b cross-stack scope + WARNING emission
 
 A sub-step within Phase 4b. When `brownfield.deterministic_tools: true` AND `brownfield.phase_4b_cross_stack_enabled: true`, the reconciliation body above is extended with a cross-stack scope check that catches **unintended coupling** in multi-stack monorepos. It respects `stacks[].path` partitioning (per-stack reconciliation runs in isolation) and inspects the dependency-graph for edges that cross a stack boundary.
 
@@ -570,25 +568,25 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/reconcile-cross-stack.sh
 # AUDIT/depgraph.json (producer wired by E104-S2 — degrades to INFO-skip if absent).
 ```
 
-An edge from stack A to stack B where B is NOT in A's `cross_refs[]` allowlist emits the canonical ADR-063 WARNING (exact — operators/CI may grep it):
+An edge from stack A to stack B where B is NOT in A's `cross_refs[]` allowlist emits the canonical WARNING (exact — operators/CI may grep it):
 
 ```
 unsanctioned-cross-stack-reference: <source_stack>:<file> -> <target_stack>:<file>
 ```
 
-**`cross_refs[]` is a per-source-stack outbound allowlist** (`A.cross_refs: [B]` ⇒ A may reference B). Shared subdirs require explicit declaration on EACH consuming stack — there is no "shared resource" concept (ADR-126 §Corner Cases). **Asymmetric allowlists are valid**: if `api` declares `[shared]` but `web` does not, only `web→shared` warns.
+**`cross_refs[]` is a per-source-stack outbound allowlist** (`A.cross_refs: [B]` ⇒ A may reference B). Shared subdirs require explicit declaration on EACH consuming stack — there is no "shared resource" concept. **Asymmetric allowlists are valid**: if `api` declares `[shared]` but `web` does not, only `web→shared` warns.
 
 **Worked shared-subdir example.** `/shared` imported by both `/services/api` and `/services/web`:
 - Both declare `cross_refs: [shared]` → no WARNING (both edges sanctioned).
 - Drop `shared` from `web` only → one WARNING for `web→shared`; `api→shared` stays silent.
 
-**Bypass (ADR-120).** `--bypass cross-stack-refs --reason "<text>"` suppresses the WARNINGs for the run and appends to `.gaia/memory/brownfield-audit/bypass-log.json`. The flag is parsed by the shared `scripts/lib/parse-bypass-flag.sh` (E85-S14 — required-reason, length 10–500); the SR-86 reason char-class (`^[A-Za-z0-9 ._-]+$`, shell metachars rejected) is enforced in the adapter. See E85-S14 for the canonical bypass-vocabulary doc (not duplicated here).
+**Bypass.** `--bypass cross-stack-refs --reason "<text>"` suppresses the WARNINGs for the run and appends to `.gaia/memory/brownfield-audit/bypass-log.json`. The flag is parsed by the shared `scripts/lib/parse-bypass-flag.sh` (required-reason, length 10–500); the reason char-class (`^[A-Za-z0-9 ._-]+$`, shell metachars rejected) is enforced in the adapter. See the canonical bypass-vocabulary doc (not duplicated here).
 
-**Performance (NFR-89).** A `{file→stack}` reverse-index (longest-path-prefix match over `stacks[].path`) makes each edge an O(1) lookup — no per-edge graph walk; per-stack-pair detection is well under 100ms. **Single-stack** (`path: null`) collapses to one catch-all stack → zero cross-stack edges → byte-identical to the E104-S2 baseline (zero-regression). See `scripts/adapters/brownfield/reconcile-cross-stack.README.md`.
+**Performance.** A `{file→stack}` reverse-index (longest-path-prefix match over `stacks[].path`) makes each edge an O(1) lookup — no per-edge graph walk; per-stack-pair detection is well under 100ms. **Single-stack** (`path: null`) collapses to one catch-all stack → zero cross-stack edges → byte-identical to the baseline (zero-regression). See `scripts/adapters/brownfield/reconcile-cross-stack.README.md`.
 
 ## Phase 5 — Auto-Generate test-environment.yaml from Detected Infrastructure
 
-This phase delegates manifest generation to the shared library helper at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/test-environment-manifest.sh` (E17-S33). The helper is the SINGLE canonical generator for `.gaia/config/test-environment.yaml` — both `/gaia-brownfield` Phase 5 (this section) and `/gaia-bridge-enable` Step 4 (E17-S34) invoke it.
+This phase delegates manifest generation to the shared library helper at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/test-environment-manifest.sh`. The helper is the SINGLE canonical generator for `.gaia/config/test-environment.yaml` — both `/gaia-brownfield` Phase 5 (this section) and `/gaia-bridge-enable` Step 4 invoke it.
 
 1. Invoke the shared helper with `--target <project-path> --write` to detect stack signals and emit the manifest:
 
@@ -603,11 +601,11 @@ This phase delegates manifest generation to the shared library helper at `${CLAU
 2. **Conflict resolution** is handled by the helper:
    - File does not exist → helper writes the stack-specific manifest. Log `Created test-environment.yaml from detected infrastructure.`
    - File exists → helper preserves it byte-identical. Log `test-environment.yaml already exists — preserved byte-identical (copy-if-absent).`
-   - Detection finds no stack → helper writes a generic single-tier-1 placeholder (FR-497) so Layer 0 readiness has something valid to read. Log `No stack detected — generic placeholder written; user should customize.`
+   - Detection finds no stack → helper writes a generic single-tier-1 placeholder so Layer 0 readiness has something valid to read. Log `No stack detected — generic placeholder written; user should customize.`
 
-3. **If the helper exits non-zero**, log the stderr message as a WARN-level entry and proceed. The conditional `test_environment_yaml_required_when_infra_detected` gate (per legacy E19-S12..S15 semantics) is NOT triggered when the helper succeeds OR when no stack is detected.
+3. **If the helper exits non-zero**, log the stderr message as a WARN-level entry and proceed. The conditional `test_environment_yaml_required_when_infra_detected` gate is NOT triggered when the helper succeeds OR when no stack is detected.
 
-4. **Normal-mode review pause (E48-S4):** in normal mode, present a summary of the generated `.gaia/config/test-environment.yaml` (file path + detected stack name + runner names) and pause for user review before continuing to Phase 6. In yolo mode, skip the pause entirely and auto-continue. When the helper reported "preserved byte-identical" (existing file), the review pause is also skipped — the user is presumed to have already engaged with their existing manifest.
+4. **Normal-mode review pause:** in normal mode, present a summary of the generated `.gaia/config/test-environment.yaml` (file path + detected stack name + runner names) and pause for user review before continuing to Phase 6. In yolo mode, skip the pause entirely and auto-continue. When the helper reported "preserved byte-identical" (existing file), the review pause is also skipped — the user is presumed to have already engaged with their existing manifest.
 
 5. Record the helper exit code, detected stack, and chosen file disposition in the brownfield onboarding report for traceability.
 
@@ -617,10 +615,10 @@ Invoke the `test-architect` subagent (Sable) via the `Agent` tool:
 
 - Analyze the codebase for non-functional requirements across code quality (linting, complexity, duplication), security posture (dependency vulnerabilities, secrets handling, auth quality), performance (bundle size for frontend, query patterns, caching, resource management), accessibility (ARIA, semantic HTML, keyboard nav for frontend), test coverage (framework, count, coverage %, untested areas, quality), and CI/CD (pipeline, deploy strategy, environments, IaC).
 - Create an NFR Baseline Summary Table with measured values (not placeholders).
-- Output the NFR assessment to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{date}.md` (E105-S3 / ADR-127 Pillar 3 — dated-snapshot subdir under planning-artifacts; AF-29-2 / AF-30-1 moved this out of flat `test-artifacts/`). Legacy ungrouped `test-artifacts/nfr-assessment.md` remains read-only fallback for projects pre-migration (Test10 F-37).
+- Output the NFR assessment to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{date}.md` (dated-snapshot subdir under planning-artifacts; moved out of flat `test-artifacts/`). Legacy ungrouped `test-artifacts/nfr-assessment.md` remains read-only fallback for projects pre-migration.
 - Generate a performance test plan: load k6 patterns; if frontend, also load Lighthouse-CI patterns. Define performance budgets (P50/P95/P99), load test scenarios (gradual, spike, soak), backend profiling targets (slow queries, N+1, connection pools), CI performance gates. If frontend, define Core Web Vitals targets (LCP < 2.5s, INP < 200ms, CLS < 0.1).
-- **AF-2026-05-31-3 / Test14 D-02 — non-deployable project routing.** For a HEADLESS project (`compliance.ui_present: false` AND no `server` / `web` platform AND no HTTP/RPC surface — e.g. a CLI, library, build tool), the k6 + Lighthouse defaults do not fit. The performance test plan in this case MUST follow the canonical non-deployable shape documented at `${CLAUDE_PLUGIN_ROOT}/skills/gaia-brownfield/tutorials/phase-5-for-non-deployable-projects.md` rather than the k6/Lighthouse defaults. Replace load-testing scenarios with micro-benchmark targets (pytest-benchmark / Go's `testing.B` / criterion.rs / JMH, as appropriate to the stack); replace Core Web Vitals with cold-import / single-invocation / memory-peak budgets; replace CI performance gates with regression-threshold gates on the same benchmark suite. The deterministic test-architect (Sable) is told this from the subagent dispatch prompt; the dispatch prompt MUST include the `non-deployable: true` flag derived from the headless detection so Sable doesn't author a server-shape plan for a CLI.
-- Output the performance test plan to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (E105-S3 / ADR-127 Pillar 3 — dated-snapshot subdir under planning-artifacts; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback for projects pre-migration; Test10 F-37).
+- **Non-deployable project routing.** For a HEADLESS project (`compliance.ui_present: false` AND no `server` / `web` platform AND no HTTP/RPC surface — e.g. a CLI, library, build tool), the k6 + Lighthouse defaults do not fit. The performance test plan in this case MUST follow the canonical non-deployable shape documented at `${CLAUDE_PLUGIN_ROOT}/skills/gaia-brownfield/tutorials/phase-5-for-non-deployable-projects.md` rather than the k6/Lighthouse defaults. Replace load-testing scenarios with micro-benchmark targets (pytest-benchmark / Go's `testing.B` / criterion.rs / JMH, as appropriate to the stack); replace Core Web Vitals with cold-import / single-invocation / memory-peak budgets; replace CI performance gates with regression-threshold gates on the same benchmark suite. The deterministic test-architect (Sable) is told this from the subagent dispatch prompt; the dispatch prompt MUST include the `non-deployable: true` flag derived from the headless detection so Sable doesn't author a server-shape plan for a CLI.
+- Output the performance test plan to `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (dated-snapshot subdir under planning-artifacts; legacy ungrouped `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback for projects pre-migration).
 
 **AC-EC5 fallback — test-architect unavailable:** If the `test-architect` subagent is not installed or unreachable at runtime, log a non-blocking warning and write a stub `nfr-assessment.md` with a clear banner:
 
@@ -633,20 +631,20 @@ Invoke the `test-architect` subagent (Sable) via the `Agent` tool:
 
 The post-complete gate then reports the gap rather than crashing. Also write a stub `performance-test-plan-{date}.md` with the same banner and re-run instruction.
 
-**AC-EC9 — both outputs required:** The legacy gate requires BOTH `nfr-assessment.md` AND `performance-test-plan-{date}.md`. If the subagent completes but emits only one of the two, the orchestrator MUST write the second (at minimum as a stub) so both exist before the post-complete gate fires. Missing either one halts the skill at the gate with the same error text as the legacy workflow: `HALT: NFR assessment not found at {test_artifacts}/nfr-assessment.md.` or `HALT: Performance test plan not found at {test_artifacts}/. Run /gaia-perf-testing.` Both files are required for pass.
+**AC-EC9 — both outputs required:** The gate requires BOTH `nfr-assessment.md` AND `performance-test-plan-{date}.md`. If the subagent completes but emits only one of the two, the orchestrator MUST write the second (at minimum as a stub) so both exist before the post-complete gate fires. Missing either one halts the skill at the gate with the error text: `HALT: NFR assessment not found at {test_artifacts}/nfr-assessment.md.` or `HALT: Performance test plan not found at {test_artifacts}/. Run /gaia-perf-testing.` Both files are required for pass.
 
 **Gate check after Phase 6:** Invoke the shared validate-gate pathway inline — see the Post-Complete Gates section at the end of this skill for the three gates enforced via `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh`.
 
 ## Phase 7 — Gap Consolidation & Deduplication
 
-### Phase 7 grading rules (AF-2026-05-31-3 / Test14 D-03)
+### Phase 7 grading rules
 
 The deterministic-scan grading + gap-entry id convention used by the consolidation subagent:
 
-- **Empty-but-UNVERIFIED scan = WARNING, not PASS.** When grype produces an empty `reconciled-findings.json` AND the trust-boundary checksum is `"unavailable"` (the docker-runner case before AF-31-3 F-07 fixed the under-runner checksum capture), the consolidation MUST grade this as WARNING with the explanation "deterministic scan completed but DB trust-boundary unverifiable — re-run after refreshing the grype-db cache". A bare empty result alone (with a fresh, attributable DB) IS PASS. The distinction matters: an empty result from a deterministic scanner running against an up-to-date DB is a real signal; an empty result from a scanner whose DB age cannot be vouched for is not.
+- **Empty-but-UNVERIFIED scan = WARNING, not PASS.** When grype produces an empty `reconciled-findings.json` AND the trust-boundary checksum is `"unavailable"` (the docker-runner case where under-runner checksum capture can fail), the consolidation MUST grade this as WARNING with the explanation "deterministic scan completed but DB trust-boundary unverifiable — re-run after refreshing the grype-db cache". A bare empty result alone (with a fresh, attributable DB) IS PASS. The distinction matters: an empty result from a deterministic scanner running against an up-to-date DB is a real signal; an empty result from a scanner whose DB age cannot be vouched for is not.
 - **Scan gap-entry id-prefix convention.** Each Phase-3 scan subagent OWNS its prefix to avoid cross-file id collisions. The canonical prefix set: `DCD-` (doc-code drift), `HCV-` (hardcoded values), `ISEAM-` (integration seam), `RTB-` (runtime behavior), `SEC-` (security), `CFGC-` (config contradiction), `DC-` (dead code), `CVE-` (grype CVE), `SBM-` (sbom-completeness). The consolidation subagent verifies prefix uniqueness when merging into `consolidated-gaps.md`; on collision it suffixes a stable `-{counter}` and logs a NOTICE.
 
-### Phase 7 PRE-step 0 — Scan-fidelity banner (AF-2026-05-30-2 / Test10 §7 C3)
+### Phase 7 PRE-step 0 — Scan-fidelity banner
 
 Before SARIF merge runs, invoke `/gaia-doctor` (via its check-tools.sh) to determine the achievable scan tier and stamp it into `consolidated-gaps.md`:
 
@@ -690,11 +688,11 @@ fi
 } >> "$REPORT"
 ```
 
-**Why this exists (Test10 §7 C3 guiding principle):** "Never degrade silently." Before this banner, an LLM-only scan looked byte-identical to a clean full-tier scan — operators read PASS verdicts on gap reports where no actual tool had run. The banner makes the degradation transparent: every consolidated-gaps.md now declares its achievable tier in frontmatter (`scan_fidelity: tier-0|tier-1|tier-2`) and renders a human-readable degradation notice in the report body when applicable. The frontmatter field is also machine-readable so downstream consumers (review skills, dashboards) can refuse to grade a Tier 0 scan as equivalent to a Tier 2 scan.
+**Why this exists (guiding principle):** "Never degrade silently." Before this banner, an LLM-only scan looked byte-identical to a clean full-tier scan — operators read PASS verdicts on gap reports where no actual tool had run. The banner makes the degradation transparent: every consolidated-gaps.md now declares its achievable tier in frontmatter (`scan_fidelity: tier-0|tier-1|tier-2`) and renders a human-readable degradation notice in the report body when applicable. The frontmatter field is also machine-readable so downstream consumers (review skills, dashboards) can refuse to grade a Tier 0 scan as equivalent to a Tier 2 scan.
 
-### Phase 7 PRE-step — SARIF Multitool merge (E104-S4 / FR-544 / ADR-125)
+### Phase 7 PRE-step — SARIF Multitool merge
 
-Before the 6-step gap-consolidation recipe runs, merge all scanner SARIF outputs into one merged SARIF. This gives the recipe (and downstream dedup E104-S1) a single uniform interchange format instead of bespoke per-tool JSON.
+Before the 6-step gap-consolidation recipe runs, merge all scanner SARIF outputs into one merged SARIF. This gives the recipe (and downstream dedup) a single uniform interchange format instead of bespoke per-tool JSON.
 
 ```bash
 # Flag resolution (ADR-078 master flag + per-tool override).
@@ -733,15 +731,15 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/defectdojo-export.sh" \
   "${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/brownfield-sarif-merged.json" || true
 ```
 
-**SARIF-as-interchange rationale (AC6).** SARIF 2.1.0 is the consensus interchange format — named independently by Zara (security), Soren (DevOps), Hugo (Java), and Derek (PM) in the 2026-05-23 brownfield deterministic-tools meeting. Microsoft's `Sarif.Multitool` is the canonical merger: it preserves per-tool attribution by concatenating one `run` per scanner (each carrying its `tool.driver.name`). Migrating bespoke per-tool JSON to merged SARIF removes per-tool parser maintenance and enables uniform downstream consumption (dedup, reconciliation, ranking). See `scripts/adapters/brownfield/sarif-merge.README.md`.
+**SARIF-as-interchange rationale (AC6).** SARIF 2.1.0 is the consensus interchange format — named independently by Zara (security), Soren (DevOps), Hugo (Java), and Derek (PM) in the brownfield deterministic-tools meeting. Microsoft's `Sarif.Multitool` is the canonical merger: it preserves per-tool attribution by concatenating one `run` per scanner (each carrying its `tool.driver.name`). Migrating bespoke per-tool JSON to merged SARIF removes per-tool parser maintenance and enables uniform downstream consumption (dedup, reconciliation, ranking). See `scripts/adapters/brownfield/sarif-merge.README.md`.
 
 **Migration shim (1-sprint deprecation).** When no `*.sarif` inputs exist (or the flag is off), `sarif-merge.sh` emits a WARN/INFO line and the 6-step recipe below falls back to its prior per-tool JSON consumption at Step 1. The legacy per-tool JSON path is slated for removal in the next sprint.
 
-`sarif_merge_seconds` feeds the `phase_runtime_seconds.sarif_merge` telemetry field (see the Phase 3 telemetry subsection; the populating writer is `brownfield-telemetry.sh`, landed by E104-S1).
+`sarif_merge_seconds` feeds the `phase_runtime_seconds.sarif_merge` telemetry field (see the Phase 3 telemetry subsection; the populating writer is `brownfield-telemetry.sh`).
 
-### Phase 7 dedup sub-step (E104-S1 / FR-541 / ADR-123)
+### Phase 7 dedup sub-step
 
-Immediately after the SARIF merge PRE-step and BEFORE Phase 4b reconciliation (E104-S2), run the cross-tool dedup over the merged SARIF. Dedup is the FIRST sub-step of the 6-step recipe (reordered to **load → dedup → validate → rank → budget → write**) — dedup-first shrinks the working set the downstream validate/rank/budget steps process. Dedup uses two key shapes (CVE-class keyed `(CVE-ID, file, severity)` with Grype-canonical tie-break; non-CVE-class grouped `(file, symbol)` with the precision ladder) per `docs/dedup-contract.md`.
+Immediately after the SARIF merge PRE-step and BEFORE Phase 4b reconciliation, run the cross-tool dedup over the merged SARIF. Dedup is the FIRST sub-step of the 6-step recipe (reordered to **load → dedup → validate → rank → budget → write**) — dedup-first shrinks the working set the downstream validate/rank/budget steps process. Dedup uses two key shapes (CVE-class keyed `(CVE-ID, file, severity)` with Grype-canonical tie-break; non-CVE-class grouped `(file, symbol)` with the precision ladder) per `docs/dedup-contract.md`.
 
 ```bash
 DEDUP_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.dedup_enabled 2>/dev/null)"
@@ -768,11 +766,11 @@ if [ -f "$REPORT" ]; then
 fi
 ```
 
-When the dedup flag is off (or the master flag is off), `dedup.sh` passes the raw stream through unchanged (`gap_count_before_dedup == gap_count_after_dedup`) and logs an INFO skip. The deduped stream is written to `.gaia/memory/brownfield-audit/deduped-findings.json` for the E104-S2 Phase 4b reconciliation consumer.
+When the dedup flag is off (or the master flag is off), `dedup.sh` passes the raw stream through unchanged (`gap_count_before_dedup == gap_count_after_dedup`) and logs an INFO skip. The deduped stream is written to `.gaia/memory/brownfield-audit/deduped-findings.json` for the Phase 4b reconciliation consumer.
 
-> **Single-author-per-field telemetry (AF-2026-05-09-12).** `brownfield-telemetry.sh` is the shared writer mechanism, but each field has exactly ONE owning phase: the pre-warm pre-flight owns `*.pre_warm`, the SARIF merge owns `*.sarif_merge`, and this dedup sub-step owns `*.dedup` + `gap_count_*` + `llm_token_count`. No field is written by more than one phase (no fan-out).
+> **Single-author-per-field telemetry.** `brownfield-telemetry.sh` is the shared writer mechanism, but each field has exactly ONE owning phase: the pre-warm pre-flight owns `*.pre_warm`, the SARIF merge owns `*.sarif_merge`, and this dedup sub-step owns `*.dedup` + `gap_count_*` + `llm_token_count`. No field is written by more than one phase (no fan-out).
 
-### Phase 7 dead-code "Test Quality" render sub-step (E70-S8 / FR-545 / NFR-87)
+### Phase 7 dead-code "Test Quality" render sub-step
 
 After the dedup sub-step, render the unified **Test Quality** section into
 `consolidated-gaps.md` from the three per-stack dead-code adapter outputs
@@ -788,11 +786,11 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/dead-code/render-test-quality.sh" \
   --out-dir "$AUDIT" --report "$REPORT" || true
 ```
 
-**Anti-pattern guard (NFR-87 / AC4).** The section MUST NOT collapse the three
+**Anti-pattern guard (AC4).** The section MUST NOT collapse the three
 stacks into one flat list with a synthesized cross-stack confidence column — Go's
 binary reachability verdict, Python's confidence %, and JVM's priority×rank ordinal
-are NOT commensurable. Per-stack precision is the contract this story preserves
-(meeting-2026-05-23, Sable turn 12). The per-stack SARIF runs (Phase 3) ALSO feed
+are NOT commensurable. Per-stack precision is the contract this section preserves.
+The per-stack SARIF runs (Phase 3) ALSO feed
 the dedup precision ladder above via `.properties.symbol`, so the dead-code findings
 participate in cross-tool dedup without forfeiting their native qualifier.
 
@@ -807,7 +805,7 @@ Spawn a Gap Consolidation subagent:
 
 **Step 2 — Validate entries against schema.** Required fields: `id`, `category`, `severity`, `title`, `description` (or `evidence`), `evidence_file`, `evidence_line`, `recommendation`. Entries missing required fields are logged as warnings (noting source file and missing field) and skipped from consolidation.
 
-**Step 3 — Deduplicate (LLM entry-level).** Cross-tool scanner-finding dedup already ran as the deterministic dedup sub-step BEFORE this recipe (E104-S1 `dedup.sh`, the FIRST sub-step of the reordered load → dedup → validate → rank → budget → write recipe). This Step 3 is a SECONDARY, coarser entry-level dedup over the consolidated gap entries (including the non-scanner sources). Group gap entries by `evidence_file` + `evidence_line` exact match. For each group:
+**Step 3 — Deduplicate (LLM entry-level).** Cross-tool scanner-finding dedup already ran as the deterministic dedup sub-step BEFORE this recipe (`dedup.sh`, the FIRST sub-step of the reordered load → dedup → validate → rank → budget → write recipe). This Step 3 is a SECONDARY, coarser entry-level dedup over the consolidated gap entries (including the non-scanner sources). Group gap entries by `evidence_file` + `evidence_line` exact match. For each group:
 - Retain the entry with the highest severity (critical > high > medium > low).
 - Merge recommendations from all duplicate entries into the retained entry.
 - Add a `merged_from` field listing all original gap IDs.
@@ -829,9 +827,9 @@ Spawn a Gap Consolidation subagent:
 
 ### 8a — Create PRD for Gaps
 
-**AF-2026-05-31-3 / Test14 D-04 — PRD template plugin-relative location.** The template files named below all live under `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/`. Reference `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/prd-template.md`, `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/infra-prd-template.md`, `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/platform-prd-template.md`. The consolidation subagent previously had to `find` them; spelling out the location closes Test14 D-04.
+**PRD template plugin-relative location.** The template files named below all live under `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/`. Reference `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/prd-template.md`, `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/infra-prd-template.md`, `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/platform-prd-template.md`. Spelling out the location saves the consolidation subagent from having to `find` them.
 
-**5-tier (scan severity) ↔ 3-tier (config-severity) mapping.** Deterministic scans use a 5-tier severity scale (Critical / High / Medium / Low / Info) per ADR-037; the operator's `config-severity` knob is a 3-tier scale (high / medium / low). When the consolidation subagent reconciles scan findings into the PRD's gap list, apply this canonical mapping:
+**5-tier (scan severity) ↔ 3-tier (config-severity) mapping.** Deterministic scans use a 5-tier severity scale (Critical / High / Medium / Low / Info); the operator's `config-severity` knob is a 3-tier scale (high / medium / low). When the consolidation subagent reconciles scan findings into the PRD's gap list, apply this canonical mapping:
 
 | Scan severity | config-severity bucket |
 | ------------- | ---------------------- |
@@ -851,7 +849,7 @@ Select the PRD template based on `{project_type}`:
 | infrastructure   | infra-prd-template.md      | IR-###, OR-###, SR-###                       |
 | platform         | platform-prd-template.md   | FR-###, NFR-### and IR-###, OR-###, SR-###   |
 
-Verify the template file exists. If missing, halt with `Template {selected_template} not found. Ensure E12-S2 (infra) or E12-S3 (platform) templates are installed.` If `{project_type}` is unrecognized, default to `application`.
+Verify the template file exists. If missing, halt with `Template {selected_template} not found. Ensure the infra and platform templates are installed.` If `{project_type}` is unrecognized, default to `application`.
 
 Read upstream artifacts to inform gap analysis:
 - `project-documentation.md` → project context (tech stack, patterns, conventions, capability flags, CI/CD).
@@ -873,10 +871,9 @@ Write to `.gaia/artifacts/planning-artifacts/prd.md`.
 
 ### 8b — Adversarial Review & PRD Refinement
 
-Dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique the PRD. Target `.gaia/artifacts/planning-artifacts/prd.md`; **before dispatching, run `mkdir -p .gaia/artifacts/planning-artifacts/adversarial/`** so the nested directory exists on first run (ADR-119). Report output path `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-prd-{YYYY-MM-DD}.md` (use today's UTC date; AF-2026-05-30-1 / Test03 §7.3 — adversarial joins the dated-snapshot pattern). Sage's persona at `plugins/gaia/agents/adversarial-reviewer.md` defines the review structure, severity vocabulary (CRITICAL/WARNING/INFO per ADR-037), and brownfield-relevant lenses (documented-vs-actual drift, hidden coupling, known-knowns vs known-unknowns). When the subagent returns, verify `adversarial-review-prd-{date}.md` exists in `.gaia/artifacts/planning-artifacts/adversarial/` (legacy ungrouped `.gaia/artifacts/planning-artifacts/adversarial-review-prd-{date}.md` is accepted as a read-only fallback on pre-AF-30-1 projects). Per ADR-063 (Mandatory Verdict Surfacing), display the returned ADR-037 envelope to the user. Extract critical and high severity findings. For each critical/high finding, add a new requirement or refine an existing requirement in the PRD. Add a `## Review Findings Incorporated` section to the PRD listing each finding, its severity, and how it was addressed.
+Dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique the PRD. Target `.gaia/artifacts/planning-artifacts/prd.md`; **before dispatching, run `mkdir -p .gaia/artifacts/planning-artifacts/adversarial/`** so the nested directory exists on first run. Report output path `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-prd-{YYYY-MM-DD}.md` (use today's UTC date; adversarial joins the dated-snapshot pattern). Sage's persona at `plugins/gaia/agents/adversarial-reviewer.md` defines the review structure, severity vocabulary (CRITICAL/WARNING/INFO), and brownfield-relevant lenses (documented-vs-actual drift, hidden coupling, known-knowns vs known-unknowns). When the subagent returns, verify `adversarial-review-prd-{date}.md` exists in `.gaia/artifacts/planning-artifacts/adversarial/` (legacy ungrouped `.gaia/artifacts/planning-artifacts/adversarial-review-prd-{date}.md` is accepted as a read-only fallback on older projects). Per the Mandatory Verdict Surfacing rule, display the returned envelope to the user. Extract critical and high severity findings. For each critical/high finding, add a new requirement or refine an existing requirement in the PRD. Add a `## Review Findings Incorporated` section to the PRD listing each finding, its severity, and how it was addressed.
 
-**YOLO mode contract (AF-2026-05-29-2 / Test09 F-11; extended by
-AF-2026-05-31-1 / Test12 F-11).** Under YOLO, brownfield CRITICAL findings
+**YOLO mode contract.** Under YOLO, brownfield CRITICAL findings
 that describe **the scanned codebase itself** are auto-downgraded to
 WARNING-equivalent for the purposes of the halt-check across THREE phases:
 
@@ -902,7 +899,7 @@ WARNING-equivalent for the purposes of the halt-check across THREE phases:
 code-verified CRITICALs (which signal verified contradictions between PRD
 claims and code — these MUST halt to avoid shipping factually-wrong PRDs),
 or any subagent error CRITICAL of the "tool crashed / pipeline broken"
-shape. Those still halt under YOLO per ADR-063/067. The original CRITICAL
+shape. Those still halt under YOLO. The original CRITICAL
 findings are still recorded verbatim in the artifact each phase produces
 (scan reports for Phase 3, NFR assessment for Phase 6,
 `adversarial-review-prd-{date}.md` for Phase 8b) and roll into the Phase 7
@@ -944,13 +941,13 @@ If `architecture.md` already exists, warn the user: `An architecture document al
 
 After architecture is generated, verify it has YAML frontmatter with `mode: brownfield`, `baseline_version: {version}`, and `update_scope: [list of components being modified]`. If missing, append them.
 
-### 9b — Architecture Adversarial Review (AF-2026-05-31-3 / Test14 F-20)
+### 9b — Architecture Adversarial Review
 
-After architecture is generated, dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique `.gaia/artifacts/planning-artifacts/architecture.md` — mirroring the Phase 8b PRD adversarial. Target output: `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-architecture-{YYYY-MM-DD}.md` (use today's UTC date). Run `mkdir -p .gaia/artifacts/planning-artifacts/adversarial/` first so the directory exists on first run (ADR-119).
+After architecture is generated, dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique `.gaia/artifacts/planning-artifacts/architecture.md` — mirroring the Phase 8b PRD adversarial. Target output: `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-architecture-{YYYY-MM-DD}.md` (use today's UTC date). Run `mkdir -p .gaia/artifacts/planning-artifacts/adversarial/` first so the directory exists on first run.
 
-This closes the asymmetry Test14 F-20 surfaced: the PRD adversarial pass produces a standalone dated `adversarial-review-prd-{date}.md`, but the architecture adversarial pass was previously INLINED into `architecture.md` as the `## Review Findings Incorporated` section — making the architecture's review trail harder to audit and breaking the target layout's symmetric `adversarial/` convention.
+This closes an asymmetry: the PRD adversarial pass produces a standalone dated `adversarial-review-prd-{date}.md`, but the architecture adversarial pass was previously INLINED into `architecture.md` as the `## Review Findings Incorporated` section — making the architecture's review trail harder to audit and breaking the target layout's symmetric `adversarial/` convention.
 
-Per ADR-063 (Mandatory Verdict Surfacing), display the returned ADR-037 envelope to the user. Extract critical and high severity findings. For each critical/high finding, refine architecture.md AND record the same finding in the standalone `adversarial-review-architecture-{date}.md` so the architecture document's `## Review Findings Incorporated` section is a SUMMARY of what was incorporated (rather than the sole record).
+Per the Mandatory Verdict Surfacing rule, display the returned envelope to the user. Extract critical and high severity findings. For each critical/high finding, refine architecture.md AND record the same finding in the standalone `adversarial-review-architecture-{date}.md` so the architecture document's `## Review Findings Incorporated` section is a SUMMARY of what was incorporated (rather than the sole record).
 
 The Phase 8b YOLO carve-out (CRITICAL findings ABOUT the codebase auto-downgrade to WARNING) applies here too — the architecture adversarial flags real codebase facts in brownfield mode by design.
 
@@ -985,7 +982,7 @@ After all Tier 1 extractions complete, output a summary: `Seeded {N} entries for
 
 ## Output — Primary Artifact
 
-Write the final brownfield onboarding report to `.gaia/artifacts/planning-artifacts/brownfield-onboarding.md`. This is the primary output artifact (preserved verbatim from the legacy workflow's `output.primary` contract for NFR-053 parity). It summarizes:
+Write the final brownfield onboarding report to `.gaia/artifacts/planning-artifacts/brownfield-onboarding.md`. This is the primary output artifact (preserved verbatim from the legacy workflow's `output.primary` contract for parity). It summarizes:
 
 - Project discovery findings (`{project_type}`, capability flags, tech stack)
 - Links to all generated secondary artifacts
@@ -1014,21 +1011,21 @@ The full artifact set emitted by this skill (preserved from the legacy `output.a
 - `.gaia/artifacts/planning-artifacts/brownfield-scan-dead-code.md` (Phase 3)
 - `.gaia/artifacts/planning-artifacts/brownfield-scan-test-execution.md` (Phase 4)
 - `.gaia/config/test-environment.yaml` (Phase 5, conditional)
-- `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{date}.md` (Phase 6 — gated; Test10 F-37 — dated-snapshot subdir under planning-artifacts per E105-S3 / ADR-127 Pillar 3; legacy flat `test-artifacts/nfr-assessment.md` remains read-only fallback)
-- `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (Phase 6 — gated; Test10 F-37 — dated-snapshot subdir under planning-artifacts per E105-S3 / ADR-127 Pillar 3; legacy flat `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback)
+- `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{date}.md` (Phase 6 — gated; dated-snapshot subdir under planning-artifacts; legacy flat `test-artifacts/nfr-assessment.md` remains read-only fallback)
+- `.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-{date}.md` (Phase 6 — gated; dated-snapshot subdir under planning-artifacts; legacy flat `test-artifacts/performance-test-plan-{date}.md` remains read-only fallback)
 - `.gaia/artifacts/planning-artifacts/consolidated-gaps.md` (Phase 7)
 - `.gaia/artifacts/planning-artifacts/prd.md` (Phase 8a)
-- `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-prd-{date}.md` (Phase 8b — AF-2026-05-30-1 / Test03 §7.3 grouping)
+- `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-prd-{date}.md` (Phase 8b — dated-snapshot grouping)
 - `.gaia/artifacts/planning-artifacts/architecture.md` (Phase 9a)
 - `.gaia/artifacts/planning-artifacts/epics-and-stories.md` (downstream, via next-step chain — see below)
 - `.gaia/artifacts/planning-artifacts/brownfield-onboarding.md` (primary)
 
-### Known constraint — artifact dispersion across four roots (AF-2026-05-30-4 F-20 / F-21)
+### Known constraint — artifact dispersion across four roots
 
 The artifact set above is intentionally dispersed across **four** roots
 rather than consolidated under a single `planning-artifacts/` tree. The
 dispersion is FORCED by the framework's existing gate / writer contracts
-in 1.181.0 — relocating any of these files would break the readiness and
+— relocating any of these files would break the readiness and
 review gates until the underlying resolvers are refactored.
 
 The four roots and their pin points:
@@ -1042,32 +1039,31 @@ The four roots and their pin points:
    `validate-gate.sh` resolvers `ci_setup_exists` which look at
    `${TEST_ARTIFACTS}/…`. Moving these into `planning-artifacts/`
    without changing the resolvers first breaks the readiness gates.
-   AF-2026-06-01-1 / Test15 F-09: `test-plan.md` and
+   `test-plan.md` and
    `traceability-matrix.md` are CANONICALLY under
-   `.gaia/artifacts/planning-artifacts/` per E105-S2 / ADR-127 §7.2
-   (Pillar 2: docs-about-testing co-located with the testing-strategy
+   `.gaia/artifacts/planning-artifacts/`
+   (docs-about-testing co-located with the testing-strategy
    doc, not under test-artifacts/). The legacy `test-artifacts/`
    placement is honored as a read-compat fallback by `validate-gate.sh
-   test_plan_exists` / `traceability_exists` (ADR-072) but NEW writes
+   test_plan_exists` / `traceability_exists` but NEW writes
    land at the planning-artifacts home. Two SKILL.md sections in this
-   file previously contradicted that (a Test14 F-19 holdover); they
+   file previously contradicted that; they
    have been reconciled to the planning-artifacts canonical home.
 3. `.gaia/config/` — `test-environment.yaml(.example)`, pinned by
-   ADR-110.
+   the config-home contract.
 4. `.gaia/state/` — `sprint-status.yaml` (the live runtime state),
-   pinned by `sprint-state.sh`'s writer contract (ADR-095).
-   AF-2026-06-01-1 / Test15 F-17-L: the canonical LIVE yaml home is
-   `.gaia/state/` per ADR-095 (boundary-write discipline) — this is a
+   pinned by `sprint-state.sh`'s writer contract.
+   The canonical LIVE yaml home is
+   `.gaia/state/` (boundary-write discipline) — this is a
    deliberate design choice, not a layout-conformance bug. The
    `implementation-artifacts/sprint-status.yaml` mirror written by
-   `sprint-state.sh` (AF-31-3 F-16) is the layout-conformance accommodation
+   `sprint-state.sh` is the layout-conformance accommodation
    so the target layout has the file too; readers should treat the
    `.gaia/state/` copy as authoritative. Relocating the live yaml to
-   `implementation-artifacts/` would require deprecating the ADR-095
-   contract — out of scope for this cycle.
+   `implementation-artifacts/` would require deprecating the
+   boundary-write contract — out of scope for this cycle.
 
-Per-story `reviews/` — test-lens artifacts live in TWO places by design
-(post Test14 F-15 + Test16 F-L09/F-L10 reconciliation):
+Per-story `reviews/` — test-lens artifacts live in TWO places by design:
 
 - **Canonical primary** — `test-artifacts/epic-*/{key}-*/{qa-tests,
   test-automation,test-review}.md` plus `execution-evidence/{qa-tests,
@@ -1081,18 +1077,17 @@ Per-story `reviews/` — test-lens artifacts live in TWO places by design
   for the code/security/performance reports sees the test-lens reports
   too — without having to cross-reference the test-artifacts/ tree. The
   aggregate `execution-evidence.json` is the merged signal review-gate
-  validates against (proof-of-execution path post Test15 F-10).
+  validates against (proof-of-execution path).
 
 The two locations are NOT a duplication bug — they are a sanctioned mirror,
 analogous to the `sprint-status.yaml` live-vs-mirror split documented at
-root #4 above (Test15 F-17-L). Writers MUST update both; readers SHOULD
+root #4 above. Writers MUST update both; readers SHOULD
 prefer the canonical test-artifacts/ primary.
 
-The pre-Test16 SKILL.md text incorrectly claimed the test-lens artifacts
-were written ONLY under `implementation-artifacts/.../reviews/`; that was
-true only in 1.181.0 and has been wrong since the AF-31-3 F-15 mirror
-landed. The text above reflects the actual writer behaviour as of
-plugin v1.182.10 (AF-2026-06-02-1).
+Earlier SKILL.md text incorrectly claimed the test-lens artifacts
+were written ONLY under `implementation-artifacts/.../reviews/`; that has
+been wrong since the mirror
+landed. The text above reflects the actual writer behaviour.
 
 A consolidation refactor (moving test-plan/traceability/ci-setup into
 `planning-artifacts/`, mirroring the test-lens artifacts under
@@ -1103,30 +1098,30 @@ The `{date}` placeholder is substituted with the current date in `YYYY-MM-DD` fo
 
 ## Post-Complete Gates
 
-Three gates enforced via `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh` after all phases complete. **AF-2026-05-29-2 / Test09 F-16:** the prior names (`nfr_assessment_exists`, `performance_test_plan_exists`, `test_environment_yaml_required_when_infra_detected`) were NOT registered in `validate-gate.sh`'s `SUPPORTED_GATES` constant — invoking them produced `unknown gate type` and silently no-op'd. The gates are now expressed via the supported `file_exists --file <path>` form so they actually execute:
+Three gates enforced via `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh` after all phases complete. The prior names (`nfr_assessment_exists`, `performance_test_plan_exists`, `test_environment_yaml_required_when_infra_detected`) were NOT registered in `validate-gate.sh`'s `SUPPORTED_GATES` constant — invoking them produced `unknown gate type` and silently no-op'd. The gates are now expressed via the supported `file_exists --file <path>` form so they actually execute:
 
-1. **NFR-assessment exists** — first resolve via the dated-subdir form (`.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-*.md`) then fall back to the legacy flat `.gaia/artifacts/test-artifacts/nfr-assessment.md`. Assert: `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh file_exists --file "$(ls -1t .gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-*.md 2>/dev/null | head -1 || echo .gaia/artifacts/test-artifacts/nfr-assessment.md)"`. On fail: `HALT: NFR assessment not found at .gaia/artifacts/planning-artifacts/nfr-assessment/.` (Test10 F-37 — moved out of flat test-artifacts/.)
-2. **Performance test plan exists** — first resolve via the dated-subdir form (`.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-*.md`) then fall back to the legacy flat `.gaia/artifacts/test-artifacts/performance-test-plan-*.md`. Assert: `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh file_exists --file "$(ls -1t .gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-*.md 2>/dev/null | head -1 || ls -1t .gaia/artifacts/test-artifacts/performance-test-plan-*.md 2>/dev/null | head -1)"`. On fail (no match or empty file): `HALT: Performance test plan not found at .gaia/artifacts/planning-artifacts/performance-test-plan/. Run /gaia-perf-testing.` (Test10 F-37 — moved out of flat test-artifacts/.)
-3. **test-environment.yaml when infra detected** (conditional) — if any of the four test-infrastructure detectors (E19-S12 / S13 / S14 / S15) fired during Phase 5, then `.gaia/config/test-environment.yaml` MUST exist: `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh file_exists --file .gaia/config/test-environment.yaml` (legacy `config/test-environment.yaml` is also accepted as read-compat per ADR-111). On fail: `HALT: Brownfield detected test infrastructure but test-environment.yaml was not generated. Re-run step 2.8 or run /gaia-brownfield again.` When zero test infrastructure was detected (AC-EC3), the orchestrator SKIPS this gate entirely.
+1. **NFR-assessment exists** — first resolve via the dated-subdir form (`.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-*.md`) then fall back to the legacy flat `.gaia/artifacts/test-artifacts/nfr-assessment.md`. Assert: `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh file_exists --file "$(ls -1t .gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-*.md 2>/dev/null | head -1 || echo .gaia/artifacts/test-artifacts/nfr-assessment.md)"`. On fail: `HALT: NFR assessment not found at .gaia/artifacts/planning-artifacts/nfr-assessment/.` (moved out of flat test-artifacts/.)
+2. **Performance test plan exists** — first resolve via the dated-subdir form (`.gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-*.md`) then fall back to the legacy flat `.gaia/artifacts/test-artifacts/performance-test-plan-*.md`. Assert: `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh file_exists --file "$(ls -1t .gaia/artifacts/planning-artifacts/performance-test-plan/performance-test-plan-*.md 2>/dev/null | head -1 || ls -1t .gaia/artifacts/test-artifacts/performance-test-plan-*.md 2>/dev/null | head -1)"`. On fail (no match or empty file): `HALT: Performance test plan not found at .gaia/artifacts/planning-artifacts/performance-test-plan/. Run /gaia-perf-testing.` (moved out of flat test-artifacts/.)
+3. **test-environment.yaml when infra detected** (conditional) — if any of the four test-infrastructure detectors fired during Phase 5, then `.gaia/config/test-environment.yaml` MUST exist: `!${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh file_exists --file .gaia/config/test-environment.yaml` (legacy `config/test-environment.yaml` is also accepted as read-compat). On fail: `HALT: Brownfield detected test infrastructure but test-environment.yaml was not generated. Re-run step 2.8 or run /gaia-brownfield again.` When zero test infrastructure was detected (AC-EC3), the orchestrator SKIPS this gate entirely.
 
 `validate-gate.sh` serves the role of the spec-level `file-gate.sh` in the deployed script set (see Reconciliation Note).
 
 ## Subagent Dispatch Contract
 
-Every subagent dispatched by this skill — Phase 2 documenters, Phase 3 scan subagents, Phase 4 test-execution scanner, Phase 6 test-architect (Sable), Phase 7 gap consolidation, Phase 8b adversarial review, Phase 8c code-verified review, Phase 9a architecture pipeline — returns a structured payload conforming to the **ADR-037** schema: `{status, summary, artifacts, findings, next}`. Per **ADR-063** (Mandatory Verdict Surfacing), this skill MUST surface every subagent's verdict (`PASS` / `WARNING` / `CRITICAL`) to the user — no silent gates. Specifically:
+Every subagent dispatched by this skill — Phase 2 documenters, Phase 3 scan subagents, Phase 4 test-execution scanner, Phase 6 test-architect (Sable), Phase 7 gap consolidation, Phase 8b adversarial review, Phase 8c code-verified review, Phase 9a architecture pipeline — returns a structured payload conforming to the canonical subagent-return schema: `{status, summary, artifacts, findings, next}`. Per the Mandatory Verdict Surfacing rule, this skill MUST surface every subagent's verdict (`PASS` / `WARNING` / `CRITICAL`) to the user — no silent gates. Specifically:
 
 - `status: PASS` — log the subagent name, the artifacts it produced, and continue to the next phase.
-- `status: WARNING` — display the `findings` block to the user before continuing. The user remains in control: in normal mode they may approve or revise; in YOLO mode the workflow auto-continues after displaying the warning (per ADR-067).
-- `status: CRITICAL` — HALT. The skill MUST NOT advance to the next phase until the user resolves the critical finding. This rule applies in both normal and YOLO mode (CRITICAL still halts under YOLO — see YOLO Behavior below) **with the documented per-phase carve-outs**: under YOLO, finding-content CRITICALs (CRITICALs that describe the SCANNED CODEBASE) are auto-downgraded to WARNING-equivalent at **Phase 3** (scan subagents), **Phase 6** (NFR assessment), and **Phase 8b** (PRD adversarial review) per the YOLO mode contract above. Subagent error CRITICALs (scanner crashed, tool unavailable, pipeline broken) still halt unconditionally. The carve-out is justified by brownfield's gap-discovery purpose: every Phase 3/6 CRITICAL is, by construction, a real defect in the project being onboarded — halting on each one defeats the autonomous-run promise of YOLO mode (`gaia-brownfield yolo`). See AF-2026-05-31-1 / Test12 F-11 for the precedent + AF-2026-05-29-2 / Test09 F-11 for the Phase 8b precursor.
+- `status: WARNING` — display the `findings` block to the user before continuing. The user remains in control: in normal mode they may approve or revise; in YOLO mode the workflow auto-continues after displaying the warning.
+- `status: CRITICAL` — HALT. The skill MUST NOT advance to the next phase until the user resolves the critical finding. This rule applies in both normal and YOLO mode (CRITICAL still halts under YOLO — see YOLO Behavior below) **with the documented per-phase carve-outs**: under YOLO, finding-content CRITICALs (CRITICALs that describe the SCANNED CODEBASE) are auto-downgraded to WARNING-equivalent at **Phase 3** (scan subagents), **Phase 6** (NFR assessment), and **Phase 8b** (PRD adversarial review) per the YOLO mode contract above. Subagent error CRITICALs (scanner crashed, tool unavailable, pipeline broken) still halt unconditionally. The carve-out is justified by brownfield's gap-discovery purpose: every Phase 3/6 CRITICAL is, by construction, a real defect in the project being onboarded — halting on each one defeats the autonomous-run promise of YOLO mode (`gaia-brownfield yolo`).
 
-The Phase 3 per-subagent scan diagnostic table (above) is the surfacing channel for the seven scan subagents — its `Status` and `Reason` columns are the user-visible projection of each scan subagent's structured return. A subagent that crashes mid-run is treated as `CRITICAL` for the orchestrator (skill exits non-zero with a partial-result summary per AC-EC8), but the cohort's surviving scanners still appear in the diagnostic table with their own statuses. This is the canonical pattern for the six-command remediation cohort identified in **ADR-063** (add-feature, security-review, brownfield, test-gap-analysis, fill-test-gaps, problem-solving).
+The Phase 3 per-subagent scan diagnostic table (above) is the surfacing channel for the seven scan subagents — its `Status` and `Reason` columns are the user-visible projection of each scan subagent's structured return. A subagent that crashes mid-run is treated as `CRITICAL` for the orchestrator (skill exits non-zero with a partial-result summary per AC-EC8), but the cohort's surviving scanners still appear in the diagnostic table with their own statuses. This is the canonical pattern for the six-command remediation cohort (add-feature, security-review, brownfield, test-gap-analysis, fill-test-gaps, problem-solving).
 
 ## YOLO Behavior
 
-Per **ADR-067** (YOLO Mode Contract — Consistent Non-Interactive Behavior):
+Per the YOLO Mode Contract (Consistent Non-Interactive Behavior):
 
 - Auto-continue at every template-output / review prompt EXCEPT where an explicit gate halts (CRITICAL findings, post-complete file-existence gates, conflict resolution when `test-environment.yaml` already exists with a non-`yolo` execution mode).
-- The Phase 5 normal-mode review pause (E48-S4) is skipped under YOLO — the skill auto-continues to Phase 6 after writing the test-environment.yaml.
+- The Phase 5 normal-mode review pause is skipped under YOLO — the skill auto-continues to Phase 6 after writing the test-environment.yaml.
 - Conflict resolution under YOLO uses the safe default `merge` for `test-environment.yaml` (Phase 5 step 5) — detected values fill only null fields and every non-null user-supplied field is preserved.
 - Subagent verdicts are still displayed: `PASS` and `WARNING` auto-continue in YOLO, but `CRITICAL` still halts. CRITICAL-halt is a hard rule under YOLO — the workflow refuses to proceed past a critical finding without explicit user input.
 - Open-question indicators (unchecked checkboxes, TBD markers, "Decisions Needed" sections in any artifact this skill produces) are NEVER auto-skipped under YOLO. Memory writes are NEVER auto-approved.
@@ -1135,21 +1130,21 @@ Per **ADR-067** (YOLO Mode Contract — Consistent Non-Interactive Behavior):
 
 - **Scanner crash mid-run (AC-EC8):** Remaining scanners continue. The failed scan writes a gap row tagged `scan failed: {reason}`. Skill exits non-zero with a partial-result summary.
 - **Test-architect subagent unavailable (AC-EC5):** Log a non-blocking warning. Write stub `nfr-assessment.md` and stub `performance-test-plan-{date}.md` with `agent unavailable` banners. Post-complete gate reports the gap rather than crashing.
-- **NFR output missing (AC-EC9):** Both `nfr-assessment.md` and `performance-test-plan-{date}.md` are required by the post-complete gates. Missing either one halts with the legacy error text — both required for pass.
+- **NFR output missing (AC-EC9):** Both `nfr-assessment.md` and `performance-test-plan-{date}.md` are required by the post-complete gates. Missing either one halts with the error text — both required for pass.
 - **Foundation script missing (AC-EC2):** `setup.sh` aborts fail-fast with an actionable error identifying the missing / non-executable script path. No partial scan output is written.
-- **Large codebase (AC-EC6):** Scanners stream / chunk results, emit incremental gap rows, and produce a `scan truncated — review manually` advisory rather than exceeding the NFR-048 activation token budget.
+- **Large codebase (AC-EC6):** Scanners stream / chunk results, emit incremental gap rows, and produce a `scan truncated — review manually` advisory rather than exceeding the activation token budget.
 
 ## Frontmatter Linter Compliance
 
-This SKILL.md passes the E28-S7 / E28-S74 frontmatter linter (`.github/scripts/lint-skill-frontmatter.sh`) with zero errors. Required fields are present: `name` matches the directory slug `gaia-brownfield`; `description` is a trigger-signature with a concrete action phrase; `allowed-tools` is validated against the canonical tool set (`Agent` is required because Phase 2, 3, 4, 6, 7, 8, and 9 delegate to subagents via the `Agent` tool); `model: inherit` is set per E28-S74 schema.
+This SKILL.md passes the frontmatter linter (`.github/scripts/lint-skill-frontmatter.sh`) with zero errors. Required fields are present: `name` matches the directory slug `gaia-brownfield`; `description` is a trigger-signature with a concrete action phrase; `allowed-tools` is validated against the canonical tool set (`Agent` is required because Phase 2, 3, 4, 6, 7, 8, and 9 delegate to subagents via the `Agent` tool); `model: inherit` is set per the canonical schema.
 
-If a future edit removes the `description` field or any other required field, the frontmatter linter reports the missing field and the CI gate fails — no silent skill registration is permitted (AC-EC4 equivalent for the legacy conditional test-environment gate is covered by the conditional gate wiring above).
+If a future edit removes the `description` field or any other required field, the frontmatter linter reports the missing field and the CI gate fails — no silent skill registration is permitted (the AC-EC4 equivalent for the conditional test-environment gate is covered by the conditional gate wiring above).
 
 ## Parity Notes vs. Legacy Workflow
 
-The native skill preserves the legacy 7-step structure as 9 native phases (Steps 2.5, 2.75, 2.8, 3, 3.5, 4, 5, 5.5, 6, 7 of the legacy `instructions.xml` map to Phases 1–9 here). Data flow between phases is identical to the legacy workflow — each phase's output feeds the next via the documented input contracts. The skill does not re-implement the workflow engine; it uses native Claude Code primitives (Skills + Subagents + inline scripts) per ADR-041.
+The native skill preserves the legacy 7-step structure as 9 native phases (Steps 2.5, 2.75, 2.8, 3, 3.5, 4, 5, 5.5, 6, 7 of the legacy `instructions.xml` map to Phases 1–9 here). Data flow between phases is identical to the legacy workflow — each phase's output feeds the next via the documented input contracts. The skill does not re-implement the workflow engine; it uses native Claude Code primitives (Skills + Subagents + inline scripts).
 
-Legacy file paths are intentionally not re-referenced in this body per the E28-S105 parity check (the reference pointer lives only in the References section below). This matches the E28-S102 / E28-S103 precedent.
+Legacy file paths are intentionally not re-referenced in this body per the parity check (the reference pointer lives only in the References section below).
 
 ## Finalize
 
@@ -1157,22 +1152,22 @@ Legacy file paths are intentionally not re-referenced in this body per the E28-S
 
 ## References
 
-- ADR-021 — Deep brownfield code analysis with seven parallel scan subagents and gap consolidation (the cohort surfaced by the Phase 3 per-subagent scan diagnostic table).
-- ADR-037 — Structured subagent return schema (`status`, `summary`, `artifacts`, `findings`, `next`) consumed by the Subagent Dispatch Contract section.
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks (replaces the legacy workflow engine).
-- ADR-042 — Scripts-over-LLM for Deterministic Operations (foundation script set invoked inline via `!scripts/*.sh`).
-- ADR-045 — Review Gate via Sequential `context: fork` Subagents (fork-context dispatch pattern reused by the cohort surfaced in Phase 3).
-- ADR-063 — Subagent Dispatch Contract — Mandatory Verdict Surfacing (the framework-wide rule the Subagent Dispatch Contract section codifies for this skill).
-- ADR-067 — YOLO Mode Contract — Consistent Non-Interactive Behavior (the rules the YOLO Behavior section codifies for this skill).
-- FR-323 — Native Skill Format Compliance (frontmatter schema per E28-S74).
-- FR-325 — Foundation scripts wired inline.
-- NFR-048 — Conversion token-reduction target / activation-budget ceiling.
-- NFR-053 — Functional parity with the legacy workflow.
-- E28-S74 — Canonical SKILL.md frontmatter schema.
-- E28-S88 — `gaia-nfr` SKILL.md (pattern for the test-architect subagent integration mirrored here in Phase 6).
-- E28-S9..E28-S16 — Foundation scripts implementation stories (deployed equivalents referenced in the Reconciliation Note).
-- E19-S12 / S13 / S14 / S15 — Test infrastructure detectors aggregated in Phase 5.
-- Reference implementations (parity pattern and Cluster 14 sibling skills):
+- Deep brownfield code analysis with seven parallel scan subagents and gap consolidation (the cohort surfaced by the Phase 3 per-subagent scan diagnostic table).
+- Structured subagent return schema (`status`, `summary`, `artifacts`, `findings`, `next`) consumed by the Subagent Dispatch Contract section.
+- Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks (replaces the legacy workflow engine).
+- Scripts-over-LLM for Deterministic Operations (foundation script set invoked inline via `!scripts/*.sh`).
+- Review Gate via Sequential `context: fork` Subagents (fork-context dispatch pattern reused by the cohort surfaced in Phase 3).
+- Subagent Dispatch Contract — Mandatory Verdict Surfacing (the framework-wide rule the Subagent Dispatch Contract section codifies for this skill).
+- YOLO Mode Contract — Consistent Non-Interactive Behavior (the rules the YOLO Behavior section codifies for this skill).
+- Native Skill Format Compliance (frontmatter schema).
+- Foundation scripts wired inline.
+- Conversion token-reduction target / activation-budget ceiling.
+- Functional parity with the legacy workflow.
+- Canonical SKILL.md frontmatter schema.
+- `gaia-nfr` SKILL.md (pattern for the test-architect subagent integration mirrored here in Phase 6).
+- Foundation scripts implementation (deployed equivalents referenced in the Reconciliation Note).
+- Test infrastructure detectors aggregated in Phase 5.
+- Reference implementations (parity pattern and sibling skills):
   - `plugins/gaia/skills/gaia-nfr/SKILL.md` — test-architect subagent pattern (Phase 6 mirrors this).
   - `plugins/gaia/skills/gaia-creative-sprint/SKILL.md` — sequential multi-subagent orchestration pattern.
-- Legacy parity source (for reference only; not invoked from this skill; legacy path intentionally omitted from the body to satisfy the "zero legacy references" parity check — see E28-S105 test scenario 5).
+- Legacy parity source (for reference only; not invoked from this skill; legacy path intentionally omitted from the body to satisfy the "zero legacy references" parity check).

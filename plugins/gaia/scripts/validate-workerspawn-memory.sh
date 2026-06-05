@@ -1,17 +1,11 @@
 #!/usr/bin/env bash
-# validate-workerspawn-memory.sh — E28-S211 AC3 validator
+# validate-workerspawn-memory.sh — WorkerSpawn memory-loader invocation validator
 #
 # Asserts that every skill listed in
 #   plugins/gaia/skills/_workerspawn-manifest.yaml
 # embeds the canonical `memory-loader.sh {agent_id} {tier}` invocation in its
 # SKILL.md body. Exit 0 when all 20 skills comply; non-zero with a per-skill
 # diagnostic when any invocation is missing or malformed.
-#
-# Refs:
-#   FR-331 — Hybrid memory loading for WorkerSpawn skills
-#   ADR-014 — Tiered agent memory (tier ∈ {decision-log, ground-truth, all})
-#   ADR-046 — Hybrid memory-loading pattern (Path 2 = inline !memory-loader.sh)
-#   E28-S206 — Subagent invocation audit (Bucket 3: WorkerSpawn)
 #
 # Usage:
 #   validate-workerspawn-memory.sh [--plugin-root PATH]

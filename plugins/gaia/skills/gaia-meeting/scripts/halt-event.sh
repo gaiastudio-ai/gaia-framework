@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# halt-event.sh — gaia-meeting structured halt-event emitter (E76-S6, AC9)
+# halt-event.sh — gaia-meeting structured halt-event emitter
 #
 # Emits a deterministic single-line halt event to stdout for the live stream.
-# Per FR-MTG-28 / NFR-MTG-1 / AC9, every hard guardrail (charter, research,
-# cite-or-flag, write-boundary) terminates the meeting with this format:
+# Every hard guardrail (charter, research, cite-or-flag, write-boundary)
+# terminates the meeting with this format:
 #
 #   HALT condition=<NAME> agent=<ID|—> fr=<FR-MTG-ID> detail=<text>
 #

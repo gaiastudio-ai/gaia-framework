@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-status-discipline.sh — pre-commit guard for status-edit discipline (E59-S5).
+# check-status-discipline.sh — pre-commit guard for status-edit discipline.
 #
 # Purpose
 # -------
@@ -11,7 +11,7 @@
 #
 # Surfaces guarded
 # ----------------
-#   1. Story frontmatter `status:` line in either layout (E79-S4):
+#   1. Story frontmatter `status:` line in either layout:
 #      - canonical: `.gaia/artifacts/implementation-artifacts/epic-*/stories/E*-S*-*.md`
 #      - legacy flat: `docs/implementation-artifacts/E*-S*-*.md`
 #   2. `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` per-story `status:` keys
@@ -54,10 +54,6 @@
 #   check-status-discipline.sh --staged-files <file>          # synthetic list
 #   check-status-discipline.sh --help
 #
-# Refs: ADR-074 contract C3, AF-2026-04-28-7, ADR-042 (scripts-over-LLM),
-# ADR-067 (YOLO contract — pre-commit gate is outside YOLO scope).
-# Story: E59-S5.
-
 set -euo pipefail
 LC_ALL=C
 export LC_ALL
@@ -162,19 +158,18 @@ MARKER_KEY=$(marker_story_key || true)
 classify_path() {
   local p="$1"
   case "$p" in
-    # E96-S8 smoke-test follow-up: post-migration .gaia/ layout (ADR-111)
-    # NEW per-story layout (E105-S1 / ADR-127) — epic-*/{key}-{slug}/story.md.
+    # Per-story layout — epic-*/{key}-{slug}/story.md.
     # Listed before the stories/ case so the `*` in the latter cannot shadow it.
     .gaia/artifacts/implementation-artifacts/epic-*/E*-S*-*/story.md) printf 'story_frontmatter' ;;
     .gaia/artifacts/implementation-artifacts/epic-*/stories/E*-S*-*.md) printf 'story_frontmatter' ;;
     .gaia/artifacts/implementation-artifacts/E*-S*-*.md) printf 'story_frontmatter' ;;
     .gaia/state/sprint-status.yaml) printf 'sprint_status' ;;
     .gaia/artifacts/planning-artifacts/epics-and-stories.md) printf 'epics_md' ;;
-    # Legacy docs/ layout (pre-ADR-111) — accepted as fallback for back-compat.
+    # Legacy docs/ layout — accepted as fallback for back-compat.
     docs/implementation-artifacts/epic-*/E*-S*-*/story.md) printf 'story_frontmatter' ;;
-    # Canonical nested layout (E79-S4) — epic-*/stories/{key}-*.md
+    # Canonical nested layout — epic-*/stories/{key}-*.md
     docs/implementation-artifacts/epic-*/stories/E*-S*-*.md) printf 'story_frontmatter' ;;
-    # Legacy flat layout — read-only fallback until E79-S6 migration completes.
+    # Legacy flat layout — read-only fallback.
     docs/implementation-artifacts/E*-S*-*.md) printf 'story_frontmatter' ;;
     docs/implementation-artifacts/sprint-status.yaml) printf 'sprint_status' ;;
     docs/planning-artifacts/epics-and-stories.md) printf 'epics_md' ;;
@@ -242,7 +237,7 @@ detect_violations() {
       content = substr($0, 2)
       # Skip the +++ header line (path designator)
       if (content ~ /^\+\+/) next
-      # Surface 1: story frontmatter status: (canonical nested OR legacy flat path; E79-S4)
+      # Surface 1: story frontmatter status: (canonical nested OR legacy flat path)
       if (cur_file ~ /docs\/implementation-artifacts\/(epic-[^\/]+\/stories\/)?E[0-9]+-S[0-9]+-.+\.md$/ && content ~ /^status:[[:space:]]*/) {
         emit(cur_file, cur_lineno, content)
       }

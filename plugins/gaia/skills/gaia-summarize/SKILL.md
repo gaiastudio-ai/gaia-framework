@@ -10,26 +10,26 @@ orchestration_class: light-procedural
 
 You are producing an **executive summary** of a long document. The summary captures the document's main thesis, key decisions, action items (with owners where specified), and open / unresolved questions. It stays short — one to two pages at most — while preserving the nuances that matter. The summary is not a replacement for the source; it is a front door, and section references let the reader drill into the full document when needed.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/summarize-doc.xml` task (33 lines). Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model.
+This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/summarize-doc.xml` task (33 lines). The legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model.
 
 ## Critical Rules
 
 - **Extract the three canonical categories:** key decisions, action items, open questions. Every summary MUST surface each category if the source contains material for it. If a category is empty in the source, state "None" rather than silently omitting it.
 - **Keep the summary to 1-2 pages maximum** (roughly 400-900 words rendered). A summary longer than two pages has failed its purpose and must be compressed.
 - **Preserve critical nuances — don't oversimplify.** If a decision is contingent on an assumption, carry the assumption forward. If an action item has a deadline or dependency, carry that forward. Do not flatten qualifications into absolutes.
-- **Accept the target doc path as an argument.** If `$ARGUMENTS` is empty, ask "Which document should I summarize?" and use the user's response as the target path (per ADR-066 inline-ask contract). The inline-ask is an open-question indicator: in YOLO mode it MUST pause for user input (per ADR-067) — there is no safe default target document.
+- **Accept the target doc path as an argument.** If `$ARGUMENTS` is empty, ask "Which document should I summarize?" and use the user's response as the target path (inline-ask contract). The inline-ask is an open-question indicator: in YOLO mode it MUST pause for user input — there is no safe default target document.
 - **Include section references** (e.g., `see §4.2`) so readers who want more detail can jump straight to the relevant part of the source.
 - Do NOT write speculative content. If a decision is not made in the source, do not invent one; list it as an open question instead.
 
 ## Inputs
 
-- `$ARGUMENTS`: target document path. If empty, ask "Which document should I summarize?" and use the user's response as the target (per ADR-066). YOLO mode MUST pause for the answer (per ADR-067) — no safe default exists.
+- `$ARGUMENTS`: target document path. If empty, ask "Which document should I summarize?" and use the user's response as the target. YOLO mode MUST pause for the answer — no safe default exists.
 
 ## Instructions
 
 ### Step 1 — Load Document
 
-- If `$ARGUMENTS` is empty, ask the user: "Which document should I summarize?" and use the response as the target document path. Do NOT exit, do NOT print a usage message — the inline-ask is the contract (ADR-066). In YOLO mode, this is an open-question indicator: pause and wait for explicit user input rather than auto-proceeding (ADR-067) — there is no safe default target.
+- If `$ARGUMENTS` is empty, ask the user: "Which document should I summarize?" and use the response as the target document path. Do NOT exit, do NOT print a usage message — the inline-ask is the contract. In YOLO mode, this is an open-question indicator: pause and wait for explicit user input rather than auto-proceeding — there is no safe default target.
 - If `$ARGUMENTS` is provided, use it directly as the target path with no prompt (preserve the explicit-argument happy path).
 - Read the entire document with the Read tool.
 - Identify the document type (PRD, architecture, brief, retro, ADR, meeting notes, research report, etc.) and note its apparent purpose.
@@ -84,12 +84,12 @@ By default the summary is displayed to the user (matches the legacy task's behav
 
 ## References
 
-- Source: `_gaia/core/tasks/summarize-doc.xml` (legacy 33-line task body — ported per ADR-041 + ADR-042).
-- ADR-041: Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042: Scripts-over-LLM for Deterministic Operations.
-- ADR-048: Engine Deletion as Program-Closing Action — legacy task coexists with this skill until program close.
-- ADR-066: Inline-Ask vs Fail-Fast Contract — empty `$ARGUMENTS` triggers an inline ask, not a usage message.
-- ADR-067: YOLO Mode Contract — inline-ask is an open-question indicator and MUST pause in YOLO mode.
-- FR-323: Skill Conversion — slash-command identity preserved.
-- FR-371: Restore Inline-Ask on Empty Arguments for Cluster 5 document-processing skills.
-- NFR-053: Full v1.127.2-rc.1 Feature Parity.
+- Source: `_gaia/core/tasks/summarize-doc.xml` (legacy 33-line task body).
+- Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
+- Scripts-over-LLM for Deterministic Operations.
+- Engine Deletion as Program-Closing Action — legacy task coexists with this skill until program close.
+- Inline-Ask vs Fail-Fast Contract — empty `$ARGUMENTS` triggers an inline ask, not a usage message.
+- YOLO Mode Contract — inline-ask is an open-question indicator and MUST pause in YOLO mode.
+- Skill Conversion — slash-command identity preserved.
+- Restore Inline-Ask on Empty Arguments for document-processing skills.
+- Full v1.127.2-rc.1 Feature Parity.

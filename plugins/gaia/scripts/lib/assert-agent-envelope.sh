@@ -1,37 +1,26 @@
 #!/usr/bin/env bash
-# assert-agent-envelope.sh — Generic agent envelope assertion (E87-S1, ADR-104;
-# generalized by E90-S1, FR-MVB-1).
-#
-# Story: E87-S1 — Shared assert-agent-envelope.sh helper + ADR-104 anchor + memory scaffold.
-#        E87-S7 — Sentinel-Write Writer Shift (ADR-105).
-#        E90-S1 — Generalize with --expected-agent <id> flag (FR-MVB-1).
-# Anchor: ADR-104 — Val Bridge Migration: Main-Turn Agent Dispatch Across Val-Consuming Skills.
-#         ADR-105 — Sentinel-Write Writer Shift (amends ADR-104, E87-S7, 2026-05-13).
-# Trace: FR-477, FR-482, FR-483, FR-484, FR-MVB-1, NFR-064 (forgery resistance),
-#        NFR-065 (sequencing safety), NFR-066.
+# assert-agent-envelope.sh — Generic agent envelope assertion.
 #
 # Background:
-#   Claude Code 2.1.138 silently broke plugin `context: fork` dispatch
-#   (issue #49559). E87 migrates all Val DISPATCH call sites to main-turn
-#   Agent-tool dispatch per ADR-093 / ADR-104. This helper is the shared
-#   primitive every migrated Val consumer (E87-S2..S5) sources to verify
+#   Claude Code silently broke plugin `context: fork` dispatch. This helper
+#   is the shared primitive every migrated Val consumer sources to verify
 #   that a Val-dispatch sentinel passes forgery-resistance checks — closing
 #   the regression class documented in memory rule
 #   `feedback_add_feature_val_gate_fails_open.md` and the inline-Val
 #   bypass class in `feedback_fix_story_inline_revalidation_bypass.md`.
 #
-# Writer-shift (ADR-105 / E87-S7, 2026-05-13):
-#   The sentinel was originally written by the Val sub-agent itself
-#   (E87-S2 contract). ADR-105 shifts the writer to the orchestrator's
-#   main turn (via `lib/write-val-envelope.sh`) because the Claude Code
-#   substrate's content-integrity guard false-fires on sub-agent writes
-#   to `_memory/checkpoints/val-envelope-*.json` (incident
-#   AI-2026-05-13-13). The assertion logic below is UNCHANGED — the four
-#   checks (file exists, valid JSON, agent=val, persona_sig present)
-#   apply identically regardless of who wrote the sentinel. Forgery
-#   resistance is preserved because `persona_sig` is computed by Val
-#   from validator.md's on-disk sha256, which the orchestrator cannot
-#   fabricate without reading validator.md at the same revision.
+# Writer-shift (2026-05-13):
+#   The sentinel was originally written by the Val sub-agent itself.
+#   The writer was shifted to the orchestrator's main turn (via
+#   `lib/write-val-envelope.sh`) because the Claude Code substrate's
+#   content-integrity guard false-fires on sub-agent writes to
+#   `_memory/checkpoints/val-envelope-*.json`. The assertion logic below
+#   is UNCHANGED — the four checks (file exists, valid JSON, agent=val,
+#   persona_sig present) apply identically regardless of who wrote the
+#   sentinel. Forgery resistance is preserved because `persona_sig` is
+#   computed by Val from validator.md's on-disk sha256, which the
+#   orchestrator cannot fabricate without reading validator.md at the
+#   same revision.
 #
 # Contract:
 #   This file is intended to be SOURCED, not executed. Sourcing makes the
@@ -46,7 +35,7 @@
 #     3. `.agent` equals the expected-agent id (default "val")
 #     4. `.persona_sig` field is present and non-empty
 #
-#   The --expected-agent flag (E90-S1, FR-MVB-1) accepts either
+#   The --expected-agent flag accepts either
 #     --expected-agent <id>       (next-arg form)
 #     --expected-agent=<id>       (inline form)
 #   Default value when absent: "val" — preserves all existing call sites
@@ -72,35 +61,33 @@
 #   # Or for a non-Val subagent (e.g. /gaia-meeting PM turn):
 #   assert_agent_envelope "$sentinel_path" --expected-agent pm || exit $?
 #
-# Generalization scope (E90-S1):
-#   This helper is now a generic envelope-assertion primitive consumable
-#   by any subagent-dispatching skill that follows the E87-S2 Sentinel-Write
-#   Contract pattern. The Val sentinel-write contract in validator.md
-#   §Sentinel-Write Contract remains Val-specific — generalization is on
-#   the asserting side only. write-val-envelope.sh is intentionally NOT
-#   generalized by this story (deferred to E90-S2 if needed).
+# Generalization scope:
+#   This helper is a generic envelope-assertion primitive consumable by
+#   any subagent-dispatching skill that follows the Sentinel-Write Contract
+#   pattern. The Val sentinel-write contract in validator.md §Sentinel-Write
+#   Contract remains Val-specific — generalization is on the asserting side
+#   only. write-val-envelope.sh is intentionally NOT generalized here.
 #
 #   Example flag values: val (default), pm, architect, qa, ux-designer.
 #
-# Forgery resistance (NFR-064):
-#   The `.persona_sig` field is written by the Val agent persona (E87-S2
-#   shifts the sentinel-write origin into the Val persona itself). A
+# Forgery resistance:
+#   The `.persona_sig` field is written by the Val agent persona. A
 #   hand-crafted sentinel that omits `persona_sig` will fail check #4.
 #   Semantic verification of the persona_sig value (e.g. matching a
-#   sha256 of the validator agent template) is intentionally deferred to
-#   E87-S2 — this helper only enforces field presence.
+#   sha256 of the validator agent template) is intentionally deferred —
+#   this helper only enforces field presence.
 #
-# OPTIONAL `original_status` field (ADR-130 / E87-S8 / AF-2026-06-03-2):
+# OPTIONAL `original_status` field:
 #   The Val sub-agent envelope MAY carry an OPTIONAL `original_status` field
 #   (the pre-coercion OUTER envelope status, ∈ {PASS,WARNING,CRITICAL},
 #   present only when a downstream closed-enum reduction coerced the status —
 #   see validator.md §Sentinel-Write Contract). This asserter ACCEPTS the
 #   field as OPTIONAL: the four ordered checks below (file-exists, valid-JSON,
-#   agent, persona_sig) are agnostic to its presence. Per the NFR-95 golden
-#   invariant, `original_status` MUST NOT be added to any required-field set —
-#   assertion passes (exit 0) identically whether the field is present or
-#   absent. Back-compat: every existing sentinel without `original_status`
-#   asserts exactly as before. Do NOT add an `original_status` check here.
+#   agent, persona_sig) are agnostic to its presence. `original_status` MUST
+#   NOT be added to any required-field set — assertion passes (exit 0)
+#   identically whether the field is present or absent. Back-compat: every
+#   existing sentinel without `original_status` asserts exactly as before.
+#   Do NOT add an `original_status` check here.
 #
 # Source guard (idempotent re-source):
 #   The standard GAIA `_${NAME}_SH_SOURCED` guard short-circuits the
@@ -155,10 +142,9 @@ assert_agent_envelope() {
   local sentinel_path="${1:-}"
   shift || true
 
-  # Parse optional --expected-agent flag (E90-S1, FR-MVB-1). Default "val"
-  # preserves all 12 files / 77+ raw occurrences of pre-E90 callers
-  # unchanged. Supports both --expected-agent <id> (next-arg) and
-  # --expected-agent=<id> (inline) forms. Unknown flags HALT.
+  # Parse optional --expected-agent flag. Default "val" preserves all
+  # existing callers unchanged. Supports both --expected-agent <id>
+  # (next-arg) and --expected-agent=<id> (inline) forms. Unknown flags HALT.
   local expected_agent="val"
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -198,7 +184,7 @@ assert_agent_envelope() {
     _aae_halt "$sentinel_path" "$expected_agent"; return 1
   fi
 
-  # Check 4: .persona_sig present and non-empty (forgery resistance per NFR-064).
+  # Check 4: .persona_sig present and non-empty (forgery resistance).
   # Check 4 is agent-agnostic — it applies regardless of --expected-agent.
   local persona_sig_value
   persona_sig_value="$(jq -r '.persona_sig // ""' "$sentinel_path" 2>/dev/null)"

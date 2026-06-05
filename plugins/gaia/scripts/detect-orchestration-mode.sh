@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# detect-orchestration-mode.sh — E84-S3 / ADR-093 §"Dual-Mode Dispatch".
+# detect-orchestration-mode.sh — dual-mode dispatch resolver.
 #
 # Resolves which orchestration mode the framework should use at the start
 # of a GAIA skill execution. Emits exactly one of:
@@ -11,7 +11,7 @@
 #   - CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 (env or settings.json)
 #   - orchestration.mode: team in .gaia/config/project-config.yaml
 #
-# If either is absent, falls back silently to Mode A per FR-445 AC.
+# If either is absent, falls back silently to Mode A.
 #
 # Exit codes:
 #   0 — mode resolved (always); read stdout
@@ -38,9 +38,9 @@ Emits one of: subagent | team
 USAGE
 }
 
-# Source canonical-path helper (E96-S1, ADR-111). Default config_path uses
-# $GAIA_CONFIG_DIR (.gaia/config), with fallback to legacy config/ if .gaia/
-# is absent. --config CLI flag still overrides.
+# Source canonical-path helper. Default config_path uses $GAIA_CONFIG_DIR
+# (.gaia/config), with fallback to legacy config/ if .gaia/ is absent.
+# --config CLI flag still overrides.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/gaia-paths.sh
 . "$SCRIPT_DIR/lib/gaia-paths.sh"

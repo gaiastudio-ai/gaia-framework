@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# subcmd-status.sh — /gaia-test-automate --status sub-command (E72-S2)
+# subcmd-status.sh — /gaia-test-automate --status sub-command
 #
 # Reads a story file and emits a coverage map showing each AC mapped to
 # its TC ID, tier, and file path (or "(not yet automated)") plus a
@@ -13,10 +13,10 @@
 # When --index-file is supplied (or defaulted to <story-dir>/../../custom/
 # test-scenarios/index.yaml), the Custom scenarios block is sourced from the
 # canonical index.yaml — entries are filtered by the story's frontmatter key
-# and per-entry file_path is verified on disk per E72-S3 AC5/AC6.
+# and per-entry file_path is verified on disk.
 #
 # Output (stdout):
-#   Coverage map for E99-S99
+#   Coverage map for <story-key>
 #   AC1   TC-001  unit         tests/unit/foo.test.ts
 #   AC2   TC-002  integration  tests/int/bar.spec.ts
 #   AC3   —       —            (not yet automated)
@@ -31,7 +31,6 @@
 #   1 — story file missing / unreadable
 #   2 — caller error (missing required flag)
 #
-# Refs: E72-S2 AC1, AC2; FR-RSV2-40; source-report §5.8.
 
 set -euo pipefail
 LC_ALL=C
@@ -43,7 +42,7 @@ err() { printf '%s: error: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — /gaia-test-automate --status sub-command (E72-S2).
+$SCRIPT_NAME — /gaia-test-automate --status sub-command.
 
 Usage:
   $SCRIPT_NAME --story-file <path>
@@ -98,7 +97,7 @@ ac_list="$(awk '
 # Pass 2: build a TC-by-AC map from the "## Test Cases" markdown table.
 # Format of each row: | TC-NNN | AC-N | tier | file |
 # ---------------------------------------------------------------------------
-TMP_TC="$(mktemp -t e72s2-status.XXXXXX)"
+TMP_TC="$(mktemp -t subcmd-status.XXXXXX)"
 trap 'rm -f "$TMP_TC"' EXIT
 
 awk '
@@ -153,14 +152,14 @@ printf '\nSummary: %d/%d generated (%d%%) | %d pending automation\n' \
   "$generated" "$total" "$pct" "$pending"
 
 # ---------------------------------------------------------------------------
-# Custom scenarios block — sourced from custom/test-scenarios/index.yaml
-# (E72-S3 AC5/AC6). Filter by the current story_key. For each entry, validate
-# file_path on disk: empty → "(not yet automated)"; missing → append a
-# "(file not found)" warning suffix.
+# Custom scenarios block — sourced from custom/test-scenarios/index.yaml.
+# Filter by the current story_key. For each entry, validate file_path on
+# disk: empty → "(not yet automated)"; missing → append a "(file not found)"
+# warning suffix.
 #
 # When --index-file is unset, default to <story-dir>/../../custom/
 # test-scenarios/index.yaml. If the resolved index file is absent, skip the
-# block silently — pre-E72-S3 behavior.
+# block silently.
 # ---------------------------------------------------------------------------
 if [ -z "$INDEX_FILE" ]; then
   story_dir="$(dirname "$STORY_FILE")"
@@ -183,7 +182,7 @@ if [ -r "$INDEX_FILE" ]; then
       have_id=0; id=""; key=""; tier=""; desc=""; file=""
     }
     {
-      # Match `id: ...` or `cs_id: ...` — the latter is a legacy E72-S2 alias
+      # Match `id: ...` or `cs_id: ...` — the latter is a legacy alias
       # so backward-compat is preserved.
       if (match($0, /^[[:space:]]*(-[[:space:]]+)?(cs_)?id:[[:space:]]*/)) {
         v = substr($0, RSTART + RLENGTH); v = dequote(v)

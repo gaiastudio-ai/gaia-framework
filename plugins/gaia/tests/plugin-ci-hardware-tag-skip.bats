@@ -27,12 +27,13 @@ teardown() {
   grep -qF "'!hardware-dependent'" "$CI_YAML"
 }
 
-# ---------------- TC-SRF-1b: plugin-ci.yml comment cites the convention ----------------
-@test "TC-SRF-1b: plugin-ci.yml bats-tests job comment cites E91-S1 + FR-SRF-1 + AF-2026-05-14-9" {
+# ---------------- TC-SRF-1b: plugin-ci.yml documents the hardware-tag-skip convention ----------------
+@test "TC-SRF-1b: plugin-ci.yml bats-tests job documents the hardware-tag-skip convention" {
   [ -f "$CI_YAML" ]
-  grep -qF "E91-S1" "$CI_YAML"
-  grep -qF "FR-SRF-1" "$CI_YAML"
-  grep -qF "AF-2026-05-14-9" "$CI_YAML"
+  # The bats-tests job default-skips @hardware-dependent tests in CI; the
+  # convention is documented in the job comment and enforced by the env var.
+  grep -qF "hardware-dependent" "$CI_YAML"
+  grep -qF "BATS_FILTER_TAGS" "$CI_YAML"
 }
 
 # ---------------- TC-SRF-2: run-with-coverage.sh honors BATS_FILTER_TAGS ----------------

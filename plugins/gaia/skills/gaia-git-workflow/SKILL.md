@@ -9,11 +9,11 @@ orchestration_class: light-procedural
 
 Native Claude Code conversion of the legacy `_gaia/dev/skills/git-workflow.md` skill. Preserves the four sectioned-loading IDs (`branching`, `commits`, `pull-requests`, `conflict-resolution`) verbatim so JIT-loaders can request a single section.
 
-- ADR-041 — Native execution model via Claude Code Skills + Subagents + Plugins + Hooks. This skill no longer runs through `workflow.xml`; it is loaded directly by the native skill/subagent runtime.
-- ADR-042 — Scripts-over-LLM for deterministic operations. This skill is prose-only; any concrete `git` invocation lives in the calling agent or in a skill-local script, not inline here.
-- ADR-046 — Hybrid memory. This is a shared content skill and does NOT load agent memory sidecars.
+- Native execution model via Claude Code Skills + Subagents + Plugins + Hooks. This skill no longer runs through `workflow.xml`; it is loaded directly by the native skill/subagent runtime.
+- Scripts-over-LLM for deterministic operations. This skill is prose-only; any concrete `git` invocation lives in the calling agent or in a skill-local script, not inline here.
+- Hybrid memory. This is a shared content skill and does NOT load agent memory sidecars.
 
-> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile). The legacy `applicable_agents` frontmatter field does not map to the Claude Code SKILL schema, so it lives here as a prose note (per E28-S19 schema).
+> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile). The legacy `applicable_agents` frontmatter field does not map to the Claude Code SKILL schema, so it lives here as a prose note.
 
 <!-- SECTION: branching -->
 ## Branching Strategy
@@ -148,9 +148,8 @@ the failed job saw. Recipes that actually work:
    ```
 
 The empty-commit approach is preferred when you want an audit trail of
-the fix; close+reopen leaves no git footprint. (AF-2026-05-21-4 Finding 3
-— documented after the recipe was rediscovered during sprint-50
-dogfooding.)
+the fix; close+reopen leaves no git footprint. (Documented after the
+recipe was rediscovered during sprint dogfooding.)
 
 <!-- SECTION: conflict-resolution -->
 ## Conflict Resolution
@@ -186,7 +185,7 @@ dogfooding.)
 
 ## Test Scenarios
 
-Migrated from the legacy `test_scenarios` frontmatter array (per E28-S19 schema; legacy field is not retained in active frontmatter).
+Migrated from the legacy `test_scenarios` frontmatter array (legacy field is not retained in active frontmatter).
 
 | Scenario | Expected |
 |----------|----------|

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# adapters/script-deploy/run.sh — ADR-078 deploy-adapter contract for the reference
-# script-deploy adapter (E73-S5).
+# adapters/script-deploy/run.sh — deploy-adapter contract for the reference
+# script-deploy adapter.
 #
 # Contract:
 #   run.sh --env <env> --version <ver> --output-dir <dir>
@@ -15,8 +15,6 @@
 #   1 — user deploy script exited non-zero (BLOCKED upstream)
 #   2 — usage / missing flag
 #   127 — user deploy script not found or not executable
-#
-# Refs: ADR-078 §1, ADR-080 (Pattern A invariants), AC3 / AC12 of E73-S5.
 
 set -euo pipefail
 LC_ALL=C
@@ -28,7 +26,7 @@ OUTPUT_DIR=""
 
 usage() {
   cat <<EOF
-adapters/script-deploy/run.sh — Reference deploy adapter (E73-S5).
+adapters/script-deploy/run.sh — Reference deploy adapter.
 Usage:
   run.sh --env <env> --version <ver> --output-dir <dir>
 

@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-market-research skill finalize (E28-S37 + E42-S2)
+# finalize.sh — /gaia-market-research skill finalize
 #
-# E42-S2 extends the original Cluster 4 finalize scaffolding with a
-# 28-item post-completion checklist (18 script-verifiable + 10
+# Runs a 28-item post-completion checklist (18 script-verifiable + 10
 # LLM-checkable). The script-verifiable subset is enforced here; the
 # LLM-checkable subset is delegated to the host LLM via a structured
-# stderr payload that mirrors the E42-S1 / gaia-brainstorm convention.
+# stderr payload that mirrors the gaia-brainstorm convention.
 #
-# Responsibilities (per brief §Cluster 4 + story E42-S2):
-#   1. Run the script-verifiable subset of the 28 V1 checklist items
+# Responsibilities:
+#   1. Run the script-verifiable subset of the 28 checklist items
 #      against the market-research artifact.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
 #   3. Write a checkpoint via the shared checkpoint.sh helper.
@@ -16,7 +15,7 @@
 #
 # The observability side effects (3 + 4) MUST run on every invocation —
 # the checklist outcome never suppresses the checkpoint/event write
-# (matches gaia-brainstorm / E42-S1 contract).
+# (matches gaia-brainstorm contract).
 #
 # Exit codes:
 #   0 — finalize succeeded; all 18 script-verifiable items PASS.
@@ -54,7 +53,7 @@ die() { log "$*"; exit 1; }
 # directory. A missing artifact is NOT fatal to the observability side
 # effects — the checklist run is simply skipped.
 ARTIFACT=""
-# AF-2026-05-21-25 three-tier idiom + AF-2026-05-28-1 / Test07 M-5 slug freedom:
+# Three-tier idiom + slug freedom:
 # also accept `market-research-<slug>.md` (e.g. market-research-yara.md) the same
 # way brainstorm/product-brief accept `<name>-*.md`. The exact-filename check
 # previously caused finalize to silently skip when the analyst named the file
@@ -99,13 +98,13 @@ item_check() {
 # heading_present <file> <heading-text>
 # Pass when an H2 heading with the given text (case-insensitive,
 # literal body match; trailing content tolerated) is present.
-# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
-# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
-# uniform, permissive regex accepting optional numbered+lettered outline
-# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
-# divergent inline copies, so the same heading passed one skill's check and
-# failed another's. Sourced via a $0-relative path so it works whether or not
-# this script defines PLUGIN_SCRIPTS_DIR.
+# heading_present() is now a single shared implementation
+# (plugins/gaia/scripts/lib/heading-present.sh) with one uniform, permissive
+# regex accepting optional numbered+lettered outline prefixes (11, 11b, 1.2.3).
+# Previously finalize.sh scripts carried divergent inline copies, so the same
+# heading passed one skill's check and failed another's. Sourced via a
+# $0-relative path so it works whether or not this script defines
+# PLUGIN_SCRIPTS_DIR.
 _GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
 if [ -r "$_GAIA_HEADING_LIB" ]; then
   # shellcheck source=/dev/null
@@ -157,8 +156,8 @@ file_nonempty() {
 # dimension token (TAM|SAM|SOM) is followed within the next 3 lines by
 # a line that mentions "assumption" (case-insensitive). HTML comment
 # lines (<!-- ... -->) are excluded so a commented-out assumption note
-# cannot spoof a PASS. This is the canonical gate for E42-S2 AC2 — the
-# negative fixture omits the assumptions text so these items FAIL.
+# cannot spoof a PASS. The negative fixture omits the assumptions text
+# so these items FAIL.
 dimension_with_assumptions() {
   local f="$1" dim="$2"
   awk -v dim="$dim" '
@@ -224,9 +223,9 @@ if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
     "$(pattern_present "$ARTIFACT" 'positioning[[:space:]]+matrix|\|.*\|.*\|')"
 
   # Market Sizing — TAM/SAM/SOM estimates AND assumptions. The three
-  # "<dim> estimates provided with assumptions" items are the canonical
-  # anchor for E42-S2 VCP-CHK-04: the negative fixture omits the
-  # assumptions wording so these items MUST FAIL on that fixture.
+  # "<dim> estimates provided with assumptions" items gate on the
+  # negative fixture omitting the assumptions wording so these items
+  # MUST FAIL on that fixture.
   item_check "SV-14" "TAM estimate provided with assumptions" \
     "$(dimension_with_assumptions "$ARTIFACT" "TAM")"
   item_check "SV-15" "SAM estimate provided with assumptions" \
@@ -296,14 +295,14 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
-# helper itself logs warnings to stderr but never affects this script's
-# exit code. SKILL_NAME is resolved from the parent directory name so
-# the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
+# circuit to a no-op so the interactive prompt is preserved. Failure is
+# non-blocking — the auto-save helper itself logs warnings to stderr but
+# never affects this script's exit code. SKILL_NAME is resolved from
+# the parent directory name so the wire-in is identical across all
+# Phase 1-3 finalize.sh files.
 AUTOSAVE_LIB="$PLUGIN_SCRIPTS_DIR/lib/auto-save-memory.sh"
 SKILL_NAME="$(basename "$(cd "$SCRIPT_DIR/.." && pwd)")"
 if [ -f "$AUTOSAVE_LIB" ]; then

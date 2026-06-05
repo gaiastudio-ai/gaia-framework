@@ -10,11 +10,9 @@ orchestration_class: light-procedural
 
 # Figma Integration — OSS Stub
 
-> **This is the OSS stub.** The full `figma-integration` skill — design-tool MCP detection, design-token extraction, component spec generation, frame authoring, asset export, Figma import mode, and the design-to-implementation fidelity gate — is a premium capability and ships in the enterprise plugin (Cluster 17 / E28-S122). No premium extraction logic lives in this file by design — it is held in the enterprise plugin source tree and is activated only when the matching license and feature flag are present.
+> **This is the OSS stub.** The full `figma-integration` skill — design-tool MCP detection, design-token extraction, component spec generation, frame authoring, asset export, Figma import mode, and the design-to-implementation fidelity gate — is a premium capability and ships in the enterprise plugin. No premium extraction logic lives in this file by design — it is held in the enterprise plugin source tree and is activated only when the matching license and feature flag are present.
 >
 > **Premium upgrade available.** Install `gaia-enterprise` alongside this plugin and ensure the `figma-premium` feature flag is enabled on your license to activate the full capability set: `/plugin marketplace add gaiastudio-ai/gaia-enterprise && /plugin install gaia-enterprise`.
-
-**Traces to:** FR-332 (enterprise license gate), FR-323 (native skill conversion), NFR-048 (OSS/enterprise separation), NFR-053 (feature parity), ADR-041 (native execution model), ADR-043 (OSS/enterprise split).
 
 ## License Gate
 
@@ -25,17 +23,17 @@ This skill is gated behind the enterprise license flag. Two frontmatter fields d
 | `license` | `enterprise` | The callable skill body is reserved for enterprise-licensed workspaces. |
 | `feature_flag` | `figma-premium` | Runtime activation requires this feature flag. Without it, invocation resolves to a friendly "enterprise required" message and the consuming workflow degrades gracefully to markdown-only operation. |
 
-Per ADR-043, an OSS stub is always *loadable* — the linter and JIT loader both resolve this file without error — but invoking the skill body without the matching feature flag produces a non-blocking redirect rather than executing premium logic. The stub never contains the premium source at rest in the OSS git history.
+An OSS stub is always *loadable* — the linter and JIT loader both resolve this file without error — but invoking the skill body without the matching feature flag produces a non-blocking redirect rather than executing premium logic. The stub never contains the premium source at rest in the OSS git history.
 
 ## Enterprise Activation
 
 The premium `figma-integration` skill ships in the enterprise GAIA plugin. To enable Figma-aware workflows (create-ux, edit-ux, dev-story figma hook, code-review fidelity gate):
 
-1. Install the enterprise plugin alongside the OSS plugin. The enterprise plugin provides the full skill body under its own `plugins/gaia-enterprise/skills/figma-integration/` tree — see **E28-S122** for the delivery story and Cluster 17 for the surrounding enterprise bundle.
+1. Install the enterprise plugin alongside the OSS plugin. The enterprise plugin provides the full skill body under its own `plugins/gaia-enterprise/skills/figma-integration/` tree — see the surrounding enterprise bundle.
 2. Ensure your workspace has the `figma-premium` feature flag enabled. License validation is performed by the enterprise plugin's SessionStart hook; the OSS plugin does not ship license-check code.
 3. Once activated, the enterprise skill replaces this stub at load time — consuming workflows call the same skill name (`figma-integration`) and receive the full capability set.
 
-If the enterprise plugin is not installed, consuming workflows continue in markdown-only mode (the behavior mandated by the OSS path — see the legacy skill's "Zero-change path" and FR-143 graceful-fallback requirement).
+If the enterprise plugin is not installed, consuming workflows continue in markdown-only mode (the behavior mandated by the OSS path — see the legacy skill's "Zero-change path" graceful-fallback requirement).
 
 ## Capability Summary (Enterprise Only)
 
@@ -59,9 +57,9 @@ Workflows that previously JIT-loaded `_gaia/dev/skills/figma-integration.md` now
 1. If the enterprise plugin is installed and the `figma-premium` flag is enabled, the enterprise `figma-integration` SKILL.md is loaded — the full premium capability set becomes available.
 2. Otherwise, this OSS stub is loaded. Consuming workflows MUST detect the stub (presence of `license: enterprise` in the loaded frontmatter or an explicit capability probe) and degrade to markdown-only behavior. No MCP calls are attempted, no design-system artifacts are produced, no fidelity gate is enforced.
 
-## FR-140 Read/Write Classification Table
+## Read/Write Classification Table
 
-> **Policy contract — not premium implementation.** This table is the canonical FR-140 read-heavy/write-light enforcement source for every Figma MCP call any consuming workflow may attempt. The premium enterprise plugin implements the actual MCP wrappers; the classification rules (which call is read vs write, and which mode is permitted to issue it) live here so OSS and enterprise both agree on the policy. Cross-referenced from `.gaia/artifacts/planning-artifacts/architecture.md §10.17` (ADR-024) — the architecture document points back to this table.
+> **Policy contract — not premium implementation.** This table is the canonical read-heavy/write-light enforcement source for every Figma MCP call any consuming workflow may attempt. The premium enterprise plugin implements the actual MCP wrappers; the classification rules (which call is read vs write, and which mode is permitted to issue it) live here so OSS and enterprise both agree on the policy. Cross-referenced from `.gaia/artifacts/planning-artifacts/architecture.md §10.17` — the architecture document points back to this table.
 
 The table classifies every Figma MCP call the consuming workflows (`/gaia-create-ux`, `/gaia-edit-ux`, `/gaia-code-review` fidelity gate, `/gaia-dev-story` Figma hook) may issue. Two columns govern enforcement:
 
@@ -101,7 +99,7 @@ Backoff schedule (jittered exponential, ±10% jitter to avoid synchronized retri
 - Retry 4 — wait **8s**.
 - Retry 5 — wait **16s**.
 
-Cap any individual sleep at **30s** (the `8s` and `16s` entries above never exceed the cap; the cap is the safety ceiling for any future schedule extension). Maximum total retries: **max 5 retries**. After the 5th retry exhausts, the wrapper MUST emit `rate_limit_exhausted: {endpoint, retries_attempted, suggested_action}` and surface a clear error rather than crashing — partial outputs already written remain on disk and are reported as `incomplete` in the FR-140 audit.
+Cap any individual sleep at **30s** (the `8s` and `16s` entries above never exceed the cap; the cap is the safety ceiling for any future schedule extension). Maximum total retries: **max 5 retries**. After the 5th retry exhausts, the wrapper MUST emit `rate_limit_exhausted: {endpoint, retries_attempted, suggested_action}` and surface a clear error rather than crashing — partial outputs already written remain on disk and are reported as `incomplete` in the audit.
 
 The 429 wrapper attaches automatically to every Figma MCP call performed in Generate mode; Import-mode and read-only flows inherit the same wrapper because read calls also receive 429s.
 
@@ -111,7 +109,7 @@ The 429 wrapper attaches automatically to every Figma MCP call performed in Gene
 
 ### `validateFigmaFileKey(input)`
 
-Accepts a Figma URL or a bare file key string and returns the normalised key (or halts with an actionable error before any Figma API call). Reused by `/gaia-create-ux` Import mode (Step 9a / E46-S2 Subtask 3.1), `/gaia-edit-ux`, and the `/gaia-code-review` fidelity gate.
+Accepts a Figma URL or a bare file key string and returns the normalised key (or halts with an actionable error before any Figma API call). Reused by `/gaia-create-ux` Import mode (Step 9a), `/gaia-edit-ux`, and the `/gaia-code-review` fidelity gate.
 
 | Input form | Example | Outcome |
 |---|---|---|
@@ -126,7 +124,7 @@ The 22-character minimum is the canonical Figma file-key length per the URL conv
 
 ### `classifyViewport(width_px)`
 
-Maps a frame width (integer pixels) to one of the canonical viewport categories used by `/gaia-create-ux` Generate (Step 8b) and Import (Step 9c). Used by E46-S2 Subtask 4.1.
+Maps a frame width (integer pixels) to one of the canonical viewport categories used by `/gaia-create-ux` Generate (Step 8b) and Import (Step 9c).
 
 | `width_px` | Returned category | Notes |
 |---|---|---|
@@ -140,18 +138,9 @@ Maps a frame width (integer pixels) to one of the canonical viewport categories 
 
 **Exact match only** — no nearest-neighbour bucketing. A 400px frame returns `"custom"` with `actual_width: 400`, never `"375"`. This matches V1 behaviour and keeps the classification deterministic for reviewers (AC-EC8).
 
-## Traceability
+## Notes
 
-- **FR-140** — Read-heavy/write-light Figma MCP operation policy. The classification table above is the canonical enforcement source.
-- **FR-323** — Skill Conversion (native plugin layout for skills).
-- **FR-332** — Enterprise license gate declared via frontmatter.
-- **FR-350** — `/gaia-create-ux` Figma Mode Restoration. The audit and backoff contracts above are reused by `/gaia-create-ux` Generate mode (E46-S1) and `/gaia-create-ux` Import mode (E46-S2).
-- **NFR-048** — OSS plugin MUST NOT ship premium logic. The classification table and backoff schedule are *policy contracts*, not premium implementation; the actual MCP wrappers live in the enterprise plugin.
-- **NFR-053** — Feature parity preserved across OSS + enterprise split.
-- **ADR-024** — Figma MCP integration via shared skill with design-tool abstraction layer. See `architecture.md §10.17` for the canonical architectural reference.
-- **ADR-041** — Native execution model under Claude Code Skills + Subagents + Plugins + Hooks.
-- **ADR-043** — OSS / enterprise split mechanism and feature-flag gating.
-- **E28-S122** — Enterprise `figma-integration` delivery story (Cluster 17).
-- **E46-S1** — Generate-mode parity restoration + FR-140 audit infrastructure (this file's classification table + backoff contract).
-- **E46-S2** — Import-mode parity restoration; reuses the classification table and the audit data shape from E46-S1 unchanged.
+- The Read/Write classification table above is the canonical read-heavy/write-light enforcement source for Figma MCP operations.
+- The classification table and backoff schedule are *policy contracts*, not premium implementation; the actual MCP wrappers live in the enterprise plugin.
+- Figma MCP integration uses a shared skill with a design-tool abstraction layer. See `architecture.md §10.17` for the canonical architectural reference.
 - Legacy source: `_gaia/dev/skills/figma-integration.md` — retained in the running framework tree per CLAUDE.md (framework vs product separation).

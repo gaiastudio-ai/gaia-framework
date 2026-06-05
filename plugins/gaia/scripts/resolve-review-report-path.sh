@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# resolve-review-report-path.sh — single-source resolver for review-report write
-# paths (E105-S4 / ADR-127 §7.4 / Test05 F-046).
+# resolve-review-report-path.sh — single-source resolver for review-report write paths.
 #
 # The gaia-run-all-reviews canonical table is the source of the BASENAME for each
-# review type (FR-402 type-first: code-review-{key}.md, qa-tests-{key}.md, etc.).
+# review type (type-first: code-review-{key}.md, qa-tests-{key}.md, etc.).
 # This helper resolves the DIRECTORY the report should be written to, so all six
 # review skills + review-summary-gen.sh agree without re-implementing path logic:
 #
-#   - NEW canonical home (E105-S1 layout): the per-story `reviews/` subdir
+#   - NEW canonical home (per-story layout): the per-story `reviews/` subdir
 #     `${IMPL}/epic-{slug}/{key}-{slug}/reviews/<basename>` when the story lives
 #     in the new per-story layout (resolved via resolve-story-file.sh: a
 #     story.md whose parent dir carries the key). The reviews/ dir is created.
@@ -21,7 +20,7 @@
 #   resolve-review-report-path.sh --key <story_key> --type <review-type>
 #   resolve-review-report-path.sh --help
 #
-# <review-type> is the FR-402 type-first basename stem, e.g.:
+# <review-type> is the type-first basename stem, e.g.:
 #   code-review | qa-tests | security-review | test-automate-review |
 #   test-review | performance-review
 # The basename written is "<review-type>-<key>.md".
@@ -41,10 +40,10 @@ resolve-review-report-path.sh — resolve a review report's write path
 
 Usage: resolve-review-report-path.sh --key <story_key> --type <review-type>
 
-Prints the per-story reviews/ path (E105-S1 layout) when the story is in the new
-layout, else the flat implementation-artifacts/ path. Creates the per-story
-reviews/ dir on the new-layout path. <review-type> is the FR-402 stem, e.g.
-code-review; the basename is "<type>-<key>.md".
+Prints the per-story reviews/ path when the story is in the new layout, else
+the flat implementation-artifacts/ path. Creates the per-story reviews/ dir on
+the new-layout path. <review-type> is the type-first stem, e.g. code-review;
+the basename is "<type>-<key>.md".
 USAGE
   exit 0
 fi

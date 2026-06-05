@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 6 infrastructure-design skill setup (E28-S49, brief §Cluster 6 / P6-S5)
+# setup.sh — infrastructure-design skill setup
 #
-# Mechanical extension of the Cluster 4 reference implementation authored
-# under E28-S35 (gaia-brainstorm/scripts/setup.sh). Adds infra-design-specific
+# Mechanical extension of the brainstorm reference implementation
+# (gaia-brainstorm/scripts/setup.sh). Adds infra-design-specific
 # prereq gates:
 #   - architecture.md must exist (validate-gate file_exists)
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (architecture doc)
 #   3. Load the checkpoint state for this workflow

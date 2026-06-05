@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-history skill setup (E106-S1)
+# setup.sh — gaia-history skill setup
 #
-# Shared setup pattern from the E28-S17/S19/S21 foundation work.
-# Resolves config, validates gates, loads checkpoint state.
+# Shared setup pattern for resolving config, validating gates, and loading checkpoint state.
 #
 # Exit codes:
 #   0 — setup succeeded, skill body can run
@@ -43,7 +42,7 @@ done <<<"$config_output"
 # /gaia-history is a read-only dashboard that degrades gracefully: it renders
 # whatever sprint-archive yamls + retros exist and reports "(no history yet)"
 # when none are present. There is no hard prerequisite, so the gate is advisory
-# only — a missing artifact is NOT a fatal condition (E106-S1, AC5/AC6).
+# only — a missing artifact is NOT a fatal condition.
 if [ -x "$VALIDATE_GATE" ]; then
   if ! "$VALIDATE_GATE" file_exists >/dev/null 2>&1; then
     log "no upstream artifacts found — /gaia-history will render in empty-history mode (non-fatal)"

@@ -3,11 +3,9 @@
   "skill": "mobile",
   "name": "google-play-store",
   "applies_to_skills": ["review-mobile", "review-security"],
-  "description": "Google Play Store regime rubric — encodes Google Play Developer Program Policies (restricted content, deceptive behavior, malware, user data, families/children), the Data safety form requirements, and the annual targetSdkVersion / compileSdkVersion enforcement deadlines. Opt-in via project-config.yaml `compliance: [\"google-play-store\"]`. Layer 2 of the four-layer rubric composition (base + regimes + domain + project) per ADR-079 and ADR-081.",
+  "description": "Google Play Store regime rubric — encodes Google Play Developer Program Policies (restricted content, deceptive behavior, malware, user data, families/children), the Data safety form requirements, and the annual targetSdkVersion / compileSdkVersion enforcement deadlines. Opt-in via project-config.yaml `compliance: [\"google-play-store\"]`. Layer 2 of the four-layer rubric composition (base + regimes + domain + project).",
   "metadata": {
     "title": "Google Play Store regime rubric",
-    "story": "E74-S5",
-    "adr": "ADR-081",
     "regime_id": "google-play-store",
     "guidelines_version": "2025-Q2",
     "name": "google-play-store",

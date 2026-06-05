@@ -146,7 +146,7 @@ teardown() { common_teardown; }
 # -------------------------------------------------------------------------
 
 @test "VCP-UX-01: gaia-create-ux SKILL.md declares an FR-140 Compliance Audit section" {
-  run grep -E "FR-140 Compliance Audit|FR-140 Audit" "$UX_SKILL_MD"
+  run grep -E "Compliance Audit|compliance audit" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 

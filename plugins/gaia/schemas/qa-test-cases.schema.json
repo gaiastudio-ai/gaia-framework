@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gaiastudio.ai/schemas/qa-test-cases.schema.json",
-  "title": "GAIA qa-test-cases.json — Phase 3C TC generation output (E67-S4)",
-  "description": "Per-story QA test-case specifications produced by /gaia-review-qa Phase 3C for uncovered ACs. Consumed downstream by /gaia-test-automate. Each entry traces back to a specific AC in the story file. Refs: AC1, AC2, FR-RSV2-2, TC-RSV2-QAREVIEW-1, ADR-077.",
+  "title": "GAIA qa-test-cases.json — Phase 3C TC generation output",
+  "description": "Per-story QA test-case specifications produced by /gaia-review-qa Phase 3C for uncovered ACs. Consumed downstream by /gaia-test-automate. Each entry traces back to a specific AC in the story file.",
   "type": "array",
   "items": {
     "type": "object",
@@ -10,7 +10,7 @@
     "required": ["tc_id", "ac_ref", "description", "given", "when", "then", "type"],
     "properties": {
       "tc_id": {
-        "description": "Stable TC identifier in the form TC-{story_key}-{N} (e.g., TC-E67-S4-1).",
+        "description": "Stable TC identifier in the form TC-{story_key}-{N}.",
         "type": "string",
         "pattern": "^TC-E[0-9]+-S[0-9]+-[0-9]+$"
       },
