@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# transition-story-status.sh — E54-S3 unified atomic story-status transitions.
+# transition-story-status.sh — unified atomic story-status transitions.
 #
 # Atomically updates ALL FIVE locations a story status lives in, under flock,
 # with rollback on partial failure:
@@ -10,7 +10,7 @@
 #   4. per-epic shard `- **Status:** <state>` line under `### Story <KEY>:`
 #      (when a matching `*-e<EID>-*.md` shard exists in
 #      ${PLANNING_ARTIFACTS}/epics/; missing shards are NOT a divergence —
-#      see E59-S6 / AF-2026-05-08-6 / ADR-074 contract C3)
+#      see the per-epic shard contract C3)
 #   5. story-index.yaml entry (created if absent)
 #
 # This script eliminates a long-standing class of bug where the four files drift
@@ -48,10 +48,10 @@
 #   EPICS_AND_STORIES         — overrides default planning artifact path
 #   STORY_INDEX_YAML          — overrides per-epic index path resolution
 #                               (default: ${IMPLEMENTATION_ARTIFACTS}/epic-{epic_key}-{slug}/stories/story-index.yaml,
-#                                derived via lib/resolve-epic-slug.sh — E79-S3)
+#                                derived via lib/resolve-epic-slug.sh)
 #   STORY_STATUS_LOCK         — overrides default lock path
 #
-# story-index.yaml metadata enrichment (E63-S10 / Work Item 6.9):
+# story-index.yaml metadata enrichment:
 #   The script writes a 7-field metadata-rich entry to story-index.yaml plus
 #   the existing `status:` field, in this canonical order on every write:
 #     story_key, title, epic, priority, risk, author, file, status
@@ -60,11 +60,9 @@
 #   YAML quoting uniform — never `null`. Idempotency is byte-stable: re-running
 #   with identical inputs yields a byte-identical entry block.
 #
-#   Consumer:        plugins/gaia/skills/gaia-create-story/SKILL.md (E63-S11)
+#   Consumer:        plugins/gaia/skills/gaia-create-story/SKILL.md
 #   Source spec:     .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.9
-#   Contract source: ADR-074 contract C3 — sole-writer discipline for story-index.yaml
-#
-# Refs: AF-2026-04-28-3, AF-2026-04-28-7, FR-338, NFR-056, ADR-042, ADR-074.
+#   Contract source: sole-writer discipline for story-index.yaml
 
 set -euo pipefail
 LC_ALL=C
@@ -79,17 +77,17 @@ RESOLVE_EPIC_SLUG_LIB="$LIB_DIR/resolve-epic-slug.sh"
 # shellcheck source=lib/story-state-machine.sh
 . "$STATE_MACHINE_LIB"
 
-# E79-S3 — sourced for resolve_epic_slug() used to derive the per-epic
+# Sourced for resolve_epic_slug() used to derive the per-epic
 # story-index.yaml location. The library is sourceable with zero side
-# effects; the canonical-layout subsection of ADR-070 documents the
-# slug-derivation algorithm that single-sources from this helper.
+# effects; the canonical-layout slug-derivation algorithm single-sources
+# from this helper.
 # shellcheck source=lib/resolve-epic-slug.sh
 . "$RESOLVE_EPIC_SLUG_LIB"
 
 err() { printf '%s: error: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 
-# E64-S5 — script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
+# Script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
 #
 # Every tempfile-creating call site appends the resulting path to
 # _GAIA_TMP_PATHS and captures its index. After a successful rename over the
@@ -129,7 +127,7 @@ back on any partial failure.
 
 States: backlog | validating | ready-for-dev | in-progress | blocked | review | done
 
-Optional metadata flags (E63-S10 / Work Item 6.9):
+Optional metadata flags:
   --title --epic --priority --risk --author --file
     Override the corresponding field written to story-index.yaml. Each flag
     is optional; when omitted, the value falls back to the matching story
@@ -137,10 +135,10 @@ Optional metadata flags (E63-S10 / Work Item 6.9):
     `--file` flag defaults to the resolved story file path when omitted.
     Precedence: explicit flag > frontmatter > "" (empty quoted string).
 
-Reconcile flag (E59-S6 / AF-2026-05-08-6):
+Reconcile flag:
   --reconcile-only
     Replay every writer at the current frontmatter status without
-    triggering the TC-CSE-11 self-transition no-op. Use to bring a drifted
+    triggering the idempotent self-transition no-op. Use to bring a drifted
     per-epic shard back into alignment with the story-file source of
     truth. Skips state-machine validation (no edge to validate). The flag
     is mutually-compatible with --from; --to is optional in this mode and
@@ -164,14 +162,14 @@ esac
 STORY_KEY="$1"; shift || true
 NEW_STATUS=""
 EXPECTED_FROM=""
-# E59-S6 — `--reconcile-only` forces a self-transition that replays every
+# `--reconcile-only` forces a self-transition that replays every
 # writer at the current frontmatter status, used to bring a drifted shard
 # back into alignment with the story-file source of truth without violating
-# the TC-CSE-11 idempotent-self-transition contract (which short-circuits
+# the idempotent-self-transition contract (which short-circuits
 # normal --to <same> calls). Only effect: skip the no-op short-circuit.
 RECONCILE_ONLY=0
 
-# E63-S10 metadata enrichment flags. Each is "unset" by sentinel until proven
+# Metadata enrichment flags. Each is "unset" by sentinel until proven
 # otherwise so we can distinguish "explicit empty string" from "not provided".
 # Sentinel: leading null-byte-like marker `__TSS_UNSET__` (no story field can
 # legitimately equal this string; the resolver replaces it with the frontmatter
@@ -239,21 +237,16 @@ fi
 
 # ---------- Path resolution ----------
 #
-# Two-stage env-var precedence (E91-S3 / FR-SRF-3 / AI-2026-05-13-17):
+# Three-stage env-var precedence:
 #   Stage 1: CLAUDE_PROJECT_ROOT — supplied by Claude Code when invoked from the
 #            non-git project-root workspace (per CLAUDE.md §"Non-git project-root
 #            workspace (supported mode)").
 #   Stage 2: PROJECT_PATH — legacy in-tree gaia-framework invocation override.
 #   Stage 3: '.' fallback — preserves the legacy CWD-relative behavior.
-#
-# Sibling fix: AI-2026-05-13-12 applied the same walk-up at the
-# config-resolution layer (resolve-config.sh). E91-S3 mirrors it at the
-# story-state layer.
 
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
 
-# E96-S7 partial-4: smart-fallback — env-var > .gaia/<subdir>/ > legacy
-# <subdir>/. Env-var overrides win.
+# Smart-fallback — env-var > .gaia/<subdir>/ > legacy <subdir>/. Env-var overrides win.
 if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
   if [ -d "${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts" ]; then
     IMPLEMENTATION_ARTIFACTS="${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts"
@@ -269,18 +262,17 @@ if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
   fi
 fi
 if [ -z "${MEMORY_PATH:-}" ]; then
-  # AF-2026-05-27-3 (ADR-111): .gaia/memory is the only memory tree; legacy
-  # _memory fallback removed with the consolidation migration.
+  # .gaia/memory is the only memory tree; legacy _memory fallback removed
+  # with the consolidation migration.
   MEMORY_PATH="${PROJECT_PATH}/.gaia/memory"
 fi
 
-# E64-S4 — Resolve EPICS_AND_STORIES across the dual-layout invariant
-# (E53-S233 / ADR-070 / ADR-072). Mirrors validate-gate.sh::check_file_nonempty
-# resolution order:
+# Resolve EPICS_AND_STORIES across the dual-layout invariant.
+# Mirrors validate-gate.sh::check_file_nonempty resolution order:
 #   1. Flat path        ${PLANNING_ARTIFACTS}/epics-and-stories.md
 #   2. Sharded sibling  ${PLANNING_ARTIFACTS}/epics-and-stories/index.md
 #   3. Legacy alias     ${PLANNING_ARTIFACTS}/epics/index.md
-#                       (brownfield projects whose shard root pre-dates ADR-070)
+#                       (brownfield projects whose shard root pre-dates the dual-layout)
 # If the caller pre-set EPICS_AND_STORIES, that override wins unconditionally.
 # When NO layout exists on disk, fall back to the flat default so the existing
 # "epics-and-stories.md not found" guard still fires with the same log line
@@ -304,7 +296,7 @@ resolve_epics_and_stories_path() {
   printf '%s\n' "$flat"
 }
 EPICS_AND_STORIES="${EPICS_AND_STORIES:-$(resolve_epics_and_stories_path)}"
-# E79-S3 — STORY_INDEX_YAML is now resolved per-epic via resolve_epic_slug(),
+# STORY_INDEX_YAML is now resolved per-epic via resolve_epic_slug(),
 # AFTER the story file is located (we need the `epic:` frontmatter field).
 # The legacy flat path (`${IMPLEMENTATION_ARTIFACTS}/story-index.yaml`) is
 # READ-ONLY-FALLBACK only — the writer never targets it. See
@@ -314,18 +306,17 @@ STORY_STATUS_LOCK="${STORY_STATUS_LOCK:-${MEMORY_PATH}/.story-status.lock}"
 
 # Forward SPRINT_STATUS_YAML untouched if caller pre-set it.
 
-# ---------- Startup orphan-tmp sweep (E64-S6) ----------
+# ---------- Startup orphan-tmp sweep ----------
 #
 # Garbage-collect *.tmp.?????? files older than 60 minutes from the
 # documented artifact directories. Catches orphans left by `kill -9`,
-# OOM, or power loss (which bypass E64-S5's EXIT/INT/TERM trap).
+# OOM, or power loss (which bypass the script-level EXIT/INT/TERM trap).
 #
 # Bounded to the documented allowlist:
 #   - "${PLANNING_ARTIFACTS}/epics"
 #   - "${IMPLEMENTATION_ARTIFACTS}"
 # Never /tmp, never $HOME, never ${PROJECT_PATH} root. The 60-minute
-# threshold provides ~6x headroom over the tightest known concurrent
-# run (/gaia-sprint-plan @ ~10 min on 50+ stories).
+# threshold provides ~6x headroom over the tightest known concurrent run.
 #
 # Set GAIA_SKIP_ORPHAN_SWEEP=1 to disable (e.g. for forensic inspection).
 # Errors are swallowed (2>/dev/null); zero stdout (AC7 silent GC).
@@ -343,10 +334,10 @@ locate_story_file() {
   local key="$1"
   local pattern="${IMPLEMENTATION_ARTIFACTS}/${key}-*.md"
   local epic_pattern="${IMPLEMENTATION_ARTIFACTS}/epic-*/stories/${key}-*.md"
-  # E105-S1 / ADR-127: new per-story nested layout — epic-*/{key}-{slug}/story.md.
+  # New per-story nested layout — epic-*/{key}-{slug}/story.md.
   # The directory name carries the key (boundary "${key}-"); the basename is
   # story.md. The existing `template: story` frontmatter filter below rejects any
-  # E*-S*-*/story.md evidence-dir false-matches (Val W1), so this glob is safe to add.
+  # E*-S*-*/story.md evidence-dir false-matches, so this glob is safe to add.
   local perstory_pattern="${IMPLEMENTATION_ARTIFACTS}/epic-*/${key}-*/story.md"
 
   shopt -s nullglob
@@ -371,11 +362,11 @@ locate_story_file() {
     fi
   done
 
-  # E53-S231 — deduplicate canonical matches by realpath. After E53-S225
-  # introduced epic-grouped layout, top-level legacy filenames may exist as
-  # symlinks to the canonical epic-grouped path. Both resolve to the same
-  # inode, so they are not ambiguous — collapse them. Prefer the non-symlink
-  # (canonical) path when both forms appear.
+  # Deduplicate canonical matches by realpath. After epic-grouped layout was
+  # introduced, top-level legacy filenames may exist as symlinks to the
+  # canonical epic-grouped path. Both resolve to the same inode, so they are
+  # not ambiguous — collapse them. Prefer the non-symlink (canonical) path
+  # when both forms appear.
   if [ "${#canonical[@]}" -gt 1 ]; then
     local dedup=()
     local seen_realpaths=""
@@ -449,7 +440,7 @@ read_frontmatter_status() {
 }
 
 # Read an arbitrary scalar frontmatter field by name, returning the unquoted
-# value (or empty string if the field is absent / blank). Used by the E63-S10
+# value (or empty string if the field is absent / blank). Used by the
 # metadata enrichment fallback path. Strips surrounding single/double quotes
 # and whitespace; does not handle multiline / list values (the canonical
 # fields used here — title, epic, priority, risk, author — are all scalars).
@@ -475,8 +466,8 @@ read_frontmatter_field() {
   printf '%s' "$value"
 }
 
-# E79-S3 — Resolve the canonical per-epic story-index.yaml path.
-# E105-S1 / ADR-127 — layout-aware: the index co-locates with the story-file tree.
+# Resolve the canonical per-epic story-index.yaml path.
+# Layout-aware: the index co-locates with the story-file tree.
 #
 # Inputs:
 #   $1  story file path (used as the basename source for relative file:)
@@ -484,9 +475,7 @@ read_frontmatter_field() {
 #
 # Output (stdout): the absolute path to the per-epic story-index.yaml. The
 # subtree depends on the story-file layout so the index always sits at the
-# COMMON PARENT of the per-epic story files (closing the F-050 split-state gap
-# where the index landed under `stories/` but new story files live one level
-# up at `epic-{slug}/{key}-{slug}/story.md`):
+# COMMON PARENT of the per-epic story files:
 #   - NEW per-story layout (epic-{slug}/{key}-{slug}/story.md, no `/stories/`
 #     segment): `${IMPLEMENTATION_ARTIFACTS}/epic-{epic_key}-{slug}/story-index.yaml`
 #     (epic root — a sibling of the per-story dirs it indexes).
@@ -499,7 +488,7 @@ read_frontmatter_field() {
 #
 # On resolver failure (epic key not in epics-and-stories.md), prints a
 # tagged stderr error and exits 1 — there is no implicit fallback to the
-# flat path. Per AC4, the script MUST NEVER WRITE to the flat index.
+# flat path. The script MUST NEVER WRITE to the flat index.
 resolve_story_index_path() {
   local story_file="$1" epic_key="$2"
 
@@ -525,8 +514,8 @@ resolve_story_index_path() {
   fi
 
   # Layout discriminator: a story file whose basename is `story.md` and whose
-  # path has NO `/stories/` segment is the NEW E105-S1 per-story layout; its
-  # index belongs at the epic root. Everything else keeps the legacy `stories/`
+  # path has NO `/stories/` segment is the new per-story layout; its index
+  # belongs at the epic root. Everything else keeps the legacy `stories/`
   # index location. If an existing legacy index is already on disk for this
   # epic, prefer it (avoid stranding the prior index when a single epic mixes
   # layouts mid-migration).
@@ -550,14 +539,14 @@ resolve_story_index_path() {
   esac
 }
 
-# E79-S3 — Compute the canonical `file:` pointer for a story entry.
-# E105-S1 / ADR-127 — layout-aware pointer.
+# Compute the canonical `file:` pointer for a story entry.
+# Layout-aware pointer.
 #
 # The pointer is RELATIVE to the directory holding story-index.yaml so a reader
 # can resolve the story file from the index location:
-#   - Legacy nested/flat: the bare basename (e.g. "E79-S3-foo.md"). The index
+#   - Legacy nested/flat: the bare basename (e.g. "E10-S3-foo.md"). The index
 #     lives in `stories/` alongside the story files, so the basename suffices.
-#   - NEW per-story layout (basename `story.md`, no `/stories/` segment): the
+#   - New per-story layout (basename `story.md`, no `/stories/` segment): the
 #     index lives at the epic root, one level ABOVE the per-story dirs, so the
 #     pointer must include the per-story dir: "{key}-{slug}/story.md". A bare
 #     "story.md" would be ambiguous (every story shares that basename).
@@ -576,19 +565,19 @@ compute_story_index_file_pointer() {
   esac
 }
 
-# E79-S3 — Read-only legacy-flat fallback lookup.
+# Read-only legacy-flat fallback lookup.
 #
 # Reads the legacy flat `docs/implementation-artifacts/story-index.yaml`
 # (if present) and prints the matching entry block when <story_key> is
 # found. NEVER writes. Emits a single-line stderr WARNING tagged
 # `legacy-flat-fallback` whenever the fallback fires, so operators can
-# track residual flat-index reads ahead of E79-S6 migration.
+# track residual flat-index reads.
 #
 # Stdout: the matching entry block (header + child lines), or empty.
 # Return: 0 on hit, 1 on miss (no warning), 2 on flat file absent.
 #
-# Steady state (post E79-S6): the flat file is deleted; this helper
-# returns 2 silently (NO error / NO warning) per AC5.
+# Steady state (after migration): the flat file is deleted; this helper
+# returns 2 silently (NO error / NO warning).
 legacy_flat_index_lookup() {
   local key="$1"
   local flat="${LEGACY_FLAT_STORY_INDEX:-${IMPLEMENTATION_ARTIFACTS}/story-index.yaml}"
@@ -614,7 +603,7 @@ legacy_flat_index_lookup() {
     return 1
   fi
 
-  log "WARNING: legacy-flat-fallback fired for key=$key (read-only; migrate via E79-S6)"
+  log "WARNING: legacy-flat-fallback fired for key=$key (read-only; migrate to per-epic index)"
   printf '%s\n' "$block"
   return 0
 }
@@ -626,7 +615,7 @@ legacy_flat_index_lookup() {
 snapshot_for_rollback() {
   local file="$1"
   local snap="${file}.bak.tss.$$"
-  # E79-S3 — Ensure the parent dir exists. The snapshot marker file
+  # Ensure the parent dir exists. The snapshot marker file
   # (`${snap}.absent`) is created in the same dir as the target, which
   # for per-epic story-index.yaml may not yet exist on first transition.
   mkdir -p "$(dirname "$file")"
@@ -665,7 +654,7 @@ rewrite_frontmatter() {
   local file="$1" new_status="$2"
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
-  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  # Register tmp for script-level EXIT/INT/TERM cleanup.
   local _tmp_idx
   _GAIA_TMP_PATHS+=("$tmp")
   _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
@@ -718,7 +707,7 @@ rewrite_frontmatter() {
     err "failed to mv tempfile over '$file'"
     exit 1
   fi
-  # E64-S5: mv succeeded — clear the slot so the EXIT trap won't rm the renamed file.
+  # mv succeeded — clear the slot so the EXIT trap won't rm the renamed file.
   _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
@@ -738,10 +727,10 @@ rewrite_frontmatter() {
 update_sprint_status_yaml() {
   local key="$1" new_status="$2"
 
-  # AF-2026-05-28-1 / Test07 H-4: route sprint-status.yaml resolution through the
-  # shared resolver so the canonical .gaia/state/ home is rung 1 (ADR-111) and
-  # the legacy .gaia/artifacts/implementation-artifacts/ home is a read-compat
-  # fallback. The previous default (${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml)
+  # Route sprint-status.yaml resolution through the shared resolver so the
+  # canonical .gaia/state/ home is rung 1 and the legacy
+  # .gaia/artifacts/implementation-artifacts/ home is a read-compat fallback.
+  # The previous default (${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml)
   # never matched what sprint-state.sh writes on a fresh project — every
   # transition WARNED "sprint-status.yaml is missing" and the yaml surface was
   # silently NOT updated, requiring a manual `sprint-state.sh reconcile` to fix.
@@ -763,8 +752,8 @@ update_sprint_status_yaml() {
   fi
 
   if [ ! -s "$yaml" ]; then
-    # F-019 (Test04): the four-surface atomic transition degrades to three
-    # surfaces when sprint-status.yaml is absent. That is LEGITIMATE for a
+    # The four-surface atomic transition degrades to three surfaces when
+    # sprint-status.yaml is absent. That is LEGITIMATE for a
     # backlog story (sprint_id: null) in a fresh/no-sprint project — stay quiet.
     # But if the story HAS a sprint_id set, the missing yaml is real drift: the
     # story believes it belongs to a sprint whose status file is gone. Surface
@@ -790,7 +779,7 @@ update_sprint_status_yaml() {
   # would only matter for non-transition writers).
   local tmp
   tmp=$(mktemp "${yaml}.tmp.XXXXXX")
-  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  # Register tmp for script-level EXIT/INT/TERM cleanup.
   local _tmp_idx
   _GAIA_TMP_PATHS+=("$tmp")
   _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
@@ -831,9 +820,9 @@ update_sprint_status_yaml() {
     rm -f "$tmp"
     trap - RETURN
     if [ $rc -eq 2 ]; then
-      # E55-S13 D6 — suppress the skip log when the story is legitimately in
-      # the backlog (sprint_id: null in story frontmatter). Real drift (sprint_id
-      # SET but no entry in sprint-status.yaml) still warns as before.
+      # Suppress the skip log when the story is legitimately in the backlog
+      # (sprint_id: null in story frontmatter). Real drift (sprint_id SET but
+      # no entry in sprint-status.yaml) still warns as before.
       local _sprint_id=""
       if [ -n "${STORY_FILE:-}" ] && [ -f "${STORY_FILE:-}" ]; then
         _sprint_id="$(read_frontmatter_field "$STORY_FILE" sprint_id)"
@@ -854,7 +843,7 @@ update_sprint_status_yaml() {
     err "failed to mv tempfile over '$yaml'"
     exit 1
   fi
-  # E64-S5: mv succeeded — clear the slot.
+  # mv succeeded — clear the slot.
   _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
@@ -874,7 +863,7 @@ update_epics_and_stories() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
-  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  # Register tmp for script-level EXIT/INT/TERM cleanup.
   local _tmp_idx
   _GAIA_TMP_PATHS+=("$tmp")
   _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
@@ -942,7 +931,7 @@ update_epics_and_stories() {
       }
     }
   ' "$file" > "$tmp" && local rc=0 || local rc=$?
-  # E64-S4: explicit `&&/||` capture defangs `set -e` so the soft-warn rc=3
+  # Explicit `&&/||` capture defangs `set -e` so the soft-warn rc=3
   # path (story-not-found, block_seen=0) inside the awk END action is
   # reachable. Without this guard, awk's exit 3 cascades into the EXIT trap
   # and triggers rollback (rc=8) — making transitions on stories absent from
@@ -969,18 +958,17 @@ update_epics_and_stories() {
     err "failed to mv tempfile over '$file'"
     exit 1
   fi
-  # E64-S5: mv succeeded — clear the slot.
+  # mv succeeded — clear the slot.
   _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
-# E59-S6 — Glob the matching per-epic shard for a story key.
+# Glob the matching per-epic shard for a story key.
 #
 # Stdout: nothing on miss, 'OK\t<path>' on a unique match, 'MULTI\t<path1>;<path2>;...'
 # on a multi-match. The single-source-of-truth helper for both the writer
 # (update_per_epic_shard) and the read-only snapshot resolver
-# (resolve_shard_path_for_key). Keeps the resolver math in one place so the
-# bash3.2 BASH_REMATCH + glob idiom is not duplicated.
+# (resolve_shard_path_for_key). Keeps the resolver math in one place.
 _glob_shard_for_key() {
   local key="$1"
   local eid
@@ -1010,7 +998,7 @@ _glob_shard_for_key() {
   printf 'MULTI\t%s\n' "$joined"
 }
 
-# E59-S6 — Mirror the per-story `- **Status:** <state>` line into the
+# Mirror the per-story `- **Status:** <state>` line into the
 # matching per-epic shard at `${PLANNING_ARTIFACTS}/epics/*-e<EID>-*.md`.
 #
 # Resolver:
@@ -1024,8 +1012,7 @@ _glob_shard_for_key() {
 #        1 → proceed to the awk-based per-story status rewrite.
 #        ≥ 2 → canonical error + rollback (a multi-match means two shards
 #              both claim the same epic, which is a structural break in the
-#              per-epic-shard contract per ADR-070; failing loud is the
-#              right behaviour — see Dev Notes in E59-S6.md).
+#              per-epic-shard contract; failing loud is the right behaviour).
 #
 # Inside the matching shard:
 #   - If the shard does NOT contain a `### Story <STORY_KEY>:` block, emit
@@ -1035,15 +1022,13 @@ _glob_shard_for_key() {
 #     `### Story <STORY_KEY>:` block to `- **Status:** <NEW_STATUS>`,
 #     preserving every other byte. The block boundary is the next
 #     `### Story` header or top-level `## ` heading.
-#
-# Refs: AF-2026-05-08-6, ADR-070, ADR-074 contract C3, TC-TSS-SHARD-1..5.
 update_per_epic_shard() {
   local key="$1" new_status="$2"
   local glob_out kind shard
   glob_out="$(_glob_shard_for_key "$key")"
-  # E55-S13 D6 — suppress the "no per-epic shard entry" log when the story
-  # is legitimately in the backlog (sprint_id: null). For non-backlog stories
-  # the absence of a shard is real drift and still warns.
+  # Suppress the "no per-epic shard entry" log when the story is legitimately
+  # in the backlog (sprint_id: null). For non-backlog stories the absence of
+  # a shard is real drift and still warns.
   local _sprint_id=""
   if [ -n "${STORY_FILE:-}" ] && [ -f "${STORY_FILE:-}" ]; then
     _sprint_id="$(read_frontmatter_field "$STORY_FILE" sprint_id)"
@@ -1072,7 +1057,7 @@ update_per_epic_shard() {
   # Rewrite the per-story Status line.
   local tmp
   tmp=$(mktemp "${shard}.tmp.XXXXXX")
-  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  # Register tmp for script-level EXIT/INT/TERM cleanup.
   local _tmp_idx
   _GAIA_TMP_PATHS+=("$tmp")
   _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
@@ -1126,12 +1111,12 @@ update_per_epic_shard() {
     err "failed to mv tempfile over '$shard'"
     exit 1
   fi
-  # E64-S5: mv succeeded — clear the slot.
+  # mv succeeded — clear the slot.
   _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
 
-# E59-S6 — Resolve the matching per-epic shard path for a given story key.
+# Resolve the matching per-epic shard path for a given story key.
 # Read-only delegate to _glob_shard_for_key — used by the snapshot path so
 # rollback can restore the shard if the writer touched it.
 #
@@ -1139,6 +1124,7 @@ update_per_epic_shard() {
 # `### Story <KEY>:` block; empty on zero-match, multi-match, or no-block
 # (the writer handles those cases — the snapshot path only has work when
 # there is exactly one shard with the relevant story block to back up).
+
 resolve_shard_path_for_key() {
   local key="$1"
   local glob_out kind shard
@@ -1154,7 +1140,7 @@ resolve_shard_path_for_key() {
 
 # Update or insert the story's metadata-rich entry in story-index.yaml.
 #
-# E63-S10 / Work Item 6.9 — the entry block is the canonical 8-line form, in
+# The entry block is the canonical 8-line form, in
 # this order on every write (idempotency relies on stable ordering):
 #
 #   <key>:
@@ -1200,7 +1186,7 @@ update_story_index_yaml() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
-  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  # Register tmp for script-level EXIT/INT/TERM cleanup.
   local _tmp_idx
   _GAIA_TMP_PATHS+=("$tmp")
   _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
@@ -1294,7 +1280,7 @@ update_story_index_yaml() {
     err "failed to mv tempfile over '$file'"
     exit 1
   fi
-  # E64-S5: mv succeeded — clear the slot.
+  # mv succeeded — clear the slot.
   _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
@@ -1304,7 +1290,7 @@ update_story_index_yaml() {
 # Resolve the story file (exit 2/3 on missing/multiple).
 STORY_FILE="$(locate_story_file "$STORY_KEY")"
 
-# E63-S10 metadata resolution: explicit flag > frontmatter value > "" empty.
+# Metadata resolution: explicit flag > frontmatter value > "" empty.
 # Only read the frontmatter when at least one field is unset (small perf win;
 # also avoids redundant disk reads when the caller supplies all six flags).
 resolve_meta() {
@@ -1321,14 +1307,14 @@ META_EPIC="$(resolve_meta "$META_EPIC" epic)"
 META_PRIORITY="$(resolve_meta "$META_PRIORITY" priority)"
 META_RISK="$(resolve_meta "$META_RISK" risk)"
 META_AUTHOR="$(resolve_meta "$META_AUTHOR" author)"
-# E79-S3 — `file:` pointer is RELATIVE to the per-epic `stories/` directory
+# The `file:` pointer is RELATIVE to the per-epic `stories/` directory
 # (bare basename), not the absolute or project-root-relative path. Caller
 # may still override with --file for forensic / migration tooling.
 if [ "$META_FILE" = "$TSS_UNSET" ]; then
   META_FILE="$(compute_story_index_file_pointer "$STORY_FILE")"
 fi
 
-# E79-S3 — Resolve the per-epic story-index.yaml path. Uses the
+# Resolve the per-epic story-index.yaml path. Uses the
 # `epic:` frontmatter field (or the --epic flag override). The env
 # override STORY_INDEX_YAML wins unconditionally for tests / brownfield.
 STORY_INDEX_YAML="$(resolve_story_index_path "$STORY_FILE" "$META_EPIC")"
@@ -1345,8 +1331,8 @@ fi
 
 CURRENT_STATUS="$(read_frontmatter_status "$STORY_FILE")"
 
-# E59-S6 — `--reconcile-only` mode: replay every writer at the current
-# frontmatter status without short-circuiting on the self-transition no-op.
+# `--reconcile-only` mode: replay every writer at the current frontmatter
+# status without short-circuiting on the self-transition no-op.
 # The flag's only effect is to skip the no-op exit below; the writer chain
 # runs unchanged so a drifted shard can be brought back into alignment with
 # the story-file source of truth. State-machine validation is skipped (a
@@ -1376,18 +1362,17 @@ if [ "$RECONCILE_ONLY" != "1" ] && ! validate_story_transition "$CURRENT_STATUS"
   exit 7
 fi
 
-# AF-2026-05-31-2 / Test13 F-27 — composite review-gate enforcement on
-# review → done. Prior to this guard the raw `transition-story-status.sh
-# --to done` succeeded even when all 6 Review Gate rows were UNVERIFIED,
-# because the composite-gate check lived only inside `/gaia-dev-story`
-# Step 16 + `/gaia-check-review-gate`. Folding the gate directly into
-# the transition primitive closes the bypass: any caller (including
-# direct CLI invocation, ad-hoc scripts, or a buggy skill) reaching for
-# review → done is now refused unless the composite is COMPLETE. The
-# escape hatch `GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE=1` (operator-set,
-# audit-trail discoverable) preserves the documented `/gaia-correct-course`
-# composite-verdict escape path for genuine edge cases (third-party
-# block, infra outage) so the guard doesn't strand legitimate recovery.
+# Composite review-gate enforcement on review → done.
+# Prior to this guard the raw `transition-story-status.sh --to done` succeeded
+# even when all 6 Review Gate rows were UNVERIFIED, because the composite-gate
+# check lived only inside `/gaia-dev-story` Step 16 + `/gaia-check-review-gate`.
+# Folding the gate directly into the transition primitive closes the bypass:
+# any caller (including direct CLI invocation, ad-hoc scripts, or a buggy
+# skill) reaching for review → done is now refused unless the composite is
+# COMPLETE. The escape hatch `GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE=1`
+# (operator-set, audit-trail discoverable) preserves the documented
+# `/gaia-correct-course` composite-verdict escape path for genuine edge cases
+# (third-party block, infra outage) so the guard doesn't strand recovery.
 if [ "$RECONCILE_ONLY" != "1" ] \
    && [ "$CURRENT_STATUS" = "review" ] \
    && [ "$NEW_STATUS" = "done" ] \
@@ -1412,7 +1397,7 @@ SNAP_YAML=""
 SNAP_EPICS="$(snapshot_for_rollback "$EPICS_AND_STORIES")"
 SNAP_INDEX="$(snapshot_for_rollback "$STORY_INDEX_YAML")"
 
-# E59-S6 — Resolve and snapshot the per-epic shard if a unique match exists.
+# Resolve and snapshot the per-epic shard if a unique match exists.
 # Rollback restores the shard symmetrically with the four existing snapshots.
 SHARD_PATH=""
 SNAP_SHARD=""
@@ -1421,9 +1406,9 @@ if [ -n "$SHARD_PATH" ] && [ -e "$SHARD_PATH" ]; then
   SNAP_SHARD="$(snapshot_for_rollback "$SHARD_PATH")"
 fi
 
-# AF-2026-05-28-1 / Test07 H-4: route the rollback-snapshot yaml resolution
-# through the same shared resolver as update_sprint_status_yaml() so the
-# snapshot and the writer can't disagree on canonical location.
+# Route the rollback-snapshot yaml resolution through the same shared resolver
+# as update_sprint_status_yaml() so the snapshot and the writer can't disagree
+# on canonical location.
 YAML_PATH_FOR_SNAP="${SPRINT_STATUS_YAML:-}"
 if [ -z "$YAML_PATH_FOR_SNAP" ]; then
   _resolver_snap="$LIB_DIR/resolve-artifact-path.sh"
@@ -1451,7 +1436,7 @@ rollback() {
 }
 
 # Custom failure handler: roll back, then exit 8.
-# E64-S5: chain through _cleanup_tmps so any orphan tmp registered during
+# Chain through _cleanup_tmps so any orphan tmp registered during
 # rewrite_*/update_* helpers (between mktemp and a failed mv) is removed.
 TSS_ROLLBACK_PENDING=1
 trap '
@@ -1471,23 +1456,23 @@ trap '
 rewrite_frontmatter "$STORY_FILE" "$NEW_STATUS"
 update_sprint_status_yaml "$STORY_KEY" "$NEW_STATUS"
 update_epics_and_stories "$STORY_KEY" "$NEW_STATUS"
-# E59-S6 — Fifth writer: per-epic shard. Sits between the monolith writer
+# Fifth writer: per-epic shard. Sits between the monolith writer
 # (update_epics_and_stories) and the story-index.yaml writer
-# (update_story_index_yaml) per AC1 ordering.
+# (update_story_index_yaml).
 update_per_epic_shard "$STORY_KEY" "$NEW_STATUS"
 update_story_index_yaml "$STORY_KEY" "$NEW_STATUS" \
   "$META_TITLE" "$META_EPIC" "$META_PRIORITY" "$META_RISK" "$META_AUTHOR" "$META_FILE"
 
 # All five files written successfully — commit.
 TSS_ROLLBACK_PENDING=0
-# E64-S5: restore the plain _cleanup_tmps EXIT trap so any later failure
+# Restore the plain _cleanup_tmps EXIT trap so any later failure
 # (e.g., during marker write) still cleans orphan tmps. Slots cleared above
 # make this a no-op on the happy path.
 trap '_cleanup_tmps' EXIT
 
 cleanup_snapshots "$SNAP_STORY" "$SNAP_YAML" "$SNAP_EPICS" "$SNAP_SHARD" "$SNAP_INDEX"
 
-# Write status-transition marker (E59-S5 / ADR-074 contract C3).
+# Write status-transition marker.
 # The marker lets the pre-commit `check-status-discipline.sh` distinguish
 # legitimate transitions from manual `status:` edits. Marker is consumed by
 # the discipline check during the same commit cycle. Best-effort — never

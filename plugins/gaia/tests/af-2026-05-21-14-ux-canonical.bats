@@ -51,8 +51,8 @@ resolve_ux_design_path() {
 }
 
 @test "AF-21-14: gaia-edit-ux/SKILL.md Mission paragraph documents the three-tier idiom" {
-  grep -qF 'AF-2026-05-21-14' "$EDIT_UX_SKILL"
   grep -qF 'three-tier idiom' "$EDIT_UX_SKILL"
+  grep -qF 'UX_DESIGN_PATH' "$EDIT_UX_SKILL"
 }
 
 # --- Regression guard: gaia-create-ux/scripts/finalize.sh canonical-first intact ---

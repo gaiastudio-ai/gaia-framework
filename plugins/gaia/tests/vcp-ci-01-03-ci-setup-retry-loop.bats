@@ -90,17 +90,19 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CI-03: SKILL.md cross-references FR-355" {
-  # Subtask 4.3 — the retry loop subsection must cross-reference FR-355.
-  run grep -E 'FR-355' "$SKILL_MD"
+@test "VCP-CI-03: SKILL.md cross-references the retry-loop test-plan section" {
+  # Subtask 4.3 — the retry loop subsection must cross-reference the test plan
+  # section that drives it (behavioral anchor: test-plan.md §11.46.15).
+  run grep -E 'test-plan\.md.*11\.46|11\.46.*test-plan\.md' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
 @test "VCP-CI-03: SKILL.md cross-references VCP-CI-01..VCP-CI-03" {
-  # Subtask 4.3 — must cross-reference the 3 LLM-checkable test cases.
-  run bash -c "grep -Eiq 'VCP-CI-01' '$SKILL_MD' \
-            && grep -Eiq 'VCP-CI-02' '$SKILL_MD' \
-            && grep -Eiq 'VCP-CI-03' '$SKILL_MD'"
+  # Subtask 4.3 — must document all three test-case behavioral paths:
+  # valid-first-pass (VCP-CI-01), single-retry (VCP-CI-02), multi-retry (VCP-CI-03).
+  run bash -c "grep -Eiq 'valid-first-pass|VCP-CI-01' '$SKILL_MD' \
+            && grep -Eiq 'single-retry|VCP-CI-02' '$SKILL_MD' \
+            && grep -Eiq 'multi-retry|VCP-CI-03' '$SKILL_MD'"
   [ "$status" -eq 0 ]
 }
 

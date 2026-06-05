@@ -1,12 +1,12 @@
 # A11y Quality Rubric — `/gaia-test-a11y` Phase 3B
 
 > JIT-loaded by Phase 3B LLM judgment. Categories and severity tiers conform
-> to ADR-075 (LLM-cannot-override invariant). The LLM applies this rubric on
+> to the LLM-cannot-override invariant. The LLM applies this rubric on
 > top of the deterministic Phase 3A `analysis-results.json` artifact — it
 > CANNOT override an `errored` toolkit check or a deterministic Critical-tier
 > WCAG violation surfaced by the adapter.
 
-## Shared rubric contract (E69-S2)
+## Shared rubric contract
 
 This rubric is byte-identical to the one consumed by `/gaia-review-a11y`
 (pre-merge) and `/gaia-validate-design-a11y` (planning). The base layer lives
@@ -98,9 +98,7 @@ Examples:
 
 ## Cross-reference
 
-- `plugins/gaia/rubrics/base/a11y.json` — Layer 1 (E68-S3, ADR-079).
+- `plugins/gaia/rubrics/base/a11y.json` — Layer 1.
 - `plugins/gaia/rubrics/regimes/wcag-2.1-aa.json` — AA regime layer.
 - `plugins/gaia/rubrics/regimes/wcag-2.1-aaa.json` — AAA regime layer.
 - `plugins/gaia/skills/gaia-review-a11y/SKILL.md` — pre-merge sibling.
-- ADR-079 — Layered rubric loading.
-- E69-S2 — three-phase a11y reorganization.

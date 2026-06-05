@@ -137,6 +137,6 @@ teardown() { common_teardown; }
     > "$BATS_TEST_TMPDIR/.gaia/config/project-config.yaml"
   CLAUDE_PROJECT_ROOT="$BATS_TEST_TMPDIR" \
     run bash "$PLUGIN_ROOT/scripts/resolve-config.sh" implementation_artifacts
-  [[ "$output" == *'non-canonical (accepted per ADR-087'* ]]
+  [[ "$output" == *'non-canonical (accepted'* ]]
   [[ "$output" != *'unknown project_kind'* ]]
 }

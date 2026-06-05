@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# phase3a-collect.sh — gaia-test-e2e Phase 3A evidence collection (E73-S1, AC5, AC10).
+# phase3a-collect.sh — gaia-test-e2e Phase 3A evidence collection.
 #
 # Deterministic shell driver that:
 #   1. Probes adapter availability via tool-availability-probe.sh
@@ -23,7 +23,6 @@
 #   1  caller error (missing required flag, no adapter dir, etc.)
 #
 # POSIX discipline: bash 3.2 / macOS-compatible, set -euo pipefail, LC_ALL=C.
-# Refs: ADR-077, ADR-078, ADR-080, FR-RSV2-31.
 
 set -euo pipefail
 LC_ALL=C
@@ -157,7 +156,7 @@ MODEL_TEMP="${E2E_MODEL_TEMP:-0}"
 
 # Resolve story_key — fall back to canonical placeholder if not passed (the
 # top-level schema requires the field but the deployment-phase action skill
-# is sometimes invoked outside the story-key context per ADR-080).
+# is sometimes invoked outside the story-key context).
 sk="${STORY_KEY:-E0-S0}"
 
 # Build the check object.

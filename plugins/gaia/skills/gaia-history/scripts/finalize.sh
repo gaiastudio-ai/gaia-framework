@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-history skill finalize (E106-S1)
+# finalize.sh — gaia-history skill finalize
 #
-# Shared finalize pattern from the E28-S17/S19/S21 foundation work.
-# Writes checkpoint and emits lifecycle event on completion.
+# Shared finalize pattern. Writes checkpoint and emits lifecycle event on completion.
 #
 # Exit codes:
 #   0 — finalize succeeded

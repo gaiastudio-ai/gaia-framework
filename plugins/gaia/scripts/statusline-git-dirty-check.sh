@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # statusline-git-dirty-check.sh — PreToolUse-triggered git state fetcher.
 #
-# Story: E82-S8 (FR-449, ADR-091 amendment) + sprint-43 active-branch
-# extension (issue-2 follow-up to the sprint-42 close).
 #
 # Role
 # ----
@@ -25,8 +23,8 @@
 #
 # Then `git -C <probe> rev-parse --show-toplevel` walks up to find the repo.
 #
-# Read-modify-write contract (ADR-091 amendment)
-# ----------------------------------------------
+# Read-modify-write contract
+# --------------------------
 # Both fetchers (`statusline-update-check.sh` and this script) MUST read the
 # existing `latest-release.json` cache, merge only their owned fields, and
 # atomic-write. Naive `jq -n` overwrite would clobber the other fetcher's
@@ -41,9 +39,9 @@
 #     "latest_tag": "...",            # owned by update-check
 #     "current_tag": "...",           # owned by update-check
 #     "update_available": false,      # owned by update-check
-#     "installed_version_stale": false,  # owned by update-check (E82-S6)
-#     "git_dirty": false,             # owned by this script (E82-S8)
-#     "active_branch": "feat/x"       # owned by this script (sprint-43)
+#     "installed_version_stale": false,  # owned by update-check
+#     "git_dirty": false,             # owned by this script
+#     "active_branch": "feat/x"       # owned by this script
 #   }
 #
 # Failure-mode philosophy
@@ -52,8 +50,8 @@
 # statusline renderer degrades cleanly (BRANCH chunk renders without the
 # dirty glyph if `git_dirty` is missing or `false`).
 #
-# Atomic write (NFR-STATUSLINE-3)
-# -------------------------------
+# Atomic write
+# ------------
 # Sibling-tempfile + `mv -f` on the same filesystem as the cache target.
 # Crossing filesystems via /tmp breaks rename atomicity.
 #
@@ -175,7 +173,7 @@ fi
 [ -d "$PROBE_DIR" ] || PROBE_DIR="$PROJECT_PATH"
 
 # ---- Probe git status with a portable timeout -----------------------------
-# AC9: macOS lacks GNU `timeout`. Chain: timeout -> gtimeout -> bash kill-after.
+# macOS lacks GNU `timeout`. Chain: timeout -> gtimeout -> bash kill-after.
 # Each branch produces $PORCELAIN_OUTPUT (possibly empty) and $PROBE_RC.
 PORCELAIN_OUTPUT=""
 PROBE_RC=0
@@ -223,8 +221,8 @@ else
   rm -f "$_TMP_OUT" 2>/dev/null || true
 fi
 
-# AC5: timeout (exit 124 from `timeout` / 143 from kill) -> silent exit 0.
-# AC6: non-git probe dir -> proceed but write empty active_branch so the
+# Timeout (exit 124 from `timeout` / 143 from kill) -> silent exit 0.
+# Non-git probe dir -> proceed but write empty active_branch so the
 # statusline correctly shows "no active branch" instead of stale state from
 # the last probe.
 if [ "$PROBE_RC" -ne 0 ]; then
@@ -259,7 +257,7 @@ if [ "${_NO_REPO:-0}" != "1" ]; then
   ACTIVE_BRANCH="$(git -C "$PROBE_DIR" symbolic-ref --short HEAD 2>/dev/null || printf '')"
 fi
 
-# ---- Line-change counts (staged + unstaged), AF-2026-05-27-5 --------------
+# ---- Line-change counts (staged + unstaged) --------------------------------
 # The statusline shows per-class +added / -removed line counts instead of a
 # bare dirty glyph. Capture them here (this is the cache writer; the runtime
 # only reads). `git diff --shortstat` prints e.g.
@@ -297,7 +295,7 @@ if [ "${_NO_REPO:-0}" != "1" ] && [ "$GIT_DIRTY" = "true" ]; then
   _parse_shortstat UNSTAGED_ADDED UNSTAGED_REMOVED "$_SS_UNSTAGED"
 fi
 
-# ---- Read-modify-write cache (ADR-091 amendment) --------------------------
+# ---- Read-modify-write cache ----------------------------------------------
 mkdir -p "$CACHE_DIR" 2>/dev/null || exit 0
 
 # Read existing cache (or {} if absent/unparseable).
@@ -316,7 +314,7 @@ fi
 
 # Merge owned fields — preserve every other field (e.g. the release-check
 # fetcher's keys) verbatim. Owned: git_dirty, active_branch, and the four
-# line-change counts (AF-2026-05-27-5).
+# line-change counts.
 MERGED="$(printf '%s' "$EXISTING" | jq \
   --argjson gd "$GIT_DIRTY" \
   --argjson ab "$AB_ARG" \

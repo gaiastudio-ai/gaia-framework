@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# finalize.sh — Cluster 8 sprint-plan skill finalize (E28-S60)
+# finalize.sh — sprint-plan skill finalize
 #
-# Follows the Cluster 8 shared script pattern established in E28-S17.
+# Follows the shared script pattern.
 # Writes a checkpoint via the shared checkpoint.sh and emits a lifecycle
-# event for the tailing sync agent. Identical structure to sibling Cluster 8
+# event for the tailing sync agent. Identical structure to sibling
 # skills — only WORKFLOW_NAME and SCRIPT_NAME differ.
 #
 # Exit codes:

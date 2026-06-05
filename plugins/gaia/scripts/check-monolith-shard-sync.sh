@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # check-monolith-shard-sync.sh — detect monolith-vs-shard drift.
 #
-# Story: E53-S243 — Document and enforce monolith-vs-shard sync contract.
-#
 # Compares per-section content hashes between each monolith document
 # (`prd.md`, `architecture.md`, `epics-and-stories.md`) and the union of
 # its shard files. Emits WARNING lines on stdout when drift is detected,
 # naming the section and the diverging file paths. ALWAYS exits 0
-# (advisory check per the AF-2026-05-04-1 Batch D triage decision).
+# (advisory check).
 #
 # Documented exceptions (no false-positive WARNING):
 #   1. Change Log direction — the monolith Change Log is the source of
@@ -20,7 +18,7 @@
 #   3. Missing shard directory — when a monolith exists but its shard
 #      directory does not, emit an INFO line and continue (graceful
 #      skip). A shard-only directory without a monolith is also tolerated.
-#   4. Marker-shard + sibling-directory (sub-sharded) pair (E53-S249) —
+#   4. Marker-shard + sibling-directory (sub-sharded) pair —
 #      a second-tier sharding model where a single H2 grows into its own
 #      sibling directory of per-H3 child files. The parent shard
 #      `<NN>-<slug>.md` retains a stub heading `## <N>. <title> — Sub-
@@ -34,7 +32,7 @@
 #      Single-half states (marker shard without dir, or dir without
 #      marker shard) keep the WARNING — they may signal corruption.
 #      Per-H3 child drift detection within the sibling directory is
-#      TC-MSS-SUBSHARD-4-DEFERRED (out of scope for E53-S249).
+#      deferred (out of scope for this script).
 
 set -euo pipefail
 
@@ -73,7 +71,7 @@ USAGE
       exit 64
       ;;
     *)
-      # F-8 (AF-2026-05-26-1): accept a bare positional path as an alias for
+      # Accept a bare positional path as an alias for
       # --root. Callers' SKILL.md prose says "run against the project root";
       # a positional invocation now resolves rather than exiting 64.
       ROOT="$1"
@@ -187,10 +185,10 @@ _section_body_hash() {
 }
 
 # ---------------------------------------------------------------------------
-# Sub-shard awareness helpers (E53-S249 / AF-2026-05-10-5).
+# Sub-shard awareness helpers.
 # ---------------------------------------------------------------------------
 #
-# Marker-shard + sibling-directory pattern (introduced by E53-S235):
+# Marker-shard + sibling-directory pattern:
 # a single H2 section that has grown unwieldy is split into a sibling
 # directory of per-H3 child files. The parent shard `<NN>-<slug>.md`
 # retains a stub heading `## <N>. <title> — Sub-Sharded` plus a one-line
@@ -258,7 +256,7 @@ _compare_monolith() {
   # informative.
   local title_to_shard_titles=()
   local title_to_shard_paths=()
-  local title_to_marker_pair=()  # E53-S249: parallel array — "1" if shard is marker-pair, "0" otherwise
+  local title_to_marker_pair=()  # parallel array — "1" if shard is marker-pair, "0" otherwise
   local shard
   while IFS= read -r shard; do
     [[ -z "$shard" ]] && continue
@@ -274,7 +272,7 @@ _compare_monolith() {
     local stitle
     stitle="$(_shard_first_title "$shard")"
     [[ -z "$stitle" ]] && continue
-    # E53-S249: normalize "<title> — Sub-Sharded" -> "<title>" when the
+    # Normalize "<title> — Sub-Sharded" -> "<title>" when the
     # marker-shard + sibling-directory pair is present. The normalized
     # title is what we store in the map so both forward-pass and reverse-
     # pass title matching resolve correctly against the monolith H2.
@@ -352,14 +350,13 @@ _compare_monolith() {
 
       local shard_path="${title_to_shard_paths[$matched_idx]}"
 
-      # E53-S249: marker-shard + sibling-directory pair — the marker shard
+      # Marker-shard + sibling-directory pair — the marker shard
       # is a stub (`## <title> — Sub-Sharded` + pointer paragraph) by
       # design. The actual content lives in the sibling directory's child
       # files. Body divergence between the monolith H2 and the marker
       # shard is the EXPECTED state, not drift. Skip the body-hash
       # comparison for marker pairs. (Per-H3 child drift detection within
-      # the sibling directory is TC-MSS-SUBSHARD-4-DEFERRED — out of
-      # scope for this story.)
+      # the sibling directory is deferred — out of scope for this script.)
       if [[ "${title_to_marker_pair[$matched_idx]}" == "1" ]]; then
         continue
       fi
@@ -402,8 +399,7 @@ _compare_monolith() {
 # Main.
 # ---------------------------------------------------------------------------
 
-# AF-2026-05-21-25: resolve artifacts dir canonical-first (.gaia/) with legacy
-# (docs/) fallback for pre-ADR-111 projects.
+# Resolve artifacts dir canonical-first (.gaia/) with legacy (docs/) fallback.
 if [ -d "$ROOT/.gaia/artifacts/planning-artifacts" ]; then
   _ARTIFACTS_DIR="$ROOT/.gaia/artifacts/planning-artifacts"
 else
@@ -429,24 +425,22 @@ _compare_monolith \
   "epics"
 
 # ---------------------------------------------------------------------------
-# E59-S6 — per-story status drift between monolith and per-epic shard.
+# Per-story status drift between monolith and per-epic shard.
 #
 # Walks every `### Story <KEY>:` block in the epics monolith, resolves the
 # matching `*-e<EID>-*.md` shard via the canonical glob, parses the
 # `- **Status:** <state>` line in each, and emits a WARNING when the values
-# differ. Stays advisory (always exit 0) and additive: the existing 12
+# differ. Stays advisory (always exit 0) and additive: the existing
 # prd/architecture WARNINGs are preserved unchanged. Per-story status
 # WARNINGs fire only when the shard exists AND contains the matching
 # `### Story <KEY>:` block — missing shards are NOT divergence.
-#
-# Refs: AF-2026-05-08-6, ADR-070, ADR-074 contract C3, TC-TSS-SHARD-6.
 # ---------------------------------------------------------------------------
 
 _check_per_story_status_drift() {
-  # Resolve the monolith across the dual layout (E64-S4): the canonical
+  # Resolve the monolith across the dual layout: the canonical
   # path is `{artifacts_dir}/epics/epics-and-stories.md`, but
   # legacy projects keep it flat at `{artifacts_dir}/epics-and-stories.md`.
-  # AF-2026-05-21-25: probe canonical .gaia/artifacts/ first, then legacy docs/.
+  # Probe canonical .gaia/artifacts/ first, then legacy docs/.
   # Mirror the resolver order in transition-story-status.sh to stay in sync.
   local monolith=""
   local artifacts_dirs=("$ROOT/.gaia/artifacts/planning-artifacts" "$ROOT/docs/planning-artifacts")
@@ -512,7 +506,7 @@ _check_per_story_status_drift() {
     }
   ' "$monolith" | while IFS=$'\t' read -r mkey mstatus; do
     [[ -z "$mkey" ]] && continue
-    # Extract numeric EID from key (e.g., E76-S7 -> 76).
+    # Extract numeric EID from the story key (e.g., key "E76-S7" yields EID "76").
     local eid
     if [[ "$mkey" =~ ^E([0-9]+)-S[0-9]+$ ]]; then
       eid="${BASH_REMATCH[1]}"
@@ -524,7 +518,7 @@ _check_per_story_status_drift() {
     local matches=( "$shard_dir"/*-e${eid}-*.md )
     shopt -u nocaseglob nullglob
     if [[ "${#matches[@]}" -ne 1 ]]; then
-      # Zero-match: missing shard is not divergence (per AC4 wording).
+      # Zero-match: missing shard is not divergence.
       # Multi-match: structural break — out of scope for this advisory walk
       # (transition-story-status.sh fails loud on multi-match writes).
       continue

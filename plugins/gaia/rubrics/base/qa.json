@@ -3,8 +3,6 @@
   "skill": "qa",
   "metadata": {
     "title": "Base QA test review rubric",
-    "story": "E68-S3",
-    "adr": "ADR-079",
     "description": "Default severity rules for /gaia-qa-tests covering assertion quality, test isolation, coverage, flakiness, and naming. Layer 1 of the four-layer rubric composition."
   },
   "severity_rules": [
@@ -55,8 +53,7 @@
       "pattern": "Acceptance criterion or new public function has no corresponding test — coverage of the changed surface is incomplete.",
       "severity": "High",
       "description": "Untested ACs and entry points let regressions reach production without warning.",
-      "remediation": "Add at least one happy-path and one failure-path test for every AC and every new public entry point.",
-      "references": ["FR-RSV2-15"]
+      "remediation": "Add at least one happy-path and one failure-path test for every AC and every new public entry point."
     },
     {
       "id": "qa-test-coverage-002",

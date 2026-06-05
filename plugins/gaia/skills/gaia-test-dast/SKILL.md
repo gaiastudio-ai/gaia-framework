@@ -1,6 +1,6 @@
 ---
 name: gaia-test-dast
-description: Execute post-deploy dynamic application security tests via the OWASP ZAP DAST adapter under the ADR-078 contract. Phase 3A toolkit + Phase 3B LLM judgment + verdict resolver. Subprocess env is scrubbed to a per-adapter env-allowlist per T-RSV2-1 mitigation. Use when "run dast tests" or /gaia-test-dast.
+description: Execute post-deploy dynamic application security tests via the OWASP ZAP DAST adapter under the tool-adapter contract. Phase 3A toolkit + Phase 3B LLM judgment + verdict resolver. Subprocess env is scrubbed to a per-adapter env-allowlist as a credential-leakage mitigation. Use when "run dast tests" or /gaia-test-dast.
 argument-hint: "[story-key] [--adapter <name>] [--target-url <url>] [--profile baseline|full|api]"
 allowed-tools: [Read, Grep, Glob, Bash]
 type: action
@@ -23,13 +23,13 @@ orchestration_class: light-procedural
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
-This is the unifying principle of every GAIA review and action skill (FR-DEJ-1, ADR-075). For `/gaia-test-dast` it means: the configured DAST adapter (OWASP ZAP by default, swappable via `test_execution.dast.adapter` config or `--adapter` CLI flag) runs in Phase 3A and emits a structured `analysis-results.json` artifact. The LLM then performs a DAST severity-triage semantic judgment in Phase 3B — applying the project risk profile to ZAP findings — but cannot override a deterministic adapter failure or High-severity finding. The verdict is computed by `verdict-resolver.sh`; the LLM never computes the verdict in natural language.
+This is the unifying principle of every GAIA review and action skill. For `/gaia-test-dast` it means: the configured DAST adapter (OWASP ZAP by default, swappable via `test_execution.dast.adapter` config or `--adapter` CLI flag) runs in Phase 3A and emits a structured `analysis-results.json` artifact. The LLM then performs a DAST severity-triage semantic judgment in Phase 3B — applying the project risk profile to ZAP findings — but cannot override a deterministic adapter failure or High-severity finding. The verdict is computed by `verdict-resolver.sh`; the LLM never computes the verdict in natural language.
 
-This skill is a deployment-phase action skill (ADR-080) and a peer of `/gaia-test-e2e` (E73-S1) and `/gaia-test-perf` (E73-S2) — same Phase 3A/3B/3C plumbing, DAST-specific rubric and env-allowlist credential isolation.
+This skill is a deployment-phase action skill and a peer of `/gaia-test-e2e` and `/gaia-test-perf` — same Phase 3A/3B/3C plumbing, DAST-specific rubric and env-allowlist credential isolation.
 
-**Static vs dynamic distinction:** `/gaia-review-security` (E66 scope, static, pre-merge) reads code and finds OWASP-Top-10 patterns. `/gaia-test-dast` (this skill, dynamic, deployment-phase) runs OWASP ZAP against a live deployed endpoint. They are complementary, not alternatives.
+**Static vs dynamic distinction:** `/gaia-review-security` (static, pre-merge) reads code and finds OWASP-Top-10 patterns. `/gaia-test-dast` (this skill, dynamic, deployment-phase) runs OWASP ZAP against a live deployed endpoint. They are complementary, not alternatives.
 
-**Fork context semantics (NFR-RSV2-5):** Phase 3B LLM judgment runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). Phase 3A is deterministic shell. Phase 4 verdict resolution and Review Gate update happen in the parent context via `verdict.sh` + `finalize.sh`.
+**Fork context semantics:** Phase 3B LLM judgment runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). Phase 3A is deterministic shell. Phase 4 verdict resolution and Review Gate update happen in the parent context via `verdict.sh` + `finalize.sh`.
 
 **Adapter swappability:** Resolved by `select-adapter.sh` with first-match-wins precedence: `--adapter <name>` CLI flag → `test_execution.dast.adapter` from `.gaia/config/project-config.yaml` → default `owasp-zap`.
 
@@ -38,24 +38,24 @@ This skill is a deployment-phase action skill (ADR-080) and a peer of `/gaia-tes
 ## Critical Rules
 
 - A story key argument MAY be provided. If absent, the deployment-phase invocation runs in story-less mode and skips the Review Gate update step.
-- The `tool-availability-probe.sh` foundation script (E66-S2) MUST be present at `plugins/gaia/scripts/tool-availability-probe.sh`.
-- The `verdict-resolver.sh` foundation script (E66-S1) MUST be present at `plugins/gaia/scripts/verdict-resolver.sh`.
+- The `tool-availability-probe.sh` foundation script MUST be present at `plugins/gaia/scripts/tool-availability-probe.sh`.
+- The `verdict-resolver.sh` foundation script MUST be present at `plugins/gaia/scripts/verdict-resolver.sh`.
 - This skill is READ-ONLY in the fork (Phase 3B). Phase 4 `verdict.sh` runs in main context with Bash + the explicit narrow tool set required by `review-gate.sh`.
 - The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
-- Mapping to Review Gate canonical vocabulary (per FR-RSV2-3): APPROVE → PASSED; REQUEST_CHANGES → FAILED; BLOCKED → FAILED.
+- Mapping to Review Gate canonical vocabulary: APPROVE → PASSED; REQUEST_CHANGES → FAILED; BLOCKED → FAILED.
 - Adapter `run.sh` invocation MUST go through `tool-availability-probe.sh` first — the probe's three-state classification is the authoritative gate.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
-- The adapter subprocess env is scrubbed to the per-adapter env-allowlist declared in `adapter.json` (T-RSV2-1). Adding entries to that allowlist requires a security review (see `## Secret Handling`).
+- The adapter subprocess env is scrubbed to the per-adapter env-allowlist declared in `adapter.json`. Adding entries to that allowlist requires a security review (see `## Secret Handling`).
 
 ## Determinism Settings
 
 ```
 temperature: 0
-model: claude-opus-4-7        # per ADR-074, frontmatter-pinned at fork dispatch
+model: claude-opus-4-7        # frontmatter-pinned at fork dispatch
 prompt_hash: sha256:<hex>     # recorded in analysis-results.json
 ```
 
-`prompt_hash` is the sha256 of (system prompt || `analysis-results.json` content). Two runs against unchanged inputs MUST produce LLM findings that match by `{category, severity}` (NFR-DEJ-2). Textual message variation is allowed.
+`prompt_hash` is the sha256 of (system prompt || `analysis-results.json` content). Two runs against unchanged inputs MUST produce LLM findings that match by `{category, severity}`. Textual message variation is allowed.
 
 ## Configuration Schema
 
@@ -74,9 +74,9 @@ test_execution:
 
 ## Secret Handling
 
-The OWASP ZAP DAST adapter operates against live deployed environments — credential leakage through subprocess environment inheritance is the highest-priority threat for this skill (threat T-RSV2-1, "DAST tooling surface"). The adapter contract enforces a strict per-adapter env-allowlist that is the single source of truth for which environment variables are permitted to cross the parent → ZAP subprocess boundary.
+The OWASP ZAP DAST adapter operates against live deployed environments — credential leakage through subprocess environment inheritance is the highest-priority threat for this skill ("DAST tooling surface"). The adapter contract enforces a strict per-adapter env-allowlist that is the single source of truth for which environment variables are permitted to cross the parent → ZAP subprocess boundary.
 
-### env-allowlist contract (T-RSV2-1 mitigation)
+### env-allowlist contract
 
 The OWASP ZAP adapter declares an `env-allowlist` field in `plugins/gaia/scripts/adapters/owasp-zap/adapter.json`. The allowlist is the exhaustive list of environment variables that `run.sh` will forward to the ZAP subprocess. Every other parent-process env var is scrubbed.
 
@@ -113,7 +113,7 @@ CI runners that invoke `/gaia-test-dast` MUST also enable per-job secret scrubbi
 
 ### Security-review requirement for allowlist changes
 
-Adding an entry to `adapter.json`'s `env-allowlist` requires a security review. The review MUST justify why the new variable is necessary, confirm the variable is needed by ZAP (not merely "convenient" for an unrelated tool), and document any rotation / least-privilege controls. This is recorded in the threat model (T-RSV2-1) and tracked through normal `/gaia-add-feature` cascade review for changes to `adapter.json`.
+Adding an entry to `adapter.json`'s `env-allowlist` requires a security review. The review MUST justify why the new variable is necessary, confirm the variable is needed by ZAP (not merely "convenient" for an unrelated tool), and document any rotation / least-privilege controls. This is recorded in the threat model and tracked through normal `/gaia-add-feature` cascade review for changes to `adapter.json`.
 
 ## Phases
 
@@ -154,7 +154,7 @@ The fork is read-only; the parent context writes `llm-findings.json` to the outp
 
 Invoke `scripts/verdict.sh --analysis-results <path> --llm-findings <path> [--story-key <key>] [--gate "Security Review"]`. The script:
 
-1. Calls `verdict-resolver.sh --skill gaia-test-dast` to compute the verdict (precedence per ADR-075: errored > tool-failed-blocking > LLM-Critical > APPROVE).
+1. Calls `verdict-resolver.sh --skill gaia-test-dast` to compute the verdict (precedence: errored > tool-failed-blocking > LLM-Critical > APPROVE).
 2. When `--story-key` and `--gate` are provided, invokes `review-gate.sh update` to update the matching Review Gate row to PASSED (APPROVE) or FAILED (REQUEST_CHANGES, BLOCKED). Deployment-phase invocations without an associated story skip this step.
 3. Echoes the verdict on stdout for downstream chaining.
 
@@ -170,9 +170,9 @@ After verdict resolution, the lifecycle hook `scripts/finalize.sh` writes a chec
 
 This skill ships with one DAST adapter under `plugins/gaia/scripts/adapters/`:
 
-- **`owasp-zap/`** — invokes `zap-cli quick-scan` against the target URL. Default. The subprocess env is scrubbed to the env-allowlist declared in `adapter.json` per T-RSV2-1.
+- **`owasp-zap/`** — invokes `zap-cli quick-scan` against the target URL. Default. The subprocess env is scrubbed to the env-allowlist declared in `adapter.json`.
 
-The adapter honours the canonical ADR-078 contract (`adapter.json`, `run.sh`, `test/contract.bats`) PLUS the deployment-phase additive flags `--target-url <url>` and `--profile baseline|full|api`.
+The adapter honours the canonical tool-adapter contract (`adapter.json`, `run.sh`, `test/contract.bats`) PLUS the deployment-phase additive flags `--target-url <url>` and `--profile baseline|full|api`.
 
 ## Output Contract
 
@@ -185,13 +185,13 @@ The verdict (APPROVE | REQUEST_CHANGES | BLOCKED) is emitted on stdout by `verdi
 
 ## Refs
 
-- ADR-075 — Review skill evidence/judgment split.
-- ADR-077 — Three-tier review pipeline (seven-phase structure).
-- ADR-078 — Tool adapter framework (`adapter.json` schema, `run.sh` contract, four-state probe).
-- ADR-080 — Deployment-phase action skill pattern.
-- FR-RSV2-31 — Deployment-phase DAST execution.
-- FR-RSV2-33 — Per-adapter env-allowlist contract.
-- NFR-RSV2-7 — Env-var-only credentials.
-- T-RSV2-1 — DAST tooling surface threat (mitigated by env-allowlist).
-- E66-S1, E66-S2, E70-S1 — upstream foundations.
-- E73-S1, E73-S2 — peer deployment-phase action skills.
+- Review skill evidence/judgment split.
+- Three-tier review pipeline (seven-phase structure).
+- Tool adapter framework (`adapter.json` schema, `run.sh` contract, four-state probe).
+- Deployment-phase action skill pattern.
+- Deployment-phase DAST execution.
+- Per-adapter env-allowlist contract.
+- Env-var-only credentials.
+- DAST tooling surface threat (mitigated by env-allowlist).
+- Upstream foundations.
+- Peer deployment-phase action skills (`/gaia-test-e2e`, `/gaia-test-perf`).

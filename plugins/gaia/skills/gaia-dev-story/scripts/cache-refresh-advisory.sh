@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# cache-refresh-advisory.sh — gaia-dev-story Step 14b advisory (E92-S4).
-#
-# Story: E92-S4 — Plugin-cache refresh dogfooding playbook.
-# Anchor: AI-RETRO-S46-4 (sprint-46 retro action item).
-# Refs: feedback_plugin_cache_refresh_after_merge memory.
+# cache-refresh-advisory.sh — gaia-dev-story Step 14b advisory.
 #
 # Background:
 #   The Claude Code substrate caches plugin SKILL.md and scripts at
@@ -134,6 +130,6 @@ if [ "$TRUNCATED" -eq 1 ]; then
   MATCHED="${MATCHED},..."
 fi
 
-# Exactly one advisory line; format mirrors NFR-DSH-5 single-line gate-log.
+# Exactly one advisory line; format mirrors the single-line gate-log convention.
 log "step14b_advisory: plugin-cache refresh recommended — touched files: $MATCHED"
 exit 0

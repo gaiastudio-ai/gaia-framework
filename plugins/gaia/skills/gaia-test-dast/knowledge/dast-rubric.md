@@ -1,7 +1,7 @@
 # `/gaia-test-dast` LLM Severity Rubric
 
-> Loaded by Phase 3B (forked LLM judgment) of `/gaia-test-dast` (E73-S3).
-> Categories and severity tiers consumed by `verdict-resolver.sh` per ADR-075.
+> Loaded by Phase 3B (forked LLM judgment) of `/gaia-test-dast`.
+> Categories and severity tiers consumed by `verdict-resolver.sh`.
 
 ## Categories
 
@@ -21,7 +21,7 @@
 | Medium      | Plausible exploitability with prerequisites; CVSS 4.0–6.9; missing standard hardening header.   | Medium                          |
 | Suggestion  | Informational, hygiene, or low-impact finding; CVSS < 4.0; cache/header advisories.             | Low / Informational             |
 
-## Mapping precedence (ADR-075)
+## Mapping precedence
 
 `verdict-resolver.sh` applies the following precedence in computing the final
 verdict (first match wins):

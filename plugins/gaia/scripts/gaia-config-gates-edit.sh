@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# gaia-config-gates-edit.sh — E71-S7
+# gaia-config-gates-edit.sh — comment-preserving editor for the `gates:` map
 #
-# Comment-preserving editor for the top-level `gates:` map in
-# project-config.yaml. Implements FR-RSV2-12 per-gate severity overrides:
+# Edits the top-level `gates:` map in project-config.yaml, supporting
+# per-gate severity overrides:
 #
 #   gates:
 #     <gate-name>:

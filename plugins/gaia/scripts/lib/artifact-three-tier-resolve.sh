@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # artifact-three-tier-resolve.sh — Three-tier path resolver for the four
-# artifact families defined by ADR-119 (adversarial, sprint-plan,
-# sprint-review, retrospective).
+# artifact families (adversarial, sprint-plan, sprint-review, retrospective).
 #
-# Resolution order (per ADR-070 / ADR-119):
+# Resolution order:
 #   Tier 1 — Env-var override wins.
 #   Tier 2 — Positive legacy-flat evidence: file exists at the legacy flat
 #            location AND no nested-dir variant present. Selects legacy.
@@ -22,7 +21,7 @@
 #
 # This helper is intentionally read-only: producers always write to the
 # canonical nested directory regardless of what the resolver returns
-# (per ADR-119 "no legacy-writes fallback" clause).
+# (no legacy-writes fallback).
 
 set -euo pipefail
 

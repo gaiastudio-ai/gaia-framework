@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
-# transcript-writer.sh — shared per-stack transcript writer helper (E93-S4)
+# transcript-writer.sh — shared per-stack transcript writer helper
 #
 # Provides three functions:
 #   - transcript_path_for(sprint_id, stack)   — emit the canonical transcript path
 #   - write_transcript(path)                  — write stdin to path at mode 0600
 #   - assert_gitignored(pattern)              — HALT if pattern not in .gitignore
 #
-# Transcript file convention (AF-2026-05-27-3 / ADR-111 — .gaia/ canonical):
+# Transcript file convention (.gaia/ canonical):
 #   .gaia/memory/checkpoints/sprint-review-{sprint_id}/{stack}.log
 #   mode 0600 (umask 077 before creation)
 #
 # The path lives under `.gaia/memory/checkpoints/` per the framework precedent
 # for ephemeral verification artifacts (matches Val envelope sentinel placement).
 # Existing `checkpoint-reaper.sh` retention policy applies.
-#
-# Traces to: AC5 of E93-S4, T-SGR-7, SR-65, SR-67.
 #
 # POSIX discipline: bash with [[ ]] only. macOS /bin/bash 3.2 compatible.
 
@@ -55,7 +53,7 @@ write_transcript() {
 # assert_gitignored <pattern>
 #   HALT (non-zero exit) if `.gitignore` does not contain a line matching
 #   the given pattern. Walks up from CWD to find the nearest `.gitignore`.
-#   Canonical HALT message per SR-65.
+#   Canonical HALT message format applied.
 assert_gitignored() {
   local pattern="$1"
   if [ -z "$pattern" ]; then
@@ -73,13 +71,13 @@ assert_gitignored() {
     cwd="$(dirname "$cwd")"
   done
   if [ -z "${gitignore:-}" ]; then
-    printf 'HALT: %s* must be in .gitignore (T-SGR-7/SR-65) — no .gitignore found\n' "$pattern" >&2
+    printf 'HALT: %s* must be in .gitignore — no .gitignore found\n' "$pattern" >&2
     return 1
   fi
   # Match either literal prefix line or a wildcard form covering the pattern.
   if grep -Fq "$pattern" "$gitignore"; then
     return 0
   fi
-  printf 'HALT: %s* must be in .gitignore (T-SGR-7/SR-65)\n' "$pattern" >&2
+  printf 'HALT: %s* must be in .gitignore\n' "$pattern" >&2
   return 1
 }

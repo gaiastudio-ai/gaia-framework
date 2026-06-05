@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-review-mobile skill setup (E74-S8)
+# setup.sh — gaia-review-mobile skill setup
 #
-# Mechanical extension of the Cluster 9 reference implementation authored
-# under E28-S66 (gaia-code-review/scripts/setup.sh). Only WORKFLOW_NAME and
-# SCRIPT_NAME differ — the body follows the shared pattern (E28-S88, etc.).
+# Only WORKFLOW_NAME and SCRIPT_NAME differ from the shared setup pattern.
 #
 # Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script

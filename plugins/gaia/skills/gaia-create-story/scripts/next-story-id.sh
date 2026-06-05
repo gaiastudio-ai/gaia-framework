@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# next-story-id.sh — gaia-create-story Step 4 deterministic next-story-id (E63-S2 / Work Item 6.2)
+# next-story-id.sh — gaia-create-story Step 4 deterministic next-story-id
 #
 # Purpose:
 #   Emit the next available story ID for a given epic by scanning an
 #   epics-and-stories.md file. Auto-allocation source consumed by
-#   generate-frontmatter.sh (E63-S3) when a story key is not provided
-#   explicitly. Sibling deterministic helper to slugify.sh (E63-S1).
+#   generate-frontmatter.sh when a story key is not provided
+#   explicitly. Sibling deterministic helper to slugify.sh.
 #
 # Algorithm (in order):
 #   1. Parse --epic <key> and --epics-file <path> flags.
@@ -31,7 +31,7 @@
 #
 # Spec references:
 #   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.2
-#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-074
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log
 #   - gaia-framework/plugins/gaia/skills/gaia-shell-idioms/SKILL.md
 #   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh
 

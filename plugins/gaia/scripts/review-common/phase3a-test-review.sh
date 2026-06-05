@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# phase3a-test-review.sh — Phase 3A toolkit driver for /gaia-review-test (E67-S1).
+# phase3a-test-review.sh — Phase 3A toolkit driver for /gaia-review-test.
 #
 # Purpose
 # -------
-# Sequence the four deterministic Phase 3A scanners required by FR-RSV2-2 for
-# the test-review skill — `smell-detector`, `flakiness-analyzer`,
+# Sequence the four deterministic Phase 3A scanners for the test-review skill —
+# `smell-detector`, `flakiness-analyzer`,
 # `fixture-analyzer`, `tag-conformance-detector` — and merge their per-script
 # `checks[]` fragments into a single canonical `analysis-results.json`
 # document validating against `plugins/gaia/schemas/analysis-results.schema.json`
@@ -20,7 +20,6 @@
 #   phase3a-test-review.sh --story-key <key> --stack <stack> --file-list <listfile>
 #   phase3a-test-review.sh --help
 #
-# Refs: AC5, AC7, FR-RSV2-1, FR-RSV2-2, NFR-RSV2-1, NFR-RSV2-2, ADR-077.
 
 set -euo pipefail
 LC_ALL=C
@@ -33,7 +32,7 @@ die() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — Phase 3A toolkit driver for /gaia-review-test (ADR-077).
+$SCRIPT_NAME — Phase 3A toolkit driver for /gaia-review-test.
 
 Usage:
   $SCRIPT_NAME --story-key <key> --stack <stack> <path>...
@@ -124,9 +123,8 @@ SMELL_OUT="$(run_with_args "$SMELL")"
 FLAKE_OUT="$(run_with_args "$FLAKE")"
 FIXTURE_OUT="$(run_with_args "$FIXTURE" --max-lines "$MAX_LINES")"
 # Pass --strict through to tag-conformance-detector when project-config opts
-# in to strict tagging (E72-S4 AC7). The detector itself reads the same key
-# directly, but driving it from the orchestrator keeps the contract explicit
-# and CI logs auditable.
+# in to strict tagging. The detector itself reads the same key directly, but
+# driving it from the orchestrator keeps the contract explicit and CI logs auditable.
 case "${GAIA_TEST_TAGGING_STRICT:-}" in
   1|true|TRUE|True|yes|YES|on|ON)
     TAG_OUT="$(run_with_args "$TAG" --stack "$STACK" --strict)" ;;

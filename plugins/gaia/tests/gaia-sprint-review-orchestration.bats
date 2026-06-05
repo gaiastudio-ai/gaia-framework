@@ -295,14 +295,14 @@ teardown() { common_teardown; }
   }
 }
 
-@test "TC-SGR-44 dual-sentinel: SKILL.md Step 3 prose names both E83 + E87 sentinels" {
+@test "TC-SGR-44 dual-sentinel: SKILL.md Step 3 prose names both dispatch sentinel + envelope sentinel" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
-  grep -qE 'sprint-review-.*-val-dispatched\.json|E83.*dispatch.*sentinel' "$SKILL_MD" || {
-    echo "Step 3 prose does not name the E83 dispatch sentinel path (AC5)"
+  grep -qE 'sprint-review-.*-val-dispatched\.json' "$SKILL_MD" || {
+    echo "Step 3 prose does not name the dispatch sentinel path (AC5)"
     return 1
   }
-  grep -qE 'val-envelope-.*\.json|E87.*envelope.*sentinel' "$SKILL_MD" || {
-    echo "Step 3 prose does not name the E87 envelope sentinel path (AC5)"
+  grep -qE 'write-val-envelope\.sh|assert.agent.envelope|assert_agent_envelope' "$SKILL_MD" || {
+    echo "Step 3 prose does not name the envelope sentinel writer/asserter (AC5)"
     return 1
   }
 }

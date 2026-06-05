@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-val-validate skill setup (E28-S78)
+# setup.sh — gaia-val-validate skill setup
 #
-# Follows the shared setup.sh pattern from E28-S17.
+# Follows the shared setup.sh pattern.
 # Validates that an artifact path argument was provided and the file exists.
 #
 # Responsibilities:

@@ -1,38 +1,34 @@
 #!/usr/bin/env bash
 # validate-frontmatter.sh — gaia-create-story Step 6 deterministic
-#                          frontmatter validator (E63-S5 / Work Item 6.5,
-#                          folds Work Item 6.10)
+#                          frontmatter validator
 #
 # Purpose:
 #   Verify a story file's YAML frontmatter satisfies the canonical 15-field
-#   schema produced by `generate-frontmatter.sh` (E63-S3): required fields
+#   schema produced by `generate-frontmatter.sh`: required fields
 #   present and non-empty (with `null` allowed only for the four nullable
 #   fields), enumeration constraints on `status` / `priority` / `size` /
 #   `risk`, and the canonical filename invariant `{key}-{slugify(title)}.md`.
 #   Surfaces schema-level drift deterministically BEFORE Val dispatch in
 #   Step 6 of /gaia-create-story, saving Val tokens on the trivial mismatch
-#   class and feeding the 3-attempt fix loop with structured findings (per
-#   ADR-050).
+#   class and feeding the 3-attempt fix loop with structured findings.
 #
 # Consumers:
-#   - E63-S11 SKILL.md thin-orchestrator rewrite — invokes this script
+#   - The SKILL.md thin-orchestrator rewrite — invokes this script
 #     inline at the start of Step 6 before the Val dispatch.
-#   - The 3-attempt fix loop (ADR-050) consumes this script's CRITICAL
+#   - The 3-attempt fix loop consumes this script's CRITICAL
 #     findings to re-prompt the SM auto-fixer with concrete field names.
 #
 # Folded source:
-#   - E63-S4 (validate-canonical-filename.sh) — the canonical-filename
-#     check from Work Item 6.10 is folded in here (subsumes the standalone
-#     E63-S4 sibling once E63-S11 wires this script in production).
+#   - validate-canonical-filename.sh — the canonical-filename
+#     check is folded in here (subsumes the standalone sibling).
 #
 # Contract source:
-#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.5
-#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.10
-#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-074
+#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log
 #     (gaia-create-story Hardening Bundle, contract C3 status-edit discipline)
-#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-042
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log
 #     (Scripts-over-LLM rationale)
-#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-050
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log
 #     (Shared Val + SM Fix-Loop Dispatch Pattern, severity vocabulary)
 #
 # Algorithm (in order):
@@ -58,9 +54,8 @@
 #
 # Findings format (stdout, one per line):
 #   <severity>|<field>|<message>
-#   - severity: literal `CRITICAL` (uppercase; matches Step 6 dispatch
-#     vocabulary per ADR-050). `WARNING` and `INFO` are reserved for
-#     future expansion.
+#   - severity: literal `CRITICAL` (uppercase). `WARNING` and `INFO` are
+#     reserved for future expansion.
 #   - field:    the offending field name; `filename` for the canonical
 #     basename mismatch.
 #   - message:  human-readable explanation.
@@ -71,7 +66,7 @@
 #   2 — usage error, missing/unreadable file, or malformed frontmatter
 #       (delimiters missing or unbalanced)
 #
-# Status-edit discipline (ADR-074 contract C3):
+# Status-edit discipline:
 #   This script reads `status:` only for enumeration validation. It NEVER
 #   writes to status surfaces (sprint-status.yaml, epics-and-stories.md,
 #   story-index.yaml) — all status mutations flow through
@@ -97,7 +92,7 @@ Usage: validate-frontmatter.sh --file <story-file>
   --file <path>  Path to a story file. Required.
 
 Validates the YAML frontmatter of a story file against the canonical 15-field
-schema produced by generate-frontmatter.sh (E63-S3):
+schema produced by generate-frontmatter.sh:
 
   Required (non-nullable): key, title, epic, status, priority, size, points,
                             risk, depends_on, blocks, traces_to, date, author
@@ -139,15 +134,14 @@ while [ $# -gt 0 ]; do
     --*)
       die_usage "unknown argument: $1" ;;
     *)
-      # AF-2026-05-30-4 D-05 — positional path form is accepted with a
-      # deprecation NOTICE. Canonical form is `--file <path>`. The positional
-      # form is preserved for compatibility with hand-driven scripts and the
-      # D-05 retrofit window. Reject only when --file is also supplied (no
-      # silent precedence).
+      # Positional path form is accepted with a deprecation NOTICE. Canonical
+      # form is `--file <path>`. The positional form is preserved for
+      # compatibility with hand-driven scripts. Reject only when --file is
+      # also supplied (no silent precedence).
       if [ -n "$file" ]; then
         die_usage "positional path '$1' supplied after --file '$file' — use only one form"
       fi
-      log "NOTICE: positional path is deprecated; prefer '--file $1' (AF-2026-05-30-4 D-05)"
+      log "NOTICE: positional path is deprecated; prefer '--file $1'"
       file="$1"; shift ;;
   esac
 done
@@ -306,17 +300,15 @@ check_enum "status"   "backlog ready-for-dev in-progress review validating done 
 check_enum "priority" "P0 P1 P2"
 check_enum "size"     "S M L XL"
 check_enum "risk"     "high medium low"
-# E40-S3 — priority_flag enum extended from {null | next-sprint} to {null | next-sprint | hotfix}
-# per ADR-109 §D3 + §D4. Hotfix value is human-set only (per memory rule
-# feedback_priority_flag_never_auto_set). The `null` case is handled at L282
-# (skips enum check on empty/null values).
+# priority_flag enum: {null | next-sprint | hotfix}. Hotfix value is
+# human-set only. The `null` case is handled above (skips enum check on
+# empty/null values).
 check_enum "priority_flag" "next-sprint hotfix"
 
-# ---------- Boolean check (E88-S2 — `delivered:`) ----------
+# ---------- Boolean check (`delivered:`) ----------
 #
-# The `delivered:` field (16th required field, added by E88-S2 / FR-DPD-2)
-# must be a bare `true` or `false`. Anything else fires a CRITICAL with the
-# canonical stderr message "must be true or false (got: <value>)" per AC4.
+# The `delivered:` field (16th required field) must be a bare `true` or
+# `false`. Anything else fires a CRITICAL.
 
 check_boolean() {
   local field="$1" value
@@ -338,19 +330,18 @@ check_boolean() {
 
 check_boolean "delivered"
 
-# ---------- Boolean check (E93-S1 — `deferred_implementation:`) ----------
+# ---------- Boolean check (`deferred_implementation:`) ----------
 #
-# The `deferred_implementation:` field (17th required field, added by
-# E93-S1 / ADR-108) must be a bare `true` or `false`. Consumed by
-# /gaia-sprint-review's C3 criterion (E93-S3+) when computing
+# The `deferred_implementation:` field (17th required field) must be a bare
+# `true` or `false`. Consumed by /gaia-sprint-review when computing
 # sprint-completion deferral signals.
 check_boolean "deferred_implementation"
 
-# ---------- Review Gate body-shape check (E54-S6) ----------
+# ---------- Review Gate body-shape check ----------
 #
 # Enforce the canonical 3-column Review Gate table shape (`Review | Status |
-# Report`). The E67-S2 incident shipped a 2-column drift that broke the
-# reviews skill; this check catches that drift at validation time. The body
+# Report`). A 2-column drift has been known to break the reviews skill;
+# this check catches that drift at validation time. The body
 # scan runs only after frontmatter parsing has succeeded — malformed-
 # frontmatter files have already exited 2 by this point.
 #
@@ -432,7 +423,7 @@ case "$review_gate_status" in
     ;;
 esac
 
-# ---------- Canonical filename check (folded from E63-S4 / Work Item 6.10) ----------
+# ---------- Canonical filename check ----------
 #
 # Skip when key or title was already flagged missing — emitting a noisy
 # filename finding on top would clutter the SM fix-loop output.
@@ -454,13 +445,13 @@ if [ -n "$key_trim" ] && [ -n "$title_trim" ] && [ "$key_trim" != "null" ] && [ 
   fi
   expected_basename="${key_trim}-${slug}.md"
   actual_basename="$(basename "$file")"
-  # E105-S1 / ADR-127 — layout-aware canonical check. The new per-story layout
-  # places the file at `epic-{slug}/{key}-{slug}/story.md`: the basename is the
-  # literal `story.md` and the KEY+SLUG identity is carried by the parent
-  # directory name. In that layout, validate the parent dir against
-  # `{key}-{slug}` instead of the basename (mirrors validate-canonical-filename.sh
-  # which already accepts this form). Legacy flat / `stories/` layouts keep the
-  # basename invariant. This closes the F-032 false-positive CRITICAL.
+  # Layout-aware canonical check. The per-story layout places the file at
+  # `epic-{slug}/{key}-{slug}/story.md`: the basename is the literal
+  # `story.md` and the KEY+SLUG identity is carried by the parent directory
+  # name. In that layout, validate the parent dir against `{key}-{slug}`
+  # instead of the basename (mirrors validate-canonical-filename.sh which
+  # already accepts this form). Legacy flat / `stories/` layouts keep the
+  # basename invariant.
   if [ "$actual_basename" = "story.md" ]; then
     case "$file" in
       */stories/*)

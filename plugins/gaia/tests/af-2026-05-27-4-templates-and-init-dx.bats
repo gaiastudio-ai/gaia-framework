@@ -97,7 +97,7 @@ teardown() { common_teardown; }
 # ---------- F-002: init questionnaire env-by-phase ----------
 
 @test "F-002: gaia-init SKILL.md scopes the env requirement to config_phase=full" {
-  grep -qF 'F-002' "$INIT_SKILL"
+  grep -qF 'config_phase=full' "$INIT_SKILL"
   grep -qiE 'full.*requires.*environments|at least one environment' "$INIT_SKILL"
   # The bare "none is OK" should now be phase-qualified, not unconditional.
   grep -qiF 'only say "none is OK" when NOT in full mode' "$INIT_SKILL"

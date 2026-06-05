@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# finalize.sh — Cluster 9 gaia-test-automate skill finalize (E28-S69)
+# finalize.sh — gaia-test-automate skill finalize
 #
-# Mechanical copy of the Cluster 9 reference implementation authored under
-# E28-S66 (gaia-code-review/scripts/finalize.sh). Only WORKFLOW_NAME and
+# Mechanical copy of the reference implementation
+# (gaia-code-review/scripts/finalize.sh). Only WORKFLOW_NAME and
 # SCRIPT_NAME differ — the body is byte-identical to the reference.
 #
-# Responsibilities (per brief Cluster 9):
+# Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script
 #   2. Emit a lifecycle event via lifecycle-event.sh for the tailing sync agent
 #

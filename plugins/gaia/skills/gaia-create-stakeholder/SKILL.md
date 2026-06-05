@@ -1,6 +1,6 @@
 ---
 name: gaia-create-stakeholder
-description: Scaffold a new stakeholder file for Party Mode with YAML frontmatter (name, role, expertise, personality, optional perspective/tags) plus a Background section. Use when "create a stakeholder" or /gaia-create-stakeholder. Writes to custom/stakeholders/, enforces the 50-file cap and 100-line per-file limit, and rejects duplicate names case-insensitively. Native Claude Code conversion of the legacy create-stakeholder workflow (E28-S111, Cluster 14).
+description: Scaffold a new stakeholder file for Party Mode with YAML frontmatter (name, role, expertise, personality, optional perspective/tags) plus a Background section. Use when "create a stakeholder" or /gaia-create-stakeholder. Writes to custom/stakeholders/, enforces the 50-file cap and 100-line per-file limit, and rejects duplicate names case-insensitively. Native Claude Code conversion of the legacy create-stakeholder workflow.
 argument-hint: "[name]"
 allowed-tools: [Read, Write, Bash]
 orchestration_class: light-procedural
@@ -10,13 +10,13 @@ orchestration_class: light-procedural
 
 You are scaffolding a new stakeholder file under `custom/stakeholders/`. The file is consumed by `/gaia-party` — Party Mode discovers stakeholders by scanning that directory pattern. Every stakeholder has a persona (name, role, expertise, personality) and optional viewpoint / tag metadata.
 
-This skill is the native Claude Code conversion of the legacy create-stakeholder workflow at `_gaia/lifecycle/workflows/4-implementation/create-stakeholder/instructions.xml` (brief Cluster 14, story E28-S111). The legacy 79-line XML body is preserved here as explicit prose per ADR-041. No workflow engine, no engine-specific XML step tags.
+This skill is the native Claude Code conversion of the legacy create-stakeholder workflow at `_gaia/lifecycle/workflows/4-implementation/create-stakeholder/instructions.xml`. The legacy 79-line XML body is preserved here as explicit prose. No workflow engine, no engine-specific XML step tags.
 
 ## Critical Rules
 
 - **Stakeholder files are written to `custom/stakeholders/` — never to `_gaia/`.** The framework tree is read-only for this skill. `custom/stakeholders/` is a user-authored directory that survives framework upgrades.
-- **The 50-file cap and 100-line per-file limit are hard gates (FR-164).** Reject creation when the directory already has 50 files; trim the Background section to stay under 100 lines.
-- **Duplicate name detection is case-insensitive against the `name:` frontmatter field (FR-157).** "Maria Santos" collides with "maria santos" and "MARIA SANTOS".
+- **The 50-file cap and 100-line per-file limit are hard gates.** Reject creation when the directory already has 50 files; trim the Background section to stay under 100 lines.
+- **Duplicate name detection is case-insensitive against the `name:` frontmatter field.** "Maria Santos" collides with "maria santos" and "MARIA SANTOS".
 - **Never overwrite an existing stakeholder (AC-EC8).** If the name or filename slug collides with an existing file, refuse to overwrite. Offer a suffix (`-2`, `-3`) or ask the user to pick a different name. The existing sidecar stays untouched.
 - **Preserve the sidecar path convention.** Stakeholder files go to `custom/stakeholders/{slug}.md`. No other path. `/gaia-party` discovers them by scanning this exact directory.
 
@@ -45,7 +45,7 @@ The skill runs six steps in strict order, mirroring the legacy `create-stakehold
 ## Step 1 — Ensure Directory Exists
 
 - Check whether `custom/stakeholders/` exists.
-- If missing, create it (and `custom/` as needed) via inline `!mkdir -p custom/stakeholders` (ADR-042).
+- If missing, create it (and `custom/` as needed) via inline `!mkdir -p custom/stakeholders`.
 - Confirm the directory is ready for writing.
 
 ## Step 2 — Collect Required Inputs
@@ -69,7 +69,7 @@ Prompt the user (press Enter to skip):
 ## Step 4 — Validate Against Cap and Duplicates
 
 - Count existing `.md` files in `custom/stakeholders/`.
-- **50-file cap:** if the count is ≥ 50, HALT: `The 50-file cap has been reached in custom/stakeholders/ (FR-164). There are already {count} stakeholder files. Remove unused stakeholders before creating new ones.`
+- **50-file cap:** if the count is ≥ 50, HALT: `The 50-file cap has been reached in custom/stakeholders/. There are already {count} stakeholder files. Remove unused stakeholders before creating new ones.`
 - Scan all existing stakeholder files — read the `name:` field from each file's YAML frontmatter.
 - Compare each existing name against the new name using **case-insensitive** comparison.
 - **AC-EC8 — duplicate detection:** if a case-insensitive match is found, HALT: `A stakeholder with the name "{existing_name}" already exists at custom/stakeholders/{existing_file}. Name collision detected (case-insensitive). Choose a different name (e.g., suffix -2) or remove the existing file.`
@@ -124,13 +124,13 @@ tags: [{tags_as_yaml_array}]    # Only include if provided in Step 3
 
 ## References
 
-- Legacy source: `_gaia/lifecycle/workflows/4-implementation/create-stakeholder/instructions.xml` (79 lines) — parity reference for NFR-053.
+- Legacy source: `_gaia/lifecycle/workflows/4-implementation/create-stakeholder/instructions.xml` (79 lines) — parity reference.
 - Downstream consumer: `/gaia-party` (Party Mode) — discovers stakeholders by scanning `custom/stakeholders/*.md`.
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042 — Scripts-over-LLM for Deterministic Operations (inline `!` bash for `mkdir`).
-- ADR-048 — Program-close deletion policy for legacy engine/workflows/tasks.
-- FR-157 — Duplicate-name case-insensitive rejection.
-- FR-164 — 50-file cap and 100-line per-file limit.
-- FR-323 — Native Skill Format Compliance.
-- NFR-053 — Functional parity with the legacy workflow.
+- Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
+- Scripts-over-LLM for Deterministic Operations (inline `!` bash for `mkdir`).
+- Program-close deletion policy for legacy engine/workflows/tasks.
+- Duplicate-name case-insensitive rejection.
+- 50-file cap and 100-line per-file limit.
+- Native Skill Format Compliance.
+- Functional parity with the legacy workflow.
 - Reference implementation: `plugins/gaia/skills/gaia-fix-story/SKILL.md`.

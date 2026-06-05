@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# init-project.sh — GAIA foundation script (E28-S16, E28-S151)
+# init-project.sh — GAIA foundation script
 #
 # Bootstraps a new GAIA-native project by creating the baseline directory
 # skeleton, a starter config/project-config.yaml, a minimal CLAUDE.md, and
-# the full hybrid `_memory/` layout (per-agent sidecars + canonical headers
-# per ADR-046). Fully replaces the legacy gaia-install.sh for project
+# the full hybrid `_memory/` layout (per-agent sidecars + canonical headers).
+# Fully replaces the legacy gaia-install.sh for project
 # initialization.
 #
-# Refs: FR-325, FR-328, FR-331, NFR-048, ADR-042, ADR-046, ADR-048
-# Brief: P2-S8, P21-S6 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
 #
 # Invocation contract:
 #
@@ -27,7 +25,7 @@
 #                      separator (see `_memory/` init behavior below).
 #   --help             Print usage and exit 0.
 #
-# `_memory/` init behavior (E28-S151, ADR-046):
+# `_memory/` init behavior:
 #   * Seeds `_memory/config.yaml` (tiers + per-agent sidecar mapping) on a
 #     fresh target. Idempotent: an already-populated config.yaml is left
 #     alone unless --force is passed.
@@ -79,7 +77,7 @@ Usage: init-project.sh --name <project> [--path <dir>] [--force] [--help]
 
 Creates the GAIA-native .gaia/ baseline (config/, artifacts/, state/,
 memory/, custom/), a starter .gaia/config/project-config.yaml, and a
-minimal CLAUDE.md. Layout follows ADR-111 / E96-S1.
+minimal CLAUDE.md.
 
 Flags:
   --name <project>   Required. Project name.
@@ -144,7 +142,7 @@ if [ -d "$abs_target" ]; then
     exit 1
   fi
 
-  # Non-empty git repo guard (AC5).
+  # Non-empty git repo guard.
   if [ -d "$abs_target/.git" ]; then
     # Consider "non-empty" = .git exists AND there is any tracked file.
     if [ "$force" -ne 1 ]; then
@@ -153,11 +151,11 @@ if [ -d "$abs_target" ]; then
     fi
   fi
 
-  # Clobber guard (AC4, AC-EC7): refuse to rewrite an existing non-empty
+  # Clobber guard: refuse to rewrite an existing non-empty
   # CLAUDE.md or .gaia/config/project-config.yaml UNLESS the file is already a
   # prior init-project.sh output (detected by a signature marker) — that
-  # branch yields idempotent re-runs as required by AC4. With --force we
-  # always overwrite. Per ADR-111 / E96-S1 the canonical config location is
+  # branch yields idempotent re-runs. With --force we
+  # always overwrite. The canonical config location is
   # .gaia/config/; legacy config/ from pre-migration installs is also checked
   # so re-running init-project.sh on an unmigrated tree is a no-op rather than
   # silently writing a duplicate config at the new location.
@@ -189,9 +187,9 @@ cleanup_lock() { rm -f -- "$lock_file" 2>/dev/null || true; }
 trap cleanup_lock EXIT
 
 # --- create skeleton directories --------------------------------------------
-# Per ADR-111 / E96-S1 the canonical runtime tree is .gaia/ with five
-# subdirectories: config, artifacts, state, memory, custom. New projects
-# scaffolded here use the .gaia/ layout from day one.
+# The canonical runtime tree is .gaia/ with five subdirectories: config,
+# artifacts, state, memory, custom. New projects scaffolded here use the
+# .gaia/ layout from day one.
 for d in \
   ".gaia/config" \
   ".gaia/artifacts/planning-artifacts" \
@@ -207,7 +205,7 @@ done
 
 # --- write starter project-config.yaml --------------------------------------
 # Shape aligns with the canonical project-config schema; this generator writes
-# the minimal viable config under .gaia/config/project-config.yaml (ADR-111).
+# the minimal viable config under .gaia/config/project-config.yaml.
 cfg_path="$abs_target/.gaia/config/project-config.yaml"
 if [ ! -s "$cfg_path" ] || [ "$force" -eq 1 ]; then
   cat > "$cfg_path" <<CONFIG
@@ -266,7 +264,7 @@ LLM agents orchestrate the creative and judgment-heavy steps.
 CLAUDEMD
 fi
 
-# --- seed _memory/config.yaml + per-agent sidecars (E28-S151, ADR-046) ------
+# --- seed _memory/config.yaml + per-agent sidecars --------------------------
 # The heredoc below mirrors the shape of the in-repo `_memory/config.yaml`
 # — it is the single source of truth for tier lists and per-agent sidecar
 # names consumed by `memory-loader.sh` and `memory-writer.sh`. A future
@@ -279,7 +277,6 @@ if [ ! -s "$memory_cfg" ] || [ "$force" -eq 1 ]; then
   cat > "$memory_cfg" <<'MEMCFG'
 # GAIA Agent Memory Configuration
 # Source of truth for token budgets, cross-agent access, and archival thresholds.
-# Reference: architecture.md Section 10.10, ADR-014, ADR-015, ADR-046
 
 tiers:
   tier_1:
@@ -360,7 +357,7 @@ agents:
   ux-designer:
     sidecar: ux-designer-sidecar
 
-# Cross-agent read access matrix (ADR-015). All cross-references are
+# Cross-agent read access matrix. All cross-references are
 # read-only and loaded JIT. Modes: recent (last 2 sprints), full, summary.
 cross_references:
   architect:
@@ -503,10 +500,10 @@ gaia_header_for() {
   display="$(gaia_agent_display_name "$agent")"
   case "$kind" in
     ground-truth)
-      printf "# %s — Ground Truth\n\n> Persistent ground truth for %s. Loaded via ADR-046 Path 1 (embedded in parent-spawn prompt). Keep entries append-only.\n\n---\n" "$display" "$agent"
+      printf "# %s — Ground Truth\n\n> Persistent ground truth for %s. Embedded in parent-spawn prompt. Keep entries append-only.\n\n---\n" "$display" "$agent"
       ;;
     decision-log)
-      printf "# %s — Decision Log\n\n> Per-session decisions for %s. Loaded via ADR-046 Path 2 (memory-loader.sh). Append-only.\n\n---\n" "$display" "$agent"
+      printf "# %s — Decision Log\n\n> Per-session decisions for %s. Loaded via memory-loader.sh. Append-only.\n\n---\n" "$display" "$agent"
       ;;
     conversation-context)
       printf "# %s — Conversation Context\n\n> Recent conversation context for %s. Rolling summary — older entries are archived per archival.budget_archive_at.\n\n---\n" "$display" "$agent"

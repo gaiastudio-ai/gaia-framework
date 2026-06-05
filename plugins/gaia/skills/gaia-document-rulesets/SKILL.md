@@ -8,13 +8,13 @@ allowed-tools: [Read, Write, Edit, Grep]
 orchestration_class: light-procedural
 ---
 
-<!-- Converted under ADR-041 (Native Execution Model). Source: _gaia/lifecycle/skills/document-rulesets.md. -->
+<!-- Source: _gaia/lifecycle/skills/document-rulesets.md. -->
 
 ## Mission
 
 Provide the document-type-aware validation rulesets used by the validator (Val) when checking planning and test artifacts. This skill supplies the rules — it does not decide *when* to run them. Callers (the validator subagent, `gaia-val-validate`, `gaia-val-validate-plan`) detect the artifact type, load the matching section(s) of this skill JIT, and apply the rules listed there.
 
-Every section marker below is a contract. Under the ADR-041 native execution model, the Claude Code skill runtime resolves caller references like `document-rulesets§prd-rules` by scanning this file for the matching `<!-- SECTION: {id} -->` marker and reading the body until the corresponding `<!-- END SECTION -->`. Section resolution is native to the skill runtime — there is no separate engine to consult.
+Every section marker below is a contract. Under the native execution model, the Claude Code skill runtime resolves caller references like `document-rulesets§prd-rules` by scanning this file for the matching `<!-- SECTION: {id} -->` marker and reading the body until the corresponding `<!-- END SECTION -->`. Section resolution is native to the skill runtime — there is no separate engine to consult.
 
 ## Critical Rules
 
@@ -53,7 +53,7 @@ Upstream skills invoke `/gaia-val-validate` with an explicit `artifact_type` slu
 | `brainstorm` | brainstorm-rules | Brainstorm artifact emitted by `/gaia-brainstorm` |
 | `market-research` | market-research-rules | Market Research artifact emitted by `/gaia-market-research` |
 | `domain-research` | domain-research-rules | Domain Research artifact emitted by `/gaia-domain-research` |
-| `technical-research` | technical-research-rules | Technical Research artifact emitted by `/gaia-tech-research` (slug aligned with filename per E44-S11) |
+| `technical-research` | technical-research-rules | Technical Research artifact emitted by `/gaia-tech-research` (slug aligned with filename) |
 
 For the Phase 1 artifact types above, the slug is the canonical detection signal because their on-disk filenames vary by `{slug}` (brainstorm) or live in `.gaia/artifacts/planning-artifacts/` alongside other planning docs (market/domain/technical research) and may not carry a `template:` frontmatter field. Detection precedence: `artifact_type` slug -> frontmatter `template` -> filename basename -> unknown.
 
@@ -68,11 +68,11 @@ If no frontmatter match is found, detect the artifact type from the file path ba
 | `ux-design.md` | ux-rules | UX Design Specification |
 | `test-plan.md` | test-plan-rules | Test Plan |
 | `epics-and-stories.md` | epics-rules | Epics and Stories |
-| `test-gap-analysis-*.md` | gap-analysis-rules | Test Gap Analysis Output (E19-S3, FR-223) |
-| `brainstorm-*.md` | brainstorm-rules | Brainstorm artifact (E44-S12, Phase 1) |
-| `market-research.md` | market-research-rules | Market Research artifact (E44-S12, Phase 1) |
-| `domain-research.md` | domain-research-rules | Domain Research artifact (E44-S12, Phase 1) |
-| `technical-research.md` | technical-research-rules | Technical Research artifact (E44-S12, Phase 1) |
+| `test-gap-analysis-*.md` | gap-analysis-rules | Test Gap Analysis Output |
+| `brainstorm-*.md` | brainstorm-rules | Brainstorm artifact (Phase 1) |
+| `market-research.md` | market-research-rules | Market Research artifact (Phase 1) |
+| `domain-research.md` | domain-research-rules | Domain Research artifact (Phase 1) |
+| `technical-research.md` | technical-research-rules | Technical Research artifact (Phase 1) |
 
 ### Path-Based Detection Algorithm
 
@@ -123,7 +123,7 @@ Verify terminology is used consistently across sections. Cross-reference all sec
 <!-- SECTION: infra-prd-rules -->
 ## Infra PRD Validation Rules
 
-Structural quality checks for Infrastructure Product Requirements Documents. This ruleset validates infra PRDs per ADR-022 section 10.16.7 (FR-126).
+Structural quality checks for Infrastructure Product Requirements Documents. This ruleset validates infra PRDs.
 
 ### Section Presence Check
 
@@ -261,7 +261,7 @@ Verify all `depends_on` and `blocks` references point to existing stories. Check
 <!-- SECTION: gap-analysis-rules -->
 ## Gap Analysis Output Validation Rules
 
-Structural quality checks for the test gap analysis output artifact produced by `/gaia-test-gap-analysis`. These rules validate conformance to the FR-223 output schema defined by `_gaia/lifecycle/templates/test-gap-analysis-template.md` (E19-S3, ADR-030 §10.22).
+Structural quality checks for the test gap analysis output artifact produced by `/gaia-test-gap-analysis`. These rules validate conformance to the output schema defined by `_gaia/lifecycle/templates/test-gap-analysis-template.md`.
 
 **Scope:** files matching `.gaia/artifacts/test-artifacts/test-gap-analysis-*.md`.
 
@@ -320,7 +320,7 @@ The Gap Table must declare its columns in this exact order. A table with columns
 - If `gap_count == 0`, the Executive Summary should contain the phrase `No coverage gaps detected` — absence is an INFO finding.
 - `gap_count` should equal the number of data rows in the Gap Table (excluding the header and separator rows) — mismatch is a WARNING.
 
-### Generated vs Executed Tracking (E19-S7, FR-226)
+### Generated vs Executed Tracking
 
 Verification-mode outputs must report generated and executed test case
 counts per story and in aggregate. These rules apply only when `mode:
@@ -343,14 +343,12 @@ verification` appears in the frontmatter.
 - The aggregate row values must be consistent with the sum of per-story
   counts: `total_generated == sum(story.generated)` and
   `total_executed == sum(story.executed)` — mismatch is a WARNING.
-
-**References:** FR-223, FR-226, ADR-030 §10.22, stories E19-S3 and E19-S7, test cases TGA-17–20, TGA-30–32.
 <!-- END SECTION -->
 
 <!-- SECTION: brainstorm-rules -->
 ## Brainstorm Validation Rules
 
-Structural quality checks for brainstorm artifacts emitted by `/gaia-brainstorm` to `.gaia/artifacts/creative-artifacts/brainstorm-{slug}.md`. This ruleset complements the `/gaia-brainstorm` 24-item finalize.sh checklist (E42-S1) — finalize.sh enforces the script-verifiable items at write time; this ruleset is what Val applies during auto-review.
+Structural quality checks for brainstorm artifacts emitted by `/gaia-brainstorm` to `.gaia/artifacts/creative-artifacts/brainstorm-{slug}.md`. This ruleset complements the `/gaia-brainstorm` 24-item finalize.sh checklist — finalize.sh enforces the script-verifiable items at write time; this ruleset is what Val applies during auto-review.
 
 **Scope:** files matching `.gaia/artifacts/creative-artifacts/brainstorm-*.md`. Detected via `artifact_type = brainstorm` per the slug mapping table.
 
@@ -369,7 +367,7 @@ Verify presence of the following top-level sections. Missing any section is a WA
 
 ### Opportunity Areas Minimum Count
 
-The `## Opportunity Areas` section must contain at least 3 enumerated opportunity entries. Fewer than 3 is a CRITICAL finding — brainstorm output below this threshold has insufficient breadth for downstream PRD/market-research consumption (mirrors the V1 24-item checklist gate, VCP-CHK-02).
+The `## Opportunity Areas` section must contain at least 3 enumerated opportunity entries. Fewer than 3 is a CRITICAL finding — brainstorm output below this threshold has insufficient breadth for downstream PRD/market-research consumption.
 
 ### Opportunity Entry Quality
 
@@ -383,13 +381,13 @@ Each `## Parking Lot` entry should declare a revival condition (e.g., `Revival c
 
 The `## Next Steps` section must reference at least one downstream GAIA workflow (e.g., `/gaia-market-research`, `/gaia-domain-research`, `/gaia-create-prd`). A missing or empty Next Steps section is a WARNING.
 
-**References:** E42-S1 (V1->V2 checklist port), E44-S3 (Val auto-review wire-in), E44-S12 (this ruleset).
+**References:** `/gaia-brainstorm` SKILL.md (finalize.sh checklist), `gaia-val-validate` SKILL.md (Step 2 type-detection slug mapping).
 <!-- END SECTION -->
 
 <!-- SECTION: market-research-rules -->
 ## Market Research Validation Rules
 
-Structural quality checks for market research artifacts emitted by `/gaia-market-research` to `.gaia/artifacts/planning-artifacts/market-research.md`. This ruleset complements the `/gaia-market-research` 28-item finalize.sh checklist (E42-S2).
+Structural quality checks for market research artifacts emitted by `/gaia-market-research` to `.gaia/artifacts/planning-artifacts/market-research.md`. This ruleset complements the `/gaia-market-research` 28-item finalize.sh checklist.
 
 **Scope:** files matching `.gaia/artifacts/planning-artifacts/market-research.md`. Detected via `artifact_type = market-research` per the slug mapping table.
 
@@ -411,7 +409,7 @@ The `## Market Definition` or `## Executive Summary` section must declare a geog
 
 ### Competitive Analysis Minimum Count
 
-The `## Competitive Analysis` section must enumerate at least 3 competitors. Fewer than 3 is a CRITICAL finding — competitive positioning below this threshold cannot meaningfully differentiate (mirrors the V1 28-item checklist gate, VCP-CHK-04).
+The `## Competitive Analysis` section must enumerate at least 3 competitors. Fewer than 3 is a CRITICAL finding — competitive positioning below this threshold cannot meaningfully differentiate.
 
 ### Competitor Strengths/Weaknesses
 
@@ -429,13 +427,13 @@ Each customer segment in `## Customer Segments` should cite evidence (e.g., inte
 
 The artifact should declare whether web access was available during the research session (e.g., a `## Web Access` section noting availability). A missing web-access disclosure is an INFO finding.
 
-**References:** E42-S2 (V1->V2 checklist port), E44-S5 (Val auto-review wire-in), E44-S12 (this ruleset).
+**References:** `/gaia-market-research` SKILL.md (finalize.sh checklist), `gaia-val-validate` SKILL.md (Step 2 type-detection slug mapping).
 <!-- END SECTION -->
 
 <!-- SECTION: domain-research-rules -->
 ## Domain Research Validation Rules
 
-Structural quality checks for domain research artifacts emitted by `/gaia-domain-research` to `.gaia/artifacts/planning-artifacts/domain-research.md`. This ruleset complements the `/gaia-domain-research` finalize.sh checklist (E42-S3).
+Structural quality checks for domain research artifacts emitted by `/gaia-domain-research` to `.gaia/artifacts/planning-artifacts/domain-research.md`. This ruleset complements the `/gaia-domain-research` finalize.sh checklist.
 
 **Scope:** files matching `.gaia/artifacts/planning-artifacts/domain-research.md`. Detected via `artifact_type = domain-research` per the slug mapping table.
 
@@ -453,7 +451,7 @@ Verify presence of the following top-level sections. Missing any section is a WA
 
 ### Terminology Glossary Mandatory
 
-The `## Terminology Glossary` section is mandatory and must contain at least 5 defined terms. A missing or empty glossary is a CRITICAL finding — domain research without a shared vocabulary cannot be reliably consumed by downstream workflows (mirrors VCP-CHK-06 negative-fixture gate).
+The `## Terminology Glossary` section is mandatory and must contain at least 5 defined terms. A missing or empty glossary is a CRITICAL finding — domain research without a shared vocabulary cannot be reliably consumed by downstream workflows.
 
 ### Key Players Coverage
 
@@ -471,13 +469,13 @@ The `## Regulatory Landscape` section should cite named regulations, standards, 
 
 The artifact should declare whether web access was available during the research session. A missing web-access disclosure is an INFO finding.
 
-**References:** E42-S3 (V1->V2 checklist port), E44-S6 (Val auto-review wire-in), E44-S12 (this ruleset).
+**References:** `/gaia-domain-research` SKILL.md (finalize.sh checklist), `gaia-val-validate` SKILL.md (Step 2 type-detection slug mapping).
 <!-- END SECTION -->
 
 <!-- SECTION: technical-research-rules -->
 ## Technical Research Validation Rules
 
-Structural quality checks for technical research artifacts emitted by `/gaia-tech-research` to `.gaia/artifacts/planning-artifacts/technical-research.md`. This ruleset complements the `/gaia-tech-research` 22-item finalize.sh checklist (E42-S4). The artifact_type slug `technical-research` is aligned with the on-disk filename per E44-S11.
+Structural quality checks for technical research artifacts emitted by `/gaia-tech-research` to `.gaia/artifacts/planning-artifacts/technical-research.md`. This ruleset complements the `/gaia-tech-research` 22-item finalize.sh checklist. The artifact_type slug `technical-research` is aligned with the on-disk filename.
 
 **Scope:** files matching `.gaia/artifacts/planning-artifacts/technical-research.md`. Detected via `artifact_type = technical-research` per the slug mapping table.
 
@@ -493,7 +491,7 @@ Verify presence of the following top-level sections. Missing any section is a WA
 
 ### Alternatives Minimum Count
 
-The `## Trade-off Analysis` (or its `### Alternatives Compared` subsection) must compare at least 2 alternatives. Fewer than 2 is a CRITICAL finding — a single-candidate "comparison" is a recommendation, not research (mirrors VCP-CHK-08 negative-fixture gate).
+The `## Trade-off Analysis` (or its `### Alternatives Compared` subsection) must compare at least 2 alternatives. Fewer than 2 is a CRITICAL finding — a single-candidate "comparison" is a recommendation, not research.
 
 ### Evaluation Matrix Dimensions
 
@@ -511,7 +509,7 @@ The `## Migration / Adoption Considerations` section must address at minimum: ti
 
 The artifact should declare whether web access was available during the research session. A missing web-access disclosure is an INFO finding.
 
-**References:** E42-S4 (V1->V2 checklist port), E44-S4 (Val auto-review wire-in), E44-S11 (slug alignment), E44-S12 (this ruleset).
+**References:** `/gaia-tech-research` SKILL.md (finalize.sh checklist), `gaia-val-validate` SKILL.md (Step 2 type-detection slug mapping).
 <!-- END SECTION -->
 
 <!-- SECTION: two-pass-logic -->

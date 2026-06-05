@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/bats/normalize.sh — FR-414 + ADR-078 (AC5).
+# adapters/bats/normalize.sh — canonical adapter normalizer for bats.
 #
 # Reads the raw run.sh fragment on stdin (an analysis-results object with
 # `findings: [{rule, severity, file, line, message, blocking}, ...]`) and

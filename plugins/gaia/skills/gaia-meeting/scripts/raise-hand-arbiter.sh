@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# raise-hand-arbiter.sh — gaia-meeting raise-hand arbitration (E76-S2, FR-MTG-7/9)
+# raise-hand-arbiter.sh — gaia-meeting raise-hand arbitration
 #
 # Implements:
-#   - AC8 / TC-MTG-TURN-2: detect `[raise-hand → respond to {Name}]` (or ASCII
-#       `->`) in agent turn output; plan an insertion that makes the named
-#       agent the next speaker; resume the round-robin from the position it
-#       would have occupied prior to the insertion.
-#   - AC9 / TC-MTG-TURN-3: enforce ONE raise-hand per turn cycle. Additional
-#       raise-hands in the same cycle are deferred to the next cycle and
-#       honored as the FIRST action of the next cycle.
+#   - Detect `[raise-hand → respond to {Name}]` (or ASCII `->`) in agent turn
+#       output; plan an insertion that makes the named agent the next speaker;
+#       resume the round-robin from the position it would have occupied prior
+#       to the insertion.
+#   - Enforce ONE raise-hand per turn cycle. Additional raise-hands in the same
+#       cycle are deferred to the next cycle and honored as the FIRST action of
+#       the next cycle.
 #
 # State persistence:
 #   The per-cycle ledger lives in a small env file at $RAISE_HAND_STATE

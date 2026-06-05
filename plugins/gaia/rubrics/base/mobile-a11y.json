@@ -6,8 +6,6 @@
   "platform": "mobile",
   "metadata": {
     "title": "Mobile-platform accessibility review sub-rubric",
-    "story": "E74-S3",
-    "adr": ["ADR-079", "ADR-081"],
     "description": "Mobile-specific accessibility criteria layered atop the universal base a11y rubric. Covers VoiceOver/TalkBack labelling, Dynamic Type / scalable text, touch-target sizing (>= 44pt iOS / >= 48dp Android), reduced motion, haptic-feedback alternatives, high-contrast mode, and switch-control compatibility."
   },
   "severity_rules": [

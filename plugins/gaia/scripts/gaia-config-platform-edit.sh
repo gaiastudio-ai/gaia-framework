@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# gaia-config-platform-edit.sh — E74-S11
+# gaia-config-platform-edit.sh — comment-preserving editor for the platforms array
 #
 # Comment-preserving editor for the top-level `platforms:` array in
 # project-config.yaml. Subcommands: add, remove, list.
 #
-# Per ADR-081 §4.2, unknown identifiers warn (not error) but are accepted
-# when they match the kebab-case shape `^[a-z][a-z0-9-]*$`. Empty or
-# punctuated identifiers are rejected with exit 1.
+# Unknown identifiers warn (not error) but are accepted when they match the
+# kebab-case shape `^[a-z][a-z0-9-]*$`. Empty or punctuated identifiers are
+# rejected with exit 1.
 #
 # Usage:
 #   gaia-config-platform-edit.sh --config <path> add <id>
@@ -104,13 +104,13 @@ case "$CMD" in
     _read_platforms
     ;;
   add)
-    # E71-S9 AC1 (D7): no-arg `add` is a discoverability prompt, not a failure.
+    # No-arg `add` is a discoverability prompt, not a failure.
     # SKILL.md Step 2c contract: "Re-prompt the user for an identifier — DO NOT
     # exit non-zero. The empty argument is a discoverability hint, not a
     # validation failure." Emit the documented baseline menu + the kebab-case
     # extensibility regex to stderr and exit 0.
     if [ -z "$ARG" ]; then
-      err "add <platform-id> — baseline: web | ios | android (per ADR-081 §4.2)"
+      err "add <platform-id> — baseline: web | ios | android"
       err "kebab-case extensibility: any identifier matching ^[a-z][a-z0-9-]*\$ is also accepted"
       exit 0
     fi
@@ -119,7 +119,7 @@ case "$CMD" in
       exit 1
     fi
     if ! printf '%s' "$ARG" | grep -Eq "$KNOWN_PLATFORMS_RE"; then
-      err "warning: unknown platform '$ARG' (per ADR-081 §4.2 — proceeding)"
+      err "warning: unknown platform '$ARG' (proceeding)"
     fi
     cur="$(_read_platforms || true)"
     if printf '%s\n' "$cur" | grep -Fxq "$ARG"; then

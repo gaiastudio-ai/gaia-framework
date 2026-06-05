@@ -1,26 +1,24 @@
 #!/usr/bin/env bash
 # install-statusline.sh — install the GAIA Claude Code statusline.
 #
-# Story: E82-S1.
-#
 # Behaviour:
 #   1. Copy the runtime + helpers into ~/.claude/gaia-statusline/.
 #   2. Atomically merge `statusLine.command` and `statusLine.refreshInterval`
 #      into ~/.claude/settings.json (sibling-tempfile + mv on the SAME
-#      filesystem — never /tmp/, per NFR-STATUSLINE-3).
-#   3. Lazily create ~/.claude/gaia-statusline/cache/ (E82-S2 owns the
-#      schema and writes; this story just creates the directory).
+#      filesystem — never /tmp/).
+#   3. Lazily create ~/.claude/gaia-statusline/cache/ (the update-check script
+#      owns the schema and writes; this script just creates the directory).
 #
-# Idempotency (TC-STATUSLINE-11): re-running the script with the same
-# inputs produces a byte-identical filesystem state. Achieved by:
+# Idempotency: re-running the script with the same inputs produces a
+# byte-identical filesystem state. Achieved by:
 #   - cp only when source != dest (mtime-agnostic compare via cmp -s).
 #   - jq merge that emits a stable canonical JSON (sorted keys + 2-space
 #     indent) so the resulting settings.json is byte-deterministic.
 #
-# settings.json key preservation (TC-STATUSLINE-12): we use `jq * .` deep
+# settings.json key preservation: we use `jq * .` deep
 # merge so unrelated top-level keys are preserved by-value.
 #
-# Plugin-upgrade-stable (TC-STATUSLINE-16): the per-user runtime under
+# Plugin-upgrade-stable: the per-user runtime under
 # ~/.claude is updated ONLY when this script is re-run. A fresh plugin
 # version on disk does NOT touch the installed runtime.
 #
@@ -81,7 +79,7 @@ SETTINGS="$HOME/.claude/settings.json"
 mkdir -p "$(dirname "$SETTINGS")"
 
 # Build the new statusLine fragment.
-# refreshInterval: 10000ms (10s) — sprint-43 update from 3600000ms (1h). The
+# refreshInterval: 10000ms (10s) — updated from 3600000ms (1h). The
 # 1h cadence made context_window / rate_limits / git_dirty chunks reflect
 # stale data between renders. 10s is ~5ms CPU per render — negligible.
 STATUSLINE_FRAGMENT="$(jq -n \
@@ -100,10 +98,10 @@ fi
 # structure intact, no key reordering inside nested objects), and the
 # statusLine block overlays. `+` is shallow merge — RHS wins only on the
 # top-level statusLine key, leaving sibling keys (theme, model, hooks)
-# byte-identical (TC-STATUSLINE-12).
+# byte-identical.
 MERGED="$(printf '%s\n%s\n' "$EXISTING" "$STATUSLINE_FRAGMENT" | jq -s '.[0] + .[1]')"
 
-# E82-S8: register PreToolUse hook to invoke the git-dirty fetcher. The hook
+# Register PreToolUse hook to invoke the git-dirty fetcher. The hook
 # is appended to hooks.PreToolUse[] only when an entry referencing this
 # specific command is not already present (idempotent). The match pattern
 # is the dirty-fetcher path so re-running the install does not duplicate.
@@ -119,7 +117,7 @@ MERGED="$(printf '%s' "$MERGED" | jq \
   ')"
 
 # Atomic write via SIBLING tempfile + mv — same filesystem so rename is
-# atomic (NFR-STATUSLINE-3). NEVER /tmp/.
+# atomic. NEVER /tmp/.
 SIBLING="$(mktemp "${SETTINGS}.XXXXXX")"
 printf '%s\n' "$MERGED" > "$SIBLING"
 # Idempotent: if the new content matches existing, drop the sibling and
@@ -130,7 +128,7 @@ else
   mv -f "$SIBLING" "$SETTINGS"
 fi
 
-# ---- .installed-version marker (E82-S6 / ADR-094 Component 1) -------------
+# ---- .installed-version marker ------------------------------------------
 # Atomic sibling-tempfile + mv. Written as the LAST action so a successful
 # install is the only thing that produces the marker. Source of truth for
 # the plugin version: the sibling .claude-plugin/plugin.json — one level up
@@ -139,14 +137,12 @@ fi
 # layout. Fallback to two-levels-up for any vestigial layouts where the
 # canonical sibling path does not resolve.
 #
-# Issue #1080 / AF-2026-06-02-5: the prior `../../` resolution was wrong in
-# BOTH layouts — INSTALLED_VERSION resolved empty on every install, the
-# marker guard below skipped, and `.installed-version` was never updated.
-# That broke the FR-448 AC1 marker write, AC5 marker-absent semantics, AC8
-# consent-prompt staleness comparison (AF-2026-06-02-3), and AC9 no-op
-# detection (AF-2026-06-02-4). The fallback is consulted only when the
-# canonical sibling path doesn't resolve, so well-formed layouts never
-# touch it.
+# The prior `../../` resolution was wrong in both layouts — INSTALLED_VERSION
+# resolved empty on every install, the marker guard below skipped, and
+# `.installed-version` was never updated. That broke the marker write,
+# marker-absent semantics, consent-prompt staleness comparison, and no-op
+# detection. The fallback is consulted only when the canonical sibling path
+# doesn't resolve, so well-formed layouts never touch it.
 PLUGIN_JSON_SRC="$SCRIPT_DIR/../.claude-plugin/plugin.json"
 if [ ! -r "$PLUGIN_JSON_SRC" ]; then
   PLUGIN_JSON_SRC="$SCRIPT_DIR/../../.claude-plugin/plugin.json"
@@ -162,12 +158,12 @@ if [ -n "$INSTALLED_VERSION" ]; then
   mv -f "$MARKER_TMP" "$MARKER"
 fi
 
-# ---- Cache reset (E82-S11 / FR-448 AC8 defense-in-depth) ------------------
+# ---- Cache reset (defense-in-depth) ---------------------------------------
 # Surgically reset the update-check-owned keys (checked_at_iso, latest_tag,
 # current_tag, update_available, installed_version_stale) in
 # ~/.claude/gaia-statusline/cache/latest-release.json so the next render
 # recomputes against the just-installed runtime instead of whatever values
-# the prior install left behind. Preserves git_dirty (ADR-091). Idempotent:
+# the prior install left behind. Preserves git_dirty. Idempotent:
 # cache-absent is a no-op; all-fields-already-absent is a byte-identical
 # write. Source from the colocated lib/ helper (same script tree).
 . "$SCRIPT_DIR/lib/statusline-cache-reset.sh"

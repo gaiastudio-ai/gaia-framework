@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://gaia.studio/schemas/threat-model.schema.json",
   "title": "Threat model",
-  "description": "E108-S3 / AF-2026-06-03-1 / Test17 D-2/D-6. Backing JSON Schema for the `threat-model` artifact type so /gaia-val-validate can enforce structural invariants, not merely route the type. The threat-model artifact is a prose-markdown document (STRIDE threat identification + DREAD risk scoring) with a YAML frontmatter metadata block (grounded in the on-disk corpus instance `.gaia/artifacts/planning-artifacts/threat-model.md` plus the /gaia-threat-model SKILL Step structure). The shared validate-artifact-schema.sh helper (E108-S5) extracts the frontmatter for *.md instances and validates it against THIS schema; the prose body is not machine-validated by a frontmatter schema, so the nine canonical H2 sections it MUST carry are documented in `x-required-sections` below for the document-ruleset and reviewer. Note: `threat-model` is ALREADY present in the /gaia-val-validate artifact_type enum (position 5) — E108-S3 adds the backing schema only, with NO enum change. Pragmatic, grounded shape — required metadata is pinned, but additional frontmatter keys (e.g. `framework_version`, `methodology`, `author`) are permitted.",
+  "description": "Backing JSON Schema for the `threat-model` artifact type so /gaia-val-validate can enforce structural invariants, not merely route the type. The threat-model artifact is a prose-markdown document (STRIDE threat identification + DREAD risk scoring) with a YAML frontmatter metadata block (grounded in the on-disk corpus instance `.gaia/artifacts/planning-artifacts/threat-model.md`). The shared validate-artifact-schema.sh helper extracts the frontmatter for *.md instances and validates it against this schema; the prose body is not machine-validated by a frontmatter schema, so the nine canonical H2 sections it MUST carry are documented in `x-required-sections` below for the document-ruleset and reviewer. Note: `threat-model` is already present in the /gaia-val-validate artifact_type enum — this schema enforces structural invariants without any enum change. Pragmatic, grounded shape — required metadata is pinned, but additional frontmatter keys (e.g. `framework_version`, `methodology`, `author`) are permitted.",
   "type": "object",
   "required": ["template", "version", "date", "project"],
   "additionalProperties": true,
@@ -19,7 +19,7 @@
     },
     "date": {
       "type": "string",
-      "description": "Threat-model date. ISO-8601 `YYYY-MM-DD`. Quote in YAML frontmatter (`date: \"2026-03-14\"`) so the validate-artifact-schema.sh YAML->JSON bridge does not load it as a non-serializable date object (E108-S5 F-1).",
+      "description": "Threat-model date. ISO-8601 `YYYY-MM-DD`. Quote in YAML frontmatter (`date: \"2026-03-14\"`) so the validate-artifact-schema.sh YAML->JSON bridge does not load it as a non-serializable date object.",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
     },
     "project": {

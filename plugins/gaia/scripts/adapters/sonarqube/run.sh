@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# adapters/sonarqube/run.sh — ADR-078 adapter contract for SonarQube.
+# adapters/sonarqube/run.sh — adapter contract for SonarQube.
 #
-# Story: E70-S3 — SonarQube adapter as alternative SAST under runtime-profile: container.
+# SonarQube adapter as alternative SAST under runtime-profile: container.
 #
 # Contract: run --input <file-list> [--config <adapter-config>] [--output <fragment.json>]
 #               [--runtime-profile {subprocess|container|network}] [--timeout <seconds>]
@@ -9,7 +9,7 @@
 # Phase-5 stub-real implementation: invokes `sonar-scanner` against the file list and
 # emits a deterministic analysis-results fragment on stdout (or to --output if provided).
 # Exit code 0 = ran cleanly, 1 = scanner errored, 127 = sonar-scanner not on PATH
-# (per E70-S2 AC10 precedent — distinct from generic error 1).
+# (distinct from generic error 1).
 #
 # Server URL, project key, and authentication token are sourced from the environment:
 #   SONAR_HOST_URL    — defaults to http://localhost:9000
@@ -38,7 +38,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/sonarqube/run.sh — ADR-078 contract entry for SonarQube.
+adapters/sonarqube/run.sh — contract entry for SonarQube.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -56,7 +56,7 @@ done
 [ -n "$INPUT" ] || { echo "run.sh: --input required" >&2; exit 1; }
 [ -r "$INPUT" ] || { echo "run.sh: input file not readable: $INPUT" >&2; exit 1; }
 
-# Empty file list → exit 0 with empty findings (per E70-S3 Dev Notes edge case).
+# Empty file list → exit 0 with empty findings (edge case).
 NONEMPTY_LINES="$(awk 'NF > 0 { c++ } END { print c+0 }' "$INPUT")"
 if [ "$NONEMPTY_LINES" = "0" ]; then
   fragment="$(jq -nc \
@@ -72,7 +72,7 @@ fi
 
 if ! command -v sonar-scanner >/dev/null 2>&1; then
   echo "run.sh: sonar-scanner not found on PATH" >&2
-  # Exit 127 = unavailable per E70-S2 AC10 (distinct from generic error 1).
+  # Exit 127 = unavailable (distinct from generic error 1).
   exit 127
 fi
 
@@ -99,7 +99,7 @@ fi
 raw="$(sonar-scanner "${scanner_args[@]}" 2>&1)" || rc=$? || true
 rc="${rc:-0}"
 
-# Emit canonical analysis-results fragment shape per E70-S1 run-contract.md §2.1:
+# Emit canonical analysis-results fragment shape per run-contract.md §2.1:
 # {"name": <adapter>, "status": <passed|errored>, "findings": [...]}.
 # Findings shape conforms to checks[].findings[] in analysis-results.schema.json.
 # This stub-real implementation does not yet parse SonarQube's report JSON into

@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# verify-fr-mtg-32-33-amendment.sh — E76-S16 verification gate
+# verify-fr-mtg-32-33-amendment.sh — verification gate
 #
-# Verifies that the FR-MTG-32 / FR-MTG-33 prose updates landed by the
-# AF-2026-05-10-1 cascade are present in the supplied PRD shard. The
+# Verifies that the FR-MTG-32 / FR-MTG-33 prose updates are present in
+# the supplied PRD shard. The
 # canonical shard is at:
 #
 #   .gaia/artifacts/planning-artifacts/prd/04-functional-requirements/
 #     40-4-39-gaia-meeting-peer-to-peer-multi-agent-discussion-skill-af-2026-05-05-1.md
 #
-# Per the story's Technical Notes (ADR-042 scripts-over-LLM): pure
-# deterministic `grep` assertions, no LLM judgment.
+# Pure deterministic `grep` assertions, no LLM judgment.
 #
-# Checks (one per AC in E76-S16 §Acceptance Criteria):
+# Checks:
 #   1. FR-MTG-32 carries the "amended AF-2026-05-10-1" marker.
 #   2. FR-MTG-32 body contains the canonical 4 explicit options
 #      "[c]ontinue / [p]ause / [w]rap-up / [a]bort" AND the [i]nterject
@@ -20,7 +19,7 @@
 #   4. FR-MTG-33 body documents `yield-gate.sh` as side-effect-only under
 #      the new contract (still writes session state, no longer emits the
 #      YIELD-STOP sentinel).
-#   5. No new FR-MTG-3[4-9] IDs were allocated by AF-2026-05-10-1
+#   5. No new FR-MTG-3[4-9] IDs were allocated
 #      (in-place revision invariant — both FRs retain their existing IDs).
 #   6. Exactly one definition row each for FR-MTG-32 and FR-MTG-33
 #      (`^- **FR-MTG-3[23] —` pattern).
@@ -80,7 +79,7 @@ fail() {
 }
 
 # --- Check 1 — FR-MTG-32 amendment marker ----------------------------------
-# Match the FR-MTG-32 definition row and confirm "amended AF-2026-05-10-1"
+# Match the FR-MTG-32 definition row and confirm the amendment marker
 # appears within the same line (the amendment marker convention used in
 # all FR-MTG-* definition headings).
 
@@ -123,9 +122,9 @@ if ! grep -E '^\- \*\*FR-MTG-33 ' "$FILE" | grep -qF "amended AF-2026-05-10-1"; 
 fi
 
 # --- Check 4 — FR-MTG-33 yield-gate.sh side-effect-only language -----------
-# Confirm the FR-MTG-33 body documents yield-gate.sh as side-effect-only
-# under AF-2026-05-10-1 — language must indicate (a) yield-gate.sh retains
-# session-state writes AND (b) the YIELD-STOP sentinel emission is removed.
+# Confirm the FR-MTG-33 body documents yield-gate.sh as side-effect-only —
+# language must indicate (a) yield-gate.sh retains session-state writes AND
+# (b) the YIELD-STOP sentinel emission is removed.
 
 fr33_line="$(grep -nE '^\- \*\*FR-MTG-33 ' "$FILE" | head -1 | cut -d: -f1 || true)"
 if [ -z "$fr33_line" ]; then
@@ -157,7 +156,7 @@ else
 fi
 
 # --- Check 5 — no new FR-MTG-3[4-9] IDs allocated --------------------------
-# AC #3: AF-2026-05-10-1 is in-place revision only — no new FR IDs.
+# In-place revision only — no new FR IDs.
 
 if grep -qE 'FR-MTG-3[4-9]' "$FILE"; then
   matches="$(grep -nE 'FR-MTG-3[4-9]' "$FILE" | head -3 | tr '\n' ';')"
@@ -177,7 +176,7 @@ if [ "$fr33_def_count" -ne 1 ]; then
 fi
 
 # --- Check 7 — [i]nterject -> auto-Other rationale present ----------------
-# AC #6: FR-MTG-32 amended body must cite the [i]nterject -> auto-Other
+# FR-MTG-32 amended body must cite the [i]nterject -> auto-Other
 # binding rationale.
 
 if [ -n "${fr32_body:-}" ]; then

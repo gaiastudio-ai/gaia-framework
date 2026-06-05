@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# install-test-environment-manifest.sh — E17-S31
+# install-test-environment-manifest.sh — test-environment manifest installer
 #
-# Materialize .gaia/config/test-environment.yaml (canonical post-ADR-111) or
-# config/test-environment.yaml (legacy pre-ADR-111) in a target project by
+# Materialize .gaia/config/test-environment.yaml (canonical) or
+# config/test-environment.yaml (legacy) in a target project by
 # copying the matching .example template. This is the
 # concrete "copy .example → .yaml" action invoked from:
 #   - /gaia-bridge-toggle Step 4 option [b] (interactive 3-option prompt)
-#   - /gaia-bridge-toggle Step 4 AC-EC5 YOLO-absent branch (auto-copy)
+#   - /gaia-bridge-toggle Step 4 YOLO-absent branch (auto-copy)
 #
-# Sibling to install-test-environment-example.sh (E17-S30) — that helper
+# Sibling to install-test-environment-example.sh — that helper
 # materializes the .example template from the plugin; this helper
 # materializes the live .yaml manifest from the .example in the project.
 #
@@ -16,7 +16,7 @@
 #   - .yaml absent + .example present: copy .example → .yaml (success).
 #   - .yaml present: preserve byte-identical, exit 0 (copy-if-absent).
 #   - .example absent: exit 1 with a clear error pointing at /gaia-init
-#     or E17-S30's install path (graceful fallback per AC4).
+#     or the install-test-environment-example.sh install path (graceful fallback).
 #
 # Usage:
 #   install-test-environment-manifest.sh --target <project-root>
@@ -24,10 +24,9 @@
 #
 # Exit codes:
 #   0  success (copy performed, or manifest already present and preserved)
-#   1  .example source is missing (AC4 fail-fast)
+#   1  .example source is missing (fail-fast)
 #   2  usage error
 #
-# Traces: E17-S31, FR-201, ADR-028.
 
 set -euo pipefail
 LC_ALL=C
@@ -35,7 +34,6 @@ export LC_ALL
 
 SCRIPT_NAME="install-test-environment-manifest.sh"
 
-# AF-2026-05-21-7/8: resolved after $target is validated.
 EXAMPLE_REL=""
 MANIFEST_REL=""
 
@@ -46,9 +44,9 @@ usage() {
 Usage: install-test-environment-manifest.sh --target <project-root>
 
 Copy .gaia/config/test-environment.yaml.example → .gaia/config/test-environment.yaml
-inside the target project (canonical post-ADR-111). Falls back to legacy
-config/test-environment.yaml.example → config/test-environment.yaml on pre-
-ADR-111 projects. Used by /gaia-bridge-toggle Step 4 option [b] and the
+inside the target project (canonical). Falls back to legacy
+config/test-environment.yaml.example → config/test-environment.yaml on legacy
+projects. Used by /gaia-bridge-toggle Step 4 option [b] and the
 YOLO-absent auto-copy branch.
 
 Behavior:
@@ -76,8 +74,8 @@ done
 [ -n "${target}" ] || { printf '%s: --target is required\n' "$SCRIPT_NAME" >&2; usage >&2; exit 2; }
 [ -d "${target}" ] || { printf '%s: target directory does not exist: %s\n' "$SCRIPT_NAME" "${target}" >&2; exit 2; }
 
-# AF-2026-05-21-7/8: canonical .gaia/config/ default; legacy config/ fallback
-# only on positive pre-ADR-111 evidence.
+# Canonical .gaia/config/ default; legacy config/ fallback
+# only on positive pre-canonical evidence.
 if [ -d "${target}/config" ] && [ ! -d "${target}/.gaia/config" ]; then
   EXAMPLE_REL="config/test-environment.yaml.example"
   MANIFEST_REL="config/test-environment.yaml"
@@ -91,7 +89,7 @@ manifest_file="${target}/${MANIFEST_REL}"
 
 if [ ! -f "${example_file}" ]; then
   printf '%s: ERROR: %s is missing — cannot materialize manifest.\n' "$SCRIPT_NAME" "${EXAMPLE_REL}" >&2
-  printf '%s: run /gaia-init to install the canonical test-environment.yaml.example, or invoke install-test-environment-example.sh (E17-S30) directly.\n' "$SCRIPT_NAME" >&2
+  printf '%s: run /gaia-init to install the canonical test-environment.yaml.example, or invoke install-test-environment-example.sh directly.\n' "$SCRIPT_NAME" >&2
   exit 1
 fi
 

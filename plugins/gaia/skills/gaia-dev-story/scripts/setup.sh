@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-dev-story skill setup (E28-S53)
+# setup.sh — gaia-dev-story skill setup
 #
-# Mechanical extension of the Cluster 4 reference implementation.
+# Mechanical extension of the reference implementation.
 # Adds dev-story-specific prereq gates:
 #   - Story file must exist for the given story_key
 #   - Story status must be ready-for-dev or in-progress
@@ -70,20 +70,20 @@ else
   log "checkpoint.sh not found at $CHECKPOINT — skipping checkpoint load (non-fatal)"
 fi
 
-# ---------- 4. Distributed traceability gate (AF-2026-05-24-6 / F-33 mitigation) ----------
-# Test02 F-33 (CRITICAL): the framework's mandatory quality gates collapse
-# silently when /gaia-sprint-plan is sidestepped (F-9) — because /gaia-sprint-plan
-# was the ONLY skill enforcing the ADR-042 traceability-matrix gate. /gaia-dev-story
-# now enforces the same gate so a story driven straight from backlog to in-progress
-# without going through /gaia-sprint-plan still respects the contract. When strict
+# ---------- 4. Distributed traceability gate ----------
+# The framework's mandatory quality gates can collapse silently when
+# /gaia-sprint-plan is sidestepped — because /gaia-sprint-plan was the ONLY
+# skill enforcing the traceability-matrix gate. /gaia-dev-story now enforces
+# the same gate so a story driven straight from backlog to in-progress without
+# going through /gaia-sprint-plan still respects the contract. When strict
 # mode is OFF, this is an advisory warning. When strict mode is ON (recommended
-# default per ADR-120), it's a hard halt with the canonical `--bypass gaia-trace
+# default), it's a hard halt with the canonical `--bypass gaia-trace
 # --reason "<text>"` escape hatch.
 #
 # Gate scope: only fires in a real sprint context (SPRINT_ID resolves to
 # a non-empty value, either from env or .gaia/state/sprint-status.yaml).
 # Fixture invocations and one-off smoke tests skip the gate so existing
-# e2e/unit fixtures keep passing without modification — F-33 is about
+# e2e/unit fixtures keep passing without modification — this gate is about
 # preventing silent gate collapse DURING SPRINT WORK, not blocking
 # isolated setup-smoke calls.
 SCRIPT_DIR_F33="$(cd "$(dirname "$0")" && pwd)"
@@ -97,18 +97,18 @@ if [ -z "$F33_SPRINT_ID" ] && [ -f ".gaia/state/sprint-status.yaml" ] && command
 fi
 
 if [ -z "$F33_SPRINT_ID" ]; then
-  log "F-33 traceability gate skipped (no SPRINT_ID resolved — fixture/setup-smoke context)"
+  log "traceability gate skipped (no SPRINT_ID resolved — fixture/setup-smoke context)"
 else
-  # AF-2026-05-28-1 / Test07 H-3: route the traceability-matrix lookup through
-  # the shared resolver so the canonical .gaia/artifacts/planning-artifacts/
-  # home is rung 1 (E105-S2 / ADR-127 §7.2 — where /gaia-trace now writes), with
-  # the legacy .gaia/artifacts/test-artifacts/{,strategy/,sharded} placements as
-  # read-compat fallbacks. Previously this block initialized TM_ART to the legacy
-  # strategy/ path and never looked at planning-artifacts/ — so dev-story HALTed
-  # with "traceability-matrix.md not found" on every greenfield project using the
-  # post-ADR-127 layout, requiring a manual copy to the legacy path.
-  # AF-2026-05-26-9 (F-17 class / F2): the legacy probe also covers the flat,
-  # ADR-072 strategy/, and ADR-070 sharded index.md placements.
+  # Route the traceability-matrix lookup through the shared resolver so the
+  # canonical .gaia/artifacts/planning-artifacts/ home is rung 1 (where
+  # /gaia-trace now writes), with the legacy
+  # .gaia/artifacts/test-artifacts/{,strategy/,sharded} placements as
+  # read-compat fallbacks. Previously this block initialized TM_ART to the
+  # legacy strategy/ path and never looked at planning-artifacts/ — so
+  # dev-story HALTed with "traceability-matrix.md not found" on every
+  # greenfield project using the newer layout, requiring a manual copy to the
+  # legacy path.
+  # The legacy probe also covers the flat, strategy/, and sharded index.md placements.
   _ta="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts"
   _resolver_h3="$PLUGIN_SCRIPTS_DIR/lib/resolve-artifact-path.sh"
   TM_ART=""
@@ -155,9 +155,9 @@ else
     if [ "$has_trace_bypass" -eq 1 ]; then
       log "traceability-matrix gate bypassed for sprint ${F33_SPRINT_ID}: ${bp_reason_f33}"
     elif [ "$strict_on_f33" -eq 0 ]; then
-      log "WARNING: traceability-matrix.md not found at $TM_ART — would block in strict mode; consider running /gaia-trace OR --bypass gaia-trace --reason \"<text>\" (ADR-042 / F-33 mitigation)"
+      log "WARNING: traceability-matrix.md not found at $TM_ART — would block in strict mode; consider running /gaia-trace OR --bypass gaia-trace --reason \"<text>\""
     else
-      die "traceability-matrix.md not found at $TM_ART — run /gaia-trace OR add --bypass gaia-trace --reason \"<text>\" (ADR-042 mandatory gate, distributed enforcement per F-33)"
+      die "traceability-matrix.md not found at $TM_ART — run /gaia-trace OR add --bypass gaia-trace --reason \"<text>\""
     fi
   fi
 fi

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# setup.sh — shared Cluster 4 skill setup (E28-S37, brief §Cluster 4 / P4-S3)
+# setup.sh — shared skill setup for the market-research workflow
 #
-# Mechanical copy of the Cluster 4 reference implementation authored under
-# E28-S35 (gaia-brainstorm/scripts/setup.sh). Only WORKFLOW_NAME and
+# Mechanical copy of the reference implementation in
+# gaia-brainstorm/scripts/setup.sh. Only WORKFLOW_NAME and
 # SCRIPT_NAME differ — the body is byte-identical to the reference.
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs
 #   3. Load the checkpoint state for this workflow
@@ -53,7 +53,7 @@ done <<<"$config_output"
 
 # ---------- 2. Validate gate (prereqs) ----------
 # market-research's legacy workflow had no hard prereqs — it is an entry-point
-# analysis workflow. Keep parity with the Cluster 4 reference — run the
+# analysis workflow. Keep parity with the reference implementation — run the
 # file_exists gate with zero --file arguments (no-op). Story-level inputs
 # (scope, competitors, geography) are elicited by the skill body itself in
 # Step 1, matching the legacy instructions.xml behaviour.

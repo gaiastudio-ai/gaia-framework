@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# adapters/grype/adapter.sh — E70-S9 Grype DB trust-boundary enforcement.
+# adapters/grype/adapter.sh — Grype DB trust-boundary enforcement.
 #
-# Treats the Grype vulnerability DB as a trust boundary distinct from the binary
-# (FR-542 / ADR-122). The adapter:
+# Treats the Grype vulnerability DB as a trust boundary distinct from the binary.
+# The adapter:
 #   - enforces GRYPE_DB_MAX_ALLOWED_BUILT_AGE=5d (+ rejects an inherited override),
 #   - records grype_db_checksum + grype_db_built_age telemetry,
-#   - REJECTS a mid-session DB checksum drift (consuming E70-S7's session-start
+#   - REJECTS a mid-session DB checksum drift (consuming the session-start
 #     checksum log) — catches silent DB rollback / tampering.
 # Trivy Mar-2026 supply-chain precedent (Microsoft IR + Aqua + CrowdStrike).
 #
@@ -20,9 +20,9 @@
 #
 # Test seams (tests/adapters/grype-trust-boundary.bats):
 #   GAIA_GRYPE_DB_FILE          grype-db.sqlite to checksum (default: grype db status path)
-#   GAIA_BROWNFIELD_AUDIT_DIR   checksum-log dir (E70-S7 producer; default .gaia/memory/brownfield-audit)
-#   GAIA_SESSION_ID             session id (default $PPID) — matches E70-S7 row keying
-#   GAIA_GRYPE_DEBUG=1          echo the resolved GRYPE_DB_MAX_ALLOWED_BUILT_AGE (AC1 assertion)
+#   GAIA_BROWNFIELD_AUDIT_DIR   checksum-log dir (default .gaia/memory/brownfield-audit)
+#   GAIA_SESSION_ID             session id (default $PPID)
+#   GAIA_GRYPE_DEBUG=1          echo the resolved GRYPE_DB_MAX_ALLOWED_BUILT_AGE
 
 set -euo pipefail
 LC_ALL=C
@@ -43,18 +43,18 @@ if [ "$MASTER" != "true" ] || [ "$PER_TOOL" != "true" ]; then
   exit 0
 fi
 
-# --- Override guard (AC1) -------------------------------------------------
+# --- Override guard -------------------------------------------------------
 # An inherited GRYPE_DB_MAX_ALLOWED_BUILT_AGE that is non-empty and != 5d is a
 # trust-boundary violation. Default FAIL (secure default); strict_mode-gated
-# local-WARN is a documented Finding until the environments schema carries it.
+# local-WARN is a documented finding until the environments schema carries it.
 if [ -n "${GRYPE_DB_MAX_ALLOWED_BUILT_AGE:-}" ] && [ "${GRYPE_DB_MAX_ALLOWED_BUILT_AGE}" != "$CANONICAL_MAX_AGE" ]; then
   die "GRYPE_DB_MAX_ALLOWED_BUILT_AGE override rejected — trust-boundary contract requires ${CANONICAL_MAX_AGE} (got: ${GRYPE_DB_MAX_ALLOWED_BUILT_AGE})"
 fi
 
-# --- Runner resolution (AF-2026-05-30-3 / Test10 §7 C2) -------------------
+# --- Runner resolution ----------------------------------------------------
 # When brownfield.tools.runner == docker, prefer the bundled gaia-tools
 # OCI image over the host PATH. The Tier 2 toolchain installs (grype +
-# its DB) are exactly what AF-30-3 closes via the docker runner.
+# its DB) are resolved via the docker runner.
 SCRIPT_DIR_GRYPE="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=../../lib/docker-runner.sh
 . "${SCRIPT_DIR_GRYPE}/lib/docker-runner.sh"
@@ -69,49 +69,42 @@ if [ "$_GRYPE_RUNNER_MODE" = "docker" ] && docker_runner_available >/dev/null 2>
   mkdir -p "$ADAPTER_OUT_DIR"
   # Capture the docker-dispatched scan output. The trust-boundary checks
   # (DB age, drift) are downstream of this branch: the docker image
-  # bundles a freshly pre-warmed DB pinned to the image tag, so the AC1
+  # bundles a freshly pre-warmed DB pinned to the image tag, so the
   # GRYPE_DB_MAX_ALLOWED_BUILT_AGE check is satisfied by construction
   # (image's DB date is fresher than the 5d cap when the image is
   # rebuilt monthly per the publish workflow).
-  # AF-2026-05-31-2 / Test13 F-16: the prior `-f /out/grype.sarif` flag
-  # was interpreted by grype as `--fail-on <severity>` (it gates the exit
-  # code based on the highest severity finding), NOT as an output-file
-  # specifier. Every docker CVE scan died with `bad --fail-on severity
-  # value '/out/grype.sarif'` and produced no SARIF. The canonical grype
-  # syntax for "scan + write SARIF to <path>" is `-o sarif=<path>` (a
-  # single fused output specifier). Switched to that form.
-  # AF-2026-05-31-2 / Test13 F-17: capture the dispatch exit code at the
-  # point of failure (a separate variable `_grype_rc`) so the `die`
-  # message reports the real exit status. The prior `rc=$?` after the
-  # `fi` could capture 0 in some shells, producing the misleading
-  # "dispatch failed (exit 0)" log line.
+  # The `-f /out/grype.sarif` flag is interpreted by grype as
+  # `--fail-on <severity>` (it gates the exit code based on the highest
+  # severity finding), NOT as an output-file specifier. Every docker CVE
+  # scan dies with `bad --fail-on severity value '/out/grype.sarif'` and
+  # produces no SARIF. The canonical grype syntax for "scan + write SARIF
+  # to <path>" is `-o sarif=<path>` (a single fused output specifier).
+  # Capture the dispatch exit code at the point of failure (a separate
+  # variable `_grype_rc`) so the `die` message reports the real exit
+  # status.
   _grype_rc=0
   docker_runner_dispatch grype dir:/workspace -o sarif="/out/grype.sarif" || _grype_rc=$?
   if [ "$_grype_rc" -eq 0 ]; then
     log_info "grype docker dispatch complete — SARIF at $ADAPTER_OUT_DIR/grype.sarif"
-    # AF-2026-05-31-3 / Test14 F-07: capture the bundled-image's
-    # grype-DB SHA-256 + built timestamp from INSIDE the container and
-    # write them into grype-db-checksum.log so the ADR-122 trust-boundary
-    # field reflects the image's pinned DB snapshot. The prior docker
-    # branch returned early with checksum="unavailable" because the host
-    # had no view of the container's DB file. We resolve the DB path
-    # from `grype db status` inside the image, then sha256sum it inline.
+    # Capture the bundled-image's grype-DB SHA-256 + built timestamp from
+    # INSIDE the container and write them into grype-db-checksum.log so
+    # the trust-boundary field reflects the image's pinned DB snapshot.
+    # The prior docker branch returned early with checksum="unavailable"
+    # because the host had no view of the container's DB file. We resolve
+    # the DB path from `grype db status` inside the image, then sha256sum
+    # it inline.
     _docker_audit="${ADAPTER_OUT_DIR:-${AUDIT_DIR:-./.gaia/memory/brownfield-audit}}"
     mkdir -p "$_docker_audit" 2>/dev/null || true
     _docker_chkpath="$_docker_audit/grype-db-checksum.log"
     # The runner's `--network=none` mount layout means we can re-dispatch
     # through it for the checksum probe at near-zero cost. Image is hot.
     #
-    # AF-2026-06-01-1 / Test15 F-04 — grype 0.79.5 doesn't accept `--output
-    # json` on `db status` (that flag landed in a later release). The
-    # AF-31-3 attempt used `--output json` and silently fell into the
-    # checksum="unavailable" path on every docker scan, so the SKILL's
-    # OWN Phase-7 D-03 grading rule then auto-graded every clean scan as
-    # WARNING (the rule was meant for the OPPOSITE — to catch *real*
-    # trust-boundary problems). Parse the plain-text `grype db status`
-    # output instead — it always prints `Checksum: sha256:…` and
-    # `Location: …`. The `Checksum:` field is canonical, so we don't even
-    # need to sha256sum the file ourselves.
+    # grype 0.79.5 doesn't accept `--output json` on `db status` (that
+    # flag landed in a later release). Using `--output json` silently falls
+    # into the checksum="unavailable" path on every docker scan. Parse the
+    # plain-text `grype db status` output instead — it always prints
+    # `Checksum: sha256:…` and `Location: …`. The `Checksum:` field is
+    # canonical, so we don't even need to sha256sum the file ourselves.
     _docker_db_text="$(docker_runner_dispatch grype db status 2>/dev/null \
       || printf '')"
     _docker_sha="$(printf '%s' "$_docker_db_text" \
@@ -180,8 +173,8 @@ if [ -n "$db_built" ]; then
   [ -n "$built_epoch" ] && built_age_seconds="$(( $(date +%s) - built_epoch ))"
 fi
 
-# --- Mid-session drift detection (AC3) ------------------------------------
-# Read the session-start checksum from E70-S7's log (last row matching session).
+# --- Mid-session drift detection ------------------------------------------
+# Read the session-start checksum from the log (last row matching session).
 SESSION_ID="${GAIA_SESSION_ID:-$PPID}"
 default_audit_dir() {
   if [ -n "${GAIA_MEMORY_DIR:-}" ]; then printf '%s/brownfield-audit' "$GAIA_MEMORY_DIR"
@@ -209,9 +202,9 @@ grype_rc=0
 grype "$@" || grype_rc=$?
 grype_seconds=$(( $(date +%s) - grype_start ))
 
-# --- Surface telemetry (AC2 / AC-X2 / AC-X3) ------------------------------
+# --- Surface telemetry ----------------------------------------------------
 # grype owns grype_db_* + *.grype + llm_token_count:0 (single-author per field;
-# gap_count_* are E104-owned — NOT written here). Populate via the shared writer
+# gap_count_* are NOT written here). Populate via the shared writer
 # when a report exists; always echo for the operator + bats assertions.
 log_info "grype_db_checksum=$CURRENT_SHA grype_db_built_age=${built_age_seconds:-unknown} phase_runtime_seconds.grype=$grype_seconds"
 REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"

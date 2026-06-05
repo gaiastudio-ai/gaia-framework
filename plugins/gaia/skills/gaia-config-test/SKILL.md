@@ -1,6 +1,6 @@
 ---
 name: gaia-config-test
-description: Edit the test_execution section of project-config.yaml — section-scoped editor that preserves YAML comments and formatting per ADR-044. Use when "edit test_execution config" or /gaia-config-test.
+description: Edit the test_execution section of project-config.yaml — section-scoped editor that preserves YAML comments and formatting. Use when "edit test_execution config" or /gaia-config-test.
 argument-hint: "[--tier <1|2|3>] [--placement <local|ci-pre-merge|ci-post-merge|deployment|post-deploy>]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
 orchestration_class: light-procedural
@@ -12,17 +12,17 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are editing the `test_execution` top-level section of `project-config.yaml`. The skill is one of the `/gaia-config-*` editors shipped by E71-S3, each scoped to a single declared section of `schemas/project-config.schema.json`. The `test_execution` section maps the three test tiers (tier_1, tier_2, tier_3) to canonical pipeline placements per FR-RSV2-11.
+You are editing the `test_execution` top-level section of `project-config.yaml`. The skill is one of the `/gaia-config-*` editors, each scoped to a single declared section of `schemas/project-config.schema.json`. The `test_execution` section maps the three test tiers (tier_1, tier_2, tier_3) to canonical pipeline placements.
 
-Editing is comment-preserving per ADR-044: pre-existing comments and formatting OUTSIDE the edited section are preserved byte-for-byte; the edited section's content follows the existing indentation style detected from the file.
+Editing is comment-preserving: pre-existing comments and formatting OUTSIDE the edited section are preserved byte-for-byte; the edited section's content follows the existing indentation style detected from the file.
 
 ## Critical Rules
 
 - Only the `test_execution` section may be modified. All other sections, all comments, and all formatting outside the edited section MUST be preserved byte-for-byte.
-- The comment-preserving YAML editor lives in `plugins/gaia/scripts/config-yaml-editor.sh` per ADR-042 / ADR-044. Do NOT round-trip the file through a generic YAML serializer.
+- The comment-preserving YAML editor lives in `plugins/gaia/scripts/config-yaml-editor.sh`. Do NOT round-trip the file through a generic YAML serializer.
 - `placement` values MUST be one of the canonical set: `local`, `ci-pre-merge`, `ci-post-merge`, `deployment`, `post-deploy`. Reject any other value.
 - Edits MUST go through the diff-preview confirmation gate — never write without an explicit user confirm response.
-- If the `test_execution` section is missing (absent from the file), the skill MUST inform the user and offer to scaffold a default section per the E68-S1 schema, OR abort.
+- If the `test_execution` section is missing (absent from the file), the skill MUST inform the user and offer to scaffold a default section per the schema, OR abort.
 
 ## Steps
 
@@ -47,7 +47,7 @@ Editing is comment-preserving per ADR-044: pre-existing comments and formatting 
 
 ### Step 3 — Present Tier Editor
 
-> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration. The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
 
 - Render the current tier-to-placement mapping as a table.
 - Prompt for tier and new placement, validating against the canonical placement set.

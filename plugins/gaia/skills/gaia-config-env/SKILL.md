@@ -1,6 +1,6 @@
 ---
 name: gaia-config-env
-description: Edit the environments section of project-config.yaml — section-scoped editor that preserves YAML comments and formatting per ADR-044. Use when "edit environments config" or /gaia-config-env.
+description: Edit the environments section of project-config.yaml — section-scoped editor that preserves YAML comments and formatting. Use when "edit environments config" or /gaia-config-env.
 argument-hint: "[--add|--remove|--edit] [env-name]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
 orchestration_class: light-procedural
@@ -12,17 +12,17 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are editing the `environments` top-level section of `project-config.yaml`. The skill is one of the `/gaia-config-*` editors shipped by E71-S3, each scoped to a single declared section of `schemas/project-config.schema.json`. Editing is comment-preserving per ADR-044: pre-existing comments and formatting OUTSIDE the edited section are preserved byte-for-byte; the edited section's content follows the existing indentation style detected from the file.
+You are editing the `environments` top-level section of `project-config.yaml`. The skill is one of the `/gaia-config-*` editors, each scoped to a single declared section of `schemas/project-config.schema.json`. Editing is comment-preserving: pre-existing comments and formatting OUTSIDE the edited section are preserved byte-for-byte; the edited section's content follows the existing indentation style detected from the file.
 
 This skill targets ONLY the `environments` section. All other top-level sections declared in the schema are invisible to the edit session.
 
 ## Critical Rules
 
 - Only the `environments` section may be modified. All other sections, all comments, and all formatting outside the edited section MUST be preserved byte-for-byte.
-- The comment-preserving YAML editor lives in `plugins/gaia/scripts/config-yaml-editor.sh` per ADR-042 / ADR-044. Do NOT round-trip the file through a generic YAML serializer — `yq -y`, `yaml.dump`, etc. strip comments and are forbidden.
-- Credential values in `environments.*.credentials.*` MUST be env-var NAMES (e.g., `STAGING_DB_PASSWORD_VAR`), never literal credentials. Schema validation rejects literal-secret patterns (sk-, ghp_, AKIA, xox-, glpat-) per FR-RSV2-9.
+- The comment-preserving YAML editor lives in `plugins/gaia/scripts/config-yaml-editor.sh`. Do NOT round-trip the file through a generic YAML serializer — `yq -y`, `yaml.dump`, etc. strip comments and are forbidden.
+- Credential values in `environments.*.credentials.*` MUST be env-var NAMES (e.g., `STAGING_DB_PASSWORD_VAR`), never literal credentials. Schema validation rejects literal-secret patterns (sk-, ghp_, AKIA, xox-, glpat-).
 - Edits MUST go through the diff-preview confirmation gate — never write without an explicit user confirm response.
-- If the `environments` section is missing (absent from the file), the skill MUST inform the user and offer to scaffold a default section per the E68-S1 schema, OR abort. NEVER write a malformed section silently.
+- If the `environments` section is missing (absent from the file), the skill MUST inform the user and offer to scaffold a default section per the schema, OR abort. NEVER write a malformed section silently.
 
 ## Steps
 
@@ -47,7 +47,7 @@ This skill targets ONLY the `environments` section. All other top-level sections
 
 ### Step 3 — Present CRUD Menu
 
-> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration. The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
 
 - Display the current `environments` section as a structured table (env name, url, credentials count).
 - Present operation menu: `[a]` add env, `[r]` remove env, `[e]` edit env, `[v]` view, `[x]` exit without writing.
@@ -76,4 +76,4 @@ This skill targets ONLY the `environments` section. All other top-level sections
 ## Notes
 
 - See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `environments`.
-- Mobile-specific editors (`/gaia-config-platform`, `/gaia-config-device-target`) are E74-S11 scope and intentionally NOT shipped by E71-S3.
+- Mobile-specific editors (`/gaia-config-platform`, `/gaia-config-device-target`) are shipped as separate section editors.

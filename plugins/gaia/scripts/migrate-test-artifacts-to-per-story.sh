@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # migrate-test-artifacts-to-per-story.sh — one-time migration helper for the
-# AF-2026-05-30-1 / Test03 §7.3 test-artifacts mirror retrofit.
+# test-artifacts mirror retrofit.
 #
 # Moves existing flat per-story test artifacts to the new mirror-symmetry
 # layout under per-epic/per-story directories:
@@ -72,7 +72,7 @@ _resolve_story_target() {
   fi
   local story_dir epic_dir
   story_dir=$(basename "$match")
-  # Strict prefix-boundary guard (so E1-S2 doesn't match E1-S21-*)
+  # Strict prefix-boundary guard (avoids prefix-ambiguous matches on story keys)
   case "$story_dir" in
     "${key}-"*) ;;
     *) return 1 ;;

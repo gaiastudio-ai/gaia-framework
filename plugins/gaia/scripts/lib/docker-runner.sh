@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# docker-runner.sh — AF-2026-05-30-3 / Test10 §7 Component 2.
+# docker-runner.sh — shared dispatcher for brownfield adapter docker runs.
 #
 # Shared dispatcher used by Tier 2 brownfield adapters when
 # brownfield.tools.runner == "docker". Wraps `docker run` with the
@@ -189,11 +189,10 @@ docker_runner_mode() {
 # ---------------------------------------------------------------------------
 # CLI entry — sourced consumers skip this; direct invocation dispatches.
 # ---------------------------------------------------------------------------
-# AF-2026-06-01-1 / Test15 L-01: `${BASH_SOURCE[0]:-}` so a `set -u`
-# caller that sources this lib doesn't crash with "BASH_SOURCE[0]:
-# unbound variable" on bash 3.2 (macOS default). The check semantics
-# are unchanged — when sourced, BASH_SOURCE[0] is still set to this
-# file's path; when run directly, it equals $0.
+# `${BASH_SOURCE[0]:-}` so a `set -u` caller that sources this lib doesn't
+# crash with "BASH_SOURCE[0]: unbound variable" on bash 3.2 (macOS default).
+# The check semantics are unchanged — when sourced, BASH_SOURCE[0] is still
+# set to this file's path; when run directly, it equals $0.
 if [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
   case "${1:-}" in
     image)       shift; docker_runner_image ;;
@@ -203,7 +202,7 @@ if [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
     dispatch)    shift; docker_runner_dispatch "$@" ;;
     -h|--help|"")
       cat <<EOF
-docker-runner.sh — AF-2026-05-30-3 dispatcher.
+docker-runner.sh — brownfield adapter docker dispatcher.
 Subcommands:
   image                            print resolved gaia-tools image tag
   available                        exit 0 if runner is usable, non-zero otherwise

@@ -96,8 +96,9 @@ EOF
 @test "AF-30-2 F-27: qa-test-runner.sh documents HARD FAIL when bridge enabled but no tier configured" {
   # Static prose assertion — full runner invocation requires a richer harness
   # than we ship in this bats fixture (and the runner contract is internal).
-  # Confirm the script body carries the F-27 fail-closed branch.
-  run grep -F 'F-27 HARD FAIL' \
+  # Confirm the script body carries the fail-closed branch (HARD FAIL when
+  # bridge is enabled but no tier is configured).
+  run grep -F 'HARD FAIL: bridge enabled' \
         "$PLUGIN_ROOT/scripts/review-common/qa-test-runner.sh"
   [ "$status" -eq 0 ]
   run grep -F 'BRIDGE_ENABLED' \
@@ -167,7 +168,7 @@ EOF
           --output "$TEST_TMP/.gaia/config/project-config.draft.yaml"
   # exit code may be 1 for verdict=WARNING but the seed write must have happened
   [ -f "$TEST_TMP/.gaia/config/project-config.yaml" ]
-  run grep -F 'AF-2026-05-30-2' "$TEST_TMP/.gaia/config/project-config.yaml"
+  run grep -F 'Auto-seeded by detect-signals.sh' "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
 }
 

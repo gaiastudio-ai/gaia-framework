@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# dev-story-security-invariants.sh — TB-10 bash port (Story E55-S6).
+# dev-story-security-invariants.sh — hard security invariants for pr-create.sh and merge.sh.
 #
 # Hard security invariants enforced inside pr-create.sh and merge.sh. None
 # of these assertions check YOLO mode — by design, YOLO MUST NOT bypass
-# them (FR-340; ADR-067 CRITICAL-still-halts; threat-model T25/T27/TB-10).
+# them.
 # A bats regression in tests/e55-s6-security-invariants.bats locks this in
 # by greping this file for the YOLO-mode flag token; if the token ever
 # appears here, the regression FAILS and the build halts.
@@ -116,8 +116,7 @@ assert_pr_target_from_chain() {
     return 1
   fi
 
-  # E55-S9 — discovery ladder mirrors promotion-chain-guard.sh's
-  # discover_config (and resolve-config.sh's E28-S191 / AC1):
+  # Discovery ladder mirrors promotion-chain-guard.sh's discover_config:
   #   1. $PROJECT_CONFIG                                     (explicit env override)
   #   2. $CLAUDE_PROJECT_ROOT/config/project-config.yaml     (if file exists)
   #   3. $PWD/config/project-config.yaml                     (if file exists)
@@ -125,7 +124,7 @@ assert_pr_target_from_chain() {
   #      capped at 8 levels and stopping at the filesystem root.
   # Without this ladder, /gaia-dev-story Step 13 merges fail the security
   # invariant when CWD is a sub-tree (e.g., gaia-framework/) of a project whose
-  # config/ lives at an ancestor — the sprint-37 false-flag (E53-S244, E69-S4).
+  # config/ lives at an ancestor.
   local cfg=""
   if [[ -n "${PROJECT_CONFIG:-}" ]]; then
     cfg="$PROJECT_CONFIG"

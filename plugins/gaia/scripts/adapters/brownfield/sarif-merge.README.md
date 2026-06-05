@@ -1,4 +1,4 @@
-# `sarif-merge.sh` — Phase 7 SARIF Multitool merge (E104-S4 / FR-544 / ADR-125)
+# `sarif-merge.sh` — Phase 7 SARIF Multitool merge
 
 Merges all scanner SARIF outputs into one merged SARIF so `/gaia-brownfield`
 Phase 7's 6-step gap-consolidation recipe (load → validate → dedup → rank →
@@ -14,11 +14,11 @@ named independently by Zara (security), Soren (DevOps), Hugo (Java), and Derek
 schema and preserves per-tool attribution by concatenating one `run` object per
 scanner (each carrying its `tool.driver.name`). Migrating bespoke per-tool JSON
 to merged SARIF removes per-tool parser maintenance and enables uniform
-downstream consumption (dedup E104-S1, reconciliation E104-S2, ranking).
+downstream consumption (dedup, reconciliation, ranking).
 
 ## Contract
 
-- **Flag gate (ADR-078 / ADR-125).** Runs only when `brownfield.deterministic_tools: true`
+- **Flag gate.** Runs only when `brownfield.deterministic_tools: true`
   AND `brownfield.sarif_merge_enabled: true`. `/gaia-brownfield` resolves these via
   `resolve-config.sh --field brownfield.<key>` and exports `GAIA_BROWNFIELD_DETERMINISTIC_TOOLS`
   / `GAIA_BROWNFIELD_SARIF_MERGE_ENABLED`. Flag-off → INFO skip; the 6-step recipe
@@ -31,7 +31,7 @@ downstream consumption (dedup E104-S1, reconciliation E104-S2, ranking).
   via `jq` so output is byte-identical across re-runs.
 - **Schema validation.** Non-conformant SARIF input → non-zero exit (surfaced to operator).
 - **Output.** `.gaia/artifacts/planning-artifacts/brownfield-sarif-merged.json` (an
-  artifact — the contract surface for E104-S1/S2 — NOT transient `.gaia/memory/`).
+  artifact — the contract surface for downstream consumers — NOT transient `.gaia/memory/`).
 
 ## Config flag naming (key-spelling note)
 
@@ -39,11 +39,11 @@ The story AC text spells the per-tool override `brownfield.tools.sarif-merge.ena
 (hyphenated, depth-4). The `resolve-config.sh` nested-key parser supports only
 depth-3 ASCII-underscore segments, so the shipped key is the flat depth-2
 `brownfield.sarif_merge_enabled` (and `brownfield.defectdojo_enabled` for the
-DefectDojo opt-in). The master-flag + per-tool-override SEMANTICS (ADR-078) are
+DefectDojo opt-in). The master-flag + per-tool-override semantics are
 unchanged — only the dotted-key spelling adapts to the resolver. Same constraint
-as E70-S7's `brownfield.prewarm_enabled`.
+applies to `brownfield.prewarm_enabled`.
 
-## Binary supply-chain pinning (AC-X4 / NFR-86)
+## Binary supply-chain pinning
 
 The `sarif` (Microsoft `Sarif.Multitool`) CLI MUST be version-pinned via checksum
 verification in the CI image, per the **Trivy March 2026** supply-chain compromise
@@ -51,7 +51,7 @@ precedent (Microsoft IR + Aqua Security + CrowdStrike triple-source): never pull
 security tool unpinned; verify the published SHA-256 of the release artifact before
 adding it to the runner image; fail the build on mismatch.
 
-> **Status (E104-S4):** This repo has no dedicated dependency-pinning CI workflow
+> **Status:** This repo has no dedicated dependency-pinning CI workflow
 > (`.github/workflows/dependencies.yml`). The rationale + recipe are documented here;
-> wiring the checksum-verified `sarif` install into CI is tracked as a Finding for
-> the infra owner (shared with E70-S7's grype/cdxgen pinning Finding).
+> wiring the checksum-verified `sarif` install into CI is tracked as a finding for
+> the infra owner (shared with the grype/cdxgen pinning work).

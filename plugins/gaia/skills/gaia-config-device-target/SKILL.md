@@ -1,6 +1,6 @@
 ---
 name: gaia-config-device-target
-description: Edit the device_targets section of project-config.yaml — set, show, or clear per-platform device matrices (os_versions, form_factors, screen_sizes). Section-scoped editor that preserves YAML comments and formatting per ADR-044 — use when "edit device targets config" or /gaia-config-device-target.
+description: Edit the device_targets section of project-config.yaml — set, show, or clear per-platform device matrices (os_versions, form_factors, screen_sizes). Section-scoped editor that preserves YAML comments and formatting — use when "edit device targets config" or /gaia-config-device-target.
 argument-hint: "<set|show|clear> <platform> [--os-versions ...] [--form-factors ...] [--screen-sizes WxH@D,...]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
 orchestration_class: light-procedural
@@ -14,9 +14,9 @@ You are editing the `device_targets` top-level section of `project-config.yaml`.
 - `form_factors` — list of enum entries from `phone | tablet | foldable | watch | tv`.
 - `screen_sizes` — list of `{width, height, density}` objects (logical points + pixel density).
 
-The mobile rubric layer iterates over the `screen_sizes` matrix during reviews per ADR-081 / FR-RSV2-27. Orphan entries (e.g., `device_targets.ios` when `platforms: [android]`) are rejected at this editor — `platforms[]` is the source of truth for which device-target keys are admissible.
+The mobile rubric layer iterates over the `screen_sizes` matrix during reviews. Orphan entries (e.g., `device_targets.ios` when `platforms: [android]`) are rejected at this editor — `platforms[]` is the source of truth for which device-target keys are admissible.
 
-Editing is comment-preserving per ADR-044.
+Editing is comment-preserving.
 
 ## Critical Rules
 
@@ -34,7 +34,7 @@ Resolve via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh project_config_path
 
 ### Step 2 — Dispatch Subcommand
 
-> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration. The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
 
 Invoke the deterministic helper:
 
@@ -66,5 +66,5 @@ Examples: `390x844@3.0` (iPhone 15 portrait), `1024x1366@2.0` (iPad Pro 12.9"), 
 
 ## Notes
 
-- Per ADR-081 the schema enforces `os_versions`, `form_factors`, `screen_sizes` as required fields under `deviceTargetEntry` — partial blocks are rejected at validation time.
-- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `device_targets` (a sibling top-level key per ADR-081).
+- The schema enforces `os_versions`, `form_factors`, `screen_sizes` as required fields under `deviceTargetEntry` — partial blocks are rejected at validation time.
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `device_targets` (a sibling top-level key).

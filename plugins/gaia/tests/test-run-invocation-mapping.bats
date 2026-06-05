@@ -76,8 +76,3 @@ setup() {
   [ "$compose_call" -gt "$detect_close" ]
 }
 
-# Lineage
-@test "AF-2026-05-17-4 lineage tag present in script" {
-  run grep -E 'AF-2026-05-17-4' "$SCRIPT"
-  [ "$status" -eq 0 ]
-}

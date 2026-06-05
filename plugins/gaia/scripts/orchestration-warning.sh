@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# orchestration-warning.sh — E84-S4 / ADR-093 / FR-446.
+# orchestration-warning.sh — orchestration mode lossiness warning.
 #
 # Emits a one-shot per-session warning when a heavy-procedural or
 # conversational skill starts in Mode A (subagent dispatch). Mode A is
@@ -17,14 +17,14 @@
 #   suppresses repeat warnings within the same session. The marker is
 #   keyed on session_id, so a new session re-emits the warning once.
 #
-#   CAVEAT (Test10 F-03): Without `CLAUDE_SESSION_ID` exported, the marker
+#   CAVEAT: Without `CLAUDE_SESSION_ID` exported, the marker
 #   falls back to the PID of the orchestrator process. Each fresh shell PID
 #   becomes a new "session" from the dedupe's point of view, so the warning
 #   re-fires on every command invocation rather than once. Operators who
 #   see repeat warnings should export `CLAUDE_SESSION_ID` (any stable value
 #   per real session) so the one-shot contract holds.
 #
-# Test05 F-001 (once-per-session is by design, not per-invocation):
+# Once-per-session is by design, not per-invocation:
 #   The warning fires AT MOST once per session — not on every skill call. A
 #   fresh session legitimately needs the Mode-A-lossiness notice because the
 #   trade-off applies to that session's dispatches. Suppressing it further
@@ -35,7 +35,7 @@
 #
 # When NO warning is emitted (silent exit 0):
 #   - skill class is `light-procedural` (cheap; no continuity benefit)
-#   - skill class is `reviewer` (one-shot fork by design; NFR-060)
+#   - skill class is `reviewer` (one-shot fork by design)
 #   - active mode is `team` (Mode B; full fidelity; no trade-off)
 #   - marker file for this session already exists (one-shot honored)
 #
@@ -112,8 +112,8 @@ case "$mode" in
 esac
 
 # ---- Resolve session_id ----
-# AF-2026-05-31-2 / Test13 F-12: when CLAUDE_SESSION_ID is unset, derive a
-# stable per-real-session id instead of the prior `pid-${PPID}` form. PPID
+# When CLAUDE_SESSION_ID is unset, derive a stable per-real-session id
+# instead of the prior `pid-${PPID}` form. PPID
 # changes every time a NEW bash is spawned to run a different skill — so
 # the prior fallback produced a fresh session_id per skill invocation and
 # the warning re-fired every time, contradicting the once-per-session
@@ -166,8 +166,8 @@ if [ "$mode" = "team" ]; then
   exit 0
 fi
 
-# ---- Resolve checkpoint_path (ADR-111: .gaia/ canonical) ----
-# AF-2026-05-27-3: legacy _memory/checkpoints fallback removed. CHECKPOINT_PATH
+# ---- Resolve checkpoint_path (.gaia/ canonical) ----
+# Legacy _memory/checkpoints fallback removed. CHECKPOINT_PATH
 # env override still wins; otherwise .gaia/memory/checkpoints.
 if [ -z "$checkpoint_path" ]; then
   if [ -n "${CHECKPOINT_PATH:-}" ]; then
@@ -181,7 +181,7 @@ mkdir -p "$checkpoint_path" 2>/dev/null || {
   :
 }
 
-# F-006 (Test04): GC stale orchestration-warning sentinels. These per-session
+# GC stale orchestration-warning sentinels. These per-session
 # (or per-PID fallback) marker/sentinel files were never swept, so they
 # accumulated one-per-invocation in the checkpoints dir. Sweep any
 # orchestration-warning-{shown,pending}.* older than 1 day (1440 min) on each
@@ -197,7 +197,7 @@ if [ -e "$marker" ]; then
   exit 0
 fi
 
-# AF-2026-05-18-2 — surface-above-fold contract.
+# Surface-above-fold contract.
 #
 # Claude Code's CLI auto-collapses Bash tool-call output beyond a few lines,
 # so a multi-line warning emitted to stdout can be invisible to users who
@@ -236,7 +236,7 @@ For the full-fidelity experience, enable Mode B (Agent Teams):
   2. Add orchestration.mode: team to .gaia/config/project-config.yaml.
 
 Mode B uses persistent teammates that preserve in-conversation state
-across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+across dispatches.
 
 This warning is shown once per session when a stable session id is available
 (CLAUDE_SESSION_ID); if the host does not propagate one, dedupe falls back to

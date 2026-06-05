@@ -12,7 +12,7 @@ orchestration_class: reviewer
 
 ## Mission
 
-You are validating a single rubric file (a layer in the four-layer rubric pipeline introduced by ADR-079) against `rubric.schema.json`. The check is mostly scripted — `validate-rubric.sh` is the single source of truth (per ADR-042, NFR-RSV2-4). Your job is to invoke the script, surface the verdict, and report any violations actionably.
+You are validating a single rubric file (a layer in the four-layer rubric pipeline) against `rubric.schema.json`. The check is mostly scripted — `validate-rubric.sh` is the single source of truth. Your job is to invoke the script, surface the verdict, and report any violations actionably.
 
 Layers covered by this skill: `rubrics/base/<skill>.json`, `rubrics/regimes/<regime>.json`, `rubrics/domain/<name>.json`, `rubrics/project/<skill>.json`. Any single one of these can be validated standalone.
 

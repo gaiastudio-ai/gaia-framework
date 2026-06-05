@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lifecycle-strict-mode.sh — Canonical reader for the ADR-120
+# lifecycle-strict-mode.sh — Canonical reader for the
 # `lifecycle.strict_mode` toggle.
 #
 # Precedence (highest first):

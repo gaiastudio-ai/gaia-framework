@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
-# load-taxonomy.sh — Closed-list taxonomy loader per ADR-107.
+# load-taxonomy.sh — Closed-list taxonomy loader.
 #
-# Refs:  ADR-107 (loading contract + SSOT), ADR-106 (production-callsite rule),
-#        AF-2026-05-14-6 (origin assessment).
-# Story: E88-S1.
-#
-# Production callsites (per ADR-106 rule #4):
+# Production callsites:
 #   - plugins/gaia/scripts/lib/dispatch-verb-match.sh
 #   - plugins/gaia/scripts/lib/deferral-phrase-match.sh
-#   - plugins/gaia/scripts/lib/forbidden-sentinel-scan.sh  (E88-S3)
+#   - plugins/gaia/scripts/lib/forbidden-sentinel-scan.sh
 #   - plugins/gaia/tests/taxonomy-ssot-audit.bats (SSOT audit; iterates names)
 #
 # Usage

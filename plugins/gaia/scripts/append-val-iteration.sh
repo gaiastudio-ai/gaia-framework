@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
-# append-val-iteration.sh — E44-S15 Val auto-fix loop iteration producer.
+# append-val-iteration.sh — Val auto-fix loop iteration producer.
 #
 # Producer-side helper that appends one iteration record to the val auto-fix
 # loop's checkpoint custom.val_loop_iterations array, populating the canonical
-# fields including token_estimate so the NFR-VCP-2 token-budget harness
-# (scripts/measure-val-auto-fix-token-budget.sh) can report a measured verdict
-# instead of relying on the structural-bound TD-65 argument.
+# fields including token_estimate so the token-budget harness
+# (scripts/measure-val-auto-fix-token-budget.sh) can report a measured verdict.
 #
-# Wire-in skills (E44-S2 / E44-S8 pattern) call this script once per loop
-# iteration immediately after applying a fix and before the iteration counter
-# is incremented. The output is a fresh checkpoint JSON file written via
-# write-checkpoint.sh that contains the running val_loop_iterations array.
+# Wire-in skills call this script once per loop iteration immediately after
+# applying a fix and before the iteration counter is incremented. The output
+# is a fresh checkpoint JSON file written via write-checkpoint.sh that contains
+# the running val_loop_iterations array.
 #
 # Contract (matches scripts/measure-val-auto-fix-token-budget.sh harness):
 #   custom.val_loop_iterations[*].token_estimate  →  numeric (int|float) > 0
-#                                                    OR null when AC-EC8
-#                                                    runtime token-counting
-#                                                    primitive is unavailable.
+#                                                    OR null when the runtime
+#                                                    token-counting primitive
+#                                                    is unavailable.
 #
 # Invocation:
 #   append-val-iteration.sh \
@@ -71,17 +70,16 @@ Usage:
       [--post-escape true|false] \
       [--paths <path> ...]
 
-Producer-side helper for E44-S2 / E44-S8 val auto-fix loop iteration logging.
+Producer-side helper for val auto-fix loop iteration logging.
 
 Appends one iteration record to the latest checkpoint's
 custom.val_loop_iterations array, including a numeric token_estimate
 that scripts/measure-val-auto-fix-token-budget.sh can read for the
-NFR-VCP-2 verification harness.
+token-budget verification harness.
 
-The token_estimate field is the harness contract (E44-S9). Pass an integer
+The token_estimate field is the harness contract. Pass an integer
 or float for SDK-reported response usage tokens, or the literal string
-"null" when the runtime token-counting primitive is unavailable
-(AC-EC8 fallback).
+"null" when the runtime token-counting primitive is unavailable.
 
 Exit codes:
   0 ok  | 1 validation error  | 2 environment error  | 3 IO error
@@ -172,7 +170,7 @@ done
 [ -n "$SKILL" ]        || die 1 "--skill is required"
 [ -n "$STEP" ]         || die 1 "--step is required"
 [ -n "$ITERATION" ]    || die 1 "--iteration is required"
-[ -n "$TOKEN_ESTIMATE" ] || die 1 "--token-estimate is required (use 'null' if AC-EC8 fallback)"
+[ -n "$TOKEN_ESTIMATE" ] || die 1 "--token-estimate is required (use 'null' when token-counting is unavailable)"
 [ -n "$REVAL_OUTCOME" ] || die 1 "--revalidation-outcome is required"
 [ -n "$FINDINGS_JSON" ] || die 1 "--findings-json is required"
 
@@ -230,8 +228,8 @@ fi
 # ---------- python3 preflight ----------
 command -v python3 >/dev/null 2>&1 || die 2 "python3 not found on PATH (required to compose JSON)"
 
-# ---------- Resolve CHECKPOINT_ROOT (ADR-111: .gaia/ canonical) ----------
-# AF-2026-05-27-3: legacy _memory/checkpoints fallback removed; env override wins.
+# ---------- Resolve CHECKPOINT_ROOT ----------
+# Legacy _memory/checkpoints fallback removed; env override wins.
 if [ -n "${CHECKPOINT_ROOT:-}" ]; then
   CHECKPOINT_ROOT_RESOLVED="$CHECKPOINT_ROOT"
 else

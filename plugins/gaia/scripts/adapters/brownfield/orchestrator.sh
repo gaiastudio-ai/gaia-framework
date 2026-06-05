@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/brownfield/orchestrator.sh — E70-S10 per-stack file-list intersection.
+# adapters/brownfield/orchestrator.sh — per-stack file-list intersection.
 #
 # For each stacks[] entry in project-config.yaml, compute the file-list passed to
 # that stack's per-tool adapters as:
@@ -8,10 +8,10 @@
 #
 # where path_root = stack.path || '.' (single-stack). Excludes ALWAYS win on
 # collision. The result is written to $ORCH_OUT_DIR/<stack>.files as sorted,
-# repo-root-relative paths — consumed verbatim by each adapter via the ADR-078
+# repo-root-relative paths — consumed verbatim by each adapter via the
 # `run.sh --input <file-list>` contract (byte-stable; adapters never see
 # path/paths/excludes metadata). Single-stack (path:null) collapses to
-# `'.' ∩ paths − excludes`, byte-identical to pre-deploy (FR-546 / ADR-126).
+# `'.' ∩ paths − excludes`, byte-identical to pre-deploy.
 #
 # Pure bash globstar + parameter matching (bash 4+). No external binary; no
 # network. Requires yq to read the config.
@@ -21,17 +21,17 @@
 #   ORCH_ROOT     source-tree root the globs resolve against (default: project_path or .)
 #   ORCH_OUT_DIR  per-stack file-list output dir (default: $TMPDIR/gaia-brownfield-filelists)
 #
-# AC-X1: when the master flag is off, the orchestrator is a no-op (not invoked
+# When the master flag is off, the orchestrator is a no-op (not invoked
 # in production; defends itself when invoked directly).
 
 set -euo pipefail
 
-# AF-2026-05-31-1 / Test12 F-06 — bash 3.2 portability rewrite.
+# Bash 3.2 portability rewrite.
 #
-# Prior implementation (AF-2026-05-30-2 / Test10 F-09) guarded `shopt -s globstar`
+# Prior implementation guarded `shopt -s globstar`
 # on `BASH_VERSINFO >= 4` and short-circuited to a stderr "skip" on macOS-
 # default bash 3.2 — silently disabling the entire deterministic-tools layer
-# on a stock Mac. Test12 §9.0 cross-platform mandate: every script must run
+# on a stock Mac. Cross-platform mandate: every script must run
 # on macOS bash 3.2, Linux bash 4+, and bash via Git Bash / WSL2 on Windows.
 #
 # Three bash-4-only features were in use and have been removed:
@@ -52,9 +52,9 @@ set -euo pipefail
 #      output collation already produces via the downstream `| sort` (and
 #      verified at the loop boundary). The dedup invariant is preserved.
 #
-# Closes the F-06 portability wall: the brownfield deterministic-tools layer
-# now functions on the macOS-default shell, removing the silent Tier-0
-# degradation that defeated the "never degrade silently" goal.
+# The brownfield deterministic-tools layer now functions on the macOS-default
+# shell, removing the silent degradation that defeated the "never degrade
+# silently" goal.
 
 shopt -s nullglob dotglob
 LC_ALL=C
@@ -63,7 +63,7 @@ export LC_ALL
 SCRIPT_NAME="adapters/brownfield/orchestrator.sh"
 log_info() { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 
-# --- Flag gate (AC-X1) ----------------------------------------------------
+# --- Flag gate ----------------------------------------------------------------
 MASTER="${GAIA_BROWNFIELD_DETERMINISTIC_TOOLS:-true}"
 if [ "$MASTER" != "true" ]; then
   log_info "orchestrator skipped (flag-off: deterministic_tools=$MASTER) — no per-stack intersection"
@@ -92,16 +92,16 @@ stack_count="$(yq eval '.stacks | length' "$CONFIG" 2>/dev/null || printf '0')"
 # that matches files directly under the base. Both forms are tried.
 matches_glob() {
   local path="$1" glob="$2"
-  # AF-2026-06-02-1 / Test16 F-M02 — bare-dir / trailing-slash expansion.
+  # Bare-dir / trailing-slash expansion.
   # A path of `core/` (the form /gaia-init persists when the user answers
   # `core/` to the path question) only matches the literal string `core/`
   # under bash `case`, never `core/vault/x.py`. The author intent for a
   # bare-dir path is "every file under this directory at any depth", so
   # rewrite a trailing `/` or a glob with no wildcard to `<dir>/**` before
   # running the standard match. This closes the per-stack file-count-of-0
-  # symptom Test16 reproduced live (`paths:[core/]` → 0 files vs
-  # `paths:[core/**]` → 37). The pre-existing /**/ collapse + leading-**/
-  # strip still handle the `**/*.go` / `src/**/*.go` cases.
+  # symptom (`paths:[core/]` → 0 files vs `paths:[core/**]` → 37). The
+  # pre-existing /**/ collapse + leading-**/ strip still handle the
+  # `**/*.go` / `src/**/*.go` cases.
   if [ "${glob%/}" != "$glob" ] || ! printf '%s' "$glob" | grep -q '[*?[]'; then
     # Trailing slash OR no wildcard chars at all → treat as a dir prefix.
     glob="${glob%/}/**"
@@ -135,7 +135,7 @@ while [ "$i" -lt "$stack_count" ]; do
   name="$(yq eval ".stacks[$i].name" "$CONFIG")"
   path_root="$(yq eval ".stacks[$i].path // \".\"" "$CONFIG")"
   [ "$path_root" = "null" ] && path_root="."
-  # AF-2026-05-31-1 / Test12 F-06: bash 3.2-compat `mapfile` replacement.
+  # Bash 3.2-compat `mapfile` replacement.
   paths=()
   while IFS= read -r _line; do
     [ -n "$_line" ] && paths+=("$_line")
@@ -154,10 +154,10 @@ while [ "$i" -lt "$stack_count" ]; do
 
   # Enumerate candidate files under base, compute their repo-root-relative path,
   # and the path RELATIVE TO path_root (which the stack globs are written against).
-  # AF-2026-05-31-1 / Test12 F-06: the dedup invariant previously held by a
-  # `declare -A seen=()` presence set is preserved by passing the per-loop
-  # output through `sort -u` at the boundary. Within the loop we just emit
-  # every match; dedup happens once at the sink.
+  # The dedup invariant previously held by a `declare -A seen=()` presence
+  # set is preserved by passing the per-loop output through `sort -u` at the
+  # boundary. Within the loop we just emit every match; dedup happens once at
+  # the sink.
   if [ -d "$base" ]; then
     while IFS= read -r abs; do
       [ -f "$abs" ] || continue
@@ -174,11 +174,9 @@ while [ "$i" -lt "$stack_count" ]; do
       fi
       [ "$included" -eq 1 ] || continue
       # Exclude iff matched by ANY excludes[] glob (excludes ALWAYS win).
-      # AF-2026-05-31-2 / Test13 F-14 — bash 3.2 + `set -u` rejects the
-      # `"${excludes[@]}"` deref when the array is empty (a stack without
-      # an `excludes:` block). Length-guard the iteration so the empty case
-      # is a clean no-op. Same regression class as F-24 (sprint-state.sh
-      # _init_args[@]); both fall out of the AF-31-1 portability rewrite.
+      # Bash 3.2 + `set -u` rejects the `"${excludes[@]}"` deref when the
+      # array is empty (a stack without an `excludes:` block). Length-guard
+      # the iteration so the empty case is a clean no-op.
       excluded=0
       if [ "${#excludes[@]}" -gt 0 ]; then
         for g in "${excludes[@]}"; do
@@ -195,10 +193,10 @@ while [ "$i" -lt "$stack_count" ]; do
   i=$((i+1))
 done
 
-# --- Emit per-stack counts (AC-X3 — consumed for per_stack_file_counts) ----
-# AF-2026-05-31-2 / Test13 F-14 — guard the count_pairs[@] expansion: when
-# stack_count was zero (nothing to iterate), count_pairs is empty and
-# `"${count_pairs[*]}"` under `set -u` would crash on bash 3.2.
+# --- Emit per-stack counts (consumed for per_stack_file_counts) -------------
+# Guard the count_pairs[@] expansion: when stack_count was zero (nothing to
+# iterate), count_pairs is empty and `"${count_pairs[*]}"` under `set -u`
+# would crash on bash 3.2.
 if [ "${#count_pairs[@]}" -gt 0 ]; then
   log_info "per_stack_file_counts: ${count_pairs[*]}"
 fi

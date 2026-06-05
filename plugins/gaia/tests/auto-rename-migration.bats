@@ -60,7 +60,7 @@ teardown() { common_teardown; }
   post_sha=$(shasum -a 256 "$WORKDIR/ci.yml" | awk '{print $1}')
   [ "$pre_sha" = "$post_sha" ]
   [ -f "$MEMORY/.config-stale" ]
-  grep -q 'FR-528\|FR-519' "$MEMORY/.config-stale"
+  grep -q 'originating_skill\|deferred' "$MEMORY/.config-stale"
   echo "$output" | grep -qiE 'warn|deferred|stale'
 }
 
@@ -121,7 +121,7 @@ teardown() { common_teardown; }
   # GAIA_NONINTERACTIVE=1 simulates the substrate's non-interactive detection
   run env -u GAIA_MIGRATE_DECISION_ci_yml GAIA_NONINTERACTIVE=1 bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'SR-84'
+  echo "$output" | grep -q 'HALT'
   echo "$output" | grep -qE 'force|GAIA_MIGRATE_ALLOW_FORCE'
 }
 

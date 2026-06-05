@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-# template-header.sh — GAIA foundation script (E28-S16)
+# template-header.sh — GAIA foundation script
 #
 # Emits a deterministic markdown template metadata header block to stdout.
 # No filesystem side effects — stdout-only. Consumed by template generators
 # and workflow authoring tools so that template headers are byte-stable
 # across runs for the same inputs (modulo date), never depending on an LLM.
-#
-# Refs: FR-325, FR-328, NFR-048, ADR-042, ADR-048
-# Brief: P2-S8 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
 #
 # Invocation contract:
 #
@@ -96,11 +93,11 @@ sq_escape() {
 }
 
 # --- resolve framework_version ----------------------------------------------
-# Extracted to a sourceable library at lib/framework-version.sh per E86-S1 /
-# FR-472 so that both this script and the E86-S2 drift-detection hook in
-# resolve-config.sh can source a single canonical implementation. The library
-# preserves the two-tier resolution (resolve-config.sh preferred, plugin.json
-# fallback) and the no-trailing-newline stdout contract required by ADR-102.
+# Extracted to a sourceable library at lib/framework-version.sh so that both
+# this script and the drift-detection hook in resolve-config.sh can source a
+# single canonical implementation. The library preserves the two-tier
+# resolution (resolve-config.sh preferred, plugin.json fallback) and the
+# no-trailing-newline stdout contract.
 _TH_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$_TH_HERE/lib/framework-version.sh"

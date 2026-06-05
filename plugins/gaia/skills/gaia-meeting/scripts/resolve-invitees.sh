@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# resolve-invitees.sh — gaia-meeting INVITE-phase invitee resolver (E76-S5)
-#
-# FR-MTG-17 (mode-default invitees) / FR-MTG-18 (graceful degradation)
+# resolve-invitees.sh — gaia-meeting INVITE-phase invitee resolver
 #
 # Reads the resolved mode (canonical) and the user-supplied invitee CSV, looks
 # up the mode registry for the mode's `default_invitees`, checks each default
@@ -11,8 +9,7 @@
 #
 # When `--invitees-override` is set, the override path bypasses default-
 # invitee lookup entirely — the user-supplied CSV is authoritative and no
-# WARNING fires. (Per AC14 / Open Question #2 resolution: override REPLACES,
-# not extends.)
+# WARNING fires. (Override REPLACES, not extends.)
 #
 # Usage:
 #   resolve-invitees.sh \
@@ -22,14 +19,15 @@
 #     [--invitees-override] \
 #     [--session-file <path-to-session-state.yaml>]
 #
-# When `--session-file` is supplied (E76-S21 / AF-2026-05-10-2 user-as-first-
-# class-attendee path), the resolver detects user-tokens (`me` / `user` /
+# When `--session-file` is supplied (user-as-first-class-attendee path), the
+# resolver detects user-tokens (`me` / `user` /
 # resolved-user-name; case-insensitive) in the user CSV, PRESERVES them in the
 # resolved CSV, emits NO WARNING for user-tokens, and updates the session-
 # state file via `session-state.sh update --field user_attendance --value
 # true|false` exactly once. When `--session-file` is OMITTED, the legacy
-# behavior is preserved bit-for-bit (drops user-tokens with the FR-MTG-10 /
-# AC4 WARNING) so non-meeting callers and pre-S21 fixtures continue to work.
+# behavior is preserved bit-for-bit (drops user-tokens with the user-
+# fabrication WARNING) so non-meeting callers and older fixtures continue to
+# work.
 #
 # Stdout (one key=value per line, in fixed order):
 #   resolved=<csv>
@@ -40,12 +38,12 @@
 #   default_invitees_resolved=<csv-or-empty>
 #
 # Stderr:
-#   WARNING line per FR-MTG-18 when default invitees are missing (override
-#   path emits no WARNING).
+#   WARNING line when default invitees are missing (override path emits no
+#   WARNING).
 #
 # Exit codes:
 #   0 = success (including the missing-default-invitees graceful-degradation
-#       path — AC11/AC12/AC13 require exit 0)
+#       path)
 #   2 = invalid args
 #   3 = unknown mode (registry miss)
 
@@ -104,33 +102,31 @@ if [[ -n "$INVITEES_CSV" ]]; then
   done
 fi
 
-# User-token detection (FR-MTG-10, originally landed by E76-S8 as a drop-with-
-# WARNING gate; reworked under AF-2026-05-10-2 / E76-S21 / AI-2026-05-09-9 to
-# the user-as-first-class-attendee carve-out).
+# User-token detection (originally a drop-with-WARNING gate; reworked to the
+# user-as-first-class-attendee carve-out).
 #
 # Three case-insensitive checks resolve a CSV token to "the user":
 #   - literal "me"
 #   - literal "user"
 #   - equality with the resolved user name from scripts/resolve-user-name.sh
-#     (case-insensitive, expanded by S21 — was case-sensitive under S8).
-#     Best-effort: if the resolver is missing or fails, the user-name check
+#     (case-insensitive). Best-effort: if the resolver is missing or fails,
+#     the user-name check
 #     is silently skipped (the literal-token checks still fire). Skipping
 #     the resolver step is intentional: a CI runner without git config +
 #     settings.json must not block invitee resolution.
 #
 # Behavior under the two modes:
-#   1. `--session-file <path>` PRESENT (canonical /gaia-meeting flow per
-#      E76-S21 carve-out): user-tokens are PRESERVED in the resolved CSV;
-#      no WARNING is emitted; session-state `user_attendance` is updated
-#      exactly once (`true` if any user-token was detected, `false`
-#      otherwise). The user is treated as a non-LLM attendee with a turn
-#      slot at every yield boundary (composes with E76-S18 AskUserQuestion
-#      mechanism). Existing TC-MTG-NOFAB-3a (PRIMARY E76-S21) covers this.
+#   1. `--session-file <path>` PRESENT (canonical /gaia-meeting flow with the
+#      user-as-first-class-attendee carve-out): user-tokens are PRESERVED in
+#      the resolved CSV; no WARNING is emitted; session-state
+#      `user_attendance` is updated exactly once (`true` if any user-token was
+#      detected, `false` otherwise). The user is treated as a non-LLM attendee
+#      with a turn slot at every yield boundary (composes with the
+#      AskUserQuestion mechanism).
 #   2. `--session-file` ABSENT (legacy callers + non-meeting fixtures):
-#      user-tokens are DROPPED with the FR-MTG-10 / AC4 WARNING preserved
-#      bit-for-bit. Existing TC-MTG-NOFAB-3 (now split as 3b, PRIMARY
-#      E76-S8) covers this — the no-fabricated-user-turns invariant fires
-#      when the user is NOT explicitly invited.
+#      user-tokens are DROPPED with the user-fabrication WARNING preserved
+#      bit-for-bit — the no-fabricated-user-turns invariant fires when the
+#      user is NOT explicitly invited.
 #
 # `set -e` requires the user_token_seen counter to be set even when no
 # tokens were processed, so we initialize before the loop.
@@ -162,9 +158,9 @@ if (( ${#user_invitees[@]} > 0 )); then
     fi
     if (( is_user_token == 1 )); then
       if [[ -n "$SESSION_FILE" ]]; then
-        # E76-S21 carve-out path: PRESERVE the FIRST user-token verbatim,
-        # then collapse any subsequent user-tokens into the same single
-        # attendee slot. The user is one human regardless of how many
+        # User-as-first-class-attendee path: PRESERVE the FIRST user-token
+        # verbatim, then collapse any subsequent user-tokens into the same
+        # single attendee slot. The user is one human regardless of how many
         # aliases (`me`, `user`, `<resolved-name>`) appear in --invitees —
         # emitting multiple slots would produce duplicate AskUserQuestion
         # yields at each turn boundary. The first token wins so the
@@ -176,9 +172,9 @@ if (( ${#user_invitees[@]} > 0 )); then
         continue
       fi
       user_token_seen=1
-      # Legacy E76-S8 path (no --session-file): drop with WARNING. Single-
-      # line WARNING — exact wording preserved character-identical with the
-      # original FR-MTG-10 / AC4 implementation.
+      # Legacy path (no --session-file): drop with WARNING. Single-line
+      # WARNING — exact wording preserved character-identical with the
+      # original implementation.
       echo "[gaia-meeting] WARNING: invitee token \"${u}\" resolves to the user — the user is not an agent and is not auto-included; user authoring uses --charter / [i]nterject only" >&2
       continue
     fi
@@ -187,10 +183,10 @@ if (( ${#user_invitees[@]} > 0 )); then
 fi
 user_invitees=("${filtered_user_invitees[@]}")
 
-# E76-S21 / FR-MTG-33 schema extension — set session-state user_attendance
-# exactly once. Only fires when the caller passed `--session-file` (canonical
-# /gaia-meeting flow); legacy callers without a session file see no schema
-# coupling, preserving backward compatibility.
+# Session-state user_attendance schema extension — set exactly once. Only
+# fires when the caller passed `--session-file` (canonical /gaia-meeting
+# flow); legacy callers without a session file see no schema coupling,
+# preserving backward compatibility.
 if [[ -n "$SESSION_FILE" ]]; then
   SESSION_STATE_HELPER="$SCRIPT_DIR/session-state.sh"
   if [[ -x "$SESSION_STATE_HELPER" && -f "$SESSION_FILE" ]]; then
@@ -249,7 +245,7 @@ else
   done < <(mode_registry_list_field "$canonical" default_invitees)
 
   if (( ${#missing[@]} > 0 )); then
-    # FR-MTG-18 WARNING — single-line, stable prefix per SKILL.md.
+    # Graceful-degradation WARNING — single-line, stable prefix per SKILL.md.
     missing_csv="$(IFS=,; echo "${missing[*]}")"
     resolved_csv="$(IFS=,; echo "${resolved[*]}")"
     echo "[gaia-meeting] WARNING: missing default invitee(s) for mode ${canonical}: ${missing_csv} (resolved subset: ${resolved_csv})" >&2

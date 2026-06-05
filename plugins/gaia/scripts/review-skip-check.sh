@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
-# review-skip-check.sh — Skip-already-PASSED filter for /gaia-run-all-reviews (E58-S1)
+# review-skip-check.sh — Skip-already-PASSED filter for /gaia-run-all-reviews
 #
 # Reads the current Review Gate table for a story (via review-gate.sh status)
 # and emits a deterministic JSON partition `{"skip":[...],"run":[...]}` listing
 # which canonical reviewers are already PASSED (skip) and which still need to
-# run (run). This restores V1 parity for FR-RAR-1 by extracting the inline
-# LLM Step-2 counting into a script — the LLM never counts gate rows again.
+# run (run). Extracts the inline LLM gate-counting step into a script — the
+# LLM never counts gate rows again.
 #
-# Refs: FR-RAR-1, AF-2026-04-28-7, ADR-054 (Composite Review Gate Check),
-#       ADR-050 (Shared Val + SM Fix-Loop)
-# Brief: .gaia/artifacts/planning-artifacts/epics-and-stories.md §E58
-#
-# Invocation contract (stable for E58-S5 / E58-S6 wiring):
+# Invocation contract:
 #
 #   review-skip-check.sh --story <key>          # partition by current gate state
 #   review-skip-check.sh --story <key> --force  # skip=[], run=<all 6>
@@ -38,7 +34,7 @@
 #       unknown CLI flag, or any review-gate.sh error other than "story not
 #       found"
 #
-# Non-atomicity caveat (Val WARNING #2, ECI-669):
+# Non-atomicity caveat:
 #   This script is intentionally NOT atomic with respect to the subsequent
 #   reviewer runs. It is invoked once at SKILL.md Step 2 and is NOT refreshed
 #   between reviewer invocations. A concurrent gate write between this
@@ -80,9 +76,8 @@ CANONICAL_GATES=(
 )
 
 # Canonical short-name vocabulary (JSON output). 1:1 indexed mapping with
-# CANONICAL_GATES above. The order is fixed by the E58-S1 story spec and
-# matches the same order used by review-runner.sh (E58-S5) and the SKILL.md
-# wiring (E58-S6). DO NOT reorder either array independently.
+# CANONICAL_GATES above. The order matches review-runner.sh and the SKILL.md
+# wiring. DO NOT reorder either array independently.
 CANONICAL_SHORT_NAMES=(
   "code-review"
   "qa-tests"

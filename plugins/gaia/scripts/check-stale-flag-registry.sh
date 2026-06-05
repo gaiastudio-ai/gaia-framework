@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# check-stale-flag-registry.sh — E86-S6 / FR-475 / SR-59 / ADR-102 static check.
+# check-stale-flag-registry.sh — stale-flag registry static check.
 #
 # Scans `_memory/.*-stale` markers and verifies every marker on disk is
-# registered in the ADR-102 registry table in the architecture document.
+# registered in the registry table in the architecture document.
 # Unregistered markers are CRITICAL findings — they represent a governance
-# audit gap that must be resolved before deployment (SR-59).
+# audit gap that must be resolved before deployment.
 #
-# Per ADR-102 marker contract clause 3, markers MUST live at the `_memory/`
+# Per marker contract clause 3, markers MUST live at the `_memory/`
 # top level (`-maxdepth 1` scope) — this keeps `ls -a _memory/` discoverable
 # and avoids ambiguity with checkpoint / sidecar dotfiles under nested
 # subdirectories. Widening the scope would silently include unrelated state.
@@ -20,7 +20,7 @@
 # Environment:
 #   CLAUDE_PROJECT_ROOT  — project root (resolves _memory/ and registry path)
 #   GAIA_MEMORY_PATH     — override for the `_memory/` directory (fixtures)
-#   GAIA_REGISTRY_PATH   — override for the ADR-102 registry document
+#   GAIA_REGISTRY_PATH   — override for the registry document
 #
 # POSIX discipline: bash 3.2 compatible (macOS default).
 
@@ -29,7 +29,7 @@ LC_ALL=C
 export LC_ALL
 
 # ---- Resolve memory dir ----
-# AF-2026-05-27-3 (ADR-111): markers live under the canonical .gaia/memory tree;
+# Markers live under the canonical .gaia/memory tree;
 # the legacy _memory default was removed with the consolidation migration.
 memory_dir="${GAIA_MEMORY_PATH:-${CLAUDE_PROJECT_ROOT:-.}/.gaia/memory}"
 
@@ -37,7 +37,7 @@ memory_dir="${GAIA_MEMORY_PATH:-${CLAUDE_PROJECT_ROOT:-.}/.gaia/memory}"
 if [ -n "${GAIA_REGISTRY_PATH:-}" ]; then
   registry_path="$GAIA_REGISTRY_PATH"
 else
-  # E96-S7 partial-4b: smart-fallback — prefer .gaia/artifacts/planning-artifacts/
+  # Smart-fallback — prefer .gaia/artifacts/planning-artifacts/
   # over legacy docs/planning-artifacts/ for the architecture detail-records shard.
   _proj="${CLAUDE_PROJECT_ROOT:-.}"
   if [ -d "$_proj/.gaia/artifacts/planning-artifacts" ]; then
@@ -50,7 +50,7 @@ fi
 
 exit_code=0
 
-# ---- Scan _memory/ for stale markers — -maxdepth 1 per ADR-102 clause 3 ----
+# ---- Scan _memory/ for stale markers — -maxdepth 1 per marker contract clause 3 ----
 if [ ! -d "$memory_dir" ]; then
   # No _memory/ → no markers to audit. Clean exit.
   exit 0
@@ -75,24 +75,24 @@ fi
 
 # ---- Registry must exist when markers are present ----
 if [ ! -f "$registry_path" ]; then
-  printf 'CRITICAL: ADR-102 registry not found at %s. Cannot audit %d marker(s).\n' \
+  printf 'CRITICAL: stale-flag registry not found at %s. Cannot audit %d marker(s).\n' \
     "$registry_path" "$(printf '%s\n' $found_markers | wc -l | tr -d ' ')" >&2
-  printf 'CRITICAL: ADR-102 registry missing — cannot audit stale-flag markers.\n'
+  printf 'CRITICAL: stale-flag registry missing — cannot audit stale-flag markers.\n'
   exit 1
 fi
 
 # ---- Parse registry: extract marker basenames from rows like ----
 #   | `.gaia/memory/.{name}-stale` | ... | ... | ... |
-# AF-2026-05-27-3 (ADR-111): markers are registered under .gaia/memory/. The
-# legacy `_memory/` prefix is still accepted here so the project-root ADR-102
-# registry shard can be migrated separately (it lives outside this repo).
+# Markers are registered under .gaia/memory/. The legacy `_memory/` prefix is
+# still accepted here so the project-root registry shard can be migrated
+# separately (it lives outside this repo).
 registered=$(grep -oE '`(\.gaia/memory|_memory)/\.[A-Za-z0-9_-]+-stale`' "$registry_path" \
              | sed -E 's:^`(\.gaia/memory|_memory)/::; s:`$::')
 
 # ---- Audit found vs registered ----
 for marker in $found_markers; do
   if ! printf '%s\n' "$registered" | grep -qxF "$marker"; then
-    printf 'CRITICAL: Unregistered stale-flag marker: .gaia/memory/%s. Register in ADR-102 or remove.\n' \
+    printf 'CRITICAL: Unregistered stale-flag marker: .gaia/memory/%s. Register in the stale-flag registry or remove.\n' \
       "$marker"
     exit_code=1
   fi

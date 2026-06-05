@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 12 gaia-a11y-testing skill setup (E28-S88)
+# setup.sh — gaia-a11y-testing skill setup
 #
-# Mechanical extension of the Cluster 9 reference implementation authored
-# under E28-S66 (gaia-code-review/scripts/setup.sh). Only WORKFLOW_NAME and
-# SCRIPT_NAME differ — the body follows the shared pattern.
-#
-# Responsibilities (per brief Cluster 12):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs
 #   3. Load the checkpoint state for this workflow

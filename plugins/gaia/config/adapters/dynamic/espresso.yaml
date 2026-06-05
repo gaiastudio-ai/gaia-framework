@@ -1,4 +1,4 @@
-# Espresso dynamic test adapter (E74-S9)
+# Espresso dynamic test adapter
 # Google's native Android UI test framework, invoked via Gradle.
 name: espresso
 type: dynamic

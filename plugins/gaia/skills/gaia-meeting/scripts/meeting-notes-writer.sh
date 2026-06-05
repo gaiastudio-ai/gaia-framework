@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# meeting-notes-writer.sh — gaia-meeting saved-notes writer (E76-S3)
-#
-# AC9 / FR-MTG-27
+# meeting-notes-writer.sh — gaia-meeting saved-notes writer
 #
 # Reads a payload YAML describing the closed meeting (charter, mode, attendees
 # with per-attendee token costs, total tokens, transcript, summary, preludes,
@@ -12,7 +10,7 @@
 #
 # Frontmatter contract:
 #   - per-attendee + total token-cost breakdown
-#   - scratchpad_extractions: []  (empty when E76-S4 not yet landed)
+#   - scratchpad_extractions: []  (empty when no extractions)
 #   - action_items: [AI-..., AI-...]  (IDs from the action-items writer)
 #
 # Body contract — required H2 sections in order:
@@ -141,8 +139,8 @@ _attendees_block() {
 
 CHARTER="$(_scalar "$PAYLOAD" charter)"
 MODE="$(_scalar "$PAYLOAD" mode)"
-# E76-S5 — closing-artifact bias + invitee-resolution audit fields. Optional
-# in the payload (legacy E76-S3 callers omit them); when absent, the writer
+# Closing-artifact bias + invitee-resolution audit fields. Optional
+# in the payload (legacy callers omit them); when absent, the writer
 # emits no row for that key so back-compat is preserved.
 CLOSING_BIAS="$(_scalar "$PAYLOAD" closing_artifact_bias)"
 INVITEES_OVERRIDE="$(_scalar "$PAYLOAD" invitees_override)"
@@ -167,7 +165,7 @@ OPEN_Q_LIST="$(_list "$PAYLOAD" open_questions)"
 ACTION_IDS_LIST="$(_list "$PAYLOAD" action_items)"
 MEM_WT_LIST="$(_list "$PAYLOAD" memory_writethrough)"
 SCRATCHPAD_EXTRACTIONS_LIST="$(_list "$PAYLOAD" scratchpad_extractions)"
-# E76-S5 — invitee-resolution audit lists (FR-MTG-18 / AC16). Each list may
+# Invitee-resolution audit lists. Each list may
 # legitimately be empty; we detect presence of the key via _key_present.
 DEFAULT_RESOLVED_LIST="$(_list "$PAYLOAD" default_invitees_resolved)"
 MISSING_INVITEES_LIST="$(_list "$PAYLOAD" missing_invitees)"
@@ -186,8 +184,7 @@ while IFS= read -r id; do
 done <<< "$ACTION_IDS_LIST"
 action_items_inline+="]"
 
-# AF-2026-05-21-16: canonical-unconditional per E96-S8 write-boundary.sh
-# (post-ADR-111 canonical-only enforcement; no legacy fallback supported).
+# Canonical-unconditional write path (no legacy fallback supported).
 out_dir="$ROOT/.gaia/artifacts/creative-artifacts"
 out="$out_dir/meeting-${DATE}-${SLUG}.md"
 mkdir -p "$out_dir"
@@ -201,9 +198,9 @@ tmp="$(mktemp)"
   echo "charter: \"${CHARTER}\""
   echo "mode: ${MODE}"
 
-  # E76-S5 — closing-artifact bias + invitee-resolution audit fields. Each is
+  # Closing-artifact bias + invitee-resolution audit fields. Each is
   # emitted only when present in the payload to preserve backward compat with
-  # legacy E76-S3 callers (T7 / AC16 / FR-MTG-17 / FR-MTG-18).
+  # legacy callers.
   if _key_present "$PAYLOAD" closing_artifact_bias; then
     echo "closing_artifact_bias: ${CLOSING_BIAS}"
   fi
@@ -239,9 +236,9 @@ tmp="$(mktemp)"
     echo "$ATTENDEES" | sed -E 's/^[[:space:]]+/  /'
   fi
   echo "total_tokens: ${TOTAL_TOKENS}"
-  # E76-S4 — emit scratchpad_extractions list (empty when none).
+  # Emit scratchpad_extractions list (empty when none).
   # The payload's `scratchpad_extractions:` carries project-relative file paths
-  # in ascending SP-N order; we reproduce that ordering verbatim.
+  # in ascending order; we reproduce that ordering verbatim.
   if [[ -n "$SCRATCHPAD_EXTRACTIONS_LIST" ]]; then
     echo "scratchpad_extractions:"
     while IFS= read -r p; do

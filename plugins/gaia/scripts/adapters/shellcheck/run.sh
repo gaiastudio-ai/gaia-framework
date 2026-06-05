@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/shellcheck/run.sh — ADR-078 adapter contract for ShellCheck (E77-S11, FR-413).
+# adapters/shellcheck/run.sh — adapter contract for ShellCheck.
 #
 # Contract: run --input <file-list> [--config <adapter-config>] [--output <fragment.json>]
 #               [--runtime-profile {subprocess|container|network}] [--timeout {seconds}]
@@ -31,8 +31,8 @@ LC_ALL=C
 export LC_ALL
 
 # --- Critical-rule allowlist ----------------------------------------------
-# The six rules per FR-413 / E77-S11 dev-notes. Anything in this set is emitted
-# as severity=error (blocking=true); anything else as severity=warning (advisory).
+# The six rules in this set are emitted as severity=error (blocking=true);
+# anything else as severity=warning (advisory).
 CRITICAL_RULES_REGEX='^SC(2086|2154|2046|2068|2155|2178)$'
 
 # --- Arg parsing ----------------------------------------------------------
@@ -54,7 +54,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/shellcheck/run.sh — ADR-078 contract entry for ShellCheck.
+adapters/shellcheck/run.sh — contract entry for ShellCheck.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -80,7 +80,7 @@ while IFS= read -r path; do
   esac
 done < "$INPUT"
 
-# --- Auto-skip when no .sh files (AC6) ------------------------------------
+# --- Auto-skip when no .sh files -----------------------------------------
 
 if [ "${#TARGETS[@]}" -eq 0 ]; then
   echo "run.sh: No .sh files found -- skipping shellcheck" >&2
@@ -99,9 +99,9 @@ fi
 
 if ! command -v shellcheck >/dev/null 2>&1; then
   echo "run.sh: shellcheck not found on PATH" >&2
-  # Exit 127 = unavailable per E70-S2 AC10. The probe catches this before
-  # invoking run.sh in the normal pipeline; this surfaces unavailability when
-  # run.sh is invoked directly.
+  # Exit 127 = unavailable (distinct from generic error 1). The probe catches
+  # this before invoking run.sh in the normal pipeline; this surfaces
+  # unavailability when run.sh is invoked directly.
   exit 127
 fi
 

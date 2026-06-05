@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# config-shape-detect.sh — Config-shape detector for the ADR-112 §(f)
-# 5-case decision table that drives /gaia-help Phase 5 routing and
-# /gaia-deploy-checklist publish-readiness mode.
+# config-shape-detect.sh — Config-shape detector for the 5-case decision
+# table that drives /gaia-help routing and /gaia-deploy-checklist
+# publish-readiness mode.
 #
-# E99-S5 / FR-524. Sourceable, NOT executable.
+# Sourceable, NOT executable.
 #
 # Exposes one function:
 #
@@ -14,8 +14,8 @@
 #       deploy-and-publish — at least one deployable env AND distribution: is present
 #       unknown            — environments[] is missing entirely (caller falls back)
 #
-# Per E99-S1's NFR-080 silent default, an env entry with NO `kind:` field
-# resolves to `deployable` (matches the dedicated env-kind resolver).
+# Per the silent default, an env entry with NO `kind:` field resolves to
+# `deployable` (matches the dedicated env-kind resolver).
 #
 # Source guard: _GAIA_CONFIG_SHAPE_DETECT_LOADED=1 after first source.
 
@@ -51,7 +51,7 @@ gaia_config_shape_detect() {
     return 0
   fi
 
-  # Probe 2: enumerate kinds (apply NFR-080 default to deployable).
+  # Probe 2: enumerate kinds (apply silent default to deployable).
   # Output: one kind per line, one per env entry.
   local kinds
   kinds=$(yq eval '.environments[]? | (.kind // "deployable")' "$config" 2>/dev/null)
@@ -70,7 +70,7 @@ gaia_config_shape_detect() {
     [ "$k" = "deployable" ] && deployable_count=$((deployable_count + 1))
   done <<< "$kinds"
 
-  # Decision matrix per ADR-112 §(f).
+  # Decision matrix.
   if [ "$total_envs" -eq 0 ]; then
     # environments: [] but key is declared.
     if [ "$has_dist" = "true" ]; then

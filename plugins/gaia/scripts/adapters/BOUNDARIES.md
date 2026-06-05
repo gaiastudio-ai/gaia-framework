@@ -1,7 +1,5 @@
 # Adapter Pattern Boundaries — `plugins/gaia/scripts/adapters/`
 
-> **Story:** E66-S2 — `tool-availability-probe.sh` three-state probe + per-adapter `contract.bats`.
-> **Decisions:** ADR-077 (Three-Tier Review Pipeline), ADR-078 (Tool Adapter Framework), ADR-042 (Scripts-over-LLM).
 > **Stability:** Stable contract. Every built-in and custom adapter under this tree honours the layout below.
 
 ## Purpose
@@ -15,17 +13,17 @@ plugins/gaia/scripts/adapters/{tool}/
 ├── adapter.json              # Metadata — provider, category, runtime-profile, timeout, file-extensions
 ├── run.sh                    # Contract entry — --input/--config/--output/--runtime-profile/--timeout
 └── test/
-    └── contract.bats         # All-four-state parity test (NFR-RSV2-11)
+    └── contract.bats         # All-four-state parity test
 ```
 
 The shared schema, prose contract, and parity-test template live under the meta-directory `_schema/`:
 
 ```
 plugins/gaia/scripts/adapters/_schema/
-├── adapter.schema.json       # Machine-verifiable counterpart of the prose adapter.json table below (E70-S1)
-├── run-contract.md           # Prose run.sh contract (flag form, exit codes, timeout, probe states) (E70-S1)
+├── adapter.schema.json       # Machine-verifiable counterpart of the prose adapter.json table below
+├── run-contract.md           # Prose run.sh contract (flag form, exit codes, timeout, probe states)
 └── test/
-    └── contract.bats         # Reusable four-state parity-test template for new adapters (E70-S1)
+    └── contract.bats         # Reusable four-state parity-test template for new adapters
 ```
 
 New adapters validate their `adapter.json` against `_schema/adapter.schema.json` and copy `_schema/test/contract.bats` into `{tool}/test/contract.bats` — no per-adapter substitution required (the template reads `provider` and the first file-extension from `adapter.json` at runtime).
@@ -63,7 +61,7 @@ Exit code semantics: `0` = ran successfully; non-zero = adapter execution failed
 
 ## Three-State Availability Probe
 
-`plugins/gaia/scripts/tool-availability-probe.sh` is the deterministic shell+jq classifier per ADR-078 / FR-RSV2-18 / NFR-RSV2-9. Every adapter invocation flows through the probe. The probe emits one of four states on stdout (single-line JSON object):
+`plugins/gaia/scripts/tool-availability-probe.sh` is the deterministic shell+jq classifier. Every adapter invocation flows through the probe. The probe emits one of four states on stdout (single-line JSON object):
 
 | State | Trigger | Exit Code | Verdict-resolver Mapping |
 |---|---|---|---|
@@ -78,11 +76,11 @@ Output JSON shape (validates against `plugins/gaia/schemas/probe-output.schema.j
 {"state":"<state>","skip_reason":<string|null>,"error_detail":<string|null>,"failure_kind":<enum|null>}
 ```
 
-E66-S6 added the `failure_kind` enum field. Domain: `tool_missing`, `version_mismatch`, `runtime_crash`, `timeout`, or `null`. See `_schema/run-contract.md` §5.1 for the state-to-failure_kind mapping. The field is additive — callers reading `state`/`skip_reason`/`error_detail` keep working unchanged.
+The `failure_kind` enum field was added later. Domain: `tool_missing`, `version_mismatch`, `runtime_crash`, `timeout`, or `null`. See `_schema/run-contract.md` §5.1 for the state-to-failure_kind mapping. The field is additive — callers reading `state`/`skip_reason`/`error_detail` keep working unchanged.
 
-The probe is **deterministic** (NFR-RSV2-9) — identical inputs (same `--adapter-dir`, same `--file-list`, same env apart from PATH) produce byte-identical output every time.
+The probe is **deterministic** — identical inputs (same `--adapter-dir`, same `--file-list`, same env apart from PATH) produce byte-identical output every time.
 
-## `contract.bats` Parity (NFR-RSV2-11)
+## `contract.bats` Parity
 
 Every built-in adapter MUST ship a `test/contract.bats` that exercises **all four states** against fixture inputs. The shared helper `_contract-helper.bash` provides:
 
@@ -97,33 +95,23 @@ Using the helper, a typical adapter `contract.bats` is ~50 lines and contains ex
 
 | Adapter | Category | File Extensions | Project-Scope | Status |
 |---|---|---|---|---|
-| [`semgrep`](semgrep/) | sast | `.py .js .ts .tsx .jsx .go .java .rb .php` | no | shipped (E66-S2) |
-| [`gitleaks`](gitleaks/) | secret-scan | (project-scope) | yes | shipped (E66-S2) |
-| [`radon`](radon/) | linter | `.py` | no | shipped (E66-S2) |
-| [`gocyclo`](gocyclo/) | linter | `.go` | no | shipped (E66-S2) |
-| [`eslint-plugin-sonarjs`](eslint-plugin-sonarjs/) | linter | `.ts .tsx .js .jsx` | no | shipped (E66-S2) |
+| [`semgrep`](semgrep/) | sast | `.py .js .ts .tsx .jsx .go .java .rb .php` | no | shipped |
+| [`gitleaks`](gitleaks/) | secret-scan | (project-scope) | yes | shipped |
+| [`radon`](radon/) | linter | `.py` | no | shipped |
+| [`gocyclo`](gocyclo/) | linter | `.go` | no | shipped |
+| [`eslint-plugin-sonarjs`](eslint-plugin-sonarjs/) | linter | `.ts .tsx .js .jsx` | no | shipped |
 
-Phase-8 deployment adapters and Phase-9 mobile adapters land in subsequent stories under E66 / E70.
+Phase-8 deployment adapters and Phase-9 mobile adapters land in subsequent stories.
 
 ## Custom Adapters
 
-Custom adapters live under `custom/adapters/{tool}/` (project root) and follow the **same** layout. The probe and verdict resolver do not distinguish between built-in and custom — the contract is uniform. Custom adapters take precedence over built-in adapters of the same provider per ADR-078 tool-selection precedence (`tools.{category}.provider:` > regime > base).
+Custom adapters live under `custom/adapters/{tool}/` (project root) and follow the **same** layout. The probe and verdict resolver do not distinguish between built-in and custom — the contract is uniform. Custom adapters take precedence over built-in adapters of the same provider (`tools.{category}.provider:` > regime > base).
 
-## Refs
-
-- ADR-077 §3.6 — three-tier review pipeline pulls every tool through the adapter contract.
-- ADR-078 §1 — adapter pattern + three-state probe motivation.
-- ADR-042 — Scripts-over-LLM. Adapters are deterministic shell, not LLM calls.
-- FR-RSV2-17, FR-RSV2-18, FR-RSV2-19, FR-RSV2-20 — adapter pattern PRD requirements.
-- NFR-RSV2-9 — probe correctness invariants.
-- NFR-RSV2-11 — `contract.bats` per built-in adapter.
-
-## Cascade-skill to Re-shard Contract (E53-S244, ADR-070)
+## Cascade-skill to Re-shard Contract
 
 > This contract is unrelated to the adapter pattern above. It is documented
 > here because BOUNDARIES.md is the agreed home for cross-skill stability
-> contracts pending the BOUNDARIES home reorganization tracked by E75-S1.
-> When E75-S1 lands, this section migrates to its replacement.
+> contracts pending a future BOUNDARIES home reorganization.
 
 Editing a monolith document (`.gaia/artifacts/planning-artifacts/prd.md`,
 `.gaia/artifacts/planning-artifacts/architecture.md`,
@@ -158,7 +146,4 @@ backwards compatibility (additive change).
 
 Refs:
 
-- ADR-070 — Auto-sharding policy; monolith-vs-shard sync contract.
-- E53-S243 — static check `monolith-shard-sync` and ADR-070 amendment.
-- E53-S244 — cascade-skill auto-invoke contract (this section).
 - `plugins/gaia/scripts/check-monolith-shard-sync.sh` — advisory drift detector.

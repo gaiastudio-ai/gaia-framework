@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# adapters/yamllint/run.sh — FR-415 + ADR-078 contract entry.
+# adapters/yamllint/run.sh — contract entry.
 #
 # Runs `yamllint -f parsable` against the .yaml/.yml files listed via --input.
-# Honours the ADR-078 run.sh flag-form interface:
+# Honours the run.sh flag-form interface:
 #
 #   run.sh --input <file-list> [--config <path>] [--output <path>]
 #          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -39,7 +39,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/yamllint/run.sh — FR-415 + ADR-078 contract.
+adapters/yamllint/run.sh — contract.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]

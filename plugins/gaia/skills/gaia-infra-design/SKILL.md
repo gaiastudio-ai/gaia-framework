@@ -1,6 +1,6 @@
 ---
 name: gaia-infra-design
-description: Design infrastructure topology and IaC structure through collaborative discovery with the devops subagent (Soren) — Cluster 6 architecture skill. Use when the user wants to produce an infrastructure design document covering deployment topology, environment design, IaC structure, and observability plan.
+description: Design infrastructure topology and IaC structure through collaborative discovery with the devops subagent (Soren) — architecture skill. Use when the user wants to produce an infrastructure design document covering deployment topology, environment design, IaC structure, and observability plan.
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 orchestration_class: heavy-procedural
 ---
@@ -16,7 +16,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -30,14 +30,14 @@ fi
 
 You are orchestrating the creation of an Infrastructure Design document. The infrastructure authoring is delegated to the **devops** subagent (Soren), who designs deployment topology, environment layout, IaC structure, and observability plans. You load the architecture document, validate inputs, coordinate the multi-step flow, and write the output to `.gaia/artifacts/planning-artifacts/infrastructure-design.md`.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/3-solutioning/infrastructure-design` workflow (brief Cluster 6, story P6-S5 / E28-S49). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/3-solutioning/infrastructure-design` workflow. The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 
 - An architecture document MUST exist at `.gaia/artifacts/planning-artifacts/architecture.md` before starting. If missing, fail fast with "Architecture doc not found at .gaia/artifacts/planning-artifacts/architecture.md — run /gaia-create-arch first."
 - Every significant infrastructure decision must be recorded in the devops-sidecar memory.
 - Every environment must have a defined purpose and access policy.
-- Infrastructure authoring is delegated to the `devops` subagent (Soren) via native Claude Code subagent invocation — do NOT inline Soren's persona into this skill body. If the devops subagent (E28-S21) is not available, fail with "devops subagent not available — install E28-S21" error.
+- Infrastructure authoring is delegated to the `devops` subagent (Soren) via native Claude Code subagent invocation — do NOT inline Soren's persona into this skill body. If the devops subagent is not available, fail with "devops subagent not available" error.
 - If `.gaia/artifacts/planning-artifacts/infrastructure-design.md` already exists, warn the user: "An existing infrastructure design document was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
 
 ## Steps
@@ -64,7 +64,7 @@ Delegate to the **devops** subagent (Soren) via `agents/devops` to design enviro
 
 Delegate to the **devops** subagent (Soren) via `agents/devops` to design the deployment topology.
 
-**Topology-aware (Test05 F-027).** First read `project-config.yaml` (and the
+**Topology-aware.** First read `project-config.yaml` (and the
 architecture doc) to determine whether the target is cloud, on-prem/local, or
 hybrid. Design to the ACTUAL topology — do NOT force cloud concepts onto a
 local/on-prem project just to satisfy the checklist. The SV-07/08/10/11 gates in
@@ -117,7 +117,7 @@ Delegate to the **devops** subagent (Soren) via `agents/devops` to define observ
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-infra-design 6 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=output --paths .gaia/artifacts/planning-artifacts/infrastructure-design.md`
 
-### Step 7 — Val Auto-Fix Loop (E44-S2 / ADR-058)
+### Step 7 — Val Auto-Fix Loop
 
 > Reuses the canonical pattern at `gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
@@ -140,13 +140,13 @@ Delegate to the **devops** subagent (Soren) via `agents/devops` to define observ
      d. If iteration <= 3: go to step 2.
      e. Else: present the iteration-3 prompt verbatim (centralized in `gaia-val-validate` SKILL.md § "Auto-Fix Loop Pattern") and dispatch.
 
-YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See ADR-057 FR-YOLO-2(e) and ADR-058 for the hard-gate contract.
+YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Per story E44-S5 Task 6.2, Val's scope here is the artifact file ONLY (`.gaia/artifacts/planning-artifacts/infrastructure-design.md`). The devops-sidecar memory writes performed in Step 6 are out of scope for Val per the E44-S1 contract (sibling pattern with threat-model AC-EC10).
+> Val auto-review per the canonical pattern. Val's scope here is the artifact file ONLY (`.gaia/artifacts/planning-artifacts/infrastructure-design.md`). The devops-sidecar memory writes performed in Step 6 are out of scope for Val (sibling pattern with the threat-model contract).
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-infra-design 7 project_name="$PROJECT_NAME" target_environments="$TARGET_ENVIRONMENTS" iac_stack="$IAC_STACK" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/infrastructure-design.md`
 
-#### Hydrate project-config.yaml (E85-S6 / FR-458)
+#### Hydrate project-config.yaml
 
 > **Run order — strict.** Runs ONLY AFTER Step 7 (Val Auto-Fix Loop) has completed
 > and `.gaia/artifacts/planning-artifacts/infrastructure-design.md` is the validated final
@@ -155,11 +155,11 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 > with `environments:` payload (environment matrix from Step 2) and one with
 > `ci_cd:` payload (promotion chain + workflows from Step 4 / Step 3) — and call
 > `config_hydrate_section environments <file>` followed by
-> `config_hydrate_section ci_cd <file>` (per ADR-098, the helper's second arg is
+> `config_hydrate_section ci_cd <file>` (the helper's second arg is
 > a file path, not a literal string). `rm -f` both fragment files after the
 > calls return.
 
-> **Idempotency contract (ADR-098).** When `config_phase` is already `partial`,
+> **Idempotency contract.** When `config_phase` is already `partial`,
 > both calls are state-machine no-ops — the helper does NOT advance
 > `config_phase` (audit comments and section content may be rewritten by the
 > editor replace path, but the phase enum remains `partial`). **AC3 invariant:** `partial` does NOT auto-advance to
@@ -167,8 +167,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 > `environments`, `ci_cd`) are now populated. The `partial → full` transition
 > requires explicit user intent via `/gaia-init --full` or all sections
 > manually present before init; hydration triggers never write
-> `config_phase: full` (reserved for `validate-project-config.sh` /
-> E85-S4 / ADR-096). When `config_phase` is `minimal`, the helper writes the
+> `config_phase: full` (reserved for `validate-project-config.sh`). When `config_phase` is `minimal`, the helper writes the
 > section and advances `config_phase` to `partial` monotonically. When
 > `config_phase` is already `full`, both calls are no-ops.
 
@@ -177,16 +176,16 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 > rc=1 generic, rc=2 allowlist, rc=3 lock timeout); a non-zero rc does NOT HALT
 > the workflow — `infrastructure-design.md` has already been written and is the
 > primary artifact. The flock helper coordinates with the sibling
-> `/gaia-create-arch` trigger (E85-S5 / FR-457) which hydrates `stacks` and
+> `/gaia-create-arch` trigger which hydrates `stacks` and
 > `platforms`; concurrent runs are serialized by the shared
-> `config/.config-hydration.lock` (TC-CPH-29). The hydration trigger is purely
+> `config/.config-hydration.lock`. The hydration trigger is purely
 > a SKILL.md finalize-step addition; no devops subagent or infrastructure
-> design document format changes (AC5 / FR-458).
+> design document format changes.
 
 ## Validation
 
 <!--
-  E42-S12 — V1→V2 25-item checklist port (FR-341, FR-359, VCP-CHK-23, VCP-CHK-24).
+  V1→V2 25-item checklist port.
   Classification (25 items total):
     - Script-verifiable: 15 (SV-01..SV-15) — enforced by finalize.sh.
     - LLM-checkable:     10 (LLM-01..LLM-10) — evaluated by the host LLM
@@ -219,15 +218,13 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
     Output Verification  — SV-01, SV-02, SV-15, LLM-09                   (4)
     Total                                                                 25
 
-  The VCP-CHK-24 anchor is SV-11 — "State management strategy specified".
+  The checklist anchor is SV-11 — "State management strategy specified".
   This is the V1 phrase verbatim and MUST appear in violation output
   when the state-management item fails (story AC2).
 
   Invoked by `finalize.sh` at post-complete (per §10.31.1). Validation
   runs BEFORE the checkpoint and lifecycle-event writes (observability
   is never suppressed by checklist outcome — story AC5).
-
-  See .gaia/artifacts/implementation-artifacts/E42-S12-port-gaia-infra-design-25-item-checklist-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 — Output file saved to .gaia/artifacts/planning-artifacts/infrastructure-design.md
@@ -266,8 +263,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 ## References
 
-- Schema: `gaia-public/plugins/gaia/schemas/infrastructure-design.schema.json` (JSON Schema draft-2020-12) — the structural contract for the `infrastructure-design` artifact this skill produces. Validated by `/gaia-val-validate` (artifact_type `infrastructure-design`) via the shared `scripts/lib/validate-artifact-schema.sh` helper (E108-S5).
+- Schema: `gaia-public/plugins/gaia/schemas/infrastructure-design.schema.json` (JSON Schema draft-2020-12) — the structural contract for the `infrastructure-design` artifact this skill produces. Validated by `/gaia-val-validate` (artifact_type `infrastructure-design`) via the shared `scripts/lib/validate-artifact-schema.sh` helper.
 - Corpus instance: `.gaia/artifacts/planning-artifacts/assessments/infrastructure-design.md` — the on-disk exemplar the schema is grounded in (eleven canonical H2 sections + YAML frontmatter).
-- Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum now carries `infrastructure-design` (E108-S4, enum 18→19).
-- Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` (E108-S5) — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).
-- Traceability: FR-564, NFR-93, ADR-129 (E108 artifact-type schema registry completion).
+- Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum now carries `infrastructure-design`.
+- Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).

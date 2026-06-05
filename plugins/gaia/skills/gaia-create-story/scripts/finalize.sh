@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# finalize.sh — Cluster 7 create-story skill finalize (E28-S52)
+# finalize.sh — gaia-create-story skill finalize
 #
-# Mechanical copy of the Cluster 4 reference implementation authored under
-# E28-S35 (gaia-brainstorm/scripts/finalize.sh). Only WORKFLOW_NAME and
-# SCRIPT_NAME differ — the body is byte-identical to the reference.
+# Mechanical copy of the gaia-brainstorm/scripts/finalize.sh reference
+# implementation. Only WORKFLOW_NAME and SCRIPT_NAME differ — the body is
+# byte-identical to the reference.
 #
-# Responsibilities (per brief Cluster 7):
+# Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script
 #   2. Emit a lifecycle event via lifecycle-event.sh for the tailing sync agent
 #

@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 5 planning skill setup (E28-S42, brief §Cluster 5 / P5-S3)
+# setup.sh — validate-prd planning skill setup
 #
-# Mechanical extension of the Cluster 4 reference implementation authored
-# under E28-S35 (gaia-brainstorm/scripts/setup.sh). Adds validate-prd-specific
-# prereq gates:
+# Adds validate-prd-specific prereq gates:
 #   - prd.md must exist in planning-artifacts (validate-gate file_exists)
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (prd.md existence)
 #   3. Load the checkpoint state for this workflow
@@ -64,9 +62,9 @@ else
 fi
 
 # ---------- 2b. Guard: prd.md must already exist ----------
-# AF-2026-05-29-2 / Test09 F-20: prefer CLAUDE_PROJECT_ROOT (the framework-
-# standard harness var) and GAIA_PROJECT_ROOT (project-specific) BEFORE the
-# $SKILL_DIR/../../../../.. walk-up. On a marketplace/cache-installed plugin
+# Prefer CLAUDE_PROJECT_ROOT (the framework-standard harness var) and
+# GAIA_PROJECT_ROOT (project-specific) BEFORE the $SKILL_DIR/../../../../..
+# walk-up. On a marketplace/cache-installed plugin
 # (~/.claude/plugins/cache/<mp>/gaia/<ver>/skills/<skill>/scripts/), walking
 # 5 levels up lands in `~/.claude/plugins/cache` — NOT the user's project —
 # and every subsequent .gaia/ artifact lookup misses. Honoring the harness-
@@ -74,7 +72,7 @@ fi
 # rely on. The walk-up remains as the final fallback for in-source-tree dev
 # (gaia-framework/ checkout) where neither env var is set.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}}}"
-# ADR-111 smart-fallback: .gaia/artifacts/ first, legacy docs/ second.
+# Smart-fallback: .gaia/artifacts/ first, legacy docs/ second.
 if [ -f "$PROJECT_ROOT/.gaia/artifacts/planning-artifacts/prd.md" ]; then
   PRD_PATH="$PROJECT_ROOT/.gaia/artifacts/planning-artifacts/prd.md"
 else

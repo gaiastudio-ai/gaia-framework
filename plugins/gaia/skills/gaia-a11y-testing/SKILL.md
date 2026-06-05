@@ -23,17 +23,17 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
-## ADR-077 Mission (E69-S2 — post-deploy smoke variant)
+## Mission (post-deploy smoke variant)
 
-You are the **post-deploy a11y smoke** for the three-phase a11y skill family (FR-RSV2-25):
+You are the **post-deploy a11y smoke** for the three-phase a11y skill family:
 
 - `/gaia-validate-design-a11y` — planning (agent: Christy)
 - `/gaia-review-a11y` — pre-merge gate, conditional on `compliance.ui_present: true` (agent: Christy)
 - `/gaia-test-a11y` — post-deploy smoke (this skill, agent: Sable)
 
-All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the layered rubric loader (E68-S2 / ADR-079). This skill is verdict-producing and follows the seven-phase structure mandated by ADR-077.
+All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the layered rubric loader. This skill is verdict-producing and follows the mandated seven-phase structure.
 
 ### Phase 1 — Setup
 
@@ -47,11 +47,11 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 ### Phase 3A — Analysis (post-deploy adapter invocations)
 
-> **TODO: E73-S4** — adapter internals (axe-core / pa11y / Lighthouse) are E73-S4 scope. This story (E69-S2) wires the SKILL.md, rubric-sharing, and conditional-trigger surface; the call sites below remain `TODO: E73-S4` placeholders.
+> **TODO** — adapter internals (axe-core / pa11y / Lighthouse) are deferred scope. This skill wires the SKILL.md, rubric-sharing, and conditional-trigger surface; the call sites below remain `TODO` placeholders.
 
-- **TODO: E73-S4** axe-core adapter — invoke via headless browser, collect findings, normalize to the rubric category schema (semantic-html, aria-usage, keyboard-navigation, color-contrast, screen-reader-support).
-- **TODO: E73-S4** pa11y adapter — invoke against the deployed URL list, collect findings, normalize.
-- **TODO: E73-S4** Lighthouse adapter — invoke the Lighthouse a11y audit, collect findings, normalize.
+- **TODO** axe-core adapter — invoke via headless browser, collect findings, normalize to the rubric category schema (semantic-html, aria-usage, keyboard-navigation, color-contrast, screen-reader-support).
+- **TODO** pa11y adapter — invoke against the deployed URL list, collect findings, normalize.
+- **TODO** Lighthouse adapter — invoke the Lighthouse a11y audit, collect findings, normalize.
 - For every finding, cite the specific WCAG 2.1 criterion with conformance level (A/AA/AAA) and the matching rubric rule ID from the loaded rubric.
 
 ### Phase 3B — Cross-checks
@@ -72,7 +72,7 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
   !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh --findings <findings.json>
   ```
 
-- The resolver emits `APPROVE | REQUEST_CHANGES | BLOCKED`. The skill MUST NOT recompute the verdict by hand (ADR-077, ADR-042).
+- The resolver emits `APPROVE | REQUEST_CHANGES | BLOCKED`. The skill MUST NOT recompute the verdict by hand.
 
 ### Phase 6 — Report
 
@@ -85,7 +85,7 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 ## Agent Wiring
 
-Per ADR-077 wiring table, this skill resolves to **Sable (Test Architect)** via:
+Per the wiring table, this skill resolves to **Sable (Test Architect)** via:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-test-a11y
@@ -102,20 +102,20 @@ Sable owns post-deploy testing across all phases (e2e, perf, dast, a11y).
 
 ## Mission (legacy test-plan workflow — preserved for backward compatibility)
 
-The legacy test-plan workflow (E28-S88) is preserved verbatim below so existing consumers continue to work. New invocations follow the seven-phase ADR-077 structure above; both paths converge on the same `rubrics/base/a11y.json` rubric and emit the same verdict via `verdict-resolver.sh`.
+The legacy test-plan workflow is preserved verbatim below so existing consumers continue to work. New invocations follow the seven-phase structure above; both paths converge on the same `rubrics/base/a11y.json` rubric and emit the same verdict via `verdict-resolver.sh`.
 
 ## Mission
 
 You are creating a WCAG 2.1 accessibility test plan for the specified story or project context. The plan covers automated checks (axe-core, pa11y), manual test procedures (keyboard navigation, screen reader testing), ARIA audits, and remediation priorities. The output is written to `.gaia/artifacts/test-artifacts/accessibility-report-{date}.md`.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/accessibility-testing` workflow (E28-S88, Cluster 12, ADR-041). The step ordering, prompts, and output path are preserved from the legacy instructions.xml.
+This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/accessibility-testing` workflow. The step ordering, prompts, and output path are preserved from the legacy instructions.xml.
 
-**Main context semantics (ADR-041):** This skill runs under `context: main` with full tool access. It reads project state (architecture, test plan, story) and produces an output document.
+**Main context semantics:** This skill runs under `context: main` with full tool access. It reads project state (architecture, test plan, story) and produces an output document.
 
 ## Critical Rules
 
 - A story key or project context MUST be available. If no story key is provided as an argument and no project context can be loaded, prompt: "Provide a story key or confirm project-level assessment."
-- WCAG level MUST be explicitly declared by the user; no silent default. In YOLO mode the skill auto-selects AA and logs the auto-selection (per ADR-067 — auto-confirm sensible default), but in interactive mode the user MUST be prompted for A, AA, or AAA before proceeding (per ADR-066 inline-ask contract).
+- WCAG level MUST be explicitly declared by the user; no silent default. In YOLO mode the skill auto-selects AA and logs the auto-selection (auto-confirm sensible default), but in interactive mode the user MUST be prompted for A, AA, or AAA before proceeding (inline-ask contract).
 - Automated checks MUST cover EVERY identified page and component — no partial coverage. Cross-reference Step 1 targets against Step 2 test scenarios before proceeding to Step 3.
 - Every finding row MUST include a specific WCAG success criterion reference in the form `X.Y.Z Criterion Name` (e.g., `1.4.3 Contrast Minimum`).
 - Every Critical-severity finding MUST include at least one specific remediation recommendation. Reports with unremediated Critical findings MUST NOT be written.

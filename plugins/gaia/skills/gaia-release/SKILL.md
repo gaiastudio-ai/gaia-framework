@@ -8,7 +8,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are producing a repeatable release for the GAIA framework. The release procedure has five deterministic phases — **version bump → commit → tag → push → GitHub Release** — and they are executed only on `main` after a sprint merge. This skill is the discoverable source of truth for that procedure, replacing the inline narrative that used to live in `CLAUDE.md` before it was slimmed under FR-327 / ADR-048.
+You are producing a repeatable release for the GAIA framework. The release procedure has five deterministic phases — **version bump → commit → tag → push → GitHub Release** — and they are executed only on `main` after a sprint merge. This skill is the discoverable source of truth for that procedure, replacing the inline narrative that used to live in `CLAUDE.md` before it was slimmed down.
 
 ## Critical Rules
 
@@ -16,7 +16,7 @@ You are producing a repeatable release for the GAIA framework. The release proce
 - **No Claude/AI attribution** in commit messages, tag messages, or the GitHub Release body. Every artifact must read as if a human release engineer authored it.
 - **Never hand-edit the version strings.** Always invoke `scripts/version-bump.js` — it keeps `package.json` and the GAIA `framework_version` config key synchronized and validates drift before writing.
 - **Always dry-run first.** Run the bump with `--dry-run` to preview the new version and the files that would change; only then execute the real bump.
-- **Inspect the script's reported output paths.** `scripts/version-bump.js` prints the exact files it intends to touch (and re-prints them after writing). Use that output as the authoritative file list when staging the commit in Step 5 — it is resilient to the ADR-044 config-split and any future config-location changes.
+- **Inspect the script's reported output paths.** `scripts/version-bump.js` prints the exact files it intends to touch (and re-prints them after writing). Use that output as the authoritative file list when staging the commit in Step 5 — it is resilient to the config-split and any future config-location changes.
 
 ## Inputs
 
@@ -29,14 +29,14 @@ You are producing a repeatable release for the GAIA framework. The release proce
   - `--modules mod1,mod2` — also bump per-module `config.yaml` and manifest entries (valid modules: `core`, `lifecycle`, `dev`, `creative`, `testing`, or `all`).
   - `--dry-run` — print the planned changes and exit without writing.
 
-## What `version-bump.js` actually does (ADR-025 Model B)
+## What `version-bump.js` actually does
 
-Per **ADR-025 Model B**, the script is the single source of truth for the framework version, and it updates **exactly 2 global targets**:
+The script is the single source of truth for the framework version, and it updates **exactly 2 global targets**:
 
 | Target | Role |
 | --- | --- |
 | `package.json` | npm manifest — `"version": "…"` |
-| GAIA config (`framework_version` key) | framework source of truth — resolved via `scripts/resolve-config.sh`; the on-disk location follows the ADR-044 two-file split |
+| GAIA config (`framework_version` key) | framework source of truth — resolved via `scripts/resolve-config.sh`; the on-disk location follows the two-file split |
 
 Earlier drafts described a broader touch-set; that narrative no longer applies. `gaia-install.sh`, `CLAUDE.md`, and `README.md` no longer carry hardcoded versions — the installer reads from `package.json` at runtime, and the markdown files reference the version indirectly.
 
@@ -77,7 +77,7 @@ Drop `--dry-run` and run the bump for real:
 
 ### Step 4 — Commit the bump
 
-Use a conventional commit — no emoji, no Claude attribution. Stage exactly what `version-bump.js` reported as modified in Step 3; do NOT hand-enumerate the config path, read it back from the script's output so this skill stays correct across ADR-044 config-layout changes:
+Use a conventional commit — no emoji, no Claude attribution. Stage exactly what `version-bump.js` reported as modified in Step 3; do NOT hand-enumerate the config path, read it back from the script's output so this skill stays correct across config-layout changes:
 
 ```
 !git add package.json <config-files-printed-by-version-bump.js> [module files if any]
@@ -137,9 +137,8 @@ For RC builds add `--prerelease` so the release is flagged correctly on GitHub:
 
 ## References
 
-- Source: `scripts/version-bump.js` (node script in the repo root — zero deps per ADR-005, file-based regex per ADR-006).
-- ADR-025 (Model B): canonical 2-target version storage — `package.json` + the `framework_version` config key (resolved via `scripts/resolve-config.sh` per ADR-042/ADR-044).
-- ADR-044 — Two-file config split (`.gaia/config/project-config.yaml` shared + `config/global.yaml` machine-local); the `framework_version` key lives in the shared project config.
-- FR-327 / ADR-048: CLAUDE.md slim-down — procedural detail moved to SKILL.md files.
-- Story: `.gaia/artifacts/implementation-artifacts/E28-S167-document-version-bump-procedure-in-gaia-release-skill.md` (origin: triage finding F4 from E28-S129).
+- Source: `scripts/version-bump.js` (node script in the repo root — zero deps, file-based regex).
+- Canonical 2-target version storage — `package.json` + the `framework_version` config key (resolved via `scripts/resolve-config.sh`).
+- Two-file config split (`.gaia/config/project-config.yaml` shared + `config/global.yaml` machine-local); the `framework_version` key lives in the shared project config.
+- CLAUDE.md slim-down — procedural detail moved to SKILL.md files.
 - Related: `/gaia-changelog` for release-note generation.

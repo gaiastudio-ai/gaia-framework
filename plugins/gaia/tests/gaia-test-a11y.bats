@@ -304,10 +304,10 @@ EOF
 
 # --- AC10: PRD/threat-model traceability -----------------------------------
 
-@test "E73-S4 AC10: SKILL.md references FR-RSV2-31 and NFR-RSV2-7" {
+@test "E73-S4 AC10: SKILL.md documents env-var-only credentials and deployment-phase action skill contract" {
   local f="$SKILL_DIR/SKILL.md"
-  grep -F 'FR-RSV2-31' "$f"
-  grep -F 'NFR-RSV2-7' "$f"
+  grep -qiE 'env.var.only credentials|Env-var-only credentials' "$f"
+  grep -qiE 'deployment.phase action skill|deployment-phase action skill' "$f"
 }
 
 # --- Agent overlay wiring (already shipped, sanity check) ------------------

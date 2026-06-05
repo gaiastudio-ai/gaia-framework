@@ -1,27 +1,23 @@
 #!/usr/bin/env bash
 # write-adversarial-sidecar.sh — orchestrator-side adversarial JSON sidecar writer.
 #
-# Story: E87-S11 (AF-2026-06-03-3) — adversarial-reviewer JSON sidecar emission.
-# Anchor: ADR-131 (adversarial sidecar contract); mirrors the ADR-105 writer-shift
-#         pattern established by scripts/lib/write-val-envelope.sh.
-# Trace: FR-568 (sidecar emission), NFR-96 (byte-identical determinism).
 #
 # Background:
 #   The adversarial-reviewer (Sage) emits a Markdown report at
 #   {planning_artifacts}/adversarial/adversarial-review-<target>-<date>[-N].md.
 #   Downstream consumers (test-architect, sprint-review, retro, /gaia-action-items)
 #   previously had to regex-parse the prose. This writer emits a structured
-#   `.json` sidecar carrying the ADR-037 envelope findings so consumers read
+#   `.json` sidecar carrying the structured envelope findings so consumers read
 #   machine-parseable data.
 #
-# Writer-shift (ADR-105 pattern):
-#   Sage RETURNS the ADR-037 envelope in its reply; the orchestrator's MAIN TURN
+# Writer-shift:
+#   Sage RETURNS the structured envelope in its reply; the orchestrator's MAIN TURN
 #   invokes this helper to write the sidecar (the substrate content-integrity
-#   guard false-fires on sub-agent writes). UNLIKE the Val sentinel, the
+#   guard false-fires on sub-agent writes). Unlike the Val sentinel, the
 #   adversarial sidecar has NO `persona_sig` — it is critique, not a gate, so
 #   there is no forgery surface to anchor; and it carries NO `sentinel_envelope`.
 #
-# Determinism (NFR-96 byte-identical):
+# Determinism (byte-identical):
 #   - `timestamp` is OMITTED entirely (provenance recovered from the sibling
 #     `.md` frontmatter `review_date`).
 #   - keys emitted via `jq -S` (sorted).
@@ -32,13 +28,13 @@
 # Sidecar shape:
 #   {
 #     "review_type": "adversarial",
-#     "status": "<PASS|WARNING|CRITICAL>",     # inherited ADR-037 verdict vocab
+#     "status": "<PASS|WARNING|CRITICAL>",
 #     "target": "<resolved .md basename, .md stripped>",
 #     "summary": "<envelope summary>",
 #     "findings": [ {"severity","id","title","location"} ],   # sorted
 #     "next": "<envelope next>"
 #   }
-#   (mirrors the persona envelope MINUS timestamp / persona_sig / sentinel_envelope)
+#   (timestamp / persona_sig / sentinel_envelope are intentionally omitted)
 #
 # Contract:
 #   write-adversarial-sidecar.sh --md-path <path> --envelope <json>
@@ -47,7 +43,7 @@
 #   --md-path        the resolved adversarial-review-<target>-<date>[-N].md path.
 #                    The .json sidecar is its sibling (same dir, .json extension,
 #                    same collision index — atomic pairing per Val F1).
-#   --envelope       the adversarial ADR-037 envelope JSON literal.
+#   --envelope       the adversarial envelope JSON literal.
 #   --envelope-stdin read the envelope JSON from stdin.
 #
 #   Required envelope fields: status (∈ {PASS,WARNING,CRITICAL}), summary, next.
@@ -134,11 +130,11 @@ for key in status summary next; do
   fi
 done
 
-# Status MUST inherit the ADR-037 verdict vocab verbatim (reject STRONG/WEAK/MIXED).
+# Status MUST be one of the valid verdict values (reject STRONG/WEAK/MIXED).
 STATUS=$(printf '%s' "$ENVELOPE" | jq -r '.status')
 case "$STATUS" in
   PASS|WARNING|CRITICAL) : ;;
-  *) die "envelope status '$STATUS' not in ADR-037 vocab {PASS,WARNING,CRITICAL}" ;;
+  *) die "envelope status '$STATUS' not in valid vocab {PASS,WARNING,CRITICAL}" ;;
 esac
 
 # ---------- Compute sidecar path (sibling of the .md, same index) ----------

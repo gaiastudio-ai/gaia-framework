@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# resolve-story-file.sh — canonical story-file resolver (E79-S7 / AF-2026-05-12-1, FR-476)
+# resolve-story-file.sh — canonical story-file resolver
 #
 # Resolves a {story_key} to its on-disk path using a THREE-tier precedence rule
-# (E105-S1 / ADR-127 extends the E79-S4 two-tier rule):
+# (extends the two-tier rule):
 #   0. New per-story nested layout: epic-{slug}/{story_key}-{story-slug}/story.md
 #      (highest precedence; the directory name carries the key). New writes use
 #      this form. Two guards keep tier-0 strictly the new layout: (a) any
@@ -11,10 +11,10 @@
 #      alone would otherwise also traverse `epic-*/stories/E*-S*-*/` evidence
 #      dirs), and (b) the directory basename is post-filtered on the
 #      `{story_key}-` prefix BOUNDARY so requesting E28-S2 never matches
-#      E28-S21-* (Val C1 + WARNING-1).
+#      E28-S21-*.
 #   1. Legacy nested: .gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md
 #   2. Legacy flat fallback:  docs/implementation-artifacts/{story_key}-*.md (read-only,
-#      with stderr WARNING "legacy-flat path — {flat_path} (migrate via E79-S6)")
+#      with stderr WARNING "legacy-flat path — {flat_path} (migrate to the nested layout)")
 #
 # Precedence: per-story (0) > legacy-nested (1) > flat (2). When a higher tier
 # resolves, lower-tier siblings for the same key are logged as ignored shadows
@@ -36,8 +36,8 @@
 
 resolve_story_file() {
     local story_key="${1:?usage: resolve_story_file <story_key>}"
-    # E96-S6 (ADR-111): prefer .gaia/artifacts/implementation-artifacts/ when
-    # present on disk; fall back to legacy docs/ during the deprecation window.
+    # Prefer .gaia/artifacts/implementation-artifacts/ when present on disk;
+    # fall back to legacy docs/ during the deprecation window.
     # IMPLEMENTATION_ARTIFACTS env-var override wins over both.
     local impl_root
     if [[ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]]; then
@@ -53,10 +53,10 @@ resolve_story_file() {
         return 1
     fi
 
-    # 0. New per-story nested layout (E105-S1, ADR-127): the story's directory
-    #    name carries the key — epic-{slug}/{key}-{story-slug}/story.md. This is
-    #    the HIGHEST-precedence tier; new writes always use this form.
-    #    Two guards keep tier-0 strictly the new layout (Val C1 + WARNING-1):
+    # 0. New per-story nested layout: the story's directory name carries the key —
+    #    epic-{slug}/{key}-{story-slug}/story.md. This is the HIGHEST-precedence
+    #    tier; new writes always use this form.
+    #    Two guards keep tier-0 strictly the new layout:
     #      (a) the candidate path MUST NOT contain a `/stories/` segment — that is
     #          the legacy tier-1 layer, and since `find -path` lets `*` match `/`,
     #          the `epic-*/E*-S*-*/story.md` glob would otherwise also traverse
@@ -150,7 +150,7 @@ resolve_story_file() {
 
     # No nested hit; fall back to flat with WARNING (read-only migration window)
     if (( flat_count == 1 )); then
-        printf 'WARNING: legacy-flat path — %s (migrate via E79-S6)\n' "${flat_matches[0]}" >&2
+        printf 'WARNING: legacy-flat path — %s (migrate to the nested layout)\n' "${flat_matches[0]}" >&2
         printf '%s\n' "${flat_matches[0]}"
         return 0
     fi

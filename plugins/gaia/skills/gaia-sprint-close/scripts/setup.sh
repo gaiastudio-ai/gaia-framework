@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-sprint-close skill setup (E81-S5).
+# setup.sh — gaia-sprint-close skill setup.
 #
-# Shared setup pattern from the E28-S17/S19/S21 foundation work.
-# Resolves config, validates gates, loads checkpoint state.
+# Shared setup pattern. Resolves config, validates gates, loads checkpoint state.
 #
 # Exit codes:
 #   0 — setup succeeded, skill body can run

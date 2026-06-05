@@ -1,27 +1,25 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-create-prd skill finalize (E28-S40 + E42-S6)
+# finalize.sh — /gaia-create-prd skill finalize
 #
-# E42-S6 extends the original Cluster 5 finalize scaffolding with a
-# 36-item post-completion checklist (24 script-verifiable + 12
-# LLM-checkable) derived from the V1 /gaia-create-prd checklist plus
-# the product-brief 36-item expansion (see story Dev Notes #1).
+# Extends the finalize scaffolding with a 36-item post-completion checklist
+# (24 script-verifiable + 12 LLM-checkable) derived from the V1
+# /gaia-create-prd checklist plus the product-brief 36-item expansion.
 #
-# Responsibilities (per brief §Cluster 5 + story E42-S6):
+# Responsibilities:
 #   1. Run the script-verifiable subset of the 36 V1 checklist items
-#      against the PRD artifact. Validation runs FIRST (AC-EC6).
+#      against the PRD artifact. Validation runs FIRST.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
 #   3. Write a checkpoint via the shared checkpoint.sh helper.
 #   4. Emit a lifecycle event via lifecycle-event.sh.
 #
 # The observability side effects (3 + 4) MUST run on every invocation —
-# the checklist outcome never suppresses the checkpoint/event write
-# (matches E42-S1..S5 contract; story AC5 + AC-EC6).
+# the checklist outcome never suppresses the checkpoint/event write.
 #
 # Exit codes:
 #   0 — finalize succeeded; all 24 script-verifiable items PASS (or
-#       no artifact was requested — classic Cluster 5 behaviour).
+#       no artifact was requested).
 #   1 — one or more script-verifiable checklist items FAIL; the
-#       AC-EC3 "output file not found" violation; or a
+#       "output file not found" violation; or a
 #       checkpoint/lifecycle-event failure. Failed item names are
 #       listed on stderr under a "Checklist violations:" header
 #       followed by a one-line remediation hint.
@@ -30,16 +28,16 @@
 #   PRD_ARTIFACT  Absolute path to the PRD artifact to validate.
 #                 When set, the script runs the 36-item checklist
 #                 against it. When set but the file does not exist,
-#                 AC-EC3 fires — a single "no artifact to validate"
-#                 violation is emitted and the script exits non-zero.
+#                 a "no artifact to validate" violation is emitted and
+#                 the script exits non-zero.
 #                 When unset, the script falls back to a canonical-first
-#                 path resolution (AF-2026-05-21-10): prefer
-#                 .gaia/artifacts/planning-artifacts/prd.md (post-ADR-111
-#                 canonical); use .gaia/artifacts/planning-artifacts/prd.md only on
-#                 positive pre-ADR-111 evidence (legacy file exists AND
+#                 path resolution: prefer
+#                 .gaia/artifacts/planning-artifacts/prd.md (canonical);
+#                 use docs/planning-artifacts/prd.md only on
+#                 positive legacy evidence (legacy file exists AND
 #                 canonical dir does not). If neither is present, the
-#                 checklist run is skipped (classic Cluster 5 behaviour
-#                 — observability still runs, exit 0).
+#                 checklist run is skipped (observability still runs,
+#                 exit 0).
 
 set -euo pipefail
 LC_ALL=C
@@ -57,14 +55,14 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Resolve artifact path (AF-2026-05-21-10 three-tier idiom) ----------
+# ---------- 0. Resolve artifact path (three-tier idiom) ----------
 # Tier 1 — env-var override: PRD_ARTIFACT wins when set (test fixtures +
 #          explicit invocation). If it is set but the file is missing,
-#          AC-EC3 fires.
-# Tier 2 — positive pre-ADR-111 evidence: legacy file exists AND canonical
+#          the missing-artifact violation fires.
+# Tier 2 — positive legacy evidence: legacy file exists AND canonical
 #          dir does NOT exist → use legacy docs/planning-artifacts/prd.md.
-# Tier 3 — canonical default: greenfield + post-ADR-111 projects route to
-#          .gaia/artifacts/planning-artifacts/prd.md per ADR-111.
+# Tier 3 — canonical default: greenfield projects route to
+#          .gaia/artifacts/planning-artifacts/prd.md.
 # If neither file is present the checklist is simply skipped (observability
 # still runs).
 ARTIFACT=""
@@ -102,16 +100,16 @@ item_check() {
 # Pass when an H2 heading whose body begins with the given text
 # (case-insensitive; trailing content tolerated; optional numeric outline
 # prefix like "1. ", "10. ", "1.2 " also tolerated) is present.
-# AF-2026-05-22-3 Bug-3 — the framework's own prd-template.md uses numeric
-# outline prefixes (`## 1. Overview`, `## 2. Goals and Non-Goals`, etc.) so
-# the regex MUST accept the prefix or the template fails its own checklist.
-# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
-# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
-# uniform, permissive regex accepting optional numbered+lettered outline
-# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
-# divergent inline copies, so the same heading passed one skill's check and
-# failed another's. Sourced via a $0-relative path so it works whether or not
-# this script defines PLUGIN_SCRIPTS_DIR.
+# The framework's own prd-template.md uses numeric outline prefixes
+# (`## 1. Overview`, `## 2. Goals and Non-Goals`, etc.) so the regex MUST
+# accept the prefix or the template fails its own checklist.
+# heading_present() is a single shared implementation
+# (plugins/gaia/scripts/lib/heading-present.sh) with one uniform, permissive
+# regex accepting optional numbered+lettered outline prefixes (11, 11b,
+# 1.2.3). Previously finalize.sh scripts carried divergent inline copies,
+# so the same heading passed one skill's check and failed another's.
+# Sourced via a $0-relative path so it works whether or not this script
+# defines PLUGIN_SCRIPTS_DIR.
 _GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
 if [ -r "$_GAIA_HEADING_LIB" ]; then
   # shellcheck source=/dev/null
@@ -139,10 +137,10 @@ file_nonempty() {
 # non-comment content line before the next H2 heading.
 section_body_nonempty() {
   local f="$1" pattern="$2"
-  # AF-2026-05-22-9 Bug-2: also tolerate a leading numeric outline prefix
+  # Also tolerate a leading numeric outline prefix
   # (`## 9. Out of Scope`, `## 10.1 Constraints`) the way heading_present
   # already does. The framework's own prd-template.md uses numbered
-  # outlines, so SV-21..SV-24 failed against valid template-conformant
+  # outlines, so section body checks failed against valid template-conformant
   # PRDs before this fix.
   awk -v pat="$pattern" '
     BEGIN { in_section = 0; found = 0 }
@@ -186,7 +184,7 @@ summary_table_present() {
 
 # summary_table_has_rows <file>
 # Pass when the Requirements Summary table has at least one data row
-# after the separator (EC-5 guard).
+# after the separator.
 summary_table_has_rows() {
   local f="$1"
   awk '
@@ -220,8 +218,7 @@ nfr_id_present() {
 # AND fallback-behavior text (case-insensitive, hyphen-flexible).
 # Accepts EITHER prose form (`failure mode` / `fallback behavior`) OR
 # table-column form (`Failure mode` / `Fallback` column header in a
-# markdown table row), per AF-2026-05-30-4 F-08.
-# This is the VCP-CHK-12 / AC-EC9 anchor check.
+# markdown table row).
 deps_failure_modes_defined() {
   local f="$1"
   awk '
@@ -269,21 +266,20 @@ user_journeys_body_nonempty() {
 }
 
 if [ "$ARTIFACT_REQUESTED" -eq 1 ] && [ ! -f "$ARTIFACT" ]; then
-  # AC-EC3 — Caller explicitly pointed at an artifact path but it does
-  # not exist on disk.
+  # Caller explicitly pointed at an artifact path but it does not exist
+  # on disk.
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
   printf 'Remediation: rerun /gaia-create-prd to produce .gaia/artifacts/planning-artifacts/prd.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
-  # ---------- 1a. Deterministic Review Findings auto-append (AF-2026-05-24-9 / Test02 F-4) ----------
-  # Test02 F-4: the PM subagent reliably omits the "## Review Findings
-  # Incorporated" section, but /gaia-create-arch's setup.sh halts when
-  # the PRD lacks it — a circular failure that has no LLM-side fix
-  # (re-running create-prd reproduces the omission). Per F-4's
-  # recommendation: make the adversarial-skip note a deterministic post-
-  # step write (script appends it) rather than relying on LLM behavior.
+  # ---------- 1a. Deterministic Review Findings auto-append ----------
+  # The PM subagent reliably omits the "## Review Findings Incorporated"
+  # section, but /gaia-create-arch's setup.sh halts when the PRD lacks
+  # it — a circular failure with no LLM-side fix. The adversarial-skip
+  # note is therefore a deterministic post-step write (script appends it)
+  # rather than relying on LLM behavior.
   #
   # This block runs BEFORE the checklist. It appends a minimal default
   # "Adversarial review not triggered" stub ONLY if the section is
@@ -297,7 +293,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
 
 Adversarial review not triggered — change type: feature.
 
-> Auto-appended by `gaia-create-prd/scripts/finalize.sh` per AF-2026-05-24-9 / Test02 F-4. If the change type was not "feature" or an adversarial review WAS performed, this stub will be overwritten by Step 14's authored content on re-run.
+> Auto-appended by `gaia-create-prd/scripts/finalize.sh`. If the change type was not "feature" or an adversarial review WAS performed, this stub will be overwritten by Step 14's authored content on re-run.
 AUTO_APPEND
     log "auto-appended Review Findings Incorporated section (F-4 mitigation)"
   fi
@@ -344,7 +340,7 @@ AUTO_APPEND
   item_check "SV-15" "Dependencies section present" \
     "$(heading_present "$ARTIFACT" "Dependencies")"
 
-  # Requirements Summary Table (SV-16..SV-17 — AC-EC5 guard)
+  # Requirements Summary Table (SV-16..SV-17)
   item_check "SV-16" "Requirements Summary Table present with markdown table structure" \
     "$(summary_table_present "$ARTIFACT")"
   item_check "SV-17" "Requirements Summary Table has at least one data row" \
@@ -356,11 +352,11 @@ AUTO_APPEND
   item_check "SV-19" "At least one NFR-### non-functional-requirement identifier present" \
     "$(nfr_id_present "$ARTIFACT")"
 
-  # Critical dependencies: VCP-CHK-12 anchor (SV-20)
+  # Critical dependencies: failure modes and fallback behavior (SV-20)
   item_check "SV-20" "Critical dependencies have failure modes and fallback behavior defined" \
     "$(deps_failure_modes_defined "$ARTIFACT")"
 
-  # Section body sanity checks (SV-21..SV-24) — guard against empty bodies
+  # Section body sanity checks (SV-21..SV-24) — guard against empty section bodies
   item_check "SV-21" "Out of Scope section body non-empty" \
     "$(out_of_scope_body_nonempty "$ARTIFACT")"
   item_check "SV-22" "Constraints section body non-empty" \
@@ -428,14 +424,14 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
-# helper itself logs warnings to stderr but never affects this script's
-# exit code. SKILL_NAME is resolved from the parent directory name so
-# the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
+# circuit to a no-op so the interactive prompt is preserved. Failure is
+# non-blocking — the auto-save helper itself logs warnings to stderr but
+# never affects this script's exit code. SKILL_NAME is resolved from the
+# parent directory name so the wire-in is identical across all Phase 1-3
+# finalize.sh files.
 AUTOSAVE_LIB="$PLUGIN_SCRIPTS_DIR/lib/auto-save-memory.sh"
 SKILL_NAME="$(basename "$(cd "$SCRIPT_DIR/.." && pwd)")"
 if [ -f "$AUTOSAVE_LIB" ]; then

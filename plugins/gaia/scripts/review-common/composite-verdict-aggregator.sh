@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# composite-verdict-aggregator.sh — GAIA review-common entry point (E66-S3, ADR-082)
+# composite-verdict-aggregator.sh — GAIA review-common entry point
 #
 # Deterministic shell aggregator that consumes per-gate verdicts produced by the
-# six-or-seven verdict-producing review skills (see ADR-077) and emits a
+# six-or-seven verdict-producing review skills and emits a
 # composite verdict plus the canonical Review Gate vocabulary mapping
-# (APPROVE -> PASSED, REQUEST_CHANGES -> FAILED, BLOCKED -> FAILED) per ADR-075.
+# (APPROVE -> PASSED, REQUEST_CHANGES -> FAILED, BLOCKED -> FAILED).
 #
 # Pure shell. No LLM. No network. No jitter. Byte-identical output for
-# byte-identical input (NFR-RSV2-12). Invariant under YOLO_MODE per ADR-067.
+# byte-identical input. Invariant under YOLO_MODE.
 #
 # Public API (entry point):
 #   composite-verdict-aggregator.sh \
@@ -34,7 +34,7 @@
 #   1  caller error — missing required flag, unknown flag, invalid verdict,
 #                     mutually exclusive flag combination
 #
-# First-match-wins precedence (ADR-082):
+# First-match-wins precedence:
 #   1) any included gate BLOCKED         -> composite BLOCKED
 #   2) any included gate REQUEST_CHANGES -> composite REQUEST_CHANGES
 #   3) otherwise                          -> composite APPROVE
@@ -47,9 +47,6 @@
 #   --<gate> <verdict>        : included; participates in precedence
 #   --skip-<gate> "<reason>"  : skipped; contributes neutrally; reason enumerated
 #
-# Refs: ADR-082, ADR-077, ADR-075, ADR-054, ADR-042, ADR-067,
-#       NFR-RSV2-6, NFR-RSV2-12, FR-RSV2-43, FR-RSV2-44.
-
 set -euo pipefail
 LC_ALL=C
 export LC_ALL
@@ -64,7 +61,7 @@ die() {
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — composite verdict aggregator (E66-S3, ADR-082)
+$SCRIPT_NAME — composite verdict aggregator
 
 Usage:
   $SCRIPT_NAME \\
@@ -87,7 +84,7 @@ is_canonical_verdict() {
   esac
 }
 
-# Map composite -> Review Gate vocabulary (ADR-075).
+# Map composite -> Review Gate vocabulary.
 map_review_gate() {
   case "$1" in
     APPROVE)         printf 'PASSED' ;;
@@ -145,10 +142,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# E69-S4 / AC-EC3 — opt-in degenerate-case path. The five always-on gates are
+# Opt-in degenerate-case path. The five always-on gates are
 # REQUIRED by default; --allow-zero-included unlocks --skip-<always-on-gate>
 # usage and accepts the case where every gate is skipped (configuration-error
-# safety net per ADR-082). When --allow-zero-included is NOT set, callers
+# safety net). When --allow-zero-included is NOT set, callers
 # using --skip-code / --skip-qa / --skip-test / --skip-security / --skip-perf
 # are rejected so the always-on contract is preserved by default.
 if [ "$ALLOW_ZERO_INCLUDED" -eq 0 ]; then
@@ -205,7 +202,7 @@ if [ "$MOBILE_SET" -eq 0 ] && [ "$SKIP_MOBILE_SET" -eq 0 ]; then
 fi
 
 # Validate verdict values for included always-on gates only (skipped gates
-# pass-through their reason and contribute neutrally per ADR-082).
+# pass-through their reason and contribute neutrally).
 [ -n "$CODE" ]     && { is_canonical_verdict "$CODE"     || die 1 "invalid verdict '$CODE' for --code"; }
 [ -n "$QA" ]       && { is_canonical_verdict "$QA"       || die 1 "invalid verdict '$QA' for --qa"; }
 [ -n "$TEST" ]     && { is_canonical_verdict "$TEST"     || die 1 "invalid verdict '$TEST' for --test"; }
@@ -265,8 +262,8 @@ any_verdict_match() {
   return 1
 }
 
-# AC-EC3 — degenerate-case safety net. Zero included gates is a configuration
-# error (ADR-082): we WARN once on stdout and emit composite APPROVE so the
+# Degenerate-case safety net. Zero included gates is a configuration
+# error: we WARN once on stdout and emit composite APPROVE so the
 # orchestrator does not silently mark a story BLOCKED when nothing was
 # actually evaluated. The WARNING is always emitted FIRST so log scrapers
 # pick it up before the composite line.

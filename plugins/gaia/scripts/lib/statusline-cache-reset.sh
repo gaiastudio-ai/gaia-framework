@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # statusline-cache-reset.sh — surgical reset of update-check-owned keys in
 # ~/.claude/gaia-statusline/cache/latest-release.json, preserving the
-# git_dirty field (ADR-091 shared-schema contract).
-#
-# Story: E82-S11 (AF-2026-06-02-3).
+# git_dirty field (shared-schema contract).
 #
 # The cache file is shared across three writers:
 #   - statusline-update-check.sh        (owns: checked_at_iso, latest_tag,
@@ -11,8 +9,7 @@
 #                                                installed_version_stale)
 #   - statusline-git-dirty-check.sh     (owns: git_dirty)
 #   - install-statusline.sh             (this reset — defense in depth)
-#   - gaia-statusline-toggle.sh --enable (consent-triggered reset per
-#                                          FR-448 AC8 / E82-S11)
+#   - gaia-statusline-toggle.sh --enable (consent-triggered reset)
 #
 # This helper deletes only the keys owned by the update-check fetcher so
 # the next render recomputes them against the freshly-installed runtime.
@@ -22,8 +19,7 @@
 # until the next PreToolUse fire.
 #
 # Atomic write via sibling-tempfile + mv on the SAME filesystem as the
-# target cache file. Never /tmp/. Per NFR-STATUSLINE-3 + T-STATUSLINE-1
-# addendum.
+# target cache file. Never /tmp/.
 #
 # Idempotent:
 #   - Cache file absent → no-op, exit 0 (no error, no file created).

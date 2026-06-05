@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-domain-research skill finalize (E28-S37 + E42-S3)
+# finalize.sh — /gaia-domain-research skill finalize
 #
-# E42-S3 extends the original Cluster 4 finalize scaffolding with a
+# Extends the finalize scaffolding with a
 # 22-item post-completion checklist (13 script-verifiable + 9
 # LLM-checkable). The script-verifiable subset is enforced here; the
 # LLM-checkable subset is delegated to the host LLM via a structured
-# stderr payload that mirrors the E42-S1 / E42-S2 convention.
+# stderr payload.
 #
-# Responsibilities (per brief §Cluster 4 + story E42-S3):
+# Responsibilities:
 #   1. Run the script-verifiable subset of the 22 V1 checklist items
 #      against the domain-research artifact.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
@@ -16,7 +16,7 @@
 #
 # The observability side effects (3 + 4) MUST run on every invocation —
 # the checklist outcome never suppresses the checkpoint/event write
-# (matches gaia-brainstorm / E42-S1 and gaia-market-research / E42-S2
+# (matches gaia-brainstorm and gaia-market-research
 # contract).
 #
 # Exit codes:
@@ -55,7 +55,7 @@ die() { log "$*"; exit 1; }
 # directory. A missing artifact is NOT fatal to the observability side
 # effects — the checklist run is simply skipped.
 ARTIFACT=""
-# AF-2026-05-21-25 three-tier idiom + AF-2026-05-28-1 / Test07 M-5 slug freedom:
+# Three-tier idiom + slug freedom:
 # also accept `domain-research-<slug>.md` the same way brainstorm/product-brief
 # accept `<name>-*.md`. Newest-mtime entry wins via `ls -1t`.
 _pick_domain() {
@@ -98,10 +98,10 @@ item_check() {
 # heading_present <file> <heading-text>
 # Pass when an H2 heading with the given text (case-insensitive,
 # literal body match; trailing content tolerated) is present.
-# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
+# heading_present() is now a single
 # shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
 # uniform, permissive regex accepting optional numbered+lettered outline
-# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
+# prefixes (11, 11b, 1.2.3). Previously finalize.sh scripts carried
 # divergent inline copies, so the same heading passed one skill's check and
 # failed another's. Sourced via a $0-relative path so it works whether or not
 # this script defines PLUGIN_SCRIPTS_DIR.
@@ -203,7 +203,7 @@ if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
 
   # --- LLM-checkable items (9) ---
   # These items require semantic judgment and are delegated back to the
-  # host LLM. Payload format mirrors the E42-S1 / E42-S2 convention.
+  # host LLM. Payload format mirrors the shared finalize convention.
   printf '\n[LLM-CHECK] The following 9 items require semantic review by the host LLM:\n' >&2
   cat >&2 <<'EOF'
   LLM-01 — Key players identified with roles and context
@@ -258,14 +258,14 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
-# helper itself logs warnings to stderr but never affects this script's
-# exit code. SKILL_NAME is resolved from the parent directory name so
-# the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
+# circuit to a no-op so the interactive prompt is preserved. Failure is
+# non-blocking — the auto-save helper itself logs warnings to stderr but
+# never affects this script's exit code. SKILL_NAME is resolved from
+# the parent directory name so the wire-in is identical across all
+# Phase 1-3 finalize.sh files.
 AUTOSAVE_LIB="$PLUGIN_SCRIPTS_DIR/lib/auto-save-memory.sh"
 SKILL_NAME="$(basename "$(cd "$SCRIPT_DIR/.." && pwd)")"
 if [ -f "$AUTOSAVE_LIB" ]; then

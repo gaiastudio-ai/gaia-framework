@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# init-review-gate.sh — gaia-dev-story Step 15 Review Gate seeder (E55-S8)
+# init-review-gate.sh — gaia-dev-story Step 15 Review Gate seeder
 #
 # Path resolution: this script takes the story_file as a positional argument
-# and performs NO docs/ path resolution at the script level — confirmed under
-# E91-S3 / FR-SRF-3 / AI-2026-05-13-17. The sibling scripts
-# transition-story-status.sh and tdd-review-gate.sh adopt the two-stage
-# CLAUDE_PROJECT_ROOT -> PROJECT_PATH -> fallback precedence per
+# and performs NO docs/ path resolution at the script level. The sibling
+# scripts transition-story-status.sh and tdd-review-gate.sh adopt the
+# two-stage CLAUDE_PROJECT_ROOT -> PROJECT_PATH -> fallback precedence per
 # CLAUDE.md §"Non-git project-root workspace (supported mode)"; this script
-# inherits the resolved path from its caller and needs no change. Sibling:
-# AI-2026-05-13-12 (resolve-config.sh walk-up at the config-resolution layer).
+# inherits the resolved path from its caller and needs no change.
 #
 # Purpose:
 #   Insert (or replace) the Review Gate table block in a story file with

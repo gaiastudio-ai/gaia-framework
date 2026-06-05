@@ -119,10 +119,10 @@ teardown() { common_teardown; }
   [ -f "$CHECKPOINT_DIR/val-envelope-${expected_hash}.json" ]
 }
 
-@test "TC-WVE-10: helper script header references ADR-105 (E87-S7 trace)" {
+@test "TC-WVE-10: helper script header identifies it as an orchestrator-side sentinel writer" {
   [ -f "$HELPER" ]
   run head -40 "$HELPER"
-  [[ "$output" == *"ADR-105"* ]]
+  [[ "$output" == *"orchestrator"* ]]
 }
 
 # E55-S13 D4 (TC-DSF-4): when CHECKPOINT_PATH env-var is unset, the helper

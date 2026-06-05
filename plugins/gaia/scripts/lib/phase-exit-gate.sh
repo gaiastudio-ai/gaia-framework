@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # phase-exit-gate.sh — shared 3-criteria phase-exit gate for the .gaia/
-# consolidation migration (E96-S1, ADR-111; consumed by E96-S2..S5).
+# consolidation migration.
 #
 # Verifies that a phase migration is safe to mark done:
 #   1. bats baseline regression — current test count >= recorded baseline
 #   2. per-file existence — every manifest row's file exists at the target
 #   3. sha256 parity — every migrated file matches its pre-migration hash
 #
-# Criterion (2) was rewritten in E96-S6 (hotfix). The original gate ran
+# Criterion (2) was rewritten as a hotfix. The original gate ran
 # `find <source-dir> -type f | wc -l` which falsely triggered rollback when
 # the target directory was shared across phases (e.g. Phase 2 writes
 # .gaia/state/sprint-status.yaml, then Phase 3 runs and `find .gaia/state`
@@ -37,10 +37,6 @@
 #   1 — at least one criterion failed; rollback attempted
 #   2 — tarball integrity check failed; rollback REFUSED (CRITICAL halt)
 #
-# References:
-#   - FR-508 (phase-exit gate); SR-73 (pre-phase tarball + sha256 manifest);
-#     TC-GLM-1 (bats coverage); NFR-075 (idempotency).
-#   - E96-S6 (hotfix) — Defects A/B/C/D resolution.
 
 set -euo pipefail
 LC_ALL=C
@@ -124,7 +120,7 @@ _rollback() {
     exit 2
   fi
 
-  # Verify tarball integrity via .sha256 sidecar (SR-73).
+  # Verify tarball integrity via .sha256 sidecar.
   local sidecar="${TARBALL}.sha256"
   if [ -f "$sidecar" ]; then
     local recorded actual
@@ -140,7 +136,7 @@ _rollback() {
   local extract_root
   extract_root="$(_extract_root)"
 
-  # Step 1: per-file delete (E96-S6 Defect B.1 fix).
+  # Step 1: per-file delete.
   # Iterate the manifest and remove only this phase's files at the target.
   # NEVER `rm -rf "$SOURCE_DIR"` — that destroys prior phases' contributions.
   while IFS= read -r line; do
@@ -154,7 +150,7 @@ _rollback() {
     fi
   done < "$MANIFEST"
 
-  # Step 2: remove pointer-file orphans (E96-S6 Defect C fix).
+  # Step 2: remove pointer-file orphans.
   if [ -n "$POINTER_LIST" ] && [ -f "$POINTER_LIST" ]; then
     while IFS= read -r pointer_path; do
       [ -n "$pointer_path" ] || continue
@@ -164,14 +160,14 @@ _rollback() {
     done < "$POINTER_LIST"
   fi
 
-  # Step 3: remove the source directory if empty (E96-S6 Defect D fix).
+  # Step 3: remove the source directory if empty.
   # `find -empty -delete` only removes empty directories — non-empty ones
   # (from prior phases) are kept untouched.
   if [ "$REMOVE_SOURCE_DIR_IF_EMPTY" = "1" ]; then
     find "$SOURCE_DIR" -depth -type d -empty -delete 2>/dev/null || true
   fi
 
-  # Step 4: legacy-path cleanup (E96-S6 Defect B.2 fix — parameterized).
+  # Step 4: legacy-path cleanup (parameterized).
   # Only remove paths the caller explicitly named.
   local lp
   for lp in "${LEGACY_PATHS[@]+"${LEGACY_PATHS[@]}"}"; do
@@ -192,7 +188,7 @@ if [ "$BATS_CURRENT" -lt "$BATS_BASELINE" ]; then
   _rollback "bats baseline regression: current=$BATS_CURRENT < baseline=$BATS_BASELINE"
 fi
 
-# ---------- Criterion 2 (rewritten in E96-S6): per-file existence ----------
+# ---------- Criterion 2: per-file existence ----------
 
 EXISTS_COUNT=0
 while IFS= read -r line; do

@@ -99,7 +99,7 @@ ci_cd:
 YAML
   run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-78|T-TOV-1'
+  echo "$output" | grep -qE 'refusal|security-critical'
   echo "$output" | grep -q 'commitlint'
 }
 
@@ -112,7 +112,7 @@ ci_cd:
 YAML
   run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-78|T-TOV-1'
+  echo "$output" | grep -qE 'refusal|security-critical'
 }
 
 @test "SR-78: uppercase form Commit-Lint is canonicalized and STILL rejected" {
@@ -124,7 +124,7 @@ ci_cd:
 YAML
   run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-78|T-TOV-1'
+  echo "$output" | grep -qE 'refusal|security-critical'
 }
 
 @test "SR-78: each of the 5 security-critical names is rejected" {

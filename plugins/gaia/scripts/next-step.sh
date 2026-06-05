@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-# next-step.sh — GAIA foundation script (E28-S16)
+# next-step.sh — GAIA foundation script
 #
 # Suggests the next workflow command for a given current workflow by reading
 # the resolved `lifecycle-sequence.yaml` and cross-checking every candidate
 # command name against `workflow-manifest.csv`. Codifies the CLAUDE.md
 # invariant "never invent command names" as an exit-2 guard.
-#
-# Refs: FR-325, FR-328, NFR-048, ADR-042, ADR-048
-# Brief: P2-S8 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
 #
 # Invocation contract:
 #
@@ -51,10 +48,9 @@ readonly SELF="next-step.sh"
 
 err() { printf "[%s] ERROR: %s\n" "$SELF" "$*" >&2; }
 
-# E28-S162: shared missing-file graceful fallback helper. Sourced here so the
+# Shared missing-file graceful fallback helper. Sourced here so the
 # resolve_paths function below can delegate the "legacy manifests absent"
 # decision to handle_missing_file instead of re-implementing the idiom.
-# Refs: FR-323, ADR-042, triage finding F3 of E28-S126.
 _NEXT_STEP_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/missing-file-fallback.sh
 . "$_NEXT_STEP_DIR/lib/missing-file-fallback.sh"
@@ -105,14 +101,14 @@ resolve_paths() {
     fi
   fi
 
-  # Search strategy — plugin knowledge/ first (E28-S196 — ADR-041 canonical
-  # location for framework reference data), then installed_path-resolved
-  # fallbacks, then plugin-local fallbacks, then the legacy v1 path last.
+  # Search strategy — plugin knowledge/ first (canonical location for
+  # framework reference data), then installed_path-resolved fallbacks,
+  # then plugin-local fallbacks, then the legacy v1 path last.
   local candidates_seq=()
   local candidates_man=()
 
-  # E28-S196 — plugin knowledge/ is the canonical location for
-  # lifecycle-sequence.yaml and workflow-manifest.csv under ADR-041.
+  # plugin knowledge/ is the canonical location for
+  # lifecycle-sequence.yaml and workflow-manifest.csv.
   candidates_seq+=("$here/../knowledge/lifecycle-sequence.yaml")
   candidates_man+=("$here/../knowledge/workflow-manifest.csv")
 
@@ -136,11 +132,11 @@ resolve_paths() {
     if [ -f "$c" ]; then manifest_file="$c"; break; fi
   done
 
-  # E28-S126 / E28-S162: delegate the graceful-missing-file decision to the
-  # shared helper at scripts/lib/missing-file-fallback.sh. Under the native
-  # plugin (post-ADR-048 cutover) lifecycle-sequence.yaml and
-  # workflow-manifest.csv are retired — the helper returns sentinel 10 and
-  # prints a clear notice. Strict behavior is opt-in via GAIA_NEXT_STEP_STRICT=1.
+  # Delegate the graceful-missing-file decision to the shared helper at
+  # scripts/lib/missing-file-fallback.sh. Under the native plugin,
+  # lifecycle-sequence.yaml and workflow-manifest.csv are retired — the
+  # helper returns sentinel 10 and prints a clear notice. Strict behavior
+  # is opt-in via GAIA_NEXT_STEP_STRICT=1.
   local target="" target_label=""
   if [ -z "$sequence_file" ]; then
     target="${candidates_seq[0]}"
@@ -218,10 +214,10 @@ case "$status_arg" in
 esac
 
 # --- resolve files -----------------------------------------------------------
-# E28-S126 graceful-missing-file fallback (Val v1 Finding 2):
-# resolve_paths returns 10 when manifests are absent under the native plugin.
-# In that case print the fallback notice (already printed inside resolve_paths)
-# and exit 0 — next-step is a no-op in the native model.
+# Graceful-missing-file fallback: resolve_paths returns 10 when manifests
+# are absent under the native plugin. In that case print the fallback notice
+# (already printed inside resolve_paths) and exit 0 — next-step is a no-op
+# in the native model.
 paths_output="$(resolve_paths)" || rc=$?
 if [ "${rc:-0}" -eq 10 ]; then
   printf "%s\n" "$paths_output"
@@ -250,7 +246,7 @@ fi
 # --- collect candidate commands ---------------------------------------------
 # We collect every command name we're about to print, so we can validate
 # them all against workflow-manifest.csv BEFORE writing anything to stdout.
-# (AC6: on mismatch, stdout MUST be empty.)
+# On mismatch, stdout MUST be empty.
 
 declare -a out_lines=()
 declare -a all_commands=()
@@ -313,7 +309,7 @@ if [ "$standalone" = "true" ]; then
   add_line "standalone: true"
 fi
 
-# --- verify every command exists in the manifest (AC2 / AC6) ---------------
+# --- verify every command exists in the manifest ----------------------------
 for cmd in ${all_commands[@]+"${all_commands[@]}"}; do
   if ! manifest_has_command "$cmd" "$manifest_file"; then
     err "next-step command '$cmd' is not present in workflow-manifest.csv"

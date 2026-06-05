@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
-# forbidden-sentinel-scan.sh — /gaia-dev-story Step 11a pre-PR scan (E88-S3).
-#
-# Refs:  ADR-107 (closed-list taxonomies SSOT), FR-DPD-3, AI-2026-05-13-5.
-# Story: E88-S3.
+# forbidden-sentinel-scan.sh — /gaia-dev-story Step 11a pre-PR scan.
 #
 # Purpose
 #   Scan the production-path slice of the current branch's diff (vs a base
-#   ref) for any forbidden sentinel listed in the E88-S1 taxonomy SSOT at
+#   ref) for any forbidden sentinel listed in the taxonomy SSOT at
 #   knowledge/taxonomy/forbidden-sentinels.txt. HALT inline with a canonical
 #   stderr message on match. Optionally accept an `--allow-stub <reason>`
 #   override gated on a story-ID or AI-ID prefix.
 #
-# Production-path filter (EXEMPT subtrees per AC6):
+# Production-path filter (EXEMPT subtrees):
 #   - gaia-framework/plugins/gaia/tests/**
 #   - **/tests/fixtures/**
 #   - _memory/**
@@ -31,7 +28,7 @@
 #   - exits 1 with `--allow-stub reason must cite a story ID (Ex-Sx) or AI ID
 #     (AI-YYYY-MM-DD-N) — got: <reason>` on a malformed --allow-stub value.
 #
-# Note: inline HALT (NOT halt-event.sh) per Val F1 — halt-event.sh is
+# Note: inline HALT (NOT halt-event.sh) — halt-event.sh is
 # gaia-meeting-scoped; relocating it to scripts/lib/ is a separate refactor.
 
 set -euo pipefail

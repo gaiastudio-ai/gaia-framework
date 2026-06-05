@@ -1,23 +1,21 @@
 #!/usr/bin/env bash
-# adapters/cypress-e2e/run.sh — ADR-078 adapter contract for Cypress e2e runner.
+# adapters/cypress-e2e/run.sh — adapter contract for Cypress e2e runner.
 #
-# Contract (ADR-078 / BOUNDARIES.md):
+# Contract (BOUNDARIES.md):
 #   run.sh --input <file-list> [--config <path>] [--output <path>]
 #          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
 #          [--target-url <url>]
 #
-# Story E73-S1 augments the canonical contract with the optional --target-url
-# flag (e2e-specific). When provided, it is passed via Cypress's --config
-# baseUrl=<url> override so the project's cypress.config.{js,ts} default
-# baseUrl is overridden for the run. Omission keeps the project default.
+# The optional --target-url flag is e2e-specific. When provided, it is passed
+# via Cypress's --config baseUrl=<url> override so the project's
+# cypress.config.{js,ts} default baseUrl is overridden for the run.
+# Omission keeps the project default.
 #
 # Phase 3A (deterministic): invokes `npx cypress run --reporter json`,
 # captures the JSON results, and emits a canonical analysis-results fragment
 # on stdout (or to --output if provided). Exit code 0 = ran cleanly,
 # 1 = runner errored, 127 = npx/cypress not found on PATH. The probe
 # interprets exit-code semantics.
-#
-# Refs: ADR-078 §1, FR-RSV2-31, NFR-RSV2-7, story E73-S1.
 
 set -euo pipefail
 LC_ALL=C
@@ -40,7 +38,7 @@ while [ "$#" -gt 0 ]; do
     --target-url) TARGET_URL="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/cypress-e2e/run.sh — ADR-078 contract entry for Cypress e2e runner.
+adapters/cypress-e2e/run.sh — adapter contract entry for Cypress e2e runner.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]

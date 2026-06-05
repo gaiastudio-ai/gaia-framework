@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# composite-verdict.sh — E74-S10 / AC4.
+# composite-verdict.sh — composite verdict aggregator.
 #
 # Reads a JSON array of per-device results (each with a `verdict` field of
 # PASSED | FAILED | ERROR | TIMEOUT) and emits a single JSON object with the

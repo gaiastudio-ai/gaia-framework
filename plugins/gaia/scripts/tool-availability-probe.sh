@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tool-availability-probe.sh — GAIA shared review-skill helper (E66-S2, ADR-078).
+# tool-availability-probe.sh — GAIA shared review-skill helper.
 #
 # Purpose
 # -------
@@ -18,7 +18,7 @@
 #    "error_detail":<string|null>,
 #    "failure_kind":<enum|null>}
 #
-# failure_kind enum (E66-S6, AC1):
+# failure_kind enum:
 #   - "tool_missing"      — emitted when state == expected_and_missing
 #   - "version_mismatch"  — reserved for a future version-check stage; not
 #                           currently emitted by this probe
@@ -28,7 +28,7 @@
 #                           failure is a timeout (rc 124 / 143)
 #   - null                — emitted when state == available or not_applicable
 #
-# The field is additive (AC4): callers reading state/skip_reason/error_detail
+# The field is additive: callers reading state/skip_reason/error_detail
 # continue to work unchanged. New callers can branch on failure_kind to make
 # structured decisions without parsing free-text error_detail.
 #
@@ -45,13 +45,11 @@
 #                              [--config <path>] [--runtime-profile <profile>]
 #   tool-availability-probe.sh --help
 #
-# Determinism (NFR-RSV2-9)
-# ------------------------
+# Determinism
+# -----------
 # `set -euo pipefail` + `LC_ALL=C` + per-stage strict ordering guarantee that
 # identical inputs produce byte-identical output every invocation. The probe
 # does not read environment beyond PATH and a single timeout binary lookup.
-#
-# Refs: ADR-077, ADR-078, FR-RSV2-18, FR-RSV2-19, NFR-RSV2-9, NFR-RSV2-11.
 
 set -euo pipefail
 LC_ALL=C
@@ -68,16 +66,16 @@ die() {
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — tool-availability probe for GAIA adapters (ADR-078, ADR-089).
+$SCRIPT_NAME — tool-availability probe for GAIA adapters.
 
 Two operating modes:
 
-(1) Adapter-dir mode (legacy / per-adapter probe, ADR-078):
+(1) Adapter-dir mode (legacy / per-adapter probe):
   $SCRIPT_NAME --adapter-dir <path> --file-list <path>
                [--timeout <seconds>] [--config <path>]
                [--runtime-profile subprocess|container|network]
 
-(2) Tri-state mode (E77-S3 / FR-405 / ADR-089):
+(2) Tri-state mode:
   $SCRIPT_NAME --tool <name> --config <project-config.yaml>
 
   $SCRIPT_NAME --help
@@ -104,12 +102,12 @@ Mode-1 states (stdout JSON):
   ran_and_errored       run.sh exits non-zero or times out.
   not_applicable        File list has no files matching adapter file-extensions.
 
-Mode-2 tri-state classification (per ADR-089):
+Mode-2 tri-state classification:
   omitted   No tool_adapters.<name> entry. Skip — exit 0, no output.
   null      Entry present, value null. Probe; on missing binary emit
             advisory WARNING. Recoverable; never CRITICAL.
   declared  Entry present, value is a map. Probe; on missing binary emit
-            WARNING (downgrade from CRITICAL per ADR-089 calibration).
+            WARNING (downgrade from CRITICAL).
 
 Exit codes (mode 1):
   0  available | not_applicable
@@ -156,7 +154,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 # ---------------------------------------------------------------------------
-# Mode dispatch (E77-S3 / FR-405 / ADR-089).
+# Mode dispatch.
 # --tool selects tri-state mode; --adapter-dir selects legacy single-adapter
 # mode. They are mutually exclusive — passing both is a caller error.
 # ---------------------------------------------------------------------------
@@ -166,7 +164,7 @@ if [ -n "$TOOL_NAME" ] && [ -n "$ADAPTER_DIR" ]; then
 fi
 
 if [ -n "$TOOL_NAME" ]; then
-  # Tri-state mode (ADR-089).
+  # Tri-state mode.
   [ -n "$CONFIG" ] || die 1 "--tool requires --config <project-config.yaml>"
   [ -f "$CONFIG" ] || die 1 "config not found: $CONFIG"
 
@@ -180,8 +178,8 @@ if [ -n "$TOOL_NAME" ]; then
   #     <name>:          # declared state when followed by an indented map
   #       path: ...
   #
-  # The parser is intentionally minimal — yq is not assumed on PATH (NFR-RSV2-9
-  # determinism: no extra runtime deps). Comments and blank lines are skipped.
+  # The parser is intentionally minimal — yq is not assumed on PATH (determinism
+  # guarantee: no extra runtime deps). Comments and blank lines are skipped.
   # Bracketed inline maps `<name>: { path: ... }` are treated as declared.
   # Classifier. Recognised value forms for the tool key:
   #   "<name>: null" | "<name>: ~" | "<name>:"           -> null   (unless a
@@ -315,10 +313,10 @@ EFFECTIVE_TIMEOUT="${TIMEOUT_OVERRIDE:-$DEFAULT_TIMEOUT}"
 
 # emit <state> <skip_reason-or-empty> <error_detail-or-empty> <failure_kind-or-empty> <exit-code>
 #
-# E66-S6: failure_kind is the fifth positional arg. Pass empty string ("") to
+# failure_kind is the fifth positional arg. Pass empty string ("") to
 # emit JSON null. Valid non-null values: tool_missing, version_mismatch,
 # runtime_crash, timeout. The field is required in every emit() call so each
-# state has an explicit failure_kind decision (AC1, AC2).
+# state has an explicit failure_kind decision.
 emit() {
   local state="$1" skip_reason="$2" error_detail="$3" failure_kind="$4" rc="$5"
   jq -nc \
@@ -455,8 +453,8 @@ fi
 if [ "$rc" -ne 0 ]; then
   # GNU timeout exits 124 on timeout; some platforms 128+15 (143). Map both.
   err_msg="$(tr -d '\r' < "$STDERR_TMP" | tr '\n' ' ' | sed 's/ *$//')"
-  # E66-S6 / AC1: classify the failure_kind based on the rc returned by the
-  # timeout wrapper or run.sh itself. timeout(1) / gtimeout(1) exits 124;
+  # Classify the failure_kind based on the rc returned by the timeout wrapper
+  # or run.sh itself. timeout(1) / gtimeout(1) exits 124;
   # signal-terminated children commonly surface as 128+15 = 143.
   if [ "$rc" = "124" ] || [ "$rc" = "143" ]; then
     err_msg="timeout: run.sh exceeded ${EFFECTIVE_TIMEOUT}s"

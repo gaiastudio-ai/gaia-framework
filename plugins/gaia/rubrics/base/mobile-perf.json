@@ -6,8 +6,6 @@
   "platform": "mobile",
   "metadata": {
     "title": "Mobile-platform performance review sub-rubric",
-    "story": "E74-S3",
-    "adr": ["ADR-079", "ADR-081"],
     "description": "Mobile-specific performance criteria layered atop the universal base perf rubric. Covers cold/warm start, frame rate (60 fps target / jank budget), battery, binary-size budgets (APK <50 MB, IPA <100 MB), network efficiency, and asset optimisation."
   },
   "severity_rules": [

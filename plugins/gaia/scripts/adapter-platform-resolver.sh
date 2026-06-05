@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# adapter-platform-resolver.sh — E74-S7 platform-gated adapter selection (AC5).
+# adapter-platform-resolver.sh — platform-gated adapter selection.
 #
 # Filters the adapters under plugins/gaia/scripts/adapters/<tool>/ by their
 # `platforms` array (declared in adapter.json) versus the `--platforms` flag
 # (or the project-config.yaml `platforms:` list). Adapters declaring a
 # `platforms` field that intersects the input platform set are selected;
-# adapters without a `platforms` field (e.g. existing E66-S2 adapters such as
-# semgrep, gitleaks) are platform-agnostic and therefore always selected.
+# adapters without a `platforms` field (e.g. semgrep, gitleaks) are
+# platform-agnostic and therefore always selected.
 #
 # Usage:
 #   adapter-platform-resolver.sh --platforms ios,android [--adapters-dir <path>]
@@ -16,14 +16,13 @@
 #   0 — success (zero or more adapters listed)
 #   1 — bad arguments
 #
-# Decisions:
-#   - ADR-077 (three-tier review pipeline): platform gating runs in the
-#     evidence layer before run.sh dispatch.
-#   - ADR-078 (tool adapter framework): adapter.json owns metadata; the
-#     resolver is the only consumer of `platforms`.
-#   - ADR-081 (mobile-as-platform).
+# Design notes:
+#   - Three-tier review pipeline: platform gating runs in the evidence layer
+#     before run.sh dispatch.
+#   - Tool adapter framework: adapter.json owns metadata; the resolver is the
+#     only consumer of `platforms`.
 #
-# Determinism (NFR-RSV2-3): identical inputs produce byte-identical output.
+# Determinism: identical inputs produce byte-identical output.
 # LC_ALL=C and `sort` make the output stable across systems.
 
 set -euo pipefail
@@ -40,6 +39,7 @@ while [ "$#" -gt 0 ]; do
     -h|--help)
       cat <<EOF
 adapter-platform-resolver.sh — platform-gated adapter selection.
+
 Usage:
   $(basename "$0") --platforms ios,android [--adapters-dir <path>]
 
@@ -89,7 +89,7 @@ for d in "$ADAPTERS_DIR"/*/; do
   [ -f "$meta" ] || continue
 
   # If the adapter declares platforms, require intersection. Otherwise, emit
-  # (platform-agnostic adapter — e.g. existing E66-S2 adapters).
+  # (platform-agnostic adapter).
   decision="$(jq --argjson input "$input_json" '
     if has("platforms") and (.platforms | type == "array")
     then (.platforms | any(. as $p | $input | index($p) != null))
@@ -102,7 +102,7 @@ for d in "$ADAPTERS_DIR"/*/; do
   fi
 done
 
-# Emit deterministic, sorted output. AC5 only checks per-line membership, but
+# Emit deterministic, sorted output. Per-line membership is checked by callers;
 # determinism is a framework invariant.
 if [ "${#matches[@]}" -gt 0 ]; then
   printf '%s\n' "${matches[@]}" | sort

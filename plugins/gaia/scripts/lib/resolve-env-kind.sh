@@ -1,25 +1,24 @@
 #!/usr/bin/env bash
-# resolve-env-kind.sh — env-kind discriminator resolver
-# (E99-S1, FR-520, ADR-112 §(a), NFR-080).
+# resolve-env-kind.sh — env-kind discriminator resolver.
 #
 # Sourceable, NOT executable. Exposes one function:
 #
 #   gaia_resolve_env_kind <project-config.yaml> <env-id>
 #     Looks up environments[] entry by id and returns the resolved kind on
-#     stdout. Resolution rules per FR-520 + ADR-112 §(a) + NFR-080:
+#     stdout. Resolution rules:
 #       - Field present + value in {deployable, branch-only, distribution-only}
 #         → return verbatim, exit 0
-#       - Field absent → return "deployable" (read-time default per NFR-080
-#         silent back-compat), exit 0, NO stderr WARNING (the WARNING lives
-#         in /gaia-config-validate per E99-S6 / TC-EKD-5)
+#       - Field absent → return "deployable" (read-time default for silent
+#         back-compat), exit 0, NO stderr WARNING (the WARNING lives
+#         in /gaia-config-validate)
 #       - Field present but value NOT in the closed enum → exit 1 with a
-#         FATAL stderr message that lists the 3 legal values and cites
-#         ADR-112; NEVER silently coerce to deployable
+#         FATAL stderr message that lists the 3 legal values; NEVER silently
+#         coerce to deployable
 #       - env-id not found in environments[] → exit 1 with a clear error
 #
-# Separated from lib/gaia-paths.sh per AC7: env-kind is a config concern
+# Separated from lib/gaia-paths.sh: env-kind is a config concern
 # (project-config.yaml semantic discriminator); path resolution
-# (lib/gaia-paths.sh) is a separate concern owned by ADR-111.
+# (lib/gaia-paths.sh) is a separate concern.
 #
 # Source guard: _GAIA_RESOLVE_ENV_KIND_LOADED=1 after first source.
 
@@ -31,12 +30,12 @@ _GAIA_RESOLVE_ENV_KIND_LOADED=1
 LC_ALL=C
 export LC_ALL
 
-# The canonical 3-value closed enum per FR-520 + ADR-112 §(a). NEVER extend
-# this list inline — a new shape lands via a future ADR amendment + schema
-# bump, not a silent code change.
+# The canonical 3-value closed enum. NEVER extend
+# this list inline — a new shape lands via a future schema amendment +
+# schema bump, not a silent code change.
 _GAIA_ENV_KIND_LEGAL="deployable branch-only distribution-only"
 
-# Default applied at read time when kind is absent (NFR-080 zero-breakage).
+# Default applied at read time when kind is absent (zero-breakage).
 _GAIA_ENV_KIND_DEFAULT="deployable"
 
 # Internal: emit a canonical FATAL error citing the closed enum.
@@ -44,7 +43,7 @@ _gaia_env_kind_die_invalid() {
   local config="$1"
   local env_id="$2"
   local actual="$3"
-  printf 'resolve-env-kind.sh: invalid kind %s for environment %s in %s — closed enum per ADR-112 §(a) accepts only {deployable, branch-only, distribution-only}\n' \
+  printf 'resolve-env-kind.sh: invalid kind %s for environment %s in %s — closed enum accepts only {deployable, branch-only, distribution-only}\n' \
     "$actual" "$env_id" "$config" >&2
   return 1
 }
@@ -83,7 +82,7 @@ gaia_resolve_env_kind() {
   local kind
   kind=$(yq eval ".environments[]? | select(.id == \"${env_id}\") | .kind // \"\"" "$config" 2>/dev/null)
 
-  # Field absent → apply NFR-080 silent default.
+  # Field absent → apply silent default.
   if [ -z "$kind" ] || [ "$kind" = "null" ]; then
     printf '%s\n' "$_GAIA_ENV_KIND_DEFAULT"
     return 0

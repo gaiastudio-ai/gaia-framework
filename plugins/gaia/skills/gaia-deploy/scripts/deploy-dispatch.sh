@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
-# deploy-dispatch.sh — /gaia-deploy Pattern A deploy phase (E73-S5, AC3, AC11, AC13).
+# deploy-dispatch.sh — /gaia-deploy Pattern A deploy phase.
 #
 # Resolves the deploy adapter command and invokes it with --env / --version /
-# --output-dir. No retries (AC11). Captures stdout/stderr to evidence files.
+# --output-dir. No retries. Captures stdout/stderr to evidence files.
 #
-# Adapter resolution precedence (E78-S4 / FR-426):
+# Adapter resolution precedence:
 #   1. GAIA_DEPLOY_ADAPTER_CMD env-var (test seam — invoked positionally for
-#      backward compatibility with the pre-FR-426 contract).
+#      backward compatibility).
 #   2. `deployment.adapter` from project-config.yaml — resolves to
 #      plugins/gaia/scripts/adapters/<adapter>/run.sh and is invoked with
 #      `--env <env> --version <ver> --output-dir <dir>` flag form.
 #   3. `distribution.channels[0].deploy_adapter` from project-config.yaml —
 #      same resolution + flag form as (2). Used only when (2) is absent.
 #   4. `script-deploy` default (preserves Phase 1 behavior for web/mobile
-#      projects with no explicit adapter config; web/mobile zero-behavior-
-#      change is AC7).
+#      projects with no explicit adapter config).
 #
 #   Unknown adapter name (resolution paths 2/3/4) → BLOCKED with the
 #   unresolvable name and a listing of available adapters under
@@ -22,8 +21,8 @@
 #   gates binary availability — `expected_and_missing` → BLOCKED with the
 #   missing provider name.
 #
-#   Auto-detection from `project_kind` is FORBIDDEN by FR-426 — the contract
-#   is opt-in (the user must configure `deployment.adapter` or
+#   Auto-detection from `project_kind` is FORBIDDEN — the contract is opt-in
+#   (the user must configure `deployment.adapter` or
 #   `distribution.channels[].deploy_adapter` to dispatch a non-default
 #   adapter).
 #
@@ -31,7 +30,7 @@
 #   0  — adapter exited 0
 #   1  — adapter exited non-zero (BLOCKED)
 #   2  — usage / invalid args
-#   127 — adapter not found (AC13: unavailable) or unknown adapter name
+#   127 — adapter not found (unavailable) or unknown adapter name
 #
 # Test seams (do not document outside this header):
 #   GAIA_DEPLOY_ADAPTER_CMD  — full path to an executable; invoked positionally.
@@ -42,7 +41,6 @@
 #                              .gaia/config/project-config.yaml then
 #                              project-config.yaml (CWD).
 #
-# Refs: ADR-078, ADR-080, FR-426, AC3/11/12/13.
 
 set -euo pipefail
 LC_ALL=C
@@ -62,7 +60,7 @@ while [ "$#" -gt 0 ]; do
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-$SCRIPT_NAME — deploy adapter dispatch (E73-S5, AC3; E78-S4, FR-426).
+$SCRIPT_NAME — deploy adapter dispatch.
 Usage: $SCRIPT_NAME --env <env> --version <ver> --output-dir <dir>
 EOF
       exit 0 ;;
@@ -71,7 +69,7 @@ EOF
 done
 
 if [ -z "$ENV_NAME" ]; then
-  log "BLOCKED: --env is required (no default — AC9)"
+  log "BLOCKED: --env is required (no default)"
   exit 2
 fi
 if [ -z "$VERSION" ] || [ -z "$OUTPUT_DIR" ]; then
@@ -88,8 +86,8 @@ esac
 mkdir -p "$OUTPUT_DIR"
 
 # ---------------------------------------------------------------------------
-# (1) GAIA_DEPLOY_ADAPTER_CMD test seam — preserved verbatim from pre-FR-426
-#     contract. AC8 / E73-S5 backward-compat: positional invocation.
+# (1) GAIA_DEPLOY_ADAPTER_CMD test seam — preserved verbatim for backward
+#     compatibility: positional invocation.
 # ---------------------------------------------------------------------------
 
 ADAPTER_CMD="${GAIA_DEPLOY_ADAPTER_CMD:-}"
@@ -102,7 +100,7 @@ if [ -n "$ADAPTER_CMD" ]; then
   rc=0
   "$ADAPTER_CMD" "$ENV_NAME" "$VERSION" "$OUTPUT_DIR" || rc=$?
   if [ "$rc" -ne 0 ]; then
-    log "BLOCKED: deploy adapter exited $rc (no auto-retry per ADR-080)"
+    log "BLOCKED: deploy adapter exited $rc (no auto-retry)"
     log "  remediation: investigate adapter logs in $OUTPUT_DIR; consider /gaia-rollback-plan (manual)"
     exit 1
   fi
@@ -111,7 +109,7 @@ if [ -n "$ADAPTER_CMD" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# (2)–(4) Config-driven resolution (E78-S4 / FR-426).
+# (2)–(4) Config-driven resolution.
 # ---------------------------------------------------------------------------
 
 # Resolve plugin root: override env var > derived from script location.
@@ -133,7 +131,7 @@ resolve_config_path() {
     printf '%s' "$GAIA_DEPLOY_CONFIG"
     return 0
   fi
-  # E96-S1 path resolution: prefer .gaia/config/, fall back to legacy config/
+  # Prefer .gaia/config/, fall back to legacy config/
   if [ -f ".gaia/config/project-config.yaml" ]; then
     printf '%s' ".gaia/config/project-config.yaml"
     return 0
@@ -323,10 +321,10 @@ if [ ! -f "$ADAPTER_JSON" ]; then
 fi
 
 # Inline binary-availability check (mirrors tool-availability-probe.sh
-# Stage 2 / subprocess profile). Per AC5 the probe is the canonical source
-# of truth; for project-scope deploy adapters with empty file-extensions,
-# the probe's Stage 1 short-circuits to `not_applicable` before reaching
-# Stage 2 — so we replicate Stage 2 here against adapter.json::provider to
+# subprocess profile). The probe is the canonical source of truth; for
+# project-scope deploy adapters with empty file-extensions, the probe
+# short-circuits to `not_applicable` before reaching the subprocess stage —
+# so we replicate the subprocess check here against adapter.json::provider to
 # get a real availability signal. The probe is still invoked below to
 # validate adapter.json shape and emit determinism logs.
 PROVIDER=""
@@ -349,9 +347,8 @@ fi
 # Empty file-list → probe returns `not_applicable` (exit 0) for project-
 # scope adapters. That is fine: the meaningful availability check is the
 # inline `command -v` above. We do NOT propagate a probe-execution failure
-# into BLOCKED here — the probe's Stage 3 (run.sh handshake) is for review
-# adapters, not deploy adapters whose run.sh has its own --env/--version
-# contract.
+# into BLOCKED here — the run.sh handshake stage is for review adapters,
+# not deploy adapters whose run.sh has its own --env/--version contract.
 PROBE_SH="$PLUGIN_ROOT/scripts/tool-availability-probe.sh"
 if [ -x "$PROBE_SH" ]; then
   EMPTY_LIST="$(mktemp -t deploy-dispatch-flist-XXXXXX)"
@@ -360,14 +357,14 @@ if [ -x "$PROBE_SH" ]; then
   rm -f "$EMPTY_LIST" 2>/dev/null || true
 fi
 
-# Single-shot invocation — no retries (AC11). On failure, suggest rollback in
+# Single-shot invocation — no retries. On failure, suggest rollback in
 # the conversation log but never invoke /gaia-rollback-plan.
 log "deploy phase: dispatching '$ADAPTER_NAME' (source: $RESOLUTION_SOURCE)"
 rc=0
 "$RUN_SH" --env "$ENV_NAME" --version "$VERSION" --output-dir "$OUTPUT_DIR" || rc=$?
 
 if [ "$rc" -ne 0 ]; then
-  log "BLOCKED: deploy adapter '$ADAPTER_NAME' exited $rc (no auto-retry per ADR-080)"
+  log "BLOCKED: deploy adapter '$ADAPTER_NAME' exited $rc (no auto-retry)"
   log "  remediation: investigate adapter logs in $OUTPUT_DIR; consider /gaia-rollback-plan (manual)"
   exit 1
 fi

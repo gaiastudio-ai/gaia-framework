@@ -1,8 +1,8 @@
 ---
 name: gaia-readiness-check
-description: Validate implementation readiness by checking all planning and testing artifacts for completeness, consistency, and cross-artifact contradictions — Cluster 6 architecture skill. Enforces two mandatory quality gates (traceability-matrix.md and ci-setup.md must exist) per ADR-042, then delegates readiness assessment to the architect and devops subagents.
+description: Validate implementation readiness by checking all planning and testing artifacts for completeness, consistency, and cross-artifact contradictions — architecture skill. Enforces two mandatory quality gates (traceability-matrix.md and ci-setup.md must exist), then delegates readiness assessment to the architect and devops subagents.
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
-# Discover-Inputs Protocol (ADR-062 / FR-346 / E45-S4)
+# Discover-Inputs Protocol
 # Strategy: INDEX_GUIDED — readiness-check cross-references many large
 # upstream artifacts (PRD, architecture, test plan, epics/stories,
 # traceability matrix, ci-setup, threat-model, infra-design). Load each
@@ -25,7 +25,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -40,12 +40,12 @@ fi
 
 Validate that all upstream planning, architecture, testing, and CI artifacts are complete, consistent, and free of cross-artifact contradictions before implementation begins. This skill enforces two mandatory quality gates — `traceability-matrix.md` and `ci-setup.md` must exist — and produces a machine-readable readiness report with PASS/FAIL/CONDITIONAL PASS status.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/3-solutioning/implementation-readiness` workflow (brief Cluster 6, story P6-S4 / E28-S48). The step ordering, gate enforcement, and output path are preserved from the legacy `instructions.xml`.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/3-solutioning/implementation-readiness` workflow. The step ordering, gate enforcement, and output path are preserved from the legacy `instructions.xml`.
 
 ## Critical Rules
 
-- Both quality gates are **mandatory** per ADR-042 — there is no "single gate" fallback, no env-var bypass, and no flag to make either gate optional. Partial-pass is a bug.
-- `traceability-matrix.md` MUST exist. Resolve via the canonical post-E105-S2 / ADR-127 §7.2 home first, with legacy fallbacks (route through `scripts/lib/resolve-artifact-path.sh traceability`): try `.gaia/artifacts/planning-artifacts/traceability-matrix.md` (canonical — `/gaia-trace` writes here on greenfield); fall back to `.gaia/artifacts/test-artifacts/traceability-matrix.md` (flat legacy) → `.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md` (ADR-072 strategy/ placement) → `.gaia/artifacts/test-artifacts/traceability-matrix/index.md` (ADR-070 sharded form). If missing from ALL placements, HALT with: "Gate failed: traceability-matrix.md not found at any accepted location (canonical: planning-artifacts/; legacy: test-artifacts/{,strategy/,traceability-matrix/index.md}). Run /gaia-trace to generate the traceability matrix."
+- Both quality gates are **mandatory** — there is no "single gate" fallback, no env-var bypass, and no flag to make either gate optional. Partial-pass is a bug.
+- `traceability-matrix.md` MUST exist. Resolve via the canonical home first, with legacy fallbacks (route through `scripts/lib/resolve-artifact-path.sh traceability`): try `.gaia/artifacts/planning-artifacts/traceability-matrix.md` (canonical — `/gaia-trace` writes here on greenfield); fall back to `.gaia/artifacts/test-artifacts/traceability-matrix.md` (flat legacy) → `.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md` (strategy/ placement) → `.gaia/artifacts/test-artifacts/traceability-matrix/index.md` (sharded form). If missing from ALL placements, HALT with: "Gate failed: traceability-matrix.md not found at any accepted location (canonical: planning-artifacts/; legacy: test-artifacts/{,strategy/,traceability-matrix/index.md}). Run /gaia-trace to generate the traceability matrix."
 - `ci-setup.md` MUST exist at `.gaia/artifacts/test-artifacts/ci-setup.md`. If missing, HALT with: "Gate failed: ci-setup.md not found. Run /gaia-ci-setup to configure the CI pipeline."
 - Check ALL artifacts — do not stop at first failure (except for the mandatory gates which halt immediately).
 - If the traceability matrix declares its own gate as BLOCKED or FAIL, the readiness report MUST NOT declare traceability_complete: true.
@@ -57,7 +57,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 1 — Load All Artifacts
 
-> **Loading strategy: INDEX_GUIDED per ADR-062.** Readiness-check
+> **Loading strategy: INDEX_GUIDED.** Readiness-check
 > cross-references up to nine large upstream artifacts — full-loading them
 > all would routinely exceed 80K tokens. Heading-scan each artifact first
 > (`grep -nE '^#{1,3} '`) to build a section index. The cross-reference
@@ -66,11 +66,11 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 > headings, fall back to FULL_LOAD for that file only and log the fallback
 > in the checkpoint.
 
-- Heading-scan the PRD for the requirements section index (functional and non-functional) — resolve via the sharded-fallback rule (ADR-069 / FR-396..402): try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout, with shard subsections under `prd/04-functional-requirements/` and `prd/05-non-functional-requirements.md`).
+- Heading-scan the PRD for the requirements section index (functional and non-functional) — resolve via the sharded-fallback rule: try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout, with shard subsections under `prd/04-functional-requirements/` and `prd/05-non-functional-requirements.md`).
 - Heading-scan `.gaia/artifacts/planning-artifacts/ux-design.md` if available for the UI-requirements section index.
 - Heading-scan `.gaia/artifacts/planning-artifacts/architecture.md` for architecture-decision and component section anchors.
 - Heading-scan `.gaia/artifacts/planning-artifacts/epics-and-stories.md` for the story-coverage section index.
-- Heading-scan the traceability matrix for the requirement-coverage summary section — resolve via the canonical-first rule (Critical Rules above): try `.gaia/artifacts/planning-artifacts/traceability-matrix.md` (canonical E105-S2 / ADR-127 §7.2); fall back to `.gaia/artifacts/test-artifacts/traceability-matrix.md` (flat legacy) and `.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md` (strategy/ placement).
+- Heading-scan the traceability matrix for the requirement-coverage summary section — resolve via the canonical-first rule (Critical Rules above): try `.gaia/artifacts/planning-artifacts/traceability-matrix.md` (canonical); fall back to `.gaia/artifacts/test-artifacts/traceability-matrix.md` (flat legacy) and `.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md` (strategy/ placement).
 - Heading-scan `.gaia/artifacts/test-artifacts/ci-setup.md` for the pipeline quality-gates summary section.
 - Heading-scan the test plan if it exists for the risk-assessment section — resolve via the strategy-fallback rule (Critical Rules above): try `.gaia/artifacts/test-artifacts/test-plan.md` (flat); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement).
 - Heading-scan `.gaia/artifacts/planning-artifacts/threat-model.md` if exists for security-requirement section anchors.
@@ -138,7 +138,7 @@ Record all contradictions in a structured list with contradiction_id, type, sour
 - Verify authentication/authorization is defined in architecture.
 - Verify data privacy requirements are addressed.
 
-#### Compliance scan (FR-352 / E46-S4)
+#### Compliance scan
 
 Read `.gaia/artifacts/planning-artifacts/epics-and-stories.md` once and harvest, for every story, its key, its priority (`P0..P3`), its compliance tags, and the phase classification of its owning epic. The same harvest feeds both the priority/schedule conflict detector and the compliance timeline estimator below — they share one pass.
 
@@ -185,7 +185,7 @@ Delegate operational readiness assessment to the **devops** subagent (Soren) via
 
 Write the readiness report to `.gaia/artifacts/planning-artifacts/readiness-report.md` with YAML frontmatter containing machine-readable PASS/FAIL status for each check area.
 
-**AF-2026-05-31-3 / Test14 F-21 — deterministic stub emitter.** Before the LLM authoring path runs, invoke the deterministic stub generator so headless YOLO runs (where no LLM authors the body) still produce a canonical-shape report file. The generator is idempotent: it refuses to overwrite a non-stub report, so the LLM authoring path below can safely enrich the body without contention.
+**Deterministic stub emitter.** Before the LLM authoring path runs, invoke the deterministic stub generator so headless YOLO runs (where no LLM authors the body) still produce a canonical-shape report file. The generator is idempotent: it refuses to overwrite a non-stub report, so the LLM authoring path below can safely enrich the body without contention.
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/generate-readiness-report.sh" \
@@ -193,9 +193,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/generate-readine
   --project-root "${CLAUDE_PROJECT_ROOT:-.}"
 ```
 
-The generator writes a minimal report (frontmatter + the two ADR-042 mandatory gate rows + a generated-by attribution). The LLM then ENRICHES the body with project-specific narrative below the frontmatter; the YAML `status:` field remains the authoritative machine-readable signal.
+The generator writes a minimal report (frontmatter + the two mandatory gate rows + a generated-by attribution). The LLM then ENRICHES the body with project-specific narrative below the frontmatter; the YAML `status:` field remains the authoritative machine-readable signal.
 
-#### Required frontmatter fields and report sections (AF-2026-05-30-4 D-04)
+#### Required frontmatter fields and report sections
 
 `finalize.sh` enforces these fields and sections via SV-21/22/23/25. They are non-obvious from the report body alone; emit them explicitly so a hand-authored READY report does NOT fail the gate purely on frontmatter shape:
 
@@ -217,7 +217,7 @@ The report body MUST include an `## Output Verification` section (SV-25) — a s
 
 Operators who hand-author a readiness report (e.g. for a brownfield re-baseline) MUST seed all five fields above plus the `## Output Verification` heading; a missing field is a brittle gate failure, not a content failure.
 
-#### Self-Contradiction Sweep (FR-352 / E46-S4)
+#### Self-Contradiction Sweep
 
 After all preceding sections (Completeness, Consistency, Cross-Artifact Contradictions, TEA, Test Infrastructure, Security with the Step 7 sub-sections, Operational, Brownfield) have been written into the in-memory report and BEFORE the file is flushed to disk, run an inline self-contradiction sweep over the assembled body. The sweep is an ACTIVE inline step — the Critical Rules bullet at the top of this skill remains as reinforcement, but the authoritative enforcement lives in this Step 10 action list. A reviewer who reads only the Critical Rules and skips the steps must still land on a passing gate only when this inline check has run.
 
@@ -232,7 +232,7 @@ When the sweep finds contradictions, inject a `## Traceability Self-Contradictio
 
 When the sweep finds zero contradictions, OMIT the `## Traceability Self-Contradictions` sub-section entirely — symmetric with the Step 7 timeline section: no empty placeholders.
 
-The sweep is pattern-based, not semantic. It does NOT invoke an LLM per requirement — that would be out of scope for this gate. Pattern detection is sufficient for the regression cases captured in VCP-RC-02 (Step 10).
+The sweep is pattern-based, not semantic. It does NOT invoke an LLM per requirement — that would be out of scope for this gate. Pattern detection is sufficient for the regression cases this gate guards against.
 
 #### Frontmatter schema additions (Subtask 4.1)
 
@@ -242,7 +242,7 @@ The readiness report frontmatter MUST include three new machine-readable fields 
 - `compliance_timeline_present: <bool>` — `true` when a `## Compliance Timeline` sub-section was rendered; `false` when omitted.
 - `self_contradictions_count: <int>` — count of contradiction pairs emitted by the Step 10 sweep; defaults to 0 when the sub-section is omitted.
 
-Older reports that pre-date the FR-352 upgrade are read-compatible: consumers (`validate-gate.sh`, the Step 12 adversarial reviewer) MUST treat absent fields as the safe defaults above and MUST NOT FAIL on absence.
+Older reports that pre-date this upgrade are read-compatible: consumers (`validate-gate.sh`, the Step 12 adversarial reviewer) MUST treat absent fields as the safe defaults above and MUST NOT FAIL on absence.
 
 #### Gate verdict downgrade rule (Subtask 4.2)
 
@@ -250,7 +250,7 @@ If `self_contradictions_count > 0`, the overall gate status MUST NOT be PASS —
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-readiness-check 10 project_name="$PROJECT_NAME" gate_status="$GATE_STATUS" artifacts_inspected_count="$ARTIFACTS_INSPECTED_COUNT" stage=report --paths .gaia/artifacts/planning-artifacts/readiness-report.md`
 
-### Step 11 — Val Auto-Fix Loop (E44-S2 / ADR-058)
+### Step 11 — Val Auto-Fix Loop
 
 > Reuses the canonical pattern at `gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
@@ -273,11 +273,9 @@ If `self_contradictions_count > 0`, the overall gate status MUST NOT be PASS —
      d. If iteration <= 3: go to step 2.
      e. Else: present the iteration-3 prompt verbatim (centralized in `gaia-val-validate` SKILL.md § "Auto-Fix Loop Pattern") and dispatch.
 
-YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See ADR-057 FR-YOLO-2(e) and ADR-058 for the hard-gate contract.
+YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation runs against the Step 10 primary write (artifact-as-drafted). Step 13's post-adversarial re-write does NOT trigger a second Val invocation.
-
-> Test Notes: VCP-VAL-04 (`.gaia/artifacts/test-artifacts/test-plan.md §11.46.3`) covers this wire-in.
+> Val auto-review runs against the Step 10 primary write (artifact-as-drafted). Step 13's post-adversarial re-write does NOT trigger a second Val invocation.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-readiness-check 11 project_name="$PROJECT_NAME" gate_status="$GATE_STATUS" artifacts_inspected_count="$ARTIFACTS_INSPECTED_COUNT" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/readiness-report.md`
 
@@ -296,8 +294,8 @@ Update the readiness report with adversarial review findings. If any Critical fi
 ## Validation
 
 <!--
-  E42-S13 — V1→V2 65-item checklist port (FR-341, FR-359, VCP-CHK-25, VCP-CHK-26).
-  Classification (65 items total — the highest-count skill in E42):
+  V1→V2 65-item checklist port.
+  Classification (65 items total):
     - Script-verifiable: 25 (SV-01..SV-25) — enforced by finalize.sh.
     - LLM-checkable:     40 (LLM-01..LLM-40) — evaluated by the host LLM
       against the readiness-report.md artifact at finalize time.
@@ -336,7 +334,7 @@ Update the readiness report with adversarial review findings. If any Critical fi
     Gate Verdict                — SV-18..SV-25, LLM-35..LLM-40        (14)
     Total                                                              65
 
-  The VCP-CHK-26 anchor is SV-20 — "status field present in YAML
+  The verdict anchor is SV-20 — "status field present in YAML
   frontmatter (PASS/FAIL/CONDITIONAL)". This is the V1 phrase anchor for
   "PASS/FAIL status clear" verbatim and MUST appear in violation output
   when the gate-verdict item fails (story AC2).
@@ -351,8 +349,6 @@ Update the readiness report with adversarial review findings. If any Critical fi
   actionable guidance and evaluation continues with the next item
   (AC-EC4). Timeouts and malformed verdicts MUST NOT cause the skill
   to deadlock.
-
-  See .gaia/artifacts/implementation-artifacts/E42-S13-port-gaia-readiness-check-65-item-checklist-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 [category: artifact presence] — Readiness report artifact exists

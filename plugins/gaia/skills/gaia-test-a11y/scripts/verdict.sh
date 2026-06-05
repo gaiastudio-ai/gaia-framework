@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# verdict.sh — gaia-test-a11y Phase 4 verdict + Review Gate update (E73-S4, AC9 + AC10).
+# verdict.sh — gaia-test-a11y Phase 4 verdict + Review Gate update.
 #
 # Reads the Phase 3A analysis-results.json and the Phase 3B llm-findings.json,
 # invokes verdict-resolver.sh to compute the verdict (APPROVE | REQUEST_CHANGES
 # | BLOCKED), and (when --story-key is provided AND --gate is provided) updates
 # the corresponding Review Gate row via review-gate.sh.
 #
-# Verdict to gate-row mapping (per FR-RSV2-3):
+# Verdict to gate-row mapping:
 #   APPROVE          -> PASSED
 #   REQUEST_CHANGES  -> FAILED
 #   BLOCKED          -> FAILED
@@ -29,8 +29,8 @@ SCRIPT_NAME="gaia-test-a11y/verdict.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
-# Prefer the review-common location (E66-S1 introduced it) and fall back to the
-# top-level scripts/verdict-resolver.sh for backward compatibility — same probe
+# Prefer the review-common location and fall back to the top-level
+# scripts/verdict-resolver.sh for backward compatibility — same probe
 # pattern as gaia-test-perf/verdict.sh.
 if [ -x "$PLUGIN_ROOT/scripts/review-common/verdict-resolver.sh" ]; then
   RESOLVER="$PLUGIN_ROOT/scripts/review-common/verdict-resolver.sh"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-document-project skill setup (E28-S106)
+# setup.sh — gaia-document-project skill setup
 #
-# Follows the shared setup.sh pattern from E28-S17 / E28-S79.
+# Follows the shared setup.sh pattern.
 #
 # Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script

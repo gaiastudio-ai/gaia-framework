@@ -1,6 +1,6 @@
 # Reference Frontmatter -- gaia-fill-test-gaps
 
-> Verbatim copy of the brief's `fill-test-gaps` frontmatter example (E28-S84).
+> Verbatim copy of the brief's `fill-test-gaps` frontmatter example.
 > This file exists for future contributor reference. Do not modify.
 
 ```yaml

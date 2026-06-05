@@ -42,8 +42,8 @@ CRITICAL_READABILITY_VERBATIM='None — readability never blocks (max severity i
 
 # --- TC-DEJ-RUBRIC-01: shared rubric format section present ------------------
 
-@test "rubric: shared SKILL.md contains '## Severity Rubric Format (FR-DEJ-7)' section" {
-  grep -F "## Severity Rubric Format (FR-DEJ-7)" "$SHARED_SKILL"
+@test "rubric: shared SKILL.md contains '## Severity Rubric Format' section" {
+  grep -F "## Severity Rubric Format" "$SHARED_SKILL"
 }
 
 @test "rubric: shared SKILL.md documents all 5 tiers (correctness x2, readability x2, suggestion)" {
@@ -149,9 +149,9 @@ count_bullets_in_section() {
 
 # --- EC-2: documentation comment explains why Critical-readability is empty --
 
-@test "rubric: WHY documentation comment present explaining FR-DEJ-7 Critical-readability rationale" {
+@test "rubric: WHY documentation comment present explaining Critical-readability rationale" {
   grep -F "<!-- WHY:" "$SHARED_SKILL"
-  grep -F "FR-DEJ-7" "$SHARED_SKILL"
+  grep -F "readability never blocks" "$SHARED_SKILL"
 }
 
 # --- EC-4: rubric-evolution impact-radius documented -------------------------

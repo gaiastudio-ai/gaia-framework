@@ -144,7 +144,6 @@ teardown() {
   echo "$output" | grep -Fq 'firebase-test-lab'
   echo "$output" | grep -Fq 'browserstack'
   echo "$output" | grep -Fq 'sauce-labs'
-  echo "$output" | grep -Fq 'AF-2026-05-17-10'
 }
 
 @test "AF-2026-05-17-10: dispatch.sh contains the platforms-mobile gate logic" {

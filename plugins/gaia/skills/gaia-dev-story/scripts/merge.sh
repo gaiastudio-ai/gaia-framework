@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# merge.sh — gaia-dev-story PR merge (E28-S53)
+# merge.sh — gaia-dev-story PR merge
 #
 # Merges a PR after CI passes. Handles conflict detection, branch protection
 # failures, and merge strategy selection from the promotion chain config.
@@ -25,7 +25,7 @@ SCRIPT_NAME="gaia-dev-story/merge.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# E55-S6 — TB-10 security invariants. Sourced from the canonical lib at
+# Security invariants. Sourced from the canonical lib at
 # plugins/gaia/scripts/lib/dev-story-security-invariants.sh. Hard rule:
 # YOLO mode MUST NOT bypass these assertions.
 # shellcheck source=../../../scripts/lib/dev-story-security-invariants.sh
@@ -37,9 +37,9 @@ fi
 # shellcheck disable=SC1090
 source "$INVARIANTS_LIB"
 
-# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
-# work tree. Runs BEFORE the security invariants so a non-git CWD never reaches
-# the protected-branch / staged-secrets / pr-target checks.
+# Non-git CWD guard: skip-with-warning when CWD is outside any git work tree.
+# Runs BEFORE the security invariants so a non-git CWD never reaches the
+# protected-branch / staged-secrets / pr-target checks.
 # shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
 . "$SCRIPT_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
 non_git_cwd_skip "$SCRIPT_NAME" || exit 0
@@ -93,7 +93,7 @@ if [ "$pr_state" = "MERGED" ]; then
   exit 0
 fi
 
-# E55-S6 — Enforce TB-10 security invariants BEFORE any gh pr merge call.
+# Enforce security invariants BEFORE any gh pr merge call.
 # All three hard gates run; YOLO mode does not bypass.
 assert_branch_not_protected || die "aborting: protected-branch invariant failed"
 assert_no_secrets_staged || die "aborting: staged-secrets invariant failed"

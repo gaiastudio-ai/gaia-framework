@@ -18,9 +18,9 @@ orchestration_class: light-procedural
 
 You are adding new stories to the project's epics-and-stories document. Stories may be added to existing epics or new epics may be created. Story protection is strictly enforced -- stories with status in-progress, review, ready-for-dev, or done are read-only and must never be modified.
 
-**Path resolution (AF-2026-05-21-13).** All path references in this SKILL.md use the canonical post-ADR-111 location `.gaia/artifacts/planning-artifacts/epics-and-stories.md` and `.gaia/artifacts/test-artifacts/test-plan.md` (with strategy/ fallback per ADR-072). Pre-ADR-111 projects continue to work via canonical-first two-tier resolution at the script layer (`scripts/setup.sh` already implements the E96-S7 partial-4c smart-fallback). When writing artifacts via the Write tool, target the canonical paths named in this SKILL.md; the pre-ADR-111 fallback is read-side only.
+**Path resolution.** All path references in this SKILL.md use the canonical location `.gaia/artifacts/planning-artifacts/epics-and-stories.md` and `.gaia/artifacts/test-artifacts/test-plan.md` (with strategy/ fallback). Legacy-layout projects continue to work via canonical-first two-tier resolution at the script layer (`scripts/setup.sh` already implements the smart-fallback). When writing artifacts via the Write tool, target the canonical paths named in this SKILL.md; the legacy-layout fallback is read-side only.
 
-This skill is the native Claude Code conversion of the legacy add-stories workflow (E28-S57). The step ordering, protection model, and output paths are preserved from the legacy instructions.
+This skill is the native Claude Code conversion of the legacy add-stories workflow. The step ordering, protection model, and output paths are preserved from the legacy instructions.
 
 ## Critical Rules
 
@@ -52,7 +52,7 @@ This skill is the native Claude Code conversion of the legacy add-stories workfl
 - Otherwise ask: What new stories need to be added? Describe the feature or requirements.
 - Ask: Do these belong to an existing epic, or is a new epic needed?
 - Ask: Is this linked to a change request? If so, provide the CR ID.
-- Read relevant sections of the PRD for context — resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, read `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). Focus on NEW requirements if prd_diff is available.
+- Read relevant sections of the PRD for context — resolve via the sharded-fallback rule: first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, read `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). Focus on NEW requirements if prd_diff is available.
 - Read relevant sections of `.gaia/artifacts/planning-artifacts/architecture.md` for technical context -- focus on changes if arch_diff is available.
 
 ### Step 3 -- Epic Decision
@@ -81,7 +81,7 @@ This skill is the native Claude Code conversion of the legacy add-stories workfl
   - Priority: P0/P1/P2
   - Assign to correct epic (existing or newly created)
   - Auto-increment story ID within the epic
-- Resolve the test-plan via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `.gaia/artifacts/test-artifacts/test-plan.md` (flat layout); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement). If the resolved file exists: apply risk levels (high/medium/low) based on architectural complexity and test coverage.
+- Resolve the test-plan via the strategy-fallback rule: try `.gaia/artifacts/test-artifacts/test-plan.md` (flat layout); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement). If the resolved file exists: apply risk levels (high/medium/low) based on architectural complexity and test coverage.
 - Declare depends_on and blocks against ALL existing stories.
 - ENFORCE PROTECTION: dependency links FROM new stories TO locked/protected stories are allowed (read-only reference). But locked/protected stories themselves are NEVER modified.
 - Verify no circular dependencies introduced.
@@ -118,16 +118,16 @@ This skill is the native Claude Code conversion of the legacy add-stories workfl
 - If stories should wait: "Stories are in backlog. Include in next /gaia-sprint-plan."
 - Recommend: "Run /gaia-trace to update traceability matrix with new stories."
 
-### Step 10 -- Re-shard touched documents (E53-S244, ADR-070)
+### Step 10 -- Re-shard touched documents
 
-Appending stories to the epics-and-stories monolith MUST be followed by a re-shard so the per-epic shards under `.gaia/artifacts/planning-artifacts/epics/` stay aligned with the monolith. This step honours the monolith-vs-shard sync contract in ADR-070 (extended in E53-S243) — it is not optional unless the user passes `--monolith-only` for an explicit atomic same-PR edit.
+Appending stories to the epics-and-stories monolith MUST be followed by a re-shard so the per-epic shards under `.gaia/artifacts/planning-artifacts/epics/` stay aligned with the monolith. This step honours the monolith-vs-shard sync contract — it is not optional unless the user passes `--monolith-only` for an explicit atomic same-PR edit.
 
 - If `$ARGUMENTS` contains `--monolith-only`: skip this step entirely. The user takes responsibility for re-running `/gaia-shard-doc` (or merging shards back to the monolith) before commit. Record `reshard: skipped (--monolith-only)` in the cascade summary.
 - Otherwise, invoke `/gaia-shard-doc .gaia/artifacts/planning-artifacts/epics-and-stories.md` (or the canonical monolith path resolved at runtime). The skill writes to `.gaia/artifacts/planning-artifacts/epics/` — `01-change-log.md` and per-epic `NN-eNN-...md` shards.
 - After the re-shard returns, run `${CLAUDE_PLUGIN_ROOT}/scripts/check-monolith-shard-sync.sh` against the project root. The check is advisory (always exits 0). If it emits any `WARNING` lines naming `epics-and-stories.md`, surface those WARNINGs to the user — they indicate the re-shard did not converge and the user must investigate before commit.
 - Record `reshard: invoked (gaia-shard-doc)` in the cascade summary so the audit trail captures the invocation.
 
-This step runs in YOLO mode automatically — re-sharding is deterministic per ADR-042 and needs no user prompt. It is purely additive: skills that did not previously include this step continue to function for backwards compatibility (AC8 of E53-S244).
+This step runs in YOLO mode automatically — re-sharding is deterministic and needs no user prompt. It is purely additive: skills that did not previously include this step continue to function for backwards compatibility.
 
 ## Finalize
 

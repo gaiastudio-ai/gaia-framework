@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# max-turns-cap.sh — gaia-meeting max-turns guardrail (E76-S6, AC4)
+# max-turns-cap.sh — gaia-meeting max-turns guardrail
 #
-# FR-MTG-29 / TC-MTG-GUARD-2: default cap = 40, override via --max-turns N.
-# Rejects the (cap+1)th emitted turn BEFORE emission with an explanation that
-# references FR-MTG-29 — the orchestrator is expected to log a termination
+# Default cap = 40, override via --max-turns N. Rejects the (cap+1)th emitted
+# turn BEFORE emission — the orchestrator is expected to log a termination
 # event in the transcript epilogue on rejection.
 #
 # Usage:
@@ -55,6 +54,6 @@ if [[ "$EMITTED_TURNS" -le "$MAX_TURNS" ]]; then
   exit 0
 fi
 
-echo "max-turns-cap.sh: REJECTED — MAX-TURNS-CAP reached (emitted=$EMITTED_TURNS, cap=$MAX_TURNS, FR-MTG-29)."
+echo "max-turns-cap.sh: REJECTED — MAX-TURNS-CAP reached (emitted=$EMITTED_TURNS, cap=$MAX_TURNS)."
 echo "max-turns-cap.sh: meeting must terminate; epilogue will record the cap-cross termination event."
 exit 2

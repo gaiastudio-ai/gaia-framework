@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # resolve-user-name.sh — gaia-meeting user-interjection name resolver
-# (E76-S1, FR-MTG-10, AC7, TC-MTG-STREAM-3)
 #
 # Resolution order (override wins):
 #   1. meeting.user_name from project settings.json
 #   2. git config user.name (fallback)
 #
-# Per FR-MTG-10 the resolution is explicit: do NOT fall through to OS
-# username — the spec is explicit. If neither source resolves, exit non-zero.
+# The resolution is explicit: do NOT fall through to OS username.
+# If neither source resolves, exit non-zero.
 #
 # Usage:
 #   resolve-user-name.sh                               # uses ./settings.json or .claude/settings.json

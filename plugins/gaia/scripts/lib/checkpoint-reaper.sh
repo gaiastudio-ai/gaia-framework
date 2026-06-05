@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # checkpoint-reaper.sh — 30-day reaper for `_memory/checkpoints/` AND
-# `_memory/meeting-sessions/` (E76-S7, AC5).
+# `_memory/meeting-sessions/`.
 #
 # Single source of truth for the retention policy: SAME script reaps both
 # directories so policy changes (window, dry-run UX, summary format) cannot
@@ -78,8 +78,7 @@ reap_dir() {
   done < <(find "$dir" -type f -mtime "$MTIME_ARG" -print0 2>/dev/null)
 }
 
-# AF-2026-05-27-3 (ADR-111): reap the canonical .gaia/memory tree. The prior
-# code reaped only the legacy _memory/ paths, so post-ADR-111 it reaped nothing.
+# Reap the canonical .gaia/memory tree. The prior code reaped only the legacy _memory/ paths.
 reap_dir "$ROOT/.gaia/memory/checkpoints"
 reap_dir "$ROOT/.gaia/memory/meeting-sessions"
 

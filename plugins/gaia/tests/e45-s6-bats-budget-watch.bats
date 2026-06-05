@@ -145,7 +145,7 @@ _source_budget_watch_lib() {
   [[ "$out" == *"bats-tests"* ]]
   [[ "$out" == *"threshold: 180s"* ]]
   [[ "$out" == *"elapsed: 240s"* ]]
-  [[ "$out" == *"E45-S6"* ]]
+  [[ "$out" == *"over by:"* ]]
 }
 
 @test "_bats_emit_warning appends to GITHUB_STEP_SUMMARY when set" {

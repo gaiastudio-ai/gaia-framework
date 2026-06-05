@@ -335,8 +335,9 @@ JSON
   grep -F 'is_plugin_shape = project_shape == "claude-code-plugin"' "$SKILL_SCRIPTS/generate-config.sh"
 }
 
-@test "E71-S6 AC5: SKILL.md defers schema-level decision to AI-2026-05-08-3" {
-  grep -F 'AI-2026-05-08-3' "$SKILL_DIR/SKILL.md"
+@test "E71-S6 AC5: SKILL.md defers schema-level decision (Schema boundary note present)" {
+  grep -qF 'Schema boundary (deferred)' "$SKILL_DIR/SKILL.md" \
+    && grep -qF 'schema-level decision' "$SKILL_DIR/SKILL.md"
 }
 
 @test "E71-S6 AC5: project-config.schema.json project_kind has no enum constraint" {

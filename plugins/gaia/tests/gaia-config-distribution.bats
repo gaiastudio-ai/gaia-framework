@@ -104,7 +104,7 @@ YAML
   # gate-2 SR-80 string-validator that the skill calls before any write.
   run bash -c "source '$CANON' && gaia_distribution_validate_url 'https://evil.com; rm -rf /'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-80|T-DCH-2'
+  echo "$output" | grep -q 'shell-metacharacter'
 }
 
 @test "TC-GCD-3: distribution-canonicalize rejects non-https registry (SR-80 URL-shape)" {
@@ -116,7 +116,7 @@ YAML
   mkdir -p "$TEST_TMP/proj"
   run bash -c "source '$CANON' && gaia_distribution_canonicalize_manifest '$TEST_TMP/proj' '../../../etc/passwd'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-79|T-DCH-1'
+  echo "$output" | grep -q 'traversal'
 }
 
 # ---------- AC5: clear removes section ----------
@@ -202,9 +202,7 @@ YAML
 # ---------- AC7: pre-write validation chain wired in SKILL.md ----------
 
 @test "AC7: SKILL.md cites the three pre-write validation gates (schema + canon + denylist)" {
-  grep -q 'E99-S2 schema' "$SKILL"
-  grep -q 'SR-79' "$SKILL"
-  grep -q 'SR-80' "$SKILL"
+  grep -q 'Schema validation' "$SKILL"
   grep -q 'realpath' "$SKILL"
   grep -q 'denylist' "$SKILL"
 }
@@ -218,5 +216,5 @@ YAML
 
 @test "AC8: SKILL.md documents the --force gate against all-deployable projects" {
   grep -qE 'force|deployable' "$SKILL"
-  grep -q 'FR-523' "$SKILL"
+  grep -qE '\-\-force|all-`deployable`|all-deployable' "$SKILL"
 }

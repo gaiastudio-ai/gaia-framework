@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — add-stories skill setup (E28-S57)
+# setup.sh — add-stories skill setup
 #
-# Mechanical extension of the Cluster 4 reference implementation authored
-# under E28-S35 (gaia-brainstorm/scripts/setup.sh). Adds add-stories-specific
-# prereq gates:
+# Adds add-stories-specific prereq gates:
 #   - epics-and-stories.md must exist and be non-empty
 #
 # Responsibilities:
@@ -53,7 +51,7 @@ while IFS= read -r line; do
 done <<<"$config_output"
 
 # ---------- 2. Validate gate (epics-and-stories.md required) ----------
-# E96-S7 partial-4c: smart-fallback
+# Smart-fallback when PLANNING_ARTIFACTS is not set
 if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
   if [ -d ".gaia/artifacts/planning-artifacts" ]; then
     PLANNING_ARTIFACTS=".gaia/artifacts/planning-artifacts"

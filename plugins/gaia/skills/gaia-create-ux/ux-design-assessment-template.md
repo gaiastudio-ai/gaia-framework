@@ -101,7 +101,7 @@ flowchart TD
 
 ## 7. Proposed UX Improvements
 
-{Only for gap features identified in the PRD. Do not propose changes to working, acceptable patterns.}
+{Only for gap features identified in the product requirements. Do not propose changes to working, acceptable patterns.}
 
 ### 7.1 {Improvement Area}
 

@@ -60,7 +60,10 @@ teardown() { common_teardown; }
 }
 
 @test "AF-32-6 F-M02: orchestrator cites Test16 F-M02 + names the symptom (0 files vs 37)" {
-  run grep -F 'Test16 F-M02' "$PLUGIN_ROOT/scripts/adapters/brownfield/orchestrator.sh"
+  # 'Test16 F-M02' ID was removed by the leak-scrub pass; the comment still
+  # names the concrete symptom it was written to fix.  Assert the symptom text
+  # that remains ('0 files vs') rather than the bookkeeping ID.
+  run grep -F '0 files vs' "$PLUGIN_ROOT/scripts/adapters/brownfield/orchestrator.sh"
   [ "$status" -eq 0 ]
 }
 
@@ -203,7 +206,9 @@ teardown() { common_teardown; }
 }
 
 @test "AF-32-6 F-L11: gaia-test-strategy finalize emits a test-strategy.md stub when only test-plan.md exists" {
-  run grep -F 'F-L11 emitted' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
+  # 'F-L11 emitted' ID was removed by the leak-scrub pass; assert the
+  # behavioral log message that remains in the script.
+  run grep -F 'emitted test-strategy.md stub' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
   [ "$status" -eq 0 ]
 }
 

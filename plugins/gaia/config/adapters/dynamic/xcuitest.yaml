@@ -1,4 +1,4 @@
-# XCUITest dynamic test adapter (E74-S9)
+# XCUITest dynamic test adapter
 # Apple's native iOS UI test framework. xcresult bundle output.
 name: xcuitest
 type: dynamic

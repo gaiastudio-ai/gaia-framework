@@ -14,7 +14,7 @@ orchestration_class: light-procedural
 
 You are checking the composite Review Gate status for a story file. The story is resolved by `{story_key}` via the canonical glob `{story_key}-*.md` in `.gaia/artifacts/implementation-artifacts/`. This is a read-only verification -- you report the state of each Review Gate row but do not modify the story file.
 
-This skill is the native Claude Code conversion of the legacy check-review-gate workflow (brief Cluster 7, story E28-S56, ADR-042 "mostly scripted"). LLM involvement is minimal -- the skill shells out to `review-gate.sh`, formats the verdict, and returns.
+This skill is the native Claude Code conversion of the legacy check-review-gate workflow. LLM involvement is minimal -- the skill shells out to `review-gate.sh`, formats the verdict, and returns.
 
 ## Critical Rules
 

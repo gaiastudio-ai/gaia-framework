@@ -55,7 +55,7 @@ teardown() { common_teardown; }
 }
 
 @test "VCP-UX-02: Import mode declares an FR-140 Compliance Audit section under Step 9" {
-  run grep -E "FR-140 Compliance Audit|FR-140 Audit" "$UX_SKILL_MD"
+  run grep -E "Compliance Audit" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
@@ -75,7 +75,7 @@ teardown() { common_teardown; }
 }
 
 @test "VCP-UX-05: gaia-create-ux SKILL.md surfaces an FR-140 violation message on attempted write" {
-  run grep -E "FR-140 violation|FR-140 compliance violation" "$UX_SKILL_MD"
+  run grep -E "Read-only violation|compliance violation" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
@@ -249,6 +249,6 @@ teardown() { common_teardown; }
 # -------------------------------------------------------------------------
 
 @test "Subtask 8.2: gaia-create-ux SKILL.md cross-references architecture §10.17 for FR-350" {
-  run grep -E "architecture.md §10\.17|§10\.17|architecture §10\.17|FR-350" "$UX_SKILL_MD"
+  run grep -E "figma-integration/SKILL\.md|read-heavy/write-light" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }

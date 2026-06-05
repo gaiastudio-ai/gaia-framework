@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# dispatch-provenance-check.sh — gaia-meeting transcript provenance scanner (E76-S10, AC4).
+# dispatch-provenance-check.sh — gaia-meeting transcript provenance scanner.
 #
 # ## Production callsites
 #
 # - `gaia-framework/plugins/gaia/skills/gaia-meeting/SKILL.md` Phase 7 SAVE
-#   (L789-870 region) — wired pre-disk via E76-S22 / ADR-106. The SAVE
-#   pipes the in-memory transcript into this script via `--stdin` immediately
-#   after the AskUserQuestion pre-SAVE yield and BEFORE the three
-#   write-boundary.sh writes. On non-zero exit, Phase 7 invokes
-#   `halt-event.sh` with the canonical error format and aborts all writes.
+#   region — wired pre-disk. The SAVE pipes the in-memory transcript into this
+#   script via `--stdin` immediately after the AskUserQuestion pre-SAVE yield
+#   and BEFORE the three write-boundary.sh writes. On non-zero exit, Phase 7
+#   invokes `halt-event.sh` with the canonical error format and aborts all
+#   writes.
 #
-# Per ADR-106 rule #4 (Static-Audit Script Wiring Discipline): this header
-# section is the single source of truth keeping reviewers from re-discovering
-# the wiring. Update it when callsites change.
+# Static-Audit Script Wiring Discipline: this header section is the single
+# source of truth keeping reviewers from re-discovering the wiring. Update it
+# when callsites change.
 #
 # Scans a saved transcript file and asserts every per-turn header carries the
 # canonical `dispatched_via:` value for its phase:
@@ -34,7 +34,7 @@
 #
 # Usage:
 #   dispatch-provenance-check.sh <transcript-file>
-#   dispatch-provenance-check.sh --stdin < transcript-content        # E76-S22
+#   dispatch-provenance-check.sh --stdin < transcript-content        # stdin mode
 #   cat transcript.md | dispatch-provenance-check.sh                 # auto-stdin
 #
 # Exit codes:
@@ -45,7 +45,7 @@
 set -euo pipefail
 export LC_ALL=C
 
-# E76-S22 / ADR-106: stdin mode for Phase 7 SAVE pre-disk wiring.
+# stdin mode for Phase 7 SAVE pre-disk wiring.
 # Modes:
 #   1. positional-arg <transcript-file>   (legacy, bats backward-compat)
 #   2. explicit --stdin                    (pipeline-friendly)

@@ -30,6 +30,6 @@ teardown() { common_teardown; }
 }
 
 @test "AF-21-17: gaia-brownfield/SKILL.md Mission paragraph documents canonical destinations" {
-  grep -qF 'AF-2026-05-21-17' "$BROWNFIELD_SKILL"
-  grep -qF 'canonical post-ADR-111 locations' "$BROWNFIELD_SKILL"
+  grep -qF 'all target canonical destinations' "$BROWNFIELD_SKILL"
+  grep -qF 'Path resolution' "$BROWNFIELD_SKILL"
 }

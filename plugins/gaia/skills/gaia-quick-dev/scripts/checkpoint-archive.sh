@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# checkpoint-archive.sh — gaia-quick-dev checkpoint archival (E28-S117)
+# checkpoint-archive.sh — gaia-quick-dev checkpoint archival
 #
-# Moves _memory/checkpoints/quick-dev-{spec_name}.yaml to
-# _memory/checkpoints/completed/ preserving the original filename.
-# Deterministic per ADR-042 — no LLM involvement.
+# Moves the checkpoint file for quick-dev-{spec_name} to the completed/
+# archive directory, preserving the original filename.
+# Deterministic — no LLM involvement.
 #
 # Usage:
 #   checkpoint-archive.sh <spec_name>
@@ -27,8 +27,8 @@ fi
 
 SPEC_NAME="$1"
 WORK_DIR="${PROJECT_PATH:-$PWD}"
-# AF-2026-05-27-3 (ADR-111): canonical .gaia/memory/checkpoints only; legacy
-# _memory fallback removed. Env CHECKPOINT_PATH override wins.
+# Canonical .gaia/memory/checkpoints only; legacy _memory fallback removed.
+# Env CHECKPOINT_PATH override wins.
 if [ -n "${CHECKPOINT_PATH:-}" ]; then
   CHECKPOINT_DIR="$CHECKPOINT_PATH"
 else

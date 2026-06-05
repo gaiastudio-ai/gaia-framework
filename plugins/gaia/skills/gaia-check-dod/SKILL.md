@@ -14,7 +14,7 @@ orchestration_class: light-procedural
 
 You are checking the Definition of Done (DoD) checklist for a story file. The story is resolved by `{story_key}` via the canonical glob `{story_key}-*.md` in `.gaia/artifacts/implementation-artifacts/`. This is a read-only verification -- you report the state of each DoD item but do not modify the story file.
 
-This skill is the native Claude Code conversion of the legacy check-dod workflow (brief Cluster 7, story E28-S56, ADR-042 "mostly scripted"). LLM involvement is minimal -- the skill parses the DoD markdown section, emits a structured verdict, and returns.
+This skill is the native Claude Code conversion of the legacy check-dod workflow. LLM involvement is minimal -- the skill parses the DoD markdown section, emits a structured verdict, and returns.
 
 ## Critical Rules
 

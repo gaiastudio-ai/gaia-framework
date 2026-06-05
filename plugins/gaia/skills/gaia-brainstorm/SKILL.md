@@ -1,6 +1,6 @@
 ---
 name: gaia-brainstorm
-description: Brainstorm a new project idea with structured techniques — Cluster 4 analysis skill. Use when the user wants to explore a business idea, target users, pain points, and opportunity areas before writing a PRD.
+description: Brainstorm a new project idea with structured techniques — analysis skill. Use when the user wants to explore a business idea, target users, pain points, and opportunity areas before writing a PRD.
 argument-hint: "[project idea or topic]"
 allowed-tools: [Read, Write, Glob, Grep, Bash]
 orchestration_class: conversational
@@ -17,7 +17,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -27,7 +27,7 @@ fi
 
 You are facilitating a structured brainstorming session for a new project idea. Guide the user through vision, target users, competitive landscape, and opportunity synthesis, then emit a structured brainstorm artifact at `.gaia/artifacts/creative-artifacts/brainstorm-*.md` for downstream consumers (e.g., `/gaia-create-prd`).
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/1-analysis/brainstorm-project` workflow (brief §Cluster 4, story P4-S1). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure or re-prompt.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/1-analysis/brainstorm-project` workflow. The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure or re-prompt.
 
 ## Critical Rules
 
@@ -93,7 +93,7 @@ Where `{slug}` is a short kebab-case slug derived from the project vision (e.g.,
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-brainstorm 5 slug="$SLUG" technique="$TECHNIQUE" --paths .gaia/artifacts/creative-artifacts/brainstorm-${SLUG}.md`
 
-### Step 6 — Val Auto-Fix Loop (E44-S2 / ADR-058)
+### Step 6 — Val Auto-Fix Loop
 
 > Reuses the canonical pattern at `gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
@@ -111,7 +111,7 @@ Where `{slug}` is a short kebab-case slug derived from the project vision (e.g.,
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
      a. Apply a fix to `.gaia/artifacts/creative-artifacts/brainstorm-{slug}.md` addressing the findings.
-     b. Append an iteration log record to checkpoint `custom.val_loop_iterations` by invoking the producer (E44-S15):
+     b. Append an iteration log record to checkpoint `custom.val_loop_iterations` by invoking the producer:
         ```
         !${CLAUDE_PLUGIN_ROOT}/scripts/append-val-iteration.sh \
             --skill gaia-brainstorm --step 6 --iteration "$ITER" \
@@ -120,27 +120,26 @@ Where `{slug}` is a short kebab-case slug derived from the project vision (e.g.,
             --findings-json "$FINDINGS_JSON" \
             --fix-summary "$FIX_SUMMARY"
         ```
-        Where `$TOKEN_ESTIMATE` is the SDK-reported response usage token count for the iteration's Val invocation + fix payload (preferred), or the literal `null` when the runtime token-counting primitive is unavailable (AC-EC8 fallback). The producer writes a fresh ADR-059 schema-v1 checkpoint with the merged `val_loop_iterations` array — `scripts/measure-val-auto-fix-token-budget.sh` reads `token_estimate` directly from this stream for the NFR-VCP-2 verdict.
+        Where `$TOKEN_ESTIMATE` is the SDK-reported response usage token count for the iteration's Val invocation + fix payload (preferred), or the literal `null` when the runtime token-counting primitive is unavailable (AC-EC8 fallback). The producer writes a fresh schema-v1 checkpoint with the merged `val_loop_iterations` array — `scripts/measure-val-auto-fix-token-budget.sh` reads `token_estimate` directly from this stream for the token-budget verdict.
      c. iteration += 1.
      d. If iteration <= 3: go to step 2.
      e. Else: present the iteration-3 prompt verbatim (centralized in `gaia-val-validate` SKILL.md § "Auto-Fix Loop Pattern") and dispatch.
 
-YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See ADR-057 FR-YOLO-2(e) and ADR-058 for the hard-gate contract.
+YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). The `brainstorm` artifact_type may not have a canonical document-ruleset; per E44-S1 AC-EC1 Val skips structural validation for unknown types and still runs factual-claim validation.
+> Val auto-review per the canonical auto-fix-loop pattern (architecture.md §10.31.2). The `brainstorm` artifact_type may not have a canonical document-ruleset; per AC-EC1 Val skips structural validation for unknown types and still runs factual-claim validation.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-brainstorm 6 slug="$SLUG" technique="$TECHNIQUE" stage=val-auto-review --paths .gaia/artifacts/creative-artifacts/brainstorm-${SLUG}.md`
 
 ## Validation
 
 <!--
-  E42-S1 — V1→V2 24-item checklist port (FR-341, FR-359).
+  V1→V2 24-item checklist port.
   Classification (24 items total):
     - Script-verifiable: 15 (SV-01..SV-15) — enforced by finalize.sh.
     - LLM-checkable:      9 (LLM-01..LLM-09) — evaluated by the host LLM
       against the brainstorm artifact below.
   Exit code 0 when all script-verifiable items PASS; non-zero otherwise.
-  See .gaia/artifacts/implementation-artifacts/E42-S1-port-gaia-brainstorm-checklist.md.
 -->
 
 - [script-verifiable] SV-01 — Output artifact exists at .gaia/artifacts/creative-artifacts/brainstorm-*.md

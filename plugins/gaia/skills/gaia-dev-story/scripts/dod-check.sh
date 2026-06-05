@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dod-check.sh — gaia-dev-story Step 9 Definition of Done helper (E55-S8)
+# dod-check.sh — gaia-dev-story Step 9 Definition of Done helper
 #
 # Purpose:
 #   Run a deterministic, dumb sequence of DoD checks and emit one YAML row
@@ -13,7 +13,7 @@
 # Checks (in order):
 #   1. build    — runs `build` if available; PASSED if exit 0, otherwise FAILED.
 #   2. tests    — resolves a project-level test command and runs it. The
-#                 deterministic precedence (E64-S1 AC1 / AC-EC1) is:
+#                 deterministic precedence is:
 #                   (a) project-config.yaml `test_cmd:` (explicit user choice)
 #                   (b) package.json `scripts.test` (via `npm test` if present)
 #                   (c) bats discovery — `bats tests/*.bats` if `bats` and
@@ -89,7 +89,7 @@ _check_command() {
   # `command -v test` returns the builtin and never the project script.
   cmd_path="$(type -P "$cmd" 2>/dev/null || true)"
   if [ -z "$cmd_path" ] || [ ! -f "$cmd_path" ] || [ ! -x "$cmd_path" ]; then
-    # E64-S2 AC1/AC2: SKIPPED is the canonical "nothing to verify" status.
+    # SKIPPED is the canonical "nothing to verify" status.
     # Emitting PASSED here historically masked the absence of a real check.
     _emit_row "$item" "SKIPPED" "no '$cmd' command on PATH"
     return 0
@@ -98,9 +98,9 @@ _check_command() {
   # running it with no args exits 1 and is never a project test runner.
   # Without this guard `_check_command "tests" "test"` would always FAIL
   # on macOS / Linux dev machines that lack a project-local `test` wrapper.
-  # E64-S2 AC1: emit SKIPPED (not PASSED) so the row reflects "no test
-  # runner detected" defensively, in case any caller routes the `tests`
-  # check through `_check_command` instead of `_check_tests`.
+  # Emit SKIPPED (not PASSED) so the row reflects "no test runner detected"
+  # defensively, in case any caller routes the `tests` check through
+  # `_check_command` instead of `_check_tests`.
   case "$cmd_path" in
     /bin/test|/usr/bin/test|/usr/local/bin/test)
       _emit_row "$item" "SKIPPED" "'$cmd' resolves to system POSIX builtin ($cmd_path) — no test runner detected"
@@ -118,19 +118,18 @@ _check_command() {
   return 1
 }
 
-# --- Test-command resolution (E64-S1 AC1 / AC-EC1 / AC-EC2) ---------------
+# --- Test-command resolution -----------------------------------------------
 #
 # Determine the project test command using a deterministic precedence:
 #   0. Test Execution Bridge tier-1 runner — when
 #      test_execution_bridge.bridge_enabled: true is set in project-config.yaml
 #      AND .gaia/artifacts/test-artifacts/test-environment.yaml has a tier-1
-#      runner. AF-2026-05-29-1 / Test08 F-12 (HIGH): previously skipped this
-#      tier entirely; even with the bridge enabled the dev-story DoD gate
-#      reported "tests: SKIPPED — no test runner detected" and let stories
-#      transition to review with zero test execution. The bridge tier is now
-#      rung 0 (canonical: when the operator declared the bridge, that IS the
-#      project's test runner). Falls through to the legacy tiers when the
-#      bridge isn't enabled or has no tier-1 runner.
+#      runner. Previously skipped this tier entirely; even with the bridge
+#      enabled the dev-story DoD gate reported "tests: SKIPPED — no test runner
+#      detected" and let stories transition to review with zero test execution.
+#      The bridge tier is now rung 0 (canonical: when the operator declared the
+#      bridge, that IS the project's test runner). Falls through to the legacy
+#      tiers when the bridge isn't enabled or has no tier-1 runner.
 #   1. .gaia/config/project-config.yaml `test_cmd:`   (explicit user choice;
 #      legacy config/project-config.yaml is also accepted as fallback)
 #   2. package.json `scripts.test`                    (resolved via `npm test`)
@@ -140,7 +139,7 @@ _check_command() {
 # Outputs the resolved command on stdout (single token or quoted argv string)
 # in a form that survives `bash -c "$cmd"`.
 _resolve_test_cmd() {
-  # 0. Test Execution Bridge tier-1 runner (AF-2026-05-29-1 / Test08 F-12).
+  # 0. Test Execution Bridge tier-1 runner.
   # The bridge is rung 0 — when the operator enabled it, the declared runner
   # IS the project's test command. Skip silently when bridge_enabled is false,
   # the manifest is absent, or the manifest carries no tier-1 runner.
@@ -155,7 +154,7 @@ _resolve_test_cmd() {
     bridge_enabled="$(yq eval '.test_execution_bridge.bridge_enabled // false' "$_cfg_bridge" 2>/dev/null || echo false)"
     if [ "$bridge_enabled" = "true" ]; then
       # Find the manifest. Canonical: .gaia/artifacts/test-artifacts/test-environment.yaml.
-      # Honors a project-root copy too (some pre-AF-29-1 fixtures put it there).
+      # Honors a project-root copy too (some legacy fixtures put it there).
       local _manifest=""
       if [ -f ".gaia/artifacts/test-artifacts/test-environment.yaml" ]; then
         _manifest=".gaia/artifacts/test-artifacts/test-environment.yaml"
@@ -172,7 +171,7 @@ _resolve_test_cmd() {
       fi
     fi
   fi
-  # 1. project-config.yaml test_cmd — E96-S1 / ADR-111: prefer .gaia/config/,
+  # 1. project-config.yaml test_cmd — prefer .gaia/config/,
   # fall back to legacy config/.
   local _cfg=""
   if [ -f ".gaia/config/project-config.yaml" ]; then
@@ -203,10 +202,9 @@ _resolve_test_cmd() {
       printf '%s\n' "$cmd"
       return 0
     fi
-    # 1b. AF-2026-05-24-14 / Test02 F-10: also check the canonical
-    # test_execution.tier_1.command (added by AF-2026-05-22-6 Bug-6).
+    # 1b. Also check the canonical test_execution.tier_1.command.
     # The legacy single `test_cmd:` key is preferred for backward compat,
-    # but post-AF-22-6 projects only use the nested form. Use yq when
+    # but newer projects may only use the nested form. Use yq when
     # available; fall back to awk.
     if command -v yq >/dev/null 2>&1; then
       cmd="$(yq eval '.test_execution.tier_1.command // ""' "$_cfg" 2>/dev/null || echo "")"
@@ -216,11 +214,10 @@ _resolve_test_cmd() {
       fi
     fi
   fi
-  # 1c. AF-2026-05-24-14 / Test02 F-10: pytest fallback. If pytest is on
-  # PATH AND there's a tests/ directory with at least one test_*.py file,
-  # use pytest. This catches the common pytest+greenfield case where
-  # neither test_cmd nor test_execution is hydrated but the operator
-  # clearly has a working pytest setup.
+  # 1c. pytest fallback. If pytest is on PATH AND there's a tests/ directory
+  # with at least one test_*.py file, use pytest. This catches the common
+  # pytest+greenfield case where neither test_cmd nor test_execution is
+  # hydrated but the operator clearly has a working pytest setup.
   if command -v pytest >/dev/null 2>&1; then
     if find tests -maxdepth 3 -type f -name 'test_*.py' -print -quit 2>/dev/null | grep -q .; then
       printf 'pytest tests/\n'
@@ -267,7 +264,7 @@ _check_tests() {
   return 1
 }
 
-# --- Build / lint command resolution (AF-2026-05-27-8 / Test06 F-013) -------
+# --- Build / lint command resolution ----------------------------------------
 #
 # Previously build + lint resolved ONLY via `type -P <name>` (a PATH binary
 # literally named "build" / "lint"), while tests used the rich _resolve_test_cmd
@@ -407,11 +404,10 @@ _check_subtasks() {
     _emit_row "subtasks" "PASSED" "skipped: STORY_FILE unset"
     return 0
   fi
-  # E64-S1 AC2 / E64-S2 AC3: only count `- [ ]` items inside the
-  # `## Tasks / Subtasks` section. Unchecked items in `## Definition of
-  # Done` (e.g., "PR merged to staging" pre-merge) and `## Acceptance
-  # Criteria` are intentionally excluded — they are not subtasks and
-  # reflect intentional pre-merge state.
+  # Only count `- [ ]` items inside the `## Tasks / Subtasks` section.
+  # Unchecked items in `## Definition of Done` (e.g., "PR merged to staging"
+  # pre-merge) and `## Acceptance Criteria` are intentionally excluded —
+  # they are not subtasks and reflect intentional pre-merge state.
   #
   # Heading match is anchored: literal `## ` prefix + the words
   # "tasks / subtasks" with arbitrary case and tolerant of trailing
@@ -443,10 +439,10 @@ _check_subtasks() {
 
 # ---------- Main ----------
 overall=0
-# AF-2026-05-27-8 / Test06 F-013: build + lint now use _check_script (same
-# config → package.json scripts → PATH precedence as tests) instead of the
-# PATH-binary-only _check_command, so `npm run build` / `npm run lint` projects
-# no longer get a spurious SKIPPED while tests PASS.
+# build + lint use _check_script (same config → package.json scripts → PATH
+# precedence as tests) instead of the PATH-binary-only _check_command, so
+# `npm run build` / `npm run lint` projects no longer get a spurious SKIPPED
+# while tests PASS.
 _check_script "build" "build" || overall=1
 _check_tests                  || overall=1
 _check_script "lint"  "lint"  || overall=1

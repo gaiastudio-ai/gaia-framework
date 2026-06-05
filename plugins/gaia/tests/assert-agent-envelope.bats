@@ -89,10 +89,12 @@ teardown() {
   [ -n "${_ASSERT_AGENT_ENVELOPE_SH_SOURCED:-}" ]
 }
 
-# ---------------- TC-VBR-1c: ADR-104 reference in header ----------------
-@test "TC-VBR-1c: helper script header references ADR-104 (AC7)" {
+# ---------------- TC-VBR-1c: Val-bridge migration contract documented in header ----------------
+@test "TC-VBR-1c: helper script header documents the Val-bridge migration context (AC7)" {
   [ -f "$HELPER" ] || skip "helper not authored yet (Red phase)"
-  grep -q 'ADR-104' "$HELPER"
+  # The header must document the sentinel-write context: the orchestrator
+  # main-turn writer (write-val-envelope.sh) and why the writer was shifted.
+  grep -q 'write-val-envelope' "$HELPER"
 }
 
 # ---------------- Anti-red sanity: helper exists after Green ----------------
@@ -237,10 +239,11 @@ teardown() {
 }
 
 # TC-OSV-6: helper header documents original_status as an OPTIONAL field
-# (NFR-95) so the additive contract is locked against future regression.
-@test "TC-OSV-6: helper header documents original_status as optional (NFR-95)" {
+# so the additive contract is locked against future regression.
+@test "TC-OSV-6: helper header documents original_status as optional (non-required)" {
   grep -q 'original_status' "$HELPER"
-  grep -q 'NFR-95' "$HELPER"
+  # The header must state the asserter is agnostic to the field's presence.
+  grep -q 'agnostic to its presence' "$HELPER"
 }
 
 # ---------------- TC-MVB-8: validator.md + ADR-104 shard cross-refs ----------------

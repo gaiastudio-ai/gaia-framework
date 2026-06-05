@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# adapters/marketplace-publish/normalize.sh — ADR-078 output normalizer for the
-# marketplace-publish adapter (E78-S1, FR-423, AC7).
+# adapters/marketplace-publish/normalize.sh — output normalizer for the
+# marketplace-publish adapter.
 #
 # Reads the JSON response from `gh release create` on stdin and emits a
 # normalized JSON object on stdout containing at least:
@@ -8,8 +8,6 @@
 #
 # gh release create JSON shape (gh ≥ 2.x):
 #   { "url": "...", "tag_name": "...", "isDraft": true|false, "name": "...", ... }
-#
-# Refs: ADR-078 §5 (normalize.sh contract), story AC7.
 
 set -euo pipefail
 LC_ALL=C

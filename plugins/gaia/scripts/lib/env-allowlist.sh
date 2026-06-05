@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# env-allowlist.sh — shared environment-variable allowlist helper (E93-S4)
+# env-allowlist.sh — shared environment-variable allowlist helper
 #
 # Provides `build_env_args()` — given a curated allowlist of env-var names,
 # emits the argv fragment for `env -i` so child processes inherit ONLY the
 # allowlisted variables. Parent-shell secrets (AWS_SECRET_ACCESS_KEY,
 # GITHUB_TOKEN, OPENAI_API_KEY, etc.) are stripped before the child sees them.
-#
-# Traces to: AC3 of E93-S4, T-SGR-1, SR-63, NFR-072.
 #
 # Precedent: gaia-framework/plugins/gaia/scripts/adapters/owasp-zap/run.sh lines 98-146
 # uses the same env-allowlist pattern; this helper extracts it into a shared
@@ -25,7 +23,7 @@
 # LANG:   locale
 # LC_ALL: locale override
 #
-# NOTE on bash-auto-set vars (E93 manual-test ISSUE-4):
+# NOTE on bash-auto-set vars:
 #   When the child subprocess runs `bash` or `sh`, that shell auto-sets a
 #   small set of internal vars regardless of `env -i`:
 #     PWD   — current working directory (set by the shell on startup)
@@ -41,8 +39,8 @@ GAIA_ENV_ALLOWLIST_DEFAULT="PATH HOME USER TMPDIR TERM LANG LC_ALL"
 # build_env_args [allowlist_string]
 #   Emits a space-separated sequence of NAME=value pairs suitable for use
 #   immediately after `env -i`. Variables that are unset in the parent shell
-#   are silently skipped (graceful degrade — ADR-074 C1 honored: no fallback
-#   to a stale value, just omission).
+#   are silently skipped (graceful degrade — no fallback to a stale value,
+#   just omission).
 #
 #   Usage:
 #     args=$(build_env_args)

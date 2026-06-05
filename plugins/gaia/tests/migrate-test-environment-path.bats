@@ -46,7 +46,6 @@ teardown() {
   [[ "${output}" == *"DEPRECATION"* ]]
   [[ "${output}" == *"docs/test-artifacts/"* ]]
   [[ "${output}" == *"config/"* ]]
-  [[ "${output}" == *"ADR-110"* ]]
 }
 
 @test "AC4: post-move, sentinel file is created at .gaia/memory/.test-environment-path-migrated" {

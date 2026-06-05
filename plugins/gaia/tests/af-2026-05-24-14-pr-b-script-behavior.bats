@@ -18,7 +18,7 @@ PLUGIN_ROOT="${BATS_TEST_DIRNAME}/.."
 # --- F-6 ---
 
 @test "F-6: test-strategy finalize.sh has auto-stub-hydration block" {
-  grep -qF "AF-2026-05-24-14 / Test02 F-6" "${PLUGIN_ROOT}/skills/gaia-test-strategy/scripts/finalize.sh"
+  grep -qF "Config hydration fail-safe" "${PLUGIN_ROOT}/skills/gaia-test-strategy/scripts/finalize.sh"
   grep -qF "auto-stub-hydration" "${PLUGIN_ROOT}/skills/gaia-test-strategy/scripts/finalize.sh"
 }
 
@@ -31,7 +31,7 @@ PLUGIN_ROOT="${BATS_TEST_DIRNAME}/.."
 # --- F-10 ---
 
 @test "F-10: dod-check.sh resolves test_execution.tier_1.command via yq" {
-  grep -qF "AF-2026-05-24-14 / Test02 F-10" "${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/dod-check.sh"
+  grep -qF "canonical test_execution.tier_1.command" "${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/dod-check.sh"
   grep -qF ".test_execution.tier_1.command" "${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/dod-check.sh"
 }
 
@@ -43,7 +43,7 @@ PLUGIN_ROOT="${BATS_TEST_DIRNAME}/.."
 # --- F-26 ---
 
 @test "F-26: retro-sidecar-write.sh substitutes AI-{auto} placeholder" {
-  grep -qF "AF-2026-05-24-14 / Test02 F-26" "${PLUGIN_ROOT}/scripts/retro-sidecar-write.sh"
+  grep -qF 'Substitute `AI-{auto}` placeholders' "${PLUGIN_ROOT}/scripts/retro-sidecar-write.sh"
   grep -qF 'AI-{auto}' "${PLUGIN_ROOT}/scripts/retro-sidecar-write.sh"
   grep -qF "highest" "${PLUGIN_ROOT}/scripts/retro-sidecar-write.sh"
   grep -qF "sub(/AI-\\{auto\\}/" "${PLUGIN_ROOT}/scripts/retro-sidecar-write.sh"
@@ -80,7 +80,7 @@ EOF
 # --- F-27 ---
 
 @test "F-27: sprint-review SKILL.md Step 4a documents 4-option set" {
-  grep -qF "AF-2026-05-24-14 / Test02 F-27" "${PLUGIN_ROOT}/skills/gaia-sprint-review/SKILL.md"
+  grep -qF "expanded from 3 to 4" "${PLUGIN_ROOT}/skills/gaia-sprint-review/SKILL.md"
   grep -qF "delegate-to-val" "${PLUGIN_ROOT}/skills/gaia-sprint-review/SKILL.md"
   grep -qF "canonical 4-option set" "${PLUGIN_ROOT}/skills/gaia-sprint-review/SKILL.md"
 }
@@ -88,7 +88,7 @@ EOF
 # --- F-38 ---
 
 @test "F-38: gaia-trace SKILL.md publishes Coverage % formula" {
-  grep -qF "AF-2026-05-24-14 / Test02 F-38" "${PLUGIN_ROOT}/skills/gaia-trace/SKILL.md"
+  grep -qF "required_tiers_per_risk_band" "${PLUGIN_ROOT}/skills/gaia-trace/SKILL.md"
   grep -qF "(implemented_tiers_for_this_req / required_tiers_per_risk_band)" "${PLUGIN_ROOT}/skills/gaia-trace/SKILL.md"
   grep -qF "Coverage formula:" "${PLUGIN_ROOT}/skills/gaia-trace/SKILL.md"
 }
@@ -96,7 +96,7 @@ EOF
 # --- F-40 ---
 
 @test "F-40: gaia-threat-model documents single-turn-synth carve-out" {
-  grep -qF "AF-2026-05-24-14 / Test02 F-40" "${PLUGIN_ROOT}/skills/gaia-threat-model/SKILL.md"
-  grep -qF "single-turn-synth carve-out" "${PLUGIN_ROOT}/skills/gaia-threat-model/SKILL.md"
+  grep -qF "dispatch_provenance" "${PLUGIN_ROOT}/skills/gaia-threat-model/SKILL.md"
+  grep -qiF "single-turn-synth carve-out" "${PLUGIN_ROOT}/skills/gaia-threat-model/SKILL.md"
   grep -qF "THREAT-MODEL DISPATCH NOTE" "${PLUGIN_ROOT}/skills/gaia-threat-model/SKILL.md"
 }

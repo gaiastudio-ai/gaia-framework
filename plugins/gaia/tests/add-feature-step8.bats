@@ -30,8 +30,9 @@ teardown() {
 # ---------------- TC-AFE-6: Before/After default flip documented ----------------
 @test "TC-AFE-6: SKILL.md documents the Before/After default flip" {
   [ -f "$SKILL_MD" ]
-  grep -qE 'BEFORE \(pre-E89-S2\)' "$SKILL_MD"
-  grep -qE 'AFTER \(post-E89-S2\)' "$SKILL_MD"
+  grep -qE 'Before/After default selection' "$SKILL_MD"
+  grep -qE '\*\*BEFORE:\*\*' "$SKILL_MD"
+  grep -qE '\*\*AFTER:\*\*' "$SKILL_MD"
 }
 
 # ---------------- TC-AFE-7: --step-8-mode accepts valid values ----------------

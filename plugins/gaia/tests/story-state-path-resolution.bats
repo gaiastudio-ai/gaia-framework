@@ -54,17 +54,23 @@ teardown() {
 
 # ---------------- AC5: header documents two-stage convention ----------------
 @test "AC5: transition-story-status.sh cites E91-S3 in header" {
-  run grep -F 'E91-S3' "$TRANSITION"
+  # The traceability ID was removed; assert the behavioral contract instead:
+  # the script documents the three-stage env-var precedence for path resolution.
+  run grep -F 'Three-stage env-var precedence' "$TRANSITION"
   [ "$status" -eq 0 ]
 }
 
 @test "AC5: tdd-review-gate.sh cites E91-S3 in header" {
-  run grep -F 'E91-S3' "$TDD_GATE"
+  # The traceability ID was removed; assert the behavioral contract instead:
+  # the script documents the two-stage env-var precedence for path resolution.
+  run grep -F 'Path resolution — two-stage env-var precedence' "$TDD_GATE"
   [ "$status" -eq 0 ]
 }
 
 @test "AC5: init-review-gate.sh documents path-resolution no-op via E91-S3 citation" {
   local script="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-dev-story/scripts" && pwd)/init-review-gate.sh"
-  run grep -F 'E91-S3' "$script"
+  # The traceability ID was removed; assert the behavioral contract instead:
+  # the script header explains it inherits two-stage CLAUDE_PROJECT_ROOT precedence from its caller.
+  run grep -F 'two-stage CLAUDE_PROJECT_ROOT' "$script"
   [ "$status" -eq 0 ]
 }

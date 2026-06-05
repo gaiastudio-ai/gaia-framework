@@ -187,7 +187,7 @@ EOF
 # ===========================================================================
 
 @test "AF-31-1 F-14: create-epics SKILL.md documents the brownfield-mode carve-out" {
-  run grep -F 'Test12 F-14' "$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
+  run grep -F 'its absence emits a NOTICE but does not HALT' "$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
   [ "$status" -eq 0 ]
 }
 

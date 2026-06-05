@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# checkpoint.sh — GAIA foundation script (E28-S10)
+# checkpoint.sh — GAIA foundation script
 #
 # Read/write/validate workflow checkpoints in YAML format with sha256 checksums
 # for every touched file. Replaces the LLM-driven checkpoint discipline that
-# workflow.xml rule n="13" currently enforces, collapsing one engine token-burn
-# path per ADR-042 / NFR-048.
+# workflow.xml rule n="13" currently enforces.
 #
-# Invocation contract (stable for E28-S17 bats-core authors):
+# Invocation contract:
 #
 #   checkpoint.sh write    --workflow <name> --step <n>
 #                          [--var key=val ...] [--file <path> ...]
@@ -150,12 +149,12 @@ resolve_checkpoint_path() {
   if [ -n "${CHECKPOINT_PATH:-}" ]; then
     return 0
   fi
-  # Try sibling resolve-config.sh. Post-E28-S191 the resolver owns its own
+  # Try sibling resolve-config.sh. The resolver owns its own
   # 6-level precedence ladder (--shared / --config / $GAIA_SHARED_CONFIG /
   # $CLAUDE_PROJECT_ROOT/config / $PWD/config / $CLAUDE_SKILL_DIR/config),
   # so we no longer pre-check ${CLAUDE_SKILL_DIR:-}: gating on it here would
   # short-circuit every caller that now resolves via CLAUDE_PROJECT_ROOT
-  # (i.e. every Claude Code skill invocation — see E28-S202). If the
+  # (i.e. every Claude Code skill invocation). If the
   # resolver cannot locate a usable config it exits non-zero and emits no
   # 'checkpoint_path=' line, so the loop below falls through to die 1 and
   # the fail-hard contract is preserved.

@@ -2,16 +2,16 @@
 # heading-present.sh — single source of truth for the H2-heading presence check
 # used by every skill finalize.sh checklist (SV-* "<section> present" items).
 #
-# Background (AF-2026-05-27-8 / Test06 F-001, F-004, F-009):
+# Background:
 #   17 finalize.sh scripts each defined their OWN copy of heading_present() with
 #   THREE divergent regexes:
 #     (a) no numbered-prefix support      — `^##\s+TEXT`            (13 skills)
 #     (b) simple numbered prefix          — `^##\s+([0-9]+\.\s+)?TEXT`  (create-arch, edit-arch)
 #     (c) full dotted prefix              — `^##\s+([0-9]+(\.[0-9]+)*\.?\s+)?TEXT` (create-prd, create-ux)
 #   So the SAME heading `## 10. Review Findings Incorporated` PASSED in create-prd
-#   but FAILED in create-epics (F-009). And NONE accepted a letter suffix on the
+#   but FAILED in create-epics. And NONE accepted a letter suffix on the
 #   number (`## 11b. Constraints`), so the PRD template's own sub-numbering broke
-#   the check (F-001). Operators were forced to editorially rename headings to
+#   the check. Operators were forced to editorially rename headings to
 #   satisfy a brittle, inconsistent regex.
 #
 # This shared helper applies ONE permissive, uniform pattern across all callers:
@@ -41,7 +41,7 @@ fi
 # optional, also matches an un-numbered "## Constraints".
 # The trailing `[[:alpha:]]*` lets the supplied TEXT match the START of the
 # heading's title, so a stem like "Wireframe" matches both "## Wireframes" and
-# "## Wireframe Descriptions" (AF-2026-05-27-8 / Test06 F-004) — and "Persona"
+# "## Wireframe Descriptions" — and "Persona"
 # matches "## Personas". The final boundary class still anchors the match to a
 # word/line edge so a bare "Test" cannot match mid-word inside another token.
 heading_present() {

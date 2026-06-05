@@ -13,15 +13,15 @@ orchestration_class: light-procedural
 
 ## Mission
 
-Display a read-only history dashboard for the project. The skill surfaces three views (E106-S1 AC5), all derived from data that already exists on disk:
+Display a read-only history dashboard for the project. The skill surfaces three views, all derived from data that already exists on disk:
 
 1. **Velocity trend** across the last N closed sprints — read from the sprint-archive yamls under `.gaia/artifacts/implementation-artifacts/sprint-archive/`.
 2. **Estimate accuracy** — estimated story points vs. *measured* agent throughput. The measured figure (median minutes/story and minutes/point) is DERIVED from `state_transition` events in `.gaia/memory/lifecycle-events.jsonl` by `throughput-telemetry.sh` (there is NO `duration` field — wall-clock is derived by differencing consecutive transition timestamps).
 3. **Recurring-finding patterns** — themes that appear in the "What Could Improve" sections of more than one retro.
 
-This is the read-only consumer of the telemetry-first foundation (ADR-128): `throughput-telemetry.sh` derives the medians; `/gaia-history` renders them alongside trend and retro patterns. E106-S2 (dual-track estimation) and E106-S3 (agent-native SM capacity check) consume the same derivation layer.
+This is the read-only consumer of the telemetry-first foundation: `throughput-telemetry.sh` derives the medians; `/gaia-history` renders them alongside trend and retro patterns. Dual-track estimation and the agent-native SM capacity check consume the same derivation layer.
 
-This skill is modeled on the other read-only dashboards (`/gaia-sprint-status`, `/gaia-epic-status`). Per the story's technical notes, the deterministic mechanics live in the helper scripts (ADR-042 scripts-over-LLM); the skill body only invokes them and relays output.
+This skill is modeled on the other read-only dashboards (`/gaia-sprint-status`, `/gaia-epic-status`). Per the story's technical notes, the deterministic mechanics live in the helper scripts (scripts-over-LLM); the skill body only invokes them and relays output.
 
 ## Critical Rules
 
@@ -49,7 +49,7 @@ Run the renderer, passing the canonical runtime paths:
 
 ### Step 2 — Surface the measured-throughput caveat
 
-After rendering, remind the user that the measured throughput is agent-native: it reflects wall-clock between story state transitions (how fast the LLM agent actually worked), not points-per-calendar-day. A stable minutes/point across sprints is the signal that estimates track measured throughput (ADR-128).
+After rendering, remind the user that the measured throughput is agent-native: it reflects wall-clock between story state transitions (how fast the LLM agent actually worked), not points-per-calendar-day. A stable minutes/point across sprints is the signal that estimates track measured throughput.
 
 ## Finalize
 
@@ -57,9 +57,6 @@ After rendering, remind the user that the measured throughput is agent-native: i
 
 ## Refs
 
-- **ADR-128** — agent-native sprint model (telemetry-first estimation foundation).
-- **ADR-042** — scripts-over-LLM (derivation math lives in shell/awk).
-- **FR-549, FR-550** — allocated for E106-S1 (PRD shard pending; allocated in epics-and-stories.md).
-- **E106-S1** — this story (throughput-telemetry derivation layer + /gaia-history).
-- **E106-S2 / E106-S3** — downstream consumers of the derivation layer.
+- Agent-native sprint model (telemetry-first estimation foundation).
+- Scripts-over-LLM (derivation math lives in shell/awk).
 - Read-only dashboard peers: `/gaia-sprint-status`, `/gaia-epic-status`.

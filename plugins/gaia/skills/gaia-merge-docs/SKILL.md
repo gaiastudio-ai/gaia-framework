@@ -1,6 +1,6 @@
 ---
 name: gaia-merge-docs
-description: Merge multiple markdown files into a single document — the inverse of shard-doc. Use when "merge documents" or /gaia-merge-docs. Reassembles sharded files in correct order, preserves section numbering and cross-references, maintains consistent heading hierarchy, and emits a single merged Markdown artifact. Native Claude Code conversion of the legacy merge-docs task (E28-S111, Cluster 14).
+description: Merge multiple markdown files into a single document — the inverse of shard-doc. Use when "merge documents" or /gaia-merge-docs. Reassembles sharded files in correct order, preserves section numbering and cross-references, maintains consistent heading hierarchy, and emits a single merged Markdown artifact. Native Claude Code conversion of the legacy merge-docs task.
 argument-hint: "[source-dir-or-file-list] [output-path]"
 allowed-tools: [Read, Write]
 orchestration_class: light-procedural
@@ -10,7 +10,7 @@ orchestration_class: light-procedural
 
 You are merging multiple Markdown files into a single document. This is the inverse of `/gaia-shard-doc`. Inputs may be (a) a directory of sharded files produced by a previous `shard-doc` run, or (b) an explicit list of file paths. The output is a single Markdown artifact at the user-specified path with consistent heading hierarchy and resolved cross-references.
 
-This skill is the native Claude Code conversion of the legacy merge-docs task at `_gaia/core/tasks/merge-docs.xml` (brief Cluster 14, story E28-S111). The legacy 34-line XML body is preserved here as explicit prose per ADR-041. No workflow engine, no engine-specific XML step tags.
+This skill is the native Claude Code conversion of the legacy merge-docs task at `_gaia/core/tasks/merge-docs.xml`. The legacy 34-line XML body is preserved here as explicit prose. No workflow engine, no engine-specific XML step tags.
 
 ## Critical Rules
 
@@ -65,7 +65,7 @@ The skill runs four steps in strict order, mirroring the legacy `merge-docs.xml`
   Wait for the user's response.
   - If the user answers `y` (or `yes`): proceed to `Write`.
   - If the user answers `n` (or `no`): emit `Merge cancelled by user.` and halt without writing any file.
-- **YOLO-mode bypass.** In YOLO mode, skip the confirmation prompt and auto-proceed to `Write`. This aligns with ADR-067 (YOLO Mode Contract) — auto-confirm at template-output and auto-skip optional confirmations.
+- **YOLO-mode bypass.** In YOLO mode, skip the confirmation prompt and auto-proceed to `Write`. This aligns with the YOLO Mode Contract — auto-confirm at template-output and auto-skip optional confirmations.
 - Write the merged document to the user-specified output path.
 - Report the merge summary: number of files merged, total line count, any headings that were renumbered, any cross-references that could not be resolved.
 
@@ -103,13 +103,13 @@ This is the same algorithm used across GAIA for anchor generation; it matches Gi
 
 ## References
 
-- Legacy source: `_gaia/core/tasks/merge-docs.xml` (34 lines) — parity reference for NFR-053.
+- Legacy source: `_gaia/core/tasks/merge-docs.xml` (34 lines) — feature-parity reference.
 - Inverse operation: `/gaia-shard-doc`. A merge→shard→merge round trip on the same content should yield byte-equivalent output.
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042 — Scripts-over-LLM for Deterministic Operations.
-- ADR-048 — Program-close deletion policy for legacy engine/workflows/tasks.
-- ADR-066 — Inline-Ask vs Fail-Fast Contract (pre-write confirmation extends the inline-ask convention to the output step).
-- ADR-067 — YOLO Mode Contract (auto-skip optional confirmations at template-output).
-- FR-323 — Native Skill Format Compliance.
-- NFR-053 — Functional parity with the legacy task.
+- Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
+- Scripts-over-LLM for Deterministic Operations.
+- Program-close deletion policy for legacy engine/workflows/tasks.
+- Inline-Ask vs Fail-Fast Contract (pre-write confirmation extends the inline-ask convention to the output step).
+- YOLO Mode Contract (auto-skip optional confirmations at template-output).
+- Native Skill Format Compliance.
+- Functional parity with the legacy task.
 - Reference implementation: `plugins/gaia/skills/gaia-fix-story/SKILL.md`.

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# publish-claude-marketplace/run.sh — FR-526 + ADR-113 + ADR-037 envelope.
-# Publishes a Claude Code plugin to the Anthropic marketplace.
+# publish-claude-marketplace/run.sh — Publishes a Claude Code plugin to the Anthropic marketplace.
 
 # shellcheck source=../_publish-common.bash
 source "$(dirname "$0")/../_publish-common.bash"
@@ -8,7 +7,7 @@ source "$(dirname "$0")/../_publish-common.bash"
 publish_parse_common_args "$@"
 publish_die_unknown_extra
 
-# NFR-081: credential ONLY from declared env var.
+# Credential ONLY from declared env var.
 TOKEN="${CLAUDE_MARKETPLACE_TOKEN:-}"
 
 case "$ACTION" in

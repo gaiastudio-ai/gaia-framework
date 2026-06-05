@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# legacy-tool-aliases.sh — backward-compat alias layer for E70-S2 static-tool migration.
-#
-# Story: E70-S2 — Migrate five existing static-tool integrations to adapter form
-#        (Semgrep, gitleaks, radon, gocyclo, eslint-plugin-sonarjs) + backward-compat
-#        alias layer (one-sprint deprecation window).
-# Decisions: ADR-078 (Tool Adapter Framework).
-# Refs: FR-RSV2-17, FR-RSV2-20.
+# legacy-tool-aliases.sh — backward-compat alias layer for static-tool migration.
 #
 # Purpose
 # -------
@@ -21,10 +15,10 @@
 #
 # Deprecation Window
 # ------------------
-# This alias layer lives for ONE SPRINT. Removal is a separate cleanup task
-# (out-of-scope for E70-S2 — see story Dev Notes). After the deprecation window
-# expires, the entire file MAY be deleted; projects that have updated to the
-# canonical adapter path continue to work without modification.
+# This alias layer lives for ONE SPRINT. Removal is a separate cleanup task.
+# After the deprecation window expires, the entire file MAY be deleted;
+# projects that have updated to the canonical adapter path continue to work
+# without modification.
 #
 # Source vs exec
 # --------------
@@ -48,7 +42,7 @@ _gaia_legacy_alias_dispatch() {
   printf 'DEPRECATION WARNING: legacy %s integration is deprecated. ' "$tool" >&2
   printf 'Use the canonical adapter at adapters/%s/run.sh ' "$tool" >&2
   printf '(full path: %s). ' "$adapter_run" >&2
-  printf 'Alias removal is scheduled for the next sprint after E70-S2.\n' >&2
+  printf 'Alias removal is scheduled for the next sprint.\n' >&2
   if [ ! -x "$adapter_run" ]; then
     printf 'legacy-tool-aliases.sh: adapter run.sh missing or not executable: %s\n' "$adapter_run" >&2
     return 1

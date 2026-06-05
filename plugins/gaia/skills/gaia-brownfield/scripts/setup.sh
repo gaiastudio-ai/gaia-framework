@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 14 gaia-brownfield skill setup (E28-S105)
+# setup.sh — gaia-brownfield skill setup
 #
-# Mechanical extension of the Cluster 9 / Cluster 12 reference implementation
+# Mechanical extension of the gaia-code-review / gaia-nfr reference implementation
 # (gaia-code-review/scripts/setup.sh, gaia-nfr/scripts/setup.sh). Only
 # WORKFLOW_NAME and SCRIPT_NAME differ — the body follows the shared pattern.
 #
-# Responsibilities (per ADR-042 / FR-325):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (no specific prereqs for brownfield)
 #   3. Load the checkpoint state for this workflow
 #
-# Fail-fast semantics (AC-EC2): if any foundation script is missing or
+# Fail-fast semantics: if any foundation script is missing or
 # non-executable, this setup aborts with a clear message identifying the
 # missing path — no partial scan output will be written.
 #
@@ -41,8 +41,8 @@ log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
 # ---------- 1. Resolve config ----------
-# AF-2026-05-29-2 / Test09 F-1: brownfield is THE onboarding command for projects
-# with NO .gaia/config/project-config.yaml yet — Phase 1 step 5a auto-drafts the
+# brownfield is THE onboarding command for projects with NO
+# .gaia/config/project-config.yaml yet — Phase 1 step 5a auto-drafts the
 # config via detect-signals.sh. Previously the resolve-config.sh non-zero exit
 # was treated as fatal, so the command that should CREATE the config refused to
 # start without one (chicken-and-egg, the user has no way to bootstrap a
@@ -67,9 +67,9 @@ if ! config_output=$("$RESOLVE_CONFIG" 2>&1); then
     MEMORY_PATH="$PROJECT_ROOT/.gaia/memory"
     CHECKPOINT_PATH="$MEMORY_PATH/checkpoints"
     export PROJECT_ROOT PROJECT_PATH PLANNING_ARTIFACTS TEST_ARTIFACTS IMPLEMENTATION_ARTIFACTS CREATIVE_ARTIFACTS MEMORY_PATH CHECKPOINT_PATH
-    # AF-2026-05-29-2 / Test09 F-6: also seed the artifact tree (mkdir -p is
-    # idempotent) so phase-1+ subagents can write without hitting "no such
-    # directory" — brownfield's artifact-write contract assumes the tree exists.
+    # Also seed the artifact tree (mkdir -p is idempotent) so phase-1+ subagents
+    # can write without hitting "no such directory" — brownfield's artifact-write
+    # contract assumes the tree exists.
     mkdir -p "$PLANNING_ARTIFACTS" "$TEST_ARTIFACTS" "$IMPLEMENTATION_ARTIFACTS" "$CREATIVE_ARTIFACTS" "$CHECKPOINT_PATH" "$MEMORY_PATH"
   else
     log "resolve-config.sh failed:"

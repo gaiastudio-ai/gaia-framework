@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# compose-verdict.sh — composite verdict reducer for /gaia-sprint-review (E93-S3)
+# compose-verdict.sh — composite verdict reducer for /gaia-sprint-review
 #
 # Pure deterministic reducer that combines Track A + Track B verdicts
-# into the canonical composite verdict per NFR-070 and ADR-108 D2.
+# into the canonical composite verdict.
 #
 # Reduction rules:
 #   - PASSED iff BOTH tracks PASSED (Track B SKIPPED counts as PASSED-
-#     equivalent on the E93-S3 stub path — only on the stub; once E93-S4
-#     ships the real runner, SKIPPED on Track B can ONLY arise from D6
-#     UNVERIFIED-bypass-eligible sprints).
+#     equivalent on the stub path — only on the stub; once the real runner
+#     ships, SKIPPED on Track B can ONLY arise from UNVERIFIED-bypass-eligible
+#     sprints).
 #   - FAILED if EITHER track FAILED.
 #   - UNVERIFIED if EITHER track UNVERIFIED and neither FAILED.
 #   - PASSED also when Track A is PARTIAL and Track B is PASSED (PARTIAL
-#     does not block — per FR-489 AC6 / TC-SGR-26).
+#     does not block).
 #
 # Input verdicts: PASSED | FAILED | UNVERIFIED | PARTIAL | SKIPPED
 # Output (stdout): exactly one of: PASSED | FAILED | UNVERIFIED
 #
-# Non-canonical inputs are rejected with canonical stderr per ADR-074 C3.
+# Non-canonical inputs are rejected with canonical stderr.
 #
-# Downcast bookkeeping (E87-S9 / AF-2026-06-03-2 / ADR-130 / NFR-95):
+# Downcast bookkeeping:
 #   When the INPUT track-a or track-b verdict is one of the coercible
 #   synonyms {WARNING, PASS, CRITICAL}, the synonym-mapping path below
 #   downcasts it (WARNING/PASS -> PASSED, CRITICAL -> FAILED) before the
@@ -31,9 +31,9 @@
 #   additive second stdout line:
 #       original_status=track_a=<raw>[,track_b=<raw>]
 #   The line is absent when no track was coerced. The DEFAULT invocation
-#   (flag absent) is byte-identical to the pre-S9 single-line contract, so
-#   the `COMPOSITE=$(...)` consumer contract and every existing
-#   `[ "$output" = "..." ]` assertion are preserved (NFR-95: additive,
+#   (flag absent) is byte-identical to the pre-provenance single-line contract,
+#   so the `COMPOSITE=$(...)` consumer contract and every existing
+#   `[ "$output" = "..." ]` assertion are preserved (additive,
 #   absent-when-not-coerced, never required).
 #
 # Usage:
@@ -64,12 +64,12 @@ Each <verdict> must be one of: PASSED | FAILED | UNVERIFIED | PARTIAL | SKIPPED
 Stdout: exactly one of PASSED | FAILED | UNVERIFIED.
 Non-canonical inputs are rejected with a non-canonical-input error.
 
-Reduction (NFR-070, ADR-108 D2):
+Reduction:
   - FAILED if EITHER track is FAILED.
   - UNVERIFIED if EITHER track is UNVERIFIED (and neither FAILED).
   - PASSED otherwise (PASSED, PARTIAL, SKIPPED on either side combine to PASSED).
 
---with-provenance (E87-S9, ADR-130, NFR-95):
+--with-provenance:
   When set AND either track's INPUT was a coercible synonym (WARNING, PASS,
   CRITICAL), append an additive second stdout line capturing the
   pre-coercion value(s):
@@ -109,12 +109,12 @@ is_canonical() {
   esac
 }
 
-# E87-S9 / AF-2026-06-03-2 / ADR-130 / NFR-95: capture the RAW pre-coercion
-# track values BEFORE the synonym-mapping reassignments below. A track is
-# "coerced" iff its raw value is one of the coercible synonyms {WARNING, PASS,
-# CRITICAL}. The provenance line (emitted only under --with-provenance) records
-# those raw values so downstream consumers can recover the pre-coercion outer
-# status; the reduced verdict itself is UNCHANGED by this bookkeeping.
+# Capture the RAW pre-coercion track values BEFORE the synonym-mapping
+# reassignments below. A track is "coerced" iff its raw value is one of the
+# coercible synonyms {WARNING, PASS, CRITICAL}. The provenance line (emitted
+# only under --with-provenance) records those raw values so downstream
+# consumers can recover the pre-coercion outer status; the reduced verdict
+# itself is UNCHANGED by this bookkeeping.
 raw_track_a="$track_a"
 raw_track_b="$track_b"
 
@@ -147,21 +147,20 @@ emit_verdict() {
   fi
 }
 
-# AF-2026-05-22-9 Bug-13: Val emits WARNING as a non-blocking verdict per
-# ADR-063 ("WARNING is informational; cascade proceeds"). Accept WARNING on
-# either track and normalize to PASSED before the reduction so callers do
-# not have to hand-map WARNING -> PASSED at each call site.
+# Val emits WARNING as a non-blocking verdict (WARNING is informational;
+# cascade proceeds). Accept WARNING on either track and normalize to PASSED
+# before the reduction so callers do not have to hand-map WARNING -> PASSED
+# at each call site.
 if [ "$track_a" = "WARNING" ]; then track_a="PASSED"; fi
 if [ "$track_b" = "WARNING" ]; then track_b="PASSED"; fi
 
-# Test17 F-M05 / AF-2026-06-02-6: accept ADR-037 envelope verdicts as
-# synonyms for the gate vocabulary. The Val ADR-037 status enum is
-# {PASS|WARNING|CRITICAL}; `write-val-sentinel.sh` already accepts both
-# {PASS,PASSED} forms, but compose-verdict.sh previously rejected `PASS`
-# as non-canonical, forcing operators to hand-translate PASS→PASSED
-# between two steps of the same /gaia-sprint-review. Map PASS→PASSED and
-# CRITICAL→FAILED at this boundary so the two scripts in the same skill
-# share one vocabulary.
+# Accept Val envelope verdicts as synonyms for the gate vocabulary. The Val
+# status enum is {PASS|WARNING|CRITICAL}; `write-val-sentinel.sh` already
+# accepts both {PASS,PASSED} forms, but compose-verdict.sh previously
+# rejected `PASS` as non-canonical, forcing operators to hand-translate
+# PASS→PASSED between two steps of the same /gaia-sprint-review. Map
+# PASS→PASSED and CRITICAL→FAILED at this boundary so the two scripts in
+# the same skill share one vocabulary.
 if [ "$track_a" = "PASS" ]; then track_a="PASSED"; fi
 if [ "$track_b" = "PASS" ]; then track_b="PASSED"; fi
 if [ "$track_a" = "CRITICAL" ]; then track_a="FAILED"; fi

@@ -1,14 +1,14 @@
 ---
 name: gaia-test-run
-description: Manual any-environment test runner that honours `test_execution.{tier}.placement` from project-config.yaml. Use when "run tests" or /gaia-test-run. Supports targeting by --tag, --story, or --file. Action skill — emits a structured verdict and (per ADR-077) classifies infrastructure flakes.
+description: Manual any-environment test runner that honours `test_execution.{tier}.placement` from project-config.yaml. Use when "run tests" or /gaia-test-run. Supports targeting by --tag, --story, or --file. Action skill — emits a structured verdict and classifies infrastructure flakes.
 argument-hint: "[--tier 1|2|3] [--tag NAME] [--story KEY] [--file PATH] [--json]"
 allowed-tools: [Read, Bash, Grep, Glob]
 orchestration_class: light-procedural
 ---
 
-## Action Skill — Trigger Model (E72-S1)
+## Action Skill — Trigger Model
 
-`/gaia-test-run` is an **action skill** that executes tests against the configured environment for the requested tier. Per ADR-077 it follows the three-tier contract:
+`/gaia-test-run` is an **action skill** that executes tests against the configured environment for the requested tier. It follows the three-tier contract:
 
 - **Phase 3A — Evidence collection (scripted):** invoke the configured test runner, capture stdout/stderr, parse counts.
 - **Phase 3B — LLM judgment (scripted v1):** scan failure output for infrastructure-flake patterns (timeout, ECONNREFUSED, OOM, network-error). Future versions may delegate to an LLM judgment skill.
@@ -20,7 +20,7 @@ orchestration_class: light-procedural
 
 The runner reads `test_execution.tier_{1,2,3}.placement` from `project-config.yaml` via `resolve-config.sh --field`. Placement values are drawn from the canonical set: `local | ci-pre-merge | ci-post-merge | deployment | post-deploy`.
 
-For v1, only `local` placement actually executes; all other placements emit a dry-run command (remote execution lands in the E73 deployment-phase skills).
+For v1, only `local` placement actually executes; all other placements emit a dry-run command (remote execution lands in the deployment-phase skills).
 
 ## Mission
 
@@ -32,8 +32,8 @@ You are running the project's automated test suite against the environment confi
 - Default tier is `tier_1` when `--tier` is omitted (AC6).
 - Only `local` placement executes locally; every other placement emits a dry-run output (AC2).
 - The verdict JSON MUST contain all eight required fields: `status, tier, environment, duration_ms, test_count, pass_count, fail_count, skip_count` (AC7). The `flake_suspected` flag is added when Phase 3B detects an infrastructure-flake pattern.
-- Tag conventions are per-stack (Vitest `describe.tag`, pytest `@pytest.mark`, JUnit `@Tag`, Go build tags). v1 ships a generic `--tag NAME` flag forwarded to the runner; per-stack tag-filter expansion is the work of E72-S4.
-- Never re-implement YAML parsing — `resolve-config.sh` is the canonical config reader (ADR-044, FR-RSV2-39).
+- Tag conventions are per-stack (Vitest `describe.tag`, pytest `@pytest.mark`, JUnit `@Tag`, Go build tags). v1 ships a generic `--tag NAME` flag forwarded to the runner; per-stack tag-filter expansion is future work.
+- Never re-implement YAML parsing — `resolve-config.sh` is the canonical config reader.
 
 ## Steps
 

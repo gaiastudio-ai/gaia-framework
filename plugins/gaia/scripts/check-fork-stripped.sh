@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# check-fork-stripped.sh — E84-S3 / ADR-093 static check.
+# check-fork-stripped.sh — static check for fork-context stripping.
 #
 # Verifies the post-strip skill invariants:
 #   1. Non-reviewer plugin SKILL.md MUST NOT declare `context: fork` in
-#      its frontmatter. Stripping is E84-S3's load-bearing change.
+#      its frontmatter.
 #   2. Reviewer plugin SKILL.md MAY retain `context: fork` (clean-room
-#      invariant per NFR-060). Not required (some reviewers omit it
+#      invariant). Not required (some reviewers omit it
 #      and rely on the substrate default), but never forbidden.
 #
 # Agent persona files under plugins/gaia/agents/*.md are intentionally
-# OUT OF SCOPE for this check — ADR-093's amendment to ADR-041 only
+# OUT OF SCOPE for this check — the fork-strip amendment only
 # touches the skill-invocation layer. Agent persona forks are guarded
 # by a bats regression test that compares against the staging baseline.
 #

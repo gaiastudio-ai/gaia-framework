@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# publish-homebrew/run.sh — FR-526 + ADR-113 + ADR-037 envelope.
+# publish-homebrew/run.sh — publish envelope.
 # Bumps a Homebrew formula version + opens a tap PR via `gh pr create`.
-# NFR-081: HOMEBREW_GITHUB_TOKEN ONLY from env.
+# HOMEBREW_GITHUB_TOKEN MUST come from env only.
 
 # shellcheck source=../_publish-common.bash
 source "$(dirname "$0")/../_publish-common.bash"
@@ -15,7 +15,7 @@ case "$ACTION" in
   trigger)
     if [ -z "$HOMEBREW_GITHUB_TOKEN" ] && [ "${HOMEBREW_MOCK:-}" != "1" ]; then
       publish_write_envelope "FAILED" "homebrew" "trigger" \
-        "HOMEBREW_GITHUB_TOKEN missing — adapter refuses to fall back to keychain per NFR-081." \
+        "HOMEBREW_GITHUB_TOKEN missing — adapter refuses to fall back to keychain." \
         "$(publish_evidence_log_excerpt "missing HOMEBREW_GITHUB_TOKEN" "env")"
       exit 0
     fi

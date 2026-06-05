@@ -223,8 +223,8 @@ STUB
   run grep -B1 'platforms = \["server"\]' \
         "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
   [ "$status" -eq 0 ]
-  # And there must be a comment mentioning Test11 F-04.
-  run grep -F 'Test11 F-04' \
+  # And there must be a comment documenting the catch-all contract.
+  run grep -F 'Catch-all so a full-phase config NEVER emits an empty platforms' \
         "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
   [ "$status" -eq 0 ]
 }

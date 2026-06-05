@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 7 change-request redirect skill setup (E28-S58)
+# setup.sh — change-request redirect skill setup
 #
-# Mechanical extension of the Cluster 7 reference implementation. This is a
-# thin redirect skill — no prereq gates beyond config resolution.
+# Thin redirect skill — no prereq gates beyond config resolution.
 #
 # Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script

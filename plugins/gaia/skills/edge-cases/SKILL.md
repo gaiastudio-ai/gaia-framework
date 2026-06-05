@@ -10,11 +10,9 @@ orchestration_class: light-procedural
 
 > Structured edge case analysis for M+ stories. Invoked as a mandatory sub-step by `/gaia-create-story` after acceptance criteria are drafted, and available as a standalone skill for any agent or workflow that needs to enumerate edge cases, error scenarios, and boundary conditions.
 
-**Traces to:** FR-227, NFR-042, ADR-030 §10.22, FR-323 (native skill conversion), ADR-041 (native execution model).
+> **Native Claude Code conversion.** This skill is the native Claude Code port of the legacy `_gaia/dev/skills/edge-cases.md` dev skill. Section markers (`<!-- SECTION: ... -->`) are preserved verbatim so the JIT callable contract consumed by `/gaia-create-story` Step 4b remains functionally equivalent. This is a shared content skill — no agent memory sidecars are loaded.
 
-> **Native Claude Code conversion.** This skill is the native Claude Code port of the legacy `_gaia/dev/skills/edge-cases.md` dev skill. Section markers (`<!-- SECTION: ... -->`) are preserved verbatim so the JIT callable contract consumed by `/gaia-create-story` Step 4b remains functionally equivalent. Per ADR-046, this is a shared content skill — no agent memory sidecars are loaded.
-
-> **Applicable to:** all stack dev agents (typescript, angular, flutter, java, python, mobile, go). The legacy `applicable_agents` frontmatter field is dropped per the E28-S19 schema.
+> **Applicable to:** all stack dev agents (typescript, angular, flutter, java, python, mobile, go). The legacy `applicable_agents` frontmatter field is dropped.
 
 ---
 
@@ -23,7 +21,7 @@ orchestration_class: light-procedural
 
 The edge-cases skill enumerates scenarios that are *not* the happy path — boundary conditions, error paths, timing issues, input extremes, failure modes, and concurrency hazards — and returns them as a structured list so downstream artifacts (stories, tests, reviews) can trace coverage.
 
-This skill is JIT-loaded. It MUST NOT be pre-loaded by any workflow. Token budget for a single invocation is capped at 8K tokens (NFR-042) including the input context and the generated output.
+This skill is JIT-loaded. It MUST NOT be pre-loaded by any workflow. Token budget for a single invocation is capped at 8K tokens including the input context and the generated output.
 
 When invoked from `/gaia-create-story`, the skill is scoped to a single story's acceptance criteria and runs in-context — no separate workflow invocation, no sub-agent spawn.
 
@@ -115,7 +113,7 @@ Use these prompts to drive enumeration — one or two results per heuristic is t
 ---
 
 <!-- SECTION: token-budget -->
-## Token Budget (NFR-042)
+## Token Budget
 
 The skill invocation MUST stay under 8K tokens total. Guidance:
 

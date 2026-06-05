@@ -9,11 +9,11 @@ orchestration_class: light-procedural
 
 Native Claude Code conversion of the legacy `_gaia/dev/skills/api-design.md` skill. Preserves the five sectioned-loading IDs (`rest-conventions`, `graphql`, `openapi`, `versioning`, `error-standards`) verbatim.
 
-- ADR-041 — Native execution model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042 — Scripts-over-LLM. This skill is prose and pattern guidance only; no inline scripts.
-- ADR-046 — Hybrid memory. This is a shared content skill and does NOT load agent memory sidecars.
+- Native execution model via Claude Code Skills + Subagents + Plugins + Hooks.
+- Scripts-over-LLM. This skill is prose and pattern guidance only; no inline scripts.
+- Hybrid memory. This is a shared content skill and does NOT load agent memory sidecars.
 
-> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile). The legacy `applicable_agents` frontmatter field is dropped per the E28-S19 schema.
+> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile). The legacy `applicable_agents` frontmatter field is dropped under the current schema.
 
 <!-- SECTION: rest-conventions -->
 ## REST Conventions
@@ -234,7 +234,7 @@ A change is **non-breaking** if it:
 
 ## Test Scenarios
 
-Migrated from the legacy `test_scenarios` frontmatter array (per E28-S19 schema).
+Migrated from the legacy `test_scenarios` frontmatter array.
 
 | Scenario | Expected |
 |----------|----------|

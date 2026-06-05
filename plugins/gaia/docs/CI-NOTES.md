@@ -3,7 +3,7 @@
 > **Why this file exists.** The `bats-tests` job in `plugin-ci.yml` is the
 > framework's primary integration gate. Wall-clock has crept from ~150 s
 > (sprint-23, ~1300 tests) to ~270 s (sprint-28, 2085 tests) — see
-> `.gaia/artifacts/planning-artifacts/E45-S6-adr-memo-bats-scaling.md` for the full
+> the bats-scaling memo under `.gaia/artifacts/planning-artifacts/` for the full
 > trajectory. This runbook tells contributors how to add new tests
 > without pushing the suite into another timeout escalation.
 
@@ -12,7 +12,7 @@
 - **Soft budget:** 240 s (4 min) of bats wall-clock, watched by
   `plugins/gaia/scripts/bats-budget-watch.sh`.
 - **Hard budget:** 300 s (5 min) `timeout-minutes` on the `bats-tests` job.
-- **Escalation triggers:** see `ADR-062` Appendix B.
+- **Escalation triggers:** see the bats-scaling ADR Appendix B.
 
 ## How to add new bats fixtures
 
@@ -63,7 +63,7 @@ This is **advisory only** — the build still passes. It means:
 
 ## When to escalate
 
-Open a sprint-29-or-later story (or extend `ADR-062`) when **any** of
+Open a sprint-29-or-later story (or extend the bats-scaling ADR) when **any** of
 these fire:
 
 - The warning posts on >25 % of staging-bound PRs in a sprint.
@@ -71,7 +71,7 @@ these fire:
 - A second `timeout-minutes` escalation is proposed in any PR review.
 
 The likely next step is parallelisation via `bats --jobs N` — see
-`ADR-062` Option A. Don't bump `timeout-minutes` past 5 minutes
+the bats-scaling ADR Option A. Don't bump `timeout-minutes` past 5 minutes
 without first running the parallelisation prototype.
 
 ## Local repro
@@ -90,7 +90,7 @@ than on the PR.
 
 ## Related artifacts
 
-- `.gaia/artifacts/planning-artifacts/E45-S6-adr-memo-bats-scaling.md` — ADR-062.
+- The bats-scaling ADR memo under `.gaia/artifacts/planning-artifacts/`.
 - `gaia-framework/.github/workflows/plugin-ci.yml` — the wired-in
   `bats-tests` job (lines around the "Run bats suite with coverage
   wrapper (budget-watched)" step).
@@ -98,7 +98,7 @@ than on the PR.
 - `plugins/gaia/tests/e45-s6-bats-budget-watch.bats` — the unit /
   black-box suite for the wrapper.
 
-## Cross-tree script-reference sweep linter (E28-S221)
+## Cross-tree script-reference sweep linter
 
 The plugin ships **two** bats trees, both exercised by CI:
 
@@ -110,15 +110,15 @@ The plugin ships **two** bats trees, both exercised by CI:
 
 The two trees are **disjoint** (zero filename or relative-path overlap),
 hosting architecturally distinct surfaces (cluster parity / e2e vs
-plugin-internal unit). Both are intentionally kept in place — see
-E28-S221 for the path (a) consolidate vs (b) lint trade-off discussion.
+plugin-internal unit). Both are intentionally kept in place — the path
+(a) consolidate vs (b) lint trade-off was weighed when the linter was added.
 
 ### Why the linter exists
 
 When a script is deleted from `plugins/gaia/scripts/` or
 `plugins/gaia/skills/*/scripts/`, an engineer can easily miss a stale
-reference in the other tree. E59-S3 finding #1 surfaced this exact
-gap: E59-S2 updated only `plugins/gaia/tests/` and missed two
+reference in the other tree. A prior finding surfaced this exact
+gap: an update touched only `plugins/gaia/tests/` and missed two
 references under `gaia-framework/tests/`. The sweep linter catches that
 class of regression at PR time.
 

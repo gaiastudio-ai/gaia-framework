@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# grace-window.sh — GAIA review-common entry point (E66-S3, ADR-082)
+# grace-window.sh — GAIA review-common grace window helper
 #
 # Compares a GATING-flip activation timestamp to "now" and emits the gating
 # mode: WARNING-with-explanation during the seven-day grace window, BLOCK after.
@@ -23,7 +23,6 @@
 # boundary at exactly 7 days is BLOCK (grace expired). The script does not
 # honor DST or leap seconds — both inputs are POSIX epoch seconds.
 #
-# Refs: ADR-082, NFR-RSV2-6.
 
 set -euo pipefail
 LC_ALL=C
@@ -41,7 +40,7 @@ die() {
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — 7-day grace window helper (E66-S3, ADR-082)
+$SCRIPT_NAME — 7-day grace window helper
 
 Usage:
   $SCRIPT_NAME --flip-timestamp <epoch> [--now <epoch>]

@@ -17,18 +17,17 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 # gaia-party
 
 Multi-participant group discussion orchestrator. Gaia acts as moderator while a
 **dynamic** set of participants — GAIA agents and/or stakeholder personas
 selected at runtime — take turns through sequential `context: fork` subagent
-invocations. Converted under ADR-041 (native execution model) and ADR-045
-(sequential fork-subagent pattern) with full parity against
-`_gaia/core/workflows/party-mode/` (NFR-053).
+invocations. Converted to the native execution model with full parity against
+`_gaia/core/workflows/party-mode/`.
 
-**Architectural parallel with `gaia-run-all-reviews` (E28-S72):** both skills
+**Architectural parallel with `gaia-run-all-reviews`:** both skills
 orchestrate sequential fork-subagent invocations. `gaia-run-all-reviews` is the
 **fixed-sequence** variant (6 canonical reviewers); `gaia-party` is the
 **dynamic** variant — the participant set is resolved at invitation time from
@@ -38,13 +37,13 @@ input-resolution step differs.
 
 ## Critical Rules
 
-- **Sequential only (ADR-045, AC-EC10):** Never parallelize per-round
+- **Sequential only (AC-EC10):** Never parallelize per-round
   participant invocations. Never reorder participants mid-round. Refuse any
   `--parallel` flag or equivalent parallel-invocation request with an error;
   deterministic turn-taking is the whole point of the round structure.
-- **Fork-within-fork (ADR-041):** This skill itself runs under `context: fork`,
+- **Fork-within-fork:** This skill itself runs under `context: fork`,
   and each participant invocation within a round is **also** its own
-  `context: fork` subagent — matching the E28-S72 topology.
+  `context: fork` subagent.
 - **Log-and-continue on subagent failure (AC-EC8):** If a participant subagent
   crashes, times out, or exits non-zero, log the failure with the participant
   name and continue with the remaining participants for that round. Never
@@ -52,7 +51,7 @@ input-resolution step differs.
 - **State-free:** This skill does not transition sprint status, update story
   frontmatter, or touch the state machine. It writes ONLY to
   `.gaia/artifacts/creative-artifacts/party-mode-{date}.md`.
-- **Name disambiguation (FR-159):** GAIA agents always win on name collision.
+- **Name disambiguation:** GAIA agents always win on name collision.
   Stakeholders get the `[Stakeholder]` prefix in the invite list **and** during
   discussion attribution, preserved for the entire session.
 
@@ -63,14 +62,14 @@ input-resolution step differs.
 #### Source 1: GAIA agent discovery
 
 1. Read `${CLAUDE_PLUGIN_ROOT}/knowledge/agent-manifest.csv` to enumerate all
-   installed GAIA agents. The registry ships inside the plugin under ADR-041's
+   installed GAIA agents. The registry ships inside the plugin under the
    `knowledge/` convention.
 2. For each row, extract `name`, `displayName`, `title`, `module`. The manifest
    schema is intentionally id-only — party invokes subagents by id, and the
    plugin file path is derivable as `plugins/gaia/agents/{name}.md` when needed.
 3. Build the GAIA agent list (existing behavior, unchanged).
 
-#### Source 2: Stakeholder discovery (AC-EC1, AC-EC2, AC-EC3, AC-EC9)
+#### Source 2: Stakeholder discovery
 
 4. Glob `custom/stakeholders/*.md`.
    - **AC-EC1:** If the `custom/stakeholders/` directory does not exist,
@@ -92,21 +91,21 @@ input-resolution step differs.
 6. **AC-EC3:** Enforce a 50-file cap. If more than 50 stakeholder files are
    found, warn `Stakeholder cap exceeded: {count} files found, using first 50
    alphabetically` and truncate to the first 50 sorted alphabetically.
-7. **AC-EC9 (NFR-029):** Track token budget during frontmatter scan — estimate
+7. **AC-EC9:** Track token budget during frontmatter scan — estimate
    each file's frontmatter at ~100 tokens (approx 400 chars). Total discovery
    across all stakeholder files must stay within a **5K token** budget. If
    cumulative budget reaches 80% (~4K tokens), warn and stop scanning
    additional files; proceed with already-discovered stakeholders.
 8. If `custom/stakeholders/` does not exist or is empty, display hint:
    `Tip: Create stakeholder personas with /gaia-create-stakeholder to invite
-   domain experts to discussions.` (FR-162)
+   domain experts to discussions.`
 
 #### Merge + display invite list
 
 9. Build a combined invite list from GAIA agents + stakeholders:
    - GAIA agents: `{displayName} — {title} ({module})`
    - Stakeholders: `[S] {name} — {role}`
-10. **Name disambiguation (FR-159):** compare each stakeholder name against
+10. **Name disambiguation:** compare each stakeholder name against
     GAIA agent `displayName`s case-insensitively. On collision, prefix the
     stakeholder with `[Stakeholder]` in the invite list and during discussion
     attribution. GAIA agents retain their original name unchanged.
@@ -120,7 +119,7 @@ input-resolution step differs.
     - **Option C — Specific agents.** Let the user pick individual
       participants from the combined GAIA + stakeholder list.
     - **Option D — Stakeholders only.** Let the user pick from stakeholders
-      only (FR-160). A zero-GAIA, stakeholder-only party is valid — the
+      only. A zero-GAIA, stakeholder-only party is valid — the
       moderator manages discussion flow.
     - **Option E — By tag.** Prompt for a tag name. Look it up in the
       tag-to-stakeholder index (case-insensitive). All stakeholders whose
@@ -138,7 +137,7 @@ input-resolution step differs.
 
     | GAIA agents | Stakeholders | Result |
     |-------------|--------------|--------|
-    | 0 | ≥1 | **valid** — stakeholder-only party (FR-160) |
+    | 0 | ≥1 | **valid** — stakeholder-only party |
     | ≥1 | 0 | **valid** — original behavior |
     | ≥1 | ≥1 | **valid** — mixed party |
     | 0 | 0 | **INVALID** — halt with the exact message below |
@@ -165,14 +164,14 @@ input-resolution step differs.
 15. Present the guest list to the user for confirmation.
 16. Ask for the discussion topic or question.
 
-### Phase 2: Discussion Orchestration (ADR-045 sequential contract)
+### Phase 2: Discussion Orchestration (sequential contract)
 
 Gaia (this skill) is the moderator. The discussion runs in **rounds**.
 Participant invocation is **sequential only** — never parallel, never
 reordered mid-round (AC-EC10). `--parallel` or any equivalent parallel-mode
 flag is **rejected**: there is no parallel orchestration path. If an operator
 passes such a flag, respond with `Parallel orchestration refused —
-/gaia-party is sequential-only per ADR-045.` and continue in sequential mode.
+/gaia-party is sequential-only.` and continue in sequential mode.
 
 For each round:
 
@@ -248,20 +247,20 @@ For each round:
 
 ## References
 
-- ADR-041 — Native Execution Model (skills replace framework workflows)
-- ADR-045 — Review Gate via Sequential `context: fork` Subagents (analogous
+- Native Execution Model — skills replace framework workflows
+- Review Gate via Sequential `context: fork` Subagents (analogous
   pattern; party-mode is the dynamic-participant variant)
-- FR-159 — Stakeholder/agent name disambiguation
-- FR-160 — Stakeholders-only party is valid
-- FR-161 — Invite by tag
-- FR-162 — Hint when `custom/stakeholders/` is empty
-- FR-323 — Skill-to-workflow conversion mapping
-- FR-330 — Sequential fork subagents for review-gate / discussion patterns
-- NFR-029 — Stakeholder discovery token budget (5K)
-- NFR-048 — Conversion token-reduction target
-- NFR-053 — Functional parity with legacy workflow
+- Stakeholder/agent name disambiguation
+- Stakeholders-only party is valid
+- Invite by tag
+- Hint when `custom/stakeholders/` is empty
+- Skill-to-workflow conversion mapping
+- Sequential fork subagents for review-gate / discussion patterns
+- Stakeholder discovery token budget (5K)
+- Conversion token-reduction target
+- Functional parity with legacy workflow
 - Reference implementation: `plugins/gaia/skills/gaia-run-all-reviews/SKILL.md`
-  (E28-S72 — fixed-sequence variant of the same pattern)
+  (fixed-sequence variant of the same pattern)
 - Legacy parity source:
   - `_gaia/core/workflows/party-mode/workflow.yaml`
   - `_gaia/core/workflows/party-mode/steps/step-01-agent-loading.md`

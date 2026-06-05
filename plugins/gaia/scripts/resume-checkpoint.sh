@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# resume-checkpoint.sh — GAIA V2 checkpoint reader / validator / lister (E43-S6)
+# resume-checkpoint.sh — GAIA V2 checkpoint reader / validator / lister
 #
 # Delegated shell helper that /gaia-resume's SKILL.md calls to read and
-# validate ADR-059 v1 JSON checkpoints. Per ADR-042 (Scripts-over-LLM for
-# Deterministic Operations), every deterministic checkpoint operation —
+# validate v1 JSON checkpoints. Every deterministic checkpoint operation —
 # listing candidates, parsing JSON, recomputing SHA-256 on referenced
 # files, detecting SKILL.md version drift — lives here. The LLM layer
 # (gaia-resume SKILL.md) only orchestrates the conversation.
@@ -26,9 +25,9 @@
 #       validate: one or more output_paths files deleted)
 #   3   SKILL.md content-hash mismatch between checkpoint and on-disk file
 #       (NEW — distinct from output-path drift)
-#   4   corrupted checkpoint JSON (routes caller to E43-S7 corruption handler)
+#   4   corrupted checkpoint JSON (routes caller to corruption handler)
 #
-# Schema v1 (ADR-059 §10.31.3):
+# Schema v1:
 #   {
 #     "schema_version":        1,
 #     "step_number":           <int>,
@@ -37,19 +36,13 @@
 #     "key_variables":         { ... },
 #     "output_paths":          [ ... ],
 #     "file_checksums":        { "<path>": "sha256:<64hex>", ... },
-#     "skill_md_content_hash": "sha256:<64hex>"    // optional, E43-S6
+#     "skill_md_content_hash": "sha256:<64hex>"    // optional
 #   }
 #
 # Companion scripts:
-#   write-checkpoint.sh    — atomic v1 JSON writer (E43-S1)
-#   resume-discovery.sh    — temp-file filtering + corruption classifier
-#                            (E43-S7); called by list / read --latest
-#
-# NFR-052 coverage signal — every public function referenced below is
-# exercised through the script's main entry point in e43-s6-resume-contract.bats:
-#   cmd_read cmd_validate cmd_list sha256_of latest_for_skill
-#   validate_file_checksums validate_skill_md_hash emit_drift_report
-#   die usage read_json_field
+#   write-checkpoint.sh    — atomic v1 JSON writer
+#   resume-discovery.sh    — temp-file filtering + corruption classifier;
+#                            called by list / read --latest
 
 set -euo pipefail
 LC_ALL=C
@@ -122,8 +115,8 @@ shift
 
 # ---------- shared helpers ----------
 
-# AF-2026-05-27-3 (ADR-111): .gaia/memory/checkpoints is the only location —
-# the legacy _memory/checkpoints fallback was removed with the consolidation
+# .gaia/memory/checkpoints is the only location — the legacy
+# _memory/checkpoints fallback was removed with the consolidation
 # migration. Env CHECKPOINT_ROOT override still wins.
 if [ -z "${CHECKPOINT_ROOT:-}" ]; then
   CHECKPOINT_ROOT=".gaia/memory/checkpoints"
@@ -187,7 +180,7 @@ PY
 
 # Discover the latest checkpoint for a skill. Delegates to
 # resume-discovery.sh when available (handles temp-file filtering,
-# non-canonical filtering, and corruption classification per E43-S7).
+# non-canonical filtering, and corruption classification).
 # Returns the path on stdout, exit 0 / 2 / 4 to mirror discovery semantics.
 latest_for_skill() {
   local skill="$1" discovery
@@ -377,12 +370,12 @@ cmd_read() {
     exit 2
   fi
 
-  # Enforce extension: ADR-059 is strictly JSON. Legacy .yaml files are
-  # rejected here (AC6 — no LLM YAML parser, no silent fallback).
+  # Enforce extension: checkpoints are strictly JSON. Legacy .yaml files are
+  # rejected here (no LLM YAML parser, no silent fallback).
   case "$path" in
     *.json) ;;
     *)
-      die 1 "not an ADR-059 JSON checkpoint (expected .json): $path" ;;
+      die 1 "not a JSON checkpoint (expected .json): $path" ;;
   esac
 
   if ! json_parse_check "$path"; then
@@ -418,11 +411,11 @@ cmd_validate() {
   [ -n "$path" ] || die 1 "validate requires --path FILE"
   [ -f "$path" ] || die 1 "checkpoint file not found: $path"
 
-  # Enforce JSON extension — AC6.
+  # Enforce JSON extension.
   case "$path" in
     *.json) ;;
     *)
-      die 1 "not an ADR-059 JSON checkpoint (expected .json): $path" ;;
+      die 1 "not a JSON checkpoint (expected .json): $path" ;;
   esac
 
   if ! json_parse_check "$path"; then

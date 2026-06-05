@@ -3,11 +3,9 @@
   "skill": "security",
   "name": "gdpr",
   "applies_to_skills": ["review-code", "review-security"],
-  "description": "GDPR-specific rules for code, security, and PII handling. Layer 2 of the four-layer rubric composition (base + regimes + domain + project) per ADR-079.",
+  "description": "GDPR-specific rules for code, security, and PII handling. Layer 2 of the four-layer rubric composition (base + regimes + domain + project).",
   "metadata": {
     "title": "GDPR regime rubric",
-    "story": "E68-S4",
-    "adr": "ADR-079",
     "regime_id": "gdpr",
     "references": ["GDPR-Art-5", "GDPR-Art-15", "GDPR-Art-17", "GDPR-Art-25", "GDPR-Art-32", "GDPR-Art-44"],
     "privacy": {

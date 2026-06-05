@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# write-val-sentinel.sh — atomic Val-gate sentinel writer (E83-S1)
+# write-val-sentinel.sh — atomic Val-gate sentinel writer
 #
-# Writes the ADR-037 structured Val return as a JSON sentinel under
+# Writes the structured Val return as a JSON sentinel under
 # $CHECKPOINT_PATH/add-feature-{feature_id}-val-dispatched.json. The sentinel
 # is the script-verifiable post-fact proof that Step 2 (Val Review Gate) of
 # the /gaia-add-feature skill actually dispatched a Val subagent and received
 # a structured verdict. finalize.sh validates the sentinel before allowing
-# cascade completion (FR-362, ADR-063 amendment).
+# cascade completion.
 #
 # Why this script and not a heredoc-JSON inline in finalize.sh?
-#   - AC4 / TC-VFC-4: hand-rolled JSON via `cat <<EOF` is forbidden — the
-#     defect surface for inline heredoc JSON is high. We use jq -n instead.
-#   - AC5 / TC-VFC-5: writes MUST be atomic so concurrent readers never see a
-#     partial-file parse error. The implementation is sibling-tempfile + mv,
-#     which is POSIX-atomic on the same filesystem.
+#   - Hand-rolled JSON via `cat <<EOF` is forbidden — the defect surface for
+#     inline heredoc JSON is high. We use jq -n instead.
+#   - Writes MUST be atomic so concurrent readers never see a partial-file
+#     parse error. The implementation is sibling-tempfile + mv, which is
+#     POSIX-atomic on the same filesystem.
 #
 # Invocation:
 #   write-val-sentinel.sh --feature-id <id> [--payload-stdin] < <(payload-json)
 #   write-val-sentinel.sh --feature-id <id>                   < <(payload-json)
 #
-#   The payload on stdin is the ADR-037 structured return from Val. The
+#   The payload on stdin is the structured return from Val. The
 #   minimum required keys are: status, summary, findings, agent. status MUST
 #   be one of {PASS, WARNING, CRITICAL, UNVERIFIED}. agent MUST be "val".
 #
@@ -52,7 +52,7 @@ usage() {
 Usage:
   write-val-sentinel.sh --feature-id <AF-YYYY-MM-DD-N> [--payload-stdin]
 
-The Val return payload is read from stdin (ADR-037 structured return).
+The Val return payload is read from stdin (structured return).
 Required keys: status, summary, findings, agent.
 USAGE
 }

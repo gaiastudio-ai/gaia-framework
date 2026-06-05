@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# adapters/dead-code/jvm-spotbugs/adapter.sh — E70-S8 JVM dead-code adapter.
+# adapters/dead-code/jvm-spotbugs/adapter.sh — JVM dead-code adapter.
 #
 # Wraps SpotBugs `-xml -output <tmp>`, then filters BugInstance elements to
 # priority=1 AND rank<=4 — a conservative "proven-dead-equivalent" default
 # (UPM, NP_GUARANTEED_DEREF, and equivalent dead-code-adjacent detectors). JVM
 # precision is an ordinal (priority x rank), NOT a confidence percentage; the
-# qualifier preserves the SpotBugs method signature verbatim (NFR-87 per-stack
+# qualifier preserves the SpotBugs method signature verbatim (per-stack
 # precision — no synthesized cross-stack score).
 #
 # Emits TWO outputs:
-#   - flat JSON  -> <out>/dead-code/jvm-spotbugs.json  (AC3/AC4)
-#   - SARIF      -> <out>/sarif/jvm-spotbugs.sarif       (.properties.symbol; dedup, Val F1)
+#   - flat JSON  -> <out>/dead-code/jvm-spotbugs.json
+#   - SARIF      -> <out>/sarif/jvm-spotbugs.sarif       (.properties.symbol; dedup)
 # file_path = BugInstance SourceLine/@sourcepath (repo-relative; universal JOIN key).
 # qualifier = "<FQCN>.<method>(<signature>)".
 #
@@ -18,8 +18,8 @@
 # parsers). The SpotBugs XML is well-formed single-line-per-element in practice;
 # the awk state machine tolerates attribute order.
 #
-# Flag-gated (ADR-078): deterministic_tools master + deadcode_jvm_enabled per-tool.
-# Graceful degrade (NFR-84): spotbugs absent OR no *.java/*.class -> WARN/INFO + exit 0.
+# Flag-gated: deterministic_tools master + deadcode_jvm_enabled per-tool.
+# Graceful degrade: spotbugs absent OR no *.java/*.class -> WARN/INFO + exit 0.
 #
 # Test seams (tests/adapters/dead-code-jvm.bats):
 #   JVM_PROJECT_ROOT     repo to scan
@@ -48,7 +48,7 @@ default_out() {
 }
 OUT="${JVM_OUT_DIR:-$(default_out)}"
 
-# --- Runner resolution (AF-2026-05-30-3 / Test10 §7 C2) -------------------
+# --- Runner resolution -------------------
 # When brownfield.tools.runner == docker, prefer the bundled gaia-tools
 # OCI image — operators no longer need a JVM + spotbugs JAR locally.
 _SB_SCRIPTS_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"

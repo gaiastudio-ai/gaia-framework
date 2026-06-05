@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-refresh-ground-truth skill finalize (E28-S79)
+# finalize.sh — gaia-refresh-ground-truth skill finalize
 #
-# Follows the shared finalize.sh pattern from E28-S17.
+# Follows the shared finalize.sh pattern.
 #
 # Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script

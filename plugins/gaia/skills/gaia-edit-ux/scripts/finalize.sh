@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# finalize.sh — Cluster 5 planning skill finalize (E28-S43, brief §Cluster 5 / P5-S4)
+# finalize.sh — planning skill finalize
 #
-# Mechanical copy of the Cluster 4 reference implementation authored under
-# E28-S35 (gaia-brainstorm/scripts/finalize.sh). Only WORKFLOW_NAME and
+# Mechanical copy of the brainstorm reference implementation
+# (gaia-brainstorm/scripts/finalize.sh). Only WORKFLOW_NAME and
 # SCRIPT_NAME differ — the body is byte-identical to the reference.
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script
 #   2. Emit a lifecycle event via lifecycle-event.sh for the tailing sync agent
 #

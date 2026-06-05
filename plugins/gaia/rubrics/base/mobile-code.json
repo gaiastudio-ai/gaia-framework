@@ -6,8 +6,6 @@
   "platform": "mobile",
   "metadata": {
     "title": "Mobile-platform code review sub-rubric",
-    "story": "E74-S3",
-    "adr": ["ADR-079", "ADR-081"],
     "description": "Mobile-specific code-quality criteria layered atop the universal base code rubric. Covers memory management (retain cycles), lifecycle handling (backgrounding, state restoration), platform API usage patterns, and threading/concurrency (main-thread blocking)."
   },
   "severity_rules": [

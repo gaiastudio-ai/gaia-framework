@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # infer-parent-epic.sh — Advisory deterministic parent-epic inference for
-# /gaia-add-feature Step 8 (E89-S3, FR-AFE-3, AI-2026-05-13-21).
+# /gaia-add-feature.
 #
 # Input
 #   --affected-skills <comma-separated list>
@@ -17,7 +17,7 @@
 # Exit code
 #   0 always — helper is advisory; consumers handle the output.
 #
-# "Open epic" definition (AC2)
+# "Open epic" definition
 #   An epic detail block is OPEN unless the (case-insensitive) substring
 #   `**Status: closed**`, `**Status: retired**`, or `**Status: sunset**`
 #   appears within the block.
@@ -55,13 +55,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# AC5: empty affected_skills -> no-match (NOT an error)
+# Empty affected_skills -> no-match (NOT an error)
 if [ -z "$AFFECTED_SKILLS" ]; then
   echo "no-match"
   exit 0
 fi
 
-# Default epics file (AF-2026-05-21-25 canonical-first with legacy fallback).
+# Default epics file (canonical-first with legacy fallback).
 if [ -z "$EPICS_FILE" ]; then
   if [ -f ".gaia/artifacts/planning-artifacts/epics-and-stories.md" ]; then
     EPICS_FILE=".gaia/artifacts/planning-artifacts/epics-and-stories.md"

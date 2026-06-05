@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
-# planned-active-gate.sh — planned→active readiness gate (E107-S4, the E107 capstone)
+# planned-active-gate.sh — planned→active readiness gate
 #
-# A HARD GATE layered on the E107-S1 `planned → active` edge (which sprint-state.sh
-# leaves unconditional per E107-S1 AC3 — this is the skill-side pre-transition
-# guard an operator/skill MUST run BEFORE `sprint-state.sh transition --to active`).
+# A HARD GATE layered on the `planned → active` edge (which sprint-state.sh
+# leaves unconditional — this is the skill-side pre-transition guard an
+# operator/skill MUST run BEFORE `sprint-state.sh transition --to active`).
 # It REFUSES activation unless EVERY sprint story:
 #   (1) has a materialized file (resolve-story-file.sh) AND is `ready-for-dev`
 #       (status read from the story FILE — the source of truth, not the yaml roster);
 #   (2) if ATDD-required (risk: high per the /gaia-atdd predicate), has an ATDD
 #       artifact under --test-artifacts (atdd-{epic}*.md OR atdd-{key}*.md);
-#   (3) the elaborated batch passes E106-S3's agent-native capacity check
+#   (3) the elaborated batch passes the agent-native capacity check
 #       (sm-capacity-check.sh) — read via --json `.flagged` (the script exits 0
-#       whether flagged or not; exit 1 is bad-args only — Val W1).
-# The refusal message names EXACTLY which stories fail which check (AC4).
-#
-# Refs: ADR-128, E107-S1 (edge), E107-S3 (materialization), E106-S3 (capacity),
-# /gaia-atdd high-risk predicate, FR-560, NFR-92
+#       whether flagged or not; exit 1 is bad-args only).
+# The refusal message names EXACTLY which stories fail which check.
 #
 # Invocation:
 #   planned-active-gate.sh --sprint-yaml <sprint-status.yaml> --impl-root <dir>
@@ -42,7 +39,7 @@ die() { log "$*"; exit 1; }
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'USAGE'
-planned-active-gate.sh — planned→active readiness gate (the E107 capstone)
+planned-active-gate.sh — planned→active readiness gate
 
 Usage:
   planned-active-gate.sh --sprint-yaml <sprint-status.yaml> --impl-root <dir>
@@ -133,9 +130,9 @@ done <<EOF
 $roster_keys
 EOF
 
-# (3) agent-native capacity (E106-S3) — build a KEY|DEPS|POINTS stories-file from
+# (3) agent-native capacity — build a KEY|DEPS|POINTS stories-file from
 # the roster (DEPS/POINTS unused by the three measures; KEY is what matters), run
-# sm-capacity-check.sh and parse --json `.flagged` (Val W1: exit 0 either way).
+# sm-capacity-check.sh and parse --json `.flagged` (exit 0 either way).
 capacity_flagged=0
 capacity_detail=""
 if [ -x "$CAPACITY" ]; then

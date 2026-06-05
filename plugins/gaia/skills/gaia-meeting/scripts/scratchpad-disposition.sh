@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# scratchpad-disposition.sh — gaia-meeting close-time disposition validator (E76-S4)
-#
-# AC4 / AC13 / FR-MTG-12.
+# scratchpad-disposition.sh — gaia-meeting close-time disposition validator
 #
 # Validates a single CLOSE-phase disposition value as one of:
 #   Extract | Keep | Drop  (case-insensitive; "Keep in notes only" also accepted)

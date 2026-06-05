@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# review-runner.sh — Sequential review orchestrator (E28-S72)
+# review-runner.sh — Sequential review orchestrator
 #
 # Runs 6 reviewer skills in deterministic order, records each verdict to the
 # Review Gate table via review-gate.sh, and never short-circuits on failure.
 #
-# Refs: FR-323, FR-325, FR-330, NFR-048, NFR-052, ADR-041, ADR-045
-# Brief: P9-S7
 #
 # Invocation:
 #   review-runner.sh <story_key>
@@ -22,16 +20,16 @@
 #   0 — all 6 reviewers returned PASSED
 #   1 — usage error, missing story_key, parallel flag, or any reviewer FAILED/crashed
 #
-# Sequential-only contract (ADR-045):
+# Sequential-only contract:
 #   This script MUST refuse parallel mode. Parallel execution would create
 #   race conditions on the Review Gate table.
 #
-# AC4 invariant:
+# All-reviewers invariant:
 #   "Remaining reviewers still run on first failure." The entire purpose
 #   of running all 6 sequentially is to surface all issues in one pass.
 #   Short-circuiting on first failure defeats the point.
 #
-# State transitions NOT owned here (AC-EC5):
+# State transitions NOT owned here:
 #   review-runner.sh only writes gate rows. State transitions (in-progress
 #   on any FAILED, or done when all PASSED) are owned by the state machine
 #   and driven by reading the final gate table state.
@@ -43,7 +41,7 @@ export LC_ALL
 SCRIPT_NAME="review-runner.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# ---------- Canonical reviewer sequence (AC2) ----------
+# ---------- Canonical reviewer sequence ----------
 # Order is deterministic and exactly:
 #   code-review -> security-review -> qa-generate-tests ->
 #   test-automation -> test-review -> performance-review
@@ -107,7 +105,7 @@ parse_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --parallel|-p)
-        die "parallel mode is not supported — review-runner.sh is sequential only (ADR-045)"
+        die "parallel mode is not supported — review-runner.sh is sequential only"
         ;;
       --help|-h)
         usage
@@ -136,7 +134,7 @@ parse_args() {
 
 # ---------- Reviewer execution ----------
 
-# Look up the verdict token for the i'th reviewer in MOCK_VERDICTS (E58-S5).
+# Look up the verdict token for the i'th reviewer in MOCK_VERDICTS.
 # MOCK_VERDICTS is a comma-separated list aligned with REVIEWER_SKILLS order:
 #   PASS,PASS,PASS,PASS,PASS,PASS  → all PASSED
 #   PASS,CRASH,PASS,PASS,PASS,PASS → reviewer #2 simulates a non-zero crash
@@ -162,22 +160,22 @@ mock_verdict_for_index() {
 #   0 — reviewer returned PASSED
 #   1 — reviewer returned FAILED or crashed
 #
-# Mode precedence (E58-S5):
+# Mode precedence:
 #   1. MOCK_VERDICTS path  — verdict-list mode driven by env var (per-slot
 #      verdict tokens including a CRASH sentinel for crash-resilience tests).
 #   2. REVIEWER_MOCK_DIR   — script-dir mode (legacy, exercised by the
-#      cluster-9 fixture suite — preserved for backward compatibility).
+#      fixture suite — preserved for backward compatibility).
 #   3. Real-mode no-op     — return 0 with no stdout. The SKILL.md harness
-#      (E58-S6) drives the LLM judgment and writes the gate row via
+#      drives the LLM judgment and writes the gate row via
 #      review-gate.sh update. review-runner.sh MUST NOT shell out to a model
-#      and MUST NOT write to the gate ledger from this slot (AC3, AC-EC4).
+#      and MUST NOT write to the gate ledger from this slot.
 run_reviewer() {
   local skill_name="$1"
   local story_key="$2"
   local idx="${3:-0}"
 
   if [ -n "${MOCK_VERDICTS:-}" ]; then
-    # MOCK_VERDICTS mode (E58-S5): pick the slot's verdict token.
+    # MOCK_VERDICTS mode: pick the slot's verdict token.
     local token
     token=$(mock_verdict_for_index "$idx")
     case "$token" in
@@ -186,7 +184,7 @@ run_reviewer() {
         return 0
         ;;
       CRASH)
-        # Simulate a reviewer crash — non-zero exit + FAILED stdout (AC4).
+        # Simulate a reviewer crash — non-zero exit + FAILED stdout.
         printf '%s: reviewer %s crashed (MOCK_VERDICTS sentinel)\n' "$SCRIPT_NAME" "$skill_name" >&2
         printf 'FAILED\n'
         return 1
@@ -206,7 +204,7 @@ run_reviewer() {
     fi
     local verdict
     verdict=$("$mock_script" "$story_key" 2>/dev/null) || {
-      # Crash (non-zero exit without verdict) — treat as FAILED (AC-EC1)
+      # Crash (non-zero exit without verdict) — treat as FAILED
       printf '%s: reviewer %s crashed (non-zero exit)\n' "$SCRIPT_NAME" "$skill_name" >&2
       echo "FAILED"
       return 1
@@ -221,14 +219,14 @@ run_reviewer() {
       return 1
     fi
   else
-    # Real-mode no-op (E58-S5, AC1/AC3/AC-EC4): the SKILL.md harness writes
+    # Real-mode no-op: the SKILL.md harness writes
     # the verdict via review-gate.sh update. The script never returns a
     # hardcoded verdict and never writes to the gate ledger from this slot.
     return 0
   fi
 }
 
-# Write verdict to the Review Gate table via review-gate.sh (AC3).
+# Write verdict to the Review Gate table via review-gate.sh.
 # One gate write per reviewer, no batching.
 write_gate() {
   local story_key="$1"
@@ -237,32 +235,31 @@ write_gate() {
 
   local gate_script="${REVIEW_GATE_SCRIPT:-$SCRIPT_DIR/review-gate.sh}"
   "$gate_script" update --story "$story_key" --gate "$gate_name" --verdict "$verdict" 2>/dev/null || {
-    # Gate-write failure is non-fatal (AC-EC4)
+    # Gate-write failure is non-fatal
     printf '%s: WARNING — failed to update gate row for "%s" (gate-write error)\n' "$SCRIPT_NAME" "$gate_name" >&2
   }
 }
 
-# ---------- E58-S5 orchestration helpers ----------
+# ---------- Orchestration helpers ----------
 
-# Boundary guard for MOCK_VERDICTS (AC-EC1). When MOCK_MODE=true, MOCK_VERDICTS
+# Boundary guard for MOCK_VERDICTS. When MOCK_MODE=true, MOCK_VERDICTS
 # MUST be present so the per-slot verdict lookup is well-defined. The guard
 # fires before any reviewer iteration so no gate-ledger writes can occur.
 assert_mock_verdicts_when_mock_mode() {
   if [ "${MOCK_MODE:-}" = "true" ] && [ -z "${MOCK_VERDICTS:-}" ]; then
-    die "MOCK_VERDICTS required when MOCK_MODE=true (E58-S5 AC-EC1)"
+    die "MOCK_VERDICTS required when MOCK_MODE=true"
   fi
 }
 
-# Run E58-S1 review-skip-check.sh if available; partition the reviewer list
-# into skip / run sets (AC2). When the script is not configured (no env
+# Run review-skip-check.sh if available; partition the reviewer list
+# into skip / run sets. When the script is not configured (no env
 # override and no sibling), fall back silently to "run all 6" — preserves
-# backward compatibility with the cluster-9 fixture suite that predates
-# E58-S1.
+# backward compatibility with fixture suites.
 #
 # JSON contract (review-skip-check.sh stdout):
 #   {"skip":["code-review",...],"run":["security-review",...]}
 #
-# AC-EC2: malformed JSON HALTs with a parse-error message and non-zero exit.
+# Malformed JSON HALTs with a parse-error message and non-zero exit.
 SKIP_LIST=""
 run_skip_check() {
   local skip_script="${REVIEW_SKIP_CHECK_SCRIPT:-}"
@@ -287,7 +284,7 @@ run_skip_check() {
   }
 
   # Parse the skip array. jq is required (matches review-skip-check.sh
-  # discipline). On parse failure HALT (AC-EC2).
+  # discipline). On parse failure HALT.
   if ! command -v jq >/dev/null 2>&1; then
     SKIP_LIST=""
     return 0
@@ -313,9 +310,8 @@ is_skipped() {
 # Two ways to enable a soft dep:
 #   1. Set the explicit env override (e.g., REVIEW_SUMMARY_GEN_SCRIPT=/path).
 #   2. Place the script as a sibling of review-runner.sh AND set the
-#      REVIEW_RUNNER_USE_<NAME>=1 opt-in. The opt-in keeps the cluster-9
-#      fixture suite (which predates E58-S1/S2/S3) free of side effects from
-#      sibling scripts that may not yet be fully wired.
+#      REVIEW_RUNNER_USE_<NAME>=1 opt-in. The opt-in keeps fixture suites
+#      free of side effects from sibling scripts that may not yet be fully wired.
 resolve_soft_dep_script() {
   local override_var="$1"
   local sibling_name="$2"
@@ -331,7 +327,7 @@ resolve_soft_dep_script() {
   fi
 }
 
-# Soft-dependency call for review-summary-gen.sh (E58-S2). Non-fatal —
+# Soft-dependency call for review-summary-gen.sh. Non-fatal —
 # failures emit a warning but never abort the orchestrator.
 run_summary_gen() {
   local script
@@ -342,7 +338,7 @@ run_summary_gen() {
   }
 }
 
-# Soft-dependency call for review-nudge.sh (E58-S3). Non-fatal — failures
+# Soft-dependency call for review-nudge.sh. Non-fatal — failures
 # emit a warning but never abort the orchestrator.
 run_nudge() {
   local script
@@ -355,7 +351,7 @@ run_nudge() {
 
 # ---------- Main orchestration ----------
 #
-# Canonical orchestration order (E58-S5 AC2):
+# Canonical orchestration order:
 #   1. skip-check
 #   2. for each non-skipped reviewer: judgment slot -> gate write
 #   3. summary-gen
@@ -366,10 +362,10 @@ run_nudge() {
 main() {
   parse_args "$@"
 
-  # AC-EC1: MOCK_VERDICTS guard before any per-reviewer work.
+  # MOCK_VERDICTS guard before any per-reviewer work.
   assert_mock_verdicts_when_mock_mode
 
-  # Step 1 — skip-check (AC2).
+  # Step 1 — skip-check.
   run_skip_check
 
   local any_failed=0
@@ -388,9 +384,9 @@ main() {
     printf '%s: running reviewer %d/6: %s (%s)\n' "$SCRIPT_NAME" $((i + 1)) "$skill" "$gate_name" >&2
 
     local verdict
-    # Step 2 — per-reviewer judgment slot (AC2). Crash-resilient: a non-zero
+    # Step 2 — per-reviewer judgment slot. Crash-resilient: a non-zero
     # exit from run_reviewer is captured and written as FAILED, then the loop
-    # continues to the next reviewer (AC4 / AC-EC3).
+    # continues to the next reviewer.
     verdict=$(run_reviewer "$skill" "$STORY_KEY" "$i") || true
 
     # Default to FAILED if verdict is empty (real-mode no-op leaves stdout
@@ -398,7 +394,7 @@ main() {
     # row directly and review-runner.sh skips the gate write below).
     if [ -z "$verdict" ]; then
       if [ -z "${MOCK_VERDICTS:-}" ] && [ -z "${REVIEWER_MOCK_DIR:-}" ]; then
-        # AC3 / AC-EC4: real-mode judgment slot returns control without
+        # Real-mode: judgment slot returns control without
         # writing to the gate ledger. The SKILL.md harness owns the verdict.
         printf '%s: real-mode no-op for reviewer %s — SKILL.md owns verdict write\n' "$SCRIPT_NAME" "$skill" >&2
         i=$((i + 1))
@@ -407,7 +403,7 @@ main() {
       verdict="FAILED"
     fi
 
-    # Step 2 cont. — gate write per reviewer (AC2 / AC3 mock-mode path).
+    # Step 2 cont. — gate write per reviewer (mock-mode path).
     write_gate "$STORY_KEY" "$gate_name" "$verdict"
 
     if [ "$verdict" = "FAILED" ]; then
@@ -420,9 +416,9 @@ main() {
     i=$((i + 1))
   done
 
-  # Step 3 — summary-gen (AC2).
+  # Step 3 — summary-gen.
   run_summary_gen
-  # Step 4 — nudge (AC2).
+  # Step 4 — nudge.
   run_nudge
 
   if [ $any_failed -eq 1 ]; then

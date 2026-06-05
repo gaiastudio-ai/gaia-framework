@@ -1,14 +1,14 @@
-# Cross-Tool Finding Deduplication Contract (E104-S1 / FR-541 / ADR-123)
+# Cross-Tool Finding Deduplication Contract
 
 The brownfield Phase 7 gap-consolidation recipe runs a deterministic dedup step
 (`scripts/adapters/brownfield/dedup.sh`) over the merged SARIF produced by
-E104-S4. Without dedup, multiple scanners reporting the same vulnerability or the
+the SARIF merge step. Without dedup, multiple scanners reporting the same vulnerability or the
 same dead-code symbol inflate finding counts 2–4×, making the deterministic-tools
 rollout noisier than the LLM heuristic it replaces (day-one trust-erosion guard).
 
 Dedup uses **two key shapes** — one per finding class — because CVE findings carry
 a stable global identifier while non-CVE findings (dead code, complexity, lint) do
-not. (Source: Val INFO Finding 2, `assessment-AF-2026-05-23-1.md` L99-101.)
+not.
 
 ## CVE class
 
@@ -43,14 +43,14 @@ Everything not matching the CVE regex (dead-code, complexity, lint).
 - **Winner:** highest precision per the **precision ladder**
   (`deadcode-go = 0` > `spotbugs = 1` > `vulture = 2` > `lint = 3`; unknown = 99).
 
-> **Key-shape note (intent vs. literal AC).** AC1's literal text spells the
+> **Key-shape note (intent vs. literal spec).** The literal text spells the
 > non-CVE key as `(tool, file-path, symbol-qualifier)`. But if `tool` is part of
 > the GROUPING key, the same symbol reported by two different tools never
 > collides — so the precision ladder (whose entire purpose is to pick the best
 > tool for the *same* symbol) could never fire, and the inflation-reduction goal
 > would be unreachable for non-CVE findings. This contract therefore groups by
 > `(file-path, symbol-qualifier)` and uses `tool` ONLY to select the winner via
-> the precision ladder — implementing AC1's stated GOAL rather than its
+> the precision ladder — implementing the stated GOAL rather than its
 > self-contradictory literal MECHANISM. The deviation is recorded in the story
 > Findings table.
 
@@ -92,7 +92,7 @@ cases are normal.
 ## Path canonicalization
 
 Both `file-path` values in the dedup keys MUST be repo-root-relative. The SARIF
-merge step (E104-S4) canonicalizes `artifactLocation.uri` to repo-root-relative
+merge step canonicalizes `artifactLocation.uri` to repo-root-relative
 BEFORE dedup runs, so dedup keys on those paths verbatim.
 
 ## Empty input
@@ -104,15 +104,15 @@ No error.
 ## Pipeline position
 
 Dedup is the FIRST sub-step of the 6-step gap-consolidation recipe
-(load → **dedup** → validate → rank → budget → write), AFTER E104-S4's SARIF merge
-PRE-step and BEFORE E104-S2's Phase 4b reconciliation. Dedup-first reduces the
+(load → **dedup** → validate → rank → budget → write), AFTER the SARIF merge
+PRE-step and BEFORE the Phase 4b reconciliation. Dedup-first reduces the
 working set that downstream validate/rank/budget process.
 
 ## I/O paths
 
 - **Input:** `.gaia/artifacts/planning-artifacts/brownfield-sarif-merged.json`
-  (E104-S4's actual output; env-overridable via `DEDUP_INPUT`). The story seed
+  (the SARIF merge step's actual output; env-overridable via `DEDUP_INPUT`). The story seed
   referenced a stale `.gaia/memory/brownfield-audit/merged-sarif.json` path — see
   the story Findings table.
 - **Output:** `.gaia/memory/brownfield-audit/deduped-findings.json`
-  (env-overridable via `DEDUP_OUTPUT`; consumed by E104-S2 Phase 4b reconciliation).
+  (env-overridable via `DEDUP_OUTPUT`; consumed by the Phase 4b reconciliation).

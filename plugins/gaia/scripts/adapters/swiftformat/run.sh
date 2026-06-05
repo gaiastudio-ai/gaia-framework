@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/swiftformat/run.sh — ADR-078 adapter contract for SwiftFormat (E74-S7).
+# adapters/swiftformat/run.sh — adapter contract for SwiftFormat.
 # Invokes `swiftformat --lint` against the file list in non-mutating mode and emits
 # a canonical analysis-results fragment.
 

@@ -18,9 +18,9 @@ Visualization → Storytelling Polish → Generate Output**. Produces a
 pitch-deck specification at
 `.gaia/artifacts/creative-artifacts/pitch-deck-{date}.md` covering every
 standard pitch section with speaker notes and chart specs. Converted
-under ADR-041 (native execution model) with full functional parity
-against the legacy source (NFR-053). The legacy-source path is
-intentionally omitted from the body per the E28-S104 "zero legacy
+to the native execution model with full functional parity
+against the legacy source. The legacy-source path is
+intentionally omitted from the body per the "zero legacy
 references" parity check; see the References section for the parity
 source pointer.
 
@@ -222,8 +222,7 @@ Assemble the final pitch-deck specification.
 Write the pitch-deck specification to
 `.gaia/artifacts/creative-artifacts/pitch-deck-{date}.md` where `{date}` is the
 current date in `YYYY-MM-DD` form. This path is verbatim from the
-legacy workflow's `output.primary` contract (NFR-053 — functional
-parity).
+legacy workflow's `output.primary` contract (functional parity).
 
 ### Same-day overwrite handling (AC-EC6 analogue)
 
@@ -266,9 +265,9 @@ The artifact body includes:
 
 ## Frontmatter linter compliance
 
-This SKILL.md passes the E28-S7 frontmatter linter
+This SKILL.md passes the frontmatter linter
 (`.github/scripts/lint-skill-frontmatter.sh`) with zero errors. The
-required fields per E28-S19 schema are present: `name` (matches the
+required fields per the schema are present: `name` (matches the
 directory slug) and `description` (trigger signature with concrete
 action phrase). `allowed-tools` is validated against the canonical
 tool set (Agent is required because Vermeer is invoked via the Agent
@@ -284,7 +283,7 @@ seven native phases:
 | Step 1 — Pitch Context | Phase 1 | Same three inputs (audience, stage, ask) |
 | Step 2 — Load Business Artifacts | Phase 2 | Same product-brief / market / innovation sources; same extracted-data-points contract |
 | Step 3 — Standard Pitch Structure | Phase 3 | Same eight-section canonical order (Cover, Problem, Solution, Market, Business Model, Traction, Team, Ask) |
-| Step 4 — Slide-by-Slide Content | Phase 4 | Same subagent role (Vermeer / presentation-designer); delegation via Agent tool per ADR-041 |
+| Step 4 — Slide-by-Slide Content | Phase 4 | Same subagent role (Vermeer / presentation-designer); delegation via Agent tool |
 | Step 5 — Data Visualization | Phase 5 | Same chart list (market, growth, revenue, competitive) |
 | Step 6 — Storytelling Polish | Phase 6 | Same narrative-flow + emotional-beats + hook / CTA decomposition |
 | Step 7 — Generate Output | Phase 7 | Same output path `pitch-deck-{date}.md` |
@@ -292,24 +291,18 @@ seven native phases:
 The pitch structure, the speaker-notes requirement, and the
 every-data-point-must-be-credible rule are preserved verbatim from
 the legacy workflow — only the orchestration mechanism changes
-(native `context: fork` subagent delegation under ADR-041 instead of
+(native `context: fork` subagent delegation instead of
 legacy engine-driven step dispatch).
 
 ## References
 
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents +
-  Plugins + Hooks (replaces the legacy workflow engine)
-- FR-323 — Skill-to-workflow conversion mapping
-- NFR-048 — Conversion token-reduction target
-- NFR-053 — Functional parity with legacy workflow
 - Reference implementations:
-  - `plugins/gaia/skills/gaia-slide-deck/SKILL.md` (E28-S104 —
-    sibling skill, same subagent, generic-deck structure)
-  - `plugins/gaia/skills/gaia-creative-sprint/SKILL.md` (E28-S102 —
-    multi-subagent orchestrator with legacy parity table)
-- Converted subagent (E28-S22):
+  - `plugins/gaia/skills/gaia-slide-deck/SKILL.md` (sibling skill,
+    same subagent, generic-deck structure)
+  - `plugins/gaia/skills/gaia-creative-sprint/SKILL.md` (multi-subagent
+    orchestrator with legacy parity table)
+- Converted subagent:
   - `plugins/gaia/agents/presentation-designer.md` — Vermeer
 - Legacy parity source (for reference only; not invoked from this
   skill; legacy path intentionally omitted from the body to satisfy
-  the "zero legacy references" parity check — see E28-S104 test
-  scenario 10).
+  the "zero legacy references" parity check).

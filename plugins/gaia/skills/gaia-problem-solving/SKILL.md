@@ -17,7 +17,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Memory
 
@@ -31,10 +31,10 @@ context budget, and tiered resolution routing (quick fix / bug /
 enhancement / systemic). Produces a structured problem-solving report
 at `.gaia/artifacts/creative-artifacts/problem-solving-{date}.md` and routes the
 resolution into the right downstream flow (`/gaia-create-story`,
-`/gaia-add-feature`, or escalation to architect / PM). Converted under
-ADR-041 (native execution model) with full functional parity against
-the legacy source (NFR-053). The legacy-source path is intentionally
-omitted from the body per the E28-S104 "zero legacy references"
+`/gaia-add-feature`, or escalation to architect / PM). Converted to
+the native execution model with full functional parity against
+the legacy source. The legacy-source path is intentionally
+omitted from the body per the "zero legacy references"
 parity check; see the References section for the parity source
 pointer.
 
@@ -249,7 +249,7 @@ code.
 **Synthesize the Context Brief** with all gathered context plus a
 keyword hit-count table and a token-usage breakdown per sub-budget.
 
-#### Empty-context handling (E49-S3 / FR-368 / AC1, AC4 / TC-GR37-11)
+#### Empty-context handling
 
 When **all six sub-budget sources** (Stories, Architecture, PRD,
 Decision Logs, Codebase, Test Artifacts) return empty or
@@ -259,7 +259,7 @@ not-found:
    Context Brief metadata.
 2. Emit an info-level log line: `Context Brief empty -- no artifact
    sources returned data`. This is the canonical gap-logging
-   signature consumed by FR-393 observability.
+   signature consumed by the observability pipeline.
 3. Proceed gracefully — do NOT raise a missing-context error and
    do NOT crash on context-overflow (the zero-context edge case is
    covered by the same "no context-overflow crash" guarantee from
@@ -268,10 +268,10 @@ not-found:
    - **Normal mode (default):** continue to Phase 3, where the
      fallback interrogation path collects the missing context from
      the user before the Planning Gate fires.
-   - **YOLO mode (per ADR-061):** skip the Phase 3 fallback
+   - **YOLO mode:** skip the Phase 3 fallback
      interrogation prompts entirely. Auto-proceed with the empty
      Context Brief and emit the gap-log line `Context Brief empty
-     -- proceeding with YOLO defaults (FR-393)`. The Planning Gate
+     -- proceeding with YOLO defaults`. The Planning Gate
      still fires but auto-approves per the YOLO mode contract — no
      user prompts are emitted for missing context. Downstream
      phases (3-10) operate on the problem statement alone.
@@ -296,13 +296,13 @@ test results. Define what "solved" looks like — success criteria
 grounded in existing acceptance criteria from related stories and
 PRD requirements found in the Context Brief.
 
-#### Fallback interrogation path (E49-S3 / FR-368 / AC2, AC3 / ADR-066 / TC-GR37-11)
+#### Fallback interrogation path
 
 If `context_brief_empty: true` was set by Phase 2 (all six
 sub-budget sources returned empty) and execution mode is **normal**
 (YOLO mode is handled inline in Phase 2 — see "Empty-context
 handling" above), fall back to a structured three-prompt
-interrogation sequence per ADR-066 (inline-ask over fail-fast). The
+interrogation sequence (inline-ask over fail-fast). The
 fallback runs BEFORE Nova subagent dispatch — Nova receives the
 user-populated Context Brief, not an empty one.
 
@@ -443,7 +443,7 @@ methodology library. No partial output written.
 Write the problem-solving artifact to
 `.gaia/artifacts/creative-artifacts/problem-solving-{date}.md` where `{date}` is
 the current date in `YYYY-MM-DD` form. This path is verbatim from the
-legacy workflow's `output.primary` contract (NFR-053 — functional
+legacy workflow's `output.primary` contract (functional
 parity).
 
 ### Same-day overwrite handling (AC-EC6 analogue)
@@ -505,9 +505,9 @@ The artifact body includes:
 
 ## Frontmatter linter compliance
 
-This SKILL.md passes the E28-S7 frontmatter linter
+This SKILL.md passes the frontmatter linter
 (`.github/scripts/lint-skill-frontmatter.sh`) with zero errors. The
-required fields per E28-S19 schema are present: `name` (matches the
+required fields per the schema are present: `name` (matches the
 directory slug) and `description` (trigger signature with concrete
 action phrase). `allowed-tools` is validated against the canonical
 tool set (Agent is required because Nova and downstream create-story
@@ -537,30 +537,29 @@ eleven native phases:
 The context-budget allocations, input-file-patterns contract, tiered
 resolution routing, and subagent delegation pattern are preserved
 verbatim from the legacy workflow — only the orchestration mechanism
-changes (native `context: fork` subagent delegation under ADR-041
+changes (native `context: fork` subagent delegation
 and an explicit plan-approve-execute gate instead of legacy
 engine-driven step dispatch with the `execution_mode: planning`
 switch).
 
 ## References
 
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents +
+- Native Execution Model via Claude Code Skills + Subagents +
   Plugins + Hooks (replaces the legacy workflow engine)
-- FR-323 — Skill-to-workflow conversion mapping
-- NFR-042 — Problem-solving context budget contract
-- NFR-048 — Conversion token-reduction target
-- NFR-053 — Functional parity with legacy workflow
+- Skill-to-workflow conversion mapping
+- Problem-solving context budget contract
+- Conversion token-reduction target
+- Functional parity with legacy workflow
 - Reference implementations:
-  - `plugins/gaia/skills/gaia-creative-sprint/SKILL.md` (E28-S102 —
-    multi-subagent orchestrator with legacy parity table)
-  - `plugins/gaia/skills/gaia-brainstorming/SKILL.md` (E28-S100 —
-    single-subagent creative skill)
-- Converted subagent (E28-S22):
+  - `plugins/gaia/skills/gaia-creative-sprint/SKILL.md` —
+    multi-subagent orchestrator with legacy parity table
+  - `plugins/gaia/skills/gaia-brainstorming/SKILL.md` —
+    single-subagent creative skill
+- Converted subagent:
   - `plugins/gaia/agents/problem-solver.md` — Nova
 - Data file (not converted by this story; resolved by the foundation
   path-resolution script):
   - `{data_path}/solving-methods.csv`
 - Legacy parity source (for reference only; not invoked from this
   skill; legacy path intentionally omitted from the body to satisfy
-  the "zero legacy references" parity check — see E28-S104 test
-  scenario 10).
+  the "zero legacy references" parity check).

@@ -3,11 +3,9 @@
   "skill": "security",
   "name": "sox",
   "applies_to_skills": ["review-code", "review-security"],
-  "description": "SOX 404 rules for code paths affecting financial reporting integrity — audit trail, segregation of duties, change management, data integrity, access control. Layer 2 of the four-layer rubric composition per ADR-079.",
+  "description": "SOX 404 rules for code paths affecting financial reporting integrity — audit trail, segregation of duties, change management, data integrity, access control. Layer 2 of the four-layer rubric composition.",
   "metadata": {
     "title": "SOX regime rubric",
-    "story": "E68-S4",
-    "adr": "ADR-079",
     "regime_id": "sox",
     "references": ["SOX-302", "SOX-404", "SOX-409", "COSO-2013", "COBIT-2019"]
   },

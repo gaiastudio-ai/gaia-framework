@@ -1,6 +1,6 @@
 # Reference Frontmatter — gaia-test-review
 
-> Verbatim copy of the brief's `test-review` frontmatter example (E28-S70).
+> Verbatim copy of the brief's `test-review` frontmatter example.
 > This file exists for future contributor reference. Do not modify.
 
 ```yaml

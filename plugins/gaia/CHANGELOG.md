@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ## [1.187.2] — 2026-06-04
 
@@ -28,17 +28,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- (E87-S13) adversarial sidecar schema + adr-131 formalization (#1098)
-- (E87-S12) adversarial sidecar consumer migration (#1097)
-- (E87-S11) adversarial json sidecar emitter + paired paths (#1096)
-- (E87-S10) wire tc-osv traceability bats for envelope original_status field (#1095)
-- (E87-S9) compose-verdict original_status bookkeeping (#1094)
-- (E87-S8) wire ADR-130 envelope original_status field — persona Se (#1093)
-- (E108-S4) infrastructure-design schema + enum 18 to 19 (#1092)
-- (E108-S3) threat-model schema + /gaia-threat-model References (veri (#1090)
-- (E108-S2) performance-test-plan schema + enum 17 to 18 (#1089)
-- (E108-S1) nfr-assessment schema + enum 16→17 (#1088)
-- (E108-S5) validate-artifact-schema.sh shared lib (#1087)
+- adversarial sidecar schema + formalization (#1098)
+- adversarial sidecar consumer migration (#1097)
+- adversarial json sidecar emitter + paired paths (#1096)
+- wire tc-osv traceability bats for envelope original_status field (#1095)
+- compose-verdict original_status bookkeeping (#1094)
+- wire envelope original_status field — persona Se (#1093)
+- infrastructure-design schema + enum 18 to 19 (#1092)
+- threat-model schema + /gaia-threat-model References (veri (#1090)
+- performance-test-plan schema + enum 17 to 18 (#1089)
+- nfr-assessment schema + enum 16→17 (#1088)
+- validate-artifact-schema.sh shared lib (#1087)
 
 ### Changed
 
@@ -48,7 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- (AF-2026-06-02-6) test17 brownfield sweep — 18 fixes (#1084)
+- brownfield sweep — 18 fixes (#1084)
 
 ## [1.185.1] — 2026-06-02
 
@@ -60,25 +60,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- (AF-2026-06-02-4) /gaia-statusline-refresh slash command (#1077)
+- gaia-statusline-refresh slash command (#1077)
 
 ## [1.184.0] — 2026-06-02
 
 ### Added
 
-- (AF-2026-06-02-3) consent-gated self-heal of stale statusline runtime (#1074)
+- consent-gated self-heal of stale statusline runtime (#1074)
 
 ## [1.183.0] — 2026-06-02
 
 ### Added
 
-- (AF-2026-06-02-2) rename gaia-public to gaia-framework across in-tree refs (#1071)
+- rename gaia-public to gaia-framework across in-tree refs (#1071)
 
 ## [1.182.11] — 2026-06-01
 
 ### Fixed
 
-- (AF-33-1) test16 (v1.182.5) framework findings sweep — 19 F + 3 D (#1068)
+- (v1.182.5) framework findings sweep — 19 F + 3 D (#1068)
 
 ## [1.182.10] — 2026-06-01
 
@@ -94,7 +94,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- (AF-32-4) add SKILL.md backing bare /gaia slash command (#1061)
+- add SKILL.md backing bare /gaia slash command (#1061)
 
 ## [1.182.8] — 2026-06-01
 
@@ -106,185 +106,185 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- (#1047) add sprint_review.frontend_commands map (AF-2026-06-01-4) (#1049)
+- (#1047) add sprint_review.frontend_commands map (#1049)
 
 ## [1.182.6] — 2026-06-01
 
 ### Changed
 
-- remove legacy gaia-public/docs/ tree + cruft sweep (AF-2026-06-01-3) (#1044)
-- remove legacy gaia-public/_memory/ tree (post-ADR-111) (#1042)
+- remove legacy gaia-public/docs/ tree + cruft sweep (#1044)
+- remove legacy gaia-public/_memory/ tree (post) (#1042)
 
 ## [1.182.5] — 2026-06-01
 
 ### Changed
 
-- promote staging to main — AF-32-1 Test15 sweep
+- promote staging to main — sweep
 
 ### Fixed
 
-- (AF-32-1) test15 (v1.182.4) framework findings sweep — 22 F + 3 D (#1039)
+- (v1.182.4) framework findings sweep — 22 F + 3 D (#1039)
 
 ## [1.182.4] — 2026-06-01
 
 ### Changed
 
-- (af-31-3) 44 bats covering test14 findings + 5 doc gaps
+- 44 bats covering findings + 5 doc gaps
 
 ### Fixed
 
-- (ci) mark merge_3deep as private (_merge_3deep) for NFR-052
-- (ci) bats regression fallout from AF-31-3 F-13/F-16 + fixture (F-12)
-- (low) init/yaml-editor/canonical-filename + SKILL prose (AF-31-3 F-01/04/12/14 + D-01..D-05)
-- (med) full layout retrofit + readiness-report generator (AF-31-3 F-15..F-21)
-- (med) brownfield doctor/grype/resolve/render + ci-setup generator (AF-31-3 F-05/07/08/09/10/11)
-- (high) sprint-state.sh review→closed requires Val sentinel (AF-31-3 F-13)
-- (high) bundle Sarif.Multitool via .NET SDK + sarif entrypoint (AF-31-3 F-02/06)
+- (ci) mark merge_3deep as private (_merge_3deep) for the coverage gate
+- (ci) bats regression fallout from / + fixture
+- (low) init/yaml-editor/canonical-filename + SKILL prose
+- (med) full layout retrofit + readiness-report generator
+- (med) brownfield doctor/grype/resolve/render + ci-setup generator
+- (high) sprint-state.sh review→closed requires Val sentinel
+- (high) bundle Sarif.Multitool via .NET SDK + sarif entrypoint
 
 ## [1.182.3] — 2026-05-31
 
 ### Changed
 
-- (med) gaia-tools image docs + 48 bats for AF-31-2 test13 fixes
+- (med) gaia-tools image docs + 48 bats for fixes
 
 ### Fixed
 
-- (ci) orchestration-warning regression test guards against the F-12 fix-class
-- (med) pipeline + dashboard + init cleanup (AF-31-2 F-06/13/19/20/23/26/27/29 + LOW)
-- (high) brownfield runner-aware dispatch (AF-31-2 F-15/16/17/18 + sarif-merge)
-- (high) docker image rebuild — 6 build-blockers + sarif-multitool (AF-31-2)
-- (high) three bash 3.2 regressions from AF-31-1 (AF-31-2 F-14/24/28)
+- (ci) orchestration-warning regression test guards against the fix-class
+- (med) pipeline + dashboard + init cleanup (LOW)
+- (high) brownfield runner-aware dispatch (sarif-merge)
+- (high) docker image rebuild — 6 build-blockers + sarif-multitool
+- (high) three bash 3.2 regressions from the prior sweep
 
 ## [1.182.2] — 2026-05-31
 
 ### Changed
 
-- cross-platform portability matrix + 59 bats covering AF-31-1 test12 fixes
+- cross-platform portability matrix + 59 bats covering fixes
 
 ### Fixed
 
-- (ci) two test fallout fixes from AF-31-1 (dispatches verb + AF-30-4 F-05)
-- (ci) collapse sprint-plan init to single line for AF-26-3 F-7 regex match
-- (high) doctor ANSI + bridge counts + sprint dates + state-machine + sprint flag (AF-31-1)
-- (high) brownfield wire-up — grype/syft dispatch + yolo carve-out + template + V-01 (AF-31-1)
-- (med) init platform vocab adds server/backend + gitignore back-fill (AF-31-1 F-02/03/09)
-- (high) bash 3.2 portability across deterministic-tools chain (AF-31-1 F-01/04/06)
+- (ci) two test fallout fixes from (dispatches verb)
+- (ci) collapse sprint-plan init to single line for regex match
+- (high) doctor ANSI + bridge counts + sprint dates + state-machine + sprint flag
+- (high) brownfield wire-up — grype/syft dispatch + yolo carve-out + template
+- (med) init platform vocab adds server/backend + gitignore back-fill
+- (high) bash 3.2 portability across deterministic-tools chain
 
 ## [1.182.1] — 2026-05-30
 
 ### Changed
 
-- (af-30-5) close test11 D-04 + D-05 html doc gaps (AF-30-5)
+- close + html doc gaps
 
 ## [1.182.0] — 2026-05-30
 
 ### Added
 
-- (brownfield) flip deterministic-tools defaults to on (AF-30-3)
-- (runner) docker dispatch for tier-2 adapters + `/gaia-doctor --install --docker` (AF-30-3; the docker mode for the READ-ONLY check is config-driven via `brownfield.tools.runner: docker`, NOT a `check-tools.sh --docker` flag — per AF-31-2 / Test13 F-11)
-- (tools) gaia-tools OCI image bundling tier-2 scanners (AF-30-3)
+- (brownfield) flip deterministic-tools defaults to on
+- (runner) docker dispatch for tier-2 adapters + `/gaia-doctor --install --docker` (the docker mode for the READ-ONLY check is config-driven via `brownfield.tools.runner: docker`, NOT a `check-tools.sh --docker` flag)
+- (tools) gaia-tools OCI image bundling tier-2 scanners
 
 ### Changed
 
-- (af-30-4) 44 bats covering Test11 fixes (AF-30-4)
-- (af-30-3) 29 bats covering docker runner end-to-end (AF-30-3)
+- 44 bats covering fixes
+- 29 bats covering docker runner end-to-end
 
 ### Fixed
 
-- (skills,scripts) med + low + d-gap batches (AF-30-4)
-- (high) zero-config seed + bash guard + labels + bridge (AF-30-4)
-- (doctor) stack parse + tier promotion + pip + sarif (AF-30-4 F-22..F-27)
+- (skills,scripts) med + low + d-gap batches
+- (high) zero-config seed + bash guard + labels + bridge
+- (doctor) stack parse + tier promotion + pip + sarif
 
 ## [1.181.0] — 2026-05-30
 
 ### Added
 
-- (doctor) /gaia-doctor preflight tool readiness scan (AF-30-2)
+- (doctor) /gaia-doctor preflight tool readiness scan
 
 ### Changed
 
-- (af-30-2) 32 bats covering Test10 fixes (AF-30-2)
+- 32 bats covering fixes
 
 ### Fixed
 
-- (af-30-2) register brownfield as managed-elsewhere + x-no-auto-hydration (AF-30-2)
-- (af-30-2) ci regressions round 2 (AF-30-2)
-- (af-30-2) ci regressions from sweep over-correction (AF-30-2)
-- (skills) canonical config-path sweep across skill md + scripts (AF-30-2 F-02)
-- (low) /gaia-config-brownfield + templates + dev/sprint/trace polish (AF-30-2 LOW batch)
-- (med) bash 3.2 + ledger + DoD + dep-gate + retro paths + resolver + schemas (AF-30-2)
-- (high) bridge + zero-config + headless platform + tier (AF-30-2)
+- register brownfield as managed-elsewhere + x-no-auto-hydration
+- ci regressions round 2
+- ci regressions from sweep over-correction
+- (skills) canonical config-path sweep across skill md + scripts
+- (low) /gaia-config-brownfield + templates + dev/sprint/trace polish (LOW batch)
+- (med) bash 3.2 + ledger + DoD + dep-gate + retro paths + resolver + schemas
+- (high) bridge + zero-config + headless platform + tier
 
 ## [1.180.10] — 2026-05-30
 
 ### Changed
 
-- (af-30-1) 23 bats covering Test03 §7.3 drift closures (AF-30-1)
+- 23 bats covering drift closures
 
 ### Fixed
 
-- (af-30-1) mark migrate helper internals private (NFR-052)
-- (test-artifacts) per-story mirror layout via shared resolver (AF-30-1 drift 2)
-- (adversarial) write to adversarial/ subdir per Test03 §7.3 (AF-30-1 drift 1)
+- mark migrate helper internals private
+- (test-artifacts) per-story mirror layout via shared resolver (drift 2)
+- (adversarial) write to adversarial/ subdir per (drift 1)
 
 ## [1.180.9] — 2026-05-29
 
 ### Changed
 
-- (skills) add Operator Quickstart to dev-story + review-all + sprint-review (AF-29-3 D6)
+- (skills) add Operator Quickstart to dev-story + review-all + sprint-review (D6)
 
 ## [1.180.8] — 2026-05-29
 
 ### Changed
 
-- (af-29-2) 32 bats covering Test09 fixes (AF-29-2)
-- (test08) update 2 tests that asserted the pre-fix behavior
-- (test08) cover each fix + add SKILL.md↔script contract-drift sweep guard
+- 32 bats covering fixes
+- update 2 tests that asserted the pre-fix behavior
+- cover each fix + add SKILL.md↔script contract-drift sweep guard
 
 ### Fixed
 
-- (trace) keep F-38 anchor literal in coverage formula (AF-29-2)
-- (skills,agents) ui-present + stack-detect + pytest + trace + sprint-activate (AF-29-2)
-- (skills) brownfield gates + envelope hash + project-root + create-story reg (AF-29-2)
-- (brownfield,schema) brownfield setup greenfield-degrade + schema.yaml v2.0 (AF-29-2 F1, F3)
-- (test08) contract-mismatch sweep across 7 SKILL.md ↔ script pairs
-- (test08) integrate the Test Execution Bridge into dod-check + locate E105-S1 stories
+- (trace) keep anchor literal in coverage formula
+- (skills,agents) ui-present + stack-detect + pytest + trace + sprint-activate
+- (skills) brownfield gates + envelope hash + project-root + create-story reg
+- (brownfield,schema) brownfield setup greenfield-degrade + schema.yaml v2.0 (F1, F3)
+- contract-mismatch sweep across 7 SKILL.md ↔ script pairs
+- integrate the Test Execution Bridge into dod-check + locate stories
 
 ## [1.180.7] — 2026-05-28
 
 ### Changed
 
-- (test07) d-6 troubleshooting/FAQ page + bats sweep-discipline guard
+- troubleshooting/FAQ page + bats sweep-discipline guard
 
 ## [1.180.6] — 2026-05-28
 
 ### Changed
 
-- (test07) update TC-DRO-21 no-layout assertion for D-6 expanded format
-- (test07) update gaia-trace error-message assertion for the D-6 expanded format
-- (test07) cover each fix + add SKILL.md path-drift sweep-discipline guard
+- update no-layout assertion for expanded format
+- update gaia-trace error-message assertion for the expanded format
+- cover each fix + add SKILL.md path-drift sweep-discipline guard
 
 ### Fixed
 
-- (test07) heading placeholder, brittle regexes, slug freedom, error messages
-- (test07) sweep stale artifact-path references across SKILL.md + agents docs
+- heading placeholder, brittle regexes, slug freedom, error messages
+- sweep stale artifact-path references across SKILL.md + agents docs
 
 ## [1.180.5] — 2026-05-28
 
 ### Changed
 
-- (test06) align ci-finalize-gate + planning-vs-test taxonomy with the new contracts
-- (test06) update tests that asserted the pre-refactor inline impls
-- (test06) cover resolver project-root env precedence (cluster-6 fixture pattern)
+- align ci-finalize-gate + planning-vs-test taxonomy with the new contracts
+- update tests that asserted the pre-refactor inline impls
+- cover resolver project-root env precedence (fixture pattern)
 
 ### Fixed
 
-- (AF-2026-05-27-8) test06 findings — shared artifact-path resolver + heading lib + gate
-- (test06) broaden resolve-artifact-path project-root resolution
-- (test06) ci-setup checklist default, delivered default, dod build/lint parity
-- (test06) unblock create-arch threat-model gate in the pre-sprint phase
-- (test06) centralize heading_present into one shared lib
-- (test06) route artifact-path consumers through a shared resolver
+- findings — shared artifact-path resolver + heading lib + gate
+- broaden resolve-artifact-path project-root resolution
+- ci-setup checklist default, delivered default, dod build/lint parity
+- unblock create-arch threat-model gate in the pre-sprint phase
+- centralize heading_present into one shared lib
+- route artifact-path consumers through a shared resolver
 
 ## [1.180.4] — 2026-05-27
 
@@ -311,56 +311,56 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- (E105) single-source review-report path resolver + per-story reviews/ producer migration
-- (docs) test05 doc-clarity + skill fixes (F-018/024/017/021/019/022/039/044/035/001)
+- single-source review-report path resolver + per-story reviews/ producer migration
+- (docs) doc-clarity + skill fixes
 - (planning) complete prd/ux templates + init developer-experience gaps
 - (sprint) unblock next-sprint init after close + add sanctioned sprint_id setter
 - (reviews) close api-review + infra-design rubric gaps
 - (agents) use the canonical plugin-root var in agent memory-loader headers
-- (E105) point taxonomy producers at the planning-artifacts canonical home
-- (E105) wire per-story layout into un-migrated story-file consumers
+- point taxonomy producers at the planning-artifacts canonical home
+- wire per-story layout into un-migrated story-file consumers
 
 ## [1.180.0] — 2026-05-27
 
 ### Added
 
-- (E107-S4) planned→active readiness gate (#977)
-- (E107-S3) /gaia-create-story --for-sprint batch materializer (#976)
-- (E107-S2) sprint-plan selects from backlog (column-sourced dependency lint) (#975)
-- (E107-S1) add the planned sprint state to sprint-state.sh (#974)
-- (E105-S4) single-source review-report paths + AI-99 verdict-line parser (#973)
-- (E105-S3) formalize the date-suffix convention + latest-by-date resolver (#972)
-- (E105-S2) planning-vs-test artifact taxonomy migration + consumer repoint (#971)
-- (E105-S1) per-epic story nesting + three-tier resolver fallback (#969)
-- (E106-S3) redefine SM capacity check on agent-native measures (#968)
-- (E106-S2) dual-track estimation — points + agent-wall-clock (#967)
-- (E106-S1) throughput-telemetry derivation layer + /gaia-history skill (#966)
-- (E104-S2) phase 4b reconciliation pass — demote reachable file-only findings (#957)
-- (E104-S5) phase 4b cross-stack warning emission + scope respect (#956)
-- (E70-S8) per-stack dead-code adapters (go deadcode + python vulture + jvm spotbugs) (#955)
-- (E104-S3) sbom completeness assertion with per-ecosystem carve-outs (#954)
-- (E70-S11) detect-signals stacks[].path proposal/audit mode (opt-in) (#953)
-- (E70-S10) orchestrator per-stack file-list intersection (path x paths x excludes) (#952)
-- (E70-S9) grype DB trust-boundary enforcement (max-age + checksum + drift reject) (#951)
-- (E104-S4) wire sarif_merge telemetry via shared writer (#950)
-- (E70-S7) wire pre_warm telemetry via shared writer + harden telemetry writer (#949)
-- (E104-S1) cross-tool finding dedup contract (dual dedup keys) + telemetry writer (#948)
-- (E104-S4) sarif Multitool merge as Phase 7 pre-processor — core (#947)
-- (E70-S7) brownfield Phase 3 pre-warm script (cdxgen + Grype DB) — core (#946)
-- (E85-S14) stacks[] 4-field schema delta + /gaia-init questionnaire + /gaia-config-stack editor (#945)
+- planned→active readiness gate (#977)
+- gaia-create-story --for-sprint batch materializer (#976)
+- sprint-plan selects from backlog (column-sourced dependency lint) (#975)
+- add the planned sprint state to sprint-state.sh (#974)
+- single-source review-report paths + verdict-line parser (#973)
+- formalize the date-suffix convention + latest-by-date resolver (#972)
+- planning-vs-test artifact taxonomy migration + consumer repoint (#971)
+- per-epic story nesting + three-tier resolver fallback (#969)
+- redefine SM capacity check on agent-native measures (#968)
+- dual-track estimation — points + agent-wall-clock (#967)
+- throughput-telemetry derivation layer + /gaia-history skill (#966)
+- phase 4b reconciliation pass — demote reachable file-only findings (#957)
+- phase 4b cross-stack warning emission + scope respect (#956)
+- per-stack dead-code adapters (go deadcode + python vulture + jvm spotbugs) (#955)
+- sbom completeness assertion with per-ecosystem carve-outs (#954)
+- detect-signals stacks[].path proposal/audit mode (opt-in) (#953)
+- orchestrator per-stack file-list intersection (path x paths x excludes) (#952)
+- grype DB trust-boundary enforcement (max-age + checksum + drift reject) (#951)
+- wire sarif_merge telemetry via shared writer (#950)
+- wire pre_warm telemetry via shared writer + harden telemetry writer (#949)
+- cross-tool finding dedup contract (dual dedup keys) + telemetry writer (#948)
+- sarif Multitool merge as Phase 7 pre-processor — core (#947)
+- brownfield Phase 3 pre-warm script (cdxgen + Grype DB) — core (#946)
+- stacks[] 4-field schema delta + /gaia-init questionnaire + /gaia-config-stack editor (#945)
 
 ### Changed
 
-- (AF-2026-05-27-3) retire legacy _memory/ support — .gaia/ is the only tree (ADR-111) (#983)
+- retire legacy _memory/ support — .gaia/ is the only tree (#983)
 
 ### Fixed
 
-- (AF-2026-05-27-2) val-sidecar routes on .gaia layout, not memory-subdir existence (#982)
-- (AF-2026-05-27-1) resolve 21 live Test04 findings across format/contract/a11y/housekeeping (#980)
-- (E105-S1) scaffold writes the nested per-story path (close AC1 gap) (#970)
-- (AF-2026-05-26-9) sprint-setup lifecycle gates honor strategy/+sharded placements (#964)
-- (AF-2026-05-26) test03 framework findings — 26 live bugs across 5 bundles (#961)
-- (E104-S2) reconcile reachable-set via slurpfile + union multi-callgraph entry_points (#958)
+- val-sidecar routes on .gaia layout, not memory-subdir existence (#982)
+- resolve 21 live findings across format/contract/a11y/housekeeping (#980)
+- scaffold writes the nested per-story path (close AC1 gap) (#970)
+- sprint-setup lifecycle gates honor strategy/+sharded placements (#964)
+- framework findings — 26 live bugs across 5 bundles (#961)
+- reconcile reachable-set via slurpfile + union multi-callgraph entry_points (#958)
 
 ## [1.179.0] — 2026-05-27
 
@@ -372,69 +372,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- (AF-2026-05-24-14 pr-b) 6 script-behavior test02 medium findings (#941)
-- (AF-2026-05-24-14 pr-a) 13 quick-fix test02 medium/low findings (#940)
+- (pr-b) 6 script-behavior medium findings (#941)
+- (pr-a) 13 quick-fix medium/low findings (#940)
 
 ## [1.176.1] — 2026-05-24
 
 ### Fixed
 
-- (AF-24-10+11+12+13) bundle test02 10 high findings (f-13,14,15,21,22,24,35,36,39) (#936)
-- (AF-24-7+8+9) bundle test02 7 high findings (f-1,2,3,4,5,7,25) (#935)
-- (AF-2026-05-24-6) distribute ADR-042 traceability gate to dev-story (F-33 minimal) (#934)
-- (AF-2026-05-24-5) review parent-write paths use .gaia/ canonical (F-12 critical) (#933)
+- bundle 10 high findings (#936)
+- bundle 7 high findings (#935)
+- distribute traceability gate to dev-story (minimal) (#934)
+- review parent-write paths use .gaia/ canonical (critical) (#933)
 
 ## [1.176.0] — 2026-05-24
 
 ### Added
 
 - (sprint-52) artifact-taxonomy cleanup + lifecycle ordering enforcement
-- (E103) enforce lifecycle ordering across gaia skills
-- (E102) group flat artifact files into purpose-named subdirectories
-- (E101) add bats fixtures for ADR-118 decision and DOCUMENT path
+- enforce lifecycle ordering across gaia skills
+- group flat artifact files into purpose-named subdirectories
+- add bats fixtures for decision and DOCUMENT path
 
 ### Fixed
 
-- (AF-2026-05-24-4) relocate review evidence to .gaia/state/review/ and strip gaia- prefix
+- relocate review evidence to .gaia/state/review/ and strip gaia- prefix
 - (sprint-52) unbreak existing bats suites after sprint-52 wiring
-- (E103-S3) skip lifecycle gates when no upstream artifacts present
+- skip lifecycle gates when no upstream artifacts present
 
 ## [1.175.0] — 2026-05-24
 
 ### Added
 
-- (E100-S9) wire Credential-isolation bats audit + permanent CI guard (#925)
-- (E100-S8) wire Custom adapter discovery + shadowing + `--strict-bui (#922)
-- (E100-S7) wire `static-site` adapter with 6-provider dispatch + cdn (#921)
-- (E100-S6) wire `github-releases` + `container-registry` adapters + (#920)
-- (E100-S5) wire `claude-marketplace` + `npm` + `pypi` + `homebrew` a (#919)
-- (E100-S4) wire Adapter contract enforcement + ADR-037 envelope shap (#918)
-- (E100-S2) wire Pre-publish gates (CI green + manifest version match (#916)
-- (E100-S1) gaia-publish five-step orchestrator skeleton + happy path (#914)
-- (E99-S6) migration safety net (.config-stale + /gaia-config-validate warn) (#913)
-- (E99-S5) phase 5 routing + deploy-checklist publish-readiness (#906)
+- wire Credential-isolation bats audit + permanent CI guard (#925)
+- wire Custom adapter discovery + shadowing + `--strict-bui (#922)
+- wire `static-site` adapter with 6-provider dispatch + cdn (#921)
+- wire `github-releases` + `container-registry` adapters (#920)
+- wire `claude-marketplace` + `npm` + `pypi` + `homebrew` a (#919)
+- wire Adapter contract enforcement + envelope shap (#918)
+- wire Pre-publish gates (CI green + manifest version match (#916)
+- gaia-publish five-step orchestrator skeleton + happy path (#914)
+- migration safety net (.config-stale + /gaia-config-validate warn) (#913)
+- phase 5 routing + deploy-checklist publish-readiness (#906)
 
 ### Fixed
 
-- (E100-S9) address Code Review findings C1+C2 (#926)
-- (E100-S8) address Code Review findings C1+C2+W1 (third pass) (#924)
-- (E100-S8) address Code Review findings C1+W1+W2+W3 (#923)
-- (E100-S1) drop dead pom.xml alternative (shellcheck SC2221/SC2222) (#915)
+- address Code Review findings C1+C2 (#926)
+- address Code Review findings C1+C2+W1 (third pass) (#924)
+- address Code Review findings C1+W1+W2+W3 (#923)
+- drop dead pom.xml alternative (shellcheck SC2221/SC2222) (#915)
 
 ## [1.174.0] — 2026-05-23
 
 ### Added
 
-- (E99-S4) /gaia-config-distribution section editor (#903)
-- (E99-S3) distribution.manifest path canonicalization (SR-79 + SR-80) (#901)
-- (E99-S2) distribution section schema + 10-channel registry (#899)
-- (E99-S1) environments[].kind discriminator + resolver + default semantics (#898)
-- (E98-S6) wire backup integrity (sha256 manifest) + retention tutorial (#897)
-- (E98-S5) wire auto-rename migration flow with AskUserQuestion (#895)
-- (E98-S4) wire template_overrides interpreter + SR-78 disable-allowlist (#892)
-- (E98-S3) wire Protected-jobs assertion script (#891)
-- (E98-S2) wire Overlay stitching engine (jobs + steps) (#889)
-- (E98-S1) wire Prefix-detection helper + regen contract (#888)
+- gaia-config-distribution section editor (#903)
+- distribution.manifest path canonicalization (#901)
+- distribution section schema + 10-channel registry (#899)
+- environments[].kind discriminator + resolver + default semantics (#898)
+- wire backup integrity (sha256 manifest) + retention tutorial (#897)
+- wire auto-rename migration flow with AskUserQuestion (#895)
+- wire template_overrides interpreter + disable-allowlist (#892)
+- wire Protected-jobs assertion script (#891)
+- wire Overlay stitching engine (jobs + steps) (#889)
+- wire Prefix-detection helper + regen contract (#888)
 
 ### Changed
 
@@ -442,37 +442,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- (AF-2026-05-22-9) yara test-report bundle (bugs 1,2,3,7,8,9,11,12,13,15,16) (#908)
-- (AF-2026-05-22-8) epic-dir naming convergence (bug 18 high) (#907)
-- (AF-2026-05-22-7) config-hydration fail-safe (bug 21 critical) (#905)
-- (AF-2026-05-22-6) 5 HIGH-severity bugs from YARA test report (#902)
-- (E99-S4) correct SKILL.md vs config-yaml-editor.sh API divergence (code-review C1+C2) (#904)
-- (E99-S2) correct malformed YAML required arrays in 7 publish-* schemas (#900)
-- (E98-S5) document AskUserQuestion orchestration + Y-branch regen step (code-review C1+C2) (#896)
-- (E98-S4) close AC3 validate-side + AC8 config-show extension (code-review C1-NEW, C2-NEW) (#894)
-- (E98-S4) wire template_overrides interpreter into Sub-flow C (code-review C1) (#893)
-- (E98-S2) address code-review Critical findings — mktemp + YAML re-indent (#890)
-- (AF-2026-05-22-5) test-strategy gate + missing scripts + config-hydration (#885)
+- yara test-report bundle (bugs 1,2,3,7,8,9,11,12,13,15,16) (#908)
+- epic-dir naming convergence (bug 18 high) (#907)
+- config-hydration fail-safe (bug 21 critical) (#905)
+- 5 HIGH-severity bugs from YARA test report (#902)
+- correct SKILL.md vs config-yaml-editor.sh API divergence (code-review C1+C2) (#904)
+- correct malformed YAML required arrays in 7 publish-* schemas (#900)
+- document AskUserQuestion orchestration + Y-branch regen step (code-review C1+C2) (#896)
+- close AC3 validate-side + AC8 config-show extension (code-review C1-NEW, C2-NEW) (#894)
+- wire template_overrides interpreter into Sub-flow C (code-review C1) (#893)
+- address code-review Critical findings — mktemp + YAML re-indent (#890)
+- test-strategy gate + missing scripts + config-hydration (#885)
 
 ## [1.173.1] — 2026-05-22
 
 ### Fixed
 
-- (AF-2026-05-22-5) test-strategy gate + missing scripts + config-hydration (#885) (#886)
+- test-strategy gate + missing scripts + config-hydration (#885) (#886)
 
 ## [1.173.0] — 2026-05-22
 
 ### Added
 
-- (AF-2026-05-22-1) adversarial-reviewer agent (Sage) + wire 6 SKILL.md dispatches (#873)
-- (E93-S6) calibrate sgr-velocity-003 incidental-goal floor for completion-pass sprint shape (#839)
-- (E97-S5) add CI regression guard — path-migration-guard.bats with grep-allowlist
-- (E97-S7) fix release-bot .plugin-version drift; add lockstep guard
-- (E97-S6) stale-comment sweep in resolve-config.sh + validate-gate.sh
-- (E97-S4) derive review-summary-gen.sh CANONICAL_REPORT_RELPATHS from resolved variables
-- (E97-S3) triage class-b mixed-state scripts; fix sprint-status remediation hint
-- (E97-S2) retire migrate-stories-to-canonical-layout.sh to scripts/retired/
-- (E97-S1) wire config-hydration.sh + gaia-help/SKILL.md into lib/gaia-paths.sh
+- adversarial-reviewer agent (Sage) + wire 6 SKILL.md dispatches (#873)
+- calibrate sgr-velocity-003 incidental-goal floor for completion-pass sprint shape (#839)
+- add CI regression guard — path-migration-guard.bats with grep-allowlist
+- fix release-bot .plugin-version drift; add lockstep guard
+- stale-comment sweep in resolve-config.sh + validate-gate.sh
+- derive review-summary-gen.sh CANONICAL_REPORT_RELPATHS from resolved variables
+- triage class-b mixed-state scripts; fix sprint-status remediation hint
+- retire migrate-stories-to-canonical-layout.sh to scripts/retired
+- wire config-hydration.sh + gaia-help/SKILL.md into lib/gaia-paths.sh
 
 ### Changed
 
@@ -480,38 +480,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- (AF-2026-05-22-4) memory-sidecar paths canonical in SKILL.md prose (#882)
-- (AF-2026-05-22-3) 5 PRD-dogfooding bugs + minor checkpoint paths (#881)
-- (AF-2026-05-22-2) release-bot ARG_MAX failure on large commit ranges (#878)
-- (AF-2026-05-21-30) final polish — 3 missed display-string canonical refs (#870)
-- (AF-2026-05-21-29) residual canonical-path sweep — 234 lines / 105 files (#869)
-- (AF-2026-05-21-28) config templates + gaia-help.csv canonical-first (#868)
-- (AF-2026-05-21-27) class-1 scripts batch 3 — framework-wide closure (#867)
-- (AF-2026-05-21-26) class-1 scripts batch 2 canonical-first migrations (#866)
-- (AF-2026-05-21-25) class-1 script-side canonical-path migration (#865)
-- (AF-2026-05-21-24) caveat-files surgical canonical-path cleanup (#864)
-- (AF-2026-05-21-23) bulk SKILL.md canonical-path sweep (58 simple files) (#863)
-- (AF-2026-05-21-22) final 10-skill SKILL.md canonical-path sweep (#862)
-- (AF-2026-05-21-21) 9-skill SKILL.md canonical-path sweep (#861)
-- (AF-2026-05-21-20) research cluster SKILL.md canonical-path migration (#860)
-- (AF-2026-05-21-19) test-cluster scripts canonical-path migration (#859)
-- (AF-2026-05-21-18) test-cluster SKILL.md writes to legacy docs/ instead of .gaia/ (#858)
-- (AF-2026-05-21-17) gaia-brownfield writes to legacy docs/ instead of canonical .gaia/ (#857)
-- (AF-2026-05-21-16) gaia-meeting writes to legacy docs/ instead of canonical .gaia/ (#856)
-- (AF-2026-05-21-15) trace + threat-model write to legacy docs/ instead of canonical .gaia/ (#855)
-- (AF-2026-05-21-14) ux cluster writes to legacy docs/ instead of canonical .gaia/ (#854)
-- (AF-2026-05-21-13) epics cluster SKILL.md writes to legacy docs/ instead of canonical .gaia/ (#853)
-- (AF-2026-05-21-12) /gaia-edit-prd writes to legacy docs/ instead of canonical .gaia/ (#852)
-- (AF-2026-05-21-11) arch cluster writes to legacy docs/ instead of canonical .gaia/ (#851)
-- (AF-2026-05-21-10) /gaia-create-prd writes PRD to legacy docs/ instead of canonical .gaia/ (#850)
-- (AF-2026-05-21-9) /gaia-init Phase 0 loses project_kind=claude-code-plugin signal (#847)
-- (AF-2026-05-21-8) 4 scripts default to legacy config/ on greenfield, creating rogue dirs (#844)
-- (AF-2026-05-21-7) 14 scripts default to legacy _memory/ on greenfield, creating rogue dirs (#841)
-- (AF-2026-05-21-6) /gaia-init emits legacy _memory/ paths + path-migration-guard blanket (#837)
-- (AF-2026-05-21-5) statusline.sh unbound CACHE_TS on fresh install + SKILL.md refreshInterval (#836)
-- (AF-2026-05-21-4) repair 3 dogfooding findings from sprint-50 (#833)
-- (AF-2026-05-21-3) validate-against-schema.sh date crash + SKILL.md --full polish (#832)
-- (staging) repair 28 bats failures from ADR-111 path-migration drift (#829)
+- memory-sidecar paths canonical in SKILL.md prose (#882)
+- 5 PRD-dogfooding bugs + minor checkpoint paths (#881)
+- release-bot ARG_MAX failure on large commit ranges (#878)
+- final polish — 3 missed display-string canonical refs (#870)
+- residual canonical-path sweep — 234 lines / 105 files (#869)
+- config templates + gaia-help.csv canonical-first (#868)
+- class-1 scripts batch 3 — framework-wide closure (#867)
+- class-1 scripts batch 2 canonical-first migrations (#866)
+- class-1 script-side canonical-path migration (#865)
+- caveat-files surgical canonical-path cleanup (#864)
+- bulk SKILL.md canonical-path sweep (58 simple files) (#863)
+- final 10-skill SKILL.md canonical-path sweep (#862)
+- 9-skill SKILL.md canonical-path sweep (#861)
+- research cluster SKILL.md canonical-path migration (#860)
+- test-cluster scripts canonical-path migration (#859)
+- test-cluster SKILL.md writes to legacy docs/ instead of .gaia/ (#858)
+- gaia-brownfield writes to legacy docs/ instead of canonical .gaia/ (#857)
+- gaia-meeting writes to legacy docs/ instead of canonical .gaia/ (#856)
+- trace + threat-model write to legacy docs/ instead of canonical .gaia/ (#855)
+- ux cluster writes to legacy docs/ instead of canonical .gaia/ (#854)
+- epics cluster SKILL.md writes to legacy docs/ instead of canonical .gaia/ (#853)
+- gaia-edit-prd writes to legacy docs/ instead of canonical .gaia/ (#852)
+- arch cluster writes to legacy docs/ instead of canonical .gaia/ (#851)
+- gaia-create-prd writes PRD to legacy docs/ instead of canonical .gaia/ (#850)
+- gaia-init Phase 0 loses project_kind=claude-code-plugin signal (#847)
+- 4 scripts default to legacy config/ on greenfield, creating rogue dirs (#844)
+- 14 scripts default to legacy _memory/ on greenfield, creating rogue dirs (#841)
+- gaia-init emits legacy _memory/ paths + path-migration-guard blanket (#837)
+- statusline.sh unbound CACHE_TS on fresh install + SKILL.md refreshInterval (#836)
+- repair 3 dogfooding findings from sprint-50 (#833)
+- validate-against-schema.sh date crash + SKILL.md --full polish (#832)
+- (staging) repair 28 bats failures from path-migration drift (#829)
 
 ## [1.172.0] — 2026-05-22
 
@@ -533,17 +533,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- (AF-2026-05-21-1) complete ADR-111 path migration for 8 helper scripts
-- (AF-2026-05-21-1) complete ADR-111 path migration for 8 helper scripts
-- (AF-2026-05-20-1) printf -- escape for Findings-section bullets
+- complete path migration for 8 helper scripts
+- complete path migration for 8 helper scripts
+- printf -- escape for Findings-section bullets
 
 ## [1.164.2] — 2026-05-20
 
 ### Fixed
 
-- (AF-2026-05-20-1) opt gaia-create-story.bats out of proof-of-execution
-- (AF-2026-05-20-1) opt remaining bats suites out of proof-of-execution
-- (AF-2026-05-20-1) proof-of-execution gate on review-gate.sh + summary-gen + run-all-reviews
+- opt gaia-create-story.bats out of proof-of-execution
+- opt remaining bats suites out of proof-of-execution
+- proof-of-execution gate on review-gate.sh + summary-gen + run-all-reviews
 
 ## [1.164.1] — 2026-05-20
 
@@ -555,25 +555,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- (E96-S8) post-deprecation cleanup — write-boundary scoped + missed hook (#806)
-- (E96-S7) partial-4 — smart-fallback across 24 missed runtime helpers (#805)
-- (E96-S7) bulk legacy-path sweep — runtime helpers + AC6 fixture+bats (#804)
-- (E96-S5) cleanup — CLAUDE.md / README sweep + audit script + ADR cross-refs (#798)
-- (E96-S4) phase 4 — _memory/ migration with hash-manifest sentinel (#797)
-- (E96-S3) phase 3 — root-state files + custom/ relocation to .gaia/ (#796)
-- (E96-S2) phase 2 — docs/ rename to .gaia/artifacts/ + state extraction (#795)
-- (E96-S1) add gaia-paths helper + Phase 1 config migration + phase-exit gate (#794)
-- (sprint-wiring) E93-S5 — wire /gaia-sprint-plan + /gaia-correct-course + /gaia-sprint-close for ADR-108 sprint-level edges (#788)
-- (sprint-review) E93-S4 — Track B per-stack execution-review runner + threat-model mitigations (#787)
-- (sprint-review) E93-S3 — /gaia-sprint-review skill scaffold (Mode A, Track A Val dispatch, composite verdict, UNVERIFIED bypass) (#786)
+- post-deprecation cleanup — write-boundary scoped + missed hook (#806)
+- partial-4 — smart-fallback across 24 missed runtime helpers (#805)
+- bulk legacy-path sweep — runtime helpers + AC6 fixture+bats (#804)
+- cleanup — CLAUDE.md / README sweep + audit script + ADR cross-refs (#798)
+- phase 4 — _memory/ migration with hash-manifest sentinel (#797)
+- phase 3 — root-state files + custom/ relocation to .gaia/ (#796)
+- phase 2 — docs/ rename to .gaia/artifacts/ + state extraction (#795)
+- add gaia-paths helper + Phase 1 config migration + phase-exit gate (#794)
+- (sprint-wiring) — wire /gaia-sprint-plan + /gaia-correct-course + /gaia-sprint-close for sprint-level edges (#788)
+- (sprint-review) — Track B per-stack execution-review runner + threat-model mitigations (#787)
+- (sprint-review) — /gaia-sprint-review skill scaffold (Mode A, Track A Val dispatch, composite verdict, UNVERIFIED bypass) (#786)
 
 ### Fixed
 
 - (sprint-close) smart-fallback for .gaia/state + .gaia/memory + .gaia/artifacts (#809)
 - (sidecars) smart-fallback for .gaia/memory/ in retro + val sidecar writers (#808)
-- (E96-S7/S8) gaia-sprint-review/finalize.sh smart-fallback for .gaia/memory/ (#807)
-- (E96-S6) phase-exit-gate cumulative-target + rollback-scope defects + runtime sweep (#801)
-- (sprint-review) E93 manual-test defect bundle (ISSUE-1/-2/-4/-5) (#791)
+- gaia-sprint-review/finalize.sh smart-fallback for .gaia/memory/ (#807)
+- phase-exit-gate cumulative-target + rollback-scope defects + runtime sweep (#801)
+- (sprint-review) manual-test defect bundle (-2/-4/-5) (#791)
 
 ## [1.163.0] — 2026-05-20
 
@@ -587,55 +587,55 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- (E93-S2) wire /gaia-config-sprint-review + sprint_review project-config schema
-- (E93-S1) wire sprint-level state machine + goals field on sprint-state.sh
+- wire /gaia-config-sprint-review + sprint_review project-config schema
+- wire sprint-level state machine + goals field on sprint-state.sh
 
 ### Changed
 
 - sync main v1.158.0 release-bump into staging
-- (AI-2026-05-16-1) add base sprint-review rubric for /gaia-sprint-review Track A
+- add base sprint-review rubric for /gaia-sprint-review Track A
 
 ### Fixed
 
-- (AI-2026-05-19-1) check-deps.sh skips *-review-summary.md siblings
-- (AI-2026-05-19-1) check-deps.sh skips *-review-summary.md siblings
-- (E93-S2) classify sprint_review as managed-elsewhere; drop output-text grep
-- (E93-S2) allowlist + CRUD-disclaimer + ajv-tolerant regex
-- (E93-S1) NFR-052 coverage — list 5 new public functions in bats header
-- (E93-S1) emit_lifecycle_event call shape — sprint-level uses direct lifecycle-event.sh
-- (E93-S1) sprint-state.sh mktemp + bats fixture compat
+- check-deps.sh skips *-review-summary.md siblings
+- check-deps.sh skips *-review-summary.md siblings
+- classify sprint_review as managed-elsewhere; drop output-text grep
+- allowlist + CRUD-disclaimer + ajv-tolerant regex
+- coverage — list 5 new public functions in bats header
+- emit_lifecycle_event call shape — sprint-level uses direct lifecycle-event.sh
+- sprint-state.sh mktemp + bats fixture compat
 
 ## [1.158.0] — 2026-05-18
 
 ### Added
 
-- (E40-S4) document promote-PR squash-merge release-pipeline pitfall
-- (E95-S1) wire Add surface_type column and BLOCKED-severity finding (#773)
-- (E40-S3) add hotfix priority_flag enum + active-sprint injection (#772)
-- (E40-S2) wire Anchor release.yml commit-classification range on mos (#771)
-- (E17-S36) post-install Step 5 summary with canonical path + edit prompt (#768)
-- (E17-S35) add GAIA-MANIFEST-TEMPLATE sentinel + Layer 0 guard (#767)
-- (E17-S34) wire bridge-toggle Step 4 to inline manifest generator (#766)
-- (E17-S33) extract test-environment.yaml generator to scripts/lib helper (#765)
-- (E17-S32) relocate test-environment.yaml canonical path to config/ (ADR-110) (#764)
-- (E17-S31) make bridge-toggle Step 4 option [b] actionable (#760)
-- (E17-S30) wire test-environment.yaml.example installation into V2 plugin (#759)
+- document promote-PR squash-merge release-pipeline pitfall
+- wire Add surface_type column and BLOCKED-severity finding (#773)
+- add hotfix priority_flag enum + active-sprint injection (#772)
+- wire Anchor release.yml commit-classification range on mos (#771)
+- post-install Step 5 summary with canonical path + edit prompt (#768)
+- add GAIA-MANIFEST-TEMPLATE sentinel + Layer 0 guard (#767)
+- wire bridge-toggle Step 4 to inline manifest generator (#766)
+- extract test-environment.yaml generator to scripts/lib helper (#765)
+- relocate test-environment.yaml canonical path to config/ (#764)
+- make bridge-toggle Step 4 option [b] actionable (#760)
+- wire test-environment.yaml.example installation into V2 plugin (#759)
 
 ### Changed
 
-- merge main into staging (resolve conflicts in favor of AF-2026-05-18-4)
+- merge main into staging (resolve conflicts in favor of)
 
 ## [1.157.0] — 2026-05-18
 
 ### Added
 
-- (E17-S32..S36) AF-2026-05-18-4 bridge-enable inline manifest + config/ relocation (#769)
+- bridge-enable inline manifest + config/ relocation (#769)
 
 ## [1.156.0] — 2026-05-18
 
 ### Added
 
-- (E17-S30,E17-S31) publish bridge-toggle V2 plugin port to marketplace (#762)
+- publish bridge-toggle V2 plugin port to marketplace (#762)
 
 <!-- v1.155.13 entry will be auto-generated by the release workflow from the commits below. -->
 
@@ -643,110 +643,110 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- (AF-2026-05-18-2) make warning_body private (NFR-052 coverage gate)
-- (AF-2026-05-18-2) cross-platform stat in bats test
-- (AF-2026-05-18-2) surface orchestration warning above Claude Code fold
+- make warning_body private (coverage gate)
+- cross-platform stat in bats test
+- surface orchestration warning above Claude Code fold
 
 ## [1.155.11] — 2026-05-18
 
 ### Fixed
 
-- (AF-2026-05-18-1) gaia-meeting manual-test findings (6 patches)
+- gaia-meeting manual-test findings (6 patches)
 
 ## [1.155.10] — 2026-05-17
 
 ### Fixed
 
-- (AF-2026-05-17-10) mobile family honest diagnostic + platforms gate
+- mobile family honest diagnostic + platforms gate
 
 ## [1.155.9] — 2026-05-17
 
 ### Fixed
 
-- (AF-2026-05-17-9) three-phase a11y family gating consistency
+- three-phase a11y family gating consistency
 
 ## [1.155.8] — 2026-05-17
 
 ### Fixed
 
-- (AF-2026-05-17-8) /gaia-fill-test-gaps strategy/ fallback
+- gaia-fill-test-gaps strategy/ fallback
 
 ## [1.155.7] — 2026-05-17
 
 ### Fixed
 
-- (AF-2026-05-17-7) device-target clear writes bare section shape
+- device-target clear writes bare section shape
 
 ## [1.155.6] — 2026-05-17
 
 ### Fixed
 
-- (AF-2026-05-17-6) bridge-toggle absent-key + resolver allowlist
+- bridge-toggle absent-key + resolver allowlist
 
 ## [1.155.5] — 2026-05-17
 
 ### Fixed
 
-- (AF-2026-05-17-4) /gaia-test-run runner-invocation mapping
-- (AF-2026-05-17-3) /gaia-test-run vocab + detection bundle
+- gaia-test-run runner-invocation mapping
+- gaia-test-run vocab + detection bundle
 
 ## [1.155.4] — 2026-05-16
 
 ### Fixed
 
-- (AF-2026-05-17-2) resolve-config.bats CWD-isolation in setup()
+- resolve-config.bats CWD-isolation in setup
 
 ## [1.155.3] — 2026-05-16
 
 ### Fixed
 
-- (AF-2026-05-17-1) /gaia-test-gap-analysis schema-drift documentation
+- gaia-test-gap-analysis schema-drift documentation
 
 ## [1.155.2] — 2026-05-16
 
 ### Fixed
 
-- (AF-2026-05-16-4) /gaia-trace + sister skills test-artifact strategy-fallback
+- gaia-trace + sister skills test-artifact strategy-fallback
 
 ## [1.155.1] — 2026-05-16
 
 ### Fixed
 
-- (AF-2026-05-16-3) sister-skills sharded-PRD fallback
-- (AF-2026-05-16-2) /gaia-trace sharded-PRD fallback
+- sister-skills sharded-PRD fallback
+- gaia-trace sharded-PRD fallback
 
 ## [1.155.0] — 2026-05-16
 
 ### Added
 
-- (E41-S5) wire /gaia-triage-findings YOLO auto-apply (GR-TF-1) — closes E41 epic (#716)
-- (E41-S3) wire /gaia-dev-story YOLO Val on TDD phases (GR-DS-1) (#715)
-- (E41-S4) wire /gaia-dev-story YOLO auto-run-reviews after merge (GR-DS-2) (#714)
-- (E41-S2) wire /gaia-create-story YOLO wire-up (GR-CS-6) (#713)
+- wire /gaia-triage-findings YOLO auto-apply — closes epic (#716)
+- wire /gaia-dev-story YOLO Val on TDD phases (#715)
+- wire /gaia-dev-story YOLO auto-run-reviews after merge (#714)
+- wire /gaia-create-story YOLO wire-up (#713)
 
 ### Fixed
 
-- (AI-2026-05-16-9) extend test_plan_exists strategy/ alias
+- extend test_plan_exists strategy/ alias
 
 ## [1.154.0] — 2026-05-15
 
 ### Added
 
-- (E92-S5) opt-in --auto-file flag for /gaia-retro action items (#709)
-- (E57-S14) check-deps.sh walks up to find implementation-artifacts root (#704)
-- (E57-S13) pr-create title-prefix guard + commitlint depth fix (#703)
-- (E92-S3) swap PostToolUse hook to ${CLAUDE_PLUGIN_ROOT} (#702)
+- opt-in --auto-file flag for /gaia-retro action items (#709)
+- check-deps.sh walks up to find implementation-artifacts root (#704)
+- pr-create title-prefix guard + commitlint depth fix (#703)
+- swap PostToolUse hook to ${CLAUDE_PLUGIN_ROOT} (#702)
 
 ### Changed
 
-- (E92-S4) plugin-cache refresh playbook + Step 14b advisory (#705)
+- plugin-cache refresh playbook + Step 14b advisory (#705)
 
 ### Fixed
 
 - (staging) pr-create title-prefix bats tests build per-test git work tree (#710)
-- (E57-S15) helpful redirect for sprint-state inject --points (#708)
-- (E63-S14) extend type-guard to canonicalize_payload jq fallback path (#707)
-- (E63-S14) type-guard val-sidecar-write jq sort key (#706)
+- helpful redirect for sprint-state inject --points (#708)
+- extend type-guard to canonicalize_payload jq fallback path (#707)
+- type-guard val-sidecar-write jq sort key (#706)
 
 ## [1.153.0] — 2026-05-15
 
@@ -756,21 +756,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - (e92-s1) main-turn direct-write fallback for create-story spawn (#698)
 - (e76-s22) wire dispatch-provenance-check into phase 7 save (#696)
 - (e91-s3) two-stage path resolution in story-state scripts (#695)
-- (E91-S1) default-skip @hardware-dependent tests in plugin-ci (#693)
-- (E89-S4) populate .plugin-version + semver-tag persona_sig framework-wide (#692)
-- (E89-S3) deterministic parent-epic inference helper + step 8 pre-flight (#691)
-- (E89-S2) step 8 deferred-seed-brief mode + step_8_mode field (#690)
-- (E89-S1) setup.sh test-plan + traceability prereq gates + CLI (#688)
-- (E88-S5) anti-stub Then-clause for dispatch-verb ACs in /gaia-atdd (#686)
-- (E88-S4) completion-notes-deferral-scan helper + Val pattern + triage extension (#684)
-- (E90-S1) generalize assert-agent-envelope.sh with --expected-agent flag (#682)
-- (E88-S1) taxonomy SSOT foundation + loader + matchers + bats audit (#681)
-- (E85-S13) reconciler writes framework_version after successful apply (D8) (#680)
-- (E71-S9) /gaia-config-* dogfooding bugs + enhancements bundle (D7 + E1-E4) (#679)
-- (E71-S8) framework-wide /gaia-config-* SKILL.md drift sweep (D1+D2+D3) (#678)
-- (E71-S7) /gaia-config-* wrong-section-name cluster fix (#677)
-- (E55-S13) dev-story workflow friction bundle (6 defects from E85-S1 (#670)
-- (E85-S12) wire `_detect_v1` custom/ v1-marker false positive — re (#669)
+- default-skip @hardware-dependent tests in plugin-ci (#693)
+- populate .plugin-version + semver-tag persona_sig framework-wide (#692)
+- deterministic parent-epic inference helper + step 8 pre-flight (#691)
+- step 8 deferred-seed-brief mode + step_8_mode field (#690)
+- setup.sh test-plan + traceability prereq gates + CLI (#688)
+- anti-stub Then-clause for dispatch-verb ACs in /gaia-atdd (#686)
+- completion-notes-deferral-scan helper + Val pattern + triage extension (#684)
+- generalize assert-agent-envelope.sh with --expected-agent flag (#682)
+- taxonomy SSOT foundation + loader + matchers + bats audit (#681)
+- reconciler writes framework_version after successful apply (D8) (#680)
+- gaia-config-* dogfooding bugs + enhancements bundle (D7) (#679)
+- framework-wide /gaia-config-* SKILL.md drift sweep (D1+D2+D3) (#678)
+- gaia-config-* wrong-section-name cluster fix (#677)
+- dev-story workflow friction bundle (6 defects from (#670)
+- wire `_detect_v1` custom/ v1-marker false positive — re (#669)
 
 ### Fixed
 
@@ -780,49 +780,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- promote E85-S12 + E55-S13 to release
+- promote + to release
 
 ## [1.151.0] — 2026-05-13
 
 ### Added
 
-- (E87-S7) sentinel-write writer shift to orchestrator (ADR-105) (#664)
+- sentinel-write writer shift to orchestrator (#664)
 
 ## [1.150.0] — 2026-05-13
 
 ### Added
 
-- (E86-S6) doc cascade + stale-flag registry static check (#662)
-- (E86-S5) ci suppression + GAIA_SKIP_VERSION_CHECK guard + bats suite (#661)
-- (E86-S4) /gaia-help state-detection branch (Step 3a) — 4-state enum (#660)
-- (E86-S3) self-healing clear of framework-version-stale marker (#659)
-- (E86-S1) extract framework-version.sh from template-header.sh (#657)
+- doc cascade + stale-flag registry static check (#662)
+- ci suppression + GAIA_SKIP_VERSION_CHECK guard + bats suite (#661)
+- gaia-help state-detection branch (Step 3a) — 4-state enum (#660)
+- self-healing clear of framework-version-stale marker (#659)
+- extract framework-version.sh from template-header.sh (#657)
 
 ## [1.149.0] — 2026-05-13
 
 ### Added
 
-- (E85-S9) dispatch gaia-migrate.sh exit-11 to gaia-reconcile-v2.sh (#648)
-- (E85-S7) retire greenfield-guard.sh + sweep call sites (#646)
-- (E85-S6) wire /gaia-infra-design hydration trigger for environments + ci_cd (#645)
-- (E85-S5) wire /gaia-create-arch hydration trigger for stacks + platforms (#644)
+- dispatch gaia-migrate.sh exit-11 to gaia-reconcile-v2.sh (#648)
+- retire greenfield-guard.sh + sweep call sites (#646)
+- wire /gaia-infra-design hydration trigger for environments + ci_cd (#645)
+- wire /gaia-create-arch hydration trigger for stacks + platforms (#644)
 
 ### Changed
 
-- (E85-S10) cascade v2-to-v2 reconciliation path into SKILL + manifests (#650)
+- cascade v2-to-v2 reconciliation path into SKILL + manifests (#650)
 
 ### Fixed
 
-- (AI-2026-05-13-11) tighten /gaia-add-feature Val-dispatch contract (#649)
+- tighten /gaia-add-feature Val-dispatch contract (#649)
 
 ## [1.148.0] — 2026-05-13
 
 ### Added
 
-- (E87-S6) wire Bats anti-pattern check + SKILL.md changelog + AI-202 (#638)
-- (E87-S5) wire Migrate `/gaia-add-feature` Step 2 Val gate (LAST — (#637)
-- (E87-S4) wire Migrate `/gaia-dev-story` Steps 4 + 7b (#636)
-- (E87-S3) wire Migrate `/gaia-validate-story` Component 4 + `/gaia-f (#635)
+- wire Bats anti-pattern check + SKILL.md changelog (#638)
+- wire Migrate `/gaia-add-feature` Step 2 Val gate (LAST — (#637)
+- wire Migrate `/gaia-dev-story` Steps 4 + 7b (#636)
+- wire Migrate `/gaia-validate-story` Component 4 + `/gaia-f (#635)
 
 ## [1.147.2] — 2026-05-12
 
@@ -841,12 +841,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- (E85-S2) wire `project-config.schema.json` v2.0.0 — `config_phase
-- (E85-S1) shared config-hydration.sh helper (#620)
+- wire `project-config.schema.json` v2.0.0 — `config_phase
+- shared config-hydration.sh helper (#620)
 
 ### Changed
 
-- (E79-S7) add canonical resolve-story-file.bats covering TC-VSG-1..5 (#619)
+- add canonical resolve-story-file.bats covering ..5 (#619)
 
 ### Fixed
 
@@ -872,63 +872,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- (E79-S7) shared resolve-story-file.sh helper + retrofit validate-story, fix-story, sprint-plan
+- shared resolve-story-file.sh helper + retrofit validate-story, fix-story, sprint-plan
 
 ### Changed
 
-- (E79-S7) NFR-052 coverage stub for resolve_story_file
+- coverage stub for resolve_story_file
 
 ### Fixed
 
 - (statusline) suppress closed sprint_id in rich theme
-- (E79-S7) preserve TC-CSP-10 docs-contract phrases in sprint-plan SKILL.md retrofit
+- preserve docs-contract phrases in sprint-plan SKILL.md retrofit
 
 ## [1.144.0] — 2026-05-12
 
 ### Added
 
-- (E79-S7) shared resolve-story-file.sh helper + retrofit validate-story, fix-story, sprint-plan
+- shared resolve-story-file.sh helper + retrofit validate-story, fix-story, sprint-plan
 
 ### Changed
 
-- (E79-S7) NFR-052 coverage stub for resolve_story_file
+- coverage stub for resolve_story_file
 
 ### Fixed
 
-- (E79-S7) preserve TC-CSP-10 docs-contract phrases in sprint-plan SKILL.md retrofit
+- preserve docs-contract phrases in sprint-plan SKILL.md retrofit
 
 ## [1.143.0] — 2026-05-12
 
 ### Added
 
-- (E84-S6) wire orchestration-warning into 42 heavy-procedural and conversational skills (#599)
-- (E53-S250) gaia-shard-doc sub-shard directory preservation (option A) (#597)
-- (E53-S249) check-monolith-shard-sync.sh sub-shard directory awareness (#596)
-- (E82-S10) statusline rate-limits chunk (FR-451, rich-theme-only) (#595)
-- (E81-S6) sprint-state.sh rollover + sprint-plan prior-close guard (#594)
-- (E82-S9) context-window progress bar (FR-450, FR-430 segment implementation) (#593)
-- (E82-S8) statusline git-dirty marker via PreToolUse hook (#592)
-- (E82-S6) statusline runtime staleness detection (marker + cache field) (#591)
-- (E82-S5) statusline smart-hiding — suppress empty MODEL/PROJECT chunks (#589)
-- (E81-S5) /gaia-sprint-close skill — close + archive + lifecycle event (#588)
+- wire orchestration-warning into 42 heavy-procedural and conversational skills (#599)
+- gaia-shard-doc sub-shard directory preservation (option A) (#597)
+- check-monolith-shard-sync.sh sub-shard directory awareness (#596)
+- statusline rate-limits chunk (rich-theme-only) (#595)
+- sprint-state.sh rollover + sprint-plan prior-close guard (#594)
+- context-window progress bar (segment implementation) (#593)
+- statusline git-dirty marker via PreToolUse hook (#592)
+- statusline runtime staleness detection (marker + cache field) (#591)
+- statusline smart-hiding — suppress empty MODEL/PROJECT chunks (#589)
+- gaia-sprint-close skill — close + archive + lifecycle event (#588)
 
 ### Changed
 
-- (E53-S251) bats fixture for af-2026-05-10-5 drift-report closure (#598)
+- bats fixture for -10-5 drift-report closure (#598)
 
 ### Fixed
 
-- (E82-S7) toggle.sh --enable emits canonical {type, command, refreshInterval} (#590)
+- toggle.sh --enable emits canonical {type, command, refreshInterval} (#590)
 
 ## [1.142.0] — 2026-05-11
 
 ### Added
 
-- (E84-S5) add silent-Val-bypass audit script + bats coverage (#585)
-- (E84-S4) add lossy-mode warning helper + ADR-083 yield-gate amendment (#584)
-- (E84-S3) strip context:fork + dual-mode runtime + framework gate (#583)
-- (E84-S2) classify all 146 SKILL.md files with orchestration_class (#582)
-- (E84-S1) document orchestration_class schema in skills README (#581)
+- add silent-Val-bypass audit script + bats coverage (#585)
+- add lossy-mode warning helper + yield-gate amendment (#584)
+- strip context:fork + dual-mode runtime + framework gate (#583)
+- classify all 146 SKILL.md files with orchestration_class (#582)
+- document orchestration_class schema in skills README (#581)
 
 ### Fixed
 
@@ -938,115 +938,115 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- (E81-S4) surface Val-PASSED stranded-ready stories in /gaia-sprint-status (#577)
-- (E81-S3) sprint auto-close detection (#576)
-- (E28-S226) plugin-namespaced subagent dispatch in skill prose (#574)
-- (E76-S18) substrate-replace stdout-sentinel yield with AskUserQuestion (#569)
-- (E76-S16) verify FR-MTG-32/33 AskUserQuestion amendment in PRD shard (#567)
-- (E76-S15) bats stdout-sentinel anti-pattern check + SKILL.md auto-mode clause (#566)
-- (E83-S6) add re-validation audit-trail bats day-1 self-test (#565)
-- (E83-S5) remove priority_flag next-sprint auto-setter from gaia-add-feature (#564)
-- (E83-S4) wire ADR-063 in-place amendment + traceability matrix rege (#563)
-- (E83-S3) bats anti-pattern check on assessment-doc emissions (#562)
-- (E83-S2) harden SKILL.md prose to forbid auto-judge and inline-Val patterns (#561)
-- (E83-S1) sentinel checkpoint primitive + AskUserQuestion precondition
+- surface Val-PASSED stranded-ready stories in /gaia-sprint-status (#577)
+- sprint auto-close detection (#576)
+- plugin-namespaced subagent dispatch in skill prose (#574)
+- substrate-replace stdout-sentinel yield with AskUserQuestion (#569)
+- verify /33 AskUserQuestion amendment in PRD shard (#567)
+- bats stdout-sentinel anti-pattern check + SKILL.md auto-mode clause (#566)
+- add re-validation audit-trail bats day-1 self-test (#565)
+- remove priority_flag next-sprint auto-setter from gaia-add-feature (#564)
+- wire in-place amendment + traceability matrix rege (#563)
+- bats anti-pattern check on assessment-doc emissions (#562)
+- harden SKILL.md prose to forbid auto-judge and inline-Val patterns (#561)
+- sentinel checkpoint primitive + AskUserQuestion precondition
 
 ### Changed
 
-- (E76-S19) verify FR-MTG-10 user-as-attendee + T-MTG-5 row (#568)
+- verify user-as-attendee + row (#568)
 
 ### Fixed
 
-- (E55-S12) closeout-skill scanner hardening (recursive-glob + set -u guard) (#573)
-- (E83-S1) reword Step 2 anti-pattern warning to satisfy TC-VFC-7 static check
+- closeout-skill scanner hardening (recursive-glob + set -u guard) (#573)
+- reword Step 2 anti-pattern warning to satisfy static check
 
 ## [1.140.0] — 2026-05-09
 
 ### Added
 
-- (E82-S3) /gaia-statusline-enable and /gaia-statusline-disable toggle skills (#556)
-- (E82-S2) background update-check fetcher + 7d stale-fence (#555)
+- gaia-statusline-enable and /gaia-statusline-disable toggle skills (#556)
+- background update-check fetcher + 7d stale-fence (#555)
 
 ## [1.139.0] — 2026-05-09
 
 ### Added
 
-- (E59-S6) mirror per-story status into per-epic shard atomically
-- (E76-S10) close subagent dispatch contract for /gaia-meeting (#549)
-- (E76-S9) script-side yield-gate enforcement with YIELD-STOP sentinel (#548)
-- (E76-S8) wire No-fabricated-user-turns invariant (#547)
-- (E71-S6) wire /gaia-init Step 2.2 project-shape enum relabel + plug (#546)
+- mirror per-story status into per-epic shard atomically
+- close subagent dispatch contract for /gaia-meeting (#549)
+- script-side yield-gate enforcement with YIELD-STOP sentinel (#548)
+- wire No-fabricated-user-turns invariant (#547)
+- wire /gaia-init Step 2.2 project-shape enum relabel + plug (#546)
 
 ### Changed
 
-- (E59-S6) name new public functions in coverage anchors
+- name new public functions in coverage anchors
 
 ### Fixed
 
-- (E53-S248) teach validate-gate.sh traceability_exists to accept strategy/ placement (#550)
+- teach validate-gate.sh traceability_exists to accept strategy/ placement (#550)
 
 ## [1.138.0] — 2026-05-08
 
 ### Added
 
-- (E76-S7) interactive checkpoint mode for /gaia-meeting (#541)
+- interactive checkpoint mode for /gaia-meeting (#541)
 
 ### Changed
 
-- retire stale E53-S246-release-cut-readiness.bats (#543)
+- retire stale -release-cut-readiness.bats (#543)
 
 ## [1.137.0] — 2026-05-08
 
 ### Added
 
-- (E76-S6) wire guardrails and cost-reporting refinements (#535)
-- (E76-S5) add eight non-decide modes with default invitees + bias plumbing (#534)
-- (E76-S4) scratchpad pin + auto-organized extraction (#533)
-- (E76-S3) close-review + action-items v2 + memory write-through + dual-schema routing (#532)
-- (E76-S2) wire Research phase + cite-or-flag + raise-hand — sideca (#531)
-- (E79-S6) migration script — backfill legacy flat stories + flat story-index.yaml (#530)
-- (E79-S4) make all story-file readers recursive (#528)
-- (E79-S3) transition-story-status.sh — write per-epic story-index.yaml (#527)
-- (E79-S2) wire `/gaia-create-story` — write to canonical nested pa (#525)
-- (E76-S1) scaffold /gaia-meeting seven-phase peer-to-peer skill
-- (E79-S1) lift epic-slug resolver into a shared script (FR-396, NFR-059) (#523)
+- wire guardrails and cost-reporting refinements (#535)
+- add eight non-decide modes with default invitees + bias plumbing (#534)
+- scratchpad pin + auto-organized extraction (#533)
+- close-review + action-items v2 + memory write-through + dual-schema routing (#532)
+- wire Research phase + cite-or-flag + raise-hand — sideca (#531)
+- migration script — backfill legacy flat stories + flat story-index.yaml (#530)
+- make all story-file readers recursive (#528)
+- transition-story-status.sh — write per-epic story-index.yaml (#527)
+- wire `/gaia-create-story` — write to canonical nested pa (#525)
+- scaffold /gaia-meeting seven-phase peer-to-peer skill
+- lift epic-slug resolver into a shared script (#523)
 
 ### Fixed
 
 - (tests) bump version-pinned literals after v1.136.0 release (#538)
-- (E80-S1) scaffold-story frontmatter token gap and gaia-atdd recurring quirks (#536)
+- scaffold-story frontmatter token gap and gaia-atdd recurring quirks (#536)
 - (gaia-run-all-reviews) resolve canonical-nested story paths (#526)
 
 ## [1.136.0] — 2026-05-07
 
 ### Added
 
-**Sprint-39** (117 pts, 22 stories, 100% completion + 100% velocity + 100% first-pass review rate). Two epics shipped end-to-end: E77 Plugin Project Shape (16 stories, 88 pts) + E78 Plugin Distribution (6 stories, 29 pts).
+**Sprint-39** (117 pts, 22 stories, 100% completion + 100% velocity + 100% first-pass review rate). Two epics shipped end-to-end: Plugin Project Shape (16 stories, 88 pts) + Plugin Distribution (6 stories, 29 pts).
 
-- **E77 Plugin Project Shape** — GAIA can now be authored as a Claude Code plugin.
-  - (E77-S1) add `project_kind` field to project-config schema and resolver (FR-403, ADR-087) (#498)
-  - (E77-S2) add claude-code-plugin stack file (FR-404) (#499)
-  - (E77-S3) tri-state tool-availability probe (FR-405, ADR-089) (#500)
-  - (E77-S4) sub-rubric loader pipeline migration with byte-identical contract test (FR-406, ADR-088) — high-risk XL (#501)
-  - (E77-S5) Tier 1 `plugin-code` sub-rubric (FR-407) (#502)
-  - (E77-S6) Tier 1 `plugin-security` sub-rubric (FR-408) (#503)
-  - (E77-S7) Tier 1 `plugin-frontmatter-validator` adapter (FR-409) (#504)
-  - (E77-S8) Tier 1 `plugin-manifest-validator` adapter (FR-410) (#505)
-  - (E77-S9) `/gaia-init` option 6 — Claude Code plugin (FR-411) (#506)
-  - (E77-S10) ADR-090 mobile dual-path coexistence amendment (FR-412) — docs-only
-  - (E77-S11) Tier 2 shellcheck adapter (FR-413) (#507)
-  - (E77-S12) Tier 2 bats adapter dual-mode with day-1 spike fallback (FR-414) — high-risk (#508)
-  - (E77-S13) Tier 2 jsonschema, markdownlint, yamllint adapters (FR-415) (#509)
-  - (E77-S14) Tier 2 `plugin-test` sub-rubric (FR-416) (#510)
-  - (E77-S15) Tier 2 `plugin-qa` + `plugin-nfr` sub-rubrics (FR-417, FR-422) (#511)
-  - (E77-S16) plugin CI template + bats-budget-watch + brownfield detection + plugin-aware `/gaia-trace` (FR-418, FR-419, FR-420, FR-421) — high-risk XL (#512)
-- **E78 Plugin Distribution** — marketplace publication chain end-to-end.
-  - (E78-S1) `marketplace-publish` adapter (FR-423) (#513)
-  - (E78-S2) `distribution.channels[]` schema (FR-424) (#514)
-  - (E78-S3) `/gaia-deploy` `health_check.mode: skip` (FR-425) (#515)
-  - (E78-S4) `/gaia-deploy` `deployment.adapter` dispatch (FR-426) (#516)
-  - (E78-S5) `/gaia-deploy` empty `smoke_suites` handling with manual-checklist evidence (FR-427) (#517)
-  - (E78-S6) `plugin-versioning` semver rubric + `adapter.schema.json` enum hygiene (FR-428, FR-429) (#518)
+- **Plugin Project Shape** — GAIA can now be authored as a Claude Code plugin.
+ - add `project_kind` field to project-config schema and resolver (#498)
+ - add claude-code-plugin stack file (#499)
+ - tri-state tool-availability probe (#500)
+ - sub-rubric loader pipeline migration with byte-identical contract test — high-risk XL (#501)
+ - Tier 1 `plugin-code` sub-rubric (#502)
+ - Tier 1 `plugin-security` sub-rubric (#503)
+ - Tier 1 `plugin-frontmatter-validator` adapter (#504)
+ - Tier 1 `plugin-manifest-validator` adapter (#505)
+ - `/gaia-init` option 6 — Claude Code plugin (#506)
+ - mobile dual-path coexistence amendment — docs-only
+ - Tier 2 shellcheck adapter (#507)
+ - Tier 2 bats adapter dual-mode with day-1 spike fallback — high-risk (#508)
+ - Tier 2 jsonschema, markdownlint, yamllint adapters (#509)
+ - Tier 2 `plugin-test` sub-rubric (#510)
+ - Tier 2 `plugin-qa` + `plugin-nfr` sub-rubrics (#511)
+ - plugin CI template + bats-budget-watch + brownfield detection + plugin-aware `/gaia-trace` — high-risk XL (#512)
+- **Plugin Distribution** — marketplace publication chain end-to-end.
+ - `marketplace-publish` adapter (#513)
+ - `distribution.channels[]` schema (#514)
+ - `/gaia-deploy` `health_check.mode: skip` (#515)
+ - `/gaia-deploy` `deployment.adapter` dispatch (#516)
+ - `/gaia-deploy` empty `smoke_suites` handling with manual-checklist evidence (#517)
+ - `plugin-versioning` semver rubric + `adapter.schema.json` enum hygiene (#518)
 
 ### Fixed
 
@@ -1061,35 +1061,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Maintenance
 
 - 22 distinct stories shipped across one sprint; 21 squash-merge feature commits (#498–#518) + #497 path-fix + #520 fixup PR.
-- Three high-risk stories landed without spike fallback (E77-S4, E77-S12, E77-S16). MITIGATION 4 prerequisite gate on E77-S16 (E77-S11/S12/S13 contract.bats green before ship) worked as designed.
+- Three high-risk stories landed without spike fallback. The MITIGATION 4 prerequisite gate (contract.bats green before ship) worked as designed.
 - Sprint-envelope discipline restored at 117 pts after sprint-36→37→38 expansion (73 → 174 → 271 pts).
-- 33 findings triaged into 17 backlog stories (15 new TDs, 2 dedup'd into existing TD-112/TD-115). 7 retro action items captured (AI-51..AI-57).
+- 33 findings triaged into 17 backlog stories (15 new TDs, 2 dedup'd into existing). 7 retro action items captured.
 
 ## [1.135.0] — 2026-05-06
 
 ### Added
 
 - **Sprint-37** (174 pts, 34 stories): GAIA Review System v2 foundation + critical-gaps + configuration system + naming reorg
-  - E66 Foundation: review-common shared library, agent-overlay.sh, verdict-resolver.sh parameterization, tool-availability-probe.sh three-state probe, /gaia-review-all composite verdict GATING (ADR-082), gaia-security-review V2 reference migration, evidence-judgment-parity bats across 12 verdict-producing skills
-  - E67 Critical Gaps: /gaia-review-test Phase 3A scripts (smell-detector, flakiness-analyzer, fixture-analyzer, tag-conformance-detector), /gaia-test-automate skeleton-fix + placeholder-test-detector + coverage-delta verdict input, /gaia-review-qa Phase 3C TC generation + project-config-driven test execution, /gaia-review-security privacy/data-protection scanners (PII detector, data-handling lint, retention-policy check)
-  - E68 Configuration System: project-config schema extension (11 new top-level sections), layered rubric loader + rubric-merger.sh + rubric.schema.json, six base rubrics + nine regime rubrics (GDPR/HIPAA/PCI-DSS/SOX/CCPA/SOC2/ISO-27001/WCAG-AA/WCAG-AAA)
-  - E69 Naming & Reorg: 8 review commands renamed to gaia-{verb}-{noun} canonical form with one-sprint deprecation aliases, /gaia-review-a11y three-phase reorganization, /gaia-test-strategy collapse, utility reviews wired as sub-routines, /gaia-perf-deepdive anytime variant rename
+ - Foundation: review-common shared library, agent-overlay.sh, verdict-resolver.sh parameterization, tool-availability-probe.sh three-state probe, /gaia-review-all composite verdict GATING , gaia-security-review V2 reference migration, evidence-judgment-parity bats across 12 verdict-producing skills
+ - Critical Gaps: /gaia-review-test Phase 3A scripts (smell-detector, flakiness-analyzer, fixture-analyzer, tag-conformance-detector), /gaia-test-automate skeleton-fix + placeholder-test-detector + coverage-delta verdict input, /gaia-review-qa Phase 3C TC generation + project-config-driven test execution, /gaia-review-security privacy/data-protection scanners (PII detector, data-handling lint, retention-policy check)
+ - Configuration System: project-config schema extension (11 new top-level sections), layered rubric loader + rubric-merger.sh + rubric.schema.json, six base rubrics + nine regime rubrics (GDPR/HIPAA/PCI-DSS/SOX/CCPA/SOC2/ISO-27001/WCAG-AA/WCAG-AAA)
+ - Naming & Reorg: 8 review commands renamed to gaia-{verb}-{noun} canonical form with one-sprint deprecation aliases, /gaia-review-a11y three-phase reorganization, /gaia-test-strategy collapse, utility reviews wired as sub-routines, /gaia-perf-deepdive anytime variant rename
 - **Sprint-38** (271 pts, 48 stories): Tool Adapter Framework + Configuration UX + Action Skills + Deployment-Phase + Mobile Platform + Polish
-  - E70 Tool Adapter Framework: adapter pattern formalization (adapter.schema.json + run-contract), 5-tool migration (Semgrep/gitleaks/radon/gocyclo/eslint-plugin-sonarjs) + backward-compat aliases, SonarQube adapter (container profile), OWASP Dependency-Check adapter, /gaia-list-tools + /gaia-tool-info + /gaia-validate-rubric query skills, probe-state-to-check-status helper
-  - E71 Configuration UX: /gaia-init greenfield conversational setup, /gaia-brownfield detection-driven config extension, /gaia-config-* editor family (env/test/tool/compliance/stack/rubric/show/validate), /gaia-config-ci --regenerate backup-and-prompt UX
-  - E72 Action Skills: /gaia-test-run manual any-environment runner, /gaia-test-automate sub-commands (--status/--add-scenario/--scaffold), CS-NNN custom-scenario tracking, per-stack tag conventions + tag-conformance-detector
-  - E73 Deployment-Phase Skills: /gaia-test-e2e (Playwright + Cypress), /gaia-test-perf (k6 + Lighthouse), /gaia-test-dast (OWASP ZAP), /gaia-test-a11y (axe-core + pa11y + Lighthouse), /gaia-deploy Pattern A skill
-  - E74 Mobile Platform Support (11 stories): project-config schema extension (platforms + device_targets), four mobile stacks (swift/kotlin/react-native/flutter), base mobile.json + sub-rubrics, apple-app-store + google-play-store + COPPA regime rubrics, seven mobile static adapters, /gaia-review-mobile skill, mobile dynamic adapters + device-farm dispatch (detox/maestro/appium/xcuitest/espresso + Firebase/BrowserStack/Sauce Labs), /gaia-test-mobile-e2e + /gaia-test-device-matrix, /gaia-config-platform + /gaia-config-device-target editors
-  - E75 Polish: BOUNDARIES.md top-level scope-edges document, parity bats per skill, persona-overlay agent-wiring documentation, framework README updates
+ - Tool Adapter Framework: adapter pattern formalization (adapter.schema.json + run-contract), 5-tool migration (Semgrep/gitleaks/radon/gocyclo/eslint-plugin-sonarjs) + backward-compat aliases, SonarQube adapter (container profile), OWASP Dependency-Check adapter, /gaia-list-tools + /gaia-tool-info + /gaia-validate-rubric query skills, probe-state-to-check-status helper
+ - Configuration UX: /gaia-init greenfield conversational setup, /gaia-brownfield detection-driven config extension, /gaia-config-* editor family (env/test/tool/compliance/stack/rubric/show/validate), /gaia-config-ci --regenerate backup-and-prompt UX
+ - Action Skills: /gaia-test-run manual any-environment runner, /gaia-test-automate sub-commands (--status/--add-scenario/--scaffold), custom-scenario tracking, per-stack tag conventions + tag-conformance-detector
+ - Deployment-Phase Skills: /gaia-test-e2e (Playwright + Cypress), /gaia-test-perf (k6 + Lighthouse), /gaia-test-dast (OWASP ZAP), /gaia-test-a11y (axe-core + pa11y + Lighthouse), /gaia-deploy Pattern A skill
+ - Mobile Platform Support (11 stories): project-config schema extension (platforms + device_targets), four mobile stacks (swift/kotlin/react-native/flutter), base mobile.json + sub-rubrics, apple-app-store + google-play-store + COPPA regime rubrics, seven mobile static adapters, /gaia-review-mobile skill, mobile dynamic adapters + device-farm dispatch (detox/maestro/appium/xcuitest/espresso + Firebase/BrowserStack/Sauce Labs), /gaia-test-mobile-e2e + /gaia-test-device-matrix, /gaia-config-platform + /gaia-config-device-target editors
+ - Polish: BOUNDARIES.md top-level scope-edges document, parity bats per skill, persona-overlay agent-wiring documentation, framework README updates
 
 ### Fixed
 
-- (E55-S9) /gaia-dev-story promotion-chain ABSENT false-flag — config-discovery ladder mirrors resolve-config.sh
-- (E55-S10) post-step push-verification added to /gaia-dev-story finalize
-- (E54-S6) story-template enforces 3-column Review Gate at validation
-- (E64-S3..S7) dev-story tooling cleanup — transition-story-status path fixes, sharded-layout resolver, EXIT/INT/TERM trap, orphan-tmp sweep, lint-err tempfile registration
-- (E53-S234) document non-git docs/ workspace + degrade git ops gracefully
-- (E53-S235..S247) docs reorganization continued — H3 sub-sharding, code-block-aware H2 detection, classify cluster-19 legacy files, type-table polish, ADR-069/FR-399 reconcile, monolith-vs-shard sync contract, cascade-skill auto-reshard, broken markdown link cleanup
+- gaia-dev-story promotion-chain ABSENT false-flag — config-discovery ladder mirrors resolve-config.sh
+- post-step push-verification added to /gaia-dev-story finalize
+- story-template enforces 3-column Review Gate at validation
+- dev-story tooling cleanup — transition-story-status path fixes, sharded-layout resolver, EXIT/INT/TERM trap, orphan-tmp sweep, lint-err tempfile registration
+- document non-git docs/ workspace + degrade git ops gracefully
+- docs reorganization continued — H3 sub-sharding, code-block-aware H2 detection, classify legacy files, type-table polish, reconcile, monolith-vs-shard sync contract, cascade-skill auto-reshard, broken markdown link cleanup
 - (CI) bump bats-tests timeout 5m → 8m to absorb sprint-37/sprint-38 suite growth (3300+ tests)
 
 ### Maintenance
@@ -1101,19 +1101,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- (E53-S233) accept legacy epics/index.md sharded layout in validate-gate.sh
+- accept legacy epics/index.md sharded layout in validate-gate.sh
 
 ## [1.134.0] — 2026-05-03
 
 ### Added
 
-- (E53-S233) teach validate-gate.sh to accept sharded planning-artifact layouts (#408)
-- (E38-S10) add inject subcommand to sprint-state.sh (#405)
+- teach validate-gate.sh to accept sharded planning-artifact layouts (#408)
+- add inject subcommand to sprint-state.sh (#405)
 
 ### Fixed
 
-- (E29-S8) substitute {project-root} placeholder in v1->v2 migrator (#406)
-- (E29-S9) add placeholder-detection guard to resolve-config.sh (#407) — defense-in-depth companion to E29-S8; auto-classifier missed this entry because the squash commit's title didn't conform to Conventional Commits prefix; manually added.
+- substitute {project-root} placeholder in v1->v2 migrator (#406)
+- add placeholder-detection guard to resolve-config.sh (#407) — defense-in-depth companion to ; auto-classifier missed this entry because the squash commit's title didn't conform to Conventional Commits prefix; manually added.
 
 ### Maintenance
 
@@ -1123,109 +1123,109 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- (E28-S181) add sidecar schema-drift detection to gaia-migrate (#398)
-- (E29-S6) extend dead-reference-scan allowlist for skill setup.sh / finalize.sh (#394)
-- (E20-S20) extract safe_grep_log() shell helper (#393)
-- (E65-S8) absorb severity rubric format into gaia-code-review-standards (#392)
-- (E65-S7) migrate gaia-performance-review to seven-phase Evidence/Judgment template (#391)
-- (E65-S6) migrate gaia-test-review to seven-phase Evidence/Judgment template (#390)
-- (E65-S5) migrate gaia-test-automate to hybrid seven-phase + ADR-051 template (#389)
-- (E65-S4) migrate gaia-qa-tests to seven-phase Evidence/Judgment template (#388)
-- (E65-S3) migrate gaia-security-review to seven-phase Evidence/Judgment template (#387)
-- (E60-S5) resolve-config.sh --all batch mode + session-scoped cache (#384)
-- (E28-S223) require reproduction snippet in triage findings (#383)
-- (E28-S219) wire Fix workspace-guard hole in e45-s8-adr-finalize-che (#382)
-- (E28-S222) wire Refresh cluster-9 C9-FIXTURE-fake.md frozen-date li (#381)
-- (E62-S3) add claude-opus-4-7 to _SCHEMA.md model enum (#379)
-- (E63-S12) slugify.sh --help emits canonical Usage block (fix E63-S1 (#378)
+- add sidecar schema-drift detection to gaia-migrate (#398)
+- extend dead-reference-scan allowlist for skill setup.sh / finalize.sh (#394)
+- extract safe_grep_log shell helper (#393)
+- absorb severity rubric format into gaia-code-review-standards (#392)
+- migrate gaia-performance-review to seven-phase Evidence/Judgment template (#391)
+- migrate gaia-test-review to seven-phase Evidence/Judgment template (#390)
+- migrate gaia-test-automate to hybrid seven-phase + template (#389)
+- migrate gaia-qa-tests to seven-phase Evidence/Judgment template (#388)
+- migrate gaia-security-review to seven-phase Evidence/Judgment template (#387)
+- resolve-config.sh --all batch mode + session-scoped cache (#384)
+- require reproduction snippet in triage findings (#383)
+- wire Fix workspace-guard hole in e45-s8-adr-finalize-che (#382)
+- wire Refresh C9-FIXTURE-fake.md frozen-date li (#381)
+- add claude-opus-4-7 to _SCHEMA.md model enum (#379)
+- slugify.sh --help emits canonical Usage block (fix (#378)
 - (e65-s1) review-skill template foundation with shared scripts, schema, and severity rubric (#377)
 
 ### Changed
 
-- (E9-S26) sweep legacy _memory/tier2-results paths and document Step 14 (#397)
-- (E28-S220) document bun test:bats vs bare bats fallback
+- sweep legacy _memory/tier2-results paths and document Step 14 (#397)
+- document bun test:bats vs bare bats fallback
 
 ### Fixed
 
-- (F-S231-DEDUP) dedup story-file resolver matches by realpath (#401)
-- (F-S225-PATH-RESOLVER) support epic-grouped story file layout (#400)
-- (E64-S2) tighten dod-check.sh test resolver and subtask scope (#396)
+- dedup story-file resolver matches by realpath (#401)
+- support epic-grouped story file layout (#400)
+- tighten dod-check.sh test resolver and subtask scope (#396)
 
 ## [1.132.0] — 2026-04-29
 
 ### Added
 
-- (create-story) thin-orchestrator rewrite + e2e + token-savings benchmark (E63-S11) (#374)
-- (create-story) migrate SKILL.md + setup.sh to resolve-config.sh (E60-S3) (#366)
-- (create-story) add scaffold-story.sh + bats (E63-S9) (#363)
-- (create-story) add append-edge-case-tests.sh + bats (E63-S8) (#362)
-- (create-story) add append-edge-case-acs.sh + bats (E63-S7) (#361)
-- (create-story) add validate-frontmatter.sh + bats (E63-S5) (#360)
-- (create-story) add validate-ac-format.sh + bats (E63-S6) (#359)
-- (create-story) add validate-canonical-filename.sh + bats (E63-S4) (#358)
-- (create-story) add generate-frontmatter.sh + bats (E63-S3) (#357)
-- (create-story) add next-story-id.sh + bats (E63-S2)
-- (create-story) add deterministic slugify.sh and bats coverage (E63-S1) (#355)
-- (E62-S2) pin validator.md model to claude-opus-4-7 + document Val opus-pin contract
-- (E62-S1) pin model claude-opus-4-7 + effort high in 10 Val-dispatching skills (#353)
-- (E60-S1) add four flat artifact-path keys to project-config.yaml (#351)
-- (E61-S2) wire gaia-create-story Step 4 to read sizing_map for points derivation (#350)
-- (E61-S1) add sizing_map block to project-config.yaml + reclassify in MIGRATION (#349)
-- (E64-S1) wire Dev-story tooling quirks cleanup (#345)
-- (dev-story) rewrite gaia-run-all-reviews skill as thin orchestrator with --force flag (E58-S6) (#342)
-- (dev-story) wire script invocations into SKILL.md Steps 1/10/11 (E57-S8) (#341)
-- (dev-story) review-runner.sh true orchestration harness (E58-S5) (#339)
-- (dev-story) add pr-body.sh and commit-msg.sh (E57-S7) (#336)
-- (dev-story) add promotion-chain-guard.sh and check-deps.sh (E57-S6) (#335)
-- (dev-story) add tdd-review-gate.sh decision script (E57-S2) (#334)
-- (dev-story) add story-parse.sh and detect-mode.sh (E57-S5) (#331)
-- (agents) add tdd-reviewer fork-context subagent (E57-S3) (#330)
+- (create-story) thin-orchestrator rewrite + e2e + token-savings benchmark (#374)
+- (create-story) migrate SKILL.md + setup.sh to resolve-config.sh (#366)
+- (create-story) add scaffold-story.sh + bats (#363)
+- (create-story) add append-edge-case-tests.sh + bats (#362)
+- (create-story) add append-edge-case-acs.sh + bats (#361)
+- (create-story) add validate-frontmatter.sh + bats (#360)
+- (create-story) add validate-ac-format.sh + bats (#359)
+- (create-story) add validate-canonical-filename.sh + bats (#358)
+- (create-story) add generate-frontmatter.sh + bats (#357)
+- (create-story) add next-story-id.sh + bats
+- (create-story) add deterministic slugify.sh and bats coverage (#355)
+- pin validator.md model to claude-opus-4-7 + document Val opus-pin contract
+- pin model claude-opus-4-7 + effort high in 10 Val-dispatching skills (#353)
+- add four flat artifact-path keys to project-config.yaml (#351)
+- wire gaia-create-story Step 4 to read sizing_map for points derivation (#350)
+- add sizing_map block to project-config.yaml + reclassify in MIGRATION (#349)
+- wire Dev-story tooling quirks cleanup (#345)
+- (dev-story) rewrite gaia-run-all-reviews skill as thin orchestrator with --force flag (#342)
+- (dev-story) wire script invocations into SKILL.md Steps 1/10/11 (#341)
+- (dev-story) review-runner.sh true orchestration harness (#339)
+- (dev-story) add pr-body.sh and commit-msg.sh (#336)
+- (dev-story) add promotion-chain-guard.sh and check-deps.sh (#335)
+- (dev-story) add tdd-review-gate.sh decision script (#334)
+- (dev-story) add story-parse.sh and detect-mode.sh (#331)
+- (agents) add tdd-reviewer fork-context subagent (#330)
 
 ### Changed
 
-- (e38-s1-reconcile-risk) migrate CATALOG fixture to per-test TEST_TMP path (E38-S5) (#371)
-- (retro) swap action-items-increment.sh for shared writer delegation (E36-S5) (#370)
-- (skills) reconcile action-items.yaml path to planning-artifacts (E36-S4) (#369)
-- (resolve-config) replace frozen-date literals with sentinel (E28-S214) (#368)
-- (config) document four artifact-path keys in migration doc (E60-S4) (#367)
-- (skills,claude-md) add status-edit discipline critical rule (E59-S4) (#365)
-- (E60-S2) bats coverage for the four artifact-path keys (#352)
-- (E59-S3) delete update-story-status.sh deprecation wrappers (#348)
-- (E59-S2) update bats tests for wrapper removal (#347)
+- (e38-s1-reconcile-risk) migrate CATALOG fixture to per-test TEST_TMP path (#371)
+- (retro) swap action-items-increment.sh for shared writer delegation (#370)
+- (skills) reconcile action-items.yaml path to planning-artifacts (#369)
+- (resolve-config) replace frozen-date literals with sentinel (#368)
+- (config) document four artifact-path keys in migration doc (#367)
+- (skills,claude-md) add status-edit discipline critical rule (#365)
+- bats coverage for the four artifact-path keys (#352)
+- delete update-story-status.sh deprecation wrappers (#348)
+- update bats tests for wrapper removal (#347)
 
 ### Fixed
 
-- (dev-story) close E57-S8 ac4 integration smoke gap (e57-s8) (#344)
-- (dev-story) close E57-S8 ac5 absence-assertion gap (e57-s8) (#343)
+- (dev-story) close ac4 integration smoke gap (e57-s8) (#344)
+- (dev-story) close ac5 absence-assertion gap (e57-s8) (#343)
 
 ## [1.131.0] — 2026-04-28
 
 ### Added
 
-- (dev-story) step 6b conditional-check advisory hints (E55-S7) (#325)
-- (dev-story) auto-reviews YOLO-only step 16 + 4 helper scripts + bats coverage (E55-S8) (#323)
-- (dev-story) val-in-tdd single post-refactor pass (E55-S4) (#322)
-- (dev-story) atdd gate + plan-structure validator + figma graceful-degrade (E55-S5) (#321)
-- (dev-story) non-YOLO three-option planning gate (approve/revise/validate) (E55-S3) (#320)
-- (dev-story) yolo val auto-validation loop with 3-iter cap and audit file (E55-S2) (#319)
-- (dev-story) hard-halt planning gate via AskUserQuestion (E55-S1) (#317)
+- (dev-story) step 6b conditional-check advisory hints (#325)
+- (dev-story) auto-reviews YOLO-only step 16 + 4 helper scripts + bats coverage (#323)
+- (dev-story) val-in-tdd single post-refactor pass (#322)
+- (dev-story) atdd gate + plan-structure validator + figma graceful-degrade (#321)
+- (dev-story) non-YOLO three-option planning gate (approve/revise/validate) (#320)
+- (dev-story) yolo val auto-validation loop with 3-iter cap and audit file (#319)
+- (dev-story) hard-halt planning gate via AskUserQuestion (#317)
 
 ### Changed
 
-- (yolo) add TC-AMG-1..5 conformance bats for ADR-067 disambiguation guard (E56-S1) (#324)
+- (yolo) add ..5 conformance bats for disambiguation guard (#324)
 
 ### Fixed
 
-- (dev-story) emit step6b_gate stderr log + extend bats coverage (E55-S7)
+- (dev-story) emit step6b_gate stderr log + extend bats coverage
 
 ## [1.130.0] — 2026-04-28
 
 ### Added
 
-- (create-story) add YOLO param + non-YOLO [u]/[a] routing prompt (E54-S1) (#311)
-- (create-story) restore V1 edge-case pipeline Steps 3b/3c/3d (E54-S4) (#310)
-- (create-story) conditional ux-designer routing + parallel spawn (E54-S2) (#309)
-- (scripts) unified transition-story-status.sh (E54-S3) (#308)
+- (create-story) add YOLO param + non-YOLO [u]/[a] routing prompt (#311)
+- (create-story) restore V1 edge-case pipeline Steps 3b/3c/3d (#310)
+- (create-story) conditional ux-designer routing + parallel spawn (#309)
+- (scripts) unified transition-story-status.sh (#308)
 
 ## [1.129.0] — 2026-04-27
 
@@ -1233,135 +1233,135 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - (teach-testing) operationalize JIT discipline + progressive gating
 - (mobile-testing) add 90% device coverage rule and cloud config
-- (scripts) producer-side token_estimate emit for val auto-fix loop (E44-S15)
-- (skills) canonical document-rulesets for Phase 1 artifact types (E44-S12) (#289)
-- (skills) inline-ask + scan-depth doc in /gaia-index-docs (E50-S4) (#287)
-- (skills) inline confirm + slug algorithm in /gaia-merge-docs (E50-S3) (#286)
-- (skills) inline-ask on empty arguments in /gaia-shard-doc (E50-S2) (#285)
-- (skills) inline-ask + Next-Steps clarification in /gaia-summarize (E50-S1) (#284)
-- (skills) per-dimension justification + migration trigger in /gaia-nfr (E49-S4) (#283)
-- (skills) empty-context fallback interrogation in /gaia-problem-solving (E49-S3) (#282)
-- (skills) severity prompt + rule table + fallback warning in /gaia-fill-test-gaps (E49-S2) (#281)
-- (skills) explicit WCAG-level prompt + criterion mapping in /gaia-a11y-testing (E49-S1) (#280)
-- (skills) inline AC linkage + pinned schemas in /gaia-test-gap-analysis (E48-S5) (#279)
-- (skills) brownfield test-env pause + per-subagent scan diagnostics (E48-S4) (#278)
-- (skills) add threat-model linkage to /gaia-review-security (E48-S3) (#277)
-- (skills) plumb threat-model context into Zara dispatch (E48-S2) (#276)
-- (skills) restore Val gate + assessment-doc in /gaia-add-feature (E48-S1) (#275)
-- (skills) add /gaia-innovation native skill (E47-S2) (#274)
-- (skills) add /gaia-design-thinking native skill (E47-S1)
-- (E46-S10) narrow product-brief INDEX_GUIDED scope to brainstorm
-- (E46-S9) add /gaia-product-brief plugin template and analyst assignment
-- (E46-S2) restore /gaia-create-ux Import mode + read-only FR-140 audit (#270)
-- (E46-S1) restore /gaia-create-ux Generate mode + FR-140 audit
-- (E46-S4) readiness-check priority/schedule + compliance + self-contradiction (#268)
-- (E46-S8) document /gaia-adversarial Step 4 invocation contract
-- (E46-S7) add /gaia-ci-setup schema validation retry loop (#266)
-- (E46-S6) add /gaia-create-arch tech-stack pause + ADR sidecar write
-- (E46-S5) add /gaia-edit-test-plan orchestrator trigger inheritance
-- (E46-S3) add /gaia-atdd batch mode, red-phase, and graceful exit
-- (E45-S5) add VCP-MEM-04 ADR-061/ADR-057 scope-boundary regression test
-- (E44-S9) add NFR-VCP-2 token-budget verification harness
-- (E44-S8) document Val auto-fix iteration log format and witness via VCP-FIX-07
-- (E44-S6) wire Val auto-review into 3 Phase 3 Testing artifact skills
-- (E44-S5) wire Val auto-review into 6 Phase 3 Solutioning artifact skills
-- (E44-S4) wire Val auto-review into 3 Phase 2 + product-brief skills
-- (E44-S3) wire Val auto-review into 4 Phase 1 artifact skills (#252)
-- (E45-S3) auto-save session memory at finalize for 24 Phase 1-3 skills (#251)
-- (E45-S1) static `## Next Steps` sections for 10 lifecycle skills (#250)
-- (E45-S4) declare discover-inputs strategy on 6 lifecycle skills
-- (E45-S2) quality gates pre_start/post_complete in setup.sh/finalize.sh
-- (E41-S1) yolo mode contract helper + framework lint (ADR-057)
-- (E44-S7) open-question detection helper + wire into 18 skills
-- (E28-S182) add SIGINT/SIGTERM trap handler to gaia-migrate.sh
-- (E42-S15) port /gaia-test-framework + /gaia-atdd + /gaia-ci-setup checklists to V2
-- (E42-S14) port /gaia-edit-test-plan and /gaia-test-design checklists to V2
-- (E42-S13) port /gaia-readiness-check 65-item checklist to V2
-- (E42-S12) port /gaia-infra-design 25-item checklist to V2
-- (E42-S11) port /gaia-threat-model 25-item checklist to V2 (#235)
-- (E42-S10) port /gaia-create-epics 31-item checklist to V2 (#234)
-- (E42-S9) port /gaia-edit-arch 25-item checklist to V2
-- (E42-S8) port /gaia-create-arch 33-item checklist to V2
-- (E42-S7) port /gaia-create-ux 26-item checklist to V2
-- (E42-S6) port /gaia-create-prd 36-item checklist to V2
-- (E42-S5) port /gaia-product-brief 27-item checklist to V2
-- (E42-S4) port /gaia-tech-research 22-item checklist to V2
-- (E42-S3) port /gaia-domain-research 22-item checklist to V2
-- (E42-S2) port /gaia-market-research 28-item checklist to V2
-- (E42-S1) port /gaia-brainstorm 24-item checklist to V2
-- (E43-S6) /gaia-resume ADR-059 JSON consumption contract
-- (E43-S7) checkpoint failure-mode handling (corruption, partial writes)
-- (E43-S5) wire checkpoint writes into 8 Phase 3 Testing skills
-- (E43-S4) wire checkpoint writes into 8 Phase 3 Solutioning skills
-- (checkpoint) wire write-checkpoint.sh into Phase 2 skills (E43-S3)
-- (checkpoint) wire write-checkpoint.sh into Phase 1 skills (E43-S2)
-- (checkpoint) add write-checkpoint.sh schema v1 helper (E43-S1)
+- (scripts) producer-side token_estimate emit for val auto-fix loop
+- (skills) canonical document-rulesets for Phase 1 artifact types (#289)
+- (skills) inline-ask + scan-depth doc in /gaia-index-docs (#287)
+- (skills) inline confirm + slug algorithm in /gaia-merge-docs (#286)
+- (skills) inline-ask on empty arguments in /gaia-shard-doc (#285)
+- (skills) inline-ask + Next-Steps clarification in /gaia-summarize (#284)
+- (skills) per-dimension justification + migration trigger in /gaia-nfr (#283)
+- (skills) empty-context fallback interrogation in /gaia-problem-solving (#282)
+- (skills) severity prompt + rule table + fallback warning in /gaia-fill-test-gaps (#281)
+- (skills) explicit WCAG-level prompt + criterion mapping in /gaia-a11y-testing (#280)
+- (skills) inline AC linkage + pinned schemas in /gaia-test-gap-analysis (#279)
+- (skills) brownfield test-env pause + per-subagent scan diagnostics (#278)
+- (skills) add threat-model linkage to /gaia-review-security (#277)
+- (skills) plumb threat-model context into Zara dispatch (#276)
+- (skills) restore Val gate + assessment-doc in /gaia-add-feature (#275)
+- (skills) add /gaia-innovation native skill (#274)
+- (skills) add /gaia-design-thinking native skill
+- narrow product-brief INDEX_GUIDED scope to brainstorm
+- add /gaia-product-brief plugin template and analyst assignment
+- restore /gaia-create-ux Import mode + read-only audit (#270)
+- restore /gaia-create-ux Generate mode + audit
+- readiness-check priority/schedule + compliance + self-contradiction (#268)
+- document /gaia-adversarial Step 4 invocation contract
+- add /gaia-ci-setup schema validation retry loop (#266)
+- add /gaia-create-arch tech-stack pause + ADR sidecar write
+- add /gaia-edit-test-plan orchestrator trigger inheritance
+- add /gaia-atdd batch mode, red-phase, and graceful exit
+- add / scope-boundary regression test
+- add token-budget verification harness
+- document Val auto-fix iteration log format and witness
+- wire Val auto-review into 3 Phase 3 Testing artifact skills
+- wire Val auto-review into 6 Phase 3 Solutioning artifact skills
+- wire Val auto-review into 3 Phase 2 + product-brief skills
+- wire Val auto-review into 4 Phase 1 artifact skills (#252)
+- auto-save session memory at finalize for 24 Phase 1-3 skills (#251)
+- static `## Next Steps` sections for 10 lifecycle skills (#250)
+- declare discover-inputs strategy on 6 lifecycle skills
+- quality gates pre_start/post_complete in setup.sh/finalize.sh
+- yolo mode contract helper + framework lint
+- open-question detection helper + wire into 18 skills
+- add SIGINT/SIGTERM trap handler to gaia-migrate.sh
+- port /gaia-test-framework + /gaia-atdd + /gaia-ci-setup checklists to V2
+- port /gaia-edit-test-plan and /gaia-test-design checklists to V2
+- port /gaia-readiness-check 65-item checklist to V2
+- port /gaia-infra-design 25-item checklist to V2
+- port /gaia-threat-model 25-item checklist to V2 (#235)
+- port /gaia-create-epics 31-item checklist to V2 (#234)
+- port /gaia-edit-arch 25-item checklist to V2
+- port /gaia-create-arch 33-item checklist to V2
+- port /gaia-create-ux 26-item checklist to V2
+- port /gaia-create-prd 36-item checklist to V2
+- port /gaia-product-brief 27-item checklist to V2
+- port /gaia-tech-research 22-item checklist to V2
+- port /gaia-domain-research 22-item checklist to V2
+- port /gaia-market-research 28-item checklist to V2
+- port /gaia-brainstorm 24-item checklist to V2
+- gaia-resume JSON consumption contract
+- checkpoint failure-mode handling (corruption, partial writes)
+- wire checkpoint writes into 8 Phase 3 Testing skills
+- wire checkpoint writes into 8 Phase 3 Solutioning skills
+- (checkpoint) wire write-checkpoint.sh into Phase 2 skills
+- (checkpoint) wire write-checkpoint.sh into Phase 1 skills
+- (checkpoint) add write-checkpoint.sh schema v1 helper
 - (release) automate plugin release on staging-to-main merge
 
 ### Changed
 
-- (skills) review-deps runtime-first ordering + tier collapse (E52-S11)
-- (skills) perf-testing baseline mandate + CRP techniques (E52-S8)
-- (skills) memory-hygiene token recovery + cross-agent matrix (E52-S7)
-- (skills) ci-edit cascade targets + failure surfacing (E52-S6)
-- (skills) performance-review percentiles + file logging (E52-S5)
-- (skills) project-context TRUNCATED marker + inference (E52-S4)
-- (skills) document-project manifest entries + counts (E52-S3)
-- (skills) changelog version validation + excluded commits (E52-S2)
-- (skills) refresh-ground-truth budget check + entry schema (E52-S1)
-- (skills) editorial-structure doc-type conventions (E51-S2)
-- (skills) document editorial-prose default save behaviour (E51-S1)
-- (sprint-state) add wrapper-sync invariant bats test (E38-S6)
-- (E29-S7) allowlist V1 checkpoint deletion plan fixture in dead-reference-scan
-- (E29-S7) add V1 checkpoint deletion plan + sunset window
-- (E45-S8) scrub V1-engine references from ADR-068 fixture for ADR-048 guard
-- (E45-S8) pin canonical finalize-checklist.sh contract in ADR-068
-- (E45-S6) add bats wall-clock budget-watch invariant
-- (E44-S2) implement Val auto-fix loop pattern (ADR-058)
-- (E44-S1) formalize /gaia-val-validate upstream integration contract
-- (E38-S8) add direct unit tests for canonical_states_hint and assert_canonical_state
-- (E43-S6) complete NFR-052 public-function coverage signal
-- (E43-S7) add NFR-052 coverage signal for resume-discovery.sh public functions
+- (skills) review-deps runtime-first ordering + tier collapse
+- (skills) perf-testing baseline mandate + CRP techniques
+- (skills) memory-hygiene token recovery + cross-agent matrix
+- (skills) ci-edit cascade targets + failure surfacing
+- (skills) performance-review percentiles + file logging
+- (skills) project-context TRUNCATED marker + inference
+- (skills) document-project manifest entries + counts
+- (skills) changelog version validation + excluded commits
+- (skills) refresh-ground-truth budget check + entry schema
+- (skills) editorial-structure doc-type conventions
+- (skills) document editorial-prose default save behaviour
+- (sprint-state) add wrapper-sync invariant bats test
+- allowlist V1 checkpoint deletion plan fixture in dead-reference-scan
+- add V1 checkpoint deletion plan + sunset window
+- scrub V1-engine references from fixture for guard
+- pin canonical finalize-checklist.sh contract in
+- add bats wall-clock budget-watch invariant
+- implement Val auto-fix loop pattern
+- formalize /gaia-val-validate upstream integration contract
+- add direct unit tests for canonical_states_hint and assert_canonical_state
+- complete public-function coverage signal
+- add coverage signal for resume-discovery.sh public functions
 - (bats-tests) bump job timeout from 2m to 5m for growing bats suite
-- (E43-S5) consolidate per-skill step-count tests to fit 2-min CI cap
-- (checkpoint) declare NFR-052 coverage signal for helper functions
+- consolidate per-skill step-count tests to fit 2-min CI cap
+- (checkpoint) declare coverage signal for helper functions
 - (checkpoint) harden AC-EC7 PATH isolation for Linux CI
-- (changelog) note ADR-056 pivot to PR-based release model
+- (changelog) note pivot to PR-based release model
 
 ### Fixed
 
-- (skills) scrub legacy core/engine ref from refresh-ground-truth (E52-S1)
-- (tests) stabilize flaky TC-VSP-7 perf test (E34-S3) (#290)
-- (skills) align tech-research artifact_type slug with filename (E44-S11) (#288)
-- (E46-S8) rename contract heading to avoid Step-N count inflation
-- (E46-S6) keep gaia-create-arch checkpoint count at 13 (sub-steps no-emit)
-- (E45-S7) replace BSD/mawk-incompatible awk word boundaries with portable form
-- (E44-S8) skip test-plan.md row checks when project-root is unavailable
-- (E45-S2) seed brainstorm fixture in audit and cluster-4 e2e harnesses
-- (E41-S1) mark yolo-lint internal helpers private
-- (E44-S7) mark detect-open-questions internal helpers private
-- (E38-S8) sprint-state transition emits canonical enum hint and guards writers
-- (E38-S7) tighten sprint-state reconcile glob to require story frontmatter
-- (E42-S14) scrub legacy-engine path refs from finalize.sh comments
-- (E42-S13) make finalize.sh opt-in and tests self-contained
+- (skills) scrub legacy core/engine ref from refresh-ground-truth
+- (tests) stabilize flaky perf test (#290)
+- (skills) align tech-research artifact_type slug with filename (#288)
+- rename contract heading to avoid Step-N count inflation
+- keep gaia-create-arch checkpoint count at 13 (sub-steps no-emit)
+- replace BSD/mawk-incompatible awk word boundaries with portable form
+- skip test-plan.md row checks when project-root is unavailable
+- seed brainstorm fixture in audit and e2e harnesses
+- mark yolo-lint internal helpers private
+- mark detect-open-questions internal helpers private
+- sprint-state transition emits canonical enum hint and guards writers
+- tighten sprint-state reconcile glob to require story frontmatter
+- scrub legacy-engine path refs from finalize.sh comments
+- make finalize.sh opt-in and tests self-contained
 - (checkpoint) scrub workflow.xml reference from write-checkpoint.sh header
 
 ## [1.128.0] — 2026-04-23
 
 ### Added
 
-- (release) pivot release.yml to PR model + ADR-056 (E40-S1)
+- (release) pivot release.yml to PR model
 
 ## [1.127.2] — 2026-04-23
 
 ### Added
 
-- Release automation pipeline (E40-S1 / ADR-056). The first automated release will land in v1.128.0.
+- Release automation pipeline . The first automated release will land in v1.128.0.
 
 ### Changed
 
-- **ADR-056 amendment (2026-04-23):** `release.yml` pivoted from direct-bot-push to a PR-based model. Branch protection on `main` requires PR + status checks, which the original direct-push design could not satisfy. The workflow now has two modes — `prepare` (opens a `release/vX.Y.Z` PR on qualifying commits to main) and `publish` (cuts tag + GitHub Release when the release PR merges). Manual work per release: one click to merge the release PR.
+- **Release-pipeline amendment (2026-04-23):** `release.yml` pivoted from direct-bot-push to a PR-based model. Branch protection on `main` requires PR + status checks, which the original direct-push design could not satisfy. The workflow now has two modes — `prepare` (opens a `release/vX.Y.Z` PR on qualifying commits to main) and `publish` (cuts tag + GitHub Release when the release PR merges). Manual work per release: one click to merge the release PR.
 - **2026-05-13 — squash-merge interaction with `release.yml`:** observed that staging→main PRs merged via `--squash` collapse the underlying `feat(...)` commits into a single squash commit whose subject ("staging → main: ...") fails `classify-commits.js`'s Conventional Commit regex. Result: `bump_size=none` and no release PR opens. Workaround until `merge.sh` is changed to use `--merge` for staging→main: cut a recovery PR with a `feat:` subject + a path change under `plugins/gaia/**` to re-trigger the `prepare` job. Follow-up story to wire `merge.sh` for `--merge` on staging→main.
 - **2026-05-14 — empty-commit publish-trigger interaction with path-filtered `release.yml`:** during the v1.152.0 republish recovery, observed that empty commits (used to satisfy `detect-mode`'s publish-regex via subject-only signaling) do NOT trigger `release.yml` because the workflow's `paths: ['plugins/gaia/**', '.github/workflows/release.yml']` filter rejects path-empty pushes. Fix: any commit intended to fire `release.yml` MUST touch at least one path matching the filter. This 1-line CHANGELOG note IS that path-touching change for the v1.152.0 republish.
 
-Initial changelog seeded by E40-S1. Prior history available via `git log --oneline -- plugins/gaia/`.
+Initial changelog seeded by . Prior history available via `git log --oneline -- plugins/gaia/`.

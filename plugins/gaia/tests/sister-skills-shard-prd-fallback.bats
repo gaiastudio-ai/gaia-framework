@@ -72,11 +72,11 @@ setup() {
   done
 }
 
-@test "every in-scope SKILL.md references ADR-069 or FR-396..402 in its fallback rule" {
+@test "every in-scope SKILL.md names the sharded-fallback rule for prd/prd.md" {
   for skill in "${SKILLS[@]}"; do
     f="$SKILLS_DIR/$skill/SKILL.md"
-    if ! grep -qE '(ADR-069|FR-396)' "$f"; then
-      echo "FAIL: $skill SKILL.md does not reference ADR-069 or FR-396..402"
+    if ! grep -qE '(sharded-fallback rule|fall back to.*prd/prd\.md)' "$f"; then
+      echo "FAIL: $skill SKILL.md does not document the sharded-fallback rule (sharded-fallback rule / fall back to .../prd/prd.md)"
       return 1
     fi
   done

@@ -1,6 +1,6 @@
 ---
 name: gaia-statusline
-description: Reference documentation for the GAIA Claude Code statusline runtime — themes, glyph palette, color tokens, width ladder, OSC-8 allowlist, environment variables, and source-of-truth bindings. Documentation-only skill; the runtime ships under `gaia-framework/plugins/gaia/scripts/`. Authored by E82-S4; describes the runtime authored by E82-S1.
+description: Reference documentation for the GAIA Claude Code statusline runtime — themes, glyph palette, color tokens, width ladder, OSC-8 allowlist, environment variables, and source-of-truth bindings. Documentation-only skill; the runtime ships under `gaia-framework/plugins/gaia/scripts/`.
 allowed-tools: [Read]
 orchestration_class: light-procedural
 ---
@@ -19,7 +19,7 @@ The runtime supports **exactly three themes** selected via `GAIA_STATUSLINE_THEM
 | `default` | unset OR `GAIA_STATUSLINE_THEME=default` | One-liner: `◆ GAIA <version> | <model> | <project>/<branch> | <context-%>` |
 | `rich` | `GAIA_STATUSLINE_THEME=rich` | Default one-liner PLUS a second line `sprint | story | agent` (sprint comes from `.gaia/state/sprint-status.yaml`). |
 
-**Hard contract (R4 mitigation): a fourth theme variant requires a new ADR.** This is not a config flag and not a future-proofed extension point. Any addition is a deliberate architectural change.
+**Hard contract (R4 mitigation): a fourth theme variant requires a new architectural decision.** This is not a config flag and not a future-proofed extension point. Any addition is a deliberate architectural change.
 
 Session cost is NEVER rendered in any GAIA theme — that surface is owned by Claude Code's native `/statusline`. See `helpers/themes.md` for per-theme worked-example outputs at column boundaries 80 / 60 / 50 / 40 / 32.
 
@@ -62,7 +62,7 @@ The runtime trims segments **right-to-left** when the available width drops belo
 
 `rich-line-2 → dirty-marker → branch → project → version → context-bar → bare model`
 
-**Critical rule:** at `<50` cols the runtime drops **branch BEFORE project** — the project name is the stronger orientation cue (`branch-before-project` rule, FR-433).
+**Critical rule:** at `<50` cols the runtime drops **branch BEFORE project** — the project name is the stronger orientation cue (`branch-before-project` rule).
 
 | Cols | Surface |
 |---|---|
@@ -104,17 +104,17 @@ Every rendered field has exactly one authoritative source:
 | `project` | stdin JSON `cwd` basename (final fallback: `$PWD` basename) |
 | `branch` | `git symbolic-ref --short HEAD` |
 
-CLAUDE.md is **NOT** a source of truth for the rendered version — `plugin.json` is the only authority (FR-440).
+CLAUDE.md is **NOT** a source of truth for the rendered version — `plugin.json` is the only authority.
 
 ## Contract
 
-- **Fourth theme requires an ADR.** The runtime locks the surface to three themes — adding a fourth is an architectural change, not a config flag (R4 mitigation).
-- **Zero network primitives by structural contract.** The runtime contains no `curl`, `wget`, `nc`, or `gh api` calls — enforced as a structural contract by `tests/statusline/statusline-static-check.bats` (NFR-STATUSLINE-2). Update freshness comes exclusively from the background `refreshInterval` fetcher writing the cache file.
+- **Fourth theme requires an architectural decision.** The runtime locks the surface to three themes — adding a fourth is an architectural change, not a config flag (R4 mitigation).
+- **Zero network primitives by structural contract.** The runtime contains no `curl`, `wget`, `nc`, or `gh api` calls — enforced as a structural contract by `tests/statusline/statusline-static-check.bats`. Update freshness comes exclusively from the background `refreshInterval` fetcher writing the cache file.
 
 ## Cross-References
 
-- **Install / uninstall:** `gaia-framework/plugins/gaia/scripts/install-statusline.sh` (E82-S1).
-- **Toggle on/off:** `/gaia-statusline-enable` and `/gaia-statusline-disable` (E82-S3) — thin wrappers over `gaia-statusline-toggle.sh`.
-- **Background update fetcher:** `gaia-framework/plugins/gaia/scripts/statusline-update-check.sh` (E82-S2). Writes the canonical `~/.claude/gaia-statusline/cache/latest-release.json` schema `{checked_at_iso, latest_tag, current_tag, update_available, installed_version_stale}` (ADR-091 + ADR-094 amendment).
-- **Staleness detection (E82-S6 / ADR-094):** the fetcher computes `installed_version_stale` by comparing `~/.claude/gaia-statusline/.installed-version` (written atomically by `install-statusline.sh` as the last action of a successful install) against `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. The renderer surfaces a one-shot daily WARN segment `[stale: rerun install-statusline]` when stale, gated by a per-UTC-day marker at `~/.claude/gaia-statusline/cache/staleness-warning-shown.<YYYY-MM-DD>`. Zero new hot-path I/O — the boolean is read from the existing cache JSON.
+- **Install / uninstall:** `gaia-framework/plugins/gaia/scripts/install-statusline.sh`.
+- **Toggle on/off:** `/gaia-statusline-enable` and `/gaia-statusline-disable` — thin wrappers over `gaia-statusline-toggle.sh`.
+- **Background update fetcher:** `gaia-framework/plugins/gaia/scripts/statusline-update-check.sh`. Writes the canonical `~/.claude/gaia-statusline/cache/latest-release.json` schema `{checked_at_iso, latest_tag, current_tag, update_available, installed_version_stale}`.
+- **Staleness detection:** the fetcher computes `installed_version_stale` by comparing `~/.claude/gaia-statusline/.installed-version` (written atomically by `install-statusline.sh` as the last action of a successful install) against `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. The renderer surfaces a one-shot daily WARN segment `[stale: rerun install-statusline]` when stale, gated by a per-UTC-day marker at `~/.claude/gaia-statusline/cache/staleness-warning-shown.<YYYY-MM-DD>`. Zero new hot-path I/O — the boolean is read from the existing cache JSON.
 - **Helpers (JIT):** `helpers/themes.md`, `helpers/glyph-palette.md`, `helpers/color-tokens.md`.

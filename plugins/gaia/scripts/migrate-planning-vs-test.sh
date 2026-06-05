@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# migrate-planning-vs-test.sh — planning-vs-test artifact taxonomy migration (E105-S2)
+# migrate-planning-vs-test.sh — planning-vs-test artifact taxonomy migration
 #
 # Moves the documents ABOUT testing — test-plan, test-strategy,
 # traceability-matrix, nfr-assessment, performance-test-plan — out of
@@ -8,20 +8,19 @@
 # location. test-artifacts/ keeps ONLY test-EXECUTION outputs (atdd,
 # qa/test-review reports, execution-evidence, the test-environment manifest).
 #
-# Safety (per AF-2026-04-28-2 reorg pattern + feedback_cumulative_target_gate_bug_class):
+# Safety:
 #   * --dry-run (DEFAULT): report every planned move + reference rewrite,
 #     mutating NOTHING. A real migration requires the explicit --migrate flag.
 #   * idempotent: re-running --migrate after a completed migration is a no-op.
 #   * per-file rollback on failure: each already-moved file is restored to its
 #     origin individually. The script NEVER `rm -rf` a source directory.
 #   * phase-exit gate ITERATES the move manifest (each target exists) — it does
-#     NOT count files against a cumulative target (the bug class fixed in E96-S6;
-#     see feedback_cumulative_target_gate_bug_class).
+#     NOT count files against a cumulative target.
 #
 # READ-ONLY by default. Only --migrate mutates, and only the dirs passed in.
 #
-# Refs: ADR-127 §7.2/§7.6, ADR-070, FR-554, NFR-91
 #
+
 # Invocation:
 #   migrate-planning-vs-test.sh --test-artifacts <dir> --planning-artifacts <dir>
 #       [--dry-run | --migrate] [--simulate-fail-after N]

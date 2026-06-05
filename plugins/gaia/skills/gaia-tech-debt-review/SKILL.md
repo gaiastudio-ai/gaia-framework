@@ -15,13 +15,13 @@ orchestration_class: light-procedural
 
 You are running the **tech-debt review** for the active sprint. You scan every story markdown file's YAML frontmatter and `## Findings` section (never the full body — token budget mandate), collect tech-debt candidates, validate their triage targets, merge duplicates, assign stable `TD-{N}` identifiers, classify into DESIGN / CODE / TEST / INFRASTRUCTURE, score by Impact + Risk − Effort, compute aging against the current sprint, and emit a rolling `tech-debt-dashboard.md` with trend comparison vs the previous dashboard.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/tech-debt-review` workflow (brief P14-S4, story E28-S108, Cluster 14). The 7-step instruction body from the legacy 147-line `instructions.xml` is preserved in prose — parity confirmed per NFR-053.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/tech-debt-review` workflow. The 7-step instruction body from the legacy 147-line `instructions.xml` is preserved in prose — parity confirmed.
 
-**Native execution (ADR-041):** Runs under Claude Code's native execution model — no workflow.xml engine, no pre-resolved config chain. Steps are prose; deterministic operations are scripts.
+**Native execution:** Runs under Claude Code's native execution model — no workflow.xml engine, no pre-resolved config chain. Steps are prose; deterministic operations are scripts.
 
-**Scripts-over-LLM (ADR-042 / FR-325):** Deterministic operations — frontmatter-only scanning, Findings section extraction, duplicate detection input, stable TD-{N} ID assignment — are delegated to `skills/gaia-tech-debt-review/scripts/` helpers. Foundation operations (config resolution, checkpoint writes, lifecycle events) are delegated to `plugins/gaia/scripts/` via inline `!${CLAUDE_PLUGIN_ROOT}/...` calls.
+**Scripts-over-LLM:** Deterministic operations — frontmatter-only scanning, Findings section extraction, duplicate detection input, stable TD-{N} ID assignment — are delegated to `skills/gaia-tech-debt-review/scripts/` helpers. Foundation operations (config resolution, checkpoint writes, lifecycle events) are delegated to `plugins/gaia/scripts/` via inline `!${CLAUDE_PLUGIN_ROOT}/...` calls.
 
-**Hybrid memory loading (ADR-046):** Nate's scrum-master sidecar (`sm-sidecar/decision-log.md`) provides sprint-velocity context used when scoring Effort against historical capacity. The sidecar is loaded inline in the `## Setup` block via the canonical `memory-loader.sh <agent_name> <tier>` signature (see E28-S13 AC1). This is the only reason this skill loads agent memory — and it is loaded once, up-front, not per-step.
+**Hybrid memory loading:** Nate's scrum-master sidecar (`sm-sidecar/decision-log.md`) provides sprint-velocity context used when scoring Effort against historical capacity. The sidecar is loaded inline in the `## Setup` block via the canonical `memory-loader.sh <agent_name> <tier>` signature. This is the only reason this skill loads agent memory — and it is loaded once, up-front, not per-step.
 
 ## Critical Rules
 
@@ -45,7 +45,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 - None. The skill discovers its inputs at runtime:
   - `.gaia/state/sprint-status.yaml` — current `sprint_id`.
-  - Story files — recursive walk under `.gaia/artifacts/implementation-artifacts/epic-*/stories/**/*.md` (canonical nested layout per E79) PLUS the legacy flat layer `.gaia/artifacts/implementation-artifacts/*.md` (read-only fallback until E79-S6 backfill completes). Frontmatter + Findings sections only.
+  - Story files — recursive walk under `.gaia/artifacts/implementation-artifacts/epic-*/stories/**/*.md` (canonical nested layout) PLUS the legacy flat layer `.gaia/artifacts/implementation-artifacts/*.md` (read-only fallback until the backfill completes). Frontmatter + Findings sections only.
   - `.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md` — previous dashboard (if present).
 
 ## Steps
@@ -153,7 +153,7 @@ Based on dashboard findings, present specific next-step commands:
 - If INFRASTRUCTURE debt dominates: `Run /gaia-ci-setup to close CI/CD gaps`.
 - If items were auto-escalated: `Review escalated items — aging has upgraded their priority`.
 
-For each FIX NOW + OVERDUE item, append to `.gaia/artifacts/planning-artifacts/action-items.yaml` (canonical location per architecture §10.28.6 / ADR-052; reconciled in E36-S4) (if not already tracked) with fields:
+For each FIX NOW + OVERDUE item, append to `.gaia/artifacts/planning-artifacts/action-items.yaml` (canonical location per architecture §10.28.6) (if not already tracked) with fields:
 `type: "implementation"`, `priority: "high"`, `status: "open"`, `source_workflow: "tech-debt-review"`, `source_sprint: {sprint_id}`, `title: "{debt item description}"`, `related_stories: [{target story if exists}]`. Check existing action items by title similarity to avoid duplicates.
 
 ### Step 7 — Save to Val Memory
@@ -194,13 +194,12 @@ If `.gaia/memory/validator-sidecar/` or the target files do not exist, create th
 
 ## References
 
-- **E28-S108 / P14-S4** — this conversion story (Cluster 14).
-- **ADR-041** — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- **ADR-042** — Scripts-over-LLM for deterministic operations.
-- **ADR-046** — Hybrid Memory Loading (drives the `memory-loader.sh sm decision-log` call in Setup).
-- **ADR-048** — Engine Deletion as Program-Closing Action (the legacy `_gaia/lifecycle/workflows/4-implementation/tech-debt-review/` remains in place until Cluster 18/19 cleanup).
-- **NFR-048** — Framework context budget (40K tokens per activation) — the token-budget mandate that forces frontmatter-only reads.
-- **NFR-053** — Functional parity across native conversions.
-- **E28-S13** — `memory-loader.sh` foundation script and canonical `<agent_name> <tier>` signature.
+- **Native Execution Model** via Claude Code Skills + Subagents + Plugins + Hooks.
+- **Scripts-over-LLM** for deterministic operations.
+- **Hybrid Memory Loading** — drives the `memory-loader.sh sm decision-log` call in Setup.
+- **Engine Deletion as Program-Closing Action** — the legacy `_gaia/lifecycle/workflows/4-implementation/tech-debt-review/` remains in place until cleanup.
+- **Framework context budget** (40K tokens per activation) — the token-budget mandate that forces frontmatter-only reads.
+- **Functional parity** across native conversions.
+- **`memory-loader.sh`** foundation script and canonical `<agent_name> <tier>` signature.
 - **Legacy source:** `_gaia/lifecycle/workflows/4-implementation/tech-debt-review/instructions.xml` (147-line 7-step body ported above).
 - **Legacy template:** `_gaia/lifecycle/templates/tech-debt-dashboard-template.md` (shipped locally as `skills/gaia-tech-debt-review/templates/dashboard.md`).

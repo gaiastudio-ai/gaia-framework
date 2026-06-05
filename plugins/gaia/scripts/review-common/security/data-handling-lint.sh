@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# data-handling-lint.sh — GAIA review-common Phase 3C data-handling lint (E67-S5, ADR-077).
+# data-handling-lint.sh — GAIA review-common Phase 3C data-handling lint.
 #
 # Purpose
 # -------
@@ -16,7 +16,7 @@
 #   - pii-in-analytics     : analytics.track / segment.track / mixpanel.track
 #                            / amplitude.logEvent with a PII-named argument
 #
-# All findings carry severity High (FR-RSV2-22, AC8) and category
+# All findings carry severity High and category
 # `privacy-data-handling`.
 #
 # Output (stdout): a single check fragment with status passed|failed.
@@ -25,7 +25,6 @@
 # POSIX discipline: bash + set -euo pipefail + LC_ALL=C; macOS bash 3.2 + BSD
 # awk compatible; no jq dependency.
 #
-# Refs: AC2, AC6, AC7, AC8, FR-RSV2-1, FR-RSV2-2, NFR-RSV2-1, ADR-075, ADR-077.
 
 set -euo pipefail
 LC_ALL=C
@@ -37,7 +36,7 @@ die() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — Phase 3C data-handling lint (ADR-077).
+$SCRIPT_NAME — Phase 3C data-handling lint.
 
 Usage:
   $SCRIPT_NAME <path>...

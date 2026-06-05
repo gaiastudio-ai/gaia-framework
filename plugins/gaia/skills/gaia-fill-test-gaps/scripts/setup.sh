@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 11 gaia-fill-test-gaps skill setup (E28-S84)
+# setup.sh — gaia-fill-test-gaps skill setup
 #
-# Mechanical extension of the Cluster 9 reference implementation authored
-# under E28-S66 (gaia-code-review/scripts/setup.sh). Only WORKFLOW_NAME and
-# SCRIPT_NAME differ — the body follows the shared pattern.
+# Mechanical extension of the gaia-code-review/scripts/setup.sh reference
+# implementation. Only WORKFLOW_NAME and SCRIPT_NAME differ — the body
+# follows the shared pattern.
 #
-# Responsibilities (per brief Cluster 9):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (gap report existence)
 #   3. Load the checkpoint state for this workflow

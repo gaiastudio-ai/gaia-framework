@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# exec-with-timeout.sh — shared timeout-with-process-group-kill helper (E93-S4)
+# exec-with-timeout.sh — shared timeout-with-process-group-kill helper
 #
 # Provides `exec_with_timeout()` — runs a command with a hard timeout and a
 # process-group-scoped kill so orphan grandchildren cannot survive.
@@ -13,8 +13,6 @@
 # tier-1/tier-2 use `--kill-after` so the kill propagates to grandchildren via
 # the process-group leader; tier-3 sends SIGKILL on alarm to the negative PID
 # (process-group kill).
-#
-# Traces to: AC4 of E93-S4, T-SGR-2, SR-66, NFR-072.
 #
 # Precedent: gaia-framework/plugins/gaia/scripts/run-tests.sh lines 257-291 ships
 # a two-tier cascade without the process-group kill addition. This helper adds

@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# dispatch-verb-match.sh — Dispatch-verb taxonomy matcher per ADR-107.
-#
-# Refs:  ADR-107 (loading contract + SSOT), AF-2026-05-14-6.
-# Story: E88-S1.
+# dispatch-verb-match.sh — Dispatch-verb taxonomy matcher.
 #
 # Provides:
 #   - Sourceable function: match_dispatch_verb_in_text "<text>"

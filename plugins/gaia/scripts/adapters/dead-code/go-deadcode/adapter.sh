@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# adapters/dead-code/go-deadcode/adapter.sh — E70-S8 Go dead-code adapter.
+# adapters/dead-code/go-deadcode/adapter.sh — Go dead-code adapter.
 #
 # Wraps golang.org/x/tools/cmd/deadcode (Rapid Type Analysis whole-program
 # reachability — a BINARY verdict, zero false positives by construction). The
 # adapter normalizes deadcode's reported position to a repo-root-relative
-# file_path (the universal cross-stack JOIN key, FR-545) and emits TWO outputs:
-#   - flat normalized JSON   -> <out>/dead-code/go-deadcode.json   (report-rendering, AC1/AC4)
+# file_path (the universal cross-stack JOIN key) and emits TWO outputs:
+#   - flat normalized JSON   -> <out>/dead-code/go-deadcode.json   (report-rendering)
 #   - a SARIF run            -> <out>/sarif/go-deadcode.sarif      (qualifier in
-#       .properties.symbol so the E104-S1 dedup precision ladder applies; Val F1).
+#       .properties.symbol so the dedup precision ladder applies).
 # qualifier = "<package>.<Function>". severity = "warning". source_tool = "go-deadcode".
 #
-# Per-stack precision is the design intent (NFR-87): Go reports a binary
-# reachability verdict — there is NO confidence score, and we do NOT synthesize one.
+# Per-stack precision is the design intent: Go reports a binary reachability
+# verdict — there is NO confidence score, and we do NOT synthesize one.
 #
-# Flag-gated (ADR-078): brownfield.deterministic_tools master + brownfield.deadcode_go_enabled
-# per-tool (default true at this consumer layer). Graceful degrade (NFR-84): `go`
+# Flag-gated: brownfield.deterministic_tools master + brownfield.deadcode_go_enabled
+# per-tool (default true at this consumer layer). Graceful degrade: `go`
 # absent OR no *.go files -> WARN/INFO + exit 0 (never aborts Phase 3).
 #
 # Test seams (tests/adapters/dead-code-go.bats):
@@ -30,7 +30,7 @@ SCRIPT_NAME="adapters/dead-code/go-deadcode/adapter.sh"
 log_info() { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 log_warn() { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 
-# --- Flag gate (ADR-078) --------------------------------------------------
+# --- Flag gate (deterministic_tools master + per-tool override) -----------
 MASTER="${GAIA_BROWNFIELD_DETERMINISTIC_TOOLS:-true}"
 PER_TOOL="${GAIA_BROWNFIELD_DEADCODE_GO_ENABLED:-true}"
 if [ "$MASTER" != "true" ] || [ "$PER_TOOL" != "true" ]; then
@@ -65,13 +65,12 @@ mkdir -p "$OUT/dead-code" "$OUT/sarif"
 # module-aware mode. We resolve posn -> repo-root-relative file_path below.
 start=$(date +%s)
 raw=""
-# AF-2026-05-31-2 / Test13 F-18: probe the docker runner alongside the
-# host-PATH check. The go-deadcode (golang.org/x/tools/cmd/deadcode)
-# binary is NOT bundled in the gaia-tools image yet — Go's toolchain is
-# heavier than the image's mission allows. When runner=docker we still
-# fall through to host-PATH so a developer with Go installed can run
-# the scan; when neither is present we INFO-degrade with a clear message
-# pointing at the remediation. Mirrors the python-vulture wiring.
+# Probe the docker runner alongside the host-PATH check. The go-deadcode
+# (golang.org/x/tools/cmd/deadcode) binary is NOT bundled in the gaia-tools
+# image yet — Go's toolchain is heavier than the image's mission allows. When
+# runner=docker we still fall through to host-PATH so a developer with Go
+# installed can run the scan; when neither is present we INFO-degrade with a
+# clear message pointing at the remediation. Mirrors the python-vulture wiring.
 _DEADCODE_DOCKER_RUNNER=""
 _DEADCODE_DOCKER_RUNNER_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../" && pwd)/lib/docker-runner.sh"
 if [ -f "$_DEADCODE_DOCKER_RUNNER_LIB" ]; then
@@ -114,7 +113,7 @@ findings="$(printf '%s' "$raw" | jq -c '
 ' 2>/dev/null || printf '[]')"
 printf '%s\n' "$findings" > "$OUT/dead-code/go-deadcode.json"
 
-# --- SARIF (Val F1 — feed the dedup precision ladder) ---------------------
+# --- SARIF (feeds the dedup precision ladder) -----------------------------
 printf '%s' "$findings" | jq '{
   version: "2.1.0",
   "$schema": "https://json.schemastore.org/sarif-2.1.0.json",

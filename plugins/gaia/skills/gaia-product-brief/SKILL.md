@@ -1,15 +1,15 @@
 ---
 name: gaia-product-brief
-description: Create a product brief through collaborative discovery — Cluster 4 analysis skill. Use when the user wants to craft a product brief (vision, users, problem, solution, scope, risks, competitive landscape, success metrics) after an initial brainstorm or research phase.
+description: Create a product brief through collaborative discovery — analysis skill. Use when the user wants to craft a product brief (vision, users, problem, solution, scope, risks, competitive landscape, success metrics) after an initial brainstorm or research phase.
 argument-hint: "[product name or focus]"
 allowed-tools: [Read, Write, Glob, Grep, Bash]
-# Discover-Inputs Protocol (ADR-062 / FR-346 / E45-S4)
+# Discover-Inputs Protocol
 # Strategy: INDEX_GUIDED — load brainstorm/research artifact indexes (TOC,
 # heading scan) first; fetch named sections on demand in later steps.
 # Falls back to FULL_LOAD when an upstream artifact lacks parseable headings.
 discover_inputs: INDEX_GUIDED
 discover_inputs_target: .gaia/artifacts/creative-artifacts/
-# Quality gates (FR-347, FR-358 — E45-S2 reference implementation)
+# Quality gates
 # pre_start: enforced by scripts/setup.sh before Step 1 runs.
 # post_complete: enforced by scripts/finalize.sh against the generated
 #   product brief artifact (.gaia/artifacts/creative-artifacts/product-brief-*.md)
@@ -17,7 +17,7 @@ discover_inputs_target: .gaia/artifacts/creative-artifacts/
 quality_gates:
   pre_start:
     - condition: "file_exists:.gaia/artifacts/creative-artifacts/brainstorm-*.md"
-      error_message: "Run `/gaia-brainstorm` first to create a brainstorm artifact (or set GAIA_SKIP_BRAINSTORM=1 to seed from an existing brief / outside material — F-16)"
+      error_message: "Run `/gaia-brainstorm` first to create a brainstorm artifact (or set GAIA_SKIP_BRAINSTORM=1 to seed from an existing brief / outside material)"
   post_complete:
     - condition: "section_present:Vision Statement"
       error_message: "Vision Statement section is required"
@@ -51,7 +51,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -65,7 +65,7 @@ You are facilitating a collaborative discovery session to produce a product brie
 
 **Template:** `${CLAUDE_PLUGIN_ROOT}/templates/product-brief-template.md` — structural source for the 9 required sections. The template's H2 headings are the post_complete gate targets and must not be renamed.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/1-analysis/create-product-brief` workflow (brief §Cluster 4, story P4-S2). The step ordering, prompts, and output location follow the legacy `instructions.xml` mechanically — do not restructure, re-prompt, or reorder sections.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/1-analysis/create-product-brief` workflow. The step ordering, prompts, and output location follow the legacy `instructions.xml` mechanically — do not restructure, re-prompt, or reorder sections.
 
 ## Critical Rules
 
@@ -78,7 +78,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 1 — Discover Inputs
 
-> **Loading strategy: INDEX_GUIDED per ADR-062.** This skill uses the
+> **Loading strategy: INDEX_GUIDED.** This skill uses the
 > INDEX_GUIDED input-loading strategy for the **brainstorm artifact** —
 > the artifact's heading index is loaded first, and individual sections
 > are fetched only when a later step needs them. Brainstorm transcripts
@@ -86,7 +86,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 > context budget the collaborative discovery session needs for the
 > Vision / Target Users / Problem / Solution prompts.
 >
-> **Narrow scope (E46-S10 Subtask 2.3).** INDEX_GUIDED applies
+> **Narrow scope.** INDEX_GUIDED applies
 > specifically to the brainstorm artifact. Market research, domain
 > research, and technical research outputs are typically smaller
 > (often under 20 KB) and may still use FULL_LOAD without busting the
@@ -99,7 +99,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 > (`sed -n '/^## Section/,/^## /p'`). If an artifact has no parseable
 > headings, fall back to FULL_LOAD for that file only and log the
 > fallback in the checkpoint — the runtime heuristic MUST NOT halt or
-> error on a small or unstructured file (AC3).
+> error on a small or unstructured file.
 
 - Scan prior brainstorm output if available (heading scan over `.gaia/artifacts/creative-artifacts/brainstorm-*.md`).
 - Scan market research if available (heading scan over `.gaia/artifacts/creative-artifacts/market-research*.md`).
@@ -170,7 +170,7 @@ Write a structured product brief to `.gaia/artifacts/creative-artifacts/product-
 - **Risks and Assumptions** — known risks, dependencies, and assumptions
 - **Competitive Landscape** — summary of competitive positioning from upstream research
 - **Success Metrics** — measurable KPIs and success criteria
-- **Next Steps** — per `${CLAUDE_PLUGIN_ROOT}/knowledge/lifecycle-sequence.yaml` (routing table ships inside the plugin under ADR-041's `knowledge/` convention; the legacy v1 location `_gaia/_config/lifecycle-sequence.yaml` is retired and no longer used)
+- **Next Steps** — per `${CLAUDE_PLUGIN_ROOT}/knowledge/lifecycle-sequence.yaml` (routing table ships inside the plugin under the `knowledge/` convention; the legacy v1 location `_gaia/_config/lifecycle-sequence.yaml` is retired and no longer used)
 
 Where `{slug}` is a short kebab-case slug derived from the product vision (e.g., `product-brief-ai-code-review.md`).
 
@@ -179,7 +179,7 @@ Where `{slug}` is a short kebab-case slug derived from the product vision (e.g.,
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-product-brief 8 product_name="$PRODUCT_NAME" target_user="$TARGET_USER" --paths .gaia/artifacts/creative-artifacts/product-brief-${SLUG}.md`
 
-### Step 9 — Val Auto-Fix Loop (E44-S2 / ADR-058)
+### Step 9 — Val Auto-Fix Loop
 
 > Reuses the canonical pattern at `gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
@@ -202,16 +202,16 @@ Where `{slug}` is a short kebab-case slug derived from the product vision (e.g.,
      d. If iteration <= 3: go to step 2.
      e. Else: present the iteration-3 prompt verbatim (centralized in `gaia-val-validate` SKILL.md § "Auto-Fix Loop Pattern") and dispatch.
 
-YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See ADR-057 FR-YOLO-2(e) and ADR-058 for the hard-gate contract.
+YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). The `product-brief` artifact_type uses Val's factual-claim validation against ground-truth plus the document-ruleset for product briefs (per E44-S1).
+> Val auto-review per the canonical pattern (architecture.md §10.31.2). The `product-brief` artifact_type uses Val's factual-claim validation against ground-truth plus the document-ruleset for product briefs.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-product-brief 9 product_name="$PRODUCT_NAME" target_user="$TARGET_USER" stage=val-auto-review --paths .gaia/artifacts/creative-artifacts/product-brief-${SLUG}.md`
 
 ## Validation
 
 <!--
-  E42-S5 — V1→V2 27-item checklist port (FR-341, FR-359).
+  V1→V2 27-item checklist port.
   Classification (27 items total):
     - Script-verifiable: 18 (SV-01..SV-18) — enforced by finalize.sh.
     - LLM-checkable:      9 (LLM-01..LLM-09) — evaluated by the host LLM
@@ -234,8 +234,6 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   credibility, differentiation, measurability, and scope discipline.
 
   Invoked by `finalize.sh` at post-complete (per §10.31.1).
-
-  See .gaia/artifacts/implementation-artifacts/E42-S5-port-gaia-product-brief-27-item-checklist-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 — Output artifact exists at .gaia/artifacts/creative-artifacts/product-brief-*.md

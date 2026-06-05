@@ -1,8 +1,8 @@
 ---
 name: gaia-create-arch
-description: Design system architecture through collaborative discovery with the architect subagent (Theo) — Cluster 6 architecture skill. Use when the user wants to produce a validated architecture document from an existing PRD, covering technology selection, system components, data architecture, API design, infrastructure, security architecture, and architecture decision records.
+description: Design system architecture through collaborative discovery with the architect subagent (Theo). Use when the user wants to produce a validated architecture document from an existing PRD, covering technology selection, system components, data architecture, API design, infrastructure, security architecture, and architecture decision records.
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
-# Discover-Inputs Protocol (ADR-062 / FR-346 / E45-S4)
+# Discover-Inputs Protocol
 # Strategy: INDEX_GUIDED — the PRD is typically 20K+ tokens. Load the PRD
 # index (heading scan or §N.x table of contents) first; fetch named
 # sections on demand in later steps. Falls back to FULL_LOAD when the PRD
@@ -23,7 +23,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -35,29 +35,29 @@ fi
 
 ## Mission
 
-You are orchestrating the creation of a System Architecture document. The architecture authoring is delegated to the **architect** subagent (Theo), who conducts technology selection, designs system components, and produces the final artifact. You load the PRD, validate inputs, coordinate the multi-step flow, and write the output to the canonical post-ADR-111 path `.gaia/artifacts/planning-artifacts/architecture.md` using the carried `architecture-template.md` template structure.
+You are orchestrating the creation of a System Architecture document. The architecture authoring is delegated to the **architect** subagent (Theo), who conducts technology selection, designs system components, and produces the final artifact. You load the PRD, validate inputs, coordinate the multi-step flow, and write the output to the canonical path `.gaia/artifacts/planning-artifacts/architecture.md` using the carried `architecture-template.md` template structure.
 
-**Path resolution (AF-2026-05-21-11).** All architecture path references in this SKILL.md use the canonical post-ADR-111 location `.gaia/artifacts/planning-artifacts/architecture.md`. Pre-ADR-111 projects continue to work via a positive-evidence-legacy fallback at the script layer (`scripts/finalize.sh` three-tier idiom: `ARCHITECTURE_ARTIFACT` env-var override → legacy `docs/planning-artifacts/architecture.md` only when that file exists AND `.gaia/artifacts/planning-artifacts/` does NOT → canonical default). When writing the architecture document via the Write tool, target the canonical path; the pre-ADR-111 fallback is read-side only.
+**Path resolution.** All architecture path references in this SKILL.md use the canonical location `.gaia/artifacts/planning-artifacts/architecture.md`. Legacy projects continue to work via a positive-evidence-legacy fallback at the script layer (`scripts/finalize.sh` three-tier idiom: `ARCHITECTURE_ARTIFACT` env-var override → legacy `docs/planning-artifacts/architecture.md` only when that file exists AND `.gaia/artifacts/planning-artifacts/` does NOT → canonical default). When writing the architecture document via the Write tool, target the canonical path; the legacy fallback is read-side only.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/3-solutioning/create-architecture` workflow (brief Cluster 6, story P6-S1 / E28-S45). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/3-solutioning/create-architecture` workflow. The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 
-- A PRD MUST exist before starting. Resolve via the sharded-fallback rule (ADR-069 / FR-396..402): first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
+- A PRD MUST exist before starting. Resolve via the sharded-fallback rule: first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). If NEITHER exists, fail fast with "PRD not found at .gaia/artifacts/planning-artifacts/prd.md or .gaia/artifacts/planning-artifacts/prd/prd.md — run /gaia-create-prd first."
 - The PRD MUST contain a "## Review Findings Incorporated" section. If missing, fail fast with "PRD review findings not found — run /gaia-create-prd to complete adversarial review and PRD refinement."
 - Every significant technical decision must be recorded as an ADR inline in the Decision Log table of the architecture document.
-- Architecture authoring is delegated to the `architect` subagent (Theo) via native Claude Code subagent invocation — do NOT inline Theo's persona into this skill body. If the architect subagent (E28-S21) is not available, fail with "architect subagent not available — install E28-S21" error.
+- Architecture authoring is delegated to the `architect` subagent (Theo) via native Claude Code subagent invocation — do NOT inline Theo's persona into this skill body. If the architect subagent is not available, fail with "architect subagent not available" error.
 - If `.gaia/artifacts/planning-artifacts/architecture.md` already exists, warn the user: "An existing architecture document was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
-- Template resolution: load `architecture-template.md` from this skill directory. If `custom/templates/architecture-template.md` exists and is non-empty, use the custom template instead — the custom template takes full precedence over the framework default (ADR-020 / FR-101).
+- Template resolution: load `architecture-template.md` from this skill directory. If `custom/templates/architecture-template.md` exists and is non-empty, use the custom template instead — the custom template takes full precedence over the framework default.
 - ADRs live inline in the architecture document's Decision Log table — there is no separate ADR directory. Preserve the legacy workflow's ADR placement convention.
 - Every technical decision must connect to business value.
-- **Checkpoints + Step 10–13 handoff in subagent dispatch (Test05 F-019 / F-022).** The per-step `write-checkpoint.sh` calls below are ADVISORY in subagent/YOLO dispatch: when Theo runs the steps inline inside a dispatched subagent, per-step checkpoints and lifecycle-event emission may not fire from the subagent context, so resumption support is best-effort, not guaranteed. This is expected, not a defect — do not treat a missing mid-run checkpoint as a failure. The orchestrator/subagent split is: the SUBAGENT authors Steps 1–9 (the architecture document) and returns; the ORCHESTRATOR (main turn) owns Steps 10–13 (Val review, API design review, adversarial review, finalize) via main-turn Agent dispatch per ADR-093/ADR-104. The subagent's clean handoff point is "exit after Step 9 with the drafted architecture.md"; it does NOT run the Step 10–13 review gates itself.
+- **Checkpoints + Step 10–13 handoff in subagent dispatch.** The per-step `write-checkpoint.sh` calls below are ADVISORY in subagent/YOLO dispatch: when Theo runs the steps inline inside a dispatched subagent, per-step checkpoints and lifecycle-event emission may not fire from the subagent context, so resumption support is best-effort, not guaranteed. This is expected, not a defect — do not treat a missing mid-run checkpoint as a failure. The orchestrator/subagent split is: the SUBAGENT authors Steps 1–9 (the architecture document) and returns; the ORCHESTRATOR (main turn) owns Steps 10–13 (Val review, API design review, adversarial review, finalize) via main-turn Agent dispatch. The subagent's clean handoff point is "exit after Step 9 with the drafted architecture.md"; it does NOT run the Step 10–13 review gates itself.
 
 ## Steps
 
 ### Step 1 — Load Upstream Artifacts
 
-> **Loading strategy: INDEX_GUIDED per ADR-062.** The PRD is routinely
+> **Loading strategy: INDEX_GUIDED.** The PRD is routinely
 > 20K+ tokens — full-loading it here burns the context budget before
 > architecture authoring even begins. Heading-scan `prd.md` first (e.g.,
 > `grep -nE '^#{1,3} ' .gaia/artifacts/planning-artifacts/prd.md`) to build a section
@@ -95,9 +95,9 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to select t
 
 ### Step 3.5 — Tech-Stack Confirmation Pause
 
-> **Parity restoration — E46-S6 / FR-354 / AF-2026-04-24-1.** This sub-step
+> **Parity restoration.** This sub-step
 > restores the V1 tech-stack confirmation gate that was dropped during the
-> Claude Code native migration (E28). It MUST fire after Step 3 returns and
+> Claude Code native migration. It MUST fire after Step 3 returns and
 > BEFORE Step 4 begins. Step 4..N are NOT renumbered — Step 3.5 is a
 > deliberate non-integer slot so that downstream cross-references in
 > `epics-and-stories.md`, `test-plan.md §11.46.14`, and
@@ -160,7 +160,7 @@ Wait for the user's response before proceeding. Branch handlers:
 > degraded behavior is: set `confirmed_tech_stack` to Theo's recommendation
 > unchanged, append the audit entry "YOLO auto-accepted tech stack (no user
 > pause)" to the in-session ADR-sidecar buffer, and proceed to Step 4. This
-> is a documented product decision (AF-2026-04-24-1) — a hard pause in
+> is a documented product decision — a hard pause in
 > YOLO would break the non-interactive batch use case. Do NOT read the
 > YOLO short-circuit as a regression.
 
@@ -246,15 +246,15 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to compile 
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 9 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" --paths .gaia/artifacts/planning-artifacts/architecture.md`
 
-### Step 10 — Val Auto-Fix Loop (E44-S2 / ADR-058)
+### Step 10 — Val Auto-Fix Loop
 
 > Reuses the canonical pattern at `gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
 
 **Guards (run before invocation):**
 
-- Artifact-existence guard (AC-EC3): if not exists `.gaia/artifacts/planning-artifacts/architecture.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
-- Val-skill-availability guard (AC-EC6): if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
+- Artifact-existence guard: if not exists `.gaia/artifacts/planning-artifacts/architecture.md` -> skip Val auto-review and exit (no Val invocation, no checkpoint, no iteration log).
+- Val-skill-availability guard: if `/gaia-val-validate` SKILL.md is not resolvable at runtime -> warn `Val auto-review unavailable: /gaia-val-validate not found`, preserve the artifact, and exit cleanly.
 
 **Loop:**
 
@@ -269,9 +269,9 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to compile 
      d. If iteration <= 3: go to step 2.
      e. Else: present the iteration-3 prompt verbatim (centralized in `gaia-val-validate` SKILL.md § "Auto-Fix Loop Pattern") and dispatch.
 
-YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See ADR-057 FR-YOLO-2(e) and ADR-058 for the hard-gate contract.
+YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation runs against the Step 9 primary write (artifact-as-drafted). Per story E44-S5 AC-EC9 and the Adversarial-loop Val scope decision in story Dev Notes, Step 13's post-adversarial re-write does NOT trigger a second Val invocation.
+> Validation runs against the Step 9 primary write (artifact-as-drafted). Step 13's post-adversarial re-write does NOT trigger a second Val invocation.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 10 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/architecture.md`
 
@@ -286,8 +286,8 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 ### Step 12 — Adversarial Review
 
 - Read `${CLAUDE_PLUGIN_ROOT}/knowledge/adversarial-triggers.yaml` to evaluate trigger rules for `change_type` + artifact "architecture". Determine the current `change_type`: if invoked with a change_type context, use that value; otherwise default to "feature".
-- If adversarial review is triggered: dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique `.gaia/artifacts/planning-artifacts/architecture.md`. **Before dispatching, run `mkdir -p .gaia/artifacts/planning-artifacts/adversarial/`** so the nested directory exists on first run (ADR-119). The dispatch prompt MUST specify (a) the artifact path to review and (b) the report output path `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-architecture-{YYYY-MM-DD}.md` (use today's UTC date). Sage's persona at `plugins/gaia/agents/adversarial-reviewer.md` defines the review structure, severity vocabulary (ADR-037), and architecture-specific review lenses.
-- When the subagent returns: verify `adversarial-review-architecture-*.md` exists in `.gaia/artifacts/planning-artifacts/adversarial/`. Per ADR-063, display the returned ADR-037 envelope (status + summary + findings) to the user.
+- If adversarial review is triggered: dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique `.gaia/artifacts/planning-artifacts/architecture.md`. **Before dispatching, run `mkdir -p .gaia/artifacts/planning-artifacts/adversarial/`** so the nested directory exists on first run. The dispatch prompt MUST specify (a) the artifact path to review and (b) the report output path `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-architecture-{YYYY-MM-DD}.md` (use today's UTC date). Sage's persona at `plugins/gaia/agents/adversarial-reviewer.md` defines the review structure, severity vocabulary, and architecture-specific review lenses.
+- When the subagent returns: verify `adversarial-review-architecture-*.md` exists in `.gaia/artifacts/planning-artifacts/adversarial/`. Display the returned review envelope (status + summary + findings) to the user.
 - If not triggered: add "## Review Findings Incorporated" section noting the review was not triggered.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 12 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" adversarial_triggered="$ADVERSARIAL_TRIGGERED"`
@@ -304,7 +304,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-arch 13 project_name="$PROJECT_NAME" arch_version="$ARCH_VERSION" --paths .gaia/artifacts/planning-artifacts/architecture.md .gaia/memory/architect-sidecar/architecture-decisions.md`
 
-#### Append Architecture Decisions to Sidecar (E46-S6 / FR-354)
+#### Append Architecture Decisions to Sidecar
 
 > **Run order — strict.** This action runs ONLY AFTER the architecture
 > document write succeeds in Step 13. If the architecture write failed,
@@ -314,8 +314,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 > **Sidecar path — fixed.** Write to
 > `.gaia/memory/architect-sidecar/architecture-decisions.md`. This path is
-> not configurable via `global.yaml`; it is fixed by ADR-016 and
-> §10.10 of `architecture.md`. Do NOT relocate it under `custom/` or
+> not configurable via `global.yaml`. Do NOT relocate it under `custom/` or
 > under `_gaia/`.
 
 **Steps:**
@@ -339,14 +338,14 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
    `### Session {YYYY-MM-DD} — {feature_or_scope_label}`, using the
    project name + Step 1 scope label. This header groups all entries
    from a single `/gaia-create-arch` invocation.
-4. **Append-only safety (AC5).** Read the existing sidecar before
+4. **Append-only safety.** Read the existing sidecar before
    writing. If a session header with the same date AND
    `feature_or_scope_label` already exists, append ONLY the new ADR
    entries under that header (dedup key = ADR ID — never write the
    same ADR ID twice within one session header). If no matching
    header exists, append a NEW session header block at the end of the
    file. **Never overwrite, mutate, or reorder an existing entry.**
-5. Emit one ADR-016-formatted entry per decision under the session
+5. Emit one canonically-formatted entry per decision under the session
    header. Each entry MUST match the inline Decision Log row exactly
    on the five fields **ADR ID, Decision, Rationale, Status, Source**
    — no sixth column, no field rename. The session-header grouping is
@@ -376,7 +375,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 > checkpoint-counting invariants enforced by
 > `tests/vcp-cpt-09-phase3-solutioning.bats`.
 
-#### Hydrate project-config.yaml (E85-S5 / FR-457)
+#### Hydrate project-config.yaml
 
 > **Run order — strict.** Runs ONLY AFTER the architecture document
 > write in Step 13 has succeeded and the sidecar append above has
@@ -384,17 +383,17 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 > then build two `mktemp` YAML fragment files from `confirmed_tech_stack`
 > (Step 3.5 canonical variable) — one with `stacks:` payload, one with
 > `platforms:` payload — and call `config_hydrate_section stacks <file>`
-> followed by `config_hydrate_section platforms <file>` (per ADR-098,
-> the helper's second arg is a file path, not a literal string). `rm -f`
+> followed by `config_hydrate_section platforms <file>` (the helper's
+> second arg is a file path, not a literal string). `rm -f`
 > both fragment files after the calls return.
 
-> **Idempotency contract (ADR-098).** When `config_phase` is already
+> **Idempotency contract.** When `config_phase` is already
 > `partial` or `full` in `.gaia/config/project-config.yaml`, both calls are
 > safe no-ops — the helper short-circuits the write and the file is
 > byte-unchanged. When `config_phase` is `minimal`, the helper writes
 > the section and advances `config_phase` to `partial` monotonically.
 > The helper NEVER writes `config_phase: full` — that transition is
-> reserved for `validate-project-config.sh` (E85-S4 / ADR-096).
+> reserved for `validate-project-config.sh`.
 
 > **Non-blocking error policy.** Capture `$?` from each call. The helper
 > already logs `config-hydration: WARN/CRITICAL ...` to stderr for any
@@ -402,12 +401,12 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 > non-zero rc does NOT HALT the workflow — `architecture.md` has already
 > been written and is the primary artifact. Same policy as the sidecar
 > write above. The hydration trigger is purely a SKILL.md finalize-step
-> addition; no architect subagent or template changes (AC5 / FR-457).
+> addition; no architect subagent or template changes.
 
 ## Validation
 
 <!--
-  E42-S8 — V1→V2 33-item checklist port (FR-341, FR-359, VCP-CHK-15, VCP-CHK-16).
+  V1→V2 33-item checklist port.
   Classification (33 items total):
     - Script-verifiable: 25 (SV-01..SV-25) — enforced by finalize.sh.
     - LLM-checkable:      8 (LLM-01..LLM-08) — evaluated by the host LLM
@@ -415,7 +414,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   Exit code 0 when all 25 script-verifiable items PASS; non-zero otherwise.
 
   The V1 source checklist at _gaia/lifecycle/workflows/3-solutioning/create-architecture/
-  checklist.md carried 17 bulleted items. The story 33-item count is
+  checklist.md carried 17 bulleted items. The 33-item count is
   authoritative: the 17 V1 bullets are expanded here to 33 by
   (a) adding envelope items SV-01..SV-03 (artifact presence, non-empty,
   frontmatter), (b) splitting "All required sections present" into
@@ -437,19 +436,17 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   threat model, env progression, cross-cutting adequacy, adversarial
   incorporation traceability).
 
-  The VCP-CHK-16 anchor is SV-21 — "Decisions recorded". This is the
+  The SV-21 anchor is "Decisions recorded". This is the
   V1 phrase verbatim and MUST appear in violation output when the
-  Decision Log table is heading-only (AC-EC5).
+  Decision Log table is heading-only.
 
-  Per-item LLM-checkable timeout contract: 30s wall-clock per item
-  (AC-EC7). Malformed verdict (no explicit PASS/FAIL) is treated as
-  FAIL — never skip (AC-EC4).
+  Per-item LLM-checkable timeout contract: 30s wall-clock per item.
+  Malformed verdict (no explicit PASS/FAIL) is treated as
+  FAIL — never skip.
 
-  Invoked by `finalize.sh` at post-complete (per §10.31.1). Validation
+  Invoked by `finalize.sh` at post-complete. Validation
   runs BEFORE the checkpoint and lifecycle-event writes (observability
-  is never suppressed by checklist outcome — story AC5).
-
-  See .gaia/artifacts/implementation-artifacts/E42-S8-port-gaia-create-arch-33-item-checklist-to-v2.md.
+  is never suppressed by checklist outcome).
 -->
 
 - [script-verifiable] SV-01 — Output file exists at .gaia/artifacts/planning-artifacts/architecture.md

@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # yolo-mode.sh — YOLO mode detection helper for V2 GAIA skills.
 #
-# Story: E41-S1 (YOLO Mode Contract + Helper)
-# ADR: ADR-057 (YOLO Mode Contract for V2 Phase 4 Commands)
 # Architecture: .gaia/artifacts/planning-artifacts/architecture.md §10.30.4
 #
 # Purpose
@@ -10,16 +8,16 @@
 # The retired V1 engine expressed YOLO declaratively via per-step branches
 # in its workflow definitions; V2 native skills lost that declarative
 # contract. This script centralizes YOLO detection so each skill consults
-# a single helper instead of re-implementing env parsing. See ADR-057 and
+# a single helper instead of re-implementing env parsing. See
 # architecture.md §10.30 for the full contract.
 #
 # Activation signals (architecture §10.30.1):
 #   --yolo flag at the command boundary  -> caller exports GAIA_YOLO_FLAG=1
 #   GAIA_YOLO_MODE=1 inherited from a YOLO-mode parent process
-#   .gaia/state/.yolo-active sentinel file (AF-2026-05-21-4 Finding 2)
+#   .gaia/state/.yolo-active sentinel file
 #
 # Precedence order (top wins, architecture §10.30.4):
-#   1. GAIA_CONTEXT=memory-save  -> exit 1   (E9-S8 invariant; FR-YOLO-2(f))
+#   1. GAIA_CONTEXT=memory-save  -> exit 1   (memory-save is always interactive)
 #   2. GAIA_YOLO_OVERRIDE=no     -> exit 1   (explicit opt-out, e.g. --no-yolo)
 #   3. GAIA_YOLO_FLAG=1          -> exit 0   (direct invocation)
 #   4. GAIA_YOLO_MODE=1          -> exit 0   (inheritance)
@@ -30,10 +28,10 @@
 # Values "0", "false", "no", and the empty string fall through to the
 # default exit-1 branch (ECI-500 regression guard).
 #
-# Sentinel file (AF-2026-05-21-4 Finding 2):
+# Sentinel file:
 #   Path: $GAIA_STATE_DIR/.yolo-active (defaults to ./.gaia/state/.yolo-active
 #   when GAIA_STATE_DIR is unset). The legacy ./_memory/.yolo-active fallback
-#   was removed in AF-2026-05-27-3 (ADR-111 — .gaia/ is canonical). Created by
+#   was removed when .gaia/ became canonical. Created by
 #   callers via `yolo-mode.sh set` when
 #   they detect --yolo in their arguments. Removed via `yolo-mode.sh clear`
 #   on session end OR on explicit --no-yolo. Sentinel-file YOLO state
@@ -57,9 +55,9 @@
 # Returns 0 (YOLO active) or 1 (interactive) based on the precedence table
 # above. Pure function — reads env, writes nothing, has no side effects.
 is_yolo() {
-    # Rule 1 — Memory-save context exempt per FR-YOLO-2(f). The E9-S8
-    # memory-save prompt MUST remain interactive even when YOLO is active
-    # at the session level.
+    # Rule 1 — Memory-save context is always interactive. The memory-save
+    # prompt MUST remain interactive even when YOLO is active at the session
+    # level.
     if [ "${GAIA_CONTEXT:-}" = "memory-save" ]; then
         return 1
     fi
@@ -82,7 +80,7 @@ is_yolo() {
         return 0
     fi
 
-    # Rule 5 — Sentinel file persistence (AF-2026-05-21-4 Finding 2).
+    # Rule 5 — Sentinel file persistence.
     # Env vars don't survive across Bash tool calls in Claude Code; the
     # sentinel file is the cross-call YOLO state contract.
     local sentinel="${GAIA_YOLO_SENTINEL:-}"
@@ -157,18 +155,18 @@ if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
             exit $?
             ;;
         set)
-            # AF-2026-05-21-4 Finding 2: create the cross-call sentinel.
+            # Create the cross-call sentinel.
             yolo_set
             exit $?
             ;;
         clear)
-            # AF-2026-05-21-4 Finding 2: remove the cross-call sentinel.
+            # Remove the cross-call sentinel.
             yolo_clear
             exit $?
             ;;
         --help|-h)
             cat <<'EOF'
-yolo-mode.sh — YOLO mode detection helper (ADR-057, architecture §10.30.4)
+yolo-mode.sh — YOLO mode detection helper (architecture §10.30.4)
 
 Usage:
   source yolo-mode.sh && is_yolo                 # library form
@@ -178,11 +176,11 @@ Usage:
   yolo-mode.sh --help                            # this message
 
 Environment variables (precedence top-down):
-  GAIA_CONTEXT=memory-save     forces exit 1 (E9-S8 invariant)
+  GAIA_CONTEXT=memory-save     forces exit 1 (always interactive)
   GAIA_YOLO_OVERRIDE=no        explicit opt-out -> exit 1
   GAIA_YOLO_FLAG=1             --yolo flag      -> exit 0
   GAIA_YOLO_MODE=1             inherited YOLO   -> exit 0
-  .yolo-active sentinel        cross-call YOLO  -> exit 0  (AF-2026-05-21-4)
+  .yolo-active sentinel        cross-call YOLO  -> exit 0
   GAIA_YOLO_SENTINEL=<path>    override sentinel location (tests)
   (none)                       default          -> exit 1
 EOF

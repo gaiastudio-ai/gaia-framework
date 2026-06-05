@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# subcmd-add-scenario.sh — /gaia-test-automate --add-scenario sub-command (E72-S2)
+# subcmd-add-scenario.sh — /gaia-test-automate --add-scenario sub-command
 #
 # Allocates the next available CS-NNN ID by scanning custom/test-scenarios/
 # index.yaml, appends the new scenario to:
@@ -7,7 +7,7 @@
 #   2. custom/test-scenarios/index.yaml (under scenarios:)
 #
 # CS-NNN namespace is deliberately separate from Vera's TC-NNN namespace
-# (per source-report §11.1) so /gaia-review-qa re-runs do not collide.
+# so /gaia-review-qa re-runs do not collide.
 #
 # Usage (non-interactive — flags supply all values; bats-friendly):
 #   subcmd-add-scenario.sh \
@@ -25,7 +25,6 @@
 #   1 — file write / read failure
 #   2 — caller error (missing required flag)
 #
-# Refs: E72-S2 AC3, AC4; FR-RSV2-40; source-report §5.8 / §11.1.
 
 set -euo pipefail
 LC_ALL=C
@@ -37,7 +36,7 @@ err() { printf '%s: error: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — /gaia-test-automate --add-scenario sub-command (E72-S2).
+$SCRIPT_NAME — /gaia-test-automate --add-scenario sub-command.
 
 Usage:
   $SCRIPT_NAME \\
@@ -106,7 +105,7 @@ fi
 
 # ---------------------------------------------------------------------------
 # Allocate next CS-NNN — scan index for the highest existing CS-N integer.
-# Reads both canonical `id:` (E72-S3) and legacy `cs_id:` (E72-S2) entries
+# Reads both canonical `id:` and legacy `cs_id:` entries
 # so backward-compat is preserved across the schema rename.
 # ---------------------------------------------------------------------------
 max_n=0
@@ -123,17 +122,16 @@ done < <(grep -oE 'CS-[0-9]+' "$INDEX_FILE" || true)
 next_n=$((max_n + 1))
 cs_id="$(printf 'CS-%03d' "$next_n")"
 
-# Capture today's date as ISO-8601 (YYYY-MM-DD) for created_date (E72-S3 AC3).
+# Capture today's date as ISO-8601 (YYYY-MM-DD) for created_date.
 created_date="$(date +%Y-%m-%d)"
 
 # ---------------------------------------------------------------------------
 # Append entry to index.yaml. The atomic-rename pattern guards against
 # concurrent invocations (last writer wins; no partial files).
 #
-# Canonical schema (E72-S3 AC3): id, story_key, description, tier,
+# Canonical schema: id, story_key, description, tier,
 # priority, file_path, created_date. The legacy `cs_id` and `expected`
-# fields from E72-S2 are dropped — readers tolerate both during the
-# backward-compat window.
+# fields are dropped — readers tolerate both during the backward-compat window.
 # ---------------------------------------------------------------------------
 TMP_INDEX="$(mktemp -t e72s2-index.XXXXXX)"
 trap 'rm -f "$TMP_INDEX"' EXIT

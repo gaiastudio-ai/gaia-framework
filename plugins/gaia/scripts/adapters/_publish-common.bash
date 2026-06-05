@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# _publish-common.bash — shared helpers for publish-* adapters per FR-526 + ADR-113.
+# _publish-common.bash — shared helpers for publish-* adapters.
 # Source this file; do not invoke directly.
 
 set -euo pipefail
@@ -9,7 +9,7 @@ export LC_ALL
 # Standard arg parser. Sets: ACTION, MANIFEST, VERSION, REGISTRY, OUTPUT,
 # plus DRY_RUN (default 0). Extra channel-specific flags are deferred to
 # the calling adapter (it must `case` on them and call `die_unknown` for
-# any unmatched arg per FR-526 fail-closed contract).
+# any unmatched arg per the fail-closed contract).
 # shellcheck disable=SC2034  # MANIFEST/REGISTRY consumed by caller adapters
 publish_parse_common_args() {
   ACTION=""
@@ -38,7 +38,7 @@ publish_parse_common_args() {
   [ -n "$VERSION" ] || { printf 'adapter: --version is required\n' >&2; exit 2; }
 }
 
-# Write a minimal ADR-037 envelope to $OUTPUT.
+# Write a minimal publish envelope to $OUTPUT.
 # Args: verdict, channel, action, summary, [evidence-json-array, default "[]"]
 publish_write_envelope() {
   local verdict="$1" channel="$2" action="$3" summary="$4"

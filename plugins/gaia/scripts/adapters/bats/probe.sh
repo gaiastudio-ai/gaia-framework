@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# adapters/bats/probe.sh — FR-414 + ADR-089 tri-state probe.
+# adapters/bats/probe.sh — tri-state probe.
 #
-# Returns the ADR-078 / ADR-089 tri-state availability JSON:
+# Returns the tri-state availability JSON:
 #   { "available": true|false, "version": "<version-string>", "failure_kind": null|"<enum>" }
 #
 # Provider is the `bats` binary (Bats Automated Testing System) per
@@ -9,7 +9,7 @@
 # semver from `bats --version` (format: "Bats 1.13.0"). When absent, returns
 # available=false with failure_kind="not_installed" and exit 1.
 #
-# This probe is invoked by tool-availability-probe.sh (E77-S3) in adapter-dir
+# This probe is invoked by tool-availability-probe.sh in adapter-dir
 # mode and may also be called directly by callers wanting tri-state JSON.
 
 set -euo pipefail

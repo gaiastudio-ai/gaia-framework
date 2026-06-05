@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# load-mode-registry.sh — gaia-meeting mode registry loader (E76-S5)
+# load-mode-registry.sh — gaia-meeting mode registry loader
 #
 # Sourced by callers; provides three functions over a yq-free YAML shape:
 #

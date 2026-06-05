@@ -45,7 +45,7 @@ teardown() { common_teardown; }
 }
 
 @test "AC3-2: SKILL.md introduces Step 5b auto-file branch" {
-  run grep -F '#### Step 5b --- Optional auto-file pass (E92-S5, opt-in via `--auto-file`)' "$SKILL_MD"
+  run grep -F '#### Step 5b --- Optional auto-file pass (opt-in via `--auto-file`)' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
@@ -62,7 +62,7 @@ teardown() { common_teardown; }
 }
 
 @test "AC6-1: SKILL.md Changelog row references E92-S5 / AI-84 / AI-RETRO-S46-3" {
-  run grep -F 'E92-S5 — Opt-in `--auto-file` flag for retro action items (AI-84 / AI-RETRO-S46-3)' "$SKILL_MD"
+  run grep -F 'Opt-in `--auto-file` flag for retro action items' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
@@ -117,6 +117,6 @@ teardown() { common_teardown; }
 # Assert the explicit default-OFF documentation in the SKILL.md prose
 # (full runtime test deferred with TC-RAF-1/-2).
 @test "TC-RAF-4: SKILL.md Step 5b documents default-OFF backward-compat" {
-  run grep -F 'Default is OFF — when the flag is absent (the sprint-45/46/47 default), this step is a no-op' "$SKILL_MD"
+  run grep -F 'Default is OFF — when the flag is absent, this step is a no-op' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }

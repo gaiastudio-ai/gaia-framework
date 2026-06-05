@@ -58,7 +58,7 @@ When the story enters review status:
 
 ## Post-Completion Gate Reasoning (SKILL.md Step 14)
 
-After the dev-story subagent reports completion, the orchestrator must verify that a merge commit containing the story key actually exists on the target branch before accepting the result. This gate exists because two prior sprints (sprint-17 / E17-S1, sprint-25 / E28-S213) saw subagents report completion while never pushing or merging — sprints closed with unmerged code. Reason about this gate as follows:
+After the dev-story subagent reports completion, the orchestrator must verify that a merge commit containing the story key actually exists on the target branch before accepting the result. This gate exists because two prior sprints saw subagents report completion while never pushing or merging — sprints closed with unmerged code. Reason about this gate as follows:
 
 - **Gate purpose:** Trust-but-verify the subagent's self-reported `done`. The gate is a final integrity check, not a duplicate review.
 - **Promotion-chain dependency:** The gate runs `verify-pr-merged.sh {story_key} {target_branch}` where `{target_branch}` is the first promotion-chain environment from `ci_cd.promotion_chain[0].branch`. If `ci_cd.promotion_chain` is absent, the script exits 3 (skip) and the gate passes silently — projects without a configured promotion chain are not penalized.

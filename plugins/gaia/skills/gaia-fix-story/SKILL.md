@@ -1,6 +1,6 @@
 ---
 name: gaia-fix-story
-description: Apply Val validation findings to a story file and re-run validation to iterate from validating back to ready-for-dev. Native Claude Code conversion of the legacy fix-story workflow (Cluster 7, E28-S55).
+description: Apply Val validation findings to a story file and re-run validation to iterate from validating back to ready-for-dev. Native Claude Code conversion of the legacy fix-story workflow.
 argument-hint: "[story-key]"
 allowed-tools: [Read, Write, Edit, Bash, Grep]
 orchestration_class: light-procedural
@@ -12,14 +12,14 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are fixing a story file that has open validation findings. The story is resolved by `{story_key}` via the shared `resolve-story-file.sh` helper (E79-S7 / FR-476), which honors the E79-S4 nested-over-flat precedence rule across `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` (canonical) and `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` (legacy-flat fallback). After applying fixes, you re-invoke validation to confirm the story is clean and transition it to `ready-for-dev`.
+You are fixing a story file that has open validation findings. The story is resolved by `{story_key}` via the shared `resolve-story-file.sh` helper, which honors the nested-over-flat precedence rule across `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` (canonical) and `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` (legacy-flat fallback). After applying fixes, you re-invoke validation to confirm the story is clean and transition it to `ready-for-dev`.
 
-This skill is the native Claude Code conversion of the legacy fix-story workflow (brief Cluster 7, story E28-S55). It reads Val findings, rewrites affected sections, and re-validates via the `gaia-val-validate` skill.
+This skill is the native Claude Code conversion of the legacy fix-story workflow. It reads Val findings, rewrites affected sections, and re-validates via the `gaia-val-validate` skill.
 
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-fix-story [story-key]".
-- The story file MUST be resolvable by `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` (E79-S7 / FR-476). The helper searches the canonical nested path first (`.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md`), then the legacy-flat path (`.gaia/artifacts/implementation-artifacts/{story_key}-*.md`) with a stderr WARNING. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}".
+- The story file MUST be resolvable by `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}`. The helper searches the canonical nested path first (`.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md`), then the legacy-flat path (`.gaia/artifacts/implementation-artifacts/{story_key}-*.md`) with a stderr WARNING. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}".
 - The story MUST be in `validating` status. Any other status is a hard gate -- exit with guidance: "story not in validating state -- use /gaia-validate-story first".
 - NEVER drop required YAML frontmatter fields during a fix pass. Preserve all 15 required fields: key, title, epic, status, priority, size, points, risk, sprint_id, depends_on, blocks, traces_to, date, author, priority_flag (plus optional: origin, origin_ref, figma).
 - Do NOT loop infinitely. If re-validation still reports findings after applying fixes, exit non-zero with a summary and leave status at `validating`.
@@ -31,7 +31,7 @@ This skill is the native Claude Code conversion of the legacy fix-story workflow
 ### Step 1 -- Resolve Story File
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-fix-story [story-key]"
-- Resolve the story file path via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` (E79-S7 / FR-476). The helper honors the E79-S4 nested-over-flat precedence rule and emits stderr WARNINGs for legacy-flat fallback or shadowed flat siblings.
+- Resolve the story file path via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}`. The helper honors the nested-over-flat precedence rule and emits stderr WARNINGs for legacy-flat fallback or shadowed flat siblings.
 - If the helper exits 1 (zero matches): fail with "story file not found for key {story_key}". The helper's stderr lists the searched paths.
 - If the helper exits 2 (multiple matches — ambiguity): fail with "multiple story files matched key {story_key} -- resolve ambiguity". The helper's stderr lists each match.
 - Read the resolved story file.
@@ -64,13 +64,13 @@ For each finding, apply the appropriate fix:
 
 Preserve all existing valid content -- only modify sections flagged by findings.
 
-### Step 5 -- Re-Validate (Main-Turn Dispatch per ADR-104)
+### Step 5 -- Re-Validate (Main-Turn Dispatch)
 
-- Invoke the `gaia-val-validate` skill (NOT the legacy workflow) against the updated story file via the **main-turn Agent tool** (per ADR-093 / ADR-104). The story file path was resolved in Step 1 via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh` (E79-S7 / FR-476) and may live at either the canonical nested path (`.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-{slug}.md`) or the legacy-flat fallback (`.gaia/artifacts/implementation-artifacts/{story_key}-{slug}.md`) — pass the resolved path:
+- Invoke the `gaia-val-validate` skill (NOT the legacy workflow) against the updated story file via the **main-turn Agent tool**. The story file path was resolved in Step 1 via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh` and may live at either the canonical nested path (`.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-{slug}.md`) or the legacy-flat fallback (`.gaia/artifacts/implementation-artifacts/{story_key}-{slug}.md`) — pass the resolved path:
   ```
   /gaia-val-validate {resolved_story_path}
   ```
-- **Envelope assertion (E87-S3 / ADR-104).** After `/gaia-val-validate` returns and BEFORE consuming its verdict, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` where `{sentinel_path} = .gaia/memory/checkpoints/val-envelope-{sha256(resolved_story_path) first 16 hex}.json`. On non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}`. DO NOT fall through to a self-judged validation verdict. This directly closes the bypass class documented in memory rule `feedback_fix_story_inline_revalidation_bypass.md` (AI-2026-05-09-12 sibling defect).
+- **Envelope assertion.** After `/gaia-val-validate` returns and BEFORE consuming its verdict, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` where `{sentinel_path} = .gaia/memory/checkpoints/val-envelope-{sha256(resolved_story_path) first 16 hex}.json`. On non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}`. DO NOT fall through to a self-judged validation verdict. This directly closes the bypass class documented in memory rule `feedback_fix_story_inline_revalidation_bypass.md`.
 - Parse the re-validation result:
   - If zero CRITICAL/WARNING findings: validation is clean -- proceed to Step 6.
   - If CRITICAL/WARNING findings remain: do NOT loop. Exit non-zero with a summary listing each remaining finding. Leave status at `validating`.
@@ -92,8 +92,8 @@ Preserve all existing valid content -- only modify sections flagged by findings.
 
 ## Changelog
 
-- **2026-05-13 — E87-S7 — Sentinel-Write Writer Shift (ADR-105 amends ADR-104).** Following the AI-2026-05-13-13 incident, the Val sentinel write has been relocated from the Val sub-agent context to the orchestrator's main turn. Val now RETURNS the sentinel content as a `sentinel_envelope` field inside the ADR-037 envelope; this skill (Step 5 re-validation) parses the field and writes the sentinel via the new helper `plugins/gaia/scripts/lib/write-val-envelope.sh` BEFORE invoking `assert_agent_envelope`. Forgery resistance preserved via `persona_sig` (NFR-064 unchanged). Closes the substrate content-integrity false-fire that affected the re-validation gate.
-- **2026-05-12 — E87-S3 — Val Bridge Migration (ADR-104).** Retargeted Step 5 re-validation to the main-turn Agent-tool dispatch model and added the envelope-assert step (`assert_agent_envelope`) immediately after the `/gaia-val-validate` invocation with HALT on assertion failure. Directly closes the inline-Val self-judgment bypass class documented in `feedback_fix_story_inline_revalidation_bypass.md` (AI-2026-05-09-12 sibling defect).
+- **2026-05-13 — Sentinel-Write Writer Shift.** The Val sentinel write has been relocated from the Val sub-agent context to the orchestrator's main turn. Val now RETURNS the sentinel content as a `sentinel_envelope` field inside the agent envelope; this skill (Step 5 re-validation) parses the field and writes the sentinel via the new helper `plugins/gaia/scripts/lib/write-val-envelope.sh` BEFORE invoking `assert_agent_envelope`. Forgery resistance preserved via `persona_sig`. Closes the substrate content-integrity false-fire that affected the re-validation gate.
+- **2026-05-12 — Val Bridge Migration.** Retargeted Step 5 re-validation to the main-turn Agent-tool dispatch model and added the envelope-assert step (`assert_agent_envelope`) immediately after the `/gaia-val-validate` invocation with HALT on assertion failure. Directly closes the inline-Val self-judgment bypass class documented in `feedback_fix_story_inline_revalidation_bypass.md`.
 
 ## Finalize
 

@@ -165,12 +165,12 @@ FIX_STORY_MD="$PLUGIN_ROOT/skills/gaia-fix-story/SKILL.md"
   [ -z "$hits" ]
 }
 
-# ---------------- TC-VBR-10c: both migrated SKILL.md files reference ADR-104 ----------------
-@test "TC-VBR-10c: both validate-story and fix-story SKILL.md contain ADR-104 reference" {
+# ---------------- TC-VBR-10c: both migrated SKILL.md files document the Val Bridge Migration ----------------
+@test "TC-VBR-10c: both validate-story and fix-story SKILL.md contain Val Bridge Migration reference" {
   [ -f "$VALIDATE_STORY_MD" ] || skip "validate-story SKILL.md not present"
   [ -f "$FIX_STORY_MD" ] || skip "fix-story SKILL.md not present"
-  grep -q 'ADR-104' "$VALIDATE_STORY_MD"
-  grep -q 'ADR-104' "$FIX_STORY_MD"
+  grep -q 'Val Bridge Migration' "$VALIDATE_STORY_MD"
+  grep -q 'Val Bridge Migration' "$FIX_STORY_MD"
 }
 
 # ============================================================================
@@ -335,10 +335,10 @@ _extract_add_feature_step_2() {
   [ "$count" -ge 1 ]
 }
 
-# ---------------- TC-VBR-11e: ADR-104 in Changelog ----------------
-@test "TC-VBR-11e: /gaia-add-feature SKILL.md contains ADR-104 reference" {
+# ---------------- TC-VBR-11e: Val Bridge Migration documented in Changelog ----------------
+@test "TC-VBR-11e: /gaia-add-feature SKILL.md contains Val Bridge Migration reference" {
   [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
-  grep -q 'ADR-104' "$ADD_FEATURE_MD"
+  grep -q 'Val Bridge Migration' "$ADD_FEATURE_MD"
 }
 
 # ---------------- TC-VBR-11f: finalize.sh sentinel leak guard (AC3) ----------------
@@ -377,9 +377,11 @@ VALIDATOR_MD="$SCRIPTS_DIR/../agents/validator.md"
 @test "TC-VBR-13: write-val-envelope.sh helper exists at canonical path (E87-S7)" {
   [ -f "$WRITE_ENVELOPE_HELPER" ]
   [ -x "$WRITE_ENVELOPE_HELPER" ]
-  # Header references ADR-105 (the anchor for the writer-shift).
+  # Header documents the writer-shift contract: sentinel write moves to the
+  # orchestrator's main turn (the behavioral anchor for the E87-S7 shift).
   run head -40 "$WRITE_ENVELOPE_HELPER"
-  [[ "$output" == *"ADR-105"* ]]
+  [[ "$output" == *"orchestrator"* ]]
+  [[ "$output" == *"sentinel"* ]]
 }
 
 # ---------------- TC-VBR-14: validator.md §Sentinel-Write Contract specifies sentinel_envelope return-channel ----------------
@@ -390,8 +392,8 @@ VALIDATOR_MD="$SCRIPTS_DIR/../agents/validator.md"
   grep -q 'sentinel_envelope' "$VALIDATOR_MD"
   # The new contract explicitly states Val MUST NOT write the sentinel file.
   grep -q 'MUST NOT write' "$VALIDATOR_MD"
-  # ADR-105 is the anchor.
-  grep -q 'ADR-105' "$VALIDATOR_MD"
+  # The writer-shift helper is the durable behavioral anchor for this contract.
+  grep -q 'write-val-envelope.sh' "$VALIDATOR_MD"
 }
 
 # ---------------- TC-VBR-15: validator.md Write allowlist removal (E87-S7 / AC7) ----------------

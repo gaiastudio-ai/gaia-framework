@@ -2,11 +2,6 @@
 # migrate-stories-to-canonical-layout.sh — backfill flat stories + flat index
 #                                          into the canonical per-epic layout.
 #
-# Story: E79-S6 — Migration script — backfill legacy flat stories + flat
-#                 `story-index.yaml`.
-# Epic:  E79     — Canonical Per-Epic Story-File Layout (Path Convergence).
-# ADRs:  ADR-070 (canonical layout), ADR-072 (atomic rename guarantees).
-# Trace: TC-CSP-9, TC-CSP-14, TC-CSP-15.
 #
 # Mission:
 #   One-shot migration: every legacy flat story file
@@ -20,7 +15,7 @@
 #   1. Walk flat-path candidates (depth=1) — `E*-S*-*.md` files at
 #      `docs/implementation-artifacts/`. Already-nested files under
 #      `epic-*/stories/` are NEVER touched.
-#   2. For each candidate: resolve destination via E79-S1's epic-slug
+#   2. For each candidate: resolve destination via the epic-slug
 #      resolver, mkdir -p the destination, `git mv` (or plain `mv` in non-git
 #      mode). Filename is preserved verbatim.
 #   3. If a flat `story-index.yaml` exists: parse the YAML, bucket entries by
@@ -61,7 +56,7 @@ export LC_ALL
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# E97-S2: the script lives under scripts/retired/ but its helpers remain under
+# The script lives under scripts/retired/ but its helpers remain under
 # the active scripts/ tree. Resolve PARENT_SCRIPT_DIR by walking up one level
 # when the basename of SCRIPT_DIR is "retired"; otherwise fall back to
 # SCRIPT_DIR for the original co-located layout (preserves git-history bisect).
@@ -218,7 +213,7 @@ _find_flat_candidates() {
 }
 
 # ---------------------------------------------------------------------------
-# Resolver wrapper — convert a story key (E77-S10) into the destination dir
+# Resolver wrapper — convert a story key into the destination dir
 # `${IMPL_DIR}/epic-{epic-slug}/stories/`. Caches resolved slugs by epic_key.
 # ---------------------------------------------------------------------------
 
@@ -258,8 +253,8 @@ _resolve_epic_slug_cached() {
   printf '%s' "$slug"
 }
 
-# Extract the epic key prefix from a story-file basename: `E77-S10-foo.md`
-# -> `E77`. Review summaries (`E77-S10-review-summary.md`) yield `E77` too.
+# Extract the epic key prefix from a story-file basename: `E{N}-S{N}-foo.md`
+# -> `E{N}`. Review summaries (`E{N}-S{N}-review-summary.md`) yield `E{N}` too.
 _extract_epic_key() {
   local base="$1"
   printf '%s' "$base" | sed -E 's/^([A-Z][0-9]+)-S[0-9]+-.*$/\1/'
@@ -268,13 +263,13 @@ _extract_epic_key() {
 # ---------------------------------------------------------------------------
 # Phase 3 — flat story-index.yaml merge.
 #
-# Format expectation (per E79-S3 / transition-story-status.sh writer):
+# Format expectation (per transition-story-status.sh writer):
 #
 #   stories:
-#     E77-S10:
-#       story_key: "E77-S10"
+#     <story-key>:
+#       story_key: "<story-key>"
 #       title: "..."
-#       epic: "E77"
+#       epic: "<epic-key>"
 #       priority: "..."
 #       risk: "..."
 #       author: "..."

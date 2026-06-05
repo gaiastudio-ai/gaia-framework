@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # append-edge-case-tests.sh — gaia-create-story Step 3d deterministic
-#                             test-plan TC-row appender (E63-S8 / Work Item 6.8)
+#                             test-plan TC-row appender
 #
 # Purpose:
 #   Append edge-case TC rows to a test-plan.md story section with dedup keyed
@@ -10,36 +10,34 @@
 #
 # Consumer skill:
 #   - /gaia-create-story Step 3d — replaces the dedup-by-(story_key, scenario)
-#     prose with a single `!scripts/append-edge-case-tests.sh ...` invocation
-#     (the prose-to-script swap lands in E63-S11; this story delivers the
-#     script + bats coverage only).
+#     prose with a single `!scripts/append-edge-case-tests.sh ...` invocation.
 #
 # Upstream sibling:
-#   - E63-S7 append-edge-case-acs.sh — establishes the JSON-driven append-with-
-#     dedup pattern, mktemp+atomic-rename posture, missing-target non-blocking
+#   - append-edge-case-acs.sh — establishes the JSON-driven append-with-dedup
+#     pattern, mktemp+atomic-rename posture, missing-target non-blocking
 #     branch, and bats fixture style. This script reuses that scaffolding.
 #     The structural difference: dedup key is (story_key, scenario) here vs
-#     scenario-only in S7, and there is NO hash check (test-plan rows have
-#     no immutability contract — downstream tooling may legitimately edit
+#     scenario-only in the sibling, and there is NO hash check (test-plan rows
+#     have no immutability contract — downstream tooling may legitimately edit
 #     them, e.g. severity reclassification by /gaia-edit-test-plan).
 #
 # Contract source:
-#   - ADR-074 contract C3 — Status-edit discipline. This script never reads
-#     or writes sprint-status.yaml, epics-and-stories.md, story files, or
+#   - Status-edit discipline: this script never reads or writes
+#     sprint-status.yaml, epics-and-stories.md, story files, or
 #     story-index.yaml. Its scope is strictly the file passed via --test-plan.
-#   - ADR-042            — Scripts-over-LLM rationale.
-#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md — Work Item
-#     6.8 (script migration of test-plan TC append).
+#   - Scripts-over-LLM rationale applies throughout.
+#   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md —
+#     script migration of test-plan TC append.
 #
 # Algorithm (in order):
 #   1. Parse CLI: --test-plan <path>, --story-key <key>, --edge-cases <json>.
 #      Reject unknown flags with a clear error.
 #   2. If --test-plan path does not exist, write a WARNING to stderr and
-#      exit 0 (non-blocking; mirrors E63-S7 and SKILL.md Step 3d posture).
+#      exit 0 (non-blocking; mirrors SKILL.md Step 3d posture).
 #   3. Validate the JSON input is a well-formed array via `jq -e .`.
 #   4. Locate the story section by searching for either `^## ${STORY_KEY}\b`
 #      or `^### ${STORY_KEY}\b`. If no heading matches, hand off to the
-#      missing-section branch (AC4).
+#      missing-section branch.
 #   5. Within the located range, parse rows matching the canonical format
 #      `| TC-{N} | <scenario> | <type> | <severity> | <story_key> |`. Build:
 #      (a) a dedup set of existing scenario strings; (b) the maximum TC-{N}
@@ -50,11 +48,10 @@
 #   7. Insert the new TC rows at the end of the target story's section
 #      (immediately before the next `^##\?\? ` heading or at EOF). Atomic
 #      write: stage to a workspace tmp file, then `mv` over the original.
-#   8. Missing-section branch (AC4): append a new heading at EOF using the
-#      heading depth that matches existing story sections (`## ` by default,
-#      `### ` if the file's first existing story heading uses `### `).
-#      Append the canonical column header + alignment row, then TC rows
-#      starting at TC-1.
+#   8. Missing-section branch: append a new heading at EOF using the heading
+#      depth that matches existing story sections (`## ` by default, `### `
+#      if the file's first existing story heading uses `### `). Append the
+#      canonical column header + alignment row, then TC rows starting at TC-1.
 #   9. On success, emit the integer count of TC rows actually appended
 #      (post-dedup) on stdout.
 #
@@ -81,7 +78,7 @@ usage() {
 Usage: append-edge-case-tests.sh --test-plan <path> --story-key <key> --edge-cases <json-array>
 
   --test-plan <path>        Path to a test-plan.md file. Required.
-  --story-key <key>         Story key (e.g. E63-S8). Required.
+  --story-key <key>         Story key (e.g. E1-S1). Required.
   --edge-cases <json>       JSON array of edge-case entries. Required.
                             Each entry: {id, scenario, input, expected,
                             category, severity?}. Only `scenario` (dedup
@@ -145,7 +142,7 @@ done
 [ -n "$story_key" ] || die_usage "--story-key is required"
 [ "$have_edge_cases" -eq 1 ] || die_usage "--edge-cases is required"
 
-# ---------- Missing-target file (non-blocking branch, AC3) ----------
+# ---------- Missing-target file (non-blocking branch) ----------
 
 if [ ! -f "$test_plan" ]; then
   log "WARNING test-plan.md not found at $test_plan"
@@ -347,7 +344,7 @@ if [ "$section_found" = "1" ]; then
 
   mv "$modified_file" "$test_plan"
 else
-  # ---------- Insertion path: missing section (AC4) ----------
+  # ---------- Insertion path: missing section ----------
   #
   # Append a new section at EOF: heading + column-header row + alignment row
   # + TC rows. The tail block built above used `next_tc_id = max+1 = 1`

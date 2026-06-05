@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 14 gaia-memory-hygiene skill setup (E28-S107)
+# setup.sh — gaia-memory-hygiene skill setup
 #
-# Mechanical extension of the Cluster 9 / Cluster 12 / Cluster 14 reference
-# implementation (gaia-brownfield/scripts/setup.sh). Only WORKFLOW_NAME and
-# SCRIPT_NAME differ — the body follows the shared pattern.
+# Mechanical extension of the brownfield reference implementation
+# (gaia-brownfield/scripts/setup.sh). Only WORKFLOW_NAME and SCRIPT_NAME
+# differ — the body follows the shared pattern.
 #
-# Responsibilities (per ADR-042 / FR-325):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Load the checkpoint state for this workflow
 #

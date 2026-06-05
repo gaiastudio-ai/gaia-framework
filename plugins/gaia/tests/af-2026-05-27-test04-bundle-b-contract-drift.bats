@@ -39,7 +39,7 @@ teardown() { common_teardown; }
 
 @test "F-016: threat-model requires durable dispatch_provenance frontmatter" {
   grep -qF 'dispatch_provenance:' "$PLUGIN_ROOT/skills/gaia-threat-model/SKILL.md"
-  grep -qF 'Durable dispatch provenance (F-016' "$PLUGIN_ROOT/skills/gaia-threat-model/SKILL.md"
+  grep -qF 'Durable dispatch provenance' "$PLUGIN_ROOT/skills/gaia-threat-model/SKILL.md"
 }
 
 # --- F-019 (code): missing yaml + set sprint_id WARNS; backlog stays quiet ---

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/ktlint/run.sh — ADR-078 adapter contract for ktlint (E74-S7).
+# adapters/ktlint/run.sh — adapter contract for ktlint.
 # Invokes `ktlint --reporter=json` against the file list and emits a canonical
 # analysis-results fragment.
 

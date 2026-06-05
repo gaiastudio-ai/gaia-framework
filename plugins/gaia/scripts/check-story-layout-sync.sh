@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # check-story-layout-sync.sh — detect canonical-per-epic-layout drift.
 #
-# Story: E79-S5 — Static `monolith-shard-sync` extension — `story-layout-sync` advisory check.
-# Trace: TC-CSP-7
-#
 # Mirrors the established `check-monolith-shard-sync.sh` advisory pattern.
 # Walks .gaia/artifacts/implementation-artifacts/ and emits WARNING lines on stdout
 # when story-file layout drift is detected. The script is ADVISORY: it
@@ -11,7 +8,7 @@
 # cases (e.g., two per-epic stories sharing the same `key:` under different
 # epics) — none of the three checks in this file ever emit CRITICAL.
 #
-# Drift classes (each is repairable by the E79-S6 migration script):
+# Drift classes (each is repairable by the migration script):
 #
 #   1. legacy-flat-path        — story file at docs/implementation-artifacts/
 #                                 instead of .gaia/artifacts/implementation-artifacts/
@@ -72,7 +69,7 @@ if [[ -d "$ROOT" ]]; then
   ROOT="$(cd "$ROOT" && pwd)"
 fi
 
-# E96-S1 path resolution: prefer .gaia/artifacts/, fall back to legacy docs/
+# Path resolution: prefer .gaia/artifacts/, fall back to legacy docs/
 if [[ -d "$ROOT/.gaia/artifacts/implementation-artifacts" ]]; then
   IMPL_DIR_ABS="$ROOT/.gaia/artifacts/implementation-artifacts"
 else
@@ -114,7 +111,7 @@ check_legacy_flat_path() {
 # Emits exactly ONE line if both
 #   .gaia/artifacts/implementation-artifacts/story-index.yaml
 # AND any per-epic story-index.yaml are present. Per-epic indexes are detected
-# at BOTH layout locations (E105-S1 / ADR-127):
+# at BOTH layout locations:
 #   - legacy: epic-E*/stories/story-index.yaml  (depth 3)
 #   - new:    epic-E*/story-index.yaml          (depth 2, epic root)
 # The detail line names the flat-index path and the lexicographically first
@@ -136,7 +133,7 @@ check_heterogeneous_story_index() {
         -type f -name 'story-index.yaml' \
         -path "$IMPL_DIR_ABS/epic-E*/stories/story-index.yaml" \
         2>/dev/null
-      # New per-epic index at the epic root (depth 2, E105-S1 / ADR-127).
+      # New per-epic index at the epic root (depth 2).
       find "$IMPL_DIR_ABS" \
         -mindepth 2 -maxdepth 2 \
         -type f -name 'story-index.yaml' \

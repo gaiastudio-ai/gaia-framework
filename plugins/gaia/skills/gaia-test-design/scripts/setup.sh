@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 11 gaia-test-design skill setup (E28-S82)
+# setup.sh — gaia-test-design skill setup
 #
-# Mechanical extension of the Cluster 9 reference implementation authored
-# under E28-S66 (gaia-code-review/scripts/setup.sh). Only WORKFLOW_NAME and
+# Mechanical extension of the reference implementation
+# (gaia-code-review/scripts/setup.sh). Only WORKFLOW_NAME and
 # SCRIPT_NAME differ — the body follows the shared pattern.
 #
-# Responsibilities (per brief Cluster 11):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Load the checkpoint state for this workflow
 #

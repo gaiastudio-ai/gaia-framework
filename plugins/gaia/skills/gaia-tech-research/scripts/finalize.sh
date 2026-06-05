@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-tech-research skill finalize (E28-S38 + E42-S4)
+# finalize.sh — /gaia-tech-research skill finalize
 #
-# E42-S4 extends the original Cluster 4 finalize scaffolding with a
+# Extends the finalize scaffolding with a
 # 22-item post-completion checklist (13 script-verifiable + 9
 # LLM-checkable). The script-verifiable subset is enforced here; the
 # LLM-checkable subset is delegated to the host LLM via a structured
-# stderr payload that mirrors the E42-S1 / E42-S2 / E42-S3 convention.
+# stderr payload.
 #
-# Responsibilities (per brief §Cluster 4 + story E42-S4):
+# Responsibilities:
 #   1. Run the script-verifiable subset of the 22 V1 checklist items
 #      against the technical-research artifact.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
@@ -15,14 +15,13 @@
 #   4. Emit a lifecycle event via lifecycle-event.sh.
 #
 # The observability side effects (3 + 4) MUST run on every invocation —
-# the checklist outcome never suppresses the checkpoint/event write
-# (matches E42-S1 / E42-S2 / E42-S3 contract; story AC5).
+# the checklist outcome never suppresses the checkpoint/event write.
 #
 # Exit codes:
 #   0 — finalize succeeded; all 13 script-verifiable items PASS (or
-#       no artifact was requested — classic Cluster 4 behaviour).
+#       no artifact was requested — standard behaviour).
 #   1 — one or more script-verifiable checklist items FAIL; the
-#       "no artifact to validate" AC4 violation; or a
+#       "no artifact to validate" violation; or a
 #       checkpoint/lifecycle-event failure. Failed item names are
 #       listed on stderr under a "Checklist violations:" header
 #       followed by a one-line remediation hint.
@@ -31,15 +30,14 @@
 #   TECH_RESEARCH_ARTIFACT  Absolute path to the artifact to validate.
 #                           When set, the script runs the 22-item
 #                           checklist against it. When set but the
-#                           file does not exist, AC4 fires — a single
-#                           "no artifact to validate" violation is
+#                           file does not exist, the "no artifact to
+#                           validate" violation is
 #                           emitted and the script exits non-zero.
 #                           When unset, the script looks for
 #                           .gaia/artifacts/planning-artifacts/technical-research.md
 #                           relative to the current working directory.
 #                           If neither is present, the checklist run
-#                           is skipped (classic Cluster 4 behaviour —
-#                           observability still runs, exit 0).
+#                           is skipped (observability still runs, exit 0).
 
 set -euo pipefail
 LC_ALL=C
@@ -59,7 +57,8 @@ die() { log "$*"; exit 1; }
 
 # ---------- 0. Resolve artifact path ----------
 # TECH_RESEARCH_ARTIFACT wins when set (test fixtures + explicit
-# invocation). If it is set but the file is missing, AC4 fires. If
+# invocation). If it is set but the file is missing, the "no artifact to validate"
+# violation fires. If
 # unset, fall back to the canonical output location
 # .gaia/artifacts/planning-artifacts/technical-research.md. If neither is present
 # the checklist is simply skipped (observability still runs).
@@ -69,7 +68,7 @@ if [ -n "${TECH_RESEARCH_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$TECH_RESEARCH_ARTIFACT"
 elif [ -f ".gaia/artifacts/planning-artifacts/technical-research.md" ]; then
-  # ADR-111 smart-fallback: .gaia/artifacts/ first, legacy docs/ second.
+  # Smart-fallback: .gaia/artifacts/ first, legacy docs/ second.
   ARTIFACT=".gaia/artifacts/planning-artifacts/technical-research.md"
 elif [ -f "docs/planning-artifacts/technical-research.md" ]; then
   ARTIFACT="docs/planning-artifacts/technical-research.md"
@@ -98,13 +97,13 @@ item_check() {
 # heading_present <file> <heading-text>
 # Pass when an H2 heading whose body begins with the given text
 # (case-insensitive; trailing content tolerated) is present.
-# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
-# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
-# uniform, permissive regex accepting optional numbered+lettered outline
-# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
-# divergent inline copies, so the same heading passed one skill's check and
-# failed another's. Sourced via a $0-relative path so it works whether or not
-# this script defines PLUGIN_SCRIPTS_DIR.
+# heading_present() is a single shared implementation
+# (plugins/gaia/scripts/lib/heading-present.sh) with one uniform, permissive
+# regex accepting optional numbered+lettered outline prefixes (11, 11b, 1.2.3).
+# Previously finalize.sh scripts carried divergent inline copies, so the same
+# heading passed one skill's check and failed another's. Sourced via a
+# $0-relative path so it works whether or not this script defines
+# PLUGIN_SCRIPTS_DIR.
 _GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
 if [ -r "$_GAIA_HEADING_LIB" ]; then
   # shellcheck source=/dev/null
@@ -181,9 +180,9 @@ alternatives_count() {
 }
 
 if [ "$ARTIFACT_REQUESTED" -eq 1 ] && [ ! -f "$ARTIFACT" ]; then
-  # AC4 — Caller explicitly pointed at an artifact path but it does
-  # not exist on disk. Emit a single "no artifact to validate"
-  # violation and fall through to observability side effects.
+  # Caller explicitly pointed at an artifact path but it does not exist
+  # on disk. Emit a single "no artifact to validate" violation and fall
+  # through to observability side effects.
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
@@ -227,7 +226,6 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
     "$(heading_present "$ARTIFACT" "Migration")"
 
   # V1 validation-rule anchor — "At least 2 alternatives compared".
-  # This is the AC2 anchor that VCP-CHK-08 specifically guards.
   ALT_COUNT="$(alternatives_count "$ARTIFACT")"
   if [ "${ALT_COUNT:-0}" -ge 2 ] 2>/dev/null; then
     item_check "SV-12" "At least 2 alternatives compared (found $ALT_COUNT)" pass
@@ -246,8 +244,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
 
   # --- LLM-checkable items (9) ---
   # These items require semantic judgment and are delegated back to the
-  # host LLM. Payload format mirrors the E42-S1 / E42-S2 / E42-S3
-  # convention.
+  # host LLM.
   printf '\n[LLM-CHECK] The following 9 items require semantic review by the host LLM:\n' >&2
   cat >&2 <<'EOF'
   LLM-01 — Trade-off analysis explores meaningful dimensions, not advocacy
@@ -302,14 +299,14 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
-# helper itself logs warnings to stderr but never affects this script's
-# exit code. SKILL_NAME is resolved from the parent directory name so
-# the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
+# circuit to a no-op so the interactive prompt is preserved. Failure is
+# non-blocking — the auto-save helper itself logs warnings to stderr but
+# never affects this script's exit code. SKILL_NAME is resolved from the
+# parent directory name so the wire-in is identical across all Phase 1-3
+# finalize.sh files.
 AUTOSAVE_LIB="$PLUGIN_SCRIPTS_DIR/lib/auto-save-memory.sh"
 SKILL_NAME="$(basename "$(cd "$SCRIPT_DIR/.." && pwd)")"
 if [ -f "$AUTOSAVE_LIB" ]; then

@@ -17,7 +17,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Memory
 
@@ -30,10 +30,9 @@ Prototype → Test**. Delegates each phase's facilitation to Lyra
 (`design-thinking-coach`) via the Agent tool with `context: fork`, accumulates
 the phase outputs in the parent skill, and writes a single artifact at
 `.gaia/artifacts/creative-artifacts/design-thinking-{date}.md` at completion. Restored
-under ADR-065 (New Skills Wiring — /gaia-design-thinking and /gaia-innovation)
 with full V1 feature preservation: empathy mapping prompts, the V1 PoV
 template, the design-methods CSV catalog, and the >=10 ideas mandate in
-Phase 3 (NFR-053).
+Phase 3.
 
 ## Critical Rules
 
@@ -41,9 +40,9 @@ Phase 3 (NFR-053).
   the foundation; everything else is built on it.
 - Delegate phase facilitation to **Lyra (`design-thinking-coach`)** via the
   Agent tool with `context: fork`. Lyra reads project artifacts but does not
-  write — the parent skill writes the final artifact (ADR-045 fork-context
-  isolation, extended by ADR-065 to creative subagents).
-- Single-level spawning only (NFR-046): this skill invokes Lyra; Lyra MUST
+  write — the parent skill writes the final artifact (fork-context
+  isolation).
+- Single-level spawning only: this skill invokes Lyra; Lyra MUST
   NOT spawn further subagents.
 - Preserve the output contract exactly:
   `.gaia/artifacts/creative-artifacts/design-thinking-{date}.md` (date as `YYYY-MM-DD`).
@@ -55,10 +54,10 @@ Phase 3 (NFR-053).
 
 ## Subagent Dispatch Contract
 
-This skill follows the framework-wide Subagent Dispatch Contract (ADR-063).
+This skill follows the framework-wide Subagent Dispatch Contract.
 When Lyra returns from a `context: fork` invocation, the parent skill MUST:
 
-1. **Parse the subagent return** using the ADR-037 structured schema:
+1. **Parse the subagent return** using the structured schema:
    `{ status, summary, artifacts, findings, next }`. The `status` field is
    one of `PASS`, `WARNING`, `CRITICAL`. Each entry in `findings` carries a
    `severity` field with the same vocabulary.
@@ -78,26 +77,26 @@ When Lyra returns from a `context: fork` invocation, the parent skill MUST:
 
 This contract applies to every Phase 1–5 subagent return. CRITICAL findings
 from creative facilitation are unlikely in practice, but the contract is
-enforced uniformly per ADR-063.
+enforced uniformly.
 
 ## YOLO Behavior
 
 When invoked under YOLO mode, this skill obeys the framework-wide YOLO Mode
-Contract (ADR-067):
+Contract:
 
 | Behavior | YOLO action |
 |----------|-------------|
 | Template-output prompt (`[c]/[y]/[e]`) | Auto-continue (skip prompt). Output already saved; user chose YOLO for speed. |
 | Severity / filter selection | Auto-accept default. Defaults are documented and deterministic. |
 | Optional confirmation ("Proceed to next phase?") | Auto-confirm. Optional prompts exist for safety; YOLO opts out of safety pauses. |
-| Subagent verdict display | Auto-display, but a CRITICAL verdict still HALTS per ADR-063. |
+| Subagent verdict display | Auto-display, but a CRITICAL verdict still HALTS. |
 | Open-question indicators (unchecked checkboxes, `TBD`, `TODO`) | HALT — require human input. Open questions cannot be auto-answered. |
-| Memory save prompt | HALT — require human input (Phase 4 per ADR-061). Memory writes are never auto-approved. |
-| Inline-ask on empty `$ARGUMENTS` | HALT — require human input (per ADR-066). No safe default for "what design challenge?". |
+| Memory save prompt | HALT — require human input (Phase 4). Memory writes are never auto-approved. |
+| Inline-ask on empty `$ARGUMENTS` | HALT — require human input. No safe default for "what design challenge?". |
 
 The contract is identical to the per-behavior lookup table in
-architecture.md §10.32.5 (ADR-067). Any future skill change that diverges
-from this table requires an ADR amendment.
+architecture.md §10.32.5. Any future skill change that diverges
+from this table requires an architecture amendment.
 
 ## Inputs
 
@@ -114,7 +113,7 @@ The skill begins by collecting four inputs from the user (or from
    succeeded? What does a good outcome look like?
 
 If `$ARGUMENTS` is empty, ask inline: "What design challenge should we
-explore?" (per ADR-066). Do not fail-fast on missing inputs.
+explore?". Do not fail-fast on missing inputs.
 
 ## Pipeline
 
@@ -162,7 +161,7 @@ empathy map and insights as input.
    reaching their first successful skill invocation."*
 
    The template MUST be preserved exactly — `User [type] needs [need]
-   because [insight]` is the V1 contract (NFR-053). Reframing the PoV
+   because [insight]` is the V1 contract. Reframing the PoV
    without this structure is a parity regression.
 
 2. **How-Might-We reframing:** convert the PoV into HMW (How-Might-We)
@@ -205,7 +204,7 @@ HMW questions and the design-methods catalog as input.
    technique(s) until at least **10 ideas** are captured before any
    convergence. Quantity over quality at this stage; capture every idea
    without filtering. The minimum 10 ideas mandate is preserved verbatim
-   from V1 (NFR-053) — converging earlier is a parity regression.
+   from V1 — converging earlier is a parity regression.
 
 3. **Convergence to top 2-3:** rank the ideas by impact × feasibility,
    then converge to the top 2–3 candidates. Document the selection
@@ -268,7 +267,7 @@ fast with the exact message: `required subagent
 'design-thinking-coach' not found — install the GAIA creative agents
 before running /gaia-design-thinking.` No fallback, no partial output.
 
-**Single-level spawning (NFR-046):** Lyra is a leaf subagent — Lyra MUST
+**Single-level spawning:** Lyra is a leaf subagent — Lyra MUST
 NOT spawn further subagents. The dispatch topology is two-level:
 Gaia → Lyra. Any attempt to nest is rejected.
 
@@ -277,7 +276,7 @@ Gaia → Lyra. Any attempt to nest is rejected.
 Write the final artifact to
 `.gaia/artifacts/creative-artifacts/design-thinking-{date}.md` where `{date}` is the
 current date in `YYYY-MM-DD` form. This path is verbatim from the legacy
-workflow's `output.primary` contract (NFR-053).
+workflow's `output.primary` contract.
 
 ### Same-day overwrite handling
 
@@ -330,8 +329,7 @@ This SKILL.md passes the frontmatter linter
 required fields per the canonical schema are present: `name` (matches the
 directory slug), `description` (trigger signature with concrete action
 phrase + use phrase), `argument-hint`, `context`, and `allowed-tools`.
-`Agent` is in `allowed-tools` because Lyra is invoked via the Agent tool
-per ADR-041.
+`Agent` is in `allowed-tools` because Lyra is invoked via the Agent tool.
 
 ## Parity notes vs. legacy workflow
 
@@ -342,37 +340,17 @@ native phases:
 |-------------|--------------|-------|
 | Step 1 — Empathize | Phase 1 | Same empathy-map dimensions; technique selection retained |
 | Step 2 — Define   | Phase 2 | V1 PoV template `User [type] needs [need] because [insight]` preserved verbatim; >=3 HMW questions retained |
-| Step 3 — Ideate   | Phase 3 | design-methods CSV catalog retained at plugin-local path per ADR-065; >=10 ideas mandate retained |
+| Step 3 — Ideate   | Phase 3 | design-methods CSV catalog retained at plugin-local path; >=10 ideas mandate retained |
 | Step 4 — Prototype | Phase 4 | Same minimal-scope + materials + fidelity model |
 | Step 5 — Test     | Phase 5 | Same test-plan + feedback-plan + iteration-loop contract |
 
 The data flow between phases and the output artifact structure are
 identical to the legacy workflow. Only the orchestration mechanism
-changes: native `context: fork` Agent-tool delegation under ADR-041
+changes: native `context: fork` Agent-tool delegation
 instead of legacy engine-driven step dispatch.
 
 ## References
 
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents +
-  Plugins + Hooks (replaces the legacy workflow engine)
-- ADR-042 — Scripts-over-LLM for Deterministic Operations (no new scripts
-  for this LLM-judgment skill; CSV path uses
-  `${CLAUDE_PLUGIN_ROOT}/knowledge/...`)
-- ADR-045 — Review Gate fork-context isolation (extended by ADR-065 to
-  creative subagents)
-- ADR-063 — Subagent Dispatch Contract — Mandatory Verdict Surfacing
-  (the source of the Subagent Dispatch Contract section above)
-- ADR-065 — New Skills Wiring — /gaia-design-thinking and /gaia-innovation
-  (the source for the 5-phase pipeline, plugin-local CSV path, and V1
-  feature preservation requirements)
-- ADR-066 — Inline-Ask vs Fail-Fast Contract (this skill asks inline on
-  empty `$ARGUMENTS`)
-- ADR-067 — YOLO Mode Contract — Consistent Non-Interactive Behavior
-  (the source of the YOLO Behavior table above)
-- FR-360 — /gaia-design-thinking skill restoration
-- NFR-046 — Single-level subagent spawning constraint
-- NFR-053 — Functional parity with legacy workflow
-- AF-2026-04-24-1 — V1-to-V2 37-Command Gap Remediation audit
 - Reference implementations:
   - `plugins/gaia/skills/gaia-brainstorming/SKILL.md` (single-subagent
     creative skill)

@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# gating-flip-guard.sh — GAIA review-common entry point (E66-S3, ADR-082)
+# gating-flip-guard.sh — GAIA review-common entry point
 #
-# Two operations that envelope the ADR-082 GATING-flip deployment:
+# Two operations that envelope the GATING-flip deployment:
 #
 #   --check-boundary --sprint-status <yaml>
 #       Refuses the flip if any story in the active sprint-status.yaml has
-#       status: in-progress. Sprint-boundary semantics per AC4.
+#       status: in-progress. Sprint-boundary semantics.
 #
 #   --scan --impl-dir <dir>
 #       One-time pre-flip review-status scan: enumerates story files at
 #       status: review whose Review Gate table contains any non-PASSED row.
-#       AC5.
 #
 # Output for --scan: one line per offending story:
 #   <story_key>: <Review-Gate-name>=<verdict> [<Review-Gate-name>=<verdict> ...]
@@ -21,7 +20,6 @@
 #   0  success (boundary OK; or scan completed — output may be empty enumeration)
 #   1  caller error (missing flag, missing file) OR mid-sprint flip rejected
 #
-# Refs: ADR-082, NFR-RSV2-6, AC4, AC5.
 
 set -euo pipefail
 LC_ALL=C
@@ -37,7 +35,7 @@ die() {
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — sprint-boundary deployment guard + pre-flip scan (E66-S3, ADR-082)
+$SCRIPT_NAME — sprint-boundary deployment guard + pre-flip scan
 
 Usage:
   $SCRIPT_NAME --check-boundary --sprint-status <path>

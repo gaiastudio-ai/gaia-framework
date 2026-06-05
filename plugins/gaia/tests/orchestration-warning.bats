@@ -20,7 +20,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"running in subagent mode"* ]]
   [[ "$output" == *"Mode A"* ]]
   [[ "$output" == *"lossy"* ]]
-  [[ "$output" == *"ADR-093"* ]]
+  [[ "$output" == *"shown once per session"* ]]
 }
 
 # ---- AC2: conversational + Mode A → warn ----
@@ -201,7 +201,6 @@ teardown() { common_teardown; }
   body=$(cat "$sentinel")
   [[ "$body" == *"running in subagent mode"* ]]
   [[ "$body" == *"Mode A"* ]]
-  [[ "$body" == *"ADR-093"* ]]
   [[ "$body" == *"shown once per session"* ]]
 }
 

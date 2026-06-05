@@ -2,14 +2,6 @@
 # resolve-release-anchor.sh — emit the commit-classification range anchor
 # for release.yml.
 #
-# Story: E40-S2 — Anchor release.yml commit-classification range on
-#                 most-recent v* tag.
-# Origin: .gaia/artifacts/creative-artifacts/meeting-2026-05-15-ci-review-section-deploy-versioning-redesign.md
-# Traces to: ADR-025 (Model B version source of truth — preserved),
-#            ADR-049 (v1 retirement — this story strengthens v2),
-#            ADR-109 (wired-vs-implemented gate — out of scope for this
-#                     helper; release.yml CI surface_type=none).
-#
 # Algorithm:
 #   BEFORE = git describe --tags --abbrev=0 --match 'v*' 2>/dev/null
 #            || git rev-list --max-parents=0 HEAD

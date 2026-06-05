@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# loop-detector.sh — gaia-meeting loop detector (E76-S6, AC6)
+# loop-detector.sh — gaia-meeting loop detector
 #
-# FR-MTG-30 / TC-MTG-GUARD-4: scans the last three consecutive turns. Fires
-# when EXACTLY two distinct agents occupy those three turns (A↔B alternation)
-# AND none of the three turns produced any progress signal. Three-way
-# alternation (A→B→C) and same-agent triples (A→A→A) do NOT trigger.
+# Scans the last three consecutive turns. Fires when EXACTLY two distinct
+# agents occupy those three turns (A↔B alternation) AND none of the three
+# turns produced any progress signal. Three-way alternation (A→B→C) and
+# same-agent triples (A→A→A) do NOT trigger.
 #
-# Progress signal vocabulary (FR-MTG-30):
+# Progress signal vocabulary:
 #   - new-citation : a previously-unseen source citation
 #   - new-decision : a recorded decision (CLOSE-phase artifact)
 #   - new-pin      : a new scratchpad pin (SP-N)

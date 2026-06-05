@@ -1,18 +1,14 @@
 #!/usr/bin/env bash
-# action-items-write.sh — inline fallback action-items writer (E39-S3)
+# action-items-write.sh — inline action-items writer
 #
 # Writes structured entries to .gaia/artifacts/planning-artifacts/action-items.yaml
-# following architecture §10.28.6 Action Items Schema. This is the inline
-# fallback writer for use until E36-S2 ships the shared writer. The contract
-# is byte-compatible with E36-S2 so swap-in is a pure deletion of this file.
+# following the Action Items Schema.
 #
-# NOTE: architecture §10.28.6 classification enum currently lists
-# {clarification|implementation|process|automation}. E39 (epics-and-stories.md)
-# mandates {bug|task|research} for triage NOW entries. The enum broadening to
-# include these three values is a follow-up documentation patch — this script
-# accepts all seven values as authoritative per the story scope.
+# NOTE: The classification enum lists {clarification|implementation|process|automation}.
+# Triage entries additionally use {bug|task|research}. This script
+# accepts all seven values as authoritative.
 #
-# Public functions (NFR-052 — each has a direct unit test):
+# Public functions (each has a direct unit test):
 #   - aiw_bootstrap_file         — create file with schema header if absent
 #   - aiw_next_id                — compute next AI-{n} id
 #   - aiw_check_dedup            — idempotent dedup by composite key
@@ -47,14 +43,14 @@ aiw_bootstrap_file() {
   fi
   mkdir -p "$(dirname "$target")"
   cat > "$target" <<'EOF'
-# Action Items — architecture §10.28.6 schema
-# Written by /gaia-retro (ADR-052 shared writer). Each entry:
+# Action Items schema
+# Written by /gaia-retro shared writer. Each entry:
 #   id: AI-{n}            # auto-incremented
 #   sprint_id: "..."
 #   text: "..."
 #   classification: clarification|implementation|process|automation
 #   status: open|in-progress|resolved
-#   escalation_count: 0    # bumped by cross-retro detection (FR-RIM-1)
+#   escalation_count: 0    # bumped by cross-retro detection
 #   created_at: "<ISO 8601>"
 #   theme_hash: "sha256:<hex>"
 items:

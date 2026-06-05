@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-val-validate skill finalize (E28-S78)
+# finalize.sh — gaia-val-validate skill finalize
 #
-# Follows the shared finalize.sh pattern from E28-S17.
+# Follows the shared finalize.sh pattern.
 #
 # Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script
@@ -47,11 +47,10 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
+# circuit to a no-op so the interactive prompt is preserved. Failure is non-blocking — the auto-save
 # helper itself logs warnings to stderr but never affects this script's
 # exit code. SKILL_NAME is resolved from the parent directory name so
 # the wire-in is identical across all 24 Phase 1-3 finalize.sh files.

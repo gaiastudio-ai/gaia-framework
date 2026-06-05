@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# adapters/mobsf/run.sh — ADR-078 adapter contract for MobSF (E74-S7).
+# adapters/mobsf/run.sh — adapter contract for MobSF.
 # MobSF runs as a REST service. The adapter probes the /api/v1/health endpoint
 # (when MOBSF_URL is set) and posts each binary to the scan endpoint. When the
 # `mobsf` CLI is on PATH (e.g. mobsfscan) it is used as the subprocess fallback.
 #
 # Provider on adapter.json is "mobsf"; the canonical probe checks PATH for it.
 # In the absence of the CLI, callers should set runtime-profile: network and
-# pass MOBSF_URL via the environment for the network-probe path. This story
+# pass MOBSF_URL via the environment for the network-probe path. This script
 # implements the deterministic-shell skeleton; full runtime invocation lands
-# under E70-S3 when the network runtime-profile is wired through the probe.
+# when the network runtime-profile is wired through the probe.
 
 set -euo pipefail
 LC_ALL=C

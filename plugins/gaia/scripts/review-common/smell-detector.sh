@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smell-detector.sh — GAIA review-common Phase 3A test-smell detector (E67-S1, ADR-077).
+# smell-detector.sh — GAIA review-common Phase 3A test-smell detector.
 #
 # Purpose
 # -------
@@ -46,7 +46,6 @@
 # POSIX discipline: bash + set -euo pipefail + LC_ALL=C; macOS bash 3.2 + BSD
 # awk compatible (no 3-arg match, no associative arrays); no jq dependency.
 #
-# Refs: AC1, AC6, AC7, FR-RSV2-1, FR-RSV2-2, NFR-RSV2-1, ADR-075, ADR-077.
 
 set -euo pipefail
 LC_ALL=C
@@ -58,7 +57,7 @@ die() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — Phase 3A test-smell detector (ADR-077).
+$SCRIPT_NAME — Phase 3A test-smell detector.
 
 Usage:
   $SCRIPT_NAME <path>...

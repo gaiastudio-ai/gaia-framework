@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-val-validate-plan skill finalize (E28-S77)
+# finalize.sh — gaia-val-validate-plan skill finalize
 #
-# Follows the shared finalize.sh pattern from E28-S17.
+# Follows the shared finalize.sh pattern.
 #
 # Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script

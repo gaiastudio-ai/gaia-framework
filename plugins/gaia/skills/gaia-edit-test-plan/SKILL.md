@@ -2,7 +2,7 @@
 name: gaia-edit-test-plan
 description: Edit an existing test plan by adding new test cases while preserving all existing content. Use when "edit the test plan" or /gaia-edit-test-plan.
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
-# Discover-Inputs Protocol (ADR-062 / FR-346 / E45-S4)
+# Discover-Inputs Protocol
 # Strategy: SELECTIVE_LOAD — load only the named diff sections from PRD
 # and architecture (the requirement and component sections that motivate
 # the new test cases). Never full-load prd.md or architecture.md here.
@@ -22,7 +22,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -32,11 +32,11 @@ fi
 
 Edit an existing test plan (`.gaia/artifacts/test-artifacts/test-plan.md`) by adding new test cases, updating coverage, and appending a version note — while preserving all existing content unchanged. The updated test plan is written back to `.gaia/artifacts/test-artifacts/test-plan.md`.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/edit-test-plan` workflow (E28-S87, Cluster 11). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
+This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/edit-test-plan` workflow. The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 
-- A test plan MUST already exist before starting. Resolve via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): try `.gaia/artifacts/test-artifacts/test-plan.md` (flat layout); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement). If NEITHER exists, halt with: "test-plan.md not found at .gaia/artifacts/test-artifacts/test-plan.md or .gaia/artifacts/test-artifacts/strategy/test-plan.md — run /gaia-test-design first."
+- A test plan MUST already exist before starting. Resolve via the strategy-fallback rule: try `.gaia/artifacts/test-artifacts/test-plan.md` (flat layout); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement). If NEITHER exists, halt with: "test-plan.md not found at .gaia/artifacts/test-artifacts/test-plan.md or .gaia/artifacts/test-artifacts/strategy/test-plan.md — run /gaia-test-design first."
 - Preserve all existing test plan content — test strategy, environments, entry/exit criteria, existing test cases.
 - New test cases must follow the same format as existing ones.
 - Test case IDs must auto-increment from the highest existing ID.
@@ -58,7 +58,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ### Step 2 — Capture Change Scope
 
-> **Loading strategy: SELECTIVE_LOAD per ADR-062.** Load ONLY the named
+> **Loading strategy: SELECTIVE_LOAD.** Load ONLY the named
 > diff sections from upstream — the FR/NFR sections in `prd.md` and the
 > component / decision sections in `architecture.md` that motivate the new
 > test cases. Do NOT full-load either document. Use `sed -n
@@ -66,13 +66,13 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 > user has identified the affected requirement IDs in the questions below.
 > This is the diff-only / named sections only loading pattern.
 
-#### Step 2a — Orchestrator-Context Detection (FR-353 / E46-S5)
+#### Step 2a — Orchestrator-Context Detection
 
 > **Inheritance contract.** When this skill is invoked from an upstream
 > orchestrator (typically `/gaia-add-feature`), three named context fields
 > may be supplied as invocation parameters: `feature_description`,
 > `prd_diff`, and `arch_diff`. These three names are the orchestrator-to-
-> skill cascade contract per FR-353 — do NOT rename them per-skill, since
+> skill cascade contract — do NOT rename them per-skill, since
 > peer skills (`/gaia-edit-prd`, `/gaia-edit-arch`) inherit the same set.
 
 > **Backward-compat variable mapping.** The legacy Step 2 internal
@@ -93,8 +93,8 @@ Run the **three-case branch** before asking any questions:
   both interactive prompts in Step 2b. Map each inherited field into its
   legacy internal variable per the table above.
 - **(b) NONE present** → standalone path. Ask both interactive prompts in
-  Step 2b verbatim — existing standalone behavior is preserved bit-for-bit
-  (AC2). The inheritance layer is a silent no-op in this case; do NOT
+  Step 2b verbatim — existing standalone behavior is preserved bit-for-bit.
+  The inheritance layer is a silent no-op in this case; do NOT
   error, warn, or pause when no orchestrator context is detected.
 - **(c) PARTIAL (one or two present)** → inherit whichever fields are
   present, then prompt for ONLY the missing fields using the existing
@@ -107,8 +107,8 @@ the skill's working notes (not to stdout):
 Step 2: inherited {comma-separated inherited fields, or "none"} from upstream; prompted for {comma-separated prompted fields, or "none"}.
 ```
 
-This line is the auditable anchor for adversarial review of the cascade
-(Subtask 1.3 of E46-S5; AC5). If the working-log write fails for any
+This line is the auditable anchor for adversarial review of the cascade.
+If the working-log write fails for any
 reason (disk, permission), proceed without the log — the inheritance
 itself is the load-bearing behavior; the log is an audit convenience.
 
@@ -129,7 +129,7 @@ inheritance case this sub-step is skipped entirely.
 
 #### Step 2c — Load Named Diff Sections
 
-- Resolve the PRD path via the sharded-fallback rule (ADR-069 / FR-396..402): first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, use `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). Load ONLY the named diff sections of the resolved PRD corresponding to the supplied FR/NFR IDs (do NOT read the full PRD); under the sharded layout, the relevant FR shard subsections live under `prd/04-functional-requirements/` and NFRs under `prd/05-non-functional-requirements.md`.
+- Resolve the PRD path via the sharded-fallback rule: first try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); if missing, use `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded layout). Load ONLY the named diff sections of the resolved PRD corresponding to the supplied FR/NFR IDs (do NOT read the full PRD); under the sharded layout, the relevant FR shard subsections live under `prd/04-functional-requirements/` and NFRs under `prd/05-non-functional-requirements.md`.
 - Load ONLY the named diff sections of
   `.gaia/artifacts/planning-artifacts/architecture.md` that correspond to the
   affected components (do NOT read the full architecture document).
@@ -188,7 +188,7 @@ Write the updated test plan to `.gaia/artifacts/test-artifacts/test-plan.md`.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-edit-test-plan 5 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=save stage=saved --paths .gaia/artifacts/test-artifacts/test-plan.md`
 
-### Step 6 — Val Auto-Fix Loop (E44-S2 / ADR-058)
+### Step 6 — Val Auto-Fix Loop
 
 > Reuses the canonical pattern at `gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
@@ -201,7 +201,7 @@ Write the updated test plan to `.gaia/artifacts/test-artifacts/test-plan.md`.
 **Loop:**
 
 1. iteration = 1.
-2. Invoke `/gaia-val-validate` with `artifact_path = .gaia/artifacts/test-artifacts/test-plan.md`, `artifact_type = test-plan`, `model: claude-opus-4-7`, `effort: high` (ADR-074 contract C2 — Val opus pin). [Val opus-pin contract — see plugins/gaia/agents/validator.md §Val Operations]. **Non-opus mismatch guard (AC3):** if a test fixture or downstream override forces a non-opus model, emit the canonical WARNING `Val dispatch on non-opus model — forcing opus per ADR-074 contract C2` and force `model: claude-opus-4-7` before invoking Val.
+2. Invoke `/gaia-val-validate` with `artifact_path = .gaia/artifacts/test-artifacts/test-plan.md`, `artifact_type = test-plan`, `model: claude-opus-4-7`, `effort: high` (Val opus pin). [Val opus-pin contract — see plugins/gaia/agents/validator.md §Val Operations]. **Non-opus mismatch guard:** if a test fixture or downstream override forces a non-opus model, emit the canonical WARNING `Val dispatch on non-opus model — forcing opus` and force `model: claude-opus-4-7` before invoking Val.
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
@@ -211,11 +211,9 @@ Write the updated test plan to `.gaia/artifacts/test-artifacts/test-plan.md`.
      d. If iteration <= 3: go to step 2.
      e. Else: present the iteration-3 prompt verbatim (centralized in `gaia-val-validate` SKILL.md § "Auto-Fix Loop Pattern") and dispatch.
 
-YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See ADR-057 FR-YOLO-2(e) and ADR-058 for the hard-gate contract.
+YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation runs against the Step 5 final write-back.
-
-> Test Notes: VCP-VAL-04 (`.gaia/artifacts/test-artifacts/test-plan.md §11.46.3`) covers this wire-in.
+> Val auto-review. Validation runs against the Step 5 final write-back.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-edit-test-plan 6 test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" edit_mode=val stage=val-auto-review --paths .gaia/artifacts/test-artifacts/test-plan.md`
 
@@ -230,7 +228,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 ## Validation
 
 <!--
-  E42-S14 — V1→V2 21-item checklist port (FR-341, FR-359, VCP-CHK-29, VCP-CHK-30).
+  V1→V2 21-item checklist port.
   Classification (21 items total):
     - Script-verifiable:  7 (SV-01..SV-07) — enforced by finalize.sh.
     - LLM-checkable:     14 (LLM-01..LLM-14) — evaluated by the host LLM
@@ -273,7 +271,6 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   Validation runs BEFORE the checkpoint and lifecycle-event writes
   (observability is never suppressed by checklist outcome — story AC5).
 
-  See .gaia/artifacts/implementation-artifacts/E42-S14-port-gaia-edit-test-plan-and-gaia-test-design-checklists-to-v2.md.
 -->
 
 - [script-verifiable] SV-01 — Output file saved to .gaia/artifacts/test-artifacts/test-plan.md

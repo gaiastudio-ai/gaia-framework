@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# memory-writethrough.sh — gaia-meeting per-agent sidecar decision write-through (E76-S3)
-#
-# AC6 / AC7 / FR-MTG-24 / FR-MTG-25 / TC-MTG-MEM-1 / TC-MTG-MEM-2 / TC-MTG-MEM-3
+# memory-writethrough.sh — gaia-meeting per-agent sidecar decision write-through
 #
 # Reads a per-agent draft directory (`<agent>.md` files, one per accepted
 # entry) and renders one decision file per agent at the canonical sidecar
@@ -102,8 +100,8 @@ fi
 for draft in "${drafts[@]}"; do
   agent="$(basename "$draft" .md)"
 
-  # AF-2026-05-27-3 (ADR-111): .gaia/memory is the only sidecar tree; legacy
-  # _memory fallback removed with the consolidation migration.
+  # .gaia/memory is the only sidecar tree; legacy _memory fallback removed
+  # with the consolidation migration.
   out_dir="$ROOT/.gaia/memory/${agent}-sidecar/decisions"
   out="$out_dir/${DATE}-${SLUG}.md"
   mkdir -p "$out_dir"

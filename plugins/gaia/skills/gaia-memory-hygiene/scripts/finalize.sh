@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# finalize.sh — Cluster 14 gaia-memory-hygiene skill finalize (E28-S107)
+# finalize.sh — gaia-memory-hygiene skill finalize
 #
-# Mechanical copy of the Cluster 9 / Cluster 12 / Cluster 14 reference
-# implementation (gaia-brownfield/scripts/finalize.sh). Only WORKFLOW_NAME
-# and SCRIPT_NAME differ — the body follows the shared pattern.
+# Mechanical copy of the shared reference implementation
+# (gaia-brownfield/scripts/finalize.sh). Only WORKFLOW_NAME and SCRIPT_NAME
+# differ — the body follows the shared pattern.
 #
 # Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script

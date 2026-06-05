@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
-# scratchpad-extractor.sh — gaia-meeting extracted-file writer (E76-S4)
-#
-# AC5 / AC8 / AC10 / AC11 / AC12 / AC14 / FR-MTG-13 / FR-MTG-14 / FR-MTG-15.
+# scratchpad-extractor.sh — gaia-meeting extracted-file writer
 #
 # Writes a single scratchpad extraction:
 #   1. Resolves the deterministic path via scratchpad-resolve-path.sh.
 #   2. Detects content-type via scratchpad-detect-type.sh (when --content-type
 #      is omitted) — both helpers are the single source of truth.
-#   3. Routes the relative path through write-boundary.sh (FR-MTG-31 / AC14).
-#   4. Lazily creates {YYYY-MM} and {slug} directories (no .gitkeep — AC12).
-#   5. Atomically writes via mktemp + mv (replace-at-same-path AC10).
-#   6. Composes the six-field frontmatter contract (AC8) plus the content body.
+#   3. Routes the relative path through write-boundary.sh.
+#   4. Lazily creates {YYYY-MM} and {slug} directories (no .gitkeep).
+#   5. Atomically writes via mktemp + mv (replace-at-same-path).
+#   6. Composes the six-field frontmatter contract plus the content body.
 #
 # Usage:
 #   scratchpad-extractor.sh \
@@ -96,7 +94,7 @@ REL_PATH="$("$RESOLVE" \
   --intent "$INTENT" \
   --content-type "$CTYPE")"
 
-# Gate through write-boundary.sh (FR-MTG-31, AC14)
+# Gate through write-boundary.sh
 if ! "$BOUNDARY" "$REL_PATH" >/dev/null; then
   echo "scratchpad-extractor.sh: write-boundary REJECTED $REL_PATH" >&2
   exit 2
@@ -105,7 +103,7 @@ fi
 ABS_PATH="$ROOT/$REL_PATH"
 ABS_DIR="$(dirname "$ABS_PATH")"
 
-# Lazy directory creation (AC12 — no .gitkeep)
+# Lazy directory creation (no .gitkeep)
 mkdir -p "$ABS_DIR"
 
 # ISO-8601 UTC timestamp (Technical Notes)

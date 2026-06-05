@@ -1,14 +1,14 @@
-# claude-code-plugin.yaml — Claude Code plugin stack definition (E77-S2, FR-404, ADR-087)
+# claude-code-plugin.yaml — Claude Code plugin stack definition
 #
 # Stack file activated when project-config.yaml sets project_kind:
-# claude-code-plugin (introduced by E77-S1 / FR-403). Declares the canonical
-# plugin file types, project discovery rules (3+ co-occurring signals), naming
-# conventions, and frontmatter requirements consumed by the plugin
-# review/validation pipeline (FR-409 plugin-frontmatter-validator,
-# FR-410 plugin-manifest-validator, FR-420 brownfield detection).
+# claude-code-plugin. Declares the canonical plugin file types, project
+# discovery rules (3+ co-occurring signals), naming conventions, and
+# frontmatter requirements consumed by the plugin review/validation pipeline
+# (plugin-frontmatter-validator, plugin-manifest-validator, brownfield
+# detection).
 #
 # Field schema differs from the mobile stack catalog
-# (swift.yaml / kotlin.yaml / react-native.yaml / flutter.yaml from E74-S2):
+# (swift.yaml / kotlin.yaml / react-native.yaml / flutter.yaml):
 # mobile stacks declare name / language / platform / build_tool / linters /
 # adapters; the plugin stack declares file_extensions / discovery_rules /
 # casing / frontmatter_requirements. The two schemas share only the
@@ -16,12 +16,11 @@
 #
 # Source spec:
 #   .gaia/artifacts/planning-artifacts/prd/04-functional-requirements/
-#     41-4-40-claude-code-plugin-project-support-af-2026-05-06-2.md  (FR-404)
-#   .gaia/artifacts/planning-artifacts/architecture/12-12-adr-detail-records.md (ADR-087)
+#   .gaia/artifacts/planning-artifacts/architecture/12-12-adr-detail-records.md
 
 name: claude-code-plugin
 
-# --- file_extensions (AC1) -------------------------------------------------
+# --- file_extensions -------------------------------------------------------
 # Canonical file types for Claude Code plugin source. The validator uses
 # this list to decide which files to scope-check (markdown lint, yaml lint,
 # bats discovery, JSON schema validation, shellcheck).
@@ -32,7 +31,7 @@ file_extensions:
   - .json     # adapter.json, manifest fragments, JSON-schema fixtures
   - .yaml     # manifest.yaml, config/*.yaml, rubric YAML overlays
 
-# --- discovery_rules (AC2) -------------------------------------------------
+# --- discovery_rules -------------------------------------------------------
 # Brownfield / scanner classification rules. A project is recognised as a
 # claude-code-plugin only when the listed signal globs co-occur — the
 # min_signals threshold (3) prevents false positives on stray manifest.yaml
@@ -43,13 +42,13 @@ discovery_rules:
     - "manifest.yaml"             # plugin manifest at the plugin root
     - "plugins/*/SKILL.md"        # at least one skill module
     - "scripts/*.sh"              # shared helper scripts
-  min_signals: 3                  # FR-404: 3+ co-occurring signals required
+  min_signals: 3                  # 3+ co-occurring signals required
   rationale: >
     Single-signal detection is rejected because manifest.yaml or SKILL.md
     can appear in non-plugin repos (e.g. example projects, vendored copies)
     and would otherwise trigger false-positive classification.
 
-# --- casing (AC3) ----------------------------------------------------------
+# --- casing ----------------------------------------------------------------
 # Filesystem naming conventions enforced downstream by the
 # plugin-frontmatter-validator and plugin-manifest-validator adapters.
 casing:
@@ -68,19 +67,19 @@ casing:
     - README.md
     - CHANGELOG.md
 
-# --- frontmatter_requirements (AC4 + AC5) ----------------------------------
+# --- frontmatter_requirements ----------------------------------------------
 # Mandatory frontmatter fields and the case-sensitive name == basename
 # rule that protects Linux CI (case-sensitive ext4) from drift introduced
 # on macOS HFS+ (case-insensitive by default).
 frontmatter_requirements:
   required_fields:
-    - name           # FR-404: mandatory in plugin manifests
-    - description    # FR-404: mandatory
-    - version        # FR-404: mandatory
-  # AC4 — the `name` field of a SKILL.md / command / agent frontmatter must
+    - name           # mandatory in plugin manifests
+    - description    # mandatory
+    - version        # mandatory
+  # The `name` field of a SKILL.md / command / agent frontmatter must
   # equal the directory basename of the component on disk.
   name_equals_basename: true
-  # AC5 — comparison is byte-exact (LC_ALL=C). On Linux CI a directory named
+  # Comparison is byte-exact (LC_ALL=C). On Linux CI a directory named
   # `My-Skill` with frontmatter `name: my-skill` MUST fail validation;
   # macOS HFS+ would otherwise mask the mismatch.
   case_sensitive: true
@@ -88,7 +87,7 @@ frontmatter_requirements:
     - linux-ci
   comparison_locale: "LC_ALL=C"
 
-# --- error policy (AC7) ----------------------------------------------------
+# --- error policy ----------------------------------------------------------
 # The resolver MUST emit a clear error and refuse to fall back to a default
 # stack when this file is missing or fails to parse. Callers SHOULD log the
 # resolved file path on success so misconfigurations surface in CI logs.

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# backfill-story-index.sh — AF-2026-06-02-1 / Test16 F-L06.
+# backfill-story-index.sh — back-fill missing per-epic story indexes.
 #
 # Scan every per-epic directory under {implementation_artifacts}/epic-*/ and
 # invoke `transition-story-status.sh --reconcile-only` for each story file
-# whose epic does not yet have a `story-index.yaml`. This is the missing
-# orchestrator hook the bare /gaia-create-story bulk-authoring path skipped
-# in Test16 — the result was 0 of 3 epics carrying the per-epic index even
-# though the live yaml + per-story story.md files were all on disk.
+# whose epic does not yet have a `story-index.yaml`. This covers the missing
+# orchestrator hook the bare /gaia-create-story bulk-authoring path skipped —
+# the result was 0 of 3 epics carrying the per-epic index even though the live
+# yaml + per-story story.md files were all on disk.
 #
 # Idempotent: runs the transition only when story-index.yaml is absent for
 # the epic. Safe to call from any orchestrator (e.g., /gaia-sprint-plan
@@ -62,7 +62,7 @@ if [ ! -x "$TRANSITION" ]; then
 fi
 
 # For each epic-* dir, check whether story-index.yaml exists at the epic root
-# (post-E105-S1 layout) or under stories/ (legacy). When absent at the epic
+# (per-story layout) or under stories/ (legacy). When absent at the epic
 # root and at least one story.md exists under the epic, walk every per-story
 # story.md and reconcile its key.
 walked=0
@@ -74,7 +74,7 @@ for _epic_dir in "$IMPL"/epic-*; do
   if [ -f "$_epic_dir/story-index.yaml" ] || [ -f "$_epic_dir/stories/story-index.yaml" ]; then
     continue
   fi
-  # Find every per-story story.md (E105-S1 layout). Bail if there are none.
+  # Find every per-story story.md (per-story layout). Bail if there are none.
   _any=0
   for _story_md in "$_epic_dir"/*/story.md; do
     [ -f "$_story_md" ] || continue

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# setup.sh — ATDD skill setup (E28-S83)
+# setup.sh — ATDD skill setup
 #
-# Mechanical extension of the Cluster 4 reference implementation.
 # Adds ATDD-specific prereq gates:
 #   - Story file must exist for the given story key
 #
-# Responsibilities (per brief Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (story file existence)
 #   3. Load the checkpoint state for this workflow
@@ -51,14 +50,14 @@ while IFS= read -r line; do
   esac
 done <<<"$config_output"
 
-# ---------- 2. Story-file existence (E80-S1: Option B) ----------
+# ---------- 2. Story-file existence ----------
 # The ATDD skill body performs its own detailed validation, so this is a
 # lightweight pre-check only. Earlier revisions called
 # `validate-gate.sh story_file_exists` here, but that gate type is not
 # implemented in validate-gate.sh — it always exited non-zero and emitted
-# a false-positive WARNING line on every /gaia-atdd invocation. Per
-# E80-S1 AC7 we drop the validate-gate.sh call entirely and rely on the
-# downstream skill-body validation for the authoritative message.
+# a false-positive WARNING line on every /gaia-atdd invocation. We drop the
+# validate-gate.sh call entirely and rely on the downstream skill-body
+# validation for the authoritative message.
 :
 
 # ---------- 3. Load checkpoint state ----------

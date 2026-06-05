@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# scan-stranded-ready.sh — E81-S4
-#
-# Stranded-ready scanner. Walks story files under IMPLEMENTATION_ARTIFACTS and
+# scan-stranded-ready.sh — stranded-ready scanner. Walks story files under IMPLEMENTATION_ARTIFACTS and
 # emits one TSV row per story whose frontmatter has `status: ready-for-dev` AND
 # `sprint_id: null` AND whose most-recent verdict entry in the validator-sidecar
 # decision-log is PASSED.
@@ -23,14 +21,13 @@
 #   0 — scan completed (with or without matches)
 #   1 — fatal scan error (rare; e.g., IMPLEMENTATION_ARTIFACTS missing)
 #
-# Refs: AC1, AC4 (union heading matcher + most-recent wins), AC3 (read-only).
 
 set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
 PROJECT_PATH="${PROJECT_PATH:-.}"
-# E96-S7 partial-4b: smart-fallback
+# Smart-fallback for IMPLEMENTATION_ARTIFACTS
 if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
   if [ -d "$PROJECT_PATH/.gaia/artifacts/implementation-artifacts" ]; then
     IMPLEMENTATION_ARTIFACTS="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts"
@@ -39,7 +36,6 @@ if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
   fi
 fi
 if [ -z "${VALIDATOR_DECISION_LOG:-}" ]; then
-  # AF-2026-05-27-3 (ADR-111): canonical .gaia/memory only; legacy _memory removed.
   VALIDATOR_DECISION_LOG="$PROJECT_PATH/.gaia/memory/validator-sidecar/decision-log.md"
 fi
 
@@ -93,9 +89,9 @@ parse_story_fm() {
 
 # Determine the most-recent verdict for a story key from the decision log.
 # The log appends newest at the top — first match in document order is the
-# canonical most-recent (per AC4 + Dev Notes).
+# canonical most-recent.
 #
-# AC4 heading patterns matched (case-sensitive) for `<key>`:
+# Heading patterns matched (case-sensitive) for `<key>`:
 #   ### [DATE] Story Validation: <key>
 #   ### [DATE] Story Validation (re-run): <key>
 #   ### [DATE] /gaia-<anything>: <key>
@@ -133,7 +129,7 @@ most_recent_verdict() {
         next
       }
       heading = $0
-      # Three union heading forms (case-sensitive, per AC4):
+      # Three union heading forms (case-sensitive):
       #   ### [DATE] Story Validation: <key>
       #   ### [DATE] Story Validation (re-run): <key>
       #   ### [DATE] /gaia-<cmd>: <key>

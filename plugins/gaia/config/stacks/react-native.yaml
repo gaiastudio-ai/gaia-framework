@@ -1,5 +1,4 @@
 # react-native.yaml — React Native cross-platform stack definition
-# (E74-S2, ADR-081)
 #
 # Mobile platforms: iOS + Android. Targets the React Native runtime, which
 # bridges JavaScript / TypeScript code into native iOS and Android shells.

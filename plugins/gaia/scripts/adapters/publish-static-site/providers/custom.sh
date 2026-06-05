@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # custom.sh — escape-hatch provider that delegates to a user-supplied wrapper
 # pointed to by REGISTRY (which carries the user's release_workflow path under
-# this convention). Per NFR-081 the user-supplied wrapper is responsible for
+# this convention). The user-supplied wrapper is responsible for
 # its own credential isolation.
 # shellcheck source=./_subhandler.bash
 source "$(dirname "$0")/_subhandler.bash"

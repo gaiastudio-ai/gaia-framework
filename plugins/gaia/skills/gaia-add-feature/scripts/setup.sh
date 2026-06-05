@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — add-feature skill setup (E28-S57)
+# setup.sh — add-feature skill setup
 #
-# Mechanical extension of the Cluster 4 reference implementation authored
-# under E28-S35 (gaia-brainstorm/scripts/setup.sh). Adds add-feature-specific
+# Extension of the brainstorm reference implementation. Adds add-feature-specific
 # prereq gates:
 #   - prd.md must exist (PRD is always needed for feature triage)
 #   - epics-and-stories.md must exist
@@ -38,16 +37,16 @@ CHECKPOINT="$PLUGIN_SCRIPTS_DIR/checkpoint.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. CLI surface (E89-S1, FR-AFE-1) ----------
+# ---------- 0. CLI surface ----------
 # Optional flags consumed by SKILL.md Step 1c re-invocation:
 #   --classification <patch|enhancement|feature>   default: enhancement
 #   --feature-id <AF-{date}-{N}>                    default: empty string
 # Unknown flags die non-zero. The flag-parsing loop sits BEFORE the
 # validate-gate.sh invocations so CLASSIFICATION and FEATURE_ID are
-# available when the test-plan / traceability gates fire (AC1..AC4).
+# available when the test-plan / traceability gates fire.
 CLASSIFICATION="enhancement"
 FEATURE_ID=""
-STEP_8_MODE=""  # empty = auto-derive from YOLO state (E89-S2 AC2 default)
+STEP_8_MODE=""  # empty = auto-derive from YOLO state (default)
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --classification)
@@ -115,7 +114,7 @@ while IFS= read -r line; do
 done <<<"$config_output"
 
 # ---------- 2. Validate gates ----------
-# E96-S7 partial-4c: smart-fallback
+# Smart-fallback for missing PLANNING_ARTIFACTS env var:
 if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
   if [ -d ".gaia/artifacts/planning-artifacts" ]; then
     PLANNING_ARTIFACTS=".gaia/artifacts/planning-artifacts"
@@ -143,9 +142,8 @@ if [ -x "$VALIDATE_GATE" ]; then
   if ! "$VALIDATE_GATE" epics_and_stories_exists 2>&1; then
     die "HALT: epics-and-stories.md not found at $EPICS_PATH — run /gaia-create-epics first"
   fi
-  # E89-S1 (FR-AFE-1): test-plan + traceability gates fire ONLY under
-  # enhancement / feature classifications. Patch classifications skip
-  # these gates (matches the existing cascade-matrix behaviour).
+  # test-plan + traceability gates fire ONLY under enhancement / feature
+  # classifications. Patch classifications skip these gates.
   if [ "$CLASSIFICATION" = "enhancement" ] || [ "$CLASSIFICATION" = "feature" ]; then
     if ! "$VALIDATE_GATE" test_plan_exists 2>&1; then
       die "HALT: test-plan.md is missing — run /gaia-test-design first, then re-invoke /gaia-add-feature $FEATURE_ID"
@@ -162,10 +160,10 @@ else
   if [ ! -s "$EPICS_PATH" ]; then
     die "HALT: epics-and-stories.md not found or empty at $EPICS_PATH — run /gaia-create-epics first"
   fi
-  # E89-S1 fallback mirror: same classification-conditional behaviour.
+  # Fallback mirror: same classification-conditional behaviour.
   if [ "$CLASSIFICATION" = "enhancement" ] || [ "$CLASSIFICATION" = "feature" ]; then
-    # AF-2026-05-22-6 Bug-20: also accept strategy/test-strategy.md (the actual
-    # output of /gaia-test-strategy --plan) and the sharded test-plan/index.md
+    # Also accept strategy/test-strategy.md (the actual output of
+    # /gaia-test-strategy --plan) and the sharded test-plan/index.md
     # form. Mirrors the 4-path fallback in validate-gate.sh test_plan_exists.
     if [ ! -s "$TEST_ARTIFACTS_DIR/test-plan.md" ] \
        && [ ! -s "$TEST_ARTIFACTS_DIR/strategy/test-plan.md" ] \

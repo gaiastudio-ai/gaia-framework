@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# finalize.sh — Cluster 12 gaia-deploy-checklist skill finalize (E28-S92)
+# finalize.sh — gaia-deploy-checklist skill finalize
 #
-# Mechanical copy of the Cluster 9 reference implementation authored under
-# E28-S66 (gaia-code-review/scripts/finalize.sh). Only WORKFLOW_NAME and
+# Mechanical copy of the shared reference implementation
+# (gaia-code-review/scripts/finalize.sh). Only WORKFLOW_NAME and
 # SCRIPT_NAME differ — the body is byte-identical to the reference.
 #
-# Responsibilities (per brief Cluster 9):
+# Responsibilities:
 #   1. Invoke validate-gate.sh for post-checklist gate verification
 #   2. Write a checkpoint via the shared checkpoint.sh foundation script
 #   3. Emit a lifecycle event via lifecycle-event.sh for the tailing sync agent
@@ -38,7 +38,7 @@ if [ -x "$VALIDATE_GATE" ]; then
   fi
   log "validate-gate.sh: all deployment gates passed"
 else
-  die "validate-gate.sh not found at $VALIDATE_GATE — cannot verify deployment gates (E28-S15 dependency)"
+  die "validate-gate.sh not found at $VALIDATE_GATE — cannot verify deployment gates (validate-gate dependency missing)"
 fi
 
 # ---------- 2. Write checkpoint ----------

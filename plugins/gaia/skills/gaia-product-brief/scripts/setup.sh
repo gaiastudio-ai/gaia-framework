@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# setup.sh — shared Cluster 4 skill setup (E28-S36, brief §Cluster 4 / P4-S2)
+# setup.sh — shared skill setup for gaia-product-brief
 #
-# Mechanical copy of the Cluster 4 reference implementation authored under
-# E28-S35 (gaia-brainstorm/scripts/setup.sh). Only WORKFLOW_NAME and
-# SCRIPT_NAME differ — the body is byte-identical to the reference.
+# Mechanical copy of the shared reference implementation
+# (gaia-brainstorm/scripts/setup.sh). Only WORKFLOW_NAME and SCRIPT_NAME
+# differ — the body is byte-identical to the reference.
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs
 #   3. Load the checkpoint state for this workflow
@@ -56,7 +56,7 @@ done <<<"$config_output"
 # ---------- 2. Validate gate (prereqs) ----------
 # create-product-brief's legacy workflow had a soft dependency on the
 # brainstorm artifact, but downstream sibling skills run this shared no-op
-# gate pattern. Keep parity with the Cluster 4 reference — run the file_exists
+# gate pattern. Keep parity with the shared reference — run the file_exists
 # gate with zero --file arguments (passing no-op). Story-level prereqs
 # (brainstorm/market/domain research) are discovered by the skill body
 # itself in Step 1, matching the legacy instructions.xml behaviour.
@@ -68,15 +68,15 @@ else
   log "validate-gate.sh not found at $VALIDATE_GATE — skipping gate (non-fatal)"
 fi
 
-# ---------- 2b. Quality gates: pre_start (E45-S2 / FR-347) ----------
+# ---------- 2b. Quality gates: pre_start ----------
 # Source the shared gate-predicates library and iterate the pre_start
 # list declared in this skill's SKILL.md frontmatter. Backward
 # compatible: if the block is absent or empty, this is a no-op.
 # HALT on first failure to match workflow.xml rule n="10".
 #
-# F-16 (AF-2026-05-26-2): the sole pre_start gate is the brainstorm-artifact
-# existence check. The legitimate flow where a brief already exists or the
-# operator seeds from outside material had no escape hatch. GAIA_SKIP_BRAINSTORM=1
+# The sole pre_start gate is the brainstorm-artifact existence check.
+# The legitimate flow where a brief already exists or the operator seeds
+# from outside material had no escape hatch. GAIA_SKIP_BRAINSTORM=1
 # bypasses the pre_start gates (framework env-var convention, cf. GAIA_YOLO_FLAG)
 # and emits a visible audit warning so the bypass is traceable.
 if [ -n "${GAIA_SKIP_BRAINSTORM:-}" ]; then

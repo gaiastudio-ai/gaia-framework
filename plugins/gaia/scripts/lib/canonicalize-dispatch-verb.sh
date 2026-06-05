@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 # canonicalize-dispatch-verb.sh — Project a dispatch-verb token onto its
-# canonical primitive name (E88-S5, FR-DPD-5).
-#
-# Refs:  ADR-107 (taxonomy consumed via E88-S1; canonicalization is a
-#        derivation, NOT a taxonomy itself per the story Dev Notes),
-#        FR-DPD-5, AI-2026-05-13-7.
-# Story: E88-S5.
+# canonical primitive name.
 #
 # Usage
 #   canonicalize-dispatch-verb.sh <verb>

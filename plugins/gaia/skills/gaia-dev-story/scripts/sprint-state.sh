@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
-# sprint-state.sh — GAIA foundation script (E28-S11)
+# sprint-state.sh — GAIA foundation script
 #
 # Validates sprint state machine transitions, updates the story file
 # frontmatter + body `**Status:**` line and `sprint-status.yaml` atomically,
 # and emits a lifecycle event on every successful transition. Replaces the
 # LLM-interpreted status-sync protocol with a deterministic, race-safe
-# script per ADR-042 / ADR-048.
+# script.
 #
-# Refs: FR-325, FR-328, NFR-048, ADR-042, ADR-048
-# Brief: P2-S3 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
-#
-# Invocation contract (stable for E28-S17 bats-core authors):
+# Invocation contract:
 #
 #   sprint-state.sh transition                 --story <key> --to <state>
 #   sprint-state.sh get                        --story <key>
@@ -20,10 +17,10 @@
 #   sprint-state.sh record-escalation-override --item-ids <ids> --user <name> --reason <text>
 #   sprint-state.sh --help
 #
-# Reconcile (ADR-055 §10.29.1, E38-S1):
+# Reconcile:
 #   Scans story files under IMPLEMENTATION_ARTIFACTS to detect and correct
 #   drift between authoritative story frontmatter (source of truth) and
-#   the derivative sprint-status.yaml cache. Write boundary (NFR-SPQG-2):
+#   the derivative sprint-status.yaml cache. Write boundary:
 #   reconcile NEVER modifies story-file frontmatter — yaml only, routed
 #   through the same allowlisted writer the transition path uses.
 #   Exit codes: 0 = no drift or drift corrected; 2 = drift detected in
@@ -48,7 +45,7 @@
 #   immediately before writing. It updates both locations inside the same
 #   critical section so no concurrent reader sees a drifted pair.
 #
-# Review Gate check on -> done (AC6):
+# Review Gate check on -> done:
 #   Transitions to 'done' shell out to review-gate.sh status and require all
 #   six canonical rows to report PASSED. Any other verdict (UNVERIFIED or
 #   FAILED) blocks the transition with the offending row names enumerated.
@@ -73,7 +70,7 @@
 #     5. rewrite sprint-status.yaml via tempfile + mv
 #     6. emit lifecycle event
 #   If step 6 fails the file writes are not rolled back, but the script exits
-#   1 and surfaces the failure (AC-EC4: "event failure surfaced with exit 1").
+#   1 and surfaces the failure ("event failure surfaced with exit 1").
 #   Subsequent `validate` will detect drift if any downstream consumer cares.
 #
 # POSIX discipline: the only non-POSIX constructs are [[ ]] and bash indexed
@@ -87,7 +84,7 @@ export LC_ALL
 
 SCRIPT_NAME="sprint-state.sh"
 
-# E64-S5 — script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
+# Script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
 # Every tempfile-creating call site appends the resulting path to
 # _GAIA_TMP_PATHS and captures its index. After a successful rename the slot
 # is cleared so the cleanup is idempotent. Covers SIGINT, SIGTERM, OOM, and
@@ -119,13 +116,10 @@ CANONICAL_STATES=(
 )
 
 # Allowed adjacency encoded as "from|to" strings (CLAUDE.md verbatim).
-# AF-2026-05-31-1 / Test12 F-19 + D-03: the `ready-for-dev|backlog` defer
-# edge restores the path documented by /gaia-correct-course Step 5 ("removed
-# stories transition --to backlog"). Prior to this fix the state machine
-# rejected the edge with `invalid transition: ready-for-dev -> backlog is
-# not in the allowed adjacency list`, leaving correct-course's documented
-# defer path unusable — operators had to fall back to sprint-close
-# `--force-with-rollover` to drop a ready-for-dev story from a sprint. The
+# The `ready-for-dev|backlog` defer edge restores the path documented by
+# /gaia-correct-course Step 5 ("removed stories transition --to backlog").
+# Without this edge the state machine rejects the correct-course defer path
+# and operators must fall back to sprint-close `--force-with-rollover`. The
 # edge is semantically clean: a story selected for development but not yet
 # in-progress can be returned to the backlog without traversing the full
 # `in-progress → review → done` arc.
@@ -152,16 +146,16 @@ usage() {
   cat <<'USAGE'
 Usage:
   sprint-state.sh transition                 --story <key> --to <state>
-  sprint-state.sh transition                 --sprint <id> --to <state>     (E93-S1)
+  sprint-state.sh transition                 --sprint <id> --to <state>
   sprint-state.sh inject                     --story <key> [--sprint-id <id>]
   sprint-state.sh get                        --story <key>
   sprint-state.sh validate                   --story <key>
-  sprint-state.sh get-goals                  --sprint <id>                  (E93-S1)
-  sprint-state.sh set-goals                  --sprint <id> --goals "<g1|g2|..>"  (E93-S1)
-  sprint-state.sh update-goals               --sprint <id> --goals "<g1|g2|..>"  (E93-S1)
-  sprint-state.sh set-review-justification   --sprint <id> --file <path>    (E93-S1)
-  sprint-state.sh set-shape                  --sprint <id> --shape <thrust|completion-pass>  (E93-S6)
-  sprint-state.sh set-story-sprint           --story <key> --sprint <id>     (AF-2026-05-30-4 F-15)
+  sprint-state.sh get-goals                  --sprint <id>
+  sprint-state.sh set-goals                  --sprint <id> --goals "<g1|g2|..>"
+  sprint-state.sh update-goals               --sprint <id> --goals "<g1|g2|..>"
+  sprint-state.sh set-review-justification   --sprint <id> --file <path>
+  sprint-state.sh set-shape                  --sprint <id> --shape <thrust|completion-pass>
+  sprint-state.sh set-story-sprint           --story <key> --sprint <id>
   sprint-state.sh reconcile                  [--sprint-id <id>] [--dry-run]
   sprint-state.sh lint-dependencies          [--sprint-id <id>] [--format json|text]
   sprint-state.sh record-escalation-override --item-ids <ids> --user <name> --reason <text>
@@ -169,12 +163,11 @@ Usage:
   sprint-state.sh --help
 
 Subcommands:
-  init              AF-2026-05-22-9 Bug-8. Bootstrap a fresh sprint-status.yaml
-                    when none exists yet. Seeds the canonical shape
-                    (sprint_id / status=planned / total_points=0 / goals=[] /
-                    items=[]) under flock — E107-S1 / ADR-108: a fresh sprint
-                    starts in the `planned` state (planned → active → review →
-                    closed). Idempotent — refuses to overwrite
+  init              Bootstrap a fresh sprint-status.yaml when none exists yet.
+                    Seeds the canonical shape (sprint_id / status=planned /
+                    total_points=0 / goals=[] / items=[]) under flock — a fresh
+                    sprint starts in the `planned` state (planned → active →
+                    review → closed). Idempotent — refuses to overwrite
                     an existing yaml. Required before the first `inject` in a
                     new project. Usage: sprint-state.sh init --sprint-id <id>.
   transition        Atomically transition a story to <state>. Validates
@@ -192,66 +185,59 @@ Subcommands:
                     frontmatter `points:` field — no --points CLI flag
                     is needed or accepted. Recomputes capacity_utilization
                     and emits one story_injected lifecycle event.
-                    Boundary-write seed rule (per saved-memory
-                    feedback_sprint_inject_seed_total_points): when
-                    boundary-writing a fresh sprint, seed
-                    total_points=0 — inject accumulates onto the
-                    existing total; a non-zero seed produces double-
-                    counted totals.
-                    Used by /gaia-correct-course story-injection
-                    (E38-S10, AF-2026-05-01-4, ADR-055 §10.29).
+                    Boundary-write seed rule: when boundary-writing a
+                    fresh sprint, seed total_points=0 — inject accumulates
+                    onto the existing total; a non-zero seed produces
+                    double-counted totals.
+                    Used by /gaia-correct-course story-injection.
   get               Print the story's current status (from the story file)
                     to stdout and exit 0.
   validate          Compare story file status to sprint-status.yaml. Exit 0
                     if they agree, exit 1 with a drift description on stderr
                     if not.
   reconcile         Scan the target sprint's story files and reconcile
-                    sprint-status.yaml to match authoritative frontmatter
-                    per ADR-055 §10.29.1. NEVER modifies story files
-                    (NFR-SPQG-2). Exit 0 on no-drift or drift-corrected,
-                    2 on dry-run drift, 1 on error.
+                    sprint-status.yaml to match authoritative frontmatter.
+                    NEVER modifies story files. Exit 0 on no-drift or
+                    drift-corrected, 2 on dry-run drift, 1 on error.
   lint-dependencies Read-only analysis of the selected sprint's dependency
                     graph. Detects forward-references (dependency inversions)
                     where a story depends on a resource created by a later
-                    story in the sprint order. Per ADR-055 §10.29.2.
+                    story in the sprint order.
                     Exit 0 = clean, 2 = inversions detected (advisory),
                     1 = error.
-  detect-auto-close Read-only advisory probe (E81-S3). Emits a single-line
-                    JSON payload on stdout when the active sprint has every
-                    story at status=done with total_count>0 and top-level
+  detect-auto-close Read-only advisory probe. Emits a single-line JSON
+                    payload on stdout when the active sprint has every story
+                    at status=done with total_count>0 and top-level
                     status=active. Empty stdout when the auto-close
                     condition is not met. ALWAYS exits 0. NEVER mutates
                     sprint-status.yaml — the boundary write
                     (status=closed + next-sprint seed) remains a manual
-                    operator action per
-                    feedback_sprint_boundary_yaml_write.md.
+                    operator action.
 
-  transition --sprint  E93-S1 sprint-level state-machine transitions per
-                    ADR-108 §D1. Edges: active→review (gated on all-stories-
-                    done), review→closed, review→correction, correction→active.
+  transition --sprint  Sprint-level state-machine transitions. Edges:
+                    active→review (gated on all-stories-done), review→closed,
+                    review→correction, correction→active.
                     Refuses any other edge with `illegal sprint-level
-                    transition: <from>→<to>`. Uses the ADR-095 boundary
-                    writer (atomic mktemp + mv) so YAML comments and
-                    formatting are preserved.
+                    transition: <from>→<to>`. Uses atomic mktemp + mv so
+                    YAML comments and formatting are preserved.
 
-  get-goals         E93-S1. Print the sprint's `goals[]` list (one per line)
-                    to stdout. Empty output + exit 0 when no goals set.
+  get-goals         Print the sprint's `goals[]` list (one per line) to
+                    stdout. Empty output + exit 0 when no goals set.
 
-  set-goals         E93-S1. REPLACE the sprint's `goals[]` list with the
+  set-goals         REPLACE the sprint's `goals[]` list with the
                     pipe-delimited string passed via --goals "<g1|g2|...>".
-                    Each goal is capped at 280 chars (FR-485 AC6). Lossless
-                    round-trip with get-goals.
+                    Each goal is capped at 280 chars. Lossless round-trip
+                    with get-goals.
 
-  update-goals      E93-S1. Alias for set-goals (REPLACES; does not append).
+  update-goals      Alias for set-goals (REPLACES; does not append).
 
   set-review-justification
-                    E93-S1. Write the `review_justification:` block from a
-                    YAML payload file (--file <path>) into sprint-status.yaml
-                    per FR-487 / AI-5 spec. Required payload fields:
-                    primary_criterion ∈ {C1, C2, C3}, qualifying_story_points
-                    (int), total_story_points (int), qualifying_ratio ≥ 0.80,
-                    explanation (200-1000 chars block scalar). Existing
-                    block is replaced atomically.
+                    Write the `review_justification:` block from a YAML
+                    payload file (--file <path>) into sprint-status.yaml.
+                    Required payload fields: primary_criterion ∈ {C1, C2, C3},
+                    qualifying_story_points (int), total_story_points (int),
+                    qualifying_ratio ≥ 0.80, explanation (200-1000 chars block
+                    scalar). Existing block is replaced atomically.
 
 Canonical states (CLAUDE.md):
   backlog | validating | ready-for-dev | in-progress | blocked | review | done
@@ -266,7 +252,7 @@ Exit codes:
   1  usage error, invalid state, illegal transition, missing file, lock
      failure, review gate failure, glob mismatch, drift (validate), or
      reconcile/lint-dependencies error (missing story file, parse failure)
-  2  reconcile --dry-run detected drift but wrote nothing, OR
+  2  reconcile --dry-run detected drift but wrote nothing, or
      lint-dependencies detected inversions (advisory, non-blocking)
 USAGE
 }
@@ -281,9 +267,9 @@ is_canonical_state() {
 }
 
 # Render the canonical enum as a "value | value | value" string for use in
-# error messages. Centralised so every fail-fast path emits the same hint
-# (E38-S8, AC2). Operators reading the rejection see exactly which values
-# the lifecycle accepts and can fix the call site without reading source.
+# error messages. Centralised so every fail-fast path emits the same hint.
+# Operators reading the rejection see exactly which values the lifecycle
+# accepts and can fix the call site without reading source.
 canonical_states_hint() {
   local s out=""
   for s in "${CANONICAL_STATES[@]}"; do
@@ -298,11 +284,10 @@ canonical_states_hint() {
 
 # Fail-fast guard for any value about to be written into a lifecycle
 # `status:` field. Any non-canonical value (e.g. the review-gate display
-# strings 'PASSED' / 'FAILED' / 'UNVERIFIED' that triggered the sprint-27
-# F2 finding) MUST be rejected before any tempfile rewrite touches disk —
-# yaml and story file are left byte-identical (E38-S8 AC1, AC2). The error
-# names BOTH the offending value and the allowed enum so the caller can
-# correct the invocation without reading source.
+# strings 'PASSED' / 'FAILED' / 'UNVERIFIED') MUST be rejected before any
+# tempfile rewrite touches disk — yaml and story file are left byte-identical.
+# The error names BOTH the offending value and the allowed enum so the caller
+# can correct the invocation without reading source.
 assert_canonical_state() {
   local candidate="$1" context="${2:-write}"
   if ! is_canonical_state "$candidate"; then
@@ -324,14 +309,14 @@ validate_transition() {
 
 # Resolve configuration — PROJECT_PATH, IMPLEMENTATION_ARTIFACTS, and yaml path.
 # Honor pre-exported SPRINT_STATUS_YAML so tests can point the script at a
-# temp-dir yaml that does not live under IMPLEMENTATION_ARTIFACTS (E38-S1).
+# temp-dir yaml that does not live under IMPLEMENTATION_ARTIFACTS.
 # When SPRINT_STATUS_YAML is unset, resolve to the canonical location under
 # IMPLEMENTATION_ARTIFACTS, then fall back to $PROJECT_PATH/sprint-status.yaml
-# if the canonical path does not exist but the fallback does — supports the
-# E38-S1 bats fixtures which place the yaml at $TEST_TMP root for test speed.
+# if the canonical path does not exist but the fallback does — supports bats
+# fixtures which place the yaml at $TEST_TMP root for test speed.
 resolve_paths() {
   PROJECT_PATH="${PROJECT_PATH:-.}"
-  # E96-S7 AC3: smart-fallback for IMPLEMENTATION_ARTIFACTS — prefer
+  # Smart-fallback for IMPLEMENTATION_ARTIFACTS — prefer
   # .gaia/artifacts/implementation-artifacts/ when present on disk, fall back
   # to legacy docs/implementation-artifacts/ for in-deprecation-window
   # consumers and bats fixtures. Env-var override still wins.
@@ -342,21 +327,19 @@ resolve_paths() {
       IMPLEMENTATION_ARTIFACTS="${PROJECT_PATH}/docs/implementation-artifacts"
     fi
   fi
-  # E96-S2 / ADR-111: prefer `.gaia/state/sprint-status.yaml` (mutable-runtime-
-  # state tier) over the legacy `docs/implementation-artifacts/sprint-status.yaml`
-  # (artifacts-tier). Legacy fallback retained during the 1-sprint transition
-  # window (removed in E96-S5).
+  # Prefer `.gaia/state/sprint-status.yaml` (mutable-runtime-state tier) over
+  # the legacy `docs/implementation-artifacts/sprint-status.yaml`
+  # (artifacts-tier). Legacy fallback retained during the transition window.
   if [ -z "${SPRINT_STATUS_YAML:-}" ]; then
     local gaia_state="${PROJECT_PATH}/.gaia/state/sprint-status.yaml"
     local canonical="${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml"
     local fallback="${PROJECT_PATH}/sprint-status.yaml"
-    # AF-2026-05-27-8 / Test06 F-014: .gaia/state/ is the canonical home for
-    # sprint-status.yaml (ADR-111 mutable-runtime-state tier) and is what
+    # .gaia/state/ is the canonical home for sprint-status.yaml and is what
     # sprint-status-dashboard.sh reads first. Resolution order:
     #   1. existing .gaia/state/   yaml — canonical, already seeded
     #   2. existing impl-artifacts yaml — read-compat for projects seeded there
     #      before this fix (the prior default write target)
-    #   3. existing project-root fallback (E38-S1 bats fixtures)
+    #   3. existing project-root fallback (bats fixtures)
     #   4. fresh write → canonical .gaia/state/ default
     # Previously fresh writes (rung 4) defaulted to impl-artifacts, a path the
     # dashboard never looked at — so `init` succeeded but `/gaia-sprint-status`
@@ -364,15 +347,15 @@ resolve_paths() {
     # the writer with the canonical reader.
     if [ -e "$gaia_state" ]; then
       SPRINT_STATUS_YAML="$gaia_state"
-      # Issue #1109: when the canonical .gaia/state/ copy wins but a LEGACY
-      # impl-artifacts copy is also present, the two can silently diverge (the
-      # legacy one freezes at its pre-migration state because every writer now
-      # targets .gaia/state/). Surface it loudly so the operator can remove the
-      # stale shadow — and so a later transient absence of .gaia/state/ cannot
-      # fall through to rung 2 (the stale copy) unnoticed. Non-fatal: the
-      # canonical copy is still used; we only warn.
+      # When the canonical .gaia/state/ copy wins but a LEGACY impl-artifacts
+      # copy is also present, the two can silently diverge (the legacy one
+      # freezes at its pre-migration state because every writer now targets
+      # .gaia/state/). Surface it loudly so the operator can remove the stale
+      # shadow — and so a later transient absence of .gaia/state/ cannot fall
+      # through to rung 2 (the stale copy) unnoticed. Non-fatal: the canonical
+      # copy is still used; we only warn.
       if [ -e "$canonical" ] && [ "$canonical" != "$gaia_state" ]; then
-        printf '%s: WARNING: stale legacy sprint-status.yaml at %s shadows the canonical .gaia/state/ copy — remove it to avoid divergence (issue #1109)\n' \
+        printf '%s: WARNING: stale legacy sprint-status.yaml at %s shadows the canonical .gaia/state/ copy — remove it to avoid divergence\n' \
           "${SCRIPT_NAME:-sprint-state.sh}" "$canonical" >&2
       fi
     elif [ -e "$canonical" ]; then
@@ -400,14 +383,14 @@ _is_story_file() {
 }
 
 # Locate the story file under IMPLEMENTATION_ARTIFACTS across all three layout
-# tiers (E105-S1 / ADR-127), then filter candidates by frontmatter
-# `template: 'story'` to exclude review sibling files (-review.md, -qa-tests.md,
-# -security-review.md, etc.). Returns via the STORY_FILE global. Exits 1 on zero
-# or multiple canonical matches.
+# tiers, then filter candidates by frontmatter `template: 'story'` to exclude
+# review sibling files (-review.md, -qa-tests.md, -security-review.md, etc.).
+# Returns via the STORY_FILE global. Exits 1 on zero or multiple canonical
+# matches.
 #
 # Layout tiers globbed (precedence handled downstream by the template filter +
 # realpath dedup, mirroring resolve-story-file.sh):
-#   0. NEW per-story nested:  epic-{slug}/{key}-{slug}/story.md  (E105-S1/ADR-127)
+#   0. NEW per-story nested:  epic-{slug}/{key}-{slug}/story.md
 #   1. Legacy nested:         epic-{slug}/stories/{key}-{slug}.md
 #   2. Legacy flat:           {key}-{slug}.md
 STORY_FILE=""
@@ -429,7 +412,7 @@ locate_story_file() {
   # Drop any perstory_pattern hit that actually lives under a legacy `stories/`
   # segment — that path belongs to the tier-1 epic_pattern, not tier-0, and the
   # `*` in the glob would otherwise let `epic-*/stories/{key}-*/story.md`
-  # (per-story evidence dirs) leak in (mirrors resolve-story-file.sh guard (a)).
+  # (per-story evidence dirs) leak in (mirrors resolve-story-file.sh guard).
   if [ "${#matches[@]}" -gt 0 ]; then
     local _filtered=()
     local _mm
@@ -460,8 +443,8 @@ locate_story_file() {
   fi
 
   # Deduplicate by realpath. Symlinks at the flat layer pointing at the
-  # epic-grouped real file (post-E53-S225 transition shims) produce two
-  # canonical matches that are the same physical file. Prefer non-symlinks.
+  # epic-grouped real file (transition shims) produce two canonical matches
+  # that are the same physical file. Prefer non-symlinks.
   if [ "${#canonical[@]}" -gt 1 ]; then
     local dedup=()
     local seen_realpaths=""
@@ -537,14 +520,13 @@ read_story_status() {
 # other bytes. Tempfile + atomic mv.
 rewrite_story_status() {
   local file="$1" new_status="$2"
-  # Defense-in-depth (E38-S8 AC1): even if a future caller bypasses
-  # cmd_transition's fail-fast guard, this writer refuses to stamp a
-  # non-canonical value into the story file. Belt-and-braces against the
-  # sprint-27 F2 class of bug.
+  # Defense-in-depth: even if a future caller bypasses cmd_transition's
+  # fail-fast guard, this writer refuses to stamp a non-canonical value into
+  # the story file. Belt-and-braces against non-canonical status writes.
   assert_canonical_state "$new_status" "write story status"
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
-  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  # Register tmp for script-level EXIT/INT/TERM cleanup.
   local _tmp_idx
   _GAIA_TMP_PATHS+=("$tmp")
   _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
@@ -599,7 +581,7 @@ rewrite_story_status() {
     trap - RETURN
     die "failed to mv tempfile over '$file'"
   fi
-  # E64-S5: mv succeeded — clear the slot.
+  # mv succeeded — clear the slot.
   _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
@@ -611,10 +593,10 @@ rewrite_sprint_status_yaml() {
   local story_key="$1" new_status="$2"
   local file="$SPRINT_STATUS_YAML"
 
-  # Defense-in-depth (E38-S8 AC1): refuse to stamp a non-canonical value
-  # into sprint-status.yaml even if the caller bypassed the higher-level
-  # guard. This is the same chokepoint that reconcile and the transition
-  # path both flow through, so guarding here closes every write path.
+  # Defense-in-depth: refuse to stamp a non-canonical value into
+  # sprint-status.yaml even if the caller bypassed the higher-level guard.
+  # This is the same chokepoint that reconcile and the transition path both
+  # flow through, so guarding here closes every write path.
   assert_canonical_state "$new_status" "write sprint-status.yaml status"
 
   if [ ! -s "$file" ]; then
@@ -623,7 +605,7 @@ rewrite_sprint_status_yaml() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
-  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  # Register tmp for script-level EXIT/INT/TERM cleanup.
   local _tmp_idx
   _GAIA_TMP_PATHS+=("$tmp")
   _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
@@ -680,7 +662,7 @@ rewrite_sprint_status_yaml() {
     trap - RETURN
     die "failed to mv tempfile over '$file'"
   fi
-  # E64-S5: mv succeeded — clear the slot.
+  # mv succeeded — clear the slot.
   _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
@@ -735,7 +717,7 @@ check_review_gate_all_passed() {
   # instead call `check` directly and rely on its own locator. review-gate.sh
   # uses `${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts/stories/<key>-*.md`;
   # fall back to a thin parser that reads the Review Gate table from the
-  # story file we already resolved. This keeps E28-S11 independent of any
+  # story file we already resolved. This keeps this function independent of any
   # later refactor to review-gate.sh's layout assumptions.
   local missing
   missing=$(awk '
@@ -828,7 +810,7 @@ do_transition_locked() {
 
   # (a) Re-read sprint-status.yaml immediately before writing (Sprint-Status
   # Write Safety). If the file is missing/empty, fail before touching the
-  # story file (AC-EC1).
+  # story file.
   if [ ! -s "$SPRINT_STATUS_YAML" ]; then
     die "sprint-status.yaml is missing or empty: $SPRINT_STATUS_YAML"
   fi
@@ -846,19 +828,16 @@ do_transition_locked() {
     die "story $story_key is already in state '$to_state'"
   fi
 
-  # Validate adjacency (AC2, AC-EC2).
+  # Validate adjacency.
   validate_transition "$from_state" "$to_state"
 
-  # Review Gate enforcement for -> done (AC6, AC-EC7).
+  # Review Gate enforcement for -> done.
   if [ "$to_state" = "done" ]; then
     check_review_gate_all_passed "$story_key"
 
-    # AF-2026-05-30-2 / Test10 F-29: DoD completeness gate.
-    # Prior behavior allowed `review -> done` when the Review Gate was
-    # all-PASSED even if the story's Definition of Done section was 0/N
-    # checked. Test10 surfaced an E5-S4 case that reached `done` with
-    # 0/9 DoD items checked. Block the transition when any DoD checkbox
-    # is unchecked.
+    # DoD completeness gate. Prior behavior allowed `review -> done` when the
+    # Review Gate was all-PASSED even if the story's Definition of Done section
+    # was 0/N checked. Block the transition when any DoD checkbox is unchecked.
     if [ -n "${STORY_FILE:-}" ] && [ -f "$STORY_FILE" ]; then
       _dod_unchecked=$(awk '
         BEGIN { in_section=0; unchecked=0 }
@@ -871,11 +850,9 @@ do_transition_locked() {
         die "story $story_key: refuse review -> done — $_dod_unchecked DoD item(s) unchecked (run /gaia-check-dod and tick each box before transitioning to done)"
       fi
 
-      # AF-2026-05-30-2 / Test10 F-33: dependency gate on done.
-      # Prior behavior: backlog-select-lint enforced deps at sprint
-      # selection time, but the done transition ignored deps entirely
-      # — so E5-S4 reached done while its hard dep E3-S6 was never even
-      # developed. Block done when any depends_on key is non-done.
+      # Dependency gate on done. Prior behavior: backlog-select-lint
+      # enforced deps at sprint selection time, but the done transition
+      # ignored deps entirely. Block done when any depends_on key is non-done.
       _fm_deps=$(awk '
         BEGIN { in_fm=0; in_deps=0 }
         /^---[[:space:]]*$/ { if (in_fm==0) { in_fm=1; next } else { exit } }
@@ -895,22 +872,13 @@ do_transition_locked() {
       if [ -n "$_fm_deps" ]; then
         _unmet=""
         for _dep in $_fm_deps; do
-          # AF-2026-06-02-1 / Test16 F-M05 — cross-sprint dep resolution.
-          # Pre-fix: the dep status was read ONLY from the LIVE
-          # sprint-status.yaml. After Sprint 1 closes and `init` re-seeds
-          # the yaml for Sprint 2, predecessor stories (status:done in
-          # their files AND in the sprint-N-closed-*.yaml archive) drop
-          # out of the live yaml → yq returns nothing → status reports as
-          # `(unknown)` → review→done REFUSED. That contradicts the
-          # framework's own invariant ("the story file is the source of
-          # truth — sprint-status.yaml is a derived cached view"). Fix:
-          # consult three sources in order — (1) live yaml, (2) the
-          # depended story's file frontmatter, (3) the most-recent
-          # sprint-archive entry — and accept the first non-empty answer.
-          # Test17 F-H02 / AF-2026-06-02-6: try BOTH yaml shapes — sprint-state.sh
-          # init/inject seeds a top-level `.stories[]` shape (no `.sprints[]`
-          # wrapper), so the prior `.sprints[].stories[]` query returned empty
-          # on every live sprint-status.yaml. Try the canonical top-level shape
+          # Cross-sprint dep resolution. The dep status is consulted in three
+          # sources in order — (1) live yaml, (2) the depended story's file
+          # frontmatter, (3) the most-recent sprint-archive entry — and the
+          # first non-empty answer wins. This handles predecessor stories from
+          # closed sprints that have dropped out of the live yaml.
+          # Try BOTH yaml shapes — init/inject seeds a top-level `.stories[]`
+          # shape (no `.sprints[]` wrapper). Try the canonical top-level shape
           # first, then fall back to the legacy `.sprints[].stories[]` shape
           # for any vestigial multi-sprint roll-ups.
           _dep_status=$(yq -r ".stories[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:-.}/.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
@@ -919,11 +887,10 @@ do_transition_locked() {
           fi
           if [ -z "$_dep_status" ] || [ "$_dep_status" = "null" ]; then
             # Tier 2: the depended story's file frontmatter (source of truth).
-            # Test17 F-H02 / AF-2026-06-02-6: try BOTH layouts (canonical first,
-            # legacy as fallback per ADR-070 three-tier read-side idiom). The
-            # canonical E105-S1 / ADR-127 layout is `epic-*/{key}-*/story.md`
-            # (per-story directory); legacy ADR-119 layout was
-            # `epic-*/stories/{key}-*.md` (per-story file under stories/).
+            # Try BOTH layouts (canonical first, legacy as fallback). The
+            # canonical layout is `epic-*/{key}-*/story.md` (per-story
+            # directory); legacy layout was `epic-*/stories/{key}-*.md`
+            # (per-story file under stories/).
             for _dep_sf in "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/"${_dep}-"*/story.md "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/stories/"${_dep}-"*.md "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/"${_dep}-"*.md; do
               if [ -f "$_dep_sf" ]; then
                 _dep_status=$(awk '
@@ -940,9 +907,8 @@ do_transition_locked() {
             # Tier 3: scan sprint-archive/. Pick the most-recent archive that
             # mentions the dep key. Archives are named sprint-N-closed-<ts>.yaml.
             for _archive in $(ls -1t "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/sprint-archive/sprint-*-closed-*.yaml 2>/dev/null); do
-              # Test17 F-H02 / AF-2026-06-02-6: try both yaml shapes — sprint
-              # archives may be either top-level `.stories[]` (canonical) or
-              # rolled-up `.sprints[].stories[]` (legacy).
+              # Try both yaml shapes — sprint archives may be either top-level
+              # `.stories[]` (canonical) or rolled-up `.sprints[].stories[]` (legacy).
               _arch_status=$(yq -r ".stories[]? | select(.key == \"${_dep}\") | .status" "$_archive" 2>/dev/null | head -1 || true)
               if [ -z "$_arch_status" ] || [ "$_arch_status" = "null" ]; then
                 _arch_status=$(yq -r ".sprints[].stories[]? | select(.key == \"${_dep}\") | .status" "$_archive" 2>/dev/null | head -1 || true)
@@ -970,8 +936,8 @@ do_transition_locked() {
 
   # (d) Emit exactly one lifecycle event. Any failure exits 1; file writes
   # are NOT rolled back — callers MUST treat a non-zero exit from transition
-  # as "run validate and fix drift". AC-EC4 explicitly permits this
-  # "surfaced with exit 1" branch of the OR.
+  # as "run validate and fix drift". "event failure surfaced with exit 1" is
+  # an explicitly permitted outcome.
   emit_lifecycle_event "$story_key" "$from_state" "$to_state"
 
   printf '%s: %s transitioned %s -> %s\n' "$SCRIPT_NAME" "$story_key" "$from_state" "$to_state"
@@ -980,14 +946,12 @@ do_transition_locked() {
 cmd_transition() {
   local story_key="$1" to_state="$2"
 
-  # Fail-fast (E38-S8 AC2): refuse any --to value that is not in the
-  # canonical lifecycle enum. The rejection happens BEFORE the flock and
-  # BEFORE any tempfile is created, so sprint-status.yaml and the story
-  # file are guaranteed byte-identical on a non-canonical input. The error
-  # names both the offending value and the allowed enum so the caller can
-  # correct the invocation without reading source. This is the primary
-  # fix for the sprint-27 F2 root cause where 'PASSED' was passed as the
-  # lifecycle target instead of 'done'.
+  # Fail-fast: refuse any --to value that is not in the canonical lifecycle
+  # enum. The rejection happens BEFORE the flock and BEFORE any tempfile is
+  # created, so sprint-status.yaml and the story file are guaranteed
+  # byte-identical on a non-canonical input. The error names both the
+  # offending value and the allowed enum so the caller can correct the
+  # invocation without reading source.
   assert_canonical_state "$to_state" "transition --to"
 
   local flock_bin
@@ -1020,14 +984,12 @@ cmd_transition() {
   fi
 }
 
-# ---------- Subcommand: inject (E38-S10, AF-2026-05-01-4, ADR-055 §10.29) ----------
+# ---------- Subcommand: inject ----------
 #
 # Append a backlog story's metadata to the active sprint's sprint-status.yaml
-# entry list. Closes the F-CC-INJECT placeholder cited in
-# .gaia/artifacts/implementation-artifacts/sprint-status.yaml — until this subcommand
-# landed, /gaia-correct-course story-injection had no canonical write path
-# and operators had to hand-edit sprint-status.yaml (CLAUDE.md hard-rule
-# violation).
+# entry list. Until this subcommand landed, /gaia-correct-course
+# story-injection had no canonical write path and operators had to hand-edit
+# sprint-status.yaml (a hard-rule violation).
 #
 # Contract (mirrors cmd_transition's invariants):
 #   * Acquires the same flock used by cmd_transition (no new lock primitive).
@@ -1038,7 +1000,7 @@ cmd_transition() {
 #   * Bumps total_points and recomputes capacity_utilization.
 #   * Emits exactly one story_injected lifecycle event on success.
 #
-# Exit codes (overlay on the script-wide table):
+# Exit codes:
 #   0 — success OR no-op (idempotent re-run)
 #   1 — usage error, missing required field, sprint-id drift, lock failure,
 #       yaml parse failure, lifecycle event write failure
@@ -1162,7 +1124,7 @@ append_story_to_yaml() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
-  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  # Register tmp for script-level EXIT/INT/TERM cleanup.
   local _tmp_idx
   _GAIA_TMP_PATHS+=("$tmp")
   _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
@@ -1249,7 +1211,7 @@ append_story_to_yaml() {
     trap - RETURN
     die "failed to mv tempfile over '$file'"
   fi
-  # E64-S5: mv succeeded — clear the slot.
+  # mv succeeded — clear the slot.
   _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
@@ -1313,7 +1275,7 @@ do_inject_locked() {
   # Defense-in-depth: status from frontmatter must be canonical.
   assert_canonical_state "$fm_status" "inject story status"
 
-  # Drift guard (AC3): frontmatter sprint_id MUST match yaml sprint_id.
+  # Drift guard: frontmatter sprint_id MUST match yaml sprint_id.
   local yaml_sprint_id
   yaml_sprint_id=$(read_yaml_sprint_id "$SPRINT_STATUS_YAML") \
     || die "inject: sprint-status.yaml at $SPRINT_STATUS_YAML missing top-level sprint_id"
@@ -1384,9 +1346,9 @@ cmd_inject() {
   fi
 }
 
-# ---------- Subcommand: reconcile (E38-S1, ADR-055 §10.29.1) ----------
+# ---------- Subcommand: reconcile ----------
 
-# Locate a story file for reconcile (E38-S7, FR-SPQG-4, ADR-055).
+# Locate a story file for reconcile.
 #
 # Filter the {key}-*.md glob to canonical story files (those whose YAML
 # frontmatter declares `template: 'story'`). This eliminates the prior
@@ -1399,7 +1361,7 @@ cmd_inject() {
 #
 #   RECONCILE: {key} candidate {file} skipped — no `template: 'story'` frontmatter
 #
-# This satisfies E38-S7 AC2 / Val WARNING #1: skips are observable, not silent.
+# Skips are observable, not silent.
 #
 # Case-insensitive glob via nocaseglob so {slug}-story.md fixtures match
 # upper-cased keys on Linux. Returns the first canonical match via stdout.
@@ -1409,8 +1371,8 @@ reconcile_locate_story_file() {
   local key="$1"
   local matches=()
   shopt -s nullglob nocaseglob
-  # Tiers globbed (E105-S1 / ADR-127): flat, legacy-nested, and the NEW
-  # per-story layout epic-{slug}/{key}-{slug}/story.md (basename story.md).
+  # Tiers globbed: flat, legacy-nested, and the per-story layout
+  # epic-{slug}/{key}-{slug}/story.md (basename story.md).
   # shellcheck disable=SC2206
   matches=( "${IMPLEMENTATION_ARTIFACTS}/${key}-"*.md \
             "${IMPLEMENTATION_ARTIFACTS}"/epic-*/stories/"${key}-"*.md \
@@ -1510,13 +1472,13 @@ reconcile_list_yaml_stories() {
 }
 
 # Allowlisted yaml writer — the single chokepoint for every reconcile write.
-# Enforces NFR-SPQG-2: story files are OFF-LIMITS; this helper only accepts
-# SPRINT_STATUS_YAML as the target. Runs the inner rewrite in a subshell so
-# that die() inside rewrite_sprint_status_yaml (e.g., on read-only yaml) is
-# caught as a non-zero return code instead of killing the whole reconcile.
+# Story files are OFF-LIMITS; this helper only accepts SPRINT_STATUS_YAML as
+# the target. Runs the inner rewrite in a subshell so that die() inside
+# rewrite_sprint_status_yaml (e.g., on read-only yaml) is caught as a
+# non-zero return code instead of killing the whole reconcile.
 write_sprint_status_yaml() {
   local target="$1" story_key="$2" new_status="$3"
-  # Allowlist check — NFR-SPQG-2 write boundary.
+  # Allowlist check — write boundary.
   case "$target" in
     "$SPRINT_STATUS_YAML") ;;
     *)
@@ -1671,7 +1633,7 @@ cmd_reconcile() {
       "$RECONCILE_CHECKED" "$RECONCILE_DIVERGENCES" "$verb"
   fi
 
-  # Exit-code contract (ADR-055 §10.29.1):
+  # Exit-code contract:
   #   1 = any error (missing file, parse failure, write failure)
   #   2 = dry-run drift detected but nothing written
   #   0 = no drift, or drift corrected successfully
@@ -1684,7 +1646,7 @@ cmd_reconcile() {
   exit 0
 }
 
-# ---------- Subcommand: lint-dependencies (E38-S3, ADR-055 §10.29.2) ----------
+# ---------- Subcommand: lint-dependencies ----------
 #
 # Read-only analysis of the selected sprint's story dependency graph.
 # Detects forward-references (dependency inversions) where a story depends
@@ -1692,18 +1654,17 @@ cmd_reconcile() {
 #
 # The AC text regex uses an 80-char co-occurrence window for trigger verb +
 # target resource name matching. This bounds false positives from long-range
-# coincidental matches while still catching same-sentence references. The
-# window size is a design choice documented per Val INFO #2.
+# coincidental matches while still catching same-sentence references.
 #
 # Read-only guarantee: lint-dependencies MUST NOT write to any file.
-# It reads story files and sprint-status.yaml only. Safe for context:fork
-# subagent invocation and parallel CI pipelines (AC-EC7, AC-EC13).
+# It reads story files and sprint-status.yaml only. Safe for parallel CI
+# pipelines and subagent invocation.
 #
 # Exit codes: 0 = clean, 2 = inversions detected (advisory), 1 = error.
 
 # Extract the depends_on list from a story file's YAML frontmatter.
 # Outputs one dependency key per line. Returns empty for missing or empty
-# depends_on. Does not error on missing field (AC-EC2).
+# depends_on. Does not error on missing field.
 lint_read_depends_on() {
   local file="$1"
   awk '
@@ -1740,9 +1701,7 @@ lint_read_depends_on() {
 #   $2 — space-separated list of sprint story keys to check against
 #
 # Returns empty if no heuristic matches found. Does not match bare key
-# mentions without a trigger verb (AC-EC6). Marks "reads from stdout"
-# style false positives as non-matches by requiring a story key or
-# resource name in the same window (AC-EC5).
+# mentions without a trigger verb.
 lint_scan_ac_text() {
   local file="$1"
   local sprint_keys="$2"
@@ -1757,7 +1716,7 @@ lint_scan_ac_text() {
 
   # Scan AC section for trigger verbs co-occurring with a sprint story key
   # inside an 80-char window. The window size bounds false positives from
-  # long-range coincidental matches (INFO #2 design choice).
+  # long-range coincidental matches.
   awk -v keys="$key_pattern" '
     BEGIN { in_ac = 0 }
     /^## Acceptance Criteria/ { in_ac = 1; next }
@@ -2024,7 +1983,7 @@ cmd_lint_dependencies() {
     story_count="$(printf '%s\n' "$pairs" | grep -c . || true)"
   fi
 
-  # Fast path: zero stories (AC-EC1)
+  # Fast path: zero stories
   if [ "$story_count" -eq 0 ]; then
     if [ "$format" = "json" ]; then
       lint_format_json "$sprint_id" 0 ""
@@ -2036,14 +1995,13 @@ cmd_lint_dependencies() {
 
   # Detect inversions. Capture stderr separately so error messages
   # (e.g., "story file not found") surface to the caller even when
-  # stdout is being captured by a command substitution (AC-EC10).
+  # stdout is being captured by a command substitution.
   local inversions lint_err_file
   lint_err_file="$(mktemp "${SPRINT_STATUS_YAML}.lint-err.XXXXXX" 2>/dev/null || mktemp)"
-  # E64-S7: register lint_err_file for script-level EXIT/INT/TERM cleanup.
+  # Register lint_err_file for script-level EXIT/INT/TERM cleanup.
   # Without this, interrupting lint-dependencies between mktemp and the
   # inline rm -f leaks an orphan *.lint-err.?????? file. Mirrors the
-  # register-then-clear pattern E64-S5 wired into the four atomic-write
-  # mktemp call sites.
+  # register-then-clear pattern used at all atomic-write mktemp call sites.
   local _lint_err_idx
   _GAIA_TMP_PATHS+=("$lint_err_file")
   _lint_err_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
@@ -2074,7 +2032,7 @@ cmd_lint_dependencies() {
   exit 0
 }
 
-# ---------- Subcommand: record-escalation-override (E38-S2, FR-SPQG-1) ----------
+# ---------- Subcommand: record-escalation-override ----------
 #
 # Append an escalation-halt override entry to sprint-status.yaml under the
 # `overrides:` block. Atomic under flock (same critical section discipline as
@@ -2082,9 +2040,9 @@ cmd_lint_dependencies() {
 # if an entry with the same override_type and the same sorted id set already
 # exists, the call is a no-op (zero bytes written, exit 0).
 #
-# Write boundary (ADR-042): this is the ONLY path the sprint-plan skill uses
-# to record escalation-halt overrides. The skill MUST NOT write overrides
-# inline via yq or sed.
+# This is the ONLY path the sprint-plan skill uses to record
+# escalation-halt overrides. The skill MUST NOT write overrides inline via
+# yq or sed.
 #
 # Usage:
 #   sprint-state.sh record-escalation-override \
@@ -2127,7 +2085,7 @@ _override_append_entry() {
 
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
-  # E64-S5: register tmp for script-level EXIT/INT/TERM cleanup.
+  # Register tmp for script-level EXIT/INT/TERM cleanup.
   local _tmp_idx
   _GAIA_TMP_PATHS+=("$tmp")
   _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
@@ -2204,7 +2162,7 @@ _override_append_entry() {
     trap - RETURN
     die "failed to mv tempfile over '$file'"
   fi
-  # E64-S5: mv succeeded — clear the slot.
+  # mv succeeded — clear the slot.
   _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
 }
@@ -2270,7 +2228,7 @@ cmd_record_escalation_override() {
   fi
 }
 
-# ---------- Subcommand: detect-auto-close (E81-S3) ----------
+# ---------- Subcommand: detect-auto-close ----------
 #
 # Advisory detection — emits a single line of JSON on stdout when the active
 # sprint has reached the auto-close-eligible condition:
@@ -2288,11 +2246,8 @@ cmd_record_escalation_override() {
 #
 # READ-ONLY: This subcommand NEVER opens sprint-status.yaml for write. The
 # boundary write (flipping `status: closed` and seeding the next sprint)
-# remains an operator-driven manual action per
-# feedback_sprint_boundary_yaml_write.md — auto-flipping would create false
-# confidence that the next sprint was scaffolded too.
-#
-# Refs: AC1, AC3, TC-SAC-1, TC-SAC-2, feedback_sprint_boundary_yaml_write.md
+# remains an operator-driven manual action — auto-flipping would create
+# false confidence that the next sprint was scaffolded too.
 cmd_detect_auto_close() {
   # Honor pre-exported SPRINT_STATUS_YAML; otherwise fall back to the same
   # canonical/fallback lookup used by sprint-status-dashboard.sh lines 54-64.
@@ -2381,7 +2336,7 @@ cmd_detect_auto_close() {
   return 0
 }
 
-# ---------- Subcommand: rollover (E81-S6 / FR-451) ----------
+# ---------- Subcommand: rollover ----------
 #
 # Migrate one or more stories from sprint-N to sprint-M. Per-story atomic
 # (story-file flock); whole-batch best-effort with partial-failure semantics
@@ -2395,8 +2350,6 @@ cmd_detect_auto_close() {
 #   5. Call cmd_inject to register the story in the target sprint yaml.
 #   6. On any step failure within steps 4-5, roll back the story-file
 #      `sprint_id` to its original value before releasing the lock.
-#
-# Refs: AC2, FR-451.
 cmd_rollover() {
   local from_sprint="$1" to_sprint="$2" keys_raw="$3"
   [ -n "$from_sprint" ] || die "rollover requires --from <sprint-id>"
@@ -2536,7 +2489,7 @@ _rollover_one() {
 }
 
 # ============================================================
-# E93-S1 — Sprint goals + sprint-level state machine
+# Sprint goals + sprint-level state machine
 # ============================================================
 
 # Resolve the path of the active sprint yaml. Caller has already called
@@ -2545,8 +2498,8 @@ _rollover_one() {
 _resolve_active_yaml() {
   if [ -n "${SPRINT_STATUS_YAML:-}" ]; then
     # resolve_paths() is the single source of truth for this value — it applies
-    # the AF-2026-05-27-8 / Test06 F-014 canonical-state-tier resolution order
-    # (.gaia/state/ first, impl-artifacts read-compat, fresh writes → state).
+    # the canonical-state-tier resolution order (.gaia/state/ first,
+    # impl-artifacts read-compat, fresh writes → state).
     printf '%s' "$SPRINT_STATUS_YAML"
   else
     # Safety net for callers that invoke this without resolve_paths() first.
@@ -2555,25 +2508,17 @@ _resolve_active_yaml() {
 }
 
 # cmd_init — bootstrap a sprint-status.yaml when none exists yet.
-# AF-2026-05-22-9 Bug-8: first-ever sprint had no `init` subcommand; the
-# operator had to hand-write a yaml seed before `inject`. Seeds the
-# canonical shape (sprint id/state/total_points=0/items=[]/goals=[]),
+# Seeds the canonical shape (sprint id/state/total_points=0/items=[]/goals=[]),
 # under flock to remain consistent with all other writers, and is
 # idempotent: re-init against an existing yaml is rejected.
 cmd_init() {
   local sprint_id="$1"
   [ -n "$sprint_id" ] || die "init: --sprint-id is required"
-  # AF-2026-05-31-1 / Test12 F-15: optional `--start-date`, `--end-date`,
-  # `--capacity-points` flags. Prior to this fix the seed only carried
-  # sprint_id / status / total_points / goals / items, so the burndown
-  # dashboard rendered `Duration: N/A`, `Dates: N/A → N/A`, `capacity: N/A`
-  # on every sprint — useless on a real sprint with a known cadence. When
-  # any of these three flags is provided, the seed includes the field. When
-  # all three are absent the seed is byte-identical to the pre-AF-31-1 shape
-  # (zero-regression on tests that scrape exact yaml). `/gaia-sprint-plan`
-  # passes them through from the operator's planning answers; sprint-state
-  # forwarding callers can omit them and the dashboard still renders the
-  # legacy `N/A` rows. The end-date can also be derived from start + length.
+  # Optional `--start-date`, `--end-date`, `--capacity-points` flags.
+  # When any of these flags is provided, the seed includes the field. When
+  # all three are absent the seed carries only the minimal shape (sprint_id /
+  # status / total_points / goals / items). The end-date can also be derived
+  # from start + length.
   local start_date="" end_date="" capacity_points="" sprint_length=""
   shift
   while [ $# -gt 0 ]; do
@@ -2588,21 +2533,21 @@ cmd_init() {
   local yaml
   yaml="$(_resolve_active_yaml)"
   if [ -e "$yaml" ]; then
-    # Test05 F-033: after /gaia-sprint-close the live yaml persists with
-    # `status: closed` (the close ceremony archives a COPY, it does not remove
-    # the live file). The next sprint's `init` previously hard-refused on that
-    # residual, forcing a manual `rm sprint-status.yaml` between sprints. A
-    # CLOSED predecessor is a sanctioned hand-off point: re-seed over it (the
-    # closed state is already preserved in sprint-archive/). Any OTHER existing
-    # status (planned/active/review) is still refused — overwriting a live
-    # sprint would lose in-flight state.
+    # After /gaia-sprint-close the live yaml persists with `status: closed`
+    # (the close ceremony archives a COPY, it does not remove the live file).
+    # The next sprint's `init` previously hard-refused on that residual,
+    # forcing a manual `rm sprint-status.yaml` between sprints. A CLOSED
+    # predecessor is a sanctioned hand-off point: re-seed over it (the closed
+    # state is already preserved in sprint-archive/). Any OTHER existing status
+    # (planned/active/review) is still refused — overwriting a live sprint
+    # would lose in-flight state.
     local existing_status
     existing_status="$(_yaml_sprint_status "$yaml" 2>/dev/null || true)"
     if [ "$existing_status" = "closed" ]; then
       printf '%s: init: re-seeding over closed predecessor sprint (%s, status=closed) — prior state preserved in sprint-archive/\n' \
         "$SCRIPT_NAME" "$yaml" >&2
     else
-      die "init: $yaml already exists (status=${existing_status:-unknown}) — refusing to overwrite a non-closed sprint (close it first via /gaia-sprint-close, or edit sprint-status.yaml / transition directly)"
+      die "init: $yaml already exists (status=${existing_status:-unknown}) — refusing to overwrite a non-closed sprint (close it first via /gaia-sprint-close)"
     fi
   fi
   mkdir -p "$(dirname "$yaml")"
@@ -2619,13 +2564,10 @@ cmd_init() {
                 date -u -j -f '%Y-%m-%d' -v +"${sprint_length}d" "$start_date" +%Y-%m-%d 2>/dev/null || \
                 printf '')"
   fi
-  # E107-S1 / ADR-108: seed the canonical top-level `status:` field (read by
-  # _yaml_sprint_status + the transition writer + the dashboard). A fresh sprint
-  # starts in the new `planned` state (planned → active → review → closed); the
-  # planned → active edge is gated by the E107-S4 readiness gate when present.
-  # NB: the prior `state: active` line was a dead orphan that no consumer read —
-  # seeding `status: planned` is what actually makes the sprint planned AND
-  # transitionable (a status:-less seed could not be transitioned at all).
+  # Seed the canonical top-level `status:` field. A fresh sprint starts in the
+  # `planned` state (planned → active → review → closed). The `status: planned`
+  # seed is what makes the sprint transitionable (a status:-less seed could not
+  # be transitioned at all).
   {
     printf 'sprint_id: "%s"\n' "$sprint_id"
     printf 'status: planned\n'
@@ -2639,15 +2581,13 @@ cmd_init() {
   mv "$tmp" "$yaml"
   printf 'init: seeded %s for sprint %s\n' "$yaml" "$sprint_id"
 
-  # AF-2026-06-02-1 / Test16 F-L07 — emit a sprint-plan/{id}-plan.md stub
-  # so the documented sprint-plan layout (target:
-  # implementation-artifacts/sprint-plan/{id}-plan.md) is non-empty even when
-  # the operator drove sprint commit via direct `sprint-state.sh init`/`inject`
-  # rather than the /gaia-sprint-plan SKILL Step 7 LLM-write path. The stub
-  # carries the canonical frontmatter + a planning-intent body the LLM
-  # authoring path can overwrite with the richer narrative on the next
-  # /gaia-sprint-plan invocation. Idempotent: skip when the file already
-  # exists (preserves any LLM-enrichment work that has already happened).
+  # Emit a sprint-plan/{id}-plan.md stub so the documented sprint-plan layout
+  # is non-empty even when the operator drove sprint commit via direct
+  # `sprint-state.sh init`/`inject` rather than the /gaia-sprint-plan SKILL
+  # Step 7 LLM-write path. The stub carries the canonical frontmatter + a
+  # planning-intent body the LLM authoring path can overwrite with the richer
+  # narrative on the next /gaia-sprint-plan invocation. Idempotent: skip when
+  # the file already exists (preserves any LLM-enrichment work done already).
   _plan_dir="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}/sprint-plan"
   _plan_file="${_plan_dir}/${sprint_id}-plan.md"
   if [ ! -e "$_plan_file" ]; then
@@ -2677,7 +2617,7 @@ cmd_init() {
 }
 
 # cmd_get_goals — read goals[] from sprint-status.yaml and emit verbatim.
-# Backward-compat: missing goals: key → empty stdout, exit 0.
+# Backward-compatible: missing goals: key → empty stdout, exit 0.
 cmd_get_goals() {
   local sprint_id="$1"
   local yaml
@@ -2699,7 +2639,7 @@ cmd_get_goals() {
 }
 
 # cmd_set_goals — REPLACE the goals: list with pipe-delimited goals.
-# 280-char limit per FR-485 AC6.
+# Each goal is capped at 280 chars.
 cmd_set_goals() {
   local sprint_id="$1" goals_str="$2"
   local yaml
@@ -2712,7 +2652,7 @@ cmd_set_goals() {
   for g in $goals_str; do
     local len="${#g}"
     if [ "$len" -lt 1 ] || [ "$len" -gt 280 ]; then
-      die "set-goals: goal length $len exceeds 280-char limit (FR-485 AC6): $g"
+      die "set-goals: goal length $len exceeds 280-char limit: $g"
     fi
   done
   IFS=$' \t\n'
@@ -2740,12 +2680,9 @@ i = 0
 replaced = False
 while i < len(lines):
     line = lines[i]
-    # AF-2026-05-22-9 Bug-9: also match the empty-list seed form
-    # `goals: []`. Previously the regex was `^goals:\s*$`, which did NOT
-    # match `goals: []`, leaving the seed line in place and appending a
-    # second `goals:` block on every set-goals invocation. The expanded
-    # match accepts either an empty-list inline form OR an end-of-line
-    # form followed by indented `- ...` items.
+    # Also match the empty-list seed form `goals: []`. The match accepts
+    # either an empty-list inline form OR an end-of-line form followed by
+    # indented `- ...` items.
     if not replaced and re.match(r'^goals:\s*(\[\s*\]\s*)?$', line):
         # Skip the existing block: the goals: line + every following `  - ...` line
         i += 1
@@ -2758,9 +2695,7 @@ while i < len(lines):
     out.append(line)
     i += 1
 if not replaced:
-    # No existing goals: key. Insert before the first top-level non-comment
-    # key (preserving frontmatter ordering). Conservative: insert before
-    # stories: if present, else append.
+    # No existing goals: key. Insert before stories: if present, else append.
     new_out = []
     inserted = False
     for line in out:
@@ -2777,15 +2712,14 @@ PY
 }
 
 # cmd_update_goals — alias for set-goals (REPLACES, does not append).
-# Story AC2 makes this explicit so callers don't assume append semantics.
 cmd_update_goals() {
   cmd_set_goals "$@"
 }
 
-# cmd_set_shape — E93-S6. Set the optional `sprint_shape:` field on
-# sprint-status.yaml. Enum values: `thrust` (default; not normally written —
-# absence implies thrust) or `completion-pass`. Used by the rubric evaluator
-# to scale the sgr-velocity-003 incidental-goal floor.
+# cmd_set_shape — Set the optional `sprint_shape:` field on sprint-status.yaml.
+# Enum values: `thrust` (default; not normally written — absence implies thrust)
+# or `completion-pass`. Used by the rubric evaluator to scale the
+# incidental-goal floor.
 cmd_set_shape() {
   local sprint_id="$1" shape="$2"
   local yaml
@@ -2795,8 +2729,8 @@ cmd_set_shape() {
     thrust|completion-pass) ;;
     *) die "sprint_shape must be one of: thrust, completion-pass — got: $shape" ;;
   esac
-  # ADR-095 boundary-write pattern: write to a sibling tempfile, then mv into
-  # place atomically. Closes the crash-safety gap on direct truncate+write.
+  # Boundary-write pattern: write to a sibling tempfile, then mv into place
+  # atomically. Closes the crash-safety gap on direct truncate+write.
   local tmp
   tmp=$(mktemp "${yaml}.tmp.XXXXXX")
   python3 - "$yaml" "$tmp" "$shape" <<'PY'
@@ -2840,9 +2774,8 @@ PY
 _yaml_sprint_status() {
   local yaml="$1"
   # Strip leading `status:` prefix, trailing whitespace, AND surrounding
-  # double/single quotes (per E93 manual-test ISSUE-2 — quoted YAML values
-  # like `status: "active"` previously returned the literal `"active"` and
-  # silently failed sprint-level transition case-match at line ~2451).
+  # double/single quotes — quoted YAML values like `status: "active"` must
+  # return `active`, not `"active"`, to avoid silent case-match failures.
   awk '/^status:[[:space:]]*/ {
     sub(/^status:[[:space:]]*/, "");
     sub(/[[:space:]]+$/, "");
@@ -2866,8 +2799,7 @@ _yaml_all_stories_done() {
   ' "$yaml"
 }
 
-# cmd_transition_sprint — sprint-level state-machine transitions per
-# ADR-108 D1. Edges:
+# cmd_transition_sprint — sprint-level state-machine transitions. Edges:
 #   active → review        (gated on all-stories-done)
 #   review → closed
 #   review → correction
@@ -2882,9 +2814,8 @@ cmd_transition_sprint() {
   current="$(_yaml_sprint_status "$yaml")"
   [ -n "$current" ] || die "transition --sprint: cannot read current status from $yaml"
 
-  # Validate edge per ADR-108 D1. E107-S1 adds the sprint-level `planned` state
-  # before `active` (planned → active → review → closed); the planned → active
-  # edge is unconditional here — E107-S4 layers the readiness gate on top.
+  # Validate edge. Edges: planned → active → review → closed; the
+  # planned → active edge is unconditional here.
   local legal=0
   case "${current}→${target}" in
     "planned→active"|"active→review"|"review→closed"|"review→correction"|"correction→active")
@@ -2895,21 +2826,14 @@ cmd_transition_sprint() {
     return 1
   fi
 
-  # Gate: review → closed requires a Val sentinel proving /gaia-sprint-review ran
-  # AF-2026-05-31-3 / Test14 F-13 — the /gaia-sprint-close SKILL.md Step 3a
-  # documents that closing a `review`-status sprint MUST verify the sprint-
-  # review Val sentinel (either the E83 dispatch sentinel
-  # `sprint-review-{id}-val-dispatched.json` OR the E87 envelope sentinel
-  # `val-envelope-<sha>.json` keyed off the sprint id), and REFUSE on a
-  # missing sentinel with "run /gaia-sprint-review first". The SKILL.md
-  # documented the gate but the edge here had no enforcement — so a
-  # `review`-status sprint with NO sprint-review ever run closed cleanly.
-  # Fold the check directly into the transition primitive so any caller
-  # (close.sh, direct CLI, ad-hoc scripts) is refused uniformly. Escape
-  # hatch: `GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL=1` for the
-  # documented /gaia-correct-course bypass + the UNVERIFIED-bypass path
-  # in /gaia-sprint-review Step 8 (which writes its own justification
-  # block; the operator sets the env var when invoking close).
+  # Gate: review → closed requires a Val sentinel proving /gaia-sprint-review ran.
+  # Closing a `review`-status sprint MUST verify the sprint-review Val sentinel
+  # (either the dispatch sentinel `sprint-review-{id}-val-dispatched.json` OR
+  # the envelope sentinel `val-envelope-<sha>.json` keyed off the sprint id),
+  # and REFUSE with "run /gaia-sprint-review first" on a missing sentinel.
+  # This check is folded into the transition primitive so any caller is refused
+  # uniformly. Escape hatch: `GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL=1`
+  # for the documented /gaia-correct-course bypass.
   if [ "$current" = "review" ] && [ "$target" = "closed" ] \
      && [ "${GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL:-0}" != "1" ]; then
     local _ckpt_dir="${CLAUDE_PROJECT_ROOT:-.}/.gaia/memory/checkpoints"
@@ -2970,10 +2894,9 @@ cmd_transition_sprint() {
     fi
   fi
 
-  # Write new status — atomic rewrite via mktemp → awk → mv, matching the
-  # E64-S5 pattern (register in _GAIA_TMP_PATHS for trap-based cleanup,
-  # fallback to mktemp -t when sibling template is rejected on stricter
-  # GNU mktemp implementations).
+  # Write new status — atomic rewrite via mktemp → awk → mv. Register in
+  # _GAIA_TMP_PATHS for trap-based cleanup; fallback to mktemp -t when the
+  # sibling template is rejected on stricter GNU mktemp implementations.
   local tmp
   tmp=$(mktemp "${yaml}.tmp.XXXXXX" 2>/dev/null || mktemp -t sprint-state-yaml.XXXXXX)
   _GAIA_TMP_PATHS+=("$tmp")
@@ -2994,9 +2917,8 @@ cmd_transition_sprint() {
   _GAIA_TMP_PATHS[$_tmp_idx]=""
 
   # Emit a sprint-level lifecycle event directly via lifecycle-event.sh.
-  # emit_lifecycle_event() helper above is story-scoped (expects 3 args:
-  # story_key, from, to) — sprint-level transitions need a different
-  # payload shape so we call the helper script directly.
+  # The emit_lifecycle_event() helper is story-scoped — sprint-level
+  # transitions need a different payload shape so we call the helper directly.
   local lifecycle_sh="${SPRINT_STATE_SCRIPT_DIR}/lifecycle-event.sh"
   if [ -x "$lifecycle_sh" ]; then
     local data
@@ -3010,7 +2932,7 @@ cmd_transition_sprint() {
 }
 
 # cmd_set_review_justification — write review_justification: block from
-# a yaml payload file. Schema validation per FR-487 / AI-5 spec.
+# a yaml payload file.
 cmd_set_review_justification() {
   local sprint_id="$1" file="$2"
   local yaml
@@ -3030,17 +2952,16 @@ required = {
     'qualifying_ratio': r'^qualifying_ratio:\s*0\.[8-9]\d*|^qualifying_ratio:\s*1(\.0+)?\s*$',
     'explanation': r'^explanation:\s*',
 }
-SCHEMA_DOC = 'docs/planning-artifacts/sprint-review-unverifiable-criteria.md'
 for k, pat in required.items():
     if not re.search(pat, text, re.MULTILINE):
-        sys.stderr.write(f'set-review-justification: schema violation — missing or invalid {k} (see {SCHEMA_DOC} for the canonical schema)\n')
+        sys.stderr.write(f'set-review-justification: schema violation — missing or invalid {k}\n')
         sys.exit(1)
 # Explanation length 200-1000 chars (heuristic: block-scalar body)
 m = re.search(r'explanation:\s*\|?\s*\n((?:\s+.+\n)+)', text)
 if m:
     body = ''.join(l.lstrip() for l in m.group(1).splitlines() if l.strip())
     if len(body) < 200 or len(body) > 1000:
-        sys.stderr.write(f'set-review-justification: schema violation — explanation length {len(body)} not in [200, 1000] (see {SCHEMA_DOC})\n')
+        sys.stderr.write(f'set-review-justification: schema violation — explanation length {len(body)} not in [200, 1000]\n')
         sys.exit(1)
 sys.exit(0)
 PY
@@ -3076,20 +2997,19 @@ PY
 }
 
 # ============================================================
-# AF-2026-05-30-4 F-15 — set-story-sprint
+# set-story-sprint
 # ============================================================
 #
 # Bind a pre-materialized backlog story's `sprint_id:` to a target sprint
 # when the story file frontmatter currently carries `sprint_id: null`.
 #
-# Closes the chicken-and-egg gap surfaced in Test11 F-15: a story
-# materialized via plain `/gaia-create-story` (not `--for-sprint`) lands with
-# `sprint_id: null`. The subsequent `sprint-state.sh inject` then refuses
-# with `sprint-id mismatch ... refusing to write` because no listed verb
-# binds sprint_id without going through the `--for-sprint` materialization
-# path. This verb is the sanctioned binder: it rewrites ONLY the
-# `sprint_id:` line in the story file's frontmatter (null → "<sprint>"),
-# atomically (mktemp + mv), under a per-story flock.
+# A story materialized via plain `/gaia-create-story` (not `--for-sprint`)
+# lands with `sprint_id: null`. The subsequent `sprint-state.sh inject` then
+# refuses with `sprint-id mismatch ... refusing to write` because no listed
+# verb binds sprint_id without going through the `--for-sprint` path. This
+# verb is the sanctioned binder: it rewrites ONLY the `sprint_id:` line in
+# the story file's frontmatter (null → "<sprint>"), atomically (mktemp + mv),
+# under a per-story flock.
 #
 # Refuses (exit 1):
 #   - story file's current sprint_id is already a non-null value that
@@ -3101,7 +3021,7 @@ PY
 # Idempotent — re-running with a story already bound to the target sprint
 # is a no-op (exit 0).
 #
-# Leading-underscore name keeps this off the NFR-052 public-function map.
+# Leading-underscore name marks this as an internal helper.
 _cmd_set_story_sprint() {
   local story_key="$1" target_sprint="$2"
   [ -n "$story_key" ] || die "set-story-sprint: --story is required"
@@ -3231,11 +3151,11 @@ main() {
   local lint_format="json" lint_sprint_id=""
   local override_item_ids="" override_user="" override_reason=""
   local rollover_from="" rollover_keys=""
-  # E93-S1: sprint-level subcommands (get-goals / set-goals / update-goals /
+  # Sprint-level subcommands (get-goals / set-goals / update-goals /
   # set-review-justification + transition --sprint).
-  # E93-S6: set-shape subcommand for sprint_shape modifier (thrust | completion-pass).
+  # set-shape subcommand for sprint_shape modifier (thrust | completion-pass).
   local goals_arg="" justification_file="" shape_arg=""
-  # AF-2026-05-31-1 / Test12 F-15: optional init-only fields.
+  # Optional init-only fields.
   local init_start_date="" init_end_date="" init_capacity_points="" init_sprint_length=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -3287,34 +3207,33 @@ main() {
       --keys=*)
         rollover_keys="${1#--keys=}"; shift ;;
       --sprint)
-        # E93-S1: --sprint alias for --sprint-id on sprint-level
-        # subcommands (get-goals / set-goals / update-goals /
-        # set-review-justification / transition --sprint).
+        # --sprint is an alias for --sprint-id on sprint-level subcommands
+        # (get-goals / set-goals / update-goals / set-review-justification /
+        # transition --sprint).
         [ $# -ge 2 ] || die "--sprint requires a value"
         reconcile_sprint_id="$2"; shift 2 ;;
       --sprint=*)
         reconcile_sprint_id="${1#--sprint=}"; shift ;;
       --goals)
-        # E93-S1: pipe-delimited goal list for set-goals / update-goals.
+        # Pipe-delimited goal list for set-goals / update-goals.
         [ $# -ge 2 ] || die "--goals requires a value"
         goals_arg="$2"; shift 2 ;;
       --goals=*)
         goals_arg="${1#--goals=}"; shift ;;
       --file)
-        # E93-S1: review-justification yaml payload path for
-        # set-review-justification.
+        # Review-justification yaml payload path for set-review-justification.
         [ $# -ge 2 ] || die "--file requires a value"
         justification_file="$2"; shift 2 ;;
       --file=*)
         justification_file="${1#--file=}"; shift ;;
       --shape)
-        # E93-S6: sprint_shape enum value for set-shape (thrust | completion-pass).
+        # sprint_shape enum value for set-shape (thrust | completion-pass).
         [ $# -ge 2 ] || die "--shape requires a value"
         shape_arg="$2"; shift 2 ;;
       --shape=*)
         shape_arg="${1#--shape=}"; shift ;;
       --start-date)
-        # AF-2026-05-31-1 / Test12 F-15: optional sprint metadata.
+        # Optional sprint metadata.
         [ $# -ge 2 ] || die "--start-date requires a value"
         init_start_date="$2"; shift 2 ;;
       --start-date=*)
@@ -3338,10 +3257,9 @@ main() {
         usage
         exit 0 ;;
       --points|--points=*)
-        # E57-S15: --points is a common-but-wrong attempt. Emit a
-        # helpful redirect instead of the bare "unknown flag" rejection.
-        # total_points is accumulated from the injected story's
-        # frontmatter `points:` field — no CLI flag needed.
+        # --points is a common-but-wrong attempt. Emit a helpful redirect
+        # instead of the bare "unknown flag" rejection. total_points is
+        # accumulated from the injected story's frontmatter `points:` field.
         die "--points is not a valid flag for inject. total_points is accumulated from the injected story's frontmatter points: field. See --help for the inject contract." ;;
       *)
         die "unknown flag: $1" ;;
@@ -3355,14 +3273,14 @@ main() {
   fi
   resolve_paths
 
-  # ---------- Startup orphan-tmp sweep (E64-S6) ----------
+  # ---------- Startup orphan-tmp sweep ----------
   #
   # Garbage-collect *.tmp.?????? files older than 60 minutes under
   # ${IMPLEMENTATION_ARTIFACTS}. Catches orphans left by kill -9 / OOM /
-  # power loss (which bypass E64-S5's EXIT/INT/TERM trap). Bounded to the
-  # documented allowlist (sprint-status.yaml directory). Never /tmp, never
-  # $HOME, never ${PROJECT_PATH} root. Set GAIA_SKIP_ORPHAN_SWEEP=1 to
-  # disable. Errors swallowed; zero stdout (silent GC).
+  # power loss (which bypass the EXIT/INT/TERM trap). Bounded to the
+  # allowlist (sprint-status.yaml directory). Never /tmp, never $HOME, never
+  # ${PROJECT_PATH} root. Set GAIA_SKIP_ORPHAN_SWEEP=1 to disable.
+  # Errors swallowed; zero stdout (silent GC).
   if [ "${GAIA_SKIP_ORPHAN_SWEEP:-0}" != "1" ]; then
     find "${IMPLEMENTATION_ARTIFACTS}" \
       -maxdepth 2 -name '*.tmp.??????' -mmin +60 -delete 2>/dev/null || true
@@ -3370,18 +3288,12 @@ main() {
 
   case "$subcmd" in
     init)
-      # AF-2026-05-22-9 Bug-8 — bootstrap a fresh sprint-status.yaml.
+      # Bootstrap a fresh sprint-status.yaml.
       [ -n "$reconcile_sprint_id" ] || die "init requires --sprint-id <id>"
-      # AF-2026-05-31-1 / Test12 F-15 — forward optional date / capacity
-      # / length flags. Each is only forwarded when non-empty so the
-      # pre-AF-31-1 seed shape is preserved on zero-flag invocations
-      # (tests scrape the yaml verbatim).
-      # AF-2026-05-31-2 / Test13 F-24 — bash 3.2 + `set -u` rejects the
-      # `"${_init_args[@]}"` expansion when the array is empty (it treats
-      # the deref as an unbound variable). My AF-31-1 F-15 implementation
-      # tripped that wall: `sprint-state.sh init --sprint-id X` with zero
-      # optional flags crashed at this line. Branch on length so the empty-
-      # array case calls cmd_init without trailing args at all.
+      # Forward optional date / capacity / length flags only when non-empty,
+      # so the minimal seed shape is preserved on zero-flag invocations.
+      # Branch on array length: bash 3.2 + `set -u` rejects an empty-array
+      # expansion, so the empty case calls cmd_init without trailing args.
       _init_args=()
       [ -n "$init_start_date" ]      && _init_args+=(--start-date "$init_start_date")
       [ -n "$init_end_date" ]        && _init_args+=(--end-date "$init_end_date")
@@ -3399,10 +3311,9 @@ main() {
       [ -n "$story_key" ] || die "validate requires --story <key>"
       cmd_validate "$story_key" ;;
     transition)
-      # E93-S1: transition supports both story-level (--story) and
-      # sprint-level (--sprint) edges. Sprint-level edges are the
-      # ADR-108 D1 vocabulary: active↔correction, active→review,
-      # review→closed, review→correction.
+      # Supports both story-level (--story) and sprint-level (--sprint) edges.
+      # Sprint-level edges: active↔correction, active→review, review→closed,
+      # review→correction.
       if [ -n "$reconcile_sprint_id" ] && [ -z "$story_key" ]; then
         [ -n "$to_state" ] || die "transition --sprint requires --to <state>"
         cmd_transition_sprint "$reconcile_sprint_id" "$to_state"
@@ -3432,16 +3343,16 @@ main() {
       [ -n "$story_key" ] || die "inject requires --story <key>"
       cmd_inject "$story_key" "${reconcile_sprint_id:-}" ;;
     set-story-sprint)
-      # AF-2026-05-30-4 F-15 — bind a pre-materialized backlog story's
-      # sprint_id (currently null) to the active sprint without going
-      # through `/gaia-create-story --for-sprint` materialization.
+      # Bind a pre-materialized backlog story's sprint_id (currently null)
+      # to the active sprint without going through `--for-sprint`
+      # materialization.
       [ -n "$story_key" ] || die "set-story-sprint requires --story <key>"
       [ -n "$reconcile_sprint_id" ] || die "set-story-sprint requires --sprint <id>"
       _cmd_set_story_sprint "$story_key" "$reconcile_sprint_id" ;;
     reconcile)
       # reconcile_sprint_id currently scopes to the active sprint implicitly
-      # since the yaml holds one sprint at a time (ADR-055 §10.29.1 default).
-      # Accepted for forward-compatibility but not yet consulted.
+      # since the yaml holds one sprint at a time. Accepted for
+      # forward-compatibility but not yet consulted.
       : "${reconcile_sprint_id:=}"
       cmd_reconcile "$reconcile_dry_run" ;;
     lint-dependencies)
@@ -3455,22 +3366,18 @@ main() {
       cmd_rollover "$rollover_from" "$to_state" "$rollover_keys" ;;
   esac
 
-  # AF-2026-05-31-3 / Test14 F-16 — implementation-artifacts/ mirror.
-  # Target layout co-locates sprint-status.yaml with sprint-plan/,
-  # sprint-archive/, retrospective/ under implementation-artifacts/. The
-  # canonical write home stays at .gaia/state/ (ADR-095 boundary writer
-  # contract); after every successful mutation we additionally mirror
-  # the file to implementation-artifacts/sprint-status.yaml so the
-  # target layout has it too. The mirror is best-effort (copy errors
-  # are non-fatal): the canonical write is the source of truth.
+  # Implementation-artifacts/ mirror. Target layout co-locates
+  # sprint-status.yaml with sprint-plan/, sprint-archive/, retrospective/
+  # under implementation-artifacts/. The canonical write home stays at
+  # .gaia/state/; after every successful mutation we additionally mirror
+  # the file to implementation-artifacts/sprint-status.yaml so the target
+  # layout has it too. The mirror is best-effort (copy errors are non-fatal):
+  # the canonical write is the source of truth.
   #
-  # IMPORTANT — non-creating mirror semantics: we only copy when the
-  # implementation-artifacts/ dir ALREADY exists. Creating it on every
-  # state mutation would shadow legacy fixtures (e.g. tests that seed
-  # under `docs/implementation-artifacts/`) and confuse validate-locate
-  # glob resolution in any project that hasn't migrated to the canonical
-  # tree. Projects on the canonical layout already have the directory;
-  # legacy / test projects don't, and the mirror cleanly no-ops for them.
+  # Non-creating mirror semantics: we only copy when the
+  # implementation-artifacts/ dir ALREADY exists. Creating it on every state
+  # mutation would shadow legacy fixtures and confuse validate-locate glob
+  # resolution in any project that hasn't migrated to the canonical tree.
   case "$subcmd" in
     init|transition|inject|reconcile|rollover|set-story-sprint|set-goals|update-goals|set-review-justification|set-shape|record-escalation-override)
       _canonical_yaml="$(_resolve_active_yaml)"

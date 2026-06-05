@@ -40,7 +40,7 @@ _seed_legacy() {
   run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile --dry-run
   [ "$status" -eq 0 ]
   echo "$output" | grep -F "stale legacy sprint-status.yaml"
-  echo "$output" | grep -F "issue #1109"
+  echo "$output" | grep -F "remove it to avoid divergence"
 }
 
 @test "issue #1109: WARNING proves the canonical .gaia/state/ copy won (rung-1 branch)" {

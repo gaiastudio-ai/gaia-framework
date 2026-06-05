@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 5 planning skill setup (E28-S41, brief §Cluster 5 / P5-S2)
+# setup.sh — planning skill setup for gaia-edit-prd
 #
-# Mechanical extension of the Cluster 4 reference implementation authored
-# under E28-S35 (gaia-brainstorm/scripts/setup.sh). Adds edit-prd-specific
+# Mechanical extension of the brainstorm reference implementation
+# (gaia-brainstorm/scripts/setup.sh). Adds edit-prd-specific
 # prereq gates:
 #   - prd.md must exist in planning-artifacts (validate-gate file_exists)
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (prd.md existence)
 #   3. Load the checkpoint state for this workflow
@@ -64,21 +64,21 @@ else
 fi
 
 # ---------- 2b. Guard: prd.md must already exist ----------
-# AF-2026-05-21-12 three-tier path resolution (mirrors AF-21-10's flat elif chain):
+# Three-tier path resolution:
 #   Tier 1 — PRD_PATH env-var override wins when set.
-#   Tier 2 — positive pre-ADR-111 evidence (legacy file exists AND canonical
+#   Tier 2 — positive pre-canonical evidence (legacy file exists AND canonical
 #            dir does NOT) → use legacy docs/planning-artifacts/prd.md.
-#   Tier 3 — canonical default: .gaia/artifacts/planning-artifacts/prd.md per ADR-111.
-# AF-2026-05-29-2 / Test09 F-20: prefer CLAUDE_PROJECT_ROOT (the framework-
-# standard harness var) and GAIA_PROJECT_ROOT (project-specific) BEFORE the
-# $SKILL_DIR/../../../../.. walk-up. On a marketplace/cache-installed plugin
+#   Tier 3 — canonical default: .gaia/artifacts/planning-artifacts/prd.md.
+# Prefer CLAUDE_PROJECT_ROOT (the framework-standard harness var) and
+# GAIA_PROJECT_ROOT (project-specific) BEFORE the $SKILL_DIR/../../../../..
+# walk-up. On a marketplace/cache-installed plugin
 # (~/.claude/plugins/cache/<mp>/gaia/<ver>/skills/<skill>/scripts/), walking
 # 5 levels up lands in `~/.claude/plugins/cache` — NOT the user's project —
 # and every subsequent .gaia/ artifact lookup misses. Honoring the harness-
 # provided env vars first restores the project anchor that callers actually
 # rely on. The walk-up remains as the final fallback for in-source-tree dev
 # (gaia-framework/ checkout) where neither env var is set.
-# AF-2026-05-30-4 F-11 extension: when none of the env-var anchors are set,
+# Extension: when none of the env-var anchors are set,
 # try `resolve-config.sh --field project_root` BEFORE the walk-up fallback.
 # resolve-config locates the canonical .gaia/config/project-config.yaml (it
 # searches upward from $PWD), so when the user is inside their project and

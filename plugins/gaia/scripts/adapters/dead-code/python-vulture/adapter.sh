@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# adapters/dead-code/python-vulture/adapter.sh — E70-S8 Python dead-code adapter.
+# adapters/dead-code/python-vulture/adapter.sh — Python dead-code adapter.
 #
 # Wraps `vulture --min-confidence 80 <root>`. vulture is CONFIDENCE-scored (not a
 # binary verdict): the per-stack qualifier carries the confidence verbatim —
-# "<line>:<symbol>@<confidence>". Per-stack precision is the design intent (NFR-87);
+# "<line>:<symbol>@<confidence>". Per-stack precision is the design intent;
 # we do NOT normalize vulture's confidence onto a synthesized cross-stack scale.
 #
 # Emits TWO outputs:
-#   - flat JSON  -> <out>/dead-code/python-vulture.json  (AC2/AC4)
-#   - SARIF      -> <out>/sarif/python-vulture.sarif      (.properties.symbol; dedup, Val F1)
+#   - flat JSON  -> <out>/dead-code/python-vulture.json
+#   - SARIF      -> <out>/sarif/python-vulture.sarif      (.properties.symbol; dedup)
 # file_path = repo-relative path from vulture output (universal JOIN key).
 #
 # vulture's own --min-confidence 80 filters sub-threshold findings BEFORE we parse,
 # so the adapter emits exactly what vulture surfaces (the 70% case never appears).
 #
-# Flag-gated (ADR-078): deterministic_tools master + deadcode_python_enabled per-tool.
-# Graceful degrade (NFR-84): vulture absent OR no *.py -> WARN/INFO + exit 0.
+# Flag-gated: deterministic_tools master + deadcode_python_enabled per-tool.
+# Graceful degrade: vulture absent OR no *.py -> WARN/INFO + exit 0.
 #
 # Test seams (tests/adapters/dead-code-python.bats):
 #   PY_PROJECT_ROOT     repo to scan
@@ -44,13 +44,12 @@ default_out() {
 }
 OUT="${PY_OUT_DIR:-$(default_out)}"
 
-# AF-2026-05-31-2 / Test13 F-18: route vulture through the docker runner
-# when `brownfield.tools.runner: docker` is selected, so the python
-# dead-code scan ALSO benefits from the bundled `gaia-tools` image. The
-# prior implementation gated on host `command -v vulture` regardless of
-# runner mode, so the python scan SKIPPED on a docker-runner host even
-# when vulture was in the image. Mirrors the grype adapter's docker-aware
-# branch (scripts/adapters/grype/adapter.sh).
+# Route vulture through the docker runner when `brownfield.tools.runner: docker`
+# is selected, so the python dead-code scan ALSO benefits from the bundled
+# `gaia-tools` image. The prior implementation gated on host
+# `command -v vulture` regardless of runner mode, so the python scan SKIPPED
+# on a docker-runner host even when vulture was in the image. Mirrors the
+# grype adapter's docker-aware branch (scripts/adapters/grype/adapter.sh).
 _VULTURE_DOCKER_RUNNER=""
 _VULTURE_DOCKER_RUNNER_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../" && pwd)/lib/docker-runner.sh"
 if [ -f "$_VULTURE_DOCKER_RUNNER_LIB" ]; then
@@ -77,12 +76,11 @@ raw=""
 if [ -n "${PY_VULTURE_FIXTURE:-}" ] && [ -f "$PY_VULTURE_FIXTURE" ]; then
   raw="$(cat "$PY_VULTURE_FIXTURE")"
 elif [ "$_VULTURE_DOCKER_RUNNER" = "docker" ]; then
-  # AF-2026-05-31-2 / Test13 F-18: docker dispatch. The bundled image
-  # mounts the project at /workspace; pass that path (not the host
-  # $ROOT) to vulture. The runner exits 0 for the find-no-dead-code
-  # case and non-zero when dead code is found — tolerate both with
-  # `|| true` since the parser downstream interprets the EMPTY stream
-  # as "no findings".
+  # Docker dispatch. The bundled image mounts the project at /workspace;
+  # pass that path (not the host $ROOT) to vulture. The runner exits 0
+  # for the find-no-dead-code case and non-zero when dead code is found —
+  # tolerate both with `|| true` since the parser downstream interprets
+  # the EMPTY stream as "no findings".
   ADAPTER_OUT_DIR="${ADAPTER_OUT_DIR:-$OUT}" \
     raw="$( docker_runner_dispatch vulture --min-confidence 80 /workspace 2>/dev/null || true )"
 else

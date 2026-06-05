@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# adapters/markdownlint/run.sh — FR-415 + ADR-078 contract entry.
+# adapters/markdownlint/run.sh — contract entry.
 #
 # Runs `markdownlint-cli2` (preferred) or `markdownlint` (fallback) against the
-# .md files listed via --input. Honours the ADR-078 run.sh flag-form interface:
+# .md files listed via --input. Honours the run.sh flag-form interface:
 #
 #   run.sh --input <file-list> [--config <path>] [--output <path>]
 #          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -39,7 +39,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/markdownlint/run.sh — FR-415 + ADR-078 contract.
+adapters/markdownlint/run.sh — contract.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]

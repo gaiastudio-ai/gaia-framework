@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# validate-artifact-schema.sh — shared JSON-Schema validator primitive (E108-S5,
-# NFR-94, ADR-129).
+# validate-artifact-schema.sh — shared JSON-Schema validator primitive.
 #
 # The single source of truth for "validate an artifact instance against a JSON
-# Schema" used by the four E108 sibling stories (E108-S1..S4) and every future
-# artifact-type schema. Follows the scripts/lib/heading-present.sh shared-lib
-# precedent (source guard + single function, sourceable-not-executable) and the
-# scripts/lib/schema-lookup.sh CLI/exit-code-contract precedent.
+# Schema" used by all artifact-type schema consumers. Follows the
+# scripts/lib/heading-present.sh shared-lib precedent (source guard + single
+# function, sourceable-not-executable) and the scripts/lib/schema-lookup.sh
+# CLI/exit-code-contract precedent.
 #
 # Validator backend cascade (per feedback_no_per_machine_settings_fixes — the
 # helper MUST NOT hard-fail a story's bats on a host that lacks a validator):

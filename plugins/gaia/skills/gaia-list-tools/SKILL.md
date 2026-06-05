@@ -12,7 +12,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are reporting the current adapter inventory for the active project. The script `list-adapters.sh` is the single source of truth (per ADR-042, ADR-078). Your job is to invoke it, surface its output, and answer follow-up questions about specific adapters by routing the user to `/gaia-tool-info`.
+You are reporting the current adapter inventory for the active project. The script `list-adapters.sh` is the single source of truth. Your job is to invoke it, surface its output, and answer follow-up questions about specific adapters by routing the user to `/gaia-tool-info`.
 
 ## Critical Rules
 
@@ -43,4 +43,4 @@ You are reporting the current adapter inventory for the active project. The scri
 
 - The script honours `BUILTIN_ADAPTERS_DIR` and `CUSTOM_ADAPTERS_DIR` overrides for testing. Do NOT set these in production.
 - Availability slot states map to: `available` (probe passed), `unavailable` (provider binary missing), `degraded` (probe ran but returned errored). When `GAIA_LIST_TOOLS_SKIP_PROBE=1` the slot reads `unknown` — used by tests to avoid PATH dependencies.
-- Custom-over-built-in precedence (FR-RSV2-10): a `custom/adapters/{name}/` overrides the built-in `scripts/adapters/{name}/`. The built-in row is marked `[shadowed]` so the precedence is auditable from a single table view.
+- Custom-over-built-in precedence: a `custom/adapters/{name}/` overrides the built-in `scripts/adapters/{name}/`. The built-in row is marked `[shadowed]` so the precedence is auditable from a single table view.

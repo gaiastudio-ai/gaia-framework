@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# review-nudge.sh — Deterministic V1 progressive-nudge renderer (E58-S3)
+# review-nudge.sh — Deterministic V1 progressive-nudge renderer
 #
 # Reads the current Review Gate table for a story (via review-gate.sh status)
 # and prints the V1 three-part progressive nudge block:
@@ -20,24 +20,22 @@
 # downstream tooling and humans scanning a transcript can delimit the block
 # from surrounding orchestrator output.
 #
-# Refs: FR-RAR-3, AF-2026-04-28-7, NFR-RAR-1
-# Brief: .gaia/artifacts/planning-artifacts/epics-and-stories.md §E58-S3
-# Anchor ADRs: ADR-042 (scripts-over-LLM), ADR-050 (review-gate.sh ledger
-#              + canonical PASSED/FAILED/UNVERIFIED vocabulary),
-#              ADR-054 (review-gate-check composite operation).
+# Anchor notes: scripts-over-LLM policy; review-gate.sh ledger +
+#              canonical PASSED/FAILED/UNVERIFIED vocabulary;
+#              review-gate-check composite operation.
 #
 # Invocation contract:
 #
 #   review-nudge.sh --story <key>
 #   review-nudge.sh --help
 #
-# Advisory-only contract (AC4):
+# Advisory-only contract:
 #   Exit 0 unconditionally on every gate state — including malformed /
 #   unreadable / story-not-found. The block is informational; halting belongs
 #   to /gaia-dev-story Step 15, not the nudge block. The single exception is
-#   the story-key regex check (AC-EC2): a non-canonical story key is rejected
-#   with a non-zero exit BEFORE any read so a metachar-laden key cannot
-#   trigger any side effect.
+#   the story-key regex check: a non-canonical story key is rejected with a
+#   non-zero exit BEFORE any read so a metachar-laden key cannot trigger any
+#   side effect.
 #
 # Read-only guarantee:
 #   This script never writes to the story file, never creates tempfiles or
@@ -67,8 +65,8 @@ NUDGE_FENCE="--- Review Gate Nudge ---"
 
 # ---------- Canonical vocabulary ----------
 
-# Six canonical gate names in V1 row order. This order is locked by E58-S2
-# (review-summary-gen.sh) and the story template's Review Gate table; drift
+# Six canonical gate names in V1 row order. This order is locked by
+# review-summary-gen.sh and the story template's Review Gate table; drift
 # here desyncs the nudge from the summary file.
 CANONICAL_GATES=(
   "Code Review"
@@ -83,11 +81,9 @@ CANONICAL_GATES=(
 # set is treated as malformed → advisory fallback.
 CANONICAL_VERDICTS_REGEX='^(PASSED|FAILED|UNVERIFIED)$'
 
-# Story-key regex per AC-EC2 (shell-safety). Canonical production form is
+# Story-key regex (shell-safety). Canonical production form is
 # `E<digits>-S<digits>`. We additionally allow simple alphanumeric / dash
-# identifiers used by sibling tests (e.g., `E58-S1-FIXTURE` in
-# review-skip-check.bats, and `all-passed` / `any-failed` / `any-unverified`
-# in review-gate-check-wiring.bats) — these are safe identifiers (letters,
+# identifiers used by sibling tests — these are safe identifiers (letters,
 # digits, dash) and contain no shell metacharacters.
 #
 # The regex rejects shell metacharacters ($, (, ), `, ;, &, |, space, *, ?,
@@ -262,8 +258,7 @@ main() {
   elif [ "$n_failed" -gt 0 ]; then
     # ANY FAILED branch (FAILED dominates over UNVERIFIED).
     # Each failed-row line starts with "- FAILED: " so downstream parsers
-    # (e.g., review-gate-check-wiring.bats AC4 / TC-RAR-12) can grep for
-    # `^[[:space:]]*-?[[:space:]]*FAILED` to count failed rows.
+    # can grep for `^[[:space:]]*-?[[:space:]]*FAILED` to count failed rows.
     printf 'Failed gates:\n'
     for i in "${!verdicts[@]}"; do
       if [ "${verdicts[$i]}" = "FAILED" ]; then
@@ -272,9 +267,8 @@ main() {
     done
     printf 'Suggested next: /gaia-correct-course %s\n' "$STORY_KEY"
 
-    # MIXED state: also enumerate UNVERIFIED rows (so AC4 nudge-parity sees
-    # them) and append a single-line `Also unrun:` summary listing the
-    # per-gate commands.
+    # MIXED state: also enumerate UNVERIFIED rows and append a single-line
+    # `Also unrun:` summary listing the per-gate commands.
     if [ "$n_unverified" -gt 0 ]; then
       printf 'Unrun gates:\n'
       local -a unrun_cmds=()

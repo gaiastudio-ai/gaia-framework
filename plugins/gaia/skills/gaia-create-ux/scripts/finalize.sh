@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-create-ux skill finalize (E28-S43 + E42-S7)
+# finalize.sh — /gaia-create-ux skill finalize
 #
-# E42-S7 extends the original Cluster 5 finalize scaffolding with a
-# 26-item post-completion checklist (18 script-verifiable + 8
-# LLM-checkable) derived from the V1 /gaia-create-ux (create-ux-design)
-# checklist. See .gaia/artifacts/implementation-artifacts/E42-S7-* for the
-# V1 -> V2 mapping.
+# Extends the finalize scaffolding with a 26-item post-completion checklist
+# (18 script-verifiable + 8 LLM-checkable) derived from the V1
+# /gaia-create-ux (create-ux-design) checklist.
 #
-# Responsibilities (per brief §Cluster 5 + story E42-S7):
+# Responsibilities:
 #   1. Run the script-verifiable subset of the 26 V1 checklist items
 #      against the UX design artifact. Validation runs FIRST.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
@@ -15,12 +13,11 @@
 #   4. Emit a lifecycle event via lifecycle-event.sh.
 #
 # The observability side effects (3 + 4) MUST run on every invocation —
-# the checklist outcome never suppresses the checkpoint/event write
-# (matches E42-S1..S6 contract; story AC5).
+# the checklist outcome never suppresses the checkpoint/event write.
 #
 # Exit codes:
 #   0 — finalize succeeded; all 18 script-verifiable items PASS (or
-#       no artifact was requested — classic Cluster 5 behaviour).
+#       no artifact was requested — checklist skipped).
 #   1 — one or more script-verifiable checklist items FAIL; the
 #       AC4 "output file not found" violation; or a
 #       checkpoint/lifecycle-event failure. Failed item names are
@@ -36,9 +33,8 @@
 #                       exits non-zero. When unset, the script looks for
 #                       .gaia/artifacts/planning-artifacts/ux-design.md relative to
 #                       the current working directory. If neither is
-#                       present, the checklist run is skipped (classic
-#                       Cluster 5 behaviour — observability still runs,
-#                       exit 0).
+#                       present, the checklist run is skipped (observability
+#                       still runs, exit 0).
 
 set -euo pipefail
 LC_ALL=C
@@ -67,7 +63,7 @@ if [ -n "${UX_DESIGN_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$UX_DESIGN_ARTIFACT"
 else
-  # ADR-111 smart-fallback: .gaia/artifacts/ first, legacy docs/ second.
+  # Smart-fallback: .gaia/artifacts/ first, legacy docs/ second.
   if [ -f ".gaia/artifacts/planning-artifacts/ux-design.md" ]; then
     ARTIFACT=".gaia/artifacts/planning-artifacts/ux-design.md"
   elif [ -f "docs/planning-artifacts/ux-design.md" ]; then
@@ -98,13 +94,13 @@ item_check() {
 # heading_present <file> <heading-text>
 # Pass when an H2 heading whose body begins with the given text
 # (case-insensitive; trailing content tolerated) is present.
-# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
-# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
-# uniform, permissive regex accepting optional numbered+lettered outline
-# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
-# divergent inline copies, so the same heading passed one skill's check and
-# failed another's. Sourced via a $0-relative path so it works whether or not
-# this script defines PLUGIN_SCRIPTS_DIR.
+# heading_present() is now a single shared implementation
+# (plugins/gaia/scripts/lib/heading-present.sh) with one uniform, permissive
+# regex accepting optional numbered+lettered outline prefixes (11, 11b, 1.2.3).
+# Previously finalize.sh scripts carried divergent inline copies, so the same
+# heading passed one skill's check and failed another's. Sourced via a
+# $0-relative path so it works whether or not this script defines
+# PLUGIN_SCRIPTS_DIR.
 _GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
 if [ -r "$_GAIA_HEADING_LIB" ]; then
   # shellcheck source=/dev/null
@@ -200,11 +196,11 @@ fr_id_present() {
 # Section-body helpers — bind the heading pattern for each required body
 personas_body_nonempty()           { section_body_nonempty "$1" "[Pp]ersonas"; }
 ia_body_nonempty()                 { section_body_nonempty "$1" "[Ii]nformation[[:space:]]+[Aa]rchitecture"; }
-# AF-2026-05-27-8 / Test06 F-004: match the singular stem "Wireframe" so the
-# check accepts both the canonical "## Wireframes" and the template/agent-natural
-# "## 5. Wireframe Descriptions". Anchoring on "Wireframes" (plural) forced an
-# editorial rename. The trailing-context boundary is supplied by the heading/body
-# helpers, so "Wireframe" still won't match an unrelated word.
+# Match the singular stem "Wireframe" so the check accepts both the canonical
+# "## Wireframes" and the template/agent-natural "## 5. Wireframe Descriptions".
+# Anchoring on "Wireframes" (plural) forced an editorial rename. The
+# trailing-context boundary is supplied by the heading/body helpers, so
+# "Wireframe" still won't match an unrelated word.
 wireframes_body_nonempty()         { section_body_nonempty "$1" "[Ww]ireframe"; }
 interaction_body_nonempty()        { section_body_nonempty "$1" "[Ii]nteraction[[:space:]]+[Pp]atterns"; }
 accessibility_body_nonempty()      { section_body_nonempty "$1" "[Aa]ccessibility"; }
@@ -251,7 +247,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
     "$(heading_present "$ARTIFACT" "FR-to-Screen Mapping")"
 
   # Section-body sanity (SV-11..SV-15) — V1 verbatim anchor strings where
-  # applicable. SV-13 is the VCP-CHK-14 anchor ("Key screens described").
+  # applicable. SV-13 anchor: "Key screens described".
   item_check "SV-11" "Personas refined with scenarios" \
     "$(personas_body_nonempty "$ARTIFACT")"
   item_check "SV-12" "Sitemap defined" \
@@ -327,14 +323,14 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
-# helper itself logs warnings to stderr but never affects this script's
-# exit code. SKILL_NAME is resolved from the parent directory name so
-# the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
+# circuit to a no-op so the interactive prompt is preserved. Failure is
+# non-blocking — the auto-save helper itself logs warnings to stderr but
+# never affects this script's exit code. SKILL_NAME is resolved from the
+# parent directory name so the wire-in is identical across all Phase 1-3
+# finalize.sh files.
 AUTOSAVE_LIB="$PLUGIN_SCRIPTS_DIR/lib/auto-save-memory.sh"
 SKILL_NAME="$(basename "$(cd "$SCRIPT_DIR/.." && pwd)")"
 if [ -f "$AUTOSAVE_LIB" ]; then

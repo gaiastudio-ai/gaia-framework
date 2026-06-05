@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# classify-files.sh — deterministic performance-relevance classifier (E28-S108)
+# classify-files.sh — deterministic performance-relevance classifier
 #
 # Classifies a list of changed files as performance-relevant or not.
 # Performance-relevant: source code files that can contain DB queries, API
@@ -8,7 +8,7 @@
 # files.
 #
 # Implements the auto-pass fast path for the gaia-performance-review anytime
-# skill (ADR-042). When zero performance-relevant files are present, emits
+# skill. When zero performance-relevant files are present, emits
 # "PASSED (auto)" and exits 0 so the skill can short-circuit to verdict
 # without running full bottleneck analysis.
 #

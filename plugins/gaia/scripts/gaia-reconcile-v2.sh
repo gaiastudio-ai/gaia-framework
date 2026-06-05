@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# gaia-reconcile-v2.sh — v2-to-v2 reconciler for project-config.yaml (E85-S8).
-#
-# Story:  E85-S8
-# ADRs:   ADR-101 (v2-to-v2 reconciliation contract),
-#         ADR-100 (gaia-migrate.sh return-code semantics),
-#         ADR-098 (shared config-hydration.sh + flock contract),
-#         ADR-096 (config_phase state machine + schema_version),
-#         ADR-044 (YAML comment preservation).
+# gaia-reconcile-v2.sh — v2-to-v2 reconciler for project-config.yaml.
 #
 # Purpose
 # -------
@@ -14,13 +7,13 @@
 # `project-config.yaml` against the updated v2 schema and apply
 # forward-only, non-destructive reconciliation:
 #   - Add missing schema sections via the shared config-hydration helper.
-#   - Warn-and-keep retired sections (never delete; inject ADR-101 §3
-#     audit comment + emit stderr WARNING).
+#   - Warn-and-keep retired sections (never delete; inject audit comment
+#     + emit stderr WARNING).
 #   - Treat `config_phase` as read-only — only /gaia-init and hydration
-#     triggers (E85-S5, E85-S6) advance it; this reconciler only reads.
+#     triggers advance it; this reconciler only reads.
 #
-# Environment variables (AC16)
-# ----------------------------
+# Environment variables
+# ---------------------
 #   MODE          apply | dry-run     Execution mode (default: apply)
 #   PROJECT_ROOT  <abs path>          Project root (default: $PWD)
 #   DRY_RUN       true | false        Mirrors MODE=dry-run when true (default: false)
@@ -28,8 +21,8 @@
 #   CLAUDE_PLUGIN_ROOT                Path to the installed plugin (typically
 #                                     ~/.claude/plugins/cache/.../gaia/<ver>/)
 #
-# Exit codes (AC9 / ADR-101 §6)
-# -----------------------------
+# Exit codes
+# ----------
 #   0  Success / nothing-to-do / dry-run
 #   1  General error / schema not found
 #   2  Config missing or unreadable / secret detected
@@ -58,25 +51,17 @@ _grv2_audit() { printf '# reconcile-v2 %s\n' "$*"; }
 
 _grv2_iso8601() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
-# E85-S13 (D8 / AF-2026-05-14-3) — Write framework_version at end of apply.
-#
-# Before this story, `framework_version` was in the
-# _CONFIG_HYDRATION_MANAGED_ELSEWHERE list with a stale comment claiming
-# resolve-config.sh writes it at runtime (Val F-2: resolve-config.sh only
-# READS the value at lines ~988-1007 for drift detection). The reconciler
-# would skip the section cleanly and leave the config's framework_version
-# unchanged after a successful apply — so the E86 ambient drift detector
-# kept firing post-reconcile.
+# Write framework_version at end of apply.
 #
 # This helper closes the loop: source the plugin's version from
 # the plugin manifest (same path the drift detector uses for comparison)
 # and write it to the config via config-yaml-editor.sh replace (comment-
-# preserving per ADR-044). Honors ADR-101 §6 reconciler-as-caller — never
+# preserving). The reconciler is the caller; helper is the writer — never
 # inline yq with in-place flags.
 #
 # Idempotent: when current value already matches the plugin version, this
 # is a no-op (skips the write entirely, preserving second-run byte-identical
-# sha256 per ADR-101).
+# sha256).
 #
 # Invoked from BOTH the no-diff path (eq branch — versions already equal at
 # schema level but framework_version may still drift) and the post-hydration
@@ -120,8 +105,8 @@ _grv2_write_framework_version() {
   rm -f "$tmp"
 }
 
-# AF-2026-05-13-2 sub-fix (c) — dispatch partial→full advancement to the helper.
-# Preserves ADR-101 §6: reconciler is the CALLER, helper is the WRITER.
+# Dispatch partial→full advancement to the helper.
+# The reconciler is the CALLER, helper is the WRITER.
 # Idempotent and silent when phase is not `partial`. Used by BOTH the
 # no-diff path (eq branch) and the post-hydration path (lt branch).
 _grv2_dispatch_phase_advance() {
@@ -163,15 +148,15 @@ case "$MODE" in
   *)       _grv2_err "unknown MODE='$MODE' (expected 'apply' or 'dry-run')"; exit 1 ;;
 esac
 
-# E96-S1 / ADR-111: prefer `.gaia/config/` over legacy `config/` location.
-# Legacy fallback retained during the transition window (removed in E96-S5).
+# Prefer `.gaia/config/` over legacy `config/` location.
+# Legacy fallback retained during the transition window.
 if [ -f "$PROJECT_ROOT/.gaia/config/project-config.yaml" ]; then
   CONFIG_FILE="$PROJECT_ROOT/.gaia/config/project-config.yaml"
 else
   CONFIG_FILE="$PROJECT_ROOT/config/project-config.yaml"
 fi
 
-# ---- Schema discovery (AC1 / ADR-101 §1) -----------------------------------
+# ---- Schema discovery -----------------------------------------------------
 
 _grv2_discover_schema() {
   if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] \
@@ -215,7 +200,7 @@ _grv2_semver_compare() {
   if [ "$first" = "$a" ]; then printf 'lt\n'; else printf 'gt\n'; fi
 }
 
-# ---- Section diff engine (AC3) --------------------------------------------
+# ---- Section diff engine --------------------------------------------------
 
 _grv2_list_config_sections() {
   yq 'keys | .[]' "$1" 2>/dev/null | tr -d '"'
@@ -234,17 +219,17 @@ _grv2_in_list() {
   printf '%s\n' "$list" | grep -Fxq "$needle"
 }
 
-# ---- Secret regex (AC11 / SR-50) ------------------------------------------
+# ---- Secret regex ----------------------------------------------------------
 
 _grv2_contains_secret() {
   grep -Eiq '(password|secret|token|api[_-]?key|private[_-]?key)[[:space:]]*[:=][[:space:]]*[^[:space:]]+' "$1"
 }
 
-# ---- Retired-section comment injection (ADR-101 §3) -----------------------
+# ---- Retired-section comment injection ------------------------------------
 
 _grv2_inject_retired_comment() {
   local file="$1" section="$2" schema_ver="$3"
-  local marker="# RETIRED in schema v${schema_ver} -- kept for audit per ADR-101 warn-keep"
+  local marker="# RETIRED in schema v${schema_ver} -- kept for audit per warn-and-keep policy"
   local tmp
   tmp="$(mktemp)"
   awk -v section="$section" -v marker="$marker" '
@@ -305,14 +290,13 @@ _grv2_main() {
       ;;
     eq)
       _grv2_log "Config already at schema v$schema_ver -- nothing to reconcile."
-      # AF-2026-05-13-2 sub-fix (c): even when there's no schema diff, the
-      # config_phase state machine may still need advancement (partial→full)
-      # after all sections are present.
+      # Even when there's no schema diff, the config_phase state machine
+      # may still need advancement (partial→full) after all sections are present.
       _grv2_dispatch_phase_advance "$CONFIG_FILE" "no-diff path"
-      # E85-S13 (D8) — even on the no-diff path, framework_version may
-      # still drift from plugin.json (e.g., the user upgraded the plugin
-      # but the config_phase / schema is unchanged). Write the version
-      # here so the E86 drift detector self-heals post-reconcile.
+      # Even on the no-diff path, framework_version may still drift from
+      # plugin.json (e.g., the user upgraded the plugin but the config_phase /
+      # schema is unchanged). Write the version here so the drift detector
+      # self-heals post-reconcile.
       _grv2_write_framework_version "$CONFIG_FILE"
       exit 0
       ;;
@@ -357,14 +341,14 @@ sections_extra:
 $(printf '%s' "$extra_sections" | awk 'NF{print "  - " $0}')
 actions_planned:
 $(printf '%s' "$missing_sections" | awk 'NF{print "  - { action: hydrate, section: " $0 ", detail: \"add via config_hydrate_section\" }"}')
-$(printf '%s' "$retired_present" | awk 'NF{print "  - { action: warn-and-keep, section: " $0 ", detail: \"ADR-101 §3 warn-and-keep\" }"}')
+$(printf '%s' "$retired_present" | awk 'NF{print "  - { action: warn-and-keep, section: " $0 ", detail: \"warn-and-keep policy\" }"}')
 DRY
     exit 0
   fi
 
   local sha_pre backup_path phase_before
   sha_pre="$(_grv2_sha256_file "$CONFIG_FILE")"
-  # AC6 — capture config_phase BEFORE any helper-driven advancement so the
+  # Capture config_phase BEFORE any helper-driven advancement so the
   # post-write comparison below detects real advancement.
   phase_before="$(yq '.config_phase // "full"' "$CONFIG_FILE" | tr -d '"')"
   _grv2_audit "pre-write hash: $sha_pre at $(_grv2_iso8601)"
@@ -388,12 +372,12 @@ DRY
   for s in $missing_sections; do
     [ -z "$s" ] && continue
     frag="$(mktemp)"
-    # AF-2026-06-01-5 / issue #1052 — emit an empty object (`section: {}`)
-    # instead of a bare `section:` placeholder. The bare form parses as YAML
-    # null, which fails the schema's `type: object` constraint for every
-    # hydrated section. `section: {}` parses as an empty object (!!map),
-    # is schema-valid as soon as it is written, and remains semantically
-    # equivalent to "section present with no entries — defaults apply".
+    # Emit an empty object (`section: {}`) instead of a bare `section:`
+    # placeholder. The bare form parses as YAML null, which fails the
+    # schema's `type: object` constraint for every hydrated section.
+    # `section: {}` parses as an empty object (!!map), is schema-valid as
+    # soon as it is written, and remains semantically equivalent to
+    # "section present with no entries — defaults apply".
     # The audit-trail comment is attached later by
     # `_ch_insert_audit_comment` (config-hydration.sh); the fragment no
     # longer carries an inline comment-only body that confused YAML.
@@ -413,10 +397,8 @@ DRY
       local rc=$?
       case "$rc" in
         2)
-          # AF-2026-05-13-2 sub-fix (b) — BREAKING CHANGE.
-          # Was: WARN+skip+exit-0 (silently skipped 33/40 sections on 2026-05-13 repro).
-          # Now: hard-error+rollback+exit-5, UNLESS the section is in the
-          #      _CONFIG_HYDRATION_MANAGED_ELSEWHERE list (AC6 fail-closed scope).
+          # Hard-error+rollback+exit-5, UNLESS the section is in the
+          # _CONFIG_HYDRATION_MANAGED_ELSEWHERE list (fail-closed scope).
           local in_managed=0
           for me in "${_CONFIG_HYDRATION_MANAGED_ELSEWHERE[@]:-}"; do
             if [ "$me" = "$s" ]; then in_managed=1; break; fi
@@ -426,17 +408,17 @@ DRY
             rm -f "$frag"
             continue
           fi
-          _grv2_err "section '$s' is declared in schema but not in hydration allowlist or managed-elsewhere set -- aborting (AF-2026-05-13-2 AC5)"
+          _grv2_err "section '$s' is declared in schema but not in hydration allowlist or managed-elsewhere set -- aborting"
           rm -f "$frag"
           _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"
-          # Rollback with explicit error check (Val F4 — never silently leave the
-          # config in a half-written state).
+          # Rollback with explicit error check — never silently leave the
+          # config in a half-written state.
           if [ ! -f "$backup_path" ]; then
             _grv2_err "rollback failed: backup file missing at $backup_path -- config may be inconsistent"
           elif ! cp "$backup_path" "$CONFIG_FILE"; then
             _grv2_err "rollback failed: cp from $backup_path returned non-zero -- config may be inconsistent"
           else
-            _grv2_audit "config rolled back from $backup_path (AC5)"
+            _grv2_audit "config rolled back from $backup_path"
           fi
           exit 5
           ;;
@@ -449,27 +431,26 @@ DRY
 
   for s in $retired_present; do
     [ -z "$s" ] && continue
-    _grv2_warn "Section '$s' is deprecated in schema v$schema_ver -- retained per ADR-101 _grv2_warn-and-keep policy"
+    _grv2_warn "Section '$s' is deprecated in schema v$schema_ver -- retained per the warn-and-keep policy"
     _grv2_inject_retired_comment "$CONFIG_FILE" "$s" "$schema_ver"
-    _grv2_warn "SR-54 phase-downgrade defense: retained section '$s' protects config_phase='$phase_before' from regression"
+    _grv2_warn "Phase-downgrade defense: retained section '$s' protects config_phase='$phase_before' from regression"
   done
 
   _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"
 
-  # AF-2026-05-13-2 sub-fix (c) — post-hydration partial→full dispatch.
+  # Post-hydration partial→full dispatch.
   _grv2_dispatch_phase_advance "$CONFIG_FILE" "post-hydration"
 
-  # AC6 — compare config_phase before vs after to surface helper-driven
-  # advancement in the audit trail. The reconciler never writes config_phase
-  # directly; advancement comes only from the hydration helper (E85-S5/S6
-  # contract). Logging is informational.
+  # Compare config_phase before vs after to surface helper-driven advancement
+  # in the audit trail. The reconciler never writes config_phase directly;
+  # advancement comes only from the hydration helper. Logging is informational.
   local phase_after
   phase_after="$(yq '.config_phase // "full"' "$CONFIG_FILE" | tr -d '"')"
   if [ "$phase_before" != "$phase_after" ]; then
     _grv2_info "config_phase advanced by helper: $phase_before -> $phase_after (via hydration trigger)"
   fi
 
-  # E85-S13 (D8) — post-hydration framework_version write (see helper above).
+  # Post-hydration framework_version write (see helper above).
   _grv2_write_framework_version "$CONFIG_FILE"
 
   local sha_post

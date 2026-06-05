@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# adapters/pa11y-a11y/run.sh — ADR-078 adapter contract for pa11y (E73-S4).
+# adapters/pa11y-a11y/run.sh — adapter contract for pa11y.
 #
-# Contract (ADR-078 / BOUNDARIES.md):
+# Contract (BOUNDARIES.md):
 #   run.sh --input <file-list> [--config <path>] [--output <path>]
 #          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
 #          [--target-url <url>] [--wcag-level <A|AA|AAA>]
 #
-# Story E73-S4 augments the canonical contract with two additive flags:
+# This adapter augments the canonical contract with two additive flags:
 #   --target-url <url>       URL to audit (required for an actual run; absence
 #                            is permitted for help/dry-run and contract probes)
 #   --wcag-level <A|AA|AAA>  WCAG conformance level. Default: AA. Maps to the
@@ -26,7 +26,6 @@
 #   127 pa11y not found on PATH
 #
 # POSIX discipline: bash 3.2 / macOS-compatible, set -euo pipefail, LC_ALL=C.
-# Refs: ADR-078 §1, FR-RSV2-31, NFR-RSV2-7, story E73-S4.
 
 set -euo pipefail
 LC_ALL=C
@@ -51,7 +50,7 @@ while [ "$#" -gt 0 ]; do
     --wcag-level) WCAG_LEVEL="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/pa11y-a11y/run.sh — ADR-078 contract entry for pa11y.
+adapters/pa11y-a11y/run.sh — contract entry for pa11y.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ci-regen-detect-edit.sh — manual-edit detection for /gaia-config-ci --regenerate (E71-S4).
+# ci-regen-detect-edit.sh — manual-edit detection for /gaia-config-ci --regenerate.
 #
 # Reads a generated CI workflow file and decides whether it has been hand-edited
 # since generation. The decision compares the body hash (everything after the
@@ -10,7 +10,6 @@
 #   1  — manually edited (body hash does NOT match header hash)
 #   2  — no header / no Source-hash line (treated as "stale" by callers)
 #
-# Refs: AC2 (TS-02), FR-RSV2-37.
 
 set -euo pipefail
 LC_ALL=C

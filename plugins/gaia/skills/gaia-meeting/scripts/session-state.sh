@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# session-state.sh — gaia-meeting session-state helper (E76-S7, AC1, FR-MTG-33)
+# session-state.sh — gaia-meeting session-state helper
 #
-# Round-trips the FR-MTG-33 schema into a YAML file under
+# Round-trips the session-state schema into a YAML file under
 # `_memory/meeting-sessions/{YYYY-MM-DD}-{slug}.yaml`. Treated as a flat
 # key/value store so we can avoid pulling in yq as a hard dependency — any
 # YAML parser still reads it correctly.
@@ -44,22 +44,21 @@ if [[ -z "$FILE" ]]; then
   exit 2
 fi
 
-# FR-MTG-33 schema — canonical order. Keep this list in sync with PRD §4.39.11
-# and SKILL.md "Session-state schema (FR-MTG-33)".
+# Session-state schema — canonical order. Keep this list in sync with
+# SKILL.md "Session-state schema".
 #
-# `last_yield_emitted_at` was added by E76-S9 (AC2) so `yield-gate.sh` can
-# stamp the most-recent yield emission for `--resume` consistency. The new
-# field is opaque to existing consumers and does NOT change the call signature
-# of the create / read / update API — see E76-S9 Tech Notes.
+# `last_yield_emitted_at` was added so `yield-gate.sh` can stamp the
+# most-recent yield emission for `--resume` consistency. The new field is
+# opaque to existing consumers and does NOT change the call signature of the
+# create / read / update API.
 #
-# `user_attendance` was added by E76-S21 (AF-2026-05-10-2 / AI-2026-05-09-9)
-# to record whether the user was explicitly invited as a first-class attendee
-# (`true` when `--invitees` contains `me` / `user` / resolved-user-name token,
-# `false` otherwise). Set ONCE at meeting start by `resolve-invitees.sh`; read
-# at every yield boundary by the AskUserQuestion-emit path (composes with
-# E76-S18) to determine whether to offer a user turn slot. Forward-additive —
-# legacy session files without the field default to empty string ("" reads as
-# unset) without breaking existing consumers.
+# `user_attendance` records whether the user was explicitly invited as a
+# first-class attendee (`true` when `--invitees` contains `me` / `user` /
+# resolved-user-name token, `false` otherwise). Set ONCE at meeting start by
+# `resolve-invitees.sh`; read at every yield boundary by the
+# AskUserQuestion-emit path to determine whether to offer a user turn slot.
+# Forward-additive — legacy session files without the field default to empty
+# string ("" reads as unset) without breaking existing consumers.
 FIELDS=(
   session_id
   phase
@@ -91,9 +90,8 @@ is_valid_field() {
 PHASE_ENUM_RE='^(INVITE|CHARTER|RESEARCH|DISCUSS|CLOSE|REVIEW|SAVE)$'
 
 # Quote the value for YAML — strings get double-quotes, integers stay bare.
-# Per-field value validation enforces the FR-MTG-33 schema types so a
-# corrupted update can't survive `--resume` (see manual-test finding F8,
-# gaia-meeting QA, 2026-05-18).
+# Per-field value validation enforces the session-state schema types so a
+# corrupted update can't survive `--resume`.
 yaml_emit_value() {
   local field="$1"; local v="$2"
   case "$field" in
@@ -124,7 +122,7 @@ yaml_emit_value() {
     user_attendance)
       # Boolean field — emit bare `true` / `false` (YAML literal). Empty value
       # round-trips as the empty string for forward compatibility with
-      # session files created before E76-S21 added the field.
+      # session files created before the field was added.
       if [[ "$v" == "true" || "$v" == "false" ]]; then
         printf '%s' "$v"
       elif [[ -z "$v" ]]; then

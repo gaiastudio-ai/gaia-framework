@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 # validate-canonical-filename.sh — gaia-create-story Step 6 deterministic
-#                                  filename-drift check (E63-S4 / Work Item 6.10)
+#                                  filename-drift check
 #
 # Purpose:
 #   Verify a story file's basename equals `{key}-{slugify(title)}.md` by
 #   reading frontmatter (`key`, `title`) and slugifying the title via the
-#   sibling `slugify.sh` (E63-S1). Surfaces filename drift deterministically
+#   sibling `slugify.sh`. Surfaces filename drift deterministically
 #   BEFORE Val dispatch in Step 6 of /gaia-create-story, saving Val tokens
 #   on the trivial mismatch class.
 #
 # Consumers:
 #   - /gaia-create-story Step 6 — pre-Val deterministic sweep
-#   - E63-S5 validate-frontmatter.sh — folds this check in per source spec
-#     6.10 integration note (rather than duplicating slug-comparison logic).
+#   - validate-frontmatter.sh — folds this check in per the integration note
+#     (rather than duplicating slug-comparison logic).
 #
 # Contract source:
 #   - .gaia/artifacts/planning-artifacts/feature-create-story-hardening.md#Work-Item-6.10
-#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log — ADR-074
+#   - .gaia/artifacts/planning-artifacts/architecture.md §Decision Log
 #     (deterministic-script lift)
 #   - Sibling: gaia-framework/plugins/gaia/skills/gaia-create-story/scripts/slugify.sh
 #
@@ -92,12 +92,12 @@ while [ $# -gt 0 ]; do
     --*)
       die_usage "unknown argument: $1" ;;
     *)
-      # AF-2026-05-30-4 D-05 — positional path form is accepted with a
-      # deprecation NOTICE. Canonical form is `--file <path>`.
+      # Positional path form is accepted with a deprecation NOTICE.
+      # Canonical form is `--file <path>`.
       if [ -n "$file" ]; then
         die_usage "positional path '$1' supplied after --file '$file' — use only one form"
       fi
-      log "NOTICE: positional path is deprecated; prefer '--file $1' (AF-2026-05-30-4 D-05)"
+      log "NOTICE: positional path is deprecated; prefer '--file $1'"
       file="$1"; shift ;;
   esac
 done
@@ -194,11 +194,11 @@ title="$(extract_field "title")"
 [ -n "$key" ]   || die_input "missing field 'key' in frontmatter of: $file"
 [ -n "$title" ] || die_input "missing field 'title' in frontmatter of: $file"
 
-# ---------- E105-S1 / ADR-127 — new per-story nested layout ----------
+# ---------- New per-story nested layout ----------
 # In the new layout the file is `story.md` and the PARENT DIRECTORY carries the
 # key + slug: `epic-{slug}/{key}-{story-slug}/story.md`.
 #
-# AF-2026-05-31-3 / Test14 F-12 — strict slug check.
+# Strict slug check.
 #
 # The prior implementation accepted ANY directory beginning with `${key}-`
 # (case `"${key}-"*)`). That was looser than validate-frontmatter.sh, which
@@ -208,7 +208,7 @@ title="$(extract_field "title")"
 # verdicts deep in the review pipeline rather than as an actionable error
 # at story-creation time. Compute slugify(title) HERE and require the dir
 # to be exactly `${key}-${slug}` so both validators agree (closes the
-# latent-footgun bug class documented in Test14 F-12).
+# latent-footgun bug class).
 actual_basename="$(basename "$file")"
 if [ "$actual_basename" = "story.md" ]; then
   parent_dir="$(basename "$(dirname "$file")")"
@@ -246,7 +246,7 @@ if [ "$expected_basename" != "$actual_basename" ]; then
   die_drift "filename drift -- expected '${expected_basename}', got '${actual_basename}'"
 fi
 
-# ---------- E79-S4 — canonical-layout shadow / flat-fallback rules ----------
+# ---------- Canonical-layout shadow / flat-fallback rules ----------
 #
 # Beyond the basename match, enforce the canonical-per-epic layout contract:
 #
@@ -261,7 +261,7 @@ fi
 # without a docs/ tree).
 
 resolve_impl_dir() {
-  # AF-2026-05-21-25: also recognize canonical .gaia/artifacts/implementation-artifacts.
+  # Also recognize canonical .gaia/artifacts/implementation-artifacts.
   local p
   p="$(cd "$(dirname "$1")" && pwd)"
   while [ "$p" != "/" ] && [ -n "$p" ]; do
@@ -312,14 +312,14 @@ if impl_dir="$(resolve_impl_dir "$file")"; then
   if [ -n "$flat_sibling" ] && [ -n "$nested_sibling" ] && [ "$flat_self" -eq 0 ]; then
     # Shadow state: validating the nested file with a flat sibling for the
     # same key still on disk. Refuse — operator must migrate or delete the
-    # flat sibling before the E79-S6 backfill runs.
+    # flat sibling before the backfill runs.
     log "legacy-flat sibling detected for ${key}: ${flat_sibling} — refusing to validate while shadow exists"
     exit 2
   fi
 
   if [ "$flat_self" -eq 1 ] && [ -z "$nested_sibling" ]; then
     # Flat-only legacy state — accept with WARNING.
-    log "legacy-flat path accepted (read-only fallback) — migrate via E79-S6"
+    log "legacy-flat path accepted (read-only fallback) — migrate to nested layout"
     exit 0
   fi
 

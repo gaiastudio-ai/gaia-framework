@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
-# sm-capacity-check.sh — agent-native sprint capacity check (E106-S3)
+# sm-capacity-check.sh — agent-native sprint capacity check
 #
-# Replaces the human "N points is too much for the duration" heuristic (which
-# false-flagged the 73-point sprint-53 sweep) with three agent-native measures
-# from ADR-128:
+# Replaces the human "N points is too much for the duration" heuristic with
+# three agent-native measures:
 #   (1) dependency critical-path DEPTH  — longest serial chain over Depends-on
 #   (2) context-coherence CEILING       — distinct story count in the batch
-#   (3) measured agent WALL-CLOCK       — median minutes/story (E106-S1) × N
+#   (3) measured agent WALL-CLOCK       — median minutes/story × N
 #                                          vs a configured agent-session budget;
 #                                          telemetry-gated (stories_counted>0).
 # Cold start (no closed-sprint telemetry) uses ONLY (1)+(2) — no fabricated
-# constant (AC4 / NFR-90). There is NO points-per-time / velocity-floor measure.
+# constant. There is NO points-per-time / velocity-floor measure.
 #
-# Reads measured throughput from throughput-telemetry.sh (SSOT; ADR-042).
+# Reads measured throughput from throughput-telemetry.sh (SSOT).
 # READ-ONLY — output on stdout.
-#
-# Refs: AC1-AC5, AC-INT1, TS1-TS6, ADR-128, ADR-042, NFR-90, FR-552
 #
 # Invocation:
 #   sm-capacity-check.sh --stories-file <file> [--depth-threshold N]
@@ -131,7 +128,7 @@ COHERENCE_COUNT="$(awk -F'|' '{k=$1; gsub(/^[ \t]+|[ \t]+$/,"",k); if (k!="") c[
 
 # ---------- Measure 3: measured wall-clock (telemetry-gated) ----------
 # Cold start = no closed-sprint telemetry (stories_counted==0 / median null).
-# Reuse the E106-S2 lesson: gate on stories_counted>0, never on a 0 median.
+# Gate on stories_counted>0, never on a 0 median.
 WALL_CLOCK_MEASURE="uncalibrated"
 WALL_CLOCK_MINUTES="null"
 WALL_CLOCK_FLAGGED=false

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 11 gaia-trace skill setup (E28-S85)
+# setup.sh — gaia-trace skill setup
 #
-# Mechanical extension of the Cluster 9 reference implementation authored
-# under E28-S66 (gaia-code-review/scripts/setup.sh). Only WORKFLOW_NAME and
+# Mechanical extension of the reference implementation authored for
+# gaia-code-review/scripts/setup.sh. Only WORKFLOW_NAME and
 # SCRIPT_NAME differ — the body follows the shared pattern.
 #
-# Responsibilities (per brief Cluster 11):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Load the checkpoint state for this workflow
 #   3. Validate required input files exist (epics-and-stories.md, test-plan.md)

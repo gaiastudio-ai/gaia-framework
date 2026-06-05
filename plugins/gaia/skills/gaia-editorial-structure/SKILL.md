@@ -10,7 +10,7 @@ orchestration_class: reviewer
 
 You are performing a **structural review** on the document the user supplies. You map the current outline, evaluate information architecture, and propose specific reorganization moves (cuts, merges, splits, reorders, additions). You produce a markdown report that shows the current structure, the proposed structure, a numbered list of moves, and a priority ranking — so the author can apply the highest-impact changes first.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/editorial-review-structure.xml` task (43 lines). Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model.
+This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/editorial-review-structure.xml` task (43 lines). Under the Native Execution Model and the Scripts-over-LLM principle for deterministic operations, the legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model.
 
 ## Critical Rules
 
@@ -68,12 +68,12 @@ These lists are intentionally non-exhaustive — a document is not penalised for
 
 ## References
 
-- Source: `_gaia/core/tasks/editorial-review-structure.xml` (legacy 43-line task body — ported per ADR-041 + ADR-042).
-- ADR-041: Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042: Scripts-over-LLM for Deterministic Operations.
-- ADR-048: Engine Deletion as Program-Closing Action — legacy task coexists with this skill until program close.
-- FR-323: Skill Conversion — slash-command identity preserved.
-- NFR-053: Full v1.127.2-rc.1 Feature Parity.
+- Source: `_gaia/core/tasks/editorial-review-structure.xml` (legacy 43-line task body — ported to the native model).
+- Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
+- Scripts-over-LLM for Deterministic Operations.
+- Engine Deletion as Program-Closing Action — legacy task coexists with this skill until program close.
+- Skill Conversion — slash-command identity preserved.
+- Full v1.127.2-rc.1 Feature Parity.
 
 ## Related
 

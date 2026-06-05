@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-val-save skill setup (E28-S80)
+# setup.sh — gaia-val-save skill setup
 #
-# Follows the shared setup.sh pattern from E28-S17.
 # Validates that the validator-sidecar memory path is accessible.
 #
 # Responsibilities:
@@ -43,9 +42,9 @@ while IFS= read -r line; do
   esac
 done <<< "$config_output"
 
-# ---------- 2. Verify memory path (ADR-111: .gaia/ canonical) ----------
-# AF-2026-05-27-3: .gaia/memory is the only memory tree; legacy _memory fallback
-# removed with the consolidation migration. Env override wins.
+# ---------- 2. Verify memory path (.gaia/ canonical) ----------
+# .gaia/memory is the only memory tree; legacy _memory fallback removed.
+# Env override wins.
 if [ -z "${MEMORY_PATH:-}" ]; then
   MEMORY_PATH=".gaia/memory"
 fi

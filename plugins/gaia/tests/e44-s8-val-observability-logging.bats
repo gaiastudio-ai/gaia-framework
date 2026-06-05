@@ -87,8 +87,8 @@ teardown() { common_teardown; }
   grep -q '^### Iteration Log Format' "$SKILL"
 }
 
-@test "Task4/AC2: SKILL.md cites ADR-059 checkpoint custom: namespace" {
-  grep -q -E 'ADR-059' "$SKILL"
+@test "Task4/AC2: SKILL.md cites checkpoint custom: namespace for val_loop_iterations" {
+  grep -q -E 'checkpoint `custom:` namespace' "$SKILL"
   grep -q -E 'custom\.val_loop_iterations|custom\.`val_loop_iterations`|`custom\.val_loop_iterations`' "$SKILL"
 }
 

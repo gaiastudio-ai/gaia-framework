@@ -1,25 +1,13 @@
 #!/usr/bin/env bash
 # write-val-envelope.sh — orchestrator-side Val envelope sentinel writer.
 #
-# Story: E87-S7 — Sentinel-Write Writer Shift — move Val envelope sentinel
-#                 write from sub-agent to orchestrator.
-# Anchor: ADR-105 — Sentinel-Write Writer Shift (amends ADR-104).
-# Trace: FR-482, FR-483, FR-484, NFR-064 (forgery resistance), NFR-066.
-#
 # Background:
-#   ADR-104 (E87) migrated Val dispatch to the main-turn Agent tool and
-#   moved the sentinel write into the Val sub-agent's context (E87-S2
-#   Sentinel-Write Contract). The Claude Code substrate's content-integrity
-#   guard subsequently false-fires on sub-agent writes to
-#   `_memory/checkpoints/val-envelope-*.json`, blocking the cascade even
-#   when Val behaved correctly (AI-2026-05-13-13 incident, 2026-05-13).
+#   This helper shifts the sentinel write to the orchestrator's main turn.
+#   Val now RETURNS the sentinel content as a `sentinel_envelope` field
+#   inside its envelope; the orchestrator parses the envelope and invokes
+#   this helper to write the sentinel.
 #
-#   This helper closes the regression by shifting the write back to the
-#   orchestrator's main turn. Val now RETURNS the sentinel content as a
-#   `sentinel_envelope` field inside its ADR-037 envelope; the orchestrator
-#   parses the envelope and invokes this helper to write the sentinel.
-#
-# Forgery resistance (NFR-064 preserved):
+# Forgery resistance:
 #   The `persona_sig` field is computed by Val from validator.md's on-disk
 #   sha256 — the orchestrator cannot fabricate a valid sig without reading
 #   validator.md at the same revision. The orchestrator is a write-through,
@@ -36,7 +24,7 @@
 #     artifact_path  — string; used to compute sentinel path
 #     verdict        — one of PASSED|FAILED|UNVERIFIED
 #
-#   OPTIONAL keys (additive — NOT required; NFR-95 / ADR-130 / E87-S8):
+#   OPTIONAL keys (additive — NOT required):
 #     original_status — pre-coercion OUTER envelope status (∈ {PASS,WARNING,
 #                       CRITICAL}); present only when a downstream closed-enum
 #                       reduction coerced the outer status. The writer is
@@ -52,12 +40,9 @@
 #
 #   CHECKPOINT_PATH defaults to ".gaia/memory/checkpoints" (resolved
 #   relative to the resolver-discovered project_root, or to $PWD when the
-#   resolver helper is absent) per ADR-111. The legacy `_memory/checkpoints`
-#   path was retired with the consolidation migration; AF-2026-05-31-1 /
-#   Test12 F-12 fixed the docstring and usage prose that still referenced
-#   the legacy location even though the code path has used the canonical
-#   `.gaia/memory/checkpoints` default since AF-2026-05-27-3. Tests may
-#   override via the CHECKPOINT_PATH env var.
+#   resolver helper is absent). The legacy `_memory/checkpoints` path was
+#   retired with the consolidation migration. Tests may override via the
+#   CHECKPOINT_PATH env var.
 #
 # Exit codes:
 #   0 — sentinel written; path printed to stdout
@@ -89,8 +74,7 @@ The envelope JSON MUST contain all five keys:
   agent (== "val"), persona_sig, timestamp, artifact_path, verdict.
 
 CHECKPOINT_PATH env var sets the checkpoint directory (default:
-.gaia/memory/checkpoints relative to the resolved project_root, per
-ADR-111 / AF-2026-05-31-1 Test12 F-12).
+.gaia/memory/checkpoints relative to the resolved project_root).
 USAGE
 }
 
@@ -140,16 +124,16 @@ fi
 
 # Check required keys exist.
 #
-# NFR-95 (ADR-130 / E87-S8 / AF-2026-06-03-2): the OPTIONAL `original_status`
-# field is INTENTIONALLY NOT in this loop — it MUST NOT be added to any
-# required-field set. Every existing envelope without `original_status` writes
-# exactly as before. The writer is additive-transparent: the whole input
-# envelope object is serialized verbatim below (`printf '%s\n' "$ENVELOPE"`),
-# so when `original_status` is present it is preserved on disk pass-through with
-# no special-casing, and when absent the sentinel is byte-identical to today's
-# output for the same input. `original_status` carries the pre-coercion OUTER
-# envelope `status` (∈ {PASS,WARNING,CRITICAL}); see validator.md
-# §Sentinel-Write Contract. Do NOT add it here.
+# The OPTIONAL `original_status` field is INTENTIONALLY NOT in this loop —
+# it MUST NOT be added to any required-field set. Every existing envelope
+# without `original_status` writes exactly as before. The writer is
+# additive-transparent: the whole input envelope object is serialized verbatim
+# below (`printf '%s\n' "$ENVELOPE"`), so when `original_status` is present it
+# is preserved on disk pass-through with no special-casing, and when absent the
+# sentinel is byte-identical to today's output for the same input.
+# `original_status` carries the pre-coercion OUTER envelope `status`
+# (∈ {PASS,WARNING,CRITICAL}); see validator.md §Sentinel-Write Contract.
+# Do NOT add it here.
 for key in agent persona_sig timestamp artifact_path verdict; do
   value=$(printf '%s' "$ENVELOPE" | jq -r --arg k "$key" '.[$k] // empty')
   if [ -z "$value" ]; then
@@ -172,17 +156,17 @@ fi
 # ---------- Compute sentinel path ----------
 ARTIFACT_PATH=$(printf '%s' "$ENVELOPE" | jq -r '.artifact_path')
 
-# AF-2026-05-29-2 / Test09 F-17: resolve project_root FIRST (the canonical
-# anchor for project-relative paths) so we can normalize artifact_path before
-# hashing. Without the normalization the hash is non-deterministic across
-# caller conventions — a Val agent that writes an absolute path
-# (`/Users/.../prd.md`) hashes differently from a consumer that asserts on a
-# relative path (`.gaia/artifacts/planning-artifacts/prd.md`), and the
-# security gate falsely HALTs on a perfectly valid Val run. The convention is
+# Resolve project_root FIRST (the canonical anchor for project-relative paths)
+# so we can normalize artifact_path before hashing. Without the normalization
+# the hash is non-deterministic across caller conventions — a Val agent that
+# writes an absolute path (`/Users/.../prd.md`) hashes differently from a
+# consumer that asserts on a relative path
+# (`.gaia/artifacts/planning-artifacts/prd.md`), and the security gate falsely
+# HALTs on a perfectly valid Val run. The convention is
 # "project-relative-from-project-root, never absolute"; the writer enforces it
 # below by stripping any leading project_root prefix and any leading "./".
-# Non-path artifact_path values (e.g. a literal feature_id like
-# "AF-2026-05-29-1") have no leading "/" or "./", so they pass through unchanged.
+# Non-path artifact_path values (e.g. a literal feature_id) have no leading
+# "/" or "./", so they pass through unchanged.
 _PROJECT_ROOT_FOR_HASH=""
 if [ -n "${PROJECT_ROOT:-}" ]; then
   _PROJECT_ROOT_FOR_HASH="$PROJECT_ROOT"
@@ -220,13 +204,13 @@ esac
 unset _PROJECT_ROOT_FOR_HASH
 HASH=$(printf '%s' "$ARTIFACT_PATH" | shasum -a 256 | cut -c1-16)
 
-# E55-S13 D4 — when CHECKPOINT_PATH env-var is unset, resolve the canonical
-# checkpoint dir via resolve-config.sh instead of falling back to a CWD-
-# relative `_memory/checkpoints` literal. This keeps sentinels at the
-# project-root path regardless of the orchestrator's CWD, so
-# assert_agent_envelope (which itself runs from project root) can find
-# them. The CHECKPOINT_PATH env-var override path remains the highest
-# precedence — test fixtures and explicit-override callers are unaffected.
+# When CHECKPOINT_PATH env-var is unset, resolve the canonical checkpoint dir
+# via resolve-config.sh instead of falling back to a CWD-relative literal.
+# This keeps sentinels at the project-root path regardless of the
+# orchestrator's CWD, so assert_agent_envelope (which itself runs from project
+# root) can find them. The CHECKPOINT_PATH env-var override path remains the
+# highest precedence — test fixtures and explicit-override callers are
+# unaffected.
 if [ -n "${CHECKPOINT_PATH:-}" ]; then
   CHECKPOINT_DIR="$CHECKPOINT_PATH"
 else
@@ -256,14 +240,13 @@ else
         *)  CHECKPOINT_DIR="${_project_root:-.}/$_checkpoint_path" ;;
       esac
     else
-      # AF-2026-05-27-3 (ADR-111): .gaia/memory/checkpoints is the only
-      # location — the legacy _memory/checkpoints fallback was removed with the
-      # consolidation migration.
+      # .gaia/memory/checkpoints is the only location — the legacy
+      # _memory/checkpoints fallback was removed with the consolidation migration.
       CHECKPOINT_DIR="${_project_root:-.}/.gaia/memory/checkpoints"
     fi
     unset _own_dir _resolver _resolver_out _project_root _checkpoint_path _line
   else
-    # CWD-relative branch when resolve-config.sh is missing (ADR-111 canonical).
+    # CWD-relative branch when resolve-config.sh is missing.
     CHECKPOINT_DIR=".gaia/memory/checkpoints"
   fi
 fi

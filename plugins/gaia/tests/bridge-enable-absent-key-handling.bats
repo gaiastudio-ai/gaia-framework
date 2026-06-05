@@ -99,9 +99,13 @@ YAML
   fi
 }
 
-@test "AF-2026-05-17-6 lineage tag present in both edited files" {
-  run grep -E 'AF-2026-05-17-6' "$TOGGLE_SKILL"
+@test "both edited files document the absent-key bridge_enabled contract" {
+  # SKILL.md must reference the AC-EC3 absent-key contract (the behavioral
+  # anchor that this fix added: "treat as false when key missing").
+  run grep -E 'AC-EC3|key.absent|absent.key' "$TOGGLE_SKILL"
   [ "$status" -eq 0 ]
-  run grep -E 'AF-2026-05-17-6' "$RESOLVER"
+  # resolve-config.sh must include the test_execution_bridge.bridge_enabled
+  # case-statement entry added by the same fix.
+  run grep -E 'test_execution_bridge\.bridge_enabled\)' "$RESOLVER"
   [ "$status" -eq 0 ]
 }

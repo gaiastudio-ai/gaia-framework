@@ -1,4 +1,4 @@
-# Grype adapter — DB trust-boundary enforcement (E70-S9 / FR-542 / ADR-122)
+# Grype adapter — DB trust-boundary enforcement
 
 `adapter.sh` runs the Grype CVE scan in `/gaia-brownfield` Phase 3 and treats the
 Grype **vulnerability DB as a trust boundary distinct from the binary**.
@@ -17,7 +17,7 @@ not content integrity.** This adapter closes that gap with three controls:
 2. **Checksum logging** — records the DB SHA-256 (`grype_db_checksum`) and built
    age (`grype_db_built_age`) in the brownfield report frontmatter.
 3. **Mid-session drift rejection** — compares the current DB SHA-256 against the
-   session-start checksum (produced by E70-S7 `pre-warm.sh`); on drift it ABORTS
+   session-start checksum (produced by `pre-warm.sh`); on drift it ABORTS
    the scan with a non-zero exit (security failure, not a degrade).
 
 ## Trivy March 2026 precedent
@@ -57,23 +57,22 @@ When the adapter aborts with
 The per-tool override is the flat depth-2 key `brownfield.grype_enabled` (default
 true), not the story AC's hyphenated `brownfield.tools.grype.enabled`. The
 `resolve-config.sh` nested-key parser supports only depth-3 ASCII-underscore
-segments; the flat spelling preserves the ADR-078 master-flag + per-tool-override
+segments; the flat spelling preserves the master-flag + per-tool-override
 SEMANTICS. Same constraint as `prewarm_enabled` / `sarif_merge_enabled` /
 `dedup_enabled`.
 
-## Binary supply-chain pinning (AC-X4 / NFR-86)
+## Binary supply-chain pinning
 
 The `grype` binary MUST be version-pinned via checksum verification in the CI image
 (Trivy Mar-2026 precedent), reusing the shared pinning machinery.
 
-> **Status (E70-S9):** No dedicated dependency-pinning CI workflow exists yet
+> **Status:** No dedicated dependency-pinning CI workflow exists yet
 > (`.github/workflows/dependencies.yml`). The rationale is documented here; the CI
-> wiring is tracked as a shared Finding (with E70-S7's grype/cdxgen + E104-S4's
-> sarif pinning).
+> wiring is tracked as a shared finding covering grype/cdxgen and sarif pinning.
 
 ## Telemetry ownership (single-author per field)
 
 This adapter is the single author of `grype_db_checksum`, `grype_db_built_age`,
 `phase_runtime_seconds.grype`, `deterministic_tool_seconds.grype`, and (as a
 deterministic tool) `llm_token_count: 0`. It does NOT write `gap_count_before_dedup`
-/ `gap_count_after_dedup` — those are owned by the E104-S1 dedup phase (no fan-out).
+/ `gap_count_after_dedup` — those are owned by the dedup phase (no fan-out).

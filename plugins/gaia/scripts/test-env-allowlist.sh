@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 # test-env-allowlist.sh — derive tier-directory allowlist from test-environment.yaml
 #
-# E35-S2: YOLO auto-approve allowlist derivation helper
-# E35-S3: Phase 2 target-path enforcement (shared consumer)
-# ADR-051 section 10.27.7
-#
 # Derivation rule (per approved plan W1 resolution):
-#   1. Fixture-tolerance: if top-level tier_directories: is present (E35-S3
-#      ATDD synthetic fixture), use it directly.
+#   1. Fixture-tolerance: if top-level tier_directories: is present (ATDD
+#      synthetic fixture), use it directly.
 #   2. Primary: tiers.stack_hints.bats_test_dirs values — split on whitespace.
 #   3. Fallback: extract path args from runners.shell.tier_{N}_* commands.
 #
@@ -74,7 +70,7 @@ fi
 # -------------------------------------------------------------------------
 # Strategy 1: Fixture tolerance — top-level tier_directories:
 # If the YAML has a top-level tier_directories: key, use its list entries
-# directly and exit. This supports the E35-S3 ATDD synthetic fixture.
+# directly and exit. This supports ATDD synthetic fixtures.
 # -------------------------------------------------------------------------
 
 fixture_dirs() {

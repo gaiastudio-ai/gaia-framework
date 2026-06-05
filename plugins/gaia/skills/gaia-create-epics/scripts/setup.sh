@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 6 create-epics skill setup (E28-S47, brief §Cluster 6 / P6-S3)
+# setup.sh — create-epics skill setup
 #
-# Mechanical extension of the Cluster 4 reference implementation authored
-# under E28-S35 (gaia-brainstorm/scripts/setup.sh). Adds create-epics-specific
+# Mechanical extension of the brainstorm reference implementation
+# (gaia-brainstorm/scripts/setup.sh). Adds create-epics-specific
 # prereq gates:
 #   - test-plan.md must exist and be non-empty (validate-gate test_plan_exists)
-#     per CLAUDE.md "Testing integration gates (enforced)" — ADR-042
+#     per CLAUDE.md "Testing integration gates (enforced)"
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (test-plan.md — enforced, not advisory)
 #   3. Load the checkpoint state for this workflow
@@ -57,10 +57,10 @@ done <<<"$config_output"
 # ---------- 2. Validate gate (test-plan.md required — enforced, not advisory) ----------
 # CLAUDE.md "Testing integration gates (enforced)":
 #   create-epics-stories requires test-plan.md
-# ADR-042: quality gates are enforced — validate-gate.sh MUST exit non-zero
+# Quality gates are enforced — validate-gate.sh MUST exit non-zero
 # when the prerequisite is missing; a warning is not sufficient.
 # Remediation: run /gaia-test-design to create test-plan.md
-# E96-S7 partial-4c: smart-fallback
+# Smart-fallback:
 if [ -z "${TEST_ARTIFACTS:-}" ]; then
   if [ -d ".gaia/artifacts/test-artifacts" ]; then
     TEST_ARTIFACTS=".gaia/artifacts/test-artifacts"
@@ -68,22 +68,22 @@ if [ -z "${TEST_ARTIFACTS:-}" ]; then
     TEST_ARTIFACTS="docs/test-artifacts"
   fi
 fi
-# AF-2026-05-22-6 Bug-4: resolve the actual test-plan path via the same
-# 4-path fallback that validate-gate.sh test_plan_exists honors (flat /
+# Resolve the actual test-plan path via the same 4-path fallback that
+# validate-gate.sh test_plan_exists honors (flat /
 # strategy/test-plan.md / strategy/test-strategy.md / test-plan/index.md).
 # Previously this script independently checked only $TEST_ARTIFACTS/test-plan.md
 # (the flat path), so /gaia-test-strategy --plan (which writes
 # strategy/test-strategy.md) caused a false-halt with "exists but empty"
 # even though the artifact existed under a different accepted path.
-# AF-2026-05-27-8 / Test06 F-007: resolve the test-plan path via the shared
-# resolve-artifact-path.sh helper rather than a local candidate loop. The
-# previous loop referenced ${PLANNING_ARTIFACTS:-} expecting the resolve-config
-# export loop above to have populated it — but resolve-config emits the key in
-# lowercase (planning_artifacts=...) and the `[A-Z_]*=*` export filter drops it,
+# Resolve the test-plan path via the shared resolve-artifact-path.sh helper
+# rather than a local candidate loop. The previous loop referenced
+# ${PLANNING_ARTIFACTS:-} expecting the resolve-config export loop above to
+# have populated it — but resolve-config emits the key in lowercase
+# (planning_artifacts=...) and the `[A-Z_]*=*` export filter drops it,
 # so the planning-artifacts rungs were silently dead and the loop fell through
 # to a false HALT even when test-strategy.md existed under planning-artifacts/.
 # The shared resolver hard-codes the canonical .gaia/artifacts/planning-artifacts/
-# home as rung 1 (E105-S2 / ADR-127 §7.2) and needs no env contract.
+# home as rung 1 and needs no env contract.
 RESOLVE_ARTIFACT_PATH="$PLUGIN_SCRIPTS_DIR/lib/resolve-artifact-path.sh"
 TEST_PLAN_PATH=""
 if [ -x "$RESOLVE_ARTIFACT_PATH" ]; then
@@ -92,17 +92,17 @@ fi
 
 if [ -x "$VALIDATE_GATE" ]; then
   if ! "$VALIDATE_GATE" test_plan_exists 2>&1; then
-    die "HALT: test-plan.md not found — run /gaia-test-strategy --plan first to create it (ADR-042 enforced gate). Accepted paths: $TEST_ARTIFACTS/test-plan.md OR $TEST_ARTIFACTS/strategy/test-plan.md OR $TEST_ARTIFACTS/strategy/test-strategy.md OR $TEST_ARTIFACTS/test-plan/index.md"
+    die "HALT: test-plan.md not found — run /gaia-test-strategy --plan first to create it. Accepted paths: $TEST_ARTIFACTS/test-plan.md OR $TEST_ARTIFACTS/strategy/test-plan.md OR $TEST_ARTIFACTS/strategy/test-strategy.md OR $TEST_ARTIFACTS/test-plan/index.md"
   fi
 else
   log "validate-gate.sh not found at $VALIDATE_GATE — skipping gate (non-fatal)"
 fi
 
-# ---------- 2b. Guard: resolved test-plan must be non-empty (AC-EC1) ----------
+# ---------- 2b. Guard: resolved test-plan must be non-empty ----------
 # validate-gate.sh checks non-empty too, but emit a clearer error if the
 # resolver chose a path that turned out empty (race or odd FS state).
 if [ -z "$TEST_PLAN_PATH" ] || [ ! -s "$TEST_PLAN_PATH" ]; then
-  die "HALT: no non-empty test-plan artifact found (canonical: .gaia/artifacts/planning-artifacts/test-plan.md or test-strategy.md, with .gaia/artifacts/test-artifacts/{,strategy/} read-compat fallbacks — see resolve-artifact-path.sh test_plan) — run /gaia-test-strategy --plan to populate it (ADR-042 enforced gate)"
+  die "HALT: no non-empty test-plan artifact found (canonical: .gaia/artifacts/planning-artifacts/test-plan.md or test-strategy.md, with .gaia/artifacts/test-artifacts/{,strategy/} read-compat fallbacks — see resolve-artifact-path.sh test_plan) — run /gaia-test-strategy --plan to populate it"
 fi
 
 # ---------- 3. Load checkpoint state ----------

@@ -60,7 +60,7 @@ teardown() {
   [ "$output" = "$STORY_TREE/E2-S1-bar.md" ]
   echo "$stderr" | grep -q "WARNING: legacy-flat path"
   echo "$stderr" | grep -q "$STORY_TREE/E2-S1-bar.md"
-  echo "$stderr" | grep -q "migrate via E79-S6"
+  echo "$stderr" | grep -q "migrate to the nested layout"
 }
 
 # ---------------------------------------------------------------------------

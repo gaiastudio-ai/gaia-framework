@@ -121,8 +121,8 @@ teardown() { common_teardown; }
   grep -q 'ADR-058' "$SKILL"
 }
 
-@test "AC4: SKILL.md cross-references FR-357" {
-  grep -q 'FR-357' "$SKILL"
+@test "AC4: SKILL.md documents that val_validate_output is superseded by direct-invocation" {
+  grep -q 'superseded' "$SKILL"
 }
 
 # ---------------------------------------------------------------------------

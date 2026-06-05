@@ -168,15 +168,15 @@ teardown() { common_teardown; }
 # AC2 / AC5 — Provenance and 3-iteration cap referenced
 # ---------------------------------------------------------------------------
 
-@test "AC5: each Phase 3 Solutioning skill references E44-S2 (pattern provenance)" {
+@test "AC5: each Phase 3 Solutioning skill references gaia-val-validate (pattern provenance)" {
   for skill in $PHASE3_SKILLS_LIST; do
-    grep -q 'E44-S2' "$SKILLS_DIR/$skill/SKILL.md"
+    grep -q 'gaia-val-validate' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC5: each Phase 3 Solutioning skill references ADR-058 (decision provenance)" {
+@test "AC5: each Phase 3 Solutioning skill defers to canonical pattern anchor (decision provenance)" {
   for skill in $PHASE3_SKILLS_LIST; do
-    grep -q 'ADR-058' "$SKILLS_DIR/$skill/SKILL.md"
+    grep -q 'cite this anchor' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 

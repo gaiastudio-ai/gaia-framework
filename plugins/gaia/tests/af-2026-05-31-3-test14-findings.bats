@@ -278,7 +278,7 @@ EOF
 # ===========================================================================
 
 @test "AF-31-3 F-17: test-environment-manifest.sh mirrors to test-artifacts/" {
-  run grep -F 'F-17 mirror' "$PLUGIN_ROOT/scripts/lib/test-environment-manifest.sh"
+  run grep -F 'test-artifacts/test-environment.yaml' "$PLUGIN_ROOT/scripts/lib/test-environment-manifest.sh"
   [ "$status" -eq 0 ]
 }
 
@@ -287,7 +287,7 @@ EOF
 # ===========================================================================
 
 @test "AF-31-3 F-18: review-summary-gen.sh writes per-story reviews/ aggregator" {
-  run grep -F 'F-18 mirror' "$PLUGIN_ROOT/scripts/review-summary-gen.sh"
+  run grep -F 'reviews/review-summary.md' "$PLUGIN_ROOT/scripts/review-summary-gen.sh"
   [ "$status" -eq 0 ]
 }
 
@@ -362,6 +362,6 @@ EOF
 }
 
 @test "AF-31-3 D-05: test-strategy SKILL.md documents the two-artifact expectation + frontmatter" {
-  run grep -F 'two-artifact expectation' "$PLUGIN_ROOT/skills/gaia-test-strategy/SKILL.md"
+  run grep -F 'Two-artifact expectation' "$PLUGIN_ROOT/skills/gaia-test-strategy/SKILL.md"
   [ "$status" -eq 0 ]
 }

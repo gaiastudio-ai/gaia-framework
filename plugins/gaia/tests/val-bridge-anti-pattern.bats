@@ -44,7 +44,7 @@ MIGRATED_SKILLS=(
 # "No inline Val" Critical Rule (negative prose that names the antipattern
 # to forbid it). Pattern stabilized across E87-S2..S6 with progressive
 # refinement (see TC-VBR-7b/9c/10b/11c filter regex history).
-FILTER_ALLOW='Changelog|\(removed\)|Removed `context: fork`|from `context: fork`|removed the|no longer|MUST NOT|do NOT|migrated|prior to E87|prior model|historically|precedent|sequential `context: fork`|No inline Val|^- \*\*[0-9]{4}-[0-9]{2}-[0-9]{2}'
+FILTER_ALLOW='Changelog|\(removed\)|Removed `context: fork`|from `context: fork`|removed the|no longer|MUST NOT|do NOT|migrated|prior to E87|prior model|historically|precedent|sequential `context: fork`|No inline Val|not via|not the broken|broken-substrate|^- \*\*[0-9]{4}-[0-9]{2}-[0-9]{2}'
 
 setup() { common_setup; }
 teardown() { common_teardown; }
@@ -92,19 +92,20 @@ teardown() { common_teardown; }
 }
 
 # ============================================================================
-# TC-VBR-meta — all 5 migrated SKILL.md files contain ADR-104 reference
+# TC-VBR-meta — all 5 migrated SKILL.md files contain Val Bridge Migration
+#               changelog entry (durable anchor for the migration cascade)
 # ============================================================================
 @test "TC-VBR-meta: all 5 migrated SKILL.md files contain ADR-104 reference (Changelog cascade)" {
   local missing=""
   for slug in "${MIGRATED_SKILLS[@]}"; do
     local file="$PLUGIN_ROOT/skills/$slug/SKILL.md"
     [ -f "$file" ] || { echo "MISSING: $file"; return 1; }
-    if ! grep -q 'ADR-104' "$file"; then
+    if ! grep -q 'Val Bridge Migration' "$file"; then
       missing+="$file "
     fi
   done
   if [ -n "$missing" ]; then
-    printf 'TC-VBR-meta: SKILL.md files missing ADR-104 reference: %s\n' "$missing" >&2
+    printf 'TC-VBR-meta: SKILL.md files missing Val Bridge Migration changelog entry: %s\n' "$missing" >&2
     return 1
   fi
 }

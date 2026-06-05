@@ -14,12 +14,12 @@ orchestration_class: light-procedural
 
 Display the current sprint status by invoking the deterministic `sprint-status-dashboard.sh` formatter script. This skill is read-only with respect to `sprint-status.yaml` — it NEVER writes to or modifies the sprint status file under any code path, per CLAUDE.md Sprint-Status Write Safety.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/sprint-status/` XML engine workflow (brief Cluster 8, story E28-S61). Nearly all work is delegated to the bash formatter script per ADR-042 (scripts-over-LLM).
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/sprint-status/` XML engine workflow. Nearly all work is delegated to the bash formatter script (scripts-over-LLM).
 
 ## Critical Rules
 
 - This skill is strictly read-only with respect to story files — NEVER modifies frontmatter or body content.
-- The skill MAY write to `sprint-status.yaml` but only indirectly through the `sprint-state.sh reconcile` call in Step 2. Reconcile is the single authorized writer, and its edits are always derivative corrections pulled from authoritative story-file frontmatter per ADR-055 §10.29.1 and NFR-SPQG-2.
+- The skill MAY write to `sprint-status.yaml` but only indirectly through the `sprint-state.sh reconcile` call in Step 2. Reconcile is the single authorized writer, and its edits are always derivative corrections pulled from authoritative story-file frontmatter.
 - All dashboard rendering is performed by `sprint-status-dashboard.sh` — do NOT implement formatting logic in the LLM layer.
 - If the formatter script exits non-zero, surface the error message to the user and stop. Do NOT attempt to render the dashboard manually.
 
@@ -33,7 +33,7 @@ Run the sprint-status-dashboard.sh formatter script:
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-status-dashboard.sh"
 ```
 
-If the script exits 0, present its stdout output to the user verbatim — do not reformat, filter, or enhance the dashboard output. The script produces the canonical dashboard rendering. When the current sprint contains at least one story with `risk: HIGH` in its story-file frontmatter, the dashboard appends a "Recommended mitigations for HIGH-risk stories" block listing every entry from the bundled mitigation catalog per FR-SPQG-5.
+If the script exits 0, present its stdout output to the user verbatim — do not reformat, filter, or enhance the dashboard output. The script produces the canonical dashboard rendering. When the current sprint contains at least one story with `risk: HIGH` in its story-file frontmatter, the dashboard appends a "Recommended mitigations for HIGH-risk stories" block listing every entry from the bundled mitigation catalog.
 
 If the script exits non-zero, display the error output and inform the user:
 - Exit 1 with "not found": `sprint-status.yaml` does not exist. Suggest running `/gaia-sprint-plan` first.
@@ -41,7 +41,7 @@ If the script exits non-zero, display the error output and inform the user:
 
 ### Step 2 — Reconcile Sprint Status (Post-Dashboard)
 
-After the dashboard renders successfully, invoke `sprint-state.sh reconcile` to detect and auto-correct drift between authoritative story-file frontmatter and the derivative `sprint-status.yaml` cache per ADR-055 §10.29.1.
+After the dashboard renders successfully, invoke `sprint-state.sh reconcile` to detect and auto-correct drift between authoritative story-file frontmatter and the derivative `sprint-status.yaml` cache.
 
 ```bash
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh" reconcile
@@ -57,7 +57,7 @@ Surface the reconcile output verbatim to the user — do NOT swallow errors or f
 
 Feature-flag escape hatch: a future rollout toggle may gate this call. If `GAIA_DISABLE_RECONCILE=1` is set in the environment, skip Step 2 entirely so a frontmatter-parse regression can be isolated without reverting the wiring.
 
-### Sprint auto-close detection (E81-S3)
+### Sprint auto-close detection
 
 The dashboard renders an advisory banner immediately above the story table when **every** story under the active sprint has `status: done` AND the top-level `status:` field still reads `active` AND `total_count > 0` (vacuous "all done" guard). Detection is centralized in `sprint-state.sh detect-auto-close` (single-line JSON contract on stdout, empty when the condition is not met, always exits 0) so other consumers (`/gaia-retro`, `/gaia-sprint-plan`) can reuse the same probe.
 
@@ -75,7 +75,7 @@ PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-stat
 
 When the banner fires, the dashboard prints the sprint id, done / total counts, end_date, and the literal `yq -i '.status = "closed"' .gaia/state/sprint-status.yaml` remediation hint so operators can copy-paste the boundary write without re-deriving the exact yq syntax.
 
-### Stranded ready stories (E81-S4)
+### Stranded ready stories
 
 The dashboard appends a `Stranded ready stories` section below the active-sprint table when one or more story files match ALL of the following criteria:
 
@@ -83,7 +83,7 @@ The dashboard appends a `Stranded ready stories` section below the active-sprint
 - `sprint_id: null` in story-file frontmatter, AND
 - the MOST-RECENT entry for the story key in `.gaia/memory/validator-sidecar/decision-log.md` resolves to `PASSED`.
 
-The verdict lookup is a union over three heading patterns (per E81-S4 AC4):
+The verdict lookup is a union over three heading patterns:
 
 - `### [DATE] Story Validation: <key>` (written by `/gaia-validate-story`)
 - `### [DATE] Story Validation (re-run): <key>` (re-runs of the same)
@@ -93,9 +93,9 @@ Verdict body recognition: JSON-style `verdict":"PASSED"` (canonical, written by 
 
 **Recency rule.** The decision log appends newest entries AT THE TOP, so the first matching heading in document order is the most-recent. A story whose log has an older PASSED followed by a newer FAILED is EXCLUDED — recency wins.
 
-**Read-only invariant (AC3, AC6).** The detection path is strictly read-only: no story file, no `sprint-status.yaml` entry, and no `priority_flag` is mutated. Per `feedback_priority_flag_never_auto_set.md`, the framework never auto-injects stranded stories into the active sprint and never sets `priority_flag: "next-sprint"`. The dashboard signal alone is the ergonomic improvement — the operator decides.
+**Read-only invariant.** The detection path is strictly read-only: no story file, no `sprint-status.yaml` entry, and no `priority_flag` is mutated. Per `feedback_priority_flag_never_auto_set.md`, the framework never auto-injects stranded stories into the active sprint and never sets `priority_flag: "next-sprint"`. The dashboard signal alone is the ergonomic improvement — the operator decides.
 
-**Suppression (AC2).** If no story matches the criteria, the entire section (header + hint line) is suppressed — no empty-list placeholder is rendered.
+**Suppression.** If no story matches the criteria, the entire section (header + hint line) is suppressed — no empty-list placeholder is rendered.
 
 **Operator's decision path.**
 

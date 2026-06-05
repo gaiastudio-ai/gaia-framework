@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://gaia.studio/schemas/brownfield-gap-entry.schema.json",
   "title": "Brownfield gap entry",
-  "description": "AF-2026-05-30-2 / Test10 F-11. Canonical gap-entry schema shipped for the 7 brownfield scanners (doc-code, hardcoded, integration-seam, runtime-behavior, security, sbom-completeness, call-graph) so Phase-7 dedup can match overlapping findings reliably. Prior to this schema each scanner invented its own field shape (e.g. SEC-001 vs GAP-ISEAM-001 for the same underlying issue); the dedup was forced to do best-effort substring matching and under-merged true overlaps. Adopters mint a stable `gap_id` per the convention below and dedup keys off (category, evidence.file, evidence.line_range).",
+  "description": "Canonical gap-entry schema shipped for the 7 brownfield scanners (doc-code, hardcoded, integration-seam, runtime-behavior, security, sbom-completeness, call-graph) so Phase-7 dedup can match overlapping findings reliably. Prior to this schema each scanner invented its own field shape (e.g. SEC-001 vs GAP-ISEAM-001 for the same underlying issue); the dedup was forced to do best-effort substring matching and under-merged true overlaps. Adopters mint a stable `gap_id` per the convention below and dedup keys off (category, evidence.file, evidence.line_range).",
   "type": "object",
   "required": ["gap_id", "category", "severity", "title", "evidence"],
   "additionalProperties": false,
@@ -14,7 +14,7 @@
     },
     "category": {
       "type": "string",
-      "description": "Coarse classification used as a primary dedup key. Two entries that share `category` + `evidence.file` + overlapping `evidence.line_range` are presumed duplicates. `stale-claim` (Test17 D-4 / AF-2026-06-02-6) covers post-baseline assertions in PRD or architecture that the consolidation surfaced but a later /gaia-create-prd or /gaia-ci-setup invocation has closed; the consolidation subagent should re-stat the evidence_file mtime against consolidated-gaps.md before treating a `stale-claim` row as live.",
+      "description": "Coarse classification used as a primary dedup key. Two entries that share `category` + `evidence.file` + overlapping `evidence.line_range` are presumed duplicates. `stale-claim` covers post-baseline assertions in PRD or architecture that the consolidation surfaced but a later /gaia-create-prd or /gaia-ci-setup invocation has closed; the consolidation subagent should re-stat the evidence_file mtime against consolidated-gaps.md before treating a `stale-claim` row as live.",
       "enum": [
         "doc-code-drift",
         "hardcoded-value",
@@ -28,7 +28,7 @@
     },
     "claim_type": {
       "type": "string",
-      "description": "Test17 D-1 / AF-2026-06-02-6: explicit marker for positive vs negative claims. Negative claims (e.g. `no __main__`, `no scheduler`) point at a representative line that proves the absence, but the anchor is weak — the dedup engine and the consolidation prose-grader need to know whether the evidence.line_range is the FACT itself (positive) or merely a WITNESS to a missing pattern (negative). Defaults to `positive` when omitted for backward compatibility with pre-AF-2026-06-02-6 scan outputs.",
+      "description": "Explicit marker for positive vs negative claims. Negative claims (e.g. `no __main__`, `no scheduler`) point at a representative line that proves the absence, but the anchor is weak — the dedup engine and the consolidation prose-grader need to know whether the evidence.line_range is the FACT itself (positive) or merely a WITNESS to a missing pattern (negative). Defaults to `positive` when omitted for backward compatibility with older scan outputs.",
       "enum": [
         "positive",
         "negative",
@@ -38,7 +38,7 @@
     },
     "severity": {
       "type": "string",
-      "description": "ADR-037 severity vocabulary. CRITICAL findings halt downstream gates under ADR-063/067 (with the YOLO downgrade documented on the consuming phase).",
+      "description": "Severity vocabulary. CRITICAL findings halt downstream gates (with the YOLO downgrade documented on the consuming phase).",
       "enum": ["CRITICAL", "WARNING", "INFO"]
     },
     "title": {
@@ -72,7 +72,7 @@
         },
         "tool": {
           "type": "string",
-          "description": "Tool/adapter that produced the finding (e.g. `grype`, `semgrep`, `gaia-doc-code-scanner`). Used for provenance + scan-fidelity attribution per Test10 §7 C3 banner."
+          "description": "Tool/adapter that produced the finding (e.g. `grype`, `semgrep`, `gaia-doc-code-scanner`). Used for provenance and scan-fidelity attribution."
         }
       }
     },

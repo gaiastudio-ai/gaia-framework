@@ -1,6 +1,6 @@
 ---
 name: gaia-threat-model
-description: Create security threat model using STRIDE/DREAD methodology through collaborative analysis with the security subagent (Zara) — Cluster 6 architecture skill. Use when the user wants to produce a validated threat model document covering asset identification, STRIDE threat analysis, DREAD risk scoring, mitigation strategies, and security requirements.
+description: Create security threat model using STRIDE/DREAD methodology through collaborative analysis with the security subagent (Zara). Use when the user wants to produce a validated threat model document covering asset identification, STRIDE threat analysis, DREAD risk scoring, mitigation strategies, and security requirements.
 context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 orchestration_class: reviewer
@@ -16,11 +16,11 @@ orchestration_class: reviewer
 
 ## Mission
 
-You are orchestrating the creation of a Security Threat Model document. The threat analysis and scoring is delegated to the **security** subagent (Zara), who conducts STRIDE analysis, DREAD scoring, and produces mitigation strategies. You load the architecture document, validate inputs, coordinate the multi-step flow, and write the output to the canonical post-ADR-111 path `.gaia/artifacts/planning-artifacts/threat-model.md`.
+You are orchestrating the creation of a Security Threat Model document. The threat analysis and scoring is delegated to the **security** subagent (Zara), who conducts STRIDE analysis, DREAD scoring, and produces mitigation strategies. You load the architecture document, validate inputs, coordinate the multi-step flow, and write the output to the canonical path `.gaia/artifacts/planning-artifacts/threat-model.md`.
 
-**Path resolution (AF-2026-05-21-15).** All path references in this SKILL.md use the canonical post-ADR-111 location `.gaia/artifacts/planning-artifacts/threat-model.md`. Pre-ADR-111 projects continue to work via the three-tier idiom at the script layer (`scripts/finalize.sh`: `THREAT_MODEL_ARTIFACT` env-var override → positive-evidence legacy fallback → canonical default). When writing the threat model via the Write tool, target the canonical path; the pre-ADR-111 fallback is read-side only.
+**Path resolution.** All path references in this SKILL.md use the canonical location `.gaia/artifacts/planning-artifacts/threat-model.md`. Older projects continue to work via the three-tier idiom at the script layer (`scripts/finalize.sh`: `THREAT_MODEL_ARTIFACT` env-var override → positive-evidence legacy fallback → canonical default). When writing the threat model via the Write tool, target the canonical path; the legacy fallback is read-side only.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/3-solutioning/security-threat-model` workflow (brief Cluster 6, story P6-S6 / E28-S50). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/3-solutioning/security-threat-model` workflow. The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 
@@ -28,8 +28,8 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Use STRIDE methodology for threat identification — all six categories must be evaluated for every component and data flow.
 - Use DREAD scoring for risk prioritization — all five dimensions must be rated for every identified threat.
 - Record all threat model decisions in security-sidecar memory.
-- Threat analysis is delegated to the `security` subagent (Zara) via native Claude Code subagent invocation (`agents/security`) — do NOT inline Zara's persona into this skill body. If the security subagent (E28-S21) is not available, fail with "security subagent not available — install E28-S21" error.
-- **AF-2026-05-24-14 / Test02 F-40 — single-turn-synth carve-out.** The Zara dispatch is intentionally lightweight: it does NOT require an envelope-sentinel pattern like Val's (no equivalent of `assert_agent_envelope` after the Agent call). The justification is bounded: the threat-model artifact is a PLANNING DOCUMENT not a VERDICT (unlike Val's PASS/CRITICAL gate). If the host LLM single-turn-synthesizes Zara's persona instead of dispatching a real subagent — the F-40 finding from Test02 YARA-2 — the resulting threat-model.md is still a usable artifact (operator can read it, refine it, dispatch /gaia-validate-prd-style review later). It is NOT load-bearing for a CRITICAL halt. **However, the host LLM MUST surface a single-line audit-trail note** at the end of the skill run: `THREAT-MODEL DISPATCH NOTE: synthesized inline (single-turn)` OR `THREAT-MODEL DISPATCH NOTE: dispatched to security subagent (real Agent-tool call)`. This makes the dispatch path auditable post-hoc without forcing the envelope-sentinel ceremony that would be premature for a planning artifact. The full envelope-sentinel pattern remains required for Val (verdict-emitting) per ADR-104; this carve-out is scoped to threat-model only.
+- Threat analysis is delegated to the `security` subagent (Zara) via native Claude Code subagent invocation (`agents/security`) — do NOT inline Zara's persona into this skill body. If the security subagent is not available, fail with "security subagent not available" error.
+- **Single-turn-synth carve-out.** The Zara dispatch is intentionally lightweight: it does NOT require an envelope-sentinel pattern like Val's (no equivalent of `assert_agent_envelope` after the Agent call). The justification is bounded: the threat-model artifact is a PLANNING DOCUMENT not a VERDICT (unlike Val's PASS/CRITICAL gate). If the host LLM single-turn-synthesizes Zara's persona instead of dispatching a real subagent, the resulting threat-model.md is still a usable artifact (operator can read it, refine it, dispatch /gaia-validate-prd-style review later). It is NOT load-bearing for a CRITICAL halt. **However, the host LLM MUST surface a single-line audit-trail note** at the end of the skill run: `THREAT-MODEL DISPATCH NOTE: synthesized inline (single-turn)` OR `THREAT-MODEL DISPATCH NOTE: dispatched to security subagent (real Agent-tool call)`. This makes the dispatch path auditable post-hoc without forcing the envelope-sentinel ceremony that would be premature for a planning artifact. The full envelope-sentinel pattern remains required for Val (verdict-emitting); this carve-out is scoped to threat-model only.
 - If `.gaia/artifacts/planning-artifacts/threat-model.md` already exists, warn the user: "An existing threat model document was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
 
 ## Steps
@@ -107,7 +107,7 @@ Delegate to the **security** subagent (Zara) via `agents/security` to extract re
 
 - Record key decisions in security-sidecar memory.
 - Write the threat model document to `.gaia/artifacts/planning-artifacts/threat-model.md` with: assets table, STRIDE analysis per component, DREAD scores, risk levels, mitigation strategies, and security requirements list.
-- **Durable dispatch provenance (F-016, Test04).** The single-line dispatch
+- **Durable dispatch provenance.** The single-line dispatch
   note from the Critical Rules carve-out is emitted to stdout, which Claude Code
   collapses — so it is NOT a durable audit record on its own. Additionally write
   the provenance into the artifact's YAML frontmatter so it survives the run:
@@ -117,15 +117,14 @@ Delegate to the **security** subagent (Zara) via `agents/security` to extract re
   can then see at-rest whether the threat-model was produced by the real persona
   or inline-synthesized, without relying on transient stdout. This does NOT
   change the carve-out (inline synthesis remains permitted for this planning
-  artifact) — it makes the existing audit note durable, which was F-016's actual
-  complaint.
+  artifact) — it makes the existing audit note durable.
 
 > After artifact write: run open-question detection snippet
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/detect-open-questions.sh .gaia/artifacts/planning-artifacts/threat-model.md`
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-threat-model 7 project_name="$PROJECT_NAME" threat_model_scope=output stride_stage=complete --paths .gaia/artifacts/planning-artifacts/threat-model.md`
 
-### Step 8 — Val Auto-Fix Loop (E44-S2 / ADR-058)
+### Step 8 — Val Auto-Fix Loop
 
 > Reuses the canonical pattern at `gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
@@ -148,16 +147,16 @@ Delegate to the **security** subagent (Zara) via `agents/security` to extract re
      d. If iteration <= 3: go to step 2.
      e. Else: present the iteration-3 prompt verbatim (centralized in `gaia-val-validate` SKILL.md § "Auto-Fix Loop Pattern") and dispatch.
 
-YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See ADR-057 FR-YOLO-2(e) and ADR-058 for the hard-gate contract.
+YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Per story E44-S5 AC-EC10, Val's scope here is the artifact file ONLY (`.gaia/artifacts/planning-artifacts/threat-model.md`). The security-sidecar memory writes performed in Step 7 are out of scope for Val per the E44-S1 contract.
+> Val auto-review per the canonical pattern. Val's scope here is the artifact file ONLY (`.gaia/artifacts/planning-artifacts/threat-model.md`). The security-sidecar memory writes performed in Step 7 are out of scope for Val.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-threat-model 8 project_name="$PROJECT_NAME" threat_model_scope=val-auto-review stride_stage=val-auto-review stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/threat-model.md`
 
 ## Validation
 
 <!--
-  E42-S11 — V1→V2 25-item checklist port (FR-341, FR-359, VCP-CHK-21, VCP-CHK-22).
+  V1→V2 25-item checklist port.
   Classification (25 items total):
     - Script-verifiable: 15 (SV-01..SV-15) — enforced by finalize.sh.
     - LLM-checkable:     10 (LLM-01..LLM-10) — evaluated by the host LLM
@@ -170,7 +169,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   Analysis, DREAD Scoring, Mitigations, Security Requirements, Output
   Verification). The story 25-item count is authoritative per
   docs/v1-v2-command-gap-analysis.md §10; the remaining 13 items are
-  reconciled from V1 instructions.xml step outputs (Task 1.3):
+  reconciled from V1 instructions.xml step outputs:
     - per-component STRIDE enumeration (all six categories)
     - per-threat DREAD enumeration (all five dimensions D/R/E/A/D)
     - per-threat mitigation mapping for High/Critical severity
@@ -189,15 +188,13 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
     Output Verification  — SV-01, SV-02, SV-05, SV-15                    (4)
     Total                                                                 25
 
-  The VCP-CHK-22 anchor is SV-07 — "All six STRIDE categories evaluated
+  The anchor is SV-07 — "All six STRIDE categories evaluated
   per component". This is the V1 phrase verbatim and MUST appear in
-  violation output when a component is missing a STRIDE category (AC2).
+  violation output when a component is missing a STRIDE category.
 
   Invoked by `finalize.sh` at post-complete (per §10.31.1). Validation
   runs BEFORE the checkpoint and lifecycle-event writes (observability
-  is never suppressed by checklist outcome — story AC5).
-
-  See .gaia/artifacts/implementation-artifacts/E42-S11-port-gaia-threat-model-25-item-checklist-to-v2.md.
+  is never suppressed by checklist outcome).
 -->
 
 - [script-verifiable] SV-01 — Output file saved to .gaia/artifacts/planning-artifacts/threat-model.md
@@ -236,11 +233,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 ## References
 
-- Schema: `gaia-public/plugins/gaia/schemas/threat-model.schema.json` (JSON Schema draft-2020-12) — the structural contract for the `threat-model` artifact this skill produces. Validated by `/gaia-val-validate` (artifact_type `threat-model`) via the shared `scripts/lib/validate-artifact-schema.sh` helper (E108-S5).
+- Schema: `gaia-public/plugins/gaia/schemas/threat-model.schema.json` (JSON Schema draft-2020-12) — the structural contract for the `threat-model` artifact this skill produces. Validated by `/gaia-val-validate` (artifact_type `threat-model`) via the shared `scripts/lib/validate-artifact-schema.sh` helper.
 - Corpus instance: `.gaia/artifacts/planning-artifacts/threat-model.md` — the on-disk exemplar the schema is grounded in (nine canonical H2 sections + STRIDE/DREAD methodology).
-- Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum already carries `threat-model` at position 5; E108-S3 adds the backing schema with NO enum change.
-- Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` (E108-S5) — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).
-- FR-563 — threat-model schema + `/gaia-threat-model` References (no enum change) (E108-S3).
-- NFR-93 — schema-validator parity across the artifact-type schemas.
-- ADR-129 — artifact-type schema registry completion.
-- Epic: `.gaia/artifacts/planning-artifacts/epics/96-e108-artifact-type-schema-registry-completion.md` (E108).
+- Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum already carries `threat-model` at position 5; the backing schema is added with NO enum change.
+- Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).

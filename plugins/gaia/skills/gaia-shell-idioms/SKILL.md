@@ -11,8 +11,8 @@ Project convention doc for small shell and awk idioms that have bitten the codeb
 
 This skill is prose-only — it documents conventions but does not execute anything. Authors reading this skill should apply the idiom directly in scripts under `gaia-framework/plugins/gaia/scripts/` and in bats tests under `gaia-framework/tests/`.
 
-- ADR-041 — Native execution model; this skill is consumed directly by the Skills runtime.
-- ADR-042 — Scripts-over-LLM for deterministic operations; the idioms here are the canonical shell-side implementations.
+- Native execution model; this skill is consumed directly by the Skills runtime.
+- Scripts-over-LLM for deterministic operations; the idioms here are the canonical shell-side implementations.
 
 > **Scope:** GNU awk / POSIX awk / mawk. All examples are POSIX-compatible unless noted.
 
@@ -36,7 +36,7 @@ awk '/^## Foo/,/^## /' README.md
 
 The awk range `expr1,expr2` is a two-state toggle: once `expr1` matches a line, the range is "on" starting with that line. On every subsequent line (including the line that flipped the range on), awk re-evaluates `expr2`. If `expr2` matches the same line that `expr1` matched, the range flips back off on that one line — so only the start line is printed. `expr2` is not deferred to the next line; it is checked on the current line after `expr1` fires.
 
-This bug has recurred **3 times** across this codebase — once in `verify-cluster-gates.sh` (E28-S126), once in section-scoped bats greps (E28-S128), and again in the section-queries for the migration guide tests (E28-S130). Codifying the fix here is the remediation.
+This bug has recurred **3 times** across this codebase — once in `verify-cluster-gates.sh`, once in section-scoped bats greps, and again in the section-queries for the migration guide tests. Codifying the fix here is the remediation.
 
 ### The State-Machine Fix
 
@@ -137,7 +137,7 @@ $0 ~ /(^|[^A-Za-z0-9])NPS([^A-Za-z0-9]|$)/ { found = 1 }
 
 ### Review Checklist
 
-When reviewing a script or bats test, flag any `\<` or `\>` inside an awk regex. The fix is mechanical — substitute the character-class form. The regression guard `tests/no-bsd-awk-incompatible-anchors.bats` enforces this across `scripts/`, `tests/`, and `skills/*/scripts/` (E45-S7).
+When reviewing a script or bats test, flag any `\<` or `\>` inside an awk regex. The fix is mechanical — substitute the character-class form. The regression guard `tests/no-bsd-awk-incompatible-anchors.bats` enforces this across `scripts/`, `tests/`, and `skills/*/scripts/`.
 
 <!-- SECTION: safe-grep-log -->
 ## `safe_grep_log` — SIGPIPE-Safe `git log | grep` Replacement
@@ -208,7 +208,7 @@ When reviewing a script, flag any occurrence of `git log ... | grep` (or `git lo
 
 ## References
 
-- E28-S126 review (Finding #4) — first recurrence in `verify-cluster-gates.sh`.
-- E28-S130 QA tests — second recurrence, documented state-machine fix.
-- E28-S130 review summary — third recurrence; triage finding promoted to this story (E28-S168).
-- E20-S19 (sprint-26) Finding #2 — `set -euo pipefail` + `git log | grep` SIGPIPE workaround documented inline; promoted to E20-S20 which extracted `safe_grep_log()` into `scripts/lib/shell-idioms.sh` and migrated both call sites in `verify-pr-merged.sh`.
+- First recurrence in `verify-cluster-gates.sh`.
+- Second recurrence, documented state-machine fix.
+- Third recurrence; triage finding promoted to a fix story.
+- `set -euo pipefail` + `git log | grep` SIGPIPE workaround documented inline; later extracted `safe_grep_log()` into `scripts/lib/shell-idioms.sh` and migrated both call sites in `verify-pr-merged.sh`.

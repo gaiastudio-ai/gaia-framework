@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# emit-plan-file.sh — Phase 1 plan-file emission helper (E35-S1)
+# emit-plan-file.sh — Phase 1 plan-file emission helper
 #
-# Produces a schema v1 plan file per architecture §10.27.3.
+# Produces a schema v1 plan file.
 # Writes atomically via temp-file + mv to defend against partial writes
-# (AC-EC6) and concurrent reader races (AC-EC10).
+# and concurrent reader races.
 #
 # Usage:
 #   emit-plan-file.sh \
@@ -13,7 +13,7 @@
 #     --tests JSON_ARRAY \
 #     --narrative TEXT
 #
-# Each invocation generates a fresh plan_id (AC3, AC-EC3).
+# Each invocation generates a fresh plan_id.
 # The script is called by Phase 1 (fork-context) after analysis completes.
 #
 # Exit codes:
@@ -54,7 +54,7 @@ done
 [ -n "$OUTPUT_PATH" ] || die "missing required --output"
 
 # ---------------------------------------------------------------------------
-# Generate fresh plan_id (AC3, AC-EC3)
+# Generate fresh plan_id
 #   Prefer uuidgen (macOS/Linux). Fallback to timestamp + RANDOM nonce.
 #   Every invocation MUST produce a unique value.
 # ---------------------------------------------------------------------------
@@ -74,7 +74,7 @@ PLAN_ID="$(generate_plan_id)"
 GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%FT%TZ)"
 
 # ---------------------------------------------------------------------------
-# Verify output directory exists (AC-EC6 defense)
+# Verify output directory exists
 # ---------------------------------------------------------------------------
 
 OUTPUT_DIR="$(dirname "$OUTPUT_PATH")"
@@ -83,7 +83,7 @@ if [ ! -d "$OUTPUT_DIR" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Atomic write: temp file + mv (AC-EC6, AC-EC10)
+# Atomic write: temp file + mv
 # ---------------------------------------------------------------------------
 
 TEMP_FILE=""

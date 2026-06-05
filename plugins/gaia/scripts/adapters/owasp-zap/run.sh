@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# adapters/owasp-zap/run.sh — ADR-078 adapter contract for OWASP ZAP DAST tool.
+# adapters/owasp-zap/run.sh — adapter contract for OWASP ZAP DAST tool.
 #
-# Story E73-S3 — implements the OWASP ZAP DAST adapter with strict
-# env-allowlist enforcement (T-RSV2-1 mitigation). The subprocess
-# environment is scrubbed via `env -i` plus explicit passthrough for
-# only the env vars listed in adapter.json's `env-allowlist` field.
+# Implements the OWASP ZAP DAST adapter with strict env-allowlist enforcement.
+# The subprocess environment is scrubbed via `env -i` plus explicit passthrough
+# for only the env vars listed in adapter.json's `env-allowlist` field.
 #
-# Contract (ADR-078 / BOUNDARIES.md):
+# Contract (BOUNDARIES.md):
 #   run.sh --input <file-list> [--config <path>] [--output <path>]
 #          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
 #          [--target-url <url>] [--profile baseline|full|api]
@@ -30,8 +29,6 @@
 #   3   timeout exceeded
 #   127 zap-cli not on PATH (probe interprets as expected_and_missing)
 #
-# Refs: ADR-078 §1, ADR-080, FR-RSV2-31, FR-RSV2-33, NFR-RSV2-7,
-#       T-RSV2-1, story E73-S3.
 
 set -euo pipefail
 LC_ALL=C
@@ -56,7 +53,7 @@ while [ "$#" -gt 0 ]; do
     --profile) PROFILE="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/owasp-zap/run.sh — ADR-078 contract entry for OWASP ZAP DAST.
+adapters/owasp-zap/run.sh — entry point for OWASP ZAP DAST.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -64,8 +61,8 @@ Usage:
 
 Notes:
   - The subprocess environment is scrubbed to the env-allowlist declared
-    in adapter.json (T-RSV2-1). Adding entries to that allowlist requires
-    a security review.
+    in adapter.json. Adding entries to that allowlist requires a security
+    review.
 EOF
       exit 0 ;;
     *) printf 'run.sh: unknown arg: %s\n' "$1" >&2; exit 1 ;;
@@ -95,7 +92,7 @@ if [ -z "$TARGET_URL" ]; then
   exit 1
 fi
 
-# -------- env-allowlist (T-RSV2-1) ----------------------------------------
+# -------- env-allowlist ----------------------------------------
 #
 # Read the allowlist from adapter.json so the source-of-truth is the
 # adapter metadata, not duplicated in shell. We resolve adapter.json

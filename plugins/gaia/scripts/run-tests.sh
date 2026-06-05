@@ -1,30 +1,27 @@
 #!/usr/bin/env bash
-# run-tests.sh — Reference Test Execution Bridge entry point (E17 / ADR-044).
-#
-# Story: E67-S6 — Land reference run-tests.sh in plugin tree.
-# Refs:  AC1, AC2, AC3, AC4, AC5, FR-RSV2-11, FR-RSV2-19, ADR-044, ADR-077.
+# run-tests.sh — Reference Test Execution Bridge entry point.
 #
 # ────────────────────────────────────────────────────────────────────────────
-# Public API (FR-RSV2-19 adapter-contract style header-comment block).
+# Public API (adapter-contract style header-comment block).
 # ────────────────────────────────────────────────────────────────────────────
 #
 # Forms:
-#   run-tests.sh --story-key <key> --context <ctx>          # bridge form (ADR-044)
-#   run-tests.sh --story     <key> --tier    <unit|integration|e2e>   # AC1 alias
-#   run-tests.sh --detect-runner <project_path>             # AC3 detector probe
-#   run-tests.sh --help                                     # AC5
+#   run-tests.sh --story-key <key> --context <ctx>          # bridge form
+#   run-tests.sh --story     <key> --tier    <unit|integration|e2e>   # tier alias
+#   run-tests.sh --detect-runner <project_path>             # stack detector probe
+#   run-tests.sh --help
 #
 # Required (one of the two run forms):
-#   --story-key <key>    Story key (e.g., E67-S6) used for the audit trail.
-#                        Validated against ^E[0-9]+-S[0-9]+$ (T-37 mitigation).
-#   --story     <key>    Alias for --story-key per story AC1.
+#   --story-key <key>    Story key (e.g., E1-S1) used for the audit trail.
+#                        Validated against ^E[0-9]+-S[0-9]+$.
+#   --story     <key>    Alias for --story-key.
 #
 #   --context  <ctx>     Active execution context — drives tier-placement match.
 #                        Enum: local | ci_pre_merge | ci_post_merge | deployment
 #                              | post_deploy.
 #                        When omitted, falls back to $GAIA_EXECUTION_CONTEXT or
 #                        defaults to "local".
-#   --tier     <name>    AC1 alias for --context, with tier-name → tier_N mapping:
+#   --tier     <name>    Alias for --context, with tier-name → tier_N mapping:
 #                        unit→tier_1, integration→tier_2, e2e→tier_3. The active
 #                        context is then derived from the matching tier's
 #                        placement field — i.e., this form binds the run to one
@@ -37,7 +34,7 @@
 #
 # Behavior:
 #   • Reads test_execution.tier_{1,2,3}.{placement,command,timeout_seconds} from
-#     the config (FR-RSV2-11). Selects the tier(s) whose placement matches the
+#     the config. Selects the tier(s) whose placement matches the
 #     active context. Refuses to run with a clear error when the requested tier
 #     is bound (via --tier) and its placement does NOT match the active context
 #     (e.g., placement=ci-pre-merge while context=local).
@@ -45,7 +42,7 @@
 #     timeout_seconds enforcement (POSIX-portable; `timeout` when present, perl
 #     alarm fallback for macOS bash 3.2). Emits JSON {"suites":[...]} on stdout.
 #   • When test_execution is absent, emits a graceful-skip JSON document
-#     ({"suites":[]}) and exits 0 (parity with qa-test-runner.sh AC7).
+#     ({"suites":[]}) and exits 0 (parity with qa-test-runner.sh).
 #   • --detect-runner inspects a project directory for stack signatures and
 #     prints one of: vitest | junit | pytest | go | maestro. Returns non-zero
 #     with a clear error when no detector matches.
@@ -56,10 +53,10 @@
 #   1   caller error (missing required flag, unparseable config, invalid story
 #       key shape, placement mismatch, unknown stack on --detect-runner).
 #
-# Callers (the three skills that converge on this reference per AC4):
-#   • /gaia-test-run                (E72-S1)
-#   • /gaia-review-qa Phase 3C      (E67-S4 — qa-test-runner.sh delegates here)
-#   • /gaia-test-automate Phase 2   (E67-S2)
+# Callers (the three skills that converge on this reference):
+#   • /gaia-test-run
+#   • /gaia-review-qa Phase 3C      (qa-test-runner.sh delegates here)
+#   • /gaia-test-automate Phase 2
 #
 # POSIX discipline: bash 3.2 (macOS), set -euo pipefail, LC_ALL=C, no
 # associative arrays. jq is OPTIONAL (used only for the bridge JSON parse path
@@ -79,8 +76,7 @@ info() { printf '%s: INFO: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 
 usage() {
   # Print the header-comment block down to the first non-comment, non-shebang
-  # line. This satisfies AC5 (FR-RSV2-19 adapter-contract documentation) by
-  # treating the comment header as the canonical public-API doc.
+  # line. Treats the comment header as the canonical public-API doc.
   awk '
     NR==1 && /^#!/ { next }
     /^#/ { sub(/^# ?/, "", $0); print; next }
@@ -118,7 +114,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# ---------- per-stack runner detector (AC3) ----------
+# ---------- per-stack runner detector ----------
 
 detect_runner() {
   local proj="$1"
@@ -169,7 +165,7 @@ fi
 
 [ -n "$STORY_KEY" ] || die "missing --story-key (or --story)"
 
-# T-37 mitigation: validate story-key shape before any path construction.
+# Validate story-key shape before any path construction.
 case "$STORY_KEY" in
   E*[0-9]*-S*[0-9]*) : ;;
   *) die "invalid story key shape '$STORY_KEY' (expected ^E[0-9]+-S[0-9]+$)" ;;
@@ -190,8 +186,8 @@ case "${TIER_ALIAS:-}" in
 esac
 
 # Resolve config path (--config > $GAIA_TESTS_CONFIG > cwd default).
-# E96-S1 / ADR-111: prefer `.gaia/config/` over legacy `config/`. Legacy
-# fallback retained during the transition window (removed in E96-S5).
+# Prefer `.gaia/config/` over legacy `config/`. Legacy fallback retained
+# during the transition window.
 if [ -z "$CONFIG" ]; then
   if [ -n "${GAIA_TESTS_CONFIG:-}" ]; then
     CONFIG="$GAIA_TESTS_CONFIG"
@@ -253,9 +249,9 @@ yaml_get_tier_field() {
   ' "$CONFIG"
 }
 
-# AF-2026-05-31-1 / Test12 F-18 — read a top-level test_execution_bridge.<field>
-# value from $CONFIG. Mirrors yaml_get_tier_field's awk shape so we don't
-# pull in a yq runtime dependency for the bridge_used telemetry probe.
+# Read a top-level test_execution_bridge.<field> value from $CONFIG. Mirrors
+# yaml_get_tier_field's awk shape so we don't pull in a yq runtime dependency
+# for the bridge_used telemetry probe.
 yaml_get_bridge_field() {
   local field="$1"
   awk -v F="$field" '
@@ -386,7 +382,7 @@ ACTIVE_TIERS=()
 
 if [ -n "$BOUND_TIER" ]; then
   # --tier alias mode: bind to one specific tier; placement MUST match the
-  # active context — otherwise refuse with a clear AC2 error.
+  # active context — otherwise refuse with a clear error.
   case "$BOUND_TIER" in
     tier_1) plc="$TIER1_PLACEMENT" ;;
     tier_2) plc="$TIER2_PLACEMENT" ;;
@@ -411,11 +407,10 @@ else
       ACTIVE_TIERS+=("$tier")
     fi
   done
-  # AC2 enforcement (context mode): if at least one tier is configured but
-  # NONE matches the active context, AND every configured tier has a non-local
+  # Context-mode enforcement: if at least one tier is configured but NONE
+  # matches the active context, AND every configured tier has a non-local
   # placement, refuse with a clear error rather than silently skipping. This
-  # catches the explicit ci-pre-merge-while-running-locally case the story AC2
-  # calls out.
+  # catches the explicit ci-pre-merge-while-running-locally case.
   if [ "${#ACTIVE_TIERS[@]}" -eq 0 ] && [ "$CONTEXT" = "local" ]; then
     for plc in "$TIER1_PLACEMENT" "$TIER2_PLACEMENT" "$TIER3_PLACEMENT"; do
       if [ -n "$plc" ] && [ "$plc" != "local" ]; then
@@ -446,26 +441,20 @@ for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
     continue
   fi
   run_with_timeout "$cmd" "$to"
-  # AF-2026-05-31-1 / Test12 F-16 — parse the framework output for real
-  # per-test pass/fail counts before discarding the file. The prior
-  # implementation set `pass_count = (RT_EXIT == 0 ? 1 : 0)` and
-  # `fail_count = (RT_EXIT != 0 && !timeout ? 1 : 0)`, which made the
-  # execution-evidence telemetry report `pass_count: 1` for a 100-test
-  # pytest run — useless for any consumer trying to confirm test volume.
-  # The supported regex families cover pytest ("100 passed, 2 failed in
-  # 0.18s"), bats ("ok 7" / "not ok 3"), and go-test ("--- PASS:" /
-  # "--- FAIL:"); other frameworks fall back to the exit-code heuristic
-  # so the AC1 evidence contract stays intact. Run twice — once to count
-  # individual `not ok` / `--- FAIL:` lines, once to read pytest's
-  # summary line — whichever yields a non-zero count wins.
-  # AF-2026-05-31-2 / Test13 F-28 — every framework-output grep below MUST
-  # be terminated with `|| true` to survive the no-match case under `set -e`
-  # + pipefail. A fully-GREEN suite produces `100 passed in 0.18s` but
-  # NO `N failed` line at all: `grep -Eo '[0-9]+ failed' | tail | awk` then
-  # exits non-zero, pipefail propagates, set -e aborts the assignment
-  # BEFORE the `${var:-0}` default applies — so run-tests.sh crashed on
-  # exactly the suite state a review gate needs (all-PASS) and could not
-  # emit execution-evidence. Same applies to bats / go-test paths below.
+  # Parse the framework output for real per-test pass/fail counts before
+  # discarding the file. The supported regex families cover pytest
+  # ("100 passed, 2 failed in 0.18s"), bats ("ok 7" / "not ok 3"), and
+  # go-test ("--- PASS:" / "--- FAIL:"); other frameworks fall back to the
+  # exit-code heuristic so the evidence contract stays intact. Run twice —
+  # once to count individual `not ok` / `--- FAIL:` lines, once to read
+  # pytest's summary line — whichever yields a non-zero count wins.
+  # Every framework-output grep below MUST be terminated with `|| true` to
+  # survive the no-match case under `set -e` + pipefail. A fully-GREEN suite
+  # produces `100 passed in 0.18s` but NO `N failed` line at all:
+  # `grep -Eo '[0-9]+ failed' | tail | awk` then exits non-zero, pipefail
+  # propagates, set -e aborts the assignment BEFORE the `${var:-0}` default
+  # applies — so run-tests.sh would crash on exactly the suite state a review
+  # gate needs (all-PASS). Same applies to bats / go-test paths below.
   pass_count=0; fail_count=0
   if [ -f "$RT_OUTPUT_FILE" ]; then
     # pytest: "===== 100 passed, 2 failed in 0.18s ====="  (also handles xfailed/skipped suffixes)
@@ -535,19 +524,15 @@ printf '{"tier":'
 json_str "$TIER_LABEL"
 printf ',"context":'
 json_str "$CONTEXT"
-# AF-2026-05-31-1 / Test12 F-18 — `bridge_used` reflects whether the
-# Test Execution Bridge indirection was actually taken on this invocation.
-# Truth conditions (any of):
+# `bridge_used` reflects whether the Test Execution Bridge indirection was
+# actually taken on this invocation. Truth conditions (any of):
 #   (a) the script was reached through `test_execution_bridge.run_tests_path`
 #       (callers like /gaia-review-qa Phase 3C set GAIA_BRIDGE_INVOKE=1 to
 #        signal this before exec'ing the configured run_tests_path),
 #   (b) the script's resolved path matches the run_tests_path value declared
 #       in the active project-config.yaml — i.e. THIS file IS the bridge.
-# Prior to this fix `bridge_used` was hard-coded `false` in the JSON literal,
-# so the telemetry never flipped even when the bridge was correctly wired
-# (run_tests_path populated + the gate-bearing review skills dispatching
-# through it). Without the flip, downstream consumers (FR-EXBR-3 audits)
-# could not tell a bridge-mediated run from a direct invocation.
+# Without this check, downstream consumers could not tell a bridge-mediated
+# run from a direct invocation.
 _bridge_used="false"
 if [ "${GAIA_BRIDGE_INVOKE:-}" = "1" ]; then
   _bridge_used="true"

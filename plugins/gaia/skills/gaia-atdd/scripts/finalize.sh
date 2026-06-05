@@ -1,26 +1,22 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-atdd skill finalize (E28-S83 + E42-S15)
+# finalize.sh — /gaia-atdd skill finalize
 #
-# E42-S15 extends the bare-bones Cluster 4 finalize scaffolding with a
-# 5-item post-completion checklist (1 script-verifiable + 4
-# LLM-checkable) derived from the V1 atdd checklist (see the
-# .gaia/artifacts/planning-artifacts/v1-v2-command-gap-analysis.md entry for the verbatim V1 source).
-# See .gaia/artifacts/implementation-artifacts/E42-S15-* for the V1 → V2 mapping.
+# Extends the finalize scaffolding with a 5-item post-completion checklist
+# (1 script-verifiable + 4 LLM-checkable) derived from the atdd checklist.
 #
-# Responsibilities (per brief §Cluster 4 + story E42-S15):
-#   1. Run the script-verifiable subset of the 5 V1 checklist items
+# Responsibilities:
+#   1. Run the script-verifiable subset of the 5 checklist items
 #      against the atdd-{story_key}.md artifact. Validation runs FIRST.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
 #   3. Write a checkpoint via the shared checkpoint.sh helper.
 #   4. Emit a lifecycle event via lifecycle-event.sh.
 #
 # The observability side effects (3 + 4) MUST run on every invocation —
-# the checklist outcome never suppresses the checkpoint/event write
-# (matches E42-S1..S14 contract; story AC6).
+# the checklist outcome never suppresses the checkpoint/event write.
 #
 # Exit codes:
 #   0 — finalize succeeded; the script-verifiable item PASSes (or
-#       no artifact was requested — classic Cluster 4 behaviour).
+#       no artifact was requested — checklist skipped).
 #   1 — the script-verifiable checklist item FAILs; the AC4
 #       "no artifact to validate" violation; or a
 #       checkpoint/lifecycle-event failure. Failed item names are
@@ -34,8 +30,8 @@
 #                  not exist or is empty, AC4 fires — a single
 #                  "no artifact to validate" violation is emitted
 #                  and the script exits non-zero. When unset, the
-#                  script skips the checklist (classic Cluster 4
-#                  behaviour — observability still runs, exit 0).
+#                  script skips the checklist (observability still
+#                  runs, exit 0).
 
 set -euo pipefail
 LC_ALL=C
@@ -54,12 +50,12 @@ log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
 # ---------- 0. Resolve artifact paths ----------
-# E80-S1 (AC8): the artifact path is deterministically derivable from
-# STORY_KEY — `.gaia/artifacts/test-artifacts/atdd-${STORY_KEY}.md`. Earlier revisions
-# silently skipped the SV-01 traceability checklist whenever ATDD_ARTIFACT
-# was unset, even though the path is reconstructable. We now derive it
-# whenever STORY_KEY is set; ATDD_ARTIFACT remains the explicit override
-# for test fixtures and bespoke invocations.
+# The artifact path is deterministically derivable from STORY_KEY —
+# `.gaia/artifacts/test-artifacts/atdd-${STORY_KEY}.md`. Earlier revisions
+# silently skipped the traceability checklist whenever ATDD_ARTIFACT was
+# unset, even though the path is reconstructable. We now derive it whenever
+# STORY_KEY is set; ATDD_ARTIFACT remains the explicit override for test
+# fixtures and bespoke invocations.
 ARTIFACT=""
 ARTIFACT_REQUESTED=0
 if [ -n "${ATDD_ARTIFACT:-}" ]; then
@@ -68,7 +64,7 @@ if [ -n "${ATDD_ARTIFACT:-}" ]; then
 elif [ -n "${STORY_KEY:-}" ]; then
   # Derive from the story key relative to the project root. PROJECT_ROOT
   # falls back to GAIA_PROJECT_ROOT, then to PWD when neither is set.
-  # AF-2026-05-21-19: canonical-first with positive-evidence legacy fallback.
+  # Canonical-first with positive-evidence legacy fallback.
   derive_root="${PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}"
   if [ -f "$derive_root/docs/test-artifacts/atdd-${STORY_KEY}.md" ] && [ ! -d "$derive_root/.gaia/artifacts/test-artifacts" ]; then
     ARTIFACT="$derive_root/docs/test-artifacts/atdd-${STORY_KEY}.md"
@@ -97,13 +93,13 @@ item_check() {
   fi
 }
 
-# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
-# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
-# uniform, permissive regex accepting optional numbered+lettered outline
-# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
-# divergent inline copies, so the same heading passed one skill's check and
-# failed another's. Sourced via a $0-relative path so it works whether or not
-# this script defines PLUGIN_SCRIPTS_DIR.
+# heading_present() is a single shared implementation
+# (plugins/gaia/scripts/lib/heading-present.sh) with one uniform, permissive
+# regex accepting optional numbered+lettered outline prefixes (11, 11b, 1.2.3).
+# Previously finalize.sh scripts carried divergent inline copies, so the same
+# heading passed one skill's check and failed another's. Sourced via a
+# $0-relative path so it works whether or not this script defines
+# PLUGIN_SCRIPTS_DIR.
 _GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
 if [ -r "$_GAIA_HEADING_LIB" ]; then
   # shellcheck source=/dev/null
@@ -135,7 +131,7 @@ ac_to_test_table_present() {
 }
 
 if [ "$ARTIFACT_REQUESTED" -eq 1 ] && { [ ! -f "$ARTIFACT" ] || [ ! -s "$ARTIFACT" ]; }; then
-  # AC4 — Caller explicitly pointed at an artifact path but it does
+  # Caller explicitly pointed at an artifact path but it does
   # not exist on disk or is empty (0 bytes).
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
@@ -148,7 +144,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
 
   # --- Script-verifiable items (1) ---
 
-  # SV-01 / V1 "Test-to-AC traceability documented"
+  # "Test-to-AC traceability documented"
   item_check "SV-01" "Test-to-AC traceability documented" \
     "$(ac_to_test_table_present "$ARTIFACT")"
 
@@ -182,16 +178,15 @@ else
   CHECKLIST_STATUS=0
 fi
 
-# ---------- 1b. Size advisory (E80-S1 AC9 — option c: risk-aware) ----------
+# ---------- 1b. Size advisory (risk-aware) ----------
 #
 # The 10KB advisory is downgraded from WARNING to INFO when the story's
 # `risk` frontmatter field is `high`. Rationale: high-risk stories
 # legitimately produce more ATDD content (more ACs, more edge cases). A
-# WARNING on every high-risk artifact is signal-blind — it tripped on 4 of
-# 5 sprint-40 high-risk artifacts (E79-S2 11.4KB, E79-S6 11.8KB, E76-S2
-# 16.5KB, E76-S3 10.6KB). For medium / low / unset risk a WARNING still
-# fires; for high risk the same observation is logged at INFO level so the
-# audit trail is preserved without polluting the WARNING channel.
+# WARNING on every high-risk artifact is signal-blind. For medium / low /
+# unset risk a WARNING still fires; for high risk the same observation is
+# logged at INFO level so the audit trail is preserved without polluting
+# the WARNING channel.
 if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   size_bytes="$(wc -c <"$ARTIFACT" | tr -d ' ')"
   if [ "$size_bytes" -gt 10240 ]; then
@@ -202,7 +197,7 @@ if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
     story_risk="medium"
     if [ -n "${STORY_KEY:-}" ]; then
       project_root_for_risk="${PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}"
-      # AF-2026-05-21-19: canonical-first with positive-evidence legacy fallback.
+      # Canonical-first with positive-evidence legacy fallback.
       if [ -d "$project_root_for_risk/.gaia/artifacts/implementation-artifacts" ]; then
         story_glob="$project_root_for_risk/.gaia/artifacts/implementation-artifacts/${STORY_KEY}-"*.md
       else
@@ -254,14 +249,14 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
-# helper itself logs warnings to stderr but never affects this script's
-# exit code. SKILL_NAME is resolved from the parent directory name so
-# the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
+# circuit to a no-op so the interactive prompt is preserved. Failure is
+# non-blocking — the auto-save helper itself logs warnings to stderr but
+# never affects this script's exit code. SKILL_NAME is resolved from the
+# parent directory name so the wire-in is identical across all Phase 1-3
+# finalize.sh files.
 AUTOSAVE_LIB="$PLUGIN_SCRIPTS_DIR/lib/auto-save-memory.sh"
 SKILL_NAME="$(basename "$(cd "$SCRIPT_DIR/.." && pwd)")"
 if [ -f "$AUTOSAVE_LIB" ]; then

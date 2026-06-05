@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# type-target-resolver.sh — eleven-type action-item type → target_command resolver (E76-S3)
-#
-# AC3 / FR-MTG-20 / ADR-086 / TC-MTG-AI-2
+# type-target-resolver.sh — eleven-type action-item type → target_command resolver
 #
 # Single source of truth for the eleven canonical action-item types and their
 # target_command mapping. Reject anything else with a non-zero exit code — never

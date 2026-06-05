@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# backlog-select-lint.sh — column-sourced pre-materialization dependency lint (E107-S2)
+# backlog-select-lint.sh — column-sourced pre-materialization dependency lint
 #
 # Inverts the sprint-plan contract: select stories directly from the backlog
 # (epics-and-stories.md ROSTER columns) WITHOUT requiring pre-materialized
-# `ready-for-dev` story files (fixes the Test02 F-9 silent-bypass). This is the
-# net-new column-sourced lint — `sprint-state.sh lint-dependencies` reads
-# story-file frontmatter + the sprint roster, NOT the markdown columns (Val F1).
+# `ready-for-dev` story files. This is the net-new column-sourced lint —
+# `sprint-state.sh lint-dependencies` reads story-file frontmatter + the sprint
+# roster, NOT the markdown columns.
 #
 # It parses the pipe-delimited ROSTER row (NOT the bold-label `**Depends on:**`
-# detail blocks, Val W1):
+# detail blocks):
 #   | Story | Title | Size | Points | Risk | Depends on | Blocks |
 # extracts HARD dependency keys from the `Depends on` cell — tolerant of the
-# real dep-cell grammar (Val W2): `none`, comma-separated, semicolon soft-deps
+# real dep-cell grammar: `none`, comma-separated, semicolon soft-deps
 # (`E900-S1; soft on E902-S2` → only E900-S1 is hard), range (`E66-S1..S2`),
 # and parenthetical annotations (`E900-S1 (Step 4 hook)` → bare key E900-S1).
 # A candidate HARD-BLOCKS when a hard-dep target is neither in --done nor
@@ -20,8 +20,6 @@
 # Pure + READ-ONLY: the caller (gaia-sprint-plan) derives --done (closed-sprint
 # archives / epic-block status) and --candidates (the selection set); this lint
 # does not scan history itself. Output on stdout; never mutates epics-and-stories.
-#
-# Refs: ADR-128, Test02 F-9, E106-S3, E107-S1, FR-558
 #
 # Invocation:
 #   backlog-select-lint.sh --epics <epics-and-stories.md> --candidates "K1,K2,..."
@@ -91,7 +89,7 @@ _in_set() { # $1 = key ; $2 = newline list
 # Parse the `Depends on` cell for one story key from the ROSTER row, returning
 # the bare HARD-dep keys (one per line). Roster row shape (pipe-delimited):
 #   | Story | Title | Size | Points | Risk | Depends on | Blocks |
-# The `Depends on` column index is SNIFFED from the header row (Val W1: do not
+# The `Depends on` column index is SNIFFED from the header row (do not
 # hard-code a positional field — tolerate column reorder / extra columns). Within
 # the matched candidate row, soft-deps (text after `;`) and parentheticals are
 # dropped; only bare E\d+-S\d+ tokens count as hard deps.
@@ -143,20 +141,17 @@ blocked_lines=""
 overall_blocked=0
 
 
-# AF-2026-05-30-2 / Test10 F-33: also read depends_on from the per-story
-# frontmatter as a fallback. The pipe-table roster parser misses the
-# dependency when the row's "Depends on" column is empty/None but the
-# individual story file declares `depends_on: [E3-S6]` in its frontmatter.
-# Test10 found E5-S4 had `depends_on: [E3-S6]` in its frontmatter but the
-# roster row left it blank, so backlog-select-lint reported false-pass.
-# This block resolves each candidate's story file and unions the
-# frontmatter depends_on list into the deps already gathered from the
-# roster — never trusts only one source.
+# Also read depends_on from the per-story frontmatter as a fallback. The
+# pipe-table roster parser misses the dependency when the row's "Depends on"
+# column is empty/None but the individual story file declares
+# `depends_on: [E3-S6]` in its frontmatter. This block resolves each
+# candidate's story file and unions the frontmatter depends_on list into the
+# deps already gathered from the roster — never trusts only one source.
 _frontmatter_deps_of() {
   local key="$1"
   local impl_root="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"
   local story_file=""
-  # Prefer per-story layout (E105-S1).
+  # Prefer per-story layout.
   story_file=$(find "$impl_root" -type f -path "*/epic-*/${key}-*/story.md" 2>/dev/null | head -1)
   if [ -z "$story_file" ]; then
     # Legacy nested.

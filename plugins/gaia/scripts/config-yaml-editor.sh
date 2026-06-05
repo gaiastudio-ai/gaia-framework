@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # config-yaml-editor.sh — comment-preserving section editor for project-config.yaml
 #
-# Story: E71-S3 (/gaia-config-* editor family).
-# ADR:   ADR-044 (Config Split — comment-preserving editing) and ADR-042
-#        (Scripts-over-LLM — deterministic YAML manipulation belongs in scripts).
-#
 # Comment-preserving technique:
 #   The script identifies top-level sections by scanning for unindented keys
 #   matching ^[a-z_][a-z0-9_]*: at column 0. A section's line range is from its
@@ -14,9 +10,9 @@
 #
 #   This line-level technique guarantees byte-identical preservation of every
 #   comment (inline + block) and every formatting choice (indentation, blank
-#   lines, multi-line scalars) outside the edited section. ADR-044 forbids
-#   round-tripping through a generic YAML serializer (e.g., `yq -y`,
-#   `yaml.dump`) because those strip comments.
+#   lines, multi-line scalars) outside the edited section. Round-tripping
+#   through a generic YAML serializer (e.g., `yq -y`, `yaml.dump`) is
+#   forbidden because those strip comments.
 #
 # Usage:
 #   config-yaml-editor.sh extract <file> <section_name>
@@ -143,9 +139,9 @@ case "$CMD" in
     fi
     read -r START END <<<"$range"
 
-    # AF-2026-05-31-3 / Test14 F-04 — same wrapper/section-name match check
-    # as `insert`. Replacing a section with content whose top-level key
-    # doesn't match the requested SECTION corrupts the file just as badly.
+    # Same wrapper/section-name match check as `insert`. Replacing a section
+    # with content whose top-level key doesn't match the requested SECTION
+    # corrupts the file just as badly.
     _first_key="$(awk '
       /^[[:space:]]*#/ { next }
       /^[[:space:]]*$/ { next }
@@ -189,12 +185,10 @@ case "$CMD" in
     NEW_FILE="$4"
     [ -f "$NEW_FILE" ] || die "new section file not found: $NEW_FILE"
 
-    # AC5 (E71-S7) — schema-aware fail-safe: reject section names that are not
-    # declared as top-level properties in project-config.schema.json. This
-    # closes the wrong-section-name defect class that let /gaia-config-tool
-    # ship writes against the nonexistent `tool_adapters` section and
-    # /gaia-config-rubric against the nonexistent `rubrics` section. Closed
-    # set is the keys of `.properties` in the schema.
+    # Schema-aware fail-safe: reject section names that are not declared as
+    # top-level properties in project-config.schema.json. This closes the
+    # wrong-section-name defect class. Closed set is the keys of `.properties`
+    # in the schema.
     SCHEMA_PATH="$(dirname "$0")/../schemas/project-config.schema.json"
     if [ -f "$SCHEMA_PATH" ] && command -v jq >/dev/null 2>&1; then
       if ! jq -r '.properties | keys[]' "$SCHEMA_PATH" 2>/dev/null \
@@ -210,16 +204,15 @@ case "$CMD" in
       exit 1
     fi
 
-    # AF-2026-05-31-3 / Test14 F-04 — wrapper/section-name match check.
-    # The prior implementation appended NEW_FILE verbatim to EOF without
-    # checking that NEW_FILE's top-level YAML key actually matched the
-    # requested SECTION. An operator passing unwrapped (inner-only)
-    # content silently wrote those keys at the FILE's ROOT level and the
-    # script returned exit 0 — corrupting project-config.yaml in a way
-    # the schema validator only caught much later. Skip blank lines and
-    # comments to find the first non-comment top-level key (a left-anchored
-    # `[a-z_]+:` line); if it isn't `<SECTION>:`, refuse with a clear
-    # message naming the expected wrapper form.
+    # Wrapper/section-name match check. The prior implementation appended
+    # NEW_FILE verbatim to EOF without checking that NEW_FILE's top-level YAML
+    # key actually matched the requested SECTION. An operator passing unwrapped
+    # (inner-only) content silently wrote those keys at the FILE's ROOT level
+    # and the script returned exit 0 — corrupting project-config.yaml in a way
+    # the schema validator only caught much later. Skip blank lines and comments
+    # to find the first non-comment top-level key (a left-anchored `[a-z_]+:`
+    # line); if it isn't `<SECTION>:`, refuse with a clear message naming the
+    # expected wrapper form.
     _first_key="$(awk '
       /^[[:space:]]*#/ { next }
       /^[[:space:]]*$/ { next }

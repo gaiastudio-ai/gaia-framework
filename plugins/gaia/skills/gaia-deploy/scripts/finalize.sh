@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-deploy lifecycle hook (E73-S5).
+# finalize.sh — gaia-deploy lifecycle hook.
 #
 # Writes the workflow checkpoint and emits a `workflow_complete` lifecycle
 # event for the deploy run. Mirrors the gaia-test-e2e finalize.sh pattern.

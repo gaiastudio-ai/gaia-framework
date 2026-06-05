@@ -1,4 +1,4 @@
-# `defectdojo-export.sh` — opt-in DefectDojo export (E104-S4 / AC4)
+# `defectdojo-export.sh` — opt-in DefectDojo export
 
 POSTs the merged SARIF (`sarif-merge.sh` output) to a configured
 [DefectDojo](https://www.defectdojo.org/) instance for centralized vulnerability
@@ -34,5 +34,5 @@ calls and no token requirement**.
 | `brownfield.defectdojo_api_token` | API token — supply via env-var reference, never a literal secret in config |
 | `brownfield.defectdojo_engagement_id` | engagement id for dedup idempotency |
 
-> Credentials follow the GAIA env-var-only credential policy (NFR-RSV2-7): the config
+> Credentials follow the GAIA env-var-only credential policy: the config
 > holds the NAME of the env var, never the literal token.

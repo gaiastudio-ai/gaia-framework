@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# verdict.sh — gaia-test-e2e Phase 4 verdict + Review Gate update (E73-S1, AC7, AC8).
+# verdict.sh — gaia-test-e2e Phase 4 verdict + Review Gate update.
 #
 # Reads the Phase 3A analysis-results.json and the Phase 3B llm-findings.json,
 # invokes review-common/verdict-resolver.sh to compute the verdict (APPROVE |
 # REQUEST_CHANGES | BLOCKED), and (when --story-key is provided AND --gate is
 # provided) updates the corresponding Review Gate row via review-gate.sh.
 #
-# Verdict to gate-row mapping (per CLAUDE.md FR-RSV2-3):
+# Verdict to gate-row mapping:
 #   APPROVE          -> PASSED
 #   REQUEST_CHANGES  -> FAILED
 #   BLOCKED          -> FAILED

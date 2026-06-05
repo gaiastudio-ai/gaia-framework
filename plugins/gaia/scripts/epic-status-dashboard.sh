@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # epic-status-dashboard.sh — deterministic epic completion dashboard formatter
 #
-# Test10 F-30 — `/gaia-epic-status` had no formatter script, contradicting
-# ADR-042 (scripts-over-LLM). This script is the read-only rendering peer to
-# sprint-status-dashboard.sh — it NEVER writes any artifact.
+# This script is the read-only rendering peer to sprint-status-dashboard.sh —
+# it NEVER writes any artifact.
 #
 # Reads:
 #   * `.gaia/artifacts/planning-artifacts/epics-and-stories.md` — epic list
@@ -21,7 +20,7 @@
 #   0 — dashboard rendered successfully
 #   1 — epics-and-stories.md not found or unparseable
 #
-# Heading-form acceptance (Test10 F-30 — epic-header em-dash parse drift):
+# Heading-form acceptance:
 #   Accepts both `## E{N} — Title` (em-dash U+2014) and `## E{N} - Title`
 #   (ASCII hyphen) and `## Epic {N}: Title`. The earlier regex matched only
 #   the em-dash form, dropping epics authored with a plain hyphen.
@@ -100,7 +99,7 @@ epic_list=$(awk '
     print key "\t" title
     next
   }
-  # Form (b): ASCII hyphen (Test10 F-30 fix)
+  # Form (b): ASCII hyphen
   /^## E[0-9]+[[:space:]]+-[[:space:]]+/ {
     line = $0
     sub(/^## /, "", line)
@@ -130,11 +129,10 @@ epic_list=$(awk '
 # ---------- Story-status resolver ----------
 # Returns one `KEY=STATUS` line per known story.
 #
-# AF-2026-05-31-2 / Test13 F-29: when a sprint is closed + archived, its
-# stories are removed from the LIVE `sprint-status.yaml` (the file is
-# re-seeded for the next sprint). The dashboard then misreported all
-# closed-sprint stories as `backlog` because the live yaml-only scan
-# couldn't find them. We now run TWO passes:
+# When a sprint is closed + archived, its stories are removed from the LIVE
+# `sprint-status.yaml` (the file is re-seeded for the next sprint). The
+# dashboard then misreported all closed-sprint stories as `backlog` because
+# the live yaml-only scan couldn't find them. We now run TWO passes:
 #   1. parse the live `sprint-status.yaml` (current sprint)
 #   2. parse every `sprint-status.yaml` under `sprint-archive/` (closed
 #      sprints), taking the FIRST status seen per key (live wins; archive

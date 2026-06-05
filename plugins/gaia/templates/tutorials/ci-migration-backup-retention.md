@@ -1,14 +1,12 @@
 # CI Migration Backup Retention
 
-> **Audience:** GAIA maintainers who ran `/gaia-config-ci --regenerate` against a pre-ADR-114 project and now have one or more backup directories under `.gaia-backup/` to manage.
+> **Audience:** GAIA maintainers who ran `/gaia-config-ci --regenerate` against an older project and now have one or more backup directories under `.gaia-backup/` to manage.
 >
 > **Reading time:** ~5 minutes.
->
-> **Refs:** SR-84 (backup integrity), ADR-114 §(g), FR-528, E98-S5 (migration flow), E98-S6 (this tutorial).
 
 ## Where backups live
 
-The E98-S5 auto-rename migration flow writes a fresh backup directory at the project-root sibling location:
+The auto-rename migration flow writes a fresh backup directory at the project-root sibling location:
 
 ```
 .gaia-backup/ci-regen-{ISO-8601-timestamp}/
@@ -34,7 +32,7 @@ plugins/gaia/scripts/verify-backup-integrity.sh .gaia-backup/ci-regen-20260523T1
 ```
 
 - **Exit 0** — every file in the backup matches its manifest entry. Safe to restore.
-- **Exit 1** — drift detected (mismatch, missing file, or extra file). The helper emits the canonical SR-84 HALT message + per-file detail:
+- **Exit 1** — drift detected (mismatch, missing file, or extra file). The helper emits the canonical HALT message + per-file detail:
 
 ```
 HALT: backup integrity check failed — .gaia-backup contents tampered (per SR-84)
@@ -79,7 +77,7 @@ Add `.gaia-backup/` to your project's `.gitignore` — backups are recovery stat
 
 - `verify-backup-integrity.sh <backup-dir>` exits 0.
 - Your restored `.github/workflows/*.yml` files have sha256 hashes matching the manifest entries.
-- A subsequent `/gaia-config-ci --regenerate` produces no surprises (the migration prompt does NOT re-fire for files you've already migrated, per E98-S5 AC5 idempotency).
+- A subsequent `/gaia-config-ci --regenerate` produces no surprises (the migration prompt does NOT re-fire for files you've already migrated).
 
 ## Common pitfalls
 

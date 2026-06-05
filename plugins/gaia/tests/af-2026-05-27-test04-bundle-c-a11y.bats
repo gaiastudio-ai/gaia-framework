@@ -18,7 +18,7 @@ setup() {
 teardown() { common_teardown; }
 
 @test "F-012: a11y gate auto-detects UI presence from ux-design.md when ui_present unset" {
-  grep -qF 'F-012 auto-detect' "$SK"
+  grep -qF 'Guard for actionability + UX auto-detect' "$SK"
   grep -qF 'UI presence inferred from ux-design.md' "$SK"
 }
 
@@ -33,6 +33,6 @@ teardown() { common_teardown; }
 }
 
 @test "F-013: a11y report test-artifacts location documented as intentional" {
-  grep -qF 'Output-location note (F-013' "$SK"
-  grep -qF 'grouped with the other test artifacts per' "$SK"
+  grep -qF 'Output-location note.' "$SK"
+  grep -qF 'grouped with the other test artifacts' "$SK"
 }

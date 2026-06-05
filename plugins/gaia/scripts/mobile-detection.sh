@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# mobile-detection.sh — E74-S11 mobile signal detector.
+# mobile-detection.sh — mobile signal detector.
 #
 # Scans a project root for mobile platform signals and emits a JSON
 # document with `platforms` (string array) and `device_targets`
-# (canonical block per ADR-081 / project-config schema:
+# (canonical block per project-config schema:
 #   {os_versions[], form_factors[], screen_sizes[{width,height,density}]}).
 #
-# Detection rules (FR-RSV2-44, AC6, AC7):
+# Detection rules:
 #   - Package.swift                         -> ios
 #   - *.xcodeproj / *.xcworkspace dir       -> ios
 #   - build.gradle / build.gradle.kts with com.android.{application,library}
@@ -138,7 +138,7 @@ platforms = []
 if has_ios: platforms.append("ios")
 if has_android: platforms.append("android")
 
-# Default device_targets per ADR-081 — minimal valid block.
+# Default device_targets — minimal valid block.
 def default_ios():
     return {
         "os_versions": ["16.0", "17.0"],

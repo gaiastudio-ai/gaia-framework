@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dep-audit-subroutine.sh — GAIA review-common dependency-audit sub-routine (E69-S4).
+# dep-audit-subroutine.sh — GAIA review-common dependency-audit sub-routine.
 #
 # Purpose
 # -------
@@ -23,7 +23,7 @@
 #     `severity:"warning"` finding in the fragment with a "Dependency audit
 #     unavailable — <reason>" message. The script ALWAYS exits 0 on detection
 #     paths so a sub-routine infrastructure failure does NOT cascade as a
-#     parent BLOCKED verdict (AC-EC1 / FR-RSV2-23).
+#     parent BLOCKED verdict.
 #
 # Output (stdout)
 # ---------------
@@ -49,15 +49,13 @@
 # ------------------------------------
 #   GAIA_DEP_AUDIT_FORCE_FAIL=1   force the auditor invocation to fail; the
 #                                  script must record a WARNING finding and
-#                                  still exit 0 (AC-EC1 regression guard).
+#                                  still exit 0 (regression guard).
 #
 # Exit codes
 # ----------
 #   0  always on the detection paths (no manifests, manifests + audit ok,
 #      manifests + audit failed isolated as WARNING)
 #   1  caller error (missing --target, unknown flag)
-#
-# Refs: E69-S4, FR-RSV2-23, ADR-077, ADR-082, source-report §2.2 + §5.4.
 
 set -euo pipefail
 LC_ALL=C
@@ -69,7 +67,7 @@ die() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — dependency-audit sub-routine (E69-S4, ADR-082)
+$SCRIPT_NAME — dependency-audit sub-routine
 
 Usage:
   $SCRIPT_NAME --target <project-root>
@@ -120,9 +118,9 @@ fi
 
 # Real-world invocation — at this layer we emit a passed fragment with the
 # manifest list as evidence. Concrete CVE-detection logic is delegated to the
-# existing /gaia-review-deps skill when invoked standalone (AC5); the
-# sub-routine layer is intentionally thin here per ADR-077 (Phase 3A is the
-# evidence layer; LLM judgment lives in the parent review's Phase 3B).
+# existing /gaia-review-deps skill when invoked standalone. The sub-routine
+# layer is intentionally thin (Phase 3A is the evidence layer; LLM judgment
+# lives in the parent review's Phase 3B).
 printf '{"name":"dependency-audit","scope":"project","status":"passed","category":"dependency_audit","manifests":"%s","findings":[]}\n' \
   "$manifests_found"
 exit 0
