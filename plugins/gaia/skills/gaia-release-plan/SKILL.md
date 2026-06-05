@@ -20,11 +20,11 @@ orchestration_class: light-procedural
 
 You are generating a staged rollout and release strategy for the project. Your output is a comprehensive release plan that covers scope, deployment strategy, staged rollout percentages with observation windows, rollback criteria, success metrics, and a communication plan.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/release-plan` workflow (Cluster 12, story E28-S93, ADR-041). It follows the canonical skill pattern established by E28-S66 (code-review).
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/release-plan` workflow. It follows the canonical skill pattern established by the code-review skill.
 
 **Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the release plan artifact to `.gaia/artifacts/implementation-artifacts/`.
 
-**Foundation script integration (ADR-042):** This skill invokes `setup.sh` and `finalize.sh` from `plugins/gaia/skills/gaia-release-plan/scripts/` for config resolution and checkpoint management. Deterministic operations belong in bash scripts, not LLM prompts.
+**Foundation script integration:** This skill invokes `setup.sh` and `finalize.sh` from `plugins/gaia/skills/gaia-release-plan/scripts/` for config resolution and checkpoint management. Deterministic operations belong in bash scripts, not LLM prompts.
 
 ## Critical Rules
 

@@ -65,10 +65,15 @@ setup() {
 }
 
 @test "every in-scope SKILL.md references ADR-072 in its fallback rule" {
+  # ADR-072 codified the flat->strategy/ placement fallback rule. The published
+  # prose no longer names the ADR identifier, but every skill MUST still
+  # document the named fallback contract. Assert on the durable behavioral
+  # anchor: "strategy-fallback rule", "strategy/ fallback", or the equivalent
+  # "fall back to ... strategy/" phrasing.
   for skill in "${SKILLS[@]}"; do
     f="$SKILLS_DIR/$skill/SKILL.md"
-    if ! grep -q 'ADR-072' "$f"; then
-      echo "FAIL: $skill SKILL.md does not reference ADR-072"
+    if ! grep -qE 'strategy-fallback rule|strategy/ fallback|fall back to.*strategy/' "$f"; then
+      echo "FAIL: $skill SKILL.md does not document the strategy/ placement fallback rule"
       return 1
     fi
   done

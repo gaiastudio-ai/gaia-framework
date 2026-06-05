@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — Cluster 7 change-request redirect skill finalize (E28-S58)
+# finalize.sh — change-request redirect skill finalize
 #
-# Mechanical copy of the Cluster 7 reference implementation. Only
+# Mechanical copy of the reference implementation. Only
 # WORKFLOW_NAME and SCRIPT_NAME differ.
 #
 # Responsibilities:

@@ -188,17 +188,17 @@ ajv_validate() {
 #  per Val F2 — CI-self-enforced here.)
 # ---------------------------------------------------------------------------
 
-@test "E85-S14 AC-X2: gaia-config-stack SKILL.md carries the CRUD-menu disclaimer + ADR-093" {
+@test "E85-S14 AC-X2: gaia-config-stack SKILL.md carries the CRUD-menu disclaimer + orchestration_class" {
   run grep -F "LLM-driven interaction pattern under Claude Code main-turn orchestration" "$SKILLS/gaia-config-stack/SKILL.md"
   [ "$status" -eq 0 ]
-  run grep -F "ADR-093" "$SKILLS/gaia-config-stack/SKILL.md"
+  run grep -F "orchestration_class" "$SKILLS/gaia-config-stack/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "E85-S14 AC-X2: gaia-init SKILL.md carries the CRUD-menu disclaimer + ADR-093" {
+@test "E85-S14 AC-X2: gaia-init SKILL.md carries the CRUD-menu disclaimer + orchestration_class" {
   run grep -F "LLM-driven interaction pattern under Claude Code main-turn orchestration" "$SKILLS/gaia-init/SKILL.md"
   [ "$status" -eq 0 ]
-  run grep -F "ADR-093" "$SKILLS/gaia-init/SKILL.md"
+  run grep -F "orchestration_class" "$SKILLS/gaia-init/SKILL.md"
   [ "$status" -eq 0 ]
 }
 

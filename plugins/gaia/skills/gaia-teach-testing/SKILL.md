@@ -13,7 +13,7 @@ orchestration_class: light-procedural
 
 Teach testing progressively through structured, interactive learning sessions. Assess the user's skill level (beginner, intermediate, or expert) and deliver a tailored lesson with concepts, examples, exercises, and a summary. Use the user's project stack for code examples when possible.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/teach-me-testing` workflow (E28-S89, Cluster 11). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
+This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/teach-me-testing` workflow. The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# publish-github-releases/run.sh — FR-526 + ADR-113 + ADR-037 envelope.
+# publish-github-releases/run.sh — publish envelope.
 # Shells out to `gh release create` for trigger; `gh release view` for verify.
-# NFR-081: GH_TOKEN ONLY from env.
+# GH_TOKEN MUST come from env only.
 
 # shellcheck source=../_publish-common.bash
 source "$(dirname "$0")/../_publish-common.bash"
@@ -15,7 +15,7 @@ case "$ACTION" in
   trigger)
     if [ -z "$GH_TOKEN" ] && [ "${GH_PUBLISH_MOCK:-}" != "1" ]; then
       publish_write_envelope "FAILED" "github-releases" "trigger" \
-        "GH_TOKEN missing — adapter refuses to fall back to gh auth status default per NFR-081." \
+        "GH_TOKEN missing — adapter refuses to fall back to gh auth status default." \
         "$(publish_evidence_log_excerpt "missing GH_TOKEN" "env")"
       exit 0
     fi

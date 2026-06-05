@@ -5,10 +5,10 @@
 # directory of per-section shards plus a `_preamble.md` (content above the
 # first H3) and an `index.md` table of contents.
 #
-# Usage (flag form, preferred — E53-S245 AC2):
+# Usage (flag form, preferred):
 #   h3-shard.sh --input <source-file> --output-dir <output-dir>
 #
-# Usage (positional form, retained for E53-S235 backward compatibility):
+# Usage (positional form, retained for backward compatibility):
 #   h3-shard.sh <source-file> [<output-dir>]
 #
 # Default <output-dir> is the source path with `.md` stripped, plus a
@@ -17,20 +17,16 @@
 # collisions with neighbouring numbered shards already present in the
 # directory.
 #
-# Behavioural contract (E53-S245 is a faithful extraction of the
-# `_memory/checkpoints/E53-S235-artifacts/h3-shard.sh` reference; output is
-# byte-identical for the same input):
-#   AC2 — one shard per H3.
-#   AC3 — index.md emitted alongside shards.
-#   AC3 — repeated runs produce byte-identical output (idempotency).
+# Behavioural contract (output is byte-identical for the same input):
+#   - one shard per H3.
+#   - index.md emitted alongside shards.
+#   - repeated runs produce byte-identical output (idempotency).
 #
 # Exit codes:
 #   0 — success
 #   1 — source file not found OR no H3 boundaries detected
 #   2 — usage error (bad flag, wrong number of positional args)
 #
-# Refs: E53-S245 (this script's home), E53-S235 (origin reference impl).
-
 set -euo pipefail
 
 usage() {

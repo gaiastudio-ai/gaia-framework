@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-tech-debt-review skill setup (E28-S108, Cluster 14)
+# setup.sh — gaia-tech-debt-review skill setup
 
 set -euo pipefail
 LC_ALL=C

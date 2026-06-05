@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# adapters/lighthouse-a11y/run.sh — ADR-078 adapter contract for Lighthouse a11y (E73-S4).
+# adapters/lighthouse-a11y/run.sh — adapter contract for Lighthouse a11y.
 #
-# Contract (ADR-078 / BOUNDARIES.md):
+# Contract (BOUNDARIES.md):
 #   run.sh --input <file-list> [--config <path>] [--output <path>]
 #          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
 #          [--target-url <url>] [--wcag-level <A|AA|AAA>] [--categories <csv>]
 #
-# Story E73-S4 augments the canonical contract with three additive flags:
+# Three additive flags beyond the base contract:
 #   --target-url <url>       URL to audit (required for an actual run; absence
 #                            is permitted for help/dry-run and contract probes)
 #   --wcag-level <A|AA|AAA>  WCAG conformance level. Default: AA. Recorded in the
@@ -28,7 +28,6 @@
 #   127 lighthouse not found on PATH
 #
 # POSIX discipline: bash 3.2 / macOS-compatible, set -euo pipefail, LC_ALL=C.
-# Refs: ADR-078 §1, FR-RSV2-31, NFR-RSV2-7, story E73-S4.
 
 set -euo pipefail
 LC_ALL=C
@@ -55,7 +54,7 @@ while [ "$#" -gt 0 ]; do
     --categories) CATEGORIES="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/lighthouse-a11y/run.sh — ADR-078 contract entry for Lighthouse a11y.
+adapters/lighthouse-a11y/run.sh — contract entry for Lighthouse a11y.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]

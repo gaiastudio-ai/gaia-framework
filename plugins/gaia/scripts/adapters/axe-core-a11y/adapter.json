@@ -6,5 +6,5 @@
   "default-timeout-seconds": 120,
   "file-extensions": [],
   "scope": "project",
-  "description": "Deque axe-core accessibility scan via @axe-core/cli — invokes `axe <url> --tags wcag2a,wcag2aa --save - --stdout` and emits a normalized analysis-results fragment for the WCAG rubric judgment (E73-S4)."
+  "description": "Deque axe-core accessibility scan via @axe-core/cli — invokes `axe <url> --tags wcag2a,wcag2aa --save - --stdout` and emits a normalized analysis-results fragment for the WCAG rubric judgment."
 }

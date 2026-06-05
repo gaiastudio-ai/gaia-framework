@@ -38,8 +38,9 @@ teardown() { common_teardown; }
   [[ "$output" == *"total_points: accumulated from the injected story's"* ]]
   [[ "$output" == *"frontmatter"* ]]
   [[ "$output" == *"points:"* ]]
-  # AC4: cross-reference to the saved-memory rule.
-  [[ "$output" == *"feedback_sprint_inject_seed_total_points"* ]]
+  # AC4: the seed rule itself must be documented (was a cross-reference to the
+  # saved-memory rule; the durable anchor is the behavioral phrase).
+  [[ "$output" == *"Boundary-write seed rule"* ]]
 }
 
 @test "TC-SSI-4: other unknown flags still get the generic 'unknown flag' rejection" {

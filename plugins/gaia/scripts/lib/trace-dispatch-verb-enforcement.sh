@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
 # trace-dispatch-verb-enforcement.sh — /gaia-trace enforcement of
-# integration coverage for dispatch-verb medium/high-risk ACs (E88-S6).
-#
-# Refs:  ADR-107 (taxonomy SSOT via E88-S1), FR-DPD-6, AI-2026-05-13-8,
-#        AI-2026-05-13-10.
-# Story: E88-S6 (scope-split implementation — AC1 matrix-wide migration
-#        deferred to a follow-up).
+# integration coverage for dispatch-verb medium/high-risk ACs.
 #
 # Purpose
 #   For a single story file, walk the ACs and check: for every AC whose
-#   body contains a dispatch verb (per E88-S1 taxonomy) AND whose story's
+#   body contains a dispatch verb AND whose story's
 #   `risk:` is `medium` or `high`, verify the traceability matrix has at
 #   least one row with `test_class: integration` referencing the story
 #   (matched by `<story_key>:<ac_id>` substring or the bare `<story_key>`).

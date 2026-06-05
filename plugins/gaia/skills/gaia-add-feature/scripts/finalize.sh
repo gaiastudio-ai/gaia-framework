@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# finalize.sh — add-feature skill finalize (E28-S57; hardened by E83-S1)
+# finalize.sh — add-feature skill finalize
 #
-# Original responsibilities (E28-S57):
+# Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script
 #   2. Emit a lifecycle event via lifecycle-event.sh for the tailing sync agent
 #
-# E83-S1 hardening — fail-closed Val gate:
+# Fail-closed Val gate:
 #   0. Validate the Val-dispatch sentinel before any cascade-completion side
 #      effects. If the sentinel is missing or malformed, exit non-zero with a
 #      stderr message that names the failure mode and points the user back
-#      to a parent orchestrator thread (FR-362, ADR-063 amendment).
+#      to a parent orchestrator thread.
 #
 # The sentinel lives at:
 #   $CHECKPOINT_PATH/add-feature-${FEATURE_ID}-val-dispatched.json
@@ -20,8 +20,8 @@
 #   agent    — must equal "val"
 #
 # The guard is skipped only when FEATURE_ID is not exported. That degrades
-# safely for the legacy E28-S57 test fixtures that exercise finalize.sh
-# without driving the full skill — a guarded mode where FEATURE_ID is set
+# safely for legacy test fixtures that exercise finalize.sh without driving
+# the full skill — a guarded mode where FEATURE_ID is set
 # enforces the gate; an unguarded mode without FEATURE_ID retains the prior
 # behavior. The /gaia-add-feature SKILL.md Step 9 wiring exports FEATURE_ID
 # unconditionally, so production paths always flow through the guard.
@@ -48,7 +48,7 @@ RESOLVE_CONFIG="$PLUGIN_SCRIPTS_DIR/resolve-config.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Val-gate sentinel precondition (E83-S1) ----------
+# ---------- 0. Val-gate sentinel precondition ----------
 
 # Resolve CHECKPOINT_PATH if not already set.
 if [ -z "${CHECKPOINT_PATH:-}" ] && [ -x "$RESOLVE_CONFIG" ]; then
@@ -91,7 +91,7 @@ if [ -n "${FEATURE_ID:-}" ]; then
 
   # Structural validation. We use jq -e so a missing key or wrong type
   # exits non-zero. Each check is run separately so the stderr message
-  # names the offending field — TC-VFC-3.
+  # names the offending field.
 
   # 1. Parseable JSON
   if ! jq -e . "$sentinel" >/dev/null 2>&1; then

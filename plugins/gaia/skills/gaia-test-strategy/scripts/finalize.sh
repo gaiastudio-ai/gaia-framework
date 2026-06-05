@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-test-strategy skill finalize (AF-2026-05-22-5)
+# finalize.sh — /gaia-test-strategy skill finalize
 #
 # /gaia-test-strategy is the successor to /gaia-test-design (renamed in
 # the test-design → test-strategy deprecation). It had no scripts/
 # directory at all — its SKILL.md called
 # !${CLAUDE_PLUGIN_ROOT}/skills/gaia-test-strategy/scripts/finalize.sh
-# which silently no-op'd because the file didn't exist, so the SV-01..06
+# which silently no-op'd because the file didn't exist, so the script-verifiable
 # checklist never ran.
 #
 # This adapts the gaia-test-design/scripts/finalize.sh pattern to the
@@ -13,7 +13,7 @@
 # in gaia-test-strategy/SKILL.md §Validation.
 #
 # Responsibilities:
-#   1. Run the SV-01..06 script-verifiable subset of the SKILL.md §Validation
+#   1. Run the script-verifiable subset of the SKILL.md §Validation
 #      checklist against the test-strategy.md artifact.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
 #   3. Write a checkpoint via the shared checkpoint.sh helper.
@@ -21,7 +21,7 @@
 #
 # Exit codes:
 #   0 — finalize succeeded; all 6 script-verifiable items PASS (or no
-#       artifact was requested — classic Cluster 11 behaviour).
+#       artifact was requested — no-artifact behaviour).
 #   1 — one or more script-verifiable checklist items FAIL; or a
 #       checkpoint/lifecycle-event failure.
 #
@@ -29,13 +29,13 @@
 #   TEST_STRATEGY_ARTIFACT  Absolute path to the test-strategy.md artifact
 #                           to validate. When set, the script runs the
 #                           6-item checklist against it. When set but the
-#                           file does not exist or is empty, AC3 fires —
-#                           a single "no artifact to validate" violation
+#                           file does not exist or is empty, a
+#                           "no artifact to validate" violation
 #                           is emitted and the script exits non-zero.
 #                           When unset, the script falls back to
 #                           .gaia/artifacts/test-artifacts/strategy/test-strategy.md
-#                           (canonical post-ADR-111 + the strategy/
-#                           subdir per ADR-072). If neither is present,
+#                           (canonical layout, strategy/ subdir).
+#                           If neither is present,
 #                           the checklist run is skipped.
 
 set -euo pipefail
@@ -54,13 +54,13 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Resolve artifact path (E105-S2 / ADR-127 §7.2 + three-tier) ----------
+# ---------- 0. Resolve artifact path (three-tier) ----------
 # Tier 1 — TEST_STRATEGY_ARTIFACT env-var override wins.
 # Tier 2 — NEW canonical home: .gaia/artifacts/planning-artifacts/test-strategy.md
-#          (E105-S2: docs-about-testing moved out of test-artifacts/).
-# Tier 3 — positive pre-ADR-111 evidence: legacy strategy/test-strategy.md
+#          (docs-about-testing moved out of test-artifacts/).
+# Tier 3 — positive legacy evidence: legacy strategy/test-strategy.md
 #          under docs/test-artifacts/ exists AND canonical .gaia/ dir does NOT.
-# Tier 4 — legacy E53 placement: .gaia/artifacts/test-artifacts/strategy/test-strategy.md
+# Tier 4 — legacy placement: .gaia/artifacts/test-artifacts/strategy/test-strategy.md
 #          (read-compat for pre-migration projects).
 ARTIFACT=""
 ARTIFACT_REQUESTED=0
@@ -75,10 +75,8 @@ elif [ -f ".gaia/artifacts/test-artifacts/strategy/test-strategy.md" ]; then
   ARTIFACT=".gaia/artifacts/test-artifacts/strategy/test-strategy.md"
 fi
 
-# AF-2026-06-02-1 / Test16 F-L11 — the unified test-strategy SKILL `--plan`
-# mode writes test-plan.md only; the canonical layout (ADR-127 §7.2) lists
-# BOTH test-plan.md AND test-strategy.md under planning-artifacts/. When
-# finalize is invoked and only test-plan.md exists, emit a deterministic
+# When the unified test-strategy SKILL `--plan` mode writes test-plan.md only,
+# finalize is invoked and only test-plan.md exists; emit a deterministic
 # test-strategy.md stub that satisfies the SV checklist out-of-the-box.
 # Idempotent — does NOT touch an existing test-strategy.md.
 if [ -z "$ARTIFACT" ]; then
@@ -107,12 +105,12 @@ if [ -z "$ARTIFACT" ]; then
     } > "$_ts_canonical" 2>/dev/null || true
     if [ -f "$_ts_canonical" ]; then
       ARTIFACT="$_ts_canonical"
-      log "F-L11 emitted test-strategy.md stub pointing at test-plan.md"
+      log "emitted test-strategy.md stub pointing at test-plan.md"
     fi
   fi
 fi
 
-# ---------- 1. Run the SV-01..06 checklist ----------
+# ---------- 1. Run the script-verifiable checklist ----------
 VIOLATIONS=()
 CHECKED=0
 PASSED=0
@@ -166,8 +164,8 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   log "running 6-item checklist against $ARTIFACT"
   printf '\nChecklist: /gaia-test-strategy (6 items — script-verifiable)\n' >&2
 
-  # ---------- 0c. Producer-side test-plan.md alias (AF-2026-05-24-9 / Test02 F-5) ----------
-  # Test02 F-5: /gaia-test-strategy --plan writes test-strategy.md but
+  # ---------- 0c. Producer-side test-plan.md alias ----------
+  # /gaia-test-strategy --plan writes test-strategy.md but
   # /gaia-create-epics gates on test-plan.md (via validate-gate.sh
   # test_plan_exists). The legacy /gaia-test-design is deprecated and
   # routes to /gaia-test-strategy, so the operator gets a naming-mismatch
@@ -181,7 +179,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   TEST_PLAN_ALIAS="$ARTIFACT_DIR/test-plan.md"
   if [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
     cp "$ARTIFACT" "$TEST_PLAN_ALIAS" 2>/dev/null && \
-      log "wrote test-plan.md alias at $TEST_PLAN_ALIAS (F-5 mitigation — downstream /gaia-create-epics gates on this name)" || \
+      log "wrote test-plan.md alias at $TEST_PLAN_ALIAS (downstream /gaia-create-epics gates on this name)" || \
       log "WARNING: could not write test-plan.md alias at $TEST_PLAN_ALIAS"
   fi
 
@@ -242,13 +240,13 @@ else
 fi
 
 # ---------- 2. Write checkpoint ----------
-# AF-2026-05-22-9 Bug-16: capture stderr so the underlying failure is visible
-# in the operator log instead of being silently dropped. Failure remains
-# non-fatal (observability is non-blocking) but the cause is now surfaced.
+# Capture stderr so the underlying failure is visible in the operator log
+# instead of being silently dropped. Failure remains non-fatal (observability
+# is non-blocking) but the cause is now surfaced.
 if [ -x "$CHECKPOINT" ]; then
-  # F-15 (AF-2026-05-26-1): checkpoint.sh write REQUIRES --step (it die's
-  # "--step is required" without it). Pass the final step number so the
-  # observability write actually lands instead of failing silently.
+  # checkpoint.sh write REQUIRES --step (it die's "--step is required" without
+  # it). Pass the final step number so the observability write actually lands
+  # instead of failing silently.
   _cp_err=$("$CHECKPOINT" write --workflow "$WORKFLOW_NAME" --step 1 2>&1 >/dev/null) || {
     log "checkpoint.sh write failed (non-fatal — observability gap only): ${_cp_err:-no stderr}"
   }
@@ -259,11 +257,11 @@ fi
 
 # ---------- 3. Emit lifecycle event ----------
 if [ -x "$LIFECYCLE_EVENT" ]; then
-  # F-15 (AF-2026-05-26-1): lifecycle-event.sh has NO `emit` subcommand and no
-  # --event/--status flags — its interface is `--type <event_type> --workflow
-  # <name> [--data <json>]`. The prior `emit --event ... --status ...` shape hit
-  # the unknown-flag path and exited 1 (events never emitted). Carry the
-  # checklist pass/fail outcome in --data to preserve the observability intent.
+  # lifecycle-event.sh has NO `emit` subcommand and no --event/--status flags
+  # — its interface is `--type <event_type> --workflow <name> [--data <json>]`.
+  # The prior `emit --event ... --status ...` shape hit the unknown-flag path
+  # and exited 1 (events never emitted). Carry the checklist pass/fail outcome
+  # in --data to preserve the observability intent.
   _le_err=$("$LIFECYCLE_EVENT" \
       --type workflow_complete \
       --workflow "$WORKFLOW_NAME" \
@@ -276,19 +274,19 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emit"
 fi
 
-# ---------- 4. Config hydration fail-safe (AF-2026-05-22-7 Bug-21) ----------
-# Bug-21 root cause: /gaia-test-strategy --plan is supposed to populate the
-# test_execution / test_execution_bridge / environments blocks in
-# project-config.yaml after authoring the strategy. The hydration step
-# doesn't fire because there's no enforcement. Downstream /gaia-bridge-enable
-# then halts with "test_execution_bridge missing — run /gaia-ci-setup first"
-# pointing at the wrong upstream skill.
+# ---------- 4. Config hydration fail-safe ----------
+# /gaia-test-strategy --plan is supposed to populate the test_execution /
+# test_execution_bridge / environments blocks in project-config.yaml after
+# authoring the strategy. The hydration step doesn't fire because there's no
+# enforcement. Downstream /gaia-bridge-enable then halts with
+# "test_execution_bridge missing — run /gaia-ci-setup first" pointing at the
+# wrong upstream skill.
 #
 # Fail-safe: if a strategy artifact was written AND the project config still
-# lacks the sections this skill owns, log a CRITICAL warning that names the
-# missing sections and the correct remediation. Non-fatal — strategy artifact
-# is the primary deliverable — but the warning makes downstream halts
-# attributable to the right upstream skill.
+# lacks the sections this skill owns, log a warning that names the missing
+# sections and the correct remediation. Non-fatal — strategy artifact is the
+# primary deliverable — but the warning makes downstream halts attributable to
+# the right upstream skill.
 if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
   CONFIG_PATH=""
   if [ -f ".gaia/config/project-config.yaml" ]; then
@@ -301,14 +299,13 @@ if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
     grep -qE "^test_execution:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} test_execution"
     grep -qE "^test_execution_bridge:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} test_execution_bridge"
     grep -qE "^environments:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} environments"
-    # AF-2026-05-30-2 / Test10 F-22: gate the auto-stub on whether the run
-    # was a docs-only run vs a real hydration run. Docs-only runs (no --plan
-    # or --scaffold mode flag, or the strategy artifact was authored without
-    # any new test_execution-relevant input) should NOT mutate
-    # project-config.yaml — the operator just wanted the doc. The
-    # GAIA_TEST_STRATEGY_DOCS_ONLY env signal (or no-mode-signal default for
-    # invocations that produce only the artifact) skips the auto-stub
-    # silently; the NOTICE path still surfaces missing sections.
+    # Gate the auto-stub on whether the run was a docs-only run vs a real
+    # hydration run. Docs-only runs (no --plan or --scaffold mode flag, or the
+    # strategy artifact was authored without any new test_execution-relevant
+    # input) should NOT mutate project-config.yaml — the operator just wanted
+    # the doc. The GAIA_TEST_STRATEGY_DOCS_ONLY env signal (or no-mode-signal
+    # default for invocations that produce only the artifact) skips the
+    # auto-stub silently; the NOTICE path still surfaces missing sections.
     if [ "${GAIA_TEST_STRATEGY_DOCS_ONLY:-0}" = "1" ]; then
       if [ -n "$missing_sections" ]; then
         _ms="$(printf '%s' "$missing_sections" | sed 's/^[[:space:]]*//')"
@@ -317,34 +314,26 @@ if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
       fi
     fi
     if [ -n "$missing_sections" ] && [ "${GAIA_TEST_STRATEGY_NO_AUTOSTUB:-0}" = "1" ]; then
-      # F-027 (Test04): opt-out — the operator owns project-config.yaml and may
-      # not want it mutated. With GAIA_TEST_STRATEGY_NO_AUTOSTUB=1, skip the
-      # hydration and instead tell them exactly which sections to add by hand.
+      # Opt-out — the operator owns project-config.yaml and may not want it
+      # mutated. With GAIA_TEST_STRATEGY_NO_AUTOSTUB=1, skip the hydration and
+      # instead tell them exactly which sections to add by hand.
       _ms="$(printf '%s' "$missing_sections" | sed 's/^[[:space:]]*//')"
       log "NOTICE: project-config.yaml is missing section(s) [${_ms}] but auto-stub is DISABLED (GAIA_TEST_STRATEGY_NO_AUTOSTUB=1). Add them manually via /gaia-config-test, /gaia-bridge-enable, /gaia-config-env before invoking downstream skills."
     elif [ -n "$missing_sections" ]; then
-      # AF-2026-05-24-14 / Test02 F-6: upgraded from warn-only to
-      # auto-stub-hydrate. Previously this block only emitted a WARNING
-      # and asked the operator to manually invoke config_hydrate_section
-      # — but downstream skills (gaia-bridge-enable, gaia-test-automate,
-      # gaia-deploy) still halted with generic "X missing" errors.
-      # We now write empty stubs for the missing sections so those
-      # downstream skills find the keys present (with empty bodies) and
-      # can either proceed with defaults OR emit a more-specific
-      # "section present but empty" error pointing at the right skill
-      # to populate them.
-      # AF-2026-05-31-1 / Test12 F-13: surface the side-effect explicitly
-      # BEFORE the mutation lands, not only in the post-mutation summary.
-      # A `--plan` operator running what looks like a doc-authoring command
-      # has no expectation that project-config.yaml will be touched; the
-      # quiet auto-stub left a "wait, why did my config change?" trail.
-      # The pre-mutation banner names the file, the sections that will be
-      # appended, and the opt-out env var IN THE SAME LINE — so a single
-      # scroll-back surfaces the contract.
+      # Write empty stubs for the missing sections so downstream skills find
+      # the keys present (with empty bodies) and can either proceed with
+      # defaults OR emit a more-specific "section present but empty" error
+      # pointing at the right skill to populate them.
+      # Surface the side-effect explicitly BEFORE the mutation lands, not
+      # only in the post-mutation summary. A `--plan` operator running what
+      # looks like a doc-authoring command has no expectation that
+      # project-config.yaml will be touched; the pre-mutation banner names
+      # the file, the sections that will be appended, and the opt-out env var
+      # IN THE SAME LINE — so a single scroll-back surfaces the contract.
       _ms_pre="$(printf '%s' "$missing_sections" | sed 's/^[[:space:]]*//')"
       log "NOTICE — test-strategy --plan will APPEND empty stubs to project-config.yaml for sections [${_ms_pre}] so downstream skills (gaia-bridge-enable, gaia-test-automate, gaia-deploy) can resolve the keys. Set GAIA_TEST_STRATEGY_NO_AUTOSTUB=1 to skip this auto-stub and receive a manual-add NOTICE instead."
       log "test-strategy.md was written; project-config.yaml is missing sections:${missing_sections}"
-      log "F-6 auto-stub-hydration: writing empty stubs for each missing section so downstream skills can resolve the keys"
+      log "auto-stub-hydration: writing empty stubs for each missing section so downstream skills can resolve the keys"
       log "Downstream skills affected: /gaia-bridge-enable (test_execution_bridge), /gaia-test-automate (test_execution.tier_N.command), /gaia-deploy (environments). Populate the stubs via /gaia-config-test, /gaia-bridge-enable scaffold, /gaia-config-env before invoking those."
 
       # Append empty-stub blocks. Each block has a comment marker so it's
@@ -361,7 +350,7 @@ if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
         *" test_execution "*)
           cat >> "$CONFIG_PATH" <<'STUB'
 
-# AF-2026-05-24-14 F-6 auto-stub — populate via /gaia-config-test
+# auto-stub — populate via /gaia-config-test
 test_execution: {}
 STUB
           ;;
@@ -370,7 +359,7 @@ STUB
         *" test_execution_bridge "*)
           cat >> "$CONFIG_PATH" <<'STUB'
 
-# AF-2026-05-24-14 F-6 auto-stub — populate via /gaia-bridge-enable
+# auto-stub — populate via /gaia-bridge-enable
 test_execution_bridge:
   bridge_enabled: false
 STUB
@@ -380,16 +369,16 @@ STUB
         *" environments "*)
           cat >> "$CONFIG_PATH" <<'STUB'
 
-# AF-2026-05-24-14 F-6 auto-stub — populate via /gaia-config-env
+# auto-stub — populate via /gaia-config-env
 environments: {}
 STUB
           ;;
       esac
-      # F-027 (Test04): make the config mutation transparent — the operator
-      # owns this file, so emit an explicit summary naming exactly which
-      # sections were appended and how to revert, not just a generic "complete".
+      # Make the config mutation transparent — the operator owns this file, so
+      # emit an explicit summary naming exactly which sections were appended and
+      # how to revert, not just a generic "complete".
       _stubbed="$(printf '%s' "$missing_sections" | sed 's/^[[:space:]]*//')"
-      log "NOTICE: auto-stub-hydration MUTATED $CONFIG_PATH — appended empty stub section(s): [${_stubbed}]. Each block is tagged with an 'AF-2026-05-24-14 F-6 auto-stub' comment marker. To revert: delete those marked blocks. To populate: /gaia-config-test, /gaia-bridge-enable, /gaia-config-env. Set GAIA_TEST_STRATEGY_NO_AUTOSTUB=1 to skip this hydration entirely."
+      log "NOTICE: auto-stub-hydration MUTATED $CONFIG_PATH — appended empty stub section(s): [${_stubbed}]. Each block is tagged with an 'auto-stub' comment marker. To revert: delete those marked blocks. To populate: /gaia-config-test, /gaia-bridge-enable, /gaia-config-env. Set GAIA_TEST_STRATEGY_NO_AUTOSTUB=1 to skip this hydration entirely."
       log "auto-stub-hydration complete; review $CONFIG_PATH and populate the stubs before invoking downstream skills"
     fi
   fi

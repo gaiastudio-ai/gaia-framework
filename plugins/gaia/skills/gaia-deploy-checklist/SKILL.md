@@ -17,33 +17,33 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are generating a pre-deployment verification checklist for the project. Before generating any checklist content, you enforce three quality gates via `validate-gate.sh` (ADR-042): traceability matrix exists, CI pipeline is configured, and readiness report passes. Only after all gates pass do you produce the deployment checklist.
+You are generating a pre-deployment verification checklist for the project. Before generating any checklist content, you enforce three quality gates via `validate-gate.sh`: traceability matrix exists, CI pipeline is configured, and readiness report passes. Only after all gates pass do you produce the deployment checklist.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/deployment-checklist` workflow (Cluster 12, story E28-S92, ADR-041). It follows the canonical skill pattern established by E28-S66 (code-review).
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/deployment-checklist` workflow. It follows the canonical skill pattern established by the code-review skill.
 
 **Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the deployment checklist artifact to `.gaia/artifacts/planning-artifacts/`.
 
-**Foundation script integration (ADR-042):** This skill invokes `validate-gate.sh` from `plugins/gaia/scripts/` for deterministic gate verification. Gate checks (traceability, CI, readiness) belong in bash scripts, not LLM prompts.
+**Foundation script integration:** This skill invokes `validate-gate.sh` from `plugins/gaia/scripts/` for deterministic gate verification. Gate checks (traceability, CI, readiness) belong in bash scripts, not LLM prompts.
 
 ## Critical Rules
 
-- The `validate-gate.sh` foundation script (E28-S15) MUST be present and executable at `plugins/gaia/scripts/validate-gate.sh`. If missing or not executable, HALT with: "validate-gate.sh not found at {path}. Ensure E28-S15 is deployed." (AC-EC1).
-- The `resolve-config.sh` foundation script MUST be present and executable. If missing, HALT with dependency error (AC-EC5).
-- All three quality gates MUST pass before generating the checklist. If any gate fails, HALT with an actionable error message identifying which specific gate failed and why (AC2).
-- The traceability gate checks that `${TEST_ARTIFACTS}/traceability-matrix.md` exists and is non-empty. An empty (0-byte) file is treated as missing (AC-EC3).
-- The CI gate checks that `${TEST_ARTIFACTS}/ci-setup.md` exists OR `ci_cd.promotion_chain` resolves to a non-empty array via `!scripts/resolve-config.sh ci_cd.promotion_chain` (ADR-044 §10.26.3).
+- The `validate-gate.sh` foundation script MUST be present and executable at `plugins/gaia/scripts/validate-gate.sh`. If missing or not executable, HALT with: "validate-gate.sh not found at {path}. Ensure validate-gate.sh is deployed."
+- The `resolve-config.sh` foundation script MUST be present and executable. If missing, HALT with dependency error.
+- All three quality gates MUST pass before generating the checklist. If any gate fails, HALT with an actionable error message identifying which specific gate failed and why.
+- The traceability gate checks that `${TEST_ARTIFACTS}/traceability-matrix.md` exists and is non-empty. An empty (0-byte) file is treated as missing.
+- The CI gate checks that `${TEST_ARTIFACTS}/ci-setup.md` exists OR `ci_cd.promotion_chain` resolves to a non-empty array via `!scripts/resolve-config.sh ci_cd.promotion_chain`.
 - The readiness gate checks that `${PLANNING_ARTIFACTS}/readiness-report.md` exists.
-- If `validate-gate.sh` returns a non-zero exit code but produces no structured error output, treat as: "Gate check failed with unknown error -- exit code {N}" and HALT (AC-EC2).
+- If `validate-gate.sh` returns a non-zero exit code but produces no structured error output, treat as: "Gate check failed with unknown error -- exit code {N}" and HALT.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
-- **`environments[].kind` shape-agnostic (E99-S1 / FR-520 / ADR-112 §(a)).** This skill is GATE-FREE on `kind` — it produces a checklist for ALL three resolved kinds (`deployable | branch-only | distribution-only`). Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-env-kind.sh` and call `gaia_resolve_env_kind <project-config.yaml> <env-id>` to read the resolved kind, then render the checklist with shape-aware verbage: the `deployable` checklist references deploy steps; the `branch-only` and `distribution-only` checklists reference publish steps per FR-524's publish-readiness mode. Single template-variable swap (`{{action_verb}}` → `"deploy"` or `"publish"`). NEVER HALT on `kind` — that gate belongs to `/gaia-deploy` + `/gaia-post-deploy` only (TC-EKD-4).
-- **Publish-readiness mode (E99-S5 / FR-524 / ADR-112 §(f) — TC-PR5-4).** When NO env is `deployable` AND a `distribution:` block is present, the skill enters **publish-readiness mode**: the checklist sections, gate items, and artifact filename are publish-oriented instead of deploy-oriented. Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-shape-detect.sh` and call `gaia_config_shape_detect <project-config.yaml>`; when the detector returns `publish-primary`, render the publish-shape checklist (gates: "credentials env vars set", "manifest version matches plugin.json", "release_workflow exists", "adapter sub-fields satisfy per-channel schema", etc.) rather than the deploy-shape checklist (gates: "rollback plan documented", "smoke endpoints defined", etc.). Detection is from the env+distribution config — NOT from a flag. When the detector returns `deploy-and-publish` (mixed shape), render both gate sets concatenated under separate headers.
+- **`environments[].kind` shape-agnostic.** This skill is GATE-FREE on `kind` — it produces a checklist for ALL three resolved kinds (`deployable | branch-only | distribution-only`). Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-env-kind.sh` and call `gaia_resolve_env_kind <project-config.yaml> <env-id>` to read the resolved kind, then render the checklist with shape-aware verbage: the `deployable` checklist references deploy steps; the `branch-only` and `distribution-only` checklists reference publish steps per the publish-readiness mode. Single template-variable swap (`{{action_verb}}` → `"deploy"` or `"publish"`). NEVER HALT on `kind` — that gate belongs to `/gaia-deploy` + `/gaia-post-deploy` only.
+- **Publish-readiness mode.** When NO env is `deployable` AND a `distribution:` block is present, the skill enters **publish-readiness mode**: the checklist sections, gate items, and artifact filename are publish-oriented instead of deploy-oriented. Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-shape-detect.sh` and call `gaia_config_shape_detect <project-config.yaml>`; when the detector returns `publish-primary`, render the publish-shape checklist (gates: "credentials env vars set", "manifest version matches plugin.json", "release_workflow exists", "adapter sub-fields satisfy per-channel schema", etc.) rather than the deploy-shape checklist (gates: "rollback plan documented", "smoke endpoints defined", etc.). Detection is from the env+distribution config — NOT from a flag. When the detector returns `deploy-and-publish` (mixed shape), render both gate sets concatenated under separate headers.
 
 ## Steps
 
 ### Step 1 -- Verify Gate Script Availability
 
 - Check that `validate-gate.sh` exists and is executable at `${CLAUDE_PLUGIN_ROOT}/scripts/validate-gate.sh`.
-- If not found: HALT with "validate-gate.sh not found at {path}. Ensure E28-S15 is deployed."
+- If not found: HALT with "validate-gate.sh not found at {path}. Ensure validate-gate.sh is deployed."
 - If not executable: HALT with "validate-gate.sh exists but is not executable at {path}."
 
 ### Step 2 -- Enforce Quality Gates

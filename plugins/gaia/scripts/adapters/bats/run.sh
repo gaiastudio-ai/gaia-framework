@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/bats/run.sh — FR-414 + ADR-078 contract entry for the bats adapter.
+# adapters/bats/run.sh — contract entry for the bats adapter.
 #
 # Dual-mode dispatch:
 #   --mode test-runner       Execute `bats` against the .bats files listed via
@@ -11,7 +11,7 @@
 #                            paths, untimed `sleep`). Emit a findings array
 #                            with rule, severity, file, line, message, blocking.
 #
-# Honours the ADR-078 run.sh flag-form interface:
+# Canonical run.sh flag-form interface:
 #
 #   run.sh --input <file-list> --mode <test-runner|smell-detection>
 #          [--config <path>] [--output <path>]
@@ -62,7 +62,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/bats/run.sh — FR-414 + ADR-078 contract entry.
+adapters/bats/run.sh — contract entry.
 Usage:
   run.sh --input <file-list> --mode <test-runner|smell-detection>
          [--config <path>] [--output <path>]

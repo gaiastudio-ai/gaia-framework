@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # rubric-merger.sh — Deterministic RFC 7396 JSON-merge-patch merger for rubrics
 #
-# Story: E68-S2 — Layered rubric loader + rubric-merger.sh + rubric.schema.json
-#                 + /gaia-validate-rubric + /gaia-config-validate
-# ADR:   ADR-079 (Layered Rubric Loading), ADR-042 (Scripts-over-LLM)
-#
 # Usage:
 #   rubric-merger.sh <layer1.json> [<layer2.json> ... <layerN.json>]
 #
@@ -16,8 +12,7 @@
 #        - any other value in a later layer REPLACES the earlier value
 #          (arrays replace, not concatenate; scalars replace).
 #   3. Emits the merged JSON to stdout with deterministic key ordering
-#      (jq --sort-keys) — NFR-RSV2-10 (byte-identical output for identical
-#      inputs).
+#      (jq --sort-keys) — byte-identical output for identical inputs.
 #
 # Exit codes:
 #   0  success — merged JSON on stdout.

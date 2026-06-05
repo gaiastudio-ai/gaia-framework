@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# checkpoint.sh — gaia-dev-story PostToolUse hook target (E28-S53)
+# checkpoint.sh — gaia-dev-story PostToolUse hook target
 #
 # This is the skill-local checkpoint wrapper invoked by the PostToolUse hook.
 # It translates the simple `checkpoint.sh write gaia-dev-story` invocation
@@ -74,7 +74,7 @@ if [ -z "${CHECKPOINT_PATH:-}" ]; then
 fi
 
 if [ -z "${CHECKPOINT_PATH:-}" ]; then
-  # AF-2026-05-27-3 (ADR-111): .gaia/memory/checkpoints is the only location —
+  # .gaia/memory/checkpoints is the only location —
   # the legacy _memory/checkpoints fallback was removed with the migration.
   log "WARNING: CHECKPOINT_PATH not set — using default .gaia/memory/checkpoints"
   export CHECKPOINT_PATH=".gaia/memory/checkpoints"

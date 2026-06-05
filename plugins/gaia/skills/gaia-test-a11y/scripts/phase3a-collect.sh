@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# phase3a-collect.sh — gaia-test-a11y Phase 3A evidence collection (E73-S4).
+# phase3a-collect.sh — gaia-test-a11y Phase 3A evidence collection.
 #
 # Mirrors gaia-test-perf/phase3a-collect.sh:
 #   1. Probes adapter availability via tool-availability-probe.sh
@@ -22,7 +22,6 @@
 #   1  caller error.
 #
 # POSIX discipline: bash 3.2 / macOS-compatible, set -euo pipefail, LC_ALL=C.
-# Refs: ADR-077, ADR-078, ADR-080, FR-RSV2-31.
 
 set -euo pipefail
 LC_ALL=C

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# throughput-telemetry.sh — agent-native throughput derivation layer (E106-S1)
+# throughput-telemetry.sh — agent-native throughput derivation layer
 #
 # Reads `.gaia/memory/lifecycle-events.jsonl` `state_transition` events, groups
 # them by `story_key`, and DERIVES per-story wall-clock by differencing the
@@ -8,14 +8,13 @@
 # per-sprint median minutes/story and minutes/point. Median (not mean) is used
 # to resist outliers (one stalled story must not skew throughput).
 #
-# This is the telemetry-first foundation of the agent-native estimation model
-# (ADR-128): E106-S2 (dual-track estimation) and E106-S3 (agent-native SM
-# capacity check) consume the medians derived here.
+# This is the telemetry-first foundation of the agent-native estimation model:
+# dual-track estimation and agent-native SM capacity check consume the medians
+# derived here.
 #
 # READ-ONLY: this script NEVER writes any artifact, config, or state file.
-# Output is produced exclusively on stdout (AC6).
+# Output is produced exclusively on stdout.
 #
-# Refs: AC1-AC4, AC-INT1, TS1-TS7, FR-549, FR-550, ADR-128, ADR-042
 #
 # Invocation:
 #   throughput-telemetry.sh --events <jsonl> [--sprint-yaml <yaml>] [--json]
@@ -84,8 +83,8 @@ done
 [ -r "$EVENTS" ] || die "events file not readable: $EVENTS"
 
 # ---------- Points join (story_key -> points) ----------
-# Per the E106-S1 Val WARNING-1: the active sprint-status.yaml only carries the
-# CURRENT sprint's stories, so closed-sprint medians need points from elsewhere.
+# Note: the active sprint-status.yaml only carries the CURRENT sprint's stories,
+# so closed-sprint medians need points from elsewhere.
 # We build the join from (in precedence order, first hit wins per key):
 #   1. each --sprint-yaml (active or archived) `stories:` block, and
 #   2. an optional --archive-dir of sprint-*.yaml files (closed sprints), and
@@ -116,7 +115,7 @@ POINTS_TSV=""
 
 # Collect candidate sprint yamls (active first, then any archived sprint yamls),
 # emit their `stories:` block points rows inline — no named helper (keeps the
-# script free of additional public functions under the NFR-052 coverage gate).
+# script free of additional public functions under the coverage gate).
 YAML_LIST=""
 [ -n "$SPRINT_YAML" ] && [ -r "$SPRINT_YAML" ] && YAML_LIST="$SPRINT_YAML"
 if [ -n "$ARCHIVE_DIR" ] && [ -d "$ARCHIVE_DIR" ]; then
@@ -197,7 +196,7 @@ else
 fi
 
 # Group: per story_key, min & max epoch + transition count.
-# AC2 rework loop: wall-clock = max-min (first in-progress .. final done span),
+# Wall-clock = max-min (first in-progress .. final done span),
 # so a review->in-progress->review loop never double-counts.
 group_awk='
   NF==2 {

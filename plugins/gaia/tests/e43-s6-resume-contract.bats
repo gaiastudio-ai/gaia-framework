@@ -413,12 +413,12 @@ latest_checkpoint_for() {
 @test "SKILL.md contains ## Resume Contract section documenting the five AC flows" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-resume/SKILL.md"
   grep -qE '^## Resume Contract' "$skill"
-  # All five VCP-CPT codes referenced
-  grep -qE 'VCP-CPT-03' "$skill"
-  grep -qE 'VCP-CPT-04' "$skill"
-  grep -qE 'VCP-CPT-05' "$skill"
-  grep -qE 'VCP-CPT-07' "$skill"
-  grep -qE 'VCP-CPT-08' "$skill"
+  # All five flows documented by behavioral heading or phrase
+  grep -qE 'Flow 1|Checksum-pass resume' "$skill"
+  grep -qE 'Flow 2|Checksum-mismatch drift' "$skill"
+  grep -qE 'Flow 3|Missing checkpoint' "$skill"
+  grep -qE 'Flow 4|SKILL\.md version mismatch' "$skill"
+  grep -qE 'Flow 5|Step reconstruction parity' "$skill"
 }
 
 @test "SKILL.md documents the four exit codes (0/1/2/3) for validate" {

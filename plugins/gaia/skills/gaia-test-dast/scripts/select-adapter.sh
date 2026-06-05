@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# select-adapter.sh — resolve which DAST adapter to use (E73-S3).
+# select-adapter.sh — resolve which DAST adapter to use.
 #
 # Precedence (first-match-wins):
 #   1. --adapter <name>      — CLI override (highest priority)

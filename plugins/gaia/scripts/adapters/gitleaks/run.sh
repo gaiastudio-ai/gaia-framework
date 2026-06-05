@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/gitleaks/run.sh — ADR-078 adapter contract for Gitleaks.
+# adapters/gitleaks/run.sh — adapter contract for Gitleaks.
 
 set -euo pipefail
 LC_ALL=C
@@ -20,7 +20,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/gitleaks/run.sh — ADR-078 contract entry for Gitleaks.
+adapters/gitleaks/run.sh — contract entry for Gitleaks.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -35,7 +35,7 @@ done
 
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "run.sh: gitleaks not found on PATH" >&2
-  # Exit 127 = unavailable per E70-S2 AC10 (distinct from generic error 1).
+  # Exit 127 = unavailable (distinct from generic error 1).
   exit 127
 fi
 
@@ -47,7 +47,7 @@ fi
 raw="$(gitleaks "${gitleaks_args[@]}" 2>&1)" || rc=$? || true
 rc="${rc:-0}"
 
-# Canonical fragment shape per E70-S1 run-contract.md §2.1: {name, status, findings}.
+# Canonical fragment shape per run-contract.md §2.1: {name, status, findings}.
 fragment="$(jq -nc \
   --arg name "gitleaks" \
   --argjson rc "$rc" \

@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # gaia-statusline-toggle.sh — toggle the GAIA Claude Code statusline on/off.
 #
-# Story: E82-S3.
-#
 # Modes:
 #   --enable   Add the canonical statusLine block to ~/.claude/settings.json
 #              pointing at ~/.claude/gaia-statusline/statusline.sh with
@@ -14,24 +12,23 @@
 #   AC2  enable on already-canonical block → byte-identical no-op.
 #   AC3  disable on file w/ block → block removed, unrelated keys preserved.
 #   AC4  disable on file w/o block → byte-identical no-op.
-#   AC5  enable + disable round-trip preserves byte-identity (TC-14).
+#   AC5  enable + disable round-trip preserves byte-identity.
 #   AC6  atomic write via sibling-tempfile + mv -f. Never /tmp/.
 #   AC7  enable fails when runtime ~/.claude/gaia-statusline/statusline.sh
 #        is missing or non-executable; settings.json unmodified; the error
 #        names install-statusline.sh.
 #   AC8  malformed JSON in settings.json → exit non-zero, file unmodified.
-#   AC9  consent-gated self-heal (FR-448 AC8 / E82-S11 / AF-2026-06-02-3):
-#        before the AC2 idempotency check, compare the installed runtime
-#        version (~/.claude/gaia-statusline/.installed-version marker) to
-#        the cached plugin.json version under the highest-semver dir of
+#   AC9  consent-gated self-heal: before the AC2 idempotency check, compare
+#        the installed runtime version (~/.claude/gaia-statusline/.installed-version
+#        marker) to the cached plugin.json version under the highest-semver dir of
 #        ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia. When
 #        the marker differs from the cached version AND stdout/stdin are
 #        both TTYs AND GAIA_YOLO_FLAG != 1, surface a one-shot consent
 #        prompt with default decline. On 'y' (case-insensitive), re-run
 #        the cached install-statusline.sh and reset the update-check
-#        cache (preserving git_dirty per ADR-091). On 'N' or non-TTY or
-#        YOLO, no install runs (preserves FR-448 AC6 hand-edit consent).
-#        Marker-absent is a silent no-op (mirrors FR-448 AC5).
+#        cache (preserving git_dirty). On 'N' or non-TTY or
+#        YOLO, no install runs (preserves hand-edit consent).
+#        Marker-absent is a silent no-op.
 #
 # Pattern reference: gaia-framework/plugins/gaia/scripts/install-statusline.sh
 # (atomic merge idiom) and the gaia-bridge-toggle precedent (semantic
@@ -48,7 +45,7 @@ SETTINGS="$HOME/.claude/settings.json"
 RUNTIME="$HOME/.claude/gaia-statusline/statusline.sh"
 REFRESH_MS=10000
 
-# Source the colocated lib/ helpers (E82-S11). Resolved relative to this
+# Source the colocated lib/ helpers. Resolved relative to this
 # script's directory so the toggle works both from the in-tree plugin
 # checkout AND from the substrate plugin cache.
 _TOGGLE_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -85,7 +82,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # Atomic write via SIBLING tempfile + mv -f. Same filesystem as the target
-# (~/.claude/) so the rename is atomic per NFR-STATUSLINE-3. Never /tmp/.
+# (~/.claude/) so the rename is atomic. Never /tmp/.
 _atomic_write() {
   local target="$1" content="$2" sibling
   mkdir -p "$(dirname "$target")"
@@ -133,7 +130,7 @@ case "$MODE" in
       exit 1
     fi
 
-    # AC9 — Consent-gated self-heal (FR-448 AC8 / E82-S11 / AF-2026-06-02-3).
+    # AC9 — Consent-gated self-heal.
     # Compare the installed .installed-version marker to the cached
     # plugin.json version. When they differ AND we are interactive AND
     # YOLO is not active, prompt the user to re-install. On 'y' (case-
@@ -141,9 +138,9 @@ case "$MODE" in
     # update-check cache (preserving git_dirty). On any other answer, on
     # non-TTY, or with YOLO active, take no action — the existing AC3
     # hot-path WARN segment continues to fire on stale runtimes
-    # (FR-448 AC6 consent contract preserved).
+    # (consent contract preserved).
     #
-    # Marker absent → silent no-op (mirrors FR-448 AC5).
+    # Marker absent → silent no-op.
     _marker_file="$HOME/.claude/gaia-statusline/.installed-version"
     if [ -r "$_marker_file" ]; then
       _installed_version="$(head -n1 "$_marker_file" 2>/dev/null | tr -d '[:space:]' || printf '')"
@@ -159,7 +156,7 @@ case "$MODE" in
          && [ -n "$_cached_install_sh" ]; then
         # Stricter TTY gate: BOTH stdin AND stdout must be a terminal.
         # bats (the test harness) attaches neither by default, so this
-        # gate keeps TC-STATUSLINE-13 intact under bats.
+        # gate keeps the statusline bats test intact.
         if [ -t 0 ] && [ -t 1 ] && [ "${GAIA_YOLO_FLAG:-0}" != "1" ]; then
           printf 'gaia-statusline-enable: installed runtime is %s, cached plugin is %s. Re-install runtime? [y/N] ' \
             "$_installed_version" "$_cached_version"

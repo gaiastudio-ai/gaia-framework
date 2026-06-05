@@ -1,27 +1,24 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-threat-model skill finalize (E28-S50 + E42-S11)
+# finalize.sh — /gaia-threat-model skill finalize
 #
-# E42-S11 extends the bare-bones Cluster 6 finalize scaffolding with a
-# 25-item post-completion checklist (15 script-verifiable + 10
-# LLM-checkable) derived from the V1 security-threat-model checklist.
-# See .gaia/artifacts/implementation-artifacts/E42-S11-* for the V1 → V2 mapping.
+# Runs the 25-item post-completion checklist (15 script-verifiable + 10
+# LLM-checkable) derived from the security-threat-model checklist.
 #
-# Responsibilities (per brief §Cluster 6 + story E42-S11):
-#   1. Run the script-verifiable subset of the 25 V1 checklist items
+# Responsibilities:
+#   1. Run the script-verifiable subset of the 25 checklist items
 #      against the threat-model.md artifact. Validation runs FIRST.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
 #   3. Write a checkpoint via the shared checkpoint.sh helper.
 #   4. Emit a lifecycle event via lifecycle-event.sh.
 #
 # The observability side effects (3 + 4) MUST run on every invocation —
-# the checklist outcome never suppresses the checkpoint/event write
-# (matches E42-S1..S10 contract; story AC5).
+# the checklist outcome never suppresses the checkpoint/event write.
 #
 # Exit codes:
 #   0 — finalize succeeded; all 15 script-verifiable items PASS (or
-#       no artifact was requested — classic Cluster 6 behaviour).
+#       no artifact was requested and the checklist was skipped).
 #   1 — one or more script-verifiable checklist items FAIL; the
-#       AC4 "no artifact to validate" violation; or a
+#       "no artifact to validate" violation; or a
 #       checkpoint/lifecycle-event failure. Failed item names are
 #       listed on stderr under a "Checklist violations:" header
 #       followed by a one-line remediation hint.
@@ -30,18 +27,16 @@
 #   THREAT_MODEL_ARTIFACT  Absolute path to the threat-model artifact
 #                          to validate. When set, the script runs the
 #                          25-item checklist against it. When set but
-#                          the file does not exist or is empty, AC4
-#                          fires — a single "no artifact to validate"
-#                          violation is emitted and the script exits
-#                          non-zero. When unset, the script falls back
-#                          to canonical-first resolution (AF-2026-05-21-15):
+#                          the file does not exist or is empty, a
+#                          "no artifact to validate" violation is emitted
+#                          and the script exits non-zero. When unset, the
+#                          script falls back to canonical-first resolution:
 #                          prefer .gaia/artifacts/planning-artifacts/threat-model.md
-#                          (post-ADR-111 canonical); use legacy
-#                          .gaia/artifacts/planning-artifacts/threat-model.md only
-#                          on positive pre-ADR-111 evidence. If neither
-#                          is present, the checklist run is skipped
-#                          (classic Cluster 6 behaviour — observability
-#                          still runs, exit 0).
+#                          (canonical); use legacy
+#                          docs/planning-artifacts/threat-model.md only
+#                          on positive legacy evidence. If neither is
+#                          present, the checklist run is skipped
+#                          (observability still runs, exit 0).
 
 set -euo pipefail
 LC_ALL=C
@@ -49,8 +44,7 @@ export LC_ALL
 
 SCRIPT_NAME="gaia-threat-model/finalize.sh"
 # WORKFLOW_NAME matches the V1 workflow id (security-threat-model)
-# per the prior Val finding on E42-S11 — do NOT rename to
-# "threat-model".
+# — do NOT rename to "threat-model".
 WORKFLOW_NAME="security-threat-model"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -62,11 +56,11 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Resolve artifact paths (AF-2026-05-21-15 three-tier idiom) ----------
+# ---------- 0. Resolve artifact paths (three-tier idiom) ----------
 # Tier 1 — env-var override: THREAT_MODEL_ARTIFACT wins when set.
-# Tier 2 — positive pre-ADR-111 evidence: legacy file exists AND canonical
+# Tier 2 — positive legacy evidence: legacy file exists AND canonical
 #          dir does NOT exist → use legacy docs/planning-artifacts/threat-model.md.
-# Tier 3 — canonical default: .gaia/artifacts/planning-artifacts/threat-model.md per ADR-111.
+# Tier 3 — canonical default: .gaia/artifacts/planning-artifacts/threat-model.md.
 ARTIFACT=""
 ARTIFACT_REQUESTED=0
 if [ -n "${THREAT_MODEL_ARTIFACT:-}" ]; then
@@ -110,13 +104,11 @@ file_exists() {
 
 # heading_present <file> <heading-regex>
 # Pass when an H2 heading matching the pattern exists.
-# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
-# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
-# uniform, permissive regex accepting optional numbered+lettered outline
-# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
-# divergent inline copies, so the same heading passed one skill's check and
-# failed another's. Sourced via a $0-relative path so it works whether or not
-# this script defines PLUGIN_SCRIPTS_DIR.
+# heading_present() is a single shared implementation
+# (plugins/gaia/scripts/lib/heading-present.sh) with a uniform, permissive
+# regex accepting optional numbered+lettered outline prefixes (11, 11b, 1.2.3).
+# Sourced via a $0-relative path so it works whether or not this script defines
+# PLUGIN_SCRIPTS_DIR.
 _GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
 if [ -r "$_GAIA_HEADING_LIB" ]; then
   # shellcheck source=/dev/null
@@ -188,11 +180,10 @@ stride_six_categories_per_component() {
         }
       }
     }
-    # Enter STRIDE section. AF-2026-05-29-1 / Test08 F-5: accept optional
-    # numbered+lettered outline prefix (3., 3.1, 11b., etc.) so an authored
-    # `## 3. STRIDE Analysis` is recognised — matches the shared
-    # heading_present lib semantics used by SV-06 (the prefix WAS accepted
-    # there). Mirrors the change to the DREAD section anchor below.
+    # Enter STRIDE section. Accept optional numbered+lettered outline prefix
+    # (3., 3.1, 11b., etc.) so an authored `## 3. STRIDE Analysis` is
+    # recognised — matches the shared heading_present lib semantics used by
+    # SV-06. Mirrors the change to the DREAD section anchor below.
     /^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?STRIDE[[:space:]]+Analysis/ {
       in_stride = 1
       finalize_component()
@@ -200,12 +191,12 @@ stride_six_categories_per_component() {
       reset_flags()
       next
     }
-    # Exit STRIDE section on next H2. AF-2026-05-29-1 / Test08 F-5: accept the
-    # same optional numbered+lettered outline prefix as the entry regex so the
-    # next H2 (e.g. `## 4. DREAD Scoring`) is recognised as a real section
-    # boundary. Previously the strict `[A-Za-z]` lookahead meant any numbered
-    # H2 was NOT seen as an exit — STRIDE stayed open through subsequent
-    # sections and their tables were misclassified as STRIDE component rows.
+    # Exit STRIDE section on next H2. Accept the same optional
+    # numbered+lettered outline prefix as the entry regex so the next H2
+    # (e.g. `## 4. DREAD Scoring`) is recognised as a real section boundary.
+    # Without this, any numbered H2 is NOT seen as an exit — STRIDE stays open
+    # through subsequent sections and their tables are misclassified as STRIDE
+    # component rows.
     /^##[[:space:]]+([0-9]+[a-z]?(\.[0-9]+[a-z]?)*\.?[[:space:]]+)?[A-Za-z]/ {
       if (in_stride) {
         finalize_component()
@@ -494,7 +485,7 @@ sr_identifiers_with_acceptance() {
 }
 
 if [ "$ARTIFACT_REQUESTED" -eq 1 ] && { [ ! -f "$ARTIFACT" ] || [ ! -s "$ARTIFACT" ]; }; then
-  # AC4 — Caller explicitly pointed at an artifact path but it does
+  # Caller explicitly pointed at an artifact path but it does
   # not exist on disk or is empty (0 bytes).
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
@@ -606,14 +597,14 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
-# helper itself logs warnings to stderr but never affects this script's
-# exit code. SKILL_NAME is resolved from the parent directory name so
-# the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
+# circuit to a no-op so the interactive prompt is preserved. Failure is
+# non-blocking — the auto-save helper itself logs warnings to stderr but
+# never affects this script's exit code. SKILL_NAME is resolved from the
+# parent directory name so the wire-in is identical across all finalize.sh
+# files.
 AUTOSAVE_LIB="$PLUGIN_SCRIPTS_DIR/lib/auto-save-memory.sh"
 SKILL_NAME="$(basename "$(cd "$SCRIPT_DIR/.." && pwd)")"
 if [ -f "$AUTOSAVE_LIB" ]; then

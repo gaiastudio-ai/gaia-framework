@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
-# missing-file-fallback.sh — shared graceful-missing-file helper (E28-S162).
+# missing-file-fallback.sh — shared graceful-missing-file helper.
 #
 # Several GAIA scripts and skills need to handle the same pattern: a legacy
 # input file (e.g. lifecycle-sequence.yaml, workflow-manifest.csv, manifest.yaml)
-# may be absent under the native plugin model (post ADR-044 / ADR-048) and the
+# may be absent under the native plugin model and the
 # caller must degrade gracefully — emit a clear notice and exit without error —
 # UNLESS a strict-mode env var explicitly opts into the legacy "missing-is-fatal"
 # behavior.
 #
-# Before E28-S162, three callers (next-step.sh, gaia-help/SKILL.md,
+# Previously, three callers (next-step.sh, gaia-help/SKILL.md,
 # gaia-validate-framework/SKILL.md) each implemented their own variant of this
 # decision. This file is the single source of truth for the bash idiom.
-#
-# Refs: FR-323, ADR-042, ADR-044, ADR-048. Origin: triage finding F3 of E28-S126.
 #
 # USAGE (from a bash caller):
 #
@@ -55,7 +53,7 @@
 #   before quitting.
 # * Return code 10 is deliberately chosen so callers can distinguish a
 #   graceful no-op from both success (0) and any strict/error code (1, 2).
-#   next-step.sh adopted this sentinel in E28-S126; the helper preserves it.
+#   next-step.sh adopted this sentinel originally; the helper preserves it.
 # * The strict env var is passed by NAME, not VALUE, so callers advertise a
 #   stable name (GAIA_NEXT_STEP_STRICT, GAIA_HELP_STRICT, ...) and the helper
 #   reads it via indirection. This keeps each caller's strict var independent.

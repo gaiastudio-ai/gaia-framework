@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# flakiness-analyzer.sh — GAIA review-common Phase 3A flakiness detector (E67-S1, ADR-077).
+# flakiness-analyzer.sh — GAIA review-common Phase 3A flakiness detector.
 #
 # Purpose
 # -------
-# Static-source flakiness signal source per FR-DEJ-3 / ADR-077. Detects three
+# Static-source flakiness signal source. Detects three
 # patterns that strongly correlate with flaky tests:
 #
 #   - retry-heuristic           : `.retry(`, `retries:`, `flaky:`, `@RepeatedTest`,
@@ -42,7 +42,6 @@
 # POSIX discipline: bash + set -euo pipefail + LC_ALL=C; macOS bash 3.2 + BSD
 # awk compatible (no 3-arg match, no associative arrays); no jq dependency.
 #
-# Refs: AC2, AC6, AC7, FR-RSV2-1, FR-RSV2-2, NFR-RSV2-1, ADR-075, ADR-077.
 
 set -euo pipefail
 LC_ALL=C
@@ -54,7 +53,7 @@ die() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — Phase 3A flakiness analyzer (ADR-077).
+$SCRIPT_NAME — Phase 3A flakiness analyzer.
 
 Usage:
   $SCRIPT_NAME <path>...

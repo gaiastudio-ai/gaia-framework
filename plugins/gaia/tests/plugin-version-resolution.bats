@@ -59,7 +59,7 @@ _compute_version() {
   [ -f "$validator_md" ]
   grep -qF ".plugin-version" "$validator_md"
   grep -qF "dev" "$validator_md"
-  grep -qF "E89-S4" "$validator_md"
+  grep -qF "defensive default" "$validator_md"
 }
 
 # ---------------- TC-AFE-14d: persona_sig pattern regex ----------------

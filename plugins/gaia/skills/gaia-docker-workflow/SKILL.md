@@ -9,11 +9,11 @@ orchestration_class: light-procedural
 
 Native Claude Code conversion of the legacy `_gaia/dev/skills/docker-workflow.md` skill. Preserves the three sectioned-loading IDs (`multi-stage-builds`, `compose`, `security-scanning`) verbatim.
 
-- ADR-041 — Native execution model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042 — Scripts-over-LLM. Prose only; concrete `docker` invocations belong to calling agents or skill-local scripts.
-- ADR-046 — Hybrid memory. Shared content skill; no sidecar loading.
+- Native execution model via Claude Code Skills + Subagents + Plugins + Hooks.
+- Scripts-over-LLM. Prose only; concrete `docker` invocations belong to calling agents or skill-local scripts.
+- Hybrid memory. Shared content skill; no sidecar loading.
 
-> **Applicable to:** typescript-dev, angular-dev, java-dev, python-dev, mobile-dev. The legacy `applicable_agents` frontmatter field is dropped per the E28-S19 schema.
+> **Applicable to:** typescript-dev, angular-dev, java-dev, python-dev, mobile-dev. The legacy `applicable_agents` frontmatter field is dropped per the current schema.
 
 <!-- SECTION: multi-stage-builds -->
 ## Multi-Stage Builds
@@ -227,7 +227,7 @@ cap_drop:
 
 ## Test Scenarios
 
-Migrated from the legacy `test_scenarios` frontmatter array (per E28-S19 schema).
+Migrated from the legacy `test_scenarios` frontmatter array.
 
 | Scenario | Expected |
 |----------|----------|

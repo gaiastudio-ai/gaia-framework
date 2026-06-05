@@ -1,20 +1,20 @@
-# plugin-ci.yml — E77-S16 / FR-418 Plugin CI template (eight universal jobs)
+# plugin-ci.yml — Plugin CI template (eight universal jobs)
 #
 # This template is generated into a Claude Code plugin project's
 # `.github/workflows/plugin-ci.yml` by /gaia-init option 6 (claude-code-plugin)
 # or by /gaia-ci-setup when project_kind == claude-code-plugin.
 #
 # Eight universal jobs — one per quality dimension:
-#   1. frontmatter-lint        (adapter: plugin-frontmatter-validator, FR-409)
-#   2. manifest-validate       (adapter: plugin-manifest-validator, FR-410)
+#   1. frontmatter-lint        (adapter: plugin-frontmatter-validator)
+#   2. manifest-validate       (adapter: plugin-manifest-validator)
 #   3. structure-validate      (adapter: built-in plugin-structure-validate)
-#   4. bats-tests              (adapter: bats dual-mode, FR-414; budget-watched)
+#   4. bats-tests              (adapter: bats dual-mode; budget-watched)
 #   5. bats-script-refs-lint   (adapter: built-in lint-bats-script-refs.sh)
-#   6. shellcheck              (adapter: shellcheck, FR-413)
-#   7. markdownlint            (adapter: markdownlint, FR-415)
+#   6. shellcheck              (adapter: shellcheck)
+#   7. markdownlint            (adapter: markdownlint)
 #   8. changelog-enforce       (adapter: built-in changelog presence/format)
 #
-# Explicit non-goals (FR-418 mitigation):
+# Explicit non-goals:
 #   * NO regression-audit job  — moves to opt-in `gaia-internal-ci-extras`.
 #   * NO drift-guard job       — moves to opt-in `gaia-internal-ci-extras`.
 #
@@ -24,7 +24,7 @@
 # dependency for each job is declared in a leading `# adapter:` comment so
 # the dep set is explicit and grep-friendly.
 #
-# LLM-review placeholder (FR-418): a ninth job block sits BELOW the eight
+# LLM-review placeholder: a ninth job block sits BELOW the eight
 # active jobs as commented YAML. Uncomment when Anthropic CI integration
 # becomes available. Until then it is syntactically inactive.
 
@@ -40,7 +40,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # 1. frontmatter-lint
-  # adapter: plugin-frontmatter-validator (FR-409)
+  # adapter: plugin-frontmatter-validator
   # ---------------------------------------------------------------------------
   frontmatter-lint:
     name: frontmatter-lint
@@ -62,7 +62,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # 2. manifest-validate
-  # adapter: plugin-manifest-validator (FR-410)
+  # adapter: plugin-manifest-validator
   # ---------------------------------------------------------------------------
   manifest-validate:
     name: manifest-validate
@@ -103,7 +103,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # 4. bats-tests
-  # adapter: bats (FR-414) — wrapped by bats-budget-watch.sh (FR-419) with
+  # adapter: bats — wrapped by bats-budget-watch.sh with
   # advisory-only soft 270s / hard 480s thresholds.
   # ---------------------------------------------------------------------------
   bats-tests:
@@ -154,7 +154,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # 6. shellcheck
-  # adapter: shellcheck (FR-413)
+  # adapter: shellcheck
   # ---------------------------------------------------------------------------
   shellcheck:
     name: shellcheck
@@ -172,7 +172,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # 7. markdownlint
-  # adapter: markdownlint (FR-415)
+  # adapter: markdownlint
   # ---------------------------------------------------------------------------
   markdownlint:
     name: markdownlint

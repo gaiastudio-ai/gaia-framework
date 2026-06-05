@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://gaiastudio.ai/gaia/lifecycle-overrides.schema.json",
   "title": "lifecycle-overrides.yaml",
-  "description": "ADR-120 — append-only audit trail of bypassed MANDATORY lifecycle skills, scoped per sprint.",
+  "description": "Append-only audit trail of bypassed MANDATORY lifecycle skills, scoped per sprint.",
   "type": "object",
   "required": ["bypasses"],
   "additionalProperties": false,

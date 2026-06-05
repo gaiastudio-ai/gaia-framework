@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 6 readiness-check skill setup (E28-S48, brief §Cluster 6 / P6-S4)
+# setup.sh — readiness-check skill setup
 #
-# Mechanical extension of the Cluster 4 reference implementation authored
-# under E28-S35 (gaia-brainstorm/scripts/setup.sh). Adds readiness-check-specific
+# Mechanical extension of the brainstorm reference implementation
+# (gaia-brainstorm/scripts/setup.sh). Adds readiness-check-specific
 # prereq gates:
 #   - traceability-matrix.md must exist (validate-gate traceability_exists)
 #   - ci-setup.md must exist (validate-gate ci_setup_exists)
 #
-# Both gates are MANDATORY per ADR-042 — there is no "single gate" fallback,
+# Both gates are MANDATORY — there is no "single gate" fallback,
 # no env-var bypass, and no flag to make either gate optional. Partial-pass
 # is a bug.
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for both prereqs (traceability + ci-setup)
 #   3. Load the checkpoint state for this workflow
@@ -66,20 +66,19 @@ else
   log "resolve-config.sh not found at $RESOLVE_CONFIG — using environment defaults"
 fi
 
-# ---------- 2. Validate gates (prereqs) — ADR-042 mandatory gates ----------
-# AF-2026-05-24-13 / Test02 F-36: the ci-setup.md gate was originally
-# unconditional, but /gaia-init accepts `ci_platform.provider: none` as a
-# valid config for projects that deliberately skip CI. Those projects
-# could not run /gaia-readiness-check at all. F-36 fix: make the
-# ci_setup_exists gate conditional on `ci_platform.provider != none`.
-# When `none`, only the traceability gate fires.
+# ---------- 2. Validate gates (prereqs) — mandatory gates ----------
+# The ci-setup.md gate is unconditional by default, but /gaia-init accepts
+# `ci_platform.provider: none` as a valid config for projects that
+# deliberately skip CI. Those projects could not run /gaia-readiness-check
+# at all. Fix: make the ci_setup_exists gate conditional on
+# `ci_platform.provider != none`. When `none`, only the traceability gate fires.
 NEEDS_CI_GATE=1
 PROJECT_CONFIG_PATH="${PROJECT_CONFIG:-.gaia/config/project-config.yaml}"
 if [ -f "$PROJECT_CONFIG_PATH" ] && command -v yq >/dev/null 2>&1; then
   ci_provider="$(yq eval '.ci_platform.provider // .ci_cd.provider // ""' "$PROJECT_CONFIG_PATH" 2>/dev/null || echo "")"
   if [ "$ci_provider" = "none" ]; then
     NEEDS_CI_GATE=0
-    log "F-36: ci-setup.md gate skipped (ci_platform.provider=none — no-CI project shape per ADR-081)"
+    log "ci-setup.md gate skipped (ci_platform.provider=none — no-CI project shape)"
   fi
 fi
 
@@ -98,28 +97,27 @@ else
   die "validate-gate.sh not found at $VALIDATE_GATE — cannot enforce mandatory gates"
 fi
 
-# ---------- 2b. Guard: traceability-matrix.md must be non-empty (E28-S98) ----------
-# The shared validate-gate.sh checks file existence only (-f). Per AC-EC1 and
-# ADR-042, a zero-byte file is treated as missing — existence alone is not
-# sufficient. This mirrors the create-epics pattern.
-# AF-2026-05-24-14 / Test02 F-34: TEST_ARTIFACTS may be unbound after
-# resolve-config.sh when the script runs without a fully-hydrated config
-# (e.g., interactive call without --plan output). Default it to the
-# canonical .gaia/artifacts/test-artifacts/ post-ADR-111 path so the
-# bash `set -u` regression doesn't leak through. resolve-config.sh's
-# value wins when set.
+# ---------- 2b. Guard: traceability-matrix.md must be non-empty ----------
+# The shared validate-gate.sh checks file existence only (-f). A zero-byte
+# file is treated as missing — existence alone is not sufficient. This
+# mirrors the create-epics pattern.
+# TEST_ARTIFACTS may be unbound after resolve-config.sh when the script
+# runs without a fully-hydrated config (e.g., interactive call without
+# --plan output). Default it to the canonical .gaia/artifacts/test-artifacts/
+# path so the bash `set -u` regression doesn't leak through.
+# resolve-config.sh's value wins when set.
 TEST_ARTIFACTS="${TEST_ARTIFACTS:-.gaia/artifacts/test-artifacts}"
-# AF-2026-05-26-9 (F-17 class / F3): the earlier validate-gate.sh traceability_exists
-# check (which accepts flat | strategy/ | sharded) already PASSED — but this
-# zero-byte guard re-probed ONLY the flat path, so it falsely die'd "exists but
-# empty" on a project whose matrix lives non-empty at strategy/ or the sharded
-# index.md.
-# AF-2026-05-27-8 / Test06 F-011: the re-probe ALSO omitted the canonical
-# .gaia/artifacts/planning-artifacts/ home (E105-S2 / ADR-127 §7.2), so
-# /gaia-trace writing to the documented default location HALTed here even
-# though traceability_exists passed. Resolve TRACE_PATH via the shared
-# resolve-artifact-path.sh helper, which puts planning-artifacts/ at rung 1 and
-# keeps the test-artifacts flat / strategy/ / sharded read-compat rungs.
+# The earlier validate-gate.sh traceability_exists check (which accepts
+# flat | strategy/ | sharded) may already have PASSED — but the zero-byte
+# guard re-probes ONLY the flat path, so it would falsely die "exists but
+# empty" on a project whose matrix lives non-empty at strategy/ or the
+# sharded index.md. The re-probe also needs to cover the canonical
+# .gaia/artifacts/planning-artifacts/ home, so that /gaia-trace writing
+# to the documented default location does not HALT here even though
+# traceability_exists passed. Resolve TRACE_PATH via the shared
+# resolve-artifact-path.sh helper, which puts planning-artifacts/ at
+# rung 1 and keeps the test-artifacts flat / strategy/ / sharded
+# read-compat rungs.
 RESOLVE_ARTIFACT_PATH="$PLUGIN_SCRIPTS_DIR/lib/resolve-artifact-path.sh"
 TRACE_PATH=""
 if [ -x "$RESOLVE_ARTIFACT_PATH" ]; then
@@ -138,15 +136,15 @@ if [ -z "$TRACE_PATH" ]; then
   fi
 fi
 if [ ! -s "$TRACE_PATH" ]; then
-  die "HALT: traceability-matrix.md not found or empty at any accepted placement (planning-artifacts/ canonical, or test-artifacts flat / strategy/ / sharded) — run /gaia-trace to populate it (ADR-042 enforced gate)"
+  die "HALT: traceability-matrix.md not found or empty at any accepted placement (planning-artifacts/ canonical, or test-artifacts flat / strategy/ / sharded) — run /gaia-trace to populate it"
 fi
 
-# ---------- 2c. Guard: ci-setup.md must be non-empty (E28-S98) ----------
-# Skipped when ci_platform.provider=none per F-36.
+# ---------- 2c. Guard: ci-setup.md must be non-empty ----------
+# Skipped when ci_platform.provider=none.
 if [ "$NEEDS_CI_GATE" -eq 1 ]; then
   CI_PATH="${TEST_ARTIFACTS}/ci-setup.md"
   if [ ! -s "$CI_PATH" ]; then
-    die "HALT: ci-setup.md exists but is empty (zero-byte) — run /gaia-ci-setup to populate it (ADR-042 enforced gate)"
+    die "HALT: ci-setup.md exists but is empty (zero-byte) — run /gaia-ci-setup to populate it"
   fi
 fi
 

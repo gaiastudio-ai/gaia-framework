@@ -18,7 +18,7 @@ used_by: ['create-architecture']
 
 | ID | Decision | Rationale | Status |
 |----|----------|-----------|--------|
-| ADR-01 | {decision} | {why} | Accepted |
+| ADR-NNN | {decision} | {why} | Accepted |
 
 ## 3. System Components
 

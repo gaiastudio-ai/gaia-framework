@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-retro skill setup (E28-S64)
+# setup.sh — gaia-retro skill setup
 #
-# Shared setup pattern from the E28-S17/S19/S21 foundation work.
+# Shared setup pattern from the foundation work.
 # Resolves config, validates gates, loads checkpoint state.
 #
 # Exit codes:
@@ -65,7 +65,7 @@ else
   log "checkpoint.sh not found at $CHECKPOINT — skipping checkpoint load (non-fatal)"
 fi
 
-# ---------- 3b. Stamp the run-started checkpoint (AF-2026-05-30-2 / Test10 F-31) ----------
+# ---------- 3b. Stamp the run-started checkpoint ----------
 # finalize.sh's GAIA_FINALIZE_SENTINEL_REQUIRED guard expects a
 # write-checkpoint.sh-produced JSON under
 # .gaia/memory/checkpoints/retrospective/*-step-*.json — finalize compares

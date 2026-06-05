@@ -10,7 +10,7 @@ Extended glyph palette with rationale for each Unicode choice. The single source
 | `GLYPH_BRANCH` | `⎇` | U+2387 ALTERNATIVE KEY SYMBOL | `nf-pl-branch` | `@` | Compact branching glyph; available in most modern monospace fonts. |
 | `GLYPH_SPARK` | `*` | U+002A ASTERISK | `nf-fa-star` | `*` | Kept as ASCII asterisk by default for terminal robustness — Unicode upgrade is opt-in via Nerdfont. |
 | `GLYPH_CLOCK` | `◷` | U+25F7 WHITE CIRCLE WITH UPPER RIGHT QUADRANT | `nf-fa-clock` | `t` | Clock-quadrant glyph reads as a timer without the visual weight of `🕒`. |
-| `GLYPH_UPDATE` | `↑` | U+2191 UPWARDS ARROW | `nf-fa-arrow_up` | `^` | Universal "available upward" semantics; pairs with bold + color for the triple-signal in FR-435. |
+| `GLYPH_UPDATE` | `↑` | U+2191 UPWARDS ARROW | `nf-fa-arrow_up` | `^` | Universal "available upward" semantics; pairs with bold + color for the triple-signal. |
 | `GLYPH_CHEVRON` | `▸` | U+25B8 BLACK RIGHT-POINTING SMALL TRIANGLE | `nf-fa-chevron_right` | `>` | Subtle separator — lighter than `>` but still directional. |
 | `GLYPH_DOT` | `·` | U+00B7 MIDDLE DOT | `nf-md-circle_small` | `-` | Visually quiet separator for low-contrast joins. |
 

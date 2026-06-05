@@ -1,4 +1,4 @@
-<!-- Reference frontmatter for gaia-review-perf (E28-S71)
+<!-- Reference frontmatter for gaia-review-perf
      Verbatim brief example — used by the frontmatter linter for conformance checks.
      Do NOT edit without updating SKILL.md to match. -->
 

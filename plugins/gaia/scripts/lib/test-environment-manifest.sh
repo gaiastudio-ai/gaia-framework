@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-environment-manifest.sh — E17-S33 + E17-S35 (ADR-110, FR-496, FR-497, FR-499)
+# test-environment-manifest.sh — shared helper: detect project stack and emit test-environment.yaml
 #
 # Shared library helper: detect project stack and emit a stack-specific
 # .gaia/config/test-environment.yaml on stdout, or write it to the canonical path
@@ -8,7 +8,7 @@
 # Single canonical generator for test-environment.yaml — both /gaia-brownfield
 # Phase 5 and /gaia-bridge-enable Step 4 invoke this helper.
 #
-# Sentinel emission (E17-S35):
+# Sentinel emission:
 #   - Stack DETECTED  → no sentinel (manifest is presumed-customized for the stack).
 #   - Stack NOT MATCHED → GAIA-MANIFEST-TEMPLATE sentinel IS included so Layer 0
 #     readiness will fail until the user customizes the placeholder runners.
@@ -24,8 +24,6 @@
 #   1  detect-signals / filesystem failure
 #   2  usage error
 #
-# Traces: E17-S33, E17-S35, FR-496, FR-497, FR-499, ADR-110.
-
 set -euo pipefail
 LC_ALL=C
 export LC_ALL
@@ -37,7 +35,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DETECT_SIGNALS="${PLUGIN_ROOT}/scripts/detect-signals.sh"
 
-# AF-2026-05-21-7/8: resolved after $target is validated.
 MANIFEST_REL=""
 
 target=""
@@ -49,8 +46,8 @@ Usage: test-environment-manifest.sh --target <project-root> [--write]
 
 Detect project stack and emit a test-environment.yaml manifest. With --write,
 the manifest is written to .gaia/config/test-environment.yaml at the target
-root (canonical post-ADR-111) or config/test-environment.yaml (legacy pre-
-ADR-111). copy-if-absent: preserves user-edited file.
+root (canonical) or config/test-environment.yaml (legacy). copy-if-absent:
+preserves user-edited file.
 
 Exit codes:
   0  success
@@ -74,10 +71,10 @@ done
 [ -n "${target}" ] || { printf '%s: --target is required\n' "$SCRIPT_NAME" >&2; usage >&2; exit 2; }
 [ -d "${target}" ] || { printf '%s: target directory does not exist: %s\n' "$SCRIPT_NAME" "${target}" >&2; exit 2; }
 
-# AF-2026-05-21-7/8 (CRITICAL SEQUENCING): the canonical-default guard MUST
-# resolve MANIFEST_REL BEFORE the copy-if-absent short-circuit below — a
-# pre-ADR-111 user with an existing config/test-environment.yaml would
-# otherwise be silently shadowed by a fresh .gaia/config/ write.
+# CRITICAL SEQUENCING: the canonical-default guard MUST resolve MANIFEST_REL
+# BEFORE the copy-if-absent short-circuit below — a legacy user with an
+# existing config/test-environment.yaml would otherwise be silently shadowed
+# by a fresh .gaia/config/ write.
 if [ -d "${target}/config" ] && [ ! -d "${target}/.gaia/config" ]; then
   MANIFEST_REL="config/test-environment.yaml"
 else
@@ -117,17 +114,16 @@ detect_stack() {
     fi
   fi
 
-  # AF-2026-05-29-2 / Test09 F-4 + F-15: config fallback. detect-signals.sh
-  # only detects Python (and other stacks) from ROOT-level manifests
-  # (pyproject.toml, requirements.txt, etc.). On projects where those files
-  # live in a subdir (e.g. `core/pyproject.toml`) detect-signals returns []
-  # and the manifest generator falls through to the `generic` template with a
-  # nonsensical `make test` runner. When the operator has already declared the
-  # stack via `/gaia-init` (project-config.yaml stacks[].language: python), we
-  # should TRUST that declaration rather than mis-tag a real Python project as
-  # `generic`. Read declared stacks from project-config and return the first
-  # supported language. Honors both .gaia/config/ (canonical post-ADR-111) and
-  # legacy config/ for in-migration projects.
+  # Config fallback. detect-signals.sh only detects Python (and other stacks)
+  # from ROOT-level manifests (pyproject.toml, requirements.txt, etc.). On
+  # projects where those files live in a subdir (e.g. `core/pyproject.toml`)
+  # detect-signals returns [] and the manifest generator falls through to the
+  # `generic` template with a nonsensical `make test` runner. When the operator
+  # has already declared the stack via `/gaia-init` (project-config.yaml
+  # stacks[].language: python), we should TRUST that declaration rather than
+  # mis-tag a real Python project as `generic`. Read declared stacks from
+  # project-config and return the first supported language. Honors both
+  # .gaia/config/ (canonical) and legacy config/ for in-migration projects.
   local _cfg=""
   if [ -f "${target}/.gaia/config/project-config.yaml" ]; then
     _cfg="${target}/.gaia/config/project-config.yaml"
@@ -147,10 +143,10 @@ detect_stack() {
     esac
   fi
 
-  # AF-2026-05-29-2 / Test09 F-4 fallback #2: scan for *.py files in
-  # subdirectories when no config declaration is available. Catches the common
-  # case of a project under active brownfield onboarding (no config yet) that
-  # has its Python sources in a subdir (`core/`, `src/`, etc.).
+  # Fallback #2: scan for *.py files in subdirectories when no config
+  # declaration is available. Catches the common case of a project under
+  # active brownfield onboarding (no config yet) that has its Python sources
+  # in a subdir (`core/`, `src/`, etc.).
   if find "${target}" -maxdepth 4 -type f -name '*.py' -not -path '*/.gaia/*' -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/.venv/*' -print -quit 2>/dev/null | grep -q .; then
     echo "python"
     return 0
@@ -180,20 +176,18 @@ runners:
 EOF
       ;;
     python)
-      # AF-2026-05-29-2 / Test09 F-7: use `python3 -m pytest` (the canonical
-      # module-invocation form) instead of bare `pytest`. On many environments
-      # (some CI runners, Python installations without `--user` shims) bare
-      # `pytest` is not on PATH but `python3 -m pytest` works. Module form is
-      # also the recommended invocation per the pytest project docs because it
-      # adds the current directory to sys.path, matching the import semantics
-      # users typically expect.
-      # AF-2026-05-30-2 / Test10 F-12: detect the project's real test paths
-      # from pyproject.toml [tool.pytest.ini_options].testpaths before
-      # defaulting to tests/unit + tests/integration. Many Python projects
-      # use core/tests, src/tests, or a single tests/ dir without unit/
-      # integration subdivision — hardcoding tests/unit then produced an
-      # empty runner ("no tests collected") and the bridge silently false-
-      # PASSed (F-27 caveat).
+      # Use `python3 -m pytest` (the canonical module-invocation form) instead
+      # of bare `pytest`. On many environments (some CI runners, Python
+      # installations without `--user` shims) bare `pytest` is not on PATH but
+      # `python3 -m pytest` works. Module form is also the recommended
+      # invocation per the pytest project docs because it adds the current
+      # directory to sys.path, matching the import semantics users expect.
+      # Detect the project's real test paths from pyproject.toml
+      # [tool.pytest.ini_options].testpaths before defaulting to tests/unit +
+      # tests/integration. Many Python projects use core/tests, src/tests, or
+      # a single tests/ dir without unit/integration subdivision — hardcoding
+      # tests/unit then produced an empty runner ("no tests collected") and the
+      # bridge silently false-PASSed.
       _detected_testpath=""
       if [ -f "${PROJECT_ROOT:-.}/pyproject.toml" ]; then
         _detected_testpath=$(awk '
@@ -290,7 +284,7 @@ runners:
 EOF
       ;;
     *)
-      # No-stack fallback (FR-497 generic placeholder). Sentinel is added by the caller.
+      # No-stack fallback (generic placeholder). Sentinel is added by the caller.
       cat <<'EOF'
 runners:
   - name: unit
@@ -309,25 +303,24 @@ runners_body=$(runners_for_stack "${stack}")
 
 # Header — stack-detected manifests get a friendly comment; no-stack manifests
 # get the canonical GAIA-MANIFEST-TEMPLATE sentinel so Layer 0 readiness fails
-# until the user customizes (E17-S35 / FR-499).
-# AF-2026-05-31-2 / Test13 F-20: surface the actual CALLER in the header
-# attribution. The helper is invoked by both `/gaia-brownfield` (Phase 5)
-# and `/gaia-bridge-enable`; the prior hard-coded `Auto-generated by
-# /gaia-bridge-enable` line misled operators on brownfield runs. The
-# caller passes `GAIA_TEST_ENV_CALLER=/gaia-<skill>` before invoking
+# until the user customizes.
+# Surface the actual CALLER in the header attribution. The helper is invoked
+# by both `/gaia-brownfield` (Phase 5) and `/gaia-bridge-enable`; the prior
+# hard-coded `/gaia-bridge-enable` line misled operators on brownfield runs.
+# The caller passes `GAIA_TEST_ENV_CALLER=/gaia-<skill>` before invoking
 # this helper; we fall back to `/gaia-bridge-enable` (the legacy default)
 # when the env var is unset so existing callers keep working.
 _TEM_CALLER="${GAIA_TEST_ENV_CALLER:-/gaia-bridge-enable}"
 if [ -n "${stack}" ]; then
   header="# test-environment.yaml — Test Execution Bridge Manifest
-# Auto-generated by ${_TEM_CALLER} (E17-S33 shared helper).
+# Auto-generated by ${_TEM_CALLER}.
 # Edit this file to fine-tune for your project.
 #
 # detected-stack: ${stack}
 # Reference: architecture.md Section 10.20.5"
 else
   header="# test-environment.yaml — Test Execution Bridge Manifest
-# Auto-generated by ${_TEM_CALLER} (E17-S33 shared helper).
+# Auto-generated by ${_TEM_CALLER}.
 # No stack detected — generic placeholder runners. CUSTOMIZE for your project.
 #
 # detected-stack: generic
@@ -356,25 +349,25 @@ if [ "${write_mode}" -eq 1 ]; then
   mkdir -p "$(dirname "${manifest_path}")"
   printf '%s\n' "${manifest}" > "${manifest_path}"
   printf '%s: installed %s (detected-stack=%s)\n' "$SCRIPT_NAME" "${MANIFEST_REL}" "${stack:-generic}" >&2
-  # AF-2026-05-31-3 / Test14 F-17 — test-artifacts/ mirror.
+  # test-artifacts/ mirror.
   # The target layout places test-environment.yaml under test-artifacts/.
-  # ADR-110 pins the canonical write home at .gaia/config/; mirror to
+  # The canonical write home is .gaia/config/; mirror to
   # .gaia/artifacts/test-artifacts/ so the target layout has it too.
   # Best-effort — copy failure is non-fatal.
   _mirror_path="${target}/.gaia/artifacts/test-artifacts/test-environment.yaml"
   if [ "${manifest_path}" != "${_mirror_path}" ]; then
     if mkdir -p "$(dirname "${_mirror_path}")" 2>/dev/null; then
       cp "${manifest_path}" "${_mirror_path}" 2>/dev/null \
-        && printf '%s: F-17 mirror: %s\n' "$SCRIPT_NAME" "${_mirror_path}" >&2 \
+        && printf '%s: mirror: %s\n' "$SCRIPT_NAME" "${_mirror_path}" >&2 \
         || true
     fi
   fi
-  # Test17 L-09 / AF-2026-06-02-6: also drop a `.example` companion at the
-  # canonical config home so brownfield-onboarded projects mirror the
-  # init-onboarded layout. `install-test-environment-example.sh` is the
-  # canonical writer; reuse it (copy-if-absent, returns 0 either way) so
-  # we don't drift on the example contents. Best-effort: failure to write
-  # the .example does NOT block the manifest write the caller depends on.
+  # Also drop a `.example` companion at the canonical config home so
+  # brownfield-onboarded projects mirror the init-onboarded layout.
+  # `install-test-environment-example.sh` is the canonical writer; reuse it
+  # (copy-if-absent, returns 0 either way) so we don't drift on the example
+  # contents. Best-effort: failure to write the .example does NOT block the
+  # manifest write the caller depends on.
   _example_installer="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)/install-test-environment-example.sh"
   if [ -x "${_example_installer}" ]; then
     bash "${_example_installer}" --target "${target}" >/dev/null 2>&1 || true

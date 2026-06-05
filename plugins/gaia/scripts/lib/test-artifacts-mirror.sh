@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# test-artifacts-mirror.sh — AF-2026-05-31-3 / Test14 F-15
+# test-artifacts-mirror.sh — shared writer for the per-story test-artifacts/ mirror.
 #
 # Shared writer for the per-story test-artifacts/ mirror + per-tier
 # execution-evidence split.
 #
-# Test14 §F-15 caught that the test-lens review artifacts (qa-tests.md,
-# test-automation.md, test-review.md) AND the execution-evidence.json
-# were all co-located under
+# The test-lens review artifacts (qa-tests.md, test-automation.md,
+# test-review.md) AND the execution-evidence.json were co-located under
 #   .gaia/artifacts/implementation-artifacts/{epic}/{key}/reviews/
 # even though the target layout expects them mirrored at
 #   .gaia/artifacts/test-artifacts/{epic}/{key}/

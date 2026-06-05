@@ -3,11 +3,9 @@
   "skill": "security",
   "name": "hipaa",
   "applies_to_skills": ["review-code", "review-security"],
-  "description": "HIPAA-specific rules for code and security reviews handling Protected Health Information (PHI). Layer 2 of the four-layer rubric composition (base + regimes + domain + project) per ADR-079.",
+  "description": "HIPAA-specific rules for code and security reviews handling Protected Health Information (PHI). Layer 2 of the four-layer rubric composition (base + regimes + domain + project).",
   "metadata": {
     "title": "HIPAA regime rubric",
-    "story": "E68-S4",
-    "adr": "ADR-079",
     "regime_id": "hipaa",
     "references": ["HIPAA-164.308", "HIPAA-164.312", "HIPAA-164.314", "HIPAA-164.404", "HIPAA-164.502"]
   },

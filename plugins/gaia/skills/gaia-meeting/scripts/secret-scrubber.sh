@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# secret-scrubber.sh — gaia-meeting T-MTG-3 secret-pattern scrubber
-# (E76-S7, AC8 / TS10 / TC-MTG-CHKPT-8).
+# secret-scrubber.sh — gaia-meeting secret-pattern scrubber
 #
 # Single source of truth for the regex set used by the pre-CLOSE checkpoint
 # yield. Reads an input file, writes a scrubbed copy with sensitive patterns

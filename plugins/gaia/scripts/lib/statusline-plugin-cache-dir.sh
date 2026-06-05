@@ -2,7 +2,6 @@
 # statusline-plugin-cache-dir.sh — shared helper for resolving the highest-
 # semver plugin cache directory.
 #
-# Story: E82-S11 (AF-2026-06-02-3).
 #
 # Provides two functions:
 #

@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# conditional-trigger-eval.sh — GAIA review-common conditional-skip evaluator (E69-S4).
+# conditional-trigger-eval.sh — GAIA review-common conditional-skip evaluator.
 #
 # Purpose
 # -------
-# Deterministic helper invoked by `/gaia-review-all` (Step 4 / ADR-082) to
-# decide whether the conditional review gates (a11y, mobile) should be
-# included in the composite verdict or skipped. Reads project-config via
-# `resolve-config.sh --field` (single source of truth) and emits a structured
-# result that the orchestrator translates into the canonical
-# `composite-verdict-aggregator.sh` argv fragment.
+# Deterministic helper invoked by `/gaia-review-all` to decide whether the
+# conditional review gates (a11y, mobile) should be included in the composite
+# verdict or skipped. Reads project-config via `resolve-config.sh --field`
+# (single source of truth) and emits a structured result that the orchestrator
+# translates into the canonical `composite-verdict-aggregator.sh` argv fragment.
 #
-# Trigger conditions (ADR-082, FR-RSV2-44):
+# Trigger conditions:
 #   - a11y    : included when compliance.ui_present is true (or unset).
 #               skipped when compliance.ui_present is false.
 #   - mobile  : included when platforms[] contains 'ios', 'android', or
@@ -38,10 +37,8 @@
 #
 # Determinism
 # -----------
-# Pure shell. No timestamps. No randomness. YOLO_MODE has no effect on output
-# (ADR-067 invariance). Byte-identical output for byte-identical project-config.
-#
-# Refs: E69-S4, FR-RSV2-44, ADR-082, ADR-067.
+# Pure shell. No timestamps. No randomness. YOLO_MODE has no effect on output.
+# Byte-identical output for byte-identical project-config.
 
 set -euo pipefail
 LC_ALL=C
@@ -53,7 +50,7 @@ die() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — conditional-trigger-eval (E69-S4, ADR-082)
+$SCRIPT_NAME — conditional-trigger-eval
 
 Usage:
   $SCRIPT_NAME [--shared <project-config.yaml>]
@@ -83,7 +80,7 @@ done
 # fixture. Parsing the two narrow keys keeps the evaluator self-contained and
 # matches the single-responsibility shape of other review-common helpers.
 if [ -z "$SHARED" ]; then
-  # E96-S7 partial-4c: prefer .gaia/config/project-config.yaml over the legacy
+  # Prefer .gaia/config/project-config.yaml over the legacy
   # config/project-config.yaml at both CLAUDE_PROJECT_ROOT and CWD candidates.
   for candidate in \
     "${CLAUDE_PROJECT_ROOT:-}/.gaia/config/project-config.yaml" \

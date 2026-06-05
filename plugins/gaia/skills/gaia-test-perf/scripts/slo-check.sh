@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# slo-check.sh — gaia-test-perf SLO evaluation (E73-S2, AC4 / AC7).
+# slo-check.sh — gaia-test-perf SLO evaluation.
 #
 # Reads a perf-test scenarios spec and a normalized result document, evaluates
 # each scenario's measured metrics against its declared SLOs, and emits a

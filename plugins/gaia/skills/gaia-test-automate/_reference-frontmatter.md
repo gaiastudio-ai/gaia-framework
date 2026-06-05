@@ -1,6 +1,6 @@
 # Reference Frontmatter — gaia-test-automate
 
-> Verbatim copy of the brief's `test-automate` frontmatter example (E28-S69).
+> Verbatim copy of the brief's `test-automate` frontmatter example.
 > This file exists for future contributor reference. Do not modify.
 
 ```yaml

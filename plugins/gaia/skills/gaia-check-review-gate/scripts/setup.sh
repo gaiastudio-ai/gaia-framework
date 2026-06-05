@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 7 check-review-gate skill setup (E28-S56)
+# setup.sh — check-review-gate skill setup
 #
-# Mechanical extension of the Cluster 7 reference implementation authored
-# under E28-S52 (gaia-create-story/scripts/setup.sh). Only WORKFLOW_NAME and
-# SCRIPT_NAME differ — the body follows the Cluster 7 shared pattern.
+# Mechanical extension of the shared reference implementation
+# (gaia-create-story/scripts/setup.sh). Only WORKFLOW_NAME and
+# SCRIPT_NAME differ — the body follows the shared pattern.
 #
-# Responsibilities (per brief Cluster 7):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (story file existence)
 #   3. Load the checkpoint state for this workflow

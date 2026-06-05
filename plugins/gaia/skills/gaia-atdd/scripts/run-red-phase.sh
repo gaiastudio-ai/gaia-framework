@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# run-red-phase.sh — /gaia-atdd Step 5b red-phase execution (E46-S3)
+# run-red-phase.sh — /gaia-atdd Step 5b red-phase execution
 #
 # Optional red-phase test runner invoked after Step 5 (Validation) when the
 # user opts in at the "Run generated tests now to confirm red phase? [y/N]"
 # prompt. Detects the configured runner via the Test Execution Bridge
-# (ADR-026 / test-environment.yaml). When the bridge is disabled or the
+# (test-environment.yaml). When the bridge is disabled or the
 # config is missing, the runner short-circuits with a warning — never fails
-# the overall /gaia-atdd invocation (AC-EC4).
+# the overall /gaia-atdd invocation.
 #
 # Usage:
 #   run-red-phase.sh --tests <path> [--timeout <seconds>]
 #
 # Options:
 #   --tests <path>      Path to a generated atdd-{story_key}.md artifact (required)
-#   --timeout <sec>     Per-test timeout in seconds (default: 30, AC-EC5)
+#   --timeout <sec>     Per-test timeout in seconds (default: 30)
 #   --help, -h          Show this help and exit 0
 #
 # Behavior:
 #   - Reads {GAIA_PROJECT_ROOT}/.gaia/artifacts/test-artifacts/test-environment.yaml (with legacy docs/ fallback).
 #   - If absent or bridge_enabled is false: log a "Test runner not configured —
-#     skipping red-phase execution" warning and exit 0 (AC-EC4 non-blocking).
+#     skipping red-phase execution" warning and exit 0 (non-blocking).
 #   - Otherwise: invoke the configured runner against --tests, enforce the
 #     per-test timeout, and print a single-line "pass/fail counts" summary.
 #   - Tests are expected to FAIL (red phase). Unexpected passes are flagged
@@ -57,7 +57,7 @@ Options:
 
 The script invokes the configured Test Execution Bridge runner against the
 provided artifact and reports a pass/fail count summary. When no runner is
-configured, the script logs a warning and exits 0 (non-blocking, AC-EC4).
+configured, the script logs a warning and exits 0 (non-blocking).
 EOF
       exit 0 ;;
     *) _die "unknown argument: $1" ;;
@@ -67,14 +67,14 @@ done
 [ -n "$_TESTS" ] || _die "--tests is required"
 
 _PROJECT_ROOT="${GAIA_PROJECT_ROOT:-${PROJECT_ROOT:-.}}"
-# AF-2026-05-21-19: canonical-first with positive-evidence legacy fallback.
+# Canonical-first with positive-evidence legacy fallback.
 if [ -f "$_PROJECT_ROOT/docs/test-artifacts/test-environment.yaml" ] && [ ! -d "$_PROJECT_ROOT/.gaia/artifacts/test-artifacts" ]; then
   _BRIDGE_FILE="$_PROJECT_ROOT/docs/test-artifacts/test-environment.yaml"
 else
   _BRIDGE_FILE="$_PROJECT_ROOT/.gaia/artifacts/test-artifacts/test-environment.yaml"
 fi
 
-# ---------- Test runner detection (AC-EC4) ----------
+# ---------- Test runner detection ----------
 
 if [ ! -f "$_BRIDGE_FILE" ]; then
   printf '%s: Test runner not configured — skipping red-phase execution\n' "$SCRIPT_NAME" >&2
@@ -92,7 +92,7 @@ if [ "$_bridge_enabled" != "true" ] || [ -z "$_runner" ]; then
   exit 0
 fi
 
-# ---------- Invoke runner with per-test timeout (AC-EC5) ----------
+# ---------- Invoke runner with per-test timeout ----------
 
 # `timeout(1)` is GNU; macOS users may have `gtimeout` via coreutils. Detect
 # whichever is available and fall back to a no-timeout invocation when neither

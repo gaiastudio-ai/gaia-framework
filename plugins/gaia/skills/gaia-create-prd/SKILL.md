@@ -1,9 +1,9 @@
 ---
 name: gaia-create-prd
-description: Create a Product Requirements Document through collaborative discovery with the pm subagent (Derek) — Cluster 5 planning skill. Use when the user wants to produce a validated PRD from an existing product brief, covering goals, functional/non-functional requirements, user journeys, data requirements, integrations, and success criteria.
+description: Create a Product Requirements Document through collaborative discovery with the pm subagent (Derek) — planning skill. Use when the user wants to produce a validated PRD from an existing product brief, covering goals, functional/non-functional requirements, user journeys, data requirements, integrations, and success criteria.
 argument-hint: "<product-brief-path>  (REQUIRED — path to the product brief; fails fast if omitted)"
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
-# Discover-Inputs Protocol (ADR-062 / FR-346 / E45-S4)
+# Discover-Inputs Protocol
 # Strategy: INDEX_GUIDED — load product brief + research artifact indexes
 # (TOC, heading scan) first; fetch named sections on demand in later steps.
 # Falls back to FULL_LOAD when an upstream artifact lacks parseable headings.
@@ -23,7 +23,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -35,11 +35,11 @@ fi
 
 ## Mission
 
-You are orchestrating the creation of a Product Requirements Document (PRD). The PRD authoring is delegated to the **pm** subagent (Derek), who conducts user interviews, elicits requirements, and produces the final artifact. You load the product brief, validate inputs, coordinate the multi-step flow, and write the output to the canonical post-ADR-111 path `.gaia/artifacts/planning-artifacts/prd.md` using the canonical `prd-template.md` template structure.
+You are orchestrating the creation of a Product Requirements Document (PRD). The PRD authoring is delegated to the **pm** subagent (Derek), who conducts user interviews, elicits requirements, and produces the final artifact. You load the product brief, validate inputs, coordinate the multi-step flow, and write the output to the canonical path `.gaia/artifacts/planning-artifacts/prd.md` using the canonical `prd-template.md` template structure.
 
-**Path resolution (AF-2026-05-21-10).** All PRD path references in this SKILL.md use the canonical post-ADR-111 location `.gaia/artifacts/planning-artifacts/prd.md`. Pre-ADR-111 projects continue to work via a positive-evidence-legacy fallback at the script layer (`scripts/finalize.sh` three-tier idiom: `PRD_ARTIFACT` env-var override → legacy `docs/planning-artifacts/prd.md` only when that file exists AND `.gaia/artifacts/planning-artifacts/` does NOT → canonical default). When writing the PRD via the Write tool, target the canonical path; the pre-ADR-111 fallback is read-side only.
+**Path resolution.** All PRD path references in this SKILL.md use the canonical location `.gaia/artifacts/planning-artifacts/prd.md`. Legacy projects continue to work via a positive-evidence-legacy fallback at the script layer (`scripts/finalize.sh` three-tier idiom: `PRD_ARTIFACT` env-var override → legacy `docs/planning-artifacts/prd.md` only when that file exists AND `.gaia/artifacts/planning-artifacts/` does NOT → canonical default). When writing the PRD via the Write tool, target the canonical path; the legacy fallback is read-side only.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/2-planning/create-prd` workflow (brief Cluster 5, story P5-S1 / E28-S40). The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/2-planning/create-prd` workflow. The step ordering, prompts, and output path are preserved verbatim from the legacy `instructions.xml` — do not restructure, re-prompt, or reorder.
 
 ## Critical Rules
 
@@ -48,18 +48,18 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Every requirement must have a unique ID: `FR-###` (functional), `NFR-###` (non-functional).
 - Requirements must be discoverable from user interviews, not guessed.
 - Each requirement must have testable acceptance criteria.
-- PRD authoring prompts are delegated to the `pm` subagent (Derek) via native Claude Code subagent invocation — do NOT inline Derek's persona into this skill body. If the pm subagent (E28-S21) is not available, fail with "pm subagent not available — install E28-S21" error.
+- PRD authoring prompts are delegated to the `pm` subagent (Derek) via native Claude Code subagent invocation — do NOT inline Derek's persona into this skill body. If the pm subagent is not available, fail with "pm subagent not available" error.
 - If `.gaia/artifacts/planning-artifacts/prd.md` already exists, warn the user: "An existing PRD was found. Continuing will overwrite it. Confirm to proceed or abort." Do not silently overwrite.
-- Template resolution: load `prd-template.md` from this skill directory. If `custom/templates/prd-template.md` exists and is non-empty, use the custom template instead — the custom template takes full precedence over the framework default (ADR-020 / FR-101).
-- Calibration reference (Test05 F-008): a worked example PRD ships at `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/prd-example.md` ("Focus Timer"). It is NOT consumed by the skill — use it to calibrate expected depth/shape for a small-but-complete greenfield PRD. Do NOT copy it verbatim.
-- Greenfield brownfield-block strip (Test05 F-007): `prd-template.md` carries a `<!-- BROWNFIELD-ONLY-START -->…END` block relevant only to brownfield PRDs. On a GREENFIELD authoring flow, after writing the PRD strip the block deterministically via `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/scripts/strip-brownfield-block.sh <prd-path>` (idempotent; no-op if absent). Brownfield flows keep the block.
-- **Brownfield freshness re-check (Test17 D-7 / AF-2026-06-02-6).** In brownfield mode (consuming `.gaia/artifacts/planning-artifacts/consolidated-gaps.md` as the baseline), BEFORE writing FR/NFR rows that reference a gap's `evidence_file`, the skill MUST re-stat the `evidence_file` mtime against `consolidated-gaps.md` mtime. When `evidence_file` mtime is NEWER than the consolidated-gaps baseline mtime, emit a WARNING line to stderr — `freshness-check: evidence_file %s is newer than consolidated-gaps baseline (gap %s may be stale) — verify before writing requirement %s` — and tag the resulting FR/NFR with `<!-- stale-baseline: gap %s -->` so downstream readers know the requirement may reference an already-closed gap. Warn (don't fail) — the operator can decide whether to drop or update the row. Closes the cascade-drift class Test17 D-7 documented: PRD froze CG-003/CG-007 (".github absent") as P0 even though `/gaia-ci-setup` had since created the workflow. The check is a single `find` invocation comparing mtimes; no new schema fields required.
+- Template resolution: load `prd-template.md` from this skill directory. If `custom/templates/prd-template.md` exists and is non-empty, use the custom template instead — the custom template takes full precedence over the framework default.
+- Calibration reference: a worked example PRD ships at `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/prd-example.md` ("Focus Timer"). It is NOT consumed by the skill — use it to calibrate expected depth/shape for a small-but-complete greenfield PRD. Do NOT copy it verbatim.
+- Greenfield brownfield-block strip: `prd-template.md` carries a `<!-- BROWNFIELD-ONLY-START -->…END` block relevant only to brownfield PRDs. On a GREENFIELD authoring flow, after writing the PRD strip the block deterministically via `${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-prd/scripts/strip-brownfield-block.sh <prd-path>` (idempotent; no-op if absent). Brownfield flows keep the block.
+- **Brownfield freshness re-check.** In brownfield mode (consuming `.gaia/artifacts/planning-artifacts/consolidated-gaps.md` as the baseline), BEFORE writing FR/NFR rows that reference a gap's `evidence_file`, the skill MUST re-stat the `evidence_file` mtime against `consolidated-gaps.md` mtime. When `evidence_file` mtime is NEWER than the consolidated-gaps baseline mtime, emit a WARNING line to stderr — `freshness-check: evidence_file %s is newer than consolidated-gaps baseline (gap %s may be stale) — verify before writing requirement %s` — and tag the resulting FR/NFR with `<!-- stale-baseline: gap %s -->` so downstream readers know the requirement may reference an already-closed gap. Warn (don't fail) — the operator can decide whether to drop or update the row. Closes the cascade-drift class where a PRD froze ".github absent" gaps as P0 even though `/gaia-ci-setup` had since created the workflow. The check is a single `find` invocation comparing mtimes; no new schema fields required.
 
 ## Steps
 
 ### Step 1 — Load Product Brief
 
-> **Loading strategy: INDEX_GUIDED per ADR-062.** The product brief plus the
+> **Loading strategy: INDEX_GUIDED.** The product brief plus the
 > three research artifacts can total 30K+ tokens combined. Load each
 > artifact's index first (heading scan via `grep -nE '^#{1,3} '`) — do NOT
 > read full bodies up front. Fetch named sections on demand in later steps
@@ -181,7 +181,7 @@ Write the PRD to `.gaia/artifacts/planning-artifacts/prd.md` with all sections p
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 11 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" --paths .gaia/artifacts/planning-artifacts/prd.md`
 
-### Step 12 — Val Auto-Fix Loop (E44-S2 / ADR-058)
+### Step 12 — Val Auto-Fix Loop
 
 > Reuses the canonical pattern at `gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
@@ -204,24 +204,24 @@ Write the PRD to `.gaia/artifacts/planning-artifacts/prd.md` with all sections p
      d. If iteration <= 3: go to step 2.
      e. Else: present the iteration-3 prompt verbatim (centralized in `gaia-val-validate` SKILL.md § "Auto-Fix Loop Pattern") and dispatch.
 
-YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See ADR-057 FR-YOLO-2(e) and ADR-058 for the hard-gate contract.
+YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). Validation MUST run against the Step 11 primary write (artifact-as-drafted), not the post-adversarial revision produced by the next steps — see story E44-S4 AC3 rationale.
+> Val auto-review (architecture.md §10.31.2). Validation MUST run against the Step 11 primary write (artifact-as-drafted), not the post-adversarial revision produced by the next steps.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 12 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/prd.md`
 
 ### Step 13 — Adversarial Review
 
-- Read `${CLAUDE_PLUGIN_ROOT}/knowledge/adversarial-triggers.yaml` to evaluate trigger rules. (This policy table ships inside the plugin under ADR-041's `knowledge/` convention; the legacy v1 location `_gaia/_config/adversarial-triggers.yaml` is retired and no longer used.) Determine the current `change_type`: if invoked with a change_type context (e.g., from add-feature triage), use that value. If no context is available (standalone PRD creation), default to "feature".
+- Read `${CLAUDE_PLUGIN_ROOT}/knowledge/adversarial-triggers.yaml` to evaluate trigger rules. (This policy table ships inside the plugin under the `knowledge/` convention; the legacy v1 location `_gaia/_config/adversarial-triggers.yaml` is retired and no longer used.) Determine the current `change_type`: if invoked with a change_type context (e.g., from add-feature triage), use that value. If no context is available (standalone PRD creation), default to "feature".
 - Look up the trigger rule for `change_type` + artifact "prd". If adversarial is false for this combination: skip the adversarial review. Add a "## Review Findings Incorporated" section with "Adversarial review not triggered — change type: {change_type}".
-- If adversarial is true: dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique `.gaia/artifacts/planning-artifacts/prd.md`. **Before dispatching, run `mkdir -p .gaia/artifacts/planning-artifacts/adversarial/`** so the nested directory exists on first run (ADR-119). The dispatch prompt MUST specify (a) the artifact path to review and (b) the report output path `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-prd-{YYYY-MM-DD}.md` (use today's UTC date). Sage's persona at `plugins/gaia/agents/adversarial-reviewer.md` defines the review structure, severity vocabulary (CRITICAL/WARNING/INFO per ADR-037), and lens checklist for PRD artifacts.
-- When the subagent returns: verify `adversarial-review-prd-*.md` exists in `.gaia/artifacts/planning-artifacts/adversarial/`. Per ADR-063 (Mandatory Verdict Surfacing), display the returned ADR-037 envelope status + summary + findings list to the user before proceeding to Step 14. A `CRITICAL` verdict does NOT halt the cascade — adversarial findings are advisory and incorporated in Step 14; Val (Step 12) is the gating reviewer for hard-halt semantics.
+- If adversarial is true: dispatch the **`adversarial-reviewer`** subagent (Sage) via the Agent tool to critique `.gaia/artifacts/planning-artifacts/prd.md`. **Before dispatching, run `mkdir -p .gaia/artifacts/planning-artifacts/adversarial/`** so the nested directory exists on first run. The dispatch prompt MUST specify (a) the artifact path to review and (b) the report output path `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-prd-{YYYY-MM-DD}.md` (use today's UTC date). Sage's persona at `plugins/gaia/agents/adversarial-reviewer.md` defines the review structure, severity vocabulary (CRITICAL/WARNING/INFO), and lens checklist for PRD artifacts.
+- When the subagent returns: verify `adversarial-review-prd-*.md` exists in `.gaia/artifacts/planning-artifacts/adversarial/`. Per the Mandatory Verdict Surfacing rule, display the returned envelope status + summary + findings list to the user before proceeding to Step 14. A `CRITICAL` verdict does NOT halt the cascade — adversarial findings are advisory and incorporated in Step 14; Val (Step 12) is the gating reviewer for hard-halt semantics.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 13 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG"`
 
 ### Step 14 — Incorporate Adversarial Findings
 
-- Read `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-prd-*.md` — extract critical and high severity findings. (Consumer-side dual-path acceptance is owned by E102-S6 per ADR-119.)
+- Read `.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-prd-*.md` — extract critical and high severity findings.
 - For each critical/high finding: add as a new requirement or refine an existing requirement in the PRD.
 - Add a "## Review Findings Incorporated" section to the PRD listing each finding, its severity, and how it was addressed (new requirement added / existing requirement refined / acknowledged as risk).
 - Write the updated PRD to `.gaia/artifacts/planning-artifacts/prd.md`.
@@ -234,7 +234,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 ## Validation
 
 <!--
-  E42-S6 — V1→V2 36-item checklist port (FR-341, FR-359, VCP-CHK-11, VCP-CHK-12).
+  V1→V2 36-item checklist port.
   Classification (36 items total):
     - Script-verifiable: 24 (SV-01..SV-24) — enforced by finalize.sh.
     - LLM-checkable:     12 (LLM-01..LLM-12) — evaluated by the host LLM
@@ -248,22 +248,20 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   per-section SV-04..SV-15), (b) adding envelope items SV-01..SV-03,
   (c) adding Requirements Summary Table structural + data-row checks
   (SV-16..SV-17 — AC-EC5 guard), (d) adding FR-### / NFR-### identifier
-  regex checks (SV-18..SV-19), (e) adding the VCP-CHK-12 anchor check for
+  regex checks (SV-18..SV-19), (e) adding the anchor check for
   dependency failure modes + fallback behaviour (SV-20), (f) adding section-
   body sanity checks (SV-21..SV-24) to catch empty sections, and (g) pulling
   12 LLM-checkable items (LLM-01..LLM-12) out of the V1 semantic bullets
   (user-focus traceability, MoSCoW, consistency, measurability, failure-mode
   credibility, scope discipline).
 
-  The VCP-CHK-12 anchor is SV-20 — "Critical dependencies have failure modes
+  The SV-20 anchor is "Critical dependencies have failure modes
   and fallback behavior defined". This is the V1 phrase verbatim and MUST
   appear in violation output when the Dependencies section lacks failure-
   mode / fallback text.
 
   Invoked by `finalize.sh` at post-complete (per §10.31.1). Validation runs
-  BEFORE session-memory auto-save (AC-EC6 / ADR-061).
-
-  See .gaia/artifacts/implementation-artifacts/E42-S6-port-gaia-create-prd-36-item-checklist-to-v2.md.
+  BEFORE session-memory auto-save.
 -->
 
 - [script-verifiable] SV-01 — Output artifact exists at .gaia/artifacts/planning-artifacts/prd.md

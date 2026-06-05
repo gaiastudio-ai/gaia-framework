@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# plugin-trace-chain.sh — E77-S16 / FR-421 plugin traceability chain.
+# plugin-trace-chain.sh — plugin traceability chain.
 #
 # Resolves the plugin chain for a Claude Code plugin project:
 #   manifest.yaml | .claude-plugin/plugin.json
@@ -18,9 +18,9 @@
 #                  - orphan_skill_md        (SKILL.md not listed in manifest)
 #
 # Plugin-gating: when `--require-plugin` is passed and plugin-detection.sh
-# reports `is_plugin: false` (fewer than 3 co-occurring signals per FR-420),
-# emit an empty chain and `is_plugin: false`. This keeps non-plugin
-# projects' /gaia-trace behaviour unchanged (AC5).
+# reports `is_plugin: false` (fewer than 3 co-occurring signals), emit an
+# empty chain and `is_plugin: false`. This keeps non-plugin projects'
+# /gaia-trace behaviour unchanged.
 #
 # Usage:
 #   plugin-trace-chain.sh --project-root <dir> [--require-plugin]
@@ -65,8 +65,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DETECT_SCRIPT="$SCRIPT_DIR/plugin-detection.sh"
 
 # ---------------------------------------------------------------------------
-# Plugin gate (FR-421 / AC5) — when --require-plugin, defer to plugin-
-# detection.sh. Non-plugin projects emit empty chain and short-circuit.
+# Plugin gate — when --require-plugin, defer to plugin-detection.sh.
+# Non-plugin projects emit empty chain and short-circuit.
 # ---------------------------------------------------------------------------
 is_plugin="true"
 if [ "$REQUIRE_PLUGIN" -eq 1 ]; then

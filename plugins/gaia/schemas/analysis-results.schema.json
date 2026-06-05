@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gaiastudio.ai/schemas/analysis-results.schema.json",
   "title": "GAIA Review Skill — Phase 3A analysis-results.json",
-  "description": "Structured artifact emitted by the deterministic Phase 3A of the six review skills (gaia-code-review and siblings) per ADR-075 / FR-DEJ-5. Top-level additionalProperties is intentionally true so future fields (e.g. timing per NFR-DEJ-1) can be added without bumping schema_version. schema_version bumps only on breaking changes.",
+  "description": "Structured artifact emitted by the deterministic Phase 3A of the six review skills (gaia-code-review and siblings). Top-level additionalProperties is intentionally true so future fields (e.g. timing) can be added without bumping schema_version. schema_version bumps only on breaking changes.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -34,27 +34,27 @@
     },
     "model": {
       "type": "string",
-      "description": "LLM model id pinned for the run (e.g. claude-opus-4-7 per ADR-074)."
+      "description": "LLM model id pinned for the run (e.g. claude-opus-4-7)."
     },
     "model_temperature": {
       "type": "number",
       "minimum": 0,
       "maximum": 2,
-      "description": "LLM temperature (MUST be 0 for review skills per FR-DEJ-8)."
+      "description": "LLM temperature (MUST be 0 for review skills)."
     },
     "prompt_hash": {
       "type": "string",
-      "description": "sha256 of the prompt used in Phase 3B (recorded in report header per FR-DEJ-8)."
+      "description": "sha256 of the prompt used in Phase 3B (recorded in report header)."
     },
     "tool_versions": {
       "type": "object",
       "additionalProperties": { "type": "string" },
-      "description": "Map of deterministic tool name to version (e.g. {\"eslint\":\"9.x\",\"tsc\":\"5.x\"}). Feeds the cache key per FR-DEJ-11."
+      "description": "Map of deterministic tool name to version (e.g. {\"eslint\":\"9.x\",\"tsc\":\"5.x\"}). Feeds the cache key."
     },
     "file_hashes": {
       "type": "object",
       "additionalProperties": { "type": "string" },
-      "description": "Map of file path (relative to project root) to sha256 hash. Feeds the cache key per FR-DEJ-11."
+      "description": "Map of file path (relative to project root) to sha256 hash. Feeds the cache key."
     },
     "checks": {
       "type": "array",

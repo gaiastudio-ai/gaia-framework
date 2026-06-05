@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # distribution-canonicalize.sh — distribution.* path + string validators
-# for SR-79 (manifest path traversal) and SR-80 (shell-metachar denylist +
-# URL-shape validation on distribution.registry).
+# for manifest path traversal and shell-metachar denylist +
+# URL-shape validation on distribution.registry.
 #
-# E99-S3. Sourceable, NOT executable.
+# Sourceable, NOT executable.
 #
 # Exposes three functions:
 #
@@ -15,9 +15,8 @@
 #     - Emits the absolute canonical path on stdout on success; HALT on failure
 #
 #   gaia_distribution_validate_string <value>
-#     - Refuses any value containing characters from the SR-80 denylist:
+#     - Refuses any value containing characters from the shell-metachar denylist:
 #       `;`, `&&`, `||`, `|`, backtick, `$(`, `>`, `>>`, `<`, `\n`
-#     - Reuses the SR-64 / SR-75 denylist set
 #
 #   gaia_distribution_validate_url <url>
 #     - First runs gaia_distribution_validate_string (shell-metachar)
@@ -57,8 +56,8 @@ _gaia_dc_realpath() {
   return 1
 }
 
-# SR-80 shell-metacharacter denylist. Anything matching ANY of these
-# patterns is rejected. Reuses the SR-64 / SR-75 set:
+# Shell-metacharacter denylist. Anything matching ANY of these
+# patterns is rejected:
 #   `;`, `&&`, `||`, `|`, backtick, `$(`, `>`, `>>`, `<`, `\n`
 gaia_distribution_validate_string() {
   local value="$1"
@@ -69,21 +68,21 @@ gaia_distribution_validate_string() {
   # Check for newline embedded in the value.
   case "$value" in
     *$'\n'*)
-      printf 'distribution-canonicalize.sh: SR-80 / T-DCH-2: shell-metacharacter (newline) in value\n' >&2
+      printf 'distribution-canonicalize.sh: shell-metacharacter (newline) in value\n' >&2
       return 1
       ;;
   esac
   # Check for each denylist token.
   case "$value" in
     *";"*|*"&&"*|*"||"*|*"|"*|*'`'*|*'$('*|*">"*|*"<"*)
-      printf 'distribution-canonicalize.sh: SR-80 / T-DCH-2: shell-metacharacter in value: %s\n' "$value" >&2
+      printf 'distribution-canonicalize.sh: shell-metacharacter in value: %s\n' "$value" >&2
       return 1
       ;;
   esac
   return 0
 }
 
-# SR-80 URL-shape: https + hostname + optional path.
+# URL-shape: https + hostname + optional path.
 gaia_distribution_validate_url() {
   local url="$1"
   # First catch the easy shell-metachar wins.
@@ -92,7 +91,7 @@ gaia_distribution_validate_url() {
   fi
   # Then enforce URL shape.
   if ! printf '%s' "$url" | grep -Eq '^https://[a-zA-Z0-9.-]+(/.*)?$'; then
-    printf 'distribution-canonicalize.sh: SR-80 / T-DCH-2: URL-shape rejected — expected https://<host>[/<path>], got: %s\n' "$url" >&2
+    printf 'distribution-canonicalize.sh: URL-shape rejected — expected https://<host>[/<path>], got: %s\n' "$url" >&2
     return 1
   fi
   return 0
@@ -111,7 +110,7 @@ gaia_distribution_canonicalize_manifest() {
     return 2
   fi
 
-  # AC3: refuse absolute paths and `..` segments PRE-canonicalization
+  # Refuse absolute paths and `..` segments PRE-canonicalization
   # (defense in depth — realpath would still catch the outside-root case
   # via the prefix check, but rejecting early gives a clearer error and
   # closes the partial-resolution race).
@@ -122,13 +121,13 @@ gaia_distribution_canonicalize_manifest() {
       local canon_root
       canon_root=$(_gaia_dc_realpath "$project_root")
       if [ -z "$canon_root" ]; then
-        printf 'distribution-canonicalize.sh: SR-79 / T-DCH-1: cannot canonicalize project root\n' >&2
+        printf 'distribution-canonicalize.sh: cannot canonicalize project root\n' >&2
         return 1
       fi
       case "$manifest" in
         "$canon_root"*) ;;
         *)
-          printf 'distribution-canonicalize.sh: SR-79 / T-DCH-1: absolute path outside project root: %s\n' "$manifest" >&2
+          printf 'distribution-canonicalize.sh: absolute path outside project root: %s\n' "$manifest" >&2
           return 1
           ;;
       esac
@@ -136,7 +135,7 @@ gaia_distribution_canonicalize_manifest() {
   esac
   case "$manifest" in
     *..*)
-      printf 'distribution-canonicalize.sh: SR-79 / T-DCH-1: traversal (..) segment refused pre-canonicalization: %s\n' "$manifest" >&2
+      printf 'distribution-canonicalize.sh: traversal (..) segment refused pre-canonicalization: %s\n' "$manifest" >&2
       return 1
       ;;
   esac
@@ -145,7 +144,7 @@ gaia_distribution_canonicalize_manifest() {
   local canon_root
   canon_root=$(_gaia_dc_realpath "$project_root")
   if [ -z "$canon_root" ]; then
-    printf 'distribution-canonicalize.sh: SR-79 / T-DCH-1: cannot canonicalize project root\n' >&2
+    printf 'distribution-canonicalize.sh: cannot canonicalize project root\n' >&2
     return 1
   fi
 
@@ -164,11 +163,11 @@ gaia_distribution_canonicalize_manifest() {
     canon_manifest="$candidate"
   fi
 
-  # SR-79 string-prefix check.
+  # String-prefix check.
   case "$canon_manifest" in
     "$canon_root"/*|"$canon_root") ;;
     *)
-      printf 'HALT: distribution.manifest resolves outside project root (SR-79 / T-DCH-1): %s\n' "$canon_manifest" >&2
+      printf 'HALT: distribution.manifest resolves outside project root: %s\n' "$canon_manifest" >&2
       return 1
       ;;
   esac

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pr-body.sh — gaia-dev-story Step 11 PR-body helper (E57-S7, P1-2)
+# pr-body.sh — gaia-dev-story Step 11 PR-body helper
 #
 # Reads a story file's YAML frontmatter and Acceptance-Criteria section, runs
 # dod-check.sh for a Definition-of-Done summary, captures `git diff --stat`,
@@ -9,14 +9,10 @@
 #   3. Diff Stat             (`git diff --stat` block, fenced)
 #   4. Story:                (relative link to the story file under docs/)
 #
-# Refs: FR-DSS-5, FR-DSS-6, NFR-DSS-1, AF-2026-04-28-6
-# Story: E57-S7
-# Traces: TC-DSS-06 (four sections), TC-DSS-08 (shell-metachar safety)
-#
 # Usage:
 #   pr-body.sh <story_path>
 #
-# Hard rules (per CLAUDE.md):
+# Hard rules:
 #   - The shell-builtin string-execution primitive is banned outright. All
 #     user-controlled values flow through `printf '%s'`.
 #   - No `Claude` / `AI` / `Co-Authored-By` strings emitted.
@@ -45,7 +41,7 @@ fi
 STORY_PATH_INPUT="$1"
 shift
 
-# --- Optional --allow-stub-reason flag (E88-S3, FR-DPD-3) -----------------
+# --- Optional --allow-stub-reason flag ------------------------------------
 # When present, emit a fifth canonical section `## Allow-stub override`
 # alongside the four existing sections. Forwarded by /gaia-dev-story Step
 # 11 from the Step 11a forbidden-sentinel-scan.sh accepted reason. Empty
@@ -79,7 +75,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DOD_CHECK="$SCRIPT_DIR/dod-check.sh"
 
-# --- Frontmatter extraction (shared via frontmatter-lib.sh, E64-S1 AC3) --
+# --- Frontmatter extraction (shared via frontmatter-lib.sh) ---------------
 
 # shellcheck source=./frontmatter-lib.sh
 # shellcheck disable=SC1091
@@ -93,7 +89,7 @@ get_field() {
 }
 
 # Tolerate the `story_key:` convention every other story-consuming skill
-# accepts; canonical `key:` takes precedence (issue #1091).
+# accepts; canonical `key:` takes precedence.
 get_field_aliased() {
   local canonical="$1" alias="$2" val
   val="$(get_field "$canonical")"
@@ -221,9 +217,9 @@ else
 fi
 printf '```\n\n'
 
-# --- Allow-stub override section (E88-S3) ---------------------------------
+# --- Allow-stub override section -----------------------------------------
 # Fifth canonical section, emitted only when --allow-stub-reason was passed.
-# Per AC5 / FR-DPD-3 the reason is rendered verbatim under the heading.
+# The reason is rendered verbatim under the heading.
 if [ -n "$ALLOW_STUB_REASON" ]; then
   printf '## Allow-stub override\n\n'
   printf '%s\n\n' "$ALLOW_STUB_REASON"

@@ -3,11 +3,9 @@
   "skill": "a11y",
   "name": "wcag-2.1-aaa",
   "applies_to_skills": ["review-a11y", "review-code"],
-  "description": "WCAG 2.1 Level AAA enhancements layered on top of AA. Designed to declare alongside `wcag-2.1-aa` (e.g., compliance.regimes: [wcag-2.1-aa, wcag-2.1-aaa]). Layer 2 per ADR-079.",
+  "description": "WCAG 2.1 Level AAA enhancements layered on top of AA. Designed to declare alongside `wcag-2.1-aa` (e.g., compliance.regimes: [wcag-2.1-aa, wcag-2.1-aaa]). Layer 2 of the four-layer rubric composition.",
   "metadata": {
     "title": "WCAG 2.1 AAA regime rubric",
-    "story": "E68-S4",
-    "adr": "ADR-079",
     "regime_id": "wcag-2.1-aaa",
     "extends_layer": "wcag-2.1-aa",
     "references": ["WCAG-2.1-1.4.6", "WCAG-2.1-1.2.6", "WCAG-2.1-1.2.7", "WCAG-2.1-3.1.5", "WCAG-2.1-3.1.6", "WCAG-2.1-2.2.3", "WCAG-2.1-2.3.2"]

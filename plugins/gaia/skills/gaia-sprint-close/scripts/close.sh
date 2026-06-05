@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# close.sh — /gaia-sprint-close skill main orchestrator (E81-S5).
+# close.sh — /gaia-sprint-close skill main orchestrator.
 #
 # Closes the active sprint:
 #   1. Pre-conditions — retro doc present, idempotency check, all-done-or-force.
@@ -7,13 +7,11 @@
 #   3. Archive — copy yaml to .gaia/artifacts/implementation-artifacts/sprint-archive/.
 #   4. Lifecycle event — append `sprint_closed` via lifecycle-event.sh.
 #
-# Per ADR-095 + AF-2026-05-11-7. Lifts the boundary-write restriction from
+# Lifts the boundary-write restriction from
 # feedback_sprint_boundary_yaml_write.md inside this script ONLY.
 #
 # The skill's separate `finalize.sh` is the generic plugin lifecycle hook
 # (write checkpoint, emit `workflow_complete`); this script is the action.
-#
-# Refs: ADR-095, ADR-069 amendment AF-2026-05-11-7, E81-S5 ACs 1-7.
 
 set -euo pipefail
 LC_ALL=C
@@ -30,19 +28,14 @@ LIFECYCLE_EVENT_SH="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 # PROJECT_PATH defaults to CWD; honor a pre-exported value (used by bats).
 PROJECT_PATH="${PROJECT_PATH:-$PWD}"
 
-# AF-2026-05-27-3 (ADR-111): .gaia/memory is the only memory tree; legacy
-# _memory fallback removed. Env override wins.
+# .gaia/memory is the only memory tree; legacy _memory fallback removed.
+# Env override wins.
 if [ -z "${MEMORY_PATH:-}" ]; then
   MEMORY_PATH="$PROJECT_PATH/.gaia/memory"
 fi
 export PROJECT_PATH MEMORY_PATH
 
 # Resolve sprint-status.yaml path.
-# AF-2026-05-22-6 Bug-10: previously the resolver checked .gaia/state/ +
-# docs/implementation-artifacts/ but NOT .gaia/artifacts/implementation-artifacts/
-# (the canonical post-ADR-111 location where sprint-state.sh inject actually
-# writes). Result: /gaia-sprint-close halted with "file not found at
-# .gaia/state/sprint-status.yaml" even on a properly-initialized sprint.
 # Resolution order (env override > .gaia/state/ > canonical .gaia/artifacts/
 # > legacy docs/ > project-root fallback).
 resolve_yaml_path() {
@@ -65,12 +58,12 @@ resolve_yaml_path() {
   else
     # Default to .gaia/artifacts/ (canonical) instead of .gaia/state/ so the
     # file-not-found error points at the location sprint-state.sh inject
-    # actually writes to (post-ADR-111 default).
+    # actually writes to.
     printf '%s\n' "$gaia_artifacts"
   fi
 }
 
-# E96-S8: smart-fallback for ART_DIR (implementation-artifacts root used for
+# Smart-fallback for ART_DIR (implementation-artifacts root used for
 # retro-glob + sprint-archive subdir).
 if [ -d "$PROJECT_PATH/.gaia/artifacts/implementation-artifacts" ]; then
   ART_DIR="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts"
@@ -182,7 +175,6 @@ Pre-conditions:
   - All stories must be `done`, OR --force-with-rollover must list exactly the non-done keys.
   - Sprint must not already be closed (idempotent re-close exits 0 with warning).
 
-Refs: ADR-095, ADR-069 amendment AF-2026-05-11-7.
 USAGE
 }
 
@@ -215,9 +207,9 @@ YAML_PATH="$(resolve_yaml_path)"
 SPRINT_ID="$(yaml_top_scalar sprint_id "$YAML_PATH")"
 [ -n "$SPRINT_ID" ] || die "sprint_id not found in $YAML_PATH"
 
-# ---------- Step 2 — Idempotency short-circuit (AC7) ----------
+# ---------- Step 2 — Idempotency short-circuit ----------
 # Done BEFORE retro check so already-closed sprints don't require an existing
-# retro doc (AC7 doesn't require retro presence; only re-close idempotency).
+# retro doc (idempotency check doesn't require retro presence).
 
 current_status="$(yaml_top_scalar status "$YAML_PATH")"
 if [ "$current_status" = "closed" ]; then
@@ -226,11 +218,11 @@ if [ "$current_status" = "closed" ]; then
   exit 0
 fi
 
-# ---------- Step 1 — Pre-condition: retro doc exists (AC4) ----------
+# ---------- Step 1 — Pre-condition: retro doc exists ----------
 
 # Glob accepts both `retrospective-{id}-{date}.md` and
 # `retrospective-{id}-{date}-{HHMM}.md` clobber-avoidance variants.
-# E102-S6 / ADR-119: route through the shared three-tier resolver at
+# Route through the shared three-tier resolver at
 # `gaia-framework/plugins/gaia/scripts/lib/artifact-three-tier-resolve.sh`
 # (env-var → legacy-flat-positive-evidence → canonical-nested-default)
 # so both legacy `implementation-artifacts/retrospective-*.md` AND the new
@@ -241,8 +233,8 @@ RESOLVER_HELPER="${SCRIPT_DIR_S6}/../../../scripts/lib/artifact-three-tier-resol
 # Always search the existing $ART_DIR (the canonical location the existing
 # tests + production wiring already pass in). When the new resolver is
 # available, ALSO probe its result so the dual-path layout (legacy flat +
-# canonical nested per ADR-119) is honored. Preserves backward-compat
-# verbatim while adding new-layout support.
+# canonical nested) is honored. Preserves backward-compat verbatim while
+# adding new-layout support.
 retro_match_count=$(find "$ART_DIR" -maxdepth 1 -type f \
   -name "retrospective-${SPRINT_ID}-*.md" 2>/dev/null | wc -l | tr -d ' ')
 
@@ -258,7 +250,7 @@ if [ "${retro_match_count:-0}" -eq 0 ]; then
   die "error: retro doc not found for ${SPRINT_ID}; run /gaia-retro first"
 fi
 
-# ---------- Step 3 — Pre-condition: all-done or force (AC5, AC6) ----------
+# ---------- Step 3 — Pre-condition: all-done or force ----------
 
 stories_done_count=0
 stories_total_count=0
@@ -294,30 +286,28 @@ elif [ "${#rollover_keys[@]}" -gt 0 ]; then
   die "error: --force-with-rollover key mismatch; no non-done stories but got: ${rollover_keys[*]}"
 fi
 
-# ---------- Step 4 — Yaml write (AC1) ----------
-# AF-2026-05-30-2 / Test10 F-31: route the status flip through
-# sprint-state.sh transition (the sanctioned ADR-108 review→closed boundary
-# writer) rather than direct yq -i. The yq path bypassed the transition
-# validator and the lifecycle-event emit; routing through sprint-state.sh
-# means a single audit trail covers all status changes. When sprint-state.sh
-# is not available (e.g., legacy fixtures or tests), fall back to the
-# legacy yq -i path with the closed_at write tacked on afterward.
+# ---------- Step 4 — Yaml write ----------
+# Route the status flip through sprint-state.sh transition (the sanctioned
+# review→closed boundary writer) rather than direct yq -i. The yq path
+# bypassed the transition validator and the lifecycle-event emit; routing
+# through sprint-state.sh means a single audit trail covers all status
+# changes. When sprint-state.sh is not available (e.g., legacy fixtures or
+# tests), fall back to the legacy yq -i path with the closed_at write tacked
+# on afterward.
 
 CLOSED_AT="$(iso_now)"
 SPRINT_STATE_SH="${SPRINT_STATE_SH:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../../../.." && pwd)}/plugins/gaia/scripts/sprint-state.sh}"
 
 if [ -x "$SPRINT_STATE_SH" ]; then
-  # AF-2026-06-01-1 / Test15 F-11 — capture stderr from sprint-state.sh so
-  # we can tell "refused because review→closed needs a Val sentinel"
-  # apart from "refused because the live yaml is not in review state"
-  # (the legitimate active→closed legacy path). The prior implementation
-  # swallowed BOTH refusals into the same `else` branch and then wrote
-  # status=closed directly via yq -i — defeating the AF-31-3 F-13 Val
-  # sentinel guard in sprint-state.sh entirely. Sprint-1 (status: review,
-  # no /gaia-sprint-review ever run, no Val sentinel) closed cleanly via
-  # this path. Now the fallback path is restricted to NON-review states
-  # (e.g. active→closed); a review→closed refusal is FATAL with the
-  # canonical "run /gaia-sprint-review first" guidance.
+  # Capture stderr from sprint-state.sh so we can tell "refused because
+  # review→closed needs a Val sentinel" apart from "refused because the live
+  # yaml is not in review state" (the legitimate active→closed legacy path).
+  # The prior implementation swallowed BOTH refusals into the same `else`
+  # branch and then wrote status=closed directly via yq -i — defeating the
+  # Val sentinel guard in sprint-state.sh entirely. Now the fallback path is
+  # restricted to NON-review states (e.g. active→closed); a review→closed
+  # refusal is FATAL with the canonical "run /gaia-sprint-review first"
+  # guidance.
   _ss_stderr="$("$SPRINT_STATE_SH" transition --sprint "$SPRINT_ID" --to closed 2>&1 >/dev/null)"
   _ss_rc=$?
   if [ "$_ss_rc" -eq 0 ]; then
@@ -326,7 +316,7 @@ if [ -x "$SPRINT_STATE_SH" ]; then
       || die "yq closed_at write failed on $YAML_PATH after sprint-state.sh transition"
   else
     # Detect the sentinel-refusal case via the canonical stderr substring
-    # from the sprint-state.sh F-13 guard. When matched, REFUSE here too —
+    # from the sprint-state.sh sentinel guard. When matched, REFUSE here too —
     # the close ceremony cannot proceed past the sentinel gate.
     case "$_ss_stderr" in
       *"refuse review→closed for sprint"*|*"run /gaia-sprint-review first"*)
@@ -344,7 +334,7 @@ else
     || die "yq write failed on $YAML_PATH"
 fi
 
-# ---------- Step 5 — Archive (AC2) ----------
+# ---------- Step 5 — Archive ----------
 
 mkdir -p "$ARCHIVE_DIR"
 ARCHIVE_PATH="$ARCHIVE_DIR/${SPRINT_ID}-closed-$(close_date_stamp).yaml"
@@ -358,14 +348,14 @@ rollover_array="$(json_string_array "${rollover_keys[@]:-}")"
 
 # If the operator passed --force-with-rollover, record the rollover list in
 # the archived yaml (the live yaml stays clean — rollover is sprint-plan
-# territory per E81-S6).
+# territory).
 cp "$YAML_PATH" "$ARCHIVE_PATH"
 if [ "${#rollover_keys[@]}" -gt 0 ]; then
   yq -i ".rollover_keys = ${rollover_array}" "$ARCHIVE_PATH" \
     || die "yq write of rollover_keys failed on $ARCHIVE_PATH"
 fi
 
-# ---------- Step 6 — Lifecycle event (AC3) ----------
+# ---------- Step 6 — Lifecycle event ----------
 
 # Source total_points from the yaml (already validated to exist).
 total_points_raw="$(yaml_top_scalar total_points "$YAML_PATH")"
@@ -391,11 +381,11 @@ else
     "$ts" "$$" "$data_payload" >> "$lc_file"
 fi
 
-# ---------- Step 6b — Advisory checklist (ADR-120 / E103-S4) ----------
+# ---------- Step 6b — Advisory checklist ----------
 # Append a non-blocking "Lifecycle Skill Checklist (advisory)" section to the
 # sprint-close summary, enumerating canonical artifact-producing skills and
-# their on-disk state. Consumes the E103-S2 lifecycle-overrides helper for
-# the [~] bypassed-row case. Non-blocking — never affects exit status.
+# their on-disk state. Consumes the lifecycle-overrides helper for the [~]
+# bypassed-row case. Non-blocking — never affects exit status.
 
 LIFECYCLE_LIB_S4="$(cd "$(dirname "$0")/../../.." && pwd)/scripts/lib/lifecycle-overrides.sh"
 SUMMARY_FILE="${ARCHIVE_PATH%.yaml}-close-summary.md"

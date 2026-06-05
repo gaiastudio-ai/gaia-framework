@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gaiastudio.ai/schemas/adapter-output.schema.json",
   "title": "GAIA Mobile Adapter Output — canonical normalized result",
-  "description": "Canonical JSON shape produced by normalize-adapter-output.sh from the per-framework output formats (JUnit XML, JSON, xcresult). Defined by E74-S9 / AC7. Consumers (review skills, CI dashboards) read this shape, never the framework-native output.",
+  "description": "Canonical JSON shape produced by normalize-adapter-output.sh from the per-framework output formats (JUnit XML, JSON, xcresult). Consumers (review skills, CI dashboards) read this shape, never the framework-native output.",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -17,7 +17,7 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../skills/gaia-test-automate/SKILL.md"
 # --- AC1 / AC-EC12: hybrid section preservation ---
 
 @test "adr-051: SKILL.md contains 'ADR-051 Approval Gate' section AFTER seven-phase block" {
-  grep -F 'ADR-051 Approval Gate' "$SKILL_FILE" >/dev/null
+  grep -F 'Approval Gate' "$SKILL_FILE" >/dev/null
 }
 
 @test "adr-051: SKILL.md preserves plan-tamper detection sequence" {
@@ -47,8 +47,8 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../skills/gaia-test-automate/SKILL.md"
 # --- AC-EC7: phase vocabulary disambiguation ---
 
 @test "adr-051: SKILL.md contains the phase-vocabulary disambiguation note" {
-  # The note states the seven Review Phases all execute within ADR-051 Phase 1.
-  grep -F 'ADR-051 Phase 1' "$SKILL_FILE" >/dev/null
+  # The note states the seven Review Phases all execute within the planning phase (fork-isolated analysis).
+  grep -F 'Phase vocabulary disambiguation' "$SKILL_FILE" >/dev/null
   # Disambiguation note refers to seven Review Phases — accept any common phrasing.
   grep -E 'Review Phase 1.{0,30}Review Phase 7|Review Phases 1.{0,5}7|Review Phases 1 through 7|seven Review Phases|Review Phase 1.{0,30}through.{0,10}Review Phase 7' "$SKILL_FILE" >/dev/null
 }

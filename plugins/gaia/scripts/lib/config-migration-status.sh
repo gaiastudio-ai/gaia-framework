@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# config-migration-status.sh — Detects multi-shape (E99) migration status
+# config-migration-status.sh — Detects multi-shape migration status
 # of a project-config.yaml + emits the canonical WARNING text + writes the
-# .config-stale drift marker per ADR-102 / FR-528.
+# .config-stale drift marker.
 #
-# E99-S6. Sourceable, NOT executable.
+# Sourceable, NOT executable.
 #
 # Exposes three functions:
 #
@@ -29,9 +29,8 @@
 #
 #   gaia_config_migration_stale_flag_write <project-config.yaml> <memory-dir>
 #     Writes <memory-dir>/.config-stale when the config is NOT clean.
-#     Skips write on clean configs. Marker contents follow the ADR-102
-#     stale-flag registry shape (timestamp + originating skill + reason +
-#     FR back-link).
+#     Skips write on clean configs. Marker contents follow the stale-flag
+#     registry shape (timestamp + originating skill + reason + back-link).
 #
 # Source guard: _GAIA_CONFIG_MIGRATION_STATUS_LOADED=1 after first source.
 
@@ -68,7 +67,7 @@ _gaia_cms_has_dist() {
 }
 
 # Internal: are ALL environments[].kind values "deployable" (after
-# applying the NFR-080 default to entries lacking kind:)?
+# applying the default to entries lacking kind:)?
 _gaia_cms_all_deployable() {
   local config="$1"
   # Enumerate kinds with the deployable default and verify every line
@@ -115,7 +114,7 @@ gaia_config_migration_status() {
   #     0         1        partial-missing-kind
   #     0         0        pre-migration ... UNLESS all envs are deployable
   #                         (legacy all-deployable historical project; the
-  #                         NFR-080 default keeps it clean).
+  #                         deployable default keeps it clean).
 
   if [ "$has_kind" = "1" ] && [ "$has_dist" = "1" ]; then
     printf 'clean\n'
@@ -134,7 +133,7 @@ gaia_config_migration_status() {
     printf 'partial-missing-kind\n'
     return 0
   fi
-  # has_kind=0 has_dist=0 → pre-migration. NFR-080 zero-breakage at
+  # has_kind=0 has_dist=0 → pre-migration. Zero-breakage at
   # RUNTIME (resolve-env-kind.sh silently defaults to deployable, no
   # stderr warning) is intentional and unchanged. This status surface is
   # the VALIDATE-time WARNING signal — distinct from the runtime resolver
@@ -160,22 +159,22 @@ gaia_config_migration_warning_text() {
       ;;
     pre-migration)
       cat <<'EOF'
-WARNING: project-config.yaml lacks the E99 multi-shape fields. Recommended migration (FR-528):
-  - Add environments[].kind: deployable | branch-only | distribution-only (per FR-520 / ADR-112 §(a))
-  - If you ship a publishable artifact, add a distribution: block (per FR-521 / ADR-112 §(b))
-Run /gaia-config-distribution add ... to scaffold the distribution: block, then /gaia-config-env to set the per-env kind: discriminator. See E99 / ADR-112.
+WARNING: project-config.yaml lacks the multi-shape fields. Recommended migration:
+  - Add environments[].kind: deployable | branch-only | distribution-only
+  - If you ship a publishable artifact, add a distribution: block
+Run /gaia-config-distribution add ... to scaffold the distribution: block, then /gaia-config-env to set the per-env kind: discriminator.
 EOF
       ;;
     partial-missing-distribution)
       cat <<'EOF'
-WARNING: project-config.yaml declares environments[].kind but no distribution: block (FR-528). At least one non-deployable env exists — those envs typically pair with a distribution: block.
-Run /gaia-config-distribution add ... to scaffold it. See E99-S2 / ADR-112 §(b).
+WARNING: project-config.yaml declares environments[].kind but no distribution: block. At least one non-deployable env exists — those envs typically pair with a distribution: block.
+Run /gaia-config-distribution add ... to scaffold it.
 EOF
       ;;
     partial-missing-kind)
       cat <<'EOF'
-WARNING: project-config.yaml has a distribution: block but no environments[].kind discriminator anywhere (FR-528). The kind: field is the canonical signal for /gaia-deploy vs /gaia-publish routing.
-Run /gaia-config-env edit <env-id> and set kind: deployable | branch-only | distribution-only on each entry. See E99-S1 / ADR-112 §(a).
+WARNING: project-config.yaml has a distribution: block but no environments[].kind discriminator anywhere. The kind: field is the canonical signal for /gaia-deploy vs /gaia-publish routing.
+Run /gaia-config-env edit <env-id> and set kind: deployable | branch-only | distribution-only on each entry.
 EOF
       ;;
   esac
@@ -201,13 +200,10 @@ gaia_config_migration_stale_flag_write() {
   local ts
   ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
   cat > "$memory_dir/.config-stale" <<EOF
-# .config-stale — ADR-102 stale-flag registry / FR-528 migration marker
+# .config-stale — stale-flag registry / migration marker
 timestamp: $ts
 originating_skill: config-migration-status.sh
-reason: E99 multi-shape migration ($status) — environments[].kind and/or distribution: pending
-fr_back_link: FR-528
-related_fr: FR-520, FR-521
-related_adr: ADR-112
+reason: multi-shape migration ($status) — environments[].kind and/or distribution: pending
 EOF
   return 0
 }

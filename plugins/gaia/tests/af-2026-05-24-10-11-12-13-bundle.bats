@@ -68,14 +68,14 @@ EOF
 # --- F-15 ---
 
 @test "F-15: sprint-review SKILL.md documents YOLO contract per AF-24-11" {
-  grep -qF "AF-2026-05-24-11" "${PLUGIN_ROOT}/skills/gaia-sprint-review/SKILL.md"
-  grep -qF "F-15" "${PLUGIN_ROOT}/skills/gaia-sprint-review/SKILL.md"
+  grep -qF "yolo_steps: []" "${PLUGIN_ROOT}/skills/gaia-sprint-review/SKILL.md"
+  grep -qiE "NOT YOLO-able|yolo_steps.*\[\]|YOLO mode contract" "${PLUGIN_ROOT}/skills/gaia-sprint-review/SKILL.md"
 }
 
 # --- F-21 ---
 
 @test "F-21: triage-findings setup.sh writes run-start sentinel" {
-  grep -qF "AF-2026-05-24-12" "${PLUGIN_ROOT}/skills/gaia-triage-findings/scripts/setup.sh"
+  grep -qF "finalize fail-closed" "${PLUGIN_ROOT}/skills/gaia-triage-findings/scripts/setup.sh"
   grep -qF "triage-findings.json" "${PLUGIN_ROOT}/skills/gaia-triage-findings/scripts/setup.sh"
   grep -qF "run-start sentinel" "${PLUGIN_ROOT}/skills/gaia-triage-findings/scripts/setup.sh"
 }
@@ -83,7 +83,7 @@ EOF
 # --- F-22 ---
 
 @test "F-22: tech-debt scanner reads Type from col2 not col1" {
-  grep -qF 'AF-2026-05-24-10 / Test02 F-22' "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/scan-findings.sh"
+  grep -qF 'We now correctly map col2' "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/scan-findings.sh"
   grep -qF 'col2 → Type' "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/scan-findings.sh"
 }
 
@@ -99,7 +99,7 @@ EOF
 # --- F-24 ---
 
 @test "F-24: retro review-extract has frontmatter-miss fallback by story key" {
-  grep -qF "AF-2026-05-24-10 / Test02 F-24" "${PLUGIN_ROOT}/skills/gaia-retro/scripts/review-extract.sh"
+  grep -qF "frontmatter-miss fallback" "${PLUGIN_ROOT}/skills/gaia-retro/scripts/review-extract.sh"
   grep -qF "SPRINT_STORY_KEYS" "${PLUGIN_ROOT}/skills/gaia-retro/scripts/review-extract.sh"
   grep -qF "story_key_from_filename" "${PLUGIN_ROOT}/skills/gaia-retro/scripts/review-extract.sh"
 }
@@ -107,7 +107,7 @@ EOF
 # --- F-35 ---
 
 @test "F-35: readiness-check finalize.sh auto-picks canonical artifact when READINESS_ARTIFACT unset" {
-  grep -qF "AF-2026-05-24-13 / Test02 F-35" "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/finalize.sh"
+  grep -qF "GAIA_READINESS_FIXTURE_GUARD:-0" "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/finalize.sh"
   grep -qF "CANONICAL_RR=" "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/finalize.sh"
   grep -qF "GAIA_READINESS_FIXTURE_GUARD" "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/finalize.sh"
 }
@@ -115,7 +115,7 @@ EOF
 # --- F-36 ---
 
 @test "F-36: readiness-check setup.sh makes ci-setup gate conditional on ci_platform.provider" {
-  grep -qF "AF-2026-05-24-13 / Test02 F-36" "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh"
+  grep -qF 'ci_platform.provider != none' "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh"
   grep -qF 'NEEDS_CI_GATE=' "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh"
   grep -qF 'ci_provider" = "none"' "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh"
 }
@@ -127,8 +127,8 @@ EOF
 # --- F-39 ---
 
 @test "F-39: trace finalize.sh surfaces WARNING when matrix declares BLOCKED" {
-  grep -qF "AF-2026-05-24-13 / Test02 F-39" "${PLUGIN_ROOT}/skills/gaia-trace/scripts/finalize.sh"
   grep -qF "Matrix-verdict gate" "${PLUGIN_ROOT}/skills/gaia-trace/scripts/finalize.sh"
+  grep -qF "WARNING: traceability matrix" "${PLUGIN_ROOT}/skills/gaia-trace/scripts/finalize.sh"
   grep -qE 'verdict.*BLOCKED' "${PLUGIN_ROOT}/skills/gaia-trace/scripts/finalize.sh"
 }
 

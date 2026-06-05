@@ -6,7 +6,7 @@
   "default-timeout-seconds": 600,
   "file-extensions": [],
   "scope": "project",
-  "description": "OWASP ZAP dynamic application security scanner — invokes `zap-cli` against a deployed target URL and emits canonical finding objects normalized from ZAP alerts. Subprocess env is scrubbed to the env-allowlist below per T-RSV2-1 mitigation (E73-S3).",
+  "description": "OWASP ZAP dynamic application security scanner — invokes `zap-cli` against a deployed target URL and emits canonical finding objects normalized from ZAP alerts. Subprocess env is scrubbed to the env-allowlist below per T-RSV2-1 mitigation.",
   "env-allowlist": [
     "PATH",
     "HOME",

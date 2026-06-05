@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # spawn-guard.sh — pre-spawn validation and post-spawn verification for
 # /gaia-correct-course and /gaia-triage-findings subagent delegation to
-# /gaia-create-story (E39-S2, FR-FITP-2).
+# /gaia-create-story.
 #
 # Implements the Skill-to-Skill Delegation Pattern guard functions:
-#   - sg_validate_origin_ref  — sanitize origin_ref before spawn (AC-EC2)
-#   - sg_check_collision      — detect existing story at canonical path (AC-EC3, AC-EC6)
-#   - sg_cleanup_partial      — remove partial story file on failure (AC-EC4)
-#   - sg_verify_frontmatter   — post-spawn verify origin/origin_ref (AC-EC8)
+#   - sg_validate_origin_ref  — sanitize origin_ref before spawn
+#   - sg_check_collision      — detect existing story at canonical path
+#   - sg_cleanup_partial      — remove partial story file on failure
+#   - sg_verify_frontmatter   — post-spawn verify origin/origin_ref
 #
 # CLI contract:
 #   spawn-guard.sh validate-ref <origin_ref>
@@ -26,9 +26,8 @@
 #       exit 0 — partial file removed (or already absent)
 #       exit 1 — error (empty path)
 #
-# Follows ADR-042 (scripts-over-LLM): deterministic guard logic lives in a
-# testable shell script rather than SKILL.md prose. Modeled on triage-guard.sh
-# from E39-S1.
+# Follows the scripts-over-LLM principle: deterministic guard logic lives in a
+# testable shell script rather than SKILL.md prose. Modeled on triage-guard.sh.
 
 set -euo pipefail
 LC_ALL=C
@@ -49,8 +48,8 @@ die() { log "$*"; exit 1; }
 # quotes. Returns non-zero if file missing. Prints empty if field absent.
 #
 # NOTE: Intentionally duplicated from triage-guard.sh (_tg_fm_field) rather
-# than sourcing a shared library. Each guard script is self-contained per
-# ADR-042 (scripts-over-LLM) — no cross-script runtime dependencies.
+# than sourcing a shared library. Each guard script is self-contained per the
+# scripts-over-LLM principle — no cross-script runtime dependencies.
 # ---------------------------------------------------------------------------
 _sg_fm_field() {
   local file="$1" field="$2"
@@ -129,7 +128,7 @@ sg_validate_origin_ref() {
 # Usage: sg_check_collision <artifacts_dir> <story_key>
 # Checks for files matching <story_key>-*.md in <artifacts_dir>.
 # Uses a glob pattern anchored to the exact story key to avoid
-# false positives (e.g., E5-S3 must not match E5-S30).
+# false positives (e.g., a short key must not match a longer key sharing the same prefix).
 # Returns 0 if no collision (safe to spawn), 1 if collision detected.
 # ---------------------------------------------------------------------------
 sg_check_collision() {
@@ -146,7 +145,7 @@ sg_check_collision() {
   fi
 
   # Glob for exact key prefix followed by hyphen then slug
-  # The pattern {story_key}-*.md matches E5-S3-anything.md but not E5-S30-*.md
+  # The pattern {story_key}-*.md matches the exact key prefix but not longer keys sharing the same prefix
   local pattern="${artifacts_dir}/${story_key}-*.md"
   local match
   # Use nullglob-safe iteration
@@ -155,8 +154,7 @@ sg_check_collision() {
       # Verify the match actually starts with the exact key followed by a hyphen
       local basename
       basename="$(basename "$match")"
-      # Extract the key portion (everything before the second hyphen after S)
-      # E.g., "E5-S3-my-slug.md" -> check starts with "E5-S3-"
+      # Verify the basename starts with the exact story key followed by a hyphen
       if printf '%s' "$basename" | grep -qE "^${story_key}-"; then
         log "sg_check_collision: story file already exists at $match — collision detected for ${story_key}"
         printf 'Collision: %s already exists at %s. Delete or rename before retry.\n' "$story_key" "$match"
@@ -199,7 +197,7 @@ sg_cleanup_partial() {
 #   1. The `origin` field exists and matches expected_origin
 #   2. The `origin_ref` field exists and matches expected_origin_ref
 # Returns 0 if both match, 1 on any mismatch or missing field.
-# On mismatch, emits a schema-drift error referencing NFR-FITP-1.
+# On mismatch, emits a schema-drift error.
 # ---------------------------------------------------------------------------
 sg_verify_frontmatter() {
   local file="${1:-}"
@@ -238,21 +236,21 @@ sg_verify_frontmatter() {
 
   if [ -z "$actual_origin" ]; then
     log "sg_verify_frontmatter: origin field missing from frontmatter"
-    printf 'Schema drift: origin field missing from story frontmatter (NFR-FITP-1)\n'
+    printf 'Schema drift: origin field missing from story frontmatter\n'
     errors=$((errors + 1))
   elif [ "$actual_origin" != "$expected_origin" ]; then
     log "sg_verify_frontmatter: origin mismatch — expected=%s actual=%s" "$expected_origin" "$actual_origin"
-    printf 'Schema drift: origin mismatch — expected "%s", got "%s" (NFR-FITP-1)\n' "$expected_origin" "$actual_origin"
+    printf 'Schema drift: origin mismatch — expected "%s", got "%s"\n' "$expected_origin" "$actual_origin"
     errors=$((errors + 1))
   fi
 
   if [ -z "$actual_origin_ref" ]; then
     log "sg_verify_frontmatter: origin_ref field missing from frontmatter"
-    printf 'Schema drift: origin_ref field missing from story frontmatter (NFR-FITP-1)\n'
+    printf 'Schema drift: origin_ref field missing from story frontmatter\n'
     errors=$((errors + 1))
   elif [ "$actual_origin_ref" != "$expected_origin_ref" ]; then
     log "sg_verify_frontmatter: origin_ref mismatch — expected=%s actual=%s" "$expected_origin_ref" "$actual_origin_ref"
-    printf 'Schema drift: origin_ref mismatch — expected "%s", got "%s" (NFR-FITP-1)\n' "$expected_origin_ref" "$actual_origin_ref"
+    printf 'Schema drift: origin_ref mismatch — expected "%s", got "%s"\n' "$expected_origin_ref" "$actual_origin_ref"
     errors=$((errors + 1))
   fi
 

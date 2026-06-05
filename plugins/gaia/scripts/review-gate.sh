@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
-# review-gate.sh — GAIA foundation script (E28-S14)
+# review-gate.sh — GAIA foundation script
 #
 # Parses and atomically updates the `## Review Gate` table in a story markdown
 # file. Consumed by the six review workflows (code-review, qa-tests,
 # security-review, test-automate, test-review, review-perf) and their
 # aggregator (run-all-reviews), which previously rewrote the table via LLM
-# edits — one engine token-burn path per ADR-042 / NFR-048.
+# edits — one engine token-burn path.
 #
-# Refs: FR-325, FR-328, NFR-048, ADR-042, ADR-048
-# Brief: P2-S6 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
-#
-# Invocation contract (stable for E28-S17 bats-core authors):
+# Invocation contract (stable for bats-core authors):
 #
 #   review-gate.sh check             --story <key>
 #   review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--plan-id <id>]
@@ -22,14 +19,14 @@
 #   "Code Review" | "QA Tests" | "Security Review"
 #   "Test Automation" | "Test Review" | "Performance Review"
 #
-# Fork-context read-only allowlist (NFR-CRG-2):
+# Fork-context read-only allowlist:
 #   The `review-gate-check` sub-operation is a pure read and is safe to
 #   invoke from a subagent whose tool allowlist is `Read`, `Grep`, `Bash`
 #   only (no `Write`, no `Edit`). It never modifies the story file,
 #   creates tempfiles / lockfiles / sidecar scratch files, or touches
 #   sprint-status.yaml.
 #
-# Extended gate name (requires --plan-id, E35-S2):
+# Extended gate name (requires --plan-id):
 #   "test-automate-plan" — ledger-only gate for approval-gate verdict keying
 #
 # Canonical verdict vocabulary (case-sensitive, exact — per CLAUDE.md):
@@ -48,9 +45,9 @@
 #     notes / Task 1 Subtask 1.3).
 #   IMPLEMENTATION_ARTIFACTS — optional. Defaults to
 #     "${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts" when unset. Same env var
-#     convention as sprint-state.sh (E28-S11). Aligned by E28-S99.
+#     convention as sprint-state.sh.
 #
-# Story file location (flat layout — aligned with sprint-state.sh per E28-S99):
+# Story file location (flat layout):
 #   ${IMPLEMENTATION_ARTIFACTS}/<key>-*.md
 #
 # Exit codes:
@@ -67,7 +64,7 @@
 #   on a sibling `.lock`. On systems without util-linux `flock(1)` (macOS
 #   /bin/bash 3.2 without Homebrew util-linux), the script degrades to a
 #   bounded spin-loop mv-based advisory lockfile — same fallback as
-#   checkpoint.sh §E28-S10 and lifecycle-event.sh §E28-S12.
+#   checkpoint.sh and lifecycle-event.sh.
 #
 # POSIX discipline: the only non-POSIX constructs are [[ ]] and bash indexed
 # arrays. macOS /bin/bash 3.2 compatible. Uses `awk` (POSIX), `jq` (required
@@ -99,23 +96,22 @@ CANONICAL_GATES=(
 # Three canonical verdict values (exact case).
 CANONICAL_VERDICTS=("UNVERIFIED" "PASSED" "FAILED")
 
-# Extended gate names — require --plan-id to be present (E35-S2, E33-S1).
-# "story-validation" (E33-S1) records the terminal verdict of the Val +
-# SM fix-loop pattern from ADR-050 without overwriting the six canonical
-# Review Gate table rows (which belong to the six downstream review
-# commands). Uses the same ledger-keyed path as test-automate-plan.
+# Extended gate names — require --plan-id to be present.
+# "story-validation" records the terminal verdict of the Val + SM fix-loop
+# pattern without overwriting the six canonical Review Gate table rows
+# (which belong to the six downstream review commands). Uses the same
+# ledger-keyed path as test-automate-plan.
 PLAN_ID_GATES=("test-automate-plan" "story-validation")
 
-# plan_id canonical regex: alphanumerics plus ._:+- (AC-EC2 security guard).
+# plan_id canonical regex: alphanumerics plus ._:+- (security guard).
 # Permissive for UUIDs and timestamp-nonce fallbacks; strict against shell injection.
 PLAN_ID_REGEX='^[A-Za-z0-9._:+-]+$'
 
 # Ledger path: overridable via --ledger flag or $REVIEW_GATE_LEDGER env var.
-# E96-S3 / ADR-111: default prefers .gaia/state/.review-gate-ledger
+# Default prefers .gaia/state/.review-gate-ledger
 # (mutable-runtime-state tier) over the legacy <project-root>/.review-gate-ledger.
-# AF-2026-05-30-2 / Test10 F-24: always prefer .gaia/state/ on a project root
-# that has a .gaia/ tree (greenfield-degrade per AF-29-2 F-1 guarantees this
-# exists). The prior conditional required EITHER an existing ledger OR a
+# Always prefer .gaia/state/ on a project root that has a .gaia/ tree.
+# The prior conditional required EITHER an existing ledger OR a
 # pre-seeded .gaia/state/ dir — on a fresh project (where setup.sh seeded
 # .gaia/artifacts/ but not .gaia/state/) the resolver fell through to repo
 # root, scattering .review-gate-ledger outside the canonical .gaia/ tree.
@@ -129,8 +125,8 @@ resolve_ledger_path() {
   else
     local root="${PROJECT_PATH:-.}"
     if [ -d "$root/.gaia" ]; then
-      # Canonical post-ADR-111 path. Seed .gaia/state/ on first write so
-      # subsequent reads find it (closes the F-24 fall-through window).
+      # Canonical ledger path. Seed .gaia/state/ on first write so
+      # subsequent reads find it.
       mkdir -p "$root/.gaia/state" 2>/dev/null || true
       printf '%s' "$root/.gaia/state/.review-gate-ledger"
     else
@@ -172,9 +168,8 @@ Subcommands:
                     --plan-id, returns the full Review Gate table. With
                     --gate and --plan-id, queries the ledger for the
                     (story_key, gate, plan_id) tuple.
-  review-gate-check Composite Review Gate check (E37-S1, ADR-054, FR-CRG-2).
-                    Reads the six Review Gate rows and prints the table
-                    followed by a summary line:
+  review-gate-check Composite Review Gate check. Reads the six Review Gate
+                    rows and prints the table followed by a summary line:
                       Review Gate: COMPLETE   (exit 0) — all six PASSED
                       Review Gate: BLOCKED    (exit 1) — any FAILED
                                               (FAILED dominates over PENDING)
@@ -184,33 +179,32 @@ Subcommands:
                     row. On PENDING, a "Pending gates:" list names each
                     UNVERIFIED / NOT STARTED row. On COMPLETE no list is
                     emitted. Stderr is empty on all three success paths.
-                    Read-only (NFR-CRG-1): zero file writes, zero lockfile
-                    or tempfile creation. Safe to invoke under a subagent
-                    read-only allowlist of Read, Grep, Bash (NFR-CRG-2).
+                    Read-only: zero file writes, zero lockfile or tempfile
+                    creation. Safe to invoke under a subagent read-only
+                    allowlist of Read, Grep, Bash.
 
 Flags:
   --story <key>      Story key (required for all subcommands).
   --gate <name>      Gate name (required for update; optional for status).
   --verdict <V>      Verdict value (required for update).
-  --plan-id <id>     Plan identifier for ledger-keyed verdicts (E35-S2).
+  --plan-id <id>     Plan identifier for ledger-keyed verdicts.
                      Must match [A-Za-z0-9._:+-]+. Required for the
                      "test-automate-plan" gate; optional for canonical gates.
   --ledger <path>    Override ledger file path (default: $PROJECT_PATH/.review-gate-ledger
                      or $REVIEW_GATE_LEDGER env var).
-  --report <path>    AF-2026-05-20-1 proof-of-execution: path to the
-                     per-review report file written by the dispatched skill.
-                     Required for PASSED / FAILED verdicts (refused if file
-                     does not exist). Not required for UNVERIFIED (seed).
+  --report <path>    Proof-of-execution: path to the per-review report file
+                     written by the dispatched skill. Required for PASSED /
+                     FAILED verdicts (refused if file does not exist). Not
+                     required for UNVERIFIED (seed).
   --execution-evidence <path>
-                     AF-2026-05-20-1 proof-of-execution: path to
-                     execution-evidence.json. Required (in addition to
-                     --report) for test-execution gates: "QA Tests",
-                     "Test Automation", "Test Review".
+                     Proof-of-execution: path to execution-evidence.json.
+                     Required (in addition to --report) for test-execution
+                     gates: "QA Tests", "Test Automation", "Test Review".
   --report-missing-reason <reason>
-                     AF-2026-05-20-1 explicit escape hatch when no report
-                     exists (e.g. FAILED verdict with no salvageable report).
-                     Suppresses the --report / --execution-evidence checks
-                     and records the reason in the audit log.
+                     Explicit escape hatch when no report exists (e.g. FAILED
+                     verdict with no salvageable report). Suppresses the
+                     --report / --execution-evidence checks and records the
+                     reason in the audit log.
 
   Proof-of-execution can be disabled via REVIEW_GATE_PROOF_OF_EXECUTION=off
   for bats fixtures that exercise verdict mechanics without dispatching real
@@ -310,7 +304,7 @@ join_by() {
 # Reads only the frontmatter block (between the first two `---` lines).
 # Returns 0 if the file is a canonical story file, 1 otherwise.
 # Portable: bash 3.2+ compatible, uses awk only.
-# Adopted from sprint-state.sh (E28-S11) per E28-S99.
+# Adopted from sprint-state.sh.
 _is_story_file() {
   local f="$1"
   awk '
@@ -325,14 +319,13 @@ _is_story_file() {
 # sibling files (-review.md, -qa-tests.md, -security-review.md, etc.).
 # Result is returned via STORY_FILE global. Exits 1 on zero or multiple
 # canonical matches.
-# Aligned with sprint-state.sh (E28-S11) per E28-S99: uses flat
-# IMPLEMENTATION_ARTIFACTS directory, not a stories/ subdirectory.
+# Uses the flat IMPLEMENTATION_ARTIFACTS directory, not a stories/ subdirectory.
 STORY_FILE=""
 locate_story_file() {
   local key="$1"
   local project_path="${PROJECT_PATH:-.}"
-  # E96-S6 (ADR-111): prefer .gaia/artifacts/implementation-artifacts/ when
-  # present on disk; fall back to legacy docs/ during the deprecation window.
+  # Prefer .gaia/artifacts/implementation-artifacts/ when present on disk;
+  # fall back to legacy docs/ during the deprecation window.
   # IMPLEMENTATION_ARTIFACTS env-var override wins over both.
   local impl_artifacts
   if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
@@ -344,7 +337,7 @@ locate_story_file() {
   fi
   local pattern="${impl_artifacts}/${key}-*.md"
   local epic_pattern="${impl_artifacts}/epic-*/stories/${key}-*.md"
-  # NEW per-story layout (E105-S1 / ADR-127): epic-{slug}/{key}-{slug}/story.md.
+  # NEW per-story layout: epic-{slug}/{key}-{slug}/story.md.
   local perstory_pattern="${impl_artifacts}/epic-*/${key}-*/story.md"
 
   # shopt -s nullglob so zero-match produces an empty array rather than the
@@ -386,8 +379,8 @@ locate_story_file() {
   fi
 
   # Deduplicate by realpath. Symlinks at the flat layer pointing at the
-  # epic-grouped real file (post-E53-S225 transition shims) produce two
-  # canonical matches that are the same physical file. Prefer non-symlinks.
+  # epic-grouped real file (transition shims) produce two canonical matches
+  # that are the same physical file. Prefer non-symlinks.
   if [ "${#canonical[@]}" -gt 1 ]; then
     local dedup=()
     local seen_realpaths=""
@@ -440,8 +433,8 @@ locate_story_file() {
 #      ends (blank line, new header, or EOF).
 #
 # The awk output is then filtered in bash to enforce the canonical six gates.
-# Unknown gate names are preserved in the file (AC-EC3: spurious rows are
-# left untouched on update) but ignored for check/status vocabulary checks.
+# Unknown gate names are preserved in the file (spurious rows are left
+# untouched on update) but ignored for check/status vocabulary checks.
 
 # Stream parsed rows to stdout as TSV `GATE\tSTATUS\tREPORT`.
 # Exits 1 (via die) if the `## Review Gate` header is absent.
@@ -449,7 +442,7 @@ parse_gate_rows() {
   local file="$1"
 
   # First: confirm the `## Review Gate` header exists. awk-only detection is
-  # cheaper and gives a precise error message per AC8.
+  # cheaper and gives a precise error message.
   if ! grep -q '^## Review Gate[[:space:]]*$' "$file"; then
     die "story file '$file' is missing the '## Review Gate' section"
   fi
@@ -465,7 +458,7 @@ parse_gate_rows() {
 
     # Inside the section. Look for the first pipe-table.
     {
-      # Strip trailing \r so CRLF files parse correctly (AC-EC7).
+      # Strip trailing \r so CRLF files parse correctly.
       sub(/\r$/, "", $0)
     }
 
@@ -513,7 +506,7 @@ parse_gate_rows() {
 
 # Populate two parallel global arrays ROW_GATES / ROW_STATUSES from the parsed
 # table, keeping only the canonical six gates (in canonical order). Exits 1
-# if any canonical gate is missing from the table (per AC3 / Task 3.4).
+# if any canonical gate is missing from the table.
 ROW_GATES=()
 ROW_STATUSES=()
 load_canonical_rows() {
@@ -554,7 +547,7 @@ load_canonical_rows() {
   done
 }
 
-# ---------- Ledger operations (E35-S2) ----------
+# ---------- Ledger operations ----------
 #
 # The ledger is a separate tab-separated file (.review-gate-ledger) used for
 # plan-id-keyed verdict records. It does NOT mutate the Review Gate table.
@@ -665,32 +658,31 @@ cmd_status() {
     }'
 }
 
-# ---------- Subcommand: review-gate-check (E37-S1) ----------
+# ---------- Subcommand: review-gate-check ----------
 #
-# Composite Review Gate check per ADR-054 / FR-CRG-2. Emits the six-row
-# Review Gate table verbatim followed by a summary line and — on the
-# BLOCKED or PENDING paths — a list of the offending gate names. Exit
-# codes are deterministic:
+# Composite Review Gate check. Emits the six-row Review Gate table verbatim
+# followed by a summary line and — on the BLOCKED or PENDING paths — a list
+# of the offending gate names. Exit codes are deterministic:
 #
 #   0 — COMPLETE: all six gates have verdict PASSED
 #   1 — BLOCKED:  at least one gate is FAILED (FAILED dominates PENDING)
 #   2 — PENDING:  at least one gate is UNVERIFIED / NOT STARTED and
 #                 no gate is FAILED
 #
-# Read-only (NFR-CRG-1): zero file writes, zero tempfile / mv / flock. The
-# sub-operation only parses the story file — it never creates, modifies,
-# or deletes any file or sidecar. Before/after shasum -a 256 of the story
-# file is byte-identical across all three verdict paths.
+# Read-only: zero file writes, zero tempfile / mv / flock. The sub-operation
+# only parses the story file — it never creates, modifies, or deletes any
+# file or sidecar. Before/after shasum -a 256 of the story file is
+# byte-identical across all three verdict paths.
 #
-# Fork-context (NFR-CRG-2): safe to invoke under a subagent whose tool
-# allowlist is Read, Grep, Bash only — the execution path uses awk / grep
-# / bash built-ins and the existing locate_story_file helper.
+# Fork-context: safe to invoke under a subagent whose tool allowlist is
+# Read, Grep, Bash only — the execution path uses awk / grep / bash
+# built-ins and the existing locate_story_file helper.
 
 # Classify the six canonical verdicts into a composite status. Used as a
 # standalone helper so callers and unit tests can exercise the decision
 # logic independently of I/O. Echoes exactly one of: COMPLETE | BLOCKED |
 # PENDING. This helper is pure — no side effects — and is the canonical
-# source of ADR-054 dominance rules.
+# source of the FAILED-dominates-PENDING dominance rules.
 #
 # Arguments: six verdict strings in canonical gate order.
 classify_review_gate() {
@@ -715,8 +707,8 @@ classify_review_gate() {
   # is expected to catch via load_canonical_rows's row presence check.
   for v in "$@"; do
     if [ "$v" != "PASSED" ]; then
-      # Unknown verdict — treat as PENDING (safe fallback; matches the
-      # ADR-054 "UNVERIFIED equivalence" clause for non-canonical text).
+      # Unknown verdict — treat as PENDING (safe fallback; non-canonical
+      # text is treated as equivalent to UNVERIFIED).
       printf 'PENDING'
       return 0
     fi
@@ -853,8 +845,8 @@ cmd_update() {
   local gate_name="$2"
   local new_verdict="$3"
 
-  # Validate the section exists (produces a precise error per AC8).
-  # We also validate by loading canonical rows — this enforces Task 3.4.
+  # Validate the section exists (produces a precise error).
+  # We also validate by loading canonical rows.
   load_canonical_rows "$file"
 
   local lockfile="${file}.lock"
@@ -866,7 +858,7 @@ cmd_update() {
   rewrite_body() {
     # Stream $file through awk, rewriting only the first data row of the
     # first pipe-table under `## Review Gate` whose first cell matches
-    # $gate_name. Preserve CRLF (AC-EC7) and all surrounding bytes.
+    # $gate_name. Preserve CRLF and all surrounding bytes.
     awk -v target="$gate_name" -v new_status="$new_verdict" -v new_report="—" '
       BEGIN { in_section = 0; in_table = 0; saw_sep = 0; rewritten = 0 }
 
@@ -1027,19 +1019,17 @@ main() {
   esac
 
   local story_key="" gate_name="" verdict="" plan_id="" sprint_id=""
-  # AF-2026-05-20-1 proof-of-execution flags:
+  # Proof-of-execution flags:
   # --report <path> — path to the per-review report file written by the dispatched skill.
   # --execution-evidence <path> — path to execution-evidence.json (required for test-execution gates).
   # --report-missing-reason <reason> — explicit escape hatch for cases where no report exists
   #   (e.g. UNVERIFIED seed rows, FAILED verdicts with no salvageable report).
-  # AF-2026-05-31-1 / Test12 F-17 — `--sprint` flag closes the
-  # documentation/script gap for sprint-scoped gates (sprint-review,
-  # sprint-close handoffs). When `--sprint` is set and `--story` is not,
-  # the helper treats the invocation as sprint-scoped: it reads/writes a
-  # ledger entry keyed by `sprint-${id}-${gate}` rather than locating a
-  # story file. The plan-id-by-default fallback keeps the entry uniquely
-  # addressable per sprint so the dispatcher (gaia-sprint-close Step 3a)
-  # can query the sentinel without referencing a story key.
+  # The `--sprint` flag handles sprint-scoped gates (sprint-review, sprint-close
+  # handoffs). When `--sprint` is set and `--story` is not, the helper treats the
+  # invocation as sprint-scoped: it reads/writes a ledger entry keyed by
+  # `sprint-${id}-${gate}` rather than locating a story file. The plan-id-by-default
+  # fallback keeps the entry uniquely addressable per sprint so the dispatcher
+  # (gaia-sprint-close Step 3a) can query the sentinel without referencing a story key.
   local report_path="" execution_evidence="" report_missing_reason=""
   LEDGER_FLAG=""
   while [ $# -gt 0 ]; do
@@ -1093,12 +1083,12 @@ main() {
     esac
   done
 
-  # Validate plan_id if provided (AC-EC2, AC-EC3 security guards).
+  # Validate plan_id if provided (security guards).
   if [ -n "$plan_id" ]; then
     validate_plan_id "$plan_id"
   fi
 
-  # AF-2026-05-31-1 / Test12 F-17 — sprint-scoped invocation short-circuit.
+  # Sprint-scoped invocation short-circuit.
   # When `--sprint` is provided WITHOUT `--story`, this is a sprint-level
   # gate (sprint-review, sprint-close handoff). Synthesize a story-key
   # sentinel of the form `sprint:<sprint-id>` so the downstream ledger
@@ -1125,8 +1115,8 @@ main() {
 
   case "$subcmd" in
     check)
-      # AF-2026-05-31-1 / Test12 F-17: sprint-scoped invocations are ledger-
-      # only by contract — there's no per-sprint Review Gate table to scan.
+      # Sprint-scoped invocations are ledger-only by contract — there's no
+      # per-sprint Review Gate table to scan.
       if [ -n "$sprint_id" ] && [ -z "$STORY_FILE" ]; then
         die "check subcommand requires a story file; --sprint-scoped checks should query the ledger via status"
       fi
@@ -1162,7 +1152,7 @@ main() {
         die "invalid verdict '$verdict' — allowed: $allowed_verdicts"
       fi
 
-      # AF-2026-05-20-1 proof-of-execution gate.
+      # Proof-of-execution gate.
       # Disabled when REVIEW_GATE_PROOF_OF_EXECUTION=off (e.g. inside the
       # script's own bats fixtures that exercise the verdict mechanics
       # without dispatching real review skills). Enforced by default.
@@ -1188,16 +1178,15 @@ main() {
                 if [ -n "$execution_evidence" ] && [ ! -f "$execution_evidence" ]; then
                   die "proof-of-execution: --execution-evidence '$execution_evidence' does not exist on disk — refusing $verdict verdict for gate '$gate_name'"
                 fi
-                # AF-2026-06-01-1 / Test15 F-10 — content check on the
-                # execution-evidence JSON. The prior implementation
-                # verified the file EXISTED but never inspected its
-                # contents, so a PASSED verdict against evidence with
+                # Content check on the execution-evidence JSON. The prior
+                # implementation verified the file EXISTED but never inspected
+                # its contents, so a PASSED verdict against evidence with
                 # `exit_code: 1` + `fail_count: N` was accepted and the
-                # review-gate-check composite returned COMPLETE. A story
-                # with a RED suite reached `done` with all six gates
-                # "PASSED" — exactly the gate-integrity hole this proof-
-                # of-execution rule was added to prevent. Refuse PASSED
-                # when the evidence shows a failed suite.
+                # review-gate-check composite returned COMPLETE. A story with
+                # a RED suite reached `done` with all six gates "PASSED" —
+                # exactly the gate-integrity hole this proof-of-execution rule
+                # was added to prevent. Refuse PASSED when the evidence shows
+                # a failed suite.
                 #
                 # Triggers (any of these → refuse PASSED):
                 #   exit_code != 0
@@ -1235,11 +1224,11 @@ main() {
       if [ -n "$plan_id" ]; then
         ledger_write "$story_key" "$gate_name" "$plan_id" "$verdict"
       else
-        # Pre-E35 path: update the story file's Review Gate table (byte-identical).
+        # Update the story file's Review Gate table (byte-identical).
         cmd_update "$STORY_FILE" "$gate_name" "$verdict"
       fi
 
-      # AF-2026-05-31-3 / Test14 F-15 — test-artifacts/ mirror hook.
+      # Test-artifacts mirror hook.
       # When the gate update carries a `--report <path>` AND the gate is
       # one of the three test-lens reviewers (QA Tests / Test Automation
       # / Test Review), mirror the report + execution-evidence under
@@ -1266,21 +1255,17 @@ main() {
         fi
       fi
 
-      # AF-2026-06-01-1 / Test15 F-16-L — auto-emit review-summary.md.
-      # AF-31-3 F-18 added the per-story aggregator in review-summary-gen.sh
-      # but never wired its invocation; an operator had to drive it
-      # manually, so Test15 found no `reviews/review-summary.md` on disk
-      # after a full run-all-reviews battery. Hook it here so EVERY gate
-      # update (regardless of which review skill dispatched it)
-      # refreshes the aggregator. The generator is idempotent (it's a
-      # render off the current Review Gate table state) and treats a
-      # missing dispatched skill stack as best-effort — failures don't
-      # break the gate write.
+      # Auto-emit review-summary.md.
+      # Hook the per-story aggregator (review-summary-gen.sh) so EVERY gate
+      # update (regardless of which review skill dispatched it) refreshes
+      # the aggregator. The generator is idempotent (it's a render off the
+      # current Review Gate table state) and treats a missing dispatched
+      # skill stack as best-effort — failures don't break the gate write.
       if [ -z "$plan_id" ] && [ -n "$STORY_FILE" ]; then
         _summary_gen="$(cd "$(dirname "$0")" && pwd)/review-summary-gen.sh"
         if [ -x "$_summary_gen" ]; then
           # Default --output to the per-story reviews/ aggregator path so
-          # the layout-conformance file lands where Test15 expects it.
+          # Default --output to the per-story reviews/ aggregator path.
           _story_dir="$(dirname "$STORY_FILE")"
           _summary_out="$_story_dir/reviews/review-summary.md"
           mkdir -p "$_story_dir/reviews" 2>/dev/null || true

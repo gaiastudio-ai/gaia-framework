@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # resolve-artifact-path.sh — single source of truth for the read-path
 # precedence of the artifacts whose canonical home moved under the .gaia/
-# consolidation (ADR-111) and the E105-S2 / ADR-127 §7.2 docs-about-testing
-# relocation.
+# consolidation and the docs-about-testing relocation.
 #
-# Background (AF-2026-05-27-8 / Test06 F-007, F-008, F-011, F-014):
+# Background:
 #   Three consecutive manual-test runs surfaced the SAME bug class — individual
 #   setup.sh / finalize.sh / dashboard scripts each hard-code their own
 #   path-precedence list, and those lists drifted out of sync with the
@@ -13,13 +12,13 @@
 #   only looked under test-artifacts/). Each drift presents as a FALSE HALT on
 #   the canonical layout. This helper centralises the precedence so the class
 #   cannot recur a fourth time: every consumer asks THIS script, and the
-#   canonical post-ADR-111 / post-E105-S2 location is always rung 1.
+#   canonical location is always rung 1.
 #
 # Canonical homes (rung 1 for each kind):
-#   test_plan        .gaia/artifacts/planning-artifacts/test-plan.md      (E105-S2 / ADR-127 §7.2)
-#   test_strategy    .gaia/artifacts/planning-artifacts/test-strategy.md  (E105-S2 / ADR-127 §7.2)
-#   traceability     .gaia/artifacts/planning-artifacts/traceability-matrix.md (E105-S2 / ADR-127 §7.2)
-#   sprint_status    .gaia/state/sprint-status.yaml                       (ADR-111 mutable-state tier)
+#   test_plan        .gaia/artifacts/planning-artifacts/test-plan.md
+#   test_strategy    .gaia/artifacts/planning-artifacts/test-strategy.md
+#   traceability     .gaia/artifacts/planning-artifacts/traceability-matrix.md
+#   sprint_status    .gaia/state/sprint-status.yaml                       (mutable-state tier)
 #   ci_setup         .gaia/artifacts/test-artifacts/ci-setup.md           (test-artifacts tier)
 #
 # Usage:
@@ -60,7 +59,7 @@ KIND="$1"; shift
 
 # Project-root precedence mirrors the framework's other root-resolvers so a
 # caller that exports any of the canonical root env-vars (or runs from a
-# different CWD than the project, as the cluster-6 e2e fixture does) resolves
+# different CWD than the project, as the e2e fixture does) resolves
 # correctly: CLAUDE_PROJECT_ROOT → GAIA_PROJECT_ROOT → PROJECT_ROOT →
 # PROJECT_PATH → PWD. An explicit --project-root flag overrides all of these.
 PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-${PROJECT_ROOT:-${PROJECT_PATH:-${PWD}}}}}"
@@ -82,8 +81,8 @@ LEGACY_TA="${PROJECT_ROOT}/docs/test-artifacts"
 LEGACY_IA="${PROJECT_ROOT}/docs/implementation-artifacts"
 
 # Build the precedence list for the requested kind. Rung 1 is ALWAYS the
-# canonical post-ADR-111 / post-E105-S2 home. Subsequent rungs are read-compat
-# fallbacks for in-migration projects and pre-ADR-072 strategy/ placement.
+# canonical home. Subsequent rungs are read-compat fallbacks for in-migration
+# projects and legacy strategy/ placement.
 CANDIDATES=()
 case "$KIND" in
   test_plan)

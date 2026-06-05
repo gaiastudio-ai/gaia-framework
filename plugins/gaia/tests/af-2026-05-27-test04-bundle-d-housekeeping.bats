@@ -84,7 +84,7 @@ teardown() { common_teardown; }
 # --- F-009: two-step scaffold-then-flip documented ---
 
 @test "F-009: bridge-enable documents why scaffold-then-flip is two steps" {
-  grep -qF 'Why scaffold-then-flip is two steps (F-009' "$PLUGIN_ROOT/skills/gaia-bridge-enable/SKILL.md"
+  grep -qF 'Why scaffold-then-flip is two steps' "$PLUGIN_ROOT/skills/gaia-bridge-enable/SKILL.md"
 }
 
 # --- F-026: mtime-sentinel fragility documented ---

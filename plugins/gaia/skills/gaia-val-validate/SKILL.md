@@ -18,44 +18,44 @@ orchestration_class: reviewer
 
 You are **Val**, the GAIA Artifact Validator, validating an artifact against the actual codebase state. Your job is to scan file paths referenced in the artifact, verify factual claims against the filesystem, and cross-reference against ground-truth when available.
 
-This skill is the native Claude Code conversion of the legacy val-validate-artifact workflow (E28-S78, Cluster 10 Val Cluster). Per ADR-093 (Orchestrator-as-Bridge) and ADR-104 (Val Bridge Migration), Val is dispatched via the **main-turn Agent tool** — not via the broken-substrate `context: fork` declaration that this skill carried prior to E87-S2. Ground-truth loading via `memory-loader.sh` is unchanged (ADR-046 hybrid memory loading).
+This skill is the native Claude Code conversion of the legacy val-validate-artifact workflow. Val is dispatched via the **main-turn Agent tool** — not via the broken-substrate `context: fork` declaration that this skill carried previously. Ground-truth loading via `memory-loader.sh` is unchanged.
 
-### Main-Turn Dispatch Contract (ADR-104 / E87-S2)
+### Main-Turn Dispatch Contract
 
 Consumer skills MUST dispatch Val using the main-turn Agent tool with these parameters:
 
 - `subagent_type: validator` (the Val persona; see `plugins/gaia/agents/validator.md`)
-- `model: claude-opus-4-7`, `effort: high` (ADR-074 contract C2 — non-overridable)
+- `model: claude-opus-4-7`, `effort: high` (non-overridable)
 - Pass `artifact_path` and `artifact_type` per the Upstream Integration Contract below
 
-After the Agent call returns, the consumer skill MUST source `plugins/gaia/scripts/lib/assert-agent-envelope.sh` (delivered by E87-S1) and invoke `assert_agent_envelope <sentinel_path>` against the envelope sentinel that the Val persona wrote during its execution. On non-zero exit the consumer skill MUST HALT with the canonical error — there is no silent fall-through to a self-judged validation verdict (closes the regression class documented in `feedback_add_feature_val_gate_fails_open.md` and `feedback_fix_story_inline_revalidation_bypass.md`).
+After the Agent call returns, the consumer skill MUST source `plugins/gaia/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope <sentinel_path>` against the envelope sentinel that the Val persona wrote during its execution. On non-zero exit the consumer skill MUST HALT with the canonical error — there is no silent fall-through to a self-judged validation verdict (closes the regression class documented in `feedback_add_feature_val_gate_fails_open.md` and `feedback_fix_story_inline_revalidation_bypass.md`).
 
 **Envelope sentinel path convention.** The Val persona writes its sentinel to `.gaia/memory/checkpoints/val-envelope-{artifact-hash}.json` where `{artifact-hash}` is `sha256(artifact_path)` truncated to 16 hex characters (deterministic, locatable by consumers without state). The sentinel JSON shape and persona-signature contract live in `validator.md` §Sentinel-Write Contract.
 
-**Path normalization (AF-2026-05-29-2 / Test09 F-17).** The `artifact_path` used for the hash MUST be **project-relative** (anchored at the project root, no leading slash, no leading `./`). The writer (`scripts/lib/write-val-envelope.sh`) enforces this by stripping any leading project_root prefix and any leading `./` from `artifact_path` BEFORE computing the hash — so a Val agent that writes an absolute path (`/Users/.../prd.md`) hashes to the same sentinel as a consumer that asserts on the project-relative path (`.gaia/artifacts/planning-artifacts/prd.md`). The contract for callers (Val persona + consumer skills) is: **always pass the project-relative form**. The writer's normalization is a safety net for legacy callers; the canonical form is project-relative. Non-path artifact_path values (e.g. a literal `feature_id` like `AF-2026-05-29-1` passed by `/gaia-add-feature`) have no leading `/` or `./` and pass through unchanged.
+**Path normalization.** The `artifact_path` used for the hash MUST be **project-relative** (anchored at the project root, no leading slash, no leading `./`). The writer (`scripts/lib/write-val-envelope.sh`) enforces this by stripping any leading project_root prefix and any leading `./` from `artifact_path` BEFORE computing the hash — so a Val agent that writes an absolute path (`/Users/.../prd.md`) hashes to the same sentinel as a consumer that asserts on the project-relative path (`.gaia/artifacts/planning-artifacts/prd.md`). The contract for callers (Val persona + consumer skills) is: **always pass the project-relative form**. The writer's normalization is a safety net for legacy callers; the canonical form is project-relative. Non-path artifact_path values (e.g. a literal `feature_id` like `AF-2026-05-29-1` passed by `/gaia-add-feature`) have no leading `/` or `./` and pass through unchanged.
 
-**Forgery resistance (NFR-064 — field-presence tier).** E87-S1's `assert_agent_envelope` rejects sentinels that omit the `persona_sig` field. This is the *field-presence* tier of forgery resistance: a non-Val agent that emits a sentinel without `persona_sig` fails the assertion. Semantic verification (recomputing the sha256 of `validator.md` and matching against the sentinel's `persona_sig` digest) is roadmapped as a future hardening — until that lands, an attacker who knows the format could craft a sentinel with an arbitrary `persona_sig` value and pass the presence check. The defense-in-depth chain (E83 dispatch checkpoint + E87 envelope presence + planned semantic verification) is the layered control. See TC-VBR-12 in `plugins/gaia/tests/val-bridge-migration.bats`.
+**Forgery resistance (field-presence tier).** `assert_agent_envelope` rejects sentinels that omit the `persona_sig` field. This is the *field-presence* tier of forgery resistance: a non-Val agent that emits a sentinel without `persona_sig` fails the assertion. Semantic verification (recomputing the sha256 of `validator.md` and matching against the sentinel's `persona_sig` digest) is roadmapped as a future hardening — until that lands, an attacker who knows the format could craft a sentinel with an arbitrary `persona_sig` value and pass the presence check. The defense-in-depth chain (dispatch checkpoint + envelope presence + planned semantic verification) is the layered control. See the forgery-resistance test in `plugins/gaia/tests/val-bridge-migration.bats`.
 
-> **Val dispatch contract (ADR-074 contract C2 — Val opus pin).** This skill, and every skill that delegates to it, dispatches Val with `model: claude-opus-4-7` and `effort: high`. Validation rigor is the framework-wide contract; the harness MUST NOT downgrade Val to a cheaper default model. **Non-opus mismatch guard (AC3):** if a test fixture or downstream override forces a non-opus model into the dispatch context, the skill MUST emit the canonical WARNING `Val dispatch on non-opus model — forcing opus per ADR-074 contract C2` and force `model: claude-opus-4-7` before invoking Val. Silent degradation is forbidden.
+> **Val dispatch contract (Val opus pin).** This skill, and every skill that delegates to it, dispatches Val with `model: claude-opus-4-7` and `effort: high`. Validation rigor is the framework-wide contract; the harness MUST NOT downgrade Val to a cheaper default model. **Non-opus mismatch guard:** if a test fixture or downstream override forces a non-opus model into the dispatch context, the skill MUST emit the canonical WARNING `Val dispatch on non-opus model — forcing opus per the Val opus-pin contract` and force `model: claude-opus-4-7` before invoking Val. Silent degradation is forbidden.
 >
 > [Val opus-pin contract — see plugins/gaia/agents/validator.md §Val Operations]
 
 ## Upstream Integration Contract
 
-> Authoritative shape for upstream skills (E44-S3..S6) wiring `/gaia-val-validate` into their auto-fix loops. See ADR-058 (architecture.md §12) and FR-357 (prd.md §4.33) for the protocol context. E44-S2 implements the 3-iteration loop that consumes this contract.
+> Authoritative shape for upstream skills wiring `/gaia-val-validate` into their auto-fix loops. The framework implements the 3-iteration loop that consumes this contract.
 
 ### Invocation Method
 
 `/gaia-val-validate` is invoked as a **direct skill call** by upstream skills immediately after they write an artifact to disk. There is no workflow-engine flag, no ambient configuration, and no dispatcher in the middle — the upstream skill calls this skill directly with the parameters below.
 
-> **Deprecated:** `val_validate_output: true` is superseded by this direct-invocation contract. The flag is silently ignored if it appears in any upstream SKILL.md frontmatter or metadata; skills MUST NOT error on its presence. Removal of the flag from downstream SKILL.md files is tracked under E44-S3..S6. Cross-reference: ADR-058 (Val Auto-Fix Loop Contract for V2 Skills) and FR-357 (`/gaia-val-validate` Auto-Fix Loop & Upstream Integration).
+> **Deprecated:** `val_validate_output: true` is superseded by this direct-invocation contract. The flag is silently ignored if it appears in any upstream SKILL.md frontmatter or metadata; skills MUST NOT error on its presence. Removal of the flag from downstream SKILL.md files is tracked separately.
 
 ### Required Parameters
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `artifact_path` | string | yes | Absolute or project-root-relative path to the artifact file just written by the upstream skill. Val re-reads this path from disk on every invocation. |
-| `artifact_type` | enum | yes | One of: `prd`, `architecture`, `ux`, `test-plan`, `threat-model`, `story`, `epic`, `brief`, `ci-plan`, `a11y`, `atdd`, `readiness`, `brainstorm`, `market-research`, `domain-research`, `technical-research`, `nfr-assessment`, `performance-test-plan`, `infrastructure-design`. Selects the document-specific ruleset (see `gaia-document-rulesets`). Slug values are aligned with the on-disk artifact filename (e.g., `technical-research` ↔ `technical-research.md`) per E44-S11. The four Phase 1 slugs (`brainstorm`, `market-research`, `domain-research`, `technical-research`) acquired canonical rulesets in E44-S12. The `nfr-assessment` slug (E108-S1) is backed by `schemas/nfr-assessment.schema.json`, the `performance-test-plan` slug (E108-S2) is backed by `schemas/performance-test-plan.schema.json`, and the `infrastructure-design` slug (E108-S4) is backed by `schemas/infrastructure-design.schema.json` (all JSON Schema draft-2020-12). Unknown types skip structural validation but still run factual-claim verification — Val returns findings normally. |
+| `artifact_type` | enum | yes | One of: `prd`, `architecture`, `ux`, `test-plan`, `threat-model`, `story`, `epic`, `brief`, `ci-plan`, `a11y`, `atdd`, `readiness`, `brainstorm`, `market-research`, `domain-research`, `technical-research`, `nfr-assessment`, `performance-test-plan`, `infrastructure-design`. Selects the document-specific ruleset (see `gaia-document-rulesets`). Slug values are aligned with the on-disk artifact filename (e.g., `technical-research` ↔ `technical-research.md`). The four Phase 1 slugs (`brainstorm`, `market-research`, `domain-research`, `technical-research`) have canonical rulesets. The `nfr-assessment` slug is backed by `schemas/nfr-assessment.schema.json`, the `performance-test-plan` slug is backed by `schemas/performance-test-plan.schema.json`, and the `infrastructure-design` slug is backed by `schemas/infrastructure-design.schema.json` (all JSON Schema draft-2020-12). Unknown types skip structural validation but still run factual-claim verification — Val returns findings normally. |
 
 Example invocation (conceptual — actual call shape is the upstream skill invoking this skill):
 
@@ -64,7 +64,7 @@ Example invocation (conceptual — actual call shape is the upstream skill invok
 
 ### Response Schema
 
-Val returns a `findings` array. Each entry is an object with the fields below. The shape is stable across invocations and across artifact types — upstream auto-fix logic (E44-S2) pattern-matches on `severity` to drive the 3-iteration loop.
+Val returns a `findings` array. Each entry is an object with the fields below. The shape is stable across invocations and across artifact types — upstream auto-fix logic pattern-matches on `severity` to drive the 3-iteration loop.
 
 | Field | Type | Description |
 |---|---|---|
@@ -100,15 +100,13 @@ An empty `findings` array (`{"findings": []}`) signals a clean validation — th
 
 ### Iterative Re-Invocation
 
-The 3-iteration auto-fix loop in ADR-058 §10.31.2 calls Val multiple times against the same `artifact_path` — once per iteration, after the upstream skill applies fixes. The contract for re-invocation:
+The 3-iteration auto-fix loop calls Val multiple times against the same `artifact_path` — once per iteration, after the upstream skill applies fixes. The contract for re-invocation:
 
 - Val MUST re-read the artifact from disk on every invocation. No in-memory caching of artifact content across calls.
 - Val MUST NOT cache findings from prior invocations for the same `artifact_path`. Each call is independent and returns findings reflecting the **current** on-disk artifact state.
 - Previously-reported findings that have been fixed MUST NOT reappear in the next invocation's `findings` array. Findings that remain unfixed MAY reappear (the upstream loop counts iterations, not findings).
 - Per Step 7 of this skill, prior `## Validation Findings` sections in the artifact are excluded from the current analysis to avoid double-counting — the upstream loop never sees stale findings.
-- `/gaia-val-validate` does NOT self-invoke (E44-S6 Task 4.3): the skill is upstream-triggered only and never wraps its own output in the auto-fix loop. The 3-iteration loop is owned and counted by the upstream caller (E44-S3 / E44-S4 / E44-S5 / E44-S6 wire-ins). Introducing a self-invocation branch would cause double-counted iterations and unbounded recursion.
-
-Cross-reference: ADR-058 §10.31.2 (loop protocol) for how the 3-iteration counter, escalation behavior, and INFO-level handling interact with this contract.
+- `/gaia-val-validate` does NOT self-invoke: the skill is upstream-triggered only and never wraps its own output in the auto-fix loop. The 3-iteration loop is owned and counted by the upstream caller. Introducing a self-invocation branch would cause double-counted iterations and unbounded recursion.
 
 ### Test Notes
 
@@ -122,7 +120,7 @@ VCP-VALV-01 and VCP-VAL-03 execute inside the broader VCP test orchestrator, not
 
 ## Auto-Fix Loop Pattern
 
-> Canonical, copy-pasteable specification of the 3-iteration Val auto-fix loop that every V2 upstream skill (E44-S3..S6 wire-in: 18 skills total) embeds verbatim. Implements ADR-058 (architecture.md §12) and FR-344 (prd.md §5). Implementing story: **E44-S2**. This section is the single source of truth — consumer SKILL.md files reference it rather than duplicating it.
+> Canonical, copy-pasteable specification of the 3-iteration Val auto-fix loop that every V2 upstream skill (18 skills total) embeds verbatim. This section is the single source of truth — consumer SKILL.md files reference it rather than duplicating it.
 
 ### State Machine (Canonical)
 
@@ -131,7 +129,7 @@ After an upstream skill writes an artifact to disk, it enters this loop. The loo
 1. `iteration = 1`.
 2. Invoke `/gaia-val-validate` with `artifact_path` and `artifact_type` per the **Upstream Integration Contract** above.
 3. If the `findings` array is **empty** → exit loop, skill proceeds.
-4. If `findings` contain **only INFO** severity entries → log them as informational notes, exit loop, skill proceeds (INFO is informational-only and **does not trigger** auto-fix per ADR-058 §10.31.2 — see AC-EC10).
+4. If `findings` contain **only INFO** severity entries → log them as informational notes, exit loop, skill proceeds (INFO is informational-only and **does not trigger** auto-fix — see AC-EC10).
 5. If `findings` contain **CRITICAL or WARNING** → apply a fix to the artifact addressing those findings, then record an iteration log entry (see *Iteration Log Record Shape* below).
 6. `iteration += 1`.
 7. If `iteration <= 3` → goto step 2.
@@ -147,7 +145,7 @@ Only CRITICAL or WARNING entries cause the loop to advance into a fix attempt.
 
 ### Iteration-3 User Prompt
 
-When iteration 3 completes and findings still contain CRITICAL or WARNING, the upstream skill MUST present this exact prompt — character-for-character identical across all 18 consumer skills (AC2):
+When iteration 3 completes and findings still contain CRITICAL or WARNING, the upstream skill MUST present this exact prompt — character-for-character identical across all 18 consumer skills:
 
 ```
 Iteration 3 of Val auto-fix did not converge. Choose: [c] Continue — apply next fix and re-send | [a] Accept as-is — record unresolved findings as open questions | [x] Abort — preserve checkpoint and exit
@@ -181,13 +179,13 @@ The checkpoint is preserved at the current iteration and the skill exits with a 
 
 ### YOLO Hard-Gate Invariant
 
-The 3-iteration cap and the iteration-3 user prompt are **invariant under YOLO mode** (ADR-058 + ADR-057 FR-YOLO-2(e)). YOLO mode MUST NOT auto-answer the prompt and there MUST NOT be a code branch that skips the prompt under YOLO (AC6).
+The 3-iteration cap and the iteration-3 user prompt are **invariant under YOLO mode**. YOLO mode MUST NOT auto-answer the prompt and there MUST NOT be a code branch that skips the prompt under YOLO (AC6).
 
 If the runtime attempts to **bypass** the prompt under YOLO (e.g., by auto-selecting `accept`), the loop MUST log a hard-gate violation record into the iteration log and HALT regardless of upstream caller state (AC-EC7). Bypass-attempt records carry `event_type = "yolo_hard_gate_violation"` and include the bypass attempt's iteration number, the attempted answer, and a stack trace excerpt where available.
 
 ### Iteration Log Record Shape
 
-Every iteration produces one log record. Records are routed into the ADR-059 checkpoint `custom:` namespace under the reserved key `val_loop_iterations` (an array, append-only per iteration). The shape per record:
+Every iteration produces one log record. Records are routed into the checkpoint `custom:` namespace under the reserved key `val_loop_iterations` (an array, append-only per iteration). The shape per record:
 
 | Field | Type | Description |
 |---|---|---|
@@ -196,29 +194,27 @@ Every iteration produces one log record. Records are routed into the ADR-059 che
 | `findings` | array | The full Val response `findings` array for this iteration. Severity-classified per the Upstream Integration Contract. |
 | `fix_diff_summary` | string | Unified-diff excerpt or patch hash describing the fix applied at the end of this iteration. Empty string for iterations that did not apply a fix (clean / INFO-only). |
 | `revalidation_outcome` | enum | One of `clean`, `info_only`, `findings_present`, `val_invocation_failed`. |
-| `token_estimate` | int \| float \| null | Per-iteration token count (input context + Val response + fix generation). `null` if the runtime token-counting primitive is unavailable (AC-EC8). This field is the canonical NFR-VCP-2 harness contract — `scripts/measure-val-auto-fix-token-budget.sh` reads `token_estimate` directly. (Earlier drafts of this skill referenced the field as `tokens_consumed`; the harness, the producer at `scripts/append-val-iteration.sh` (E44-S15), and this canonical record shape are unified on `token_estimate`.) |
+| `token_estimate` | int \| float \| null | Per-iteration token count (input context + Val response + fix generation). `null` if the runtime token-counting primitive is unavailable (AC-EC8). This field is the canonical token-budget harness contract — `scripts/measure-val-auto-fix-token-budget.sh` reads `token_estimate` directly. (Earlier drafts of this skill referenced the field as `tokens_consumed`; the harness, the producer at `scripts/append-val-iteration.sh`, and this canonical record shape are unified on `token_estimate`.) |
 | `user_decision` | enum \| null | Set only on iteration 3+ records when the prompt was shown: `continue`, `accept-as-is`, `abort`. `null` otherwise. |
 | `event_type` | enum \| null | Set to `yolo_hard_gate_violation` on bypass-attempt records; `null` otherwise. |
 
-The iteration log is **distinguishable by iteration number** so each iteration's findings list and fix diff are independently inspectable (AC4). Live-debugging logs may also be written to stderr, but the **checkpoint is authoritative** for `/gaia-resume`.
+The iteration log is **distinguishable by iteration number** so each iteration's findings list and fix diff are independently inspectable. Live-debugging logs may also be written to stderr, but the **checkpoint is authoritative** for `/gaia-resume`.
 
 ### Iteration Log Format
 
-> **Implementing story:** E44-S8 (observability + logging contract). E44-S2 owns the loop body; E44-S8 owns the per-iteration record-shape contract, the JSON example below, the post-escape flag semantics, and VCP-FIX-07 (the thrash-observability LLM-checkable test that witnesses this format).
-
 The iteration log is the structured, per-iteration record stream emitted by the auto-fix loop. Audit, debug, and resume consumers read this log to reconstruct what each iteration saw, fixed, and produced — without re-running the loop or scraping free-text logs.
 
-**Storage location.** The log lives in the ADR-059 checkpoint `custom:` namespace under the reserved key `val_loop_iterations` (an array of records, append-only per iteration). Each consumer skill writes its own checkpoint under `.gaia/memory/checkpoints/{skill-name}/{timestamp}-step-{N}.json`; the array is namespaced inside that file's `custom` block. There is **no parallel log file** — the checkpoint is the single source of truth.
+**Storage location.** The log lives in the checkpoint `custom:` namespace under the reserved key `val_loop_iterations` (an array of records, append-only per iteration). Each consumer skill writes its own checkpoint under `.gaia/memory/checkpoints/{skill-name}/{timestamp}-step-{N}.json`; the array is namespaced inside that file's `custom` block. There is **no parallel log file** — the checkpoint is the single source of truth.
 
 **Append-only invariant.** Each iteration appends one record. Records are **immutable once written** — subsequent iterations append a new record, never mutate prior records. This preserves audit integrity and lets thrash detection compare iteration N to iteration N-1 deterministically.
 
-**Programmatic parsing.** Consumers (`/gaia-resume`, debug scripts, audit tooling) parse the array with a standard JSON reader — the field names and enum values above are the contract. No regex scraping is required (AC2).
+**Programmatic parsing.** Consumers (`/gaia-resume`, debug scripts, audit tooling) parse the array with a standard JSON reader — the field names and enum values above are the contract. No regex scraping is required.
 
-**Producer-side instrumentation (E44-S15).** Consumer skills append iteration records by invoking `${CLAUDE_PLUGIN_ROOT}/scripts/append-val-iteration.sh`. The script merges the prior `val_loop_iterations` array from the latest checkpoint, appends the new record with the canonical fields (including a numeric or `null` `token_estimate`), and writes a fresh ADR-059 schema-v1 checkpoint via `write-checkpoint.sh`. This is the single producer for the field — `scripts/measure-val-auto-fix-token-budget.sh` reads `token_estimate` from the resulting stream to verify NFR-VCP-2 ratios.
+**Producer-side instrumentation.** Consumer skills append iteration records by invoking `${CLAUDE_PLUGIN_ROOT}/scripts/append-val-iteration.sh`. The script merges the prior `val_loop_iterations` array from the latest checkpoint, appends the new record with the canonical fields (including a numeric or `null` `token_estimate`), and writes a fresh schema-v1 checkpoint via `write-checkpoint.sh`. This is the single producer for the field — `scripts/measure-val-auto-fix-token-budget.sh` reads `token_estimate` from the resulting stream to verify the token-budget ratios.
 
-**Post-escape iterations (Task 2.3).** When the user selects `continue` at the iteration-3 prompt (AC3 of E44-S2), the loop re-enters with monotonic iteration numbers 4, 5, 6, … Each post-escape record carries `post_escape: true` so an audit can distinguish a 5-iteration run that respected the cap-then-continue contract from a hypothetical bug that ignored the cap. Records 1–3 either omit the field or set it to `false` (the absence is treated as `false` by parsers).
+**Post-escape iterations.** When the user selects `continue` at the iteration-3 prompt, the loop re-enters with monotonic iteration numbers 4, 5, 6, … Each post-escape record carries `post_escape: true` so an audit can distinguish a 5-iteration run that respected the cap-then-continue contract from a hypothetical bug that ignored the cap. Records 1–3 either omit the field or set it to `false` (the absence is treated as `false` by parsers).
 
-**Concrete example — 3-iteration thrash (VCP-FIX-07 witness).**
+**Concrete example — 3-iteration thrash.**
 
 ```json
 {
@@ -269,11 +265,7 @@ A post-escape iteration 4 record (after the user chooses `continue` at the itera
 
 **Cross-references for auditors.**
 
-- **ADR-058** (architecture.md §10.31.2 / §12) — Val Auto-Fix Loop Contract; observability requirement (point 4 of the ADR).
-- **ADR-059** (architecture.md §10.31.3 / §12) — Checkpoint schema and write infrastructure; reserves the `custom:` namespace and the `val_loop_iterations` key.
-- **FR-344** (prd.md §5) — Val auto-fix loop functional requirement; per-iteration logging clause.
-- **VCP-FIX-07** (test-plan.md §11.46.4) — Thrash-detection observability LLM-checkable test that witnesses this format.
-- **`/gaia-resume`** is the primary consumer: it reads `custom.val_loop_iterations` from the latest checkpoint to restore prior iteration state across sessions (AC4). Post-hoc debug scripts are the secondary consumer.
+- **`/gaia-resume`** is the primary consumer: it reads `custom.val_loop_iterations` from the latest checkpoint to restore prior iteration state across sessions. Post-hoc debug scripts are the secondary consumer.
 
 ### Thrash Detection
 
@@ -284,14 +276,14 @@ When thrash is detected:
 - Emit a `"thrash"` warning into the iteration log tagged with the iteration number (AC-EC4).
 - **Still increments the iteration counter** and proceeds to the next iteration. Thrashes are logged but do NOT short-circuit the 3-cap — short-circuiting would prematurely trigger the user prompt and could mask real progress on a subsequent iteration.
 
-### Token Budget (NFR-VCP-2)
+### Token Budget
 
-The pattern targets the following token-budget envelope, verified by VCP-FIX-08:
+The pattern targets the following token-budget envelope:
 
 - **Per-iteration cost ≤ 2x** the single-pass `/gaia-val-validate` baseline (one call to Val on a representative 5–10 KB artifact, no fix generation).
 - **3-iteration total cost ≤ 6x** baseline.
 
-Token consumption is measured per iteration via the LLM runtime's token-count return value and persisted in `token_estimate` (E44-S15 producer at `scripts/append-val-iteration.sh` writes this field; the field name was unified from the historical `tokens_consumed` to match the harness contract). If the runtime token-counting primitive is **unavailable** at runtime, the loop proceeds normally and the iteration record carries `token_estimate: null` (AC-EC8). NFR-VCP-2 verification then falls back to off-line sampling.
+Token consumption is measured per iteration via the LLM runtime's token-count return value and persisted in `token_estimate` (the producer at `scripts/append-val-iteration.sh` writes this field; the field name was unified from the historical `tokens_consumed` to match the harness contract). If the runtime token-counting primitive is **unavailable** at runtime, the loop proceeds normally and the iteration record carries `token_estimate: null` (AC-EC8). Token-budget verification then falls back to off-line sampling.
 
 ### Error Handling Outside the Cap
 
@@ -306,7 +298,7 @@ Each upstream skill invocation has its own iteration counter and its own checkpo
 
 ### Consumer-Skill Snippet (Copy-Pasteable)
 
-E44-S3..S6 wire this snippet into 18 upstream skills. Embed it as a numbered sub-step sequence immediately after the artifact-write step. Replace the `{ARTIFACT_PATH}` and `{ARTIFACT_TYPE}` placeholders with the upstream skill's values.
+This snippet is embedded verbatim into 18 upstream skills. Embed it as a numbered sub-step sequence immediately after the artifact-write step. Replace the `{ARTIFACT_PATH}` and `{ARTIFACT_TYPE}` placeholders with the upstream skill's values.
 
 ```text
 ### Step N+1 — Val Auto-Fix Loop (E44-S2 / ADR-058)
@@ -342,16 +334,6 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO.
 Bypass attempts log a yolo_hard_gate_violation record and HALT.
 ```
 
-### Cross-References
-
-- **ADR-058** (architecture.md §12) — Val Auto-Fix Loop Contract for V2 Skills (decision, alternatives, consequences, ADR-017 supersession, relationship to ADR-057 FR-YOLO-2(e)).
-- **ADR-057** (architecture.md §12) — YOLO mode contract; FR-YOLO-2(e) hard-gate invariant.
-- **ADR-059** (architecture.md §12) — Checkpoint schema; reserves `custom.val_loop_iterations` for this pattern.
-- **FR-344** (prd.md §5) — Val auto-fix loop functional requirement.
-- **FR-357** (prd.md §5) — `/gaia-val-validate` upstream integration & auto-fix loop.
-- **NFR-VCP-2** (prd.md §5) — Token budget (per-iteration ≤ 2x, 3-iteration total ≤ 6x baseline).
-- **ADR-017** — Superseded by ADR-058. The deprecated `val_validate_output: true` flag is a no-op under this pattern.
-
 ## Critical Rules
 
 - Val is READ-ONLY on the target artifact -- never modify the artifact content itself, only append findings
@@ -368,7 +350,7 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
 - Cap codebase file scanning at 40 files maximum per validation run. If the artifact references more than 40 file paths, scan the first 40 and report an INFO finding listing the count of unscanned paths
 - Skip content scanning for binary files (extensions: .png, .jpg, .jpeg, .gif, .svg, .ico, .woff, .woff2, .ttf, .eot, .mp3, .mp4, .wav, .webm, .pdf, .zip, .tar, .gz, .wasm, .o, .so, .dylib, .class, .pyc). For binary files, verify existence only
 - If prior findings from a previous validation run exist in the artifact: exclude them from the current analysis to avoid double-counting
-- If memory-loader.sh is not available (dependency E28-S13 not delivered): report an error with clear message "memory-loader.sh not found -- ground-truth and decision-log loading unavailable. Proceeding without memory context."
+- If memory-loader.sh is not available: report an error with clear message "memory-loader.sh not found -- ground-truth and decision-log loading unavailable. Proceeding without memory context."
 - If setup.sh exits with non-zero status: abort before validation runs; error message includes setup.sh exit code and stderr
 
 ## Steps
@@ -390,7 +372,7 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
 ### Step 2 -- Detect Artifact Type and Run Document-Specific Rules
 
 - Determine the artifact type using this precedence (highest priority first):
-  1. **Upstream `artifact_type` slug**: if the caller passed an `artifact_type` parameter (per the Upstream Integration Contract above), use it as the authoritative type. The slug-to-ruleset map lives in `gaia-document-rulesets§type-detection` under "Artifact-Type Slug Mapping" — Phase 1 slugs are `brainstorm`, `market-research`, `domain-research`, `technical-research` (E44-S12).
+  1. **Upstream `artifact_type` slug**: if the caller passed an `artifact_type` parameter (per the Upstream Integration Contract above), use it as the authoritative type. The slug-to-ruleset map lives in `gaia-document-rulesets§type-detection` under "Artifact-Type Slug Mapping" — Phase 1 slugs are `brainstorm`, `market-research`, `domain-research`, `technical-research`.
   2. **Frontmatter `template:` field**: if no slug is provided, parse the artifact's YAML frontmatter and match the `template:` value against the frontmatter mapping table.
   3. **Path basename**: if no slug or frontmatter match, fall back to the file basename:
      - `prd*.md` -> PRD rules
@@ -398,12 +380,12 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
      - `ux-design*.md` -> UX rules
      - `test-plan*.md` -> Test plan rules
      - `epics*.md` or `stories*.md` -> Epics/stories rules
-     - `brainstorm-*.md` -> Brainstorm rules (E44-S12)
-     - `market-research.md` -> Market research rules (E44-S12)
-     - `domain-research.md` -> Domain research rules (E44-S12)
-     - `technical-research.md` -> Technical research rules (E44-S12)
+     - `brainstorm-*.md` -> Brainstorm rules
+     - `market-research.md` -> Market research rules
+     - `domain-research.md` -> Domain research rules
+     - `technical-research.md` -> Technical research rules
   4. **Otherwise** -> unknown type.
-- If artifact type is unknown: skip structural rules entirely. Log: "No document-specific ruleset for this artifact type -- factual verification only." Proceed to Step 3. (Per the Upstream Integration Contract, Val still returns findings normally — graceful degradation per E44-S1 AC-EC1.)
+- If artifact type is unknown: skip structural rules entirely. Log: "No document-specific ruleset for this artifact type -- factual verification only." Proceed to Step 3. (Per the Upstream Integration Contract, Val still returns findings normally — graceful degradation.)
 - If artifact type is recognized: load the matching ruleset section from `gaia-document-rulesets` JIT, execute Pass 1 structural rules against the artifact content, and record structural findings with source tag [STRUCTURAL].
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-val-validate 2 artifact_path="$ARTIFACT_PATH" iteration_number="$ITERATION_NUMBER" artifact_type="$ARTIFACT_TYPE" stage=type-detected`
@@ -476,11 +458,11 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
 
 ### Step 7 -- Write Approved Findings
 
-> **Writer is the orchestrator, NOT Val (F-007, Test04 / ADR-105).** Post-ADR-105
+> **Writer is the orchestrator, NOT Val.** Under the current contract,
 > Val's `allowed-tools` is `[Read, Grep, Glob, Bash]` — Val is read-only on the
 > filesystem and MUST NOT write the artifact. The `## Validation Findings`
 > section below is written by the **consumer/orchestrator skill** that dispatched
-> Val, from the approved findings carried in Val's returned ADR-037 envelope. If
+> Val, from the approved findings carried in Val's returned envelope. If
 > Val is invoked as a subagent, expect it to report "Write/Task tools are not in
 > scope for this Val pass" and to decline the append — that is correct behavior;
 > the orchestrator performs the write. (Self-dispatch / main-turn invocations
@@ -515,8 +497,8 @@ Bypass attempts log a yolo_hard_gate_violation record and HALT.
 
 ## Changelog
 
-- **2026-05-13 — E87-S7 — Sentinel-Write Writer Shift (ADR-105 amends ADR-104).** Following the AI-2026-05-13-13 incident, the Val sentinel write has been relocated from the Val sub-agent context to the orchestrator's main turn. The Val persona at `plugins/gaia/agents/validator.md` §Sentinel-Write Contract now computes the sentinel content and returns it as a `sentinel_envelope` field inside the ADR-037 envelope — Val MUST NOT write the sentinel file. Consumer skills parse `sentinel_envelope`, write the sentinel via `plugins/gaia/scripts/lib/write-val-envelope.sh`, then assert. Forgery resistance preserved (NFR-064 unchanged) — `persona_sig` is still computed by Val from validator.md's on-disk sha256, which the orchestrator cannot fabricate. Closes the substrate content-integrity false-fire that blocked Val-consuming skills end-to-end. Val's frontmatter `allowed-tools` is tightened: `[Read, Grep, Glob, Bash]` (no `Write`) — Val is now read-only on the filesystem under the new contract.
-- **2026-05-12 — E87-S2 — Val Bridge Migration (ADR-104).** Removed `context: fork` from frontmatter; added the Main-Turn Dispatch Contract section instructing consumer skills to invoke Val via the main-turn Agent tool, source `assert-agent-envelope.sh`, and HALT on envelope-assertion failure. The Val persona now writes its own envelope sentinel from inside the validator execution context (see `validator.md` §Sentinel-Write Contract) — closing the parent-thread forgery vector documented in `feedback_add_feature_val_gate_fails_open.md`. Forgery resistance covered by TC-VBR-12 (NFR-064).
+- **2026-05-13 — Sentinel-Write Writer Shift.** The Val sentinel write has been relocated from the Val sub-agent context to the orchestrator's main turn. The Val persona at `plugins/gaia/agents/validator.md` §Sentinel-Write Contract now computes the sentinel content and returns it as a `sentinel_envelope` field inside the returned envelope — Val MUST NOT write the sentinel file. Consumer skills parse `sentinel_envelope`, write the sentinel via `plugins/gaia/scripts/lib/write-val-envelope.sh`, then assert. Forgery resistance preserved — `persona_sig` is still computed by Val from validator.md's on-disk sha256, which the orchestrator cannot fabricate. Closes the substrate content-integrity false-fire that blocked Val-consuming skills end-to-end. Val's frontmatter `allowed-tools` is tightened: `[Read, Grep, Glob, Bash]` (no `Write`) — Val is now read-only on the filesystem under the new contract.
+- **2026-05-12 — Val Bridge Migration.** Removed `context: fork` from frontmatter; added the Main-Turn Dispatch Contract section instructing consumer skills to invoke Val via the main-turn Agent tool, source `assert-agent-envelope.sh`, and HALT on envelope-assertion failure. The Val persona now writes its own envelope sentinel from inside the validator execution context (see `validator.md` §Sentinel-Write Contract) — closing the parent-thread forgery vector documented in `feedback_add_feature_val_gate_fails_open.md`. Forgery resistance covered by the bridge-migration test suite.
 
 ## Finalize
 

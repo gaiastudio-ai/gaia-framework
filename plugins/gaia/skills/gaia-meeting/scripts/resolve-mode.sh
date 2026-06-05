@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# resolve-mode.sh — gaia-meeting active-mode resolver (E76-S1, E76-S5)
-#
-# FR-MTG-17 / FR-MTG-16
+# resolve-mode.sh — gaia-meeting active-mode resolver
 #
 # Resolves the active mode from CLI args. When --mode is absent, returns
-# "decide" (default per FR-MTG-17). Rejects mode stacking (multiple --mode
-# flags) per the FR-MTG-16 single-mode-only invariant. Rejects unknown modes.
+# "decide" (default). Rejects mode stacking (multiple --mode
+# flags) per the single-mode-only invariant. Rejects unknown modes.
 #
-# E76-S5 — mode set is now sourced from the registry at
-# `knowledge/modes.yaml` (FR-MTG-17), and aliases (currently only `ux` →
+# The mode set is sourced from the registry at
+# `knowledge/modes.yaml`, and aliases (currently only `ux` →
 # `design`) are canonicalised here so downstream consumers see only the
 # canonical mode name.
 #
@@ -19,7 +17,7 @@
 #
 # Exit codes:
 #   0 = active mode echoed on stdout (canonical)
-#   2 = mode stacking detected (FR-MTG-16 violation)
+#   2 = mode stacking detected
 #   3 = unknown mode
 #   4 = malformed args
 
@@ -55,15 +53,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$MODE_COUNT" -gt 1 ]]; then
-  # AC9 — error message MUST list both supplied values and reference FR-MTG-16.
-  echo "resolve-mode.sh: single-mode-only invariant violated (FR-MTG-16) — only one --mode flag is allowed in v1; supplied: ${SUPPLIED_MODES[*]}" >&2
+  echo "resolve-mode.sh: single-mode-only invariant violated — only one --mode flag is allowed; supplied: ${SUPPLIED_MODES[*]}" >&2
   exit 2
 fi
 
 # Reject `--mode=` and `--mode ""` explicitly — silent fallback to `decide`
 # masked user-intent bugs where `--mode "${SOMETHING}"` expanded an unset
-# variable into an empty string (see manual-test finding F9, gaia-meeting
-# QA, 2026-05-18). Distinct from the "no --mode flag at all" path below.
+# variable into an empty string. Distinct from the "no --mode flag at all" path below.
 if [[ "$MODE_COUNT" -eq 1 && -z "$MODE" ]]; then
   echo "resolve-mode.sh: --mode requires a non-empty value (omit --mode entirely to use the 'decide' default)" >&2
   exit 4

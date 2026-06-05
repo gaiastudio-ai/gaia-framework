@@ -62,8 +62,9 @@ _artifact_default_probe() {
 # --- F-17: TEST_PLAN strategy/ fallback ---
 
 @test "AF-26-4 F-17: create-epics finalize TEST_PLAN chain includes the strategy/ subdir" {
-  run grep -F '.gaia/artifacts/test-artifacts/strategy/test-plan.md' \
-    "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
+  # finalize.sh now delegates to the shared resolver; the strategy/ rung lives there.
+  run grep -F 'strategy/test-plan.md' \
+    "$PLUGIN_ROOT/scripts/lib/resolve-artifact-path.sh"
   [ "$status" -eq 0 ]
 }
 

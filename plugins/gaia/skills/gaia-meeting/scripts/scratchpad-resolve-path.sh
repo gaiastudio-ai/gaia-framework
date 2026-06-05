@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# scratchpad-resolve-path.sh — gaia-meeting deterministic extraction-path resolver (E76-S4)
-#
-# AC5 / AC6 / AC7 / AC11 / AC12 / FR-MTG-13 / ADR-085.
+# scratchpad-resolve-path.sh — gaia-meeting deterministic extraction-path resolver
 #
 # Computes the extraction path purely from the inputs:
 #   .gaia/artifacts/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/SP-{N}-{auto-slug}.{ext}
 #
-# Auto-slug derivation (FR-MTG-13):
+# Auto-slug derivation:
 #   1. If the content's first non-blank line is "textual" (does NOT look like
 #      raw code/JSON), derive the slug from that line.
 #   2. Otherwise (raw code/JSON/etc.), derive the slug from the pinning agent's
@@ -148,7 +146,6 @@ if [[ -z "$auto_slug" ]]; then
   auto_slug="untitled"
 fi
 
-# AF-2026-05-21-16: canonical-unconditional per E96-S8 write-boundary.sh
-# (post-ADR-111 canonical-only enforcement; no legacy fallback supported).
+# Canonical-unconditional path (no legacy fallback supported).
 printf '.gaia/artifacts/creative-artifacts/meeting-scratchpad/%s/%s/%s-%s.%s\n' \
   "$YYYY_MM" "$SLUG" "$SP_N" "$auto_slug" "$CTYPE"

@@ -2,11 +2,11 @@
 # bridge-stub-scaffold.sh — deterministically append the minimal
 # test_execution_bridge stub block to project-config.yaml.
 #
-# AF-2026-05-24-7 / Test02 F-2 fix: replaces the LLM-prose "append this
-# block" instruction in gaia-bridge-enable/SKILL.md Step 2 with a real
-# helper. The original prose contract was fragile under Mode A subagent
-# dispatch — a subagent might paraphrase the block or skip the append
-# entirely. This script is deterministic and idempotent.
+# Replaces the LLM-prose "append this block" instruction in
+# gaia-bridge-enable/SKILL.md Step 2 with a real helper. The original prose
+# contract was fragile under Mode A subagent dispatch — a subagent might
+# paraphrase the block or skip the append entirely. This script is
+# deterministic and idempotent.
 #
 # Behavior:
 #   - If the target file already contains a `test_execution_bridge:` key
@@ -14,11 +14,10 @@
 #   - Otherwise append the canonical minimal stub:
 #       test_execution_bridge:
 #         bridge_enabled: false
-#         # AF-2026-05-22-9 Bug-7 (seeded by gaia-bridge-enable / AF-2026-05-24-7 F-2)
-#         # /gaia-ci-setup or /gaia-config-ci populates the full block.
+#         # Seeded by /gaia-bridge-enable — /gaia-ci-setup or /gaia-config-ci populates the full block.
 #   - Resolution order for the target file:
 #       1. Explicit positional argument (if given)
-#       2. .gaia/config/project-config.yaml (canonical post-ADR-111)
+#       2. .gaia/config/project-config.yaml (canonical)
 #       3. config/project-config.yaml (legacy fallback)
 #
 # Usage:
@@ -80,8 +79,7 @@ cat >> "$tmp_appended" <<'STUB'
 
 test_execution_bridge:
   bridge_enabled: false
-  # AF-2026-05-22-9 Bug-7 (seeded by /gaia-bridge-enable / AF-2026-05-24-7 F-2)
-  # /gaia-ci-setup or /gaia-config-ci populates the full block (workflow, secrets, runners).
+  # Seeded by /gaia-bridge-enable — /gaia-ci-setup or /gaia-config-ci populates the full block (workflow, secrets, runners).
 STUB
 
 mv "$tmp_appended" "$target" || {

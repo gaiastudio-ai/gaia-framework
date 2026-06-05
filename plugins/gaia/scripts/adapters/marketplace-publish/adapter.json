@@ -6,5 +6,5 @@
   "file-extensions": [],
   "version-range": ">=2.0.0",
   "scope": "project",
-  "description": "Publish a plugin release to GitHub Releases via gh CLI — first ADR-078-complete deploy adapter for /gaia-deploy Pattern A (E78-S1, FR-423)."
+  "description": "Publish a plugin release to GitHub Releases via gh CLI — deploy adapter for /gaia-deploy Pattern A."
 }

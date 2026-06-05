@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 9 gaia-review-perf skill setup (E28-S71)
+# setup.sh — gaia-review-perf skill setup
 #
-# Mechanical extension of the Cluster 9 canonical reference implementation
-# authored under E28-S66 (gaia-code-review/scripts/setup.sh). Only
+# Mechanical extension of the canonical reference implementation
+# (gaia-code-review/scripts/setup.sh). Only
 # WORKFLOW_NAME and SCRIPT_NAME differ — the body follows the shared pattern.
 #
-# Responsibilities (per brief Cluster 9):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (story file existence)
 #   3. Load the checkpoint state for this workflow

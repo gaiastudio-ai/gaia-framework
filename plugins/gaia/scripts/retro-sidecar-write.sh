@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# retro-sidecar-write.sh — shared retro writer helper (ADR-052, architecture §10.28.2)
+# retro-sidecar-write.sh — shared retro writer helper
 #
 # Five-phase pipeline:
-#   1. ALLOWLIST check (NFR-RIM-2) — realpath-resolved prefix/glob match against
+#   1. ALLOWLIST check — realpath-resolved prefix/glob match against
 #      the retro allowlist.
-#   2. IDEMPOTENCY check (NFR-RIM-3) — composite dedup_key =
+#   2. IDEMPOTENCY check — composite dedup_key =
 #      sha256("{sprint_id}\n{normalize(payload)}"), scan target for an existing
 #      marker; skip on hit.
 #   3. BACKUP — cp target target.bak; create parent dir and seed canonical
 #      header if target missing.
-#   4. ATOMIC APPEND — ADR-016-formatted entry with a dedup_key comment marker.
+#   4. ATOMIC APPEND — formatted entry with a dedup_key comment marker.
 #   5. VERIFY — re-read last entry; on mismatch restore from .bak; on success
 #      rm .bak so no orphan backups are left on disk.
 #
-# Concurrency: flock on the target file serializes writers (AC-EC1, AC-EC9).
-# Oversized payloads (>100KB) are wrapped in <details> with a warning (AC-EC11).
-# BOM / line-ending / trailing-ws normalized before hashing (AC-EC12).
+# Concurrency: flock on the target file serializes writers.
+# Oversized payloads (>100KB) are wrapped in <details> with a warning.
+# BOM / line-ending / trailing-ws normalized before hashing.
 #
 # Usage:
 #   retro-sidecar-write.sh --root <project-root> --sprint-id <id> \
@@ -29,18 +29,18 @@
 #   status=<ok|skipped_idempotent|unauthorized|missing_sprint_id|io_error>
 #   reason=<human-readable detail>   (on non-ok exits)
 #
-# Refs: ADR-016 (memory sidecar format), ADR-052 (this helper), NFR-RIM-2/RIM-3.
+
 
 set -uo pipefail
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-# E36-S5: helper functions are defined unconditionally so the shared writer
+# Helper functions are defined unconditionally so the shared writer
 # can be sourced as a library by delegation wrappers (e.g.,
 # action-items-increment.sh). The CLI body below only runs when this script
 # is executed directly (BASH_SOURCE[0] == $0), preserving back-compat for
-# the standalone invocation path used by /gaia-retro Steps 5, 5c, 5d, 7.
+# the standalone invocation path used by /gaia-retro.
 
 # resolve_real — resolve a path to its canonical absolute form without
 # requiring the target to exist. Uses Python-style realpath semantics that
@@ -78,8 +78,8 @@ PY
 }
 
 # allowlist_match — return 0 if the resolved real path matches one of the
-# NFR-RIM-2 allowlist patterns under $ROOT. Symlinks have already been
-# resolved by the caller.
+# allowlist patterns under $ROOT. Symlinks have already been resolved by
+# the caller.
 allowlist_match() {
   local real_root="$1" real_target="$2"
   case "$real_target" in
@@ -121,9 +121,9 @@ canonical_header() {
       cat <<'EOF'
 # Decision Log
 
-> ADR-016 decision log. Entries appended by /gaia-retro (ADR-052 shared writer)
-> and other GAIA workflows. Each entry is tagged with the sprint ID and the
-> dedup_key used to detect idempotent re-writes (NFR-RIM-3).
+> Decision log. Entries appended by /gaia-retro and other GAIA workflows.
+> Each entry is tagged with the sprint ID and the dedup_key used to detect
+> idempotent re-writes.
 
 EOF
       ;;
@@ -140,20 +140,20 @@ EOF
 # SM Velocity Data
 
 > Sprint-over-sprint velocity. One row per sprint (idempotency key: sprint_id).
-> Appended unconditionally by /gaia-retro Step 5d (FR-RIM-4, architecture §10.28.5).
+> Appended unconditionally by /gaia-retro.
 
 EOF
       ;;
     */action-items.yaml)
       cat <<'EOF'
-# Action Items — architecture §10.28.6 schema
-# Written by /gaia-retro (ADR-052 shared writer). Each entry:
+# Action Items
+# Written by /gaia-retro. Each entry:
 #   id: AI-{n}            # auto-incremented
 #   sprint_id: "..."
 #   text: "..."
 #   classification: clarification|implementation|process|automation
 #   status: open|in-progress|resolved
-#   escalation_count: 0    # bumped by cross-retro detection (FR-RIM-1)
+#   escalation_count: 0    # bumped by cross-retro detection
 #   created_at: "<ISO 8601>"
 #   theme_hash: "sha256:<hex>"
 items:
@@ -169,13 +169,13 @@ EOF
       ;;
     */custom/skills/*.customize.yaml)
       cat <<'EOF'
-# .customize.yaml — agent overrides registered by retro proposal pipeline (ADR-053).
-# Location: custom/skills/ (ADR-020 §lines 1720-1722).
+# .customize.yaml — agent overrides registered by retro proposal pipeline.
+# Location: custom/skills/.
 EOF
       ;;
     */.customize.yaml)
       cat <<'EOF'
-# .customize.yaml — agent overrides registered by retro proposal pipeline (ADR-053).
+# .customize.yaml — agent overrides registered by retro proposal pipeline.
 EOF
       ;;
     *)
@@ -189,7 +189,7 @@ EOF
 
 # ---------------------------------------------------------------------------
 # CLI body — runs only when this script is executed directly, not sourced.
-# Delegation wrappers (E36-S5) `source` this file to reuse helpers above.
+# Delegation wrappers `source` this file to reuse helpers above.
 # ---------------------------------------------------------------------------
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
 
@@ -231,7 +231,7 @@ if [ -z "$TARGET" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 1. ALLOWLIST CHECK (NFR-RIM-2)
+# 1. ALLOWLIST CHECK
 # ---------------------------------------------------------------------------
 REAL_ROOT="$(resolve_real "$ROOT")"
 if [ -z "$REAL_ROOT" ]; then REAL_ROOT="$ROOT"; fi
@@ -265,7 +265,7 @@ if [ ! -e "$REAL_TARGET" ]; then
   canonical_header "$REAL_TARGET" > "$REAL_TARGET"
 fi
 
-# For validator-sidecar bootstrapping (AC-EC10): if we are writing to
+# For validator-sidecar bootstrapping: if we are writing to
 # validator-sidecar/decision-log.md, also seed conversation-context.md so
 # downstream workflows find both.
 case "$REAL_TARGET" in
@@ -276,17 +276,17 @@ case "$REAL_TARGET" in
 esac
 
 # ---------------------------------------------------------------------------
-# 2. IDEMPOTENCY CHECK (NFR-RIM-3)
+# 2. IDEMPOTENCY CHECK
 # ---------------------------------------------------------------------------
 NORM_PAYLOAD="$(normalize_payload "$PAYLOAD")"
 DEDUP_KEY="$(printf '%s\n%s' "$SPRINT_ID" "$NORM_PAYLOAD" | sha256)"
 
-# Normalize existing file bytes before scanning so a BOM prefix (AC-EC12) or
-# a CRLF/trailing-ws drift does not defeat the scan.
+# Normalize existing file bytes before scanning so a BOM prefix or a
+# CRLF/trailing-ws drift does not defeat the scan.
 NORM_EXISTING="$(normalize_payload "$(cat "$REAL_TARGET" 2>/dev/null || true)")"
 
 # Velocity schema special case: idempotency key is sprint_id alone
-# (one velocity row per sprint — architecture §10.28.5).
+# (one velocity row per sprint).
 case "$REAL_TARGET" in
   */velocity-data.md)
     if printf '%s' "$NORM_EXISTING" | grep -qE "^### Sprint ${SPRINT_ID}( |$)"; then
@@ -309,7 +309,7 @@ BACKUP="${REAL_TARGET}.bak"
 cp -p "$REAL_TARGET" "$BACKUP"
 
 # ---------------------------------------------------------------------------
-# Oversized payload handling (AC-EC11)
+# Oversized payload handling
 # ---------------------------------------------------------------------------
 PAYLOAD_BYTES=${#NORM_PAYLOAD}
 OVERSIZED=0
@@ -319,7 +319,7 @@ if [ "$PAYLOAD_BYTES" -gt 100000 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 4. ATOMIC APPEND (ADR-016 format with dedup marker)
+# 4. ATOMIC APPEND (standard format with dedup marker)
 # ---------------------------------------------------------------------------
 LOCKFILE="${REAL_TARGET}.lock"
 TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -336,14 +336,13 @@ _append() {
       } >> "$REAL_TARGET"
       ;;
     */action-items.yaml)
-      # AF-2026-05-24-14 / Test02 F-26: substitute `AI-{auto}` placeholders
-      # with the next sequential `AI-{n}` value. Previously the writer
-      # treated the payload as opaque and wrote `AI-{auto}` literally,
-      # leaving callers with duplicate-placeholder IDs that broke
-      # downstream consumers (escalation-halt.sh, /gaia-action-items
+      # Substitute `AI-{auto}` placeholders with the next sequential `AI-{n}`
+      # value. Previously the writer treated the payload as opaque and wrote
+      # `AI-{auto}` literally, leaving callers with duplicate-placeholder IDs
+      # that broke downstream consumers (escalation-halt.sh, /gaia-action-items
       # reader). The substitution scans the existing file for the highest
-      # numeric AI-N and assigns the next integer to each occurrence in
-      # the payload, in order.
+      # numeric AI-N and assigns the next integer to each occurrence in the
+      # payload, in order.
       local _highest _next _resolved_payload
       _highest=0
       if [ -s "$REAL_TARGET" ]; then
@@ -482,4 +481,4 @@ rm -f "$BACKUP" "$LOCKFILE"
 printf 'status=ok\ndedup_key=%s\ntarget=%s\n' "$DEDUP_KEY" "$REAL_TARGET"
 exit 0
 
-fi  # end CLI body source-guard (E36-S5)
+fi  # end CLI body source-guard

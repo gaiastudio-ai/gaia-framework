@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# gaia-cleanup-legacy-engine.sh — GAIA foundation script (E28-S126)
+# gaia-cleanup-legacy-engine.sh — GAIA foundation script
 #
 # Idempotent migration CLI that removes the legacy GAIA workflow engine and its
 # support artifacts from the local runtime tree at {project-root}/_gaia/.
@@ -7,20 +7,17 @@
 # post-install during manual cutover (see also `/gaia-migrate` for the
 # fully-automated v1→v2 path; this script is the engine-deletion subset).
 #
-# Refs: FR-328, NFR-050, ADR-048 (engine deletion as program-closing action)
-# Story: E28-S126 Task 5 / AC1..AC5 / AC-EC1..EC8
-#
 # Pre-flight guards (HALT on any failure):
-#   1. Clean git working tree under _gaia/ (unless --force-dirty)           [AC-EC8]
-#   2. No in-flight legacy-engine checkpoints in _memory/checkpoints/       [AC-EC2]
-#   3. verify-cluster-gates.sh exits 0                                      [AC-EC4]
+#   1. Clean git working tree under _gaia/ (unless --force-dirty)
+#   2. No in-flight legacy-engine checkpoints in _memory/checkpoints/
+#   3. verify-cluster-gates.sh exits 0
 #
 # Deletion targets:
-#   _gaia/core/engine/                                                      [AC1]
-#   _gaia/core/protocols/                                                   [AC2]
-#   _gaia/_config/{lifecycle,workflow,task,skill}-manifest files            [AC5]
-#   _gaia/{core,lifecycle,dev,creative,testing}/config.yaml                 [AC4]
-#   _gaia/**/.resolved/ (recursive)                                         [AC3, AC-EC5]
+#   _gaia/core/engine/
+#   _gaia/core/protocols/
+#   _gaia/_config/{lifecycle,workflow,task,skill}-manifest files
+#   _gaia/{core,lifecycle,dev,creative,testing}/config.yaml
+#   _gaia/**/.resolved/ (recursive)
 #
 # Survivors:
 #   _gaia/_config/global.yaml, agent-manifest.csv, files-manifest.csv, gaia-help.csv
@@ -28,7 +25,7 @@
 # Exit codes:
 #   0 — success (deletion complete or already clean)
 #   1 — pre-flight gate failed (dirty tree / in-flight checkpoint / cluster gate)
-#   3 — filesystem error during deletion (permission, lock, read-only mount) [AC-EC1]
+#   3 — filesystem error during deletion (permission, lock, read-only mount)
 #   64 — usage error
 #
 # Usage: gaia-cleanup-legacy-engine.sh --project-root PATH [--dry-run] [--force-dirty]
@@ -74,7 +71,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERIFY_GATES="$SCRIPT_DIR/verify-cluster-gates.sh"
 
 # ---------------------------------------------------------------------------
-# Pre-flight 1: clean working tree under _gaia/ (AC-EC8)
+# Pre-flight 1: clean working tree under _gaia/
 # ---------------------------------------------------------------------------
 if [[ "$FORCE_DIRTY" -eq 0 ]]; then
   if git -C "$PROJECT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -88,7 +85,7 @@ if [[ "$FORCE_DIRTY" -eq 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Pre-flight 2: no in-flight legacy-engine checkpoints (AC-EC2)
+# Pre-flight 2: no in-flight legacy-engine checkpoints
 # ---------------------------------------------------------------------------
 CHECKPOINT_DIR="$PROJECT_ROOT/_memory/checkpoints"
 if [[ -d "$CHECKPOINT_DIR" ]]; then
@@ -107,7 +104,7 @@ if [[ -d "$CHECKPOINT_DIR" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Pre-flight 3: verify all cluster gates PASSED (AC-EC4)
+# Pre-flight 3: verify all cluster gates PASSED
 # ---------------------------------------------------------------------------
 if [[ -x "$VERIFY_GATES" ]]; then
   if ! "$VERIFY_GATES" --project-root "$PROJECT_ROOT" >/dev/null 2>&1; then
@@ -162,7 +159,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Actual deletion (idempotent — missing paths are NOT errors per AC-EC3).
+# Actual deletion (idempotent — missing paths are NOT errors).
 # ---------------------------------------------------------------------------
 deleted=0
 

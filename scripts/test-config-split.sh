@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-config-split.sh — Cluster 20 test gate (E28-S145)
+# test-config-split.sh — config-split test gate
 #
 # Drives plugins/gaia/scripts/resolve-config.sh across the four project-
 # structure fixtures defined in tests/fixtures/config-split/ and against
@@ -7,14 +7,14 @@
 # expected oracle per fixture, and writes an authoritative test report
 # to tests/fixtures/config-split/_report/config-split-test-report.md (the
 # former `docs/migration/config-split-test-report.md` home was retired
-# with `docs/` under AF-2026-06-01-3).
+# with the `docs/` directory cleanup).
 #
 # Fixtures:
 #   A — root-project         (project_path: ".")
 #   B — subdir-project       (project_path: "my-app")
 #   C — live repo            (project_path: "gaia-framework", current GAIA setup)
 #   D — no-shared-config     (global.yaml only, no project-config.yaml)
-#   overlap — overlap-precedence (local overrides shared per ADR-044 §10.26.3)
+#   overlap — overlap-precedence (local overrides shared)
 #
 # Exit code 0 on full pass. Non-zero on any fixture failure so CI can gate.
 # Idempotent — two back-to-back runs produce identical reports (date and SHA
@@ -158,8 +158,8 @@ FIX_B_LOCAL="${FIXTURES_DIR}/subdir-project/_gaia/_config/global.yaml"
 FIX_C_SHARED="${PROJECT_PATH}/plugins/gaia/config/project-config.yaml"
 # Fixture C: live repo — resolver runs with only the shared file. The live
 # global.yaml lives in _gaia/ (framework) and is not a resolver input; the
-# E28-S144 consumers call the resolver with just --shared or rely on
-# CLAUDE_SKILL_DIR. To exercise the production path here, use --shared only.
+# resolver is called with just --shared or via CLAUDE_SKILL_DIR. To exercise
+# the production path here, use --shared only.
 FIX_C_LOCAL=""
 
 FIX_D_LOCAL="${FIXTURES_DIR}/no-shared-config/_gaia/_config/global.yaml"
@@ -236,7 +236,7 @@ run_fixture_matrix "C (live repo, project_path=\"gaia-framework\")" \
   "$C_PROJECT_ROOT" "$C_PROJECT_PATH" "$C_MEMORY_PATH" "$C_CHECKPOINT_PATH" \
   "$C_INSTALLED_PATH" "$C_FRAMEWORK_VERSION" "$C_DATE"
 
-# Fixture D: stderr must be silent (AC4 backward-compat contract). Run a
+# Fixture D: stderr must be silent (backward-compat contract). Run a
 # dedicated pass that captures stderr and asserts it is empty.
 echo ">>> Fixture D (stderr-silence check)" >&2
 d_stderr_file="$(mktemp)"
@@ -256,14 +256,14 @@ run_fixture_matrix "D (no-shared-config, fallback)" \
   "$D_PROJECT_ROOT" "$D_PROJECT_PATH" "$D_MEMORY_PATH" "$D_CHECKPOINT_PATH" \
   "$D_INSTALLED_PATH" "$D_FRAMEWORK_VERSION" "$D_DATE"
 
-run_fixture_matrix "Overlap (local overrides shared per ADR-044 §10.26.3)" \
+run_fixture_matrix "Overlap (local overrides shared)" \
   "$FIX_OVERLAP_SHARED" "$FIX_OVERLAP_LOCAL" \
   "$OVL_PROJECT_ROOT" "$OVL_PROJECT_PATH" "$OVL_MEMORY_PATH" "$OVL_CHECKPOINT_PATH" \
   "$OVL_INSTALLED_PATH" "$OVL_FRAMEWORK_VERSION" "$OVL_DATE"
 
 # Missing-key behavior: resolver must HALT when a required field is absent
-# from both inputs (not silently resolve to empty). The E28-S142 contract
-# asserts exit code 2 with a "missing required field: <name>" stderr line.
+# from both inputs (not silently resolve to empty). The resolver must
+# exit code 2 with a "missing required field: <name>" stderr line.
 # We simulate this by pointing the resolver at a fixture with no value for
 # project_root anywhere. Construct a minimal temp overlay on the fly.
 echo ">>> Missing-key behavior check" >&2
@@ -299,10 +299,10 @@ STATUS="PASS"
 [ "$FAIL_COUNT" -gt 0 ] && STATUS="FAIL"
 
 {
-  echo "# Config Split Test Report — E28-S145"
+  echo "# Config Split Test Report"
   echo
-  echo "> **Cluster 20 test gate.** Authoritative per-fixture results for the"
-  echo "> ADR-044 config split (\`global.yaml\` + \`config/project-config.yaml\`)"
+  echo "> **Config-split test gate.** Authoritative per-fixture results for the"
+  echo "> config split (\`global.yaml\` + \`config/project-config.yaml\`)"
   echo "> resolved via \`plugins/gaia/scripts/resolve-config.sh\`."
   echo
   echo "## Run metadata"
@@ -364,10 +364,9 @@ STATUS="PASS"
   echo
   echo "## See also"
   echo
-  echo "- ADR-044 — config split (local \`global.yaml\` vs team-shared \`config/project-config.yaml\`)."
+  echo "- config split (local \`global.yaml\` vs team-shared \`config/project-config.yaml\`)."
   echo "- \`plugins/gaia/scripts/resolve-config.sh\` — unit under test."
   echo "- \`plugins/gaia/config/project-config.schema.yaml\` — shared-file schema."
-  echo "- Story: \`.gaia/artifacts/implementation-artifacts/E28-S145-*.md\` (project-root layout post-ADR-111)."
 } > "$REPORT"
 
 rm -f "$REPORT.partial"

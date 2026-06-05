@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# prelude-format.sh — gaia-meeting prelude-turn renderer (E76-S2, AC4)
+# prelude-format.sh — gaia-meeting prelude-turn renderer
 #
-# Emits the fixed prelude format defined by FR-MTG-4 step 4:
+# Emits the fixed prelude format:
 #
 #   [Prelude] {Name} ({Role}) — {tokens} tokens
 #   Sources consulted:
@@ -13,9 +13,9 @@
 #     - <bullet 2>
 #     ...
 #
-# The header reuses the round/turn/cost frame emitted upstream by S1's
+# The header reuses the round/turn/cost frame emitted upstream by
 # turn-header.sh — this script renders only the prelude *body*. The DISCUSS-
-# phase gate (AC4) holds DISCUSS until every invited agent's prelude lands;
+# phase gate holds DISCUSS until every invited agent's prelude lands;
 # that gate is enforced by the orchestrator, not this renderer.
 #
 # Usage:
@@ -65,7 +65,7 @@ if ! [[ "$TOKENS" =~ ^[0-9]+$ ]]; then
   exit 3
 fi
 
-# Header line (em-dash between role and token count, per FR-MTG-4 step 4).
+# Header line (em-dash between role and token count).
 printf '[Prelude] %s (%s) — %s tokens\n' "$NAME" "$ROLE" "$TOKENS"
 
 # Sources block — one source per line, two-space indent for readability.

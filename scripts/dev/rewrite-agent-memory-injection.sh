@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# rewrite-agent-memory-injection.sh (E28-S147)
+# rewrite-agent-memory-injection.sh
 #
 # Rewrites each subagent .md file under plugins/gaia/agents/ so that:
 #   1. The existing `## Memory` section's loader line switches from the `all`
-#      tier to the `ground-truth` tier (per ADR-046 Path 1).
+#      tier to the `ground-truth` tier.
 #   2. The `## Memory` block is relocated to sit AFTER the agent's
 #      persona/identity block and BEFORE the first behavioural section
 #      (`## Rules` by convention, falling back to the next `## ` heading).

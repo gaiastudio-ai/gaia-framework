@@ -17,13 +17,13 @@ orchestration_class: reviewer
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
-This is the unifying principle of every GAIA review skill (FR-DEJ-1, ADR-075). For `gaia-performance-review` it means: deterministic tools (per-stack ORM-pattern N+1 detector, complexity analyzer, static bundle/memory budget checks) run first and emit a structured `analysis-results.json` artifact. The LLM then performs a semantic review **on top of** that artifact — it cannot disregard a high-confidence N+1 finding inside a hot-path loop, and it cannot relabel a tool failure as APPROVE. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language.
+This is the unifying principle of every GAIA review skill. For `gaia-performance-review` it means: deterministic tools (per-stack ORM-pattern N+1 detector, complexity analyzer, static bundle/memory budget checks) run first and emit a structured `analysis-results.json` artifact. The LLM then performs a semantic review **on top of** that artifact — it cannot disregard a high-confidence N+1 finding inside a hot-path loop, and it cannot relabel a tool failure as APPROVE. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language.
 
-This skill pattern-matches against `gaia-code-review` (E65-S2) as the canonical reference. Per-skill specialization here = (a) the performance toolkit (N+1 query detection + cyclomatic/cognitive complexity + bundle/memory budget checks) and (b) the performance-specific severity rubric examples (hot-path I/O, N+1, memory growth, complexity). Structural plumbing — fork dispatch, cache key, parent-mediated write — is identical to E65-S2.
+This skill pattern-matches against `gaia-code-review` as the canonical reference. Per-skill specialization here = (a) the performance toolkit (N+1 query detection + cyclomatic/cognitive complexity + bundle/memory budget checks) and (b) the performance-specific severity rubric examples (hot-path I/O, N+1, memory growth, complexity). Structural plumbing — fork dispatch, cache key, parent-mediated write — is identical to the canonical reference.
 
-**NFR-DEJ-1 budget pressure is highest among siblings.** Per-tool wall-clock caps are mandatory: N+1 ≤15s, complexity ≤15s, bundle ≤30s, memory pattern ≤10s (cumulative ≤60s P95 cold). On individual tool timeout, status=`errored` for that tool only — overall verdict resolves via remaining tools + LLM. See Phase 3A.
+**Budget pressure is highest among siblings.** Per-tool wall-clock caps are mandatory: N+1 ≤15s, complexity ≤15s, bundle ≤30s, memory pattern ≤10s (cumulative ≤60s P95 cold). On individual tool timeout, status=`errored` for that tool only — overall verdict resolves via remaining tools + LLM. See Phase 3A.
 
-**Fork context semantics (ADR-041, ADR-045, NFR-DEJ-4):** This skill runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). It CANNOT modify files — the tool allowlist enforces no-write isolation. Persistence of the rendered review report is parent-mediated (Option A per ADR-075): the fork returns the rendered report payload to the parent context, and the parent writes the file. `Write` and `Edit` are NEVER added to the fork allowlist.
+**Fork context semantics:** This skill runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). It CANNOT modify files — the tool allowlist enforces no-write isolation. Persistence of the rendered review report is parent-mediated: the fork returns the rendered report payload to the parent context, and the parent writes the file. `Write` and `Edit` are NEVER added to the fork allowlist.
 
 **Runtime profiling is out-of-scope (EC-4, EC-5).** Lighthouse perf-budget checks need a browser; Go heap analysis (`pprof`) and the heap profiler are out-of-scope because they require running the binary. Both are forbidden by the read-only allowlist. The toolkit instead parses static budget configs (`lighthouserc.json`, `bundlesize` in `package.json`, etc.) and consumes cached results from `.lighthouseci/` or `pprof/` when present. This is a documented scope boundary, not an oversight.
 
@@ -35,7 +35,7 @@ This skill pattern-matches against `gaia-code-review` (E65-S2) as the canonical 
 - This skill is READ-ONLY in the fork. Do NOT attempt to call Write or Edit — the allowlist enforces this. Persistence is routed through the parent context.
 - The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
 - Mapping to Review Gate canonical vocabulary (inline, no separate script): APPROVE → PASSED; REQUEST_CHANGES → FAILED; BLOCKED → FAILED.
-- Determinism settings: `temperature: 0`, `model: claude-opus-4-7` (per ADR-074), `prompt_hash` recorded in the report header. Re-running with identical `analysis-results.json` MUST yield findings that match by category and severity (NFR-DEJ-2); textual variation is allowed.
+- Determinism settings: `temperature: 0`, `model: claude-opus-4-7`, `prompt_hash` recorded in the report header. Re-running with identical `analysis-results.json` MUST yield findings that match by category and severity; textual variation is allowed.
 - **Percentiles, not averages:** when citing performance measurements, use P50/P95/P99 percentiles. Never cite arithmetic means for latency or throughput — percentiles surface tail behavior.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
 
@@ -47,7 +47,7 @@ model: claude-opus-4-7        # per ADR-074, frontmatter-pinned at fork dispatch
 prompt_hash: sha256:<hex>     # recorded in report header at Phase 6
 ```
 
-`prompt_hash` is the sha256 of (system prompt || `analysis-results.json` content). Two runs against unchanged inputs MUST produce findings that match by `{category, severity}` (NFR-DEJ-2). Textual message variation is allowed; category+severity divergence is an escalation signal — investigate model pin, temperature, or prompt-hash mismatch.
+`prompt_hash` is the sha256 of (system prompt || `analysis-results.json` content). Two runs against unchanged inputs MUST produce findings that match by `{category, severity}`. Textual message variation is allowed; category+severity divergence is an escalation signal — investigate model pin, temperature, or prompt-hash mismatch.
 
 ## Stack Toolkit Table
 
@@ -63,17 +63,17 @@ The toolkit invoked by Phase 3A is selected by the canonical stack name emitted 
 | `mobile-dev`          | Core Data `NSFetchRequest` inside loop (iOS); Room `Dao` access in loop (Android) | XCTest perf hints (limited static analysis); Android profiler (limited) | static budget config only                       | NSCache miss patterns; Android Bitmap leaks         | `Thread.sleep` (Android); `dispatch_sync` on main queue (iOS) |
 | `angular-dev`         | rxjs subscription per-iteration without `takeUntil`; HTTP `forkJoin` misuse | `eslint-plugin-sonarjs` / `eslint-plugin-complexity` | `bundlesize` / Angular CLI budgets (`angular.json`) / `lighthouserc.json` (static) | unbounded subject growth; subscription leaks       | sync XHR (legacy); blocking template expressions |
 
-The table is authoritative for Phase 3A toolkit selection. Phase 3A scope per FR-DEJ-3 is **strict**: N+1 query detection + complexity analysis + static bundle/memory budget checks. Phase 3A does NOT invoke linters, formatters, type checkers (those belong to `gaia-code-review`), Semgrep / secret scan / dep audit (those belong to `gaia-security-review`), or test runners (those belong to `gaia-qa-tests` / `gaia-test-automate`).
+The table is authoritative for Phase 3A toolkit selection. Phase 3A scope is **strict**: N+1 query detection + complexity analysis + static bundle/memory budget checks. Phase 3A does NOT invoke linters, formatters, type checkers (those belong to `gaia-code-review`), Semgrep / secret scan / dep audit (those belong to `gaia-security-review`), or test runners (those belong to `gaia-qa-tests` / `gaia-test-automate`).
 
 **Raw-SQL fallback (EC-1).** Projects without a recognised ORM (e.g., Go using `database/sql` directly, Python using `psycopg2` raw cursor) trigger the raw-SQL fallback heuristic: detector flags any function-call-inside-loop pattern where the call signature suggests a query (`db.Query`, `db.Exec`, `cursor.execute`). Raw-SQL findings carry lower confidence and Phase 3B classifies them at Suggestion-tier unless the loop bound is statically large.
 
-**Mismatched stack name** (vocabulary drift between `load-stack-persona.sh` output and the table key) → silent skip on tool selection per FR-DEJ-4 case 3 with `skip_reason` populated.
+**Mismatched stack name** (vocabulary drift between `load-stack-persona.sh` output and the table key) → silent skip on tool selection with `skip_reason` populated.
 
 ## Severity Rubric
 
 > Severity rubric format defined in shared skill `gaia-code-review-standards`. Per-skill examples below conform to this format.
 
-The LLM Phase 3B review applies the rubric below. Findings are organized by performance category (`n+1`, `complexity`, `bundle`, `memory`, `blocking-io`, `index-hint`). The category+severity sets MUST match across two runs of identical inputs (NFR-DEJ-2 determinism contract); textual message variation is allowed. Category+severity divergence escalates as a model-pin or temperature regression.
+The LLM Phase 3B review applies the rubric below. Findings are organized by performance category (`n+1`, `complexity`, `bundle`, `memory`, `blocking-io`, `index-hint`). The category+severity sets MUST match across two runs of identical inputs (determinism contract); textual message variation is allowed. Category+severity divergence escalates as a model-pin or temperature regression.
 
 ### Critical
 
@@ -128,16 +128,16 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 - If no story key was provided as an argument, fail with: "usage: /gaia-perf-deepdive [story-key]"
 - Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
 - Read the resolved story file; parse YAML frontmatter to extract `status` and `figma:` block (if any).
-- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch (NFR-DEJ-4 preserved). Forward the persona payload + canonical stack name into the fork.
-- **Tool prereq probe.** For each tool listed in the stack-toolkit table row matched by the canonical stack name (complexity tool, bundle tool, ORM-pattern matcher, memory-pattern scanner): probe via `command -v <tool>` first; fall back to `node_modules/.bin/<tool> --version` (TS/Angular). NEVER use `npx <tool> --version` (triggers npm install and breaks the NFR-DEJ-1 60s P95 budget). Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key. Probe for cached perf data: presence of `.lighthouseci/` (Lighthouse JSON output) and `pprof/` (Go heap profiles).
-- **Per-tool wall-clock caps (EC-14):** N+1 detection ≤15s, complexity ≤15s, bundle ≤30s, memory pattern scan ≤10s. Cumulative Phase 3A budget ≤60s P95 cold (NFR-DEJ-1). On individual tool timeout, that tool's `status: errored` (NOT `failed` — timeout is not a finding); resolver maps to BLOCKED for that tool only. The cap is enforced via bash `timeout 15s <cmd>` per tool invocation.
-- **Expected-missing-tool (FR-DEJ-4 case 1).** If a required toolkit binary is absent and not optional for the stack (e.g., no complexity tool installed for `ts-dev` when File List has `*.ts`): emit Phase 1 BLOCKED with an actionable error message naming the missing tool and the install hint. Do NOT dispatch the fork. For non-critical tool absence (e.g., no `dart_code_metrics` on a Flutter project), emit `status: skipped` with `skip_reason` populated and continue.
+- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
+- **Tool prereq probe.** For each tool listed in the stack-toolkit table row matched by the canonical stack name (complexity tool, bundle tool, ORM-pattern matcher, memory-pattern scanner): probe via `command -v <tool>` first; fall back to `node_modules/.bin/<tool> --version` (TS/Angular). NEVER use `npx <tool> --version` (triggers npm install and breaks the 60s P95 budget). Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key. Probe for cached perf data: presence of `.lighthouseci/` (Lighthouse JSON output) and `pprof/` (Go heap profiles).
+- **Per-tool wall-clock caps (EC-14):** N+1 detection ≤15s, complexity ≤15s, bundle ≤30s, memory pattern scan ≤10s. Cumulative Phase 3A budget ≤60s P95 cold. On individual tool timeout, that tool's `status: errored` (NOT `failed` — timeout is not a finding); resolver maps to BLOCKED for that tool only. The cap is enforced via bash `timeout 15s <cmd>` per tool invocation.
+- **Expected-missing-tool.** If a required toolkit binary is absent and not optional for the stack (e.g., no complexity tool installed for `ts-dev` when File List has `*.ts`): emit Phase 1 BLOCKED with an actionable error message naming the missing tool and the install hint. Do NOT dispatch the fork. For non-critical tool absence (e.g., no `dart_code_metrics` on a Flutter project), emit `status: skipped` with `skip_reason` populated and continue.
 
 ### Phase 2 — Story Gate
 
 - Status check: if `status` is not `review`, fail with "story {story_key} is in '{status}' status — must be in 'review' status for performance review".
 - Extract the File List section under "Dev Agent Record".
-- Run `${CLAUDE_PLUGIN_ROOT}/scripts/file-list-diff-check.sh --story-file <path> --base <branch> --repo <repo>`. The script returns a JSON-shaped report; surface divergence as a Warning to the user. **Story Gate semantics are advisory per FR-DEJ-2 — divergence does NOT halt the review.** Honor `no-file-list`, `empty-file-list`, and `divergence` reasons.
+- Run `${CLAUDE_PLUGIN_ROOT}/scripts/file-list-diff-check.sh --story-file <path> --base <branch> --repo <repo>`. The script returns a JSON-shaped report; surface divergence as a Warning to the user. **Story Gate semantics are advisory — divergence does NOT halt the review.** Honor `no-file-list`, `empty-file-list`, and `divergence` reasons.
 - Record divergence findings in `gate_warnings[]` of the eventual `analysis-results.json`.
 - Missing-file handling: if a File List entry is absent from disk (renamed/deleted post-File-List-write), record it as a Warning finding under `category: integrity, severity: warning` in `analysis-results.json`. Do NOT crash; Phase 3A handles it gracefully.
 
@@ -157,17 +157,17 @@ After the four core sub-toolkits, two annotation passes run:
 - **Hot-path tagging (EC-8).** Mark each finding with `hot_path: true|false` based on path heuristics. Hot paths: paths matching `*/api/*`, `*/handlers/*`, `*/routes/*`, `*/resolvers/*` (HTTP/GraphQL handlers); `*/render*`, `*/components/*` (frontend critical render). Cold paths: `*/cron/*`, `*/scripts/*`, `*/migrations/*`. LLM Phase 3B uses the `hot_path` tag to drive Critical-vs-Warning split for I/O findings.
 - **Index-hint analysis (EC-12).** If schema files (`prisma.schema`, Django `models.py`, JPA `*.entity.ts`, Go struct tags `*.go`) are present in the File List, parse `@index` / `@unique` / `Index` decorators / lines. Query-finding records include a `has_index: bool` field. If schema files absent, status=`skipped` with `skip_reason='no schema files in scope'`. LLM Phase 3B classifies missing-index findings.
 
-**Status taxonomy (FR-DEJ-4).** Each tool invocation produces exactly one of:
+**Status taxonomy.** Each tool invocation produces exactly one of:
 - `status: passed` — tool ran to completion, no findings, exit code zero.
 - `status: failed` — tool ran to completion AND emitted findings (e.g., N+1 detector found ORM call inside loop; complexity tool reported function exceeding threshold). Maps to REQUEST_CHANGES via verdict-resolver precedence rule 2 (LLM-cannot-override).
 - `status: errored` — tool crashed mid-run, returned an unclassified non-zero exit code, OR exceeded its wall-clock cap (EC-14). Maps to BLOCKED via precedence rule 1. Examples: complexity-tool parse error on malformed source; bundle tool timeout (>30s); per-tool wall-clock timeout. Even when partial findings were emitted before the crash, `errored` wins over partial findings.
 - `status: skipped` — tool not applicable; `skip_reason` populated verbatim. Examples: `skip_reason='bundle analysis exceeded 30s timeout'` (EC-2); `skip_reason='no schema files in scope'` (EC-12); `skip_reason='no complexity tool installed for {stack}'` (EC-9 case 3).
 
-**Distinguish `failed` vs `errored` by exit-code semantics, not by exit code alone** (consistent with E65-S2 EC-6). The bats fixtures assert the EXACT `status` field, not the exit code.
+**Distinguish `failed` vs `errored` by exit-code semantics, not by exit code alone** (consistent with EC-6). The bats fixtures assert the EXACT `status` field, not the exit code.
 
 **Per-tool timeout enforcement (EC-14).** Each sub-toolkit is wrapped in `timeout <cap>s <cmd>`. On individual tool timeout, that tool's status=`errored` only — the other tools continue. Cumulative budget enforcement: if combined wall-clock exceeds 60s P95 cold, escalate as a regression signal but do not blanket-fail. Cache hit ≤3s P95 still required.
 
-**Cache plumbing (FR-DEJ-11).** Cache lives at `.gaia/state/review/performance-review/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
+**Cache plumbing.** Cache lives at `.gaia/state/review/performance-review/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
 
 Cache key:
 ```
@@ -182,7 +182,7 @@ sha256(
 )
 ```
 
-`bundle_config_hash` is the sha256 of the rendered bundle/budget config (`lighthouserc.json` + `bundlesize` block + Angular `budgets` if present). `schema_hash` is the sha256 of all schema files in the File List (`prisma.schema`, Django `models.py`, JPA entity files, Go struct-tag files). Both are EC-12 / EC-2 mitigations: bundle-analyzer config or schema changes must invalidate the cache (similar to E65-S3's `advisory_db_fingerprint` pattern). Without these fingerprints, a story marked safe yesterday can have new perf-budget violations or new missing-index findings today and the cache would return a stale safe verdict.
+`bundle_config_hash` is the sha256 of the rendered bundle/budget config (`lighthouserc.json` + `bundlesize` block + Angular `budgets` if present). `schema_hash` is the sha256 of all schema files in the File List (`prisma.schema`, Django `models.py`, JPA entity files, Go struct-tag files). Both are EC-12 / EC-2 mitigations: bundle-analyzer config or schema changes must invalidate the cache (similar to the `advisory_db_fingerprint` pattern). Without these fingerprints, a story marked safe yesterday can have new perf-budget violations or new missing-index findings today and the cache would return a stale safe verdict.
 
 `resolved_config_hash` is the sha256 of the rendered complexity-tool configuration (e.g., `eslint --print-config <file>` output for ESLint-based complexity rules) — NOT the raw config file content.
 
@@ -206,7 +206,7 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 **Fork dispatch contract.**
 - `context: fork`
 - `allowed-tools: [Read, Grep, Glob, Bash]` (frontmatter-enforced; no Write/Edit ever)
-- `model: claude-opus-4-7` (frontmatter-pinned per ADR-074)
+- `model: claude-opus-4-7` (frontmatter-pinned)
 - `temperature: 0`
 - Inputs forwarded into the fork: persona payload (from Phase 1), `analysis-results.json` content, story file path, severity rubric (this section), hot-path tags from Phase 3A.
 
@@ -214,7 +214,7 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 
 **Performance categorization.** Each finding carries a `category` value from the closed set: `n+1`, `complexity`, `bundle`, `memory`, `blocking-io`, `index-hint`. Findings outside the perf top categories are classified as `category: integrity` for missing-file divergence or `category: fidelity` for design-token drift, consistent with the cross-skill convention.
 
-**Determinism contract (NFR-DEJ-2).** Two runs against unchanged `analysis-results.json` MUST produce findings that match by `{category, severity}`. Textual message variation is allowed. Category+severity divergence is an escalation signal — investigate model pin, temperature, or prompt-hash mismatch. The bats determinism regression test compares ONLY `{category, severity}` sets across two runs.
+**Determinism contract.** Two runs against unchanged `analysis-results.json` MUST produce findings that match by `{category, severity}`. Textual message variation is allowed. Category+severity divergence is an escalation signal — investigate model pin, temperature, or prompt-hash mismatch. The bats determinism regression test compares ONLY `{category, severity}` sets across two runs.
 
 **Prompt hash recording.** The fork records `prompt_hash` (sha256 of system prompt || `analysis-results.json` content) in the report header. This is the audit trail for determinism debugging.
 
@@ -246,7 +246,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
   --llm-findings .gaia/state/review/performance-review/{story_key}/llm-findings.json
 ```
 
-The resolver applies strict first-match-wins precedence (FR-DEJ-6):
+The resolver applies strict first-match-wins precedence:
 1. Any check `status: errored` → **BLOCKED**.
 2. Any check `status: failed` with blocking finding → **REQUEST_CHANGES**. *The LLM cannot override this — rule 2 wins over rule 4 (LLM APPROVE) every time.*
 3. Any LLM finding `severity: Critical` → **REQUEST_CHANGES**.
@@ -260,11 +260,11 @@ Stdout is exactly one of `APPROVE | REQUEST_CHANGES | BLOCKED`. **Mapping to Rev
 | REQUEST_CHANGES  | FAILED              |
 | BLOCKED          | FAILED              |
 
-This three-line mapping is local to this section per PRD §4.37. If a future review skill diverges, extract to a shared script then (YAGNI).
+This three-line mapping is local to this section. If a future review skill diverges, extract to a shared script then (YAGNI).
 
 ### Phase 6 — Output + Gate Update
 
-Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is parent-mediated (Option A per ADR-075).
+Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is parent-mediated.
 
 **Fork output.** The fork returns a rendered report payload as its conversational output. The report MUST contain:
 
@@ -278,9 +278,9 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 - `## LLM Semantic Review` section present.
 - Final line matches regex `^\*\*Verdict: (APPROVE|REQUEST_CHANGES|BLOCKED)\*\*$`.
 
-**Malformed-payload handling.** On any of the above checks failing, the parent persists what it received with an explicit `[INCOMPLETE]` marker prepended to the report, and emits `verdict=BLOCKED` to `review-gate.sh`. Fork output untrustworthy → BLOCKED. The bats fixture covers this case explicitly (mirrors E65-S2 EC-9).
+**Malformed-payload handling.** On any of the above checks failing, the parent persists what it received with an explicit `[INCOMPLETE]` marker prepended to the report, and emits `verdict=BLOCKED` to `review-gate.sh`. Fork output untrustworthy → BLOCKED. The bats fixture covers this case explicitly.
 
-**Parent write to FR-402 locked path.** The parent context writes the rendered report to `.gaia/artifacts/implementation-artifacts/performance-review-E<NN>-S<NNN>.md` per FR-402 naming convention. The path is **locked**: `performance-review-{story_key}.md` — no slug, no date suffix.
+**Parent write to locked path.** The parent context writes the rendered report to `.gaia/artifacts/implementation-artifacts/performance-review-E<NN>-S<NNN>.md` per the naming convention. The path is **locked**: `performance-review-{story_key}.md` — no slug, no date suffix.
 
 **Re-run handling.** Parent **overwrites** the existing review file on re-run (latest verdict wins). No append, no version-suffix. The `review-gate.sh` row update is the source of truth for verdict history if needed.
 
@@ -301,30 +301,30 @@ Mapping per Phase 5 table. Confirm exit code 0.
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh review-gate-check --story "{story_key}"
 ```
 
-Capture stdout for the `Review Gate: COMPLETE|PENDING|BLOCKED` summary (per ADR-054). Do NOT halt on non-zero exit. Sprint-status.yaml may be out of sync — surface a hint to run `/gaia-sprint-status`.
+Capture stdout for the `Review Gate: COMPLETE|PENDING|BLOCKED` summary. Do NOT halt on non-zero exit. Sprint-status.yaml may be out of sync — surface a hint to run `/gaia-sprint-status`.
 
 **Fork allowlist sanity.** The frontmatter `allowed-tools` MUST remain exactly `[Read, Grep, Glob, Bash]`. The `evidence-judgment-parity.bats` AC1 assertion catches any post-merge regression that adds Write or Edit.
 
 ### Phase 7 — Finalize
 
-- Surface the verdict to the orchestrator per ADR-063 (mandatory verdict surfacing).
+- Surface the verdict to the orchestrator (mandatory verdict surfacing).
 - Persist findings to the per-skill checkpoint via `checkpoint.sh write` (already invoked in Phase 3A for the cache; final state recorded via the standard `finalize.sh` hook).
 - The Phase 3A artifact is cached for the next run by the `.cache/{cache_key}.json` write performed in Phase 3A.
 
 ## References
 
-- ADR-037 — Structured subagent return schema `{status, summary, artifacts, findings, next}`.
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042 — Scripts-over-LLM for Deterministic Operations.
-- ADR-045 — Review Gate via Sequential `context: fork` Subagents.
-- ADR-054 — Composite Review Gate.
-- ADR-063 — Subagent Dispatch Contract — Mandatory Verdict Surfacing.
-- ADR-067 — YOLO Mode Contract — Consistent Non-Interactive Behavior.
-- ADR-074 — Frontmatter Model Pin for Determinism.
-- ADR-075 — Review-Skill Evidence/Judgment Split.
-- FR-DEJ-1..12, NFR-DEJ-1..4 — Evidence/Judgment functional and non-functional requirements (PRD §4.37).
-- FR-402 — Locked review-file naming convention (`performance-review-{story_key}.md`).
-- E65-S2 — canonical reference implementation this skill pattern-matches against.
+- Structured subagent return schema `{status, summary, artifacts, findings, next}`.
+- Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
+- Scripts-over-LLM for Deterministic Operations.
+- Review Gate via Sequential `context: fork` Subagents.
+- Composite Review Gate.
+- Subagent Dispatch Contract — Mandatory Verdict Surfacing.
+- YOLO Mode Contract — Consistent Non-Interactive Behavior.
+- Frontmatter Model Pin for Determinism.
+- Review-Skill Evidence/Judgment Split.
+- Evidence/Judgment functional and non-functional requirements.
+- Locked review-file naming convention (`performance-review-{story_key}.md`).
+- The canonical reference implementation this skill pattern-matches against.
 
 ## Finalize
 

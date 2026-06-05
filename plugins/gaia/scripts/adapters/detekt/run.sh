@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/detekt/run.sh — ADR-078 adapter contract for Detekt (E74-S7).
+# adapters/detekt/run.sh — adapter contract for Detekt.
 # Invokes `detekt --report json:<tmp>` against the file list and emits a
 # canonical analysis-results fragment.
 

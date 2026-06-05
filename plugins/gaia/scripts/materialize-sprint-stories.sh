@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# materialize-sprint-stories.sh — batch story materializer for /gaia-create-story --for-sprint (E107-S3)
+# materialize-sprint-stories.sh — batch story materializer for /gaia-create-story --for-sprint
 #
 # The DETERMINISTIC core of `/gaia-create-story --for-sprint <id>`: given a
 # sprint's selected story keys, materialize ONLY the ones that lack a file, in
-# one invocation, so an operator does not run /gaia-create-story 40 times
-# (fixes Test02 F-9 / Test01 E2). Create-if-missing + idempotent.
+# one invocation, so an operator does not run /gaia-create-story 40 times.
+# Create-if-missing + idempotent.
 #
-# Scope (Val W1): story ELABORATION — filling the {CONTENT_PLACEHOLDER} bodies
+# Scope: story ELABORATION — filling the {CONTENT_PLACEHOLDER} bodies
 # (real ACs/tasks/test-scenarios) — is LLM/subagent work (gaia-create-story
 # SKILL.md Step 3), NOT scriptable. This script does the scriptable parts:
 #   * idempotency check (skip a key that already has a file)
-#   * scaffold a skeleton into the E105-S1 per-story layout
+#   * scaffold a skeleton into the per-story layout
 #     (epic-{epic-slug}/{key}-{story-slug}/story.md) with priority_flag: null
 #   * --refresh re-scaffolds a rolled-over story BUT guards against clobbering
 #     an in-progress/review/done story (only refresh backlog/ready-for-dev)
@@ -18,7 +18,6 @@
 #     {CONTENT_PLACEHOLDER} bodies the main-turn LLM loop must fill, after which
 #     each is transitioned to ready-for-dev via transition-story-status.sh.
 #
-# Refs: ADR-128, ADR-127/E105-S1, FR-559, feedback_priority_flag_never_auto_set
 #
 # Invocation:
 #   materialize-sprint-stories.sh --keys "K1,K2,..." --epics <epics-and-stories.md>
@@ -40,7 +39,7 @@ SLUGIFY="$SCRIPT_DIR/../skills/gaia-create-story/scripts/slugify.sh"
 SCAFFOLD="$SCRIPT_DIR/../skills/gaia-create-story/scripts/scaffold-story.sh"
 TEMPLATE="$SCRIPT_DIR/../skills/gaia-create-story/story-template.md"
 RESOLVE_STORY="$SCRIPT_DIR/resolve-story-file.sh"
-RESOLVE_EPIC_SLUG="$SCRIPT_DIR/lib/resolve-epic-slug.sh"  # E107-S3 Val W-1: canonical epic-dir SSOT
+RESOLVE_EPIC_SLUG="$SCRIPT_DIR/lib/resolve-epic-slug.sh"  # canonical epic-dir SSOT
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
@@ -123,12 +122,12 @@ guarded=0
 while IFS= read -r key; do
   [ -n "$key" ] || continue
 
-  # epic-dir name from the CANONICAL resolver (Val W-1 / E79-S1 SSOT) — reads the
+  # epic-dir name from the CANONICAL resolver — reads the
   # `## {epic_key} — ` H2 title, drops parentheticals, truncates to 69 chars, and
   # already includes the `epic-` prefix. transition-story-status.sh + the tier-0
   # resolver converge on this exact directory, so the materializer must use it
   # rather than rolling its own slug (which would diverge on parenthetical/long
-  # epic names and break AC3's ready-for-dev transition). Fall back to numeric.
+  # epic names and break the ready-for-dev transition). Fall back to numeric.
   epic_num="${key%%-*}"                 # E900
   epic_dir="$(bash "$RESOLVE_EPIC_SLUG" --epic-key "$epic_num" --epics-file "$EPICS" 2>/dev/null || true)"
   [ -n "$epic_dir" ] || epic_dir="epic-${epic_num}"
@@ -177,18 +176,17 @@ while IFS= read -r key; do
   priority="$(_epics_field "$key" "Priority")"; [ -n "$priority" ] || priority="P2"
   size="$(_epics_field "$key" "Size")"; size="${size%% *}"; [ -n "$size" ] || size="M"
   risk="$(_epics_field "$key" "Risk")"; [ -n "$risk" ] || risk="medium"
-  # Test17 F-M03 / AF-2026-06-02-6: normalize risk to lowercase per the
-  # validate-frontmatter enum {high|medium|low}; create-epics emits
-  # Title-case `- **Risk:** Low` upstream.
+  # Normalize risk to lowercase per the validate-frontmatter enum {high|medium|low};
+  # create-epics emits Title-case `- **Risk:** Low` upstream.
   risk="$(printf '%s' "$risk" | tr '[:upper:]' '[:lower:]')"
-  # AF-2026-05-31-2 / Test13 F-26: derive `points` from `size` so a
-  # downstream `sprint-state.sh inject` doesn't refuse the materialized
-  # story with `missing required frontmatter field(s): points`. The
-  # mapping mirrors generate-frontmatter.sh's sizing_map resolution but
-  # falls back to a deterministic default table when the resolver helper
-  # is unavailable (the canonical default — S=1, M=3, L=5, XL=8 — is the
-  # legacy gaia-framework convention; per-project sizing maps override
-  # via /gaia-create-story's interactive path).
+  # Derive `points` from `size` so a downstream `sprint-state.sh inject`
+  # doesn't refuse the materialized story with
+  # `missing required frontmatter field(s): points`. The mapping mirrors
+  # generate-frontmatter.sh's sizing_map resolution but falls back to a
+  # deterministic default table when the resolver helper is unavailable
+  # (the canonical default — S=1, M=3, L=5, XL=8 — is the legacy
+  # gaia-framework convention; per-project sizing maps override via
+  # /gaia-create-story's interactive path).
   points=""
   _resolver="$(cd "$(dirname "$0")" && pwd)/resolve-config.sh"
   if [ -x "$_resolver" ]; then
@@ -204,13 +202,13 @@ while IFS= read -r key; do
       *)    points=3 ;;
     esac
   fi
-  # Test17 F-M04 / AF-2026-06-02-6: bulk-path frontmatter MUST populate
-  # every required field that validate-frontmatter.sh enforces — date,
-  # author, depends_on/blocks/traces_to (empty arrays, NOT empty strings),
-  # delivered (E88-S2/FR-DPD-2 16-field schema), deferred_implementation —
-  # so the materialized story passes the create-story validator without
-  # hand-elaboration. The single-story generate-frontmatter.sh path already
-  # populates these; this aligns the bulk path with the same contract.
+  # Bulk-path frontmatter MUST populate every required field that
+  # validate-frontmatter.sh enforces — date, author,
+  # depends_on/blocks/traces_to (empty arrays, NOT empty strings),
+  # delivered, deferred_implementation — so the materialized story passes
+  # the create-story validator without hand-elaboration. The single-story
+  # generate-frontmatter.sh path already populates these; this aligns the
+  # bulk path with the same contract.
   _today="$(date -u +%Y-%m-%d)"
   fm="$(printf 'key: "%s"\ntitle: "%s"\nepic: "%s"\nstatus: backlog\npriority: "%s"\nsize: "%s"\npoints: %s\nrisk: "%s"\nsprint_id: null\npriority_flag: null\ndelivered: false\ndeferred_implementation: false\ndepends_on: []\nblocks: []\ntraces_to: []\ndate: "%s"\nauthor: "gaia-create-story"\n' \
     "$key" "$title" "$epic_num" "$priority" "$size" "$points" "$risk" "$_today")"
@@ -232,11 +230,10 @@ if [ -n "$MANIFEST" ] && [ -s "$MANIFEST" ]; then
   printf 'elaboration manifest written to %s — fill {CONTENT_PLACEHOLDER} bodies then transition each to ready-for-dev via transition-story-status.sh\n' "$MANIFEST"
 fi
 
-# Test17 L-08 / AF-2026-06-02-6: backfill per-epic story-index.yaml so
-# every materialized epic carries the canonical index even when no
-# transition-story-status.sh call has yet run on the stories. The
-# backfill helper (E105-S1 / AF-2026-06-02-1 / Test16 F-L06) walks
-# epic-* dirs and reconciles missing indexes via
+# Backfill per-epic story-index.yaml so every materialized epic carries
+# the canonical index even when no transition-story-status.sh call has
+# yet run on the stories. The backfill helper walks epic-* dirs and
+# reconciles missing indexes via
 # `transition-story-status.sh --reconcile-only`. Idempotent: no-op for
 # epics that already have story-index.yaml. Best-effort: failures here
 # do NOT block the materialize summary the caller depends on.

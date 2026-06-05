@@ -1,10 +1,9 @@
 name: plugin-ci
 
-# E28-S184 — bats-tests dormancy root-cause fix. Prior config triggered on
-# PRs to `main` only, so the `bats-tests` job never ran on the sprint-24
-# staging -> main sequence and the coverage wrapper's silent abort stayed
-# hidden. Path filter `plugins/gaia/**` keeps noise low by scoping to the
-# product source surface the wrapper actually guards.
+# Prior config triggered on PRs to `main` only, so the `bats-tests` job
+# never ran on staging -> main sequences and the coverage wrapper's silent
+# abort stayed hidden. Path filter `plugins/gaia/**` keeps noise low by
+# scoping to the product source surface the wrapper actually guards.
 on:
   pull_request:
     branches: [main, staging]
@@ -33,39 +32,24 @@ jobs:
   bats-tests:
     name: bats-tests
     runs-on: ubuntu-latest
-    # E28-S17 AC4 originally set this to 2 minutes, then E43-S5 bumped to 5
-    # when the suite passed 1300 tests. Sprint-37 + sprint-38 grew the suite
-    # past 3300 tests (E66/E67/E68/E69/E70 added 100+ new fixtures each
-    # sprint). Raw bats is now consistently 4-5 minutes on CI; setup +
-    # coverage upload push the job past the 5-minute wall on every push,
-    # forcing rerun-or-admin-merge cycles. Bumped to 8 minutes by an earlier
-    # sprint. **Sprint-45 (E88-S6, 2026-05-14):** the suite is now
-    # consistently hitting the 8m hard cap (E88-S5 needed 3 reruns; E88-S6
-    # bats-tests failed at 8m0s + 8m10s on consecutive attempts). Bump to
-    # 12 minutes to absorb the E88 drift-prevention cascade additions
-    # (~30 new bats files across 6 stories). The 240s soft budget enforced
-    # by bats-budget-watch.sh remains the actionable signal for fixture
-    # authors. Revisit at ~9m raw bats.
-    #
-    # **AF-2026-06-01-1 (2026-06-01):** suite is now consistently hitting
-    # the 12m hard cap (PR #1039 bats-tests cancelled at 12m10s + 12m8s on
-    # consecutive attempts after sprint-54 + AF-31-3 + AF-32-1 cascades
-    # grew the suite to ~7670 tests). Peak progress before timeout was
-    # test 6816 of 7671. Bumping to 15 minutes to absorb the same growth
-    # pattern that drove the 8→12 jump. The 240s soft budget remains the
-    # actionable signal. Revisit at ~12m raw bats.
+    # Timeout has been bumped progressively as the suite grew. The suite now
+    # exceeds 7600 tests; raw bats runs 4-5 minutes on CI and setup + coverage
+    # upload push past the previous cap on large cascade additions. The 240s
+    # soft budget enforced by bats-budget-watch.sh remains the actionable
+    # signal for fixture authors. Revisit if raw bats consistently exceeds
+    # ~12 minutes.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
         with:
           bats-version: 1.10.0
-      # E28-S175 — kcov is not in the default apt repositories on Ubuntu 24.04
-      # (noble), which caused `apt-get install -y jq kcov` to fail with
-      # "E: Unable to locate package kcov" on every PR and block the bats-tests
-      # job before any tests ran. kcov-based line coverage is advisory-only in
+      # kcov is not in the default apt repositories on Ubuntu 24.04 (noble),
+      # which caused `apt-get install -y jq kcov` to fail with "E: Unable to
+      # locate package kcov" on every PR and block the bats-tests job before
+      # any tests ran. kcov-based line coverage is advisory-only in
       # run-with-coverage.sh (the script treats a missing kcov as a skip, not a
-      # failure); the authoritative gate is NFR-052 public-function coverage,
+      # failure); the authoritative gate is the public-function coverage check,
       # which does not need kcov. Dropping kcov from the apt install restores
       # the bats-tests signal on noble. If line-coverage reporting is needed
       # later, reintroduce kcov via a pre-built binary download from the kcov
@@ -73,20 +57,18 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
       - name: Run bats suite with coverage wrapper (budget-watched)
-        # E45-S6 / AC3 — bats-budget-watch.sh wraps the coverage wrapper and
-        # emits a structured warning to $GITHUB_STEP_SUMMARY when wall-clock
-        # exceeds the threshold. Threshold (240s) is the soft budget — the
-        # job's hard timeout above (5 min / 300s) remains the failing gate.
-        # See ADR-062 / E45-S6-adr-memo-bats-scaling.md for the rationale and
-        # plugins/gaia/docs/CI-NOTES.md for contributor guidance on adding
-        # fixtures without breaking the budget.
+        # bats-budget-watch.sh wraps the coverage wrapper and emits a structured
+        # warning to $GITHUB_STEP_SUMMARY when wall-clock exceeds the threshold.
+        # Threshold (240s) is the soft budget — the job's hard timeout above
+        # remains the failing gate. See plugins/gaia/docs/CI-NOTES.md for
+        # contributor guidance on adding fixtures without breaking the budget.
         #
-        # E91-S1 (FR-SRF-1, AF-2026-05-14-9): default-skip @hardware-dependent
-        # tests in CI via BATS_FILTER_TAGS='!hardware-dependent'. Tests
-        # tagged @hardware-dependent exercise host-specific timing primitives
-        # (mtime resolution, sleep precision, host-clock semantics) and were
-        # the primary contributor to bats CI budget overrun in sprint-43.
-        # Developers MUST run them locally before merge with:
+        # Default-skip @hardware-dependent tests in CI via
+        # BATS_FILTER_TAGS='!hardware-dependent'. Tests tagged
+        # @hardware-dependent exercise host-specific timing primitives (mtime
+        # resolution, sleep precision, host-clock semantics) and were the
+        # primary contributor to bats CI budget overrun. Developers MUST run
+        # them locally before merge with:
         #   bats --filter-tags hardware-dependent <test-file>
         env:
           BATS_FILTER_TAGS: '!hardware-dependent'
@@ -104,14 +86,12 @@ jobs:
           if-no-files-found: ignore
 
   skills-bats-tests:
-    # E55-S5 — wires the dev-story skill bats files into CI. Until this job
-    # landed, skill-level bats files (e.g., gaia-dev-story planning-gate
-    # regression suite) lived only on disk and never gated PRs. The first
-    # batch wired in covers the /gaia-dev-story V2 hardening regression
-    # suite (E55-S1/S2/S3/S5). Other skill bats under tests/skills/ predate
-    # this gate and have known unrelated failures (legacy lifecycle
-    # conversion fixtures); those will be wired in by a separate sweep
-    # once their failures are resolved.
+    # Wires the dev-story skill bats files into CI. Until this job landed,
+    # skill-level bats files (e.g., gaia-dev-story planning-gate regression
+    # suite) lived only on disk and never gated PRs. Other skill bats under
+    # tests/skills/ predate this gate and have known unrelated failures
+    # (legacy lifecycle conversion fixtures); those will be wired in by a
+    # separate sweep once their failures are resolved.
     name: skills-bats-tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -123,12 +103,10 @@ jobs:
       - name: Install jq and python3
         run: sudo apt-get update && sudo apt-get install -y jq python3
       - name: Run tests/skills/*.bats coverage suite
-        # E55-S11 — broadens the existing E55-S5 wiring to cover every
-        # tests/skills/*.bats file on staging that passes today. Five legacy
-        # fixtures (e28-s114, e28-s116, e59-s1, gaia-config-skills-exist,
-        # gaia-performance-review-hints) carry pre-existing assertion drift
-        # and are tracked as Findings on E55-S11 — they are NOT listed below
-        # and will be wired in by their fixture-repair follow-ups.
+        # Covers every tests/skills/*.bats file on staging that passes today.
+        # Five legacy fixtures carry pre-existing assertion drift and are NOT
+        # listed below — they will be wired in by their fixture-repair
+        # follow-ups.
         #
         # The companion regression sentinel
         # `tests/skills/E55-S11-plugin-ci-bats-coverage.bats` enumerates the
@@ -136,7 +114,7 @@ jobs:
         # added to tests/skills/ without being classified, or if an entry is
         # silently un-wired from this list. Keep the bats invocation below
         # and the REQUIRED_FILES array in the sentinel byte-equal — drift
-        # between them is the regression vector this story closes.
+        # between them is the regression vector this step closes.
         run: |
           bats \
             tests/skills/E28-S227-td74-gaia-config-csv-cleanup.bats \
@@ -190,66 +168,56 @@ jobs:
             tests/skills/lint-skill-frontmatter.bats \
             tests/skills/validate-plan-structure.bats
       - name: Run /gaia-add-feature assessment-doc-bypass-check bats suite
-        # E83-S3 — anti-pattern check that scans every /gaia-add-feature
-        # assessment-doc emission for three Val-gate bypass smoking-gun
-        # strings (with backtick-tolerant regex). The bats file uses
-        # synthetic fixtures under tests/fixtures/ and skips the
-        # live-corpus tests (TC-VFC-10 / 6b) when GAIA_PROJECT_ROOT_DOCS
-        # is unset — CI only checks out gaia-framework/ and the live
-        # assessment-AF-*.md corpus sits at project-root, OUTSIDE this
-        # checkout (per CLAUDE.md "Non-git project-root workspace").
-        # Step MUST FAIL the build on non-zero exit (TC-VFC-12).
+        # Anti-pattern check that scans every /gaia-add-feature assessment-doc
+        # emission for three Val-gate bypass smoking-gun strings (with
+        # backtick-tolerant regex). The bats file uses synthetic fixtures under
+        # tests/fixtures/ and skips the live-corpus tests when
+        # GAIA_PROJECT_ROOT_DOCS is unset — CI only checks out gaia-framework/
+        # and the live assessment-AF-*.md corpus sits at project-root, OUTSIDE
+        # this checkout (per CLAUDE.md "Non-git project-root workspace").
+        # Step MUST FAIL the build on non-zero exit.
         run: |
           bats plugins/gaia/skills/gaia-add-feature/tests/assessment-doc-bypass-check.bats
       - name: Run /gaia-add-feature no-priority-flag-auto-set bats suite
-        # E83-S5 — regression-guard check that asserts the SKILL.md and
-        # supporting scripts contain no conditional that auto-sets
+        # Regression-guard check that asserts the SKILL.md and supporting
+        # scripts contain no conditional that auto-sets
         # `priority_flag: "next-sprint"` on stories created via cascade.
-        # Guards user memory rule
-        # `feedback_priority_flag_never_auto_set.md`: triage classifies
-        # priority, /gaia-sprint-plan sequences. Auto-flagging at cascade
-        # time pre-empts sprint-plan's authority.
+        # Triage classifies priority, /gaia-sprint-plan sequences.
+        # Auto-flagging at cascade time pre-empts sprint-plan's authority.
         # Step MUST FAIL the build on non-zero exit.
         run: |
           bats plugins/gaia/skills/gaia-add-feature/tests/no-priority-flag-auto-set.bats
       - name: Run /gaia-meeting stdout-sentinel-forbid bats suite
-        # E76-S15 — anti-pattern check that scans the /gaia-meeting SKILL.md
+        # Anti-pattern check that scans the /gaia-meeting SKILL.md
         # yield-boundary procedure sections for forbidden stdout-sentinel
         # patterns (`<<YIELD-STOP`, `<<TURN-END`). The script-side sentinel
-        # mechanism was empirically defeated by harness Auto Mode on
-        # 2026-05-09 (AI-2026-05-09-8 / memory rule
-        # `feedback_askuserquestion_under_automode.md`); the substrate-
-        # correct primitive is `AskUserQuestion` (lands in E76-S18, ADR-083
-        # amendment AF-2026-05-10-1). The bats file uses synthetic fixtures
-        # under tests/fixtures/ and the live SKILL.md as a forward-looking
-        # guard.
-        # Step MUST FAIL the build on non-zero exit (TC-MTG-AUQS-3).
+        # mechanism was empirically defeated by harness Auto Mode; the
+        # substrate-correct primitive is `AskUserQuestion`. The bats file
+        # uses synthetic fixtures under tests/fixtures/ and the live SKILL.md
+        # as a forward-looking guard.
+        # Step MUST FAIL the build on non-zero exit.
         run: |
           bats plugins/gaia/skills/gaia-meeting/tests/gaia-meeting-stdout-sentinel-forbid.bats
       - name: Run /gaia-meeting user-as-attendee bats suite
-        # E76-S21 / AF-2026-05-10-2 / AI-2026-05-09-9 — verifies the
-        # user-as-first-class-attendee carve-out in
+        # Verifies the user-as-first-class-attendee carve-out in
         # `scripts/resolve-invitees.sh`: when `--invitees` contains a
         # user-token (`me` / `user` / case-insensitive resolved-user-name),
         # the token is preserved in the resolved CSV (not dropped) and the
         # `session-state.sh user_attendance` flag is set. The previous
         # silent-drop / WARNING design is replaced by the explicit attendee
-        # path under FR-MTG-10 amended. Mirrors the E76-S15 / E76-S20 CI
-        # wiring pattern. Tests: TC-MTG-USER-1/2/3/4/6 + TC-MTG-NOFAB-3a
-        # (PRIMARY E76-S21).
+        # path.
         # Step MUST FAIL the build on non-zero exit.
         run: |
           bats plugins/gaia/skills/gaia-meeting/tests/user-as-attendee.bats
 
   bats-script-refs-lint:
-    # E28-S221 — sweep linter that catches bats files referencing scripts
-    # that have been deleted from plugins/gaia/scripts/ or
-    # plugins/gaia/skills/*/scripts/. Closes the cross-tree discoverability
-    # gap surfaced by E59-S3 finding #1: the gaia-framework/tests/ and
-    # gaia-framework/plugins/gaia/tests/ trees are disjoint (zero overlap)
-    # but both ship and run in CI, so a script deletion under the
-    # canonical scripts roots can leave dangling .bats references in
-    # either tree. The linter is pure bash + awk, sub-second runtime.
+    # Sweep linter that catches bats files referencing scripts that have been
+    # deleted from plugins/gaia/scripts/ or plugins/gaia/skills/*/scripts/.
+    # The gaia-framework/tests/ and gaia-framework/plugins/gaia/tests/ trees
+    # are disjoint (zero overlap) but both ship and run in CI, so a script
+    # deletion under the canonical scripts roots can leave dangling .bats
+    # references in either tree. The linter is pure bash + awk, sub-second
+    # runtime.
     name: bats-script-refs-lint
     runs-on: ubuntu-latest
     timeout-minutes: 2  # trivial scan — keep budget tight
@@ -263,7 +231,7 @@ jobs:
   cluster-4-e2e:
     name: cluster-4-e2e
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # E28-S39 AC4 — enforce 5-minute wall-clock budget
+    timeout-minutes: 5  # enforce 5-minute wall-clock budget
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
@@ -271,7 +239,7 @@ jobs:
           bats-version: 1.10.0
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
-      - name: Run Cluster 4 e2e tests
+      - name: Run e2e tests
         run: bats tests/e2e/cluster-4-analysis-e2e.bats
       - name: Generate pass/fail report
         if: always()
@@ -290,7 +258,7 @@ jobs:
   cluster-5-parity:
     name: cluster-5-parity
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # E28-S44 AC3 — enforce 5-minute wall-clock budget
+    timeout-minutes: 5  # enforce 5-minute wall-clock budget
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
@@ -298,7 +266,7 @@ jobs:
           bats-version: 1.10.0
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
-      - name: Run Cluster 5 parity tests
+      - name: Run parity tests
         run: bats tests/cluster-5-parity/parity.bats
       - name: Generate pass/fail report
         if: always()
@@ -317,7 +285,7 @@ jobs:
   cluster-6-e2e:
     name: cluster-6-e2e
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # E28-S51 AC5 — enforce 5-minute wall-clock budget
+    timeout-minutes: 5  # enforce 5-minute wall-clock budget
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
@@ -325,7 +293,7 @@ jobs:
           bats-version: 1.10.0
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
-      - name: Run Cluster 6 e2e tests
+      - name: Run e2e tests
         run: |
           bats tests/cluster-6-e2e/cluster-6-e2e.bats
           bats tests/cluster-6-e2e/readiness-gate-negative.bats
@@ -346,7 +314,7 @@ jobs:
   cluster-7-chain:
     name: cluster-7-chain
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # E28-S59 AC4 — enforce 5-minute wall-clock budget
+    timeout-minutes: 5  # enforce 5-minute wall-clock budget
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
@@ -354,7 +322,7 @@ jobs:
           bats-version: 1.10.0
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
-      - name: Run Cluster 7 chain integration tests
+      - name: Run chain integration tests
         run: bats tests/e2e/cluster-7-chain.bats
       - name: Generate pass/fail report
         if: always()
@@ -373,7 +341,7 @@ jobs:
   cluster-8-sprint-cycle:
     name: cluster-8-sprint-cycle
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # E28-S65 AC3 — enforce 5-minute wall-clock budget
+    timeout-minutes: 5  # enforce 5-minute wall-clock budget
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
@@ -381,7 +349,7 @@ jobs:
           bats-version: 1.10.0
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
-      - name: Run Cluster 8 sprint-cycle integration tests
+      - name: Run sprint-cycle integration tests
         run: bats tests/e2e/cluster-8-sprint-cycle.bats
       - name: Generate pass/fail report
         if: always()
@@ -400,7 +368,7 @@ jobs:
   cluster-9-run-all-reviews:
     name: cluster-9-run-all-reviews
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # E28-S73 AC4 — enforce 10-minute wall-clock budget
+    timeout-minutes: 10  # enforce 10-minute wall-clock budget
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
@@ -408,7 +376,7 @@ jobs:
           bats-version: 1.10.0
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
-      - name: Run Cluster 9 run-all-reviews integration tests
+      - name: Run run-all-reviews integration tests
         run: bats plugins/gaia/tests/cluster-9/run-all-reviews.bats
       - name: Generate pass/fail report
         if: always()
@@ -435,11 +403,10 @@ jobs:
   audit-v2-migration:
     name: audit-v2-migration
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # E28-S195 AC1 — harness takes ~20s warm; 5min is safe budget
-    # E28-S195 — required regression gate for the B1/B2/B3/B4/B5 fixes shipped
-    # in E28-S190/S191/S194/S196/S197/S198/S199/S200. Runs the audit harness
-    # in --fixture-mode enriched (CI=true, set automatically by Actions, also
-    # defaults to enriched per AC7). Exit 0 = all skills OK; exit 1 = plugin
+    timeout-minutes: 5  # harness takes ~20s warm; 5min is safe budget
+    # Required regression gate for the v2-migration audit harness. Runs in
+    # --fixture-mode enriched (CI=true, set automatically by Actions, also
+    # defaults to enriched). Exit 0 = all skills OK; exit 1 = plugin
     # regression (this job fails); exit 2 = harness bug (also fails, but CI
     # diagnostics distinguish the two — see scripts/audit-v2-migration.sh
     # header).
@@ -480,11 +447,10 @@ jobs:
     name: claudemd-drift-guard
     runs-on: ubuntu-latest
     timeout-minutes: 2  # trivial diff check — keep the budget tight
-    # E28-S165 — fails CI if gaia-framework/CLAUDE.md drifts from its mirror.
-    # Only gaia-framework/CLAUDE.md is git-tracked in this repo; the project-root
-    # mirror lives in each developer's workspace and is kept in sync manually
-    # (per E28-S129 — gaia-framework/CLAUDE.md is the source of truth). This CI
-    # job runs the canonical guard script against the in-repo copy as a
+    # Fails CI if gaia-framework/CLAUDE.md drifts from its mirror. Only
+    # gaia-framework/CLAUDE.md is git-tracked in this repo; the project-root
+    # mirror lives in each developer's workspace and is kept in sync manually.
+    # This CI job runs the canonical guard script against the in-repo copy as a
     # self-diff: it protects against future changes that introduce a second
     # tracked CLAUDE.md and ensures the guard script itself never regresses.
     # Developers run the script locally with both paths to catch drift before
@@ -500,13 +466,11 @@ jobs:
           # The guard script invokes `diff -q CLAUDE.md CLAUDE.md` — a
           # self-diff that always passes — but still runs the full guard
           # code path so any regression in the script surfaces here. The
-          # literal `diff -q CLAUDE.md gaia-framework/CLAUDE.md` form lives in
-          # the developer's local invocation (see plugins/gaia/scripts/claudemd-drift-guard.sh).
+          # literal two-path form lives in the developer's local invocation
+          # (see plugins/gaia/scripts/claudemd-drift-guard.sh).
           plugins/gaia/scripts/claudemd-drift-guard.sh CLAUDE.md CLAUDE.md
 
   cross-platform-portability:
-    # AF-2026-05-31-1 / Test12 §9.0 cross-platform mandate.
-    #
     # Tests the deterministic-tools chain on macOS, Linux, and Windows-via-
     # Git-Bash so regressions in bash-3.2 portability or POSIX-tool
     # assumptions surface at PR time instead of in a manual test cycle.
@@ -514,7 +478,7 @@ jobs:
     # Scope is intentionally narrow: this job does NOT run the full bats
     # suite (3000+ tests, many of which assume Linux-only tools and
     # canonical paths). It runs ONLY the portability-sensitive subset:
-    #   - tests/af-2026-05-31-1-test12-findings.bats (this fix sweep)
+    #   - tests/af-2026-05-31-1-test12-findings.bats (portability fix sweep)
     #   - any future bats explicitly tagged @cross-platform
     # Plus a syntax check of every script in the deterministic-tools
     # chain on each runner's native bash version.
@@ -561,10 +525,10 @@ jobs:
       - name: Syntax-check the deterministic-tools chain
         shell: bash
         run: |
-          # AF-2026-05-31-1 portability scope — these are the scripts that
-          # MUST parse + run on bash 3.2 (macOS default) and Git Bash
-          # (Windows). Any new addition to this list MUST also be added to
-          # the af-2026-05-31-1 bats coverage file.
+          # Portability scope — these are the scripts that MUST parse + run on
+          # bash 3.2 (macOS default) and Git Bash (Windows). Any new addition
+          # to this list MUST also be added to the cross-platform bats coverage
+          # file.
           SCRIPTS=(
             plugins/gaia/skills/gaia-init/scripts/validate-platform-stack.sh
             plugins/gaia/skills/gaia-init/scripts/generate-config.sh

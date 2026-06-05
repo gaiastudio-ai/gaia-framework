@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# cost-cadence.sh — gaia-meeting deterministic cost-check cadence (E76-S6, AC7)
+# cost-cadence.sh — gaia-meeting deterministic cost-check cadence
 #
-# NFR-MTG-1 / TC-MTG-STREAM-2: a single global emitted-turn counter that
-# increments after every transcript-append (round-robin, prelude, raise-hand,
-# research-interrupt, user-interjection, facilitator). The cost-check fires
-# whenever counter % 10 == 0 — independent of which KIND of turn was emitted.
+# A single global emitted-turn counter that increments after every
+# transcript-append (round-robin, prelude, raise-hand, research-interrupt,
+# user-interjection, facilitator). The cost-check fires whenever
+# counter % 10 == 0 — independent of which KIND of turn was emitted.
 # This is the determinism contract that lets raise-hand insertions remain
 # deterministic against the same cadence: a 30-turn meeting fires cost checks
 # at emitted-turn indices 10, 20, 30 regardless of how many of those turns are

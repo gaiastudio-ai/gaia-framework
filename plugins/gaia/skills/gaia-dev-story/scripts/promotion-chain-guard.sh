@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# promotion-chain-guard.sh — gaia-dev-story Steps 13–16 promotion-chain gate (E57-S6, P0-3)
+# promotion-chain-guard.sh — gaia-dev-story Steps 13–16 promotion-chain gate
 #
 # Reads ci_cd.promotion_chain[0].branch from the resolved project config and
 # emits a deterministic two-state verdict:
@@ -26,16 +26,13 @@
 # Step 13–16 invocation. Story task language is satisfied — resolve-config
 # is the *configured* path; this script implements the *resolved* read.
 #
-# Refs: FR-DSS-3, AF-2026-04-28-6, TC-DSS-04
-# Story: E57-S6
-
 set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
 SCRIPT_NAME="gaia-dev-story/promotion-chain-guard.sh"
 
-# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
+# Non-git CWD guard: skip-with-warning when CWD is outside any git
 # work tree, so /gaia-dev-story Steps 10-13 degrade gracefully instead of HALT.
 # shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,15 +47,14 @@ emit_absent() {
 
 # discover_config — locate the team-shared project-config.yaml.
 #
-# E55-S9 / sprint-37 false-flag fix (E53-S244, E69-S4): the original
-# implementation defaulted $PROJECT_CONFIG to a CWD-relative path
+# The original implementation defaulted $PROJECT_CONFIG to a CWD-relative path
 # `.gaia/config/project-config.yaml`. When /gaia-dev-story runs from a working
 # directory whose parent (not itself) holds the team-shared config — the
 # canonical layout for `{project-root}/gaia-framework/` — that relative path
 # resolved to a non-existent file and the guard returned ABSENT, silently
 # skipping Steps 13-16 (push/PR/CI/merge).
 #
-# Discovery ladder (mirrors scripts/resolve-config.sh, E28-S191 / AC1):
+# Discovery ladder (mirrors scripts/resolve-config.sh):
 #   1. $PROJECT_CONFIG                                     (explicit env override)
 #   2. $CLAUDE_PROJECT_ROOT/.gaia/config/project-config.yaml     (if file exists)
 #   3. $PWD/.gaia/config/project-config.yaml                     (if file exists)
@@ -71,8 +67,8 @@ discover_config() {
     printf '%s\n' "$PROJECT_CONFIG"
     return 0
   fi
-  # E96-S1 / ADR-111: check both .gaia/config/ (canonical) and config/ (legacy)
-  # at each level. .gaia/ wins when both are present.
+  # Check both .gaia/config/ (canonical) and config/ (legacy) at each level.
+  # .gaia/ wins when both are present.
   if [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
     if [ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
       printf '%s\n' "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"
@@ -146,7 +142,7 @@ if [ -z "$BRANCH" ]; then
   emit_absent
 fi
 
-# Validate branch shape — AC1 requires the regex ^PRESENT:[a-z0-9-]+$ on
+# Validate branch shape — requires the regex ^PRESENT:[a-z0-9-]+$ on
 # stdout. Anything else (uppercase, slashes, underscores) is treated as
 # malformed and routed to ABSENT to keep the contract clean.
 case "$BRANCH" in

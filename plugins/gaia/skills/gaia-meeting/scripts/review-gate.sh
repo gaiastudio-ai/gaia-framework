@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# review-gate.sh — gaia-meeting REVIEW-phase disposition router (E76-S3)
-#
-# AC1 / AC10 / FR-MTG-12 / FR-MTG-31
+# review-gate.sh — gaia-meeting REVIEW-phase disposition router
 #
 # The CLOSE-phase orchestrator drafts every artifact (action items, per-agent
 # memory entries, meeting notes) IN MEMORY. Before any disk write, the REVIEW

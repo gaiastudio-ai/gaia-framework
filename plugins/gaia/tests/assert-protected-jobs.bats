@@ -107,7 +107,7 @@ YAML
   run bash -c "source '$ASSERT' && assert_protected_jobs '$WORKDIR/gaia-ci.user-jobs.yml'"
   [ "$status" -ne 0 ]
   echo "$output" | grep -q 'rename'
-  echo "$output" | grep -qE 'ADR-114|FR-517'
+  echo "$output" | grep -q 'non-colliding'
 }
 
 # ---------- TC-CCL-6: stitcher HALTs on collision; no file written ----------

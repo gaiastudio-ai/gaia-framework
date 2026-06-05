@@ -1,4 +1,4 @@
-# Firebase Test Lab device-farm adapter (E74-S9)
+# Firebase Test Lab device-farm adapter
 # Google Cloud-hosted Android/iOS device matrix. Poll-based result retrieval.
 name: firebase-test-lab
 type: device-farm

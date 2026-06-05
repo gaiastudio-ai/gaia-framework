@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# verify-push.sh — post-step push-verification helper for GAIA dev/automation skills (E55-S10).
+# verify-push.sh — post-step push-verification helper for GAIA dev/automation skills.
 #
 # Purpose:
 #   After a feature branch has been pushed (e.g. by git-push.sh), assert that
@@ -8,8 +8,8 @@
 #   stale credentials) so the calling skill cannot mark a story `done` while
 #   the remote branch is unpublished or out of sync.
 #
-#   Motivation: sprint-37 incidents E53-S244 and E69-S4 — dev-story finalize
-#   reported success while the local branch never made it to origin.
+#   Motivation: dev-story finalize reported success while the local branch
+#   never made it to origin.
 #
 # Usage:
 #   verify-push.sh [<remote>]
@@ -105,7 +105,6 @@ REMOTE_LINE="$(head -n 1 "$LSREMOTE_OUTPUT_FILE" 2>/dev/null || true)"
 if [ -z "$REMOTE_LINE" ]; then
   log "branch '$BRANCH' not found on remote '$REMOTE' — push silently dropped or never executed"
   log "  hint: re-run git-push.sh and inspect output for auth / network errors"
-  log "  sprint-37 incident reference: E53-S244 / E69-S4 (silent-push regression)"
   exit 1
 fi
 

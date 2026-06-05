@@ -1,4 +1,4 @@
-# Maestro dynamic test adapter (E74-S9)
+# Maestro dynamic test adapter
 # Declarative cross-platform mobile UI test framework.
 name: maestro
 type: dynamic

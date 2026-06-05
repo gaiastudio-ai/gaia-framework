@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# select-notes-template.sh — gaia-meeting bias-to-template mapper (E76-S5)
-#
-# AC15 / FR-MTG-17
+# select-notes-template.sh — gaia-meeting bias-to-template mapper
 #
 # Given a closing-artifact bias, emits the absolute path to the matching
 # notes-drafting prompt template under the skill's `knowledge/` subtree.

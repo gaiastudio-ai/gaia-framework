@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gaiastudio.ai/schemas/rubric.schema.json",
-  "title": "GAIA Review System v2 — rubric file schema (E68-S2)",
-  "description": "JSON Schema (draft-07) for individual rubric files consumed by the layered rubric loader (rubric-loader.sh) and the deterministic merger (rubric-merger.sh). Each rubric is a single layer in the four-layer composition: base + regimes (in declaration order) + optional domain + optional project (per ADR-079, RFC 7396 JSON-merge-patch). NFR-RSV2-4 and NFR-RSV2-10 require schema-validation discipline and byte-identical merger output.",
+  "title": "GAIA Review System v2 — rubric file schema",
+  "description": "JSON Schema (draft-07) for individual rubric files consumed by the layered rubric loader (rubric-loader.sh) and the deterministic merger (rubric-merger.sh). Each rubric is a single layer in the four-layer composition: base + regimes (in declaration order) + optional domain + optional project (RFC 7396 JSON-merge-patch). Schema-validation discipline and byte-identical merger output are required.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -64,7 +64,7 @@
           "minLength": 1
         },
         "severity": {
-          "description": "Severity verdict. One of Critical|High|Medium|Low|Info — aligned with the verdict-resolver precedence (FR-RSV2-22 / NFR-RSV2-4).",
+          "description": "Severity verdict. One of Critical|High|Medium|Low|Info — aligned with the verdict-resolver precedence.",
           "type": "string",
           "enum": ["Critical", "High", "Medium", "Low", "Info"]
         },

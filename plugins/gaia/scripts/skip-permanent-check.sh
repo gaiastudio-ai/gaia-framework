@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # skip-permanent-check.sh — 90-day skip-directive linter with `# skip-permanent:`
-# sanctioned-exception support, owned by the plugin-test sub-rubric (E77-S14, FR-416,
-# ADR-088, TC-PLUGIN-RUBRIC-6).
+# sanctioned-exception support, owned by the plugin-test sub-rubric.
 #
 # Behaviour:
 #   - Scans a single .bats file (or every .bats file under a root directory).
@@ -9,7 +8,7 @@
 #       (a) ANNOTATED — the `skip` line itself OR the immediately preceding non-blank
 #           line carries a `# skip-permanent: <reason>` comment with a non-empty
 #           <reason>. ANNOTATED skips are excluded from the age check (sanctioned
-#           permanent exception per FR-416 / TC-PLUGIN-RUBRIC-6).
+#           permanent exceptions).
 #       (b) BARE — no `# skip-permanent:` annotation. The directive's age is
 #           computed; bare skips older than --max-age-days emit a STALE-SKIP
 #           finding on stdout and the script exits non-zero.
@@ -25,9 +24,7 @@
 #   1 — at least one stale BARE skip found
 #   2 — usage error
 #
-# Story: E77-S14 (Tier 2 — plugin-test sub-rubric, FR-416)
-# ADR:   ADR-088 (sub-rubric loader pipeline)
-# Refs:  TC-PLUGIN-RUBRIC-6, lint-bats-script-refs.sh (sibling reference linter)
+# Refs:  lint-bats-script-refs.sh (sibling reference linter)
 
 set -euo pipefail
 LC_ALL=C

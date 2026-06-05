@@ -114,7 +114,7 @@
         "linux": "python3 -m pip install --user vulture",
         "docker": "docker run --rm -v $PWD:/src python:3.11-slim sh -c 'pip install vulture && vulture /src'"
       },
-      "notes": "Tier 1 \u2014 pure pip install; covers F-10 Python dead-code gap."
+      "notes": "Tier 1 \u2014 pure pip install; covers Python dead-code gap."
     },
     "pip-audit": {
       "name": "pip-audit",
@@ -222,7 +222,7 @@
         "linux": "curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin",
         "docker": "docker pull anchore/grype:latest"
       },
-      "notes": "Bundles its own vulnerability DB; ADR-122 / E70-S9 enforce DB-age + checksum trust boundary."
+      "notes": "Bundles its own vulnerability DB; DB-age + checksum trust boundary enforced."
     },
     "syft": {
       "name": "syft",
@@ -335,7 +335,7 @@
         "linux": "dotnet tool install --global Sarif.Multitool",
         "docker": "docker run --rm -v $PWD:/src mcr.microsoft.com/dotnet/sdk:8.0 sh -c \"dotnet tool install --global Sarif.Multitool && PATH=$HOME/.dotnet/tools:$PATH sarif-multitool\""
       },
-      "notes": "AF-2026-05-30-4 / Test11 F-25 \u2014 required by brownfield Phase 7 sarif-merge.sh; was hand-install only. Requires .NET SDK (8.0+). On hosts without dotnet, the brownfield SARIF merge degrades to single-tool consumption."
+      "notes": "Required by brownfield Phase 7 sarif-merge.sh. Requires .NET SDK (8.0+). On hosts without dotnet, the brownfield SARIF merge degrades to single-tool consumption."
     }
   }
 }

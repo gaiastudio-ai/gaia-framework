@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 # wire-verification-emit.sh — /gaia-trace enforcement of integration coverage
-# for FR/NFR rows with surface_type != none (E95-S1).
-#
-# Refs:  ADR-109 §D1 (wired-vs-implemented gate), NFR-073 (Wire Verification),
-#        ADR-054 (Review Gate dominance — pathway-i), ADR-077 (review pipeline —
-#        unchanged by pathway-i), AI-2026-05-15-4, AF-2026-05-18-6.
-# Story: E95-S1.
+# for FR/NFR rows with surface_type != none.
 #
 # Purpose
 #   For a single story file + traceability matrix, walk the matrix for FR/NFR
@@ -15,14 +10,14 @@
 # Usage
 #   wire-verification-emit.sh --story-file <path> --matrix-file <path>
 #
-# Behaviour (pathway-i per Val F7 of AF-2026-05-18-6 — zero review-gate.sh changes)
+# Behaviour (pathway-i — zero review-gate.sh changes)
 #   - exits 0 if all surface_type != none rows have integration coverage,
 #     OR if matrix contains no surface_type != none rows.
 #   - exits 1 on violation:
 #       (a) emit ONE HALT to stderr listing ALL violating FR/NFR ids;
 #       (b) invoke review-gate.sh update --story <key> --gate "Test Review"
 #           --verdict FAILED exactly once per story (NOT per FR/NFR);
-#       (c) ADR-054 dominance handles composite BLOCKED automatically.
+#       (c) review-gate dominance handles composite BLOCKED automatically.
 #
 # Fail-closed on misspelled surface_type values (EC-1): any value other than
 # `none` is treated as user-visible surface — surfaces taxonomy errors at

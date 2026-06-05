@@ -12,34 +12,34 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are performing gap remediation triage. You read the latest gap analysis report produced by `/gaia-test-gap-analysis`, filter gaps by severity, group them by story, propose remediation actions using the rule table from `scripts/lib/gap-triage-rules.js` (ADR-039 section 10.22.8.2), present a triage table for user approval, execute approved actions via bundled sub-workflow invocations, and emit a remediation report.
+You are performing gap remediation triage. You read the latest gap analysis report produced by `/gaia-test-gap-analysis`, filter gaps by severity, group them by story, propose remediation actions using the rule table from `scripts/lib/gap-triage-rules.js`, present a triage table for user approval, execute approved actions via bundled sub-workflow invocations, and emit a remediation report.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/fill-test-gaps` workflow (Cluster 11, story E28-S84, ADR-042). It follows the canonical skill pattern established by E28-S66 (code-review).
+This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/fill-test-gaps` workflow. It follows the canonical skill pattern established by the code-review skill.
 
 **Write context:** This skill does NOT use `context: fork` because it needs to write the remediation report and invoke sub-workflows that modify project files. It uses `allowed-tools: Read Grep Glob Bash Write Edit` for full read-write access.
 
-**Sub-workflow dispatch:** Approved remediation actions are dispatched to bundled sub-workflows (`/gaia-add-stories`, `/gaia-triage-findings`, `/gaia-test-automate`) via subagent invocations with `mode=yolo`. The ADR-037 return adapter (`scripts/lib/adr037-return-adapter.js`) normalizes sub-workflow returns.
+**Sub-workflow dispatch:** Approved remediation actions are dispatched to bundled sub-workflows (`/gaia-add-stories`, `/gaia-triage-findings`, `/gaia-test-automate`) via subagent invocations with `mode=yolo`. The return adapter (`scripts/lib/adr037-return-adapter.js`) normalizes sub-workflow returns.
 
 ## Critical Rules
 
-- A gap analysis report MUST exist. Resolve via the strategy-fallback rule (ADR-072 / AF-2026-05-08-5): first try `.gaia/artifacts/test-artifacts/test-gap-analysis-*.md` (flat layout); if zero matches, fall back to `.gaia/artifacts/test-artifacts/strategy/test-gap-analysis-*.md` (E53 reorganization placement). If NEITHER glob resolves, fail fast with "No gap analysis report found at .gaia/artifacts/test-artifacts/test-gap-analysis-*.md or .gaia/artifacts/test-artifacts/strategy/test-gap-analysis-*.md -- run `/gaia-test-gap-analysis` first" (AC-EC3).
+- A gap analysis report MUST exist. Resolve via the strategy-fallback rule: first try `.gaia/artifacts/test-artifacts/test-gap-analysis-*.md` (flat layout); if zero matches, fall back to `.gaia/artifacts/test-artifacts/strategy/test-gap-analysis-*.md` (reorganization placement). If NEITHER glob resolves, fail fast with "No gap analysis report found at .gaia/artifacts/test-artifacts/test-gap-analysis-*.md or .gaia/artifacts/test-artifacts/strategy/test-gap-analysis-*.md -- run `/gaia-test-gap-analysis` first" (AC-EC3).
 - If gap report frontmatter contains malformed YAML, fail with a descriptive parse error message (AC-EC2).
-- Action proposal rules MUST be applied from `scripts/lib/gap-triage-rules.js` -- the single source of truth for the ADR-039 section 10.22.8.2 rule table.
-- Logs-and-continues error handling: a single sub-workflow failure MUST NOT halt the parent skill (FR-314).
+- Action proposal rules MUST be applied from `scripts/lib/gap-triage-rules.js` -- the single source of truth for the rule table.
+- Logs-and-continues error handling: a single sub-workflow failure MUST NOT halt the parent skill.
 - Retry-only-failed semantics: consult the most recent prior remediation report (within 24 hours) and skip rows that previously succeeded (AC6/AC7 from legacy workflow).
 - Gap rows referencing story keys that no longer have story files trigger a sprint-status.yaml fallback for status resolution; if that also yields no status, the row is marked `skip` with reason `story_not_found` (AC-EC4).
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule). Reads are read-only — sprint-status.yaml is consulted only as a secondary fallback source.
-- YOLO mode follows the ADR-067 contract: default severity filter (critical+high) is auto-applied without prompting; explicit `--severity` arguments still take precedence.
+- YOLO mode follows the YOLO contract: default severity filter (critical+high) is auto-applied without prompting; explicit `--severity` arguments still take precedence.
 
 ## Constants
 
-- **PERF_BUDGET_THRESHOLD** — default 20 actionable remediation rows. Above this threshold, Step 6 emits a perf-budget note before execution (FR-391). Override by editing this constant.
+- **PERF_BUDGET_THRESHOLD** — default 20 actionable remediation rows. Above this threshold, Step 6 emits a perf-budget note before execution. Override by editing this constant.
 
 ## Steps
 
 ### Step 1 -- Load Gap Report
 
-- Glob the gap-analysis report path via the strategy-fallback rule (Critical Rules above): first try `.gaia/artifacts/test-artifacts/test-gap-analysis-*.md` (flat layout); if zero matches, fall back to `.gaia/artifacts/test-artifacts/strategy/test-gap-analysis-*.md` (E53 reorganization placement, ADR-072). Take the UNION of both globs so a project mid-migration with reports in both locations is handled deterministically.
+- Glob the gap-analysis report path via the strategy-fallback rule (Critical Rules above): first try `.gaia/artifacts/test-artifacts/test-gap-analysis-*.md` (flat layout); if zero matches, fall back to `.gaia/artifacts/test-artifacts/strategy/test-gap-analysis-*.md` (reorganization placement). Take the UNION of both globs so a project mid-migration with reports in both locations is handled deterministically.
 - Sort glob results deterministically (lexicographic on filename).
 - For each matched file, parse the YAML frontmatter and extract the `date` field.
 - If a file has missing or malformed frontmatter, HALT with error: "Parse error in {filepath} -- malformed or missing frontmatter. Fix the file or regenerate with /gaia-test-gap-analysis" (AC-EC2).
@@ -51,12 +51,12 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 - Default severity filter: `critical+high`.
 - **Argument precedence:** if the user invoked the skill with an explicit `--severity` argument (`critical`, `high`, `medium`, or `all`), use it directly and SKIP the prompt below.
-- **Normal mode prompt (inline-ask, ADR-066):** when no `--severity` argument is provided and the runtime is NOT in YOLO mode, prompt the user:
+- **Normal mode prompt (inline-ask):** when no `--severity` argument is provided and the runtime is NOT in YOLO mode, prompt the user:
 
   > Which severity filter should I apply? Default: critical+high. Options: critical | high | medium | all.
 
   Accept the user's response. Empty input or "default" selects critical+high. Validate against the four allowed options; reject anything else with a brief retry prompt.
-- **YOLO mode auto-apply (ADR-067):** when no `--severity` argument is provided and the runtime IS in YOLO mode, auto-apply the default (critical+high) without prompting and emit a single-line audit log: "YOLO: severity filter auto-applied = critical+high (ADR-067)". This satisfies ADR-067 rule (2) — auto-accept default severity filters.
+- **YOLO mode auto-apply:** when no `--severity` argument is provided and the runtime IS in YOLO mode, auto-apply the default (critical+high) without prompting and emit a single-line audit log: "YOLO: severity filter auto-applied = critical+high". This satisfies the YOLO rule — auto-accept default severity filters.
 - Apply the resolved filter to the gap list.
 - If 0 gaps remain after filtering: continue with an empty list -- the triage table renders with "No gaps match the selected severity filter".
 - If filtered gap count exceeds 50: record INFO note "Report size {N} exceeds 50-gap perf budget -- expect >30s runtime".
@@ -77,7 +77,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
   3. If sprint-status.yaml yields a status, continue with the rule table below.
   4. If sprint-status.yaml has no entry for `{story_key}` either, mark the row as `skip` with reason `story_not_found` (AC-EC4).
 - Import and invoke `proposeAction` from `scripts/lib/gap-triage-rules.js` for each gap — this remains the runtime source of truth for the rule table.
-- **Inline rule table (ADR-039 §10.22.8.2)** — exactly the six-row decision matrix encoded in `gap-triage-rules.js`, inlined here for auditability per E49-S2:
+- **Inline rule table** — exactly the six-row decision matrix encoded in `gap-triage-rules.js`, inlined here for auditability:
 
   | gap_type           | story_status                  | action_type        | sub_workflow            | skip_reason                                |
   |--------------------|-------------------------------|--------------------|-------------------------|--------------------------------------------|
@@ -94,11 +94,11 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 - Render the triage map as a markdown table: `story_key | gap_count | gap_types | proposed_action | sub_workflow | status | skip_reason`.
 - Add header with: report source file, date, severity filter, total gaps, filtered gaps.
-- Save to `.gaia/artifacts/test-artifacts/fill-test-gaps-triage-{date}.md` (writer-asymmetry per AF-2026-05-17-8: this skill READS gap reports via flat-then-strategy/ fallback but WRITES the triage artifact to the flat path only — mirrors the AF-2026-05-16-3/4 writer policy that path-layout decisions belong to a project-config setting, not per-skill writer fallbacks).
+- Save to `.gaia/artifacts/test-artifacts/fill-test-gaps-triage-{date}.md` (writer-asymmetry: this skill READS gap reports via flat-then-strategy/ fallback but WRITES the triage artifact to the flat path only — path-layout decisions belong to a project-config setting, not per-skill writer fallbacks).
 
 ### Step 6 -- Execute Approved Actions
 
-- **Perf-budget pre-check (FR-391):** before invoking sub-workflows, count actionable (non-skip, non-skip_prior_success) remediation rows. If the count exceeds `PERF_BUDGET_THRESHOLD` (default: 20 — see Constants), emit the perf-budget note verbatim:
+- **Perf-budget pre-check:** before invoking sub-workflows, count actionable (non-skip, non-skip_prior_success) remediation rows. If the count exceeds `PERF_BUDGET_THRESHOLD` (default: 20 — see Constants), emit the perf-budget note verbatim:
 
   > Perf-budget note: {N} remediation rows exceed the 20-row threshold -- execution may take significant time.
 
@@ -115,7 +115,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 - Import `writeReport` from `scripts/lib/gap-remediation-report-writer.js`.
 - Call `writeReport` with tracking map, source gap report path, output directory, and execution date.
-- Output: `.gaia/artifacts/test-artifacts/gap-remediation-report-{date}.md` (writer-asymmetry per AF-2026-05-17-8: WRITES the remediation artifact to the flat path only, even when the source gap report was read from `strategy/` — mirrors the AF-2026-05-16-3/4 writer policy) with frontmatter (source_gap_report, execution_date, total_actions, succeeded, failed, skipped) and per-action detail table per architecture section 10.22.8.3.
+- Output: `.gaia/artifacts/test-artifacts/gap-remediation-report-{date}.md` (writer-asymmetry: WRITES the remediation artifact to the flat path only, even when the source gap report was read from `strategy/`) with frontmatter (source_gap_report, execution_date, total_actions, succeeded, failed, skipped) and per-action detail table per the architecture document.
 - If `writeReport` throws, HALT with error -- the report must always be written for retry-only-failed semantics.
 
 ## Finalize

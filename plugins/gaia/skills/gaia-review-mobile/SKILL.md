@@ -1,6 +1,6 @@
 ---
 name: gaia-review-mobile
-description: Mobile review gate — runs six validators (manifest auditor, entitlements, signing configuration, store metadata completeness, privacy manifest, universal-links / app-links) on iOS and Android projects, composes a layered rubric (mobile + regimes), produces a verdict via verdict-resolver.sh, and updates the Review Gate via review-gate.sh. Routed to Talia (mobile-dev) via agent-overlay.sh per ADR-077. Use when "review mobile" or /gaia-review-mobile.
+description: Mobile review gate — runs six validators (manifest auditor, entitlements, signing configuration, store metadata completeness, privacy manifest, universal-links / app-links) on iOS and Android projects, composes a layered rubric (mobile + regimes), produces a verdict via verdict-resolver.sh, and updates the Review Gate via review-gate.sh. Routed to Talia (mobile-dev) via agent-overlay.sh. Use when "review mobile" or /gaia-review-mobile.
 argument-hint: "[story-key]"
 command: /gaia-review-mobile
 phase: implementation
@@ -20,28 +20,28 @@ orchestration_class: reviewer
 
 ## Mission
 
-You are the **pre-merge mobile review gate** for iOS and Android projects (E74-S8 / ADR-081). Six validators (manifest auditor, entitlements, signing configuration, store metadata completeness, privacy manifest, universal-links / app-links) run as the deterministic evidence layer; the LLM applies semantic judgment on top of that evidence; the verdict is computed by `verdict-resolver.sh`.
+You are the **pre-merge mobile review gate** for iOS and Android projects. Six validators (manifest auditor, entitlements, signing configuration, store metadata completeness, privacy manifest, universal-links / app-links) run as the deterministic evidence layer; the LLM applies semantic judgment on top of that evidence; the verdict is computed by `verdict-resolver.sh`.
 
 > Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.
 
-This is the unifying principle of every GAIA review skill (FR-DEJ-1, ADR-075). For `gaia-review-mobile` it means: the six validators run first and emit a structured `analysis-results.json` artifact. The LLM then performs a semantic review **on top of** that artifact — it cannot disregard a CRITICAL finding (e.g., development-only entitlement in a Release build, undeclared required-reason API), and it cannot relabel a manifest auditor failure as APPROVE. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language.
+This is the unifying principle of every GAIA review skill. For `gaia-review-mobile` it means: the six validators run first and emit a structured `analysis-results.json` artifact. The LLM then performs a semantic review **on top of** that artifact — it cannot disregard a CRITICAL finding (e.g., development-only entitlement in a Release build, undeclared required-reason API), and it cannot relabel a manifest auditor failure as APPROVE. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language.
 
-This skill follows the seven-phase reviewer structure mandated by **ADR-077** (Three-Tier Review Pipeline) and the layered-rubric model mandated by **ADR-079** (Layered Rubric Loading). It is wired to Talia (Mobile Developer) via `agent-overlay.sh` per the ADR-077 wiring table.
+This skill follows the seven-phase reviewer structure (Three-Tier Review Pipeline) and the layered-rubric model (Layered Rubric Loading). It is wired to Talia (Mobile Developer) via `agent-overlay.sh`.
 
-**Scope (story E74-S8 / ADR-081):** mobile-as-platform extension. Validators are platform-aware — iOS-only validators (Info.plist, entitlements, PrivacyInfo.xcprivacy, AASA) skip when `platforms` excludes `ios`; Android-only validators (AndroidManifest.xml, assetlinks.json) skip when `platforms` excludes `android`. Cross-platform validators (signing config, store metadata) inspect whichever platform is configured.
+**Scope:** mobile-as-platform extension. Validators are platform-aware — iOS-only validators (Info.plist, entitlements, PrivacyInfo.xcprivacy, AASA) skip when `platforms` excludes `ios`; Android-only validators (AndroidManifest.xml, assetlinks.json) skip when `platforms` excludes `android`. Cross-platform validators (signing config, store metadata) inspect whichever platform is configured.
 
-**Fork context semantics (ADR-041, ADR-045):** This skill runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). It CANNOT modify source files — the tool allowlist enforces NFR-048 (no-write isolation).
+**Fork context semantics:** This skill runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). It CANNOT modify source files — the tool allowlist enforces no-write isolation.
 
 ## Agent Wiring
 
-Per the ADR-077 wiring table, this skill resolves to **Talia (Mobile Developer)**:
+This skill resolves to **Talia (Mobile Developer)**:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-review-mobile
 # {"agent_id":"talia","sidecar_path":".gaia/memory/talia-sidecar.md"}
 ```
 
-The persona is lazy-loaded by `load-stack-persona.sh` BEFORE fork dispatch — the parent context resolves the persona payload, then the fork inherits it. The fork tool allowlist `[Read, Grep, Glob, Bash]` stays intact (NFR-RSV2-5 / NFR-048 preserved).
+The persona is lazy-loaded by `load-stack-persona.sh` BEFORE fork dispatch — the parent context resolves the persona payload, then the fork inherits it. The fork tool allowlist `[Read, Grep, Glob, Bash]` stays intact.
 
 ## Critical Rules
 
@@ -90,13 +90,13 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 - Resolve config via `resolve-config.sh` (already invoked by `setup.sh`).
 - Read `platforms[]` and `compliance[]` from project-config.
-- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch (NFR-DEJ-4 preserved). For mobile review the canonical stack name is `mobile-dev` (Talia). Forward the persona payload + canonical stack name into the fork.
+- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. For mobile review the canonical stack name is `mobile-dev` (Talia). Forward the persona payload + canonical stack name into the fork.
 - Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. Fail on zero or multiple matches.
 
 ### Phase 2 — Story Gate
 
 - Verify the story is in `review` status. Otherwise HALT with `"story must be in review status before mobile review"`.
-- Read the File List from the story's Dev Agent Record. Run `${CLAUDE_PLUGIN_ROOT}/scripts/file-list-diff-check.sh --story-file <path>` to detect divergence between the recorded File List and the actual diff. **Story Gate semantics are advisory per FR-DEJ-2 — divergence does NOT halt the review.** Surface divergence as a Warning to the user.
+- Read the File List from the story's Dev Agent Record. Run `${CLAUDE_PLUGIN_ROOT}/scripts/file-list-diff-check.sh --story-file <path>` to detect divergence between the recorded File List and the actual diff. **Story Gate semantics are advisory — divergence does NOT halt the review.** Surface divergence as a Warning to the user.
 - Missing-file handling: if a File List entry is absent from disk (renamed/deleted post-File-List-write), record it as a Warning finding under `category: integrity, severity: warning` in `analysis-results.json`.
 
 ### Phase 3A — Deterministic Analysis
@@ -105,7 +105,7 @@ Phase 3A is the **evidence layer**. Output: `analysis-results.json` validating a
 
 #### Layered rubric composition (AC10)
 
-Compose the merged rubric via the deterministic merger (RFC 7396 JSON-merge-patch, ADR-079):
+Compose the merged rubric via the deterministic merger (RFC 7396 JSON-merge-patch):
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/rubric-merger.sh \
@@ -185,7 +185,7 @@ Cross-platform.
 
 #### Static Adapter Tool Probe (AC11)
 
-For each available mobile static adapter from E74-S7 (SwiftLint, Detekt, MobSF, etc.), invoke the three-state availability probe:
+For each available mobile static adapter (SwiftLint, Detekt, MobSF, etc.), invoke the three-state availability probe:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/tool-availability-probe.sh --tool <adapter>
@@ -225,7 +225,7 @@ Resolve the composite verdict via the deterministic resolver:
   --rubric <merged-rubric.json>
 ```
 
-The resolver emits one of `PASSED | FAILED | BLOCKED`. The skill MUST NOT recompute the verdict by hand (ADR-077, ADR-042).
+The resolver emits one of `PASSED | FAILED | BLOCKED`. The skill MUST NOT recompute the verdict by hand.
 
 Verdict mapping:
 
@@ -269,19 +269,19 @@ Hand off control to `finalize.sh` which writes the workflow checkpoint and emits
 
 ## References
 
-- **ADR-077** Three-Tier Review Pipeline (review-common, agent-overlay, verdict-resolver) — governs the seven-phase structure.
-- **ADR-079** Layered Rubric Loading (RFC 7396 JSON-merge-patch via `rubric-merger.sh`).
-- **ADR-081** Mobile-as-Platform Extension — defines the mobile rubric layer and platform-conditional validator behavior.
-- **ADR-075** Evidence/Judgment Split (FR-DEJ-1 unifying principle).
-- **ADR-041** Native Execution Model (Claude Code Skills + Subagents + Plugins + Hooks).
-- **ADR-042** Scripts-over-LLM for Deterministic Operations.
-- **E66-S1** review-common foundation (analysis-results schema, verdict-resolver).
-- **E66-S4** agent-overlay.sh wiring table.
-- **E68-S2** rubric-merger.sh + rubric.schema.json.
-- **E74-S2** mobile stacks (canonical stack identifiers).
-- **E74-S3** mobile rubrics (`mobile.json`, `mobile-code.json`, `mobile-perf.json`, `mobile-security.json`, `mobile-a11y.json`).
-- **E74-S7** mobile static adapters (SwiftLint, Detekt, MobSF integration).
-- **Story:** E74-S8 — `/gaia-review-mobile` skill spec + Talia routing.
+- Three-Tier Review Pipeline (review-common, agent-overlay, verdict-resolver) — governs the seven-phase structure.
+- Layered Rubric Loading (RFC 7396 JSON-merge-patch via `rubric-merger.sh`).
+- Mobile-as-Platform Extension — defines the mobile rubric layer and platform-conditional validator behavior.
+- Evidence/Judgment Split unifying principle.
+- Native Execution Model (Claude Code Skills + Subagents + Plugins + Hooks).
+- Scripts-over-LLM for Deterministic Operations.
+- review-common foundation (analysis-results schema, verdict-resolver).
+- agent-overlay.sh wiring table.
+- rubric-merger.sh + rubric.schema.json.
+- mobile stacks (canonical stack identifiers).
+- mobile rubrics (`mobile.json`, `mobile-code.json`, `mobile-perf.json`, `mobile-security.json`, `mobile-a11y.json`).
+- mobile static adapters (SwiftLint, Detekt, MobSF integration).
+- `/gaia-review-mobile` skill spec + Talia routing.
 
 ## Finalize
 

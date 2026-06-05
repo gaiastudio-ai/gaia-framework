@@ -18,7 +18,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -28,14 +28,14 @@ fi
 
 You are creating a mobile test plan covering device matrix, Appium test infrastructure, React Native / cross-platform testing, responsive viewport testing, and platform-specific checks. The output is written to `.gaia/artifacts/test-artifacts/mobile-test-plan-{date}.md`.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/mobile-testing` workflow (E28-S88, Cluster 12, ADR-041). The step ordering, prompts, and output path are preserved from the legacy instructions.xml.
+This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/mobile-testing` workflow. The step ordering, prompts, and output path are preserved from the legacy instructions.xml.
 
-**Main context semantics (ADR-041):** This skill runs under `context: main` with full tool access. It reads project state (architecture, test plan, story) and produces an output document.
+**Main context semantics:** This skill runs under `context: main` with full tool access. It reads project state (architecture, test plan, story) and produces an output document.
 
 ## Critical Rules
 
 - A story key or project context MUST be available. If no story key is provided as an argument and no project context can be loaded, prompt: "Provide a story key or confirm project-level assessment."
-- Device matrix MUST cover the top 90% of the target user base (FR-386 hard constraint).
+- Device matrix MUST cover the top 90% of the target user base (hard constraint).
 - Platform-specific behaviors must be tested on real devices or emulators.
 - Output MUST be written to `.gaia/artifacts/test-artifacts/mobile-test-plan-{date}.md` where `{date}` is today's date in YYYY-MM-DD format.
 - Knowledge fragments are bundled in this skill's `knowledge/` directory -- load them JIT when referenced by a step.
@@ -45,7 +45,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ### Step 1 -- Platform Matrix
 
-**Hard constraint (FR-386):** The device matrix MUST cover the top 90% of the
+**Hard constraint:** The device matrix MUST cover the top 90% of the
 target user base. The 90% threshold is non-negotiable — it is the minimum
 defensible coverage floor. Acceptable evidence sources for the threshold are
 usage analytics, app-store device telemetry, or vendor reports such as
@@ -69,7 +69,7 @@ matrix in the generated test plan so the constraint is auditable.
 - Define element location strategies and wait patterns.
 - Include Page Object Model structure for test maintainability.
 
-#### Cloud device lab configuration (FR-386)
+#### Cloud device lab configuration
 
 The generated test plan MUST include at least one runnable cloud-config
 snippet drawn from one of the two reference providers below. Credentials are

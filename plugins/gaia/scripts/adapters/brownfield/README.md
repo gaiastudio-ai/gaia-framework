@@ -1,18 +1,18 @@
 # Brownfield deterministic-tools adapters
 
 Adapters invoked by `/gaia-brownfield` Phase 3 pre-flight, gated behind the
-deterministic-tools master flag (ADR-121) and per-tool overrides (ADR-078).
+deterministic-tools master flag and per-tool overrides.
 
-## `pre-warm.sh` (E70-S7 / FR-539)
+## `pre-warm.sh`
 
 Runs `grype db check || grype db update` and primes cdxgen package-registry
 caches **before** the Phase 3 scan timer starts, so a cold CI runner does not
-pay the 15–30s Grype DB cold-fetch + cdxgen warm-up against the NFR-84 120s
+pay the 15–30s Grype DB cold-fetch + cdxgen warm-up against the 120s
 WARNING budget.
 
 ### Contract
 
-- **Flag gate (ADR-121 / ADR-078).** Invoked only when the master flag
+- **Flag gate.** Invoked only when the master flag
   `brownfield.deterministic_tools: true` AND the per-tool override
   `brownfield.prewarm_enabled: true` resolve true. `/gaia-brownfield`
   resolves these via `resolve-config.sh` and exports
@@ -26,12 +26,12 @@ WARNING budget.
   no network) AND a cdxgen sentinel marker younger than
   `GAIA_PREWARM_MAX_AGE_DAYS` (default 5) → emit `cache warm`, exit 0, **zero
   network I/O**.
-- **Checksum log (producer for E70-S9).** Appends one JSONL row per invocation
+- **Checksum log.** Appends one JSONL row per invocation
   to `.gaia/memory/brownfield-audit/grype-db-checksum.log`:
   `{"ts": <ISO-8601>, "session_id": <id>, "checksum": <sha256>, "db_built_age_seconds": <int>}`.
-  E70-S9 (trust-boundary enforcement) is the consumer — it reads the last row
-  for the current session and rejects checksum drift / over-age DBs. This story
-  is the producer only; do not pre-empt S9's enforcement here.
+  The trust-boundary enforcement consumer reads the last row for the current
+  session and rejects checksum drift / over-age DBs. This script is the
+  producer only; do not pre-empt the consumer's enforcement here.
 
 ### Environment seams
 
@@ -45,7 +45,7 @@ WARNING budget.
 | `GAIA_SESSION_ID` | session id for the JSONL row | `$PPID` |
 | `GAIA_PREWARM_MAX_AGE_DAYS` | warm-cache freshness threshold | `5` |
 
-## Binary supply-chain pinning (AC-X4 / NFR-86 / ADR-121)
+## Binary supply-chain pinning
 
 `grype` and `cdxgen` MUST be version-pinned via checksum verification in the CI
 image, following the **Trivy March 2026 supply-chain compromise** precedent. In
@@ -64,7 +64,7 @@ feasible, the DB build) before invocation.
 4. Record the pinned version + checksum in the dependency manifest so drift is
    reviewable.
 
-> **Status (E70-S7):** This repo does not yet carry a dedicated dependency-pinning
+> **Status:** This repo does not yet carry a dedicated dependency-pinning
 > CI workflow (`.github/workflows/dependencies.yml` or equivalent). The pinning
 > rationale + recipe are documented here; wiring the actual checksum-verified
-> install into CI infra is tracked as a Finding on E70-S7 for the infra owner.
+> install into CI infra is tracked as a finding for the infra owner.

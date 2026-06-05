@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ci-regen-user-steps.sh — *.user-steps.yml include helper for /gaia-config-ci (E71-S4).
+# ci-regen-user-steps.sh — *.user-steps.yml include helper for /gaia-config-ci.
 #
 # Subcommands:
 #   discover <ci-file>           Print the sibling *.user-steps.yml path if it exists
@@ -19,7 +19,6 @@
 # write target through `assert-protected` first; the script refuses every
 # *.user-steps.yml path so the caller cannot "forget" the rule.
 #
-# Refs: AC6 (TS-06), AC7 (TS-07), AC8 (TS-08), FR-RSV2-38.
 
 set -euo pipefail
 LC_ALL=C

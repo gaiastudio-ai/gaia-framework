@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # parse-resume-flags.sh — gaia-meeting --resume / --continue / --interject /
-# --wrap-up parser (E76-S7, AC3, FR-MTG-32).
+# --wrap-up parser.
 #
 # Emits two key=value lines on stdout:
 #   resume_id=<id-or-empty>

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # tag-conformance-detector.sh — GAIA review-common Phase 3A per-stack tag detector.
 #
-# Originally shipped by E67-S1 / ADR-077 with a per-invocation `--stack`
-# contract. Extended by E72-S4 with strict/suggestion mode (`test_tagging.strict`),
-# a `--files <glob>` standalone CLI, per-file stack auto-detection (so a single
-# invocation handles mixed monorepos), and severity routing (warning when
-# strict, info — Suggestion — otherwise).
+# Originally shipped with a per-invocation `--stack` contract. Extended with
+# strict/suggestion mode (`test_tagging.strict`), a `--files <glob>` standalone
+# CLI, per-file stack auto-detection (so a single invocation handles mixed
+# monorepos), and severity routing (warning when strict, info — Suggestion —
+# otherwise).
 #
 # Purpose
 # -------
@@ -40,8 +40,8 @@
 # Status `failed` whenever ≥1 finding is emitted. Exit code is ALWAYS 0 on
 # successful run (caller-error-only exit 1).
 #
-# Severity (E72-S4 AC6/AC7)
-# -------------------------
+# Severity
+# --------
 # - Strict mode → severity `warning`. A finding contributes Warning-level
 #   evidence to /gaia-review-test Phase 3A.
 # - Non-strict (default) → severity `info` (Suggestion). Findings still surface
@@ -60,17 +60,16 @@
 #   tag-conformance-detector.sh [--stack <stack>] [--strict] --files <glob>
 #   tag-conformance-detector.sh --help
 #
-# When `--stack` is omitted (E72-S4 AC9) the detector auto-classifies each
-# input file by extension to one of the canonical stacks; files that do not
-# match any known extension are skipped silently. When `--stack` is provided
-# the legacy single-stack discovery is preserved for backward compatibility
-# with E67-S1 callers (phase3a-test-review.sh).
+# When `--stack` is omitted the detector auto-classifies each input file by
+# extension to one of the canonical stacks; files that do not match any known
+# extension are skipped silently. When `--stack` is provided the legacy
+# single-stack discovery is preserved for backward compatibility with
+# phase3a-test-review.sh callers.
 #
 # POSIX discipline: bash + set -euo pipefail + LC_ALL=C; macOS bash 3.2 + BSD
 # awk compatible (no 3-arg match, no associative arrays); no jq dependency.
 #
-# Refs: AC4, AC6, AC7, FR-RSV2-1, FR-RSV2-2, FR-RSV2-42, NFR-RSV2-1,
-#       ADR-075, ADR-077.
+
 
 set -euo pipefail
 LC_ALL=C
@@ -82,7 +81,7 @@ die() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — Phase 3A per-stack tag-conformance detector (ADR-077 + E72-S4).
+$SCRIPT_NAME — Phase 3A per-stack tag-conformance detector.
 
 Usage:
   $SCRIPT_NAME [--stack <stack>] [--strict] <path>...
@@ -143,7 +142,7 @@ if [ -n "$STACK" ]; then
   esac
 fi
 
-# ---------- strict-mode resolution (E72-S4 AC6/AC7) ----------
+# ---------- strict-mode resolution ----------
 
 resolve_strict_mode() {
   # Precedence: --strict > GAIA_TEST_TAGGING_STRICT > project-config.yaml > false.
@@ -158,7 +157,7 @@ resolve_strict_mode() {
   # the detector self-contained. The grep is anchored, single-line, and
   # tolerates surrounding whitespace and quoted booleans.
   local cfg=""
-  # E96-S7 partial-4c: prefer .gaia/config/project-config.yaml over legacy config/
+  # Prefer .gaia/config/project-config.yaml over legacy config/
   for c in \
     "${CLAUDE_PROJECT_ROOT:-}/.gaia/config/project-config.yaml" \
     "${CLAUDE_PROJECT_ROOT:-}/config/project-config.yaml" \
@@ -188,7 +187,7 @@ else
   SEVERITY="info"
 fi
 
-# ---------- file extension → canonical stack auto-classifier (AC9) ----------
+# ---------- file extension → canonical stack auto-classifier ----------
 
 classify_file_to_stack() {
   local f="$1"
@@ -371,11 +370,10 @@ has_tag_java() {
 
 has_tag_python() {
   local f="$1"
-  # AF-2026-05-24-10 / Test02 F-14: also recognize module-level
-  # `pytestmark = pytest.mark.unit` and the list form
-  # `pytestmark = [pytest.mark.unit, pytest.mark.smoke]`. The original
-  # check only matched per-test decorators (@pytest.mark.X), missing
-  # the equally-canonical module-level form.
+  # Also recognize module-level `pytestmark = pytest.mark.unit` and the list
+  # form `pytestmark = [pytest.mark.unit, pytest.mark.smoke]`. The original
+  # check only matched per-test decorators (@pytest.mark.X), missing the
+  # equally-canonical module-level form.
   grep -Eq '@pytest\.mark\.[A-Za-z_][A-Za-z0-9_]*' "$f" 2>/dev/null && return 0
   grep -Eq '^[[:space:]]*pytestmark[[:space:]]*=[[:space:]]*(\[[[:space:]]*)?pytest\.mark\.' "$f" 2>/dev/null && return 0
   return 1
@@ -406,17 +404,16 @@ has_tag_mobile() {
 resolve_stack_for_file() {
   local f="$1"
   if [ -n "$STACK" ]; then
-    # AF-2026-05-24-10 / Test02 F-14: even when --stack is explicit, only
-    # apply the per-stack tag check to files that LOOK like test files
-    # for that stack. Otherwise source files passed in via the story File
-    # List (e.g. `core/budget/tracker.py`) get checked for @pytest.mark
-    # and reported as missing-tag — a false-positive on source code that
-    # has no business carrying test tags.
+    # Even when --stack is explicit, only apply the per-stack tag check to
+    # files that LOOK like test files for that stack. Otherwise source files
+    # (e.g. `core/budget/tracker.py`) get checked for @pytest.mark and
+    # reported as missing-tag — a false-positive on source code that has no
+    # business carrying test tags.
     #
-    # We cross-check by calling auto-classify: if the file's extension/
-    # name matches the explicit stack's test pattern, accept; otherwise
-    # skip silently. This preserves the legacy single-stack contract for
-    # actual test files while filtering source-file noise.
+    # We cross-check by calling auto-classify: if the file's extension/name
+    # matches the explicit stack's test pattern, accept; otherwise skip
+    # silently. This preserves the legacy single-stack contract for actual
+    # test files while filtering source-file noise.
     local auto
     auto="$(classify_path_to_stack "$f")"
     if [ "$auto" = "$STACK" ]; then

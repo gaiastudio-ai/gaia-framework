@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/gocyclo/run.sh — ADR-078 adapter contract for gocyclo.
+# adapters/gocyclo/run.sh — tool adapter contract for gocyclo.
 set -euo pipefail
 LC_ALL=C
 export LC_ALL
@@ -12,7 +12,7 @@ while [ "$#" -gt 0 ]; do
     --output) OUTPUT="$2"; shift 2 ;;
     --runtime-profile) RUNTIME_PROFILE="$2"; shift 2 ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
-    -h|--help) echo "adapters/gocyclo/run.sh — ADR-078 contract for gocyclo"; exit 0 ;;
+    -h|--help) echo "adapters/gocyclo/run.sh — tool adapter contract for gocyclo"; exit 0 ;;
     *) echo "run.sh: unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -22,17 +22,17 @@ done
 
 if ! command -v gocyclo >/dev/null 2>&1; then
   echo "run.sh: gocyclo not found on PATH" >&2
-  # Exit 127 = unavailable per E70-S2 AC10 (distinct from generic error 1).
+  # Exit 127 = unavailable (distinct from generic error 1).
   exit 127
 fi
 
-# AF-2026-05-31-1 / Test12 F-06: bash 3.2-compat replacement for mapfile.
+# Bash 3.2-compat replacement for mapfile.
 TARGETS=()
 while IFS= read -r _line; do [ -n "$_line" ] && TARGETS+=("$_line"); done < "$INPUT"
 raw="$(gocyclo "${TARGETS[@]}" 2>&1)" || rc=$? || true
 rc="${rc:-0}"
 
-# Canonical fragment shape per E70-S1 run-contract.md §2.1: {name, status, findings}.
+# Canonical fragment shape per run-contract.md §2.1: {name, status, findings}.
 fragment="$(jq -nc \
   --arg name "gocyclo" \
   --argjson rc "$rc" \

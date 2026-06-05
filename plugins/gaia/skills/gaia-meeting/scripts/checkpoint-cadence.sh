@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # checkpoint-cadence.sh — load `meeting.checkpoint_every_n_turns` from
-# settings.json (E76-S7, AC9 / TS11).
+# settings.json.
 #
 # Default 4. Honored verbatim in [1, 10]. Out-of-range values clamp:
 #   <= 0  -> 1

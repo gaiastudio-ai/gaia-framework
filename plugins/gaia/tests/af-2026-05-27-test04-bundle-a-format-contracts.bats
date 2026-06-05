@@ -166,5 +166,5 @@ MD
 
 @test "F-018 (producer): create-epics story template uses the epic KEY, not the name" {
   grep -qF 'Epic: {epic KEY' "$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
-  grep -qF 'Field-format contract (F-017/F-018' "$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
+  grep -qF 'Field-format contract' "$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
 }

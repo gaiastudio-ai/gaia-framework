@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# gaia-publish.sh — Five-step orchestrator for /gaia-publish per FR-525 + ADR-113.
+# gaia-publish.sh — Five-step orchestrator for /gaia-publish.
 #
-# E100-S1. Sequential, no auto-retry, no auto-rollback. Mirrors /gaia-deploy
+# Sequential, no auto-retry, no auto-rollback. Mirrors /gaia-deploy
 # semantics — recovery is user-initiated.
 #
-# Five steps (FR-525 canonical order):
-#   (1) pre-publish gate         — verify CI green on source branch (stub for E100-S2)
+# Five steps (canonical order):
+#   (1) pre-publish gate         — verify CI green on source branch
 #   (2) manifest version check   — read distribution.manifest, parse version, confirm == --version
-#   (3) trigger publish          — dispatch the channel adapter (stub for E100-S4..S8)
-#   (4) post-publish verify      — registry probe via adapter verify action (stub for E100-S3)
+#   (3) trigger publish          — dispatch the channel adapter
+#   (4) post-publish verify      — registry probe via adapter verify action
 #   (5) final verdict            — emit per-step evidence to assessment doc; exit code reflects verdict
 #
 # Args:
 #   --version <semver>      (required) the version to publish
 #   --dry-run               exit cleanly after step 3 with steps 4-5 SKIPPED + dry-run marker
-#   --skip-verify           bypass step 4 with a WARNING per NFR-082 opt-out
-#   --strict-builtin        refuse custom-adapter shadows for sensitive channels per SR-82
+#   --skip-verify           bypass step 4 with a WARNING (opt-out)
+#   --strict-builtin        refuse custom-adapter shadows for sensitive channels
 #
 # Exit codes:
 #   0 — verdict PASSED (or dry-run exit after step 3)
@@ -75,7 +75,7 @@ if [ -z "$VERSION" ]; then
   die "usage: $prog --version <semver> [--dry-run] [--skip-verify] [--strict-builtin]"
 fi
 
-# ---------- Config resolution via E99 helpers ----------
+# ---------- Config resolution ----------
 
 # Resolve project-config.yaml path. Default to .gaia/config/project-config.yaml
 # under CLAUDE_PROJECT_ROOT or PWD; allow PROJECT_CONFIG env override.
@@ -100,7 +100,7 @@ if [ -z "$CHANNEL" ]; then
   die "distribution.channel not set in $PROJECT_CONFIG — see /gaia-config-distribution"
 fi
 
-# Read first-promotion-chain entry. Per F1 resolution: if HEAD branch matches
+# Read first-promotion-chain entry. If HEAD branch matches
 # any promotion_chain[].branch, use that entry; otherwise default to index 0
 # (typically `staging`). Falls back to empty (= legacy stub) when the chain
 # is absent.
@@ -128,9 +128,7 @@ STEP2_STATUS="PENDING"; STEP2_DETAIL=""
 STEP3_STATUS="PENDING"; STEP3_DETAIL=""
 STEP4_STATUS="PENDING"; STEP4_DETAIL=""
 STEP5_STATUS="PENDING"; STEP5_DETAIL=""
-# Audit-trail per-step reason markers (E100-S2 AC2 / AC4 + F3 audit-symmetry,
-# E100-S3 AC4 / AC5 — verify-failed / verify-skipped,
-# E100-S4 — adapter findings surfacing + envelope-schema-violation distinction).
+# Audit-trail per-step reason markers.
 STEP1_REASON=""
 STEP2_REASON=""
 STEP4_REASON=""
@@ -145,7 +143,7 @@ _progress() {
     "${detail:+ — $detail}"
 }
 
-# ---------- Step 1: Pre-publish gate (stub — real impl lands in E100-S2) ----------
+# ---------- Step 1: Pre-publish gate ----------
 
 # Probe gh for the most-recent run status of a given check name on the
 # source-branch HEAD. Echoes the conclusion (success|failure|cancelled|...)
@@ -153,7 +151,7 @@ _progress() {
 # Echoes "pending" when status != completed.
 _gh_check_conclusion() {
   local check_name="$1"
-  # GH_FAKE_JSON-aware test shim is invoked transparently — production
+  # Test shim is invoked transparently — production
   # invocation is the real gh CLI; both produce the same JSON shape.
   local row
   row=$(printf '%s' "$GH_RUNS_JSON" | jq -r --arg n "$check_name" \
@@ -174,7 +172,7 @@ _gh_check_conclusion() {
 
 _step1_pre_publish_gate() {
   # Backward-compat: when ci_cd.promotion_chain is absent or carries no
-  # ci_checks, preserve the E100-S1 stub-PASS path so existing fixtures
+  # ci_checks, preserve the stub-PASS path so existing fixtures
   # (and projects that haven't wired CI checks yet) continue to work.
   if [ -z "$REQ_CI_CHECKS" ]; then
     STEP1_STATUS="PASSED"
@@ -306,13 +304,13 @@ _step2_manifest_version_check() {
 
 # ---------- Step 3: Trigger publish (adapter dispatch) ----------
 
-# E100-S8 C2: invoke the resolver early so SR-82 strict-builtin HALT and the
+# Invoke the resolver early so strict-builtin HALT and the
 # canonical shadow WARN fire here, BEFORE the credential-exposing trigger
 # phase. The actual adapter dispatch only fires when a custom shadow OR a
-# PATH-shim is configured — preserving E100-S1 stub-fallback for projects
+# PATH-shim is configured — preserving the stub-fallback for projects
 # that haven't wired any adapter yet.
 _step3_trigger_publish() {
-  # Resolve via the security-aware resolver FIRST to fire SR-82 checks.
+  # Resolve via the security-aware resolver FIRST to fire strict-builtin checks.
   # If --strict-builtin would HALT on a custom shadow, that surfaces here
   # before we dispatch any binary.
   local resolver="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/resolve-publish-adapter.sh"
@@ -344,7 +342,7 @@ _step3_trigger_publish() {
     fi
     if [ "$resolver_pre_exit" = "2" ]; then
       STEP3_STATUS="FAILED"
-      STEP3_DETAIL="adapter resolver rejected channel=$CHANNEL (see stderr — likely SR-81 traversal or manifest-validation failure)"
+      STEP3_DETAIL="adapter resolver rejected channel=$CHANNEL (see stderr — likely path-traversal or manifest-validation failure)"
       "$resolver" --adapter "$CHANNEL" --project-root "$PROJECT_ROOT" --plugin-root "$plugin_root" $strict_arg 2>&1 >/dev/null | head -3 >&2 || true
       _progress 3 "trigger-publish" "$STEP3_STATUS" "$STEP3_DETAIL"
       return
@@ -357,8 +355,8 @@ _step3_trigger_publish() {
   local adapter_bin
   adapter_bin=$(_resolve_adapter_binary "$CHANNEL")
 
-  # Stub-fallback: no PATH-shim AND no custom adapter → preserve E100-S1 PASSED.
-  # (Built-in adapters are present for many channels per E100-S5..S7, but
+  # Stub-fallback: no PATH-shim AND no custom adapter → preserve the stub PASSED.
+  # (Built-in adapters are present for many channels, but
   # without configured credentials they would FAIL; the legacy contract is
   # that an unconfigured environment returns PASSED stub so the orchestrator
   # remains testable.)
@@ -374,8 +372,8 @@ _step3_trigger_publish() {
     return
   fi
 
-  # E100-S9 SR-76: pre-flight credential audit against the resolved adapter dir.
-  # Refuse to invoke run.sh on audit FAIL — closes T-PUB-1 (DREAD 5.8 High) at runtime.
+  # Pre-flight credential audit against the resolved adapter dir.
+  # Refuse to invoke run.sh on audit FAIL.
   local audit_script="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/audit-publish-adapter-credentials.sh"
   [ -x "$audit_script" ] || audit_script="$(dirname "$0")/../../../scripts/lib/audit-publish-adapter-credentials.sh"
   if [ -x "$audit_script" ] && [ -n "$adapter_bin" ]; then
@@ -437,9 +435,9 @@ _step3_trigger_publish() {
   _progress 3 "trigger-publish" "$STEP3_STATUS" "$STEP3_DETAIL"
 }
 
-# ---------- Step 4: Post-publish verify (E100-S3) ----------
+# ---------- Step 4: Post-publish verify ----------
 
-# SR-83 defensive cap (mitigates T-PUB-4 unbounded local DoS).
+# Defensive cap to prevent unbounded local resource consumption.
 SR83_MAX_VERIFY_WINDOW=3600
 
 # Resolve the verify-retry window for the given channel by reading
@@ -461,12 +459,11 @@ _resolve_adapter_verify_window() {
 
 # Locate the adapter binary for the given channel. PATH-namespaced shim is
 # tried FIRST (allows test fixtures and operator overrides to take effect),
-# then the resolve-publish-adapter.sh helper (E100-S8) which implements
-# ADR-020 custom-shadow precedence + SR-81 path-traversal mitigation +
-# SR-82 --strict-builtin gate.
+# then the resolve-publish-adapter.sh helper which implements
+# custom-shadow precedence, path-traversal mitigation, and the strict-builtin gate.
 _resolve_adapter_binary() {
   local channel="$1"
-  # PATH-shim has highest precedence for backward-compat with E100-S1..S7 bats.
+  # PATH-shim has highest precedence for backward-compat with existing bats fixtures.
   local on_path
   on_path=$(command -v "gaia-adapter-publish-$channel" 2>/dev/null || true)
   if [ -n "$on_path" ]; then
@@ -474,7 +471,7 @@ _resolve_adapter_binary() {
     return 0
   fi
 
-  # E100-S8: resolve-publish-adapter.sh handles ADR-020 + SR-81 + SR-82.
+  # resolve-publish-adapter.sh handles custom-shadow precedence + path-traversal + strict-builtin.
   local resolver="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/resolve-publish-adapter.sh"
   if [ ! -x "$resolver" ]; then
     resolver="$(dirname "$0")/../../../scripts/lib/resolve-publish-adapter.sh"
@@ -486,11 +483,11 @@ _resolve_adapter_binary() {
     if [ -z "$plugin_root" ]; then
       plugin_root="$(cd "$(dirname "$0")/../../.." && pwd)"
     fi
-    # W2 fix: surface resolver stderr (SR-82 WARN + HALT messages) to user.
-    # W1 fix: --strict-builtin HALT is the resolver's responsibility; the
+    # Surface resolver stderr (WARN + HALT messages) to user.
+    # --strict-builtin HALT is the resolver's responsibility; the
     # caller propagates by leaving stdout empty. Step 3's main flow already
     # checks for empty adapter_bin and FAILs cleanly.
-    # NOTE: C-review W1 (E100-S8 third pass): mktemp -t over fixed /tmp path.
+    # Use mktemp -t over a fixed /tmp path to avoid collisions.
     local resolver_stdout
     resolver_stdout=$(mktemp -t gaia-resolver.XXXXXX.stdout)
     local adapter_dir
@@ -508,8 +505,8 @@ _resolve_adapter_binary() {
       printf '%s' "$adapter_dir/run.sh"
       return 0
     fi
-    # resolver_exit=3 (strict-builtin HALT) and resolver_exit=2 (SR-81
-    # traversal) both leave stdout empty → caller's "no adapter" branch
+    # resolver_exit=3 (strict-builtin HALT) and resolver_exit=2 (path-traversal)
+    # both leave stdout empty → caller's "no adapter" branch
     # records FAILED without internal step-3 inconsistency.
   fi
   return 0
@@ -525,7 +522,7 @@ _step4_post_publish_verify() {
   if [ "$SKIP_VERIFY" = "1" ]; then
     STEP4_STATUS="SKIPPED"
     VERIFY_SKIPPED=1
-    STEP4_DETAIL="WARNING: --skip-verify NFR-082 opt-out — MANDATORY post-publish registry probe bypassed; only documented use case is unbounded-lag registries"
+    STEP4_DETAIL="WARNING: --skip-verify opt-out — MANDATORY post-publish registry probe bypassed; only documented use case is unbounded-lag registries"
     _progress 4 "post-publish-verify" "$STEP4_STATUS" "$STEP4_DETAIL"
     return
   fi
@@ -534,17 +531,17 @@ _step4_post_publish_verify() {
   local window
   window=$(_resolve_adapter_verify_window "$CHANNEL")
 
-  # SR-83: defensive runtime cap with WARNING. Guarded with regex so the
+  # Defensive runtime cap with WARNING. Guarded with regex so the
   # `-gt` comparison never sees a non-numeric value (set -e safety).
   if [ -n "$window" ] && [[ "$window" =~ ^[0-9]+$ ]] && [ "$window" -gt "$SR83_MAX_VERIFY_WINDOW" ]; then
-    err "SR-83 WARNING: manifest verify_retry_window_seconds=$window exceeds 3600 cap; clamping to 3600 (T-PUB-4 mitigation)"
+    err "WARNING: manifest verify_retry_window_seconds=$window exceeds 3600 cap; clamping to 3600"
     window="$SR83_MAX_VERIFY_WINDOW"
   fi
 
   local adapter_bin
   adapter_bin=$(_resolve_adapter_binary "$CHANNEL")
 
-  # Stub-fallback: no manifest AND no adapter binary → preserve E100-S1 happy-path.
+  # Stub-fallback: no manifest AND no adapter binary → preserve the stub happy-path.
   if [ -z "$window" ] && [ -z "$adapter_bin" ]; then
     STEP4_STATUS="PASSED"
     STEP4_DETAIL="stub-fallback (no adapter binary and no verify_retry_window_seconds configured)"
@@ -561,10 +558,10 @@ _step4_post_publish_verify() {
     return
   fi
 
-  # Default to 60s if no window declared (sensible default per ADR-113 illustrative).
+  # Default to 60s if no window declared (sensible default).
   : "${window:=60}"
 
-  # E100-S4: ADR-037 envelope validator helper.
+  # Envelope validator helper.
   local envelope_validator="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/validate-adr037-envelope.sh"
   # Fallback for development trees where CLAUDE_PLUGIN_ROOT is not set.
   if [ ! -x "$envelope_validator" ]; then
@@ -583,7 +580,7 @@ _step4_post_publish_verify() {
     adapter_exit=$?
     set -e
 
-    # E100-S4 AC4: adapter-internal-failure — non-zero exit BEFORE findings written.
+    # adapter-internal-failure — non-zero exit BEFORE findings written.
     if [ "$adapter_exit" -ne 0 ] && [ ! -s "$findings" ]; then
       STEP4_STATUS="FAILED"
       STEP4_DETAIL="adapter $(basename "$adapter_bin") exited $adapter_exit without writing findings.json — adapter-internal-failure"
@@ -594,12 +591,12 @@ _step4_post_publish_verify() {
       return
     fi
 
-    # E100-S4 AC6: envelope-schema-violation — findings written but malformed.
+    # envelope-schema-violation — findings written but malformed.
     if [ -x "$envelope_validator" ]; then
       local validate_err
       if ! validate_err=$("$envelope_validator" "$findings" 2>&1); then
         STEP4_STATUS="FAILED"
-        STEP4_DETAIL="ADR-037 envelope-schema-violation in findings.json: $validate_err"
+        STEP4_DETAIL="envelope-schema-violation in findings.json: $validate_err"
         STEP4_REASON="envelope-schema-violation"
         err "$STEP4_DETAIL"
         _progress 4 "post-publish-verify" "$STEP4_STATUS" "$STEP4_DETAIL"

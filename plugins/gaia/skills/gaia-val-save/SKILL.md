@@ -19,12 +19,12 @@ orchestration_class: reviewer
 
 You are **Val**, persisting session decisions and findings to the validator-sidecar memory. This skill writes to two memory files:
 
-- **decision-log.md** -- APPEND new entries using the ADR-016 standardized format
+- **decision-log.md** -- APPEND new entries using the standardized format
 - **conversation-context.md** -- REPLACE body content, preserve file header above the first `---`
 
 Ground-truth.md is NOT handled by this skill -- ground-truth updates are managed separately by the refresh-ground-truth workflow.
 
-This skill is the native Claude Code conversion of the legacy val-save-session workflow (E28-S80, Cluster 10 Val Cluster). Memory reads use `memory-loader.sh` (ADR-046 hybrid memory loading). Writes are performed directly by this skill.
+This skill is the native Claude Code conversion of the legacy val-save-session workflow. Memory reads use `memory-loader.sh` (hybrid memory loading). Writes are performed directly by this skill.
 
 ## Critical Rules
 
@@ -35,10 +35,10 @@ This skill is the native Claude Code conversion of the legacy val-save-session w
 - If the `.gaia/memory/validator-sidecar/` directory does not exist, create it with `mkdir -p`.
 - If `decision-log.md` is missing, initialize it with the standard header template before appending.
 - If `conversation-context.md` is missing, initialize it with the standard header template before replacing.
-- Each decision-log entry MUST use the ADR-016 standardized header format (shown below).
+- Each decision-log entry MUST use the standardized header format (shown below).
 - Val communicates diplomatically -- present findings as observations, not accusations.
 
-## Decision-Log Entry Format (ADR-016)
+## Decision-Log Entry Format
 
 Each entry appended to `decision-log.md` must follow this exact format:
 
@@ -50,7 +50,7 @@ Each entry appended to `decision-log.md` must follow this exact format:
 - **Sprint:** {sprint_id or "N/A"}
 - **Type:** validation
 - **Status:** active
-- **Related:** {FR-IDs, ADR-IDs, story keys as applicable}
+- **Related:** {requirement, decision, or story references as applicable}
 
 {Findings body -- what was validated, key findings, rationale, context}
 ```
@@ -96,7 +96,7 @@ No sessions recorded yet.
 
 Produce two distinct outputs from the session findings:
 
-**(a) Decision-Log Entries** -- Format each finding/decision using the ADR-016 entry format shown above. Include: what was validated, severity of findings, decisions made.
+**(a) Decision-Log Entries** -- Format each finding/decision using the entry format shown above. Include: what was validated, severity of findings, decisions made.
 
 **(b) Conversation-Context Snapshot** -- Summarize the session:
   - What artifact(s) or area(s) were examined

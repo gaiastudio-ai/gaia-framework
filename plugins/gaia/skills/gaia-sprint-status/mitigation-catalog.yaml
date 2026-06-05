@@ -1,10 +1,10 @@
-# mitigation-catalog.yaml — bundled risk mitigation suggestions (E38-S1)
+# mitigation-catalog.yaml — bundled risk mitigation suggestions
 #
 # Canonical list of mitigation strategies surfaced by the dashboard next to
-# HIGH-risk stories per FR-SPQG-5. Consumed by
+# HIGH-risk stories. Consumed by
 # gaia-framework/plugins/gaia/scripts/sprint-status-dashboard.sh.
 #
-# Format (ADR-055 FR-SPQG-5):
+# Format:
 #   mitigations:
 #     - id: <kebab-case identifier, stable across releases>
 #       label: "<human-readable short label rendered inline>"
@@ -12,20 +12,20 @@
 #
 # Extension rules:
 #   - Add new entries freely. No enum validation rejects unknown entries
-#     (AC-EC7) — reviewers can extend the catalog without code changes.
+#     — reviewers can extend the catalog without code changes.
 #   - Keep `label` short (<40 chars) so inline annotation fits on one line.
 #   - Entries are rotated across HIGH-risk stories in the order listed;
 #     reorder deliberately if a different default is preferred.
 #   - Graceful degradation: if this file is missing or empty, the dashboard
 #     logs "mitigation catalog not found — risk surfacing degraded" and
-#     renders without mitigation annotations (AC-EC6) — it does NOT halt.
+#     renders without mitigation annotations — it does NOT halt.
 mitigations:
   - id: pair-programming
     label: "Pair programming"
     description: "Assign two engineers to the story to reduce knowledge silos and catch errors early."
   - id: increased-testing
     label: "Increased test coverage"
-    description: "Add unit, integration, and edge-case tests before merging. Prefer bats-core for shell scripts per ADR-042."
+    description: "Add unit, integration, and edge-case tests before merging. Prefer bats-core for shell scripts."
   - id: architect-review
     label: "Architect review"
     description: "Request a synchronous review from the system architect (Theo) before implementation begins."

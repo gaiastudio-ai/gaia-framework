@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# verify-cluster-gates.sh — GAIA foundation script (E28-S126)
+# verify-cluster-gates.sh — GAIA foundation script
 #
-# Pre-start gate verifier for the ADR-048 program-closing deletion.
+# Pre-start gate verifier for the program-closing deletion.
 # Reads the status and Review Gate table from each of the 12 cluster-gate stories
 # and asserts each one is `done` with all 6 reviews PASSED. Used by:
 #   (1) gaia-cleanup-legacy-engine.sh as its pre-flight gate
 #   (2) .github/workflows/adr-048-guard.yml as the CI compensating control
-#
-# Refs: FR-328, NFR-050, ADR-048 (program-closing CI compensating control)
-# Story: E28-S126 Task 1 / AC1 / AC-EC4
 #
 # Falls back to {gate}-review-summary.md when the main story file does not
 # contain the Review Gate table inline (some stories keep reviews in a
@@ -47,7 +44,7 @@ if [[ ! -d "$PROJECT_ROOT" ]]; then
   exit 64
 fi
 
-# E96-S1 path resolution: prefer .gaia/artifacts/, fall back to legacy docs/
+# Path resolution: prefer .gaia/artifacts/, fall back to legacy docs/
 if [[ -d "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" ]]; then
   ARTIFACTS_DIR="$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts"
 else
@@ -62,7 +59,7 @@ GATES=(
 REQUIRED_REVIEWS=("Code Review" "QA Tests" "Security Review" "Test Automation" "Test Review" "Performance Review")
 
 overall_exit=0
-printf "=== ADR-048 cluster-gate verification ===\n"
+printf "=== cluster-gate verification ===\n"
 printf "%-10s %-10s %s\n" "Story" "Status" "Reviews"
 
 for gate in "${GATES[@]}"; do
@@ -147,9 +144,9 @@ done
 
 printf "\n"
 if [[ "$overall_exit" -eq 0 ]]; then
-  echo "All 12 cluster gates PASSED — ADR-048 pre-start gate: OPEN"
+  echo "All 12 cluster gates PASSED — pre-start gate: OPEN"
 else
-  echo "Cluster-gate verification FAILED — ADR-048 pre-start gate: BLOCKED"
+  echo "Cluster-gate verification FAILED — pre-start gate: BLOCKED"
 fi
 
 exit "$overall_exit"

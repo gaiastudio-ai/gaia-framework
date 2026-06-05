@@ -10,7 +10,7 @@ orchestration_class: light-procedural
 
 !${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo >/dev/null 2>&1 || true
 
-This skill runs under Claude Code main-turn inline orchestration per ADR-093. Steps below are performed by the LLM orchestrator dispatching deterministic helper scripts under `plugins/gaia/skills/gaia-doctor/scripts/` — there is no forked Skill-tool execution. The CRUD-menu / interactive prompts in this SKILL.md are LLM-driven interaction patterns under main-turn orchestration; the deterministic helpers are the actual probe + install primitives.
+This skill runs under Claude Code main-turn inline orchestration. Steps below are performed by the LLM orchestrator dispatching deterministic helper scripts under `plugins/gaia/skills/gaia-doctor/scripts/` — there is no forked Skill-tool execution. The CRUD-menu / interactive prompts in this SKILL.md are LLM-driven interaction patterns under main-turn orchestration; the deterministic helpers are the actual probe + install primitives.
 
 Skill class: `light-procedural`. The skill is read-only by default — only `--install` mutates host state (installs deterministic-tool binaries), and only after per-tool confirmation.
 
@@ -22,22 +22,22 @@ Skill class: `light-procedural`. The skill is read-only by default — only `--i
 
 `/gaia-doctor` scans the project for declared stacks (from `.gaia/config/project-config.yaml`), and for each stack consults the bundled readiness registry (`knowledge/tool-readiness.json`) to report which deterministic tools are installed versus missing. Output is a per-stack readiness table plus a scan-tier verdict (Tier 0 LLM-only / Tier 1 pure-pip / Tier 2 heavy/native or containerized) plus a copy-pasteable install plan.
 
-The skill is read-only by default. The optional `--install` flag dispatches per-tool install commands interactively (prompts before invoking each). Designed to address Test10 §7 Component 1 (Preflight doctor) + Component 3 (Honest tiering) and Test01 §E1 (highest-leverage capability gap).
+The skill is read-only by default. The optional `--install` flag dispatches per-tool install commands interactively (prompts before invoking each). Designed to address the preflight-doctor and honest-tiering capability gaps.
 
 ## Critical Rules
 
 - **Read-only by default.** `--install` is opt-in and prompts per-tool before invoking the install command.
 - If `.gaia/config/project-config.yaml` is absent, fall back to `detect-signals.sh` in signal-only mode (print which detector signals fire) — do NOT HALT.
 - The readiness registry is a bundled data file (`knowledge/tool-readiness.json`) — single source of truth. Do NOT re-implement tool-detection inline in prose.
-- Output format is stable (Test10 §7 acceptance criteria). Two present-states per tool: `✓ present` | `✗ missing`. Two non-tool states: `– not-applicable` (no matching stack) | `⚠ environment warning` (e.g., bash 3.2).
+- Output format is stable. Two present-states per tool: `✓ present` | `✗ missing`. Two non-tool states: `– not-applicable` (no matching stack) | `⚠ environment warning` (e.g., bash 3.2).
 - Scan-tier verdict computed from registry + present state. Tier 0 is always achievable; Tier 1 requires every tool tagged `tier: 1`; Tier 2 requires every tool tagged `tier: 2`.
 - Never write to project files. Never modify `.gaia/config/project-config.yaml`. The skill probes the host environment, not the project tree.
 
 ## Arguments
 
 - `--install` — interactive install dispatcher; prompts before each missing tool, runs `install.macos` or `install.linux` from the registry per host OS.
-- `--install --docker` — **AF-2026-05-30-3 / Test10 §7 Component 2.** Pull the bundled `gaia-tools` OCI image (`ghcr.io/gaiastudio-ai/gaia-tools:<pinned>`) instead of installing Tier 2 tools individually. Operator needs only Docker on the host — no brew + pip + npm + Go + Java + .NET. Forces docker mode even if `brownfield.tools.runner` is unset. After the pull, Tier 2 brownfield adapters (grype, syft, spotbugs, mobsf) dispatch through the image automatically via `scripts/lib/docker-runner.sh`. `--install` without `--docker` consults `brownfield.tools.runner`: when set to `docker` (via `/gaia-config-brownfield`), the docker path is used automatically; otherwise the per-tool path is used.
-- `--install --no-docker` — disable the docker path even if `brownfield.tools.runner` is `docker`. Forces per-tool host installs (the legacy AF-30-2 shape).
+- `--install --docker` — Pull the bundled `gaia-tools` OCI image (`ghcr.io/gaiastudio-ai/gaia-tools:<pinned>`) instead of installing Tier 2 tools individually. Operator needs only Docker on the host — no brew + pip + npm + Go + Java + .NET. Forces docker mode even if `brownfield.tools.runner` is unset. After the pull, Tier 2 brownfield adapters (grype, syft, spotbugs, mobsf) dispatch through the image automatically via `scripts/lib/docker-runner.sh`. `--install` without `--docker` consults `brownfield.tools.runner`: when set to `docker` (via `/gaia-config-brownfield`), the docker path is used automatically; otherwise the per-tool path is used.
+- `--install --no-docker` — disable the docker path even if `brownfield.tools.runner` is `docker`. Forces per-tool host installs (the legacy shape).
 - `--json` — emit machine-readable JSON (for CI integration / `consolidated-gaps.md` frontmatter stamping per Component 3).
 - `--stack <name>` — limit probe to a single named stack rather than auto-detect from `project-config.yaml`.
 
@@ -59,7 +59,7 @@ For each filtered registry entry: dispatch `check-tools.sh` which runs the entry
 
 ### Step 4 — Render the readiness table
 
-Emit the Test10 §7 example format (one block per stack), e.g.:
+Emit the example format (one block per stack), e.g.:
 
 ```
 GAIA deterministic tools — readiness for stack: python
@@ -95,5 +95,5 @@ If `--install` was NOT supplied: emit the install plan as copy-pasteable shell (
 
 - The readiness registry under `knowledge/tool-readiness.json` is the single source of truth — when a new adapter ships, append its tool entry there rather than editing this SKILL.md.
 - Tier definitions: **Tier 0** LLM-only (always achievable); **Tier 1** pure-pip / npm / static-binary tools (cheap to install on any host); **Tier 2** heavy native or containerized toolchains (grype/syft/spotbugs/mobsf — typically Homebrew or Docker).
-- This skill is the inverse companion to `/gaia-brownfield` Phase-3 — surface the tooling story before the scan, so silent degradation (Test10 F-09/F-10/F-06) becomes visible.
+- This skill is the inverse companion to `/gaia-brownfield` Phase-3 — surface the tooling story before the scan, so silent degradation becomes visible.
 - Exits 0 even when tools are missing — this is a read-only diagnostic, not a gate.

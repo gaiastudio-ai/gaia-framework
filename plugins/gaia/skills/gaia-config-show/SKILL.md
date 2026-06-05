@@ -12,11 +12,11 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are displaying `project-config.yaml` in read-only mode. The skill is one of the `/gaia-config-*` editors shipped by E71-S3 — the only one without write semantics. Three invocation shapes:
+You are displaying `project-config.yaml` in read-only mode. The skill is one of the `/gaia-config-*` editors — the only one without write semantics. Three invocation shapes:
 
 - **No argument (default)** — render the top-level section TOC: a list of the declared sections from `schemas/project-config.schema.json` `.properties` (40 entries in schema v2.0.0). Helps users orient before drilling in.
 - **`<section-name>`** — single positional argument naming a top-level section to display. Output is the section's lines verbatim (no parse-and-reserialize round-trip).
-- **`--full`** — explicit flag for the byte-verbatim full-file render. Output is the file's bytes verbatim — no comment stripping, no formatting normalization. This is the legacy E71-S3 contract preserved behind an explicit flag (per E71-S9 AC2 / Val F-3).
+- **`--full`** — explicit flag for the byte-verbatim full-file render. Output is the file's bytes verbatim — no comment stripping, no formatting normalization. This is the legacy contract preserved behind an explicit flag.
 
 ## Critical Rules
 
@@ -33,13 +33,13 @@ You are displaying `project-config.yaml` in read-only mode. The skill is one of 
 
 ### Step 2 — Render the File, Section, or TOC
 
-> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration. The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
 
 Dispatch based on the argument shape:
 
-- **`--full`** — cat the entire file to the terminal byte-verbatim. This is the legacy E71-S3 contract preserved behind an explicit flag. No parse-and-reserialize round-trip, no comment stripping, no indentation normalization.
+- **`--full`** — cat the entire file to the terminal byte-verbatim. This is the legacy contract preserved behind an explicit flag. No parse-and-reserialize round-trip, no comment stripping, no indentation normalization.
 - **Positional `<section-name>`** — invoke `${CLAUDE_PLUGIN_ROOT}/scripts/config-yaml-editor.sh extract <path> <section-name>` and pipe the output to the terminal. Exit 2 (section not found) surfaces verbatim.
-- **Positional dotted-path `<section>.<subsection>`** (E98-S4 / ADR-114 §Consequences) — when the positional argument contains a `.` (e.g., `ci_cd.template_overrides`), dispatch via `yq eval '.<section>.<subsection>' <path>` to render the nested subsection. The TOC continues to enumerate only top-level `.properties` keys; dotted-path drill-down is opt-in via the dotted form. Exit non-zero if the nested path resolves to `null`.
+- **Positional dotted-path `<section>.<subsection>`** — when the positional argument contains a `.` (e.g., `ci_cd.template_overrides`), dispatch via `yq eval '.<section>.<subsection>' <path>` to render the nested subsection. The TOC continues to enumerate only top-level `.properties` keys; dotted-path drill-down is opt-in via the dotted form. Exit non-zero if the nested path resolves to `null`.
 - **No argument (default)** — render the top-level section TOC by enumerating `.properties` keys from `schemas/project-config.schema.json`. One section name per line, sorted alphabetically. Helps users orient before drilling in with `--full` or a positional section name.
 
 If the terminal supports syntax highlighting and a YAML highlighter is available (e.g., `bat --language=yaml`, `pygmentize -l yaml`), render YAML output with highlighting; otherwise plain. NEVER write to the file.

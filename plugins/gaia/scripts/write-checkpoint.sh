@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
-# write-checkpoint.sh — GAIA V2 checkpoint writer (E43-S1)
+# write-checkpoint.sh — GAIA V2 checkpoint writer
 #
 # Writes a schema v1 JSON checkpoint atomically to:
 #   ${CHECKPOINT_ROOT:-_memory/checkpoints}/{skill_name}/{ts}-step-{N}.json
 #
-# This is the foundation helper that the 24 Phase 1-3 V2 skills (E43-S2..S5)
-# call to record their progress; /gaia-resume (E43-S6) consumes these files
-# to recover an interrupted session.
+# This is the foundation helper that V2 skills call to record their progress;
+# /gaia-resume consumes these files to recover an interrupted session.
 #
 # Invocation:
 #   write-checkpoint.sh <skill_name> <step_number> [key=value ...]
 #                       [--paths <path> ...] [--custom <path-to-json>]
 #
-# Schema v1 JSON (ADR-059 §10.31.3):
+# Schema v1 JSON:
 #   {
 #     "schema_version": 1,
 #     "step_number":    <int>,
@@ -21,16 +20,16 @@
 #     "key_variables":  { ... },
 #     "output_paths":   [ ... ],
 #     "file_checksums": { "<path>": "sha256:<64hex>", ... },
-#     "skill_md_content_hash": "sha256:<64hex>",   // optional, ADR-059 §10.31.3
+#     "skill_md_content_hash": "sha256:<64hex>",   // optional
 #     "custom":         { ... }            // optional
 #   }
 #
 # Boundary vs. scripts/checkpoint.sh:
 #   scripts/checkpoint.sh is the YAML-shaped workflow checkpoint writer used
-#   by V1-era tooling. write-checkpoint.sh is the V2 per-skill JSON writer
-#   (ADR-059). The two scripts coexist during the V1→V2 transition; do NOT
-#   retrofit the old script to the new schema — each consumer targets one
-#   shape (/gaia-resume for V2 JSON; the older engine for V1 YAML).
+#   by V1-era tooling. write-checkpoint.sh is the V2 per-skill JSON writer.
+#   The two scripts coexist during the V1→V2 transition; do NOT retrofit the
+#   old script to the new schema — each consumer targets one shape
+#   (/gaia-resume for V2 JSON; the older engine for V1 YAML).
 #
 # Exit codes:
 #   0   success
@@ -66,9 +65,8 @@ Optional flags:
                  "custom" key of the final checkpoint JSON
   --skill-md FILE  Path to the owning SKILL.md. The script computes a
                  SHA-256 over the file bytes and writes it as a top-level
-                 "skill_md_content_hash" field (ADR-059 §10.31.3). Used by
-                 /gaia-resume (E43-S6) to detect SKILL.md version drift
-                 between checkpoint write and resume.
+                 "skill_md_content_hash" field. Used by /gaia-resume to detect
+                 SKILL.md version drift between checkpoint write and resume.
 
 Environment:
   CHECKPOINT_ROOT  Directory where _memory/checkpoints/{skill}/ lives.
@@ -88,7 +86,7 @@ if [ $# -eq 1 ] && { [ "$1" = "--help" ] || [ "$1" = "-h" ]; }; then
   exit 0
 fi
 
-# ---------- sha256 preflight (AC-EC7) ----------
+# ---------- sha256 preflight ----------
 # Must run BEFORE we create any temp files so a missing tool never leaves
 # stray files on disk.
 SHA_TOOL=""
@@ -113,7 +111,7 @@ SKILL_NAME="$1"
 STEP_NUMBER="$2"
 shift 2
 
-# Validate skill_name — AC-EC5. Regex: ^[a-z0-9][a-z0-9-]{0,63}$
+# Validate skill_name. Regex: ^[a-z0-9][a-z0-9-]{0,63}$
 case "$SKILL_NAME" in
   ''|*/*|*..*|.*|*\\*|*\ *)
     die 1 "invalid skill_name: $SKILL_NAME" ;;
@@ -122,7 +120,7 @@ if ! printf '%s' "$SKILL_NAME" | grep -Eq '^[a-z0-9][a-z0-9-]{0,63}$'; then
   die 1 "invalid skill_name: $SKILL_NAME"
 fi
 
-# Validate step_number — AC-EC9. Must be a non-negative integer.
+# Validate step_number. Must be a non-negative integer.
 case "$STEP_NUMBER" in
   ''|*[!0-9]*)
     die 1 "step_number must be a non-negative integer (got: $STEP_NUMBER)" ;;
@@ -186,7 +184,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# ---------- Validate paths exist (AC-EC2) BEFORE creating any files ----------
+# ---------- Validate paths exist BEFORE creating any files ----------
 if [ "${#PATHS[@]}" -gt 0 ]; then
   for p in "${PATHS[@]}"; do
     if [ ! -e "$p" ]; then
@@ -195,7 +193,7 @@ if [ "${#PATHS[@]}" -gt 0 ]; then
   done
 fi
 
-# ---------- sha256 tool presence check (AC-EC7) ----------
+# ---------- sha256 tool presence check ----------
 # Only required if we have paths to checksum. If zero paths, skip the check.
 if [ "${#PATHS[@]}" -gt 0 ] && [ -z "$SHA_TOOL" ]; then
   die 2 "sha256 tool not found (need shasum or sha256sum on PATH)"
@@ -227,9 +225,9 @@ if [ -n "$CUSTOM_FILE" ]; then
   fi
 fi
 
-# ---------- Resolve CHECKPOINT_ROOT (ADR-111: .gaia/ is canonical) ----------
-# AF-2026-05-27-3: the legacy _memory/checkpoints fallback was removed with the
-# consolidation migration — checkpoints live at .gaia/memory/checkpoints only.
+# ---------- Resolve CHECKPOINT_ROOT (.gaia/ is canonical) ----------
+# The legacy _memory/checkpoints fallback was removed with the consolidation
+# migration — checkpoints live at .gaia/memory/checkpoints only.
 # Env CHECKPOINT_ROOT override still wins.
 if [ -z "${CHECKPOINT_ROOT:-}" ]; then
   CHECKPOINT_ROOT=".gaia/memory/checkpoints"
@@ -239,7 +237,7 @@ SKILL_DIR="$CHECKPOINT_ROOT/$SKILL_NAME"
 mkdir -p "$SKILL_DIR" 2>/dev/null \
   || die 3 "cannot create checkpoint directory: $SKILL_DIR"
 
-# ---------- Timestamp with microsecond precision (AC-EC4) ----------
+# ---------- Timestamp with microsecond precision ----------
 iso8601_us() {
   # Prefer Python for portable microsecond UTC timestamps — available on all
   # supported macOS/Linux targets (bats, CI).
@@ -270,7 +268,7 @@ fi
 TMP="${FINAL}.tmp.$$"
 
 # ---------- JSON builder ----------
-# Uses jq when available for escape-safe emission (AC-EC6). Falls back to a
+# Uses jq when available for escape-safe emission. Falls back to a
 # deterministic hand-rolled emitter that escapes backslash, double-quote,
 # and control characters per JSON spec.
 

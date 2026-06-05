@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/semgrep/run.sh — ADR-078 adapter contract for Semgrep.
+# adapters/semgrep/run.sh — adapter contract for Semgrep.
 #
 # Contract: run --input <file-list> --config <adapter-config> --output <fragment.json>
 #               --runtime-profile {subprocess|container|network} --timeout {seconds}
@@ -27,7 +27,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/semgrep/run.sh — ADR-078 contract entry for Semgrep.
+adapters/semgrep/run.sh — contract entry for Semgrep.
 Usage:
   run.sh --input <file-list> [--config <path>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -48,13 +48,13 @@ else
 fi
 
 # Read targets from the file-list line by line.
-# AF-2026-05-31-1 / Test12 F-06: bash 3.2-compat replacement for mapfile.
+# bash 3.2-compat replacement for mapfile.
 TARGETS=()
 while IFS= read -r _line; do [ -n "$_line" ] && TARGETS+=("$_line"); done < "$INPUT"
 
 if ! command -v semgrep >/dev/null 2>&1; then
   echo "run.sh: semgrep not found on PATH" >&2
-  # Exit 127 = unavailable (distinct from generic error 1) per E70-S2 AC10.
+  # Exit 127 = unavailable (distinct from generic error 1).
   # The probe still classifies this via its own command -v check before invoking
   # run.sh; this exit code surfaces unavailability when run.sh is invoked directly.
   exit 127
@@ -63,7 +63,7 @@ fi
 raw="$(semgrep "${semgrep_args[@]}" "${TARGETS[@]}" 2>&1)" || rc=$? || true
 rc="${rc:-0}"
 
-# Emit canonical analysis-results fragment shape per E70-S1 run-contract.md §2.1:
+# Emit canonical analysis-results fragment shape per run-contract.md §2.1:
 # {"name": <adapter>, "status": <passed|errored>, "findings": [...]}.
 # Findings shape conforms to checks[].findings[] in analysis-results.schema.json.
 fragment="$(jq -nc \

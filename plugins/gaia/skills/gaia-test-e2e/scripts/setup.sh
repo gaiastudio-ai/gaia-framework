@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-test-e2e action skill setup (E73-S1).
+# setup.sh — gaia-test-e2e action skill setup.
 #
-# Mirrors the Cluster 9 reference (gaia-test-automate/scripts/setup.sh):
+# Mirrors the gaia-test-automate/scripts/setup.sh reference:
 #   1. Resolve config via resolve-config.sh
 #   2. Load checkpoint state
 #

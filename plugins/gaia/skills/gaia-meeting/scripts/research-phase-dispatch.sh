@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# research-phase-dispatch.sh — gaia-meeting RESEARCH-phase fork dispatch (E76-S2, ADR-084)
+# research-phase-dispatch.sh — gaia-meeting RESEARCH-phase fork dispatch
 #
-# Implements the four-step research contract per FR-MTG-4 / ADR-084:
+# Implements the four-step research contract:
 #   1. Per-agent sidecar load via §4.10 tier-aware contract (read-only)
-#   2. Source-of-truth file reads under canonical fork allowlist (NFR-048)
+#   2. Source-of-truth file reads under canonical fork allowlist
 #   3. WebSearch / WebFetch invocation (gated by --no-web)
 #   4. Cited prelude emission (deterministic format)
 #
@@ -34,29 +34,29 @@ SIDECAR_AGENT=""
 
 usage() {
   cat <<'EOF' >&2
-research-phase-dispatch.sh — gaia-meeting RESEARCH-phase fork dispatch (E76-S2)
+research-phase-dispatch.sh — gaia-meeting RESEARCH-phase fork dispatch
 
 Modes:
   --print-allowlist           Print the canonical research-phase fork tool
                               allowlist as a comma-separated list. Honors
                               --no-web. This is the SINGLE source-of-truth
-                              consumed by SKILL.md and bats tests (AC11).
+                              consumed by SKILL.md and bats tests.
   --check-web-flag            Print 'enabled' (default) or 'disabled' (--no-web).
   --check-research-flag       Print 'enabled' (default) or 'skipped' (--skip-research).
   --sidecar-path <agent>      Print the canonical sidecar path
-                              `_memory/<agent>-sidecar` (ADR-086). Rejects the
+                              `_memory/<agent>-sidecar`. Rejects the
                               intake shorthand `_memory/agent-decisions/<agent>/`.
   --emit-frontmatter          Print the meeting frontmatter audit fields:
                                   research_phase: enabled|skipped
                                   web_search:    enabled|disabled
 
 Modifiers:
-  --no-web                    Disable web tools in the research fork (T-MTG-1).
-  --skip-research             Skip the research phase entirely (FR-MTG-6).
+  --no-web                    Disable web tools in the research fork.
+  --skip-research             Skip the research phase entirely.
 EOF
 }
 
-# Single source-of-truth allowlists per ADR-084 / NFR-048.
+# Single source-of-truth allowlists for the research-phase fork.
 ALLOWLIST_BASE="Read,Grep,Glob,Bash"
 ALLOWLIST_WEB="Read,Grep,Glob,Bash,WebSearch,WebFetch"
 
@@ -141,19 +141,17 @@ case "$MODE" in
     fi
     ;;
   sidecar-path)
-    # Reject the intake-shorthand form (ADR-086 reconciliation).
+    # Reject the intake-shorthand form.
     if [[ "$SIDECAR_AGENT" == agent-decisions/* ]] || [[ "$SIDECAR_AGENT" == */* ]]; then
       echo "research-phase-dispatch.sh: refusing intake-shorthand path '$SIDECAR_AGENT'." >&2
-      echo "Use the canonical agent name only; ADR-086/ADR-111 mandates <memory-root>/<agent>-sidecar/." >&2
+      echo "Use the canonical agent name only; expected form is <memory-root>/<agent>-sidecar/." >&2
       exit 2
     fi
     if [[ -z "$SIDECAR_AGENT" ]]; then
       echo "research-phase-dispatch.sh: agent name is empty." >&2
       exit 2
     fi
-    # ADR-111 smart-fallback: .gaia/memory/ first, legacy _memory/ second.
-    # AF-2026-05-27-3 (ADR-111): .gaia/memory is the only sidecar tree; legacy
-    # _memory fallback removed.
+    # .gaia/memory is the canonical sidecar tree; legacy _memory fallback removed.
     echo ".gaia/memory/${SIDECAR_AGENT}-sidecar"
     ;;
   emit-frontmatter)

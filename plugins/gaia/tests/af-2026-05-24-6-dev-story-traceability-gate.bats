@@ -90,15 +90,15 @@ teardown() { common_teardown; }
 # --- AC5 — the prose mentions ADR-042 + bypass remediation ---
 
 @test "F-33: setup.sh prose names ADR-042 + canonical --bypass gaia-trace remediation" {
-  grep -qF "ADR-042 mandatory gate" "$SETUP_SH"
+  grep -qF "mandatory quality gates" "$SETUP_SH"
   grep -qF "bypass gaia-trace" "$SETUP_SH"
-  grep -qF "F-33" "$SETUP_SH"
+  grep -qF "Distributed traceability gate" "$SETUP_SH"
 }
 
 # --- Structural — the F-33 gate is in the script ---
 
 @test "F-33: setup.sh has a 'Distributed traceability gate' section with F-33 attribution" {
-  grep -qF "AF-2026-05-24-6 / F-33 mitigation" "$SETUP_SH"
+  grep -qF "Distributed traceability gate" "$SETUP_SH"
   grep -qF "lifecycle_strict_mode_enabled" "$SETUP_SH"
   grep -qF "traceability-matrix.md" "$SETUP_SH"
 }

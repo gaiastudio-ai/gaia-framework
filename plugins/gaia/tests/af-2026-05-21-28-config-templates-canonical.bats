@@ -35,10 +35,10 @@ teardown() { common_teardown; }
 }
 
 @test "AF-21-28: project-config.schema.yaml descriptions canonical-first with dual-layout note" {
-  grep -qF '.gaia/artifacts/test-artifacts directory (canonical post-ADR-111' "$PLUGIN_ROOT/config/project-config.schema.yaml"
-  grep -qF '.gaia/artifacts/planning-artifacts directory (canonical post-ADR-111' "$PLUGIN_ROOT/config/project-config.schema.yaml"
-  grep -qF '.gaia/artifacts/implementation-artifacts directory (canonical post-ADR-111' "$PLUGIN_ROOT/config/project-config.schema.yaml"
-  grep -qF '.gaia/artifacts/creative-artifacts directory (canonical post-ADR-111' "$PLUGIN_ROOT/config/project-config.schema.yaml"
+  grep -qF '.gaia/artifacts/test-artifacts directory (with legacy docs/test-artifacts fallback)' "$PLUGIN_ROOT/config/project-config.schema.yaml"
+  grep -qF '.gaia/artifacts/planning-artifacts directory (with legacy docs/planning-artifacts fallback)' "$PLUGIN_ROOT/config/project-config.schema.yaml"
+  grep -qF '.gaia/artifacts/implementation-artifacts directory (with legacy docs/implementation-artifacts fallback)' "$PLUGIN_ROOT/config/project-config.schema.yaml"
+  grep -qF '.gaia/artifacts/creative-artifacts directory (with legacy docs/creative-artifacts fallback)' "$PLUGIN_ROOT/config/project-config.schema.yaml"
 }
 
 @test "AF-21-28: project-config.schema.yaml default-value placeholders canonical-first" {

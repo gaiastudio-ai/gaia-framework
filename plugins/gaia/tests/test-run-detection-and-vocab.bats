@@ -61,9 +61,3 @@ setup() {
   [ "$count" -ge 3 ]
 }
 
-@test "AF-2026-05-17-3 lineage tag is present in both edited files" {
-  run grep -E 'AF-2026-05-17-3' "$CONFIG_TOOL_SKILL"
-  [ "$status" -eq 0 ]
-  run grep -E 'AF-2026-05-17-3' "$TEST_RUN_SCRIPT"
-  [ "$status" -eq 0 ]
-}

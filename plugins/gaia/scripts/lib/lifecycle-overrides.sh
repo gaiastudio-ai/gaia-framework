@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lifecycle-overrides.sh — Reader/writer helpers for the ADR-120
+# lifecycle-overrides.sh — Reader/writer helpers for the
 # `.gaia/state/lifecycle-overrides.yaml` audit trail of bypassed MANDATORY
 # lifecycle skills.
 #
@@ -18,7 +18,7 @@
 # Requires: yq, jq. ajv-cli is NOT required — schema validation is
 # performed inline via jq against the JSON schema's structural fields.
 #
-# Conforms to FR-536, ADR-120, ADR-111 (canonical .gaia/state/ path).
+# Conforms to the canonical .gaia/state/ path convention.
 
 set -euo pipefail
 

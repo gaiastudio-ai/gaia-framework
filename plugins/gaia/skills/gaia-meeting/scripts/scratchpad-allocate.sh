@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# scratchpad-allocate.sh — gaia-meeting scratchpad allocator (E76-S4)
-#
-# AC1, AC2, AC3 / FR-MTG-11.
+# scratchpad-allocate.sh — gaia-meeting scratchpad allocator
 #
 # Maintains an in-memory (file-backed) scratchpad data model:
 #   - Append-only monotonic SP-N allocation

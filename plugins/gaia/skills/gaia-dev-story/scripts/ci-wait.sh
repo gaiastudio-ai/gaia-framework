@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ci-wait.sh — gaia-dev-story CI status polling (E28-S53)
+# ci-wait.sh — gaia-dev-story CI status polling
 #
 # Polls CI check status for a PR with configurable timeout and 30-second
 # cadence. Reports success, failure, or timeout with actionable messages.
@@ -23,8 +23,8 @@ SCRIPT_NAME="gaia-dev-story/ci-wait.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
-# work tree. CI polling is meaningless when there is no PR (there's no repo).
+# Non-git CWD guard: skip-with-warning when CWD is outside any git work tree.
+# CI polling is meaningless when there is no PR (there's no repo).
 # shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
 GUARD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$GUARD_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
@@ -71,7 +71,7 @@ while true; do
   # Poll checks. The `gh pr checks` JSON schema (gh 2.20+) only exposes:
   #   bucket, completedAt, description, event, link, name, startedAt, state, workflow.
   # Earlier code requested `--json status,conclusion`, which gh rejects with
-  # "Unknown JSON field: status" — see E55-S13 D1 / AF-2026-05-13-4.
+  # "Unknown JSON field: status".
   # `bucket` is the one-word summary (pass / fail / pending / skipping); `state`
   # is the granular status (SUCCESS / IN_PROGRESS / QUEUED / FAILURE / ...).
   checks_output=$(gh pr checks "$PR_NUMBER" --json name,state,bucket 2>&1) || {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# publish-npm/run.sh — FR-526 + ADR-113 + ADR-037 envelope.
-# Wraps `npm publish` + `npm view`. NFR-081: NPM_TOKEN ONLY from env.
+# publish-npm/run.sh — deploy-adapter contract for npm publish.
+# Wraps `npm publish` + `npm view`. NPM_TOKEN ONLY from env.
 
 # shellcheck source=../_publish-common.bash
 source "$(dirname "$0")/../_publish-common.bash"
@@ -8,7 +8,7 @@ source "$(dirname "$0")/../_publish-common.bash"
 publish_parse_common_args "$@"
 publish_die_unknown_extra
 
-# NFR-081: NPM_TOKEN from env ONLY — never from ~/.npmrc.
+# NPM_TOKEN from env ONLY — never from ~/.npmrc.
 NPM_TOKEN="${NPM_TOKEN:-}"
 NPM_REGISTRY_URL="${NPM_REGISTRY_URL:-https://registry.npmjs.org/}"
 
@@ -16,7 +16,7 @@ case "$ACTION" in
   trigger)
     if [ -z "$NPM_TOKEN" ] && [ "${NPM_PUBLISH_MOCK:-}" != "1" ]; then
       publish_write_envelope "FAILED" "npm" "trigger" \
-        "NPM_TOKEN missing — adapter refuses to fall back to ~/.npmrc per NFR-081." \
+        "NPM_TOKEN missing — adapter refuses to fall back to ~/.npmrc." \
         "$(publish_evidence_log_excerpt "missing NPM_TOKEN" "env")"
       exit 0
     fi

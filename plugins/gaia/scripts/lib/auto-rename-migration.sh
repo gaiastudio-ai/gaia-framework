@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # auto-rename-migration.sh — One-shot per-file auto-rename migration for the
-# E98 CI customization layered model (FR-519, ADR-114 §(f), SR-84).
-#
-# E98-S5. Sourceable, NOT executable.
+# CI customization layered model. Sourceable, NOT executable.
 #
 # Exposes:
 #   gaia_auto_rename_migration [--force]
@@ -13,11 +11,11 @@
 #       (n) rename to user-{base}.yml (no overlays, byte-identical content)
 #       (s) skip-all — write ${PROJECT_ROOT}/.gaia/memory/.config-stale
 #
-# Non-interactive (GAIA_NONINTERACTIVE=1) flow gated by SR-84:
+# Non-interactive (GAIA_NONINTERACTIVE=1) flow:
 #   BOTH --force CLI arg AND GAIA_MIGRATE_ALLOW_FORCE=1 env-var required;
 #   otherwise HALT with the canonical message.
 #
-# Backup contract (AC3 / AC5):
+# Backup contract:
 #   .gaia-backup/ci-regen-{ISO-8601-timestamp}/ at PROJECT_ROOT (not under
 #   .gaia/), mode 0755, files mode 0644, sha256-verified byte-identical copy
 #   of every file the migration is about to mutate.
@@ -36,7 +34,7 @@ _GAIA_AUTO_RENAME_MIGRATION_LOADED=1
 LC_ALL=C
 export LC_ALL
 
-# Internal: source the E98-S1 prefix-detection helper.
+# Internal: source the prefix-detection helper.
 _gaia_arm_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck disable=SC1091
 . "$_gaia_arm_dir/ci-prefix-detection.sh"
@@ -53,7 +51,7 @@ _gaia_arm_decision_env_key() {
   printf 'GAIA_MIGRATE_DECISION_%s' "$(printf '%s' "$base" | tr '.' '_' | tr '-' '_')"
 }
 
-# Internal: write the `.gaia/memory/.config-stale` marker with the ADR-102 shape.
+# Internal: write the `.gaia/memory/.config-stale` stale-flag marker.
 _gaia_arm_write_stale_flag() {
   local memory_dir="$1"
   local reason="${2:-deferred-migration}"
@@ -61,12 +59,10 @@ _gaia_arm_write_stale_flag() {
   local ts
   ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
   cat > "$memory_dir/.config-stale" <<EOF
-# .config-stale — ADR-102 stale-flag registry
+# .config-stale — stale-flag registry
 timestamp: $ts
 originating_skill: auto-rename-migration.sh
 reason: $reason
-fr_back_link: FR-528
-related_fr: FR-519
 EOF
 }
 
@@ -80,8 +76,8 @@ _gaia_arm_scaffold_overlays() {
 
   cat > "$jobs_overlay" <<'YAML'
 # User-jobs overlay — merged into the managed jobs: map at /gaia-config-ci
-# --regenerate time. Add custom jobs here. The stitcher (E98-S2) rejects
-# job names colliding with GAIA-template jobs per SR-78 / E98-S3.
+# --regenerate time. Add custom jobs here. The stitcher rejects job names
+# colliding with GAIA-template jobs.
 #
 # Example:
 #   jobs:
@@ -93,9 +89,8 @@ jobs: {}
 YAML
 
   cat > "$steps_overlay" <<'YAML'
-# User-steps overlay — block-level splicing around the managed steps block
-# per FR-517 / ADR-114 §(c). steps_before_gaia goes BEFORE the managed
-# steps; steps_after_gaia goes AFTER.
+# User-steps overlay — block-level splicing around the managed steps block.
+# steps_before_gaia goes BEFORE the managed steps; steps_after_gaia goes AFTER.
 steps_before_gaia: []
 steps_after_gaia: []
 YAML
@@ -134,10 +129,10 @@ _gaia_arm_backup_one() {
     return 1
   fi
 
-  # SR-84 manifest append (E98-S6): record `<sha256>  <relpath>` for the
-  # backed-up file. The manifest is rebuilt cumulatively per call so the
-  # final file lists every backed-up entry. verify-backup-integrity.sh
-  # reads this file as its expected-state source of truth.
+  # Manifest append: record `<sha256>  <relpath>` for the backed-up file.
+  # The manifest is rebuilt cumulatively per call so the final file lists
+  # every backed-up entry. verify-backup-integrity.sh reads this file as its
+  # expected-state source of truth.
   printf '%s  %s\n' "$bak_sha" "$base" >> "$backup_root/.sha256-manifest"
 }
 
@@ -170,8 +165,8 @@ gaia_auto_rename_migration() {
 
   local project_root="${PROJECT_ROOT:-$(pwd)}"
   local workflows_dir="$project_root/.github/workflows"
-  # AF-2026-05-27-3 (ADR-111): the .config-stale marker lives under the canonical
-  # .gaia/memory tree (legacy _memory removed with the consolidation migration).
+  # The .config-stale marker lives under the canonical .gaia/memory tree
+  # (legacy _memory removed with the consolidation migration).
   local memory_dir="$project_root/.gaia/memory"
 
   if [ ! -d "$workflows_dir" ]; then
@@ -195,11 +190,11 @@ gaia_auto_rename_migration() {
     return 0
   fi
 
-  # SR-84 non-interactive guard (AC6): non-interactive mode requires BOTH
+  # Non-interactive guard: non-interactive mode requires BOTH
   # --force AND GAIA_MIGRATE_ALLOW_FORCE=1.
   if [ "${GAIA_NONINTERACTIVE:-0}" = "1" ]; then
     if [ "$force" -ne 1 ] || [ "${GAIA_MIGRATE_ALLOW_FORCE:-0}" != "1" ]; then
-      printf 'auto-rename-migration.sh: HALT: non-interactive auto-rename migration requires --force AND GAIA_MIGRATE_ALLOW_FORCE=1 per SR-84\n' >&2
+      printf 'auto-rename-migration.sh: HALT: non-interactive auto-rename migration requires --force AND GAIA_MIGRATE_ALLOW_FORCE=1\n' >&2
       return 1
     fi
   fi
@@ -237,8 +232,8 @@ gaia_auto_rename_migration() {
           "$full_base" "$full_base" >&2
         ;;
       s|S)
-        _gaia_arm_write_stale_flag "$memory_dir" "skip-all on $full_base — deferred FR-519 migration"
-        printf 'auto-rename-migration.sh: WARNING: deferred migration for %s — .gaia/memory/.config-stale written (stale per FR-528)\n' \
+        _gaia_arm_write_stale_flag "$memory_dir" "skip-all on $full_base — deferred migration"
+        printf 'auto-rename-migration.sh: WARNING: deferred migration for %s — .gaia/memory/.config-stale written\n' \
           "$full_base" >&2
         ;;
       *)

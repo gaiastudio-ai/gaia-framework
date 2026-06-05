@@ -117,8 +117,8 @@ teardown() { common_teardown; }
   grep -q 'val_loop_iterations' "$SKILL"
 }
 
-@test "AC4: SKILL.md cross-references ADR-059 checkpoint custom namespace" {
-  grep -q 'ADR-059' "$SKILL"
+@test "AC4: SKILL.md documents checkpoint custom namespace for iteration log storage" {
+  grep -q -E "checkpoint.*custom.*namespace|custom.*namespace.*checkpoint|custom:.*namespace" "$SKILL"
 }
 
 # ---------------------------------------------------------------------------
@@ -133,8 +133,8 @@ teardown() { common_teardown; }
   grep -q -E '(6x|<= *6x|<=6x)' "$SKILL"
 }
 
-@test "AC5: SKILL.md cross-references NFR-VCP-2" {
-  grep -q 'NFR-VCP-2' "$SKILL"
+@test "AC5: SKILL.md documents token-budget envelope section" {
+  grep -q -E '## Token Budget|token-budget envelope|token budget' "$SKILL"
 }
 
 # ---------------------------------------------------------------------------
@@ -146,9 +146,9 @@ teardown() { common_teardown; }
   grep -q -E -i 'hard.?gate' "$SKILL"
 }
 
-@test "AC6: SKILL.md cross-references ADR-057 FR-YOLO-2(e)" {
-  grep -q 'ADR-057' "$SKILL"
-  grep -q 'FR-YOLO-2' "$SKILL"
+@test "AC6: SKILL.md states YOLO hard-gate is invariant and prompt must not be auto-answered" {
+  grep -q -E 'invariant under YOLO|YOLO.*invariant' "$SKILL"
+  grep -q -E 'MUST NOT.*auto-answer|auto-answered.*YOLO|yolo_hard_gate_violation' "$SKILL"
 }
 
 @test "AC-EC7: SKILL.md documents bypass-attempt logging" {
@@ -208,8 +208,8 @@ teardown() { common_teardown; }
 # Cross-references — story dependencies and traces
 # ---------------------------------------------------------------------------
 
-@test "Trace: SKILL.md cross-references FR-344" {
-  grep -q 'FR-344' "$SKILL"
+@test "Trace: SKILL.md is the single source of truth for the Val auto-fix loop pattern" {
+  grep -q -E 'single source of truth' "$SKILL"
 }
 
 @test "Trace: SKILL.md cross-references ADR-058" {

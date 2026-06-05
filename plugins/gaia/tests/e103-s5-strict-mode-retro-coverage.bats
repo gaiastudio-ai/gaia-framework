@@ -40,7 +40,7 @@ teardown() { common_teardown; }
 
 @test "TC-LOE-5e: gaia-retro SKILL.md references the Bypasses section + lifecycle helper" {
   [ -f "$RETRO_SKILL" ]
-  grep -qF "Bypasses (ADR-120" "$RETRO_SKILL"
+  grep -qF "lifecycle-overrides.sh" "$RETRO_SKILL"
   grep -qF "lifecycle_list_bypasses_for_sprint" "$RETRO_SKILL"
 }
 

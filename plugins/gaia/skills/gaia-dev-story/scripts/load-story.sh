@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# load-story.sh — gaia-dev-story story file loader (E28-S53)
+# load-story.sh — gaia-dev-story story file loader
 #
 # Thin wrapper around the shared sprint-state.sh foundation script.
 # Retrieves the current status of a story by key.

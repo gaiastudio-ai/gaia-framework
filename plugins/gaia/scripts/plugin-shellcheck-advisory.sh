@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# plugin-shellcheck-advisory.sh — E77-S6 / FR-408 / ADR-089.
+# plugin-shellcheck-advisory.sh — Tier 1 shellcheck advisory helper.
 #
 # Purpose
 # -------
@@ -10,9 +10,9 @@
 #      (tri-state probe classifies it as `omitted` or `null`).
 #
 # Delegates silently (no advisory output, exit 0) when the shellcheck adapter
-# is `declared` — Tier 2 install with E77-S11 in place.
+# is `declared` — Tier 2 install in place.
 #
-# Per ADR-089, adapter availability is determined ONLY via
+# Adapter availability is determined ONLY via
 # scripts/tool-availability-probe.sh in tri-state mode (--tool shellcheck).
 # Hardcoded path checks (e.g., test -x /usr/local/bin/shellcheck) are
 # explicitly forbidden — they bypass the probe contract and break the
@@ -31,8 +31,7 @@
 # Output (stdout)
 # ---------------
 #   Either nothing (no .sh files, OR adapter declared, OR plugin-dir absent),
-#   or exactly the canonical advisory string on a single line. The text MUST
-#   match TC-PLUGIN-RUBRIC-3 byte-for-byte.
+#   or exactly the canonical advisory string on a single line.
 
 set -euo pipefail
 LC_ALL=C
@@ -50,7 +49,7 @@ die() {
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — Tier 1 shellcheck advisory helper (FR-408, ADR-089).
+$SCRIPT_NAME — Tier 1 shellcheck advisory helper.
 
 Emits a single advisory line when shell scripts are present and the shellcheck
 adapter is not declared. Delegates silently when the adapter is declared.
@@ -65,7 +64,7 @@ Required:
                         tool-availability-probe.sh --tool shellcheck).
 
 Exit codes:
-  0   Always (advisory never fails the rubric — contract per AC2).
+  0   Always (advisory never fails the rubric).
   1   Caller error.
 EOF
 }
@@ -104,7 +103,7 @@ if [ "$shell_count" = "0" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Stage 2: query the tri-state probe for the shellcheck adapter (ADR-089).
+# Stage 2: query the tri-state probe for the shellcheck adapter.
 # omitted state -> probe exits 0 with no stdout. null/declared -> JSON on stdout.
 # ---------------------------------------------------------------------------
 
@@ -121,7 +120,7 @@ probe_state="$(printf '%s' "$probe_out" | jq -r '.probe_state // ""' 2>/dev/null
 
 case "$probe_state" in
   declared)
-    # Tier 2 install — defer to the shellcheck adapter (E77-S11). No advisory.
+    # Tier 2 install — defer to the shellcheck adapter. No advisory.
     exit 0
     ;;
   null|"")

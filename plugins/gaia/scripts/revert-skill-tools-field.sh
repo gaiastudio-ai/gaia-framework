@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
-# revert-skill-tools-field.sh — E28-S187
-#
-# Reverts the E28-S185 rename: restores `allowed-tools:` as the canonical
+# revert-skill-tools-field.sh — restores `allowed-tools:` as the canonical
 # YAML frontmatter key in SKILL.md, in list form (`[A, B, C]`). The
 # official Claude Code skills documentation at
 # https://code.claude.com/docs/en/skills confirms `allowed-tools:` is the
-# canonical key; E28-S185 mistakenly renamed it to `tools:` based on a
-# misreading of those docs.
+# canonical key.
 #
-# Conversion rules (reverse of fix-skill-tools-field.sh, E28-S185) —
-# applied ONLY inside the YAML frontmatter block (between the first two
-# `---` fences):
+# Conversion rules (reverse of fix-skill-tools-field.sh) — applied ONLY
+# inside the YAML frontmatter block (between the first two `---` fences):
 #   tools: A, B, C       -> allowed-tools: [A, B, C]
 #   tools: A B C         -> allowed-tools: [A, B, C]
 #   tools: A             -> allowed-tools: [A]

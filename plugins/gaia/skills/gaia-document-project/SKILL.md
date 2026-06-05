@@ -15,12 +15,12 @@ orchestration_class: light-procedural
 
 You are the GAIA project documentation agent. Your job is to scan an existing project's filesystem, detect its technology stack, map its directory structure, and produce a comprehensive `project-documentation.md` artifact under `.gaia/artifacts/planning-artifacts/` optimised for onboarding humans and AI agents.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/anytime/document-project/` XML engine workflow (brief Cluster 14 utility, story E28-S106). It implements ADR-041 (Native Execution Model) and ADR-042 (scripts-over-LLM) — deterministic operations (config resolution, checkpoint writes, lifecycle events) are delegated to the shared foundation scripts in `${CLAUDE_PLUGIN_ROOT}/scripts/`.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/anytime/document-project/` XML engine workflow. It implements the Native Execution Model and the scripts-over-LLM principle — deterministic operations (config resolution, checkpoint writes, lifecycle events) are delegated to the shared foundation scripts in `${CLAUDE_PLUGIN_ROOT}/scripts/`.
 
 ## Critical Rules
 
 - **Scan the actual project files** — never guess, never infer, never rely on prior knowledge. Use Glob and Read to verify every claim against the filesystem before it goes into the artifact.
-- **Token budget (AC-EC7, NFR-048)** — keep the SKILL.md activation budget under ~15K tokens (well under the 40K framework cap). Scan directories lazily; never pre-load large file trees into memory.
+- **Token budget (AC-EC7)** — keep the SKILL.md activation budget under ~15K tokens (well under the 40K framework cap). Scan directories lazily; never pre-load large file trees into memory.
 - **Foundation script integrity (AC-EC2)** — if `setup.sh` or `finalize.sh` is missing or not executable, `setup.sh` exits non-zero with a clear error identifying the missing/non-executable script. The skill body must not paper over a fail-fast setup error.
 - **Parallel invocation isolation (AC-EC6)** — this skill holds no shared mutable state. Both `/gaia-document-project` and `/gaia-project-context` can run in parallel on the same project — each invocation resolves config independently via `resolve-config.sh` and writes its own checkpoint keyed by workflow name. No cross-invocation file locking is required.
 - **Empty / no-sources project (AC-EC4)** — if the scan discovers no source files (empty/new project filesystem), still produce `project-documentation.md` with a "No source files detected" note under the Source Inventory section. Do not crash, do not halt.
@@ -42,7 +42,7 @@ Scans to perform (cap each Glob pattern at 500 results to protect the token budg
 
 If every scan returns zero files, this is an empty project — continue to Step 2 anyway and emit the "No source files detected" note at Step 4.
 
-The 500-file Glob cap is parity-protected per **FR-395** — never relax or remove this cap without surfacing the parity regression in a follow-up story. Any language-distribution counts derived from the cap-bounded scan are reported as observed within the cap, not extrapolated.
+The 500-file Glob cap is parity-protected — never relax or remove this cap without surfacing the parity regression in a follow-up story. Any language-distribution counts derived from the cap-bounded scan are reported as observed within the cap, not extrapolated.
 
 ### Step 2 — Technology Detection
 
@@ -62,9 +62,9 @@ Detect test frameworks (jest, vitest, bats, pytest, junit, gotest, flutter test,
 
 Produce a directory structure overview focused on the **top-level layout** (depth ≤ 2) plus any obviously significant subtrees (`src/`, `lib/`, `app/`, `plugins/`, `scripts/`, `tests/`, `docs/`).
 
-#### Entry Points — Manifest-Field Lookup Contract (FR-379)
+#### Entry Points — Manifest-Field Lookup Contract
 
-Read entry points from the actual manifest fields — NEVER from file-extension inference. Per **ADR-042** (Scripts-over-LLM for Deterministic Operations) manifest parsing is a structured key lookup, not an LLM judgment call: `package.json` is JSON, `pyproject.toml` is TOML, `pubspec.yaml` is YAML, `go.mod` is line-keyed text. Read the file, navigate to the key, render the value, cite the manifest path.
+Read entry points from the actual manifest fields — NEVER from file-extension inference. Per the Scripts-over-LLM principle for deterministic operations, manifest parsing is a structured key lookup, not an LLM judgment call: `package.json` is JSON, `pyproject.toml` is TOML, `pubspec.yaml` is YAML, `go.mod` is line-keyed text. Read the file, navigate to the key, render the value, cite the manifest path.
 
 Per-ecosystem lookup table:
 
@@ -96,14 +96,14 @@ Compose the `project-documentation.md` artifact under `.gaia/artifacts/planning-
 4. **Conventions** — naming, file layout, testing conventions inferred from existing source + docs (cite evidence).
 5. **Key Files** — manifest files, entry points, significant config files (e.g., `tsconfig.json`, `vite.config.*`, `Dockerfile`, CI config).
 6. **Entry Points** — how to run / build / test the project, with exact commands extracted from manifest fields per the Step 3 lookup contract (`package.json:scripts.start`, `go.mod:module`, `pyproject.toml:[project.scripts]`, etc.). Cite the manifest path and key for every claim. When the manifest field is missing, render the explicit "not declared" line described in Step 3.
-7. **Source Inventory** — counts by language / directory plus a **language-distribution** list (FR-379).
+7. **Source Inventory** — counts by language / directory plus a **language-distribution** list.
    - After the Step 1 source-file Glob runs, accumulate a per-extension count keyed to a friendly language name. Suggested mapping: `.ts` + `.tsx` → TypeScript; `.js` + `.jsx` → JavaScript; `.py` → Python; `.go` → Go; `.java` → Java; `.kt` → Kotlin; `.dart` → Dart; `.rs` → Rust; `.swift` → Swift; `.rb` → Ruby; `.php` → PHP; `.sh` → Shell; `.md` → Markdown; `.yaml` + `.yml` → YAML; `.json` → JSON; `.toml` → TOML; `.xml` → XML.
    - Render the counts under this section as a simple list, sorted descending by count, one line per language. Example:
      - `- TypeScript: 312`
      - `- Markdown: 87`
      - `- Shell: 24`
    - Languages with zero files are omitted from the list.
-   - **Cap-aware sample note** — if any Glob in Step 1 hit the 500-file cap (FR-395), append a single trailing note under the list: `(Glob cap reached at 500 files; counts are a sample.)`. Counts are reported as observed within the cap, never extrapolated.
+   - **Cap-aware sample note** — if any Glob in Step 1 hit the 500-file cap, append a single trailing note under the list: `(Glob cap reached at 500 files; counts are a sample.)`. Counts are reported as observed within the cap, never extrapolated.
    - **Empty project** — if the scan found zero source files, render exactly: "No source files detected — this appears to be an empty or new project filesystem." and SKIP the language-distribution list entirely (do NOT emit an empty list).
 
 ### Step 5 — Generate Output
@@ -120,7 +120,7 @@ Report the resolved artifact path to the user after the write completes.
 
 ## References
 
-- **FR-379** — Manifest-field entry points and language-distribution counts in the Source Inventory section. Restores V1's `document-project` workflow contract: read `package.json:scripts.start`, `go.mod:module`, `pyproject.toml:[project.scripts]`, etc., directly from the manifest rather than inferring entry points from file names.
-- **FR-395** — 500-file Glob cap parity protection. The cap declared in Step 1 is locked behavior — language-distribution counts are derived from the cap-bounded scan and labelled with a sample note when the cap fires.
-- **ADR-041** — Native Execution Model. This skill is a Claude Code native skill; all behavior is defined in this SKILL.md prose.
-- **ADR-042** — Scripts-over-LLM for Deterministic Operations. Manifest parsing is structured key lookup (JSON / TOML / YAML / line-keyed text), not an LLM judgment call. The "manifest field missing" path is a deterministic present/absent check, not an inference.
+- **Manifest-field entry points** — Manifest-field entry points and language-distribution counts in the Source Inventory section. Restores V1's `document-project` workflow contract: read `package.json:scripts.start`, `go.mod:module`, `pyproject.toml:[project.scripts]`, etc., directly from the manifest rather than inferring entry points from file names.
+- **500-file Glob cap** — 500-file Glob cap parity protection. The cap declared in Step 1 is locked behavior — language-distribution counts are derived from the cap-bounded scan and labelled with a sample note when the cap fires.
+- **Native Execution Model** — This skill is a Claude Code native skill; all behavior is defined in this SKILL.md prose.
+- **Scripts-over-LLM for Deterministic Operations** — Manifest parsing is structured key lookup (JSON / TOML / YAML / line-keyed text), not an LLM judgment call. The "manifest field missing" path is a deterministic present/absent check, not an inference.

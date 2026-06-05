@@ -103,10 +103,10 @@ extract_step_body() {
   echo "$region" | grep -qiE "diff"
 }
 
-@test "AC1: Step 7b region uses context: fork for Val delegation" {
+@test "AC1: Step 7b region dispatches Val via the main-turn Agent tool" {
   region="$(extract_step7b_region)"
   [ -n "$region" ]
-  echo "$region" | grep -qE "context: ?fork"
+  echo "$region" | grep -qiE "main-turn Agent|assert_agent_envelope"
 }
 
 @test "AC1: Step 7b region treats CRITICAL+WARNING as gating" {

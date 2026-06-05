@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gaiastudio.ai/schemas/adapter-manifest.schema.json",
   "title": "GAIA Publish Adapter Manifest",
-  "description": "Schema for adapter-manifest.yaml co-located with each publish adapter under plugins/gaia/scripts/adapters/publish-<channel>/ per ADR-113 §clause (c). Enforces SR-77 per-channel credential_env_vars allowlist and SR-83 verify_retry_window_seconds.maximum=3600 cap.",
+  "description": "Schema for adapter-manifest.yaml co-located with each publish adapter under plugins/gaia/scripts/adapters/publish-<channel>/. Enforces the per-channel credential_env_vars allowlist and the verify_retry_window_seconds.maximum=3600 cap.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -38,19 +38,19 @@
         "maven",
         "custom"
       ],
-      "description": "Closed channel registry per ADR-112 §(c). The 10 first-class channels + 'custom'."
+      "description": "Closed channel registry. The 10 first-class channels + 'custom'."
     },
     "verify_retry_window_seconds": {
       "oneOf": [
         {"type": "integer", "minimum": 1, "maximum": 3600},
         {"type": "null"}
       ],
-      "description": "Per-NFR-082: bounded retry window for step 4 verify probe. SR-83: schema-side cap at 3600s mitigates T-PUB-4 unbounded local DoS. null permitted only for channels with intrinsically unbounded propagation (mobile-app)."
+      "description": "Bounded retry window for step 4 verify probe. Schema-side cap at 3600s mitigates unbounded local DoS. null permitted only for channels with intrinsically unbounded propagation (mobile-app)."
     },
     "credential_env_vars": {
       "type": "array",
       "items": {"type": "string"},
-      "description": "Per-channel allowlist of permitted credential environment variables (SR-77). Enforced by allOf chain below."
+      "description": "Per-channel allowlist of permitted credential environment variables. Enforced by allOf chain below."
     },
     "description": {
       "type": "string",

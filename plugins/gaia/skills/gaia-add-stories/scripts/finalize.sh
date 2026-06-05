@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# finalize.sh — add-stories skill finalize (E28-S57)
+# finalize.sh — add-stories skill finalize
 #
-# Mechanical copy of the Cluster 4 reference implementation authored under
-# E28-S35 (gaia-brainstorm/scripts/finalize.sh). Only WORKFLOW_NAME and
+# Mechanical copy of the reference implementation in
+# gaia-brainstorm/scripts/finalize.sh. Only WORKFLOW_NAME and
 # SCRIPT_NAME differ — the body is byte-identical to the reference.
 #
 # Responsibilities:

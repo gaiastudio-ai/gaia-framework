@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup.sh — /gaia-sprint-review skill setup (E93-S3)
+# setup.sh — /gaia-sprint-review skill setup
 #
 # Mechanical mirror of /gaia-sprint-close/scripts/setup.sh — same workflow
 # checkpoint+lifecycle pattern, no prereq gates beyond config resolution

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# detect-open-questions.sh — E44-S7 / FR-345
+# detect-open-questions.sh — open-question indicator scanner for artifacts
 #
 # Scans a single artifact for open-question indicators. Read-only,
 # informational, non-blocking — exits 0 on findings AND on no-findings.
@@ -14,7 +14,7 @@
 #                           the body before the next heading or EOF contains
 #                           non-whitespace content
 #
-# Out-of-scope (decision pinned in story AC-EC5): non-ASCII / Unicode
+# Out-of-scope: non-ASCII / Unicode
 # variants of TBD/TODO (full-width CJK, Cyrillic lookalikes) are NOT
 # flagged. Future maintainers MUST NOT silently widen the regex.
 #
@@ -74,7 +74,7 @@ if [ ! -f "$ARTIFACT" ] || [ ! -r "$ARTIFACT" ]; then
   exit 3
 fi
 
-# Truncate context to a maximum width (per Subtask 1.3, ~120 chars).
+# Truncate context to a maximum width (~120 chars).
 CONTEXT_MAX=120
 
 # Trim leading whitespace and clip context to CONTEXT_MAX chars.
@@ -162,7 +162,7 @@ OQ_N=$(_count_lines "$OQ_HITS")
 
 TOTAL=$((TBD_N + TODO_N + ND_N + CB_N + OQ_N))
 
-# Zero-finding fast path (AC3): silent exit 0.
+# Zero-finding fast path: silent exit 0.
 if [ "$TOTAL" -eq 0 ]; then
   exit 0
 fi

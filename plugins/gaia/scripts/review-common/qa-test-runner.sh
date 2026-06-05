@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# qa-test-runner.sh — E67-S4 project-config-driven test execution for
+# qa-test-runner.sh — project-config-driven test execution for
 # /gaia-review-qa. Resolves tier placement against GAIA_EXECUTION_CONTEXT,
 # runs the configured per-tier command (with timeout enforcement), and writes
 # execution-evidence.json into the per-story workdir.
@@ -16,9 +16,6 @@
 #   0  evidence written (regardless of suite pass/fail — verdict resolution
 #      is done by verdict-resolver.sh consuming the evidence)
 #   1  caller error (missing required flag, unparseable config)
-#
-# Refs: AC3, AC4, AC5, AC6, AC7, AC8, AC10, FR-RSV2-2, FR-RSV2-11,
-#       ADR-044, ADR-075, ADR-077.
 #
 # POSIX discipline: bash 3.2 (macOS), set -euo pipefail, LC_ALL=C, no
 # associative arrays. jq is optional (used only for the bridge JSON parse
@@ -44,7 +41,7 @@ Usage:
   $SCRIPT_NAME --help
 
 Required:
-  --story-key <key>   Story key (e.g., E67-S4) — used for the audit trail.
+  --story-key <key>   Story key (e.g., E1-S1) — used for the audit trail.
   --workdir <dir>     Output directory (writes execution-evidence.json here).
   --config <yaml>     Path to project-config.yaml (or a merged equivalent).
 
@@ -58,7 +55,7 @@ Behavior:
   - Runs each matching tier's "command" with "timeout_seconds" enforcement
     (POSIX-portable timeout — perl alarm fallback for macOS bash 3.2).
   - When test_execution_bridge.bridge_enabled=true, delegates execution to
-    the configured run_tests_path (Test Execution Bridge / E17 / ADR-044).
+    the configured run_tests_path (Test Execution Bridge).
   - When test_execution is absent, writes a skipped=true evidence document
     and returns exit 0 with an INFO diagnostic.
 EOF
@@ -94,7 +91,7 @@ done
 [ -n "$WORKDIR" ] || die "missing --workdir"
 [ -n "$CONFIG" ] || die "missing --config"
 
-# Validate story_key shape (T-37 mitigation — keys flow into workdir paths).
+# Validate story_key shape (keys flow into workdir paths).
 case "$STORY_KEY" in
   E*[0-9]*-S*[0-9]*) : ;;
   *) die "invalid --story-key shape '$STORY_KEY' (expected E<N>-S<N>)" ;;
@@ -320,13 +317,13 @@ emit_skipped_evidence() {
 EOF
 }
 
-# Test execution absent — split path (AF-2026-05-30-2 / Test10 F-27):
+# Test execution absent — split path:
 #   - bridge_enabled=true + no tier configured → HARD FAIL with actionable
 #     error. The prior behavior emitted skip-green evidence even though the
 #     operator had explicitly enabled the bridge — producing false-PASS test
 #     reviews where tests never ran. This is the "silently defeats the gate"
-#     defect Test10 §2 HIGH F-27 surfaces.
-#   - bridge_enabled=false (or unset) + no tier configured → AC7 graceful
+#     defect class.
+#   - bridge_enabled=false (or unset) + no tier configured → graceful
 #     skip preserved (test execution is genuinely opt-in for this project).
 if [ -z "$TIER1_PLACEMENT" ] && [ -z "$TIER2_PLACEMENT" ] && [ -z "$TIER3_PLACEMENT" ]; then
   if [ "$BRIDGE_ENABLED" = "true" ]; then
@@ -334,7 +331,7 @@ if [ -z "$TIER1_PLACEMENT" ] && [ -z "$TIER2_PLACEMENT" ] && [ -z "$TIER3_PLACEM
     err "  → Run: /gaia-config-test set tier_1.placement unit  &&  /gaia-config-test set tier_1.command 'python3 -m pytest tests/ -q'"
     err "  → Or:  /gaia-bridge-disable  (if you didn't mean to enable the bridge)"
     err "  → See: documentation/commands/gaia-bridge-enable.html (gap #3 — bridge wiring requirement)"
-    emit_skipped_evidence "AF-30-2 F-27 HARD FAIL: bridge enabled but no test_execution tier resolves"
+    emit_skipped_evidence "HARD FAIL: bridge enabled but no test_execution tier resolves"
     exit 1
   fi
   info "test_execution not configured; skipping test execution"
@@ -364,7 +361,7 @@ if [ "${#ACTIVE_TIERS[@]}" -eq 0 ]; then
   exit 0
 fi
 
-# Bridge delegation — single bridge call covers all active tiers per ADR-044.
+# Bridge delegation — single bridge call covers all active tiers.
 if [ "$BRIDGE_ENABLED" = "true" ] && [ -n "$BRIDGE_PATH" ]; then
   if run_bridge "$BRIDGE_PATH"; then
     # Build evidence from bridge response.
@@ -409,9 +406,9 @@ for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
   fi
   run_with_timeout "$cmd" "$to"
   # Best-effort case-count parse from runner stdout/stderr before deleting
-  # the output buffer (AF-2026-05-30-2 / Test10 F-27 caveat: prior behavior
-  # recorded 1-per-suite counts even when the real suite was 83 cases —
-  # producing misleading evidence in code reviews). Common shapes:
+  # the output buffer (prior behavior recorded 1-per-suite counts even when
+  # the real suite was 83 cases — producing misleading evidence in code
+  # reviews). Common shapes:
   #   pytest:        "83 passed, 0 failed in 1.20s"
   #   jest/vitest:   "Tests: 1 failed, 12 passed, 13 total"
   #   bats:          "ok 12 ..." / "not ok 3 ..." (per-line)

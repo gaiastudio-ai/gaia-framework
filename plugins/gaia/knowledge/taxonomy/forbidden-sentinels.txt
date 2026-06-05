@@ -1,8 +1,6 @@
 # forbidden-sentinels.txt — Closed-list forbidden-sentinel taxonomy (v1, frozen)
-# Refs: ADR-107, AF-2026-05-14-6, AI-2026-05-13-5
-# Story: E88-S3
 #
-# Status: v1-frozen. Amendments MUST follow the ADR-107 amendment process.
+# Status: v1-frozen. Amendments MUST follow the amendment process.
 #
 # Consuming skills (1, as of v1):
 #   - /gaia-dev-story Step 11a (forbidden-sentinel-scan.sh; production paths only)
@@ -20,7 +18,7 @@
 # wiring`, `if [ -n "$*_STUB" ]`, `if [ -z "$*_REAL" ]`) which are
 # unmatchable under `grep -wFf` (lines beginning with `#` are stripped by
 # the loader; shell glob `*` is not interpreted by `grep -F`). Those
-# pattern-shaped sentinels are documented as Findings on E88-S3 for a
+# pattern-shaped sentinels are documented as findings for a
 # future enhancement (separate scanner or regex-based variant).
 STUB
 MOCK

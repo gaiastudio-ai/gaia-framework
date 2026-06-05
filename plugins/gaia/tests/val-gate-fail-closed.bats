@@ -263,8 +263,11 @@ EOF
 @test "TC-VFC-8: SKILL.md Step 2 prose forbids the patch-mode exception" {
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   # Step 2 region must contain the explicit forbidden-pattern clause.
+  # The phrase "There is NO patch-mode exception" may wrap across lines in the
+  # markdown; match the continuation line that names all three classification
+  # categories to confirm the unconditional-gate contract is present.
   step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
-  printf '%s\n' "$step2" | grep -Eq '[Tt]here is NO patch-mode exception'
+  printf '%s\n' "$step2" | grep -Eq 'patch-mode exception.*patch.*enhancement|[Tt]here is NO patch-mode exception'
 }
 
 @test "TC-VFC-8: SKILL.md does not license auto-judging in patch mode" {
@@ -308,10 +311,15 @@ EOF
 # Critical Rules — cite AI-2026-05-09-12 precedent (E83-S2 AC4)
 # ---------------------------------------------------------------------------
 
-@test "TC-VFC-8/9: SKILL.md Critical Rules cites AI-2026-05-09-12 precedent" {
+@test "TC-VFC-8/9: SKILL.md Critical Rules documents the auto-judge bypass class and its closures" {
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
+  # Originally verified by an internal defect ID (now removed from published prose).
+  # Re-anchored to the behavioral contract phrases that close the same bypass class:
+  #   (1) "auto-mode self-judgment" bypass class — the classification the defect opened.
+  #   (2) NO patch-mode exception — closes auto-judge-in-patch-mode vector.
+  #   (3) inline Val — closes the inline-verdict substitution vector.
   rules="$(awk '/^## Critical Rules/{flag=1} /^## Subagent Dispatch Contract/{flag=0} flag' "$ADD_FEATURE_SKILL")"
-  [[ "$rules" == *"AI-2026-05-09-12"* ]]
+  [[ "$rules" == *"auto-mode self-judgment"* ]]
   [[ "$rules" == *"no patch-mode exception"* ]] || [[ "$rules" == *"NO patch-mode exception"* ]]
   [[ "$rules" == *"no inline Val"* ]] || [[ "$rules" == *"inline Val"* ]]
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# verdict-aggregate.sh — /gaia-deploy Pattern A final-verdict aggregation (E73-S5, AC6, AC14).
+# verdict-aggregate.sh — /gaia-deploy final-verdict aggregation.
 #
 # Reads every per-suite JSON under <evidence-dir>/smoke/*.json (excluding
 # `_skip-smoke.json`) and aggregates the deployment verdict:
@@ -9,8 +9,6 @@
 #
 # Writes <evidence-dir>/deployment-report.json. Echoes the final verdict on
 # stdout (PASSED | FAILED).
-#
-# Refs: ADR-080, AC6, AC14.
 
 set -euo pipefail
 LC_ALL=C
@@ -32,7 +30,7 @@ while [ "$#" -gt 0 ]; do
     --skip-smoke) SKIP_SMOKE="true"; shift ;;
     -h|--help)
       cat <<EOF
-$SCRIPT_NAME — final verdict aggregation (E73-S5, AC6).
+$SCRIPT_NAME — final verdict aggregation.
 Usage:
   $SCRIPT_NAME --evidence-dir <dir> --env <env> --version <ver> [--skip-smoke]
 EOF

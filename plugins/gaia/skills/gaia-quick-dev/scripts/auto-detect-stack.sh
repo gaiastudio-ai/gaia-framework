@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# auto-detect-stack.sh — gaia-quick-dev stack auto-detection (E28-S117)
+# auto-detect-stack.sh — gaia-quick-dev stack auto-detection
 #
 # Reads the quick spec body and scans the project path for stack signals.
 # Emits exactly one of the seven supported stacks on stdout:
@@ -7,9 +7,9 @@
 #
 # Exit codes:
 #   0 — exactly one stack detected (emitted on stdout)
-#   1 — ambiguous or zero signals (AC-EC2) — caller must prompt user
+#   1 — ambiguous or zero signals — caller must prompt user
 #
-# Detection signals (deterministic per ADR-042):
+# Detection signals (deterministic):
 #   package.json + angular.json          → angular
 #   package.json (no angular.json)       → typescript
 #   pubspec.yaml                         → flutter
@@ -36,7 +36,7 @@ fi
 
 SPEC_NAME="$1"
 WORK_DIR="${PROJECT_PATH:-$PWD}"
-# AF-2026-05-21-27 canonical-first SPEC_PATH (mirrors load-spec.sh).
+# Canonical-first SPEC_PATH (mirrors load-spec.sh).
 if [ -f "$WORK_DIR/.gaia/artifacts/implementation-artifacts/quick-spec-${SPEC_NAME}.md" ]; then
   SPEC_PATH="$WORK_DIR/.gaia/artifacts/implementation-artifacts/quick-spec-${SPEC_NAME}.md"
 else
@@ -87,7 +87,7 @@ if [ "$count" -eq 1 ]; then
 fi
 
 if [ "$count" -eq 0 ]; then
-  log "No stack signals detected in $WORK_DIR — ambiguous (AC-EC2)"
+  log "No stack signals detected in $WORK_DIR — ambiguous"
   exit 1
 fi
 
@@ -102,5 +102,5 @@ if [ -f "$SPEC_PATH" ]; then
   done
 fi
 
-log "Multiple stacks detected (${unique_stacks[*]}) — ambiguous (AC-EC2)"
+log "Multiple stacks detected (${unique_stacks[*]}) — ambiguous"
 exit 1

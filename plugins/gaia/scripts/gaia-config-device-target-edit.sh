@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# gaia-config-device-target-edit.sh — E74-S11
+# gaia-config-device-target-edit.sh — manage device_targets in project-config.yaml
 #
 # Manage the `device_targets:` section of project-config.yaml. Subcommands:
 #
@@ -8,10 +8,10 @@
 #   show <platform>
 #   clear <platform>
 #
-# Per AC4 in E74-S11: `set` rejects orphan targets — i.e. <platform> not
-# present in `platforms[]` — with exit 1.
+# `set` rejects orphan targets — i.e. <platform> not present in `platforms[]`
+# — with exit 1.
 #
-# Per AC8: `set` is idempotent in the replace sense (existing values are
+# `set` is idempotent in the replace sense (existing values are
 # replaced, never appended).
 #
 # Comment-preserving: we operate on the whole `device_targets:` section,
@@ -111,8 +111,8 @@ payload = json.loads(sys.argv[1])
 out = sys.argv[2]
 with open(out, "w") as fh:
     if not payload:
-        # Section header alone (effectively clears the section). AF-2026-05-17-7:
-        # write bare 'device_targets:' (block-style empty section) instead of
+        # Section header alone (effectively clears the section).
+        # Write bare 'device_targets:' (block-style empty section) instead of
         # inline-flow 'device_targets: {}' so the file round-trips to the
         # reconciler-hydrated baseline shape and trailing comments stay
         # anchored as child-position comments of the empty mapping.

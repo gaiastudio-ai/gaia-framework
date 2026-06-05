@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 7 create-story skill setup (E28-S52)
+# setup.sh — create-story skill setup
 #
-# Mechanical extension of the Cluster 4 reference implementation authored
-# under E28-S35 (gaia-brainstorm/scripts/setup.sh). Adds create-story-specific
-# prereq gates:
+# Mechanical extension of the gaia-brainstorm/scripts/setup.sh reference
+# implementation. Adds create-story-specific prereq gates:
 #   - epics-and-stories.md must exist and be non-empty
 #
-# Responsibilities (per brief Cluster 7):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (epics-and-stories.md)
 #   3. Load the checkpoint state for this workflow
@@ -37,14 +36,14 @@ CHECKPOINT="$PLUGIN_SCRIPTS_DIR/checkpoint.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. YOLO mode detection (E54-S1, FR-340) ----------
+# ---------- 0. YOLO mode detection ----------
 # Scan positional args ($1, $2) and the $ARGUMENTS env var for the literal
 # `yolo` keyword or `--yolo` flag. Export YOLO_MODE so the SKILL.md body can
 # branch on it and emit a single log line so the LLM can read the state.
 #
 # Hard rule: YOLO_MODE only suppresses interactive prompts. It MUST NOT bypass:
-#   - Step 1 existing-story-status HALT gate (AC3)
-#   - Step 6 3-attempt cap or terminal FAILED verdict (AC2 / FR-340)
+#   - Step 1 existing-story-status HALT gate
+#   - Step 6 3-attempt cap or terminal FAILED verdict
 __arg1="${1:-}"
 __arg2="${2:-}"
 __args_blob=" ${__arg1} ${__arg2} ${ARGUMENTS:-} "
@@ -72,12 +71,12 @@ done <<<"$config_output"
 
 # ---------- 2. Validate gate (epics-and-stories.md required) ----------
 #
-# Resolve planning_artifacts via resolve-config.sh (ADR-044, ADR-074 contract
-# C1, E60-S3). Project overrides flow through the resolver; the resolver
-# returns the {project_root}/docs/{planning-key} default when no override is
-# present. HALT on resolver non-zero exit — the skill MUST NOT silently fall
-# back to a hardcoded path. Normalize whitespace and a trailing slash on the
-# resolved value so the path join is deterministic across project layouts.
+# Resolve planning_artifacts via resolve-config.sh. Project overrides flow
+# through the resolver; the resolver returns the {project_root}/docs/
+# {planning-key} default when no override is present. HALT on resolver
+# non-zero exit — the skill MUST NOT silently fall back to a hardcoded path.
+# Normalize whitespace and a trailing slash on the resolved value so the path
+# join is deterministic across project layouts.
 if pa_resolved=$("$RESOLVE_CONFIG" planning_artifacts 2>&1); then
   # Strip leading/trailing whitespace and a single trailing slash.
   pa_resolved=${pa_resolved#"${pa_resolved%%[![:space:]]*}"}

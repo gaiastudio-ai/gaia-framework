@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# resume-discovery.sh — GAIA V2 checkpoint discovery + corruption classifier (E43-S7)
+# resume-discovery.sh — GAIA V2 checkpoint discovery + corruption classifier
 #
 # Lists candidate checkpoint files for a given skill, filters out temp files
 # and non-canonical filenames, then validates that the latest remaining
@@ -7,9 +7,9 @@
 # and emits a classified, user-visible error message with cleanup guidance
 # on any failure path.
 #
-# Delegated to by the gaia-resume skill (SKILL.md) per ADR-042
-# (Scripts-over-LLM for Deterministic Operations). The skill body remains
-# the LLM-controlled orchestrator; this script is the deterministic primitive.
+# Delegated to by the gaia-resume skill (SKILL.md) for deterministic
+# checkpoint operations. The skill body remains the LLM-controlled
+# orchestrator; this script is the deterministic primitive.
 #
 # Invocation:
 #   resume-discovery.sh <skill_name>
@@ -19,13 +19,13 @@
 #   CHECKPOINT_ROOT   Directory where _memory/checkpoints/{skill}/ lives.
 #                     Defaults to _memory/checkpoints (relative to CWD).
 #
-# Exit codes (aligned with story E43-S7 Dev Notes):
+# Exit codes:
 #   0   success — latest valid checkpoint found; path printed to stdout.
 #   1   generic failure (usage error, malformed argument).
 #   2   no checkpoint found for skill (after temp/non-canonical filtering).
 #   3   corrupted checkpoint — latest candidate fails to parse as JSON.
 #
-# Canonical filename pattern (from E43-S1):
+# Canonical filename pattern:
 #   {ISO8601-microseconds-Z}-step-{N}.json
 #   Example: 2026-04-24T14:30:00.123456Z-step-3.json
 #
@@ -101,9 +101,9 @@ if ! printf '%s' "$SKILL_NAME" | grep -Eq '^[a-z0-9][a-z0-9-]{0,63}$'; then
   die 1 "invalid skill_name: $SKILL_NAME"
 fi
 
-# AF-2026-05-27-3 (ADR-111): .gaia/memory/checkpoints is the only location —
-# the legacy _memory/checkpoints fallback was removed with the consolidation
-# migration. Env CHECKPOINT_ROOT override still wins.
+# .gaia/memory/checkpoints is the only location — the legacy
+# _memory/checkpoints fallback was removed with the consolidation migration.
+# Env CHECKPOINT_ROOT override still wins.
 if [ -z "${CHECKPOINT_ROOT:-}" ]; then
   CHECKPOINT_ROOT=".gaia/memory/checkpoints"
 fi

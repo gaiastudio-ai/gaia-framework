@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# gaia-tools entrypoint — AF-2026-05-30-3 / Test10 §7 Component 2.
+# gaia-tools entrypoint.
 #
 # Dispatches `gaia-tools <subcommand>` to the bundled binary.  Used as
 # the image ENTRYPOINT so callers from `scripts/lib/docker-runner.sh`
@@ -32,22 +32,22 @@
 set -euo pipefail
 
 _BOM() {
-  # AF-2026-05-31-2 / Test13 F-09: grype 0.79.5's `grype version` output
+  # grype 0.79.5's `grype version` output
   # uses the format `Application: grype\nVersion: 0.79.5\n...`. The prior
   # awk that extracted `Application:` (field 2) returned the literal
   # string `grype`, not the version. Switched to the `Version:` row.
-  # AF-2026-05-31-2 / Test13 F-08: cyclonedx-bom 4.x renamed its CLI
+  # cyclonedx-bom 4.x renamed its CLI
   # binary to `cyclonedx-py`. The prior `cyclonedx-bom --version` call
   # produced "unknown" because the binary no longer exists by that name.
-  # AF-2026-05-31-3 / Test14 F-03: spotbugs's launcher emits its version
+  # spotbugs's launcher emits its version
   # on stderr in the form "SpotBugs <ver>"; redirect stderr→stdout and
   # awk the second token rather than `head -1` (which produced a blank
   # field in the BOM banner row).
-  # AF-2026-05-31-3 / Test14 F-02 + F-06: probe the `sarif` binary
+  # probe the `sarif` binary
   # (Microsoft.Sarif.Multitool) so the BOM table reflects whether the
   # tool is actually present. The prior row had no probe at all, which
   # let the silent install failure persist invisibly.
-  # AF-2026-06-01-1 / Test15 L-02 — spotbugs + sarif version probes need
+  # spotbugs + sarif version probes need
   # to grab BOTH stdout and stderr:
   #   spotbugs's bash launcher (`bin/spotbugs -version`) prints
   #     `SpotBugs 4.8.4` to STDERR, not stdout. The prior `2>/dev/null`
@@ -97,15 +97,15 @@ case "${1}" in
 esac
 
 # Verify the subcommand resolves to a known binary before exec'ing.
-# AF-2026-05-31-3 / Test14 F-02 + F-06: `sarif` (Microsoft.Sarif.Multitool)
+# `sarif` (Microsoft.Sarif.Multitool)
 # is now in the documented dispatch set + the error-message vocabulary so
 # `docker_runner_dispatch sarif merge ...` lands on a real binary rather
 # than the prior "unknown subcommand 'sarif'" path that silently dropped
-# every Phase-7 grype SARIF (Test14 F-06). The binary itself is bundled
+# every Phase-7 grype SARIF. The binary itself is bundled
 # by the Dockerfile's Sarif.Multitool install step; the entrypoint just
 # needs to advertise it in the help text and error vocabulary so callers
 # (and docs) don't claim it isn't supported.
-# AF-2026-05-31-3 / Test14 F-08: `cyclonedx-bom` (the legacy alias from
+# `cyclonedx-bom` (the legacy alias from
 # the cyclonedx-bom 3.x days) is dropped from both vocabularies — the
 # binary is `cyclonedx-py` post-4.x; advertising both forms misled
 # operators into invoking a binary that doesn't exist in the image.

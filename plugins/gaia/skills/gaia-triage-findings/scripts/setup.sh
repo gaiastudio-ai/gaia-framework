@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — triage-findings skill setup (E28-S63)
+# setup.sh — triage-findings skill setup
 #
-# Shared setup pattern from the E28-S17/S19/S21 foundation work.
+# Shared setup pattern for config resolution, gate validation, and checkpoint state loading.
 # Resolves config, validates gates, loads checkpoint state.
 #
 # Exit codes:
@@ -74,20 +74,19 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event (non-fatal)"
 fi
 
-# ---------- 5. Write run-start sentinel for finalize fail-closed (AF-2026-05-24-12 / Test02 F-21) ----------
-# Test02 F-21 (HIGH): finalize.sh's GAIA_FINALIZE_SENTINEL_REQUIRED contract
-# (E92-S2) asserts the existence of $CHECKPOINT_PATH/triage-findings.json
-# with mtime OLDER than the Val sidecar write. Setup never created the
-# sentinel, so the gate was fail-closed-unusable: any invocation with the
-# sentinel-required flag set halted at finalize with "Val sidecar write
-# missing".
+# ---------- 5. Write run-start sentinel for finalize fail-closed ----------
+# finalize.sh's GAIA_FINALIZE_SENTINEL_REQUIRED contract asserts the existence
+# of $CHECKPOINT_PATH/triage-findings.json with mtime OLDER than the Val
+# sidecar write. Setup never created the sentinel, so the gate was
+# fail-closed-unusable: any invocation with the sentinel-required flag set
+# halted at finalize with "Val sidecar write missing".
 #
 # This block writes the sentinel at run-start so finalize can assert
 # correctly: setup creates the .json marker NOW; finalize asserts that
 # any subsequent sidecar write has mtime > sentinel mtime. The sentinel
 # itself is a minimal JSON payload identifying the run.
-# AF-2026-05-27-3 (ADR-111): canonical .gaia/memory/checkpoints only; legacy
-# _memory probe removed. Env CHECKPOINT_PATH override wins.
+# Canonical .gaia/memory/checkpoints only; legacy _memory probe removed.
+# Env CHECKPOINT_PATH override wins.
 SENTINEL_DIR=""
 if [ -n "${CHECKPOINT_PATH:-}" ]; then
   SENTINEL_DIR="$CHECKPOINT_PATH"
@@ -103,16 +102,16 @@ if [ -n "$SENTINEL_DIR" ]; then
   # Write minimal run-start payload via atomic tempfile + mv
   tmp_sentinel="$(mktemp "${SENTINEL_PATH}.XXXXXX" 2>/dev/null || mktemp)"
   cat > "$tmp_sentinel" <<EOF
-{"workflow":"$WORKFLOW_NAME","run_started_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","source":"gaia-triage-findings/setup.sh","af":"AF-2026-05-24-12"}
+{"workflow":"$WORKFLOW_NAME","run_started_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","source":"gaia-triage-findings/setup.sh"}
 EOF
   if mv "$tmp_sentinel" "$SENTINEL_PATH" 2>/dev/null; then
     log "wrote run-start sentinel: $SENTINEL_PATH"
   else
     rm -f "$tmp_sentinel" 2>/dev/null
-    log "WARNING: could not write run-start sentinel at $SENTINEL_PATH — finalize fail-closed gate may halt (F-21)"
+    log "WARNING: could not write run-start sentinel at $SENTINEL_PATH — finalize fail-closed gate may halt"
   fi
 else
-  log "WARNING: no checkpoint dir resolved — F-21 run-start sentinel skipped"
+  log "WARNING: no checkpoint dir resolved — run-start sentinel skipped"
 fi
 
 log "setup complete for $WORKFLOW_NAME"

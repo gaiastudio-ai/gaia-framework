@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# memory-loader.sh — GAIA foundation script (E28-S13)
+# memory-loader.sh — GAIA foundation script
 #
 # Loads an agent's sidecar memory (decision-log and/or ground-truth) and prints
 # it to stdout for direct inline-embedding in subagent prompts via `!` bash.
 # This script is READ-ONLY with respect to _memory/ contents.
 #
-# Refs: FR-325, FR-328, NFR-048, ADR-042, ADR-048
-# Brief: P2-S5 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
-#
-# Invocation contract (stable for E28-S17 bats-core authors):
+# Invocation contract:
 #
 #   memory-loader.sh <agent_name> <tier>
 #                    [--max-tokens <n>] [--format inline] [--help]
@@ -20,50 +17,48 @@
 #   1 — usage error (missing/invalid positional args, invalid tier)
 #
 # Consumers: every subagent that needs memory context, via `!` inline bash in
-# the subagent prompt's `## Memory` section (brief Cluster 3 pattern).
+# the subagent prompt's `## Memory` section.
 #
 # Missing memory contract: a missing sidecar directory or missing files is NOT
 # an error. The script prints empty stdout and exits 0. This is intentional so
 # that `!` bash inlines never break subagent activation on fresh projects.
 #
-# Performance budget (NFR-048): < 50ms wall-clock on a developer workstation.
+# Performance budget: < 50ms wall-clock on a developer workstation.
 # The script resolves config once, reads files once, and avoids forking more
 # than necessary to meet the every-subagent-activation budget.
 
 set -euo pipefail
 
-# E96-S4 / ADR-111: prefer .gaia/memory/ over legacy _memory/. Resolution order:
+# Prefer .gaia/memory/ over legacy _memory/. Resolution order:
 #   1. ${MEMORY_PATH} env override (highest priority, unchanged contract).
 #   2. ${PROJECT_PATH}/.gaia/memory/ when the dir exists.
-#   3. ${PROJECT_PATH}/_memory/ legacy fallback during the 1-sprint deprecation
-#      window (removed in E96-S5).
+#   3. ${PROJECT_PATH}/_memory/ legacy fallback during the deprecation window.
 _gaia_resolve_memory_path() {
   if [ -n "${MEMORY_PATH:-}" ]; then
     printf '%s' "$MEMORY_PATH"
     return 0
   fi
-  # AF-2026-05-27-3: `.gaia/memory/` is the canonical (and only) memory tree
-  # post-ADR-111 — the legacy `_memory/` fallback was removed with the
-  # consolidation migration. Resolve to `.gaia/memory/` unconditionally.
+  # `.gaia/memory/` is the canonical (and only) memory tree — the legacy
+  # `_memory/` fallback was removed with the consolidation migration.
+  # Resolve to `.gaia/memory/` unconditionally.
   printf '%s' "${PROJECT_PATH:-.}/.gaia/memory"
 }
 MEMORY_PATH="$(_gaia_resolve_memory_path)"
 CONFIG="${MEMORY_PATH}/config.yaml"
 
-# AF-2026-05-27-3: the `.migration-manifest` / read-only-until-migration
-# sentinel check was removed with the legacy `_memory/`→`.gaia/memory/`
-# consolidation migration (ADR-111 Family A). The framework now runs on the
-# `.gaia/` tree exclusively, so there is no migration to gate on and no
-# `_GAIA_SESSION_LOAD_READ_ONLY` state to set — session load is always
-# read-write against `.gaia/memory/`. The only retained signal is the
-# cross-writer stray-`_memory/` hygiene warning below, which flags a leaked
-# legacy tree without forcing read-only.
+# The `.migration-manifest` / read-only-until-migration sentinel check was
+# removed with the legacy `_memory/`→`.gaia/memory/` consolidation migration.
+# The framework now runs on the `.gaia/` tree exclusively, so there is no
+# migration to gate on — session load is always read-write against
+# `.gaia/memory/`. The only retained signal is the cross-writer stray-`_memory/`
+# hygiene warning below, which flags a leaked legacy tree without forcing
+# read-only.
 
-# Stray-legacy-memory hygiene warning (Test04 _memory leak follow-up).
+# Stray-legacy-memory hygiene warning.
 # A .gaia/-layout project should have NO project-root _memory/ tree — but a
 # buggy writer that resolved its path on a racy "does .gaia/memory exist yet"
 # probe could leak a sidecar/checkpoint into _memory/ (the val-sidecar-write.sh
-# bug fixed in AF-2026-05-27-2). This is a cross-writer detector: warn (once,
+# bug has since been fixed). This is a cross-writer detector: warn (once,
 # non-fatal, never read-only) whenever _memory/ coexists with .gaia/memory/, so
 # ANY future stray-tree leak is surfaced at session load rather than silently
 # accumulating. It does NOT delete anything — cleanup is an explicit operator
@@ -78,7 +73,7 @@ _gaia_stray_legacy_memory_warn() {
       # exist — i.e. a real coexistence leak, not a mid-migration project (which
       # the sentinel check above already handles via the manifest contract).
       if [ -d "${_root}/.gaia/memory" ] && [ -d "${_root}/_memory" ]; then
-        printf 'session-load: WARNING — a project-root _memory/ tree coexists with the canonical .gaia/memory/ (ADR-111). This usually means a writer leaked a sidecar/checkpoint outside .gaia/. Review %s and run /gaia-memory-hygiene to reconcile.\n' "${_root}/_memory" >&2
+        printf 'session-load: WARNING — a project-root _memory/ tree coexists with the canonical .gaia/memory/. This usually means a writer leaked a sidecar/checkpoint outside .gaia/. Review %s and run /gaia-memory-hygiene to reconcile.\n' "${_root}/_memory" >&2
       fi
       ;;
   esac
@@ -107,8 +102,6 @@ Behavior:
     falls back to _memory/<agent_name>-sidecar/ when unmapped or config missing.
   - Missing sidecar dir or files → empty stdout, exit 0 (no error).
   - Read-only. Never writes to _memory/ contents.
-
-Refs: FR-325, FR-328, NFR-048, ADR-042, ADR-048 (brief P2-S5)
 EOF
 }
 

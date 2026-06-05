@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 6 architecture skill setup (E28-S46, brief §Cluster 6 / P6-S2)
+# setup.sh — architecture skill setup
 #
-# Mechanical extension of the Cluster 4 reference implementation authored
-# under E28-S35 (gaia-brainstorm/scripts/setup.sh). Adds edit-arch-specific
+# Mechanical extension of the brainstorm reference implementation
+# (gaia-brainstorm/scripts/setup.sh). Adds edit-arch-specific
 # prereq gates:
 #   - architecture.md must exist in planning-artifacts (validate-gate file_exists)
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (architecture.md existence)
 #   3. Load the checkpoint state for this workflow
@@ -64,17 +64,17 @@ else
 fi
 
 # ---------- 2b. Guard: architecture.md must already exist ----------
-# AF-2026-05-21-25 three-tier idiom (mirrors AF-21-12 gaia-edit-prd/setup.sh).
-# AF-2026-05-29-2 / Test09 F-20: prefer CLAUDE_PROJECT_ROOT (the framework-
-# standard harness var) and GAIA_PROJECT_ROOT (project-specific) BEFORE the
-# $SKILL_DIR/../../../../.. walk-up. On a marketplace/cache-installed plugin
+# Three-tier idiom for project root resolution.
+# Prefer CLAUDE_PROJECT_ROOT (the framework-standard harness var) and
+# GAIA_PROJECT_ROOT (project-specific) BEFORE the $SKILL_DIR/../../../../..
+# walk-up. On a marketplace/cache-installed plugin
 # (~/.claude/plugins/cache/<mp>/gaia/<ver>/skills/<skill>/scripts/), walking
 # 5 levels up lands in `~/.claude/plugins/cache` — NOT the user's project —
 # and every subsequent .gaia/ artifact lookup misses. Honoring the harness-
 # provided env vars first restores the project anchor that callers actually
 # rely on. The walk-up remains as the final fallback for in-source-tree dev
 # (gaia-framework/ checkout) where neither env var is set.
-# AF-2026-05-30-4 F-11 extension: when none of the env-var anchors are set,
+# Extension: when none of the env-var anchors are set,
 # try `resolve-config.sh --field project_root` BEFORE the walk-up fallback.
 # resolve-config locates the canonical .gaia/config/project-config.yaml (it
 # searches upward from $PWD), so when the user is inside their project and

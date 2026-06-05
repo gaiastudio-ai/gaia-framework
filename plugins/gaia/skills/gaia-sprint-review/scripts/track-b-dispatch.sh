@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# track-b-dispatch.sh — Track B per-stack execution-review runner (E93-S4)
+# track-b-dispatch.sh — Track B per-stack execution-review runner
 #
-# Real per-stack execution dispatcher (replaces the E93-S3 stub per the
-# E88-S2 / FR-DPD-2 deferred-wiring contract). Reads the sprint_review:
+# Real per-stack execution dispatcher (replaces the earlier stub per the
+# deferred-wiring contract). Reads the sprint_review:
 # matrix from project-config.yaml, iterates each configured stack, invokes
 # its command in the FOREGROUND with stdout/stderr streamed to the user's
 # terminal, and emits one JSON envelope per stack on stdout.
 #
 # Threat-model mitigations enforced inline:
-#   - T-SGR-1 / SR-63 : env-allowlist (scripts/lib/env-allowlist.sh)
-#   - T-SGR-2 / SR-66 : timeout + process-group hard-kill (lib/exec-with-timeout.sh)
-#   - T-SGR-4 / NFR-069 : foreground execution invariant + GAIA_HEADLESS=1 HALT
-#   - T-SGR-5         : literal subprocess exit-code propagation
-#   - T-SGR-7 / SR-65 : per-stack transcripts at mode 0600 under
+#   - env-allowlist (scripts/lib/env-allowlist.sh)
+#   - timeout + process-group hard-kill (lib/exec-with-timeout.sh)
+#   - foreground execution invariant + GAIA_HEADLESS=1 HALT
+#   - literal subprocess exit-code propagation
+#   - per-stack transcripts at mode 0600 under
 #                       _memory/checkpoints/sprint-review-{sprint_id}/
 #
-# The per-goal AskUserQuestion gate (FR-490) fires at the MAIN-TURN caller
-# (SKILL.md Step 4) per NFR-067 — this script is a leaf and MUST NOT call
+# The per-goal AskUserQuestion gate fires at the MAIN-TURN caller
+# (SKILL.md Step 4) — this script is a leaf and MUST NOT call
 # AskUserQuestion itself.
 #
 # Usage:
@@ -69,7 +69,7 @@ Reads sprint_review: from project-config.yaml, iterates the per-stack
 matrix, invokes each command in the foreground with stdout/stderr streamed
 live, and emits a JSON array of per-stack envelopes on stdout.
 
-Foreground-mode enforcement (NFR-069):
+Foreground-mode enforcement:
   - GAIA_HEADLESS=1 HALTs with canonical error.
   - non-TTY stdout emits a WARNING but continues (tmux/script(1) compatible).
 USAGE
@@ -78,7 +78,7 @@ USAGE
 # ---------- Arg parse ----------
 
 sprint_id=""
-# E96-S7 AC3: smart-fallback for the default config path — prefer
+# Smart-fallback for the default config path — prefer
 # .gaia/config/project-config.yaml when present (post-migration layout),
 # fall back to the legacy config/project-config.yaml. Explicit --config wins.
 config_path=""
@@ -104,13 +104,13 @@ done
 
 [ -n "$sprint_id" ] || { usage; die "--sprint is required"; }
 
-# ---------- Foreground-mode enforcement (NFR-069) ----------
+# ---------- Foreground-mode enforcement ----------
 
 if [ "${GAIA_HEADLESS:-0}" = "1" ]; then
-  die "HALT: Track B requires foreground execution (NFR-069); GAIA_HEADLESS=1 detected"
+  die "HALT: Track B requires foreground execution; GAIA_HEADLESS=1 detected"
 fi
-# AF-2026-05-24-14 / Test02 F-31: only warn about non-TTY stdout when
-# we're actually going to run something. If the sprint_review matrix is
+# Only warn about non-TTY stdout when we're actually going to run
+# something. If the sprint_review matrix is
 # empty / absent (the SKIPPED path), there's no foreground assumption to
 # violate — emitting the warning here is noise. Defer the check to
 # after the config read.
@@ -120,8 +120,7 @@ fi
 # If config file doesn't exist OR the sprint_review: section is missing,
 # emit an empty array — the caller treats this as "no Track B stacks
 # configured" which folds into the SKIPPED path during composite verdict
-# reduction. This matches FR-494 AC6 (graceful degradation when section
-# absent) and preserves E93-S3 stub soft-fail behavior.
+# reduction (graceful degradation when section absent).
 if [ ! -f "$config_path" ]; then
   log "config file not found at '$config_path' — emitting empty Track B envelope"
   printf '[]\n'
@@ -144,8 +143,8 @@ case "$timeout_per_stack" in
   ''|*[!0-9]*) timeout_per_stack=300 ;;
 esac
 
-# Collect stack list from backend_commands, frontend_commands (map, post
-# AF-2026-06-01-4 / issue #1047) AND the legacy frontend_command scalar
+# Collect stack list from backend_commands, frontend_commands (map form)
+# AND the legacy frontend_command scalar
 # (backward-compat alias for single-web-stack projects), mobile_commands,
 # desktop_commands, plugin_commands. yq emits one stack name per line.
 stacks_backend=$(yq eval '.sprint_review.backend_commands // {} | keys | .[]' "$config_path" 2>/dev/null || true)
@@ -164,7 +163,7 @@ frontend_map_has_frontend_key=$(yq eval '.sprint_review.frontend_commands.fronte
 merge_legacy_frontend_scalar=false
 if [ "$has_frontend_scalar" = "true" ] && [ "$frontend_map_has_frontend_key" != "true" ]; then
   merge_legacy_frontend_scalar=true
-  log "DEPRECATED: sprint_review.frontend_command (scalar) is set; merging as synthetic stack-id 'frontend'. Prefer sprint_review.frontend_commands map (issue #1047 / AF-2026-06-01-4)."
+  log "DEPRECATED: sprint_review.frontend_command (scalar) is set; merging as synthetic stack-id 'frontend'. Prefer sprint_review.frontend_commands map."
 fi
 
 all_stacks=""
@@ -184,14 +183,14 @@ if [ -z "$all_stacks" ]; then
   exit 0
 fi
 
-# AF-2026-05-24-14 / Test02 F-31: TTY check moved here from the top so
-# it only fires when we actually have stacks to dispatch. The foreground
-# assumption doesn't matter when there's nothing to run.
+# TTY check moved here from the top so it only fires when we actually have
+# stacks to dispatch. The foreground assumption doesn't matter when there's
+# nothing to run.
 if [ ! -t 1 ]; then
   log "WARNING: stdout is not a TTY — Track B foreground assumption may not hold (script(1)/tmux is OK; CI is not)"
 fi
 
-# ---------- .gitignore pre-flight (T-SGR-7 / SR-65) ----------
+# ---------- .gitignore pre-flight ----------
 
 assert_gitignored ".gaia/memory/checkpoints/sprint-review-" || exit 1
 
@@ -203,8 +202,8 @@ stack_command_for() {
   local cmd
   cmd=$(yq eval ".sprint_review.backend_commands[\"$stack\"] // \"\"" "$config_path" 2>/dev/null)
   if [ -n "$cmd" ] && [ "$cmd" != "null" ]; then printf '%s' "$cmd"; return; fi
-  # frontend_commands (map, post-AF-2026-06-01-4 / issue #1047) takes
-  # precedence over the legacy frontend_command scalar on key collision.
+  # frontend_commands (map form) takes precedence over the legacy
+  # frontend_command scalar on key collision.
   cmd=$(yq eval ".sprint_review.frontend_commands[\"$stack\"] // \"\"" "$config_path" 2>/dev/null)
   if [ -n "$cmd" ] && [ "$cmd" != "null" ]; then printf '%s' "$cmd"; return; fi
   if [ "$stack" = "frontend" ]; then

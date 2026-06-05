@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 11 gaia-ci-edit skill setup (E28-S86)
+# setup.sh — gaia-ci-edit skill setup
 #
-# Mechanical extension of the Cluster 9 reference implementation authored
-# under E28-S66 (gaia-code-review/scripts/setup.sh). Only WORKFLOW_NAME and
-# SCRIPT_NAME differ — the body follows the shared pattern.
+# Mechanical extension of the gaia-code-review/scripts/setup.sh reference
+# implementation. Only WORKFLOW_NAME and SCRIPT_NAME differ — the body
+# follows the shared pattern.
 #
-# Responsibilities (per brief Cluster 9):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
-#   2. Run validate-gate.sh prereq check (AC-EC3, AC-EC5)
+#   2. Run validate-gate.sh prereq check
 #   3. Load the checkpoint state for this workflow
 #
 # Exit codes:
@@ -51,12 +51,12 @@ while IFS= read -r line; do
   esac
 done <<<"$config_output"
 
-# ---------- 2. Validate gate — dependency check (AC-EC3, AC-EC5) ----------
-[ -x "$VALIDATE_GATE" ] || die "validate-gate.sh not found or not executable at $VALIDATE_GATE — dependency E28-S15 must be installed first"
+# ---------- 2. Validate gate — dependency check ----------
+[ -x "$VALIDATE_GATE" ] || die "validate-gate.sh not found or not executable at $VALIDATE_GATE — validate-gate dependency must be installed first"
 
-# ---------- 2b. Record "had prior setup" marker (E28-S199) ----------
+# ---------- 2b. Record "had prior setup" marker ----------
 #
-# E28-S199 introduces a conditional guard on the `ci_setup_exists` post-check
+# This block introduces a conditional guard on the `ci_setup_exists` post-check
 # in finalize.sh. The guard uses a runtime marker file:
 #
 #   ${PROJECT_ROOT:-$PWD}/.gaia/run-state/ci-edit-had-prior-setup
@@ -65,9 +65,9 @@ done <<<"$config_output"
 # If it exists, a prior CI setup is in place and an edit is genuinely
 # editing an existing file — in that case finalize.sh MUST still invoke
 # ci_setup_exists as a regression guard (catches the "edit erased the
-# file" bug class — AC6). If the setup file is absent at invocation time,
-# no marker is written and finalize.sh skips the gate entirely (AC5:
-# fresh-fixture runs exit 0 cleanly).
+# file" bug class). If the setup file is absent at invocation time,
+# no marker is written and finalize.sh skips the gate entirely
+# (fresh-fixture runs exit 0 cleanly).
 #
 # The marker is plain-filesystem state, not config: it describes "what the
 # edit observed at invocation" rather than "how the skill is configured."
@@ -78,7 +78,7 @@ done <<<"$config_output"
 # file as "had prior setup" — which is the SAFER failure mode (gate runs,
 # catches the missing file, exits non-zero).
 
-# E96-S7 partial-4c: smart-fallback
+# Smart-fallback for TEST_ARTIFACTS resolution:
 if [ -z "${TEST_ARTIFACTS:-}" ]; then
   if [ -d ".gaia/artifacts/test-artifacts" ]; then
     TEST_ARTIFACTS=".gaia/artifacts/test-artifacts"

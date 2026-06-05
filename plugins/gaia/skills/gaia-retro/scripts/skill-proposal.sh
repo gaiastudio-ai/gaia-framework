@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# skill-proposal.sh — Skill improvement proposal helpers (E36-S3, ADR-053)
+# skill-proposal.sh — Skill improvement proposal helpers
 #
-# Public functions (AF-2026-05-24-14 / Test02 F-32: expanded with output
-# format + failure modes after dogfooding feedback that the original
-# header only listed signatures, leaving consumers guessing about return
-# shape and error semantics):
+# Public functions (expanded with output format + failure modes after
+# dogfooding feedback that the original header only listed signatures,
+# leaving consumers guessing about return shape and error semantics):
 #
 #   extract_tech_debt_reflection <project_root> <sprint_id>
 #     → Reads tech-debt-dashboard.md and produces a Tech Debt Reflection block.
@@ -35,7 +34,7 @@
 #   write_approved_proposal <root> <sprint_id> <target_skill> <target_path> \
 #                           <rationale> <diff_content> <writer_script>
 #     → Writes custom/skills/{name}.md and registers in .customize.yaml
-#       via the shared retro writer (ADR-052).
+#       via the shared retro writer.
 #     Stdout: the resolved write path on success.
 #     Stderr: `write_approved_proposal: <reason>` on failure.
 #     Exit: 0 = wrote successfully; non-zero = writer-script failure
@@ -43,9 +42,7 @@
 #     Failure mode: validate_proposal MUST pass before calling this;
 #       unvalidated input may produce a malformed custom/skills/ file.
 #
-# Refs: ADR-053 (custom skill proposal pipeline), ADR-052 (shared writer),
-#       FR-RIM-6 (skill improvement proposals), FR-RIM-7 (tech debt reflection),
-#       ADR-020 (custom/skills/ write-path routing).
+
 
 set -uo pipefail
 
@@ -66,7 +63,6 @@ _DEBT_CATEGORIES="architecture|code|test|documentation|process"
 # ---------------------------------------------------------------------------
 extract_tech_debt_reflection() {
   local root="$1" sprint_id="$2"
-  # AF-2026-05-21-25: canonical-first dashboard lookup.
   local dashboard
   if [ -f "$root/.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md" ]; then
     dashboard="$root/.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md"
@@ -248,7 +244,7 @@ write_approved_proposal() {
   fi
 
   # Step 2: Register in .customize.yaml via the shared retro writer
-  # Per ADR-020 §lines 1720-1722: custom/skills/{agent-id}.customize.yaml
+  # custom/skills/{agent-id}.customize.yaml
   # For dev-agent skills, use all-dev.customize.yaml
   local cust_yaml="$root/custom/skills/all-dev.customize.yaml"
   local reg_payload

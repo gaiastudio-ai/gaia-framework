@@ -1,6 +1,6 @@
 ---
 name: gaia-change-request
-description: "DEPRECATED -- Thin redirect to gaia-add-feature. Preserved for backward compatibility per ADR-041 / FR-323. Use /gaia-add-feature directly."
+description: "DEPRECATED -- Thin redirect to gaia-add-feature. Preserved for backward compatibility. Use /gaia-add-feature directly."
 argument-hint: "[request-text]"
 allowed-tools: [Read, Glob, Bash, Skill]
 orchestration_class: light-procedural
@@ -10,11 +10,11 @@ orchestration_class: light-procedural
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-change-request/scripts/setup.sh
 
-## Deprecation Notice (ADR-041 / FR-323)
+## Deprecation Notice
 
 > **This skill is deprecated.** `/gaia-change-request` is the legacy entry point for submitting change requests. All classification and cascade logic now lives in the `gaia-add-feature` skill. Callers should prefer `/gaia-add-feature` directly going forward.
 >
-> This thin redirect is preserved per ADR-041 (deprecated-but-routed commands remain callable for backward compatibility) and FR-323 (change-request triage and routing semantics). No change-request logic is implemented here -- the skill exists solely to forward invocations to the canonical handler.
+> This thin redirect is preserved so that deprecated-but-routed commands remain callable for backward compatibility, with change-request triage and routing semantics intact. No change-request logic is implemented here -- the skill exists solely to forward invocations to the canonical handler.
 
 ## Mission
 

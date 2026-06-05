@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
 # rubric-loader.sh — Layered rubric loader (base + sub-rubrics + regimes + domain + project)
 #
-# Stories: E68-S2 — Layered rubric loader + rubric-merger.sh + rubric.schema.json
-#                   + /gaia-validate-rubric + /gaia-config-validate.
-#          E77-S4 — Sub-rubric loader pipeline migration with byte-identical
-#                   contract test (FR-406, ADR-088).
-# ADR:     ADR-079 (Layered Rubric Loading), ADR-088 (Sub-Rubric Loader Pipeline
-#          Migration), ADR-090 (Mobile dual-path coexistence), ADR-042 (Scripts-
-#          over-LLM).
-#
-# Pipeline (per ADR-079 + ADR-088):
+# Pipeline:
 #   layer 1:        rubrics/base/<skill>.json          — always loaded
 #   layer 2..M:     rubrics/sub-rubrics/*.json         — predicate-filtered via
 #                                                       `when:` clause and merged
@@ -20,10 +12,10 @@
 #   layer N+1:      rubrics/domain/<domain>.json       — optional
 #   layer N+2:      rubrics/project/<skill>.json       — optional, project-local
 # Each layer is validated against rubric.schema.json BEFORE merging. On
-# validation failure the loader halts with a BLOCKED status (NFR-RSV2-4) and
-# does NOT proceed.
+# validation failure the loader halts with a BLOCKED status and does NOT
+# proceed.
 #
-# Sub-rubric `when:` predicate grammar (ADR-088):
+# Sub-rubric `when:` predicate grammar:
 #   - Equality:       `when: {project_kind: "claude-code-plugin"}` — top-level
 #                     scalar field of project-config equals the value.
 #   - Array intersect: `when: {platforms: ["ios"]}` — top-level array field of
@@ -35,7 +27,7 @@
 #                     separate sub-rubric files with single-key `when:` maps.
 #   - A sub-rubric with no `when:` (or `when: null`) is INCLUDED unconditionally.
 #
-# Sub-rubric sort contract (ADR-088):
+# Sub-rubric sort contract:
 #   - Files matching `^[0-9]+-` (numeric-prefixed) sort BEFORE non-prefixed files.
 #   - Among prefixed files, sort numerically ASC by the integer prefix.
 #   - Among non-prefixed files, sort by LC_ALL=C alpha order.
@@ -88,7 +80,7 @@ debug_order=0
 
 usage() {
   cat <<EOF
-$prog — layered rubric loader (E68-S2)
+$prog — layered rubric loader
 
 Required:
   --skill <name>                 Review skill (code|qa|test|security|perf|a11y|...)
@@ -105,7 +97,7 @@ Optional explicit mode:
   --no-project                   Skip the project layer entirely
   --schema <path>                Override rubric.schema.json (for tests)
   --config <path>                Project-config YAML used to evaluate sub-rubric
-                                 \`when:\` predicates (ADR-088). When omitted,
+                                 \`when:\` predicates. When omitted,
                                  the loader falls back to resolve-config.sh.
   --debug-order                  Diagnostic: emit one filename per line in
                                  sub-rubric merge order, then exit 0.
@@ -117,11 +109,11 @@ Default mode (no --regimes / --domain / --project-rubric flags given):
 EOF
 }
 
-# --- Sub-rubric helpers (E77-S4 / ADR-088) --------------------------------
+# --- Sub-rubric helpers -------------------------------------------------------
 
 # emit_subrubric_sort_key <filename>
 #
-# Print a sort key for the sub-rubric basename that yields the ADR-088 order:
+# Print a sort key for the sub-rubric basename that yields the canonical order:
 #   prefixed files BEFORE non-prefixed files; prefixed files in numeric ASC;
 #   non-prefixed files in LC_ALL=C alpha. The key is constructed so that a
 #   plain LC_ALL=C sort -k1 gives that order.
@@ -146,7 +138,7 @@ emit_subrubric_sort_key() {
 # `<project_config_yaml_or_empty>` is empty the predicate evaluator treats
 # the project context as the empty object {} — every non-trivial `when:`
 # clause then evaluates to false, so project_kind-gated sub-rubrics are
-# correctly EXCLUDED in the no-config case (AC9.10).
+# correctly EXCLUDED in the no-config case.
 subrubric_predicate_passes() {
   local subrubric="$1"
   local cfg="$2"
@@ -274,13 +266,13 @@ if [ ! -f "$base_path" ]; then
 fi
 layers+=("$base_path")
 
-# --- Phase 2: sub-rubrics (ADR-088 / E77-S4) ------------------------------
+# --- Phase 2: sub-rubrics -------------------------------------------------
 # Sub-rubrics live in <rubrics_root>/sub-rubrics/*.json. They are filtered
 # by their optional `when:` predicate (equality + array-intersection + AND)
 # and merged in deterministic sort order between the base layer and the
 # regime layers. The sub-rubrics directory is OPTIONAL — when absent or
 # empty the loader is a no-op for this phase, preserving byte-identical
-# output for projects that have not adopted any sub-rubric (AC9.9).
+# output for projects that have not adopted any sub-rubric.
 sub_rubric_dir="$rubrics_root/sub-rubrics"
 selected_subrubrics=()
 if [ -d "$sub_rubric_dir" ]; then
@@ -301,11 +293,10 @@ if [ -d "$sub_rubric_dir" ]; then
   shopt -u nullglob
 
   if [ "${#candidates[@]}" -gt 0 ]; then
-    # Sort candidates by ADR-088 contract: numeric prefix bucket "0" before
-    # non-prefixed bucket "1"; numeric ASC by prefix; LC_ALL=C alpha within
-    # the non-prefixed bucket. The transform pairs each absolute path with
-    # its sort key on a tab-delimited line, sorts under LC_ALL=C, then
-    # strips the key.
+    # Sort candidates: numeric prefix bucket "0" before non-prefixed bucket
+    # "1"; numeric ASC by prefix; LC_ALL=C alpha within the non-prefixed
+    # bucket. The transform pairs each absolute path with its sort key on a
+    # tab-delimited line, sorts under LC_ALL=C, then strips the key.
     sort_input=""
     for f in "${candidates[@]}"; do
       base=$(basename "$f")
@@ -325,7 +316,7 @@ if [ -d "$sub_rubric_dir" ]; then
   fi
 fi
 
-# Diagnostic: emit sub-rubric merge order and exit 0 (used by AC6 test).
+# Diagnostic: emit sub-rubric merge order and exit 0 (used by --debug-order).
 if [ "$debug_order" -eq 1 ]; then
   for f in ${selected_subrubrics[@]+"${selected_subrubrics[@]}"}; do
     basename "$f"
@@ -371,7 +362,7 @@ if [ "$no_project" -eq 0 ]; then
   fi
 fi
 
-# --- Schema-validate every layer before merging (NFR-RSV2-4) ---------------
+# --- Schema-validate every layer before merging ---------------------------
 for layer in "${layers[@]}"; do
   if ! GAIA_RUBRIC_SCHEMA="$SCHEMA_DEFAULT" "$VALIDATOR" "$layer" >/dev/null 2>"$rubrics_root/.last-validate-err.$$" ; then
     err "BLOCKED: rubric schema validation failed for $layer"
@@ -384,7 +375,7 @@ done
 
 # --- Merge ---------------------------------------------------------------
 # Special-case base-only: byte-identical output equals base when no other
-# layers are present (AC9). The merger normalises via --sort-keys so the
+# layers are present. The merger normalises via --sort-keys so the
 # byte-identical guarantee is delivered against the sort-keys form.
 if ! "$MERGER" "${layers[@]}"; then
   err "BLOCKED: merger failed"

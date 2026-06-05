@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pr-create.sh — gaia-dev-story PR creation (E28-S53)
+# pr-create.sh — gaia-dev-story PR creation
 #
 # Creates a pull request targeting the first promotion chain environment.
 # Uses the gh CLI for GitHub Actions (the default CI provider).
@@ -12,7 +12,7 @@
 #
 # When --body-file (or -F) is passed, the file content is used verbatim as the
 # PR body — the default `## ${STORY_KEY}` body is bypassed. SKILL.md Step 11
-# instructs callers to feed `pr-body.sh` output through this flag (E55-S13 D2).
+# instructs callers to feed `pr-body.sh` output through this flag.
 #
 # Environment:
 #   PROJECT_PATH — required. The git working directory.
@@ -30,7 +30,7 @@ SCRIPT_NAME="gaia-dev-story/pr-create.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# E55-S6 — TB-10 security invariants. Sourced from the canonical lib at
+# Security invariants sourced from the canonical lib at
 # plugins/gaia/scripts/lib/dev-story-security-invariants.sh. Hard rule:
 # YOLO mode MUST NOT bypass these assertions.
 # shellcheck source=../../../scripts/lib/dev-story-security-invariants.sh
@@ -42,9 +42,9 @@ fi
 # shellcheck disable=SC1090
 source "$INVARIANTS_LIB"
 
-# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
-# work tree. Runs BEFORE security invariants so a non-git CWD never reaches
-# the protected-branch / staged-secrets checks.
+# Non-git CWD guard: skip-with-warning when CWD is outside any git work tree.
+# Runs BEFORE security invariants so a non-git CWD never reaches the
+# protected-branch / staged-secrets checks.
 # shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
 . "$SCRIPT_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
 non_git_cwd_skip "$SCRIPT_NAME" || exit 0
@@ -92,7 +92,7 @@ if [ -n "$existing_pr" ] && [ "$existing_pr" != "null" ]; then
   exit 0
 fi
 
-# E55-S6 — Enforce TB-10 security invariants BEFORE any push or PR creation.
+# Enforce security invariants BEFORE any push or PR creation.
 # These are hard gates; YOLO mode does not bypass.
 assert_branch_not_protected || die "aborting: protected-branch invariant failed"
 assert_no_secrets_staged || die "aborting: staged-secrets invariant failed"
@@ -106,13 +106,13 @@ else
 
 ### Acceptance Criteria
 
-See story file: .gaia/artifacts/implementation-artifacts/epic-*/stories/${STORY_KEY}-*.md (canonical, E79/ADR-111) — legacy-flat fallback: docs/implementation-artifacts/${STORY_KEY}-*.md
+See story file: .gaia/artifacts/implementation-artifacts/epic-*/stories/${STORY_KEY}-*.md — legacy-flat fallback: docs/implementation-artifacts/${STORY_KEY}-*.md
 
 Story: ${STORY_KEY}"
 fi
 
-# E57-S13 / TD-148: when the caller already supplies a conventional-commits
-# header like `feat(E88-S1): foo` (which is what `/gaia-dev-story` Step 10's
+# When the caller already supplies a conventional-commits header like
+# `feat(E88-S1): foo` (which is what `/gaia-dev-story` Step 10's
 # `commit-msg.sh` emits), skip the `${STORY_KEY}: ` prepend. Without this
 # guard the resulting PR title is `E88-S1: feat(E88-S1): foo` — not
 # conventional-commits compliant and rejected by commitlint. Regex is

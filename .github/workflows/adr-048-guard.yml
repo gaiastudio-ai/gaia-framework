@@ -1,18 +1,17 @@
 name: adr-048-guard
 
-# ADR-048 + FR-329 compensating control. Two independent checks run on every PR
-# to staging or main:
+# Two independent checks run on every PR to staging or main:
 #
-#   1. ADR-048 dead-reference scan (E28-S126 Task 6 / AC-EC6) — rejects PRs that
-#      introduce active-code references to legacy-engine paths (workflow.xml,
-#      core/protocols/, .resolved/, 4 retired _config/ manifests) AND the
-#      retired slash-command file-path forms (.claude/commands/gaia-*.md,
-#      plugins/gaia/commands/gaia-*.md) unless the `program-closing` label is
-#      applied AND all 12 cluster-gate stories are done + 6x PASSED.
+#   1. Dead-reference scan — rejects PRs that introduce active-code references
+#      to legacy-engine paths (workflow.xml, core/protocols/, .resolved/,
+#      4 retired _config/ manifests) AND the retired slash-command file-path
+#      forms (.claude/commands/gaia-*.md, plugins/gaia/commands/gaia-*.md)
+#      unless the `program-closing` label is applied AND all 12 cluster-gate
+#      stories are done + 6x PASSED.
 #
-#   2. FR-329 commands-guard (E28-S127 Task 6 / AC5) — unconditional, always runs.
-#      Rejects any PR that reintroduces a gaia-*.md file under the retired
-#      plugins/gaia/commands/ directory. FR-329 is permanent, not closing-only.
+#   2. Commands-guard — unconditional, always runs. Rejects any PR that
+#      reintroduces a gaia-*.md file under the retired plugins/gaia/commands/
+#      directory. This restriction is permanent, not closing-only.
 #
 # Canonical scan: plugins/gaia/scripts/dead-reference-scan.sh
 # Canonical gate: plugins/gaia/scripts/verify-cluster-gates.sh
@@ -40,14 +39,14 @@ jobs:
           chmod +x plugins/gaia/scripts/verify-cluster-gates.sh
           chmod +x plugins/gaia/scripts/commands-guard.sh
 
-      - name: Run commands-guard (FR-329 — unconditional, E28-S127)
+      - name: Run commands-guard (unconditional)
         run: |
           if ! plugins/gaia/scripts/commands-guard.sh --project-root . ; then
-            echo "::error::FR-329 regression: plugins/gaia/commands/ was retired under Cluster 18 and MUST NOT be repopulated. See error output above and ADR-048 / FR-329."
+            echo "::error::Commands regression: plugins/gaia/commands/ was retired and MUST NOT be repopulated. See error output above."
             exit 1
           fi
 
-      - name: Run dead-reference-scan (AC6)
+      - name: Run dead-reference-scan
         id: deadref
         run: |
           if plugins/gaia/scripts/dead-reference-scan.sh --project-root . ; then
@@ -69,7 +68,7 @@ jobs:
       - name: Pass — scan is clean
         if: steps.deadref.outputs.clean == 'true'
         run: |
-          echo "dead-reference-scan: CLEAN — ADR-048 guard passes."
+          echo "dead-reference-scan: CLEAN — guard passes."
 
       - name: Reject — legacy refs without program-closing label
         if: steps.deadref.outputs.clean == 'false' && steps.label.outputs.has_label == 'false'
@@ -78,14 +77,14 @@ jobs:
           echo "::error::Either scrub the reference, add a fallback, or add the 'program-closing' label AND ensure all cluster gates are PASSED."
           exit 1
 
-      - name: Verify cluster gates when program-closing label is set (AC-EC6)
+      - name: Verify cluster gates when program-closing label is set
         if: steps.deadref.outputs.clean == 'false' && steps.label.outputs.has_label == 'true'
         run: |
           echo "program-closing label detected — re-verifying all 12 cluster gates..."
           if plugins/gaia/scripts/verify-cluster-gates.sh --project-root . ; then
-            echo "All cluster gates PASSED — ADR-048 guard accepts the program-closing PR."
+            echo "All cluster gates PASSED — guard accepts the program-closing PR."
           else
             echo "::error::program-closing label is set BUT one or more cluster gates are not PASSED."
-            echo "::error::The label alone is insufficient — all 12 cluster gates (E28-S76/S81/S95/S99/S118/S133–S139) must be done + 6x PASSED."
+            echo "::error::The label alone is insufficient — all 12 cluster gates must be done + 6x PASSED."
             exit 1
           fi

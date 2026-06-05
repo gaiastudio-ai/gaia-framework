@@ -1,6 +1,6 @@
 ---
 name: gaia-sprint-close
-description: "Close the active sprint — write status: closed + closed_at to sprint-status.yaml, archive the yaml under .gaia/artifacts/implementation-artifacts/sprint-archive/, and emit a sprint_closed lifecycle event. This skill is the sanctioned boundary-write replacement for manual `yq -i` edits on sprint-status.yaml (per ADR-095). Use when 'close the sprint' or /gaia-sprint-close."
+description: "Close the active sprint — write status: closed + closed_at to sprint-status.yaml, archive the yaml under .gaia/artifacts/implementation-artifacts/sprint-archive/, and emit a sprint_closed lifecycle event. This skill is the sanctioned boundary-write replacement for manual `yq -i` edits on sprint-status.yaml. Use when 'close the sprint' or /gaia-sprint-close."
 allowed-tools: [Bash, Read]
 version: "1.0.0"
 orchestration_class: light-procedural
@@ -19,9 +19,9 @@ Mark the active sprint as closed and emit the close lifecycle artifacts. The ski
 3. **Archive** — copy the closed yaml to `.gaia/artifacts/implementation-artifacts/sprint-archive/{sprint_id}-closed-{YYYY-MM-DD}.yaml`.
 4. **Lifecycle event** — append a `sprint_closed` event to `.gaia/memory/lifecycle-events.jsonl` via the shared `lifecycle-event.sh` helper.
 
-This skill is the GAIA-native replacement for manual sprint-boundary writes (per ADR-095, AF-2026-05-11-7). The historical restriction on direct `yq -i` against `sprint-status.yaml` (per `feedback_sprint_boundary_yaml_write.md`) is lifted **only** inside this skill's `close.sh` — that helper IS the sanctioned boundary-write path going forward.
+This skill is the GAIA-native replacement for manual sprint-boundary writes. The historical restriction on direct `yq -i` against `sprint-status.yaml` (per `feedback_sprint_boundary_yaml_write.md`) is lifted **only** inside this skill's `close.sh` — that helper IS the sanctioned boundary-write path going forward.
 
-## Prerequisites (AF-2026-05-30-4 D-06)
+## Prerequisites
 
 The close ceremony's hard pre-conditions are non-obvious — driving the
 deterministic helpers without these in place hits cryptic gates. Surface
@@ -42,11 +42,10 @@ them explicitly here so they are auditable at a glance:
    that `/gaia-sprint-review` ran and produced a verdict. The sentinel MUST
    exist at one of:
    - `.gaia/memory/checkpoints/sprint-review-{sprint_id}-val-dispatched.json`
-     (E83-style dispatch checkpoint, written by `/gaia-sprint-review`
+     (dispatch checkpoint, written by `/gaia-sprint-review`
      Step 3 Track A Val dispatch); OR
    - `.gaia/memory/checkpoints/val-envelope-<sha256(sprint_id):0:16>.json`
-     (E87-style envelope sentinel, written by the orchestrator-side writer
-     per ADR-105).
+     (envelope sentinel, written by the orchestrator-side writer).
 
    Payload schema (REQUIRED fields — strict; the close ceremony refuses on
    missing fields and on a wrong `agent` value):
@@ -85,8 +84,8 @@ hand-driving the deterministic scripts.
 - The skill MUST be idempotent on already-closed sprints — re-running emits a warning and exits 0 with no yaml mutation, no new archive copy, and no new lifecycle event.
 - The skill MUST refuse with non-zero exit if the retro doc is absent (glob `.gaia/artifacts/implementation-artifacts/retrospective-{sprint_id}-*.md` — accepts both `retrospective-{id}-{date}.md` and `retrospective-{id}-{date}-{HHMM}.md` clobber-avoidance variants from `/gaia-retro`).
 - The skill MUST refuse with non-zero exit if any story is not in `done` state, unless `--force-with-rollover <keys>` lists exactly the non-done stories.
-- The archive copy MUST be created AFTER the yaml write so the archived snapshot reflects the closed state (ADR-095 §Component 4).
-- Lifecycle event payload uses the nested-`data` schema enforced by `lifecycle-event.sh` (per ADR-095 §Component 5). The JSONL line shape is `{timestamp, event_type:"sprint_closed", workflow:"gaia-sprint-close", pid, data:{sprint_id, closed_at, total_points, stories_done, stories_rolled_over, rollover_target_sprint}}`.
+- The archive copy MUST be created AFTER the yaml write so the archived snapshot reflects the closed state.
+- Lifecycle event payload uses the nested-`data` schema enforced by `lifecycle-event.sh`. The JSONL line shape is `{timestamp, event_type:"sprint_closed", workflow:"gaia-sprint-close", pid, data:{sprint_id, closed_at, total_points, stories_done, stories_rolled_over, rollover_target_sprint}}`.
 - Backward-compat: a sprint-status.yaml with no top-level `status:` field is treated as `active` (the historical default).
 - `yq` (mikefarah, Go v4) is a hard runtime dependency for the boundary write.
 
@@ -106,25 +105,23 @@ hand-driving the deterministic scripts.
   - Without `--force-with-rollover`: refuse with an error listing the non-done keys; exit non-zero.
   - With `--force-with-rollover <key1,key2,...>`: validate the comma-separated keys list is **exactly** the non-done set (no extras, no missing). On mismatch, refuse with `error: --force-with-rollover key mismatch; non-done stories are: <keys>; got: <provided>`; exit non-zero.
 
-### Step 3a — Pre-condition: review→closed sentinel verification (E93-S5, FR-492, ADR-108)
+### Step 3a — Pre-condition: review→closed sentinel verification
 
-When the sprint's current `status:` is `review` (per ADR-108 §D1's new sprint-level state machine added in E93-S1), the new `review → closed` edge requires sentinel-verified evidence that `/gaia-sprint-review` actually ran and produced a verdict. This step is gated on `status: review` — when the sprint is in `active` status, SKIP this step entirely (preserves AC6 backward-compat — the legacy `active → closed` direct edge runs unchanged).
+When the sprint's current `status:` is `review` (per the sprint-level state machine), the `review → closed` edge requires sentinel-verified evidence that `/gaia-sprint-review` actually ran and produced a verdict. This step is gated on `status: review` — when the sprint is in `active` status, SKIP this step entirely (preserves backward-compat — the legacy `active → closed` direct edge runs unchanged).
 
 When gated on `status: review`:
 
 1. **Read the sprint-review verdict** via `${SCRIPTS_DIR}/review-gate.sh status --sprint <id> --gate sprint-review`.
 2. **Verify the sentinel exists** — at least ONE of:
-   - E83-style dispatch checkpoint: `.gaia/memory/checkpoints/sprint-review-<sprint_id>-val-dispatched.json` (written by `/gaia-sprint-review` Step 3 Track A Val dispatch).
-   - E87-style envelope sentinel: `.gaia/memory/checkpoints/val-envelope-<sha256(<sprint_id>):0:16>.json` (written by the orchestrator-side writer per ADR-105).
+   - dispatch checkpoint: `.gaia/memory/checkpoints/sprint-review-<sprint_id>-val-dispatched.json` (written by `/gaia-sprint-review` Step 3 Track A Val dispatch).
+   - envelope sentinel: `.gaia/memory/checkpoints/val-envelope-<sha256(<sprint_id>):0:16>.json` (written by the orchestrator-side writer).
 3. **Decide based on verdict:**
-   - `PASSED` — permit transition. Route via `sprint-state.sh transition --sprint <id> --to closed` (the new ADR-108 review→closed edge handler in `cmd_transition_sprint`; per NFR-071 / ADR-095 boundary writer; never direct `yq -i`).
-   - `UNVERIFIED` with bypass — read the `review_justification` block from the sentinel (written by `set-review-justification` per E93-S1). When `pm_signoff` and `val_validation` are both present, permit transition via the same `sprint-state.sh transition` path.
+   - `PASSED` — permit transition. Route via `sprint-state.sh transition --sprint <id> --to closed` (the review→closed edge handler in `cmd_transition_sprint`; via the boundary writer; never direct `yq -i`).
+   - `UNVERIFIED` with bypass — read the `review_justification` block from the sentinel (written by `set-review-justification`). When `pm_signoff` and `val_validation` are both present, permit transition via the same `sprint-state.sh transition` path.
    - `FAILED` — REFUSE with canonical stderr `HALT: sprint-close refused — sprint-review verdict is FAILED; run /gaia-correct-course first`.
    - Missing sentinel — REFUSE with canonical stderr `HALT: sprint-close refused — sprint-review verdict is MISSING; run /gaia-sprint-review first`.
 
 When the new review→closed path is taken, Step 4 (legacy yaml write) is SKIPPED — `sprint-state.sh transition` performs the equivalent write through the boundary writer. The Step 5 (Archive) and Step 6 (Lifecycle event) still run regardless of which edge was taken.
-
-Traceability: FR-492, AC3 of E93-S5, ADR-108 §D1.
 
 ### Step 4 — Yaml write
 
@@ -140,7 +137,7 @@ Traceability: FR-492, AC3 of E93-S5, ADR-108 §D1.
 
 - Invoke `${SCRIPTS_DIR}/lifecycle-event.sh --type sprint_closed --workflow gaia-sprint-close --data '{...}'` with the data payload `{sprint_id, closed_at, total_points, stories_done, stories_rolled_over, rollover_target_sprint}`.
 - `stories_rolled_over` is `[]` when there is no `--force-with-rollover`, else the JSON array of rolled-over keys.
-- `rollover_target_sprint` is `null` for this story; E81-S6 will populate it.
+- `rollover_target_sprint` is `null` for this story; a later rollover story will populate it.
 
 ### Step 7 — Confirmation
 
@@ -170,10 +167,9 @@ Traceability: FR-492, AC3 of E93-S5, ADR-108 §D1.
 
 ## Refs
 
-- ADR-095 (sprint close ceremony — boundary write, archive, lifecycle event)
-- ADR-069 amendment AF-2026-05-11-7 (sprint-archive directory in implementation-artifacts taxonomy)
-- ADR-042 (scripts-over-LLM)
+- Sprint close ceremony — boundary write, archive, lifecycle event
+- Sprint-archive directory in implementation-artifacts taxonomy
+- Scripts-over-LLM principle
 - `feedback_sprint_boundary_yaml_write.md` (historical context; this skill is the official replacement)
-- Story E81-S5 (this story)
-- Story E81-S3 (`sprint-state.sh detect-auto-close` — upstream signal)
-- Story E81-S6 (rollover execution + sprint-plan guard — composes on top)
+- `sprint-state.sh detect-auto-close` — upstream signal
+- Rollover execution + sprint-plan guard — composes on top

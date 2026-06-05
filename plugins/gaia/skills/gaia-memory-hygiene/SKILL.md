@@ -16,26 +16,26 @@ orchestration_class: light-procedural
 
 You are running a cross-sidecar hygiene pass across the project's agent memory. This skill discovers every `.gaia/memory/*-sidecar/` directory, classifies each sidecar by tier, scans each decision-log / ground-truth / conversation-context file under strict JIT discipline, cross-references decisions against current planning and architecture artifacts, classifies each entry into one of five statuses (ACTIVE, STALE, CONTRADICTED, ORPHANED, UNVERIFIABLE-FORMAT), reports token-budget pressure per agent, recommends archival for budget / staleness / age, triggers ground-truth refresh for lagging Tier 1 agents, and — only with explicit per-entry user confirmation — applies Keep / Archive / Delete actions to sidecar files.
 
-This skill is the native Claude Code conversion of the legacy `memory-hygiene` workflow (E28-S107, Cluster 14). The 12-step prose structure, JIT discipline, cross-reference cap, token approximation, and 7-section enhanced report layout are preserved from the legacy `instructions.xml` — parity confirmed per NFR-053.
+This skill is the native Claude Code conversion of the legacy `memory-hygiene` workflow. The 12-step prose structure, JIT discipline, cross-reference cap, token approximation, and 7-section enhanced report layout are preserved from the legacy `instructions.xml`.
 
-**Main context semantics (ADR-041):** This skill runs under `context: main`. It reads `.gaia/memory/` (the canonical and only memory tree post-ADR-111; the legacy `_memory/` fallback was removed in AF-2026-05-27-3), reads `.gaia/artifacts/planning-artifacts/`, `.gaia/artifacts/implementation-artifacts/`, `.gaia/artifacts/test-artifacts/`, and writes a hygiene report plus (on user confirmation) targeted sidecar edits.
+**Main context semantics:** This skill runs under `context: main`. It reads `.gaia/memory/` (the canonical and only memory tree; the legacy `_memory/` fallback was removed), reads `.gaia/artifacts/planning-artifacts/`, `.gaia/artifacts/implementation-artifacts/`, `.gaia/artifacts/test-artifacts/`, and writes a hygiene report plus (on user confirmation) targeted sidecar edits.
 
-**Scripts-over-LLM (ADR-042 / FR-325):** Deterministic foundation operations (config resolution, checkpoint writes, lifecycle events) are delegated to `plugins/gaia/scripts/` via inline `!${CLAUDE_PLUGIN_ROOT}/...` calls. Agent sidecar reads use the hybrid memory-loading pattern (ADR-046).
+**Scripts-over-LLM:** Deterministic foundation operations (config resolution, checkpoint writes, lifecycle events) are delegated to `plugins/gaia/scripts/` via inline `!${CLAUDE_PLUGIN_ROOT}/...` calls. Agent sidecar reads use the hybrid memory-loading pattern.
 
-**Hybrid memory loading (ADR-046):** Where per-agent sidecar content needs to be read, the skill invokes `!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh <agent_name> <tier>` where `<tier>` is one of `decision-log`, `ground-truth`, or `all` (see E28-S13 AC1 for the canonical loader signature). Sidecar directory names are resolved from `.gaia/memory/config.yaml` `agents.{id}.sidecar` — never hard-coded.
+**Hybrid memory loading:** Where per-agent sidecar content needs to be read, the skill invokes `!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh <agent_name> <tier>` where `<tier>` is one of `decision-log`, `ground-truth`, or `all`. Sidecar directory names are resolved from `.gaia/memory/config.yaml` `agents.{id}.sidecar` — never hard-coded.
 
 ## Critical Rules
 
 - **User-initiated cross-sidecar reads are explicitly allowed** per the agent-specification protocol. This skill is the canonical cross-sidecar reader.
 - **Never modify a sidecar file without explicit user confirmation for each entry.** Archival is recommendation-only; deletion requires per-entry confirmation.
 - **Preserve the sidecar file header and marker comment** in all modifications. The `<!-- Decisions will be appended below this line -->` marker and the file title / description block are invariant.
-- **Process sidecars one at a time.** Release previous sidecar content from active context before loading the next (JIT). This is the per-sidecar token budget discipline that keeps the skill within the NFR-048 activation budget.
+- **Process sidecars one at a time.** Release previous sidecar content from active context before loading the next (JIT). This is the per-sidecar token budget discipline that keeps the skill within the activation budget.
 - **Archival is never auto-executed.** All recommendations require user confirmation per entry before any file changes are made.
 - **Cross-reference validation scope is limited to the declared matrix** in `.gaia/memory/config.yaml` under `cross_references:`. Do NOT traverse arbitrary cross-agent reads — the matrix is the authoritative boundary.
 - **Token approximation is 4 chars per token** (file size in bytes / 4). This value is read from `.gaia/memory/config.yaml` `archival.token_approximation` — the skill does not hard-code the ratio.
 - **Sprint-status.yaml is NEVER written by this skill** (Sprint-Status Write Safety rule). The skill only reads sprint-status.yaml for current sprint ID.
 - **Graceful degradation (AC-EC10 — no .gaia/memory/ directory):** If `.gaia/memory/` does not exist at all, exit gracefully with the message "no sidecars discovered — `.gaia/memory/` directory not present" and do NOT create any files.
-- **Token budget guard (AC-EC6, NFR-048):** Per-sidecar JIT release prevents accumulation. If a single decision-log exceeds the per-agent budget, flag the agent as over-budget in the Token Budget Table but complete the scan.
+- **Token budget guard (AC-EC6):** Per-sidecar JIT release prevents accumulation. If a single decision-log exceeds the per-agent budget, flag the agent as over-budget in the Token Budget Table but complete the scan.
 - **Fail-fast on missing foundation scripts (AC-EC2 equivalent):** `setup.sh` aborts with an actionable error identifying the missing / non-executable script path when `resolve-config.sh` is missing.
 
 ## Inputs
@@ -98,7 +98,7 @@ For each sidecar in the master list, process one at a time (**JIT — release pr
    - Tier 1: `!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh <agent_name> all` (loads decision-log + ground-truth)
    - Tier 2: `!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh <agent_name> decision-log`
    - Tier 3 / Untiered: `!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh <agent_name> decision-log`
-   - When `conversation-context.md` is needed for Tier 1 / Tier 2, read it directly via `Read` (memory-loader.sh covers decision-log and ground-truth only per E28-S13 AC1).
+   - When `conversation-context.md` is needed for Tier 1 / Tier 2, read it directly via `Read` (memory-loader.sh covers decision-log and ground-truth only).
 3. For each expected file:
    - Check if the file exists.
    - If missing: log warning "Expected `{filename}` for {tier} agent `{agent}` — file not found" — not an error, record as `missing` in the content inventory.
@@ -106,16 +106,16 @@ For each sidecar in the master list, process one at a time (**JIT — release pr
    - Record file size in bytes for token-budget calculation (Step 7).
 4. **Legacy-filename detection (AC-EC3):** if a sidecar contains `architecture-decisions.md`, `infrastructure-decisions.md`, `threat-model-decisions.md`, or `velocity-data.md`, scan it as decision-log content and flag the entry for migration in the report.
 5. Build the per-sidecar content inventory: `{file, size, tier, content_status}` where `content_status` is one of `has-content | empty | missing | legacy-name`.
-6. Release the current sidecar's content from active context before loading the next — JIT discipline is mandatory for the NFR-048 token budget.
+6. Release the current sidecar's content from active context before loading the next — JIT discipline is mandatory for the token budget.
 
 ## Step 3 — Reference Artifact Loading
 
 Attempt to read each reference artifact (record which exist and which are missing):
 
 - `.gaia/artifacts/planning-artifacts/architecture.md` — for architectural decision validation
-- `.gaia/artifacts/planning-artifacts/prd.md` — for product decision validation (per ADR-069 / FR-396..402, fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` if the flat path is absent)
+- `.gaia/artifacts/planning-artifacts/prd.md` — for product decision validation (fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` if the flat path is absent)
 - `.gaia/artifacts/planning-artifacts/infrastructure-design.md` — for infrastructure validation
-- `.gaia/artifacts/test-artifacts/test-plan.md` — for test strategy validation (per ADR-072 / AF-2026-05-08-5, fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` if the flat path is absent)
+- `.gaia/artifacts/test-artifacts/test-plan.md` — for test strategy validation (fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` if the flat path is absent)
 - `.gaia/state/sprint-status.yaml` — for sprint references and current sprint ID
 - `.gaia/artifacts/planning-artifacts/epics-and-stories.md` — for story / epic key validation
 
@@ -129,7 +129,7 @@ Extract the current sprint ID from `sprint-status.yaml` if it exists. If not fou
 
 For each sidecar with content (**JIT — release previous before loading next**):
 
-Parse decision-log entries using the standardized format (E9-S3):
+Parse decision-log entries using the standardized format:
 
 - Header: `### [YYYY-MM-DD] Decision Title`
 - Fields: `Agent:`, `Sprint:`, `Status:` (`active | superseded | archived`), `Related:` (paths, keys, agent references)
@@ -157,7 +157,7 @@ For all entries: scan the `Related:` field for artifact paths and story / epic k
 
 **AC-EC5 — cross-reference matrix missing:** if `cross_references:` is absent from `.gaia/memory/config.yaml`, the skill degrades to structural checks + budget reporting only. Log a warning "cross-reference matrix missing from `.gaia/memory/config.yaml` — skipping cross-agent validation" and do NOT crash.
 
-**Cross-Agent Read Authorisation Matrix (FR-383):** the `cross_references:` block in `.gaia/memory/config.yaml` is the authoritative boundary for every cross-agent read this skill performs. The matrix authorises nine canonical reader contexts (each entry is a reader → source/file/mode triple):
+**Cross-Agent Read Authorisation Matrix:** the `cross_references:` block in `.gaia/memory/config.yaml` is the authoritative boundary for every cross-agent read this skill performs. The matrix authorises nine canonical reader contexts (each entry is a reader → source/file/mode triple):
 
 - `architect` — reads `pm/decision-log` and `validator/ground-truth`
 - `pm` — reads `architect/decision-log` and `sm/ground-truth`
@@ -231,7 +231,7 @@ Classify each recommendation:
 - **Actionable** — budget pressure and staleness recommendations should be acted on.
 - **Advisory** — age-based recommendations are informational; the user decides.
 
-**Per-item estimated token recovery (FR-383):** every archival recommendation row MUST carry an explicit per-item token recovery estimate — averages or aggregate-only counts are NOT sufficient. Compute the estimate as `Estimated recovery: ~{N} tokens` where:
+**Per-item estimated token recovery:** every archival recommendation row MUST carry an explicit per-item token recovery estimate — averages or aggregate-only counts are NOT sufficient. Compute the estimate as `Estimated recovery: ~{N} tokens` where:
 
 - `{N}` = `bytes / token_approximation` rounded to the nearest integer
 - `bytes` is the on-disk byte size of the candidate entry (from the Step 2 content inventory)
@@ -257,7 +257,7 @@ Tier 2, Tier 3, and Untiered agents have no `ground-truth.md` — exclude them f
 
 ## Step 10 — Present Enhanced Report (7 Sections)
 
-Write the enhanced findings report to `.gaia/artifacts/implementation-artifacts/memory-hygiene-report-{date}.md` with the following **seven sections** (layout preserved from the legacy workflow for NFR-053 parity):
+Write the enhanced findings report to `.gaia/artifacts/implementation-artifacts/memory-hygiene-report-{date}.md` with the following **seven sections** (layout preserved from the legacy workflow):
 
 ### 1. Summary
 
@@ -300,7 +300,7 @@ For each untiered agent: recommend adding to `.gaia/memory/config.yaml` as Tier 
 
 List of sidecars with no content or explicitly skipped (empty directories, missing required files, legacy filenames pending migration).
 
-The report header is written via the shared `template-header.sh` foundation script pattern (ADR-042), carrying `version`, `date`, and `author` fields for traceability.
+The report header is written via the shared `template-header.sh` foundation script pattern, carrying `version`, `date`, and `author` fields for traceability.
 
 ## Step 11 — User Action on Flagged Items
 
@@ -334,7 +334,7 @@ Ask the user: "Would you like to prune old completed checkpoints? (yes / skip)"
 
 ## Output — Primary Artifact
 
-Write the hygiene report to `.gaia/artifacts/implementation-artifacts/memory-hygiene-report-{date}.md` (path preserved verbatim from the legacy `output.primary` contract for NFR-053 parity).
+Write the hygiene report to `.gaia/artifacts/implementation-artifacts/memory-hygiene-report-{date}.md` (path preserved verbatim from the legacy `output.primary` contract).
 
 The `{date}` placeholder is substituted with the current date in `YYYY-MM-DD` form at write time, preserving the legacy substitution pattern.
 
@@ -344,7 +344,7 @@ No post-complete gate is enforced. The skill's output is advisory: the user deci
 
 ## Failure Semantics / Edge Cases
 
-- **AC-EC1 — malformed SKILL.md frontmatter:** the E28-S7 / E28-S74 frontmatter linter catches missing `name` or `description` fields at CI time. The story cannot merge without passing the linter.
+- **AC-EC1 — malformed SKILL.md frontmatter:** the frontmatter linter catches missing `name` or `description` fields at CI time. The story cannot merge without passing the linter.
 - **AC-EC2 — empty sidecar directory:** Step 1 categorizes empty sidecars separately. The skill logs "empty sidecar for {agent}" and continues scanning the remaining sidecars. No crash.
 - **AC-EC3 — legacy sidecar filename present:** Step 2 detects `architecture-decisions.md`, `infrastructure-decisions.md`, `threat-model-decisions.md`, `velocity-data.md`. Content is scanned as decision-log and the entry is flagged for migration in the report.
 - **AC-EC4 — sprint-status.yaml missing:** Step 3 falls back to a 42-day calendar. Step 8 produces no age-based recommendations; Step 9 (Ground Truth Refresh) is skipped with a note.
@@ -352,20 +352,20 @@ No post-complete gate is enforced. The skill's output is advisory: the user deci
 - **AC-EC6 — decision-log exceeds token budget:** JIT release between sidecars prevents accumulation. The Token Budget Table flags the agent as over-budget. The per-sidecar scan still completes.
 - **AC-EC7 — circular Related-field references between agents:** cross-reference scan terminates after one full pass (the cross-reference cap enforces this). No infinite loop.
 - **AC-EC8 — Unicode / special characters in agent sidecar names:** path resolution preserves the original encoding. Scan completes without re-encoding errors.
-- **AC-EC9 — parity harness diff between legacy and converted skill:** the Cluster 14 parity harness at `gaia-framework/tests/cluster-14-parity/memory-hygiene-parity.bats` acts as the automated regression gate for NFR-053. Any behavioral drift surfaces as a failing test.
+- **AC-EC9 — parity harness diff between legacy and converted skill:** the parity harness at `gaia-framework/tests/cluster-14-parity/memory-hygiene-parity.bats` acts as the automated regression gate. Any behavioral drift surfaces as a failing test.
 - **AC-EC10 — project with no .gaia/memory/ directory at all:** Step 1 exits gracefully with "no sidecars discovered — `.gaia/memory/` directory not present". No files are created.
 
 ## Frontmatter Linter Compliance
 
-This SKILL.md passes the E28-S7 / E28-S74 / E28-S96 frontmatter linter (`.github/scripts/lint-skill-frontmatter.sh`) with zero errors. Required fields are present: `name` matches the directory slug `gaia-memory-hygiene`; `description` is a trigger-signature with a concrete action phrase; `allowed-tools` is validated against the canonical tool set (Read, Write, Edit, Bash, Grep); `model: inherit` is set per the E28-S74 schema.
+This SKILL.md passes the frontmatter linter (`.github/scripts/lint-skill-frontmatter.sh`) with zero errors. Required fields are present: `name` matches the directory slug `gaia-memory-hygiene`; `description` is a trigger-signature with a concrete action phrase; `allowed-tools` is validated against the canonical tool set (Read, Write, Edit, Bash, Grep); `model: inherit` is set per the schema.
 
 If a future edit removes `description` or any other required field, the frontmatter linter reports the missing field and the CI gate fails — no silent skill registration is permitted.
 
 ## Parity Notes vs. Legacy Workflow
 
-The native skill preserves the legacy 12-step structure as 12 native steps (verbatim numbering). Data flow between steps is identical — each step's output feeds the next via the documented input contracts. The skill does not re-implement the workflow engine; it uses native Claude Code primitives (Skills + inline scripts + foundation-script wiring) per ADR-041. The Cluster 14 parity harness confirms NFR-053 parity — per-status counts, archival recommendations, ground-truth refresh triggers, and untiered-agent report output must match between the legacy workflow and this skill when run against the `v-parity-baseline` fixture.
+The native skill preserves the legacy 12-step structure as 12 native steps (verbatim numbering). Data flow between steps is identical — each step's output feeds the next via the documented input contracts. The skill does not re-implement the workflow engine; it uses native Claude Code primitives (Skills + inline scripts + foundation-script wiring). The parity harness confirms parity — per-status counts, archival recommendations, ground-truth refresh triggers, and untiered-agent report output must match between the legacy workflow and this skill when run against the `v-parity-baseline` fixture.
 
-The legacy workflow is NOT deleted as part of E28-S107. Per ADR-048, engine/workflow deletion is the program-closing Cluster 18/19 action. Both the legacy workflow and this skill coexist until parity is proven across all Cluster 14 conversions.
+The legacy workflow is NOT deleted as part of this conversion. Engine/workflow deletion is a program-closing action. Both the legacy workflow and this skill coexist until parity is proven across all conversions.
 
 ## Finalize
 
@@ -373,21 +373,8 @@ The legacy workflow is NOT deleted as part of E28-S107. Per ADR-048, engine/work
 
 ## References
 
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks (replaces the legacy workflow engine).
-- ADR-042 — Scripts-over-LLM for Deterministic Operations (foundation script set invoked inline via `!scripts/*.sh`).
-- ADR-046 — Hybrid Memory Loading (memory-loader.sh inline `!` bash pattern for per-agent sidecar reads).
-- FR-323 — Native Skill Format Compliance (frontmatter schema per E28-S74).
-- FR-325 — Foundation scripts wired inline.
-- FR-331 — Cross-agent memory loading via the hybrid pattern.
-- NFR-048 — Conversion token-reduction target / activation-budget ceiling.
-- NFR-053 — Functional parity with the legacy workflow (parity harness is the authority).
-- E28-S13 — `memory-loader.sh` foundation script and canonical `<agent_name> <tier>` signature.
-- E28-S17 — bats-core unit tests for foundation scripts (linter consumer).
-- E28-S19 — Subagent frontmatter schema and `_base-dev.md` template.
-- E28-S21 — Convert 12 lifecycle agents to subagents (canonical memory-loader consumption pattern).
-- E28-S74 — Canonical SKILL.md frontmatter schema.
-- Reference implementation for Cluster 14 pattern:
-  - `plugins/gaia/skills/gaia-brownfield/SKILL.md` — sibling Cluster 14 skill; setup.sh / finalize.sh / foundation-script wiring pattern mirrored here.
+- Reference implementation for the conversion pattern:
+  - `plugins/gaia/skills/gaia-brownfield/SKILL.md` — sibling skill; setup.sh / finalize.sh / foundation-script wiring pattern mirrored here.
   - `plugins/gaia/skills/gaia-fix-story/SKILL.md` — canonical inline `!${CLAUDE_PLUGIN_ROOT}/...` invocation shape.
 - Shared memory-management skill (JIT-loaded): `_gaia/lifecycle/skills/memory-management.md` sections `stale-detection` (Step 5) and `budget-monitoring` (Step 7).
 - Legacy parity source (for reference only; not invoked from this skill): `_gaia/lifecycle/workflows/anytime/memory-hygiene/` (workflow.yaml + 12-step instructions.xml).

@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# auto-save-memory.sh — Auto-save session summary at finalize (E45-S3 / ADR-061)
-#
-# Story: E45-S3 (Auto-save session memory at finalize for 24 Phase 1-3 skills)
-# ADRs:  ADR-061 (scope-bounded auto-save), ADR-057 (Phase 4 stays interactive),
-#        ADR-046 (hybrid memory write-path counterpart), ADR-016 (decision-log fmt)
-# Architecture: §10.31.5 (Auto-Save Session Memory at Finalize)
+# auto-save-memory.sh — Auto-save session summary at finalize
 #
 # Purpose
 # -------
@@ -12,7 +7,7 @@
 # to the agent's memory sidecar. Auto-save fires unconditionally for the
 # 24 Phase 1-3 skills enumerated in `phase-classification.sh`; for Phase 4
 # skills the function returns early so the existing interactive prompt
-# (FR-YOLO-2(f)) is preserved.
+# is preserved.
 #
 # Public entry point:
 #   _auto_save_memory <skill-name> [artifact-path...]
@@ -26,7 +21,7 @@
 #   - Save > 3s       → background async writer, status line emitted, parent
 #                       returns within 3s
 #   - Sidecar dir absent → mkdir -p, seed canonical decision-log.md header
-#   - Write failure   → warning logged, return 0 (non-blocking, AC-EC4)
+#   - Write failure   → warning logged, return 0 (non-blocking)
 #
 # All paths use `LC_ALL=C` and POSIX-portable shell. macOS BSD-coreutils +
 # Linux GNU-coreutils both supported.
@@ -53,7 +48,7 @@ _autosave_log() {
     printf 'auto-save: %s\n' "$*" >&2
 }
 
-# --- Secret redaction (AC-EC8) ---------------------------------------------
+# --- Secret redaction -----------------------------------------------------
 #
 # Conservative allow-list. We log only the redaction count, never the
 # matched content. Patterns are anchored loosely so we catch common API
@@ -102,7 +97,7 @@ _autosave_redact_secrets() {
 
 # --- Session summary composition -------------------------------------------
 #
-# Body shape (architecture §10.31.5, ADR-016 decision-log format):
+# Body shape (decision-log format):
 #
 #   ### [YYYY-MM-DD] {skill-name} Session Summary
 #
@@ -157,7 +152,7 @@ _autosave_compose_summary() {
     local body
     body="### [${date_iso}] ${skill} Session Summary"$'\n\n'"**Inputs:** (skill-driven; see workflow checkpoints)"$'\n\n'"**Outputs:**"$'\n'"${outputs}"$'\n'"**Key decisions:** (auto-saved at finalize; user may amend via /gaia-memory-hygiene)"$'\n\n'"**Open questions:**"$'\n'"${oq}"
 
-    # Empty-session sentinel (AC-EC5): if there were no artifacts AND no
+    # Empty-session sentinel: if there were no artifacts AND no
     # open questions detected, mark as "no persistable decisions" so the
     # entry still records the invocation date — never a silent skip.
     if [ "${#artifacts[@]}" -eq 0 ]; then
@@ -197,7 +192,7 @@ _autosave_append() {
     return 1
 }
 
-# --- Async writer fallback (AC-EC2) ----------------------------------------
+# --- Async writer fallback -------------------------------------------------
 #
 # Spawn the append in a backgrounded subshell. The parent returns within
 # the latency budget and emits a status line. The subshell handles its own
@@ -217,7 +212,7 @@ _autosave_append_async() {
 #
 # Returns:
 #   0   auto-save succeeded, was deferred (Phase 4), or failed non-blockingly
-#   64  agent mapping unresolvable (AC-EC7) — caller should fail post_complete
+#   64  agent mapping unresolvable — caller should fail post_complete
 _auto_save_memory() {
     local skill="${1:-}"
     if [ -z "$skill" ]; then
@@ -226,7 +221,7 @@ _auto_save_memory() {
     fi
     shift
 
-    # Phase 4 short-circuit (ADR-057 boundary). Defer to interactive logic.
+    # Phase 4 short-circuit. Defer to interactive logic.
     if ! _is_phase_1_3 "$skill"; then
         # Distinguish Phase 4 (known but excluded) from unknown.
         local s found_p4=0
@@ -241,7 +236,7 @@ _auto_save_memory() {
             return 0
         fi
 
-        # Skill is unknown to the classifier. Fail closed (AC-EC7).
+        # Skill is unknown to the classifier. Fail closed.
         _autosave_log "auto-save aborted: cannot resolve agent sidecar for skill ${skill}"
         return 64
     fi
@@ -260,9 +255,8 @@ _auto_save_memory() {
     # keeps test harnesses that exercise finalize.sh in isolation
     # cheap — they pay no fork/exec/sleep cost. The fast path runs
     # BEFORE we spawn the background writer.
-    # AF-2026-05-27-3 (ADR-111): .gaia/memory is the only memory tree — the
-    # legacy _memory fallback was removed with the consolidation migration.
-    # Env MEMORY_PATH override still wins.
+    # .gaia/memory is the only memory tree — the legacy _memory fallback was
+    # removed with the consolidation migration. Env MEMORY_PATH override still wins.
     local memdir
     if [ -n "${MEMORY_PATH:-}" ]; then
         memdir="$MEMORY_PATH"
@@ -277,14 +271,14 @@ _auto_save_memory() {
     local body
     body="$(_autosave_compose_summary "$skill" "$@")"
 
-    # Redact secrets (AC-EC8).
+    # Redact secrets.
     AUTO_SAVE_REDACTION_COUNT=0
     body="$(_autosave_redact_secrets "$body")"
     if [ "${AUTO_SAVE_REDACTION_COUNT:-0}" -gt 0 ] 2>/dev/null; then
         _autosave_log "redacted ${AUTO_SAVE_REDACTION_COUNT} secret pattern match(es) before write"
     fi
 
-    # Latency-budgeted write (AC-EC2). We spawn the append in the background
+    # Latency-budgeted write. We spawn the append in the background
     # and wait up to AUTO_SAVE_LATENCY_THRESHOLD seconds for it to complete.
     # If it does not finish in time, we leave it running and emit the async
     # status line — the parent shell returns immediately.
@@ -326,7 +320,7 @@ if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
             ;;
         --help|-h|"")
             cat <<'EOF'
-auto-save-memory.sh — Auto-save session summary at finalize (ADR-061)
+auto-save-memory.sh — Auto-save session summary at finalize
 
 Usage:
   source auto-save-memory.sh && _auto_save_memory <skill> [artifact...]

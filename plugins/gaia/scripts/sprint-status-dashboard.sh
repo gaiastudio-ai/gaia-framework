@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# sprint-status-dashboard.sh — deterministic sprint status dashboard formatter (E28-S61)
+# sprint-status-dashboard.sh — deterministic sprint status dashboard formatter
 #
 # Reads sprint-status.yaml (located at ${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts/
 # sprint-status.yaml) and renders a plain-text dashboard table to stdout. This script
-# is the read-only rendering peer to sprint-state.sh (E28-S11) — it NEVER opens
+# is the read-only rendering peer to sprint-state.sh — it NEVER opens
 # sprint-status.yaml for write under any code path.
 #
-# Refs: FR-323, FR-325, NFR-048, NFR-053, ADR-041, ADR-042
-# Brief: P8-S2 (.gaia/artifacts/creative-artifacts/gaia-native-conversion-feature-brief-2026-04-14.md)
 #
 # Invocation:
 #   sprint-status-dashboard.sh [--help]
@@ -47,21 +45,22 @@ fi
 
 # ---------- Resolve paths ----------
 PROJECT_PATH="${PROJECT_PATH:-.}"
-# Canonical yaml location. Honor pre-exported SPRINT_STATUS_YAML (E38-S1) so
+# Canonical yaml location. Honor pre-exported SPRINT_STATUS_YAML so
 # bats fixtures that place the yaml at the project-path root can be used
 # without restructuring the fixture tree.
 YAML_PATH="${SPRINT_STATUS_YAML:-}"
 if [[ -z "$YAML_PATH" ]]; then
-  # E96-S8 smoke-test follow-up: prefer .gaia/state/sprint-status.yaml
-  # (post-migration canonical per ADR-111) over the legacy docs/ canonical.
+  # Prefer .gaia/state/sprint-status.yaml (post-migration canonical) over
+  # the legacy docs/ canonical.
   # Same pattern as PR #809 sprint-close/close.sh resolve_yaml_path.
-  # AF-2026-05-27-8 / Test06 F-014: route through the shared
-  # resolve-artifact-path.sh helper, whose sprint_status precedence is
-  # [.gaia/state/, .gaia/artifacts/implementation-artifacts/, docs/impl-artifacts/,
-  # ./]. The middle rung was MISSING from this reader before — sprint-state.sh
-  # init seeded the yaml there on fresh projects, so /gaia-sprint-status errored
-  # "not found" despite a successful sprint-plan. The writer now defaults to
-  # .gaia/state/, but the impl-artifacts rung stays for projects seeded earlier.
+  # Route through the shared resolve-artifact-path.sh helper, whose
+  # sprint_status precedence is [.gaia/state/,
+  # .gaia/artifacts/implementation-artifacts/, docs/impl-artifacts/, ./].
+  # The middle rung was MISSING from this reader before — sprint-state.sh
+  # init seeded the yaml there on fresh projects, so /gaia-sprint-status
+  # errored "not found" despite a successful sprint-plan. The writer now
+  # defaults to .gaia/state/, but the impl-artifacts rung stays for projects
+  # seeded earlier.
   _DASH_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
   _RESOLVE_ARTIFACT_PATH="$_DASH_SCRIPT_DIR/lib/resolve-artifact-path.sh"
   if [[ -x "$_RESOLVE_ARTIFACT_PATH" ]]; then
@@ -90,8 +89,8 @@ if [[ -z "$YAML_PATH" ]]; then
 fi
 
 # Implementation-artifacts directory — used to locate story files for
-# risk-surfacing frontmatter lookup (E38-S1).
-# E96-S7 partial-4b: smart-fallback
+# risk-surfacing frontmatter lookup.
+# Smart-fallback:
 if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
   if [ -d "$PROJECT_PATH/.gaia/artifacts/implementation-artifacts" ]; then
     IMPLEMENTATION_ARTIFACTS="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts"
@@ -100,9 +99,9 @@ if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
   fi
 fi
 
-# Mitigation catalog path (E38-S1, ADR-055 FR-SPQG-5). Defaults to the
-# plugin-bundled catalog sibling to this script. Honors an env override so
-# tests or alternate bundles can point at a different file.
+# Mitigation catalog path. Defaults to the plugin-bundled catalog sibling to
+# this script. Honors an env override so tests or alternate bundles can point
+# at a different file.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MITIGATION_CATALOG="${MITIGATION_CATALOG:-$SCRIPT_DIR/../skills/gaia-sprint-status/mitigation-catalog.yaml}"
 
@@ -129,13 +128,13 @@ yaml_val() {
 
 sprint_id=$(yaml_val sprint_id)
 duration=$(yaml_val duration)
-# AF-2026-06-02-1 / Test16 F-L05 — the canonical yaml seed (cmd_init in
-# sprint-state.sh) writes `capacity_points:` and `start_date:`, but the
-# dashboard previously read `velocity_capacity:` and `started:` — so a
-# sprint initialised with --capacity-points / --start-date rendered
-# `capacity: N/A`, `Dates: N/A → ...`. Read both pairs and prefer the
-# canonical one; the legacy keys remain as a read-compat fallback for
-# pre-AF-31-1 yamls already in flight.
+# The canonical yaml seed (cmd_init in sprint-state.sh) writes
+# `capacity_points:` and `start_date:`, but the dashboard previously read
+# `velocity_capacity:` and `started:` — so a sprint initialised with
+# --capacity-points / --start-date rendered `capacity: N/A`,
+# `Dates: N/A → ...`. Read both pairs and prefer the canonical one; the
+# legacy keys remain as a read-compat fallback for older yamls already in
+# flight.
 velocity=$(yaml_val capacity_points)
 [ -z "$velocity" ] && velocity=$(yaml_val velocity_capacity)
 total_points=$(yaml_val total_points)
@@ -154,7 +153,7 @@ fi
 capacity_util=$(yaml_val capacity_utilization)
 epic_focus=$(yaml_val epic_focus)
 
-# ---------- Load mitigation catalog (E38-S1, FR-SPQG-5) ----------
+# ---------- Load mitigation catalog ----------
 # The catalog is a YAML file with a `mitigations:` array, each entry having
 # `id`, `label`, and `description`. We extract labels for inline annotation.
 # Missing or empty catalog → degrade gracefully with a warning, do not halt.
@@ -195,7 +194,7 @@ story_risk() {
   local key="$1"
   local matches=()
   shopt -s nullglob nocaseglob
-  # Tiers (E105-S1 / ADR-127): flat, legacy-nested, and the NEW per-story layout
+  # Tiers: flat, legacy-nested, and the per-story layout
   # epic-{slug}/{key}-{slug}/story.md. Risk lookup is advisory (display colour
   # only), so first match wins; the legacy `stories/` evidence-dir case is
   # excluded below to keep tier-0 strictly the new layout.
@@ -246,12 +245,12 @@ if [[ -n "$epic_focus" ]]; then
 fi
 printf -- '-%.0s' {1..72}; printf '\n'
 
-# ---------- Sprint auto-close banner (E81-S3, AC2) ----------
+# ---------- Sprint auto-close banner ----------
 #
 # Advisory banner — fires when every story under the active sprint has
 # status=done. Detection is delegated to `sprint-state.sh detect-auto-close`
-# so the rule is centralized (per E81-S3 Dev Notes — reusable beyond this
-# dashboard). When detection returns empty stdout, the banner is suppressed.
+# so the rule is centralized and reusable beyond this dashboard. When
+# detection returns empty stdout, the banner is suppressed.
 #
 # READ-ONLY: this block never mutates sprint-status.yaml. The boundary write
 # (flipping status:closed and seeding the next sprint) remains a manual
@@ -291,12 +290,12 @@ if [[ -n "$auto_close_json" ]]; then
     "${ac_sprint_id:-?}" "${ac_done:-?}" "${ac_total:-?}" "${ac_end_date:-(unset)}"
   printf '    Advisory hint only — this banner does NOT mean the sprint is closed.\n'
   printf '    Every story is done, but the sprint is still status: active and the\n'
-  printf '    end-of-sprint CEREMONY has not run yet (Test05 F-44).\n'
+  printf '    end-of-sprint CEREMONY has not run yet.\n'
   printf '    Next step — run the ceremony, do NOT hand-edit sprint-status.yaml:\n'
   printf '      /gaia-sprint-review   (Val + per-stack verdict; gates the close)\n'
   printf '      then /gaia-sprint-close on a PASSED verdict (writes status: closed,\n'
   printf '      archives the yaml, emits the lifecycle event — the sanctioned\n'
-  printf '      boundary write per ADR-095). After close, /gaia-sprint-plan + \n'
+  printf '      boundary write). After close, /gaia-sprint-plan + \n'
   printf '      sprint-state.sh init seed the next sprint (re-seeds over the closed\n'
   printf '      predecessor — no manual rm needed).\n'
   printf -- '-%.0s' {1..72}; printf '\n'
@@ -327,10 +326,10 @@ flush_story() {
     fi
     printf '  %-12s %-38s %-14s %s' "$s_key" "$display_title" "$s_status" "$s_points"
 
-    # Risk-surfacing annotation (E38-S1, FR-SPQG-5) — inline mitigation label
-    # for HIGH-risk stories. Suppressed entirely when the catalog is missing
-    # or empty (AC-EC6 degrades gracefully); rendered verbatim from catalog
-    # to preserve unknown/new entries (AC-EC7).
+    # Risk-surfacing annotation — inline mitigation label for HIGH-risk
+    # stories. Suppressed entirely when the catalog is missing or empty
+    # (degrades gracefully); rendered verbatim from catalog to preserve
+    # unknown/new entries.
     local risk
     risk="$(story_risk "$s_key")"
     if [[ "$risk" == "high" ]]; then
@@ -389,16 +388,16 @@ fi
 printf -- '-%.0s' {1..72}; printf '\n'
 printf '  Total: %d stories | %s points\n' "$story_count" "${total_points:-0}"
 
-# ---------- Stranded ready stories section (E81-S4, AC1, AC2) ----------
+# ---------- Stranded ready stories section ----------
 #
 # Advisory section — surfaces stories with `status: ready-for-dev` AND
 # `sprint_id: null` AND most-recent decision-log verdict PASSED. Operator
 # may inject via /gaia-correct-course or wait for /gaia-sprint-plan. Empty
-# stdout from the scanner triggers full suppression (AC2 — no header, no
+# stdout from the scanner triggers full suppression (no header, no
 # placeholder).
 #
 # READ-ONLY: never mutates story files or sprint-status.yaml. The scanner
-# performs scan-and-print only (per AC3 + feedback_priority_flag_never_auto_set.md).
+# performs scan-and-print only.
 STRANDED_SCANNER="$SCRIPT_DIR/lib/scan-stranded-ready.sh"
 if [[ -x "$STRANDED_SCANNER" ]]; then
   stranded_tsv=$(PROJECT_PATH="$PROJECT_PATH" \
@@ -417,13 +416,13 @@ if [[ -x "$STRANDED_SCANNER" ]]; then
   fi
 fi
 
-# Risk-surfacing block (E38-S1, FR-SPQG-5).
+# Risk-surfacing block.
 # When the current sprint contains at least one HIGH-risk story, list every
 # mitigation catalog entry verbatim so reviewers see the full set of
-# suggested mitigations (AC5, AC-EC7 — unknown entries are rendered
-# verbatim without enum validation). When no HIGH-risk stories exist the
-# block is suppressed entirely (AC6 — clean output, no-op default).
-# When the catalog is missing or empty, emit the warning line (AC-EC6).
+# suggested mitigations (unknown entries are rendered verbatim without enum
+# validation). When no HIGH-risk stories exist the block is suppressed
+# entirely (clean output, no-op default). When the catalog is missing or
+# empty, emit the warning line.
 if [[ "$high_risk_story_count" -gt 0 ]]; then
   if [[ "$catalog_missing" == true ]]; then
     printf '  %s\n' "$catalog_warning"
@@ -433,9 +432,9 @@ if [[ "$high_risk_story_count" -gt 0 ]]; then
     for label_iter in "${catalog_labels[@]}"; do
       printf '    - %s\n' "$label_iter"
     done
-    # Also surface raw ids so AC-EC7 can assert either `label` or `id`
-    # shows up verbatim when a reviewer extends the catalog with a
-    # never-before-cataloged mitigation.
+    # Also surface raw ids so either `label` or `id` shows up verbatim
+    # when a reviewer extends the catalog with a never-before-cataloged
+    # mitigation.
     while IFS= read -r id_line; do
       [[ -n "$id_line" ]] && printf '      (id: %s)\n' "$id_line"
     done < <(awk '

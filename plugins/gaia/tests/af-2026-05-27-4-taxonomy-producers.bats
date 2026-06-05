@@ -31,7 +31,10 @@ teardown() { common_teardown; }
 }
 
 @test "F-023: gaia-test-strategy SKILL.md cites E105-S2 / ADR-127 for the move" {
-  grep -qE 'E105-S2|ADR-127' "$TS_SKILL"
+  # ID-free rewrite: the behavioral contract is that the file documents the
+  # docs-ABOUT-testing placement rule and names migrate-planning-vs-test.sh
+  # as the migration helper — both durable anchors that survive ID scrubbing.
+  grep -qE 'docs-ABOUT-testing|migrate-planning-vs-test\.sh' "$TS_SKILL"
 }
 
 @test "F-023: gaia-test-strategy finalize.sh resolves planning-artifacts/ test-strategy FIRST" {
@@ -50,7 +53,10 @@ teardown() { common_teardown; }
 
 @test "F-048: gaia-test-strategy SKILL.md documents which mode produces which file" {
   # F-048: the test-strategy.md vs test-plan.md split must be documented.
-  grep -qF 'F-048' "$TS_SKILL"
+  # ID-free rewrite: the behavioral contract is that the SKILL.md explicitly
+  # states which mode (--plan) produces which file (test-strategy.md vs
+  # test-plan.md). The phrase "--plan produces" captures this split durably.
+  grep -qE '\-\-plan produces|--plan.*produces' "$TS_SKILL"
   grep -qF 'test-plan.md' "$TS_SKILL"
 }
 
@@ -58,7 +64,10 @@ teardown() { common_teardown; }
 
 @test "F-025: gaia-trace SKILL.md writes traceability-matrix.md to planning-artifacts/ canonical" {
   grep -qF '.gaia/artifacts/planning-artifacts/traceability-matrix.md' "$TR_SKILL"
-  grep -qE 'E105-S2|ADR-127' "$TR_SKILL"
+  # ID-free rewrite: the behavioral contract is that the file documents the
+  # docs-ABOUT-testing placement rule and names migrate-planning-vs-test.sh
+  # as the migration helper — both durable anchors that survive ID scrubbing.
+  grep -qE 'docs-ABOUT-testing|migrate-planning-vs-test\.sh' "$TR_SKILL"
 }
 
 @test "F-025: gaia-trace SKILL.md still honors legacy strategy/ + flat placements (read-compat)" {

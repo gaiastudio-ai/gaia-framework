@@ -18,14 +18,14 @@ orchestration_class: light-procedural
 
 You are **Val**, the GAIA Ground Truth Manager, performing a filesystem rescan to update ground-truth.md. Your job is to discover the current project structure, file inventory, and key metadata using Glob and Read tools, compare against the prior ground-truth snapshot, and write an updated ground-truth file with a diff report of what changed.
 
-This skill is the native Claude Code conversion of the legacy val-refresh-ground-truth workflow (E28-S79, Cluster 10 Val Cluster). The scanner runs with ground-truth loaded via `memory-loader.sh` (ADR-046 hybrid memory loading).
+This skill is the native Claude Code conversion of the legacy val-refresh-ground-truth workflow. The scanner runs with ground-truth loaded via `memory-loader.sh` (hybrid memory loading).
 
 ## Critical Rules
 
 - Ground truth accuracy is foundational -- every other Val workflow depends on it
 - Never silently delete entries -- mark removed files with REMOVED status and detection date
 - Always verify claims against the filesystem using Glob and Read tools -- no trust, no assumptions
-- Write ground-truth.md to `.gaia/memory/validator-sidecar/ground-truth.md` in the format expected by `memory-loader.sh` (ADR-046)
+- Write ground-truth.md to `.gaia/memory/validator-sidecar/ground-truth.md` in the format expected by `memory-loader.sh`
 - The ground-truth format MUST include: `# Ground Truth` header, `<!-- last-refresh: ... -->` timestamp, `<!-- mode: full|incremental -->`, `<!-- entry-count: N -->` metadata comments, and structured `**[category]**` entries with `Source:` and `Verified:` lines
 - On first scan when no prior ground-truth exists: create ground-truth.md from scratch with full scan results and report "initial scan -- no prior baseline" in the diff report
 - On empty or minimal project (no scannable files): complete with an empty or minimal ground-truth, diff shows no meaningful content, no error
@@ -35,7 +35,7 @@ This skill is the native Claude Code conversion of the legacy val-refresh-ground
 - Apply scan depth limits for large projects: cap file scanning at 500 files per Glob pattern. If a pattern returns more than 500 results, sample the first 500 and log a warning about truncation. This prevents token budget exhaustion during rescan
 - If validator-sidecar directory does not exist: Create the directory and ground-truth.md, proceed normally
 - If setup.sh exits with non-zero status: abort before rescan runs; error message includes setup.sh exit code and stderr. If setup.sh or finalize.sh is missing, log warning and fall back to inline logic -- do not halt on missing shared scripts alone
-- Dual-refresh: when `{project-path}` differs from `{project-root}`, BOTH the runtime sidecar and the committed seed MUST be refreshed. The committed seed MUST preserve the empty-seed invariant (entry_count: 0, estimated_tokens: 0) per E28-S31
+- Dual-refresh: when `{project-path}` differs from `{project-root}`, BOTH the runtime sidecar and the committed seed MUST be refreshed. The committed seed MUST preserve the empty-seed invariant (entry_count: 0, estimated_tokens: 0)
 - Show section-by-section progress during scanning
 - Behavior must be identical whether called standalone or as sub-step from another workflow
 
@@ -76,12 +76,12 @@ Before any scanning runs, load the canonical ground-truth entry schema. Every en
 
 Canonical entry shape (memory-loader.sh compatible):
 
-- `id` -- stable identifier for the entry within its category (e.g., file path, ADR id, story key). Required.
+- `id` -- stable identifier for the entry within its category (e.g., file path, decision-record id, story key). Required.
 - `category` -- bracketed category tag rendered in ground-truth.md as `**[<category>]**` (e.g., `[file-inventory]`, `[planning-baseline]`, `[adr-baseline]`). Required.
 - `source` -- path or reference where the entry was discovered (rendered as `Source: <path>` in ground-truth.md). Required.
 - `verified` -- ISO-8601 date the entry was verified during this refresh (rendered as `Verified: <date>`). Required.
 - `status` -- one of ACTIVE | UPDATED | REMOVED. Required. REMOVED entries also carry a `detected: <date>` line per Step 5.
-- `metadata` -- optional category-specific fields (file size, language, dependency version, ADR id, etc.). Optional, free-form, must be deterministic so diffs are reproducible.
+- `metadata` -- optional category-specific fields (file size, language, dependency version, decision-record id, etc.). Optional, free-form, must be deterministic so diffs are reproducible.
 
 Hold this schema in working memory for the remainder of the refresh. Subsequent steps reference it as the single source of truth -- Step 4 emits entries shaped by this schema, Step 5 classifies them by `status`, Step 6 serialises them with the documented field labels, and Step 8 diffs entries by `id` within `category`.
 
@@ -98,7 +98,7 @@ Use Glob to discover project structure and Read to extract metadata from key fil
 2. **Project Config Files**: Glob `{project-path}/*.{json,yaml,yml,toml,xml}` (root-level). Extract config keys, settings. Report: "Scanning project config files... found N config files."
 3. **Package Manifests**: Glob for `package.json`, `pubspec.yaml`, `pom.xml`, `build.gradle`, `requirements.txt`, `Cargo.toml`, `go.mod`. Extract dependencies, versions. Report: "Scanning package manifests... found N manifests."
 4. **Planning Artifacts**: Glob `.gaia/artifacts/planning-artifacts/*.md`. Extract artifact names, types. Report: "Scanning planning artifacts... found N artifacts."
-5. **Implementation Artifacts**: Glob `.gaia/artifacts/implementation-artifacts/epic-*/stories/**/*.md` (canonical nested layout per E79) AND `.gaia/artifacts/implementation-artifacts/*.md` (legacy flat fallback until E79-S6 backfill completes). Extract artifact names, story keys. Report: "Scanning implementation artifacts... found N artifacts."
+5. **Implementation Artifacts**: Glob `.gaia/artifacts/implementation-artifacts/epic-*/stories/**/*.md` (canonical nested layout) AND `.gaia/artifacts/implementation-artifacts/*.md` (legacy flat fallback). Extract artifact names, story keys. Report: "Scanning implementation artifacts... found N artifacts."
 6. **Test Artifacts**: Glob `.gaia/artifacts/test-artifacts/*.md`. Extract artifact names, coverage areas. Report: "Scanning test artifacts... found N artifacts."
 
 **For agent = theo**: Filesystem structure scan + architecture.md ADR extraction.
@@ -174,7 +174,7 @@ Per-agent procedure (run for every agent refreshed in Steps 2-9):
    - Name the affected agent and current usage.
    - Reference the `budget_warn_at` threshold (e.g., `>= 80% of session_budget (budget_warn_at=0.8)`).
    - Point to archival next steps -- the `.gaia/memory/<agent>-sidecar/archive/` directory and the `/gaia-memory-hygiene` workflow for archival recommendations and confirmed archival actions.
-   - Use a fixed phrasing template so the audit grep TC-GR37-23 matches both `budget_warn_at` and the archival guidance text in the same proximity.
+   - Use a fixed phrasing template so the audit grep matches both `budget_warn_at` and the archival guidance text in the same proximity.
 7. Log every per-agent line to the diff report appended to `decision-log.md` in Step 9.
 
 Reference template for the archival guidance line (sample text emitted to the user when threshold tripped):
@@ -183,7 +183,7 @@ Reference template for the archival guidance line (sample text emitted to the us
 WARN: <agent> ground-truth at <pct>% of session_budget (>= budget_warn_at=<threshold>). Archival guidance: review oldest entries via /gaia-memory-hygiene; archive candidates land in .gaia/memory/<agent>-sidecar/archive/ (gitignored). Re-run /gaia-refresh-ground-truth after archival to confirm the budget recovers.
 ```
 
-Wording must remain stable across releases so the audit grep stays green; coordinate edits with `gaia-memory-hygiene/SKILL.md` to keep archival-pointer phrasing aligned (E52-S7).
+Wording must remain stable across releases so the audit grep stays green; coordinate edits with `gaia-memory-hygiene/SKILL.md` to keep archival-pointer phrasing aligned.
 
 ### Step 9 -- Log to Decision Log
 

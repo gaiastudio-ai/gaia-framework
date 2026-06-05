@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # assert-protected-jobs.sh — Reject gaia-*.user-jobs.yml overlays that
 # declare a job-name colliding with a GAIA-template (protected) job name.
-# Implements FR-517 collision detection + ADR-114 §(d) fail-closed contract.
+# Implements collision detection with a fail-closed contract.
 #
-# E98-S3. Sourceable, NOT executable.
+# Sourceable, NOT executable.
 #
 # Exposes one function:
 #   assert_protected_jobs <user-jobs-yml>
 #     Exits 0 when the overlay declares no protected job names.
 #     Exits 1 with stderr `assert-protected-jobs.sh: protected job name
 #     collision: <job> declared in <file> — rename the user-job to a
-#     non-colliding name (see ADR-114 §(d) / FR-517).` on collision.
+#     non-colliding name.` on collision.
 #
 # Protected-jobs list: ${CLAUDE_PLUGIN_ROOT:-<derived>}/templates/ci/protected-jobs.txt
 # One job-name per line. `#` comments and blank lines ignored.
@@ -109,7 +109,7 @@ assert_protected_jobs() {
   short_name="$(basename "$file")"
   while IFS= read -r job; do
     [ -z "$job" ] && continue
-    printf 'assert-protected-jobs.sh: protected job name collision: %s declared in %s — rename the user-job to a non-colliding name (see ADR-114 §(d) / FR-517).\n' \
+    printf 'assert-protected-jobs.sh: protected job name collision: %s declared in %s — rename the user-job to a non-colliding name.\n' \
       "$job" "$short_name" >&2
   done <<< "$collisions"
   return 1

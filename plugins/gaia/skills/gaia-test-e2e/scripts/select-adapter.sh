@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# select-adapter.sh — resolve which e2e adapter to use (E73-S1, AC9).
+# select-adapter.sh — resolve which e2e adapter to use.
 #
 # Precedence (first-match-wins):
 #   1. --adapter <name>      — CLI override (highest priority)

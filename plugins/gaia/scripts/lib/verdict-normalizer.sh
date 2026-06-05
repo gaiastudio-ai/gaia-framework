@@ -6,7 +6,7 @@
 #
 #   canonical = { PASSED, FAILED, UNVERIFIED }
 #
-# Mapping table (E28-S134 AC-EC4):
+# Mapping table:
 #   PASSED            -> PASSED
 #   FAILED            -> FAILED
 #   APPROVE           -> PASSED                     (code-review legacy keyword)

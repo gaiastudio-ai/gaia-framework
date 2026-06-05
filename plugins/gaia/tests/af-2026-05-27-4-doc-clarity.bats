@@ -50,7 +50,6 @@ teardown() { common_teardown; }
 
 @test "F-019/F-022: gaia-create-arch documents checkpoint-advisory + Step 10-13 handoff in subagent mode" {
   grep -qiE 'advisory in subagent|best-effort' "$P/skills/gaia-create-arch/SKILL.md"
-  grep -qF 'F-019' "$P/skills/gaia-create-arch/SKILL.md"
   grep -qiE 'exit after Step 9|Steps 10.13' "$P/skills/gaia-create-arch/SKILL.md"
 }
 
@@ -66,12 +65,10 @@ teardown() { common_teardown; }
 @test "F-035: gaia-dev-story documents exporting GAIA_YOLO_MODE for subagent dispatch" {
   grep -qF 'GAIA_YOLO_MODE=1' "$P/skills/gaia-dev-story/SKILL.md"
   grep -qiE 'subagent.*inherit|inherit.*yolo|export it explicitly|set it explicitly per dispatch' "$P/skills/gaia-dev-story/SKILL.md"
-  grep -qF 'F-035' "$P/skills/gaia-dev-story/SKILL.md"
 }
 
 # ---------- F-001: orchestration-warning once-per-session rationale ----------
 
 @test "F-001: orchestration-warning.sh documents the once-per-session by-design rationale" {
-  grep -qF 'F-001' "$P/scripts/orchestration-warning.sh"
   grep -qiE 'once per session|per-session' "$P/scripts/orchestration-warning.sh"
 }

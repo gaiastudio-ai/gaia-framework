@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# allowed-tools-drift-check.sh — E77-S6 / FR-408 / NFR-PLUGIN-4 / T-37 / SR-33.
+# allowed-tools-drift-check.sh — allowed-tools claims-vs-usage drift check.
 #
 # Purpose
 # -------
@@ -11,11 +11,10 @@
 #
 # Threat model
 # ------------
-# T-37 / SR-33: a plugin skill that invokes a tool not declared in its
-# `allowed-tools:` frontmatter creates a privilege-escalation surface — the
-# Claude Code harness only enforces the declaration at the skill boundary, so
-# silent drift bypasses review. NFR-PLUGIN-4 mandates CRITICAL severity with
-# no downgrade and no allowlist.
+# A plugin skill that invokes a tool not declared in its `allowed-tools:`
+# frontmatter creates a privilege-escalation surface — the Claude Code harness
+# only enforces the declaration at the skill boundary, so silent drift bypasses
+# review. The check mandates CRITICAL severity with no downgrade and no allowlist.
 #
 # Tracked tools
 # -------------
@@ -51,7 +50,6 @@
 #   For each undeclared tool: a single line in the format:
 #     CRITICAL: <SKILL.md path>: undeclared tool usage: <ToolName>
 #
-# References: NFR-PLUGIN-4, T-37, SR-33, FR-408, ADR-088.
 
 set -euo pipefail
 LC_ALL=C
@@ -67,7 +65,7 @@ die() {
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — allowed-tools claims-vs-usage drift check (FR-408).
+$SCRIPT_NAME — allowed-tools claims-vs-usage drift check.
 
 Usage:
   $SCRIPT_NAME --skill <SKILL.md path>
@@ -84,7 +82,6 @@ Exit codes:
 Output format (per finding):
   CRITICAL: <SKILL.md path>: undeclared tool usage: <ToolName>
 
-Threat refs: NFR-PLUGIN-4, T-37, SR-33.
 EOF
 }
 

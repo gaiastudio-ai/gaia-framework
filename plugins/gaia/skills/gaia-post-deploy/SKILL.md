@@ -20,11 +20,11 @@ orchestration_class: light-procedural
 
 You are validating a deployment by checking service health, running smoke tests, and verifying that production metrics remain within SLO bounds. Your output is a structured pass/fail report covering every verification dimension.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/post-deploy-verify` workflow (Cluster 12, story E28-S94, ADR-041). It follows the canonical skill pattern established by E28-S66 (code-review) and E28-S92 (deploy-checklist).
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/post-deploy-verify` workflow. It follows the canonical skill pattern established by the code-review and deploy-checklist skills.
 
 **Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the post-deployment report artifact to `.gaia/artifacts/implementation-artifacts/`.
 
-**Foundation script integration (ADR-042):** Health endpoint checks, error rate calculations, and metric validation are deterministic operations -- they belong in bash scripts invoked inline via `!scripts/*.sh` calls, not in LLM prose. The skill delegates all measurable checks to scripts and reserves prose for analysis, canary comparison, and report generation.
+**Foundation script integration:** Health endpoint checks, error rate calculations, and metric validation are deterministic operations -- they belong in bash scripts invoked inline via `!scripts/*.sh` calls, not in LLM prose. The skill delegates all measurable checks to scripts and reserves prose for analysis, canary comparison, and report generation.
 
 ## Critical Rules
 
@@ -35,7 +35,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - Unreachable endpoints MUST be reported with specific error details (timeout, DNS failure, connection refused) and remediation guidance -- never silently ignored (AC-EC1).
 - Error rate threshold boundary behavior: `<= threshold` passes, `> threshold` fails. This boundary rule is deterministic and documented here for consistency (AC-EC5).
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
-- **`environments[].kind` gate (E99-S1 / FR-520 / ADR-112 §(a)).** BEFORE any post-deploy verification phase runs, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-env-kind.sh` and call `gaia_resolve_env_kind <project-config.yaml> <env-id>`. If the resolved kind is NOT `deployable`, HALT non-zero with the canonical stderr text: `environment '<env-id>' is kind: <kind> — use /gaia-publish instead`. Symmetric to `/gaia-deploy`'s gate (TC-EKD-3). No post-deploy step runs; no health-check probes fire.
+- **`environments[].kind` gate.** BEFORE any post-deploy verification phase runs, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-env-kind.sh` and call `gaia_resolve_env_kind <project-config.yaml> <env-id>`. If the resolved kind is NOT `deployable`, HALT non-zero with the canonical stderr text: `environment '<env-id>' is kind: <kind> — use /gaia-publish instead`. Symmetric to `/gaia-deploy`'s gate. No post-deploy step runs; no health-check probes fire.
 
 ## Steps
 

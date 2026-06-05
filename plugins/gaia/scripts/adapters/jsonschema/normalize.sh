@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# adapters/jsonschema/normalize.sh — FR-415 + ADR-078.
+# adapters/jsonschema/normalize.sh — canonical adapter normalizer for jsonschema.
 #
 # Reads the raw run.sh fragment on stdin (an analysis-results object with
 # `findings: [{rule, severity, file, line, message, blocking}, ...]`) and

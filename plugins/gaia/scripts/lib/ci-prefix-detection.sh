@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ci-prefix-detection.sh — CI workflow filename classifier for ADR-114's
-# CI customization layered model (E98-S1, FR-516, FR-519).
+# ci-prefix-detection.sh — CI workflow filename classifier for the
+# CI customization layered model.
 #
 # Sourceable, NOT executable.
 #
@@ -9,21 +9,20 @@
 #     Prints exactly one of: generated | user-authored | overlay | unprefixed
 #     Exit 0 on classification; 2 on usage error (missing arg).
 #
-# Classification rules (first match wins, per AC2 / FR-516 / FR-519):
+# Classification rules (first match wins):
 #   1. overlay        — basename matches gaia-*.user-jobs.yml OR
-#                       gaia-*.user-steps.yml (both ADR-114 §(b) shapes)
+#                       gaia-*.user-steps.yml
 #   2. generated      — basename starts with `gaia-` (regen-ownable)
 #   3. user-authored  — basename starts with `user-` (never touched by regen)
-#   4. unprefixed     — anything else (E98-S5 auto-rename migration trigger
-#                       per FR-519)
+#   4. unprefixed     — anything else (auto-rename migration trigger)
 #
-# Fail-safe contract (AC1): rule ordering above is exhaustive over the
+# Fail-safe contract: rule ordering above is exhaustive over the
 # {gaia-*, user-*, else} partition. The four-value enum surfaces the
-# FR-519 migration-trigger state (`unprefixed`) distinctly from
+# migration-trigger state (`unprefixed`) distinctly from
 # user-owned standalone files (`user-authored`); collapsing the two
-# would silently absorb the migration-trigger surface and break TC-CCL-3.
+# would silently absorb the migration-trigger surface.
 #
-# Purity contract (AC5):
+# Purity contract:
 #   - No global-state mutation outside the source-guard sentinel.
 #   - No filesystem reads, no subshells, no network.
 #   - Operates on basename($1) only.
@@ -68,7 +67,7 @@ gaia_ci_classify() {
       ;;
   esac
 
-  # Rule 4: unprefixed — migration-eligible per FR-519
+  # Rule 4: unprefixed — migration-eligible
   printf 'unprefixed\n'
   return 0
 }

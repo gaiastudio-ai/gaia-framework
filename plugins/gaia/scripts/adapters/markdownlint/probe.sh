@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# adapters/markdownlint/probe.sh — FR-415 + ADR-089 tri-state probe.
+# adapters/markdownlint/probe.sh — tri-state probe.
 #
-# Returns the ADR-078 / ADR-089 tri-state availability JSON:
+# Returns the tri-state availability JSON:
 #   { "available": true|false, "version": "<version-string>", "failure_kind": null|"<enum>" }
 #
 # Provider preference: `markdownlint-cli2` (canonical, declared in adapter.json)

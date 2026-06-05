@@ -24,7 +24,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -34,7 +34,7 @@ fi
 
 You are implementing a user story end-to-end: loading the story spec, planning the implementation, writing tests (TDD red), implementing code (TDD green), refactoring, verifying the Definition of Done, committing, pushing, creating a PR, waiting for CI, and merging. This is the most comprehensive dev workflow in GAIA.
 
-This skill is the native Claude Code conversion of the legacy dev-story workflow (brief Cluster 7, story E28-S53). The playbook contains all LLM reasoning guidance. The scripts directory contains all mechanical operations. The PostToolUse hook automatically writes a checkpoint after every Edit or Write tool invocation.
+This skill is the native Claude Code conversion of the legacy dev-story workflow. The playbook contains all LLM reasoning guidance. The scripts directory contains all mechanical operations. The PostToolUse hook automatically writes a checkpoint after every Edit or Write tool invocation.
 
 ## Operator Quickstart
 
@@ -43,10 +43,10 @@ Implementing a story end-to-end. Load the story, plan with you, write failing te
 **First-time invocation.**
 
 ```
-/gaia-dev-story E1-S1
+/gaia-dev-story <story-key>
 ```
 
-This loads `.gaia/artifacts/implementation-artifacts/.../E1-S1-*.md`, walks you through the TDD cycle on a feature branch, and lands a merged PR on staging (or your configured promotion target) once all checks pass.
+This loads `.gaia/artifacts/implementation-artifacts/.../<story-key>-*.md`, walks you through the TDD cycle on a feature branch, and lands a merged PR on staging (or your configured promotion target) once all checks pass.
 
 **When to use which option.**
 
@@ -82,14 +82,14 @@ This loads `.gaia/artifacts/implementation-artifacts/.../E1-S1-*.md`, walks you 
 
 ### Step 1 -- Load Story
 
-- Parse the story key from the argument (e.g., `/gaia-dev-story E1-S2`).
+- Parse the story key from the argument (e.g., `/gaia-dev-story <story-key>`).
 - Run `scripts/load-story.sh {story_key}` to locate and validate the story file.
 
 <!-- E57-S8: step1 script-wiring begin -->
 After `load-story.sh` resolves the absolute story path, drive frontmatter parsing,
 mode detection, and dependency-readiness through the deterministic helper scripts —
 the LLM no longer parses the YAML frontmatter or computes the FRESH/REWORK/RESUME
-verdict inline (per ADR-057, ADR-073, AF-2026-04-28-6).
+verdict inline.
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/story-parse.sh {story_path}`
   and `eval` its stdout to populate the canonical 10-variable env-var contract
@@ -103,13 +103,13 @@ verdict inline (per ADR-057, ADR-073, AF-2026-04-28-6).
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/detect-mode.sh {story_path}`.
   Stdout is exactly one of `FRESH | REWORK | RESUME` — capture it as the execution
   mode. Do NOT re-derive the mode from `$STATUS` inline; the script is the single
-  source of truth (per FR-DSS-1, FR-DSS-2).
+  source of truth.
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/check-deps.sh {story_path}`.
   Exit 0 = all `depends_on:` stories are status `done`; exit 1 = at least one dep is
   not done (stderr lists `<KEY>: <STATUS>`); exit 2 = at least one dep file is missing
   on disk. HALT on exit 1 or 2 — surface stderr to the user before proceeding.
 
-  **`--bypass-deps` flag (Test10 F-34).** When the operator passes `--bypass-deps`
+  **`--bypass-deps` flag.** When the operator passes `--bypass-deps`
   to `/gaia-dev-story`, skip the `check-deps.sh` HALT and proceed with a single
   `[BYPASS] dependency check bypassed for {story_key} — depends_on entries not
   validated` line on stderr. Record the bypass in `.gaia/state/sprint-status.yaml`
@@ -141,13 +141,13 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 - For FRESH mode: run `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to in-progress`.
 - For REWORK/RESUME: skip -- story is already in-progress.
 
-**Step 2a — Auto-activate sprint if planned (AF-2026-05-29-2 / Test09 F-32).** After the story transition completes, read `.gaia/state/sprint-status.yaml` (the canonical sprint-status home per ADR-111). If the sprint's `status:` is `planned` AND the just-transitioned story belongs to that sprint (its `sprint_id:` matches), invoke `${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh transition --sprint {sprint_id} --to active` to flip the sprint to `active`. Log: `auto-activated sprint {sprint_id}: planned → active (first dev-story transition)`. Skip silently when the sprint is already `active` or when the story has no sprint binding (sprint_id: null / unset — a backlog dev). The E107-S4 planned→active readiness gate was specced as a separate skill but never wired into the actual create-story → sprint-plan → dev-story chain; without this auto-activation step the sprint stays `planned` for the entire lifecycle and `/gaia-sprint-review` Step 1 then refuses to open because it expects `active`. Operators previously had to manually `sprint-state.sh transition --to active` between stories. Auto-activation on the first dev-story transition closes the gap with no operator burden.
+**Step 2a — Auto-activate sprint if planned.** After the story transition completes, read `.gaia/state/sprint-status.yaml` (the canonical sprint-status home). If the sprint's `status:` is `planned` AND the just-transitioned story belongs to that sprint (its `sprint_id:` matches), invoke `${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh transition --sprint {sprint_id} --to active` to flip the sprint to `active`. Log: `auto-activated sprint {sprint_id}: planned → active (first dev-story transition)`. Skip silently when the sprint is already `active` or when the story has no sprint binding (sprint_id: null / unset — a backlog dev). The planned→active readiness gate was specced as a separate skill but never wired into the actual create-story → sprint-plan → dev-story chain; without this auto-activation step the sprint stays `planned` for the entire lifecycle and `/gaia-sprint-review` Step 1 then refuses to open because it expects `active`. Operators previously had to manually `sprint-state.sh transition --to active` between stories. Auto-activation on the first dev-story transition closes the gap with no operator burden.
 
 <!-- E55-S5: step 2b atdd gate begin -->
 ### Step 2b -- ATDD Gate (high-risk stories only)
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/atdd-gate.sh {story_key}`.
-- The script reads the story's `risk` frontmatter field (canonical) — `risk_level` is a PRD/ADR longhand alias for the same semantic field. If `risk: high`, the script requires at least one ATDD scenarios file matching `atdd-{epic_key}*.md` OR `atdd-{story_key}*.md` under `.gaia/artifacts/test-artifacts/`. For `medium`, `low`, or unset risk it exits 0 unconditionally.
+- The script reads the story's `risk` frontmatter field (canonical) — `risk_level` is a longhand alias for the same semantic field. If `risk: high`, the script requires at least one ATDD scenarios file matching `atdd-{epic_key}*.md` OR `atdd-{story_key}*.md` under `.gaia/artifacts/test-artifacts/`. For `medium`, `low`, or unset risk it exits 0 unconditionally.
 - On non-zero exit (high-risk story, no ATDD file): HALT with the script's stderr message naming the expected paths under `.gaia/artifacts/test-artifacts/`. Direct the user to `/gaia-atdd {story_key}` to generate the scenarios file before re-running `/gaia-dev-story`.
 - On exit 0: proceed to Step 3.
 - **Sequencing trade-off:** Step 2b sits AFTER Step 2 (status is already `in-progress`) but BEFORE Step 3 (no feature branch yet). Halting at 2b leaves the story status updated but no branch created — the user reverts status manually (or re-runs /gaia-dev-story after producing the ATDD file) to recover.
@@ -167,9 +167,9 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 - Render the plan to the user.
 
 <!-- E55-S5: figma graceful-degrade begin -->
-**Figma graceful-degrade (FR-DSH-8):** Before rendering the plan, if the story frontmatter has a `figma:` block, probe the Figma MCP server (e.g., `mcp__claude_ai_Figma__whoami`). If the probe fails (server unavailable, auth error, timeout, or the server is not listed):
+**Figma graceful-degrade:** Before rendering the plan, if the story frontmatter has a `figma:` block, probe the Figma MCP server (e.g., `mcp__claude_ai_Figma__whoami`). If the probe fails (server unavailable, auth error, timeout, or the server is not listed):
 
-- Log a single-line warning to stderr: `figma_mcp_unavailable: server={name} fallback=text-only` (NFR-DSH-5 single-line gate-log convention).
+- Log a single-line warning to stderr: `figma_mcp_unavailable: server={name} fallback=text-only` (single-line gate-log convention).
 - Proceed with text-only context — DO NOT halt, no exception. Plan rendering continues with whatever non-Figma context is available.
 
 Stories without a `figma:` frontmatter block proceed unchanged — this region only fires when Figma context was requested.
@@ -178,35 +178,35 @@ Stories without a `figma:` frontmatter block proceed unchanged — this region o
 <!-- E55-S1: planning gate begin -->
 <!-- E55-S5: plan-structure validator hook (added by E55-S5) -->
 
-**Plan-structure validator (FR-DSH-4):** BEFORE the planning gate halt fires (E55-S1) and BEFORE the YOLO auto-validation loop (E55-S2), run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/validate-plan-structure.sh` against the rendered plan. Pass `--rework` when the execution mode is REWORK so the `Root Cause` section is required; otherwise the script enforces 8 sections (REWORK-only `Root Cause` skipped).
+**Plan-structure validator:** BEFORE the planning gate halt fires and BEFORE the YOLO auto-validation loop, run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/validate-plan-structure.sh` against the rendered plan. Pass `--rework` when the execution mode is REWORK so the `Root Cause` section is required; otherwise the script enforces 8 sections (REWORK-only `Root Cause` skipped).
 
-- The validator reports the FIRST missing canonical section on stderr and exits non-zero. Do NOT advance to the gate halt or the YOLO branch until the validator passes (TC-DSH-10).
+- The validator reports the FIRST missing canonical section on stderr and exits non-zero. Do NOT advance to the gate halt or the YOLO branch until the validator passes.
 - On non-zero exit: log the missing section, instruct the agent to regenerate the plan with the missing section included, then re-run the validator.
 - Cap the regenerate loop at 5 attempts to avoid infinite agent loops on a structurally broken plan template. On cap exhaustion, HALT with the last validator stderr and the attempt count so the user can intervene before the gate fires.
-- T-38 mitigation: the validator uses `grep -F` with literal ASCII section names — Cyrillic homoglyphs (e.g., `Сontext` U+0421) are correctly treated as MISSING.
+- Homoglyph mitigation: the validator uses `grep -F` with literal ASCII section names — Cyrillic homoglyphs (e.g., `Сontext` U+0421) are correctly treated as MISSING.
 
-After the plan is rendered, the planning gate halts the workflow. YOLO mode detection is the single source of truth that selects the branch -- never re-implement detection inline (per ADR-057, ADR-073).
+After the plan is rendered, the planning gate halts the workflow. YOLO mode detection is the single source of truth that selects the branch -- never re-implement detection inline.
 
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo` to detect YOLO mode. The exit status is the verdict (0 = YOLO active, non-zero = interactive).
 
-> **Subagent YOLO inheritance (Test05 F-035).** `is_yolo` reads `GAIA_YOLO_FLAG` / `GAIA_YOLO_MODE` from the environment (see `yolo-mode.sh` §Precedence). When this skill — or any step — is dispatched as a SUBAGENT, that subagent does NOT automatically inherit the parent's YOLO intent: a child process only sees env vars the parent exported into the dispatch. So when the orchestrator is in YOLO mode and dispatches a subagent, it MUST `export GAIA_YOLO_MODE=1` into that dispatch's environment, otherwise the child's `is_yolo` returns non-zero and silently takes the interactive branch (the F-035 symptom). Do NOT rely on implicit inheritance; set it explicitly per dispatch (and per `feedback_yolo_session_env_export`, export per-subshell or session-wide and verify `yolo-mode.sh is_yolo` exits 0 before each gated step).
+> **Subagent YOLO inheritance.** `is_yolo` reads `GAIA_YOLO_FLAG` / `GAIA_YOLO_MODE` from the environment (see `yolo-mode.sh` §Precedence). When this skill — or any step — is dispatched as a SUBAGENT, that subagent does NOT automatically inherit the parent's YOLO intent: a child process only sees env vars the parent exported into the dispatch. So when the orchestrator is in YOLO mode and dispatches a subagent, it MUST `export GAIA_YOLO_MODE=1` into that dispatch's environment, otherwise the child's `is_yolo` returns non-zero and silently takes the interactive branch. Do NOT rely on implicit inheritance; set it explicitly per dispatch (and per `feedback_yolo_session_env_export`, export per-subshell or session-wide and verify `yolo-mode.sh is_yolo` exits 0 before each gated step).
 
 If `is_yolo` returns non-zero (non-YOLO branch -- default):
   - The next tool invocation MUST be `AskUserQuestion`. Do NOT invoke any other tool first. In particular, do NOT issue any `Edit` or `Write` tool call to a test file or implementation file between the plan render and the user's response -- the plan the user sees is the plan that gets implemented.
   <!-- E55-S3: three-option prompt body (labels: approve, revise, validate) -->
-  - The `AskUserQuestion` prompt body offers exactly three labeled options -- `approve`, `revise`, `validate` -- lowercase, no punctuation, no synonyms. Match TC-DSH-02 expectations exactly. Do NOT add a fourth option (no `skip`, `verify`, `cancel`, etc.).
-  - On `approve`: advance to Step 5 TDD Red. Only an explicit `approve` response advances; any other response (including silence) keeps the workflow halted (preserves E55-S1 behavior).
-  - On `revise`: ask the user for free-form feedback text via a follow-up `AskUserQuestion` (or harness-equivalent). Pass the feedback to the plan regenerator and regenerate the plan reflecting the feedback. Then re-ask the same three-option question. The `revise` loop is user-driven and unbounded -- there is NO iteration cap; the user decides when to `approve` (TC-DSH-03).
-  - On `validate`: route the rendered plan to the `gaia-val-validate` skill via the **main-turn Agent tool** (per ADR-093 / ADR-104; migrated from the prior `context: fork` model by E87-S4). After the Agent call returns, the skill MUST source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` where `{sentinel_path} = .gaia/memory/checkpoints/val-envelope-{sha256(plan_path) first 16 hex}.json`. On non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}` — DO NOT fall through to a self-judged validation verdict. Then render Val's findings inline, grouped into CRITICAL / WARNING / INFO buckets, and re-ask the same three-option question. The `validate` loop is user-driven and unbounded -- there is NO iteration cap; the user decides when to `approve` or `revise` (TC-DSH-04). This is intentionally distinct from the YOLO branch's 3-iteration auto-fix cap (E55-S2 / FR-340).
-  - Emit a single-line gate log to stderr (NFR-DSH-5): `step4_gate: yolo=false verdict=halted` on entry, then `step4_gate: yolo=false verdict=passed` once the user responds with `approve`. Emit `step4_gate: yolo=false verdict=revise` and `step4_gate: yolo=false verdict=validate` per loop iteration on the corresponding branch.
+  - The `AskUserQuestion` prompt body offers exactly three labeled options -- `approve`, `revise`, `validate` -- lowercase, no punctuation, no synonyms. Do NOT add a fourth option (no `skip`, `verify`, `cancel`, etc.).
+  - On `approve`: advance to Step 5 TDD Red. Only an explicit `approve` response advances; any other response (including silence) keeps the workflow halted.
+  - On `revise`: ask the user for free-form feedback text via a follow-up `AskUserQuestion` (or harness-equivalent). Pass the feedback to the plan regenerator and regenerate the plan reflecting the feedback. Then re-ask the same three-option question. The `revise` loop is user-driven and unbounded -- there is NO iteration cap; the user decides when to `approve`.
+  - On `validate`: route the rendered plan to the `gaia-val-validate` skill via the **main-turn Agent tool**. After the Agent call returns, the skill MUST source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` where `{sentinel_path} = .gaia/memory/checkpoints/val-envelope-{sha256(plan_path) first 16 hex}.json`. On non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}` — DO NOT fall through to a self-judged validation verdict. Then render Val's findings inline, grouped into CRITICAL / WARNING / INFO buckets, and re-ask the same three-option question. The `validate` loop is user-driven and unbounded -- there is NO iteration cap; the user decides when to `approve` or `revise`. This is intentionally distinct from the YOLO branch's 3-iteration auto-fix cap.
+  - Emit a single-line gate log to stderr: `step4_gate: yolo=false verdict=halted` on entry, then `step4_gate: yolo=false verdict=passed` once the user responds with `approve`. Emit `step4_gate: yolo=false verdict=revise` and `step4_gate: yolo=false verdict=validate` per loop iteration on the corresponding branch.
 
 If `is_yolo` returns zero (YOLO branch):
   <!-- E55-S2: YOLO Val auto-validation loop (added by E55-S2) -->
-  - The rendered plan auto-routes to Val for up to 3 iterations of CRITICAL+WARNING auto-fix per ADR-073. The YOLO branch MUST NOT issue any user-prompt tool call; the next tool invocation MUST be the `gaia-val-validate` skill on the rendered plan via the **main-turn Agent tool** (per ADR-093 / ADR-104; migrated from the prior `context: fork` model by E87-S4). After the Agent call returns and BEFORE classifying findings, the skill MUST source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` (sentinel path derived from `sha256(plan_path)` first 16 hex chars); on non-zero exit, HALT with the canonical error — DO NOT fall through to self-judged validation. Auto-fix is inline using this skill's own `Edit`/`Write` tools (NFR-046 single-spawn-level) — no nested subagent spawn inside the loop.
-  - **T-37 path-traversal mitigation (AC5):** BEFORE constructing the audit-file path, validate `story_key` against the regex `^E[0-9]+-S[0-9]+$`. On mismatch, abort the YOLO branch with a clear error and emit no writes — never sanitize-and-continue. Reference shell idiom: `printf '%s\n' "$story_key" | grep -Eq '^E[0-9]+-S[0-9]+$'`.
+  - The rendered plan auto-routes to Val for up to 3 iterations of CRITICAL+WARNING auto-fix. The YOLO branch MUST NOT issue any user-prompt tool call; the next tool invocation MUST be the `gaia-val-validate` skill on the rendered plan via the **main-turn Agent tool**. After the Agent call returns and BEFORE classifying findings, the skill MUST source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` (sentinel path derived from `sha256(plan_path)` first 16 hex chars); on non-zero exit, HALT with the canonical error — DO NOT fall through to self-judged validation. Auto-fix is inline using this skill's own `Edit`/`Write` tools (single-spawn-level) — no nested subagent spawn inside the loop.
+  - **Path-traversal mitigation (AC5):** BEFORE constructing the audit-file path, validate `story_key` against the regex `^E[0-9]+-S[0-9]+$`. On mismatch, abort the YOLO branch with a clear error and emit no writes — never sanitize-and-continue. Reference shell idiom: `printf '%s\n' "$story_key" | grep -Eq '^E[0-9]+-S[0-9]+$'`.
   - **Audit file (AC2):** persist findings to `.gaia/memory/checkpoints/{story_key}-yolo-plan-findings.md` on every iteration. Append per iteration — never overwrite, never truncate. Two consecutive YOLO runs on the same story append a fresh set of `## Iteration {N} — {timestamp}` sections under the existing ones; entries from prior runs MUST be preserved verbatim. Each section body is the structured findings JSON or YAML returned by Val.
   - **Checkpoint persistence (AC4):** record the YOLO flag, the current iteration count, and the `last-findings-hash` (sha256 of the latest findings JSON) via `${CLAUDE_PLUGIN_ROOT}/scripts/append-val-iteration.sh` (which delegates to `write-checkpoint.sh`). Comparing `last-findings-hash` across iterations identifies oscillation; log stalls to the Dev Agent Record but DO NOT short-circuit the loop — the 3-iteration cap is the hard backstop.
-  - **ADR-073 canonical pseudocode (DoD documentation requirement):**
+  - **Canonical pseudocode (DoD documentation requirement):**
 
 ```
 iteration = 0
@@ -221,26 +221,26 @@ while iteration < 3:
   apply_fixes(critical + warning)          # inline Edit/Write — no subagent spawn
   iteration += 1
 if iteration == 3 and (critical or warning):
-  HALT with remaining findings + audit-file path -> /gaia-fix-story  # AC2 cap (FR-340)
+  HALT with remaining findings + audit-file path -> /gaia-fix-story  # AC2 cap
 else:
   proceed to Step 5
 ```
 
-  - **Halt-on-exhaust behavior (AC2):** if the loop exhausts the 3-iteration cap with remaining CRITICAL or WARNING findings, HALT with an actionable message that names the remaining findings and points to `.gaia/memory/checkpoints/{story_key}-yolo-plan-findings.md`. Direct the user to `/gaia-fix-story` or to re-run with the audit file as context. YOLO MUST NOT bypass the cap (FR-340).
+  - **Halt-on-exhaust behavior (AC2):** if the loop exhausts the 3-iteration cap with remaining CRITICAL or WARNING findings, HALT with an actionable message that names the remaining findings and points to `.gaia/memory/checkpoints/{story_key}-yolo-plan-findings.md`. Direct the user to `/gaia-fix-story` or to re-run with the audit file as context. YOLO MUST NOT bypass the cap.
   - **INFO-only break (AC3):** if Val returns INFO-only findings (or no findings) on any iteration, break the loop and proceed to Step 5 immediately — INFO findings are advisory and never gating.
   - **Resume semantics (AC4):** when `/gaia-resume` re-enters this branch, read the checkpoint to recover yolo flag + iteration count + last-findings-hash, then re-enter the loop at the recorded iteration. If the next iteration's findings hash matches the recorded one, log the stall and continue.
-  - **No inline YOLO detection (AC6):** YOLO detection has already happened at the gate dispatch above. This branch body MUST NOT redefine or re-implement YOLO detection — single-source-of-truth per ADR-057 / ADR-073. The branch is selected by the surrounding gate; the body simply consumes the verdict.
-  - **Soft dependency on E41-S5 (`yolo_steps:` wiring):** if E41-S5 has landed, the per-step YOLO list selects this branch via the wired entry point; if not, this branch is reached via the script-call fallback at the gate dispatch above — never inline.
-  - Emit a single-line gate log to stderr per iteration (NFR-DSH-5): `step4_gate: yolo=true iteration={N} outcome={clean|info_only|findings_present}` (the `outcome` enum mirrors `append-val-iteration.sh --revalidation-outcome`). On loop exit emit a terminal verdict: `step4_gate: yolo=true verdict=passed` when the loop broke on clean / info_only, or `step4_gate: yolo=true verdict=halted` when the 3-iteration cap was reached with remaining CRITICAL or WARNING findings.
+  - **No inline YOLO detection (AC6):** YOLO detection has already happened at the gate dispatch above. This branch body MUST NOT redefine or re-implement YOLO detection — single-source-of-truth. The branch is selected by the surrounding gate; the body simply consumes the verdict.
+  - **`yolo_steps:` wiring:** the per-step YOLO list selects this branch via the wired entry point; if it has not landed, this branch is reached via the script-call fallback at the gate dispatch above — never inline.
+  - Emit a single-line gate log to stderr per iteration: `step4_gate: yolo=true iteration={N} outcome={clean|info_only|findings_present}` (the `outcome` enum mirrors `append-val-iteration.sh --revalidation-outcome`). On loop exit emit a terminal verdict: `step4_gate: yolo=true verdict=passed` when the loop broke on clean / info_only, or `step4_gate: yolo=true verdict=halted` when the 3-iteration cap was reached with remaining CRITICAL or WARNING findings.
 
-Backward-compatibility note (NFR-DSH-3): a resumed in-progress story with no Step 4 gate-clearance record on the checkpoint is treated as "halt not yet presented" and re-issues the halt -- it does NOT silently advance to Step 5.
+Backward-compatibility note: a resumed in-progress story with no Step 4 gate-clearance record on the checkpoint is treated as "halt not yet presented" and re-issues the halt -- it does NOT silently advance to Step 5.
 
 <!-- E55-S1: planning gate end -->
 
 ### Step 5 -- TDD Red Phase (Write Failing Tests)
 
 > [!yolo]
-> Step 5 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration (E41-S3, ADR-057 §10.30.2 / §10.30.6 wire-up row E41-S3). Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass owns the 3-iteration auto-fix loop and the cap-exhaustion gate per FR-YOLO-2(e) and ADR-073. The Step 5 body itself stays pause-free per E55-S4 / TC-DSH-12 — the pause-free TDD invariant is non-negotiable. Step 5a (risk-gated TDD review hook) is the separate gate point that fires after Step 5 completes; it is OUTSIDE this YOLO branch's scope per ADR-067.
+> Step 5 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration. Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass owns the 3-iteration auto-fix loop and the cap-exhaustion gate. The Step 5 body itself stays pause-free — the pause-free TDD invariant is non-negotiable. Step 5a (risk-gated TDD review hook) is the separate gate point that fires after Step 5 completes; it is OUTSIDE this YOLO branch's scope.
 
 - Follow the playbook's test strategy reasoning.
 - For each subtask: write failing test(s) that define expected behavior.
@@ -250,18 +250,18 @@ Backward-compatibility note (NFR-DSH-3): a resumed in-progress story with no Ste
 ### Step 5a -- TDD Review Gate (Red phase)
 
 <!-- E57-S4: step5 tdd-review-gate begin -->
-After Step 5 completes with all new tests failing, invoke the risk-gated TDD review hook. The gate is a deterministic SKIP / PROMPT / QA_AUTO decision driven by the story's `risk` frontmatter, the configured `dev_story.tdd_review.threshold` and `phases`, and YOLO mode (per ADR-067, ADR-057, ADR-073). The wiring is single-source-of-truth — never re-implement the decision matrix inline (FR-TDR-2).
+After Step 5 completes with all new tests failing, invoke the risk-gated TDD review hook. The gate is a deterministic SKIP / PROMPT / QA_AUTO decision driven by the story's `risk` frontmatter, the configured `dev_story.tdd_review.threshold` and `phases`, and YOLO mode. The wiring is single-source-of-truth — never re-implement the decision matrix inline.
 
-This gate sits OUTSIDE the Step 5 TDD body so the pause-free TDD invariant (E55-S4 / TC-DSH-12) is preserved — the body of Step 5 itself contains no `AskUserQuestion` and no `HALT` directive.
+This gate sits OUTSIDE the Step 5 TDD body so the pause-free TDD invariant is preserved — the body of Step 5 itself contains no `AskUserQuestion` and no `HALT` directive.
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/tdd-review-gate.sh {story_key} red`. The script prints exactly one of `SKIP`, `PROMPT`, `QA_AUTO` on stdout; capture it as `decision`.
-- **`SKIP`:** Continue silently to Step 6. NO `AskUserQuestion` is presented. Emit a single-line gate log to stderr (NFR-DSH-5): `step5_tdd_gate: phase=red verdict=skip`.
+- **`SKIP`:** Continue silently to Step 6. NO `AskUserQuestion` is presented. Emit a single-line gate log to stderr: `step5_tdd_gate: phase=red verdict=skip`.
 - **`PROMPT`:** The next tool invocation MUST be `AskUserQuestion`. The prompt body offers exactly three labeled options — verbatim labels `review-myself`, `route-to-qa`, `proceed-anyway` (case-sensitive, hyphen-sensitive, in that exact order, no synonyms, no fourth option). The question stem names the gate trigger (story risk, configured threshold, current phase = `red`).
   - On `review-myself`: HALT for user-driven review. Resume via `/gaia-resume` re-enters at this same gate point.
-  - On `route-to-qa`: dispatch the `tdd-reviewer` subagent (`gaia-framework/plugins/gaia/agents/tdd-reviewer.md`, persona "Tex") in fork context with the Red-phase diff. Surface the verdict per ADR-063 (PASSED / FAILED / UNVERIFIED + ADR-037 findings line-by-line for WARNING-only). HALT on any `severity: CRITICAL` finding per ADR-067 — YOLO MUST NOT auto-resolve CRITICAL findings; the halt fires in BOTH YOLO and non-YOLO. Findings persist to `.gaia/memory/checkpoints/{story_key}-tdd-review-findings.md` (append-only).
+  - On `route-to-qa`: dispatch the `tdd-reviewer` subagent (`gaia-framework/plugins/gaia/agents/tdd-reviewer.md`, persona "Tex") in fork context with the Red-phase diff. Surface the verdict (PASSED / FAILED / UNVERIFIED + findings line-by-line for WARNING-only). HALT on any `severity: CRITICAL` finding — YOLO MUST NOT auto-resolve CRITICAL findings; the halt fires in BOTH YOLO and non-YOLO. Findings persist to `.gaia/memory/checkpoints/{story_key}-tdd-review-findings.md` (append-only).
   - On `proceed-anyway`: record a timestamped decision in the dev-story checkpoint via the PostToolUse `checkpoint.sh` write hook — the entry MUST include the timestamp (UTC ISO-8601), the phase (`red`), and the free-form reason captured from the user. Continue to Step 6.
   - Emit `step5_tdd_gate: phase=red verdict=prompt choice={review-myself|route-to-qa|proceed-anyway}` to stderr.
-- **`QA_AUTO`:** YOLO + `qa_auto_in_yolo=true` branch. Dispatch the `tdd-reviewer` subagent with the same payload as `route-to-qa` (the only difference is the user did not explicitly choose). Surface the verdict per ADR-063; HALT on CRITICAL per ADR-067 in BOTH modes. Emit `step5_tdd_gate: phase=red verdict=qa_auto`.
+- **`QA_AUTO`:** YOLO + `qa_auto_in_yolo=true` branch. Dispatch the `tdd-reviewer` subagent with the same payload as `route-to-qa` (the only difference is the user did not explicitly choose). Surface the verdict; HALT on CRITICAL in BOTH modes. Emit `step5_tdd_gate: phase=red verdict=qa_auto`.
 
 The hook fires exactly once per Step 5. If the gate returns `SKIP`, no subagent is dispatched and no prompt is presented.
 <!-- E57-S4: step5 tdd-review-gate end -->
@@ -269,7 +269,7 @@ The hook fires exactly once per Step 5. If the gate returns `SKIP`, no subagent 
 ### Step 6 -- TDD Green Phase (Implement to Pass)
 
 > [!yolo]
-> Step 6 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration (E41-S3). Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass applies the INFO-only break per ECI-501 (Green-phase INFO-only findings auto-proceed to Refactor without dev-agent intervention) and counts timed-out Val attempts against the 3-iteration cap per ECI-502. The Step 6 body itself stays pause-free per E55-S4 / TC-DSH-12 — the pause-free TDD invariant is non-negotiable. Step 6a (risk-gated TDD review hook) is OUTSIDE this YOLO branch's scope per ADR-067.
+> Step 6 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration. Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass applies the INFO-only break (Green-phase INFO-only findings auto-proceed to Refactor without dev-agent intervention) and counts timed-out Val attempts against the 3-iteration cap. The Step 6 body itself stays pause-free — the pause-free TDD invariant is non-negotiable. Step 6a (risk-gated TDD review hook) is OUTSIDE this YOLO branch's scope.
 
 - Follow the playbook's design approach reasoning.
 - For each subtask: implement minimum code to make failing tests pass.
@@ -279,24 +279,24 @@ The hook fires exactly once per Step 5. If the gate returns `SKIP`, no subagent 
 ### Step 6a -- TDD Review Gate (Green phase)
 
 <!-- E57-S4: step6 tdd-review-gate begin -->
-After Step 6 completes with all tests green, invoke the risk-gated TDD review hook. Decision matrix and dispatch contract mirror Step 5a — the only difference is `phase=green` (per ADR-067, ADR-057, ADR-073, FR-TDR-2).
+After Step 6 completes with all tests green, invoke the risk-gated TDD review hook. Decision matrix and dispatch contract mirror Step 5a — the only difference is `phase=green`.
 
-This gate sits OUTSIDE the Step 6 TDD body so the pause-free TDD invariant (E55-S4 / TC-DSH-12) is preserved — the body of Step 6 itself contains no `AskUserQuestion` and no `HALT` directive.
+This gate sits OUTSIDE the Step 6 TDD body so the pause-free TDD invariant is preserved — the body of Step 6 itself contains no `AskUserQuestion` and no `HALT` directive.
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/tdd-review-gate.sh {story_key} green`. Capture stdout as `decision`.
 - **`SKIP`:** Continue silently to Step 6b. NO `AskUserQuestion`. Emit `step6_tdd_gate: phase=green verdict=skip`.
 - **`PROMPT`:** Next tool invocation MUST be `AskUserQuestion` with the three verbatim labels — `review-myself`, `route-to-qa`, `proceed-anyway` (case-sensitive, hyphen-sensitive, in that order, no fourth option).
   - On `review-myself`: HALT for user-driven review; `/gaia-resume` re-enters at this gate point.
-  - On `route-to-qa`: dispatch the `tdd-reviewer` subagent in fork context with the Green-phase diff. Surface the verdict per ADR-063 (line-by-line for WARNING-only). HALT on `severity: CRITICAL` per ADR-067 in BOTH YOLO and non-YOLO. Findings append to `.gaia/memory/checkpoints/{story_key}-tdd-review-findings.md`.
+  - On `route-to-qa`: dispatch the `tdd-reviewer` subagent in fork context with the Green-phase diff. Surface the verdict (line-by-line for WARNING-only). HALT on `severity: CRITICAL` in BOTH YOLO and non-YOLO. Findings append to `.gaia/memory/checkpoints/{story_key}-tdd-review-findings.md`.
   - On `proceed-anyway`: record a timestamped decision (UTC ISO-8601 + phase=`green` + reason) in the dev-story checkpoint via the PostToolUse `checkpoint.sh` write hook. Continue to Step 6b.
   - Emit `step6_tdd_gate: phase=green verdict=prompt choice={review-myself|route-to-qa|proceed-anyway}`.
-- **`QA_AUTO`:** Dispatch the `tdd-reviewer` subagent with the same payload as `route-to-qa`. Surface the verdict per ADR-063; HALT on CRITICAL per ADR-067 in BOTH modes. Emit `step6_tdd_gate: phase=green verdict=qa_auto`.
+- **`QA_AUTO`:** Dispatch the `tdd-reviewer` subagent with the same payload as `route-to-qa`. Surface the verdict; HALT on CRITICAL in BOTH modes. Emit `step6_tdd_gate: phase=green verdict=qa_auto`.
 
 The hook fires exactly once per Step 6 and ALWAYS BEFORE Step 6b advisory hints.
 <!-- E57-S4: step6 tdd-review-gate end -->
 
 <!-- E55-S7: step 6b begin -->
-### Step 6b -- Conditional Check Advisory Hints (FR-DSH-9)
+### Step 6b -- Conditional Check Advisory Hints
 
 After Step 6 Green completes with all tests passing, run a single advisory pass over the staged diff to surface change patterns that commonly carry hidden risk. Step 6b is PURELY ADVISORY — it MUST NOT halt the workflow under any condition. The agent reads the advisory output and either addresses each item within the current story or captures it as a Finding, then proceeds to Step 7 Refactor.
 
@@ -305,16 +305,16 @@ After Step 6 Green completes with all tests passing, run a single advisory pass 
   1. **API route changes** — any path matching `*/routes/*.{ts,py,go}` OR `*/api/*.{ts,py,go}` triggers a contract-test advisory.
   2. **Schema/migration changes** — any path matching `*/migrations/*.sql` OR a filename containing `schema` with extension `.ts` / `.py` / `.sql` triggers a migration-script verification advisory.
   3. **Large blast radius** — total staged file count >= `BLAST_RADIUS_THRESHOLD` (default 10) triggers a feature-flag candidacy advisory.
-- The advisories run in BOTH YOLO and non-YOLO modes — there is no `is_yolo` gate at Step 6b. The same staged set produces identical output regardless of run mode (distinct from E55-S2 / E55-S8 which are YOLO-gated).
+- The advisories run in BOTH YOLO and non-YOLO modes — there is no `is_yolo` gate at Step 6b. The same staged set produces identical output regardless of run mode (distinct from the YOLO-gated steps).
 - Each advisory line lists at most 10 file paths; longer lists are truncated with a trailing `,...`. This avoids advisory spam when many files in the same category change.
 - **Non-halting contract:** Step 6b MUST NOT halt the workflow. The skill always proceeds to Step 7 Refactor after the advisory pass — even when all three advisories fire.
-- Emit a single-line gate log to stderr (NFR-DSH-5): `step6b_gate: advisories={count}` where `count` is the number of advisory lines emitted (0, 1, 2, or 3).
+- Emit a single-line gate log to stderr: `step6b_gate: advisories={count}` where `count` is the number of advisory lines emitted (0, 1, 2, or 3).
 <!-- E55-S7: step 6b end -->
 
 ### Step 7 -- TDD Refactor Phase
 
 > [!yolo]
-> Step 7 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration (E41-S3). Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass surfaces refactor-introduced test regressions per ECI-509 (previously-green tests now failing tagged in Val's input context). The 3-iteration auto-fix loop owned by Step 7b enforces the FR-YOLO-2(e) attempt-cap gate: 3 attempts max, cap exhaustion stops with finding list, no silent pass. The Step 7 body itself stays pause-free per E55-S4 / TC-DSH-12 — the pause-free TDD invariant is non-negotiable. Step 7a (risk-gated TDD review hook) is OUTSIDE this YOLO branch's scope per ADR-067.
+> Step 7 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration. Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass surfaces refactor-introduced test regressions (previously-green tests now failing tagged in Val's input context). The 3-iteration auto-fix loop owned by Step 7b enforces the attempt-cap gate: 3 attempts max, cap exhaustion stops with finding list, no silent pass. The Step 7 body itself stays pause-free — the pause-free TDD invariant is non-negotiable. Step 7a (risk-gated TDD review hook) is OUTSIDE this YOLO branch's scope.
 
 - Improve code quality while keeping all tests green.
 - Extract shared utilities, decompose large functions, improve naming, remove duplication.
@@ -323,36 +323,36 @@ After Step 6 Green completes with all tests passing, run a single advisory pass 
 ### Step 7a -- TDD Review Gate (Refactor phase)
 
 <!-- E57-S4: step7 tdd-review-gate begin -->
-After Step 7 completes with all tests still green, invoke the risk-gated TDD review hook. Decision matrix and dispatch contract mirror Steps 5a and 6a — the only difference is `phase=refactor` (per ADR-067, ADR-057, ADR-073, FR-TDR-2).
+After Step 7 completes with all tests still green, invoke the risk-gated TDD review hook. Decision matrix and dispatch contract mirror Steps 5a and 6a — the only difference is `phase=refactor`.
 
-This gate sits OUTSIDE the Step 7 TDD body so the pause-free TDD invariant (E55-S4 / TC-DSH-12) is preserved — the body of Step 7 itself contains no `AskUserQuestion` and no `HALT` directive.
+This gate sits OUTSIDE the Step 7 TDD body so the pause-free TDD invariant is preserved — the body of Step 7 itself contains no `AskUserQuestion` and no `HALT` directive.
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/tdd-review-gate.sh {story_key} refactor`. Capture stdout as `decision`.
 - **`SKIP`:** Continue silently to Step 7b. NO `AskUserQuestion`. Emit `step7_tdd_gate: phase=refactor verdict=skip`.
 - **`PROMPT`:** Next tool invocation MUST be `AskUserQuestion` with the three verbatim labels — `review-myself`, `route-to-qa`, `proceed-anyway` (case-sensitive, hyphen-sensitive, in that order, no fourth option).
   - On `review-myself`: HALT for user-driven review; `/gaia-resume` re-enters at this gate point.
-  - On `route-to-qa`: dispatch the `tdd-reviewer` subagent in fork context with the Refactor-phase diff. Surface the verdict per ADR-063 (line-by-line for WARNING-only). HALT on `severity: CRITICAL` per ADR-067 in BOTH YOLO and non-YOLO. Findings append to `.gaia/memory/checkpoints/{story_key}-tdd-review-findings.md`.
+  - On `route-to-qa`: dispatch the `tdd-reviewer` subagent in fork context with the Refactor-phase diff. Surface the verdict (line-by-line for WARNING-only). HALT on `severity: CRITICAL` in BOTH YOLO and non-YOLO. Findings append to `.gaia/memory/checkpoints/{story_key}-tdd-review-findings.md`.
   - On `proceed-anyway`: record a timestamped decision (UTC ISO-8601 + phase=`refactor` + reason) in the dev-story checkpoint via the PostToolUse `checkpoint.sh` write hook. Continue to Step 7b.
   - Emit `step7_tdd_gate: phase=refactor verdict=prompt choice={review-myself|route-to-qa|proceed-anyway}`.
-- **`QA_AUTO`:** Dispatch the `tdd-reviewer` subagent with the same payload as `route-to-qa`. Surface the verdict per ADR-063; HALT on CRITICAL per ADR-067 in BOTH modes. Emit `step7_tdd_gate: phase=refactor verdict=qa_auto`.
+- **`QA_AUTO`:** Dispatch the `tdd-reviewer` subagent with the same payload as `route-to-qa`. Surface the verdict; HALT on CRITICAL in BOTH modes. Emit `step7_tdd_gate: phase=refactor verdict=qa_auto`.
 
 The hook fires exactly once per Step 7 and ALWAYS BEFORE Step 7b Val-in-TDD pass.
 <!-- E57-S4: step7 tdd-review-gate end -->
 
 <!-- E55-S4: step 7b begin -->
-### Step 7b -- Val-in-TDD single post-Refactor pass (ADR-073)
+### Step 7b -- Val-in-TDD single post-Refactor pass
 
 After Step 7 Refactor completes with all tests green, run a SINGLE Val pass over the diff (artifacts touched during Steps 5-7) before moving on to Step 8 Capture Findings. This restores V1's Val-in-TDD capability without re-introducing per-phase pauses inside the TDD body — Steps 5/6/7 remain pause-free per the contract enforced by `tests/skills/gaia-dev-story-step7b-val.bats`.
 
-This loop runs unconditionally — both YOLO and non-YOLO. There is NO YOLO-mode gate at Step 7b; YOLO-mode detection lives only at the Step 4 planning gate (ADR-057, ADR-073). The body MUST NOT redefine or re-implement YOLO-mode detection — single-source-of-truth.
+This loop runs unconditionally — both YOLO and non-YOLO. There is NO YOLO-mode gate at Step 7b; YOLO-mode detection lives only at the Step 4 planning gate. The body MUST NOT redefine or re-implement YOLO-mode detection — single-source-of-truth.
 
-Loop semantics mirror E55-S2 (planning-gate YOLO loop): 3-iteration cap, CRITICAL+WARNING gating, INFO-only break, audit-file append, HALT-on-exhaustion. The differences from E55-S2 are the input (TDD diff vs. plan) and the audit-file name (`{story_key}-tdd-val-findings.md` vs. `{story_key}-yolo-plan-findings.md`).
+Loop semantics mirror the planning-gate YOLO loop: 3-iteration cap, CRITICAL+WARNING gating, INFO-only break, audit-file append, HALT-on-exhaustion. The differences are the input (TDD diff vs. plan) and the audit-file name (`{story_key}-tdd-val-findings.md` vs. `{story_key}-yolo-plan-findings.md`).
 
-- The next tool invocation MUST be the `gaia-val-validate` skill on the diff (artifacts touched during Steps 5-7) via the **main-turn Agent tool** (per ADR-093 / ADR-104; migrated from the prior `context: fork` model by E87-S4). After the Agent call returns and BEFORE classifying findings, the skill MUST source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` (sentinel path derived from `sha256(diff_anchor_path)` first 16 hex chars, e.g. the story file path); on non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}` — DO NOT fall through to self-judged validation. Auto-fix is inline using this skill's own `Edit`/`Write` tools (NFR-046 single-spawn-level) — no nested subagent spawn inside the loop.
-- **T-37 path-traversal mitigation:** BEFORE constructing the audit-file path, validate `story_key` against the regex `^E[0-9]+-S[0-9]+$`. On mismatch, abort Step 7b with a clear error and emit no writes — never sanitize-and-continue. Reference shell idiom: `printf '%s\n' "$story_key" | grep -Eq '^E[0-9]+-S[0-9]+$'`. The regex check MUST run before any path is constructed and before any audit-file write.
+- The next tool invocation MUST be the `gaia-val-validate` skill on the diff (artifacts touched during Steps 5-7) via the **main-turn Agent tool**. After the Agent call returns and BEFORE classifying findings, the skill MUST source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` (sentinel path derived from `sha256(diff_anchor_path)` first 16 hex chars, e.g. the story file path); on non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}` — DO NOT fall through to self-judged validation. Auto-fix is inline using this skill's own `Edit`/`Write` tools (single-spawn-level) — no nested subagent spawn inside the loop.
+- **Path-traversal mitigation:** BEFORE constructing the audit-file path, validate `story_key` against the regex `^E[0-9]+-S[0-9]+$`. On mismatch, abort Step 7b with a clear error and emit no writes — never sanitize-and-continue. Reference shell idiom: `printf '%s\n' "$story_key" | grep -Eq '^E[0-9]+-S[0-9]+$'`. The regex check MUST run before any path is constructed and before any audit-file write.
 - **Audit file:** persist findings to `.gaia/memory/checkpoints/{story_key}-tdd-val-findings.md` on every iteration. Append per iteration — never overwrite, never truncate. Two consecutive end-of-story runs append a fresh set of `## Iteration {N} — {timestamp}` sections under the existing ones; entries from prior runs MUST be preserved verbatim. Each section body is the structured findings JSON or YAML returned by Val.
 - **Auto-fix vocabulary** for diff-level findings: line edits, function-signature corrections, missing test assertions, dead code removal. Anything beyond the diff (e.g., cross-cutting refactors) is logged as Dev Notes and deferred — auto-fix MUST stay scoped to the diff.
-- **ADR-073 canonical pseudocode (DoD documentation requirement):**
+- **Canonical pseudocode (DoD documentation requirement):**
 
 ```
 diff = gather_diff(steps=[5,6,7])
@@ -375,7 +375,7 @@ else:
 - **Halt-on-exhaust behavior (AC2):** if the loop exhausts the 3-iteration cap with remaining CRITICAL or WARNING findings, HALT with an actionable message that names the remaining findings and points to `.gaia/memory/checkpoints/{story_key}-tdd-val-findings.md`. Direct the user to `/gaia-fix-story` or to re-run with the audit file as context. The 3-iteration cap MUST NOT be bypassed.
 - **INFO-only break:** if Val returns INFO-only findings (or no findings) on any iteration, break the loop and proceed to Step 8 immediately — INFO findings are advisory and never gating.
 - **Single Val pass per story:** Step 7b runs Val ONCE per story-end, not once per Refactor cycle. Multiple Refactor iterations within Step 7 are part of the TDD body — they do NOT each trigger a Val pass.
-- Emit a single-line gate log to stderr per iteration (NFR-DSH-5): `step7b_gate: iteration={N} outcome={clean|info_only|findings_present}`. On loop exit emit a terminal verdict: `step7b_gate: verdict=passed` when the loop broke on clean / info_only, or `step7b_gate: verdict=halted` when the 3-iteration cap was reached with remaining CRITICAL or WARNING findings.
+- Emit a single-line gate log to stderr per iteration: `step7b_gate: iteration={N} outcome={clean|info_only|findings_present}`. On loop exit emit a terminal verdict: `step7b_gate: verdict=passed` when the loop broke on clean / info_only, or `step7b_gate: verdict=halted` when the 3-iteration cap was reached with remaining CRITICAL or WARNING findings.
 <!-- E55-S4: step 7b end -->
 
 ### Step 8 -- Capture Findings
@@ -387,7 +387,7 @@ else:
 ### Step 9 -- Definition of Done
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/dod-check.sh` (export `STORY_FILE` to the absolute story path so the subtask check fires). The script runs build / tests / lint / secrets / subtask checks and emits one YAML row per check: `- { item: <name>, status: PASSED|FAILED, output: <captured output> }`. Exit 0 = all PASSED; non-zero = at least one FAILED.
-- **Tool-presence guards (Test10 F-34).** Any optional tool invoked from
+- **Tool-presence guards.** Any optional tool invoked from
   `dod-check.sh` (coverage, mypy, ruff, black, eslint, etc.) MUST be wrapped
   with a presence guard before invocation. Pattern:
   ```bash
@@ -402,7 +402,7 @@ else:
   on a non-actionable error. Guard each optional tool individually — do
   not stack them under one umbrella `command -v` because partial chains
   (coverage installed, mypy missing) still need to run coverage.
-- Parse the YAML output and render a human-readable summary; per FR-DSH-10 the helper script holds the deterministic mechanics — DO NOT re-implement build/test/lint/secrets/subtask checks inline in this skill.
+- Parse the YAML output and render a human-readable summary; the helper script holds the deterministic mechanics — DO NOT re-implement build/test/lint/secrets/subtask checks inline in this skill.
 - On any FAILED row: auto-fix the underlying issue (test failure, lint warning, staged secret, unchecked subtask) and re-run `dod-check.sh`. Cap at 3 auto-fix iterations; on cap exhaustion, HALT with the failing rows and direct the user to intervene.
 - ACs met / docs updated remain LLM-evaluated since they are intent-level checks, not script-checkable.
 <!-- E55-S8: step 9 dod-check wire end -->
@@ -413,20 +413,18 @@ else:
 <!-- E57-S8: step10 script-wiring begin -->
 At the top of the CI section — before any commit / push action — the orchestrator
 MUST consult the deterministic promotion-chain guard. This replaces the LLM
-narrative that previously inferred CI configuration inline (per ADR-057, ADR-073,
-AF-2026-04-28-6, FR-DSS-3).
+narrative that previously inferred CI configuration inline.
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/promotion-chain-guard.sh`.
   Exit 0 with `PRESENT:<branch>` on stdout = resolved first promotion-chain branch;
   exit 1 = `ABSENT` (stderr names the missing config and points to `/gaia-ci-edit`);
   exit 0 with empty stdout AND a `skipped (non-git CWD)` line on stderr = non-git
-  workspace skip (E53-S234, ADR-070 / ADR-072 amendment — the project-root `docs/`
-  layout is outside any git work tree).
+  workspace skip (the project-root `docs/` layout is outside any git work tree).
   On `ABSENT` or non-git skip, Steps 10–13 (push, PR, CI, merge) MUST be skipped —
   the story can still complete locally but the promotion gates do not fire. On
   `PRESENT`, capture the branch as `$PR_BASE` for use by `pr-create.sh --base`.
 
-  **Non-git skip surface (Test10 F-34).** When the guard emits the `skipped
+  **Non-git skip surface.** When the guard emits the `skipped
   (non-git CWD)` stderr line, the orchestrator MUST mirror it as a top-level
   `[NOTICE] non-git workspace — promotion gates skipped (CWD outside any git
   tree)` operator surface line before continuing. Otherwise the skip is
@@ -435,8 +433,7 @@ AF-2026-04-28-6, FR-DSS-3).
 - For commit-message construction, run
   `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/commit-msg.sh {story_path}`
   and feed its stdout to `git commit -F -`. Do NOT compose Conventional Commit
-  subject lines inline — `commit-msg.sh` is the single source of truth (per
-  FR-DSS-5, FR-DSS-6, NFR-DSS-1). The script enforces the
+  subject lines inline — `commit-msg.sh` is the single source of truth. The script enforces the
   `<type>(<story_key>): <title>` schema and the no-`Claude` / no-`AI` /
   no-`Co-Authored-By` policy from CLAUDE.md.
 
@@ -459,7 +456,7 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 
 - Run `scripts/git-branch.sh` to verify branch state.
 - Stage and commit with conventional commit format.
-- Run `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh` to push the current branch to `origin`. The shared helper (a) refuses to push from `main` / `staging` (delegating to `lib/dev-story-security-invariants.sh::assert_branch_not_protected` from E55-S6 when present), (b) retries ONCE on transient network errors (e.g., `Could not resolve host`, `Operation timed out`) with a 5-second backoff, and (c) fails LOUDLY on auth / permission errors with no retry. DO NOT inline `git push` here — the helper is the single source of truth.
+- Run `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh` to push the current branch to `origin`. The shared helper (a) refuses to push from `main` / `staging` (delegating to `lib/dev-story-security-invariants.sh::assert_branch_not_protected` when present), (b) retries ONCE on transient network errors (e.g., `Could not resolve host`, `Operation timed out`) with a 5-second backoff, and (c) fails LOUDLY on auth / permission errors with no retry. DO NOT inline `git push` here — the helper is the single source of truth.
 - Run `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to review` after all gates pass.
 <!-- E55-S8: step 10 git-push wire end -->
 
@@ -467,9 +464,9 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 
 <!-- E88-S3: step 11a forbidden-sentinel scan begin -->
 
-**Step 11a — Forbidden-sentinel scan (E88-S3, FR-DPD-3, ADR-107, AI-2026-05-13-5).**
+**Step 11a — Forbidden-sentinel scan.**
 
-BEFORE invoking `pr-body.sh` / `pr-create.sh`, scan the production-path slice of the diff (feature branch vs the promotion-chain base) for any forbidden sentinel listed in the E88-S1 taxonomy SSOT at `knowledge/taxonomy/forbidden-sentinels.txt`. The scan is implemented in `scripts/lib/forbidden-sentinel-scan.sh` — the LLM does NOT inline the taxonomy or re-implement the matcher.
+BEFORE invoking `pr-body.sh` / `pr-create.sh`, scan the production-path slice of the diff (feature branch vs the promotion-chain base) for any forbidden sentinel listed in the taxonomy SSOT at `knowledge/taxonomy/forbidden-sentinels.txt`. The scan is implemented in `scripts/lib/forbidden-sentinel-scan.sh` — the LLM does NOT inline the taxonomy or re-implement the matcher.
 
 ```bash
 # $PROMOTION_BASE is captured in Step 10 via promotion-chain-guard.sh.
@@ -488,7 +485,7 @@ ALLOW_STUB_REASON="$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/forbidden-sentinel-s
 
 **`--allow-stub` reason regex (AC4):** `^(E[0-9]+-S[0-9]+|AI-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]+):` — must end with a colon so the reason is at minimum `<id>: <prose>`. Bare prose is rejected.
 
-**HALT delivery:** inline `printf` to stderr + `exit 1`. Per AF-2026-05-14-6 Val F1, `halt-event.sh` is gaia-meeting-scoped (not a shared library); a future relocation to `scripts/lib/` is a separate cross-cutting refactor and explicitly out of scope here.
+**HALT delivery:** inline `printf` to stderr + `exit 1`. `halt-event.sh` is gaia-meeting-scoped (not a shared library); a future relocation to `scripts/lib/` is a separate cross-cutting refactor and explicitly out of scope here.
 
 **Reason forwarding (AC5):** on `--allow-stub` accept, the helper echoes the reason on stdout. The Step 11 caller MUST capture it and forward it to `pr-body.sh` via `--allow-stub-reason "$ALLOW_STUB_REASON"` so the override appears as a fifth section in the PR body.
 
@@ -496,13 +493,13 @@ ALLOW_STUB_REASON="$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/forbidden-sentinel-s
 
 <!-- E57-S8: step11 script-wiring begin -->
 The PR body is sourced from `pr-body.sh` — the LLM no longer composes the body
-inline (per ADR-057, ADR-073, AF-2026-04-28-6, FR-DSS-5, FR-DSS-6).
+inline.
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/pr-body.sh {story_path}
   [--allow-stub-reason "$ALLOW_STUB_REASON"]` and capture stdout as `$PR_BODY`.
   The script emits the four canonical Markdown sections (Acceptance Criteria,
   Definition of Done, Diff Stat, Story-link); when `--allow-stub-reason` is
-  supplied (forwarded from Step 11a per E88-S3), pr-body.sh emits a fifth
+  supplied (forwarded from Step 11a), pr-body.sh emits a fifth
   section `## Allow-stub override` containing the reason.
 - Then invoke `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/pr-create.sh
   {story_key} {title} --body-file <(printf '%s\n' "$PR_BODY")` (or pipe `$PR_BODY`
@@ -543,20 +540,20 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 - If no promotion chain is configured, pass `--no-chain` instead of a branch name. The script exits 3 (skip) and the gate passes silently for backward compatibility.
 - **Exit code 0 (pass):** Merge commit found on target branch. Proceed to Step 15.
 - **Exit code 2 (fail):** No merge commit found. The orchestrator re-runs Steps 10-13 (commit, push, create PR, wait for CI, merge) in the main orchestrator context before advancing the story to done. This handles the case where the subagent completed implementation but failed to push or merge.
-- **Word-boundary matching:** The script uses `\b{story_key}\b` grep patterns to avoid false positives on partial key matches (e.g., E20-S1 must not match E20-S19). Matching is case-insensitive to handle squash-merge message rewrites.
+- **Word-boundary matching:** The script uses `\b{story_key}\b` grep patterns to avoid false positives on partial key matches (e.g., a shorter key must not match a longer one sharing the same prefix). Matching is case-insensitive to handle squash-merge message rewrites.
 - **Historical failure modes that motivated this gate:**
-  - **E17-S1 (sprint-17):** Dev-story subagent completed implementation but never pushed commits. Orchestrator accepted `status=done` at face value. Sprint closed with unmerged code.
-  - **E28-S213 (sprint-25):** Dev-story subagent completed all reviews but skipped push/PR/merge steps. Same outcome -- orchestrator trusted the status and sprint closed without the code landing.
+  - **No push:** Dev-story subagent completed implementation but never pushed commits. Orchestrator accepted `status=done` at face value. Sprint closed with unmerged code.
+  - **Reviews without merge:** Dev-story subagent completed all reviews but skipped push/PR/merge steps. Same outcome -- orchestrator trusted the status and sprint closed without the code landing.
 
 <!-- E92-S4: step 14b cache-refresh advisory begin -->
 ### Step 14b -- Post-merge cache-refresh advisory (non-blocking)
 
-After Step 14's post-completion gate confirms the merge commit landed, surface a single advisory line if the PR diff touched any cacheable plugin file (SKILL.md, scripts/*.sh, agents/*.md, hooks/*.json). The advisory mirrors Step 6b's non-blocking contract — it MUST NOT halt the workflow under any condition (per E92-S4 / AI-RETRO-S46-4).
+After Step 14's post-completion gate confirms the merge commit landed, surface a single advisory line if the PR diff touched any cacheable plugin file (SKILL.md, scripts/*.sh, agents/*.md, hooks/*.json). The advisory mirrors Step 6b's non-blocking contract — it MUST NOT halt the workflow under any condition.
 
 - Build the touched-files list from the merged feature branch: `git diff --name-only "$PROMOTION_BASE..HEAD"` (or the squash-commit's name-only listing on the target branch).
 - Pipe the list through `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/cache-refresh-advisory.sh --diff-files <path>` (or via stdin). The helper applies the deterministic filter and emits AT MOST one `step14b_advisory: plugin-cache refresh recommended — touched files: <list>` line to stderr.
 - Exit code is ALWAYS 0 — the advisory never blocks Step 15. The reminder points the operator at the README's "Plugin cache refresh after merge" section.
-- Why this matters: the Claude Code substrate caches plugin SKILL.md / scripts at `~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/<version>/` at session start. Without a refresh, the same-session re-invocation of a changed skill runs the PRE-merge code (dogfooding-loop-specific friction). See E92-S4 + the README's playbook section.
+- Why this matters: the Claude Code substrate caches plugin SKILL.md / scripts at `~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/<version>/` at session start. Without a refresh, the same-session re-invocation of a changed skill runs the PRE-merge code (dogfooding-loop-specific friction). See the README's playbook section.
 
 Emit a single-line gate log to stderr: `step14b_gate: advisories={count}` where `count` is 0 or 1.
 <!-- E92-S4: step 14b cache-refresh advisory end -->
@@ -567,7 +564,7 @@ Emit a single-line gate log to stderr: `step14b_gate: advisories={count}` where 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh {story_file}` to seed (or replace) the Review Gate table with the canonical 6-row UNVERIFIED block. The helper is idempotent — re-running on a story file that already has the block yields a byte-identical result.
 - Update story status to `review` via `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to review`.
 
-> **Grace window note (NFR-RSV2-6 / ADR-082, AF-2026-05-30-4 F-18).** Within
+> **Grace window note.** Within
 > the **7-day post-flip grace window** after `/gaia-bridge-enable` flips
 > `test_execution_bridge.bridge_enabled: true`, a review→done transition is
 > permitted even when the composite `review-gate-check` returns PENDING
@@ -590,15 +587,15 @@ Emit a single-line gate log to stderr: `step14b_gate: advisories={count}` where 
 ### Step 16 -- Auto-Reviews (YOLO-only)
 
 > [!yolo]
-> Step 16 honors the declarative `yolo_steps: [15]` frontmatter declaration per ADR-057 §10.30.2 (the dispatch is logically the post-Step-15 hook called out in §10.30.6 wire-up table row E41-S4; the framework split the dispatch into Step 16 under E55-S8). Under YOLO, the six review skills run sequentially via the aggregator and ALL FAILED verdicts surface in the user-visible `## Review Summary` block — YOLO never silences a FAILED review (ECI-503). The Step 14 Post-Completion Gate remains a hard gate (FR-YOLO-2(b)) — `yolo_steps` does NOT include `14`.
+> Step 16 honors the declarative `yolo_steps: [15]` frontmatter declaration (the dispatch is logically the post-Step-15 hook; the framework split the dispatch into Step 16). Under YOLO, the six review skills run sequentially via the aggregator and ALL FAILED verdicts surface in the user-visible `## Review Summary` block — YOLO never silences a FAILED review. The Step 14 Post-Completion Gate remains a hard gate — `yolo_steps` does NOT include `14`.
 
-YOLO-gated invocation of the six reviews that populate the Review Gate. Non-YOLO runs MUST NOT auto-fire reviews — the user manually invokes each review from the Review Gate UNVERIFIED rows. Forbidden by ADR-073: silently auto-firing reviews in non-YOLO would erase user oversight.
+YOLO-gated invocation of the six reviews that populate the Review Gate. Non-YOLO runs MUST NOT auto-fire reviews — the user manually invokes each review from the Review Gate UNVERIFIED rows. Silently auto-firing reviews in non-YOLO would erase user oversight.
 
-- Run `${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo` to detect YOLO mode (single source of truth — never re-implement detection inline per ADR-057 / ADR-073).
+- Run `${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo` to detect YOLO mode (single source of truth — never re-implement detection inline).
 
 - If `is_yolo` returns non-zero (non-YOLO branch — default):
   - SKIP Step 16 entirely. Review Gate rows remain UNVERIFIED for manual user review.
-  - Emit a single-line gate log to stderr (NFR-DSH-5): `step16_gate: yolo=false verdict=skipped`.
+  - Emit a single-line gate log to stderr: `step16_gate: yolo=false verdict=skipped`.
   - Proceed to skill end.
 
 - If `is_yolo` returns zero (YOLO branch):
@@ -606,18 +603,18 @@ YOLO-gated invocation of the six reviews that populate the Review Gate. Non-YOLO
   - Each review writes its verdict (PASSED / FAILED) into the matching Review Gate row via `review-gate.sh`. After the aggregator completes, the Review Gate table is fully populated — no row remains UNVERIFIED.
   - Emit `step16_gate: yolo=true verdict=invoked` on entry and `step16_gate: yolo=true verdict=complete` on aggregator return.
 
-- **FAILED-verdict surfacing (E41-S4 / ECI-503).** After the aggregator returns, emit a `## Review Summary` block to the user. The block MUST list every review verdict on its own line (`- {review_name}: {PASSED|FAILED} — {report_path}`); the literal `FAILED` token is uppercase so downstream scanners can grep it. Then surface the composite verdict from `${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh review-gate-check` (per ADR-054): exit 0 → `**Composite Review Gate:** COMPLETE`; exit 1 → `**Composite Review Gate:** BLOCKED — {N} FAILED review(s) must be addressed before merge.`; exit 2 → `**Composite Review Gate:** PENDING — {N} UNVERIFIED row(s) remain.` YOLO MUST NOT collapse a BLOCKED verdict into a PASS.
+- **FAILED-verdict surfacing.** After the aggregator returns, emit a `## Review Summary` block to the user. The block MUST list every review verdict on its own line (`- {review_name}: {PASSED|FAILED} — {report_path}`); the literal `FAILED` token is uppercase so downstream scanners can grep it. Then surface the composite verdict from `${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh review-gate-check`: exit 0 → `**Composite Review Gate:** COMPLETE`; exit 1 → `**Composite Review Gate:** BLOCKED — {N} FAILED review(s) must be addressed before merge.`; exit 2 → `**Composite Review Gate:** PENDING — {N} UNVERIFIED row(s) remain.` YOLO MUST NOT collapse a BLOCKED verdict into a PASS.
 
-- **Dispatch-failure error path (E41-S4 / AC4).** If the aggregator fails to dispatch entirely (skill not installed, subagent errors before returning verdicts, or dispatch times out), emit the canonical YOLO dispatch failed error: `**YOLO dispatch failed:** auto-run-reviews dispatch did not return verdicts ({reason}). Review Gate rows remain UNVERIFIED. Run \`/gaia-run-all-reviews {story_key}\` manually.` YOLO MUST NOT silent-pass a dispatch failure as if reviews completed successfully — the user must be in the loop for the manual fallback.
+- **Dispatch-failure error path.** If the aggregator fails to dispatch entirely (skill not installed, subagent errors before returning verdicts, or dispatch times out), emit the canonical YOLO dispatch failed error: `**YOLO dispatch failed:** auto-run-reviews dispatch did not return verdicts ({reason}). Review Gate rows remain UNVERIFIED. Run \`/gaia-run-all-reviews {story_key}\` manually.` YOLO MUST NOT silent-pass a dispatch failure as if reviews completed successfully — the user must be in the loop for the manual fallback.
 
-- **Sequencing invariant (AC4):** Step 14 (post-completion gate, E20-S19) MUST run BEFORE Step 16. Step 16 NEVER precedes Step 14. The skill ordering above enforces this — Step 14's begin marker precedes Step 16's begin marker.
+- **Sequencing invariant (AC4):** Step 14 (post-completion gate) MUST run BEFORE Step 16. Step 16 NEVER precedes Step 14. The skill ordering above enforces this — Step 14's begin marker precedes Step 16's begin marker.
 <!-- E55-S8: step 16 end -->
 
 ## Changelog
 
-- **2026-05-14 — E88-S3 — Step 11a forbidden-sentinel scan (FR-DPD-3, ADR-107, AI-2026-05-13-5).** Added Step 11a between Step 10 (Commit and Push) and the existing Step 11 (Create PR) body. The new step invokes `scripts/lib/forbidden-sentinel-scan.sh --base-ref "$PROMOTION_BASE" [--allow-stub <reason>]` which sources the E88-S1 taxonomy SSOT (`knowledge/taxonomy/forbidden-sentinels.txt`, third v1 taxonomy added by this story) and scans the production-path slice of the feature-branch-vs-base diff for forbidden sentinels (STUB, MOCK, FIXME, XXX). Production-path filter EXEMPTS `tests/`, `**/tests/fixtures/`, `_memory/`, `docs/`, `.github/`, and any `*.bats` file (defense-in-depth). The `--allow-stub <reason>` override is gated on a story-ID or AI-ID prefix regex (`^(E[0-9]+-S[0-9]+|AI-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]+):`); bare prose is rejected. Accepted reasons are forwarded to `pr-body.sh --allow-stub-reason` and emitted as a fifth `## Allow-stub override` section in the PR body. **Step 14 → Step 11 correction** per Derek/PM decision A on AF-2026-05-14-6 Val F1 — the original AI targeted Step 14 (post-merge cleanup), but the scan needs to fire BEFORE the PR is opened. HALT delivery is inline `printf + exit 1` (NOT halt-event.sh) per Val F1 — halt-event.sh is gaia-meeting-scoped, not a shared library; a future relocation is a separate refactor.
-- **2026-05-13 — E87-S7 — Sentinel-Write Writer Shift (ADR-105 amends ADR-104).** Following the AI-2026-05-13-13 incident, the Val sentinel write has been relocated from the Val sub-agent context to the orchestrator's main turn at three callsites in this skill: Step 4 `validate` user-branch, Step 4 YOLO auto-validation loop, and Step 7b Val-in-TDD post-Refactor pass. Val now RETURNS the sentinel content as a `sentinel_envelope` field inside the ADR-037 envelope; this skill parses the field and writes the sentinel via the new helper `plugins/gaia/scripts/lib/write-val-envelope.sh` BEFORE invoking `assert_agent_envelope`. Forgery resistance preserved (NFR-064 unchanged) via `persona_sig` binding to validator.md's on-disk sha256. Closes the substrate content-integrity false-fire that affected all three Val dispatch sites under E87-S4.
-- **2026-05-12 — E87-S4 — Val Bridge Migration (ADR-104).** Retargeted three Val dispatch sites to the main-turn Agent-tool dispatch model: Step 4 `validate` user-branch (planning gate), Step 4 YOLO auto-validation loop, and Step 7b Val-in-TDD post-Refactor pass. Each dispatch site now sources `assert-agent-envelope.sh` (E87-S1) and invokes `assert_agent_envelope` immediately after the Agent call with HALT on assertion failure. Steps 10-16 (push/PR/CI/merge/review-gate) are intentionally untouched — they don't dispatch Val. Forgery resistance covered by TC-VBR-7 / TC-VBR-7b / TC-VBR-8 / TC-VBR-8b in `plugins/gaia/tests/val-bridge-migration.bats`; promotion-chain regression covered by TC-VBR-8d.
+- **2026-05-14 — Step 11a forbidden-sentinel scan.** Added Step 11a between Step 10 (Commit and Push) and the existing Step 11 (Create PR) body. The new step invokes `scripts/lib/forbidden-sentinel-scan.sh --base-ref "$PROMOTION_BASE" [--allow-stub <reason>]` which sources the taxonomy SSOT (`knowledge/taxonomy/forbidden-sentinels.txt`) and scans the production-path slice of the feature-branch-vs-base diff for forbidden sentinels (STUB, MOCK, FIXME, XXX). Production-path filter EXEMPTS `tests/`, `**/tests/fixtures/`, `_memory/`, `docs/`, `.github/`, and any `*.bats` file (defense-in-depth). The `--allow-stub <reason>` override is gated on a story-ID or action-item-ID prefix regex; bare prose is rejected. Accepted reasons are forwarded to `pr-body.sh --allow-stub-reason` and emitted as a fifth `## Allow-stub override` section in the PR body. The scan fires BEFORE the PR is opened. HALT delivery is inline `printf + exit 1` (NOT halt-event.sh) — halt-event.sh is gaia-meeting-scoped, not a shared library; a future relocation is a separate refactor.
+- **2026-05-13 — Sentinel-Write Writer Shift.** The Val sentinel write has been relocated from the Val sub-agent context to the orchestrator's main turn at three callsites in this skill: Step 4 `validate` user-branch, Step 4 YOLO auto-validation loop, and Step 7b Val-in-TDD post-Refactor pass. Val now RETURNS the sentinel content as a `sentinel_envelope` field inside the envelope; this skill parses the field and writes the sentinel via the new helper `plugins/gaia/scripts/lib/write-val-envelope.sh` BEFORE invoking `assert_agent_envelope`. Forgery resistance preserved via `persona_sig` binding to validator.md's on-disk sha256. Closes the substrate content-integrity false-fire that affected all three Val dispatch sites.
+- **2026-05-12 — Val Bridge Migration.** Retargeted three Val dispatch sites to the main-turn Agent-tool dispatch model: Step 4 `validate` user-branch (planning gate), Step 4 YOLO auto-validation loop, and Step 7b Val-in-TDD post-Refactor pass. Each dispatch site now sources `assert-agent-envelope.sh` and invokes `assert_agent_envelope` immediately after the Agent call with HALT on assertion failure. Steps 10-16 (push/PR/CI/merge/review-gate) are intentionally untouched — they don't dispatch Val. Forgery resistance and promotion-chain regression are covered by `plugins/gaia/tests/val-bridge-migration.bats`.
 
 ## Finalize
 

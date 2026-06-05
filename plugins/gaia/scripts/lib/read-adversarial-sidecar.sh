@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # read-adversarial-sidecar.sh — shared reader for adversarial-reviewer output.
 #
-# Story: E87-S12 (AF-2026-06-03-3) — downstream consumer migration.
-# Anchor: ADR-131 (adversarial sidecar contract); consumes the sidecar emitted
-#         by scripts/../skills/gaia-adversarial/scripts/write-adversarial-sidecar.sh
-#         (E87-S11).
-# Trace: FR-568 (sidecar emission), FR-569 (sidecar schema), ADR-131.
+# Consumes the sidecar emitted by
+# scripts/../skills/gaia-adversarial/scripts/write-adversarial-sidecar.sh.
 #
 # Why this exists:
 #   Four downstream consumers must read adversarial findings IDENTICALLY:
@@ -15,14 +12,13 @@
 #     4. /gaia-action-items auto-file router (skills/gaia-action-items)
 #   GAIA's established pattern for "N consumers parse the same artifact" is ONE
 #   shared lib that every consumer sources — never N per-consumer re-inlinings
-#   of the parse logic (cf. resolve-artifact-path.sh, heading-present.sh). This
-#   helper IS that shared lib.
+#   of the parse logic. This helper IS that shared lib.
 #
 # Migration shape (ADDITIVE, back-compatible):
 #   - PREFER the structured `.json` sidecar (sibling of the `.md`, same basename
 #     with a `.json` extension). When present + valid JSON, extract `status`,
 #     `summary`, `next`, and `findings[].{severity,id,title,location}` with jq.
-#   - FALL BACK to a `.md` regex-parse when the sidecar is ABSENT (pre-E87-S11
+#   - FALL BACK to a `.md` regex-parse when the sidecar is ABSENT (older
 #     reports have no sidecar — graceful degrade, never error).
 #   The `source=` prefix tells the caller (and tests) which path was taken.
 #
@@ -113,7 +109,7 @@ if [ -f "$SIDECAR_PATH" ]; then
   log "sidecar '$SIDECAR_PATH' is not valid JSON — falling back to .md parse"
 fi
 
-# ---------- FALL BACK to the .md regex-parse (back-compat, pre-E87-S11) ----------
+# ---------- FALL BACK to the .md regex-parse (back-compat) ----------
 if [ ! -f "$MD_PATH" ]; then
   die "neither sidecar '$SIDECAR_PATH' nor report '$MD_PATH' exists"
 fi

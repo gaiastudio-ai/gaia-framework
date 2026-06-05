@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# cite-or-flag-check.sh — facilitator cite-or-flag invariant (E76-S2, FR-MTG-5)
+# cite-or-flag-check.sh — facilitator cite-or-flag invariant
 #
 # Implements:
-#   - AC6 / TC-MTG-RESEARCH-3: per-line classification of DISCUSS turn lines
-#       into one of: cited | inference | unflagged-inference | non-claim
-#   - AC7 / TC-MTG-GUARD-1: pre-persistence gate that HALTs round-robin
-#       advancement when any line classifies as 'unflagged-inference'
-#   - AC10 / TC-MTG-RESEARCH-6: deterministic static check over a saved
-#       transcript (no live state, no fork dispatch)
+#   - per-line classification of DISCUSS turn lines into one of:
+#       cited | inference | unflagged-inference | non-claim
+#   - pre-persistence gate that HALTs round-robin advancement when any line
+#       classifies as 'unflagged-inference'
+#   - deterministic static check over a saved transcript
+#       (no live state, no fork dispatch)
 #
 # A "factual claim" is detected via a conservative heuristic — a line that
 # asserts a fact about a file, code behavior, prior decision, external system,
@@ -57,8 +57,8 @@ classify_line() {
   if printf '%s' "$trimmed" | grep -Eq 'https?://[^[:space:]]+'; then
     has_citation=1
   fi
-  # .gaia/memory/ reference (path component, not bare word). AF-2026-05-27-3:
-  # legacy _memory/ recognition dropped — .gaia/ is the canonical tree (ADR-111).
+  # .gaia/memory/ reference (path component, not bare word).
+  # Legacy _memory/ recognition dropped — .gaia/ is the canonical tree.
   if printf '%s' "$trimmed" | grep -Eq '(^|[[:space:]/(])\.gaia/memory/[A-Za-z0-9._/-]+'; then
     has_citation=1
   fi
@@ -86,7 +86,7 @@ classify_line() {
   fi
 
   # Heuristic factual-claim detector — lines that assert facts. We err on the
-  # side of flagging rather than silently letting a claim through (FR-MTG-5).
+  # side of flagging rather than silently letting a claim through.
   # A "factual claim" = a declarative sentence that asserts a definite fact:
   #   - contains a function/identifier-call shape: foo() or Foo.bar(...)
   #   - mentions a present/past indicative copula or assertion verb
@@ -95,11 +95,10 @@ classify_line() {
   #     "landed", "shipped", "retired", "always", "never", etc.)
   #   - mentions a constraint/dependency verb ("depends on", "is mandatory")
   #
-  # The verb list is intentionally broad (FR-MTG-5 "err on flagging" — the
+  # The verb list is intentionally broad (the "err on flagging" principle — the
   # escape hatch is the literal [inference] token, not a permissive
-  # detector). See manual-test finding F5 (gaia-meeting QA, 2026-05-18) for
-  # the prior narrow-detector failure modes — `"X resolves to Y"`,
-  # `"X depends on Y"`, `"X is N turns"`, `"we decided to retire Y"` all
+  # detector). Prior narrow-detector failure modes include `"X resolves to Y"`,
+  # `"X depends on Y"`, `"X is N turns"`, `"we decided to retire Y"` — all
   # bypassed the previous list.
   if printf '%s' "$trimmed" \
       | grep -Eq '\b[A-Za-z_][A-Za-z0-9_]*\(\)' \
@@ -145,7 +144,7 @@ cmd_gate_draft_turn() {
   printf '%s\n' "${violators[@]}"
   echo ""
   echo "Re-emit the turn with a citation marker (file path, URL, or .gaia/memory/ ref)"
-  echo "or the literal [inference] token before persistence (FR-MTG-5, FR-MTG-28)."
+  echo "or the literal [inference] token before persistence."
   exit 2
 }
 

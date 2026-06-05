@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 5 planning skill setup (E28-S43, brief §Cluster 5 / P5-S4)
+# setup.sh — planning skill setup
 #
-# Mechanical extension of the Cluster 4 reference implementation authored
-# under E28-S35 (gaia-brainstorm/scripts/setup.sh). Adds edit-ux-specific
+# Mechanical extension of the brainstorm reference implementation
+# (gaia-brainstorm/scripts/setup.sh). Adds edit-ux-specific
 # prereq gates:
 #   - ux-design.md must exist in planning-artifacts (validate-gate file_exists)
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (ux-design.md existence)
 #   3. Load the checkpoint state for this workflow
@@ -64,14 +64,14 @@ else
 fi
 
 # ---------- 2b. Guard: ux-design.md must already exist ----------
-# AF-2026-05-21-14 three-tier path resolution (mirrors AF-21-10/-11/-12 flat elif chain):
+# Three-tier path resolution:
 #   Tier 1 — UX_DESIGN_PATH env-var override wins when set.
-#   Tier 2 — positive pre-ADR-111 evidence (legacy file exists AND canonical
+#   Tier 2 — positive legacy evidence (legacy file exists AND canonical
 #            dir does NOT) → use legacy docs/planning-artifacts/ux-design.md.
-#   Tier 3 — canonical default: .gaia/artifacts/planning-artifacts/ux-design.md per ADR-111.
-# AF-2026-05-29-2 / Test09 F-20: prefer CLAUDE_PROJECT_ROOT (the framework-
-# standard harness var) and GAIA_PROJECT_ROOT (project-specific) BEFORE the
-# $SKILL_DIR/../../../../.. walk-up. On a marketplace/cache-installed plugin
+#   Tier 3 — canonical default: .gaia/artifacts/planning-artifacts/ux-design.md.
+# Prefer CLAUDE_PROJECT_ROOT (the framework-standard harness var) and
+# GAIA_PROJECT_ROOT (project-specific) BEFORE the $SKILL_DIR/../../../../..
+# walk-up. On a marketplace/cache-installed plugin
 # (~/.claude/plugins/cache/<mp>/gaia/<ver>/skills/<skill>/scripts/), walking
 # 5 levels up lands in `~/.claude/plugins/cache` — NOT the user's project —
 # and every subsequent .gaia/ artifact lookup misses. Honoring the harness-

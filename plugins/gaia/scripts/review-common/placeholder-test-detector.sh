@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# placeholder-test-detector.sh — E67-S2 deterministic placeholder gate.
+# placeholder-test-detector.sh — deterministic placeholder gate.
 #
 # Scans test files for low-quality placeholder patterns produced by the
 # /gaia-test-automate Phase 2 skeleton path or human-authored stubs that
 # never got fleshed out. Emits structured findings on stdout and exits
 # non-zero on any match — used as a mandatory post-generation gate by
 # /gaia-test-automate (default mode, NOT --scaffold) and as a Phase 3A
-# scanner by /gaia-review-test (FR-RSV2-2).
+# scanner by /gaia-review-test.
 #
 # Public API:
 #   placeholder-test-detector.sh --file <path>
@@ -21,7 +21,6 @@
 #   1 — at least one placeholder match (caller treats as REQUEST_CHANGES)
 #   2 — caller error (missing flag / unreadable target)
 #
-# Refs: AC1, AC2, AC3, AC4, AC8 of E67-S2; FR-RSV2-1, FR-RSV2-2, FR-RSV2-4.
 
 set -euo pipefail
 LC_ALL=C

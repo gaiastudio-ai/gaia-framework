@@ -6,8 +6,6 @@
   "platform": "mobile",
   "metadata": {
     "title": "Mobile-platform security review sub-rubric",
-    "story": "E74-S3",
-    "adr": ["ADR-079", "ADR-081"],
     "description": "Mobile-specific security criteria layered atop the universal base security rubric. Covers certificate pinning, secure storage (Keychain/Keystore), root/jailbreak detection, code obfuscation, local data encryption, IPC security (deep links, intents), and WebView hardening."
   },
   "severity_rules": [

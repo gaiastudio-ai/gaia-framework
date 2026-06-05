@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# publish-container-registry/run.sh — FR-526 + ADR-113 + ADR-037 envelope.
+# publish-container-registry/run.sh — deploy-adapter contract for container registry publish.
 # Pushes a container image to docker.io or ghcr.io with configurable tag strategy.
-# NFR-081: DOCKER_TOKEN (docker.io) or GH_TOKEN (ghcr.io) ONLY from env.
+# DOCKER_TOKEN (docker.io) or GH_TOKEN (ghcr.io) ONLY from env.
 
 # shellcheck source=../_publish-common.bash
 source "$(dirname "$0")/../_publish-common.bash"
@@ -27,7 +27,7 @@ case "$ACTION" in trigger|verify) ;; *) printf 'publish-container-registry: --ac
 [ -n "$OUTPUT" ] || { printf 'publish-container-registry: --output required\n' >&2; exit 2; }
 [ -n "$VERSION" ] || { printf 'publish-container-registry: --version required\n' >&2; exit 2; }
 
-# Provider-specific credential resolution per NFR-081.
+# Provider-specific credential resolution.
 provider=""
 case "$REGISTRY" in
   *docker.io*) provider="docker.io" ;;
@@ -68,7 +68,7 @@ case "$ACTION" in
   trigger)
     if [ -z "$token" ] && [ "${CONTAINER_PUSH_MOCK:-}" != "1" ]; then
       publish_write_envelope "FAILED" "container-registry" "trigger" \
-        "credential for provider $provider missing (DOCKER_TOKEN for docker.io, GH_TOKEN for ghcr.io) per NFR-081" \
+        "credential for provider $provider missing (DOCKER_TOKEN for docker.io, GH_TOKEN for ghcr.io)" \
         "$(publish_evidence_log_excerpt "missing token for $provider" "env")"
       exit 0
     fi

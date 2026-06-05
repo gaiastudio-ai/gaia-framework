@@ -1,6 +1,6 @@
 ---
 name: gaia-market-research
-description: Conduct market research on competition and customers — Cluster 4 analysis skill. Use when the user wants to analyze competitors, define customer segments, and size a market (TAM/SAM/SOM) before or during product discovery.
+description: Conduct market research on competition and customers. Use when the user wants to analyze competitors, define customer segments, and size a market (TAM/SAM/SOM) before or during product discovery.
 argument-hint: "[market or industry focus]"
 allowed-tools: [Read, Write, Glob, Grep, Bash, WebSearch, WebFetch]
 orchestration_class: heavy-procedural
@@ -17,7 +17,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -27,7 +27,7 @@ fi
 
 You are facilitating a market research session. Guide the user through scope definition, competitive analysis, customer research, and market sizing (TAM/SAM/SOM), then emit a structured market research report at `.gaia/artifacts/planning-artifacts/market-research.md` for downstream consumers (e.g., `/gaia-domain-research`, `/gaia-product-brief`).
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/1-analysis/market-research` workflow (brief §Cluster 4, story P4-S3). The step ordering, prompts, and output location follow the legacy `instructions.xml` mechanically — do not restructure, re-prompt, or reorder sections.
+This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/1-analysis/market-research` workflow. The step ordering, prompts, and output location follow the legacy `instructions.xml` mechanically — do not restructure, re-prompt, or reorder sections.
 
 ## Critical Rules
 
@@ -101,7 +101,7 @@ Write a structured market research report to `.gaia/artifacts/planning-artifacts
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-market-research 6 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET" --paths .gaia/artifacts/planning-artifacts/market-research.md`
 
-### Step 7 — Val Auto-Fix Loop (E44-S2 / ADR-058)
+### Step 7 — Val Auto-Fix Loop
 
 > Reuses the canonical pattern at `gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md`
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
@@ -124,16 +124,16 @@ Write a structured market research report to `.gaia/artifacts/planning-artifacts
      d. If iteration <= 3: go to step 2.
      e. Else: present the iteration-3 prompt verbatim (centralized in `gaia-val-validate` SKILL.md § "Auto-Fix Loop Pattern") and dispatch.
 
-YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See ADR-057 FR-YOLO-2(e) and ADR-058 for the hard-gate contract.
+YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per E44-S2 pattern (ADR-058, architecture.md §10.31.2). The `market-research` artifact_type may not have a canonical document-ruleset; per E44-S1 AC-EC1 Val skips structural validation for unknown types and still runs factual-claim validation.
+> The `market-research` artifact_type may not have a canonical document-ruleset; Val skips structural validation for unknown types and still runs factual-claim validation.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-market-research 7 research_topic="$RESEARCH_TOPIC" competitor_set="$COMPETITOR_SET" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/market-research.md`
 
 ## Validation
 
 <!--
-  E42-S2 — V1→V2 28-item checklist port (FR-341, FR-359).
+  V1→V2 28-item checklist port.
   Classification (28 items total):
     - Script-verifiable: 18 (SV-01..SV-18) — enforced by finalize.sh.
     - LLM-checkable:     10 (LLM-01..LLM-10) — evaluated by the host LLM
@@ -149,7 +149,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   required output sections as a separate item (+3 net vs. "all required
   sections present"), and adds an Executive Summary / Key Findings /
   Strategic Recommendations section check to mirror the V2 Step 6 output
-  contract. See .gaia/artifacts/implementation-artifacts/E42-S2-port-gaia-market-research-28-item-checklist-to-v2.md.
+  contract.
 -->
 
 - [script-verifiable] SV-01 — Output artifact exists at .gaia/artifacts/planning-artifacts/market-research.md

@@ -9,11 +9,11 @@ orchestration_class: light-procedural
 
 Native Claude Code conversion of the legacy `_gaia/dev/skills/database-design.md` skill. Preserves the four sectioned-loading IDs (`schema-design`, `migrations`, `indexing`, `orm-patterns`) verbatim.
 
-- ADR-041 — Native execution model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042 — Scripts-over-LLM. Prose and pattern guidance only.
-- ADR-046 — Hybrid memory. Shared content skill; no sidecar loading.
+- Native execution model via Claude Code Skills + Subagents + Plugins + Hooks.
+- Scripts-over-LLM. Prose and pattern guidance only.
+- Hybrid memory. Shared content skill; no sidecar loading.
 
-> **Applicable to:** java-dev, python-dev (primary); any stack dev agent touching schema or ORM code. The legacy `applicable_agents` frontmatter field is dropped per the E28-S19 schema.
+> **Applicable to:** java-dev, python-dev (primary); any stack dev agent touching schema or ORM code. The legacy `applicable_agents` frontmatter field is dropped per the current schema.
 
 <!-- SECTION: schema-design -->
 ## Schema Design
@@ -177,7 +177,7 @@ users = db.query(User).options(
 
 ## Test Scenarios
 
-Migrated from the legacy `test_scenarios` frontmatter array (per E28-S19 schema).
+Migrated from the legacy `test_scenarios` frontmatter array.
 
 | Scenario | Expected |
 |----------|----------|

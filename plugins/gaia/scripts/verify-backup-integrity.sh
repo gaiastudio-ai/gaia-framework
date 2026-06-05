@@ -2,8 +2,6 @@
 # verify-backup-integrity.sh — Verify the integrity of a .gaia-backup/
 # ci-regen-{timestamp}/ directory against its .sha256-manifest.
 #
-# E98-S6 / SR-84 / ADR-114 §(g) / FR-528.
-#
 # Usage:
 #   verify-backup-integrity.sh <backup-dir>
 #
@@ -18,7 +16,7 @@
 #       * missing  — file in manifest, absent on disk
 #       * extra    — file on disk, absent from manifest
 #   - Exits 0 if and only if all three drift classes are empty.
-#   - On drift, emits the canonical SR-84 HALT message + per-file detail.
+#   - On drift, emits the canonical HALT message + per-file detail.
 #
 # Exit codes:
 #   0 — clean (no drift)
@@ -110,7 +108,7 @@ if [ "$drift" -eq 0 ]; then
 fi
 
 # Drift detected — emit canonical HALT + per-file detail.
-printf 'HALT: backup integrity check failed — .gaia-backup contents tampered (per SR-84)\n' >&2
+printf 'HALT: backup integrity check failed — .gaia-backup contents tampered\n' >&2
 printf 'Backup directory: %s\n' "$backup_dir" >&2
 for m in "${drift_messages[@]}"; do
   printf '  - %s\n' "$m" >&2

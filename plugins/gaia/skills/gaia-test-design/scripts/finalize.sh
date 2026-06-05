@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-test-design skill finalize (E28-S82 + E42-S14)
+# finalize.sh — /gaia-test-design skill finalize
 #
-# E42-S14 extends the bare-bones Cluster 11 finalize scaffolding with an
-# 8-item post-completion checklist (6 script-verifiable + 2 LLM-checkable)
-# derived from the V1 test-design checklist (see the
-# docs/v1-v2-command-gap-analysis.md §5 entry for the verbatim V1 source).
+# Extends the finalize scaffolding with an 8-item post-completion checklist
+# (6 script-verifiable + 2 LLM-checkable) derived from the V1 test-design
+# checklist (see the docs/v1-v2-command-gap-analysis.md §5 entry for the
+# verbatim V1 source).
 # See .gaia/artifacts/implementation-artifacts/E42-S14-* for the V1 → V2 mapping.
 #
-# Responsibilities (per brief §Cluster 11 + story E42-S14):
+# Responsibilities:
 #   1. Run the script-verifiable subset of the 8 V1 checklist items
 #      against the test-plan.md artifact. Validation runs FIRST.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
@@ -15,14 +15,13 @@
 #   4. Emit a lifecycle event via lifecycle-event.sh.
 #
 # The observability side effects (3 + 4) MUST run on every invocation —
-# the checklist outcome never suppresses the checkpoint/event write
-# (matches E42-S1..S13 contract; story AC5).
+# the checklist outcome never suppresses the checkpoint/event write.
 #
 # Exit codes:
 #   0 — finalize succeeded; all 6 script-verifiable items PASS (or
-#       no artifact was requested — classic Cluster 11 behaviour).
+#       no artifact was requested — classic finalize behaviour).
 #   1 — one or more script-verifiable checklist items FAIL; the
-#       AC3 "no artifact to validate" violation; or a
+#       "no artifact to validate" violation; or a
 #       checkpoint/lifecycle-event failure. Failed item names are
 #       listed on stderr under a "Checklist violations:" header
 #       followed by a one-line remediation hint.
@@ -37,7 +36,7 @@
 #                       script looks for .gaia/artifacts/test-artifacts/test-plan.md
 #                       relative to the current working directory. If
 #                       neither is present, the checklist run is skipped
-#                       (classic Cluster 11 behaviour — observability
+#                       (classic finalize behaviour — observability
 #                       still runs, exit 0).
 
 set -euo pipefail
@@ -98,13 +97,11 @@ file_exists() { [ -f "$1" ] && echo "pass" || echo "fail"; }
 
 # heading_present <file> <heading-regex>
 # Pass when an H2 heading matching the pattern exists.
-# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
-# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
-# uniform, permissive regex accepting optional numbered+lettered outline
-# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
-# divergent inline copies, so the same heading passed one skill's check and
-# failed another's. Sourced via a $0-relative path so it works whether or not
-# this script defines PLUGIN_SCRIPTS_DIR.
+# heading_present() is a single shared implementation
+# (plugins/gaia/scripts/lib/heading-present.sh) with one uniform, permissive
+# regex accepting optional numbered+lettered outline prefixes (11, 11b, 1.2.3).
+# Sourced via a $0-relative path so it works whether or not this script
+# defines PLUGIN_SCRIPTS_DIR.
 _GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
 if [ -r "$_GAIA_HEADING_LIB" ]; then
   # shellcheck source=/dev/null
@@ -141,22 +138,22 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
 
   # --- Script-verifiable items (6) ---
 
-  # SV-01 / V1 "Output file saved to {test_artifacts}/test-plan.md"
+  # SV-01 — Output file saved to {test_artifacts}/test-plan.md
   item_check "SV-01" "Output file saved to .gaia/artifacts/test-artifacts/test-plan.md" \
     "$(file_exists "$ARTIFACT")"
-  # SV-02 / structural — output file non-empty
+  # SV-02 — output file non-empty
   item_check "SV-02" "Output artifact is non-empty" \
     "$(file_nonempty "$ARTIFACT")"
-  # SV-03 / V1 "Risk assessment completed with probability x impact ratings"
+  # SV-03 — Risk assessment completed with probability x impact ratings
   item_check "SV-03" "Risk assessment section present (risk heading + probability/impact keywords)" \
     "$(if [ "$(heading_present "$ARTIFACT" "Risk")" = "pass" ] && [ "$(pattern_present "$ARTIFACT" '(probability|impact)')" = "pass" ]; then echo pass; else echo fail; fi)"
-  # SV-04 / V1 "Test levels defined per component" + "Test pyramid applied appropriately"
+  # SV-04 — Test levels defined per component + test pyramid applied appropriately
   item_check "SV-04" "Test strategy section present (test pyramid / test levels keyword)" \
     "$(pattern_present "$ARTIFACT" '(test[[:space:]]+pyramid|test[[:space:]]+levels?|unit|integration|e2e|end-to-end)')"
-  # SV-05 / V1 "Coverage targets defined"
+  # SV-05 — Coverage targets defined
   item_check "SV-05" "Coverage targets defined (coverage / target keyword present)" \
     "$(pattern_present "$ARTIFACT" '(coverage[[:space:]]+target|coverage[[:space:]]+(threshold|goal|percent)|%[[:space:]]*coverage)')"
-  # SV-06 / V1 "Quality gates specified for CI"
+  # SV-06 — Quality gates specified for CI
   item_check "SV-06" "Quality gates specified for CI (quality gate / CI gate keyword present)" \
     "$(pattern_present "$ARTIFACT" '(quality[[:space:]]+gate|CI[[:space:]]+gate|ci[[:space:]]+pipeline|gate[[:space:]]+failure)')"
 
@@ -208,14 +205,14 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
-# helper itself logs warnings to stderr but never affects this script's
-# exit code. SKILL_NAME is resolved from the parent directory name so
-# the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
+# circuit to a no-op so the interactive prompt is preserved. Failure is
+# non-blocking — the auto-save helper itself logs warnings to stderr but
+# never affects this script's exit code. SKILL_NAME is resolved from the
+# parent directory name so the wire-in is identical across all Phase 1-3
+# finalize.sh files.
 AUTOSAVE_LIB="$PLUGIN_SCRIPTS_DIR/lib/auto-save-memory.sh"
 SKILL_NAME="$(basename "$(cd "$SCRIPT_DIR/.." && pwd)")"
 if [ -f "$AUTOSAVE_LIB" ]; then

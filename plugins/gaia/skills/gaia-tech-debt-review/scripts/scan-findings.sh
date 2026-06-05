@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scan-findings.sh — deterministic frontmatter+Findings scanner (E28-S108)
+# scan-findings.sh — deterministic frontmatter+Findings scanner
 #
 # Scans story markdown files in the implementation-artifacts directory and
 # extracts tech-debt candidates ONLY from:
@@ -67,9 +67,9 @@ done
 while IFS= read -r -d '' story_file; do
   base="${story_file##*/}"
   # Match story-key pattern E{digits}-S{digits} at the start of the filename
-  # OR (AF-2026-05-30-2 / Test10 F-28) at the start of the parent dir name
-  # for the E105-S1 per-story layout where files are named `story.md` and
-  # the key lives in the parent dir: epic-*/E{N}-S{M}-{slug}/story.md.
+  # OR at the start of the parent dir name for the per-story layout where
+  # files are named `story.md` and the key lives in the parent dir:
+  # epic-*/E{N}-S{M}-{slug}/story.md.
   story_key=""
   if [[ "$base" =~ ^(E[0-9]+-S[0-9]+) ]]; then
     story_key="${BASH_REMATCH[1]}"
@@ -119,15 +119,15 @@ while IFS= read -r -d '' story_file; do
     # Strip leading/trailing pipes, then split by |
     trimmed="${line## }"
     trimmed="${trimmed%% }"
-    # AF-2026-05-24-10 / Test02 F-22: the scanner originally read `col1`
-    # as the Type column, but with the 5-col header `# | Type | Severity
-    # | Finding | Action`, `col1` is the row-number `#` not Type. After
-    # `_blank col1 col2 col3 col4 col5`, the actual columns are:
+    # The scanner originally read `col1` as the Type column, but with the
+    # 5-col header `# | Type | Severity | Finding | Action`, `col1` is
+    # the row-number `#` not Type. After `_blank col1 col2 col3 col4 col5`,
+    # the actual columns are:
     #   _blank=leading-pipe, col1=#, col2=Type, col3=Severity,
     #   col4=Finding, col5=Action.
     # We now correctly map col2 → Type, col3 → Severity, etc.
     #
-    # Additionally per F-22: dev-story templates ship a 4-column schema
+    # Additionally: dev-story templates ship a 4-column schema
     # (ID | Severity | Description | Status). Sniff the header to handle
     # both: if col2 is "Type" we use the 5-col schema; if col1 is "ID" we
     # use the 4-col legacy schema; otherwise we apply best-effort
@@ -173,8 +173,7 @@ while IFS= read -r -d '' story_file; do
     esac
     # Legacy rule: tech-debt type always included; bug with medium/low severity
     # included UNLESS marked [TRIAGED] or [DISMISSED] in the finding text OR
-    # action text (per F-23 below — we don't ship F-23 here but the scan
-    # for both columns mirrors that recommended pattern).
+    # action text (the scan for both columns mirrors the recommended pattern).
     include=0
     case "$type" in
       tech-debt|framework-defect|test-debt|process-debt|code-debt|doc-debt|design-debt|security)
@@ -194,8 +193,8 @@ while IFS= read -r -d '' story_file; do
       "$story_key" "$status" "$sprint_id" "$type" "$severity" "$finding" "$action"
   done <<<"$findings_section"
 
-# E55-S12 — recursive walk picks up the per-epic nested layout introduced by E79
-# (`epic-*/stories/{key}-{slug}.md`). Convergence with the E79-S4 reader idiom.
+# Recursive walk picks up the per-epic nested layout
+# (`epic-*/stories/{key}-{slug}.md`).
 done < <(find "$ARTIFACTS_DIR" -type f -name '*.md' -print0)
 
 exit 0

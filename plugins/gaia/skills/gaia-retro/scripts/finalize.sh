@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-retro skill finalize (E28-S64)
+# finalize.sh — gaia-retro skill finalize
 #
-# Shared finalize pattern from the E28-S17/S19/S21 foundation work.
-# Writes checkpoint and emits lifecycle event on completion.
+# Shared finalize pattern. Writes checkpoint and emits lifecycle event on completion.
 #
 # Exit codes:
 #   0 — finalize succeeded
@@ -24,28 +23,26 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Val-sidecar sentinel precondition (E92-S2 / FR-OEXP-2) ----------
+# ---------- 0. Val-sidecar sentinel precondition ----------
 #
 # When GAIA_FINALIZE_SENTINEL_REQUIRED is set (the SKILL.md Step 7 contract
 # exports it), assert a Val sidecar entry was written AFTER the run-started
-# checkpoint marker. Mirrors gaia-add-feature/finalize.sh:51-82 (E83-S1
-# fail-closed pattern) and the sibling triage-findings/finalize.sh guard.
+# checkpoint marker. Mirrors gaia-add-feature/finalize.sh fail-closed pattern
+# and the sibling triage-findings/finalize.sh guard.
 #
 # Legacy fixtures that do NOT export the env var get the prior unconditional
 # behavior (backward-compat).
 if [ -n "${GAIA_FINALIZE_SENTINEL_REQUIRED:-}" ]; then
   PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
-  # AF-2026-05-27-3 (ADR-111): canonical .gaia/ paths only; legacy _memory
-  # fallbacks removed with the consolidation migration.
+  # Canonical .gaia/ paths only; legacy _memory fallbacks removed with the consolidation migration.
   SIDECAR_LOG="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
-  # AF-2026-05-29-1 / Test08 F-19: the F-21 (AF-2026-05-26-1) comment was wrong
-  # — write-checkpoint.sh actually emits
-  # `${CHECKPOINT_ROOT}/{skill_name}/{ts}-step-{N}.json` (JSON, per-skill subdir,
-  # timestamped). Looking for the literal `retrospective.yaml` always failed the
-  # sentinel check unless an operator manually touched the file. Resolve the
-  # marker via two-form acceptance: (a) the canonical write-checkpoint.sh JSON
-  # form (preferred); (b) the legacy literal `retrospective.yaml` (kept for
-  # call sites that explicitly stamp it). Env CHECKPOINT_PATH override wins.
+  # write-checkpoint.sh emits `${CHECKPOINT_ROOT}/{skill_name}/{ts}-step-{N}.json`
+  # (JSON, per-skill subdir, timestamped). Looking for the literal
+  # `retrospective.yaml` always failed the sentinel check unless an operator
+  # manually touched the file. Resolve the marker via two-form acceptance:
+  # (a) the canonical write-checkpoint.sh JSON form (preferred);
+  # (b) the legacy literal `retrospective.yaml` (kept for call sites that
+  # explicitly stamp it). Env CHECKPOINT_PATH override wins.
   _ck_root=""
   if [ -n "${CHECKPOINT_PATH:-}" ]; then
     _ck_root="$CHECKPOINT_PATH"
@@ -69,7 +66,7 @@ if [ -n "${GAIA_FINALIZE_SENTINEL_REQUIRED:-}" ]; then
   if [ -z "$CHECKPOINT_MARKER" ] || [ ! -f "$CHECKPOINT_MARKER" ]; then
     die "Val sidecar write missing — Step 7 must be invoked before finalize (no run checkpoint found at $_ck_root/retrospective/*-step-*.json OR $_ck_root/retrospective.yaml)"
   fi
-  # F-026 (Test04) — KNOWN FRAGILITY of the mtime-based sentinel.
+  # KNOWN FRAGILITY of the mtime-based sentinel.
   # This `-ot` check asserts the sidecar decision-log was touched AFTER the run
   # checkpoint, as a proxy for "Step 7 (Val sidecar write) actually ran this
   # invocation". It is intentionally lightweight but NOT tamper-proof: any

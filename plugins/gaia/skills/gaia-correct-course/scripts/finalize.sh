@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — correct-course skill finalize (E28-S63)
+# finalize.sh — correct-course skill finalize
 #
-# Shared finalize pattern from the E28-S17/S19/S21 foundation work.
-# Writes checkpoint and emits lifecycle event on completion.
+# Shared finalize pattern: writes checkpoint and emits lifecycle event on completion.
 #
 # Exit codes:
 #   0 — finalize succeeded

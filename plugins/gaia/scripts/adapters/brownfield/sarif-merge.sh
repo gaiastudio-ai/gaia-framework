@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# adapters/brownfield/sarif-merge.sh — E104-S4 Phase 7 SARIF Multitool merge pre-step.
+# adapters/brownfield/sarif-merge.sh — SARIF Multitool merge pre-step.
 #
 # Merges all scanner SARIF outputs (Grype, Semgrep, CodeQL, gitleaks, gosec,
 # SpotBugs) into a single merged SARIF so the existing 6-step gap-consolidation
 # recipe consumes ONE uniform interchange format instead of bespoke per-tool
-# JSON (FR-544 / ADR-125). Downstream dedup (E104-S1) operates on the merge.
+# JSON. Downstream dedup operates on the merge.
 #
-# Contract (ADR-078 / ADR-125):
+# Contract:
 #   - Gated behind brownfield.deterministic_tools master flag + the
 #     brownfield.sarif_merge_enabled per-tool override (resolved by
 #     /gaia-brownfield and exported as GAIA_BROWNFIELD_*). Flag-off -> INFO skip.
@@ -64,13 +64,13 @@ if [ "${#inputs[@]}" -eq 0 ]; then
 fi
 
 # --- Graceful degrade: sarif CLI absent ----------------------------------
-# AF-2026-05-31-2 / Test13 F-22: probe the docker runner as a fallback when
-# the host PATH doesn't carry `sarif`. The gaia-tools image bundles
-# Microsoft.Sarif.Multitool — so when `brownfield.tools.runner: docker` is
-# set the merge step now runs via `docker_runner_dispatch sarif merge ...`
-# instead of degrading. Without this fix the Phase-7 E104 pipeline (grype
-# SARIF → merge → dedup → reconcile) was inert on docker-runner hosts —
-# the grype SARIF was never merged so dedup got an empty stream.
+# Probe the docker runner as a fallback when the host PATH doesn't carry
+# `sarif`. The gaia-tools image bundles Microsoft.Sarif.Multitool — so when
+# `brownfield.tools.runner: docker` is set the merge step now runs via
+# `docker_runner_dispatch sarif merge ...` instead of degrading. Without this
+# fix the Phase-7 pipeline (grype SARIF → merge → dedup → reconcile) was
+# inert on docker-runner hosts — the grype SARIF was never merged so dedup
+# got an empty stream.
 _SARIF_DOCKER_RUNNER=""
 _SARIF_DOCKER_RUNNER_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/docker-runner.sh"
 if [ -f "$_SARIF_DOCKER_RUNNER_LIB" ]; then
@@ -93,10 +93,8 @@ mkdir -p "$out_dir"
 # `sarif merge` concatenates one `run` per input (preserving tool.driver.name).
 # Propagate a non-zero exit (e.g. malformed input -> schema-validation error).
 #
-# AF-2026-06-01-1 / Test15 F-05 — properly stage inputs into the mounted
-# /out before calling `sarif merge` so the container actually sees them.
-# The AF-31-3 docker branch passed host `${inputs[@]}` straight through to
-# `sarif merge` inside the container; the container has /workspace
+# Properly stage inputs into the mounted /out before calling `sarif merge`
+# so the container actually sees them. The container has /workspace
 # (PROJECT_ROOT:ro) and /out (ADAPTER_OUT_DIR) mounted, but the host paths
 # (typically `.gaia/memory/brownfield-audit/sarif/*.sarif`) are not at
 # either mount, so the merge silently saw 0 inputs and wrote `runs: []`.
@@ -104,10 +102,9 @@ mkdir -p "$out_dir"
 # real files at container-visible paths, then clean up the staging dir
 # after the merge completes. The output still lands at /out/<out_file>.
 #
-# AF-2026-06-01-1 / Test15 F-06 — `--force` flag so a re-run overwrites
-# an existing merged file. `sarif merge` defaults to refuse-on-exist;
-# brownfield Phase 7 can re-run (resume, retries), so non-idempotent
-# behaviour breaks the workflow.
+# Pass a `--force`-equivalent flag so a re-run overwrites an existing merged
+# file. `sarif merge` defaults to refuse-on-exist; brownfield Phase 7 can
+# re-run (resume, retries), so non-idempotent behaviour breaks the workflow.
 if [ "$_SARIF_DOCKER_RUNNER" = "docker" ]; then
   _stage_dir="$out_dir/.merge-in-$$"
   mkdir -p "$_stage_dir" 2>/dev/null || true
@@ -126,31 +123,29 @@ if [ "$_SARIF_DOCKER_RUNNER" = "docker" ]; then
     log_warn "sarif merge: no readable inputs to stage; merged output will be empty"
     rm -rf "$_stage_dir" 2>/dev/null || true
   else
-    # AF-2026-06-02-1 / Test16 F-H01 + F-M01 — Sarif.Multitool 5.0.2 has
-    # NO `--force` flag (the Test15 F-06 attempt failed live: CLI parser
-    # printed help + exit 1, so the merge silently died and downstream
-    # `consolidated-gaps.md` saw 0 deterministic findings for the 4th
-    # run in a row). Verified-working invocation form:
+    # Sarif.Multitool 5.0.2 has NO `--force` flag (the attempt failed live:
+    # CLI parser printed help + exit 1, so the merge silently died and
+    # downstream `consolidated-gaps.md` saw 0 deterministic findings).
+    # Verified-working invocation form:
     #   sarif merge <inputs...> --output-directory ... --output-file ... \
     #       --log ForceOverwrite --merge-empty-logs
-    # Three changes vs the broken Test15 form:
+    # Three changes vs the broken form:
     #   1. Inputs go FIRST (positional argument; options-before-positionals
     #      mis-binds the <files> positional on the Sarif.Multitool parser).
     #   2. `--force` → `--log ForceOverwrite` (canonical Sarif.Multitool
-    #      overwrite knob; preserves the Test15 F-06 idempotency intent).
+    #      overwrite knob; preserves idempotency intent).
     #   3. `--merge-empty-logs` is passed but Sarif.Multitool 5.0.2 drops
-    #      runs whose results[] is empty regardless of this flag (Test17
-    #      F-M01 / AF-2026-06-02-6 verified live). The flag is retained for
-    #      forward-compatibility with future Sarif.Multitool versions that
-    #      may honor it, but callers MUST NOT rely on clean-scan tool
-    #      provenance reaching the merged SARIF — a passing deterministic
-    #      scan currently merges as `runs:[]` (zero runs). REAL findings
-    #      survive merge (a run with results[] non-empty IS preserved —
-    #      verified Test17 P-06: synthetic SARIF with one finding survived).
-    #      Phase-7 grading uses the `grype_db_checksum` provenance field
-    #      (independent of merged runs[]) so the practical impact on
-    #      consolidated-gaps grading is bounded to clean-scan tool
-    #      attribution loss, not real-finding loss.
+    #      runs whose results[] is empty regardless of this flag (verified
+    #      live). The flag is retained for forward-compatibility with future
+    #      Sarif.Multitool versions that may honor it, but callers MUST NOT
+    #      rely on clean-scan tool provenance reaching the merged SARIF — a
+    #      passing deterministic scan currently merges as `runs:[]` (zero
+    #      runs). REAL findings survive merge (a run with results[] non-empty
+    #      IS preserved — verified with a synthetic SARIF containing one
+    #      finding). Phase-7 grading uses the `grype_db_checksum` provenance
+    #      field (independent of merged runs[]) so the practical impact on
+    #      consolidated-gaps grading is bounded to clean-scan tool attribution
+    #      loss, not real-finding loss.
     rm -f "$out_dir/$out_file" 2>/dev/null || true
     if ! ADAPTER_OUT_DIR="$out_dir" \
         docker_runner_dispatch sarif merge \
@@ -163,8 +158,7 @@ if [ "$_SARIF_DOCKER_RUNNER" = "docker" ]; then
     rm -rf "$_stage_dir" 2>/dev/null || true
   fi
 else
-  # AF-2026-06-02-1 / Test16 F-H01 + F-M01 — same fix applied to the
-  # native branch (line ~144 had the identical `--force` regression).
+  # Same invocation fix applied to the native branch.
   rm -f "$out_dir/$out_file" 2>/dev/null || true
   if ! sarif merge "${inputs[@]}" \
         --output-directory "$out_dir" --output-file "$out_file" \
@@ -175,8 +169,8 @@ fi
 
 # --- Path canonicalization (repo-root-relative URIs) ----------------------
 # Scanners emit physicalLocation.artifactLocation.uri as absolute, file://, or
-# already-relative. Downstream dedup (E104-S1) + reconciliation (E104-S2) assume
-# repo-root-relative paths. Normalize every artifactLocation.uri: strip a
+# already-relative. Downstream dedup and reconciliation assume repo-root-relative
+# paths. Normalize every artifactLocation.uri: strip a
 # leading `file://` scheme, then strip the repo-root prefix (REPO_ROOT, default
 # $PWD) so the remainder is repo-root-relative. Already-relative uris pass through.
 REPO_ROOT="${GAIA_REPO_ROOT:-$PWD}"
@@ -211,8 +205,8 @@ fi
 run_count="$(jq -r '.runs | length' "$MERGED_OUT" 2>/dev/null || printf '0')"
 finding_count="$(jq -r '[.runs[].results // [] | length] | add // 0' "$MERGED_OUT" 2>/dev/null || printf '0')"
 log_info "merged $run_count scanner run(s), $finding_count finding(s) -> $MERGED_OUT (gap_count_before_dedup=$finding_count)"
-# NOTE (AC-X3): gap_count_before_dedup = $finding_count is computed here at
-# merge time (E104-S4-owned), but the report-frontmatter WRITER does not exist
-# yet — population is deferred to the telemetry writer (E104-S1/S2). See Findings.
+# NOTE: gap_count_before_dedup = $finding_count is computed here at merge time,
+# but the report-frontmatter WRITER does not exist yet — population is deferred
+# to the telemetry writer. See Findings.
 
 exit 0

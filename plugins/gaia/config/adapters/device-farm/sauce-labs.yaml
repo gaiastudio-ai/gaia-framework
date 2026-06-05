@@ -1,4 +1,4 @@
-# Sauce Labs device-farm adapter (E74-S9)
+# Sauce Labs device-farm adapter
 # Sauce Labs Real Device Cloud. Poll-based result retrieval.
 name: sauce-labs
 type: device-farm

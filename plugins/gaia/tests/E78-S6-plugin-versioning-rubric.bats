@@ -316,17 +316,17 @@ EOF
   done
 }
 
-@test "AC9: rule references FR-429" {
-  jq -e '.severity_rules[] | select(.id == "plugin-versioning-adapter-category-unknown-warning") | .references | index("FR-429")' "$SUB_RUBRIC" >/dev/null \
-    || { echo "AC9 FAIL: expected FR-429 reference on adapter-category-hygiene rule" >&2; return 1; }
+@test "AC9: adapter-category-unknown-warning rule is in the adapter-schema-hygiene category" {
+  local cat
+  cat=$(jq -r '.severity_rules[] | select(.id == "plugin-versioning-adapter-category-unknown-warning") | .category' "$SUB_RUBRIC")
+  [ "$cat" = "adapter-schema-hygiene" ] \
+    || { echo "AC9 FAIL: expected category=adapter-schema-hygiene for adapter-category-unknown-warning, got=$cat" >&2; return 1; }
 }
 
 # ---------------------------------------------------------------------------
-# Cross-check: FR-428 reference on the bump-rule rules
+# Cross-check: every bump-rule has a remediation that describes the required bump
 # ---------------------------------------------------------------------------
-@test "FR-428 reference present on every bump-rule" {
-  # The 6 bump-rule rules each MUST cite FR-428. The 7th rule
-  # (adapter-category-unknown-warning) cites FR-429 and is excluded by id-prefix.
+@test "every bump-rule has a non-empty remediation describing the required bump" {
   for id in \
     plugin-versioning-skill-description-changed-minor \
     plugin-versioning-skill-removed-major \
@@ -335,7 +335,11 @@ EOF
     plugin-versioning-frontmatter-required-field-added-major \
     plugin-versioning-bug-fix-patch
   do
-    jq -e --arg id "$id" '.severity_rules[] | select(.id == $id) | .references | index("FR-428")' "$SUB_RUBRIC" >/dev/null \
-      || { echo "FAIL: rule $id missing FR-428 reference" >&2; return 1; }
+    local rem
+    rem=$(jq -r --arg id "$id" '.severity_rules[] | select(.id == $id) | .remediation // ""' "$SUB_RUBRIC")
+    [ -n "$rem" ] \
+      || { echo "FAIL: rule $id is missing a remediation field" >&2; return 1; }
+    printf '%s' "$rem" | grep -qi 'bump\|version' \
+      || { echo "FAIL: rule $id remediation must describe a version bump, got: $rem" >&2; return 1; }
   done
 }

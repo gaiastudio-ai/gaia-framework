@@ -9,7 +9,7 @@
 # fenced-code-block state; while inside that state, `## `-prefixed lines are
 # ignored. This mirrors the reference implementation in
 # `_memory/checkpoints/E53-S222-shard-architecture.py::find_h2_boundaries`,
-# which is the canonical byte-identity baseline for AC3 of E53-S236.
+# which is the canonical byte-identity baseline.
 #
 # Usage:
 #   parse-h2-boundaries.sh <markdown_file>
@@ -18,8 +18,6 @@
 #   0  success (zero or more boundaries written to stdout)
 #   1  usage error
 #   2  source file missing or unreadable
-#
-# Refs: ADR-070, AC1/AC2/AC3/AC4 of E53-S236, E53-S222 finding #4.
 
 set -euo pipefail
 

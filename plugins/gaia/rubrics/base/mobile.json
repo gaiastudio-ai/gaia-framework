@@ -5,8 +5,6 @@
   "platform": "mobile",
   "metadata": {
     "title": "Base mobile review rubric",
-    "story": "E74-S3",
-    "adr": ["ADR-079", "ADR-081"],
     "description": "Base rubric for mobile-platform review (iOS/Android). Layered atop the universal base rubrics (code/perf/security/a11y) by /gaia-review-mobile. Sub-rubrics (mobile-code, mobile-perf, mobile-security, mobile-a11y) carry skill-specific deltas; this base captures cross-cutting mobile concerns: UI/UX conventions, lifecycle, offline/connectivity, resource management."
   },
   "severity_rules": [

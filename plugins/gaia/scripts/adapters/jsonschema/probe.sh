@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# adapters/jsonschema/probe.sh — FR-415 + ADR-089 tri-state probe.
+# adapters/jsonschema/probe.sh — tri-state probe.
 #
-# Returns the ADR-078 / ADR-089 tri-state availability JSON:
+# Returns the tri-state availability JSON:
 #   { "available": true|false, "version": "<version-string>", "failure_kind": null|"<enum>" }
 #
 # Provider is the `check-jsonschema` binary (per adapter.json). When
@@ -9,7 +9,7 @@
 # from `check-jsonschema --version`. When absent, returns available=false with
 # failure_kind="not_installed" and exit 1.
 #
-# Invoked by tool-availability-probe.sh (E77-S3) in adapter-dir mode and may
+# Invoked by tool-availability-probe.sh in adapter-dir mode and may
 # also be called directly by callers wanting tri-state JSON.
 
 set -euo pipefail

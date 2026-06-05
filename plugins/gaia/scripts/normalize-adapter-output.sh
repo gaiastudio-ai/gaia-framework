@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# normalize-adapter-output.sh — E74-S9 / AC7
+# normalize-adapter-output.sh — adapter output normalizer
 #
 # Reads framework-native test output (JUnit XML, JSON, xcresult) and emits the
 # canonical schemas/adapter-output.schema.json shape on stdout.
@@ -22,10 +22,10 @@ export LC_ALL
 SCRIPT_NAME="normalize-adapter-output.sh"
 
 # Internal helpers — leading underscore prefix excludes them from the
-# NFR-052 public-function coverage gate. They are exercised end-to-end
+# public-function coverage gate. They are exercised end-to-end
 # via the public entry point in tests/E74-S9-mobile-dynamic-adapters.bats:
-#   _normalize_junit_xml — covered by AC7 junit-xml test
-#   _normalize_json      — covered by AC7 maestro json test
+#   _normalize_junit_xml — covered by junit-xml test
+#   _normalize_json      — covered by maestro json test
 #   _normalize_xcresult  — covered by xcresult-format input branch (delegates to jq)
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }

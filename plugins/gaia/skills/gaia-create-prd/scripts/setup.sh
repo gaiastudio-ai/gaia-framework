@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 5 planning skill setup (E28-S40, brief §Cluster 5 / P5-S1)
+# setup.sh — planning skill setup for create-prd
 #
-# Mechanical extension of the Cluster 4 reference implementation authored
-# under E28-S35 (gaia-brainstorm/scripts/setup.sh). Adds create-prd-specific
-# prereq gates:
+# Extension of the brainstorm reference implementation
+# (gaia-brainstorm/scripts/setup.sh). Adds create-prd-specific prereq gates:
 #   - product-brief must exist (validate-gate file_exists)
 #   - prd-template.md must exist in the skill directory or custom/templates/
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (product-brief, prd-template)
 #   3. Load the checkpoint state for this workflow
@@ -68,11 +67,11 @@ fi
 
 # ---------- 2b. Guard: prd-template.md must be present ----------
 # Check skill-local copy first, then custom/templates/ override. If neither
-# exists, fail fast per AC-EC3.
+# exists, fail fast.
 TEMPLATE_LOCAL="$SKILL_DIR/prd-template.md"
-# AF-2026-05-29-2 / Test09 F-20: prefer CLAUDE_PROJECT_ROOT (the framework-
-# standard harness var) and GAIA_PROJECT_ROOT (project-specific) BEFORE the
-# $SKILL_DIR/../../../../.. walk-up. On a marketplace/cache-installed plugin
+# Prefer CLAUDE_PROJECT_ROOT (the framework-standard harness var) and
+# GAIA_PROJECT_ROOT (project-specific) BEFORE the $SKILL_DIR/../../../../..
+# walk-up. On a marketplace/cache-installed plugin
 # (~/.claude/plugins/cache/<mp>/gaia/<ver>/skills/<skill>/scripts/), walking
 # 5 levels up lands in `~/.claude/plugins/cache` — NOT the user's project —
 # and every subsequent .gaia/ artifact lookup misses. Honoring the harness-

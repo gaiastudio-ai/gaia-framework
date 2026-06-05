@@ -1,7 +1,6 @@
 # dispatch-verbs.txt — Closed-list dispatch-verb taxonomy (v1, frozen)
-# Refs: ADR-107, AF-2026-05-14-6
 #
-# Status: v1-frozen. Amendments MUST follow the ADR-107 amendment process
+# Status: v1-frozen. Amendments MUST follow the amendment process
 # (PRD record + ADR cross-reference + bumped version + downstream review).
 #
 # Consuming skills (4, as of v1):

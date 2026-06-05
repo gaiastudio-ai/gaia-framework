@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# measure-val-auto-fix-token-budget.sh — E44-S9 NFR-VCP-2 verification harness.
+# measure-val-auto-fix-token-budget.sh — Val auto-fix loop token-budget verification harness.
 #
-# Computes the two NFR-VCP-2 ratios from a single-pass Val baseline cost and
-# either (a) the per-iteration token_estimate values logged by E44-S2/E44-S8 in
-# the checkpoint custom.val_loop_iterations array, or (b) explicit CLI flags
-# (the E44-S2 AC-EC8 fallback path when instrumentation is unavailable).
+# Computes the two token-budget ratios from a single-pass Val baseline cost and
+# either (a) the per-iteration token_estimate values logged in the checkpoint
+# custom.val_loop_iterations array, or (b) explicit CLI flags (fallback path
+# when instrumentation is unavailable).
 #
-# Bounds (per .gaia/artifacts/planning-artifacts/prd.md §NFR-VCP-2):
+# Bounds (per .gaia/artifacts/planning-artifacts/prd.md):
 #   per_iteration_ratio = iteration_1_tokens / baseline_tokens     ≤ 2.0
 #   total_loop_ratio    = loop_total_tokens / baseline_tokens      ≤ 6.0
 #
@@ -22,7 +22,7 @@
 # When both --checkpoint and the explicit flags are supplied, the script
 # prefers the checkpoint values if a populated token_estimate field is found,
 # and silently falls back to the explicit flags otherwise (data_source line
-# in stdout records which path was taken — AC5).
+# in stdout records which path was taken).
 
 set -euo pipefail
 
@@ -32,7 +32,7 @@ Usage:
   measure-val-auto-fix-token-budget.sh --baseline <N> --iteration-1 <N> --loop-total <N>
   measure-val-auto-fix-token-budget.sh --baseline <N> --checkpoint <path>
 
-NFR-VCP-2 token-budget verification harness for the Val auto-fix loop.
+Token-budget verification harness for the Val auto-fix loop.
 
 Required:
   --baseline <N>       Single-pass Val token cost on the representative artifact.
@@ -42,7 +42,7 @@ Either:
   --loop-total <N>     Tokens consumed across all 3 iterations of the loop.
 
 Or:
-  --checkpoint <path>  Path to an E44-S8 checkpoint JSON; the harness reads
+  --checkpoint <path>  Path to a checkpoint JSON; the harness reads
                        custom.val_loop_iterations[*].token_estimate when
                        populated. Falls back to --iteration-1/--loop-total
                        if the field is absent.
@@ -50,7 +50,7 @@ Or:
 Other:
   --help               Show this message and exit 0.
 
-Bounds (per docs/planning-artifacts/prd.md §NFR-VCP-2):
+Bounds (per docs/planning-artifacts/prd.md):
   per_iteration_ratio  ≤ 2.0
   total_loop_ratio     ≤ 6.0
 USAGE
@@ -148,7 +148,7 @@ main() {
   fi
 
   # When the checkpoint path did not yield values, the explicit CLI flags must
-  # be present — this is the AC-EC8 / AC5 fallback recorded in the methodology.
+  # be present — this is the fallback path recorded in the methodology.
   if [ -z "$iteration_1" ] || [ -z "$loop_total" ]; then
     _die "missing iteration values — supply --iteration-1 and --loop-total or a --checkpoint with populated token_estimate fields."
   fi
@@ -177,7 +177,7 @@ main() {
   measurement_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   # Emit machine-readable verdict.
-  printf 'NFR-VCP-2 Val Auto-Fix Loop Token Budget — Measurement Report\n'
+  printf 'Val Auto-Fix Loop Token Budget — Measurement Report\n'
   printf 'data_source: %s %s\n' "$data_source" "$source_note"
   printf 'baseline_tokens: %s\n' "$baseline"
   printf 'iteration_1_tokens: %s\n' "$iteration_1"

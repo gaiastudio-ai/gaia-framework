@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# adapters/plugin-frontmatter-validator/run.sh — FR-409 + ADR-078 contract entry.
+# adapters/plugin-frontmatter-validator/run.sh — plugin frontmatter validator entry.
 #
 # Validates Claude Code plugin SKILL.md frontmatter against:
 #   1. The `frontmatter_requirements.required_fields` list defined in the
-#      claude-code-plugin stack file (E77-S2). Each missing required field
-#      becomes one finding.
+#      claude-code-plugin stack file. Each missing required field becomes one
+#      finding.
 #   2. The `name == basename` byte-exact rule (LC_ALL=C). When the frontmatter
 #      `name:` value differs from the parent directory basename, emit a single
 #      finding naming both values.
 #
-# Honours the ADR-078 run.sh flag-form interface:
+# Honours the run.sh flag-form interface:
 #
 #   run.sh --input <file-list> [--config <stack.yaml>] [--output <path>]
 #          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -22,14 +22,13 @@
 # Exit code:
 #   0  - run completed (regardless of findings); matches semgrep/gitleaks pattern
 #   1  - adapter execution error (bad input, malformed frontmatter that we cannot
-#        parse, jq missing). Per ADR-078 §3 a non-zero exit is "the adapter
-#        itself failed to complete," which is mapped to ran_and_errored.
+#        parse, jq missing). A non-zero exit means "the adapter itself failed to
+#        complete," which is mapped to ran_and_errored.
 #
-# IMPORTANT: An adapter with blocking findings still exits 0 per ADR-078 §3 —
-# the verdict resolver derives `failed` from `findings[].blocking`. To keep
-# AC4 / AC5 / AC6 acceptance language ("exits non-zero on findings") intact,
-# this adapter exits non-zero (2) when findings are present. Refactor candidate
-# noted in Findings if the broader pipeline expects exit 0 with status:failed.
+# IMPORTANT: An adapter with blocking findings still exits 0 — the verdict
+# resolver derives `failed` from `findings[].blocking`. This adapter exits
+# non-zero (2) when findings are present. Refactor candidate noted in Findings
+# if the broader pipeline expects exit 0 with status:failed.
 
 set -euo pipefail
 LC_ALL=C
@@ -54,7 +53,7 @@ while [ "$#" -gt 0 ]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-adapters/plugin-frontmatter-validator/run.sh — FR-409 + ADR-078 contract.
+adapters/plugin-frontmatter-validator/run.sh — plugin frontmatter validator.
 Usage:
   run.sh --input <file-list> [--config <stack.yaml>] [--output <path>]
          [--runtime-profile subprocess|container|network] [--timeout <seconds>]
@@ -72,8 +71,8 @@ command -v awk >/dev/null 2>&1 || { echo "run.sh: awk is required but not on PAT
 
 # --- Resolve required-fields list from the stack file ---------------------
 # When --config is supplied, use it. Otherwise fall back to the in-tree
-# claude-code-plugin stack file (E77-S2). When neither is reachable, fall
-# back to the canonical FR-404 list of [name, description, version].
+# claude-code-plugin stack file. When neither is reachable, fall back to
+# the canonical list of [name, description, version].
 
 DEFAULT_STACK="$SCRIPT_DIR/../../../config/stacks/claude-code-plugin.yaml"
 STACK_FILE=""
@@ -126,7 +125,7 @@ if [ -n "$STACK_FILE" ]; then
     [ -n "$f" ] && REQUIRED_FIELDS+=("$f")
   done < <(read_required_fields "$STACK_FILE")
 fi
-# Fallback to canonical FR-404 list when the stack file did not yield anything.
+# Fallback to canonical list when the stack file did not yield anything.
 if [ "${#REQUIRED_FIELDS[@]}" -eq 0 ]; then
   REQUIRED_FIELDS=(name description version)
 fi

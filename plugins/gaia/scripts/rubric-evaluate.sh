@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# rubric-evaluate.sh — Deterministic Track A sgr-velocity-003 evaluator.
-#
-# Story: E93-S6 — sgr-velocity-003 incidental-goal floor calibration.
-# ADRs:  ADR-108 (sprint-level state machine + sgr-velocity rules),
-#        ADR-079 / ADR-088 (rubric loading; this helper consumes the loaded
-#        rubric's sgr-velocity-003 + sgr-velocity-006 entries).
+# rubric-evaluate.sh — Deterministic sgr-velocity-003 evaluator.
 #
 # Pipeline:
 #   1) Parse sprint-status.yaml for goals[], stories[], total_points,

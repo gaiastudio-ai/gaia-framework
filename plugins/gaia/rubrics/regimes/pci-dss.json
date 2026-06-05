@@ -3,11 +3,9 @@
   "skill": "security",
   "name": "pci-dss",
   "applies_to_skills": ["review-code", "review-security"],
-  "description": "PCI-DSS v4.0 rules for code paths handling cardholder data (PAN, CVV, expiry, magnetic-stripe). Layer 2 of the four-layer rubric composition (base + regimes + domain + project) per ADR-079.",
+  "description": "PCI-DSS v4.0 rules for code paths handling cardholder data (PAN, CVV, expiry, magnetic-stripe). Layer 2 of the four-layer rubric composition (base + regimes + domain + project).",
   "metadata": {
     "title": "PCI-DSS regime rubric",
-    "story": "E68-S4",
-    "adr": "ADR-079",
     "regime_id": "pci-dss",
     "references": ["PCI-DSS-3.4", "PCI-DSS-3.2", "PCI-DSS-4.1", "PCI-DSS-7.1", "PCI-DSS-10.2", "PCI-DSS-6.3"]
   },

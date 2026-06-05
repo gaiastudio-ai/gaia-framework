@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# dispatch-agent-turn.sh — gaia-meeting subagent-dispatch wrapper (E76-S10).
+# dispatch-agent-turn.sh — gaia-meeting subagent-dispatch wrapper.
 #
 # Single source of truth for producing RESEARCH preludes and DISCUSS turns via
-# `Agent`-tool subagent dispatch (per ADR-045 `context: fork` + ADR-063 dispatch
-# contract). The wrapper is the SOLE emitter of preludes and DISCUSS turns —
-# inline LLM role-play under an agent's persona is forbidden by SKILL.md
-# §Phase 3 / §Phase 4 "Dispatch contract" subsections.
+# `Agent`-tool subagent dispatch. The wrapper is the SOLE emitter of preludes
+# and DISCUSS turns — inline LLM role-play under an agent's persona is
+# forbidden by SKILL.md §Phase 3 / §Phase 4 "Dispatch contract" subsections.
 #
 # Responsibilities:
 #   1. Argument parsing (--agent / --phase / --charter-ref / --session-id and
@@ -13,17 +12,17 @@
 #      / --running-total).
 #   2. Allowlist routing — RESEARCH delegates to `research-phase-dispatch.sh
 #      --print-allowlist [--no-web]`; DISCUSS routes the read-only minimum
-#      `Read,Grep,Glob,Bash` per ADR-063, exposed via `--print-discuss-allowlist`.
+#      `Read,Grep,Glob,Bash`, exposed via `--print-discuss-allowlist`.
 #   3. Subagent spawn — invokes the named agent via the `Agent` tool with the
 #      resolved allowlist, the charter content from --charter-ref, and the
 #      session id. The actual harness invocation is delegated to a stub
 #      resolved via the GAIA_DISPATCH_AGENT_STUB env var (test seam) so unit
 #      tests can drive the wrapper without spawning real subagents.
-#   4. ADR-037 return-schema parsing — `{ status, summary, artifacts, findings,
+#   4. Return-schema parsing — `{ status, summary, artifacts, findings,
 #      next, body }`. Malformed return -> non-zero exit + raw passthrough.
 #   5. Per-turn header rendering with `--dispatched-via subagent` via
 #      `turn-header.sh`.
-#   6. Findings routing per AC6:
+#   6. Findings routing:
 #        INFO     -> session-state.sh update agent_dispatch_findings (append)
 #        WARNING  -> stderr canonical line BEFORE turn body lands
 #        CRITICAL -> stderr canonical line BEFORE turn body lands
@@ -39,7 +38,7 @@
 #
 # Exit codes:
 #   0 = dispatched turn rendered to stdout
-#   2 = malformed args / invalid value / missing charter / malformed ADR-037 return
+#   2 = malformed args / invalid value / missing charter / malformed return schema
 #   3 = internal error
 
 set -euo pipefail
@@ -54,11 +53,11 @@ DISCUSS_ALLOWLIST="Read,Grep,Glob,Bash"
 
 usage() {
   cat <<'EOF' >&2
-dispatch-agent-turn.sh — gaia-meeting subagent-dispatch wrapper (E76-S10)
+dispatch-agent-turn.sh — gaia-meeting subagent-dispatch wrapper
 
 Modes:
   --print-discuss-allowlist    Print the canonical DISCUSS-phase allowlist
-                               (Read,Grep,Glob,Bash) per ADR-063.
+                               (Read,Grep,Glob,Bash).
 
 Dispatch:
   --agent <id>                 Agent identifier (required).
@@ -177,11 +176,11 @@ fi
 # Spawn the subagent. The actual Agent-tool invocation is harness-mediated;
 # we use a shell-stub seam (GAIA_DISPATCH_AGENT_STUB) so unit tests can drive
 # the wrapper without launching real subagents. The stub receives the same
-# parameters that would be passed to the Agent tool and emits an ADR-037 JSON
-# payload on stdout.
+# parameters that would be passed to the Agent tool and emits a return-schema
+# JSON payload on stdout.
 if [[ -z "${GAIA_DISPATCH_AGENT_STUB:-}" ]]; then
   echo "dispatch-agent-turn.sh: no GAIA_DISPATCH_AGENT_STUB set — production Agent-tool dispatch not yet wired" >&2
-  echo "dispatch-agent-turn.sh: see .gaia/artifacts/planning-artifacts/architecture (ADR-045, ADR-063) for the harness contract" >&2
+  echo "dispatch-agent-turn.sh: see .gaia/artifacts/planning-artifacts/architecture for the harness contract" >&2
   exit 3
 fi
 
@@ -194,28 +193,26 @@ if ! RAW_RETURN="$("$GAIA_DISPATCH_AGENT_STUB" \
   exit 2
 fi
 
-# Minimal ADR-037 schema parse — recognise the JSON payload by the presence of
+# Minimal return-schema parse — recognise the JSON payload by the presence of
 # the canonical top-level keys. Findings + body extraction is shell-grep based
 # (no jq dependency) since the contract is line-based and the payloads are
 # emitted by helpers that respect this format.
 if ! printf '%s' "$RAW_RETURN" | grep -qE '"status"[[:space:]]*:'; then
-  echo "dispatch-agent-turn.sh: subagent return is not valid ADR-037 schema (missing 'status'); raw passthrough below:" >&2
+  echo "dispatch-agent-turn.sh: subagent return is not valid return schema (missing 'status'); raw passthrough below:" >&2
   printf '%s\n' "$RAW_RETURN" >&2
   echo "$RAW_RETURN"
   exit 2
 fi
 
-# ---------- E90-S2: post-dispatch envelope assertion (FR-MVB-2, ADR-104) ----------
+# ---------- post-dispatch envelope assertion ----------
 # Verify the returned envelope carries an authentic agent persona signature.
-# Closes the "no post-dispatch envelope authentication" defect class
-# documented in Val W3 on AF-2026-05-14-8. Reuses write-val-envelope.sh
-# (E87-S2 contract is agent-agnostic — persona_sig is the anchor) and
-# assert-agent-envelope.sh (generalized by E90-S1 with --expected-agent).
+# Reuses write-val-envelope.sh (contract is agent-agnostic — persona_sig is
+# the anchor) and assert-agent-envelope.sh (generalized with --expected-agent).
 #
 # The assertion is GATED by GAIA_DISPATCH_ENVELOPE_ASSERT_OPT_IN to
-# preserve backward-compat during the rollout: existing call sites that
-# don't yet supply a `persona_sig` envelope continue to work. Production
-# call sites set the env var; the assertion fires only then.
+# preserve backward-compatibility during the rollout: existing call sites
+# that don't yet supply a `persona_sig` envelope continue to work.
+# Production call sites set the env var; the assertion fires only then.
 if [[ -n "${GAIA_DISPATCH_ENVELOPE_ASSERT_OPT_IN:-}" ]]; then
   envelope_agent="$(printf '%s' "$RAW_RETURN" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("agent",""))' 2>/dev/null || true)"
   if [[ -z "$envelope_agent" ]]; then
@@ -229,8 +226,8 @@ if [[ -n "${GAIA_DISPATCH_ENVELOPE_ASSERT_OPT_IN:-}" ]]; then
   # Sentinel path derived from artifact_path (per-turn header value).
   artifact_path_for_sentinel="${ARTIFACT_PATH:-${TURN_ID:-${SESSION_ID:-default}}}"
   sentinel_hash="$(printf '%s' "$artifact_path_for_sentinel" | shasum -a 256 | cut -c1-16)"
-  # AF-2026-05-27-3 (ADR-111): .gaia/memory/checkpoints only; legacy fallback
-  # removed. Env CHECKPOINT_PATH override wins.
+  # .gaia/memory/checkpoints only; legacy fallback removed.
+  # Env CHECKPOINT_PATH override wins.
   if [ -n "${CHECKPOINT_PATH:-}" ]; then
     CHECKPOINT_DIR_FOR_ENV="$CHECKPOINT_PATH"
   else
@@ -239,8 +236,8 @@ if [[ -n "${GAIA_DISPATCH_ENVELOPE_ASSERT_OPT_IN:-}" ]]; then
   sentinel_path="${CHECKPOINT_DIR_FOR_ENV}/val-envelope-${sentinel_hash}.json"
   mkdir -p "$(dirname "$sentinel_path")" 2>/dev/null || true
 
-  # Orchestrator-side write (ADR-105). write-val-envelope.sh writes a
-  # sentinel from the inline envelope JSON.
+  # Orchestrator-side write. write-val-envelope.sh writes a sentinel from
+  # the inline envelope JSON.
   WRITER="$(cd "$(dirname "$0")/../../../scripts/lib" 2>/dev/null && pwd)/write-val-envelope.sh"
   if [[ -x "$WRITER" ]]; then
     # Pass the envelope JSON via --envelope-stdin and the path via
@@ -249,7 +246,7 @@ if [[ -n "${GAIA_DISPATCH_ENVELOPE_ASSERT_OPT_IN:-}" ]]; then
     printf '%s' "$RAW_RETURN" | bash "$WRITER" --envelope-stdin --sentinel-path "$sentinel_path" 2>/dev/null || true
   fi
 
-  # Source the generalized asserter (E90-S1).
+  # Source the generalized asserter.
   ASSERTER="$(cd "$(dirname "$0")/../../../scripts/lib" 2>/dev/null && pwd)/assert-agent-envelope.sh"
   if [[ -f "$ASSERTER" ]]; then
     # shellcheck source=/dev/null
@@ -262,7 +259,7 @@ if [[ -n "${GAIA_DISPATCH_ENVELOPE_ASSERT_OPT_IN:-}" ]]; then
     fi
   fi
 fi
-# ---------- end E90-S2 envelope assertion ----------
+# ---------- end envelope assertion ----------
 
 # Extract body and findings via a single python pass. We feed RAW_RETURN to
 # python3 on stdin and pass the parser script via -c to avoid the pipe-vs-heredoc
@@ -299,7 +296,7 @@ fi
 BODY="$(cat "$PARSED_FILE")"
 
 # Render the per-turn header first via turn-header.sh — this is the single
-# source-of-truth for header schema (E76-S10 / AC3 wiring).
+# source-of-truth for header schema.
 PHASE_UPPER="$(printf '%s' "$PHASE" | tr '[:lower:]' '[:upper:]')"
 HEADER_ARGS=(
   --round "$ROUND" --turn "$TURN"
@@ -312,7 +309,7 @@ if [[ -n "$TURN_ID" ]]; then
 fi
 
 # WARNING / CRITICAL findings MUST surface on stderr BEFORE the turn body lands
-# on stdout (per AC6). Emit them now, before the header line is printed.
+# on stdout. Emit them now, before the header line is printed.
 while IFS=$'\t' read -r sev turn_id summary; do
   [[ -z "$sev" ]] && continue
   case "$sev" in

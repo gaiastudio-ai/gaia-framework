@@ -9,7 +9,7 @@ used_by: ['greenfield-ux']
 > **Project:** {project_name}
 > **Date:** {date}
 > **Author:** {agent_name}
-> **Mode:** Greenfield — designed from the PRD
+> **Mode:** Greenfield — designed from the product requirements
 
 ## 1. UX Overview
 
@@ -34,7 +34,7 @@ how major areas relate. A simple tree or list is fine.}
 ## 4. User Flows
 
 > Document BOTH the happy path and at least one error/edge path per flow
-> (empty / loading / error / no-data / offline). Mirrors the PRD §6 journeys.
+> (empty / loading / error / no-data / offline). Mirrors the product journeys.
 
 | Flow | Path | Entry | Steps | Outcome |
 |------|------|-------|-------|---------|

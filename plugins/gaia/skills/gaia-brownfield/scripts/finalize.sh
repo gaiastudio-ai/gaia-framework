@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — Cluster 14 gaia-brownfield skill finalize (E28-S105)
+# finalize.sh — gaia-brownfield skill finalize
 #
-# Mechanical copy of the Cluster 9 / Cluster 12 reference implementation
-# (gaia-code-review/scripts/finalize.sh, gaia-nfr/scripts/finalize.sh). Only
-# WORKFLOW_NAME and SCRIPT_NAME differ — the body follows the shared pattern.
+# Follows the shared finalize pattern used by other skills.
 #
 # Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script

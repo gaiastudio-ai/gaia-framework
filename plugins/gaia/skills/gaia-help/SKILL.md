@@ -1,6 +1,6 @@
 ---
 name: gaia-help
-description: Context-sensitive help with project-state-aware routing (greenfield / brownfield / post-update / healthy). Analyzes the user's query and current project state (which docs/ artifacts exist + ADR-102 stale-flag markers) to suggest the most relevant GAIA slash command. Primary intent-to-command map is ${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv; every suggestion is cross-checked against ${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv so the skill never invents command names. Use when "help" or /gaia-help, when the framework detects configuration drift (`.framework-version-stale` or `.config-stale` markers present), or when the user asks "what should I do" / "project state".
+description: Context-sensitive help with project-state-aware routing (greenfield / brownfield / post-update / healthy). Analyzes the user's query and current project state (which docs/ artifacts exist + stale-flag markers) to suggest the most relevant GAIA slash command. Primary intent-to-command map is ${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv; every suggestion is cross-checked against ${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv so the skill never invents command names. Use when "help" or /gaia-help, when the framework detects configuration drift (`.framework-version-stale` or `.config-stale` markers present), or when the user asks "what should I do" / "project state".
 argument-hint: "[optional — free-text description of what you want to do]"
 allowed-tools: [Read, Grep, Glob]
 orchestration_class: light-procedural
@@ -10,14 +10,14 @@ orchestration_class: light-procedural
 
 You are the **GAIA help system**. Your job is to route the user to the most relevant slash command given their query and the current project state. You do that by (1) loading the intent-to-command map, (2) detecting which lifecycle phase the project is in by inspecting the `docs/` artifact tree, (3) suggesting the top three to five candidate commands with one-line rationales, and (4) offering to activate the selected workflow.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/help.md` task (45 lines). Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired. Because the engine no longer mediates suggestions, this skill is the last line of defense against hallucinated commands — it MUST cross-check every suggestion against `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv`.
+This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/help.md` task (45 lines). The legacy task-runner engine is retired. Because the engine no longer mediates suggestions, this skill is the last line of defense against hallucinated commands — it MUST cross-check every suggestion against `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv`.
 
 ## Critical Rules
 
 - **Only suggest commands that exist in `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv` — never invent command names.** This mandate originates in `_gaia/core/engine/workflow.xml` (engine Step 7: Completion — "Only suggest commands that exist in workflow-manifest.csv — never invent command names") and is propagated into this skill because the native model removes the engine layer. Every suggested command MUST appear in `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv` at runtime. If a candidate from `${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv` is not in the manifest, drop it from the suggestion list.
 - **Load `${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv` as the primary intent-to-command map.** That file encodes which slash command handles which user intent (e.g., "I want to start a new project" → `/gaia-brainstorm-project`). It is authored by the team and must not be hard-coded into this skill.
-- **Detect lifecycle phase from canonical `.gaia/artifacts/` first, then legacy `docs/` fallback** — inspect `.gaia/artifacts/planning-artifacts/`, `.gaia/artifacts/implementation-artifacts/`, `.gaia/artifacts/test-artifacts/`, and `.gaia/artifacts/creative-artifacts/` with the Glob tool (per ADR-111). If none are present, fall back to the legacy `docs/planning-artifacts/`, `docs/implementation-artifacts/`, `docs/test-artifacts/`, and `docs/creative-artifacts/` locations for pre-migration installs. Determine which Phase the project is in (see Phase Guide below).
-- **If `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv` is missing** (AC-EC2): refuse to suggest any command and fall back to `/gaia` with a clear warning. Do NOT invent. This is the non-negotiable no-hallucination rule. The behavior contract for this fallback mirrors the shared bash helper at `plugins/gaia/scripts/lib/missing-file-fallback.sh` (E28-S162) — emit a clear notice and degrade gracefully to a safe no-op rather than erroring. Bash consumers of the same pattern source the helper directly; this skill, being LLM prose, implements the same contract in Step 1 of the instructions below.
+- **Detect lifecycle phase from canonical `.gaia/artifacts/` first, then legacy `docs/` fallback** — inspect `.gaia/artifacts/planning-artifacts/`, `.gaia/artifacts/implementation-artifacts/`, `.gaia/artifacts/test-artifacts/`, and `.gaia/artifacts/creative-artifacts/` with the Glob tool. If none are present, fall back to the legacy `docs/planning-artifacts/`, `docs/implementation-artifacts/`, `docs/test-artifacts/`, and `docs/creative-artifacts/` locations for pre-migration installs. Determine which Phase the project is in (see Phase Guide below).
+- **If `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv` is missing** (AC-EC2): refuse to suggest any command and fall back to `/gaia` with a clear warning. Do NOT invent. This is the non-negotiable no-hallucination rule. The behavior contract for this fallback mirrors the shared bash helper at `plugins/gaia/scripts/lib/missing-file-fallback.sh` — emit a clear notice and degrade gracefully to a safe no-op rather than erroring. Bash consumers of the same pattern source the helper directly; this skill, being LLM prose, implements the same contract in Step 1 of the instructions below.
 - Do NOT emit write operations. This skill is read-only and produces text suggestions only.
 
 ## Inputs
@@ -30,7 +30,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/
 
 - Use the Read tool to load `${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv`. This is the primary intent-to-command map authored by the team.
 - Use the Read tool to load `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv`. This is the authority for which commands exist.
-- If `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv` is missing or unreadable, emit the warning `workflow-manifest.csv missing — cannot validate command suggestions, falling back to /gaia` and exit with only `/gaia` as the suggestion. Do NOT hallucinate commands. This follows the same graceful-missing-file contract as `plugins/gaia/scripts/lib/missing-file-fallback.sh` (E28-S162): print a clear notice, degrade to a safe no-op, never error unless a strict-mode opt-in is set (not applicable for this skill).
+- If `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv` is missing or unreadable, emit the warning `workflow-manifest.csv missing — cannot validate command suggestions, falling back to /gaia` and exit with only `/gaia` as the suggestion. Do NOT hallucinate commands. This follows the same graceful-missing-file contract as `plugins/gaia/scripts/lib/missing-file-fallback.sh`: print a clear notice, degrade to a safe no-op, never error unless a strict-mode opt-in is set (not applicable for this skill).
 
 ### Step 2 — Parse the User Query
 
@@ -40,7 +40,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/
 
 ### Step 3a — Project State Detection
 
-> **E86-S4 / FR-471 / ADR-103 — 4-state enum for project-state-aware help.**
+> **4-state enum for project-state-aware help.**
 > Run this BEFORE Step 3 (lifecycle-phase ranking) and BEFORE returning any
 > suggestion. The result is written to the `$PROJECT_STATE` context variable
 > read by Step 3 and Step 5.
@@ -51,7 +51,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/
 greenfield > brownfield > post-update > healthy
 ```
 
-**Bounded I/O contract (ADR-103 §Implementation Contract):** at most 4 stat
+**Bounded I/O contract:** at most 4 stat
 + 1 readdir, zero file reads. Existence and emptiness checks only — never
 `cat`, `head`, `tail`, `grep -r`, or `find` recursion on project files. The
 detection runs once per `/gaia-help` invocation.
@@ -101,7 +101,7 @@ fi
 # else: healthy (default)
 ```
 
-**Privacy contract (SR-58 / T-FVD-7):** when the detected state is
+**Privacy contract:** when the detected state is
 `brownfield`, the user-visible suggestion text MUST NOT name which
 build-system file triggered detection. The detection logic internally
 knows which file matched (for telemetry/debug), but the suggestion stays
@@ -114,7 +114,7 @@ generic — see "Suggestion text by state" below.
   existing help-csv heuristics.
 - **brownfield:** Prepend "Existing project detected. Run
   `/gaia-brownfield` to onboard." to the output. Promote `/gaia-brownfield`
-  to position #1. SR-58 forbids naming the triggering build-file.
+  to position #1. The privacy contract forbids naming the triggering build-file.
 - **post-update:** Prepend "Framework update detected. Run `/gaia-migrate`
   to reconcile your config, or `/gaia-help --verbose` for details." to the
   output. Promote `/gaia-migrate` to position #1.
@@ -123,7 +123,7 @@ generic — see "Suggestion text by state" below.
 
 ### Step 3 — Detect Lifecycle Phase
 
-> **E86-S4 / AC8 — `$PROJECT_STATE` integration.** Read `$PROJECT_STATE`
+> **`$PROJECT_STATE` integration.** Read `$PROJECT_STATE`
 > from Step 3a. Apply priority promotion per the rules in Step 3a's
 > "Suggestion text by state" — `greenfield` promotes `/gaia-init` to #1;
 > `brownfield` promotes `/gaia-brownfield` to #1; `post-update` promotes
@@ -131,7 +131,7 @@ generic — see "Suggestion text by state" below.
 > below unchanged. State-aware promotion happens BEFORE the lifecycle-
 > phase ranking executes.
 
-Inspect the artifact tree with Glob to determine the current phase (canonical `.gaia/artifacts/` first, legacy `docs/` fallback for pre-ADR-111 projects):
+Inspect the artifact tree with Glob to determine the current phase (canonical `.gaia/artifacts/` first, legacy `docs/` fallback for pre-migration projects):
 
 - No artifacts in any of the four artifact subdirectories → **Phase 1 (Analysis)**.
 - PRD present in `.gaia/artifacts/planning-artifacts/` (or legacy `docs/planning-artifacts/`) but no architecture → **Phase 2/3 (Planning / Solutioning)**.
@@ -139,18 +139,18 @@ Inspect the artifact tree with Glob to determine the current phase (canonical `.
 - Sprint plan / stories present in `.gaia/artifacts/implementation-artifacts/` (or legacy `docs/implementation-artifacts/`) → **Phase 4 (Implementation)** — suggest specific story or review workflows.
 - Test plans in `.gaia/artifacts/test-artifacts/` (or legacy `docs/test-artifacts/`) and release material → **Phase 5 (Deployment)**.
 
-#### Phase 5 config-shape routing (E99-S5 / FR-524 / ADR-112 §(f))
+#### Phase 5 config-shape routing
 
-When the heuristics route the user into Phase 5, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-shape-detect.sh` and call `gaia_config_shape_detect <project-config.yaml>`. The detector reads `environments[*].kind` (with the E99-S1 read-time default to `deployable`) and the presence/absence of the top-level `distribution:` section, emitting exactly one of four tokens. Apply the suggestion table:
+When the heuristics route the user into Phase 5, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-shape-detect.sh` and call `gaia_config_shape_detect <project-config.yaml>`. The detector reads `environments[*].kind` (with the read-time default to `deployable`) and the presence/absence of the top-level `distribution:` section, emitting exactly one of four tokens. Apply the suggestion table:
 
 | Detector token | Phase 5 primary suggestion | Notes |
 |---|---|---|
-| `deploy-only` | `/gaia-deploy` | All envs `deployable`, no `distribution:` — historical baseline (NFR-080 byte-identical). Do NOT suggest `/gaia-publish`. |
-| `publish-primary` | `/gaia-publish` | No env is `deployable` (all `branch-only` / `distribution-only`) — publish-via-channel is the canonical release path. Do NOT suggest `/gaia-deploy` (it would HALT per E99-S1's TC-EKD-2 gate). |
+| `deploy-only` | `/gaia-deploy` | All envs `deployable`, no `distribution:` — historical baseline (byte-identical). Do NOT suggest `/gaia-publish`. |
+| `publish-primary` | `/gaia-publish` | No env is `deployable` (all `branch-only` / `distribution-only`) — publish-via-channel is the canonical release path. Do NOT suggest `/gaia-deploy` (it would HALT at the deploy gate). |
 | `deploy-and-publish` | BOTH `/gaia-deploy` AND `/gaia-publish` | Mixed shape — at least one `deployable` env + `distribution:` present. The body MUST distinguish which envs are reachable via which command. |
 | `unknown` | Fall back to the gaia-help.csv lookup unchanged. | environments[] absent — caller decides. |
 
-The routing is config-shape-driven (NOT intent-keyword-driven); `gaia-help.csv` intent map remains the canonical lookup for non-Phase-5 intents. State-detection (ADR-103) is orthogonal — Phase 5 routing runs after the state-aware pre-filter completes.
+The routing is config-shape-driven (NOT intent-keyword-driven); `gaia-help.csv` intent map remains the canonical lookup for non-Phase-5 intents. State-detection is orthogonal — Phase 5 routing runs after the state-aware pre-filter completes.
 
 Use these heuristics to rank which `${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv` matches are most relevant given where the project is.
 
@@ -177,7 +177,7 @@ Suggested next command(s):
 2. …
 ```
 
-> **E86-S5 / AC8 / SR-56 — verbose-mode visibility for the drift-check
+> **Verbose-mode visibility for the drift-check
 > bypass.** When `/gaia-help` is invoked with `--verbose` (`$ARGUMENTS`
 > contains the `--verbose` flag) AND the environment variable
 > `GAIA_SKIP_VERSION_CHECK=1` is set, append the following passive note
@@ -189,7 +189,7 @@ Suggested next command(s):
 > ```
 >
 > The note informs the user that the drift detection hook in
-> `resolve-config.sh` is short-circuited (see E86-S5). It does NOT
+> `resolve-config.sh` is short-circuited. It does NOT
 > recommend any action; suppressing the check is an intentional opt-out
 > for batch/test contexts. Do NOT emit the note when `--verbose` is
 > absent (the env var alone is not a trigger) or when
@@ -227,13 +227,8 @@ Every one of the above MUST survive the Step 4 manifest cross-check before being
 
 ## References
 
-- Source: `_gaia/core/tasks/help.md` (legacy 45-line task body — ported per ADR-041 + ADR-042).
+- Source: `_gaia/core/tasks/help.md` (legacy 45-line task body — ported).
 - `${CLAUDE_PLUGIN_ROOT}/knowledge/gaia-help.csv` — primary intent-to-command map (loaded at runtime; ships inside the plugin).
 - `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv` — authority for valid command names (cross-checked at runtime; ships inside the plugin).
 - `_gaia/core/engine/workflow.xml` — origin of the "never invent command names" mandate propagated into this skill's Critical Rules.
-- ADR-041: Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042: Scripts-over-LLM for Deterministic Operations.
-- ADR-048: Engine Deletion as Program-Closing Action — legacy task coexists with this skill until program close.
-- FR-323: Skill Conversion — slash-command identity preserved.
-- NFR-053: Full v1.127.2-rc.1 Feature Parity.
-- `plugins/gaia/scripts/lib/missing-file-fallback.sh` (E28-S162): shared bash helper whose missing-file contract this skill mirrors in prose.
+- `plugins/gaia/scripts/lib/missing-file-fallback.sh` — shared bash helper whose missing-file contract this skill mirrors in prose.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# audit-skill-config-reads.sh — E28-S144 audit helper
+# audit-skill-config-reads.sh — audit helper
 #
 # Scans SKILL.md files for direct references to `global.yaml` or
 # `project-config.yaml`. Emits one line per match in the form:

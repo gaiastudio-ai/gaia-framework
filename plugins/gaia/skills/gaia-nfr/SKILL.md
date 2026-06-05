@@ -18,7 +18,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -26,11 +26,11 @@ fi
 
 ## Mission
 
-You are producing an NFR assessment report covering performance, scalability, reliability, and security requirements. Each dimension is rated with risk levels (high, medium, low) with justification. The output is written to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{YYYY-MM-DD}.md` (E105-S3 / ADR-127 Pillar 3 — periodically-reassessed plans carry a date suffix + group under a named subdir; legacy undated `nfr-assessment.md` remains read-only fallback).
+You are producing an NFR assessment report covering performance, scalability, reliability, and security requirements. Each dimension is rated with risk levels (high, medium, low) with justification. The output is written to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{YYYY-MM-DD}.md` (periodically-reassessed plans carry a date suffix + group under a named subdir; legacy undated `nfr-assessment.md` remains read-only fallback).
 
-This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/nfr-assessment` workflow (E28-S88, Cluster 12, ADR-041). The step ordering, prompts, and output path are preserved from the legacy instructions.xml.
+This skill is the native Claude Code conversion of the legacy `_gaia/testing/workflows/nfr-assessment` workflow. The step ordering, prompts, and output path are preserved from the legacy instructions.xml.
 
-**Main context semantics (ADR-041):** This skill runs under `context: main` with full tool access. It reads project state (architecture, PRD, story) and produces an output document.
+**Main context semantics:** This skill runs under `context: main` with full tool access. It reads project state (architecture, PRD, story) and produces an output document.
 
 ## Critical Rules
 
@@ -39,7 +39,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Assess all dimensions: performance, security, reliability, and scalability.
 - Per-dimension justification is a **hard output requirement**: every risk rating MUST be accompanied by a justification that explicitly explains **why** the chosen risk level (high, medium, or low) was selected. Justification is a required output, not an optional nudge -- a rating without a "why high/medium/low" justification is incomplete and MUST be rewritten.
 - Migration-assessment activation trigger (Step 6): activate the migration assessment step when **(a)** the PRD contains "Mode: Brownfield" OR **(b)** `.gaia/artifacts/planning-artifacts/brownfield-assessment.md` exists. If neither indicator is present, skip Step 6 entirely.
-- Output MUST be written to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{YYYY-MM-DD}.md` (E105-S3 / ADR-127 Pillar 3 — periodically-reassessed plans carry a date suffix + group under a named subdir; legacy undated `nfr-assessment.md` remains read-only fallback).
+- Output MUST be written to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{YYYY-MM-DD}.md` (periodically-reassessed plans carry a date suffix + group under a named subdir; legacy undated `nfr-assessment.md` remains read-only fallback).
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
 
 ## Steps
@@ -47,7 +47,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 ### Step 1 -- Load NFRs
 
 - Load knowledge fragment: `knowledge/risk-governance.md` for risk-based assessment methodology
-- Read NFRs from PRD if available — resolve via the sharded-fallback rule (ADR-069 / FR-396..402): try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded; NFRs typically live under `prd/05-non-functional-requirements.md`).
+- Read NFRs from PRD if available — resolve via the sharded-fallback rule: try `.gaia/artifacts/planning-artifacts/prd.md` (flat layout); fall back to `.gaia/artifacts/planning-artifacts/prd/prd.md` (sharded; NFRs typically live under `prd/05-non-functional-requirements.md`).
 - Read NFRs from architecture document at `.gaia/artifacts/planning-artifacts/architecture.md` if available.
 - If neither document exists, proceed with generic NFR assessment based on common patterns.
 - Extract: response time targets, throughput requirements, availability SLAs, security requirements, data protection obligations.
@@ -109,7 +109,7 @@ Rate each migration risk dimension (high/medium/low). The justification for each
   - Migration assessment (if brownfield, otherwise omit) -- when present, the report MUST include both a **Dual-Write Latency** sub-section and a **Legacy API Parity** sub-section, each with its own risk rating and justification
   - Consolidated risk matrix: dimension, risk level, probability, impact
 - Every dimension and migration sub-dimension in the report MUST carry a justification explaining **why** the rating was chosen. A rating without a "why high/medium/low" justification is incomplete output.
-- Write output to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{YYYY-MM-DD}.md` (E105-S3 / ADR-127 Pillar 3 — periodically-reassessed plans carry a date suffix + group under a named subdir; legacy undated `nfr-assessment.md` remains read-only fallback).
+- Write output to `.gaia/artifacts/planning-artifacts/nfr-assessment/nfr-assessment-{YYYY-MM-DD}.md` (periodically-reassessed plans carry a date suffix + group under a named subdir; legacy undated `nfr-assessment.md` remains read-only fallback).
 
 ## Finalize
 
@@ -117,12 +117,8 @@ Rate each migration risk dimension (high/medium/low). The justification for each
 
 ## References
 
-- Schema: `gaia-public/plugins/gaia/schemas/nfr-assessment.schema.json` (JSON Schema draft-2020-12) — the structural contract for the `nfr-assessment` artifact this skill produces. Validated by `/gaia-val-validate` (artifact_type `nfr-assessment`) via the shared `scripts/lib/validate-artifact-schema.sh` helper (E108-S5).
+- Schema: `gaia-public/plugins/gaia/schemas/nfr-assessment.schema.json` (JSON Schema draft-2020-12) — the structural contract for the `nfr-assessment` artifact this skill produces. Validated by `/gaia-val-validate` (artifact_type `nfr-assessment`) via the shared `scripts/lib/validate-artifact-schema.sh` helper.
 - Corpus instance: `.gaia/artifacts/test-artifacts/strategy/nfr-assessment.md` — the on-disk exemplar the schema is grounded in (eight canonical H2 sections + YAML frontmatter).
-- Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum now carries `nfr-assessment` (E108-S1, enum 16→17).
-- Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` (E108-S5) — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).
+- Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum now carries `nfr-assessment` (enum 16→17).
+- Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).
 - Knowledge: `knowledge/risk-governance.md` — risk-based assessment methodology (Step 1).
-- FR-561 — nfr-assessment schema + `/gaia-nfr` References + enum extension (E108-S1).
-- NFR-93 — schema-validator parity across the artifact-type schemas.
-- ADR-129 — artifact-type schema registry completion.
-- Epic: `.gaia/artifacts/planning-artifacts/epics/96-e108-artifact-type-schema-registry-completion.md` (E108).

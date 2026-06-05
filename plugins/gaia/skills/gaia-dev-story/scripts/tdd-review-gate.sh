@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 # tdd-review-gate.sh — gaia-dev-story Steps 5/6/7 TDD review-gate decision
 #
-# Story:        E57-S2
-# Refs:         FR-TDR-2, NFR-TDR-1, AF-2026-04-28-6
-# ADRs:         ADR-067 (TDD Review Gate Default), ADR-057 (YOLO SST),
-#               ADR-073 (YOLO contract), ADR-044 (Config Split).
-#
 # Purpose
 # -------
 # Deterministic SKIP / PROMPT / QA_AUTO decision for the dev-story TDD
@@ -24,15 +19,15 @@
 #
 # Safe defaults
 # -------------
-# Per AC5 / TC-TDR-03 / NFR-TDR-1, a missing or unrecognized story
-# `risk_level` MUST default to `high`. The gate MUST fire (PROMPT or
-# QA_AUTO) — silent SKIP on missing metadata defeats the gate purpose.
-# A one-line stderr warning naming the missing field is emitted.
+# A missing or unrecognized story `risk_level` MUST default to `high`. The
+# gate MUST fire (PROMPT or QA_AUTO) — silent SKIP on missing metadata
+# defeats the gate purpose. A one-line stderr warning naming the missing
+# field is emitted.
 #
 # Path-traversal rejection
 # ------------------------
-# Per AC6, `story_key` MUST match ^E[0-9]+-S[0-9]+$ exactly. The regex
-# check runs BEFORE any path construction or filesystem access.
+# `story_key` MUST match ^E[0-9]+-S[0-9]+$ exactly. The regex check runs
+# BEFORE any path construction or filesystem access.
 #
 # Usage
 # -----
@@ -59,7 +54,7 @@ log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit "${2:-2}"; }
 
 # ---------------------------------------------------------------------------
-# Arg validation — runs BEFORE any read of config or story file (AC6).
+# Arg validation — runs BEFORE any read of config or story file.
 # ---------------------------------------------------------------------------
 
 if [ $# -lt 2 ]; then
@@ -69,9 +64,9 @@ fi
 STORY_KEY="$1"
 PHASE="$2"
 
-# AC6 — story_key shape guard. Reject path traversal, lowercase, empty,
-# anything that doesn't match the canonical key shape. The regex MUST run
-# before any filesystem access.
+# story_key shape guard. Reject path traversal, lowercase, empty, anything
+# that doesn't match the canonical key shape. The regex MUST run before any
+# filesystem access.
 if ! printf '%s' "$STORY_KEY" | grep -Eq '^E[0-9]+-S[0-9]+$'; then
   die "invalid story_key: '$STORY_KEY' (expected ^E[0-9]+-S[0-9]+\$)"
 fi
@@ -91,19 +86,16 @@ RESOLVE_CONFIG="$SHARED_SCRIPTS/resolve-config.sh"
 YOLO_MODE="$SHARED_SCRIPTS/yolo-mode.sh"
 
 # ---------------------------------------------------------------------------
-# Locate the story file via the shared resolve-story-file.sh helper
-# (E79-S7 / FR-476). Replaces the legacy private nullglob to keep all
-# dev-story scripts on a single canonical resolution path. — E55-S13 D3.
+# Locate the story file via the shared resolve-story-file.sh helper.
+# Replaces the legacy private nullglob to keep all dev-story scripts on a
+# single canonical resolution path.
 # ---------------------------------------------------------------------------
 
-# Path resolution — two-stage env-var precedence
-# (E91-S3 / FR-SRF-3 / AI-2026-05-13-17):
+# Path resolution — two-stage env-var precedence:
 #   Stage 1: CLAUDE_PROJECT_ROOT — non-git project-root workspace mode
 #            (per CLAUDE.md §"Non-git project-root workspace (supported mode)").
 #   Stage 2: PROJECT_PATH — legacy in-tree gaia-framework invocation override.
 #   Stage 3: $(pwd) fallback.
-# Sibling: AI-2026-05-13-12 walked up at the config-resolution layer
-# (resolve-config.sh); E91-S3 mirrors it at the story-state layer.
 PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-$(pwd)}}"
 RESOLVE_STORY_FILE="$SHARED_SCRIPTS/resolve-story-file.sh"
 if [ ! -x "$RESOLVE_STORY_FILE" ]; then
@@ -118,7 +110,7 @@ source "$RESOLVE_STORY_FILE"
 # every gate invocation with migration-nag output. The legacy-flat warning
 # is already surfaced by every other resolver caller (story-parse,
 # dod-check, finalize, etc.), so dropping it here loses no information.
-# AF-2026-05-21-27 canonical-first: pick .gaia/artifacts/ when present, else legacy.
+# Canonical-first: pick .gaia/artifacts/ when present, else legacy.
 if [ -d "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" ]; then
   _IMPL_DIR="$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts"
 else
@@ -129,7 +121,7 @@ STORY_FILE=$(IMPLEMENTATION_ARTIFACTS="$_IMPL_DIR" \
   || die "story file not found for key $STORY_KEY (resolve-story-file.sh non-zero)"
 
 # ---------------------------------------------------------------------------
-# Resolve story risk — prefer story-parse.sh (E57-S5); awk fallback if absent.
+# Resolve story risk — prefer story-parse.sh; awk fallback if absent.
 # ---------------------------------------------------------------------------
 #
 # story-parse.sh emits a 10-variable env-var dump. We only need RISK here.
@@ -178,7 +170,7 @@ risk_rank() {
 
 RISK_RANK="$(risk_rank "$RISK_RAW")"
 
-# AC5 — missing or unrecognized risk -> safe default: high. Emit a one-line
+# Missing or unrecognized risk -> safe default: high. Emit a one-line
 # stderr warning naming the missing field. The gate MUST still fire.
 if [ -z "$RISK_RAW" ] || [ -z "$RISK_RANK" ]; then
   log "warning: story $STORY_KEY missing or unrecognized 'risk' frontmatter (got: '${RISK_RAW:-}'); defaulting to 'high' (safe default)"
@@ -187,7 +179,7 @@ if [ -z "$RISK_RAW" ] || [ -z "$RISK_RANK" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Resolve config. Failures fall back to schema defaults from E57-S1.
+# Resolve config. Failures fall back to schema defaults.
 # ---------------------------------------------------------------------------
 
 resolve_field() {

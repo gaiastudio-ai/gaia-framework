@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # val-sidecar-write.sh — shared Val sidecar writer helper
-# Architecture §10.10 (FR-VSP-1, FR-VSP-2, NFR-VSP-1, NFR-VSP-2). Story E34-S1.
 #
 # Restores the V1 auto-persistence behavior for 5 Phase 4 commands:
 #   /gaia-create-story, /gaia-validate-story, /gaia-sprint-plan,
@@ -26,18 +25,16 @@
 #   [dedup_key=<hex>]                  (on written)
 #   [reason=<human-readable detail>]   (on skipped_duplicate / rejected)
 #
-# Allowlist (NFR-VSP-2) — exactly two paths, validator-sidecar only:
+# Allowlist — exactly two paths, validator-sidecar only:
 #   <root>/_memory/validator-sidecar/decision-log.md
 #   <root>/_memory/validator-sidecar/conversation-context.md
 #
-# Idempotency (FR-VSP-2):
+# Idempotency:
 #   decision_hash = SHA-256(canonical_payload)
 #   canonical_payload = json.dumps({verdict, findings sorted by id, artifact_path}, sort_keys=True)
 #   composite dedup_key = SHA-256(command_name\ninput_id\ndecision_hash)
 #   If <!-- dedup_key: {composite} --> already appears in decision-log.md, skip.
 #
-# Refs: ADR-016 (version-controlled agent memory format), ADR-042 (scripts-over-LLM),
-#       ADR-052 (retro writer — parallel pattern).
 
 set -uo pipefail
 
@@ -113,16 +110,15 @@ _init_backends() {
 _init_backends
 
 # ---------------------------------------------------------------------------
-# Helpers — exposed as public functions for unit tests (NFR-052)
+# Helpers — exposed as public functions for unit tests
 # ---------------------------------------------------------------------------
 
 # resolve_real — canonical absolute path using deepest-existing-ancestor
 # semantics. Matches the retro-sidecar-write.sh behavior so tests that rely
 # on /tmp → /private/tmp realpath drift stay consistent across the two
 # helpers. Fast path uses pure bash (`cd -P`) to avoid python3 spawn on
-# macOS — NFR-VSP-1 requires 50ms median; python3 startup alone costs
-# ~40ms, so the main pipeline is structured to spawn python3 at most once
-# (inside canonicalize_payload).
+# macOS — python3 startup alone costs ~40ms, so the main pipeline is
+# structured to spawn python3 at most once (inside canonicalize_payload).
 resolve_real() {
   local p="$1"
   # Make absolute so splits are predictable.
@@ -139,9 +135,9 @@ resolve_real() {
   done
   # Canonicalize the existing ancestor via `cd -P` (follows symlinks) if it
   # is a directory, or use its parent and re-attach the basename otherwise.
-  # If `cur` is itself a symlink (to a file or dir outside validator-sidecar
-  # — the TC-VSP-3c attack path), follow one step of the symlink chain so
-  # the allowlist check sees the final destination.
+  # If `cur` is itself a symlink (to a file or dir outside validator-sidecar),
+  # follow one step of the symlink chain so the allowlist check sees the
+  # final destination.
   local real_ancestor
   if [ -L "$cur" ]; then
     local lnk; lnk="$(readlink -- "$cur" 2>/dev/null || true)"
@@ -174,8 +170,8 @@ resolve_real() {
   fi
 }
 
-# allowlist_match — NFR-VSP-2: the helper writes to exactly two files and
-# no others. Paths are matched by suffix against the resolved real root.
+# allowlist_match — the helper writes to exactly two files and no others.
+# Paths are matched by suffix against the resolved real root.
 allowlist_match() {
   local real_root="$1" real_target="$2"
   case "$real_target" in
@@ -189,7 +185,7 @@ allowlist_match() {
 #
 # Performance: prefers openssl (native binary, ~12ms) over shasum (Perl
 # script, ~33ms on macOS) when available. Fallback keeps behavior identical
-# on systems without openssl. NFR-VSP-1 target: 50ms median.
+# on systems without openssl.
 sha256() {
   _init_backends
   if [ "$_VS_HASH_BACKEND" = "openssl" ]; then
@@ -200,22 +196,21 @@ sha256() {
 }
 
 # canonicalize_payload — produce a deterministic minified JSON form used
-# as input to the decision-hash. Contract per architecture §10.10:
+# as input to the decision-hash. Contract:
 #   { verdict, findings[] sorted by id, artifact_path }
 # Timestamps and any session metadata are explicitly excluded.
 #
-# Performance: prefers jq (~7ms) over python3 (~40ms spawn) to keep the
-# hot pipeline inside the NFR-VSP-1 50ms budget. python3 is the fallback
-# when jq is not on PATH.
+# Performance: prefers jq (~7ms) over python3 (~40ms spawn). python3 is
+# the fallback when jq is not on PATH.
 canonicalize_payload() {
   local raw="$1"
   _init_backends
   if [ "$_VS_JQ_AVAILABLE" = "1" ]; then
     # jq -cS: compact, sorted keys. Project onto the contract triple and
     # sort findings by id; fall back to tostring for findings missing id.
-    # E63-S14 type-guard: handle the array-of-strings shape that triage
-    # sometimes passes — `.id` on a string element throws `Cannot index
-    # string with string "id"`. Same fix as the fast-path at L261.
+    # Type-guard: handle the array-of-strings shape that triage sometimes
+    # passes — `.id` on a string element throws `Cannot index string with
+    # string "id"`. Same fix as the fast-path below.
     printf '%s' "$raw" | jq -cS '
       {
         artifact_path: (.artifact_path // ""),
@@ -251,7 +246,7 @@ PY
 #
 # Performance: uses jq (native binary, ~7ms) for canonicalization and
 # shasum (native binary) for hashing so the hot path avoids spawning
-# python3 entirely when jq is present. NFR-VSP-1 target: 50ms median.
+# python3 entirely when jq is present.
 compute_dedup_key() {
   local cmd="$1" iid="$2" payload="$3"
   _init_backends
@@ -287,9 +282,9 @@ ensure_header() {
       cat > "$tgt" <<'EOF'
 # Val Validator — Decision Log
 
-> Chronological record of validation decisions. ADR-016 format.
-> Entries appended by the Shared Val Sidecar Writer (architecture §10.10).
-> Idempotency keyed on `command_name + input_id + decision_hash` (NFR-VSP-2).
+> Chronological record of validation decisions.
+> Entries appended by the Shared Val Sidecar Writer.
+> Idempotency keyed on `command_name + input_id + decision_hash`.
 
 EOF
       ;;
@@ -316,12 +311,10 @@ REAL_ROOT="$(resolve_real "$ROOT")"
 
 # Validator-sidecar location routing.
 #
-# AF-2026-05-27-3 (ADR-111): the validator sidecar lives at
-# `.gaia/memory/validator-sidecar/` exclusively. The legacy `_memory/` arm was
-# removed with the consolidation migration — `.gaia/memory/` is the only target.
-# `ensure_header` mkdir's the parent below, so the subdir need not pre-exist.
-# (This supersedes the AF-2026-05-27-2 layout-probe fix, which kept a transitional
-# `_memory/` arm for genuine pre-ADR-111 projects; that arm is now gone.)
+# The validator sidecar lives at `.gaia/memory/validator-sidecar/` exclusively.
+# The legacy `_memory/` arm was removed with the consolidation migration —
+# `.gaia/memory/` is the only target. `ensure_header` mkdir's the parent
+# below, so the subdir need not pre-exist.
 DECISION_LOG="$REAL_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
 CONTEXT_FILE="$REAL_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
 
@@ -335,7 +328,7 @@ fi
 
 # Resolve the real target for allowlist verification. If the path is a
 # symlink, resolve_real will follow it — so a decoy symlink inside
-# validator-sidecar/ that points outside is caught here (TC-VSP-3c).
+# validator-sidecar/ that points outside is caught here.
 # Fast path: when the target is the default canonical DECISION_LOG under a
 # REAL_ROOT we already realpath'd, and the file is not a symlink, the
 # resolve is a no-op. Skipping the second resolve_real saves ~8ms on macOS

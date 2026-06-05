@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-test-framework skill finalize (E28-S87 + E42-S15)
+# finalize.sh — /gaia-test-framework skill finalize
 #
-# E42-S15 extends the bare-bones Cluster 11 finalize scaffolding with a
-# 7-item post-completion checklist (4 script-verifiable + 3
-# LLM-checkable) derived from the V1 test-framework checklist (see the
-# docs/v1-v2-command-gap-analysis.md entry for the verbatim V1 source).
-# See .gaia/artifacts/implementation-artifacts/E42-S15-* for the V1 → V2 mapping.
+# Extends the finalize scaffolding with a 7-item post-completion checklist
+# (4 script-verifiable + 3 LLM-checkable) derived from the test-framework
+# checklist.
 #
-# Responsibilities (per brief §Cluster 11 + story E42-S15):
-#   1. Run the script-verifiable subset of the 7 V1 checklist items
+# Responsibilities:
+#   1. Run the script-verifiable subset of the 7 checklist items
 #      against the test-framework-setup.md artifact. Validation runs
 #      FIRST.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
@@ -16,12 +14,11 @@
 #   4. Emit a lifecycle event via lifecycle-event.sh.
 #
 # The observability side effects (3 + 4) MUST run on every invocation —
-# the checklist outcome never suppresses the checkpoint/event write
-# (matches E42-S1..S14 contract; story AC6).
+# the checklist outcome never suppresses the checkpoint/event write.
 #
 # Exit codes:
 #   0 — finalize succeeded; all 4 script-verifiable items PASS (or
-#       no artifact was requested — classic Cluster 11 behaviour).
+#       no artifact was requested — classic skip behaviour).
 #   1 — one or more script-verifiable checklist items FAIL; the
 #       AC4 "no artifact to validate" violation; or a
 #       checkpoint/lifecycle-event failure. Failed item names are
@@ -38,8 +35,8 @@
 #                                  validate" violation is emitted and
 #                                  the script exits non-zero. When
 #                                  unset, the script skips the
-#                                  checklist (classic Cluster 11
-#                                  behaviour — observability still
+#                                  checklist (classic skip behaviour —
+#                                  observability still
 #                                  runs, exit 0).
 
 set -euo pipefail
@@ -106,16 +103,16 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
 
   # --- Script-verifiable items (4) ---
 
-  # SV-01 / V1 "Config files generated"
+  # SV-01 — "Config files generated"
   item_check "SV-01" "Config files generated" \
     "$(pattern_present "$ARTIFACT" '(^##[[:space:]]+Config[[:space:]]+Files|vitest\.config|jest\.config|pytest\.ini|playwright\.config|junit|build\.gradle|pubspec\.yaml|go\.mod|config[[:space:]]+files[[:space:]]+(generated|created))')"
-  # SV-02 / V1 "Folder structure scaffolded"
+  # SV-02 — "Folder structure scaffolded"
   item_check "SV-02" "Folder structure scaffolded" \
     "$(pattern_present "$ARTIFACT" '(^##[[:space:]]+Folder[[:space:]]+Structure|tests/unit|tests/integration|tests/e2e|test/[[:alnum:]]+/|folder[[:space:]]+structure[[:space:]]+scaffold)')"
-  # SV-03 / V1 "Test runner script configured and executable (e.g., npm test)"
+  # SV-03 — "Test runner script configured and executable (e.g., npm test)"
   item_check "SV-03" "Test runner script configured and executable" \
     "$(pattern_present "$ARTIFACT" '(^##[[:space:]]+Test[[:space:]]+Runner|npm[[:space:]]+test|yarn[[:space:]]+test|pytest|gradle[[:space:]]+test|mvn[[:space:]]+test|flutter[[:space:]]+test|go[[:space:]]+test|test[[:space:]]+runner[[:space:]]+(script|configured))')"
-  # SV-04 / V1 "Fixture architecture designed"
+  # SV-04 — "Fixture architecture designed"
   item_check "SV-04" "Fixture architecture designed" \
     "$(pattern_present "$ARTIFACT" '(^##[[:space:]]+Fixture[[:space:]]+Architecture|fixture[[:space:]]+(architecture|pattern|design)|factory[[:space:]]+(pattern|function)|builder[[:space:]]+pattern)')"
 
@@ -168,14 +165,14 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
-# helper itself logs warnings to stderr but never affects this script's
-# exit code. SKILL_NAME is resolved from the parent directory name so
-# the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
+# circuit to a no-op so the interactive prompt is preserved. Failure is
+# non-blocking — the auto-save helper itself logs warnings to stderr but
+# never affects this script's exit code. SKILL_NAME is resolved from the
+# parent directory name so the wire-in is identical across all Phase 1-3
+# finalize.sh files.
 AUTOSAVE_LIB="$PLUGIN_SCRIPTS_DIR/lib/auto-save-memory.sh"
 SKILL_NAME="$(basename "$(cd "$SCRIPT_DIR/.." && pwd)")"
 if [ -f "$AUTOSAVE_LIB" ]; then

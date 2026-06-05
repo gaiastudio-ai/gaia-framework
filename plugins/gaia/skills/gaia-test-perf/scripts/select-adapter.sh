@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# select-adapter.sh — resolve which perf adapter to use (E73-S2).
+# select-adapter.sh — resolve which perf adapter to use.
 #
 # Precedence (first-match-wins):
 #   1. --adapter <name>      — CLI override (highest priority)

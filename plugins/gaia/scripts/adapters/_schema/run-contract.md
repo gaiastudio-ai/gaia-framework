@@ -1,7 +1,5 @@
 # `run.sh` Execution Contract — Tool Adapter Framework
 
-> **Story:** E70-S1 — Adapter pattern formalization.
-> **Decisions:** ADR-077 (Three-Tier Review Pipeline), ADR-078 (Tool Adapter Framework), ADR-042 (Scripts-over-LLM).
 > **Companions:** [`adapter.schema.json`](./adapter.schema.json) (machine-verifiable metadata schema), [`test/contract.bats`](./test/contract.bats) (parity test template).
 > **Stability:** Stable. Every built-in and custom adapter under `plugins/gaia/scripts/adapters/{tool}/run.sh` honours this contract.
 
@@ -70,7 +68,7 @@ A timeout MUST surface to the probe as a non-zero exit, which the probe maps to 
 
 ## 5. Four-State Availability Probe
 
-Every adapter is invoked through `tool-availability-probe.sh` (E66-S2). The probe emits one of four states on stdout (single-line JSON validating against [`probe-output.schema.json`](../../schemas/probe-output.schema.json)):
+Every adapter is invoked through `tool-availability-probe.sh`. The probe emits one of four states on stdout (single-line JSON validating against [`probe-output.schema.json`](../../schemas/probe-output.schema.json)):
 
 | State | Trigger | Verdict-resolver Mapping |
 |---|---|---|
@@ -87,7 +85,7 @@ Every adapter is invoked through `tool-availability-probe.sh` (E66-S2). The prob
 
 Exactly four keys, no extras (`additionalProperties: false`). `skip_reason` is non-null when `state == not_applicable`; `error_detail` is non-null when `state == ran_and_errored`; both null otherwise. This is enforced by `probe-output.schema.json`.
 
-`failure_kind` (E66-S6) is the structured classification of the failure mode. Domain: `tool_missing`, `version_mismatch`, `runtime_crash`, `timeout`, or `null`.
+`failure_kind` is the structured classification of the failure mode. Domain: `tool_missing`, `version_mismatch`, `runtime_crash`, `timeout`, or `null`.
 
 | state | rc / trigger | failure_kind |
 |---|---|---|
@@ -100,9 +98,9 @@ Exactly four keys, no extras (`additionalProperties: false`). `skip_reason` is n
 
 The field is additive: callers reading `state`/`skip_reason`/`error_detail` keep working unchanged. New callers branch on `failure_kind` for structured decisions instead of regex-parsing `error_detail`.
 
-The probe is **deterministic** (NFR-RSV2-9): identical inputs (`--adapter-dir`, `--file-list`, env apart from PATH) produce byte-identical output every time.
+The probe is **deterministic**: identical inputs (`--adapter-dir`, `--file-list`, env apart from PATH) produce byte-identical output every time.
 
-## 6. Adapter Layout (per ADR-078)
+## 6. Adapter Layout
 
 ```
 plugins/gaia/scripts/adapters/{tool}/
@@ -114,16 +112,7 @@ plugins/gaia/scripts/adapters/{tool}/
 
 The adapter directory is the minimum unit of deployment. New adapters copy the `_schema/test/contract.bats` template into `{tool}/test/contract.bats` and rely on `_contract-helper.bash` for the parameterized four-state assertions.
 
-## Refs
+## See Also
 
-- ADR-077 §3.6 — three-tier review pipeline pulls every tool through the adapter contract.
-- ADR-078 §1 — adapter pattern + four-state probe motivation.
-- ADR-042 — Scripts-over-LLM. Adapters are deterministic shell, not LLM calls.
-- FR-RSV2-17 — adapter pattern PRD requirement.
-- FR-RSV2-18 — four-state availability probe.
-- FR-RSV2-19 — `contract.bats` per built-in adapter.
-- NFR-RSV2-3 — deterministic adapter output.
-- NFR-RSV2-9 — probe correctness invariants.
-- NFR-RSV2-11 — adapter backward-compat / parity test.
 - [`analysis-results.schema.json`](../../schemas/analysis-results.schema.json) — canonical finding object schema.
 - [`probe-output.schema.json`](../../schemas/probe-output.schema.json) — probe output schema.

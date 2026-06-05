@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# adapters/brownfield/defectdojo-export.sh — E104-S4 opt-in DefectDojo export.
+# adapters/brownfield/defectdojo-export.sh — opt-in DefectDojo export.
 #
-# POSTs the merged SARIF (E104-S4 sarif-merge.sh output) to a configured
+# POSTs the merged SARIF (sarif-merge.sh output) to a configured
 # DefectDojo instance — ONLY when explicitly enabled. DefectDojo requires a
 # Django + PostgreSQL + Celery + Redis stack, so it is too heavy as a default
-# brownfield dependency and is gated opt-in (AC4).
+# brownfield dependency and is gated opt-in.
 #
 # Usage: defectdojo-export.sh <merged-sarif-path>
 #

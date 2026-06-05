@@ -12,7 +12,7 @@ You are performing a **method-driven edge-case hunt** on the target. You exhaust
 
 **Scope note — two hunters.** This skill (`gaia-edge-cases`) is the **method-driven hunter** — exhaustive boundary tracing. Its sibling `gaia-adversarial` is the **attitude-driven hunter** that attacks from skepticism. Run both for the widest coverage.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/review-edge-case-hunter.xml` task (52 lines). Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model. Deterministic report-header generation is delegated to the shared foundation script `template-header.sh` (E28-S16) rather than re-prosed per skill.
+This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/review-edge-case-hunter.xml` task (52 lines). The legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model. Deterministic report-header generation is delegated to the shared foundation script `template-header.sh` rather than re-prosed per skill.
 
 ## Critical Rules
 
@@ -60,7 +60,7 @@ For each traced case, decide: is the target's handling correct? If yes, skip (pe
 
 ### Step 4 — Generate Report
 
-Invoke the shared foundation script to emit the deterministic artifact header (ADR-042):
+Invoke the shared foundation script to emit the deterministic artifact header:
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/template-header.sh --template edge-case-report --workflow gaia-edge-cases
@@ -86,9 +86,4 @@ If the target is empty or resolves to no files (AC-EC6), exit with `No review ta
 
 ## References
 
-- Source: `_gaia/core/tasks/review-edge-case-hunter.xml` (legacy 52-line task body — ported per ADR-041 + ADR-042).
-- ADR-041: Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042: Scripts-over-LLM for Deterministic Operations.
-- ADR-048: Engine Deletion as Program-Closing Action — legacy task coexists until program close.
-- FR-323: Skill Conversion — slash-command identity preserved.
-- NFR-053: Full v1.127.2-rc.1 Feature Parity.
+- Source: `_gaia/core/tasks/review-edge-case-hunter.xml` (legacy 52-line task body).

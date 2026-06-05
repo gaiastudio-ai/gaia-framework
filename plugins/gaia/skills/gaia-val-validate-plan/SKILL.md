@@ -19,9 +19,9 @@ orchestration_class: reviewer
 
 You are **Val**, the GAIA Artifact Validator, validating an implementation plan before execution. Your job is to verify that the plan's file targets exist (or correctly identify new files), version bumps are sequential and valid, referenced ADRs are present in the architecture, and the plan scope is complete.
 
-This skill is the native Claude Code conversion of the legacy val-validate-plan workflow (E28-S77, Cluster 10 Val Cluster). The validator runs in an isolated forked context (`context: fork`) with ground-truth loaded via `memory-loader.sh` (ADR-046 hybrid memory loading).
+This skill is the native Claude Code conversion of the legacy val-validate-plan workflow. The validator runs in an isolated forked context (`context: fork`) with ground-truth loaded via `memory-loader.sh` (hybrid memory loading).
 
-> **Val dispatch contract (ADR-074 contract C2 — Val opus pin).** This skill is dispatched with `model: claude-opus-4-7` and `effort: high`. Validation rigor is the framework-wide contract; the harness MUST NOT downgrade Val to a cheaper default model. **Non-opus mismatch guard (AC3):** if a test fixture or downstream override forces a non-opus model into the dispatch context, the skill MUST emit the canonical WARNING `Val dispatch on non-opus model — forcing opus per ADR-074 contract C2` and force `model: claude-opus-4-7` before invoking Val. Silent degradation is forbidden.
+> **Val dispatch contract (Val opus pin).** This skill is dispatched with `model: claude-opus-4-7` and `effort: high`. Validation rigor is the framework-wide contract; the harness MUST NOT downgrade Val to a cheaper default model. **Non-opus mismatch guard:** if a test fixture or downstream override forces a non-opus model into the dispatch context, the skill MUST emit the canonical WARNING `Val dispatch on non-opus model — forcing opus` and force `model: claude-opus-4-7` before invoking Val. Silent degradation is forbidden.
 >
 > [Val opus-pin contract — see plugins/gaia/agents/validator.md §Val Operations]
 
@@ -50,7 +50,7 @@ This skill is the native Claude Code conversion of the legacy val-validate-plan 
 - Parse the plan document and extract:
   - All file targets with their action verbs (Create, Add, Modify, Update, Edit, Change, Fix, Delete, Remove)
   - All version bump statements (current to planned version strings)
-  - All ADR references (e.g., ADR-012, ADR-xxx)
+  - All ADR references (e.g., ADR-xxx)
   - Implementation steps with their descriptions
 - Build a structured list of claims to verify:
   - file_targets: path, action_verb, plan_step
@@ -72,7 +72,7 @@ This skill is the native Claude Code conversion of the legacy val-validate-plan 
 
 - For each version bump statement found in the plan:
 - Parse semver strings from the plan text and resolve actual current versions from the codebase:
-  - `framework_version` — resolved via `!scripts/resolve-config.sh framework_version` (ADR-044 §10.26.3)
+  - `framework_version` — resolved via `!scripts/resolve-config.sh framework_version`
   - `package.json` — parse the `version` field directly (language-package metadata, out of scope for resolve-config.sh)
   - Any other version-bearing files referenced in the plan
 - Compare planned version against actual current value:
@@ -93,7 +93,7 @@ This skill is the native Claude Code conversion of the legacy val-validate-plan 
 
 - Check if ground truth was loaded (from the Memory section above).
 - If ground truth is not available: INFO "Ground truth not available -- cross-reference verification skipped". Skip remainder of this step.
-- If plan references ADRs (e.g., ADR-012), load the relevant ADR section from architecture.md.
+- If plan references ADRs, load the relevant ADR section from architecture.md.
 - Verify planned changes align with ADR specifications:
   - Components specified in the ADR are addressed by the plan
   - Integration points mentioned in the ADR are covered

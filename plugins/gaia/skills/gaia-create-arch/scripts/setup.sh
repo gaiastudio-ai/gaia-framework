@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# setup.sh — Cluster 6 architecture skill setup (E28-S45, brief §Cluster 6 / P6-S1)
+# setup.sh — architecture skill setup
 #
-# Mechanical extension of the Cluster 4 reference implementation authored
-# under E28-S35 (gaia-brainstorm/scripts/setup.sh). Adds create-arch-specific
+# Mechanical extension of the brainstorm reference implementation authored
+# (gaia-brainstorm/scripts/setup.sh). Adds create-arch-specific
 # prereq gates:
 #   - prd.md must exist (validate-gate file_exists)
 #   - architecture-template.md must exist in the skill directory or custom/templates/
 #
-# Responsibilities (per brief §Cluster 4):
+# Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
 #   2. Run validate-gate.sh for prereqs (prd, architecture-template)
 #   3. Load the checkpoint state for this workflow
@@ -26,8 +26,8 @@ export LC_ALL
 SCRIPT_NAME="gaia-create-arch/setup.sh"
 WORKFLOW_NAME="create-architecture"
 
-# ---------- 0. Parse --bypass / --reason flags (AF-2026-05-24-8 / Test02 F-3) ----------
-# Test02 F-3: the threat-model gate error message advertised
+# ---------- 0. Parse --bypass / --reason flags ----------
+# The threat-model gate error message advertised
 # `--bypass gaia-threat-model --reason "<text>"` but setup.sh never parsed
 # the flags — so passing them did nothing and the gate still halted. The
 # canonical primitive is `bash scripts/lib/lifecycle-overrides.sh append
@@ -62,7 +62,7 @@ if [ -n "$BYPASS_SKILL" ] && [ -z "$BYPASS_REASON" ]; then
 fi
 
 # Record the bypass via the canonical helper. The helper writes to
-# .gaia/state/lifecycle-overrides.yaml (per ADR-120 / E103-S2 contract).
+# .gaia/state/lifecycle-overrides.yaml.
 # We do this BEFORE the gate check below so the gate's bypass-lookup
 # finds the record.
 if [ -n "$BYPASS_SKILL" ]; then
@@ -131,9 +131,9 @@ fi
 # Check skill-local copy first, then custom/templates/ override. If neither
 # exists, fail fast.
 TEMPLATE_LOCAL="$SKILL_DIR/architecture-template.md"
-# AF-2026-05-29-2 / Test09 F-20: prefer CLAUDE_PROJECT_ROOT (the framework-
-# standard harness var) and GAIA_PROJECT_ROOT (project-specific) BEFORE the
-# $SKILL_DIR/../../../../.. walk-up. On a marketplace/cache-installed plugin
+# Prefer CLAUDE_PROJECT_ROOT (the framework-standard harness var) and
+# GAIA_PROJECT_ROOT (project-specific) BEFORE the $SKILL_DIR/../../../../..
+# walk-up. On a marketplace/cache-installed plugin
 # (~/.claude/plugins/cache/<mp>/gaia/<ver>/skills/<skill>/scripts/), walking
 # 5 levels up lands in `~/.claude/plugins/cache` — NOT the user's project —
 # and every subsequent .gaia/ artifact lookup misses. Honoring the harness-
@@ -166,7 +166,7 @@ else
   log "checkpoint.sh not found at $CHECKPOINT — skipping checkpoint load (non-fatal)"
 fi
 
-# ---------- 5. Conditional threat-model gate (ADR-120 / E103-S6) ----------
+# ---------- 5. Conditional threat-model gate ----------
 # When `compliance.ui_present: true`, require either a threat-model artifact
 # OR a recorded `gaia-threat-model` bypass for the active sprint. When
 # `compliance.ui_present` is false / absent, the gate is a no-op.
@@ -209,7 +209,7 @@ else
         bp_reason="$(printf '%s' "$bp_json" | jq -r '[.bypasses[] | select(.skill == "gaia-threat-model" or .skill == "/gaia-threat-model")][0].reason')"
       fi
     fi
-    # AF-2026-05-27-8 / Test06 F-005 + F-006: pre-sprint-phase detection.
+    # Pre-sprint-phase detection.
     # /gaia-create-arch runs in Phase 3 (Solutioning), BEFORE the first
     # /gaia-sprint-plan creates .gaia/state/sprint-status.yaml. In that phase
     # threat-model.md legitimately does NOT exist yet (the lifecycle diagram runs

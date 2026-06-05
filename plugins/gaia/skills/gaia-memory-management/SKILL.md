@@ -1,6 +1,6 @@
 ---
 name: gaia-memory-management
-description: Core memory operations used by every GAIA agent — session load/save, decision-log formatting (ADR-016), context summarization, stale detection, deduplication, and budget monitoring. Cross-agent extensions (cross-reference loading, shared budget monitoring) live in the companion skill gaia-memory-management-cross-agent.
+description: Core memory operations used by every GAIA agent — session load/save, decision-log formatting, context summarization, stale detection, deduplication, and budget monitoring. Cross-agent extensions (cross-reference loading, shared budget monitoring) live in the companion skill gaia-memory-management-cross-agent.
 version: '1.1'
 applicable_agents: [all]
 sections: [decision-formatting, session-load, session-save, context-summarization, stale-detection, deduplication, budget-monitoring]
@@ -8,7 +8,7 @@ allowed-tools: [Read, Write, Edit, Grep]
 orchestration_class: light-procedural
 ---
 
-<!-- Converted under ADR-041 (Native Execution Model). Source: _gaia/lifecycle/skills/memory-management.md. -->
+<!-- Source: _gaia/lifecycle/skills/memory-management.md. -->
 
 ## Mission
 
@@ -21,13 +21,13 @@ Every section marker below is part of the public JIT contract consumed by caller
 - Memory-hygiene skills (load `stale-detection` and `deduplication`)
 - Budget-sensitive save paths (load `budget-monitoring`, which is also replicated in the companion cross-agent skill)
 
-Sections are resolved by scanning for `<!-- SECTION: {id} -->` and `<!-- END SECTION -->` markers in this file — there is no external engine or Step number to consult. This is the ADR-041 native execution contract (introduced when the legacy XML-engine workflow layer was retired under E28-S126).
+Sections are resolved by scanning for `<!-- SECTION: {id} -->` and `<!-- END SECTION -->` markers in this file — there is no external engine or Step number to consult. This is the native execution contract (introduced when the legacy XML-engine workflow layer was retired).
 
 Section IDs MUST match exactly. Renaming or merging sections is a breaking change.
 
 ## Critical Rules
 
-- **Decision entries follow ADR-016.** Every write through `session-save` formats entries per the `decision-formatting` section — never invent a new shape.
+- **Decision entries follow the canonical format.** Every write through `session-save` formats entries per the `decision-formatting` section — never invent a new shape.
 - **Missing sidecars are not errors.** `session-load` returns empty structures when the directory or files are absent. Never create empty sidecar files eagerly.
 - **Full-file read/write only.** Decision logs use read-entire → append-in-memory → write-entire. Never stream-append or partially write; last-writer-wins is the documented concurrency model.
 - **Budget is config-driven.** All thresholds (`budget_warn_at`, `budget_alert_at`, `budget_archive_at`, `token_approximation`, `archive_subdir`) come from `.gaia/memory/config.yaml`. Never hardcode.
@@ -35,7 +35,7 @@ Section IDs MUST match exactly. Renaming or merging sections is a breaking chang
 - **Companion skill:** cross-reference loading across agent sidecars (read-only) lives in `gaia-memory-management-cross-agent` — load that skill when a caller needs `<memory-reads>` resolution.
 
 <!-- SECTION: decision-formatting -->
-## Decision Entry Format (ADR-016)
+## Decision Entry Format
 
 All decision-log entries use this standardized format:
 
@@ -57,7 +57,7 @@ All decision-log entries use this standardized format:
 - **Optional:** Workflow, Sprint, Type, Related — these default gracefully (empty/null) when missing; the entry remains parseable
 
 **Decision types:**
-- `architectural` — system structure, technology choices, ADR-level decisions
+- `architectural` — system structure, technology choices, architecture-level decisions
 - `implementation` — coding patterns, library usage, algorithm choices
 - `validation` — test strategies, quality thresholds, coverage decisions
 - `process` — workflow changes, ceremony adjustments, team agreements
@@ -88,7 +88,7 @@ Load agent memory from a sidecar directory. Agent-agnostic — takes sidecar pat
 1. Check if `sidecar_path` directory exists
 2. If directory does not exist: return empty data structures (empty decision log, empty conversation context, empty third file) without errors and do not create any files or directories
 3. If directory exists, read up to 3 files:
-   - `decision-log.md` — parse entries using the ADR-016 standard format (date, agent ID, workflow, sprint, type, status, related, body). Load the most recent `recent_n` entries that fit within the tier token budget
+   - `decision-log.md` — parse entries using the standard format (date, agent ID, workflow, sprint, type, status, related, body). Load the most recent `recent_n` entries that fit within the tier token budget
    - `conversation-context.md` — load full content (Tier 1 and Tier 2 only)
    - Third file (agent-specific, e.g., `ground-truth.md`) — load if present, treat as opaque content
 4. If any file is missing or empty: return an empty data structure for that file — no error, no file creation
@@ -108,7 +108,7 @@ Persist agent session data to sidecar files. Agent-agnostic — takes sidecar pa
 **Parameters:**
 - `sidecar_path` — absolute path to the agent's sidecar directory
 - `tier_budget` — session token budget for this agent's tier
-- `new_entries` — list of decision entries to append (using ADR-016 standard format: date, agent ID, workflow, sprint, type, status, related, body)
+- `new_entries` — list of decision entries to append (using the standard format: date, agent ID, workflow, sprint, type, status, related, body)
 - `context_summary` — compressed session summary for conversation-context.md
 - `third_file_content` — updated content for agent-specific third file (optional)
 
@@ -197,7 +197,7 @@ Scan a decision log to identify entries that are stale, contradicted, or orphane
 |---|-------|----------|--------|-----------------|
 | 1 | [2026-03-01] Use PostgreSQL | stale | Referenced artifact not found: docs/old-schema.md | review |
 | 2 | [2026-03-05] Use MongoDB | contradicted | Contradicts entry [2026-03-01] Use PostgreSQL | review |
-| 3 | [2026-02-15] E99-S1 auth flow | orphaned | Referenced story/epic E99-S1 not found in epics-and-stories.md | archive |
+| 3 | [2026-02-15] auth flow | orphaned | Referenced story/epic not found in epics-and-stories.md | archive |
 <!-- END SECTION -->
 
 <!-- SECTION: deduplication -->

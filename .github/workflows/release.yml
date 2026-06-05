@@ -1,6 +1,6 @@
 name: release
 
-# Pivot per ADR-056 amendment (2026-04-23): main has branch protection
+# main has branch protection
 # requiring PR + status checks, so the release bot cannot push directly.
 # Instead, the workflow opens a release PR. Merging that PR re-fires the
 # workflow, which detects the release commit on main and cuts tag + GitHub
@@ -74,17 +74,17 @@ jobs:
           # Anchor on most-recent v* tag (deterministic across squash-merge,
           # rebase-merge, force-push, and first-release scenarios).
           # First-release fallback: root commit when no v* tag exists yet.
-          # Helper extracted for bats unit testability — see E40-S2.
+          # Helper extracted for bats unit testability.
           # CWD is gaia-framework/ (per actions/checkout@v4 default), so the
           # invocation path is relative to gaia-framework/, NOT the repo root.
           BEFORE="$(./plugins/gaia/scripts/lib/resolve-release-anchor.sh)"
           AFTER="${{ github.sha }}"
 
-          # E40-S4: pass full commit messages (subject + body) to the
+          # Pass full commit messages (subject + body) to the
           # classifier, not just subjects. GitHub's squash-merge collapses
           # N commits into a single commit whose body preserves the
           # original subjects as bullet lines — the classifier's body-scan
-          # fallback (E40-S4 / AC1) needs the body to find those bullets.
+          # fallback needs the body to find those bullets.
           # Per-commit messages are separated by the literal delimiter
           # `---COMMIT---` on its own line so the classifier can split them
           # back apart at the CLI boundary.
@@ -117,7 +117,7 @@ jobs:
             exit 0
           fi
 
-          # AF-2026-05-22-2: pipe via stdin to avoid ARG_MAX on large ranges
+          # Pipe via stdin to avoid ARG_MAX on large ranges
           # (e.g., 45+-commit staging→main merges that exceed the Linux argv limit).
           ESCAPED=$(echo "$FILTERED" | sed ':a;N;$!ba;s/\n/\\n/g')
           RESULT=$(printf '%s' "$ESCAPED" | node scripts/classify-commits.js --stdin)
@@ -151,7 +151,7 @@ jobs:
           COMMITS=$(cat /tmp/commit-messages.txt)
           ESCAPED=$(echo "$COMMITS" | sed ':a;N;$!ba;s/\n/\\n/g')
 
-          # AF-2026-05-22-2: pipe via stdin to avoid ARG_MAX on large ranges.
+          # Pipe via stdin to avoid ARG_MAX on large ranges.
           # The node -e block reads the escaped commit blob from stdin (fd 0)
           # instead of process.argv, mirroring the classify-commits.js --stdin
           # fix above.
@@ -184,11 +184,11 @@ jobs:
 
       - name: Sync .plugin-version with bumped plugin.json
         if: steps.bump.outputs.has_commits == 'true'
-        # E97-S7 / AF-2026-05-21-2: .plugin-version is the persona_sig anchor
-        # read by validator.md line 77 (`val-<version>-<digest>`). Keep it in
+        # .plugin-version is the persona_sig anchor
+        # read by validator.md (`val-<version>-<digest>`). Keep it in
         # lockstep with plugin.json so the semver-tagged persona_sig stays in
         # sync with the released artifact version. Without this step the file
-        # drifts behind on every release (Val F1 finding on E97-S7).
+        # drifts behind on every release.
         run: |
           NEW_VERSION="${{ steps.version.outputs.new_version }}"
           printf '%s' "$NEW_VERSION" > plugins/gaia/.plugin-version
@@ -206,7 +206,7 @@ jobs:
 
           # Force-create the branch (overwrite any stale one from a previous failed attempt)
           git checkout -B "$BRANCH"
-          # E97-S7: stage .plugin-version alongside plugin.json so the
+          # Stage .plugin-version alongside plugin.json so the
           # release-bot bump remains in lockstep across both files.
           git add plugins/gaia/.claude-plugin/plugin.json plugins/gaia/.plugin-version plugins/gaia/CHANGELOG.md
           git commit -m "chore(release): v${NEW_VERSION}"

@@ -38,10 +38,9 @@ teardown() { common_teardown; }
   [ "$output" = "string" ]
 }
 
-@test "AF-32-2 #1047: frontend_commands description names issue #1047 + the four sibling maps" {
+@test "AF-32-2 #1047: frontend_commands description names the four sibling maps" {
   run jq -r '.properties.sprint_review.properties.frontend_commands.description' "$SCHEMA"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"#1047"* ]]
   [[ "$output" == *"backend_commands"* ]]
   [[ "$output" == *"mobile_commands"* ]]
 }
@@ -57,7 +56,6 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
   [[ "$output" == *"DEPRECATED"* ]]
   [[ "$output" == *"frontend_commands"* ]]
-  [[ "$output" == *"#1047"* ]]
 }
 
 # ===========================================================================

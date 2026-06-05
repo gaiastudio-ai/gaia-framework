@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-edit-arch skill finalize (E28-S46 + E42-S9)
+# finalize.sh — /gaia-edit-arch skill finalize
 #
-# E42-S9 extends the bare-bones Cluster 6 finalize scaffolding with a
-# 25-item post-completion checklist (17 script-verifiable + 8
-# LLM-checkable) derived from the V1 /gaia-edit-arch (edit-architecture)
-# checklist. See .gaia/artifacts/implementation-artifacts/E42-S9-* for the
-# V1 -> V2 mapping.
+# Extends the finalize scaffolding with a 25-item post-completion checklist
+# (17 script-verifiable + 8 LLM-checkable) derived from the V1
+# /gaia-edit-arch (edit-architecture) checklist.
 #
-# Responsibilities (per brief §Cluster 6 + story E42-S9):
+# Responsibilities:
 #   1. Run the script-verifiable subset of the 25 V1 checklist items
 #      against the edited architecture artifact. Validation runs FIRST.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
@@ -15,14 +13,13 @@
 #   4. Emit a lifecycle event via lifecycle-event.sh.
 #
 # The observability side effects (3 + 4) MUST run on every invocation —
-# the checklist outcome never suppresses the checkpoint/event write
-# (matches E42-S1..S8 contract; story AC5).
+# the checklist outcome never suppresses the checkpoint/event write.
 #
 # Exit codes:
 #   0 — finalize succeeded; all 17 script-verifiable items PASS (or
-#       no artifact was requested — classic Cluster 6 behaviour).
+#       no artifact was requested — checklist skipped).
 #   1 — one or more script-verifiable checklist items FAIL; the
-#       AC4 "no artifact to validate" violation; or a
+#       "no artifact to validate" violation; or a
 #       checkpoint/lifecycle-event failure. Failed item names are
 #       listed on stderr under a "Checklist violations:" header
 #       followed by a one-line remediation hint.
@@ -31,19 +28,17 @@
 #   ARCHITECTURE_ARTIFACT  Absolute path to the architecture artifact to
 #                          validate. When set, the script runs the 25-item
 #                          checklist against it. When set but the file does
-#                          not exist, AC4 fires — a single "no artifact to
-#                          validate" violation is emitted and the script
-#                          exits non-zero. When unset, the script falls
-#                          back to a canonical-first path resolution
-#                          (AF-2026-05-21-11): prefer
+#                          not exist, a "no artifact to validate" violation
+#                          is emitted and the script exits non-zero. When
+#                          unset, the script falls back to a canonical-first
+#                          path resolution: prefer
 #                          .gaia/artifacts/planning-artifacts/architecture.md
-#                          (post-ADR-111 canonical); use legacy
+#                          (canonical); use legacy
 #                          .gaia/artifacts/planning-artifacts/architecture.md only on
-#                          positive pre-ADR-111 evidence (legacy file
-#                          exists AND canonical dir does not). If neither
-#                          is present, the checklist run is skipped
-#                          (classic Cluster 6 behaviour — observability
-#                          still runs, exit 0).
+#                          positive legacy evidence (legacy file exists AND
+#                          canonical dir does not). If neither is present,
+#                          the checklist run is skipped (observability still
+#                          runs, exit 0).
 
 set -euo pipefail
 LC_ALL=C
@@ -61,14 +56,14 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Resolve artifact path (AF-2026-05-21-11 three-tier idiom) ----------
+# ---------- 0. Resolve artifact path (three-tier idiom) ----------
 # Tier 1 — env-var override: ARCHITECTURE_ARTIFACT wins when set (test
 #          fixtures + explicit invocation). If it is set but the file is
-#          missing, AC4 fires.
-# Tier 2 — positive pre-ADR-111 evidence: legacy file exists AND canonical
+#          missing, the "no artifact" violation fires.
+# Tier 2 — positive legacy evidence: legacy file exists AND canonical
 #          dir does NOT exist → use legacy docs/planning-artifacts/architecture.md.
-# Tier 3 — canonical default: greenfield + post-ADR-111 projects route to
-#          .gaia/artifacts/planning-artifacts/architecture.md per ADR-111.
+# Tier 3 — canonical default: greenfield + migrated projects route to
+#          .gaia/artifacts/planning-artifacts/architecture.md.
 # If neither file is present the checklist is simply skipped (observability
 # still runs).
 ARTIFACT=""
@@ -105,13 +100,13 @@ item_check() {
 # heading_present <file> <heading-text>
 # Pass when an H2 heading containing the given text (case-insensitive,
 # with optional numeric prefix like "## 1. System Overview") is present.
-# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
-# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
-# uniform, permissive regex accepting optional numbered+lettered outline
-# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
-# divergent inline copies, so the same heading passed one skill's check and
-# failed another's. Sourced via a $0-relative path so it works whether or not
-# this script defines PLUGIN_SCRIPTS_DIR.
+# heading_present() is a single shared implementation
+# (plugins/gaia/scripts/lib/heading-present.sh) with one uniform, permissive
+# regex accepting optional numbered+lettered outline prefixes (11, 11b, 1.2.3).
+# Previously multiple finalize.sh scripts carried divergent inline copies, so
+# the same heading passed one skill's check and failed another's. Sourced via a
+# $0-relative path so it works whether or not this script defines
+# PLUGIN_SCRIPTS_DIR.
 _GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
 if [ -r "$_GAIA_HEADING_LIB" ]; then
   # shellcheck source=/dev/null
@@ -280,7 +275,7 @@ supersede_consistency() {
 }
 
 if [ "$ARTIFACT_REQUESTED" -eq 1 ] && [ ! -f "$ARTIFACT" ]; then
-  # AC4 — Caller explicitly pointed at an artifact path but it does
+  # Caller explicitly pointed at an artifact path but it does
   # not exist on disk.
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
@@ -320,7 +315,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
     "$(section_table_has_rows "$ARTIFACT" "(Architecture[[:space:]]+Decisions|Decision[[:space:]]+Log)")"
   item_check "SV-10" "Each ADR has context, decision, consequences (ADR-N rows populated)" \
     "$(pattern_present "$ARTIFACT" '\|[[:space:]]*ADR-[0-9]')"
-  item_check "SV-11" "Addresses field maps to FR/NFR IDs (FR-### identifier referenced)" \
+  item_check "SV-11" "Addresses field maps to FR/NFR IDs (functional requirement identifier referenced)" \
     "$(pattern_present "$ARTIFACT" 'FR-[0-9]{3,}')"
 
   # ADR Quality continued — supersede marking (SV-12)
@@ -397,14 +392,14 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
-# helper itself logs warnings to stderr but never affects this script's
-# exit code. SKILL_NAME is resolved from the parent directory name so
-# the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
+# circuit to a no-op so the interactive prompt is preserved. Failure is
+# non-blocking — the auto-save helper itself logs warnings to stderr but
+# never affects this script's exit code. SKILL_NAME is resolved from the
+# parent directory name so the wire-in is identical across all Phase 1-3
+# finalize.sh files.
 AUTOSAVE_LIB="$PLUGIN_SCRIPTS_DIR/lib/auto-save-memory.sh"
 SKILL_NAME="$(basename "$(cd "$SCRIPT_DIR/.." && pwd)")"
 if [ -f "$AUTOSAVE_LIB" ]; then

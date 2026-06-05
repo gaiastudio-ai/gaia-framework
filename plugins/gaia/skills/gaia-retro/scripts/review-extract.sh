@@ -6,13 +6,13 @@
 # Usage:
 #   review-extract.sh --impl-dir <dir> --sprint-id <id>
 #
-# Behavior (FR-RIM-2, architecture §10.28.4):
+# Behavior:
 #   * Glob {code-review,security-review,qa-tests,performance-review}-*.md under impl-dir.
 #   * Filter to artifacts whose YAML frontmatter sprint_id matches the input.
 #   * Extract "**Verdict:** <VALUE>" lines. Missing / truncated → "UNKNOWN".
 #   * Print a markdown block listing each artifact + its verdict + a parse note
 #     when applicable. When no artifacts match, print an explicit "no review
-#     artifacts for sprint <id>" line (AC-EC5).
+#     artifacts for sprint <id>" line.
 
 set -euo pipefail
 
@@ -25,7 +25,7 @@ frontmatter_sprint() {
 }
 
 # extract_verdict — return the review-report verdict VALUE, or UNKNOWN when no
-# verdict line is present (E105-S4 / AI-99). Tolerant of every real-world
+# verdict line is present. Tolerant of every real-world
 # verdict-line shape observed across the report corpus so a present verdict
 # never parses as UNKNOWN due to formatting drift:
 #   **Verdict:** VALUE         (colon outside the bold span)
@@ -40,7 +40,7 @@ extract_verdict() {
   v="$(head -c "$MAX_BYTES" "$f" | awk '
     # Portable unicode rightwards-arrow (U+2192) — BSD awk does not interpret
     # \xNN in a regex literal, so build the byte sequence via sprintf and match
-    # the ASCII "->" plus this string explicitly (E105-S4 Val F1 portability).
+    # the ASCII "->" plus this string explicitly.
     BEGIN { UARROW = sprintf("%c%c%c", 226, 134, 146) }
     # Match a line that introduces a verdict in any of the accepted shapes.
     # Strip leading markdown heading/bold + the literal "Verdict" label + colon.
@@ -63,8 +63,8 @@ extract_verdict() {
       }
       # Arrow-override (e.g. "FAILED -> PASSED"): take the post-arrow value ONLY
       # when the immediate post-arrow token is a BARE verdict word — NOT a
-      # gate-row annotation like "APPROVE -> Review Gate row = PASSED" (E105-S4
-      # Val F1). When the post-arrow text is an annotation, the base verdict wins.
+      # gate-row annotation like "APPROVE -> Review Gate row = PASSED".
+      # When the post-arrow text is an annotation, the base verdict wins.
       if (line ~ /->/ || index(line, UARROW) > 0) {
         after = line
         # strip everything through the LAST arrow (ASCII or unicode)
@@ -88,7 +88,7 @@ extract_verdict() {
   fi
 }
 
-# ---------- Sourced-guard (E105-S4): expose the functions for unit testing ----------
+# ---------- Sourced-guard: expose the functions for unit testing ----------
 # When sourced (BASH_SOURCE != $0) only the functions above are defined; the
 # arg-parsing + main report body below runs ONLY on direct execution.
 if [ "${BASH_SOURCE[0]:-$0}" != "${0}" ]; then
@@ -122,16 +122,16 @@ emit_block() {
   printf '%s\n' "$header"
 }
 
-# AC-EC5 (E55-S12) — defensive seed before nullglob expansion so set -u
-# survives empty matches without "artifacts[@]: unbound variable".
+# Defensive seed before nullglob expansion so set -u survives empty matches
+# without "artifacts[@]: unbound variable".
 #
-# AF-2026-05-30-4 F-19: the original glob set walked ONLY the flat
-# {IMPL_DIR}/<type>-<key>.md layer. The E105-S1 / AF-29-2 F-16 per-story
-# layout writes review reports to `epic-*/{key}-*/reviews/<type>-{key}.md`,
-# so a retro against a new-layout sprint reported "no review artifacts"
-# even when 18 reports were on disk. Union the flat layer with the
-# per-story `reviews/` layer so both layouts are scanned. Realpath dedup
-# at consumption time guards against double-counting on transition shims.
+# The original glob set walked ONLY the flat {IMPL_DIR}/<type>-<key>.md layer.
+# The per-story layout writes review reports to
+# `epic-*/{key}-*/reviews/<type>-{key}.md`, so a retro against a new-layout
+# sprint reported "no review artifacts" even when 18 reports were on disk.
+# Union the flat layer with the per-story `reviews/` layer so both layouts
+# are scanned. Realpath dedup at consumption time guards against
+# double-counting on transition shims.
 declare -a artifacts=()
 shopt -s nullglob
 artifacts=("$IMPL_DIR"/code-review-*.md \
@@ -163,24 +163,23 @@ if [ "${#artifacts[@]}" -gt 0 ]; then
 fi
 
 declare -a matched=()
-# AC-EC5 (E55-S12) — guard the array expansion with `${arr[@]+"${arr[@]}"}`
-# idiom so an empty `artifacts` array does not trip `set -u`. The defensive
+# Guard the array expansion with `${arr[@]+"${arr[@]}"}` idiom so an empty
+# `artifacts` array does not trip `set -u`. The defensive
 # `declare -a artifacts=()` above gives a clean baseline; this expansion
 # guard handles the case where Bash 3.2 (macOS default) still treats an
 # empty indexed array as unbound under `set -u` even after declaration.
-# AF-2026-05-24-10 / Test02 F-24: when an artifact lacks sprint_id
-# frontmatter (manual / minimal review reports often omit it, and some
-# auto-generated ones do too), fall back to glob-matching by story key
-# against sprint-status.yaml. Without this fallback, the retro skill
-# reported "no review artifacts for sprint X" despite N review reports
-# being on disk.
+# When an artifact lacks sprint_id frontmatter (manual / minimal review
+# reports often omit it, and some auto-generated ones do too), fall back to
+# glob-matching by story key against sprint-status.yaml. Without this
+# fallback, the retro skill reported "no review artifacts for sprint X"
+# despite N review reports being on disk.
 
 # Build a set of story keys for the active sprint.
-# F-22 (AF-2026-05-26-4): the yq-gated extraction silently no-op'd when yq was
-# absent (an optional dep), so the F-24 frontmatter-miss fallback never fired
-# on hosts without yq and reports without sprint_id were dropped. Add a yq-less
-# path that greps the `key:` lines and validates each token as E<N>-S<N>,
-# normalising to the same space-delimited shape the yq path produced.
+# The yq-gated extraction silently no-op'd when yq was absent (an optional dep),
+# so the frontmatter-miss fallback never fired on hosts without yq and reports
+# without sprint_id were dropped. Add a yq-less path that greps the `key:` lines
+# and validates each token as E<N>-S<N>, normalising to the same space-delimited
+# shape the yq path produced.
 SPRINT_STORY_KEYS=""
 SPRINT_STATUS_YAML="${GAIA_STATE_DIR:-.gaia/state}/sprint-status.yaml"
 if [ -f "$SPRINT_STATUS_YAML" ]; then
@@ -216,7 +215,7 @@ for art in ${artifacts[@]+"${artifacts[@]}"}; do
     matched+=("$art")
     continue
   fi
-  # Frontmatter-miss fallback per F-24: match by story key
+  # Frontmatter-miss fallback: match by story key
   if [ -z "$s" ] && [ -n "$SPRINT_STORY_KEYS" ]; then
     key="$(story_key_from_filename "$art")"
     if [ -n "$key" ] && printf ' %s ' "$SPRINT_STORY_KEYS" | grep -qF " $key "; then
@@ -226,7 +225,7 @@ for art in ${artifacts[@]+"${artifacts[@]}"}; do
 done
 
 if [ "${#matched[@]}" -eq 0 ]; then
-  # AC-EC5 — empty findings block + explicit dev-note-style line.
+  # Empty findings block + explicit dev-note-style line.
   emit_block "_no review artifacts for sprint ${SPRINT_ID}_ (empty findings)"
   exit 0
 fi

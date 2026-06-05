@@ -1,4 +1,4 @@
-# `sbom-completeness-check.sh` — SBOM completeness assertion (E104-S3 / FR-543)
+# `sbom-completeness-check.sh` — SBOM completeness assertion
 
 Compares the declared dependency count (parsed from lock files) against the cdxgen
 SBOM component count, and emits a **WARNING** when the divergence is high enough to
@@ -44,27 +44,26 @@ From the 2026-05-23 brownfield deterministic-tools meeting transcript:
 
 ## No hard ceiling
 
-The check NEVER aborts the Phase 3 scan (NFR-84 / cross-cutting AC-X2). A WARNING in the
+The check NEVER aborts the Phase 3 scan. A WARNING in the
 report frontmatter is the strongest signal it produces — operators act on it; CI can grep
 the frontmatter and fail at the pipeline level if desired (not this script's responsibility).
 
 ## Lock-file parsers (v1 scope)
 
-Pure bash + jq (grep/awk for TOML/XML — `tomlq`/`xmlstarlet` are NOT assumed, so AC-X4
-binary-pinning is vacuous; only `jq`/`yq` are used, both foundational). Declared counts are
+Pure bash + jq (grep/awk for TOML/XML — `tomlq`/`xmlstarlet` are NOT assumed; only `jq`/`yq` are used, both foundational). Declared counts are
 summed across all detected lock files (repo-wide). Supported: `package-lock.json` (npm v2+),
 `yarn.lock`, `Pipfile.lock`, `composer.lock`, `go.sum`, `Gemfile.lock`, `Cargo.lock`,
 `gradle.lockfile`, `pom.xml`. The grep/awk heuristics for `yarn.lock`/`Cargo.lock`/`pom.xml`
-are approximate (format variance) — see the story Findings for the precision caveat.
+are approximate (format variance) — the precision caveat is noted in the adapter comments.
 
 ## Missing SBOM (degrade)
 
 The cdxgen SBOM (`.gaia/memory/brownfield-audit/sbom.json`) is the sole input. The producer
-that persists it is **not yet wired** (E70-S7 pre-warm primes the cdxgen cache but discards
-the SBOM; the persist step is a tracked Finding). When the SBOM is absent, the check emits an
+that persists it is **not yet wired** (the pre-warm step primes the cdxgen cache but discards
+the SBOM; the persist step is tracked). When the SBOM is absent, the check emits an
 **INFO skip** and exits 0 (never aborts) — there is nothing to compare against.
 
-## Flag gate (ADR-078)
+## Flag gate
 
 Runs only when `brownfield.deterministic_tools: true` AND `brownfield.sbom_completeness_enabled:
 true` (default true). Flag-off → INFO skip. Telemetry (`sbom_completeness_warning`,

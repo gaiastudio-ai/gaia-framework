@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# verify-pr-merged.sh — post-completion gate for gaia-dev-story (E20-S19)
+# verify-pr-merged.sh — post-completion gate for gaia-dev-story
 #
 # Verifies that a merge commit containing the story key exists on the target
 # branch. Called by the orchestrator after the dev-story subagent returns
@@ -27,15 +27,15 @@ export LC_ALL
 
 SCRIPT_NAME="gaia-dev-story/verify-pr-merged.sh"
 
-# E20-S20: source the shared shell-idioms helper so we can use safe_grep_log
-# instead of re-implementing the capture-then-grep SIGPIPE workaround inline.
+# Source the shared shell-idioms helper so we can use safe_grep_log instead of
+# re-implementing the capture-then-grep SIGPIPE workaround inline.
 # Resolve relative to this file so the script works from any cwd.
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib" && pwd)/shell-idioms.sh"
 
-# E53-S234 — Non-git CWD guard: skip-with-warning when CWD is outside any git
-# work tree, so the post-completion gate degrades gracefully instead of
-# returning exit 2 (which would force the orchestrator to re-run Steps 10-13).
+# Non-git CWD guard: skip-with-warning when CWD is outside any git work tree,
+# so the post-completion gate degrades gracefully instead of returning exit 2
+# (which would force the orchestrator to re-run the commit/push/PR/CI/merge steps).
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib" && pwd)/non-git-cwd-guard.sh"
 
@@ -61,13 +61,13 @@ cd "$WORK_DIR" || { log "cannot cd to $WORK_DIR"; exit 1; }
 # Non-git CWD detection (post-cd so we check the resolved working directory).
 non_git_cwd_skip "$SCRIPT_NAME" || exit 0
 
-# Word-boundary grep pattern to avoid false positives (Val WARNING #2).
+# Word-boundary grep pattern to avoid false positives.
 # Uses \b<key>\b as primary match. Falls back to "Story: <key>" pattern.
 # Case-insensitive to handle squash-merge rewrites.
 #
-# E20-S20: the inline `git log | grep` SIGPIPE workaround used to live here.
-# It is now centralised in safe_grep_log() (sourced above) so this script,
-# and any future callers, no longer have to re-derive the trick.
+# The inline `git log | grep` SIGPIPE workaround is centralised in
+# safe_grep_log() (sourced above) so this script and any future callers no
+# longer have to re-derive the trick.
 PATTERN="\\b${STORY_KEY}\\b"
 
 if safe_grep_log -i -q -E "$PATTERN" --oneline "$TARGET"; then
@@ -82,5 +82,5 @@ if safe_grep_log -i -q -E "Story:[[:space:]]*${STORY_KEY}\\b" --format='%B' "$TA
 fi
 
 log "${STORY_KEY} not found on ${TARGET} — gate fails"
-log "orchestrator should re-run Steps 10-13 (commit/push/PR/CI/merge)"
+log "orchestrator should re-run the commit/push/PR/CI/merge steps"
 exit 2

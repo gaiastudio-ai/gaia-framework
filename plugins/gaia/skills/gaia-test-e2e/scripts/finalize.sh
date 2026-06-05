@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-test-e2e skill lifecycle finalize (E73-S1).
+# finalize.sh — gaia-test-e2e skill lifecycle finalize.
 #
 # Standard lifecycle hook (parallel to gaia-deploy-checklist/finalize.sh):
 #   1. Write a checkpoint via checkpoint.sh

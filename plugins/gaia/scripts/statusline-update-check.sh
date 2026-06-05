@@ -2,17 +2,15 @@
 # statusline-update-check.sh — GAIA Claude Code statusline background update
 # fetcher.
 #
-# Story: E82-S2.
-#
 # Role
 # ----
 # OFF the hot path. The Claude Code statusline `refreshInterval` mechanism
 # (1h default, configured by install-statusline.sh) drives invocation. The
 # runtime statusline.sh NEVER falls through to a synchronous fetch — that
-# would breach NFR-STATUSLINE-1.
+# would degrade statusline responsiveness.
 #
-# Cache contract (ADR-091)
-# ------------------------
+# Cache contract
+# --------------
 #   ~/.claude/gaia-statusline/cache/latest-release.json
 #   {
 #     "checked_at_iso": "2026-05-09T12:34:56Z",
@@ -21,14 +19,14 @@
 #     "update_available": false             # boolean
 #   }
 #
-# Failure-mode philosophy (TC-STATUSLINE-10 / FR-441 / FR-442)
-# ------------------------------------------------------------
+# Failure-mode philosophy
+# -----------------------
 # Every failure is silent: exit 0, cache untouched, NOTHING on stderr. The
 # user perception of "no update indicator" must be indistinguishable from
 # "actively up to date" and "fetch failed."
 #
-# Atomic write (NFR-STATUSLINE-3)
-# -------------------------------
+# Atomic write
+# ------------
 # Sibling-tempfile + `mv -f` on the same filesystem as the cache target.
 # Crossing filesystems via the system temp dir would break rename atomicity.
 #
@@ -55,18 +53,18 @@ _cleanup() {
 trap _cleanup EXIT INT TERM
 
 # ---- Constants -------------------------------------------------------------
-TTL_SECONDS=1800           # 30min fetch TTL — sprint-43 update from 24h.
+TTL_SECONDS=1800           # 30min fetch TTL.
                            # ~48 unauth GitHub API calls/day per machine —
                            # safely under the 60/hr public rate limit even
                            # when combined with other gh CLI usage. New
-                           # releases now surface within 30min instead of 24h.
+                           # releases surface within 30min.
 HTTP_TIMEOUT=5             # curl --max-time, gh wrapper enforces its own.
 
 CACHE_DIR="${HOME}/.claude/gaia-statusline/cache"
 CACHE_FILE="${CACHE_DIR}/latest-release.json"
 
-# Resolve plugin.json via the same three-tier scheme statusline.sh uses
-# (sprint-43 update). CLAUDE_PLUGIN_ROOT is intentionally NOT consulted —
+# Resolve plugin.json via the same three-tier scheme statusline.sh uses.
+# CLAUDE_PLUGIN_ROOT is intentionally NOT consulted —
 # it's a per-skill envvar Claude Code never sets when this fetcher is run
 # from a hook or refresh cycle. The original CLAUDE_PLUGIN_ROOT-keyed
 # fallback to $PROJECT_PATH/gaia-framework/... double-stacked when cwd was
@@ -95,7 +93,7 @@ if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/plugins/gaia/.claude-plugin/plug
 fi
 
 # ---- Read current version from plugin.json --------------------------------
-# AC4: plugin.json missing or unparseable -> exit 0 silently, cache untouched.
+# plugin.json missing or unparseable -> exit 0 silently, cache untouched.
 if [ ! -r "$PLUGIN_JSON" ]; then
   exit 0
 fi
@@ -106,8 +104,8 @@ fi
 # Strip leading 'v' if present (canonical form is bare semver).
 CURRENT_TAG="${CURRENT_TAG#v}"
 
-# ---- TTL guard (AC5) ------------------------------------------------------
-# If the cache is fresher than 24h, exit 0 without touching it.
+# ---- TTL guard ---------------------------------------------------------------
+# If the cache is within the TTL window, exit 0 without touching it.
 _now_epoch() { date -u +%s; }
 
 _iso_to_epoch() {
@@ -151,19 +149,19 @@ if [ -z "$LATEST_RAW" ] && command -v curl >/dev/null 2>&1; then
     https://api.github.com/repos/gaiastudio-ai/gaia-framework/releases/latest 2>/dev/null || printf '')"
 fi
 
-# AC1, AC2: empty response -> exit 0 silently, cache untouched.
+# Empty response -> exit 0 silently, cache untouched.
 if [ -z "$LATEST_RAW" ]; then
   exit 0
 fi
 
-# AC3: parse JSON -> on failure, exit 0 silently.
+# Parse JSON -> on failure, exit 0 silently.
 LATEST_TAG="$(printf '%s' "$LATEST_RAW" | jq -r '.tag_name // ""' 2>/dev/null || printf '')"
 if [ -z "$LATEST_TAG" ]; then
   exit 0
 fi
 LATEST_TAG="${LATEST_TAG#v}"
 
-# ---- Tag comparison (AC6, AC7) -------------------------------------------
+# ---- Tag comparison ----------------------------------------------------------
 # Shell-only semver comparison via `sort -V`. When tags are equal, no update.
 # When LATEST > CURRENT, update_available=true.
 UPDATE_AVAILABLE="false"
@@ -174,23 +172,23 @@ if [ "$LATEST_TAG" != "$CURRENT_TAG" ]; then
   fi
 fi
 
-# ---- Atomic write (AC8, AC10 / NFR-STATUSLINE-3) -------------------------
+# ---- Atomic write (sibling tempfile + mv) ------------------------------------
 # Sibling tempfile in the cache dir + mv -f. Cross-filesystem renames are
 # not atomic, so we keep the temp file beside its target.
 mkdir -p "$CACHE_DIR" 2>/dev/null || exit 0
 
 CHECKED_AT_ISO="$(date -u +%FT%TZ)"
 
-# ---- installed_version_stale computation (E82-S6 / ADR-094 Component 3) --
+# ---- installed_version_stale computation ------------------------------------
 # Rule: stale=true when the installed runtime is NOT in lockstep with the active
 # plugin version. Two sub-cases:
 #   1. Marker present + differs from the active plugin version  -> stale.
 #   2. Marker ABSENT but an installed runtime exists AND the active plugin
-#      version resolves -> stale (AF-2026-05-27-7). The original rule returned
-#      false on a missing marker, so every install that predates the marker
-#      (E82-S6) silently rotted across plugin updates with no [stale] nudge —
-#      the exact "fixes don't appear after update" class. A missing marker on a
-#      real install now correctly reads as "unknown/old -> needs re-install".
+#      version resolves -> stale. The original rule returned false on a missing
+#      marker, so every install that predates the marker silently rotted across
+#      plugin updates with no [stale] nudge — the exact "fixes don't appear
+#      after update" class. A missing marker on a real install now correctly
+#      reads as "unknown/old -> needs re-install".
 # Missing CLAUDE_PLUGIN_ROOT (dev/test) => false. No installed runtime => false.
 INSTALLED_VERSION_STALE="false"
 INSTALL_DIR="$HOME/.claude/gaia-statusline"
@@ -216,10 +214,9 @@ if [ -z "$SIBLING" ]; then
   exit 0
 fi
 
-# Read-modify-write (ADR-091 amendment, E82-S8): the cache file is shared
-# with statusline-git-dirty-check.sh. A naive `jq -n` overwrite would
-# clobber its owned `git_dirty` field on every 1h refresh. Read existing
-# cache, merge only our owned fields, atomic-write.
+# Read-modify-write: the cache file is shared with statusline-git-dirty-check.sh.
+# A naive `jq -n` overwrite would clobber its owned `git_dirty` field on every
+# 1h refresh. Read existing cache, merge only our owned fields, atomic-write.
 if [ -r "$CACHE_FILE" ]; then
   EXISTING_CACHE="$(jq '.' "$CACHE_FILE" 2>/dev/null || printf '{}')"
 else

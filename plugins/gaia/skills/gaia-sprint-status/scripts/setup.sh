@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh — sprint-status skill setup (E28-S61)
+# setup.sh — sprint-status skill setup
 #
-# Shared setup pattern from the E28-S17/S19/S21 foundation work.
-# Resolves config, validates gates, loads checkpoint state.
+# Shared setup pattern. Resolves config, validates gates, loads checkpoint state.
 #
 # Exit codes:
 #   0 — setup succeeded, skill body can run

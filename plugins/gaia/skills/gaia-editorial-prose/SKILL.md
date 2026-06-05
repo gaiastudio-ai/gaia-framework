@@ -10,7 +10,7 @@ orchestration_class: reviewer
 
 You are performing a **clinical copy-editing review** on the document the user supplies. You evaluate the target across seven prose dimensions — ambiguity, inconsistency, redundancy, jargon, passive voice, sentence complexity, and tone shifts — and produce a markdown findings report. Every finding names a specific line (or section) in the source, classifies severity (critical / major / minor / style), and offers a concrete fix the author can accept or reject.
 
-This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/editorial-review-prose.xml` task (42 lines). Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model (skills + subagents + plugins + hooks).
+This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/editorial-review-prose.xml` task (42 lines). The legacy task-runner engine is retired and this skill runs natively under the Claude Code primitives model (skills + subagents + plugins + hooks).
 
 ## Critical Rules
 
@@ -67,12 +67,7 @@ The optional "Structural observations" note that may appear at the end of the re
 
 ## References
 
-- Source: `_gaia/core/tasks/editorial-review-prose.xml` (legacy 42-line task body — ported per ADR-041 + ADR-042).
-- ADR-041: Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042: Scripts-over-LLM for Deterministic Operations.
-- ADR-048: Engine Deletion as Program-Closing Action — legacy task coexists with this skill until program close.
-- FR-323: Skill Conversion — slash-command identity preserved.
-- NFR-053: Full v1.127.2-rc.1 Feature Parity.
+- Source: `_gaia/core/tasks/editorial-review-prose.xml` (legacy 42-line task body).
 
 ## Related
 

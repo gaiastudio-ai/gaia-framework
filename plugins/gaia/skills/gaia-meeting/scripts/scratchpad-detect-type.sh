@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# scratchpad-detect-type.sh — gaia-meeting content-type detection (E76-S4)
-#
-# AC7 / FR-MTG-13.
+# scratchpad-detect-type.sh — gaia-meeting content-type detection
 #
 # Reads scratchpad content from stdin and emits a one-token content-type tag:
 #   json | ts | py | sh | md | go | swift | kt | rs | java

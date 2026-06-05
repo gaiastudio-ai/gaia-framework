@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # parse-bypass-flag.sh — Canonical `--bypass <skill> --reason "<text>"`
-# argument parser for every gate-aware skill (E103-S3..S6 and future).
+# argument parser for every gate-aware skill.
 #
 # Usage:
 #   eval "$(scripts/lib/parse-bypass-flag.sh "$@")"
@@ -19,7 +19,7 @@
 #   export BYPASS_REASON=""
 #   set -- <original args>
 #
-# Validation rules (conforms to ADR-120 + FR-536):
+# Validation rules:
 # - `--reason` is REQUIRED when `--bypass` is present (no anonymous bypasses).
 # - Reason length MIN 10, MAX 500 chars.
 # - Violations are reported via `echo` on stderr; the helper exits 1.

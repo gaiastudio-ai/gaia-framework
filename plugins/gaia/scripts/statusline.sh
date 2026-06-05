@@ -1,25 +1,23 @@
 #!/usr/bin/env bash
 # statusline.sh — GAIA Claude Code statusline runtime.
 #
-# Story: E82-S1.
-#
 # Runtime contract (https://code.claude.com/docs/en/statusline):
 #   stdin: JSON with model.{id,display_name}, workspace.current_dir, etc.
 #   stdout: a single line of statusline text, ANSI-allowed.
 #   exit:  0 on success. NEVER nonzero. NEVER emit to stderr.
 #
-# Hot-path budget (D7):
+# Hot-path budget:
 #   p95 wall < 100ms, ceiling < 300ms.
 #
-# Subprocess inventory (TC-STATUSLINE-2, NFR-STATUSLINE-2):
+# Subprocess inventory:
 #   ALLOWED: jq, git symbolic-ref, cat, tput
 #   FORBIDDEN: any network primitive (structurally enforced by TC-9)
 #
 # File reads:
-#   - ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json                     (D5: version, active plugin)
+#   - ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json                     (version, active plugin)
 #     Falls back to $PROJECT_PATH/gaia-framework/plugins/gaia/.claude-plugin/plugin.json (in-tree dev)
 #   - $HOME/.claude/gaia-statusline/cache/latest-release.json             (silent on miss)
-#   - $PROJECT_PATH/.gaia/state/sprint-status.yaml                         (rich theme only, D11 — canonical post-ADR-111)
+#   - $PROJECT_PATH/.gaia/state/sprint-status.yaml                         (rich theme only — canonical location)
 #     Falls back to $PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml  (legacy read-compat)
 #
 # POSIX discipline: bash 3.2 compatible (macOS default).
@@ -117,7 +115,7 @@ fi
 # Tier 3: last-resort literal.
 [ -n "$GAIA_VERSION" ] || GAIA_VERSION="dev"
 
-# ---- Self-heal the installed runtime against the active plugin (AF-2026-05-27-7)
+# ---- Self-heal the installed runtime against the active plugin
 # The statusline RUNTIME is a standalone copy under ~/.claude/gaia-statusline/
 # (installed once by install-statusline.sh). `/plugin marketplace update` only
 # refreshes the plugin CACHE — it never touches the installed runtime — so the
@@ -208,11 +206,11 @@ else
   fi
 fi
 
-# ---- Cache (silent on miss) — owned by E82-S2, read here ------------------
-# Cache schema (ADR-091, written by statusline-update-check.sh):
+# ---- Cache (silent on miss) ------------------------------------------------
+# Cache schema (written by statusline-update-check.sh):
 #   { checked_at_iso, latest_tag, current_tag, update_available }
 #
-# 7-day stale-fence (E82-S2 / TC-STATUSLINE-7 / AT-4): when the cache has
+# 7-day stale-fence: when the cache has
 # not been refreshed in > 7 days, every update signal (glyph + bold + ASCII
 # prefix) is suppressed regardless of `update_available`. The fence belongs
 # to the reader because the writer's TTL (24h) is for fetch frequency; the
@@ -237,7 +235,7 @@ if [ -r "$GIT_STATE_CACHE_FILE" ]; then
   GIT_STATE_JSON="$(cat "$GIT_STATE_CACHE_FILE" 2>/dev/null || printf '')"
   if [ -n "$GIT_STATE_JSON" ]; then
     GIT_DIRTY_RAW="$(printf '%s' "$GIT_STATE_JSON" | jq -r '.git_dirty // false' 2>/dev/null)"
-    # AF-2026-05-27-5: per-class line-change counts (default 0 when absent).
+    # Per-class line-change counts (default 0 when absent).
     GIT_STAGED_ADDED="$(printf '%s' "$GIT_STATE_JSON" | jq -r '.staged_added // 0' 2>/dev/null)"
     GIT_STAGED_REMOVED="$(printf '%s' "$GIT_STATE_JSON" | jq -r '.staged_removed // 0' 2>/dev/null)"
     GIT_UNSTAGED_ADDED="$(printf '%s' "$GIT_STATE_JSON" | jq -r '.unstaged_added // 0' 2>/dev/null)"
@@ -269,8 +267,8 @@ if [ -r "$CACHE_FILE" ]; then
   fi
 fi
 
-# ---- Update fetcher background refresh (sprint-43: hot-path TTL gate) -----
-# Original E82-S2 assumed `refreshInterval` triggered the fetcher itself —
+# ---- Update fetcher background refresh (hot-path TTL gate) ----------------
+# The renderer originally assumed `refreshInterval` triggered the fetcher itself —
 # it doesn't. `refreshInterval` only re-runs statusline.sh (this renderer).
 # Result: statusline-update-check.sh was never invoked, so the
 # latest_tag / update_available fields were never populated, so the [update]
@@ -287,8 +285,8 @@ if [ -x "$_FETCHER" ]; then
   if [ -z "${CACHE_TS:-}" ]; then
     _NEED_FETCH=1
   elif [ -n "${CACHE_EPOCH:-}" ]; then
-    # 1800 sec = 30min — matches the writer's TTL_SECONDS (sprint-43
-    # update from 24h so new GitHub releases surface within 30min).
+    # 1800 sec = 30min — matches the writer's TTL_SECONDS (updated
+    # from 24h so new GitHub releases surface within 30min).
     if [ "${AGE:-0}" -ge 1800 ]; then
       _NEED_FETCH=1
     fi
@@ -301,12 +299,12 @@ if [ -x "$_FETCHER" ]; then
   fi
 fi
 
-# ---- Theme resolution (sprint-43: rich is the default) --------------------
+# ---- Theme resolution (rich is the default) --------------------------------
 # Historically rich was opt-in via `GAIA_STATUSLINE_THEME=rich`. Most users
 # never set the env var (the statusLine command in settings.json is just
 # a path with no env), so context-bar / rate-limits / sprint chunks were
 # silently gated off. Flipping the default to "rich" surfaces them by
-# default; users who want the minimal pre-43 layout set
+# default; users who want the minimal layout set
 # `GAIA_STATUSLINE_THEME=minimal` (any non-empty value other than "rich"
 # also suppresses the rich-only chunks).
 _GAIA_THEME="${GAIA_STATUSLINE_THEME:-rich}"
@@ -316,7 +314,7 @@ else
   GAIA_RICH=0
 fi
 
-# ---- Rich-theme sprint status read (D11, TC-6) -----------------------------
+# ---- Rich-theme sprint status read ----------------------------------------
 # Walks UP from PROJECT_PATH looking for .gaia/artifacts/implementation-artifacts/
 # sprint-status.yaml. This handles the common layout where the terminal cwd
 # is inside a subproject (e.g., $PROJECT_ROOT/gaia-framework/) but the sprint
@@ -328,8 +326,7 @@ if [ "$GAIA_RICH" = "1" ]; then
   _SEARCH_DIR="$PROJECT_PATH"
   _DEPTH=0
   while [ "$_DEPTH" -lt 5 ]; do
-    # E96-S8 smoke-test follow-up: prefer .gaia/state/sprint-status.yaml
-    # (post-migration canonical per ADR-111) over legacy docs/.
+    # Prefer .gaia/state/sprint-status.yaml (canonical location) over legacy docs/.
     _GAIA_CANDIDATE="$_SEARCH_DIR/.gaia/state/sprint-status.yaml"
     if [ -r "$_GAIA_CANDIDATE" ]; then
       SPRINT_FILE="$_GAIA_CANDIDATE"
@@ -349,7 +346,7 @@ if [ "$GAIA_RICH" = "1" ]; then
     _DEPTH=$((_DEPTH + 1))
   done
   if [ -n "$SPRINT_FILE" ] && [ -r "$SPRINT_FILE" ]; then
-    # Tiny grep — direct read (NOT routed through dashboard script per D11).
+    # Tiny grep — direct read (NOT routed through dashboard script).
     SPRINT_ID="$(grep -E '^sprint_id:' "$SPRINT_FILE" 2>/dev/null | head -1 | sed 's/^sprint_id:[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//' || printf '')"
     # Suppress closed sprints — once /gaia-sprint-close stamps `status: closed`
     # the sprint_id refers to historical state until /gaia-sprint-plan rolls
@@ -361,7 +358,7 @@ if [ "$GAIA_RICH" = "1" ]; then
   fi
 fi
 
-# ---- Width detection (FR-433) ---------------------------------------------
+# ---- Width detection ------------------------------------------------------
 COLS="${COLUMNS:-0}"
 if [ "$COLS" = "0" ] || [ -z "$COLS" ]; then
   COLS="$(tput cols 2>/dev/null || printf '80')"
@@ -389,13 +386,12 @@ esac
 BRAND_TEXT="${GLYPH_BRAND} GAIA ${GAIA_VERSION}"
 BRAND_CHUNK="${OSC8_OPEN}${COLOR_BRAND}${COLOR_BOLD}${BRAND_TEXT}${COLOR_RESET}${OSC8_CLOSE}"
 
-# Update indicator (D10: glyph + bold + colour + ASCII prefix in ASCII theme).
+# Update indicator (glyph + bold + colour + ASCII prefix in ASCII theme).
 # Suppressed when (a) cache absent or unparseable, (b) cached latest_tag is
 # missing, (c) the cached latest_tag is NOT strictly newer than the live
-# installed GAIA_VERSION, or (d) the 7-day stale-fence has tripped (see
-# E82-S2 / TC-STATUSLINE-7 / AT-4 above).
+# installed GAIA_VERSION, or (d) the 7-day stale-fence has tripped (see above).
 #
-# AF-2026-05-27-5 fix: the gate compares with a strict semver "latest > installed"
+# The gate compares with a strict semver "latest > installed"
 # test, NOT a bare `latest != installed`. After the user runs /plugin update, the
 # installed version becomes >= the cached latest_tag; a `!=` check still fired
 # (installed now DIFFERS from the stale cached latest) so the arrow lingered until
@@ -428,7 +424,7 @@ if [ "$CACHE_FRESH" -eq 1 ] && [ -n "$LATEST_VERSION" ] && _semver_gt "$LATEST_V
   fi
 fi
 
-# ---- Staleness WARN segment (E82-S6 / ADR-094 Component 4) ----------------
+# ---- Staleness WARN segment ------------------------------------------------
 # Renders ONCE per UTC day. Gated by per-day marker file. Suppressed when
 # `installed_version_stale` is not literally "true" or when the per-day
 # marker already exists. Touching the marker is the only new write on the
@@ -451,7 +447,7 @@ fi
 MODEL_CHUNK="${COLOR_MUTED}${MODEL_NAME}${COLOR_RESET}"
 PROJECT_CHUNK="${PROJECT_NAME}"
 # Branch and dirty marker are separate chunks so they can be placed in
-# distinct boxes on line 2 (per the sprint-43 layout request). The dirty
+# distinct boxes on line 2 (per the two-line layout design). The dirty
 # marker is still gated on BRANCH being non-empty — a detached HEAD with
 # no branch context renders nothing for both chunks.
 BRANCH_CHUNK=""
@@ -459,7 +455,7 @@ DIRTY_CHUNK=""
 if [ -n "$BRANCH" ]; then
   BRANCH_CHUNK="${GLYPH_BRANCH} ${BRANCH}"
   if [ "$GIT_DIRTY_RAW" = "true" ]; then
-    # AF-2026-05-27-5: render per-class line-change counts instead of a bare
+    # Render per-class line-change counts instead of a bare
     # dirty glyph — "S +30 -4  U +12 -3" (S=staged, U=unstaged; +added green,
     # -removed red; muted labels). Both sides always shown when dirty, incl.
     # "+0 -0" for an untracked-only tree (git counts no line diff for those).
@@ -478,7 +474,7 @@ if [ -n "$SPRINT_ID" ]; then
   SPRINT_CHUNK="${COLOR_MUTED}${SPRINT_ID}${COLOR_RESET}"
 fi
 
-# ---- Rate-limits chunk (E82-S10 / FR-451; redesigned per user req) ---------
+# ---- Rate-limits chunk (redesigned per user req) ---------------------------
 # Rich-theme-only. Reads `.rate_limits.{five_hour,seven_day}.{used_percentage,
 # resets_at}` from stdin (resets_at = Unix epoch seconds; per the Claude Code
 # statusline schema). Renders ONE gradient-colored segment PER PRESENT WINDOW:
@@ -560,12 +556,12 @@ if [ "$GAIA_RICH" = "1" ]; then
   fi
 fi
 
-# ---- Context-window progress bar (E82-S9 / FR-450, redesigned) -------------
+# ---- Context-window progress bar ------------------------------------------
 # Renders a 10-char gradient bar from stdin's `.context_window.used_percentage`
 # (0-100), inline percentage, and grey size hint (200K / 1M).
 #
-# Original E82-S9 used a single solid color band per AC2/AC3/AC4. This
-# redesign (sprint-43 issue-3 follow-up) replaces it with per-cell gradient
+# An earlier version used a single solid color band. This
+# redesign replaces it with per-cell gradient
 # fill (green -> yellow -> red across the 10 cells) and appends:
 #
 #   <gradient-bar> <pct%-colored-by-dominant-band> <[size]-grey>
@@ -649,7 +645,7 @@ fi
 
 SEP=" | "
 
-# ---- Width-ladder right-to-left segment drop (FR-433, TC-4) ----------------
+# ---- Width-ladder right-to-left segment drop --------------------------------
 # Order from most-droppable (last) to most-essential (first):
 #   1. sprint  (rich-only; least-essential)
 #   2. branch  (drop BEFORE project at <50 cols)
@@ -661,7 +657,7 @@ SEP=" | "
 #   >= 80 cols: all segments
 #   60..79   : drop sprint
 #   50..59   : drop sprint + branch
-#   40..49   : drop sprint + branch + project (project drop AFTER branch — branch first per TC-4)
+#   40..49   : drop sprint + branch + project (project drop AFTER branch)
 #   32..39   : drop sprint + branch + project + model (just brand + ascii update if any)
 #   < 32     : brand only
 
@@ -670,26 +666,26 @@ if [ "$COLS" -lt 32 ]; then
 elif [ "$COLS" -lt 40 ]; then
   KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=0; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=0; KEEP_RLIMIT=0
 elif [ "$COLS" -lt 50 ]; then
-  # E82-S9 / AC10: at <50 cols, the bar survives but the branch is dropped.
-  # E82-S10 / AC8: rate-limits drops FIRST (least essential).
+  # At <50 cols, the context bar survives but the branch is dropped.
+  # Rate-limits drops first (least essential).
   KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=0; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
 elif [ "$COLS" -lt 60 ]; then
   KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
 elif [ "$COLS" -lt 80 ]; then
   KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=0; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=0
 else
-  # sprint-43 update: rate-limits kept from 80 cols up (was 100). Most users
+  # Rate-limits kept from 80 cols up (was 100). Most users
   # run terminals 80-120 wide; the 100-col gate dropped RL on common widths.
   KEEP_BRAND=1; KEEP_MODEL=1; KEEP_PROJECT=1; KEEP_BRANCH=1; KEEP_SPRINT=1; KEEP_CONTEXTBAR=1; KEEP_RLIMIT=1
 fi
 
-# Assemble two-line layout (sprint-43 issue-3):
+# Assemble two-line layout:
 #
 #   Line 1: brand [update] [stale] | context-bar pct% [size] | model |
 #           rate-limits | sprint
 #   Line 2: branch | dirty | project
 #
-# Smart-hiding (FR-447) still applies: empty chunks are suppressed and the
+# Smart-hiding still applies: empty chunks are suppressed and the
 # separator before them is dropped. Line 2 is also suppressed entirely when
 # branch+dirty+project are all empty so a non-git terminal session renders
 # only line 1.

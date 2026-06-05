@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # strip-brownfield-block.sh — remove the BROWNFIELD-ONLY block from a PRD.
 #
-# Test05 F-007. The PRD template carries a
+# The PRD template carries a
 #   <!-- BROWNFIELD-ONLY-START --> ... <!-- BROWNFIELD-ONLY-END -->
 # block that is only relevant when the PRD documents an EXISTING codebase. On a
 # greenfield PRD it is dead boilerplate that authors had to remember to delete by

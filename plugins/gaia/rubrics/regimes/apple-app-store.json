@@ -3,11 +3,9 @@
   "skill": "mobile",
   "name": "apple-app-store",
   "applies_to_skills": ["review-mobile", "review-security"],
-  "description": "Apple App Store regime rubric — encodes Human Interface Guidelines (HIG) conformance, In-App Purchase (IAP) compliance under App Store Review Guideline 3.1.1, App Store privacy nutrition label / privacy manifest consistency, and App Tracking Transparency (ATT) requirements under Guideline 5.1.2. Opt-in via project-config.yaml `compliance: [\"apple-app-store\"]`. Layer 2 of the four-layer rubric composition (base + regimes + domain + project) per ADR-079 and ADR-081.",
+  "description": "Apple App Store regime rubric — encodes Human Interface Guidelines (HIG) conformance, In-App Purchase (IAP) compliance under App Store Review Guideline 3.1.1, App Store privacy nutrition label / privacy manifest consistency, and App Tracking Transparency (ATT) requirements under Guideline 5.1.2. Opt-in via project-config.yaml `compliance: [\"apple-app-store\"]`. Layer 2 of the four-layer rubric composition (base + regimes + domain + project).",
   "metadata": {
     "title": "Apple App Store regime rubric",
-    "story": "E74-S4",
-    "adr": "ADR-081",
     "regime_id": "apple-app-store",
     "guidelines_version": "2024-Q4",
     "references": [

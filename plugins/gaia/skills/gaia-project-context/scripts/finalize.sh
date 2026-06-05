@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-project-context skill finalize (E28-S106)
+# finalize.sh — gaia-project-context skill finalize
 #
-# Follows the shared finalize.sh pattern from E28-S17 / E28-S79.
+# Follows the shared finalize.sh pattern.
 #
 # Responsibilities:
 #   1. Write a checkpoint via the shared checkpoint.sh foundation script

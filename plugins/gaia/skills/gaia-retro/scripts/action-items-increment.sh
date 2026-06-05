@@ -2,10 +2,10 @@
 # action-items-increment.sh — increment escalation_count for an action-items.yaml
 # entry keyed by theme_hash, with idempotency scoped to (sprint_id, theme_hash).
 #
-# E36-S5 / ADR-052: this script delegates to the canonical shared retro writer
+# This script delegates to the canonical shared retro writer
 # (retro-sidecar-write.sh) for allowlist enforcement, path resolution, and
 # concurrency control. Helpers (allowlist_match, resolve_real) are sourced
-# directly from the shared writer so the NFR-RIM-2 boundary is enforced
+# directly from the shared writer so the boundary is enforced
 # exactly once across the codebase.
 #
 # Increment semantics are an in-place YAML mutation, distinct from the
@@ -23,18 +23,18 @@
 #
 # Contract:
 #   * Allowlist check: file path must satisfy the shared writer's allowlist
-#     (realpath-resolved match against NFR-RIM-2 patterns; for this script,
+#     (realpath-resolved match against allowlist patterns; for this script,
 #     the relevant pattern is `<root>/.gaia/artifacts/planning-artifacts/action-items.yaml`).
 #   * Idempotency: a sidecar ledger next to the target file records
 #     (sprint_id, theme_hash) pairs that have already produced an increment.
 #     Re-invoking with the same pair is a silent no-op.
 #   * Backup: a .bak copy is written before mutation; on verify failure the
 #     target is restored from .bak; on success .bak is removed.
-#   * Concurrency: flock on the target file serializes writers (AC-EC1, AC-EC9).
+#   * Concurrency: flock on the target file serializes writers.
 
 set -uo pipefail
 
-# Locate and source the shared retro writer (E36-S5 delegation).
+# Locate and source the shared retro writer.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RETRO_WRITER="${SCRIPT_DIR}/../../../scripts/retro-sidecar-write.sh"
 if [ ! -f "$RETRO_WRITER" ]; then
@@ -62,7 +62,7 @@ if [ -z "$AI_FILE" ] || [ -z "$THEME_HASH" ] || [ -z "$SPRINT_ID" ]; then
   exit 1
 fi
 
-# Allowlist (NFR-RIM-2) — delegate to the shared writer's helper. We resolve
+# Allowlist — delegate to the shared writer's helper. We resolve
 # both the project root and the target file via the shared writer's
 # resolve_real() so symlinks / non-existent intermediate components are
 # handled identically across all retro writes.
@@ -91,11 +91,11 @@ touch "$LEDGER"
 
 LEDGER_KEY="${SPRINT_ID}:${THEME_HASH}"
 if grep -Fxq "$LEDGER_KEY" "$LEDGER" 2>/dev/null; then
-  # Idempotent no-op (NFR-RIM-3).
+  # Idempotent no-op.
   exit 0
 fi
 
-# Mutate under flock (AC-EC1, AC-EC9). The shared writer uses the same
+# Mutate under flock. The shared writer uses the same
 # flock-or-mkdir-fallback pattern; we mirror it here so the increment
 # operation participates in the same serialization domain as appends.
 LOCKFILE="${AI_FILE}.lock"
@@ -156,7 +156,7 @@ if command -v flock >/dev/null 2>&1; then
   (
     flock -x 9
     # Re-check ledger under the lock so a racing writer's increment is
-    # observed before we apply a duplicate (AC-EC1).
+    # observed before we apply a duplicate.
     if grep -Fxq "$LEDGER_KEY" "$LEDGER" 2>/dev/null; then
       exit 42
     fi

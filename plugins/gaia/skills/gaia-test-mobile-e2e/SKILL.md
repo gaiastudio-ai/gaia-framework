@@ -24,13 +24,13 @@ orchestration_class: light-procedural
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
-This is the unifying principle of every GAIA review and action skill (FR-DEJ-1, ADR-077). For `/gaia-test-mobile-e2e` the configured device-farm adapter runs in Phase 3A and the upstream `dispatch-device-farm.sh` emits a structured `analysis-results.json` artifact (validating against `plugins/gaia/schemas/analysis-results.schema.json`). The LLM never computes the verdict — `plugins/gaia/scripts/review-common/verdict-resolver.sh` consumes the analysis output (plus any LLM findings from the optional Phase 3B fork) and emits APPROVE | REQUEST_CHANGES | BLOCKED. Adapter availability is gated by `plugins/gaia/scripts/tool-availability-probe.sh`, whose four-state classification maps `expected_and_missing` and `ran_and_errored` to BLOCKED — never to a false APPROVE.
+This is the unifying principle of every GAIA review and action skill. For `/gaia-test-mobile-e2e` the configured device-farm adapter runs in Phase 3A and the upstream `dispatch-device-farm.sh` emits a structured `analysis-results.json` artifact (validating against `plugins/gaia/schemas/analysis-results.schema.json`). The LLM never computes the verdict — `plugins/gaia/scripts/review-common/verdict-resolver.sh` consumes the analysis output (plus any LLM findings from the optional Phase 3B fork) and emits APPROVE | REQUEST_CHANGES | BLOCKED. Adapter availability is gated by `plugins/gaia/scripts/tool-availability-probe.sh`, whose four-state classification maps `expected_and_missing` and `ran_and_errored` to BLOCKED — never to a false APPROVE.
 
 `/gaia-test-mobile-e2e` is the deployment-phase action skill that runs a mobile end-to-end test suite against a real-device cloud (Firebase Test Lab, BrowserStack, or Sauce Labs). The skill:
 
 1. Resolves the configured device-farm adapter from `device_farm.adapter` in `.gaia/config/project-config.yaml`.
 2. Validates the bridge toggle (`test_execution_bridge.bridge_enabled`) — short-circuits with `verdict: SKIPPED` if the bridge is disabled.
-3. Dispatches the suite via `plugins/gaia/scripts/dispatch-device-farm.sh` (E74-S9), which honours `runtime-profile: network` and validates the adapter's `auth_env_var`.
+3. Dispatches the suite via `plugins/gaia/scripts/dispatch-device-farm.sh`, which honours `runtime-profile: network` and validates the adapter's `auth_env_var`.
 4. Normalizes the adapter output into the canonical per-device schema (`device_id`, `os_version`, `form_factor`, `verdict`, `duration_ms`, `artifacts`).
 5. Computes a composite verdict (PASSED | FAILED | ERROR | TIMEOUT | SKIPPED) using priority FAILED > ERROR > TIMEOUT > PASSED.
 
@@ -38,10 +38,10 @@ This skill is a sibling of `/gaia-test-device-matrix` — that skill expands a c
 
 ## Critical Rules
 
-- A device-farm adapter MUST be configured in `project-config.yaml` at `device_farm.adapter` — one of `firebase-test-lab | browserstack | sauce-labs`. Missing adapter yields `verdict: ERROR`. **No `/gaia-config-*` skill currently edits `device_farm.adapter`** (AF-2026-05-17-10); users must edit the YAML directly. `/gaia-config-device-target` is unrelated — it scopes to the `device_targets` section (os_versions × form_factors × screen_sizes matrices), not adapter selection.
-- A defense-in-depth `platforms[]`-mobile gate fires at the top of `scripts/dispatch.sh` (AF-2026-05-17-10): if neither `ios` nor `android` appears in `platforms[]`, the skill exits SKIPPED with reason `no_mobile_platform` (mirrors AF-2026-05-17-9 family-invariant gating for the mobile family).
+- A device-farm adapter MUST be configured in `project-config.yaml` at `device_farm.adapter` — one of `firebase-test-lab | browserstack | sauce-labs`. Missing adapter yields `verdict: ERROR`. **No `/gaia-config-*` skill currently edits `device_farm.adapter`**; users must edit the YAML directly. `/gaia-config-device-target` is unrelated — it scopes to the `device_targets` section (os_versions × form_factors × screen_sizes matrices), not adapter selection.
+- A defense-in-depth `platforms[]`-mobile gate fires at the top of `scripts/dispatch.sh`: if neither `ios` nor `android` appears in `platforms[]`, the skill exits SKIPPED with reason `no_mobile_platform` (mirrors the family-invariant gating for the mobile family).
 - `runtime-profile: network` declaration MUST be honoured — the adapter is allowed to make external API calls, and the bridge toggle gates the dispatch.
-- `auth_env_var` validation is delegated to `dispatch-device-farm.sh` (E74-S9). This skill does not handle credentials directly.
+- `auth_env_var` validation is delegated to `dispatch-device-farm.sh`. This skill does not handle credentials directly.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
 
 ## Phases
@@ -101,8 +101,8 @@ Single JSON object on stdout:
 
 ## Refs
 
-- ADR-080 — Deployment-phase action skill pattern.
-- ADR-081 — Mobile-as-Platform Extension.
-- E74-S9 — Mobile dynamic + device-farm adapter dispatch (upstream).
-- E73-S5 — Action-skill dispatch infrastructure (upstream).
-- FR-RSV2-42, FR-RSV2-43, NFR-RSV2-8 — `/gaia-test-mobile-e2e` PRD requirements.
+- Deployment-phase action skill pattern.
+- Mobile-as-Platform Extension.
+- Mobile dynamic + device-farm adapter dispatch (upstream).
+- Action-skill dispatch infrastructure (upstream).
+- `/gaia-test-mobile-e2e` requirements.

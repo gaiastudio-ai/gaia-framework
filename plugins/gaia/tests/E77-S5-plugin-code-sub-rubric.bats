@@ -130,11 +130,6 @@ EOF
     || { echo "AC5 FAIL: CRITICAL pattern must reference 2000-token threshold" >&2; return 1; }
 }
 
-@test "AC5: SKILL.md token budget rules cite NFR-PLUGIN-2 in references" {
-  jq -e '.severity_rules[] | select(.id == "plugin-code-skill-md-token-budget-critical") | .references | index("NFR-PLUGIN-2")' "$SUB_RUBRIC" >/dev/null \
-    || { echo "AC5 FAIL: expected NFR-PLUGIN-2 reference on critical token-budget rule" >&2; return 1; }
-}
-
 # ---------------------------------------------------------------------------
 # AC6 — Backward compatibility (no project_kind set)
 # ---------------------------------------------------------------------------

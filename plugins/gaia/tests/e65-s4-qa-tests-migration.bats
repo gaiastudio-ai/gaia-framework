@@ -150,7 +150,7 @@ teardown() { common_teardown; }
 
 @test "TC-DEJ-WRITE-S4-1: parent-mediated write (Option A) documented" {
   grep -iF 'parent-mediated' "$SKILL_FILE" >/dev/null
-  grep -iF 'Option A' "$SKILL_FILE" >/dev/null
+  grep -iF 'the parent writes the file' "$SKILL_FILE" >/dev/null
 }
 
 # --- shared-script invocation present ---

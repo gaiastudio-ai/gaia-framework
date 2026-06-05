@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# load-story.sh — Cluster 7 story lifecycle wrapper (E28-S56)
+# load-story.sh — story lifecycle wrapper
 #
 # Thin wrapper around the shared sprint-state.sh foundation script.
 # Retrieves the current status of a story by key.

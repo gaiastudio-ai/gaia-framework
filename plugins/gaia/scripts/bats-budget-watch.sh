@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# bats-budget-watch.sh — E45-S6 / E77-S16 / FR-419 budget-watch primitive.
+# bats-budget-watch.sh — budget-watch primitive for bats CI steps.
 #
 # Wrap a bats invocation, measure wall-clock duration, and emit a structured
 # warning when the duration exceeds a configurable threshold. The wrapper is
 # advisory-only: exit code is the inner command's status, never masked.
 #
 # Two modes:
-#   1. Legacy single-threshold (E45-S6, AC3) — `--threshold-seconds N` is
-#      honoured and treated as a SOFT alias. Emits the legacy "bats budget
-#      exceeded" wording so existing CI dashboards keep matching.
-#   2. Dual-threshold (E77-S16, FR-419) — `--soft-threshold-seconds N` and
+#   1. Legacy single-threshold — `--threshold-seconds N` is honoured and
+#      treated as a SOFT alias. Emits the legacy "bats budget exceeded"
+#      wording so existing CI dashboards keep matching.
+#   2. Dual-threshold — `--soft-threshold-seconds N` and
 #      `--hard-threshold-seconds N`. Defaults: soft=270, hard=480. Both
 #      breaches emit a structured WARNING but exit code is preserved
-#      (advisory-only contract per FR-419).
+#      (advisory-only contract).
 #
 # The warning is appended to $GITHUB_STEP_SUMMARY when set, or printed to
 # stdout otherwise. CI surfaces the warning on the PR's checks summary.
 #
 # Usage:
-#   # legacy form (E45-S6 callers — preserved verbatim)
+#   # legacy form (single threshold — preserved verbatim)
 #   bats-budget-watch.sh --threshold-seconds <N> [--label <text>] -- <cmd> [args...]
 #
-#   # dual-threshold form (E77-S16 plugin CI template — FR-419)
+#   # dual-threshold form
 #   bats-budget-watch.sh --soft-threshold-seconds <N> \
 #                        --hard-threshold-seconds <N> [--label <text>] \
 #                        -- <cmd> [args...]
@@ -38,14 +38,13 @@ LC_ALL=C
 export LC_ALL
 
 # ---------------------------------------------------------------------------
-# FR-419 canonical defaults — soft 270s / hard 480s. Vera flagged the legacy
-# 240s soft threshold as firing every run today (Tier-2 intake §item 17).
+# Canonical defaults — soft 270s / hard 480s.
 # ---------------------------------------------------------------------------
 readonly _BBW_DEFAULT_SOFT=270
 readonly _BBW_DEFAULT_HARD=480
 
 # ---------------------------------------------------------------------------
-# Internal helpers — leading-underscore prefix exempts them from the NFR-052
+# Internal helpers — leading-underscore prefix exempts them from the
 # textual public-function coverage gate.
 # ---------------------------------------------------------------------------
 
@@ -63,7 +62,7 @@ _bats_elapsed_seconds() {
 
 # _bats_format_warning <label> <elapsed> <threshold>
 # Legacy single-threshold structured-warning markdown block. Preserved
-# verbatim for back-compat with E45-S6 callers (tests + CI dashboards).
+# verbatim for back-compat with legacy callers (tests + CI dashboards).
 _bats_format_warning() {
   local label="$1" elapsed="$2" threshold="$3"
   cat <<EOF
@@ -76,7 +75,7 @@ _bats_format_warning() {
 >
 > The bats CI step is approaching its wall-clock budget. See
 > \`plugins/gaia/docs/CI-NOTES.md\` for guidance on adding fixtures without
-> breaking the budget. Tracked by E45-S6 / ADR-062.
+> breaking the budget.
 EOF
 }
 
@@ -94,8 +93,7 @@ _bats_format_dual_warning() {
 > - elapsed: ${elapsed}s
 >
 > Advisory only — the wrapper preserves the inner command's exit code. See
-> \`plugins/gaia/docs/CI-NOTES.md\` for guidance. Tracked by E77-S16 /
-> FR-419.
+> \`plugins/gaia/docs/CI-NOTES.md\` for guidance.
 EOF
 }
 
@@ -161,10 +159,10 @@ bats_budget_watch_check() {
   fi
 
   # Mode selection:
-  #   * legacy_threshold set -> single-threshold path (preserves E45-S6
+  #   * legacy_threshold set -> single-threshold path (preserves legacy
   #     wording so dashboards keep matching).
   #   * neither legacy nor explicit dual flags -> dual-threshold defaults
-  #     (FR-419 — soft 270, hard 480).
+  #     (soft 270, hard 480).
   #   * explicit dual flags -> dual-threshold with overrides.
   local legacy_mode=0
   if [ -n "$legacy_threshold" ] && [ -z "$soft_threshold" ] && [ -z "$hard_threshold" ]; then

@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # non-git-cwd-guard.sh — shared "skip-with-warning on non-git CWD" guard.
 #
-# Story: E53-S234 — Document non-git docs/ workspace + degrade git ops gracefully.
-# Anchor ADRs: ADR-070 (docs reorganization), ADR-072 (atomic rename guarantees).
-#
 # Background:
 #   The project root layout supports a non-git docs/ workspace — the directory
 #   that holds docs/, _memory/, and CLAUDE.md is not always inside a git work
@@ -54,7 +51,7 @@ non_git_cwd_skip() {
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return 0
   fi
-  printf '%s: skipped (non-git CWD) — git ops require an in-tree repo (gaia-framework/, gaia-enterprise/, Gaia-framework/). See ADR-070/ADR-072 non-git workspace subsection.\n' \
+  printf '%s: skipped (non-git CWD) — git ops require an in-tree repo (gaia-framework/, gaia-enterprise/, Gaia-framework/).\n' \
     "$prefix" >&2
   return 1
 }

@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# finalize.sh — /gaia-create-epics skill finalize (E28-S47 + E42-S10)
+# finalize.sh — /gaia-create-epics skill finalize
 #
-# E42-S10 extends the bare-bones Cluster 6 finalize scaffolding with a
-# 31-item post-completion checklist (21 script-verifiable + 10
-# LLM-checkable) derived from the V1 /gaia-create-epics
-# (create-epics-stories) checklist. See
-# .gaia/artifacts/implementation-artifacts/E42-S10-* for the V1 -> V2 mapping.
+# Extends the finalize scaffolding with a 31-item post-completion checklist
+# (21 script-verifiable + 10 LLM-checkable) derived from the V1
+# /gaia-create-epics (create-epics-stories) checklist.
 #
-# Responsibilities (per brief §Cluster 6 + story E42-S10):
+# Responsibilities:
 #   1. Run the script-verifiable subset of the 31 V1 checklist items
 #      against the epics-and-stories.md artifact. Validation runs FIRST.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
@@ -15,12 +13,11 @@
 #   4. Emit a lifecycle event via lifecycle-event.sh.
 #
 # The observability side effects (3 + 4) MUST run on every invocation —
-# the checklist outcome never suppresses the checkpoint/event write
-# (matches E42-S1..S9 contract; story AC5).
+# the checklist outcome never suppresses the checkpoint/event write.
 #
 # Exit codes:
 #   0 — finalize succeeded; all 21 script-verifiable items PASS (or
-#       no artifact was requested — classic Cluster 6 behaviour).
+#       no artifact was requested — classic finalize behaviour).
 #   1 — one or more script-verifiable checklist items FAIL; the
 #       AC4 "no artifact to validate" violation; or a
 #       checkpoint/lifecycle-event failure. Failed item names are
@@ -38,8 +35,7 @@
 #                          .gaia/artifacts/planning-artifacts/epics-and-stories.md
 #                          relative to the current working directory. If
 #                          neither is present, the checklist run is
-#                          skipped (classic Cluster 6 behaviour —
-#                          observability still runs, exit 0).
+#                          skipped (observability still runs, exit 0).
 #   TEST_PLAN_PATH         Override path to test-plan.md (default:
 #                          .gaia/artifacts/test-artifacts/test-plan.md).
 #   ARCHITECTURE_PATH      Override path to architecture.md (default:
@@ -74,7 +70,7 @@ if [ -n "${EPICS_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$EPICS_ARTIFACT"
 else
-  # E96-S7 partial-4c: smart-fallback
+  # smart-fallback
   if [ -f ".gaia/artifacts/planning-artifacts/epics-and-stories.md" ]; then
     ARTIFACT=".gaia/artifacts/planning-artifacts/epics-and-stories.md"
   elif [ -f "docs/planning-artifacts/epics-and-stories.md" ]; then
@@ -82,25 +78,16 @@ else
   fi
 fi
 
-# E96-S7 partial-4c: smart-fallback for TEST_PLAN / ARCHITECTURE / PRD.
-# F-17 (AF-2026-05-26-4): add the strategy/ subdir rung. /gaia-test-strategy
-# writes its test-plan alias to .gaia/artifacts/test-artifacts/strategy/test-plan.md
-# (the F-5 fix, AF-2026-05-24-9), so SV-16/SV-17 falsely failed when the plan
-# lived there. Honour the canonical ADR-072 two-rung order — flat before
-# strategy/ — that 8 sibling skills (gaia-trace, gaia-sprint-plan,
-# gaia-readiness-check, gaia-edit-test-plan, ...) already use.
-# AF-2026-05-27-8 / Test06 F-008: resolve the test-plan path via the shared
-# resolve-artifact-path.sh helper. The previous local precedence list omitted
-# the canonical .gaia/artifacts/planning-artifacts/ home (E105-S2 / ADR-127
-# §7.2), so SV-16 falsely failed when /gaia-test-strategy --plan wrote the
-# test-plan/test-strategy under planning-artifacts/. The resolver puts that
-# home at rung 1 and keeps the test-artifacts/{,strategy/} read-compat rungs.
+# Smart-fallback for TEST_PLAN / ARCHITECTURE / PRD.
+# Resolves the test-plan path via the shared resolve-artifact-path.sh helper.
+# The resolver puts the canonical planning-artifacts/ home at rung 1 and keeps
+# the test-artifacts/{,strategy/} read-compat rungs.
 RESOLVE_ARTIFACT_PATH="$PLUGIN_SCRIPTS_DIR/lib/resolve-artifact-path.sh"
 if [ -n "${TEST_PLAN_PATH:-}" ]; then
   TEST_PLAN="$TEST_PLAN_PATH"
 elif [ -x "$RESOLVE_ARTIFACT_PATH" ]; then
   # Print-mode (no --existing-only): returns the first existing rung, or the
-  # canonical rung-1 path when none exist (stable "expected" path for SV-16's
+  # canonical rung-1 path when none exist (stable "expected" path for the
   # error message).
   TEST_PLAN="$("$RESOLVE_ARTIFACT_PATH" test_plan 2>/dev/null || echo ".gaia/artifacts/planning-artifacts/test-plan.md")"
 else
@@ -121,13 +108,12 @@ else
   PRD="docs/planning-artifacts/prd.md"
 fi
 
-# ---------- 0b. Em-dash heading normalization (AF-2026-05-24-9 / Test02 F-7) ----------
-# Test02 F-7: the PM/architect subagent reliably emits ASCII `--` instead
-# of the canonical em-dash `—` (U+2014) in epic headings. The
-# `resolve-epic-slug.sh` resolver accepts both forms per AF-2026-05-22-6
-# Bug-5, but `finalize.sh` SV-03 only recognizes the `## Epic N:` form
-# (F-8 separate). Either way, the ASCII `--` form is a Markdown
-# autocorrect artifact, not the canonical heading shape.
+# ---------- 0b. Em-dash heading normalization ----------
+# The PM/architect subagent reliably emits ASCII `--` instead of the canonical
+# em-dash `—` (U+2014) in epic headings. The `resolve-epic-slug.sh` resolver
+# accepts both forms, but `finalize.sh` SV-03 only recognizes the `## Epic N:`
+# form. Either way, the ASCII `--` form is a Markdown autocorrect artifact,
+# not the canonical heading shape.
 #
 # Producer-side fix: normalize ASCII `## EN -- Title` → `## EN — Title`
 # (em-dash) in epic headings. Stories under H3 use a different pattern
@@ -135,9 +121,9 @@ fi
 #
 # Idempotent: re-runs on already-normalized text are no-ops.
 if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
-  # Use python3 (always available per ADR-074) for the unicode-aware rewrite.
+  # Use python3 for the unicode-aware rewrite.
   if command -v python3 >/dev/null 2>&1; then
-    python3 - "$ARTIFACT" <<'NORMPY' || log "WARNING: em-dash normalization failed (F-7 mitigation)"
+    python3 - "$ARTIFACT" <<'NORMPY' || log "WARNING: em-dash normalization failed"
 import sys, re, io
 path = sys.argv[1]
 with open(path, 'r', encoding='utf-8') as f:
@@ -148,7 +134,7 @@ if new != content:
     with open(path, 'w', encoding='utf-8') as f:
         f.write(new)
 NORMPY
-    log "em-dash normalization applied to $ARTIFACT (F-7 mitigation — ASCII -- → em-dash)"
+    log "em-dash normalization applied to $ARTIFACT (ASCII -- → em-dash)"
   fi
 fi
 
@@ -160,12 +146,11 @@ CHECKLIST_STATUS=0
 
 # item_check <id> <description> <verdict>
 # verdict: "pass" | "fail" | "notice".
-# AF-2026-05-31-1 / Test12 F-14: "notice" verdict is informational — counted
-# as PASSED for the verdict cohort (it does not block the gate) but rendered
-# as [INFO] in the operator-facing log so the deviation from a hard pass is
-# still visible. Used by SV-20 to relax the Review-Findings-Incorporated
-# gate for brownfield-mode architecture documents while preserving the hard
-# gate for greenfield arch.
+# "notice" verdict is informational — counted as PASSED for the verdict cohort
+# (it does not block the gate) but rendered as [INFO] in the operator-facing
+# log so the deviation from a hard pass is still visible. Used by SV-20 to
+# relax the Review-Findings-Incorporated gate for brownfield-mode architecture
+# documents while preserving the hard gate for greenfield arch.
 item_check() {
   local id="$1" desc="$2" result="$3"
   CHECKED=$((CHECKED + 1))
@@ -197,19 +182,17 @@ file_exists() {
 
 # heading_present <file> <heading-regex>
 # Pass when an H2 heading containing the pattern is present.
-# AF-2026-05-27-8 / Test06 F-001/F-004/F-009: heading_present() is now a single
-# shared implementation (plugins/gaia/scripts/lib/heading-present.sh) with one
-# uniform, permissive regex accepting optional numbered+lettered outline
-# prefixes (11, 11b, 1.2.3). Previously 17 finalize.sh scripts carried THREE
-# divergent inline copies, so the same heading passed one skill's check and
-# failed another's. Sourced via a $0-relative path so it works whether or not
-# this script defines PLUGIN_SCRIPTS_DIR.
+# heading_present() is a single shared implementation
+# (plugins/gaia/scripts/lib/heading-present.sh) with one uniform, permissive
+# regex accepting optional numbered+lettered outline prefixes (11, 11b,
+# 1.2.3). Sourced via a $0-relative path so it works whether or not this
+# script defines PLUGIN_SCRIPTS_DIR.
 _GAIA_HEADING_LIB="$(cd "$(dirname "$0")" && pwd)/../../../scripts/lib/heading-present.sh"
 if [ -r "$_GAIA_HEADING_LIB" ]; then
   # shellcheck source=/dev/null
   . "$_GAIA_HEADING_LIB"
 else
-  # Fallback inline definition (kept byte-equivalent to the shared lib) so the
+  # Fallback inline definition (byte-equivalent to the shared lib) so the
   # checklist still runs if the lib is somehow unreadable.
   heading_present() {
     local f="$1" text="$2"
@@ -230,10 +213,8 @@ pattern_present() {
 # epic_headings_present <file>
 # Pass when at least one canonical epic heading exists in either form:
 #   `## Epic N:` (legacy form) OR `## EN — Title` (em-dash form preferred
-#   by resolve-epic-slug.sh per AF-2026-05-22-6 Bug-5).
-# AF-2026-05-24-14 / Test02 F-8: SV-03 previously only accepted the
-# `## Epic N:` form, marking the em-dash form as a violation even
-# though the resolver accepts both. Now accepts both forms.
+#   by resolve-epic-slug.sh).
+# Accepts both forms: `## Epic N:` and the em-dash form.
 epic_headings_present() {
   local f="$1"
   grep -Eq '^##[[:space:]]+(Epic[[:space:]]+[0-9]+|E[0-9]+[[:space:]]+(—|--))' "$f" 2>/dev/null \
@@ -285,17 +266,14 @@ per_story_field_present() {
     in_story {
       lower = tolower($0)
       lab = tolower(label)
-      # AF-2026-05-22-9 Bug-3: also accept bolded `**Priority:**` /
-      # `**Size:**` / etc. field labels, which Derek emits for visual
-      # clarity in epics-and-stories.md. Optional `**` markers before
-      # the label and around the colon are now tolerated.
+      # Also accept bolded `**Priority:**` / `**Size:**` / etc. field labels.
+      # Optional `**` markers before the label and around the colon are tolerated.
       pat = "^[[:space:]]*[-*]?[[:space:]]*(\\*\\*)?" lab "(\\*\\*)?[[:space:]]*:"
       if (match(lower, pat)) { has_field = 1 }
-      # AF-2026-05-30-4 / Test11 F-12: also accept snake_case aliases for
-      # the canonical Title-case labels so a SKILL-prose-following author
-      # passes the check. Map "Depends on" -> "depends_on", "Risk" ->
-      # "risk_level" or "risk". The Title-case match above wins; snake_case
-      # is the fallback.
+      # Also accept snake_case aliases for the canonical Title-case labels so
+      # a SKILL-prose-following author passes the check. Map "Depends on" ->
+      # "depends_on", "Risk" -> "risk_level" or "risk". The Title-case match
+      # above wins; snake_case is the fallback.
       if (lab == "depends on") {
         if (match(lower, "^[[:space:]]*[-*]?[[:space:]]*(\\*\\*)?depends_on(\\*\\*)?[[:space:]]*:")) { has_field = 1 }
       } else if (lab == "risk") {
@@ -328,8 +306,8 @@ per_story_enum_valid() {
     in_story {
       lower = tolower($0)
       lab = tolower(label)
-      # AF-2026-05-22-9 Bug-3 mirror: accept bolded labels here too so
-      # enum-validation does not silently miss `**Priority:** must` etc.
+      # Accept bolded labels here too so enum-validation does not silently
+      # miss `**Priority:** must` etc.
       pat = "^[[:space:]]*[-*]?[[:space:]]*(\\*\\*)?" lab "(\\*\\*)?[[:space:]]*:[[:space:]]*"
       if (match(lower, pat)) {
         rest = substr(lower, RSTART + RLENGTH)
@@ -362,8 +340,8 @@ no_duplicate_story_keys() {
 # no_circular_dependencies <file>
 # Parse per-story "Depends on:" lines into a directed graph and run
 # Kahn's topological sort. Pass when every story drains (no cycles).
-# The literal token "none" is treated as an empty dependency list
-# (EC-4). Self-loops (EC-3) are recorded as an edge and fail Kahn.
+# The literal token "none" is treated as an empty dependency list.
+# Self-loops are recorded as an edge and fail Kahn.
 no_circular_dependencies() {
   local f="$1"
   awk '
@@ -427,8 +405,8 @@ no_circular_dependencies() {
 }
 
 if [ "$ARTIFACT_REQUESTED" -eq 1 ] && { [ ! -f "$ARTIFACT" ] || [ ! -s "$ARTIFACT" ]; }; then
-  # AC4 / EC-1 — Caller explicitly pointed at an artifact path but it
-  # does not exist on disk or is empty (0 bytes).
+  # Caller explicitly pointed at an artifact path but it does not exist on
+  # disk or is empty (0 bytes).
   log "no artifact to validate at $ARTIFACT"
   printf '\nChecklist violations:\n' >&2
   printf '  - no artifact to validate (expected %s)\n' "$ARTIFACT" >&2
@@ -490,15 +468,14 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
     "$(file_exists "$PRD")"
   item_check "SV-19" "Architecture consumed (architecture.md exists upstream)" \
     "$(file_exists "$ARCHITECTURE")"
-  # AF-2026-05-31-1 / Test12 F-14: brownfield-mode architecture documents
-  # are exempt from the Review Findings Incorporated gate. The brownfield
-  # Phase 9a pipeline generates arch.md from gap consolidation (not from
-  # an adversarial+incorporate loop), so requiring the section would break
-  # the brownfield→epics handoff that Test12 reproduced. We probe the
-  # arch.md frontmatter for `mode: brownfield`; when set, downgrade the
-  # gate to a `notice` verdict (item_check renders it as INFO without
-  # failing the cohort). The greenfield path (mode: greenfield, or no
-  # mode declared) keeps the hard `fail` semantics.
+  # Brownfield-mode architecture documents are exempt from the Review Findings
+  # Incorporated gate. The brownfield pipeline generates arch.md from gap
+  # consolidation (not from an adversarial+incorporate loop), so requiring the
+  # section would break the brownfield→epics handoff. We probe the arch.md
+  # frontmatter for `mode: brownfield`; when set, downgrade the gate to a
+  # `notice` verdict (item_check renders it as INFO without failing the
+  # cohort). The greenfield path (mode: greenfield, or no mode declared) keeps
+  # the hard `fail` semantics.
   _rfi_verdict="fail"
   if [ -f "$ARCHITECTURE" ]; then
     _arch_mode="$(awk '/^---$/{c++; next} c==1 && /^mode:[[:space:]]/{sub(/^mode:[[:space:]]*/,""); print; exit}' "$ARCHITECTURE" 2>/dev/null | tr -d '"' | tr -d "'" | tr -d ' ')"
@@ -571,14 +548,14 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
-# ---------- 4. Auto-save session memory (E45-S3 / ADR-061) ----------
+# ---------- 4. Auto-save session memory ----------
 # Phase 1-3 skills auto-save a session summary to the agent sidecar via
 # the shared lib helper. Phase 4 skills (e.g. /gaia-dev-story) short-
-# circuit to a no-op so the interactive prompt mandated by ADR-057 /
-# FR-YOLO-2(f) is preserved. Failure is non-blocking — the auto-save
-# helper itself logs warnings to stderr but never affects this script's
-# exit code. SKILL_NAME is resolved from the parent directory name so
-# the wire-in is identical across all 24 Phase 1-3 finalize.sh files.
+# circuit to a no-op so the interactive prompt is preserved. Failure is
+# non-blocking — the auto-save helper itself logs warnings to stderr but
+# never affects this script's exit code. SKILL_NAME is resolved from the
+# parent directory name so the wire-in is identical across all Phase 1-3
+# finalize.sh files.
 AUTOSAVE_LIB="$PLUGIN_SCRIPTS_DIR/lib/auto-save-memory.sh"
 SKILL_NAME="$(basename "$(cd "$SCRIPT_DIR/.." && pwd)")"
 if [ -f "$AUTOSAVE_LIB" ]; then

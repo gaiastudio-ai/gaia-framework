@@ -10,7 +10,7 @@ orchestration_class: light-procedural
 
 You are producing a **Keep a Changelog**-formatted changelog entry for this repository. You gather commits since the last release tag, group them by conventional-commit type, cross-reference story keys back to `.gaia/artifacts/implementation-artifacts/`, and emit (or append to) `CHANGELOG.md` in the repository root.
 
-This skill is the native Claude Code conversion of the legacy generate-changelog task. Per **ADR-041** (Native Execution Model) and **ADR-042** (Scripts-over-LLM for Deterministic Operations), the legacy task-runner engine is retired and deterministic git operations are delegated to inline bash (not re-prosed by the LLM).
+This skill is the native Claude Code conversion of the legacy generate-changelog task. The legacy task-runner engine is retired and deterministic git operations are delegated to inline bash (not re-prosed by the LLM).
 
 ## Critical Rules
 
@@ -33,7 +33,7 @@ This skill is the native Claude Code conversion of the legacy generate-changelog
 
 ### Step 1 — Gather Sources
 
-Use inline bash for the deterministic git operations (ADR-042):
+Use inline bash for the deterministic git operations:
 
 ```bash
 !git log $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD --oneline --no-merges
@@ -47,7 +47,7 @@ Identify the version number for this entry (argument, next tag, or `Unreleased`)
 
 ### Step 1.5 — Validate Version Argument
 
-Before any further git work runs, validate `$ARGUMENTS` against the canonical accepted formats. Per **ADR-042** (Scripts-over-LLM for Deterministic Operations), this is a deterministic regex check — not LLM judgment. The user's intent (`semver` vs `Unreleased`) is binary; LLM interpretation would re-introduce non-determinism.
+Before any further git work runs, validate `$ARGUMENTS` against the canonical accepted formats. This is a deterministic regex check — not LLM judgment. The user's intent (`semver` vs `Unreleased`) is binary; LLM interpretation would re-introduce non-determinism.
 
 Accept `$ARGUMENTS` if and only if ONE of the following holds:
 
@@ -78,13 +78,13 @@ Walk the commit list and bucket each commit into one of the Keep a Changelog cat
 - **Removed** — `BREAKING CHANGE:` footer, `!` marker after the type, or explicit removal notices.
 - **Security** — commits that mention a CVE, a security fix, or start with `security:`.
 
-Extract a meaningful one-line description from each commit subject (strip the conventional-commit prefix). For story-linked commits, append `— [{story_key}](.gaia/artifacts/implementation-artifacts/{story_key}-*.md)` so reviewers can open the story file. The story-key cross-reference (`E\d+-S\d+`) is a V2 win and MUST be preserved — do NOT silently drop story-linked commits (FR-394).
+Extract a meaningful one-line description from each commit subject (strip the conventional-commit prefix). For story-linked commits, append `— [{story_key}](.gaia/artifacts/implementation-artifacts/{story_key}-*.md)` so reviewers can open the story file. The story-key cross-reference (`E\d+-S\d+`) is a V2 win and MUST be preserved — do NOT silently drop story-linked commits.
 
-Commits with no recognizable conventional-commit prefix are placed in an **Uncategorized** group rather than being silently dropped. The "Uncategorized" group is the V2-added uncategorised-commit capture and MUST be preserved as a distinct section so unparseable commits remain visible (FR-394).
+Commits with no recognizable conventional-commit prefix are placed in an **Uncategorized** group rather than being silently dropped. The "Uncategorized" group is the V2-added uncategorised-commit capture and MUST be preserved as a distinct section so unparseable commits remain visible.
 
 #### Excluded-Commit Logging
 
-When iterating the commit list, some commits are excluded from categorisation entirely. The base `git log ... --no-merges` invocation already filters merges out; this step makes that exclusion **observable** rather than silent (FR-394 audit trail).
+When iterating the commit list, some commits are excluded from categorisation entirely. The base `git log ... --no-merges` invocation already filters merges out; this step makes that exclusion **observable** rather than silent (audit trail).
 
 For each commit excluded from categorisation, log a structured line to the conversation transcript (NOT to `CHANGELOG.md` — the artifact stays clean):
 
@@ -150,13 +150,6 @@ If the commit range is empty (no commits since last tag), append a single-line n
 
 ## References
 
-- Source: legacy `generate-changelog` task body — ported per ADR-041 + ADR-042.
+- Source: legacy `generate-changelog` task body.
 - Keep a Changelog: https://keepachangelog.com/
 - Semantic Versioning: https://semver.org/
-- ADR-041: Native Execution Model via Claude Code Skills + Subagents + Plugins + Hooks.
-- ADR-042: Scripts-over-LLM for Deterministic Operations — version validation is a deterministic regex check expressed in prose, NOT LLM judgment.
-- ADR-048: Engine Deletion as Program-Closing Action — legacy task coexists with this skill until program close.
-- FR-323: Skill Conversion — slash-command identity preserved.
-- FR-378: Changelog version validation — `$ARGUMENTS` MUST be valid SemVer or the literal `Unreleased` (Step 1.5).
-- FR-394: Excluded-commit logging plus V2 wins (story-key cross-references and uncategorised-commit capture preserved unchanged).
-- NFR-053: Full v1.127.2-rc.1 Feature Parity.

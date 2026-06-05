@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# adapters/yamllint/probe.sh — FR-415 + ADR-089 tri-state probe.
+# adapters/yamllint/probe.sh — tri-state probe.
 #
-# Returns the ADR-078 / ADR-089 tri-state availability JSON:
+# Returns the tri-state availability JSON:
 #   { "available": true|false, "version": "<version-string>", "failure_kind": null|"<enum>" }
 #
 # Provider is the `yamllint` binary (per adapter.json). When `yamllint` is on

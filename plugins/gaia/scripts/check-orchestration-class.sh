@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-orchestration-class.sh — E84-S2 / ADR-093 static check.
+# check-orchestration-class.sh — static check for orchestration_class declarations.
 #
 # Verifies every SKILL.md under plugins/gaia/skills/*/SKILL.md declares
 # an orchestration_class frontmatter field set to one of the canonical

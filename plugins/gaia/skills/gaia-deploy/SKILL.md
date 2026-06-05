@@ -1,6 +1,6 @@
 ---
 name: gaia-deploy
-description: Pattern A deployment orchestrator — composite pre-deploy gate (ADR-082) → adapter-mediated deploy (ADR-078) → health-check → post-deploy smoke (E73-S1..S4) → final verdict. Sequential, transparent, no auto-retry, no auto-rollback. Use when "deploy this version" or /gaia-deploy.
+description: Pattern A deployment orchestrator — composite pre-deploy gate → adapter-mediated deploy → health-check → post-deploy smoke → final verdict. Sequential, transparent, no auto-retry, no auto-rollback. Use when "deploy this version" or /gaia-deploy.
 argument-hint: "--env <env> --version <ver> [--skip-smoke] [--story-key <key>]"
 context: main
 allowed-tools: [Read, Grep, Glob, Bash, Skill]
@@ -25,7 +25,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Setup
 
@@ -33,9 +33,9 @@ fi
 
 ## Mission
 
-`/gaia-deploy` orchestrates a five-phase deployment pipeline: **pre-deploy gate → deploy → health-check → post-deploy smoke → final verdict**. The skill is the reference implementation of **ADR-080 Pattern A** — claude-driven, sequential, transparent, adapter-mediated, environment-isolated, with **no auto-retry and no auto-rollback**.
+`/gaia-deploy` orchestrates a five-phase deployment pipeline: **pre-deploy gate → deploy → health-check → post-deploy smoke → final verdict**. The skill is the reference implementation of **Pattern A** — claude-driven, sequential, transparent, adapter-mediated, environment-isolated, with **no auto-retry and no auto-rollback**.
 
-Pre-deploy gating is delegated to `composite-verdict-aggregator.sh` (ADR-082, E66-S3). Deploy execution is delegated to a configured adapter that conforms to the ADR-078 contract (`adapter.json`, `run.sh`, `test/contract.bats`). The reference deploy adapter is `script-deploy` — generic enough to wrap any user-supplied deploy script, while keeping the adapter contract clean.
+Pre-deploy gating is delegated to `composite-verdict-aggregator.sh`. Deploy execution is delegated to a configured adapter that conforms to the tool adapter contract (`adapter.json`, `run.sh`, `test/contract.bats`). The reference deploy adapter is `script-deploy` — generic enough to wrap any user-supplied deploy script, while keeping the adapter contract clean.
 
 Pattern A invariants:
 
@@ -43,16 +43,16 @@ Pattern A invariants:
 - **Transparency** — every phase emits a structured status message in conversation (AC8).
 - **Environment isolation** — exactly one `--env` per invocation, no fan-out (AC9). `--env` is mandatory with no default.
 - **Failure-halts** — a non-zero exit at any phase halts subsequent phases immediately. The skill MAY suggest `/gaia-rollback-plan` in conversation but MUST NOT invoke it (AC11).
-- **Credentials via env-var names only** — never inline values, never file paths, never interactive prompts. Missing env-var → BLOCKED with the expected name in the diagnostic (AC10, NFR-RSV2-7).
+- **Credentials via env-var names only** — never inline values, never file paths, never interactive prompts. Missing env-var → BLOCKED with the expected name in the diagnostic (AC10).
 
 ## Critical Rules
 
-- The `composite-verdict-aggregator.sh` foundation (E66-S3) MUST be present at `plugins/gaia/scripts/review-common/composite-verdict-aggregator.sh`. If absent, the pre-deploy gate emits BLOCKED with an installation hint.
+- The `composite-verdict-aggregator.sh` foundation MUST be present at `plugins/gaia/scripts/review-common/composite-verdict-aggregator.sh`. If absent, the pre-deploy gate emits BLOCKED with an installation hint.
 - The configured deploy adapter MUST resolve to an executable `run.sh` under `plugins/gaia/scripts/adapters/<adapter>/`. Missing adapter → BLOCKED with installation guidance (AC13).
 - The skill operates in `context: main` (not fork) because it writes evidence files and orchestrates Skill-tool calls to the smoke action skills. The fork pattern used by review skills does not apply here.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
-- This skill is the only orchestrator allowed to invoke E73-S1..S4 action skills (`gaia-test-e2e`, `gaia-test-perf`, `gaia-test-dast`, `gaia-test-a11y`) as **deployment-phase smoke**. Each action skill runs its own Phase 3A/3B pipeline independently against the target environment URL.
-- **`environments[].kind` gate (E99-S1 / FR-520 / ADR-112 §(a)).** BEFORE any deploy phase runs, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-env-kind.sh` and call `gaia_resolve_env_kind <project-config.yaml> <env-id>`. If the resolved kind is NOT `deployable`, HALT non-zero with the canonical stderr text: `environment '<env-id>' is kind: <kind> — use /gaia-publish instead`. No deploy step runs; no partial mutation of any artifact. The resolver applies the NFR-080 silent default (`deployable`) when `kind:` is absent, so legacy configs proceed unchanged.
+- This skill is the only orchestrator allowed to invoke the action skills (`gaia-test-e2e`, `gaia-test-perf`, `gaia-test-dast`, `gaia-test-a11y`) as **deployment-phase smoke**. Each action skill runs its own Phase 3A/3B pipeline independently against the target environment URL.
+- **`environments[].kind` gate.** BEFORE any deploy phase runs, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-env-kind.sh` and call `gaia_resolve_env_kind <project-config.yaml> <env-id>`. If the resolved kind is NOT `deployable`, HALT non-zero with the canonical stderr text: `environment '<env-id>' is kind: <kind> — use /gaia-publish instead`. No deploy step runs; no partial mutation of any artifact. The resolver applies the silent default (`deployable`) when `kind:` is absent, so legacy configs proceed unchanged.
 
 ## CLI Flags
 
@@ -85,12 +85,12 @@ Invoke `scripts/deploy-dispatch.sh --env <env> --version <ver> --output-dir evid
 
 ### Phase 3 — Health-check
 
-Invoke `scripts/health-check.sh --mode <poll|skip> --url <url> --timeout <secs> --output-dir evidence/deploy/`. Behavior is driven by `health_check.mode` in project-config.yaml (default `poll` — backward-compatible per FR-425, E78-S3):
+Invoke `scripts/health-check.sh --mode <poll|skip> --url <url> --timeout <secs> --output-dir evidence/deploy/`. Behavior is driven by `health_check.mode` in project-config.yaml (default `poll` — backward-compatible):
 
 - `mode: poll` (default) — polls the target URL with exponential backoff (2s initial, capped at 10s) until HTTP 2xx or timeout. Writes `evidence/deploy/health-check.json` with `status`, `attempts`, `duration_seconds`. Timeout → BLOCKED with remediation guidance (AC4).
 - `mode: skip` — bypasses the poll loop entirely. Writes `evidence/deploy/health-check.json` with `{status: "skipped", mode: "skip", reason: "configured skip"}` so the audit trail records that the skip was intentional. Use this for projects without a reachable health-check endpoint (e.g., marketplace-published plugins).
 
-Any other value rejected at config-load time with an actionable error listing the valid options. Schema enforcement (FR-425, AC5) lives in `project-config.schema.json` under `definitions.healthCheck`.
+Any other value rejected at config-load time with an actionable error listing the valid options. Schema enforcement (AC5) lives in `project-config.schema.json` under `definitions.healthCheck`.
 
 ### Phase 4 — Post-deploy smoke
 
@@ -98,7 +98,7 @@ Invoke `scripts/smoke-orchestrate.sh --suites-file <path> --target-url <url> --o
 
 `--skip-smoke` short-circuits this phase, emits a `WARNING`, and writes `_skip-smoke.json` to evidence (AC14).
 
-**Empty `smoke_suites` / manual-checklist mode (E78-S5, FR-427):** When the resolved deployment configuration provides no smoke suites — either `deployment.smoke_suites: []` or `distribution.channels[].smoke_test.mode: manual-checklist` — the smoke phase MUST NOT yield BLOCKED. `smoke-orchestrate.sh` detects two equivalent paths:
+**Empty `smoke_suites` / manual-checklist mode:** When the resolved deployment configuration provides no smoke suites — either `deployment.smoke_suites: []` or `distribution.channels[].smoke_test.mode: manual-checklist` — the smoke phase MUST NOT yield BLOCKED. `smoke-orchestrate.sh` detects two equivalent paths:
 
 - An empty `--suites-file` (zero non-blank, non-comment lines), or
 - An explicit `--mode manual-checklist` flag.
@@ -140,12 +140,3 @@ evidence/
 ```
 
 The final verdict (`PASSED` | `FAILED`) is emitted on stdout by `verdict-aggregate.sh`.
-
-## Refs
-
-- ADR-077 — Three-tier review pipeline (deployment-phase action skills).
-- ADR-078 — Tool adapter framework (`adapter.json`, `run.sh`, `test/contract.bats`, four-state probe).
-- ADR-080 — Deployment-Phase Pattern A (claude-driven, sequential, transparent, no-retry, no-rollback).
-- ADR-082 — Composite Review Verdict GATING (composite-verdict-aggregator.sh).
-- FR-RSV2-31, FR-RSV2-33, NFR-RSV2-7 — `/gaia-deploy` PRD requirements.
-- E66-S3, E73-S1, E73-S2, E73-S3, E73-S4 — upstream foundations.

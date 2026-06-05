@@ -8,5 +8,5 @@
   "file-extensions": [".bats"],
   "scope": "file",
   "modes": ["test-runner", "smell-detection"],
-  "description": "Bats (Bash Automated Testing System) adapter (FR-414). Dual-mode dispatch: test-runner mode executes bats suites and emits TAP-compliant pass/fail/skip; smell-detection mode lints .bats files for anti-patterns (bare run without assert_*, hardcoded absolute paths, untimed sleep, missing @test annotations). Five-file layout (adapter.json + probe.sh + run.sh + normalize.sh + test/contract.bats) per FR-414 extension of the ADR-078 three-file base."
+  "description": "Bats (Bash Automated Testing System) adapter. Dual-mode dispatch: test-runner mode executes bats suites and emits TAP-compliant pass/fail/skip; smell-detection mode lints .bats files for anti-patterns (bare run without assert_*, hardcoded absolute paths, untimed sleep, missing @test annotations). Five-file layout (adapter.json + probe.sh + run.sh + normalize.sh + test/contract.bats) extending the three-file base."
 }

@@ -118,11 +118,13 @@ teardown() { common_teardown; }
 
 # ---------- Val INFO 1: ADR-025 Model B (2 global files) ----------
 
-@test "VAL-INFO-1: SKILL.md documents ADR-025 Model B (2 global files)" {
+@test "VAL-INFO-1: SKILL.md documents Model B (2 global files)" {
   run cat "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"ADR-025"* ]]
+  # The version-bump script updates exactly 2 global targets; verify the
+  # SKILL.md names both and states the 2-target constraint.
   [[ "$output" == *"package.json"* ]]
   [[ "$output" == *"global.yaml"* ]]
+  [[ "$output" =~ "2 global" ]]
 }
 
 @test "VAL-INFO-1: SKILL.md does NOT claim the script updates 6 files" {
@@ -154,11 +156,4 @@ teardown() { common_teardown; }
 @test "VAL-INFO-2: SKILL.md documents --dry-run flag" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"--dry-run"* ]]
-}
-
-# ---------- Story traceability ----------
-
-@test "TRACE: SKILL.md references story E28-S167 or ADR-025" {
-  run cat "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"E28-S167"* ]] || [[ "$output" == *"ADR-025"* ]]
 }

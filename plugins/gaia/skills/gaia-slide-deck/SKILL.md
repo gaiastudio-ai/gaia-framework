@@ -16,12 +16,11 @@ Presentation design pipeline: **Audience and Purpose → Content
 Inventory → Narrative Arc → Slide Outline → Visual Design → Generate
 Output**. Produces a slide-deck specification at
 `.gaia/artifacts/creative-artifacts/slide-deck-{date}.md` with slide-by-slide
-content, speaker notes, and a visual-design system. Converted under
-ADR-041 (native execution model) with full functional parity against
-the legacy source (NFR-053). The legacy-source path is intentionally
-omitted from the body per the E28-S104 "zero legacy references"
-parity check; see the References section for the parity source
-pointer.
+content, speaker notes, and a visual-design system. Converted to the
+native execution model with full functional parity against the legacy
+source. The legacy-source path is intentionally omitted from the body
+per the "zero legacy references" parity check; see the References
+section for the parity source pointer.
 
 ## Critical Rules
 
@@ -178,8 +177,7 @@ Assemble the final slide-deck specification.
 Write the slide-deck specification to
 `.gaia/artifacts/creative-artifacts/slide-deck-{date}.md` where `{date}` is the
 current date in `YYYY-MM-DD` form. This path is verbatim from the
-legacy workflow's `output.primary` contract (NFR-053 — functional
-parity).
+legacy workflow's `output.primary` contract (functional parity).
 
 ### Same-day overwrite handling (AC-EC6 analogue)
 
@@ -219,13 +217,12 @@ The artifact body includes:
 
 ## Frontmatter linter compliance
 
-This SKILL.md passes the E28-S7 frontmatter linter
+This SKILL.md passes the frontmatter linter
 (`.github/scripts/lint-skill-frontmatter.sh`) with zero errors. The
-required fields per E28-S19 schema are present: `name` (matches the
-directory slug) and `description` (trigger signature with concrete
-action phrase). `allowed-tools` is validated against the canonical
-tool set (Agent is required because Vermeer is invoked via the Agent
-tool).
+required schema fields are present: `name` (matches the directory
+slug) and `description` (trigger signature with concrete action
+phrase). `allowed-tools` is validated against the canonical tool set
+(Agent is required because Vermeer is invoked via the Agent tool).
 
 ## Parity notes vs. legacy workflow
 
@@ -237,31 +234,27 @@ native phases:
 | Step 1 — Audience and Purpose | Phase 1 | Same three inputs (audience, takeaway, context) |
 | Step 2 — Content Inventory | Phase 2 | Same have / need / gaps decomposition |
 | Step 3 — Narrative Arc | Phase 3 | Same hook-build-payoff structure + throughline |
-| Step 4 — Slide Outline | Phase 4 | Same subagent role (Vermeer / presentation-designer); delegation via Agent tool per ADR-041 |
+| Step 4 — Slide Outline | Phase 4 | Same subagent role (Vermeer / presentation-designer); delegation via Agent tool |
 | Step 5 — Visual Design | Phase 5 | Same palette, typography, layout decomposition |
 | Step 6 — Generate Output | Phase 6 | Same output path `slide-deck-{date}.md` |
 
 The slide-by-slide content contract, the speaker-notes requirement,
 and the one-slide-one-idea rule are preserved verbatim from the
 legacy workflow — only the orchestration mechanism changes (native
-`context: fork` subagent delegation under ADR-041 instead of legacy
-engine-driven step dispatch).
+`context: fork` subagent delegation instead of legacy engine-driven
+step dispatch).
 
 ## References
 
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents +
+- Native Execution Model via Claude Code Skills + Subagents +
   Plugins + Hooks (replaces the legacy workflow engine)
-- FR-323 — Skill-to-workflow conversion mapping
-- NFR-048 — Conversion token-reduction target
-- NFR-053 — Functional parity with legacy workflow
 - Reference implementations:
-  - `plugins/gaia/skills/gaia-pitch-deck/SKILL.md` (E28-S104 —
-    sibling skill, same subagent, pitch-specific structure)
-  - `plugins/gaia/skills/gaia-creative-sprint/SKILL.md` (E28-S102 —
-    multi-subagent orchestrator with legacy parity table)
-- Converted subagent (E28-S22):
+  - `plugins/gaia/skills/gaia-pitch-deck/SKILL.md` — sibling skill,
+    same subagent, pitch-specific structure
+  - `plugins/gaia/skills/gaia-creative-sprint/SKILL.md` —
+    multi-subagent orchestrator with legacy parity table
+- Converted subagent:
   - `plugins/gaia/agents/presentation-designer.md` — Vermeer
 - Legacy parity source (for reference only; not invoked from this
   skill; legacy path intentionally omitted from the body to satisfy
-  the "zero legacy references" parity check — see E28-S104 test
-  scenario 10).
+  the "zero legacy references" parity check).

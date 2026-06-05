@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ci-regen-stale-flag.sh — config-stale flag lifecycle for /gaia-config-ci (E71-S4).
+# ci-regen-stale-flag.sh — config-stale flag lifecycle for /gaia-config-ci.
 #
 # Maintains the marker file `.gaia/memory/.config-stale`. Presence of the file
 # means the project's CI workflow files are out of sync with the latest
@@ -10,7 +10,6 @@
 #   check   Exit 0 + warn-on-stderr when present, exit 1 silent when absent.
 #   clear   Remove the flag file (idempotent).
 #
-# Refs: AC9 (TS-09, TS-10, TS-11), FR-RSV2-37.
 
 set -euo pipefail
 LC_ALL=C
@@ -20,8 +19,7 @@ cmd="${1:-}"
 shift || true
 
 flag_path() {
-  # AF-2026-05-27-3 (ADR-111): .gaia/memory is the only marker home; legacy
-  # _memory fallback removed with the consolidation migration.
+  # .gaia/memory is the only marker home; legacy _memory fallback removed with the consolidation migration.
   printf '%s/.gaia/memory/.config-stale\n' "${PROJECT_ROOT:-$PWD}"
 }
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# plugin-detection.sh — E77-S16 / FR-420 plugin signal detector.
+# plugin-detection.sh — plugin signal detector.
 #
 # Scans a project root for Claude Code plugin signals and emits a JSON
 # document with `is_plugin`, `signal_count`, and `signals[]`. A project is
 # classified as a plugin when 3 or more co-occurring signals are present
-# (per FR-420 — single-signal detection is rejected to avoid false
-# positives on stray SKILL.md or manifest.yaml files).
+# (single-signal detection is rejected to avoid false positives on stray
+# SKILL.md or manifest.yaml files).
 #
 # Signal registry:
 #   skill_md         — any plugins/*/SKILL.md or **/SKILL.md file
@@ -120,7 +120,7 @@ _has_dot_claude_dir   && signals+=("dot_claude_dir")
 count="${#signals[@]}"
 
 # ---------------------------------------------------------------------------
-# Emit JSON — is_plugin true iff signal_count >= 3 (FR-420 threshold).
+# Emit JSON — is_plugin true iff signal_count >= 3.
 # ---------------------------------------------------------------------------
 case "$FORMAT" in
   json) ;;

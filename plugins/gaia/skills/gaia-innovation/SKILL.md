@@ -17,7 +17,7 @@ if printf '%s' "$WARNING_OUTPUT" | grep -q '^SURFACE-WARNING: '; then
 fi
 ```
 
-**Surface contract (AF-2026-05-18-2).** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
+**Surface contract.** When the prelude `cat`s a sentinel file — which happens once per session under Mode A (subagent dispatch) — you MUST mirror that cat'd warning text VERBATIM as the FIRST user-visible text of your response, before any skill-phase output. Claude Code auto-collapses Bash tool-call output, so the warning is invisible to users unless re-emitted as LLM turn text. Skip this step only when the prelude produced no sentinel output (Mode B, repeat invocation in same session, or out-of-scope skill class).
 
 ## Memory
 
@@ -31,13 +31,11 @@ Roadmap**. Delegates each phase's facilitation to Orion
 (`innovation-strategist`) via the Agent tool with `context: fork`,
 accumulates the phase outputs in the parent skill, and writes a single
 artifact at `.gaia/artifacts/creative-artifacts/innovation-strategy-{date}.md` at
-completion. Restored under ADR-065 (New Skills Wiring —
-/gaia-design-thinking and /gaia-innovation) with full V1 feature
+completion. Restored with full V1 feature
 preservation: Jobs-to-be-Done with non-consumer identification, the
 ERRC grid (Eliminate/Reduce/Raise/Create), the Business Model Canvas
 (BMC, 9 blocks), the Value Proposition Canvas (VPC, jobs/pains/gains),
-beachhead market identification, and tech-adoption-lifecycle mapping
-(NFR-053).
+beachhead market identification, and tech-adoption-lifecycle mapping.
 
 ## Critical Rules
 
@@ -46,9 +44,8 @@ beachhead market identification, and tech-adoption-lifecycle mapping
 - Delegate phase facilitation to **Orion (`innovation-strategist`)**
   via the Agent tool with `context: fork`. Orion reads project
   artifacts but does not write — the parent skill writes the final
-  artifact (ADR-045 fork-context isolation, extended by ADR-065 to
-  creative subagents).
-- Single-level spawning only (NFR-046): this skill invokes Orion;
+  artifact (fork-context isolation).
+- Single-level spawning only: this skill invokes Orion;
   Orion MUST NOT spawn further subagents.
 - Preserve the output contract exactly:
   `.gaia/artifacts/creative-artifacts/innovation-strategy-{date}.md` (date as
@@ -62,10 +59,10 @@ beachhead market identification, and tech-adoption-lifecycle mapping
 
 ## Subagent Dispatch Contract
 
-This skill follows the framework-wide Subagent Dispatch Contract (ADR-063).
+This skill follows the framework-wide Subagent Dispatch Contract.
 When Orion returns from a `context: fork` invocation, the parent skill MUST:
 
-1. **Parse the subagent return** using the ADR-037 structured schema:
+1. **Parse the subagent return** using the structured schema:
    `{ status, summary, artifacts, findings, next }`. The `status` field is
    one of `PASS`, `WARNING`, `CRITICAL`. Each entry in `findings` carries a
    `severity` field with the same vocabulary.
@@ -85,25 +82,25 @@ When Orion returns from a `context: fork` invocation, the parent skill MUST:
 
 This contract applies to every Phase 1–5 subagent return. CRITICAL
 findings from creative facilitation are unlikely in practice, but the
-contract is enforced uniformly per ADR-063.
+contract is enforced uniformly.
 
 ## YOLO Behavior
 
 When invoked under YOLO mode, this skill obeys the framework-wide YOLO
-Mode Contract (ADR-067):
+Mode Contract:
 
 | Behavior | YOLO action |
 |----------|-------------|
 | Template-output prompt (`[c]/[y]/[e]`) | Auto-continue (skip prompt). Output already saved; user chose YOLO for speed. |
 | Severity / filter selection | Auto-accept default. Defaults are documented and deterministic. |
 | Optional confirmation ("Proceed to next phase?") | Auto-confirm. Optional prompts exist for safety; YOLO opts out of safety pauses. |
-| Subagent verdict display | Auto-display, but a CRITICAL verdict still HALTS per ADR-063. |
+| Subagent verdict display | Auto-display, but a CRITICAL verdict still HALTS. |
 | Open-question indicators (unchecked checkboxes, `TBD`, `TODO`) | HALT — require human input. Open questions cannot be auto-answered. |
-| Memory save prompt | HALT — require human input (Phase 4 per ADR-061). Memory writes are never auto-approved. |
-| Inline-ask on empty `$ARGUMENTS` | HALT — require human input (per ADR-066). No safe default for "what innovation domain?". |
+| Memory save prompt | HALT — require human input. Memory writes are never auto-approved. |
+| Inline-ask on empty `$ARGUMENTS` | HALT — require human input. No safe default for "what innovation domain?". |
 
 The contract is identical to the per-behavior lookup table in
-architecture.md §10.32.5 (ADR-067). Any future skill change that
+architecture.md §10.32.5. Any future skill change that
 diverges from this table requires an ADR amendment.
 
 ## Inputs
@@ -124,7 +121,7 @@ The skill begins by collecting four inputs from the user (or from
    strategic optionality.
 
 If `$ARGUMENTS` is empty, ask inline: "What innovation domain or
-product should we explore?" (per ADR-066). Do not fail-fast on missing
+product should we explore?". Do not fail-fast on missing
 inputs.
 
 ## Pipeline
@@ -166,7 +163,7 @@ constraints as input.
 market context as input.
 
 1. **JTBD framework (V1 parity):** identify the **jobs** users hire
-   products to do — across three dimensions (NFR-053):
+   products to do — across three dimensions:
    - **Functional jobs** — the practical task the user is trying to
      accomplish.
    - **Emotional jobs** — how the user wants to feel during and after.
@@ -178,7 +175,7 @@ market context as input.
    but isn't? Disruption lives in non-consumption. The non-consumer
    segment MUST be named, sized (qualitatively at minimum), and
    characterized by the friction that excludes them today. The
-   non-consumer focus is preserved verbatim from V1 (NFR-053) —
+   non-consumer focus is preserved verbatim from V1 —
    skipping non-consumers is a parity regression.
 
 3. **Load frameworks from CSV (V1 parity):** load the innovation
@@ -219,8 +216,8 @@ Phase 2 JTBD map and the competitive factors from Phase 1 as input.
    converging — those are the dimensions ripe for elimination or
    reduction.
 
-2. **ERRC grid (V1 parity):** apply the four-quadrant ERRC analysis
-   (NFR-053). The grid MUST contain four explicit quadrants:
+2. **ERRC grid (V1 parity):** apply the four-quadrant ERRC analysis.
+   The grid MUST contain four explicit quadrants:
    - **Eliminate** — which factors that the industry takes for
      granted should be eliminated entirely?
    - **Reduce** — which factors should be reduced well below the
@@ -252,7 +249,7 @@ Phase 2 JTBD map and the competitive factors from Phase 1 as input.
 Phase 3 blue ocean and value curve as input.
 
 1. **Business Model Canvas — BMC (V1 parity):** populate the
-   Business Model Canvas with all **9 blocks** (NFR-053):
+   Business Model Canvas with all **9 blocks**:
    - Key Partners
    - Key Activities
    - Key Resources
@@ -313,7 +310,7 @@ Phase 4 business model and beachhead as input.
 
 1. **Tech-adoption-lifecycle mapping (V1 parity, Rogers
    diffusion):** position the innovation on the Rogers diffusion
-   curve and name the segment-by-segment plan (NFR-053):
+   curve and name the segment-by-segment plan:
    - **Innovators** — the small group willing to try the rawest
      version. What hooks them?
    - **Early adopters** — the visionaries who buy on potential.
@@ -365,7 +362,7 @@ fail fast with the exact message: `required subagent
 'innovation-strategist' not found — install the GAIA creative agents
 before running /gaia-innovation.` No fallback, no partial output.
 
-**Single-level spawning (NFR-046):** Orion is a leaf subagent — Orion
+**Single-level spawning:** Orion is a leaf subagent — Orion
 MUST NOT spawn further subagents. The dispatch topology is two-level:
 Gaia → Orion. Any attempt to nest is rejected.
 
@@ -374,8 +371,7 @@ Gaia → Orion. Any attempt to nest is rejected.
 Write the final artifact to
 `.gaia/artifacts/creative-artifacts/innovation-strategy-{date}.md` where
 `{date}` is the current date in `YYYY-MM-DD` form. This path is
-verbatim from the legacy workflow's `output.primary` contract
-(NFR-053).
+verbatim from the legacy workflow's `output.primary` contract.
 
 ### Same-day overwrite handling
 
@@ -437,7 +433,7 @@ required fields per the canonical schema are present: `name`
 (matches the directory slug), `description` (trigger signature with
 concrete action phrase + use phrase), `argument-hint`, `context`,
 and `allowed-tools`. `Agent` is in `allowed-tools` because Orion is
-invoked via the Agent tool per ADR-041.
+invoked via the Agent tool.
 
 ## Parity notes vs. legacy workflow
 
@@ -447,41 +443,21 @@ five native phases:
 | Legacy step | Native phase | Notes |
 |-------------|--------------|-------|
 | Step 1 — Market Context           | Phase 1 | Same landscape + business-model + competitive-dynamics scope |
-| Step 2 — Jobs-to-be-Done Analysis | Phase 2 | JTBD with functional/emotional/social dimensions and **non-consumer identification** preserved verbatim; CSV reference retained at plugin-local path per ADR-065 |
+| Step 2 — Jobs-to-be-Done Analysis | Phase 2 | JTBD with functional/emotional/social dimensions and **non-consumer identification** preserved verbatim; CSV reference retained at plugin-local path |
 | Step 3 — Blue Ocean Mapping       | Phase 3 | Strategy canvas + **ERRC grid** (4 populated quadrants) retained verbatim; new value curve preserved |
 | Step 4 — Business Model Innovation| Phase 4 | **BMC (9 blocks)** + **VPC (jobs/pains/gains)** + beachhead with TAM/SAM/SOM + revenue/cost profile retained |
 | Step 5 — Strategic Roadmap        | Phase 5 | **Tech-adoption-lifecycle** Rogers diffusion mapping + beachhead sequencing + phased market entry retained; moat identification added as explicit close |
 
 The data flow between phases and the output artifact structure are
 identical to the legacy workflow. Only the orchestration mechanism
-changes: native `context: fork` Agent-tool delegation under ADR-041
+changes: native `context: fork` Agent-tool delegation
 instead of legacy engine-driven step dispatch.
 
 ## References
 
-- ADR-041 — Native Execution Model via Claude Code Skills + Subagents +
-  Plugins + Hooks (replaces the legacy workflow engine)
-- ADR-042 — Scripts-over-LLM for Deterministic Operations (no new
-  scripts for this LLM-judgment skill; CSV path uses
-  `${CLAUDE_PLUGIN_ROOT}/knowledge/...`)
-- ADR-045 — Review Gate fork-context isolation (extended by ADR-065
-  to creative subagents)
-- ADR-063 — Subagent Dispatch Contract — Mandatory Verdict Surfacing
-  (the source of the Subagent Dispatch Contract section above)
-- ADR-065 — New Skills Wiring — /gaia-design-thinking and
-  /gaia-innovation (the source for the 5-phase pipeline,
-  plugin-local CSV path, and V1 feature preservation requirements)
-- ADR-066 — Inline-Ask vs Fail-Fast Contract (this skill asks
-  inline on empty `$ARGUMENTS`)
-- ADR-067 — YOLO Mode Contract — Consistent Non-Interactive Behavior
-  (the source of the YOLO Behavior table above)
-- FR-361 — /gaia-innovation skill restoration
-- NFR-046 — Single-level subagent spawning constraint
-- NFR-053 — Functional parity with legacy workflow
-- AF-2026-04-24-1 — V1-to-V2 37-Command Gap Remediation audit
 - Reference implementations:
   - `plugins/gaia/skills/gaia-design-thinking/SKILL.md` (sibling
-    five-phase creative skill restored under ADR-065)
+    five-phase creative skill)
   - `plugins/gaia/skills/gaia-brainstorming/SKILL.md`
     (single-subagent creative skill)
   - `plugins/gaia/skills/gaia-storytelling/SKILL.md`

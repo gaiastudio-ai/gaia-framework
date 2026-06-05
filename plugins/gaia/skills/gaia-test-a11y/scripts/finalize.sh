@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-test-a11y skill lifecycle finalize (E73-S4).
+# finalize.sh — gaia-test-a11y skill lifecycle finalize.
 #
 # Standard lifecycle hook (parallel to gaia-test-perf/finalize.sh):
 #   1. Write a checkpoint via checkpoint.sh

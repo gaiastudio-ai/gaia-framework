@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# write-val-sentinel.sh — atomic E83 Val-gate dispatch sentinel writer (E93-S3)
+# write-val-sentinel.sh — atomic Val-gate dispatch sentinel writer
 #
 # Mechanical mirror of /gaia-add-feature/scripts/write-val-sentinel.sh —
-# same atomic write contract, jq -n construction (no heredoc-JSON per
-# AI-2026-04-28-7 lessons), same sibling-tempfile + mv POSIX-atomic write.
+# same atomic write contract, jq -n construction (no heredoc-JSON),
+# same sibling-tempfile + mv POSIX-atomic write.
 #
-# Writes the ADR-037 structured Val return as a JSON sentinel under
+# Writes the structured Val return as a JSON sentinel under
 # $CHECKPOINT_PATH/sprint-review-{sprint_id}-val-dispatched.json. The
 # sentinel is the script-verifiable post-fact proof that Step 3 (Track A
 # Val Dispatch) of the /gaia-sprint-review skill actually dispatched a Val
 # subagent and received a structured verdict. finalize.sh validates the
-# sentinel before allowing the skill to complete (per the E83 dispatch-
-# checkpoint contract, ADR-104 + E83-S1).
+# sentinel before allowing the skill to complete (per the dispatch-
+# checkpoint contract).
 #
 # Invocation:
 #   write-val-sentinel.sh --sprint-id <sprint_id> < <(payload-json)
 #
-#   The payload on stdin is the ADR-037 structured return from Val. The
+#   The payload on stdin is the structured Val return. The
 #   minimum required keys are: status, summary, findings, agent. status
 #   MUST be one of {PASS, WARNING, CRITICAL, UNVERIFIED}. agent MUST be
 #   "val".
@@ -46,7 +46,7 @@ usage() {
 Usage:
   write-val-sentinel.sh --sprint-id <sprint_id> < <(payload-json)
 
-The Val return payload is read from stdin (ADR-037 structured return).
+The Val return payload is read from stdin (structured Val return).
 Required keys: status, summary, findings, agent.
 Stdout (on success): the sentinel path.
 USAGE
@@ -67,14 +67,14 @@ done
 
 [ -n "$sprint_id" ] || { usage; die "--sprint-id is required"; }
 
-# Validate sprint_id format (T-37 path-traversal mitigation — mirror the
+# Validate sprint_id format (path-traversal mitigation — mirror the
 # pattern from /gaia-dev-story Step 7b which validates ^E[0-9]+-S[0-9]+$).
 # Sprint IDs in GAIA are `sprint-{slug}` where {slug} contains alphanumerics,
 # hyphens, and underscores — production IDs are typically numeric
 # (`sprint-46`, `sprint-47`) but test fixtures using descriptive IDs
-# (`sprint-test-1`, `sprint-fixture-a`) are also accepted (E93 manual-test
-# ISSUE-5). Path-traversal chars like `/`, `..`, spaces, and shell
-# metacharacters are STILL rejected to preserve the T-37 mitigation.
+# (`sprint-test-1`, `sprint-fixture-a`) are also accepted.
+# Path-traversal chars like `/`, `..`, spaces, and shell
+# metacharacters are STILL rejected to preserve the path-traversal mitigation.
 case "$sprint_id" in
   sprint-)                 die "invalid sprint_id format: '$sprint_id' (expected 'sprint-<slug>')" ;;
   sprint-*[!a-zA-Z0-9_-]*) die "invalid sprint_id format: '$sprint_id' (expected 'sprint-<slug>'; allowed chars: alphanumerics, '_', '-')" ;;
@@ -84,7 +84,7 @@ esac
 
 # ---------- Tooling check ----------
 
-command -v jq >/dev/null 2>&1 || die "jq is required but not installed (sentinel construction uses jq -n; heredoc-JSON is forbidden per AC4)"
+command -v jq >/dev/null 2>&1 || die "jq is required but not installed (sentinel construction uses jq -n; heredoc-JSON is forbidden)"
 
 # ---------- Resolve checkpoint path ----------
 #
@@ -98,11 +98,11 @@ command -v jq >/dev/null 2>&1 || die "jq is required but not installed (sentinel
 SCRIPT_DIR_LOCAL="$(cd "$(dirname "$0")" && pwd)"
 
 if [ -z "${CHECKPOINT_PATH:-}" ]; then
-  # E96-S7 AC3: smart-fallback walk-up — prefer .gaia/memory/checkpoints/
+  # Smart-fallback walk-up — prefer .gaia/memory/checkpoints/
   # (post-migration canonical) over legacy _memory/checkpoints/ (in-
   # deprecation-window consumers + bats fixtures). Walk up from CWD looking
   # for either marker.
-  # AF-2026-05-27-3 (ADR-111): walk up for the canonical .gaia/memory only;
+  # Walk up for the canonical .gaia/memory only;
   # the legacy _memory probe was removed with the consolidation migration.
   cwd="$(pwd)"
   while [ "$cwd" != "/" ]; do
@@ -133,20 +133,20 @@ case "$status" in
 esac
 
 # Validate agent value.
-# AF-2026-05-28-1 / Test07 M-3: the agent field MUST be the literal string "val"
-# (the persona identifier carried in the ADR-037 envelope), NOT the subagent
+# The agent field MUST be the literal string "val"
+# (the persona identifier carried in the Val envelope), NOT the subagent
 # registration name (`gaia:validator`). The orchestrator MUST set `.agent = "val"`
 # in the payload regardless of how Val was dispatched. Common surprise on first
 # sprint-review run; surface the expected literal in the error.
 agent=$(echo "$payload" | jq -r '.agent')
-[ "$agent" = "val" ] || die "payload agent '$agent' must be 'val' (the literal persona identifier per ADR-037, NOT the subagent registration name 'gaia:validator')"
+[ "$agent" = "val" ] || die "payload agent '$agent' must be 'val' (the literal persona identifier, NOT the subagent registration name 'gaia:validator')"
 
 # ---------- Construct sentinel + atomic write ----------
 
 SENTINEL="$CHECKPOINT_PATH/sprint-review-${sprint_id}-val-dispatched.json"
 SENTINEL_TMP="$SENTINEL.tmp.$$"
 
-# Use jq -n to construct the sentinel (NOT heredoc-JSON per AC4).
+# Use jq -n to construct the sentinel (NOT heredoc-JSON).
 jq -n \
   --argjson payload "$payload" \
   --arg sprint_id "$sprint_id" \

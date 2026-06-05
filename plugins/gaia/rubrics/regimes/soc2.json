@@ -3,11 +3,9 @@
   "skill": "security",
   "name": "soc2",
   "applies_to_skills": ["review-code", "review-security"],
-  "description": "SOC 2 Trust Services Criteria rules — security, availability, processing integrity, confidentiality, privacy. Layer 2 of the four-layer rubric composition per ADR-079.",
+  "description": "SOC 2 Trust Services Criteria rules — security, availability, processing integrity, confidentiality, privacy. Layer 2 of the four-layer rubric composition.",
   "metadata": {
     "title": "SOC 2 regime rubric",
-    "story": "E68-S4",
-    "adr": "ADR-079",
     "regime_id": "soc2",
     "references": ["SOC2-CC6.1", "SOC2-A1.2", "SOC2-PI1.1", "SOC2-C1.1", "SOC2-P3.1"]
   },

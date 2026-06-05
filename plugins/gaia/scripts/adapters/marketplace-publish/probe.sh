@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
-# adapters/marketplace-publish/probe.sh — ADR-078 three-state availability probe
-# for the marketplace-publish deploy adapter (E78-S1, FR-423).
+# adapters/marketplace-publish/probe.sh — three-state availability probe
+# for the marketplace-publish deploy adapter.
 #
-# Exit codes (ADR-078 three-state convention):
+# Exit codes (three-state convention):
 #   0 — available  : gh installed, authenticated, repo write scope present, no tag conflict
 #   1 — unavailable: gh missing OR auth failed OR token lacks repo write scope
 #   2 — degraded   : prerequisites met but target version tag already exists on remote
-#                    (mapped from PRD FR-423 "blocked"; story-as-source-of-truth uses "degraded")
+#                    (mapped from PRD "blocked"; story-as-source-of-truth uses "degraded")
 #
 # Inputs (all optional — probe is conservative when unset):
 #   MARKETPLACE_PUBLISH_VERSION — target tag to check for conflict; if unset, the
 #     tag-conflict gate is skipped and the probe returns 0 when gh + auth + scope pass.
 #   MARKETPLACE_PUBLISH_REMOTE  — git remote name (default: origin) for ls-remote.
-#
-# Refs: PRD FR-423, ADR-078 §3 (probe.sh contract), story AC2.
 
 set -u
 LC_ALL=C
