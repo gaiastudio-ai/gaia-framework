@@ -87,16 +87,29 @@ fi
 # planning-artifacts/ home is highest precedence; the legacy test-artifacts/
 # (strategy/) paths remain for the migration read-compat window.
 TM_PATHS="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/traceability-matrix.md ${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/strategy/traceability-matrix.md ${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/traceability-matrix.md"
+matrix_blocked=0
 for tm in $TM_PATHS; do
   if [ -f "$tm" ] && [ -s "$tm" ]; then
     # Look for the matrix's self-declared verdict in the first ~200 lines.
     # Canonical form: a line like "Verdict: BLOCKED" or "**Gate verdict:** BLOCKED"
     if head -200 "$tm" 2>/dev/null | grep -qiE '(verdict|gate.*verdict)[^a-zA-Z]+(BLOCKED|FAILED|FAIL)'; then
       log "WARNING: traceability matrix at $tm declares its own verdict as BLOCKED/FAIL — downstream /gaia-readiness-check should NOT mark traceability_complete: true (path-based gates pass but semantic gate fails)"
+      matrix_blocked=1
     fi
     break
   fi
 done
 
 log "finalize complete for $WORKFLOW_NAME"
+
+# Matrix-verdict gate exit (issue-1151). The downstream
+# validate-gate.sh traceability_exists check is path-based — it cannot see a
+# BLOCKED self-verdict. Exit non-zero here so a BLOCKED/FAIL matrix actually
+# gates the lifecycle instead of silently passing on file-existence alone.
+# GAIA_TRACE_ALLOW_BLOCKED=1 restores the advisory-only behaviour for callers
+# that deliberately want to proceed past a BLOCKED matrix.
+if [ "$matrix_blocked" -eq 1 ] && [ "${GAIA_TRACE_ALLOW_BLOCKED:-0}" != "1" ]; then
+  log "HALT: traceability matrix verdict is BLOCKED/FAIL — refusing to exit clean. Resolve the gaps in the matrix, or set GAIA_TRACE_ALLOW_BLOCKED=1 to proceed anyway."
+  exit 1
+fi
 exit 0
