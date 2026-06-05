@@ -96,6 +96,17 @@ _load_helpers() {
   allowlist_match "$root" "$root/docs/planning-artifacts/action-items.yaml"
 }
 
+# issue-1168: the retro skill writes action-items to the canonical
+# .gaia/artifacts/planning-artifacts/ home (per the retro SKILL.md Step 5
+# invocation), so the writer allowlist MUST accept that path — otherwise the
+# writer rejects its own canonical target as unauthorized and retro-emitted
+# items vanish.
+@test "allowlist_match accepts canonical .gaia/artifacts/planning-artifacts/action-items.yaml (issue-1168)" {
+  _load_helpers
+  local root="/tmp/gaia-al-root"
+  allowlist_match "$root" "$root/.gaia/artifacts/planning-artifacts/action-items.yaml"
+}
+
 @test "allowlist_match accepts custom/skills/*.md" {
   _load_helpers
   local root="/tmp/gaia-al-root"

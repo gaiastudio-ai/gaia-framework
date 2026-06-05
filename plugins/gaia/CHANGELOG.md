@@ -7,7 +7,15 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Fixed
 
-- (test-strategy) config hydration now writes a runnable `test_execution.tier_1` block derived from the detected stack runner instead of an empty `{}` stub, so the test runner finds a real command and operators no longer hand-edit `project-config.yaml` (#1249)
+- (trace) finalize exits non-zero when the generated traceability matrix declares its own verdict BLOCKED/FAIL, so downstream readiness gating reacts instead of passing on a path-only check (#1151)
+- (retro) retro-sidecar writer allowlist accepts the canonical `.gaia/artifacts/planning-artifacts/action-items.yaml` home that the retro skill writes to, so action items are no longer rejected as unauthorized (#1168)
+- (bridge-enable) document the copy-and-edit flow for a template / `*.example` test-environment manifest, so a project with only the shipped template gets guided to a ready manifest instead of a bare Layer-0 failure (#1137)
+
+## [1.187.5] — 2026-06-05
+
+### Fixed
+
+- (test-strategy) hydrate runnable test_execution from detected runner
 
 ## [1.187.4] — 2026-06-05
 
