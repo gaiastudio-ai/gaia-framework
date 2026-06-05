@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.187.3] — 2026-06-04
+
+### Changed
+
+- promote staging to main — fix #1113 (install CLAUDE.md on init)
+
+### Fixed
+
+- (init,brownfield) install project CLAUDE.md from template on init (#1113) (#1114)
+
 ## [1.187.2] — 2026-06-04
 
 ### Changed
