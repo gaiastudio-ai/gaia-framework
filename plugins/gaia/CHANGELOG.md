@@ -9,6 +9,16 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 - (test-strategy) config hydration now writes a runnable `test_execution.tier_1` block derived from the detected stack runner instead of an empty `{}` stub, so the test runner finds a real command and operators no longer hand-edit `project-config.yaml` (#1249)
 
+## [1.187.4] — 2026-06-05
+
+### Changed
+
+- assert AskUserQuestion contract in gaia-meeting sentinel-forbid suite
+- fix CI-gated tests that pinned stripped IDs in skills + device-matrix
+- assert behavior not stripped IDs in two CI/changelog checks
+- scrub leaked IDs from repo-root, adapter and knowledge files
+- remove leaked internal traceability identifiers from published source
+
 ## [1.187.3] — 2026-06-04
 
 ### Changed
