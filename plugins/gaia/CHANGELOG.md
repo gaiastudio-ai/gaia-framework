@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [Unreleased]
+
+### Fixed
+
+- (test-strategy) config hydration now writes a runnable `test_execution.tier_1` block derived from the detected stack runner instead of an empty `{}` stub, so the test runner finds a real command and operators no longer hand-edit `project-config.yaml` (#1249)
+
 ## [1.187.3] — 2026-06-04
 
 ### Changed

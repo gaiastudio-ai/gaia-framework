@@ -22,7 +22,11 @@ PLUGIN_ROOT="${BATS_TEST_DIRNAME}/.."
   grep -qF "auto-stub-hydration" "${PLUGIN_ROOT}/skills/gaia-test-strategy/scripts/finalize.sh"
 }
 
-@test "F-6: auto-stub-hydration writes empty stubs for each missing section" {
+@test "F-6: auto-stub-hydration covers each missing section (test_execution real-valued, bridge + environments stubbed)" {
+  # test_execution is now real-value hydrated from the detected runner
+  # (issue-1249) with an empty-map fallback for unknown stacks; the bridge +
+  # environments sections remain documented stubs (no deterministic value to
+  # derive without operator/CI input).
   grep -qF "test_execution: {}" "${PLUGIN_ROOT}/skills/gaia-test-strategy/scripts/finalize.sh"
   grep -qF "test_execution_bridge:" "${PLUGIN_ROOT}/skills/gaia-test-strategy/scripts/finalize.sh"
   grep -qF "environments: {}" "${PLUGIN_ROOT}/skills/gaia-test-strategy/scripts/finalize.sh"
