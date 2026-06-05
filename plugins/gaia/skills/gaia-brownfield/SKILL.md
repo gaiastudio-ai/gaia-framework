@@ -679,7 +679,8 @@ fi
 # Banner block — visible in the rendered Markdown.
 {
   echo ""
-  echo "> **Scan fidelity: ${TIER^^} (${TIER_REASON}).**"
+  TIER_UC="$(printf '%s' "$TIER" | tr '[:lower:]' '[:upper:]')"  # bash-3.2-safe uppercase (no ${TIER^^})
+  echo "> **Scan fidelity: ${TIER_UC} (${TIER_REASON}).**"
   if [ -n "$MISSING_TOOLS" ]; then
     echo "> Deterministic CVE/SBOM/dead-code did not run (${MISSING_TOOLS} absent)."
     echo "> This gap list is heuristic, not tool-verified. Re-run after \`gaia-doctor --install\` for tool-grade results."

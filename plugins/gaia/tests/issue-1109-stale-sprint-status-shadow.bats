@@ -67,3 +67,24 @@ _seed_legacy() {
   [ "$status" -eq 0 ]
   ! echo "$output" | grep -qF "stale legacy sprint-status.yaml"
 }
+
+# --- issue-1392 — no false positive on the byte-identical layout mirror ------
+# sprint-state.sh mirrors .gaia/state/ → impl-artifacts/ on every mutation, so
+# the two are routinely byte-identical. The warning must fire only on genuine
+# content divergence, not mere co-existence.
+@test "issue-1392: NO warning when the legacy copy is byte-identical to the canonical" {
+  _seed_canonical closed
+  # Identical content (same status), i.e. the intentional layout-conformance mirror.
+  cp .gaia/state/sprint-status.yaml .gaia/artifacts/implementation-artifacts/sprint-status.yaml
+  run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile --dry-run
+  [ "$status" -eq 0 ]
+  ! echo "$output" | grep -qF "stale legacy sprint-status.yaml"
+}
+
+@test "issue-1392: WARNING still fires when the legacy copy genuinely diverges" {
+  _seed_canonical closed
+  _seed_legacy active   # different status → real divergence
+  run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile --dry-run
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -F "stale legacy sprint-status.yaml"
+}

@@ -128,6 +128,44 @@
         <p><em>Expected duration: 2 minutes (inspection + optional config edit).</em></p>
       </section>
 
+      <section id="step-2b">
+        <h2>Step 2b -- Enable deterministic tools (tier-2 via Docker)</h2>
+        <p>
+          The codebase scan in the next step is far stronger when the
+          <strong>deterministic-tools battery</strong> is enabled: a Docker
+          runner image (<code>gaia-tools</code>) that bundles the tier-2
+          scanners -- <code>grype</code> (CVE), <code>syft</code> (SBOM), and
+          the dead-code analysers -- so the gap analysis is tool-verified
+          rather than heuristic. This is opt-in; without it the scan still runs
+          but the CVE/SBOM/dead-code findings are skipped and the gap list is
+          marked heuristic.
+        </p>
+        <p>Enable it once, before the scan:</p>
+        <ol>
+          <li>
+            Point the brownfield runner at Docker and name the image via
+            <a href="../commands/gaia-config-brownfield.html"><code>/gaia-config-brownfield</code></a>:
+            set <code>tools.runner: docker</code> and <code>tools.image</code>
+            (the published <code>gaia-tools</code> image tag).
+          </li>
+          <li>
+            Build or pull the <code>gaia-tools</code> image so the scanners are
+            available to the runner.
+          </li>
+          <li>
+            Confirm the runner sees tier-2 with <code>/gaia-doctor</code>
+            -- it reports the tier the host can actually reach (tier-2 once the
+            image is present).
+          </li>
+        </ol>
+        <p>
+          If you skip this step, continue to Step 3 -- the scan degrades
+          gracefully to the heuristic gap list and prints a scan-fidelity
+          banner naming the absent tools.
+        </p>
+        <p><em>Expected duration: 3--5 minutes (first-time image pull/build), then cached.</em></p>
+      </section>
+
       <section id="step-3">
         <h2>Step 3 -- Phase 2: codebase scan and brownfield-arch</h2>
         <p>
