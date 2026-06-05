@@ -91,6 +91,25 @@ run_adapter() {
   [ ! -f "$OUT/dead-code/jvm-spotbugs.json" ] || [ "$(jq 'length' "$OUT/dead-code/jvm-spotbugs.json")" = "0" ]
 }
 
+# --- issue-1390 — no-JVM-source guard precedes the docker dispatch -----------
+# On a non-JVM project the adapter must short-circuit BEFORE any spotbugs
+# dispatch (docker or native), and must NOT leave a 0-byte spotbugs.sarif in
+# the SARIF input dir (that empty file crashes the downstream merge — #1389).
+@test "issue-1390: no JVM source under docker runner mode → exit 0, no spotbugs.sarif written" {
+  emptyroot="$TEST_TMP/empty-docker"; mkdir -p "$emptyroot"
+  # Force docker runner mode; with no real docker daemon docker_runner_available
+  # is false, but the source-file guard must fire FIRST regardless.
+  PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_DEADCODE_JVM_ENABLED=true \
+    GAIA_TOOLS_RUNNER=docker \
+    JVM_PROJECT_ROOT="$emptyroot" JVM_OUT_DIR="$OUT" run bash "$ADAPTER"
+  [ "$status" -eq 0 ]
+  # The empty SARIF that triggers #1389 must NOT exist.
+  [ ! -f "$OUT/sarif/spotbugs.sarif" ]
+  [ ! -f "$OUT/sarif/jvm-spotbugs.sarif" ]
+  # The skip must be attributed to the missing source files.
+  [[ "$output" == *"no "*".java"* ]] || [[ "$output" == *"no-op"* ]]
+}
+
 # --- AC-X1 / scenario 6 — per-tool flag-off ----------------------------------
 @test "E70-S8 jvm (scenario 6): deadcode_jvm_enabled=false → skip" {
   PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_DEADCODE_JVM_ENABLED=false \

@@ -48,6 +48,20 @@ default_out() {
 }
 OUT="${JVM_OUT_DIR:-$(default_out)}"
 
+# --- No-source-file guard (issue-1390) ------------------------------------
+# Short-circuit BEFORE any spotbugs dispatch — docker OR native — when the
+# project has no JVM sources. Without this, the docker path below dispatched
+# spotbugs unconditionally on a non-JVM project, which threw a Java stack
+# trace AND left a 0-byte spotbugs.sarif in the SARIF input dir; that empty
+# file then crashed the downstream Phase-7 SARIF merge (issue-1389), dropping
+# all deterministic findings. Mirrors the go-deadcode adapter's `*.go` gate.
+# `.kt` (Kotlin) is included alongside `.java`/`.class` since spotbugs analyses
+# JVM bytecode regardless of source language.
+if ! find "$ROOT" -type f \( -name '*.java' -o -name '*.kt' -o -name '*.class' \) -print -quit 2>/dev/null | grep -q .; then
+  log_info "no *.java/*.kt/*.class files under $ROOT — jvm-spotbugs no-op (no dispatch, no SARIF written)"
+  exit 0
+fi
+
 # --- Runner resolution -------------------
 # When brownfield.tools.runner == docker, prefer the bundled gaia-tools
 # OCI image — operators no longer need a JVM + spotbugs JAR locally.

@@ -354,7 +354,16 @@ resolve_paths() {
       # shadow — and so a later transient absence of .gaia/state/ cannot fall
       # through to rung 2 (the stale copy) unnoticed. Non-fatal: the canonical
       # copy is still used; we only warn.
-      if [ -e "$canonical" ] && [ "$canonical" != "$gaia_state" ]; then
+      #
+      # issue-1392: gate on CONTENT divergence, not mere co-existence. This
+      # skill itself mirrors .gaia/state/ → impl-artifacts/ on every mutation
+      # (the layout-conformance mirror), so the two are routinely byte-identical
+      # — warning on co-existence alone fired on every command against a fresh
+      # project where the files were identical (and "removing" the shadow just
+      # regenerated it on the next mutation). `cmp -s` is true (exit 0) when the
+      # files match, so we warn only when they actually differ.
+      if [ -e "$canonical" ] && [ "$canonical" != "$gaia_state" ] \
+         && ! cmp -s "$gaia_state" "$canonical" 2>/dev/null; then
         printf '%s: WARNING: stale legacy sprint-status.yaml at %s shadows the canonical .gaia/state/ copy — remove it to avoid divergence\n' \
           "${SCRIPT_NAME:-sprint-state.sh}" "$canonical" >&2
       fi

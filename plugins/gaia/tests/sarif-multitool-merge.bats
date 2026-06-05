@@ -140,15 +140,49 @@ run_merge() { PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GA
   [[ "$output" == *"skipped"* ]] || [[ "$output" == *"INFO"* ]]
 }
 
-# --- Scenario 8 — malformed SARIF input → error ---------------------------
+# --- issue-1389 — a bad input is SKIPPED, not crash-the-whole-merge --------
+# A single empty/non-conformant .sarif must NOT drop all deterministic
+# findings. The merge filters bad inputs (empty OR invalid JSON) before
+# staging, logs each skip, and merges the remaining valid inputs.
 
-@test "E104-S4: malformed SARIF input causes non-zero exit (schema validation)" {
-  # Non-vacuous guard: only meaningful once the script exists (F1 — Tex red review).
+@test "issue-1389: a 0-byte .sarif is skipped; valid inputs still merge (exit 0)" {
+  [ -x "$MERGE" ]
+  seed_inputs grype
+  # The exact #1389 trigger: a 0-byte spotbugs.sarif alongside a valid input.
+  : > "$SARIF_INPUT_DIR/spotbugs.sarif"
+  run_merge
+  [ "$status" -eq 0 ]
+  [ -f "$SARIF_MERGED_OUT" ]
+  # The valid grype findings survived (not dropped by the empty file).
+  run jq -r '[.runs[].tool.driver.name] | join(",")' "$SARIF_MERGED_OUT"
+  [[ "$output" == *"grype"* ]]
+}
+
+@test "issue-1389: a non-empty but invalid-JSON .sarif is skipped; valid inputs merge" {
   [ -x "$MERGE" ]
   seed_inputs grype
   printf '{ not valid sarif }\n' > "$SARIF_INPUT_DIR/broken.sarif"
   run_merge
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 0 ]
+  [ -f "$SARIF_MERGED_OUT" ]
+  run jq -r '[.runs[].tool.driver.name] | join(",")' "$SARIF_MERGED_OUT"
+  [[ "$output" == *"grype"* ]]
+}
+
+@test "issue-1389: each skipped input is logged" {
+  [ -x "$MERGE" ]
+  seed_inputs grype
+  : > "$SARIF_INPUT_DIR/spotbugs.sarif"
+  run_merge
+  [[ "$output" == *"spotbugs.sarif"* ]] && [[ "$output" == *"skip"* || "$output" == *"INFO"* ]]
+}
+
+@test "issue-1389: all-inputs-bad falls back to the zero-input path (exit 0)" {
+  [ -x "$MERGE" ]
+  : > "$SARIF_INPUT_DIR/spotbugs.sarif"
+  printf 'garbage\n' > "$SARIF_INPUT_DIR/broken.sarif"
+  run_merge
+  [ "$status" -eq 0 ]
 }
 
 # --- AC4 / Scenario 5 — DefectDojo opt-in disabled (default) → no network --
