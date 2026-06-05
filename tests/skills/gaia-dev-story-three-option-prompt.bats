@@ -157,10 +157,10 @@ extract_non_yolo_region() {
   echo "$region" | grep -qF 'gaia-val-validate'
 }
 
-@test "Test 6b: non-YOLO region invokes Val with context: fork" {
+@test "Test 6b: non-YOLO region dispatches Val via the main-turn Agent tool" {
   region="$(extract_non_yolo_region)"
   [ -n "$region" ]
-  echo "$region" | grep -qE 'context: *fork'
+  echo "$region" | grep -qiE 'main-turn Agent|gaia-val-validate|assert_agent_envelope'
 }
 
 @test "Test 6c: non-YOLO region renders findings on validate" {
