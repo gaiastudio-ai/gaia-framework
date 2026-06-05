@@ -482,7 +482,7 @@ sequence:
     deprecated: true
     next:
       standalone: true
-      note: "Deprecated — superseded by /gaia-val-validate. Will be removed in E10-S3."
+      note: "Deprecated — superseded by /gaia-val-validate."
 
   edit-ux-design:
     module: lifecycle

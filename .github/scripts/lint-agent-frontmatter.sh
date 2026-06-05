@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lint-agent-frontmatter.sh
 # Lints YAML frontmatter of every plugins/gaia/agents/**/*.md file.
-# Required fields per _SCHEMA.md (E28-S19):
+# Required fields per _SCHEMA.md:
 #   name, model, description, context, allowed-tools
 # Also validates:
 #   - context is one of: main | fork

@@ -2,12 +2,12 @@
 #
 # This file is the canonical example of the structured payload that the
 # orchestrator (main turn) threads between subagent re-dispatches under
-# Mode A (ADR-093 §"Mode A Checkpoint Payload Schema"). It is NOT a
+# Mode A. It is NOT a
 # runtime artifact — it is reference material consumed by skill authors
 # when they author SKILL.md playbooks that orchestrate multi-dispatch
 # workflows.
 #
-# Schema authority: ADR-093 (Architecture Decision Record).
+# Schema authority: see the GAIA architecture documentation.
 # Consumed by:      heavy-procedural and conversational skills under Mode A.
 # NOT consumed by:  Mode B (persistent teammates maintain continuity via
 #                   their live session context; no payload threading).
@@ -43,7 +43,7 @@ current_task:
   # about expected output shape (e.g., "return Q1/Q2/Q3 answers as a
   # structured JSON object with keys edge_cases, ac_split, stakeholder_notes").
   instruction: |
-    Read epics-and-stories.md for story E54-S7 and answer three
+    Read epics-and-stories.md for the target story and answer three
     questions from a product lens: (Q1) edge cases, (Q2) AC must-have
     vs nice-to-have split, (Q3) stakeholder notes. Return as structured
     JSON.
@@ -51,7 +51,7 @@ current_task:
   # Optional: longer-form context describing why this dispatch is happening.
   # Omitted when the instruction is self-contained.
   step_description: |
-    Story E54-S7 elaboration. Q1/Q2/Q3 answers feed the architecture
+    Story elaboration. Q1/Q2/Q3 answers feed the architecture
     dispatch (step 4) which feeds the merge step (step 5).
 
 # Outputs from prior dispatches within this skill execution. The
@@ -61,7 +61,7 @@ current_task:
 prior_outputs:
   - agent_type: gaia:pm
     step_id: step-3-elaborate-product-questions
-    summary: "Derek's answers to Q1/Q2/Q3 for story E54-S7"
+    summary: "Derek's answers to Q1/Q2/Q3"
     artifacts_created: []
     findings: []
     verdict: completed
@@ -87,7 +87,7 @@ iteration_count: 1
 
 # The /gaia-add-feature feature_id this skill execution traces to, when
 # applicable. Omitted for direct invocations not driven by a feature.
-feature_id: AF-2026-05-11-1
+feature_id: AF-YYYY-MM-DD-N
 
 # Findings from earlier dispatches that the current dispatch should
 # consider but not re-evaluate. Often used when threading a reviewer's
@@ -97,5 +97,5 @@ prior_findings:
     severity: WARNING
     summary: "Story file lacks acceptance criteria for edge case Q1c"
 
-# Loop ceiling for fix-loops. Default 3 per ADR-058 / ADR-093.
+# Loop ceiling for fix-loops. Default 3.
 max_iterations: 3

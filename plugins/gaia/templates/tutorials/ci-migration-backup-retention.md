@@ -35,7 +35,7 @@ plugins/gaia/scripts/verify-backup-integrity.sh .gaia-backup/ci-regen-20260523T1
 - **Exit 1** — drift detected (mismatch, missing file, or extra file). The helper emits the canonical HALT message + per-file detail:
 
 ```
-HALT: backup integrity check failed — .gaia-backup contents tampered (per SR-84)
+HALT: backup integrity check failed — .gaia-backup contents tampered
 Backup directory: .gaia-backup/ci-regen-20260523T180530Z
   - mismatch: ci.yml (expected abc...  got def...)
 ```

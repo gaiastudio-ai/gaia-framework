@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# audit-v2-migration.sh — E28-S190 audit harness
+# audit-v2-migration.sh — v2-migration audit harness
 #
 # Purpose: Exercise every installed plugin skill's setup.sh + finalize.sh after
 # a v1→v2 /gaia-migrate apply and capture exit code + stderr per skill. The
@@ -16,7 +16,7 @@
 #     [--out <output-csv-path>] \
 #     [--fixture-mode minimal|enriched]
 #
-# Fixture modes (E28-S200 — unblocks E28-S195):
+# Fixture modes:
 #   minimal   (default) — no prereq artifacts pre-created; harness run
 #                         surfaces FixtureGap residuals intentionally so
 #                         skills that depend on prereq artifacts expose
@@ -25,7 +25,7 @@
 #                         (prd.md, epics-and-stories.md, test-plan.md,
 #                         traceability-matrix.md, ci-setup.md) under
 #                         $PROJECT_ROOT/docs/{planning,test}-artifacts/,
-#                         seeds config/project-config.yaml (E28-S213) so
+#                         seeds config/project-config.yaml so
 #                         resolve-config.sh satisfies its priority ladder
 #                         and skills that call it exit 0 rather than B1,
 #                         and EXPORTS uppercase env vars
@@ -33,23 +33,23 @@
 #                         $IMPLEMENTATION_ARTIFACTS) before each skill run,
 #                         so skill setup.sh scripts + validate-gate.sh pick
 #                         up the paths instead of PWD-relative defaults.
-#                         Designed for CI regression gating (E28-S195).
+#                         Designed for CI regression gating.
 #
-# Exit codes (E28-S195 AC8 — split 1 vs 2):
+# Exit codes (split 1 vs 2):
 #   0 — audit completed and every skill landed in OK or NO-SCRIPTS bucket
 #       (no B1-B5 failures). The CSV is still the authoritative per-skill
 #       detail surface.
 #   1 — audit completed but ONE OR MORE skills landed in a failure bucket
 #       (B1, B2, B3, B4, or B5). This is a PLUGIN REGRESSION — the CI gate
-#       on this exit code is the whole point of E28-S195. Pre-E28-S195 the
-#       harness conflated this with harness-bug exit code; downstream CI
+#       on this exit code is the whole point of this exit split. Previously
+#       the harness conflated this with harness-bug exit code; downstream CI
 #       diagnostics now distinguish "plugin regressed" from "harness bug".
 #   2 — harness misconfiguration or runtime error (missing flags, unreadable
 #       plugin cache, unknown --fixture-mode value, fixture pre-creation
 #       failed). This is a HARNESS BUG — the audit did not run meaningfully
 #       and CI should surface the problem loudly but distinctly from exit 1.
 #
-# CI integration (E28-S195 AC6, AC7):
+# CI integration:
 #   - When $CI is truthy (GitHub Actions sets CI=true) and no --fixture-mode
 #     flag is given, the harness defaults to --fixture-mode enriched. Local
 #     invocations still default to minimal for backwards compat.
@@ -65,7 +65,7 @@
 #   skill_name,has_setup,setup_exit,setup_stderr_head,has_finalize,
 #     finalize_exit,finalize_stderr_head,bucket
 #
-# Bucket classification (see E28-S190 story):
+# Bucket classification:
 #   B1 — CLAUDE_SKILL_DIR path contract mismatch
 #   B2 — Checkpoint write target deleted by migration
 #   B3 — SKILL.md body references _gaia/_config/ literal paths
@@ -82,9 +82,9 @@ die() { printf 'audit-v2-migration: %s\n' "$1" >&2; exit 2; }
 PLUGIN_CACHE=""
 PROJECT_ROOT=""
 OUT=""
-# E28-S195 AC7 — default to enriched under CI (GitHub Actions sets CI=true),
-# minimal otherwise for local backward compatibility. Explicit --fixture-mode
-# on the command line always wins over this default.
+# Default to enriched under CI (GitHub Actions sets CI=true), minimal
+# otherwise for local backward compatibility. Explicit --fixture-mode on the
+# command line always wins over this default.
 FIXTURE_MODE_DEFAULT="minimal"
 if [ -n "${CI:-}" ] && [ "${CI:-}" != "false" ] && [ "${CI:-}" != "0" ]; then
   FIXTURE_MODE_DEFAULT="enriched"
@@ -103,7 +103,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Resolve default when --fixture-mode was not passed (E28-S195 AC7).
+# Resolve default when --fixture-mode was not passed.
 if [ -z "$FIXTURE_MODE" ]; then
   FIXTURE_MODE="$FIXTURE_MODE_DEFAULT"
 fi
@@ -162,15 +162,15 @@ run_script() {
   # CLAUDE_SKILL_DIR emulates Claude Code's plugin harness convention:
   # it points at the skill directory, NOT the project root.
   #
-  # E28-S200 / AC8 — enriched fixture mode exports the uppercase
-  # artifact-dir env vars before each skill run. Skill setup.sh scripts
-  # use the pattern `${TEST_ARTIFACTS:-docs/test-artifacts}` so without
-  # these exports the fallback points at /tmp/fixture/docs/… which does
-  # not exist (the minimal fixture intentionally omits those files). We
-  # export ONLY in enriched mode so minimal mode continues to surface
-  # FixtureGap residuals (AC10). FIXTURE_ENV_EXPORTS is populated once,
-  # at the top of the main loop, and consumed here via env's positional
-  # VAR=VALUE syntax — no duplicated subshell blocks.
+  # Enriched fixture mode exports the uppercase artifact-dir env vars before
+  # each skill run. Skill setup.sh scripts use the pattern
+  # `${TEST_ARTIFACTS:-docs/test-artifacts}` so without these exports the
+  # fallback points at /tmp/fixture/docs/… which does not exist (the minimal
+  # fixture intentionally omits those files). We export ONLY in enriched mode
+  # so minimal mode continues to surface FixtureGap residuals.
+  # FIXTURE_ENV_EXPORTS is populated once, at the top of the main loop, and
+  # consumed here via env's positional VAR=VALUE syntax — no duplicated
+  # subshell blocks.
   local script="$1" skill_dir="$2"
   local stderr_txt exit_code
   stderr_txt=$(
@@ -184,7 +184,7 @@ run_script() {
   printf '%s\t%s' "$exit_code" "$stderr_txt"
 }
 
-# ---------- Fixture env exports (E28-S200 / AC8) ----------
+# ---------- Fixture env exports ----------
 # Declared at module scope so run_script's env invocation can expand it
 # without an empty-array safety dance on macOS bash 3.2.
 FIXTURE_ENV_EXPORTS=()
@@ -193,33 +193,33 @@ if [ "$FIXTURE_MODE" = "enriched" ]; then
     "TEST_ARTIFACTS=$PROJECT_ROOT/docs/test-artifacts"
     "PLANNING_ARTIFACTS=$PROJECT_ROOT/docs/planning-artifacts"
     "IMPLEMENTATION_ARTIFACTS=$PROJECT_ROOT/docs/implementation-artifacts"
-    # AF-2026-05-22-9 Bug-12: gaia-sprint-review/finalize.sh now hard-errors
-    # when SPRINT_ID is unset unless this fixture-opt-in flag is set. The
-    # audit harness is the canonical legacy-fixture invocation path the
-    # comment in finalize.sh refers to — we don't have a real SPRINT_ID to
-    # export here, so set the fixture flag.
+    # gaia-sprint-review/finalize.sh hard-errors when SPRINT_ID is unset
+    # unless this fixture-opt-in flag is set. The audit harness is the
+    # canonical legacy-fixture invocation path the comment in finalize.sh
+    # refers to — we don't have a real SPRINT_ID to export here, so set the
+    # fixture flag.
     "GAIA_SPRINT_REVIEW_FIXTURE=1"
   )
 fi
 
-# ---------- Enriched fixture pre-creation (E28-S200 / AC6; E28-S213) ----------
+# ---------- Enriched fixture pre-creation ----------
 #
 # Creates the prereq artifacts multiple skills expect (validate-gate.sh
 # gate list: prd_exists, epics_and_stories_exists, test_plan_exists,
 # traceability_exists, ci_setup_exists) and seeds config/project-config.yaml
-# so resolve-config.sh's priority ladder resolves correctly (E28-S213).
+# so resolve-config.sh's priority ladder resolves correctly.
 # Content is a minimal non-empty placeholder — the audit harness only cares
 # that files exist and are non-empty, not that they are semantically valid.
 #
 # Runs exactly once BEFORE the main loop so every skill's setup.sh sees
 # the same enriched state. Minimal mode does NOT call this — that's what
-# keeps the bug-detection signal intact (AC10).
+# keeps the bug-detection signal intact.
 prepare_enriched_fixture() {
   local planning_dir="$PROJECT_ROOT/docs/planning-artifacts"
   local test_dir="$PROJECT_ROOT/docs/test-artifacts"
   local impl_dir="$PROJECT_ROOT/docs/implementation-artifacts"
   local creative_dir="$PROJECT_ROOT/docs/creative-artifacts"
-  # AF-2026-05-21-20: also seed canonical .gaia/artifacts/ dirs.
+  # Also seed canonical .gaia/artifacts/ dirs.
   local canonical_planning_dir="$PROJECT_ROOT/.gaia/artifacts/planning-artifacts"
   local canonical_test_dir="$PROJECT_ROOT/.gaia/artifacts/test-artifacts"
   local canonical_impl_dir="$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts"
@@ -227,16 +227,16 @@ prepare_enriched_fixture() {
   mkdir -p "$planning_dir" "$test_dir" "$impl_dir" "$creative_dir"
   mkdir -p "$canonical_planning_dir" "$canonical_test_dir" "$canonical_impl_dir" "$canonical_creative_dir"
 
-  # E45-S2 — Seed a brainstorm fixture so gaia-product-brief's
-  # pre_start quality gate passes in enriched mode. The audit only cares
-  # that the file exists. AF-2026-05-21-20: gate now checks canonical
-  # .gaia/artifacts/creative-artifacts/ — seed there too.
+  # Seed a brainstorm fixture so gaia-product-brief's pre_start quality gate
+  # passes in enriched mode. The audit only cares that the file exists. The
+  # gate also checks the canonical .gaia/artifacts/creative-artifacts/ path,
+  # so seed there too.
   if [ ! -s "$creative_dir/brainstorm-fixture.md" ]; then
-    printf '# placeholder — audit-v2-migration.sh --fixture-mode enriched (E45-S2 brainstorm prereq)\n' \
+    printf '# placeholder — audit-v2-migration.sh --fixture-mode enriched (brainstorm prereq)\n' \
       > "$creative_dir/brainstorm-fixture.md"
   fi
   if [ ! -s "$canonical_creative_dir/brainstorm-fixture.md" ]; then
-    printf '# placeholder — audit-v2-migration.sh --fixture-mode enriched (AF-21-20 canonical brainstorm prereq)\n' \
+    printf '# placeholder — audit-v2-migration.sh --fixture-mode enriched (canonical brainstorm prereq)\n' \
       > "$canonical_creative_dir/brainstorm-fixture.md"
   fi
 
@@ -256,14 +256,14 @@ prepare_enriched_fixture() {
     fi
   done
 
-  # AF-2026-05-27-8 / Test06 F-010: gaia-ci-setup/finalize.sh now defaults
-  # CI_SETUP_ARTIFACT to the canonical ci-setup.md and RUNS its SV-01..06
-  # checklist when the env var is unset (previously it silently skipped). The
-  # enriched fixture must therefore seed a ci-setup.md that satisfies SV-01..06,
-  # the same way it seeds complete-enough prereqs for the other content-checked
-  # skills — otherwise a healthy ci-setup skill is mis-classified as a B5
-  # regression. A bare `# placeholder` line is no longer sufficient for THIS
-  # artifact (it is the only seeded prereq whose finalize content-checks it).
+  # gaia-ci-setup/finalize.sh defaults CI_SETUP_ARTIFACT to the canonical
+  # ci-setup.md and runs its SV-01..06 checklist when the env var is unset
+  # (previously it silently skipped). The enriched fixture must therefore seed
+  # a ci-setup.md that satisfies SV-01..06, the same way it seeds
+  # complete-enough prereqs for the other content-checked skills — otherwise a
+  # healthy ci-setup skill is mis-classified as a B5 regression. A bare
+  # `# placeholder` line is no longer sufficient for THIS artifact (it is the
+  # only seeded prereq whose finalize content-checks it).
   if [ ! -s "$test_dir/ci-setup.md" ]; then
     cat > "$test_dir/ci-setup.md" <<'CISETUP'
 # CI Setup — audit-v2-migration.sh --fixture-mode enriched placeholder
@@ -288,11 +288,11 @@ Generated pipeline config committed.
 CISETUP
   fi
 
-  # E28-S213 — Seed config/project-config.yaml so resolve-config.sh's
-  # priority ladder ($CLAUDE_PROJECT_ROOT/config/project-config.yaml) resolves
-  # and skills that call resolve-config.sh as their first step exit 0 instead
-  # of being classified B1. The guard mirrors the placeholder loop above:
-  # write only when absent so re-running the harness is idempotent (AC4).
+  # Seed config/project-config.yaml so resolve-config.sh's priority ladder
+  # ($CLAUDE_PROJECT_ROOT/config/project-config.yaml) resolves and skills that
+  # call resolve-config.sh as their first step exit 0 instead of being
+  # classified B1. The guard mirrors the placeholder loop above: write only
+  # when absent so re-running the harness is idempotent.
   local config_dir="$PROJECT_ROOT/config"
   local config_file="$config_dir/project-config.yaml"
   mkdir -p "$config_dir"
@@ -396,7 +396,7 @@ printf 'bucket_B4_global_yaml_overlay: %d\n' "$b4" >&2
 printf 'bucket_B5_other: %d\n' "$b5" >&2
 printf 'output_csv: %s\n' "$OUT" >&2
 
-# ---------- Machine-readable summary line (E28-S195 AC6) ----------
+# ---------- Machine-readable summary line ----------
 # CI parses this single line to produce a step-level status string. Format
 # is contract-stable: `result=<PASS|FAIL>` key first, then counts in fixed
 # order. Keep on ONE line — downstream greppers rely on this.
@@ -408,7 +408,7 @@ fi
 printf 'audit-v2-migration: result=%s total=%d ok=%d no_scripts=%d failed=%d\n' \
   "$summary_result" "$total" "$ok_count" "$no_scripts_count" "$failed" >&2
 
-# ---------- GitHub Actions step summary (E28-S195 AC7) ----------
+# ---------- GitHub Actions step summary ----------
 # When GITHUB_STEP_SUMMARY is set (it is on every GitHub Actions runner),
 # append a markdown block rendering the audit outcome as a table. This
 # surfaces on the Actions run page under the "Summary" pane without the
@@ -432,7 +432,7 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   } >> "$GITHUB_STEP_SUMMARY"
 fi
 
-# ---------- Exit code (E28-S195 AC8) ----------
+# ---------- Exit code ----------
 # 0 — all skills OK or NO-SCRIPTS
 # 1 — one or more B1-B5 failures (plugin regression — the CI gate signal)
 # 2 — harness misconfig (already handled earlier via `die`)

@@ -1,11 +1,11 @@
 # custom/test-scenarios/index.yaml
-# Schema: CS-NNN custom scenario index (E72-S3, FR-RSV2-41)
+# Schema: CS-NNN custom scenario index
 #
-# Per-entry fields (canonical contract per E72-S3 AC3):
+# Per-entry fields (canonical contract):
 #   id           — CS-NNN, zero-padded to three digits (e.g. CS-001, CS-042).
 #                  Allocated by /gaia-test-automate --add-scenario.
-#                  Namespace is separate from Vera's TC-NNN (source-report §11.3).
-#   story_key    — owning story, e.g. E72-S3.
+#                  Namespace is separate from Vera's TC-NNN.
+#   story_key    — owning story key.
 #   description  — short human-readable scenario description.
 #   tier         — one of: unit | integration | e2e.
 #   priority     — one of: P0 | P1 | P2 | P3.

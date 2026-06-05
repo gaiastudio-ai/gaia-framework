@@ -1,6 +1,6 @@
 # gaia-tools-image — build + publish the bundled deterministic-tools image.
 #
-# AF-2026-05-30-3 / Test10 §7 Component 2. Publishes
+# Publishes
 # `ghcr.io/gaiastudio-ai/gaia-tools:<version>-<db-date>` for multi-arch
 # (amd64 + arm64) so /gaia-doctor's `runner: docker` mode resolves
 # Tier 2 tools from a single pinned image rather than asking each

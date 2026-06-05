@@ -4,4 +4,4 @@ channel: homebrew
 verify_retry_window_seconds: 600
 credential_env_vars:
   - HOMEBREW_GITHUB_TOKEN
-description: Publish a Homebrew formula update via tap PR; verify by polling the tap. Long propagation window (600s) per NFR-082.
+description: Publish a Homebrew formula update via tap PR; verify by polling the tap. Long propagation window (600s).

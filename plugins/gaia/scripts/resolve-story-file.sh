@@ -10,8 +10,8 @@
 #      legacy tier-1 layer — and since `find -path` lets `*` match `/`, the glob
 #      alone would otherwise also traverse `epic-*/stories/E*-S*-*/` evidence
 #      dirs), and (b) the directory basename is post-filtered on the
-#      `{story_key}-` prefix BOUNDARY so requesting E28-S2 never matches
-#      E28-S21-*.
+#      `{story_key}-` prefix BOUNDARY so requesting <story-key> never matches
+#      a longer sibling key.
 #   1. Legacy nested: .gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md
 #   2. Legacy flat fallback:  docs/implementation-artifacts/{story_key}-*.md (read-only,
 #      with stderr WARNING "legacy-flat path — {flat_path} (migrate to the nested layout)")
@@ -27,9 +27,9 @@
 #
 # Usage:
 #   source resolve-story-file.sh
-#   resolve_story_file E85-S1
+#   resolve_story_file <story-key>
 #   # OR as a CLI:
-#   resolve-story-file.sh E85-S1
+#   resolve-story-file.sh <story-key>
 #
 # Override $IMPLEMENTATION_ARTIFACTS to retarget the search root (defaults to
 # .gaia/artifacts/implementation-artifacts/ relative to CWD).
@@ -62,7 +62,7 @@ resolve_story_file() {
     #          the `epic-*/E*-S*-*/story.md` glob would otherwise also traverse
     #          `epic-*/stories/E*-S*-*/` evidence dirs;
     #      (b) the directory basename MUST begin with the `{story_key}-` PREFIX
-    #          BOUNDARY so requesting E28-S2 never matches E28-S21-*.
+    #          BOUNDARY so requesting <story-key> never matches a longer sibling.
     local perstory_matches=()
     while IFS= read -r -d '' path; do
         # (a) exclude any legacy stories/ segment — tier-0 is the new layout only.

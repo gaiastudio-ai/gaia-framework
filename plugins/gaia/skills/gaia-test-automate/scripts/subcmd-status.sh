@@ -16,7 +16,7 @@
 # and per-entry file_path is verified on disk.
 #
 # Output (stdout):
-#   Coverage map for E99-S99
+#   Coverage map for <story-key>
 #   AC1   TC-001  unit         tests/unit/foo.test.ts
 #   AC2   TC-002  integration  tests/int/bar.spec.ts
 #   AC3   —       —            (not yet automated)

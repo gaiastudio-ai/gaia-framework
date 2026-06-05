@@ -26,7 +26,7 @@ Every LLM dispatch within a review skill MUST set:
 
 ```
 temperature: 0
-model: claude-opus-4-7        # per ADR-074
+model: claude-opus-4-7
 prompt_hash: sha256:<hex>     # recorded in report header
 ```
 
