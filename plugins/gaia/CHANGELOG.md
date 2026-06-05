@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.187.4] — 2026-06-05
+
+### Changed
+
+- assert AskUserQuestion contract in gaia-meeting sentinel-forbid suite
+- fix CI-gated tests that pinned stripped IDs in skills + device-matrix
+- assert behavior not stripped IDs in two CI/changelog checks
+- scrub leaked IDs from repo-root, adapter and knowledge files
+- remove leaked internal traceability identifiers from published source
+
 ## [1.187.3] — 2026-06-04
 
 ### Changed
