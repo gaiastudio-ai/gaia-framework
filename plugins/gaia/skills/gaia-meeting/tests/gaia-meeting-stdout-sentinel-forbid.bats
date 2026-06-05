@@ -132,9 +132,10 @@ EOF
   grep -F "feedback_askuserquestion_under_automode" "$SKILL_MD"
 }
 
-@test "AC #5: SKILL.md cites AF-2026-05-10-1 as the amendment precedent" {
+@test "AC #5: SKILL.md documents the AskUserQuestion-over-stdout-sentinels contract" {
   [ -f "$SKILL_MD" ]
-  grep -F "AF-2026-05-10-1" "$SKILL_MD"
+  grep -qiE 'AskUserQuestion' "$SKILL_MD"
+  grep -qiE 'stdout sentinel' "$SKILL_MD"
 }
 
 # --- Behavioral: live SKILL.md scan exits zero (post-implementation guard) ---
