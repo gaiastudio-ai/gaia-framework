@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Fixed
 
+- (create-ux) the shipped ux-design template's §8 heading now leads with "Components" so it satisfies the create-ux SV-09 gate (it was "Design System / Component Reuse", which the anchored heading check did not match) (#1314)
 - (brownfield) SARIF merge skips empty / non-conformant `.sarif` inputs instead of aborting the whole merge, so one bad input no longer drops all deterministic findings (#1389)
 - (brownfield) jvm-spotbugs adapter short-circuits before any dispatch when the project has no JVM sources, so it no longer writes a 0-byte `spotbugs.sarif` (which crashed the merge) (#1390)
 - (brownfield) scan-fidelity banner uses a bash-3.2-safe uppercase instead of `${TIER^^}`, so the degradation notice renders on macOS (#1391)
