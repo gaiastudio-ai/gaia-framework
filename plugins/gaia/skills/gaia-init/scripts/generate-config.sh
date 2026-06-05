@@ -162,6 +162,12 @@ if (data.get("project_shape") or "").strip() == "claude-code-plugin":
 project_kind_val = _pkind
 version_val = data.get("version") or "0.1.0"
 primary_platform_val = data.get("primary_platform") or ""
+# issue-1393: normalize primary_platform with the SAME backend→server map
+# applied to platforms[] below, so a "backend" answer doesn't produce the
+# self-contradiction `primary_platform: backend` + `platforms: [server]` that
+# config-contradiction scanners flag (backend ∉ [server]).
+if isinstance(primary_platform_val, str) and primary_platform_val.lower() == "backend":
+    primary_platform_val = "server"
 lines.append("")
 lines.append(f"project_name: {yaml_quote(project_name_val)}")
 lines.append(f"project_kind: {yaml_quote(project_kind_val)}")

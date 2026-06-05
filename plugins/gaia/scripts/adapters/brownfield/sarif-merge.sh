@@ -50,11 +50,25 @@ INPUT_DIR="${SARIF_INPUT_DIR:-$(default_input_dir)}"
 MERGED_OUT="${SARIF_MERGED_OUT:-$(default_merged_out)}"
 
 # --- Migration shim: no SARIF inputs -> fall back ------------------------
-# Collect input files (nullglob-safe).
+# Collect input files (nullglob-safe), filtering out empty / non-conformant
+# files BEFORE staging (issue-1389). A single 0-byte or invalid-JSON .sarif
+# would otherwise NullRef Sarif.Multitool and abort the ENTIRE merge, dropping
+# all deterministic findings (grype CVE + dead-code). The dominant trigger is
+# the 0-byte spotbugs.sarif emitted on non-JVM projects (issue-1390). Skip any
+# input failing the non-empty (`-s`) OR JSON-validity (`jq -e .`) check, log
+# each skip as INFO, and merge the remaining valid inputs.
 inputs=()
 if [ -d "$INPUT_DIR" ]; then
   for f in "$INPUT_DIR"/*.sarif; do
     [ -e "$f" ] || continue
+    if [ ! -s "$f" ]; then
+      log_info "skipping empty SARIF input: $f (0 bytes)"
+      continue
+    fi
+    if ! jq -e . "$f" >/dev/null 2>&1; then
+      log_info "skipping non-conformant SARIF input: $f (invalid JSON)"
+      continue
+    fi
     inputs+=("$f")
   done
 fi
