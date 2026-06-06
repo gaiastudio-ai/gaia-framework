@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [Unreleased]
+
+### Fixed
+
+- (sprint-lifecycle) story titles containing a double-quote are now emitted as single-quoted YAML scalars in `sprint-status.yaml` and `story-index.yaml`, so a quote in a title no longer corrupts the file and blocks `/gaia-sprint-close` (#1403)
+- (transition) `transition-story-status.sh` derives the bare `E<n>` epic key from a full-title `epic:` frontmatter value before resolving the per-epic story-index path, so stories carrying the legacy full-title `epic:` form can be transitioned/reconciled without an `--epic` override (#1405)
+
 ## [1.187.7] — 2026-06-06
 
 ### Fixed

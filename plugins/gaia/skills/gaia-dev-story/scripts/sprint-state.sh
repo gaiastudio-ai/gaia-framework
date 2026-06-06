@@ -142,6 +142,19 @@ die() {
   exit 1
 }
 
+# yaml_single_quote — render a free-text value as a complete single-quoted YAML
+# scalar (issue-1403). Doubles inner single-quotes per the YAML single-quote
+# escape, so an embedded double-quote OR apostrophe round-trips and never
+# breaks the file. Used for title (and any other frontmatter-sourced free text)
+# before it is emitted into sprint-status.yaml — a raw double-quoted scalar
+# would close early on an inner " and corrupt the YAML, blocking yq readers
+# (the /gaia-sprint-close symptom).
+yaml_single_quote() {
+  local s="$1"
+  s="${s//\'/\'\'}"   # ' -> ''
+  printf "'%s'" "$s"
+}
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -1140,12 +1153,23 @@ append_story_to_yaml() {
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
-  awk -v key="$key" -v title="$title" -v status="$status" -v points="$points" \
+  # issue-1403: pre-escape the free-text title into a complete single-quoted
+  # YAML scalar so the awk emitter can embed it verbatim without a raw " or '
+  # corrupting the file.
+  local title_yaml
+  title_yaml="$(yaml_single_quote "$title")"
+
+  awk -v key="$key" -v title="$title_yaml" -v status="$status" -v points="$points" \
       -v risk="$risk" -v today="$today" -v new_total="$new_total" \
       -v new_capacity_pct="$new_capacity_pct" '
+    # issue-1403: `title` arrives PRE-ESCAPED as a complete single-quoted YAML
+    # scalar (inner single-quotes already doubled by the shell, see the
+    # `title_yaml` computation in the caller). Embedding it verbatim keeps any
+    # double-quote or apostrophe in the title from breaking the YAML, so the
+    # file stays parseable by yq (the /gaia-sprint-close blocker).
     function emit_entry() {
       printf "  - key: \"%s\"\n", key
-      printf "    title: \"%s\"\n", title
+      printf "    title: %s\n", title
       printf "    status: \"%s\"\n", status
       printf "    points: %s\n", points
       printf "    risk_level: \"%s\"\n", risk
