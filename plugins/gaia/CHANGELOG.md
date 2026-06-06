@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Fixed
 
+- (init) `ci_platform.provider` is normalized underscore→hyphen (e.g. `github_actions` → `github-actions`) so the naturally-typed provider answer validates against the schema's hyphenated `ciProvider` enum (#1244)
+- (brownfield) Phase 5 sets `GAIA_TEST_ENV_CALLER=/gaia-brownfield` when generating the test-environment manifest, so its header is attributed to the brownfield skill instead of the default `/gaia-bridge-enable` (#1293)
 - (sprint-lifecycle) story titles containing a double-quote are now emitted as single-quoted YAML scalars in `sprint-status.yaml` and `story-index.yaml`, so a quote in a title no longer corrupts the file and blocks `/gaia-sprint-close` (#1403)
 - (transition) `transition-story-status.sh` derives the bare `E<n>` epic key from a full-title `epic:` frontmatter value before resolving the per-epic story-index path, so stories carrying the legacy full-title `epic:` form can be transitioned/reconciled without an `--epic` override (#1405)
 
