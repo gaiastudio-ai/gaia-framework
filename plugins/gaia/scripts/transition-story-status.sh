@@ -87,6 +87,16 @@ RESOLVE_EPIC_SLUG_LIB="$LIB_DIR/resolve-epic-slug.sh"
 err() { printf '%s: error: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 
+# yaml_single_quote — render a free-text value as a complete single-quoted YAML
+# scalar (issue-1403). Doubles inner single-quotes per the YAML escape so an
+# embedded double-quote OR apostrophe in a title round-trips without corrupting
+# story-index.yaml. Sibling of the same helper in sprint-state.sh.
+yaml_single_quote() {
+  local s="$1"
+  s="${s//\'/\'\'}"
+  printf "'%s'" "$s"
+}
+
 # Script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
 #
 # Every tempfile-creating call site appends the resulting path to
@@ -1165,6 +1175,13 @@ update_story_index_yaml() {
   local title="$3" epic="$4" priority="$5" risk="$6" author="$7" file_path="$8"
   local file="$STORY_INDEX_YAML"
 
+  # issue-1403: pre-escape free-text fields (title, epic, author) into complete
+  # single-quoted YAML scalars so an embedded " or ' cannot corrupt the file.
+  local title_yaml epic_yaml author_yaml
+  title_yaml="$(yaml_single_quote "$title")"
+  epic_yaml="$(yaml_single_quote "$epic")"
+  author_yaml="$(yaml_single_quote "$author")"
+
   if [ ! -e "$file" ]; then
     mkdir -p "$(dirname "$file")"
     {
@@ -1173,11 +1190,11 @@ update_story_index_yaml() {
       printf 'stories:\n'
       printf '  %s:\n' "$key"
       printf '    story_key: "%s"\n' "$key"
-      printf '    title: "%s"\n' "$title"
-      printf '    epic: "%s"\n' "$epic"
+      printf '    title: %s\n' "$title_yaml"
+      printf '    epic: %s\n' "$epic_yaml"
       printf '    priority: "%s"\n' "$priority"
       printf '    risk: "%s"\n' "$risk"
-      printf '    author: "%s"\n' "$author"
+      printf '    author: %s\n' "$author_yaml"
       printf '    file: "%s"\n' "$file_path"
       printf '    status: "%s"\n' "$new_status"
     } > "$file"
@@ -1199,22 +1216,24 @@ update_story_index_yaml() {
   #     in place of the original header.
   #   - When the entry is not found, append the full block at EOF under
   #     `stories:`.
+  # title/epic/author arrive PRE-ESCAPED as complete single-quoted YAML
+  # scalars (issue-1403) — emit them verbatim (no surrounding quotes added).
   awk -v target="$key" \
       -v new_status="$new_status" \
-      -v title="$title" \
-      -v epic="$epic" \
+      -v title="$title_yaml" \
+      -v epic="$epic_yaml" \
       -v priority="$priority" \
       -v risk="$risk" \
-      -v author="$author" \
+      -v author="$author_yaml" \
       -v file_path="$file_path" '
     function emit_block(k, t, e, p, r, a, f, s) {
       printf "  %s:\n", k
       printf "    story_key: \"%s\"\n", k
-      printf "    title: \"%s\"\n", t
-      printf "    epic: \"%s\"\n", e
+      printf "    title: %s\n", t
+      printf "    epic: %s\n", e
       printf "    priority: \"%s\"\n", p
       printf "    risk: \"%s\"\n", r
-      printf "    author: \"%s\"\n", a
+      printf "    author: %s\n", a
       printf "    file: \"%s\"\n", f
       printf "    status: \"%s\"\n", s
     }
@@ -1304,6 +1323,25 @@ resolve_meta() {
 
 META_TITLE="$(resolve_meta "$META_TITLE" title)"
 META_EPIC="$(resolve_meta "$META_EPIC" epic)"
+# issue-1405: the `epic:` frontmatter is widely written as the FULL epic TITLE
+# (e.g. `E<n> — <Epic Title>`) rather than the bare key. resolve_epic_slug
+# needs the bare `E<digits>` key (it does `epic_num="${epic_key#E}"` and greps
+# `^## Epic <num>:`), so derive it here: prefer an explicit `epic_key:`
+# frontmatter field, else take the leading `E<digits>` token of `epic:`. The
+# full META_EPIC value is still used as the displayed `epic:` metadata in the
+# index entry; only the slug-resolution key is normalized.
+EPIC_KEY_FOR_SLUG="$(read_frontmatter_field "$STORY_FILE" epic_key 2>/dev/null || true)"
+if [ -z "$EPIC_KEY_FOR_SLUG" ] || [ "$EPIC_KEY_FOR_SLUG" = "$TSS_UNSET" ]; then
+  # Take the leading E<digits> token from META_EPIC (handles the bare-key form,
+  # the `E<n> — Title` em-dash form, and the `E<n>: Title` colon form). Falls
+  # back to META_EPIC verbatim when it does not start with the E<digits> shape
+  # (lets a non-standard key still reach the resolver, preserving the prior
+  # error path for genuinely bad input).
+  case "$META_EPIC" in
+    E[0-9]*) EPIC_KEY_FOR_SLUG="$(printf '%s' "$META_EPIC" | sed -E 's/^(E[0-9]+).*/\1/')" ;;
+    *)       EPIC_KEY_FOR_SLUG="$META_EPIC" ;;
+  esac
+fi
 META_PRIORITY="$(resolve_meta "$META_PRIORITY" priority)"
 META_RISK="$(resolve_meta "$META_RISK" risk)"
 META_AUTHOR="$(resolve_meta "$META_AUTHOR" author)"
@@ -1317,7 +1355,7 @@ fi
 # Resolve the per-epic story-index.yaml path. Uses the
 # `epic:` frontmatter field (or the --epic flag override). The env
 # override STORY_INDEX_YAML wins unconditionally for tests / brownfield.
-STORY_INDEX_YAML="$(resolve_story_index_path "$STORY_FILE" "$META_EPIC")"
+STORY_INDEX_YAML="$(resolve_story_index_path "$STORY_FILE" "$EPIC_KEY_FOR_SLUG")"
 
 # Acquire the cross-file lock.
 mkdir -p "$(dirname "$STORY_STATUS_LOCK")"
