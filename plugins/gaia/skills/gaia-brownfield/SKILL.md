@@ -588,9 +588,10 @@ unsanctioned-cross-stack-reference: <source_stack>:<file> -> <target_stack>:<fil
 
 This phase delegates manifest generation to the shared library helper at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/test-environment-manifest.sh`. The helper is the SINGLE canonical generator for `.gaia/config/test-environment.yaml` — both `/gaia-brownfield` Phase 5 (this section) and `/gaia-bridge-enable` Step 4 invoke it.
 
-1. Invoke the shared helper with `--target <project-path> --write` to detect stack signals and emit the manifest:
+1. Invoke the shared helper with `--target <project-path> --write` to detect stack signals and emit the manifest. Set `GAIA_TEST_ENV_CALLER=/gaia-brownfield` so the generated manifest header is attributed to this skill (the helper defaults to `/gaia-bridge-enable`, which mislabels the file on brownfield runs):
 
    ```bash
+   GAIA_TEST_ENV_CALLER=/gaia-brownfield \
    ${CLAUDE_PLUGIN_ROOT}/scripts/lib/test-environment-manifest.sh \
      --target "${PROJECT_PATH}" \
      --write
