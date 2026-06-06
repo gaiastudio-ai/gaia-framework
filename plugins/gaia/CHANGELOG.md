@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.187.7] — 2026-06-06
+
+### Fixed
+
+- (create-ux) align ux-design template §8 heading to SV-09 Components gate
+- (brownfield,init,sprint,docs) eight v1.187.4 lifecycle-test findings
+
 ## [1.187.6] — 2026-06-05
 
 ### Fixed
