@@ -357,9 +357,17 @@ if phase == "full":
 
     ci = data.get("ci_platform") or {}
     if ci.get("provider"):
+        # issue-1244: the schema's ciProvider enum uses hyphens
+        # (github-actions, gitlab-ci, azure-pipelines, bitbucket-pipelines),
+        # but operators naturally type the underscore form (github_actions).
+        # Normalize underscore->hyphen so the natural answer validates instead
+        # of being rejected by the enum.
+        _provider = ci["provider"]
+        if isinstance(_provider, str):
+            _provider = _provider.replace("_", "-")
         lines.append("")
         lines.append("ci_platform:")
-        lines.append(f"  provider: {yaml_quote(ci['provider'])}")
+        lines.append(f"  provider: {yaml_quote(_provider)}")
         if ci.get("pipeline"):
             lines.append(f"  pipeline: {yaml_quote(ci['pipeline'])}")
 
