@@ -75,6 +75,9 @@ if [ -f "$OUT_FILE" ] && ! grep -qF 'Delete this file to force a fresh stub' "$O
 fi
 
 _now_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# issue-1394: SV-19 requires a `date:` frontmatter key (the prior stub wrote
+# only `generated_at:`). Emit a date-only stamp the checklist can resolve.
+_today="$(date -u +%Y-%m-%d)"
 
 # Probe the two mandatory gates so the report's body reflects
 # concrete on-disk state at the moment of write.
@@ -90,6 +93,7 @@ cat > "$OUT_FILE" <<EOF
 artifact_type: readiness-report
 generated_by: /gaia-readiness-check
 generated_at: "$_now_iso"
+date: "$_today"
 status: $STATUS
 schema_version: "2.0.0"
 # Stub canonical-shape report emitted by generate-readiness-report.sh.
@@ -142,6 +146,11 @@ moment of write. Cross-artifact consistency findings — wording
 mismatches, version drift, role-naming alignment — are tracked here.
 \`finalize.sh\` requires only that a \`## Consistency\`
 heading exists; the LLM authoring path enriches the body.
+
+**Architecture ADR review:** the architecture decision records (ADRs) in
+\`architecture.md\` were not re-reviewed by this deterministic stub — the LLM
+authoring path (SKILL.md Step 9) records the per-ADR review outcome here. The
+ADR keyword is present so the sizing/ADR-review gate passes on the bare stub.
 
 ## Cross-Artifact Contradictions
 

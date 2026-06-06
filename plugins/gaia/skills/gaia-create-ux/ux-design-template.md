@@ -74,7 +74,7 @@ and progress indicators.}
 - **Motion & timing:** {reduced-motion support, no time-limited content}
 - **Touch targets:** {minimum sizes, spacing for mobile}
 
-## 8. Design System / Component Reuse
+## 8. Components & Design System
 
 {Which existing design-system components/patterns to reuse vs build custom, and
 why. Note any new components this design introduces.}

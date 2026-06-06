@@ -36,7 +36,7 @@ Deprecation: the skill exposes `deprecated_aliases: [gaia-test-design, gaia-test
 - `--plan` mode delegates to the **test-architect** subagent (Sable) — do NOT inline Sable's persona into this skill body. If the subagent is not available, halt with: "test-architect subagent not available -- ensure agents are installed."
 - `--scaffold` mode is procedural (directory/config generation) and does not require a subagent.
 - Do NOT implement or run any tests during scaffolding — only set up the infrastructure. Test implementation happens in Phase 4 workflows (`/gaia-dev-story`, `/gaia-review-qa`, `/gaia-atdd`).
-- Output ALL artifacts to `.gaia/artifacts/test-artifacts/`.
+- Output the document artifacts — `test-strategy.md` and `test-plan.md` — to `.gaia/artifacts/planning-artifacts/` (the canonical home stated above; legacy `test-artifacts/strategy/` is read-only for pre-migration projects). Scaffold artifacts from `--scaffold` mode (framework config files like `vitest.config`/`pytest.ini`, test directories, sample tests) are written under the relevant service path or the project's `tests/` tree, NOT into the artifacts buckets.
 - Subsequent invocations on a project that already has `test-strategy.md` and scaffolded test directories MUST read the existing strategy and offer incremental updates — do NOT overwrite existing test configuration.
 - Single-stack projects skip the interactive `--service` picker and scaffold the single declared stack directly.
 - After scaffolding, update the `test_execution` section of `project-config.yaml` and offer a CI regeneration prompt per source-report §9.6.

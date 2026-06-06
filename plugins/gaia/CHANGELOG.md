@@ -13,6 +13,15 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Fixed
 
+- (create-ux) the shipped ux-design template's §8 heading now leads with "Components" so it satisfies the create-ux SV-09 gate (it was "Design System / Component Reuse", which the anchored heading check did not match) (#1314)
+- (brownfield) SARIF merge skips empty / non-conformant `.sarif` inputs instead of aborting the whole merge, so one bad input no longer drops all deterministic findings (#1389)
+- (brownfield) jvm-spotbugs adapter short-circuits before any dispatch when the project has no JVM sources, so it no longer writes a 0-byte `spotbugs.sarif` (which crashed the merge) (#1390)
+- (brownfield) scan-fidelity banner uses a bash-3.2-safe uppercase instead of `${TIER^^}`, so the degradation notice renders on macOS (#1391)
+- (sprint-lifecycle) sprint-state.sh warns about a stale legacy `sprint-status.yaml` only when it actually diverges from the canonical copy, not on its own byte-identical mirror (#1392)
+- (init) `primary_platform` is normalized with the same `backend`→`server` map as `platforms[]`, removing the generated-config self-contradiction (#1393)
+- (readiness-check) the deterministic readiness-report generator emits a `date:` frontmatter key and an Architecture ADR review line, so its output passes the skill's own checklist (#1394)
+- (test-strategy) SKILL.md no longer contradicts itself on artifact output location — doc artifacts go to `planning-artifacts/`, scaffold artifacts under the service/`tests/` tree (#1396)
+- (docs) the brownfield walkthrough documents enabling the Docker tier-2 deterministic-tools runner (#1395)
 - (trace) finalize exits non-zero when the generated traceability matrix declares its own verdict BLOCKED/FAIL, so downstream readiness gating reacts instead of passing on a path-only check (#1151)
 - (retro) retro-sidecar writer allowlist accepts the canonical `.gaia/artifacts/planning-artifacts/action-items.yaml` home that the retro skill writes to, so action items are no longer rejected as unauthorized (#1168)
 - (bridge-enable) document the copy-and-edit flow for a template / `*.example` test-environment manifest, so a project with only the shipped template gets guided to a ready manifest instead of a bare Layer-0 failure (#1137)
