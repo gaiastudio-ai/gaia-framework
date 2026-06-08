@@ -32,7 +32,7 @@ For the full-fidelity experience, enable Mode B (Agent Teams):
   2. Add orchestration.mode: team to .gaia/config/project-config.yaml.
 
 Mode B uses persistent teammates that preserve in-conversation state
-across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+across dispatches.
 
 This warning is shown once per session.
 ────────────────────────────────────────────────────────────────────────────
@@ -73,20 +73,20 @@ This warning is shown once per session.
         <tr><td>Testing artifacts</td><td><code>.gaia/artifacts/test-artifacts/</code></td><td>Test plan, traceability matrix, CI setup.</td></tr>
       </tbody></table></section>
       <section id="outputs"><h2>Outputs</h2><table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Readiness report</td><td><code>.gaia/artifacts/planning-artifacts/readiness-report.md</code></td><td>PASS/FAIL/CONDITIONAL PASS verdict with detailed findings.</td></tr></tbody></table>
-      <h3>Readiness-report frontmatter contract <span class="tag">AF-2026-05-30-4 / Test11 D-04</span></h3>
-      <p>The <code>readiness-report.md</code> finalize step runs five script-verifiable SV checks (SV-20 through SV-25) against the file's YAML frontmatter plus its body. A hand-authored report that omits any of these fields fails the checks even when the prose verdict is correct. The required shape:</p>
+      <h3>Readiness-report frontmatter contract</h3>
+      <p>The <code>readiness-report.md</code> finalize step runs several script-verifiable checks against the file's YAML frontmatter plus its body. A hand-authored report that omits any of these fields fails the checks even when the prose verdict is correct. The required shape:</p>
       <pre><code>---
-status: PASS                  # SV-20 — one of PASS | FAIL | CONDITIONAL
-checks_passed: 47             # SV-21 — aggregate count of SV checks that passed
-critical_blockers: 0          # SV-22 — count of blocking findings; 0 on PASS
-contradictions_found: 0       # SV-23 — count of cross-artifact contradictions
+status: PASS                  # one of PASS | FAIL | CONDITIONAL
+checks_passed: 47             # aggregate count of checks that passed
+critical_blockers: 0          # count of blocking findings; 0 on PASS
+contradictions_found: 0       # count of cross-artifact contradictions
 priority_schedule_conflicts_count: 0
 date: 2026-05-30
 ---
 
-## Output Verification       # SV-25 — heading required (or equivalent prose section)
+## Output Verification       # heading required (or equivalent prose section)
 ...</code></pre>
-      <p>SV-24 then re-asserts the <code>status:</code> verdict against the body. When <code>/gaia-readiness-check</code> generates the report itself (the canonical path) all five fields land automatically. Hand-authored READY reports must include them explicitly.</p>
+      <p>A further check re-asserts the <code>status:</code> verdict against the body. When <code>/gaia-readiness-check</code> generates the report itself (the canonical path) all the fields land automatically. Hand-authored READY reports must include them explicitly.</p>
       </section>
       <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-readiness-check
 

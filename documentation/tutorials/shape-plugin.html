@@ -71,7 +71,7 @@
         <ul>
           <li>You author a Claude plugin (or any artifact whose release surface IS a git branch).</li>
           <li>No deployable environment exists -- the marketplace pulls from <code>main</code> (or a release tag), and that is the entire release pipeline.</li>
-          <li>You want <code>/gaia-publish</code> to drive the release, not <code>/gaia-deploy</code> (which would HALT per the E99-S1 gate -- there is nothing to deploy to).</li>
+          <li>You want <code>/gaia-publish</code> to drive the release, not <code>/gaia-deploy</code> (which would HALT on the kind gate -- there is nothing to deploy to).</li>
         </ul>
       </section>
 
@@ -116,7 +116,7 @@ distribution:
       <section id="overlays">
         <h2>CI overlays</h2>
         <p>
-          Generated workflows live at <code>.github/workflows/gaia-*.yml</code> (FR-516 prefix contract).
+          Generated workflows live at <code>.github/workflows/gaia-*.yml</code> (the <code>gaia-</code> prefix contract).
           If you need custom jobs or steps, add overlay files alongside:
         </p>
         <pre><code># .github/workflows/gaia-ci.user-jobs.yml
@@ -126,10 +126,10 @@ jobs:
     steps:
       - run: echo "publish CHANGELOG.md to marketplace metadata"</code></pre>
         <p>
-          The stitching engine (E98-S2) merges your <code>user-jobs.yml</code> jobs into the managed
+          The stitching engine merges your <code>user-jobs.yml</code> jobs into the managed
           <code>jobs:</code> map at <code>/gaia-config-ci --regenerate</code> time. Protected job names
           (e.g., <code>bats-tests</code>, <code>commitlint</code>) cannot be overridden -- the
-          protected-jobs assertion (E98-S3) refuses any user-job with a colliding name.
+          protected-jobs assertion refuses any user-job with a colliding name.
         </p>
       </section>
 

@@ -39,7 +39,7 @@
         <p class="sidebar-section-title">On this page</p>
         <ul>
           <li><a href="#when">When this shape applies</a></li>
-          <li><a href="#stub">STUB caveat (FR-527)</a></li>
+          <li><a href="#stub">STUB caveat</a></li>
           <li><a href="#config">project-config.yaml</a></li>
           <li><a href="#routing">Phase 5 routing</a></li>
           <li><a href="#publish">Publish to the app stores</a></li>
@@ -68,12 +68,12 @@
       </p>
 
       <section id="stub">
-        <h2>STUB caveat (FR-527)</h2>
+        <h2>STUB caveat</h2>
         <p>
           The <code>publish-mobile-app</code> adapter ships as a STUB in this iteration. The
           adapter validates the configuration and emits the App Store Connect / Play Console
           submission payload, but the actual API integration (TestFlight upload, Google Play Internal
-          Track, screenshot metadata propagation) is deferred to a follow-up cascade per FR-527.
+          Track, screenshot metadata propagation) is deferred to a follow-up iteration.
         </p>
         <p>
           What works today: schema validation, <code>/gaia-publish</code> dispatch, the channel
@@ -135,7 +135,7 @@ distribution:
         <ul>
           <li><code>/gaia-config-validate</code> exits 0 with all three mobile-app sub-fields present.</li>
           <li><code>/gaia-help</code> suggests <code>/gaia-publish</code> on the Phase 5 row.</li>
-          <li>A <code>/gaia-publish</code> run validates the schema and writes the submission payload (STUB phase of FR-527 -- store-side integration deferred).</li>
+          <li>A <code>/gaia-publish</code> run validates the schema and writes the submission payload (STUB phase -- store-side integration deferred).</li>
           <li>Your CI workflow at <code>release_workflow</code> picks up the payload and posts to the App Store / Play Console via fastlane (or your store-side tool of choice).</li>
         </ul>
       </section>

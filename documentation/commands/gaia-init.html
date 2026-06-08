@@ -145,7 +145,7 @@ For the full-fidelity experience, enable Mode B (Agent Teams):
   2. Add orchestration.mode: team to .gaia/config/project-config.yaml.
 
 Mode B uses persistent teammates that preserve in-conversation state
-across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+across dispatches.
 
 This warning is shown once per session.
 ────────────────────────────────────────────────────────────────────────────
@@ -164,7 +164,7 @@ This warning is shown once per session.
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
         <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
-        <p><strong>Caveat (Test10 F-03 — AF-2026-05-30-2).</strong> The one-shot contract depends on <code>CLAUDE_SESSION_ID</code> being exported. Without it, the marker falls back to the orchestrator PID, so each fresh shell becomes a new "session" from the dedupe's point of view and the warning re-fires on every command invocation. Operators who see repeat warnings on every command should export <code>CLAUDE_SESSION_ID</code> (any stable per-session value).</p>
+        <p><strong>Caveat.</strong> The one-shot contract depends on <code>CLAUDE_SESSION_ID</code> being exported. Without it, the marker falls back to the orchestrator PID, so each fresh shell becomes a new "session" from the dedupe's point of view and the warning re-fires on every command invocation. Operators who see repeat warnings on every command should export <code>CLAUDE_SESSION_ID</code> (any stable per-session value).</p>
       </section>
 
 
@@ -277,7 +277,7 @@ This warning is shown once per session.
       <!-- 7. Outputs -->
       <section id="outputs">
         <h2>Outputs</h2>
-        <p>A successful <code>/gaia-init</code> run writes the following files. Most live under <code>.gaia/</code> (the canonical GAIA runtime tree per ADR-111). Three files live at the repository root because their consumers (GitHub Actions, git) read from fixed locations.</p>
+        <p>A successful <code>/gaia-init</code> run writes the following files. Most live under <code>.gaia/</code> (the canonical GAIA runtime tree). Three files live at the repository root because their consumers (GitHub Actions, git) read from fixed locations.</p>
         <table>
           <thead>
             <tr>
@@ -290,7 +290,7 @@ This warning is shown once per session.
             <tr>
               <td>Project configuration</td>
               <td><code>.gaia/config/project-config.yaml</code></td>
-              <td>The main GAIA configuration file for your project (canonical location per ADR-111).</td>
+              <td>The main GAIA configuration file for your project (canonical location).</td>
             </tr>
             <tr>
               <td>Test-environment manifest template</td>

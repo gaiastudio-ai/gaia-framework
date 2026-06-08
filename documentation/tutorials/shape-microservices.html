@@ -89,10 +89,9 @@
         <h2>Headless service (backend-only)</h2>
         <p>
           A common shape is a pure backend service with no UI — an internal
-          API, a worker, a CLI binary, or a library exposed over RPC. Closes
-          Test10 F-05 (AF-2026-05-30-2) — the init questionnaire previously
-          treated this case as a configuration wall because the
-          <code>platforms[]</code> enum looked frontend-only.
+          API, a worker, a CLI binary, or a library exposed over RPC. The init
+          questionnaire supports this case directly, even though the
+          <code>platforms[]</code> enum can look frontend-only at first glance.
         </p>
         <p>
           Configure two fields explicitly when the service ships no UI:

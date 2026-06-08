@@ -96,7 +96,7 @@
           <li>
             Write <code>status: closed</code> + <code>closed_at: &lt;ISO&gt;</code>
             atomically through <code>sprint-state.sh transition</code> (the
-            ADR-095 sanctioned writer).
+            sanctioned writer).
           </li>
           <li>
             Archive a snapshot of the closed yaml under
@@ -147,11 +147,10 @@
             <strong>Dispatch sentinel must be present.</strong> At least one
             of:
             <code>.gaia/memory/checkpoints/sprint-review-&lt;sprint_id&gt;-val-dispatched.json</code>
-            (E83) or
-            <code>.gaia/memory/checkpoints/val-envelope-&lt;sha256(&lt;sprint_id&gt;):0:16&gt;.json</code>
-            (E87).
+            or
+            <code>.gaia/memory/checkpoints/val-envelope-&lt;sha256(&lt;sprint_id&gt;):0:16&gt;.json</code>.
             <br />
-            <strong>Sentinel payload schema (AF-2026-05-30-4 D-06).</strong>
+            <strong>Sentinel payload schema.</strong>
             The sentinel JSON MUST carry the canonical Val-envelope shape:
             <code>agent: "val"</code> (literal lowercase string),
             <code>status: "PASSED" | "FAILED" | "UNVERIFIED"</code>,
@@ -165,7 +164,7 @@
             MISSING; run /gaia-sprint-review first</code> error.
           </li>
           <li>
-            <strong>Retro doc path (AF-2026-05-30-4 D-06).</strong> The retro
+            <strong>Retro doc path.</strong> The retro
             file MUST live at the EXACT path the close ceremony's glob
             walks:
             <code>.gaia/artifacts/implementation-artifacts/retrospective-&lt;sprint_id&gt;-*.md</code>

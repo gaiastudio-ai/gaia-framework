@@ -47,41 +47,41 @@
         <h3 id="halt-threat-model"><code>compliance.ui_present=true but no threat-model.md found</code> (greenfield UI project)</h3>
         <p><strong>Surface:</strong> <code>/gaia-create-arch</code> setup.sh exits 1 in Phase 3 (before any sprint exists).</p>
         <p><strong>Cause:</strong> The threat-model gate fires whenever <code>compliance.ui_present: true</code> in <code>.gaia/config/project-config.yaml</code>, but on a greenfield project <code>threat-model.md</code> is produced AFTER architecture by design. The advertised <code>--bypass gaia-threat-model --reason "&lt;text&gt;"</code> flag requires a resolvable <code>SPRINT_ID</code>, which doesn't exist pre-sprint-plan — a chicken-and-egg block.</p>
-        <p><strong>Fix landed (AF-2026-05-27-8):</strong> The gate now degrades to a WARNING in the pre-sprint phase (no <code>.gaia/state/sprint-status.yaml</code>, no <code>SPRINT_ID</code> env), and the hard <code>die</code> only fires once a sprint is active — at which point <code>--bypass</code> is also recordable. <strong>Upgrade to v1.180.4+</strong> if you still hit this on a fresh project. As a one-off workaround on older versions: export <code>GAIA_STRICT_LIFECYCLE=0</code> for the single invocation (but this disables every strict-lifecycle gate, not just this one — surgical, not preferred).</p>
+        <p><strong>Fix landed:</strong> The gate now degrades to a WARNING in the pre-sprint phase (no <code>.gaia/state/sprint-status.yaml</code>, no <code>SPRINT_ID</code> env), and the hard <code>die</code> only fires once a sprint is active — at which point <code>--bypass</code> is also recordable. <strong>Upgrade to v1.180.4+</strong> if you still hit this on a fresh project. As a one-off workaround on older versions: export <code>GAIA_STRICT_LIFECYCLE=0</code> for the single invocation (but this disables every strict-lifecycle gate, not just this one — surgical, not preferred).</p>
 
         <h3 id="halt-test-plan"><code>HALT: no non-empty test-plan artifact found</code> (post-/gaia-test-strategy)</h3>
         <p><strong>Surface:</strong> <code>/gaia-create-epics</code> setup.sh.</p>
-        <p><strong>Cause:</strong> <code>/gaia-test-strategy --plan</code> writes <code>test-strategy.md</code> under <code>.gaia/artifacts/planning-artifacts/</code> (canonical per E105-S2 / ADR-127 §7.2), and also writes a sibling <code>test-plan.md</code> alias there (AF-2026-05-24-9 mitigation). On older plugin versions create-epics setup.sh referenced an unbound <code>${PLANNING_ARTIFACTS}</code> variable and looked only under <code>test-artifacts/</code> — false HALT.</p>
-        <p><strong>Fix landed (AF-2026-05-27-8 + AF-2026-05-28-1):</strong> create-epics setup.sh routes through the shared <code>resolve-artifact-path.sh test_plan</code> helper which puts <code>.gaia/artifacts/planning-artifacts/</code> at rung 1. <strong>Upgrade and retry.</strong></p>
+        <p><strong>Cause:</strong> <code>/gaia-test-strategy --plan</code> writes <code>test-strategy.md</code> under <code>.gaia/artifacts/planning-artifacts/</code> (the canonical location), and also writes a sibling <code>test-plan.md</code> alias there. On older plugin versions create-epics setup.sh referenced an unbound <code>${PLANNING_ARTIFACTS}</code> variable and looked only under <code>test-artifacts/</code> — false HALT.</p>
+        <p><strong>Fix landed:</strong> create-epics setup.sh routes through the shared <code>resolve-artifact-path.sh test_plan</code> helper which puts <code>.gaia/artifacts/planning-artifacts/</code> at rung 1. <strong>Upgrade and retry.</strong></p>
 
         <h3 id="halt-trace-not-found"><code>traceability-matrix.md not found at .gaia/artifacts/test-artifacts/strategy/...</code></h3>
-        <p><strong>Surface:</strong> <code>/gaia-dev-story</code> F-33 gate.</p>
-        <p><strong>Cause:</strong> <code>/gaia-trace</code> on a greenfield project writes the matrix to the canonical <code>.gaia/artifacts/planning-artifacts/traceability-matrix.md</code> (ADR-127 §7.2). Older dev-story setup.sh only checked <code>test-artifacts/strategy/</code> — false HALT.</p>
-        <p><strong>Fix landed (AF-2026-05-28-1):</strong> dev-story setup.sh routes through the shared resolver. <strong>Upgrade and retry.</strong></p>
+        <p><strong>Surface:</strong> <code>/gaia-dev-story</code> traceability gate.</p>
+        <p><strong>Cause:</strong> <code>/gaia-trace</code> on a greenfield project writes the matrix to the canonical <code>.gaia/artifacts/planning-artifacts/traceability-matrix.md</code>. Older dev-story setup.sh only checked <code>test-artifacts/strategy/</code> — false HALT.</p>
+        <p><strong>Fix landed:</strong> dev-story setup.sh routes through the shared resolver. <strong>Upgrade and retry.</strong></p>
 
         <h3 id="halt-sprint-status-missing"><code>WARNING: story 'X' has sprint_id 'sprint-N' but sprint-status.yaml is missing at ./.gaia/artifacts/implementation-artifacts/sprint-status.yaml</code></h3>
         <p><strong>Surface:</strong> every <code>/gaia-dev-story</code> transition.</p>
-        <p><strong>Cause:</strong> The canonical home for <code>sprint-status.yaml</code> is <code>.gaia/state/</code> (mutable-runtime-state tier per ADR-111). Older <code>transition-story-status.sh</code> hardcoded <code>.gaia/artifacts/implementation-artifacts/</code> as its default lookup — every transition WARNed and the yaml surface was silently NOT updated.</p>
-        <p><strong>Fix landed (AF-2026-05-28-1):</strong> <code>transition-story-status.sh</code> routes through <code>resolve-artifact-path.sh sprint_status</code>. <strong>Upgrade.</strong> On older versions, recover state with <code>sprint-state.sh reconcile --sprint-id sprint-N</code> after the fact.</p>
+        <p><strong>Cause:</strong> The canonical home for <code>sprint-status.yaml</code> is <code>.gaia/state/</code> (the mutable-runtime-state tier). Older <code>transition-story-status.sh</code> hardcoded <code>.gaia/artifacts/implementation-artifacts/</code> as its default lookup — every transition WARNed and the yaml surface was silently NOT updated.</p>
+        <p><strong>Fix landed:</strong> <code>transition-story-status.sh</code> routes through <code>resolve-artifact-path.sh sprint_status</code>. <strong>Upgrade.</strong> On older versions, recover state with <code>sprint-state.sh reconcile --sprint-id sprint-N</code> after the fact.</p>
 
         <h3 id="halt-retro-sentinel"><code>HALT: retro finalize gate sentinel missing — Step 7 (Val sidecar write) must run before finalize</code></h3>
         <p><strong>Surface:</strong> <code>/gaia-retro</code> finalize.sh under <code>GAIA_FINALIZE_SENTINEL_REQUIRED=1</code> (default in CI).</p>
-        <p><strong>Cause:</strong> Step 7 (Val sidecar write via <code>val-sidecar-write.sh</code>) is REQUIRED before finalize per ADR-052 / FR-VSP-2 — it's not optional. The retro skill cannot complete without it.</p>
+        <p><strong>Cause:</strong> Step 7 (Val sidecar write via <code>val-sidecar-write.sh</code>) is REQUIRED before finalize — it's not optional. The retro skill cannot complete without it.</p>
         <p><strong>Fix:</strong> Re-run <code>/gaia-retro</code> and let Step 7 execute. Do NOT skip it. See the retro page's <a href="commands/gaia-retro.html#step-7-val-sidecar-write">Step 7 detail</a>.</p>
 
         <h3 id="halt-val-agent-val"><code>payload agent 'gaia:validator' must be 'val'</code></h3>
         <p><strong>Surface:</strong> <code>/gaia-sprint-review</code> <code>write-val-sentinel.sh</code>.</p>
-        <p><strong>Cause:</strong> The sentinel payload's <code>.agent</code> field must be the literal string <code>"val"</code> (the persona identifier per ADR-037) — NOT the subagent registration name <code>"gaia:validator"</code>. The orchestrator MUST set or normalize this before piping the payload.</p>
-        <p><strong>Fix:</strong> Before <code>write-val-sentinel.sh</code>, pipe the Val ADR-037 return through <code>jq '. + {agent: "val"}'</code> (or set it manually in the dispatch wrapper).</p>
+        <p><strong>Cause:</strong> The sentinel payload's <code>.agent</code> field must be the literal string <code>"val"</code> (the persona identifier) — NOT the subagent registration name <code>"gaia:validator"</code>. The orchestrator MUST set or normalize this before piping the payload.</p>
+        <p><strong>Fix:</strong> Before <code>write-val-sentinel.sh</code>, pipe the Val return through <code>jq '. + {agent: "val"}'</code> (or set it manually in the dispatch wrapper).</p>
 
-        <h3 id="halt-non-interactive-migrate"><code>auto-rename-migration.sh: HALT: non-interactive auto-rename migration requires --force AND GAIA_MIGRATE_ALLOW_FORCE=1 per SR-84</code></h3>
+        <h3 id="halt-non-interactive-migrate"><code>auto-rename-migration.sh: HALT: non-interactive auto-rename migration requires --force AND GAIA_MIGRATE_ALLOW_FORCE=1</code></h3>
         <p><strong>Surface:</strong> <code>/gaia-config-ci</code> auto-rename pass under <code>GAIA_NONINTERACTIVE=1</code>.</p>
-        <p><strong>Cause:</strong> Defense-in-depth (T-ARM-1) for the file-rename security control. Either env var alone is insufficient.</p>
+        <p><strong>Cause:</strong> Defense-in-depth for the file-rename security control. Either env var alone is insufficient.</p>
         <p><strong>Fix:</strong> Pass BOTH <code>--force</code> AND <code>GAIA_MIGRATE_ALLOW_FORCE=1</code> in the same invocation. Or run interactively (drop <code>GAIA_NONINTERACTIVE</code>).</p>
 
         <h3 id="halt-statusline-not-updating">Statusline doesn't reflect my plugin update</h3>
         <p><strong>Surface:</strong> after running <code>/plugin update</code>, the statusline keeps showing old behavior (no gradient, missing rate-limit countdown, missing dirty-file counts, etc.).</p>
-        <p><strong>Cause:</strong> Plugin updates refresh the cache at <code>~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/&lt;version&gt;/</code>, not the standalone runtime install at <code>~/.claude/gaia-statusline/</code>. The self-heal block (AF-2026-05-27-7) lets the install re-copy itself from cache on each render — but the FIRST upgrade onto a pre-self-heal runtime has to be bootstrapped manually.</p>
+        <p><strong>Cause:</strong> Plugin updates refresh the cache at <code>~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/&lt;version&gt;/</code>, not the standalone runtime install at <code>~/.claude/gaia-statusline/</code>. The self-heal block lets the install re-copy itself from cache on each render — but the FIRST upgrade onto a pre-self-heal runtime has to be bootstrapped manually.</p>
         <p><strong>Fix (one-time per machine):</strong></p>
         <pre><code>bash "$(ls -td ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/*/scripts/install-statusline.sh | head -1)"
 ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tail -1 \
@@ -119,7 +119,7 @@ ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tai
             </tr>
             <tr>
               <td><code>GAIA_NONINTERACTIVE=1</code></td>
-              <td>Indicates the run has no TTY. The auto-rename security control (SR-84 / T-ARM-1) requires <code>--force AND GAIA_MIGRATE_ALLOW_FORCE=1</code> on top of this.</td>
+              <td>Indicates the run has no TTY. The auto-rename security control requires <code>--force AND GAIA_MIGRATE_ALLOW_FORCE=1</code> on top of this.</td>
               <td><code>auto-rename-migration.sh</code>.</td>
             </tr>
             <tr>
@@ -129,12 +129,12 @@ ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tai
             </tr>
             <tr>
               <td><code>GAIA_TEST_STRATEGY_NO_AUTOSTUB=1</code></td>
-              <td>Disables the AF-2026-05-26-9 auto-stub hydration in <code>/gaia-test-strategy/finalize.sh</code> (which adds empty <code>test_execution</code> + <code>test_execution_bridge</code> stubs to <code>project-config.yaml</code> when missing). Set when you want explicit control of the config.</td>
+              <td>Disables the auto-stub hydration in <code>/gaia-test-strategy/finalize.sh</code> (which adds empty <code>test_execution</code> + <code>test_execution_bridge</code> stubs to <code>project-config.yaml</code> when missing). Set when you want explicit control of the config.</td>
               <td><code>gaia-test-strategy/scripts/finalize.sh</code>.</td>
             </tr>
             <tr>
               <td><code>PROJECT_PATH</code> / <code>GAIA_PROJECT_ROOT</code> / <code>PROJECT_ROOT</code></td>
-              <td>Project-root override for runtime scripts (used by fixtures and out-of-CWD invocations). Resolution order: <code>CLAUDE_PROJECT_ROOT → GAIA_PROJECT_ROOT → PROJECT_ROOT → PROJECT_PATH → PWD</code> (post-AF-2026-05-27-8).</td>
+              <td>Project-root override for runtime scripts (used by fixtures and out-of-CWD invocations). Resolution order: <code>CLAUDE_PROJECT_ROOT → GAIA_PROJECT_ROOT → PROJECT_ROOT → PROJECT_PATH → PWD</code>.</td>
               <td><code>resolve-artifact-path.sh</code>, <code>sprint-state.sh</code>, dashboards, statusline.</td>
             </tr>
             <tr>
@@ -144,7 +144,7 @@ ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tai
             </tr>
             <tr>
               <td><code>CI_SETUP_ARTIFACT=&lt;path&gt;</code></td>
-              <td>Pin the ci-setup.md artifact lookup. Default since AF-2026-05-27-8: when unset, finalize.sh defaults to <code>.gaia/artifacts/test-artifacts/ci-setup.md</code> via the shared resolver — checklist actually runs (was silently skipped pre-fix).</td>
+              <td>Pin the ci-setup.md artifact lookup. By default, when unset, finalize.sh defaults to <code>.gaia/artifacts/test-artifacts/ci-setup.md</code> via the shared resolver — checklist actually runs (was silently skipped pre-fix).</td>
               <td><code>gaia-ci-setup/scripts/finalize.sh</code>.</td>
             </tr>
           </tbody>
@@ -152,19 +152,19 @@ ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tai
       </section>
 
       <section id="path-canonicals">
-        <h2>Canonical path cheat-sheet (post-ADR-111 / E105-S2)</h2>
+        <h2>Canonical path cheat-sheet</h2>
         <p>If a script or doc still says one of the legacy paths on the left, treat that as drift. The canonical paths are on the right.</p>
 
         <table>
           <thead>
-            <tr><th>Legacy</th><th>Canonical (post-ADR-111 / E105-S2 / ADR-127 §7.2)</th><th>What lives here</th></tr>
+            <tr><th>Legacy</th><th>Canonical</th><th>What lives here</th></tr>
           </thead>
           <tbody>
             <tr><td><code>docs/planning-artifacts/</code></td><td><code>.gaia/artifacts/planning-artifacts/</code></td><td>PRD, architecture, epics-and-stories, threat-model, infrastructure-design, traceability-matrix, test-strategy, test-plan, action-items (write target only — see state tier).</td></tr>
             <tr><td><code>docs/implementation-artifacts/</code></td><td><code>.gaia/artifacts/implementation-artifacts/</code></td><td>Story files (per-epic <code>epic-{slug}/{key}-{slug}/story.md</code>), review reports, retros, sprint reviews, sprint archives.</td></tr>
-            <tr><td><code>docs/test-artifacts/</code></td><td><code>.gaia/artifacts/test-artifacts/</code></td><td><code>ci-setup.md</code> (only). NOTE: <code>test-plan.md</code>, <code>test-strategy.md</code>, <code>traceability-matrix.md</code> moved OUT of here to <code>planning-artifacts/</code> per ADR-127 §7.2.</td></tr>
+            <tr><td><code>docs/test-artifacts/</code></td><td><code>.gaia/artifacts/test-artifacts/</code></td><td><code>ci-setup.md</code> (only). NOTE: <code>test-plan.md</code>, <code>test-strategy.md</code>, <code>traceability-matrix.md</code> moved OUT of here to <code>planning-artifacts/</code>.</td></tr>
             <tr><td><code>docs/creative-artifacts/</code></td><td><code>.gaia/artifacts/creative-artifacts/</code></td><td>Brainstorms, product briefs.</td></tr>
-            <tr><td><code>docs/implementation-artifacts/sprint-status.yaml</code></td><td><code>.gaia/state/sprint-status.yaml</code></td><td>Mutable runtime state — separate "state tier" per ADR-111. NOT under <code>artifacts/</code>.</td></tr>
+            <tr><td><code>docs/implementation-artifacts/sprint-status.yaml</code></td><td><code>.gaia/state/sprint-status.yaml</code></td><td>Mutable runtime state — separate "state tier". NOT under <code>artifacts/</code>.</td></tr>
             <tr><td><code>_memory/</code></td><td><code>.gaia/memory/</code></td><td>Sidecar decision logs, checkpoints, lifecycle events.</td></tr>
             <tr><td><code>config/</code></td><td><code>.gaia/config/</code></td><td><code>project-config.yaml</code>, <code>test-environment.yaml</code>, <code>test-environment.yaml.example</code>.</td></tr>
           </tbody>
@@ -172,13 +172,13 @@ ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tai
       </section>
 
       <section id="platform-requirements">
-        <h2>Platform requirements <span class="tag">AF-2026-05-31-1 / Test12 D-02</span></h2>
+        <h2>Platform requirements</h2>
 
         <p>GAIA's orchestration + adapter scripts run on <strong>macOS, Linux, and Windows</strong>. The portability matrix below documents what each platform needs for a clean lifecycle run.</p>
 
         <h3>macOS</h3>
         <ul>
-          <li><strong>Bash:</strong> macOS ships <code>/bin/bash 3.2.57</code> as the system default. The deterministic-tools chain (<code>detect-signals.sh</code>, brownfield <code>orchestrator.sh</code>, <code>validate-platform-stack.sh</code>, the dead-code + grype/syft adapters) is bash-3.2 compatible as of AF-2026-05-31-1 / Test12 F-01 + F-04 + F-06. Bash 4.0+ is recommended for performance (longer-form scripts under <code>plugins/gaia/scripts/lib/</code> still benefit from <code>declare -A</code> + <code>mapfile</code>) but no longer required for Tier-2 scanning to function. To upgrade: <code>brew install bash</code> and ensure <code>/opt/homebrew/bin</code> (Apple Silicon) or <code>/usr/local/bin</code> (Intel) precedes <code>/bin</code> in <code>PATH</code>.</li>
+          <li><strong>Bash:</strong> macOS ships <code>/bin/bash 3.2.57</code> as the system default. The deterministic-tools chain (<code>detect-signals.sh</code>, brownfield <code>orchestrator.sh</code>, <code>validate-platform-stack.sh</code>, the dead-code + grype/syft adapters) is bash-3.2 compatible. Bash 4.0+ is recommended for performance (longer-form scripts under <code>plugins/gaia/scripts/lib/</code> still benefit from <code>declare -A</code> + <code>mapfile</code>) but no longer required for Tier-2 scanning to function. To upgrade: <code>brew install bash</code> and ensure <code>/opt/homebrew/bin</code> (Apple Silicon) or <code>/usr/local/bin</code> (Intel) precedes <code>/bin</code> in <code>PATH</code>.</li>
           <li><strong>Scanner tools:</strong> install <code>grype</code> + <code>syft</code> + <code>cdxgen</code> + <code>vulture</code> + <code>semgrep</code> via Homebrew / pip, OR opt into the Docker runner cascade (<code>brownfield.tools.runner: docker</code>) so the bundled <code>gaia-tools</code> image supplies them.</li>
           <li><strong>Diagnostic:</strong> <code>gaia-doctor</code> probes installation state and prints the achievable scan tier with concrete remediation commands.</li>
         </ul>
@@ -199,17 +199,17 @@ ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tai
         </ul>
 
         <h3>Cross-platform CI</h3>
-        <p>The plugin's CI matrix (AF-2026-05-31-1 / Test12 §9.0 mandate) runs the bats suite on <code>ubuntu-latest</code>, <code>macos-latest</code>, and <code>windows-latest</code> (Git Bash). Regressions in bash 3.2 portability or POSIX-tool assumptions fail the macOS / Windows jobs before merge.</p>
+        <p>The plugin's CI matrix runs the bats suite on <code>ubuntu-latest</code>, <code>macos-latest</code>, and <code>windows-latest</code> (Git Bash). Regressions in bash 3.2 portability or POSIX-tool assumptions fail the macOS / Windows jobs before merge.</p>
       </section>
 
       <section id="statusline">
         <h2>Statusline issues</h2>
 
         <h3>Statusline doesn't refresh after a plugin update</h3>
-        <p>See <a href="#halt-statusline-not-updating">above</a> for the one-time bootstrap. The self-heal logic (AF-2026-05-27-7) means subsequent updates self-heal automatically — but the FIRST upgrade onto a pre-self-heal runtime needs a manual <code>install-statusline.sh</code> run.</p>
+        <p>See <a href="#halt-statusline-not-updating">above</a> for the one-time bootstrap. The self-heal logic means subsequent updates self-heal automatically — but the FIRST upgrade onto a pre-self-heal runtime needs a manual <code>install-statusline.sh</code> run.</p>
 
         <h3>Statusline shows a stale update arrow after the plugin already updated</h3>
-        <p>The update detector compares the installed semver to the latest-release-cached semver. A stale arrow that lingers after an update was fixed in AF-2026-05-27-6 (semver-aware "&gt; not ≠"). Upgrade to v1.180.3+.</p>
+        <p>The update detector compares the installed semver to the latest-release-cached semver. A stale arrow that lingers after an update was fixed (semver-aware "&gt; not ≠"). Upgrade to v1.180.3+.</p>
 
         <h3>Rate-limit display shows ".../.." for one or both windows</h3>
         <p>The runtime hides missing windows by design — Pro/Max accounts only see the rate-limit JSON after their first API response in the session. Wait for a few interactions; the field will populate.</p>

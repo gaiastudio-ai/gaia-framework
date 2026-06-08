@@ -39,7 +39,7 @@
         <p class="sidebar-section-title">On this page</p>
         <ul>
           <li><a href="#when">When this shape applies</a></li>
-          <li><a href="#adr-115">Why distribution-only, not deployable (ADR-115)</a></li>
+          <li><a href="#adr-115">Why distribution-only, not deployable</a></li>
           <li><a href="#config">project-config.yaml</a></li>
           <li><a href="#providers">Provider matrix</a></li>
           <li><a href="#publish">Publish to your provider</a></li>
@@ -67,9 +67,9 @@
       </p>
 
       <section id="adr-115">
-        <h2>Why distribution-only, not deployable (ADR-115)</h2>
+        <h2>Why distribution-only, not deployable</h2>
         <p>
-          Per ADR-115, static-site is modeled as a <code>distribution-only</code> environment kind,
+          Static-site is modeled as a <code>distribution-only</code> environment kind,
           not as a <code>deployable</code> sub-kind. The rationale: although the deployment goes to
           a hosted URL (which feels deployable), the workflow shape matches publish -- you push an
           artifact, the provider serves it, there is no server-side state, no rollback orchestration,
@@ -78,7 +78,7 @@
         </p>
         <p>
           Pairing a static-site channel with <code>kind: deployable</code> is rejected by
-          <code>/gaia-config-validate</code> per ADR-115 cross-section coupling enforcement.
+          <code>/gaia-config-validate</code> by the cross-section coupling enforcement.
         </p>
       </section>
 
@@ -132,7 +132,7 @@ distribution:
       <section id="worked-when">
         <h2>You'll know it worked when</h2>
         <ul>
-          <li><code>/gaia-config-validate</code> exits 0 with <code>provider</code> + <code>domain</code> both present and the env <code>kind: distribution-only</code> (NOT <code>deployable</code> -- ADR-115).</li>
+          <li><code>/gaia-config-validate</code> exits 0 with <code>provider</code> + <code>domain</code> both present and the env <code>kind: distribution-only</code> (NOT <code>deployable</code>).</li>
           <li><code>/gaia-help</code> suggests <code>/gaia-publish</code> on the Phase 5 row.</li>
           <li><code>/gaia-deploy --env cdn</code> HALTs with the canonical <code>use /gaia-publish instead</code> guidance.</li>
           <li>A <code>/gaia-publish</code> run completes; <code>curl https://${DOMAIN}/</code> returns the new build's content.</li>
