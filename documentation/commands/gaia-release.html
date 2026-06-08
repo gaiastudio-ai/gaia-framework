@@ -75,15 +75,15 @@
         <h2>When to use it</h2>
         <ul>
           <li>You are explicitly cutting a manual release after merging a sprint PR to main.</li>
-          <li>You are performing a hotfix release via the <code>hotfix/{ticket-id}</code> branch convention (ADR-109 &sect;D3) and need the tag+publish ceremony.</li>
+          <li>You are performing a hotfix release via the <code>hotfix/{ticket-id}</code> branch convention and need the tag+publish ceremony.</li>
           <li>You need to promote a release candidate to its final stable version (<code>--strip-prerelease</code>).</li>
         </ul>
       </section>
 
       <section id="scope-clarification">
-        <h2>Scope clarification (ADR-109 &sect;D2)</h2>
-        <p>The primary release path is automated via <code>release.yml</code> (GitHub Actions). When code merges to <code>main</code>, the workflow detects qualifying commits under <code>plugins/gaia/</code>, computes the semver bump, opens a release PR, and -- on merge of that PR -- creates the tag and GitHub Release automatically. As of E40-S2 (PR #771), the commit-classification range uses a tag-based anchor (<code>git describe --tags --abbrev=0 --match 'v*'</code>) instead of the previous <code>github.event.before</code> SHA, which resolves the symptom where the version-bump PR sometimes never opened after squash-merge.</p>
-        <p><code>/gaia-release</code> remains in the Phase-5 deployment catalog for <strong>explicit manual invocation only</strong> (ADR-109 &sect;D2). Typical uses: hotfix releases, RC promotions, and resolving version drift between <code>package.json</code> and the config. The framework does not auto-suggest <code>/gaia-release</code> after staging-to-main merges.</p>
+        <h2>Scope clarification</h2>
+        <p>The primary release path is automated via <code>release.yml</code> (GitHub Actions). When code merges to <code>main</code>, the workflow detects qualifying commits under <code>plugins/gaia/</code>, computes the semver bump, opens a release PR, and -- on merge of that PR -- creates the tag and GitHub Release automatically. As of PR #771, the commit-classification range uses a tag-based anchor (<code>git describe --tags --abbrev=0 --match 'v*'</code>) instead of the previous <code>github.event.before</code> SHA, which resolves the symptom where the version-bump PR sometimes never opened after squash-merge.</p>
+        <p><code>/gaia-release</code> remains in the Phase-5 deployment catalog for <strong>explicit manual invocation only</strong>. Typical uses: hotfix releases, RC promotions, and resolving version drift between <code>package.json</code> and the config. The framework does not auto-suggest <code>/gaia-release</code> after staging-to-main merges.</p>
       </section>
 
       <section id="prerequisites">
@@ -235,11 +235,11 @@ Creating GitHub Release v1.129.0-rc.2 (prerelease)...
 
 Release v1.129.0-rc.2 published (marked prerelease).</code></pre>
 
-        <h3>4. Hotfix release lane (ADR-109 &sect;D3)</h3>
+        <h3>4. Hotfix release lane</h3>
         <p>After a hotfix is developed on a <code>hotfix/{ticket-id}</code> branch targeting main, the release ceremony composes <code>/gaia-deploy</code> and <code>/gaia-release</code>:</p>
         <pre><code># Development (on hotfix/E12-S4 branch targeting main):
 &gt; /gaia-dev-story E12-S4
-&gt; /gaia-review-all   # full reviews including NFR-073 wire-verification
+&gt; /gaia-review-all   # full reviews including wire-verification
 
 # Release ceremony (on main after PR merge):
 &gt; /gaia-release patch
@@ -287,7 +287,7 @@ Release v1.129.0 published (stable).</code></pre>
         <h2>Related commands</h2>
         <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
           <tr><td><a href="gaia-changelog.html"><code>/gaia-changelog</code></a></td><td>Generates the changelog entry used in the GitHub Release notes.</td></tr>
-          <tr><td><a href="gaia-deploy.html"><code>/gaia-deploy</code></a></td><td>Adapter-mediated deploy orchestrator. Composes with <code>/gaia-release</code> in the hotfix flow (ADR-109 &sect;D3).</td></tr>
+          <tr><td><a href="gaia-deploy.html"><code>/gaia-deploy</code></a></td><td>Adapter-mediated deploy orchestrator. Composes with <code>/gaia-release</code> in the hotfix flow.</td></tr>
           <tr><td><a href="gaia-post-deploy.html"><code>/gaia-post-deploy</code></a></td><td>Post-deployment verification and smoke tests.</td></tr>
           <tr><td><a href="gaia-rollback-plan.html"><code>/gaia-rollback-plan</code></a></td><td>Rollback criteria and procedures. On standby during hotfix deploys.</td></tr>
         </tbody></table>

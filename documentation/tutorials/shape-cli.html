@@ -95,7 +95,7 @@ distribution:
   release_workflow: gaia-release.yml
   tap: myorg/homebrew-tap</code></pre>
         <p>
-          The <code>homebrew</code> channel requires the <code>tap</code> sub-field per ADR-112 §(d).
+          The <code>homebrew</code> channel requires the <code>tap</code> sub-field.
           For a tool that publishes to GitHub Releases AND tap, the GitHub Releases publish runs first
           inside <code>release_workflow</code>; the Homebrew tap update is a downstream job that runs
           after the release exists.
@@ -174,7 +174,7 @@ distribution:
         <p>
           Then create <code>.gaia/custom/adapters/publish-cargo-publish/</code> with an
           <code>adapter-manifest.yaml</code> + a <code>run.sh</code> that drives <code>cargo publish</code>.
-          See ADR-113 §6 for the extension contract.
+          See the custom-adapter extension contract for the full schema.
         </p>
       </section>
 

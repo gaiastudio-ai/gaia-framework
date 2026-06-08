@@ -76,8 +76,7 @@
           <code>.gaia/config/project-config.yaml</code>.
         </p>
         <p>
-          <strong>Enabling the bridge is necessary but not sufficient
-          (Test10 F-27 — AF-2026-05-30-2).</strong> Tests run in reviews
+          <strong>Enabling the bridge is necessary but not sufficient.</strong> Tests run in reviews
           only when <code>test_execution.tier_N.command</code> is also
           populated (see
           <a href="gaia-config-test.html"><code>/gaia-config-test</code></a>).
@@ -102,7 +101,7 @@
             exists at the pre-v1.157.0 location
             <code>.gaia/artifacts/test-artifacts/test-environment.yaml</code>, it is
             moved to the canonical
-            <code>config/test-environment.yaml</code> per ADR-110. The move
+            <code>config/test-environment.yaml</code>. The move
             is idempotent and emits a one-time deprecation warning.
           </li>
           <li>
@@ -175,8 +174,7 @@
           <li>
             <span class="step-title">Flip the flag</span>
             Sets <code>bridge_enabled</code> from <code>false</code> to
-            <code>true</code>, preserving all comments and formatting
-            per ADR-044.
+            <code>true</code>, preserving all comments and formatting.
           </li>
           <li>
             <span class="step-title">Post-flip checks (resolve the manifest)</span>
@@ -332,7 +330,7 @@ Bridge already enabled.</code></pre>
         <pre><code>&gt; /gaia-bridge-enable
 
 Detected legacy manifest at .gaia/artifacts/test-artifacts/test-environment.yaml.
-Moved to config/test-environment.yaml (ADR-110).
+Moved to config/test-environment.yaml.
 DEPRECATION: the legacy path will be removed in a future release.
 
 Bridge enabled. Test execution bridge is now active.
