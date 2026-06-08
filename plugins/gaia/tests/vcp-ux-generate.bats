@@ -284,7 +284,9 @@ teardown() { common_teardown; }
 # enforcement source. Subtask 6.2.
 # -------------------------------------------------------------------------
 
-@test "Subtask 6.2: figma-integration SKILL.md cross-references architecture.md §10.17" {
-  run grep -E "architecture.md §10\.17|§10\.17|architecture §10\.17" "$FIGMA_SKILL_MD"
-  [ "$status" -eq 0 ]
+@test "Subtask 6.2: figma-integration SKILL.md declares the canonical policy-source contract" {
+  # Assert the documented contract (this table is the canonical read/write
+  # policy source the architecture points back to), not an internal section
+  # pointer (scrubbed from published source).
+  grep -qiE 'canonical .*policy source|canonical read-heavy/write-light enforcement source' "$FIGMA_SKILL_MD"
 }

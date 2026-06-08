@@ -186,7 +186,7 @@ This contract mirrors `validator.md` §Sentinel-Write Contract STRUCTURALLY (the
 **Reference write idiom (orchestrator side, main turn):**
 
 ```sh
-# After Sage returns the ADR-037 envelope as $ADV_RETURN_JSON, and the .md path
+# After Sage returns the review envelope as $ADV_RETURN_JSON, and the .md path
 # was resolved via `resolve-write-path.sh --paired` (line 1 = .md, line 2 = .json):
 MD_PATH="$(printf '%s\n' "$RESOLVED" | sed -n '1p')"
 SIDECAR_PATH=$(printf '%s' "$ADV_RETURN_JSON" \

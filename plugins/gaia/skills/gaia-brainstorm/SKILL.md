@@ -127,7 +127,7 @@ Where `{slug}` is a short kebab-case slug derived from the project vision (e.g.,
 
 YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per the canonical auto-fix-loop pattern (architecture.md §10.31.2). The `brainstorm` artifact_type may not have a canonical document-ruleset; per AC-EC1 Val skips structural validation for unknown types and still runs factual-claim validation.
+> Val auto-review per the canonical auto-fix-loop pattern. The `brainstorm` artifact_type may not have a canonical document-ruleset; per AC-EC1 Val skips structural validation for unknown types and still runs factual-claim validation.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-brainstorm 6 slug="$SLUG" technique="$TECHNIQUE" stage=val-auto-review --paths .gaia/artifacts/creative-artifacts/brainstorm-${SLUG}.md`
 

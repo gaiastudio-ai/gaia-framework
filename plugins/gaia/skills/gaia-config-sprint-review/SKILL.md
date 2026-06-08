@@ -49,7 +49,7 @@ This skill supports four subcommands:
   ```yaml
   # sprint_review: (defaults — section not yet configured for this project)
   sprint_review:
-    playwright_headed: true       # NFR-069 — MUST stay true
+    playwright_headed: true       # MUST stay true (foreground-mode enforcement)
     timeout_per_stack: 300        # seconds (30..3600)
     human_confirm: required       # required | optional
     screen_recording_fallback: true

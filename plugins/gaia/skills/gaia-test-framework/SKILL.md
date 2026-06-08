@@ -118,7 +118,7 @@ Write the test framework setup document to `.gaia/artifacts/test-artifacts/test-
     V1 "No actual test implementations created — tests
         are written in Phase 4"                           → LLM-03 (semantic, negative)
 
-  Invoked by `finalize.sh` at post-complete (per architecture §10.31.1).
+  Invoked by `finalize.sh` at post-complete.
   Validation runs BEFORE the checkpoint and lifecycle-event writes
   (observability is never suppressed by checklist outcome).
 -->

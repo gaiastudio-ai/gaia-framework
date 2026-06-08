@@ -90,11 +90,11 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CI-03: SKILL.md cross-references the retry-loop test-plan section" {
-  # Subtask 4.3 — the retry loop subsection must cross-reference the test plan
-  # section that drives it (behavioral anchor: test-plan.md §11.46.15).
-  run grep -E 'test-plan\.md.*11\.46|11\.46.*test-plan\.md' "$SKILL_MD"
-  [ "$status" -eq 0 ]
+@test "VCP-CI-03: SKILL.md documents the Schema Validation Retry Loop subsection" {
+  # Assert the documented retry-loop subsection + its no-hard-cap semantics,
+  # not an internal test-plan section pointer (scrubbed from published source).
+  grep -qE '^### Schema Validation Retry Loop' "$SKILL_MD"
+  grep -qiE 'No hard retry cap|no hard cap on iterations' "$SKILL_MD"
 }
 
 @test "VCP-CI-03: SKILL.md cross-references VCP-CI-01..VCP-CI-03" {

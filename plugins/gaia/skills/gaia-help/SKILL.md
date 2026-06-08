@@ -60,13 +60,13 @@ detection runs once per `/gaia-help` invocation.
 reads the resulting `$PROJECT_STATE` value):
 
 ```bash
-# Step 3a — Project State Detection (ADR-103, ADR-111)
+# Step 3a — Project State Detection
 # 4-state enum: greenfield > brownfield > post-update > healthy
 # First-match-wins. Bounded I/O: 4 stat + 1 readdir, zero file reads.
 #
-# E97-S1 / ADR-111: prefer canonical `.gaia/{config,artifacts,memory}/` paths
+# Prefer canonical `.gaia/{config,artifacts,memory}/` paths
 # first; fall back to legacy `config/` and `docs/` on pre-migration installs.
-# The legacy `_memory/` fallback was removed in AF-2026-05-27-3 — `.gaia/memory/`
+# The legacy `_memory/` fallback was removed — `.gaia/memory/`
 # is the only memory tree. The first present path of each pair wins; absent
 # canonical AND absent legacy means "missing".
 

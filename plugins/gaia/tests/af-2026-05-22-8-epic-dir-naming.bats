@@ -37,7 +37,8 @@ teardown() { common_teardown; }
 }
 
 @test "AF-22-8 Bug-18: gaia-create-story SKILL.md Critical Rules document the naming contract" {
-  grep -qF 'AF-2026-05-22-8 Bug-18' "$PLUGIN_ROOT/skills/gaia-create-story/SKILL.md"
+  # Assert the naming contract itself, not an internal identifier (scrubbed
+  # from published source).
   grep -qF 'epic-{N}/stories/' "$PLUGIN_ROOT/skills/gaia-create-story/SKILL.md"
   grep -qF 'SPLIT STATE' "$PLUGIN_ROOT/skills/gaia-create-story/SKILL.md" \
     || grep -qF 'split state' "$PLUGIN_ROOT/skills/gaia-create-story/SKILL.md"

@@ -339,7 +339,7 @@ Update the readiness report with adversarial review findings. If any Critical fi
   "PASS/FAIL status clear" verbatim and MUST appear in violation output
   when the gate-verdict item fails (story AC2).
 
-  Invoked by `finalize.sh` at post-complete (per §10.31.1). Validation
+  Invoked by `finalize.sh` at post-complete. Validation
   runs BEFORE the checkpoint and lifecycle-event writes (observability
   is never suppressed by checklist outcome — story AC5, AC-EC6).
 

@@ -116,7 +116,7 @@ Write a structured technical research report to `.gaia/artifacts/planning-artifa
 
 YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review (architecture.md §10.31.2). The `technical-research` artifact_type matches the on-disk filename `technical-research.md` (slug-filename symmetry). It may not have a canonical document-ruleset; Val skips structural validation for unknown types and still runs factual-claim validation.
+> Val auto-review. The `technical-research` artifact_type matches the on-disk filename `technical-research.md` (slug-filename symmetry). It may not have a canonical document-ruleset; Val skips structural validation for unknown types and still runs factual-claim validation.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-tech-research 6 technology="$TECHNOLOGY" evaluation_criteria="$EVALUATION_CRITERIA" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/technical-research.md`
 

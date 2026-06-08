@@ -288,10 +288,12 @@ teardown() { common_teardown; }
 # D-2 — docker-workflow doc Sarif.Multitool row notes AF-32-1 fixes landed
 # ===========================================================================
 
-@test "AF-32-1 D-2: docker-workflow doc Sarif.Multitool row cites AF-32-1 F-02/F-05" {
-  run grep -F 'AF-32-1 F-02/F-05' \
+@test "AF-32-1 D-2: docker-workflow doc documents the Sarif.Multitool row + merge role" {
+  # Assert the documented content (the bundled-tool row + its Phase-7 SARIF
+  # merge role), not an internal identifier (scrubbed from published docs).
+  grep -qF 'Sarif.Multitool' "$REPO_ROOT/documentation/commands/gaia-docker-workflow.html"
+  grep -qiE 'SARIF merge|merged output contains real findings' \
     "$REPO_ROOT/documentation/commands/gaia-docker-workflow.html"
-  [ "$status" -eq 0 ]
 }
 
 # ===========================================================================

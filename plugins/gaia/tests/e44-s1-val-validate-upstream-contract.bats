@@ -117,8 +117,9 @@ teardown() { common_teardown; }
   grep -q 'val_validate_output' "$SKILL"
 }
 
-@test "AC4: SKILL.md cross-references ADR-058" {
-  grep -q 'ADR-058' "$SKILL"
+@test "AC4: SKILL.md documents the auto-fix-loop contract" {
+  # Assert the contract, not an internal identifier (scrubbed from published source).
+  grep -qiE '3-iteration|auto-fix loop' "$SKILL"
 }
 
 @test "AC4: SKILL.md documents that val_validate_output is superseded by direct-invocation" {

@@ -239,8 +239,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
     - _gaia/testing/workflows/edit-test-plan/checklist.md ships 11
       explicit bullets under five V1 H2 sections (Edit Quality, New
       Test Cases, Coverage, Version History, Output Verification).
-    - The story 21-item count is authoritative per
-      docs/v1-v2-command-gap-analysis.md §6 and the epic design note.
+    - The 21-item count is the authoritative target.
     - The remaining 10 items are reconciled from V1 instructions.xml
       step outputs (Step 1 plan load + ID harvest + test-area survey,
       Step 2 scope capture + PRD/architecture context load, Step 3
@@ -267,9 +266,9 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
     Reconciled (V1 instr) — LLM-09..LLM-14                               (6)
     Total                                                                 21
 
-  Invoked by `finalize.sh` at post-complete (per architecture §10.31.1).
+  Invoked by `finalize.sh` at post-complete.
   Validation runs BEFORE the checkpoint and lifecycle-event writes
-  (observability is never suppressed by checklist outcome — story AC5).
+  (observability is never suppressed by checklist outcome).
 
 -->
 

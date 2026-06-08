@@ -41,7 +41,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Test planning is delegated to the test-architect subagent (Sable) via native Claude Code subagent invocation -- do NOT inline Sable's persona into this skill body. If the test-architect subagent is not available or not registered, halt with: "test-architect subagent not available -- ensure agents are installed."
 - Template resolution: load `test-plan-template.md` from this skill directory. If `custom/templates/test-plan-template.md` exists and is non-empty, use the custom template instead -- the custom template takes full precedence over the bundled default.
 - Output ALL artifacts to `.gaia/artifacts/test-artifacts/`.
-- Val auto-review runs unconditionally via the direct-call contract -- the deprecated frontmatter flag is superseded by the Step 8 auto-fix loop (see Step 8 below; architecture.md §10.31.2).
+- Val auto-review runs unconditionally via the direct-call contract -- the deprecated frontmatter flag is superseded by the Step 8 auto-fix loop (see Step 8 below).
 
 ## Steps
 
@@ -156,7 +156,7 @@ Delegate to the **test-architect** subagent (Sable) via `agents/test-architect` 
 
 YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch. See the hard-gate contract for details.
 
-> Val auto-review (architecture.md §10.31.2). Validation runs against the Step 7 artifact write.
+> Val auto-review. Validation runs against the Step 7 artifact write.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-test-design 8 story_key="$STORY_KEY" test_plan_path=".gaia/artifacts/test-artifacts/test-plan.md" stage=val-auto-review --paths .gaia/artifacts/test-artifacts/test-plan.md`
 
@@ -195,7 +195,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   review because context loading is a Step-1 side effect not provably
   inspected against the artifact body.
 
-  Invoked by `finalize.sh` at post-complete (per architecture §10.31.1).
+  Invoked by `finalize.sh` at post-complete.
   Validation runs BEFORE the checkpoint and lifecycle-event writes
   (observability is never suppressed by checklist outcome).
 -->

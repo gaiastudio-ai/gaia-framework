@@ -114,7 +114,7 @@ BEGIN { in_fm = 0; seen = 0 }
 in_fm == 1 { print }
 ```
 
-This is the `_frontmatter` helper used by `tests/cluster-15-parity/E28-S112-core-dev-skills-parity.bats` and by the newer skill-parity bats tests.
+This is the `_frontmatter` helper used by the core-dev-skills parity bats and by the newer skill-parity bats tests.
 
 <!-- SECTION: awk-word-boundaries -->
 ## awk Word-Boundary Anchors — `\<...\>` Is Not Portable

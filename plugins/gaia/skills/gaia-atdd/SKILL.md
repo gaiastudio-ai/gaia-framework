@@ -162,7 +162,7 @@ After Step 5, prompt the user: **"Run generated tests now to confirm red phase? 
   semantic ATDD-quality judgements that require host LLM evaluation
   against the story context.
 
-  Invoked by `finalize.sh` at post-complete (per architecture §10.31.1).
+  Invoked by `finalize.sh` at post-complete.
   Validation runs BEFORE the checkpoint and lifecycle-event writes
   (observability is never suppressed by checklist outcome).
 -->

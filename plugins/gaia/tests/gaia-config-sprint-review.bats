@@ -292,8 +292,9 @@ YAML
   grep -qE 'config-yaml-editor\.sh' "$SKILL_FILE"
 }
 
-@test "TC-SGR-37(e): SKILL.md NFR-069 enforcement rule on playwright_headed: false" {
-  grep -qE 'NFR-069' "$SKILL_FILE"
+@test "TC-SGR-37(e): SKILL.md enforcement rule on playwright_headed: false" {
+  # Assert the enforcement rule itself, not an internal identifier (scrubbed
+  # from published source).
   grep -qE 'playwright_headed must be true' "$SKILL_FILE"
 }
 

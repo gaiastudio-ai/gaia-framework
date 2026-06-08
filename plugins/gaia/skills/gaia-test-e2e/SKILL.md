@@ -46,7 +46,7 @@ This skill is the **reference implementation** for the deployment-phase action s
 
 ```
 temperature: 0
-model: claude-opus-4-7        # per ADR-074, frontmatter-pinned at fork dispatch
+model: claude-opus-4-7        # frontmatter-pinned at fork dispatch
 prompt_hash: sha256:<hex>     # recorded in analysis-results.json
 ```
 

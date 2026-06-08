@@ -59,7 +59,7 @@ Workflows that previously JIT-loaded `_gaia/dev/skills/figma-integration.md` now
 
 ## Read/Write Classification Table
 
-> **Policy contract — not premium implementation.** This table is the canonical read-heavy/write-light enforcement source for every Figma MCP call any consuming workflow may attempt. The premium enterprise plugin implements the actual MCP wrappers; the classification rules (which call is read vs write, and which mode is permitted to issue it) live here so OSS and enterprise both agree on the policy. Cross-referenced from `.gaia/artifacts/planning-artifacts/architecture.md §10.17` — the architecture document points back to this table.
+> **Policy contract — not premium implementation.** This table is the canonical read-heavy/write-light enforcement source for every Figma MCP call any consuming workflow may attempt. The premium enterprise plugin implements the actual MCP wrappers; the classification rules (which call is read vs write, and which mode is permitted to issue it) live here so OSS and enterprise both agree on the policy. The architecture document points back to this table as the canonical policy source.
 
 The table classifies every Figma MCP call the consuming workflows (`/gaia-create-ux`, `/gaia-edit-ux`, `/gaia-code-review` fidelity gate, `/gaia-dev-story` Figma hook) may issue. Two columns govern enforcement:
 
@@ -120,7 +120,7 @@ Accepts a Figma URL or a bare file key string and returns the normalised key (or
 | Key under 22 chars | `ABC123` | Halt — Figma file keys are documented as **22+ characters** of `[A-Za-z0-9]` |
 | Non-alphanumeric chars | `ABC!@#...` | Halt — the canonical pattern `[A-Za-z0-9]{22,}` rejects punctuation |
 
-The 22-character minimum is the canonical Figma file-key length per the URL convention documented in `architecture.md §10.17`. The halt MUST occur **before any Figma API call** — AC5 / AC-EC1 require zero API traffic on invalid input.
+The 22-character minimum is the canonical Figma file-key length per the URL convention. The halt MUST occur **before any Figma API call** — AC5 / AC-EC1 require zero API traffic on invalid input.
 
 ### `classifyViewport(width_px)`
 
@@ -142,5 +142,5 @@ Maps a frame width (integer pixels) to one of the canonical viewport categories 
 
 - The Read/Write classification table above is the canonical read-heavy/write-light enforcement source for Figma MCP operations.
 - The classification table and backoff schedule are *policy contracts*, not premium implementation; the actual MCP wrappers live in the enterprise plugin.
-- Figma MCP integration uses a shared skill with a design-tool abstraction layer. See `architecture.md §10.17` for the canonical architectural reference.
+- Figma MCP integration uses a shared skill with a design-tool abstraction layer.
 - Legacy source: `_gaia/dev/skills/figma-integration.md` — retained in the running framework tree per CLAUDE.md (framework vs product separation).

@@ -76,9 +76,13 @@ teardown() {
 }
 
 # ---------------- TC-VBR-12e: ADR-104 changelog ----------------
-@test "TC-VBR-12e: SKILL.md contains ADR-104 reference (changelog/migration note)" {
+@test "TC-VBR-12e: SKILL.md documents the orchestrator-side sentinel-writer contract" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not present"
-  grep -q 'ADR-104' "$SKILL_MD"
+  # Assert the contract the migration note records, not an internal identifier
+  # (scrubbed from published source): the sentinel write relocated to the
+  # orchestrator's main turn (Val returns sentinel_envelope; consumer writes it).
+  grep -qiE 'sentinel_envelope' "$SKILL_MD"
+  grep -qiE 'write-val-envelope.sh|orchestrator|main.turn' "$SKILL_MD"
 }
 
 # ---------------- TC-VBR-12f: persona sentinel-write contract ----------------

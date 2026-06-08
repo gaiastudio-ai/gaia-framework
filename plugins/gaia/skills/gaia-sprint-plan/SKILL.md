@@ -43,7 +43,7 @@ The `priority_flag` field is set only by humans (via frontmatter edit in triage,
 - **Commit as `planned`.** A finalized selection is committed as a `status: planned` sprint via `sprint-state.sh` (init seeds `planned`; a later layer adds the planned→active readiness gate) — NOT `active`. The legacy `total_points <= velocity` gate is no longer the capacity criterion.
 - Sprint commitments respect the velocity estimate from the `sizing_map` config key, resolved via `!scripts/resolve-config.sh sizing_map`.
 - Use the sm subagent (Nate) persona for planning reasoning -- do not re-implement planning logic inline.
-- NEVER auto-set `priority_flag: "next-sprint"` on any story. Only humans set this flag. The skill reads and clears it only (per `feedback_priority_flag_never_auto_set`).
+- NEVER auto-set `priority_flag: "next-sprint"` on any story. Only humans set this flag. The skill reads and clears it only.
 - Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `.gaia/artifacts/planning-artifacts/epics/` are FORBIDDEN.
 
 ## Steps
@@ -158,7 +158,7 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
 
 - Select stories for this sprint based on priority ordering (P0 > P1 > P2) and dependency topology -- only from stories classified as SELECTABLE in Step 1.
 - **Priority-flag pre-fill:** any story keys returned by the priority-flag pre-scan in Step 1 are pre-selected in the candidate set before user interaction. Annotate each auto-included entry with `[priority_flag: next-sprint]` so the user sees why it was pre-filled. The user may deselect any pre-filled story -- deselection preserves the flag for the next planning run.
-- **Agent-native capacity check.** The "is this sprint too big" gate is evaluated on three agent-native measures — NOT the human points-per-duration heuristic (which false-flagged the 73-point sprint-53 sweep). Run `${CLAUDE_PLUGIN_ROOT}/scripts/sm-capacity-check.sh --stories-file <candidate-set>` (one `KEY|DEPS|POINTS` line per candidate) and read its verdict: (1) dependency critical-path **depth** (longest serial chain over `depends_on`), (2) context-coherence **ceiling** (distinct story count the agent can carry before quality degrades / forced compaction), and (3) telemetry-gated measured agent **wall-clock** (median minutes/story × story count) vs a configured agent-session budget. A sprint is "too big" only when one of these three measures is exceeded. Cold start (no closed-sprint telemetry) uses depth + coherence only, with no fabricated constant. Story `points` are RETAINED as the relative complexity/risk signal (review rigor, Val scrutiny, sizing display) — but `total_points <= velocity` is NO LONGER the capacity gate.
+- **Agent-native capacity check.** The "is this sprint too big" gate is evaluated on three agent-native measures — NOT the human points-per-duration heuristic (which false-flagged a large points-heavy sweep). Run `${CLAUDE_PLUGIN_ROOT}/scripts/sm-capacity-check.sh --stories-file <candidate-set>` (one `KEY|DEPS|POINTS` line per candidate) and read its verdict: (1) dependency critical-path **depth** (longest serial chain over `depends_on`), (2) context-coherence **ceiling** (distinct story count the agent can carry before quality degrades / forced compaction), and (3) telemetry-gated measured agent **wall-clock** (median minutes/story × story count) vs a configured agent-session budget. A sprint is "too big" only when one of these three measures is exceeded. Cold start (no closed-sprint telemetry) uses depth + coherence only, with no fabricated constant. Story `points` are RETAINED as the relative complexity/risk signal (review rigor, Val scrutiny, sizing display) — but `total_points <= velocity` is NO LONGER the capacity gate.
 - **Dependency blocking:** for each candidate, check its `depends_on` list. If any dependency is NOT `done`, the story CANNOT be included. Display: "BLOCKED: Story {key} depends on {dep_key} (status: {dep_status})."
 - **Priority surfacing:** after selection, check for P0 stories that are `ready-for-dev` but NOT selected. If any found, warn: "WARNING: P0 stories ready but not selected:" and ask user to confirm the exclusion.
 - Resolve the test-plan via the strategy-fallback rule: try `.gaia/artifacts/test-artifacts/test-plan.md` (flat); fall back to `.gaia/artifacts/test-artifacts/strategy/test-plan.md` (strategy/ placement). If the resolved file exists: apply risk levels -- buffer 20% for high-risk stories.
@@ -170,12 +170,12 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
 - For each selected story with an individual file, set the `sprint_id` field to `sprint-{N}` via one of the **two sanctioned helpers** (do NOT hand-edit the frontmatter):
 
   ```bash
-  # Standalone helper (Test05 F-034 vintage):
+  # Standalone helper:
   ${CLAUDE_PLUGIN_ROOT}/scripts/set-story-sprint.sh {story_key} --sprint sprint-{N}
 
-  # Unified verb on sprint-state.sh (AF-2026-05-30-4 F-15 — closes the
+  # Unified verb on sprint-state.sh — closes the
   # chicken-and-egg gap where `inject` refused a pre-materialized backlog
-  # story whose sprint_id was still `null`):
+  # story whose sprint_id was still `null`:
   ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh set-story-sprint --story {story_key} --sprint sprint-{N}
   ```
 
@@ -196,7 +196,7 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
   duration: "{duration}"
   velocity_capacity: {velocity}
   total_points: {sum}
-  # Test10 F-30 — start_date / end_date / capacity_points are REQUIRED for the
+  # start_date / end_date / capacity_points are REQUIRED for the
   # dashboard (otherwise it renders N/A). Seed them at sprint-plan time;
   # sprint-state.sh `init` preserves them.
   start_date: "{start_date YYYY-MM-DD}"
@@ -215,18 +215,18 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
   ```
 - Write `sprint-status.yaml` to `.gaia/state/sprint-status.yaml` EXCLUSIVELY via `sprint-state.sh`:
   ```bash
-  # F-7 (AF-2026-05-26-3): for the FIRST-EVER sprint on a fresh project there
+  # For the FIRST-EVER sprint on a fresh project there
   # is no sprint-status.yaml yet, and `inject` halts with "sprint-status.yaml
   # is missing or empty". Bootstrap it via `init` FIRST — but only when the
   # yaml is absent: `init` refuses to overwrite an existing yaml (exits
   # non-zero), so guard the call on absence rather than swallowing its error
   # (swallowing would violate the "abort on non-zero" contract below).
   SPRINT_YAML=".gaia/state/sprint-status.yaml"
-  # AF-2026-05-31-1 / Test12 F-15: forward the planning-time date + capacity
+  # Forward the planning-time date + capacity
   # values to `init` so the burndown dashboard renders concrete Duration /
   # Dates / Capacity rows instead of `N/A`. Each flag is optional — when an
   # operator omits a value the `init` shape stays byte-identical to the
-  # pre-AF-31-1 seed (zero-regression on existing bats fixtures). The
+  # prior seed (zero-regression on existing bats fixtures). The
   # `{start_date}`, `{end_date}`, `{capacity_points}` placeholders are the
   # SAME values the SKILL.md yaml stub above documents, so the dashboard
   # and the sprint yaml never disagree.
