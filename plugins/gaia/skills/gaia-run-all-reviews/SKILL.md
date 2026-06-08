@@ -215,9 +215,9 @@ Each row names the canonical short-name, the skill to dispatch, the canonical ga
 > `test-automate-review-E100-S1.md`, `test-review-E100-S1.md`, etc.). The prior
 > reversed `{key}-<type>.md` form — and the stray `test-artifacts/` directory on
 > the test-aligned rows — disagreed with the type-first convention, made `review-summary-gen.sh`'s
-> proof-of-execution check flag every report MISSING, and risked the
-> `check-deps.sh` `{key}-*.md` glob collision documented in
-> `feedback_review_report_filename_collision`. The per-review SKILL.md write
+> proof-of-execution check flag every report MISSING, and risked a
+> `check-deps.sh` `{key}-*.md` glob collision (a key-first report basename
+> collides with the story-file glob). The per-review SKILL.md write
 > paths were already type-first-correct and are deliberately UNCHANGED.
 
 Under the `.gaia/` consolidation, the prefix `docs/` may resolve to `.gaia/artifacts/` — the report paths are constructed via `${GAIA_ARTIFACTS_DIR}` per `gaia-paths.sh`. Both layouts are accepted by `review-gate.sh --report`.

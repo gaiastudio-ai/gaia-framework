@@ -70,7 +70,7 @@ This skill is a deployment-phase action skill and a peer of `/gaia-test-e2e`, `/
 
 ```
 temperature: 0
-model: claude-opus-4-7        # per ADR-074, frontmatter-pinned at fork dispatch
+model: claude-opus-4-7        # frontmatter-pinned at fork dispatch
 prompt_hash: sha256:<hex>     # recorded in analysis-results.json
 ```
 

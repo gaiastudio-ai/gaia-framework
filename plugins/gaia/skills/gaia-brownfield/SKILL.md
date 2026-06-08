@@ -41,9 +41,9 @@ This skill is the native Claude Code conversion of the legacy `brownfield-onboar
 
 **Per-artifact destination split:**
 - `planning-artifacts/`: brownfield-assessment.md, project-documentation.md, api-documentation.md, ux-design.md, event-catalog.md, dependency-map.md, brownfield-subagent-summary.md, brownfield-scan-*.md, brownfield-onboarding.md (the "what is this project" lens).
-- `test-artifacts/`: `dependency-audit-{date}.md` (the "what's risky about its dependencies" lens — the only Phase-2 artifact that lives under test-artifacts/ because dependency audit IS a test-lens activity per the cluster-7 contract). Spelled out here so subagents don't have to scroll up to the dispersion note + correctly route the dependency-audit write.
+- `test-artifacts/`: `dependency-audit-{date}.md` (the "what's risky about its dependencies" lens — the only Phase-2 artifact that lives under test-artifacts/ because dependency audit IS a test-lens activity). Spelled out here so subagents don't have to scroll up to the dispersion note + correctly route the dependency-audit write.
 
-**Scripts-over-LLM:** Deterministic operations (config resolution, checkpoint writes, gate validation, lifecycle events) are delegated to the shared foundation scripts under `plugins/gaia/scripts/` via inline `!scripts/*.sh` calls. The canonical foundation set includes: `resolve-config.sh`, `checkpoint.sh` (with `write` / `read` / `validate` subcommands — the consolidated checkpoint surface per architecture §10.26.3), `validate-gate.sh` (deployed equivalent for spec's `file-gate.sh`), `template-header.sh`, `memory-loader.sh`, `lifecycle-event.sh`. See the Reconciliation Note under Critical Rules for the one remaining spec-vs-deployed name mapping.
+**Scripts-over-LLM:** Deterministic operations (config resolution, checkpoint writes, gate validation, lifecycle events) are delegated to the shared foundation scripts under `plugins/gaia/scripts/` via inline `!scripts/*.sh` calls. The canonical foundation set includes: `resolve-config.sh`, `checkpoint.sh` (with `write` / `read` / `validate` subcommands — the consolidated checkpoint surface), `validate-gate.sh` (deployed equivalent for spec's `file-gate.sh`), `template-header.sh`, `memory-loader.sh`, `lifecycle-event.sh`. See the Reconciliation Note under Critical Rules for the one remaining spec-vs-deployed name mapping.
 
 ## Critical Rules
 
@@ -60,7 +60,7 @@ This skill is the native Claude Code conversion of the legacy `brownfield-onboar
 
 ### Reconciliation Note — Architecture Spec vs Deployed Scripts
 
-Architecture §10.26.3 specifies the foundation-script surface. The live `plugins/gaia/scripts/` set exposes `checkpoint.sh` (with `write` / `read` / `validate` subcommands — same canonical name used by architecture §10.26.3) alongside `validate-gate.sh`, which is the deployed equivalent for the spec's `file-gate.sh`. This skill calls the deployed names for parity with the live script set. If the `file-gate.sh` spec name is added later under a separate story, the inline calls in `setup.sh` / `finalize.sh` can be updated without touching the skill body. The checkpoint surface no longer requires reconciliation — `checkpoint.sh` is the canonical name in both the spec and the product.
+The architecture specifies the foundation-script surface. The live `plugins/gaia/scripts/` set exposes `checkpoint.sh` (with `write` / `read` / `validate` subcommands — the same canonical name) alongside `validate-gate.sh`, which is the deployed equivalent for the spec's `file-gate.sh`. This skill calls the deployed names for parity with the live script set. If the `file-gate.sh` spec name is added later under a separate story, the inline calls in `setup.sh` / `finalize.sh` can be updated without touching the skill body. The checkpoint surface no longer requires reconciliation — `checkpoint.sh` is the canonical name in both the spec and the product.
 
 ## Inputs
 
@@ -176,15 +176,15 @@ After all subagents return, write a subagent summary at `.gaia/artifacts/plannin
 Before the Phase 3 scan timer starts, run the deterministic-tools pre-flight. This primes the Grype vulnerability DB and cdxgen package-registry caches so a cold runner does not pay the 15–30s cold-fetch against the 120s WARNING budget.
 
 ```bash
-# Resolve the master flag + per-tool override (ADR-121 / ADR-078) and export
+# Resolve the master flag + per-tool override and export
 # them for the adapter scripts. resolve-config.sh is the single config source.
 DET_TOOLS="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.deterministic_tools 2>/dev/null)"
 PREWARM_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.prewarm_enabled 2>/dev/null)"
 # resolve-config emits empty when the key is unset.
-# AF-2026-05-30-3: defaults flipped from `false` to `true` so a stock
+# Defaults flipped from `false` to `true` so a stock
 # /gaia-brownfield run actually engages the deterministic-tools battery.
-# Prior to this flip the layer was inert on every clean install (the
-# Test10 §7 finding) — operators had to discover + flip the master flag
+# Prior to this flip the layer was inert on every clean install —
+# operators had to discover + flip the master flag
 # by hand, which nobody did. Operators who want the layer OFF can
 # declare `brownfield.deterministic_tools: false` (or
 # `brownfield.prewarm_enabled: false`) explicitly in project-config.yaml;
@@ -199,7 +199,7 @@ prewarm_start=$(date +%s)
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/pre-warm.sh" || true
 prewarm_seconds=$(( $(date +%s) - prewarm_start ))
 
-# Telemetry population (E104-S1 brownfield-telemetry.sh — the shared, single-author-per-field
+# Telemetry population (brownfield-telemetry.sh — the shared, single-author-per-field
 # writer). The pre-warm pre-flight OWNS the *.pre_warm fields (no fan-out).
 REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
 TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
@@ -208,7 +208,7 @@ if [ -f "$REPORT" ]; then
   bash "$TELEM" --report "$REPORT" --field deterministic_tool_seconds.pre_warm --value "$prewarm_seconds" || true
 fi
 
-# Phase 3 scan timer anchor (E70-S7 AC2 / AC-X2). pre-warm MUST complete BEFORE
+# Phase 3 scan timer anchor. pre-warm MUST complete BEFORE
 # this start_ts so its runtime is attributed to pre_warm, not the scan budget.
 start_ts=$(date +%s)
 ```
@@ -230,7 +230,7 @@ orch_log="$(GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true \
 printf '%s\n' "$orch_log"
 orch_seconds=$(( $(date +%s) - orch_start ))
 
-# Telemetry (E104-S1 brownfield-telemetry.sh — orchestrator owns *.orchestrator_intersection
+# Telemetry (brownfield-telemetry.sh — orchestrator owns *.orchestrator_intersection
 # + per_stack_file_counts; single-author, no fan-out). Parse the per-stack counts from the log.
 REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
 TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
@@ -286,7 +286,7 @@ Spawn seven scan subagents in parallel. These run alongside Phase 2 documentatio
   severity-enum: [CRITICAL, WARNING, INFO]
   claim_type-enum: [positive, negative, contradiction]   # positive default; negative for absence claims like "no __main__"; contradiction for two-sided doc↔code mismatch
   evidence-required: [file]; evidence-optional: [line_range, snippet, tool]
-  id-prefix-convention: see Phase 7 §621 (DCD- HCV- ISEAM- RTB- SEC- CFGC- DC- CVE- SBM-)
+  id-prefix-convention: see Phase 7 (DCD- HCV- ISEAM- RTB- SEC- CFGC- DC- CVE- SBM-)
 </gap-entry-schema-ref>
 ```
 
@@ -334,7 +334,7 @@ AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
 ADAPT="$GAIA_PLUGIN_ROOT/scripts/adapters/dead-code"
 # Each adapter writes BOTH a flat JSON (AUDIT/dead-code/<tool>.json — report
 # rendering) AND a SARIF run (AUDIT/sarif/<tool>.sarif — feeds the Phase 7
-# E104-S1 dedup precision ladder via .properties.symbol).
+# dedup precision ladder via .properties.symbol).
 GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true DEADCODE_PROJECT_ROOT="$PROJECT_PATH" \
   DEADCODE_OUT_DIR="$AUDIT" bash "$ADAPT/go-deadcode/adapter.sh"
 GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true PY_PROJECT_ROOT="$PROJECT_PATH" \
@@ -368,7 +368,7 @@ defeating the "deterministic tools default-on" contract.
 AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
 mkdir -p "$AUDIT/sarif"
 
-# AF-2026-05-31-2 / Test13 F-15: source the docker-runner helper so the
+# Source the docker-runner helper so the
 # syft and grype steps below transparently dispatch through the bundled
 # gaia-tools image when `brownfield.tools.runner: docker` is set. Without
 # this probe the steps gated on host `command -v syft` / `command -v
@@ -382,7 +382,7 @@ if [ "$_BROWNFIELD_RUNNER" = "docker" ] && docker_runner_available >/dev/null 2>
 fi
 
 # syft SBOM (CycloneDX 1.4-compatible — the grype-feeding path documented in
-# the AF-2026-05-30-4 / Test11 F-27 note above). The completeness check below
+# the note above). The completeness check below
 # already references this path; producing it makes the check non-INFO-skip.
 SBOM_FILE="$AUDIT/sbom-syft.json"
 if [ "$_BROWNFIELD_DOCKER_READY" = "1" ]; then
@@ -397,7 +397,7 @@ fi
 
 # grype CVE scan — prefer SBOM input when syft produced one (faster + no
 # re-walk), fall back to directory scan otherwise. Both forms write SARIF
-# into $AUDIT/sarif/ so the Phase 7 E104-S1 dedup ladder picks up the
+# into $AUDIT/sarif/ so the Phase 7 dedup ladder picks up the
 # findings via .properties.symbol.
 if [ "$_BROWNFIELD_DOCKER_READY" = "1" ] || command -v grype >/dev/null 2>&1; then
   if [ -s "$SBOM_FILE" ]; then
@@ -405,7 +405,7 @@ if [ "$_BROWNFIELD_DOCKER_READY" = "1" ] || command -v grype >/dev/null 2>&1; th
   else
     GRYPE_INPUT="dir:$PROJECT_PATH"
   fi
-  # AF-2026-06-01-1 / Test15 F-05 — grype.sarif MUST land at $AUDIT/sarif/
+  # grype.sarif MUST land at $AUDIT/sarif/
   # so the downstream sarif-merge.sh step picks it up (it globs $AUDIT/sarif/
   # *.sarif). The prior `ADAPTER_OUT_DIR="$AUDIT"` form orphaned grype.sarif
   # at $AUDIT/grype.sarif while python-vulture correctly wrote into
@@ -565,7 +565,7 @@ AUDIT="${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit"
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/reconcile-cross-stack.sh" \
   --bypass "$BYPASS_SKILL" --reason "$BYPASS_REASON"   # bypass args forwarded only when present
 # Reads stacks[].path + cross_refs[] from project-config; reads the dep-graph from
-# AUDIT/depgraph.json (producer wired by E104-S2 — degrades to INFO-skip if absent).
+# AUDIT/depgraph.json (degrades to INFO-skip if absent).
 ```
 
 An edge from stack A to stack B where B is NOT in A's `cross_refs[]` allowlist emits the canonical WARNING (exact — operators/CI may grep it):
@@ -697,8 +697,8 @@ fi
 Before the 6-step gap-consolidation recipe runs, merge all scanner SARIF outputs into one merged SARIF. This gives the recipe (and downstream dedup) a single uniform interchange format instead of bespoke per-tool JSON.
 
 ```bash
-# Flag resolution (ADR-078 master flag + per-tool override).
-# AF-2026-05-30-3: defaults flipped from `false` to `true` so a stock
+# Flag resolution (master flag + per-tool override).
+# Defaults flipped from `false` to `true` so a stock
 # /gaia-brownfield run merges SARIF by default. See the matching note on
 # the Phase 3 prelude flip earlier in this SKILL.
 DET_TOOLS="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.deterministic_tools 2>/dev/null)"
@@ -710,7 +710,7 @@ sarif_merge_start=$(date +%s)
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/sarif-merge.sh" || true
 sarif_merge_seconds=$(( $(date +%s) - sarif_merge_start ))
 
-# Telemetry population (E104-S1 brownfield-telemetry.sh — shared, single-author-per-field).
+# Telemetry population (brownfield-telemetry.sh — shared, single-author-per-field).
 # The SARIF merge step OWNS the *.sarif_merge fields (no fan-out).
 SARIF_REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
 SARIF_TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"
@@ -724,7 +724,7 @@ DD_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defe
 export GAIA_BROWNFIELD_DEFECTDOJO_ENABLED="${DD_ON:-false}"
 if [ "${GAIA_BROWNFIELD_DEFECTDOJO_ENABLED}" = "true" ]; then
   export GAIA_BROWNFIELD_DEFECTDOJO_API_URL="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defectdojo_api_url 2>/dev/null)"
-  # api_token config holds the NAME of an env var (NFR-RSV2-7); resolve the name, then deref it.
+  # api_token config holds the NAME of an env var; resolve the name, then deref it.
   DD_TOKEN_VAR="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defectdojo_api_token 2>/dev/null)"
   export GAIA_BROWNFIELD_DEFECTDOJO_API_TOKEN="${!DD_TOKEN_VAR:-}"
   export GAIA_BROWNFIELD_DEFECTDOJO_ENGAGEMENT_ID="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.defectdojo_engagement_id 2>/dev/null)"
@@ -745,7 +745,7 @@ Immediately after the SARIF merge PRE-step and BEFORE Phase 4b reconciliation, r
 
 ```bash
 DEDUP_ON="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field brownfield.dedup_enabled 2>/dev/null)"
-export GAIA_BROWNFIELD_DEDUP_ENABLED="${DEDUP_ON:-true}"   # default-on per E104-S1 Task 5
+export GAIA_BROWNFIELD_DEDUP_ENABLED="${DEDUP_ON:-true}"   # default-on
 dedup_start=$(date +%s)
 # Capture dedup.sh stdout so the gap_count_* values can be parsed from its INFO log line:
 #   "dedup: <N> raw finding(s) -> <M> deduped (gap_count_before_dedup=<N> gap_count_after_dedup=<M>) ..."
@@ -755,7 +755,7 @@ dedup_seconds=$(( $(date +%s) - dedup_start ))
 gap_before="$(printf '%s' "$dedup_log" | sed -n 's/.*gap_count_before_dedup=\([0-9][0-9]*\).*/\1/p' | head -n1)"
 gap_after="$(printf '%s' "$dedup_log" | sed -n 's/.*gap_count_after_dedup=\([0-9][0-9]*\).*/\1/p' | head -n1)"
 
-# Telemetry population (E104-S1 brownfield-telemetry.sh — the shared, single-author-per-field
+# Telemetry population (brownfield-telemetry.sh — the shared, single-author-per-field
 # writer). The dedup phase OWNS gap_count_*, *.dedup runtime, and llm_token_count (deterministic).
 REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
 TELEM="${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/brownfield-telemetry.sh"

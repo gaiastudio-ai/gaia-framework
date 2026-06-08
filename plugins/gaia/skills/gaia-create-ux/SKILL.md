@@ -374,7 +374,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   SV-13 — "Key screens described" — uses the V1 phrase verbatim and MUST
   appear in violation output when the Wireframes section is empty.
 
-  Invoked by `finalize.sh` at post-complete (per §10.31.1). Validation
+  Invoked by `finalize.sh` at post-complete. Validation
   runs BEFORE the checkpoint and lifecycle-event writes (observability
   is never suppressed by checklist outcome).
 -->

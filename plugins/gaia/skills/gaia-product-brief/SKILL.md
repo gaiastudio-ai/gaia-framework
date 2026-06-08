@@ -204,7 +204,7 @@ Where `{slug}` is a short kebab-case slug derived from the product vision (e.g.,
 
 YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per the canonical pattern (architecture.md §10.31.2). The `product-brief` artifact_type uses Val's factual-claim validation against ground-truth plus the document-ruleset for product briefs.
+> Val auto-review per the canonical pattern. The `product-brief` artifact_type uses Val's factual-claim validation against ground-truth plus the document-ruleset for product briefs.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-product-brief 9 product_name="$PRODUCT_NAME" target_user="$TARGET_USER" stage=val-auto-review --paths .gaia/artifacts/creative-artifacts/product-brief-${SLUG}.md`
 
@@ -218,8 +218,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
       against the product-brief artifact at finalize time.
   Exit code 0 when all 18 script-verifiable items PASS; non-zero otherwise.
 
-  The 9 required product-brief sections (per architecture §10.31.1 and
-  test plan §11.46.18 VCP-GATE-03) form the spine of the script-verifiable
+  The 9 required product-brief sections form the spine of the script-verifiable
   subset (SV-04..SV-12). SV-01..SV-03 guard artifact existence, non-empty
   body, and top-level title/frontmatter. SV-13..SV-18 are deeper presence
   checks — Vision body non-empty, ≥1 persona, ≥1 key feature, scope
@@ -233,7 +232,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   bash cannot reliably assess — coherence, plausibility, rationale,
   credibility, differentiation, measurability, and scope discipline.
 
-  Invoked by `finalize.sh` at post-complete (per §10.31.1).
+  Invoked by `finalize.sh` at post-complete.
 -->
 
 - [script-verifiable] SV-01 — Output artifact exists at .gaia/artifacts/creative-artifacts/product-brief-*.md

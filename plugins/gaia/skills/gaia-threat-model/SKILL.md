@@ -167,9 +167,8 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   _gaia/lifecycle/workflows/3-solutioning/security-threat-model/checklist.md
   ships 12 explicit bullets across six V1 categories (Assets, STRIDE
   Analysis, DREAD Scoring, Mitigations, Security Requirements, Output
-  Verification). The story 25-item count is authoritative per
-  docs/v1-v2-command-gap-analysis.md §10; the remaining 13 items are
-  reconciled from V1 instructions.xml step outputs:
+  Verification). The 25-item count is authoritative; the remaining 13
+  items are reconciled from V1 instructions.xml step outputs:
     - per-component STRIDE enumeration (all six categories)
     - per-threat DREAD enumeration (all five dimensions D/R/E/A/D)
     - per-threat mitigation mapping for High/Critical severity
@@ -192,7 +191,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   per component". This is the V1 phrase verbatim and MUST appear in
   violation output when a component is missing a STRIDE category.
 
-  Invoked by `finalize.sh` at post-complete (per §10.31.1). Validation
+  Invoked by `finalize.sh` at post-complete. Validation
   runs BEFORE the checkpoint and lifecycle-event writes (observability
   is never suppressed by checklist outcome).
 -->

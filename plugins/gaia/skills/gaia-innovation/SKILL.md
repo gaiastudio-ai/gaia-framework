@@ -99,9 +99,9 @@ Mode Contract:
 | Memory save prompt | HALT — require human input. Memory writes are never auto-approved. |
 | Inline-ask on empty `$ARGUMENTS` | HALT — require human input. No safe default for "what innovation domain?". |
 
-The contract is identical to the per-behavior lookup table in
-architecture.md §10.32.5. Any future skill change that
-diverges from this table requires an ADR amendment.
+The contract is identical to the canonical per-behavior lookup table.
+Any future skill change that diverges from this table requires an
+architecture amendment.
 
 ## Inputs
 

@@ -206,7 +206,7 @@ Write the PRD to `.gaia/artifacts/planning-artifacts/prd.md` with all sections p
 
 YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review (architecture.md §10.31.2). Validation MUST run against the Step 11 primary write (artifact-as-drafted), not the post-adversarial revision produced by the next steps.
+> Val auto-review. Validation MUST run against the Step 11 primary write (artifact-as-drafted), not the post-adversarial revision produced by the next steps.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-prd 12 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" feature_slug="$FEATURE_SLUG" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/prd.md`
 
@@ -242,8 +242,8 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   Exit code 0 when all 24 script-verifiable items PASS; non-zero otherwise.
 
   The V1 source checklist at _gaia/lifecycle/workflows/2-planning/create-prd/
-  checklist.md carried 21 bulleted items. The story product-brief count (36)
-  is authoritative (see story Dev Notes #1): the 21 V1 bullets are expanded
+  checklist.md carried 21 bulleted items. The 36-item count
+  is authoritative: the 21 V1 bullets are expanded
   here to 36 by (a) splitting compound items (e.g., "All sections present" →
   per-section SV-04..SV-15), (b) adding envelope items SV-01..SV-03,
   (c) adding Requirements Summary Table structural + data-row checks
@@ -260,7 +260,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
   appear in violation output when the Dependencies section lacks failure-
   mode / fallback text.
 
-  Invoked by `finalize.sh` at post-complete (per §10.31.1). Validation runs
+  Invoked by `finalize.sh` at post-complete. Validation runs
   BEFORE session-memory auto-save.
 -->
 

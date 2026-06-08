@@ -215,7 +215,7 @@ Concrete example (this is what the finalize.sh gate regex `^### Story E[0-9]+-S[
 
 YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per the canonical pattern (architecture.md §10.31.2). Concurrent invocations of this skill are safe: each invocation has its own iteration counter (centralized in the canonical pattern), so loop state is per-invocation, not shared.
+> Val auto-review per the canonical pattern. Concurrent invocations of this skill are safe: each invocation has its own iteration counter (centralized in the canonical pattern), so loop state is per-invocation, not shared.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-epics 9 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/epics-and-stories.md`
 
@@ -258,9 +258,8 @@ Skip this step if mode is greenfield.
   _gaia/lifecycle/workflows/3-solutioning/create-epics-stories/checklist.md
   ships 15 explicit bullets across seven V1 categories (Gates, Epics,
   Stories, Dependencies, Test Integration, Priority, Output
-  Verification). The story 31-item count is authoritative per
-  docs/v1-v2-command-gap-analysis.md; the remaining ~16 items are
-  reconciled from V1 instructions.xml step outputs (Task 1.2):
+  Verification). The 31-item count is authoritative; the remaining ~16 items are
+  reconciled from V1 instructions.xml step outputs:
     - PRD / architecture / test-plan consumed as upstream gates
     - Review Findings Incorporated section on the architecture
     - epic frontmatter (## Epic N: heading)
@@ -291,9 +290,9 @@ Skip this step if mode is greenfield.
   when a cycle is detected. The cycle path is surfaced via
   the failing story keys drained by Kahn's algorithm.
 
-  Invoked by `finalize.sh` at post-complete (per §10.31.1). Validation
+  Invoked by `finalize.sh` at post-complete. Validation
   runs BEFORE the checkpoint and lifecycle-event writes (observability
-  is never suppressed by checklist outcome — story AC5).
+  is never suppressed by checklist outcome).
 -->
 
 - [script-verifiable] SV-01 — Output file saved to .gaia/artifacts/planning-artifacts/epics-and-stories.md

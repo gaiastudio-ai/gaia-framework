@@ -95,7 +95,7 @@ if ${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo; then
   YOLO_MODE=true
 else
   # interactive branch: retain the existing per-finding confirm/override flow
-  # with byte-identical wording (AC3 regression guard per TC-YOLO-14)
+  # with byte-identical wording (regression guard on the confirm/override prompt)
   YOLO_MODE=false
 fi
 ```
@@ -200,10 +200,10 @@ aiw_write \
 ```
 
 The writer handles:
-- **Bootstrap:** creates `.gaia/state/action-items.yaml` with the architecture §10.28.6 schema header if the file does not exist.
+- **Bootstrap:** creates `.gaia/state/action-items.yaml` with the canonical action-items schema header if the file does not exist.
 - **Auto-increment:** computes the next `AI-{n}` id from existing entries.
 - **Idempotency:** dedup key is `(finding_id, sprint_id)` -- re-running the same triage does not duplicate.
-- **Schema compliance:** entry fields match architecture §10.28.6 exactly (`id`, `sprint_id`, `text`, `classification`, `status: open`, `escalation_count: 0`, `created_at`, `theme_hash`, `finding_id`).
+- **Schema compliance:** entry fields match the canonical action-items schema exactly (`id`, `sprint_id`, `text`, `classification`, `status: open`, `escalation_count: 0`, `created_at`, `theme_hash`, `finding_id`).
 
 ### Step 4 --- Create Backlog Stories (Skill-to-Skill Delegation)
 
@@ -318,7 +318,7 @@ If any stories were marked as NEXT SPRINT (P0):
 
 ### Step 7 — Persist to Val Sidecar
 
-Final step. Delegates Val-decision persistence to the shared Val sidecar writer helper (`val-sidecar-write.sh`, architecture §10.10). Placing this last satisfies atomicity — any upstream failure (spawn-guard rejection, `/gaia-create-story` subagent failure, findings-table write error) short-circuits before the helper runs, so no partial sidecar entry can appear.
+Final step. Delegates Val-decision persistence to the shared Val sidecar writer helper (`val-sidecar-write.sh`). Placing this last satisfies atomicity — any upstream failure (spawn-guard rejection, `/gaia-create-story` subagent failure, findings-table write error) short-circuits before the helper runs, so no partial sidecar entry can appear.
 
 **Fail-closed enforcement.** This skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`. The finalize script asserts that `.gaia/memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker; if not, it exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize`. This mirrors the `gaia-add-feature/scripts/finalize.sh:51-82` fail-closed pattern — operators who skip Step 7 under heavy substrate load now see a hard halt at finalize instead of a silent skip.
 

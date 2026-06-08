@@ -39,7 +39,7 @@ This skill pattern-matches against `gaia-code-review` as the canonical reference
 
 ```
 temperature: 0
-model: claude-opus-4-7        # per ADR-074, frontmatter-pinned at fork dispatch
+model: claude-opus-4-7        # frontmatter-pinned at fork dispatch
 prompt_hash: sha256:<hex>     # recorded in report header at Phase 6
 ```
 

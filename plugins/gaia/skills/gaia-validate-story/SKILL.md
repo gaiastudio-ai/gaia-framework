@@ -153,7 +153,7 @@ Canonical vocabulary is strict: exactly `PASSED`, `FAILED`, or `UNVERIFIED`. No 
 
 ### Step 6 — Persist to Val Sidecar
 
-Final step. Delegates Val-decision persistence to the shared Val sidecar writer helper (`val-sidecar-write.sh`, architecture §10.10). Placing this last satisfies atomicity — any upstream failure (Val unavailable, `review-gate.sh` rejection, story file missing) short-circuits before the helper runs, so no partial sidecar entry can appear.
+Final step. Delegates Val-decision persistence to the shared Val sidecar writer helper (`val-sidecar-write.sh`). Placing this last satisfies atomicity — any upstream failure (Val unavailable, `review-gate.sh` rejection, story file missing) short-circuits before the helper runs, so no partial sidecar entry can appear.
 
 Build the decision payload as `{verdict, findings[], artifact_path}` from the Val subagent's structured response captured in Step 2.
 

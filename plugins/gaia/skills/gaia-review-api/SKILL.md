@@ -144,7 +144,7 @@ If the target is empty or resolves to no API definitions (AC-EC6), exit with `No
 
 YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review (architecture.md §10.31.2).
+> Val auto-review.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-review-api 6 api_spec_path="$API_SPEC_PATH" review_scope="$REVIEW_SCOPE" stage=val-auto-review --paths "$REPORT_PATH"`
 

@@ -190,10 +190,10 @@ aiw_write \
 ```
 
 The writer handles:
-- **Bootstrap:** creates `action-items.yaml` with the architecture §10.28.6 schema header if the file does not exist.
+- **Bootstrap:** creates `action-items.yaml` with the canonical schema header if the file does not exist.
 - **Auto-increment:** computes the next `AI-{n}` id from existing entries.
 - **Idempotency:** dedup key is `(story_key, sprint_id, classification=process)` -- re-running the same drop/defer does not duplicate.
-- **Schema compliance:** entry fields match architecture §10.28.6 exactly (`id`, `sprint_id`, `text`, `classification`, `status: open`, `escalation_count: 0`, `created_at`, `theme_hash`, `story_key`).
+- **Schema compliance:** entry fields match the canonical action-items schema exactly (`id`, `sprint_id`, `text`, `classification`, `status: open`, `escalation_count: 0`, `created_at`, `theme_hash`, `story_key`).
 
 ### Step 6 --- Log Course Correction
 

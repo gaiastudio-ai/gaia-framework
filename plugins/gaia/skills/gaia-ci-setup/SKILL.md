@@ -136,7 +136,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 
 ### Schema Validation Retry Loop
 
-> Implements the `/gaia-ci-setup` Schema Validation Retry Loop. Verified by the valid-first-pass, single-retry, and multi-retry test cases — see `.gaia/artifacts/test-artifacts/test-plan.md §11.46.15`.
+> Implements the `/gaia-ci-setup` Schema Validation Retry Loop. Verified by the valid-first-pass, single-retry, and multi-retry test cases.
 
 The Step 8 schema validation invocation is wrapped in a retry loop so the user can iteratively correct CI configuration violations within a single `/gaia-ci-setup` invocation instead of restarting the workflow.
 
@@ -422,7 +422,7 @@ Answer `y` returns to the caller for an immediate `/gaia-config-ci --regenerate`
     V1 "Pipeline config generated"                              → SV-06 (heading or path regex)
     V1 "Gates are enforced (blocking, not advisory)"            → LLM-02 (semantic)
 
-  Invoked by `finalize.sh` at post-complete (per architecture §10.31.1).
+  Invoked by `finalize.sh` at post-complete.
   Validation runs BEFORE the checkpoint and lifecycle-event writes
   (observability is never suppressed by checklist outcome).
 -->

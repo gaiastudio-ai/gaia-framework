@@ -32,7 +32,7 @@ After the Agent call returns, the consumer skill MUST source `plugins/gaia/scrip
 
 **Envelope sentinel path convention.** The Val persona writes its sentinel to `.gaia/memory/checkpoints/val-envelope-{artifact-hash}.json` where `{artifact-hash}` is `sha256(artifact_path)` truncated to 16 hex characters (deterministic, locatable by consumers without state). The sentinel JSON shape and persona-signature contract live in `validator.md` §Sentinel-Write Contract.
 
-**Path normalization.** The `artifact_path` used for the hash MUST be **project-relative** (anchored at the project root, no leading slash, no leading `./`). The writer (`scripts/lib/write-val-envelope.sh`) enforces this by stripping any leading project_root prefix and any leading `./` from `artifact_path` BEFORE computing the hash — so a Val agent that writes an absolute path (`/Users/.../prd.md`) hashes to the same sentinel as a consumer that asserts on the project-relative path (`.gaia/artifacts/planning-artifacts/prd.md`). The contract for callers (Val persona + consumer skills) is: **always pass the project-relative form**. The writer's normalization is a safety net for legacy callers; the canonical form is project-relative. Non-path artifact_path values (e.g. a literal `feature_id` like `AF-2026-05-29-1` passed by `/gaia-add-feature`) have no leading `/` or `./` and pass through unchanged.
+**Path normalization.** The `artifact_path` used for the hash MUST be **project-relative** (anchored at the project root, no leading slash, no leading `./`). The writer (`scripts/lib/write-val-envelope.sh`) enforces this by stripping any leading project_root prefix and any leading `./` from `artifact_path` BEFORE computing the hash — so a Val agent that writes an absolute path (`/Users/.../prd.md`) hashes to the same sentinel as a consumer that asserts on the project-relative path (`.gaia/artifacts/planning-artifacts/prd.md`). The contract for callers (Val persona + consumer skills) is: **always pass the project-relative form**. The writer's normalization is a safety net for legacy callers; the canonical form is project-relative. Non-path artifact_path values (e.g. a literal `feature_id` passed by `/gaia-add-feature`) have no leading `/` or `./` and pass through unchanged.
 
 **Forgery resistance (field-presence tier).** `assert_agent_envelope` rejects sentinels that omit the `persona_sig` field. This is the *field-presence* tier of forgery resistance: a non-Val agent that emits a sentinel without `persona_sig` fails the assertion. Semantic verification (recomputing the sha256 of `validator.md` and matching against the sentinel's `persona_sig` digest) is roadmapped as a future hardening — until that lands, an attacker who knows the format could craft a sentinel with an arbitrary `persona_sig` value and pass the presence check. The defense-in-depth chain (dispatch checkpoint + envelope presence + planned semantic verification) is the layered control. See the forgery-resistance test in `plugins/gaia/tests/val-bridge-migration.bats`.
 
@@ -110,13 +110,13 @@ The 3-iteration auto-fix loop calls Val multiple times against the same `artifac
 
 ### Test Notes
 
-The contract is exercised by three VCP test cases:
+The contract is exercised by three test cases:
 
-- **VCP-VALV-02 (Script-verifiable):** Bats test at `plugins/gaia/tests/e44-s1-val-validate-upstream-contract.bats` — greps this SKILL.md for the section anchors above and the documented field names. Run with the standard bats suite.
-- **VCP-VALV-01 (LLM-checkable):** Invoke Val on a sample artifact, apply a fix, re-invoke Val. Assert: the previously-fixed finding does not appear in the second invocation's `findings`; no cached result from the first call leaks through.
-- **VCP-VAL-03 (LLM-checkable):** Present a SKILL.md that still declares `val_validate_output: true` in its frontmatter. Assert: the upstream skill does not error on the flag's presence; Val is invoked via the new direct-call contract; the flag is treated as a no-op.
+- **Script-verifiable:** Bats test at `plugins/gaia/tests/e44-s1-val-validate-upstream-contract.bats` — greps this SKILL.md for the section anchors above and the documented field names. Run with the standard bats suite.
+- **LLM-checkable:** Invoke Val on a sample artifact, apply a fix, re-invoke Val. Assert: the previously-fixed finding does not appear in the second invocation's `findings`; no cached result from the first call leaks through.
+- **LLM-checkable:** Present a SKILL.md that still declares `val_validate_output: true` in its frontmatter. Assert: the upstream skill does not error on the flag's presence; Val is invoked via the new direct-call contract; the flag is treated as a no-op.
 
-VCP-VALV-01 and VCP-VAL-03 execute inside the broader VCP test orchestrator, not as standalone bats tests.
+The two LLM-checkable cases execute inside the broader test orchestrator, not as standalone bats tests.
 
 ## Auto-Fix Loop Pattern
 
@@ -301,14 +301,14 @@ Each upstream skill invocation has its own iteration counter and its own checkpo
 This snippet is embedded verbatim into 18 upstream skills. Embed it as a numbered sub-step sequence immediately after the artifact-write step. Replace the `{ARTIFACT_PATH}` and `{ARTIFACT_TYPE}` placeholders with the upstream skill's values.
 
 ```text
-### Step N+1 — Val Auto-Fix Loop (E44-S2 / ADR-058)
+### Step N+1 — Val Auto-Fix Loop
 
 > Reuses the canonical pattern at gaia-framework/plugins/gaia/skills/gaia-val-validate/SKILL.md
 > § "Auto-Fix Loop Pattern". Do not duplicate the spec here; cite this anchor.
 
 1. iteration = 1.
-2. Invoke /gaia-val-validate via the main-turn Agent tool (per ADR-093 / ADR-104) with artifact_path={ARTIFACT_PATH}, artifact_type={ARTIFACT_TYPE}, model: claude-opus-4-7, effort: high (ADR-074 contract C2 — Val opus pin).
-2.5. ENVELOPE ASSERT (E87-S2 / ADR-104). After the Agent call returns and before consuming the findings, source plugins/gaia/scripts/lib/assert-agent-envelope.sh and invoke assert_agent_envelope {sentinel_path} where sentinel_path = .gaia/memory/checkpoints/val-envelope-{sha256(ARTIFACT_PATH) first 16 hex}.json. On non-zero exit, HALT with the canonical error string "HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}". DO NOT fall through to self-judged validation (closes the regression class in `feedback_add_feature_val_gate_fails_open.md` and `feedback_fix_story_inline_revalidation_bypass.md`).
+2. Invoke /gaia-val-validate via the main-turn Agent tool with artifact_path={ARTIFACT_PATH}, artifact_type={ARTIFACT_TYPE}, model: claude-opus-4-7, effort: high (Val opus pin).
+2.5. ENVELOPE ASSERT. After the Agent call returns and before consuming the findings, source plugins/gaia/scripts/lib/assert-agent-envelope.sh and invoke assert_agent_envelope {sentinel_path} where sentinel_path = .gaia/memory/checkpoints/val-envelope-{sha256(ARTIFACT_PATH) first 16 hex}.json. On non-zero exit, HALT with the canonical error string "HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}". DO NOT fall through to self-judged validation (closes the gate-fails-open and inline-revalidation-bypass regression class).
 3. If findings is empty: proceed past the loop.
 4. If findings contains only INFO: log informational notes, proceed past the loop.
 5. If findings contains CRITICAL or WARNING:
