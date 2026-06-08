@@ -229,7 +229,10 @@ if [ -z "$PROVIDER" ]; then
     PROVIDER="vitest"
   elif [ -f pyproject.toml ] || [ -f pytest.ini ]; then
     PROVIDER="pytest"
-  elif compgen -G "*.bats" >/dev/null; then
+  elif [ -n "$(find . -maxdepth 1 -type f -name '*.bats' 2>/dev/null | head -1)" ]; then
+    # issue-1129: POSIX-portable glob test. `compgen -G` is a bash builtin
+    # that errors under sh/zsh; `find -maxdepth 1` matches the cwd-level
+    # `*.bats` the old glob targeted, without the bash dependency.
     PROVIDER="bats"
   elif [ -f go.mod ]; then
     PROVIDER="go"

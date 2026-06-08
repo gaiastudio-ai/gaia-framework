@@ -51,11 +51,15 @@ EOF
   [[ "$output" == *"run-tests.sh"* ]]
 }
 
-@test "AC5: header-comment names FR-RSV2-19 / ADR-044" {
+@test "AC5: header-comment documents the public-API contract block" {
   run head -50 "$RUN_TESTS_SH"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"ADR-044"* ]]
-  [[ "$output" == *"FR-RSV2-19"* ]] || [[ "$output" == *"FR-RSV2-11"* ]]
+  # Assert the contract the header carries, not an internal traceability ID
+  # (those were scrubbed from published source). The header is the
+  # adapter-contract-style Public API block naming the reference bridge entry.
+  [[ "$output" == *"Reference Test Execution Bridge"* ]]
+  [[ "$output" == *"Public API"* ]]
+  [[ "$output" == *"--detect-runner"* ]]
 }
 
 # --- AC1 / AC2: tier discovery + placement enforcement ------------------
