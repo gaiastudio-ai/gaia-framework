@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [Unreleased]
+
+### Fixed
+
+- (test-run) `run-tests.sh` provider auto-detection uses a POSIX `find` glob instead of the bash-only `compgen` builtin, so it no longer errors under sh/zsh (#1129)
+- (doctor) the spotbugs `version_cmd` extracts the numeric version token, so `gaia-doctor` / the gaia-tools BOM no longer prints a blank spotbugs version (#1304)
+- (ci) the reference `run-tests.sh` contract test asserts the public-API header block instead of a scrubbed internal identifier
+
 ## [1.187.8] — 2026-06-06
 
 ### Fixed

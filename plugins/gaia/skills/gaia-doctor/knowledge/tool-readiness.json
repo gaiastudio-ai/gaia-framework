@@ -253,7 +253,7 @@
         "kotlin"
       ],
       "probe_cmd": "command -v spotbugs",
-      "version_cmd": "spotbugs -version 2>&1",
+      "version_cmd": "spotbugs -version 2>&1 | grep -oE '[0-9]+\\.[0-9]+(\\.[0-9]+)?' | head -1",
       "min_version": null,
       "install": {
         "macos": "brew install spotbugs",
