@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.187.10] — 2026-06-08
+
+### Changed
+
+- rewrite ID-pinning assertions to assert behavior after the SKILL/doc leak sweep
+- strip leaked internal traceability IDs from published SKILL.md + agents
+
 ## [1.187.9] — 2026-06-08
 
 ### Fixed
