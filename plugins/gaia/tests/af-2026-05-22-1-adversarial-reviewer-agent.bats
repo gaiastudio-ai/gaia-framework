@@ -50,8 +50,11 @@ teardown() { common_teardown; }
   ! grep -qF '${PLUGIN_DIR}/scripts/memory-loader.sh adversarial-reviewer ground-truth' "$PLUGIN_ROOT/agents/adversarial-reviewer.md"
 }
 
-@test "AF-2026-05-22-1: persona declares ADR-037 envelope output contract" {
-  grep -qF 'ADR-037' "$PLUGIN_ROOT/agents/adversarial-reviewer.md"
+@test "AF-2026-05-22-1: persona declares the envelope output contract" {
+  # Assert the contract (the canonical return-envelope field shape), not an
+  # internal identifier (scrubbed from published source).
+  grep -qE 'status.*summary.*artifacts.*findings.*next|findings|sentinel_envelope' "$PLUGIN_ROOT/agents/adversarial-reviewer.md"
+  grep -qiE 'envelope' "$PLUGIN_ROOT/agents/adversarial-reviewer.md"
 }
 
 @test "AF-2026-05-22-1: persona has Review Lenses section covering PRD/Architecture/UX/Test-plan" {

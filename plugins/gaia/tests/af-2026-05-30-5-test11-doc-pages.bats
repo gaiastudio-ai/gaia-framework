@@ -32,10 +32,13 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-5 D-04: readiness-check.html cites the AF-30-4 / Test11 D-04 anchor" {
-  run grep -F 'AF-2026-05-30-4 / Test11 D-04' \
+@test "AF-30-5 D-04: readiness-check.html documents the frontmatter contract" {
+  # Assert the documented contract, not an internal anchor identifier (scrubbed
+  # from published docs).
+  run grep -F 'Readiness-report frontmatter contract' \
         "$DOC_ROOT/commands/gaia-readiness-check.html"
   [ "$status" -eq 0 ]
+  grep -qF 'checks_passed' "$DOC_ROOT/commands/gaia-readiness-check.html"
 }
 
 # ===========================================================================

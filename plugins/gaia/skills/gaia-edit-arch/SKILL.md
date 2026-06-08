@@ -210,8 +210,8 @@ This step runs in YOLO mode automatically — re-sharding is deterministic and n
   The V1 source checklist at _gaia/lifecycle/workflows/3-solutioning/edit-architecture/
   checklist.md carried 14 bulleted items across six V1 categories
   (Edit Quality, ADR Quality, Version History, Review Gate, Cascade
-  Assessment, Output Verification). The story 25-item count is
-  authoritative per the v1-v2 command-gap analysis; the 14 V1
+  Assessment, Output Verification). The 25-item count is the
+  authoritative target; the 14 V1
   bullets are expanded to 25 by reconciling items dropped from V1
   checklist.md but preserved in V1 instructions.xml step outputs:
     - envelope items (SV-01, SV-02: output file saved, non-empty)

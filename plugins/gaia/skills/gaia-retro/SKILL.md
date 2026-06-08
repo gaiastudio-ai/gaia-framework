@@ -127,7 +127,7 @@ Prompt the facilitator:
 
 > Review the proposed action items. Add, remove, or modify items. Each action item needs an owner and target sprint.
 
-Collect the facilitator's input and compile the final action items list, then persist each item to `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml` using the shared retro writer helper. The YAML schema is authoritative — see architecture §10.28.6. This path is the canonical action-items.yaml home per architecture §10.28.6 — previously this skill wrote to `.gaia/state/action-items.yaml` while `/gaia-action-items` read from `.gaia/artifacts/planning-artifacts/action-items.yaml`, so retro-emitted items vanished from the next pre-sprint triage pass. Both producer and consumer now agree on the planning-artifacts location.
+Collect the facilitator's input and compile the final action items list, then persist each item to `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml` using the shared retro writer helper. The YAML schema is authoritative. This path is the canonical action-items.yaml home — previously this skill wrote to `.gaia/state/action-items.yaml` while `/gaia-action-items` read from `.gaia/artifacts/planning-artifacts/action-items.yaml`, so retro-emitted items vanished from the next pre-sprint triage pass. Both producer and consumer now agree on the planning-artifacts location.
 
 Per-item payload (one YAML list element per action):
 
@@ -154,7 +154,7 @@ ${CLAUDE_PLUGIN_ROOT}/../../scripts/retro-sidecar-write.sh \
 
 Failure posture:
 
-- Missing `.gaia/state/action-items.yaml` → writer seeds the file with the schema header from architecture §10.28.6 before appending (AC-EC3).
+- Missing `.gaia/state/action-items.yaml` → writer seeds the file with the canonical schema header before appending (AC-EC3).
 - Malformed existing YAML → writer HALTs with a line-pointer error; fix the YAML manually and re-run (AC-EC3).
 - Dedup by stable `AI-{n}` ID when the prose retro already referenced an item — in-place `text` update rather than duplicate row (AC-EC8).
 - `flock` on the YAML file serializes auto-increment across concurrent writers (AC-EC9).
@@ -177,7 +177,7 @@ When `--auto-file` IS present:
 
 ### Step 5c --- Agent Memory Updates
 
-After Step 5 completes, persist the sprint's lessons to each of the six canonical agent memory sidecars so the next sprint's planning and dev agents carry the institutional memory forward. Writes go through the shared retro writer helper (architecture §10.28.2) which enforces the allowlist, idempotency, and atomic backup/verify.
+After Step 5 completes, persist the sprint's lessons to each of the six canonical agent memory sidecars so the next sprint's planning and dev agents carry the institutional memory forward. Writes go through the shared retro writer helper which enforces the allowlist, idempotency, and atomic backup/verify.
 
 Target sidecars (six fan-out, one entry per agent per sprint):
 
@@ -195,7 +195,7 @@ ${CLAUDE_PLUGIN_ROOT}/../../scripts/retro-sidecar-write.sh \
   --root       "${CLAUDE_PROJECT_ROOT}" \
   --sprint-id  "${sprint_id}" \
   --target     "${CLAUDE_PROJECT_ROOT}/.gaia/memory/${agent}-sidecar/decision-log.md" \
-  --payload    "$(emit_adr016_lesson ${agent})"
+  --payload    "$(emit_lesson ${agent})"
 ```
 
 Failure posture:
@@ -205,11 +205,11 @@ Failure posture:
 - Partial fan-out failure (e.g., one sidecar is read-only) → the failing sidecar is restored from `.bak`; already-successful sidecars keep their appended entry (they are valid organizational memory); retro halts before proceeding to Step 5d (AC-EC7).
 - Symlink bypass attempt → writer resolves via `realpath` before the allowlist check and rejects with `status=unauthorized` (AC-EC5).
 
-### Step 5d --- Velocity Data Persistence (architecture §10.28.5)
+### Step 5d --- Velocity Data Persistence
 
-Append a velocity row to `${CLAUDE_PROJECT_ROOT}/.gaia/memory/sm-sidecar/velocity-data.md`. This runs **unconditionally** on every retro invocation — it is the velocity mandate per architecture §10.28.5. Idempotency key is `sprint_id` alone (one row per sprint).
+Append a velocity row to `${CLAUDE_PROJECT_ROOT}/.gaia/memory/sm-sidecar/velocity-data.md`. This runs **unconditionally** on every retro invocation — it is the velocity mandate. Idempotency key is `sprint_id` alone (one row per sprint).
 
-Payload schema (architecture §10.28.5):
+Payload schema:
 
 ```
 | Planned points   | {planned}   |
@@ -235,7 +235,7 @@ Failure posture:
 - Second retro invocation for the same sprint → writer sees the existing `### Sprint {id}` row and returns `skipped_idempotent`; velocity-data.md is byte-identical (AC2).
 - Missing file → writer creates and seeds with the canonical "SM Velocity Data" header before appending (AC-EC2).
 
-### Step 5e --- Tech Debt Reflection (architecture §10.28.8)
+### Step 5e --- Tech Debt Reflection
 
 Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md` and extract a Tech Debt Reflection block for the retro artifact. This step is **read-only** — it MUST NOT modify the dashboard file.
 
@@ -255,11 +255,11 @@ Hold the output in session memory for inclusion in the retro artifact at Step 6.
 
 Failure posture:
 
-- Missing `tech-debt-dashboard.md` → renders "No tech debt data available" note and retro continues without failing (AC-EC1, architecture §10.28.8 edge case).
+- Missing `tech-debt-dashboard.md` → renders "No tech debt data available" note and retro continues without failing (AC-EC1).
 - Malformed dashboard (ratio/aging/categories unparseable) → logs a warning to retro Dev Notes, skips extraction, and writes "tech-debt reflection unavailable: {reason}" without halting (AC-EC2).
 - First sprint (no prior dashboard snapshot to diff against) → ratio/aging deltas render as "baseline" markers; category breakdown uses absolute counts; no divide-by-zero (AC-EC3).
 - Older-format dashboard without category breakdown → renders ratio/aging blocks and emits "category breakdown unavailable (older dashboard format)" rather than failing (AC-EC10).
-- Dashboard file byte-identical after step completes (read-only contract — architecture §10.28.8).
+- Dashboard file byte-identical after step completes (read-only contract).
 
 ### Step 5b --- Cross-Retro Pattern Detection
 
@@ -302,9 +302,9 @@ All edge paths are non-blocking (per the story's "Failure posture"):
 >
 > The helper **prefers** the `.json` sidecar (jq-extracted `findings[].title`, prefix `source=json`) and **falls back** to a `.md` regex-parse when the sidecar is absent (older reports, prefix `source=md`) — additive, back-compatible. Normalize each `finding=` title into the same `lowercase(trim)` + `SHA-256` theme key the scanner uses, so an adversarial finding and a manually-written retro item describing the same theme collapse to one systemic theme.
 
-### Step 5f --- Skill Improvement Proposals (architecture §10.28.7)
+### Step 5f --- Skill Improvement Proposals
 
-Map each retro finding from Steps 3-4 to existing shared skills by scanning `${CLAUDE_PLUGIN_ROOT}/skills/` and `${CLAUDE_PROJECT_ROOT}/custom/skills/` registries. For each matched finding, build a structured proposal object per architecture §10.28.7 schema.
+Map each retro finding from Steps 3-4 to existing shared skills by scanning `${CLAUDE_PLUGIN_ROOT}/skills/` and `${CLAUDE_PROJECT_ROOT}/custom/skills/` registries. For each matched finding, build a structured proposal object per the canonical proposal schema.
 
 Invoke:
 
@@ -326,7 +326,7 @@ proposal:
     + ...
 ```
 
-**Stage 2: Approval.** Present each proposal to the user for interactive approval. YOLO auto-approve is explicitly out of scope (architecture §10.28.7 Stage 2). For each proposal:
+**Stage 2: Approval.** Present each proposal to the user for interactive approval. YOLO auto-approve is explicitly out of scope. For each proposal:
 - Display the target skill, rationale, and diff preview
 - If `target_path` already exists with divergent content, present a merge-preview diff and require explicit overwrite confirmation (AC-EC6)
 - Wait for user approval or rejection
@@ -385,9 +385,9 @@ Report the output path to the facilitator.
 
 ### Step 7 --- Val Memory Persistence
 
-Final step. After the retro artifact is written, persist the retro's decisions and rolling context to the validator sidecar so Val can cross-reference retro outcomes in subsequent validations. Per architecture §10.28.2 "Relationship to Shared Val Sidecar Writer", this delegation is made concrete by invoking the shared Val sidecar writer helper (`val-sidecar-write.sh`, architecture §10.10). The helper's two-file allowlist and composite-key idempotency apply uniformly. Placing the helper invocation as the FINAL step satisfies AC3 atomicity — any upstream failure short-circuits before the helper runs, so no partial sidecar entry can appear.
+Final step. After the retro artifact is written, persist the retro's decisions and rolling context to the validator sidecar so Val can cross-reference retro outcomes in subsequent validations. This delegation is made concrete by invoking the shared Val sidecar writer helper (`val-sidecar-write.sh`). The helper's two-file allowlist and composite-key idempotency apply uniformly. Placing the helper invocation as the FINAL step satisfies AC3 atomicity — any upstream failure short-circuits before the helper runs, so no partial sidecar entry can appear.
 
-**Fail-closed enforcement.** This skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`. The finalize script asserts that `.gaia/memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker; if not, it exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize`. Mirrors the sibling guard in `/gaia-triage-findings/scripts/finalize.sh` and the `gaia-add-feature/scripts/finalize.sh:51-82` fail-closed pattern.
+**Fail-closed enforcement.** This skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`. The finalize script asserts that `.gaia/memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker; if not, it exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize`. Mirrors the sibling fail-closed guards in `/gaia-triage-findings` and `/gaia-add-feature`.
 
 Targets (enforced by the helper allowlist — no other paths are writable):
 
@@ -415,10 +415,10 @@ Re-runs with identical payload yield `status=skipped_duplicate` and must be trea
 Failure posture:
 
 - Missing `.gaia/memory/validator-sidecar/` directory → the shared helper creates the directory and seeds both files with canonical decision-log headers before the first append (AC-EC10).
-- Degraded-mode running: if Step 5c / 5d / 5 failed earlier, Step 7 still runs so the validator sidecar records the partial-success outcome — retro mandate per architecture §10.28.2.
+- Degraded-mode running: if Step 5c / 5d / 5 failed earlier, Step 7 still runs so the validator sidecar records the partial-success outcome — retro mandate.
 - Helper rejection or error → log a warning and continue. Memory persistence is best-effort and MUST NOT fail the skill (non-blocking).
 
-> **Note.** This Step 7 invocation was retargeted from `retro-sidecar-write.sh` to `val-sidecar-write.sh` to realize the architecture §10.28.2 delegation. Other retro writes (action-items, skill_overrides proposals) continue to use `retro-sidecar-write.sh` — only the two validator-sidecar targets route through the shared Val helper here.
+> **Note.** This Step 7 invocation was retargeted from `retro-sidecar-write.sh` to `val-sidecar-write.sh` to realize the shared-Val-sidecar delegation. Other retro writes (action-items, skill_overrides proposals) continue to use `retro-sidecar-write.sh` — only the two validator-sidecar targets route through the shared Val helper here.
 
 ## Changelog
 
@@ -429,7 +429,7 @@ Failure posture:
 - `.gaia/artifacts/planning-artifacts/retro-auto-file-design.md` — design note (eligibility rubric + AC-EC7 interaction + Option-B rationale)
 - Saved memory: `feedback_askuserquestion_forked_skill_gap` — substrate constraint on subagent interactive prompts
 - Saved memory: `feedback_no_inline_meeting_stories` — `/gaia-meeting` precedent for routing action items via `/gaia-add-feature`
-- Architecture §11 — action-items.yaml dual-schema routing
+- action-items.yaml dual-schema routing
 
 ## Finalize
 

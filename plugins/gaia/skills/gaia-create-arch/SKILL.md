@@ -100,7 +100,7 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to select t
 > Claude Code native migration. It MUST fire after Step 3 returns and
 > BEFORE Step 4 begins. Step 4..N are NOT renumbered — Step 3.5 is a
 > deliberate non-integer slot so that downstream cross-references in
-> `epics-and-stories.md`, `test-plan.md §11.46.14`, and
+> `epics-and-stories.md`, `test-plan.md`, and
 > `traceability-matrix.md` continue to resolve.
 
 > **Variable contract.** This sub-step writes a runtime variable named
@@ -329,7 +329,7 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
    ```markdown
    # Architect — Architecture Decisions
 
-   > Sidecar log of architecture decisions per ADR-016 format. Mirrors the inline Decision Log in architecture.md.
+   > Sidecar log of architecture decisions. Mirrors the inline Decision Log in architecture.md.
 
    ---
    ```

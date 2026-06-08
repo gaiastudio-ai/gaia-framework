@@ -82,7 +82,7 @@ PLUGIN_DIR="${PLUGIN_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
 VERSION="$(cat "$PLUGIN_DIR/.plugin-version" 2>/dev/null || echo dev)"
 DIGEST="$(shasum -a 256 "$PLUGIN_DIR/agents/validator.md" 2>/dev/null | cut -c1-16 || echo unknown)"
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-# Embed in ADR-037 envelope as sentinel_envelope:
+# Embed in the validation envelope as sentinel_envelope:
 jq -n \
   --arg agent val \
   --arg sig "val-${VERSION}-${DIGEST}" \
@@ -96,7 +96,7 @@ jq -n \
 **Reference write idiom (orchestrator side, main turn):**
 
 ```sh
-# After Val returns the ADR-037 envelope as $VAL_RETURN_JSON:
+# After Val returns the validation envelope as $VAL_RETURN_JSON:
 sentinel_envelope=$(printf '%s' "$VAL_RETURN_JSON" | jq -c '.sentinel_envelope')
 SENTINEL_PATH=$("$PLUGIN_DIR/scripts/lib/write-val-envelope.sh" --envelope "$sentinel_envelope")
 # Then assert:

@@ -116,7 +116,7 @@ Write a structured domain research report to `.gaia/artifacts/planning-artifacts
 
 YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. This wire-in does not introduce a YOLO bypass branch.
 
-> Val auto-review per the canonical pattern (architecture.md §10.31.2). The `domain-research` artifact_type may not have a canonical document-ruleset; Val skips structural validation for unknown types and still runs factual-claim validation.
+> Val auto-review per the canonical pattern. The `domain-research` artifact_type may not have a canonical document-ruleset; Val skips structural validation for unknown types and still runs factual-claim validation.
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-domain-research 6 domain="$DOMAIN" research_scope="$RESEARCH_SCOPE" stage=val-auto-review --paths .gaia/artifacts/planning-artifacts/domain-research.md`
 

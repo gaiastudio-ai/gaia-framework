@@ -163,7 +163,7 @@ Invoke the reducer with `--with-provenance` so that any `WARNING`/`PASS`/`CRITIC
 REDUCER_OUT=$(bash ${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/compose-verdict.sh \
   --track-a "$TRACK_A_VERDICT" --track-b "$TRACK_B_VERDICT" --with-provenance)
 COMPOSITE=$(printf '%s\n' "$REDUCER_OUT" | head -n1)
-# original_status provenance (E87-S9 / ADR-130 / NFR-95): present ONLY when a
+# original_status provenance: present ONLY when a
 # track verdict was a coercible synonym; absent otherwise. Propagate it into
 # the sprint-review artifact — do NOT strip it.
 ORIGINAL_STATUS=$(printf '%s\n' "$REDUCER_OUT" | sed -n 's/^original_status=//p')

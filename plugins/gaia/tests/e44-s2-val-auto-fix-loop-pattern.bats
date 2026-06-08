@@ -44,8 +44,11 @@ teardown() { common_teardown; }
   grep -q '^## Auto-Fix Loop Pattern' "$SKILL"
 }
 
-@test "AC1: SKILL.md cross-references E44-S2 as the implementing story" {
-  grep -q 'E44-S2' "$SKILL"
+@test "AC1: SKILL.md documents the canonical auto-fix-loop pattern section" {
+  # Assert the contract (the canonical auto-fix-loop spec), not an internal
+  # story key (scrubbed from published source).
+  grep -qE '^## Auto-Fix Loop Pattern' "$SKILL"
+  grep -qiE '3-iteration' "$SKILL"
 }
 
 # ---------------------------------------------------------------------------
@@ -212,6 +215,8 @@ teardown() { common_teardown; }
   grep -q -E 'single source of truth' "$SKILL"
 }
 
-@test "Trace: SKILL.md cross-references ADR-058" {
-  grep -q 'ADR-058' "$SKILL"
+@test "Trace: SKILL.md documents the auto-fix-loop re-invocation contract" {
+  # Assert the contract the loop spec depends on (severity-driven blocking +
+  # idempotent re-invocation), not an internal identifier.
+  grep -qiE 'CRITICAL and WARNING block the upstream loop|severity.*drive the 3-iteration loop' "$SKILL"
 }

@@ -111,4 +111,4 @@ The mechanical migration steps are owned by `plugins/gaia/scripts/gaia-migrate.s
 ## References
 
 - Backing script (authoritative source): `plugins/gaia/scripts/gaia-migrate.sh`
-- Manual integration-test plan (edge cases AC-EC2/3/5/7): `.gaia/artifacts/test-artifacts/E28-S170-gaia-migrate-edge-cases-test-plan.md` — reproducible steps, expected behavior, and environment setup for edge cases that are not bats-testable without dedicated scaffolding (tmpfs size caps, corrupt-byte fixtures, signal-interrupt timing)
+- Manual integration-test plan for edge cases that are not bats-testable without dedicated scaffolding (tmpfs size caps, corrupt-byte fixtures, signal-interrupt timing) — reproducible steps, expected behavior, and environment setup live in the project's test artifacts.
