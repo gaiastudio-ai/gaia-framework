@@ -254,7 +254,7 @@
         </p>
         <pre><code>/gaia-create-arch --from-brownfield</code></pre>
         <p>
-          This is the F21 caveat documented in Test09: brownfield's Phase 2
+          This is a known caveat: brownfield's Phase 2
           stops at the descriptive architecture; the Review-Findings layer
           only writes when <code>/gaia-create-arch</code> ingests the
           brownfield draft as input.
@@ -339,8 +339,7 @@
           <li>
             <strong><code>/gaia-init</code>'s CI workflow scaffold is a
             deliberate <code>exit 1</code> stub until
-            <code>/gaia-ci-setup</code> runs (AF-2026-06-02-1 / Test16
-            D-2).</strong> On a brownfield repo that already has tests
+            <code>/gaia-ci-setup</code> runs.</strong> On a brownfield repo that already has tests
             asserting CI shape (e.g., a pytest test that checks for
             <code>actions/setup-python@v5</code> in the workflow), the
             stub <strong>fails those pre-existing assertions</strong>

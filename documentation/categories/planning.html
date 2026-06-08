@@ -169,7 +169,7 @@
         <li>
           <code>.gaia/config/</code> &mdash;
           <code>test-environment.yaml</code> and the
-          <code>.example</code> form (pinned by ADR-110).
+          <code>.example</code> form (pinned by the config-layout contract).
         </li>
         <li>
           <code>.gaia/state/</code> &mdash; <code>sprint-status.yaml</code>
@@ -178,7 +178,7 @@
         </li>
       </ul>
       <p>
-        <strong>Test-artifacts mirror absence (Test11 F-21).</strong> The
+        <strong>Test-artifacts mirror absence.</strong> The
         test-lens review reports (<code>qa-tests</code>,
         <code>test-automate-review</code>, <code>test-review</code>) and the
         per-tier <code>execution-evidence.json</code> are written ONLY under
@@ -187,7 +187,7 @@
         framework does not yet emit a symmetric
         <code>test-artifacts/epic-*/{key}-*/</code> mirror, and execution
         evidence is a single <code>execution-evidence.json</code> rather than
-        a per-tier split. AF-2026-05-30-1's per-story resolver supports the
+        a per-tier split. The per-story resolver supports the
         mirror direction in code; consumers have not yet been retrofitted.
         Until that refactor lands, expect every test-lens artifact at the
         <code>implementation-artifacts/&hellip;/reviews/</code> path only.

@@ -39,8 +39,8 @@
             </tr>
           </tbody>
         </table>
-        <p>The story file is written to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_slug}/{story_key}-{slug}/story.md</code> with the 15 required frontmatter fields. The <code>priority_flag</code> field accepts <code>null</code> (default), <code>"next-sprint"</code>, or <code>"hotfix"</code> (E40-S3, PR #772, ADR-109 &sect;D3). The <code>"hotfix"</code> value is human-set only and causes <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> to auto-inject the story into the active sprint.</p>
-        <p><strong>Layout note (Test10 F-28 — AF-2026-05-30-2).</strong> The canonical layout (E105-S1 / ADR-127) is the <strong>nested per-story directory</strong> shown above — the basename is always the literal <code>story.md</code> and the parent directory carries the story key + slug. Earlier doc revisions and pre-E105 SKILL.md text showed a flat <code>{key}-{slug}.md</code> shape; that legacy form remains read-only (consumers like <a href="gaia-check-dod.html"><code>/gaia-check-dod</code></a> and <a href="gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a> walk all three tiers: flat, legacy-nested-with-<code>stories/</code>, and the new per-story). New writes always use the per-story directory; a sibling <code>reviews/</code> subdir holds FR-402 review reports.</p>
+        <p>The story file is written to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_slug}/{story_key}-{slug}/story.md</code> with the 15 required frontmatter fields. The <code>priority_flag</code> field accepts <code>null</code> (default), <code>"next-sprint"</code>, or <code>"hotfix"</code> (PR #772). The <code>"hotfix"</code> value is human-set only and causes <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> to auto-inject the story into the active sprint.</p>
+        <p><strong>Layout note.</strong> The canonical layout is the <strong>nested per-story directory</strong> shown above — the basename is always the literal <code>story.md</code> and the parent directory carries the story key + slug. Earlier doc revisions and legacy SKILL.md text showed a flat <code>{key}-{slug}.md</code> shape; that legacy form remains read-only (consumers like <a href="gaia-check-dod.html"><code>/gaia-check-dod</code></a> and <a href="gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a> walk all three tiers: flat, legacy-nested-with-<code>stories/</code>, and the new per-story). New writes always use the per-story directory; a sibling <code>reviews/</code> subdir holds review reports.</p>
       </section>
 
       <section id="what-it-does"><h2>What it does</h2>
@@ -77,7 +77,7 @@ For the full-fidelity experience, enable Mode B (Agent Teams):
   2. Add orchestration.mode: team to .gaia/config/project-config.yaml.
 
 Mode B uses persistent teammates that preserve in-conversation state
-across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+across dispatches.
 
 This warning is shown once per session.
 ────────────────────────────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ This warning is shown once per session.
         </ol>
       </section>
 
-      <section id="story-validators"><h2>Story validator CLI shape <span class="tag">AF-2026-05-30-4 / Test11 D-05</span></h2>
+      <section id="story-validators"><h2>Story validator CLI shape</h2>
         <p>The three structural validators that <code>/gaia-create-story</code> invokes during the post-write check (Step 5) accept the story file path in two forms:</p>
         <ul>
           <li><strong>Canonical:</strong> <code>--file &lt;path&gt;</code></li>
@@ -124,8 +124,8 @@ This warning is shown once per session.
         <p>The validators:</p>
         <ul>
           <li><code>scripts/validate-frontmatter.sh</code> — checks the 17-field required-frontmatter contract.</li>
-          <li><code>scripts/validate-ac-format.sh</code> — checks the <code>- [ ] **AC{N}:** Given/When/Then</code> checkbox shape (AF-29-2 F-25).</li>
-          <li><code>scripts/validate-canonical-filename.sh</code> — checks E105-S1 / ADR-127 per-story layout.</li>
+          <li><code>scripts/validate-ac-format.sh</code> — checks the <code>- [ ] **AC{N}:** Given/When/Then</code> checkbox shape.</li>
+          <li><code>scripts/validate-canonical-filename.sh</code> — checks the per-story layout.</li>
         </ul>
         <p>Operators driving the validators directly should prefer <code>--file &lt;path&gt;</code>. The positional form is preserved for back-compat with older invocations but emits a <code>NOTICE: positional path is deprecated</code> line on stderr. Supplying both forms in the same call is refused.</p>
         <pre><code># Canonical
@@ -134,7 +134,7 @@ scripts/validate-frontmatter.sh --file .gaia/artifacts/implementation-artifacts/
 # Deprecated (still works, emits NOTICE)
 scripts/validate-frontmatter.sh .gaia/artifacts/implementation-artifacts/epic-E1-core/E1-S1-vault-init/story.md</code></pre>
 
-        <h3 id="ac-checkbox-shape">Acceptance-criteria shape <span class="tag">AF-2026-05-31-1 / Test12 D-04</span></h3>
+        <h3 id="ac-checkbox-shape">Acceptance-criteria shape</h3>
         <p><code>validate-ac-format.sh</code> is strict — every acceptance criterion in the story body MUST begin with the markdown checkbox prefix <code>- [ ]</code> followed by a bold <code>**AC{N}:**</code> label and a Given/When/Then triple. Bold-bullet variants without the leading checkbox (<code>- **AC1:** Given …</code>), unnumbered bullets, or free-prose acceptance lines all fail the validator with a CRITICAL verdict — even when the content is semantically correct. This shape is enforced because the dev-story and review-qa skills parse the AC list line-by-line off the checkbox prefix; loosening the regex breaks downstream automation.</p>
         <p>The required shape, with a worked example block hand-authors can copy directly:</p>
         <pre><code>## Acceptance Criteria
@@ -182,7 +182,7 @@ How would you like to elaborate this story?
 Delegating to PM and Architect...
 
   PM (Derek): 3 edge cases identified, AC prioritization complete.
-  Architect (Theo): 2 implementation constraints from ADR-012.
+  Architect (Theo): 2 implementation constraints from the architecture.
 
 Edge case analysis: 6 scenarios generated (boundary, error, security).
 Appending edge-case ACs to story...
@@ -219,7 +219,7 @@ Loading story E5-S12 from epics-and-stories.md...
 How would you like to elaborate this story?
 ...</code></pre>
 
-        <h3>3. Hotfix priority_flag workflow (E40-S3, ADR-109 &sect;D3)</h3>
+        <h3>3. Hotfix priority_flag workflow</h3>
         <p>When a story's frontmatter has <code>priority_flag: "hotfix"</code> (human-set), the story file is created normally. The <code>"hotfix"</code> value is preserved in the frontmatter. When <code>/gaia-sprint-plan</code> runs next, it auto-injects the story into the active sprint via <code>sprint-state.sh inject</code>.</p>
         <pre><code>&gt; /gaia-create-story E12-S4
 

@@ -108,7 +108,7 @@
         <p><em>Expected duration: 3 minutes.</em></p>
         <aside class="callout">
           <p><strong>Headless service (backend / library / worker)?</strong> Answer <code>no</code> when the questionnaire asks about a UI layer, and pick <code>server</code> as the platform. The framework will skip UX, a11y, and design-token gates instead of generating hollow UI artifacts. See the
-          <a href="shape-microservices.html#headless-service">Headless service section in Shape: Microservices</a> for the full configuration shape (Test10 F-05 — AF-2026-05-30-2).</p>
+          <a href="shape-microservices.html#headless-service">Headless service section in Shape: Microservices</a> for the full configuration shape.</p>
         </aside>
       </section>
 
@@ -250,7 +250,7 @@
           <code>test-automate-review-{key}.md</code>,
           <code>test-review-{key}.md</code>,
           <code>performance-review-{key}.md</code> in <code>.gaia/artifacts/implementation-artifacts/</code>
-          (per-story <code>reviews/</code> subdir on the post-E105-S1 layout) plus optional
+          (per-story <code>reviews/</code> subdir on the per-story layout) plus optional
           <code>evidence/*.json</code> when the bridge is on.
         </p>
         <p><em>Expected duration: 5-10 minutes for the parallel battery.</em></p>
@@ -265,8 +265,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to review
 ${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to done</code></pre>
         <p>
           <code>review-gate-check</code> reads each Review Gate row and exits
-          <code>0</code> for COMPLETE, <code>1</code> for BLOCKED, <code>2</code> for PENDING
-          (per ADR-054). The story transitions through <code>in-progress &rarr; review &rarr; done</code> —
+          <code>0</code> for COMPLETE, <code>1</code> for BLOCKED, <code>2</code> for PENDING.
+          The story transitions through <code>in-progress &rarr; review &rarr; done</code> —
           each transition is the boundary writer that atomically updates the story file frontmatter,
           <code>.gaia/state/sprint-status.yaml</code>, the per-epic shard, and <code>story-index.yaml</code>.
         </p>
@@ -295,8 +295,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to done</code><
         <p>
           Two parallel tracks: <strong>Track A</strong> dispatches Val to text-validate every story
           and review against the sprint's goals using the per-goal rubric;
-          <strong>Track B</strong> re-runs the configured per-stack execution review
-          (the foreground runner replacing the E93-S3 stub in E93-S4). The composite verdict
+          <strong>Track B</strong> re-runs the configured per-stack execution review.
+          The composite verdict
           (PASSED / FAILED / UNVERIFIED) is reduced by <code>compose-verdict.sh</code>:
           PASSED routes to <code>/gaia-sprint-close</code>; FAILED transitions the sprint to
           <code>correction</code> and emits action items routed to <code>/gaia-correct-course</code>.
@@ -335,7 +335,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to done</code><
           <code>.gaia/artifacts/implementation-artifacts/sprint-archive/sprint-{N}-closed-{date}.yaml</code>,
           and emits a <code>sprint_closed</code> lifecycle event to
           <code>.gaia/memory/lifecycle-events.jsonl</code>. This is the sanctioned boundary-write
-          replacement for any manual <code>yq -i</code> edits on <code>sprint-status.yaml</code> (per ADR-095).
+          replacement for any manual <code>yq -i</code> edits on <code>sprint-status.yaml</code>.
         </p>
         <p><strong>Artifacts produced:</strong>
           updated <code>.gaia/state/sprint-status.yaml</code>,
@@ -358,7 +358,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to done</code><
         </p>
         <p><strong>Artifacts produced:</strong>
           new backlog stories under
-          <code>.gaia/artifacts/implementation-artifacts/epic-{slug}/{key}-{slug}/story.md</code> (post-E105-S1 layout),
+          <code>.gaia/artifacts/implementation-artifacts/epic-{slug}/{key}-{slug}/story.md</code> (per-story layout),
           seeded next-sprint <code>.gaia/state/sprint-status.yaml</code>.
         </p>
         <p><em>Expected duration: 15-30 minutes for action-items + planning combined.</em></p>

@@ -97,7 +97,7 @@
             <strong>Track B -- per-stack execution review.</strong> Re-runs
             the configured per-stack test matrix in the foreground and
             reports a per-stack PASSED / FAILED / UNVERIFIED verdict. Track B
-            is a stub on the current build; the real runner ships with E93-S4.
+            is a stub on the current build; the real runner ships in a later release.
           </li>
         </ul>
         <p>
@@ -257,10 +257,10 @@
             mitigation). On user acknowledgement, dispatches Val via the
             main-turn Agent tool with the
             <code>rubrics/base/sprint-review.json</code> rubric, the sprint
-            yaml, and the story files. The orchestrator writes the E87
+            yaml, and the story files. The orchestrator writes the
             envelope sentinel via <code>lib/write-val-envelope.sh</code>,
             asserts it via <code>assert-agent-envelope.sh</code>, and writes
-            the E83 dispatch sentinel via <code>write-val-sentinel.sh</code>.
+            the dispatch sentinel via <code>write-val-sentinel.sh</code>.
             CRITICAL findings HALT before Track B fires.
           </li>
           <li>
@@ -269,7 +269,7 @@
             stub reads <code>sprint_review:</code> from
             <code>.gaia/config/project-config.yaml</code>, iterates the per-stack
             matrix, and emits a JSON array. On the current build every entry
-            is <code>verdict: SKIPPED</code>; the E93-S4 runner replaces this
+            is <code>verdict: SKIPPED</code>; a later runner replaces this
             stub with a real foreground per-stack execution review.
           </li>
           <li>
@@ -303,7 +303,7 @@
           </li>
           <li>
             <span class="step-title">UNVERIFIED bypass (when applicable)</span>
-            Collects mechanical signals per the AI-2026-05-16-5 spec
+            Collects mechanical signals
             (primary criterion, qualifying ratio &ge; 0.80, qualifying
             stories), fires <code>AskUserQuestion</code> to PM (Derek) for
             the explanation, persists the <code>review_justification:</code>
@@ -341,7 +341,7 @@
             <tr>
               <td>Sprint-review rubric</td>
               <td><code>${CLAUDE_PLUGIN_ROOT}/rubrics/base/sprint-review.json</code></td>
-              <td>The AI-2026-05-16-1 rubric Val reads to produce per-goal verdicts across the three rubric dimensions.</td>
+              <td>The rubric Val reads to produce per-goal verdicts across the three rubric dimensions.</td>
             </tr>
             <tr>
               <td>Sprint-review config</td>
@@ -371,12 +371,12 @@
             <tr>
               <td>Val dispatch sentinel</td>
               <td><code>.gaia/memory/checkpoints/sprint-review-&lt;sprint_id&gt;-val-dispatched.json</code></td>
-              <td>The E83 dispatch sentinel <code>/gaia-sprint-close</code> verifies before accepting the <code>review &rarr; closed</code> edge.</td>
+              <td>The dispatch sentinel <code>/gaia-sprint-close</code> verifies before accepting the <code>review &rarr; closed</code> edge.</td>
             </tr>
             <tr>
               <td>Val envelope sentinel</td>
               <td><code>.gaia/memory/checkpoints/val-envelope-&lt;sha256(sprint_id):0:16&gt;.json</code></td>
-              <td>The E87 envelope sentinel (forgery-resistant) for the Val verdict.</td>
+              <td>The envelope sentinel (forgery-resistant) for the Val verdict.</td>
             </tr>
             <tr>
               <td>Sprint state transition</td>
@@ -415,8 +415,8 @@ Track A -- Val dispatch:
 
 Track B -- execution review:
   track-b-dispatch.sh: 2 stacks configured (python, node).
-    python: SKIPPED (E93-S4 not yet shipped)
-    node:   SKIPPED (E93-S4 not yet shipped)
+    python: SKIPPED (real runner not yet shipped)
+    node:   SKIPPED (real runner not yet shipped)
 
 Per-goal stakeholder confirmation:
   Goal G1: works-as-expected
@@ -506,7 +506,7 @@ Artifact written: sprint-review-sprint-13-2026-05-29.md (composite verdict FAILE
 
         <h3>"HALT: Val agent envelope assertion failed"</h3>
         <p>
-          The orchestrator could not verify the E87 envelope sentinel
+          The orchestrator could not verify the envelope sentinel
           (sentinel absent, malformed, or forged). Inspect
           <code>.gaia/memory/checkpoints/val-envelope-*.json</code> and the
           Val sub-agent return. Re-running the skill from Step 3 re-dispatches
@@ -515,10 +515,10 @@ Artifact written: sprint-review-sprint-13-2026-05-29.md (composite verdict FAILE
 
         <h3>Track B reports SKIPPED for every stack</h3>
         <p>
-          The current build ships an E93-S3 stub for Track B
+          The current build ships a stub for Track B
           (<code>delivered: false</code>). The composite reducer treats
           SKIPPED as PASSED-equivalent so the composite verdict still
-          composes cleanly. The real per-stack runner ships with E93-S4 --
+          composes cleanly. The real per-stack runner ships in a later release --
           until then, the per-goal stakeholder confirmation in Step 5 is the
           only Track B signal that influences the composite.
         </p>

@@ -424,15 +424,15 @@ compliance:
       </section>
 
       <section id="layered-model-by-size">
-        <h2>The layered model across team sizes (E98 / ADR-114)</h2>
+        <h2>The layered model across team sizes</h2>
         <p>
-          The four-class prefix contract (FR-516: <code>gaia-*.yml</code> generated, overlays,
+          The four-class prefix contract (<code>gaia-*.yml</code> generated, overlays,
           <code>user-*.yml</code> user-owned, no-prefix migration-eligible) and the four-phase
-          stitching order (FR-517) scale across all team sizes -- but you'll use them differently:
+          stitching order scale across all team sizes -- but you'll use them differently:
         </p>
         <ul>
           <li><strong>Solo + small-team</strong> -- you'll mostly rely on the
-            <code>ci_cd.template_overrides:</code> declarative section (FR-518) to disable a job, bump
+            <code>ci_cd.template_overrides:</code> declarative section to disable a job, bump
             a timeout, or pin an adapter version. Overlay files are reserved for the one or two
             project-specific jobs you really need (coverage upload, notification, deploy hook).</li>
           <li><strong>Standard</strong> -- you'll author <code>gaia-ci.user-jobs.yml</code> for the
@@ -443,12 +443,12 @@ compliance:
             <code>user-compliance-audit.yml</code> (entirely user-authored, GAIA never touches) for
             the compliance team's evidence collection, alongside the GAIA-generated
             <code>gaia-pre-merge.yml</code> for the standard gates. The
-            <code>template_overrides.disable:</code> list cannot remove the five SR-78 security gates
-            (commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit),
+            <code>template_overrides.disable:</code> list cannot remove the five security gates
+            (commitlint, attribution-guard, no-claude-attribution, secrets-scan, credential-audit),
             which is a security feature -- it prevents accidental override at scale.</li>
         </ul>
         <p>
-          On a pre-ADR-114 project, the FR-519 auto-rename migration flow runs once on the first
+          On a project that predates the layered model, the auto-rename migration flow runs once on the first
           <code>/gaia-config-ci --regenerate</code> after upgrade. You'll be prompted per-file:
           rename to <code>gaia-{base}.yml</code> + scaffold overlays, rename to
           <code>user-{base}.yml</code>, or skip and defer. The flow is backup-first -- a sha256-verified

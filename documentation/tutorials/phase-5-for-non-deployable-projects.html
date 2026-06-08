@@ -57,11 +57,11 @@
 
       <h1>Phase 5 for Non-Deployable Projects</h1>
       <p>
-        Phase 5 is the deployment phase of the GAIA lifecycle. Before the multi-shape model
-        (ADR-112), Phase 5 always meant <code>/gaia-deploy</code> + <code>/gaia-post-deploy</code>.
+        Phase 5 is the deployment phase of the GAIA lifecycle. Before the multi-shape model,
+        Phase 5 always meant <code>/gaia-deploy</code> + <code>/gaia-post-deploy</code>.
         That assumption breaks for plugins, libraries, CLIs, mobile apps, container images, and
         static sites -- none of which have a deployable URL to push to. This tutorial covers the
-        FR-524 routing extension that lets <code>/gaia-help</code> recommend the right command
+        routing extension that lets <code>/gaia-help</code> recommend the right command
         based on YOUR project's shape, not the historical default.
       </p>
 
@@ -77,8 +77,8 @@
           Under the multi-shape model, Phase 5 reads two config-side signals:
         </p>
         <ul>
-          <li><code>environments[*].kind</code> -- per-env, the closed enum <code>deployable | branch-only | distribution-only</code> (FR-520).</li>
-          <li><code>distribution:</code> -- presence vs absence of the top-level publish block (FR-521 / FR-522).</li>
+          <li><code>environments[*].kind</code> -- per-env, the closed enum <code>deployable | branch-only | distribution-only</code>.</li>
+          <li><code>distribution:</code> -- presence vs absence of the top-level publish block.</li>
         </ul>
         <p>
           The detector at <code>scripts/lib/config-shape-detect.sh</code> reads both and emits one of
@@ -87,7 +87,7 @@
       </section>
 
       <section id="decision-table">
-        <h2>The 5-case decision table (ADR-112 §(f))</h2>
+        <h2>The 5-case decision table</h2>
         <table>
           <thead>
             <tr>
@@ -104,7 +104,7 @@
               <td>all <code>deployable</code></td>
               <td>absent</td>
               <td><code>deploy-only</code></td>
-              <td><code>/gaia-deploy</code> (NFR-080 baseline)</td>
+              <td><code>/gaia-deploy</code> (baseline)</td>
             </tr>
             <tr>
               <td>(ii)</td>
@@ -137,9 +137,9 @@
           </tbody>
         </table>
         <p>
-          Case (i) is the historical baseline -- byte-identical to pre-cascade behavior per NFR-080.
+          Case (i) is the historical baseline -- byte-identical to the pre-multi-shape behavior.
           Cases (iii) and (iv) are publish-primary; <code>/gaia-deploy</code> is intentionally absent
-          from the suggestions (the command would HALT per the E99-S1 kind gate). Cases (ii) and (v)
+          from the suggestions (the command would HALT on the kind gate). Cases (ii) and (v)
           are mixed-shape; both commands are surfaced and the body distinguishes which envs are
           reachable via which.
         </p>
@@ -159,7 +159,7 @@ Recommended command:
   /gaia-publish              # ships to claude-marketplace via your release_workflow
 
 Not recommended:
-  /gaia-deploy               # HALTs on kind: branch-only per FR-520</code></pre>
+  /gaia-deploy               # HALTs on kind: branch-only</code></pre>
         <p>
           For a microservice with staging + production deployable envs AND a library exported on the
           side (case v -- mixed shape):
@@ -179,7 +179,7 @@ Recommended commands:
         <h2>Publish-readiness mode</h2>
         <p>
           <code>/gaia-deploy-checklist</code> also reads the detector token. For publish-primary
-          projects, the checklist swaps to publish-readiness mode (FR-524 / TC-PR5-4): the gate
+          projects, the checklist swaps to publish-readiness mode: the gate
           items are publish-oriented (manifest version matches, release workflow exists, credentials
           env vars set, adapter sub-fields satisfy per-channel schema) instead of the deploy-oriented
           gate items (rollback plan, smoke endpoints, etc.). The switch is automatic -- you do NOT

@@ -172,7 +172,7 @@ For the full-fidelity experience, enable Mode B (Agent Teams):
   2. Add orchestration.mode: team to .gaia/config/project-config.yaml.
 
 Mode B uses persistent teammates that preserve in-conversation state
-across dispatches. See ADR-093 (Orchestrator-as-Bridge) for the contract.
+across dispatches.
 
 This warning is shown once per session.
 ────────────────────────────────────────────────────────────────────────────
@@ -195,14 +195,14 @@ This warning is shown once per session.
 
 
       <section id="hotfix-injection">
-        <h2>Hotfix auto-injection (E40-S3, ADR-109 &sect;D3)</h2>
+        <h2>Hotfix auto-injection</h2>
         <p>Stories with <code>priority_flag: "hotfix"</code> in their frontmatter are auto-injected into the <strong>active</strong> sprint at Step 1, before the interactive selection ceremony begins. This differs from the <code>"next-sprint"</code> flag, which pre-fills the candidate set for user confirmation.</p>
-        <p>Key behaviors (PR #772, ADR-109 &sect;D3/&sect;D4):</p>
+        <p>Key behaviors (PR #772):</p>
         <ul>
-          <li>Injection uses <code>sprint-state.sh inject</code> (ADR-095 sanctioned boundary writer). The call is idempotent -- re-runs are no-ops.</li>
+          <li>Injection uses <code>sprint-state.sh inject</code> (the sanctioned boundary writer). The call is idempotent -- re-runs are no-ops.</li>
           <li>Capacity-exceeded does <strong>not</strong> block hotfix injection. A hotfix is a sanctioned bypass of normal sprint capacity.</li>
           <li>Multiple hotfix stories in a single run are all injected; each emits a <code>WARNING</code> log line.</li>
-          <li>Hotfix stories <strong>must still pass the full <code>/gaia-review-all</code></strong> including the NFR-073 wire-verification gate. A hotfix is faster to PLAN, not faster to TEST.</li>
+          <li>Hotfix stories <strong>must still pass the full <code>/gaia-review-all</code></strong> including the wire-verification gate. A hotfix is faster to PLAN, not faster to TEST.</li>
           <li>The <code>"hotfix"</code> value is human-set only. Neither <code>/gaia-add-feature</code> nor triage may auto-set it.</li>
         </ul>
       </section>
@@ -227,8 +227,7 @@ This warning is shown once per session.
             <code>priority_flag: "next-sprint"</code> are auto-included in
             the candidate set. Stories with <code>priority_flag: "hotfix"</code>
             are auto-injected into the active sprint via
-            <code>sprint-state.sh inject</code> before selection begins
-            (E40-S3, ADR-109 &sect;D3).
+            <code>sprint-state.sh inject</code> before selection begins.
           </li>
           <li>
             <span class="step-title">Check for blocking action items</span>
@@ -386,7 +385,7 @@ Sprint-4 summary:
 
 Next: run /gaia-dev-story E5-S12 to begin the first story.</code></pre>
 
-        <h3>2. Hotfix auto-injection (E40-S3, ADR-109 &sect;D3)</h3>
+        <h3>2. Hotfix auto-injection</h3>
         <p>Stories with <code>priority_flag: "hotfix"</code> are injected into the active sprint automatically via <code>sprint-state.sh inject</code> before the interactive selection ceremony.</p>
         <pre><code>&gt; /gaia-sprint-plan
 
@@ -395,9 +394,9 @@ Loading backlog from epics-and-stories.md...
 
 Hotfix injection:
   WARNING: hotfix story E12-S4 injected into active sprint via
-           priority_flag: "hotfix" (ADR-109 &sect;D3)
+           priority_flag: "hotfix"
   WARNING: hotfix story E12-S5 injected into active sprint via
-           priority_flag: "hotfix" (ADR-109 &sect;D3)
+           priority_flag: "hotfix"
 
   Auto-included by priority_flag: E5-S18
 
@@ -426,7 +425,7 @@ Loading backlog...
 
 Hotfix injection:
   WARNING: hotfix story E12-S4 injected into active sprint via
-           priority_flag: "hotfix" (ADR-109 &sect;D3)
+           priority_flag: "hotfix"
 
 Sprint scoping:
   Velocity estimate? 13 points

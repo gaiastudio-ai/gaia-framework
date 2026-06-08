@@ -96,7 +96,7 @@ distribution:
   manifest: pyproject.toml
   release_workflow: gaia-release.yml</code></pre>
 
-        <pre><code># maven (group_id + artifact_id required per ADR-112 §(d))
+        <pre><code># maven (group_id + artifact_id required)
 distribution:
   channel: maven
   registry: https://oss.sonatype.org/service/local/staging/deploy/maven2
@@ -136,7 +136,7 @@ steps_after_gaia:
   - name: upload coverage
     uses: codecov/codecov-action@v4</code></pre>
         <p>
-          The stitcher (E98-S2) splices <code>steps_before_gaia</code> ahead of the GAIA-generated
+          The stitcher splices <code>steps_before_gaia</code> ahead of the GAIA-generated
           steps and <code>steps_after_gaia</code> after them. The managed steps are never reordered.
         </p>
       </section>

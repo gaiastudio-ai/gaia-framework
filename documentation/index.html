@@ -77,8 +77,8 @@
           Each command is a self-contained workflow that reads your project
           artifacts, performs its task, and writes its outputs back into
           well-defined locations under your <code>.gaia/artifacts/</code> and
-          <code>.gaia/config/</code> directories (canonical post-ADR-111;
-          pre-ADR-111 projects under <code>docs/</code> and <code>config/</code>
+          <code>.gaia/config/</code> directories (the canonical layout;
+          legacy projects under <code>docs/</code> and <code>config/</code>
           continue to work via the framework's three-tier path resolver).
           Commands are composable: the
           output of one is the input of the next, forming a coherent chain
@@ -244,7 +244,7 @@
         </p>
       </section>
 
-      <!-- Common Pitfalls (AF-2026-05-24-14 / Test02 F-19) -->
+      <!-- Common Pitfalls -->
       <section id="common-pitfalls">
         <h2>Common pitfalls</h2>
         <p>
@@ -295,9 +295,9 @@
           </li>
           <li>
             <strong>Default artifact paths are <code>.gaia/</code>, not <code>docs/</code>.</strong>
-            Post-ADR-111 the canonical layout is
+            The canonical layout is
             <code>.gaia/artifacts/&lt;phase&gt;-artifacts/</code> and
-            <code>.gaia/config/project-config.yaml</code>. Pre-ADR-111
+            <code>.gaia/config/project-config.yaml</code>. Legacy
             projects under <code>docs/</code> continue to work via the
             three-tier path resolver, but any new project should expect
             the <code>.gaia/</code> layout.
