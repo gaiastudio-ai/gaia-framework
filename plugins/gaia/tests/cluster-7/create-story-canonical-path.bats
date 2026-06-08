@@ -99,8 +99,10 @@ teardown() { common_teardown; }
   [ "$status" -ne 0 ]
 }
 
-@test "TC-CSP-1: SKILL.md Step 4 prose names ADR-074 deterministic-script-lift (AC4)" {
-  run grep -nE 'ADR-074' "$SKILL_MD"
+@test "TC-CSP-1: SKILL.md Step 4 delegates scaffolding to the deterministic script (AC4)" {
+  # Assert the deterministic-script-lift behavior, not an internal identifier
+  # (scrubbed from published source).
+  run grep -niE 'scaffold-story\.sh|deterministic skeleton|delegated to' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
@@ -126,8 +128,10 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "TC-CSP-3: SKILL.md Step 4 refusal message names E79-S6 migration (AC3)" {
-  run grep -nF "E79-S6" "$SKILL_MD"
+@test "TC-CSP-3: SKILL.md Step 4 refusal message points to the layout migration (AC3)" {
+  # Assert the refusal directs the operator to run the migration, not an
+  # internal story key (scrubbed from published source).
+  run grep -niE 'REFUSED.*migration|layout migration|migration first' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 

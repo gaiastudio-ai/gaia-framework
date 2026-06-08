@@ -92,8 +92,10 @@ teardown() { common_teardown; }
   grep -q -E 'custom\.val_loop_iterations|custom\.`val_loop_iterations`|`custom\.val_loop_iterations`' "$SKILL"
 }
 
-@test "Task4: SKILL.md cites ADR-058 for the loop contract" {
-  grep -q 'ADR-058' "$SKILL"
+@test "Task4: SKILL.md documents the loop contract (3-iteration auto-fix)" {
+  # Assert the contract, not an internal identifier (scrubbed from published source).
+  grep -qiE '3-iteration' "$SKILL"
+  grep -qiE 'auto-fix loop' "$SKILL"
 }
 
 @test "Task4: SKILL.md contains a JSON example illustrating the log record" {
