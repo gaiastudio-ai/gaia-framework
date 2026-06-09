@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.187.11] — 2026-06-09
+
+### Changed
+
+- (dev-story) harden delegation assertions against bats 1.10.0 pipe semantics
+
+### Fixed
+
+- (dev-story) reword Step 3b dispatch prose to clear taxonomy-SSOT drift guard
+- (dev-story) delegate plan and TDD implementation to stack-developer subagent
+
 ## [1.187.10] — 2026-06-08
 
 ### Changed
