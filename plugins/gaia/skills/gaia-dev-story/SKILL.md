@@ -32,7 +32,9 @@ fi
 
 ## Mission
 
-You are implementing a user story end-to-end: loading the story spec, planning the implementation, writing tests (TDD red), implementing code (TDD green), refactoring, verifying the Definition of Done, committing, pushing, creating a PR, waiting for CI, and merging. This is the most comprehensive dev workflow in GAIA.
+You are orchestrating a user story end-to-end: loading the story spec, planning the implementation, writing tests (TDD red), implementing code (TDD green), refactoring, verifying the Definition of Done, committing, pushing, creating a PR, waiting for CI, and merging. This is the most comprehensive dev workflow in GAIA.
+
+**You are the bridge, not the engineer.** The plan authoring (Step 4) and the TDD implementation (Steps 5/6/7) are delegated to a **stack-matched developer subagent** resolved from project knowledge (Step 3b) — exactly as `/gaia-quick-dev` delegates to `gaia:stack-dev`. The main turn resolves the developer, dispatches the engineering work, and owns the gates: the Val plan-validation gate (Step 4), the risk-gated `tdd-reviewer` gates (Steps 5a/6a/7a), the Step 7b Val-in-TDD pass, and the push/PR/CI/merge tail. The orchestrator never writes production code or tests inline.
 
 This skill is the native Claude Code conversion of the legacy dev-story workflow. The playbook contains all LLM reasoning guidance. The scripts directory contains all mechanical operations. The PostToolUse hook automatically writes a checkpoint after every Edit or Write tool invocation.
 
@@ -46,7 +48,7 @@ Implementing a story end-to-end. Load the story, plan with you, write failing te
 /gaia-dev-story <story-key>
 ```
 
-This loads `.gaia/artifacts/implementation-artifacts/.../<story-key>-*.md`, walks you through the TDD cycle on a feature branch, and lands a merged PR on staging (or your configured promotion target) once all checks pass.
+This loads `.gaia/artifacts/implementation-artifacts/.../<story-key>-*.md`, resolves the stack-matched developer for your project (Step 3b), and dispatches that developer to plan and implement through the TDD cycle on a feature branch — while the orchestrator runs the gates and lands a merged PR on staging (or your configured promotion target) once all checks pass.
 
 **When to use which option.**
 
@@ -68,6 +70,8 @@ This loads `.gaia/artifacts/implementation-artifacts/.../<story-key>-*.md`, walk
 
 - A story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` before starting. If missing, fail fast with "Story file not found -- run /gaia-create-story first."
 - Story status MUST be `ready-for-dev` or `in-progress`. Any other status is a HALT condition.
+- Plan authoring (Step 4) and TDD implementation (Steps 5/6/7) MUST be delegated to the stack-matched developer subagent resolved in Step 3b (`{stack}-dev`, via `load-stack-persona.sh --story-file`). The main-turn orchestrator MUST NOT author the plan or write tests/production code inline — it dispatches the developer and runs the gates. The orchestrator's own `Edit`/`Write` are reserved for gate-owned, non-code artifacts (the story file's Findings/Review-Gate tables, checkpoints). This mirrors the `/gaia-quick-dev` developer-delegation model.
+- If no stack-developer persona can be resolved (Step 3b exit 2), HALT — do NOT fall back to an orchestrator-authored implementation.
 - Follow TDD cycle strictly: Red (failing tests) -> Green (minimal implementation) -> Refactor. Each phase is a separate step -- NEVER combine them.
 - Do NOT write implementation code during the Red phase.
 - Do NOT skip the Refactor phase even if Green code looks acceptable.
@@ -158,13 +162,41 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 - Run `scripts/git-branch.sh {story_key} {slug}` to create a feature branch.
 - The script handles collision detection and offers resume if branch exists.
 
+### Step 3b -- Resolve Stack Developer
+
+The engineering work in this workflow — authoring the implementation plan (Step 4) and writing the tests and production code (Steps 5/6/7 TDD Red/Green/Refactor) — is performed by a **stack-matched developer subagent selected from project knowledge**, NOT by the main-turn orchestrator. The orchestrator stays a bridge: it resolves the developer, dispatches the work, and owns the gates (Val plan-validation, the risk-gated TDD review gates, the Step 7b Val-in-TDD pass, and the push/PR/CI/merge tail). This mirrors the proven `/gaia-quick-dev` delegation model — `gaia-dev-story` is the more comprehensive workflow and enforces the same clean-room boundary.
+
+Resolve the developer persona via the shared resolver (it runs in the parent context BEFORE any fork dispatch):
+
+```bash
+!${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file {story_path}
+```
+
+`eval` the script's stdout to populate `stack`, `agent_file`, and `sidecar_file`. Resolution order inside the script: the story's `stack:` frontmatter field wins; otherwise it falls back to `project.stack` from config, then to filesystem markers under the project root (`angular.json` → angular-dev, `package.json`/`tsconfig.json` → ts-dev, `pom.xml`/`build.gradle` → java-dev, `requirements.txt`/`pyproject.toml` → python-dev, `go.mod` → go-dev, `pubspec.yaml` → flutter-dev, `Podfile`/`AndroidManifest.xml` → mobile-dev). The resolved `agent_file` is the absolute path to the matching `${CLAUDE_PLUGIN_ROOT}/agents/{stack}-dev.md` developer persona.
+
+- **Exit 0:** log `Resolved developer: {stack} (persona {agent_file})` and carry `stack` / `agent_file` forward to Steps 4–7. Derive the subagent registration name from the persona filename — `basename {agent_file} .md` (e.g. `typescript-dev`, `angular-dev`, `flutter-dev`, `java-dev`, `python-dev`, `go-dev`, `mobile-dev`). Note the canonical `stack` token `ts-dev` maps to the `typescript-dev` persona/registration name; always dispatch by the filename-derived name, never the raw `ts-dev` token.
+- **Exit 2 (unsupported stack / persona file not found):** HALT with the script's stderr. Do NOT silently fall back to a non-stack-aware orchestrator-authored implementation — the absence of a developer persona is a stop condition, not a license to self-implement. Direct the user to set the story's `stack:` frontmatter (or `project.stack` in config) to one of: ts-dev, angular-dev, flutter-dev, java-dev, python-dev, go-dev, mobile-dev.
+
+**Stack-developer dispatch contract (used by Steps 4–7).** Whenever this workflow dispatches the developer, it spawns the resolved developer subagent via the **main-turn Agent tool** (`subagent_type: gaia:<persona-name>`, where `<persona-name>` is the `basename {agent_file} .md` resolved above — e.g. `gaia:typescript-dev`, `gaia:python-dev`) with exactly ONE level of subagent nesting. The dispatch prompt MUST carry:
+
+1. **The story context** — the resolved `{story_path}`, the story key, and (for REWORK) the failed review reports the developer must address.
+2. **The resolved `project_path`** as an explicit working-directory parameter. The developer MUST write application code to `project_path`, NOT to `project-root` (the CLAUDE.md directory-identity rule). The prompt asserts this discipline verbatim.
+3. **The checkpoint path** so the developer records `files_touched` (path + `shasum -a 256` + ISO-8601 `last_modified`) after each significant change — the PostToolUse `checkpoint.sh` hook also fires on the orchestrator side.
+4. **JIT shared-skill references** by `{skill}#{section}` selector — never pre-loaded inline. Typical: `gaia-testing-patterns#tdd-cycle`, `gaia-git-workflow#commits`, `gaia-code-review-standards#review-gate-completion`.
+
+**Nesting discipline.** The developer subagent loads shared skills JIT in-context — it does NOT spawn further nested subagents. The orchestrator's own gate dispatches (Val, `tdd-reviewer`) are sibling single-level spawns, never nested inside the developer.
+
+**YOLO inheritance.** When the orchestrator is in YOLO mode, it MUST `export GAIA_YOLO_MODE=1` into the developer dispatch's environment — a child does not inherit YOLO intent implicitly (see the Subagent YOLO inheritance note at Step 4).
+
 ### Step 4 -- Plan Implementation
 
-- Load the playbook: read `playbook.md` for reasoning guidance.
-- For FRESH mode: read architecture.md and ux-design.md for context. Generate a detailed implementation plan covering: context, implementation steps, files to modify, testing strategy, risks.
-- For REWORK mode: read failed review reports. Focus plan on fixing review issues.
-- For RESUME mode: continue from checkpoint state.
-- Render the plan to the user.
+> **Developer-authored (Step 3b).** The implementation plan is authored by the resolved `{stack}-dev` developer subagent, dispatched per the Step 3b contract — NOT by the main-turn orchestrator. The orchestrator dispatches the developer to produce the plan, then receives the rendered plan back and runs the planning gate (validation / approval) below. Do NOT have the orchestrator author the plan inline.
+
+- Dispatch the `{stack}-dev` developer subagent (Step 3b contract) to author the plan. The developer loads the playbook (`playbook.md`) for reasoning guidance and produces a detailed implementation plan covering: context, implementation steps, files to modify, testing strategy, risks.
+  - For FRESH mode: the developer reads architecture.md and ux-design.md for context.
+  - For REWORK mode: the developer reads the failed review reports and focuses the plan on fixing review issues.
+  - For RESUME mode: the developer continues from checkpoint state.
+- The developer returns the rendered plan to the orchestrator, which renders it to the user and runs the planning gate below. The orchestrator does NOT author or substitute its own plan.
 
 <!-- E55-S5: figma graceful-degrade begin -->
 **Figma graceful-degrade:** Before rendering the plan, if the story frontmatter has a `figma:` block, probe the Figma MCP server (e.g., `mcp__claude_ai_Figma__whoami`). If the probe fails (server unavailable, auth error, timeout, or the server is not listed):
@@ -196,13 +228,13 @@ If `is_yolo` returns non-zero (non-YOLO branch -- default):
   <!-- E55-S3: three-option prompt body (labels: approve, revise, validate) -->
   - The `AskUserQuestion` prompt body offers exactly three labeled options -- `approve`, `revise`, `validate` -- lowercase, no punctuation, no synonyms. Do NOT add a fourth option (no `skip`, `verify`, `cancel`, etc.).
   - On `approve`: advance to Step 5 TDD Red. Only an explicit `approve` response advances; any other response (including silence) keeps the workflow halted.
-  - On `revise`: ask the user for free-form feedback text via a follow-up `AskUserQuestion` (or harness-equivalent). Pass the feedback to the plan regenerator and regenerate the plan reflecting the feedback. Then re-ask the same three-option question. The `revise` loop is user-driven and unbounded -- there is NO iteration cap; the user decides when to `approve`.
+  - On `revise`: ask the user for free-form feedback text via a follow-up `AskUserQuestion` (or harness-equivalent). Re-dispatch the `{stack}-dev` developer subagent (Step 3b contract) with the feedback so the developer — the plan author — regenerates the plan reflecting it. Then re-ask the same three-option question. The `revise` loop is user-driven and unbounded -- there is NO iteration cap; the user decides when to `approve`.
   - On `validate`: route the rendered plan to the `gaia-val-validate` skill via the **main-turn Agent tool**. After the Agent call returns, the skill MUST source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` where `{sentinel_path} = .gaia/memory/checkpoints/val-envelope-{sha256(plan_path) first 16 hex}.json`. On non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}` — DO NOT fall through to a self-judged validation verdict. Then render Val's findings inline, grouped into CRITICAL / WARNING / INFO buckets, and re-ask the same three-option question. The `validate` loop is user-driven and unbounded -- there is NO iteration cap; the user decides when to `approve` or `revise`. This is intentionally distinct from the YOLO branch's 3-iteration auto-fix cap.
   - Emit a single-line gate log to stderr: `step4_gate: yolo=false verdict=halted` on entry, then `step4_gate: yolo=false verdict=passed` once the user responds with `approve`. Emit `step4_gate: yolo=false verdict=revise` and `step4_gate: yolo=false verdict=validate` per loop iteration on the corresponding branch.
 
 If `is_yolo` returns zero (YOLO branch):
   <!-- E55-S2: YOLO Val auto-validation loop (added by E55-S2) -->
-  - The rendered plan auto-routes to Val for up to 3 iterations of CRITICAL+WARNING auto-fix. The YOLO branch MUST NOT issue any user-prompt tool call; the next tool invocation MUST be the `gaia-val-validate` skill on the rendered plan via the **main-turn Agent tool**. After the Agent call returns and BEFORE classifying findings, the skill MUST source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` (sentinel path derived from `sha256(plan_path)` first 16 hex chars); on non-zero exit, HALT with the canonical error — DO NOT fall through to self-judged validation. Auto-fix is inline using this skill's own `Edit`/`Write` tools (single-spawn-level) — no nested subagent spawn inside the loop.
+  - The rendered plan auto-routes to Val for up to 3 iterations of CRITICAL+WARNING auto-fix. The YOLO branch MUST NOT issue any user-prompt tool call; the next tool invocation MUST be the `gaia-val-validate` skill on the rendered plan via the **main-turn Agent tool**. After the Agent call returns and BEFORE classifying findings, the skill MUST source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` (sentinel path derived from `sha256(plan_path)` first 16 hex chars); on non-zero exit, HALT with the canonical error — DO NOT fall through to self-judged validation. Plan auto-fixes are applied by re-dispatching the `{stack}-dev` developer subagent (Step 3b contract) — the plan is developer-authored, so its revisions route to the developer, NOT to orchestrator-inline `Edit`/`Write`. The orchestrator owns the loop control; the developer dispatch stays single-level (no nested subagent spawn inside the loop).
   - **Path-traversal mitigation (AC5):** BEFORE constructing the audit-file path, validate `story_key` against the regex `^E[0-9]+-S[0-9]+$`. On mismatch, abort the YOLO branch with a clear error and emit no writes — never sanitize-and-continue. Reference shell idiom: `printf '%s\n' "$story_key" | grep -Eq '^E[0-9]+-S[0-9]+$'`.
   - **Audit file (AC2):** persist findings to `.gaia/memory/checkpoints/{story_key}-yolo-plan-findings.md` on every iteration. Append per iteration — never overwrite, never truncate. Two consecutive YOLO runs on the same story append a fresh set of `## Iteration {N} — {timestamp}` sections under the existing ones; entries from prior runs MUST be preserved verbatim. Each section body is the structured findings JSON or YAML returned by Val.
   - **Checkpoint persistence (AC4):** record the YOLO flag, the current iteration count, and the `last-findings-hash` (sha256 of the latest findings JSON) via `${CLAUDE_PLUGIN_ROOT}/scripts/append-val-iteration.sh` (which delegates to `write-checkpoint.sh`). Comparing `last-findings-hash` across iterations identifies oscillation; log stalls to the Dev Agent Record but DO NOT short-circuit the loop — the 3-iteration cap is the hard backstop.
@@ -218,7 +250,7 @@ while iteration < 3:
   checkpoint_record(yolo=true, iteration, sha256(findings))
   if not critical and not warning:         # INFO-only or empty -> break (AC3)
     break
-  apply_fixes(critical + warning)          # inline Edit/Write — no subagent spawn
+  dispatch_developer(fixes=critical + warning)  # {stack}-dev subagent revises the plan (single-level)
   iteration += 1
 if iteration == 3 and (critical or warning):
   HALT with remaining findings + audit-file path -> /gaia-fix-story  # AC2 cap
@@ -242,8 +274,10 @@ Backward-compatibility note: a resumed in-progress story with no Step 4 gate-cle
 > [!yolo]
 > Step 5 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration. Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass owns the 3-iteration auto-fix loop and the cap-exhaustion gate. The Step 5 body itself stays pause-free — the pause-free TDD invariant is non-negotiable. Step 5a (risk-gated TDD review hook) is the separate gate point that fires after Step 5 completes; it is OUTSIDE this YOLO branch's scope.
 
-- Follow the playbook's test strategy reasoning.
-- For each subtask: write failing test(s) that define expected behavior.
+> **Developer-authored (Step 3b).** The failing tests in this step are written by the resolved `{stack}-dev` developer subagent, dispatched per the Step 3b contract — NOT by the main-turn orchestrator. The orchestrator does NOT write tests or implementation code inline; it dispatches the developer and then runs the Step 5a gate on the result.
+
+- The developer follows the playbook's test strategy reasoning.
+- For each subtask: the developer writes failing test(s) that define expected behavior.
 - Run the test suite -- verify all new tests FAIL.
 - Tests MUST fail because implementation does not exist yet. If a test passes without implementation, it is vacuous and must be rewritten.
 
@@ -271,10 +305,12 @@ The hook fires exactly once per Step 5. If the gate returns `SKIP`, no subagent 
 > [!yolo]
 > Step 6 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration. Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass applies the INFO-only break (Green-phase INFO-only findings auto-proceed to Refactor without dev-agent intervention) and counts timed-out Val attempts against the 3-iteration cap. The Step 6 body itself stays pause-free — the pause-free TDD invariant is non-negotiable. Step 6a (risk-gated TDD review hook) is OUTSIDE this YOLO branch's scope.
 
-- Follow the playbook's design approach reasoning.
-- For each subtask: implement minimum code to make failing tests pass.
+> **Developer-authored (Step 3b).** The implementation code in this step is written by the resolved `{stack}-dev` developer subagent, dispatched per the Step 3b contract — NOT by the main-turn orchestrator. The orchestrator does NOT write implementation code inline; it dispatches the developer and then runs the Step 6a gate on the result.
+
+- The developer follows the playbook's design approach reasoning.
+- For each subtask: the developer implements the minimum code to make failing tests pass.
 - Run the test suite -- verify all tests PASS.
-- Mark each completed subtask in the story file.
+- The developer marks each completed subtask in the story file.
 
 ### Step 6a -- TDD Review Gate (Green phase)
 
@@ -316,8 +352,10 @@ After Step 6 Green completes with all tests passing, run a single advisory pass 
 > [!yolo]
 > Step 7 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration. Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass surfaces refactor-introduced test regressions (previously-green tests now failing tagged in Val's input context). The 3-iteration auto-fix loop owned by Step 7b enforces the attempt-cap gate: 3 attempts max, cap exhaustion stops with finding list, no silent pass. The Step 7 body itself stays pause-free — the pause-free TDD invariant is non-negotiable. Step 7a (risk-gated TDD review hook) is OUTSIDE this YOLO branch's scope.
 
-- Improve code quality while keeping all tests green.
-- Extract shared utilities, decompose large functions, improve naming, remove duplication.
+> **Developer-authored (Step 3b).** The refactoring in this step is performed by the resolved `{stack}-dev` developer subagent, dispatched per the Step 3b contract — NOT by the main-turn orchestrator. The orchestrator does NOT refactor code inline; it dispatches the developer and then runs the Step 7a gate and the Step 7b Val-in-TDD pass on the result.
+
+- The developer improves code quality while keeping all tests green.
+- The developer extracts shared utilities, decomposes large functions, improves naming, removes duplication.
 - Run the test suite -- verify all tests STILL PASS.
 
 ### Step 7a -- TDD Review Gate (Refactor phase)
@@ -348,7 +386,8 @@ This loop runs unconditionally — both YOLO and non-YOLO. There is NO YOLO-mode
 
 Loop semantics mirror the planning-gate YOLO loop: 3-iteration cap, CRITICAL+WARNING gating, INFO-only break, audit-file append, HALT-on-exhaustion. The differences are the input (TDD diff vs. plan) and the audit-file name (`{story_key}-tdd-val-findings.md` vs. `{story_key}-yolo-plan-findings.md`).
 
-- The next tool invocation MUST be the `gaia-val-validate` skill on the diff (artifacts touched during Steps 5-7) via the **main-turn Agent tool**. After the Agent call returns and BEFORE classifying findings, the skill MUST source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` (sentinel path derived from `sha256(diff_anchor_path)` first 16 hex chars, e.g. the story file path); on non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}` — DO NOT fall through to self-judged validation. Auto-fix is inline using this skill's own `Edit`/`Write` tools (single-spawn-level) — no nested subagent spawn inside the loop.
+- The next tool invocation MUST be the `gaia-val-validate` skill on the diff (artifacts touched during Steps 5-7) via the **main-turn Agent tool**. After the Agent call returns and BEFORE classifying findings, the skill MUST source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` (sentinel path derived from `sha256(diff_anchor_path)` first 16 hex chars, e.g. the story file path); on non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}` — DO NOT fall through to self-judged validation.
+- **Auto-fix routes to the developer.** Because the diff is application code (Step 3b: code is developer-authored), each iteration's CRITICAL+WARNING auto-fixes are applied by re-dispatching the `{stack}-dev` developer subagent (Step 3b contract) with the finding set — NOT by the orchestrator's own `Edit`/`Write`. The orchestrator owns the loop control (iteration cap, audit append, HALT-on-exhaustion) but never writes production code itself. The developer dispatch stays single-level (no nested subagent spawn inside the loop).
 - **Path-traversal mitigation:** BEFORE constructing the audit-file path, validate `story_key` against the regex `^E[0-9]+-S[0-9]+$`. On mismatch, abort Step 7b with a clear error and emit no writes — never sanitize-and-continue. Reference shell idiom: `printf '%s\n' "$story_key" | grep -Eq '^E[0-9]+-S[0-9]+$'`. The regex check MUST run before any path is constructed and before any audit-file write.
 - **Audit file:** persist findings to `.gaia/memory/checkpoints/{story_key}-tdd-val-findings.md` on every iteration. Append per iteration — never overwrite, never truncate. Two consecutive end-of-story runs append a fresh set of `## Iteration {N} — {timestamp}` sections under the existing ones; entries from prior runs MUST be preserved verbatim. Each section body is the structured findings JSON or YAML returned by Val.
 - **Auto-fix vocabulary** for diff-level findings: line edits, function-signature corrections, missing test assertions, dead code removal. Anything beyond the diff (e.g., cross-cutting refactors) is logged as Dev Notes and deferred — auto-fix MUST stay scoped to the diff.
@@ -364,7 +403,7 @@ while iteration < 3:
   audit_append(iteration, findings)          # .gaia/memory/checkpoints/{story_key}-tdd-val-findings.md
   if not critical and not warning:           # INFO-only or empty -> break
     break
-  apply_fixes(critical + warning)            # inline Edit/Write — no subagent spawn
+  dispatch_developer(fixes=critical + warning)  # {stack}-dev subagent applies code fixes (single-level)
   iteration += 1
 if iteration == 3 and (critical or warning):
   HALT with remaining findings + audit-file path
