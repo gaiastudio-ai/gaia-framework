@@ -122,12 +122,15 @@ extract_step_body() {
   echo "$region" | grep -qE "INFO"
 }
 
-@test "AC1: Step 7b region applies fixes inline (no nested subagent spawn)" {
+@test "AC1: Step 7b region routes code fixes to the developer subagent (single-level, no nested spawn)" {
   region="$(extract_step7b_region)"
   [ -n "$region" ]
-  # NFR-046 single-spawn-level — auto-fix uses the skill's own Edit/Write tools.
-  echo "$region" | grep -qiE "inline"
-  echo "$region" | grep -qE "Edit"
+  # The diff is application code, which is developer-authored — Step 7b
+  # auto-fixes re-dispatch the stack-developer subagent rather than having the
+  # orchestrator write production code inline. The dispatch stays single-level
+  # (no nested subagent spawn inside the loop).
+  echo "$region" | grep -qiE "developer subagent|dispatch_developer"
+  echo "$region" | grep -qiE "single-level|no nested subagent spawn"
 }
 
 # ---------- AC1 audit-file persistence ----------
