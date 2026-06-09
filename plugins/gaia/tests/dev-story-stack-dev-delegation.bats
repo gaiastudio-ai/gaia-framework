@@ -70,13 +70,16 @@ teardown() { common_teardown; }
 
 @test "Step 4 plan is developer-authored, not orchestrator-authored" {
   # Assert the plan-authoring delegation directive is present in Step 4.
-  awk '/^### Step 4 -- Plan Implementation/{f=1} /^### Step 5 -- TDD Red/{f=0} f' "$SKILL_MD" \
-    | grep -qiE 'developer subagent.*author|authored by the resolved .*-dev developer|dispatch the .*-dev developer subagent .*to author'
+  # Use `run bash -c` so the pipeline's final exit status (grep) is what is
+  # asserted — a bare `awk | grep -q` can surface awk's SIGPIPE status under
+  # some bats/awk combinations (the exit-code pipe-masking class).
+  run bash -c "awk '/^### Step 4 -- Plan Implementation/{f=1} /^### Step 5 -- TDD Red/{f=0} f' \"$SKILL_MD\" | grep -EiC0 'developer subagent.*author|authored by the resolved .*-dev developer|dispatch the .*-dev developer subagent .*to author'"
+  [ "$status" -eq 0 ]
 }
 
 @test "Step 4 explicitly says the orchestrator does NOT author the plan inline" {
-  awk '/^### Step 4 -- Plan Implementation/{f=1} /^### Step 5 -- TDD Red/{f=0} f' "$SKILL_MD" \
-    | grep -qiE 'orchestrator does NOT author|NOT by the main-turn orchestrator'
+  run bash -c "awk '/^### Step 4 -- Plan Implementation/{f=1} /^### Step 5 -- TDD Red/{f=0} f' \"$SKILL_MD\" | grep -EiC0 'orchestrator does NOT author|NOT by the main-turn orchestrator'"
+  [ "$status" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -84,18 +87,18 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 
 @test "Step 5 (Red) tests are written by the developer subagent" {
-  awk '/^### Step 5 -- TDD Red/{f=1} /^### Step 5a/{f=0} f' "$SKILL_MD" \
-    | grep -qiE 'written by the resolved .*-dev developer subagent|developer writes failing test'
+  run bash -c "awk '/^### Step 5 -- TDD Red/{f=1} /^### Step 5a/{f=0} f' \"$SKILL_MD\" | grep -EiC0 'written by the resolved .*-dev developer subagent|developer writes failing test'"
+  [ "$status" -eq 0 ]
 }
 
 @test "Step 6 (Green) implementation is written by the developer subagent" {
-  awk '/^### Step 6 -- TDD Green/{f=1} /^### Step 6a/{f=0} f' "$SKILL_MD" \
-    | grep -qiE 'written by the resolved .*-dev developer subagent|developer implements the minimum code'
+  run bash -c "awk '/^### Step 6 -- TDD Green/{f=1} /^### Step 6a/{f=0} f' \"$SKILL_MD\" | grep -EiC0 'written by the resolved .*-dev developer subagent|developer implements the minimum code'"
+  [ "$status" -eq 0 ]
 }
 
 @test "Step 7 (Refactor) is performed by the developer subagent" {
-  awk '/^### Step 7 -- TDD Refactor/{f=1} /^### Step 7a/{f=0} f' "$SKILL_MD" \
-    | grep -qiE 'performed by the resolved .*-dev developer subagent|developer improves code quality'
+  run bash -c "awk '/^### Step 7 -- TDD Refactor/{f=1} /^### Step 7a/{f=0} f' \"$SKILL_MD\" | grep -EiC0 'performed by the resolved .*-dev developer subagent|developer improves code quality'"
+  [ "$status" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -110,8 +113,8 @@ teardown() { common_teardown; }
 }
 
 @test "Step 7b auto-fix re-dispatches the developer subagent for code fixes" {
-  awk '/^### Step 7b/{f=1} /^### Step 8/{f=0} f' "$SKILL_MD" \
-    | grep -qiE 'dispatch_developer|re-dispatching the .*-dev developer subagent'
+  run bash -c "awk '/^### Step 7b/{f=1} /^### Step 8/{f=0} f' \"$SKILL_MD\" | grep -EiC0 'dispatch_developer|re-dispatching the .*-dev developer subagent'"
+  [ "$status" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------
