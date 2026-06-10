@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.188.0] — 2026-06-10
+
+### Added
+
+- (gaia) add post-cascade traceability↔registry consistency gate
+
 ## [1.187.12] — 2026-06-10
 
 ### Changed
