@@ -292,10 +292,15 @@ EOF
 # F-28: story-key extraction from per-story parent dir
 # ===========================================================================
 
-@test "AF-30-2 F-28: tech-debt scan-findings extracts key from per-story parent dir" {
-  run grep -F 'Per-story layout' \
-        "$PLUGIN_ROOT/skills/gaia-tech-debt-review/scripts/scan-findings.sh"
+# Retargeted from the retired scan-findings.sh to the per-story extractor
+# (E39-S6). Now a BEHAVIORAL assertion: the extractor derives the story key
+# from the per-story parent dir when the basename is story.md.
+@test "AF-30-2 F-28: findings extractor extracts key from per-story parent dir" {
+  d="$BATS_TEST_TMPDIR/E60-S7-slug"; mkdir -p "$d"
+  printf -- '---\nstatus: "done"\n---\n## Findings\n| # | Type | Severity | Finding | Suggested Action |\n|---|------|----------|---------|------------------|\n| 1 | tech-debt | low | x | y |\n' > "$d/story.md"
+  run "$PLUGIN_ROOT/skills/gaia-triage-findings/scripts/extract-findings.sh" --story-file "$d/story.md"
   [ "$status" -eq 0 ]
+  [[ "$output" == E60-S7\|* ]]   # key derived from parent dir name
 }
 
 # ===========================================================================

@@ -82,7 +82,7 @@ module,phase,name,code,command,required,agent-name,description,output-location
 "lifecycle","4-implementation","change-request","change-request","gaia-change-request","false","pm","DEPRECATED — Redirects to /gaia-add-feature. Use add-feature instead.",".gaia/artifacts/planning-artifacts"
 "lifecycle","4-implementation","add-feature","add-feature","gaia-add-feature","false","pm","Triage and route a fix, enhancement, or feature through affected artifacts",".gaia/artifacts/planning-artifacts"
 "lifecycle","4-implementation","add-stories","add-stories","gaia-add-stories","false","pm","Add incremental stories to existing epics-and-stories.md",".gaia/artifacts/planning-artifacts"
-"lifecycle","4-implementation","tech-debt-review","tech-debt-review","gaia-tech-debt-review","false","sm","Aggregate, classify, and prioritize technical debt",".gaia/artifacts/implementation-artifacts"
+"lifecycle","4-implementation","triage-findings","triage-findings","gaia-triage-findings","false","sm","Triage development findings into backlog stories and review technical debt (rolling dashboard) for the active sprint",".gaia/artifacts/implementation-artifacts"
 "lifecycle","4-implementation","agent-validator","agent-validator","gaia-agent-validator","false","validator","Val — Validator Agent for artifact verification","n/a"
 "lifecycle","4-implementation","val-validate","val-validate","gaia-val-validate","false","validator","Validate artifact against codebase and ground truth",".gaia/artifacts/implementation-artifacts"
 "lifecycle","4-implementation","val-validate-artifact","val-validate-artifact","gaia-val-validate","false","validator","Validate artifact against codebase and ground truth",".gaia/artifacts/implementation-artifacts"

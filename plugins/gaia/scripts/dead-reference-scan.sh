@@ -172,6 +172,11 @@ is_allowlisted() {
   # SKILL.md files; the literal token appears in assertions and prose
   # comments because it IS the pattern the test enforces zero-of.
   [[ "$path" == */plugins/gaia/tests/static-next-steps.bats ]] && return 0
+  # e39-s6-retire-tech-debt.bats ASSERTS the /gaia-tech-debt-review retirement
+  # (dead-ref-clean, gaia-help/manifest/lifecycle row removal); it names the
+  # workflow-manifest.csv / lifecycle-sequence.yaml tokens as its contractual
+  # assertion targets — same precedent as static-next-steps.bats above.
+  [[ "$path" == */plugins/gaia/tests/e39-s6-retire-tech-debt.bats ]] && return 0
   # The full-lifecycle parity guard ASSERTS zero engine loads — preserve verbatim.
   [[ "$path" == */plugins/gaia/test/e28-s133-full-lifecycle-atdd.bats ]] && return 0
   # Comment-only references in foundation scripts (see plan v4 Modified-files table).
@@ -228,7 +233,8 @@ is_allowlisted() {
   [[ "$path" == */plugins/gaia/skills/gaia-validation-patterns/SKILL.md ]] && return 0
   # gaia-performance-review references are negated ("no workflow.xml engine").
   [[ "$path" == */plugins/gaia/skills/gaia-performance-review/SKILL.md ]] && return 0
-  # gaia-tech-debt-review references are negated ("no workflow.xml engine").
+  # gaia-tech-debt-review is a deprecation redirect — its SKILL.md intentionally
+  # references the retired /gaia-tech-debt-review command in the deprecation notice.
   [[ "$path" == */plugins/gaia/skills/gaia-tech-debt-review/SKILL.md ]] && return 0
   # gaia-git-workflow reference is negated ("no longer runs through workflow.xml").
   [[ "$path" == */plugins/gaia/skills/gaia-git-workflow/SKILL.md ]] && return 0
@@ -316,7 +322,6 @@ is_allowlisted() {
     */plugins/gaia/skills/gaia-quick-spec/SKILL.md|\
     */plugins/gaia/skills/gaia-readiness-check/SKILL.md|\
     */plugins/gaia/skills/gaia-teach-testing/SKILL.md|\
-    */plugins/gaia/skills/gaia-tech-debt-review/scripts/scan-findings.sh|\
     */plugins/gaia/skills/gaia-tech-research/SKILL.md|\
     */plugins/gaia/skills/gaia-test-design/SKILL.md|\
     */plugins/gaia/skills/gaia-test-framework/SKILL.md|\

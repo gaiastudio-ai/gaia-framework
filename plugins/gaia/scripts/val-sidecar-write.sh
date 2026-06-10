@@ -4,8 +4,9 @@
 # Restores the V1 auto-persistence behavior for 5 Phase 4 commands:
 #   /gaia-create-story, /gaia-validate-story, /gaia-sprint-plan,
 #   /gaia-triage-findings, /gaia-retro
-# (/gaia-tech-debt-review keeps its existing inline Step 7 write as the
-# gold-standard reference; it is NOT a consumer of this helper.)
+# (The tech-debt review capability is now a phase of /gaia-triage-findings,
+# which already persists via this helper; the retired /gaia-tech-debt-review
+# command is a deprecation redirect and writes nothing.)
 #
 # Contract:
 #   val-sidecar-write.sh \

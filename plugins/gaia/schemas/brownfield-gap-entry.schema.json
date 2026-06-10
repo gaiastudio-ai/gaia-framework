@@ -78,7 +78,7 @@
     },
     "suggested_action": {
       "type": "string",
-      "description": "Optional remediation hint. Triage and tech-debt-review may promote this into a story Origin section."
+      "description": "Optional remediation hint. The /gaia-triage-findings triage and tech-debt phases may promote this into a story Origin section."
     },
     "stack": {
       "type": "string",

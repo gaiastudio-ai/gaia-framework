@@ -8,7 +8,7 @@ orchestration_class: light-procedural
 
 ## Mission
 
-You are processing open action items that accumulated since the last sprint — the pre-sprint triage pass. The tracker lives at `.gaia/artifacts/planning-artifacts/action-items.yaml` (the canonical location) and is populated by `/gaia-retro`, `/gaia-triage-findings`, `/gaia-tech-debt-review`, `/gaia-correct-course`, and `/gaia-meeting`. Your job is to walk through each open item, route it to the correct agent or ask the user directly, record the resolution with reasoning, and update the tracker.
+You are processing open action items that accumulated since the last sprint — the pre-sprint triage pass. The tracker lives at `.gaia/artifacts/planning-artifacts/action-items.yaml` (the canonical location) and is populated by `/gaia-retro`, `/gaia-triage-findings`, `/gaia-correct-course`, and `/gaia-meeting`. Your job is to walk through each open item, route it to the correct agent or ask the user directly, record the resolution with reasoning, and update the tracker.
 
 This skill is the native Claude Code conversion of the legacy action-items workflow at `_gaia/lifecycle/workflows/4-implementation/action-items/instructions.xml`. The legacy 131-line XML body is preserved here as explicit prose. No workflow engine, no engine-specific XML step tags.
 
@@ -41,7 +41,7 @@ The skill runs four steps in strict order, mirroring the legacy `action-items/in
 
 ## Step 1 — Load and Display
 
-- Read `.gaia/artifacts/planning-artifacts/action-items.yaml`. If the file does not exist, display `No action items tracked yet. Action items are created by /gaia-retro, /gaia-triage-findings, /gaia-tech-debt-review, and /gaia-correct-course.` and stop.
+- Read `.gaia/artifacts/planning-artifacts/action-items.yaml`. If the file does not exist, display `No action items tracked yet. Action items are created by /gaia-retro, /gaia-triage-findings, and /gaia-correct-course.` and stop.
 - Filter to `open` and `in-progress` items only (skip `done`, `invalid`, `deferred`).
 - Apply escalation rules:
   - Items open for **3+ sprints** → auto-escalate priority MEDIUM → HIGH.
@@ -221,6 +221,6 @@ If all resolved:
 
 - Legacy source: `_gaia/lifecycle/workflows/4-implementation/action-items/instructions.xml` (131 lines) — parity reference.
 - Tracker: `.gaia/artifacts/planning-artifacts/action-items.yaml` (the canonical location).
-- Triggers (populate the tracker): `/gaia-retro`, `/gaia-triage-findings`, `/gaia-tech-debt-review`, `/gaia-correct-course`.
+- Triggers (populate the tracker): `/gaia-retro`, `/gaia-triage-findings`, `/gaia-correct-course`.
 - Downstream consumer: `/gaia-sprint-plan`.
 - Reference implementation: `plugins/gaia/skills/gaia-fix-story/SKILL.md`.
