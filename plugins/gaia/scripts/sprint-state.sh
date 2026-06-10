@@ -51,9 +51,17 @@
 #   FAILED) blocks the transition with the offending row names enumerated.
 #
 # Config:
-#   PROJECT_PATH                — defaults to "." when unset. Story files and
-#                                 sprint-status.yaml are located relative to it.
-#   IMPLEMENTATION_ARTIFACTS    — defaults to "${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts".
+#   PROJECT_ROOT                — defaults to "${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}".
+#                                 This is the directory containing `.gaia/` (and
+#                                 `docs/` in legacy projects) per CLAUDE.md.
+#                                 The runtime tree is resolved relative to it.
+#   PROJECT_PATH                — defaults to ".". Application code paths only —
+#                                 never the `.gaia/` tree. In a split-repo layout
+#                                 (application code in a subdir, `.gaia/` at the
+#                                 repo root) PROJECT_PATH and PROJECT_ROOT are
+#                                 deliberately different; set PROJECT_ROOT
+#                                 explicitly to point at the repo root.
+#   IMPLEMENTATION_ARTIFACTS    — defaults to "${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts".
 #   SPRINT_STATE_SCRIPT_DIR     — internal. Directory of this script, used to
 #                                 locate sibling scripts (lifecycle-event.sh,
 #                                 review-gate.sh). Override only in tests.
@@ -256,8 +264,12 @@ Canonical states (CLAUDE.md):
   backlog | validating | ready-for-dev | in-progress | blocked | review | done
 
 Config:
-  PROJECT_PATH                defaults to "."
-  IMPLEMENTATION_ARTIFACTS    defaults to "${PROJECT_PATH}/docs/implementation-artifacts"
+  PROJECT_ROOT                defaults to "${CLAUDE_PROJECT_ROOT:-.}". Anchors
+                              the `.gaia/` tree (and legacy `docs/`) per CLAUDE.md.
+  PROJECT_PATH                defaults to "${PROJECT_ROOT}". Application code only.
+                              Differs from PROJECT_ROOT in split-repo layouts.
+  IMPLEMENTATION_ARTIFACTS    defaults to "${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts"
+                              (falls back to "${PROJECT_ROOT}/docs/implementation-artifacts").
   SPRINT_STATUS_YAML          overrides the default yaml path (tests).
 
 Exit codes:
@@ -328,25 +340,35 @@ validate_transition() {
 # if the canonical path does not exist but the fallback does — supports bats
 # fixtures which place the yaml at $TEST_TMP root for test speed.
 resolve_paths() {
+  # PROJECT_ROOT is the directory containing `.gaia/` (per CLAUDE.md).
+  # PROJECT_PATH is application-code only; in a split-repo layout (app in a
+  # subdir, `.gaia/` at the repo root) the two differ deliberately. The `.gaia/`
+  # tree and the legacy `docs/` tree resolve from PROJECT_ROOT.
+  #
+  # Backward-compat default: when PROJECT_ROOT is unset, fall back to
+  # PROJECT_PATH (then to CLAUDE_PROJECT_ROOT, then to "."). This preserves the
+  # historic behavior for callers that set only PROJECT_PATH while letting
+  # split-repo callers set PROJECT_ROOT explicitly to override.
   PROJECT_PATH="${PROJECT_PATH:-.}"
+  PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH}}}"
   # Smart-fallback for IMPLEMENTATION_ARTIFACTS — prefer
   # .gaia/artifacts/implementation-artifacts/ when present on disk, fall back
   # to legacy docs/implementation-artifacts/ for in-deprecation-window
   # consumers and bats fixtures. Env-var override still wins.
   if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
-    if [ -d "${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts" ]; then
-      IMPLEMENTATION_ARTIFACTS="${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts"
+    if [ -d "${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts" ]; then
+      IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts"
     else
-      IMPLEMENTATION_ARTIFACTS="${PROJECT_PATH}/docs/implementation-artifacts"
+      IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT}/docs/implementation-artifacts"
     fi
   fi
   # Prefer `.gaia/state/sprint-status.yaml` (mutable-runtime-state tier) over
   # the legacy `docs/implementation-artifacts/sprint-status.yaml`
   # (artifacts-tier). Legacy fallback retained during the transition window.
   if [ -z "${SPRINT_STATUS_YAML:-}" ]; then
-    local gaia_state="${PROJECT_PATH}/.gaia/state/sprint-status.yaml"
+    local gaia_state="${PROJECT_ROOT}/.gaia/state/sprint-status.yaml"
     local canonical="${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml"
-    local fallback="${PROJECT_PATH}/sprint-status.yaml"
+    local fallback="${PROJECT_ROOT}/sprint-status.yaml"
     # .gaia/state/ is the canonical home for sprint-status.yaml and is what
     # sprint-status-dashboard.sh reads first. Resolution order:
     #   1. existing .gaia/state/   yaml — canonical, already seeded
@@ -2536,7 +2558,11 @@ _resolve_active_yaml() {
     printf '%s' "$SPRINT_STATUS_YAML"
   else
     # Safety net for callers that invoke this without resolve_paths() first.
-    printf '%s/.gaia/state/sprint-status.yaml' "${PROJECT_PATH:-.}"
+    # `.gaia/` is anchored at PROJECT_ROOT, not PROJECT_PATH (per CLAUDE.md
+    # ). Backward-compat fallback chain mirrors resolve_paths():
+    # PROJECT_ROOT → CLAUDE_PROJECT_ROOT → PROJECT_PATH → ".".
+    printf '%s/.gaia/state/sprint-status.yaml' \
+      "${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
   fi
 }
 
