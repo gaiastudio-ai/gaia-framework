@@ -18,6 +18,8 @@ Scan the active sprint's committed story files (by default) for populated Findin
 
 **Scan scope.** The default scan is **sprint-scoped** — only the stories committed to the active sprint (resolved from `sprint-status.yaml`) are scanned, and findings are extracted via a deterministic frontmatter+Findings extractor that never reads full story bodies (token-budget protection). Pass `--all` for the full historical sweep across every story, or a `story-key` to scan a single story. See Step 1.
 
+**Mandatory sprint-close prerequisite.** `/gaia-triage-findings` is a required step in the sprint-close sequence (**review → triage → retro → close**). When it runs against the active sprint, its finalize step writes a per-sprint proof-of-run sentinel (`triage-findings-{sprint_id}-completed.json`); `/gaia-sprint-close` refuses to close a sprint whose triage sentinel is absent. Run triage after `/gaia-sprint-review` and before `/gaia-retro`.
+
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/triage-findings/` XML engine workflow. Follows the scripts-over-LLM principle where applicable.
 
 ## Critical Rules
