@@ -76,5 +76,23 @@ else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
 
+# ---------- 3. Write the per-sprint triage proof-of-run sentinel ----------
+# /gaia-sprint-close requires this sentinel before it will close the active
+# sprint (triage is a mandatory sprint-close prerequisite). Best-effort: a
+# missing sprint-status.yaml (e.g. a single-story --story-key run with no
+# active sprint) simply skips the write — non-fatal.
+TRIAGE_SENTINEL="$SCRIPT_DIR/triage-sentinel.sh"
+SPRINT_STATUS_FILE="${PROJECT_ROOT:-.}/.gaia/state/sprint-status.yaml"
+if [ -x "$TRIAGE_SENTINEL" ] && [ -f "$SPRINT_STATUS_FILE" ]; then
+  SPRINT_ID=$(awk -F: '/^sprint_id[[:space:]]*:/ { sub(/^sprint_id[[:space:]]*:[[:space:]]*/, ""); gsub(/["'\'']/, ""); print; exit }' "$SPRINT_STATUS_FILE")
+  if [ -n "$SPRINT_ID" ]; then
+    if "$TRIAGE_SENTINEL" write --sprint-id "$SPRINT_ID" --checkpoints-dir "${PROJECT_ROOT:-.}/.gaia/memory/checkpoints" >/dev/null 2>&1; then
+      log "triage proof-of-run sentinel written for sprint $SPRINT_ID"
+    else
+      log "triage-sentinel write failed for sprint $SPRINT_ID (non-fatal)"
+    fi
+  fi
+fi
+
 log "finalize complete for $WORKFLOW_NAME"
 exit 0
