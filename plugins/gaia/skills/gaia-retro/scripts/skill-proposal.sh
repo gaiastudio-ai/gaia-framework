@@ -74,7 +74,7 @@ extract_tech_debt_reflection() {
     cat <<'EOF'
 ## Tech Debt Reflection
 
-> No tech debt data available (run `/gaia-tech-debt-review` to generate `.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md`).
+> No tech debt data available (run `/gaia-triage-findings` to triage findings and generate `.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md`).
 EOF
     return 0
   fi

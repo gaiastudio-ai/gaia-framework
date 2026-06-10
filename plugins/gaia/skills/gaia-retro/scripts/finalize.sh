@@ -77,7 +77,7 @@ if [ -n "${GAIA_FINALIZE_SENTINEL_REQUIRED:-}" ]; then
   # filesystem-mtime comparison — tracked as a future hardening (do not rely on
   # this guard for adversarial tamper-resistance; it is a sequencing sanity
   # check, not a security control). The same caveat applies to the sibling
-  # gaia-tech-debt-review and gaia-triage-findings finalize.sh guards.
+  # gaia-triage-findings finalize.sh guard.
   if [ "$SIDECAR_LOG" -ot "$CHECKPOINT_MARKER" ]; then
     die "Val sidecar write missing — Step 7 must be invoked before finalize (decision-log older than run checkpoint)"
   fi

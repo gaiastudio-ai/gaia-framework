@@ -297,15 +297,6 @@ sequence:
         - command: /gaia-correct-course
           context: "If current sprint scope needs adjustment"
 
-  tech-debt-review:
-    phase: 4-implementation
-    command: /gaia-tech-debt-review
-    next:
-      primary: /gaia-create-story
-      alternatives:
-        - command: /gaia-sprint-plan
-          context: "To plan a tech debt paydown sprint"
-
   sprint-status:
     phase: 4-implementation
     command: /gaia-sprint-status

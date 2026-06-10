@@ -7,9 +7,9 @@
 # and NOTHING else. The full story body (User Story, Tasks, Dev Notes, etc.)
 # is NEVER read into the output — this is the token-budget-protection mandate
 # that /gaia-triage-findings previously lacked (its Step 1 LLM-read whole
-# files). Mirrors the design of
-# gaia-tech-debt-review/scripts/scan-findings.sh, but operates on one file so
-# the caller can scope the scan to a sprint's committed stories.
+# files). Adapts the deterministic frontmatter+Findings scanner pattern (the
+# former tech-debt-review directory walker) to operate on ONE file so the
+# caller can scope the scan to a sprint's committed stories.
 #
 # Per finding row, emits one pipe-delimited line:
 #   <story_key>|<status>|<sprint_id>|<type>|<severity>|<finding>|<action>

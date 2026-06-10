@@ -82,18 +82,39 @@ EOF
 
 # --- F-22 ---
 
-@test "F-22: tech-debt scanner reads Type from col2 not col1" {
-  grep -qF 'We now correctly map col2' "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/scan-findings.sh"
-  grep -qF 'col2 → Type' "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/scan-findings.sh"
+# NOTE: the standalone tech-debt scan-findings.sh was retired (E39-S6); the
+# frontmatter+Findings parsing logic now lives in the per-story extractor
+# skills/gaia-triage-findings/scripts/extract-findings.sh. These F-22 cases
+# were retargeted from comment-grep on the deleted script to BEHAVIORAL
+# assertions against the extractor (more robust than pinning comment text).
+EXTRACT="${PLUGIN_ROOT}/skills/gaia-triage-findings/scripts/extract-findings.sh"
+
+@test "F-22: findings extractor reads Type from col2 not col1 (5-col schema)" {
+  d="$BATS_TEST_TMPDIR/E50-S1-x"; mkdir -p "$d"
+  printf -- '---\nkey: "E50-S1"\nstatus: "done"\n---\n## Findings\n| # | Type | Severity | Finding | Suggested Action |\n|---|------|----------|---------|------------------|\n| 1 | tech-debt | high | the thing | fix it |\n' > "$d/story.md"
+  run "$EXTRACT" --story-file "$d/story.md"
+  [ "$status" -eq 0 ]
+  # Output field 4 is the type (key|status|sprint|TYPE|sev|finding|action) — must be tech-debt, not the row number.
+  [[ "$output" == *"|tech-debt|high|the thing|"* ]]
 }
 
-@test "F-22: tech-debt scanner handles both 5-col and 4-col schemas" {
-  grep -qF '4-col legacy dev-story schema' "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/scan-findings.sh"
-  grep -qF 'tech-debt|bug|framework-defect' "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/scan-findings.sh"
+@test "F-22: findings extractor handles both 5-col and 4-col schemas" {
+  # 4-col legacy dev-story schema: ID | Severity | Description | Status
+  d="$BATS_TEST_TMPDIR/E50-S2-y"; mkdir -p "$d"
+  printf -- '---\nkey: "E50-S2"\nstatus: "done"\n---\n## Findings\n| ID | Severity | Description | Status |\n|----|----------|-------------|--------|\n| F-1 | medium | legacy row | open |\n' > "$d/story.md"
+  run "$EXTRACT" --story-file "$d/story.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"legacy row"* ]]
 }
 
-@test "F-22: tech-debt scanner skips header rows for both schemas" {
-  grep -qF 'col1" = "#" ] || [ "$col1" = "ID"' "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/scan-findings.sh"
+@test "F-22: findings extractor skips header rows for both schemas" {
+  d="$BATS_TEST_TMPDIR/E50-S3-z"; mkdir -p "$d"
+  printf -- '---\nkey: "E50-S3"\nstatus: "done"\n---\n## Findings\n| # | Type | Severity | Finding | Suggested Action |\n|---|------|----------|---------|------------------|\n| 1 | tech-debt | low | real row | act |\n' > "$d/story.md"
+  run "$EXTRACT" --story-file "$d/story.md"
+  [ "$status" -eq 0 ]
+  # The header words "Type"/"Severity" must NOT appear as an emitted finding row.
+  [[ "$output" != *"|Type|Severity|"* ]]
+  [[ "$output" == *"real row"* ]]
 }
 
 # --- F-24 ---
