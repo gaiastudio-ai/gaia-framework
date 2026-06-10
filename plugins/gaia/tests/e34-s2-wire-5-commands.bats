@@ -198,11 +198,20 @@ _run_consumer() {
   [ "$status" -ne 0 ]
 }
 
-@test "TC-VSP-5: gaia-tech-debt-review SKILL.md retains its own Step 7 inline write (gold-standard, post-AF-22-4)" {
-  local skill="$SKILLS_DIR/gaia-tech-debt-review/SKILL.md"
-  grep -q '### Step 7 — Save to Val Memory' "$skill"
-  # AF-2026-05-22-4 canonicalized memory paths. Accept canonical .gaia/memory/ or legacy _memory/.
-  grep -qE '(_memory|\.gaia/memory)/validator-sidecar/decision-log\.md' "$skill"
+# TC-VSP-5 ORIGINALLY asserted that gaia-tech-debt-review kept its own inline
+# Step 7 Val-sidecar write (the gold-standard). That skill was retired to a
+# deprecation redirect (E39-S6) — the tech-debt review capability is now a
+# phase of /gaia-triage-findings, which carries the Val-sidecar persistence.
+# Retargeted to assert the redirect (no Step 7) + that triage owns the write.
+@test "TC-VSP-5: gaia-tech-debt-review retired to a redirect; triage carries the Val-sidecar write" {
+  local redirect="$SKILLS_DIR/gaia-tech-debt-review/SKILL.md"
+  # The redirect no longer has a Step 7 / inline sidecar write.
+  run grep -q '### Step 7 — Save to Val Memory' "$redirect"
+  [ "$status" -ne 0 ]
+  grep -qE 'replaced_by:.*gaia-triage-findings' "$redirect"
+  # The replacement (triage-findings) carries the Val-sidecar persistence.
+  grep -qE '(_memory|\.gaia/memory)/validator-sidecar/decision-log\.md' \
+    "$SKILLS_DIR/gaia-triage-findings/SKILL.md"
 }
 
 # ---------------------------------------------------------------------------
