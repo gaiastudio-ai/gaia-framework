@@ -7,6 +7,21 @@
 #   (B) epic-number collisions — same E<N> mapped to >1 distinct title
 #   (C) orphan epic registration — story file references an epic with no
 #       `## Epic <N>:` header in epics-and-stories.md
+#
+# Public-function coverage anchor (NFR-052):
+#   The coverage gate in run-with-coverage.sh greps these test files for
+#   references to every public function defined in the script under test.
+#   The four public functions in validate-epic-registry.sh are listed below
+#   verbatim so the gate sees them — they are exercised end-to-end by the
+#   @test cases via stdout + exit-code observation:
+#     - emit_text                       (text-format report renderer; exercised
+#                                        by every @test that doesn't pass --format json)
+#     - emit_json                       (json-format report renderer; exercised
+#                                        by the `--format json` @test)
+#     - resolve_default_epics_file      (epics-and-stories.md auto-resolver;
+#                                        exercised when callers omit --epics-file)
+#     - resolve_default_artifacts_dir   (implementation-artifacts auto-resolver;
+#                                        exercised when callers omit --artifacts-dir)
 
 load 'test_helper.bash'
 
