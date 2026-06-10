@@ -334,11 +334,33 @@ The `spawn_fallback_reason` value MUST name the specific trigger condition (subs
 
 ### Step 5 --- Mark Findings as Triaged
 
-In each source story's Findings table, append triage markers to processed findings:
+In each source story's Findings table, append triage markers to processed findings. **The TRIAGED marker is a single source of truth** — its exact byte form is owned by `scripts/triaged-marker.sh` (`triaged_marker {key}` → `[TRIAGED -> {key}]`, ASCII `->`). The Step 5b tech-debt phase READS this same marker via `triaged_match_regex`; the glyph MUST be byte-identical between writer and reader (a Unicode-arrow drift silently breaks target validation — see Step 5b).
 
-- CREATE STORY: append `[TRIAGED -> {new_story_key}]` to the Finding column
-- ADD TO EXISTING: append `[TRIAGED -> {existing_story_key}]` to the Finding column
+- CREATE STORY: append `[TRIAGED -> {new_story_key}]` to the Finding column (canonical ASCII `->` form — `triaged_marker {new_story_key}`)
+- ADD TO EXISTING: append `[TRIAGED -> {existing_story_key}]` to the Finding column (`triaged_marker {existing_story_key}`)
 - DISMISS: append `[DISMISSED]` to the Finding column
+
+### Step 5b --- Tech-Debt Phase (rolling debt ledger)
+
+After findings are triaged and marked (Step 5), run the **tech-debt phase** — the capability merged in from the retired `/gaia-tech-debt-review` skill. It aggregates, classifies, scores, and ages the project's technical debt into a rolling `tech-debt-dashboard.md`. The phase is non-interactive (no prompts) and writes a dashboard, mirroring the legacy auto-output contract.
+
+**5b.1 — Scan debt candidates (reuse the S4 extractor — no second scanner).** For each story in the scan set (sprint-scoped by default, `--all` for the full sweep), extract candidates via the SAME `scripts/extract-findings.sh` used in Step 1 — the merged phase introduces NO new scanner. Read ONLY frontmatter + `## Findings` (token-budget mandate, inherited from the extractor).
+
+**5b.2 — Validate triage targets (byte-identical marker read).** For every finding marked `[TRIAGED -> {target_key}]`, look up the target story's status by sourcing `scripts/triaged-marker.sh` and matching with `triaged_match_regex` (the SAME literal Step 5 wrote — this is the byte-equality contract, tested by the marker bats). Classify each target:
+- target `done` → **STALE TARGET** (debt likely added after implementation — needs re-triage).
+- target file missing / not a valid story key → **UNASSIGNED**.
+- target in backlog / validating / ready-for-dev → **QUEUED**; in-progress → **IN PROGRESS**; in review → **IN REVIEW**.
+- For every STALE TARGET, check the filesystem — if the referenced file/pattern no longer exists, mark **RESOLVED** and exclude from classification/scoring.
+
+**5b.3 — Merge duplicates, then assign stable TD-{N} IDs.** Merge findings with the same root cause (same file/pattern + issue type) into one item with a source list `E{a}-S{b}, E{c}-S{d}` and tag `(merged from N findings)`. Merge BEFORE ID assignment. Then assign stable `TD-{N}` IDs via `scripts/td-id-assign.sh --dashboard {dashboard_path} --count {n}` — IDs persist across runs (read the previous dashboard's TD-{N} tokens; assign new IDs only to genuinely new items; NEVER renumber).
+
+**5b.4 — Classify + score + age.** Classify each item DESIGN / CODE / TEST / INFRASTRUCTURE. Score by Impact + Risk − Effort. Compute aging against the current sprint.
+
+**5b.5 — Emit the rolling dashboard.** Read the previous `tech-debt-dashboard.md` (if any) for the trend comparison, then write the merged result with a trend section (current totals vs previous). The dashboard is read-only output — no confirmation prompt.
+
+**5b.6 — Action items route through the canonical writer (AC3).** Any action items the tech-debt phase produces MUST be written via the SAME canonical action-items writer the triage phase uses (`scripts/action-items-write.sh` → `aiw_write`, target `.gaia/state/action-items.yaml`). Do NOT inline-append to `planning-artifacts/action-items.yaml` (the legacy tech-debt-review path) — one authoritative tracker is used by both phases.
+
+This phase replaces the standalone `/gaia-tech-debt-review` command; the slash command is retired to a deprecation redirect (see that skill's deprecation note). `/gaia-retro` continues to read `tech-debt-dashboard.md` unchanged.
 
 ### Step 6 --- Summary and Recommendations
 
@@ -393,6 +415,10 @@ The helper enforces the two-file allowlist and idempotency by composite `(comman
 Failure posture: if the helper rejects or errors, log a warning and continue — memory persistence is best-effort and MUST NOT fail the skill.
 
 ## Changelog
+
+- **2026-06-10 — Tech-debt phase merged in + canonical TRIAGED marker.** Added Step 5b (Tech-Debt Phase): the rolling `tech-debt-dashboard.md` capability — TD-{N} stable-ID ledger, DESIGN/CODE/TEST/INFRASTRUCTURE classification, Impact+Risk−Effort scoring, sprint-aging, STALE TARGET / UNASSIGNED / RESOLVED detection, duplicate merge, trend comparison — is merged in from the now-retired standalone `/gaia-tech-debt-review` command. The phase reuses the per-story `extract-findings.sh` (no second scanner) and `td-id-assign.sh` (copied into this skill's `scripts/`). The TRIAGED marker glyph is now a single source of truth in `scripts/triaged-marker.sh`: the canonical form is ASCII `[TRIAGED -> {key}]` (the form triage has always written); the merged tech-debt reader is aligned to it via `triaged_match_regex`, closing a Unicode-arrow-vs-ASCII glyph mismatch that would have silently matched zero triage targets. A bats test asserts writer/reader byte-equality. Action items from the tech-debt phase route through the canonical `action-items-write.sh` (`.gaia/state/action-items.yaml`), not the legacy inline append. `/gaia-retro` continues to read the dashboard unchanged.
+
+- **2026-06-10 — Sprint-scoped default scan + deterministic Findings extractor.** Step 1 rewired: the default triage scan is now the active sprint's committed stories (resolved via `scripts/resolve-sprint-stories.sh` from `sprint-status.yaml`), with `--all` restoring the full historical sweep. Findings are extracted via `scripts/extract-findings.sh` (frontmatter + `## Findings` only — never the full story body), restoring the token-budget protection the skill previously lacked. The LLM no longer globs the implementation-artifacts tree or reads whole story files.
 
 - **2026-05-15 — Fail-closed Val-sidecar sentinel in finalize.sh.** Step 7 prose updated to note that the skill exports `GAIA_FINALIZE_SENTINEL_REQUIRED=1` before invoking `finalize.sh`; the script asserts `_memory/validator-sidecar/decision-log.md` was modified AFTER the run-started checkpoint marker, and exits non-zero with the canonical error string `Val sidecar write missing — Step 7 must be invoked before finalize` when the assertion fails. Mirrors `gaia-add-feature/scripts/finalize.sh:51-82` fail-closed pattern. Sibling fix mirrored in `/gaia-retro`. Backward-compat preserved: legacy fixtures without the env var get the prior unconditional behavior.
 
