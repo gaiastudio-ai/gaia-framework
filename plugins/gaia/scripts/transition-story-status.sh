@@ -1198,6 +1198,11 @@ update_story_index_yaml() {
       printf '    file: "%s"\n' "$file_path"
       printf '    status: "%s"\n' "$new_status"
     } > "$file"
+    # Mirror to legacy flat (when present) on the create path too — otherwise
+    # the very first transition would silently leave the legacy reader stale.
+    legacy_flat_index_mirror_update "$key" "$new_status" \
+      "$title_yaml" "$epic_yaml" "$priority" "$risk" "$author_yaml" "$file_path" || \
+      log "WARNING: legacy-flat-index mirror update failed for key=$key (non-fatal)"
     return 0
   fi
 
@@ -1302,6 +1307,113 @@ update_story_index_yaml() {
   # mv succeeded — clear the slot.
   _GAIA_TMP_PATHS[$_tmp_idx]=""
   trap - RETURN
+
+  # Mirror the same update into the legacy flat
+  # `${IMPLEMENTATION_ARTIFACTS}/story-index.yaml` when present, so the
+  # documented `state/`-tier reader does not diverge from the canonical
+  # per-epic index during the migration window. The legacy file is
+  # *opt-in by presence*: if it does not exist we don't create it, and once
+  # an operator deletes it the dual-write becomes a silent no-op (matches
+  # `legacy_flat_index_lookup`'s "steady state — return 2" contract). Errors
+  # during the mirror write are logged at WARNING level but do NOT fail the
+  # canonical transition.
+  legacy_flat_index_mirror_update "$key" "$new_status" \
+    "$title_yaml" "$epic_yaml" "$priority" "$risk" "$author_yaml" "$file_path" || \
+    log "WARNING: legacy-flat-index mirror update failed for key=$key (non-fatal)"
+}
+
+# legacy_flat_index_mirror_update — mirror an entry write into the legacy flat
+# `${IMPLEMENTATION_ARTIFACTS}/story-index.yaml` ONLY if the flat file already
+# exists. Does NOT create the flat file on absence (intentional: lets the
+# legacy file age out naturally as projects complete the per-epic migration).
+#
+# Arguments mirror update_story_index_yaml — same canonical entry shape so
+# both files stay byte-identical at the entry level.
+#
+# Return: 0 always (errors are mapped to log WARNING in the caller).
+legacy_flat_index_mirror_update() {
+  local key="$1" new_status="$2"
+  local title_yaml="$3" epic_yaml="$4" priority="$5" risk="$6" author_yaml="$7" file_path="$8"
+  local flat="${LEGACY_FLAT_STORY_INDEX:-${IMPLEMENTATION_ARTIFACTS}/story-index.yaml}"
+
+  # Opt-in by presence: skip silently when the legacy flat file is absent.
+  [ -f "$flat" ] || return 0
+
+  # Idempotent skip when the canonical and legacy paths are the same file
+  # (the flat path resolver collapses to the canonical path in legacy-layout
+  # projects that never migrated). Without this guard we'd rewrite the file
+  # twice in the same call.
+  if [ -e "$STORY_INDEX_YAML" ] && [ "$flat" -ef "$STORY_INDEX_YAML" ]; then
+    return 0
+  fi
+
+  local tmp
+  tmp=$(mktemp "${flat}.tmp.XXXXXX") || return 0
+  _GAIA_TMP_PATHS+=("$tmp")
+  local _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
+  # shellcheck disable=SC2064
+  trap "rm -f '$tmp'" RETURN
+
+  # Reuse the same awk rewrite-or-append shape as the canonical writer so the
+  # entry blocks stay byte-identical.
+  awk -v target="$key" \
+      -v new_status="$new_status" \
+      -v title="$title_yaml" \
+      -v epic="$epic_yaml" \
+      -v priority="$priority" \
+      -v risk="$risk" \
+      -v author="$author_yaml" \
+      -v file_path="$file_path" '
+    function emit_block(k, t, e, p, r, a, f, s) {
+      printf "  %s:\n", k
+      printf "    story_key: \"%s\"\n", k
+      printf "    title: %s\n", t
+      printf "    epic: %s\n", e
+      printf "    priority: \"%s\"\n", p
+      printf "    risk: \"%s\"\n", r
+      printf "    author: %s\n", a
+      printf "    file: \"%s\"\n", f
+      printf "    status: \"%s\"\n", s
+    }
+    BEGIN { in_entry = 0; in_stories = 0; found = 0; emitted = 0 }
+    { raw = $0; line = $0; sub(/\r$/, "", line) }
+    line ~ /^stories:[[:space:]]*$/ { in_stories = 1; print raw; next }
+    in_stories && line ~ /^[A-Za-z]/ { in_stories = 0; in_entry = 0 }
+    in_stories && line ~ /^  [A-Za-z][A-Za-z0-9_-]*:[[:space:]]*$/ {
+      k = line; sub(/^  /, "", k); sub(/:[[:space:]]*$/, "", k)
+      if (k == target) {
+        in_entry = 1; found = 1
+        if (!emitted) {
+          emit_block(target, title, epic, priority, risk, author, file_path, new_status)
+          emitted = 1
+        }
+        next
+      } else { in_entry = 0; print raw; next }
+    }
+    in_entry {
+      if (line ~ /^    / || line ~ /^[[:space:]]*$/) { next }
+      in_entry = 0
+    }
+    { print raw }
+    END {
+      if (!found) {
+        emit_block(target, title, epic, priority, risk, author, file_path, new_status)
+      }
+    }
+  ' "$flat" > "$tmp" || {
+    rm -f "$tmp"
+    trap - RETURN
+    return 1
+  }
+
+  if ! mv -f "$tmp" "$flat"; then
+    rm -f "$tmp"
+    trap - RETURN
+    return 1
+  fi
+  _GAIA_TMP_PATHS[$_tmp_idx]=""
+  trap - RETURN
+  return 0
 }
 
 # ---------- Main flow ----------
