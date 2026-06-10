@@ -37,7 +37,7 @@ defer queue. The downstream capabilities continue to layer:
 
 - **CLOSE phase** decision record + action items + memory write-through, full saved-meeting frontmatter.
 - **Scratchpad pin / extraction** (LANDED — see "Scratchpad pin + extraction" section below).
-- **Eight non-`decide` modes** (LANDED — see "Mode Registry" section below).
+- **Nine non-`decide` modes** (LANDED — see "Mode Registry" section below).
 - **Guardrails** (max-turns, per-agent cap, loop detection) + cost-reporting refinements.
 
 The lifecycle leaves deterministic insertion-point hooks in the turn loop and lifecycle
@@ -226,6 +226,7 @@ at `knowledge/modes.yaml`. Each mode entry carries `name`, optional
 | `design`       | `ux`    | Christy, Suki, Layla, Talia, Tariq, Lena, Cleo, Freya | `ux-design-notes`           |
 | `architecture` | —       | Theo, Soren, Milo, Juno, Omar, Priya                  | `architecture-decisions`    |
 | `sprint`       | —       | Nate, Derek, Rafael                                   | `sprint-adjustments`        |
+| `clarify`      | `clarification`, `questions` | (none — user-specified only)             | `clarification-notes`       |
 
 **Single-mode-only invariant.** `scripts/resolve-mode.sh` rejects
 two or more `--mode` flags before INVITE — exit code 2 with a stderr message
@@ -234,7 +235,9 @@ action-item / per-agent memory entry is written when this fires.
 
 **Alias canonicalisation.** `--mode=ux` resolves to the
 canonical `design` entry; the saved-notes frontmatter records `mode: design`.
-`design`/`ux` is the only alias pair in v1.
+Likewise `--mode=clarification` and `--mode=questions` both resolve to the
+canonical `clarify` entry. Aliases are recorded against their canonical mode in
+the saved-notes frontmatter.
 
 **Default-invitee resolution (INVITE phase).**
 `scripts/resolve-invitees.sh --mode <m> --invitees "<csv>" --installed <path>`
@@ -1070,7 +1073,7 @@ These land in later layers — do **not** retrofit them into the existing substr
 - The `/gaia-validate-meeting` static-check skill that consumes the
   verifiability — reserved namespace, not implemented.
 - ~~Scratchpad pin / extraction.~~ (LANDED — see "Scratchpad pin + extraction".)
-- The eight non-`decide` modes.
+- The nine non-`decide` modes.
 - ~~Guardrails (max-turns, per-agent cap, loop detection).~~ (LANDED — see "Guardrails + cost-reporting refinements".)
 - ~~Cost-reporting refinements beyond the per-turn header.~~ (LANDED — see "Guardrails + cost-reporting refinements".)
 
