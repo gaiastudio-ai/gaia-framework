@@ -1,11 +1,11 @@
 # gaia-meeting mode registry
 #
-# One entry per supported `--mode` value. The `decide` default and the eight
+# One entry per supported `--mode` value. The `decide` default and the nine
 # other entries cover all supported meeting modes.
 #
 # Schema:
 #   - name: <canonical-mode-name>
-#     aliases: [<alias>, ...]            # optional; only `design` has the `ux` alias in v1
+#     aliases: [<alias>, ...]            # optional; e.g. `design` has `ux`, `clarify` has `clarification`/`questions`
 #     default_invitees: [<id>, ...]      # canonical agent ID or stakeholder name
 #     closing_artifact_bias: <bias-name>
 #     notes_template_ref: <relative-path-from-this-knowledge-dir>
@@ -68,3 +68,9 @@ modes:
     default_invitees: [Nate, Derek, Rafael]
     closing_artifact_bias: sprint-adjustments
     notes_template_ref: notes-template-sprint-adjustments.md
+
+  - name: clarify
+    aliases: [clarification, questions]
+    default_invitees: []
+    closing_artifact_bias: clarification-notes
+    notes_template_ref: notes-template-clarification-notes.md
