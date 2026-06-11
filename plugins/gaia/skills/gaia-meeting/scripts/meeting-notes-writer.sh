@@ -243,8 +243,17 @@ tmp="$(mktemp)"
 
   echo "cost_breakdown:"
   if [[ -n "$ATTENDEES" ]]; then
-    # Re-emit the attendees mapping list with stable indentation.
-    echo "$ATTENDEES" | sed -E 's/^[[:space:]]+/  /'
+    # Re-emit the attendees mapping list with canonical YAML nesting derived
+    # from line STRUCTURE, not the incoming indent depth: each `- ` list-item
+    # line gets a 2-space indent and its continuation fields get 4 spaces, so
+    # the block round-trips through a YAML parser regardless of how the payload
+    # indented the source attendees block. A prior `sed 's/^[[:space:]]+/  /'`
+    # flattened both levels to 2 spaces, breaking the per-item nesting.
+    echo "$ATTENDEES" | awk '{
+      sub(/^[[:space:]]+/, "")          # strip incoming indent
+      if ($0 ~ /^- /) print "  " $0     # list-item line -> 2-space indent
+      else print "    " $0              # continuation field -> 4-space indent
+    }'
   fi
   echo "total_tokens: ${TOTAL_TOKENS}"
   # Emit scratchpad_extractions list (empty when none).
