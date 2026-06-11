@@ -180,7 +180,7 @@ This warning is shown once per session.
               <td>Command argument</td>
               <td>No (defaults to <code>decide</code>)</td>
               <td>Meeting mode. Each mode biases the closing artifact differently. See the <a href="#mode-reference">mode reference</a> below this table.</td>
-              <td><code>--mode decide</code>, <code>--mode explore</code>, <code>--mode red-team</code></td>
+              <td><code>--mode decide</code>, <code>--mode explore</code>, <code>--mode red-team</code>, <code>--mode clarify</code></td>
             </tr>
             <tr>
               <td><code>--invitees</code></td>
@@ -242,26 +242,63 @@ This warning is shown once per session.
         </table>
 
         <h3 id="mode-reference">Mode reference</h3>
-        <p>Nine canonical modes are available. Each biases the closing artifact differently. Unless <code>--invitees-override</code> is set, each mode auto-injects its default invitees into the resolved attendee list.</p>
+        <p>Ten canonical modes are available. The mode you pick sets the <strong>goal of the meeting</strong> and the <strong>shape of its closing artifact</strong>, and (unless <code>--invitees-override</code> is set) auto-injects a default set of expert invitees suited to that goal. Pick the mode whose purpose matches what you actually need out of the session.</p>
+
+        <h4 id="mode-purposes">What each mode is for</h4>
+        <dl class="mode-purposes">
+          <dt><code>decide</code> (default)</dt>
+          <dd><strong>Make a decision.</strong> Use when you have a question with options and need to land on one, with the trade-offs and rationale recorded. Produces a <em>decision-record</em>. No default invitees &mdash; you choose who weighs in.</dd>
+
+          <dt><code>explore</code></dt>
+          <dd><strong>Open up a problem space.</strong> Use when you are not ready to decide and want to surface options, angles, and unknowns before narrowing. Produces an <em>opportunity-map</em>. No default invitees.</dd>
+
+          <dt><code>align</code></dt>
+          <dd><strong>Get people on the same page.</strong> Use to reconcile differing understandings, confirm scope, or settle who-owns-what before work starts. Produces an <em>alignment-summary</em>. Default invitees: Derek (PM), Nate (Scrum Master).</dd>
+
+          <dt><code>red-team</code></dt>
+          <dd><strong>Attack the plan to find weaknesses.</strong> Use to stress-test a design, decision, or rollout by deliberately hunting for risks, failure modes, and security gaps. Produces a <em>risk-register</em>. Default invitees: Zara (Security), Sable (Test Architect), Nova (Problem-Solver).</dd>
+
+          <dt><code>ac</code></dt>
+          <dd><strong>Write acceptance criteria.</strong> Use to turn a feature or story into concrete, testable acceptance criteria. Produces a <em>machine-readable acceptance-criteria list</em>. Default invitees: Vera (QA), Sable (Test Architect).</dd>
+
+          <dt><code>brainstorm</code></dt>
+          <dd><strong>Generate new ideas.</strong> Use for divergent, quantity-first idea generation before any filtering. Produces a <em>brainstorming-document</em>. Default invitees: Rex, Orion, Lyra, Elara, Vermeer (creative / innovation personas).</dd>
+
+          <dt><code>design</code> <span class="alias">(alias <code>ux</code>)</span></dt>
+          <dd><strong>Work through a UX / product design.</strong> Use to design flows, screens, and interaction patterns, balancing usability and the design system. Produces <em>ux-design-notes</em>. Default invitees: Christy, Suki, Layla, Talia, Tariq, Lena, Cleo, Freya (design / front-end personas).</dd>
+
+          <dt><code>architecture</code></dt>
+          <dd><strong>Make a technical / architectural call.</strong> Use to choose technologies, define component boundaries, or record an architecture decision and its consequences. Produces <em>architecture-decisions</em>. Default invitees: Theo, Soren, Milo, Juno, Omar, Priya (architecture / platform personas).</dd>
+
+          <dt><code>sprint</code></dt>
+          <dd><strong>Adjust the current sprint.</strong> Use to re-plan scope, re-prioritize, or resolve blockers mid-sprint. Produces <em>sprint-adjustments</em>. Default invitees: Nate (Scrum Master), Derek (PM), Rafael.</dd>
+
+          <dt><code>clarify</code> <span class="alias">(aliases <code>clarification</code>, <code>questions</code>)</span></dt>
+          <dd><strong>Get a question answered / explained.</strong> Use purely to understand something &mdash; experts answer your question from different angles and explain it. This mode is <em>not</em> for deciding and <em>not</em> for brainstorming; it produces <em>clarification-notes</em> (questions, expert answers, agreements/disagreements on the explanation, and open follow-ups), never a decision record. No default invitees &mdash; invite the experts relevant to your topic with <code>--invitees</code>.</dd>
+        </dl>
+
+        <h4>At a glance</h4>
         <table>
           <thead>
             <tr>
               <th>Mode</th>
+              <th>Goal</th>
               <th>Alias</th>
               <th>Default invitees</th>
               <th>Closing-artifact bias</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td><code>decide</code> (default)</td><td></td><td>(none)</td><td>decision-record</td></tr>
-            <tr><td><code>explore</code></td><td></td><td>(none)</td><td>opportunity-map</td></tr>
-            <tr><td><code>align</code></td><td></td><td>Derek, Nate</td><td>alignment-summary</td></tr>
-            <tr><td><code>red-team</code></td><td></td><td>Zara, Sable, Nova</td><td>risk-register</td></tr>
-            <tr><td><code>ac</code></td><td></td><td>Vera, Sable</td><td>machine-readable-ac-list</td></tr>
-            <tr><td><code>brainstorm</code></td><td></td><td>Rex, Orion, Lyra, Elara, Vermeer</td><td>brainstorming-document</td></tr>
-            <tr><td><code>design</code></td><td><code>ux</code></td><td>Christy, Suki, Layla, Talia, Tariq, Lena, Cleo, Freya</td><td>ux-design-notes</td></tr>
-            <tr><td><code>architecture</code></td><td></td><td>Theo, Soren, Milo, Juno, Omar, Priya</td><td>architecture-decisions</td></tr>
-            <tr><td><code>sprint</code></td><td></td><td>Nate, Derek, Rafael</td><td>sprint-adjustments</td></tr>
+            <tr><td><code>decide</code> (default)</td><td>Make a decision</td><td></td><td>(none)</td><td>decision-record</td></tr>
+            <tr><td><code>explore</code></td><td>Open up a problem space</td><td></td><td>(none)</td><td>opportunity-map</td></tr>
+            <tr><td><code>align</code></td><td>Get on the same page</td><td></td><td>Derek, Nate</td><td>alignment-summary</td></tr>
+            <tr><td><code>red-team</code></td><td>Find risks / weaknesses</td><td></td><td>Zara, Sable, Nova</td><td>risk-register</td></tr>
+            <tr><td><code>ac</code></td><td>Write acceptance criteria</td><td></td><td>Vera, Sable</td><td>machine-readable-ac-list</td></tr>
+            <tr><td><code>brainstorm</code></td><td>Generate ideas</td><td></td><td>Rex, Orion, Lyra, Elara, Vermeer</td><td>brainstorming-document</td></tr>
+            <tr><td><code>design</code></td><td>Design UX / product</td><td><code>ux</code></td><td>Christy, Suki, Layla, Talia, Tariq, Lena, Cleo, Freya</td><td>ux-design-notes</td></tr>
+            <tr><td><code>architecture</code></td><td>Make a technical call</td><td></td><td>Theo, Soren, Milo, Juno, Omar, Priya</td><td>architecture-decisions</td></tr>
+            <tr><td><code>sprint</code></td><td>Adjust the sprint</td><td></td><td>Nate, Derek, Rafael</td><td>sprint-adjustments</td></tr>
+            <tr><td><code>clarify</code></td><td>Get a question answered</td><td><code>clarification</code>, <code>questions</code></td><td>(none)</td><td>clarification-notes</td></tr>
           </tbody>
         </table>
       </section>

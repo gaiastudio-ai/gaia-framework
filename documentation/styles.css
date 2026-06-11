@@ -1211,6 +1211,29 @@ section {
   font-size: var(--font-size-xs);
 }
 
+/* --- Meeting mode purposes list ---------------------------------------- */
+dl.mode-purposes {
+  margin: 1rem 0 1.5rem;
+}
+
+dl.mode-purposes dt {
+  margin-top: 0.85rem;
+  font-weight: 600;
+}
+
+dl.mode-purposes dt:first-child {
+  margin-top: 0;
+}
+
+dl.mode-purposes dd {
+  margin: 0.2rem 0 0 1.25rem;
+}
+
+dl.mode-purposes dt .alias {
+  font-weight: 400;
+  color: var(--color-text-light);
+}
+
 /* --- Print layout ------------------------------------------------------- */
 @media print {
   .sidebar {
