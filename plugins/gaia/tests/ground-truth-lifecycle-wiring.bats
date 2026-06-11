@@ -36,13 +36,28 @@ setup() {
   SIDECAR="$MEM/validator-sidecar"
   GT="$SIDECAR/ground-truth.md"
   MARKER="$MEM/.ground-truth-stale"
-  mkdir -p "$PLANNING" "$IMPL" "$SIDECAR"
+  CKPT="$MEM/checkpoints"
+  mkdir -p "$PLANNING" "$IMPL" "$SIDECAR" "$CKPT"
 
   export CLAUDE_PROJECT_ROOT="$PROJ"
   export MEMORY_PATH="$MEM"
   export GAIA_GT_PLANNING_ROOT="$PLANNING"
   export GAIA_GT_IMPL_ROOT="$IMPL"
-  export PLANNING IMPL MEM SIDECAR GT MARKER PROJ
+  # Pin CHECKPOINT_PATH into the per-test tmpdir. finalize.sh runs checkpoint.sh
+  # (before the gate) and lifecycle-event.sh (after the gate); both resolve
+  # their write target from the environment. Without this pin, checkpoint.sh
+  # falls back to resolve-config.sh, which yields a CWD-RELATIVE
+  # `./.gaia/memory/checkpoints` — writable only when the test happens to run
+  # from a project root that already has a .gaia/ tree. That host-dependent
+  # relative path is the real Linux-CI failure: checkpoint.sh dies BEFORE the
+  # gate runs, so finalize.sh exits non-zero without ever printing the gate's
+  # `stale` diagnostic. Pinning the path into the tmpdir neutralizes the
+  # pre/post-gate infra so these tests isolate the GATE contract alone — they
+  # still prove the gate blocks-with-diagnostic on stale and is silent/clean
+  # when not applicable, independent of whether the host can satisfy the
+  # checkpoint/lifecycle-event side effects.
+  export CHECKPOINT_PATH="$CKPT"
+  export PLANNING IMPL MEM SIDECAR GT MARKER PROJ CKPT
 }
 
 teardown() { common_teardown; }
