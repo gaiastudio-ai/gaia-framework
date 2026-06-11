@@ -75,6 +75,16 @@ if [ -r "$SS_YAML" ]; then
 fi
 ```
 
+**Ground-truth staleness entry gate (BLOCKING).** AFTER the prior-close guard and BEFORE any story selection, run the ground-truth staleness gate. Sprint-plan fires this gate at Step 0 ENTRY (placement asymmetry) so planning decisions operate on FRESH ground-truth. The gate sources the shared staleness predicate (never re-inline it) and BLOCKS on STALE:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-plan/scripts/ground-truth-gate.sh
+```
+
+- On STALE the gate exits non-zero and prints a diagnostic naming the stale validator-sidecar ground-truth plus the operator's next action: run `/gaia-refresh-ground-truth --incremental`. **HALT planning** — do not proceed to story selection. After the operator runs the incremental refresh (a no-op when nothing changed) and the gate passes, planning resumes. This blocking gate is a hard precondition and is NOT bypassed by yolo or any best-effort flag.
+- The auto-trigger instructs the INCREMENTAL refresh only — never `--agent all` (the deferred manual-only full refresh).
+- On FRESH the gate is silent and exits 0; proceed to Step 1.
+
 ### Step 1 -- Load Epics, Stories, and Previous Retro
 
 - **Back-fill per-epic `story-index.yaml`.** Before parsing stories, run `${CLAUDE_PLUGIN_ROOT}/scripts/backfill-story-index.sh` once. The helper scans every `epic-*/` dir and replays `transition-story-status.sh --reconcile-only` for any story whose epic does not yet have a `story-index.yaml` (the symptom: bulk-authored stories existed under `epic-*/{key}-{slug}/story.md` but the per-epic index was never written, so downstream consumers that walk via the index missed them). The helper is idempotent and a no-op when every epic is already indexed; safe to call unconditionally.
