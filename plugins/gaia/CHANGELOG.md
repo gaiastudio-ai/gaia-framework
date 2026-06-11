@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.190.0] — 2026-06-11
+
+### Added
+
+- (E76-S24) surface meeting research/discuss output + move notes to meeting-notes/ (#1446)
+- (E84-S7) robust project-root resolution for orchestration-mode detection (#1445)
+
 ## [1.189.0] — 2026-06-11
 
 ### Added
