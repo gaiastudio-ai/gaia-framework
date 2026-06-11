@@ -134,8 +134,39 @@ _gaia_paths_resolve_override() {
 }
 
 # ---------- Resolve project root ----------
+#
+# Precedence: CLAUDE_PROJECT_ROOT (explicit) wins. Otherwise, walk UP from $PWD
+# to find the nearest ancestor containing a .gaia/ directory, so callers (skill
+# preludes, deterministic scripts) resolve the project root regardless of the
+# CWD they were invoked from. Without this walk-up the resolution fell straight
+# to $PWD, so a script run from a subdirectory (or an unrelated CWD) silently
+# failed to find .gaia/config — e.g. detect-orchestration-mode.sh returned Mode
+# A even with orchestration.mode:team set. The bounded walk-up mirrors the
+# pattern in scripts/resolve-config.sh and scripts/load-stack-persona.sh: it
+# stops at / and $HOME, and is skipped when CLAUDE_SKILL_DIR or
+# GAIA_NO_PROJECT_WALKUP is set (test-isolation escape hatches).
 
-_GAIA_ROOT_RAW="${CLAUDE_PROJECT_ROOT:-${PWD}}"
+_gaia_paths_walk_up_root() {
+  # Echo the nearest ancestor of $PWD (inclusive) that contains .gaia/, or
+  # nothing if none is found within the $HOME / root bound.
+  local d="$PWD"
+  # Check the starting dir itself first.
+  if [ -d "${d}/.gaia" ]; then printf '%s' "$d"; return 0; fi
+  while [ "$d" != "/" ] && [ "$d" != "${HOME:-/nonexistent}" ]; do
+    d="$(dirname "$d")"
+    if [ -d "${d}/.gaia" ]; then printf '%s' "$d"; return 0; fi
+  done
+  return 1
+}
+
+if [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
+  _GAIA_ROOT_RAW="$CLAUDE_PROJECT_ROOT"
+elif [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ] \
+     && _GAIA_WALKED_ROOT="$(_gaia_paths_walk_up_root)" && [ -n "$_GAIA_WALKED_ROOT" ]; then
+  _GAIA_ROOT_RAW="$_GAIA_WALKED_ROOT"
+else
+  _GAIA_ROOT_RAW="${PWD}"
+fi
 _GAIA_ROOT_CANON="$(_gaia_paths_canonicalize "$_GAIA_ROOT_RAW")"
 if [ -z "$_GAIA_ROOT_CANON" ]; then
   _gaia_paths_die "CRITICAL: could not canonicalize project root: $_GAIA_ROOT_RAW"
