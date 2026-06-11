@@ -614,9 +614,50 @@ If classification is `patch`: skip this step.
     failed, this skill has already HALTed with the canonical message
     `HALT: traceability-matrix.md is missing — run /gaia-trace first, then
     re-invoke /gaia-add-feature {feature_id}` — see Step 1c re-invocation.
+  - **Ground the dispatch in the canonical story registry.** When delegating
+    to the traceability sub-workflow, the dispatch prompt MUST pin
+    `epics-and-stories.md` as the authoritative source for every story
+    key → scope mapping, and MUST instruct the sub-agent to key each
+    story-detail row by **looking the story up by its `E<N>-S<M>` key** in
+    that registry — never by sequentially / positionally numbering the
+    things being mapped (e.g. one row per service, per requirement, or per
+    file). Test cases are assigned to the canonical story that owns the
+    behaviour they exercise. Positional keying silently mis-maps test cases
+    to the wrong stories and breaks the requirements→tests audit trail.
   - Delegate to the traceability sub-workflow via subagent to regenerate
     the traceability matrix.
   - Verify new FR / NFR IDs, test cases, and stories are linked.
+- If classification is `patch`: skip this step.
+
+### Step 8b-check -- Post-cascade traceability consistency gate (enhancement and feature)
+
+- If classification is `enhancement` or `feature`, AFTER Step 8b has
+  regenerated the matrix, run the deterministic cross-artifact consistency
+  check. The add-feature Val gate (Step 2) validates the cascade *plan*
+  pre-execution and never sees the regenerated matrix — this step is the
+  post-execution gate that asserts the matrix the sub-agent just wrote is
+  consistent with the canonical story registry:
+
+  ```bash
+  !${CLAUDE_PLUGIN_ROOT}/scripts/validate-traceability-consistency.sh \
+    --check scope --severity halt --format text
+  ```
+
+  The check is READ-ONLY. It walks every `E<N>-S<M>` referenced in a
+  story-detail table row of the traceability matrix and asserts the row's
+  declared scope is compatible with that key's scope/title in
+  `epics-and-stories.md` (header titles + materialized story files). On a
+  scope mismatch it exits non-zero and the skill MUST HALT with the
+  canonical message:
+
+  `HALT: traceability-matrix.md references story keys whose scope is inconsistent with epics-and-stories.md — re-run Step 8b grounding the traceability dispatch in the canonical story registry (see the offending rows above), then re-invoke /gaia-add-feature {feature_id}`
+
+  Record the gate verdict (PASS / the offending rows) in the assessment-doc
+  Val Findings Summary section so the audit trail captures it. The default
+  `--check scope` gates on mis-keyed story-detail rows (the high-signal
+  defect signature); invented-key references to retired/orphan epics are
+  surfaced as advisory and do not block. A caller may run
+  `--check existence` or `--check all` for a stricter audit.
 - If classification is `patch`: skip this step.
 
 ### Step 8c -- Re-shard touched documents
@@ -766,6 +807,7 @@ finding first and re-invoke the skill.
 
 ## Changelog
 
+- **2026-06-10 — Post-cascade traceability consistency gate + traceability-dispatch grounding.** Added Step 8b-check, a deterministic post-execution gate (`scripts/validate-traceability-consistency.sh`) that runs after Step 8b regenerates the matrix and HALTs when a story-detail row's scope is inconsistent with the canonical story registry (`epics-and-stories.md`, header titles + materialized story files). Closes the structural gap where the Step 2 Val gate validates only the cascade *plan* pre-execution and never re-validates the matrix the traceability sub-agent writes. Step 8b prose also gained a grounding clause: the traceability dispatch MUST pin `epics-and-stories.md` as authoritative and key each story-detail row by looking the story up by its key, never by positional/sequential numbering of the things being mapped (the defect: a sub-agent numbering rows per cloud-service produced an off-by-one that mis-mapped test cases to the wrong stories). The gate defaults to `--check scope` (gates on mis-keyed rows — the high-signal signature; invented-key references to retired epics are advisory). Sibling to the epic/story-key registry integrity audit (`validate-epic-registry.sh`) — that asserts key uniqueness + epic non-orphaning; this asserts traceability references are scope-consistent with the registry. Coverage: `plugins/gaia/tests/validate-traceability-consistency.bats` (13 cases incl. defect reproduction, false-positive guard, file-only-key registration, all three `--check` modes).
 - **2026-05-14 — Deterministic parent-epic inference.** Added `scripts/lib/infer-parent-epic.sh` — advisory helper that maps comma-separated affected_skills to open epics in `.gaia/artifacts/planning-artifacts/epics-and-stories.md`. Emits one of three modes on stdout (exit 0 always): `deterministic <epic_key>` / `ambiguous: <key1>,<key2>,...` / `no-match`. Step 8 prose updated with a pre-flight subsection that invokes the helper before story-creation logic; the result is recorded in the assessment-doc Cascade Plan as `parent_epic_match: <mode> [— <details>]`. Open-epic definition: a detail block is OPEN unless `**Status: closed**`, `**Status: retired**`, or `**Status: sunset**` appears within it. Empty `affected_skills` cleanly emits `no-match`. Closes the drift surfaced by a smoke test (LLMs reading a long epics-and-stories.md inconsistently picked between parent-epic candidates).
 - **2026-05-14 — Step 8 deferred-seed-brief mode + `step_8_mode` Cascade Plan field.** Step 8 prose rewritten to document TWO modes: `inline-dispatch` (legacy default for YOLO, materializes story files in-cascade) and `deferred-seed-brief` (new default for non-YOLO, reserves story keys + emits `### Story seed brief for <story_key>` subsections in the assessment-doc; user dispatches `/gaia-create-story <key>` as a follow-up). Default selection is YOLO-keyed: YOLO active → inline-dispatch (legacy preserved); YOLO inactive → deferred-seed-brief (new default). `setup.sh` gained a `--step-8-mode <inline-dispatch|deferred-seed-brief>` CLI override (and inline form) with canonical rejection stderr `gaia-add-feature: invalid --step-8-mode value (expected inline-dispatch or deferred-seed-brief, got: <value>)`. The Before/After default flip is documented explicitly — reviewers see the policy change, not just a new field. Rationale: the main-turn orchestration model makes inline sub-skill dispatch heavier than under the legacy fork-context model; a smoke-test surfaced this as a friction point.
 - **2026-05-14 — Steps 6/8b HALT-or-bootstrap on missing canonical test artifacts.** `setup.sh` gained two new optional CLI flags (`--classification <patch|enhancement|feature>`, `--feature-id <AF-{date}-{N}>`) parsed BEFORE resolve-config so the classification is available when gates fire. Under classification `enhancement` / `feature`, `setup.sh` invokes `validate-gate.sh test_plan_exists` and `validate-gate.sh traceability_exists` (extending the existing `prd_exists` / `epics_and_stories_exists` consumer pattern). On either gate failure, `setup.sh` `die`'s with canonical stderr `HALT: test-plan.md is missing — run /gaia-test-design first, then re-invoke /gaia-add-feature {feature_id}` (or the `/gaia-trace` mirror). Patch classifications skip both gates. SKILL.md Steps 6 + 8b prose rewritten to document the prereq contract; Step 1c re-invocation added so the classification captured in Step 1 flows back to `setup.sh`. Closes the drift surfaced by a smoke test (Step 6 silently skipped its Test Plan edit because the artifact did not yet exist on disk).

@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.188.0] — 2026-06-10
+
+### Added
+
+- (gaia) add post-cascade traceability↔registry consistency gate
+
+## [1.187.12] — 2026-06-10
+
+### Changed
+
+- (validate-epic-registry) add NFR-052 public-function coverage anchor
+
+### Fixed
+
+- (transition-story-status) mirror legacy flat story-index when present
+- (create-story) escape & and \ in scaffold-story.sh gsub replacements
+- (create-story) add epic/story-key registry integrity audit
+- (sprint-state) resolve .gaia/ tree from PROJECT_ROOT, not PROJECT_PATH
+
 ## [1.187.11] — 2026-06-09
 
 ### Changed

@@ -343,27 +343,43 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
   -v depends_on_v="$depends_on_v" \
   -v blocks_v="$blocks_v" \
   -v traces_to_v="$traces_to_v" '
+  # esc_repl — make a string safe as a gsub() replacement argument.
+  # In POSIX awk, `&` in the replacement is interpreted as the matched text,
+  # and `\` is the escape char. Without escaping, any user-supplied value
+  # containing `&` (e.g. a story title like "Foo & Bar") or `\` corrupts the
+  # output. Backslashes MUST be escaped before ampersands so the second pass
+  # does not re-escape the backslashes we just added.
+  #
+  # Quadruple-backslashes are deliberate. To produce a literal single `\` in
+  # the gsub replacement string we need to write `\\\\` in awk source (each
+  # backslash pair in the awk string literal becomes one literal backslash,
+  # and the gsub replacement engine then collapses `\\` -> `\`).
+  function esc_repl(r) {
+    gsub(/\\/, "\\\\\\\\", r)   # \  -> \\  (each literal backslash doubled)
+    gsub(/&/,  "\\\\&",   r)    # &  -> \&  (literal-ampersand escape)
+    return r
+  }
   function token_sub(s,    out) {
     out = s
-    gsub(/\{story_key\}/,         key_v,      out)
-    gsub(/\{story_title\}/,       title_v,    out)
-    gsub(/\{epic_key\}/,          epic_v,     out)
-    gsub(/\{P0\/P1\/P2\}/,        priority_v, out)
-    gsub(/\{S\/M\/L\/XL\}/,       size_v,     out)
-    gsub(/\{story_points\}/,      points_v,   out)
-    gsub(/\{high\/medium\/low\}/, risk_v,     out)
-    gsub(/\{creation_date\}/,     date_v,     out)
-    gsub(/\{agent_name\}/,        author_v,   out)
+    gsub(/\{story_key\}/,         esc_repl(key_v),      out)
+    gsub(/\{story_title\}/,       esc_repl(title_v),    out)
+    gsub(/\{epic_key\}/,          esc_repl(epic_v),     out)
+    gsub(/\{P0\/P1\/P2\}/,        esc_repl(priority_v), out)
+    gsub(/\{S\/M\/L\/XL\}/,       esc_repl(size_v),     out)
+    gsub(/\{story_points\}/,      esc_repl(points_v),   out)
+    gsub(/\{high\/medium\/low\}/, esc_repl(risk_v),     out)
+    gsub(/\{creation_date\}/,     esc_repl(date_v),     out)
+    gsub(/\{agent_name\}/,        esc_repl(author_v),   out)
     # Estimate body uses spaced forms.
-    gsub(/\{story points\}/,      points_v,   out)
-    gsub(/\{assigned agent\}/,    author_v,   out)
+    gsub(/\{story points\}/,      esc_repl(points_v),   out)
+    gsub(/\{assigned agent\}/,    esc_repl(author_v),   out)
     # Substitute the five frontmatter tokens that previously
     # remained as template defaults (origin: null, depends_on: [], ...).
-    gsub(/\{origin\}/,            origin_v,     out)
-    gsub(/\{origin_ref\}/,        origin_ref_v, out)
-    gsub(/\{depends_on\}/,        depends_on_v, out)
-    gsub(/\{blocks\}/,            blocks_v,     out)
-    gsub(/\{traces_to\}/,         traces_to_v,  out)
+    gsub(/\{origin\}/,            esc_repl(origin_v),     out)
+    gsub(/\{origin_ref\}/,        esc_repl(origin_ref_v), out)
+    gsub(/\{depends_on\}/,        esc_repl(depends_on_v), out)
+    gsub(/\{blocks\}/,            esc_repl(blocks_v),     out)
+    gsub(/\{traces_to\}/,         esc_repl(traces_to_v),  out)
     return out
   }
   function is_content_heading(line,    s) {

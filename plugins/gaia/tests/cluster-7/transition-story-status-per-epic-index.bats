@@ -152,7 +152,13 @@ teardown() { common_teardown; }
 # index is byte-identical before/after.
 # ---------------------------------------------------------------------------
 
-@test "TC-CSP-8: legacy flat index is read-only — writer never mutates it (AC3)" {
+@test "TC-CSP-8: legacy flat index is mirrored (when present) to keep state/-tier reader in sync" {
+  # The legacy flat index was previously frozen the moment the canonical
+  # per-epic shard existed — silently diverging from the story-file truth.
+  # The fix mirrors every update_story_index_yaml() write into the legacy
+  # flat too, conditional on the flat file being present. Unrelated entries
+  # in the legacy flat (e.g. an orphan E99-S99 from an older project tree)
+  # MUST be preserved verbatim.
   cat >"$FLAT_INDEX" <<'EOF'
 # Auto-maintained by status-sync protocol. Do not edit manually.
 last_updated: "2026-04-28T12:00:00Z"
@@ -164,16 +170,20 @@ stories:
     file: "E99-S99-legacy-flat-only-entry.md"
 EOF
 
-  before_sha=$(shasum -a 256 "$FLAT_INDEX" | awk '{print $1}')
-
   run "$TRANSITION" "$STORY_KEY" --to ready-for-dev
   [ "$status" -eq 0 ]
 
-  after_sha=$(shasum -a 256 "$FLAT_INDEX" | awk '{print $1}')
-  [ "$before_sha" = "$after_sha" ]
-
-  # Per-epic index must have been written separately.
+  # Per-epic index must have been written.
   [ -f "$PER_EPIC_INDEX" ]
+
+  # The transitioned key's status is mirrored into the legacy flat too.
+  grep -q "^  ${STORY_KEY}:" "$FLAT_INDEX"
+  grep -q 'status: "ready-for-dev"' "$FLAT_INDEX"
+
+  # The unrelated E99-S99 entry is preserved verbatim — the mirror is an
+  # entry-level upsert, never a full-file rewrite.
+  grep -q '^  E99-S99:$' "$FLAT_INDEX"
+  grep -q '"Legacy flat-only entry"' "$FLAT_INDEX"
 }
 
 # ---------------------------------------------------------------------------

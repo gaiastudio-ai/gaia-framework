@@ -43,6 +43,13 @@
 #                                       tests/cluster-7/transition-story-status-
 #                                       per-epic-index.bats (no-warning steady-state
 #                                       and AC4 grep-guard cases).
+#     - legacy_flat_index_mirror_update — write-side mirror that updates the
+#                                       legacy flat story-index.yaml whenever
+#                                       update_story_index_yaml writes the
+#                                       canonical per-epic index, ONLY when the
+#                                       legacy flat file is already present
+#                                       (opt-in by presence). Exercised by
+#                                       transition-story-status-legacy-flat-mirror.bats.
 #     - _glob_shard_for_key            — E59-S6 single-source-of-truth glob
 #                                       resolver for *-e<EID>-*.md per-epic
 #                                       shards used by both update_per_epic_shard
