@@ -95,6 +95,23 @@ hand-driving the deterministic scripts.
 
 - Glob `.gaia/artifacts/implementation-artifacts/retrospective-{sprint_id}-*.md`. If empty, refuse with `error: retro doc not found for {sprint_id}; run /gaia-retro first` and exit non-zero.
 
+### Step 1b — Pre-condition: triage has run (mandatory)
+
+`/gaia-triage-findings` is a **mandatory sprint-close prerequisite** — a sprint cannot be closed unless its findings have been triaged (and the tech-debt phase reviewed). This gate mirrors the retro-doc (Step 1) and sprint-review-sentinel (Step 3a) prerequisites.
+
+- Check the per-sprint triage proof-of-run sentinel via:
+
+  ```bash
+  !${CLAUDE_PLUGIN_ROOT}/skills/gaia-triage-findings/scripts/triage-sentinel.sh \
+    check --sprint-id {sprint_id}
+  ```
+
+  The sentinel (`.gaia/memory/checkpoints/triage-findings-{sprint_id}-completed.json`) is written by `/gaia-triage-findings`'s finalize step when it runs against the active sprint.
+- On non-zero exit (sentinel absent → triage not run), refuse with `error: triage not run for {sprint_id}; run /gaia-triage-findings {sprint_id} first` and exit non-zero.
+- On exit 0 (sentinel present), proceed.
+
+The canonical sprint-close prerequisite sequence is therefore **review → triage → retro → close**: `/gaia-sprint-review` produces the review verdict (Step 3a), `/gaia-triage-findings` triages findings + reviews tech debt (this gate), `/gaia-retro` produces the retro doc (Step 1), and only then does `/gaia-sprint-close` close the sprint.
+
 ### Step 2 — Pre-condition: idempotency
 
 - Read top-level `status:` from `sprint-status.yaml`. If already `closed`, emit `warning: sprint {id} already closed at {iso}` to stderr and exit 0 with no further side effects.

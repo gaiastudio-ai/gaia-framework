@@ -72,9 +72,12 @@ EOF
 
 # --- F-30 ---
 
-@test "F-30: tech-debt-review finalize.sh documents the no-Val-sentinel carve-out" {
-  grep -qF "GAIA_FINALIZE_SENTINEL_REQUIRED" "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/finalize.sh"
-  grep -qF "fail-closed-on-Val applies" "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/finalize.sh"
+# F-30 ORIGINALLY asserted tech-debt-review/finalize.sh carve-out docs. That
+# skill was retired to a deprecation redirect (E39-S6) and has no finalize.sh —
+# the carve-out is obsolete. Retargeted to assert the redirect is in place.
+@test "F-30: tech-debt-review is retired to a deprecation redirect (no finalize.sh)" {
+  [ ! -f "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/finalize.sh" ]
+  grep -qE 'replaced_by:.*gaia-triage-findings' "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/SKILL.md"
 }
 
 # --- F-31 ---
@@ -111,8 +114,10 @@ EOF
 
 # --- F-23 (already shipped in F-22 fix; assert) ---
 
-@test "F-23: tech-debt scanner [TRIAGED] dedup checks both Finding + Action cols" {
-  grep -qF 'printf '"'"'%s'"'"' "$finding $action" | grep -qE' "${PLUGIN_ROOT}/skills/gaia-tech-debt-review/scripts/scan-findings.sh"
+# F-23 retargeted from the retired scan-findings.sh to the extractor that now
+# carries the same [TRIAGED]/[DISMISSED] dedup logic over Finding + Action cols.
+@test "F-23: findings extractor [TRIAGED] dedup checks both Finding + Action cols" {
+  grep -qF 'printf '"'"'%s'"'"' "$finding $action" | grep -qE' "${PLUGIN_ROOT}/skills/gaia-triage-findings/scripts/extract-findings.sh"
 }
 
 # --- F-28 (already correct; assert) ---
