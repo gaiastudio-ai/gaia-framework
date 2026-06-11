@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.189.0] — 2026-06-11
+
+### Added
+
+- (E39-S7) mandatory triage gate in sprint-close (#1440)
+- (E39-S6) retire standalone tech-debt-review, rewire references (#1439)
+- (E39-S5) merge tech-debt phase into triage-findings (#1438)
+- (E39-S4) sprint-scope triage + deterministic findings extractor (#1437)
+- (E76-S23) add clarify mode to gaia-meeting (#1434)
+
 ## [1.188.0] — 2026-06-10
 
 ### Added
