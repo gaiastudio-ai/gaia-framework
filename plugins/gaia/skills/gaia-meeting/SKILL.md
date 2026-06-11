@@ -59,7 +59,7 @@ All artifact path references in this SKILL.md use the canonical locations under 
   remains `[Read, Grep, Glob, Bash]`; no new tool grants are
   introduced.
 - **State-free write boundary.** The skill writes ONLY to:
-  - `.gaia/artifacts/creative-artifacts/meeting-*.md`
+  - `.gaia/artifacts/creative-artifacts/meeting-notes/meeting-*.md`
   - `.gaia/state/action-items.yaml` (canonical)
   - `.gaia/memory/{agent}-sidecar/decisions/*.md`
   Every artifact write MUST be routed through `scripts/write-boundary.sh`.
@@ -191,7 +191,7 @@ without halting the meeting.
 | 4 | DISCUSS | Round-robin turns matching invite order. User interjections allowed at turn boundaries. | Live transcript only (no persistence yet) |
 | 5 | CLOSE | Closing-artifact bias depends on active mode. For `decide` (default) — decision record + action items. | None at this stage (decision-record + action-items writes arrive later) |
 | 6 | REVIEW | Brief user-facing review pass — confirm decisions, action items, and any open questions. | None |
-| 7 | SAVE | Persist the live transcript to `.gaia/artifacts/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md`. | `.gaia/artifacts/creative-artifacts/` only |
+| 7 | SAVE | Persist the live transcript to `.gaia/artifacts/creative-artifacts/meeting-notes/meeting-{YYYY-MM-DD}-{slug}.md`. | `.gaia/artifacts/creative-artifacts/` only |
 
 The phase-marker emitter is `scripts/lifecycle-marker.sh`. Every phase emits
 its marker line into the live transcript so a static check can scan
@@ -326,7 +326,7 @@ Every artifact write in this skill MUST be gated by
 `scripts/write-boundary.sh`. The asserter accepts a relative path and exits 0
 only if the path is one of:
 
-- `.gaia/artifacts/creative-artifacts/meeting-*.md`
+- `.gaia/artifacts/creative-artifacts/meeting-notes/meeting-*.md`
 - `.gaia/state/action-items.yaml` (canonical registry)
 - `.gaia/memory/{any-prefix}-sidecar/decisions/*.md`
 - `.gaia/memory/meeting-sessions/*.yaml` (interactive checkpoint mode session-state files)
@@ -568,6 +568,8 @@ Only invited agents post preludes and DISCUSS turns. The user does not appear as
 
 The canonical wrapper is `scripts/dispatch-agent-turn.sh --agent <id> --phase research --charter-ref <path> --session-id <id>`; every dispatched turn carries `dispatched_via: subagent` in its per-turn header. See `scripts/dispatch-provenance-check.sh` — the **pre-save provenance gate**, wired into Phase 7 SAVE — the SAVE will HALT if any prelude/DISCUSS turn lacks `dispatched_via: subagent`.
 
+**Surface contract (RESEARCH output to the user).** A subagent dispatched via the main-turn Agent tool returns its result TO THE ORCHESTRATOR — Claude Code does NOT auto-show that result to the user (the same auto-collapse that hides Bash output and the Mode-A warning). The facilitator MUST therefore RELAY each invitee's returned prelude body to the user as user-visible LLM turn text, prefixed with the live-stream per-turn header (`[round R / turn T / Speaker (Role) / per-turn-cost N tokens / running-total M tokens]`). The meeting is a "live-streamed transcript" — every prelude the orchestrator dispatches MUST appear on the user's screen as it lands; consuming a prelude silently (asserting its envelope but never re-emitting the body) violates this contract. This mirrors the §Surface contract precedent at the top of this SKILL.md (the Mode-A warning relay), applied to the per-turn agent output.
+
 The RESEARCH phase implements the four-step contract:
 
 1. **Per-agent sidecar load.** For each invited agent, load
@@ -664,6 +666,8 @@ Only invited agents post preludes and DISCUSS turns. The user does not appear as
 **Dispatch contract.** Each invited agent's prelude (RESEARCH) AND each DISCUSS turn MUST be produced by spawning a subagent via the **main-turn Agent tool** with the per-phase tool allowlist below. After the subagent returns its envelope, `dispatch-agent-turn.sh` wires the post-dispatch envelope assertion: the script parses `.agent` from the envelope, writes the sentinel via `lib/write-val-envelope.sh`, and invokes `assert_agent_envelope --expected-agent <agent>` from `lib/assert-agent-envelope.sh`. On assertion failure, `halt-event.sh` fires. Inline LLM role-play under the agent's persona is FORBIDDEN. The facilitator does not author agent turns; the facilitator orchestrates dispatch.
 
 The canonical wrapper is `scripts/dispatch-agent-turn.sh --agent <id> --phase discuss --charter-ref <path> --session-id <id>`; every dispatched turn carries `dispatched_via: subagent` in its per-turn header. The DISCUSS allowlist is the read-only minimum `Read, Grep, Glob, Bash`, exposed via `scripts/dispatch-agent-turn.sh --print-discuss-allowlist`. User interjections via `[i]nterject` carry `dispatched_via: interject`; the CHARTER turn carries `dispatched_via: charter`.
+
+**Surface contract (DISCUSS output to the user).** Exactly as in RESEARCH: each dispatched DISCUSS turn returns to the orchestrator and is NOT auto-shown to the user. The facilitator MUST RELAY every DISCUSS turn body to the user as user-visible LLM turn text, prefixed with the live-stream per-turn header, as the round-robin advances — including raise-hand insertions, research-interrupts, and facilitator loop-break turns. A DISCUSS turn that is dispatched and envelope-asserted but never re-emitted to the user is a contract violation: the user running the meeting MUST see the discussion unfold turn by turn, not just the final saved transcript.
 
 1. Run `scripts/resolve-mode.sh [--mode <mode>]` to resolve the active mode.
 2. Drive the turn loop via `scripts/turn-order.sh --invitees "<csv>" --turns <N>`.
@@ -858,7 +862,7 @@ SAVE performs the three writes that REVIEW accepted, gated through
    - `## Sources I relied on`
 3. **Meeting notes** (if accepted at REVIEW). Run
    `scripts/meeting-notes-writer.sh --root . --payload <payload.yaml> --date <YYYY-MM-DD> --slug <slug>`.
-   The writer emits `.gaia/artifacts/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md`
+   The writer emits `.gaia/artifacts/creative-artifacts/meeting-notes/meeting-{YYYY-MM-DD}-{slug}.md`
    with frontmatter (per-attendee + total token-cost breakdown,
    `scratchpad_extractions:` populated from the payload list — empty `[]` when
    no extractions occurred — and `action_items:` IDs from step 1) and the required body sections (charter, summary, research preludes,
@@ -877,7 +881,7 @@ anti-amnesia property the intake mandates.
 
 **State-free write boundary.** Every disk write in Phase 7 MUST go
 through `scripts/write-boundary.sh`. The asserter rejects any path outside
-`.gaia/artifacts/creative-artifacts/meeting-*.md`,
+`.gaia/artifacts/creative-artifacts/meeting-notes/meeting-*.md`,
 `.gaia/state/action-items.yaml`, and
 `.gaia/memory/{agent}-sidecar/decisions/*.md`.
 
@@ -1032,7 +1036,7 @@ LLM-side parsing inline — this is single-source-of-truth).
 - **Live transcript** (stdout). Phase markers + per-turn headers + turn bodies
   + user interjections. Always emitted in real time.
 - **Saved meeting transcript** at
-  `.gaia/artifacts/creative-artifacts/meeting-{YYYY-MM-DD}-{slug}.md`. A
+  `.gaia/artifacts/creative-artifacts/meeting-notes/meeting-{YYYY-MM-DD}-{slug}.md`. A
   minimum viable file (markers + headers) is produced and later extended to the full
   frontmatter and required sections.
 

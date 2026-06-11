@@ -6,7 +6,7 @@
 # decisions, risks, open questions, scratchpad final state, action-item IDs,
 # memory write-through agent list) and renders the canonical saved-notes file
 # at:
-#   <root>/.gaia/artifacts/creative-artifacts/meeting-<YYYY-MM-DD>-<slug>.md
+#   <root>/.gaia/artifacts/creative-artifacts/meeting-notes/meeting-<YYYY-MM-DD>-<slug>.md
 #
 # Frontmatter contract:
 #   - per-attendee + total token-cost breakdown
@@ -184,10 +184,21 @@ while IFS= read -r id; do
 done <<< "$ACTION_IDS_LIST"
 action_items_inline+="]"
 
-# Canonical-unconditional write path (no legacy fallback supported).
-out_dir="$ROOT/.gaia/artifacts/creative-artifacts"
+# Canonical write path: meeting notes live under a meeting-notes/ subdirectory
+# of creative-artifacts/ (keeps the creative-artifacts root from filling with
+# flat meeting-*.md files alongside scratchpad extractions and other outputs).
+out_dir="$ROOT/.gaia/artifacts/creative-artifacts/meeting-notes"
 out="$out_dir/meeting-${DATE}-${SLUG}.md"
 mkdir -p "$out_dir"
+
+# Back-compat: if a note for this same meeting already exists at the OLD flat
+# location (creative-artifacts/meeting-{date}-{slug}.md, pre-subdir layout),
+# migrate it into the meeting-notes/ subdir so discovery / re-save stays
+# idempotent and pre-move files are not orphaned.
+_legacy_out="$ROOT/.gaia/artifacts/creative-artifacts/meeting-${DATE}-${SLUG}.md"
+if [ -f "$_legacy_out" ] && [ ! -f "$out" ]; then
+  mv "$_legacy_out" "$out"
+fi
 
 tmp="$(mktemp)"
 
