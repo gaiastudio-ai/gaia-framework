@@ -152,7 +152,7 @@ This warning is shown once per session.
 
       <section id="step-by-step">
         <h2>What it does step by step</h2>
-        <ol class="step-list"><li><span class="step-title">Charter gate</span> Validates that a charter was provided. The meeting cannot start without one.</li><li><span class="step-title">Invite participants</span> Selects relevant agents based on the charter topic.</li><li><span class="step-title">Research phase</span> Participants load relevant context from project artifacts and share cited findings.</li><li><span class="step-title">Discussion rounds</span> Sequential turns with cite-or-flag enforcement -- every claim must cite a source or be flagged as unverified.</li><li><span class="step-title">Close phase</span> Records the decision, captures action items, and writes meeting notes to <code>.gaia/artifacts/creative-artifacts/meeting-{date}.md</code>.</li><li><span class="step-title">Save to memory</span> Persists decisions and action items to agent memory sidecars.</li></ol>
+        <ol class="step-list"><li><span class="step-title">Charter gate</span> Validates that a charter was provided. The meeting cannot start without one.</li><li><span class="step-title">Invite participants</span> Selects relevant agents based on the charter topic.</li><li><span class="step-title">Research phase</span> Participants load relevant context from project artifacts and share cited findings.</li><li><span class="step-title">Discussion rounds</span> Sequential turns with cite-or-flag enforcement -- every claim must cite a source or be flagged as unverified.</li><li><span class="step-title">Close phase</span> Records the decision, captures action items, and writes meeting notes to <code>.gaia/artifacts/creative-artifacts/meeting-notes/meeting-{date}.md</code>.</li><li><span class="step-title">Save to memory</span> Persists decisions and action items to agent memory sidecars.</li></ol>
       </section>
 
       <section id="inputs">
@@ -305,7 +305,7 @@ This warning is shown once per session.
 
       <section id="outputs">
         <h2>Outputs</h2>
-        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Creative artifact</td><td><code>.gaia/artifacts/creative-artifacts/</code></td><td>The session output document.</td></tr></tbody></table>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Meeting notes</td><td><code>.gaia/artifacts/creative-artifacts/meeting-notes/</code></td><td>The saved meeting-notes document (<code>meeting-{date}-{slug}.md</code>).</td></tr></tbody></table>
       </section>
 
       <section id="example">
@@ -347,7 +347,7 @@ Resuming session 2026-05-07-database-decision at pre-CLOSE...
 Decision: PostgreSQL with Redis caching layer.
 Action items: Theo to update architecture.md.
 
-Written to .gaia/artifacts/creative-artifacts/meeting-2026-05-07.md</code></pre>
+Written to .gaia/artifacts/creative-artifacts/meeting-notes/meeting-2026-05-07.md</code></pre>
       </section>
 
       <section id="what-next">
