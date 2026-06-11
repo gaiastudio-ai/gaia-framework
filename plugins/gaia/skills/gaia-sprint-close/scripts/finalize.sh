@@ -26,6 +26,17 @@ if [ -x "$CHECKPOINT" ]; then
     log "checkpoint.sh write failed (non-fatal)"
 fi
 
+# Ground-truth staleness BEST-EFFORT pass — before the lifecycle-event emit.
+# NON-BLOCKING: on STALE or evaluation failure the shared gate WARNS to stderr
+# and returns 0 (NFR fail-safe — never fail the close ceremony). Trapped so a
+# helper error cannot abort the close.
+GT_GATE_LIB="$PLUGIN_SCRIPTS_DIR/lib/ground-truth-gate.sh"
+if [ -r "$GT_GATE_LIB" ]; then
+  # shellcheck source=/dev/null
+  . "$GT_GATE_LIB"
+  gt_gate_best_effort "sprint-close" || true
+fi
+
 if [ -x "$LIFECYCLE_EVENT" ]; then
   "$LIFECYCLE_EVENT" --type workflow_complete --workflow "$WORKFLOW_NAME" >/dev/null 2>&1 || \
     log "lifecycle-event.sh emit failed (non-fatal)"

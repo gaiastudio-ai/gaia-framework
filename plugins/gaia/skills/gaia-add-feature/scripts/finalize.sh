@@ -140,6 +140,23 @@ else
   log "checkpoint.sh not found at $CHECKPOINT — skipping checkpoint write (non-fatal)"
 fi
 
+# ---------- 1b. Ground-truth staleness BLOCKING gate ----------
+# Wired immediately BEFORE the lifecycle-event emit (placement asymmetry: this
+# finalize fires the gate at ceremony EXIT so it leaves fresh truth behind).
+# On STALE the shared blocking gate prints a diagnostic + the incremental-
+# refresh instruction and returns non-zero — we HALT before the emit. This gate
+# is NOT bypassable by yolo/best-effort flags (it is a hard precondition).
+GT_GATE_LIB="$PLUGIN_SCRIPTS_DIR/lib/ground-truth-gate.sh"
+if [ -r "$GT_GATE_LIB" ]; then
+  # shellcheck source=/dev/null
+  . "$GT_GATE_LIB"
+  if ! gt_gate_blocking "add-feature-completion"; then
+    die "ground-truth gate BLOCKED add-feature completion (stale ground-truth) — refresh and re-run"
+  fi
+else
+  log "ground-truth gate helper not found at $GT_GATE_LIB — skipping staleness gate (non-fatal)"
+fi
+
 # ---------- 2. Emit lifecycle event ----------
 if [ -x "$LIFECYCLE_EVENT" ]; then
   if ! "$LIFECYCLE_EVENT" --type workflow_complete --workflow "$WORKFLOW_NAME" >/dev/null 2>&1; then

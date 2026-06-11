@@ -1655,5 +1655,19 @@ write_status_transition_marker() {
 }
 write_status_transition_marker
 
+# Ground-truth staleness BEST-EFFORT pass on the story-done path.
+# Placement asymmetry: this fires at ceremony EXIT (after writers commit) so a
+# completed story leaves fresh truth behind. NON-BLOCKING — on STALE or
+# evaluation failure the shared gate WARNS and returns 0; it must NEVER fail a
+# story-done transition (fail-safe). Only fired for transitions INTO done.
+if [ "$NEW_STATUS" = "done" ]; then
+  _gt_gate_lib="$LIB_DIR/ground-truth-gate.sh"
+  if [ -r "$_gt_gate_lib" ]; then
+    # shellcheck source=/dev/null
+    . "$_gt_gate_lib"
+    gt_gate_best_effort "story-done" || true
+  fi
+fi
+
 log "$STORY_KEY transitioned $CURRENT_STATUS -> $NEW_STATUS"
 exit 0
