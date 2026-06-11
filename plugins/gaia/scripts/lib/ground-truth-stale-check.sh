@@ -158,9 +158,24 @@ EOF
 }
 
 # _gts_mtime PATH — print the epoch-seconds mtime of PATH, portably.
-# BSD stat: `stat -f %m`; GNU stat: `stat -c %Y`.
+#
+# Portability hazard: `stat -f %m` is the BSD/macOS mtime idiom, but on GNU
+# coreutils `-f` means `--file-system` and SUCCEEDS (exit 0) printing the wrong
+# value (a filesystem field), so a naive `stat -f %m || stat -c %Y` never falls
+# through on Linux and poisons the comparison. Probe GNU FIRST (`-c %Y`) and
+# only fall back to BSD (`-f %m`) when GNU stat is absent. Validate that the
+# result is all-digits before accepting it, so a wrong-flavour success that
+# prints non-numeric text is rejected and the next form is tried.
 _gts_mtime() {
-  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null
+  local m
+  m="$(stat -c %Y "$1" 2>/dev/null)"
+  case "$m" in
+    ''|*[!0-9]*) m="$(stat -f %m "$1" 2>/dev/null)" ;;
+  esac
+  case "$m" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf '%s' "$m"
 }
 
 # _gts_write_marker MARKER_PATH — atomically write the stale marker.

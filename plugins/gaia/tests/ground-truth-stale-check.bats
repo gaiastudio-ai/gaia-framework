@@ -45,6 +45,16 @@ teardown() { common_teardown; }
 # Helper: stamp a file at an explicit mtime (UTC, deterministic).
 stamp() { touch -t "$2" "$1"; }
 
+# Helper: portable epoch-seconds mtime. GNU coreutils `stat -f` means
+# `--file-system` and succeeds with the wrong value, so probe GNU (`-c %Y`)
+# FIRST and only fall back to BSD (`-f %m`); validate all-digits.
+mtime() {
+  local m
+  m="$(stat -c %Y "$1" 2>/dev/null)"
+  case "$m" in ''|*[!0-9]*) m="$(stat -f %m "$1" 2>/dev/null)" ;; esac
+  printf '%s' "$m"
+}
+
 # TC-GTS-1 (AC1): a tracked source newer than ground-truth.md → STALE.
 @test "TC-GTS-1: planning source newer than ground-truth → STALE" {
   printf 'gt\n' > "$GT"
@@ -169,9 +179,9 @@ stamp() { touch -t "$2" "$1"; }
   stamp "$IMPL/story.md" 202601030000
 
   # Capture input mtimes before.
-  before_prd="$(stat -f %m "$PLANNING/prd.md" 2>/dev/null || stat -c %Y "$PLANNING/prd.md")"
-  before_story="$(stat -f %m "$IMPL/story.md" 2>/dev/null || stat -c %Y "$IMPL/story.md")"
-  before_gt="$(stat -f %m "$GT" 2>/dev/null || stat -c %Y "$GT")"
+  before_prd="$(mtime "$PLANNING/prd.md")"
+  before_story="$(mtime "$IMPL/story.md")"
+  before_gt="$(mtime "$GT")"
 
   run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
   [ "$output" = "STALE" ]
@@ -183,9 +193,9 @@ stamp() { touch -t "$2" "$1"; }
   [ -f "$MARKER" ]
 
   # Input mtimes unchanged.
-  after_prd="$(stat -f %m "$PLANNING/prd.md" 2>/dev/null || stat -c %Y "$PLANNING/prd.md")"
-  after_story="$(stat -f %m "$IMPL/story.md" 2>/dev/null || stat -c %Y "$IMPL/story.md")"
-  after_gt="$(stat -f %m "$GT" 2>/dev/null || stat -c %Y "$GT")"
+  after_prd="$(mtime "$PLANNING/prd.md")"
+  after_story="$(mtime "$IMPL/story.md")"
+  after_gt="$(mtime "$GT")"
   [ "$before_prd" = "$after_prd" ]
   [ "$before_story" = "$after_story" ]
   [ "$before_gt" = "$after_gt" ]
