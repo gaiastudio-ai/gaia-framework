@@ -65,6 +65,27 @@ make_fresh() {
   stamp "$GT" 202601020000
 }
 
+# Make the tree STALE via an EQUAL-mtime tie: a tracked artifact whose mtime
+# exactly equals ground-truth.md (the ambiguous tie the predicate treats as
+# STALE). The sidecar ground-truth.md EXISTS — this is the real stale path, not
+# the not-applicable path.
+make_stale_tie() {
+  printf 'gt\n'  > "$GT"
+  printf 'impl\n' > "$IMPL/design.md"
+  stamp "$GT" 202601010000
+  stamp "$IMPL/design.md" 202601010000
+}
+
+# Uninitialized project: NO validator-sidecar ground-truth file at all. Tracked
+# artifacts may or may not exist — the gate must be NOT-APPLICABLE regardless.
+make_no_sidecar() {
+  rm -f "$GT"
+  # A tracked artifact is present but there is nothing to compare it against —
+  # the gate must NOT treat this as stale (it is not bootstrapped).
+  printf 'prd\n' > "$PLANNING/prd.md"
+  stamp "$PLANNING/prd.md" 202601020000
+}
+
 # ---------------------------------------------------------------------------
 # TC-GTS-7 (AC1): sprint-plan entry gate halts-with-diagnostic on stale.
 # ---------------------------------------------------------------------------
@@ -230,4 +251,59 @@ SHIM
   # probe reads ground-truth's mtime at most a couple of times and NEVER per
   # file. Bound generously well below the file count.
   [ "$n" -lt 10 ]
+}
+
+# ---------------------------------------------------------------------------
+# Gate APPLICABILITY pre-check.
+#
+# An uninitialized project (no validator-sidecar ground-truth.md) has nothing
+# that can be stale. The BLOCKING gate must be NOT-APPLICABLE there — return 0,
+# emit NO "stale"/"BLOCKED" diagnostic — so it does not regress greenfield
+# projects (or the bare audit-v2-migration fixture, which runs every finalize.sh
+# against a project-root with no .gaia/ tree). The applicability check lives in
+# the gate WRAPPER; the staleness predicate's "absent gt.md → STALE" fail-safe
+# contract is unchanged and unaffected.
+# ---------------------------------------------------------------------------
+@test "applicability: blocking gate is not-applicable (exit 0, no BLOCK) with no sidecar ground-truth" {
+  make_no_sidecar
+  run bash -c '. "$GATE"; gt_gate_blocking "add-feature-completion"'
+  [ "$status" -eq 0 ]
+  ! printf '%s\n' "$output" | grep -qi 'stale'
+  ! printf '%s\n' "$output" | grep -qi 'blocked'
+  printf '%s\n' "$output" | grep -qi 'not applicable'
+}
+
+@test "applicability: add-feature finalize completes (exit 0) when project has no sidecar ground-truth" {
+  # This is the exact audit-v2-migration regression scenario: a bare project
+  # with no .gaia/ ground-truth. The finalize must NOT block.
+  make_no_sidecar
+  run bash "$BATS_TEST_DIRNAME/../skills/gaia-add-feature/scripts/finalize.sh"
+  [ "$status" -eq 0 ]
+  ! printf '%s\n' "$output" | grep -qi 'ground-truth gate.*blocked'
+}
+
+@test "applicability: blocking gate STILL BLOCKS when sidecar ground-truth EXISTS but is stale (artifact newer)" {
+  # Real stale path: sidecar ground-truth.md present, a tracked artifact newer.
+  make_stale
+  [ -f "$GT" ]   # sidecar exists — this is NOT the not-applicable path
+  run bash -c '. "$GATE"; gt_gate_blocking "add-feature-completion"'
+  [ "$status" -ne 0 ]
+  printf '%s\n' "$output" | grep -qi 'stale'
+  printf '%s\n' "$output" | grep -qF -- '--incremental'
+}
+
+@test "applicability: blocking gate STILL BLOCKS on equal-mtime tie when sidecar ground-truth EXISTS" {
+  # Real stale path via the ambiguous equal-mtime tie. Sidecar present.
+  make_stale_tie
+  [ -f "$GT" ]
+  run bash -c '. "$GATE"; gt_gate_blocking "add-feature-completion"'
+  [ "$status" -ne 0 ]
+  printf '%s\n' "$output" | grep -qi 'stale'
+}
+
+@test "applicability: best-effort gate is fully silent (exit 0, no warning) with no sidecar ground-truth" {
+  make_no_sidecar
+  run bash -c '. "$GATE"; gt_gate_best_effort "story-done"'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }

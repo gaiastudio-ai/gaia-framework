@@ -51,6 +51,32 @@ _gt_gate_source_predicate() {
 # deferred `--agent all` full refresh.
 _GT_GATE_REFRESH_HINT="run: /gaia-refresh-ground-truth --incremental"
 
+# _gt_gate_applicable — is this gate even applicable in the current project?
+#
+# The gate is APPLICABLE only when a validator-sidecar ground-truth.md already
+# exists. If it does NOT exist, the project has never bootstrapped ground truth
+# (a greenfield/uninitialized project, or the bare audit fixture), so there is
+# nothing that can be "stale" or that needs refreshing — the gate is a no-op.
+#
+# This is DELIBERATELY a different question from the predicate's staleness
+# verdict. The predicate's "absent gt.md → STALE" fail-safe is correct FOR THE
+# PREDICATE (a missing sidecar in a project that DOES track ground truth is a
+# genuine corruption signal). But the GATE must not BLOCK a lifecycle ceremony
+# on a project that legitimately never had ground truth — blocking add-feature
+# on a never-bootstrapped project would be wrong in production too. The
+# applicability question belongs HERE, in the wrapper; the staleness predicate
+# stays untouched.
+#
+# Resolution uses the predicate's exported resolver (_gts_gt_file_path) so the
+# gate and predicate agree byte-for-byte on the sidecar path — no divergent
+# re-derivation. Returns 0 (applicable) iff the sidecar ground-truth file
+# exists.
+_gt_gate_applicable() {
+  local gt_file
+  gt_file="$(_gts_gt_file_path 2>/dev/null)" || return 1
+  [ -n "$gt_file" ] && [ -f "$gt_file" ]
+}
+
 # gt_gate_blocking [LABEL] — STALE → diagnostic + non-zero; FRESH → silent, 0.
 gt_gate_blocking() {
   local label="${1:-lifecycle}"
@@ -62,6 +88,15 @@ gt_gate_blocking() {
       "$label" "$_GT_GATE_REFRESH_HINT" >&2
     return 1
   }
+  # Applicability pre-check: no validator-sidecar ground-truth yet → the gate
+  # is not applicable (project not bootstrapped). Pass silently — there is
+  # nothing to be stale. A single quiet info line aids debugging without
+  # tripping any "stale" matcher.
+  if ! _gt_gate_applicable; then
+    printf 'ground-truth gate [%s]: no validator-sidecar ground-truth yet — gate not applicable (project not bootstrapped)\n' \
+      "$label" >&2
+    return 0
+  fi
   verdict="$(check_ground_truth_staleness 2>/dev/null)"
   if [ "$verdict" = "STALE" ]; then
     printf 'ground-truth gate [%s]: BLOCKED — validator-sidecar ground-truth is STALE.\n' "$label" >&2
@@ -78,6 +113,12 @@ gt_gate_best_effort() {
   if ! _gt_gate_source_predicate; then
     printf 'ground-truth gate [%s]: warning — could not evaluate ground-truth staleness; continuing (best-effort)\n' \
       "$label" >&2
+    return 0
+  fi
+  # Applicability pre-check (cleanliness): with no validator-sidecar
+  # ground-truth at all, "no ground-truth yet" is NOT a stale-warning
+  # condition — stay fully silent rather than emit a spurious warning.
+  if ! _gt_gate_applicable; then
     return 0
   fi
   verdict="$(check_ground_truth_staleness 2>/dev/null)" || {

@@ -71,18 +71,30 @@ _gts_memory_path() {
   printf '%s' "${MEMORY_PATH:-${CLAUDE_PROJECT_ROOT:-.}/.gaia/memory}"
 }
 
+# _gts_gt_file_path — resolve the validator-sidecar ground-truth.md path. This
+# is the SINGLE source of truth for "where does the sidecar ground-truth live?"
+# so the staleness predicate (this file) and the lifecycle-gate wrapper
+# (ground-truth-gate.sh) agree byte-for-byte and never drift. The gate's
+# applicability pre-check ("is there a sidecar ground-truth at all?") MUST use
+# this resolver — do not re-derive the path divergently in the wrapper.
+_gts_gt_file_path() {
+  local mem agent gt_name
+  mem="$(_gts_memory_path)"
+  agent="${GAIA_GT_SIDECAR_AGENT:-validator}"
+  gt_name="${GAIA_GT_FILENAME:-ground-truth.md}"
+  printf '%s' "${mem}/${agent}-sidecar/${gt_name}"
+}
+
 # check_ground_truth_staleness — the predicate. See file header for contract.
 check_ground_truth_staleness() {
   # LC_ALL=C is set function-locally so a `source` of this file never mutates
   # the caller's locale beyond the call.
   local LC_ALL=C
-  local mem agent gt_name gt_file planning_root impl_root marker
+  local mem gt_file planning_root impl_root marker
   local root
 
   mem="$(_gts_memory_path)"
-  agent="${GAIA_GT_SIDECAR_AGENT:-validator}"
-  gt_name="${GAIA_GT_FILENAME:-ground-truth.md}"
-  gt_file="${mem}/${agent}-sidecar/${gt_name}"
+  gt_file="$(_gts_gt_file_path)"
   marker="${mem}/.ground-truth-stale"
 
   planning_root="${GAIA_GT_PLANNING_ROOT:-${CLAUDE_PROJECT_ROOT:-.}/.gaia/artifacts/planning-artifacts}"
