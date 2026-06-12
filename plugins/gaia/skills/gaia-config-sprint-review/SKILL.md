@@ -58,7 +58,7 @@ This skill supports four subcommands:
 
 ### Step 3 — Validate the proposed edit
 
-> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration (ADR-093). The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
+> **Note:** The CRUD menu below is the LLM-driven interaction pattern under Claude Code main-turn orchestration. The deterministic helpers under `plugins/gaia/scripts/` are the actual write primitives; the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI.
 
 - For `set`:
   - Resolve `--key` against the schema (`playwright_headed`, `timeout_per_stack`, `human_confirm`, `screen_recording_fallback`, `backend_commands.<stack-id>`, `frontend_commands.<stack-id>` (canonical map — preferred over the legacy `frontend_command` scalar when a project has more than one web/front-end stack), `frontend_command` (deprecated scalar; backward-compat alias for single-web-stack projects), `mobile_commands.<stack-id>`, `desktop_commands.<stack-id>`, `plugin_commands.<stack-id>`).

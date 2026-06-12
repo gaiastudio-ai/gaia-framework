@@ -35,7 +35,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Internal helpers — leading underscore prefix excludes them from the
 # public-function coverage gate. They are exercised end-to-end
-# via the public dispatch entry point in tests/E74-S9-mobile-dynamic-adapters.bats.
+# via the public dispatch entry point in the mobile-dynamic-adapters bats suite.
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 _echo_err() { printf '%s\n' "$*" >&2; printf '%s\n' "$*"; }
 die() {

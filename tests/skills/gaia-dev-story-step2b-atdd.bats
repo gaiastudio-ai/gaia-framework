@@ -7,7 +7,7 @@
 #
 # Validates:
 #   AC1 — Test 1: Step 2b region is present in SKILL.md, bounded by
-#                 begin/end markers `<!-- E55-S5: step 2b atdd gate begin/end -->`.
+#                 begin/end markers `<!-- step 2b atdd gate begin/end -->`.
 #   AC1 — Test 2: Step 2b invokes `atdd-gate.sh {story_key}`.
 #   AC1 — Test 3: Step 2b instructs HALT on non-zero exit.
 #   AC1 — Test 4: Step 2b mentions the expected glob pattern
@@ -39,8 +39,8 @@ setup() {
   SKILL_FILE="$REPO_ROOT/plugins/gaia/skills/gaia-dev-story/SKILL.md"
   ATDD_GATE="$REPO_ROOT/plugins/gaia/skills/gaia-dev-story/scripts/atdd-gate.sh"
 
-  GATE_BEGIN='<!-- E55-S5: step 2b atdd gate begin -->'
-  GATE_END='<!-- E55-S5: step 2b atdd gate end -->'
+  GATE_BEGIN='<!-- step 2b atdd gate begin -->'
+  GATE_END='<!-- step 2b atdd gate end -->'
 
   # Per-test working dir for fixtures.
   TEST_TMPDIR="$(mktemp -d)"

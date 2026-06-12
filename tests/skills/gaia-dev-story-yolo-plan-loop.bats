@@ -16,12 +16,12 @@
 #   AC6 (TC-DSH-09) — no inline `is_yolo` detection inside the YOLO branch sub-region.
 #
 # Gate region bounds (defined by E55-S1):
-#   <!-- E55-S1: planning gate begin -->
-#   <!-- E55-S1: planning gate end -->
+#   <!-- planning gate begin -->
+#   <!-- planning gate end -->
 #
 # YOLO branch sub-region bounds (this story):
-#   <!-- E55-S2: YOLO Val auto-validation loop (added by E55-S2) -->   (begin)
-#   <!-- E55-S1: planning gate end -->                                  (end)
+#   <!-- YOLO Val auto-validation loop -->   (begin)
+#   <!-- planning gate end -->                                  (end)
 #
 # Usage:
 #   bats tests/skills/gaia-dev-story-yolo-plan-loop.bats
@@ -36,9 +36,9 @@ setup() {
   SCRIPTS_DIR="$REPO_ROOT/plugins/gaia/scripts"
   SKILL_FILE="$SKILLS_DIR/gaia-dev-story/SKILL.md"
 
-  GATE_BEGIN='<!-- E55-S1: planning gate begin -->'
-  GATE_END='<!-- E55-S1: planning gate end -->'
-  YOLO_BEGIN='<!-- E55-S2: YOLO Val auto-validation loop (added by E55-S2) -->'
+  GATE_BEGIN='<!-- planning gate begin -->'
+  GATE_END='<!-- planning gate end -->'
+  YOLO_BEGIN='<!-- YOLO Val auto-validation loop -->'
 }
 
 # Extract the gate region (inclusive of markers) from SKILL.md to stdout.

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # verify-cluster-gates.sh — GAIA foundation script
 #
-# Pre-start gate verifier for the program-closing deletion.
-# Reads the status and Review Gate table from each of the 12 cluster-gate stories
+# Pre-start gate verifier for the legacy-engine cleanup.
+# Reads the status and Review Gate table from each gate story in the GATES list below
 # and asserts each one is `done` with all 6 reviews PASSED. Used by:
 #   (1) gaia-cleanup-legacy-engine.sh as its pre-flight gate
 #   (2) .github/workflows/adr-048-guard.yml as the CI compensating control
