@@ -38,6 +38,16 @@ write_registry_canonical() {
 MD
 }
 
+write_registry_with_ground_truth() {
+  # Canonical two-marker table PLUS the `.ground-truth-stale` row, mirroring
+  # the exact `| Marker | Owner | Purpose | Cleared By |` column shape so the
+  # scanner's first-column marker regex matches it generically.
+  write_registry_canonical
+  cat >> "$REGISTRY" <<'MD'
+| `.gaia/memory/.ground-truth-stale` | `ground-truth-stale-check.sh` | Validator ground-truth.md is older than the newest planning/implementation artifact | `/gaia-refresh-ground-truth` successful refresh |
+MD
+}
+
 run_check() {
   run --separate-stderr env \
     CLAUDE_PROJECT_ROOT="$FIXTURE_DIR" \
@@ -126,6 +136,26 @@ MD
   run_check
   [ "$status" -ne 0 ]
   [[ "$output" == *"CRITICAL"* ]]
+}
+
+# ===== TC-GTS-18 — .ground-truth-stale registered → exit 0 ============
+
+@test "TC-GTS-18: registered .ground-truth-stale marker present → exit 0, no output" {
+  write_registry_with_ground_truth
+  : > "$FIXTURE_DIR/.gaia/memory/.ground-truth-stale"
+  run_check
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# Negative companion — proves TC-GTS-18 would catch a silent de-registration:
+# the marker on disk but NO ground-truth row in the registry → CRITICAL.
+@test "TC-GTS-18 guard: .ground-truth-stale marker NOT in registry → CRITICAL, exit non-zero" {
+  write_registry_canonical   # canonical table only — no ground-truth row
+  : > "$FIXTURE_DIR/.gaia/memory/.ground-truth-stale"
+  run_check
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"CRITICAL: Unregistered stale-flag marker: .gaia/memory/.ground-truth-stale"* ]]
 }
 
 # ===== Structural: script declares the canonical maxdepth choice ======
