@@ -1,0 +1,16 @@
+schema_version: 1
+entries:
+  - key: "ingested-external-doc"
+    source_type: "ingested"
+    path: ".gaia/artifacts/research-artifacts/external-spec.md"
+    tags: ["research", "external"]
+    synopsis: "A P2-reserved ingested entry; validates now, no P1 writer creates it."
+    edges:
+      - type: "traces-to"
+        target: "sample-requirement-schema"
+    trust:
+      confidence: 0.8
+      content_hash: "1111111111111111111111111111111111111111111111111111111111111111"
+      source_url: "https://example.com/external-spec"
+      fetched_at: "2026-06-12T00:00:00Z"
+      expires_at: "2026-12-12T00:00:00Z"

@@ -1,0 +1,14 @@
+schema_version: 1
+entries:
+  - key: "lesson-from-retro"
+    source_type: "lesson"
+    path: ".gaia/artifacts/implementation-artifacts/sprint-57-retro.md"
+    tags: ["retro", "lesson"]
+    synopsis: "A P2-reserved lesson entry; validates now, no P1 writer creates it."
+    edges: []
+    trust:
+      confidence: 0.6
+      content_hash: "2222222222222222222222222222222222222222222222222222222222222222"
+      source_url: null
+      fetched_at: null
+      expires_at: null

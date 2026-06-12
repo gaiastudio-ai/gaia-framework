@@ -1,0 +1,14 @@
+schema_version: 1
+entries:
+  - key: "canonical-artifact"
+    source_type: "project-artifact"
+    path: ".gaia/artifacts/planning-artifacts/architecture/sample-decision-record.md"
+    tags: ["architecture"]
+    synopsis: "A project-artifact at a canonical .gaia/artifacts/ location — the index-in-place guard must accept this."
+    edges: []
+    trust:
+      confidence: 1.0
+      content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
+      source_url: null
+      fetched_at: null
+      expires_at: null
