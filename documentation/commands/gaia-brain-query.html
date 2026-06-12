@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-brain-query - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#envelope">The governance envelope</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#freshness">Read-time freshness</a></li>
+          <li><a href="#degradation">Graceful degradation</a></li>
+          <li><a href="#boundary">Read-only boundary</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/sprint-management.html">Sprint Management</a><span class="separator">/</span>
+        /gaia-brain-query
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-brain-query</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/sprint-management.html">Sprint Management</a></dd>
+          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt><dd><code>&lt;story-key&gt;</code> plus an optional mode flag (<code>--envelope</code>, <code>--health</code>, or <code>--search &lt;terms&gt;</code>)</dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-brain-query</code> is a read-only traversal over the brain knowledge layer. From a seed story key it walks the knowledge index's typed governance edges and returns the story's <strong>governance envelope</strong> -- every related artifact grouped by direction -- in a single invocation. It is the read counterpart to the reindex sweep (which is the sole writer of the index): the query <strong>writes nothing</strong>.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You want to see, for one story, the requirements and decisions that govern it, the tests and reviews that gate it, and the design that sits alongside it -- all at once.</li>
+          <li>You are reviewing a story and want a quick read on its governance coverage.</li>
+          <li>You want to search the indexed synopses for a phrase, or browse the unlinked-node health view, from the same entry point.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>A built knowledge index.</strong> The query consumes the index produced by <a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a>. If the index does not exist yet, the query says so and points you to build it first -- and still exits cleanly.</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-brain-query &lt;story-key&gt;                 # the governance envelope (default)
+/gaia-brain-query &lt;story-key&gt; --envelope      # explicit
+/gaia-brain-query --health                    # the unlinked-node view
+/gaia-brain-query --search "&lt;terms&gt;"          # synopsis substring search</code></pre>
+      </section>
+
+      <section id="envelope">
+        <h2>The governance envelope</h2>
+        <p>For a seed story, the envelope groups the related nodes into three directions:</p>
+        <ul>
+          <li><strong>UP</strong> -- the governance chain <em>above</em> the story: the requirements it implements, the decisions that govern it, and its <strong>parent epic</strong>. UP is a bounded transitive walk -- it follows the story up to its epic and the requirements and decisions that govern it, with a depth cap and a cycle guard so the walk always terminates. The walk follows only the parent epic; it never descends into sibling sub-stories.</li>
+          <li><strong>DOWN</strong> -- the artifacts <em>below</em> the story: the tests that verify it and the reviews that gated it. DOWN is a single hop from the seed.</li>
+          <li><strong>LATERAL</strong> -- the design artifacts that sit <em>alongside</em> the story. LATERAL is a single hop from the seed.</li>
+        </ul>
+        <p>The output is deterministic -- grouped by direction, then ordered by a stable edge-type rank, then by target -- so two runs over the same index produce byte-identical output. The format is plain, grep-able structured text.</p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Read the index</span> Loads every entry and its typed edges from the committed knowledge index.</li>
+          <li><span class="step-title">Resolve the seed</span> Looks up the seed story. An unknown key is reported as an unresolved reference, never an error.</li>
+          <li><span class="step-title">Walk the envelope</span> Follows the UP governance chain transitively (parent epic, requirements, decisions) with a depth cap and cycle guard, and collects the DOWN and LATERAL edges a single hop from the seed.</li>
+          <li><span class="step-title">Check freshness</span> Recomputes the content hash of each surfaced node's canonical file and compares it to the indexed hash; a drifted or missing file is flagged stale with its path.</li>
+          <li><span class="step-title">Render</span> Prints the envelope grouped by direction in a stable, sorted order, then exits cleanly.</li>
+        </ol>
+      </section>
+
+      <section id="freshness">
+        <h2>Read-time freshness</h2>
+        <p>When the query surfaces a node's synopsis, it recomputes the content hash of the node's canonical file and compares it to the hash the index stamped at index time. If the file has <strong>changed</strong> since the last reindex, or is <strong>missing</strong>, the node is marked <strong>stale</strong> and the query surfaces the canonical <strong>path</strong> so you can read the current bytes directly -- the possibly-out-of-date stored synopsis is never served as if it were current. The query surfaces the path, never the file contents, so its output stays bounded regardless of file size. A stale node is a prompt to rerun the reindex sweep; it is never an error.</p>
+      </section>
+
+      <section id="degradation">
+        <h2>Graceful degradation</h2>
+        <p>The query never fails on a partial graph. A node with no edges in a direction renders a non-error <code>(no &hellip; edges)</code> line for that direction; an unknown key is reported as unresolved and still exits cleanly; a missing index prints an explanatory line pointing you to rebuild it, and still exits cleanly.</p>
+      </section>
+
+      <section id="boundary">
+        <h2>Read-only boundary</h2>
+        <p>The query reads the knowledge index and the artifact and state roots (the latter only to recompute a canonical file's content hash for the freshness check). It <strong>never</strong> reads or writes the agent-sidecar memory tree. The boundary holds in both directions: the ground-truth refresh likewise never reads the knowledge index. Retrieval is grep, tags, and the index only -- there is no vector database, embedding model, or external search dependency anywhere in this layer.</p>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Governance envelope</td><td><em>printed to the console</em></td><td>The seed node, its freshness state, and the UP / DOWN / LATERAL groups in a stable, sorted order. Nothing is written to disk -- the query is read-only.</td></tr></tbody></table>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a> -- rebuilds the index so the query reads the current filesystem (and clears any stale markers).</li>
+          <li><a href="gaia-brain-health.html"><code>/gaia-brain-health</code></a> -- browse the unlinked-node coverage gaps.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>It says there is no index</h3><p>Run <a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a> to build the index, then re-run the query.</p>
+        <h3>A node is marked stale</h3><p>The node's canonical file changed since the last reindex. Read the surfaced path for the current content, or run <a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a> to refresh the index.</p>
+        <h3>A key is reported as unresolved</h3><p>The key is not in the index. Confirm the key spelling, and run <a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a> if the artifact is new.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
+          <tr><td><a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a></td><td>Builds and stamps the index this query reads.</td></tr>
+          <tr><td><a href="gaia-brain-health.html"><code>/gaia-brain-health</code></a></td><td>The unlinked-node coverage view, also reachable via this query's <code>--health</code> mode.</td></tr>
+        </tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
