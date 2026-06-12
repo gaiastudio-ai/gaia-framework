@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.190.1] — 2026-06-11
+
+### Fixed
+
+- (gaia-meeting) emit valid cost_breakdown YAML in meeting notes (#1449)
+
 ## [1.190.0] — 2026-06-11
 
 ### Added
