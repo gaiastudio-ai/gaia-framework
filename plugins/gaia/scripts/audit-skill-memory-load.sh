@@ -57,7 +57,7 @@ SKILLS="$PLUGIN/skills"
 # aliases normalize to the agent id.
 sidecar_agents="validator architect pm sm orchestrator security devops test-architect"
 
-canon() {
+_canon() {
   case "$1" in
     val) echo validator ;;
     theo) echo architect ;;
@@ -67,8 +67,8 @@ canon() {
   esac
 }
 
-is_sidecar() {
-  local a; a="$(canon "$1")"
+_is_sidecar() {
+  local a; a="$(_canon "$1")"
   case " $sidecar_agents " in *" $a "*) return 0 ;; *) return 1 ;; esac
 }
 
@@ -88,15 +88,15 @@ for f in "$SKILLS"/*/SKILL.md; do
              | sed -E 's/.*memory-loader\.sh[[:space:]]+//' | sort -u )"
 
   for d in $dispatched; do
-    if ! is_sidecar "$d"; then
+    if ! _is_sidecar "$d"; then
       # Out of scope (Tier-3 / non-agent token such as the bare `gaia` left by
       # a dynamic `gaia:<stack-persona>` dispatch) unless --strict.
       [ "$STRICT" -eq 1 ] || continue
     fi
-    dc="$(canon "$d")"
+    dc="$(_canon "$d")"
     hit=0
     for l in $loaded; do
-      lc="$(canon "$l")"
+      lc="$(_canon "$l")"
       [ "$lc" = "$dc" ] && { hit=1; break; }
     done
     if [ "$hit" -eq 0 ]; then
