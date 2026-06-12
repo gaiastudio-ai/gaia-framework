@@ -13,18 +13,18 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Added
 
-- (E76-S24) surface meeting research/discuss output + move notes to meeting-notes/ (#1446)
-- (E84-S7) robust project-root resolution for orchestration-mode detection (#1445)
+- surface meeting research/discuss output + move notes to meeting-notes/ (#1446)
+- robust project-root resolution for orchestration-mode detection (#1445)
 
 ## [1.189.0] — 2026-06-11
 
 ### Added
 
-- (E39-S7) mandatory triage gate in sprint-close (#1440)
-- (E39-S6) retire standalone tech-debt-review, rewire references (#1439)
-- (E39-S5) merge tech-debt phase into triage-findings (#1438)
-- (E39-S4) sprint-scope triage + deterministic findings extractor (#1437)
-- (E76-S23) add clarify mode to gaia-meeting (#1434)
+- mandatory triage gate in sprint-close (#1440)
+- retire standalone tech-debt-review, rewire references (#1439)
+- merge tech-debt phase into triage-findings (#1438)
+- sprint-scope triage + deterministic findings extractor (#1437)
+- add clarify mode to gaia-meeting (#1434)
 
 ## [1.188.0] — 2026-06-10
 
@@ -36,7 +36,7 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Changed
 
-- (validate-epic-registry) add NFR-052 public-function coverage anchor
+- (validate-epic-registry) add public-function coverage anchor
 
 ### Fixed
 
