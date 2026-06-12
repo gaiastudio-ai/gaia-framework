@@ -24,6 +24,10 @@ fi
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/setup.sh
 
+## Memory
+
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh validator all
+
 ## Mission
 
 You are running the canonical end-of-sprint review ceremony. The sprint enters this skill at `status: active`; on the way out it routes to one of three outcomes:
