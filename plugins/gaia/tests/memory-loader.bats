@@ -6,6 +6,8 @@
 
 load 'test_helper.bash'
 
+bats_require_minimum_version 1.5.0
+
 setup() {
   common_setup
   SCRIPT="$SCRIPTS_DIR/memory-loader.sh"
@@ -106,4 +108,57 @@ EOF
   a="$("$SCRIPT" nate decision-log)"
   b="$("$SCRIPT" nate decision-log)"
   [ "$a" = "$b" ]
+}
+
+# TC-GTS-19 — lazy staleness backstop: marker present + ground-truth tier load
+# emits the single-line stderr WARNING, never blocks the load, never clears the
+# marker, and leaves the ground-truth payload on stdout.
+@test "memory-loader.sh: ground-truth tier with .ground-truth-stale present → stderr WARNING, load succeeds, marker not cleared" {
+  mkdir -p "$MEMORY_PATH/val-sidecar"
+  printf 'GT-VAL\n' > "$MEMORY_PATH/val-sidecar/ground-truth.md"
+  : > "$MEMORY_PATH/.ground-truth-stale"
+  run --separate-stderr "$SCRIPT" val ground-truth
+  [ "$status" -eq 0 ]
+  # Payload still on stdout (non-blocking).
+  [ "$output" = "GT-VAL" ]
+  # Single-line WARNING on stderr.
+  [[ "$stderr" == *"WARNING"* ]]
+  [[ "$stderr" == *".ground-truth-stale"* ]]
+  [ "$(printf '%s' "$stderr" | grep -c 'ground-truth may be stale')" -eq 1 ]
+  # Marker NOT cleared (non-mutating).
+  [ -f "$MEMORY_PATH/.ground-truth-stale" ]
+}
+
+# TC-GTS-20 — marker absent + ground-truth load emits no warning (no noise).
+@test "memory-loader.sh: ground-truth tier with no .ground-truth-stale → no warning" {
+  mkdir -p "$MEMORY_PATH/val-sidecar"
+  printf 'GT-VAL\n' > "$MEMORY_PATH/val-sidecar/ground-truth.md"
+  run --separate-stderr "$SCRIPT" val ground-truth
+  [ "$status" -eq 0 ]
+  [ "$output" = "GT-VAL" ]
+  [[ "$stderr" != *"ground-truth may be stale"* ]]
+}
+
+# Guard — all tier surfaces ground-truth too, so the marker warning fires there.
+@test "memory-loader.sh: all tier with .ground-truth-stale present → stderr WARNING" {
+  mkdir -p "$MEMORY_PATH/val-sidecar"
+  printf 'GT\n' > "$MEMORY_PATH/val-sidecar/ground-truth.md"
+  printf 'DL\n' > "$MEMORY_PATH/val-sidecar/decision-log.md"
+  : > "$MEMORY_PATH/.ground-truth-stale"
+  run --separate-stderr "$SCRIPT" val all
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"## Ground Truth"* ]]
+  [[ "$stderr" == *"ground-truth may be stale"* ]]
+}
+
+# Guard — decision-log tier does NOT load ground-truth, so the warning is
+# ground-truth-tier-scoped and stays silent even when the marker is present.
+@test "memory-loader.sh: decision-log tier with .ground-truth-stale present → no warning" {
+  mkdir -p "$MEMORY_PATH/nate-sidecar"
+  printf 'DL-NATE\n' > "$MEMORY_PATH/nate-sidecar/decision-log.md"
+  : > "$MEMORY_PATH/.ground-truth-stale"
+  run --separate-stderr "$SCRIPT" nate decision-log
+  [ "$status" -eq 0 ]
+  [ "$output" = "DL-NATE" ]
+  [[ "$stderr" != *"ground-truth may be stale"* ]]
 }

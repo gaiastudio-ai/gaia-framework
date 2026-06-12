@@ -276,6 +276,25 @@ case "$tier" in
     ;;
 esac
 
+# --- Lazy ground-truth staleness backstop -----------------------------------
+# When this load surfaces ground-truth (the `ground-truth` and `all` tiers) AND
+# a project-level `.ground-truth-stale` marker is present, emit a single-line
+# stderr WARNING. This is the backstop for the marker contract: even if a
+# ceremony wrote the marker and then died before refreshing, the next agent
+# dispatch surfaces the staleness here. Strictly informational — it never
+# blocks the load (no exit), never triggers a refresh, and never clears the
+# marker (the marker is cleared exclusively by a successful refresh). The probe
+# routes through the already-resolved ${MEMORY_PATH} (honors MEMORY_PATH /
+# PROJECT_PATH overrides), never a hardcoded relative literal, so it still finds
+# the marker under a non-default memory path. The `decision-log` tier does not
+# load ground-truth and therefore never warns. Goes to STDERR only — stdout is
+# the loaded memory payload and must stay clean.
+if [[ "$tier" == "ground-truth" || "$tier" == "all" ]]; then
+  if [[ -f "${MEMORY_PATH}/.ground-truth-stale" ]]; then
+    printf '%s\n' "[memory-loader] WARNING: ground-truth may be stale (.ground-truth-stale present) — run /gaia-refresh-ground-truth --incremental" >&2
+  fi
+fi
+
 # --- --max-tokens truncation -----------------------------------------------
 if [[ -n "$max_tokens" && -n "$out" ]]; then
   tok_approx=4
