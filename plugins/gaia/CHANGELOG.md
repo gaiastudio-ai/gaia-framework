@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.191.1] — 2026-06-12
+
+### Changed
+
+- re-scrub leaked epic-story keys re-introduced by the v1.191.0 changelog
+- back-merge main (v1.191.0 release) into staging
+- scrub leaked internal traceability IDs from published source (#1463)
+
 ## [1.191.0] — 2026-06-12
 
 ### Added
