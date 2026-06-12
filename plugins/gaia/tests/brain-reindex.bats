@@ -26,6 +26,14 @@
 
 load 'test_helper.bash'
 
+# _mtime FILE — print a file's modification time as an epoch integer, portably.
+# GNU coreutils stat (Linux/CI) uses `-c %Y`; BSD stat (macOS) uses `-f %m`.
+# GNU's `-f` means --file-system and does NOT error, so the GNU form MUST be
+# tried first; the BSD form is the fallback for hosts where `-c` is rejected.
+_mtime() {
+  stat -c %Y "$1" 2>/dev/null || stat -f %m "$1"
+}
+
 setup() {
   common_setup
   REINDEX="$SCRIPTS_DIR/brain/gaia-brain-reindex.sh"
@@ -226,29 +234,32 @@ _run_reindex() {
   ! grep -q 'ground-truth' "$MANIFEST"
 }
 
+# bats test_tags=hardware-dependent
 @test "the reindex leaves memory mtimes untouched" {
   local decoy="$PROJ/.gaia/memory/validator-sidecar/ground-truth.md"
   # Backdate the decoy so any read-with-atime or accidental write is detectable
   # via mtime change.
   local before
-  before="$(stat -f %m "$decoy" 2>/dev/null || stat -c %Y "$decoy")"
+  before="$(_mtime "$decoy")"
   _run_reindex
   [ "$status" -eq 0 ]
   local after
-  after="$(stat -f %m "$decoy" 2>/dev/null || stat -c %Y "$decoy")"
+  after="$(_mtime "$decoy")"
   [ "$before" = "$after" ]
 }
 
+# bats test_tags=hardware-dependent
 @test "the reindex writes only under the knowledge store" {
   # Snapshot mtimes of artifacts + state; they must be unchanged after a sweep.
+  # GNU stat (-c %Y) is tried first; the BSD form (-f %m) is the macOS fallback.
   local art_before state_before
-  art_before="$(find "$PROJ/.gaia/artifacts" "$PROJ/.gaia/state" -type f -exec stat -f %m {} \; 2>/dev/null | sort || \
-    find "$PROJ/.gaia/artifacts" "$PROJ/.gaia/state" -type f -exec stat -c %Y {} \; | sort)"
+  art_before="$(find "$PROJ/.gaia/artifacts" "$PROJ/.gaia/state" -type f -exec stat -c %Y {} \; 2>/dev/null | sort || \
+    find "$PROJ/.gaia/artifacts" "$PROJ/.gaia/state" -type f -exec stat -f %m {} \; | sort)"
   _run_reindex
   [ "$status" -eq 0 ]
   local art_after
-  art_after="$(find "$PROJ/.gaia/artifacts" "$PROJ/.gaia/state" -type f -exec stat -f %m {} \; 2>/dev/null | sort || \
-    find "$PROJ/.gaia/artifacts" "$PROJ/.gaia/state" -type f -exec stat -c %Y {} \; | sort)"
+  art_after="$(find "$PROJ/.gaia/artifacts" "$PROJ/.gaia/state" -type f -exec stat -c %Y {} \; 2>/dev/null | sort || \
+    find "$PROJ/.gaia/artifacts" "$PROJ/.gaia/state" -type f -exec stat -f %m {} \; | sort)"
   [ "$art_before" = "$art_after" ]
   # And the knowledge dir is the only new write location.
   [ -d "$KNOW" ]
