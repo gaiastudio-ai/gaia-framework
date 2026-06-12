@@ -2,12 +2,13 @@
 # gaia-paths.sh — canonical-path-constants helper for the .gaia/ consolidation.
 # Sourceable, NOT executable.
 #
-# Exports the five canonical GAIA path constants:
+# Exports the six canonical GAIA path constants:
 #   GAIA_CONFIG_DIR     = ${project_root}/.gaia/config
 #   GAIA_ARTIFACTS_DIR  = ${project_root}/.gaia/artifacts
 #   GAIA_STATE_DIR      = ${project_root}/.gaia/state
 #   GAIA_MEMORY_DIR     = ${project_root}/.gaia/memory
 #   GAIA_CUSTOM_DIR     = ${project_root}/.gaia/custom
+#   GAIA_KNOWLEDGE_DIR  = ${project_root}/.gaia/knowledge
 #
 # Plus one derived constant + two backward-compat env-var aliases:
 #   GAIA_CHECKPOINT_DIR = ${GAIA_MEMORY_DIR}/checkpoints
@@ -20,7 +21,7 @@
 #
 # Env-var overrides (allowlist + shell-metachar rejection):
 #   GAIA_CONFIG_PATH, GAIA_ARTIFACTS_PATH, GAIA_STATE_PATH,
-#   GAIA_MEMORY_PATH, GAIA_CUSTOM_PATH
+#   GAIA_MEMORY_PATH, GAIA_CUSTOM_PATH, GAIA_KNOWLEDGE_PATH
 #
 #   Overrides MUST resolve under project root via realpath. Shell
 #   metacharacters (`;` `&` `|` `` ` `` `$(`) cause non-zero exit with
@@ -173,7 +174,7 @@ if [ -z "$_GAIA_ROOT_CANON" ]; then
   return 1 2>/dev/null || exit 1
 fi
 
-# ---------- Resolve each of the 5 canonical constants ----------
+# ---------- Resolve each of the 6 canonical constants ----------
 
 _gaia_paths_resolve_override \
   GAIA_CONFIG_PATH \
@@ -205,6 +206,12 @@ _gaia_paths_resolve_override \
   "$_GAIA_ROOT_CANON" \
   GAIA_CUSTOM_DIR || return 1
 
+_gaia_paths_resolve_override \
+  GAIA_KNOWLEDGE_PATH \
+  "${_GAIA_ROOT_CANON}/.gaia/knowledge" \
+  "$_GAIA_ROOT_CANON" \
+  GAIA_KNOWLEDGE_DIR || return 1
+
 # Derived checkpoint-dir constant + backward-compat env-var aliases.
 # The checkpoint dir nests under the memory dir; downstream scripts that
 # currently consume `${CHECKPOINT_PATH:-./_memory/checkpoints}` defaults pick
@@ -218,7 +225,7 @@ GAIA_CHECKPOINT_DIR="${GAIA_MEMORY_DIR}/checkpoints"
 MEMORY_PATH="$GAIA_MEMORY_DIR"
 CHECKPOINT_PATH="$GAIA_CHECKPOINT_DIR"
 
-export GAIA_CONFIG_DIR GAIA_ARTIFACTS_DIR GAIA_STATE_DIR GAIA_MEMORY_DIR GAIA_CUSTOM_DIR
+export GAIA_CONFIG_DIR GAIA_ARTIFACTS_DIR GAIA_STATE_DIR GAIA_MEMORY_DIR GAIA_CUSTOM_DIR GAIA_KNOWLEDGE_DIR
 export GAIA_CHECKPOINT_DIR MEMORY_PATH CHECKPOINT_PATH
 
 _GAIA_PATHS_LOADED=1

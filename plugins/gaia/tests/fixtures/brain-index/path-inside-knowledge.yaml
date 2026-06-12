@@ -1,0 +1,14 @@
+schema_version: 1
+entries:
+  - key: "copied-into-knowledge"
+    source_type: "project-artifact"
+    path: ".gaia/knowledge/copied-artifact.md"
+    tags: ["architecture"]
+    synopsis: "A project-artifact whose path points INSIDE .gaia/knowledge/ — the index-in-place guard must reject this."
+    edges: []
+    trust:
+      confidence: 1.0
+      content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
+      source_url: null
+      fetched_at: null
+      expires_at: null

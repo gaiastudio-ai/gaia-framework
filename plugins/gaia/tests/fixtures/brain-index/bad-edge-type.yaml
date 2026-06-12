@@ -1,0 +1,16 @@
+schema_version: 1
+entries:
+  - key: "bad-edge-type-entry"
+    source_type: "project-artifact"
+    path: ".gaia/artifacts/planning-artifacts/architecture/sample-decision-record.md"
+    tags: ["architecture"]
+    synopsis: "An entry carrying an edge whose type is not in the closed enum."
+    edges:
+      - type: "cites"
+        target: "some-other-entry"
+    trust:
+      confidence: 1.0
+      content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
+      source_url: null
+      fetched_at: null
+      expires_at: null

@@ -1,0 +1,14 @@
+schema_version: 1
+entries:
+  - key: "bad-source-type-entry"
+    source_type: "external-blob"
+    path: ".gaia/artifacts/planning-artifacts/architecture/sample-decision-record.md"
+    tags: ["architecture"]
+    synopsis: "An entry whose source_type is not in the closed enum."
+    edges: []
+    trust:
+      confidence: 1.0
+      content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
+      source_url: null
+      fetched_at: null
+      expires_at: null

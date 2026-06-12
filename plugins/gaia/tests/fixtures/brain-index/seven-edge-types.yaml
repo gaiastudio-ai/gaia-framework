@@ -1,0 +1,28 @@
+schema_version: 1
+entries:
+  - key: "all-seven-edge-types"
+    source_type: "project-artifact"
+    path: ".gaia/artifacts/planning-artifacts/architecture/sample-decision-record.md"
+    tags: ["architecture"]
+    synopsis: "An entry exercising every one of the seven canonical edge types."
+    edges:
+      - type: "implements"
+        target: "sample-requirement-manifest"
+      - type: "traces-to"
+        target: "sample-requirement-schema"
+      - type: "decomposes"
+        target: "child-story"
+      - type: "governed-by"
+        target: "sample-governing-decision"
+      - type: "verified-by"
+        target: "brain-index-schema-bats"
+      - type: "reviewed-in"
+        target: "code-review-report"
+      - type: "designs"
+        target: "moc-render-story"
+    trust:
+      confidence: 1.0
+      content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
+      source_url: null
+      fetched_at: null
+      expires_at: null

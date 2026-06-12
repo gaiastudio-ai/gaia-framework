@@ -25,10 +25,10 @@ setup() {
 teardown() {
   unset CLAUDE_PROJECT_ROOT \
         GAIA_CONFIG_PATH GAIA_ARTIFACTS_PATH GAIA_STATE_PATH \
-        GAIA_MEMORY_PATH GAIA_CUSTOM_PATH \
+        GAIA_MEMORY_PATH GAIA_CUSTOM_PATH GAIA_KNOWLEDGE_PATH \
         _GAIA_PATHS_LOADED \
         GAIA_CONFIG_DIR GAIA_ARTIFACTS_DIR GAIA_STATE_DIR \
-        GAIA_MEMORY_DIR GAIA_CUSTOM_DIR 2>/dev/null || true
+        GAIA_MEMORY_DIR GAIA_CUSTOM_DIR GAIA_KNOWLEDGE_DIR 2>/dev/null || true
   common_teardown
 }
 
@@ -130,4 +130,35 @@ teardown() {
   [[ "$output" == *"CKPT=$alt/checkpoints"* ]]
   [[ "$output" == *"MEM=$alt"* ]]
   rm -rf "$alt"
+}
+
+# ---------------------------------------------------------------------------
+# GAIA_KNOWLEDGE_DIR — the sixth canonical constant (brain knowledge layer).
+# Mirrors the five existing override tests above.
+# ---------------------------------------------------------------------------
+
+@test "gaia-paths.sh: GAIA_KNOWLEDGE_DIR defaults to .gaia/knowledge" {
+  run bash -c "source '$LIB' && echo KNOWLEDGE=\$GAIA_KNOWLEDGE_DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"KNOWLEDGE=$PROJECT_ROOT/.gaia/knowledge"* ]]
+}
+
+@test "gaia-paths.sh: GAIA_KNOWLEDGE_PATH override under project root accepted" {
+  mkdir -p "$PROJECT_ROOT/alt-knowledge"
+  run bash -c "export GAIA_KNOWLEDGE_PATH='$PROJECT_ROOT/alt-knowledge'; source '$LIB' && echo KNOWLEDGE=\$GAIA_KNOWLEDGE_DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"KNOWLEDGE=$PROJECT_ROOT/alt-knowledge"* ]]
+}
+
+@test "gaia-paths.sh: GAIA_KNOWLEDGE_PATH override OUTSIDE project root rejected" {
+  run bash -c "export GAIA_KNOWLEDGE_PATH='/etc'; source '$LIB' 2>&1"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"outside project root"* ]] || [[ "$output" == *"CRITICAL"* ]]
+}
+
+@test "gaia-paths.sh: shell-metacharacter in GAIA_KNOWLEDGE_PATH rejected" {
+  run bash -c "export GAIA_KNOWLEDGE_PATH='./k;rm -rf /'; source '$LIB' 2>&1"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"shell-metacharacter rejected"* ]]
+  [[ "$output" == *"GAIA_KNOWLEDGE_PATH"* ]]
 }
