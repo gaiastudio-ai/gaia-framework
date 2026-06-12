@@ -16,8 +16,8 @@
 #                    E55-S3, E55-S5.
 #
 # The gate region is the contiguous block bounded by the literal markers:
-#   <!-- E55-S1: planning gate begin -->
-#   <!-- E55-S1: planning gate end -->
+#   <!-- planning gate begin -->
+#   <!-- planning gate end -->
 #
 # Usage:
 #   bats tests/skills/gaia-dev-story-planning-gate.bats
@@ -32,8 +32,8 @@ setup() {
   SCRIPTS_DIR="$REPO_ROOT/plugins/gaia/scripts"
   SKILL_FILE="$SKILLS_DIR/gaia-dev-story/SKILL.md"
 
-  GATE_BEGIN='<!-- E55-S1: planning gate begin -->'
-  GATE_END='<!-- E55-S1: planning gate end -->'
+  GATE_BEGIN='<!-- planning gate begin -->'
+  GATE_END='<!-- planning gate end -->'
 }
 
 # Extract the gate region (inclusive of markers) from SKILL.md to stdout.
@@ -120,19 +120,19 @@ extract_gate_region() {
 @test "Test 5a: E55-S2 YOLO branch placeholder marker present in gate region" {
   region="$(extract_gate_region)"
   [ -n "$region" ]
-  echo "$region" | grep -qF "E55-S2: YOLO"
+  echo "$region" | grep -qF "YOLO Val auto-validation loop"
 }
 
 @test "Test 5b: E55-S3 three-option prompt placeholder marker present in gate region" {
   region="$(extract_gate_region)"
   [ -n "$region" ]
-  echo "$region" | grep -qF "E55-S3: three-option"
+  echo "$region" | grep -qF "three-option prompt body"
 }
 
 @test "Test 5c: E55-S5 plan-structure validator placeholder marker present in gate region" {
   region="$(extract_gate_region)"
   [ -n "$region" ]
-  echo "$region" | grep -qF "E55-S5: plan-structure"
+  echo "$region" | grep -qF "plan-structure validator"
 }
 
 # ---------- NFR-DSH-5: single-line gate log emission instruction ----------

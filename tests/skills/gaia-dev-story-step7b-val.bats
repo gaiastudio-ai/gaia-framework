@@ -16,8 +16,8 @@
 #                     NO new `AskUserQuestion` invocations (pause-free TDD body).
 #
 # Step 7b region bounds (this story):
-#   <!-- E55-S4: step 7b begin -->
-#   <!-- E55-S4: step 7b end -->
+#   <!-- step 7b begin -->
+#   <!-- step 7b end -->
 #
 # Usage:
 #   bats tests/skills/gaia-dev-story-step7b-val.bats
@@ -31,8 +31,8 @@ setup() {
   SKILLS_DIR="$REPO_ROOT/plugins/gaia/skills"
   SKILL_FILE="$SKILLS_DIR/gaia-dev-story/SKILL.md"
 
-  STEP7B_BEGIN='<!-- E55-S4: step 7b begin -->'
-  STEP7B_END='<!-- E55-S4: step 7b end -->'
+  STEP7B_BEGIN='<!-- step 7b begin -->'
+  STEP7B_END='<!-- step 7b end -->'
 }
 
 # Extract the Step 7b region (inclusive of markers) from SKILL.md to stdout.

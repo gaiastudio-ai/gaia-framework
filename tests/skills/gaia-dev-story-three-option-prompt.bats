@@ -21,11 +21,11 @@
 #   DoD — Test 9:   inline comment naming the three labels is present.
 #
 # The gate region is the contiguous block bounded by the literal markers:
-#   <!-- E55-S1: planning gate begin -->
-#   <!-- E55-S1: planning gate end -->
+#   <!-- planning gate begin -->
+#   <!-- planning gate end -->
 #
 # The three-option prompt body is the segment that replaces the
-# `<!-- E55-S3: three-option prompt body -->` placeholder marker.
+# `<!-- three-option prompt body -->` placeholder marker.
 #
 # Usage:
 #   bats tests/skills/gaia-dev-story-three-option-prompt.bats
@@ -39,8 +39,8 @@ setup() {
   SKILLS_DIR="$REPO_ROOT/plugins/gaia/skills"
   SKILL_FILE="$SKILLS_DIR/gaia-dev-story/SKILL.md"
 
-  GATE_BEGIN='<!-- E55-S1: planning gate begin -->'
-  GATE_END='<!-- E55-S1: planning gate end -->'
+  GATE_BEGIN='<!-- planning gate begin -->'
+  GATE_END='<!-- planning gate end -->'
 }
 
 # Extract the gate region (inclusive of markers) from SKILL.md to stdout.
