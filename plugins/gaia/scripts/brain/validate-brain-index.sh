@@ -82,9 +82,17 @@ _vbi_main() {
   # ---- 2. Index-in-place guard ----
   # Read each entry's (source_type, path) pair. Reuse the schema primitive's
   # python3+PyYAML path rather than adding a yq host dependency.
+  #
+  # When python3+PyYAML is unavailable the guard cannot run. That is a
+  # host-capability gap, NOT a manifest defect, so it degrades to SKIP (3) —
+  # the same graceful-degradation contract the structural check uses when no
+  # JSON-schema backend is present. A host with jsonschema but without PyYAML
+  # (e.g. a stock CI runner) must not be reported as a hard failure: callers
+  # treat 3 as "could not verify, proceed". Returning 2 here was the latent bug
+  # that surfaced once the brain became the first YAML-manifest consumer.
   if ! command -v python3 >/dev/null 2>&1 || ! python3 -c 'import yaml' >/dev/null 2>&1; then
-    _vbi_die "python3+PyYAML required for the index-in-place guard" 2
-    return 2
+    _vbi_die "python3+PyYAML unavailable — index-in-place guard skipped" 3
+    return 3
   fi
 
   local pairs

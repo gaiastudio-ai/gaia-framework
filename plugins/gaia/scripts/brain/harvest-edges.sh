@@ -341,6 +341,17 @@ _harvest_designs() {
 # ---------------------------------------------------------------------------
 
 _has_pyyaml() {
+  # Additive once-per-sweep cache. A long full sweep calls this helper many
+  # times per node; the bare probe forks python3 twice on every call, which
+  # dominates the per-node cost. When the reindex sweep has already probed the
+  # host ONCE and exported the result, honor it and skip the fork. When the
+  # cache env is UNSET, fall through to the exact original probe so callers that
+  # do not set it (every existing direct invocation) see byte-identical
+  # behavior.
+  case "${GAIA_BRAIN_PYYAML:-}" in
+    1) return 0 ;;
+    0) return 1 ;;
+  esac
   command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1
 }
 

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-brain-reindex - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#boundary">Read-only boundary</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/sprint-management.html">Sprint Management</a><span class="separator">/</span>
+        /gaia-brain-reindex
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-brain-reindex</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/sprint-management.html">Sprint Management</a></dd>
+          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt><dd><em>none</em></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-brain-reindex</code> rebuilds the brain knowledge layer's index from source. It is the <strong>sole writer</strong> of that index: it walks the project's artifact and state trees, derives a typed-edge graph of how the artifacts relate, stamps every entry with a content-integrity hash, and writes the index atomically. Because every run regenerates the whole index from the files on disk, hand-tampering never persists and synopses never silently drift.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You made a burst of mid-sprint artifact edits and want the knowledge index refreshed before querying it.</li>
+          <li>You want to confirm the index matches the current filesystem after a reorganization.</li>
+          <li>You normally do not need to run it by hand -- the sprint-close ceremony runs it automatically as a best-effort pass.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>No strict prerequisites.</strong> If the knowledge store does not exist, it is created automatically.</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-brain-reindex</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Walk the source roots</span> Enumerates every artifact under the artifacts and state trees. Three story-file layouts are all discovered and tolerated; a story present in more than one layout de-dupes to the highest-precedence layout.</li>
+          <li><span class="step-title">Hash each file</span> Computes a content hash for every discovered file.</li>
+          <li><span class="step-title">Short-circuit unchanged files</span> If the existing index already carries that exact hash for a file, the prior synopsis and edges are carried forward unchanged -- no re-work. This makes a re-run fast: the first sweep does the full work; later sweeps only touch what changed.</li>
+          <li><span class="step-title">Generate synopsis + harvest edges</span> For new or changed files, generates a deterministic one-paragraph synopsis (first heading plus first prose line) and harvests the artifact's typed governance edges from the project's existing planning data.</li>
+          <li><span class="step-title">Stage atomically</span> Writes the whole index to a sibling temporary file next to the live index, validates it against the index schema, and only then renames it into place. A concurrent reader never sees a partial index.</li>
+          <li><span class="step-title">Fail safe</span> If validation fails, the previous index is left exactly as it was and the run reports the failure.</li>
+        </ol>
+      </section>
+
+      <section id="boundary">
+        <h2>Read-only boundary</h2>
+        <p>The sweep reads from exactly two trees -- the artifacts tree and the state tree -- and writes to exactly one: the knowledge store. It is a read-only consumer of everything it indexes; it never modifies an artifact and never copies an artifact's bytes into the knowledge store. Entries point at each file in place.</p>
+        <p>The sweep does <strong>not</strong> read or write the agent-sidecar working-memory tree. Those sidecars are private, per-agent working memory maintained by a separate ground-truth refresh flow; the brain index is a distinct, project-wide governance index. The two are independent subsystems and neither substitutes for the other.</p>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Brain index</td><td><code>.gaia/knowledge/brain-index.yaml</code></td><td>The rebuilt knowledge index -- one entry per artifact, with tags, a synopsis, typed edges, and a trust block carrying the content hash.</td></tr></tbody></table>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul><li><a href="gaia-sprint-close.html"><code>/gaia-sprint-close</code></a> -- closes the sprint and runs a best-effort reindex automatically before emitting the close event.</li></ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>Reindex reported a failure at sprint-close</h3><p>The sprint-close reindex is best-effort and non-blocking -- a failure warns and the sprint still closes. Run <code>/gaia-brain-reindex</code> on demand to retry and surface the error directly.</p>
+        <h3>The index looks out of date</h3><p>Run <code>/gaia-brain-reindex</code> to rebuild it from the current filesystem. Every run regenerates the whole index, so it always matches the files on disk afterward.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-sprint-close.html"><code>/gaia-sprint-close</code></a></td><td>Runs a best-effort reindex automatically as part of the close ceremony.</td></tr><tr><td><a href="gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a></td><td>A separate, independent subsystem -- refreshes the validator's file-inventory snapshot, not the brain index.</td></tr></tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
