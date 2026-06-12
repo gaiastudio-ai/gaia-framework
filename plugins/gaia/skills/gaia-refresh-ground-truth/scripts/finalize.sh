@@ -10,6 +10,12 @@
 # Exit codes:
 #   0 — finalize succeeded
 #   1 — checkpoint write or lifecycle event emission failed
+#
+# Marker contract:
+#   The `.ground-truth-stale` marker is cleared EXCLUSIVELY here, on the
+#   successful-refresh path. This step runs AFTER the required checkpoint and
+#   lifecycle-event steps (both of which `die` on failure), so a FAILED refresh
+#   never reaches the clear and never false-clears the marker.
 
 set -euo pipefail
 LC_ALL=C
@@ -46,6 +52,16 @@ if [ -x "$LIFECYCLE_EVENT" ]; then
 else
   log "lifecycle-event.sh not found at $LIFECYCLE_EVENT — skipping event emission (non-fatal)"
 fi
+
+# ---------- 3. Clear the .ground-truth-stale marker (success path only) ----------
+# Reached only after the required checkpoint + lifecycle-event steps succeeded,
+# i.e. a successful refresh. The marker path is resolved through the loader's
+# idiom (MEMORY_PATH override → CLAUDE_PROJECT_ROOT/.gaia/memory default), never
+# a hardcoded relative literal. `rm -f` is idempotent — an absent marker is a
+# no-op.
+marker="${MEMORY_PATH:-${CLAUDE_PROJECT_ROOT:-.}/.gaia/memory}/.ground-truth-stale"
+rm -f "$marker"
+log "cleared .ground-truth-stale marker (successful refresh)"
 
 log "finalize complete for $WORKFLOW_NAME"
 exit 0
