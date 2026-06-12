@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.191.0] — 2026-06-12
+
+### Added
+
+- (E109-S5) clear stale marker on successful refresh + staleness capstone tests (#1457)
+- (E109-S4) add lazy ground-truth staleness backstop warning to memory-loader (#1456)
+- (E109-S2) wire ground-truth staleness check into four lifecycle points (#1454)
+- (E109-S1) add shared ground-truth staleness helper and marker (#1453)
+
+### Changed
+
+- back-merge main (v1.190.1 release) into staging
+- (E109-S3) cover .ground-truth-stale stale-flag registry registration (#1455)
+
 ## [1.190.1] — 2026-06-11
 
 ### Fixed
