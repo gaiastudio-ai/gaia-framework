@@ -10,6 +10,10 @@ orchestration_class: reviewer
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-validate-story/scripts/setup.sh
 
+## Memory
+
+!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh validator all
+
 ## Mission
 
 You are validating a story file against the codebase and ground truth using the Val (validator) subagent. The story file is resolved by `{story_key}` via the shared `resolve-story-file.sh` helper, which honors the nested-over-flat precedence rule across `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` (canonical) and `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` (legacy-flat fallback).
