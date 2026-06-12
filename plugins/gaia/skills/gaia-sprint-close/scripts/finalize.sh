@@ -37,6 +37,16 @@ if [ -r "$GT_GATE_LIB" ]; then
   gt_gate_best_effort "sprint-close" || true
 fi
 
+# Brain reindex BEST-EFFORT pass — before the lifecycle-event emit, mirroring the
+# ground-truth-staleness placement above. NON-BLOCKING: the sprint's primary
+# outcome must never be blocked by a knowledge-index rebuild, so a reindex
+# failure WARNS to stderr and the close CONTINUES. The resolved binary is
+# overridable via GAIA_BRAIN_REINDEX_BIN for testability.
+BRAIN_REINDEX="${GAIA_BRAIN_REINDEX_BIN:-$PLUGIN_SCRIPTS_DIR/brain/gaia-brain-reindex.sh}"
+if [ -x "$BRAIN_REINDEX" ]; then
+  "$BRAIN_REINDEX" >/dev/null 2>&1 || log "brain reindex failed (non-fatal)"
+fi
+
 if [ -x "$LIFECYCLE_EVENT" ]; then
   "$LIFECYCLE_EVENT" --type workflow_complete --workflow "$WORKFLOW_NAME" >/dev/null 2>&1 || \
     log "lifecycle-event.sh emit failed (non-fatal)"
