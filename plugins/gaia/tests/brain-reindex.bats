@@ -50,6 +50,7 @@ setup() {
   export CLAUDE_PROJECT_ROOT="$PROJ"
   KNOW="$PROJ/.gaia/knowledge"
   MANIFEST="$KNOW/brain-index.yaml"
+  MOC="$KNOW/brain-index.md"
 }
 
 teardown() {
@@ -285,6 +286,77 @@ _run_reindex() {
   [ "$status" -eq 0 ]
   run bash "$VALIDATE" "$MANIFEST"
   # 0 = valid, 3 = SKIP (no JSON-schema backend on host) — both acceptable.
+  [ "$status" -eq 0 ] || [ "$status" -eq 3 ]
+}
+
+# ---- MOC render: the sweep renders brain-index.md beside the manifest -------
+
+@test "the sweep renders a MOC markdown file beside the manifest" {
+  _run_reindex
+  [ "$status" -eq 0 ]
+  [ -f "$MANIFEST" ]
+  [ -f "$MOC" ]
+  [ -s "$MOC" ]
+}
+
+@test "the rendered MOC names the primary node and carries a wikilink" {
+  _run_reindex
+  [ "$status" -eq 0 ]
+  grep -q 'E777-S2' "$MOC"
+  # Obsidian wikilink syntax present; target is relative (../), never .gaia/.
+  grep -q '\[\[' "$MOC"
+  grep -qF '[[../artifacts/implementation-artifacts/epic-E777-demo/E777-S2-primary/story.md|E777-S2]]' "$MOC"
+  ! grep -q '\[\[\.gaia/' "$MOC"
+}
+
+@test "a no-op re-sweep leaves the MOC byte-identical" {
+  _run_reindex
+  [ "$status" -eq 0 ]
+  local first
+  first="$(_sha "$MOC")"
+  # Re-sweep with no source changes — the MOC must be reproduced byte-identical
+  # (content comparison, NOT mtime — deterministic + hardware-independent).
+  _run_reindex
+  [ "$status" -eq 0 ]
+  local second
+  second="$(_sha "$MOC")"
+  [ "$first" = "$second" ]
+}
+
+@test "removing a source drops its entry from both the manifest and the MOC" {
+  _run_reindex
+  [ "$status" -eq 0 ]
+  grep -q 'key: "E777-S7"' "$MANIFEST"
+  grep -q 'E777-S7' "$MOC"
+
+  # Remove the flat-layout source and re-sweep.
+  rm -f "$PROJ/.gaia/artifacts/implementation-artifacts/E777-S7-flat.md"
+  _run_reindex
+  [ "$status" -eq 0 ]
+  ! grep -q 'key: "E777-S7"' "$MANIFEST"
+  ! grep -q 'E777-S7' "$MOC"
+}
+
+@test "a MOC render failure does not abort the sweep nor corrupt the manifest" {
+  # First successful sweep establishes a valid manifest + MOC.
+  _run_reindex
+  [ "$status" -eq 0 ]
+  local manifest_before
+  manifest_before="$(_sha "$MANIFEST")"
+
+  # Make the MOC render fail by making the target unwritable: replace the MOC
+  # file with a directory (rename onto it fails) AND make the knowledge dir
+  # write-protected for the render's tempfile. The simplest portable injection:
+  # turn the existing MOC path into a directory so the render's final rename
+  # cannot overwrite it. The sweep must still complete and rewrite the manifest.
+  rm -f "$MOC"
+  mkdir -p "$MOC"   # MOC path is now a directory → render rename fails
+
+  _run_reindex
+  [ "$status" -eq 0 ]
+  # The sweep stayed exit 0; the manifest was still rewritten (and is valid).
+  [ -f "$MANIFEST" ]
+  run bash "$VALIDATE" "$MANIFEST"
   [ "$status" -eq 0 ] || [ "$status" -eq 3 ]
 }
 
