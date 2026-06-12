@@ -36,8 +36,8 @@ setup() {
   SKILL_FILE="$REPO_ROOT/plugins/gaia/skills/gaia-dev-story/SKILL.md"
   HINTS_SCRIPT="$REPO_ROOT/plugins/gaia/skills/gaia-dev-story/scripts/conditional-check-hints.sh"
 
-  REGION_BEGIN='<!-- E55-S7: step 6b begin -->'
-  REGION_END='<!-- E55-S7: step 6b end -->'
+  REGION_BEGIN='<!-- step 6b begin -->'
+  REGION_END='<!-- step 6b end -->'
 
   # Per-test working dir for fixture git repos.
   TEST_TMPDIR="$(mktemp -d)"

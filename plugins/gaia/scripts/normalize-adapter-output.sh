@@ -23,7 +23,7 @@ SCRIPT_NAME="normalize-adapter-output.sh"
 
 # Internal helpers — leading underscore prefix excludes them from the
 # public-function coverage gate. They are exercised end-to-end
-# via the public entry point in tests/E74-S9-mobile-dynamic-adapters.bats:
+# via the public entry point in the mobile-dynamic-adapters bats suite:
 #   _normalize_junit_xml — covered by junit-xml test
 #   _normalize_json      — covered by maestro json test
 #   _normalize_xcresult  — covered by xcresult-format input branch (delegates to jq)

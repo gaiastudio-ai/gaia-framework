@@ -28,8 +28,8 @@ setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   SKILL_FILE="$REPO_ROOT/plugins/gaia/skills/gaia-dev-story/SKILL.md"
 
-  REGION_BEGIN='<!-- E55-S5: figma graceful-degrade begin -->'
-  REGION_END='<!-- E55-S5: figma graceful-degrade end -->'
+  REGION_BEGIN='<!-- figma graceful-degrade begin -->'
+  REGION_END='<!-- figma graceful-degrade end -->'
 }
 
 extract_figma_region() {

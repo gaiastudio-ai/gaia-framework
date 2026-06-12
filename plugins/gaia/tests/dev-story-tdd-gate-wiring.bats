@@ -37,28 +37,28 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 
 @test "AC5: Step 5 (Red) tdd-review-gate hook block is present" {
-  run grep -c '<!-- E57-S4: step5 tdd-review-gate begin -->' "$SKILL_MD"
+  run grep -c '<!-- step5 tdd-review-gate begin -->' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
-  run grep -c '<!-- E57-S4: step5 tdd-review-gate end -->' "$SKILL_MD"
+  run grep -c '<!-- step5 tdd-review-gate end -->' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
 }
 
 @test "AC5: Step 6 (Green) tdd-review-gate hook block is present" {
-  run grep -c '<!-- E57-S4: step6 tdd-review-gate begin -->' "$SKILL_MD"
+  run grep -c '<!-- step6 tdd-review-gate begin -->' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
-  run grep -c '<!-- E57-S4: step6 tdd-review-gate end -->' "$SKILL_MD"
+  run grep -c '<!-- step6 tdd-review-gate end -->' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
 }
 
 @test "AC5: Step 7 (Refactor) tdd-review-gate hook block is present" {
-  run grep -c '<!-- E57-S4: step7 tdd-review-gate begin -->' "$SKILL_MD"
+  run grep -c '<!-- step7 tdd-review-gate begin -->' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
-  run grep -c '<!-- E57-S4: step7 tdd-review-gate end -->' "$SKILL_MD"
+  run grep -c '<!-- step7 tdd-review-gate end -->' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
 }
@@ -76,21 +76,21 @@ teardown() { common_teardown; }
 
 @test "AC5: Step 5 hook block passes phase=red to tdd-review-gate.sh" {
   # Extract the Step 5 hook block and verify it contains 'red' as the phase.
-  block="$(awk '/<!-- E57-S4: step5 tdd-review-gate begin -->/,/<!-- E57-S4: step5 tdd-review-gate end -->/' "$SKILL_MD")"
+  block="$(awk '/<!-- step5 tdd-review-gate begin -->/,/<!-- step5 tdd-review-gate end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   echo "$block" | grep -Fq 'tdd-review-gate.sh'
   echo "$block" | grep -Eq '\bred\b'
 }
 
 @test "AC5: Step 6 hook block passes phase=green to tdd-review-gate.sh" {
-  block="$(awk '/<!-- E57-S4: step6 tdd-review-gate begin -->/,/<!-- E57-S4: step6 tdd-review-gate end -->/' "$SKILL_MD")"
+  block="$(awk '/<!-- step6 tdd-review-gate begin -->/,/<!-- step6 tdd-review-gate end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   echo "$block" | grep -Fq 'tdd-review-gate.sh'
   echo "$block" | grep -Eq '\bgreen\b'
 }
 
 @test "AC5: Step 7 hook block passes phase=refactor to tdd-review-gate.sh" {
-  block="$(awk '/<!-- E57-S4: step7 tdd-review-gate begin -->/,/<!-- E57-S4: step7 tdd-review-gate end -->/' "$SKILL_MD")"
+  block="$(awk '/<!-- step7 tdd-review-gate begin -->/,/<!-- step7 tdd-review-gate end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   echo "$block" | grep -Fq 'tdd-review-gate.sh'
   echo "$block" | grep -Eq '\brefactor\b'
@@ -105,7 +105,7 @@ teardown() { common_teardown; }
 assert_block_has_verbatim_labels() {
   local marker="$1"
   local block
-  block="$(awk "/<!-- E57-S4: ${marker} tdd-review-gate begin -->/,/<!-- E57-S4: ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
+  block="$(awk "/<!-- ${marker} tdd-review-gate begin -->/,/<!-- ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
   [ -n "$block" ]
   echo "$block" | grep -Fq 'review-myself'
   echo "$block" | grep -Fq 'route-to-qa'
@@ -129,7 +129,7 @@ assert_block_has_verbatim_labels() {
   # then proceed-anyway. Use byte offsets (grep -bo) so labels on the same
   # line still resolve a strict relative order.
   for marker in step5 step6 step7; do
-    block="$(awk "/<!-- E57-S4: ${marker} tdd-review-gate begin -->/,/<!-- E57-S4: ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
+    block="$(awk "/<!-- ${marker} tdd-review-gate begin -->/,/<!-- ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
     rm_off="$(printf '%s\n' "$block" | grep -boF 'review-myself' | head -1 | cut -d: -f1)"
     rq_off="$(printf '%s\n' "$block" | grep -boF 'route-to-qa' | head -1 | cut -d: -f1)"
     pa_off="$(printf '%s\n' "$block" | grep -boF 'proceed-anyway' | head -1 | cut -d: -f1)"
@@ -146,7 +146,7 @@ assert_block_has_verbatim_labels() {
 
 @test "AC1: each hook block documents the SKIP dispatch (no prompt)" {
   for marker in step5 step6 step7; do
-    block="$(awk "/<!-- E57-S4: ${marker} tdd-review-gate begin -->/,/<!-- E57-S4: ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
+    block="$(awk "/<!-- ${marker} tdd-review-gate begin -->/,/<!-- ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
     [ -n "$block" ]
     echo "$block" | grep -Fq 'SKIP'
   done
@@ -159,7 +159,7 @@ assert_block_has_verbatim_labels() {
 
 @test "AC3: each hook block dispatches QA_AUTO to the tdd-reviewer subagent" {
   for marker in step5 step6 step7; do
-    block="$(awk "/<!-- E57-S4: ${marker} tdd-review-gate begin -->/,/<!-- E57-S4: ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
+    block="$(awk "/<!-- ${marker} tdd-review-gate begin -->/,/<!-- ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
     [ -n "$block" ]
     echo "$block" | grep -Fq 'QA_AUTO'
     # tdd-reviewer subagent name appears (Tex / tdd-reviewer / agents/tdd-reviewer.md).
@@ -173,7 +173,7 @@ assert_block_has_verbatim_labels() {
 
 @test "AC4: each hook block documents proceed-anyway checkpoint persistence" {
   for marker in step5 step6 step7; do
-    block="$(awk "/<!-- E57-S4: ${marker} tdd-review-gate begin -->/,/<!-- E57-S4: ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
+    block="$(awk "/<!-- ${marker} tdd-review-gate begin -->/,/<!-- ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
     [ -n "$block" ]
     # Block names checkpoint persistence and timestamp recording on
     # proceed-anyway. Accept either 'checkpoint' + 'timestamp' phrasing.
@@ -189,21 +189,21 @@ assert_block_has_verbatim_labels() {
 
 @test "Step 5 hook block follows Step 5 -- TDD Red Phase header" {
   step5_line="$(grep -n '^### Step 5 -- TDD Red Phase' "$SKILL_MD" | head -1 | cut -d: -f1)"
-  hook_line="$(grep -n '<!-- E57-S4: step5 tdd-review-gate begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
+  hook_line="$(grep -n '<!-- step5 tdd-review-gate begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
   [ -n "$step5_line" ] && [ -n "$hook_line" ]
   [ "$hook_line" -gt "$step5_line" ]
 }
 
 @test "Step 6 hook block follows Step 6 -- TDD Green Phase header" {
   step6_line="$(grep -n '^### Step 6 -- TDD Green Phase' "$SKILL_MD" | head -1 | cut -d: -f1)"
-  hook_line="$(grep -n '<!-- E57-S4: step6 tdd-review-gate begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
+  hook_line="$(grep -n '<!-- step6 tdd-review-gate begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
   [ -n "$step6_line" ] && [ -n "$hook_line" ]
   [ "$hook_line" -gt "$step6_line" ]
 }
 
 @test "Step 7 hook block follows Step 7 -- TDD Refactor Phase header" {
   step7_line="$(grep -n '^### Step 7 -- TDD Refactor Phase' "$SKILL_MD" | head -1 | cut -d: -f1)"
-  hook_line="$(grep -n '<!-- E57-S4: step7 tdd-review-gate begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
+  hook_line="$(grep -n '<!-- step7 tdd-review-gate begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
   [ -n "$step7_line" ] && [ -n "$hook_line" ]
   [ "$hook_line" -gt "$step7_line" ]
 }
@@ -213,15 +213,15 @@ assert_block_has_verbatim_labels() {
 # ---------------------------------------------------------------------------
 
 @test "Step 6 tdd-review-gate hook precedes Step 6b advisory hints" {
-  hook_line="$(grep -n '<!-- E57-S4: step6 tdd-review-gate begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
-  step6b_line="$(grep -n '<!-- E55-S7: step 6b begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
+  hook_line="$(grep -n '<!-- step6 tdd-review-gate begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
+  step6b_line="$(grep -n '<!-- step 6b begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
   [ -n "$hook_line" ] && [ -n "$step6b_line" ]
   [ "$hook_line" -lt "$step6b_line" ]
 }
 
 @test "Step 7 tdd-review-gate hook precedes Step 7b Val pass" {
-  hook_line="$(grep -n '<!-- E57-S4: step7 tdd-review-gate begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
-  step7b_line="$(grep -n '<!-- E55-S4: step 7b begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
+  hook_line="$(grep -n '<!-- step7 tdd-review-gate begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
+  step7b_line="$(grep -n '<!-- step 7b begin -->' "$SKILL_MD" | head -1 | cut -d: -f1)"
   [ -n "$hook_line" ] && [ -n "$step7b_line" ]
   [ "$hook_line" -lt "$step7b_line" ]
 }
@@ -237,7 +237,7 @@ assert_block_has_verbatim_labels() {
   # ADR-063 governs verdict surfacing from the tdd-reviewer subagent.
   # The behavioral anchor is "Surface the verdict" — present in each block's
   # route-to-qa and QA_AUTO branches.
-  hooks="$(awk '/<!-- E57-S4: step[567] tdd-review-gate begin -->/,/<!-- E57-S4: step[567] tdd-review-gate end -->/' "$SKILL_MD")"
+  hooks="$(awk '/<!-- step[567] tdd-review-gate begin -->/,/<!-- step[567] tdd-review-gate end -->/' "$SKILL_MD")"
   echo "$hooks" | grep -Fq 'Surface the verdict'
 }
 
@@ -246,6 +246,6 @@ assert_block_has_verbatim_labels() {
   # The behavioral anchor is "YOLO MUST NOT auto-resolve CRITICAL findings" —
   # present in the step5 block and mirrored by "HALT on \`severity: CRITICAL\`"
   # throughout all three blocks.
-  hooks="$(awk '/<!-- E57-S4: step[567] tdd-review-gate begin -->/,/<!-- E57-S4: step[567] tdd-review-gate end -->/' "$SKILL_MD")"
+  hooks="$(awk '/<!-- step[567] tdd-review-gate begin -->/,/<!-- step[567] tdd-review-gate end -->/' "$SKILL_MD")"
   echo "$hooks" | grep -Eq 'HALT on.*severity: CRITICAL|YOLO MUST NOT auto-resolve CRITICAL'
 }
