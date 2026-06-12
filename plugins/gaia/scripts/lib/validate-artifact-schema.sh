@@ -128,6 +128,22 @@ validate_artifact_schema() {
     return 3
   fi
 
+  # YAML/Markdown instances are converted to JSON via python3 + PyYAML. The
+  # backend probe above only checks for `jsonschema`, but the conversion of a
+  # non-JSON instance ALSO needs the `yaml` module. A host that has jsonschema
+  # but not PyYAML (e.g. a stock CI runner) can validate JSON instances yet
+  # cannot convert YAML — that is a host-capability gap, not a malformed
+  # instance, so it must degrade to SKIP (3) exactly like an absent backend,
+  # never a hard rc=2. JSON instances need no conversion tool and are exempt.
+  case "$instance" in
+    *.yaml|*.yml|*.md)
+      if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+        printf '[SKIP] validate-artifact-schema: python3 present but PyYAML missing — cannot convert %s for structural check; skipped\n' "$instance" >&2
+        return 3
+      fi
+      ;;
+  esac
+
   # Materialize a JSON form of the instance into a temp file (cleaned on exit).
   local tmp_json
   tmp_json="$(mktemp "${TMPDIR:-/tmp}/vas-XXXXXX")" || { _vas_die "mktemp failed" 2; return 2; }

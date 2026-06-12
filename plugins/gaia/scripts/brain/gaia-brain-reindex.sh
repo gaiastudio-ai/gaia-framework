@@ -512,6 +512,22 @@ brain_reindex() {
   mkdir -p "$knowledge_dir"
   local manifest_tmp
   manifest_tmp="$(mktemp "${out_manifest}.tmp.XXXXXX")"
+  # The validator (and the shared schema primitive it delegates to) dispatches the
+  # instance->JSON conversion on the file EXTENSION — only *.yaml / *.yml / *.md /
+  # *.json are recognized; anything else returns "could not convert" (rc=2). A
+  # bare mktemp template leaves the staging file with a `.tmp.XXXXXX` suffix, so on
+  # a host WITH a JSON-schema backend (ajv or python3+jsonschema — i.e. Linux CI)
+  # the pre-rename validation of the tempfile trips that rc=2 and the whole sweep
+  # returns non-zero. On a backend-less host (stock macOS) the validator SKIPs
+  # before the extension dispatch, masking the bug. Give the staging file a `.yaml`
+  # extension so the validator recognizes it. We add the suffix with a portable
+  # rename rather than baking it into the mktemp template, because BSD mktemp does
+  # NOT honor a suffix after the XXXXXX placeholder (it would emit a fixed,
+  # un-randomized name) — only GNU mktemp does. The rename keeps the file a sibling
+  # of the manifest on the same store (atomic-rename contract intact) and still
+  # matches the `*.tmp.*` cleanup glob.
+  mv "$manifest_tmp" "${manifest_tmp}.yaml"
+  manifest_tmp="${manifest_tmp}.yaml"
   # Ensure the sibling tempfile is removed on any pre-rename failure.
   # shellcheck disable=SC2064
   trap "rm -rf '$tmp' 2>/dev/null || true; rm -f '$manifest_tmp' 2>/dev/null || true" RETURN

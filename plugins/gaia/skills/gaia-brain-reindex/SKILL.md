@@ -1,6 +1,9 @@
 ---
 name: gaia-brain-reindex
 description: Rebuild the brain knowledge layer's index from source — a full, correct-by-construction sweep of the project's artifact and state trees. Use when "reindex the brain", "rebuild the knowledge index", or /gaia-brain-reindex. Runs automatically as a best-effort pass at sprint-close and is available on demand at any time.
+allowed-tools: [Bash, Read]
+version: "1.0.0"
+orchestration_class: light-procedural
 ---
 
 # gaia-brain-reindex

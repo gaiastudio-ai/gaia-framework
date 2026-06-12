@@ -30,14 +30,21 @@ setup() {
 
 teardown() { common_teardown; }
 
-# Detect whether a JSON-schema validator backend is available on this host.
-# Mirrors the cascade inside validate-artifact-schema.sh: ajv first, then
-# python3 + jsonschema.
+# Detect whether a JSON-schema validator backend that can validate a YAML
+# instance is available on this host. Mirrors the cascade inside
+# validate-artifact-schema.sh: ajv first, then python3 + jsonschema. The
+# python branch ALSO requires PyYAML because these suites validate a *.yaml
+# manifest, and the primitive converts YAML→JSON via PyYAML before validating —
+# a host with jsonschema but without PyYAML correctly SKIPs YAML instances
+# (rc=3), so this guard must require PyYAML to match, otherwise the test runs
+# and asserts exit 0 against a legitimate SKIP.
 _has_backend() {
   if command -v ajv >/dev/null 2>&1; then
     return 0
   fi
-  if command -v python3 >/dev/null 2>&1 && python3 -c 'import jsonschema' >/dev/null 2>&1; then
+  if command -v python3 >/dev/null 2>&1 \
+     && python3 -c 'import jsonschema' >/dev/null 2>&1 \
+     && python3 -c 'import yaml' >/dev/null 2>&1; then
     return 0
   fi
   return 1
