@@ -66,22 +66,48 @@ _bq_sha256_file() {
 }
 
 # ---------------------------------------------------------------------------
-# _bq_node_is_fresh <abs-or-rel-path> <stored-hash>
-#   0 (fresh) when the file exists AND its recomputed sha256 equals the stored
-#   hash; non-zero (NOT fresh) when the file is missing or the hash mismatches.
-#   A relative path is resolved against ${CLAUDE_PROJECT_ROOT:-$PWD}. An empty
-#   stored hash is treated as not-fresh (we cannot prove freshness).
+# _bq_node_is_fresh <abs-or-rel-path> <stored-hash> <root-canonical> <mem-subtree>
+#   0 (fresh) when the file exists, resolves UNDER the project root but NOT
+#   inside the agent-sidecar memory subtree, AND its recomputed sha256 equals
+#   the stored hash; non-zero (NOT fresh / unverifiable) otherwise.
+#
+#   A relative path is resolved against <root-canonical> (falling back to
+#   ${CLAUDE_PROJECT_ROOT:-$PWD} when that arg is empty, e.g. a direct unit
+#   call). An empty stored hash is treated as not-fresh (we cannot prove
+#   freshness).
+#
+#   READ-ONLY BOUNDARY HARDENING (defense in depth): the manifest is written by
+#   a trusted process, but the read-only boundary is this script's core security
+#   contract, so we never trust a manifest `path` blindly. Before opening the
+#   canonical file we CANONICALIZE the resolved path (collapsing any `..`
+#   traversal) and verify it is UNDER the project root and OUTSIDE the memory
+#   subtree. A path that escapes the root or lands inside memory is treated as
+#   STALE/unverifiable and is NEVER opened — the caller falls through to
+#   surfacing the path, exactly as for a content-hash mismatch.
 # ---------------------------------------------------------------------------
 _bq_node_is_fresh() {
-  local path="$1" stored="$2" abspath
+  local path="$1" stored="$2" root_canon="${3:-}" mem_subtree="${4:-}" abspath
   [ -n "$stored" ] || return 1
+  local root="${root_canon:-${CLAUDE_PROJECT_ROOT:-$PWD}}"
   case "$path" in
     /*) abspath="$path" ;;
-    *)  abspath="${CLAUDE_PROJECT_ROOT:-$PWD}/$path" ;;
+    *)  abspath="$root/$path" ;;
   esac
-  [ -f "$abspath" ] || return 1
+
+  # Canonicalize and enforce the read-only boundary BEFORE any file read.
+  local canon
+  canon="$(_gaia_paths_canonicalize "$abspath" 2>/dev/null || true)"
+  [ -n "$canon" ] || return 1
+  # Must resolve under the project root.
+  _gaia_paths_under_root "$canon" "$root" || return 1
+  # Must NOT resolve inside the agent-sidecar memory subtree.
+  if [ -n "$mem_subtree" ] && _gaia_paths_under_root "$canon" "$mem_subtree"; then
+    return 1
+  fi
+
+  [ -f "$canon" ] || return 1
   local actual
-  actual="$(_bq_sha256_file "$abspath")"
+  actual="$(_bq_sha256_file "$canon")"
   [ "$actual" = "$stored" ]
 }
 
@@ -306,7 +332,7 @@ _bq_walk_up() {
 # Render the governance envelope for a seed key.
 # ---------------------------------------------------------------------------
 _bq_render_envelope() {
-  local seed="$1" recf="$2" edgef="$3"
+  local seed="$1" recf="$2" edgef="$3" tmproot="$4" root_canon="$5" mem_subtree="$6"
 
   # --- Unknown key: report unresolved, exit 0 (never an error) ---
   if ! _bq_key_exists "$seed" "$recf"; then
@@ -323,7 +349,7 @@ _bq_render_envelope() {
 
   # --- Seed header with C1 read-time freshness ---
   printf 'Brain query — governance envelope for %s\n\n' "$seed"
-  if _bq_node_is_fresh "$seed_path" "$seed_hash"; then
+  if _bq_node_is_fresh "$seed_path" "$seed_hash" "$root_canon" "$mem_subtree"; then
     printf 'Node: %s\n' "$seed"
     [ -n "$seed_syn" ] && printf '  %s\n' "$seed_syn"
   else
@@ -333,10 +359,12 @@ _bq_render_envelope() {
 
   # --- Collect the envelope edges ---
   # UP = bounded transitive walk; DOWN / LATERAL = single hop from the seed.
-  local tmp
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/bq.XXXXXX")"
-  # shellcheck disable=SC2064
-  trap "rm -rf '$tmp' 2>/dev/null || true" RETURN
+  # Scratch files live UNDER the caller-owned temp root ($tmproot). We do NOT
+  # install our own RETURN trap here: a nested RETURN trap would CLOBBER the
+  # outer gaia_brain_query cleanup trap and leak the outer temp dir. The outer
+  # function owns all cleanup for the whole invocation.
+  local tmp="$tmproot/render"
+  mkdir -p "$tmp"
 
   local collected="$tmp/collected.tsv"   # direction \t type \t target
   : > "$collected"
@@ -399,10 +427,22 @@ gaia_brain_query() {
   # First positional non-flag arg is the seed key.
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --manifest) manifest="$2"; shift 2 ;;
+      --manifest)
+        if [ "$#" -lt 2 ]; then
+          printf 'gaia-brain-query.sh: --manifest requires a path\n' >&2; return 2
+        fi
+        manifest="$2"; shift 2 ;;
       --envelope) mode="envelope"; shift ;;
       --health)   mode="health"; shift ;;
-      --search)   mode="search"; search_terms="$2"; shift 2 ;;
+      --search)
+        # Guard the $2 access BEFORE touching it: under `set -u` a bare
+        # `--search` with no trailing term would otherwise abort with an
+        # unbound-variable crash instead of the friendly usage error below.
+        mode="search"
+        if [ "$#" -lt 2 ]; then
+          printf 'gaia-brain-query.sh: --search requires a term\n' >&2; return 2
+        fi
+        search_terms="$2"; shift 2 ;;
       --*) printf 'gaia-brain-query.sh: unknown flag: %s\n' "$1" >&2; return 2 ;;
       *)
         if [ -z "$key" ]; then key="$1"; else
@@ -440,6 +480,20 @@ gaia_brain_query() {
   local state_dir="$GAIA_STATE_DIR"
   : "$artifacts_dir" "$state_dir"  # the read roots for the C1 freshness check
   [ -n "$manifest" ] || manifest="$knowledge_dir/brain-index.yaml"
+
+  # Read-only boundary anchors for the C1 freshness check (SEC hardening):
+  #   - root_canon  = the canonical project root; every canonical file MUST
+  #                   resolve under it.
+  #   - mem_subtree = the agent-sidecar tree, a sibling of the knowledge dir;
+  #                   the freshness check MUST NOT open anything under it. We
+  #                   derive it from the knowledge dir's parent + the sidecar
+  #                   subdir name so neither the runtime-tree boundary literal
+  #                   nor the sidecar env-var name lives in this source (the
+  #                   read-only-boundary static guard).
+  local root_canon mem_subtree sidecar_subdir
+  root_canon="$(_gaia_paths_canonicalize "${CLAUDE_PROJECT_ROOT:-$PWD}" 2>/dev/null || true)"
+  sidecar_subdir="memory"
+  mem_subtree="$(_gaia_paths_canonicalize "$(dirname "$knowledge_dir")/$sidecar_subdir" 2>/dev/null || true)"
 
   # --- Missing manifest → explanatory line, exit 0 ---
   if [ ! -r "$manifest" ]; then
@@ -487,7 +541,7 @@ gaia_brain_query() {
     printf 'gaia-brain-query.sh: a seed key is required for the envelope query\n' >&2
     return 2
   fi
-  _bq_render_envelope "$key" "$recf" "$edgef"
+  _bq_render_envelope "$key" "$recf" "$edgef" "$tmp" "$root_canon" "$mem_subtree"
   return $?
 }
 

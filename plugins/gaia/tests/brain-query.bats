@@ -214,6 +214,96 @@ _run_query() {
   printf '%s\n' "$output" | grep -qi 'stale'
 }
 
+# --- Read-only boundary hardening: out-of-bounds manifest path is never read --
+
+@test "a manifest path that escapes the project root is treated as unverifiable and never read" {
+  # Defense-in-depth: the manifest is trusted, but the read-only boundary is the
+  # core contract, so a `path` that traverses OUTSIDE the project root via `..`
+  # must NOT be opened — the node degrades to stale/unverifiable and the query
+  # still exits 0. SYNTHETIC out-of-bounds path; no real out-of-tree file is read.
+  #
+  # Plant a decoy OUTSIDE the project root with a KNOWN content + matching hash,
+  # then rewrite E777-S2's manifest path to a `..`-traversal that resolves to it.
+  # If the boundary check were absent, the query would read the decoy and the
+  # hash would MATCH (so the node would render fresh). With the check, it never
+  # opens the decoy → the node renders stale and surfaces the (escaping) path.
+  local decoy="$TEST_TMP/outside-decoy.md"
+  printf 'OUT-OF-BOUNDS DECOY CONTENT\n' > "$decoy"
+  local decoy_hash
+  if command -v sha256sum >/dev/null 2>&1; then
+    decoy_hash="$(sha256sum "$decoy" | awk '{print $1}')"
+  else
+    decoy_hash="$(shasum -a 256 "$decoy" | awk '{print $1}')"
+  fi
+
+  # A relative `..` path from the project root up to $TEST_TMP/outside-decoy.md.
+  local escape_path="../outside-decoy.md"
+
+  # Rewrite E777-S2's path + content_hash in the manifest in place.
+  local out="$TEST_TMP/manifest-escape.yaml"
+  awk -v ep="$escape_path" -v eh="$decoy_hash" '
+    $0 == "- key: \"E777-S2\"" { inentry=1 }
+    inentry && /^- key:/ && $0 != "- key: \"E777-S2\"" { inentry=0 }
+    inentry && /^  path:/ { print "  path: \"" ep "\""; next }
+    inentry && /^    content_hash:/ { print "    content_hash: \"" eh "\""; next }
+    { print }
+  ' "$MANIFEST" > "$out"
+  mv "$out" "$MANIFEST"
+
+  _run_query "E777-S2"
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" > "$TEST_TMP/env.out"
+  # The decoy's content is NEVER surfaced (we never read it).
+  ! grep -q 'OUT-OF-BOUNDS DECOY CONTENT' "$TEST_TMP/env.out"
+  # The node is treated as stale/unverifiable despite the hash "matching" the
+  # decoy — because the boundary check refused to open the out-of-root file.
+  grep -qi 'stale' "$TEST_TMP/env.out"
+}
+
+@test "a manifest path that points into the sidecar memory subtree is never read" {
+  # Companion boundary assertion: a `path` inside the agent-sidecar tree must be
+  # refused even though it resolves UNDER the project root. Plant a decoy in the
+  # sidecar with a matching hash; the query must NOT read it (renders stale).
+  local sidecar="$PROJ/.gaia/memory/sidecar-decoy.md"
+  printf 'SIDECAR DECOY CONTENT\n' > "$sidecar"
+  local decoy_hash
+  if command -v sha256sum >/dev/null 2>&1; then
+    decoy_hash="$(sha256sum "$sidecar" | awk '{print $1}')"
+  else
+    decoy_hash="$(shasum -a 256 "$sidecar" | awk '{print $1}')"
+  fi
+
+  # Path relative to the project root, landing inside the sidecar subtree.
+  local mem_path=".gaia/memory/sidecar-decoy.md"
+
+  local out="$TEST_TMP/manifest-mem.yaml"
+  awk -v ep="$mem_path" -v eh="$decoy_hash" '
+    $0 == "- key: \"E777-S2\"" { inentry=1 }
+    inentry && /^- key:/ && $0 != "- key: \"E777-S2\"" { inentry=0 }
+    inentry && /^  path:/ { print "  path: \"" ep "\""; next }
+    inentry && /^    content_hash:/ { print "    content_hash: \"" eh "\""; next }
+    { print }
+  ' "$MANIFEST" > "$out"
+  mv "$out" "$MANIFEST"
+
+  _run_query "E777-S2"
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" > "$TEST_TMP/env.out"
+  ! grep -q 'SIDECAR DECOY CONTENT' "$TEST_TMP/env.out"
+  grep -qi 'stale' "$TEST_TMP/env.out"
+}
+
+# --- CR: --search with no term yields a friendly usage error, not a crash -----
+
+@test "the --search mode with no trailing term exits with a friendly usage error" {
+  # Under `set -u` a bare --search must NOT abort with an unbound-variable crash;
+  # it must surface the usage error and a non-zero usage exit (2).
+  _run_query "E777-S2" --search
+  [ "$status" -eq 2 ]
+  printf '%s\n' "$output" | grep -qi 'search requires a term'
+  ! printf '%s\n' "$output" | grep -qi 'unbound variable'
+}
+
 # --- AC4: read-only boundary, query direction ------------------------------
 
 @test "the query source never references the memory tree" {
