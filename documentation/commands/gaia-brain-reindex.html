@@ -95,6 +95,7 @@
           <li><span class="step-title">Generate synopsis + harvest edges</span> For new or changed files, generates a deterministic one-paragraph synopsis (first heading plus first prose line) and harvests the artifact's typed governance edges from the project's existing planning data.</li>
           <li><span class="step-title">Stage atomically</span> Writes the whole index to a sibling temporary file next to the live index, validates it against the index schema, and only then renames it into place. A concurrent reader never sees a partial index.</li>
           <li><span class="step-title">Fail safe</span> If validation fails, the previous index is left exactly as it was and the run reports the failure.</li>
+          <li><span class="step-title">Render the map of content</span> After the index is committed, the sweep renders a human-browsable map of content beside it. This render is a pure function of the index and best-effort -- a render failure is logged and the sweep still succeeds, because the index is the single source of truth and the map is a derived convenience.</li>
         </ol>
       </section>
 
@@ -106,7 +107,7 @@
 
       <section id="outputs">
         <h2>Outputs</h2>
-        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Brain index</td><td><code>.gaia/knowledge/brain-index.yaml</code></td><td>The rebuilt knowledge index -- one entry per artifact, with tags, a synopsis, typed edges, and a trust block carrying the content hash.</td></tr></tbody></table>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Brain index</td><td><code>.gaia/knowledge/brain-index.yaml</code></td><td>The rebuilt knowledge index -- one entry per artifact, with tags, a synopsis, typed edges, and a trust block carrying the content hash.</td></tr><tr><td>Map of content</td><td><code>.gaia/knowledge/brain-index.md</code></td><td>A human-browsable, Obsidian-native map of content rendered from the index on every sweep. Entries are grouped by artifact type with wikilinks, synopses, tags, and edge summaries. Browse it to navigate the knowledge layer; check coverage gaps with <code>/gaia-brain-health</code>.</td></tr></tbody></table>
       </section>
 
       <section id="what-next">
@@ -122,7 +123,7 @@
 
       <section id="related">
         <h2>Related commands</h2>
-        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-sprint-close.html"><code>/gaia-sprint-close</code></a></td><td>Runs a best-effort reindex automatically as part of the close ceremony.</td></tr><tr><td><a href="gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a></td><td>A separate, independent subsystem -- refreshes the validator's file-inventory snapshot, not the brain index.</td></tr></tbody></table>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-sprint-close.html"><code>/gaia-sprint-close</code></a></td><td>Runs a best-effort reindex automatically as part of the close ceremony.</td></tr><tr><td><a href="gaia-brain-health.html"><code>/gaia-brain-health</code></a></td><td>Browses the rendered index for coverage gaps -- lists every artifact with no governance link.</td></tr><tr><td><a href="gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a></td><td>A separate, independent subsystem -- refreshes the validator's file-inventory snapshot, not the brain index.</td></tr></tbody></table>
       </section>
       <footer class="page-footer">
         <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>

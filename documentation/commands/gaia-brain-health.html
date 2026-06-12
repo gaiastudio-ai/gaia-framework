@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-brain-health - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#reading-output">Reading the output</a></li>
+          <li><a href="#boundary">Read-only boundary</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/sprint-management.html">Sprint Management</a><span class="separator">/</span>
+        /gaia-brain-health
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-brain-health</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/sprint-management.html">Sprint Management</a></dd>
+          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt><dd><em>none</em></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-brain-health</code> shows a read-only health view over the brain knowledge layer: it lists every indexed artifact that carries <strong>no governance link</strong> -- a traceability gap. A gap is a <strong>quality signal, never a failure</strong>, so this view always succeeds even when unlinked nodes are present. It is the human-facing payoff of the knowledge layer's coverage check: it makes missing traceability visible to browse on demand, without a statusline nag.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You want a quick read on which artifacts have no traceability before a sprint review.</li>
+          <li>You made a burst of artifact edits and want to confirm nothing slipped through without a governance link.</li>
+          <li>You are browsing the knowledge layer and want to find coverage gaps to close.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>A built knowledge index.</strong> The view consumes the index produced by <a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a>. If the index does not exist yet, the view says so and points you to build it first -- and still exits cleanly.</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-brain-health</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Read the index</span> Loads every entry from the committed knowledge index.</li>
+          <li><span class="step-title">Re-derive the linked verdict</span> For each entry, recomputes whether the artifact is linked using the four-source linked predicate: its frontmatter traces-to declaration, its frontmatter epic, an allocation row in the epics registry, or a mapping in the traceability matrix.</li>
+          <li><span class="step-title">Collect the gaps</span> An artifact with none of the four is unlinked. It is collected, never dropped or treated as an error.</li>
+          <li><span class="step-title">Report</span> Prints the unlinked nodes in a stable, sorted order with a count, then exits cleanly.</li>
+        </ol>
+      </section>
+
+      <section id="reading-output">
+        <h2>Reading the output</h2>
+        <p>A node listed here carries no governance link of any kind. The remedy is to add traceability -- a <code>traces_to</code> or <code>epic</code> entry in the artifact's frontmatter, an allocation row in the epics registry, or a matrix mapping -- not to suppress the signal. An empty list means every indexed artifact is linked.</p>
+      </section>
+
+      <section id="boundary">
+        <h2>Read-only boundary</h2>
+        <p>The health view is purely read-only: it reads the index and the existing governance data and writes nothing. The unlinked verdict is recomputed from the linked predicate on every run, so its answer can never drift from the predicate and needs no change to the index format.</p>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Health report</td><td><em>printed to the console</em></td><td>The sorted list of unlinked nodes with a count. Nothing is written to disk -- the view is read-only.</td></tr></tbody></table>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul><li><a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a> -- rebuilds the index (and its map of content) so the health view reads the current filesystem.</li></ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>It says there is no index</h3><p>Run <a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a> to build the index, then re-run the health view.</p>
+        <h3>A node I expect to be linked is listed</h3><p>The view re-derives links from frontmatter, the epics registry, and the traceability matrix. If a node should be linked, add a <code>traces_to</code> or <code>epic</code> entry to its frontmatter, an allocation row in the epics registry, or a matrix mapping, then rebuild the index and re-run.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a></td><td>Builds the index and renders the map of content this view browses.</td></tr></tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

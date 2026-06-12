@@ -627,6 +627,23 @@ brain_reindex() {
     return 1
   }
 
+  # --- Render the human-browsable MOC from the now-committed manifest ---
+  # BEST-EFFORT: the YAML manifest is the single source of truth; the brain-index.md
+  # MOC is a derived convenience. A render failure is logged and swallowed so the
+  # sweep's primary outcome (the committed manifest) is never blocked by it. The
+  # render is a pure function of the manifest, called strictly AFTER the atomic
+  # rename so it can never affect the manifest write.
+  local renderer="$self_dir/render-moc.sh"
+  if [ -r "$renderer" ]; then
+    # shellcheck source=render-moc.sh
+    if . "$renderer" 2>/dev/null; then
+      render_moc "$out_manifest" "$knowledge_dir/brain-index.md" 2>/dev/null \
+        || printf 'gaia-brain-reindex.sh: MOC render failed (best-effort); manifest is intact\n' >&2
+    else
+      printf 'gaia-brain-reindex.sh: could not source render-moc.sh (best-effort); manifest is intact\n' >&2
+    fi
+  fi
+
   printf '%s\n' "$out_manifest"
   return 0
 }

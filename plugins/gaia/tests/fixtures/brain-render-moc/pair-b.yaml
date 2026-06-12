@@ -1,0 +1,28 @@
+schema_version: 1
+entries:
+- key: "E777-S2"
+  source_type: project-artifact
+  path: ".gaia/artifacts/implementation-artifacts/epic-E777-demo/E777-S2-primary/story.md"
+  tags: ["implementation"]
+  synopsis: "Story: Primary reindex node — present in both A and B."
+  edges:
+    - type: implements
+      target: FR-901
+  trust:
+    confidence: 1.0
+    content_hash: "a9300084472e41cdce8f0916aee3e76a4ece394e6f61f2db03bd7e833659156c"
+    source_url: null
+    fetched_at: null
+    expires_at: null
+- key: "E777-S8"
+  source_type: project-artifact
+  path: ".gaia/artifacts/implementation-artifacts/E777-S8-added.md"
+  tags: ["implementation"]
+  synopsis: "Story: Newly-added node — absent in A, present in B."
+  edges: []
+  trust:
+    confidence: 1.0
+    content_hash: "0000000000000000000000000000000000000000000000000000000000000002"
+    source_url: null
+    fetched_at: null
+    expires_at: null
