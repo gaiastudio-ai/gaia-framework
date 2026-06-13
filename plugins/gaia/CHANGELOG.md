@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.192.0] — 2026-06-13
+
+### Added
+
+- (E110-S5) add gaia-brain-query governance-envelope traversal with read-only boundary (#1475)
+- (E110-S4) wire `brain-index.md` MOC render + brain-health (unlinked (#1474)
+- (E110-S3) add gaia-brain-reindex sweep with content-hash and atomic write (#1473)
+- (E110-S2) wire Seven-edge harvester + four-source unlinked predicat (#1471)
+- (E110-S1) wire Brain store + `brain-index.yaml` schema (entry / sou (#1470)
+
+### Changed
+
+- (brain) add coverage capstone + read-only-boundary & single-writer static guards (#1476)
+
 ## [1.191.2] — 2026-06-12
 
 ### Fixed
