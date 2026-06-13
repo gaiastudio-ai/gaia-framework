@@ -63,10 +63,12 @@ _has_edge() {
   local etype="$1" target="$2"
   # The emitter renders one edge as two adjacent lines:
   #   - type: <etype>
-  #     target: <target>
+  #     target: "<target>"
+  # The target is a double-quoted YAML scalar (quoting is required so a target
+  # containing a ': ' does not corrupt the manifest YAML).
   printf '%s\n' "$output" | awk -v t="$etype" -v g="$target" '
     $0 ~ ("- type: " t "$") { seen_type=1; next }
-    seen_type && $0 ~ ("target: " g "$") { found=1 }
+    seen_type && $0 ~ ("target: \"" g "\"$") { found=1 }
     seen_type { seen_type=0 }
     END { exit (found ? 0 : 1) }
   '
@@ -276,7 +278,7 @@ _has_edge() {
   local count
   count="$(printf '%s\n' "$output" | awk '
     /^  - type: implements$/ { it = 1; next }
-    it && /^    target: FR-901$/ { n++ }
+    it && /^    target: "FR-901"$/ { n++ }
     { it = 0 }
     END { print n + 0 }
   ')"

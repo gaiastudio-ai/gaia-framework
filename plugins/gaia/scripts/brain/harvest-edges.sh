@@ -71,6 +71,22 @@ _is_valid_edge_type() {
   esac
 }
 
+# _he_yaml_escape <string> — escape a value for a single-line double-quoted YAML
+# scalar. Edge targets are harvested from artifact prose (epic/story titles,
+# requirement glosses) and routinely contain a `: ` (e.g. "Review System v2:
+# Tool Adapter Framework"), which YAML reads as a mapping separator when the
+# value is emitted bare — corrupting the whole manifest. Quote + escape so any
+# target text is a safe scalar. Backslash and double-quote are the only two
+# chars that must be escaped inside a double-quoted scalar; CR/LF are dropped.
+_he_yaml_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"   # backslash -> double backslash
+  s="${s//\"/\\\"}"   # double-quote -> escaped quote
+  s="${s//$'\r'/}"    # strip CR
+  s="${s//$'\n'/ }"   # collapse LF to space
+  printf '%s' "$s"
+}
+
 # _edge_type_rank <type> — echo a stable numeric rank for the type (for sort).
 _edge_type_rank() {
   case "$1" in
@@ -587,7 +603,7 @@ harvest_node_edges() {
   printf '%s\n' "$sorted" | while IFS="$(printf '\t')" read -r _rank etype target; do
     [ -n "$etype" ] || continue
     printf '  - type: %s\n' "$etype"
-    printf '    target: %s\n' "$target"
+    printf '    target: "%s"\n' "$(_he_yaml_escape "$target")"
   done
   printf 'unlinked: false\n'
   return 0

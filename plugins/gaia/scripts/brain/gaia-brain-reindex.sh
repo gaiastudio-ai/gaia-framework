@@ -63,6 +63,28 @@ _brx_sha256_file() {
 }
 
 # ---------------------------------------------------------------------------
+# Stable, fixed-length scratch-file name for an entry key. The per-entry
+# synopsis/edge carry-forward files are named by the entry key. Flattening the
+# key path into a single filename (slash -> "__") overflows the 255-byte OS
+# filename limit for deeply nested artifacts (epic-/story-/reviews- paths), so
+# the sweep aborts mid-harvest with "File name too long". Hash the key to a
+# fixed 64-char hex digest instead — collision-resistant and always well under
+# the limit. Writer (preload) and reader (loop) MUST agree on this naming, so
+# both route through this helper.
+# ---------------------------------------------------------------------------
+_brx_keyfile() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha256sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+  else
+    # Last-resort fallback: flatten but truncate to a safe length to avoid the
+    # overflow (no backend present — collisions are unlikely at this scale).
+    printf '%s' "$1" | tr '/' '_' | cut -c1-200
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # YAML-string escape for a single-line double-quoted scalar. Backslash and
 # double-quote are the only two characters that must be escaped inside a
 # double-quoted YAML scalar; we also strip CR and collapse any stray newline.
@@ -204,7 +226,7 @@ _brx_preload_prior() {
 
   if [ "$have_pyyaml" = "1" ]; then
     python3 - "$manifest" "$hashlk" "$syndir" "$edgedir" <<'PYEOF' || true
-import sys, yaml, os
+import sys, yaml, os, hashlib
 manifest, hashlk, syndir, edgedir = sys.argv[1:5]
 try:
     doc = yaml.safe_load(open(manifest)) or {}
@@ -222,7 +244,7 @@ with open(hashlk, "w") as hf:
         syn = e.get("synopsis", "")
         if syn is None:
             syn = ""
-        with open(os.path.join(syndir, key.replace("/", "__")), "w") as sf:
+        with open(os.path.join(syndir, hashlib.sha256(key.encode("utf-8")).hexdigest()), "w") as sf:
             sf.write(str(syn))
         # Re-render the edges block verbatim for carry-forward.
         edges = e.get("edges") or []
@@ -231,11 +253,18 @@ with open(hashlk, "w") as hf:
         if edges:
             lines.append("  edges:")
             for ed in edges:
+                # Edge targets are harvested prose (epic/story titles) and may
+                # contain a `: ` that YAML would read as a mapping separator if
+                # emitted bare. This carry-forward block is cat'd verbatim into
+                # the manifest by _brx_render_entry, so quote+escape the target
+                # exactly as the harvest path does (a JSON-encoded string is a
+                # valid YAML double-quoted scalar).
+                import json as _json
                 lines.append("    - type: %s" % ed.get("type", ""))
-                lines.append("      target: %s" % ed.get("target", ""))
+                lines.append("      target: %s" % _json.dumps(str(ed.get("target", ""))))
         else:
             lines.append("  edges: []")
-        with open(os.path.join(edgedir, key.replace("/", "__")), "w") as ef:
+        with open(os.path.join(edgedir, hashlib.sha256(key.encode("utf-8")).hexdigest()), "w") as ef:
             ef.write("\n".join(lines) + "\n")
 PYEOF
     return 0
@@ -488,22 +517,20 @@ brain_reindex() {
   # round-tripped prior synopsis+edges exist => short-circuit. "build" => new or
   # changed => regenerate synopsis + (for story keys) harvest edges.
   local plan="$tmp/plan.tsv"
-  awk -F'\t' -v root="$proj_root" -v syndir="$prior_syn_dir" -v edgedir="$prior_edge_dir" '
+  awk -F'\t' -v root="$proj_root" '
     FNR==NR && FILENAME==ARGV[1] { hash[$1]=$2; next }          # hashmap: abspath -> hash
     FILENAME==ARGV[2] { prior[$1]=$2; next }                    # prior:   key     -> hash
     {                                                            # deduped: key \t relpath
       key=$1; rel=$2
       abspath=root "/" rel
       h=hash[abspath]
-      ks=key; gsub(/\//,"__",ks)
       decision="build"
-      if (key in prior && prior[key]!="" && prior[key]==h) {
-        # Confirm the round-tripped carry-forward artifacts exist.
-        synf=syndir "/" ks
-        edgf=edgedir "/" ks
-        if ((getline _l < synf) >= 0 && (getline _m < edgf) >= 0) decision="carry"
-        close(synf); close(edgf)
-      }
+      # Mark carry when the prior manifest holds this key at a matching hash.
+      # The carry-forward scratch files are named by a sha256 of the key, which
+      # awk cannot reproduce; the bash loop verifies their presence and falls
+      # back to a rebuild if either is missing, so the existence check is not
+      # duplicated here.
+      if (key in prior && prior[key]!="" && prior[key]==h) decision="carry"
       print key "\t" rel "\t" h "\t" decision
     }
   ' "$hashmap" "$prior_hash_lk" "$deduped" > "$plan"
@@ -555,13 +582,16 @@ brain_reindex() {
     # Defensive: if the batch hash missed this path, compute it now.
     [ -n "$chash" ] || chash="$(_brx_sha256_file "$abspath")"
     tag="$(_brx_tag_for "$relpath")"
-    keysafe="${key//\//__}"
+    keysafe="$(_brx_keyfile "$key")"
     edgesfile="$tmp/edges-$keysafe.txt"
 
     # C1 SHORT-CIRCUIT (decision=carry): prior manifest carries this key with a
     # matching hash → carry the prior synopsis + edges forward verbatim. Skip
-    # synopsis regen AND skip the harvester.
-    if [ "$decision" = "carry" ]; then
+    # synopsis regen AND skip the harvester. The carry-file existence is verified
+    # here (not in the awk planner, which cannot reproduce the sha256 filename) —
+    # if either carry-file is missing the entry safely falls through to a rebuild.
+    if [ "$decision" = "carry" ] \
+       && [ -f "$prior_syn_dir/$keysafe" ] && [ -f "$prior_edge_dir/$keysafe" ]; then
       synopsis="$(cat "$prior_syn_dir/$keysafe")"
       cp "$prior_edge_dir/$keysafe" "$edgesfile"
     else
