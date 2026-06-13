@@ -1,0 +1,25 @@
+TC-BRN-1	brain-index-schema.bats	brain-index schema exists and is valid JSON
+TC-BRN-2	brain-index-schema.bats	source_type enum rejects an unknown value
+TC-BRN-3	brain-index-schema.bats	edge type enum is exactly seven values; an eighth fails
+TC-BRN-4	brain-query.bats	a fresh node surfaces its synopsis
+TC-BRN-5	brain-query.bats	a node whose canonical file changed is marked stale
+TC-BRN-6	brain-c2-unlinked-predicate.bats	a node linked only via the epics-prose Allocates row is not unlinked
+TC-BRN-7	brain-c2-unlinked-predicate.bats	a node linked only via the traceability matrix is not unlinked
+TC-BRN-8	brain-c2-unlinked-predicate.bats	a zero-link node ships edges:[] and unlinked:true
+TC-BRN-9	brain-reindex.bats	an injected mid-write failure leaves the prior manifest unchanged and no partial
+TC-BRN-10	brain-reindex.bats	sprint-close finalize continues when the reindex fails
+TC-BRN-11	brain-reindex.bats	stories in all three layouts are discovered and keyed
+TC-BRN-12	brain-reindex.bats	an unchanged file on re-sweep carries the prior synopsis byte-identical
+TC-BRN-13	brain-reindex.bats	the reindex leaves memory mtimes untouched
+TC-BRN-14	brain-query.bats	a missing manifest exits 0 with an explanatory line
+TC-BRN-15	brain-harvest-edges.bats	implements edges are produced even with no frontmatter source
+TC-BRN-16	brain-harvest-edges.bats	reviewed-in parses the six type-first review filenames
+TC-BRN-17	brain-harvest-edges.bats	traces-to edges are sourced from the frontmatter traces_to field
+TC-BRN-18	brain-query.bats	envelope returns UP, DOWN, and LATERAL edges grouped by direction
+TC-BRN-19	brain-query.bats	an orphan node with no edges degrades to a non-error empty-direction view
+TC-BRN-20	brain-store-guards.bats	the real brain store layer has no vector dependency
+TC-BRN-21	brain-render-moc.bats	entries are grouped by artifact type under section headings
+TC-BRN-22	brain-reindex.bats	removing a source drops its entry from both the manifest and the MOC
+TC-BRN-23	brain-reindex-perf.bats	a 500-artifact corpus completes within 120 seconds
+TC-BRN-24	brain-reindex-perf.bats	sprint-close reindex overhead stays under 30 seconds
+TC-BRN-25	brain-index-schema.bats	the ingested source_type is schema-reserved and validates
