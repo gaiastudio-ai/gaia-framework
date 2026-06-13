@@ -74,6 +74,21 @@
           <span class="command-summary">Close the active sprint -- atomic <code>status: closed</code> write, archive the yaml, emit a <code>sprint_closed</code> lifecycle event.</span>
         </li>
         <li>
+          <span class="command-name"><a href="../commands/gaia-brain-reindex.html">/gaia-brain-reindex</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Rebuild the brain knowledge index from source -- a correct-by-construction sweep of the artifact and state trees that runs as a best-effort pass at sprint-close and on demand. Renders a human-browsable map of content beside the index.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-brain-health.html">/gaia-brain-health</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Browse the brain knowledge layer for coverage gaps -- lists every indexed artifact with no governance link. Read-only; surfaces gaps as a quality signal and never fails.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-brain-query.html">/gaia-brain-query</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Query a story's governance envelope from the brain knowledge layer -- the related artifacts grouped by direction (up the governance chain, down to tests and reviews, lateral to design) in one read-only invocation. Degrades gracefully and never fails.</span>
+        </li>
+        <li>
           <span class="command-name"><a href="../commands/gaia-epic-status.html">/gaia-epic-status</a></span>
           <span class="tag tag-user">user-facing</span>
           <span class="command-summary">Show an epic completion dashboard with per-epic percentages and story counts by status.</span>

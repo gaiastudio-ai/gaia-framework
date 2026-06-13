@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gaia.studio/schemas/brain-index.schema.json",
+  "title": "Brain index manifest",
+  "description": "Backing JSON Schema for the brain knowledge layer's single-source-of-truth manifest at .gaia/knowledge/brain-index.yaml. The manifest carries a schema_version header (pinned to 1) and an entries list. Each entry is a pointer record that indexes a project artifact IN PLACE (never a copy): a unique key, a closed-enum source_type (project-artifact | ingested | lesson), the canonical relative path to the artifact, free-form tags, a one-paragraph synopsis, a list of typed edges, and a trust block carrying content-hash integrity and provenance. The edge `type` is a closed enum of exactly seven values; an eighth is a schema violation. The ingested and lesson source_types are schema-reserved for later intake work; the schema accepts them now so the later extension is additive, but no current code path materializes them. additionalProperties is false on the entry object and on each edge object so unknown enum values and stray fields are rejected; the manifest root stays permissive enough for the schema_version header and entries list.",
+  "type": "object",
+  "required": ["schema_version", "entries"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "description": "Manifest schema version. Pinned to 1 for the current entry schema. Additive (optional-field) changes do not bump it; removing or renaming fields, or changing enum semantics, requires a version bump with a migration path.",
+      "const": 1
+    },
+    "entries": {
+      "type": "array",
+      "description": "The list of brain entries. Each entry indexes one artifact in place.",
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "source_type",
+          "path",
+          "tags",
+          "synopsis",
+          "edges",
+          "trust"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Unique identifier for the entry, typically the artifact filename stem or a path-derived slug.",
+            "minLength": 1
+          },
+          "source_type": {
+            "type": "string",
+            "description": "Closed enum. `project-artifact` is a first-party file under the artifacts/state trees and is the only type a P1 reindex materializes. `ingested` (an external document) and `lesson` (a distilled retrospective insight) are schema-reserved for later intake work and validate now, but no current code path creates them.",
+            "enum": ["project-artifact", "ingested", "lesson"]
+          },
+          "path": {
+            "type": "string",
+            "description": "Relative path from project root to the canonical file. The Brain indexes in place and never copies artifact bytes; a project-artifact path that resolves inside .gaia/knowledge/ is rejected by the bash-side index-in-place guard (which JSON Schema alone cannot express against a runtime root).",
+            "minLength": 1
+          },
+          "tags": {
+            "type": "array",
+            "description": "Free-form taxonomy tags (artifact type, epic, domain).",
+            "items": { "type": "string" }
+          },
+          "synopsis": {
+            "type": "string",
+            "description": "One-paragraph summary of the artifact's content. Staleness is detected at query time via trust.content_hash.",
+            "minLength": 1
+          },
+          "edges": {
+            "type": "array",
+            "description": "Typed edges to other entries. Every edge is harvested from existing project data — zero manual authoring.",
+            "items": {
+              "type": "object",
+              "required": ["type", "target"],
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "description": "Closed enum of exactly seven edge types. An eighth value is a schema violation.",
+                  "enum": [
+                    "implements",
+                    "traces-to",
+                    "decomposes",
+                    "governed-by",
+                    "verified-by",
+                    "reviewed-in",
+                    "designs"
+                  ]
+                },
+                "target": {
+                  "type": "string",
+                  "description": "The key of the target entry.",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "trust": {
+            "type": "object",
+            "description": "Provenance and integrity block. All five fields are required. content_hash carries the sha256 of the source file at synopsis-generation time (the binding condition for stale-synopsis fallthrough, enforced later at query time). source_url, fetched_at, and expires_at are populated for ingested entries and null for project-artifact entries.",
+            "required": [
+              "confidence",
+              "content_hash",
+              "source_url",
+              "fetched_at",
+              "expires_at"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "confidence": {
+                "type": "number",
+                "description": "Semantic confidence of the synopsis, 0.0..1.0. Set to 1.0 by the reindexer for project-artifact entries.",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "content_hash": {
+                "type": "string",
+                "description": "sha256 of the source file computed at synopsis-generation time.",
+                "minLength": 1
+              },
+              "source_url": {
+                "type": ["string", "null"],
+                "description": "Origin URL for ingested entries; null for project-artifact."
+              },
+              "fetched_at": {
+                "type": ["string", "null"],
+                "description": "ISO-8601 fetch timestamp for ingested entries; null for project-artifact."
+              },
+              "expires_at": {
+                "type": ["string", "null"],
+                "description": "ISO-8601 expiry timestamp for ingested entries; null for project-artifact."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

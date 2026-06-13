@@ -1,0 +1,72 @@
+schema_version: 1
+entries:
+- key: "E777-S7"
+  source_type: project-artifact
+  path: ".gaia/artifacts/implementation-artifacts/E777-S7-flat.md"
+  tags: ["implementation"]
+  synopsis: "Story: Flat-layout reindex node — lives in the flat implementation-artifacts layout."
+  edges:
+    - type: traces-to
+      target: ADR-702
+    - type: decomposes
+      target: E777
+  trust:
+    confidence: 1.0
+    content_hash: "3f6dcd73a2dff6d3170545558ee975011b7f67bfe7acadc318505521a5736e04"
+    source_url: null
+    fetched_at: null
+    expires_at: null
+- key: "E777-S2"
+  source_type: project-artifact
+  path: ".gaia/artifacts/implementation-artifacts/epic-E777-demo/E777-S2-primary/story.md"
+  tags: ["implementation"]
+  synopsis: "Story: Primary reindex node — the per-story nested layout."
+  edges:
+    - type: implements
+      target: FR-901
+    - type: traces-to
+      target: ADR-701
+    - type: verified-by
+      target: TC-RDX-1
+  trust:
+    confidence: 1.0
+    content_hash: "a9300084472e41cdce8f0916aee3e76a4ece394e6f61f2db03bd7e833659156c"
+    source_url: null
+    fetched_at: null
+    expires_at: null
+- key: ".gaia/artifacts/planning-artifacts/architecture/adr-fragment"
+  source_type: project-artifact
+  path: ".gaia/artifacts/planning-artifacts/architecture/adr-fragment.md"
+  tags: ["architecture"]
+  synopsis: "Architecture Decision Record fragment — a non-story planning artifact."
+  edges: []
+  trust:
+    confidence: 1.0
+    content_hash: "f17d843609c4e5e00294ba81b02e22bb2be93ff07edb559a3934a07095212a17"
+    source_url: null
+    fetched_at: null
+    expires_at: null
+- key: ".gaia/artifacts/planning-artifacts/epics-and-stories"
+  source_type: project-artifact
+  path: ".gaia/artifacts/planning-artifacts/epics-and-stories.md"
+  tags: ["epics"]
+  synopsis: "Epics and Stories (render fixture) — a tiny mirror of the prose shape."
+  edges: []
+  trust:
+    confidence: 1.0
+    content_hash: "82c2ecde73d295fcb40ea72b27a7fdfee2da63863d861e19851b80417a2ab660"
+    source_url: null
+    fetched_at: null
+    expires_at: null
+- key: ".gaia/state/sprint-status"
+  source_type: project-artifact
+  path: ".gaia/state/sprint-status.yaml"
+  tags: ["state"]
+  synopsis: "schema_version: 1"
+  edges: []
+  trust:
+    confidence: 1.0
+    content_hash: "7da4b77ccc11963c9b84610a213769581630a18304f531382fecd442d88ee856"
+    source_url: null
+    fetched_at: null
+    expires_at: null

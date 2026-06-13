@@ -1,0 +1,16 @@
+schema_version: 1
+entries:
+- key: "E777-S3"
+  source_type: project-artifact
+  path: ".gaia/artifacts/planning-artifacts/prd/weird [bracket] & pipe | node.md"
+  tags: ["prd"]
+  synopsis: "Synopsis with special chars: pipe | bracket [x] asterisk * and a \"quote\"."
+  edges:
+    - type: traces-to
+      target: FR-905
+  trust:
+    confidence: 1.0
+    content_hash: "abc0000000000000000000000000000000000000000000000000000000000003"
+    source_url: null
+    fetched_at: null
+    expires_at: null

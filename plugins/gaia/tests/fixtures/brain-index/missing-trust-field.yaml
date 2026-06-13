@@ -1,0 +1,13 @@
+schema_version: 1
+entries:
+  - key: "missing-content-hash"
+    source_type: "project-artifact"
+    path: ".gaia/artifacts/planning-artifacts/architecture/sample-decision-record.md"
+    tags: ["architecture"]
+    synopsis: "Trust block omits the required content_hash field; must reject."
+    edges: []
+    trust:
+      confidence: 1.0
+      source_url: null
+      fetched_at: null
+      expires_at: null
