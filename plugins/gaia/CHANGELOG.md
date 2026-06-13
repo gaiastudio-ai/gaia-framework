@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.191.2] — 2026-06-12
+
+### Fixed
+
+- (skills) load validator memory in validate-story and sprint-review (#1467)
+
 ## [1.191.1] — 2026-06-12
 
 ### Changed
