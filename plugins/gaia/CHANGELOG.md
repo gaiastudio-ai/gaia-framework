@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.192.1] — 2026-06-13
+
+### Fixed
+
+- (gaia-dev-story) bind TDD-gate WARNING fixes to the stack developer (#1480)
+
 ## [1.192.0] — 2026-06-13
 
 ### Added
