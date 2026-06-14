@@ -30,6 +30,17 @@ fi
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/setup.sh
 
+**YOLO activation.** `setup.sh` detects `yolo` / `--yolo` in the invocation
+arguments (via `$ARGUMENTS`, since the `!`-Setup directive does not forward
+positional args) and, when present, runs `yolo-mode.sh set` to create the
+`.gaia/state/.yolo-active` sentinel. The sentinel — not a bare env export — is
+the activation signal, because env-var exports do not survive across Bash
+tool-call boundaries under Claude Code. The downstream `yolo-mode.sh is_yolo`
+gate (Step 4 planning gate, plus `yolo_steps: [5, 6, 7, 15]`) is the single
+source of truth that reads this state; never re-implement detection inline.
+This activates YOLO for THIS skill's run; subagent dispatches still require the
+explicit `GAIA_YOLO_MODE=1` inheritance export documented at Step 4.
+
 ## Mission
 
 You are orchestrating a user story end-to-end: loading the story spec, planning the implementation, writing tests (TDD red), implementing code (TDD green), refactoring, verifying the Definition of Done, committing, pushing, creating a PR, waiting for CI, and merging. This is the most comprehensive dev workflow in GAIA.
@@ -57,7 +68,7 @@ This loads `.gaia/artifacts/implementation-artifacts/.../<story-key>-*.md`, reso
 | Implement a single story end-to-end           | `/gaia-dev-story <key>`            |
 | Resume after the harness restarted mid-story  | `/gaia-dev-story <key>` (re-runs idempotently from the latest checkpoint) |
 | Skip the PR + merge tail (push only)          | Set `ci_cd.promotion_chain: null` in `project-config.yaml` |
-| Auto-advance past confirmation gates          | Pass `yolo` as the second argument |
+| Auto-advance past confirmation gates          | Pass `yolo` (or `--yolo`) as an argument |
 | Implement a quick fix that doesn't need a story | `/gaia-quick-spec` then `/gaia-quick-dev` |
 
 **Common gotchas.**
@@ -87,13 +98,24 @@ This loads `.gaia/artifacts/implementation-artifacts/.../<story-key>-*.md`, reso
 ### Step 1 -- Load Story
 
 - Parse the story key from the argument (e.g., `/gaia-dev-story <story-key>`).
-- Run `scripts/load-story.sh {story_key}` to locate and validate the story file.
+- Run `scripts/load-story.sh {story_key}` to validate the story exists and read its
+  current status. `load-story.sh` is a thin wrapper around `sprint-state.sh get
+  --story` — it prints the story **status** to stdout (exit 0) or fails (exit 1) when
+  the story is unknown. It does NOT emit a path; it is a status check only.
 
 <!-- step1 script-wiring begin -->
-After `load-story.sh` resolves the absolute story path, drive frontmatter parsing,
-mode detection, and dependency-readiness through the deterministic helper scripts —
-the LLM no longer parses the YAML frontmatter or computes the FRESH/REWORK/RESUME
-verdict inline.
+Resolve the absolute story path with the canonical resolver, then drive frontmatter
+parsing, mode detection, and dependency-readiness through the deterministic helper
+scripts — the LLM no longer parses the YAML frontmatter or computes the
+FRESH/REWORK/RESUME verdict inline.
+
+- Run `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` and capture
+  its stdout as `{story_path}`. The resolver walks the three-tier layout precedence
+  (per-story nested > legacy-nested > flat) and prints exactly one absolute path on
+  exit 0; non-zero exit means the story file could not be located — HALT with the
+  resolver's stderr. This is the single source of truth for `{story_key}` →
+  `{story_path}`; do NOT fall back to an ad-hoc `find`. (`load-story.sh` above only
+  reads status — it never resolves the path.)
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/story-parse.sh {story_path}`
   and `eval` its stdout to populate the canonical 10-variable env-var contract
@@ -143,6 +165,19 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 ### Step 2 -- Update Status
 
 - For FRESH mode: run `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to in-progress`.
+  - **Single activation path.** For a sprint-bound story (`sprint_id:` set), the
+    expected pre-transition status is `ready-for-dev` — the activation
+    `backlog → ready-for-dev` is owned by `/gaia-sprint-plan` Step 4a (Val-gated),
+    NOT by dev-story. dev-story FRESH mode owns only `ready-for-dev → in-progress`.
+    If a sprint-bound story is still `backlog` at this point, that means
+    sprint-plan's activation gate did not run or did not pass for it — HALT and
+    direct the user to re-run `/gaia-sprint-plan` (Step 4a) or
+    `/gaia-validate-story {story_key}`; do NOT silently transition
+    `backlog → in-progress` and bypass the validation gate.
+  - **Pure backlog dev (`sprint_id: null`).** A backlog dev with no sprint binding
+    is the one sanctioned `backlog → in-progress` case (the story-state-machine
+    edge exists for exactly this path) — transition directly, no sprint-plan gate
+    applies.
 - For REWORK/RESUME: skip -- story is already in-progress.
 
 **Step 2a — Auto-activate sprint if planned.** After the story transition completes, read `.gaia/state/sprint-status.yaml` (the canonical sprint-status home). If the sprint's `status:` is `planned` AND the just-transitioned story belongs to that sprint (its `sprint_id:` matches), invoke `${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh transition --sprint {sprint_id} --to active` to flip the sprint to `active`. Log: `auto-activated sprint {sprint_id}: planned → active (first dev-story transition)`. Skip silently when the sprint is already `active` or when the story has no sprint binding (sprint_id: null / unset — a backlog dev). The planned→active readiness gate was specced as a separate skill but never wired into the actual create-story → sprint-plan → dev-story chain; without this auto-activation step the sprint stays `planned` for the entire lifecycle and `/gaia-sprint-review` Step 1 then refuses to open because it expects `active`. Operators previously had to manually `sprint-state.sh transition --to active` between stories. Auto-activation on the first dev-story transition closes the gap with no operator burden.

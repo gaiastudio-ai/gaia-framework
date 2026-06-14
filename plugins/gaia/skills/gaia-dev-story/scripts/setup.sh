@@ -32,6 +32,34 @@ CHECKPOINT="$PLUGIN_SCRIPTS_DIR/checkpoint.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
+# ---------- 0. YOLO activation ----------
+# Scan positional args ($1, $2) and the $ARGUMENTS env var for the literal
+# `yolo` keyword or `--yolo` flag. SKILL.md documents "Pass `yolo` as the second
+# argument" to auto-advance past confirmation gates, but the `!`-Setup directive
+# does not forward the skill's positional args — so $ARGUMENTS (populated by the
+# substrate with the full invocation argument string) is the reliable source.
+# When YOLO is requested, create the .yolo-active sentinel via `yolo-mode.sh set`
+# (NOT a bare env export): env-var exports do not survive across Bash tool-call
+# boundaries under Claude Code, whereas the sentinel persists, so the downstream
+# `yolo-mode.sh is_yolo` gate at the Step 4 planning gate (and Steps 5/6/7/15)
+# reads the requested state. Activation only suppresses interactive prompts; it
+# MUST NOT bypass the review-gate, dependency, or transition contracts.
+__arg1="${1:-}"
+__arg2="${2:-}"
+__args_blob=" ${__arg1} ${__arg2} ${ARGUMENTS:-} "
+YOLO_MODE_SCRIPT="$PLUGIN_SCRIPTS_DIR/yolo-mode.sh"
+if [[ "$__args_blob" == *" yolo "* ]] || [[ "$__args_blob" == *" --yolo "* ]]; then
+  if [ -x "$YOLO_MODE_SCRIPT" ] && "$YOLO_MODE_SCRIPT" set 2>/dev/null; then
+    log "yolo_mode=true — .yolo-active sentinel set"
+  else
+    # Fall back to a session export so a single-shell run still honours YOLO.
+    export GAIA_YOLO_FLAG=1
+    log "yolo_mode=true — GAIA_YOLO_FLAG exported (sentinel write unavailable)"
+  fi
+else
+  log "yolo_mode=false"
+fi
+
 # ---------- 1. Resolve config ----------
 [ -x "$RESOLVE_CONFIG" ] || die "resolve-config.sh not found or not executable at $RESOLVE_CONFIG"
 if ! config_output=$("$RESOLVE_CONFIG" 2>&1); then
