@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gaia.studio/schemas/brain-reliance-map.schema.json",
+  "title": "Brain reliance map",
+  "description": "Backing JSON Schema for the hand-authored reliance map at .gaia/knowledge/brain-reliance-map.yaml — the single source of truth that declares, per workflow stage, which brain-knowledge nodes that stage relies upon and whether each reliance is mandatory or optional. Unlike the brain index, this file is hand-authored policy: the reindex sweep neither reads nor writes it. The `stages` map is keyed by a `<skill>:<stage-id>` composite (the workflow stage a loader is entering); each value carries a `requires` list of reliance entries. Every reliance entry names one `brain_node` (the key of the required node, looked up in the brain index) and an `obligation` drawn from the CLOSED enum {MANDATORY, OPTIONAL}. additionalProperties is false on each reliance entry so an out-of-enum obligation or a stray field is rejected; the stage object and the document root stay permissive enough for the keyed-map shape and forward-compatible headers.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "stages": {
+      "type": "object",
+      "description": "Map of workflow stages to their brain-node reliances. Each key is a `<skill>:<stage-id>` composite identifying the stage a workflow-entry loader is entering; an absent key means the stage declares no reliances and is un-evaluable (the loader fails open on it).",
+      "additionalProperties": {
+        "type": "object",
+        "description": "The reliance declaration for a single stage.",
+        "required": ["requires"],
+        "additionalProperties": false,
+        "properties": {
+          "requires": {
+            "type": "array",
+            "description": "The list of brain nodes this stage relies upon. May be empty: a stage with no requirements is trivially satisfied.",
+            "items": {
+              "type": "object",
+              "description": "A single reliance entry: one required brain node plus its obligation.",
+              "required": ["brain_node", "obligation"],
+              "additionalProperties": false,
+              "properties": {
+                "brain_node": {
+                  "type": "string",
+                  "description": "The key of the required brain node, resolved against the brain index at load time.",
+                  "minLength": 1
+                },
+                "obligation": {
+                  "description": "Closed enum. MANDATORY: a cleanly-evaluated absence of this node HALTs the entering workflow. OPTIONAL: an absence is a warning and the workflow continues. A value outside this enum is a schema violation.",
+                  "enum": ["MANDATORY", "OPTIONAL"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
