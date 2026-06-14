@@ -2573,18 +2573,24 @@ _resolve_active_yaml() {
 cmd_init() {
   local sprint_id="$1"
   [ -n "$sprint_id" ] || die "init: --sprint-id is required"
-  # Optional `--start-date`, `--end-date`, `--capacity-points` flags.
-  # When any of these flags is provided, the seed includes the field. When
-  # all three are absent the seed carries only the minimal shape (sprint_id /
+  # Optional `--start-date`, `--end-date`, `--sprint-length-days` flags.
+  # When a date flag is provided, the seed includes the field. When the date
+  # flags are absent the seed carries only the minimal shape (sprint_id /
   # status / total_points / goals / items). The end-date can also be derived
   # from start + length.
-  local start_date="" end_date="" capacity_points="" sprint_length=""
+  #
+  # `--capacity-points` is accepted-but-inert: capacity judgement is now made
+  # by the agent-native check (dependency-depth + coherence + measured
+  # wall-clock), not by a human-team calendar-capacity proxy. The flag is
+  # still parsed so existing callers do not break, but its value is dropped
+  # and no capacity_points line is ever seeded.
+  local start_date="" end_date="" sprint_length=""
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
       --start-date)      start_date="${2:-}"; shift 2 ;;
       --end-date)        end_date="${2:-}"; shift 2 ;;
-      --capacity-points) capacity_points="${2:-}"; shift 2 ;;
+      --capacity-points) shift 2 ;;  # accepted-but-inert (legacy proxy retired)
       --sprint-length-days) sprint_length="${2:-}"; shift 2 ;;
       *) die "init: unknown flag: $1" ;;
     esac
@@ -2632,7 +2638,6 @@ cmd_init() {
     printf 'status: planned\n'
     [ -n "$start_date" ]      && printf 'start_date: "%s"\n' "$start_date"
     [ -n "$end_date" ]        && printf 'end_date: "%s"\n' "$end_date"
-    [ -n "$capacity_points" ] && printf 'capacity_points: %s\n' "$capacity_points"
     printf 'total_points: 0\n'
     printf 'goals: []\n'
     printf 'items: []\n'
@@ -2659,7 +2664,6 @@ cmd_init() {
       printf 'generated_at: "%s"\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       [ -n "$start_date" ]      && printf 'start_date: "%s"\n' "$start_date"
       [ -n "$end_date" ]        && printf 'end_date: "%s"\n' "$end_date"
-      [ -n "$capacity_points" ] && printf 'capacity_points: %s\n' "$capacity_points"
       printf -- '---\n\n'
       printf '# Sprint plan: %s\n\n' "$sprint_id"
       printf 'This stub was emitted by `sprint-state.sh init` so the sprint-plan/\n'
