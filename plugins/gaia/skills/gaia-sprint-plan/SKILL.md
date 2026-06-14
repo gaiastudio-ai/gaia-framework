@@ -190,7 +190,55 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
   ```
 
   Both writers rewrite only the `sprint_id:` scalar under a per-story flock (atomic tmp+mv; insert when absent). They are functionally interchangeable — the `sprint-state.sh set-story-sprint` form is the canonical surface for new callers because it keeps every sprint-binding mutation inside the same script that owns `inject`, while the standalone `set-story-sprint.sh` remains as a stable lower-level primitive. Either form is the field that `sprint-state.sh inject`'s drift guard reads, so it MUST be set before the inject/commit step. Clear it with `--sprint null` (standalone) or use `sprint-state.sh rollover --from sprint-{N} --keys {story_key}` to move between sprints.
-- Stories remain `ready-for-dev` -- do NOT change their status. `/gaia-dev-story` transitions them to `in-progress` when work begins.
+- This step sets ONLY the `sprint_id` binding. Story **status** is reconciled in
+  Step 4a below: a backlog-selected story is Val-validated and transitioned to
+  `ready-for-dev` there; an already-`ready-for-dev` materialized story is left
+  unchanged. Do NOT hand-edit the `status:` field here. `/gaia-dev-story`
+  transitions a `ready-for-dev` story to `in-progress` when work begins.
+
+### Step 4a -- Val-gated activation (backlog → ready-for-dev)
+
+Backlog selection (Step 1) lets a `status: backlog` story be selected directly
+from the roster, but `/gaia-dev-story` HALTs unless the story frontmatter is
+`ready-for-dev` or `in-progress`. This step closes that gap: every selected
+story is validated and, on PASS, transitioned to `ready-for-dev` so the sprint
+is actually startable. Activation is **single-path** — sprint-plan owns
+`backlog → ready-for-dev`; `/gaia-dev-story` FRESH mode owns
+`ready-for-dev → in-progress` (the `backlog → in-progress` edge is reserved for
+pure backlog devs with `sprint_id: null`).
+
+For each selected story whose materialized status is `backlog` (skip stories
+already `ready-for-dev` — they are activation-complete):
+
+1. **Materialize if roster-only.** A backlog story selected as a roster row with
+   no file yet MUST first be materialized via `/gaia-create-story {story_key}
+   --for-sprint sprint-{N}` so there is a story file to validate. (Already-filed
+   backlog stories skip this.)
+2. **Validate via `/gaia-validate-story {story_key}`.** This is the sanctioned
+   full Val gate (main-turn Agent-tool dispatch + envelope assert + 3-attempt
+   cap). It records its verdict via `review-gate.sh`. Do NOT inline-judge.
+3. **On FAIL — SM fix loop (≤3 attempts).** Dispatch the SM (Nate) to fix the
+   story file against Val's findings, then re-validate. Repeat up to **3
+   attempts** total per story (matching the `/gaia-validate-story` cap). Each
+   attempt's findings drive the next fix; do NOT pre-load prior findings into a
+   re-dispatch prompt.
+4. **On PASS (within ≤3 attempts) — transition.** Run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to
+   ready-for-dev`. This sanctioned single-writer atomically updates all five
+   surfaces (story frontmatter, `sprint-status.yaml`, `epics-and-stories.md`,
+   the per-epic shard under `planning-artifacts/epics/`, and `story-index.yaml`)
+   — keeping the yaml mirror and the story frontmatter in agreement.
+5. **On still-FAIL after 3 attempts — leave at `backlog`.** Record the story key
+   and its outstanding Val findings.
+
+**Commit partition + can't-start-with-backlog HALT.** Stories that reach
+`ready-for-dev` are committed into the sprint normally (Step 6). If ANY selected
+story remains `backlog` after this step, the sprint **cannot start**: surface
+each still-backlog story with its Val findings and HALT, asking the user to
+decide per story — **remove it from the sprint**, or **fix it and re-validate
+manually** (`/gaia-fix-story {key}` then re-run planning). Do NOT auto-drop or
+auto-defer. The passing subset has already been transitioned; only the
+unresolved stories block the sprint start.
 
 ### Step 5 -- Sprint Plan Generation
 
@@ -330,15 +378,27 @@ fi
 - Write the sprint plan document to `.gaia/artifacts/implementation-artifacts/sprint-plan/{sprint_id}-plan.md`.
 - The document includes all sections from Step 5.
 
-### Step 8 -- Val Validation (optional)
+### Step 8 -- Sprint-plan consistency check
 
-- If the Val subagent is available: invoke Val to validate the sprint plan. Val verifies:
-  - All selected story keys exist as story files with status `ready-for-dev`
-  - Dependency ordering is correct
-  - Points sum is recorded (relative-complexity signal) and the agent-native capacity check (`sm-capacity-check.sh`: depth + coherence + telemetry-gated wall-clock) did not flag the batch — the legacy `total <= velocity` points-gate is NOT the capacity criterion
-  - No duplicate story keys
-- If Val returns findings: auto-fix and re-validate.
-- If Val fails or is unavailable: log warning and continue -- validation is non-blocking for sprint planning.
+Per-story factual validation is performed in **Step 4a** (the blocking Val gate
+that activates each story `backlog → ready-for-dev`). This step is the
+plan-level consistency pass over the committed sprint — it does NOT re-validate
+individual stories:
+
+- Every committed story is `ready-for-dev` (Step 4a guarantees this — any story
+  that could not reach `ready-for-dev` blocked the sprint start and is therefore
+  absent from the committed set). Assert the invariant holds.
+- Dependency ordering is correct.
+- Points sum is recorded (relative-complexity signal) and the agent-native
+  capacity check (`sm-capacity-check.sh`: depth + coherence + telemetry-gated
+  wall-clock) did not flag the batch — the legacy `total <= velocity` points-gate
+  is NOT the capacity criterion.
+- No duplicate story keys.
+
+If the consistency check surfaces a committed story that is NOT `ready-for-dev`,
+that is a Step 4a contract violation — HALT and re-run Step 4a; do not log-and-
+continue. (The per-story Val blocking happens in Step 4a; this plan-level pass
+is the backstop invariant, not an optional re-check.)
 
 ### Step 9 -- Token Footprint Measurement
 
