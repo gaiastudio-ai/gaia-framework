@@ -35,6 +35,10 @@ fi
 !${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh architect all
 !${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh pm all
 
+## Brain Context
+
+!${CLAUDE_PLUGIN_ROOT}/scripts/brain/brain-reliance-loader.sh gaia-create-epics:discover-inputs
+
 ## Mission
 
 You are orchestrating the creation of an Epics and Stories document. The epic definition and story breakdown are delegated to the **architect** subagent (Theo) for technical decomposition and the **pm** subagent (Derek) for business prioritization and user story authoring. You load the PRD, architecture, test plan, and optional UX design, validate inputs, coordinate the multi-step flow, and write the output to the canonical path `.gaia/artifacts/planning-artifacts/epics-and-stories.md`.

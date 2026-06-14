@@ -33,6 +33,10 @@ fi
 
 !${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh architect all
 
+## Brain Context
+
+!${CLAUDE_PLUGIN_ROOT}/scripts/brain/brain-reliance-loader.sh gaia-create-arch:discover-inputs
+
 ## Mission
 
 You are orchestrating the creation of a System Architecture document. The architecture authoring is delegated to the **architect** subagent (Theo), who conducts technology selection, designs system components, and produces the final artifact. You load the PRD, validate inputs, coordinate the multi-step flow, and write the output to the canonical path `.gaia/artifacts/planning-artifacts/architecture.md` using the carried `architecture-template.md` template structure.
