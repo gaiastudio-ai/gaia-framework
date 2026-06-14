@@ -148,6 +148,76 @@ _stage_diff() {
   [[ "$output" == *"FIXME"* ]]
 }
 
+# ---------------- mktemp template must NOT be flagged (word-boundary) ----------------
+@test "mktemp randomization template ending in XXXXXX is not flagged as a sentinel" {
+  _stage_diff "$FIXTURE_PROD_PATH" \
+    'tmp="$(mktemp "${out}.tmp.XXXXXX")"'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+@test "mktemp -d template with four-plus trailing X is not flagged" {
+  _stage_diff "$FIXTURE_PROD_PATH" \
+    'd="$(mktemp -d "${TMPDIR:-/tmp}/brx.XXXX")"'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+# ---------------- standalone tokens MUST still be flagged (no regression) ----------------
+@test "standalone XXX token surrounded by spaces is still flagged" {
+  _stage_diff "$FIXTURE_PROD_PATH" \
+    'echo XXX  # placeholder'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"forbidden sentinel"* ]]
+  [[ "$output" == *"XXX"* ]]
+}
+
+@test "standalone MOCK token is still flagged" {
+  _stage_diff "$FIXTURE_PROD_PATH" \
+    'echo MOCK'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"MOCK"* ]]
+}
+
+@test "standalone FIXME token is still flagged" {
+  _stage_diff "$FIXTURE_PROD_PATH" \
+    'echo FIXME'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FIXME"* ]]
+}
+
+# ---------------- punctuation-adjacent tokens MUST still be flagged ----------------
+@test "XXX adjacent to comment punctuation is still flagged" {
+  _stage_diff "$FIXTURE_PROD_PATH" \
+    '# XXX: needs wiring'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"XXX"* ]]
+}
+
+@test "MOCK wrapped in parentheses is still flagged" {
+  _stage_diff "$FIXTURE_PROD_PATH" \
+    'call(MOCK)'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"MOCK"* ]]
+}
+
+# ---------------- real on-disk mktemp idiom script scans clean ----------------
+@test "real framework mktemp idiom script produces zero false positives" {
+  # Point at a real production script that uses the mktemp ...XXXXXX idiom.
+  local prod_rel="gaia-public/plugins/gaia/scripts/lib/ground-truth-stale-check.sh"
+  local src="$BATS_TEST_DIRNAME/../scripts/lib/ground-truth-stale-check.sh"
+  [ -f "$src" ]
+  ( cd "$REPO" && mkdir -p "$(dirname "$prod_rel")" && cp "$src" "$prod_rel" \
+      && git add -A && git commit -q -m "fixture: real mktemp script" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
 # ---------------- Diff-only scope: untouched production STUB does NOT HALT ----------------
 @test "scope: untouched production file with STUB outside the diff is not flagged" {
   # Add a STUB to a file in the BASE commit, then make an unrelated change in feat.
