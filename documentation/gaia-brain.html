@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GAIA Brain -- Knowledge Layer - GAIA Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="glossary.html">Glossary</a></li>
+          <li><a href="lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="gaia-brain.html" class="active">GAIA Brain</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="categories/getting-started.html">Getting Started</a></li>
+          <li><a href="categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="categories/planning.html">Planning</a></li>
+          <li><a href="categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="categories/development.html">Development</a></li>
+          <li><a href="categories/testing.html">Testing</a></li>
+          <li><a href="categories/reviews.html">Reviews</a></li>
+          <li><a href="categories/validation.html">Validation</a></li>
+          <li><a href="categories/deployment.html">Deployment</a></li>
+          <li><a href="categories/configuration.html">Configuration</a></li>
+          <li><a href="categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#knowledge-model">The knowledge model</a></li>
+          <li><a href="#edge-types">Edge types</a></li>
+          <li><a href="#governance-envelope">The governance envelope</a></li>
+          <li><a href="#linked-predicate">The linked predicate</a></li>
+          <li><a href="#content-integrity">Content integrity</a></li>
+          <li><a href="#reindex-lifecycle">When the index is built</a></li>
+          <li><a href="#read-only-boundary">Read-only boundary</a></li>
+          <li><a href="#no-vectors">No vectors, no embeddings</a></li>
+          <li><a href="#commands">Commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="index.html">Home</a>
+        <span class="separator">/</span>
+        GAIA Brain
+      </nav>
+
+      <header>
+        <h1>GAIA Brain -- Knowledge Layer</h1>
+        <p>
+          The GAIA Brain is a <strong>read-only knowledge layer</strong> that
+          turns a project's own artifacts -- stories, epics, requirements,
+          architecture decisions, tests, reviews, and UX designs -- into a
+          queryable governance graph. It answers the question <em>"for this
+          story, what governs it, what tests it, and what designs sit alongside
+          it?"</em> in a single call, without leaving the terminal.
+        </p>
+      </header>
+
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>
+          The Brain lives at <code>.gaia/knowledge/</code> as an
+          Obsidian-native Markdown vault. It consists of two files:
+        </p>
+        <ul>
+          <li>
+            <strong><code>brain-index.yaml</code></strong> -- the single source
+            of truth (SSOT) manifest. Every indexed artifact has one entry here,
+            carrying its path, a content hash, a short synopsis, tags, and typed
+            governance edges.
+          </li>
+          <li>
+            <strong><code>brain-index.md</code></strong> -- a human-readable
+            <a href="glossary.html#moc">Map of Content</a> (MOC) rendered from
+            the manifest. Browse it in Obsidian or any Markdown viewer to
+            navigate the knowledge layer. It is a derived convenience -- the
+            YAML manifest is the authority.
+          </li>
+        </ul>
+        <p>
+          The Brain does not copy artifact bytes. Each index entry points at the
+          artifact's canonical path <strong>in place</strong>. When you query
+          the Brain, it walks the manifest's typed edges and surfaces the
+          relevant nodes; when you want the full content, it gives you the path
+          to read it yourself.
+        </p>
+      </section>
+
+      <section id="knowledge-model">
+        <h2>The knowledge model</h2>
+        <p>
+          Each entry in the manifest represents one artifact and carries:
+        </p>
+        <ul>
+          <li><strong>Path</strong> -- the canonical location of the artifact on disk.</li>
+          <li><strong>Content hash</strong> -- a sha256 digest of the file at index time, used for freshness checks.</li>
+          <li><strong>Synopsis</strong> -- a deterministic one-line summary (first heading plus first prose line), generated at index time.</li>
+          <li><strong>Tags</strong> -- artifact-type tags harvested from frontmatter and directory structure.</li>
+          <li><strong>Edges</strong> -- typed governance relationships to other nodes, described below.</li>
+        </ul>
+      </section>
+
+      <section id="edge-types">
+        <h2>Edge types</h2>
+        <p>
+          The Brain recognizes a closed set of seven edge types. Every edge in
+          the manifest is one of these, and no other edge type is invented at
+          index time.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Edge type</th>
+              <th>Direction</th>
+              <th>Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>implements</code></td>
+              <td>UP</td>
+              <td>This artifact implements a requirement.</td>
+            </tr>
+            <tr>
+              <td><code>governed-by</code></td>
+              <td>UP</td>
+              <td>This artifact is governed by an architecture decision.</td>
+            </tr>
+            <tr>
+              <td><code>decomposes</code></td>
+              <td>UP</td>
+              <td>This artifact is a child of a larger artifact (story decomposes an epic).</td>
+            </tr>
+            <tr>
+              <td><code>verified-by</code></td>
+              <td>DOWN</td>
+              <td>This artifact is verified by a test.</td>
+            </tr>
+            <tr>
+              <td><code>reviewed-in</code></td>
+              <td>DOWN</td>
+              <td>This artifact was reviewed in a review report.</td>
+            </tr>
+            <tr>
+              <td><code>traces-to</code></td>
+              <td>UP</td>
+              <td>This artifact traces to a governance target declared in its frontmatter.</td>
+            </tr>
+            <tr>
+              <td><code>designs</code></td>
+              <td>LATERAL</td>
+              <td>This artifact is a design companion (UX, wireframe) for the node.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="governance-envelope">
+        <h2>The governance envelope</h2>
+        <p>
+          When you query the Brain for a story, the result is its <strong>governance
+          envelope</strong> -- every related artifact grouped into three directions:
+        </p>
+        <ul>
+          <li>
+            <strong>UP</strong> -- the governance chain <em>above</em> the story:
+            the requirements it implements, the architecture decisions that govern
+            it, and its parent epic. The walk is bounded and transitive -- it
+            follows the story up through its epic to the requirements and
+            decisions, with a depth cap and a cycle guard so the walk always
+            terminates.
+          </li>
+          <li>
+            <strong>DOWN</strong> -- the artifacts <em>below</em> the story:
+            tests that verify it and reviews that gated it. A single hop from
+            the seed.
+          </li>
+          <li>
+            <strong>LATERAL</strong> -- the design artifacts that sit
+            <em>alongside</em> the story: UX specs, wireframes. A single hop
+            from the seed.
+          </li>
+        </ul>
+        <p>
+          The envelope gives you the full governance picture of a story without
+          opening a single file by hand.
+        </p>
+      </section>
+
+      <section id="linked-predicate">
+        <h2>The linked predicate</h2>
+        <p>
+          The Brain's health view classifies every indexed artifact as
+          <strong>linked</strong> or <strong>unlinked</strong> using a
+          four-source predicate. A node is linked if <em>any</em> of the
+          following resolves:
+        </p>
+        <ol>
+          <li>The artifact's frontmatter contains a non-empty <code>traces_to</code> field.</li>
+          <li>The artifact's frontmatter contains an <code>epic</code> field.</li>
+          <li>An allocation row in the epics registry references this artifact.</li>
+          <li>A mapping in the traceability matrix includes this artifact.</li>
+        </ol>
+        <p>
+          An artifact that satisfies none of the four is <strong>unlinked</strong>.
+        </p>
+
+        <h3>Unlinked is a signal, not a failure</h3>
+        <p>
+          An unlinked node is a passive quality signal. It is <strong>never</strong>
+          treated as an error, and it is <strong>normal and expected</strong>
+          that many artifacts appear unlinked. The linked predicate is meaningful
+          for <strong>story-shaped nodes</strong> -- the artifacts that should
+          trace to a requirement, an epic, or a test. Non-story artifacts such
+          as meeting notes, action items, brainstorm outputs, retrospectives,
+          READMEs, and architecture-decision shards legitimately have no
+          governance edges. Their presence in the unlinked list is expected,
+          not a problem to fix.
+        </p>
+        <p>
+          On a mature project with thousands of indexed artifacts, it is typical
+          for the majority of entries to carry no edges -- because the bulk of
+          the artifact tree is non-story material. This is healthy. Use the
+          unlinked list to spot <em>story</em> artifacts that should have
+          traceability but do not, and ignore the rest.
+        </p>
+      </section>
+
+      <section id="content-integrity">
+        <h2>Content integrity (C1)</h2>
+        <p>
+          Every synopsis in the manifest carries the source file's content hash
+          at the time of indexing. When a downstream consumer -- such as the
+          query command -- surfaces a synopsis, it recomputes the hash of the
+          canonical file on disk and compares. If the file has changed since
+          the last reindex, or is missing, the node is marked
+          <strong>stale</strong> and the consumer falls through to the canonical
+          file path so you read the current bytes directly. A stale synopsis
+          is never served as if it were current.
+        </p>
+        <p>
+          This means the Brain is always safe to query, even when the index is
+          out of date -- stale entries are surfaced transparently, and a reindex
+          clears them.
+        </p>
+      </section>
+
+      <section id="reindex-lifecycle">
+        <h2>When the index is built</h2>
+        <p>
+          The index is built by
+          <a href="commands/gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a>.
+          There are two modes of invocation:
+        </p>
+        <ul>
+          <li>
+            <strong>Automatic at sprint-close.</strong>
+            <a href="commands/gaia-sprint-close.html"><code>/gaia-sprint-close</code></a>
+            runs a best-effort, non-blocking reindex as part of its finalize
+            step. If the reindex fails, the sprint still closes -- the failure
+            is logged as a warning. This means that on a project with a
+            healthy sprint cadence, the index stays reasonably current without
+            any manual effort.
+          </li>
+          <li>
+            <strong>On-demand.</strong> Run
+            <a href="commands/gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a>
+            at any time to force a mid-sprint refresh. Common reasons: you want
+            to bootstrap the index on an existing or brownfield project before
+            the first sprint-close, or you made a burst of artifact edits and
+            want the index to reflect them immediately.
+          </li>
+        </ul>
+        <p>
+          A fresh greenfield project does not need to run the reindex early --
+          the first sprint-close populates the index automatically.
+        </p>
+        <p>
+          Reindex is idempotent and incremental: a second run short-circuits
+          unchanged files via the content hash, making re-runs fast.
+        </p>
+      </section>
+
+      <section id="read-only-boundary">
+        <h2>Read-only boundary</h2>
+        <p>
+          The Brain is a <strong>strict read-only consumer</strong> of the
+          artifacts it indexes. It never modifies an artifact, never copies
+          artifact bytes into the knowledge store, and never writes outside
+          <code>.gaia/knowledge/</code>.
+        </p>
+        <p>
+          The Brain is also <strong>separate from the validator's
+          ground-truth sidecar</strong> (the per-agent working memory at
+          <code>.gaia/memory/</code>). The reindex sweep does not read or
+          write the memory tree; the ground-truth refresh does not read or
+          write the knowledge index. They are independent subsystems serving
+          different purposes -- the Brain indexes governance relationships,
+          while the ground-truth sidecar tracks filesystem-level facts for
+          artifact validation.
+        </p>
+      </section>
+
+      <section id="no-vectors">
+        <h2>No vectors, no embeddings</h2>
+        <p>
+          The entire knowledge layer is built on <strong>grep, tags, and the
+          manifest</strong>. There is no vector database, no embedding model,
+          and no external search service anywhere in this stack. Retrieval
+          works by walking the typed edges in the manifest and matching tags.
+          This keeps the Brain zero-dependency, deterministic, and auditable --
+          every edge in a query result can be traced back to a concrete
+          declaration in a frontmatter field, an epics registry row, or a
+          traceability matrix mapping.
+        </p>
+      </section>
+
+      <section id="commands">
+        <h2>Commands</h2>
+        <p>Three commands expose the Brain to users and agents:</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="commands/gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a></td>
+              <td>Rebuild the index from source. The sole writer of the manifest. Runs automatically at sprint-close and on demand.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-brain-query.html"><code>/gaia-brain-query</code></a></td>
+              <td>Query a story's governance envelope (UP / DOWN / LATERAL). Read-only. Users and agents invoke it explicitly -- automatic consultation is planned but not yet shipped.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-brain-health.html"><code>/gaia-brain-health</code></a></td>
+              <td>List every artifact the linked predicate classifies as unlinked. A passive quality signal -- unlinked non-story artifacts (meeting notes, retros, etc.) are normal.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
