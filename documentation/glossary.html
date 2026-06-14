@@ -100,6 +100,20 @@
           <code>.gaia/artifacts/creative-artifacts/</code>.
         </dd>
 
+        <dt id="edge-types">Edge types (knowledge layer)</dt>
+        <dd>
+          The seven typed relationships the <a href="#gaia-brain">GAIA Brain</a>
+          knowledge index recognizes between artifacts:
+          <code>implements</code>, <code>governed-by</code>,
+          <code>decomposes</code>, <code>verified-by</code>,
+          <code>reviewed-in</code>, <code>traces-to</code>, and
+          <code>designs</code>. Each edge is directional (UP, DOWN, or
+          LATERAL) and is harvested deterministically from frontmatter,
+          the epics registry, and the traceability matrix at index time.
+          See the <a href="gaia-brain.html#edge-types">GAIA Brain edge-types
+          table</a> for definitions.
+        </dd>
+
         <dt id="epic">Epic</dt>
         <dd>
           A large body of work that can be broken down into multiple
@@ -127,6 +141,22 @@
           artifacts by identifiers like <code>FR-001</code>.
         </dd>
 
+        <dt id="gaia-brain">GAIA Brain (knowledge layer)</dt>
+        <dd>
+          A read-only knowledge layer that turns a project's artifacts into
+          a queryable governance graph. It lives at
+          <code>.gaia/knowledge/</code> as an Obsidian-native Markdown vault
+          with <code>brain-index.yaml</code> as the single-source-of-truth
+          manifest and <code>brain-index.md</code> as a human-readable
+          <a href="#moc">Map of Content</a>. Retrieval uses grep, tags, and
+          the manifest only -- no vectors, no embeddings, no external service.
+          Three commands expose the Brain:
+          <a href="commands/gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a>,
+          <a href="commands/gaia-brain-query.html"><code>/gaia-brain-query</code></a>, and
+          <a href="commands/gaia-brain-health.html"><code>/gaia-brain-health</code></a>.
+          See the <a href="gaia-brain.html">GAIA Brain concept page</a>.
+        </dd>
+
         <dt id="gate">Gate</dt>
         <dd>
           A checkpoint in a workflow where progress is blocked until a
@@ -146,6 +176,19 @@
           diagram</a> on the home page.
         </dd>
 
+        <dt id="governance-envelope">Governance envelope</dt>
+        <dd>
+          The complete set of artifacts related to a story, grouped into
+          three directions: <strong>UP</strong> (requirements, architecture
+          decisions, parent epic), <strong>DOWN</strong> (tests, reviews),
+          and <strong>LATERAL</strong> (UX and design companions). Returned
+          by
+          <a href="commands/gaia-brain-query.html"><code>/gaia-brain-query</code></a>
+          in a single read-only call. See the
+          <a href="gaia-brain.html#governance-envelope">GAIA Brain concept
+          page</a>.
+        </dd>
+
         <dt id="ground-truth">Ground Truth</dt>
         <dd>
           A snapshot of your project's actual filesystem state -- which
@@ -153,6 +196,17 @@
           compares claims in your artifacts against ground truth to detect
           stale references, missing files, or incorrect paths. Refreshed
           by <a href="commands/gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a>.
+        </dd>
+
+        <dt id="moc">Map of Content (MOC)</dt>
+        <dd>
+          A human-readable Markdown file
+          (<code>.gaia/knowledge/brain-index.md</code>) rendered from the
+          <a href="#gaia-brain">GAIA Brain</a> manifest on every reindex
+          sweep. Entries are grouped by artifact type with wikilinks,
+          synopses, tags, and edge summaries. Browse it in Obsidian or any
+          Markdown viewer to navigate the knowledge layer. The MOC is a
+          derived convenience -- the YAML manifest is the authority.
         </dd>
 
         <dt id="nfr">NFR (Non-Functional Requirement)</dt>

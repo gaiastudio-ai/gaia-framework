@@ -64,7 +64,7 @@
 
       <section id="what-it-does">
         <h2>What it does</h2>
-        <p><code>/gaia-brain-reindex</code> rebuilds the brain knowledge layer's index from source. It is the <strong>sole writer</strong> of that index: it walks the project's artifact and state trees, derives a typed-edge graph of how the artifacts relate, stamps every entry with a content-integrity hash, and writes the index atomically. Because every run regenerates the whole index from the files on disk, hand-tampering never persists and synopses never silently drift.</p>
+        <p><code>/gaia-brain-reindex</code> rebuilds the <a href="../gaia-brain.html">brain knowledge layer's</a> index from source. It is the <strong>sole writer</strong> of that index: it walks the project's artifact and state trees, derives a typed-edge graph of how the artifacts relate, stamps every entry with a content-integrity hash, and writes the index atomically. Because every run regenerates the whole index from the files on disk, hand-tampering never persists and synopses never silently drift.</p>
       </section>
 
       <section id="when-to-use">
@@ -123,7 +123,8 @@
 
       <section id="related">
         <h2>Related commands</h2>
-        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-sprint-close.html"><code>/gaia-sprint-close</code></a></td><td>Runs a best-effort reindex automatically as part of the close ceremony.</td></tr><tr><td><a href="gaia-brain-health.html"><code>/gaia-brain-health</code></a></td><td>Browses the rendered index for coverage gaps -- lists every artifact with no governance link.</td></tr><tr><td><a href="gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a></td><td>A separate, independent subsystem -- refreshes the validator's file-inventory snapshot, not the brain index.</td></tr></tbody></table>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-sprint-close.html"><code>/gaia-sprint-close</code></a></td><td>Runs a best-effort reindex automatically as part of the close ceremony.</td></tr><tr><td><a href="gaia-brain-query.html"><code>/gaia-brain-query</code></a></td><td>Query the index this command builds -- returns a story's governance envelope.</td></tr><tr><td><a href="gaia-brain-health.html"><code>/gaia-brain-health</code></a></td><td>Browses the rendered index for coverage gaps -- lists every artifact with no governance link.</td></tr><tr><td><a href="gaia-refresh-ground-truth.html"><code>/gaia-refresh-ground-truth</code></a></td><td>A separate, independent subsystem -- refreshes the validator's file-inventory snapshot, not the brain index.</td></tr></tbody></table>
+        <p>For a full explanation of the knowledge layer, edge types, and the linked predicate, see the <a href="../gaia-brain.html">GAIA Brain concept page</a>.</p>
       </section>
       <footer class="page-footer">
         <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>

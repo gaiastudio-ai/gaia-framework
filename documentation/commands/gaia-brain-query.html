@@ -67,7 +67,8 @@
 
       <section id="what-it-does">
         <h2>What it does</h2>
-        <p><code>/gaia-brain-query</code> is a read-only traversal over the brain knowledge layer. From a seed story key it walks the knowledge index's typed governance edges and returns the story's <strong>governance envelope</strong> -- every related artifact grouped by direction -- in a single invocation. It is the read counterpart to the reindex sweep (which is the sole writer of the index): the query <strong>writes nothing</strong>.</p>
+        <p><code>/gaia-brain-query</code> is a read-only traversal over the <a href="../gaia-brain.html">brain knowledge layer</a>. From a seed story key it walks the knowledge index's typed governance edges and returns the story's <strong><a href="../glossary.html#governance-envelope">governance envelope</a></strong> -- every related artifact grouped by direction -- in a single invocation. It is the read counterpart to the reindex sweep (which is the sole writer of the index): the query <strong>writes nothing</strong>.</p>
+        <p>Today this command is <strong>manual and opt-in</strong> -- users and agents invoke it explicitly. Automatic mandatory consultation by agents is a planned future feature, not yet shipped.</p>
       </section>
 
       <section id="when-to-use">
@@ -155,6 +156,7 @@
           <tr><td><a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a></td><td>Builds and stamps the index this query reads.</td></tr>
           <tr><td><a href="gaia-brain-health.html"><code>/gaia-brain-health</code></a></td><td>The unlinked-node coverage view, also reachable via this query's <code>--health</code> mode.</td></tr>
         </tbody></table>
+        <p>For a full explanation of the knowledge layer, edge types, the governance envelope, and the linked predicate, see the <a href="../gaia-brain.html">GAIA Brain concept page</a>.</p>
       </section>
       <footer class="page-footer">
         <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>
