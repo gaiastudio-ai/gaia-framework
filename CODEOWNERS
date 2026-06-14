@@ -1,1 +1,10 @@
 * @jlouage
+
+# Brain consultation policy — tamper-evidence.
+# The reliance-map schema and its structural validator are the committed
+# controls behind the hand-authored consultation policy (the reliance map is a
+# project-runtime artifact the reindex sweep never regenerates, so it has no
+# correct-by-construction overwrite backstop). Changes to either MUST be
+# explicitly code-reviewed.
+plugins/gaia/schemas/brain-reliance-map.schema.json @jlouage
+plugins/gaia/scripts/brain/validate-reliance-map.sh @jlouage

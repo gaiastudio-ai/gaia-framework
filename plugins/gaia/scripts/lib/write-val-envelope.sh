@@ -17,7 +17,19 @@
 #   write-val-envelope.sh --envelope <json>          # JSON literal as arg
 #   write-val-envelope.sh --envelope-stdin           # JSON read from stdin
 #
-#   The JSON must contain ALL FIVE required keys:
+#   The writer accepts Val's RETURNED envelope shape DIRECTLY — the caller
+#   does NOT reshape the payload. Two shapes are tolerated:
+#     - NESTED: the returned envelope wraps the canonical sentinel under a
+#       `sentinel_envelope` object key (alongside outer status/findings). The
+#       writer unwraps that inner object and writes it verbatim — persona_sig
+#       is passed through, never recomputed caller-side.
+#     - FLAT: the canonical sentinel fields are already at the top level. The
+#       writer accepts the payload as-is.
+#   Both shapes produce a sentinel that passes assert-agent-envelope.sh; shape
+#   tolerance is an input-shaping concern in this writer only — the asserter's
+#   required-field set is NOT extended.
+#
+#   The (unwrapped) sentinel JSON must contain ALL FIVE required keys:
 #     agent          — MUST equal the literal string "val"
 #     persona_sig    — non-empty string (forgery-resistance anchor)
 #     timestamp      — ISO-8601 UTC timestamp (string)
@@ -120,6 +132,31 @@ command -v jq >/dev/null 2>&1 || die "jq not found on PATH"
 # Validate JSON parses
 if ! printf '%s' "$ENVELOPE" | jq -e . >/dev/null 2>&1; then
   die "envelope is not valid JSON"
+fi
+
+# ---------- Accept the agent's returned shape directly ----------
+# Val RETURNS its sentinel content; the orchestrator passes that returned
+# envelope to this writer VERBATIM — no caller-side reshaping. Two shapes are
+# tolerated, both producing a sentinel that passes assert-agent-envelope.sh:
+#
+#   1. NESTED — the returned envelope wraps the canonical sentinel under a
+#      `sentinel_envelope` object key (alongside outer status/findings/summary).
+#      The writer UNWRAPS that inner object and uses it VERBATIM as the
+#      sentinel. persona_sig is passed through exactly as returned — never
+#      recomputed or re-injected caller-side. Outer wrapper keys are dropped.
+#
+#   2. FLAT — the returned envelope already carries the canonical sentinel
+#      fields (agent, persona_sig, timestamp, artifact_path, verdict) at the
+#      top level. The writer accepts it as-is.
+#
+# Shape detection is on the WRITER's input only; the asserter's required-field
+# set is unchanged. When `sentinel_envelope` is present AND is a JSON object,
+# we replace ENVELOPE with that inner object and the rest of the writer runs
+# unchanged (required-key loop, persona_sig check, artifact_path normalization,
+# atomic write). A `sentinel_envelope` that is null or a non-object is ignored
+# (treated as the flat shape) so a stray scalar never breaks a flat payload.
+if printf '%s' "$ENVELOPE" | jq -e '.sentinel_envelope | objects' >/dev/null 2>&1; then
+  ENVELOPE="$(printf '%s' "$ENVELOPE" | jq -c '.sentinel_envelope')"
 fi
 
 # Check required keys exist.

@@ -279,6 +279,74 @@ _run_reindex() {
   ! grep -q '\.gaia/memory/' "$skill"
 }
 
+# ---- reviewed-in / designs harvest from REAL on-disk artifacts -------------
+# The sweep must DISCOVER each story node's review reports and the project's UX
+# artifacts from disk and harvest reviewed-in / designs edges from them. These
+# cases build no edge by hand and splice nothing into a manifest entry — they
+# run a real sweep over the fixture tree, which already carries a per-story
+# reviews/ dir sibling of the primary story file and a creative-artifacts/ux/
+# artifact that references the primary node.
+
+# _has_manifest_edge KEY ETYPE — 0 if the manifest carries an edge of the given
+# type whose two-line render appears within the named entry's block. The block
+# starts at `- key: "<KEY>"` and runs until the next top-level `- key:` line.
+_has_manifest_edge() {
+  local key="$1" etype="$2"
+  awk -v key="$key" -v et="$etype" '
+    $0 ~ ("^- key: \"" key "\"$") { inblock=1; next }
+    /^- key: "/ { inblock=0 }
+    inblock && $0 ~ ("- type: " et "$") { found=1 }
+    END { exit (found ? 0 : 1) }
+  ' "$MANIFEST"
+}
+
+@test "a full sweep harvests a reviewed-in edge from a per-story reviews dir on disk" {
+  # The fixture carries epic-E777-demo/E777-S2-primary/reviews/security-review-E777-S2.md
+  # — a type-first review report sibling of the story file. A plain reindex must
+  # discover that reviews dir and emit a reviewed-in edge for the report.
+  local rdir="$PROJ/.gaia/artifacts/implementation-artifacts/epic-E777-demo/E777-S2-primary/reviews"
+  [ -f "$rdir/security-review-E777-S2.md" ]
+  _run_reindex
+  [ "$status" -eq 0 ]
+  _has_manifest_edge "E777-S2" "reviewed-in"
+  # The edge target is the review-report stem (type-first, key-suffixed).
+  grep -q 'target: "security-review-E777-S2"' "$MANIFEST"
+}
+
+@test "a full sweep harvests one reviewed-in edge per discovered review report" {
+  # Add a second real review report (a different allowlisted type) on disk and
+  # re-sweep: BOTH must surface as reviewed-in edges, proving per-report harvest
+  # rather than a single hard-coded edge.
+  local rdir="$PROJ/.gaia/artifacts/implementation-artifacts/epic-E777-demo/E777-S2-primary/reviews"
+  printf '# Code review (reindex fixture)\n\nA second real review report.\n' \
+    > "$rdir/code-review-E777-S2.md"
+  _run_reindex
+  [ "$status" -eq 0 ]
+  grep -q 'target: "security-review-E777-S2"' "$MANIFEST"
+  grep -q 'target: "code-review-E777-S2"' "$MANIFEST"
+}
+
+@test "a full sweep harvests a designs edge from a UX artifact on disk" {
+  # The fixture carries creative-artifacts/ux/ux-fragment.md which references the
+  # primary node key. A plain reindex must discover the UX tree and emit a
+  # designs edge for the primary node.
+  [ -f "$PROJ/.gaia/artifacts/creative-artifacts/ux/ux-fragment.md" ]
+  _run_reindex
+  [ "$status" -eq 0 ]
+  _has_manifest_edge "E777-S2" "designs"
+}
+
+@test "a node with no review or UX artifacts emits no reviewed-in or designs edge" {
+  # E777-S7 (flat layout) has no reviews/ dir on disk and is not referenced by
+  # any UX artifact. Absence is correct, not an error — the node is still indexed
+  # but carries neither edge type.
+  _run_reindex
+  [ "$status" -eq 0 ]
+  grep -q 'key: "E777-S7"' "$MANIFEST"
+  ! _has_manifest_edge "E777-S7" "reviewed-in"
+  ! _has_manifest_edge "E777-S7" "designs"
+}
+
 # ---- schema validity ------------------------------------------------------
 
 @test "the swept manifest validates against the entry schema" {

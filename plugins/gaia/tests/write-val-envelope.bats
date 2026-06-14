@@ -230,3 +230,136 @@ YAML
   # Error stream must NOT complain about a missing original_status field.
   [[ "$output" != *"original_status"* ]]
 }
+
+# ============================================================================
+# Returned-shape passthrough — the writer accepts the agent's OWN returned
+# envelope directly, with no caller-side reshaping. Two shapes are tolerated:
+#
+#   1. NESTED  — the returned envelope wraps the sentinel under a
+#                `sentinel_envelope` object key. The writer unwraps that inner
+#                object verbatim (persona_sig passed through, never recomputed)
+#                and writes it as the sentinel.
+#   2. FLAT    — the returned envelope already carries the canonical sentinel
+#                fields at the top level. The writer accepts it as-is.
+#
+# Both shapes MUST produce a sentinel that passes assert-agent-envelope.sh
+# unchanged. The asserter's required-field set is NOT extended — shape
+# tolerance is an input-shaping concern in the writer only.
+# ============================================================================
+
+ASSERT_HELPER="$SCRIPTS_DIR/lib/assert-agent-envelope.sh"
+
+# Nested passthrough: a returned envelope with an inner `sentinel_envelope`
+# object is unwrapped and written verbatim. The on-disk sentinel carries the
+# inner object's fields (NOT the outer wrapper), and persona_sig is preserved
+# exactly as the agent returned it.
+@test "TC-RSP-1: nested sentinel_envelope is unwrapped and written verbatim (persona_sig passthrough)" {
+  local artifact="/tmp/rsp1-artifact"
+  local inner_sig="val-dev-rsp1-passthrough"
+  # The agent's full returned envelope: outer status/findings + nested sentinel.
+  local returned='{"status":"PASS","summary":"ok","findings":[],"sentinel_envelope":{"agent":"val","persona_sig":"'"$inner_sig"'","timestamp":"2026-06-13T10:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}}'
+  CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$returned"
+  [ "$status" -eq 0 ]
+  local expected_hash
+  expected_hash=$(printf '%s' "$artifact" | shasum -a 256 | cut -c1-16)
+  local sentinel="$CHECKPOINT_DIR/val-envelope-${expected_hash}.json"
+  [ -f "$sentinel" ]
+  # The written sentinel is the INNER object — agent/persona_sig come from it,
+  # and the outer wrapper keys (status/findings/summary/sentinel_envelope) are
+  # NOT serialized into the sentinel.
+  run jq -r '.agent' "$sentinel"
+  [ "$output" = "val" ]
+  run jq -r '.persona_sig' "$sentinel"
+  [ "$output" = "$inner_sig" ]
+  run jq -e 'has("sentinel_envelope")' "$sentinel"
+  [ "$status" -ne 0 ]
+  run jq -e 'has("findings")' "$sentinel"
+  [ "$status" -ne 0 ]
+}
+
+# Nested passthrough end-to-end: the directly-written sentinel passes
+# assert_agent_envelope with no caller-side reshaping.
+@test "TC-RSP-2: nested-shape sentinel passes assert_agent_envelope end-to-end" {
+  local artifact="/tmp/rsp2-artifact"
+  local returned='{"status":"PASS","sentinel_envelope":{"agent":"val","persona_sig":"val-dev-rsp2","timestamp":"2026-06-13T10:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}}'
+  local sentinel_path
+  sentinel_path=$(CHECKPOINT_PATH="$CHECKPOINT_DIR" "$HELPER" --envelope "$returned")
+  [ -n "$sentinel_path" ]
+  source "$ASSERT_HELPER"
+  run assert_agent_envelope "$sentinel_path"
+  [ "$status" -eq 0 ]
+}
+
+# Flat normalization: a returned envelope with canonical sentinel fields at
+# the top level (no `sentinel_envelope` wrapper) is accepted as-is.
+@test "TC-RSP-3: flat top-level sentinel is accepted and passes assert_agent_envelope" {
+  local artifact="/tmp/rsp3-artifact"
+  local flat='{"agent":"val","persona_sig":"val-dev-rsp3-flat","timestamp":"2026-06-13T10:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}'
+  local sentinel_path
+  sentinel_path=$(CHECKPOINT_PATH="$CHECKPOINT_DIR" "$HELPER" --envelope "$flat")
+  [ -n "$sentinel_path" ]
+  source "$ASSERT_HELPER"
+  run assert_agent_envelope "$sentinel_path"
+  [ "$status" -eq 0 ]
+  run jq -r '.persona_sig' "$sentinel_path"
+  [ "$output" = "val-dev-rsp3-flat" ]
+}
+
+# Nested passthrough preserves additive fields on the inner object
+# (e.g. original_status) — the whole inner object is serialized verbatim.
+@test "TC-RSP-4: nested unwrap preserves additive inner fields (original_status)" {
+  local artifact="/tmp/rsp4-artifact"
+  local returned='{"status":"WARNING","sentinel_envelope":{"agent":"val","persona_sig":"val-dev-rsp4","timestamp":"2026-06-13T10:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED","original_status":"WARNING"}}'
+  CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$returned"
+  [ "$status" -eq 0 ]
+  local expected_hash
+  expected_hash=$(printf '%s' "$artifact" | shasum -a 256 | cut -c1-16)
+  run jq -r '.original_status' "$CHECKPOINT_DIR/val-envelope-${expected_hash}.json"
+  [ "$output" = "WARNING" ]
+}
+
+# Forgery resistance under nested shape: an inner sentinel with an empty
+# persona_sig is rejected by the writer regardless of the wrapper.
+@test "TC-RSP-5: nested sentinel with empty persona_sig is rejected by the writer" {
+  local artifact="/tmp/rsp5-artifact"
+  local returned='{"status":"PASS","sentinel_envelope":{"agent":"val","persona_sig":"","timestamp":"2026-06-13T10:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}}'
+  CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$returned"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"persona_sig"* ]]
+}
+
+# Forgery resistance end-to-end: a forged sentinel written directly (agent=val
+# but persona_sig stripped post-write) fails assert_agent_envelope. Pins that
+# normalization does NOT weaken the asserter's persona_sig presence check.
+@test "TC-RSP-6: forged sentinel (persona_sig stripped) fails assert_agent_envelope" {
+  local artifact="/tmp/rsp6-artifact"
+  local flat='{"agent":"val","persona_sig":"val-dev-rsp6","timestamp":"2026-06-13T10:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}'
+  local sentinel_path
+  sentinel_path=$(CHECKPOINT_PATH="$CHECKPOINT_DIR" "$HELPER" --envelope "$flat")
+  [ -n "$sentinel_path" ]
+  # Tamper: strip persona_sig from the written sentinel.
+  jq 'del(.persona_sig)' "$sentinel_path" > "$sentinel_path.tmp" && mv "$sentinel_path.tmp" "$sentinel_path"
+  source "$ASSERT_HELPER"
+  run assert_agent_envelope "$sentinel_path"
+  [ "$status" -ne 0 ]
+}
+
+# Path agreement: a nested envelope whose inner artifact_path is ABSOLUTE and
+# rooted at the project_root normalizes to the SAME sentinel path a caller
+# computes from the project-relative spelling — so dispatch→write→assert agree
+# without manual reshaping.
+@test "TC-RSP-7: nested absolute artifact_path normalizes to the project-relative sentinel path" {
+  local rel="artifacts/planning-artifacts/prd.md"
+  local proj="$TEST_TMP/proj-rsp7"
+  mkdir -p "$proj"
+  local abs="$proj/$rel"
+  local returned='{"status":"PASS","sentinel_envelope":{"agent":"val","persona_sig":"val-dev-rsp7","timestamp":"2026-06-13T10:00:00Z","artifact_path":"'"$abs"'","verdict":"PASSED"}}'
+  local sentinel_path
+  sentinel_path=$(PROJECT_ROOT="$proj" CHECKPOINT_PATH="$CHECKPOINT_DIR" "$HELPER" --envelope "$returned")
+  [ -n "$sentinel_path" ]
+  # The hash MUST be over the project-relative spelling, not the absolute path.
+  local rel_hash
+  rel_hash=$(printf '%s' "$rel" | shasum -a 256 | cut -c1-16)
+  [[ "$sentinel_path" == *"val-envelope-${rel_hash}.json" ]]
+  [ -f "$sentinel_path" ]
+}
