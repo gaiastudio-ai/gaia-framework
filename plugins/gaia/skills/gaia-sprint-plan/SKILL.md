@@ -206,12 +206,14 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
   duration: "{duration}"
   velocity_capacity: {velocity}
   total_points: {sum}
-  # start_date / end_date / capacity_points are REQUIRED for the
-  # dashboard (otherwise it renders N/A). Seed them at sprint-plan time;
-  # sprint-state.sh `init` preserves them.
+  # start_date / end_date drive the dashboard Duration / Dates rows
+  # (otherwise they render N/A). Seed them at sprint-plan time; sprint-state.sh
+  # `init` preserves them. There is NO capacity figure to seed: capacity
+  # judgement is delegated to the agent-native capacity check (dependency-depth
+  # + coherence + measured wall-clock) documented above, not a human-team
+  # calendar-capacity proxy.
   start_date: "{start_date YYYY-MM-DD}"
   end_date: "{end_date YYYY-MM-DD}"
-  capacity_points: {capacity_points integer — usually equal to velocity_capacity}
   started: "{date}"
   stories:
     - key: "{story-key}"
@@ -232,16 +234,16 @@ The override is **idempotent** on the dedup key `(sprint_id, sorted-unique(overr
   # non-zero), so guard the call on absence rather than swallowing its error
   # (swallowing would violate the "abort on non-zero" contract below).
   SPRINT_YAML=".gaia/state/sprint-status.yaml"
-  # Forward the planning-time date + capacity
-  # values to `init` so the burndown dashboard renders concrete Duration /
-  # Dates / Capacity rows instead of `N/A`. Each flag is optional — when an
-  # operator omits a value the `init` shape stays byte-identical to the
-  # prior seed (zero-regression on existing bats fixtures). The
-  # `{start_date}`, `{end_date}`, `{capacity_points}` placeholders are the
-  # SAME values the SKILL.md yaml stub above documents, so the dashboard
-  # and the sprint yaml never disagree.
+  # Forward the planning-time date values to `init` so the burndown dashboard
+  # renders concrete Duration / Dates rows instead of `N/A`. Each flag is
+  # optional — when an operator omits a value the `init` shape stays
+  # byte-identical to the prior seed (zero-regression on existing bats
+  # fixtures). The `{start_date}` / `{end_date}` placeholders are the SAME
+  # values the SKILL.md yaml stub above documents, so the dashboard and the
+  # sprint yaml never disagree. There is no capacity figure to seed — capacity
+  # judgement is the agent-native check (depth + coherence + wall-clock).
   [ -e "$SPRINT_YAML" ] || \
-    ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh init --sprint-id "{sprint_id}" --start-date "{start_date YYYY-MM-DD}" --end-date "{end_date YYYY-MM-DD}" --capacity-points "{capacity_points integer}"
+    ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh init --sprint-id "{sprint_id}" --start-date "{start_date YYYY-MM-DD}" --end-date "{end_date YYYY-MM-DD}"
 
   ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh inject \
     --story "{story_key}" [--sprint-id "{sprint_id}"]
