@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.194.0] — 2026-06-14
+
+### Added
+
+- (E110-S7) harvest reviewed-in and designs edges in the reindex sweep (#1498)
+- (E87-S14) val envelope writer accepts the agent's returned shape directly (#1496)
+- (E106-S4) auto-set completion-pass shape for sweep sprints at plan time (#1497)
+- (E106-S5) retire the legacy capacity_points sprint field (#1495)
+- (E111-S3) wire brain-context loader into planning skills with guards (#1494)
+
+### Fixed
+
+- (E110-S8) anchor forbidden-sentinel scan to word boundaries (#1492)
+
 ## [1.193.0] — 2026-06-14
 
 ### Added
