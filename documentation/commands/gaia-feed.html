@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-feed - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#provenance">Provenance frontmatter</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/sprint-management.html">Sprint Management</a><span class="separator">/</span>
+        /gaia-feed
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-feed</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/sprint-management.html">Sprint Management</a></dd>
+          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt><dd><code>&lt;url-or-path | - for stdin&gt;</code> [<code>--slug SLUG</code>] [<code>--tags TAG1,TAG2</code>] [<code>--ttl DAYS</code>]</dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-feed</code> ingests an external document into the <a href="../gaia-brain.html">brain knowledge layer</a> in a single gesture. Hand it a URL, a local file path, or pipe content via stdin, and it writes a provenance-stamped markdown file under <code>.gaia/knowledge/ingested/</code> and registers an <code>ingested</code> entry in <code>brain-index.yaml</code>.</p>
+        <p>The pipeline runs five stages: classify source, fetch content, strip HTML (for URLs), write the ingested file with provenance frontmatter, and register the brain-index entry. Both writes are atomic -- a temporary file is written first and renamed into place only on success.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You want to pull external reference material (API docs, library guides, specifications) into your queryable knowledge layer.</li>
+          <li>You want provenance tracking (source URL, fetch timestamp, content hash, expiry) on ingested documents.</li>
+          <li>You want the ingested document to appear alongside project artifacts when querying the Brain via <code>/gaia-brain-query</code>.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul><li><strong>No strict prerequisites.</strong> The ingested directory and brain index are created automatically if they do not exist. A seed <code>brain-index.yaml</code> must be present (run <code>/gaia-brain-reindex</code> first if the knowledge store has not been initialized).</li></ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-feed &lt;url-or-path&gt;
+/gaia-feed -                       # read from stdin
+/gaia-feed --slug my-doc &lt;path&gt;    # explicit slug override
+/gaia-feed --ttl 60 &lt;url&gt;          # 60-day time-to-live
+/gaia-feed --tags api,reference &lt;path&gt;</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Classify the source</span> Determines whether the input is a URL, a local file, or stdin. For URLs, probes for a conventional <code>llms-full.txt</code> endpoint and uses it when available (cleaner, LLM-optimized content).</li>
+          <li><span class="step-title">Fetch the content</span> Reads the file directly, reads stdin, or (for URLs) delegates to <code>WebFetch</code> in the orchestration layer.</li>
+          <li><span class="step-title">Strip HTML</span> For URL sources, removes HTML tags and decodes common entities to produce clean markdown. File and stdin sources pass through unchanged.</li>
+          <li><span class="step-title">Write the ingested file</span> Writes the content under <code>.gaia/knowledge/ingested/&lt;slug&gt;.md</code> with exactly 11 provenance frontmatter fields (title, slug, source kind, source URL, timestamps, content hash, TTL, token estimate, tags, status). The write is atomic via a sibling temporary file and rename.</li>
+          <li><span class="step-title">Register the brain-index entry</span> Appends (or replaces) an <code>ingested</code> entry in <code>brain-index.yaml</code> with a populated trust block carrying the content hash, source URL, timestamps, and a confidence score tiered by source kind (0.9 for llms-full.txt, 0.8 for files, 0.7 for URLs). The index is validated against its schema before the rename; on failure the prior index is preserved.</li>
+        </ol>
+      </section>
+
+      <section id="provenance">
+        <h2>Provenance frontmatter</h2>
+        <p>Every ingested file carries exactly 11 frontmatter fields:</p>
+        <table>
+          <thead><tr><th>Field</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>title</code></td><td>Document title, auto-inferred from the first heading</td></tr>
+            <tr><td><code>slug</code></td><td>URL-safe identifier (auto-inferred or explicit via <code>--slug</code>)</td></tr>
+            <tr><td><code>ingest_source_kind</code></td><td>One of <code>url</code>, <code>file</code>, <code>llms_txt</code>, <code>stdin</code></td></tr>
+            <tr><td><code>source_url</code></td><td>Origin path or URL; null for stdin</td></tr>
+            <tr><td><code>fetched_at</code></td><td>UTC fetch timestamp (ISO 8601)</td></tr>
+            <tr><td><code>expires_at</code></td><td><code>fetched_at</code> + <code>ttl_days</code> (ISO 8601)</td></tr>
+            <tr><td><code>content_hash</code></td><td>sha256 of the post-strip markdown body</td></tr>
+            <tr><td><code>ttl_days</code></td><td>Time-to-live in days (default 30)</td></tr>
+            <tr><td><code>token_estimate</code></td><td>Rough token count via word count</td></tr>
+            <tr><td><code>tags</code></td><td>Auto-inferred tags</td></tr>
+            <tr><td><code>status</code></td><td>One of <code>current</code>, <code>stale</code>, <code>failed</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Ingested file</td><td><code>.gaia/knowledge/ingested/&lt;slug&gt;.md</code></td><td>The ingested document with provenance frontmatter.</td></tr><tr><td>Brain index entry</td><td><code>.gaia/knowledge/brain-index.yaml</code></td><td>An <code>ingested</code> entry with a trust block carrying content hash, source URL, timestamps, and confidence.</td></tr></tbody></table>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-brain-query.html"><code>/gaia-brain-query</code></a> -- query the brain to see the ingested document alongside project artifacts.</li>
+          <li><a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a> -- the reindex sweep preserves ingested entries; run it any time to refresh project-artifact entries without losing ingested content.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>The slug already exists</h3><p>If a file with the same slug already exists, the pipeline overwrites it atomically. The brain-index entry is replaced with fresh provenance.</p>
+        <h3>Brain-index validation failed</h3><p>The pipeline validates the index before committing. On failure, the prior index is preserved. Check the error message for schema violations and ensure the index is well-formed.</p>
+        <h3>URL fetch failed</h3><p>URL fetching is delegated to <code>WebFetch</code> in the orchestration layer. Ensure the URL is reachable and returns content. Paywalled, SPA-rendered, and authenticated sources are out of scope.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a></td><td>Rebuilds the index from source. Preserves ingested entries.</td></tr><tr><td><a href="gaia-brain-query.html"><code>/gaia-brain-query</code></a></td><td>Query the brain -- ingested documents appear alongside project artifacts.</td></tr><tr><td><a href="gaia-brain-health.html"><code>/gaia-brain-health</code></a></td><td>Shows unlinked entries -- ingested documents typically appear as unlinked (no governance edges).</td></tr></tbody></table>
+        <p>For a full explanation of the knowledge layer, see the <a href="../gaia-brain.html">GAIA Brain concept page</a>.</p>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
