@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.193.0] — 2026-06-14
+
+### Added
+
+- (E111-S2) add brain-blind CI gate audit-skill-brain-load.sh (#1489)
+- (E111-S1) add reliance-map schema and workflow-entry brain-context loader (#1488)
+
 ## [1.192.2] — 2026-06-14
 
 ### Fixed
