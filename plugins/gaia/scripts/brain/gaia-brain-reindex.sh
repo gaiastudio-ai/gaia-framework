@@ -564,14 +564,39 @@ brain_reindex() {
     printf 'entries:\n'
   } > "$manifest_tmp"
 
-  # Stable empty review-dir + absent UX file passed to every harvest call. They
-  # are NON-EMPTY argument values, which keeps the harvester from entering its
+  # Stable empty review-dir + absent UX file used as the FALLBACK harvest inputs
+  # for a node that has no review reports / no UX artifacts on disk. They are
+  # NON-EMPTY argument values, which keeps the harvester from entering its
   # default-source-resolution branch (the branch that re-sources gaia-paths.sh
   # per call). The dir has no matching review files and the UX path does not
-  # exist, so both parsers no-op cleanly.
+  # exist, so both parsers no-op cleanly. A node WITH artifacts on disk is given
+  # its real reviews dir / the pre-sliced UX file instead (see below).
   local empty_reviews="$tmp/empty-reviews"
   local absent_ux="$tmp/absent-ux.md"
   mkdir -p "$empty_reviews"
+
+  # --- Pre-slice the UX artifact tree ONCE per sweep ---
+  # `designs` edges are harvested from the project's UX artifacts (the design
+  # surface lives under creative-artifacts/ux/). The harvester takes ONE readable
+  # UX file via --ux and emits a designs edge for each node referenced in it, so
+  # we concatenate every UX artifact into a single sweep-scoped slice ONCE — the
+  # same pre-slice idiom used for the shared epics + matrix files. Every story
+  # node's harvest then reads this one slice instead of re-walking the UX tree.
+  # When no UX tree exists the slice is absent and the harvest falls back to the
+  # absent-UX path, so a project with no design artifacts simply emits no designs
+  # edges (absence is correct, not an error).
+  local ux_dir="$artifacts_dir/creative-artifacts/ux"
+  local ux_slice="$tmp/ux-slice.md"
+  if [ -d "$ux_dir" ]; then
+    : > "$ux_slice"
+    local _uxf
+    find "$ux_dir" -type f \( -name '*.md' -o -name '*.yaml' -o -name '*.yml' \) -print 2>/dev/null \
+      | LC_ALL=C sort | while IFS= read -r _uxf; do
+          [ -r "$_uxf" ] || continue
+          cat "$_uxf" >> "$ux_slice"
+          printf '\n' >> "$ux_slice"
+        done
+  fi
 
   # Iterate the precomputed plan in deterministic key order.
   local abspath chash decision tag synopsis edgesfile keysafe
@@ -608,13 +633,25 @@ brain_reindex() {
           local ep="" mx=""
           [ -f "$epics_slices/$key.md" ] && ep="$epics_slices/$key.md"
           [ -f "$matrix_slices/$key.md" ] && mx="$matrix_slices/$key.md"
+          # Per-node reviews-dir discovery: a story's review reports live in a
+          # `reviews/` dir sibling of the story file. Point the harvester at that
+          # real dir when it exists so it harvests a reviewed-in edge for each
+          # type-first, key-suffixed report; otherwise fall back to the stable
+          # empty dir (no reports → no edges, which is correct).
+          local rdir="$empty_reviews"
+          local _story_reviews="$(dirname -- "$abspath")/reviews"
+          [ -d "$_story_reviews" ] && rdir="$_story_reviews"
+          # UX source: the sweep-scoped UX slice (every design artifact, sliced
+          # once above) when present, else the absent-UX fallback.
+          local uxsrc="$absent_ux"
+          [ -f "$ux_slice" ] && uxsrc="$ux_slice"
           # Clear the path-helper guard for the harvester subprocess: it may
           # re-source gaia-paths.sh, and the helper FUNCTIONS do not cross the
           # process boundary. The non-empty reviews-dir / ux args keep it out of
           # its per-call default-resolution branch.
           frag="$( ( unset _GAIA_PATHS_LOADED; "$harvester" --key "$key" \
             --epics "$ep" --matrix "$mx" --frontmatter "$abspath" \
-            --reviews-dir "$empty_reviews" --ux "$absent_ux" ) 2>/dev/null \
+            --reviews-dir "$rdir" --ux "$uxsrc" ) 2>/dev/null \
             || printf 'edges: []\nunlinked: true\n')"
           ;;
         *)
