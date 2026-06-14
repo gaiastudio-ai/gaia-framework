@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.192.2] — 2026-06-14
+
+### Fixed
+
+- (brain) reindex filename overflow + unquoted-target YAML break
+- (brain) prevent reindex filename overflow and unquoted-target YAML break
+- (gaia-dev-story) bind TDD-gate WARNING fixes to the stack developer
+
 ## [1.192.1] — 2026-06-13
 
 ### Fixed
