@@ -97,19 +97,22 @@ fi
 GREP_FILE="$("$SCRIPT_DIR/load-taxonomy.sh" --taxonomy forbidden-sentinels --as-grep-file)"
 trap 'rm -f "$GREP_FILE"' EXIT
 
-# For each production-path file in the diff, run grep -nFf against the
-# working-tree copy (existence-checked). Deleted files have no working copy
-# and are skipped.
+# For each production-path file in the diff, run grep -nwFf against the
+# working-tree copy (existence-checked). The -w (word-boundary) flag is
+# required so a fixed-string token only matches as a whole word — without it
+# the token matches as a substring and false-positives on mktemp
+# randomization templates (e.g. "...XXXXXX"). Deleted files have no working
+# copy and are skipped.
 while IFS= read -r path; do
   [[ -z "$path" ]] && continue
   [[ -f "$path" ]] || continue
-  matches="$(grep -nFf "$GREP_FILE" "$path" 2>/dev/null || true)"
+  matches="$(grep -nwFf "$GREP_FILE" "$path" 2>/dev/null || true)"
   if [[ -n "$matches" ]]; then
     # Emit each match as its own HALT line; the canonical substring
     # 'forbidden sentinel <S> in <path>:<line>' is preserved verbatim so
     # downstream consumers can grep for it.
     while IFS=: read -r line text; do
-      sentinel="$(printf '%s' "$text" | grep -oFf "$GREP_FILE" 2>/dev/null | head -1)"
+      sentinel="$(printf '%s' "$text" | grep -owFf "$GREP_FILE" 2>/dev/null | head -1)"
       printf 'HALT: forbidden sentinel %s in %s:%s — add a Finding row or pass --allow-stub=<reason> to /gaia-dev-story\n' \
         "$sentinel" "$path" "$line" >&2
     done <<<"$matches"
