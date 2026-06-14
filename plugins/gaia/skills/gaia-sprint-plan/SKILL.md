@@ -256,11 +256,35 @@ After Step 6 commits the sprint to `sprint-status.yaml`, present the 3-lane goal
 
 This step is gated on the sprint having at least one selected story — if zero stories were selected at Step 3, skip the goal router silently (preserves the backward-compat invariant).
 
+**Goal consolidation.** When the auto-suggested goals map 1:1 to single stories — one goal per story — collapse them into fewer **outcome-level** goals (target ≤2 where the stories share an intent) BEFORE persisting. A goal should read as an outcome the sprint delivers, not as a restatement of a single story title; a long list of one-story goals trips the velocity-distribution rubric on mechanics rather than intent. Group stories that advance the same outcome under one goal; persist the consolidated set via `set-goals`. Consolidation is judgement-led — if the selected stories genuinely advance unrelated outcomes, leave them as distinct goals (the shape detector below then handles the sweep case).
+
 The router presents `AskUserQuestion` at main-turn with the canonical 3-lane menu (main-turn-only invariant):
 
 - `user-direct` — the user edits the suggested goals inline via a follow-up `AskUserQuestion` (free-form) and the result persists via `sprint-state.sh set-goals --sprint <id> --goals "<g1|g2|...>"` (boundary writer; never direct `yq -i`). `--goals` is PIPE-DELIMITED, not JSON — `cmd_set_goals` parses it with `IFS='|'`. Pass `"Goal one|Goal two|Goal three"`, not a JSON array.
 - `pm-route` — dispatch Val via the **main-turn Agent tool** with the AI-1 sprint-review rubric at `gaia-framework/plugins/gaia/rubrics/base/sprint-review.json` to score the suggested goals against the selected stories' ACs. Display Val's verdict + findings inline, then present a follow-up `AskUserQuestion` directed at the USER (NOT the PM) for the final accept — this preserves the **PM-cannot-self-approve** invariant. On user accept: `sprint-state.sh set-goals`. The PM may DRAFT but the USER ratifies.
 - `yolo` — dispatch Val identically to the pm-route lane. On Val PASSED: auto-accept and persist via `sprint-state.sh set-goals`. On Val FAILED: HALT with the findings list — YOLO MUST NOT bypass a FAILED verdict.
+
+### Step 6c -- Sprint-Shape Detection
+
+After the goal set is finalized (Step 6a), detect whether the committed sprint is **sweep-shaped** (goals map 1:1 to single stories) or **facet-decomposed** (one epic split into serial facets). These shapes were never multi-story outcome sprints, so the review-time incidental-goal / velocity-distribution floor — built for multi-story outcome goals — would otherwise fire spuriously against them. Detecting the shape at planning time and stamping it lets `/gaia-sprint-review` relax the floor for the shape instead of FAILing on mechanics.
+
+The detector is pure, read-only, and **cold-start safe** — it resolves the shape from the committed story selection and the final goal count ALONE (epic membership comes from the story key), with NO dependency on closed-sprint telemetry. Run it against the committed selection and the finalized goal count:
+
+```bash
+# --stories: the comma-separated committed selection keys.
+# --goals:   the count of finalized goals (post-consolidation).
+# Prints "completion-pass" + exits 0 when the sweep/facet shape is detected;
+# exits 10 (no output) on the conservative no-stamp default; exits 1 on bad args.
+if SHAPE="$(${CLAUDE_PLUGIN_ROOT}/scripts/detect-sweep-shape.sh \
+    --stories "{committed_keys_csv}" --goals "{n_goals}")"; then
+  ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh set-shape \
+    --sprint "{sprint_id}" --shape "$SHAPE"
+fi
+```
+
+- On a positive verdict (exit 0), stamp the shape via the sanctioned `sprint-state.sh set-shape` boundary writer — NEVER write `sprint_shape:` to `sprint-status.yaml` directly. `set-shape` is the single sanctioned writer for that field.
+- On the no-stamp default (exit 10), leave the shape unset — the sprint keeps the default (thrust) treatment and the review floor applies normally. The predicate is deliberately conservative: a false negative (not stamping a genuine sweep) is safer than a false positive (suppressing a real multi-outcome sprint's floor).
+- The detector reads only the keys and the goal count, so it works on the first-ever sprint of a fresh project with no history.
 
 ### Step 6b -- Dependency Inversion Lint
 
