@@ -1245,3 +1245,19 @@ EOF2
   # The yaml-skip warning MUST fire (real drift, not backlog-state).
   [[ "$output" == *"not present in sprint-status.yaml"* ]]
 }
+
+# A committed transition emits a state_transition lifecycle event via the
+# script's emit_state_transition_event helper, so throughput-telemetry.sh can
+# derive per-story wall-clock. (Dedicated coverage in
+# transition-story-status-lifecycle-emit.bats; this case keeps the helper
+# named in the canonically-paired suite and guards the happy path here.)
+@test "emit_state_transition_event: a committed transition appends a state_transition event" {
+  run "$TRANSITION" "$STORY_KEY" --to ready-for-dev --from backlog
+  [ "$status" -eq 0 ]
+
+  local events="$MEMORY_PATH/lifecycle-events.jsonl"
+  [ -f "$events" ]
+  grep -q '"event_type":"state_transition"' "$events"
+  grep -q '"story_key":"TSS-E2E-01"' "$events"
+  grep -q '"from":"backlog","to":"ready-for-dev"' "$events"
+}
