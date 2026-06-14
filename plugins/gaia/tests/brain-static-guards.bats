@@ -35,6 +35,7 @@ setup() {
   common_setup
   BRAIN_DIR="$SCRIPTS_DIR/brain"
   REINDEX="$BRAIN_DIR/gaia-brain-reindex.sh"
+  LOADER="$BRAIN_DIR/brain-reliance-loader.sh"
 }
 
 teardown() {
@@ -335,4 +336,108 @@ EOS
   grep -qE 'mktemp[[:space:]]+"\$\{?out_manifest\}?\.tmp' "$REINDEX"
   # Atomic rename of the tempfile onto the manifest path.
   grep -qE 'mv[[:space:]]+"\$manifest_tmp"[[:space:]]+"\$out_manifest"' "$REINDEX"
+}
+
+# ---------------------------------------------------------------------------
+# Read-only boundary, workflow-entry loader edition — the loader is a brain
+# CONSUMER and writes nothing into the agent-sidecar memory subtree (the
+# validator sidecar in particular), on EVERY exit path. Two complementary
+# guards: a static one (no write-shaped op against a memory-derived variable
+# anywhere in the loader source, var-indirection-aware) and a runtime one (the
+# validator-sidecar tree is byte-for-byte unchanged across the loader's HALT
+# and warn-continue paths).
+#
+# _memory_write_lines and the var-indirection analysis core are defined above
+# and already cover every brain script generically; these tests PIN the loader
+# specifically so a future loader change that starts touching memory turns this
+# gate red on its own line, and add the runtime cross-path assertion.
+# ---------------------------------------------------------------------------
+
+@test "the workflow-entry loader carries no write-shaped op against the memory subtree" {
+  [ -f "$LOADER" ]
+  local hits
+  hits="$(_memory_write_lines "$LOADER")"
+  if [ -n "$hits" ]; then
+    printf 'MEMORY WRITE in loader:\n%s\n' "$hits" >&2
+  fi
+  [ -z "$hits" ]
+  # And no bare validator-sidecar literal anywhere in the source either.
+  ! grep -qE 'validator-sidecar|\.gaia/memory|GAIA_MEMORY_DIR' "$LOADER"
+}
+
+@test "the loader writes nothing under the validator sidecar across the HALT path" {
+  [ -f "$LOADER" ]
+  # Build an isolated project whose index lacks a MANDATORY node -> clean HALT.
+  local proj="$TEST_TMP/halt-proj"
+  local know="$proj/.gaia/knowledge"
+  local sidecar="$proj/.gaia/memory/validator-sidecar"
+  mkdir -p "$know" "$sidecar"
+  cat > "$know/brain-index.yaml" <<'EOF'
+schema_version: 1
+entries: []
+EOF
+  cat > "$know/brain-reliance-map.yaml" <<'EOF'
+stages:
+  "demo:entry":
+    requires:
+      - brain_node: "absent-node"
+        obligation: MANDATORY
+EOF
+  # Snapshot the sidecar subtree (listing + content hash) before and after.
+  local before after
+  before="$(cd "$sidecar" && find . -type f -exec shasum {} \; 2>/dev/null | sort; ls -1A "$sidecar" 2>/dev/null | sort)"
+  CLAUDE_PROJECT_ROOT="$proj" run bash "$LOADER" "demo:entry"
+  [ "$status" -ne 0 ]                 # HALT path exercised
+  after="$(cd "$sidecar" && find . -type f -exec shasum {} \; 2>/dev/null | sort; ls -1A "$sidecar" 2>/dev/null | sort)"
+  [ "$before" = "$after" ]
+  # No new files appeared anywhere under the memory tree either.
+  [ -z "$(find "$proj/.gaia/memory" -type f 2>/dev/null)" ]
+}
+
+@test "the loader writes nothing under the validator sidecar across the warn path" {
+  [ -f "$LOADER" ]
+  # An OPTIONAL miss exercises the warn-and-continue (exit 0) path.
+  local proj="$TEST_TMP/warn-proj"
+  local know="$proj/.gaia/knowledge"
+  local sidecar="$proj/.gaia/memory/validator-sidecar"
+  mkdir -p "$know" "$sidecar"
+  cat > "$know/brain-index.yaml" <<'EOF'
+schema_version: 1
+entries: []
+EOF
+  cat > "$know/brain-reliance-map.yaml" <<'EOF'
+stages:
+  "demo:entry":
+    requires:
+      - brain_node: "absent-node"
+        obligation: OPTIONAL
+EOF
+  local before after
+  before="$(cd "$sidecar" && find . -type f -exec shasum {} \; 2>/dev/null | sort; ls -1A "$sidecar" 2>/dev/null | sort)"
+  CLAUDE_PROJECT_ROOT="$proj" run bash "$LOADER" "demo:entry"
+  [ "$status" -eq 0 ]                 # warn-continue path exercised
+  after="$(cd "$sidecar" && find . -type f -exec shasum {} \; 2>/dev/null | sort; ls -1A "$sidecar" 2>/dev/null | sort)"
+  [ "$before" = "$after" ]
+  [ -z "$(find "$proj/.gaia/memory" -type f 2>/dev/null)" ]
+}
+
+@test "the loader-edition memory guard bites a var-indirected sidecar write (self-test)" {
+  # Inject a throwaway script that reaches the validator sidecar THROUGH a
+  # variable — no memory literal on the write line — and assert the same
+  # analysis core that pins the loader flags it. Proves the guard bites the
+  # realistic var-indirected form, not just a bare literal.
+  local decoy="$TEST_TMP/decoy-sidecar-writer.sh"
+  cat > "$decoy" <<'EOS'
+#!/usr/bin/env bash
+proj="$PROJ"
+mem_root="$proj/.gaia/memory"
+sidecar="$mem_root/validator-sidecar"
+target="$sidecar/leak.json"
+echo '{}' > "$target"
+EOS
+  local hits
+  hits="$(_memory_write_lines "$decoy")"
+  # The flagged line is the redirection into $target, which derives (via
+  # $sidecar <- $mem_root <- ".gaia/memory") from the memory subtree.
+  printf '%s\n' "$hits" | grep -q 'target'
 }

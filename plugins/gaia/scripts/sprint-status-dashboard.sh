@@ -128,15 +128,12 @@ yaml_val() {
 
 sprint_id=$(yaml_val sprint_id)
 duration=$(yaml_val duration)
-# The canonical yaml seed (cmd_init in sprint-state.sh) writes
-# `capacity_points:` and `start_date:`, but the dashboard previously read
-# `velocity_capacity:` and `started:` — so a sprint initialised with
-# --capacity-points / --start-date rendered `capacity: N/A`,
-# `Dates: N/A → ...`. Read both pairs and prefer the canonical one; the
-# legacy keys remain as a read-compat fallback for older yamls already in
-# flight.
-velocity=$(yaml_val capacity_points)
-[ -z "$velocity" ] && velocity=$(yaml_val velocity_capacity)
+# The legacy `capacity_points` human-team calendar-capacity proxy is retired:
+# capacity judgement is now made by the agent-native check (dependency-depth
+# + coherence + measured wall-clock), so the dashboard no longer renders a
+# "(capacity: M)" figure. Older yamls may still carry a `capacity_points:`
+# line — it is simply ignored here. The `start_date` canonical key is still
+# read (with a `started:` read-compat fallback for older yamls).
 total_points=$(yaml_val total_points)
 started=$(yaml_val start_date)
 [ -z "$started" ] && started=$(yaml_val started)
@@ -236,7 +233,7 @@ printf '=%.0s' {1..72}; printf '\n'
 printf '  Sprint:     %s\n' "${sprint_id:-N/A}"
 printf '  Duration:   %s\n' "${duration:-N/A}"
 printf '  Dates:      %s → %s\n' "${started:-N/A}" "${end_date:-N/A}"
-printf '  Velocity:   %s pts (capacity: %s)\n' "${total_points:-0}" "${velocity:-N/A}"
+printf '  Velocity:   %s pts\n' "${total_points:-0}"
 if [[ -n "$capacity_util" ]]; then
   printf '  Utilization: %s\n' "$capacity_util"
 fi

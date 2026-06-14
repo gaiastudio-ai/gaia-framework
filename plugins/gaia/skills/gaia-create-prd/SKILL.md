@@ -33,6 +33,10 @@ fi
 
 !${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh pm all
 
+## Brain Context
+
+!${CLAUDE_PLUGIN_ROOT}/scripts/brain/brain-reliance-loader.sh gaia-create-prd:discover-inputs
+
 ## Mission
 
 You are orchestrating the creation of a Product Requirements Document (PRD). The PRD authoring is delegated to the **pm** subagent (Derek), who conducts user interviews, elicits requirements, and produces the final artifact. You load the product brief, validate inputs, coordinate the multi-step flow, and write the output to the canonical path `.gaia/artifacts/planning-artifacts/prd.md` using the canonical `prd-template.md` template structure.

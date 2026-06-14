@@ -168,9 +168,12 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AF-32-6 F-L05: sprint dashboard reads canonical capacity_points + start_date" {
+@test "AF-32-6 F-L05: sprint dashboard reads canonical start_date and no longer reads the retired capacity proxy" {
+  # The legacy human-team capacity proxy has been retired in favour of the
+  # agent-native capacity check; the dashboard must NOT read it any more.
   run grep -F 'yaml_val capacity_points' "$PLUGIN_ROOT/scripts/sprint-status-dashboard.sh"
-  [ "$status" -eq 0 ]
+  [ "$status" -ne 0 ]
+  # start_date remains a canonical field the dashboard reads.
   run grep -F 'yaml_val start_date' "$PLUGIN_ROOT/scripts/sprint-status-dashboard.sh"
   [ "$status" -eq 0 ]
 }
