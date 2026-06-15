@@ -230,6 +230,60 @@ _gkr_mark_failed() {
 }
 
 # ---------------------------------------------------------------------------
+# _gkr_heal_status_if_failed INGESTED_FILE — if the ingested file's frontmatter
+# status is "failed", flip it back to "current"; otherwise leave the file
+# byte-untouched. Returns 0 when a heal write was performed, 1 when no change
+# was needed (status was not "failed") so the caller can report accurately.
+#
+# This closes the status-recovery gap on the hash-match SKIP path: a source
+# marked "failed" by a prior transient fetch error, whose content later
+# re-fetches identical to the stored hash, would otherwise stay "failed"
+# forever because the skip branch makes no file write. The heal touches ONLY
+# the per-file status field — it makes NO brain-index mutation, so the
+# hash-match "no index mutation" contract still holds (status is not an index
+# field; its schema has additionalProperties: false with no status key).
+# ---------------------------------------------------------------------------
+_gkr_heal_status_if_failed() {
+  local ingested_file="$1"
+
+  [ -f "$ingested_file" ] || return 1
+
+  # Only the frontmatter status line is consulted, so a "failed" string in the
+  # body cannot trigger a spurious heal.
+  local cur
+  cur="$(awk '
+    BEGIN { n=0 }
+    /^---[[:space:]]*$/ { n++; if (n==2) exit; next }
+    n==1 && /^status:/ { sub(/^status:[[:space:]]*/, ""); print; exit }
+  ' "$ingested_file")"
+
+  [ "$cur" = "failed" ] || return 1
+
+  local tmpfile="${ingested_file}.tmp.$$"
+  awk '
+    BEGIN { n=0; done=0 }
+    /^---[[:space:]]*$/ {
+      n++
+      print
+      if (n == 2) { done=1 }
+      next
+    }
+    n == 1 && !done {
+      if ($0 ~ /^status:/) {
+        print "status: current"
+        next
+      }
+      print
+      next
+    }
+    { print }
+  ' "$ingested_file" > "$tmpfile"
+
+  mv "$tmpfile" "$ingested_file"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # _gkr_overwrite_ingested_file SLUG BODY — atomic overwrite of an existing
 # ingested file with new content, preserving provenance frontmatter fields
 # that are updated (content_hash, fetched_at, status).
@@ -389,8 +443,16 @@ gaia_knowledge_refresh() {
 
     # Three-way reconcile.
     if [ "$new_hash" = "$stored_hash" ]; then
-      # Hash match — SKIP.
-      printf 'gaia-knowledge-refresh.sh: %s — hash match, skipping\n' "$key" >&2
+      # Hash match — SKIP. The content is unchanged, so no index mutation and
+      # no content rewrite. The one exception is status recovery: if a prior
+      # transient fetch failure left this entry marked "failed" but the source
+      # now re-fetches to the same content, heal the per-file status back to
+      # "current" so a healthy source does not stay stuck "failed" forever.
+      if _gkr_heal_status_if_failed "$ingested_file"; then
+        printf 'gaia-knowledge-refresh.sh: %s — hash match, recovered status failed -> current\n' "$key" >&2
+      else
+        printf 'gaia-knowledge-refresh.sh: %s — hash match, skipping\n' "$key" >&2
+      fi
       skipped=$((skipped + 1))
     else
       # Content differs — overwrite file + update entry.

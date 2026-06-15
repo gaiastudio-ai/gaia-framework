@@ -280,6 +280,74 @@ This stale content must be preserved on fetch failure."
   grep -q "$original_hash" "$MANIFEST"
 }
 
+# ---- status recovery (failed -> current on hash-match re-fetch) -----------------
+
+@test "refresh recovers status failed -> current when a failed source re-fetches identical content" {
+  local body="# Recover Doc
+
+Content that re-fetches identical after a transient failure."
+
+  _seed_ingested "test-recover" "$body" > /dev/null
+  local ingested_file="$KNOW/ingested/test-recover.md"
+
+  # Simulate the entry having been left "failed" by a prior transient fetch
+  # error (the seed writes status: current, so flip it).
+  sed -i.bak 's/^status: current$/status: failed/' "$ingested_file" && rm -f "${ingested_file}.bak"
+  grep -q '^status: failed' "$ingested_file"
+
+  # Re-fetch IDENTICAL content — the post-strip hash matches the stored hash,
+  # so this exercises the hash-match SKIP branch, not the content-diff branch.
+  local fetched="$TEST_TMP/recover-fetch.txt"
+  printf '%s\n' "$body" > "$fetched"
+
+  run bash -c "
+    export CLAUDE_PROJECT_ROOT='$PROJ'
+    source '$REFRESH'
+    gaia_knowledge_refresh --fetched-content '$fetched'
+  "
+  [ "$status" -eq 0 ]
+
+  # Assert: status healed back to current on the hash-match path. (Bare
+  # `! grep` is vacuous under bats' set -e — use assert_file_excludes so the
+  # negative assertion can actually fail.)
+  assert_file_contains "$ingested_file" 'status: current'
+  assert_file_excludes "$ingested_file" 'status: failed'
+
+  # Assert: the document body was NOT rewritten — only the status field moved.
+  assert_file_contains "$ingested_file" 'transient failure'
+
+  # Assert: no spurious index mutation — the heal touches only per-file status.
+  assert_file_contains "$MANIFEST" 'test-recover'
+}
+
+@test "refresh leaves a current, unchanged source untouched (no spurious heal write)" {
+  local body="# Healthy Doc
+
+Already current; refresh must not rewrite it."
+
+  _seed_ingested "test-healthy" "$body" > /dev/null
+  local ingested_file="$KNOW/ingested/test-healthy.md"
+  local mtime_before
+  mtime_before="$(_get_mtime "$ingested_file")"
+
+  local fetched="$TEST_TMP/healthy-fetch.txt"
+  printf '%s\n' "$body" > "$fetched"
+  sleep 1
+
+  run bash -c "
+    export CLAUDE_PROJECT_ROOT='$PROJ'
+    source '$REFRESH'
+    gaia_knowledge_refresh --fetched-content '$fetched'
+  "
+  [ "$status" -eq 0 ]
+
+  # A current source on the hash-match path must not be rewritten at all.
+  local mtime_after
+  mtime_after="$(_get_mtime "$ingested_file")"
+  [ "$mtime_before" = "$mtime_after" ]
+  assert_file_contains "$ingested_file" 'status: current'
+}
+
 # ---- idempotency (no spurious writes on repeat run) -----------------------------
 
 @test "refresh is idempotent — second run over unchanged sources produces zero writes" {
