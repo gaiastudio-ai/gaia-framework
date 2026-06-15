@@ -330,7 +330,7 @@
 
       <section id="commands">
         <h2>Commands</h2>
-        <p>Four commands expose the Brain to users and agents:</p>
+        <p>Five commands expose the Brain to users and agents:</p>
         <table>
           <thead>
             <tr>
@@ -354,6 +354,10 @@
             <tr>
               <td><a href="commands/gaia-feed.html"><code>/gaia-feed</code></a></td>
               <td>Ingest an external document (URL, local file, or stdin) into the knowledge store with provenance frontmatter and register it in the brain index. One-gesture ingestion -- slug and tags are auto-inferred.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-knowledge-refresh.html"><code>/gaia-knowledge-refresh</code></a></td>
+              <td>Re-fetch ingested sources and replace only what changed. Hash-gated three-way reconcile: skip on match, overwrite on diff, mark failed and preserve stale file on fetch error.</td>
             </tr>
           </tbody>
         </table>
