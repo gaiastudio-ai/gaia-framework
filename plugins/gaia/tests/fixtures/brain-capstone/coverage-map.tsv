@@ -33,3 +33,9 @@ TC-BRN-71	brain-retro-lesson.bats	malformed lessons are rejected and manifest is
 TC-BRN-72	brain-retro-lesson.bats	gaia-brain-query --category strategy returns only strategy lessons
 TC-BRN-73	brain-update-index.bats	update-brain-index.sh writes only lesson entries; project-artifact rows are byte-identical
 TC-BRN-74	brain-update-index.bats	edge mutation does not alter the source_type of existing entries
+TC-BRN-75	brain-freshness-hooks.bats	transition story→done invokes update-brain-index.sh to mark node closed
+TC-BRN-76	brain-freshness-hooks.bats	story→done links final reviews via reviewed-in edges
+TC-BRN-77	brain-freshness-hooks.bats	review-gate.sh review-write appends a reviewed-in edge
+TC-BRN-78	brain-freshness-hooks.bats	repeated lifecycle events produce no duplicate edges
+TC-BRN-79	brain-freshness-hooks.bats	full gaia-brain-reindex sweep preserves lesson entries verbatim
+TC-BRN-80	brain-freshness-hooks.bats	lesson entries survive a full index rebuild

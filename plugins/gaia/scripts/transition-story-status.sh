@@ -1695,5 +1695,55 @@ if [ "$NEW_STATUS" = "done" ]; then
   fi
 fi
 
+# Brain knowledge-layer freshness hook on the story→done path.
+# Marks the story node's final review edges in the brain-index manifest
+# via the partitioned writer. Uses --batch-edges (single read-merge-rewrite)
+# to stay within the sprint-close performance SLA.
+#
+# BEST-EFFORT: a committed transition must never be rolled back because the
+# brain hook failed. Guarded by -x so it no-ops when the writer is absent.
+if [ "$NEW_STATUS" = "done" ]; then
+  _brain_update_sh="$SCRIPT_DIR/brain/update-brain-index.sh"
+  if [ -x "$_brain_update_sh" ]; then
+    _emit_brain_freshness() {
+      local _manifest="${CLAUDE_PROJECT_ROOT:-$PROJECT_PATH}/.gaia/knowledge/brain-index.yaml"
+      [ -f "$_manifest" ] || return 0
+
+      # Check the story node exists in the manifest before attempting edges.
+      local _node_exists
+      _node_exists="$(awk -v key="$STORY_KEY" '
+        /^- key:/ {
+          k = $0; sub(/^- key:[[:space:]]*"?/, "", k); sub(/"?[[:space:]]*$/, "", k)
+          if (k == key) { print "1"; exit }
+        }
+      ' "$_manifest")"
+      [ "$_node_exists" = "1" ] || return 0
+
+      # Parse the Review Gate table from the story file to find PASSED reviews.
+      # Build tab-separated edge_type\tedge_target lines for --batch-edges
+      # (single read-merge-rewrite to stay within the sprint-close perf SLA).
+      local _edge_lines="" _gate _status _slug
+      while IFS='|' read -r _ _gate _status _; do
+        # Trim whitespace.
+        _gate="$(printf '%s' "$_gate" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        _status="$(printf '%s' "$_status" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        [ "$_status" = "PASSED" ] || continue
+        [ -n "$_gate" ] || continue
+        # Slug: lowercase, spaces to hyphens.
+        _slug="$(printf '%s' "$_gate" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
+        _edge_lines="${_edge_lines}reviewed-in	${_slug}-${STORY_KEY}
+"
+      done < <(awk '/^## Review Gate[[:space:]]*$/ { found=1; next } found && /^## / { exit } found' "$STORY_FILE" | grep '^|' | tail -n +3)
+
+      [ -n "$_edge_lines" ] || return 0
+
+      # Single batched call — one manifest read-merge-rewrite for all edges.
+      printf '%s' "$_edge_lines" | "$_brain_update_sh" --manifest "$_manifest" \
+        --batch-edges --target-key "$STORY_KEY" 2>/dev/null || true
+    }
+    _emit_brain_freshness || true
+  fi
+fi
+
 log "$STORY_KEY transitioned $CURRENT_STATUS -> $NEW_STATUS"
 exit 0
