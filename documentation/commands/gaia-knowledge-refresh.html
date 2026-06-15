@@ -36,6 +36,8 @@
           <li><a href="#prerequisites">Prerequisites</a></li>
           <li><a href="#how-to-invoke">How to invoke</a></li>
           <li><a href="#reconcile">Three-way reconcile</a></li>
+          <li><a href="#expiry">Expiry and the status lifecycle</a></li>
+          <li><a href="#stdin-sources">Stdin-sourced entries</a></li>
           <li><a href="#idempotency">Idempotency</a></li>
           <li><a href="#outputs">Outputs</a></li>
           <li><a href="#what-next">What to run next</a></li>
@@ -66,6 +68,7 @@
         <h2>What it does</h2>
         <p><code>/gaia-knowledge-refresh</code> walks every <code>source_type: ingested</code> entry in the <a href="../gaia-brain.html">brain knowledge layer</a>'s index, re-fetches its source, and applies a hash-gated three-way reconcile so only changed content touches the disk.</p>
         <p>It uses the same fetch, HTML-strip, and hash machinery as <a href="gaia-feed.html"><code>/gaia-feed</code></a> (shared via a common library), so the two pipelines never drift apart.</p>
+        <p>After the per-entry reconcile, the command runs an <strong>expiry enforcement sweep</strong> that marks any entry whose TTL has elapsed without a successful revalidation as <code>stale</code>.</p>
       </section>
 
       <section id="when-to-use">
@@ -97,22 +100,58 @@
         <table>
           <thead><tr><th>Outcome</th><th>Condition</th><th>Side effects</th></tr></thead>
           <tbody>
-            <tr><td><strong>Skip</strong></td><td>Hash matches</td><td>No file write. No brain-index mutation.</td></tr>
-            <tr><td><strong>Overwrite</strong></td><td>Hash differs</td><td>Ingested file atomically overwritten. Brain-index entry's <code>content_hash</code> and <code>fetched_at</code> updated.</td></tr>
+            <tr><td><strong>Skip</strong></td><td>Hash matches</td><td>No content rewrite. No brain-index content mutation. If the entry was previously marked <code>failed</code>, its status is healed back to <code>current</code> (the source is demonstrably reachable again). If the entry is past its expiry, this successful revalidation renews the TTL window (see <a href="#expiry">Expiry</a>).</td></tr>
+            <tr><td><strong>Overwrite</strong></td><td>Hash differs</td><td>Ingested file atomically overwritten with new content. Brain-index entry's <code>content_hash</code>, <code>fetched_at</code>, and <code>expires_at</code> all updated. The new <code>expires_at</code> is recomputed as <code>now + ttl_days</code>. Status set to <code>current</code>.</td></tr>
             <tr><td><strong>Mark failed</strong></td><td>Fetch fails</td><td>Ingested file's frontmatter <code>status</code> set to <code>failed</code>. Stale file content preserved. No destructive delete.</td></tr>
           </tbody>
         </table>
-        <p>The failure branch is deliberately non-destructive: operators rely on the last-good copy remaining queryable while the source is temporarily unavailable.</p>
+        <p>The failure branch is deliberately non-destructive: the last-good copy remains queryable while the source is temporarily unavailable.</p>
+      </section>
+
+      <section id="expiry">
+        <h2>Expiry and the status lifecycle</h2>
+        <p>Every ingested document has an <code>expires_at</code> timestamp computed as <code>fetched_at + ttl_days</code> (default TTL is 30 days). The refresh command enforces this TTL through a two-phase process:</p>
+        <ol>
+          <li><strong>Per-entry reconcile</strong> (described above) -- attempts to re-fetch each source. A successful re-fetch with changed content recomputes <code>expires_at = now + ttl_days</code>, moving the expiry window forward.</li>
+          <li><strong>Expiry enforcement sweep</strong> -- after all entries have been reconciled, the command walks every ingested entry once more and marks as <code>stale</code> any entry whose <code>expires_at</code> is in the past and whose status is still <code>current</code>. This catches entries whose TTL elapsed without a successful revalidation during this run.</li>
+        </ol>
+
+        <h3>Status transitions</h3>
+        <table>
+          <thead><tr><th>From</th><th>To</th><th>Trigger</th></tr></thead>
+          <tbody>
+            <tr><td><code>current</code></td><td><code>stale</code></td><td>The entry's TTL has elapsed and it was not successfully revalidated during this refresh run.</td></tr>
+            <tr><td><code>current</code> or <code>stale</code></td><td><code>failed</code></td><td>The source could not be re-fetched (network error, URL gone, etc.).</td></tr>
+            <tr><td><code>failed</code></td><td><code>current</code></td><td>The source is reachable again and the re-fetched content matches the stored hash (hash-match heal).</td></tr>
+            <tr><td><code>stale</code></td><td><code>current</code></td><td>The source is successfully re-fetched (whether content changed or matched) -- the entry is revalidated and its expiry renewed.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Does running refresh reset the 30-day expiry?</h3>
+        <p><strong>No -- not for unchanged, unexpired sources.</strong> For a source whose content has not changed and whose TTL has not elapsed, the refresh is a true no-op: the expiry is left untouched. Repeated refreshes over an unchanged, unexpired knowledge store produce zero writes.</p>
+        <p>Expiry is recomputed (<code>expires_at = now + ttl_days</code>) only when:</p>
+        <ul>
+          <li>The content has actually <strong>changed</strong> (the overwrite path).</li>
+          <li>The entry was <strong>expired but still valid</strong> -- the source was successfully re-fetched with identical content, revalidating it and renewing the TTL window.</li>
+        </ul>
+        <p>In other words: a fresh, unchanged entry is left alone. An expired entry that passes revalidation gets a new lease. An expired entry that fails revalidation is marked <code>stale</code> (or <code>failed</code> if the fetch itself errors).</p>
+      </section>
+
+      <section id="stdin-sources">
+        <h2>Stdin-sourced entries</h2>
+        <p>Entries originally ingested via stdin (<code>/gaia-feed -</code>) have no re-fetchable origin -- the content was pasted once and cannot be re-read. The refresh command <strong>skips these entries entirely</strong>. It does not attempt a fetch and does not mark them as <code>failed</code>.</p>
+        <p>Stdin entries still participate in the expiry enforcement sweep: if their TTL elapses, they transition from <code>current</code> to <code>stale</code> like any other entry. To update a stale stdin entry, re-run <code>/gaia-feed -</code> with the same <code>--slug</code> and paste the new content.</p>
       </section>
 
       <section id="idempotency">
         <h2>Idempotency</h2>
-        <p>A second consecutive run over unchanged sources produces zero file writes and zero brain-index diffs. This follows directly from the hash-match skip path -- when content has not changed, the entire refresh is a no-op.</p>
+        <p>A second consecutive run over unchanged, unexpired sources produces zero file writes and zero brain-index diffs. This follows directly from the hash-match skip path -- when content has not changed and no TTLs have elapsed, the entire refresh is a no-op.</p>
+        <p>This is observable via file modification times: after two back-to-back runs with no upstream changes, the mtimes of every ingested file and <code>brain-index.yaml</code> remain identical to those after the first run.</p>
       </section>
 
       <section id="outputs">
         <h2>Outputs</h2>
-        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Updated ingested files</td><td><code>.gaia/knowledge/ingested/&lt;slug&gt;.md</code></td><td>Only files whose content has changed are overwritten.</td></tr><tr><td>Updated brain-index entries</td><td><code>.gaia/knowledge/brain-index.yaml</code></td><td>Only entries with changed content have their <code>content_hash</code> and <code>fetched_at</code> updated.</td></tr><tr><td>Reconcile summary</td><td>stderr</td><td>Counts of skipped, updated, and failed entries.</td></tr></tbody></table>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Updated ingested files</td><td><code>.gaia/knowledge/ingested/&lt;slug&gt;.md</code></td><td>Only files whose content has changed are overwritten.</td></tr><tr><td>Updated brain-index entries</td><td><code>.gaia/knowledge/brain-index.yaml</code></td><td>Only entries with changed content have their <code>content_hash</code>, <code>fetched_at</code>, and <code>expires_at</code> updated.</td></tr><tr><td>Reconcile summary</td><td>stderr</td><td>Counts of skipped, updated, failed, and staled entries.</td></tr></tbody></table>
       </section>
 
       <section id="what-next">
@@ -120,19 +159,22 @@
         <ul>
           <li><a href="gaia-brain-query.html"><code>/gaia-brain-query</code></a> -- query the brain to verify updated content is reflected.</li>
           <li><a href="gaia-feed.html"><code>/gaia-feed</code></a> -- ingest new external documents alongside refreshed ones.</li>
+          <li><a href="gaia-unfeed.html"><code>/gaia-unfeed</code></a> -- remove an ingested document you no longer need.</li>
         </ul>
       </section>
 
       <section id="troubleshooting">
         <h2>Troubleshooting</h2>
         <h3>All entries show "skipped"</h3><p>This means every ingested source's content matches what is already stored. This is the expected outcome when nothing has changed upstream.</p>
-        <h3>An entry shows "failed"</h3><p>The source could not be re-fetched. The stale file is preserved. Check that the source URL is still reachable and that the site has not changed its URL structure.</p>
+        <h3>An entry shows "failed"</h3><p>The source could not be re-fetched. The stale file is preserved. Check that the source URL is still reachable and that the site has not changed its URL structure. On the next successful refresh, a previously failed entry with matching content is automatically healed back to <code>current</code>.</p>
+        <h3>Entries show "staled"</h3><p>These entries had a TTL that elapsed and were not successfully revalidated during this run. Their content is still present and queryable, but marked <code>stale</code> to signal that they may be out of date. Re-run <code>/gaia-feed</code> with the same slug to refresh manually, or investigate why the upstream source could not be reached.</p>
         <h3>Brain-index validation failed</h3><p>The updated index did not pass schema validation. The prior index is preserved unchanged. Check the error message for details.</p>
+        <h3>Stdin entries are not refreshed</h3><p>This is by design. Stdin-pasted sources have no re-fetchable origin. They are skipped during the fetch phase and only aged to <code>stale</code> when their TTL elapses. To update one, re-run <code>/gaia-feed - --slug &lt;slug&gt;</code> and paste the new content.</p>
       </section>
 
       <section id="related">
         <h2>Related commands</h2>
-        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-feed.html"><code>/gaia-feed</code></a></td><td>Ingests new external documents. Refresh re-fetches previously ingested ones.</td></tr><tr><td><a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a></td><td>Rebuilds the project-artifact index. Preserves ingested entries unchanged.</td></tr><tr><td><a href="gaia-brain-query.html"><code>/gaia-brain-query</code></a></td><td>Query the brain to see refreshed content alongside project artifacts.</td></tr><tr><td><a href="gaia-brain-health.html"><code>/gaia-brain-health</code></a></td><td>Health view -- ingested entries are excluded from the unlinked surface.</td></tr></tbody></table>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-feed.html"><code>/gaia-feed</code></a></td><td>Ingests new external documents. Refresh re-fetches previously ingested ones.</td></tr><tr><td><a href="gaia-unfeed.html"><code>/gaia-unfeed</code></a></td><td>Removes an ingested document. The inverse of <code>/gaia-feed</code>.</td></tr><tr><td><a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a></td><td>Rebuilds the project-artifact index. Preserves ingested entries unchanged.</td></tr><tr><td><a href="gaia-brain-query.html"><code>/gaia-brain-query</code></a></td><td>Query the brain to see refreshed content alongside project artifacts.</td></tr><tr><td><a href="gaia-brain-health.html"><code>/gaia-brain-health</code></a></td><td>Health view -- ingested entries are excluded from the unlinked surface.</td></tr></tbody></table>
         <p>For a full explanation of the knowledge layer, see the <a href="../gaia-brain.html">GAIA Brain concept page</a>.</p>
       </section>
       <footer class="page-footer">

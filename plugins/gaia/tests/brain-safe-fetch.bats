@@ -311,9 +311,12 @@ teardown() {
 @test "content sanitisation strips HTML tags from ingested content" {
   local src="$TEST_TMP/html-content.html"
   cat > "$src" <<'HTML'
-<h1>Title</h1>
-<p>This is <b>bold</b> and <script>alert('xss')</script> content.</p>
-<img src="evil.jpg" onerror="alert(1)">
+<html><head><title>SEO junk</title><style>.cls{color:red}</style></head>
+<body><h1>Title</h1>
+<p>This is <b>bold</b> content.</p>
+<script>alert('xss')</script>
+<!-- a hidden comment -->
+<img src="evil.jpg" onerror="alert(1)"></body></html>
 HTML
 
   # Use the fetched-content seam for URL ingestion.
@@ -330,11 +333,27 @@ HTML
   local ingested_file="$KNOW/ingested/html-test.md"
   [ -f "$ingested_file" ]
 
-  # No raw HTML tags should survive in the ingested file body.
-  ! grep -q '<script>' "$ingested_file"
-  ! grep -q '<h1>' "$ingested_file"
-  ! grep -q '<img' "$ingested_file"
-  ! grep -q 'onerror' "$ingested_file"
+  # No raw HTML tags should survive in the ingested file body. (assert_file_*
+  # helpers are used instead of bare `! grep` because a `!`-prefixed command
+  # is exempt from set -e and so never fails a bats test — a vacuous assertion.)
+  assert_file_excludes "$ingested_file" '<script>'
+  assert_file_excludes "$ingested_file" '<h1>'
+  assert_file_excludes "$ingested_file" '<img'
+  assert_file_excludes "$ingested_file" 'onerror'
+
+  # The CONTENT of script/style/head/comment elements must NOT survive either.
+  # Asserting only the tags are gone lets a naive `s/<[^>]*>//g` pass while the
+  # inner JS/CSS leaks into the ingested body — the exact gap this guards.
+  assert_file_excludes "$ingested_file" "alert('xss')"   # <script> body
+  assert_file_excludes "$ingested_file" 'color:red'      # <style> body
+  assert_file_excludes "$ingested_file" 'SEO junk'       # <head>/<title> body
+  assert_file_excludes "$ingested_file" 'hidden comment' # HTML comment body
+
+  # Real human-readable content must be preserved, and block elements must not
+  # run together (block tags become line breaks).
+  assert_file_contains "$ingested_file" 'Title'
+  assert_file_contains "$ingested_file" 'bold'
+  assert_file_excludes "$ingested_file" 'Titlebold'
 }
 
 # ---------------------------------------------------------------------------

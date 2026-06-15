@@ -151,13 +151,60 @@ _gic_fetch() {
 _gic_strip_html() {
   local content="$1"
   local kind="$2"
-  if [ "$kind" = "url" ] || [ "$kind" = "llms_txt" ]; then
-    printf '%s' "$content" \
-      | sed 's/<[^>]*>//g' \
-      | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&#39;/'"'"'/g; s/&nbsp;/ /g'
-  else
+  if [ "$kind" != "url" ] && [ "$kind" != "llms_txt" ]; then
     printf '%s' "$content"
+    return 0
   fi
+
+  # Element-content removal must precede tag removal. A naive `s/<[^>]*>//g`
+  # deletes only the angle-bracket tags and leaves the INNER TEXT of
+  # script/style/head blocks behind — leaking JS/CSS into the ingested body
+  # (a content-quality defect and a mild injection vector). The awk pass below
+  # drops the whole contents of those elements (and HTML comments), which can
+  # span lines, then converts block-level tags to newlines so block text does
+  # not run together. Tag removal and entity decoding follow.
+  #
+  # awk (not sed) does the element-content removal because the regions span
+  # newlines and BSD/POSIX sed has no portable non-greedy operator. The awk is
+  # POSIX-portable — no gawk extensions — so it runs the same on macOS and the
+  # Linux CI image.
+  printf '%s' "$content" \
+    | awk '
+        BEGIN { RS = "\1"; skip = "" }   # RS that cannot occur: whole input is $0
+        {
+          out = ""
+          n = length($0)
+          i = 1
+          while (i <= n) {
+            rest = substr($0, i)
+            # Inside a skipped region (script/style/head/comment): consume until
+            # the matching close, emitting nothing.
+            if (skip != "") {
+              ci = index(tolower(rest), skip)
+              if (ci == 0) { i = n + 1; break }      # close not in this record
+              i += ci + length(skip) - 1
+              skip = ""
+              continue
+            }
+            # HTML comment.
+            if (substr(rest, 1, 4) == "<!--") { skip = "-->"; i += 4; continue }
+            # Opening script/style/head (case-insensitive), tag may have attrs.
+            lr = tolower(rest)
+            if (lr ~ /^<script[ \t\r\n>\/]/ || lr ~ /^<script>/) { skip = "</script>"; i += 7; continue }
+            if (lr ~ /^<style[ \t\r\n>\/]/  || lr ~ /^<style>/)  { skip = "</style>";  i += 6; continue }
+            if (lr ~ /^<head[ \t\r\n>\/]/   || lr ~ /^<head>/)   { skip = "</head>";   i += 5; continue }
+            out = out substr($0, i, 1)
+            i++
+          }
+          printf "%s", out
+        }
+      ' \
+    | sed -E 's#<[/]?([Pp]|[Dd][Ii][Vv]|[Ss][Ee][Cc][Tt][Ii][Oo][Nn]|[Aa][Rr][Tt][Ii][Cc][Ll][Ee]|[Hh][Ee][Aa][Dd][Ee][Rr]|[Ff][Oo][Oo][Tt][Ee][Rr]|[Ll][Ii]|[Uu][Ll]|[Oo][Ll]|[Tt][Rr]|[Tt][Aa][Bb][Ll][Ee]|[Hh][1-6]|[Bb][Rr]|[Hh][Rr]|[Bb][Ll][Oo][Cc][Kk][Qq][Uu][Oo][Tt][Ee]|[Pp][Rr][Ee])([ \t/][^>]*)?[ \t/]*>#\
+#g' \
+    | sed 's/<[^>]*>//g' \
+    | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&#39;/'"'"'/g; s/&nbsp;/ /g' \
+    | sed -e 's/[[:space:]]*$//' \
+    | awk 'NF || prev_nf { print } { prev_nf = NF }'
 }
 
 # --- metadata ---
