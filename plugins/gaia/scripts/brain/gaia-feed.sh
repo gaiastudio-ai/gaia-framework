@@ -391,7 +391,10 @@ ENTRY
 )"
 
   # Build the new manifest: remove any existing entry with this key, then append.
-  local tmpfile="${manifest}.tmp.$$"
+  # The validator dispatches on file extension — only .yaml/.yml/.json/.md are
+  # recognized. Give the staging file a .yaml suffix (same pattern as the reindex
+  # sweep) so validation works on hosts WITH a JSON-schema backend (CI).
+  local tmpfile="${manifest}.tmp.$$.yaml"
 
   # Use python3+PyYAML if available for safe YAML manipulation; fall back to
   # awk-based append for portability.
