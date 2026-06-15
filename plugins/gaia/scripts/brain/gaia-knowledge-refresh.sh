@@ -70,7 +70,11 @@ for e in (doc.get("entries") or []):
         continue
     key = e.get("key", "")
     trust = e.get("trust") or {}
-    src_url = trust.get("source_url") or ""
+    # Emit the literal "null" for a missing/None source_url, never an empty
+    # string: the consumer reads the TAB-separated row with `IFS=$'\t' read`,
+    # and bash merges consecutive whitespace-class delimiters (tab is one), so
+    # an empty field would collapse and shift every later column left.
+    src_url = trust.get("source_url") or "null"
     chash = trust.get("content_hash") or ""
     path = e.get("path", "")
     # Infer ingest_source_kind from tags; default to url.
@@ -87,7 +91,7 @@ PYEOF
     awk '
       /^[[:space:]]*- key:/ {
         if (key != "" && st == "ingested") {
-          printf "%s\t%s\t%s\t%s\t%s\n", key, src_url, chash, path, kind
+          printf "%s\t%s\t%s\t%s\t%s\n", key, (src_url == "" ? "null" : src_url), chash, path, kind
         }
         key = ""; st = ""; src_url = ""; chash = ""; path = ""; kind = "url"
         val = $0; sub(/.*key:[[:space:]]*/, "", val); gsub(/"/, "", val)
@@ -111,7 +115,7 @@ PYEOF
       }
       END {
         if (key != "" && st == "ingested") {
-          printf "%s\t%s\t%s\t%s\t%s\n", key, src_url, chash, path, kind
+          printf "%s\t%s\t%s\t%s\t%s\n", key, (src_url == "" ? "null" : src_url), chash, path, kind
         }
       }
     ' "$manifest"
@@ -128,11 +132,12 @@ _gkr_update_entry() {
   local key="$2"
   local content_hash="$3"
   local fetched_at="$4"
+  local expires_at="${5:-}"
 
   local tmpfile="${manifest}.tmp.$$.yaml"
 
   if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
-    python3 - "$manifest" "$key" "$content_hash" "$fetched_at" "$tmpfile" <<'PYEOF'
+    python3 - "$manifest" "$key" "$content_hash" "$fetched_at" "$tmpfile" "$expires_at" <<'PYEOF'
 import sys, yaml
 
 manifest_path = sys.argv[1]
@@ -140,6 +145,7 @@ key = sys.argv[2]
 content_hash = sys.argv[3]
 fetched_at = sys.argv[4]
 tmpfile = sys.argv[5]
+expires_at = sys.argv[6] if len(sys.argv) > 6 else ""
 
 with open(manifest_path) as f:
     doc = yaml.safe_load(f) or {}
@@ -151,6 +157,8 @@ for e in (doc.get("entries") or []):
             trust["content_hash"] = content_hash
         if fetched_at:
             trust["fetched_at"] = fetched_at
+        if expires_at:
+            trust["expires_at"] = expires_at
         e["trust"] = trust
         break
 
@@ -168,6 +176,10 @@ PYEOF
     fi
     if [ -n "$fetched_at" ]; then
       sed -i.bak "s/fetched_at:.*/fetched_at: \"$fetched_at\"/" "$tmpfile"
+      rm -f "${tmpfile}.bak"
+    fi
+    if [ -n "$expires_at" ]; then
+      sed -i.bak "s/expires_at:.*/expires_at: \"$expires_at\"/" "$tmpfile"
       rm -f "${tmpfile}.bak"
     fi
   fi
@@ -284,9 +296,133 @@ _gkr_heal_status_if_failed() {
 }
 
 # ---------------------------------------------------------------------------
-# _gkr_overwrite_ingested_file SLUG BODY — atomic overwrite of an existing
-# ingested file with new content, preserving provenance frontmatter fields
-# that are updated (content_hash, fetched_at, status).
+# _gkr_read_frontmatter_field INGESTED_FILE FIELD — echo a frontmatter scalar
+# field's value (status, expires_at, …), or empty if absent. Only the
+# frontmatter region is consulted (a matching string in the body is ignored).
+# ---------------------------------------------------------------------------
+_gkr_read_frontmatter_field() {
+  local ingested_file="$1" field="$2"
+  [ -f "$ingested_file" ] || return 0
+  awk -v f="$field" '
+    BEGIN { n=0 }
+    /^---[[:space:]]*$/ { n++; if (n==2) exit; next }
+    n==1 && index($0, f ":")==1 { sub("^" f ":[[:space:]]*", ""); print; exit }
+  ' "$ingested_file"
+}
+
+# ---------------------------------------------------------------------------
+# _gkr_is_expired EXPIRES_AT — return 0 (true) if the ISO-8601 expires_at
+# timestamp is strictly in the past relative to now, else 1. An empty or
+# unparseable expires_at is treated as NOT expired (return 1) — expiry must
+# never be inferred from missing data. Comparison is lexical on the canonical
+# UTC ISO-8601 form (YYYY-MM-DDTHH:MM:SSZ), which sorts chronologically.
+# ---------------------------------------------------------------------------
+_gkr_is_expired() {
+  local expires_at="$1"
+  [ -n "$expires_at" ] || return 1
+  case "$expires_at" in
+    null|"~") return 1 ;;
+  esac
+  # Strip any surrounding quotes the YAML reader may have left.
+  expires_at="${expires_at#\"}"; expires_at="${expires_at%\"}"
+  expires_at="${expires_at#\'}"; expires_at="${expires_at%\'}"
+  local now
+  now="$(_gic_date_now_iso)"
+  # Both are canonical UTC ISO-8601 -> lexical compare is chronological.
+  [ "$expires_at" \< "$now" ]
+}
+
+# ---------------------------------------------------------------------------
+# _gkr_mark_stale INGESTED_FILE — flip frontmatter status to "stale" ONLY when
+# it is currently "current" (an expired-but-current entry). A "failed" entry is
+# left as-is ("failed" is a stronger signal than "stale"); an already-"stale"
+# entry is left byte-untouched. Returns 0 when a write was performed, 1 when no
+# change was needed. Touches ONLY the per-file status field (no index mutation).
+# ---------------------------------------------------------------------------
+_gkr_mark_stale() {
+  local ingested_file="$1"
+  [ -f "$ingested_file" ] || return 1
+
+  local cur
+  cur="$(_gkr_read_frontmatter_field "$ingested_file" status)"
+  [ "$cur" = "current" ] || return 1
+
+  local tmpfile="${ingested_file}.tmp.$$"
+  awk '
+    BEGIN { n=0; done=0 }
+    /^---[[:space:]]*$/ {
+      n++
+      print
+      if (n == 2) { done=1 }
+      next
+    }
+    n == 1 && !done {
+      if ($0 ~ /^status:/) { print "status: stale"; next }
+      print
+      next
+    }
+    { print }
+  ' "$ingested_file" > "$tmpfile"
+
+  mv "$tmpfile" "$ingested_file"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# _gkr_overwrite_ingested_file_meta INGESTED_FILE EXPIRES_AT — frontmatter-only
+# update used on the hash-match revalidation path: set expires_at and force
+# status to "current", WITHOUT rewriting the document body (the content is
+# unchanged on a hash match, so the body must stay byte-identical). A no-op on
+# the body preserves the "no content rewrite on hash match" property.
+# ---------------------------------------------------------------------------
+_gkr_overwrite_ingested_file_meta() {
+  local ingested_file="$1"
+  local expires_at="${2:-}"
+  [ -f "$ingested_file" ] || return 1
+
+  local tmpfile="${ingested_file}.tmp.$$"
+  awk -v new_expires="$expires_at" '
+    BEGIN { n=0; done=0 }
+    /^---[[:space:]]*$/ {
+      n++
+      print
+      if (n == 2) { done=1 }
+      next
+    }
+    n == 1 && !done {
+      if ($0 ~ /^expires_at:/ && new_expires != "") { printf "expires_at: %s\n", new_expires; next }
+      if ($0 ~ /^status:/) { print "status: current"; next }
+      print
+      next
+    }
+    { print }
+  ' "$ingested_file" > "$tmpfile"
+
+  mv "$tmpfile" "$ingested_file"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# _gkr_read_ttl_days INGESTED_FILE — echo the ttl_days from the file's
+# frontmatter, or empty if absent. Only the frontmatter region is consulted.
+# ---------------------------------------------------------------------------
+_gkr_read_ttl_days() {
+  local ingested_file="$1"
+  [ -f "$ingested_file" ] || return 0
+  awk '
+    BEGIN { n=0 }
+    /^---[[:space:]]*$/ { n++; if (n==2) exit; next }
+    n==1 && /^ttl_days:/ { sub(/^ttl_days:[[:space:]]*/, ""); print; exit }
+  ' "$ingested_file"
+}
+
+# ---------------------------------------------------------------------------
+# _gkr_overwrite_ingested_file SLUG BODY HASH FETCHED_AT FILE EXPIRES_AT —
+# atomic overwrite of an existing ingested file with new content, updating the
+# mutable provenance frontmatter fields (content_hash, fetched_at, expires_at,
+# status). expires_at MUST be recomputed by the caller as fetched_at + ttl_days
+# so the new fetch timestamp and the expiry stay consistent — leaving the old
+# expires_at would make a freshly-refetched entry appear already-expired.
 # ---------------------------------------------------------------------------
 _gkr_overwrite_ingested_file() {
   local slug="$1"
@@ -294,11 +430,12 @@ _gkr_overwrite_ingested_file() {
   local content_hash="$3"
   local fetched_at="$4"
   local ingested_file="$5"
+  local expires_at="${6:-}"
 
   local tmpfile="${ingested_file}.tmp.$$"
 
   # Read the existing frontmatter and update the mutable fields.
-  awk -v new_hash="$content_hash" -v new_fetched="$fetched_at" '
+  awk -v new_hash="$content_hash" -v new_fetched="$fetched_at" -v new_expires="$expires_at" '
     BEGIN { n=0; done=0 }
     /^---[[:space:]]*$/ {
       n++
@@ -312,6 +449,10 @@ _gkr_overwrite_ingested_file() {
       }
       if ($0 ~ /^fetched_at:/) {
         printf "fetched_at: %s\n", new_fetched
+        next
+      }
+      if ($0 ~ /^expires_at:/ && new_expires != "") {
+        printf "expires_at: %s\n", new_expires
         next
       }
       if ($0 ~ /^status:/) {
@@ -376,15 +517,24 @@ gaia_knowledge_refresh() {
 
     printf 'gaia-knowledge-refresh.sh: refreshing: %s\n' "$key" >&2
 
+    # Stdin-sourced entries have no re-fetchable origin (source_url is null):
+    # the content was pasted once and cannot be re-read. Treating "cannot
+    # re-fetch" as a fetch FAILURE would wrongly flip every stdin entry to
+    # "failed" on every run. Skip the fetch/reconcile for these — they are not
+    # failures — and let the expiry sweep below decide if they have gone stale.
+    if [ "$kind" = "stdin" ] || [ -z "$source_url" ] || [ "$source_url" = "null" ]; then
+      printf 'gaia-knowledge-refresh.sh: %s — no re-fetchable source (stdin); skipping fetch\n' "$key" >&2
+      skipped=$((skipped + 1))
+      continue
+    fi
+
     # Safe-fetch guard: SSRF blocklist + scheme restriction on the source URL
     # before any re-fetch attempt. A source that was safe at first ingest may
     # resolve to a blocked address later (DNS rebinding, infra changes).
-    if [ -n "$source_url" ] && [ "$source_url" != "null" ]; then
-      if ! _gic_safe_fetch_guard "$source_url"; then
-        printf 'gaia-knowledge-refresh.sh: %s — source URL blocked by safe-fetch guard; skipping\n' "$key" >&2
-        failed=$((failed + 1))
-        continue
-      fi
+    if ! _gic_safe_fetch_guard "$source_url"; then
+      printf 'gaia-knowledge-refresh.sh: %s — source URL blocked by safe-fetch guard; skipping\n' "$key" >&2
+      failed=$((failed + 1))
+      continue
     fi
 
     # Resolve ingested file path.
@@ -443,12 +593,33 @@ gaia_knowledge_refresh() {
 
     # Three-way reconcile.
     if [ "$new_hash" = "$stored_hash" ]; then
-      # Hash match — SKIP. The content is unchanged, so no index mutation and
-      # no content rewrite. The one exception is status recovery: if a prior
-      # transient fetch failure left this entry marked "failed" but the source
-      # now re-fetches to the same content, heal the per-file status back to
-      # "current" so a healthy source does not stay stuck "failed" forever.
-      if _gkr_heal_status_if_failed "$ingested_file"; then
+      # Hash match — content unchanged. The default is a true NO-OP: no content
+      # rewrite and no index mutation, which keeps refresh idempotent over an
+      # up-to-date, unexpired store (running it twice changes nothing).
+      #
+      # Two narrow exceptions, each a write only when something actually needs
+      # to change:
+      #   1. A prior "failed" status is healed back to "current" (the source is
+      #      demonstrably reachable again).
+      #   2. If the entry is at/past its expiry, this successful revalidation
+      #      renews the TTL window (expiry := now + ttl_days) so a still-valid
+      #      source is not flagged stale by the sweep below. An unexpired entry
+      #      is left byte-identical — no gratuitous expiry churn.
+      local s_cur_exp
+      s_cur_exp="$(_gkr_read_frontmatter_field "$ingested_file" expires_at)"
+      if _gkr_is_expired "$s_cur_exp"; then
+        local sttl sexpires
+        sttl="$(_gkr_read_ttl_days "$ingested_file")"
+        if [ -n "$sttl" ]; then
+          sexpires="$(_gic_date_add_days "$sttl")"
+          _gkr_overwrite_ingested_file_meta "$ingested_file" "$sexpires"
+          _gkr_update_entry "$manifest" "$key" "" "" "$sexpires" || true
+          printf 'gaia-knowledge-refresh.sh: %s — hash match, revalidated; expiry renewed\n' "$key" >&2
+        else
+          _gkr_heal_status_if_failed "$ingested_file" || true
+          printf 'gaia-knowledge-refresh.sh: %s — hash match, skipping\n' "$key" >&2
+        fi
+      elif _gkr_heal_status_if_failed "$ingested_file"; then
         printf 'gaia-knowledge-refresh.sh: %s — hash match, recovered status failed -> current\n' "$key" >&2
       else
         printf 'gaia-knowledge-refresh.sh: %s — hash match, skipping\n' "$key" >&2
@@ -461,13 +632,25 @@ gaia_knowledge_refresh() {
       local fetched_at
       fetched_at="$(_gic_date_now_iso)"
 
+      # Recompute expires_at = fetched_at + ttl_days so the refreshed fetch
+      # timestamp and the expiry stay consistent. The fetch happens "now", and
+      # _gic_date_add_days counts from now, so this matches the new fetched_at.
+      # If ttl_days is unreadable, leave expires_at untouched (pass empty).
+      local ttl_days expires_at
+      ttl_days="$(_gkr_read_ttl_days "$ingested_file")"
+      if [ -n "$ttl_days" ]; then
+        expires_at="$(_gic_date_add_days "$ttl_days")"
+      else
+        expires_at=""
+      fi
+
       # Overwrite the ingested file atomically.
       if [ -f "$ingested_file" ]; then
-        _gkr_overwrite_ingested_file "$key" "$clean_content" "$new_hash" "$fetched_at" "$ingested_file"
+        _gkr_overwrite_ingested_file "$key" "$clean_content" "$new_hash" "$fetched_at" "$ingested_file" "$expires_at"
       fi
 
       # Update the brain-index entry.
-      _gkr_update_entry "$manifest" "$key" "$new_hash" "$fetched_at" || {
+      _gkr_update_entry "$manifest" "$key" "$new_hash" "$fetched_at" "$expires_at" || {
         printf 'gaia-knowledge-refresh.sh: failed to update brain-index for %s\n' "$key" >&2
       }
 
@@ -477,8 +660,41 @@ gaia_knowledge_refresh() {
 $entries_data
 EOF
 
-  printf 'gaia-knowledge-refresh.sh: refresh complete — skipped: %d, updated: %d, failed: %d\n' \
-    "$skipped" "$updated" "$failed" >&2
+  # ---- Expiry enforcement sweep -------------------------------------------
+  # The TTL is only meaningful if something acts on it. After reconcile, walk
+  # every ingested entry once more and flag as "stale" any whose per-file
+  # expires_at is in the past AND whose status is still "current" — i.e. an
+  # entry whose TTL lapsed without a successful revalidation this run. A
+  # just-revalidated entry had its expiry renewed above and so is not flagged;
+  # a "failed" entry keeps the stronger "failed" signal. This is what makes the
+  # status enum's "stale" value reachable instead of decorative.
+  local staled=0
+  local s_key s_url s_hash s_path s_kind
+  # s_url/s_hash/s_kind are positional placeholders for the TAB-row columns the
+  # sweep does not use; only s_key and s_path are consumed.
+  # shellcheck disable=SC2034
+  while IFS="$(printf '\t')" read -r s_key s_url s_hash s_path s_kind; do
+    [ -n "$s_key" ] || continue
+    local s_file
+    case "$s_path" in
+      /*) s_file="$s_path" ;;
+      *)  s_file="${project_root}/${s_path}" ;;
+    esac
+    [ -f "$s_file" ] || continue
+    local s_exp
+    s_exp="$(_gkr_read_frontmatter_field "$s_file" expires_at)"
+    if _gkr_is_expired "$s_exp"; then
+      if _gkr_mark_stale "$s_file"; then
+        printf 'gaia-knowledge-refresh.sh: %s — expired (%s), marked stale\n' "$s_key" "$s_exp" >&2
+        staled=$((staled + 1))
+      fi
+    fi
+  done <<EOF
+$(_gkr_enumerate_ingested "$manifest")
+EOF
+
+  printf 'gaia-knowledge-refresh.sh: refresh complete — skipped: %d, updated: %d, failed: %d, staled: %d\n' \
+    "$skipped" "$updated" "$failed" "$staled" >&2
 
   return 0
 }

@@ -397,3 +397,109 @@ Content for the idempotency test."
   manifest_after_second="$(cat "$MANIFEST")"
   [ "$manifest_after_first" = "$manifest_after_second" ]
 }
+
+# ---- expiry recompute on content-change overwrite ------------------------------
+
+@test "refresh recomputes expires_at on overwrite (not stuck at the old value)" {
+  local body="# Expiry Doc
+
+Original content."
+  _seed_ingested "test-exp" "$body" > /dev/null
+  local ingested_file="$KNOW/ingested/test-exp.md"
+
+  # Backdate fetched_at + expires_at far into the past to simulate a long-stale
+  # entry, in BOTH the file and the manifest.
+  sed -i.bak -E 's/^fetched_at:.*/fetched_at: 2020-01-01T00:00:00Z/; s/^expires_at:.*/expires_at: 2020-01-31T00:00:00Z/' "$ingested_file" && rm -f "${ingested_file}.bak"
+
+  # Provide CHANGED content -> overwrite branch.
+  local fetched="$TEST_TMP/changed.txt"
+  printf '# Expiry Doc\n\nREVISED content.\n' > "$fetched"
+
+  run bash -c "
+    export CLAUDE_PROJECT_ROOT='$PROJ'
+    source '$REFRESH'
+    gaia_knowledge_refresh --fetched-content '$fetched'
+  "
+  [ "$status" -eq 0 ]
+
+  # The old 2020 expiry must be gone — recomputed forward to fetched_at+ttl.
+  assert_file_excludes "$ingested_file" '2020-01-31'
+  assert_file_excludes "$ingested_file" '2020-01-01'
+  # fetched_at and expires_at must both be present and current-era (post-2025).
+  run grep -E '^expires_at: 20(2[5-9]|[3-9][0-9])' "$ingested_file"
+  [ "$status" -eq 0 ]
+  # The index trust block expires_at must also be refreshed (no 2020 left).
+  assert_file_excludes "$MANIFEST" '2020-01-31'
+}
+
+# ---- expiry enforcement: stale sweep -------------------------------------------
+
+@test "refresh marks an expired, un-revalidated entry as stale" {
+  # A stdin-sourced entry has no re-fetchable origin, so it is the clean way to
+  # land an entry in the expiry sweep without a fetch result.
+  local body="# Stale Sweep Doc
+
+Pasted content, no re-fetchable source."
+  _seed_ingested "test-stale" "$body" > /dev/null
+  local ingested_file="$KNOW/ingested/test-stale.md"
+
+  # Make it a stdin entry (null source_url) and expire it while status: current.
+  sed -i.bak -E 's#^source_url:.*#source_url: null#; s/^ingest_source_kind:.*/ingest_source_kind: stdin/; s/^expires_at:.*/expires_at: 2020-01-01T00:00:00Z/; s/^status:.*/status: current/' "$ingested_file" && rm -f "${ingested_file}.bak"
+  # Null the manifest trust-block source_url (6-space indent) and retag stdin so
+  # the enumerator classifies the entry as stdin (no re-fetchable source).
+  sed -i.bak -E 's#^      source_url:.*#      source_url: null#; s/\["ingested", "url"\]/["ingested", "stdin"]/' "$MANIFEST" && rm -f "${MANIFEST}.bak"
+
+  run bash -c "
+    export CLAUDE_PROJECT_ROOT='$PROJ'
+    source '$REFRESH'
+    gaia_knowledge_refresh
+  "
+  [ "$status" -eq 0 ]
+
+  # The expired current entry must now be stale.
+  assert_file_contains "$ingested_file" 'status: stale'
+}
+
+@test "refresh does NOT mark a not-yet-expired entry stale" {
+  local body="# Fresh Doc
+
+Still well within its TTL."
+  _seed_ingested "test-fresh" "$body" > /dev/null
+  local ingested_file="$KNOW/ingested/test-fresh.md"
+
+  # stdin entry, status current, expiry far in the FUTURE.
+  sed -i.bak -E 's#^source_url:.*#source_url: null#; s/^ingest_source_kind:.*/ingest_source_kind: stdin/; s/^expires_at:.*/expires_at: 2099-01-01T00:00:00Z/; s/^status:.*/status: current/' "$ingested_file" && rm -f "${ingested_file}.bak"
+  sed -i.bak -E 's#^      source_url:.*#      source_url: null#; s/\["ingested", "url"\]/["ingested", "stdin"]/' "$MANIFEST" && rm -f "${MANIFEST}.bak"
+
+  run bash -c "
+    export CLAUDE_PROJECT_ROOT='$PROJ'
+    source '$REFRESH'
+    gaia_knowledge_refresh
+  "
+  [ "$status" -eq 0 ]
+
+  assert_file_contains "$ingested_file" 'status: current'
+  assert_file_excludes "$ingested_file" 'status: stale'
+}
+
+@test "refresh does NOT mark a stdin entry failed (no re-fetchable source)" {
+  local body="# Stdin Doc
+
+Pasted once."
+  _seed_ingested "test-stdin" "$body" > /dev/null
+  local ingested_file="$KNOW/ingested/test-stdin.md"
+
+  sed -i.bak -E 's#^source_url:.*#source_url: null#; s/^ingest_source_kind:.*/ingest_source_kind: stdin/; s/^status:.*/status: current/' "$ingested_file" && rm -f "${ingested_file}.bak"
+  sed -i.bak -E 's#^      source_url:.*#      source_url: null#; s/\["ingested", "url"\]/["ingested", "stdin"]/' "$MANIFEST" && rm -f "${MANIFEST}.bak"
+
+  run bash -c "
+    export CLAUDE_PROJECT_ROOT='$PROJ'
+    source '$REFRESH'
+    gaia_knowledge_refresh
+  "
+  [ "$status" -eq 0 ]
+
+  # A stdin entry within TTL must remain current — never flipped to failed.
+  assert_file_contains "$ingested_file" 'status: current'
+  assert_file_excludes "$ingested_file" 'status: failed'
+}
