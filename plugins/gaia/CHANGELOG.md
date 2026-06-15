@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.194.1] — 2026-06-15
+
+### Changed
+
+- promote staging to main (v1.194.0) (#1519)
+- (sprint-lifecycle) add E107 end-to-end chain integration test (#1505)
+
+### Fixed
+
+- (sprint-plan) gate backlog activation, resolve story path, honor --yolo (#1504)
+
 ## [1.194.0] — 2026-06-14
 
 ### Added
