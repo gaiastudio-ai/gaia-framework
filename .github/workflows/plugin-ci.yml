@@ -54,8 +54,12 @@ jobs:
       # the bats-tests signal on noble. If line-coverage reporting is needed
       # later, reintroduce kcov via a pre-built binary download from the kcov
       # GitHub releases rather than apt.
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Install jq and GNU parallel
+        # GNU parallel enables `bats --jobs` in run-with-coverage.sh, which runs
+        # the 580+ test files concurrently and keeps the suite well under the
+        # job timeout below. Without parallel the wrapper falls back to a serial
+        # run that sits right at the 15-minute wall and tips into timeout flakes.
+        run: sudo apt-get update && sudo apt-get install -y jq parallel
       - name: Run bats suite with coverage wrapper (budget-watched)
         # bats-budget-watch.sh wraps the coverage wrapper and emits a structured
         # warning to $GITHUB_STEP_SUMMARY when wall-clock exceeds the threshold.
