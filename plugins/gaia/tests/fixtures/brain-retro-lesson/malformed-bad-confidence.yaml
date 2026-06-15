@@ -1,0 +1,4 @@
+# Malformed: confidence out of range (1.5 > 1.0)
+- category: strategy
+  synopsis: "A lesson with out-of-range confidence."
+  confidence: 1.5

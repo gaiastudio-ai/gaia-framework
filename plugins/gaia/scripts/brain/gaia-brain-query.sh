@@ -178,8 +178,9 @@ _bq_is_epic_token() {
 # ---------------------------------------------------------------------------
 # Parse the manifest into three flat, line-indexed lookup files (bash 3.2 has no
 # associative arrays). PyYAML primary, awk fallback. Writes:
-#   $2 = records  (key \t path \t content_hash \t synopsis)   one row per entry
-#   $3 = edges    (seedkey \t type \t target)                 one row per edge
+#   $2 = records  (key \t path \t content_hash \t synopsis \t tags)  one row per entry
+#   $3 = edges    (seedkey \t type \t target)                        one row per edge
+# Tags column is a comma-joined string of the entry's `tags` array values.
 # Args: $1 manifest  $2 records_out  $3 edges_out  $4 have_pyyaml
 # ---------------------------------------------------------------------------
 _bq_parse_manifest() {
@@ -210,7 +211,9 @@ with open(rec_out, "w") as rf, open(edge_out, "w") as ef:
         ch = clean(trust.get("content_hash", "") or "")
         syn = e.get("synopsis", "")
         syn = clean("" if syn is None else syn)
-        rf.write("%s\t%s\t%s\t%s\n" % (key, path, ch, syn))
+        st = clean(e.get("source_type", "") or "")
+        tags = ",".join(clean(t) for t in (e.get("tags") or []))
+        rf.write("%s\t%s\t%s\t%s\t%s\t%s\n" % (key, path, ch, syn, st, tags))
         for ed in (e.get("edges") or []):
             t = clean(ed.get("type", "") or "")
             tgt = clean(ed.get("target", "") or "")
@@ -231,19 +234,27 @@ PYEOF
       return v
     }
     function flush_rec() {
-      if (key != "") print key "\t" path "\t" chash "\t" syn > recf
+      if (key != "") print key "\t" path "\t" chash "\t" syn "\t" st "\t" tags > recf
     }
     /^- key:/ {
       flush_rec()
       v=$0; sub(/^- key:[[:space:]]*/, "", v); key=unq(v)
-      path=""; chash=""; syn=""; in_edges=0; cur_type=""
+      path=""; chash=""; syn=""; st=""; tags=""; in_edges=0; in_tags=0; cur_type=""
       next
     }
-    key != "" && /^  path:/        { v=$0; sub(/^  path:[[:space:]]*/, "", v); path=unq(v); next }
-    key != "" && /^  synopsis:/    { v=$0; sub(/^  synopsis:[[:space:]]*/, "", v); syn=unq(v); next }
-    key != "" && /^    content_hash:/ { v=$0; sub(/^    content_hash:[[:space:]]*/, "", v); chash=unq(v); next }
-    key != "" && /^  edges:/       { in_edges=1; next }
-    key != "" && /^  trust:/       { in_edges=0; next }
+    key != "" && /^  source_type:/ { v=$0; sub(/^  source_type:[[:space:]]*/, "", v); st=unq(v); in_tags=0; next }
+    key != "" && /^  path:/        { v=$0; sub(/^  path:[[:space:]]*/, "", v); path=unq(v); in_tags=0; next }
+    key != "" && /^  synopsis:/    { v=$0; sub(/^  synopsis:[[:space:]]*/, "", v); syn=unq(v); in_tags=0; next }
+    key != "" && /^    content_hash:/ { v=$0; sub(/^    content_hash:[[:space:]]*/, "", v); chash=unq(v); in_tags=0; next }
+    key != "" && /^  tags:/        { in_tags=1; in_edges=0; next }
+    key != "" && /^  edges:/       { in_edges=1; in_tags=0; next }
+    key != "" && /^  trust:/       { in_edges=0; in_tags=0; next }
+    key != "" && /^  fetched_at:/  { in_tags=0; next }
+    in_tags && /^  - / {
+      v=$0; sub(/^  - [[:space:]]*/, "", v); v=unq(v)
+      if (tags == "") tags = v; else tags = tags "," v
+      next
+    }
     in_edges && /^    - type:/     { v=$0; sub(/^    - type:[[:space:]]*/, "", v); cur_type=unq(v); next }
     in_edges && /^      target:/   {
       v=$0; sub(/^      target:[[:space:]]*/, "", v); tgt=unq(v)
@@ -423,7 +434,7 @@ _bq_render_envelope() {
 # gaia_brain_query <key> [--manifest <path>] [--envelope|--search <terms>|--health]
 # ---------------------------------------------------------------------------
 gaia_brain_query() {
-  local key="" manifest="" mode="envelope" search_terms=""
+  local key="" manifest="" mode="envelope" search_terms="" category_tag=""
   # First positional non-flag arg is the seed key.
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -443,6 +454,12 @@ gaia_brain_query() {
           printf 'gaia-brain-query.sh: --search requires a term\n' >&2; return 2
         fi
         search_terms="$2"; shift 2 ;;
+      --category)
+        mode="category"
+        if [ "$#" -lt 2 ]; then
+          printf 'gaia-brain-query.sh: --category requires a tag\n' >&2; return 2
+        fi
+        category_tag="$2"; shift 2 ;;
       --*) printf 'gaia-brain-query.sh: unknown flag: %s\n' "$1" >&2; return 2 ;;
       *)
         if [ -z "$key" ]; then key="$1"; else
@@ -532,6 +549,31 @@ gaia_brain_query() {
       printf '  (no matching synopses)\n'
     else
       printf '%s\n' "$matched" | LC_ALL=C sort -u
+    fi
+    return 0
+  fi
+
+  # --- --category: filter lesson entries by category tag ---
+  # Records TSV columns: key(1) path(2) content_hash(3) synopsis(4) source_type(5) tags(6)
+  if [ "$mode" = "category" ]; then
+    if [ -z "$category_tag" ]; then
+      printf 'gaia-brain-query.sh: --category requires a tag\n' >&2
+      return 2
+    fi
+    printf 'Brain query — lesson entries with category: %s\n\n' "$category_tag"
+    local cat_matched
+    cat_matched="$(awk -F'\t' -v cat="$category_tag" '
+      $5 == "lesson" {
+        n = split($6, arr, ",")
+        for (i = 1; i <= n; i++) {
+          if (arr[i] == cat) { print "  " $1 "  " $4; break }
+        }
+      }
+    ' "$recf" || true)"
+    if [ -z "$cat_matched" ]; then
+      printf '  (no lesson entries with category: %s)\n' "$category_tag"
+    else
+      printf '%s\n' "$cat_matched" | LC_ALL=C sort -u
     fi
     return 0
   fi
