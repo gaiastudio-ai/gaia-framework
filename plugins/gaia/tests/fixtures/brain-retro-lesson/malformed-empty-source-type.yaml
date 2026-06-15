@@ -1,0 +1,5 @@
+# Malformed: missing source_type (the emit script hard-codes source_type=lesson,
+# but this payload explicitly overrides it to empty to test the guard).
+- category: strategy
+  synopsis: "A lesson with missing source_type."
+  source_type: ""
