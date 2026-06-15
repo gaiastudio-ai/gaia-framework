@@ -428,7 +428,7 @@ MD
 
   # File mode must be 0644 (readable by all, writable by owner only).
   local mode
-  mode="$(stat -f '%Lp' "$ingested_file" 2>/dev/null || stat -c '%a' "$ingested_file" 2>/dev/null)"
+  mode="$(stat -c '%a' "$ingested_file" 2>/dev/null || stat -f '%Lp' "$ingested_file" 2>/dev/null)"
   [ "$mode" = "644" ]
 }
 
