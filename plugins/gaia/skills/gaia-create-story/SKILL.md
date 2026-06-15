@@ -24,6 +24,10 @@ fi
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/setup.sh
 
+## Brain Context
+
+!${CLAUDE_PLUGIN_ROOT}/scripts/brain/brain-reliance-loader.sh gaia-create-story:load-context
+
 ## Mission
 
 Create a detailed story file for the supplied story key. The story is extracted from `{planning_artifacts}/epics-and-stories.md`, elaborated with architecture context, ACs in Given/When/Then format, tasks/subtasks, test scenarios, and dependencies. Output (canonical): `{implementation_artifacts}/{EPIC_DIR}/{story_key}-{slug}/story.md` — the per-story directory carries the key and the basename is the literal `story.md`, with a sibling `reviews/` subdir for review reports. `{EPIC_DIR}` is the full output of `resolve-epic-slug.sh` (e.g. `epic-E1-core`). The layout is enforced by `validate-canonical-filename.sh`, which also accepts the legacy flat `{story_key}-{slug}.md` and legacy nested `{EPIC_DIR}/stories/{story_key}-{slug}.md` forms read-only (three-tier fallback).
