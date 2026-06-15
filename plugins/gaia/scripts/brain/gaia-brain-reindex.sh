@@ -670,6 +670,50 @@ brain_reindex() {
     _brx_render_entry "$key" "$relpath" "$tag" "$synopsis" "$chash" "$edgesfile" "$manifest_tmp"
   done < "$plan"
 
+  # --- Carry forward non-project-artifact entries (partitioned preservation) ---
+  # The reindex sweep owns ONLY project-artifact entries. Entries with other
+  # source_type values (ingested, lesson) belong to their respective writers
+  # and must be preserved verbatim across a full sweep — never pruned, never
+  # modified. Read them from the PRIOR manifest and append them unchanged.
+  if [ -f "$out_manifest" ]; then
+    local foreign_entries="$tmp/foreign-entries.yaml"
+    if [ "$PYYAML_PRESENT" = "1" ]; then
+      python3 - "$out_manifest" "$foreign_entries" <<'PYEOF'
+import sys, yaml
+manifest_path, out_path = sys.argv[1], sys.argv[2]
+try:
+    doc = yaml.safe_load(open(manifest_path)) or {}
+except Exception:
+    doc = {}
+entries = doc.get("entries") or []
+foreign = [e for e in entries if e.get("source_type") != "project-artifact"]
+with open(out_path, "w") as f:
+    for e in foreign:
+        yaml.dump([e], f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+PYEOF
+    else
+      # awk fallback: extract complete entry blocks whose source_type is NOT
+      # project-artifact. Entries start with "- key:" at column 0 and end when
+      # the next "- key:" or EOF is reached.
+      awk '
+        /^- key:/ {
+          if (buf != "" && st != "project-artifact") printf "%s", buf
+          buf = ""; st = ""
+        }
+        { buf = buf $0 "\n" }
+        /^  source_type:/ {
+          v = $0; sub(/^  source_type:[[:space:]]*/, "", v)
+          gsub(/^"/, "", v); gsub(/"$/, "", v)
+          st = v
+        }
+        END { if (buf != "" && st != "project-artifact") printf "%s", buf }
+      ' "$out_manifest" > "$foreign_entries"
+    fi
+    if [ -s "$foreign_entries" ]; then
+      cat "$foreign_entries" >> "$manifest_tmp"
+    fi
+  fi
+
   # --- Validate the tempfile BEFORE the rename ---
   # The validator is a separate process that re-sources gaia-paths.sh to obtain
   # its helper FUNCTIONS (which do not cross the process boundary — only the
