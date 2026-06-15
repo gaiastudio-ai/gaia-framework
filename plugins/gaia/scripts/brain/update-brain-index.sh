@@ -13,10 +13,14 @@
 #                   Does NOT alter any other field on the target entry.
 #
 # PARTITION-DISJOINT BOUNDARY (enforced BY CONSTRUCTION)
-#   This writer NEVER creates, updates, or deletes project-artifact entries.
-#   Every write path reads the full manifest, passes project-artifact entries
-#   through byte-untouched, and only mutates the lesson partition. A guard
-#   rejects any --add-lesson call whose --source-type is not "lesson".
+#   Entry creation/deletion/replacement is lesson-only: this writer NEVER
+#   creates, replaces, or deletes project-artifact entries. A guard rejects
+#   any --add-lesson call whose --source-type is not "lesson".
+#
+#   Edge mutations (--add-edge, --batch-edges) span ALL source_types because
+#   they modify ONLY the edges list — per the EDGE MUTATION INVARIANT below,
+#   no other field changes. This is safe: the partition boundary protects
+#   entry ownership, not edge connectivity.
 #
 # ATOMIC WRITE
 #   Sibling tempfile in the manifest's own directory + mv (matches the reindex
@@ -258,6 +262,24 @@ _ubi_add_edge() {
 
   [ -f "$manifest" ] || _ubi_die "manifest not found: $manifest" 1
 
+  # Idempotency guard: if the (type, target) pair already exists on this entry,
+  # skip the write entirely. Prevents duplicate edges on repeated lifecycle or
+  # review events.
+  local existing_block
+  existing_block="$(_ubi_extract_entry "$manifest" "$target_key")"
+  if [ -n "$existing_block" ]; then
+    local dup_check
+    dup_check="$(printf '%s\n' "$existing_block" | awk -v et="$edge_type" -v tgt="$edge_target" '
+      /- type:/ { t = $0; sub(/.*- type:[[:space:]]*/, "", t); gsub(/[[:space:]]*$/, "", t) }
+      /target:/ { g = $0; sub(/.*target:[[:space:]]*"?/, "", g); gsub(/"?[[:space:]]*$/, "", g)
+        if (t == et && g == tgt) { print "DUP"; exit }
+      }
+    ')"
+    if [ "$dup_check" = "DUP" ]; then
+      return 0
+    fi
+  fi
+
   local manifest_dir
   manifest_dir="$(dirname "$manifest")"
   local tmp
@@ -319,13 +341,11 @@ _ubi_add_edge() {
     return 1
   fi
 
-  # Verify the target entry's source_type is lesson (partition guard).
-  local target_st
-  target_st="$(_ubi_extract_entry "$tmp" "$target_key" | awk '/^  source_type:/ { print $2; exit }')"
-  if [ "$target_st" != "lesson" ]; then
-    rm -f "$tmp" 2>/dev/null || true
-    _ubi_die "partition guard: --add-edge target '$target_key' has source_type '$target_st', not 'lesson'" 1
-  fi
+  # Edge-mutation source_type check: edge appends are safe on ANY source_type
+  # because they modify ONLY the edges list (per the EDGE MUTATION INVARIANT).
+  # The partition-disjoint boundary protects entry creation/deletion/replacement
+  # (--add-lesson), not edge-only mutations. Verify the target entry exists
+  # (awk END block already does this) but do NOT restrict by source_type.
 
   # Atomic rename.
   mv "$tmp" "$manifest" || {
@@ -379,6 +399,133 @@ _ubi_stdin_mode() {
 }
 
 # ---------------------------------------------------------------------------
+# batch-edges: read edge_type\tedge_target lines from stdin and add them all
+# to a single target key in ONE manifest read-merge-rewrite pass. Idempotent:
+# edges already present on the entry are skipped.
+# ---------------------------------------------------------------------------
+_ubi_batch_edges() {
+  local manifest="$1" target_key="$2"
+
+  [ -f "$manifest" ] || _ubi_die "manifest not found: $manifest" 1
+
+  # Collect edges from stdin.
+  local edge_lines
+  edge_lines="$(cat)"
+  [ -n "$edge_lines" ] || return 0
+
+  # Validate all edge types against the closed 7-enum and build the awk
+  # edge-data block. Also collect (type,target) pairs for dedup.
+  local valid_types="implements traces-to decomposes governed-by verified-by reviewed-in designs"
+  local awk_edges="" edge_count=0
+  local etype etarget safe_et
+  while IFS=$'\t' read -r etype etarget; do
+    [ -n "$etype" ] || continue
+    [ -n "$etarget" ] || continue
+    local found_type=0 t
+    for t in $valid_types; do
+      [ "$t" = "$etype" ] && { found_type=1; break; }
+    done
+    [ "$found_type" -eq 1 ] || _ubi_die "invalid edge type '$etype'; valid: $valid_types" 1
+    safe_et="$(_ubi_yaml_escape "$etarget")"
+    awk_edges="${awk_edges}${etype}	${safe_et}
+"
+    edge_count=$((edge_count + 1))
+  done <<< "$edge_lines"
+
+  [ "$edge_count" -gt 0 ] || return 0
+
+  # Extract existing edges on the target entry for dedup.
+  local existing_block
+  existing_block="$(_ubi_extract_entry "$manifest" "$target_key")"
+  [ -n "$existing_block" ] || {
+    printf 'update-brain-index.sh: target key not found: %s\n' "$target_key" >&2
+    return 1
+  }
+
+  # Filter out edges that already exist.
+  local filtered_edges="" new_count=0
+  while IFS=$'\t' read -r etype etarget; do
+    [ -n "$etype" ] || continue
+    local dup_check
+    dup_check="$(printf '%s\n' "$existing_block" | awk -v et="$etype" -v tgt="$etarget" '
+      /- type:/ { t = $0; sub(/.*- type:[[:space:]]*/, "", t); gsub(/[[:space:]]*$/, "", t) }
+      /target:/ { g = $0; sub(/.*target:[[:space:]]*"?/, "", g); gsub(/"?[[:space:]]*$/, "", g)
+        if (t == et && g == tgt) { print "DUP"; exit }
+      }
+    ')"
+    if [ "$dup_check" != "DUP" ]; then
+      filtered_edges="${filtered_edges}${etype}	${etarget}
+"
+      new_count=$((new_count + 1))
+    fi
+  done <<< "$awk_edges"
+
+  [ "$new_count" -gt 0 ] || return 0  # all edges already present
+
+  local manifest_dir
+  manifest_dir="$(dirname "$manifest")"
+  local tmp
+  tmp="$(mktemp "${manifest_dir}/.ubi-tmp-XXXXXX")"
+
+  # Write the new edges to a temp data file for awk to read.
+  local edges_data="$manifest_dir/.ubi-edges-XXXXXX"
+  edges_data="$(mktemp "$edges_data")"
+  printf '%s' "$filtered_edges" > "$edges_data"
+
+  # shellcheck disable=SC2064
+  trap "rm -f '$tmp' '$edges_data' 2>/dev/null || true" RETURN
+
+  # Single awk pass: inject all new edges into the target entry.
+  awk -v tkey="$target_key" -v edgefile="$edges_data" '
+    BEGIN {
+      n = 0
+      while ((getline line < edgefile) > 0) {
+        if (line == "") continue
+        split(line, parts, "\t")
+        n++
+        etypes[n] = parts[1]
+        etargets[n] = parts[2]
+      }
+      close(edgefile)
+      in_target = 0; edge_injected = 0
+    }
+
+    /^- key:/ {
+      k = $0; sub(/^- key:[[:space:]]*"?/, "", k); sub(/"?[[:space:]]*$/, "", k)
+      if (k == tkey) { in_target = 1 }
+      else { in_target = 0 }
+    }
+
+    in_target && /^  edges: \[\]/ {
+      printf "  edges:\n"
+      for (i = 1; i <= n; i++) {
+        printf "    - type: %s\n", etypes[i]
+        printf "      target: \"%s\"\n", etargets[i]
+      }
+      edge_injected = 1
+      next
+    }
+
+    in_target && /^  trust:/ && !edge_injected {
+      for (i = 1; i <= n; i++) {
+        printf "    - type: %s\n", etypes[i]
+        printf "      target: \"%s\"\n", etargets[i]
+      }
+      edge_injected = 1
+    }
+
+    { print }
+  ' "$manifest" > "$tmp"
+
+  rm -f "$edges_data" 2>/dev/null || true
+
+  mv "$tmp" "$manifest" || {
+    rm -f "$tmp" 2>/dev/null || true
+    _ubi_die "atomic rename failed" 1
+  }
+}
+
+# ---------------------------------------------------------------------------
 # CLI dispatcher.
 # ---------------------------------------------------------------------------
 main() {
@@ -391,6 +538,7 @@ main() {
       --manifest)      manifest="$2"; shift 2 ;;
       --add-lesson)    mode="add-lesson"; shift ;;
       --add-edge)      mode="add-edge"; shift ;;
+      --batch-edges)   mode="batch-edges"; shift ;;
       --stdin)         mode="stdin"; shift ;;
       --key)           key="$2"; shift 2 ;;
       --source-type)   source_type="$2"; shift 2 ;;
@@ -428,11 +576,15 @@ main() {
       [ -n "$edge_target" ] || _ubi_die "--edge-target is required for --add-edge"
       _ubi_add_edge "$manifest" "$target_key" "$edge_type" "$edge_target"
       ;;
+    batch-edges)
+      [ -n "$target_key" ]  || _ubi_die "--target-key is required for --batch-edges"
+      _ubi_batch_edges "$manifest" "$target_key"
+      ;;
     stdin)
       _ubi_stdin_mode "$manifest"
       ;;
     *)
-      _ubi_die "mode required: --add-lesson, --add-edge, or --stdin"
+      _ubi_die "mode required: --add-lesson, --add-edge, --batch-edges, or --stdin"
       ;;
   esac
 }
