@@ -26,6 +26,10 @@ fi
 
 !${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh pm decision-log
 
+## Brain Context
+
+!${CLAUDE_PLUGIN_ROOT}/scripts/brain/brain-reliance-loader.sh gaia-add-feature:cascade-entry
+
 ## Mission
 
 You are the orchestrator for adding a new feature, enhancement, or patch to
