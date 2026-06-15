@@ -99,12 +99,27 @@ Both the ingested file and the brain-index update follow the atomic-write
 pattern: write to a sibling temporary file, validate (for the index), and rename
 into place. A failed write or validation never corrupts the prior state.
 
-## Security handoff
+## Security controls
 
-The safe-fetch guard (SSRF blocklist, size cap, timeout) and slug
-write-boundary containment are implemented as pass-through seams in this first
-version. A downstream story hardens them with real enforcement. The slug
-containment guard already rejects path separators and traversal sequences.
+The ingestion pipeline enforces three layers of security before and during every
+write:
+
+- **SSRF pre-check.** Before any network read, the safe-fetch guard resolves the
+  host and rejects the URL if it points to a private (RFC 1918), link-local,
+  loopback, carrier-grade NAT (RFC 6598), or cloud-metadata address. Only
+  `http` and `https` schemes are permitted; all others are rejected outright.
+  The check is a deterministic shell pre-check that cannot be bypassed by prompt
+  drift.
+- **Size cap and fetch timeout.** Fetched content is capped at 10 MB; content
+  that exceeds the cap is rejected without leaving a partial write. A 30-second
+  fetch timeout is enforced by the orchestration layer to prevent resource
+  exhaustion.
+- **Slug write-boundary containment.** The auto-inferred slug is sanitised
+  (path separators and traversal sequences are stripped) and a realpath
+  containment check verifies that the resolved write path is a child of
+  `.gaia/knowledge/ingested/` before any file is created. Ingested content is
+  wrapped with content boundary markers, source frontmatter is stripped to
+  prevent prompt injection, and written files are set to mode 0644.
 
 ## How to invoke
 

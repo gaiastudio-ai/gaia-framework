@@ -236,9 +236,13 @@ MD
   stored_hash="$(_extract_fm_field "$ingested_file" content_hash)"
   [ -n "$stored_hash" ]
 
-  # Compute the expected hash from the body (post-frontmatter content).
+  # Compute the expected hash from the body content (between boundary markers,
+  # if present). The content_hash is computed from the clean content before
+  # boundary wrapping, so we strip the markers before hashing.
   local expected_hash
-  expected_hash="$(_extract_body "$ingested_file" | _sha_stdin)"
+  expected_hash="$(_extract_body "$ingested_file" \
+    | sed '/^<!-- INGESTED_CONTENT_BEGIN -->$/d; /^<!-- INGESTED_CONTENT_END -->$/d' \
+    | _sha_stdin)"
 
   [ "$stored_hash" = "$expected_hash" ]
 }
