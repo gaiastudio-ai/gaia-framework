@@ -31,3 +31,5 @@ TC-BRN-69	brain-retro-lesson.bats	default expires_at is null and explicit expiry
 TC-BRN-70	brain-retro-lesson.bats	emitted manifest validates against brain-index.schema.json
 TC-BRN-71	brain-retro-lesson.bats	malformed lessons are rejected and manifest is unchanged
 TC-BRN-72	brain-retro-lesson.bats	gaia-brain-query --category strategy returns only strategy lessons
+TC-BRN-73	brain-update-index.bats	update-brain-index.sh writes only lesson entries; project-artifact rows are byte-identical
+TC-BRN-74	brain-update-index.bats	edge mutation does not alter the source_type of existing entries

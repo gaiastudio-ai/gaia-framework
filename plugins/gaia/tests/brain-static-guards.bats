@@ -259,37 +259,41 @@ EOS
 }
 
 # ---------------------------------------------------------------------------
-# AC3 — partitioned ownership: the manifest has exactly three sanctioned
+# AC3 — partitioned ownership: the manifest has exactly four sanctioned
 # writers, each owning a distinct source_type partition or lifecycle.
 #   - gaia-brain-reindex.sh         -> project-artifact partition
 #   - gaia-feed.sh                  -> ingested partition (initial ingest)
 #   - gaia-knowledge-refresh.sh     -> ingested partition (re-fetch lifecycle)
+#   - update-brain-index.sh         -> lesson partition (incremental updates)
 # Any OTHER manifest writer is still forbidden.
 # ---------------------------------------------------------------------------
 
-@test "the knowledge manifest is written by exactly the three sanctioned partition owners" {
+@test "the knowledge manifest is written by exactly the four sanctioned partition owners" {
   local writers
   writers="$(_manifest_writer_files "$BRAIN_DIR")"
   [ -n "$writers" ]
-  # Exactly three writers.
-  [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 3 ]
+  # Exactly four writers.
+  [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 4 ]
   # The reindex sweep (project-artifact partition).
   printf '%s\n' "$writers" | grep -q 'gaia-brain-reindex\.sh'
   # The ingestion writer (ingested partition).
   printf '%s\n' "$writers" | grep -q 'gaia-feed\.sh'
   # The refresh lifecycle (ingested partition — re-fetch).
   printf '%s\n' "$writers" | grep -q 'gaia-knowledge-refresh\.sh'
+  # The lesson partition writer (incremental lesson/edge updates).
+  printf '%s\n' "$writers" | grep -q 'update-brain-index\.sh'
 }
 
 @test "no script outside the brain dir carries a manifest write" {
   # Widen the scope to the whole scripts tree: any script that writes a
-  # brain-index.yaml-derived variable must be one of the three sanctioned writers.
+  # brain-index.yaml-derived variable must be one of the four sanctioned writers.
   local f hits rc=0
   while IFS= read -r f; do
     [ -f "$f" ] || continue
     [ "$f" = "$REINDEX" ] && continue
     [ "$f" = "$BRAIN_DIR/gaia-feed.sh" ] && continue
     [ "$f" = "$BRAIN_DIR/gaia-knowledge-refresh.sh" ] && continue
+    [ "$f" = "$BRAIN_DIR/update-brain-index.sh" ] && continue
     hits="$(_brain_indirect_writes "$f" 'brain-index\.yaml')"
     if [ -n "$hits" ]; then
       printf 'UNEXPECTED MANIFEST WRITER %s:\n%s\n' "$f" "$hits" >&2
@@ -301,18 +305,20 @@ EOF
   [ "$rc" -eq 0 ]
 }
 
-@test "the partitioned-writer guard bites a rogue third manifest writer" {
+@test "the partitioned-writer guard bites a rogue fifth manifest writer" {
   # Self-test: inject a throwaway script that writes the manifest THROUGH a
   # variable (the realistic form — the literal never appears on the write line).
-  # The guard must flag it as an unexpected writer alongside the two legitimate ones.
+  # The guard must flag it as an unexpected writer alongside the four legitimate ones.
   local injdir="$TEST_TMP/inj-brain"
   mkdir -p "$injdir"
-  # Copy the two sanctioned writers so the directory has them.
+  # Copy all four sanctioned writers so the directory mirrors production.
   cp "$REINDEX" "$injdir/gaia-brain-reindex.sh"
   cp "$BRAIN_DIR/gaia-feed.sh" "$injdir/gaia-feed.sh"
+  cp "$BRAIN_DIR/gaia-knowledge-refresh.sh" "$injdir/gaia-knowledge-refresh.sh"
+  cp "$BRAIN_DIR/update-brain-index.sh" "$injdir/update-brain-index.sh"
   cat > "$injdir/rogue-writer.sh" <<'EOS'
 #!/usr/bin/env bash
-# A rogue third writer that reaches the manifest through a variable.
+# A rogue fifth writer that reaches the manifest through a variable.
 KDIR="$PROJ/.gaia/knowledge"
 m="$KDIR/brain-index.yaml"
 tmp="$(mktemp)"
@@ -321,8 +327,8 @@ mv "$tmp" "$m"
 EOS
   local writers
   writers="$(_manifest_writer_files "$injdir")"
-  # Three writers now present; the rogue one must be among them.
-  [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 3 ]
+  # Five writers now present; the rogue one must be among them.
+  [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 5 ]
   printf '%s\n' "$writers" | grep -q 'rogue-writer.sh'
 }
 
@@ -349,6 +355,15 @@ EOS
   grep -qE 'mktemp[[:space:]]+"\$\{?out_manifest\}?\.tmp' "$REINDEX"
   # Atomic rename of the tempfile onto the manifest path.
   grep -qE 'mv[[:space:]]+"\$manifest_tmp"[[:space:]]+"\$out_manifest"' "$REINDEX"
+}
+
+@test "the partitioned lesson writer uses a sibling tempfile and an atomic rename" {
+  local updater="$BRAIN_DIR/update-brain-index.sh"
+  [ -f "$updater" ]
+  # Sibling tempfile created in the manifest's own directory.
+  grep -qE 'mktemp[[:space:]]+"\$\{?manifest_dir\}?/\.ubi-tmp' "$updater"
+  # Atomic rename of the tempfile onto the manifest path.
+  grep -qE 'mv[[:space:]]+"\$tmp"[[:space:]]+"\$manifest"' "$updater"
 }
 
 # ---------------------------------------------------------------------------
