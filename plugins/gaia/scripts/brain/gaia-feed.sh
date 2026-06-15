@@ -2,8 +2,8 @@
 # gaia-feed.sh — one-gesture external-document ingestion into the Brain.
 #
 # WHAT IT DOES
-#   Five-stage pipeline: classify source → fetch → strip HTML → write ingested
-#   file with provenance frontmatter → register brain-index entry. Supports four
+#   Five-stage pipeline: classify source -> fetch -> strip HTML -> write ingested
+#   file with provenance frontmatter -> register brain-index entry. Supports four
 #   source kinds: url, file, stdin, llms_txt.
 #
 # USAGE
@@ -21,6 +21,11 @@
 # SOURCEABLE + EXECUTABLE
 #   When sourced, exports gaia_feed() and its _gf_ helper functions.
 #   When executed directly, dispatches gaia_feed() with CLI args.
+#
+# SHARED LIB
+#   Core fetch/strip/hash/metadata helpers live in brain/lib/ingest-common.sh
+#   (prefixed _gic_). This script re-exports them under the _gf_ prefix for
+#   backward compatibility with existing callers and tests.
 #
 # Portability: bash 3.2 (macOS default) clean — no mapfile, no associative
 # arrays, no GNU-only flags. LC_ALL=C. set -euo pipefail.
@@ -41,183 +46,39 @@ _gf_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
   return 1 2>/dev/null || exit 1
 }
 
+# Source the shared ingestion library.
+# shellcheck source=lib/ingest-common.sh
+. "$_gf_self_dir/lib/ingest-common.sh" || {
+  printf 'gaia-feed.sh: could not source ingest-common.sh\n' >&2
+  return 1 2>/dev/null || exit 1
+}
+
 # Sibling validator.
 _GF_VALIDATE="$_gf_self_dir/validate-brain-index.sh"
 
 # ---------------------------------------------------------------------------
-# Stage helpers (all prefixed _gf_ to avoid namespace collision)
+# _gf_ aliases — thin wrappers that delegate to the shared _gic_ helpers.
+# Existing callers and tests reference the _gf_ prefix; these preserve that
+# contract while the canonical implementation lives in ingest-common.sh.
 # ---------------------------------------------------------------------------
 
-# _gf_sha256_file FILE — bare hex digest of a file.
-_gf_sha256_file() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$1" | awk '{print $1}'
-  else
-    printf 'unknown\n'
-  fi
-}
-
-# _gf_sha256_stdin — bare hex digest of stdin content.
-_gf_sha256_stdin() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 | awk '{print $1}'
-  else
-    printf 'unknown\n'
-  fi
-}
-
-# _gf_slugify STRING — convert a string to a URL-safe slug.
-_gf_slugify() {
-  printf '%s' "$1" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed 's/[^a-z0-9]/-/g' \
-    | sed 's/--*/-/g' \
-    | sed 's/^-//;s/-$//'
-}
-
-# _gf_yaml_escape STRING — escape a string for YAML scalar value.
-_gf_yaml_escape() {
-  local val="$1"
-  # If the value contains special characters, wrap in double quotes.
-  case "$val" in
-    *':'*|*'#'*|*'"'*|*"'"*|*'['*|*']'*|*'{'*|*'}'*|*'&'*|*'*'*|*'!'*|*'|'*|*'>'*|*'%'*|*'@'*|*'`'*)
-      # Escape internal double quotes by doubling them.
-      val="$(printf '%s' "$val" | sed 's/"/\\"/g')"
-      printf '"%s"' "$val"
-      ;;
-    *)
-      printf '%s' "$val"
-      ;;
-  esac
-}
-
-# _gf_date_now_iso — current UTC timestamp in ISO-8601.
-_gf_date_now_iso() {
-  date -u '+%Y-%m-%dT%H:%M:%SZ'
-}
-
-# _gf_date_add_days DAYS — add N days to now, output ISO-8601.
-# Dual idiom: macOS date -v / GNU date -d.
-_gf_date_add_days() {
-  local days="$1"
-  if date -v +1d '+%Y' >/dev/null 2>&1; then
-    # macOS / BSD date
-    date -u -v "+${days}d" '+%Y-%m-%dT%H:%M:%SZ'
-  else
-    # GNU date
-    date -u -d "+${days} days" '+%Y-%m-%dT%H:%M:%SZ'
-  fi
-}
-
-# _gf_extract_title CONTENT — extract the first H1 heading from markdown content.
-_gf_extract_title() {
-  local title
-  title="$(printf '%s' "$1" | grep -m1 '^# ' | sed 's/^# //')"
-  if [ -z "$title" ]; then
-    # Fallback: first H2
-    title="$(printf '%s' "$1" | grep -m1 '^## ' | sed 's/^## //')"
-  fi
-  printf '%s' "$title"
-}
-
-# _gf_token_estimate CONTENT — rough token estimate via word count.
-_gf_token_estimate() {
-  local words
-  words="$(printf '%s' "$1" | wc -w | tr -d ' ')"
-  printf '%s' "$words"
-}
+_gf_sha256_file()          { _gic_sha256_file "$@"; }
+_gf_sha256_stdin()         { _gic_sha256_stdin; }
+_gf_slugify()              { _gic_slugify "$@"; }
+_gf_yaml_escape()          { _gic_yaml_escape "$@"; }
+_gf_date_now_iso()         { _gic_date_now_iso; }
+_gf_date_add_days()        { _gic_date_add_days "$@"; }
+_gf_extract_title()        { _gic_extract_title "$@"; }
+_gf_token_estimate()       { _gic_token_estimate "$@"; }
+_gf_classify_source()      { _gic_classify_source "$@"; }
+_gf_fetch()                { _gic_fetch "$@"; }
+_gf_strip_html()           { _gic_strip_html "$@"; }
+_gf_confidence_for_kind()  { _gic_confidence_for_kind "$@"; }
+_gf_safe_fetch_guard()     { _gic_safe_fetch_guard "$@"; }
+_gf_slug_containment_guard() { _gic_slug_containment_guard "$@"; }
 
 # ---------------------------------------------------------------------------
-# Stage 1: classify source
-# ---------------------------------------------------------------------------
-_gf_classify_source() {
-  local source="$1"
-  if [ "$source" = "-" ]; then
-    printf 'stdin'
-  elif printf '%s' "$source" | grep -qE '^https?://'; then
-    printf 'url'
-  elif [ -f "$source" ]; then
-    printf 'file'
-  else
-    printf 'unknown'
-  fi
-}
-
-# ---------------------------------------------------------------------------
-# Stage 2: fetch content
-# ---------------------------------------------------------------------------
-_gf_fetch() {
-  local source="$1"
-  local kind="$2"
-  local fetched_content="${3:-}"
-
-  case "$kind" in
-    file)
-      cat "$source"
-      ;;
-    stdin)
-      cat
-      ;;
-    url|llms_txt)
-      # URL and llms_txt fetching is orchestrated via SKILL.md WebFetch;
-      # the script receives the already-fetched content via --fetched-content.
-      if [ -n "$fetched_content" ] && [ -f "$fetched_content" ]; then
-        cat "$fetched_content"
-      else
-        printf 'gaia-feed.sh: %s fetch requires --fetched-content (WebFetch orchestration seam)\n' "$kind" >&2
-        return 1
-      fi
-      ;;
-    *)
-      printf 'gaia-feed.sh: unknown source kind: %s\n' "$kind" >&2
-      return 1
-      ;;
-  esac
-}
-
-# ---------------------------------------------------------------------------
-# Stage 3: strip HTML (for URL sources)
-# ---------------------------------------------------------------------------
-_gf_strip_html() {
-  local content="$1"
-  local kind="$2"
-  if [ "$kind" = "url" ] || [ "$kind" = "llms_txt" ]; then
-    # Basic HTML stripping: remove tags, decode common entities.
-    printf '%s' "$content" \
-      | sed 's/<[^>]*>//g' \
-      | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&#39;/'"'"'/g; s/&nbsp;/ /g'
-  else
-    printf '%s' "$content"
-  fi
-}
-
-# ---------------------------------------------------------------------------
-# Guard seams
-# ---------------------------------------------------------------------------
-
-# _gf_safe_fetch_guard — pass-through placeholder; hardened downstream.
-_gf_safe_fetch_guard() {
-  return 0
-}
-
-# _gf_slug_containment_guard — reject path separators and traversal in slugs.
-_gf_slug_containment_guard() {
-  local slug="$1"
-  case "$slug" in
-    *'/'*|*'..'*)
-      printf 'gaia-feed.sh: slug containment violation — path separator or traversal in slug: %s\n' "$slug" >&2
-      return 1
-      ;;
-  esac
-  return 0
-}
-
-# ---------------------------------------------------------------------------
-# Stage 4: infer metadata
+# Stage 4: infer metadata (feed-specific — not shared)
 # ---------------------------------------------------------------------------
 _gf_infer_metadata() {
   local content="$1"
@@ -226,18 +87,18 @@ _gf_infer_metadata() {
   local slug_override="${4:-}"
 
   local title
-  title="$(_gf_extract_title "$content")"
+  title="$(_gic_extract_title "$content")"
 
   local slug
   if [ -n "$slug_override" ]; then
     slug="$slug_override"
   elif [ -n "$title" ]; then
-    slug="$(_gf_slugify "$title")"
+    slug="$(_gic_slugify "$title")"
   elif [ "$kind" = "file" ]; then
     # Derive from filename.
     local basename_no_ext
     basename_no_ext="$(basename "$source" .md)"
-    slug="$(_gf_slugify "$basename_no_ext")"
+    slug="$(_gic_slugify "$basename_no_ext")"
   else
     slug="ingested-$(date -u '+%s')"
   fi
@@ -260,17 +121,6 @@ _gf_infer_metadata() {
 # Stage 5: compute provenance (exactly 11 fields)
 # ---------------------------------------------------------------------------
 
-# _gf_confidence_for_kind KIND — tiered confidence by source kind.
-_gf_confidence_for_kind() {
-  case "$1" in
-    llms_txt) printf '0.9' ;;
-    file)     printf '0.8' ;;
-    url)      printf '0.7' ;;
-    stdin)    printf '0.8' ;;
-    *)        printf '0.7' ;;
-  esac
-}
-
 # _gf_emit_frontmatter — write the 11-field provenance frontmatter to stdout.
 _gf_emit_frontmatter() {
   local title="$1"
@@ -286,7 +136,7 @@ _gf_emit_frontmatter() {
 
   cat <<EOF
 ---
-title: $(_gf_yaml_escape "$title")
+title: $(_gic_yaml_escape "$title")
 slug: $slug
 ingest_source_kind: $kind
 source_url: ${source_url:-null}
