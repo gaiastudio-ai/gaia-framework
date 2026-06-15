@@ -120,9 +120,15 @@ This loads the story file, walks all six reviewers in canonical order, writes on
 ### Step 1: Validate Input
 
 1. Parse the story key from the first positional argument and the optional `--force` flag (Substep 2.1 prep). Reject any other flag with a usage error and exit non-zero (AC-EC2).
-2. Resolve the story file by searching both layouts in order: first the legacy flat path `docs/implementation-artifacts/{story_key}-*.md`, then the canonical nested path `docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`. Prefer the first lexicographic match. If zero matches across both layouts, HALT with "story not found" before invoking any helper script (AC-EC12).
-3. Read the story file frontmatter and verify `status: review`.
-4. Read the current Review Gate table to confirm the section exists.
+2. **Brain-context loader.** With the story key now bound, run the brain-reliance loader for this workflow's entry stage. The loader checks governing-context availability and HALTs only when a cleanly-evaluated MANDATORY node is absent; otherwise it warns and continues (fail-open).
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/brain/brain-reliance-loader.sh gaia-run-all-reviews:review-entry --story-key "{story_key}"
+```
+
+3. Resolve the story file by searching both layouts in order: first the legacy flat path `docs/implementation-artifacts/{story_key}-*.md`, then the canonical nested path `docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`. Prefer the first lexicographic match. If zero matches across both layouts, HALT with "story not found" before invoking any helper script (AC-EC12).
+4. Read the story file frontmatter and verify `status: review`.
+5. Read the current Review Gate table to confirm the section exists.
 
 ### Step 2: Thin-Orchestrator Procedure
 

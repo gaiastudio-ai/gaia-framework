@@ -108,3 +108,5 @@ module,phase,name,code,command,required,agent-name,description,output-location
 "core","anytime","version-mismatch","version mismatch","gaia-migrate","false","orchestrator","Plugin / config framework_version mismatch — invoke migrator","n/a"
 "core","anytime","project-state","project state","gaia-help","false","orchestrator","Show current project state (greenfield / brownfield / post-update / healthy)","n/a"
 "core","anytime","what-should-i-do","what should I do","gaia-help","false","orchestrator","State-aware next-step recommendation (greenfield > brownfield > post-update > healthy precedence)","n/a"
+"lifecycle","4-implementation","feed","feed","gaia-feed","false","orchestrator","Ingest an external document into the Brain knowledge layer",".gaia/knowledge/ingested"
+"lifecycle","4-implementation","knowledge-refresh","knowledge-refresh","gaia-knowledge-refresh","false","orchestrator","Re-fetch ingested sources and replace only what changed (hash-gated three-way reconcile)",".gaia/knowledge/ingested"

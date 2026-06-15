@@ -7,7 +7,7 @@
 #
 # WHAT IT DOES
 #   brain_reliance_loader <skill>:<stage-id>
-#       [--map <path>] [--index <path>]
+#       [--map <path>] [--index <path>] [--story-key <key>]
 #
 #   Reads two knowledge-store files:
 #     - the reliance map (.gaia/knowledge/brain-reliance-map.yaml) — the single
@@ -252,7 +252,7 @@ _brl_halt() {
 # brain_reliance_loader <skill>:<stage-id> [--map <path>] [--index <path>]
 # ---------------------------------------------------------------------------
 brain_reliance_loader() {
-  local stage="" map="" index=""
+  local stage="" map="" index="" story_key=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --map)
@@ -265,6 +265,11 @@ brain_reliance_loader() {
           printf 'brain-reliance-loader.sh: --index requires a path\n' >&2; return 2
         fi
         index="$2"; shift 2 ;;
+      --story-key)
+        if [ "$#" -lt 2 ]; then
+          printf 'brain-reliance-loader.sh: --story-key requires a value\n' >&2; return 2
+        fi
+        story_key="$2"; shift 2 ;;
       --*) printf 'brain-reliance-loader.sh: unknown flag: %s\n' "$1" >&2; return 2 ;;
       *)
         if [ -z "$stage" ]; then stage="$1"; else
@@ -378,6 +383,17 @@ brain_reliance_loader() {
   local node oblig halt=0
   while IFS="$(printf '\t')" read -r node oblig; do
     [ -n "$node" ] || continue
+    # Per-story interpolation: if the node value carries a ${STORY_KEY}
+    # placeholder and --story-key was supplied, substitute the placeholder with
+    # the story key before the index lookup. When no --story-key is supplied,
+    # the raw placeholder is looked up as-is (which will cleanly miss unless an
+    # index entry coincidentally carries that literal — the expected behaviour
+    # is a HALT for MANDATORY, warning for OPTIONAL). When the node has no
+    # placeholder, substitution is a no-op — byte-identical to the pre-extension
+    # behaviour (zero regression for the existing planning stages).
+    if [ -n "$story_key" ]; then
+      node="${node//\$\{STORY_KEY\}/$story_key}"
+    fi
     if _brl_index_key_present "$node" "$keys"; then
       continue
     fi

@@ -41,6 +41,10 @@ source of truth that reads this state; never re-implement detection inline.
 This activates YOLO for THIS skill's run; subagent dispatches still require the
 explicit `GAIA_YOLO_MODE=1` inheritance export documented at Step 4.
 
+## Brain Context
+
+!${CLAUDE_PLUGIN_ROOT}/scripts/brain/brain-reliance-loader.sh gaia-dev-story:load-story
+
 ## Mission
 
 You are orchestrating a user story end-to-end: loading the story spec, planning the implementation, writing tests (TDD red), implementing code (TDD green), refactoring, verifying the Definition of Done, committing, pushing, creating a PR, waiting for CI, and merging. This is the most comprehensive dev workflow in GAIA.

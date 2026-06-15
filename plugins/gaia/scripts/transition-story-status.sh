@@ -1620,6 +1620,32 @@ TSS_ROLLBACK_PENDING=0
 # make this a no-op on the happy path.
 trap '_cleanup_tmps' EXIT
 
+# Emit the state_transition lifecycle event AFTER the commit so a logged event
+# always corresponds to a durably-written transition. This is the sixth
+# side-effect of a transition: the prior sprint-state.sh transition path emitted
+# it via emit_lifecycle_event(), but when the status-write path was unified into
+# this script the emission was not carried over — silently blinding
+# throughput-telemetry.sh (it derives per-story wall-clock by differencing
+# state_transition timestamps, and saw none after the cutover).
+#
+# BEST-EFFORT: a committed transition must never be rolled back because telemetry
+# failed, so this runs after TSS_ROLLBACK_PENDING=0 and never `die`s. Self-
+# transition no-ops (CURRENT_STATUS == NEW_STATUS) emit nothing — they are not
+# real edges and would skew cycle-time derivation.
+emit_state_transition_event() {
+  [ "$CURRENT_STATUS" = "$NEW_STATUS" ] && return 0
+  local lifecycle_sh="$SCRIPT_DIR/lifecycle-event.sh"
+  [ -x "$lifecycle_sh" ] || return 0
+  local data
+  data=$(printf '{"from":"%s","to":"%s"}' "$CURRENT_STATUS" "$NEW_STATUS")
+  "$lifecycle_sh" \
+    --type state_transition \
+    --workflow sprint-state \
+    --story "$STORY_KEY" \
+    --data "$data" >/dev/null 2>&1 || true
+}
+emit_state_transition_event
+
 cleanup_snapshots "$SNAP_STORY" "$SNAP_YAML" "$SNAP_EPICS" "$SNAP_SHARD" "$SNAP_INDEX"
 
 # Write status-transition marker.

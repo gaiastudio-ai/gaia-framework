@@ -259,25 +259,37 @@ EOS
 }
 
 # ---------------------------------------------------------------------------
-# AC3 — single writer: only the reindex sweep writes the knowledge manifest.
+# AC3 — partitioned ownership: the manifest has exactly three sanctioned
+# writers, each owning a distinct source_type partition or lifecycle.
+#   - gaia-brain-reindex.sh         -> project-artifact partition
+#   - gaia-feed.sh                  -> ingested partition (initial ingest)
+#   - gaia-knowledge-refresh.sh     -> ingested partition (re-fetch lifecycle)
+# Any OTHER manifest writer is still forbidden.
 # ---------------------------------------------------------------------------
 
-@test "the knowledge manifest is written by exactly one script — the reindex sweep" {
+@test "the knowledge manifest is written by exactly the three sanctioned partition owners" {
   local writers
   writers="$(_manifest_writer_files "$BRAIN_DIR")"
-  # Exactly one writer, and it is the reindex sweep.
   [ -n "$writers" ]
-  [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 1 ]
-  [ "$writers" = "$REINDEX" ]
+  # Exactly three writers.
+  [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 3 ]
+  # The reindex sweep (project-artifact partition).
+  printf '%s\n' "$writers" | grep -q 'gaia-brain-reindex\.sh'
+  # The ingestion writer (ingested partition).
+  printf '%s\n' "$writers" | grep -q 'gaia-feed\.sh'
+  # The refresh lifecycle (ingested partition — re-fetch).
+  printf '%s\n' "$writers" | grep -q 'gaia-knowledge-refresh\.sh'
 }
 
-@test "no script outside the brain dir carries a manifest write either" {
+@test "no script outside the brain dir carries a manifest write" {
   # Widen the scope to the whole scripts tree: any script that writes a
-  # brain-index.yaml-derived variable must be the reindex sweep.
+  # brain-index.yaml-derived variable must be one of the three sanctioned writers.
   local f hits rc=0
   while IFS= read -r f; do
     [ -f "$f" ] || continue
     [ "$f" = "$REINDEX" ] && continue
+    [ "$f" = "$BRAIN_DIR/gaia-feed.sh" ] && continue
+    [ "$f" = "$BRAIN_DIR/gaia-knowledge-refresh.sh" ] && continue
     hits="$(_brain_indirect_writes "$f" 'brain-index\.yaml')"
     if [ -n "$hits" ]; then
       printf 'UNEXPECTED MANIFEST WRITER %s:\n%s\n' "$f" "$hits" >&2
@@ -289,17 +301,18 @@ EOF
   [ "$rc" -eq 0 ]
 }
 
-@test "the single-writer guard bites a second, variable-indirected manifest writer" {
+@test "the partitioned-writer guard bites a rogue third manifest writer" {
   # Self-test: inject a throwaway script that writes the manifest THROUGH a
   # variable (the realistic form — the literal never appears on the write line).
-  # The guard must flag it as an unexpected writer.
+  # The guard must flag it as an unexpected writer alongside the two legitimate ones.
   local injdir="$TEST_TMP/inj-brain"
   mkdir -p "$injdir"
-  # Copy the real reindex in so the directory has the legitimate writer too.
+  # Copy the two sanctioned writers so the directory has them.
   cp "$REINDEX" "$injdir/gaia-brain-reindex.sh"
+  cp "$BRAIN_DIR/gaia-feed.sh" "$injdir/gaia-feed.sh"
   cat > "$injdir/rogue-writer.sh" <<'EOS'
 #!/usr/bin/env bash
-# A rogue second writer that reaches the manifest through a variable.
+# A rogue third writer that reaches the manifest through a variable.
 KDIR="$PROJ/.gaia/knowledge"
 m="$KDIR/brain-index.yaml"
 tmp="$(mktemp)"
@@ -308,8 +321,8 @@ mv "$tmp" "$m"
 EOS
   local writers
   writers="$(_manifest_writer_files "$injdir")"
-  # Two writers now present; the rogue one must be flagged.
-  [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 2 ]
+  # Three writers now present; the rogue one must be among them.
+  [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 3 ]
   printf '%s\n' "$writers" | grep -q 'rogue-writer.sh'
 }
 

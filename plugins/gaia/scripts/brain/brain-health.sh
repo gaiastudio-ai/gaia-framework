@@ -37,7 +37,8 @@ LC_ALL=C
 export LC_ALL
 
 # ---------------------------------------------------------------------------
-# Parse (key TAB path) pairs from the manifest. PyYAML primary, awk fallback.
+# Parse (key TAB path TAB source_type) triples from the manifest.
+# PyYAML primary, awk fallback.
 # Args: $1 manifest  $2 out_pairs_file  $3 have_pyyaml
 # ---------------------------------------------------------------------------
 _bh_parse_pairs() {
@@ -58,16 +59,18 @@ with open(out, "w") as f:
     for e in entries:
         key = e.get("key", "")
         path = e.get("path", "")
+        st = e.get("source_type", "")
         if not key:
             continue
         key = str(key).replace("\t", " ").replace("\n", " ").replace("\r", " ")
         path = str(path).replace("\t", " ").replace("\n", " ").replace("\r", " ")
-        f.write("%s\t%s\n" % (key, path))
+        st = str(st).replace("\t", " ").replace("\n", " ").replace("\r", " ")
+        f.write("%s\t%s\t%s\n" % (key, path, st))
 PYEOF
     return 0
   fi
 
-  # awk fallback: pull the `- key:` / `  path:` scalar pairs.
+  # awk fallback: pull the `- key:` / `  path:` / `  source_type:` scalar triples.
   awk '
     function unq(v) {
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
@@ -76,15 +79,19 @@ PYEOF
       return v
     }
     /^- key:/ {
-      if (key != "") print key "\t" path
-      v=$0; sub(/^- key:[[:space:]]*/, "", v); key=unq(v); path=""
+      if (key != "") print key "\t" path "\t" st
+      v=$0; sub(/^- key:[[:space:]]*/, "", v); key=unq(v); path=""; st=""
       next
     }
     key != "" && /^  path:/ {
       v=$0; sub(/^  path:[[:space:]]*/, "", v); path=unq(v)
       next
     }
-    END { if (key != "") print key "\t" path }
+    key != "" && /^  source_type:/ {
+      v=$0; sub(/^  source_type:[[:space:]]*/, "", v); st=unq(v)
+      next
+    }
+    END { if (key != "") print key "\t" path "\t" st }
   ' "$manifest" >> "$out" 2>/dev/null || true
 }
 
@@ -158,10 +165,13 @@ brain_health() {
   # the loop and test the return code explicitly so an unlinked node never aborts.
   local unlinked_list="$tmp/unlinked.txt"
   : > "$unlinked_list"
-  local key relpath abspath
+  local key relpath source_type abspath
   set +e
-  while IFS="$(printf '\t')" read -r key relpath; do
+  while IFS="$(printf '\t')" read -r key relpath source_type; do
     [ -n "$key" ] || continue
+    # Skip non-project-artifact entries (ingested, lesson) — they have no
+    # governance edges by design and must not be reported as traceability gaps.
+    [ "$source_type" != "ingested" ] && [ "$source_type" != "lesson" ] || continue
     # Resolve the entry path to an absolute file (best-effort; a missing file is
     # handled gracefully by the predicate, which no-ops on unreadable inputs).
     case "$relpath" in

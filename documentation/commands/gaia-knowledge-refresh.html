@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-knowledge-refresh - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#reconcile">Three-way reconcile</a></li>
+          <li><a href="#idempotency">Idempotency</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/sprint-management.html">Sprint Management</a><span class="separator">/</span>
+        /gaia-knowledge-refresh
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-knowledge-refresh</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/sprint-management.html">Sprint Management</a></dd>
+          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt><dd>None (operates on all ingested entries)</dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-knowledge-refresh</code> walks every <code>source_type: ingested</code> entry in the <a href="../gaia-brain.html">brain knowledge layer</a>'s index, re-fetches its source, and applies a hash-gated three-way reconcile so only changed content touches the disk.</p>
+        <p>It uses the same fetch, HTML-strip, and hash machinery as <a href="gaia-feed.html"><code>/gaia-feed</code></a> (shared via a common library), so the two pipelines never drift apart.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You previously ingested external reference material via <code>/gaia-feed</code> and want to check whether any sources have been updated.</li>
+          <li>You want to keep ingested documents current without re-ingesting each one manually.</li>
+          <li>You want a non-destructive refresh -- sources that fail to fetch are marked failed but their last-good content is preserved.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li><strong>Ingested entries must exist.</strong> Run <a href="gaia-feed.html"><code>/gaia-feed</code></a> first to populate the knowledge store. If no ingested entries exist, the refresh exits cleanly with nothing to do.</li>
+          <li>A valid <code>brain-index.yaml</code> must be present in the knowledge store.</li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-knowledge-refresh</code></pre>
+        <p>No arguments are required. The command operates on all ingested entries in the brain index.</p>
+      </section>
+
+      <section id="reconcile">
+        <h2>Three-way reconcile</h2>
+        <p>For each ingested entry, the refresh computes the sha256 of the re-fetched, post-strip content and compares it against the stored <code>content_hash</code>. Exactly one of three outcomes applies:</p>
+        <table>
+          <thead><tr><th>Outcome</th><th>Condition</th><th>Side effects</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Skip</strong></td><td>Hash matches</td><td>No file write. No brain-index mutation.</td></tr>
+            <tr><td><strong>Overwrite</strong></td><td>Hash differs</td><td>Ingested file atomically overwritten. Brain-index entry's <code>content_hash</code> and <code>fetched_at</code> updated.</td></tr>
+            <tr><td><strong>Mark failed</strong></td><td>Fetch fails</td><td>Ingested file's frontmatter <code>status</code> set to <code>failed</code>. Stale file content preserved. No destructive delete.</td></tr>
+          </tbody>
+        </table>
+        <p>The failure branch is deliberately non-destructive: operators rely on the last-good copy remaining queryable while the source is temporarily unavailable.</p>
+      </section>
+
+      <section id="idempotency">
+        <h2>Idempotency</h2>
+        <p>A second consecutive run over unchanged sources produces zero file writes and zero brain-index diffs. This follows directly from the hash-match skip path -- when content has not changed, the entire refresh is a no-op.</p>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Updated ingested files</td><td><code>.gaia/knowledge/ingested/&lt;slug&gt;.md</code></td><td>Only files whose content has changed are overwritten.</td></tr><tr><td>Updated brain-index entries</td><td><code>.gaia/knowledge/brain-index.yaml</code></td><td>Only entries with changed content have their <code>content_hash</code> and <code>fetched_at</code> updated.</td></tr><tr><td>Reconcile summary</td><td>stderr</td><td>Counts of skipped, updated, and failed entries.</td></tr></tbody></table>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-brain-query.html"><code>/gaia-brain-query</code></a> -- query the brain to verify updated content is reflected.</li>
+          <li><a href="gaia-feed.html"><code>/gaia-feed</code></a> -- ingest new external documents alongside refreshed ones.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>All entries show "skipped"</h3><p>This means every ingested source's content matches what is already stored. This is the expected outcome when nothing has changed upstream.</p>
+        <h3>An entry shows "failed"</h3><p>The source could not be re-fetched. The stale file is preserved. Check that the source URL is still reachable and that the site has not changed its URL structure.</p>
+        <h3>Brain-index validation failed</h3><p>The updated index did not pass schema validation. The prior index is preserved unchanged. Check the error message for details.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-feed.html"><code>/gaia-feed</code></a></td><td>Ingests new external documents. Refresh re-fetches previously ingested ones.</td></tr><tr><td><a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a></td><td>Rebuilds the project-artifact index. Preserves ingested entries unchanged.</td></tr><tr><td><a href="gaia-brain-query.html"><code>/gaia-brain-query</code></a></td><td>Query the brain to see refreshed content alongside project artifacts.</td></tr><tr><td><a href="gaia-brain-health.html"><code>/gaia-brain-health</code></a></td><td>Health view -- ingested entries are excluded from the unlinked surface.</td></tr></tbody></table>
+        <p>For a full explanation of the knowledge layer, see the <a href="../gaia-brain.html">GAIA Brain concept page</a>.</p>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
