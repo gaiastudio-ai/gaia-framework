@@ -76,6 +76,14 @@ jobs:
         #   bats --filter-tags hardware-dependent <test-file>
         env:
           BATS_FILTER_TAGS: '!hardware-dependent'
+          # Pin parallelism to 2 (not the runner's nproc): 2 jobs roughly halves
+          # wall-clock (~15min serial -> ~9-10min, comfortably under the timeout)
+          # while keeping subprocess contention low. A higher degree on the
+          # shared 4-core runner oversubscribes — each test forks yq/python/awk,
+          # and the contention surfaces as resource-starvation timing flakes in
+          # otherwise-deterministic tests. 2 is the conservative speed/stability
+          # balance; raise only with evidence the suite stays green.
+          BATS_JOBS: '2'
         run: |
           bash plugins/gaia/scripts/bats-budget-watch.sh \
             --threshold-seconds 240 \
