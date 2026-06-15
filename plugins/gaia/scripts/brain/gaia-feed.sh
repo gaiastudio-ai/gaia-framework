@@ -76,6 +76,7 @@ _gf_strip_html()           { _gic_strip_html "$@"; }
 _gf_confidence_for_kind()  { _gic_confidence_for_kind "$@"; }
 _gf_safe_fetch_guard()     { _gic_safe_fetch_guard "$@"; }
 _gf_slug_containment_guard() { _gic_slug_containment_guard "$@"; }
+_gf_check_size_cap()         { _gic_check_size_cap "$@"; }
 
 # ---------------------------------------------------------------------------
 # Stage 4: infer metadata (feed-specific — not shared)
@@ -165,14 +166,23 @@ _gf_write_ingested_file() {
   local target="$ingested_dir/${slug}.md"
   local tmpfile="${target}.tmp.$$"
 
-  # Write frontmatter then body. Command substitution strips the trailing
-  # newline from the heredoc, so we re-add it with %s\n. The body gets its
-  # own trailing newline to ensure the file ends cleanly.
+  # Wrap body with content boundary markers (isolation boundary that prevents
+  # ingested text from being interpreted as framework directives).
+  local wrapped_body
+  wrapped_body="$(_gic_wrap_content_boundary "$body")"
+
+  # Write frontmatter then wrapped body. Command substitution strips the
+  # trailing newline from the heredoc, so we re-add it with %s\n. The body
+  # gets its own trailing newline to ensure the file ends cleanly.
   printf '%s\n' "$frontmatter" > "$tmpfile"
-  printf '%s\n' "$body" >> "$tmpfile"
+  printf '%s\n' "$wrapped_body" >> "$tmpfile"
 
   # Atomic rename.
   mv "$tmpfile" "$target"
+
+  # Enforce 0644 file mode (readable by all, writable by owner only).
+  _gic_enforce_file_mode "$target"
+
   printf '%s\n' "$target"
 }
 
@@ -392,7 +402,7 @@ gaia_feed() {
     return 1
   fi
 
-  # Safe-fetch guard (pass-through in V1).
+  # Safe-fetch guard: SSRF blocklist + scheme restriction.
   _gf_safe_fetch_guard "$source" || return $?
 
   # Stage 2: fetch content.
@@ -404,9 +414,19 @@ gaia_feed() {
     return 1
   fi
 
+  # Size cap check on fetched content (when available as a file).
+  if [ -n "$fetched_content" ] && [ -f "$fetched_content" ]; then
+    _gic_check_size_cap "$fetched_content" || return $?
+  fi
+
+  # Strip any pre-existing frontmatter from source content to prevent
+  # prompt injection via inherited frontmatter fields.
+  local defronted_content
+  defronted_content="$(_gic_strip_source_frontmatter "$content")"
+
   # Stage 3: strip HTML.
   local clean_content
-  clean_content="$(_gf_strip_html "$content" "$kind")"
+  clean_content="$(_gf_strip_html "$defronted_content" "$kind")"
 
   # Stage 4: infer metadata.
   local meta
@@ -420,8 +440,9 @@ gaia_feed() {
     tags="$tags_override"
   fi
 
-  # Slug containment guard.
-  _gf_slug_containment_guard "$slug" || return $?
+  # Slug containment guard (realpath containment check).
+  local ingested_dir="$GAIA_KNOWLEDGE_DIR/ingested"
+  _gf_slug_containment_guard "$slug" "$ingested_dir" || return $?
 
   printf 'gaia-feed.sh: slug: %s\n' "$slug" >&2
   printf 'gaia-feed.sh: title: %s\n' "$title" >&2

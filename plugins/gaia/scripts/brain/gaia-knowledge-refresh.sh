@@ -322,6 +322,17 @@ gaia_knowledge_refresh() {
 
     printf 'gaia-knowledge-refresh.sh: refreshing: %s\n' "$key" >&2
 
+    # Safe-fetch guard: SSRF blocklist + scheme restriction on the source URL
+    # before any re-fetch attempt. A source that was safe at first ingest may
+    # resolve to a blocked address later (DNS rebinding, infra changes).
+    if [ -n "$source_url" ] && [ "$source_url" != "null" ]; then
+      if ! _gic_safe_fetch_guard "$source_url"; then
+        printf 'gaia-knowledge-refresh.sh: %s — source URL blocked by safe-fetch guard; skipping\n' "$key" >&2
+        failed=$((failed + 1))
+        continue
+      fi
+    fi
+
     # Resolve ingested file path.
     local ingested_file
     case "$rel_path" in
