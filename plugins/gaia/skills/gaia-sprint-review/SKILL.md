@@ -42,11 +42,11 @@ The verdict is **composite**: Track A (Val text-validation per the per-goal rubr
 
 **This skill MUST run as main-turn Mode A orchestration.** `AskUserQuestion` is invoked at three boundaries: Step 3 pre-Val dispatch confirmation, Step 4 per-goal Track B stakeholder confirmation, Step 8 PM explanation for UNVERIFIED bypass. Forked execution silently strips `AskUserQuestion`; the anti-pattern bats at `gaia-framework/plugins/gaia/tests/gaia-sprint-review-mode-a-anti-pattern.bats` FAILs CI on any `context: fork` directive or stdout-sentinel token (`<<YIELD-STOP`, `<<TURN-END`) regression.
 
-**Track B is a stub today (`delivered: false`).** The per-stack runner replacing the stub lands in a later story.
+**Track B dispatches a dual-loop runner.** The per-stack command loop runs configured execution commands; the manual-test surface loop invokes `dispatch-surface.sh` per surface for interactive or automated manual testing.
 
 ## Operator Quickstart
 
-Run the end-of-sprint review ceremony. Track A dispatches Val with the per-goal rubric; Track B re-runs the configured per-stack execution review (stub today, real runner soon). The two compose into a single verdict that routes the sprint to close (PASSED), correction (FAILED), or the bypass path (UNVERIFIED).
+Run the end-of-sprint review ceremony. Track A dispatches Val with the per-goal rubric; Track B runs the configured per-stack execution commands and invokes manual-test surface dispatch for each of the four surfaces (browser, api, mobile, desktop). The two tracks compose into a single verdict that routes the sprint to close (PASSED), correction (FAILED), or the bypass path (UNVERIFIED).
 
 **First-time invocation.**
 
@@ -136,15 +136,25 @@ Val returns the envelope `{ status, summary, artifacts, findings, next, sentinel
 
 When Val returns PASS or WARNING, capture the per-goal verdicts as Track A's composite. CRITICAL HALTS the skill — no Track B dispatch, no composite computation.
 
-### Step 4 — Track B Execution Dispatch (STUB; the real runner ships later)
+### Step 4 — Track B Execution Dispatch
 
-Invoke the stub:
+Invoke the per-stack execution runner:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/track-b-dispatch.sh --sprint "$SPRINT_ID"
 ```
 
-The stub reads `sprint_review:` from `.gaia/config/project-config.yaml`, iterates the per-stack matrix, and emits a JSON array — one element per configured stack with `verdict: SKIPPED, reason: "real runner not yet shipped"`. This is the deferred-wiring contract; the story's frontmatter carries `delivered: false`.
+The runner reads `sprint_review:` from `.gaia/config/project-config.yaml` and runs two dispatch loops:
+
+1. **Per-stack command loop** — iterates the configured stack matrix (`backend_commands`, `frontend_commands`, `mobile_commands`, `desktop_commands`, `plugin_commands`), invokes each command in the foreground with stdout/stderr streamed live, and emits one JSON envelope per stack with `type: "stack-command"`.
+
+2. **Manual-test surface loop** — iterates the four manual-test surfaces (`browser`, `api`, `mobile`, `desktop`). For each, runs `dispatch-surface.sh` (resolved via sibling path `../../gaia-test-manual/scripts/dispatch-surface.sh`). The dispatch script consults the surface-adapter to determine whether each surface is configured based on project platforms. Configured surfaces emit `PASSED`, `FAILED`, or `PENDING` verdicts; unconfigured surfaces emit `SKIPPED`. Each result is appended to the envelope array with `type: "manual-test"`.
+
+   - **SKIPPED** and **PENDING** surfaces are PASSED-equivalent — they do NOT fail Track B.
+   - **PENDING** surfaces (browser, mobile, desktop) trigger a main-turn Agent dispatch of `/gaia-test-manual` for interactive walkthrough at this step.
+   - If `dispatch-surface.sh` is absent, the manual-test loop is skipped with a warning (graceful degradation).
+
+Track B is **FAILED** iff any envelope verdict is `FAILED` (TIMEOUT already maps to FAILED in the per-stack loop). The composite verdict is the caller's concern (Step 5).
 
 #### Step 4a — Per-goal stakeholder confirmation (AskUserQuestion)
 
@@ -157,7 +167,7 @@ For each sprint goal, fire an `AskUserQuestion` at the main-turn caller level wi
 
 Record the per-goal response into the sprint-review artifact. **This MUST run at the main turn**, not inside the forked Track B script — `AskUserQuestion` is not exposed inside forked skill executions (memory rule `feedback_askuserquestion_forked_skill_gap.md`).
 
-Track B's composite verdict on the stub path is `SKIPPED` (the stub returns SKIPPED per stack). A later story will replace this with the real per-stack runner — `verdict: PASSED|FAILED|UNVERIFIED` per stack, composed into Track B's composite.
+Track B's composite verdict is derived from the envelope array: `PASSED` when all envelopes are PASSED/SKIPPED/PENDING; `FAILED` when any envelope verdict is FAILED. The Track B verdict feeds into the compose-verdict reducer at Step 5.
 
 ### Step 5 — Compose Composite Verdict
 
@@ -175,7 +185,7 @@ ORIGINAL_STATUS=$(printf '%s\n' "$REDUCER_OUT" | sed -n 's/^original_status=//p'
 
 The reducer enforces these rules:
 
-- **PASSED** iff both tracks are PASSED (Track B SKIPPED on the stub path counts as PASSED-equivalent; PARTIAL on Track A does not block).
+- **PASSED** iff both tracks are PASSED (Track B SKIPPED and PENDING count as PASSED-equivalent; PARTIAL on Track A does not block).
 - **FAILED** if either track is FAILED.
 - **UNVERIFIED** if either track is UNVERIFIED and neither is FAILED.
 
@@ -235,6 +245,8 @@ When `$COMPOSITE` is `FAILED`:
 
 4. Emit the canonical handoff: `/gaia-sprint-review: composite verdict FAILED — sprint <id> transitioned to correction; invoke /gaia-correct-course story_injection to inject rework stories, then re-run /gaia-sprint-review after the injected stories reach done`.
 
+**Manual-test findings follow the same envelope → review-gate → action-items pipeline as Val findings.** When Track B's manual-test surface loop produces a FAILED verdict, the corresponding finding is emitted as a `sprint-correction` action-item via the same type-target-resolver path above. The structured evidence (run-record.md + exit-code.log written by `write-evidence.sh`) is referenced in the action-item's context so `/gaia-correct-course` can trace the failure back to its source surface.
+
 The `review → correction` edge acceptance + `story_injection` mechanics are in `/gaia-correct-course`.
 
 ### Step 8 — UNVERIFIED Path: Bypass
@@ -287,7 +299,7 @@ When `$COMPOSITE` is `UNVERIFIED`:
 - **Un-reviewable criteria spec** at `.gaia/artifacts/planning-artifacts/sprint-review-unverifiable-criteria.md`.
 - **sprint-state.sh boundary writers** — `set-goals`, `update-goals`, `set-review-justification`, sprint-level transitions.
 - **`sprint_review:` config section** + `/gaia-config-sprint-review` editor.
-- **Track B per-stack execution runner** (deferred) — replaces the current stub.
+- **Track B dual-loop runner** — per-stack command execution + manual-test surface dispatch via `dispatch-surface.sh`.
 - **Deferred edges** — `/gaia-sprint-plan` 3-lane goal approval + `/gaia-correct-course` review→correction edge + `/gaia-sprint-close` review→closed edge.
 - **Memory rule `feedback_action_items_writer_resolver_bypass.md`**: action-items.yaml writes MUST route through the resolver script.
 - **Memory rule `feedback_askuserquestion_forked_skill_gap.md`**: AskUserQuestion is not exposed inside forked skill executions.
