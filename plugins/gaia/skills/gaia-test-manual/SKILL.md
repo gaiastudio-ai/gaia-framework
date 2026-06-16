@@ -38,7 +38,7 @@ The manual-test skill supports four verification surfaces, each keyed to a proje
 
 | Surface   | Config Signal                          | When Absent         |
 |-----------|----------------------------------------|---------------------|
-| browser   | `platforms` contains `web`             | SKIPPED (dormant)   |
+| browser   | `platforms` contains `web`             | SKIPPED (dormant) — runs pixel-diff when baselines exist |
 | api       | `platforms` contains `server`          | SKIPPED (dormant)   |
 | mobile    | `platforms` contains `ios` or `android`| SKIPPED (dormant)   |
 | desktop   | `sprint_review.desktop_commands` has entries | SKIPPED (dormant) |
@@ -62,6 +62,16 @@ The default surface when none is specified is `api`, for backward compatibility 
 - **`/gaia-test-device-matrix`** — Automated cross-device test matrix execution. Manual testing complements the matrix by covering devices or OS versions that the matrix does not include, or by exercising behaviors that differ across physical hardware in ways emulators miss.
 
 - **`/gaia-config-device-target`** — Configuration editor for the device-target matrix. Not a testing skill itself, but its output (the `device_targets` section) feeds both `/gaia-test-device-matrix` and the manual-test mobile surface's scope decisions.
+
+## Visual Regression (Browser Surface)
+
+When the browser surface runs, `dispatch-surface.sh` captures per-breakpoint screenshots and compares them against per-story design baselines via `pixel-diff.sh`. The baseline directory for each story is resolved through the paths helper (`resolve-artifact-path.sh --kind design_baselines --slug <story-slug>`).
+
+**Thresholds and masking.** The `visual_diff` section in `project-config.yaml` controls comparison behavior. `threshold_percent` (default 0.1) sets the maximum percentage of pixels that may differ before a comparison records FAILED. At-threshold passes; only strictly above fails. `mask_regions` declares rectangular regions (x, y, w, h, label) excluded from comparison before diffing -- use for dynamic content like timestamps, ads, or live data feeds.
+
+**Baseline lifecycle.** When no baseline exists for a story, the visual check records UNVERIFIED (non-blocking). This matches the advisory-gate precedent: a missing baseline never blocks the story-to-done transition. When a baseline exists and the diff exceeds the threshold, the check records FAILED. To update a baseline after an intentional design change, run `approve-baseline.sh --story <slug> --breakpoint <width>`. The approval script requires an interactive terminal and explicit confirmation per breakpoint -- baselines are never auto-accepted. Old baselines are archived under a `previous/` subdirectory and each approval is logged to `baseline-approvals.log`.
+
+**Tool availability.** The pixel-diff comparison requires ImageMagick (`compare`) or `pixelmatch` on PATH. When neither is available, the visual check records UNVERIFIED with a diagnostic naming the missing tool, matching the non-blocking degradation contract.
 
 ## Steps
 

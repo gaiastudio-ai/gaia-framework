@@ -133,10 +133,92 @@ EOF
     exit 0
     ;;
 
-  browser|mobile|desktop)
-    # Non-api surfaces: agent dispatch is handled by SKILL.md; pixel-diff
-    # is deferred. Emit PENDING so the orchestrator knows the surface is
-    # ready for agent-driven walkthrough.
+  browser)
+    # Browser surface: run pixel-diff visual regression if baselines exist.
+    # Source config reader and pixel-diff library.
+    PIXEL_DIFF="$SCRIPT_DIR/pixel-diff.sh"
+    READ_CONFIG="$SCRIPT_DIR/read-visual-diff-config.sh"
+
+    if [ ! -f "$PIXEL_DIFF" ] || [ ! -f "$READ_CONFIG" ]; then
+      printf '{"surface":"browser","verdict":"PENDING","reason":"dispatch ready"}\n'
+      exit 0
+    fi
+
+    # Derive story slug from target
+    story_slug="$(echo "$TARGET" | sed 's/[^a-zA-Z0-9_-]/-/g' | tr '[:upper:]' '[:lower:]')"
+
+    # Source the pixel-diff library
+    # shellcheck source=pixel-diff.sh
+    source "$PIXEL_DIFF"
+
+    # Read config for breakpoints and capture screenshots
+    # shellcheck source=read-visual-diff-config.sh
+    source "$READ_CONFIG"
+    config="${CONFIG_ARG:-}"
+
+    # Determine project root
+    pr="${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-${PROJECT_ROOT:-${PROJECT_PATH:-${PWD}}}}}"
+    if [ -z "$config" ]; then
+      config="${pr}/.gaia/config/project-config.yaml"
+    fi
+
+    # Run pixel-diff (captures are expected to already be in evidence dir)
+    screenshot_dir="$EVIDENCE_DIR/screenshots"
+    mkdir -p "$screenshot_dir"
+
+    # Attempt to capture screenshots if a browser is available
+    CAPTURE="$SCRIPT_DIR/capture-screenshot.sh"
+    if [ -f "$CAPTURE" ]; then
+      breakpoints_raw="$(read_breakpoints "$config")"
+      while IFS= read -r bp; do
+        [ -n "$bp" ] || continue
+        bash "$CAPTURE" --url "$TARGET" --breakpoint "$bp" \
+          --output "$screenshot_dir/screenshot-${bp}.png" 2>/dev/null || true
+      done <<< "$breakpoints_raw"
+    fi
+
+    # Run the pixel diff
+    set +e
+    diff_output="$(run_pixel_diff "$story_slug" "$screenshot_dir" \
+      --project-root "$pr" --config "$config" 2>&1)"
+    set -e
+
+    # Determine verdict from pixel-diff output
+    pixel_verdict="UNVERIFIED"
+    if echo "$diff_output" | tail -1 | grep -qi "^PASSED"; then
+      pixel_verdict="PASSED"
+    elif echo "$diff_output" | tail -1 | grep -qi "^FAILED"; then
+      pixel_verdict="FAILED"
+    fi
+
+    # Write evidence
+    timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    run_record="$(cat <<DIFFEOF
+# Visual Regression Run Record
+
+- **Target:** $TARGET
+- **Surface:** browser
+- **Timestamp:** $timestamp
+- **Verdict:** $pixel_verdict
+
+## Pixel-Diff Output
+
+\`\`\`
+$diff_output
+\`\`\`
+DIFFEOF
+)"
+
+    printf '%s\n' "$run_record" | bash "$WRITE_EVIDENCE" "$EVIDENCE_DIR" "$pixel_verdict"
+
+    printf '{"surface":"browser","verdict":"%s","reason":"pixel-diff"}\n' "$pixel_verdict"
+    exit 0
+    ;;
+
+  mobile|desktop)
+    # Non-browser visual surfaces: agent dispatch is handled by SKILL.md.
+    # Emit PENDING so the orchestrator knows the surface is ready for
+    # agent-driven walkthrough.
     printf '{"surface":"%s","verdict":"PENDING","reason":"dispatch ready"}\n' "$SURFACE"
     exit 0
     ;;
