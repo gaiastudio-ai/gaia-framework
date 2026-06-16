@@ -59,9 +59,11 @@ export _GU_VALIDATE
 _BIW_VALIDATE_OVERRIDE="$_GU_VALIDATE"
 export _BIW_VALIDATE_OVERRIDE
 
-# Source the shared atomic index writer.
+# Source the shared atomic index writer. The _BIW_VALIDATE_OVERRIDE export
+# above ensures the writer uses our validator even on first load (the writer
+# reads _BIW_VALIDATE_OVERRIDE at source-time). No need to reset _BIW_LOADED
+# since unfeed runs in its own subshell — the writer has not been loaded yet.
 # shellcheck source=lib/brain-index-write.sh
-_BIW_LOADED=0
 . "$_gu_self_dir/lib/brain-index-write.sh" || {
   printf 'gaia-unfeed.sh: could not source brain-index-write.sh\n' >&2
   return 1 2>/dev/null || exit 1

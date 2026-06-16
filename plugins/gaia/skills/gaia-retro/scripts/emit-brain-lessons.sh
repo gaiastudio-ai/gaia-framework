@@ -123,10 +123,17 @@ _ebl_assemble_entry() {
     expires_val="\"$expires_at\""
   fi
 
-  # Escape embedded double-quotes in path and synopsis so the YAML stays valid.
-  local safe_path safe_synopsis
-  safe_path="${retro_path//\"/\\\"}"
-  safe_synopsis="${synopsis//\"/\\\"}"
+  # Escape backslashes FIRST, then double-quotes, so the YAML double-quoted
+  # scalar stays valid. Order matters: escaping quotes first would double-escape
+  # the backslash introduced by the quote escape.
+  local safe_path safe_synopsis safe_sprint_id
+  safe_path="${retro_path//\\/\\\\}"
+  safe_path="${safe_path//\"/\\\"}"
+  safe_synopsis="${synopsis//\\/\\\\}"
+  safe_synopsis="${safe_synopsis//\"/\\\"}"
+  # Format-guard sprint_id before it rides in source_url.
+  safe_sprint_id="${sprint_id//\\/\\\\}"
+  safe_sprint_id="${safe_sprint_id//\"/\\\"}"
 
   # Entry-level keys are exactly the 7 allowed by the schema
   # (additionalProperties: false): key, source_type, path, tags, synopsis,
@@ -141,7 +148,7 @@ _ebl_assemble_entry() {
   trust:
     confidence: 1.0
     content_hash: "$content_hash"
-    source_url: "retro:$sprint_id"
+    source_url: "retro:$safe_sprint_id"
     fetched_at: null
     expires_at: $expires_val
   edges: []
