@@ -43,9 +43,13 @@ if [ ! -f "$LIFECYCLE_EVENT" ]; then
   exit 1
 fi
 
+# Build the --data JSON via jq for safe construction — no shell interpolation
+# into JSON, which would break on names containing quotes or backslashes.
+DATA_JSON=$(jq -nc --arg name "$STEP_NAME" '{"step_name":$name}')
+
 exec bash "$LIFECYCLE_EVENT" \
   --type step_boundary \
   --workflow dev-story \
   --step "$STEP_NUM" \
   --story "$STORY_KEY" \
-  --data "{\"step_name\":\"${STEP_NAME}\"}"
+  --data "$DATA_JSON"
