@@ -1287,7 +1287,8 @@ main() {
             if [ -x "$_brain_update_sh" ]; then
               _brain_slug="$(printf '%s' "$gate_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
               _brain_edge_target="${_brain_slug}-${story_key}"
-              "$_brain_update_sh" --add-edge \
+              _brain_manifest="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-$PWD}}/.gaia/knowledge/brain-index.yaml"
+              "$_brain_update_sh" --manifest "$_brain_manifest" --add-edge \
                 --target-key "$story_key" \
                 --edge-type "reviewed-in" \
                 --edge-target "$_brain_edge_target" >/dev/null 2>&1 || true

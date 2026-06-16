@@ -323,3 +323,31 @@ YAML
   [[ "$output" != *"lesson-anti-pattern-bcdef1"* ]]
   [[ "$output" != *"architecture-shard-infra"* ]]
 }
+
+# -- AC1 hardening: backslash-bearing synopsis cannot inject a sibling YAML key
+
+@test "TC-BRN-90 — backslash in synopsis does not inject a sibling YAML key" {
+  cp "$FIX/seed-manifest.yaml" "$MANIFEST"
+
+  # Synopsis containing backslashes — in a YAML double-quoted scalar these
+  # MUST be escaped as \\ or the parser treats them as escape-sequence
+  # introducers (e.g. \U is an 8-digit unicode escape in YAML 1.1).
+  run bash "$EMIT" \
+    --sprint-id sprint-57 \
+    --retro-artifact "$FIX/retro-artifact.md" \
+    --project-root "$PROJ" \
+    --category strategy \
+    --synopsis 'Path C:\Users\dev needs escaping'
+  [ "$status" -eq 0 ]
+
+  # The raw manifest must contain escaped backslashes (\\) inside the
+  # double-quoted synopsis value. Without proper escaping the raw YAML
+  # would contain bare \U and \d.
+  grep -q 'synopsis:' "$MANIFEST"
+
+  # Extract the synopsis line and assert it contains \\ (escaped backslash).
+  local syn_line
+  syn_line="$(grep 'synopsis:' "$MANIFEST" | grep -v '^#' | head -1)"
+  # The line must contain a doubled backslash (\\U or \\d).
+  printf '%s\n' "$syn_line" | grep -qF '\\'
+}
