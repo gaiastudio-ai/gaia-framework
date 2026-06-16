@@ -89,6 +89,10 @@ Invoke `write-evidence.sh <evidence-dir> <verdict> --verify` to validate that bo
 
 Report the final verdict to the user. Surface any `WARNING` or `CRITICAL` findings from the run-record. Suppress `INFO` findings from the user-visible transcript (they remain in the evidence files).
 
+### Step 5b — Record verdict on review-gate ledger
+
+The finalize script records the manual-test verdict on the review-gate extended ledger (the same tier used by test-automate-plan and story-validation). It also appends a row to the persistent verdicts TSV (`.gaia/state/manual-test-verdicts.tsv`) for flakiness tracking. Set `MANUAL_TEST_VERDICT`, `MANUAL_TEST_STORY_KEY`, and optionally `MANUAL_TEST_RUN_ID` before finalize runs. Stories with `manual_verification: true` in frontmatter will see an advisory WARNING on `review -> done` transition if the latest manual-test verdict is FAILED.
+
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-test-manual/scripts/finalize.sh

@@ -202,7 +202,7 @@ fields:
     type: map
     required: false
     default: null
-    description: "Review Gate configuration — required review types and gate ordering before a story transitions to done. Shared team config."
+    description: "Review Gate configuration — required review types and gate ordering before a story transitions to done. Shared team config. Nested keys: manual_test_mode (enum: advisory | gating, default advisory) — controls whether a FAILED manual-test verdict blocks the review-to-done transition (gating) or emits a non-blocking WARNING (advisory)."
 
   team_conventions:
     type: map

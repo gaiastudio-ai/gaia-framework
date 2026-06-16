@@ -866,16 +866,26 @@ _merge_3deep() {
 v_brownfield_tools_runner=$(_merge_3deep brownfield tools runner)
 v_brownfield_tools_image=$(_merge_3deep brownfield tools image)
 
+# review_gate.manual_test_mode — advisory (default) or gating.
+v_review_gate_manual_test_mode=$(merge_nested_key review_gate manual_test_mode)
+
 # Defaults (applied when no layer set a value).
 [ -z "$v_dev_story_tdd_review_threshold" ]          && v_dev_story_tdd_review_threshold="medium"
 [ -z "$v_dev_story_tdd_review_phases" ]             && v_dev_story_tdd_review_phases="[red]"
 [ -z "$v_dev_story_tdd_review_qa_auto_in_yolo" ]    && v_dev_story_tdd_review_qa_auto_in_yolo="true"
 [ -z "$v_dev_story_tdd_review_qa_timeout_seconds" ] && v_dev_story_tdd_review_qa_timeout_seconds="600"
+[ -z "$v_review_gate_manual_test_mode" ]             && v_review_gate_manual_test_mode="advisory"
 
 # Enum validation for threshold. Allowed: off|low|medium|high.
 case "$v_dev_story_tdd_review_threshold" in
   off|low|medium|high) ;;
   *) die "invalid value for dev_story.tdd_review.threshold: '$v_dev_story_tdd_review_threshold' (allowed: off|low|medium|high)" ;;
+esac
+
+# Enum validation for manual_test_mode. Allowed: advisory|gating.
+case "$v_review_gate_manual_test_mode" in
+  advisory|gating) ;;
+  *) die "invalid value for review_gate.manual_test_mode: '$v_review_gate_manual_test_mode' (allowed: advisory|gating)" ;;
 esac
 
 # =============================================================================
@@ -1356,6 +1366,8 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_platforms" ;;
     project_kind)
       printf '%s\n' "$v_project_kind" ;;
+    review_gate.manual_test_mode)
+      printf '%s\n' "$v_review_gate_manual_test_mode" ;;
     # Synthetic key mirroring positional dispatch (see above).
     project_config_path)
       printf '%s\n' "${v_project_root}/config/project-config.yaml" ;;

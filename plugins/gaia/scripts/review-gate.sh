@@ -101,7 +101,7 @@ CANONICAL_VERDICTS=("UNVERIFIED" "PASSED" "FAILED")
 # pattern without overwriting the six canonical Review Gate table rows
 # (which belong to the six downstream review commands). Uses the same
 # ledger-keyed path as test-automate-plan.
-PLAN_ID_GATES=("test-automate-plan" "story-validation")
+PLAN_ID_GATES=("test-automate-plan" "story-validation" "manual-test")
 
 # plan_id canonical regex: alphanumerics plus ._:+- (security guard).
 # Permissive for UUIDs and timestamp-nonce fallbacks; strict against shell injection.
