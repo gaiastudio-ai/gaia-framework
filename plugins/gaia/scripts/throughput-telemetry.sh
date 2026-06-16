@@ -56,6 +56,7 @@ Options:
   --archive-dir <dir>   sprint-archive dir of closed-sprint yamls (extra points join)
   --story-dir <dir>     scan story-file frontmatter for points (fallback join)
   --json                emit a JSON object instead of the text report
+  --step-durations      derive per-step wall-clock from step_boundary events
   --help                this help
 USAGE
   exit 0
@@ -66,6 +67,7 @@ SPRINT_YAML="${SPRINT_STATUS_YAML:-}"
 ARCHIVE_DIR=""
 STORY_DIR=""
 JSON_OUT=0
+STEP_DURATIONS=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -74,6 +76,7 @@ while [ "$#" -gt 0 ]; do
     --archive-dir) ARCHIVE_DIR="${2:-}"; shift 2 ;;
     --story-dir) STORY_DIR="${2:-}"; shift 2 ;;
     --json) JSON_OUT=1; shift ;;
+    --step-durations) STEP_DURATIONS=1; shift ;;
     *) die "unknown argument: $1 (try --help)" ;;
   esac
 done
@@ -257,6 +260,75 @@ median() {
 MED_STORY="$(printf '%b' "$STORY_MINUTES" | median)"
 MED_POINT="$(printf '%b' "$POINT_MINUTES" | median)"
 COUNTED="$(printf '%b' "$STORY_MINUTES" | grep -cE '^[0-9]+$' || true)"
+
+# ---------- Step-boundary derivation (--step-durations) ----------
+# When --step-durations is given, derive per-step wall-clock from step_boundary
+# events. This is a SEPARATE path from the state_transition derivation above.
+# Groups by story_key, orders by step number, and differences consecutive
+# timestamps into per-step durations. The last step in a story is open-ended
+# (no duration emitted). Duplicate step numbers use the FIRST occurrence only.
+
+if [ "$STEP_DURATIONS" -eq 1 ]; then
+  # Extract step_boundary events: story_key <TAB> step <TAB> epoch
+  if command -v jq >/dev/null 2>&1; then
+    STEP_ROWS="$(head -c "$MAX_BYTES" "$EVENTS" \
+      | jq -r 'select(.event_type=="step_boundary") | "\(.story_key)\t\(.step)\t\(.timestamp)"' 2>/dev/null \
+      | awk -F'\t' "$iso_to_epoch_awk"'{ print $1 "\t" $2 "\t" iso2epoch($3) }')"
+  else
+    STEP_ROWS="$(head -c "$MAX_BYTES" "$EVENTS" \
+      | awk "$iso_to_epoch_awk"'
+        /"event_type":"step_boundary"/ {
+          key=""; step=""; ts=""
+          if (match($0, /"story_key":"[^"]*"/)) { key=substr($0,RSTART+13,RLENGTH-14) }
+          if (match($0, /"step":[0-9]+/)) { step=substr($0,RSTART+7,RLENGTH-7) }
+          if (match($0, /"timestamp":"[^"]*"/)) { ts=substr($0,RSTART+13,RLENGTH-14) }
+          if (key!="" && step!="" && ts!="") printf "%s\t%s\t%s\n", key, step, iso2epoch(ts)
+        }')"
+  fi
+
+  # De-dup: keep the FIRST occurrence of each (story_key, step) pair, then
+  # sort by story_key + step and difference consecutive epochs.
+  STEP_DURATION_LINES="$(printf '%s\n' "$STEP_ROWS" | awk -F'\t' '
+    NF==3 {
+      key = $1 SUBSEP $2
+      if (!(key in seen)) {
+        seen[key] = 1
+        n++
+        sk[n] = $1
+        st[n] = $2 + 0
+        ep[n] = $3 + 0
+      }
+    }
+    END {
+      # sort by story_key then step
+      for (i = 1; i <= n; i++)
+        for (j = i + 1; j <= n; j++)
+          if (sk[j] < sk[i] || (sk[j] == sk[i] && st[j] < st[i])) {
+            t = sk[i]; sk[i] = sk[j]; sk[j] = t
+            t = st[i]; st[i] = st[j]; st[j] = t
+            t = ep[i]; ep[i] = ep[j]; ep[j] = t
+          }
+      # difference consecutive same-story steps
+      for (i = 1; i < n; i++) {
+        if (sk[i] == sk[i+1]) {
+          dur = int((ep[i+1] - ep[i]) / 60)
+          if (dur < 0) dur = 0
+          printf "%s\tstep %d\t%d min\n", sk[i], st[i], dur
+        }
+      }
+    }
+  ')"
+
+  # Output step durations
+  printf 'step-boundary-telemetry — derived from %s\n\n' "$EVENTS"
+  printf 'Per-step wall-clock durations:\n'
+  if [ -n "$STEP_DURATION_LINES" ]; then
+    printf '%s\n' "$STEP_DURATION_LINES" | sed 's/^/  /'
+  else
+    printf '  (none)\n'
+  fi
+  exit 0
+fi
 
 # ---------- Output ----------
 if [ "$JSON_OUT" -eq 1 ]; then

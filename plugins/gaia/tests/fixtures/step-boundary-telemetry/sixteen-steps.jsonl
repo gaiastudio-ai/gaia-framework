@@ -1,0 +1,16 @@
+{"timestamp":"2026-06-01T10:00:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":1,"data":{"step_name":"load-story"}}
+{"timestamp":"2026-06-01T10:02:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":2,"data":{"step_name":"update-status"}}
+{"timestamp":"2026-06-01T10:05:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":3,"data":{"step_name":"create-branch"}}
+{"timestamp":"2026-06-01T10:08:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":4,"data":{"step_name":"plan"}}
+{"timestamp":"2026-06-01T10:20:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":5,"data":{"step_name":"tdd-red"}}
+{"timestamp":"2026-06-01T10:35:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":6,"data":{"step_name":"tdd-green"}}
+{"timestamp":"2026-06-01T10:50:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":7,"data":{"step_name":"tdd-refactor"}}
+{"timestamp":"2026-06-01T11:00:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":8,"data":{"step_name":"capture-findings"}}
+{"timestamp":"2026-06-01T11:02:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":9,"data":{"step_name":"definition-of-done"}}
+{"timestamp":"2026-06-01T11:10:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":10,"data":{"step_name":"commit-push"}}
+{"timestamp":"2026-06-01T11:12:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":11,"data":{"step_name":"create-pr"}}
+{"timestamp":"2026-06-01T11:14:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":12,"data":{"step_name":"wait-ci"}}
+{"timestamp":"2026-06-01T11:20:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":13,"data":{"step_name":"merge-pr"}}
+{"timestamp":"2026-06-01T11:22:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":14,"data":{"step_name":"post-completion-gate"}}
+{"timestamp":"2026-06-01T11:24:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":15,"data":{"step_name":"update-review-gate"}}
+{"timestamp":"2026-06-01T11:30:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":200,"story_key":"E950-S1","step":16,"data":{"step_name":"auto-reviews"}}
