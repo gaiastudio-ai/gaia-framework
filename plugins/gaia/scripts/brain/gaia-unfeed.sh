@@ -50,26 +50,22 @@ _gu_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
   return 1 2>/dev/null || exit 1
 }
 
-# Source the shared atomic index writer.
-# shellcheck source=lib/brain-index-write.sh
-. "$_gu_self_dir/lib/brain-index-write.sh" || {
-  printf 'gaia-unfeed.sh: could not source brain-index-write.sh\n' >&2
-  return 1 2>/dev/null || exit 1
-}
-
 # Sibling validator (used by the shared writer, but also allow test override).
 _GU_VALIDATE="${_GU_VALIDATE:-$_gu_self_dir/validate-brain-index.sh}"
 export _GU_VALIDATE
 
-# Override the shared writer's validator path if the caller set _GU_VALIDATE.
-if [ -n "${_GU_VALIDATE:-}" ]; then
-  _BIW_VALIDATE_OVERRIDE="$_GU_VALIDATE"
-  export _BIW_VALIDATE_OVERRIDE
-  # Re-source the writer to pick up the override (it has an idempotent guard,
-  # so we need to reset it).
-  _BIW_LOADED=0
-  . "$_gu_self_dir/lib/brain-index-write.sh"
-fi
+# Set the validator override BEFORE sourcing the writer so the writer picks
+# it up on its single load (no need to re-source past the idempotent guard).
+_BIW_VALIDATE_OVERRIDE="$_GU_VALIDATE"
+export _BIW_VALIDATE_OVERRIDE
+
+# Source the shared atomic index writer.
+# shellcheck source=lib/brain-index-write.sh
+_BIW_LOADED=0
+. "$_gu_self_dir/lib/brain-index-write.sh" || {
+  printf 'gaia-unfeed.sh: could not source brain-index-write.sh\n' >&2
+  return 1 2>/dev/null || exit 1
+}
 
 # MOC renderer (best-effort).
 _GU_RENDER_MOC="${_GU_RENDER_MOC:-$_gu_self_dir/render-moc.sh}"
@@ -172,12 +168,26 @@ print("no")
 sys.exit(1)
 PYEOF
   else
-    # Awk fallback: look for key + source_type pattern.
+    # Awk fallback: look for key + source_type: ingested within the same
+    # entry block. Indent-flexible: handles both PyYAML (column-0 dash,
+    # unquoted scalars) and awk-register (2-space dash, quoted scalars).
+    # Note: awk "exit N" inside a rule body runs the END block, so a
+    # "done" flag prevents END from duplicating the output.
     if awk -v slug="$slug" '
-      /key:/ && $0 ~ "\"" slug "\"" { found_key=1; next }
-      found_key && /source_type: ingested/ { print "yes"; exit 0 }
-      found_key && /^  - key:/ { found_key=0 }
-      END { if (!found_key) exit 1 }
+      /^[[:space:]]*- key:/ {
+        if (found_key && found_ingested) { done=1; print "yes"; exit 0 }
+        found_key=0; found_ingested=0
+        if ($0 ~ "key:[[:space:]]+\"?" slug "\"?[[:space:]]*$") found_key=1
+        next
+      }
+      found_key && /^[[:space:]]*source_type:[[:space:]]*"?ingested"?[[:space:]]*$/ {
+        found_ingested=1; next
+      }
+      END {
+        if (done) exit 0
+        if (found_key && found_ingested) { print "yes"; exit 0 }
+        exit 1
+      }
     ' "$manifest" 2>/dev/null; then
       return 0
     else

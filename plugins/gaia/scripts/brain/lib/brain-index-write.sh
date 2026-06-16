@@ -223,14 +223,21 @@ PYEOF
     # Fallback: awk-based removal for environments without python3+PyYAML.
     #
     # The awk must match by key AND source_type: ingested. An entry block
-    # starts at "  - key:" and includes all subsequent lines until the next
-    # "  - key:" or EOF. We buffer each block, inspect it for the slug AND
-    # source_type: ingested, and only drop the block that matches both.
-    # Blocks with the same key but a different source_type are emitted.
+    # starts at a line matching "- key:" (with optional leading whitespace)
+    # and includes all subsequent lines until the next such line or EOF.
+    #
+    # Indentation flexibility: manifests written by PyYAML use column-0
+    # list items ("- key: slug" with 2-space field indent and unquoted
+    # scalars). Manifests written by the awk register path or hand-authored
+    # use 2-space list items ("  - key: \"slug\"" with 4-space field indent
+    # and quoted scalars). The de-register awk must handle both.
+    #
+    # Key matching accepts both quoted ("slug") and unquoted (slug) forms.
+    # source_type matching accepts any leading whitespace.
     awk -v slug="$slug" '
       BEGIN { in_block=0; buf=""; is_target=0; is_ingested=0; found=0 }
 
-      /^  - key:/ {
+      /^[[:space:]]*- key:/ {
         # Flush the previous block.
         if (in_block) {
           if (is_target && is_ingested) {
@@ -242,14 +249,15 @@ PYEOF
         # Start a new block.
         in_block = 1
         buf = $0 "\n"
-        is_target = ($0 ~ "key: \"" slug "\"") ? 1 : 0
+        # Match both quoted and unquoted key values.
+        is_target = ($0 ~ "key:[[:space:]]+\"?" slug "\"?[[:space:]]*$") ? 1 : 0
         is_ingested = 0
         next
       }
 
       in_block {
         buf = buf $0 "\n"
-        if ($0 ~ /^    source_type: ingested/) {
+        if ($0 ~ /^[[:space:]]*source_type:[[:space:]]*"?ingested"?[[:space:]]*$/) {
           is_ingested = 1
         }
         next
