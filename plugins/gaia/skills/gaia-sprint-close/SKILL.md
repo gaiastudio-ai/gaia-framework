@@ -160,6 +160,17 @@ When the new review→closed path is taken, Step 4 (legacy yaml write) is SKIPPE
 
 - Emit a single-line confirmation to stdout: `sprint {id} closed at {iso}; archive: {path}; lifecycle event recorded`.
 
+### Step 7b — Advisory: per-story step report (best-effort)
+
+After the close confirmation, surface the per-story step report as a best-effort advisory. This is read-only and never blocks the close ceremony — failures are logged and swallowed.
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/step-report.sh" \
+  --events "${MEMORY_PATH:-${PROJECT_PATH:-.}/.gaia/memory}/lifecycle-events.jsonl" 2>/dev/null || true
+```
+
+The report joins per-step timing and approximate per-step token estimates into per-story tables with rollup totals. When the events file is empty or absent, the advisory emits nothing. Token estimates are approximate and labelled as such.
+
 ## Inputs
 
 - Positional argument: none.
