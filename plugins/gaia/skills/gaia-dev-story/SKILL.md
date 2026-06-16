@@ -97,6 +97,18 @@ This loads `.gaia/artifacts/implementation-artifacts/.../<story-key>-*.md`, reso
 - The PostToolUse hook fires `checkpoint.sh` automatically after every Edit/Write -- you do not need to manually checkpoint file mutations.
 - Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `.gaia/artifacts/planning-artifacts/epics/` are FORBIDDEN.
 
+## Observability: per-step timing and token instrumentation
+
+Each principal step emits a `step_boundary` lifecycle event via `emit-step-boundary.sh`. The script accepts an optional `--tokens <json>` flag carrying a cumulative context-window snapshot (token counts only). When available, pass the snapshot so downstream telemetry can derive approximate per-step token estimates. When unavailable, omit the flag -- the event lands with timing data only and the token column renders `n/a` (graceful-skip).
+
+**Substrate constraint:** the context-window usage snapshot is observable by the orchestrator at turn boundaries but there is no shell-callable API to query it mid-turn. Per-step token numbers are therefore best-effort estimates derived from differencing consecutive cumulative snapshots. They are NEVER exact per-step counts -- cache reads, context compaction, and out-of-band turns confound the diff. Every downstream consumer labels these numbers as approximate.
+
+**Privacy hard guarantee:** the `--tokens` payload MUST contain ONLY numeric fields (token counts). The script validates that all scalar values are numbers and silently drops any payload containing a string -- prompt/response text can never land in the telemetry stream.
+
+**Usage:** `emit-step-boundary.sh <step> <name> <key> [--tokens '{"input_tokens":N,"output_tokens":N,"cache_creation_input_tokens":N,"cache_read_input_tokens":N}']`
+
+Sub-step timing (2a, 2b, 3b, 5a, 6a, 6b, 7a, 7b, 14b) is out of scope for v1 -- only the 16 principal steps emit boundary events.
+
 ## Steps
 
 ### Step 1 -- Load Story
