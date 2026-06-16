@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.195.0] — 2026-06-16
+
+### Added
+
+- **GAIA Brain lesson layer (epic E110, sprint-60):** retrospectives now emit
+  first-class tagged `lesson` entries to the brain index; a net-new partitioned
+  `update-brain-index.sh` lesson/edge writer with an explicit single-writer
+  boundary; event-driven freshness hooks wire the writer into the story→done and
+  review-write lifecycle paths (idempotent, with reindex carry-forward); and a
+  sanctioned `gaia-unfeed` command removes a previously-ingested document
+  (the inverse of `gaia-feed`) with two-layer deletion containment.
+- **Dev-step observability (epic E112, sprint-60):** per-step `step_boundary`
+  lifecycle events at each principal `/gaia-dev-story` boundary with per-step
+  wall-clock derivation; best-effort per-step token capture from the
+  context-window snapshot, guarded so only numeric counts (never prompt or
+  response text) reach the telemetry; and a read-only per-story report that
+  joins timing and token estimates into per-step rows plus per-story totals,
+  surfaced at sprint close and review.
+
 ## [1.194.1] — 2026-06-15
 
 ### Changed

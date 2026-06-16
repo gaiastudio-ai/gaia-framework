@@ -147,8 +147,13 @@ mtime() {
 @test "TC-SPRINT-CLOSE-4: refuses when retro doc absent, no yaml mutation" {
   seed_yaml "sprint-41" "active" 3 3
   # Deliberately do NOT seed_retro
-  local mtime_before
-  mtime_before=$(mtime "$YAML")
+  # Assert no-mutation by CONTENT HASH, not mtime: a refusal that reads and
+  # rewrites byte-identical YAML, or a coarse-resolution / under-load
+  # filesystem clock, can change mtime without changing content. Content hash
+  # is the cross-platform invariant (matches TC-SPRINT-CLOSE-7) and is stable
+  # under parallel test execution.
+  local hash_before
+  hash_before=$(shasum -a 256 "$YAML" 2>/dev/null | awk '{print $1}')
   [ -x "$FINALIZE" ]
   run "$FINALIZE"
   [ "$status" -ne 0 ]
@@ -156,9 +161,9 @@ mtime() {
   [[ "$output" == *"retro doc not found for sprint-41"* ]]
   [[ "$output" == *"/gaia-retro"* ]]
   [ "$(yaml_status)" = "active" ]
-  local mtime_after
-  mtime_after=$(mtime "$YAML")
-  [ "$mtime_before" = "$mtime_after" ]
+  local hash_after
+  hash_after=$(shasum -a 256 "$YAML" 2>/dev/null | awk '{print $1}')
+  [ "$hash_before" = "$hash_after" ]
   [ ! -f "$LIFECYCLE" ]
 }
 
@@ -167,17 +172,19 @@ mtime() {
 @test "TC-SPRINT-CLOSE-5: refuses when non-done stories present without --force-with-rollover" {
   seed_yaml "sprint-41" "active" 2 3
   seed_retro "sprint-41"
-  local mtime_before
-  mtime_before=$(mtime "$YAML")
+  # No-mutation asserted by content hash (see TC-SPRINT-CLOSE-4 rationale) —
+  # mtime equality is flaky under parallel execution.
+  local hash_before
+  hash_before=$(shasum -a 256 "$YAML" 2>/dev/null | awk '{print $1}')
   [ -x "$FINALIZE" ]
   run "$FINALIZE"
   [ "$status" -ne 0 ]
   # Must list the non-done story key.
   [[ "$output" == *"E81-S3"* ]]
   [ "$(yaml_status)" = "active" ]
-  local mtime_after
-  mtime_after=$(mtime "$YAML")
-  [ "$mtime_before" = "$mtime_after" ]
+  local hash_after
+  hash_after=$(shasum -a 256 "$YAML" 2>/dev/null | awk '{print $1}')
+  [ "$hash_before" = "$hash_after" ]
 }
 
 # ---------- TC-SPRINT-CLOSE-6: Force-with-rollover (AC6) ----------
@@ -200,16 +207,18 @@ mtime() {
 @test "TC-SPRINT-CLOSE-6b: --force-with-rollover with wrong key refuses with mismatch error" {
   seed_yaml "sprint-41" "active" 2 3
   seed_retro "sprint-41"
-  local mtime_before
-  mtime_before=$(mtime "$YAML")
+  # No-mutation asserted by content hash (see TC-SPRINT-CLOSE-4 rationale) —
+  # mtime equality is flaky under parallel execution.
+  local hash_before
+  hash_before=$(shasum -a 256 "$YAML" 2>/dev/null | awk '{print $1}')
   [ -x "$FINALIZE" ]
   run "$FINALIZE" --force-with-rollover "E81-S2"
   [ "$status" -ne 0 ]
   [[ "$output" == *"mismatch"* ]] || [[ "$output" == *"E81-S3"* ]]
   [ "$(yaml_status)" = "active" ]
-  local mtime_after
-  mtime_after=$(mtime "$YAML")
-  [ "$mtime_before" = "$mtime_after" ]
+  local hash_after
+  hash_after=$(shasum -a 256 "$YAML" 2>/dev/null | awk '{print $1}')
+  [ "$hash_before" = "$hash_after" ]
 }
 
 # ---------- TC-SPRINT-CLOSE-7: Idempotent re-close (AC7) ----------

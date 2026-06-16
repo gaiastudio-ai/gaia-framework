@@ -178,6 +178,9 @@ _memory_write_lines() {
 
 # _manifest_writer_files DIR — files under DIR containing a write-shaped op
 # against a brain-index.yaml-derived variable (the single-writer detector).
+# Note: feed and unfeed delegate writes through lib/brain-index-write.sh via
+# function calls, which the taint analysis cannot follow. Those are verified
+# separately in the sanctioned-writer test.
 _manifest_writer_files() {
   local dir="$1" f hits
   for f in "$dir"/*.sh; do
@@ -259,37 +262,61 @@ EOS
 }
 
 # ---------------------------------------------------------------------------
-# AC3 — partitioned ownership: the manifest has exactly three sanctioned
-# writers, each owning a distinct source_type partition or lifecycle.
+# AC3 — partitioned ownership: the manifest has exactly four direct writers
+# plus a shared atomic helper used by feed and unfeed.
+#
+# Direct writers (detected by the taint-based static analysis):
 #   - gaia-brain-reindex.sh         -> project-artifact partition
-#   - gaia-feed.sh                  -> ingested partition (initial ingest)
 #   - gaia-knowledge-refresh.sh     -> ingested partition (re-fetch lifecycle)
-# Any OTHER manifest writer is still forbidden.
+#   - update-brain-index.sh         -> lesson partition (incremental updates)
+#
+# Indirect writers (delegate through the shared atomic helper):
+#   - gaia-feed.sh                  -> ingested partition (initial ingest)
+#   - gaia-unfeed.sh                -> ingested partition (removal)
+#
+# Shared atomic helper:
+#   - lib/brain-index-write.sh      -> sibling-tempfile -> validate -> mv
+#
+# The taint-based detector sees 3 direct writers. Feed and unfeed delegate
+# manifest writes through function calls to the shared helper, which the
+# static taint analysis cannot follow across function boundaries. We verify
+# those two source the shared helper explicitly.
 # ---------------------------------------------------------------------------
 
-@test "the knowledge manifest is written by exactly the three sanctioned partition owners" {
+@test "the knowledge manifest is written by exactly the sanctioned partition owners" {
   local writers
   writers="$(_manifest_writer_files "$BRAIN_DIR")"
   [ -n "$writers" ]
-  # Exactly three writers.
+  # Three direct writers detected by taint analysis.
   [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 3 ]
   # The reindex sweep (project-artifact partition).
   printf '%s\n' "$writers" | grep -q 'gaia-brain-reindex\.sh'
-  # The ingestion writer (ingested partition).
-  printf '%s\n' "$writers" | grep -q 'gaia-feed\.sh'
   # The refresh lifecycle (ingested partition — re-fetch).
   printf '%s\n' "$writers" | grep -q 'gaia-knowledge-refresh\.sh'
+  # The lesson partition writer (incremental lesson/edge updates).
+  printf '%s\n' "$writers" | grep -q 'update-brain-index\.sh'
+
+  # Feed and unfeed delegate manifest writes through the shared atomic helper.
+  # Verify they source it.
+  grep -q 'brain-index-write\.sh' "$BRAIN_DIR/gaia-feed.sh"
+  grep -q 'brain-index-write\.sh' "$BRAIN_DIR/gaia-unfeed.sh"
+  # The shared helper itself exists and contains the atomic mv.
+  [ -f "$BRAIN_DIR/lib/brain-index-write.sh" ]
+  grep -q 'mv "$tmpfile" "$manifest"' "$BRAIN_DIR/lib/brain-index-write.sh"
 }
 
 @test "no script outside the brain dir carries a manifest write" {
   # Widen the scope to the whole scripts tree: any script that writes a
-  # brain-index.yaml-derived variable must be one of the three sanctioned writers.
+  # brain-index.yaml-derived variable must be one of the five sanctioned writers.
   local f hits rc=0
   while IFS= read -r f; do
     [ -f "$f" ] || continue
     [ "$f" = "$REINDEX" ] && continue
     [ "$f" = "$BRAIN_DIR/gaia-feed.sh" ] && continue
+    [ "$f" = "$BRAIN_DIR/gaia-unfeed.sh" ] && continue
     [ "$f" = "$BRAIN_DIR/gaia-knowledge-refresh.sh" ] && continue
+    [ "$f" = "$BRAIN_DIR/update-brain-index.sh" ] && continue
+    [ "$f" = "$BRAIN_DIR/lib/brain-index-write.sh" ] && continue
     hits="$(_brain_indirect_writes "$f" 'brain-index\.yaml')"
     if [ -n "$hits" ]; then
       printf 'UNEXPECTED MANIFEST WRITER %s:\n%s\n' "$f" "$hits" >&2
@@ -301,18 +328,20 @@ EOF
   [ "$rc" -eq 0 ]
 }
 
-@test "the partitioned-writer guard bites a rogue third manifest writer" {
+@test "the partitioned-writer guard bites a rogue manifest writer" {
   # Self-test: inject a throwaway script that writes the manifest THROUGH a
   # variable (the realistic form — the literal never appears on the write line).
-  # The guard must flag it as an unexpected writer alongside the two legitimate ones.
+  # The guard must flag it as an unexpected writer alongside the three direct
+  # writers (reindex, refresh, update-brain-index).
   local injdir="$TEST_TMP/inj-brain"
   mkdir -p "$injdir"
-  # Copy the two sanctioned writers so the directory has them.
+  # Copy the three direct sanctioned writers so the directory mirrors production.
   cp "$REINDEX" "$injdir/gaia-brain-reindex.sh"
-  cp "$BRAIN_DIR/gaia-feed.sh" "$injdir/gaia-feed.sh"
+  cp "$BRAIN_DIR/gaia-knowledge-refresh.sh" "$injdir/gaia-knowledge-refresh.sh"
+  cp "$BRAIN_DIR/update-brain-index.sh" "$injdir/update-brain-index.sh"
   cat > "$injdir/rogue-writer.sh" <<'EOS'
 #!/usr/bin/env bash
-# A rogue third writer that reaches the manifest through a variable.
+# A rogue writer that reaches the manifest through a variable.
 KDIR="$PROJ/.gaia/knowledge"
 m="$KDIR/brain-index.yaml"
 tmp="$(mktemp)"
@@ -321,8 +350,8 @@ mv "$tmp" "$m"
 EOS
   local writers
   writers="$(_manifest_writer_files "$injdir")"
-  # Three writers now present; the rogue one must be among them.
-  [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 3 ]
+  # Four writers now present (three sanctioned + one rogue).
+  [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 4 ]
   printf '%s\n' "$writers" | grep -q 'rogue-writer.sh'
 }
 
@@ -349,6 +378,15 @@ EOS
   grep -qE 'mktemp[[:space:]]+"\$\{?out_manifest\}?\.tmp' "$REINDEX"
   # Atomic rename of the tempfile onto the manifest path.
   grep -qE 'mv[[:space:]]+"\$manifest_tmp"[[:space:]]+"\$out_manifest"' "$REINDEX"
+}
+
+@test "the partitioned lesson writer uses a sibling tempfile and an atomic rename" {
+  local updater="$BRAIN_DIR/update-brain-index.sh"
+  [ -f "$updater" ]
+  # Sibling tempfile created in the manifest's own directory.
+  grep -qE 'mktemp[[:space:]]+"\$\{?manifest_dir\}?/\.ubi-tmp' "$updater"
+  # Atomic rename of the tempfile onto the manifest path.
+  grep -qE 'mv[[:space:]]+"\$tmp"[[:space:]]+"\$manifest"' "$updater"
 }
 
 # ---------------------------------------------------------------------------

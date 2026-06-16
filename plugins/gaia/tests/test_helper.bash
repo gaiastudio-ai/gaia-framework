@@ -41,3 +41,34 @@ run_script() {
   local name="$1"; shift
   run "$SCRIPTS_DIR/$name" "$@"
 }
+
+# ---------------------------------------------------------------------------
+# Non-vacuous negative assertions.
+#
+# A bare `! grep -q PATTERN file` does NOT fail a bats test: the `!` prefix
+# exempts the command from the set -e that bats relies on to detect a failed
+# assertion, so the negation can never abort the test. Every such line is a
+# silently vacuous assertion. These helpers run the match WITHOUT a `!`
+# prefix and assert on the captured status, so a violated expectation aborts
+# the test as intended.
+# ---------------------------------------------------------------------------
+
+# assert_file_excludes FILE PATTERN — fail if PATTERN (fixed string) is present.
+assert_file_excludes() {
+  local file="$1" pattern="$2"
+  if grep -qF -- "$pattern" "$file"; then
+    printf 'assert_file_excludes: unexpected match for %s in %s\n' "$pattern" "$file" >&2
+    return 1
+  fi
+  return 0
+}
+
+# assert_file_contains FILE PATTERN — fail if PATTERN (fixed string) is absent.
+assert_file_contains() {
+  local file="$1" pattern="$2"
+  if ! grep -qF -- "$pattern" "$file"; then
+    printf 'assert_file_contains: missing expected %s in %s\n' "$pattern" "$file" >&2
+    return 1
+  fi
+  return 0
+}

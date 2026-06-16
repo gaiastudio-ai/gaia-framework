@@ -1274,6 +1274,27 @@ main() {
             >/dev/null 2>&1 || true
         fi
       fi
+
+      # Brain knowledge-layer freshness hook: append a reviewed-in edge to the
+      # story node in the brain-index manifest when a review lands with a
+      # PASSED or FAILED verdict. UNVERIFIED is the seed state — nothing was
+      # reviewed, so no edge is created. Best-effort — never fails the gate
+      # write. Guarded by -x so it no-ops when the writer is absent.
+      case "$verdict" in
+        PASSED|FAILED)
+          if [ -z "$plan_id" ] && [ -n "$story_key" ]; then
+            _brain_update_sh="$(cd "$(dirname "$0")" && pwd)/brain/update-brain-index.sh"
+            if [ -x "$_brain_update_sh" ]; then
+              _brain_slug="$(printf '%s' "$gate_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
+              _brain_edge_target="${_brain_slug}-${story_key}"
+              "$_brain_update_sh" --add-edge \
+                --target-key "$story_key" \
+                --edge-type "reviewed-in" \
+                --edge-target "$_brain_edge_target" >/dev/null 2>&1 || true
+            fi
+          fi
+          ;;
+      esac
       ;;
   esac
 }

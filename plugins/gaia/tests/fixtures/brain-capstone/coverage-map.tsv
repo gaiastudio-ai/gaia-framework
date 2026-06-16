@@ -23,3 +23,28 @@ TC-BRN-22	brain-reindex.bats	removing a source drops its entry from both the man
 TC-BRN-23	brain-reindex-perf.bats	a 500-artifact corpus completes within 120 seconds
 TC-BRN-24	brain-reindex-perf.bats	sprint-close reindex overhead stays under 30 seconds
 TC-BRN-25	brain-index-schema.bats	the ingested source_type is schema-reserved and validates
+TC-BRN-65	brain-retro-lesson.bats	emit one strategy lesson produces a lesson entry in brain-index.yaml
+TC-BRN-66	brain-retro-lesson.bats	five-category payload produces 5 lesson entries with all category tags
+TC-BRN-67	brain-retro-lesson.bats	lesson entry path is non-empty and points to the retro artifact
+TC-BRN-68	brain-retro-lesson.bats	source_url carries retro provenance and confidence is numeric 1.0
+TC-BRN-69	brain-retro-lesson.bats	default expires_at is null and explicit expiry is honoured
+TC-BRN-70	brain-retro-lesson.bats	emitted manifest validates against brain-index.schema.json
+TC-BRN-71	brain-retro-lesson.bats	malformed lessons are rejected and manifest is unchanged
+TC-BRN-72	brain-retro-lesson.bats	gaia-brain-query --category strategy returns only strategy lessons
+TC-BRN-73	brain-update-index.bats	update-brain-index.sh writes only lesson entries; project-artifact rows are byte-identical
+TC-BRN-74	brain-update-index.bats	edge mutation does not alter the source_type of existing entries
+TC-BRN-75	brain-freshness-hooks.bats	transition story→done invokes update-brain-index.sh to mark node closed
+TC-BRN-76	brain-freshness-hooks.bats	story→done links final reviews via reviewed-in edges
+TC-BRN-77	brain-freshness-hooks.bats	review-gate.sh review-write appends a reviewed-in edge
+TC-BRN-78	brain-freshness-hooks.bats	repeated lifecycle events produce no duplicate edges
+TC-BRN-79	brain-freshness-hooks.bats	full gaia-brain-reindex sweep preserves lesson entries verbatim
+TC-BRN-80	brain-freshness-hooks.bats	lesson entries survive a full index rebuild
+TC-BRN-81	brain-unfeed.bats	unfeed removes the ingested file and its brain-index entry
+TC-BRN-82	brain-unfeed.bats	atomic de-register preserves prior index when validation fails
+TC-BRN-83	brain-unfeed.bats	unfeed never removes a project-artifact entry sharing the slug
+TC-BRN-84	brain-unfeed.bats	unfeed on absent slug exits 0 with nothing-to-remove message
+TC-BRN-85	brain-unfeed.bats	containment guard refuses adversarial slugs with traversal sequences
+TC-BRN-86	brain-unfeed.bats	MOC is re-rendered after successful removal and entry is gone
+TC-BRN-87	brain-unfeed.bats	removal succeeds with warning when render-moc.sh is unavailable
+TC-BRN-88	brain-unfeed.bats	unfeed with dual entries removes ingested and preserves project-artifact
+TC-BRN-89	brain-unfeed.bats	awk fallback removes only ingested entry when dual entries share a key

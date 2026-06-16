@@ -56,6 +56,7 @@ Options:
   --archive-dir <dir>   sprint-archive dir of closed-sprint yamls (extra points join)
   --story-dir <dir>     scan story-file frontmatter for points (fallback join)
   --json                emit a JSON object instead of the text report
+  --step-durations      derive per-step wall-clock from step_boundary events
   --help                this help
 USAGE
   exit 0
@@ -66,6 +67,7 @@ SPRINT_YAML="${SPRINT_STATUS_YAML:-}"
 ARCHIVE_DIR=""
 STORY_DIR=""
 JSON_OUT=0
+STEP_DURATIONS=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -74,6 +76,7 @@ while [ "$#" -gt 0 ]; do
     --archive-dir) ARCHIVE_DIR="${2:-}"; shift 2 ;;
     --story-dir) STORY_DIR="${2:-}"; shift 2 ;;
     --json) JSON_OUT=1; shift ;;
+    --step-durations) STEP_DURATIONS=1; shift ;;
     *) die "unknown argument: $1 (try --help)" ;;
   esac
 done
@@ -257,6 +260,135 @@ median() {
 MED_STORY="$(printf '%b' "$STORY_MINUTES" | median)"
 MED_POINT="$(printf '%b' "$POINT_MINUTES" | median)"
 COUNTED="$(printf '%b' "$STORY_MINUTES" | grep -cE '^[0-9]+$' || true)"
+
+# ---------- Step-boundary derivation (--step-durations) ----------
+# When --step-durations is given, derive per-step wall-clock from step_boundary
+# events. This is a SEPARATE path from the state_transition derivation above.
+# Groups by story_key, orders by step number, and differences consecutive
+# timestamps into per-step durations. The last step in a story is open-ended
+# (no duration emitted). Duplicate step numbers use the FIRST occurrence only.
+
+if [ "$STEP_DURATIONS" -eq 1 ]; then
+  # Extract step_boundary events: story_key <TAB> step <TAB> epoch <TAB> tokens_json
+  # The tokens_json column carries the raw tokens_snapshot object when present,
+  # or the literal "null" when the event has no token data. This column is
+  # pass-through for the awk dedup/diff stage below.
+  if command -v jq >/dev/null 2>&1; then
+    STEP_ROWS="$(head -c "$MAX_BYTES" "$EVENTS" \
+      | jq -r 'select(.event_type=="step_boundary") | "\(.story_key)\t\(.step)\t\(.timestamp)\t\(.data.tokens_snapshot // "null" | tostring)"' 2>/dev/null \
+      | awk -F'\t' "$iso_to_epoch_awk"'{ print $1 "\t" $2 "\t" iso2epoch($3) "\t" $4 }')"
+  else
+    STEP_ROWS="$(head -c "$MAX_BYTES" "$EVENTS" \
+      | awk "$iso_to_epoch_awk"'
+        /"event_type":"step_boundary"/ {
+          key=""; step=""; ts=""
+          if (match($0, /"story_key":"[^"]*"/)) { key=substr($0,RSTART+13,RLENGTH-14) }
+          if (match($0, /"step":[0-9]+/)) { step=substr($0,RSTART+7,RLENGTH-7) }
+          if (match($0, /"timestamp":"[^"]*"/)) { ts=substr($0,RSTART+13,RLENGTH-14) }
+          if (key!="" && step!="" && ts!="") printf "%s\t%s\t%s\tnull\n", key, step, iso2epoch(ts)
+        }')"
+  fi
+
+  # De-dup: keep the FIRST occurrence of each (story_key, step) pair, then
+  # sort by story_key + step and difference consecutive epochs.
+  # Now also carries tokens_json as a 4th column for the token-diff derivation.
+  STEP_DURATION_LINES="$(printf '%s\n' "$STEP_ROWS" | awk -F'\t' '
+    NF>=3 {
+      key = $1 SUBSEP $2
+      if (!(key in seen)) {
+        seen[key] = 1
+        n++
+        sk[n] = $1
+        st[n] = $2 + 0
+        ep[n] = $3 + 0
+        tk[n] = (NF >= 4) ? $4 : "null"
+      }
+    }
+    END {
+      # sort by story_key then step
+      for (i = 1; i <= n; i++)
+        for (j = i + 1; j <= n; j++)
+          if (sk[j] < sk[i] || (sk[j] == sk[i] && st[j] < st[i])) {
+            t = sk[i]; sk[i] = sk[j]; sk[j] = t
+            t = st[i]; st[i] = st[j]; st[j] = t
+            t = ep[i]; ep[i] = ep[j]; ep[j] = t
+            t = tk[i]; tk[i] = tk[j]; tk[j] = t
+          }
+      # difference consecutive same-story steps
+      for (i = 1; i < n; i++) {
+        if (sk[i] == sk[i+1]) {
+          dur = int((ep[i+1] - ep[i]) / 60)
+          if (dur < 0) dur = 0
+          printf "%s\tstep %d\t%d min\t%s\t%s\n", sk[i], st[i], dur, tk[i], tk[i+1]
+        }
+      }
+    }
+  ')"
+
+  # Output step durations + per-step token estimates (best-effort).
+  # Token estimates are derived by differencing consecutive tokens_snapshot
+  # fields. Each derived number is labelled "approx" — these are estimates
+  # derived from cumulative context-window snapshots, never exact per-step
+  # counts. Negative diffs (context compaction) are clamped to n/a.
+  printf 'step-boundary-telemetry — derived from %s\n\n' "$EVENTS"
+  printf 'Per-step wall-clock durations:\n'
+  # Format a token field: number -> "~N tok (approx)", null/empty -> "n/a".
+  # Defined once outside the loop to avoid per-iteration redefinition.
+  _fmt_token_field() {
+    local val="$1" label="$2"
+    if [ -z "$val" ] || [ "$val" = "null" ]; then
+      printf '%s: n/a' "$label"
+    else
+      printf '%s: ~%s tok (approx)' "$label" "$val"
+    fi
+  }
+
+  if [ -n "$STEP_DURATION_LINES" ]; then
+    while IFS=$'\t' read -r sk step dur tk_cur tk_next; do
+      [ -n "$sk" ] || continue
+      # Derive per-step token estimate when both snapshots are present.
+      TOKEN_EST=""
+      if [ "$tk_cur" != "null" ] && [ "$tk_next" != "null" ] && command -v jq >/dev/null 2>&1; then
+        # Difference each token field; clamp negatives to null (n/a).
+        TOKEN_EST=$(printf '%s\n%s' "$tk_cur" "$tk_next" | jq -sc '
+          if (.[0] | type) == "object" and (.[1] | type) == "object" then
+            {
+              input_tokens:  ((.[1].input_tokens // 0) - (.[0].input_tokens // 0)),
+              output_tokens: ((.[1].output_tokens // 0) - (.[0].output_tokens // 0)),
+              cache_creation_input_tokens: ((.[1].cache_creation_input_tokens // 0) - (.[0].cache_creation_input_tokens // 0)),
+              cache_read_input_tokens: ((.[1].cache_read_input_tokens // 0) - (.[0].cache_read_input_tokens // 0))
+            }
+            | to_entries
+            | map(if .value < 0 then .value = null else . end)
+            | from_entries
+          else null end
+        ' 2>/dev/null)
+        [ "$TOKEN_EST" = "null" ] && TOKEN_EST=""
+      fi
+
+      if [ -n "$TOKEN_EST" ]; then
+        # Format: each field as "~N tok (approx)" or "n/a"
+        _in=$(printf '%s' "$TOKEN_EST" | jq -r '.input_tokens // empty' 2>/dev/null)
+        _out=$(printf '%s' "$TOKEN_EST" | jq -r '.output_tokens // empty' 2>/dev/null)
+        _cc=$(printf '%s' "$TOKEN_EST" | jq -r '.cache_creation_input_tokens // empty' 2>/dev/null)
+        _cr=$(printf '%s' "$TOKEN_EST" | jq -r '.cache_read_input_tokens // empty' 2>/dev/null)
+        _in_f=$(_fmt_token_field "$_in" "input")
+        _out_f=$(_fmt_token_field "$_out" "output")
+        _cc_f=$(_fmt_token_field "$_cc" "cache_create")
+        _cr_f=$(_fmt_token_field "$_cr" "cache_read")
+        printf '  %s\t%s\t%s\ttokens: %s, %s, %s, %s\n' \
+          "$sk" "$step" "$dur" "$_in_f" "$_out_f" "$_cc_f" "$_cr_f"
+      else
+        # No token data — render timing with explicit n/a token column so the
+        # column is always present (stable contract for the downstream report).
+        printf '  %s\t%s\t%s\ttokens: n/a\n' "$sk" "$step" "$dur"
+      fi
+    done <<< "$STEP_DURATION_LINES"
+  else
+    printf '  (none)\n'
+  fi
+  exit 0
+fi
 
 # ---------- Output ----------
 if [ "$JSON_OUT" -eq 1 ]; then
