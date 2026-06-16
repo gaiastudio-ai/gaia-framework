@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>/gaia-test-manual - GAIA Documentation</title><link rel="stylesheet" href="../styles.css"></head>
+<body><div class="page-wrapper">
+<aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#surfaces">Verification surfaces</a></li><li><a href="#visual-regression">Visual regression baselines</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#review-gate">Advisory review gate</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/testing.html">Testing</a><span class="separator">/</span>/gaia-test-manual</nav>
+      <header class="command-header"><div class="command-title"><h1>/gaia-test-manual</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/testing.html">Testing</a></dd><dt>Lifecycle phase:</dt><dd>Anytime</dd><dt>Arguments:</dt><dd><code>&lt;target&gt;</code></dd></dl></header>
+
+      <section id="what-it-does"><h2>What it does</h2>
+        <p><code>/gaia-test-manual</code> dispatches the manual-tester agent (Reese) to exercise a target the way a human tester would. Reese runs commands, observes output, compares expected vs. actual behavior, and produces a structured run record with per-step evidence. The skill persists the evidence artifacts (a run-record file and an exit-code log) and enforces a proof-of-execution gate before accepting a PASSED verdict.</p>
+        <p>This is <strong>agent-driven human-style verification</strong> -- complementary to, not a replacement for, the automated test suite executed by <a href="gaia-test-run.html"><code>/gaia-test-run</code></a>. Use this skill for exploratory testing, smoke testing, UX verification, and validating behaviors that resist automation.</p>
+      </section>
+
+      <section id="when-to-use"><h2>When to use it</h2>
+        <ul>
+          <li>You need a human-style walkthrough of a skill, script, workflow step, or user-facing feature with observed-vs-expected evidence.</li>
+          <li>The behavior under test is difficult or impossible to cover with automated tests (visual polish, subjective UX, edge-case flows the automated suite does not yet cover).</li>
+          <li>You want to produce a run record that proves a feature was exercised end-to-end before closing a story.</li>
+          <li>You are running the sprint-review ceremony and want the execution track to include a manual-test pass for configured surfaces.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites"><h2>Prerequisites</h2>
+        <ul>
+          <li><strong>A target must be provided.</strong> Pass the name of the skill, script, feature, or workflow step to test (e.g., <code>/gaia-test-manual gaia-changelog</code>). The skill refuses without a target.</li>
+          <li><strong>At least one surface must be configured</strong> in <code>.gaia/config/project-config.yaml</code> for the skill to run (see <a href="#surfaces">Verification surfaces</a> below). Surfaces that are not configured are automatically SKIPPED.</li>
+          <li><strong>For visual regression (browser surface):</strong> ImageMagick (<code>compare</code>) or <code>pixelmatch</code> must be on PATH. When neither is available, the visual check degrades to UNVERIFIED with a diagnostic.</li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke"><h2>How to invoke</h2>
+        <pre><code>/gaia-test-manual gaia-changelog
+/gaia-test-manual gaia-sprint-plan
+MANUAL_TEST_SURFACE=browser /gaia-test-manual login-flow</code></pre>
+        <p>The <code>MANUAL_TEST_SURFACE</code> environment variable selects a specific surface. When omitted, the default surface is <code>api</code>.</p>
+      </section>
+
+      <section id="surfaces"><h2>Verification surfaces</h2>
+        <p>The skill supports four verification surfaces. Each surface is keyed to a signal in <code>.gaia/config/project-config.yaml</code>. When the signal is absent, the surface is <strong>SKIPPED (dormant)</strong> -- it is simply not relevant to the project. SKIPPED is distinct from UNVERIFIED: SKIPPED means dormant, UNVERIFIED means the surface was exercised but evidence was insufficient.</p>
+        <table>
+          <thead><tr><th>Surface</th><th>Config Signal</th><th>When Absent</th><th>What It Checks</th></tr></thead>
+          <tbody>
+            <tr><td><strong>browser</strong></td><td><code>platforms</code> contains <code>web</code></td><td>SKIPPED (dormant)</td><td>Pixel-diff screenshots against per-story design baselines at configured breakpoints. Records FAILED when the diff exceeds the threshold.</td></tr>
+            <tr><td><strong>api</strong></td><td><code>platforms</code> contains <code>server</code></td><td>SKIPPED (dormant)</td><td>Command transcript with exit-code verification. The agent runs the target, captures stdout/stderr, and compares against expected behavior.</td></tr>
+            <tr><td><strong>mobile</strong></td><td><code>platforms</code> contains <code>ios</code> or <code>android</code></td><td>SKIPPED (dormant)</td><td>Human-walkthrough coverage for gestures, haptics, and platform-specific behaviors that mobile e2e frameworks handle poorly.</td></tr>
+            <tr><td><strong>desktop</strong></td><td><code>sprint_review.desktop_commands</code> has entries</td><td>SKIPPED (dormant)</td><td>Desktop application verification via the configured desktop command matrix.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="visual-regression"><h2>Visual regression baseline lifecycle</h2>
+        <p>When the <strong>browser</strong> surface runs, the skill captures per-breakpoint screenshots and compares them against per-story design baselines via the pixel-diff comparator.</p>
+
+        <h3>Threshold and masking</h3>
+        <p>The <code>visual_diff</code> section in <code>project-config.yaml</code> controls comparison behavior:</p>
+        <ul>
+          <li><strong><code>threshold_percent</code></strong> (default 0.1) -- the maximum percentage of pixels that may differ. At-threshold passes; only strictly above fails.</li>
+          <li><strong><code>mask_regions</code></strong> -- rectangular regions (x, y, w, h, label) excluded from comparison before diffing. Use for dynamic content like timestamps, ads, or live data feeds.</li>
+        </ul>
+
+        <h3>Baseline states</h3>
+        <ul>
+          <li><strong>No baseline exists:</strong> the visual check records <strong>UNVERIFIED</strong> (non-blocking). A missing baseline never blocks the story-to-done transition.</li>
+          <li><strong>Baseline exists, diff within threshold:</strong> the visual check records <strong>PASSED</strong>.</li>
+          <li><strong>Baseline exists, diff exceeds threshold:</strong> the visual check records <strong>FAILED</strong>.</li>
+        </ul>
+
+        <h3>Approving a new baseline</h3>
+        <p>After an intentional design change, update the baseline by running <code>approve-baseline.sh --story &lt;slug&gt; --breakpoint &lt;width&gt;</code>. The approval script requires an interactive terminal and explicit confirmation per breakpoint -- baselines are never auto-accepted. Old baselines are archived under a <code>previous/</code> subdirectory and each approval is logged to <code>baseline-approvals.log</code>.</p>
+      </section>
+
+      <section id="step-by-step"><h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Resolve target and evidence path</span> Resolves the target argument to a concrete testable entity and derives a slug for the evidence directory.</li>
+          <li><span class="step-title">Resolve surface profile</span> Determines which surface to exercise. If the surface is not configured, the skill skips directly to the verdict step with SKIPPED status.</li>
+          <li><span class="step-title">Dispatch the manual-tester agent</span> Dispatches Reese via a fork context with read-only tools. The agent runs commands, observes output, and returns a structured run-record payload.</li>
+          <li><span class="step-title">Persist evidence artifacts</span> Writes the run-record file and exit-code log to the canonical evidence directory.</li>
+          <li><span class="step-title">Enforce proof-of-execution gate</span> Validates that both evidence files exist and are non-empty. If the verdict is PASSED but evidence is missing or empty, the verdict is downgraded to <strong>UNVERIFIED</strong>.</li>
+          <li><span class="step-title">Surface verdict and findings</span> Reports the final verdict. WARNING and CRITICAL findings are surfaced to the user; INFO findings remain in the evidence files only.</li>
+          <li><span class="step-title">Record verdict on review-gate ledger</span> Records the manual-test verdict on the extended review-gate ledger and appends to the persistent verdicts file for flakiness tracking.</li>
+        </ol>
+      </section>
+
+      <section id="inputs"><h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th><th>Example</th></tr></thead><tbody>
+          <tr><td><code>&lt;target&gt;</code></td><td>Positional argument (required)</td><td>The skill, script, feature, or workflow step to verify.</td><td><code>/gaia-test-manual gaia-changelog</code></td></tr>
+          <tr><td><code>MANUAL_TEST_SURFACE</code></td><td>Environment variable (optional, default: <code>api</code>)</td><td>Which verification surface to exercise.</td><td><code>MANUAL_TEST_SURFACE=browser</code></td></tr>
+          <tr><td><code>MANUAL_TEST_STORY_KEY</code></td><td>Environment variable (optional)</td><td>Story key for review-gate ledger registration.</td><td><code>MANUAL_TEST_STORY_KEY=my-story</code></td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="outputs"><h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody>
+          <tr><td>Run record</td><td><code>.gaia/artifacts/test-artifacts/manual-test/&lt;target-slug&gt;/run-record.md</code></td><td>Structured table of steps with observed-vs-expected evidence and per-step verdicts.</td></tr>
+          <tr><td>Exit-code log</td><td><code>.gaia/artifacts/test-artifacts/manual-test/&lt;target-slug&gt;/exit-code.log</code></td><td>Raw exit codes from each command the agent executed.</td></tr>
+          <tr><td>Verdict</td><td>Conversation output + review-gate ledger</td><td>PASSED, FAILED, UNVERIFIED, or SKIPPED. Also appended to <code>.gaia/state/manual-test-verdicts.tsv</code>.</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="review-gate"><h2>Advisory review gate</h2>
+        <p>The manual-test verdict is recorded as an advisory entry on the extended review-gate ledger. This is the 7th review gate -- advisory, not blocking. Stories with <code>manual_verification: true</code> in frontmatter will see a WARNING on the review-to-done transition if the latest manual-test verdict is FAILED, but the transition is not blocked. This matches the advisory-gate pattern used by other extended ledger entries.</p>
+      </section>
+
+      <section id="example"><h2>Example session</h2>
+        <pre><code>&gt; /gaia-test-manual gaia-changelog
+
+Surface: api (default)
+Target: gaia-changelog
+
+Dispatching manual-tester agent (Reese)...
+
+Run record (3 steps):
+  Step 1: invoke /gaia-changelog           PASSED  (exit 0, changelog entry written)
+  Step 2: verify changelog format           PASSED  (Keep a Changelog sections present)
+  Step 3: verify story key cross-reference  PASSED  (story keys resolved from sprint)
+
+Evidence written:
+  run-record.md   -> .gaia/artifacts/test-artifacts/manual-test/gaia-changelog/run-record.md
+  exit-code.log   -> .gaia/artifacts/test-artifacts/manual-test/gaia-changelog/exit-code.log
+
+Proof-of-execution gate: PASSED (both evidence files present and non-empty)
+
+Verdict: PASSED</code></pre>
+      </section>
+
+      <section id="what-next"><h2>What to run next</h2>
+        <ul>
+          <li>If the verdict is PASSED, proceed with <a href="gaia-review-all.html"><code>/gaia-review-all</code></a> to complete the review cycle.</li>
+          <li>If the verdict is FAILED, investigate the run record, fix the issue, and re-run.</li>
+          <li>If the verdict is UNVERIFIED (missing evidence or missing baseline), supply the missing prerequisite and re-run.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting"><h2>Troubleshooting</h2>
+        <h3>"usage: /gaia-test-manual &lt;target&gt;"</h3><p>No target was provided. Pass the name of the skill, script, or feature to test as a positional argument.</p>
+        <h3>Surface reports SKIPPED</h3><p>The surface is not configured in <code>.gaia/config/project-config.yaml</code>. This is expected for surfaces that are not relevant to your project. Configure the platform or desktop commands to enable the surface.</p>
+        <h3>Visual check reports UNVERIFIED (no baseline)</h3><p>No design baseline exists for this story. Capture an initial baseline by running the browser surface once, then approve it with <code>approve-baseline.sh --story &lt;slug&gt; --breakpoint &lt;width&gt;</code>.</p>
+        <h3>Visual check reports UNVERIFIED (missing tool)</h3><p>Neither ImageMagick (<code>compare</code>) nor <code>pixelmatch</code> is on PATH. Install one of them and re-run.</p>
+        <h3>Verdict downgraded to UNVERIFIED</h3><p>The proof-of-execution gate found that the run-record or exit-code log is missing or empty despite a PASSED agent verdict. This usually means the agent completed without producing output. Re-run and inspect the agent transcript.</p>
+      </section>
+
+      <section id="related"><h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
+          <tr><td><a href="gaia-test-run.html"><code>/gaia-test-run</code></a></td><td>Automated machine test suite execution. Use <code>/gaia-test-run</code> for regression testing and CI gates; use <code>/gaia-test-manual</code> for human-style walkthroughs with evidence.</td></tr>
+          <tr><td><a href="gaia-test-e2e.html"><code>/gaia-test-e2e</code></a></td><td>Automated end-to-end tests via Playwright or Cypress. Manual testing covers behaviors that resist browser automation.</td></tr>
+          <tr><td><a href="gaia-sprint-review.html"><code>/gaia-sprint-review</code></a></td><td>The sprint-review execution track (Track B) dispatches <code>/gaia-test-manual</code> for configured surfaces.</td></tr>
+          <tr><td><a href="gaia-config-test.html"><code>/gaia-config-test</code></a></td><td>Configure the test execution settings that feed into manual and automated test runs.</td></tr>
+        </tbody></table>
+      </section>
+      <footer class="page-footer"><p><a href="../categories/testing.html">Back to Testing</a></p></footer>
+    </main></div></body></html>

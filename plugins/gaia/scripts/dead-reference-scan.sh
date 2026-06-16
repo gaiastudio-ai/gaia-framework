@@ -173,6 +173,10 @@ is_allowlisted() {
   # test body are the contractual assertion target — same precedent as
   # e72-s1-test-run.bats and gaia-init.bats above.
   [[ "$path" == */plugins/gaia/tests/test-manual-skill.bats ]] && return 0
+  # manual-test-docs.bats asserts that the gaia-test-manual doc page exists and
+  # that gaia-help.csv + workflow-manifest.csv contain the registration row.
+  # Same precedent as test-manual-skill.bats above.
+  [[ "$path" == */plugins/gaia/tests/manual-test-docs.bats ]] && return 0
   # static-next-steps.bats is the parity guard for next-step routing.
   # It asserts zero `lifecycle-sequence.yaml` references across the target
   # SKILL.md files; the literal token appears in assertions and prose
