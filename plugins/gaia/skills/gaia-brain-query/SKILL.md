@@ -11,10 +11,11 @@ orchestration_class: light-procedural
 A read-only traversal over the brain knowledge layer. From a seed story key it
 walks the knowledge index's typed governance edges and returns the node's
 **governance envelope** — every related artifact grouped by direction — in a
-single invocation. It is the read counterpart to the reindex sweep (which is the
-sole writer of the index): this query **writes nothing**.
+single invocation. It is the read counterpart to the index writers (the reindex
+sweep for project-artifact entries and the retrospective lesson emitter for
+lesson entries): this query **writes nothing**.
 
-## The three modes
+## The four modes
 
 - **`--envelope` (default):** from a seed key, return the related nodes grouped by
   direction.
@@ -23,12 +24,16 @@ sole writer of the index): this query **writes nothing**.
 - **`--search <terms>`:** a thin substring search over the indexed synopses,
   returning the matching keys. (Intentionally lightweight — it scans the stored
   synopsis text only; a richer ranked search is a later extension.)
+- **`--category <tag>`:** filter to `lesson` entries whose tags contain the
+  exact tag, printing matching keys and synopses. Useful for retrieving
+  retrospective lessons by category (e.g. `strategy`, `anti-pattern`).
 
 ```
 /gaia-brain-query <story-key>                 # the governance envelope (default)
 /gaia-brain-query <story-key> --envelope      # explicit
 /gaia-brain-query --health                    # the unlinked-node view
 /gaia-brain-query --search "<terms>"          # synopsis substring search
+/gaia-brain-query --category "<tag>"          # lesson entries by category tag
 ```
 
 ## The governance envelope

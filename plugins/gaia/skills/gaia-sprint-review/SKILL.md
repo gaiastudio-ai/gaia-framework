@@ -201,6 +201,17 @@ When `$COMPOSITE` is `PASSED`:
 
 The actual `review → closed` transition is enforced by `/gaia-sprint-close` — this skill only emits the handoff. `/gaia-sprint-close` accepts the new edge AND validates the dispatch sentinel before writing `status: closed`.
 
+#### Step 6b — Advisory: per-story step report (best-effort)
+
+Before emitting the handoff, surface the per-story step report as a best-effort advisory. This is read-only and never blocks the review — failures are logged and swallowed.
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/step-report.sh" \
+  --events "${MEMORY_PATH:-${PROJECT_PATH:-.}/.gaia/memory}/lifecycle-events.jsonl" 2>/dev/null || true
+```
+
+The report joins per-step timing and approximate per-step token estimates into per-story tables with rollup totals, giving the operator a comprehensive view of the sprint's execution cost before the close handoff.
+
 ### Step 7 — FAILED Path: correction + action-items + /gaia-correct-course
 
 When `$COMPOSITE` is `FAILED`:

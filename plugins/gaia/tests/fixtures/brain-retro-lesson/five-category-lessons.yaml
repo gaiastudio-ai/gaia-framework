@@ -1,0 +1,11 @@
+# Five lessons covering every category in the closed set.
+- category: strategy
+  synopsis: "Brain layer ships cleanly when each writer owns a disjoint partition."
+- category: writing-rule
+  synopsis: "Decision-log entries must include the sprint ID as a tag for later retrieval."
+- category: doc-maintenance-obligation
+  synopsis: "SKILL.md changelog must be updated in the same PR as any behaviour change."
+- category: anti-pattern
+  synopsis: "Never round-trip YAML through a generic serializer when the file contains inline comments."
+- category: tool-constraint
+  synopsis: "The shasum dual-idiom must always be tested on both Linux and macOS in CI."

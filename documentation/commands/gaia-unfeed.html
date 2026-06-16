@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-unfeed - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#safety">Safety guarantees</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/sprint-management.html">Sprint Management</a><span class="separator">/</span>
+        /gaia-unfeed
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-unfeed</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/sprint-management.html">Sprint Management</a></dd>
+          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt><dd><code>&lt;slug&gt;</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-unfeed</code> removes an ingested document from the <a href="../gaia-brain.html">brain knowledge layer</a>. It is the inverse of <a href="gaia-feed.html"><code>/gaia-feed</code></a>: where <code>/gaia-feed</code> writes a provenance-stamped file and registers a brain-index entry, <code>/gaia-unfeed</code> deletes both atomically.</p>
+        <p>This is the sanctioned way to remove an ingested source. Do not hand-edit the knowledge files directly.</p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You ingested a document you no longer need in the knowledge layer (wrong source, outdated version, duplicate).</li>
+          <li>You want to stop using a previously ingested reference and remove it from brain queries.</li>
+          <li>You want to clean up a stale or failed ingestion that will never be refreshed.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li><strong>A valid brain index must exist.</strong> The command reads <code>brain-index.yaml</code> to locate and de-register the entry.</li>
+          <li>The slug must correspond to a previously ingested document. If the slug does not exist, the command is a no-op.</li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-unfeed my-api-docs</code></pre>
+        <p>Pass the slug of the ingested document to remove. This is the same slug shown in the ingested file's frontmatter and in the brain-index entry key.</p>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Validate the slug</span> Confirms the slug is well-formed and does not contain path traversal sequences. Rejects any slug that would escape the <code>.gaia/knowledge/ingested/</code> namespace.</li>
+          <li><span class="step-title">Locate the entry</span> Looks up the slug in <code>brain-index.yaml</code> among <code>source_type: ingested</code> entries. Only ingested entries can be removed -- project-artifact entries are never touched.</li>
+          <li><span class="step-title">Delete the ingested file</span> Removes <code>.gaia/knowledge/ingested/&lt;slug&gt;.md</code> from disk.</li>
+          <li><span class="step-title">De-register the index entry</span> Removes the matching entry from <code>brain-index.yaml</code>. The index is validated before committing; on failure the prior index is preserved.</li>
+          <li><span class="step-title">Re-render the human index</span> Updates <code>brain-index.md</code> (the human-readable Map of Content) to reflect the removal.</li>
+        </ol>
+      </section>
+
+      <section id="safety">
+        <h2>Safety guarantees</h2>
+        <ul>
+          <li><strong>Idempotent.</strong> If the slug is not present in the brain index, the command exits cleanly as a no-op. Running it twice has the same effect as running it once.</li>
+          <li><strong>Ingested entries only.</strong> The command only ever removes entries with <code>source_type: ingested</code>. Project-artifact entries (stories, architecture decisions, epics, etc.) are never modified or deleted.</li>
+          <li><strong>Slug containment.</strong> The slug is sanitised and a path containment check ensures the delete target is inside <code>.gaia/knowledge/ingested/</code>. Traversal attempts are rejected.</li>
+          <li><strong>Atomic index update.</strong> The brain-index is written to a temporary file, validated, and renamed into place. A failed validation preserves the prior index unchanged.</li>
+        </ul>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Deleted ingested file</td><td><code>.gaia/knowledge/ingested/&lt;slug&gt;.md</code></td><td>Removed from disk.</td></tr><tr><td>Updated brain index</td><td><code>.gaia/knowledge/brain-index.yaml</code></td><td>The matching <code>ingested</code> entry is removed.</td></tr><tr><td>Updated human index</td><td><code>.gaia/knowledge/brain-index.md</code></td><td>Re-rendered to reflect the removal.</td></tr></tbody></table>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-brain-query.html"><code>/gaia-brain-query</code></a> -- verify the removed document no longer appears in brain queries.</li>
+          <li><a href="gaia-feed.html"><code>/gaia-feed</code></a> -- ingest a replacement document if needed.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>The slug is not found</h3><p>The command exits cleanly as a no-op. Verify the slug matches what is in the brain index (check <code>brain-index.yaml</code> or the file under <code>.gaia/knowledge/ingested/</code>).</p>
+        <h3>Brain-index validation failed</h3><p>The updated index did not pass schema validation after removing the entry. The prior index is preserved unchanged. Check the error message for details.</p>
+        <h3>How do I update a source instead of removing it?</h3><p>Use <a href="gaia-feed.html"><code>/gaia-feed</code></a> with the same <code>--slug</code>. The existing entry is overwritten cleanly without needing to unfeed first. See the <a href="gaia-feed.html#same-slug">same-slug overwrite behavior</a> documentation.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-feed.html"><code>/gaia-feed</code></a></td><td>Ingests a document into the knowledge layer. The inverse of <code>/gaia-unfeed</code>.</td></tr><tr><td><a href="gaia-knowledge-refresh.html"><code>/gaia-knowledge-refresh</code></a></td><td>Re-fetches all ingested sources. Does not remove entries.</td></tr><tr><td><a href="gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a></td><td>Rebuilds the project-artifact index. Preserves ingested entries.</td></tr><tr><td><a href="gaia-brain-query.html"><code>/gaia-brain-query</code></a></td><td>Query the brain to verify a document has been removed.</td></tr></tbody></table>
+        <p>For a full explanation of the knowledge layer, see the <a href="../gaia-brain.html">GAIA Brain concept page</a>.</p>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/sprint-management.html">Back to Sprint Management</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

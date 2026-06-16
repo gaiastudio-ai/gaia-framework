@@ -97,9 +97,23 @@ This loads `.gaia/artifacts/implementation-artifacts/.../<story-key>-*.md`, reso
 - The PostToolUse hook fires `checkpoint.sh` automatically after every Edit/Write -- you do not need to manually checkpoint file mutations.
 - Story status MUST only be changed via `transition-story-status.sh`. Direct edits to `status:` fields in story frontmatter, sprint-status.yaml, epics-and-stories.md, story-index.yaml, or per-epic shards under `.gaia/artifacts/planning-artifacts/epics/` are FORBIDDEN.
 
+## Observability: per-step timing and token instrumentation
+
+Each principal step emits a `step_boundary` lifecycle event via `emit-step-boundary.sh`. The script accepts an optional `--tokens <json>` flag carrying a cumulative context-window snapshot (token counts only). When available, pass the snapshot so downstream telemetry can derive approximate per-step token estimates. When unavailable, omit the flag -- the event lands with timing data only and the token column renders `n/a` (graceful-skip).
+
+**Substrate constraint:** the context-window usage snapshot is observable by the orchestrator at turn boundaries but there is no shell-callable API to query it mid-turn. Per-step token numbers are therefore best-effort estimates derived from differencing consecutive cumulative snapshots. They are NEVER exact per-step counts -- cache reads, context compaction, and out-of-band turns confound the diff. Every downstream consumer labels these numbers as approximate.
+
+**Privacy hard guarantee:** the `--tokens` payload MUST contain ONLY numeric fields (token counts). The script validates that all scalar values are numbers and silently drops any payload containing a string -- prompt/response text can never land in the telemetry stream.
+
+**Usage:** `emit-step-boundary.sh <step> <name> <key> [--tokens '{"input_tokens":N,"output_tokens":N,"cache_creation_input_tokens":N,"cache_read_input_tokens":N}']`
+
+Sub-step timing (2a, 2b, 3b, 5a, 6a, 6b, 7a, 7b, 14b) is out of scope for v1 -- only the 16 principal steps emit boundary events.
+
 ## Steps
 
 ### Step 1 -- Load Story
+
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 1 load-story {story_key}` to record the step-boundary event.
 
 - Parse the story key from the argument (e.g., `/gaia-dev-story <story-key>`).
 - Run `scripts/load-story.sh {story_key}` to validate the story exists and read its
@@ -168,6 +182,8 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 
 ### Step 2 -- Update Status
 
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 2 update-status {story_key}` to record the step-boundary event.
+
 - For FRESH mode: run `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to in-progress`.
   - **Single activation path.** For a sprint-bound story (`sprint_id:` set), the
     expected pre-transition status is `ready-for-dev` — the activation
@@ -197,6 +213,8 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 <!-- step 2b atdd gate end -->
 
 ### Step 3 -- Create Feature Branch
+
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 3 create-branch {story_key}` to record the step-boundary event.
 
 - Run `scripts/git-branch.sh {story_key} {slug}` to create a feature branch.
 - The script handles collision detection and offers resume if branch exists.
@@ -228,6 +246,8 @@ Resolve the developer persona via the shared resolver (it runs in the parent con
 **YOLO inheritance.** When the orchestrator is in YOLO mode, it MUST `export GAIA_YOLO_MODE=1` into the developer dispatch's environment — a child does not inherit YOLO intent implicitly (see the Subagent YOLO inheritance note at Step 4).
 
 ### Step 4 -- Plan Implementation
+
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 4 plan {story_key}` to record the step-boundary event.
 
 > **Developer-authored (Step 3b).** The implementation plan is authored by the resolved `{stack}-dev` developer subagent, dispatched per the Step 3b contract — NOT by the main-turn orchestrator. The orchestrator dispatches the developer to produce the plan, then receives the rendered plan back and runs the planning gate (validation / approval) below. Do NOT have the orchestrator author the plan inline.
 
@@ -310,6 +330,8 @@ Backward-compatibility note: a resumed in-progress story with no Step 4 gate-cle
 
 ### Step 5 -- TDD Red Phase (Write Failing Tests)
 
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 5 tdd-red {story_key}` to record the step-boundary event.
+
 > [!yolo]
 > Step 5 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration. Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass owns the 3-iteration auto-fix loop and the cap-exhaustion gate. The Step 5 body itself stays pause-free — the pause-free TDD invariant is non-negotiable. Step 5a (risk-gated TDD review hook) is the separate gate point that fires after Step 5 completes; it is OUTSIDE this YOLO branch's scope.
 
@@ -341,6 +363,8 @@ The hook fires exactly once per Step 5. If the gate returns `SKIP`, no subagent 
 <!-- step5 tdd-review-gate end -->
 
 ### Step 6 -- TDD Green Phase (Implement to Pass)
+
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 6 tdd-green {story_key}` to record the step-boundary event.
 
 > [!yolo]
 > Step 6 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration. Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass applies the INFO-only break (Green-phase INFO-only findings auto-proceed to Refactor without dev-agent intervention) and counts timed-out Val attempts against the 3-iteration cap. The Step 6 body itself stays pause-free — the pause-free TDD invariant is non-negotiable. Step 6a (risk-gated TDD review hook) is OUTSIDE this YOLO branch's scope.
@@ -389,6 +413,8 @@ After Step 6 Green completes with all tests passing, run a single advisory pass 
 <!-- step 6b end -->
 
 ### Step 7 -- TDD Refactor Phase
+
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 7 tdd-refactor {story_key}` to record the step-boundary event.
 
 > [!yolo]
 > Step 7 is covered by the declarative `yolo_steps: [5, 6, 7, 15]` frontmatter declaration. Under YOLO, the cumulative TDD diff (Steps 5/6/7) is validated by the single post-Refactor Val pass at Step 7b — that pass surfaces refactor-introduced test regressions (previously-green tests now failing tagged in Val's input context). The 3-iteration auto-fix loop owned by Step 7b enforces the attempt-cap gate: 3 attempts max, cap exhaustion stops with finding list, no silent pass. The Step 7 body itself stays pause-free — the pause-free TDD invariant is non-negotiable. Step 7a (risk-gated TDD review hook) is OUTSIDE this YOLO branch's scope.
@@ -461,11 +487,15 @@ else:
 
 ### Step 8 -- Capture Findings
 
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 8 capture-findings {story_key}` to record the step-boundary event.
+
 - Review any out-of-scope issues discovered during implementation.
 - Add findings to the story file's Findings table.
 
 <!-- step 9 dod-check wire begin -->
 ### Step 9 -- Definition of Done
+
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 9 definition-of-done {story_key}` to record the step-boundary event.
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/dod-check.sh` (export `STORY_FILE` to the absolute story path so the subtask check fires). The script runs build / tests / lint / secrets / subtask checks and emits one YAML row per check: `- { item: <name>, status: PASSED|FAILED, output: <captured output> }`. Exit 0 = all PASSED; non-zero = at least one FAILED.
 - **Tool-presence guards.** Any optional tool invoked from
@@ -490,6 +520,8 @@ else:
 
 <!-- step 10 git-push wire begin -->
 ### Step 10 -- Commit and Push
+
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 10 commit-push {story_key}` to record the step-boundary event.
 
 <!-- step10 script-wiring begin -->
 At the top of the CI section — before any commit / push action — the orchestrator
@@ -542,6 +574,8 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 <!-- step 10 git-push wire end -->
 
 ### Step 11 -- Create PR
+
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 11 create-pr {story_key}` to record the step-boundary event.
 
 <!-- step 11a forbidden-sentinel scan begin -->
 
@@ -606,15 +640,21 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 
 ### Step 12 -- Wait for CI
 
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 12 wait-ci {story_key}` to record the step-boundary event.
+
 - Run `scripts/ci-wait.sh {pr_number}` to poll CI status.
 - The script handles timeout, transient errors, and failure reporting.
 
 ### Step 13 -- Merge PR
 
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 13 merge-pr {story_key}` to record the step-boundary event.
+
 - Run `scripts/merge.sh {pr_number} {story_key}` to merge the PR.
 - The script handles conflict detection, branch protection, and strategy selection.
 
 ### Step 14 -- Post-Completion Gate
+
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 14 post-completion-gate {story_key}` to record the step-boundary event.
 
 - After the dev-story subagent returns `status=done`, the orchestrator verifies that a merge commit containing the story key actually exists on the target branch before accepting the done transition.
 - Run `scripts/verify-pr-merged.sh {story_key} {target_branch}` where `{target_branch}` is derived from `ci_cd.promotion_chain[0].branch` in global.yaml.
@@ -642,6 +682,8 @@ Emit a single-line gate log to stderr: `step14b_gate: advisories={count}` where 
 <!-- step 15 init-review-gate wire begin -->
 ### Step 15 -- Update Review Gate
 
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 15 update-review-gate {story_key}` to record the step-boundary event.
+
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh {story_file}` to seed (or replace) the Review Gate table with the canonical 6-row UNVERIFIED block. The helper is idempotent — re-running on a story file that already has the block yields a byte-identical result.
 - Update story status to `review` via `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to review`.
 
@@ -667,6 +709,8 @@ Emit a single-line gate log to stderr: `step14b_gate: advisories={count}` where 
 <!-- step 16 begin -->
 ### Step 16 -- Auto-Reviews (YOLO-only)
 
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 16 auto-reviews {story_key}` to record the step-boundary event.
+
 > [!yolo]
 > Step 16 honors the declarative `yolo_steps: [15]` frontmatter declaration (the dispatch is logically the post-Step-15 hook; the framework split the dispatch into Step 16). Under YOLO, the six review skills run sequentially via the aggregator and ALL FAILED verdicts surface in the user-visible `## Review Summary` block — YOLO never silences a FAILED review. The Step 14 Post-Completion Gate remains a hard gate — `yolo_steps` does NOT include `14`.
 
@@ -690,6 +734,10 @@ YOLO-gated invocation of the six reviews that populate the Review Gate. Non-YOLO
 
 - **Sequencing invariant (AC4):** Step 14 (post-completion gate) MUST run BEFORE Step 16. Step 16 NEVER precedes Step 14. The skill ordering above enforces this — Step 14's begin marker precedes Step 16's begin marker.
 <!-- step 16 end -->
+
+### Step timing — sub-step instrumentation scope
+
+The 16 principal `### Step N` boundaries above are instrumented with `step_boundary` lifecycle events for per-step wall-clock derivation. The following 9 lettered sub-steps are explicitly **out of scope for v1** and do not emit timing events: 2a, 2b, 3b, 5a, 6a, 6b, 7a, 7b, 14b. Sub-step instrumentation is a documented follow-up.
 
 ## Changelog
 

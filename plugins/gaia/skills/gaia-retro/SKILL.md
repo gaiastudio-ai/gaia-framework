@@ -362,6 +362,44 @@ Failure posture:
 - User rejects a proposal → clear session cache; zero filesystem writes; rejection logged in retro artifact's "Proposals" section as `{finding_ref}: REJECTED` (AC4, AC-EC9).
 - Concurrent retro invocations each approve targeting same file → `flock` serializes; second writer re-presents a fresh merge preview (AC-EC12).
 
+### Step 5g --- Brain Lesson Emission
+
+After all sidecar fan-out completes, emit each lesson learned in the
+retrospective as a first-class `lesson` brain entry to
+`.gaia/knowledge/brain-index.yaml`. This is **additive** — the existing
+per-agent sidecar fan-out (Step 5c) is preserved unchanged. Brain lesson
+emission writes to the knowledge layer so durable sprint lessons become
+queryable governance knowledge rather than per-agent notes alone.
+
+Each lesson carries a category tag from the closed set: `strategy`,
+`writing-rule`, `doc-maintenance-obligation`, `anti-pattern`,
+`tool-constraint`. Unknown categories are rejected.
+
+The `expires_at` field defaults to `null` (no expiry). An explicit
+sprint-specific expiry is honoured when set.
+
+Invoke:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/skills/gaia-retro/scripts/emit-brain-lessons.sh \
+  --sprint-id  "${sprint_id}" \
+  --retro-artifact "${retro_artifact_path}" \
+  --project-root "${CLAUDE_PROJECT_ROOT}" \
+  --category "${category}" \
+  --synopsis "${synopsis}"
+```
+
+Or in batch mode for all lessons at once, pass a `--lessons-yaml` file with a
+list of `{category, synopsis}` objects.
+
+Failure posture:
+
+- Unknown category tag in the closed set -> emitter exits non-zero; no partial write to the manifest.
+- Missing or empty path -> rejected with non-zero exit; manifest unchanged.
+- Confidence out of range or missing source_type -> rejected; no partial write.
+- Missing `.gaia/knowledge/` directory -> created automatically (`mkdir -p`).
+- Missing brain-index.yaml -> seeded with `schema_version: 1` and `entries: []` header before appending.
+
 ### Step 6 --- Write Retro Artifact
 
 Compose the retrospective artifact with the following sections:

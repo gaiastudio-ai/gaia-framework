@@ -46,6 +46,8 @@
           <li><a href="#read-only-boundary">Read-only boundary</a></li>
           <li><a href="#no-vectors">No vectors, no embeddings</a></li>
           <li><a href="#commands">Commands</a></li>
+          <li><a href="#ingested-lifecycle">Ingested-document lifecycle</a></li>
+          <li><a href="#update-or-remove">Update or remove a source</a></li>
         </ul>
       </nav>
     </aside>
@@ -330,7 +332,7 @@
 
       <section id="commands">
         <h2>Commands</h2>
-        <p>Five commands expose the Brain to users and agents:</p>
+        <p>Six commands expose the Brain to users and agents:</p>
         <table>
           <thead>
             <tr>
@@ -357,10 +359,59 @@
             </tr>
             <tr>
               <td><a href="commands/gaia-knowledge-refresh.html"><code>/gaia-knowledge-refresh</code></a></td>
-              <td>Re-fetch ingested sources and replace only what changed. Hash-gated three-way reconcile: skip on match, overwrite on diff, mark failed and preserve stale file on fetch error.</td>
+              <td>Re-fetch ingested sources and replace only what changed. Hash-gated three-way reconcile: skip on match, overwrite on diff, mark failed and preserve stale file on fetch error. Runs an expiry sweep afterward.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-unfeed.html"><code>/gaia-unfeed</code></a></td>
+              <td>Remove an ingested document from the knowledge store. Deletes the ingested file and de-registers the brain-index entry atomically. The inverse of <code>/gaia-feed</code>.</td>
             </tr>
           </tbody>
         </table>
+
+        <h3 id="ingested-lifecycle">Ingested-document lifecycle</h3>
+        <p>
+          The three ingestion commands form a complete lifecycle for
+          external documents in the knowledge layer:
+        </p>
+        <ol>
+          <li>
+            <strong>Ingest</strong> --
+            <a href="commands/gaia-feed.html"><code>/gaia-feed</code></a>
+            brings a document into the store with provenance tracking and
+            a configurable TTL (default 30 days).
+          </li>
+          <li>
+            <strong>Refresh</strong> --
+            <a href="commands/gaia-knowledge-refresh.html"><code>/gaia-knowledge-refresh</code></a>
+            re-fetches all ingested sources, updating changed content and
+            marking unreachable sources as <code>failed</code>. Entries
+            whose TTL has elapsed without revalidation transition to
+            <code>stale</code>.
+          </li>
+          <li>
+            <strong>Remove</strong> --
+            <a href="commands/gaia-unfeed.html"><code>/gaia-unfeed</code></a>
+            deletes an ingested document and its index entry when the
+            source is no longer needed.
+          </li>
+        </ol>
+
+        <h3 id="update-or-remove">How do I update or remove an ingested source?</h3>
+        <ul>
+          <li>
+            <strong>Update:</strong> Re-run
+            <code>/gaia-feed</code> with the same <code>--slug</code>.
+            The existing ingested file and brain-index entry are overwritten
+            atomically with fresh content and provenance. No need to remove
+            first.
+          </li>
+          <li>
+            <strong>Remove:</strong> Run
+            <code>/gaia-unfeed &lt;slug&gt;</code>. The ingested file is
+            deleted and the index entry is de-registered. Idempotent -- a
+            no-op if the slug is not present.
+          </li>
+        </ul>
       </section>
 
       <footer class="page-footer">

@@ -54,8 +54,12 @@ jobs:
       # the bats-tests signal on noble. If line-coverage reporting is needed
       # later, reintroduce kcov via a pre-built binary download from the kcov
       # GitHub releases rather than apt.
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Install jq and GNU parallel
+        # GNU parallel enables `bats --jobs` in run-with-coverage.sh, which runs
+        # the 580+ test files concurrently and keeps the suite well under the
+        # job timeout below. Without parallel the wrapper falls back to a serial
+        # run that sits right at the 15-minute wall and tips into timeout flakes.
+        run: sudo apt-get update && sudo apt-get install -y jq parallel
       - name: Run bats suite with coverage wrapper (budget-watched)
         # bats-budget-watch.sh wraps the coverage wrapper and emits a structured
         # warning to $GITHUB_STEP_SUMMARY when wall-clock exceeds the threshold.
@@ -72,6 +76,14 @@ jobs:
         #   bats --filter-tags hardware-dependent <test-file>
         env:
           BATS_FILTER_TAGS: '!hardware-dependent'
+          # Pin parallelism to 2 (not the runner's nproc): 2 jobs roughly halves
+          # wall-clock (~15min serial -> ~9-10min, comfortably under the timeout)
+          # while keeping subprocess contention low. A higher degree on the
+          # shared 4-core runner oversubscribes — each test forks yq/python/awk,
+          # and the contention surfaces as resource-starvation timing flakes in
+          # otherwise-deterministic tests. 2 is the conservative speed/stability
+          # balance; raise only with evidence the suite stays green.
+          BATS_JOBS: '2'
         run: |
           bash plugins/gaia/scripts/bats-budget-watch.sh \
             --threshold-seconds 240 \

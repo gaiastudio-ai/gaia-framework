@@ -68,27 +68,27 @@ teardown() { common_teardown; }
 @test "AC1: Step 1 block invokes story-parse.sh" {
   block="$(awk '/<!-- step1 script-wiring begin -->/,/<!-- step1 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'story-parse.sh'
+  grep -Fq 'story-parse.sh' <<<"$block"
 }
 
 @test "AC1: Step 1 block invokes detect-mode.sh" {
   block="$(awk '/<!-- step1 script-wiring begin -->/,/<!-- step1 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'detect-mode.sh'
+  grep -Fq 'detect-mode.sh' <<<"$block"
 }
 
 @test "AC1: Step 1 block invokes check-deps.sh" {
   block="$(awk '/<!-- step1 script-wiring begin -->/,/<!-- step1 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'check-deps.sh'
+  grep -Fq 'check-deps.sh' <<<"$block"
 }
 
 @test "AC1: Step 1 block contains a Narrative Fallback section" {
   block="$(awk '/<!-- step1 script-wiring begin -->/,/<!-- step1 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'Narrative Fallback'
+  grep -Fq 'Narrative Fallback' <<<"$block"
   # The fallback is gated on the absence of the new script via `command -v`.
-  echo "$block" | grep -Fq 'command -v story-parse.sh'
+  grep -Fq 'command -v story-parse.sh' <<<"$block"
 }
 
 # ---------------------------------------------------------------------------
@@ -99,20 +99,20 @@ teardown() { common_teardown; }
 @test "AC2: Step 10 block invokes promotion-chain-guard.sh" {
   block="$(awk '/<!-- step10 script-wiring begin -->/,/<!-- step10 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'promotion-chain-guard.sh'
+  grep -Fq 'promotion-chain-guard.sh' <<<"$block"
 }
 
 @test "AC2: Step 10 block invokes commit-msg.sh" {
   block="$(awk '/<!-- step10 script-wiring begin -->/,/<!-- step10 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'commit-msg.sh'
+  grep -Fq 'commit-msg.sh' <<<"$block"
 }
 
 @test "AC2: Step 10 block contains a Narrative Fallback section" {
   block="$(awk '/<!-- step10 script-wiring begin -->/,/<!-- step10 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'Narrative Fallback'
-  echo "$block" | grep -Fq 'command -v commit-msg.sh'
+  grep -Fq 'Narrative Fallback' <<<"$block"
+  grep -Fq 'command -v commit-msg.sh' <<<"$block"
 }
 
 @test "AC2: promotion-chain-guard.sh appears BEFORE commit-msg.sh inside Step 10 block" {
@@ -131,20 +131,20 @@ teardown() { common_teardown; }
 @test "AC3: Step 11 block invokes pr-body.sh" {
   block="$(awk '/<!-- step11 script-wiring begin -->/,/<!-- step11 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'pr-body.sh'
+  grep -Fq 'pr-body.sh' <<<"$block"
 }
 
 @test "AC3: Step 11 block references pr-create.sh" {
   block="$(awk '/<!-- step11 script-wiring begin -->/,/<!-- step11 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'pr-create.sh'
+  grep -Fq 'pr-create.sh' <<<"$block"
 }
 
 @test "AC3: Step 11 block contains a Narrative Fallback section" {
   block="$(awk '/<!-- step11 script-wiring begin -->/,/<!-- step11 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'Narrative Fallback'
-  echo "$block" | grep -Fq 'command -v pr-body.sh'
+  grep -Fq 'Narrative Fallback' <<<"$block"
+  grep -Fq 'command -v pr-body.sh' <<<"$block"
 }
 
 # ---------------------------------------------------------------------------
@@ -182,8 +182,8 @@ teardown() { common_teardown; }
   for marker in step1 step10 step11; do
     block="$(awk "/<!-- ${marker} script-wiring begin -->/,/<!-- ${marker} script-wiring end -->/" "$SKILL_MD")"
     [ -n "$block" ]
-    echo "$block" | grep -Fq 'v1.131.x'
-    echo "$block" | grep -Fq 'v1.132.0'
+    grep -Fq 'v1.131.x' <<<"$block"
+    grep -Fq 'v1.132.0' <<<"$block"
   done
 }
 
@@ -219,7 +219,7 @@ _skill_md_minus_wiring_blocks() {
   # Legacy inline narrative: 'Read the story file: extract' / 'Detect execution mode' / 'FRESH (new implementation)'.
   # Any of these outside the wiring block means a regression has re-introduced
   # the inline LLM frontmatter-parsing path that script-wiring replaced.
-  if echo "$residue" | grep -nE 'Read the story file: extract|Detect execution mode|FRESH \(new implementation\)|REWORK \(fix review|RESUME \(continue from'; then
+  if grep -nE 'Read the story file: extract|Detect execution mode|FRESH \(new implementation\)|REWORK \(fix review|RESUME \(continue from'; then <<<"$residue"
     echo "REGRESSION: Step 1 inline LLM frontmatter parsing re-introduced outside <!-- step1 script-wiring --> block." >&2
     echo "story-parse.sh + detect-mode.sh are the single source of truth (FR-DSS-1, FR-DSS-2)." >&2
     return 1
@@ -231,7 +231,7 @@ _skill_md_minus_wiring_blocks() {
   # Legacy inline narrative: 'Conventional Commit' subject composition guidance, or
   # an inline 'git commit -m' usage that hand-crafts the subject. commit-msg.sh
   # is the single source of truth (FR-DSS-5, FR-DSS-6).
-  if echo "$residue" | grep -nE 'Compose .*Conventional Commit subject|hand-craft.*commit subject|git commit -m "[^"]*\$\{?story_key\}?'; then
+  if grep -nE 'Compose .*Conventional Commit subject|hand-craft.*commit subject|git commit -m "[^"]*\$\{?story_key\}?'; then <<<"$residue"
     echo "REGRESSION: Step 10 inline commit-subject composition re-introduced outside <!-- step10 script-wiring --> block." >&2
     echo "commit-msg.sh is the single source of truth (FR-DSS-5, FR-DSS-6, NFR-DSS-1)." >&2
     return 1
@@ -243,7 +243,7 @@ _skill_md_minus_wiring_blocks() {
   # Legacy inline narrative: heredoc-built PR body fed straight to gh, or
   # 'pr-create.sh ... --body "$(cat <<' inline-body construction. pr-body.sh is
   # the single source of truth (FR-DSS-5, FR-DSS-6).
-  if echo "$residue" | grep -nE 'gh pr create .*--body "\$\(cat <<|pr-create\.sh.*--body "\$\(cat <<|Compose the PR body inline|hand-craft the PR body'; then
+  if grep -nE 'gh pr create .*--body "\$\(cat <<|pr-create\.sh.*--body "\$\(cat <<|Compose the PR body inline|hand-craft the PR body'; then <<<"$residue"
     echo "REGRESSION: Step 11 inline PR-body construction re-introduced outside <!-- step11 script-wiring --> block." >&2
     echo "pr-body.sh is the single source of truth (FR-DSS-5, FR-DSS-6)." >&2
     return 1
@@ -255,9 +255,14 @@ _skill_md_minus_wiring_blocks() {
   # Sanity guard: if the awk strip ever over-deletes (e.g. a regex change drops
   # too much), this test fails loudly rather than silently passing the absence
   # checks above on an empty residue.
-  echo "$residue" | grep -Fq '### Step 1 -- Load Story'
-  echo "$residue" | grep -Fq '### Step 10 -- Commit and Push'
-  echo "$residue" | grep -Fq '### Step 11 -- Create PR'
+  #
+  # Use a here-string, NOT `grep -Fq`: grep -q exits on the <<<"$residue"
+  # first match and closes the pipe, so echo (the writer) takes SIGPIPE and
+  # exits 141, which fails the test nondeterministically under load / parallel
+  # execution. A here-string has no upstream writer process to signal.
+  grep -Fq '### Step 1 -- Load Story'       <<<"$residue"
+  grep -Fq '### Step 10 -- Commit and Push' <<<"$residue"
+  grep -Fq '### Step 11 -- Create PR'        <<<"$residue"
 }
 
 # ---------------------------------------------------------------------------
@@ -341,14 +346,14 @@ EOF
   # story-parse.sh: emits eval-able key=val pairs covering frontmatter.
   run "$dev_scripts/story-parse.sh" "$child_path"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq "^STORY_KEY='E99-S2'$"
-  echo "$output" | grep -Eq "^STATUS='in-progress'$"
+  grep -Eq "^STORY_KEY='E99-S2'$" <<<"$output"
+  grep -Eq "^STATUS='in-progress'$" <<<"$output"
 
   # detect-mode.sh: in-progress -> RESUME or REWORK; either is acceptable for
   # AC4 smoke — the contract is "exit 0 + a known mode token on stdout".
   run "$dev_scripts/detect-mode.sh" "$child_path"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq '^(FRESH|RESUME|REWORK)$'
+  grep -Eq '^(FRESH|RESUME|REWORK)$' <<<"$output"
 
   # check-deps.sh: parent is done, so exit 0 with empty stderr.
   run --separate-stderr "$dev_scripts/check-deps.sh" "$child_path"
@@ -359,12 +364,12 @@ EOF
   # commit-msg.sh: emits a Conventional Commit line with the story key.
   run "$dev_scripts/commit-msg.sh" "$child_path"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq '\(E99-S2\)'
+  grep -Eq '\(E99-S2\)' <<<"$output"
 
   # ----- Step 11 wiring -----
   # pr-body.sh: emits the four canonical Markdown sections.
   run "$dev_scripts/pr-body.sh" "$child_path"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Fq 'Acceptance Criteria'
-  echo "$output" | grep -Fq 'Definition of Done'
+  grep -Fq 'Acceptance Criteria' <<<"$output"
+  grep -Fq 'Definition of Done' <<<"$output"
 }

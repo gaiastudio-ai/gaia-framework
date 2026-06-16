@@ -1,0 +1,4 @@
+# Malformed: empty path
+- category: strategy
+  synopsis: "A lesson with an empty path."
+  path: ""

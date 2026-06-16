@@ -107,6 +107,30 @@ BATS_ARGS=()
 if [ -n "${BATS_FILTER_TAGS:-}" ]; then
   BATS_ARGS+=(--filter-tags "$BATS_FILTER_TAGS")
 fi
+
+# Parallelise ACROSS test files to keep wall-clock under the CI job timeout.
+# The suite is 580+ files / 7600+ tests; run serially it sits right at the
+# 15-minute CI wall and tips into timeout-cancellation on slow runners. bats
+# --jobs runs whole files concurrently (NOT tests within a file — that stays
+# serial via --no-parallelize-within-files), which is the safe granularity
+# here: each file already isolates state in a per-test $BATS_TEST_TMPDIR
+# (see tests/test_helper.bash common_setup), so cross-file concurrency cannot
+# race on shared mutable state.
+#
+# bats --jobs requires GNU parallel. When it is absent (e.g. a developer box
+# without it) bats would abort, so we probe first and fall back to a serial
+# run — identical behaviour to before, just without the speedup. BATS_JOBS
+# overrides the degree (default: nproc, capped so a high-core runner does not
+# oversubscribe disk I/O on the temp dirs).
+BATS_JOBS="${BATS_JOBS:-$( (command -v nproc >/dev/null 2>&1 && nproc) || echo 1 )}"
+if [ "${BATS_JOBS}" -gt 8 ] 2>/dev/null; then BATS_JOBS=8; fi
+if [ "${BATS_JOBS}" -gt 1 ] 2>/dev/null && command -v parallel >/dev/null 2>&1; then
+  bold "  parallel run: --jobs ${BATS_JOBS} (across files; within-file serial)"
+  BATS_ARGS+=(--jobs "$BATS_JOBS" --no-parallelize-within-files)
+else
+  bold "  serial run (GNU parallel unavailable or BATS_JOBS<=1)"
+fi
+
 if ! bats "${BATS_ARGS[@]+"${BATS_ARGS[@]}"}" "$TESTS_DIR/"; then
   red "bats suite failed"
   exit 1
