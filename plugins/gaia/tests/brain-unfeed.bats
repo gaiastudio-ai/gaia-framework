@@ -275,8 +275,11 @@ YAML
 # ---- Test 3c: Dual-entry AC3 on awk fallback path ----------------------------
 
 @test "awk fallback removes only ingested entry when dual entries share a key" {
-  # Same dual-entry scenario as Test 3b, but force the awk fallback by
-  # shadowing python3 so that 'import yaml' fails.
+  # Seed the manifest via PyYAML so it has the REAL on-disk format: column-0
+  # list items, unquoted simple scalars, 2-space field indent. Then force the
+  # awk fallback to verify it handles this format correctly.
+  python3 -c 'import yaml' >/dev/null 2>&1 || skip "python3+PyYAML required to seed the fixture"
+
   cat > "$KNOW/ingested/awk-dual.md" <<'MD'
 ---
 title: awk-dual
@@ -285,46 +288,60 @@ slug: awk-dual
 Body.
 MD
 
-  cat > "$MANIFEST" <<YAML
-schema_version: 1
-entries:
-  - key: "awk-dual"
-    source_type: ingested
-    path: ".gaia/knowledge/ingested/awk-dual.md"
-    tags: ["ingested", "file"]
-    synopsis: "Ingested document: awk-dual"
-    edges: []
-    trust:
-      confidence: 0.8
-      content_hash: "abc123"
-      source_url: null
-      fetched_at: "2026-01-01T00:00:00Z"
-      expires_at: "2026-02-01T00:00:00Z"
-  - key: "awk-dual"
-    source_type: project-artifact
-    path: "docs/architecture.md"
-    tags: ["architecture"]
-    synopsis: "Architecture document"
-    edges: []
-    trust:
-      confidence: 1.0
-      content_hash: "def456"
-      source_url: null
-      fetched_at: null
-      expires_at: null
-YAML
+  # Generate the manifest via PyYAML — the EXACT format the production
+  # register path (python) produces.
+  python3 - "$MANIFEST" <<'PYEOF'
+import sys, yaml
+out = sys.argv[1]
+doc = {
+    "schema_version": 1,
+    "entries": [
+        {
+            "key": "awk-dual",
+            "source_type": "ingested",
+            "path": ".gaia/knowledge/ingested/awk-dual.md",
+            "tags": ["ingested", "file"],
+            "synopsis": "Ingested document: awk-dual",
+            "edges": [],
+            "trust": {
+                "confidence": 0.8,
+                "content_hash": "abc123",
+                "source_url": None,
+                "fetched_at": "2026-01-01T00:00:00Z",
+                "expires_at": "2026-02-01T00:00:00Z",
+            },
+        },
+        {
+            "key": "awk-dual",
+            "source_type": "project-artifact",
+            "path": "docs/architecture.md",
+            "tags": ["architecture"],
+            "synopsis": "Architecture document",
+            "edges": [],
+            "trust": {
+                "confidence": 1.0,
+                "content_hash": "def456",
+                "source_url": None,
+                "fetched_at": None,
+                "expires_at": None,
+            },
+        },
+    ],
+}
+with open(out, "w") as f:
+    yaml.dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+PYEOF
 
-  # Shadow python3 with a wrapper that makes 'import yaml' fail,
-  # forcing the awk fallback path in brain-index-write.sh.
+  # Sanity: the manifest must be in PyYAML column-0 format, NOT 2-space indent.
+  grep -q '^- key:' "$MANIFEST"
+
+  # Shadow python3 so 'import yaml' fails, forcing the awk fallback.
   local shadow_dir="$TEST_TMP/shadow-bin"
   mkdir -p "$shadow_dir"
-  # Resolve the real python3 before shadowing.
   local real_python3
   real_python3="$(command -v python3)"
   cat > "$shadow_dir/python3" <<SHIM
 #!/usr/bin/env bash
-# If the invocation is a PyYAML probe ('python3 -c "import yaml"'), fail.
-# Otherwise delegate to the real python3 (needed for other operations).
 for arg in "\$@"; do
   case "\$arg" in
     *'import yaml'*) exit 1 ;;
@@ -463,13 +480,14 @@ MD
   [ ! -f "$KNOW/ingested/moc-test.md" ]
 
   # If render-moc.sh ran, the MOC should no longer reference the slug.
-  # (The render call is best-effort, so we check IF the MOC was updated.)
+  # render-moc.sh requires a manifest with entries to produce output;
+  # after removing the only entry the MOC may be empty or regenerated.
+  # Assert the removed slug no longer appears. If render-moc.sh failed
+  # (best-effort), the stale MOC may still have it — skip the check.
   if [ -f "$KNOW/brain-index.md" ]; then
     local moc_match
     moc_match="$(grep -c 'moc-test' "$KNOW/brain-index.md" 2>/dev/null || true)"
-    # After a successful render, the removed slug should not appear.
-    # If render-moc.sh was unavailable, the stale MOC may still have it — acceptable.
-    true  # best-effort: do not fail on MOC staleness
+    [ "$moc_match" -eq 0 ]
   fi
 }
 
