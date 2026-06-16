@@ -541,7 +541,12 @@ __pycache__/
 # by re-running /gaia-init.
 .gaia/memory/
 .gaia/state/
-.gaia/config/"
+.gaia/config/
+# Brain content under .gaia/knowledge/ is shared and tracked in version
+# control. The .obsidian/ subdirectory is per-user vault chrome (workspace
+# layout, graph settings, installed plugins) — ignore it so it never
+# creates commit churn across contributors.
+.gaia/knowledge/.obsidian/"
 if [ ! -e "$gitignore_path" ]; then
   printf '%s\n' "$gaia_block" > "$gitignore_path"
   printf '%s: seeded %s (.DS_Store, editor junk, .gaia/ runtime state)\n' "$SCRIPT_NAME" "$gitignore_path" >&2
@@ -559,7 +564,7 @@ else
   # so a re-run of /gaia-init back-fills the gap without rewriting the whole
   # block. The pytest ignores are also back-filled on the marker-only
   # idempotency path so an older gaia-init back-fills the gap.
-  for _line in '.gaia/config/' '.gaia/memory/' '.gaia/state/' '.coverage' '.coverage.*' '.pytest_cache/' '__pycache__/' '*.py[cod]'; do
+  for _line in '.gaia/config/' '.gaia/memory/' '.gaia/state/' '.gaia/knowledge/.obsidian/' '.coverage' '.coverage.*' '.pytest_cache/' '__pycache__/' '*.py[cod]'; do
     if ! grep -Fxq "$_line" "$gitignore_path"; then
       printf '%s\n' "$_line" >> "$gitignore_path"
       printf '%s: back-filled %s entry in %s\n' "$SCRIPT_NAME" "$_line" "$gitignore_path" >&2
