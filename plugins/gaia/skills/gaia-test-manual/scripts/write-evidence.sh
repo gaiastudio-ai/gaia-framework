@@ -88,9 +88,11 @@ mkdir -p "$EVIDENCE_DIR"
 # Write run-record.md.
 printf '%s\n' "$content" > "$RUN_RECORD"
 
-# Write exit-code.log with a timestamp and the verdict.
+# Write exit-code.log with a timestamp, the command exit code, and the verdict.
+# CMD_EXIT_CODE is set by dispatch-surface.sh; defaults to 0 for direct callers.
+cmd_rc="${CMD_EXIT_CODE:-0}"
 timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-printf '%s 0 manual-test-run\nVERDICT: %s\n' "$timestamp" "$VERDICT" > "$EXIT_CODE_LOG"
+printf '%s %s manual-test-run\nVERDICT: %s\n' "$timestamp" "$cmd_rc" "$VERDICT" > "$EXIT_CODE_LOG"
 
 log "evidence written to $EVIDENCE_DIR"
 exit 0

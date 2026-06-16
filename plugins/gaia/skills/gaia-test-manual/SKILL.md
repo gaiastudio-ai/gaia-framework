@@ -32,11 +32,46 @@ Use `/gaia-test-manual` when you need a human-style walkthrough with evidence. U
 - Evidence files land under the canonical evidence directory resolved by `resolve-artifact-path.sh manual_test --slug <target-slug>`.
 - Sprint-status.yaml is NEVER written by this skill.
 
+## Supported Surfaces
+
+The manual-test skill supports four verification surfaces, each keyed to a project-config signal:
+
+| Surface   | Config Signal                          | When Absent         |
+|-----------|----------------------------------------|---------------------|
+| browser   | `platforms` contains `web`             | SKIPPED (dormant)   |
+| api       | `platforms` contains `server`          | SKIPPED (dormant)   |
+| mobile    | `platforms` contains `ios` or `android`| SKIPPED (dormant)   |
+| desktop   | `sprint_review.desktop_commands` has entries | SKIPPED (dormant) |
+
+A surface that is not configured is always SKIPPED (exit code 2) — never UNVERIFIED, never FAILED. SKIPPED means dormant: the surface is simply not relevant to this project. UNVERIFIED means the surface was exercised but evidence was insufficient.
+
+The default surface when none is specified is `api`, for backward compatibility with backend-only projects.
+
+## Relationship to Existing Testing Skills
+
+`/gaia-test-manual` is complementary to, not a replacement for, the existing automated and specialized testing skills:
+
+- **`/gaia-test-e2e`** — Automated end-to-end test execution via Playwright or Cypress. Manual testing covers behaviors that resist browser automation (visual polish, subjective UX, edge-case flows that the e2e suite does not yet cover).
+
+- **`/gaia-test-mobile-e2e`** — Automated mobile end-to-end tests via Detox or Appium. Manual testing on the mobile surface provides human-walkthrough coverage for gestures, haptics, and platform-specific behaviors that mobile e2e frameworks handle poorly.
+
+- **`/gaia-test-a11y`** — Automated accessibility testing via axe-core, pa11y, or Lighthouse. Manual testing surfaces accessibility issues that require human judgment (focus order intuitiveness, screen-reader narrative coherence, color-contrast edge cases in complex gradients).
+
+- **`/gaia-review-mobile`** — Code review with a mobile-specific lens. Manual testing verifies runtime behavior; the mobile review inspects code-level patterns (memory leaks, deep-link handling, offline resilience).
+
+- **`/gaia-test-device-matrix`** — Automated cross-device test matrix execution. Manual testing complements the matrix by covering devices or OS versions that the matrix does not include, or by exercising behaviors that differ across physical hardware in ways emulators miss.
+
+- **`/gaia-config-device-target`** — Configuration editor for the device-target matrix. Not a testing skill itself, but its output (the `device_targets` section) feeds both `/gaia-test-device-matrix` and the manual-test mobile surface's scope decisions.
+
 ## Steps
 
 ### Step 1 — Resolve target and evidence path
 
 Resolve the target argument to a concrete testable entity (script path, skill name, feature description). Derive a slug from the target for the evidence directory path. Use `resolve-artifact-path.sh manual_test --slug <slug>` to determine the canonical evidence location.
+
+### Step 1b — Resolve surface profile
+
+Determine which surface to exercise. If the caller provides a `MANUAL_TEST_SURFACE` environment variable, use it; otherwise default to `api`. Run `surface-adapter.sh --surface <surface>` to check whether the surface is configured in the project. If the adapter returns SKIPPED (exit 2), skip directly to Step 5 with a SKIPPED verdict — do not dispatch the agent. If the adapter returns an error (exit 1), fail fast.
 
 ### Step 2 — Dispatch the manual-tester agent
 
