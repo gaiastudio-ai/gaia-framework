@@ -20,12 +20,14 @@
 #   traceability     .gaia/artifacts/planning-artifacts/traceability-matrix.md
 #   sprint_status    .gaia/state/sprint-status.yaml                       (mutable-state tier)
 #   ci_setup         .gaia/artifacts/test-artifacts/ci-setup.md           (test-artifacts tier)
+#   manual_test      .gaia/artifacts/test-artifacts/manual-test/<slug>/run-record.md
 #
 # Usage:
 #   resolve-artifact-path.sh <kind> [--project-root <dir>] [--existing-only]
+#                            [--slug <slug>]
 #
 #   <kind>            one of: test_plan | test_strategy | traceability |
-#                     sprint_status | ci_setup
+#                     sprint_status | ci_setup | manual_test
 #   --project-root    project root (default: $CLAUDE_PROJECT_ROOT or $PWD)
 #   --existing-only   print a path ONLY if a non-empty file exists at one of
 #                     the precedence rungs; exit 1 (no stdout) when none exist.
@@ -48,8 +50,9 @@ SCRIPT_NAME="resolve-artifact-path.sh"
 
 usage() {
   cat >&2 <<USAGE
-usage: ${SCRIPT_NAME} <kind> [--project-root <dir>] [--existing-only]
-  kind: test_plan | test_strategy | traceability | sprint_status | ci_setup
+usage: ${SCRIPT_NAME} <kind> [--project-root <dir>] [--existing-only] [--slug <slug>]
+  kind: test_plan | test_strategy | traceability | sprint_status | ci_setup | manual_test
+  --slug is required for manual_test
 USAGE
   exit 1
 }
@@ -64,10 +67,12 @@ KIND="$1"; shift
 # PROJECT_PATH → PWD. An explicit --project-root flag overrides all of these.
 PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-${PROJECT_ROOT:-${PROJECT_PATH:-${PWD}}}}}"
 EXISTING_ONLY=0
+SLUG=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --project-root) PROJECT_ROOT="$2"; shift 2 ;;
     --existing-only) EXISTING_ONLY=1; shift ;;
+    --slug) SLUG="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
@@ -128,6 +133,13 @@ case "$KIND" in
     CANDIDATES=(
       "${TA}/ci-setup.md"
       "${LEGACY_TA}/ci-setup.md"
+    )
+    ;;
+  manual_test)
+    [ -n "$SLUG" ] || { printf '%s: manual_test requires --slug <slug>\n' "$SCRIPT_NAME" >&2; usage; }
+    CANDIDATES=(
+      "${TA}/manual-test/${SLUG}/run-record.md"
+      "${LEGACY_TA}/manual-test/${SLUG}/run-record.md"
     )
     ;;
   *)
