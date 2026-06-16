@@ -87,7 +87,7 @@ teardown() {
 
 # ---------- AC3: non-api surfaces emit PENDING ----------
 
-@test "AC3: browser dispatch emits PENDING when configured" {
+@test "AC3: browser dispatch runs pixel-diff when configured (UNVERIFIED without baselines)" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [web]
@@ -96,7 +96,8 @@ YAML
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi "PENDING"
+  # Without baselines, browser surface resolves UNVERIFIED (non-blocking)
+  echo "$output" | grep -qi "UNVERIFIED"
 }
 
 @test "AC3: mobile dispatch emits PENDING when configured" {
