@@ -1,0 +1,36 @@
+sprint_id: "sprint-900"
+duration: "1 week"
+velocity_capacity: 20
+team_size: 1
+total_points: 14
+started: "2026-05-01"
+end_date: "2026-05-08"
+status: closed
+closed_at: "2026-05-08T12:00:00Z"
+goals:
+  - "Fixture sprint for throughput-telemetry derivation tests"
+stories:
+  - key: "E900-S1"
+    title: "Multi-transition story"
+    status: "done"
+    points: 4
+    risk_level: "low"
+    assignee: null
+    blocked_by: null
+    updated: "2026-05-01"
+  - key: "E900-S2"
+    title: "Rework-loop story"
+    status: "done"
+    points: 2
+    risk_level: "medium"
+    assignee: null
+    blocked_by: null
+    updated: "2026-05-01"
+  - key: "E900-S3"
+    title: "Single-transition story"
+    status: "done"
+    points: 3
+    risk_level: "low"
+    assignee: null
+    blocked_by: null
+    updated: "2026-05-01"
